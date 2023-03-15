@@ -1,4 +1,6 @@
 use crate::common::{
+	PlayerGet,
+	player::Player,
 	Transform,
 	TransformContainer
 };
@@ -42,5 +44,13 @@ impl<T: TransformContainer> TransformContainer for ObjectPair<T>
 	{
 		self.entity.callback();
 		self.object.set_transform(self.entity.transform_clone());
+	}
+}
+
+impl PlayerGet for ObjectPair<Player>
+{
+	fn player(&self) -> Player
+	{
+		self.entity.clone()
 	}
 }

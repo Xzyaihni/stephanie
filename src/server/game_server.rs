@@ -154,9 +154,9 @@ impl GameServer
 		let mut message_passer = MessagePasser::new(stream);
 
 		let message = message_passer.receive();
-		let player = match message.clone()
+		let name = match message.clone()
 		{
-			Message::PlayerCreate{player} => player,
+			Message::PlayerConnect{name} => name,
 			_ =>
 			{
 				eprintln!("wrong connecting message");
@@ -164,12 +164,9 @@ impl GameServer
 			}
 		};
 
-		this.read().connection_handler.write().send_message(message);
-
-		let name = player.name();
 		eprintln!("player \"{name}\" connected");
 
-		let player_info = this.read().player_by_name(name);
+		let player_info = this.read().player_by_name(&name);
 		let player_info = match player_info
 		{
 			Some(player) => player,
@@ -181,7 +178,9 @@ impl GameServer
 
 		let messager = {
 			let mut writer = this.write();
-			let inserted_id = writer.player_add(player);
+
+			let player = Player::new(name);
+			let inserted_id = writer.add_player(player);
 
 			let mut connection_handler = writer.connection_handler.write();
 			let player_id = connection_handler.connect(player_info);
@@ -193,14 +192,14 @@ impl GameServer
 				panic!("something went horribly wrong, ids of player and connection dont match");
 			}
 
-			messager.send(&Message::PlayersList{player_id});
+			messager.send(&Message::PlayersList{id: player_id});
 
 			for (index, player) in writer.entities.players_ref().iter()
 			{
 				let entity = EntityType::Player(index);
 				let transform = player.transform_ref().clone();
 
-				messager.send(&Message::PlayerCreate{player: player.clone()});
+				messager.send(&Message::PlayerCreate{id: index, player: player.clone()});
 				messager.send(&Message::EntityTransform{entity, transform});
 			}
 
@@ -234,6 +233,8 @@ impl GameServer
 
 	pub fn process_message(this: Arc<RwLock<Self>>, message: Message)
 	{
+		let id_mismatch = || panic!("id mismatch in serverside process message");
+
 		let mut writer = this.write();
 
 		writer.connection_handler.write().send_message(message.clone());
@@ -244,18 +245,16 @@ impl GameServer
 		{
 			match message
 			{
-				Message::PlayerCreate{player} =>
+				Message::PlayerCreate{id, player} =>
 				{
-					writer.entities.players_mut().insert(player);
+					if id != writer.entities.players_mut().insert(player)
+					{
+						id_mismatch();
+					}
 				},
 				_ => ()
 			}
 		}
-	}
-
-	pub fn player_add(&mut self, player: Player) -> usize
-	{
-		self.entities.players_mut().insert(player)
 	}
 
 	pub fn player_by_name(&self, _name: &str) -> Option<PlayerInfo>

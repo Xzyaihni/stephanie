@@ -1,6 +1,7 @@
 use serde::{Serialize, Deserialize};
 
 use crate::common::{
+	PlayerGet,
 	Transform,
 	TransformContainer,
 	character::Character
@@ -42,5 +43,13 @@ impl TransformContainer for Player
 	fn callback(&mut self)
 	{
 		self.character.callback();
+	}
+}
+
+impl PlayerGet for Player
+{
+	fn player(&self) -> Player
+	{
+		self.clone()
 	}
 }

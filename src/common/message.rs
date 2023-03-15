@@ -14,8 +14,9 @@ use super::{
 #[derive(Debug, Clone, EnumCount, Serialize, Deserialize)]
 pub enum Message
 {
-	PlayerCreate{player: Player},
-	PlayersList{player_id: usize},
+	PlayerConnect{name: String},
+	PlayerCreate{id: usize, player: Player},
+	PlayersList{id: usize},
 	PlayerFullyConnected,
 	EntityTransform{entity: EntityType, transform: Transform}
 }

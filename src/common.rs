@@ -14,8 +14,9 @@ pub use entity_type::EntityType;
 pub use network_entity::NetworkEntity;
 pub use sender_loop::{sender_loop, BufferSender};
 
-pub mod entity;
+use player::Player;
 
+pub mod entity;
 pub mod player;
 pub mod character;
 
@@ -25,6 +26,11 @@ pub mod network_entity;
 
 pub mod sender_loop;
 
+
+pub trait PlayerGet
+{
+	fn player(&self) -> Player;
+}
 
 pub trait EntityPasser
 {
@@ -38,7 +44,7 @@ pub trait EntityPasser
 
 pub trait EntitiesContainer
 {
-	type PlayerObject: TransformContainer;
+	type PlayerObject: TransformContainer + PlayerGet;
 
 	fn players_ref(&self) -> &Slab<Self::PlayerObject>;
 	fn players_mut(&mut self) -> &mut Slab<Self::PlayerObject>;
@@ -88,6 +94,19 @@ pub trait EntitiesController
 	fn container_ref(&self) -> &Self::Container;
 	fn container_mut(&mut self) -> &mut Self::Container;
 	fn passer(&self) -> Arc<RwLock<Self::Passer>>;
+
+	fn add_player(
+		&mut self,
+		player_object: <Self::Container as EntitiesContainer>::PlayerObject
+	) -> usize
+	{
+		let player = player_object.player();
+		let id = self.container_mut().players_mut().insert(player_object);
+
+		self.passer().write().send_message(Message::PlayerCreate{id, player});
+
+		id
+	}
 
 	fn player_mut(
 		&mut self,

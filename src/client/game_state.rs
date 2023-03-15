@@ -198,7 +198,7 @@ impl GameState
 
 	pub fn connect(this: Arc<RwLock<Self>>, name: &str) -> usize
 	{
-		let message = Message::PlayerCreate{player: Player::new(name.to_owned())};
+		let message = Message::PlayerConnect{name: name.to_owned()};
 
 		let player_id = {
 			let reader = this.read();
@@ -208,9 +208,9 @@ impl GameState
 
 			match handler.receive()
 			{
-				Message::PlayersList{player_id} =>
+				Message::PlayersList{id} =>
 				{
-					player_id
+					id
 				},
 				x => panic!("received wrong message on connect: {:?}", x)
 			}
@@ -246,6 +246,8 @@ impl GameState
 
 	fn process_message(this: Arc<RwLock<Self>>, message: Message)
 	{
+		let id_mismatch = || panic!("id mismatch in clientside process message");
+
 		let mut writer = this.write();
 
 		let message = writer.entities.handle_message(message);
@@ -254,11 +256,14 @@ impl GameState
 		{
 			match message
 			{
-				Message::PlayerCreate{player} =>
+				Message::PlayerCreate{id, player} =>
 				{
 					let player = ObjectPair::new(&writer.object_factory, player);
 
-					writer.entities.players_mut().insert(player);
+					if id != writer.entities.players_mut().insert(player)
+					{
+						id_mismatch();
+					}
 				},
 				Message::PlayerFullyConnected =>
 				{
