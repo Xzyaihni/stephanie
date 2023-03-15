@@ -1,0 +1,21 @@
+[package]
+name = "zombiething"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+enum_amount = { path = "enum_amount" }
+bincode = "1.3.3"
+bytemuck = "1.12.3"
+image = "0.24.5"
+nalgebra = { version = "0.32.1", features = ["serde-serialize-no-std"] }
+parking_lot = "0.12.1"
+serde = "1.0.152"
+serde_derive = "1.0.152"
+slab = { version = "0.4.8", features = ["serde"] }
+vulkano = "0.32.3"
+vulkano-shaders = "0.32.0"
+vulkano-win = "0.32.0"
+winit = "0.27"
