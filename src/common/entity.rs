@@ -1,21 +1,45 @@
 use serde::{Serialize, Deserialize};
 
+use nalgebra::Vector3;
+
 use transform::{Transform, TransformContainer};
+
+use crate::common::physics::PhysicsEntity;
 
 pub mod transform;
 
 
+#[derive(Debug, Clone)]
+pub struct EntityProperties
+{
+	pub damp_factor: f32
+}
+
+impl Default for EntityProperties
+{
+	fn default() -> Self
+	{
+		Self{damp_factor: 0.5}
+	}
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Entity
 {
-	transform: Transform
+	damp_factor: f32,
+	transform: Transform,
+	pub velocity: Vector3<f32>
 }
 
 impl Entity
 {
-	pub fn new() -> Self
+	pub fn new(properties: EntityProperties) -> Self
 	{
-		Self{transform: Transform::new()}
+		let damp_factor = properties.damp_factor;
+
+		let velocity = Vector3::zeros();
+
+		Self{damp_factor, transform: Transform::new(), velocity}
 	}
 }
 
@@ -32,4 +56,25 @@ impl TransformContainer for Entity
 	}
 
 	fn callback(&mut self) {}
+}
+
+impl PhysicsEntity for Entity
+{
+	fn entity_ref(&self) -> &Entity
+	{
+		self
+	}
+
+	fn entity_mut(&mut self) -> &mut Entity
+	{
+		self
+	}
+
+	fn update(&mut self, dt: f32)
+	{
+		let damp = self.damp_factor.powf(dt);
+
+		self.translate(self.velocity * (damp - 1.0) / self.damp_factor.ln());
+		self.velocity *= damp;
+	}
 }

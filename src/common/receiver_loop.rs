@@ -1,0 +1,36 @@
+use std::{
+	thread
+};
+
+use crate::common::{
+	MessagePasser,
+	message::Message
+};
+
+
+pub fn receiver_loop<T, FP, FD>(
+	this: T,
+	mut handler: MessagePasser,
+	mut process_function: FP,
+	mut disconnect_function: FD
+)
+where
+	T: Clone + Send + 'static,
+	FP: FnMut(T, Message) + Send + 'static,
+	FD: FnMut(T) + Send + 'static
+{
+	thread::spawn(move ||
+	{
+		loop
+		{
+			if let Ok(message) = handler.receive()
+			{
+				process_function(this.clone(), message);
+			} else
+			{
+				disconnect_function(this);
+				return;
+			}
+		}
+	});
+}

@@ -6,7 +6,9 @@ use crate::common::{
 	EntityType,
 	EntityPasser,
 	Transform,
-	TransformContainer
+	TransformContainer,
+	entity::Entity,
+	physics::PhysicsEntity
 };
 
 
@@ -36,7 +38,7 @@ where
 
 impl<'a, E, T> TransformContainer for NetworkEntity<'a, E, T>
 where
-	T: TransformContainer,
+	T: PhysicsEntity,
 	E: EntityPasser
 {
 	fn transform_ref(&self) -> &Transform
@@ -52,6 +54,28 @@ where
 	fn callback(&mut self)
 	{
 		self.entity.callback();
-		self.entity_passer.write().sync_transform(self.entity_type, self.entity.transform_clone());
+		self.entity_passer.write().sync_entity(self.entity_type, self.entity.entity_clone());
+	}
+}
+
+impl<'a, E, T> PhysicsEntity for NetworkEntity<'a, E, T>
+where
+	T: PhysicsEntity,
+	E: EntityPasser
+{
+	fn entity_ref(&self) -> &Entity
+	{
+		self.entity.entity_ref()
+	}
+
+	fn entity_mut(&mut self) -> &mut Entity
+	{
+		self.entity.entity_mut()
+	}
+
+	fn update(&mut self, dt: f32)
+	{
+		self.entity.update(dt);
+		self.callback();
 	}
 }

@@ -82,7 +82,7 @@ impl Client
 			descriptor: Self::descriptor_set_uploader(&device, layout.clone())
 		};
 
-		let textures_list = vec!["textures/cracked_stone.png", "textures/asphalt.png"];
+		let textures_list = vec!["textures/cracked_stone.png", "textures/asphalt.png", "icon.png"];
 		let textures = textures_list.into_iter().map(|name|
 		{
 			Arc::new(
@@ -157,6 +157,8 @@ impl Client
 
 		let connected = {
 			let mut writer = self.game_state.write();
+
+			writer.entities.update(dt);
 
 			writer.entities.regenerate_buffers();
 			writer.release_clicked();

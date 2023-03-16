@@ -1,5 +1,4 @@
 use std::{
-	thread,
 	sync::Arc,
 	net::TcpStream
 };
@@ -10,14 +9,15 @@ use slab::Slab;
 
 use crate::common::{
 	sender_loop,
+	receiver_loop,
 	BufferSender,
-	TransformContainer,
 	EntityType,
 	EntityPasser,
 	EntitiesContainer,
 	EntitiesController,
 	MessagePasser,
-	player::Player,
+	player::{Player, PlayerProperties},
+	physics::PhysicsEntity,
 	message::{
 		Message,
 		MessageBuffer
@@ -86,6 +86,11 @@ impl ConnectionsHandler
 		Self{connections}
 	}
 
+	pub fn remove_connection(&mut self, id: usize)
+	{
+		self.connections.remove(id);
+	}
+
 	pub fn connections_amount(&self) -> usize
 	{
 		self.connections.len()
@@ -120,15 +125,30 @@ impl EntityPasser for ConnectionsHandler
 
 impl BufferSender for ConnectionsHandler
 {
-	fn send_buffered(&mut self)
+	fn send_buffered(&mut self) -> Result<(), bincode::Error>
 	{
-		self.connections.iter_mut().for_each(|(_, connection)|
+		self.connections.iter_mut().try_for_each(|(_, connection)|
 		{
-			connection.message_buffer.get_buffered().for_each(|message|
+			connection.message_buffer.get_buffered().try_for_each(|message|
 			{
-				connection.message_passer.send(&message);
-			});
-		});
+				connection.message_passer.send(&message)
+			})
+		})
+	}
+}
+
+#[derive(Debug)]
+pub enum ConnectionError
+{
+	BincodeError(bincode::Error),
+	WrongConnectionMessage
+}
+
+impl From<bincode::Error> for ConnectionError
+{
+	fn from(value: bincode::Error) -> Self
+	{
+		ConnectionError::BincodeError(value)
 	}
 }
 
@@ -149,18 +169,19 @@ impl GameServer
 		Self{entities, connection_handler}
 	}
 
-	pub fn player_connect(this: Arc<RwLock<Self>>, stream: TcpStream)
+	pub fn player_connect(
+		this: Arc<RwLock<Self>>,
+		stream: TcpStream
+	) -> Result<(), ConnectionError>
 	{
 		let mut message_passer = MessagePasser::new(stream);
 
-		let message = message_passer.receive();
-		let name = match message.clone()
+		let name = match message_passer.receive()?
 		{
 			Message::PlayerConnect{name} => name,
 			_ =>
 			{
-				eprintln!("wrong connecting message");
-				return;
+				return Err(ConnectionError::WrongConnectionMessage);
 			}
 		};
 
@@ -176,10 +197,10 @@ impl GameServer
 			}
 		};
 
-		let messager = {
+		let (id, messager) = {
 			let mut writer = this.write();
 
-			let player = Player::new(name);
+			let player = Player::new(PlayerProperties{name, ..Default::default()});
 			let inserted_id = writer.add_player(player);
 
 			let mut connection_handler = writer.connection_handler.write();
@@ -192,42 +213,40 @@ impl GameServer
 				panic!("something went horribly wrong, ids of player and connection dont match");
 			}
 
-			messager.send(&Message::PlayersList{id: player_id});
+			messager.send(&Message::PlayerOnConnect{id: player_id})?;
 
-			for (index, player) in writer.entities.players_ref().iter()
+			writer.entities.players_ref().iter().try_for_each(|(index, player)|
 			{
-				let entity = EntityType::Player(index);
-				let transform = player.transform_ref().clone();
+				let entity_type = EntityType::Player(index);
+				let entity = player.entity_clone();
 
-				messager.send(&Message::PlayerCreate{id: index, player: player.clone()});
-				messager.send(&Message::EntityTransform{entity, transform});
-			}
+				messager.send(&Message::PlayerCreate{id: index, player: player.clone()})?;
+				messager.send(&Message::EntitySync{entity_type, entity})
+			})?;
 
-			messager.send(&Message::PlayerFullyConnected);
+			messager.send(&Message::PlayerFullyConnected)?;
 
-			messager.try_clone()
+			(player_id, messager.try_clone())
 		};
 
-		Self::listen(this, messager);
+		Self::listen(this, messager, id);
+
+		Ok(())
 	}
 
 	pub fn sender_loop(&self)
 	{
-		let handler = self.connection_handler.clone();
-		thread::spawn(move ||
-		{
-			sender_loop(handler);
-		});
+		sender_loop(self.connection_handler.clone());
 	}
 
-	pub fn listen(this: Arc<RwLock<Self>>, mut handler: MessagePasser)
+	pub fn listen(this: Arc<RwLock<Self>>, handler: MessagePasser, id: usize)
 	{
-		thread::spawn(move ||
+		receiver_loop(this, handler, Self::process_message, move |this|
 		{
-			loop
-			{
-				Self::process_message(this.clone(), handler.receive());
-			}
+			let mut writer = this.write();
+
+			writer.connection_handler.write().remove_connection(id);
+			writer.remove_player(id);
 		});
 	}
 

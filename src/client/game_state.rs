@@ -1,5 +1,4 @@
 use std::{
-	thread,
 	sync::Arc
 };
 
@@ -11,6 +10,7 @@ use vulkano::command_buffer::{AutoCommandBufferBuilder, PrimaryAutoCommandBuffer
 
 use crate::common::{
 	sender_loop,
+	receiver_loop,
 	BufferSender,
 	EntityPasser,
 	EntitiesContainer,
@@ -19,7 +19,8 @@ use crate::common::{
 		Message,
 		MessageBuffer
 	},
-	player::Player
+	player::Player,
+	physics::PhysicsEntity
 };
 
 use super::{
@@ -96,6 +97,11 @@ impl ClientEntitiesContainer
 		self.players.iter_mut().for_each(|(_, pair)| pair.object.regenerate_buffer());
 	}
 
+	pub fn update(&mut self, dt: f32)
+	{
+		self.players.iter_mut().for_each(|(_, pair)| pair.update(dt));
+	}
+
 	pub fn draw(&self, builder: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>)
 	{
 		self.players.iter().for_each(|(_, pair)| pair.object.draw(builder));
@@ -133,12 +139,12 @@ impl ConnectionsHandler
 		Self{message_buffer, message_passer}
 	}
 
-	pub fn send(&mut self, message: &Message)
+	pub fn send(&mut self, message: &Message) -> Result<(), bincode::Error>
 	{
-		self.message_passer.send(message);
+		self.message_passer.send(message)
 	}
 
-	pub fn receive(&mut self) -> Message
+	pub fn receive(&mut self) -> Result<Message, bincode::Error>
 	{
 		self.message_passer.receive()
 	}
@@ -159,12 +165,12 @@ impl EntityPasser for ConnectionsHandler
 
 impl BufferSender for ConnectionsHandler
 {
-	fn send_buffered(&mut self)
+	fn send_buffered(&mut self) -> Result<(), bincode::Error>
 	{
-		self.message_buffer.get_buffered().for_each(|message|
+		self.message_buffer.get_buffered().try_for_each(|message|
 		{
-			self.message_passer.send(&message);
-		});
+			self.message_passer.send(&message)
+		})
 	}
 }
 
@@ -204,11 +210,14 @@ impl GameState
 			let reader = this.read();
 			let mut handler = reader.connection_handler.write();
 
-			handler.send(&message);
+			if let Err(x) = handler.send(&message)
+			{
+				panic!("error connecting to server: {:?}", x);
+			}
 
 			match handler.receive()
 			{
-				Message::PlayersList{id} =>
+				Ok(Message::PlayerOnConnect{id}) =>
 				{
 					id
 				},
@@ -226,22 +235,12 @@ impl GameState
 
 	fn sender_loop(&self)
 	{
-		let handler = self.connection_handler.clone();
-		thread::spawn(move ||
-		{
-			sender_loop(handler);
-		});
+		sender_loop(self.connection_handler.clone());
 	}
 
-	fn listen(this: Arc<RwLock<Self>>, mut handler: MessagePasser)
+	fn listen(this: Arc<RwLock<Self>>, handler: MessagePasser)
 	{
-		thread::spawn(move ||
-		{
-			loop
-			{
-				Self::process_message(this.clone(), handler.receive());
-			}
-		});
+		receiver_loop(this, handler, Self::process_message, |_| ());
 	}
 
 	fn process_message(this: Arc<RwLock<Self>>, message: Message)

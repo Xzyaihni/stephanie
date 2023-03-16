@@ -2,25 +2,22 @@ use std::{
     sync::Arc
 };
 
-use parking_lot::{
-    RwLock,
-    RwLockWriteGuard
-};
+use parking_lot::RwLock;
 
 use nalgebra::{
     Vector3
 };
 
 use crate::common::{
-    EntitiesController
+    EntitiesController,
+    TransformContainer,
+    physics::PhysicsEntity
 };
 
 use super::game_state::{
     GameState,
     Control
 };
-
-use crate::common::TransformContainer;
 
 pub use object_factory::ObjectFactory;
 
@@ -51,7 +48,7 @@ impl Game
 
     pub fn player_connected(&mut self)
     {
-        self.player.camera_sync(self.game_state.write());
+        self.player.camera_sync();
     }
 
     pub fn update(&mut self, dt: f32)
@@ -96,6 +93,8 @@ impl Game
         {
             self.player.walk(dt, movement_direction);
         }
+
+        self.player.camera_sync();
     }
 }
 
@@ -120,19 +119,16 @@ impl PlayerContainer
         self.game_state.read().entities.player_exists(self.id)
     }
 
-    pub fn walk(&mut self, dt: f32, direction: Vector3<f32>)
+    pub fn walk(&self, dt: f32, direction: Vector3<f32>)
     {
-        let direction = direction * dt;
-
-        let mut writer = self.game_state.write();
-        writer.player_mut(self.id).translate(direction);
-
-        self.camera_sync(writer);
+        self.game_state.write().player_mut(self.id).velocity_add(direction * dt);
     }
 
-    fn camera_sync(&self, mut lock: RwLockWriteGuard<GameState>)
+    pub fn camera_sync(&self)
     {
-        let position = lock.player_mut(self.id).transform_ref().position;
-        lock.camera.write().set_position(position + self.camera_origin);
+        let mut writer = self.game_state.write();
+
+        let position = writer.player_mut(self.id).transform_ref().position;
+        writer.camera.write().set_position(position + self.camera_origin);
     }
 }

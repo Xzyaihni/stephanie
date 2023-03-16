@@ -8,25 +8,32 @@ use parking_lot::RwLock;
 
 pub trait BufferSender
 {
-	fn send_buffered(&mut self);
+	fn send_buffered(&mut self) -> Result<(), bincode::Error>;
 }
 
 const TICK_COUNT: usize = 30;
 
-pub fn sender_loop<B: BufferSender>(sender: Arc<RwLock<B>>)
+pub fn sender_loop<B: BufferSender + Send + Sync + 'static>(sender: Arc<RwLock<B>>)
 {
-	let frame_duration = Duration::from_secs_f64(1.0 / TICK_COUNT as f64);
-	let mut last_tick = Instant::now();
-
-	loop
+	thread::spawn(move ||
 	{
-		sender.write().send_buffered();
+		let frame_duration = Duration::from_secs_f64(1.0 / TICK_COUNT as f64);
+		let mut last_tick = Instant::now();
 
-		if let Some(time) = frame_duration.checked_sub(last_tick.elapsed())
+		loop
 		{
-			thread::sleep(time);
-		}
+			if let Err(x) = sender.write().send_buffered()
+			{
+				eprintln!("error in sender loop: {x:?}, closing");
+				return;
+			}
 
-		last_tick = Instant::now();
-	}
+			if let Some(time) = frame_duration.checked_sub(last_tick.elapsed())
+			{
+				thread::sleep(time);
+			}
+
+			last_tick = Instant::now();
+		}
+	});
 }

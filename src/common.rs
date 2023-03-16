@@ -13,8 +13,12 @@ pub use entity::transform::{Transform, TransformContainer};
 pub use entity_type::EntityType;
 pub use network_entity::NetworkEntity;
 pub use sender_loop::{sender_loop, BufferSender};
+pub use receiver_loop::receiver_loop;
 
 use player::Player;
+use entity::Entity;
+
+use physics::PhysicsEntity;
 
 pub mod entity;
 pub mod player;
@@ -25,6 +29,9 @@ pub mod entity_type;
 pub mod network_entity;
 
 pub mod sender_loop;
+pub mod receiver_loop;
+
+pub mod physics;
 
 
 pub trait PlayerGet
@@ -36,15 +43,15 @@ pub trait EntityPasser
 {
 	fn send_message(&mut self, message: Message);
 
-	fn sync_transform(&mut self, id: EntityType, transform: Transform)
+	fn sync_entity(&mut self, id: EntityType, entity: Entity)
 	{
-		self.send_message(Message::EntityTransform{entity: id, transform});
+		self.send_message(Message::EntitySync{entity_type: id, entity});
 	}
 }
 
 pub trait EntitiesContainer
 {
-	type PlayerObject: TransformContainer + PlayerGet;
+	type PlayerObject: TransformContainer + PlayerGet + PhysicsEntity;
 
 	fn players_ref(&self) -> &Slab<Self::PlayerObject>;
 	fn players_mut(&mut self) -> &mut Slab<Self::PlayerObject>;
@@ -64,11 +71,11 @@ pub trait EntitiesContainer
 		self.players_ref().vacant_key()
 	}
 
-	fn sync_transform(&mut self, id: EntityType, transform: Transform)
+	fn sync_entity(&mut self, id: EntityType, entity: Entity)
 	{
 		match id
 		{
-			EntityType::Player(id) => self.player_mut(id).set_transform(transform)
+			EntityType::Player(id) => self.player_mut(id).set_entity(entity)
 		}
 	}
 
@@ -76,9 +83,14 @@ pub trait EntitiesContainer
 	{
 		match message
 		{
-			Message::EntityTransform{entity, transform} =>
+			Message::PlayerDestroy{id} =>
 			{
-				self.sync_transform(entity, transform.clone());
+				self.players_mut().remove(id);
+				None
+			},
+			Message::EntitySync{entity_type, entity} =>
+			{
+				self.sync_entity(entity_type, entity);
 				None
 			},
 			_ => Some(message)
@@ -106,6 +118,12 @@ pub trait EntitiesController
 		self.passer().write().send_message(Message::PlayerCreate{id, player});
 
 		id
+	}
+
+	fn remove_player(&mut self, id: usize)
+	{
+		self.container_mut().players_mut().remove(id);
+		self.passer().write().send_message(Message::PlayerDestroy{id});
 	}
 
 	fn player_mut(
@@ -137,14 +155,14 @@ impl MessagePasser
 		Self{stream}
 	}
 
-	pub fn send(&mut self, message: &Message)
+	pub fn send(&mut self, message: &Message) -> Result<(), bincode::Error>
 	{
-		bincode::serialize_into(&mut self.stream, message).unwrap();
+		bincode::serialize_into(&mut self.stream, message)
 	}
 
-	pub fn receive(&mut self) -> Message
+	pub fn receive(&mut self) -> Result<Message, bincode::Error>
 	{
-		bincode::deserialize_from(&mut self.stream).unwrap()
+		bincode::deserialize_from(&mut self.stream)
 	}
 
 	pub fn try_clone(&self) -> Self

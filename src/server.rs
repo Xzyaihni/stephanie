@@ -50,10 +50,14 @@ impl Server
 					return;
 				}
 
-				GameServer::player_connect(
+				if let Err(x) = GameServer::player_connect(
 					self.game_server.clone(),
 					stream
-				);
+				)
+				{
+					eprintln!("error in player connection: {x:?}");
+					continue;
+				}
 			}
 		}
 	}
