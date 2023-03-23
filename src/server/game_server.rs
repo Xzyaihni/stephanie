@@ -7,16 +7,24 @@ use parking_lot::RwLock;
 
 use slab::Slab;
 
+use super::{
+	ConnectionsHandler,
+	connections_handler::PlayerInfo,
+	world_generator::WorldGenerator
+};
+
 use crate::common::{
 	sender_loop,
 	receiver_loop,
-	BufferSender,
+	TileMap,
 	EntityType,
 	EntityPasser,
 	EntitiesContainer,
 	EntitiesController,
 	MessagePasser,
 	player::{Player, PlayerProperties},
+	character::CharacterProperties,
+	entity::EntityProperties,
 	physics::PhysicsEntity,
 	message::{
 		Message,
@@ -24,21 +32,6 @@ use crate::common::{
 	}
 };
 
-
-#[derive(Debug)]
-pub struct PlayerInfo
-{
-	message_buffer: MessageBuffer,
-	message_passer: MessagePasser
-}
-
-impl PlayerInfo
-{
-	pub fn set_message(&mut self, message: Message)
-	{
-		self.message_buffer.set_message(message);
-	}
-}
 
 #[derive(Debug)]
 pub struct ServerEntitiesContainer
@@ -72,72 +65,6 @@ impl EntitiesContainer for ServerEntitiesContainer
 }
 
 #[derive(Debug)]
-pub struct ConnectionsHandler
-{
-	connections: Slab<PlayerInfo>
-}
-
-impl ConnectionsHandler
-{
-	pub fn new(limit: usize) -> Self
-	{
-		let connections = Slab::with_capacity(limit);
-
-		Self{connections}
-	}
-
-	pub fn remove_connection(&mut self, id: usize)
-	{
-		self.connections.remove(id);
-	}
-
-	pub fn connections_amount(&self) -> usize
-	{
-		self.connections.len()
-	}
-
-	pub fn connect(&mut self, player_info: PlayerInfo) -> usize
-	{
-		self.connections.insert(player_info)
-	}
-
-	pub fn get_mut(&mut self, id: usize) -> &mut PlayerInfo
-	{
-		self.connections.get_mut(id).unwrap()
-	}
-}
-
-impl EntityPasser for ConnectionsHandler
-{
-	fn send_message(&mut self, message: Message)
-	{
-		let entity_type = message.entity_type();
-
-		self.connections.iter_mut().filter(|(index, _)|
-		{
-			Some(EntityType::Player(*index)) != entity_type
-		}).for_each(|(_, player_info)|
-		{
-			player_info.set_message(message.clone());
-		});
-	}
-}
-
-impl BufferSender for ConnectionsHandler
-{
-	fn send_buffered(&mut self) -> Result<(), bincode::Error>
-	{
-		self.connections.iter_mut().try_for_each(|(_, connection)|
-		{
-			connection.message_buffer.get_buffered().try_for_each(|message|
-			{
-				connection.message_passer.send(&message)
-			})
-		})
-	}
-}
-
-#[derive(Debug)]
 pub enum ConnectionError
 {
 	BincodeError(bincode::Error),
@@ -156,17 +83,20 @@ impl From<bincode::Error> for ConnectionError
 pub struct GameServer
 {
 	entities: ServerEntitiesContainer,
-	connection_handler: Arc<RwLock<ConnectionsHandler>>
+	connection_handler: Arc<RwLock<ConnectionsHandler>>,
+	world_generator: WorldGenerator
 }
 
 impl GameServer
 {
-	pub fn new(limit: usize) -> Self
+	pub fn new(tilemap: TileMap, limit: usize) -> Self
 	{
 		let entities = ServerEntitiesContainer::new(limit);
 		let connection_handler = Arc::new(RwLock::new(ConnectionsHandler::new(limit)));
 
-		Self{entities, connection_handler}
+		let world_generator = WorldGenerator::new(connection_handler.clone(), tilemap);
+
+		Self{entities, connection_handler, world_generator}
 	}
 
 	pub fn player_connect(
@@ -185,48 +115,51 @@ impl GameServer
 			}
 		};
 
-		eprintln!("player \"{name}\" connected");
+		println!("player \"{name}\" connected");
 
 		let player_info = this.read().player_by_name(&name);
 		let player_info = match player_info
 		{
 			Some(player) => player,
-			None => PlayerInfo{
-				message_buffer: MessageBuffer::new(),
-				message_passer
-			}
+			None => PlayerInfo::new(MessageBuffer::new(), message_passer)
 		};
 
 		let (id, messager) = {
 			let mut writer = this.write();
 
-			let player = Player::new(PlayerProperties{name, ..Default::default()});
+			let player = Player::new(PlayerProperties{
+				character_properties: CharacterProperties{
+					entity_properties: EntityProperties{damp_factor: 0.001}
+				},
+				name
+			});
+
 			let inserted_id = writer.add_player(player);
 
 			let mut connection_handler = writer.connection_handler.write();
 			let player_id = connection_handler.connect(player_info);
 
-			let messager = &mut connection_handler.get_mut(player_id).message_passer;
+			let messager = connection_handler.get_mut(player_id);
 
 			if player_id != inserted_id
 			{
 				panic!("something went horribly wrong, ids of player and connection dont match");
 			}
 
-			messager.send(&Message::PlayerOnConnect{id: player_id})?;
+			messager.send_blocking(Message::PlayerOnConnect{id: player_id})?;
 
 			writer.entities.players_ref().iter().try_for_each(|(index, player)|
 			{
 				let entity_type = EntityType::Player(index);
 				let entity = player.entity_clone();
 
-				messager.send(&Message::PlayerCreate{id: index, player: player.clone()})?;
-				messager.send(&Message::EntitySync{entity_type, entity})
+				messager.send_blocking(Message::PlayerCreate{id: index, player: player.clone()})?;
+				messager.send_blocking(Message::EntitySync{entity_type, entity})
 			})?;
 
-			messager.send(&Message::PlayerFullyConnected)?;
+			messager.send_blocking(Message::PlayerFullyConnected)?;
 
-			(player_id, messager.try_clone())
+			(player_id, messager.clone_messager())
 		};
 
 		Self::listen(this, messager, id);
@@ -243,11 +176,18 @@ impl GameServer
 	{
 		receiver_loop(this, handler, Self::process_message, move |this|
 		{
-			let mut writer = this.write();
-
-			writer.connection_handler.write().remove_connection(id);
-			writer.remove_player(id);
+			Self::on_connection_closed(this, id)
 		});
+	}
+
+	fn on_connection_closed(this: Arc<RwLock<Self>>, id: usize)
+	{
+		let mut writer = this.write();
+
+		println!("player \"{}\" disconnected", writer.player_ref(id).name());
+
+		writer.connection_handler.write().remove_connection(id);
+		writer.remove_player(id);
 	}
 
 	pub fn process_message(this: Arc<RwLock<Self>>, message: Message)
@@ -256,23 +196,33 @@ impl GameServer
 
 		let mut writer = this.write();
 
-		writer.connection_handler.write().send_message(message.clone());
-
-		let message = writer.entities.handle_message(message);
-
-		if let Some(message) = message
+		if message.forward()
 		{
-			match message
+			writer.connection_handler.write().send_message(message.clone());
+		}
+
+		let message = match writer.entities.handle_message(message)
+		{
+			Some(x) => x,
+			None => return
+		};
+
+		let message = match writer.world_generator.handle_message(message)
+		{
+			Some(x) => x,
+			None => return
+		};
+
+		match message
+		{
+			Message::PlayerCreate{id, player} =>
 			{
-				Message::PlayerCreate{id, player} =>
+				if id != writer.entities.players_mut().insert(player)
 				{
-					if id != writer.entities.players_mut().insert(player)
-					{
-						id_mismatch();
-					}
-				},
-				_ => ()
-			}
+					id_mismatch();
+				}
+			},
+			x => panic!("unhandled message: {:?}", x)
 		}
 	}
 

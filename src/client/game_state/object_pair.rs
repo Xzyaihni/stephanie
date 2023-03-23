@@ -1,15 +1,25 @@
+use std::{
+	sync::Arc
+};
+
+use vulkano::memory::allocator::FastMemoryAllocator;
+
 use crate::common::{
 	PlayerGet,
 	entity::Entity,
 	player::Player,
 	Transform,
+	OnTransformCallback,
 	TransformContainer,
 	physics::PhysicsEntity
 };
 
 use crate::client::game::{
 	ObjectFactory,
-	object::Object
+	object::{
+		Object,
+		model::Model
+	}
 };
 
 
@@ -24,9 +34,35 @@ impl<T: TransformContainer> ObjectPair<T>
 {
 	pub fn new(object_factory: &ObjectFactory, entity: T) -> Self
 	{
-		let object = object_factory.create(2);
+		let object = object_factory.create(
+			Arc::new(Model::square(0.1)),
+			entity.transform_clone(),
+			0
+		);
 
-		Self{object, entity: entity}
+		Self{object, entity}
+	}
+
+	pub fn regenerate_buffers(&mut self, allocator: &FastMemoryAllocator)
+	{
+		self.object.regenerate_buffers(allocator);
+	}
+}
+
+impl PlayerGet for ObjectPair<Player>
+{
+	fn player(&self) -> Player
+	{
+		self.entity.clone()
+	}
+}
+
+impl<T: TransformContainer> OnTransformCallback for ObjectPair<T>
+{
+	fn callback(&mut self)
+	{
+		self.entity.callback();
+		self.object.set_transform(self.entity.transform_clone());
 	}
 }
 
@@ -40,20 +76,6 @@ impl<T: TransformContainer> TransformContainer for ObjectPair<T>
 	fn transform_mut(&mut self) -> &mut Transform
 	{
 		self.entity.transform_mut()
-	}
-
-	fn callback(&mut self)
-	{
-		self.entity.callback();
-		self.object.set_transform(self.entity.transform_clone());
-	}
-}
-
-impl PlayerGet for ObjectPair<Player>
-{
-	fn player(&self) -> Player
-	{
-		self.entity.clone()
 	}
 }
 

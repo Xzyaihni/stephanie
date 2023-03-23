@@ -4,11 +4,19 @@ use std::{
 	net::TcpListener
 };
 
+use crate::common::TileMap;
+
 use parking_lot::RwLock;
 
 use game_server::GameServer;
 
+pub use connections_handler::ConnectionsHandler;
+
 mod game_server;
+
+pub mod connections_handler;
+
+pub mod world_generator;
 
 
 pub struct Server
@@ -20,11 +28,11 @@ pub struct Server
 
 impl Server
 {
-	pub fn new(address: &str, connections_limit: usize) -> io::Result<Self>
+	pub fn new(tilemap: TileMap, address: &str, connections_limit: usize) -> io::Result<Self>
 	{
 		let listener = TcpListener::bind(format!("{address}:0"))?;
 
-		let game_server = Arc::new(RwLock::new(GameServer::new(connections_limit)));
+		let game_server = Arc::new(RwLock::new(GameServer::new(tilemap, connections_limit)));
 		game_server.read().sender_loop();
 
 		Ok(Self{
@@ -58,6 +66,10 @@ impl Server
 					eprintln!("error in player connection: {x:?}");
 					continue;
 				}
+			} else
+			{
+				eprintln!("connection error: {connection:?}");
+				continue;
 			}
 		}
 	}

@@ -16,7 +16,6 @@ use vulkano::{
         StateMode,
         graphics::{
             color_blend::ColorBlendState,
-            depth_stencil::DepthStencilState,
             rasterization::{CullMode, RasterizationState},
             input_assembly::InputAssemblyState,
             vertex_input::BuffersDefinition,
@@ -72,10 +71,13 @@ use winit::{
     event_loop::{ControlFlow, EventLoop}
 };
 
-use crate::client::{
-    Client,
-    GameInput,
-    game
+use crate::{
+    common::TileMap,
+    client::{
+        Client,
+        GameInput,
+        game
+    }
 };
 
 mod default_vertex
@@ -130,7 +132,6 @@ pub fn generate_pipeline(
         .viewport_state(ViewportState::viewport_fixed_scissor_irrelevant([viewport]))
         .fragment_shader(fragment_entry, ())
         .color_blend_state(ColorBlendState::new(subpass.num_color_attachments()).blend_alpha())
-        .depth_stencil_state(DepthStencilState::simple_depth_test())
         .rasterization_state(RasterizationState{
             cull_mode: StateMode::Fixed(CullMode::Back),
             ..Default::default()
@@ -146,15 +147,15 @@ pub fn generate_pipelines(
     device: Arc<Device>
 ) -> Vec<Arc<GraphicsPipeline>>
 {
-    let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
+    let subpass = Subpass::from(render_pass, 0).unwrap();
 
     vec![
         generate_pipeline(
             default_vertex::load(device.clone()).unwrap().entry_point("main").unwrap(),
             default_fragment::load(device.clone()).unwrap().entry_point("main").unwrap(),
             viewport,
-            subpass.clone(),
-            device.clone()
+            subpass,
+            device
         )
     ]
 }
@@ -291,6 +292,7 @@ pub fn run(
     physical_device: Arc<PhysicalDevice>,
     device: Arc<Device>,
     queues: Vec<Arc<Queue>>,
+    tilemap: TileMap,
     address: String,
     name: String
 )
@@ -315,12 +317,12 @@ pub fn run(
     let layout = render_info.pipelines[0].layout().clone();
     let mut client: Option<Client> = None;
 
+    let mut tilemap = Some(tilemap);
+
     let mut previous_time = Instant::now();
 
     let mut recreate_swapchain = false;
     let mut window_resized = false;
-
-    let mut focused = false;
 
     event_loop.run(move |event, _, control_flow|
     {
@@ -340,13 +342,6 @@ pub fn run(
             {
                 window_resized = true;
             },
-            Event::WindowEvent{
-                event: WindowEvent::Focused(state),
-                   ..
-            } =>
-            {
-                focused = state;
-            },
             Event::DeviceEvent{
                 event: DeviceEvent::Button{
                     button,
@@ -355,12 +350,9 @@ pub fn run(
                 ..
             } =>
             {
-                if focused
+                if let Some(ref mut client) = client
                 {
-                    if let Some(ref mut client) = client
-                    {
-                        client.send_input(GameInput::MouseInput(button), state);
-                    }
+                    client.send_input(GameInput::MouseInput(button), state);
                 }
             },
             Event::DeviceEvent{
@@ -368,92 +360,61 @@ pub fn run(
                 ..
             } =>
             {
-                if focused
+                if let Some(ref mut client) = client
                 {
-                    if let Some(ref mut client) = client
-                    {
-                        let KeyboardInput{virtual_keycode: button, state, ..} = input;
+                    let KeyboardInput{virtual_keycode: button, state, ..} = input;
 
-                        if let Some(button) = button
-                        {
-                            client.send_input(GameInput::KeyboardInput(button), state);
-                        }
+                    if let Some(button) = button
+                    {
+                        client.send_input(GameInput::KeyboardInput(button), state);
                     }
                 }
             },
             Event::MainEventsCleared =>
             {
-                let (image_index, suboptimal, acquire_future) =
-                    match swapchain::acquire_next_image(render_info.swapchain.clone(), None)
-                    {
-                        Ok(x) => x,
-                        Err(AcquireError::OutOfDate) =>
-                        {
-                            recreate_swapchain = true;
-                            return;
-                        },
-                        Err(e) => panic!("error getting next image >-< ({:?})", e)
-                    };
-
-                if suboptimal {recreate_swapchain = true}
-
                 let mut builder = default_builder(&command_allocator, queue.queue_family_index());
 
                 if client.is_none()
                 {
-                    client = Some(
-                        Client::new(
-                            device.clone(),
-                            &mut builder,
-                            layout.clone(),
-                            render_info.aspect(),
-                            &address, &name
-                        ).unwrap()
-                    );
+                    match Client::new(
+                        device.clone(),
+                        &mut builder,
+                        layout.clone(),
+                        render_info.aspect(),
+                        tilemap.take().unwrap(),
+                        &address, &name
+                    )
+                    {
+                        Ok(x) =>
+                        {
+                            client = Some(x);
+                        },
+                        Err(err) =>
+                        {
+                            eprintln!("client error: {err:?}");
+                            *control_flow = ControlFlow::Exit;
+                        }
+                    }
                 }
 
-                builder.begin_render_pass(
-                    RenderPassBeginInfo{
-                        clear_values: vec![Some([0.0, 0.0, 0.0, 1.0].into())],
-                        ..RenderPassBeginInfo::framebuffer(
-                            render_info.framebuffers[image_index as usize].clone()
-                        )
-                    },
-                    SubpassContents::Inline
-                ).unwrap().bind_pipeline_graphics(render_info.pipelines[0].clone());
-
-                let delta_time = previous_time.elapsed().as_secs_f32();
-                previous_time = Instant::now();
-
-                client.as_mut().unwrap().update(delta_time);
-
-                client.as_ref().unwrap().draw(&mut builder);
-
-                builder.end_render_pass().unwrap();
-
-                let command_buffer = builder.build().unwrap();
-
-                let execution = vulkano::sync::now(device.clone())
-                    .join(acquire_future)
-                    .then_execute(queue.clone(), command_buffer)
-                    .unwrap()
-                    .then_swapchain_present(
-                        queue.clone(),
-                        SwapchainPresentInfo::swapchain_image_index(
-                            render_info.swapchain.clone(),
-                            image_index
-                        )
-                    )
-                    .then_signal_fence_and_flush();
-
-                match execution
+                let client = client.as_mut().unwrap();
+                if client.running()
                 {
-                    Ok(future) => future.wait(None).unwrap(),
-                    Err(FlushError::OutOfDate) =>
+                    if run_frame(
+                        builder,
+                        device.clone(),
+                        queue.clone(),
+                        &mut render_info,
+                        client,
+                        &mut previous_time
+                    )
                     {
                         recreate_swapchain = true;
-                    },
-                    Err(e) => eprintln!("error flushing future ;; ({:?})", e)
+                    }
+                } else
+                {
+                    eprintln!("server closed, exiting");
+                    *control_flow = ControlFlow::Exit;
                 }
             },
             Event::RedrawEventsCleared =>
@@ -484,4 +445,69 @@ pub fn run(
             _ => ()
         }
     });
+}
+
+fn run_frame(
+    mut builder: AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
+    device: Arc<Device>,
+    queue: Arc<Queue>,
+    render_info: &mut RenderInfo,
+    client: &mut Client,
+    previous_time: &mut Instant
+) -> bool
+{
+    let (image_index, suboptimal, acquire_future) =
+    match swapchain::acquire_next_image(render_info.swapchain.clone(), None)
+    {
+        Ok(x) => x,
+        Err(AcquireError::OutOfDate) =>
+        {
+            return true;
+        },
+        Err(e) => panic!("error getting next image >-< ({:?})", e)
+    };
+
+    builder.begin_render_pass(
+        RenderPassBeginInfo{
+            clear_values: vec![Some([0.0, 0.0, 0.0, 1.0].into())],
+            ..RenderPassBeginInfo::framebuffer(
+                render_info.framebuffers[image_index as usize].clone()
+            )
+        },
+        SubpassContents::Inline
+    ).unwrap().bind_pipeline_graphics(render_info.pipelines[0].clone());
+
+    let delta_time = previous_time.elapsed().as_secs_f32();
+    *previous_time = Instant::now();
+
+    client.update(delta_time);
+    client.draw(&mut builder);
+
+    builder.end_render_pass().unwrap();
+
+    let command_buffer = builder.build().unwrap();
+
+    let execution = vulkano::sync::now(device)
+        .join(acquire_future)
+        .then_execute(queue.clone(), command_buffer)
+        .unwrap()
+        .then_swapchain_present(
+            queue,
+            SwapchainPresentInfo::swapchain_image_index(
+                render_info.swapchain.clone(),
+                image_index
+            )
+        ).then_signal_fence_and_flush();
+
+    match execution
+    {
+        Ok(future) => future.wait(None).unwrap(),
+        Err(FlushError::OutOfDate) =>
+        {
+            return true;
+        },
+        Err(e) => eprintln!("error flushing future ;; ({:?})", e)
+    }
+
+    suboptimal
 }

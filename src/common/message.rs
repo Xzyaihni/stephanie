@@ -4,10 +4,11 @@ use serde::{Serialize, Deserialize};
 
 use enum_amount::EnumCount;
 
-use super::{
+use crate::common::{
 	EntityType,
 	entity::Entity,
-	player::Player
+	player::Player,
+	world::chunk::{Chunk, GlobalPos}
 };
 
 
@@ -19,7 +20,9 @@ pub enum Message
 	PlayerDestroy{id: usize},
 	PlayerOnConnect{id: usize},
 	PlayerFullyConnected,
-	EntitySync{entity_type: EntityType, entity: Entity}
+	EntitySync{entity_type: EntityType, entity: Entity},
+	ChunkRequest{pos: GlobalPos},
+	ChunkSync{pos: GlobalPos, chunk: Chunk}
 }
 
 impl Message
@@ -30,6 +33,24 @@ impl Message
 		{
 			Message::EntitySync{entity_type, ..} => Some(*entity_type),
 			_ => None
+		}
+	}
+
+	pub fn overwriting(&self) -> Option<usize>
+	{
+		match self
+		{
+			Message::EntitySync{..} => Some(0),
+			_ => None
+		}
+	}
+
+	pub fn forward(&self) -> bool
+	{
+		match self
+		{
+			Message::ChunkRequest{..} => false,
+			_ => true
 		}
 	}
 }
@@ -54,13 +75,7 @@ impl MessageBuffer
 
 	pub fn set_message(&mut self, message: Message)
 	{
-		let overwriting_id = match &message
-		{
-			Message::EntitySync{..} => Some(0),
-			_ => None
-		};
-
-		if let Some(id) = overwriting_id
+		if let Some(id) = message.overwriting()
 		{
 			self.overwriting_buffer[id] = Some(message);
 		} else
@@ -71,10 +86,11 @@ impl MessageBuffer
 
 	pub fn get_buffered(&mut self) -> impl Iterator<Item=Message> + '_
 	{
-		mem::replace(&mut self.buffer, Vec::new()).into_iter()
-			.chain(mem::replace(&mut self.overwriting_buffer, [None; OVERWRITING_COUNT])
-				.into_iter()
-				.filter_map(|message| message)
+		mem::take(&mut self.buffer).into_iter()
+			.chain(
+				mem::replace(&mut self.overwriting_buffer, [None; OVERWRITING_COUNT])
+					.into_iter()
+					.flatten()
 			)
 	}
 }

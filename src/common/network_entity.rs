@@ -6,6 +6,7 @@ use crate::common::{
 	EntityType,
 	EntityPasser,
 	Transform,
+	OnTransformCallback,
 	TransformContainer,
 	entity::Entity,
 	physics::PhysicsEntity
@@ -23,7 +24,7 @@ where
 
 impl<'a, E, T> NetworkEntity<'a, E, T>
 where
-	T: TransformContainer,
+	T: PhysicsEntity,
 	E: EntityPasser + ?Sized
 {
 	pub fn new(
@@ -33,6 +34,24 @@ where
 	) -> Self
 	{
 		Self{entity_passer, entity_type, entity}
+	}
+
+	pub fn sync(&mut self)
+	{
+		self.entity_passer.write().sync_entity(self.entity_type, self.entity.entity_clone());
+	}
+}
+
+impl<'a, E, T> OnTransformCallback for NetworkEntity<'a, E, T>
+where
+	T: PhysicsEntity,
+	E: EntityPasser
+{
+	fn callback(&mut self)
+	{
+		self.entity.callback();
+
+		self.sync();
 	}
 }
 
@@ -49,12 +68,6 @@ where
 	fn transform_mut(&mut self) -> &mut Transform
 	{
 		self.entity.transform_mut()
-	}
-
-	fn callback(&mut self)
-	{
-		self.entity.callback();
-		self.entity_passer.write().sync_entity(self.entity_type, self.entity.entity_clone());
 	}
 }
 
@@ -76,6 +89,5 @@ where
 	fn update(&mut self, dt: f32)
 	{
 		self.entity.update(dt);
-		self.callback();
 	}
 }

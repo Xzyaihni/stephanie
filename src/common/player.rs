@@ -3,6 +3,7 @@ use serde::{Serialize, Deserialize};
 use crate::common::{
 	PlayerGet,
 	Transform,
+	OnTransformCallback,
 	TransformContainer,
 	entity::Entity,
 	character::{Character, CharacterProperties},
@@ -39,6 +40,14 @@ impl Player
 	}
 }
 
+impl OnTransformCallback for Player
+{
+	fn callback(&mut self)
+	{
+		self.character.callback();
+	}
+}
+
 impl TransformContainer for Player
 {
 	fn transform_ref(&self) -> &Transform
@@ -49,11 +58,6 @@ impl TransformContainer for Player
 	fn transform_mut(&mut self) -> &mut Transform
 	{
 		self.character.transform_mut()
-	}
-
-	fn callback(&mut self)
-	{
-		self.character.callback();
 	}
 }
 

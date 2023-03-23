@@ -1,6 +1,6 @@
 use nalgebra::base::Matrix4;
 
-use crate::common::{Transform, TransformContainer};
+use crate::common::{Transform, OnTransformCallback, TransformContainer};
 
 
 #[derive(Debug, Clone)]
@@ -10,12 +10,18 @@ pub struct ObjectTransform
     matrix: Matrix4<f32>
 }
 
+#[allow(dead_code)]
 impl ObjectTransform
 {
-    pub fn new() -> Self
+    pub fn new_default() -> Self
     {
         let transform = Transform::new();
 
+        Self::new(transform)
+    }
+
+    pub fn new(transform: Transform) -> Self
+    {
         let matrix = Self::calculate_matrix(&transform);
 
         Self{transform, matrix}
@@ -44,6 +50,14 @@ impl ObjectTransform
     }
 }
 
+impl OnTransformCallback for ObjectTransform
+{
+    fn callback(&mut self)
+    {
+        self.recalculate_matrix();
+    }
+}
+
 impl TransformContainer for ObjectTransform
 {
     fn transform_ref(&self) -> &Transform
@@ -54,10 +68,5 @@ impl TransformContainer for ObjectTransform
     fn transform_mut(&mut self) -> &mut Transform
     {
         &mut self.transform
-    }
-
-    fn callback(&mut self)
-    {
-        self.recalculate_matrix();
     }
 }

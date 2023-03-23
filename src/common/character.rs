@@ -4,7 +4,7 @@ use crate::common::{
 	entity::{
 		Entity,
 		EntityProperties,
-		transform::{Transform, TransformContainer}
+		transform::{Transform, OnTransformCallback, TransformContainer}
 	},
 	physics::PhysicsEntity
 };
@@ -30,6 +30,14 @@ impl Character
 	}
 }
 
+impl OnTransformCallback for Character
+{
+	fn callback(&mut self)
+	{
+		self.entity.callback();
+	}
+}
+
 impl TransformContainer for Character
 {
 	fn transform_ref(&self) -> &Transform
@@ -40,11 +48,6 @@ impl TransformContainer for Character
 	fn transform_mut(&mut self) -> &mut Transform
 	{
 		self.entity.transform_mut()
-	}
-
-	fn callback(&mut self)
-	{
-		self.entity.callback();
 	}
 }
 

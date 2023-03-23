@@ -12,7 +12,7 @@ use nalgebra::{
 
 use super::object_transform::ObjectTransform;
 
-use crate::common::{Transform, TransformContainer};
+use crate::common::{Transform, OnTransformCallback, TransformContainer};
 
 
 #[derive(Debug, Clone)]
@@ -29,7 +29,7 @@ impl Camera
     pub fn new(aspect: f32) -> Self
     {
         let projection = Self::create_projection(aspect);
-        let view = ObjectTransform::new();
+        let view = ObjectTransform::new_default();
 
         let projection_view = Self::calculate_projection_view(projection, view.matrix());
 
@@ -86,9 +86,23 @@ impl Camera
         self.regenerate_projection_view();
     }
 
+    pub fn aspect(&self) -> (f32, f32)
+    {
+        self.size
+    }
+
     pub fn origin(&self) -> Vector3<f32>
     {
         Vector3::new(self.size.0 / 2.0, self.size.1 / 2.0, 0.0)
+    }
+}
+
+impl OnTransformCallback for Camera
+{
+    fn callback(&mut self)
+    {
+        self.view.callback();
+        self.regenerate_projection_view();
     }
 }
 
@@ -138,11 +152,5 @@ impl TransformContainer for Camera
     {
         self.transform_mut().rotation -= radians;
         self.callback();
-    }
-
-    fn callback(&mut self)
-    {
-        self.view.callback();
-        self.regenerate_projection_view();
     }
 }

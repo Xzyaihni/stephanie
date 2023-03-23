@@ -26,8 +26,10 @@ use vulkano_win::VkSurfaceBuild;
 
 use winit::{
     window::{Icon, WindowBuilder},
-    event_loop::EventLoop
+    event_loop::{DeviceEventFilter, EventLoop}
 };
+
+use common::TileMap;
 
 use server::Server;
 
@@ -116,6 +118,8 @@ fn main()
     let name = args.next().unwrap_or_else(|| "test".to_owned());
     let mode = args.next().unwrap_or_else(|| "host".to_owned());
 
+    let deferred_parse = || TileMap::parse("tiles/tiles.json", "textures/");
+
     let address;
     match mode.to_lowercase().as_str()
     {
@@ -125,12 +129,19 @@ fn main()
 
             thread::spawn(move ||
             {
-                let mut server = Server::new("0.0.0.0", 16).unwrap();
+                match deferred_parse()
+                {
+                    Ok(tilemap) =>
+                    {
+                        let mut server = Server::new(tilemap, "0.0.0.0", 16).unwrap();
 
-                let port = server.port();
-                tx.send(port).unwrap();
+                        let port = server.port();
+                        tx.send(port).unwrap();
 
-                server.run()
+                        server.run()
+                    },
+                    Err(err) => panic!("error parsing tilemap: {:?}", err)
+                }
             });
 
             let port = rx.recv().unwrap();
@@ -157,19 +168,30 @@ fn main()
     ).expect("cant create vulkan instance..");
 
     let icon_texture = RgbaImage::load("icon.png");
-    let icon = icon_texture.ok().map(|texture|
+    let icon = icon_texture.ok().and_then(|texture|
     {
         Icon::from_rgba(texture.data.to_vec(), texture.width, texture.height).ok()
-    }).flatten();
+    });
 
     let event_loop = EventLoop::new();
+    event_loop.set_device_event_filter(DeviceEventFilter::Unfocused);
+
     let surface = WindowBuilder::new()
         .with_title("very cool new game, nobody ever created something like this")
         .with_window_icon(icon)
         .build_vk_surface(&event_loop, instance.clone())
         .unwrap();
 
-    let (physical_device, (device, queues)) = create_device(surface.clone(), instance.clone());
+    let (physical_device, (device, queues)) = create_device(surface.clone(), instance);
 
-    window::run(surface, event_loop, physical_device, device, queues.collect(), address, name);
+    window::run(
+        surface,
+        event_loop,
+        physical_device,
+        device,
+        queues.collect(),
+        deferred_parse().unwrap(),
+        address,
+        name
+    );
 }

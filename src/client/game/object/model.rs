@@ -13,15 +13,20 @@ impl Model
         Self{vertices: Vec::new(), uvs: Vec::new()}
     }
 
-    pub fn rectangle(size: f32) -> Self
+    pub fn square(side: f32) -> Self
+    {
+        Self::rectangle(side, side)
+    }
+
+    pub fn rectangle(width: f32, height: f32) -> Self
     {
         let vertices = vec![
-            [-size, -size, 0.0],
-            [-size, size, 0.0],
-            [size, -size, 0.0],
-            [-size, size, 0.0],
-            [size, size, 0.0],
-            [size, -size, 0.0]
+            [0.0, 0.0, 0.0],
+            [0.0, height, 0.0],
+            [width, 0.0, 0.0],
+            [0.0, height, 0.0],
+            [width, height, 0.0],
+            [width, 0.0, 0.0]
         ];
 
         let uvs = vec![

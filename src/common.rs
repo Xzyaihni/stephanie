@@ -9,11 +9,13 @@ use slab::Slab;
 
 use message::Message;
 
-pub use entity::transform::{Transform, TransformContainer};
+pub use entity::transform::{Transform, OnTransformCallback, TransformContainer};
 pub use entity_type::EntityType;
 pub use network_entity::NetworkEntity;
 pub use sender_loop::{sender_loop, BufferSender};
 pub use receiver_loop::receiver_loop;
+
+pub use tilemap::TileMap;
 
 use player::Player;
 use entity::Entity;
@@ -30,6 +32,10 @@ pub mod network_entity;
 
 pub mod sender_loop;
 pub mod receiver_loop;
+
+pub mod tilemap;
+
+pub mod world;
 
 pub mod physics;
 

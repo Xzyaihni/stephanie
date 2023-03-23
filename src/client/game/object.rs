@@ -10,7 +10,6 @@ use vulkano::{
         PipelineBindPoint,
         layout::PipelineLayout
     },
-    command_buffer::{AutoCommandBufferBuilder, PrimaryAutoCommandBuffer},
     buffer::{
         BufferUsage,
         TypedBufferAccess,
@@ -27,7 +26,10 @@ use super::{
     object_transform::ObjectTransform
 };
 
-use crate::common::{Transform, TransformContainer};
+use crate::{
+    client::BuilderType,
+    common::{Transform, OnTransformCallback, TransformContainer}
+};
 
 use model::Model;
 use texture::Texture;
@@ -55,7 +57,10 @@ struct BufferContainer
 
 impl BufferContainer
 {
-    pub fn new(allocator: &FastMemoryAllocator, vertices: &[Vertex]) -> Self
+    pub fn new(
+        allocator: &FastMemoryAllocator,
+        vertices: impl ExactSizeIterator<Item=Vertex>
+    ) -> Self
     {
         let vertex_buffer = CpuAccessibleBuffer::from_iter(
             allocator,
@@ -64,7 +69,7 @@ impl BufferContainer
                 ..Default::default()
             },
             false,
-            vertices.iter().cloned()
+            vertices
         ).unwrap();
 
         Self{vertex_buffer}
@@ -77,16 +82,15 @@ pub struct Object
     camera: Arc<RwLock<Camera>>,
     model: Arc<Model>,
     texture: Arc<RwLock<Texture>>,
-    vertices: Vec<Vertex>,
     transform: ObjectTransform,
     layout: Arc<PipelineLayout>,
-    allocator: FastMemoryAllocator,
     buffer_container: BufferContainer
 }
 
+#[allow(dead_code)]
 impl Object
 {
-    pub fn new(
+    pub fn new_default(
         allocator: FastMemoryAllocator,
         layout: Arc<PipelineLayout>,
         camera: Arc<RwLock<Camera>>,
@@ -94,46 +98,65 @@ impl Object
         texture: Arc<RwLock<Texture>>
     ) -> Self
     {
-        let transform = ObjectTransform::new();
+        let transform = ObjectTransform::new_default();
 
-        let vertices = Self::generate_vertices(&camera, &transform, &model);
-
-        let buffer_container = BufferContainer::new(&allocator, &vertices);
-
-        Self{camera, model, texture, vertices, transform, layout, allocator, buffer_container}
+        Self::new(allocator, layout, camera, model, texture, transform)
     }
 
-    pub fn regenerate_buffer(&mut self)
+    pub fn new(
+        allocator: FastMemoryAllocator,
+        layout: Arc<PipelineLayout>,
+        camera: Arc<RwLock<Camera>>,
+        model: Arc<Model>,
+        texture: Arc<RwLock<Texture>>,
+        transform: ObjectTransform
+    ) -> Self
     {
-        self.vertices =
+        let vertices = Self::generate_vertices(&camera, &transform, &model);
+
+        let buffer_container = BufferContainer::new(&allocator, vertices);
+
+        Self{
+            camera,
+            model,
+            texture,
+            transform,
+            layout,
+            buffer_container
+        }
+    }
+
+    pub fn regenerate_buffers(&mut self, allocator: &FastMemoryAllocator)
+    {
+        let vertices =
             Self::generate_vertices(&self.camera, &self.transform, &self.model);
 
         self.buffer_container = BufferContainer::new(
-            &self.allocator,
-            &self.vertices
+            allocator,
+            vertices
         );
     }
 
-    fn generate_vertices(
+    fn generate_vertices<'a>(
         camera: &Arc<RwLock<Camera>>,
         transform: &ObjectTransform,
-        model: &Arc<Model>
-    ) -> Vec<Vertex>
+        model: &'a Arc<Model>
+    ) -> impl ExactSizeIterator<Item=Vertex> + 'a
     {
         let projection_view = camera.read().projection_view();
         let transform = transform.matrix();
 
-        model.vertices.iter().zip(model.uvs.iter()).map(|(vertex, uv)|
+        model.vertices.iter().zip(model.uvs.iter()).map(move |(vertex, uv)|
         {
             let vertex = Vector4::new(vertex[0], vertex[1], vertex[2], 1.0);
 
             let vertex = projection_view * transform * vertex;
 
             Vertex{position: vertex.xyz().into(), uv: *uv}
-        }).collect()
+        })
     }
 
-    pub fn draw(&self, builder: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>)
+    pub fn draw(&self, builder: BuilderType)
     {
         let vertex_buffer = &self.buffer_container.vertex_buffer;
 
@@ -150,6 +173,14 @@ impl Object
     }
 }
 
+impl OnTransformCallback for Object
+{
+    fn callback(&mut self)
+    {
+        self.transform.callback();
+    }
+}
+
 impl TransformContainer for Object
 {
     fn transform_ref(&self) -> &Transform
@@ -160,10 +191,5 @@ impl TransformContainer for Object
     fn transform_mut(&mut self) -> &mut Transform
     {
         self.transform.transform_mut()
-    }
-
-    fn callback(&mut self)
-    {
-        self.transform.callback();
     }
 }

@@ -29,12 +29,15 @@ impl Transform
 	}
 }
 
-pub trait TransformContainer
+pub trait OnTransformCallback
+{
+	fn callback(&mut self);
+}
+
+pub trait TransformContainer: OnTransformCallback
 {
 	fn transform_ref(&self) -> &Transform;
 	fn transform_mut(&mut self) -> &mut Transform;
-
-	fn callback(&mut self);
 
 	fn transform_clone(&self) -> Transform
 	{

@@ -1,5 +1,4 @@
 use std::{
-	io,
 	sync::Arc,
 	net::TcpStream
 };
@@ -15,7 +14,7 @@ use vulkano::{
 		Sampler,
 		SamplerCreateInfo
 	},
-	memory::allocator::StandardMemoryAllocator,
+	memory::allocator::{FastMemoryAllocator, StandardMemoryAllocator},
 	command_buffer::{AutoCommandBufferBuilder, PrimaryAutoCommandBuffer}
 };
 
@@ -24,6 +23,8 @@ use winit::event::{
 	ButtonId,
 	ElementState
 };
+
+use image::error::ImageError;
 
 use game::{
 	Game,
@@ -40,11 +41,31 @@ use game_state::{
 	Control
 };
 
-use crate::common::MessagePasser;
+use crate::common::{
+	MessagePasser,
+	tilemap::TileMap
+};
+
+pub use connections_handler::ConnectionsHandler;
+pub use tiles_factory::TilesFactory;
 
 pub mod game_state;
 pub mod game;
 
+pub mod connections_handler;
+pub mod tiles_factory;
+
+pub mod world_receiver;
+
+
+pub type BuilderType<'a> = &'a mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>;
+
+pub trait GameObject
+{
+	fn update(&mut self, dt: f32);
+	fn regenerate_buffers(&mut self, allocator: &FastMemoryAllocator);
+	fn draw(&self, builder: BuilderType);
+}
 
 #[derive(Debug)]
 pub enum GameInput
@@ -57,6 +78,7 @@ pub struct Client
 {
 	device: Arc<Device>,
 	layout: Arc<PipelineLayout>,
+	allocator: FastMemoryAllocator,
 	game_state: Arc<RwLock<GameState>>,
 	game: Game
 }
@@ -65,12 +87,13 @@ impl Client
 {
 	pub fn new(
 		device: Arc<Device>,
-		builder: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
+		builder: BuilderType,
 		layout: Arc<PipelineLayout>,
 		aspect: f32,
+		tilemap: TileMap,
 		address: &str,
 		name: &str
-	) -> io::Result<Self>
+	) -> Result<Self, ImageError>
 	{
 		let camera = Arc::new(RwLock::new(Camera::new(aspect)));
 
@@ -82,7 +105,7 @@ impl Client
 			descriptor: Self::descriptor_set_uploader(&device, layout.clone())
 		};
 
-		let textures_list = vec!["textures/cracked_stone.png", "textures/asphalt.png", "icon.png"];
+		let textures_list = vec!["icon.png"];
 		let textures = textures_list.into_iter().map(|name|
 		{
 			Arc::new(
@@ -102,17 +125,28 @@ impl Client
 			textures
 		);
 
+		let tiles_factory = ObjectFactory::new(
+			device.clone(),
+			layout.clone(),
+			camera.clone(),
+			vec![Arc::new(RwLock::new(tilemap.texture(&mut resource_uploader)?))]
+		);
+
+		let tiles_factory = TilesFactory::new(tiles_factory, tilemap);
+
 		let game_state = Arc::new(
 			RwLock::new(
-				GameState::new(camera.clone(), object_factory, message_passer)
+				GameState::new(camera, object_factory, tiles_factory, message_passer)
 			)
 		);
 
 		let player_id = GameState::connect(game_state.clone(), name);
 
-		let game = Game::new(game_state.clone(), player_id);
+		let game = Game::new(&mut game_state.write(), player_id);
 
-		Ok(Self{device, layout, game_state, game})
+		let allocator = FastMemoryAllocator::new_default(device.clone());
+
+		Ok(Self{device, layout, allocator, game_state, game})
 	}
 
 	pub fn swap_pipeline(&mut self, layout: Arc<PipelineLayout>)
@@ -148,28 +182,12 @@ impl Client
 
 	pub fn resize(&mut self, aspect: f32)
 	{
-		self.game_state.write().camera.write().resize(aspect);
+		self.game_state.write().resize(aspect);
 	}
 
-	pub fn update(&mut self, dt: f32)
+	pub fn running(&self) -> bool
 	{
-		self.game.update(dt);
-
-		let connected = {
-			let mut writer = self.game_state.write();
-
-			writer.entities.update(dt);
-
-			writer.entities.regenerate_buffers();
-			writer.release_clicked();
-
-			writer.player_connected()
-		};
-
-		if connected
-		{
-			self.game.player_connected();
-		}
+		self.game_state.read().running
 	}
 
 	fn control(&mut self, button: Control) -> ControlState
@@ -202,8 +220,6 @@ impl Client
 			_ => None
 		};
 
-		dbg!(&matched);
-
 		if let Some(control) = matched
 		{
 			let previous = self.control(control);
@@ -211,23 +227,49 @@ impl Client
 			let new_state = if previous == ControlState::Held && state == ElementState::Released
 			{
 				ControlState::Clicked
+			} else if state == ElementState::Pressed
+			{
+				ControlState::Held
 			} else
 			{
-				if state == ElementState::Pressed
-				{
-					ControlState::Held
-				} else
-				{
-					ControlState::Released
-				}
+				ControlState::Released
 			};
 
 			self.game_state.write().controls[control as usize] = new_state;
 		}
 	}
 
-	pub fn draw(&self, builder: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>)
+	pub fn update(&mut self, dt: f32)
 	{
-		self.game_state.write().entities.draw(builder);
+		{
+			let mut writer = self.game_state.write();
+
+			self.game.update(&mut writer, dt);
+
+			writer.update(dt);
+			writer.release_clicked();
+
+			if writer.player_connected()
+			{
+				self.game.on_player_connected(&mut writer);
+			}
+
+			if self.game.player_exists(&mut writer)
+			{
+				self.game.camera_sync(&mut writer);
+			}
+		}
+
+		self.regenerate_buffers();
+	}
+
+	pub fn regenerate_buffers(&mut self)
+	{
+		self.game_state.write().regenerate_buffers(&self.allocator);
+	}
+
+	pub fn draw(&self, builder: BuilderType)
+	{
+		self.game_state.write().draw(builder);
 	}
 }

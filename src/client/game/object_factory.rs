@@ -13,6 +13,7 @@ use vulkano::{
 use super::{
 	super::DescriptorSetUploader,
 	camera::Camera,
+	object_transform::ObjectTransform,
 	object::{
 		Object,
 		model::Model,
@@ -20,15 +21,18 @@ use super::{
 	}
 };
 
+use crate::common::{
+	Transform
+};
 
-#[derive(Debug)]
+
+#[derive(Debug, Clone)]
 pub struct ObjectFactory
 {
 	device: Arc<Device>,
 	layout: Arc<PipelineLayout>,
 	camera: Arc<RwLock<Camera>>,
-	textures: Vec<Arc<RwLock<Texture>>>,
-	square: Arc<Model>
+	textures: Vec<Arc<RwLock<Texture>>>
 }
 
 impl ObjectFactory
@@ -40,9 +44,7 @@ impl ObjectFactory
 		textures: Vec<Arc<RwLock<Texture>>>
 	) -> Self
 	{
-		let square = Arc::new(Model::rectangle(0.1));
-
-		Self{device, layout, camera, textures, square}
+		Self{device, layout, camera, textures}
 	}
 
 	pub fn swap_pipeline(&mut self, uploader: &DescriptorSetUploader)
@@ -53,7 +55,7 @@ impl ObjectFactory
 		});
 	}
 
-	pub fn create(&self, texture_id: usize) -> Object
+	pub fn create(&self, model: Arc<Model>, transform: Transform, texture_id: usize) -> Object
 	{
 		let allocator = FastMemoryAllocator::new_default(self.device.clone());
 
@@ -61,8 +63,9 @@ impl ObjectFactory
 			allocator,
 			self.layout.clone(),
 			self.camera.clone(),
-			self.square.clone(),
-			self.textures[texture_id].clone()
+			model,
+			self.textures[texture_id].clone(),
+			ObjectTransform::new(transform)
 		)
 	}
 }

@@ -38,7 +38,7 @@ pub fn enum_count(input: TokenStream) -> TokenStream
     let count = variants.len();
     let expanded = quote!
     {
-        const COUNT: usize = #count;
+        pub const COUNT: usize = #count;
 
         impl #enum_name
         {

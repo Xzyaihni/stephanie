@@ -12,12 +12,12 @@ pub fn receiver_loop<T, FP, FD>(
 	this: T,
 	mut handler: MessagePasser,
 	mut process_function: FP,
-	mut disconnect_function: FD
+	disconnect_function: FD
 )
 where
 	T: Clone + Send + 'static,
 	FP: FnMut(T, Message) + Send + 'static,
-	FD: FnMut(T) + Send + 'static
+	FD: FnOnce(T) + Send + 'static
 {
 	thread::spawn(move ||
 	{

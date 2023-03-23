@@ -6,25 +6,26 @@ use parking_lot::RwLock;
 
 use slab::Slab;
 
-use vulkano::command_buffer::{AutoCommandBufferBuilder, PrimaryAutoCommandBuffer};
+use vulkano::memory::allocator::FastMemoryAllocator;
 
 use crate::common::{
 	sender_loop,
 	receiver_loop,
-	BufferSender,
-	EntityPasser,
 	EntitiesContainer,
 	EntitiesController,
-	message::{
-		Message,
-		MessageBuffer
-	},
+	message::Message,
 	player::Player,
-	physics::PhysicsEntity
+	physics::PhysicsEntity,
+	world::{World, chunk::Pos3}
 };
 
 use super::{
+	GameObject,
+	BuilderType,
 	MessagePasser,
+	ConnectionsHandler,
+	TilesFactory,
+	world_receiver::WorldReceiver,
 	game::{
 		ObjectFactory,
 		camera::Camera,
@@ -35,42 +36,13 @@ use super::{
 use object_pair::ObjectPair;
 use notifications::{Notifications, Notification};
 
+pub use controls::{Control, ControlState};
+
 pub mod object_pair;
 mod notifications;
 
+pub mod controls;
 
-#[repr(usize)]
-#[derive(Debug, Clone, Copy)]
-pub enum Control
-{
-	MoveUp = 0,
-	MoveDown,
-	MoveRight,
-	MoveLeft,
-	MainAction,
-	SecondaryAction,
-	LAST
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum ControlState
-{
-	Held,
-	Clicked,
-	Released
-}
-
-impl ControlState
-{
-	pub fn active(self) -> bool
-	{
-		match self
-		{
-			ControlState::Released => false,
-			_ => true
-		}
-	}
-}
 
 #[derive(Debug)]
 pub struct ClientEntitiesContainer
@@ -91,18 +63,21 @@ impl ClientEntitiesContainer
 	{
 		self.players.contains(id)
 	}
+}
 
-	pub fn regenerate_buffers(&mut self)
-	{
-		self.players.iter_mut().for_each(|(_, pair)| pair.object.regenerate_buffer());
-	}
-
-	pub fn update(&mut self, dt: f32)
+impl GameObject for ClientEntitiesContainer
+{
+	fn update(&mut self, dt: f32)
 	{
 		self.players.iter_mut().for_each(|(_, pair)| pair.update(dt));
 	}
 
-	pub fn draw(&self, builder: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>)
+	fn regenerate_buffers(&mut self, allocator: &FastMemoryAllocator)
+	{
+		self.players.iter_mut().for_each(|(_, pair)| pair.regenerate_buffers(allocator));
+	}
+
+	fn draw(&self, builder: BuilderType)
 	{
 		self.players.iter().for_each(|(_, pair)| pair.object.draw(builder));
 	}
@@ -124,64 +99,15 @@ impl EntitiesContainer for ClientEntitiesContainer
 }
 
 #[derive(Debug)]
-pub struct ConnectionsHandler
-{
-	message_buffer: MessageBuffer,
-	message_passer: MessagePasser
-}
-
-impl ConnectionsHandler
-{
-	pub fn new(message_passer: MessagePasser) -> Self
-	{
-		let message_buffer = MessageBuffer::new();
-
-		Self{message_buffer, message_passer}
-	}
-
-	pub fn send(&mut self, message: &Message) -> Result<(), bincode::Error>
-	{
-		self.message_passer.send(message)
-	}
-
-	pub fn receive(&mut self) -> Result<Message, bincode::Error>
-	{
-		self.message_passer.receive()
-	}
-
-	pub fn passer_clone(&self) -> MessagePasser
-	{
-		self.message_passer.try_clone()
-	}
-}
-
-impl EntityPasser for ConnectionsHandler
-{
-	fn send_message(&mut self, message: Message)
-	{
-		self.message_buffer.set_message(message);
-	}
-}
-
-impl BufferSender for ConnectionsHandler
-{
-	fn send_buffered(&mut self) -> Result<(), bincode::Error>
-	{
-		self.message_buffer.get_buffered().try_for_each(|message|
-		{
-			self.message_passer.send(&message)
-		})
-	}
-}
-
-#[derive(Debug)]
 pub struct GameState
 {
-	pub controls: [ControlState; Control::LAST as usize],
+	pub controls: [ControlState; controls::COUNT],
 	pub camera: Arc<RwLock<Camera>>,
 	pub object_factory: ObjectFactory,
 	pub notifications: Notifications,
 	pub entities: ClientEntitiesContainer,
+	pub running: bool,
+	world: World,
 	connection_handler: Arc<RwLock<ConnectionsHandler>>
 }
 
@@ -190,16 +116,34 @@ impl GameState
 	pub fn new(
 		camera: Arc<RwLock<Camera>>,
 		object_factory: ObjectFactory,
+		tiles_factory: TilesFactory,
 		message_passer: MessagePasser
 	) -> Self
 	{
-		let controls = [ControlState::Released; Control::LAST as usize];
+		let controls = [ControlState::Released; controls::COUNT];
 
 		let notifications = Notifications::new();
 		let entities = ClientEntitiesContainer::new();
 		let connection_handler = Arc::new(RwLock::new(ConnectionsHandler::new(message_passer)));
 
-		Self{controls, camera, object_factory, notifications, entities, connection_handler}
+		let world_receiver = WorldReceiver::new(connection_handler.clone());
+		let world = World::new(
+			world_receiver,
+			tiles_factory,
+			camera.read().aspect(),
+			Pos3::new(0.0, 0.0, 0.0)
+		);
+
+		Self{
+			controls,
+			camera,
+			object_factory,
+			notifications,
+			entities,
+			running: true,
+			world,
+			connection_handler
+		}
 	}
 
 	pub fn connect(this: Arc<RwLock<Self>>, name: &str) -> usize
@@ -225,22 +169,19 @@ impl GameState
 			}
 		};
 
-		this.read().sender_loop();
+		sender_loop(this.read().connection_handler.clone());
 
 		let handler = this.read().connection_handler.read().passer_clone();
-		Self::listen(this, handler);
+		Self::listen(this, handler, |this| this.write().running = false);
 
 		player_id
 	}
 
-	fn sender_loop(&self)
+	fn listen<F>(this: Arc<RwLock<Self>>, handler: MessagePasser, exit_callback: F)
+	where
+		F: FnOnce(Arc<RwLock<Self>>) + Send + 'static
 	{
-		sender_loop(self.connection_handler.clone());
-	}
-
-	fn listen(this: Arc<RwLock<Self>>, handler: MessagePasser)
-	{
-		receiver_loop(this, handler, Self::process_message, |_| ());
+		receiver_loop(this, handler, Self::process_message, exit_callback);
 	}
 
 	fn process_message(this: Arc<RwLock<Self>>, message: Message)
@@ -249,27 +190,34 @@ impl GameState
 
 		let mut writer = this.write();
 
-		let message = writer.entities.handle_message(message);
-
-		if let Some(message) = message
+		let message = match writer.entities.handle_message(message)
 		{
-			match message
-			{
-				Message::PlayerCreate{id, player} =>
-				{
-					let player = ObjectPair::new(&writer.object_factory, player);
+			Some(x) => x,
+			None => return
+		};
 
-					if id != writer.entities.players_mut().insert(player)
-					{
-						id_mismatch();
-					}
-				},
-				Message::PlayerFullyConnected =>
+		let message = match writer.world.handle_message(message)
+		{
+			Some(x) => x,
+			None => return
+		};
+
+		match message
+		{
+			Message::PlayerCreate{id, player} =>
+			{
+				let player = ObjectPair::new(&writer.object_factory, player);
+
+				if id != writer.entities.players_mut().insert(player)
 				{
-					writer.notifications.set(Notification::PlayerConnected);
-				},
-				_ => ()
-			}
+					id_mismatch();
+				}
+			},
+			Message::PlayerFullyConnected =>
+			{
+				writer.notifications.set(Notification::PlayerConnected);
+			},
+			x => panic!("unhandled message: {:?}", x)
 		}
 	}
 
@@ -295,6 +243,43 @@ impl GameState
 		{
 			*clicked = ControlState::Released;
 		});
+	}
+
+	pub fn player_moved(&mut self, pos: Pos3<f32>)
+	{
+		self.world.player_moved(pos);
+	}
+
+	pub fn resize(&mut self, aspect: f32)
+	{
+		let mut camera = self.camera.write();
+		camera.resize(aspect);
+
+		self.world.resize(camera.aspect());
+	}
+}
+
+impl GameObject for GameState
+{
+	fn update(&mut self, dt: f32)
+	{
+		self.world.update(dt);
+
+		self.entities.update(dt);
+	}
+
+	fn regenerate_buffers(&mut self, allocator: &FastMemoryAllocator)
+	{
+		self.world.regenerate_buffers(allocator);
+
+		self.entities.regenerate_buffers(allocator);
+	}
+
+	fn draw(&self, builder: BuilderType)
+	{
+		self.world.draw(builder);
+
+		self.entities.draw(builder);
 	}
 }
 

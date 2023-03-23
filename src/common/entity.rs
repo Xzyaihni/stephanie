@@ -2,7 +2,7 @@ use serde::{Serialize, Deserialize};
 
 use nalgebra::Vector3;
 
-use transform::{Transform, TransformContainer};
+use transform::{Transform, OnTransformCallback, TransformContainer};
 
 use crate::common::physics::PhysicsEntity;
 
@@ -43,6 +43,11 @@ impl Entity
 	}
 }
 
+impl OnTransformCallback for Entity
+{
+	fn callback(&mut self) {}
+}
+
 impl TransformContainer for Entity
 {
 	fn transform_ref(&self) -> &Transform
@@ -54,8 +59,6 @@ impl TransformContainer for Entity
 	{
 		&mut self.transform
 	}
-
-	fn callback(&mut self) {}
 }
 
 impl PhysicsEntity for Entity
