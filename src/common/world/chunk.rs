@@ -8,10 +8,12 @@ use nalgebra::Vector3;
 
 use tile::Tile;
 
+use crate::common::Transform;
+
 pub mod tile;
 
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Pos3<T>
 {
 	pub x: T,
@@ -35,7 +37,7 @@ impl<T: Copy> From<Vector3<T>> for Pos3<T>
 	}
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GlobalPos(pub Pos3<i32>);
 
 impl GlobalPos
@@ -85,7 +87,7 @@ impl Add for GlobalPos
 	}
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LocalPos(pub Pos3<usize>);
 
 impl LocalPos
@@ -118,8 +120,10 @@ impl LocalPos
 	}
 }
 
-pub const CHUNK_SIZE: usize = 5;
+pub const CHUNK_SIZE: usize = 8;
 const CHUNK_VOLUME: usize = CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE;
+
+pub const TILE_SIZE: f32 = 0.1;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Chunk
@@ -135,6 +139,18 @@ impl Chunk
 		let tiles = vec![Tile::none(); CHUNK_VOLUME].into_boxed_slice();
 
 		Self{tiles}
+	}
+
+	pub fn transform_of_chunk(x: i32, y: i32) -> Transform
+	{
+		let mut transform = Transform::new();
+		transform.position = Vector3::new(
+			x as f32 * CHUNK_SIZE as f32 * TILE_SIZE,
+			y as f32 * CHUNK_SIZE as f32 * TILE_SIZE,
+			0.0
+		);
+
+		transform
 	}
 
 	pub fn set_tile(&mut self, pos: LocalPos, tile: Tile)

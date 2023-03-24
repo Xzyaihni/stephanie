@@ -2,8 +2,6 @@ use std::{
 	sync::Arc
 };
 
-use nalgebra::Vector3;
-
 use super::{
 	game::{
 		ObjectFactory,
@@ -15,14 +13,15 @@ use super::{
 };
 
 use crate::common::{
-	Transform,
 	TileMap,
 	tilemap::{TileInfoMap, TileInfo},
 	world::{
 		OVERMAP_SIZE,
 		OVERMAP_HALF,
 		chunk::{
+			Chunk,
 			CHUNK_SIZE,
+			TILE_SIZE,
 			Pos3,
 			LocalPos,
 			tile::Tile
@@ -30,8 +29,6 @@ use crate::common::{
 	}
 };
 
-
-pub const TILE_SIZE: f32 = 0.1;
 
 pub struct ChunkModelBuilder<'a>
 {
@@ -112,14 +109,7 @@ impl<'a> ChunkModelBuilder<'a>
 
 	pub fn build(self, x: i32, y: i32) -> Option<Object>
 	{
-		println!("sleeping 1 secs ({x}, {y})");
-		std::thread::sleep(std::time::Duration::from_secs(1));
-		let mut transform = Transform::new();
-		transform.position = Vector3::new(
-			x as f32 * CHUNK_SIZE as f32 * TILE_SIZE,
-			y as f32 * CHUNK_SIZE as f32 * TILE_SIZE,
-			0.0
-		);
+		let transform = Chunk::transform_of_chunk(x, y);
 
 		(self.model.vertices.len() != 0).then(||
 		{

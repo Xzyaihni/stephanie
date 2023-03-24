@@ -1,4 +1,6 @@
 use std::{
+	io,
+	fs::{self, File},
 	sync::Arc
 };
 
@@ -24,27 +26,44 @@ use crate::{
 pub struct WorldGenerator
 {
 	message_handler: Arc<RwLock<ConnectionsHandler>>,
-	tilemap: TileMap
+	tilemap: TileMap,
+	world_name: String
 }
 
 impl WorldGenerator
 {
 	pub fn new(message_handler: Arc<RwLock<ConnectionsHandler>>, tilemap: TileMap) -> Self
 	{
-		Self{message_handler, tilemap}
+		let world_name = "default".to_owned();
+		let this = Self{message_handler, tilemap, world_name};
+
+		fs::create_dir_all(this.world_path()).unwrap();
+
+		this
 	}
 
 	pub fn send_chunk(&mut self, pos: GlobalPos)
 	{
-		let chunk = self.load_chunk(pos).unwrap_or_else(|| self.generate_chunk(pos));
+		let chunk = self.load_chunk(pos);
 
 		self.message_handler.write().send_message(Message::ChunkSync{pos, chunk});
 	}
 
-	fn load_chunk(&mut self, pos: GlobalPos) -> Option<Chunk>
+	fn load_chunk(&mut self, pos: GlobalPos) -> Chunk
 	{
-		eprintln!("no chunk loading for now!!");
-		None
+		let loaded_chunk = self.load_chunk_from_save(pos);
+
+		match loaded_chunk
+		{
+			Some(x) => x,
+			None =>
+			{
+				let chunk = self.generate_chunk(pos);
+				self.save_chunk(pos, &chunk);
+
+				chunk
+			}
+		}
 	}
 
 	fn generate_chunk(&mut self, pos: GlobalPos) -> Chunk
@@ -70,6 +89,40 @@ impl WorldGenerator
 		}
 
 		chunk
+	}
+
+	fn load_chunk_from_save(&self, pos: GlobalPos) -> Option<Chunk>
+	{
+		match File::open(self.chunk_path(pos))
+		{
+			Ok(file) =>
+			{
+				Some(bincode::deserialize_from(file).unwrap())
+			},
+			Err(ref err) if err.kind() == io::ErrorKind::NotFound =>
+			{
+				None
+			},
+			Err(err) => panic!("error loading chunk from file: {:?}", err)
+		}
+	}
+
+	fn save_chunk(&self, pos: GlobalPos, chunk: &Chunk)
+	{
+		let file = File::create(self.chunk_path(pos)).unwrap();
+
+		bincode::serialize_into(file, chunk).unwrap();
+	}
+
+	fn chunk_path(&self, pos: GlobalPos) -> String
+	{
+		let chunks_directory = self.world_path();
+		format!("{chunks_directory}/chunk {} {} {}", pos.0.x, pos.0.y, pos.0.z)
+	}
+
+	fn world_path(&self) -> String
+	{
+		format!("worlds/{}/chunks", self.world_name)
 	}
 
 	pub fn handle_message(&mut self, message: Message) -> Option<Message>

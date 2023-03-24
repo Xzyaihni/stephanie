@@ -1,6 +1,6 @@
 use std::{
+	iter,
 	thread,
-	mem,
 	sync::Arc
 };
 
@@ -18,7 +18,7 @@ use crate::{
 	common::message::Message
 };
 
-use chunk::{CHUNK_SIZE, Pos3, Chunk, GlobalPos, LocalPos};
+use chunk::{CHUNK_SIZE, TILE_SIZE, Pos3, Chunk, GlobalPos, LocalPos};
 use vertical_chunk::VerticalChunk;
 
 pub mod chunk;
@@ -36,7 +36,7 @@ pub struct Overmap
 	tiles_factory: Arc<Mutex<TilesFactory>>,
 	chunks: Vec<Option<Arc<Chunk>>>,
 	vertical_chunks: Arc<Mutex<Vec<VerticalChunk>>>,
-	ungenerated: Vec<usize>,
+	unrequested: Vec<bool>,
 	aspect: (f32, f32),
 	player_position: Arc<RwLock<GlobalPos>>
 }
@@ -62,7 +62,8 @@ impl Overmap
 			)
 		);
 
-		let ungenerated = (0..OVERMAP_VOLUME).collect();
+		let unrequested = (0..OVERMAP_VOLUME).map(|_| true)
+			.collect();
 
 		let player_position = Arc::new(RwLock::new(Self::global_player_position(player_position)));
 
@@ -71,7 +72,7 @@ impl Overmap
 			tiles_factory,
 			chunks,
 			vertical_chunks,
-			ungenerated,
+			unrequested,
 			aspect,
 			player_position
 		}
@@ -81,17 +82,133 @@ impl Overmap
 	{
 		let player_position = Self::global_player_position(player_position);
 
-		*self.player_position.write() = player_position;
+		let old_position = *self.player_position.read();
+		if player_position != old_position
+		{
+			*self.player_position.write() = player_position;
+
+			self.position_offset(player_position - old_position);
+		}
 	}
 
 	pub fn generate_missing(&mut self)
 	{
-		mem::take(&mut self.ungenerated).into_iter().for_each(|index|
-		{
-			let local_pos = Self::index_to_pos(index);
+		let player_pos = *self.player_position.read();
+		self.unrequested.iter_mut().enumerate().filter(|(_, unrequested)| **unrequested)
+			.for_each(|(index, unrequested)|
+			{
+				let local_pos = Self::index_to_pos(index);
+				let global_pos = Self::to_global_associated(local_pos, player_pos);
 
-			self.world_receiver.request_chunk(self.to_global(local_pos));
+				self.world_receiver.request_chunk(global_pos);
+				*unrequested = false;
+			});
+	}
+
+	fn position_offset(&mut self, offset: GlobalPos)
+	{
+		self.shift_chunks(offset);
+		self.generate_missing();
+	}
+
+	fn shift_chunks(&mut self, offset: GlobalPos)
+	{
+		Self::conditional_overmap(offset.0.z < 0).flat_map(|z|
+		{
+			Self::conditional_overmap(offset.0.y < 0).flat_map(move |y|
+			{
+				Self::conditional_overmap(offset.0.x < 0).map(move |x| LocalPos::new(x, y, z))
+			})
+		}).for_each(|old_local|
+		{
+			let old_index = Self::to_index(old_local);
+			//early return if the chunk is empty
+			if self.chunks[old_index].is_none()
+			{
+				return;
+			}
+
+			let old_position = self.to_global(old_local);
+			let position = old_position - offset;
+
+			if let Some(local_pos) = self.to_local(position)
+			{
+				//move the chunk to the new position
+				self.swap_nonvisual_chunks(old_local, local_pos);
+
+				if old_local.0.z == 0
+				{
+					self.swap_visual_chunks(old_local, local_pos);
+				}
+			} else
+			{
+				//chunk now outside the player range, remove it
+				self.remove_nonvisual_chunk(old_local);
+			}
 		});
+	}
+
+	fn conditional_overmap(reversed: bool) -> impl Iterator<Item=usize>
+	{
+		let (mut start, step) = if reversed
+		{
+			(OVERMAP_SIZE - 1, -1)
+		} else
+		{
+			(0, 1)
+		};
+
+		iter::repeat_with(move ||
+		{
+			let return_value = start;
+			start = (start as i32 + step) as usize;
+
+			return_value
+		}).take(OVERMAP_SIZE)
+	}
+
+	#[allow(dead_code)]
+	fn remove_chunk(&mut self, pos: LocalPos)
+	{
+		self.remove_nonvisual_chunk(pos);
+		self.remove_visual_chunk(pos);
+	}
+
+	fn remove_nonvisual_chunk(&mut self, pos: LocalPos)
+	{
+		let index = Self::to_index(pos);
+
+		self.chunks[index] = None;
+		self.unrequested[index] = true;
+	}
+
+	fn remove_visual_chunk(&mut self, pos: LocalPos)
+	{
+		let flat_index = Self::to_flat_index(pos);
+		self.vertical_chunks.lock()[flat_index] = VerticalChunk::new();
+	}
+
+	#[allow(dead_code)]
+	fn swap_chunks(&mut self, a: LocalPos, b: LocalPos)
+	{
+		self.swap_nonvisual_chunks(a, b);
+		self.swap_visual_chunks(a, b);
+	}
+
+	fn swap_nonvisual_chunks(&mut self, a: LocalPos, b: LocalPos)
+	{
+		let (index_a, index_b) = (Self::to_index(a), Self::to_index(b));
+
+		self.chunks.swap(index_a, index_b);
+		self.unrequested.swap(index_a, index_b);
+	}
+
+	fn swap_visual_chunks(&mut self, a: LocalPos, b: LocalPos)
+	{
+		let mut vertical_chunks = self.vertical_chunks.lock();
+
+		let (index_a, index_b) = (Self::to_flat_index(a), Self::to_flat_index(b));
+		vertical_chunks.swap(index_a, index_b);
 	}
 
 	fn set_chunk(&mut self, pos: GlobalPos, chunk: Chunk)
@@ -101,11 +218,22 @@ impl Overmap
 			let index = Self::to_index(local_pos);
 
 			self.chunks[index] = Some(Arc::new(chunk));
-			self.update_chunks(local_pos);
+
+			let line_full = (0..OVERMAP_SIZE).all(|z|
+			{
+				let pos = LocalPos::new(local_pos.0.x, local_pos.0.y, z);
+
+				self.chunks[Self::to_index(pos)].is_some()
+			});
+
+			if line_full
+			{
+				self.update_vertical(local_pos);
+			}
 		}
 	}
 
-	fn update_chunks(&self, pos: LocalPos)
+	fn update_vertical(&self, pos: LocalPos)
 	{
 		let LocalPos(Pos3{x, y, ..}) = pos;
 
@@ -170,7 +298,7 @@ impl Overmap
 
 	fn to_local_associated(pos: GlobalPos, player_position: GlobalPos)  -> Option<LocalPos>
 	{
-		let player_distance = pos + player_position;
+		let player_distance = pos - player_position;
 
 		let GlobalPos(pos) = player_distance;
 		let centered = GlobalPos::new(
@@ -184,15 +312,23 @@ impl Overmap
 
 	fn to_global(&self, pos: LocalPos) -> GlobalPos
 	{
+		Self::to_global_associated(pos, *self.player_position.read())
+	}
+
+	fn to_global_associated(pos: LocalPos, player_position: GlobalPos) -> GlobalPos
+	{
+		Self::player_offset(pos) + player_position
+	}
+
+	fn player_offset(pos: LocalPos) -> GlobalPos
+	{
 		let LocalPos(pos) = pos;
 
-		let shifted = GlobalPos::new(
+		GlobalPos::new(
 			pos.x as i32 - OVERMAP_HALF,
 			pos.y as i32 - OVERMAP_HALF,
 			pos.z as i32 - OVERMAP_HALF
-		);
-
-		shifted - *self.player_position.read()
+		)
 	}
 
 	fn to_index(pos: LocalPos) -> usize
@@ -226,7 +362,7 @@ impl Overmap
 
 	fn global_player_position(pos: Pos3<f32>) -> GlobalPos
 	{
-		let size = CHUNK_SIZE as f32;
+		let size = CHUNK_SIZE as f32 * TILE_SIZE;
 
 		let round_left = |value| if value < 0.0 {value as i32 - 1} else {value as i32};
 		GlobalPos::new(
@@ -261,9 +397,12 @@ impl GameObject for Overmap
 	{
 		self.vertical_chunks.lock().iter().enumerate().filter(|(index, _)|
 		{
-			let GlobalPos(chunk_pos) = self.to_global(Self::index_to_flat_pos(*index));
+			let GlobalPos(chunk_pos) = Self::player_offset(Self::index_to_flat_pos(*index));
 
-			let in_range = |value: i32, limit: f32| value.abs() <= limit.ceil() as i32;
+			let in_range = |value: i32, limit: f32|
+			{
+				value.abs() <= limit.ceil() as i32
+			};
 
 			in_range(chunk_pos.x, self.aspect.0) && in_range(chunk_pos.y, self.aspect.1)
 		}).for_each(|(_, chunk)| chunk.draw(builder));
