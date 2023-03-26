@@ -116,4 +116,14 @@ pub trait TransformContainer: OnTransformCallback
 		self.transform_mut().rotation += radians;
 		self.callback();
 	}
+
+	fn middle(&self) -> Vector3<f32>
+	{
+		let scale = self.transform_ref().scale;
+		Vector3::new(
+			scale.x / 2.0,
+			scale.y / 2.0,
+			0.0
+		)
+	}
 }

@@ -30,12 +30,12 @@ pub struct ObjectPair<T>
 	pub entity: T
 }
 
-impl<T: TransformContainer> ObjectPair<T>
+impl<T: PhysicsEntity> ObjectPair<T>
 {
 	pub fn new(object_factory: &ObjectFactory, entity: T) -> Self
 	{
 		let object = object_factory.create(
-			Arc::new(Model::square(0.1)),
+			Arc::new(Model::square(1.0)),
 			entity.transform_clone(),
 			0
 		);

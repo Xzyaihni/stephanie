@@ -129,7 +129,7 @@ impl GameServer
 
 			let player = Player::new(PlayerProperties{
 				character_properties: CharacterProperties{
-					entity_properties: EntityProperties{damp_factor: 0.001}
+					entity_properties: EntityProperties{damp_factor: 0.001, ..Default::default()}
 				},
 				name
 			});

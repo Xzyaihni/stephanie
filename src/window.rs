@@ -7,8 +7,10 @@ use vulkano::{
     format::Format,
     shader::EntryPoint,
     sync::{
+        JoinFuture,
         FlushError,
-        GpuFuture
+        GpuFuture,
+        FenceSignalFuture
     },
     pipeline::{
         Pipeline,
@@ -33,7 +35,9 @@ use vulkano::{
         Surface,
         SurfaceCapabilities,
         CompositeAlpha,
+        PresentFuture,
         Swapchain,
+        SwapchainAcquireFuture,
         SwapchainCreateInfo,
         SwapchainCreationError,
         SwapchainPresentInfo
@@ -52,6 +56,7 @@ use vulkano::{
     command_buffer::{
         AutoCommandBufferBuilder,
         PrimaryAutoCommandBuffer,
+        CommandBufferExecFuture,
         CommandBufferUsage,
         SubpassContents,
         RenderPassBeginInfo,
@@ -74,6 +79,7 @@ use winit::{
 use crate::{
     common::TileMap,
     client::{
+        ClientInfo,
         Client,
         GameInput,
         game
@@ -293,8 +299,7 @@ pub fn run(
     device: Arc<Device>,
     queues: Vec<Arc<Queue>>,
     tilemap: TileMap,
-    address: String,
-    name: String
+    client_info: ClientInfo
 )
 {
     let capabilities = physical_device.surface_capabilities(&surface, Default::default())
@@ -313,6 +318,10 @@ pub fn run(
         StandardCommandBufferAllocator::new(device.clone(), Default::default());
 
     let queue = queues[0].clone();
+
+    let fences_amount = render_info.framebuffers.len();
+    let mut fences = vec![None; fences_amount];
+    let mut previous_frame_index = 0;
 
     let layout = render_info.pipelines[0].layout().clone();
     let mut client: Option<Client> = None;
@@ -382,7 +391,7 @@ pub fn run(
                         layout.clone(),
                         render_info.aspect(),
                         tilemap.take().unwrap(),
-                        &address, &name
+                        &client_info
                     )
                     {
                         Ok(x) =>
@@ -400,16 +409,44 @@ pub fn run(
                 let client = client.as_mut().unwrap();
                 if client.running()
                 {
-                    if run_frame(
-                        builder,
-                        device.clone(),
-                        queue.clone(),
-                        &mut render_info,
-                        client,
-                        &mut previous_time
-                    )
+                    let acquired =
+                        match swapchain::acquire_next_image(render_info.swapchain.clone(), None)
+                        {
+                            Ok(x) => Some(x),
+                            Err(AcquireError::OutOfDate) =>
+                            {
+                                None
+                            },
+                            Err(e) => panic!("error getting next image >-< ({:?})", e)
+                        };
+
+                    if let Some((image_index, suboptimal, acquire_future)) = acquired
                     {
-                        recreate_swapchain = true;
+                        let image_index = image_index as usize;
+
+                        let command_buffer = run_frame(
+                            builder,
+                            &mut render_info,
+                            image_index,
+                            client,
+                            &mut previous_time
+                        );
+
+                        recreate_swapchain |= suboptimal;
+                        recreate_swapchain |= execute_builder(
+                            device.clone(),
+                            queue.clone(),
+                            render_info.swapchain.clone(),
+                            &mut fences,
+                            FrameData{
+                                command_buffer,
+                                image_index,
+                                previous_frame_index,
+                                acquire_future
+                            }
+                        );
+
+                        previous_frame_index = image_index;
                     }
                 } else
                 {
@@ -447,31 +484,30 @@ pub fn run(
     });
 }
 
+type FutureInner = PresentFuture<CommandBufferExecFuture<JoinFuture<Box<dyn GpuFuture>, SwapchainAcquireFuture>>>;
+type FutureType = Option<Arc<FenceSignalFuture<FutureInner>>>;
+
+struct FrameData
+{
+    command_buffer: PrimaryAutoCommandBuffer,
+    image_index: usize,
+    previous_frame_index: usize,
+    acquire_future: SwapchainAcquireFuture
+}
+
 fn run_frame(
     mut builder: AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
-    device: Arc<Device>,
-    queue: Arc<Queue>,
     render_info: &mut RenderInfo,
+    image_index: usize,
     client: &mut Client,
     previous_time: &mut Instant
-) -> bool
+) -> PrimaryAutoCommandBuffer
 {
-    let (image_index, suboptimal, acquire_future) =
-    match swapchain::acquire_next_image(render_info.swapchain.clone(), None)
-    {
-        Ok(x) => x,
-        Err(AcquireError::OutOfDate) =>
-        {
-            return true;
-        },
-        Err(e) => panic!("error getting next image >-< ({:?})", e)
-    };
-
     builder.begin_render_pass(
         RenderPassBeginInfo{
             clear_values: vec![Some([0.0, 0.0, 0.0, 1.0].into())],
             ..RenderPassBeginInfo::framebuffer(
-                render_info.framebuffers[image_index as usize].clone()
+                render_info.framebuffers[image_index].clone()
             )
         },
         SubpassContents::Inline
@@ -485,29 +521,68 @@ fn run_frame(
 
     builder.end_render_pass().unwrap();
 
-    let command_buffer = builder.build().unwrap();
+    builder.build().unwrap()
+}
 
-    let execution = vulkano::sync::now(device)
+fn execute_builder(
+    device: Arc<Device>,
+    queue: Arc<Queue>,
+    swapchain: Arc<Swapchain>,
+    fences: &mut [FutureType],
+    frame_data: FrameData
+) -> bool
+{
+    let FrameData{
+        command_buffer,
+        image_index,
+        previous_frame_index,
+        acquire_future
+    } = frame_data;
+
+    if let Some(fence) = &fences[image_index]
+    {
+        fence.wait(None).unwrap();
+    }
+
+    let previous_fence = match fences[previous_frame_index].clone()
+    {
+        Some(fence) => fence.boxed(),
+        None =>
+        {
+            let mut now = vulkano::sync::now(device);
+            now.cleanup_finished();
+
+            now.boxed()
+        }
+    };
+
+    let fence = previous_fence
         .join(acquire_future)
         .then_execute(queue.clone(), command_buffer)
         .unwrap()
         .then_swapchain_present(
             queue,
             SwapchainPresentInfo::swapchain_image_index(
-                render_info.swapchain.clone(),
-                image_index
+                swapchain,
+                image_index as u32
             )
         ).then_signal_fence_and_flush();
 
-    match execution
+    let mut recreate_swapchain = false;
+    fences[image_index] = match fence
     {
-        Ok(future) => future.wait(None).unwrap(),
+        Ok(fence) => Some(Arc::new(fence)),
         Err(FlushError::OutOfDate) =>
         {
-            return true;
+            recreate_swapchain = true;
+            None
         },
-        Err(e) => eprintln!("error flushing future ;; ({:?})", e)
-    }
+        Err(e) =>
+        {
+            eprintln!("error flushing future ;; ({:?})", e);
+            None
+        }
+    };
 
-    suboptimal
+    recreate_swapchain
 }

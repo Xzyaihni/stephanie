@@ -10,7 +10,10 @@ pub enum Control
 	MoveRight,
 	MoveLeft,
 	MainAction,
-	SecondaryAction
+	SecondaryAction,
+	ZoomIn,
+	ZoomOut,
+	ZoomReset
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -18,7 +21,8 @@ pub enum ControlState
 {
 	Held,
 	Clicked,
-	Released
+	Released,
+	Locked
 }
 
 impl ControlState

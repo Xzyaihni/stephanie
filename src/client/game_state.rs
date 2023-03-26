@@ -16,7 +16,7 @@ use crate::common::{
 	message::Message,
 	player::Player,
 	physics::PhysicsEntity,
-	world::{World, chunk::Pos3}
+	world::{MAX_VISIBLE_SIZE, World, chunk::Pos3}
 };
 
 use super::{
@@ -107,6 +107,7 @@ pub struct GameState
 	pub notifications: Notifications,
 	pub entities: ClientEntitiesContainer,
 	pub running: bool,
+	pub debug_mode: bool,
 	world: World,
 	connection_handler: Arc<RwLock<ConnectionsHandler>>
 }
@@ -117,7 +118,8 @@ impl GameState
 		camera: Arc<RwLock<Camera>>,
 		object_factory: ObjectFactory,
 		tiles_factory: TilesFactory,
-		message_passer: MessagePasser
+		message_passer: MessagePasser,
+		debug_mode: bool
 	) -> Self
 	{
 		let controls = [ControlState::Released; controls::COUNT];
@@ -141,8 +143,9 @@ impl GameState
 			notifications,
 			entities,
 			running: true,
+			debug_mode,
 			world,
-			connection_handler
+			connection_handler,
 		}
 	}
 
@@ -221,6 +224,55 @@ impl GameState
 		}
 	}
 
+	fn check_resize_camera(&mut self)
+	{
+		if self.clicked(Control::ZoomIn)
+		{
+			self.resize_camera(0.5);
+		} else if self.clicked(Control::ZoomOut)
+		{
+			self.resize_camera(2.0);
+		} else if self.clicked(Control::ZoomReset)
+		{
+			self.set_camera_scale(1.0);
+		}
+	}
+
+	fn resize_camera(&mut self, factor: f32)
+	{
+		let camera_scale = self.camera.read().aspect();
+		let (highest, mut lowest) = (
+			camera_scale.0.max(camera_scale.1) * factor,
+			camera_scale.1.min(camera_scale.0) * factor
+		);
+
+		if !self.debug_mode
+		{
+			let max_scale = MAX_VISIBLE_SIZE as f32;
+
+			let adjust_factor = if highest > max_scale
+			{
+				max_scale / highest
+			} else
+			{
+				1.0
+			};
+
+
+			lowest *= adjust_factor;
+		}
+
+		self.set_camera_scale(lowest);
+	}
+
+	fn set_camera_scale(&mut self, scale: f32)
+	{
+		let mut camera = self.camera.write();
+
+		camera.rescale(scale);
+		self.world.rescale(camera.aspect());
+	}
+
 	pub fn player_connected(&mut self) -> bool
 	{
 		self.notifications.get(Notification::PlayerConnected)
@@ -234,6 +286,18 @@ impl GameState
 	pub fn pressed(&self, control: Control) -> bool
 	{
 		self.controls[control as usize].active()
+	}
+
+	pub fn clicked(&mut self, control: Control) -> bool
+	{
+		let held = matches!(self.controls[control as usize], ControlState::Held);
+
+		if held
+		{
+			self.controls[control as usize] = ControlState::Locked;
+		}
+
+		held
 	}
 
 	pub fn release_clicked(&mut self)
@@ -255,7 +319,7 @@ impl GameState
 		let mut camera = self.camera.write();
 		camera.resize(aspect);
 
-		self.world.resize(camera.aspect());
+		self.world.rescale(camera.aspect());
 	}
 }
 
@@ -263,6 +327,7 @@ impl GameObject for GameState
 {
 	fn update(&mut self, dt: f32)
 	{
+		self.check_resize_camera();
 		self.world.update(dt);
 
 		self.entities.update(dt);

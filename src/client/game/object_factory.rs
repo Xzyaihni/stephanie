@@ -65,7 +65,7 @@ impl ObjectFactory
 			self.camera.clone(),
 			model,
 			self.textures[texture_id].clone(),
-			ObjectTransform::new(transform)
+			ObjectTransform::new_transformed(transform)
 		)
 	}
 }

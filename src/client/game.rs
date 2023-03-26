@@ -33,9 +33,9 @@ pub struct Game
 
 impl Game
 {
-    pub fn new(game_state: &mut GameState, self_id: usize) -> Self
+    pub fn new(self_id: usize) -> Self
     {
-        let player = PlayerContainer::new(game_state, self_id);
+        let player = PlayerContainer::new(self_id);
 
         Self{player}
     }
@@ -115,19 +115,16 @@ impl Game
 struct PlayerContainer
 {
     id: usize,
-    camera_origin: Vector3<f32>,
     properties: MainPlayerProperties
 }
 
 impl PlayerContainer
 {
-    pub fn new(game_state: &mut GameState, id: usize) -> Self
+    pub fn new(id: usize) -> Self
     {
-        let camera_origin = -game_state.camera.read().origin();
-
         let properties = MainPlayerProperties{speed: 3.0};
 
-        Self{id, camera_origin, properties}
+        Self{id, properties}
     }
 
     pub fn exists(&self, game_state: &mut GameState) -> bool
@@ -144,14 +141,19 @@ impl PlayerContainer
 
     pub fn camera_sync(&self, game_state: &mut GameState)
     {
-        let position = game_state.player_mut(self.id).transform_ref().position;
-        game_state.camera.write().set_position(position + self.camera_origin);
+        let player = game_state.player_ref(self.id);
+
+        let position = player.transform_ref().position;
+
+        game_state.camera.write().set_position(position + player.middle());
     }
 
     pub fn world_moved(&mut self, game_state: &mut GameState)
     {
-        let position = game_state.player_mut(self.id).transform_ref().position;
-        game_state.player_moved(position.into());
+        let player = game_state.player_ref(self.id);
+
+        let position = player.transform_ref().position;
+        game_state.player_moved((position + player.middle()).into());
     }
 
     #[allow(dead_code)]

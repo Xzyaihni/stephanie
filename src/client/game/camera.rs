@@ -28,12 +28,12 @@ impl Camera
 {
     pub fn new(aspect: f32) -> Self
     {
-        let projection = Self::create_projection(aspect);
-        let view = ObjectTransform::new_default();
-
-        let projection_view = Self::calculate_projection_view(projection, view.matrix());
-
         let size = Self::aspect_size(aspect);
+        let projection = Self::create_projection(size);
+
+        let view = ObjectTransform::new(Transform::new(), Self::origin(size));
+
+        let projection_view = Self::create_projection_view(projection, view.matrix());
 
         Self{projection, view, projection_view, size}
     }
@@ -49,26 +49,34 @@ impl Camera
         }
     }
 
-    fn create_projection(aspect: f32) -> Matrix4<f32>
+    fn create_projection(size: (f32, f32)) -> Matrix4<f32>
     {
-        let (width, height) = Self::aspect_size(aspect);
-
         let identity = Matrix4::identity();
         let mut projection = Orthographic3::from_matrix_unchecked(identity);
 
-        projection.set_left_and_right(0.0, width);
-        projection.set_bottom_and_top(0.0, height);
+        projection.set_left_and_right(0.0, size.0);
+        projection.set_bottom_and_top(0.0, size.1);
 
         projection.to_homogeneous()
+    }
+
+    fn recreate_projection(&mut self, size: (f32, f32))
+    {
+        self.size = size;
+        self.view.set_origin(Self::origin(size));
+
+        self.projection = Self::create_projection(size);
+
+        self.regenerate_projection_view();
     }
 
     pub fn regenerate_projection_view(&mut self)
     {
         self.projection_view =
-            Self::calculate_projection_view(self.projection, self.view.matrix());
+            Self::create_projection_view(self.projection, self.view.matrix());
     }
 
-    pub fn calculate_projection_view(projection: Matrix4<f32>, view: Matrix4<f32>) -> Matrix4<f32>
+    pub fn create_projection_view(projection: Matrix4<f32>, view: Matrix4<f32>) -> Matrix4<f32>
     {
         projection * view
     }
@@ -80,10 +88,20 @@ impl Camera
 
     pub fn resize(&mut self, aspect: f32)
     {
-        self.projection = Self::create_projection(aspect);
-        self.size = Self::aspect_size(aspect);
+        //this one just changes the aspect ratio
+        self.recreate_projection(Self::aspect_size(aspect));
+    }
 
-        self.regenerate_projection_view();
+    pub fn rescale(&mut self, scale: f32)
+    {
+        //this one actually scales the view
+        let size = self.normalized_aspect();
+        self.recreate_projection((size.0 * scale, size.1 * scale));
+    }
+
+    fn origin(size: (f32, f32)) -> Vector3<f32>
+    {
+        Vector3::new(size.0 / 2.0, size.1 / 2.0, 0.0)
     }
 
     pub fn aspect(&self) -> (f32, f32)
@@ -91,9 +109,12 @@ impl Camera
         self.size
     }
 
-    pub fn origin(&self) -> Vector3<f32>
+    pub fn normalized_aspect(&self) -> (f32, f32)
     {
-        Vector3::new(self.size.0 / 2.0, self.size.1 / 2.0, 0.0)
+        let lowest = self.size.0.min(self.size.1);
+        let normalized = (self.size.0 / lowest, self.size.1 / lowest);
+
+        normalized
     }
 }
 

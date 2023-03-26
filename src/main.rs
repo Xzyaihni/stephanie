@@ -1,6 +1,4 @@
 use std::{
-    env,
-    process,
     thread,
     sync::{mpsc, Arc}
 };
@@ -29,11 +27,16 @@ use winit::{
     event_loop::{DeviceEventFilter, EventLoop}
 };
 
+use argparse::{ArgumentParser, StoreOption, StoreTrue, Store};
+
 use common::TileMap;
 
 use server::Server;
 
-use client::game::object::texture::RgbaImage;
+use client::{
+    ClientInfo,
+    game::object::texture::RgbaImage
+};
 
 mod common;
 
@@ -101,59 +104,64 @@ fn create_device(
         }).expect("couldnt create device...."))
 }
 
-fn error_and_quit(message: &str) -> !
-{
-    eprintln!("{message}\n");
-
-    eprintln!("usage: {} [player_name] [mode] [address]", env::args().next().unwrap());
-    eprintln!("modes:");
-    eprintln!("    host (default), connect");
-
-    process::exit(1)
-}
-
 fn main()
 {
-    let mut args = env::args().skip(1);
-    let name = args.next().unwrap_or_else(|| "test".to_owned());
-    let mode = args.next().unwrap_or_else(|| "host".to_owned());
-
     let deferred_parse = || TileMap::parse("tiles/tiles.json", "textures/");
 
-    let address;
-    match mode.to_lowercase().as_str()
+    let name = "stephanie #1".to_owned();
+    let mut client_info = ClientInfo{address: String::new(), name, debug_mode: false};
+
+    let mut address = None;
+
+    let mut port = None;
+
     {
-        "host" =>
-        {
-            let (tx, rx) = mpsc::channel();
+        let mut parser = ArgumentParser::new();
 
-            thread::spawn(move ||
+        parser.refer(&mut client_info.name)
+            .add_option(&["-n", "--name"], Store, "player name");
+
+        parser.refer(&mut address)
+            .add_option(&["-a", "--address"], StoreOption, "connection address");
+
+        parser.refer(&mut port)
+            .add_option(&["-p", "--port"], StoreOption, "hosting port");
+
+        parser.refer(&mut client_info.debug_mode)
+            .add_option(&["-d", "--debug"], StoreTrue, "enable debug mode");
+
+        parser.parse_args_or_exit();
+    }
+
+    if let Some(address) = address
+    {
+        client_info.address = address;
+    } else
+    {
+        let (tx, rx) = mpsc::channel();
+
+        thread::spawn(move ||
+        {
+            match deferred_parse()
             {
-                match deferred_parse()
+                Ok(tilemap) =>
                 {
-                    Ok(tilemap) =>
-                    {
-                        let mut server = Server::new(tilemap, "0.0.0.0", 16).unwrap();
+                    let port = port.unwrap_or(0);
+                    let mut server = Server::new(tilemap, &format!("0.0.0.0:{port}"), 16).unwrap();
 
-                        let port = server.port();
-                        tx.send(port).unwrap();
+                    let port = server.port();
+                    tx.send(port).unwrap();
 
-                        server.run()
-                    },
-                    Err(err) => panic!("error parsing tilemap: {:?}", err)
-                }
-            });
+                    server.run()
+                },
+                Err(err) => panic!("error parsing tilemap: {:?}", err)
+            }
+        });
 
-            let port = rx.recv().unwrap();
+        let port = rx.recv().unwrap();
 
-            address = "127.0.0.1".to_owned() + &format!(":{port}");
-            println!("listening on port {port}");
-        },
-        "connect" =>
-        {
-            address = args.next().unwrap_or_else(|| error_and_quit("no connect address provided"));
-        },
-        _ => error_and_quit(&format!("unknown mode: {mode}"))
+        client_info.address = "127.0.0.1".to_owned() + &format!(":{port}");
+        println!("listening on port {port}");
     }
 
     let library = VulkanLibrary::new().expect("nyo vulkan? ;-;");
@@ -191,7 +199,6 @@ fn main()
         device,
         queues.collect(),
         deferred_parse().unwrap(),
-        address,
-        name
+        client_info
     );
 }

@@ -74,6 +74,13 @@ pub enum GameInput
 	MouseInput(ButtonId)
 }
 
+pub struct ClientInfo
+{
+	pub address: String,
+	pub name: String,
+	pub debug_mode: bool
+}
+
 pub struct Client
 {
 	device: Arc<Device>,
@@ -91,8 +98,7 @@ impl Client
 		layout: Arc<PipelineLayout>,
 		aspect: f32,
 		tilemap: TileMap,
-		address: &str,
-		name: &str
+		client_info: &ClientInfo
 	) -> Result<Self, ImageError>
 	{
 		let camera = Arc::new(RwLock::new(Camera::new(aspect)));
@@ -108,14 +114,12 @@ impl Client
 		let textures_list = vec!["icon.png"];
 		let textures = textures_list.into_iter().map(|name|
 		{
-			Arc::new(
-				RwLock::new(
-					Texture::new(&mut resource_uploader, RgbaImage::load(name).unwrap())
-				)
-			)
+			let image = RgbaImage::load(name).unwrap();
+
+			Arc::new(RwLock::new(Texture::new(&mut resource_uploader, image)))
 		}).collect();
 
-		let stream = TcpStream::connect(address)?;
+		let stream = TcpStream::connect(&client_info.address)?;
 		let message_passer = MessagePasser::new(stream);
 
 		let object_factory = ObjectFactory::new(
@@ -134,15 +138,19 @@ impl Client
 
 		let tiles_factory = TilesFactory::new(tiles_factory, tilemap);
 
-		let game_state = Arc::new(
-			RwLock::new(
-				GameState::new(camera, object_factory, tiles_factory, message_passer)
-			)
+		let game_state = GameState::new(
+			camera,
+			object_factory,
+			tiles_factory,
+			message_passer,
+			client_info.debug_mode
 		);
 
-		let player_id = GameState::connect(game_state.clone(), name);
+		let game_state = Arc::new(RwLock::new(game_state));
 
-		let game = Game::new(&mut game_state.write(), player_id);
+		let player_id = GameState::connect(game_state.clone(), &client_info.name);
+
+		let game = Game::new(player_id);
 
 		let allocator = FastMemoryAllocator::new_default(device.clone());
 
@@ -217,6 +225,9 @@ impl Client
 			GameInput::KeyboardInput(VirtualKeyCode::W) => Some(Control::MoveUp),
 			GameInput::MouseInput(3) => Some(Control::MainAction),
 			GameInput::MouseInput(1) => Some(Control::SecondaryAction),
+			GameInput::KeyboardInput(VirtualKeyCode::Equals) => Some(Control::ZoomIn),
+			GameInput::KeyboardInput(VirtualKeyCode::Minus) => Some(Control::ZoomOut),
+			GameInput::KeyboardInput(VirtualKeyCode::Key0) => Some(Control::ZoomReset),
 			_ => None
 		};
 
@@ -227,7 +238,7 @@ impl Client
 			let new_state = if previous == ControlState::Held && state == ElementState::Released
 			{
 				ControlState::Clicked
-			} else if state == ElementState::Pressed
+			} else if previous != ControlState::Locked && state == ElementState::Pressed
 			{
 				ControlState::Held
 			} else

@@ -120,7 +120,7 @@ impl LocalPos
 	}
 }
 
-pub const CHUNK_SIZE: usize = 8;
+pub const CHUNK_SIZE: usize = 16;
 const CHUNK_VOLUME: usize = CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE;
 
 pub const TILE_SIZE: f32 = 0.1;
@@ -131,7 +131,6 @@ pub struct Chunk
 	tiles: Box<[Tile]>
 }
 
-#[allow(dead_code)]
 impl Chunk
 {
 	pub fn new() -> Self
@@ -153,6 +152,7 @@ impl Chunk
 		transform
 	}
 
+	#[allow(dead_code)]
 	pub fn set_tile(&mut self, pos: LocalPos, tile: Tile)
 	{
 		self.tiles[Self::index_of(pos)] = tile;
@@ -167,12 +167,12 @@ impl Chunk
 		&self,
 		x: usize,
 		y: usize
-	) -> impl DoubleEndedIterator<Item=&Tile> + ExactSizeIterator<Item=&Tile>
+	) -> impl DoubleEndedIterator<Item=Tile> + ExactSizeIterator<Item=Tile> + '_
 	{
 		(0..CHUNK_SIZE).map(move |z|
 		{
 			let pos = LocalPos::new(x, y, z);
-			self.tiles.get(Self::index_of(pos)).unwrap()
+			self.get_tile(pos)
 		})
 	}
 

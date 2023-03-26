@@ -12,6 +12,7 @@ pub mod transform;
 #[derive(Debug, Clone)]
 pub struct EntityProperties
 {
+	pub transform: Transform,
 	pub damp_factor: f32
 }
 
@@ -19,7 +20,10 @@ impl Default for EntityProperties
 {
 	fn default() -> Self
 	{
-		Self{damp_factor: 0.5}
+		let mut transform = Transform::new();
+		transform.scale = Vector3::new(0.1, 0.1, 1.0);
+
+		Self{transform, damp_factor: 0.5}
 	}
 }
 
@@ -39,7 +43,7 @@ impl Entity
 
 		let velocity = Vector3::zeros();
 
-		Self{damp_factor, transform: Transform::new(), velocity}
+		Self{damp_factor, transform: properties.transform, velocity}
 	}
 }
 

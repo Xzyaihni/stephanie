@@ -25,9 +25,11 @@ pub mod chunk;
 mod vertical_chunk;
 
 
-pub const OVERMAP_SIZE: usize = 3;
+pub const OVERMAP_SIZE: usize = 5;
 pub const OVERMAP_HALF: i32 = OVERMAP_SIZE as i32 / 2;
 pub const OVERMAP_VOLUME: usize = OVERMAP_SIZE * OVERMAP_SIZE * OVERMAP_SIZE;
+
+pub const MAX_VISIBLE_SIZE: usize = OVERMAP_SIZE - 1;
 
 #[derive(Debug)]
 pub struct Overmap
@@ -36,8 +38,7 @@ pub struct Overmap
 	tiles_factory: Arc<Mutex<TilesFactory>>,
 	chunks: Vec<Option<Arc<Chunk>>>,
 	vertical_chunks: Arc<Mutex<Vec<VerticalChunk>>>,
-	unrequested: Vec<bool>,
-	aspect: (f32, f32),
+	size: (f32, f32),
 	player_position: Arc<RwLock<GlobalPos>>
 }
 
@@ -46,7 +47,7 @@ impl Overmap
 	pub fn new(
 		world_receiver: WorldReceiver,
 		tiles_factory: TilesFactory,
-		aspect: (f32, f32),
+		size: (f32, f32),
 		player_position: Pos3<f32>
 	) -> Self
 	{
@@ -62,20 +63,20 @@ impl Overmap
 			)
 		);
 
-		let unrequested = (0..OVERMAP_VOLUME).map(|_| true)
-			.collect();
-
 		let player_position = Arc::new(RwLock::new(Self::global_player_position(player_position)));
 
-		Self{
+		let mut this = Self{
 			world_receiver,
 			tiles_factory,
 			chunks,
 			vertical_chunks,
-			unrequested,
-			aspect,
+			size,
 			player_position
-		}
+		};
+
+		this.generate_missing();
+
+		this
 	}
 
 	pub fn player_moved(&mut self, player_position: Pos3<f32>)
@@ -94,14 +95,13 @@ impl Overmap
 	pub fn generate_missing(&mut self)
 	{
 		let player_pos = *self.player_position.read();
-		self.unrequested.iter_mut().enumerate().filter(|(_, unrequested)| **unrequested)
-			.for_each(|(index, unrequested)|
+		self.chunks.iter().enumerate().filter(|(_, chunk)| chunk.is_none())
+			.for_each(|(index, _)|
 			{
 				let local_pos = Self::index_to_pos(index);
 				let global_pos = Self::to_global_associated(local_pos, player_pos);
 
 				self.world_receiver.request_chunk(global_pos);
-				*unrequested = false;
 			});
 	}
 
@@ -144,6 +144,11 @@ impl Overmap
 			{
 				//chunk now outside the player range, remove it
 				self.remove_nonvisual_chunk(old_local);
+
+				if old_local.0.z == 0
+				{
+					self.remove_visual_chunk(old_local);
+				}
 			}
 		});
 	}
@@ -177,9 +182,7 @@ impl Overmap
 	fn remove_nonvisual_chunk(&mut self, pos: LocalPos)
 	{
 		let index = Self::to_index(pos);
-
 		self.chunks[index] = None;
-		self.unrequested[index] = true;
 	}
 
 	fn remove_visual_chunk(&mut self, pos: LocalPos)
@@ -200,7 +203,6 @@ impl Overmap
 		let (index_a, index_b) = (Self::to_index(a), Self::to_index(b));
 
 		self.chunks.swap(index_a, index_b);
-		self.unrequested.swap(index_a, index_b);
 	}
 
 	fn swap_visual_chunks(&mut self, a: LocalPos, b: LocalPos)
@@ -213,6 +215,8 @@ impl Overmap
 
 	fn set_chunk(&mut self, pos: GlobalPos, chunk: Chunk)
 	{
+		chunk.get_tile(LocalPos::new(0, 0, 0));
+
 		if let Some(local_pos) = self.to_local(pos)
 		{
 			let index = Self::to_index(local_pos);
@@ -276,13 +280,13 @@ impl Overmap
 				chunks.iter()
 			);
 
-			let player_position = *player_position.read();
+			let player_position = player_position.read();
 			if player_height != player_position.0.z
 			{
 				return;
 			}
 
-			if let Some(local_pos) = Self::to_local_associated(chunk_pos, player_position)
+			if let Some(local_pos) = Self::to_local_associated(chunk_pos, *player_position)
 			{
 				let index = Self::to_flat_index(local_pos);
 
@@ -372,9 +376,9 @@ impl Overmap
 		)
 	}
 
-	pub fn resize(&mut self, aspect: (f32, f32))
+	pub fn rescale(&mut self, size: (f32, f32))
 	{
-		self.aspect = aspect;
+		self.size = size;
 	}
 }
 
@@ -404,7 +408,7 @@ impl GameObject for Overmap
 				value.abs() <= limit.ceil() as i32
 			};
 
-			in_range(chunk_pos.x, self.aspect.0) && in_range(chunk_pos.y, self.aspect.1)
+			in_range(chunk_pos.x, self.size.0) && in_range(chunk_pos.y, self.size.1)
 		}).for_each(|(_, chunk)| chunk.draw(builder));
 	}
 }
@@ -420,16 +424,16 @@ impl World
 	pub fn new(
 		world_receiver: WorldReceiver,
 		tiles_factory: TilesFactory,
-		aspect: (f32, f32),
+		size: (f32, f32),
 		player_position: Pos3<f32>
 	) -> Self
 	{
-		Self{overmap: Overmap::new(world_receiver, tiles_factory, aspect, player_position)}
+		Self{overmap: Overmap::new(world_receiver, tiles_factory, size, player_position)}
 	}
 
-	pub fn resize(&mut self, aspect: (f32, f32))
+	pub fn rescale(&mut self, size: (f32, f32))
 	{
-		self.overmap.resize(aspect);
+		self.overmap.rescale(size);
 	}
 
 	pub fn player_moved(&mut self, pos: Pos3<f32>)
@@ -455,8 +459,6 @@ impl GameObject for World
 {
 	fn update(&mut self, dt: f32)
 	{
-		self.overmap.generate_missing();
-
 		self.overmap.update(dt);
 	}
 

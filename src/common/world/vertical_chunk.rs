@@ -98,7 +98,7 @@ impl VerticalChunk
 				.filter(|((_, tile), _)| !tile.is_none())
 				.take_while(move |((_, tile), _)|
 				{
-					let transparent = info_map[**tile].transparent;
+					let transparent = info_map[*tile].transparent;
 					let previous_save = previous;
 
 					previous = transparent;
@@ -108,7 +108,7 @@ impl VerticalChunk
 				.for_each(move |((z, tile), chunk_height)|
 				{
 					let local_pos = LocalPos::new(x, y, z);
-					model_builder.create(chunk_height, local_pos, *tile);
+					model_builder.create(chunk_height, local_pos, tile);
 				});
 		}
 	}

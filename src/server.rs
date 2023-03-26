@@ -30,7 +30,7 @@ impl Server
 {
 	pub fn new(tilemap: TileMap, address: &str, connections_limit: usize) -> io::Result<Self>
 	{
-		let listener = TcpListener::bind(format!("{address}:0"))?;
+		let listener = TcpListener::bind(format!("{address}"))?;
 
 		let game_server = Arc::new(RwLock::new(GameServer::new(tilemap, connections_limit)));
 		game_server.read().sender_loop();
