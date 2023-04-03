@@ -20,13 +20,15 @@ impl Model
 
     pub fn rectangle(width: f32, height: f32) -> Self
     {
+        let (half_width, half_height) = (width / 2.0, height / 2.0);
+
         let vertices = vec![
-            [0.0, 0.0, 0.0],
-            [0.0, height, 0.0],
-            [width, 0.0, 0.0],
-            [0.0, height, 0.0],
-            [width, height, 0.0],
-            [width, 0.0, 0.0]
+            [-half_width, -half_height, 0.0],
+            [-half_width, half_height, 0.0],
+            [half_width, -half_height, 0.0],
+            [-half_width, half_height, 0.0],
+            [half_width, half_height, 0.0],
+            [half_width, -half_height, 0.0]
         ];
 
         let uvs = vec![

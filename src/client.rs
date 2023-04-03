@@ -1,6 +1,9 @@
 use std::{
+	fs,
+	collections::HashMap,
 	sync::Arc,
-	net::TcpStream
+	net::TcpStream,
+	path::{Path, PathBuf}
 };
 
 use parking_lot::RwLock;
@@ -35,6 +38,7 @@ use game::{
 		texture::{RgbaImage, Texture}
 	}
 };
+
 use game_state::{
 	GameState,
 	ControlState,
@@ -45,6 +49,8 @@ use crate::common::{
 	MessagePasser,
 	tilemap::TileMap
 };
+
+pub use game::object::DrawableEntity;
 
 pub use connections_handler::ConnectionsHandler;
 pub use tiles_factory::TilesFactory;
@@ -111,12 +117,18 @@ impl Client
 			descriptor: Self::descriptor_set_uploader(&device, layout.clone())
 		};
 
-		let textures_list = vec!["icon.png"];
-		let textures = textures_list.into_iter().map(|name|
+		let textures = Self::recursive_dir(Path::new("textures/")).into_iter().map(|name|
 		{
-			let image = RgbaImage::load(name).unwrap();
+			let image = RgbaImage::load(name.clone()).unwrap();
 
-			Arc::new(RwLock::new(Texture::new(&mut resource_uploader, image)))
+			let short_path = name.iter().skip(1).fold(PathBuf::new(), |mut acc, part|
+			{
+				acc.push(part);
+
+				acc
+			}).into_os_string().into_string().unwrap();
+
+			(short_path, Arc::new(RwLock::new(Texture::new(&mut resource_uploader, image))))
 		}).collect();
 
 		let stream = TcpStream::connect(&client_info.address)?;
@@ -129,11 +141,12 @@ impl Client
 			textures
 		);
 
+		let tiles_texture = Arc::new(RwLock::new(tilemap.texture(&mut resource_uploader)?));
 		let tiles_factory = ObjectFactory::new(
 			device.clone(),
 			layout.clone(),
 			camera.clone(),
-			vec![Arc::new(RwLock::new(tilemap.texture(&mut resource_uploader)?))]
+			HashMap::from([(String::new(), tiles_texture)])
 		);
 
 		let tiles_factory = TilesFactory::new(tiles_factory, tilemap);
@@ -155,6 +168,30 @@ impl Client
 		let allocator = FastMemoryAllocator::new_default(device.clone());
 
 		Ok(Self{device, layout, allocator, game_state, game})
+	}
+
+	fn recursive_dir(path: &Path) -> impl Iterator<Item=PathBuf>
+	{
+		let mut collector = Vec::new();
+
+		Self::recursive_dir_inner(path, &mut collector);
+
+		collector.into_iter()
+	}
+
+	fn recursive_dir_inner(path: &Path, collector: &mut Vec<PathBuf>)
+	{
+		fs::read_dir(path).unwrap().flatten().for_each(|entry|
+		{
+			let path = entry.path();
+			if path.is_dir()
+			{
+				Self::recursive_dir_inner(&path, collector);
+			} else
+			{
+				collector.push(entry.path());
+			}
+		})
 	}
 
 	pub fn swap_pipeline(&mut self, layout: Arc<PipelineLayout>)
@@ -248,6 +285,11 @@ impl Client
 
 			self.game_state.write().controls[control as usize] = new_state;
 		}
+	}
+
+	pub fn mouse_moved(&mut self, position: (f64, f64))
+	{
+		self.game_state.write().mouse_position = position.into();
 	}
 
 	pub fn update(&mut self, dt: f32)

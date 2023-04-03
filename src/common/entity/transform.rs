@@ -6,6 +6,50 @@ use nalgebra::{
 };
 
 
+pub fn interpolate(value0: f32, value1: f32, amount: f32) -> f32
+{
+	value0 * (1.0 - amount) + value1 * amount
+}
+
+pub fn interpolate_vector(value0: Vector3<f32>, value1: Vector3<f32>, amount: f32) -> Vector3<f32>
+{
+	Vector3::new(
+		interpolate(value0.x, value1.x, amount),
+		interpolate(value0.y, value1.y, amount),
+		interpolate(value0.z, value1.z, amount)
+	)
+}
+
+pub fn normalize(value: Vector3<f32>) -> Vector3<f32>
+{
+	let magnitude = magnitude(value);
+
+	if magnitude != 0.0
+	{
+		Vector3::new(value.x / magnitude, value.y / magnitude, value.z / magnitude)
+	} else
+	{
+		value
+	}
+}
+
+pub fn magnitude(value: Vector3<f32>) -> f32
+{
+	(value.x.powi(2) + value.y.powi(2) + value.z.powi(2)).sqrt()
+}
+
+pub fn direction(value0: Vector3<f32>, value1: Vector3<f32>) -> Vector3<f32>
+{
+	Vector3::new(value1.x - value0.x, value1.y - value0.y, value1.z - value0.z)
+}
+
+pub fn distance(value0: Vector3<f32>, value1: Vector3<f32>) -> f32
+{
+	let direction = direction(value0, value1);
+
+	magnitude(direction)
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Transform
 {
@@ -58,6 +102,34 @@ pub trait TransformContainer: OnTransformCallback
 	fn position(&self) -> &Vector3<f32>
 	{
 		&self.transform_ref().position
+	}
+
+	fn interpolate_position(&self, value: Vector3<f32>, amount: f32) -> Vector3<f32>
+	{
+		let position = self.transform_ref().position;
+
+		interpolate_vector(position, value, amount)
+	}
+
+	fn translate_to(&mut self, value: Vector3<f32>, amount: f32)
+	{
+		let new_position = self.interpolate_position(value, amount);
+
+		self.set_position(new_position);
+	}
+
+	fn distance(&self, value: Vector3<f32>) -> f32
+	{
+		let position = self.transform_ref().position;
+
+		distance(position, value)
+	}
+
+	fn direction(&self, value: Vector3<f32>) -> Vector3<f32>
+	{
+		let position = self.transform_ref().position;
+
+		direction(position, value)
 	}
 
 	fn set_position(&mut self, position: Vector3<f32>)

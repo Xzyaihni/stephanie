@@ -22,7 +22,7 @@ use crate::{
 };
 
 
-const TILE_SIZE: usize = 64;
+pub const TEXTURE_TILE_SIZE: usize = 128;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TileInfo
@@ -111,6 +111,11 @@ impl TileMap
 		TileInfoMap::new(self)
 	}
 
+	pub fn len(&self) -> usize
+	{
+		self.tiles.len()
+	}
+
 	pub fn texture_row_size(&self) -> usize
 	{
 		((self.tiles.len() - 1) as f64).sqrt().ceil() as usize
@@ -124,25 +129,29 @@ impl TileMap
 		let textures = self.tiles.iter().skip(1).map(|tile_info|
 		{
 			let image = image::open(&tile_info.texture)?
-				.resize_exact(TILE_SIZE as u32, TILE_SIZE as u32, FilterType::Lanczos3);
+				.resize_exact(
+					TEXTURE_TILE_SIZE as u32,
+					TEXTURE_TILE_SIZE as u32,
+					FilterType::Lanczos3
+				);
 
 			SimpleImage::try_from(image)
 		}).collect::<Result<Vec<SimpleImage>, _>>()?;
 
 		let side = self.texture_row_size();
 
-		let row = side * TILE_SIZE;
+		let row = side * TEXTURE_TILE_SIZE;
 		let combined_images = (0..(row * row)).map(|index|
 		{
 			let pixel_x = index % row;
 			let pixel_y = index / row;
 
-			let cell_x = pixel_x / TILE_SIZE;
-			let cell_y = pixel_y / TILE_SIZE;
+			let cell_x = pixel_x / TEXTURE_TILE_SIZE;
+			let cell_y = pixel_y / TEXTURE_TILE_SIZE;
 
 			if let Some(cell_texture) = textures.get(cell_y * side + cell_x)
 			{
-				cell_texture.get_pixel(pixel_x % TILE_SIZE, pixel_y % TILE_SIZE)
+				cell_texture.get_pixel(pixel_x % TEXTURE_TILE_SIZE, pixel_y % TEXTURE_TILE_SIZE)
 			} else
 			{
 				Color::new(0, 0, 0, 255)

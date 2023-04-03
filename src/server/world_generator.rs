@@ -16,7 +16,8 @@ use crate::{
 			CHUNK_SIZE,
 			Chunk,
 			GlobalPos,
-			LocalPos
+			LocalPos,
+			tile::Tile
 		}
 	}
 };
@@ -74,17 +75,9 @@ impl WorldGenerator
 		{
 			for x in 0..CHUNK_SIZE
 			{
-				let is_stone = fastrand::bool();
+				let tile_index = fastrand::usize(..self.tilemap.len());
 
-				let tile = self.tilemap.tile_named(if is_stone
-				{
-					"stone"
-				} else
-				{
-					"asphalt"
-				}).unwrap();
-
-				chunk.set_tile(LocalPos::new(x, y, 0), tile);
+				chunk.set_tile(LocalPos::new(x, y, 0), Tile::new(tile_index));
 			}
 		}
 

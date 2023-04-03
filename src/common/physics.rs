@@ -27,6 +27,14 @@ pub trait PhysicsEntity: TransformContainer
 	fn velocity_add(&mut self, velocity: Vector3<f32>)
 	{
 		self.entity_mut().velocity += velocity;
-		self.callback();
+	}
+
+	fn damp_velocity(velocity: &mut Vector3<f32>, factor: f32, dt: f32) -> Vector3<f32>
+	{
+		let damp = factor.powf(dt);
+
+		*velocity *= damp;
+
+		*velocity * (damp - 1.0) / factor.ln()
 	}
 }

@@ -76,6 +76,11 @@ impl BufferContainer
     }
 }
 
+pub trait DrawableEntity
+{
+    fn texture(&self) -> &str;
+}
+
 #[derive(Debug)]
 pub struct Object
 {

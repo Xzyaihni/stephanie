@@ -10,7 +10,8 @@ use crate::common::{
 
 use super::game_state::{
     GameState,
-    Control
+    Control,
+    MousePosition
 };
 
 pub use object_factory::ObjectFactory;
@@ -57,9 +58,11 @@ impl Game
         if moved
         {
             self.player.walk(game_state, dt, movement_direction);
+
+            self.player.world_moved(game_state);
         }
 
-        self.player.world_moved(game_state);
+        self.player.look_at(game_state, game_state.mouse_position);
     }
 
     pub fn player_exists(&mut self, game_state: &mut GameState) -> bool
@@ -139,6 +142,15 @@ impl PlayerContainer
         game_state.player_mut(self.id).velocity_add(change);
     }
 
+    pub fn look_at(&self, game_state: &mut GameState, mouse_position: MousePosition)
+    {
+        let (x, y) = (mouse_position.x - 0.5, mouse_position.y - 0.5);
+
+        let rotation = y.atan2(x);
+
+        game_state.player_mut(self.id).set_rotation(rotation);
+    }
+
     pub fn camera_sync(&self, game_state: &mut GameState)
     {
         let player = game_state.player_ref(self.id);
@@ -148,7 +160,7 @@ impl PlayerContainer
         game_state.camera.write().set_position(position + player.middle());
     }
 
-    pub fn world_moved(&mut self, game_state: &mut GameState)
+    pub fn world_moved(&self, game_state: &mut GameState)
     {
         let player = game_state.player_ref(self.id);
 

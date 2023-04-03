@@ -10,4 +10,6 @@ Cargo.lock
 callgrind*
 massif*
 
+*.rdc
+
 **/*.rs.bk

@@ -1,4 +1,5 @@
 use std::{
+	collections::HashMap,
 	sync::Arc
 };
 
@@ -32,7 +33,7 @@ pub struct ObjectFactory
 	device: Arc<Device>,
 	layout: Arc<PipelineLayout>,
 	camera: Arc<RwLock<Camera>>,
-	textures: Vec<Arc<RwLock<Texture>>>
+	textures: HashMap<String, Arc<RwLock<Texture>>>
 }
 
 impl ObjectFactory
@@ -41,7 +42,7 @@ impl ObjectFactory
 		device: Arc<Device>,
 		layout: Arc<PipelineLayout>,
 		camera: Arc<RwLock<Camera>>,
-		textures: Vec<Arc<RwLock<Texture>>>
+		textures: HashMap<String, Arc<RwLock<Texture>>>
 	) -> Self
 	{
 		Self{device, layout, camera, textures}
@@ -49,23 +50,42 @@ impl ObjectFactory
 
 	pub fn swap_pipeline(&mut self, uploader: &DescriptorSetUploader)
 	{
-		self.textures.iter_mut().for_each(|texture|
+		self.textures.values_mut().for_each(|texture|
 		{
 			texture.write().swap_pipeline(uploader)
 		});
 	}
 
-	pub fn create(&self, model: Arc<Model>, transform: Transform, texture_id: usize) -> Object
+	pub fn create(&self, model: Arc<Model>, transform: Transform, texture: &str) -> Object
+	{
+		self.create_with_texture(model, transform, self.textures[texture].clone())
+	}
+
+	pub fn create_only(&self, model: Arc<Model>, transform: Transform) -> Object
+	{
+		self.create_with_texture(model, transform, self.textures.values().next().unwrap().clone())
+	}
+
+	fn create_with_texture(
+		&self,
+		model: Arc<Model>,
+		transform: Transform,
+		texture: Arc<RwLock<Texture>>
+	) -> Object
 	{
 		let allocator = FastMemoryAllocator::new_default(self.device.clone());
+
+		let origin = transform.scale / 2.0;
+		let mut object_transform = ObjectTransform::new_transformed(transform);
+		object_transform.set_origin(origin);
 
 		Object::new(
 			allocator,
 			self.layout.clone(),
 			self.camera.clone(),
 			model,
-			self.textures[texture_id].clone(),
-			ObjectTransform::new_transformed(transform)
+			texture,
+			object_transform
 		)
 	}
 }

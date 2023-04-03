@@ -106,7 +106,7 @@ fn create_device(
 
 fn main()
 {
-    let deferred_parse = || TileMap::parse("tiles/tiles.json", "textures/");
+    let deferred_parse = || TileMap::parse("tiles/tiles.json", "textures/tiles/");
 
     let name = "stephanie #1".to_owned();
     let mut client_info = ClientInfo{address: String::new(), name, debug_mode: false};

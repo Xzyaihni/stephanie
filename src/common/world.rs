@@ -18,7 +18,16 @@ use crate::{
 	common::message::Message
 };
 
-use chunk::{CHUNK_SIZE, TILE_SIZE, Pos3, Chunk, GlobalPos, LocalPos};
+use chunk::{
+	CHUNK_SIZE,
+	CHUNK_VISUAL_SIZE,
+	TILE_SIZE,
+	Pos3,
+	Chunk,
+	GlobalPos,
+	LocalPos
+};
+
 use vertical_chunk::VerticalChunk;
 
 pub mod chunk;
@@ -28,8 +37,6 @@ mod vertical_chunk;
 pub const OVERMAP_SIZE: usize = 5;
 pub const OVERMAP_HALF: i32 = OVERMAP_SIZE as i32 / 2;
 pub const OVERMAP_VOLUME: usize = OVERMAP_SIZE * OVERMAP_SIZE * OVERMAP_SIZE;
-
-pub const MAX_VISIBLE_SIZE: usize = OVERMAP_SIZE - 1;
 
 #[derive(Debug)]
 pub struct Overmap
@@ -380,6 +387,20 @@ impl Overmap
 	{
 		self.size = size;
 	}
+
+	pub fn visible(&self, pos: LocalPos) -> bool
+	{
+		let GlobalPos(chunk_offset) = Self::player_offset(pos);
+
+		let in_range = |value: i32, limit: f32| -> bool
+		{
+			let visual_position = value as f32 * CHUNK_VISUAL_SIZE;
+
+			(visual_position.abs() - CHUNK_VISUAL_SIZE) < limit
+		};
+
+		in_range(chunk_offset.x, self.size.0) && in_range(chunk_offset.y, self.size.1)
+	}
 }
 
 impl GameObject for Overmap
@@ -401,14 +422,7 @@ impl GameObject for Overmap
 	{
 		self.vertical_chunks.lock().iter().enumerate().filter(|(index, _)|
 		{
-			let GlobalPos(chunk_pos) = Self::player_offset(Self::index_to_flat_pos(*index));
-
-			let in_range = |value: i32, limit: f32|
-			{
-				value.abs() <= limit.ceil() as i32
-			};
-
-			in_range(chunk_pos.x, self.size.0) && in_range(chunk_pos.y, self.size.1)
+			self.visible(Self::index_to_flat_pos(*index))
 		}).for_each(|(_, chunk)| chunk.draw(builder));
 	}
 }

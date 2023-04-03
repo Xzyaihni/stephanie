@@ -1,13 +1,20 @@
 use serde::{Serialize, Deserialize};
 
-use crate::common::{
-	entity::{
-		Entity,
-		EntityProperties,
-		transform::{Transform, OnTransformCallback, TransformContainer}
-	},
-	physics::PhysicsEntity
+use crate::{
+	client::DrawableEntity,
+	common::{
+		ChildEntity,
+		ChildContainer,
+		entity::{
+			Entity,
+			EntityProperties,
+			transform::{Transform, OnTransformCallback, TransformContainer}
+		},
+		physics::PhysicsEntity
+	}
 };
+
+use nalgebra::Vector3;
 
 
 #[derive(Debug, Clone, Default)]
@@ -49,6 +56,29 @@ impl TransformContainer for Character
 	{
 		self.entity.transform_mut()
 	}
+
+	fn set_rotation(&mut self, rotation: f32)
+	{
+		self.entity.set_rotation(rotation);
+	}
+
+	fn rotate(&mut self, radians: f32)
+	{
+		self.entity.rotate(radians);
+	}
+}
+
+impl ChildContainer for Character
+{
+	fn children_ref(&self) -> &[ChildEntity]
+	{
+		self.entity.children_ref()
+	}
+
+	fn children_mut(&mut self) -> &mut Vec<ChildEntity>
+	{
+		self.entity.children_mut()
+	}
 }
 
 impl PhysicsEntity for Character
@@ -66,5 +96,18 @@ impl PhysicsEntity for Character
 	fn update(&mut self, dt: f32)
 	{
 		self.entity.update(dt);
+	}
+
+	fn velocity_add(&mut self, velocity: Vector3<f32>)
+	{
+		self.entity.velocity_add(velocity);
+	}
+}
+
+impl DrawableEntity for Character
+{
+	fn texture(&self) -> &str
+	{
+		self.entity.texture()
 	}
 }

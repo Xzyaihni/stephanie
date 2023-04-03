@@ -21,10 +21,18 @@ use crate::common::{
 	EntityPasser,
 	EntitiesContainer,
 	EntitiesController,
+	ChildContainer,
 	MessagePasser,
 	player::{Player, PlayerProperties},
 	character::CharacterProperties,
-	entity::EntityProperties,
+	entity::{
+		ChildConnection,
+		SpringConnection,
+		ChildDeformation,
+		EntityProperties,
+		ChildEntity,
+		Entity
+	},
 	physics::PhysicsEntity,
 	message::{
 		Message,
@@ -68,7 +76,8 @@ impl EntitiesContainer for ServerEntitiesContainer
 pub enum ConnectionError
 {
 	BincodeError(bincode::Error),
-	WrongConnectionMessage
+	WrongConnectionMessage,
+	IdMismatch
 }
 
 impl From<bincode::Error> for ConnectionError
@@ -127,12 +136,29 @@ impl GameServer
 		let (id, messager) = {
 			let mut writer = this.write();
 
-			let player = Player::new(PlayerProperties{
+			let mut player = Player::new(PlayerProperties{
 				character_properties: CharacterProperties{
-					entity_properties: EntityProperties{damp_factor: 0.001, ..Default::default()}
+					entity_properties: EntityProperties{
+						damp_factor: 0.001,
+						texture: "player/hair.png".to_owned(),
+						..Default::default()
+					}
 				},
 				name
 			});
+
+			let entity = Entity::new(EntityProperties{
+				texture: "player/ponpons.png".to_owned(),
+				..Default::default()
+			});
+
+			let child = ChildEntity::new(
+				ChildConnection::Spring(SpringConnection::new(0.04, 0.01, 1.5)),
+				ChildDeformation::Stretch(0.5),
+				entity
+			);
+
+			player.add_child(child);
 
 			let inserted_id = writer.add_player(player);
 
@@ -143,7 +169,7 @@ impl GameServer
 
 			if player_id != inserted_id
 			{
-				panic!("something went horribly wrong, ids of player and connection dont match");
+				return Err(ConnectionError::IdMismatch);
 			}
 
 			messager.send_blocking(Message::PlayerOnConnect{id: player_id})?;

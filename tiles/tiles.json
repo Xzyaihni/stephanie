@@ -5,14 +5,18 @@
         "transparent": true
     },
     {
-        "name": "stone",
-        "texture": "cracked_stone.png",
-        "transparent": false
-
-    },
-    {
         "name": "asphalt",
         "texture": "asphalt.png",
+        "transparent": false
+    },
+    {
+        "name": "grass",
+        "texture": "grassie.png",
+        "transparent": false
+    },
+    {
+        "name": "concrete",
+        "texture": "concrete.png",
         "transparent": false
     }
 ]

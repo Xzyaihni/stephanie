@@ -201,11 +201,18 @@ impl RenderInfo
     {
         let dimensions = Self::surface_size(&surface);
 
+        let image_count = capabilities.min_image_count.max(2);
+        let min_image_count = match capabilities.max_image_count
+        {
+            None => image_count,
+            Some(max_images) => image_count.min(max_images)
+        };
+
         let (swapchain, images) = Swapchain::new(
             device.clone(),
             surface.clone(),
             SwapchainCreateInfo{
-                min_image_count: capabilities.min_image_count,
+                min_image_count,
                 image_format: Some(image_format),
                 image_extent: dimensions.into(),
                 image_usage: ImageUsage{
@@ -284,7 +291,7 @@ impl RenderInfo
         size[0] / size[1]
     }
 
-    fn surface_size(surface: &Arc<Surface>) -> PhysicalSize<u32>
+    pub fn surface_size(surface: &Arc<Surface>) -> PhysicalSize<u32>
     {
         let window = surface.object().unwrap().downcast_ref::<Window>().unwrap();
 
@@ -328,6 +335,8 @@ pub fn run(
 
     let mut tilemap = Some(tilemap);
 
+    let (mut width, mut height): (f64, f64) = RenderInfo::surface_size(&surface).into();
+
     let mut previous_time = Instant::now();
 
     let mut recreate_swapchain = false;
@@ -350,6 +359,18 @@ pub fn run(
             } =>
             {
                 window_resized = true;
+            },
+            Event::WindowEvent{
+                event: WindowEvent::CursorMoved{position, ..},
+                   ..
+            } =>
+            {
+                if let Some(ref mut client) = client
+                {
+                    let position = (position.x / width, position.y / height);
+
+                    client.mouse_moved(position);
+                }
             },
             Event::DeviceEvent{
                 event: DeviceEvent::Button{
@@ -472,6 +493,8 @@ pub fn run(
                         client.swap_pipeline(render_info.pipelines[0].layout().clone());
                         if window_resized
                         {
+                            (width, height) = RenderInfo::surface_size(&surface).into();
+
                             client.resize(render_info.aspect());
                         }
                     }

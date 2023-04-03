@@ -16,7 +16,11 @@ use crate::common::{
 	message::Message,
 	player::Player,
 	physics::PhysicsEntity,
-	world::{MAX_VISIBLE_SIZE, World, chunk::Pos3}
+	world::{
+		OVERMAP_SIZE,
+		World,
+		chunk::{CHUNK_VISUAL_SIZE, TILE_SIZE, Pos3}
+	}
 };
 
 use super::{
@@ -79,7 +83,7 @@ impl GameObject for ClientEntitiesContainer
 
 	fn draw(&self, builder: BuilderType)
 	{
-		self.players.iter().for_each(|(_, pair)| pair.object.draw(builder));
+		self.players.iter().for_each(|(_, pair)| pair.draw(builder));
 	}
 }
 
@@ -98,10 +102,34 @@ impl EntitiesContainer for ClientEntitiesContainer
 	}
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct MousePosition
+{
+	pub x: f32,
+	pub y: f32
+}
+
+impl MousePosition
+{
+	pub fn new(x: f32, y: f32) -> Self
+	{
+		Self{x, y}
+	}
+}
+
+impl From<(f64, f64)> for MousePosition
+{
+	fn from(value: (f64, f64)) -> Self
+	{
+		Self{x: value.0 as f32, y: value.1 as f32}
+	}
+}
+
 #[derive(Debug)]
 pub struct GameState
 {
 	pub controls: [ControlState; controls::COUNT],
+	pub mouse_position: MousePosition,
 	pub camera: Arc<RwLock<Camera>>,
 	pub object_factory: ObjectFactory,
 	pub notifications: Notifications,
@@ -123,6 +151,7 @@ impl GameState
 	) -> Self
 	{
 		let controls = [ControlState::Released; controls::COUNT];
+		let mouse_position = MousePosition::new(0.0, 0.0);
 
 		let notifications = Notifications::new();
 		let entities = ClientEntitiesContainer::new();
@@ -138,6 +167,7 @@ impl GameState
 
 		Self{
 			controls,
+			mouse_position,
 			camera,
 			object_factory,
 			notifications,
@@ -248,7 +278,13 @@ impl GameState
 
 		if !self.debug_mode
 		{
-			let max_scale = MAX_VISIBLE_SIZE as f32;
+			//make the camera smaller by 1 tile so theres time for the missing chunks to load
+			let padding = 3;
+
+			let padding = TILE_SIZE * padding as f32;
+
+			let max_scale = (OVERMAP_SIZE - 1) as f32 * CHUNK_VISUAL_SIZE - padding;
+			let min_scale = 0.2;
 
 			let adjust_factor = if highest > max_scale
 			{
@@ -260,6 +296,7 @@ impl GameState
 
 
 			lowest *= adjust_factor;
+			lowest = lowest.max(min_scale);
 		}
 
 		self.set_camera_scale(lowest);

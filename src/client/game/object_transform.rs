@@ -52,8 +52,8 @@ impl ObjectTransform
     {
         let mut matrix = Matrix4::from_axis_angle(&transform.rotation_axis, transform.rotation);
 
-        matrix.append_translation_mut(&transform.position);
-        matrix.append_translation_mut(origin);
+        //matrix.append_nonuniform_scaling_mut(&transform.global_scale);
+        matrix.append_translation_mut(&(transform.position + origin));
         matrix.prepend_nonuniform_scaling_mut(&transform.scale);
 
         matrix

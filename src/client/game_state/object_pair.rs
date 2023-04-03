@@ -4,8 +4,11 @@ use std::{
 
 use vulkano::memory::allocator::FastMemoryAllocator;
 
+use nalgebra::Vector3;
+
 use crate::common::{
 	PlayerGet,
+	ChildContainer,
 	entity::Entity,
 	player::Player,
 	Transform,
@@ -14,11 +17,15 @@ use crate::common::{
 	physics::PhysicsEntity
 };
 
-use crate::client::game::{
-	ObjectFactory,
-	object::{
-		Object,
-		model::Model
+use crate::client::{
+	BuilderType,
+	DrawableEntity,
+	game::{
+		ObjectFactory,
+		object::{
+			Object,
+			model::Model
+		}
 	}
 };
 
@@ -26,26 +33,43 @@ use crate::client::game::{
 #[derive(Debug)]
 pub struct ObjectPair<T>
 {
-	pub object: Object,
+	pub objects: Vec<Object>,
 	pub entity: T
 }
 
-impl<T: PhysicsEntity> ObjectPair<T>
+impl<T: PhysicsEntity + DrawableEntity + ChildContainer> ObjectPair<T>
 {
 	pub fn new(object_factory: &ObjectFactory, entity: T) -> Self
 	{
-		let object = object_factory.create(
+		let mut objects = vec![Self::object_create(object_factory, &entity)];
+		entity.children_ref().iter().for_each(|entity|
+		{
+			objects.push(Self::object_create(object_factory, entity))
+		});
+
+		Self{objects, entity}
+	}
+
+	fn object_create<E: DrawableEntity + TransformContainer>(
+		object_factory: &ObjectFactory,
+		entity: &E
+	) -> Object
+	{
+		object_factory.create(
 			Arc::new(Model::square(1.0)),
 			entity.transform_clone(),
-			0
-		);
-
-		Self{object, entity}
+			entity.texture()
+		)
 	}
 
 	pub fn regenerate_buffers(&mut self, allocator: &FastMemoryAllocator)
 	{
-		self.object.regenerate_buffers(allocator);
+		self.objects.iter_mut().for_each(|object| object.regenerate_buffers(allocator));
+	}
+
+	pub fn draw(&self, builder: BuilderType)
+	{
+		self.objects.iter().for_each(|object| object.draw(builder));
 	}
 }
 
@@ -57,16 +81,22 @@ impl PlayerGet for ObjectPair<Player>
 	}
 }
 
-impl<T: TransformContainer> OnTransformCallback for ObjectPair<T>
+impl<T: TransformContainer + ChildContainer> OnTransformCallback for ObjectPair<T>
 {
 	fn callback(&mut self)
 	{
 		self.entity.callback();
-		self.object.set_transform(self.entity.transform_clone());
+
+		let mut objects = self.objects.iter_mut();
+
+		objects.next().unwrap().set_transform(self.entity.transform_clone());
+
+		objects.zip(self.entity.children_ref().iter())
+			.for_each(|(object, child)| object.set_transform(child.transform_clone()));
 	}
 }
 
-impl<T: TransformContainer> TransformContainer for ObjectPair<T>
+impl<T: TransformContainer + ChildContainer> TransformContainer for ObjectPair<T>
 {
 	fn transform_ref(&self) -> &Transform
 	{
@@ -77,9 +107,19 @@ impl<T: TransformContainer> TransformContainer for ObjectPair<T>
 	{
 		self.entity.transform_mut()
 	}
+
+	fn set_rotation(&mut self, rotation: f32)
+	{
+		self.entity.set_rotation(rotation);
+	}
+
+	fn rotate(&mut self, radians: f32)
+	{
+		self.entity.rotate(radians);
+	}
 }
 
-impl<T: PhysicsEntity> PhysicsEntity for ObjectPair<T>
+impl<T: PhysicsEntity + ChildContainer> PhysicsEntity for ObjectPair<T>
 {
 	fn entity_ref(&self) -> &Entity
 	{
@@ -94,6 +134,12 @@ impl<T: PhysicsEntity> PhysicsEntity for ObjectPair<T>
 	fn update(&mut self, dt: f32)
 	{
 		self.entity.update(dt);
+
 		self.callback();
+	}
+
+	fn velocity_add(&mut self, velocity: Vector3<f32>)
+	{
+		self.entity.velocity_add(velocity);
 	}
 }

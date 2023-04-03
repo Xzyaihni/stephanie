@@ -1,14 +1,21 @@
 use serde::{Serialize, Deserialize};
 
-use crate::common::{
-	PlayerGet,
-	Transform,
-	OnTransformCallback,
-	TransformContainer,
-	entity::Entity,
-	character::{Character, CharacterProperties},
-	physics::PhysicsEntity
+use crate::{
+	client::DrawableEntity,
+	common::{
+		PlayerGet,
+		ChildEntity,
+		ChildContainer,
+		Transform,
+		OnTransformCallback,
+		TransformContainer,
+		entity::Entity,
+		character::{Character, CharacterProperties},
+		physics::PhysicsEntity
+	}
 };
+
+use nalgebra::Vector3;
 
 
 #[derive(Debug, Clone, Default)]
@@ -59,6 +66,29 @@ impl TransformContainer for Player
 	{
 		self.character.transform_mut()
 	}
+
+	fn set_rotation(&mut self, rotation: f32)
+	{
+		self.character.set_rotation(rotation);
+	}
+
+	fn rotate(&mut self, radians: f32)
+	{
+		self.character.rotate(radians);
+	}
+}
+
+impl ChildContainer for Player
+{
+	fn children_ref(&self) -> &[ChildEntity]
+	{
+		self.character.children_ref()
+	}
+
+	fn children_mut(&mut self) -> &mut Vec<ChildEntity>
+	{
+		self.character.children_mut()
+	}
 }
 
 impl PlayerGet for Player
@@ -84,5 +114,18 @@ impl PhysicsEntity for Player
 	fn update(&mut self, dt: f32)
 	{
 		self.character.update(dt);
+	}
+
+	fn velocity_add(&mut self, velocity: Vector3<f32>)
+	{
+		self.character.velocity_add(velocity);
+	}
+}
+
+impl DrawableEntity for Player
+{
+	fn texture(&self) -> &str
+	{
+		self.character.texture()
 	}
 }
