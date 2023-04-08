@@ -52,8 +52,12 @@ impl ObjectTransform
     {
         let mut matrix = Matrix4::from_axis_angle(&transform.rotation_axis, transform.rotation);
 
+        matrix *= Self::calculate_stretch_matrix(transform);
+
+        matrix.prepend_translation_mut(&origin);
+
         matrix.prepend_nonuniform_scaling_mut(&transform.scale);
-        matrix.append_translation_mut(&(transform.position + origin));
+        matrix.append_translation_mut(&transform.position);
 
         matrix
     }
@@ -66,6 +70,26 @@ impl ObjectTransform
     pub fn matrix(&self) -> Matrix4<f32>
     {
         self.matrix
+    }
+
+    fn calculate_stretch_matrix(transform: &Transform) -> Matrix4<f32>
+    {
+        let (s_x, s_y) = {
+            let stretch = transform.stretch.1;
+
+            (stretch.x, stretch.y)
+        };
+
+        let angle: f32 = 2.0 * transform.stretch.0;
+        let (angle_sin, angle_cos) = (angle.sin(), angle.cos());
+
+        let mut stretch_matrix = Matrix4::identity();
+        stretch_matrix.m11 = (s_x + s_y + s_x * angle_cos - s_y * angle_cos) / 2.0;
+        stretch_matrix.m12 = (-s_x * angle_sin + s_y * angle_sin) / 2.0;
+        stretch_matrix.m21 = (-s_x * angle_sin + s_y * angle_sin) / 2.0;
+        stretch_matrix.m22 = (s_x + s_y - s_x * angle_cos + s_y * angle_cos) / 2.0;
+
+        stretch_matrix
     }
 }
 

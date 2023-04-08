@@ -25,7 +25,6 @@ use crate::common::{
 	EntitiesController,
 	ChildContainer,
 	Transform,
-	TransformContainer,
 	MessagePasser,
 	player::{Player, PlayerProperties},
 	character::CharacterProperties,
@@ -201,10 +200,8 @@ impl GameServer
 			});
 
 			ChildEntity::new(
-				ChildConnection::Rigid,
-				//ChildConnection::Spring(SpringConnection::new(0.04, 0.05)),
-				ChildDeformation::Rigid,
-				//ChildDeformation::Stretch(StretchDeformation::new(pon_scale, 1.5, 0.5)),
+				ChildConnection::Spring(SpringConnection::new(0.25, 0.5, 0.15)),
+				ChildDeformation::Stretch(StretchDeformation::new(1.5, 0.5)),
 				entity
 			)
 		};

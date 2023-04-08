@@ -2,6 +2,7 @@ use serde::{Serialize, Deserialize};
 
 use nalgebra::{
 	Unit,
+	Vector2,
 	Vector3
 };
 
@@ -14,7 +15,8 @@ pub struct Transform
 	pub rotation_axis: Unit<Vector3<f32>>,
 	pub rotation: f32,
 	pub position: Vector3<f32>,
-	pub scale: Vector3<f32>
+	pub scale: Vector3<f32>,
+	pub stretch: (f32, Vector2<f32>)
 }
 
 impl Transform
@@ -27,7 +29,9 @@ impl Transform
 		let position = Vector3::zeros();
 		let scale = Vector3::new(1.0, 1.0, 1.0);
 
-		Self{rotation_axis, rotation, position, scale}
+		let stretch = (0.0, Vector2::new(1.0, 1.0));
+
+		Self{rotation_axis, rotation, position, scale, stretch}
 	}
 
 	pub fn half(&self) -> Vector3<f32>
@@ -42,7 +46,7 @@ impl Transform
 
 	pub fn direction(&self, value: Vector3<f32>) -> Vector3<f32>
 	{
-		Self::direction_associated(self.position, value)
+		value - self.position
 	}
 
 	pub fn interpolate(value0: f32, value1: f32, amount: f32) -> f32
@@ -63,32 +67,9 @@ impl Transform
 		)
 	}
 
-	pub fn normalize(value: Vector3<f32>) -> Vector3<f32>
-	{
-		let magnitude = Self::magnitude(value);
-
-		if magnitude != 0.0
-		{
-			Vector3::new(value.x / magnitude, value.y / magnitude, value.z / magnitude)
-		} else
-		{
-			value
-		}
-	}
-
-	pub fn magnitude(value: Vector3<f32>) -> f32
-	{
-		(value.x.powi(2) + value.y.powi(2) + value.z.powi(2)).sqrt()
-	}
-
-	pub fn direction_associated(value0: Vector3<f32>, value1: Vector3<f32>) -> Vector3<f32>
-	{
-		Vector3::new(value1.x - value0.x, value1.y - value0.y, value1.z - value0.z)
-	}
-
 	pub fn distance_associated(value0: Vector3<f32>, value1: Vector3<f32>) -> f32
 	{
-		Self::magnitude(Self::direction_associated(value0, value1))
+		(value1 - value0).magnitude()
 	}
 }
 
@@ -130,6 +111,11 @@ pub trait OnTransformCallback
 	}
 
 	fn rotation_axis_callback(&mut self, _axis: Unit<Vector3<f32>>)
+	{
+		self.callback();
+	}
+
+	fn stretch_callback(&mut self, _stretch: (f32, Vector2<f32>))
 	{
 		self.callback();
 	}
@@ -236,5 +222,11 @@ pub trait TransformContainer: OnTransformCallback
 	fn half(&self) -> Vector3<f32>
 	{
 		self.transform_ref().half()
+	}
+
+	fn set_stretch(&mut self, stretch: (f32, Vector2<f32>))
+	{
+		self.transform_mut().stretch = stretch;
+		self.stretch_callback(stretch);
 	}
 }

@@ -1,6 +1,6 @@
 use serde::{Serialize, Deserialize};
 
-use nalgebra::Vector3;
+use nalgebra::{Vector2, Vector3};
 
 use transform::{
 	Transform,
@@ -49,36 +49,43 @@ fn limit_distance(limit: f32, distance: f32) -> f32
 pub struct SpringConnection
 {
 	limit: f32,
+	damping: f32,
 	strength: f32
 }
 
 impl SpringConnection
 {
-	pub fn new(limit: f32, strength: f32) -> Self
+	pub fn new(limit: f32, damping: f32, strength: f32) -> Self
 	{
-		Self{limit, strength}
+		Self{limit, damping, strength}
 	}
 
 	pub fn springed(
 		&mut self,
 		velocity: &mut Vector3<f32>,
 		position: Vector3<f32>,
-		translation: Vector3<f32>
+		translation: Vector3<f32>,
+		dt: f32
 	) -> Vector3<f32>
 	{
+		let translation = translation + ChildEntity::damp_velocity(
+			velocity,
+			self.damping,
+			dt
+		);
+
 		let spring_velocity = -position * self.strength;
-		dbg!(spring_velocity);
 
 		*velocity += spring_velocity;
 
 		let new_position = position + translation;
 
-		if self.limit >= Transform::magnitude(new_position)
+		if self.limit >= new_position.magnitude()
 		{
 			new_position
 		} else
 		{
-			Transform::normalize(new_position) * self.limit
+			new_position.normalize() * self.limit
 		}
 	}
 }
@@ -106,22 +113,24 @@ impl DelayedConnection
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StretchDeformation
 {
-	default_scale: f32,
 	limit: f32,
 	strength: f32
 }
 
 impl StretchDeformation
 {
-	pub fn new(default_scale: f32, limit: f32, strength: f32) -> Self
+	pub fn new(limit: f32, strength: f32) -> Self
 	{
-		Self{default_scale, limit, strength}
+		Self{limit, strength}
 	}
 
-	pub fn stretched_scale(&mut self, velocity: Vector3<f32>) -> f32
+	pub fn stretched(&mut self, velocity: Vector3<f32>) -> (f32, Vector2<f32>)
 	{
-		(self.default_scale + (velocity.x.abs() + velocity.y.abs()) * self.strength)
-			.min(self.limit)
+		let stretch = (1.0 + velocity.magnitude() * self.strength).min(self.limit);
+
+		let angle = velocity.y.atan2(velocity.x);
+
+		(angle, Vector2::new(stretch, 1.0 / stretch))
 	}
 }
 
@@ -221,7 +230,7 @@ impl PhysicsEntity for ChildEntity
 
 	fn update(&mut self, dt: f32)
 	{
-		let distance = Transform::magnitude(self.transform.position);
+		let distance = self.transform.position.magnitude();
 
 		let translation = Self::damp_velocity(
 			&mut self.entity.velocity,
@@ -237,7 +246,8 @@ impl PhysicsEntity for ChildEntity
 				let position = connection.springed(
 					&mut self.entity.velocity,
 					self.transform.position,
-					translation
+					translation,
+					dt
 				);
 
 				self.set_position(position);
@@ -255,12 +265,9 @@ impl PhysicsEntity for ChildEntity
 			ChildDeformation::Rigid => (),
 			ChildDeformation::Stretch(deformation) =>
 			{
-				let stretch_scale = deformation.stretched_scale(self.entity.velocity);
+				let stretch = deformation.stretched(self.entity.velocity);
 
-				let mut scale = self.scale().clone();
-				scale.x = stretch_scale;
-
-				self.set_scale(scale);
+				self.entity.set_stretch(stretch);
 			}
 		}
 	}
