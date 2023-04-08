@@ -22,7 +22,7 @@ use crate::{
 };
 
 
-pub const TEXTURE_TILE_SIZE: usize = 128;
+pub const TEXTURE_TILE_SIZE: usize = 256;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TileInfo
@@ -119,6 +119,11 @@ impl TileMap
 	pub fn texture_row_size(&self) -> usize
 	{
 		((self.tiles.len() - 1) as f64).sqrt().ceil() as usize
+	}
+
+	pub fn half_pixel(&self) -> f32
+	{
+		0.5 / (self.texture_row_size() * TEXTURE_TILE_SIZE) as f32
 	}
 
 	pub fn texture(

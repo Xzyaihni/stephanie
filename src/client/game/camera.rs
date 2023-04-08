@@ -4,10 +4,8 @@ use std::{
 
 use nalgebra::{
     geometry::Orthographic3,
-    base::{
-        Vector3,
-        Matrix4
-    }
+    Vector3,
+    Matrix4
 };
 
 use super::object_transform::ObjectTransform;
@@ -142,36 +140,18 @@ impl TransformContainer for Camera
     fn set_position(&mut self, position: Vector3<f32>)
     {
         self.transform_mut().position = -position;
-        self.callback();
-    }
-
-    fn translate(&mut self, position: Vector3<f32>)
-    {
-        self.transform_mut().position -= position;
-        self.callback();
+        self.position_callback(position);
     }
 
     fn set_scale(&mut self, scale: Vector3<f32>)
     {
         self.transform_mut().scale = -scale;
-        self.callback();
-    }
-
-    fn grow(&mut self, scale: Vector3<f32>)
-    {
-        self.transform_mut().scale -= scale;
-        self.callback();
+        self.scale_callback(scale);
     }
 
     fn set_rotation(&mut self, rotation: f32)
     {
         self.transform_mut().rotation = -rotation;
-        self.callback();
-    }
-
-    fn rotate(&mut self, radians: f32)
-    {
-        self.transform_mut().rotation -= radians;
-        self.callback();
+        self.rotation_callback(rotation);
     }
 }

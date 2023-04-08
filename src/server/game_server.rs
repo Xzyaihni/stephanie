@@ -7,6 +7,8 @@ use parking_lot::RwLock;
 
 use slab::Slab;
 
+use nalgebra::Vector3;
+
 use super::{
 	ConnectionsHandler,
 	connections_handler::PlayerInfo,
@@ -22,6 +24,8 @@ use crate::common::{
 	EntitiesContainer,
 	EntitiesController,
 	ChildContainer,
+	Transform,
+	TransformContainer,
 	MessagePasser,
 	player::{Player, PlayerProperties},
 	character::CharacterProperties,
@@ -29,6 +33,7 @@ use crate::common::{
 		ChildConnection,
 		SpringConnection,
 		ChildDeformation,
+		StretchDeformation,
 		EntityProperties,
 		ChildEntity,
 		Entity
@@ -136,31 +141,7 @@ impl GameServer
 		let (id, messager) = {
 			let mut writer = this.write();
 
-			let mut player = Player::new(PlayerProperties{
-				character_properties: CharacterProperties{
-					entity_properties: EntityProperties{
-						damp_factor: 0.001,
-						texture: "player/hair.png".to_owned(),
-						..Default::default()
-					}
-				},
-				name
-			});
-
-			let entity = Entity::new(EntityProperties{
-				texture: "player/ponpons.png".to_owned(),
-				..Default::default()
-			});
-
-			let child = ChildEntity::new(
-				ChildConnection::Spring(SpringConnection::new(0.04, 0.01, 1.5)),
-				ChildDeformation::Stretch(0.5),
-				entity
-			);
-
-			player.add_child(child);
-
-			let inserted_id = writer.add_player(player);
+			let inserted_id = writer.create_player(name);
 
 			let mut connection_handler = writer.connection_handler.write();
 			let player_id = connection_handler.connect(player_info);
@@ -191,6 +172,58 @@ impl GameServer
 		Self::listen(this, messager, id);
 
 		Ok(())
+	}
+
+	pub fn create_player(&mut self, name: String) -> usize
+	{
+		let mut player = Player::new(PlayerProperties{
+			character_properties: CharacterProperties{
+				entity_properties: EntityProperties{
+					damp_factor: 0.001,
+					texture: "player/hair.png".to_owned(),
+					..Default::default()
+				}
+			},
+			name
+		});
+
+		let create_pon = |texture: &str|
+		{
+			let mut transform = Transform::new();
+
+			let pon_scale = 0.4;
+			transform.scale = Vector3::new(pon_scale, pon_scale, 1.0);
+
+			let entity = Entity::new(EntityProperties{
+				texture: texture.to_owned(),
+				transform,
+				..Default::default()
+			});
+
+			ChildEntity::new(
+				ChildConnection::Rigid,
+				//ChildConnection::Spring(SpringConnection::new(0.04, 0.05)),
+				ChildDeformation::Rigid,
+				//ChildDeformation::Stretch(StretchDeformation::new(pon_scale, 1.5, 0.5)),
+				entity
+			)
+		};
+
+		let x_offset = -0.1;
+		let y_offset = 0.25;
+
+		let mut left_pon = create_pon("player/left_pon.png");
+
+		left_pon.set_origin(&player, Vector3::new(x_offset, y_offset, 0.0));
+
+		let mut right_pon = create_pon("player/right_pon.png");
+
+		right_pon.set_origin(&player, Vector3::new(x_offset, -y_offset, 0.0));
+
+		player.add_child(left_pon);
+		player.add_child(right_pon);
+
+		self.add_player(player)
 	}
 
 	pub fn sender_loop(&self)

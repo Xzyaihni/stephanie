@@ -10,12 +10,6 @@ use slab::Slab;
 use message::Message;
 
 pub use entity::transform::{
-	interpolate,
-	interpolate_vector,
-	normalize,
-	magnitude,
-	direction,
-	distance,
 	Transform,
 	OnTransformCallback,
 	TransformContainer
@@ -27,6 +21,8 @@ pub use sender_loop::{sender_loop, BufferSender};
 pub use receiver_loop::receiver_loop;
 
 pub use tilemap::TileMap;
+
+pub use entity::transform::ChildContainer;
 
 use player::Player;
 use entity::{ChildEntity, Entity};
@@ -50,17 +46,6 @@ pub mod world;
 
 pub mod physics;
 
-
-pub trait ChildContainer
-{
-	fn children_ref(&self) -> &[ChildEntity];
-	fn children_mut(&mut self) -> &mut Vec<ChildEntity>;
-
-	fn add_child(&mut self, child: ChildEntity)
-	{
-		self.children_mut().push(child);
-	}
-}
 
 pub trait PlayerGet
 {

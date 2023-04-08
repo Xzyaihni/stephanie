@@ -17,7 +17,7 @@ use vulkano::{
     }
 };
 
-use nalgebra::base::Vector4;
+use nalgebra::{Vector3, Vector4};
 
 use bytemuck::{Pod, Zeroable};
 
@@ -159,6 +159,11 @@ impl Object
 
             Vertex{position: vertex.xyz().into(), uv: *uv}
         })
+    }
+
+    pub fn set_origin(&mut self, origin: Vector3<f32>)
+    {
+        self.transform.set_origin(origin);
     }
 
     pub fn draw(&self, builder: BuilderType)

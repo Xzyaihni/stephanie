@@ -14,7 +14,7 @@ use super::{
 
 use crate::common::{
 	TileMap,
-	tilemap::{TEXTURE_TILE_SIZE, TileInfoMap, TileInfo},
+	tilemap::{TileInfoMap, TileInfo},
 	world::{
 		OVERMAP_SIZE,
 		OVERMAP_HALF,
@@ -74,19 +74,24 @@ impl<'a> ChunkModelBuilder<'a>
 		let side = self.tilemap.texture_row_size();
 
 		let id = tile.id() - 1;
-		let x = (id % side) * TEXTURE_TILE_SIZE;
-		let y = (id / side) * TEXTURE_TILE_SIZE;
+		let x = id % side;
+		let y = id / side;
 
 		let to_uv = |x, y|
 		{
 			(
-				x as f32 / (side * TEXTURE_TILE_SIZE) as f32,
-				y as f32 / (side * TEXTURE_TILE_SIZE) as f32
+				x as f32 / side as f32,
+				y as f32 / side as f32
 			)
 		};
 
-		let (x_end, y_end) = to_uv(x + TEXTURE_TILE_SIZE, y + TEXTURE_TILE_SIZE);
-		let (x, y) = to_uv(x + 1, y + 1);
+		let half_pixel = self.tilemap.half_pixel();
+
+		let (x_end, y_end) = to_uv(x + 1, y + 1);
+		let (x_end, y_end) = (x_end - half_pixel, y_end - half_pixel);
+
+		let (x, y) = to_uv(x, y);
+		let (x, y) = (x + half_pixel, y + half_pixel);
 
 		vec![
 			[x, y],

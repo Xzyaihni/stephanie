@@ -3,9 +3,6 @@ use serde::{Serialize, Deserialize};
 use nalgebra::Vector3;
 
 use transform::{
-	direction,
-	distance,
-	normalize,
 	Transform,
 	OnTransformCallback,
 	TransformContainer
@@ -52,41 +49,36 @@ fn limit_distance(limit: f32, distance: f32) -> f32
 pub struct SpringConnection
 {
 	limit: f32,
-	damping: f32,
 	strength: f32
 }
 
 impl SpringConnection
 {
-	pub fn new(limit: f32, damping: f32, strength: f32) -> Self
+	pub fn new(limit: f32, strength: f32) -> Self
 	{
-		Self{limit, damping, strength}
+		Self{limit, strength}
 	}
 
 	pub fn springed(
 		&mut self,
 		velocity: &mut Vector3<f32>,
 		position: Vector3<f32>,
-		parent_position: Vector3<f32>,
 		translation: Vector3<f32>
 	) -> Vector3<f32>
 	{
-		let to_direction = direction(position, parent_position);
-
-		let spring_velocity = to_direction * self.strength;
+		let spring_velocity = -position * self.strength;
+		dbg!(spring_velocity);
 
 		*velocity += spring_velocity;
 
 		let new_position = position + translation;
 
-		if self.limit >= distance(new_position, parent_position)
+		if self.limit >= Transform::magnitude(new_position)
 		{
 			new_position
 		} else
 		{
-			let from_direction = direction(parent_position, new_position);
-
-			parent_position + normalize(from_direction) * self.limit
+			Transform::normalize(new_position) * self.limit
 		}
 	}
 }
@@ -112,6 +104,28 @@ impl DelayedConnection
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StretchDeformation
+{
+	default_scale: f32,
+	limit: f32,
+	strength: f32
+}
+
+impl StretchDeformation
+{
+	pub fn new(default_scale: f32, limit: f32, strength: f32) -> Self
+	{
+		Self{default_scale, limit, strength}
+	}
+
+	pub fn stretched_scale(&mut self, velocity: Vector3<f32>) -> f32
+	{
+		(self.default_scale + (velocity.x.abs() + velocity.y.abs()) * self.strength)
+			.min(self.limit)
+	}
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ChildConnection
 {
 	Rigid,
@@ -123,7 +137,7 @@ pub enum ChildConnection
 pub enum ChildDeformation
 {
 	Rigid,
-	Stretch(f32)
+	Stretch(StretchDeformation)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -131,7 +145,8 @@ pub struct ChildEntity
 {
 	connection: ChildConnection,
 	deformation: ChildDeformation,
-	scale: Vector3<f32>,
+	origin: Vector3<f32>,
+	transform: Transform,
 	entity: Entity
 }
 
@@ -139,96 +154,48 @@ impl ChildEntity
 {
 	pub fn new(connection: ChildConnection, deformation: ChildDeformation, entity: Entity) -> Self
 	{
-		let scale = *entity.scale();
+		let origin = Vector3::zeros();
+		let transform = entity.transform_clone();
 
-		Self{connection, deformation, scale, entity}
+		Self{connection, deformation, origin, transform, entity}
 	}
 
-	pub fn update(&mut self, parent_transform: Transform, dt: f32)
+	pub fn origin(&self) -> Vector3<f32>
 	{
-		let distance = self.entity.distance(parent_transform.position);
+		self.origin
+	}
 
-		match &mut self.connection
-		{
-			ChildConnection::Rigid =>
-			{
-				self.entity.set_position(parent_transform.position);
-			},
-			ChildConnection::Spring(connection) =>
-			{
-				let translation = Self::damp_velocity(
-					&mut self.entity.velocity,
-					connection.damping,
-					dt
-				);
+	pub fn set_origin(&mut self, owner: &impl TransformContainer, origin: Vector3<f32>)
+	{
+		self.origin = origin.component_mul(owner.scale());
+	}
 
-				let position = self.entity.transform_ref().position;
-				let position = connection.springed(
-					&mut self.entity.velocity,
-					position,
-					parent_transform.position,
-					translation
-				);
+	pub fn relative_transform(&mut self, transform: Transform)
+	{
+		let world_transform = self.entity.transform_mut();
+		let this_transform = &self.transform;
 
-				self.entity.set_position(position);
-			},
-			ChildConnection::Delayed(connection) =>
-			{
-				let amount = connection.translate_amount(distance, dt);
+		world_transform.position = this_transform.position.component_mul(&transform.scale)
+			+ transform.position;
 
-				self.entity.translate_to(parent_transform.position, amount);
-			}
-		}
-
-		match &mut self.deformation
-		{
-			ChildDeformation::Rigid => (),
-			ChildDeformation::Stretch(strength) =>
-			{
-				let scale = self.entity.scale();
-
-				let rotation = self.entity.rotation();
-
-				let radians = rotation.cos().abs();
-
-				let (velocity_x, velocity_y) =
-					(self.entity.velocity.x.abs(), self.entity.velocity.y.abs());
-
-				let (speed_x, speed_y) =
-					(
-						velocity_x * radians + velocity_y * (1.0 - radians),
-						velocity_y * radians + velocity_x * (1.0 - radians)
-					);
-
-				let (ratio_x, ratio_y) = (*strength * speed_x, *strength * speed_y);
-
-				let (stretch_x, stretch_y) =
-					(
-						self.scale.x + ratio_x * self.scale.x,
-						self.scale.y + ratio_y * self.scale.y
-					);
-
-				self.entity.set_scale(Vector3::new(stretch_x, stretch_y, scale.z));
-			}
-		}
+		world_transform.scale = this_transform.scale.component_mul(&transform.scale);
+		world_transform.rotation = this_transform.rotation + transform.rotation;
+		world_transform.rotation_axis = transform.rotation_axis;
 	}
 }
 
-impl OnTransformCallback for ChildEntity
-{
-	fn callback(&mut self) {}
-}
+impl OnTransformCallback for ChildEntity {}
 
 impl TransformContainer for ChildEntity
 {
 	fn transform_ref(&self) -> &Transform
 	{
-		self.entity.transform_ref()
+		&self.transform
 	}
 
 	fn transform_mut(&mut self) -> &mut Transform
 	{
-		self.entity.transform_mut()
+		&mut self.transform
 	}
 }
 
@@ -252,11 +219,50 @@ impl PhysicsEntity for ChildEntity
 		&mut self.entity
 	}
 
-	fn update(&mut self, _dt: f32) {}
-
-	fn velocity_add(&mut self, velocity: Vector3<f32>)
+	fn update(&mut self, dt: f32)
 	{
-		self.entity_mut().velocity += velocity;
+		let distance = Transform::magnitude(self.transform.position);
+
+		let translation = Self::damp_velocity(
+			&mut self.entity.velocity,
+			self.entity.damp_factor,
+			dt
+		);
+
+		match &mut self.connection
+		{
+			ChildConnection::Rigid => (),
+			ChildConnection::Spring(connection) =>
+			{
+				let position = connection.springed(
+					&mut self.entity.velocity,
+					self.transform.position,
+					translation
+				);
+
+				self.set_position(position);
+			},
+			ChildConnection::Delayed(connection) =>
+			{
+				let amount = connection.translate_amount(distance, dt);
+
+				self.translate_to(Vector3::zeros(), amount);
+			}
+		}
+
+		match &mut self.deformation
+		{
+			ChildDeformation::Rigid => (),
+			ChildDeformation::Stretch(deformation) =>
+			{
+				let stretch_scale = deformation.stretched_scale(self.entity.velocity);
+
+				let mut scale = self.scale().clone();
+				scale.x = stretch_scale;
+
+				self.set_scale(scale);
+			}
+		}
 	}
 }
 
@@ -286,9 +292,9 @@ impl Entity
 
 impl OnTransformCallback for Entity
 {
-	fn callback(&mut self)
+	fn transform_callback(&mut self, transform: Transform)
 	{
-		self.children.iter_mut().for_each(|child| child.callback());
+		self.children.iter_mut().for_each(|child| child.relative_transform(transform.clone()));
 	}
 }
 
@@ -302,22 +308,6 @@ impl TransformContainer for Entity
 	fn transform_mut(&mut self) -> &mut Transform
 	{
 		&mut self.transform
-	}
-
-	fn set_rotation(&mut self, rotation: f32)
-	{
-		self.transform_mut().rotation = rotation;
-		self.children.iter_mut().for_each(|child| child.set_rotation(rotation));
-
-		self.callback();
-	}
-
-	fn rotate(&mut self, radians: f32)
-	{
-		self.transform_mut().rotation += radians;
-		self.children.iter_mut().for_each(|child| child.rotate(radians));
-
-		self.callback();
 	}
 }
 
@@ -351,13 +341,22 @@ impl PhysicsEntity for Entity
 		let translation = Self::damp_velocity(&mut self.velocity, self.damp_factor, dt);
 		self.translate(translation);
 
-		let transform = self.transform_clone();
 		self.children.iter_mut().for_each(|child|
 		{
-			child.update(transform.clone(), dt);
+			child.update(dt);
 		});
 
-		self.callback();
+		self.transform_callback(self.transform.clone());
+	}
+
+	fn velocity_add(&mut self, velocity: Vector3<f32>)
+	{
+		self.entity_mut().velocity += velocity;
+
+		self.children.iter_mut().for_each(|child|
+		{
+			child.velocity_add(velocity);
+		});
 	}
 }
 

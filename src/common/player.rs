@@ -15,7 +15,10 @@ use crate::{
 	}
 };
 
-use nalgebra::Vector3;
+use nalgebra::{
+	Unit,
+	Vector3
+};
 
 
 #[derive(Debug, Clone, Default)]
@@ -49,9 +52,29 @@ impl Player
 
 impl OnTransformCallback for Player
 {
-	fn callback(&mut self)
+	fn transform_callback(&mut self, transform: Transform)
 	{
-		self.character.callback();
+		self.character.transform_callback(transform);
+	}
+
+	fn position_callback(&mut self, position: Vector3<f32>)
+	{
+		self.character.position_callback(position);
+	}
+
+	fn scale_callback(&mut self, scale: Vector3<f32>)
+	{
+		self.character.scale_callback(scale);
+	}
+
+	fn rotation_callback(&mut self, rotation: f32)
+	{
+		self.character.rotation_callback(rotation);
+	}
+
+	fn rotation_axis_callback(&mut self, axis: Unit<Vector3<f32>>)
+	{
+		self.character.rotation_axis_callback(axis);
 	}
 }
 
@@ -65,16 +88,6 @@ impl TransformContainer for Player
 	fn transform_mut(&mut self) -> &mut Transform
 	{
 		self.character.transform_mut()
-	}
-
-	fn set_rotation(&mut self, rotation: f32)
-	{
-		self.character.set_rotation(rotation);
-	}
-
-	fn rotate(&mut self, radians: f32)
-	{
-		self.character.rotate(radians);
 	}
 }
 

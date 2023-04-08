@@ -2,7 +2,10 @@ use std::sync::Arc;
 
 use parking_lot::RwLock;
 
-use nalgebra::Vector3;
+use nalgebra::{
+	Unit,
+	Vector3
+};
 
 use crate::common::{
 	EntityType,
@@ -61,9 +64,37 @@ where
 	T: PhysicsEntity,
 	E: EntityPasser
 {
-	fn callback(&mut self)
+	fn transform_callback(&mut self, transform: Transform)
 	{
-		self.entity.callback();
+		self.entity.transform_callback(transform);
+
+		self.sync();
+	}
+
+	fn position_callback(&mut self, position: Vector3<f32>)
+	{
+		self.entity.position_callback(position);
+
+		self.sync();
+	}
+
+	fn scale_callback(&mut self, scale: Vector3<f32>)
+	{
+		self.entity.scale_callback(scale);
+
+		self.sync();
+	}
+
+	fn rotation_callback(&mut self, rotation: f32)
+	{
+		self.entity.rotation_callback(rotation);
+
+		self.sync();
+	}
+
+	fn rotation_axis_callback(&mut self, axis: Unit<Vector3<f32>>)
+	{
+		self.entity.rotation_axis_callback(axis);
 
 		self.sync();
 	}
@@ -82,16 +113,6 @@ where
 	fn transform_mut(&mut self) -> &mut Transform
 	{
 		self.entity.transform_mut()
-	}
-
-	fn set_rotation(&mut self, rotation: f32)
-	{
-		self.entity.set_rotation(rotation);
-	}
-
-	fn rotate(&mut self, radians: f32)
-	{
-		self.entity.rotate(radians);
 	}
 }
 
@@ -114,13 +135,13 @@ where
 	{
 		self.entity.update(dt);
 
-		self.callback();
+		self.transform_callback(self.transform_clone());
 	}
 
 	fn velocity_add(&mut self, velocity: Vector3<f32>)
 	{
 		self.entity.velocity_add(velocity);
 
-		self.callback();
+		self.transform_callback(self.transform_clone());
 	}
 }

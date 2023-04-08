@@ -21,7 +21,7 @@ pub trait PhysicsEntity: TransformContainer
 	fn set_entity(&mut self, entity: Entity)
 	{
 		*self.entity_mut() = entity;
-		self.callback();
+		self.transform_callback(self.transform_clone());
 	}
 
 	fn velocity_add(&mut self, velocity: Vector3<f32>)

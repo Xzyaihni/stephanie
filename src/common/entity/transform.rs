@@ -2,53 +2,11 @@ use serde::{Serialize, Deserialize};
 
 use nalgebra::{
 	Unit,
-	base::Vector3
+	Vector3
 };
 
+use super::ChildEntity;
 
-pub fn interpolate(value0: f32, value1: f32, amount: f32) -> f32
-{
-	value0 * (1.0 - amount) + value1 * amount
-}
-
-pub fn interpolate_vector(value0: Vector3<f32>, value1: Vector3<f32>, amount: f32) -> Vector3<f32>
-{
-	Vector3::new(
-		interpolate(value0.x, value1.x, amount),
-		interpolate(value0.y, value1.y, amount),
-		interpolate(value0.z, value1.z, amount)
-	)
-}
-
-pub fn normalize(value: Vector3<f32>) -> Vector3<f32>
-{
-	let magnitude = magnitude(value);
-
-	if magnitude != 0.0
-	{
-		Vector3::new(value.x / magnitude, value.y / magnitude, value.z / magnitude)
-	} else
-	{
-		value
-	}
-}
-
-pub fn magnitude(value: Vector3<f32>) -> f32
-{
-	(value.x.powi(2) + value.y.powi(2) + value.z.powi(2)).sqrt()
-}
-
-pub fn direction(value0: Vector3<f32>, value1: Vector3<f32>) -> Vector3<f32>
-{
-	Vector3::new(value1.x - value0.x, value1.y - value0.y, value1.z - value0.z)
-}
-
-pub fn distance(value0: Vector3<f32>, value1: Vector3<f32>) -> f32
-{
-	let direction = direction(value0, value1);
-
-	magnitude(direction)
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Transform
@@ -71,13 +29,113 @@ impl Transform
 
 		Self{rotation_axis, rotation, position, scale}
 	}
+
+	pub fn half(&self) -> Vector3<f32>
+	{
+		self.scale / 2.0
+	}
+
+	pub fn distance(&self, value: Vector3<f32>) -> f32
+	{
+		Self::distance_associated(self.position, value)
+	}
+
+	pub fn direction(&self, value: Vector3<f32>) -> Vector3<f32>
+	{
+		Self::direction_associated(self.position, value)
+	}
+
+	pub fn interpolate(value0: f32, value1: f32, amount: f32) -> f32
+	{
+		value0 * (1.0 - amount) + value1 * amount
+	}
+
+	pub fn interpolate_vector(
+		value0: Vector3<f32>,
+		value1: Vector3<f32>,
+		amount: f32
+	) -> Vector3<f32>
+	{
+		Vector3::new(
+			Self::interpolate(value0.x, value1.x, amount),
+			Self::interpolate(value0.y, value1.y, amount),
+			Self::interpolate(value0.z, value1.z, amount)
+		)
+	}
+
+	pub fn normalize(value: Vector3<f32>) -> Vector3<f32>
+	{
+		let magnitude = Self::magnitude(value);
+
+		if magnitude != 0.0
+		{
+			Vector3::new(value.x / magnitude, value.y / magnitude, value.z / magnitude)
+		} else
+		{
+			value
+		}
+	}
+
+	pub fn magnitude(value: Vector3<f32>) -> f32
+	{
+		(value.x.powi(2) + value.y.powi(2) + value.z.powi(2)).sqrt()
+	}
+
+	pub fn direction_associated(value0: Vector3<f32>, value1: Vector3<f32>) -> Vector3<f32>
+	{
+		Vector3::new(value1.x - value0.x, value1.y - value0.y, value1.z - value0.z)
+	}
+
+	pub fn distance_associated(value0: Vector3<f32>, value1: Vector3<f32>) -> f32
+	{
+		Self::magnitude(Self::direction_associated(value0, value1))
+	}
+}
+
+pub trait ChildContainer: TransformContainer
+{
+	fn children_ref(&self) -> &[ChildEntity];
+	fn children_mut(&mut self) -> &mut Vec<ChildEntity>;
+
+	fn add_child(&mut self, mut child: ChildEntity)
+	{
+		child.transform_callback(self.transform_clone());
+
+		self.children_mut().push(child);
+	}
 }
 
 pub trait OnTransformCallback
 {
-	fn callback(&mut self);
+	fn callback(&mut self) {}
+
+	fn transform_callback(&mut self, _transform: Transform)
+	{
+		self.callback();
+	}
+
+	fn position_callback(&mut self, _position: Vector3<f32>)
+	{
+		self.callback();
+	}
+
+	fn scale_callback(&mut self, _scale: Vector3<f32>)
+	{
+		self.callback();
+	}
+
+	fn rotation_callback(&mut self, _rotation: f32)
+	{
+		self.callback();
+	}
+
+	fn rotation_axis_callback(&mut self, _axis: Unit<Vector3<f32>>)
+	{
+		self.callback();
+	}
 }
 
+#[allow(dead_code)]
 pub trait TransformContainer: OnTransformCallback
 {
 	fn transform_ref(&self) -> &Transform;
@@ -90,8 +148,8 @@ pub trait TransformContainer: OnTransformCallback
 
 	fn set_transform(&mut self, transform: Transform)
 	{
-		self.set_transform_only(transform);
-		self.callback();
+		self.set_transform_only(transform.clone());
+		self.transform_callback(transform);
 	}
 
 	fn set_transform_only(&mut self, transform: Transform)
@@ -106,9 +164,7 @@ pub trait TransformContainer: OnTransformCallback
 
 	fn interpolate_position(&self, value: Vector3<f32>, amount: f32) -> Vector3<f32>
 	{
-		let position = self.transform_ref().position;
-
-		interpolate_vector(position, value, amount)
+		Transform::interpolate_vector(self.transform_ref().position, value, amount)
 	}
 
 	fn translate_to(&mut self, value: Vector3<f32>, amount: f32)
@@ -120,28 +176,23 @@ pub trait TransformContainer: OnTransformCallback
 
 	fn distance(&self, value: Vector3<f32>) -> f32
 	{
-		let position = self.transform_ref().position;
-
-		distance(position, value)
+		self.transform_ref().distance(value)
 	}
 
 	fn direction(&self, value: Vector3<f32>) -> Vector3<f32>
 	{
-		let position = self.transform_ref().position;
+		self.transform_ref().direction(value)
+	}
 
-		direction(position, value)
+	fn translate(&mut self, position: Vector3<f32>)
+	{
+		self.set_position(self.position() + position);
 	}
 
 	fn set_position(&mut self, position: Vector3<f32>)
 	{
 		self.transform_mut().position = position;
-		self.callback();
-	}
-
-	fn translate(&mut self, position: Vector3<f32>)
-	{
-		self.transform_mut().position += position;
-		self.callback();
+		self.position_callback(position);
 	}
 
 	fn scale(&self) -> &Vector3<f32>
@@ -152,13 +203,12 @@ pub trait TransformContainer: OnTransformCallback
 	fn set_scale(&mut self, scale: Vector3<f32>)
 	{
 		self.transform_mut().scale = scale;
-		self.callback();
+		self.scale_callback(scale);
 	}
 
 	fn grow(&mut self, scale: Vector3<f32>)
 	{
-		self.transform_mut().scale += scale;
-		self.callback();
+		self.set_scale(self.scale() + scale);
 	}
 
 	fn rotation_axis(&self) -> &Unit<Vector3<f32>>
@@ -169,7 +219,7 @@ pub trait TransformContainer: OnTransformCallback
 	fn set_rotation_axis(&mut self, axis: Unit<Vector3<f32>>)
 	{
 		self.transform_mut().rotation_axis = axis;
-		self.callback();
+		self.rotation_axis_callback(axis);
 	}
 
 	fn rotation(&self) -> f32
@@ -180,22 +230,11 @@ pub trait TransformContainer: OnTransformCallback
 	fn set_rotation(&mut self, rotation: f32)
 	{
 		self.transform_mut().rotation = rotation;
-		self.callback();
+		self.rotation_callback(rotation);
 	}
 
-	fn rotate(&mut self, radians: f32)
+	fn half(&self) -> Vector3<f32>
 	{
-		self.transform_mut().rotation += radians;
-		self.callback();
-	}
-
-	fn middle(&self) -> Vector3<f32>
-	{
-		let scale = self.transform_ref().scale;
-		Vector3::new(
-			scale.x / 2.0,
-			scale.y / 2.0,
-			0.0
-		)
+		self.transform_ref().half()
 	}
 }

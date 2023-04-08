@@ -75,9 +75,7 @@ impl ObjectFactory
 	{
 		let allocator = FastMemoryAllocator::new_default(self.device.clone());
 
-		let origin = transform.scale / 2.0;
-		let mut object_transform = ObjectTransform::new_transformed(transform);
-		object_transform.set_origin(origin);
+		let object_transform = ObjectTransform::new_transformed(transform);
 
 		Object::new(
 			allocator,

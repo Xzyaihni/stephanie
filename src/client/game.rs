@@ -157,7 +157,7 @@ impl PlayerContainer
 
         let position = player.transform_ref().position;
 
-        game_state.camera.write().set_position(position + player.middle());
+        game_state.camera.write().set_position(position);
     }
 
     pub fn world_moved(&self, game_state: &mut GameState)
@@ -165,7 +165,7 @@ impl PlayerContainer
         let player = game_state.player_ref(self.id);
 
         let position = player.transform_ref().position;
-        game_state.player_moved((position + player.middle()).into());
+        game_state.player_moved(position.into());
     }
 
     #[allow(dead_code)]
