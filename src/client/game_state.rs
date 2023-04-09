@@ -51,7 +51,8 @@ pub mod controls;
 #[derive(Debug)]
 pub struct ClientEntitiesContainer
 {
-	players: Slab<ObjectPair<Player>>
+	players: Slab<ObjectPair<Player>>,
+	main_player: Option<usize>
 }
 
 impl ClientEntitiesContainer
@@ -59,8 +60,9 @@ impl ClientEntitiesContainer
 	pub fn new() -> Self
 	{
 		let players = Slab::new();
+		let main_player = None;
 
-		Self{players}
+		Self{players, main_player}
 	}
 
 	pub fn player_exists(&self, id: usize) -> bool
@@ -83,7 +85,16 @@ impl GameObject for ClientEntitiesContainer
 
 	fn draw(&self, builder: BuilderType)
 	{
-		self.players.iter().for_each(|(_, pair)| pair.draw(builder));
+		if let Some(player_id) = self.main_player
+		{
+			self.players.iter().filter(|(id, _)| *id != player_id)
+				.for_each(|(_, pair)| pair.draw(builder));
+
+			self.players[player_id].draw(builder);
+		} else
+		{
+			self.players.iter().for_each(|(_, pair)| pair.draw(builder));
+		}
 	}
 }
 

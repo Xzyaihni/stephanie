@@ -128,7 +128,7 @@ impl StretchDeformation
 	{
 		let stretch = (1.0 + velocity.magnitude() * self.strength).min(self.limit);
 
-		let angle = velocity.y.atan2(velocity.x);
+		let angle = velocity.y.atan2(-velocity.x);
 
 		(angle, Vector2::new(stretch, 1.0 / stretch))
 	}
