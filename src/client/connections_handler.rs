@@ -40,6 +40,11 @@ impl ConnectionsHandler
 
 impl EntityPasser for ConnectionsHandler
 {
+	fn send_single(&mut self, _id: usize, _message: Message)
+	{
+		unimplemented!()
+	}
+
 	fn send_message(&mut self, message: Message)
 	{
 		self.message_buffer.set_message(message);

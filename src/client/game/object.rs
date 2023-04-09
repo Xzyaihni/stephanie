@@ -1,4 +1,5 @@
 use std::{
+    fmt,
     sync::Arc
 };
 
@@ -81,7 +82,6 @@ pub trait DrawableEntity
     fn texture(&self) -> &str;
 }
 
-#[derive(Debug)]
 pub struct Object
 {
     camera: Arc<RwLock<Camera>>,
@@ -201,5 +201,18 @@ impl TransformContainer for Object
     fn transform_mut(&mut self) -> &mut Transform
     {
         self.transform.transform_mut()
+    }
+}
+
+impl fmt::Debug for Object
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result
+    {
+        f.debug_struct("Object")
+            .field("camera", &self.camera)
+            .field("model", &self.model)
+            .field("texture", &self.texture)
+            .field("transform", &self.transform)
+            .finish()
     }
 }

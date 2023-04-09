@@ -230,9 +230,12 @@ impl GameServer
 
 	pub fn listen(this: Arc<RwLock<Self>>, handler: MessagePasser, id: usize)
 	{
-		receiver_loop(this, handler, Self::process_message, move |this|
+		receiver_loop(this, handler, move |this, message|
 		{
-			Self::on_connection_closed(this, id)
+			Self::process_message(this, id, message);
+		}, move |this|
+		{
+			Self::on_connection_closed(this, id);
 		});
 	}
 
@@ -246,7 +249,7 @@ impl GameServer
 		writer.remove_player(id);
 	}
 
-	pub fn process_message(this: Arc<RwLock<Self>>, message: Message)
+	pub fn process_message(this: Arc<RwLock<Self>>, id: usize, message: Message)
 	{
 		let id_mismatch = || panic!("id mismatch in serverside process message");
 
@@ -263,7 +266,7 @@ impl GameServer
 			None => return
 		};
 
-		let message = match writer.world_generator.handle_message(message)
+		let message = match writer.world_generator.handle_message(id, message)
 		{
 			Some(x) => x,
 			None => return

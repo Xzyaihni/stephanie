@@ -44,6 +44,7 @@ pub struct Overmap
 	world_receiver: WorldReceiver,
 	tiles_factory: Arc<Mutex<TilesFactory>>,
 	chunks: Vec<Option<Arc<Chunk>>>,
+	chunk_ordering: Vec<usize>,
 	vertical_chunks: Arc<Mutex<Vec<VerticalChunk>>>,
 	size: (f32, f32),
 	player_position: Arc<RwLock<GlobalPos>>
@@ -63,6 +64,22 @@ impl Overmap
 		let chunks = (0..OVERMAP_VOLUME).map(|_| None)
 			.collect();
 
+		let player_position = Self::global_player_position(player_position);
+
+		let mut chunk_ordering = (0..OVERMAP_VOLUME).collect::<Vec<_>>();
+		chunk_ordering.sort_unstable_by(move |a, b|
+		{
+			let distance = |value: usize| -> f32
+			{
+				let local_pos = Self::index_to_pos(value);
+				let GlobalPos(pos) = Self::to_global_associated(local_pos, player_position);
+
+				((pos.x.pow(2) + pos.y.pow(2) + pos.z.pow(2)) as f32).sqrt()
+			};
+
+			distance(*a).total_cmp(&distance(*b))
+		});
+
 		let vertical_chunks = Arc::new(
 			Mutex::new(
 				(0..(OVERMAP_SIZE * OVERMAP_SIZE)).map(|_| VerticalChunk::new())
@@ -70,12 +87,13 @@ impl Overmap
 			)
 		);
 
-		let player_position = Arc::new(RwLock::new(Self::global_player_position(player_position)));
+		let player_position = Arc::new(RwLock::new(player_position));
 
 		let mut this = Self{
 			world_receiver,
 			tiles_factory,
 			chunks,
+			chunk_ordering,
 			vertical_chunks,
 			size,
 			player_position
@@ -102,10 +120,11 @@ impl Overmap
 	pub fn generate_missing(&mut self)
 	{
 		let player_pos = *self.player_position.read();
-		self.chunks.iter().enumerate().filter(|(_, chunk)| chunk.is_none())
-			.for_each(|(index, _)|
+
+		self.chunk_ordering.iter().filter(|index| self.chunks[**index].is_none())
+			.for_each(|index|
 			{
-				let local_pos = Self::index_to_pos(index);
+				let local_pos = Self::index_to_pos(*index);
 				let global_pos = Self::to_global_associated(local_pos, player_pos);
 
 				self.world_receiver.request_chunk(global_pos);
@@ -222,8 +241,6 @@ impl Overmap
 
 	fn set_chunk(&mut self, pos: GlobalPos, chunk: Chunk)
 	{
-		chunk.get_tile(LocalPos::new(0, 0, 0));
-
 		if let Some(local_pos) = self.to_local(pos)
 		{
 			let index = Self::to_index(local_pos);
@@ -248,11 +265,11 @@ impl Overmap
 	{
 		let LocalPos(Pos3{x, y, ..}) = pos;
 
-		let chunks = (0..=OVERMAP_HALF as usize).rev().filter_map(|z|
+		let chunks = (0..=OVERMAP_HALF as usize).rev().map(|z|
 		{
 			let index = Self::to_index(LocalPos::new(x, y, z));
 
-			self.chunks[index].clone()
+			self.chunks[index].clone().unwrap()
 		}).collect::<Vec<_>>();
 
 		let chunk_pos = self.to_global(pos);

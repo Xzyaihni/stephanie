@@ -43,11 +43,11 @@ impl WorldGenerator
 		this
 	}
 
-	pub fn send_chunk(&mut self, pos: GlobalPos)
+	pub fn send_chunk(&mut self, id: usize, pos: GlobalPos)
 	{
 		let chunk = self.load_chunk(pos);
 
-		self.message_handler.write().send_message(Message::ChunkSync{pos, chunk});
+		self.message_handler.write().send_single(id, Message::ChunkSync{pos, chunk});
 	}
 
 	fn load_chunk(&mut self, pos: GlobalPos) -> Chunk
@@ -69,6 +69,11 @@ impl WorldGenerator
 
 	fn generate_chunk(&mut self, pos: GlobalPos) -> Chunk
 	{
+		if pos.0.z != -1
+		{
+			return Chunk::new();
+		}
+
 		let mut chunk = Chunk::new();
 
 		for y in 0..CHUNK_SIZE
@@ -118,13 +123,13 @@ impl WorldGenerator
 		format!("worlds/{}/chunks", self.world_name)
 	}
 
-	pub fn handle_message(&mut self, message: Message) -> Option<Message>
+	pub fn handle_message(&mut self, id: usize, message: Message) -> Option<Message>
 	{
 		match message
 		{
 			Message::ChunkRequest{pos} =>
 			{
-				self.send_chunk(pos);
+				self.send_chunk(id, pos);
 				None
 			},
 			_ => Some(message)

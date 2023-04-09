@@ -103,7 +103,7 @@ impl TryFrom<DynamicImage> for SimpleImage
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct RgbaImage
 {
     pub data: Vec<u8>,
@@ -145,6 +145,17 @@ impl From<SimpleImage> for RgbaImage
             .collect();
 
         Self::new(data, other.width as u32, other.height as u32)
+    }
+}
+
+impl fmt::Debug for RgbaImage
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result
+    {
+        f.debug_struct("RgbaImage")
+            .field("width", &self.width)
+            .field("height", &self.height)
+            .finish()
     }
 }
 
@@ -236,7 +247,6 @@ impl fmt::Debug for Texture
     {
         f.debug_struct("Texture")
             .field("image", &self.image)
-            .field("view", &self.view)
             .finish()
     }
 }

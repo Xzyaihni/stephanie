@@ -77,6 +77,11 @@ impl ConnectionsHandler
 
 impl EntityPasser for ConnectionsHandler
 {
+	fn send_single(&mut self, id: usize, message: Message)
+	{
+		self.connections[id].set_message(message);
+	}
+
 	fn send_message(&mut self, message: Message)
 	{
 		let entity_type = message.entity_type();

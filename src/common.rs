@@ -54,6 +54,7 @@ pub trait PlayerGet
 
 pub trait EntityPasser
 {
+	fn send_single(&mut self, id: usize, message: Message);
 	fn send_message(&mut self, message: Message);
 
 	fn sync_entity(&mut self, id: EntityType, entity: Entity)

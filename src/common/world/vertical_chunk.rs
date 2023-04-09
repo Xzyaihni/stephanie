@@ -58,7 +58,6 @@ impl VerticalChunk
 				x,
 				y,
 				height,
-				pos.0.z,
 				chunks.clone()
 			)
 		});
@@ -72,7 +71,6 @@ impl VerticalChunk
 		x: usize,
 		y: usize,
 		player_height: usize,
-		chunk_height: i32,
 		chunks: I
 	)
 	where
@@ -80,10 +78,8 @@ impl VerticalChunk
 	{
 		let mut chunks = chunks.enumerate().map(move |(index, chunk)|
 		{
-			let chunk_height = chunk_height - index as i32;
-
 			chunk.vertical_iter(x, y).enumerate().rev()
-				.zip(iter::repeat(chunk_height))
+				.zip(iter::repeat(index as i32))
 		});
 
 		if let Some(chunk) = chunks.next()
