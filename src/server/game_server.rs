@@ -200,8 +200,8 @@ impl GameServer
 			});
 
 			ChildEntity::new(
-				ChildConnection::Spring(SpringConnection::new(0.25, 0.5, 0.15)),
-				ChildDeformation::Stretch(StretchDeformation::new(1.5, 0.5)),
+				ChildConnection::Spring(SpringConnection::new(0.2, 0.1, 0.25)),
+				ChildDeformation::Stretch(StretchDeformation::new(1.25, 0.2)),
 				entity
 			)
 		};

@@ -9,6 +9,7 @@ use crate::{
 	client::{
 		GameObject,
 		BuilderType,
+		LayoutType,
 		tiles_factory::ChunkModelBuilder,
 		game::object::Object
 	},
@@ -119,8 +120,8 @@ impl GameObject for VerticalChunk
 		self.object.as_mut().map(|object| object.regenerate_buffers(allocator));
 	}
 
-	fn draw(&self, builder: BuilderType)
+	fn draw(&self, builder: BuilderType, layout: LayoutType)
 	{
-		self.object.as_ref().map(|object| object.draw(builder));
+		self.object.as_ref().map(|object| object.draw(builder, layout.clone()));
 	}
 }

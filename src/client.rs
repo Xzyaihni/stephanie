@@ -65,12 +65,13 @@ pub mod world_receiver;
 
 
 pub type BuilderType<'a> = &'a mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>;
+pub type LayoutType = Arc<PipelineLayout>;
 
 pub trait GameObject
 {
 	fn update(&mut self, dt: f32);
 	fn regenerate_buffers(&mut self, allocator: &FastMemoryAllocator);
-	fn draw(&self, builder: BuilderType);
+	fn draw(&self, builder: BuilderType, layout: LayoutType);
 }
 
 #[derive(Debug)]
@@ -136,7 +137,6 @@ impl Client
 
 		let object_factory = ObjectFactory::new(
 			device.clone(),
-			layout.clone(),
 			camera.clone(),
 			textures
 		);
@@ -144,7 +144,6 @@ impl Client
 		let tiles_texture = Arc::new(RwLock::new(tilemap.texture(&mut resource_uploader)?));
 		let tiles_factory = ObjectFactory::new(
 			device.clone(),
-			layout.clone(),
 			camera.clone(),
 			HashMap::from([(String::new(), tiles_texture)])
 		);
@@ -321,8 +320,8 @@ impl Client
 		self.game_state.write().regenerate_buffers(&self.allocator);
 	}
 
-	pub fn draw(&self, builder: BuilderType)
+	pub fn draw(&self, builder: BuilderType, layout: LayoutType)
 	{
-		self.game_state.write().draw(builder);
+		self.game_state.write().draw(builder, layout);
 	}
 }

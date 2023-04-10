@@ -21,7 +21,9 @@ use crate::common::{
 };
 
 use crate::client::{
+	GameObject,
 	BuilderType,
+	LayoutType,
 	DrawableEntity,
 	game::{
 		ObjectFactory,
@@ -73,15 +75,23 @@ impl<T: PhysicsEntity + DrawableEntity + ChildContainer> ObjectPair<T>
 
 		object
 	}
+}
 
-	pub fn regenerate_buffers(&mut self, allocator: &FastMemoryAllocator)
+impl<T: PhysicsEntity + ChildContainer> GameObject for ObjectPair<T>
+{
+	fn update(&mut self, dt: f32)
+	{
+		self.physics_update(dt);
+	}
+
+	fn regenerate_buffers(&mut self, allocator: &FastMemoryAllocator)
 	{
 		self.objects.iter_mut().for_each(|object| object.regenerate_buffers(allocator));
 	}
 
-	pub fn draw(&self, builder: BuilderType)
+	fn draw(&self, builder: BuilderType, layout: LayoutType)
 	{
-		self.objects.iter().for_each(|object| object.draw(builder));
+		self.objects.iter().for_each(|object| object.draw(builder, layout.clone()));
 	}
 }
 
@@ -162,9 +172,9 @@ impl<T: PhysicsEntity + ChildContainer> PhysicsEntity for ObjectPair<T>
 		self.entity.entity_mut()
 	}
 
-	fn update(&mut self, dt: f32)
+	fn physics_update(&mut self, dt: f32)
 	{
-		self.entity.update(dt);
+		self.entity.physics_update(dt);
 
 		self.transform_callback(self.transform_clone());
 	}

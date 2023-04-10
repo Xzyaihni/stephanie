@@ -11,7 +11,7 @@ pub trait PhysicsEntity: TransformContainer
 	fn entity_ref(&self) -> &Entity;
 	fn entity_mut(&mut self) -> &mut Entity;
 
-	fn update(&mut self, dt: f32);
+	fn physics_update(&mut self, dt: f32);
 
 	fn entity_clone(&self) -> Entity
 	{

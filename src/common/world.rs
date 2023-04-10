@@ -12,6 +12,7 @@ use crate::{
 	client::{
 		GameObject,
 		BuilderType,
+		LayoutType,
 		TilesFactory,
 		world_receiver::WorldReceiver
 	},
@@ -474,14 +475,14 @@ impl GameObject for Overmap
 		});
 	}
 
-	fn draw(&self, builder: BuilderType)
+	fn draw(&self, builder: BuilderType, layout: LayoutType)
 	{
 		self.vertical_chunks.lock().iter().enumerate().filter(|(index, _)|
 		{
 			let chunk_pos = self.to_global(Self::index_to_flat_pos(*index));
 
 			self.visible(chunk_pos)
-		}).for_each(|(_, chunk)| chunk.draw(builder));
+		}).for_each(|(_, chunk)| chunk.draw(builder, layout.clone()));
 	}
 }
 
@@ -539,8 +540,8 @@ impl GameObject for World
 		self.overmap.regenerate_buffers(allocator);
 	}
 
-	fn draw(&self, builder: BuilderType)
+	fn draw(&self, builder: BuilderType, layout: LayoutType)
 	{
-		self.overmap.draw(builder);
+		self.overmap.draw(builder, layout);
 	}
 }

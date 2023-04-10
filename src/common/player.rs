@@ -124,9 +124,9 @@ impl PhysicsEntity for Player
 		self.character.entity_mut()
 	}
 
-	fn update(&mut self, dt: f32)
+	fn physics_update(&mut self, dt: f32)
 	{
-		self.character.update(dt);
+		self.character.physics_update(dt);
 	}
 
 	fn velocity_add(&mut self, velocity: Vector3<f32>)

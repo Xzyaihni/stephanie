@@ -7,10 +7,7 @@ use parking_lot::RwLock;
 
 use vulkano::{
     memory::allocator::FastMemoryAllocator,
-    pipeline::{
-        PipelineBindPoint,
-        layout::PipelineLayout
-    },
+    pipeline::PipelineBindPoint,
     buffer::{
         BufferUsage,
         TypedBufferAccess,
@@ -28,7 +25,7 @@ use super::{
 };
 
 use crate::{
-    client::BuilderType,
+    client::{GameObject, BuilderType, LayoutType},
     common::{Transform, OnTransformCallback, TransformContainer}
 };
 
@@ -88,7 +85,6 @@ pub struct Object
     model: Arc<Model>,
     texture: Arc<RwLock<Texture>>,
     transform: ObjectTransform,
-    layout: Arc<PipelineLayout>,
     buffer_container: BufferContainer
 }
 
@@ -97,7 +93,6 @@ impl Object
 {
     pub fn new_default(
         allocator: FastMemoryAllocator,
-        layout: Arc<PipelineLayout>,
         camera: Arc<RwLock<Camera>>,
         model: Arc<Model>,
         texture: Arc<RwLock<Texture>>
@@ -105,12 +100,11 @@ impl Object
     {
         let transform = ObjectTransform::new_default();
 
-        Self::new(allocator, layout, camera, model, texture, transform)
+        Self::new(allocator, camera, model, texture, transform)
     }
 
     pub fn new(
         allocator: FastMemoryAllocator,
-        layout: Arc<PipelineLayout>,
         camera: Arc<RwLock<Camera>>,
         model: Arc<Model>,
         texture: Arc<RwLock<Texture>>,
@@ -126,20 +120,8 @@ impl Object
             model,
             texture,
             transform,
-            layout,
             buffer_container
         }
-    }
-
-    pub fn regenerate_buffers(&mut self, allocator: &FastMemoryAllocator)
-    {
-        let vertices =
-            Self::generate_vertices(&self.camera, &self.transform, &self.model);
-
-        self.buffer_container = BufferContainer::new(
-            allocator,
-            vertices
-        );
     }
 
     fn generate_vertices<'a>(
@@ -165,21 +147,37 @@ impl Object
     {
         self.transform.set_origin(origin);
     }
+}
 
-    pub fn draw(&self, builder: BuilderType)
+impl GameObject for Object
+{
+    fn update(&mut self, _dt: f32) {}
+
+    fn regenerate_buffers(&mut self, allocator: &FastMemoryAllocator)
+    {
+        let vertices =
+        Self::generate_vertices(&self.camera, &self.transform, &self.model);
+
+        self.buffer_container = BufferContainer::new(
+            allocator,
+            vertices
+        );
+    }
+
+    fn draw(&self, builder: BuilderType, layout: LayoutType)
     {
         let vertex_buffer = &self.buffer_container.vertex_buffer;
 
         builder
-            .bind_descriptor_sets(
-                PipelineBindPoint::Graphics,
-                self.layout.clone(),
-                0,
-                self.texture.read().descriptor_set()
-            )
-            .bind_vertex_buffers(0, vertex_buffer.clone())
-            .draw(vertex_buffer.len() as u32, 1, 0, 0)
-            .unwrap();
+        .bind_descriptor_sets(
+            PipelineBindPoint::Graphics,
+            layout,
+            0,
+            self.texture.read().descriptor_set()
+        )
+        .bind_vertex_buffers(0, vertex_buffer.clone())
+        .draw(vertex_buffer.len() as u32, 1, 0, 0)
+        .unwrap();
     }
 }
 

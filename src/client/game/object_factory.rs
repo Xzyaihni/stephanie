@@ -7,7 +7,6 @@ use parking_lot::RwLock;
 
 use vulkano::{
 	device::Device,
-	pipeline::PipelineLayout,
 	memory::allocator::FastMemoryAllocator
 };
 
@@ -31,7 +30,6 @@ use crate::common::{
 pub struct ObjectFactory
 {
 	device: Arc<Device>,
-	layout: Arc<PipelineLayout>,
 	camera: Arc<RwLock<Camera>>,
 	textures: HashMap<String, Arc<RwLock<Texture>>>
 }
@@ -40,12 +38,11 @@ impl ObjectFactory
 {
 	pub fn new(
 		device: Arc<Device>,
-		layout: Arc<PipelineLayout>,
 		camera: Arc<RwLock<Camera>>,
 		textures: HashMap<String, Arc<RwLock<Texture>>>
 	) -> Self
 	{
-		Self{device, layout, camera, textures}
+		Self{device, camera, textures}
 	}
 
 	pub fn swap_pipeline(&mut self, uploader: &DescriptorSetUploader)
@@ -79,7 +76,6 @@ impl ObjectFactory
 
 		Object::new(
 			allocator,
-			self.layout.clone(),
 			self.camera.clone(),
 			model,
 			texture,

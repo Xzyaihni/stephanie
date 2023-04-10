@@ -15,7 +15,6 @@ use crate::common::{
 	EntitiesController,
 	message::Message,
 	player::Player,
-	physics::PhysicsEntity,
 	world::{
 		OVERMAP_SIZE,
 		World,
@@ -26,6 +25,7 @@ use crate::common::{
 use super::{
 	GameObject,
 	BuilderType,
+	LayoutType,
 	MessagePasser,
 	ConnectionsHandler,
 	TilesFactory,
@@ -83,17 +83,17 @@ impl GameObject for ClientEntitiesContainer
 		self.players.iter_mut().for_each(|(_, pair)| pair.regenerate_buffers(allocator));
 	}
 
-	fn draw(&self, builder: BuilderType)
+	fn draw(&self, builder: BuilderType, layout: LayoutType)
 	{
 		if let Some(player_id) = self.main_player
 		{
 			self.players.iter().filter(|(id, _)| *id != player_id)
-				.for_each(|(_, pair)| pair.draw(builder));
+				.for_each(|(_, pair)| pair.draw(builder, layout.clone()));
 
-			self.players[player_id].draw(builder);
+			self.players[player_id].draw(builder, layout);
 		} else
 		{
-			self.players.iter().for_each(|(_, pair)| pair.draw(builder));
+			self.players.iter().for_each(|(_, pair)| pair.draw(builder, layout.clone()));
 		}
 	}
 }
@@ -388,11 +388,11 @@ impl GameObject for GameState
 		self.entities.regenerate_buffers(allocator);
 	}
 
-	fn draw(&self, builder: BuilderType)
+	fn draw(&self, builder: BuilderType, layout: LayoutType)
 	{
-		self.world.draw(builder);
+		self.world.draw(builder, layout.clone());
 
-		self.entities.draw(builder);
+		self.entities.draw(builder, layout);
 	}
 }
 

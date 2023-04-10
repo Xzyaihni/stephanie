@@ -14,6 +14,7 @@ use vulkano::{
     },
     pipeline::{
         Pipeline,
+        PipelineLayout,
         GraphicsPipeline,
         StateMode,
         graphics::{
@@ -447,6 +448,7 @@ pub fn run(
 
                         let command_buffer = run_frame(
                             builder,
+                            layout.clone(),
                             &mut render_info,
                             image_index,
                             client,
@@ -520,6 +522,7 @@ struct FrameData
 
 fn run_frame(
     mut builder: AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
+    layout: Arc<PipelineLayout>,
     render_info: &mut RenderInfo,
     image_index: usize,
     client: &mut Client,
@@ -540,7 +543,7 @@ fn run_frame(
     *previous_time = Instant::now();
 
     client.update(delta_time);
-    client.draw(&mut builder);
+    client.draw(&mut builder, layout);
 
     builder.end_render_pass().unwrap();
 

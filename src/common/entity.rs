@@ -228,7 +228,7 @@ impl PhysicsEntity for ChildEntity
 		&mut self.entity
 	}
 
-	fn update(&mut self, dt: f32)
+	fn physics_update(&mut self, dt: f32)
 	{
 		let distance = self.transform.position.magnitude();
 
@@ -343,14 +343,14 @@ impl PhysicsEntity for Entity
 		self
 	}
 
-	fn update(&mut self, dt: f32)
+	fn physics_update(&mut self, dt: f32)
 	{
 		let translation = Self::damp_velocity(&mut self.velocity, self.damp_factor, dt);
 		self.translate(translation);
 
 		self.children.iter_mut().for_each(|child|
 		{
-			child.update(dt);
+			child.physics_update(dt);
 		});
 
 		self.transform_callback(self.transform.clone());
