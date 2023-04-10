@@ -198,14 +198,14 @@ impl GameState
 			let reader = this.read();
 			let mut handler = reader.connection_handler.write();
 
-			if let Err(x) = handler.send(&message)
+			if let Err(x) = handler.send_blocking(&message)
 			{
 				panic!("error connecting to server: {:?}", x);
 			}
 
 			match handler.receive()
 			{
-				Ok(Message::PlayerOnConnect{id}) =>
+				Ok(Some(Message::PlayerOnConnect{id})) =>
 				{
 					id
 				},

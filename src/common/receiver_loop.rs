@@ -23,9 +23,12 @@ where
 	{
 		loop
 		{
-			if let Ok(message) = handler.receive()
+			if let Ok(messages) = handler.receive()
 			{
-				process_function(this.clone(), message);
+				messages.into_iter().for_each(|message|
+				{
+					process_function(this.clone(), message)
+				});
 			} else
 			{
 				disconnect_function(this);

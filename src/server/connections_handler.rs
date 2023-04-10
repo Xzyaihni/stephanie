@@ -30,7 +30,7 @@ impl PlayerInfo
 
 	pub fn send_blocking(&mut self, message: Message) -> Result<(), bincode::Error>
 	{
-		self.message_passer.send(&message)
+		self.message_passer.send_one(&message)
 	}
 
 	pub fn clone_messager(&self) -> MessagePasser
@@ -102,10 +102,9 @@ impl BufferSender for ConnectionsHandler
 	{
 		self.connections.iter_mut().try_for_each(|(_, connection)|
 		{
-			connection.message_buffer.get_buffered().try_for_each(|message|
-			{
-				connection.message_passer.send(&message)
-			})
+			let buffer = connection.message_buffer.get_buffered().collect::<Vec<_>>();
+
+			connection.message_passer.send_many(&buffer)
 		})
 	}
 }

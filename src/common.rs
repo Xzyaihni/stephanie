@@ -169,14 +169,24 @@ impl MessagePasser
 		Self{stream}
 	}
 
-	pub fn send(&mut self, message: &Message) -> Result<(), bincode::Error>
+	pub fn send_one(&mut self, message: &Message) -> Result<(), bincode::Error>
 	{
-		bincode::serialize_into(&mut self.stream, message)
+		bincode::serialize_into(&mut self.stream, &vec![message])
 	}
 
-	pub fn receive(&mut self) -> Result<Message, bincode::Error>
+	pub fn send_many(&mut self, messages: &Vec<Message>) -> Result<(), bincode::Error>
+	{
+		bincode::serialize_into(&mut self.stream, messages)
+	}
+
+	pub fn receive(&mut self) -> Result<Vec<Message>, bincode::Error>
 	{
 		bincode::deserialize_from(&mut self.stream)
+	}
+
+	pub fn receive_one(&mut self) -> Result<Option<Message>, bincode::Error>
+	{
+		self.receive().map(|messages| messages.into_iter().next())
 	}
 
 	pub fn try_clone(&self) -> Self

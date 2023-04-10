@@ -119,9 +119,9 @@ impl GameServer
 	{
 		let mut message_passer = MessagePasser::new(stream);
 
-		let name = match message_passer.receive()?
+		let name = match message_passer.receive_one()?
 		{
-			Message::PlayerConnect{name} => name,
+			Some(Message::PlayerConnect{name}) => name,
 			_ =>
 			{
 				return Err(ConnectionError::WrongConnectionMessage);

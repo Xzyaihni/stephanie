@@ -22,14 +22,14 @@ impl ConnectionsHandler
 		Self{message_buffer, message_passer}
 	}
 
-	pub fn send(&mut self, message: &Message) -> Result<(), bincode::Error>
+	pub fn send_blocking(&mut self, message: &Message) -> Result<(), bincode::Error>
 	{
-		self.message_passer.send(message)
+		self.message_passer.send_one(message)
 	}
 
-	pub fn receive(&mut self) -> Result<Message, bincode::Error>
+	pub fn receive(&mut self) -> Result<Option<Message>, bincode::Error>
 	{
-		self.message_passer.receive()
+		self.message_passer.receive_one()
 	}
 
 	pub fn passer_clone(&self) -> MessagePasser
@@ -55,9 +55,8 @@ impl BufferSender for ConnectionsHandler
 {
 	fn send_buffered(&mut self) -> Result<(), bincode::Error>
 	{
-		self.message_buffer.get_buffered().try_for_each(|message|
-		{
-			self.message_passer.send(&message)
-		})
+		let buffer = self.message_buffer.get_buffered().collect::<Vec<_>>();
+
+		self.message_passer.send_many(&buffer)
 	}
 }
