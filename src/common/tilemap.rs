@@ -24,6 +24,14 @@ use crate::{
 
 pub const TEXTURE_TILE_SIZE: usize = 256;
 
+pub enum GradientDirection
+{
+	Up,
+	Down,
+	Right,
+	Left
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TileInfo
 {

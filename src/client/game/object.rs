@@ -169,15 +169,15 @@ impl GameObject for Object
         let vertex_buffer = &self.buffer_container.vertex_buffer;
 
         builder
-        .bind_descriptor_sets(
-            PipelineBindPoint::Graphics,
-            layout,
-            0,
-            self.texture.read().descriptor_set()
-        )
-        .bind_vertex_buffers(0, vertex_buffer.clone())
-        .draw(vertex_buffer.len() as u32, 1, 0, 0)
-        .unwrap();
+            .bind_descriptor_sets(
+                PipelineBindPoint::Graphics,
+                layout,
+                0,
+                self.texture.read().descriptor_set()
+            )
+            .bind_vertex_buffers(0, vertex_buffer.clone())
+            .draw(vertex_buffer.len() as u32, 1, 0, 0)
+            .unwrap();
     }
 }
 

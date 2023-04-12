@@ -265,15 +265,17 @@ impl GameState
 		}
 	}
 
-	fn check_resize_camera(&mut self)
+	fn check_resize_camera(&mut self, dt: f32)
 	{
-		if self.clicked(Control::ZoomIn)
+		const ZOOM_SPEED: f32 = 2.0;
+
+		if self.pressed(Control::ZoomIn)
 		{
-			self.resize_camera(0.5);
-		} else if self.clicked(Control::ZoomOut)
+			self.resize_camera(1.0 - dt * ZOOM_SPEED);
+		} else if self.pressed(Control::ZoomOut)
 		{
-			self.resize_camera(2.0);
-		} else if self.clicked(Control::ZoomReset)
+			self.resize_camera(1.0 + dt * ZOOM_SPEED);
+		} else if self.pressed(Control::ZoomReset)
 		{
 			self.set_camera_scale(1.0);
 		}
@@ -336,6 +338,7 @@ impl GameState
 		self.controls[control as usize].active()
 	}
 
+	#[allow(dead_code)]
 	pub fn clicked(&mut self, control: Control) -> bool
 	{
 		let held = matches!(self.controls[control as usize], ControlState::Held);
@@ -375,7 +378,7 @@ impl GameObject for GameState
 {
 	fn update(&mut self, dt: f32)
 	{
-		self.check_resize_camera();
+		self.check_resize_camera(dt);
 		self.world.update(dt);
 
 		self.entities.update(dt);
