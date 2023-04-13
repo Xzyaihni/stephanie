@@ -24,6 +24,7 @@ use crate::{
 
 pub const TEXTURE_TILE_SIZE: usize = 256;
 
+pub const DIRECTIONS_AMOUNT: usize = 4;
 pub enum GradientDirection
 {
 	Up,
@@ -134,12 +135,9 @@ impl TileMap
 		0.5 / (self.texture_row_size() * TEXTURE_TILE_SIZE) as f32
 	}
 
-	pub fn texture(
-		&self,
-		resource_uploader: &mut ResourceUploader
-	) -> Result<Texture, ImageError>
+	pub fn load_textures(&self) -> Result<Vec<SimpleImage>, ImageError>
 	{
-		let textures = self.tiles.iter().skip(1).map(|tile_info|
+		self.tiles.iter().skip(1).map(|tile_info|
 		{
 			let image = image::open(&tile_info.texture)?
 				.resize_exact(
@@ -149,8 +147,25 @@ impl TileMap
 				);
 
 			SimpleImage::try_from(image)
-		}).collect::<Result<Vec<SimpleImage>, _>>()?;
+		}).collect::<Result<Vec<SimpleImage>, _>>()
+	}
 
+	pub fn apply_texture_mask<'a, I>(direction: GradientDirection, textures: I)
+	where
+		I: Iterator<Item=&'a mut SimpleImage>
+	{
+		textures.for_each(|texture|
+		{
+			dbg!();
+		});
+	}
+
+	pub fn generate_tilemap(
+		&self,
+		resource_uploader: &mut ResourceUploader,
+		textures: &[SimpleImage]
+	) -> Texture
+	{
 		let side = self.texture_row_size();
 
 		let row = side * TEXTURE_TILE_SIZE;
@@ -173,6 +188,6 @@ impl TileMap
 
 		let tilemap = SimpleImage::new(combined_images, row, row);
 
-		Ok(Texture::new(resource_uploader, tilemap.into()))
+		Texture::new(resource_uploader, tilemap.into())
 	}
 }

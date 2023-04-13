@@ -2,7 +2,7 @@ use std::{
 	sync::Arc
 };
 
-use vulkano::memory::allocator::FastMemoryAllocator;
+use vulkano::memory::allocator::StandardMemoryAllocator;
 
 use nalgebra::{
 	Unit,
@@ -84,7 +84,7 @@ impl<T: PhysicsEntity + ChildContainer> GameObject for ObjectPair<T>
 		self.physics_update(dt);
 	}
 
-	fn regenerate_buffers(&mut self, allocator: &FastMemoryAllocator)
+	fn regenerate_buffers(&mut self, allocator: &StandardMemoryAllocator)
 	{
 		self.objects.iter_mut().for_each(|object| object.regenerate_buffers(allocator));
 	}

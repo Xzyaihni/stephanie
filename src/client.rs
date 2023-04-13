@@ -1,6 +1,5 @@
 use std::{
 	fs,
-	collections::HashMap,
 	sync::Arc,
 	net::TcpStream,
 	path::{Path, PathBuf}
@@ -17,7 +16,7 @@ use vulkano::{
 		Sampler,
 		SamplerCreateInfo
 	},
-	memory::allocator::{FastMemoryAllocator, StandardMemoryAllocator},
+	memory::allocator::StandardMemoryAllocator,
 	command_buffer::{AutoCommandBufferBuilder, PrimaryAutoCommandBuffer}
 };
 
@@ -70,7 +69,7 @@ pub type LayoutType = Arc<PipelineLayout>;
 pub trait GameObject
 {
 	fn update(&mut self, dt: f32);
-	fn regenerate_buffers(&mut self, allocator: &FastMemoryAllocator);
+	fn regenerate_buffers(&mut self, allocator: &StandardMemoryAllocator);
 	fn draw(&self, builder: BuilderType, layout: LayoutType);
 }
 
@@ -92,7 +91,7 @@ pub struct Client
 {
 	device: Arc<Device>,
 	layout: Arc<PipelineLayout>,
-	allocator: FastMemoryAllocator,
+	allocator: StandardMemoryAllocator,
 	game_state: Arc<RwLock<GameState>>,
 	game: Game
 }
@@ -111,7 +110,6 @@ impl Client
 		let camera = Arc::new(RwLock::new(Camera::new(aspect)));
 
 		let allocator = StandardMemoryAllocator::new_default(device.clone());
-
 		let mut resource_uploader = ResourceUploader{
 			allocator,
 			builder,
@@ -136,19 +134,17 @@ impl Client
 		let message_passer = MessagePasser::new(stream);
 
 		let object_factory = ObjectFactory::new(
-			device.clone(),
+			StandardMemoryAllocator::new_default(device.clone()),
 			camera.clone(),
 			textures
 		);
 
-		let tiles_texture = Arc::new(RwLock::new(tilemap.texture(&mut resource_uploader)?));
-		let tiles_factory = ObjectFactory::new(
-			device.clone(),
+		let tiles_factory = TilesFactory::new(
+			StandardMemoryAllocator::new_default(device.clone()),
 			camera.clone(),
-			HashMap::from([(String::new(), tiles_texture)])
-		);
-
-		let tiles_factory = TilesFactory::new(tiles_factory, tilemap);
+			&mut resource_uploader,
+			tilemap
+		)?;
 
 		let game_state = GameState::new(
 			camera,
@@ -164,7 +160,7 @@ impl Client
 
 		let game = Game::new(player_id);
 
-		let allocator = FastMemoryAllocator::new_default(device.clone());
+		let allocator = StandardMemoryAllocator::new_default(device.clone());
 
 		Ok(Self{device, layout, allocator, game_state, game})
 	}

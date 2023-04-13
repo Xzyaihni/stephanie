@@ -6,7 +6,7 @@ use std::{
 
 use parking_lot::{RwLock, Mutex};
 
-use vulkano::memory::allocator::FastMemoryAllocator;
+use vulkano::memory::allocator::StandardMemoryAllocator;
 
 use crate::{
 	client::{
@@ -467,7 +467,7 @@ impl GameObject for Overmap
 		self.vertical_chunks.lock().iter_mut().for_each(|chunk| chunk.update(dt));
 	}
 
-	fn regenerate_buffers(&mut self, allocator: &FastMemoryAllocator)
+	fn regenerate_buffers(&mut self, allocator: &StandardMemoryAllocator)
 	{
 		self.vertical_chunks.lock().iter_mut().for_each(|chunk|
 		{
@@ -535,7 +535,7 @@ impl GameObject for World
 		self.overmap.update(dt);
 	}
 
-	fn regenerate_buffers(&mut self, allocator: &FastMemoryAllocator)
+	fn regenerate_buffers(&mut self, allocator: &StandardMemoryAllocator)
 	{
 		self.overmap.regenerate_buffers(allocator);
 	}

@@ -58,9 +58,9 @@ impl Game
         if moved
         {
             self.player.walk(game_state, dt, movement_direction);
-
-            self.player.world_moved(game_state);
         }
+
+        self.player.world_moved(game_state);
 
         self.player.look_at(game_state, game_state.mouse_position);
     }

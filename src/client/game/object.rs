@@ -6,7 +6,7 @@ use std::{
 use parking_lot::RwLock;
 
 use vulkano::{
-    memory::allocator::FastMemoryAllocator,
+    memory::allocator::StandardMemoryAllocator,
     pipeline::PipelineBindPoint,
     buffer::{
         BufferUsage,
@@ -56,7 +56,7 @@ struct BufferContainer
 impl BufferContainer
 {
     pub fn new(
-        allocator: &FastMemoryAllocator,
+        allocator: &StandardMemoryAllocator,
         vertices: impl ExactSizeIterator<Item=Vertex>
     ) -> Self
     {
@@ -92,7 +92,7 @@ pub struct Object
 impl Object
 {
     pub fn new_default(
-        allocator: FastMemoryAllocator,
+        allocator: &StandardMemoryAllocator,
         camera: Arc<RwLock<Camera>>,
         model: Arc<Model>,
         texture: Arc<RwLock<Texture>>
@@ -104,7 +104,7 @@ impl Object
     }
 
     pub fn new(
-        allocator: FastMemoryAllocator,
+        allocator: &StandardMemoryAllocator,
         camera: Arc<RwLock<Camera>>,
         model: Arc<Model>,
         texture: Arc<RwLock<Texture>>,
@@ -113,7 +113,7 @@ impl Object
     {
         let vertices = Self::generate_vertices(&camera, &transform, &model);
 
-        let buffer_container = BufferContainer::new(&allocator, vertices);
+        let buffer_container = BufferContainer::new(allocator, vertices);
 
         Self{
             camera,
@@ -153,7 +153,7 @@ impl GameObject for Object
 {
     fn update(&mut self, _dt: f32) {}
 
-    fn regenerate_buffers(&mut self, allocator: &FastMemoryAllocator)
+    fn regenerate_buffers(&mut self, allocator: &StandardMemoryAllocator)
     {
         let vertices =
         Self::generate_vertices(&self.camera, &self.transform, &self.model);

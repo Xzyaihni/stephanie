@@ -2,11 +2,19 @@ use std::{
 	sync::Arc
 };
 
+use image::error::ImageError;
+
+use parking_lot::RwLock;
+
+use vulkano::memory::allocator::StandardMemoryAllocator;
+
 use super::{
+	Camera,
 	game::{
 		ObjectFactory,
 		object::{
 			Object,
+			resource_uploader::ResourceUploader,
 			model::Model
 		}
 	}
@@ -124,7 +132,7 @@ impl<'a> ChunkModelBuilder<'a>
 
 		(self.model.vertices.len() != 0).then(||
 		{
-			self.object_factory.create_only(Arc::new(self.model), transform)
+			self.object_factory.create_id(Arc::new(self.model), transform, 0)
 		})
 	}
 }
@@ -140,9 +148,24 @@ pub struct TilesFactory
 #[allow(dead_code)]
 impl TilesFactory
 {
-	pub fn new(object_factory: ObjectFactory, tilemap: TileMap) -> Self
+	pub fn new(
+		allocator: StandardMemoryAllocator,
+		camera: Arc<RwLock<Camera>>,
+		resource_uploader: &mut ResourceUploader,
+		tilemap: TileMap
+	) -> Result<Self, ImageError>
 	{
-		Self{object_factory, tilemap}
+		let base_textures = tilemap.load_textures()?;
+
+		let tilemaps = tilemap.generate_tilemap(resource_uploader, &base_textures);
+
+		let object_factory = ObjectFactory::new_with_ids(
+			allocator,
+			camera,
+			vec![Arc::new(RwLock::new(tilemaps))]
+		);
+
+		Ok(Self{object_factory, tilemap})
 	}
 
 	pub fn builder(&mut self, player_height: i32) -> ChunkModelBuilder

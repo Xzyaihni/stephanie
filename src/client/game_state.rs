@@ -6,7 +6,7 @@ use parking_lot::RwLock;
 
 use slab::Slab;
 
-use vulkano::memory::allocator::FastMemoryAllocator;
+use vulkano::memory::allocator::StandardMemoryAllocator;
 
 use crate::common::{
 	sender_loop,
@@ -78,7 +78,7 @@ impl GameObject for ClientEntitiesContainer
 		self.players.iter_mut().for_each(|(_, pair)| pair.update(dt));
 	}
 
-	fn regenerate_buffers(&mut self, allocator: &FastMemoryAllocator)
+	fn regenerate_buffers(&mut self, allocator: &StandardMemoryAllocator)
 	{
 		self.players.iter_mut().for_each(|(_, pair)| pair.regenerate_buffers(allocator));
 	}
@@ -384,7 +384,7 @@ impl GameObject for GameState
 		self.entities.update(dt);
 	}
 
-	fn regenerate_buffers(&mut self, allocator: &FastMemoryAllocator)
+	fn regenerate_buffers(&mut self, allocator: &StandardMemoryAllocator)
 	{
 		self.world.regenerate_buffers(allocator);
 

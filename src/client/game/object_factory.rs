@@ -5,10 +5,7 @@ use std::{
 
 use parking_lot::RwLock;
 
-use vulkano::{
-	device::Device,
-	memory::allocator::FastMemoryAllocator
-};
+use vulkano::memory::allocator::StandardMemoryAllocator;
 
 use super::{
 	super::DescriptorSetUploader,
@@ -26,41 +23,64 @@ use crate::common::{
 };
 
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct ObjectFactory
 {
-	device: Arc<Device>,
+	allocator: StandardMemoryAllocator,
 	camera: Arc<RwLock<Camera>>,
-	textures: HashMap<String, Arc<RwLock<Texture>>>
+	texture_ids: HashMap<String, usize>,
+	textures: Vec<Arc<RwLock<Texture>>>
 }
 
 impl ObjectFactory
 {
 	pub fn new(
-		device: Arc<Device>,
+		allocator: StandardMemoryAllocator,
 		camera: Arc<RwLock<Camera>>,
 		textures: HashMap<String, Arc<RwLock<Texture>>>
 	) -> Self
 	{
-		Self{device, camera, textures}
+		let (texture_ids, textures) = textures.into_iter().enumerate()
+			.map(|(index, (name, texture))|
+			{
+				((name, index), texture)
+			}).unzip();
+
+		Self{allocator, camera, texture_ids, textures}
+	}
+
+	pub fn new_with_ids(
+		allocator: StandardMemoryAllocator,
+		camera: Arc<RwLock<Camera>>,
+		textures: Vec<Arc<RwLock<Texture>>>
+	) -> Self
+	{
+		let texture_ids = HashMap::new();
+
+		Self{allocator, camera, texture_ids, textures}
 	}
 
 	pub fn swap_pipeline(&mut self, uploader: &DescriptorSetUploader)
 	{
-		self.textures.values_mut().for_each(|texture|
+		self.textures.iter_mut().for_each(|texture|
 		{
 			texture.write().swap_pipeline(uploader)
 		});
 	}
 
-	pub fn create(&self, model: Arc<Model>, transform: Transform, texture: &str) -> Object
+	fn texture_by_name(&self, name: &str) -> Arc<RwLock<Texture>>
 	{
-		self.create_with_texture(model, transform, self.textures[texture].clone())
+		self.textures[self.texture_ids[name]].clone()
 	}
 
-	pub fn create_only(&self, model: Arc<Model>, transform: Transform) -> Object
+	pub fn create(&self, model: Arc<Model>, transform: Transform, texture: &str) -> Object
 	{
-		self.create_with_texture(model, transform, self.textures.values().next().unwrap().clone())
+		self.create_with_texture(model, transform, self.texture_by_name(texture))
+	}
+
+	pub fn create_id(&self, model: Arc<Model>, transform: Transform, id: usize) -> Object
+	{
+		self.create_with_texture(model, transform, self.textures[id].clone())
 	}
 
 	fn create_with_texture(
@@ -70,12 +90,10 @@ impl ObjectFactory
 		texture: Arc<RwLock<Texture>>
 	) -> Object
 	{
-		let allocator = FastMemoryAllocator::new_default(self.device.clone());
-
 		let object_transform = ObjectTransform::new_transformed(transform);
 
 		Object::new(
-			allocator,
+			&self.allocator,
 			self.camera.clone(),
 			model,
 			texture,

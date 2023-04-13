@@ -3,7 +3,7 @@ use std::{
 	iter
 };
 
-use vulkano::memory::allocator::FastMemoryAllocator;
+use vulkano::memory::allocator::StandardMemoryAllocator;
 
 use crate::{
 	client::{
@@ -115,7 +115,7 @@ impl GameObject for VerticalChunk
 {
 	fn update(&mut self, _dt: f32) {}
 
-	fn regenerate_buffers(&mut self, allocator: &FastMemoryAllocator)
+	fn regenerate_buffers(&mut self, allocator: &StandardMemoryAllocator)
 	{
 		self.object.as_mut().map(|object| object.regenerate_buffers(allocator));
 	}
