@@ -143,6 +143,6 @@ impl GameObject for VerticalChunk
 
 	fn draw(&self, builder: BuilderType, layout: LayoutType)
 	{
-		self.objects.iter().rev().for_each(|object| object.draw(builder, layout.clone()));
+		self.objects.iter().for_each(|object| object.draw(builder, layout.clone()));
 	}
 }

@@ -172,8 +172,7 @@ impl TileMap
 					{
 						PosDirection::Right => (x, y),
 						PosDirection::Left => (TEXTURE_TILE_SIZE + x, y),
-						PosDirection::Up => (y, x),
-						PosDirection::Down => (TEXTURE_TILE_SIZE + y, x)
+						_ => panic!("unsupported direction mask")
 					};
 
 					let mask_pixel = mask.get_pixel(mask_x, mask_y);
@@ -181,8 +180,9 @@ impl TileMap
 
 					let mask = match direction
 					{
-						PosDirection::Right | PosDirection::Up => u8::MAX - mask_uninverted,
-						PosDirection::Left | PosDirection::Down => mask_uninverted
+						PosDirection::Right => u8::MAX - mask_uninverted,
+						PosDirection::Left => mask_uninverted,
+						_ => unreachable!()
 					};
 
 					let mut pixel = texture.get_pixel(x, y);

@@ -1,4 +1,5 @@
 use std::{
+	iter,
 	sync::Arc
 };
 
@@ -60,7 +61,7 @@ impl<'a> ChunkModelBuilder<'a>
 
 	pub fn create(&mut self, chunk_depth: usize, pos: ChunkLocal, tile: Tile)
 	{
-		self.create_inner(PosDirection::COUNT, chunk_depth, pos, tile);
+		self.create_inner(None, chunk_depth, pos, tile);
 	}
 
 	pub fn create_direction(
@@ -71,13 +72,17 @@ impl<'a> ChunkModelBuilder<'a>
 		tile: Tile
 	)
 	{
-		self.create_inner(direction as usize, chunk_depth, pos, tile);
+		self.create_inner(Some(direction), chunk_depth, pos, tile);
 	}
 
-	fn create_inner(&mut self, id: usize, chunk_depth: usize, pos: ChunkLocal, tile: Tile)
+	fn create_inner(
+		&mut self,
+		direction: Option<PosDirection>,
+		chunk_depth: usize,
+		pos: ChunkLocal,
+		tile: Tile
+	)
 	{
-		let uvs = self.tile_uvs(tile);
-
 		let depth_absolute = chunk_depth as f32 + pos.0.z as f32 / CHUNK_SIZE as f32;
 		let depth = depth_absolute / OVERMAP_SIZE as f32;
 
@@ -87,13 +92,28 @@ impl<'a> ChunkModelBuilder<'a>
 			1.0 - depth
 		);
 
-		let vertices = self.tile_vertices(pos);
+		let id = direction.map_or(0, Self::direction_texture_index);
 
-		self.models[id].uvs.extend(uvs);
-		self.models[id].vertices.extend(vertices);
+		{
+			let flip_axes = match direction
+			{
+				Some(PosDirection::Up) | Some(PosDirection::Down) => true,
+				_ => false
+			};
+
+			let uvs = self.tile_uvs(tile, flip_axes);
+
+			self.models[id].uvs.extend(uvs);
+		}
+
+		{
+			let vertices = self.tile_vertices(pos);
+
+			self.models[id].vertices.extend(vertices);
+		}
 	}
 
-	fn tile_uvs(&self, tile: Tile) -> impl Iterator<Item=[f32; 2]>
+	fn tile_uvs(&self, tile: Tile, flip_xy: bool) -> impl Iterator<Item=[f32; 2]>
 	{
 		let side = self.tilemap.texture_row_size();
 
@@ -117,14 +137,27 @@ impl<'a> ChunkModelBuilder<'a>
 		let (x, y) = to_uv(x, y);
 		let (x, y) = (x + half_pixel, y + half_pixel);
 
-		vec![
-			[x, y],
-			[x, y_end],
-			[x_end, y],
-			[x, y_end],
-			[x_end, y_end],
-			[x_end, y]
-		].into_iter()
+		if flip_xy
+		{
+			vec![
+				[x, y], // 1
+				[x_end, y], // 3
+				[x, y_end], // 2
+				[x_end, y], // 6
+				[x_end, y_end], // 5
+				[x, y_end] // 4
+			]
+		} else
+		{
+			vec![
+				[x, y],
+				[x, y_end],
+				[x_end, y],
+				[x, y_end],
+				[x_end, y_end],
+				[x_end, y]
+			]
+		}.into_iter()
 	}
 
 	fn tile_vertices(&self, pos: Pos3<f32>) -> impl Iterator<Item=[f32; 3]>
@@ -146,12 +179,32 @@ impl<'a> ChunkModelBuilder<'a>
 	{
 		let transform = Chunk::transform_of_chunk(x, y);
 
-		self.models.into_iter().enumerate().flat_map(|(index, model)|
+		let textures_indices = (iter::once(0)).chain(
+			PosDirection::all_iter().map(Self::direction_texture_index)
+		);
+
+		let objects = self.models.into_iter().zip(textures_indices)
+			.flat_map(|(model, texture_index)|
+			{
+				(!model.vertices.is_empty()).then(||
+					self.object_factory
+						.create_id(Arc::new(model), transform.clone(), texture_index)
+				)
+			}).collect::<Vec<_>>();
+
+		objects.into_boxed_slice()
+	}
+
+	fn direction_texture_index(direction: PosDirection) -> usize
+	{
+		let mapped_direction = match direction
 		{
-			(model.vertices.len() != 0).then(||
-				self.object_factory.create_id(Arc::new(model), transform.clone(), index)
-			)
-		}).collect::<Vec<_>>().into_boxed_slice()
+			PosDirection::Up => PosDirection::Right,
+			PosDirection::Down => PosDirection::Left,
+			x => x
+		};
+
+		mapped_direction as usize + 1
 	}
 }
 
@@ -176,24 +229,30 @@ impl TilesFactory
 		let mask_texture = tilemap.load_mask()?;
 		let base_textures = tilemap.load_textures()?;
 
-		let tilemaps = (0..PosDirection::COUNT + 1).map(|index|
+		let tilemap_directions = [
+			PosDirection::Right,
+			PosDirection::Left,
+			//PosDirection::TopRight,
+			//PosDirection::TopLeft
+		];
+		dbg!();
+
+		let mut make_tilemap = |textures: &[_]|
 		{
-			let tilemap = if index != PosDirection::COUNT
-			{
-				let mut textures = base_textures.clone();
-
-				let direction = PosDirection::try_from(index as u8).unwrap();
-
-				TileMap::apply_texture_mask(direction, &mask_texture, textures.iter_mut());
-
-				tilemap.generate_tilemap(resource_uploader, &textures)
-			} else
-			{
-				tilemap.generate_tilemap(resource_uploader, &base_textures)
-			};
+			let tilemap = tilemap.generate_tilemap(resource_uploader, textures);
 
 			Arc::new(RwLock::new(tilemap))
-		}).collect();
+		};
+
+		let mut tilemaps = vec![make_tilemap(&base_textures)];
+		tilemaps.extend(tilemap_directions.into_iter().map(|direction|
+		{
+			let mut textures = base_textures.clone();
+
+			TileMap::apply_texture_mask(direction, &mask_texture, textures.iter_mut());
+
+			make_tilemap(&textures)
+		}));
 
 		let object_factory = ObjectFactory::new_with_ids(
 			allocator,
