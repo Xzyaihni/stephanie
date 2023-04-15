@@ -82,7 +82,7 @@ impl WorldGenerator
 			{
 				let tile_index = fastrand::usize(..self.tilemap.len());
 
-				chunk.set_tile(LocalPos::new(x, y, 0), Tile::new(tile_index));
+				chunk[LocalPos::new(x, y, 0)] = Tile::new(tile_index);
 			}
 		}
 

@@ -26,7 +26,7 @@ pub fn enum_count(input: TokenStream) -> TokenStream
         &variant.ident
     });
 
-    let index_mappings = identifiers.enumerate().map(|(index, identifier)|
+    let index_mappings = identifiers.clone().enumerate().map(|(index, identifier)|
     {
         quote!
         {
@@ -38,10 +38,10 @@ pub fn enum_count(input: TokenStream) -> TokenStream
     let count = variants.len();
     let expanded = quote!
     {
-        pub const COUNT: usize = #count;
-
         impl #enum_name
         {
+            pub const COUNT: usize = #count;
+
             pub fn index(&self) -> usize
             {
                 match self

@@ -139,7 +139,7 @@ impl From<(f64, f64)> for MousePosition
 #[derive(Debug)]
 pub struct GameState
 {
-	pub controls: [ControlState; controls::COUNT],
+	pub controls: [ControlState; Control::COUNT],
 	pub mouse_position: MousePosition,
 	pub camera: Arc<RwLock<Camera>>,
 	pub object_factory: ObjectFactory,
@@ -161,7 +161,7 @@ impl GameState
 		debug_mode: bool
 	) -> Self
 	{
-		let controls = [ControlState::Released; controls::COUNT];
+		let controls = [ControlState::Released; Control::COUNT];
 		let mouse_position = MousePosition::new(0.0, 0.0);
 
 		let notifications = Notifications::new();

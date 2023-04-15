@@ -1,8 +1,12 @@
 use std::{
-	ops::{Sub, Add}
+	ops::{Index, IndexMut, Sub, Add}
 };
 
 use serde::{Serialize, Deserialize};
+
+use num_enum::TryFromPrimitive;
+
+use enum_amount::EnumCount;
 
 use nalgebra::Vector3;
 
@@ -48,7 +52,12 @@ impl GlobalPos
 	}
 
 	#[allow(dead_code)]
-	pub fn to_world(self, local: LocalPos, side: f32, tile_size: f32) -> Pos3<f32>
+	pub fn to_world<const T: usize>(
+		self,
+		local: LocalPos<T>,
+		side: f32,
+		tile_size: f32
+	) -> Pos3<f32>
 	{
 		let Self(chunk) = self;
 		let LocalPos(local) = local;
@@ -88,13 +97,80 @@ impl Add for GlobalPos
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub struct LocalPos(pub Pos3<usize>);
+pub struct LocalPos<const EDGE: usize>(pub Pos3<usize>);
 
-impl LocalPos
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, TryFromPrimitive, EnumCount)]
+pub enum PosDirection
+{
+	Right,
+	Left,
+	Up,
+	Down
+}
+
+impl PosDirection
+{
+	pub fn all_iter() -> impl Iterator<Item=Self>
+	{
+		[PosDirection::Right, PosDirection::Left, PosDirection::Up, PosDirection::Down].into_iter()
+	}
+}
+
+pub struct InclusiveGroup<T>
+{
+	pub this: T,
+	pub right: Option<T>,
+	pub left: Option<T>,
+	pub up: Option<T>,
+	pub down: Option<T>
+}
+
+impl<T> Index<PosDirection> for InclusiveGroup<T>
+{
+	type Output = Option<T>;
+
+	fn index(&self, index: PosDirection) -> &Self::Output
+	{
+		match index
+		{
+			PosDirection::Right => &self.right,
+			PosDirection::Left => &self.left,
+			PosDirection::Up => &self.up,
+			PosDirection::Down => &self.down
+		}
+	}
+}
+
+impl<const EDGE: usize> LocalPos<EDGE>
 {
 	pub fn new(x: usize, y: usize, z: usize) -> Self
 	{
 		Self(Pos3::new(x, y, z))
+	}
+
+	#[allow(dead_code)]
+	pub fn directions(&self) -> impl Iterator<Item=Option<Self>>
+	{
+		[self.right(), self.left(), self.up(), self.down()].into_iter()
+	}
+
+	pub fn directions_inclusive(self) -> impl Iterator<Item=Option<Self>>
+	{
+		[Some(self), self.right(), self.left(), self.up(), self.down()].into_iter()
+	}
+
+	pub fn directions_inclusive_group<T, F>(self, mut map_function: F) -> InclusiveGroup<T>
+	where
+		F: FnMut(Self) -> T
+	{
+		InclusiveGroup{
+			this: map_function(self),
+			right: self.right().map(&mut map_function),
+			left: self.left().map(&mut map_function),
+			up: self.up().map(&mut map_function),
+			down: self.down().map(&mut map_function)
+		}
 	}
 
 	pub fn from_global(pos: GlobalPos, side: i32) -> Option<Self>
@@ -112,6 +188,78 @@ impl LocalPos
 		}
 	}
 
+	pub fn overflow(&self, direction: PosDirection) -> Self
+	{
+		let Self(pos) = self;
+
+		match direction
+		{
+			PosDirection::Right => Self::new(0, pos.y, pos.z),
+			PosDirection::Left => Self::new(EDGE - 1, pos.y, pos.z),
+			PosDirection::Up => Self::new(pos.x, 0, pos.z),
+			PosDirection::Down => Self::new(pos.x, EDGE - 1, pos.z)
+		}
+	}
+
+	pub fn offset(&self, direction: PosDirection) -> Option<Self>
+	{
+		match direction
+		{
+			PosDirection::Right => self.right(),
+			PosDirection::Left => self.left(),
+			PosDirection::Up => self.up(),
+			PosDirection::Down => self.down()
+		}
+	}
+
+	pub fn right(&self) -> Option<Self>
+	{
+		let Self(pos) = self;
+
+		(!self.right_edge()).then(|| Self::new(pos.x + 1, pos.y, pos.z))
+	}
+
+	pub fn left(&self) -> Option<Self>
+	{
+		let Self(pos) = self;
+
+		(!self.left_edge()).then(|| Self::new(pos.x - 1, pos.y, pos.z))
+	}
+
+	pub fn up(&self) -> Option<Self>
+	{
+		let Self(pos) = self;
+
+		(!self.top_edge()).then(|| Self::new(pos.x, pos.y + 1, pos.z))
+	}
+
+	pub fn down(&self) -> Option<Self>
+	{
+		let Self(pos) = self;
+
+		(!self.bottom_edge()).then(|| Self::new(pos.x, pos.y - 1, pos.z))
+	}
+
+	pub fn top_edge(&self) -> bool
+	{
+		self.0.y == (EDGE - 1)
+	}
+
+	pub fn bottom_edge(&self) -> bool
+	{
+		self.0.y == 0
+	}
+
+	pub fn right_edge(&self) -> bool
+	{
+		self.0.x == (EDGE - 1)
+	}
+
+	pub fn left_edge(&self) -> bool
+	{
+		self.0.x == 0
+	}
+
 	pub fn to_cube(self, side: usize) -> usize
 	{
 		let Self(pos) = self;
@@ -126,6 +274,8 @@ const CHUNK_VOLUME: usize = CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE;
 pub const CHUNK_VISUAL_SIZE: f32 = CHUNK_SIZE as f32  * TILE_SIZE;
 
 pub const TILE_SIZE: f32 = 0.1;
+
+pub type ChunkLocal = LocalPos<CHUNK_SIZE>;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Chunk
@@ -154,34 +304,28 @@ impl Chunk
 		transform
 	}
 
-	#[allow(dead_code)]
-	pub fn set_tile(&mut self, pos: LocalPos, tile: Tile)
-	{
-		self.tiles[Self::index_of(pos)] = tile;
-	}
-
-	pub fn get_tile(&self, pos: LocalPos) -> Tile
-	{
-		self.tiles[Self::index_of(pos)]
-	}
-
-	pub fn vertical_iter(
-		&self,
-		x: usize,
-		y: usize
-	) -> impl DoubleEndedIterator<Item=Tile> + ExactSizeIterator<Item=Tile> + '_
-	{
-		(0..CHUNK_SIZE).map(move |z|
-		{
-			let pos = LocalPos::new(x, y, z);
-			self.get_tile(pos)
-		})
-	}
-
-	fn index_of(pos: LocalPos) -> usize
+	fn index_of(pos: ChunkLocal) -> usize
 	{
 		let LocalPos(pos) = pos;
 
 		pos.z * CHUNK_SIZE * CHUNK_SIZE + pos.y * CHUNK_SIZE + pos.x
+	}
+}
+
+impl Index<ChunkLocal> for Chunk
+{
+	type Output = Tile;
+
+	fn index(&self, index: ChunkLocal) -> &Self::Output
+	{
+		&self.tiles[Self::index_of(index)]
+	}
+}
+
+impl IndexMut<ChunkLocal> for Chunk
+{
+	fn index_mut(&mut self, index: ChunkLocal) -> &mut Self::Output
+	{
+		&mut self.tiles[Self::index_of(index)]
 	}
 }

@@ -14,7 +14,10 @@ use image::{
 };
 
 use crate::{
-	common::world::chunk::tile::Tile,
+	common::world::chunk::{
+		PosDirection,
+		tile::Tile
+	},
 	client::game::object::{
 		resource_uploader::ResourceUploader,
 		texture::{Color, SimpleImage, Texture}
@@ -23,15 +26,6 @@ use crate::{
 
 
 pub const TEXTURE_TILE_SIZE: usize = 256;
-
-pub const DIRECTIONS_AMOUNT: usize = 4;
-pub enum GradientDirection
-{
-	Up,
-	Down,
-	Right,
-	Left
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TileInfo
@@ -67,6 +61,7 @@ impl<'a> Index<Tile> for TileInfoMap<'a>
 #[derive(Debug)]
 pub struct TileMap
 {
+	gradient_mask: PathBuf,
 	tiles: Vec<TileInfo>
 }
 
@@ -76,6 +71,7 @@ impl TileMap
 	pub fn parse(tiles_path: &str, textures_root: &str) -> Result<Self, io::Error>
 	{
 		let textures_root = Path::new(textures_root);
+		let gradient_mask = textures_root.join("gradient.png");
 
 		let tiles = match serde_json::from_reader::<_, Vec<TileInfo>>(File::open(tiles_path)?)
 		{
@@ -91,7 +87,7 @@ impl TileMap
 			Err(err) => return Err(err.into())
 		};
 
-		Ok(Self{tiles})
+		Ok(Self{gradient_mask, tiles})
 	}
 
 	pub fn names_map(&self) -> HashMap<&str, Tile>
@@ -135,6 +131,18 @@ impl TileMap
 		0.5 / (self.texture_row_size() * TEXTURE_TILE_SIZE) as f32
 	}
 
+	pub fn load_mask(&self) -> Result<SimpleImage, ImageError>
+	{
+		let image = image::open(&self.gradient_mask)?
+			.resize_exact(
+				(TEXTURE_TILE_SIZE * 2) as u32,
+				TEXTURE_TILE_SIZE as u32,
+				FilterType::Lanczos3
+			);
+
+		SimpleImage::try_from(image)
+	}
+
 	pub fn load_textures(&self) -> Result<Vec<SimpleImage>, ImageError>
 	{
 		self.tiles.iter().skip(1).map(|tile_info|
@@ -150,13 +158,39 @@ impl TileMap
 		}).collect::<Result<Vec<SimpleImage>, _>>()
 	}
 
-	pub fn apply_texture_mask<'a, I>(direction: GradientDirection, textures: I)
+	pub fn apply_texture_mask<'a, I>(direction: PosDirection, mask: &SimpleImage, textures: I)
 	where
 		I: Iterator<Item=&'a mut SimpleImage>
 	{
 		textures.for_each(|texture|
 		{
-			dbg!();
+			for y in 0..TEXTURE_TILE_SIZE
+			{
+				for x in 0..TEXTURE_TILE_SIZE
+				{
+					let (mask_x, mask_y) = match direction
+					{
+						PosDirection::Right => (x, y),
+						PosDirection::Left => (TEXTURE_TILE_SIZE + x, y),
+						PosDirection::Up => (y, x),
+						PosDirection::Down => (TEXTURE_TILE_SIZE + y, x)
+					};
+
+					let mask_pixel = mask.get_pixel(mask_x, mask_y);
+					let mask_uninverted = mask_pixel.r;
+
+					let mask = match direction
+					{
+						PosDirection::Right | PosDirection::Up => u8::MAX - mask_uninverted,
+						PosDirection::Left | PosDirection::Down => mask_uninverted
+					};
+
+					let mut pixel = texture.get_pixel(x, y);
+
+					pixel.a = mask;
+					texture.set_pixel(pixel, x, y);
+				}
+			}
 		});
 	}
 

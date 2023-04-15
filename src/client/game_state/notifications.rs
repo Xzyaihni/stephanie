@@ -10,14 +10,14 @@ pub enum Notification
 #[derive(Debug, Clone)]
 pub struct Notifications
 {
-	notifications: [bool; COUNT]
+	notifications: [bool; Notification::COUNT]
 }
 
 impl Notifications
 {
 	pub fn new() -> Self
 	{
-		Self{notifications: [false; COUNT]}
+		Self{notifications: [false; Notification::COUNT]}
 	}
 
 	pub fn set(&mut self, notification: Notification)

@@ -39,6 +39,8 @@ pub const OVERMAP_SIZE: usize = 5;
 pub const OVERMAP_HALF: i32 = OVERMAP_SIZE as i32 / 2;
 pub const OVERMAP_VOLUME: usize = OVERMAP_SIZE * OVERMAP_SIZE * OVERMAP_SIZE;
 
+type OvermapLocal = LocalPos<OVERMAP_SIZE>;
+
 #[derive(Debug)]
 pub struct Overmap
 {
@@ -205,39 +207,39 @@ impl Overmap
 	}
 
 	#[allow(dead_code)]
-	fn remove_chunk(&mut self, pos: LocalPos)
+	fn remove_chunk(&mut self, pos: OvermapLocal)
 	{
 		self.remove_nonvisual_chunk(pos);
 		self.remove_visual_chunk(pos);
 	}
 
-	fn remove_nonvisual_chunk(&mut self, pos: LocalPos)
+	fn remove_nonvisual_chunk(&mut self, pos: OvermapLocal)
 	{
 		let index = Self::to_index(pos);
 		self.chunks[index] = None;
 	}
 
-	fn remove_visual_chunk(&mut self, pos: LocalPos)
+	fn remove_visual_chunk(&mut self, pos: OvermapLocal)
 	{
 		let flat_index = Self::to_flat_index(pos);
 		self.vertical_chunks.lock()[flat_index] = VerticalChunk::new();
 	}
 
 	#[allow(dead_code)]
-	fn swap_chunks(&mut self, a: LocalPos, b: LocalPos)
+	fn swap_chunks(&mut self, a: OvermapLocal, b: OvermapLocal)
 	{
 		self.swap_nonvisual_chunks(a, b);
 		self.swap_visual_chunks(a, b);
 	}
 
-	fn swap_nonvisual_chunks(&mut self, a: LocalPos, b: LocalPos)
+	fn swap_nonvisual_chunks(&mut self, a: OvermapLocal, b: OvermapLocal)
 	{
 		let (index_a, index_b) = (Self::to_index(a), Self::to_index(b));
 
 		self.chunks.swap(index_a, index_b);
 	}
 
-	fn swap_visual_chunks(&mut self, a: LocalPos, b: LocalPos)
+	fn swap_visual_chunks(&mut self, a: OvermapLocal, b: OvermapLocal)
 	{
 		let mut vertical_chunks = self.vertical_chunks.lock();
 
@@ -253,29 +255,52 @@ impl Overmap
 
 			self.chunks[index] = Some(Arc::new(chunk));
 
-			let line_full = (0..OVERMAP_SIZE).all(|z|
-			{
-				let pos = LocalPos::new(local_pos.0.x, local_pos.0.y, z);
-
-				self.chunks[Self::to_index(pos)].is_some()
-			});
-
-			if line_full
-			{
-				self.update_vertical(local_pos);
-			}
+			self.recursive_check_vertical(local_pos);
 		}
 	}
 
-	fn update_vertical(&self, pos: LocalPos)
+	fn line_exists(&self, pos: OvermapLocal) -> bool
+	{
+		(0..OVERMAP_SIZE).all(|z|
+		{
+			let pos = OvermapLocal::new(pos.0.x, pos.0.y, z);
+
+			self.chunks[Self::to_index(pos)].is_some()
+		})
+	}
+
+	fn recursive_check_vertical(&self, pos: OvermapLocal)
+	{
+		pos.directions_inclusive().flatten().for_each(|position|
+			self.check_vertical(position)
+		);
+	}
+
+	fn check_vertical(&self, pos: OvermapLocal)
+	{
+		let ready_to_draw = pos.directions_inclusive().flatten().all(|pos|
+			self.line_exists(pos)
+		);
+
+		if ready_to_draw
+		{
+			self.draw_vertical(pos);
+		}
+	}
+
+	fn draw_vertical(&self, pos: OvermapLocal)
 	{
 		let LocalPos(Pos3{x, y, ..}) = pos;
 
 		let chunks = (0..=OVERMAP_HALF as usize).rev().map(|z|
 		{
-			let index = Self::to_index(LocalPos::new(x, y, z));
+			let local_pos = OvermapLocal::new(x, y, z);
+			local_pos.directions_inclusive_group(|position|
+			{
+				let index = Self::to_index(position);
 
-			self.chunks[index].clone().unwrap()
+				self.chunks[index].clone().unwrap()
+			})
 		}).collect::<Vec<_>>();
 
 		let chunk_pos = self.to_global(pos);
@@ -300,14 +325,14 @@ impl Overmap
 		{
 			let mut tiles_factory = tiles_factory.lock();
 
-			let (info_map, model_builder) = tiles_factory.build_info(player_height);
+			let (info_map, model_builder) = tiles_factory.build_info();
 
 			let vertical_chunk = VerticalChunk::regenerate(
 				info_map,
 				model_builder,
 				height,
 				chunk_pos,
-				chunks.iter()
+				&chunks
 			);
 
 			let player_position = *player_position.read();
@@ -325,12 +350,12 @@ impl Overmap
 		});
 	}
 
-	fn to_local(&self, pos: GlobalPos) -> Option<LocalPos>
+	fn to_local(&self, pos: GlobalPos) -> Option<OvermapLocal>
 	{
 		Self::to_local_associated(pos, *self.player_position.read())
 	}
 
-	fn to_local_associated(pos: GlobalPos, player_position: GlobalPos)  -> Option<LocalPos>
+	fn to_local_associated(pos: GlobalPos, player_position: GlobalPos)  -> Option<OvermapLocal>
 	{
 		let player_distance = pos - player_position;
 
@@ -341,20 +366,20 @@ impl Overmap
 			pos.z + OVERMAP_HALF
 		);
 
-		LocalPos::from_global(centered, OVERMAP_SIZE as i32)
+		OvermapLocal::from_global(centered, OVERMAP_SIZE as i32)
 	}
 
-	fn to_global(&self, pos: LocalPos) -> GlobalPos
+	fn to_global(&self, pos: OvermapLocal) -> GlobalPos
 	{
 		Self::to_global_associated(pos, *self.player_position.read())
 	}
 
-	fn to_global_associated(pos: LocalPos, player_position: GlobalPos) -> GlobalPos
+	fn to_global_associated(pos: OvermapLocal, player_position: GlobalPos) -> GlobalPos
 	{
 		Self::player_offset(pos) + player_position
 	}
 
-	fn player_offset(pos: LocalPos) -> GlobalPos
+	fn player_offset(pos: OvermapLocal) -> GlobalPos
 	{
 		let LocalPos(pos) = pos;
 
@@ -365,33 +390,33 @@ impl Overmap
 		)
 	}
 
-	fn to_index(pos: LocalPos) -> usize
+	fn to_index(pos: OvermapLocal) -> usize
 	{
 		pos.to_cube(OVERMAP_SIZE)
 	}
 
-	fn to_flat_index(pos: LocalPos) -> usize
+	fn to_flat_index(pos: OvermapLocal) -> usize
 	{
 		let LocalPos(pos) = pos;
 
 		pos.y * OVERMAP_SIZE + pos.x
 	}
 
-	fn index_to_pos(index: usize) -> LocalPos
+	fn index_to_pos(index: usize) -> OvermapLocal
 	{
 		let x = index % OVERMAP_SIZE;
 		let y = (index / OVERMAP_SIZE) % OVERMAP_SIZE;
 		let z = index / (OVERMAP_SIZE * OVERMAP_SIZE);
 
-		LocalPos::new(x, y, z)
+		OvermapLocal::new(x, y, z)
 	}
 
-	fn index_to_flat_pos(index: usize) -> LocalPos
+	fn index_to_flat_pos(index: usize) -> OvermapLocal
 	{
 		let x = index % OVERMAP_SIZE;
 		let y = index / OVERMAP_SIZE;
 
-		LocalPos::new(x, y, 0)
+		OvermapLocal::new(x, y, 0)
 	}
 
 	fn global_player_position(pos: Pos3<f32>) -> GlobalPos

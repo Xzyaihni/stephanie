@@ -97,6 +97,7 @@ pub struct DelayedConnection
 	strength: f32
 }
 
+#[allow(dead_code)]
 impl DelayedConnection
 {
 	pub fn new(limit: f32, strength: f32) -> Self
