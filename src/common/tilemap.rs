@@ -13,11 +13,12 @@ use image::{
 	error::ImageError
 };
 
+use strum_macros::EnumIter;
+
+use enum_amount::EnumCount;
+
 use crate::{
-	common::world::chunk::{
-		PosDirection,
-		tile::Tile
-	},
+	common::world::chunk::tile::Tile,
 	client::game::object::{
 		resource_uploader::ResourceUploader,
 		texture::{Color, SimpleImage, Texture}
@@ -56,6 +57,13 @@ impl<'a> Index<Tile> for TileInfoMap<'a>
 	{
 		self.tilemap.tiles.get(tile.id()).unwrap()
 	}
+}
+
+#[derive(Debug, EnumIter, EnumCount)]
+pub enum GradientMask
+{
+	Outer,
+	Inner
 }
 
 #[derive(Debug)]
@@ -158,7 +166,7 @@ impl TileMap
 		}).collect::<Result<Vec<SimpleImage>, _>>()
 	}
 
-	pub fn apply_texture_mask<'a, I>(direction: PosDirection, mask: &SimpleImage, textures: I)
+	pub fn apply_texture_mask<'a, I>(mask_type: GradientMask, mask: &SimpleImage, textures: I)
 	where
 		I: Iterator<Item=&'a mut SimpleImage>
 	{
@@ -168,21 +176,19 @@ impl TileMap
 			{
 				for x in 0..TEXTURE_TILE_SIZE
 				{
-					let (mask_x, mask_y) = match direction
+					let (mask_x, mask_y) = match mask_type
 					{
-						PosDirection::Right => (x, y),
-						PosDirection::Left => (TEXTURE_TILE_SIZE + x, y),
-						_ => panic!("unsupported direction mask")
+						GradientMask::Outer => (x, y),
+						GradientMask::Inner => (TEXTURE_TILE_SIZE + x, y)
 					};
 
 					let mask_pixel = mask.get_pixel(mask_x, mask_y);
-					let mask_uninverted = mask_pixel.r;
 
-					let mask = match direction
+					let mask = mask_pixel.r;
+					let mask = match mask_type
 					{
-						PosDirection::Right => u8::MAX - mask_uninverted,
-						PosDirection::Left => mask_uninverted,
-						_ => unreachable!()
+						GradientMask::Inner => mask,
+						_ => u8::MAX - mask
 					};
 
 					let mut pixel = texture.get_pixel(x, y);

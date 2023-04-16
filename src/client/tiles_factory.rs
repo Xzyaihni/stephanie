@@ -5,6 +5,8 @@ use std::{
 
 use image::error::ImageError;
 
+use strum::IntoEnumIterator;
+
 use parking_lot::RwLock;
 
 use vulkano::memory::allocator::StandardMemoryAllocator;
@@ -23,7 +25,7 @@ use super::{
 
 use crate::common::{
 	TileMap,
-	tilemap::{TileInfoMap, TileInfo},
+	tilemap::{GradientMask, TileInfoMap, TileInfo},
 	world::{
 		OVERMAP_SIZE,
 		chunk::{
@@ -39,9 +41,10 @@ use crate::common::{
 };
 
 
+const MODELS_AMOUNT: usize = GradientMask::COUNT + 1;
 pub struct ChunkModelBuilder<'a>
 {
-	models: [Model; PosDirection::COUNT + 1],
+	models: [Model; MODELS_AMOUNT],
 	object_factory: &'a mut ObjectFactory,
 	tilemap: &'a TileMap
 }
@@ -53,7 +56,7 @@ impl<'a> ChunkModelBuilder<'a>
 		tilemap: &'a TileMap
 	) -> Self
 	{
-		let models = (0..(PosDirection::COUNT + 1)).map(|_| Model::new())
+		let models = (0..MODELS_AMOUNT).map(|_| Model::new())
 			.collect::<Vec<_>>().try_into().unwrap();
 
 		Self{models, object_factory, tilemap}
@@ -180,7 +183,7 @@ impl<'a> ChunkModelBuilder<'a>
 		let transform = Chunk::transform_of_chunk(x, y);
 
 		let textures_indices = (iter::once(0)).chain(
-			PosDirection::all_iter().map(Self::direction_texture_index)
+			PosDirection::iter().map(Self::direction_texture_index)
 		);
 
 		let objects = self.models.into_iter().zip(textures_indices)
@@ -197,14 +200,13 @@ impl<'a> ChunkModelBuilder<'a>
 
 	fn direction_texture_index(direction: PosDirection) -> usize
 	{
-		let mapped_direction = match direction
+		let mapped_mask = match direction
 		{
-			PosDirection::Up => PosDirection::Right,
-			PosDirection::Down => PosDirection::Left,
-			x => x
+			PosDirection::Up | PosDirection::Right => GradientMask::Outer,
+			PosDirection::Down | PosDirection::Left => GradientMask::Inner
 		};
 
-		mapped_direction as usize + 1
+		mapped_mask as usize + 1
 	}
 }
 
@@ -229,14 +231,6 @@ impl TilesFactory
 		let mask_texture = tilemap.load_mask()?;
 		let base_textures = tilemap.load_textures()?;
 
-		let tilemap_directions = [
-			PosDirection::Right,
-			PosDirection::Left,
-			//PosDirection::TopRight,
-			//PosDirection::TopLeft
-		];
-		dbg!();
-
 		let mut make_tilemap = |textures: &[_]|
 		{
 			let tilemap = tilemap.generate_tilemap(resource_uploader, textures);
@@ -245,11 +239,11 @@ impl TilesFactory
 		};
 
 		let mut tilemaps = vec![make_tilemap(&base_textures)];
-		tilemaps.extend(tilemap_directions.into_iter().map(|direction|
+		tilemaps.extend(GradientMask::iter().map(|mask_type|
 		{
 			let mut textures = base_textures.clone();
 
-			TileMap::apply_texture_mask(direction, &mask_texture, textures.iter_mut());
+			TileMap::apply_texture_mask(mask_type, &mask_texture, textures.iter_mut());
 
 			make_tilemap(&textures)
 		}));

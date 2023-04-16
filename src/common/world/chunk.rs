@@ -6,6 +6,8 @@ use serde::{Serialize, Deserialize};
 
 use num_enum::TryFromPrimitive;
 
+use strum_macros::EnumIter;
+
 use enum_amount::EnumCount;
 
 use nalgebra::Vector3;
@@ -100,21 +102,13 @@ impl Add for GlobalPos
 pub struct LocalPos<const EDGE: usize>(pub Pos3<usize>);
 
 #[repr(u8)]
-#[derive(Debug, Clone, Copy, TryFromPrimitive, EnumCount)]
+#[derive(Debug, Clone, Copy, TryFromPrimitive, EnumCount, EnumIter)]
 pub enum PosDirection
 {
 	Right,
 	Left,
 	Up,
 	Down
-}
-
-impl PosDirection
-{
-	pub fn all_iter() -> impl Iterator<Item=Self>
-	{
-		[PosDirection::Right, PosDirection::Left, PosDirection::Up, PosDirection::Down].into_iter()
-	}
 }
 
 pub struct InclusiveGroup<T>

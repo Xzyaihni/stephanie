@@ -2,6 +2,8 @@ use std::{
 	sync::Arc
 };
 
+use strum::IntoEnumIterator;
+
 use vulkano::memory::allocator::StandardMemoryAllocator;
 
 use crate::{
@@ -105,7 +107,7 @@ impl VerticalChunk
 					}
 				};
 
-				PosDirection::all_iter().for_each(|direction|
+				PosDirection::iter().for_each(|direction|
 				{
 					if let Some(pos) = local_pos.offset(direction)
 					{
