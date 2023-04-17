@@ -26,14 +26,15 @@ use crate::{
 #[derive(Debug)]
 pub struct VerticalChunk
 {
-	objects: Box<[Object]>
+	objects: Box<[Object]>,
+	generated: bool
 }
 
 impl VerticalChunk
 {
 	pub fn new() -> Self
 	{
-		Self{objects: Box::new([])}
+		Self{objects: Box::new([]), generated: false}
 	}
 
 	pub fn regenerate(
@@ -59,7 +60,7 @@ impl VerticalChunk
 			)
 		});
 
-		Self{objects: model_builder.build(pos.0.x, pos.0.y)}
+		Self{objects: model_builder.build(pos.0.x, pos.0.y), generated: true}
 	}
 
 	fn create_tile_line(
@@ -128,6 +129,16 @@ impl VerticalChunk
 				}
 			}
 		}
+	}
+
+	pub fn is_generated(&self) -> bool
+	{
+		self.generated
+	}
+
+	pub fn mark_ungenerated(&mut self)
+	{
+		self.generated = false;
 	}
 }
 

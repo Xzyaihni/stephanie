@@ -171,6 +171,34 @@ impl Overmap
 				{
 					self.swap_visual_chunks(old_local, local_pos);
 				}
+
+				let is_edge_chunk =
+				{
+					let is_edge = |pos, offset|
+					{
+						if offset == 0
+						{
+							false
+						} else if offset < 0
+						{
+							(pos as i32 + offset) == 0
+						} else
+						{
+							(pos as i32 + offset) == (OVERMAP_SIZE as i32 - 1)
+						}
+					};
+
+					let x_edge = is_edge(local_pos.0.x, offset.0.x);
+					let y_edge = is_edge(local_pos.0.y, offset.0.y);
+					let z_edge = is_edge(local_pos.0.z, offset.0.z);
+
+					x_edge || y_edge || z_edge
+				};
+
+				if is_edge_chunk
+				{
+					self.mark_ungenerated(local_pos);
+				}
 			} else
 			{
 				//chunk now outside the player range, remove it
@@ -244,6 +272,11 @@ impl Overmap
 		vertical_chunks.swap(index_a, index_b);
 	}
 
+	fn mark_ungenerated(&self, pos: OvermapLocal)
+	{
+		self.vertical_chunks.lock()[Self::to_flat_index(pos)].mark_ungenerated();
+	}
+
 	fn set_chunk(&mut self, pos: GlobalPos, chunk: Chunk)
 	{
 		if let Some(local_pos) = self.to_local(pos)
@@ -252,7 +285,7 @@ impl Overmap
 
 			self.chunks[index] = Some(Arc::new(chunk));
 
-			self.recursive_check_vertical(local_pos);
+			self.check_neighbors_vertical(local_pos);
 		}
 	}
 
@@ -266,7 +299,7 @@ impl Overmap
 		})
 	}
 
-	fn recursive_check_vertical(&self, pos: OvermapLocal)
+	fn check_neighbors_vertical(&self, pos: OvermapLocal)
 	{
 		pos.directions_inclusive().flatten().for_each(|position|
 			self.check_vertical(position)
@@ -275,13 +308,23 @@ impl Overmap
 
 	fn check_vertical(&self, pos: OvermapLocal)
 	{
-		let ready_to_draw = pos.directions_inclusive().flatten().all(|pos|
-			self.line_exists(pos)
-		);
-
-		if ready_to_draw
+		let this_vertical_exists =
 		{
-			self.draw_vertical(pos);
+			let this_vertical = &self.vertical_chunks.lock()[Self::to_flat_index(pos)];
+
+			this_vertical.is_generated()
+		};
+
+		if !this_vertical_exists
+		{
+			let ready_to_draw = pos.directions_inclusive().flatten().all(|pos|
+				self.line_exists(pos)
+			);
+
+			if ready_to_draw
+			{
+				self.draw_vertical(pos);
+			}
 		}
 	}
 
