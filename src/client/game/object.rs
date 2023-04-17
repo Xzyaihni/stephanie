@@ -25,7 +25,7 @@ use super::{
 };
 
 use crate::{
-    client::{GameObject, BuilderType, LayoutType},
+    client::{GameObject, game_object_types::*},
     common::{Transform, OnTransformCallback, TransformContainer}
 };
 
@@ -47,33 +47,6 @@ pub struct Vertex
 
 vulkano::impl_vertex!(Vertex, position, uv);
 
-#[derive(Debug)]
-struct BufferContainer
-{
-    vertex_buffer: Arc<CpuAccessibleBuffer<[Vertex]>>
-}
-
-impl BufferContainer
-{
-    pub fn new(
-        allocator: &StandardMemoryAllocator,
-        vertices: impl ExactSizeIterator<Item=Vertex>
-    ) -> Self
-    {
-        let vertex_buffer = CpuAccessibleBuffer::from_iter(
-            allocator,
-            BufferUsage{
-                vertex_buffer: true,
-                ..Default::default()
-            },
-            false,
-            vertices
-        ).unwrap();
-
-        Self{vertex_buffer}
-    }
-}
-
 pub trait DrawableEntity
 {
     fn texture(&self) -> &str;
@@ -84,15 +57,13 @@ pub struct Object
     camera: Arc<RwLock<Camera>>,
     model: Arc<Model>,
     texture: Arc<RwLock<Texture>>,
-    transform: ObjectTransform,
-    buffer_container: BufferContainer
+    transform: ObjectTransform
 }
 
 #[allow(dead_code)]
 impl Object
 {
     pub fn new_default(
-        allocator: &StandardMemoryAllocator,
         camera: Arc<RwLock<Camera>>,
         model: Arc<Model>,
         texture: Arc<RwLock<Texture>>
@@ -100,40 +71,30 @@ impl Object
     {
         let transform = ObjectTransform::new_default();
 
-        Self::new(allocator, camera, model, texture, transform)
+        Self::new(camera, model, texture, transform)
     }
 
     pub fn new(
-        allocator: &StandardMemoryAllocator,
         camera: Arc<RwLock<Camera>>,
         model: Arc<Model>,
         texture: Arc<RwLock<Texture>>,
         transform: ObjectTransform
     ) -> Self
     {
-        let vertices = Self::generate_vertices(&camera, &transform, &model);
-
-        let buffer_container = BufferContainer::new(allocator, vertices);
-
         Self{
             camera,
             model,
             texture,
-            transform,
-            buffer_container
+            transform
         }
     }
 
-    fn generate_vertices<'a>(
-        camera: &Arc<RwLock<Camera>>,
-        transform: &ObjectTransform,
-        model: &'a Arc<Model>
-    ) -> impl ExactSizeIterator<Item=Vertex> + 'a
+    fn generate_vertices(&self) -> impl ExactSizeIterator<Item=Vertex> + '_
     {
-        let projection_view = camera.read().projection_view();
-        let transform = transform.matrix();
+        let projection_view = self.camera.read().projection_view();
+        let transform = self.transform.matrix();
 
-        model.vertices.iter().zip(model.uvs.iter()).map(move |(vertex, uv)|
+        self.model.vertices.iter().zip(self.model.uvs.iter()).map(move |(vertex, uv)|
         {
             let vertex = Vector4::new(vertex[0], vertex[1], vertex[2], 1.0);
 
@@ -141,6 +102,23 @@ impl Object
 
             Vertex{position: vertex.xyz().into(), uv: *uv}
         })
+    }
+
+
+    fn vertex_buffer(
+        &self,
+        allocator: &StandardMemoryAllocator
+    ) -> Arc<CpuAccessibleBuffer<[Vertex]>>
+    {
+        CpuAccessibleBuffer::from_iter(
+            allocator,
+            BufferUsage{
+                vertex_buffer: true,
+                ..Default::default()
+            },
+            false,
+            self.generate_vertices()
+        ).unwrap()
     }
 
     pub fn set_origin(&mut self, origin: Vector3<f32>)
@@ -153,20 +131,10 @@ impl GameObject for Object
 {
     fn update(&mut self, _dt: f32) {}
 
-    fn regenerate_buffers(&mut self, allocator: &StandardMemoryAllocator)
+    fn draw(&self, allocator: AllocatorType, builder: BuilderType, layout: LayoutType)
     {
-        let vertices =
-        Self::generate_vertices(&self.camera, &self.transform, &self.model);
-
-        self.buffer_container = BufferContainer::new(
-            allocator,
-            vertices
-        );
-    }
-
-    fn draw(&self, builder: BuilderType, layout: LayoutType)
-    {
-        let vertex_buffer = &self.buffer_container.vertex_buffer;
+        let vertex_buffer = self.vertex_buffer(allocator);
+        let vertices_len = vertex_buffer.len() as u32;
 
         builder
             .bind_descriptor_sets(
@@ -175,8 +143,8 @@ impl GameObject for Object
                 0,
                 self.texture.read().descriptor_set()
             )
-            .bind_vertex_buffers(0, vertex_buffer.clone())
-            .draw(vertex_buffer.len() as u32, 1, 0, 0)
+            .bind_vertex_buffers(0, vertex_buffer)
+            .draw(vertices_len, 1, 0, 0)
             .unwrap();
     }
 }

@@ -189,7 +189,7 @@ impl Texture
     ) -> Arc<ImageView<ImmutableImage>>
     {
         let image = ImmutableImage::from_iter(
-            &resource_uploader.allocator,
+            resource_uploader.allocator,
             image.data.iter().cloned(),
             ImageDimensions::Dim2d{
                 width: image.width,

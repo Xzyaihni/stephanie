@@ -23,7 +23,7 @@ pub struct DescriptorSetUploader
 
 pub struct ResourceUploader<'a>
 {
-	pub allocator: StandardMemoryAllocator,
+	pub allocator: &'a StandardMemoryAllocator,
 	pub builder: &'a mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
 	pub descriptor: DescriptorSetUploader
 }

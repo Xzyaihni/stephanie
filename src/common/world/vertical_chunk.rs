@@ -4,13 +4,10 @@ use std::{
 
 use strum::IntoEnumIterator;
 
-use vulkano::memory::allocator::StandardMemoryAllocator;
-
 use crate::{
 	client::{
 		GameObject,
-		BuilderType,
-		LayoutType,
+		game_object_types::*,
 		tiles_factory::ChunkModelBuilder,
 		game::object::Object
 	},
@@ -138,13 +135,8 @@ impl GameObject for VerticalChunk
 {
 	fn update(&mut self, _dt: f32) {}
 
-	fn regenerate_buffers(&mut self, allocator: &StandardMemoryAllocator)
+	fn draw(&self, allocator: AllocatorType, builder: BuilderType, layout: LayoutType)
 	{
-		self.objects.iter_mut().for_each(|object| object.regenerate_buffers(allocator));
-	}
-
-	fn draw(&self, builder: BuilderType, layout: LayoutType)
-	{
-		self.objects.iter().for_each(|object| object.draw(builder, layout.clone()));
+		self.objects.iter().for_each(|object| object.draw(allocator, builder, layout.clone()));
 	}
 }

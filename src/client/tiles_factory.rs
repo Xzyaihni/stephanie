@@ -9,8 +9,6 @@ use strum::IntoEnumIterator;
 
 use parking_lot::RwLock;
 
-use vulkano::memory::allocator::StandardMemoryAllocator;
-
 use super::{
 	Camera,
 	game::{
@@ -27,7 +25,7 @@ use crate::common::{
 	TileMap,
 	tilemap::{GradientMask, TileInfoMap, TileInfo},
 	world::{
-		OVERMAP_SIZE,
+		OVERMAP_HALF,
 		chunk::{
 			CHUNK_SIZE,
 			TILE_SIZE,
@@ -86,13 +84,16 @@ impl<'a> ChunkModelBuilder<'a>
 		tile: Tile
 	)
 	{
-		let depth_absolute = chunk_depth as f32 + pos.0.z as f32 / CHUNK_SIZE as f32;
-		let depth = depth_absolute / OVERMAP_SIZE as f32;
+		const MAX_TILES: usize = 5;
+		const MAX_DEPTH: f32 = OVERMAP_HALF as f32 * CHUNK_SIZE as f32;
+
+		let depth_tiles = chunk_depth as f32 * CHUNK_SIZE as f32 + (pos.0.z + 1) as f32;
+		let depth = (MAX_DEPTH - depth_tiles) / MAX_TILES as f32;
 
 		let pos = Pos3::new(
 			pos.0.x as f32 * TILE_SIZE,
 			pos.0.y as f32 * TILE_SIZE,
-			1.0 - depth
+			depth
 		);
 
 		let id = direction.map_or(0, Self::direction_texture_index);
@@ -222,7 +223,6 @@ pub struct TilesFactory
 impl TilesFactory
 {
 	pub fn new(
-		allocator: StandardMemoryAllocator,
 		camera: Arc<RwLock<Camera>>,
 		resource_uploader: &mut ResourceUploader,
 		tilemap: TileMap
@@ -249,7 +249,6 @@ impl TilesFactory
 		}));
 
 		let object_factory = ObjectFactory::new_with_ids(
-			allocator,
 			camera,
 			tilemaps
 		);

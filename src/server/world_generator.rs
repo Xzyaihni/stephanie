@@ -76,13 +76,16 @@ impl WorldGenerator
 
 		let mut chunk = Chunk::new();
 
-		for y in 0..CHUNK_SIZE
+		for x in 0..CHUNK_SIZE
 		{
-			for x in 0..CHUNK_SIZE
+			for y in 0..CHUNK_SIZE
 			{
-				let tile_index = fastrand::usize(..self.tilemap.len());
+				for z in 0..CHUNK_SIZE
+				{
+					let tile_index = fastrand::usize(..self.tilemap.len());
 
-				chunk[LocalPos::new(x, y, 0)] = Tile::new(tile_index);
+					chunk[LocalPos::new(x, y, z)] = Tile::new(tile_index);
+				}
 			}
 		}
 

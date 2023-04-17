@@ -5,8 +5,6 @@ use std::{
 
 use parking_lot::RwLock;
 
-use vulkano::memory::allocator::StandardMemoryAllocator;
-
 use super::{
 	super::DescriptorSetUploader,
 	camera::Camera,
@@ -26,7 +24,6 @@ use crate::common::{
 #[derive(Debug)]
 pub struct ObjectFactory
 {
-	allocator: StandardMemoryAllocator,
 	camera: Arc<RwLock<Camera>>,
 	texture_ids: HashMap<String, usize>,
 	textures: Vec<Arc<RwLock<Texture>>>
@@ -35,7 +32,6 @@ pub struct ObjectFactory
 impl ObjectFactory
 {
 	pub fn new(
-		allocator: StandardMemoryAllocator,
 		camera: Arc<RwLock<Camera>>,
 		textures: HashMap<String, Arc<RwLock<Texture>>>
 	) -> Self
@@ -46,18 +42,17 @@ impl ObjectFactory
 				((name, index), texture)
 			}).unzip();
 
-		Self{allocator, camera, texture_ids, textures}
+		Self{camera, texture_ids, textures}
 	}
 
 	pub fn new_with_ids(
-		allocator: StandardMemoryAllocator,
 		camera: Arc<RwLock<Camera>>,
 		textures: Vec<Arc<RwLock<Texture>>>
 	) -> Self
 	{
 		let texture_ids = HashMap::new();
 
-		Self{allocator, camera, texture_ids, textures}
+		Self{camera, texture_ids, textures}
 	}
 
 	pub fn swap_pipeline(&mut self, uploader: &DescriptorSetUploader)
@@ -93,7 +88,6 @@ impl ObjectFactory
 		let object_transform = ObjectTransform::new_transformed(transform);
 
 		Object::new(
-			&self.allocator,
 			self.camera.clone(),
 			model,
 			texture,

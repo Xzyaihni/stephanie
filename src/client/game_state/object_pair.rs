@@ -2,8 +2,6 @@ use std::{
 	sync::Arc
 };
 
-use vulkano::memory::allocator::StandardMemoryAllocator;
-
 use nalgebra::{
 	Unit,
 	Vector3
@@ -22,8 +20,7 @@ use crate::common::{
 
 use crate::client::{
 	GameObject,
-	BuilderType,
-	LayoutType,
+	game_object_types::*,
 	DrawableEntity,
 	game::{
 		ObjectFactory,
@@ -84,14 +81,9 @@ impl<T: PhysicsEntity + ChildContainer> GameObject for ObjectPair<T>
 		self.physics_update(dt);
 	}
 
-	fn regenerate_buffers(&mut self, allocator: &StandardMemoryAllocator)
+	fn draw(&self, allocator: AllocatorType, builder: BuilderType, layout: LayoutType)
 	{
-		self.objects.iter_mut().for_each(|object| object.regenerate_buffers(allocator));
-	}
-
-	fn draw(&self, builder: BuilderType, layout: LayoutType)
-	{
-		self.objects.iter().for_each(|object| object.draw(builder, layout.clone()));
+		self.objects.iter().for_each(|object| object.draw(allocator, builder, layout.clone()));
 	}
 }
 

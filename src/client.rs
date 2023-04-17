@@ -16,8 +16,7 @@ use vulkano::{
 		Sampler,
 		SamplerCreateInfo
 	},
-	memory::allocator::StandardMemoryAllocator,
-	command_buffer::{AutoCommandBufferBuilder, PrimaryAutoCommandBuffer}
+	memory::allocator::StandardMemoryAllocator
 };
 
 use winit::event::{
@@ -49,6 +48,8 @@ use crate::common::{
 	tilemap::TileMap
 };
 
+use game_object_types::*;
+
 pub use game::object::DrawableEntity;
 
 pub use connections_handler::ConnectionsHandler;
@@ -63,14 +64,25 @@ pub mod tiles_factory;
 pub mod world_receiver;
 
 
-pub type BuilderType<'a> = &'a mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>;
-pub type LayoutType = Arc<PipelineLayout>;
+pub mod game_object_types
+{
+	use std::sync::Arc;
+
+	use vulkano::{
+		pipeline::PipelineLayout,
+		memory::allocator::StandardMemoryAllocator,
+		command_buffer::{AutoCommandBufferBuilder, PrimaryAutoCommandBuffer}
+	};
+
+	pub type AllocatorType<'a> = &'a StandardMemoryAllocator;
+	pub type BuilderType<'a> = &'a mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>;
+	pub type LayoutType = Arc<PipelineLayout>;
+}
 
 pub trait GameObject
 {
 	fn update(&mut self, dt: f32);
-	fn regenerate_buffers(&mut self, allocator: &StandardMemoryAllocator);
-	fn draw(&self, builder: BuilderType, layout: LayoutType);
+	fn draw(&self, allocator: AllocatorType, builder: BuilderType, layout: LayoutType);
 }
 
 #[derive(Debug)]
@@ -111,7 +123,7 @@ impl Client
 
 		let allocator = StandardMemoryAllocator::new_default(device.clone());
 		let mut resource_uploader = ResourceUploader{
-			allocator,
+			allocator: &allocator,
 			builder,
 			descriptor: Self::descriptor_set_uploader(&device, layout.clone())
 		};
@@ -134,13 +146,11 @@ impl Client
 		let message_passer = MessagePasser::new(stream);
 
 		let object_factory = ObjectFactory::new(
-			StandardMemoryAllocator::new_default(device.clone()),
 			camera.clone(),
 			textures
 		);
 
 		let tiles_factory = TilesFactory::new(
-			StandardMemoryAllocator::new_default(device.clone()),
 			camera.clone(),
 			&mut resource_uploader,
 			tilemap
@@ -289,35 +299,26 @@ impl Client
 
 	pub fn update(&mut self, dt: f32)
 	{
+		let mut writer = self.game_state.write();
+
+		self.game.update(&mut writer, dt);
+
+		writer.update(dt);
+		writer.release_clicked();
+
+		if writer.player_connected()
 		{
-			let mut writer = self.game_state.write();
-
-			self.game.update(&mut writer, dt);
-
-			writer.update(dt);
-			writer.release_clicked();
-
-			if writer.player_connected()
-			{
-				self.game.on_player_connected(&mut writer);
-			}
-
-			if self.game.player_exists(&mut writer)
-			{
-				self.game.camera_sync(&mut writer);
-			}
+			self.game.on_player_connected(&mut writer);
 		}
 
-		self.regenerate_buffers();
-	}
-
-	pub fn regenerate_buffers(&mut self)
-	{
-		self.game_state.write().regenerate_buffers(&self.allocator);
+		if self.game.player_exists(&mut writer)
+		{
+			self.game.camera_sync(&mut writer);
+		}
 	}
 
 	pub fn draw(&self, builder: BuilderType, layout: LayoutType)
 	{
-		self.game_state.write().draw(builder, layout);
+		self.game_state.write().draw(&self.allocator, builder, layout);
 	}
 }

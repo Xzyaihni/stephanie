@@ -6,13 +6,10 @@ use std::{
 
 use parking_lot::{RwLock, Mutex};
 
-use vulkano::memory::allocator::StandardMemoryAllocator;
-
 use crate::{
 	client::{
 		GameObject,
-		BuilderType,
-		LayoutType,
+		game_object_types::*,
 		TilesFactory,
 		world_receiver::WorldReceiver
 	},
@@ -492,22 +489,14 @@ impl GameObject for Overmap
 		self.vertical_chunks.lock().iter_mut().for_each(|chunk| chunk.update(dt));
 	}
 
-	fn regenerate_buffers(&mut self, allocator: &StandardMemoryAllocator)
-	{
-		self.vertical_chunks.lock().iter_mut().for_each(|chunk|
-		{
-			chunk.regenerate_buffers(allocator)
-		});
-	}
-
-	fn draw(&self, builder: BuilderType, layout: LayoutType)
+	fn draw(&self, allocator: AllocatorType, builder: BuilderType, layout: LayoutType)
 	{
 		self.vertical_chunks.lock().iter().enumerate().filter(|(index, _)|
 		{
 			let chunk_pos = self.to_global(Self::index_to_flat_pos(*index));
 
 			self.visible(chunk_pos)
-		}).for_each(|(_, chunk)| chunk.draw(builder, layout.clone()));
+		}).for_each(|(_, chunk)| chunk.draw(allocator, builder, layout.clone()));
 	}
 }
 
@@ -560,13 +549,8 @@ impl GameObject for World
 		self.overmap.update(dt);
 	}
 
-	fn regenerate_buffers(&mut self, allocator: &StandardMemoryAllocator)
+	fn draw(&self, allocator: AllocatorType, builder: BuilderType, layout: LayoutType)
 	{
-		self.overmap.regenerate_buffers(allocator);
-	}
-
-	fn draw(&self, builder: BuilderType, layout: LayoutType)
-	{
-		self.overmap.draw(builder, layout);
+		self.overmap.draw(allocator, builder, layout);
 	}
 }

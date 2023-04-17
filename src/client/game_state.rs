@@ -6,8 +6,6 @@ use parking_lot::RwLock;
 
 use slab::Slab;
 
-use vulkano::memory::allocator::StandardMemoryAllocator;
-
 use crate::common::{
 	sender_loop,
 	receiver_loop,
@@ -24,8 +22,7 @@ use crate::common::{
 
 use super::{
 	GameObject,
-	BuilderType,
-	LayoutType,
+	game_object_types::*,
 	MessagePasser,
 	ConnectionsHandler,
 	TilesFactory,
@@ -78,22 +75,19 @@ impl GameObject for ClientEntitiesContainer
 		self.players.iter_mut().for_each(|(_, pair)| pair.update(dt));
 	}
 
-	fn regenerate_buffers(&mut self, allocator: &StandardMemoryAllocator)
-	{
-		self.players.iter_mut().for_each(|(_, pair)| pair.regenerate_buffers(allocator));
-	}
-
-	fn draw(&self, builder: BuilderType, layout: LayoutType)
+	fn draw(&self, allocator: AllocatorType, builder: BuilderType, layout: LayoutType)
 	{
 		if let Some(player_id) = self.main_player
 		{
 			self.players.iter().filter(|(id, _)| *id != player_id)
-				.for_each(|(_, pair)| pair.draw(builder, layout.clone()));
+				.for_each(|(_, pair)| pair.draw(allocator, builder, layout.clone()));
 
-			self.players[player_id].draw(builder, layout);
+			self.players[player_id].draw(allocator, builder, layout);
 		} else
 		{
-			self.players.iter().for_each(|(_, pair)| pair.draw(builder, layout.clone()));
+			self.players.iter().for_each(|(_, pair)|
+				pair.draw(allocator, builder, layout.clone())
+			);
 		}
 	}
 }
@@ -384,18 +378,11 @@ impl GameObject for GameState
 		self.entities.update(dt);
 	}
 
-	fn regenerate_buffers(&mut self, allocator: &StandardMemoryAllocator)
+	fn draw(&self, allocator: AllocatorType, builder: BuilderType, layout: LayoutType)
 	{
-		self.world.regenerate_buffers(allocator);
+		self.world.draw(allocator, builder, layout.clone());
 
-		self.entities.regenerate_buffers(allocator);
-	}
-
-	fn draw(&self, builder: BuilderType, layout: LayoutType)
-	{
-		self.world.draw(builder, layout.clone());
-
-		self.entities.draw(builder, layout);
+		self.entities.draw(allocator, builder, layout);
 	}
 }
 
