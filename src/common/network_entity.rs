@@ -42,9 +42,17 @@ where
 		Self{entity_passer, entity_type, entity}
 	}
 
+	pub fn inner(&self) -> &T
+	{
+		&self.entity
+	}
+
 	pub fn sync(&mut self)
 	{
-		self.entity_passer.write().sync_entity(self.entity_type, self.entity.entity_clone());
+		let transform = self.entity.transform_clone();
+		let velocity = self.entity.entity_ref().velocity;
+
+		self.entity_passer.write().sync_entity(self.entity_type, transform, velocity);
 	}
 }
 

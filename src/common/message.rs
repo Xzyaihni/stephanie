@@ -2,11 +2,13 @@ use std::mem;
 
 use serde::{Serialize, Deserialize};
 
+use nalgebra::Vector3;
+
 use enum_amount::EnumCount;
 
 use crate::common::{
+	Transform,
 	EntityType,
-	entity::Entity,
 	player::Player,
 	world::chunk::{Chunk, GlobalPos}
 };
@@ -20,7 +22,7 @@ pub enum Message
 	PlayerDestroy{id: usize},
 	PlayerOnConnect{id: usize},
 	PlayerFullyConnected,
-	EntitySync{entity_type: EntityType, entity: Entity},
+	EntityTrasformPhysics{entity_type: EntityType, transform: Transform, velocity: Vector3<f32>},
 	ChunkRequest{pos: GlobalPos},
 	ChunkSync{pos: GlobalPos, chunk: Chunk}
 }
@@ -31,7 +33,7 @@ impl Message
 	{
 		match self
 		{
-			Message::EntitySync{entity_type, ..} => Some(*entity_type),
+			Message::EntityTrasformPhysics{entity_type, ..} => Some(*entity_type),
 			_ => None
 		}
 	}
@@ -40,7 +42,7 @@ impl Message
 	{
 		match self
 		{
-			Message::EntitySync{..} => Some(0),
+			Message::EntityTrasformPhysics{..} => Some(0),
 			_ => None
 		}
 	}

@@ -55,7 +55,7 @@ pub trait DrawableEntity
 pub struct Object
 {
     camera: Arc<RwLock<Camera>>,
-    model: Arc<Model>,
+    model: Arc<RwLock<Model>>,
     texture: Arc<RwLock<Texture>>,
     transform: ObjectTransform
 }
@@ -65,7 +65,7 @@ impl Object
 {
     pub fn new_default(
         camera: Arc<RwLock<Camera>>,
-        model: Arc<Model>,
+        model: Arc<RwLock<Model>>,
         texture: Arc<RwLock<Texture>>
     ) -> Self
     {
@@ -76,7 +76,7 @@ impl Object
 
     pub fn new(
         camera: Arc<RwLock<Camera>>,
-        model: Arc<Model>,
+        model: Arc<RwLock<Model>>,
         texture: Arc<RwLock<Texture>>,
         transform: ObjectTransform
     ) -> Self
@@ -89,27 +89,26 @@ impl Object
         }
     }
 
-    fn generate_vertices(&self) -> impl ExactSizeIterator<Item=Vertex> + '_
-    {
-        let projection_view = self.camera.read().projection_view();
-        let transform = self.transform.matrix();
-
-        self.model.vertices.iter().zip(self.model.uvs.iter()).map(move |(vertex, uv)|
-        {
-            let vertex = Vector4::new(vertex[0], vertex[1], vertex[2], 1.0);
-
-            let vertex = projection_view * transform * vertex;
-
-            Vertex{position: vertex.xyz().into(), uv: *uv}
-        })
-    }
-
 
     fn vertex_buffer(
         &self,
         allocator: &StandardMemoryAllocator
     ) -> Arc<CpuAccessibleBuffer<[Vertex]>>
     {
+        let projection_view = self.camera.read().projection_view();
+        let transform = self.transform.matrix();
+
+        let model = self.model.read();
+
+        let vertices = model.vertices.iter().zip(model.uvs.iter()).map(move |(vertex, uv)|
+        {
+            let vertex = Vector4::new(vertex[0], vertex[1], vertex[2], 1.0);
+
+            let vertex = projection_view * transform * vertex;
+
+            Vertex{position: vertex.xyz().into(), uv: *uv}
+        });
+
         CpuAccessibleBuffer::from_iter(
             allocator,
             BufferUsage{
@@ -117,7 +116,7 @@ impl Object
                 ..Default::default()
             },
             false,
-            self.generate_vertices()
+            vertices
         ).unwrap()
     }
 

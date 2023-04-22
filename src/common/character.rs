@@ -20,23 +20,44 @@ use nalgebra::{
 };
 
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CharacterProperties
 {
-	pub entity_properties: EntityProperties
+	pub entity_properties: EntityProperties,
+	pub speed: f32
+}
+
+impl Default for CharacterProperties
+{
+	fn default() -> Self
+	{
+		let entity_properties = EntityProperties{..Default::default()};
+
+		let speed = 3.0;
+
+		Self{entity_properties, speed}
+	}
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Character
 {
-	entity: Entity
+	entity: Entity,
+	speed: f32
 }
 
 impl Character
 {
 	pub fn new(properties: CharacterProperties) -> Self
 	{
-		Self{entity: Entity::new(properties.entity_properties)}
+		let speed = properties.speed;
+
+		Self{entity: Entity::new(properties.entity_properties), speed}
+	}
+
+	pub fn speed(&self) -> f32
+	{
+		self.speed
 	}
 }
 
@@ -83,14 +104,24 @@ impl TransformContainer for Character
 
 impl ChildContainer for Character
 {
-	fn children_ref(&self) -> &[ChildEntity]
+	fn under_children_ref(&self) -> &[ChildEntity]
 	{
-		self.entity.children_ref()
+		self.entity.under_children_ref()
 	}
 
-	fn children_mut(&mut self) -> &mut Vec<ChildEntity>
+	fn under_children_mut(&mut self) -> &mut Vec<ChildEntity>
 	{
-		self.entity.children_mut()
+		self.entity.under_children_mut()
+	}
+
+	fn over_children_ref(&self) -> &[ChildEntity]
+	{
+		self.entity.over_children_ref()
+	}
+
+	fn over_children_mut(&mut self) -> &mut Vec<ChildEntity>
+	{
+		self.entity.over_children_mut()
 	}
 }
 

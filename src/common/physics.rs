@@ -1,6 +1,7 @@
 use nalgebra::Vector3;
 
 use crate::common::{
+	Transform,
 	TransformContainer,
 	entity::Entity
 };
@@ -18,9 +19,13 @@ pub trait PhysicsEntity: TransformContainer
 		self.entity_ref().clone()
 	}
 
-	fn set_entity(&mut self, entity: Entity)
+	fn set_entity(&mut self, transform: Transform, velocity: Vector3<f32>)
 	{
-		*self.entity_mut() = entity;
+		let entity = self.entity_mut();
+
+		*entity.transform_mut() = transform;
+		entity.velocity = velocity;
+
 		self.transform_callback(self.transform_clone());
 	}
 

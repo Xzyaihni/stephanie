@@ -7,6 +7,8 @@ use parking_lot::RwLock;
 
 use slab::Slab;
 
+use nalgebra::Vector3;
+
 use message::Message;
 
 pub use entity::transform::{
@@ -25,7 +27,7 @@ pub use tilemap::TileMap;
 pub use entity::transform::ChildContainer;
 
 use player::Player;
-use entity::{ChildEntity, Entity};
+use entity::ChildEntity;
 
 use physics::PhysicsEntity;
 
@@ -47,20 +49,20 @@ pub mod world;
 pub mod physics;
 
 
-pub trait PlayerGet
-{
-	fn player(&self) -> Player;
-}
-
 pub trait EntityPasser
 {
 	fn send_single(&mut self, id: usize, message: Message);
 	fn send_message(&mut self, message: Message);
 
-	fn sync_entity(&mut self, id: EntityType, entity: Entity)
+	fn sync_entity(&mut self, id: EntityType, transform: Transform, velocity: Vector3<f32>)
 	{
-		self.send_message(Message::EntitySync{entity_type: id, entity});
+		self.send_message(Message::EntityTrasformPhysics{entity_type: id, transform, velocity});
 	}
+}
+
+pub trait PlayerGet
+{
+	fn player(&self) -> Player;
 }
 
 pub trait EntitiesContainer
@@ -85,11 +87,11 @@ pub trait EntitiesContainer
 		self.players_ref().vacant_key()
 	}
 
-	fn sync_entity(&mut self, id: EntityType, entity: Entity)
+	fn sync_entity(&mut self, id: EntityType, transform: Transform, velocity: Vector3<f32>)
 	{
 		match id
 		{
-			EntityType::Player(id) => self.player_mut(id).set_entity(entity)
+			EntityType::Player(id) => self.player_mut(id).set_entity(transform, velocity)
 		}
 	}
 
@@ -102,9 +104,9 @@ pub trait EntitiesContainer
 				self.players_mut().remove(id);
 				None
 			},
-			Message::EntitySync{entity_type, entity} =>
+			Message::EntityTrasformPhysics{entity_type, transform, velocity} =>
 			{
-				self.sync_entity(entity_type, entity);
+				self.sync_entity(entity_type, transform, velocity);
 				None
 			},
 			_ => Some(message)
@@ -123,11 +125,11 @@ pub trait EntitiesController
 
 	fn add_player(
 		&mut self,
-		player_object: <Self::Container as EntitiesContainer>::PlayerObject
+		player_associated: <Self::Container as EntitiesContainer>::PlayerObject
 	) -> usize
 	{
-		let player = player_object.player();
-		let id = self.container_mut().players_mut().insert(player_object);
+		let player = player_associated.player();
+		let id = self.container_mut().players_mut().insert(player_associated);
 
 		self.passer().write().send_message(Message::PlayerCreate{id, player});
 

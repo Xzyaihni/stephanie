@@ -1,6 +1,12 @@
+use std::{
+	sync::Arc
+};
+
+use parking_lot::RwLock;
+
 use serde::{Serialize, Deserialize};
 
-use nalgebra::{Vector2, Vector3};
+use nalgebra::{Vector2, Vector3, Rotation};
 
 use transform::{
 	Transform,
@@ -9,7 +15,7 @@ use transform::{
 };
 
 use crate::{
-	client::DrawableEntity,
+	client::{DrawableEntity, game::object::model::Model},
 	common::{
 		ChildContainer,
 		physics::PhysicsEntity
@@ -19,7 +25,7 @@ use crate::{
 pub mod transform;
 
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EntityProperties
 {
 	pub transform: Transform,
@@ -31,8 +37,7 @@ impl Default for EntityProperties
 {
 	fn default() -> Self
 	{
-		let mut transform = Transform::new();
-		transform.scale = Vector3::new(0.1, 0.1, 1.0);
+		let transform = Transform::new();
 
 		let texture = String::new();
 
@@ -136,6 +141,43 @@ impl StretchDeformation
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OffsetStretchDeformation
+{
+	limit: f32,
+	strength: f32,
+	stretchiness: f32
+}
+
+impl OffsetStretchDeformation
+{
+	pub fn new(limit: f32, strength: f32, stretchiness: f32) -> Self
+	{
+		Self{limit, strength, stretchiness}
+	}
+
+	pub fn stretched(&self, model: &mut Model, velocity: &mut Vector3<f32>, dt: f32)
+	{
+		let _ = ChildEntity::damp_velocity(
+			velocity,
+			self.stretchiness,
+			dt
+		);
+
+		let x_offset = -(velocity.x * self.strength).max(0.0).min(self.limit);
+		let y_offset = -(velocity.y * self.strength).max(-self.limit).min(self.limit);
+
+		model.vertices[0][0] = model.vertices[2][0] + x_offset;
+		model.vertices[0][1] = model.vertices[2][1] + y_offset;
+
+		model.vertices[1][0] = model.vertices[4][0] + x_offset;
+		model.vertices[1][1] = model.vertices[4][1] + y_offset;
+
+		model.vertices[3][0] = model.vertices[4][0] + x_offset;
+		model.vertices[3][1] = model.vertices[4][1] + y_offset;
+	}
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ChildConnection
 {
 	Rigid,
@@ -147,7 +189,8 @@ pub enum ChildConnection
 pub enum ChildDeformation
 {
 	Rigid,
-	Stretch(StretchDeformation)
+	Stretch(StretchDeformation),
+	OffsetStretch(OffsetStretchDeformation)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -192,6 +235,88 @@ impl ChildEntity
 		world_transform.rotation = this_transform.rotation + transform.rotation;
 		world_transform.rotation_axis = transform.rotation_axis;
 	}
+
+	pub fn unique_model(&self) -> Option<Arc<RwLock<Model>>>
+	{
+		match self.deformation
+		{
+			ChildDeformation::OffsetStretch(_) =>
+			{
+				let model = Arc::new(RwLock::new(Model::square(1.0)));
+
+				Some(model)
+			},
+			_ => None
+		}
+	}
+
+	fn velocity_local(&self, parent_transform: &Transform) -> Vector3<f32>
+	{
+		let rotation = Rotation::from_axis_angle(
+			&-parent_transform.rotation_axis,
+			parent_transform.rotation
+		);
+
+		rotation * self.entity.velocity
+	}
+
+	fn update(&mut self, parent_transform: &Transform, dt: f32)
+	{
+		let distance = self.transform.position.magnitude();
+
+		let translation = Self::damp_velocity(
+			&mut self.entity.velocity,
+			self.entity.damp_factor,
+			dt
+		);
+
+		match &mut self.connection
+		{
+			ChildConnection::Rigid => (),
+			ChildConnection::Spring(connection) =>
+			{
+				let position = connection.springed(
+					&mut self.entity.velocity,
+					self.transform.position,
+					translation,
+					dt
+				);
+
+				self.set_position(position);
+			},
+			ChildConnection::Delayed(connection) =>
+			{
+				let amount = connection.translate_amount(distance, dt);
+
+				self.translate_to(Vector3::zeros(), amount);
+			}
+		}
+
+		let velocity = self.velocity_local(parent_transform);
+		match &mut self.deformation
+		{
+			ChildDeformation::Rigid => (),
+			ChildDeformation::Stretch(deformation) =>
+			{
+				let stretch = deformation.stretched(velocity);
+
+				self.entity.set_stretch(stretch);
+			},
+			ChildDeformation::OffsetStretch(_) => ()
+		}
+	}
+
+	pub fn modify_model(&self, model: &mut Model, parent_transform: &Transform, dt: f32)
+	{
+		match &self.deformation
+		{
+			ChildDeformation::OffsetStretch(deformation) =>
+			{
+				deformation.stretched(model, &mut self.velocity_local(parent_transform), dt);
+			},
+			_ => unreachable!()
+		}
+	}
 }
 
 impl OnTransformCallback for ChildEntity {}
@@ -229,49 +354,7 @@ impl PhysicsEntity for ChildEntity
 		&mut self.entity
 	}
 
-	fn physics_update(&mut self, dt: f32)
-	{
-		let distance = self.transform.position.magnitude();
-
-		let translation = Self::damp_velocity(
-			&mut self.entity.velocity,
-			self.entity.damp_factor,
-			dt
-		);
-
-		match &mut self.connection
-		{
-			ChildConnection::Rigid => (),
-			ChildConnection::Spring(connection) =>
-			{
-				let position = connection.springed(
-					&mut self.entity.velocity,
-					self.transform.position,
-					translation,
-					dt
-				);
-
-				self.set_position(position);
-			},
-			ChildConnection::Delayed(connection) =>
-			{
-				let amount = connection.translate_amount(distance, dt);
-
-				self.translate_to(Vector3::zeros(), amount);
-			}
-		}
-
-		match &mut self.deformation
-		{
-			ChildDeformation::Rigid => (),
-			ChildDeformation::Stretch(deformation) =>
-			{
-				let stretch = deformation.stretched(self.entity.velocity);
-
-				self.entity.set_stretch(stretch);
-			}
-		}
-	}
+	fn physics_update(&mut self, _dt: f32) {}
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -281,7 +364,8 @@ pub struct Entity
 	transform: Transform,
 	texture: String,
 	pub velocity: Vector3<f32>,
-	children: Vec<ChildEntity>
+	under_children: Vec<ChildEntity>,
+	over_children: Vec<ChildEntity>
 }
 
 impl Entity
@@ -292,9 +376,15 @@ impl Entity
 
 		let velocity = Vector3::zeros();
 
-		let children = Vec::new();
+		let under_children = Vec::new();
+		let over_children = Vec::new();
 
-		Self{damp_factor, transform, texture, velocity, children}
+		Self{damp_factor, transform, texture, velocity, under_children, over_children}
+	}
+
+	pub fn children_iter_mut(&mut self) -> impl Iterator<Item=&mut ChildEntity>
+	{
+		self.under_children.iter_mut().chain(self.over_children.iter_mut())
 	}
 }
 
@@ -302,7 +392,7 @@ impl OnTransformCallback for Entity
 {
 	fn transform_callback(&mut self, transform: Transform)
 	{
-		self.children.iter_mut().for_each(|child| child.relative_transform(transform.clone()));
+		self.children_iter_mut().for_each(|child| child.relative_transform(transform.clone()));
 	}
 }
 
@@ -321,14 +411,24 @@ impl TransformContainer for Entity
 
 impl ChildContainer for Entity
 {
-	fn children_ref(&self) -> &[ChildEntity]
+	fn under_children_ref(&self) -> &[ChildEntity]
 	{
-		&self.children
+		&self.under_children
 	}
 
-	fn children_mut(&mut self) -> &mut Vec<ChildEntity>
+	fn under_children_mut(&mut self) -> &mut Vec<ChildEntity>
 	{
-		&mut self.children
+		&mut self.under_children
+	}
+
+	fn over_children_ref(&self) -> &[ChildEntity]
+	{
+		&self.over_children
+	}
+
+	fn over_children_mut(&mut self) -> &mut Vec<ChildEntity>
+	{
+		&mut self.over_children
 	}
 }
 
@@ -349,19 +449,19 @@ impl PhysicsEntity for Entity
 		let translation = Self::damp_velocity(&mut self.velocity, self.damp_factor, dt);
 		self.translate(translation);
 
-		self.children.iter_mut().for_each(|child|
+		self.under_children.iter_mut().chain(self.over_children.iter_mut()).for_each(|child|
 		{
-			child.physics_update(dt);
+			child.update(&self.transform, dt);
 		});
 
-		self.transform_callback(self.transform.clone());
+		self.transform_callback(self.transform_clone());
 	}
 
 	fn velocity_add(&mut self, velocity: Vector3<f32>)
 	{
 		self.entity_mut().velocity += velocity;
 
-		self.children.iter_mut().for_each(|child|
+		self.children_iter_mut().for_each(|child|
 		{
 			child.velocity_add(velocity);
 		});

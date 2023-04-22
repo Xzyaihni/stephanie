@@ -2,6 +2,8 @@ use std::{
 	sync::Arc
 };
 
+use parking_lot::RwLock;
+
 use nalgebra::{
 	Unit,
 	Vector3
@@ -10,12 +12,12 @@ use nalgebra::{
 use crate::common::{
 	PlayerGet,
 	ChildContainer,
-	entity::{ChildEntity, Entity},
-	player::Player,
 	Transform,
 	OnTransformCallback,
 	TransformContainer,
-	physics::PhysicsEntity
+	physics::PhysicsEntity,
+	player::Player,
+	entity::{ChildEntity, Entity}
 };
 
 use crate::client::{
@@ -36,54 +38,71 @@ use crate::client::{
 pub struct ObjectPair<T>
 {
 	pub objects: Vec<Object>,
-	pub entity: T
+	parent_object_id: usize,
+	pub entity: T,
+	models: Vec<Arc<RwLock<Model>>>
 }
 
 impl<T: PhysicsEntity + DrawableEntity + ChildContainer> ObjectPair<T>
 {
 	pub fn new(object_factory: &ObjectFactory, entity: T) -> Self
 	{
-		let mut objects = vec![Self::object_create(object_factory, &entity)];
-		entity.children_ref().iter().for_each(|child|
-		{
-			objects.push(Self::child_object_create(object_factory, &child))
-		});
+		let mut objects = Vec::new();
 
-		Self{objects, entity}
+		let mut models = entity.under_children_ref().iter().flat_map(|child|
+		{
+			let (model, object) = Self::child_object_create(object_factory, &child);
+
+			objects.push(object);
+
+			model
+		}).collect::<Vec<_>>();
+
+		let parent_object_id = objects.len();
+		objects.push(Self::object_create(object_factory, &entity, None));
+
+		models.extend(entity.over_children_ref().iter().flat_map(|child|
+		{
+			let (model, object) = Self::child_object_create(object_factory, &child);
+
+			objects.push(object);
+
+			model
+		}));
+
+		Self{objects, parent_object_id, entity, models}
 	}
 
 	fn object_create<E: DrawableEntity + TransformContainer>(
 		object_factory: &ObjectFactory,
-		entity: &E
+		entity: &E,
+		unique_model: Option<Arc<RwLock<Model>>>
 	) -> Object
 	{
+		let model = unique_model.unwrap_or_else(|| object_factory.default_model());
+
 		object_factory.create(
-			Arc::new(Model::square(1.0)),
+			model,
 			entity.transform_clone(),
 			entity.texture()
 		)
 	}
 
-	fn child_object_create(object_factory: &ObjectFactory, entity: &ChildEntity) -> Object
+	fn child_object_create(
+		object_factory: &ObjectFactory,
+		entity: &ChildEntity
+	) -> (Option<Arc<RwLock<Model>>>, Object)
 	{
-		let mut object = Self::object_create(object_factory, entity.entity_ref());
+		let unique_model = entity.unique_model();
+		let mut object = Self::object_create(
+			object_factory,
+			entity.entity_ref(),
+			unique_model.clone()
+		);
 
 		object.set_origin(entity.origin());
 
-		object
-	}
-}
-
-impl<T: PhysicsEntity + ChildContainer> GameObject for ObjectPair<T>
-{
-	fn update(&mut self, dt: f32)
-	{
-		self.physics_update(dt);
-	}
-
-	fn draw(&self, allocator: AllocatorType, builder: BuilderType, layout: LayoutType)
-	{
-		self.objects.iter().for_each(|object| object.draw(allocator, builder, layout.clone()));
+		(unique_model, object)
 	}
 }
 
@@ -95,16 +114,39 @@ impl PlayerGet for ObjectPair<Player>
 	}
 }
 
+impl<T: PhysicsEntity + ChildContainer> GameObject for ObjectPair<T>
+{
+	fn update(&mut self, dt: f32)
+	{
+		self.physics_update(dt);
+
+		let transform = self.transform_clone();
+		self.entity.under_children_ref().iter().chain(self.entity.over_children_ref().iter())
+			.filter(|child| child.unique_model().is_some())
+			.zip(self.models.iter_mut())
+			.for_each(|(child, model)|
+			{
+				child.modify_model(&mut model.write(), &transform, dt)
+			});
+	}
+
+	fn draw(&self, allocator: AllocatorType, builder: BuilderType, layout: LayoutType)
+	{
+		self.objects.iter().for_each(|object| object.draw(allocator, builder, layout.clone()));
+	}
+}
+
 impl<T: TransformContainer + ChildContainer> OnTransformCallback for ObjectPair<T>
 {
 	fn transform_callback(&mut self, transform: Transform)
 	{
-		let mut objects = self.objects.iter_mut();
+		self.objects[self.parent_object_id].set_transform(transform);
 
-		objects.next().unwrap().set_transform(transform);
-
-		objects.zip(self.entity.children_ref().iter())
-			.for_each(|(object, child)|
+		self.objects.iter_mut().enumerate().filter(|(index, _)| *index != self.parent_object_id)
+			.zip(
+				self.entity.under_children_ref().iter()
+					.chain(self.entity.over_children_ref().iter())
+			).for_each(|((_, object), child)|
 			{
 				object.set_transform(child.entity_ref().transform_clone())
 			});

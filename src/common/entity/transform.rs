@@ -75,14 +75,24 @@ impl Transform
 
 pub trait ChildContainer: TransformContainer
 {
-	fn children_ref(&self) -> &[ChildEntity];
-	fn children_mut(&mut self) -> &mut Vec<ChildEntity>;
+	fn under_children_ref(&self) -> &[ChildEntity];
+	fn under_children_mut(&mut self) -> &mut Vec<ChildEntity>;
+
+	fn over_children_ref(&self) -> &[ChildEntity];
+	fn over_children_mut(&mut self) -> &mut Vec<ChildEntity>;
 
 	fn add_child(&mut self, mut child: ChildEntity)
 	{
 		child.transform_callback(self.transform_clone());
 
-		self.children_mut().push(child);
+		self.over_children_mut().push(child);
+	}
+
+	fn add_under_child(&mut self, mut child: ChildEntity)
+	{
+		child.transform_callback(self.transform_clone());
+
+		self.under_children_mut().push(child);
 	}
 }
 

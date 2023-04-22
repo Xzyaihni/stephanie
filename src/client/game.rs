@@ -16,15 +16,11 @@ use super::game_state::{
 
 pub use object_factory::ObjectFactory;
 
-use main_player_properties::MainPlayerProperties;
-
 pub mod object;
 pub mod object_factory;
 
 mod object_transform;
 pub mod camera;
-
-mod main_player_properties;
 
 
 pub struct Game
@@ -117,17 +113,14 @@ impl Game
 
 struct PlayerContainer
 {
-    id: usize,
-    properties: MainPlayerProperties
+    id: usize
 }
 
 impl PlayerContainer
 {
     pub fn new(id: usize) -> Self
     {
-        let properties = MainPlayerProperties{speed: 3.0};
-
-        Self{id, properties}
+        Self{id}
     }
 
     pub fn exists(&self, game_state: &mut GameState) -> bool
@@ -137,9 +130,11 @@ impl PlayerContainer
 
     pub fn walk(&self, game_state: &mut GameState, dt: f32, direction: Vector3<f32>)
     {
-        let change = direction * self.properties.speed * dt;
+        let mut player = game_state.player_mut(self.id);
 
-        game_state.player_mut(self.id).velocity_add(change);
+        let change = direction * player.inner().entity.speed() * dt;
+
+        player.velocity_add(change);
     }
 
     pub fn look_at(&self, game_state: &mut GameState, mouse_position: MousePosition)

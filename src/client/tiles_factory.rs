@@ -192,7 +192,7 @@ impl<'a> ChunkModelBuilder<'a>
 			{
 				(!model.vertices.is_empty()).then(||
 					self.object_factory
-						.create_id(Arc::new(model), transform.clone(), texture_index)
+						.create_id(Arc::new(RwLock::new(model)), transform.clone(), texture_index)
 				)
 			}).collect::<Vec<_>>();
 
