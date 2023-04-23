@@ -48,22 +48,25 @@ impl<T: PhysicsEntity + DrawableEntity + ChildContainer> ObjectPair<T>
 	pub fn new(object_factory: &ObjectFactory, entity: T) -> Self
 	{
 		let mut objects = Vec::new();
+		let mut children = entity.children_ref().iter();
 
-		let mut models = entity.under_children_ref().iter().flat_map(|child|
+		let parent_object_id = children.clone().position(|child| child.z_level() >= 0)
+			.unwrap_or(0);
+
+		let mut models = children.by_ref().take(parent_object_id).flat_map(|child|
 		{
-			let (model, object) = Self::child_object_create(object_factory, &child);
+			let (model, object) = Self::child_object_create(object_factory, child);
 
 			objects.push(object);
 
 			model
 		}).collect::<Vec<_>>();
 
-		let parent_object_id = objects.len();
 		objects.push(Self::object_create(object_factory, &entity, None));
 
-		models.extend(entity.over_children_ref().iter().flat_map(|child|
+		models.extend(children.flat_map(|child|
 		{
-			let (model, object) = Self::child_object_create(object_factory, &child);
+			let (model, object) = Self::child_object_create(object_factory, child);
 
 			objects.push(object);
 
@@ -121,7 +124,7 @@ impl<T: PhysicsEntity + ChildContainer> GameObject for ObjectPair<T>
 		self.physics_update(dt);
 
 		let transform = self.transform_clone();
-		self.entity.under_children_ref().iter().chain(self.entity.over_children_ref().iter())
+		self.entity.children_ref().iter()
 			.filter(|child| child.unique_model().is_some())
 			.zip(self.models.iter_mut())
 			.for_each(|(child, model)|
@@ -143,10 +146,7 @@ impl<T: TransformContainer + ChildContainer> OnTransformCallback for ObjectPair<
 		self.objects[self.parent_object_id].set_transform(transform);
 
 		self.objects.iter_mut().enumerate().filter(|(index, _)| *index != self.parent_object_id)
-			.zip(
-				self.entity.under_children_ref().iter()
-					.chain(self.entity.over_children_ref().iter())
-			).for_each(|((_, object), child)|
+			.zip(self.entity.children_ref().iter()).for_each(|((_, object), child)|
 			{
 				object.set_transform(child.entity_ref().transform_clone())
 			});

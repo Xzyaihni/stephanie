@@ -93,7 +93,8 @@ impl Player
 			ChildEntity::new(
 				ChildConnection::Spring(SpringConnection::new(0.2, 0.1, 0.25)),
 				ChildDeformation::Stretch(StretchDeformation::new(1.25, 0.2)),
-				entity
+				entity,
+				1
 			)
 		};
 
@@ -121,15 +122,13 @@ impl Player
 			ChildEntity::new(
 				ChildConnection::Rigid,
 				ChildDeformation::OffsetStretch(OffsetStretchDeformation::new(1.0, 0.2, 0.001)),
-				entity
+				entity,
+				-1
 			)
 		};
 		back_hair.set_origin(&player, Vector3::new(-0.7, 0.0, 0.0));
 
-		player.add_under_child(back_hair);
-
-		player.add_child(left_pon);
-		player.add_child(right_pon);
+		player.add_children(&mut [back_hair, left_pon, right_pon]);
 
 		player
 	}
@@ -196,24 +195,14 @@ impl TransformContainer for Player
 
 impl ChildContainer for Player
 {
-	fn under_children_ref(&self) -> &[ChildEntity]
+	fn children_ref(&self) -> &[ChildEntity]
 	{
-		self.character.under_children_ref()
+		self.character.children_ref()
 	}
 
-	fn under_children_mut(&mut self) -> &mut Vec<ChildEntity>
+	fn children_mut(&mut self) -> &mut Vec<ChildEntity>
 	{
-		self.character.under_children_mut()
-	}
-
-	fn over_children_ref(&self) -> &[ChildEntity]
-	{
-		self.character.over_children_ref()
-	}
-
-	fn over_children_mut(&mut self) -> &mut Vec<ChildEntity>
-	{
-		self.character.over_children_mut()
+		self.character.children_mut()
 	}
 }
 

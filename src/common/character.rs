@@ -104,24 +104,14 @@ impl TransformContainer for Character
 
 impl ChildContainer for Character
 {
-	fn under_children_ref(&self) -> &[ChildEntity]
+	fn children_ref(&self) -> &[ChildEntity]
 	{
-		self.entity.under_children_ref()
+		self.entity.children_ref()
 	}
 
-	fn under_children_mut(&mut self) -> &mut Vec<ChildEntity>
+	fn children_mut(&mut self) -> &mut Vec<ChildEntity>
 	{
-		self.entity.under_children_mut()
-	}
-
-	fn over_children_ref(&self) -> &[ChildEntity]
-	{
-		self.entity.over_children_ref()
-	}
-
-	fn over_children_mut(&mut self) -> &mut Vec<ChildEntity>
-	{
-		self.entity.over_children_mut()
+		self.entity.children_mut()
 	}
 }
 

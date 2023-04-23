@@ -51,6 +51,14 @@ fn limit_distance(limit: f32, distance: f32) -> f32
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ValueAnimation
+{
+	Linear,
+	EaseIn,
+	EaseOut
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SpringConnection
 {
 	limit: f32,
@@ -200,17 +208,28 @@ pub struct ChildEntity
 	deformation: ChildDeformation,
 	origin: Vector3<f32>,
 	transform: Transform,
-	entity: Entity
+	entity: Entity,
+	z_level: i32
 }
 
 impl ChildEntity
 {
-	pub fn new(connection: ChildConnection, deformation: ChildDeformation, entity: Entity) -> Self
+	pub fn new(
+		connection: ChildConnection,
+		deformation: ChildDeformation,
+		entity: Entity,
+		z_level: i32
+	) -> Self
 	{
 		let origin = Vector3::zeros();
 		let transform = entity.transform_clone();
 
-		Self{connection, deformation, origin, transform, entity}
+		Self{connection, deformation, origin, transform, entity, z_level}
+	}
+
+	pub fn z_level(&self) -> i32
+	{
+		self.z_level
 	}
 
 	pub fn origin(&self) -> Vector3<f32>
@@ -364,8 +383,7 @@ pub struct Entity
 	transform: Transform,
 	texture: String,
 	pub velocity: Vector3<f32>,
-	under_children: Vec<ChildEntity>,
-	over_children: Vec<ChildEntity>
+	children: Vec<ChildEntity>
 }
 
 impl Entity
@@ -376,15 +394,9 @@ impl Entity
 
 		let velocity = Vector3::zeros();
 
-		let under_children = Vec::new();
-		let over_children = Vec::new();
+		let children = Vec::new();
 
-		Self{damp_factor, transform, texture, velocity, under_children, over_children}
-	}
-
-	pub fn children_iter_mut(&mut self) -> impl Iterator<Item=&mut ChildEntity>
-	{
-		self.under_children.iter_mut().chain(self.over_children.iter_mut())
+		Self{damp_factor, transform, texture, velocity, children}
 	}
 }
 
@@ -392,7 +404,7 @@ impl OnTransformCallback for Entity
 {
 	fn transform_callback(&mut self, transform: Transform)
 	{
-		self.children_iter_mut().for_each(|child| child.relative_transform(transform.clone()));
+		self.children.iter_mut().for_each(|child| child.relative_transform(transform.clone()));
 	}
 }
 
@@ -411,24 +423,14 @@ impl TransformContainer for Entity
 
 impl ChildContainer for Entity
 {
-	fn under_children_ref(&self) -> &[ChildEntity]
+	fn children_ref(&self) -> &[ChildEntity]
 	{
-		&self.under_children
+		&self.children
 	}
 
-	fn under_children_mut(&mut self) -> &mut Vec<ChildEntity>
+	fn children_mut(&mut self) -> &mut Vec<ChildEntity>
 	{
-		&mut self.under_children
-	}
-
-	fn over_children_ref(&self) -> &[ChildEntity]
-	{
-		&self.over_children
-	}
-
-	fn over_children_mut(&mut self) -> &mut Vec<ChildEntity>
-	{
-		&mut self.over_children
+		&mut self.children
 	}
 }
 
@@ -449,7 +451,7 @@ impl PhysicsEntity for Entity
 		let translation = Self::damp_velocity(&mut self.velocity, self.damp_factor, dt);
 		self.translate(translation);
 
-		self.under_children.iter_mut().chain(self.over_children.iter_mut()).for_each(|child|
+		self.children.iter_mut().for_each(|child|
 		{
 			child.update(&self.transform, dt);
 		});
@@ -461,7 +463,7 @@ impl PhysicsEntity for Entity
 	{
 		self.entity_mut().velocity += velocity;
 
-		self.children_iter_mut().for_each(|child|
+		self.children.iter_mut().for_each(|child|
 		{
 			child.velocity_add(velocity);
 		});
