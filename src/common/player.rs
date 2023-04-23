@@ -12,6 +12,7 @@ use crate::{
 		character::{Character, CharacterProperties},
 		physics::PhysicsEntity,
 		entity::{
+			ValueAnimation,
 			ChildConnection,
 			SpringConnection,
 			ChildDeformation,
@@ -92,7 +93,9 @@ impl Player
 
 			ChildEntity::new(
 				ChildConnection::Spring(SpringConnection::new(0.2, 0.1, 0.25)),
-				ChildDeformation::Stretch(StretchDeformation::new(1.25, 0.2)),
+				ChildDeformation::Stretch(
+					StretchDeformation::new(ValueAnimation::EaseOut(3.0), 1.25, 0.2)
+				),
 				entity,
 				1
 			)
@@ -121,7 +124,9 @@ impl Player
 
 			ChildEntity::new(
 				ChildConnection::Rigid,
-				ChildDeformation::OffsetStretch(OffsetStretchDeformation::new(1.0, 0.2, 0.001)),
+				ChildDeformation::OffsetStretch(
+					OffsetStretchDeformation::new(ValueAnimation::EaseOut(4.0), 1.0, 0.5, 0.001)
+				),
 				entity,
 				-1
 			)

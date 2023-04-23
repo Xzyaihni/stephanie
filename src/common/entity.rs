@@ -54,8 +54,23 @@ fn limit_distance(limit: f32, distance: f32) -> f32
 pub enum ValueAnimation
 {
 	Linear,
-	EaseIn,
-	EaseOut
+	EaseIn(f32),
+	EaseOut(f32)
+}
+
+impl ValueAnimation
+{
+	pub fn apply(&self, value: f32) -> f32
+	{
+		let value = value.clamp(0.0, 1.0);
+
+		match self
+		{
+			ValueAnimation::Linear => value,
+			ValueAnimation::EaseIn(strength) => value.powf(*strength),
+			ValueAnimation::EaseOut(strength) => 1.0 - (1.0 - value).powf(*strength)
+		}
+	}
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -127,20 +142,22 @@ impl DelayedConnection
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StretchDeformation
 {
+	animation: ValueAnimation,
 	limit: f32,
 	strength: f32
 }
 
 impl StretchDeformation
 {
-	pub fn new(limit: f32, strength: f32) -> Self
+	pub fn new(animation: ValueAnimation, limit: f32, strength: f32) -> Self
 	{
-		Self{limit, strength}
+		Self{animation, limit, strength}
 	}
 
 	pub fn stretched(&mut self, velocity: Vector3<f32>) -> (f32, Vector2<f32>)
 	{
-		let stretch = (1.0 + velocity.magnitude() * self.strength).min(self.limit);
+		let amount = self.animation.apply(velocity.magnitude() * self.strength);
+		let stretch = (1.0 + amount).min(self.limit);
 
 		let angle = velocity.y.atan2(-velocity.x);
 
@@ -151,6 +168,7 @@ impl StretchDeformation
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OffsetStretchDeformation
 {
+	animation: ValueAnimation,
 	limit: f32,
 	strength: f32,
 	stretchiness: f32
@@ -158,9 +176,9 @@ pub struct OffsetStretchDeformation
 
 impl OffsetStretchDeformation
 {
-	pub fn new(limit: f32, strength: f32, stretchiness: f32) -> Self
+	pub fn new(animation: ValueAnimation, limit: f32, strength: f32, stretchiness: f32) -> Self
 	{
-		Self{limit, strength, stretchiness}
+		Self{animation, limit, strength, stretchiness}
 	}
 
 	pub fn stretched(&self, model: &mut Model, velocity: &mut Vector3<f32>, dt: f32)
@@ -171,8 +189,20 @@ impl OffsetStretchDeformation
 			dt
 		);
 
-		let x_offset = -(velocity.x * self.strength).max(0.0).min(self.limit);
-		let y_offset = -(velocity.y * self.strength).max(-self.limit).min(self.limit);
+		velocity.x = velocity.x.clamp(0.0, 1.0 / self.strength);
+		velocity.y = velocity.y.clamp(-1.0 / self.strength, 1.0 / self.strength);
+
+		let x_amount = self.animation.apply(velocity.x * self.strength);
+		let y_amount = self.animation.apply(velocity.y.abs() * self.strength);
+
+		let x_offset = -x_amount * self.limit;
+		let y_offset = if velocity.y > 0.0
+		{
+			-y_amount * self.limit
+		} else
+		{
+			y_amount * self.limit
+		};
 
 		model.vertices[0][0] = model.vertices[2][0] + x_offset;
 		model.vertices[0][1] = model.vertices[2][1] + y_offset;
