@@ -12,12 +12,12 @@ use crate::{
 		TileMap,
 		EntityPasser,
 		message::Message,
-		world::chunk::{
+		world::{
 			CHUNK_SIZE,
 			Chunk,
 			GlobalPos,
 			LocalPos,
-			tile::Tile
+			Tile
 		}
 	}
 };

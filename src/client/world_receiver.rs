@@ -9,7 +9,7 @@ use crate::{
 	common::{
 		EntityPasser,
 		message::Message,
-		world::chunk::GlobalPos
+		world::GlobalPos
 	}
 };
 

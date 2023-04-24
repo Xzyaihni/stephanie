@@ -1,5 +1,5 @@
 use std::{
-	ops::{Index, IndexMut, Sub, Add}
+	ops::{Index, IndexMut, Sub, Add, Mul}
 };
 
 use serde::{Serialize, Deserialize};
@@ -33,6 +33,45 @@ impl<T> Pos3<T>
 	{
 		Self{x, y, z}
 	}
+
+	pub fn map<F: FnMut(T) -> V, V>(self, mut f: F) -> Pos3<V>
+	{
+		Pos3::<V>{x: f(self.x), y: f(self.y), z: f(self.z)}
+	}
+}
+
+impl Pos3<f32>
+{
+	pub fn rounded(self) -> GlobalPos
+	{
+		GlobalPos(self.map(|value|
+		{
+			let size = CHUNK_SIZE as f32 * TILE_SIZE;
+			let value = value / size;
+
+			if value < 0.0
+			{
+				value as i32 - 1
+			} else
+			{
+				value as i32
+			}
+		}))
+	}
+
+	pub fn modulo(self, divisor: f32) -> Pos3<f32>
+	{
+		self.map(|value|
+		{
+			if value < 0.0
+			{
+				divisor + (value % divisor)
+			} else
+			{
+				value % divisor
+			}
+		})
+	}
 }
 
 impl<T: Copy> From<Vector3<T>> for Pos3<T>
@@ -40,6 +79,66 @@ impl<T: Copy> From<Vector3<T>> for Pos3<T>
 	fn from(value: Vector3<T>) -> Self
 	{
 		Self{x: value[0], y: value[1], z: value[2]}
+	}
+}
+
+impl<T: Mul<Output=T> + Copy> Mul<T> for Pos3<T>
+{
+	type Output = Self;
+
+	fn mul(self, rhs: T) -> Self::Output
+	{
+		Self::new(self.x * rhs, self.y * rhs, self.z * rhs)
+	}
+}
+
+impl<T: Sub<Output=T>> Sub for Pos3<T>
+{
+	type Output = Self;
+
+	fn sub(self, rhs: Self) -> Self::Output
+	{
+		Self::new(self.x - rhs.x, self.y - rhs.y, self.z - rhs.z)
+	}
+}
+
+impl<T: Sub<Output=T> + Copy> Sub<T> for Pos3<T>
+{
+	type Output = Self;
+
+	fn sub(self, rhs: T) -> Self::Output
+	{
+		Self::new(self.x - rhs, self.y - rhs, self.z - rhs)
+	}
+}
+
+impl<T: Add<Output=T>> Add for Pos3<T>
+{
+	type Output = Self;
+
+	fn add(self, rhs: Self) -> Self::Output
+	{
+		Self::new(self.x + rhs.x, self.y + rhs.y, self.z + rhs.z)
+	}
+}
+
+impl From<GlobalPos> for Pos3<f32>
+{
+	fn from(value: GlobalPos) -> Self
+	{
+		let GlobalPos(pos) = value;
+
+		Self{x: pos.x as f32, y: pos.y as f32, z: pos.z as f32}
+	}
+}
+
+impl<const T: usize> From<LocalPos<T>> for Pos3<f32>
+{
+	fn from(value: LocalPos<T>) -> Self
+	{
+		let LocalPos(pos) = value;
+
+		Self{x: pos.x as f32, y: pos.y as f32, z: pos.z as f32}
 	}
 }
 
@@ -52,36 +151,30 @@ impl GlobalPos
 	{
 		Self(Pos3::new(x, y, z))
 	}
-
-	#[allow(dead_code)]
-	pub fn to_world<const T: usize>(
-		self,
-		local: LocalPos<T>,
-		side: f32,
-		tile_size: f32
-	) -> Pos3<f32>
-	{
-		let Self(chunk) = self;
-		let LocalPos(local) = local;
-
-		Pos3::new(
-			chunk.x as f32 * side * tile_size + local.x as f32 * tile_size,
-			chunk.y as f32 * side * tile_size + local.y as f32 * tile_size,
-			chunk.z as f32 * side * tile_size + local.z as f32 * tile_size
-		)
-	}
 }
 
 impl Sub for GlobalPos
 {
 	type Output = Self;
 
-	fn sub(self, other: Self) -> Self::Output
+	fn sub(self, rhs: Self) -> Self::Output
 	{
 		let Self(pos) = self;
-		let Self(other) = other;
+		let Self(rhs) = rhs;
 
-		Self::new(pos.x - other.x, pos.y - other.y, pos.z - other.z)
+		Self::new(pos.x - rhs.x, pos.y - rhs.y, pos.z - rhs.z)
+	}
+}
+
+impl Sub<i32> for GlobalPos
+{
+	type Output = Self;
+
+	fn sub(self, rhs: i32) -> Self::Output
+	{
+		let Self(pos) = self;
+
+		Self::new(pos.x - rhs, pos.y - rhs, pos.z - rhs)
 	}
 }
 
@@ -89,12 +182,38 @@ impl Add for GlobalPos
 {
 	type Output = Self;
 
-	fn add(self, other: Self) -> Self::Output
+	fn add(self, rhs: Self) -> Self::Output
 	{
 		let Self(pos) = self;
-		let Self(other) = other;
+		let Self(rhs) = rhs;
 
-		Self::new(pos.x + other.x, pos.y + other.y, pos.z + other.z)
+		Self::new(pos.x + rhs.x, pos.y + rhs.y, pos.z + rhs.z)
+	}
+}
+
+impl Add<i32> for GlobalPos
+{
+	type Output = Self;
+
+	fn add(self, rhs: i32) -> Self::Output
+	{
+		let Self(pos) = self;
+
+		Self::new(pos.x + rhs, pos.y + rhs, pos.z + rhs)
+	}
+}
+
+impl<const T: usize> From<LocalPos<T>> for GlobalPos
+{
+	fn from(value: LocalPos<T>) -> Self
+	{
+		let LocalPos(pos) = value;
+
+		Self::new(
+			pos.x as i32,
+			pos.y as i32,
+			pos.z as i32
+		)
 	}
 }
 

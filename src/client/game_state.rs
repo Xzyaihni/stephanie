@@ -14,9 +14,8 @@ use crate::common::{
 	message::Message,
 	player::Player,
 	world::{
-		OVERMAP_SIZE,
 		World,
-		chunk::{CHUNK_VISUAL_SIZE, TILE_SIZE, Pos3}
+		Pos3
 	}
 };
 
@@ -285,13 +284,7 @@ impl GameState
 
 		if !self.debug_mode
 		{
-			//make the camera smaller by 1 tile so theres time for the missing chunks to load
-			let padding = 3;
-
-			let padding = TILE_SIZE * padding as f32;
-
-			let max_scale = (OVERMAP_SIZE - 1) as f32 * CHUNK_VISUAL_SIZE - padding;
-			let min_scale = 0.2;
+			let (min_scale, max_scale) = World::zoom_limits();
 
 			let adjust_factor = if highest > max_scale
 			{

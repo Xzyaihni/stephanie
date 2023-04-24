@@ -10,7 +10,7 @@ use crate::common::{
 	Transform,
 	EntityType,
 	player::Player,
-	world::chunk::{Chunk, GlobalPos}
+	world::{Chunk, GlobalPos}
 };
 
 

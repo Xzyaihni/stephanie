@@ -83,6 +83,7 @@ pub struct SpringConnection
 
 impl SpringConnection
 {
+	#[allow(dead_code)]
 	pub fn new(limit: f32, damping: f32, strength: f32) -> Self
 	{
 		Self{limit, damping, strength}
@@ -149,6 +150,7 @@ pub struct StretchDeformation
 
 impl StretchDeformation
 {
+	#[allow(dead_code)]
 	pub fn new(animation: ValueAnimation, limit: f32, strength: f32) -> Self
 	{
 		Self{animation, limit, strength}

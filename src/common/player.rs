@@ -14,9 +14,7 @@ use crate::{
 		entity::{
 			ValueAnimation,
 			ChildConnection,
-			SpringConnection,
 			ChildDeformation,
-			StretchDeformation,
 			OffsetStretchDeformation,
 			EntityProperties,
 			Entity
@@ -78,42 +76,10 @@ impl Player
 	{
 		let name = player_properties.name;
 
-		let create_pon = |texture: &str|
-		{
-			let mut transform = Transform::new();
-
-			let pon_scale = 0.4;
-			transform.scale = Vector3::new(pon_scale, pon_scale, 1.0);
-
-			let entity = Entity::new(EntityProperties{
-				texture: texture.to_owned(),
-				transform,
-				..Default::default()
-			});
-
-			ChildEntity::new(
-				ChildConnection::Spring(SpringConnection::new(0.2, 0.1, 0.25)),
-				ChildDeformation::Stretch(
-					StretchDeformation::new(ValueAnimation::EaseOut(3.0), 1.25, 0.2)
-				),
-				entity,
-				1
-			)
-		};
-
 		let mut player = Self{
 			character: Character::new(player_properties.character_properties),
 			name
 		};
-
-		let x_offset = -0.1;
-		let y_offset = 0.25;
-
-		let mut left_pon = create_pon("player/left_pon.png");
-		left_pon.set_origin(&player, Vector3::new(x_offset, y_offset, 0.0));
-
-		let mut right_pon = create_pon("player/right_pon.png");
-		right_pon.set_origin(&player, Vector3::new(x_offset, -y_offset, 0.0));
 
 		let mut back_hair =
 		{
@@ -133,7 +99,7 @@ impl Player
 		};
 		back_hair.set_origin(&player, Vector3::new(-0.7, 0.0, 0.0));
 
-		player.add_children(&mut [back_hair, left_pon, right_pon]);
+		player.add_child(back_hair);
 
 		player
 	}

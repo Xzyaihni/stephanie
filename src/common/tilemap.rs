@@ -18,7 +18,7 @@ use strum_macros::EnumIter;
 use enum_amount::EnumCount;
 
 use crate::{
-	common::world::chunk::tile::Tile,
+	common::world::Tile,
 	client::game::object::{
 		resource_uploader::ResourceUploader,
 		texture::{Color, SimpleImage, Texture}

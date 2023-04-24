@@ -25,16 +25,14 @@ use crate::common::{
 	TileMap,
 	tilemap::{GradientMask, TileInfoMap, TileInfo},
 	world::{
-		OVERMAP_HALF,
-		chunk::{
-			CHUNK_SIZE,
-			TILE_SIZE,
-			Chunk,
-			PosDirection,
-			Pos3,
-			ChunkLocal,
-			tile::Tile
-		}
+		CLIENT_OVERMAP_SIZE,
+		CHUNK_SIZE,
+		TILE_SIZE,
+		Chunk,
+		PosDirection,
+		Pos3,
+		Tile,
+		chunk::ChunkLocal,
 	}
 };
 
@@ -85,7 +83,7 @@ impl<'a> ChunkModelBuilder<'a>
 	)
 	{
 		const MAX_TILES: usize = 5;
-		const MAX_DEPTH: f32 = OVERMAP_HALF as f32 * CHUNK_SIZE as f32;
+		const MAX_DEPTH: f32 = (CLIENT_OVERMAP_SIZE / 2) as f32 * CHUNK_SIZE as f32;
 
 		let depth_tiles = chunk_depth as f32 * CHUNK_SIZE as f32 + (pos.0.z + 1) as f32;
 		let depth = (MAX_DEPTH - depth_tiles) / MAX_TILES as f32;

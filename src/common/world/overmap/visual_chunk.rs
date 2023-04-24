@@ -17,20 +17,22 @@ use crate::{
 			LocalPos,
 			GlobalPos,
 			Chunk,
-			chunk::{CHUNK_SIZE, PosDirection, InclusiveGroup}
+			CHUNK_SIZE,
+			PosDirection,
+			InclusiveGroup
 		}
 	}
 };
 
 
 #[derive(Debug)]
-pub struct VerticalChunk
+pub struct VisualChunk
 {
 	objects: Box<[Object]>,
 	generated: bool
 }
 
-impl VerticalChunk
+impl VisualChunk
 {
 	pub fn new() -> Self
 	{
@@ -142,7 +144,7 @@ impl VerticalChunk
 	}
 }
 
-impl GameObject for VerticalChunk
+impl GameObject for VisualChunk
 {
 	fn update(&mut self, _dt: f32) {}
 
