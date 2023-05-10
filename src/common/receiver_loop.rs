@@ -8,30 +8,21 @@ use crate::common::{
 };
 
 
-pub fn receiver_loop<T, FP, FD>(
-	this: T,
-	mut handler: MessagePasser,
-	mut process_function: FP,
-	disconnect_function: FD
-)
+pub fn receiver_loop<F, D>(mut messager: MessagePasser, mut on_message: F, on_close: D)
 where
-	T: Clone + Send + 'static,
-	FP: FnMut(T, Message) + Send + 'static,
-	FD: FnOnce(T) + Send + 'static
+	F: FnMut(Message) + Send + 'static,
+	D: FnOnce() + Send + 'static
 {
 	thread::spawn(move ||
 	{
 		loop
 		{
-			if let Ok(messages) = handler.receive()
+			if let Ok(messages) = messager.receive()
 			{
-				messages.into_iter().for_each(|message|
-				{
-					process_function(this.clone(), message)
-				});
+				messages.into_iter().for_each(|message| on_message(message));
 			} else
 			{
-				disconnect_function(this);
+				on_close();
 				return;
 			}
 		}

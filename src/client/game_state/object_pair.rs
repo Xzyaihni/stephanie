@@ -133,9 +133,14 @@ impl<T: PhysicsEntity + ChildContainer> GameObject for ObjectPair<T>
 			});
 	}
 
-	fn draw(&self, allocator: AllocatorType, builder: BuilderType, layout: LayoutType)
+	fn update_buffers(&mut self, builder: BuilderType, index: usize)
 	{
-		self.objects.iter().for_each(|object| object.draw(allocator, builder, layout.clone()));
+		self.objects.iter_mut().for_each(|object| object.update_buffers(builder, index));
+	}
+
+	fn draw(&self, builder: BuilderType, layout: LayoutType, index: usize)
+	{
+		self.objects.iter().for_each(|object| object.draw(builder, layout.clone(), index));
 	}
 }
 

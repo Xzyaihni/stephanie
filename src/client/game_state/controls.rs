@@ -11,6 +11,8 @@ pub enum Control
 	MoveLeft,
 	MainAction,
 	SecondaryAction,
+	Jump,
+	Crouch,
 	ZoomIn,
 	ZoomOut,
 	ZoomReset

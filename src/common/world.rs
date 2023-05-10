@@ -12,17 +12,18 @@ pub use overmap::chunk::{
 	self,
 	CHUNK_SIZE,
 	CHUNK_VISUAL_SIZE,
+	VISUAL_TILE_HEIGHT,
 	TILE_SIZE,
 	Pos3,
 	Chunk,
 	GlobalPos,
 	LocalPos,
 	PosDirection,
-	InclusiveGroup,
+	DirectionsGroup,
+	MaybeGroup,
+	AlwaysGroup,
 	tile::Tile
 };
-
-use overmap::Overmap;
 
 use client_overmap::ClientOvermap;
 use visual_overmap::VisualOvermap;
@@ -74,9 +75,9 @@ impl World
 		self.overmap.rescale(size);
 	}
 
-	pub fn player_moved(&mut self, pos: Pos3<f32>)
+	pub fn camera_moved(&mut self, pos: Pos3<f32>)
 	{
-		self.overmap.player_moved(pos);
+		self.overmap.camera_moved(pos);
 	}
 
 	pub fn handle_message(&mut self, message: Message) -> Option<Message>
@@ -100,8 +101,13 @@ impl GameObject for World
 		self.overmap.update(dt);
 	}
 
-	fn draw(&self, allocator: AllocatorType, builder: BuilderType, layout: LayoutType)
+	fn update_buffers(&mut self, builder: BuilderType, index: usize)
 	{
-		self.overmap.draw(allocator, builder, layout);
+		self.overmap.update_buffers(builder, index);
+	}
+
+	fn draw(&self, builder: BuilderType, layout: LayoutType, index: usize)
+	{
+		self.overmap.draw(builder, layout, index);
 	}
 }

@@ -85,12 +85,12 @@ pub trait ChildContainer: TransformContainer
 
 	fn add_children(&mut self, children: &mut [ChildEntity])
 	{
-		children.iter_mut().for_each(|child| child.transform_callback(self.transform_clone()));
-
 		let this_children = self.children_mut();
 
 		this_children.extend(children.iter().cloned());
 		this_children.sort_by(|child, other| child.z_level().cmp(&other.z_level()));
+
+		self.transform_callback(self.transform_clone());
 	}
 }
 
@@ -187,6 +187,24 @@ pub trait TransformContainer: OnTransformCallback
 	{
 		self.transform_mut().position = position;
 		self.position_callback(position);
+	}
+
+	fn set_position_x(&mut self, x: f32)
+	{
+		self.transform_mut().position.x = x;
+		self.position_callback(self.transform_ref().position);
+	}
+
+	fn set_position_y(&mut self, y: f32)
+	{
+		self.transform_mut().position.y = y;
+		self.position_callback(self.transform_ref().position);
+	}
+
+	fn set_position_z(&mut self, z: f32)
+	{
+		self.transform_mut().position.z = z;
+		self.position_callback(self.transform_ref().position);
 	}
 
 	fn scale(&self) -> &Vector3<f32>

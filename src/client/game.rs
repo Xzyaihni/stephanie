@@ -5,6 +5,7 @@ use nalgebra::{
 use crate::common::{
     EntitiesController,
     TransformContainer,
+    Transform,
     physics::PhysicsEntity
 };
 
@@ -39,7 +40,7 @@ impl Game
 
     pub fn on_player_connected(&mut self, game_state: &mut GameState)
     {
-        self.camera_sync(game_state);
+        self.player.camera_sync_instant(game_state);
     }
 
     pub fn update(&mut self, game_state: &mut GameState, dt: f32)
@@ -56,14 +57,17 @@ impl Game
             self.player.walk(game_state, dt, movement_direction);
         }
 
-        self.player.world_moved(game_state);
-
         self.player.look_at(game_state, game_state.mouse_position);
     }
 
     pub fn player_exists(&mut self, game_state: &mut GameState) -> bool
     {
         self.player.exists(game_state)
+    }
+
+    pub fn camera_sync(&mut self, game_state: &mut GameState)
+    {
+        self.player.camera_sync(game_state);
     }
 
     fn movement_direction(game_state: &mut GameState) -> (Vector3<f32>, bool)
@@ -95,32 +99,33 @@ impl Game
             moved = true;
         }
 
+        if game_state.pressed(Control::Jump)
+        {
+            movement_direction.z += 0.1;
+            moved = true;
+        }
+
+        if game_state.pressed(Control::Crouch)
+        {
+            movement_direction.z -= 0.1;
+            moved = true;
+        }
+
         (movement_direction, moved)
-    }
-
-    pub fn camera_sync(&mut self, game_state: &mut GameState)
-    {
-        self.player.camera_sync(game_state);
-    }
-
-    #[allow(dead_code)]
-    #[cfg(debug_assertions)]
-    pub fn print_camera_pos_positions(&self, game_state: &GameState)
-    {
-        self.player.print_camera_pos_positions(game_state);
     }
 }
 
 struct PlayerContainer
 {
-    id: usize
+    id: usize,
+    camera_follow: f32
 }
 
 impl PlayerContainer
 {
     pub fn new(id: usize) -> Self
     {
-        Self{id}
+        Self{id, camera_follow: 0.25}
     }
 
     pub fn exists(&self, game_state: &mut GameState) -> bool
@@ -139,11 +144,26 @@ impl PlayerContainer
 
     pub fn look_at(&self, game_state: &mut GameState, mouse_position: MousePosition)
     {
-        let (x, y) = (mouse_position.x - 0.5, mouse_position.y - 0.5);
+        let (mouse_x, mouse_y) = (mouse_position.x - 0.5, mouse_position.y - 0.5);
+
+        let (aspect, camera_pos) = {
+            let camera_ref = game_state.camera.read();
+
+            (camera_ref.aspect(), camera_ref.position().xy())
+        };
+
+        let mut player_mut = game_state.player_mut(self.id);
+        let player_pos = player_mut.position().xy();
+
+        let player_offset = player_pos - camera_pos;
+
+        let player_offset = (player_offset.x / aspect.0, player_offset.y / aspect.1);
+
+        let (x, y) = (mouse_x - player_offset.0, mouse_y - player_offset.1);
 
         let rotation = y.atan2(x);
 
-        game_state.player_mut(self.id).set_rotation(rotation);
+        player_mut.set_rotation(rotation);
     }
 
     pub fn camera_sync(&self, game_state: &mut GameState)
@@ -152,24 +172,37 @@ impl PlayerContainer
 
         let position = player.transform_ref().position;
 
-        game_state.camera.write().set_position(position);
+        let mut camera_mut = game_state.camera.write();
+        camera_mut.translate_to(position, self.camera_follow);
+        camera_mut.set_position_z(position.z);
     }
 
-    pub fn world_moved(&self, game_state: &mut GameState)
+    pub fn camera_sync_instant(&self, game_state: &mut GameState)
     {
         let player = game_state.player_ref(self.id);
 
         let position = player.transform_ref().position;
-        game_state.player_moved(position.into());
+
+        game_state.camera.write().set_position(position);
     }
 
     #[allow(dead_code)]
     #[cfg(debug_assertions)]
-    pub fn print_camera_pos_positions(&self, game_state: &GameState)
+    pub fn debug_positions(&self, game_state: &GameState)
     {
+        let display_position = |transform: &Transform|
+        {
+            let pos = transform.position;
+
+            format!("{}, {}, {}", pos.x, pos.y, pos.z)
+        };
+
+        let position = display_position(game_state.player_ref(self.id).transform_ref());
+        let camera_position = display_position(game_state.camera.read().transform_ref());
+
         eprintln!("========================");
-        eprintln!("position: {:#?}", game_state.player_ref(self.id).transform_ref());
-        eprintln!("camera:   {:#?}", game_state.camera.read().transform_ref());
+        eprintln!("position: {position}");
+        eprintln!("camera:   {camera_position}");
         eprintln!("========================");
     }
 }

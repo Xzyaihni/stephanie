@@ -6,7 +6,7 @@ use std::{
 use parking_lot::RwLock;
 
 use super::{
-	super::DescriptorSetUploader,
+	super::{DescriptorSetUploader, ObjectAllocator},
 	camera::Camera,
 	object_transform::ObjectTransform,
 	object::{
@@ -27,13 +27,15 @@ pub struct ObjectFactory
 	camera: Arc<RwLock<Camera>>,
 	default_model: Arc<RwLock<Model>>,
 	texture_ids: HashMap<String, usize>,
-	textures: Vec<Arc<RwLock<Texture>>>
+	textures: Vec<Arc<RwLock<Texture>>>,
+	allocator: ObjectAllocator
 }
 
 impl ObjectFactory
 {
 	pub fn new(
 		camera: Arc<RwLock<Camera>>,
+		allocator: ObjectAllocator,
 		textures: HashMap<String, Arc<RwLock<Texture>>>
 	) -> Self
 	{
@@ -45,11 +47,12 @@ impl ObjectFactory
 				((name, index), texture)
 			}).unzip();
 
-		Self{camera, default_model, texture_ids, textures}
+		Self{camera, allocator, default_model, texture_ids, textures}
 	}
 
 	pub fn new_with_ids(
 		camera: Arc<RwLock<Camera>>,
+		allocator: ObjectAllocator,
 		textures: Vec<Arc<RwLock<Texture>>>
 	) -> Self
 	{
@@ -57,7 +60,7 @@ impl ObjectFactory
 
 		let texture_ids = HashMap::new();
 
-		Self{camera, default_model, texture_ids, textures}
+		Self{camera, allocator, default_model, texture_ids, textures}
 	}
 
 	pub fn swap_pipeline(&mut self, uploader: &DescriptorSetUploader)
@@ -101,7 +104,8 @@ impl ObjectFactory
 			self.camera.clone(),
 			model,
 			texture,
-			object_transform
+			object_transform,
+			&self.allocator
 		)
 	}
 }

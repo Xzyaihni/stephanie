@@ -3,6 +3,7 @@ use std::{
 	ops::Index,
 	collections::HashMap,
 	fs::File,
+	sync::Arc,
 	path::{Path, PathBuf}
 };
 
@@ -36,20 +37,20 @@ pub struct TileInfo
 	pub transparent: bool
 }
 
-pub struct TileInfoMap<'a>
+pub struct TileInfoMap
 {
-	tilemap: &'a TileMap
+	tilemap: Arc<TileMap>
 }
 
-impl<'a> TileInfoMap<'a>
+impl TileInfoMap
 {
-	pub fn new(tilemap: &'a TileMap) -> Self
+	pub fn new(tilemap: Arc<TileMap>) -> Self
 	{
 		Self{tilemap}
 	}
 }
 
-impl<'a> Index<Tile> for TileInfoMap<'a>
+impl Index<Tile> for TileInfoMap
 {
 	type Output = TileInfo;
 
@@ -117,11 +118,6 @@ impl TileMap
 	pub fn info(&self, tile: Tile) -> &TileInfo
 	{
 		self.tiles.get(tile.id()).unwrap()
-	}
-
-	pub fn info_map(&self) -> TileInfoMap
-	{
-		TileInfoMap::new(self)
 	}
 
 	pub fn len(&self) -> usize

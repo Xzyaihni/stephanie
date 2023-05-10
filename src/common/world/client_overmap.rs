@@ -16,6 +16,7 @@ use super::{
 		ChunksContainer,
 		Overmap,
 		OvermapIndexing,
+		ChunkIndexing,
 		chunk::{
 			Pos3,
 			Chunk,
@@ -44,7 +45,7 @@ impl<const SIZE: usize> ClientOvermap<SIZE>
 		player_position: Pos3<f32>
 	) -> Self
 	{
-		let chunks = ChunksContainer::new(|| None);
+		let chunks = ChunksContainer::new(|_| None);
 
 		let player_position = player_position.rounded();
 
@@ -76,6 +77,41 @@ impl<const SIZE: usize> ClientOvermap<SIZE>
 
 			self.check_neighbors_vertical(local_pos);
 		}
+	}
+
+	pub fn camera_moved(&mut self, position: Pos3<f32>)
+	{
+		self.visual_overmap.camera_moved(position);
+
+		let player_position = position.rounded();
+
+		let old_position = self.player_position;
+		if player_position != old_position
+		{
+			if player_position.0.z != old_position.0.z
+			{
+				self.force_regenerate();
+			}
+
+			self.player_position = player_position;
+
+			self.position_offset(player_position - old_position);
+		}
+	}
+
+	fn force_regenerate(&mut self)
+	{
+		self.visual_overmap.mark_all_ungenerated();
+		self.chunk_ordering.iter().for_each(|index|
+		{
+			let pos = ChunksContainer::<SIZE, Option<Arc<Chunk>>>::index_to_pos(*index);
+			self.check_vertical(pos);
+		});
+	}
+
+	fn request_chunk(&self, pos: GlobalPos)
+	{
+		self.world_receiver.request_chunk(pos);
 	}
 
 	fn line_exists(&self, pos: LocalPos<SIZE>) -> bool
@@ -117,32 +153,7 @@ impl<const SIZE: usize> Overmap<SIZE, Arc<Chunk>> for ClientOvermap<SIZE>
 {
 	type Container = ChunksContainer<SIZE, Option<Arc<Chunk>>>;
 
-	fn chunk_ordering(&self) -> &[usize]
-	{
-		&self.chunk_ordering
-	}
-
-	fn request_chunk(&self, pos: GlobalPos)
-	{
-		self.world_receiver.request_chunk(pos);
-	}
-
-	fn player_moved(&mut self, player_position: Pos3<f32>)
-	{
-		self.visual_overmap.player_moved(player_position);
-
-		let player_position = player_position.rounded();
-
-		let old_position = self.player_position;
-		if player_position != old_position
-		{
-			self.player_position = player_position;
-
-			self.position_offset(player_position - old_position);
-		}
-	}
-
-	fn get(&self, pos: LocalPos<SIZE>) -> &Option<Arc<Chunk>>
+	fn get_local(&self, pos: LocalPos<SIZE>) -> &Option<Arc<Chunk>>
 	{
 		&self.chunks[pos]
 	}
@@ -160,9 +171,25 @@ impl<const SIZE: usize> Overmap<SIZE, Arc<Chunk>> for ClientOvermap<SIZE>
 		self.visual_overmap.swap(a, b);
 	}
 
-	fn mark_ungenerated(&self, pos: LocalPos<SIZE>)
+	fn mark_ungenerated(&mut self, pos: LocalPos<SIZE>)
 	{
 		self.visual_overmap.mark_ungenerated(pos);
+	}
+
+	fn generate_missing(&mut self)
+	{
+		let player_pos = self.player_position();
+
+		self.chunk_ordering
+			.iter()
+			.map(|index| Self::Container::index_to_pos(*index))
+			.filter(|pos| self.get_local(*pos).is_none())
+			.for_each(|pos|
+			{
+				let global_pos = Self::to_global_associated(pos, player_pos);
+
+				self.request_chunk(global_pos);
+			});
 	}
 }
 
@@ -181,8 +208,13 @@ impl<const SIZE: usize> GameObject for ClientOvermap<SIZE>
 		self.visual_overmap.update(dt);
 	}
 
-	fn draw(&self, allocator: AllocatorType, builder: BuilderType, layout: LayoutType)
+	fn update_buffers(&mut self, builder: BuilderType, index: usize)
 	{
-		self.visual_overmap.draw(allocator, builder, layout.clone());
+		self.visual_overmap.update_buffers(builder, index);
+	}
+
+	fn draw(&self, builder: BuilderType, layout: LayoutType, index: usize)
+	{
+		self.visual_overmap.draw(builder, layout.clone(), index);
 	}
 }

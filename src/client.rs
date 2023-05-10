@@ -2,6 +2,7 @@ use std::{
 	fs,
 	sync::Arc,
 	net::TcpStream,
+	collections::HashMap,
 	path::{Path, PathBuf}
 };
 
@@ -9,6 +10,11 @@ use parking_lot::RwLock;
 
 use vulkano::{
 	device::Device,
+	buffer::{
+		BufferUsage,
+		Subbuffer,
+		allocator::{SubbufferAllocator, SubbufferAllocatorCreateInfo}
+	},
 	pipeline::PipelineLayout,
 	descriptor_set::allocator::StandardDescriptorSetAllocator,
 	sampler::{
@@ -32,6 +38,8 @@ use game::{
 	ObjectFactory,
 	camera::Camera,
 	object::{
+		ObjectVertex,
+		model::Model,
 		resource_uploader::{DescriptorSetUploader, ResourceUploader},
 		texture::{RgbaImage, Texture}
 	}
@@ -53,7 +61,7 @@ use game_object_types::*;
 pub use game::object::DrawableEntity;
 
 pub use connections_handler::ConnectionsHandler;
-pub use tiles_factory::TilesFactory;
+pub use tiles_factory::{TilesFactory, ChunkInfo};
 
 pub mod game_state;
 pub mod game;
@@ -70,11 +78,9 @@ pub mod game_object_types
 
 	use vulkano::{
 		pipeline::PipelineLayout,
-		memory::allocator::StandardMemoryAllocator,
 		command_buffer::{AutoCommandBufferBuilder, PrimaryAutoCommandBuffer}
 	};
 
-	pub type AllocatorType<'a> = &'a StandardMemoryAllocator;
 	pub type BuilderType<'a> = &'a mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>;
 	pub type LayoutType = Arc<PipelineLayout>;
 }
@@ -82,7 +88,47 @@ pub mod game_object_types
 pub trait GameObject
 {
 	fn update(&mut self, dt: f32);
-	fn draw(&self, allocator: AllocatorType, builder: BuilderType, layout: LayoutType);
+	fn update_buffers(&mut self, builder: BuilderType, index: usize);
+	fn draw(&self, builder: BuilderType, layout: LayoutType, index: usize);
+}
+
+#[derive(Debug, Clone)]
+pub struct ObjectAllocator
+{
+	allocator: Arc<SubbufferAllocator>,
+	frames: usize
+}
+
+impl ObjectAllocator
+{
+	pub fn new(device: Arc<Device>, frames: usize) -> Self
+	{
+		let allocator = StandardMemoryAllocator::new_default(device);
+		let allocator = SubbufferAllocator::new(
+			Arc::new(allocator),
+			SubbufferAllocatorCreateInfo{
+				buffer_usage: BufferUsage::VERTEX_BUFFER | BufferUsage::TRANSFER_DST,
+				..Default::default()
+			}
+		);
+
+		let allocator = Arc::new(allocator);
+
+		Self{allocator, frames}
+	}
+
+	pub fn subbuffers(&self, model: &Model) -> Box<[Subbuffer<[ObjectVertex]>]>
+	{
+		(0..self.frames).map(|_|
+		{
+			self.allocator.allocate_slice(model.vertices.len() as u64).unwrap()
+		}).collect::<Vec<_>>().into_boxed_slice()
+	}
+
+	pub fn subbuffers_amount(&self) -> usize
+	{
+		self.frames
+	}
 }
 
 #[derive(Debug)]
@@ -103,7 +149,6 @@ pub struct Client
 {
 	device: Arc<Device>,
 	layout: Arc<PipelineLayout>,
-	allocator: StandardMemoryAllocator,
 	game_state: Arc<RwLock<GameState>>,
 	game: Game
 }
@@ -114,6 +159,7 @@ impl Client
 		device: Arc<Device>,
 		builder: BuilderType,
 		layout: Arc<PipelineLayout>,
+		frames: usize,
 		aspect: f32,
 		tilemap: TileMap,
 		client_info: &ClientInfo
@@ -128,7 +174,46 @@ impl Client
 			descriptor: Self::descriptor_set_uploader(&device, layout.clone())
 		};
 
-		let textures = Self::recursive_dir(Path::new("textures/")).into_iter().map(|name|
+		let textures = Self::all_textures(&mut resource_uploader, "textures/");
+
+		let object_allocator = ObjectAllocator::new(device.clone(), frames);
+
+		let object_factory = ObjectFactory::new(
+			camera.clone(),
+			object_allocator.clone(),
+			textures
+		);
+
+		let tiles_factory = TilesFactory::new(
+			camera.clone(),
+			object_allocator,
+			&mut resource_uploader,
+			tilemap
+		)?;
+
+		let stream = TcpStream::connect(&client_info.address)?;
+		let message_passer = MessagePasser::new(stream);
+
+		let game_state = GameState::new(
+			camera,
+			object_factory,
+			tiles_factory,
+			message_passer,
+			&client_info
+		);
+
+		let game = Game::new(game_state.player_id());
+		let game_state = Arc::new(RwLock::new(game_state));
+
+		Ok(Self{device, layout, game_state, game})
+	}
+
+	fn all_textures<P: AsRef<Path>>(
+		resource_uploader: &mut ResourceUploader,
+		folder: P
+	) -> HashMap<String, Arc<RwLock<Texture>>>
+	{
+		Self::recursive_dir(folder.as_ref()).into_iter().map(|name|
 		{
 			let image = RgbaImage::load(name.clone()).unwrap();
 
@@ -139,40 +224,8 @@ impl Client
 				acc
 			}).into_os_string().into_string().unwrap();
 
-			(short_path, Arc::new(RwLock::new(Texture::new(&mut resource_uploader, image))))
-		}).collect();
-
-		let stream = TcpStream::connect(&client_info.address)?;
-		let message_passer = MessagePasser::new(stream);
-
-		let object_factory = ObjectFactory::new(
-			camera.clone(),
-			textures
-		);
-
-		let tiles_factory = TilesFactory::new(
-			camera.clone(),
-			&mut resource_uploader,
-			tilemap
-		)?;
-
-		let game_state = GameState::new(
-			camera,
-			object_factory,
-			tiles_factory,
-			message_passer,
-			client_info.debug_mode
-		);
-
-		let game_state = Arc::new(RwLock::new(game_state));
-
-		let player_id = GameState::connect(game_state.clone(), &client_info.name);
-
-		let game = Game::new(player_id);
-
-		let allocator = StandardMemoryAllocator::new_default(device.clone());
-
-		Ok(Self{device, layout, allocator, game_state, game})
+			(short_path, Arc::new(RwLock::new(Texture::new(resource_uploader, image))))
+		}).collect()
 	}
 
 	fn recursive_dir(path: &Path) -> impl Iterator<Item=PathBuf>
@@ -267,6 +320,8 @@ impl Client
 			GameInput::KeyboardInput(VirtualKeyCode::W) => Some(Control::MoveUp),
 			GameInput::MouseInput(3) => Some(Control::MainAction),
 			GameInput::MouseInput(1) => Some(Control::SecondaryAction),
+			GameInput::KeyboardInput(VirtualKeyCode::Space) => Some(Control::Jump),
+			GameInput::KeyboardInput(VirtualKeyCode::LControl) => Some(Control::Crouch),
 			GameInput::KeyboardInput(VirtualKeyCode::Equals) => Some(Control::ZoomIn),
 			GameInput::KeyboardInput(VirtualKeyCode::Minus) => Some(Control::ZoomOut),
 			GameInput::KeyboardInput(VirtualKeyCode::Key0) => Some(Control::ZoomReset),
@@ -296,8 +351,11 @@ impl Client
 	{
 		self.game_state.write().mouse_position = position.into();
 	}
+}
 
-	pub fn update(&mut self, dt: f32)
+impl GameObject for Client
+{
+	fn update(&mut self, dt: f32)
 	{
 		let mut writer = self.game_state.write();
 
@@ -317,8 +375,13 @@ impl Client
 		}
 	}
 
-	pub fn draw(&self, builder: BuilderType, layout: LayoutType)
+	fn update_buffers(&mut self, builder: BuilderType, index: usize)
 	{
-		self.game_state.write().draw(&self.allocator, builder, layout);
+		self.game_state.write().update_buffers(builder, index);
+	}
+
+	fn draw(&self, builder: BuilderType, layout: LayoutType, index: usize)
+	{
+		self.game_state.read().draw(builder, layout, index);
 	}
 }

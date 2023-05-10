@@ -3,21 +3,23 @@ use std::{
 };
 
 use nalgebra::{
-    geometry::Orthographic3,
     Vector3,
+    geometry::Orthographic3,
     Matrix4
 };
 
-use super::object_transform::ObjectTransform;
+use camera_transform::CameraTransform;
 
 use crate::common::{Transform, OnTransformCallback, TransformContainer};
+
+mod camera_transform;
 
 
 #[derive(Debug, Clone)]
 pub struct Camera
 {
     projection: Matrix4<f32>,
-    view: ObjectTransform,
+    view: CameraTransform,
     projection_view: Matrix4<f32>,
     size: (f32, f32)
 }
@@ -29,7 +31,10 @@ impl Camera
         let size = Self::aspect_size(aspect);
         let projection = Self::create_projection(size);
 
-        let view = ObjectTransform::new(Transform::new(), Self::origin(size));
+        let mut view = CameraTransform::new_transformed(Transform::new());
+
+        // makes positive z towards the camera and negative away
+        view.set_scale(Vector3::new(1.0, 1.0, -1.0));
 
         let projection_view = Self::create_projection_view(projection, view.matrix());
 
@@ -52,8 +57,8 @@ impl Camera
         let identity = Matrix4::identity();
         let mut projection = Orthographic3::from_matrix_unchecked(identity);
 
-        projection.set_left_and_right(0.0, size.0);
-        projection.set_bottom_and_top(0.0, size.1);
+        projection.set_left_and_right(-size.0 / 2.0, size.0 / 2.0);
+        projection.set_bottom_and_top(-size.1 / 2.0, size.1 / 2.0);
 
         projection.to_homogeneous()
     }
@@ -61,7 +66,6 @@ impl Camera
     fn recreate_projection(&mut self, size: (f32, f32))
     {
         self.size = size;
-        self.view.set_origin(Self::origin(size));
 
         self.projection = Self::create_projection(size);
 
@@ -97,11 +101,6 @@ impl Camera
         self.recreate_projection((size.0 * scale, size.1 * scale));
     }
 
-    fn origin(size: (f32, f32)) -> Vector3<f32>
-    {
-        Vector3::new(size.0 / 2.0, size.1 / 2.0, 0.0)
-    }
-
     pub fn aspect(&self) -> (f32, f32)
     {
         self.size
@@ -135,23 +134,5 @@ impl TransformContainer for Camera
     fn transform_mut(&mut self) -> &mut Transform
     {
         self.view.transform_mut()
-    }
-
-    fn set_position(&mut self, position: Vector3<f32>)
-    {
-        self.transform_mut().position = -position;
-        self.position_callback(position);
-    }
-
-    fn set_scale(&mut self, scale: Vector3<f32>)
-    {
-        self.transform_mut().scale = -scale;
-        self.scale_callback(scale);
-    }
-
-    fn set_rotation(&mut self, rotation: f32)
-    {
-        self.transform_mut().rotation = -rotation;
-        self.rotation_callback(rotation);
     }
 }

@@ -27,7 +27,7 @@ impl ConnectionsHandler
 		self.message_passer.send_one(message)
 	}
 
-	pub fn receive(&mut self) -> Result<Option<Message>, bincode::Error>
+	pub fn receive_blocking(&mut self) -> Result<Option<Message>, bincode::Error>
 	{
 		self.message_passer.receive_one()
 	}

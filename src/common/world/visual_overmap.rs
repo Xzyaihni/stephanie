@@ -1,12 +1,17 @@
 use std::{
 	thread,
-	sync::Arc
+	time::Instant,
+	sync::{
+		Arc,
+		mpsc::{self, Receiver, Sender}
+	}
 };
 
-use parking_lot::{RwLock, Mutex};
+use parking_lot::RwLock;
 
 use crate::{
 	client::{
+		ChunkInfo,
 		TilesFactory,
 		GameObject,
 		game_object_types::*
@@ -31,13 +36,22 @@ use super::{
 };
 
 
+struct VisualGenerated
+{
+	chunk_info: Box<[ChunkInfo]>,
+	position: GlobalPos,
+	timestamp: Instant
+}
+
 #[derive(Debug)]
 pub struct VisualOvermap<const SIZE: usize>
 {
-	tiles_factory: Arc<Mutex<TilesFactory>>,
-	chunks: Arc<Mutex<FlatChunksContainer<SIZE, VisualChunk>>>,
+	tiles_factory: TilesFactory,
+	chunks: FlatChunksContainer<SIZE, (Instant, VisualChunk)>,
 	size: (f32, f32),
-	player_position: Arc<RwLock<Pos3<f32>>>
+	player_position: Arc<RwLock<Pos3<f32>>>,
+	receiver: Receiver<VisualGenerated>,
+	sender: Sender<VisualGenerated>
 }
 
 impl<const SIZE: usize> VisualOvermap<SIZE>
@@ -48,28 +62,29 @@ impl<const SIZE: usize> VisualOvermap<SIZE>
 		player_position: Pos3<f32>
 	) -> Self
 	{
-		let tiles_factory = Arc::new(Mutex::new(tiles_factory));
-
-		let chunks = Arc::new(Mutex::new(
-			FlatChunksContainer::new(VisualChunk::new)
-		));
+		let chunks = FlatChunksContainer::new(|_| (Instant::now(), VisualChunk::new()));
 
 		let player_position = Arc::new(RwLock::new(player_position));
 
-		Self{tiles_factory, chunks, size, player_position}
+		let (sender, receiver) = mpsc::channel();
+
+		Self{tiles_factory, chunks, size, player_position, receiver, sender}
 	}
 
-	pub fn generate(&self, chunks: &ChunksContainer<SIZE, Option<Arc<Chunk>>>, pos: LocalPos<SIZE>)
+	pub fn generate(
+		&self,
+		chunks: &ChunksContainer<SIZE, Option<Arc<Chunk>>>,
+		pos: LocalPos<SIZE>
+	)
 	{
 		let LocalPos(Pos3{x, y, ..}) = pos;
 
 		let chunks = (0..=(SIZE / 2)).rev().map(|z|
 		{
 			let local_pos = LocalPos::new(x, y, z);
-			local_pos.directions_inclusive_group(|position|
-			{
-				chunks[position].clone().unwrap()
-			})
+
+			local_pos.maybe_group()
+				.map(|position| chunks[position].clone().unwrap())
 		}).collect::<Vec<_>>();
 
 		let chunk_pos = self.to_global(pos);
@@ -85,18 +100,14 @@ impl<const SIZE: usize> VisualOvermap<SIZE>
 			height
 		} as usize;
 
-		let tiles_factory = self.tiles_factory.clone();
+		let sender = self.sender.clone();
 
-		let player_position = self.player_position.clone();
-		let visual_chunks = self.chunks.clone();
+		let (info_map, model_builder) =
+			(self.tiles_factory.info_map(), self.tiles_factory.builder());
 
 		thread::spawn(move ||
 		{
-			let mut tiles_factory = tiles_factory.lock();
-
-			let (info_map, model_builder) = tiles_factory.build_info();
-
-			let vertical_chunk = VisualChunk::regenerate(
+			let chunk_info = VisualChunk::create(
 				info_map,
 				model_builder,
 				height,
@@ -104,17 +115,46 @@ impl<const SIZE: usize> VisualOvermap<SIZE>
 				&chunks
 			);
 
-			let player_position = player_position.read().rounded();
-			if player_height != player_position.0.z
+			let generated = VisualGenerated{
+				chunk_info,
+				position: chunk_pos,
+				timestamp: Instant::now()
+			};
+
+			sender.send(generated).unwrap();
+		});
+	}
+
+	pub fn process_message(&mut self)
+	{
+		match self.receiver.try_recv()
+		{
+			Ok(generated) =>
+			{
+				self.handle_generated(generated);
+			},
+			Err(_) =>
 			{
 				return;
 			}
+		}
+	}
 
-			if let Some(local_pos) = Self::to_local_associated(chunk_pos, player_position)
+	fn handle_generated(&mut self, generated: VisualGenerated)
+	{
+		let VisualGenerated{chunk_info, position, timestamp} = generated;
+
+		if let Some(local_pos) = self.to_local(position)
+		{
+			let current_chunk = &mut self.chunks[local_pos];
+
+			if current_chunk.0 < timestamp
 			{
-				visual_chunks.lock()[local_pos] = vertical_chunk;
+				let chunk = VisualChunk::build(&mut self.tiles_factory, chunk_info);
+
+				*current_chunk = (timestamp, chunk);
 			}
-		});
+		}
 	}
 
 	pub fn rescale(&mut self, size: (f32, f32))
@@ -124,7 +164,16 @@ impl<const SIZE: usize> VisualOvermap<SIZE>
 
 	pub fn visible(&self, pos: LocalPos<SIZE>) -> bool
 	{
-		let player_offset = self.player_position.read().modulo(CHUNK_VISUAL_SIZE);
+		Self::visible_associated(*self.player_position.read(), self.size, pos)
+	}
+
+	fn visible_associated(
+		player_position: Pos3<f32>,
+		size: (f32, f32),
+		pos: LocalPos<SIZE>
+	) -> bool
+	{
+		let player_offset = player_position.modulo(CHUNK_VISUAL_SIZE);
 
 		let offset_position = Pos3::from(pos) - (SIZE / 2) as f32;
 		let chunk_offset = offset_position * CHUNK_VISUAL_SIZE - player_offset;
@@ -136,29 +185,37 @@ impl<const SIZE: usize> VisualOvermap<SIZE>
 			((-limit - CHUNK_VISUAL_SIZE)..limit).contains(&value)
 		};
 
-		in_range(chunk_offset.x, self.size.0) && in_range(chunk_offset.y, self.size.1)
+		in_range(chunk_offset.x, size.0) && in_range(chunk_offset.y, size.1)
 	}
 
-	pub fn player_moved(&mut self, player_position: Pos3<f32>)
+	pub fn camera_moved(&mut self, position: Pos3<f32>)
 	{
-		*self.player_position.write() = player_position;
+		*self.player_position.write() = position;
 	}
 
-	pub fn mark_ungenerated(&self, pos: LocalPos<SIZE>)
+	pub fn mark_ungenerated(&mut self, pos: LocalPos<SIZE>)
 	{
-		self.chunks.lock()[pos].mark_ungenerated();
+		self.chunks[pos].1.mark_ungenerated();
+	}
+
+	pub fn mark_all_ungenerated(&mut self)
+	{
+		self.chunks.iter_mut().for_each(|(_, (_, chunk))|
+		{
+			chunk.mark_ungenerated();
+		});
 	}
 
 	pub fn is_generated(&self, pos: LocalPos<SIZE>) -> bool
 	{
-		self.chunks.lock()[pos].is_generated()
+		self.chunks[pos].1.is_generated()
 	}
 
 	pub fn remove(&mut self, pos: LocalPos<SIZE>)
 	{
 		if pos.0.z == 0
 		{
-			self.chunks.lock()[pos] = VisualChunk::new();
+			self.chunks[pos] = (Instant::now(), VisualChunk::new());
 		}
 	}
 
@@ -166,7 +223,7 @@ impl<const SIZE: usize> VisualOvermap<SIZE>
 	{
 		if a.0.z == 0 && b.0.z == 0
 		{
-			self.chunks.lock().swap(a, b);
+			self.chunks.swap(a, b);
 		}
 	}
 }
@@ -183,14 +240,24 @@ impl<const SIZE: usize> GameObject for VisualOvermap<SIZE>
 {
 	fn update(&mut self, dt: f32)
 	{
-		self.chunks.lock().iter_mut().for_each(|(_, chunk)| chunk.update(dt));
+		self.process_message();
+
+		self.chunks.iter_mut().for_each(|(_, chunk)| chunk.1.update(dt));
 	}
 
-	fn draw(&self, allocator: AllocatorType, builder: BuilderType, layout: LayoutType)
+	fn update_buffers(&mut self, builder: BuilderType, index: usize)
 	{
-		self.chunks.lock().iter().filter(|(pos, _)|
+		self.chunks.iter_mut().filter(|(pos, _)|
+		{
+			Self::visible_associated(*self.player_position.read(), self.size, *pos)
+		}).for_each(|(_, chunk)| chunk.1.update_buffers(builder, index));
+	}
+
+	fn draw(&self, builder: BuilderType, layout: LayoutType, index: usize)
+	{
+		self.chunks.iter().filter(|(pos, _)|
 		{
 			self.visible(*pos)
-		}).for_each(|(_, chunk)| chunk.draw(allocator, builder, layout.clone()));
+		}).for_each(|(_, chunk)| chunk.1.draw(builder, layout.clone(), index));
 	}
 }

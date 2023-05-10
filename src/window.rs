@@ -7,10 +7,9 @@ use vulkano::{
     format::Format,
     shader::EntryPoint,
     sync::{
-        JoinFuture,
         FlushError,
         GpuFuture,
-        FenceSignalFuture
+        future::{JoinFuture, FenceSignalFuture}
     },
     pipeline::{
         Pipeline,
@@ -21,7 +20,7 @@ use vulkano::{
             color_blend::ColorBlendState,
             rasterization::{CullMode, RasterizationState},
             input_assembly::InputAssemblyState,
-            vertex_input::BuffersDefinition,
+            vertex_input::Vertex,
             viewport::{Viewport, ViewportState}
         }
     },
@@ -83,7 +82,8 @@ use crate::{
         ClientInfo,
         Client,
         GameInput,
-        game
+        GameObject,
+        game::object::ObjectVertex
     }
 };
 
@@ -133,7 +133,7 @@ pub fn generate_pipeline(
 ) -> Arc<GraphicsPipeline>
 {
     GraphicsPipeline::start()
-        .vertex_input_state(BuffersDefinition::new().vertex::<game::object::Vertex>())
+        .vertex_input_state(ObjectVertex::per_vertex())
         .vertex_shader(vertex_entry, ())
         .input_assembly_state(InputAssemblyState::new())
         .viewport_state(ViewportState::viewport_fixed_scissor_irrelevant([viewport]))
@@ -216,10 +216,7 @@ impl RenderInfo
                 min_image_count,
                 image_format: Some(image_format),
                 image_extent: dimensions.into(),
-                image_usage: ImageUsage{
-                    color_attachment: true,
-                    ..Default::default()
-                },
+                image_usage: ImageUsage::COLOR_ATTACHMENT,
                 composite_alpha,
                 ..Default::default()
             }
@@ -313,7 +310,22 @@ pub fn run(
     let capabilities = physical_device.surface_capabilities(&surface, Default::default())
         .unwrap();
 
-    let composite_alpha = capabilities.supported_composite_alpha.iter().next().unwrap();
+    let composite_alpha =
+    {
+        let supported = capabilities.supported_composite_alpha;
+
+        let preferred = CompositeAlpha::Opaque;
+        let supports_preferred = supported.contains_enum(preferred);
+
+        if supports_preferred
+        {
+            preferred
+        } else
+        {
+            supported.into_iter().next().unwrap()
+        }
+    };
+
     let image_format = physical_device.surface_formats(&surface, Default::default())
         .unwrap()[0].0;
 
@@ -328,7 +340,7 @@ pub fn run(
     let queue = queues[0].clone();
 
     let fences_amount = render_info.framebuffers.len();
-    let mut fences = vec![None; fences_amount];
+    let mut fences = vec![None; fences_amount].into_boxed_slice();
     let mut previous_frame_index = 0;
 
     let layout = render_info.pipelines[0].layout().clone();
@@ -411,6 +423,7 @@ pub fn run(
                         device.clone(),
                         &mut builder,
                         layout.clone(),
+                        fences_amount,
                         render_info.aspect(),
                         tilemap.take().unwrap(),
                         &client_info
@@ -529,6 +542,8 @@ fn run_frame(
     previous_time: &mut Instant
 ) -> PrimaryAutoCommandBuffer
 {
+    client.update_buffers(&mut builder, image_index);
+
     builder.begin_render_pass(
         RenderPassBeginInfo{
             clear_values: vec![Some([0.0, 0.0, 0.0, 1.0].into())],
@@ -543,7 +558,7 @@ fn run_frame(
     *previous_time = Instant::now();
 
     client.update(delta_time);
-    client.draw(&mut builder, layout);
+    client.draw(&mut builder, layout, image_index);
 
     builder.end_render_pass().unwrap();
 

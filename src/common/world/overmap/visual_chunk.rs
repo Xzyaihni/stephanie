@@ -8,7 +8,7 @@ use crate::{
 	client::{
 		GameObject,
 		game_object_types::*,
-		tiles_factory::ChunkModelBuilder,
+		tiles_factory::{TilesFactory, ChunkInfo, ChunkModelBuilder},
 		game::object::Object
 	},
 	common::{
@@ -19,7 +19,7 @@ use crate::{
 			Chunk,
 			CHUNK_SIZE,
 			PosDirection,
-			InclusiveGroup
+			MaybeGroup
 		}
 	}
 };
@@ -39,13 +39,13 @@ impl VisualChunk
 		Self{objects: Box::new([]), generated: false}
 	}
 
-	pub fn regenerate(
+	pub fn create(
 		info_map: TileInfoMap,
 		mut model_builder: ChunkModelBuilder,
 		height: usize,
 		pos: GlobalPos,
-		chunks: &[InclusiveGroup<Arc<Chunk>>]
-	) -> Self
+		chunks: &[MaybeGroup<Arc<Chunk>>]
+	) -> Box<[ChunkInfo]>
 	{
 		(0..CHUNK_SIZE).flat_map(|y|
 		{
@@ -62,7 +62,14 @@ impl VisualChunk
 			)
 		});
 
-		Self{objects: model_builder.build(pos.0.x, pos.0.y), generated: true}
+		model_builder.build(GlobalPos::new(pos.0.x, pos.0.y, 0))
+	}
+
+	pub fn build(tiles_factory: &mut TilesFactory, chunk_info: Box<[ChunkInfo]>) -> Self
+	{
+		let objects = tiles_factory.build(chunk_info);
+
+		Self{objects, generated: true}
 	}
 
 	fn create_tile_line(
@@ -71,15 +78,16 @@ impl VisualChunk
 		x: usize,
 		y: usize,
 		player_height: usize,
-		chunks: &[InclusiveGroup<Arc<Chunk>>]
+		chunks: &[MaybeGroup<Arc<Chunk>>]
 	)
 	{
 		for (chunk_depth, chunk_group) in chunks.iter().enumerate()
 		{
-			//the compiler better optimize this away >:(
+			// the compiler better optimize this away >:(
 			let skip_amount = if chunk_depth == 0
 			{
-				CHUNK_SIZE - 1 - player_height
+				// skips all tiles if the player is at the bottom of the chunk
+				CHUNK_SIZE - player_height
 			} else
 			{
 				0
@@ -148,8 +156,13 @@ impl GameObject for VisualChunk
 {
 	fn update(&mut self, _dt: f32) {}
 
-	fn draw(&self, allocator: AllocatorType, builder: BuilderType, layout: LayoutType)
+	fn update_buffers(&mut self, builder: BuilderType, index: usize)
 	{
-		self.objects.iter().for_each(|object| object.draw(allocator, builder, layout.clone()));
+		self.objects.iter_mut().for_each(|object| object.update_buffers(builder, index));
+	}
+
+	fn draw(&self, builder: BuilderType, layout: LayoutType, index: usize)
+	{
+		self.objects.iter().for_each(|object| object.draw(builder, layout.clone(), index));
 	}
 }

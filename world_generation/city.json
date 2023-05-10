@@ -1,0 +1,112 @@
+[
+    {
+        "name": "none",
+        "neighbors": {
+            "up": [],
+            "down": [],
+            "right": [],
+            "left": []
+            }
+    },
+    {
+        "name": "building",
+        "neighbors": {
+            "up": [
+                {"weight": 1, "name": "road_horizontal"}
+                ],
+            "down": [
+                {"weight": 1, "name": "road_horizontal"}
+                ],
+            "right": [
+                {"weight": 1, "name": "road_vertical"}
+                ],
+            "left": [
+                {"weight": 1, "name": "road_vertical"}
+                ]
+            }
+    },
+    {
+        "name": "road_horizontal",
+        "neighbors": {
+            "up": [
+                {"weight": 4, "name": "building"},
+                {"weight": 1, "name": "park"}
+                ],
+            "down": [
+                {"weight": 4, "name": "building"},
+                {"weight": 1, "name": "park"}
+                ],
+            "right": [
+                {"weight": 4, "name": "road_horizontal"},
+                {"weight": 1, "name": "road_intersection"}
+                ],
+            "left": [
+                {"weight": 4, "name": "road_horizontal"},
+                {"weight": 1, "name": "road_intersection"}
+                ]
+            }
+    },
+    {
+        "name": "road_vertical",
+        "neighbors": {
+            "up": [
+                {"weight": 4, "name": "road_vertical"},
+                {"weight": 1, "name": "road_intersection"}
+                ],
+            "down": [
+                {"weight": 4, "name": "road_vertical"},
+                {"weight": 1, "name": "road_intersection"}
+                ],
+            "right": [
+                {"weight": 4, "name": "building"},
+                {"weight": 1, "name": "park"}
+                ],
+            "left": [
+                {"weight": 4, "name": "building"},
+                {"weight": 1, "name": "park"}
+                ]
+            }
+    },
+    {
+        "name": "road_intersection",
+        "neighbors": {
+            "up": [
+                {"weight": 1, "name": "road_vertical"}
+                ],
+            "down": [
+                {"weight": 1, "name": "road_vertical"}
+                ],
+            "right": [
+                {"weight": 1, "name": "road_horizontal"}
+                ],
+            "left": [
+                {"weight": 1, "name": "road_horizontal"}
+                ]
+            }
+    },
+    {
+        "name": "park",
+        "neighbors": {
+            "up": [
+                {"weight": 1, "name": "park"},
+                {"weight": 2, "name": "building"},
+                {"weight": 3, "name": "road_horizontal"}
+                ],
+            "down": [
+                {"weight": 1, "name": "park"},
+                {"weight": 2, "name": "building"},
+                {"weight": 3, "name": "road_horizontal"}
+                ],
+            "right": [
+                {"weight": 1, "name": "park"},
+                {"weight": 2, "name": "building"},
+                {"weight": 3, "name": "road_vertical"}
+                ],
+            "left": [
+                {"weight": 1, "name": "park"},
+                {"weight": 2, "name": "building"},
+                {"weight": 3, "name": "road_vertical"}
+                ]
+            }
+    }
+]

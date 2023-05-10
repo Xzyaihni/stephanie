@@ -1,5 +1,8 @@
 use std::{
-	sync::Arc
+	sync::{
+		Arc,
+		mpsc::{self, TryRecvError, Receiver}
+	}
 };
 
 use parking_lot::RwLock;
@@ -9,6 +12,7 @@ use slab::Slab;
 use crate::common::{
 	sender_loop,
 	receiver_loop,
+	TransformContainer,
 	EntitiesContainer,
 	EntitiesController,
 	message::Message,
@@ -22,6 +26,7 @@ use crate::common::{
 use super::{
 	GameObject,
 	game_object_types::*,
+	ClientInfo,
 	MessagePasser,
 	ConnectionsHandler,
 	TilesFactory,
@@ -74,18 +79,23 @@ impl GameObject for ClientEntitiesContainer
 		self.players.iter_mut().for_each(|(_, pair)| pair.update(dt));
 	}
 
-	fn draw(&self, allocator: AllocatorType, builder: BuilderType, layout: LayoutType)
+	fn update_buffers(&mut self, builder: BuilderType, index: usize)
+	{
+		self.players.iter_mut().for_each(|(_, pair)| pair.update_buffers(builder, index));
+	}
+
+	fn draw(&self, builder: BuilderType, layout: LayoutType, index: usize)
 	{
 		if let Some(player_id) = self.main_player
 		{
 			self.players.iter().filter(|(id, _)| *id != player_id)
-				.for_each(|(_, pair)| pair.draw(allocator, builder, layout.clone()));
+				.for_each(|(_, pair)| pair.draw(builder, layout.clone(), index));
 
-			self.players[player_id].draw(allocator, builder, layout);
+			self.players[player_id].draw(builder, layout, index);
 		} else
 		{
 			self.players.iter().for_each(|(_, pair)|
-				pair.draw(allocator, builder, layout.clone())
+				pair.draw(builder, layout.clone(), index)
 			);
 		}
 	}
@@ -140,8 +150,10 @@ pub struct GameState
 	pub entities: ClientEntitiesContainer,
 	pub running: bool,
 	pub debug_mode: bool,
+	player_id: usize,
 	world: World,
-	connection_handler: Arc<RwLock<ConnectionsHandler>>
+	connections_handler: Arc<RwLock<ConnectionsHandler>>,
+	receiver: Receiver<Message>
 }
 
 impl GameState
@@ -151,7 +163,7 @@ impl GameState
 		object_factory: ObjectFactory,
 		tiles_factory: TilesFactory,
 		message_passer: MessagePasser,
-		debug_mode: bool
+		client_info: &ClientInfo
 	) -> Self
 	{
 		let controls = [ControlState::Released; Control::COUNT];
@@ -159,15 +171,25 @@ impl GameState
 
 		let notifications = Notifications::new();
 		let entities = ClientEntitiesContainer::new();
-		let connection_handler = Arc::new(RwLock::new(ConnectionsHandler::new(message_passer)));
+		let connections_handler = Arc::new(RwLock::new(ConnectionsHandler::new(message_passer)));
 
-		let world_receiver = WorldReceiver::new(connection_handler.clone());
+		let world_receiver = WorldReceiver::new(connections_handler.clone());
 		let world = World::new(
 			world_receiver,
 			tiles_factory,
 			camera.read().aspect(),
 			Pos3::new(0.0, 0.0, 0.0)
 		);
+
+		let player_id = Self::connect_to_server(connections_handler.clone(), &client_info.name);
+
+		sender_loop(connections_handler.clone());
+
+		let handler = connections_handler.read().passer_clone();
+
+		let (sender, receiver) = mpsc::channel();
+
+		receiver_loop(handler, move |message| sender.send(message).unwrap(), || ());
 
 		Self{
 			controls,
@@ -177,63 +199,74 @@ impl GameState
 			notifications,
 			entities,
 			running: true,
-			debug_mode,
+			debug_mode: client_info.debug_mode,
+			player_id,
 			world,
-			connection_handler,
+			connections_handler,
+			receiver
 		}
 	}
 
-	pub fn connect(this: Arc<RwLock<Self>>, name: &str) -> usize
+	fn connect_to_server(handler: Arc<RwLock<ConnectionsHandler>>, name: &str) -> usize
 	{
 		let message = Message::PlayerConnect{name: name.to_owned()};
 
-		let player_id = {
-			let reader = this.read();
-			let mut handler = reader.connection_handler.write();
+		let mut handler = handler.write();
 
-			if let Err(x) = handler.send_blocking(&message)
+		if let Err(x) = handler.send_blocking(&message)
+		{
+			panic!("error connecting to server: {:?}", x);
+		}
+
+		match handler.receive_blocking()
+		{
+			Ok(Some(Message::PlayerOnConnect{id})) =>
 			{
-				panic!("error connecting to server: {:?}", x);
-			}
-
-			match handler.receive()
-			{
-				Ok(Some(Message::PlayerOnConnect{id})) =>
-				{
-					id
-				},
-				x => panic!("received wrong message on connect: {:?}", x)
-			}
-		};
-
-		sender_loop(this.read().connection_handler.clone());
-
-		let handler = this.read().connection_handler.read().passer_clone();
-		Self::listen(this, handler, |this| this.write().running = false);
-
-		player_id
+				id
+			},
+			x => panic!("received wrong message on connect: {:?}", x)
+		}
 	}
 
-	fn listen<F>(this: Arc<RwLock<Self>>, handler: MessagePasser, exit_callback: F)
-	where
-		F: FnOnce(Arc<RwLock<Self>>) + Send + 'static
+	pub fn player_id(&self) -> usize
 	{
-		receiver_loop(this, handler, Self::process_message, exit_callback);
+		self.player_id
 	}
 
-	fn process_message(this: Arc<RwLock<Self>>, message: Message)
+	pub fn process_messages(&mut self)
+	{
+		loop
+		{
+			match self.receiver.try_recv()
+			{
+				Ok(message) =>
+				{
+					self.process_message_inner(message);
+				},
+				Err(err) if err == TryRecvError::Empty =>
+				{
+					return;
+				},
+				Err(_) =>
+				{
+					self.running = false;
+					return;
+				}
+			}
+		}
+	}
+
+	fn process_message_inner(&mut self, message: Message)
 	{
 		let id_mismatch = || panic!("id mismatch in clientside process message");
 
-		let mut writer = this.write();
-
-		let message = match writer.entities.handle_message(message)
+		let message = match self.entities.handle_message(message)
 		{
 			Some(x) => x,
 			None => return
 		};
 
-		let message = match writer.world.handle_message(message)
+		let message = match self.world.handle_message(message)
 		{
 			Some(x) => x,
 			None => return
@@ -243,16 +276,16 @@ impl GameState
 		{
 			Message::PlayerCreate{id, player} =>
 			{
-				let player = ObjectPair::new(&writer.object_factory, player);
+				let player = ObjectPair::new(&self.object_factory, player);
 
-				if id != writer.entities.players_mut().insert(player)
+				if id != self.entities.players_mut().insert(player)
 				{
 					id_mismatch();
 				}
 			},
 			Message::PlayerFullyConnected =>
 			{
-				writer.notifications.set(Notification::PlayerConnected);
+				self.notifications.set(Notification::PlayerConnected);
 			},
 			x => panic!("unhandled message: {:?}", x)
 		}
@@ -347,9 +380,11 @@ impl GameState
 		});
 	}
 
-	pub fn player_moved(&mut self, pos: Pos3<f32>)
+	pub fn camera_moved(&mut self)
 	{
-		self.world.player_moved(pos);
+		let pos = *self.camera.read().position();
+
+		self.world.camera_moved(pos.into());
 	}
 
 	pub fn resize(&mut self, aspect: f32)
@@ -365,17 +400,30 @@ impl GameObject for GameState
 {
 	fn update(&mut self, dt: f32)
 	{
+		self.process_messages();
+
 		self.check_resize_camera(dt);
 		self.world.update(dt);
 
 		self.entities.update(dt);
 	}
 
-	fn draw(&self, allocator: AllocatorType, builder: BuilderType, layout: LayoutType)
+	fn update_buffers(&mut self, builder: BuilderType, index: usize)
 	{
-		self.world.draw(allocator, builder, layout.clone());
+		// theres still weird chunk visibility checking
+		// when the rescale goes through chunk boundies REEEEEEEEE
+		self.camera_moved();
 
-		self.entities.draw(allocator, builder, layout);
+		self.world.update_buffers(builder, index);
+
+		self.entities.update_buffers(builder, index);
+	}
+
+	fn draw(&self, builder: BuilderType, layout: LayoutType, index: usize)
+	{
+		self.world.draw(builder, layout.clone(), index);
+
+		self.entities.draw(builder, layout, index);
 	}
 }
 
@@ -396,6 +444,6 @@ impl EntitiesController for GameState
 
 	fn passer(&self) -> Arc<RwLock<Self::Passer>>
 	{
-		self.connection_handler.clone()
+		self.connections_handler.clone()
 	}
 }

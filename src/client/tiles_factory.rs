@@ -10,6 +10,7 @@ use strum::IntoEnumIterator;
 use parking_lot::RwLock;
 
 use super::{
+	ObjectAllocator,
 	Camera,
 	game::{
 		ObjectFactory,
@@ -23,13 +24,15 @@ use super::{
 
 use crate::common::{
 	TileMap,
+	Transform,
 	tilemap::{GradientMask, TileInfoMap, TileInfo},
 	world::{
 		CLIENT_OVERMAP_SIZE,
-		CHUNK_SIZE,
+		VISUAL_TILE_HEIGHT,
 		TILE_SIZE,
 		Chunk,
 		PosDirection,
+		GlobalPos,
 		Pos3,
 		Tile,
 		chunk::ChunkLocal,
@@ -37,61 +40,67 @@ use crate::common::{
 };
 
 
-const MODELS_AMOUNT: usize = GradientMask::COUNT + 1;
-pub struct ChunkModelBuilder<'a>
+pub struct ChunkInfo
 {
-	models: [Model; MODELS_AMOUNT],
-	object_factory: &'a mut ObjectFactory,
-	tilemap: &'a TileMap
+	model: Arc<RwLock<Model>>,
+	transform: Transform,
+	texture_index: usize
 }
 
-impl<'a> ChunkModelBuilder<'a>
+const MODELS_AMOUNT: usize = GradientMask::COUNT + 1;
+pub struct ChunkModelBuilder
+{
+	models: [Model; MODELS_AMOUNT],
+	tilemap: Arc<TileMap>
+}
+
+impl ChunkModelBuilder
 {
 	pub fn new(
-		object_factory: &'a mut ObjectFactory,
-		tilemap: &'a TileMap
+		tilemap: Arc<TileMap>
 	) -> Self
 	{
 		let models = (0..MODELS_AMOUNT).map(|_| Model::new())
 			.collect::<Vec<_>>().try_into().unwrap();
 
-		Self{models, object_factory, tilemap}
+		Self{models, tilemap}
 	}
 
-	pub fn create(&mut self, chunk_depth: usize, pos: ChunkLocal, tile: Tile)
+	pub fn create(&mut self, chunk_height: usize, pos: ChunkLocal, tile: Tile)
 	{
-		self.create_inner(None, chunk_depth, pos, tile);
+		self.create_inner(None, chunk_height, pos, tile);
 	}
 
 	pub fn create_direction(
 		&mut self,
 		direction: PosDirection,
-		chunk_depth: usize,
+		chunk_height: usize,
 		pos: ChunkLocal,
 		tile: Tile
 	)
 	{
-		self.create_inner(Some(direction), chunk_depth, pos, tile);
+		self.create_inner(Some(direction), chunk_height, pos, tile);
 	}
 
 	fn create_inner(
 		&mut self,
 		direction: Option<PosDirection>,
-		chunk_depth: usize,
+		chunk_height: usize,
 		pos: ChunkLocal,
 		tile: Tile
 	)
 	{
-		const MAX_TILES: usize = 5;
-		const MAX_DEPTH: f32 = (CLIENT_OVERMAP_SIZE / 2) as f32 * CHUNK_SIZE as f32;
+		let tile_height_from_bottom = chunk_height as f32 + VISUAL_TILE_HEIGHT * pos.0.z as f32;
+		let tile_height = tile_height_from_bottom - (CLIENT_OVERMAP_SIZE as i32 / 2) as f32;
 
-		let depth_tiles = chunk_depth as f32 * CHUNK_SIZE as f32 + (pos.0.z + 1) as f32;
-		let depth = (MAX_DEPTH - depth_tiles) / MAX_TILES as f32;
+		// the tile directly below stephanie becomes 0
+		// the tile at stephanie's height becomes > 0
+		let tile_height = tile_height + VISUAL_TILE_HEIGHT;
 
 		let pos = Pos3::new(
 			pos.0.x as f32 * TILE_SIZE,
 			pos.0.y as f32 * TILE_SIZE,
-			depth
+			tile_height//pos.0.z as f32 * TILE_SIZE
 		);
 
 		let id = direction.map_or(0, Self::direction_texture_index);
@@ -177,24 +186,28 @@ impl<'a> ChunkModelBuilder<'a>
 		].into_iter()
 	}
 
-	pub fn build(self, x: i32, y: i32) -> Box<[Object]>
+	pub fn build(self, pos: GlobalPos) -> Box<[ChunkInfo]>
 	{
-		let transform = Chunk::transform_of_chunk(x, y);
+		let transform = Chunk::transform_of_chunk(pos);
 
 		let textures_indices = (iter::once(0)).chain(
 			PosDirection::iter().map(Self::direction_texture_index)
 		);
 
-		let objects = self.models.into_iter().zip(textures_indices)
+		let chunk_infos = self.models.into_iter().zip(textures_indices)
 			.flat_map(|(model, texture_index)|
 			{
 				(!model.vertices.is_empty()).then(||
-					self.object_factory
-						.create_id(Arc::new(RwLock::new(model)), transform.clone(), texture_index)
-				)
+				{
+					ChunkInfo{
+						model: Arc::new(RwLock::new(model)),
+						transform: transform.clone(),
+						texture_index
+					}
+				})
 			}).collect::<Vec<_>>();
 
-		objects.into_boxed_slice()
+		chunk_infos.into_boxed_slice()
 	}
 
 	fn direction_texture_index(direction: PosDirection) -> usize
@@ -213,7 +226,7 @@ impl<'a> ChunkModelBuilder<'a>
 pub struct TilesFactory
 {
 	object_factory: ObjectFactory,
-	tilemap: TileMap
+	tilemap: Arc<TileMap>
 }
 
 
@@ -222,6 +235,7 @@ impl TilesFactory
 {
 	pub fn new(
 		camera: Arc<RwLock<Camera>>,
+		allocator: ObjectAllocator,
 		resource_uploader: &mut ResourceUploader,
 		tilemap: TileMap
 	) -> Result<Self, ImageError>
@@ -248,28 +262,32 @@ impl TilesFactory
 
 		let object_factory = ObjectFactory::new_with_ids(
 			camera,
+			allocator,
 			tilemaps
 		);
 
+		let tilemap = Arc::new(tilemap);
 		Ok(Self{object_factory, tilemap})
 	}
 
-	pub fn builder(&mut self) -> ChunkModelBuilder
+	pub fn build(&mut self, chunk_info: Box<[ChunkInfo]>) -> Box<[Object]>
 	{
-		self.build_info().1
+		chunk_info.into_vec().into_iter().map(|chunk_info|
+		{
+			let ChunkInfo{model, transform, texture_index} = chunk_info;
+
+			self.object_factory.create_id(model, transform, texture_index)
+		}).collect::<Vec<_>>().into_boxed_slice()
+	}
+
+	pub fn builder(&self) -> ChunkModelBuilder
+	{
+		ChunkModelBuilder::new(self.tilemap.clone())
 	}
 
 	pub fn info_map(&self) -> TileInfoMap
 	{
-		self.tilemap.info_map()
-	}
-
-	pub fn build_info(&mut self) -> (TileInfoMap, ChunkModelBuilder)
-	{
-		(
-			self.tilemap.info_map(),
-			ChunkModelBuilder::new(&mut self.object_factory, &self.tilemap)
-		)
+		TileInfoMap::new(self.tilemap.clone())
 	}
 
 	pub fn info(&self, tile: Tile) -> &TileInfo

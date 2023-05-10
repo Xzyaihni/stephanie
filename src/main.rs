@@ -11,6 +11,7 @@ use vulkano::{
         DeviceCreateInfo,
         DeviceExtensions,
         Queue,
+        QueueFlags,
         QueueCreateInfo,
         physical::{
             PhysicalDevice,
@@ -62,7 +63,7 @@ fn get_physical(
                 .enumerate()
                 .position(|(index, queue)|
                 {
-                    queue.queue_flags.graphics
+                    queue.queue_flags.contains(QueueFlags::GRAPHICS)
                         && device.surface_support(index as u32, &surface).unwrap_or(false)
                 })
                 .map(|index| (device, index as u32))

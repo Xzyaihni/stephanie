@@ -1,38 +1,34 @@
-use std::{
-	slice::{IterMut, Iter},
-	iter::{self, Enumerate},
-	marker::PhantomData,
-	ops::{Index, IndexMut}
-};
+use std::iter;
 
 use chunk::{
-	Pos3,
 	GlobalPos,
 	LocalPos
 };
 
+pub use chunks_container::{ChunkIndexing, ChunksContainer, FlatChunksContainer};
+
 pub mod chunk;
 pub mod visual_chunk;
+
+pub mod chunks_container;
 
 
 pub trait Overmap<const SIZE: usize, T>: OvermapIndexing<SIZE>
 {
 	type Container: ChunkIndexing<SIZE>;
 
-	fn chunk_ordering(&self) -> &[usize];
-
-	fn request_chunk(&self, pos: GlobalPos);
-	fn player_moved(&mut self, player_position: Pos3<f32>);
 	fn remove(&mut self, pos: LocalPos<SIZE>);
 
-	fn swap(
-		&mut self,
-		a: LocalPos<SIZE>,
-		b: LocalPos<SIZE>
-	);
+	fn swap(&mut self, a: LocalPos<SIZE>, b: LocalPos<SIZE>);
 
-	fn get(&self, pos: LocalPos<SIZE>) -> &Option<T>;
-	fn mark_ungenerated(&self, pos: LocalPos<SIZE>);
+	fn get_local(&self, pos: LocalPos<SIZE>) -> &Option<T>;
+
+	fn mark_ungenerated(&mut self, pos: LocalPos<SIZE>);
+
+	fn get(&self, pos: GlobalPos) -> Option<&T>
+	{
+		self.to_local(pos).map(|local_pos| self.get_local(local_pos).as_ref()).flatten()
+	}
 
 	fn default_ordering() -> Box<[usize]>
 	{
@@ -54,21 +50,7 @@ pub trait Overmap<const SIZE: usize, T>: OvermapIndexing<SIZE>
 		ordering.into_boxed_slice()
 	}
 
-	fn generate_missing(&mut self)
-	{
-		let player_pos = self.player_position();
-
-		self.chunk_ordering()
-			.iter()
-			.map(|index| Self::Container::index_to_pos(*index))
-			.filter(|pos| self.get(*pos).is_none())
-			.for_each(|pos|
-			{
-				let global_pos = Self::to_global_associated(pos, player_pos);
-
-				self.request_chunk(global_pos);
-			});
-	}
+	fn generate_missing(&mut self);
 
 	fn position_offset(&mut self, offset: GlobalPos)
 	{
@@ -106,7 +88,7 @@ pub trait Overmap<const SIZE: usize, T>: OvermapIndexing<SIZE>
 		}).for_each(|old_local|
 		{
 			//early return if the chunk is empty
-			if self.get(old_local).is_none()
+			if self.get_local(old_local).is_none()
 			{
 				return;
 			}
@@ -192,206 +174,5 @@ pub trait OvermapIndexing<const SIZE: usize>
 	fn player_offset(pos: LocalPos<SIZE>) -> GlobalPos
 	{
 		GlobalPos::from(pos) - (SIZE as i32 / 2)
-	}
-}
-
-pub trait ChunkIndexing<const SIZE: usize>
-{
-	fn to_index(pos: LocalPos<SIZE>) -> usize;
-	fn index_to_pos(index: usize) -> LocalPos<SIZE>;
-}
-
-pub type ValuePair<const SIZE: usize, T> = (LocalPos<SIZE>, T);
-
-pub struct ChunksIter<'a, const SIZE: usize, Indexer, T>
-{
-	chunks: Enumerate<Iter<'a, T>>,
-	indexer: PhantomData<*const Indexer>
-}
-
-impl<'a, const SIZE: usize, Indexer, T> ChunksIter<'a, SIZE, Indexer, T>
-{
-	pub fn new(chunks: Enumerate<Iter<'a, T>>) -> Self
-	{
-		Self{chunks, indexer: PhantomData}
-	}
-}
-
-impl<'a, const SIZE: usize, Indexer, T> Iterator for ChunksIter<'a, SIZE, Indexer, T>
-where
-	Indexer: ChunkIndexing<SIZE>
-{
-	type Item = ValuePair<SIZE, &'a T>;
-
-	fn next(&mut self) -> Option<Self::Item>
-	{
-		self.chunks.next().map(|(index, item)| (Indexer::index_to_pos(index), item))
-	}
-}
-
-pub struct ChunksIterMut<'a, const SIZE: usize, Indexer, T>
-{
-	chunks: Enumerate<IterMut<'a, T>>,
-	indexer: PhantomData<*const Indexer>
-}
-
-impl<'a, const SIZE: usize, Indexer, T> ChunksIterMut<'a, SIZE, Indexer, T>
-{
-	pub fn new(chunks: Enumerate<IterMut<'a, T>>) -> Self
-	{
-		Self{chunks, indexer: PhantomData}
-	}
-}
-
-impl<'a, const SIZE: usize, Indexer, T> Iterator for ChunksIterMut<'a, SIZE, Indexer, T>
-where
-	Indexer: ChunkIndexing<SIZE>
-{
-	type Item = ValuePair<SIZE, &'a mut T>;
-
-	fn next(&mut self) -> Option<Self::Item>
-	{
-		self.chunks.next().map(|(index, item)| (Indexer::index_to_pos(index), item))
-	}
-}
-
-#[derive(Debug)]
-pub struct ChunksContainer<const SIZE: usize, T>
-{
-	chunks: Box<[T]>
-}
-
-impl<const SIZE: usize, T> ChunksContainer<SIZE, T>
-{
-	pub fn new<F: FnMut() -> T>(mut default_function: F) -> Self
-	{
-		let chunks = (0..(SIZE * SIZE * SIZE)).map(|_| default_function())
-			.collect::<Vec<_>>().into_boxed_slice();
-
-		Self{chunks}
-	}
-
-	pub fn swap(&mut self, a: LocalPos<SIZE>, b: LocalPos<SIZE>)
-	{
-		let (index_a, index_b) = (Self::to_index(a), Self::to_index(b));
-
-		self.chunks.swap(index_a, index_b);
-	}
-
-	#[allow(dead_code)]
-	pub fn iter(&self) -> ChunksIter<SIZE, Self, T>
-	{
-		ChunksIter::new(self.chunks.iter().enumerate())
-	}
-
-	#[allow(dead_code)]
-	pub fn iter_mut(&mut self) -> ChunksIterMut<SIZE, Self, T>
-	{
-		ChunksIterMut::new(self.chunks.iter_mut().enumerate())
-	}
-}
-
-impl<const SIZE: usize, T> ChunkIndexing<SIZE> for ChunksContainer<SIZE, T>
-{
-	fn to_index(pos: LocalPos<SIZE>) -> usize
-	{
-		pos.to_cube(SIZE)
-	}
-
-	fn index_to_pos(index: usize) -> LocalPos<SIZE>
-	{
-		let x = index % SIZE;
-		let y = (index / SIZE) % SIZE;
-		let z = index / (SIZE * SIZE);
-
-		LocalPos::new(x, y, z)
-	}
-}
-
-impl<const SIZE: usize, T> Index<LocalPos<SIZE>> for ChunksContainer<SIZE, T>
-{
-	type Output = T;
-
-	fn index(&self, value: LocalPos<SIZE>) -> &Self::Output
-	{
-		&self.chunks[Self::to_index(value)]
-	}
-}
-
-impl<const SIZE: usize, T> IndexMut<LocalPos<SIZE>> for ChunksContainer<SIZE, T>
-{
-	fn index_mut(&mut self, value: LocalPos<SIZE>) -> &mut Self::Output
-	{
-		&mut self.chunks[Self::to_index(value)]
-	}
-}
-
-#[derive(Debug)]
-pub struct FlatChunksContainer<const SIZE: usize, T>
-{
-	chunks: Box<[T]>
-}
-
-impl<const SIZE: usize, T> FlatChunksContainer<SIZE, T>
-{
-	pub fn new<F: FnMut() -> T>(mut default_function: F) -> Self
-	{
-		let chunks = (0..(SIZE * SIZE)).map(|_| default_function())
-			.collect::<Vec<_>>().into_boxed_slice();
-
-		Self{chunks}
-	}
-
-	pub fn swap(&mut self, a: LocalPos<SIZE>, b: LocalPos<SIZE>)
-	{
-		let (index_a, index_b) = (Self::to_index(a), Self::to_index(b));
-
-		self.chunks.swap(index_a, index_b);
-	}
-
-	pub fn iter(&self) -> ChunksIter<SIZE, Self, T>
-	{
-		ChunksIter::new(self.chunks.iter().enumerate())
-	}
-
-	pub fn iter_mut(&mut self) -> ChunksIterMut<SIZE, Self, T>
-	{
-		ChunksIterMut::new(self.chunks.iter_mut().enumerate())
-	}
-}
-
-impl<const SIZE: usize, T> ChunkIndexing<SIZE> for FlatChunksContainer<SIZE, T>
-{
-	fn to_index(pos: LocalPos<SIZE>) -> usize
-	{
-		let LocalPos(pos) = pos;
-
-		pos.y * SIZE + pos.x
-	}
-
-	fn index_to_pos(index: usize) -> LocalPos<SIZE>
-	{
-		let x = index % SIZE;
-		let y = (index / SIZE) % SIZE;
-
-		LocalPos::new(x, y, 0)
-	}
-}
-
-impl<const SIZE: usize, T> Index<LocalPos<SIZE>> for FlatChunksContainer<SIZE, T>
-{
-	type Output = T;
-
-	fn index(&self, value: LocalPos<SIZE>) -> &Self::Output
-	{
-		&self.chunks[Self::to_index(value)]
-	}
-}
-
-impl<const SIZE: usize, T> IndexMut<LocalPos<SIZE>> for FlatChunksContainer<SIZE, T>
-{
-	fn index_mut(&mut self, value: LocalPos<SIZE>) -> &mut Self::Output
-	{
-		&mut self.chunks[Self::to_index(value)]
 	}
 }

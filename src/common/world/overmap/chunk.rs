@@ -230,18 +230,33 @@ pub enum PosDirection
 	Down
 }
 
-pub struct InclusiveGroup<T>
+#[derive(Debug, Serialize, Deserialize)]
+pub struct DirectionsGroup<T>
 {
-	pub this: T,
-	pub right: Option<T>,
-	pub left: Option<T>,
-	pub up: Option<T>,
-	pub down: Option<T>
+	pub right: T,
+	pub left: T,
+	pub up: T,
+	pub down: T
 }
 
-impl<T> Index<PosDirection> for InclusiveGroup<T>
+impl<T> DirectionsGroup<T>
 {
-	type Output = Option<T>;
+	pub fn map<D, F>(self, mut direction_map: F) -> DirectionsGroup<D>
+	where
+		F: FnMut(T) -> D
+	{
+		DirectionsGroup{
+			right: direction_map(self.right),
+			left: direction_map(self.left),
+			up: direction_map(self.up),
+			down: direction_map(self.down)
+		}
+	}
+}
+
+impl<T> Index<PosDirection> for DirectionsGroup<T>
+{
+	type Output = T;
 
 	fn index(&self, index: PosDirection) -> &Self::Output
 	{
@@ -252,6 +267,66 @@ impl<T> Index<PosDirection> for InclusiveGroup<T>
 			PosDirection::Up => &self.up,
 			PosDirection::Down => &self.down
 		}
+	}
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct MaybeGroup<T>
+{
+	pub this: T,
+	pub other: DirectionsGroup<Option<T>>
+}
+
+impl<T> MaybeGroup<T>
+{
+	pub fn map<D, F>(self, mut direction_map: F) -> MaybeGroup<D>
+	where
+		F: FnMut(T) -> D
+	{
+		MaybeGroup{
+			this: direction_map(self.this),
+			other: self.other.map(|direction| direction.map(&mut direction_map))
+		}
+	}
+}
+
+impl<T> Index<PosDirection> for MaybeGroup<T>
+{
+	type Output = Option<T>;
+
+	fn index(&self, index: PosDirection) -> &Self::Output
+	{
+		&self.other[index]
+	}
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AlwaysGroup<T>
+{
+	pub this: T,
+	pub other: DirectionsGroup<T>
+}
+
+impl<T> AlwaysGroup<T>
+{
+	pub fn map<D, F>(self, mut direction_map: F) -> AlwaysGroup<D>
+	where
+		F: FnMut(T) -> D
+	{
+		AlwaysGroup{
+			this: direction_map(self.this),
+			other: self.other.map(direction_map)
+		}
+	}
+}
+
+impl<T> Index<PosDirection> for AlwaysGroup<T>
+{
+	type Output = T;
+
+	fn index(&self, index: PosDirection) -> &Self::Output
+	{
+		&self.other[index]
 	}
 }
 
@@ -273,17 +348,46 @@ impl<const EDGE: usize> LocalPos<EDGE>
 		[Some(self), self.right(), self.left(), self.up(), self.down()].into_iter()
 	}
 
-	pub fn directions_inclusive_group<T, F>(self, mut map_function: F) -> InclusiveGroup<T>
-	where
-		F: FnMut(Self) -> T
+	#[allow(dead_code)]
+	pub fn directions_group(self) -> DirectionsGroup<Option<LocalPos<EDGE>>>
 	{
-		InclusiveGroup{
-			this: map_function(self),
-			right: self.right().map(&mut map_function),
-			left: self.left().map(&mut map_function),
-			up: self.up().map(&mut map_function),
-			down: self.down().map(&mut map_function)
+		DirectionsGroup{
+			right: self.right(),
+			left: self.left(),
+			up: self.up(),
+			down: self.down()
 		}
+	}
+
+	pub fn maybe_group(self) -> MaybeGroup<LocalPos<EDGE>>
+	{
+		MaybeGroup{
+			this: self,
+			other: self.directions_group()
+		}
+	}
+
+	pub fn always_group(self) -> Option<AlwaysGroup<LocalPos<EDGE>>>
+	{
+		let directions = self.directions_group();
+
+		let any_none =
+			directions.right.is_none()
+			|| directions.left.is_none()
+			|| directions.up.is_none()
+			|| directions.down.is_none();
+
+		if any_none
+		{
+			return None;
+		}
+
+		let other = directions.map(|direction| direction.unwrap());
+
+		Some(AlwaysGroup{
+			this: self,
+			other
+		})
 	}
 
 	pub fn from_global(pos: GlobalPos, side: i32) -> Option<Self>
@@ -388,6 +492,8 @@ pub const CHUNK_VISUAL_SIZE: f32 = CHUNK_SIZE as f32  * TILE_SIZE;
 
 pub const TILE_SIZE: f32 = 0.1;
 
+pub const VISUAL_TILE_HEIGHT: f32 = 1.0 / CHUNK_SIZE as f32;
+
 pub type ChunkLocal = LocalPos<CHUNK_SIZE>;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -405,13 +511,17 @@ impl Chunk
 		Self{tiles}
 	}
 
-	pub fn transform_of_chunk(x: i32, y: i32) -> Transform
+	pub fn transform_of_chunk(pos: GlobalPos) -> Transform
 	{
+		let GlobalPos(pos) = pos;
+
+		let chunk_pos = Pos3::from(pos).map(|v| v as f32) * CHUNK_VISUAL_SIZE;
+
 		let mut transform = Transform::new();
 		transform.position = Vector3::new(
-			x as f32 * CHUNK_SIZE as f32 * TILE_SIZE,
-			y as f32 * CHUNK_SIZE as f32 * TILE_SIZE,
-			0.0
+			chunk_pos.x,
+			chunk_pos.y,
+			chunk_pos.z
 		);
 
 		transform
@@ -422,6 +532,14 @@ impl Chunk
 		let LocalPos(pos) = pos;
 
 		pos.z * CHUNK_SIZE * CHUNK_SIZE + pos.y * CHUNK_SIZE + pos.x
+	}
+}
+
+impl From<Box<[Tile]>> for Chunk
+{
+	fn from(value: Box<[Tile]>) -> Self
+	{
+		Self{tiles: value}
 	}
 }
 

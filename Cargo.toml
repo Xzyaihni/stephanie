@@ -15,19 +15,24 @@ parking_lot = "0.12.1"
 serde = "1.0.152"
 serde_derive = "1.0.152"
 slab = { version = "0.4.8", features = ["serde"] }
-vulkano = "0.32.3"
-vulkano-shaders = "0.32.0"
-vulkano-win = "0.32.0"
-winit = "0.27.5"
+vulkano = "0.33"
+vulkano-shaders = "0.33"
+vulkano-win = "0.33"
+winit = "0.28"
 serde_json = "1.0.94"
 fastrand = "1.9.0"
 argparse = "0.2.2"
 num_enum = "0.6.0"
 strum = "0.24.1"
 strum_macros = "0.24.3"
+rlua = "0.19.4"
 
 [profile.dev]
 opt-level = 1
 
 [profile.release]
 panic = "abort"
+
+[profile.release-debug]
+inherits = "release"
+debug = true
