@@ -108,7 +108,7 @@ impl ChunkGenerator
 
 			use crate::common::world::Tile;
 			let mut chunk = vec![Tile::none(); CHUNK_SIZE.pow(3)];
-			/*for z in 0..CHUNK_SIZE
+			for z in 0..CHUNK_SIZE
 			{
 				for y in 0..CHUNK_SIZE
 				{
@@ -122,22 +122,11 @@ impl ChunkGenerator
 						}
 					}
 				}
-			}*/
-
-			let index_of = |x, y, z| z * CHUNK_SIZE.pow(2) + y * CHUNK_SIZE + x;
-
-			let non_empties = (0..CHUNK_SIZE).map(|i| (i, 0, i))
-				.collect::<Vec<_>>();
-
-			for n in non_empties
-			{
-				chunk[index_of(n.0, n.1, n.2)] = tile;
 			}
 
 			Chunk::from(chunk.into_boxed_slice())
 		};
 
-		dbg!(group.this);
 		let fill_with = match group.this
 		{
 			"park" => "grass",
@@ -220,7 +209,7 @@ impl WorldGenerator
 		F: FnMut(LocalPos<SIZE>) -> GlobalPos
 	{
 		let global_pos = to_global(pos);
-		let generate = global_pos.0.z == -1;
+		let generate = global_pos.0.z == -1 || global_pos.0.z == 0;
 
 		let chunk = if generate
 		{

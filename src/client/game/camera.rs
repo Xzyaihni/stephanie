@@ -3,7 +3,6 @@ use std::{
 };
 
 use nalgebra::{
-    Vector3,
     geometry::Orthographic3,
     Matrix4
 };
@@ -31,10 +30,7 @@ impl Camera
         let size = Self::aspect_size(aspect);
         let projection = Self::create_projection(size);
 
-        let mut view = CameraTransform::new_transformed(Transform::new());
-
-        // makes positive z towards the camera and negative away
-        view.set_scale(Vector3::new(1.0, 1.0, -1.0));
+        let view = CameraTransform::new_transformed(Transform::new());
 
         let projection_view = Self::create_projection_view(projection, view.matrix());
 
@@ -59,6 +55,8 @@ impl Camera
 
         projection.set_left_and_right(-size.0 / 2.0, size.0 / 2.0);
         projection.set_bottom_and_top(-size.1 / 2.0, size.1 / 2.0);
+
+        projection.set_znear_and_zfar(-1.0, 1.0);
 
         projection.to_homogeneous()
     }

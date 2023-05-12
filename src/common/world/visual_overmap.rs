@@ -20,7 +20,6 @@ use crate::{
 
 use super::{
 	chunk::{
-		CHUNK_SIZE,
 		CHUNK_VISUAL_SIZE,
 		Pos3,
 		Chunk,
@@ -89,16 +88,8 @@ impl<const SIZE: usize> VisualOvermap<SIZE>
 
 		let chunk_pos = self.to_global(pos);
 
-		let player_height = self.player_position.read().rounded().0.z;
-
-		let height = (player_height) % CHUNK_SIZE as i32;
-		let height = if height < 0
-		{
-			CHUNK_SIZE as i32 + height
-		} else
-		{
-			height
-		} as usize;
+		let player_height = self.player_position.read().tile_height();
+		println!("player_height: {player_height}");
 
 		let sender = self.sender.clone();
 
@@ -110,7 +101,7 @@ impl<const SIZE: usize> VisualOvermap<SIZE>
 			let chunk_info = VisualChunk::create(
 				info_map,
 				model_builder,
-				height,
+				player_height,
 				chunk_pos,
 				&chunks
 			);

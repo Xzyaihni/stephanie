@@ -42,6 +42,11 @@ impl<T> Pos3<T>
 
 impl Pos3<f32>
 {
+	pub fn tile_height(self) -> usize
+	{
+		(self.modulo(1.0).z / VISUAL_TILE_HEIGHT) as usize
+	}
+
 	pub fn rounded(self) -> GlobalPos
 	{
 		GlobalPos(self.map(|value|

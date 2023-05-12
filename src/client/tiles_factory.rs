@@ -100,7 +100,7 @@ impl ChunkModelBuilder
 		let pos = Pos3::new(
 			pos.0.x as f32 * TILE_SIZE,
 			pos.0.y as f32 * TILE_SIZE,
-			tile_height//pos.0.z as f32 * TILE_SIZE
+			tile_height
 		);
 
 		let id = direction.map_or(0, Self::direction_texture_index);

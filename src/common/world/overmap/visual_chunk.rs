@@ -47,6 +47,8 @@ impl VisualChunk
 		chunks: &[MaybeGroup<Arc<Chunk>>]
 	) -> Box<[ChunkInfo]>
 	{
+		// ignores pos.0.z!! dont pay attention to it
+
 		(0..CHUNK_SIZE).flat_map(|y|
 		{
 			(0..CHUNK_SIZE).map(move |x| (x, y))
@@ -83,6 +85,8 @@ impl VisualChunk
 	{
 		for (chunk_depth, chunk_group) in chunks.iter().enumerate()
 		{
+			let chunk_height = chunks.len() - 1 - chunk_depth;
+
 			// the compiler better optimize this away >:(
 			let skip_amount = if chunk_depth == 0
 			{
@@ -103,7 +107,7 @@ impl VisualChunk
 					continue;
 				}
 
-				model_builder.create(chunk_depth, local_pos, tile);
+				model_builder.create(chunk_height, local_pos, tile);
 
 				let mut draw_gradient = |chunk: &Arc<Chunk>, pos, other_pos, direction|
 				{
@@ -111,7 +115,12 @@ impl VisualChunk
 
 					if !info_map[gradient_tile].transparent && gradient_tile != tile
 					{
-						model_builder.create_direction(direction, chunk_depth, pos, gradient_tile);
+						model_builder.create_direction(
+							direction,
+							chunk_height,
+							pos,
+							gradient_tile
+						);
 					}
 				};
 

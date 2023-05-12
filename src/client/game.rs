@@ -5,7 +5,6 @@ use nalgebra::{
 use crate::common::{
     EntitiesController,
     TransformContainer,
-    Transform,
     physics::PhysicsEntity
 };
 
@@ -190,6 +189,8 @@ impl PlayerContainer
     #[cfg(debug_assertions)]
     pub fn debug_positions(&self, game_state: &GameState)
     {
+        use crate::common::Transform;
+
         let display_position = |transform: &Transform|
         {
             let pos = transform.position;

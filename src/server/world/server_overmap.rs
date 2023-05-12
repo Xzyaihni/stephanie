@@ -113,8 +113,6 @@ impl<const SIZE: usize> ServerOvermap<SIZE>
 
 impl<const SIZE: usize> Overmap<SIZE, WorldChunk> for ServerOvermap<SIZE>
 {
-	type Container = ChunksContainer<SIZE, Option<WorldChunk>>;
-
 	fn remove(&mut self, pos: LocalPos<SIZE>)
 	{
 		self.world_chunks[pos] = None;

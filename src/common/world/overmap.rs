@@ -15,8 +15,6 @@ pub mod chunks_container;
 
 pub trait Overmap<const SIZE: usize, T>: OvermapIndexing<SIZE>
 {
-	type Container: ChunkIndexing<SIZE>;
-
 	fn remove(&mut self, pos: LocalPos<SIZE>);
 
 	fn swap(&mut self, a: LocalPos<SIZE>, b: LocalPos<SIZE>);
@@ -30,15 +28,14 @@ pub trait Overmap<const SIZE: usize, T>: OvermapIndexing<SIZE>
 		self.to_local(pos).map(|local_pos| self.get_local(local_pos).as_ref()).flatten()
 	}
 
-	fn default_ordering() -> Box<[usize]>
+	fn default_ordering(positions: impl Iterator<Item=LocalPos<SIZE>>) -> Box<[LocalPos<SIZE>]>
 	{
-		let mut ordering = (0..(SIZE * SIZE * SIZE)).collect::<Vec<_>>();
+		let mut ordering = positions.collect::<Vec<_>>();
+
 		ordering.sort_unstable_by(move |a, b|
 		{
-			let distance = |value: usize| -> f32
+			let distance = |local_pos| -> f32
 			{
-				let local_pos = Self::Container::index_to_pos(value);
-
 				let GlobalPos(pos) = GlobalPos::from(local_pos) - (SIZE as i32 / 2);
 
 				((pos.x.pow(2) + pos.y.pow(2) + pos.z.pow(2)) as f32).sqrt()

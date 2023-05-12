@@ -173,7 +173,7 @@ impl MessagePasser
 
 	pub fn send_one(&mut self, message: &Message) -> Result<(), bincode::Error>
 	{
-		bincode::serialize_into(&mut self.stream, &vec![message])
+		self.send_many(&vec![message.clone()])
 	}
 
 	pub fn send_many(&mut self, messages: &Vec<Message>) -> Result<(), bincode::Error>

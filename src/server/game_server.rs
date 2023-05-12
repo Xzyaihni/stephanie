@@ -135,7 +135,7 @@ impl GameServer
 
 		let player = {
 			let mut player = Player::new(player_properties);
-			player.translate(Vector3::new(0.0, VISUAL_TILE_HEIGHT, 0.0));
+			player.translate(Vector3::new(0.0, 0.0, VISUAL_TILE_HEIGHT));
 
 			player
 		};
