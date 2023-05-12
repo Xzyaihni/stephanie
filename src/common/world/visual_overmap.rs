@@ -89,7 +89,6 @@ impl<const SIZE: usize> VisualOvermap<SIZE>
 		let chunk_pos = self.to_global(pos);
 
 		let player_height = self.player_position.read().tile_height();
-		println!("player_height: {player_height}");
 
 		let sender = self.sender.clone();
 
