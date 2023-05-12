@@ -403,6 +403,8 @@ impl GameObject for GameState
 		self.process_messages();
 
 		self.check_resize_camera(dt);
+		self.camera_moved();
+
 		self.world.update(dt);
 
 		self.entities.update(dt);
@@ -410,10 +412,6 @@ impl GameObject for GameState
 
 	fn update_buffers(&mut self, builder: BuilderType, index: usize)
 	{
-		// theres still weird chunk visibility checking
-		// when the rescale goes through chunk boundies REEEEEEEEE
-		self.camera_moved();
-
 		self.world.update_buffers(builder, index);
 
 		self.entities.update_buffers(builder, index);

@@ -542,6 +542,11 @@ fn run_frame(
     previous_time: &mut Instant
 ) -> PrimaryAutoCommandBuffer
 {
+    let delta_time = previous_time.elapsed().as_secs_f32();
+    *previous_time = Instant::now();
+
+    client.update(delta_time);
+
     client.update_buffers(&mut builder, image_index);
 
     builder.begin_render_pass(
@@ -554,10 +559,6 @@ fn run_frame(
         SubpassContents::Inline
     ).unwrap().bind_pipeline_graphics(render_info.pipelines[0].clone());
 
-    let delta_time = previous_time.elapsed().as_secs_f32();
-    *previous_time = Instant::now();
-
-    client.update(delta_time);
     client.draw(&mut builder, layout, image_index);
 
     builder.end_render_pass().unwrap();
