@@ -70,11 +70,11 @@ pub trait Overmap<T>: OvermapIndexing
 			})
 		}).for_each(|old_local|
 		{
-
+			self.shift_chunk(offset, old_local);
 		});
 	}
 
-	fn shift_chunk(&mut self, offset: GlobalPos, local_pos: LocalPos)
+	fn shift_chunk(&mut self, offset: GlobalPos, old_local: LocalPos)
 	{
 		//early return if the chunk is empty
 		if self.get_local(old_local).is_none()

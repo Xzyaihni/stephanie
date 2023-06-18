@@ -215,8 +215,6 @@ impl Overmap<Arc<Chunk>> for ClientOvermap
 
 	fn generate_missing(&mut self)
 	{
-		let player_pos = self.player_position();
-
 		self.chunk_ordering
 			.iter()
 			.filter(|pos| self.get_local(**pos).is_none())

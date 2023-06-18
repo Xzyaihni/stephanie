@@ -103,15 +103,13 @@ impl ServerOvermap
 
 		let non_shifted = shift_offset.0.x == 0 && shift_offset.0.y == 0 && shift_offset.0.z == 0;
 
-		if non_shifted
-		{
-			self.generate_existing_chunk(self.to_local(pos).unwrap())
-		} else
+		if !non_shifted
 		{
 			self.shift_overmap_by(shift_offset);
+		}
 
-			self.generate_existing_chunk(self.to_local(pos).unwrap())
-		}.expect("chunk must not touch any edges")
+		self.generate_existing_chunk(self.to_local(pos).unwrap())
+			.expect("chunk must not touch any edges")
 	}
 
 	fn shift_overmap_by(&mut self, shift_offset: GlobalPos)

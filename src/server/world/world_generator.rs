@@ -134,7 +134,19 @@ impl ChunkGenerator
 		group: AlwaysGroup<&'a str>
 	) -> Chunk
 	{
-		let chunk = Chunk::new();
+		let mut chunk = Chunk::new();
+
+		for z in 0..CHUNK_SIZE
+		{
+			for y in 0..CHUNK_SIZE
+			{
+				for x in 0..CHUNK_SIZE
+				{
+					let pos = crate::common::world::ChunkLocal::new(x, y, z);
+					chunk[pos] = self.tilemap.tile_named("concrete").unwrap();
+				}
+			}
+		}
 
 		chunk
 	}

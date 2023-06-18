@@ -549,6 +549,7 @@ impl LocalPos
 		self.pos.x == 0
 	}
 
+	#[allow(dead_code)]
 	pub fn to_cube(self, side: usize) -> usize
 	{
 		self.to_rectangle(side, side)
@@ -611,6 +612,7 @@ impl ChunkLocal
 		self.0.pos
 	}
 
+	#[allow(dead_code)]
 	pub fn size(&self) -> Pos3<usize>
 	{
 		self.0.size
