@@ -1,5 +1,6 @@
 use std::{
-	ops::{Index, IndexMut, Sub, Add, Mul}
+	fmt::{self, Display},
+	ops::{Index, IndexMut, Sub, Add, Mul, Div}
 };
 
 use serde::{Serialize, Deserialize};
@@ -19,7 +20,7 @@ use crate::common::Transform;
 pub mod tile;
 
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Pos3<T>
 {
 	pub x: T,
@@ -79,6 +80,14 @@ impl Pos3<f32>
 	}
 }
 
+impl<T: Display> Display for Pos3<T>
+{
+	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
+	{
+		write!(f, "[{}, {}, {}]", self.x, self.y, self.z)
+	}
+}
+
 impl<T: Copy> From<Vector3<T>> for Pos3<T>
 {
 	fn from(value: Vector3<T>) -> Self
@@ -93,7 +102,7 @@ impl<T: Mul<Output=T> + Copy> Mul<T> for Pos3<T>
 
 	fn mul(self, rhs: T) -> Self::Output
 	{
-		Self::new(self.x * rhs, self.y * rhs, self.z * rhs)
+		self.map(|value| value * rhs)
 	}
 }
 
@@ -113,7 +122,7 @@ impl<T: Sub<Output=T> + Copy> Sub<T> for Pos3<T>
 
 	fn sub(self, rhs: T) -> Self::Output
 	{
-		Self::new(self.x - rhs, self.y - rhs, self.z - rhs)
+		self.map(|value| value - rhs)
 	}
 }
 
@@ -127,27 +136,55 @@ impl<T: Add<Output=T>> Add for Pos3<T>
 	}
 }
 
+impl<T: Add<Output=T> + Copy> Add<T> for Pos3<T>
+{
+	type Output = Self;
+
+	fn add(self, rhs: T) -> Self::Output
+	{
+		self.map(|value| value + rhs)
+	}
+}
+
+impl<T: Div<Output=T> + Copy> Div<T> for Pos3<T>
+{
+	type Output = Self;
+
+	fn div(self, rhs: T) -> Self::Output
+	{
+		self.map(|value| value / rhs)
+	}
+}
+
 impl From<GlobalPos> for Pos3<f32>
 {
 	fn from(value: GlobalPos) -> Self
 	{
 		let GlobalPos(pos) = value;
 
-		Self{x: pos.x as f32, y: pos.y as f32, z: pos.z as f32}
+		pos.map(|value| value as f32)
 	}
 }
 
-impl<const T: usize> From<LocalPos<T>> for Pos3<f32>
+impl From<Pos3<usize>> for Pos3<i32>
 {
-	fn from(value: LocalPos<T>) -> Self
+	fn from(value: Pos3<usize>) -> Self
 	{
-		let LocalPos(pos) = value;
+		value.map(|value| value as i32)
+	}
+}
+
+impl From<LocalPos> for Pos3<f32>
+{
+	fn from(value: LocalPos) -> Self
+	{
+		let pos = value.pos;
 
 		Self{x: pos.x as f32, y: pos.y as f32, z: pos.z as f32}
 	}
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct GlobalPos(pub Pos3<i32>);
 
 impl GlobalPos
@@ -167,7 +204,7 @@ impl Sub for GlobalPos
 		let Self(pos) = self;
 		let Self(rhs) = rhs;
 
-		Self::new(pos.x - rhs.x, pos.y - rhs.y, pos.z - rhs.z)
+		Self(pos - rhs)
 	}
 }
 
@@ -179,7 +216,7 @@ impl Sub<i32> for GlobalPos
 	{
 		let Self(pos) = self;
 
-		Self::new(pos.x - rhs, pos.y - rhs, pos.z - rhs)
+		Self(pos - rhs)
 	}
 }
 
@@ -192,7 +229,7 @@ impl Add for GlobalPos
 		let Self(pos) = self;
 		let Self(rhs) = rhs;
 
-		Self::new(pos.x + rhs.x, pos.y + rhs.y, pos.z + rhs.z)
+		Self(pos + rhs)
 	}
 }
 
@@ -204,15 +241,27 @@ impl Add<i32> for GlobalPos
 	{
 		let Self(pos) = self;
 
-		Self::new(pos.x + rhs, pos.y + rhs, pos.z + rhs)
+		Self(pos + rhs)
 	}
 }
 
-impl<const T: usize> From<LocalPos<T>> for GlobalPos
+impl Div<i32> for GlobalPos
 {
-	fn from(value: LocalPos<T>) -> Self
+	type Output = Self;
+
+	fn div(self, rhs: i32) -> Self::Output
 	{
-		let LocalPos(pos) = value;
+		let Self(pos) = self;
+
+		Self(pos / rhs)
+	}
+}
+
+impl From<LocalPos> for GlobalPos
+{
+	fn from(value: LocalPos) -> Self
+	{
+		let LocalPos{pos, ..} = value;
 
 		Self::new(
 			pos.x as i32,
@@ -222,8 +271,13 @@ impl<const T: usize> From<LocalPos<T>> for GlobalPos
 	}
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub struct LocalPos<const EDGE: usize>(pub Pos3<usize>);
+impl From<Pos3<i32>> for GlobalPos
+{
+	fn from(value: Pos3<i32>) -> Self
+	{
+		Self(value)
+	}
+}
 
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, TryFromPrimitive, EnumCount, EnumIter)]
@@ -335,11 +389,39 @@ impl<T> Index<PosDirection> for AlwaysGroup<T>
 	}
 }
 
-impl<const EDGE: usize> LocalPos<EDGE>
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct LocalPos
 {
-	pub fn new(x: usize, y: usize, z: usize) -> Self
+	pub pos: Pos3<usize>,
+	size: Pos3<usize>
+}
+
+impl LocalPos
+{
+	pub fn new(pos: Pos3<usize>, size: Pos3<usize>) -> Self
 	{
-		Self(Pos3::new(x, y, z))
+		Self{pos, size}
+	}
+
+	pub fn from_global(other: GlobalPos, size: Pos3<usize>) -> Option<Self>
+	{
+		let in_range = |value, limit| (0..limit as i32).contains(&value);
+
+		let GlobalPos(pos) = other;
+
+		let in_range = in_range(pos.x, size.x)
+		&& in_range(pos.y, size.y)
+		&& in_range(pos.z, size.z);
+
+		in_range.then(||
+		{
+			Self::new(Pos3::new(pos.x as usize, pos.y as usize, pos.z as usize), size)
+		})
+	}
+
+	pub fn moved(&self, x: usize, y: usize, z: usize) -> Self
+	{
+		Self{pos: Pos3::new(x, y, z), size: self.size}
 	}
 
 	#[allow(dead_code)]
@@ -354,7 +436,7 @@ impl<const EDGE: usize> LocalPos<EDGE>
 	}
 
 	#[allow(dead_code)]
-	pub fn directions_group(self) -> DirectionsGroup<Option<LocalPos<EDGE>>>
+	pub fn directions_group(self) -> DirectionsGroup<Option<Self>>
 	{
 		DirectionsGroup{
 			right: self.right(),
@@ -364,7 +446,7 @@ impl<const EDGE: usize> LocalPos<EDGE>
 		}
 	}
 
-	pub fn maybe_group(self) -> MaybeGroup<LocalPos<EDGE>>
+	pub fn maybe_group(self) -> MaybeGroup<Self>
 	{
 		MaybeGroup{
 			this: self,
@@ -372,7 +454,7 @@ impl<const EDGE: usize> LocalPos<EDGE>
 		}
 	}
 
-	pub fn always_group(self) -> Option<AlwaysGroup<LocalPos<EDGE>>>
+	pub fn always_group(self) -> Option<AlwaysGroup<Self>>
 	{
 		let directions = self.directions_group();
 
@@ -395,31 +477,16 @@ impl<const EDGE: usize> LocalPos<EDGE>
 		})
 	}
 
-	pub fn from_global(pos: GlobalPos, side: i32) -> Option<Self>
-	{
-		let in_range = |value| (0..side).contains(&value);
-
-		let GlobalPos(pos) = pos;
-
-		if in_range(pos.x) && in_range(pos.y) && in_range(pos.z)
-		{
-			Some(Self::new(pos.x as usize, pos.y as usize, pos.z as usize))
-		} else
-		{
-			None
-		}
-	}
-
 	pub fn overflow(&self, direction: PosDirection) -> Self
 	{
-		let Self(pos) = self;
+		let pos = self.pos;
 
 		match direction
 		{
-			PosDirection::Right => Self::new(0, pos.y, pos.z),
-			PosDirection::Left => Self::new(EDGE - 1, pos.y, pos.z),
-			PosDirection::Up => Self::new(pos.x, 0, pos.z),
-			PosDirection::Down => Self::new(pos.x, EDGE - 1, pos.z)
+			PosDirection::Right => self.moved(0, pos.y, pos.z),
+			PosDirection::Left => self.moved(self.size.x - 1, pos.y, pos.z),
+			PosDirection::Up => self.moved(pos.x, 0, pos.z),
+			PosDirection::Down => self.moved(pos.x, self.size.y - 1, pos.z)
 		}
 	}
 
@@ -436,57 +503,62 @@ impl<const EDGE: usize> LocalPos<EDGE>
 
 	pub fn right(&self) -> Option<Self>
 	{
-		let Self(pos) = self;
+		let pos = self.pos;
 
-		(!self.right_edge()).then(|| Self::new(pos.x + 1, pos.y, pos.z))
+		(!self.right_edge()).then(|| self.moved(pos.x + 1, pos.y, pos.z))
 	}
 
 	pub fn left(&self) -> Option<Self>
 	{
-		let Self(pos) = self;
+		let pos = self.pos;
 
-		(!self.left_edge()).then(|| Self::new(pos.x - 1, pos.y, pos.z))
+		(!self.left_edge()).then(|| self.moved(pos.x - 1, pos.y, pos.z))
 	}
 
 	pub fn up(&self) -> Option<Self>
 	{
-		let Self(pos) = self;
+		let pos = self.pos;
 
-		(!self.top_edge()).then(|| Self::new(pos.x, pos.y + 1, pos.z))
+		(!self.top_edge()).then(|| self.moved(pos.x, pos.y + 1, pos.z))
 	}
 
 	pub fn down(&self) -> Option<Self>
 	{
-		let Self(pos) = self;
+		let pos = self.pos;
 
-		(!self.bottom_edge()).then(|| Self::new(pos.x, pos.y - 1, pos.z))
+		(!self.bottom_edge()).then(|| self.moved(pos.x, pos.y - 1, pos.z))
 	}
 
 	pub fn top_edge(&self) -> bool
 	{
-		self.0.y == (EDGE - 1)
+		self.pos.y == (self.size.y - 1)
 	}
 
 	pub fn bottom_edge(&self) -> bool
 	{
-		self.0.y == 0
+		self.pos.y == 0
 	}
 
 	pub fn right_edge(&self) -> bool
 	{
-		self.0.x == (EDGE - 1)
+		self.pos.x == (self.size.x - 1)
 	}
 
 	pub fn left_edge(&self) -> bool
 	{
-		self.0.x == 0
+		self.pos.x == 0
 	}
 
 	pub fn to_cube(self, side: usize) -> usize
 	{
-		let Self(pos) = self;
+		self.to_rectangle(side, side)
+	}
 
-		pos.x + pos.y * side + pos.z * side * side
+	pub fn to_rectangle(self, x: usize, y: usize) -> usize
+	{
+		let pos = self.pos;
+
+		pos.x + pos.y * x + pos.z * x * y
 	}
 }
 
@@ -499,7 +571,51 @@ pub const TILE_SIZE: f32 = 0.1;
 
 pub const VISUAL_TILE_HEIGHT: f32 = 1.0 / CHUNK_SIZE as f32;
 
-pub type ChunkLocal = LocalPos<CHUNK_SIZE>;
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct ChunkLocal(pub LocalPos);
+
+impl PartialEq for ChunkLocal
+{
+	fn eq(&self, other: &Self) -> bool
+	{
+		self.0.pos == other.0.pos
+	}
+}
+
+impl ChunkLocal
+{
+	pub fn new(x: usize, y: usize, z: usize) -> Self
+	{
+		let size = Pos3::new(CHUNK_SIZE, CHUNK_SIZE, CHUNK_SIZE);
+		let local_pos = LocalPos::new(Pos3::new(x, y, z), size);
+
+		Self(local_pos)
+	}
+
+	pub fn overflow(&self, direction: PosDirection) -> Self
+	{
+		let local_pos = self.0.overflow(direction);
+
+		Self(local_pos)
+	}
+
+	pub fn offset(&self, direction: PosDirection) -> Option<Self>
+	{
+		let local_pos = self.0.offset(direction);
+
+		local_pos.map(|local_pos| Self(local_pos))
+	}
+
+	pub fn pos(&self) -> Pos3<usize>
+	{
+		self.0.pos
+	}
+
+	pub fn size(&self) -> Pos3<usize>
+	{
+		self.0.size
+	}
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Chunk
@@ -534,7 +650,7 @@ impl Chunk
 
 	fn index_of(pos: ChunkLocal) -> usize
 	{
-		let LocalPos(pos) = pos;
+		let pos = pos.pos();
 
 		pos.z * CHUNK_SIZE * CHUNK_SIZE + pos.y * CHUNK_SIZE + pos.x
 	}

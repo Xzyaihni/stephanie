@@ -1,6 +1,6 @@
 use std::{
-	sync::Arc,
-	net::TcpListener
+	net::TcpListener,
+	sync::Arc
 };
 
 use parking_lot::RwLock;
@@ -21,7 +21,6 @@ pub mod world;
 pub struct Server
 {
 	listener: TcpListener,
-	connections_limit: usize,
 	game_server: Arc<RwLock<GameServer>>
 }
 
@@ -36,11 +35,9 @@ impl Server
 		let listener = TcpListener::bind(format!("{address}"))?;
 
 		let game_server = Arc::new(RwLock::new(GameServer::new(tilemap, connections_limit)?));
-		game_server.write().sender_loop();
 
 		Ok(Self{
 			listener,
-			connections_limit,
 			game_server
 		})
 	}
@@ -56,12 +53,7 @@ impl Server
 		{
 			if let Ok(stream) = connection
 			{
-				if self.game_server.read().connections_amount() >= self.connections_limit
-				{
-					return;
-				}
-
-				if let Err(x) = GameServer::player_connect(self.game_server.clone(), stream)
+				if let Err(x) = GameServer::connect(self.game_server.clone(), stream)
 				{
 					eprintln!("error in player connection: {x:?}");
 					continue;

@@ -1,216 +1,250 @@
 use std::{
-	marker::PhantomData,
 	slice::{IterMut, Iter},
 	iter::Enumerate,
 	ops::{Index, IndexMut}
 };
 
 use crate::common::world::{
+	Pos3,
 	LocalPos
 };
 
 
-pub trait ChunkIndexing<const SIZE: usize>
+pub trait ChunkIndexing
 {
-	fn to_index(pos: LocalPos<SIZE>) -> usize;
-	fn index_to_pos(index: usize) -> LocalPos<SIZE>;
+	fn to_index(&self, pos: LocalPos) -> usize;
+	fn index_to_pos(&self, index: usize) -> LocalPos;
 }
 
-pub type ValuePair<const SIZE: usize, T> = (LocalPos<SIZE>, T);
+pub type ValuePair<T> = (LocalPos, T);
 
-pub struct ChunksIter<'a, const SIZE: usize, Indexer, T>
+pub struct ChunksIter<'a, I, T>
 {
 	chunks: Enumerate<Iter<'a, T>>,
-	indexer: PhantomData<*const Indexer>
+	indexer: &'a I
 }
 
-impl<'a, const SIZE: usize, Indexer, T> ChunksIter<'a, SIZE, Indexer, T>
+impl<'a, I, T> ChunksIter<'a, I, T>
 {
-	pub fn new(chunks: Enumerate<Iter<'a, T>>) -> Self
+	pub fn new(chunks: Enumerate<Iter<'a, T>>, indexer: &'a I) -> Self
 	{
-		Self{chunks, indexer: PhantomData}
+		Self{chunks, indexer}
 	}
 }
 
-impl<'a, const SIZE: usize, Indexer, T> Iterator for ChunksIter<'a, SIZE, Indexer, T>
+impl<'a, I, T> Iterator for ChunksIter<'a, I, T>
 where
-	Indexer: ChunkIndexing<SIZE>
+	I: ChunkIndexing
 {
-	type Item = ValuePair<SIZE, &'a T>;
+	type Item = ValuePair<&'a T>;
 
 	fn next(&mut self) -> Option<Self::Item>
 	{
-		self.chunks.next().map(|(index, item)| (Indexer::index_to_pos(index), item))
+		self.chunks.next().map(|(index, item)| (self.indexer.index_to_pos(index), item))
 	}
 }
 
-pub struct ChunksIterMut<'a, const SIZE: usize, Indexer, T>
+pub struct ChunksIterMut<'a, I, T>
 {
 	chunks: Enumerate<IterMut<'a, T>>,
-	indexer: PhantomData<*const Indexer>
+	indexer: &'a I
 }
 
-impl<'a, const SIZE: usize, Indexer, T> ChunksIterMut<'a, SIZE, Indexer, T>
+impl<'a, I, T> ChunksIterMut<'a, I, T>
 {
-	pub fn new(chunks: Enumerate<IterMut<'a, T>>) -> Self
+	pub fn new(chunks: Enumerate<IterMut<'a, T>>, indexer: &'a I) -> Self
 	{
-		Self{chunks, indexer: PhantomData}
+		Self{chunks, indexer}
 	}
 }
 
-impl<'a, const SIZE: usize, Indexer, T> Iterator for ChunksIterMut<'a, SIZE, Indexer, T>
+impl<'a, I, T> Iterator for ChunksIterMut<'a, I, T>
 where
-	Indexer: ChunkIndexing<SIZE>
+	I: ChunkIndexing
 {
-	type Item = ValuePair<SIZE, &'a mut T>;
+	type Item = ValuePair<&'a mut T>;
 
 	fn next(&mut self) -> Option<Self::Item>
 	{
-		self.chunks.next().map(|(index, item)| (Indexer::index_to_pos(index), item))
+		self.chunks.next().map(|(index, item)| (self.indexer.index_to_pos(index), item))
 	}
 }
 
 #[derive(Debug)]
-pub struct ChunksContainer<const SIZE: usize, T>
+pub struct Indexer
 {
-	chunks: Box<[T]>
+	size: Pos3<usize>
 }
 
-impl<const SIZE: usize, T> ChunksContainer<SIZE, T>
+impl Indexer
 {
-	pub fn new<F: FnMut(LocalPos<SIZE>) -> T>(mut default_function: F) -> Self
+	pub fn new(size: Pos3<usize>) -> Self
 	{
-		let chunks = (0..(SIZE * SIZE * SIZE)).map(|index|
-		{
-			default_function(Self::index_to_pos(index))
-		}).collect::<Vec<_>>().into_boxed_slice();
+		Self{size}
+	}
+}
 
-		Self{chunks}
+impl ChunkIndexing for Indexer
+{
+	fn to_index(&self, pos: LocalPos) -> usize
+	{
+		pos.to_rectangle(self.size.x, self.size.y)
 	}
 
-	pub fn swap(&mut self, a: LocalPos<SIZE>, b: LocalPos<SIZE>)
+	fn index_to_pos(&self, index: usize) -> LocalPos
 	{
-		let (index_a, index_b) = (Self::to_index(a), Self::to_index(b));
+		let x = index % self.size.x;
+		let y = (index / self.size.x) % self.size.y;
+		let z = index / (self.size.x * self.size.y);
+
+		LocalPos::new(Pos3::new(x, y, z), self.size)
+	}
+}
+
+#[derive(Debug)]
+pub struct ChunksContainer<T>
+{
+	chunks: Box<[T]>,
+	indexer: Indexer
+}
+
+impl<T> ChunksContainer<T>
+{
+	pub fn new<F: FnMut(LocalPos) -> T>(size: Pos3<usize>, mut default_function: F) -> Self
+	{
+		let indexer = Indexer::new(size);
+
+		let chunks = (0..(size.x * size.y * size.z)).map(|index|
+		{
+			default_function(indexer.index_to_pos(index))
+		}).collect::<Vec<_>>().into_boxed_slice();
+
+		Self{chunks, indexer}
+	}
+
+	pub fn swap(&mut self, a: LocalPos, b: LocalPos)
+	{
+		let (index_a, index_b) = (self.indexer.to_index(a), self.indexer.to_index(b));
 
 		self.chunks.swap(index_a, index_b);
 	}
 
 	#[allow(dead_code)]
-	pub fn iter(&self) -> ChunksIter<SIZE, Self, T>
+	pub fn iter(&self) -> ChunksIter<Indexer, T>
 	{
-		ChunksIter::new(self.chunks.iter().enumerate())
+		ChunksIter::new(self.chunks.iter().enumerate(), &self.indexer)
 	}
 
 	#[allow(dead_code)]
-	pub fn iter_mut(&mut self) -> ChunksIterMut<SIZE, Self, T>
+	pub fn iter_mut(&mut self) -> ChunksIterMut<Indexer, T>
 	{
-		ChunksIterMut::new(self.chunks.iter_mut().enumerate())
+		ChunksIterMut::new(self.chunks.iter_mut().enumerate(), &self.indexer)
 	}
 }
 
-impl<const SIZE: usize, T> ChunkIndexing<SIZE> for ChunksContainer<SIZE, T>
-{
-	fn to_index(pos: LocalPos<SIZE>) -> usize
-	{
-		pos.to_cube(SIZE)
-	}
-
-	fn index_to_pos(index: usize) -> LocalPos<SIZE>
-	{
-		let x = index % SIZE;
-		let y = (index / SIZE) % SIZE;
-		let z = index / (SIZE * SIZE);
-
-		LocalPos::new(x, y, z)
-	}
-}
-
-impl<const SIZE: usize, T> Index<LocalPos<SIZE>> for ChunksContainer<SIZE, T>
+impl<T> Index<LocalPos> for ChunksContainer<T>
 {
 	type Output = T;
 
-	fn index(&self, value: LocalPos<SIZE>) -> &Self::Output
+	fn index(&self, value: LocalPos) -> &Self::Output
 	{
-		&self.chunks[Self::to_index(value)]
+		&self.chunks[self.indexer.to_index(value)]
 	}
 }
 
-impl<const SIZE: usize, T> IndexMut<LocalPos<SIZE>> for ChunksContainer<SIZE, T>
+impl<T> IndexMut<LocalPos> for ChunksContainer<T>
 {
-	fn index_mut(&mut self, value: LocalPos<SIZE>) -> &mut Self::Output
+	fn index_mut(&mut self, value: LocalPos) -> &mut Self::Output
 	{
-		&mut self.chunks[Self::to_index(value)]
+		&mut self.chunks[self.indexer.to_index(value)]
 	}
 }
 
 #[derive(Debug)]
-pub struct FlatChunksContainer<const SIZE: usize, T>
+pub struct FlatIndexer
 {
-	chunks: Box<[T]>
+	size: Pos3<usize>
 }
 
-impl<const SIZE: usize, T> FlatChunksContainer<SIZE, T>
+impl FlatIndexer
 {
-	pub fn new<F: FnMut(LocalPos<SIZE>) -> T>(mut default_function: F) -> Self
+	pub fn new(size: Pos3<usize>) -> Self
 	{
-		let chunks = (0..(SIZE * SIZE)).map(|index|
-		{
-			default_function(Self::index_to_pos(index))
-		}).collect::<Vec<_>>().into_boxed_slice();
+		Self{size}
+	}
+}
 
-		Self{chunks}
+impl ChunkIndexing for FlatIndexer
+{
+	fn to_index(&self, pos: LocalPos) -> usize
+	{
+		let LocalPos{pos, ..} = pos;
+
+		pos.y * self.size.x + pos.x
 	}
 
-	pub fn swap(&mut self, a: LocalPos<SIZE>, b: LocalPos<SIZE>)
+	fn index_to_pos(&self, index: usize) -> LocalPos
 	{
-		let (index_a, index_b) = (Self::to_index(a), Self::to_index(b));
+		let x = index % self.size.x;
+		let y = (index / self.size.x) % self.size.y;
+
+		LocalPos::new(Pos3::new(x, y, 0), self.size)
+	}
+}
+
+#[derive(Debug)]
+pub struct FlatChunksContainer<T>
+{
+	chunks: Box<[T]>,
+	indexer: FlatIndexer
+}
+
+impl<T> FlatChunksContainer<T>
+{
+	pub fn new<F: FnMut(LocalPos) -> T>(size: Pos3<usize>, mut default_function: F) -> Self
+	{
+		let indexer = FlatIndexer::new(size);
+
+		let chunks = (0..(size.x * size.y)).map(|index|
+		{
+			default_function(indexer.index_to_pos(index))
+		}).collect::<Vec<_>>().into_boxed_slice();
+
+		Self{chunks, indexer}
+	}
+
+	pub fn swap(&mut self, a: LocalPos, b: LocalPos)
+	{
+		let (index_a, index_b) = (self.indexer.to_index(a), self.indexer.to_index(b));
 
 		self.chunks.swap(index_a, index_b);
 	}
 
-	pub fn iter(&self) -> ChunksIter<SIZE, Self, T>
+	pub fn iter(&self) -> ChunksIter<FlatIndexer, T>
 	{
-		ChunksIter::new(self.chunks.iter().enumerate())
+		ChunksIter::new(self.chunks.iter().enumerate(), &self.indexer)
 	}
 
-	pub fn iter_mut(&mut self) -> ChunksIterMut<SIZE, Self, T>
+	pub fn iter_mut(&mut self) -> ChunksIterMut<FlatIndexer, T>
 	{
-		ChunksIterMut::new(self.chunks.iter_mut().enumerate())
-	}
-}
-
-impl<const SIZE: usize, T> ChunkIndexing<SIZE> for FlatChunksContainer<SIZE, T>
-{
-	fn to_index(pos: LocalPos<SIZE>) -> usize
-	{
-		let LocalPos(pos) = pos;
-
-		pos.y * SIZE + pos.x
-	}
-
-	fn index_to_pos(index: usize) -> LocalPos<SIZE>
-	{
-		let x = index % SIZE;
-		let y = (index / SIZE) % SIZE;
-
-		LocalPos::new(x, y, 0)
+		ChunksIterMut::new(self.chunks.iter_mut().enumerate(), &self.indexer)
 	}
 }
 
-impl<const SIZE: usize, T> Index<LocalPos<SIZE>> for FlatChunksContainer<SIZE, T>
+impl<T> Index<LocalPos> for FlatChunksContainer<T>
 {
 	type Output = T;
 
-	fn index(&self, value: LocalPos<SIZE>) -> &Self::Output
+	fn index(&self, value: LocalPos) -> &Self::Output
 	{
-		&self.chunks[Self::to_index(value)]
+		&self.chunks[self.indexer.to_index(value)]
 	}
 }
 
-impl<const SIZE: usize, T> IndexMut<LocalPos<SIZE>> for FlatChunksContainer<SIZE, T>
+impl<T> IndexMut<LocalPos> for FlatChunksContainer<T>
 {
-	fn index_mut(&mut self, value: LocalPos<SIZE>) -> &mut Self::Output
+	fn index_mut(&mut self, value: LocalPos) -> &mut Self::Output
 	{
-		&mut self.chunks[Self::to_index(value)]
+		&mut self.chunks[self.indexer.to_index(value)]
 	}
 }

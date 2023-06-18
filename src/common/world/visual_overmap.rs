@@ -43,44 +43,82 @@ struct VisualGenerated
 }
 
 #[derive(Debug)]
-pub struct VisualOvermap<const SIZE: usize>
+struct VisibilityChecker
+{
+	pub size: Pos3<usize>,
+	pub camera_size: (f32, f32),
+	pub player_position: Arc<RwLock<Pos3<f32>>>
+}
+
+impl VisibilityChecker
+{
+	pub fn new(size: Pos3<usize>, camera_size: (f32, f32), player_position: Pos3<f32>) -> Self
+	{
+		let player_position = Arc::new(RwLock::new(player_position));
+
+		Self{size, camera_size, player_position}
+	}
+
+	pub fn visible(&self, pos: LocalPos) -> bool
+	{
+		let player_offset = self.player_position.read().modulo(CHUNK_VISUAL_SIZE);
+
+		let offset_position =
+			Pos3::from(pos) - Pos3::from(GlobalPos::from(Pos3::<i32>::from(self.size)) / 2);
+
+		let chunk_offset = offset_position * CHUNK_VISUAL_SIZE - player_offset;
+
+		let in_range = |value: f32, limit: f32| -> bool
+		{
+			let limit = limit / 2.0;
+
+			((-limit - CHUNK_VISUAL_SIZE)..limit).contains(&value)
+		};
+
+		in_range(chunk_offset.x, self.camera_size.0)
+		&& in_range(chunk_offset.y, self.camera_size.1)
+	}
+}
+
+#[derive(Debug)]
+pub struct VisualOvermap
 {
 	tiles_factory: TilesFactory,
-	chunks: FlatChunksContainer<SIZE, (Instant, VisualChunk)>,
-	size: (f32, f32),
-	player_position: Arc<RwLock<Pos3<f32>>>,
+	chunks: FlatChunksContainer<(Instant, VisualChunk)>,
+	visibility_checker: VisibilityChecker,
 	receiver: Receiver<VisualGenerated>,
 	sender: Sender<VisualGenerated>
 }
 
-impl<const SIZE: usize> VisualOvermap<SIZE>
+impl VisualOvermap
 {
 	pub fn new(
 		tiles_factory: TilesFactory,
-		size: (f32, f32),
+		size: Pos3<usize>,
+		camera_size: (f32, f32),
 		player_position: Pos3<f32>
 	) -> Self
 	{
-		let chunks = FlatChunksContainer::new(|_| (Instant::now(), VisualChunk::new()));
+		let visibility_checker = VisibilityChecker::new(size, camera_size, player_position);
 
-		let player_position = Arc::new(RwLock::new(player_position));
+		let chunks = FlatChunksContainer::new(size, |_| (Instant::now(), VisualChunk::new()));
 
 		let (sender, receiver) = mpsc::channel();
 
-		Self{tiles_factory, chunks, size, player_position, receiver, sender}
+		Self{tiles_factory, chunks, visibility_checker, receiver, sender}
 	}
 
 	pub fn generate(
 		&self,
-		chunks: &ChunksContainer<SIZE, Option<Arc<Chunk>>>,
-		pos: LocalPos<SIZE>
+		chunks: &ChunksContainer<Option<Arc<Chunk>>>,
+		pos: LocalPos
 	)
 	{
-		let LocalPos(Pos3{x, y, ..}) = pos;
+		let Pos3{x, y, ..} = pos.pos;
 
-		let chunks = (0..=(SIZE / 2)).rev().map(|z|
+		let chunks = (0..=(self.visibility_checker.size.z / 2)).rev().map(|z|
 		{
-			let local_pos = LocalPos::new(x, y, z);
+			let local_pos = LocalPos::new(Pos3::new(x, y, z), self.visibility_checker.size);
 
 			local_pos.maybe_group()
 				.map(|position| chunks[position].clone().unwrap())
@@ -88,7 +126,7 @@ impl<const SIZE: usize> VisualOvermap<SIZE>
 
 		let chunk_pos = self.to_global(pos);
 
-		let player_height = self.player_position.read().tile_height();
+		let player_height = self.visibility_checker.player_position.read().tile_height();
 
 		let sender = self.sender.clone();
 
@@ -147,43 +185,22 @@ impl<const SIZE: usize> VisualOvermap<SIZE>
 		}
 	}
 
-	pub fn rescale(&mut self, size: (f32, f32))
+	pub fn rescale(&mut self, camera_size: (f32, f32))
 	{
-		self.size = size;
+		self.visibility_checker.camera_size = camera_size;
 	}
 
-	pub fn visible(&self, pos: LocalPos<SIZE>) -> bool
+	pub fn visible(&self, pos: LocalPos) -> bool
 	{
-		Self::visible_associated(*self.player_position.read(), self.size, pos)
-	}
-
-	fn visible_associated(
-		player_position: Pos3<f32>,
-		size: (f32, f32),
-		pos: LocalPos<SIZE>
-	) -> bool
-	{
-		let player_offset = player_position.modulo(CHUNK_VISUAL_SIZE);
-
-		let offset_position = Pos3::from(pos) - (SIZE / 2) as f32;
-		let chunk_offset = offset_position * CHUNK_VISUAL_SIZE - player_offset;
-
-		let in_range = |value: f32, limit: f32| -> bool
-		{
-			let limit = limit / 2.0;
-
-			((-limit - CHUNK_VISUAL_SIZE)..limit).contains(&value)
-		};
-
-		in_range(chunk_offset.x, size.0) && in_range(chunk_offset.y, size.1)
+		self.visibility_checker.visible(pos)
 	}
 
 	pub fn camera_moved(&mut self, position: Pos3<f32>)
 	{
-		*self.player_position.write() = position;
+		*self.visibility_checker.player_position.write() = position;
 	}
 
-	pub fn mark_ungenerated(&mut self, pos: LocalPos<SIZE>)
+	pub fn mark_ungenerated(&mut self, pos: LocalPos)
 	{
 		self.chunks[pos].1.mark_ungenerated();
 	}
@@ -196,37 +213,42 @@ impl<const SIZE: usize> VisualOvermap<SIZE>
 		});
 	}
 
-	pub fn is_generated(&self, pos: LocalPos<SIZE>) -> bool
+	pub fn is_generated(&self, pos: LocalPos) -> bool
 	{
 		self.chunks[pos].1.is_generated()
 	}
 
-	pub fn remove(&mut self, pos: LocalPos<SIZE>)
+	pub fn remove(&mut self, pos: LocalPos)
 	{
-		if pos.0.z == 0
+		if pos.pos.z == 0
 		{
 			self.chunks[pos] = (Instant::now(), VisualChunk::new());
 		}
 	}
 
-	pub fn swap(&mut self, a: LocalPos<SIZE>, b: LocalPos<SIZE>)
+	pub fn swap(&mut self, a: LocalPos, b: LocalPos)
 	{
-		if a.0.z == 0 && b.0.z == 0
+		if a.pos.z == 0 && b.pos.z == 0
 		{
 			self.chunks.swap(a, b);
 		}
 	}
 }
 
-impl<const SIZE: usize> OvermapIndexing<SIZE> for VisualOvermap<SIZE>
+impl OvermapIndexing for VisualOvermap
 {
+	fn size(&self) -> Pos3<usize>
+	{
+		self.visibility_checker.size
+	}
+
 	fn player_position(&self) -> GlobalPos
 	{
-		self.player_position.read().rounded()
+		self.visibility_checker.player_position.read().rounded()
 	}
 }
 
-impl<const SIZE: usize> GameObject for VisualOvermap<SIZE>
+impl GameObject for VisualOvermap
 {
 	fn update(&mut self, dt: f32)
 	{
@@ -239,7 +261,7 @@ impl<const SIZE: usize> GameObject for VisualOvermap<SIZE>
 	{
 		self.chunks.iter_mut().filter(|(pos, _)|
 		{
-			Self::visible_associated(*self.player_position.read(), self.size, *pos)
+			self.visibility_checker.visible(*pos)
 		}).for_each(|(_, chunk)| chunk.1.update_buffers(builder, index));
 	}
 

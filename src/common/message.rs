@@ -1,4 +1,6 @@
-use std::mem;
+use std::{
+	mem
+};
 
 use serde::{Serialize, Deserialize};
 

@@ -99,7 +99,20 @@ impl GameServer
 
 		let world = World::new(connection_handler.clone(), tilemap)?;
 
+		sender_loop(connection_handler.clone());
+
 		Ok(Self{entities, world, connection_handler})
+	}
+
+	pub fn connect(this: Arc<RwLock<Self>>, stream: TcpStream) -> Result<(), ConnectionError>
+	{
+		if this.read().connection_handler.read().under_limit()
+		{
+			Self::player_connect(this, stream)
+		} else
+		{
+			Ok(())
+		}
 	}
 
 	pub fn player_connect(
@@ -109,15 +122,12 @@ impl GameServer
 	{
 		let (id, messager) = this.write().player_connect_inner(stream)?;
 
-		let this_cloned = this.clone();
-
-		receiver_loop(messager, move |message|
-		{
-			this_cloned.write().process_message(message, id);
-		}, move ||
-		{
-			this.write().connection_close(id);
-		});
+		let other_this = this.clone();
+		receiver_loop(
+			messager,
+			move |message| this.write().process_message_inner(message, id),
+			move || other_this.write().connection_close(id)
+		);
 
 		Ok(())
 	}
@@ -202,11 +212,6 @@ impl GameServer
 		Ok((player_id, messager.clone_messager()))
 	}
 
-	pub fn sender_loop(&self)
-	{
-		sender_loop(self.connection_handler.clone());
-	}
-
 	fn connection_close(&mut self, id: usize)
 	{
 		let player = self.player_ref(id);
@@ -219,7 +224,7 @@ impl GameServer
 		self.remove_player(id);
 	}
 
-	fn process_message(&mut self, message: Message, id: usize)
+	fn process_message_inner(&mut self, message: Message, id: usize)
 	{
 		let id_mismatch = || panic!("id mismatch in serverside process message");
 
@@ -257,11 +262,6 @@ impl GameServer
 	{
 		eprintln!("nyo player loading for now,,");
 		None
-	}
-
-	pub fn connections_amount(&self) -> usize
-	{
-		self.connection_handler.read().connections_amount()
 	}
 }
 

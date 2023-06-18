@@ -1,7 +1,15 @@
 use std::{
 	io,
+	fmt,
 	fs::File,
 	path::Path
+};
+
+use parking_lot::Mutex;
+
+use rlua::{
+	Lua,
+	StdLib
 };
 
 use serde::{Serialize, Deserialize};
@@ -11,6 +19,7 @@ use super::ChunkSaver;
 use crate::common::{
 	TileMap,
 	world::{
+		Pos3,
 		Chunk,
 		LocalPos,
 		GlobalPos,
@@ -84,17 +93,40 @@ impl WorldChunk
 	}
 }
 
-#[derive(Debug)]
+struct GenerateState
+{
+	lua: Mutex<Lua>
+}
+
+impl GenerateState
+{
+	pub fn new() -> Self
+	{
+		let lua = Mutex::new(Lua::new_with(StdLib::empty()));
+
+		Self{lua}
+	}
+}
+
 pub struct ChunkGenerator
 {
-	tilemap: TileMap
+	tilemap: TileMap,
+	states: Box<[GenerateState]>
 }
 
 impl ChunkGenerator
 {
-	pub fn new(tilemap: TileMap) -> Self
+	pub fn new(tilemap: TileMap, chunk_rules: &[ChunkRule]) -> Self
 	{
-		Self{tilemap}
+		// yea im not writing chunk generation generically over size or anything like that
+		assert_eq!(CHUNK_SIZE, 16);
+
+		let states = chunk_rules.iter().map(|rule|
+		{
+			GenerateState::new()
+		}).collect::<Vec<_>>().into_boxed_slice();
+
+		Self{tilemap, states}
 	}
 
 	pub fn generate_chunk<'a>(
@@ -102,46 +134,19 @@ impl ChunkGenerator
 		group: AlwaysGroup<&'a str>
 	) -> Chunk
 	{
-		let filled_with = |name|
-		{
-			let tile = self.tilemap.tile_named(name).unwrap();
+		let chunk = Chunk::new();
 
-			use crate::common::world::Tile;
-			let mut chunk = vec![Tile::none(); CHUNK_SIZE.pow(3)];
-			for z in 0..CHUNK_SIZE
-			{
-				for y in 0..CHUNK_SIZE
-				{
-					for x in 0..CHUNK_SIZE
-					{
-						let generate = z == 0;
+		chunk
+	}
+}
 
-						if generate
-						{
-							chunk[z * CHUNK_SIZE.pow(2) + y * CHUNK_SIZE + x] = tile;
-						}
-					}
-				}
-			}
-
-			Chunk::from(chunk.into_boxed_slice())
-		};
-
-		let fill_with = match group.this
-		{
-			"park" => "grass",
-			"building" => "concrete",
-			"road_vertical" | "road_horizontal" | "road_intersection" => "asphalt",
-			_ => ""
-		};
-
-		if !fill_with.is_empty()
-		{
-			filled_with(fill_with)
-		} else
-		{
-			Chunk::new()
-		}
+impl fmt::Debug for ChunkGenerator
+{
+	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
+	{
+		f.debug_struct("ChunkGenerator")
+			.field("tilemap", &self.tilemap)
+			.finish()
 	}
 }
 
@@ -150,7 +155,8 @@ pub struct WorldGenerator
 {
 	chunk_generator: ChunkGenerator,
 	chunk_saver: ChunkSaver<WorldChunk>,
-	chunk_rules: Vec<ChunkRule>
+	size: Pos3<usize>,
+	chunk_rules: Box<[ChunkRule]>
 }
 
 impl WorldGenerator
@@ -158,34 +164,37 @@ impl WorldGenerator
 	pub fn new<P: AsRef<Path>>(
 		chunk_saver: ChunkSaver<WorldChunk>,
 		tilemap: TileMap,
+		size: Pos3<usize>,
 		path: P
 	) -> Result<Self, ParseError>
 	{
-		let chunk_generator = ChunkGenerator::new(tilemap);
-		let chunk_rules = serde_json::from_reader::<_, Vec<ChunkRule>>(File::open(path)?)?;
+		let chunk_rules = serde_json::from_reader::<_, Vec<ChunkRule>>(File::open(path)?)?
+			.into_boxed_slice();
 
-		Ok(Self{chunk_generator, chunk_saver, chunk_rules})
+		let chunk_generator = ChunkGenerator::new(tilemap, &chunk_rules);
+
+		Ok(Self{chunk_generator, chunk_saver, size, chunk_rules})
 	}
 
-	pub fn generate_missing<const SIZE: usize, F>(
+	pub fn generate_missing<F>(
 		&self,
-		world_chunks: &mut ChunksContainer<SIZE, Option<WorldChunk>>,
+		world_chunks: &mut ChunksContainer<Option<WorldChunk>>,
 		mut to_global: F
 	)
 	where
-		F: FnMut(LocalPos<SIZE>) -> GlobalPos
+		F: FnMut(LocalPos) -> GlobalPos
 	{
 		self.load_missing(world_chunks, &mut to_global);
 		self.generate_wave_collapse(world_chunks, to_global);
 	}
 
-	fn generate_wave_collapse<const SIZE: usize, F>(
+	fn generate_wave_collapse<F>(
 		&self,
-		world_chunks: &mut ChunksContainer<SIZE, Option<WorldChunk>>,
+		world_chunks: &mut ChunksContainer<Option<WorldChunk>>,
 		mut to_global: F
 	)
 	where
-		F: FnMut(LocalPos<SIZE>) -> GlobalPos
+		F: FnMut(LocalPos) -> GlobalPos
 	{
 		/*loop
 		{
@@ -200,13 +209,13 @@ impl WorldGenerator
 			});
 	}
 
-	fn wave_collapse<const SIZE: usize, F>(
+	fn wave_collapse<F>(
 		&self,
-		pos: LocalPos<SIZE>,
+		pos: LocalPos,
 		mut to_global: F
 	) -> WorldChunk
 	where
-		F: FnMut(LocalPos<SIZE>) -> GlobalPos
+		F: FnMut(LocalPos) -> GlobalPos
 	{
 		let global_pos = to_global(pos);
 		let generate = global_pos.0.z == -1 || global_pos.0.z == 0;
@@ -224,13 +233,13 @@ impl WorldGenerator
 		chunk
 	}
 
-	fn load_missing<const SIZE: usize, F>(
+	fn load_missing<F>(
 		&self,
-		world_chunks: &mut ChunksContainer<SIZE, Option<WorldChunk>>,
+		world_chunks: &mut ChunksContainer<Option<WorldChunk>>,
 		mut to_global: F
 	)
 	where
-		F: FnMut(LocalPos<SIZE>) -> GlobalPos
+		F: FnMut(LocalPos) -> GlobalPos
 	{
 		world_chunks.iter_mut().filter(|(_, chunk)| chunk.is_none())
 			.for_each(|(pos, chunk)|

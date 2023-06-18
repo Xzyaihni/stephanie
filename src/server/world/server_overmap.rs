@@ -16,28 +16,56 @@ use crate::common::world::{
 
 
 #[derive(Debug)]
-pub struct ServerOvermap<const SIZE: usize>
+struct Indexer
 {
-	world_generator: Arc<WorldGenerator>,
-	world_chunks: ChunksContainer<SIZE, Option<WorldChunk>>,
-	player_position: GlobalPos
+	pub size: Pos3<usize>,
+	pub player_position: GlobalPos
 }
 
-impl<const SIZE: usize> ServerOvermap<SIZE>
+impl Indexer
+{
+	pub fn new(size: Pos3<usize>, player_position: GlobalPos) -> Self
+	{
+		Self{size, player_position}
+	}
+}
+
+impl OvermapIndexing for Indexer
+{
+	fn size(&self) -> Pos3<usize>
+	{
+		self.size
+	}
+
+	fn player_position(&self) -> GlobalPos
+	{
+		self.player_position
+	}
+}
+
+#[derive(Debug)]
+pub struct ServerOvermap
+{
+	world_generator: Arc<WorldGenerator>,
+	world_chunks: ChunksContainer<Option<WorldChunk>>,
+	indexer: Indexer
+}
+
+impl ServerOvermap
 {
 	pub fn new(
 		world_generator: Arc<WorldGenerator>,
+		size: Pos3<usize>,
 		player_position: Pos3<f32>
 	) -> Self
 	{
-		let world_chunks = ChunksContainer::new(|_| None);
-
-		let player_position = player_position.rounded();
+		let indexer = Indexer::new(size, player_position.rounded());
+		let world_chunks = ChunksContainer::new(size, |_| None);
 
 		let mut this = Self{
 			world_generator,
 			world_chunks,
-			player_position
+			indexer
 		};
 
 		this.generate_missing();
@@ -50,26 +78,27 @@ impl<const SIZE: usize> ServerOvermap<SIZE>
 		let margin = 1;
 		let padding = 1;
 
-		let over_edge = |value| -> i32
+		let over_edge = |value, limit| -> i32
 		{
 			if value < padding
 			{
 				(value - padding) - margin
-			} else if value >= (SIZE as i32 - padding)
+			} else if value >= (limit as i32 - padding)
 			{
-				value - (SIZE as i32 - padding) + 1 + margin
+				value - (limit as i32 - padding) + 1 + margin
 			} else
 			{
 				0
 			}
 		};
 
-		let GlobalPos(difference) = pos - self.player_position + SIZE as i32 / 2;
+		let GlobalPos(difference) = self.to_local_unconverted(pos);
 
+		let size = self.indexer.size;
 		let shift_offset = GlobalPos::new(
-			over_edge(difference.x),
-			over_edge(difference.y),
-			over_edge(difference.z)
+			over_edge(difference.x, size.x),
+			over_edge(difference.y, size.y),
+			over_edge(difference.z, size.z)
 		);
 
 		let non_shifted = shift_offset.0.x == 0 && shift_offset.0.y == 0 && shift_offset.0.z == 0;
@@ -87,19 +116,19 @@ impl<const SIZE: usize> ServerOvermap<SIZE>
 
 	fn shift_overmap_by(&mut self, shift_offset: GlobalPos)
 	{
-		let new_player_position = self.player_position + shift_offset;
+		let new_player_position = self.indexer.player_position + shift_offset;
 
-		self.player_position = new_player_position;
+		self.indexer.player_position = new_player_position;
 
 		self.position_offset(shift_offset);
 	}
 
-	fn generate_existing_chunk(&self, local_pos: LocalPos<SIZE>) -> Option<Chunk>
+	fn generate_existing_chunk(&self, local_pos: LocalPos) -> Option<Chunk>
 	{
 		let group = local_pos.always_group();
 		if group.is_none()
 		{
-			println!("out of range {}, {}, {}", local_pos.0.x, local_pos.0.y, local_pos.0.z);
+			eprintln!("out of range {}", local_pos.pos);
 		}
 
 		group.map(|group|
@@ -111,40 +140,43 @@ impl<const SIZE: usize> ServerOvermap<SIZE>
 	}
 }
 
-impl<const SIZE: usize> Overmap<SIZE, WorldChunk> for ServerOvermap<SIZE>
+impl Overmap<WorldChunk> for ServerOvermap
 {
-	fn remove(&mut self, pos: LocalPos<SIZE>)
+	fn remove(&mut self, pos: LocalPos)
 	{
 		self.world_chunks[pos] = None;
 	}
 
-	fn swap(&mut self, a: LocalPos<SIZE>, b: LocalPos<SIZE>)
+	fn swap(&mut self, a: LocalPos, b: LocalPos)
 	{
 		self.world_chunks.swap(a, b);
 	}
 
-	fn get_local(&self, pos: LocalPos<SIZE>) -> &Option<WorldChunk>
+	fn get_local(&self, pos: LocalPos) -> &Option<WorldChunk>
 	{
 		&self.world_chunks[pos]
 	}
 
-	fn mark_ungenerated(&mut self, _pos: LocalPos<SIZE>) {}
+	fn mark_ungenerated(&mut self, _pos: LocalPos) {}
 
 	fn generate_missing(&mut self)
 	{
-		let to_global = |local_pos|
+		self.world_generator.generate_missing(&mut self.world_chunks, |pos|
 		{
-			Self::to_global_associated(local_pos, self.player_position)
-		};
-
-		self.world_generator.generate_missing(&mut self.world_chunks, to_global);
+			self.indexer.to_global(pos)
+		});
 	}
 }
 
-impl<const SIZE: usize> OvermapIndexing<SIZE> for ServerOvermap<SIZE>
+impl OvermapIndexing for ServerOvermap
 {
+	fn size(&self) -> Pos3<usize>
+	{
+		self.indexer.size
+	}
+
 	fn player_position(&self) -> GlobalPos
 	{
-		self.player_position
+		self.indexer.player_position
 	}
 }

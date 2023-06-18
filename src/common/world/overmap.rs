@@ -1,6 +1,7 @@
 use std::iter;
 
 use chunk::{
+	Pos3,
 	GlobalPos,
 	LocalPos
 };
@@ -13,38 +14,19 @@ pub mod visual_chunk;
 pub mod chunks_container;
 
 
-pub trait Overmap<const SIZE: usize, T>: OvermapIndexing<SIZE>
+pub trait Overmap<T>: OvermapIndexing
 {
-	fn remove(&mut self, pos: LocalPos<SIZE>);
+	fn remove(&mut self, pos: LocalPos);
 
-	fn swap(&mut self, a: LocalPos<SIZE>, b: LocalPos<SIZE>);
+	fn swap(&mut self, a: LocalPos, b: LocalPos);
 
-	fn get_local(&self, pos: LocalPos<SIZE>) -> &Option<T>;
+	fn get_local(&self, pos: LocalPos) -> &Option<T>;
 
-	fn mark_ungenerated(&mut self, pos: LocalPos<SIZE>);
+	fn mark_ungenerated(&mut self, pos: LocalPos);
 
 	fn get(&self, pos: GlobalPos) -> Option<&T>
 	{
 		self.to_local(pos).map(|local_pos| self.get_local(local_pos).as_ref()).flatten()
-	}
-
-	fn default_ordering(positions: impl Iterator<Item=LocalPos<SIZE>>) -> Box<[LocalPos<SIZE>]>
-	{
-		let mut ordering = positions.collect::<Vec<_>>();
-
-		ordering.sort_unstable_by(move |a, b|
-		{
-			let distance = |local_pos| -> f32
-			{
-				let GlobalPos(pos) = GlobalPos::from(local_pos) - (SIZE as i32 / 2);
-
-				((pos.x.pow(2) + pos.y.pow(2) + pos.z.pow(2)) as f32).sqrt()
-			};
-
-			distance(*a).total_cmp(&distance(*b))
-		});
-
-		ordering.into_boxed_slice()
 	}
 
 	fn generate_missing(&mut self);
@@ -57,11 +39,11 @@ pub trait Overmap<const SIZE: usize, T>: OvermapIndexing<SIZE>
 
 	fn shift_chunks(&mut self, offset: GlobalPos)
 	{
-		let conditional_overmap = |reversed|
+		let conditional_overmap = |reversed, limit|
 		{
 			let (mut start, step) = if reversed
 			{
-				(SIZE - 1, -1)
+				(limit - 1, -1)
 			} else
 			{
 				(0, 1)
@@ -73,103 +55,125 @@ pub trait Overmap<const SIZE: usize, T>: OvermapIndexing<SIZE>
 				start = (start as i32 + step) as usize;
 
 				return_value
-			}).take(SIZE)
+			}).take(limit)
 		};
 
-		conditional_overmap(offset.0.z < 0).flat_map(|z|
+		let size = self.size();
+
+		// im rewriting this stuff later!!!!!!!!
+		conditional_overmap(offset.0.z < 0, size.z).flat_map(|z|
 		{
-			conditional_overmap(offset.0.y < 0).flat_map(move |y|
+			conditional_overmap(offset.0.y < 0, size.y).flat_map(move |y|
 			{
-				conditional_overmap(offset.0.x < 0).map(move |x| LocalPos::new(x, y, z))
+				conditional_overmap(offset.0.x < 0, size.x)
+					.map(move |x| LocalPos::new(Pos3::new(x, y, z), size))
 			})
 		}).for_each(|old_local|
 		{
-			//early return if the chunk is empty
-			if self.get_local(old_local).is_none()
+
+		});
+	}
+
+	fn shift_chunk(&mut self, offset: GlobalPos, local_pos: LocalPos)
+	{
+		//early return if the chunk is empty
+		if self.get_local(old_local).is_none()
+		{
+			return;
+		}
+
+		let old_position = self.to_global(old_local);
+		let position = old_position - offset;
+
+		if let Some(local_pos) = self.to_local(position)
+		{
+			//move the chunk to the new position
+			self.swap(old_local, local_pos);
+
+			let is_edge_chunk =
 			{
-				return;
-			}
-
-			let old_position = self.to_global(old_local);
-			let position = old_position - offset;
-
-			if let Some(local_pos) = self.to_local(position)
-			{
-				//move the chunk to the new position
-				self.swap(old_local, local_pos);
-
-				let is_edge_chunk =
+				let is_edge = |pos, offset, limit|
 				{
-					let is_edge = |pos, offset|
+					if offset == 0
 					{
-						if offset == 0
-						{
-							false
-						} else if offset < 0
-						{
-							(pos as i32 + offset) == 0
-						} else
-						{
-							(pos as i32 + offset) == (SIZE as i32 - 1)
-						}
-					};
-
-					let x_edge = is_edge(local_pos.0.x, offset.0.x);
-					let y_edge = is_edge(local_pos.0.y, offset.0.y);
-					let z_edge = is_edge(local_pos.0.z, offset.0.z);
-
-					x_edge || y_edge || z_edge
+						false
+					} else if offset < 0
+					{
+						(pos as i32 + offset) == 0
+					} else
+					{
+						(pos as i32 + offset) == (limit as i32 - 1)
+					}
 				};
 
-				if is_edge_chunk
-				{
-					self.mark_ungenerated(local_pos);
-				}
-			} else
+				let size = self.size();
+				let x_edge = is_edge(local_pos.pos.x, offset.0.x, size.x);
+				let y_edge = is_edge(local_pos.pos.y, offset.0.y, size.y);
+				let z_edge = is_edge(local_pos.pos.z, offset.0.z, size.z);
+
+				x_edge || y_edge || z_edge
+			};
+
+			if is_edge_chunk
 			{
-				//chunk now outside the player range, remove it
-				self.remove(old_local);
+				self.mark_ungenerated(local_pos);
 			}
-		});
+		} else
+		{
+			//chunk now outside the player range, remove it
+			self.remove(old_local);
+		}
 	}
 }
 
-pub trait OvermapIndexing<const SIZE: usize>
+pub trait OvermapIndexing
 {
+	fn size(&self) -> Pos3<usize>;
 	fn player_position(&self) -> GlobalPos;
 
-	fn to_local(&self, pos: GlobalPos) -> Option<LocalPos<SIZE>>
+	fn default_ordering(
+		&self,
+		positions: impl Iterator<Item=LocalPos>
+	) -> Box<[LocalPos]>
 	{
-		Self::to_local_associated(pos, self.player_position())
+		let mut ordering = positions.collect::<Vec<_>>();
+
+		ordering.sort_unstable_by(move |a, b|
+		{
+			let distance = |local_pos| -> f32
+			{
+				let GlobalPos(pos) = self.player_offset(local_pos);
+
+				((pos.x.pow(2) + pos.y.pow(2) + pos.z.pow(2)) as f32).sqrt()
+			};
+
+			distance(*a).total_cmp(&distance(*b))
+		});
+
+		ordering.into_boxed_slice()
 	}
 
-	fn to_local_associated(
-		pos: GlobalPos,
-		player_position: GlobalPos
-	) -> Option<LocalPos<SIZE>>
+	fn to_local(&self, pos: GlobalPos) -> Option<LocalPos>
 	{
-		let player_distance = pos - player_position;
+		let pos = self.to_local_unconverted(pos);
 
-		let pos = player_distance + (SIZE as i32 / 2);
-
-		LocalPos::from_global(pos, SIZE as i32)
+		LocalPos::from_global(pos, self.size())
 	}
 
-	fn to_global(&self, pos: LocalPos<SIZE>) -> GlobalPos
+	fn to_local_unconverted(&self, pos: GlobalPos) -> GlobalPos
 	{
-		Self::to_global_associated(pos, self.player_position())
+		let player_distance = pos - self.player_position();
+
+		player_distance + GlobalPos::from(Pos3::from(self.size())) / 2
 	}
 
-	fn to_global_associated(
-		pos: LocalPos<SIZE>,
-		player_position: GlobalPos
-	) -> GlobalPos
+	fn to_global(&self, pos: LocalPos) -> GlobalPos
 	{
-		Self::player_offset(pos) + player_position
+		self.player_offset(pos) + self.player_position()
 	}
 
-	fn player_offset(pos: LocalPos<SIZE>) -> GlobalPos
+	fn player_offset(&self, pos: LocalPos) -> GlobalPos
 	{
-		GlobalPos::from(pos) - (SIZE as i32 / 2)
+		GlobalPos::from(pos) - GlobalPos::from(Pos3::from(self.size()))
 	}
 }

@@ -42,7 +42,8 @@ impl PlayerInfo
 #[derive(Debug)]
 pub struct ConnectionsHandler
 {
-	connections: Slab<PlayerInfo>
+	connections: Slab<PlayerInfo>,
+	limit: usize
 }
 
 impl ConnectionsHandler
@@ -51,7 +52,7 @@ impl ConnectionsHandler
 	{
 		let connections = Slab::with_capacity(limit);
 
-		Self{connections}
+		Self{connections, limit}
 	}
 
 	pub fn remove_connection(&mut self, id: usize)
@@ -59,9 +60,9 @@ impl ConnectionsHandler
 		self.connections.remove(id);
 	}
 
-	pub fn connections_amount(&self) -> usize
+	pub fn under_limit(&self) -> bool
 	{
-		self.connections.len()
+		self.connections.len() < self.limit
 	}
 
 	pub fn connect(&mut self, player_info: PlayerInfo) -> usize

@@ -13,27 +13,37 @@ pub trait BufferSender
 
 const TICK_COUNT: usize = 30;
 
+pub fn waiting_loop<F: FnMut() -> bool>(mut f: F)
+{
+	let frame_duration = Duration::from_secs_f64(1.0 / TICK_COUNT as f64);
+	let mut last_tick = Instant::now();
+
+	loop
+	{
+		if f() { return; }
+
+		if let Some(time) = frame_duration.checked_sub(last_tick.elapsed())
+		{
+			thread::sleep(time);
+		}
+
+		last_tick = Instant::now();
+	}
+}
+
 pub fn sender_loop<B: BufferSender + Send + Sync + 'static>(sender: Arc<RwLock<B>>)
 {
 	thread::spawn(move ||
 	{
-		let frame_duration = Duration::from_secs_f64(1.0 / TICK_COUNT as f64);
-		let mut last_tick = Instant::now();
-
-		loop
+		waiting_loop(||
 		{
-			if let Err(x) = sender.write().send_buffered()
+			let result = sender.write().send_buffered();
+			if let Err(ref x) = result
 			{
 				eprintln!("error in sender loop: {x:?}, closing");
-				return;
 			}
 
-			if let Some(time) = frame_duration.checked_sub(last_tick.elapsed())
-			{
-				thread::sleep(time);
-			}
-
-			last_tick = Instant::now();
-		}
+			result.is_err()
+		});
 	});
 }

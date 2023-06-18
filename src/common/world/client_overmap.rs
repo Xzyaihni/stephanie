@@ -27,33 +27,64 @@ use super::{
 
 
 #[derive(Debug)]
-pub struct ClientOvermap<const SIZE: usize>
+struct Indexer
 {
-	world_receiver: WorldReceiver,
-	visual_overmap: VisualOvermap<SIZE>,
-	chunks: ChunksContainer<SIZE, Option<Arc<Chunk>>>,
-	chunk_ordering: Box<[LocalPos<SIZE>]>,
-	player_position: Pos3<f32>
+	pub size: Pos3<usize>,
+	pub player_position: Pos3<f32>
 }
 
-impl<const SIZE: usize> ClientOvermap<SIZE>
+impl Indexer
+{
+	pub fn new(size: Pos3<usize>, player_position: Pos3<f32>) -> Self
+	{
+		Self{size, player_position}
+	}
+}
+
+impl OvermapIndexing for Indexer
+{
+	fn size(&self) -> Pos3<usize>
+	{
+		self.size
+	}
+
+	fn player_position(&self) -> GlobalPos
+	{
+		self.player_position.rounded()
+	}
+}
+
+#[derive(Debug)]
+pub struct ClientOvermap
+{
+	world_receiver: WorldReceiver,
+	visual_overmap: VisualOvermap,
+	chunks: ChunksContainer<Option<Arc<Chunk>>>,
+	chunk_ordering: Box<[LocalPos]>,
+	indexer: Indexer
+}
+
+impl ClientOvermap
 {
 	pub fn new(
 		world_receiver: WorldReceiver,
-		visual_overmap: VisualOvermap<SIZE>,
+		visual_overmap: VisualOvermap,
+		size: Pos3<usize>,
 		player_position: Pos3<f32>
 	) -> Self
 	{
-		let chunks = ChunksContainer::new(|_| None);
+		let indexer = Indexer::new(size, player_position);
 
-		let chunk_ordering = Self::default_ordering(chunks.iter().map(|(pos, _)| pos));
+		let chunks = ChunksContainer::new(size, |_| None);
+
+		let chunk_ordering = indexer.default_ordering(chunks.iter().map(|(pos, _)| pos));
 
 		let mut this = Self{
 			world_receiver,
 			visual_overmap,
 			chunks,
 			chunk_ordering,
-			player_position
+			indexer
 		};
 
 		this.generate_missing();
@@ -61,9 +92,9 @@ impl<const SIZE: usize> ClientOvermap<SIZE>
 		this
 	}
 
-	pub fn rescale(&mut self, size: (f32, f32))
+	pub fn rescale(&mut self, camera_size: (f32, f32))
 	{
-		self.visual_overmap.rescale(size);
+		self.visual_overmap.rescale(camera_size);
 	}
 
 	pub fn set(&mut self, pos: GlobalPos, chunk: Chunk)
@@ -80,17 +111,18 @@ impl<const SIZE: usize> ClientOvermap<SIZE>
 	{
 		self.visual_overmap.camera_moved(position);
 
-		let tile_height_same = position.tile_height() == self.player_position.tile_height();
+		let tile_height_same =
+			position.tile_height() == self.indexer.player_position.tile_height();
 
 		let rounded_position = position.rounded();
-		let old_rounded_position = self.player_position.rounded();
+		let old_rounded_position = self.indexer.player_position.rounded();
 
 		if !tile_height_same
 		{
 			self.force_regenerate();
 		}
 
-		self.player_position = position;
+		self.indexer.player_position = position;
 
 		if rounded_position != old_rounded_position
 		{
@@ -109,7 +141,7 @@ impl<const SIZE: usize> ClientOvermap<SIZE>
 		self.visual_overmap.mark_all_ungenerated();
 		self.chunk_ordering.iter().for_each(|pos|
 		{
-			if pos.0.z == 0
+			if pos.pos.z == 0
 			{
 				self.check_vertical(*pos);
 			}
@@ -121,24 +153,24 @@ impl<const SIZE: usize> ClientOvermap<SIZE>
 		self.world_receiver.request_chunk(pos);
 	}
 
-	fn line_exists(&self, pos: LocalPos<SIZE>) -> bool
+	fn line_exists(&self, pos: LocalPos) -> bool
 	{
-		(0..SIZE).all(|z|
+		(0..self.indexer.size.z).all(|z|
 		{
-			let pos = LocalPos::new(pos.0.x, pos.0.y, z);
+			let pos = LocalPos::new(Pos3::new(pos.pos.x, pos.pos.y, z), self.indexer.size);
 
 			self.chunks[pos].is_some()
 		})
 	}
 
-	fn check_neighbors_vertical(&self, pos: LocalPos<SIZE>)
+	fn check_neighbors_vertical(&self, pos: LocalPos)
 	{
 		pos.directions_inclusive().flatten().for_each(|position|
 			self.check_vertical(position)
 		);
 	}
 
-	fn check_vertical(&self, pos: LocalPos<SIZE>)
+	fn check_vertical(&self, pos: LocalPos)
 	{
 		let this_visual_exists = self.visual_overmap.is_generated(pos);
 
@@ -156,27 +188,27 @@ impl<const SIZE: usize> ClientOvermap<SIZE>
 	}
 }
 
-impl<const SIZE: usize> Overmap<SIZE, Arc<Chunk>> for ClientOvermap<SIZE>
+impl Overmap<Arc<Chunk>> for ClientOvermap
 {
-	fn get_local(&self, pos: LocalPos<SIZE>) -> &Option<Arc<Chunk>>
+	fn get_local(&self, pos: LocalPos) -> &Option<Arc<Chunk>>
 	{
 		&self.chunks[pos]
 	}
 
-	fn remove(&mut self, pos: LocalPos<SIZE>)
+	fn remove(&mut self, pos: LocalPos)
 	{
 		self.chunks[pos] = None;
 
 		self.visual_overmap.remove(pos);
 	}
 
-	fn swap(&mut self, a: LocalPos<SIZE>, b: LocalPos<SIZE>)
+	fn swap(&mut self, a: LocalPos, b: LocalPos)
 	{
 		self.chunks.swap(a, b);
 		self.visual_overmap.swap(a, b);
 	}
 
-	fn mark_ungenerated(&mut self, pos: LocalPos<SIZE>)
+	fn mark_ungenerated(&mut self, pos: LocalPos)
 	{
 		self.visual_overmap.mark_ungenerated(pos);
 	}
@@ -190,22 +222,27 @@ impl<const SIZE: usize> Overmap<SIZE, Arc<Chunk>> for ClientOvermap<SIZE>
 			.filter(|pos| self.get_local(**pos).is_none())
 			.for_each(|pos|
 			{
-				let global_pos = Self::to_global_associated(*pos, player_pos);
+				let global_pos = self.to_global(*pos);
 
 				self.request_chunk(global_pos);
 			});
 	}
 }
 
-impl<const SIZE: usize> OvermapIndexing<SIZE> for ClientOvermap<SIZE>
+impl OvermapIndexing for ClientOvermap
 {
+	fn size(&self) -> Pos3<usize>
+	{
+		self.indexer.size()
+	}
+
 	fn player_position(&self) -> GlobalPos
 	{
-		self.player_position.rounded()
+		self.indexer.player_position()
 	}
 }
 
-impl<const SIZE: usize> GameObject for ClientOvermap<SIZE>
+impl GameObject for ClientOvermap
 {
 	fn update(&mut self, dt: f32)
 	{

@@ -16,6 +16,7 @@ pub use overmap::chunk::{
 	TILE_SIZE,
 	Pos3,
 	Chunk,
+	ChunkLocal,
 	GlobalPos,
 	LocalPos,
 	PosDirection,
@@ -39,7 +40,7 @@ pub const CLIENT_OVERMAP_SIZE: usize = 5;
 #[derive(Debug)]
 pub struct World
 {
-	overmap: ClientOvermap<CLIENT_OVERMAP_SIZE>
+	overmap: ClientOvermap
 }
 
 impl World
@@ -47,12 +48,19 @@ impl World
 	pub fn new(
 		world_receiver: WorldReceiver,
 		tiles_factory: TilesFactory,
-		size: (f32, f32),
+		camera_size: (f32, f32),
 		player_position: Pos3<f32>
 	) -> Self
 	{
-		let visual_overmap = VisualOvermap::new(tiles_factory, size, player_position);
-		let overmap = ClientOvermap::new(world_receiver, visual_overmap, player_position);
+		let size = Pos3::new(CLIENT_OVERMAP_SIZE, CLIENT_OVERMAP_SIZE, CLIENT_OVERMAP_SIZE);
+
+		let visual_overmap = VisualOvermap::new(tiles_factory, size, camera_size, player_position);
+		let overmap = ClientOvermap::new(
+			world_receiver,
+			visual_overmap,
+			size,
+			player_position
+		);
 
 		Self{overmap}
 	}

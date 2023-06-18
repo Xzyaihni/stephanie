@@ -90,7 +90,9 @@ impl ChunkModelBuilder
 		tile: Tile
 	)
 	{
-		let tile_height_from_bottom = chunk_height as f32 + VISUAL_TILE_HEIGHT * pos.0.z as f32;
+		let pos = pos.pos();
+
+		let tile_height_from_bottom = chunk_height as f32 + VISUAL_TILE_HEIGHT * pos.z as f32;
 		let tile_height = tile_height_from_bottom - (CLIENT_OVERMAP_SIZE as i32 / 2) as f32;
 
 		// the tile directly below stephanie becomes 0
@@ -98,8 +100,8 @@ impl ChunkModelBuilder
 		let tile_height = tile_height + VISUAL_TILE_HEIGHT;
 
 		let pos = Pos3::new(
-			pos.0.x as f32 * TILE_SIZE,
-			pos.0.y as f32 * TILE_SIZE,
+			pos.x as f32 * TILE_SIZE,
+			pos.y as f32 * TILE_SIZE,
 			tile_height
 		);
 

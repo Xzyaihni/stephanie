@@ -34,7 +34,7 @@ mod server_overmap;
 
 pub const SERVER_OVERMAP_SIZE: usize = CLIENT_OVERMAP_SIZE + 1;
 
-type OvermapsType = Arc<RwLock<Slab<ServerOvermap<SERVER_OVERMAP_SIZE>>>>;
+type OvermapsType = Arc<RwLock<Slab<ServerOvermap>>>;
 
 #[derive(Debug)]
 pub struct World
@@ -69,7 +69,8 @@ impl World
 				ChunkSaver::new(parent_path)
 			};
 
-			WorldGenerator::new(chunk_saver, tilemap, "world_generation/city.json")
+			let size = Pos3::new(SERVER_OVERMAP_SIZE, SERVER_OVERMAP_SIZE, SERVER_OVERMAP_SIZE);
+			WorldGenerator::new(chunk_saver, tilemap, size, "world_generation/city.json")
 		}?;
 
 		let world_generator = Arc::new(world_generator);
@@ -87,8 +88,10 @@ impl World
 
 	pub fn add_player(&mut self, position: Pos3<f32>) -> usize
 	{
+		let size = Pos3::new(SERVER_OVERMAP_SIZE, SERVER_OVERMAP_SIZE, SERVER_OVERMAP_SIZE);
 		let overmap = ServerOvermap::new(
 			self.world_generator.clone(),
+			size,
 			position
 		);
 

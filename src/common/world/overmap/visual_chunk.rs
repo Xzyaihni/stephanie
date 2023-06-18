@@ -14,9 +14,9 @@ use crate::{
 	common::{
 		tilemap::TileInfoMap,
 		world::{
-			LocalPos,
 			GlobalPos,
 			Chunk,
+			ChunkLocal,
 			CHUNK_SIZE,
 			PosDirection,
 			MaybeGroup
@@ -87,6 +87,7 @@ impl VisualChunk
 		{
 			let chunk_height = chunks.len() - 1 - chunk_depth;
 
+			dbg!("rework this");
 			// the compiler better optimize this away >:(
 			let skip_amount = if chunk_depth == 0
 			{
@@ -99,15 +100,15 @@ impl VisualChunk
 
 			for z in (0..CHUNK_SIZE).rev().skip(skip_amount)
 			{
-				let local_pos = LocalPos::new(x, y, z);
-				let tile = chunk_group.this[local_pos];
+				let chunk_local = ChunkLocal::new(x, y, z);
+				let tile = chunk_group.this[chunk_local];
 
 				if tile.is_none()
 				{
 					continue;
 				}
 
-				model_builder.create(chunk_height, local_pos, tile);
+				model_builder.create(chunk_height, chunk_local, tile);
 
 				let mut draw_gradient = |chunk: &Arc<Chunk>, pos, other_pos, direction|
 				{
@@ -126,16 +127,16 @@ impl VisualChunk
 
 				PosDirection::iter().for_each(|direction|
 				{
-					if let Some(pos) = local_pos.offset(direction)
+					if let Some(pos) = chunk_local.offset(direction)
 					{
-						draw_gradient(&chunk_group.this, local_pos, pos, direction);
+						draw_gradient(&chunk_group.this, chunk_local, pos, direction);
 					} else
 					{
 						chunk_group[direction].as_ref().map(|chunk|
 						{
-							let other = local_pos.overflow(direction);
+							let other = chunk_local.overflow(direction);
 
-							draw_gradient(chunk, local_pos, other, direction)
+							draw_gradient(chunk, chunk_local, other, direction)
 						});
 					}
 				});
