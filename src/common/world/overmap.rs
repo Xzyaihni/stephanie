@@ -1,5 +1,3 @@
-use std::iter;
-
 use chunk::{
 	Pos3,
 	GlobalPos,
@@ -39,39 +37,26 @@ pub trait Overmap<T>: OvermapIndexing
 
 	fn shift_chunks(&mut self, offset: GlobalPos)
 	{
-		let conditional_overmap = |reversed, limit|
-		{
-			let (mut start, step) = if reversed
-			{
-				(limit - 1, -1)
-			} else
-			{
-				(0, 1)
-			};
-
-			iter::repeat_with(move ||
-			{
-				let return_value = start;
-				start = (start as i32 + step) as usize;
-
-				return_value
-			}).take(limit)
-		};
-
 		let size = self.size();
 
-		// im rewriting this stuff later!!!!!!!!
-		conditional_overmap(offset.0.z < 0, size.z).flat_map(|z|
+		let maybe_reverse = |reverse, value, max| if reverse {max - value - 1} else {value};
+		for z in 0..size.z
 		{
-			conditional_overmap(offset.0.y < 0, size.y).flat_map(move |y|
+			let z = maybe_reverse(offset.0.z < 0, z, size.z);
+
+			for y in 0..size.y
 			{
-				conditional_overmap(offset.0.x < 0, size.x)
-					.map(move |x| LocalPos::new(Pos3::new(x, y, z), size))
-			})
-		}).for_each(|old_local|
-		{
-			self.shift_chunk(offset, old_local);
-		});
+				let y = maybe_reverse(offset.0.y < 0, y, size.y);
+
+				for x in 0..size.x
+				{
+					let x = maybe_reverse(offset.0.x < 0, x, size.x);
+
+					let old_local = LocalPos::new(Pos3::new(x, y, z), size);
+					self.shift_chunk(offset, old_local);
+				}
+			}
+		}
 	}
 
 	fn shift_chunk(&mut self, offset: GlobalPos, old_local: LocalPos)
@@ -174,6 +159,6 @@ pub trait OvermapIndexing
 
 	fn player_offset(&self, pos: LocalPos) -> GlobalPos
 	{
-		GlobalPos::from(pos) - GlobalPos::from(Pos3::from(self.size()))
+		GlobalPos::from(pos) - GlobalPos::from(Pos3::from(self.size())) / 2
 	}
 }

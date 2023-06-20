@@ -1,7 +1,3 @@
-use std::{
-	sync::Arc
-};
-
 use strum::IntoEnumIterator;
 
 use crate::{
@@ -15,11 +11,12 @@ use crate::{
 		tilemap::TileInfoMap,
 		world::{
 			GlobalPos,
-			Chunk,
-			ChunkLocal,
 			CHUNK_SIZE,
 			PosDirection,
-			MaybeGroup
+			visual_overmap::{
+				TileInfo,
+				TileReader
+			}
 		}
 	}
 };
@@ -42,9 +39,8 @@ impl VisualChunk
 	pub fn create(
 		info_map: TileInfoMap,
 		mut model_builder: ChunkModelBuilder,
-		height: usize,
 		pos: GlobalPos,
-		chunks: &[MaybeGroup<Arc<Chunk>>]
+		tiles: TileReader
 	) -> Box<[ChunkInfo]>
 	{
 		// ignores pos.0.z!! dont pay attention to it
@@ -59,8 +55,7 @@ impl VisualChunk
 				&mut model_builder,
 				x,
 				y,
-				height,
-				chunks
+				&tiles
 			)
 		});
 
@@ -79,42 +74,23 @@ impl VisualChunk
 		model_builder: &mut ChunkModelBuilder,
 		x: usize,
 		y: usize,
-		player_height: usize,
-		chunks: &[MaybeGroup<Arc<Chunk>>]
+		tiles: &TileReader
 	)
 	{
-		for (chunk_depth, chunk_group) in chunks.iter().enumerate()
+		for TileInfo{pos, chunk_height, tiles} in tiles.line(x, y)
 		{
-			let chunk_height = chunks.len() - 1 - chunk_depth;
-
-			dbg!("rework this");
-			// the compiler better optimize this away >:(
-			let skip_amount = if chunk_depth == 0
+			if tiles.this.is_none()
 			{
-				// skips all tiles if the player is at the bottom of the chunk
-				CHUNK_SIZE - player_height
-			} else
-			{
-				0
-			};
+				continue;
+			}
 
-			for z in (0..CHUNK_SIZE).rev().skip(skip_amount)
-			{
-				let chunk_local = ChunkLocal::new(x, y, z);
-				let tile = chunk_group.this[chunk_local];
+			model_builder.create(chunk_height, pos, tiles.this);
 
-				if tile.is_none()
+			PosDirection::iter().for_each(|direction|
+			{
+				tiles[direction].map(|gradient_tile|
 				{
-					continue;
-				}
-
-				model_builder.create(chunk_height, chunk_local, tile);
-
-				let mut draw_gradient = |chunk: &Arc<Chunk>, pos, other_pos, direction|
-				{
-					let gradient_tile = chunk[other_pos];
-
-					if !info_map[gradient_tile].transparent && gradient_tile != tile
+					if !info_map[gradient_tile].transparent && gradient_tile != tiles.this
 					{
 						model_builder.create_direction(
 							direction,
@@ -123,30 +99,14 @@ impl VisualChunk
 							gradient_tile
 						);
 					}
-				};
-
-				PosDirection::iter().for_each(|direction|
-				{
-					if let Some(pos) = chunk_local.offset(direction)
-					{
-						draw_gradient(&chunk_group.this, chunk_local, pos, direction);
-					} else
-					{
-						chunk_group[direction].as_ref().map(|chunk|
-						{
-							let other = chunk_local.overflow(direction);
-
-							draw_gradient(chunk, chunk_local, other, direction)
-						});
-					}
 				});
+			});
 
-				let draw_next = info_map[tile].transparent;
+			let draw_next = info_map[tiles.this].transparent;
 
-				if !draw_next
-				{
-					return;
-				}
+			if !draw_next
+			{
+				return;
 			}
 		}
 	}

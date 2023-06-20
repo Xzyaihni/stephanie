@@ -302,13 +302,13 @@ impl<T> DirectionsGroup<T>
 {
 	pub fn map<D, F>(self, mut direction_map: F) -> DirectionsGroup<D>
 	where
-		F: FnMut(T) -> D
+		F: FnMut(PosDirection, T) -> D
 	{
 		DirectionsGroup{
-			right: direction_map(self.right),
-			left: direction_map(self.left),
-			up: direction_map(self.up),
-			down: direction_map(self.down)
+			right: direction_map(PosDirection::Right, self.right),
+			left: direction_map(PosDirection::Left, self.left),
+			up: direction_map(PosDirection::Up, self.up),
+			down: direction_map(PosDirection::Down, self.down)
 		}
 	}
 }
@@ -344,7 +344,21 @@ impl<T> MaybeGroup<T>
 	{
 		MaybeGroup{
 			this: direction_map(self.this),
-			other: self.other.map(|direction| direction.map(&mut direction_map))
+			other: self.other.map(|_direction, value|
+			{
+				value.map(&mut direction_map)
+			})
+		}
+	}
+
+	pub fn remap<D, TF, DF>(self, this_map: TF, mut direction_map: DF) -> MaybeGroup<D>
+	where
+		TF: FnOnce(T) -> D,
+		DF: FnMut(PosDirection, Option<T>) -> Option<D>
+	{
+		MaybeGroup{
+			this: this_map(self.this),
+			other: self.other.map(&mut direction_map)
 		}
 	}
 }
@@ -374,7 +388,7 @@ impl<T> AlwaysGroup<T>
 	{
 		AlwaysGroup{
 			this: direction_map(self.this),
-			other: self.other.map(direction_map)
+			other: self.other.map(|_direction, value| direction_map(value))
 		}
 	}
 }
@@ -393,7 +407,7 @@ impl<T> Index<PosDirection> for AlwaysGroup<T>
 pub struct LocalPos
 {
 	pub pos: Pos3<usize>,
-	size: Pos3<usize>
+	pub size: Pos3<usize>
 }
 
 impl LocalPos
@@ -469,7 +483,7 @@ impl LocalPos
 			return None;
 		}
 
-		let other = directions.map(|direction| direction.unwrap());
+		let other = directions.map(|_direction, value| value.unwrap());
 
 		Some(AlwaysGroup{
 			this: self,
@@ -490,6 +504,7 @@ impl LocalPos
 		}
 	}
 
+	#[allow(dead_code)]
 	pub fn offset(&self, direction: PosDirection) -> Option<Self>
 	{
 		match direction
@@ -593,6 +608,11 @@ impl ChunkLocal
 		Self(local_pos)
 	}
 
+	pub fn maybe_group(self) -> MaybeGroup<Self>
+	{
+		self.0.maybe_group().map(|local_pos| Self(local_pos))
+	}
+
 	pub fn overflow(&self, direction: PosDirection) -> Self
 	{
 		let local_pos = self.0.overflow(direction);
@@ -600,6 +620,7 @@ impl ChunkLocal
 		Self(local_pos)
 	}
 
+	#[allow(dead_code)]
 	pub fn offset(&self, direction: PosDirection) -> Option<Self>
 	{
 		let local_pos = self.0.offset(direction);

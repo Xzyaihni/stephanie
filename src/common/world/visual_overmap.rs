@@ -20,11 +20,15 @@ use crate::{
 
 use super::{
 	chunk::{
+		CHUNK_SIZE,
 		CHUNK_VISUAL_SIZE,
 		Pos3,
 		Chunk,
+		ChunkLocal,
+		MaybeGroup,
 		GlobalPos,
-		LocalPos
+		LocalPos,
+		tile::Tile
 	},
 	overmap::{
 		OvermapIndexing,
@@ -80,6 +84,88 @@ impl VisibilityChecker
 	}
 }
 
+pub struct TileInfo
+{
+	pub pos: ChunkLocal,
+	pub chunk_height: usize,
+	pub tiles: MaybeGroup<Tile>
+}
+
+pub struct TileReader
+{
+	chunks: Box<[MaybeGroup<Arc<Chunk>>]>,
+	player_height: usize
+}
+
+impl TileReader
+{
+	pub fn new(
+		chunks: &ChunksContainer<Option<Arc<Chunk>>>,
+		local_pos: LocalPos,
+		player_height: usize
+	) -> Self
+	{
+		let LocalPos{pos, size} = local_pos;
+
+		let chunks = (0..=(size.z / 2)).rev().map(|z|
+		{
+			let local_pos = local_pos.moved(pos.x, pos.y, z);
+
+			local_pos.maybe_group()
+				.map(|position| chunks[position].clone().unwrap())
+		}).collect::<Box<[_]>>();
+
+		Self{chunks, player_height}
+	}
+
+	pub fn line(&self, x: usize, y: usize) -> impl Iterator<Item=TileInfo> + '_
+	{
+		self.chunks.iter().enumerate().flat_map(move |(chunk_depth, chunk_group)|
+		{
+			let chunk_height = self.chunks.len() - 1 - chunk_depth;
+
+			// its a single comparison chill out
+			// the compiler better optimize this away >:(
+			let skip_amount = if chunk_depth == 0
+			{
+				// skips all tiles if the player is at the bottom of the chunk
+				CHUNK_SIZE - self.player_height
+			} else
+			{
+				0
+			};
+
+			(0..CHUNK_SIZE).rev().skip(skip_amount).map(move |z|
+			{
+				let chunk_local = ChunkLocal::new(x, y, z);
+
+				let tiles = chunk_local.maybe_group().remap(|value|
+				{
+					chunk_group.this[value]
+				}, |direction, value|
+				{
+					value.map(|pos|
+					{
+						Some(chunk_group.this[pos])
+					}).unwrap_or_else(||
+					{
+						chunk_group[direction].as_ref().map(|chunk|
+						{
+							chunk[chunk_local.overflow(direction)]
+						})
+					})
+				});
+
+				TileInfo{
+					pos: chunk_local,
+					chunk_height,
+					tiles
+				}
+			})
+		})
+	}
+}
+
 #[derive(Debug)]
 pub struct VisualOvermap
 {
@@ -114,19 +200,10 @@ impl VisualOvermap
 		pos: LocalPos
 	)
 	{
-		let Pos3{x, y, ..} = pos.pos;
-
-		let chunks = (0..=(self.visibility_checker.size.z / 2)).rev().map(|z|
-		{
-			let local_pos = LocalPos::new(Pos3::new(x, y, z), self.visibility_checker.size);
-
-			local_pos.maybe_group()
-				.map(|position| chunks[position].clone().unwrap())
-		}).collect::<Vec<_>>();
+		let player_height = self.visibility_checker.player_position.read().tile_height();
+		let tile_reader = TileReader::new(chunks, pos, player_height);
 
 		let chunk_pos = self.to_global(pos);
-
-		let player_height = self.visibility_checker.player_position.read().tile_height();
 
 		let sender = self.sender.clone();
 
@@ -138,9 +215,8 @@ impl VisualOvermap
 			let chunk_info = VisualChunk::create(
 				info_map,
 				model_builder,
-				player_height,
 				chunk_pos,
-				&chunks
+				tile_reader
 			);
 
 			let generated = VisualGenerated{
