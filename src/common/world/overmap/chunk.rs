@@ -41,6 +41,14 @@ impl<T> Pos3<T>
 	}
 }
 
+impl<T: Mul<Output=T> + Add<Output=T> + Copy> Pos3<T>
+{
+    pub fn to_rectangle(self, x: T, y: T) -> T
+    {
+		self.x + self.y * x + self.z * x * y
+    }
+}
+
 impl Pos3<f32>
 {
 	pub fn tile_height(self) -> usize
@@ -93,6 +101,16 @@ impl<T: Copy> From<Vector3<T>> for Pos3<T>
 	fn from(value: Vector3<T>) -> Self
 	{
 		Self{x: value[0], y: value[1], z: value[2]}
+	}
+}
+
+impl<T: Mul<Output=T> + Copy> Mul for Pos3<T>
+{
+	type Output = Self;
+
+	fn mul(self, rhs: Self) -> Self::Output
+	{
+		Self::new(self.x * rhs.x, self.y * rhs.y, self.z * rhs.z)
 	}
 }
 
@@ -572,9 +590,7 @@ impl LocalPos
 
 	pub fn to_rectangle(self, x: usize, y: usize) -> usize
 	{
-		let pos = self.pos;
-
-		pos.x + pos.y * x + pos.z * x * y
+		self.pos.to_rectangle(x, y)
 	}
 }
 
@@ -671,10 +687,8 @@ impl Chunk
 		transform
 	}
 
-	fn index_of(pos: ChunkLocal) -> usize
+	fn index_of(pos: Pos3<usize>) -> usize
 	{
-		let pos = pos.pos();
-
 		pos.z * CHUNK_SIZE * CHUNK_SIZE + pos.y * CHUNK_SIZE + pos.x
 	}
 }
@@ -687,13 +701,31 @@ impl From<Box<[Tile]>> for Chunk
 	}
 }
 
+impl Index<Pos3<usize>> for Chunk
+{
+	type Output = Tile;
+
+	fn index(&self, index: Pos3<usize>) -> &Self::Output
+	{
+		&self.tiles[Self::index_of(index)]
+	}
+}
+
+impl IndexMut<Pos3<usize>> for Chunk
+{
+	fn index_mut(&mut self, index: Pos3<usize>) -> &mut Self::Output
+	{
+		&mut self.tiles[Self::index_of(index)]
+	}
+}
+
 impl Index<ChunkLocal> for Chunk
 {
 	type Output = Tile;
 
 	fn index(&self, index: ChunkLocal) -> &Self::Output
 	{
-		&self.tiles[Self::index_of(index)]
+		&self.tiles[Self::index_of(index.pos())]
 	}
 }
 
@@ -701,6 +733,6 @@ impl IndexMut<ChunkLocal> for Chunk
 {
 	fn index_mut(&mut self, index: ChunkLocal) -> &mut Self::Output
 	{
-		&mut self.tiles[Self::index_of(index)]
+		&mut self.tiles[Self::index_of(index.pos())]
 	}
 }

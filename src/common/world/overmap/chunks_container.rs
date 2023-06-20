@@ -4,6 +4,8 @@ use std::{
 	ops::{Index, IndexMut}
 };
 
+use serde::{Serialize, Deserialize};
+
 use crate::common::world::{
 	Pos3,
 	LocalPos
@@ -12,7 +14,7 @@ use crate::common::world::{
 
 pub trait ChunkIndexing
 {
-	fn to_index(&self, pos: LocalPos) -> usize;
+	fn to_index(&self, pos: Pos3<usize>) -> usize;
 	fn index_to_pos(&self, index: usize) -> LocalPos;
 }
 
@@ -70,7 +72,7 @@ where
 	}
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Indexer
 {
 	size: Pos3<usize>
@@ -86,7 +88,7 @@ impl Indexer
 
 impl ChunkIndexing for Indexer
 {
-	fn to_index(&self, pos: LocalPos) -> usize
+	fn to_index(&self, pos: Pos3<usize>) -> usize
 	{
 		pos.to_rectangle(self.size.x, self.size.y)
 	}
@@ -101,7 +103,7 @@ impl ChunkIndexing for Indexer
 	}
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChunksContainer<T>
 {
 	chunks: Box<[T]>,
@@ -124,10 +126,16 @@ impl<T> ChunksContainer<T>
 
 	pub fn swap(&mut self, a: LocalPos, b: LocalPos)
 	{
-		let (index_a, index_b) = (self.indexer.to_index(a), self.indexer.to_index(b));
+		let (index_a, index_b) = (self.indexer.to_index(a.pos), self.indexer.to_index(b.pos));
 
 		self.chunks.swap(index_a, index_b);
 	}
+
+    #[allow(dead_code)]
+    pub fn size(&self) -> Pos3<usize>
+    {
+        self.indexer.size
+    }
 
 	#[allow(dead_code)]
 	pub fn iter(&self) -> ChunksIter<Indexer, T>
@@ -142,13 +150,31 @@ impl<T> ChunksContainer<T>
 	}
 }
 
+impl<T> Index<Pos3<usize>> for ChunksContainer<T>
+{
+	type Output = T;
+
+	fn index(&self, value: Pos3<usize>) -> &Self::Output
+	{
+		&self.chunks[self.indexer.to_index(value)]
+	}
+}
+
+impl<T> IndexMut<Pos3<usize>> for ChunksContainer<T>
+{
+	fn index_mut(&mut self, value: Pos3<usize>) -> &mut Self::Output
+	{
+		&mut self.chunks[self.indexer.to_index(value)]
+	}
+}
+
 impl<T> Index<LocalPos> for ChunksContainer<T>
 {
 	type Output = T;
 
 	fn index(&self, value: LocalPos) -> &Self::Output
 	{
-		&self.chunks[self.indexer.to_index(value)]
+		&self.chunks[self.indexer.to_index(value.pos)]
 	}
 }
 
@@ -156,11 +182,11 @@ impl<T> IndexMut<LocalPos> for ChunksContainer<T>
 {
 	fn index_mut(&mut self, value: LocalPos) -> &mut Self::Output
 	{
-		&mut self.chunks[self.indexer.to_index(value)]
+		&mut self.chunks[self.indexer.to_index(value.pos)]
 	}
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FlatIndexer
 {
 	size: Pos3<usize>
@@ -176,10 +202,8 @@ impl FlatIndexer
 
 impl ChunkIndexing for FlatIndexer
 {
-	fn to_index(&self, pos: LocalPos) -> usize
+	fn to_index(&self, pos: Pos3<usize>) -> usize
 	{
-		let LocalPos{pos, ..} = pos;
-
 		pos.y * self.size.x + pos.x
 	}
 
@@ -192,7 +216,7 @@ impl ChunkIndexing for FlatIndexer
 	}
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FlatChunksContainer<T>
 {
 	chunks: Box<[T]>,
@@ -215,10 +239,16 @@ impl<T> FlatChunksContainer<T>
 
 	pub fn swap(&mut self, a: LocalPos, b: LocalPos)
 	{
-		let (index_a, index_b) = (self.indexer.to_index(a), self.indexer.to_index(b));
+		let (index_a, index_b) = (self.indexer.to_index(a.pos), self.indexer.to_index(b.pos));
 
 		self.chunks.swap(index_a, index_b);
 	}
+
+    #[allow(dead_code)]
+    pub fn size(&self) -> Pos3<usize>
+    {
+        self.indexer.size
+    }
 
 	pub fn iter(&self) -> ChunksIter<FlatIndexer, T>
 	{
@@ -237,7 +267,7 @@ impl<T> Index<LocalPos> for FlatChunksContainer<T>
 
 	fn index(&self, value: LocalPos) -> &Self::Output
 	{
-		&self.chunks[self.indexer.to_index(value)]
+		&self.chunks[self.indexer.to_index(value.pos)]
 	}
 }
 
@@ -245,6 +275,6 @@ impl<T> IndexMut<LocalPos> for FlatChunksContainer<T>
 {
 	fn index_mut(&mut self, value: LocalPos) -> &mut Self::Output
 	{
-		&mut self.chunks[self.indexer.to_index(value)]
+		&mut self.chunks[self.indexer.to_index(value.pos)]
 	}
 }

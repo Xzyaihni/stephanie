@@ -1,16 +1,18 @@
-use std::{
-	sync::Arc
-};
+use std::sync::Arc;
 
-use super::{
-	world_generator::{WorldGenerator, WorldChunk}
+use super::world_generator::{
+    WORLD_CHUNK_SIZE,
+	WorldGenerator,
+	WorldChunk
 };
 
 use crate::common::world::{
+	CHUNK_SIZE,
 	LocalPos,
 	GlobalPos,
 	Pos3,
 	Chunk,
+    chunk::tile::Tile,
 	overmap::{Overmap, OvermapIndexing, ChunksContainer}
 };
 
@@ -48,6 +50,7 @@ pub struct ServerOvermap
 {
 	world_generator: Arc<WorldGenerator>,
 	world_chunks: ChunksContainer<Option<WorldChunk>>,
+	chunk_ratio: Pos3<usize>,
 	indexer: Indexer
 }
 
@@ -59,12 +62,26 @@ impl ServerOvermap
 		player_position: Pos3<f32>
 	) -> Self
 	{
+		assert_eq!(CHUNK_SIZE % WORLD_CHUNK_SIZE.x, 0);
+		assert_eq!(CHUNK_SIZE % WORLD_CHUNK_SIZE.y, 0);
+		assert_eq!(CHUNK_SIZE % WORLD_CHUNK_SIZE.z, 0);
+
 		let indexer = Indexer::new(size, player_position.rounded());
+
+		let chunk_ratio = Pos3{
+			x: CHUNK_SIZE / WORLD_CHUNK_SIZE.x,
+			y: CHUNK_SIZE / WORLD_CHUNK_SIZE.y,
+			z: CHUNK_SIZE / WORLD_CHUNK_SIZE.z
+		};
+
+		let size = chunk_ratio * size;
+
 		let world_chunks = ChunksContainer::new(size, |_| None);
 
 		let mut this = Self{
 			world_generator,
 			world_chunks,
+			chunk_ratio,
 			indexer
 		};
 
@@ -109,7 +126,6 @@ impl ServerOvermap
 		}
 
 		self.generate_existing_chunk(self.to_local(pos).unwrap())
-			.expect("chunk must not touch any edges")
 	}
 
 	fn shift_overmap_by(&mut self, shift_offset: GlobalPos)
@@ -121,21 +137,52 @@ impl ServerOvermap
 		self.position_offset(shift_offset);
 	}
 
-	fn generate_existing_chunk(&self, local_pos: LocalPos) -> Option<Chunk>
+	fn generate_existing_chunk(&self, local_pos: LocalPos) -> Chunk
 	{
-		let group = local_pos.always_group();
-		if group.is_none()
-		{
-			eprintln!("out of range {}", local_pos.pos);
-		}
+        let mut chunk = Chunk::new();
 
-		group.map(|group|
-		{
-			let group = group.map(|position| self.world_chunks[position].unwrap());
+        for z in 0..self.chunk_ratio.z
+        {
+            for y in 0..self.chunk_ratio.y
+            {
+                for x in 0..self.chunk_ratio.x
+                {
+                    let this_pos = Pos3::new(x, y, z);
 
-			self.world_generator.generate_chunk(group)
-		})
+                    let local_pos = {
+                        let pos = local_pos.pos * self.chunk_ratio + this_pos;
+
+                        local_pos.moved(pos.x, pos.y, pos.z)
+                    };
+
+		            let group = local_pos.always_group().expect("chunk must not touch edges");
+		            let group = group.map(|position| self.world_chunks[position].unwrap());
+
+		            let world_chunk = self.world_generator.generate_chunk(group);
+
+                    Self::partially_fill(&mut chunk, world_chunk, this_pos);
+                }
+            }
+        }
+
+        chunk
 	}
+
+    fn partially_fill(chunk: &mut Chunk, world_chunk: ChunksContainer<Tile>, pos: Pos3<usize>)
+    {
+        let size = world_chunk.size();
+        for z in 0..size.z
+        {
+            for y in 0..size.y
+            {
+                for x in 0..size.x
+                {
+                    let this_pos = Pos3::new(x, y, z);
+                    chunk[pos + this_pos] = world_chunk[this_pos];
+                }
+            }
+        }
+    }
 }
 
 impl Overmap<WorldChunk> for ServerOvermap

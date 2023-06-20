@@ -20,13 +20,12 @@ use crate::common::{
 	TileMap,
 	world::{
 		Pos3,
-		Chunk,
 		LocalPos,
 		GlobalPos,
 		AlwaysGroup,
 		DirectionsGroup,
-		CHUNK_SIZE,
-		overmap::ChunksContainer
+		overmap::ChunksContainer,
+		chunk::tile::Tile
 	}
 };
 
@@ -108,6 +107,8 @@ impl GenerateState
 	}
 }
 
+pub const WORLD_CHUNK_SIZE: Pos3<usize> = Pos3{x: 16, y: 16, z: 1};
+
 pub struct ChunkGenerator
 {
 	tilemap: TileMap,
@@ -118,9 +119,6 @@ impl ChunkGenerator
 {
 	pub fn new(tilemap: TileMap, chunk_rules: &[ChunkRule]) -> Self
 	{
-		// yea im not writing chunk generation generically over size or anything like that
-		assert_eq!(CHUNK_SIZE, 16);
-
 		let states = chunk_rules.iter().map(|rule|
 		{
 			GenerateState::new()
@@ -132,17 +130,17 @@ impl ChunkGenerator
 	pub fn generate_chunk<'a>(
 		&self,
 		group: AlwaysGroup<&'a str>
-	) -> Chunk
+	) -> ChunksContainer<Tile>
 	{
-		let mut chunk = Chunk::new();
+		let mut chunk = ChunksContainer::new(WORLD_CHUNK_SIZE, |_| Tile::none());
 
-		for z in 0..CHUNK_SIZE
+		for z in 0..WORLD_CHUNK_SIZE.z
 		{
-			for y in 0..CHUNK_SIZE
+			for y in 0..WORLD_CHUNK_SIZE.y
 			{
-				for x in 0..CHUNK_SIZE
+				for x in 0..WORLD_CHUNK_SIZE.x
 				{
-					let pos = crate::common::world::ChunkLocal::new(x, y, z);
+					let pos = Pos3::new(x, y, z);
 					chunk[pos] = self.tilemap.tile_named("concrete").unwrap();
 				}
 			}
@@ -268,7 +266,7 @@ impl WorldGenerator
 	pub fn generate_chunk(
 		&self,
 		group: AlwaysGroup<WorldChunk>
-	) -> Chunk
+	) -> ChunksContainer<Tile>
 	{
 		self.chunk_generator.generate_chunk(group.map(|world_chunk|
 		{
