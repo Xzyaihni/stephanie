@@ -148,7 +148,15 @@ fn main()
                 Ok(tilemap) =>
                 {
                     let port = port.unwrap_or(0);
-                    let mut server = Server::new(tilemap, &format!("0.0.0.0:{port}"), 16).unwrap();
+                    let mut server = match Server::new(tilemap, &format!("0.0.0.0:{port}"), 16)
+                    {
+                        Ok(x) => x,
+                        Err(err) if err.printable().is_some() =>
+                        {
+                            panic!("{}", err.printable().unwrap())
+                        },
+                        Err(err) => panic!("{:?}", err)
+                    };
 
                     let port = server.port();
                     tx.send(port).unwrap();

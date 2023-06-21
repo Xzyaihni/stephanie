@@ -1,11 +1,10 @@
-used_tiles = {"grass"}
+function(neighbors)
+    local chunk = {}
 
-function generate(neighbors, chunk)
-    chunk[1] = tilemap["grass"]
-    --for i = 1, chunk_size
-    --do
-    --    chunk[i] = tilemap["grass"]
-    --end
+    local chunk_local = 16 * 16 * 1;
+    for i = 1, chunk_local, 1 do
+        chunk[i] = tilemap["grass"]
+    end
 
-    --return chunk
+    return chunk
 end

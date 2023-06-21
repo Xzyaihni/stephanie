@@ -1,6 +1,4 @@
-use std::{
-	sync::Arc
-};
+use std::sync::Arc;
 
 use parking_lot::RwLock;
 
@@ -22,6 +20,7 @@ use crate::{
 };
 
 use world_generator::WorldGenerator;
+
 use server_overmap::ServerOvermap;
 
 pub use chunk_saver::ChunkSaver;
@@ -69,8 +68,7 @@ impl World
 				ChunkSaver::new(parent_path)
 			};
 
-			let size = Pos3::new(SERVER_OVERMAP_SIZE, SERVER_OVERMAP_SIZE, SERVER_OVERMAP_SIZE);
-			WorldGenerator::new(chunk_saver, tilemap, size, "world_generation/city.json")
+			WorldGenerator::new(chunk_saver, tilemap, "world_generation/city.json")
 		}?;
 
 		let world_generator = Arc::new(world_generator);

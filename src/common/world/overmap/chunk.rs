@@ -174,6 +174,16 @@ impl<T: Div<Output=T> + Copy> Div<T> for Pos3<T>
 	}
 }
 
+impl<T: Div<Output=T> + Copy> Div for Pos3<T>
+{
+	type Output = Self;
+
+	fn div(self, rhs: Self) -> Self::Output
+	{
+		Self::new(self.x / rhs.x, self.y / rhs.y, self.z / rhs.z)
+	}
+}
+
 impl From<GlobalPos> for Pos3<f32>
 {
 	fn from(value: GlobalPos) -> Self
@@ -538,45 +548,49 @@ impl LocalPos
 	{
 		let pos = self.pos;
 
-		(!self.right_edge()).then(|| self.moved(pos.x + 1, pos.y, pos.z))
+		(0..(self.size.x - 1)).contains(&pos.x).then(|| self.moved(pos.x + 1, pos.y, pos.z))
 	}
 
 	pub fn left(&self) -> Option<Self>
 	{
 		let pos = self.pos;
 
-		(!self.left_edge()).then(|| self.moved(pos.x - 1, pos.y, pos.z))
+		(1..self.size.x).contains(&pos.x).then(|| self.moved(pos.x - 1, pos.y, pos.z))
 	}
 
 	pub fn up(&self) -> Option<Self>
 	{
 		let pos = self.pos;
 
-		(!self.top_edge()).then(|| self.moved(pos.x, pos.y + 1, pos.z))
+		(0..(self.size.y - 1)).contains(&pos.y).then(|| self.moved(pos.x, pos.y + 1, pos.z))
 	}
 
 	pub fn down(&self) -> Option<Self>
 	{
 		let pos = self.pos;
 
-		(!self.bottom_edge()).then(|| self.moved(pos.x, pos.y - 1, pos.z))
+		(1..self.size.y).contains(&pos.y).then(|| self.moved(pos.x, pos.y - 1, pos.z))
 	}
 
+    #[allow(dead_code)]
 	pub fn top_edge(&self) -> bool
 	{
 		self.pos.y == (self.size.y - 1)
 	}
 
+    #[allow(dead_code)]
 	pub fn bottom_edge(&self) -> bool
 	{
 		self.pos.y == 0
 	}
 
+    #[allow(dead_code)]
 	pub fn right_edge(&self) -> bool
 	{
 		self.pos.x == (self.size.x - 1)
 	}
 
+    #[allow(dead_code)]
 	pub fn left_edge(&self) -> bool
 	{
 		self.pos.x == 0

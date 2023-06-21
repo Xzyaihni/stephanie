@@ -116,10 +116,17 @@ impl<T> ChunksContainer<T>
 	{
 		let indexer = Indexer::new(size);
 
+        Self::new_indexed(size, |index| default_function(indexer.index_to_pos(index)))
+	}
+
+	pub fn new_indexed<F: FnMut(usize) -> T>(size: Pos3<usize>, mut default_function: F) -> Self
+	{
+		let indexer = Indexer::new(size);
+
 		let chunks = (0..(size.x * size.y * size.z)).map(|index|
 		{
-			default_function(indexer.index_to_pos(index))
-		}).collect::<Vec<_>>().into_boxed_slice();
+			default_function(index)
+		}).collect::<Box<[_]>>();
 
 		Self{chunks, indexer}
 	}

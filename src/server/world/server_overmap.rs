@@ -66,8 +66,6 @@ impl ServerOvermap
 		assert_eq!(CHUNK_SIZE % WORLD_CHUNK_SIZE.y, 0);
 		assert_eq!(CHUNK_SIZE % WORLD_CHUNK_SIZE.z, 0);
 
-		let indexer = Indexer::new(size, player_position.rounded());
-
 		let chunk_ratio = Pos3{
 			x: CHUNK_SIZE / WORLD_CHUNK_SIZE.x,
 			y: CHUNK_SIZE / WORLD_CHUNK_SIZE.y,
@@ -75,6 +73,8 @@ impl ServerOvermap
 		};
 
 		let size = chunk_ratio * size;
+
+		let indexer = Indexer::new(size, player_position.rounded());
 
 		let world_chunks = ChunksContainer::new(size, |_| None);
 
@@ -92,6 +92,8 @@ impl ServerOvermap
 
 	pub fn generate_chunk(&mut self, pos: GlobalPos) -> Chunk
 	{
+        let pos = GlobalPos::from(pos.0 * Pos3::from(self.chunk_ratio));
+
 		let margin = 1;
 		let padding = 1;
 
@@ -139,6 +141,8 @@ impl ServerOvermap
 
 	fn generate_existing_chunk(&self, local_pos: LocalPos) -> Chunk
 	{
+        let local_pos = LocalPos::new(local_pos.pos, self.world_chunks.size());
+
         let mut chunk = Chunk::new();
 
         for z in 0..self.chunk_ratio.z
@@ -150,7 +154,7 @@ impl ServerOvermap
                     let this_pos = Pos3::new(x, y, z);
 
                     let local_pos = {
-                        let pos = local_pos.pos * self.chunk_ratio + this_pos;
+                        let pos = local_pos.pos + this_pos;
 
                         local_pos.moved(pos.x, pos.y, pos.z)
                     };

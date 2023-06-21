@@ -1,3 +1,5 @@
+use rlua::{ToLua, FromLua};
+
 use serde::{Serialize, Deserialize};
 
 
@@ -28,4 +30,20 @@ impl Tile
 	{
 		self.id == 0
 	}
+}
+
+impl<'lua> ToLua<'lua> for Tile
+{
+    fn to_lua(self, lua: rlua::Context<'lua>) -> rlua::Result<rlua::Value<'lua>>
+    {
+        self.id.to_lua(lua)
+    }
+}
+
+impl<'lua> FromLua<'lua> for Tile
+{
+    fn from_lua(value: rlua::Value<'lua>, lua: rlua::Context<'lua>) -> rlua::Result<Self>
+    {
+        usize::from_lua(value, lua).map(|value| Tile::new(value))
+    }
 }
