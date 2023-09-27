@@ -15,7 +15,8 @@ use crate::{
 			ValueAnimation,
 			ChildConnection,
 			ChildDeformation,
-			OffsetStretchDeformation,
+			SpringConnection,
+			StretchDeformation,
 			EntityProperties,
 			Entity
 		},
@@ -41,7 +42,7 @@ impl Default for PlayerProperties
 	{
 		let damp_factor = 0.001;
 
-		let mut transform = Transform::new();
+		let mut transform = Transform::default();
 		transform.scale = Vector3::new(0.1, 0.1, 0.1);
 
 		let texture = "player/hair.png".to_owned();
@@ -81,7 +82,47 @@ impl Player
 			name
 		};
 
-		let mut back_hair =
+        let pon = {
+			let entity = Entity::new(EntityProperties{
+				texture: "player/pon.png".to_owned(),
+                transform: Transform{
+                    scale: Vector3::repeat(0.4),
+                    ..Default::default()
+                },
+				..Default::default()
+			});
+
+			ChildEntity::new(
+				ChildConnection::Spring(
+                    SpringConnection::new(0.1, 0.02, 0.2)
+                ),
+				ChildDeformation::Stretch(
+					StretchDeformation::new(ValueAnimation::EaseOut(2.0), 0.9, 0.2)
+				),
+				entity,
+				-1
+			)
+        };
+
+        let top_pon = {
+            let mut pon = pon.clone();
+		    pon.set_origin(&player, Vector3::new(-0.15, 0.35, 0.0));
+
+            pon
+        };
+
+		player.add_child(top_pon);
+
+        let bottom_pon = {
+            let mut pon = pon.clone();
+		    pon.set_origin(&player, Vector3::new(-0.15, -0.35, 0.0));
+
+            pon
+        };
+
+		player.add_child(bottom_pon);
+
+		/*let mut back_hair =
 		{
 			let entity = Entity::new(EntityProperties{
 				texture: "player/back_hair.png".to_owned(),
@@ -99,7 +140,7 @@ impl Player
 		};
 		back_hair.set_origin(&player, Vector3::new(-0.7, 0.0, 0.0));
 
-		player.add_child(back_hair);
+		player.add_child(back_hair);*/
 
 		player
 	}

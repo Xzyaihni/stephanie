@@ -1,8 +1,6 @@
-use std::{
-	sync::{
-		Arc,
-		mpsc::{self, TryRecvError, Receiver}
-	}
+use std::sync::{
+    Arc,
+    mpsc::{self, TryRecvError, Receiver}
 };
 
 use parking_lot::RwLock;

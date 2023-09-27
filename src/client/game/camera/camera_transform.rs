@@ -1,8 +1,6 @@
 use nalgebra::{
     Vector3,
-    base::{
-        Matrix4
-    }
+    base::Matrix4
 };
 
 use crate::common::{Transform, OnTransformCallback, TransformContainer};
@@ -21,7 +19,7 @@ impl CameraTransform
 {
     pub fn new_default() -> Self
     {
-        let transform = Transform::new();
+        let transform = Transform::default();
 
         Self::new_transformed(transform)
     }
@@ -52,7 +50,7 @@ impl CameraTransform
     {
         let mut matrix = Matrix4::from_axis_angle(&transform.rotation_axis, -transform.rotation);
 
-        matrix.prepend_translation_mut(&origin);
+        matrix.prepend_translation_mut(origin);
 
         matrix.prepend_nonuniform_scaling_mut(&transform.scale);
         matrix.append_translation_mut(&-transform.position);

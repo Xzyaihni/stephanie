@@ -1,6 +1,4 @@
-use std::{
-	sync::Arc
-};
+use std::sync::Arc;
 
 use parking_lot::RwLock;
 
@@ -37,7 +35,7 @@ impl Default for EntityProperties
 {
 	fn default() -> Self
 	{
-		let transform = Transform::new();
+		let transform = Transform::default();
 
 		let texture = String::new();
 
@@ -159,7 +157,7 @@ impl StretchDeformation
 	pub fn stretched(&mut self, velocity: Vector3<f32>) -> (f32, Vector2<f32>)
 	{
 		let amount = self.animation.apply(velocity.magnitude() * self.strength);
-		let stretch = (1.0 + amount).min(self.limit);
+		let stretch = (1.0 + amount).max(self.limit);
 
 		let angle = velocity.y.atan2(-velocity.x);
 
@@ -178,6 +176,7 @@ pub struct OffsetStretchDeformation
 
 impl OffsetStretchDeformation
 {
+    #[allow(dead_code)]
 	pub fn new(animation: ValueAnimation, limit: f32, strength: f32, stretchiness: f32) -> Self
 	{
 		Self{animation, limit, strength, stretchiness}

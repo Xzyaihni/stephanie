@@ -19,9 +19,9 @@ pub struct Transform
 	pub stretch: (f32, Vector2<f32>)
 }
 
-impl Transform
+impl Default for Transform
 {
-	pub fn new() -> Self
+    fn default() -> Self
 	{
 		let rotation_axis = Unit::new_normalize(Vector3::z());
 		let rotation = 0.0;
@@ -33,7 +33,10 @@ impl Transform
 
 		Self{rotation_axis, rotation, position, scale, stretch}
 	}
+}
 
+impl Transform
+{
 	pub fn half(&self) -> Vector3<f32>
 	{
 		self.scale / 2.0

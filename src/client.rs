@@ -199,7 +199,7 @@ impl Client
 			object_factory,
 			tiles_factory,
 			message_passer,
-			&client_info
+		    client_info
 		);
 
 		let game = Game::new(game_state.player_id());
@@ -213,7 +213,7 @@ impl Client
 		folder: P
 	) -> HashMap<String, Arc<RwLock<Texture>>>
 	{
-		Self::recursive_dir(folder.as_ref()).into_iter().map(|name|
+		Self::recursive_dir(folder.as_ref()).map(|name|
 		{
 			let image = RgbaImage::load(name.clone()).unwrap();
 

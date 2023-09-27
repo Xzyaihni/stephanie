@@ -1,6 +1,4 @@
-use std::{
-    f32
-};
+use std::f32;
 
 use nalgebra::{
     geometry::Orthographic3,
@@ -30,7 +28,7 @@ impl Camera
         let size = Self::aspect_size(aspect);
         let projection = Self::create_projection(size);
 
-        let view = CameraTransform::new_transformed(Transform::new());
+        let view = CameraTransform::new_transformed(Transform::default());
 
         let projection_view = Self::create_projection_view(projection, view.matrix());
 

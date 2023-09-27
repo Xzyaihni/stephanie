@@ -18,5 +18,10 @@
         "name": "concrete",
         "texture": "concrete.png",
         "transparent": false
+    },
+    {
+        "name": "wood",
+        "texture": "wood.png",
+        "transparent": false
     }
 ]

@@ -691,7 +691,7 @@ impl Chunk
 
 		let chunk_pos = Pos3::from(pos).map(|v| v as f32) * CHUNK_VISUAL_SIZE;
 
-		let mut transform = Transform::new();
+		let mut transform = Transform::default();
 		transform.position = Vector3::new(
 			chunk_pos.x,
 			chunk_pos.y,

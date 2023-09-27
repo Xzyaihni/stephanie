@@ -27,7 +27,7 @@ use crate::{
 };
 
 
-pub const TEXTURE_TILE_SIZE: usize = 256;
+pub const TEXTURE_TILE_SIZE: usize = 32;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TileInfo
@@ -130,19 +130,29 @@ impl TileMap
 		((self.tiles.len() - 1) as f64).sqrt().ceil() as usize
 	}
 
-	pub fn half_pixel(&self) -> f32
+	pub fn pixel_fraction(&self, fraction: f32) -> f32
 	{
-		0.5 / (self.texture_row_size() * TEXTURE_TILE_SIZE) as f32
+		fraction / (self.texture_row_size() * TEXTURE_TILE_SIZE) as f32
 	}
 
 	pub fn load_mask(&self) -> Result<SimpleImage, ImageError>
 	{
-		let image = image::open(&self.gradient_mask)?
-			.resize_exact(
-				(TEXTURE_TILE_SIZE * 2) as u32,
-				TEXTURE_TILE_SIZE as u32,
+		let image = image::open(&self.gradient_mask)?;
+
+        let width = TEXTURE_TILE_SIZE as u32 * 2;
+        let height = TEXTURE_TILE_SIZE as u32;
+
+        let image = if (image.width() == width) && (image.height() == height)
+        {
+            image
+        } else
+        {
+			image.resize_exact(
+				width,
+				height,
 				FilterType::Lanczos3
-			);
+			)
+        };
 
 		SimpleImage::try_from(image)
 	}
@@ -151,12 +161,22 @@ impl TileMap
 	{
 		self.tiles.iter().skip(1).map(|tile_info|
 		{
-			let image = image::open(&tile_info.texture)?
-				.resize_exact(
-					TEXTURE_TILE_SIZE as u32,
-					TEXTURE_TILE_SIZE as u32,
+			let image = image::open(&tile_info.texture)?;
+
+            let width = TEXTURE_TILE_SIZE as u32;
+            let height = TEXTURE_TILE_SIZE as u32;
+
+            let image = if (image.width() == width) && (image.height() == height)
+            {
+                image
+            } else
+            {
+				image.resize_exact(
+					width,
+					height,
 					FilterType::Lanczos3
-				);
+				)
+            };
 
 			SimpleImage::try_from(image)
 		}).collect::<Result<Vec<SimpleImage>, _>>()

@@ -142,13 +142,13 @@ impl ChunkModelBuilder
 			)
 		};
 
-		let half_pixel = self.tilemap.half_pixel();
+		let pixel_fraction = self.tilemap.pixel_fraction(0.01);
 
 		let (x_end, y_end) = to_uv(x + 1, y + 1);
-		let (x_end, y_end) = (x_end - half_pixel, y_end - half_pixel);
+		let (x_end, y_end) = (x_end - pixel_fraction, y_end - pixel_fraction);
 
 		let (x, y) = to_uv(x, y);
-		let (x, y) = (x + half_pixel, y + half_pixel);
+		let (x, y) = (x + pixel_fraction, y + pixel_fraction);
 
 		if flip_xy
 		{
