@@ -1,9 +1,6 @@
 use nalgebra::Vector3;
 
-use yanyaengine::{
-    TransformContainer,
-    Control
-};
+use yanyaengine::TransformContainer;
 
 use crate::common::{
     EntitiesController,
@@ -12,7 +9,8 @@ use crate::common::{
 
 use super::game_state::{
     GameState,
-    MousePosition
+    MousePosition,
+    Control
 };
 
 mod object_transform;
@@ -71,7 +69,7 @@ impl Game
 
     fn movement_direction(game_state: &mut GameState) -> (Vector3<f32>, bool)
     {
-        /*let mut movement_direction = Vector3::zeros();
+        let mut movement_direction = Vector3::zeros();
         let mut moved = false;
 
         if game_state.pressed(Control::MoveRight)
@@ -110,7 +108,7 @@ impl Game
             moved = true;
         }
 
-        (movement_direction, moved)*/todo!();
+        (movement_direction, moved)
     }
 }
 

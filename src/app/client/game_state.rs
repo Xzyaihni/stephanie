@@ -36,7 +36,9 @@ use super::{
 	world_receiver::WorldReceiver
 };
 
-use controls_controller::{ControlsController, ControlState, Control};
+pub use controls_controller::Control;
+
+use controls_controller::{ControlsController, ControlState};
 
 use object_pair::ObjectPair;
 use notifications::{Notifications, Notification};
