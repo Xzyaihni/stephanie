@@ -1,0 +1,3 @@
+[submodule "yanyaengine"]
+	path = yanyaengine
+	url = https://github.com/Xzyaihni/yanyaengine
