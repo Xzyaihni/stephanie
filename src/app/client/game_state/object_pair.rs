@@ -1,3 +1,5 @@
+use std::iter;
+
 use nalgebra::{
 	Unit,
 	Vector3
@@ -35,10 +37,12 @@ impl<T: PhysicsEntity + DrawableEntity + ChildContainer> ObjectPair<T>
 {
 	pub fn new(create_info: &ObjectCreateInfo, entity: T) -> Self
 	{
-		let mut objects = Vec::new();
-		let mut children = entity.children_ref().iter();
+        let entity_object = Self::object_create(create_info, &entity);
 
-        todo!();
+        let objects = entity.children_ref().iter().map(|child|
+        {
+            Self::child_object_create(create_info, child)
+        }).chain(iter::once(entity_object)).collect();
 
 		Self{objects, entity}
 	}
