@@ -1,21 +1,15 @@
-use std::sync::Arc;
-
-use parking_lot::RwLock;
-
 use nalgebra::{
 	Unit,
 	Vector3
 };
 
 use yanyaengine::{
-    Assets,
     DefaultModel,
-    ObjectFactory,
     Object,
+    ObjectInfo,
     Transform,
     TransformContainer,
 	OnTransformCallback,
-    object::Model,
     game_object::*
 };
 
@@ -39,7 +33,7 @@ pub struct ObjectPair<T>
 
 impl<T: PhysicsEntity + DrawableEntity + ChildContainer> ObjectPair<T>
 {
-	pub fn new(assets: &Assets, object_factory: &ObjectFactory, entity: T) -> Self
+	pub fn new(create_info: &ObjectCreateInfo, entity: T) -> Self
 	{
 		let mut objects = Vec::new();
 		let mut children = entity.children_ref().iter();
@@ -55,40 +49,37 @@ impl<T: PhysicsEntity + DrawableEntity + ChildContainer> ObjectPair<T>
 	}
 
 	fn object_create<E: DrawableEntity + TransformContainer>(
-		object_factory: &ObjectFactory,
-		entity: &E,
-		model: Arc<RwLock<Model>>
+        create_info: &ObjectCreateInfo,
+		entity: &E
 	) -> Object
 	{
-        todo!();
-		/*let model = unique_model.unwrap_or_else(|| object_factory.default_model());
+        let partial = &create_info.partial;
+        let assets = &*partial.assets.lock();
 
-		object_factory.create(
-			model,
-			entity.transform_clone(),
-			entity.texture()
-		)*/
+		let model = assets.default_model(DefaultModel::Square);
+        let texture = assets.texture(entity.texture());
+
+        partial.object_factory.create(
+            ObjectInfo{
+                model,
+                texture,
+                transform: entity.transform_clone(),
+                projection_view: create_info.projection_view
+            }
+		)
 	}
 
-	fn child_object_create(
-        assets: &Assets, 
-		object_factory: &ObjectFactory,
-		entity: &ChildEntity
-	) -> Object
-	{
-		let unique_model = entity.unique_model()
-            .unwrap_or_else(|| assets.default_model(DefaultModel::Square));
-
-		let mut object = Self::object_create(
-			object_factory,
-			entity.entity_ref(),
-			unique_model
-		);
+    fn child_object_create(
+        create_info: &ObjectCreateInfo,
+        entity: &ChildEntity
+    ) -> Object
+    {
+        let mut object = Self::object_create(create_info, entity.entity_ref());
 
 		object.set_origin(entity.origin());
 
-		object
-	}
+        object
+    }
 }
 
 impl PlayerGet for ObjectPair<Player>

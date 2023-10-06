@@ -1,7 +1,3 @@
-use std::sync::Arc;
-
-use parking_lot::RwLock;
-
 use serde::{Serialize, Deserialize};
 
 use nalgebra::{Vector2, Vector3, Rotation};
@@ -224,8 +220,7 @@ pub enum ChildConnection
 pub enum ChildDeformation
 {
 	Rigid,
-	Stretch(StretchDeformation),
-	OffsetStretch(OffsetStretchDeformation)
+	Stretch(StretchDeformation)
 }
 
 pub trait ChildContainer: TransformContainer
@@ -310,20 +305,6 @@ impl ChildEntity
 		world_transform.rotation_axis = transform.rotation_axis;
 	}
 
-	pub fn unique_model(&self) -> Option<Arc<RwLock<Model>>>
-	{
-		match self.deformation
-		{
-			ChildDeformation::OffsetStretch(_) =>
-			{
-				let model = Arc::new(RwLock::new(Model::square(1.0)));
-
-				Some(model)
-			},
-			_ => None
-		}
-	}
-
 	fn velocity_local(&self, parent_transform: &Transform) -> Vector3<f32>
 	{
 		let rotation = Rotation::from_axis_angle(
@@ -375,20 +356,7 @@ impl ChildEntity
 				let stretch = deformation.stretched(velocity);
 
 				self.entity.set_stretch(stretch);
-			},
-			ChildDeformation::OffsetStretch(_) => ()
-		}
-	}
-
-	pub fn modify_model(&self, model: &mut Model, parent_transform: &Transform, dt: f32)
-	{
-		match &self.deformation
-		{
-			ChildDeformation::OffsetStretch(deformation) =>
-			{
-				deformation.stretched(model, &mut self.velocity_local(parent_transform), dt);
-			},
-			_ => unreachable!()
+			}
 		}
 	}
 }

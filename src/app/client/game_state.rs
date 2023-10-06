@@ -235,7 +235,7 @@ impl GameState
 		self.player_id
 	}
 
-	pub fn process_messages(&mut self)
+	pub fn process_messages(&mut self, create_info: &mut ObjectCreateInfo)
 	{
 		loop
 		{
@@ -243,7 +243,7 @@ impl GameState
 			{
 				Ok(message) =>
 				{
-					self.process_message_inner(message);
+					self.process_message_inner(create_info, message);
 				},
 				Err(err) if err == TryRecvError::Empty =>
 				{
@@ -258,7 +258,7 @@ impl GameState
 		}
 	}
 
-	fn process_message_inner(&mut self, message: Message)
+	fn process_message_inner(&mut self, create_info: &mut ObjectCreateInfo, message: Message)
 	{
 		let id_mismatch = || panic!("id mismatch in clientside process message");
 
@@ -278,7 +278,7 @@ impl GameState
 		{
 			Message::PlayerCreate{id, player} =>
 			{
-				let player = ObjectPair::new(&*self.assets.lock(), &self.object_factory, player);
+				let player = ObjectPair::new(create_info, player);
 
 				if id != self.entities.players_mut().insert(player)
 				{
@@ -355,6 +355,8 @@ impl GameState
         let mut info = UpdateBuffersInfo::new(partial_info, &*self.camera.read());
         let info = &mut info;
 
+		self.process_messages(&mut info.object_info);
+
 		self.world.update_buffers(info);
 
 		self.entities.update_buffers(info);
@@ -369,8 +371,6 @@ impl GameState
 
 	pub fn update(&mut self, dt: f32)
 	{
-		self.process_messages();
-
 		self.check_resize_camera(dt);
 		self.camera_moved();
 

@@ -67,7 +67,7 @@ impl KeyMapping
         {
             yanyaengine::Control::Keyboard{keycode, ..} => Some(KeyMapping::Keyboard(keycode)),
             yanyaengine::Control::Mouse{button, ..} => Some(KeyMapping::Mouse(button)),
-            yanyaengine::Control::Scroll{y, ..} => None
+            yanyaengine::Control::Scroll{..} => None
         }
     }
 }
