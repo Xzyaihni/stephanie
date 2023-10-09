@@ -1,5 +1,3 @@
-use std::iter;
-
 use nalgebra::{
 	Unit,
 	Vector3
@@ -29,7 +27,8 @@ use crate::client::DrawableEntity;
 #[derive(Debug)]
 pub struct ObjectPair<T>
 {
-	pub objects: Vec<Object>,
+    pub main_object: Object,
+	pub child_objects: Vec<Object>,
 	pub entity: T
 }
 
@@ -37,14 +36,14 @@ impl<T: PhysicsEntity + DrawableEntity + ChildContainer> ObjectPair<T>
 {
 	pub fn new(create_info: &ObjectCreateInfo, entity: T) -> Self
 	{
-        let entity_object = Self::object_create(create_info, &entity);
+        let main_object = Self::object_create(create_info, &entity);
 
-        let objects = entity.children_ref().iter().map(|child|
+        let child_objects = entity.children_ref().iter().map(|child|
         {
             Self::child_object_create(create_info, child)
-        }).chain(iter::once(entity_object)).collect();
+        }).collect();
 
-		Self{objects, entity}
+		Self{main_object, child_objects, entity}
 	}
 
 	pub fn update(&mut self, dt: f32)
@@ -97,12 +96,14 @@ impl<T: PhysicsEntity + ChildContainer> GameObject for ObjectPair<T>
 {
 	fn update_buffers(&mut self, info: &mut UpdateBuffersInfo)
     {
-		self.objects.iter_mut().for_each(|object| object.update_buffers(info));
+        self.main_object.update_buffers(info);
+		self.child_objects.iter_mut().for_each(|object| object.update_buffers(info));
     }
 
 	fn draw(&self, info: &mut DrawInfo)
     {
-		self.objects.iter().for_each(|object| object.draw(info));
+        self.main_object.draw(info);
+		self.child_objects.iter().for_each(|object| object.draw(info));
     }
 }
 
@@ -110,10 +111,13 @@ impl<T: TransformContainer + ChildContainer> OnTransformCallback for ObjectPair<
 {
 	fn transform_callback(&mut self, _transform: Transform)
 	{
-		self.objects.iter_mut().zip(self.entity.children_ref().iter()).for_each(|(object, child)|
-        {
-            object.set_transform(child.entity_ref().transform_clone())
-        });
+        self.main_object.set_transform(self.entity.transform_clone());
+
+		self.child_objects.iter_mut().zip(self.entity.children_ref().iter())
+            .for_each(|(object, child)|
+            {
+                object.set_transform(child.entity_ref().transform_clone())
+            });
 	}
 
 	fn position_callback(&mut self, position: Vector3<f32>)
