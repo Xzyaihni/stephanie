@@ -11,16 +11,15 @@ use parking_lot::RwLock;
 
 use yanyaengine::{
     Object,
+    ObjectInfo,
     Transform,
     ObjectFactory,
-    camera::Camera,
     object::{
-        model::Model,
-        resource_uploader::ResourceUploader
-    }
+        Texture,
+        Model
+    },
+    game_object::*
 };
-
-use super::ObjectAllocator;
 
 use crate::common::{
 	TileMap,
@@ -226,18 +225,16 @@ impl ChunkModelBuilder
 #[derive(Debug)]
 pub struct TilesFactory
 {
-	object_factory: ObjectFactory,
-	tilemap: Arc<TileMap>
+	object_factory: Arc<ObjectFactory>,
+	tilemap: Arc<TileMap>,
+    textures: Vec<Arc<RwLock<Texture>>>
 }
-
 
 #[allow(dead_code)]
 impl TilesFactory
 {
 	pub fn new(
-		camera: Arc<RwLock<Camera>>,
-		allocator: ObjectAllocator,
-		resource_uploader: &mut ResourceUploader,
+        init_info: &mut InitInfo,
 		tilemap: TileMap
 	) -> Result<Self, ImageError>
 	{
@@ -246,13 +243,16 @@ impl TilesFactory
 
 		let mut make_tilemap = |textures: &[_]|
 		{
-			let tilemap = tilemap.generate_tilemap(resource_uploader, textures);
+			let tilemap = tilemap.generate_tilemap(
+                init_info.object_info.partial.builder_wrapper.resource_uploader(),
+                textures
+            );
 
 			Arc::new(RwLock::new(tilemap))
 		};
 
-		let mut tilemaps = vec![make_tilemap(&base_textures)];
-		tilemaps.extend(GradientMask::iter().map(|mask_type|
+		let mut textures = vec![make_tilemap(&base_textures)];
+		textures.extend(GradientMask::iter().map(|mask_type|
 		{
 			let mut textures = base_textures.clone();
 
@@ -261,14 +261,13 @@ impl TilesFactory
 			make_tilemap(&textures)
 		}));
 
-		let object_factory = /*ObjectFactory::new_with_ids(
-			camera,
-			allocator,
-			tilemaps
-		);*/todo!();
-
 		let tilemap = Arc::new(tilemap);
-		Ok(Self{object_factory, tilemap})
+
+		Ok(Self{
+            object_factory: init_info.object_info.partial.object_factory.clone(),
+            tilemap,
+            textures
+        })
 	}
 
 	pub fn build(&mut self, chunk_info: Box<[ChunkInfo]>) -> Box<[Object]>
@@ -277,8 +276,13 @@ impl TilesFactory
 		{
 			let ChunkInfo{model, transform, texture_index} = chunk_info;
 
-            todo!();
-			// self.object_factory.create_id(model, transform, texture_index)
+            let object_info = ObjectInfo{
+                model,
+                texture: self.textures[texture_index].clone(),
+                transform
+            };
+
+            self.object_factory.create(object_info)
 		}).collect::<Vec<_>>().into_boxed_slice()
 	}
 

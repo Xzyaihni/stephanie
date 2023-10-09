@@ -67,8 +67,7 @@ impl<T: PhysicsEntity + DrawableEntity + ChildContainer> ObjectPair<T>
             ObjectInfo{
                 model,
                 texture,
-                transform: entity.transform_clone(),
-                projection_view: create_info.projection_view
+                transform: entity.transform_clone()
             }
 		)
 	}

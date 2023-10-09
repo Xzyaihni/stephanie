@@ -17,6 +17,7 @@ use server::Server;
 
 use client::{
     Client,
+    ClientInitInfo,
     ClientInfo
 };
 
@@ -34,16 +35,17 @@ impl YanyaApp for App
     {
         let deferred_parse = || TileMap::parse("tiles/tiles.json", "textures/tiles/");
 
-        let name = "stephanie #1".to_owned();
-        let mut client_info = ClientInfo{address: String::new(), name, debug_mode: false};
+        let mut name = "stephanie #1".to_owned();
 
         let mut address = None;
         let mut port = None;
 
+        let mut debug_mode = false;
+
         {
             let mut parser = ArgumentParser::new();
 
-            parser.refer(&mut client_info.name)
+            parser.refer(&mut name)
                 .add_option(&["-n", "--name"], Store, "player name");
 
             parser.refer(&mut address)
@@ -52,15 +54,15 @@ impl YanyaApp for App
             parser.refer(&mut port)
                 .add_option(&["-p", "--port"], StoreOption, "hosting port");
 
-            parser.refer(&mut client_info.debug_mode)
+            parser.refer(&mut debug_mode)
                 .add_option(&["-d", "--debug"], StoreTrue, "enable debug mode");
 
             parser.parse_args_or_exit();
         }
 
-        if let Some(address) = address
+        let client_address = if let Some(address) = address
         {
-            client_info.address = address;
+            address
         } else
         {
             let (tx, rx) = mpsc::channel();
@@ -93,11 +95,20 @@ impl YanyaApp for App
 
             let port = rx.recv().unwrap();
 
-            client_info.address = "127.0.0.1".to_owned() + &format!(":{port}");
             println!("listening on port {port}");
-        }
+            format!("127.0.0.1:{port}")
+        };
 
-        Self(Client::new(partial_info, client_info).unwrap())
+        let client_init_info = ClientInitInfo{
+            client_info: ClientInfo{
+                address: client_address,
+                name,
+                debug_mode
+            },
+            tilemap: deferred_parse().unwrap()
+        };
+
+        Self(Client::new(partial_info, client_init_info).unwrap())
     }
 
     fn update(&mut self, dt: f32)

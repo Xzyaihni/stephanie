@@ -1,9 +1,6 @@
 use std::{
-	fs,
 	sync::Arc,
-	net::TcpStream,
-	collections::HashMap,
-	path::{Path, PathBuf}
+	net::TcpStream
 };
 
 use parking_lot::RwLock;
@@ -15,14 +12,12 @@ use vulkano::{
 		Subbuffer,
 		allocator::{SubbufferAllocator, SubbufferAllocatorCreateInfo}
 	},
-	pipeline::PipelineLayout,
 	memory::allocator::StandardMemoryAllocator
 };
 
 use winit::event::{
 	VirtualKeyCode,
-	ButtonId,
-	ElementState
+	ButtonId
 };
 
 use image::error::ImageError;
@@ -32,9 +27,7 @@ use yanyaengine::{
 	camera::Camera,
 	object::{
 		ObjectVertex,
-		model::Model,
-		resource_uploader::ResourceUploader,
-		texture::{RgbaImage, Texture}
+		model::Model
 	},
     game_object::*
 };
@@ -108,6 +101,12 @@ pub enum GameInput
 	MouseInput(ButtonId)
 }
 
+pub struct ClientInitInfo
+{
+    pub client_info: ClientInfo,
+    pub tilemap: TileMap
+}
+
 pub struct ClientInfo
 {
 	pub address: String,
@@ -125,73 +124,32 @@ impl Client
 {
 	pub fn new(
         info: InitPartialInfo,
-        client_info: ClientInfo
+        client_init_info: ClientInitInfo
 	) -> Result<Self, ImageError>
 	{
-		let camera = Arc::new(RwLock::new(Camera::new(info.aspect)));
+		let camera = Camera::new(info.aspect);
+        let mut info = InitInfo::new(info, &camera);
 
-		let tiles_factory = todo!();
+        let camera = Arc::new(RwLock::new(camera));
 
-		let stream = TcpStream::connect(&client_info.address)?;
+		let tiles_factory = TilesFactory::new(&mut info, client_init_info.tilemap)?;
+
+		let stream = TcpStream::connect(&client_init_info.client_info.address)?;
 		let message_passer = MessagePasser::new(stream);
 
 		let game_state = GameState::new(
 			camera,
-            info.assets,
-			info.object_factory,
+            info.object_info.partial.assets,
+			info.object_info.partial.object_factory,
 			tiles_factory,
 			message_passer,
-		    &client_info
+		    &client_init_info.client_info
 		);
 
 		let game = Game::new(game_state.player_id());
 		let game_state = Arc::new(RwLock::new(game_state));
 
 		Ok(Self{game_state, game})
-	}
-
-	fn all_textures<P: AsRef<Path>>(
-		resource_uploader: &mut ResourceUploader,
-		folder: P
-	) -> HashMap<String, Arc<RwLock<Texture>>>
-	{
-		Self::recursive_dir(folder.as_ref()).map(|name|
-		{
-			let image = RgbaImage::load(name.clone()).unwrap();
-
-			let short_path = name.iter().skip(1).fold(PathBuf::new(), |mut acc, part|
-			{
-				acc.push(part);
-
-				acc
-			}).into_os_string().into_string().unwrap();
-
-			(short_path, Arc::new(RwLock::new(Texture::new(resource_uploader, image))))
-		}).collect()
-	}
-
-	fn recursive_dir(path: &Path) -> impl Iterator<Item=PathBuf>
-	{
-		let mut collector = Vec::new();
-
-		Self::recursive_dir_inner(path, &mut collector);
-
-		collector.into_iter()
-	}
-
-	fn recursive_dir_inner(path: &Path, collector: &mut Vec<PathBuf>)
-	{
-		fs::read_dir(path).unwrap().flatten().for_each(|entry|
-		{
-			let path = entry.path();
-			if path.is_dir()
-			{
-				Self::recursive_dir_inner(&path, collector);
-			} else
-			{
-				collector.push(entry.path());
-			}
-		})
 	}
 
 	pub fn resize(&mut self, aspect: f32)

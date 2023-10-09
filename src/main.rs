@@ -9,7 +9,7 @@ fn main()
 {
     App::<app::App>::new()
         .with_title("very cool new game, nobody ever created something like this")
-        .with_textures_path("textures")
+        .with_textures_path("textures/normal")
         .with_icon("icon.png")
         .with_clear_color([0.0, 0.0, 0.0])
         .run();
