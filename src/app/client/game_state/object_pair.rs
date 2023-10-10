@@ -27,8 +27,9 @@ use crate::client::DrawableEntity;
 #[derive(Debug)]
 pub struct ObjectPair<T>
 {
-    pub main_object: Object,
-	pub child_objects: Vec<Object>,
+    main_object: Object,
+	child_objects: Vec<Object>,
+    z_index: usize,
 	pub entity: T
 }
 
@@ -38,12 +39,16 @@ impl<T: PhysicsEntity + DrawableEntity + ChildContainer> ObjectPair<T>
 	{
         let main_object = Self::object_create(create_info, &entity);
 
-        let child_objects = entity.children_ref().iter().map(|child|
+        let children = entity.children_ref();
+
+        let child_objects = children.iter().map(|child|
         {
             Self::child_object_create(create_info, child)
         }).collect();
 
-		Self{main_object, child_objects, entity}
+        let z_index = children.iter().position(|child| child.z_level() > 0).unwrap_or(0);
+
+		Self{main_object, child_objects, z_index, entity}
 	}
 
 	pub fn update(&mut self, dt: f32)
@@ -102,8 +107,21 @@ impl<T: PhysicsEntity + ChildContainer> GameObject for ObjectPair<T>
 
 	fn draw(&self, info: &mut DrawInfo)
     {
-        self.main_object.draw(info);
-		self.child_objects.iter().for_each(|object| object.draw(info));
+        if self.child_objects.is_empty()
+        {
+            self.main_object.draw(info);
+        } else
+        {
+		    self.child_objects.iter().enumerate().for_each(|(index, object)|
+            {
+                if self.z_index == index
+                {
+                    self.main_object.draw(info);
+                }
+
+                object.draw(info);
+            });
+        }
     }
 }
 

@@ -146,7 +146,7 @@ impl PlayerContainer
         let (aspect, camera_pos) = {
             let camera_ref = game_state.camera.read();
 
-            (camera_ref.aspect(), camera_ref.position().xy())
+            (camera_ref.aspect(), camera_ref.position().xy().coords)
         };
 
         let mut player_mut = game_state.player_mut(self.id);
@@ -170,7 +170,7 @@ impl PlayerContainer
         let position = player.transform_ref().position;
 
         let mut camera_mut = game_state.camera.write();
-        camera_mut.translate_to(position, self.camera_follow);
+        camera_mut.translate_to(&position, self.camera_follow);
         camera_mut.set_position_z(position.z);
     }
 
@@ -180,28 +180,6 @@ impl PlayerContainer
 
         let position = player.transform_ref().position;
 
-        game_state.camera.write().set_position(position);
-    }
-
-    #[allow(dead_code)]
-    #[cfg(debug_assertions)]
-    pub fn debug_positions(&self, game_state: &GameState)
-    {
-        use yanyaengine::Transform;
-
-        let display_position = |transform: &Transform|
-        {
-            let pos = transform.position;
-
-            format!("{}, {}, {}", pos.x, pos.y, pos.z)
-        };
-
-        let position = display_position(game_state.player_ref(self.id).transform_ref());
-        let camera_position = display_position(game_state.camera.read().transform_ref());
-
-        eprintln!("========================");
-        eprintln!("position: {position}");
-        eprintln!("camera:   {camera_position}");
-        eprintln!("========================");
+        game_state.camera.write().set_position(position.into());
     }
 }

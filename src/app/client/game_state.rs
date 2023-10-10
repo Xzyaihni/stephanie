@@ -9,7 +9,6 @@ use slab::Slab;
 
 use yanyaengine::{
     Assets,
-	TransformContainer,
     ObjectFactory,
     camera::Camera,
     game_object::*
@@ -354,6 +353,8 @@ impl GameState
     {
         let mut info = UpdateBuffersInfo::new(partial_info, &*self.camera.read());
         let info = &mut info;
+
+        self.camera.write().update();
 
 		self.process_messages(&mut info.object_info);
 

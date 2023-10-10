@@ -11,7 +11,7 @@ use strum_macros::EnumIter;
 
 use enum_amount::EnumCount;
 
-use nalgebra::Vector3;
+use nalgebra::{Vector3, Point3, Scalar};
 
 use tile::Tile;
 
@@ -101,6 +101,14 @@ impl<T: Copy> From<Vector3<T>> for Pos3<T>
 	fn from(value: Vector3<T>) -> Self
 	{
 		Self{x: value[0], y: value[1], z: value[2]}
+	}
+}
+
+impl<T: Copy + Scalar + fmt::Debug> From<Point3<T>> for Pos3<T>
+{
+	fn from(value: Point3<T>) -> Self
+	{
+		Self{x: value.x, y: value.y, z: value.z}
 	}
 }
 

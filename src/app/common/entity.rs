@@ -241,7 +241,7 @@ pub trait ChildContainer: TransformContainer
         {
             let index = this_children.binary_search_by(|other|
             {
-                child.z_level().cmp(&other.z_level())
+                other.z_level().cmp(&child.z_level())
             }).unwrap_or_else(|partition| partition);
 
             this_children.insert(index, child.clone());
@@ -277,6 +277,8 @@ impl ChildEntity
 		Self{connection, deformation, origin, transform, entity, z_level}
 	}
 
+    // positive = above parent
+    // negative = below parent
 	pub fn z_level(&self) -> i32
 	{
 		self.z_level

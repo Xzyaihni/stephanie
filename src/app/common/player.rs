@@ -103,7 +103,7 @@ impl Player
 					StretchDeformation::new(ValueAnimation::EaseOut(2.0), 0.9, 0.2)
 				),
 				entity,
-				-1
+				1
 			)
         };
 
@@ -117,33 +117,13 @@ impl Player
 		player.add_child(top_pon);
 
         let bottom_pon = {
-            let mut pon = pon.clone();
+            let mut pon = pon;
 		    pon.set_origin(&player, Vector3::new(-0.15, -0.35, 0.0));
 
             pon
         };
 
 		player.add_child(bottom_pon);
-
-		/*let mut back_hair =
-		{
-			let entity = Entity::new(EntityProperties{
-				texture: "player/back_hair.png".to_owned(),
-				..Default::default()
-			});
-
-			ChildEntity::new(
-				ChildConnection::Rigid,
-				ChildDeformation::OffsetStretch(
-					OffsetStretchDeformation::new(ValueAnimation::EaseOut(4.0), 1.0, 0.5, 0.001)
-				),
-				entity,
-				-1
-			)
-		};
-		back_hair.set_origin(&player, Vector3::new(-0.7, 0.0, 0.0));
-
-		player.add_child(back_hair);*/
 
 		player
 	}
