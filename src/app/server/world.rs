@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use parking_lot::RwLock;
+use parking_lot::{Mutex, RwLock};
 
 use slab::Slab;
 
@@ -12,6 +12,7 @@ use crate::{
 		message::Message,
 		world::{
 			CLIENT_OVERMAP_SIZE,
+			CLIENT_OVERMAP_SIZE_Z,
 			Chunk,
 			GlobalPos,
 			Pos3
@@ -19,9 +20,11 @@ use crate::{
 	}
 };
 
-use world_generator::WorldGenerator;
+use world_generator::{WorldGenerator, WorldChunk};
 
 use server_overmap::ServerOvermap;
+
+use chunk_saver::Saver;
 
 pub use chunk_saver::ChunkSaver;
 pub use world_generator::ParseError;
@@ -32,15 +35,17 @@ mod server_overmap;
 
 
 pub const SERVER_OVERMAP_SIZE: usize = CLIENT_OVERMAP_SIZE + 1;
+pub const SERVER_OVERMAP_SIZE_Z: usize = CLIENT_OVERMAP_SIZE_Z + 1;
 
-type OvermapsType = Arc<RwLock<Slab<ServerOvermap>>>;
+type SaverType = ChunkSaver<WorldChunk>;
+type OvermapsType = Arc<RwLock<Slab<ServerOvermap<SaverType>>>>;
 
 #[derive(Debug)]
 pub struct World
 {
 	message_handler: Arc<RwLock<ConnectionsHandler>>,
 	world_name: String,
-	world_generator: Arc<WorldGenerator>,
+	world_generator: Arc<Mutex<WorldGenerator<SaverType>>>,
 	chunk_saver: ChunkSaver<Chunk>,
 	overmaps: OvermapsType
 }
@@ -71,7 +76,7 @@ impl World
 			WorldGenerator::new(chunk_saver, tilemap, "world_generation/city.json")
 		}?;
 
-		let world_generator = Arc::new(world_generator);
+		let world_generator = Arc::new(Mutex::new(world_generator));
 
 		let overmaps = Arc::new(RwLock::new(Slab::new()));
 
@@ -86,7 +91,7 @@ impl World
 
 	pub fn add_player(&mut self, position: Pos3<f32>) -> usize
 	{
-		let size = Pos3::new(SERVER_OVERMAP_SIZE, SERVER_OVERMAP_SIZE, SERVER_OVERMAP_SIZE);
+		let size = Pos3::new(SERVER_OVERMAP_SIZE, SERVER_OVERMAP_SIZE, SERVER_OVERMAP_SIZE_Z);
 		let overmap = ServerOvermap::new(
 			self.world_generator.clone(),
 			size,

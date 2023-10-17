@@ -12,7 +12,6 @@ pub use overmap::chunk::{
 	self,
 	CHUNK_SIZE,
 	CHUNK_VISUAL_SIZE,
-	VISUAL_TILE_HEIGHT,
 	TILE_SIZE,
 	Pos3,
 	Chunk,
@@ -36,6 +35,7 @@ mod visual_overmap;
 
 
 pub const CLIENT_OVERMAP_SIZE: usize = 5;
+pub const CLIENT_OVERMAP_SIZE_Z: usize = 2;
 
 #[derive(Debug)]
 pub struct World

@@ -27,7 +27,7 @@ use crate::common::{
 	EntitiesContainer,
 	EntitiesController,
 	MessagePasser,
-	world::VISUAL_TILE_HEIGHT,
+    world::chunk::TILE_SIZE,
 	player::{Player, PlayerProperties},
 	message::{
 		Message,
@@ -146,7 +146,7 @@ impl GameServer
 
 		let player = {
 			let mut player = Player::new(player_properties);
-			player.translate(Vector3::new(0.0, 0.0, VISUAL_TILE_HEIGHT));
+			player.translate(Vector3::new(0.0, 0.0, TILE_SIZE));
 
 			player
 		};

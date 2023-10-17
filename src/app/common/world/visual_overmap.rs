@@ -65,8 +65,7 @@ impl VisibilityChecker
 	{
 		let player_offset = self.player_position.read().modulo(CHUNK_VISUAL_SIZE);
 
-		let offset_position =
-			Pos3::from(pos) - Pos3::from(GlobalPos::from(Pos3::<i32>::from(self.size)) / 2);
+        let offset_position = Pos3::from(pos) - Pos3::from(self.size / 2);
 
 		let chunk_offset = offset_position * CHUNK_VISUAL_SIZE - player_offset;
 
@@ -78,14 +77,14 @@ impl VisibilityChecker
 		};
 
 		in_range(chunk_offset.x, self.camera_size.0)
-		&& in_range(chunk_offset.y, self.camera_size.1)
+            && in_range(chunk_offset.y, self.camera_size.1)
 	}
 }
 
 pub struct TileInfo
 {
 	pub pos: ChunkLocal,
-	pub chunk_height: usize,
+	pub chunk_depth: usize,
 	pub tiles: MaybeGroup<Tile>
 }
 
@@ -120,8 +119,6 @@ impl TileReader
 	{
 		self.chunks.iter().enumerate().flat_map(move |(chunk_depth, chunk_group)|
 		{
-			let chunk_height = self.chunks.len() - 1 - chunk_depth;
-
 			// its a single comparison chill out
 			// the compiler better optimize this away >:(
 			let skip_amount = if chunk_depth == 0
@@ -156,7 +153,7 @@ impl TileReader
 
 				TileInfo{
 					pos: chunk_local,
-					chunk_height,
+					chunk_depth,
 					tiles
 				}
 			})
@@ -185,7 +182,7 @@ impl VisualOvermap
 	{
 		let visibility_checker = VisibilityChecker::new(size, camera_size, player_position);
 
-		let chunks = FlatChunksContainer::new(size, |_| (Instant::now(), VisualChunk::new()));
+		let chunks = FlatChunksContainer::new_with(size, |_| (Instant::now(), VisualChunk::new()));
 
 		let (sender, receiver) = mpsc::channel();
 
@@ -201,7 +198,13 @@ impl VisualOvermap
 		let player_height = self.visibility_checker.player_position.read().tile_height();
 		let tile_reader = TileReader::new(chunks, pos, player_height);
 
-		let chunk_pos = self.to_global(pos);
+		let chunk_pos = {
+            let mut pos = pos;
+
+            pos.pos.z = self.size().z / 2;
+
+            self.to_global(pos)
+        };
 
 		let sender = self.sender.clone();
 

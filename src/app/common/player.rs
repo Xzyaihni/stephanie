@@ -100,7 +100,7 @@ impl Player
                     SpringConnection::new(0.1, 0.02, 0.2)
                 ),
 				ChildDeformation::Stretch(
-					StretchDeformation::new(ValueAnimation::EaseOut(2.0), 0.9, 0.2)
+					StretchDeformation::new(ValueAnimation::EaseOut(2.0), 0.4, 0.1)
 				),
 				entity,
 				1

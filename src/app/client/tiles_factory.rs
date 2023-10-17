@@ -25,8 +25,7 @@ use crate::common::{
 	TileMap,
 	tilemap::{GradientMask, TileInfoMap, TileInfo},
 	world::{
-		CLIENT_OVERMAP_SIZE,
-		VISUAL_TILE_HEIGHT,
+        CHUNK_VISUAL_SIZE,
 		TILE_SIZE,
 		Chunk,
 		PosDirection,
@@ -64,44 +63,37 @@ impl ChunkModelBuilder
 		Self{models, tilemap}
 	}
 
-	pub fn create(&mut self, chunk_height: usize, pos: ChunkLocal, tile: Tile)
+	pub fn create(&mut self, chunk_depth: usize, pos: ChunkLocal, tile: Tile)
 	{
-		self.create_inner(None, chunk_height, pos, tile);
+		self.create_inner(None, chunk_depth, pos, tile);
 	}
 
 	pub fn create_direction(
 		&mut self,
 		direction: PosDirection,
-		chunk_height: usize,
+		chunk_depth: usize,
 		pos: ChunkLocal,
 		tile: Tile
 	)
 	{
-		self.create_inner(Some(direction), chunk_height, pos, tile);
+		self.create_inner(Some(direction), chunk_depth, pos, tile);
 	}
 
 	fn create_inner(
 		&mut self,
 		direction: Option<PosDirection>,
-		chunk_height: usize,
-		pos: ChunkLocal,
+		chunk_depth: usize,
+		chunk_pos: ChunkLocal,
 		tile: Tile
 	)
 	{
-		let pos = pos.pos();
+		let pos = {
+            let mut pos = Pos3::<f32>::from(chunk_pos.pos()) * TILE_SIZE;
 
-		let tile_height_from_bottom = chunk_height as f32 + VISUAL_TILE_HEIGHT * pos.z as f32;
-		let tile_height = tile_height_from_bottom - (CLIENT_OVERMAP_SIZE as i32 / 2) as f32;
+            pos.z -= chunk_depth as f32 * CHUNK_VISUAL_SIZE;
 
-		// the tile directly below stephanie becomes 0
-		// the tile at stephanie's height becomes > 0
-		let tile_height = tile_height + VISUAL_TILE_HEIGHT;
-
-		let pos = Pos3::new(
-			pos.x as f32 * TILE_SIZE,
-			pos.y as f32 * TILE_SIZE,
-			tile_height
-		);
+            pos
+        };
 
 		let id = direction.map_or(0, Self::direction_texture_index);
 
@@ -194,7 +186,7 @@ impl ChunkModelBuilder
 			PosDirection::iter().map(Self::direction_texture_index)
 		);
 
-		let chunk_infos = self.models.into_iter().zip(textures_indices)
+		self.models.into_iter().zip(textures_indices)
 			.flat_map(|(model, texture_index)|
 			{
 				(!model.vertices.is_empty()).then(||
@@ -205,9 +197,7 @@ impl ChunkModelBuilder
 						texture_index
 					}
 				})
-			}).collect::<Vec<_>>();
-
-		chunk_infos.into_boxed_slice()
+			}).collect()
 	}
 
 	fn direction_texture_index(direction: PosDirection) -> usize
@@ -283,7 +273,7 @@ impl TilesFactory
             };
 
             self.object_factory.create(object_info)
-		}).collect::<Vec<_>>().into_boxed_slice()
+		}).collect()
 	}
 
 	pub fn builder(&self) -> ChunkModelBuilder

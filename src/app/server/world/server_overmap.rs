@@ -1,9 +1,14 @@
 use std::sync::Arc;
 
-use super::world_generator::{
-    WORLD_CHUNK_SIZE,
-	WorldGenerator,
-	WorldChunk
+use parking_lot::Mutex;
+
+use super::{
+    chunk_saver::Saver,
+    world_generator::{
+        WORLD_CHUNK_SIZE,
+        WorldGenerator,
+        WorldChunk
+    }
 };
 
 use crate::common::world::{
@@ -46,18 +51,18 @@ impl OvermapIndexing for Indexer
 }
 
 #[derive(Debug)]
-pub struct ServerOvermap
+pub struct ServerOvermap<S>
 {
-	world_generator: Arc<WorldGenerator>,
+	world_generator: Arc<Mutex<WorldGenerator<S>>>,
 	world_chunks: ChunksContainer<Option<WorldChunk>>,
 	chunk_ratio: Pos3<usize>,
 	indexer: Indexer
 }
 
-impl ServerOvermap
+impl<S: Saver<WorldChunk>> ServerOvermap<S>
 {
 	pub fn new(
-		world_generator: Arc<WorldGenerator>,
+		world_generator: Arc<Mutex<WorldGenerator<S>>>,
 		size: Pos3<usize>,
 		player_position: Pos3<f32>
 	) -> Self
@@ -76,7 +81,7 @@ impl ServerOvermap
 
 		let indexer = Indexer::new(size, player_position.rounded());
 
-		let world_chunks = ChunksContainer::new(size, |_| None);
+		let world_chunks = ChunksContainer::new(size);
 
 		let mut this = Self{
 			world_generator,
@@ -92,35 +97,16 @@ impl ServerOvermap
 
 	pub fn generate_chunk(&mut self, pos: GlobalPos) -> Chunk
 	{
-        let pos = GlobalPos::from(pos.0 * Pos3::from(self.chunk_ratio));
+        let chunk_ratio = Pos3::from(self.chunk_ratio);
+        let pos = pos * chunk_ratio;
 
-		let margin = 1;
-		let padding = 1;
+		let shift_offset = self.over_bounds_with_padding(
+            pos,
+            Pos3::repeat(1),
+            chunk_ratio + 1
+        );
 
-		let over_edge = |value, limit| -> i32
-		{
-			if value < padding
-			{
-				(value - padding) - margin
-			} else if value >= (limit as i32 - padding)
-			{
-				value - (limit as i32 - padding) + 1 + margin
-			} else
-			{
-				0
-			}
-		};
-
-		let GlobalPos(difference) = self.to_local_unconverted(pos);
-
-		let size = self.indexer.size;
-		let shift_offset = GlobalPos::new(
-			over_edge(difference.x, size.x),
-			over_edge(difference.y, size.y),
-			over_edge(difference.z, size.z)
-		);
-
-		let non_shifted = shift_offset.0.x == 0 && shift_offset.0.y == 0 && shift_offset.0.z == 0;
+		let non_shifted = shift_offset.0 == Pos3::repeat(0_i32);
 
 		if !non_shifted
 		{
@@ -141,8 +127,6 @@ impl ServerOvermap
 
 	fn generate_existing_chunk(&self, local_pos: LocalPos) -> Chunk
 	{
-        let local_pos = LocalPos::new(local_pos.pos, self.world_chunks.size());
-
         let mut chunk = Chunk::new();
 
         for z in 0..self.chunk_ratio.z
@@ -153,16 +137,15 @@ impl ServerOvermap
                 {
                     let this_pos = Pos3::new(x, y, z);
 
-                    let local_pos = {
-                        let pos = local_pos.pos + this_pos;
-
-                        local_pos.moved(pos.x, pos.y, pos.z)
-                    };
+                    let local_pos = local_pos + this_pos;
 
 		            let group = local_pos.always_group().expect("chunk must not touch edges");
-		            let group = group.map(|position| self.world_chunks[position].unwrap());
+		            let group = group.map(|position|
+                    {
+                        self.world_chunks[position].unwrap()
+                    });
 
-		            let world_chunk = self.world_generator.generate_chunk(group);
+		            let world_chunk = self.world_generator.lock().generate_chunk(group);
 
                     Self::partially_fill(&mut chunk, world_chunk, this_pos);
                 }
@@ -189,7 +172,7 @@ impl ServerOvermap
     }
 }
 
-impl Overmap<WorldChunk> for ServerOvermap
+impl<S: Saver<WorldChunk>> Overmap<WorldChunk> for ServerOvermap<S>
 {
 	fn remove(&mut self, pos: LocalPos)
 	{
@@ -210,14 +193,11 @@ impl Overmap<WorldChunk> for ServerOvermap
 
 	fn generate_missing(&mut self)
 	{
-		self.world_generator.generate_missing(&mut self.world_chunks, |pos|
-		{
-			self.indexer.to_global(pos)
-		});
+		self.world_generator.lock().generate_missing(&mut self.world_chunks, &self.indexer);
 	}
 }
 
-impl OvermapIndexing for ServerOvermap
+impl<S> OvermapIndexing for ServerOvermap<S>
 {
 	fn size(&self) -> Pos3<usize>
 	{
@@ -228,4 +208,80 @@ impl OvermapIndexing for ServerOvermap
 	{
 		self.indexer.player_position
 	}
+}
+
+#[cfg(test)]
+mod tests
+{
+    use super::*;
+
+    use std::collections::HashMap;
+
+    use crate::common::TileMap;
+
+
+    struct TestSaver<T>
+    {
+        data: HashMap<GlobalPos, T>
+    }
+
+    impl<T> TestSaver<T>
+    {
+        pub fn new() -> Self
+        {
+            Self{data: HashMap::new()}
+        }
+    }
+
+    impl<T: Clone> Saver<T> for TestSaver<T>
+    {
+        fn save(&mut self, pos: GlobalPos, chunk: &T)
+        {
+            self.data.insert(pos, chunk.clone());
+        }
+
+        fn load(&self, pos: GlobalPos) -> Option<T>
+        {
+            self.data.get(&pos).cloned()
+        }
+    }
+
+    #[test]
+    fn moving_around()
+    {
+        let saver = TestSaver::new();
+
+        let tiles = "tiles/tiles.json";
+
+        let tilemap = TileMap::parse(tiles, "textures/").unwrap();
+
+        let world_generator = Arc::new(Mutex::new(
+            WorldGenerator::new(saver, tilemap, "world_generation/city.json").unwrap()
+        ));
+
+        let size = Pos3::new(3, 4, 5);
+
+        let random_chunk = ||
+        {
+            let r = |s: usize|
+            {
+                let ps = (s as i32).pow(3);
+
+                fastrand::i32(0..(ps * 2)) - ps
+            };
+
+            GlobalPos::new(
+                r(size.x),
+                r(size.y),
+                r(size.z)
+            )
+        };
+
+        let mut overmap = ServerOvermap::new(world_generator, size, Pos3::repeat(0.0));
+
+        for _ in 0..30
+        {
+            let _chunk = overmap.generate_chunk(random_chunk());
+        }
+    }
 }

@@ -149,7 +149,7 @@ pub trait OvermapIndexing
 	{
 		let player_distance = pos - self.player_position();
 
-		player_distance + GlobalPos::from(Pos3::from(self.size())) / 2
+		player_distance + GlobalPos::from(self.size()) / 2
 	}
 
 	fn to_global(&self, pos: LocalPos) -> GlobalPos
@@ -157,8 +157,129 @@ pub trait OvermapIndexing
 		self.player_offset(pos) + self.player_position()
 	}
 
+    fn to_global_z(&self, z: usize) -> i32
+    {
+        (z as i32 - self.size().z as i32 / 2) + self.player_position().0.z
+    }
+
+    fn over_bounds(&self, pos: GlobalPos, margin: Pos3<i32>) -> GlobalPos
+    {
+        self.over_bounds_with_padding(pos, margin, Pos3::repeat(0))
+    }
+
+    fn over_bounds_with_padding(
+        &self,
+        pos: GlobalPos,
+        margin: Pos3<i32>,
+        padding: Pos3<i32>
+    ) -> GlobalPos
+    {
+        let pos = self.to_local_unconverted(pos).0;
+
+        let size = self.size();
+
+        let over_bounds = |value, limit, margin, padding| -> i32
+        {
+            let value_difference = value - padding;
+            let limit_difference = value + padding - limit as i32 + 1;
+
+            if value_difference < 0
+            {
+                // under lower bound
+                value_difference - margin
+            } else if limit_difference > 0
+            {
+                // above upper bound
+                limit_difference + margin
+            } else
+            {
+                0
+            }
+        };
+
+        GlobalPos::new(
+            over_bounds(pos.x, size.x, margin.x, padding.x),
+            over_bounds(pos.y, size.y, margin.y, padding.y),
+            over_bounds(pos.z, size.z, margin.z, padding.z)
+        )
+    }
+
 	fn player_offset(&self, pos: LocalPos) -> GlobalPos
 	{
-		GlobalPos::from(pos) - GlobalPos::from(Pos3::from(self.size())) / 2
+		GlobalPos::from(pos) - GlobalPos::from(self.size()) / 2
 	}
+}
+
+#[cfg(test)]
+mod tests
+{
+    use super::*;
+
+    struct TestOvermap(GlobalPos);
+
+    impl OvermapIndexing for TestOvermap
+    {
+        fn size(&self) -> Pos3<usize>
+        {
+            Pos3::new(3, 4, 5)
+        }
+
+        fn player_position(&self) -> GlobalPos
+        {
+            self.0
+        }
+    }
+
+    #[test]
+    fn over_bounds()
+    {
+        let overmap = TestOvermap(GlobalPos::new(1, 2, 2));
+
+        let test = GlobalPos::new(1, 2, -5);
+        assert_eq!(test, overmap.to_local_unconverted(test));
+
+        assert_eq!(
+            GlobalPos::new(2, -2, 3),
+            overmap.over_bounds_with_padding(
+                GlobalPos::new(2, -1, 4),
+                Pos3::new(1, 1, 1),
+                Pos3::new(1, 0, 2)
+            )
+        )
+    }
+
+    #[test]
+    fn local_global_inverse()
+    {
+        for _ in 0..5
+        {
+            let overmap = TestOvermap(GlobalPos::new(
+                fastrand::i32(0..10) - 5,
+                fastrand::i32(0..10) - 5,
+                fastrand::i32(0..10) - 5
+            ));
+
+            let size = overmap.size();
+            let value = LocalPos::new(
+                Pos3::new(
+                    fastrand::usize(0..size.x),
+                    fastrand::usize(0..size.y),
+                    fastrand::usize(0..size.z)
+                ),
+                size
+            );
+
+            assert_eq!(
+                value, overmap.to_local(overmap.to_global(value)).unwrap_or_else(||
+                {
+                    panic!(
+                        "size: {size:?}, value: {value:?}, player_position: {:?}",
+                        overmap.player_position()
+                    );
+                }),
+                "size: {size:?}, value: {value:?}, player_position: {:?}",
+                overmap.player_position()
+            );
+        }
+    }
 }

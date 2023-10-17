@@ -43,8 +43,6 @@ impl VisualChunk
 		tiles: TileReader
 	) -> Box<[ChunkInfo]>
 	{
-		// ignores pos.0.z!! dont pay attention to it
-
 		(0..CHUNK_SIZE).flat_map(|y|
 		{
 			(0..CHUNK_SIZE).map(move |x| (x, y))
@@ -59,7 +57,7 @@ impl VisualChunk
 			)
 		});
 
-		model_builder.build(GlobalPos::new(pos.0.x, pos.0.y, 0))
+		model_builder.build(pos)
 	}
 
 	pub fn build(tiles_factory: &mut TilesFactory, chunk_info: Box<[ChunkInfo]>) -> Self
@@ -77,14 +75,14 @@ impl VisualChunk
 		tiles: &TileReader
 	)
 	{
-		for TileInfo{pos, chunk_height, tiles} in tiles.line(x, y)
+		for TileInfo{pos, chunk_depth, tiles} in tiles.line(x, y)
 		{
 			if tiles.this.is_none()
 			{
 				continue;
 			}
 
-			model_builder.create(chunk_height, pos, tiles.this);
+			model_builder.create(chunk_depth, pos, tiles.this);
 
 			PosDirection::iter().for_each(|direction|
 			{
@@ -94,7 +92,7 @@ impl VisualChunk
 					{
 						model_builder.create_direction(
 							direction,
-							chunk_height,
+							chunk_depth,
 							pos,
 							gradient_tile
 						);

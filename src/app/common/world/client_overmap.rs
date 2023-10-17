@@ -69,7 +69,7 @@ impl ClientOvermap
 	{
 		let indexer = Indexer::new(size, player_position);
 
-		let chunks = ChunksContainer::new(size, |_| None);
+		let chunks = ChunksContainer::new(size);
 
 		let chunk_ordering = indexer.default_ordering(chunks.iter().map(|(pos, _)| pos));
 

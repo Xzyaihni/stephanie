@@ -1,112 +1,121 @@
-[
-    {
-        "name": "none",
-        "neighbors": {
-            "up": [],
-            "down": [],
-            "right": [],
-            "left": []
+{
+    "rules": [
+        {
+            "name": "none",
+            "weight": 1,
+            "neighbors": {
+                "up": [],
+                "down": [],
+                "right": [],
+                "left": []
             }
-    },
-    {
-        "name": "building",
-        "neighbors": {
-            "up": [
-                {"weight": 1, "name": "road_horizontal"}
+        },
+        {
+            "name": "building",
+            "weight": 4,
+            "neighbors": {
+                "up": [
+                    "park",
+                    "building",
+                    "road_horizontal"
                 ],
-            "down": [
-                {"weight": 1, "name": "road_horizontal"}
+                "down": [
+                    "park",
+                    "building",
+                    "road_horizontal"
                 ],
-            "right": [
-                {"weight": 1, "name": "road_vertical"}
+                "right": [
+                    "park",
+                    "building",
+                    "road_vertical"
                 ],
-            "left": [
-                {"weight": 1, "name": "road_vertical"}
+                "left": [
+                    "park",
+                    "building",
+                    "road_vertical"
                 ]
             }
-    },
-    {
-        "name": "road_horizontal",
-        "neighbors": {
-            "up": [
-                {"weight": 4, "name": "building"},
-                {"weight": 1, "name": "park"}
+        },
+        {
+            "name": "road_horizontal",
+            "weight": 4,
+            "neighbors": {
+                "up": [
+                    "building",
+                    "park"
                 ],
-            "down": [
-                {"weight": 4, "name": "building"},
-                {"weight": 1, "name": "park"}
+                "down": [
+                    "building",
+                    "park"
                 ],
-            "right": [
-                {"weight": 4, "name": "road_horizontal"},
-                {"weight": 1, "name": "road_intersection"}
+                "right": [
+                    "road_horizontal",
+                    "road_intersection"
                 ],
-            "left": [
-                {"weight": 4, "name": "road_horizontal"},
-                {"weight": 1, "name": "road_intersection"}
+                "left": [
+                    "road_horizontal",
+                    "road_intersection"
                 ]
             }
-    },
-    {
-        "name": "road_vertical",
-        "neighbors": {
-            "up": [
-                {"weight": 4, "name": "road_vertical"},
-                {"weight": 1, "name": "road_intersection"}
+        },
+        {
+            "name": "road_vertical",
+            "weight": 4,
+            "neighbors": {
+                "up": [
+                    "road_vertical",
+                    "road_intersection"
                 ],
-            "down": [
-                {"weight": 4, "name": "road_vertical"},
-                {"weight": 1, "name": "road_intersection"}
+                "down": [
+                    "road_vertical",
+                    "road_intersection"
                 ],
-            "right": [
-                {"weight": 4, "name": "building"},
-                {"weight": 1, "name": "park"}
+                "right": [
+                    "building",
+                    "park"
                 ],
-            "left": [
-                {"weight": 4, "name": "building"},
-                {"weight": 1, "name": "park"}
+                "left": [
+                    "building",
+                    "park"
                 ]
             }
-    },
-    {
-        "name": "road_intersection",
-        "neighbors": {
-            "up": [
-                {"weight": 1, "name": "road_vertical"}
+        },
+        {
+            "name": "road_intersection",
+            "weight": 1,
+            "neighbors": {
+                "up": ["road_vertical"],
+                "down": ["road_vertical"],
+                "right": ["road_horizontal"],
+                "left": ["road_horizontal"]
+            }
+        },
+        {
+            "name": "park",
+            "weight": 1,
+            "neighbors": {
+                "up": [
+                    "park",
+                    "building",
+                    "road_horizontal"
                 ],
-            "down": [
-                {"weight": 1, "name": "road_vertical"}
+                "down": [
+                    "park",
+                    "building",
+                    "road_horizontal"
                 ],
-            "right": [
-                {"weight": 1, "name": "road_horizontal"}
+                "right": [
+                    "park",
+                    "building",
+                    "road_vertical"
                 ],
-            "left": [
-                {"weight": 1, "name": "road_horizontal"}
+                "left": [
+                    "park",
+                    "building",
+                    "road_vertical"
                 ]
             }
-    },
-    {
-        "name": "park",
-        "neighbors": {
-            "up": [
-                {"weight": 1, "name": "park"},
-                {"weight": 2, "name": "building"},
-                {"weight": 3, "name": "road_horizontal"}
-                ],
-            "down": [
-                {"weight": 1, "name": "park"},
-                {"weight": 2, "name": "building"},
-                {"weight": 3, "name": "road_horizontal"}
-                ],
-            "right": [
-                {"weight": 1, "name": "park"},
-                {"weight": 2, "name": "building"},
-                {"weight": 3, "name": "road_vertical"}
-                ],
-            "left": [
-                {"weight": 1, "name": "park"},
-                {"weight": 2, "name": "building"},
-                {"weight": 3, "name": "road_vertical"}
-                ]
-            }
-    }
-]
+        }
+    ],
+    "fallback": "park"
+}

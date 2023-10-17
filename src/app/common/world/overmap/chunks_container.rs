@@ -12,6 +12,92 @@ use crate::common::world::{
 };
 
 
+macro_rules! implement_common
+{
+    ($name:ident, $indexer_name:ident) =>
+    {
+        impl<T: Default> $name<T>
+        {
+            pub fn new(size: Pos3<usize>) -> Self
+            {
+                Self::new_with(size, |_| Default::default())
+            }
+        }
+
+        impl<T> $name<T>
+        {
+            pub fn new_with<F: FnMut(LocalPos) -> T>(size: Pos3<usize>, mut default_function: F) -> Self
+            {
+                let indexer = Indexer::new(size);
+
+                Self::new_indexed(size, |index| default_function(indexer.index_to_pos(index)))
+            }
+
+            pub fn new_indexed<F: FnMut(usize) -> T>(
+                size: Pos3<usize>,
+                mut default_function: F
+            ) -> Self
+            {
+                let indexer = $indexer_name::new(size);
+
+                let chunks = (0..(size.x * size.y * size.z)).map(|index|
+                {
+                    default_function(index)
+                }).collect::<Box<[_]>>();
+
+                Self{chunks, indexer}
+            }
+
+            pub fn swap(&mut self, a: LocalPos, b: LocalPos)
+            {
+                let (index_a, index_b) = (self.indexer.to_index(a.pos), self.indexer.to_index(b.pos));
+
+                self.chunks.swap(index_a, index_b);
+            }
+
+            #[allow(dead_code)]
+            pub fn size(&self) -> Pos3<usize>
+            {
+                self.indexer.size
+            }
+
+            #[allow(dead_code)]
+            pub fn len(&self) -> usize
+            {
+                self.chunks.len()
+            }
+
+            pub fn get_two_mut(&mut self, one: LocalPos, two: LocalPos) -> (&mut T, &mut T)
+            {
+                let one = self.indexer.to_index(one.pos);
+                let two = self.indexer.to_index(two.pos);
+
+                if one > two
+                {
+                    let (left, right) = self.chunks.split_at_mut(one);
+
+                    (&mut right[0], &mut left[two])
+                } else
+                {
+                    let (left, right) = self.chunks.split_at_mut(two);
+
+                    (&mut left[one], &mut right[0])
+                }
+            }
+
+            pub fn iter(&self) -> ChunksIter<$indexer_name, T>
+            {
+                ChunksIter::new(self.chunks.iter().enumerate(), self.indexer.clone())
+            }
+
+            pub fn iter_mut(&mut self) -> ChunksIterMut<$indexer_name, T>
+            {
+                ChunksIterMut::new(self.chunks.iter_mut().enumerate(), self.indexer.clone())
+            }
+        }
+    }
+}
+
 pub trait ChunkIndexing
 {
 	fn to_index(&self, pos: Pos3<usize>) -> usize;
@@ -23,12 +109,12 @@ pub type ValuePair<T> = (LocalPos, T);
 pub struct ChunksIter<'a, I, T>
 {
 	chunks: Enumerate<Iter<'a, T>>,
-	indexer: &'a I
+	indexer: I
 }
 
 impl<'a, I, T> ChunksIter<'a, I, T>
 {
-	pub fn new(chunks: Enumerate<Iter<'a, T>>, indexer: &'a I) -> Self
+	pub fn new(chunks: Enumerate<Iter<'a, T>>, indexer: I) -> Self
 	{
 		Self{chunks, indexer}
 	}
@@ -49,12 +135,12 @@ where
 pub struct ChunksIterMut<'a, I, T>
 {
 	chunks: Enumerate<IterMut<'a, T>>,
-	indexer: &'a I
+	indexer: I
 }
 
 impl<'a, I, T> ChunksIterMut<'a, I, T>
 {
-	pub fn new(chunks: Enumerate<IterMut<'a, T>>, indexer: &'a I) -> Self
+	pub fn new(chunks: Enumerate<IterMut<'a, T>>, indexer: I) -> Self
 	{
 		Self{chunks, indexer}
 	}
@@ -84,6 +170,11 @@ impl Indexer
 	{
 		Self{size}
 	}
+
+    pub fn size(&self) -> &Pos3<usize>
+    {
+        &self.size
+    }
 }
 
 impl ChunkIndexing for Indexer
@@ -110,51 +201,70 @@ pub struct ChunksContainer<T>
 	indexer: Indexer
 }
 
+implement_common!{ChunksContainer, Indexer}
+
 impl<T> ChunksContainer<T>
 {
-	pub fn new<F: FnMut(LocalPos) -> T>(size: Pos3<usize>, mut default_function: F) -> Self
-	{
-		let indexer = Indexer::new(size);
-
-        Self::new_indexed(size, |index| default_function(indexer.index_to_pos(index)))
-	}
-
-	pub fn new_indexed<F: FnMut(usize) -> T>(size: Pos3<usize>, mut default_function: F) -> Self
-	{
-		let indexer = Indexer::new(size);
-
-		let chunks = (0..(size.x * size.y * size.z)).map(|index|
-		{
-			default_function(index)
-		}).collect::<Box<[_]>>();
-
-		Self{chunks, indexer}
-	}
-
-	pub fn swap(&mut self, a: LocalPos, b: LocalPos)
-	{
-		let (index_a, index_b) = (self.indexer.to_index(a.pos), self.indexer.to_index(b.pos));
-
-		self.chunks.swap(index_a, index_b);
-	}
-
-    #[allow(dead_code)]
-    pub fn size(&self) -> Pos3<usize>
+    pub fn map_ref<U, F>(&self, f: F) -> ChunksContainer<U>
+    where
+        F: FnMut(&T) -> U
     {
-        self.indexer.size
+        ChunksContainer{
+            chunks: self.chunks.iter().map(f).collect(),
+            indexer: self.indexer.clone()
+        }
     }
 
-	#[allow(dead_code)]
-	pub fn iter(&self) -> ChunksIter<Indexer, T>
-	{
-		ChunksIter::new(self.chunks.iter().enumerate(), &self.indexer)
-	}
+    fn flat_slice_range(&self, z: usize) -> (usize, usize)
+    {
+        let size = self.indexer.size();
+        let step = size.x * size.y;
 
-	#[allow(dead_code)]
-	pub fn iter_mut(&mut self) -> ChunksIterMut<Indexer, T>
-	{
-		ChunksIterMut::new(self.chunks.iter_mut().enumerate(), &self.indexer)
-	}
+        let start = z * step;
+        let end = (z + 1) * step;
+
+        (start, end)
+    }
+
+    pub fn flat_slice(&self, z: usize) -> &[T]
+    {
+        let (start, end) = self.flat_slice_range(z);
+
+        &self.chunks[start..end]
+    }
+
+    pub fn flat_slice_mut(&mut self, z: usize) -> &mut [T]
+    {
+        let (start, end) = self.flat_slice_range(z);
+
+        &mut self.chunks[start..end]
+    }
+
+    #[allow(dead_code)]
+    pub fn flat_slice_iter(&self, z: usize) -> ChunksIter<FlatIndexer, T>
+    {
+        let s = self.flat_slice(z).iter().enumerate();
+
+		ChunksIter::new(s, FlatIndexer::from(self.indexer.clone()))
+    }
+
+    pub fn flat_slice_iter_mut(&mut self, z: usize) -> ChunksIterMut<FlatIndexer, T>
+    {
+        let indexer = FlatIndexer::from(self.indexer.clone());
+        let s = self.flat_slice_mut(z).iter_mut().enumerate();
+
+		ChunksIterMut::new(s, indexer)
+    }
+
+    pub fn map_slice_ref<U, F>(&self, z: usize, f: F) -> FlatChunksContainer<U>
+    where
+        F: FnMut((LocalPos, &T)) -> U
+    {
+        FlatChunksContainer{
+            chunks: self.flat_slice_iter(z).map(f).collect(),
+            indexer: self.indexer.clone().into()
+        }
+    }
 }
 
 impl<T> Index<Pos3<usize>> for ChunksContainer<T>
@@ -193,6 +303,19 @@ impl<T> IndexMut<LocalPos> for ChunksContainer<T>
 	}
 }
 
+impl<T> ChunkIndexing for ChunksContainer<T>
+{
+	fn to_index(&self, pos: Pos3<usize>) -> usize
+	{
+        self.indexer.to_index(pos)
+	}
+
+	fn index_to_pos(&self, index: usize) -> LocalPos
+    {
+        self.indexer.index_to_pos(index)
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FlatIndexer
 {
@@ -205,6 +328,14 @@ impl FlatIndexer
 	{
 		Self{size}
 	}
+}
+
+impl From<Indexer> for FlatIndexer
+{
+    fn from(value: Indexer) -> Self
+    {
+        Self{size: value.size}
+    }
 }
 
 impl ChunkIndexing for FlatIndexer
@@ -230,43 +361,7 @@ pub struct FlatChunksContainer<T>
 	indexer: FlatIndexer
 }
 
-impl<T> FlatChunksContainer<T>
-{
-	pub fn new<F: FnMut(LocalPos) -> T>(size: Pos3<usize>, mut default_function: F) -> Self
-	{
-		let indexer = FlatIndexer::new(size);
-
-		let chunks = (0..(size.x * size.y)).map(|index|
-		{
-			default_function(indexer.index_to_pos(index))
-		}).collect::<Vec<_>>().into_boxed_slice();
-
-		Self{chunks, indexer}
-	}
-
-	pub fn swap(&mut self, a: LocalPos, b: LocalPos)
-	{
-		let (index_a, index_b) = (self.indexer.to_index(a.pos), self.indexer.to_index(b.pos));
-
-		self.chunks.swap(index_a, index_b);
-	}
-
-    #[allow(dead_code)]
-    pub fn size(&self) -> Pos3<usize>
-    {
-        self.indexer.size
-    }
-
-	pub fn iter(&self) -> ChunksIter<FlatIndexer, T>
-	{
-		ChunksIter::new(self.chunks.iter().enumerate(), &self.indexer)
-	}
-
-	pub fn iter_mut(&mut self) -> ChunksIterMut<FlatIndexer, T>
-	{
-		ChunksIterMut::new(self.chunks.iter_mut().enumerate(), &self.indexer)
-	}
-}
+implement_common!{FlatChunksContainer, FlatIndexer}
 
 impl<T> Index<LocalPos> for FlatChunksContainer<T>
 {
@@ -284,4 +379,35 @@ impl<T> IndexMut<LocalPos> for FlatChunksContainer<T>
 	{
 		&mut self.chunks[self.indexer.to_index(value.pos)]
 	}
+}
+
+impl<T> Index<usize> for FlatChunksContainer<T>
+{
+	type Output = T;
+
+	fn index(&self, value: usize) -> &Self::Output
+	{
+		&self.chunks[value]
+	}
+}
+
+impl<T> IndexMut<usize> for FlatChunksContainer<T>
+{
+	fn index_mut(&mut self, value: usize) -> &mut Self::Output
+	{
+		&mut self.chunks[value]
+	}
+}
+
+impl<T> ChunkIndexing for FlatChunksContainer<T>
+{
+	fn to_index(&self, pos: Pos3<usize>) -> usize
+	{
+        self.indexer.to_index(pos)
+	}
+
+	fn index_to_pos(&self, index: usize) -> LocalPos
+    {
+        self.indexer.index_to_pos(index)
+    }
 }
