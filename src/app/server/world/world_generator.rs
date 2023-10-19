@@ -2,9 +2,8 @@ use std::{
 	io,
     fs,
 	fmt,
-	fs::File,
     ops::Index,
-    collections::{HashMap, HashSet},
+    collections::HashSet,
 	path::{Path, PathBuf}
 };
 
@@ -24,7 +23,6 @@ use crate::common::{
 		Pos3,
 		LocalPos,
 		AlwaysGroup,
-		DirectionsGroup,
 		overmap::{OvermapIndexing, FlatChunksContainer, ChunksContainer, ChunkIndexing},
 		chunk::{
             PosDirection,
@@ -33,85 +31,10 @@ use crate::common::{
 	}
 };
 
+use chunk_rules::ChunkRules;
 
-#[derive(Debug, Deserialize)]
-pub struct ChunkRuleRaw
-{
-	pub name: String,
-    pub weight: f64,
-	pub neighbors: DirectionsGroup<Vec<String>>
-}
+mod chunk_rules;
 
-#[derive(Debug, Deserialize)]
-pub struct ChunkRulesRaw
-{
-    rules: Vec<ChunkRuleRaw>,
-    fallback: String
-}
-
-#[derive(Debug, Clone)]
-pub struct ChunkRule
-{
-	pub name: String,
-    pub weight: f64,
-	pub neighbors: DirectionsGroup<Vec<usize>>
-}
-
-#[derive(Debug)]
-pub struct ChunkRules
-{
-    rules: Box<[ChunkRule]>,
-    fallback: usize,
-    total_weight: f64,
-    entropy: f64
-}
-
-impl From<ChunkRulesRaw> for ChunkRules
-{
-    fn from(rules: ChunkRulesRaw) -> Self
-    {
-        let weights = rules.rules.iter().skip(1).map(|rule| rule.weight);
-
-        let total_weight: f64 = weights.clone().sum();
-        let entropy = PossibleStates::calculate_entropy(weights);
-
-        let name_mappings = rules.rules.iter().enumerate().map(|(id, rule)|
-        {
-            (rule.name.clone(), id)
-        }).collect::<HashMap<String, usize>>();
-
-        let ChunkRulesRaw{
-            rules,
-            fallback
-        } = rules;
-
-        Self{
-            total_weight: 1.0,
-            entropy,
-            fallback: name_mappings[&fallback],
-            rules: rules.into_iter().map(|rule|
-            {
-                let ChunkRuleRaw{
-                    name,
-                    weight,
-                    neighbors
-                } = rule;
-
-                ChunkRule{
-                    name,
-                    weight: weight / total_weight,
-                    neighbors: neighbors.map(|_, direction|
-                    {
-                        direction.into_iter().map(|name|
-                        {
-                            name_mappings[&name]
-                        }).collect::<Vec<_>>()
-                    })
-                }
-            }).collect::<Box<[_]>>()
-        }
-    }
-}
 
 #[derive(Debug)]
 pub enum ParseErrorKind
@@ -247,17 +170,18 @@ impl ChunkGenerator
 	{
 		let lua = Mutex::new(Lua::new());
 
-        let parent_directory = "world_generation/chunks/";
+        let parent_directory = PathBuf::from("world_generation/chunks/");
 
         let mut this = Self{lua, tilemap};
 
         this.setup_lua_state()?;
 
-		rules.rules.iter().filter(|rule| rule.name != "none").map(|rule|
+		rules.iter().map(|rule|
 		{
-            let filename = format!("{parent_directory}{}.lua", rule.name);
+            let name = rule.name();
+            let filename = parent_directory.join(format!("{name}.lua"));
 
-			this.parse_function(filename, &rule.name)
+			this.parse_function(filename, name)
 		}).collect::<Result<(), _>>()?;
 
 		Ok(this)
@@ -277,14 +201,13 @@ impl ChunkGenerator
 
 	fn parse_function(
         &mut self,
-        filename: String,
+        filepath: PathBuf,
         function_name: &str
     ) -> Result<(), ParseError>
 	{
-        let filepath = PathBuf::from(&filename);
-
-        let code = fs::read_to_string(filename).map_err(|err|
+        let code = fs::read_to_string(&filepath).map_err(|err|
         {
+            // cant remove the clone cuz ? is cringe or something
             ParseError::new_named(filepath.clone(), err)
         })?;
 
@@ -350,17 +273,7 @@ impl<S: Saver<WorldChunk>> WorldGenerator<S>
 		path: P
 	) -> Result<Self, ParseError>
 	{
-        let json_file = File::open(&path).map_err(|err|
-        {
-            ParseError::new_named(path.as_ref().to_owned(), err)
-        })?;
-
-		let rules = serde_json::from_reader::<_, ChunkRulesRaw>(json_file).map_err(|err|
-        {
-            ParseError::new_named(path.as_ref().to_owned(), err)
-        })?;
-
-        let rules = ChunkRules::from(rules);
+        let rules = ChunkRules::load(path.as_ref())?;
 
 		let generator = ChunkGenerator::new(tilemap, &rules)?;
 
@@ -446,7 +359,7 @@ impl<S: Saver<WorldChunk>> WorldGenerator<S>
 	{
 		self.generator.generate_chunk(group.map(|world_chunk|
 		{
-			&self.rules.rules[world_chunk.id()].name[..]
+            self.rules.name(world_chunk.id())
 		}))
 	}
 }
@@ -464,12 +377,12 @@ impl PossibleStates
 {
     pub fn new(rules: &ChunkRules) -> Self
     {
-        let states = (1..rules.rules.len()).collect();
+        let states = (1..rules.len()).collect();
 
         Self{
             states,
-            total: rules.total_weight,
-            entropy: rules.entropy,
+            total: rules.total_weight(),
+            entropy: rules.entropy(),
             collapsed: false,
             is_all: true
         }
@@ -500,9 +413,10 @@ impl PossibleStates
 
         let mut any_constrained = false;
 
-        let fallback_array = [rules.fallback];
+        let fallback_array = [rules.fallback()];
         let other_states: &[usize] = if other.states.is_empty()
         {
+            eprintln!("using fallback worldchunk");
             &fallback_array
         } else
         {
@@ -513,17 +427,17 @@ impl PossibleStates
         {
             let keep = other_states.iter().any(|other_state|
             {
-                let other_rule = &rules.rules[*other_state];
-                let possible = &other_rule.neighbors[direction];
+                let other_rule = rules.get(*other_state);
+                let possible = &other_rule.neighbors(direction);
 
                 possible.contains(state)
             });
 
             if !keep
             {
-                let this_rule = &rules.rules[*state];
+                let this_rule = rules.get(*state);
 
-                self.total -= this_rule.weight;
+                self.total -= this_rule.weight();
                 any_constrained = true;
             }
 
@@ -543,7 +457,7 @@ impl PossibleStates
     {
         let id = if self.states.is_empty()
         {
-            rules.fallback
+            rules.fallback()
         } else if self.collapsed() || (self.states.len() == 1)
         {
             self.states[0]
@@ -553,9 +467,9 @@ impl PossibleStates
 
             *self.states.iter().find(|value|
             {
-                let rule = &rules.rules[**value];
+                let rule = rules.get(**value);
 
-                r -= rule.weight;
+                r -= rule.weight();
 
                 r <= 0.0
             }).expect("rules cannot be empty and all scaled weights must add up to 1")
@@ -572,7 +486,7 @@ impl PossibleStates
     {
         self.entropy = Self::calculate_entropy(self.states.iter().map(|state|
         {
-            rules.rules[*state].weight
+            rules.get(*state).weight()
         }));
     }
 
@@ -728,15 +642,11 @@ impl<'a> WaveCollapser<'a>
 
     fn constrain_all(&mut self)
     {
-        let mut visited = VisitedTracker::new();
         for i in 0..self.entropies.len()
         {
             let pos = self.entropies.index_to_pos(i);
-            if self.entropies[pos].collapsed()
-            {
-                continue;
-            }
 
+            let mut visited = VisitedTracker::new();
             self.constrain(&mut visited, pos);
         }
     }
@@ -751,7 +661,7 @@ impl<'a> WaveCollapser<'a>
                 {
                     let (this, other) = self.entropies.get_two_mut(pos, direction_pos);
 
-                    let changed = this.constrain(&self.rules, other, direction.opposite());
+                    let changed = other.constrain(&self.rules, this, direction);
 
                     if changed
                     {
