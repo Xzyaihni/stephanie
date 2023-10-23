@@ -235,9 +235,9 @@ mod tests
 
     impl<T: Clone> Saver<T> for TestSaver<T>
     {
-        fn save(&mut self, pos: GlobalPos, chunk: &T)
+        fn save(&mut self, pos: GlobalPos, chunk: T)
         {
-            self.data.insert(pos, chunk.clone());
+            self.data.insert(pos, chunk);
         }
 
         fn load(&self, pos: GlobalPos) -> Option<T>

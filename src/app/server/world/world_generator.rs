@@ -286,8 +286,9 @@ impl<S: Saver<WorldChunk>> WorldGenerator<S>
 		global_mapper: &impl OvermapIndexing
 	)
 	{
-		self.load_missing(world_chunks, global_mapper);
+        self.load_missing(world_chunks, global_mapper);
 
+        dbg!("remove every call to save in here too");
         for z in 0..world_chunks.size().z
         {
             let global_z = global_mapper.to_global_z(z);
@@ -298,7 +299,7 @@ impl<S: Saver<WorldChunk>> WorldGenerator<S>
 
                 wave_collapser.generate(|local_pos, chunk|
                 {
-                    self.saver.save(global_mapper.to_global(local_pos), &chunk);
+                    self.saver.save(global_mapper.to_global(local_pos), chunk.clone());
                 });
             } else if global_z > 0
             {
@@ -310,7 +311,7 @@ impl<S: Saver<WorldChunk>> WorldGenerator<S>
                     {
                         let chunk = WorldChunk::none();
 
-                        self.saver.save(global_mapper.to_global(local_pos), &chunk);
+                        self.saver.save(global_mapper.to_global(local_pos), chunk);
 
                         *world_chunk = Some(chunk);
                     }
@@ -325,7 +326,7 @@ impl<S: Saver<WorldChunk>> WorldGenerator<S>
                     {
                         let chunk = WorldChunk::none();
 
-                        self.saver.save(global_mapper.to_global(local_pos), &chunk);
+                        self.saver.save(global_mapper.to_global(local_pos), chunk);
 
                         *world_chunk = Some(chunk);
                     }

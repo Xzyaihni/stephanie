@@ -1,4 +1,7 @@
-use std::sync::Arc;
+use std::{
+    path::PathBuf,
+    sync::Arc
+};
 
 use parking_lot::{Mutex, RwLock};
 
@@ -59,19 +62,11 @@ impl World
 	{
 		let world_name = "default".to_owned();
 
-		let chunk_saver = {
-			let parent_path = format!("{}/chunks", Self::world_path_associated(&world_name));
-
-			ChunkSaver::new(parent_path)
-		};
+        let world_path = Self::world_path_associated(&world_name);
+		let chunk_saver = ChunkSaver::new(world_path.join("chunks"), 100);
 
 		let world_generator = {
-			let chunk_saver = {
-				let parent_path =
-					format!("{}/world_chunks", Self::world_path_associated(&world_name));
-
-				ChunkSaver::new(parent_path)
-			};
+			let chunk_saver = ChunkSaver::new(world_path.join("world_chunks"), 10);
 
 			WorldGenerator::new(chunk_saver, tilemap, "world_generation/city.json")
 		}?;
@@ -110,7 +105,9 @@ impl World
 	{
 		let chunk = self.load_chunk(id, pos);
 
-		self.message_handler.write().send_single(id, Message::ChunkSync{pos, chunk});
+        let message = Message::ChunkSync{pos, chunk};
+
+		self.message_handler.write().send_single(id, message);
 	}
 
 	fn load_chunk(&mut self, id: usize, pos: GlobalPos) -> Chunk
@@ -121,20 +118,21 @@ impl World
 		{
 			let chunk = self.overmaps.write()[id].generate_chunk(pos);
 
-			self.chunk_saver.save(pos, &chunk);
+            dbg!("remove this later");
+			self.chunk_saver.save(pos, chunk.clone());
 			chunk
 		})
 	}
 
 	#[allow(dead_code)]
-	fn world_path(&self) -> String
+	fn world_path(&self) -> PathBuf
 	{
 		Self::world_path_associated(&self.world_name)
 	}
 
-	fn world_path_associated(name: &str) -> String
+	fn world_path_associated(name: &str) -> PathBuf
 	{
-		format!("worlds/{name}")
+		PathBuf::from("worlds").join(name)
 	}
 
 	pub fn handle_message(&mut self, id: usize, message: Message) -> Option<Message>

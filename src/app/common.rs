@@ -45,6 +45,23 @@ pub mod world;
 pub mod physics;
 
 
+#[macro_export]
+macro_rules! time_this
+{
+    ($name:expr, $($tt:tt),*) =>
+    {
+        {
+            use std::time::Instant;
+
+            let start_time = Instant::now();
+
+            $($tt)*
+
+            eprintln!("{} took {} ms", $name, start_time.elapsed().as_millis());
+        }
+    }
+}
+
 pub trait EntityPasser
 {
 	fn send_single(&mut self, id: usize, message: Message);
@@ -52,7 +69,9 @@ pub trait EntityPasser
 
 	fn sync_entity(&mut self, id: EntityType, transform: Transform, velocity: Vector3<f32>)
 	{
-		self.send_message(Message::EntityTrasformPhysics{entity_type: id, transform, velocity});
+        let message = Message::EntityTrasformPhysics{entity_type: id, transform, velocity};
+
+		self.send_message(message);
 	}
 }
 

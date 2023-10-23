@@ -5,7 +5,7 @@ use std::{
 
 use nalgebra::Vector3;
 
-use parking_lot::RwLock;
+use parking_lot::{RwLock, Mutex};
 
 use slab::Slab;
 
@@ -105,9 +105,9 @@ impl GameServer
 		Ok(Self{entities, world, connection_handler})
 	}
 
-	pub fn connect(this: Arc<RwLock<Self>>, stream: TcpStream) -> Result<(), ConnectionError>
+	pub fn connect(this: Arc<Mutex<Self>>, stream: TcpStream) -> Result<(), ConnectionError>
 	{
-		if this.read().connection_handler.read().under_limit()
+		if this.lock().connection_handler.read().under_limit()
 		{
 			Self::player_connect(this, stream)
 		} else
@@ -117,17 +117,17 @@ impl GameServer
 	}
 
 	pub fn player_connect(
-		this: Arc<RwLock<Self>>,
+		this: Arc<Mutex<Self>>,
 		stream: TcpStream
 	) -> Result<(), ConnectionError>
 	{
-		let (id, messager) = this.write().player_connect_inner(stream)?;
+		let (id, messager) = this.lock().player_connect_inner(stream)?;
 
 		let other_this = this.clone();
 		receiver_loop(
 			messager,
-			move |message| this.write().process_message_inner(message, id),
-			move || other_this.write().connection_close(id)
+			move |message| this.lock().process_message_inner(message, id),
+			move || other_this.lock().connection_close(id)
 		);
 
 		Ok(())

@@ -1,6 +1,4 @@
-use std::{
-	thread
-};
+use std::thread;
 
 use crate::common::{
 	MessagePasser,

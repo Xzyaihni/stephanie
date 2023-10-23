@@ -3,7 +3,7 @@ use std::{
 	sync::Arc
 };
 
-use parking_lot::RwLock;
+use parking_lot::Mutex;
 
 use crate::common::TileMap;
 
@@ -21,7 +21,7 @@ pub mod world;
 pub struct Server
 {
 	listener: TcpListener,
-	game_server: Arc<RwLock<GameServer>>
+	game_server: Arc<Mutex<GameServer>>
 }
 
 impl Server
@@ -34,7 +34,7 @@ impl Server
 	{
 		let listener = TcpListener::bind(address)?;
 
-		let game_server = Arc::new(RwLock::new(GameServer::new(tilemap, connections_limit)?));
+		let game_server = Arc::new(Mutex::new(GameServer::new(tilemap, connections_limit)?));
 
 		Ok(Self{
 			listener,
