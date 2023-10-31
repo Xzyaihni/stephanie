@@ -15,10 +15,10 @@ use rlua::Lua;
 
 use serde::{Serialize, Deserialize};
 
-use super::Saver;
-
 use crate::common::{
 	TileMap,
+    Saver,
+    Saveable,
 	world::{
 		Pos3,
 		LocalPos,
@@ -155,6 +155,8 @@ impl WorldChunk
 		self.id
 	}
 }
+
+impl Saveable for WorldChunk {}
 
 pub const WORLD_CHUNK_SIZE: Pos3<usize> = Pos3{x: 16, y: 16, z: 1};
 
@@ -336,7 +338,7 @@ impl<S: Saver<WorldChunk>> WorldGenerator<S>
 	}
 
 	fn load_missing(
-		&self,
+		&mut self,
 		world_chunks: &mut ChunksContainer<Option<WorldChunk>>,
 		global_mapper: &impl OvermapIndexing
 	)

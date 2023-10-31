@@ -22,6 +22,8 @@ pub use tilemap::TileMap;
 
 pub use entity::ChildContainer;
 
+pub use chunk_saver::{Saver, Saveable, ChunkSaver};
+
 use player::Player;
 use entity::ChildEntity;
 
@@ -40,6 +42,7 @@ pub mod receiver_loop;
 
 pub mod tilemap;
 
+pub mod chunk_saver;
 pub mod world;
 
 pub mod physics;

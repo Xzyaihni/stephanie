@@ -11,6 +11,8 @@ use crate::{
 	server::ConnectionsHandler,
 	common::{
 		TileMap,
+        ChunkSaver,
+        Saver,
 		EntityPasser,
 		message::Message,
 		world::{
@@ -27,12 +29,8 @@ use world_generator::{WorldGenerator, WorldChunk};
 
 use server_overmap::ServerOvermap;
 
-use chunk_saver::Saver;
-
-pub use chunk_saver::ChunkSaver;
 pub use world_generator::ParseError;
 
-pub mod chunk_saver;
 pub mod world_generator;
 mod server_overmap;
 

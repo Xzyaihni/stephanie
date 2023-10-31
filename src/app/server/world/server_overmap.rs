@@ -2,23 +2,23 @@ use std::sync::Arc;
 
 use parking_lot::Mutex;
 
-use super::{
-    chunk_saver::Saver,
-    world_generator::{
-        WORLD_CHUNK_SIZE,
-        WorldGenerator,
-        WorldChunk
-    }
+use super::world_generator::{
+    WORLD_CHUNK_SIZE,
+    WorldGenerator,
+    WorldChunk
 };
 
-use crate::common::world::{
-	CHUNK_SIZE,
-	LocalPos,
-	GlobalPos,
-	Pos3,
-	Chunk,
-    chunk::tile::Tile,
-	overmap::{Overmap, OvermapIndexing, ChunksContainer}
+use crate::common::{
+    Saver,
+    world::{
+        CHUNK_SIZE,
+        LocalPos,
+        GlobalPos,
+        Pos3,
+        Chunk,
+        chunk::tile::Tile,
+        overmap::{Overmap, OvermapIndexing, ChunksContainer}
+    }
 };
 
 
@@ -240,7 +240,7 @@ mod tests
             self.data.insert(pos, chunk);
         }
 
-        fn load(&self, pos: GlobalPos) -> Option<T>
+        fn load(&mut self, pos: GlobalPos) -> Option<T>
         {
             self.data.get(&pos).cloned()
         }
