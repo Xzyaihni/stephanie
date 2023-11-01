@@ -245,12 +245,12 @@ impl<T> ChunksContainer<T>
     {
         let s = self.flat_slice(z).iter().enumerate();
 
-		ChunksIter::new(s, FlatIndexer::from(self.indexer.clone()))
+		ChunksIter::new(s, FlatIndexer::from(self.indexer.clone()).with_z(z))
     }
 
     pub fn flat_slice_iter_mut(&mut self, z: usize) -> ChunksIterMut<FlatIndexer, T>
     {
-        let indexer = FlatIndexer::from(self.indexer.clone());
+        let indexer = FlatIndexer::from(self.indexer.clone()).with_z(z);
         let s = self.flat_slice_mut(z).iter_mut().enumerate();
 
 		ChunksIterMut::new(s, indexer)
@@ -319,22 +319,30 @@ impl<T> ChunkIndexing for ChunksContainer<T>
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FlatIndexer
 {
-	size: Pos3<usize>
+	size: Pos3<usize>,
+    z: usize
 }
 
 impl FlatIndexer
 {
 	pub fn new(size: Pos3<usize>) -> Self
 	{
-		Self{size}
+		Self{size, z: 0}
 	}
+
+    pub fn with_z(mut self, z: usize) -> Self
+    {
+        self.z = z;
+
+        self
+    }
 }
 
 impl From<Indexer> for FlatIndexer
 {
     fn from(value: Indexer) -> Self
     {
-        Self{size: value.size}
+        Self{size: value.size, z: 0}
     }
 }
 
@@ -350,7 +358,7 @@ impl ChunkIndexing for FlatIndexer
 		let x = index % self.size.x;
 		let y = (index / self.size.x) % self.size.y;
 
-		LocalPos::new(Pos3::new(x, y, 0), self.size)
+		LocalPos::new(Pos3::new(x, y, self.z), self.size)
 	}
 }
 

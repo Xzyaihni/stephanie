@@ -116,7 +116,7 @@ impl<T: Saveable> Ord for CachedValue<T>
 {
     fn cmp(&self, other: &Self) -> Ordering
     {
-        self.age.cmp(&other.age)
+        other.age.cmp(&self.age)
     }
 }
 
@@ -240,7 +240,6 @@ impl<T: Saveable> FileSaver<T>
             self.block_until(pos);
         }
 
-        eprintln!("loading {:?}", pos);
 		match File::open(self.chunk_path(pos))
 		{
 			Ok(file) =>
@@ -259,8 +258,6 @@ impl<T: Saveable> FileSaver<T>
     {
         let entry = self.unsaved_chunks.entry(pair.pos).or_insert(0);
         *entry += 1;
-
-        eprintln!("saving {:?} (has {})", pair.pos, entry);
 
         self.save_tx.send(pair).unwrap();
     }
@@ -316,7 +313,6 @@ impl<T: Saveable + Clone> Saver<T> for ChunkSaver<T>
 
 	fn save(&mut self, pos: GlobalPos, chunk: T)
 	{
-        eprintln!("somebody called save with {:?}", pos);
         while self.cache.len() >= self.cache_amount
         {
             self.cache.pop().unwrap();

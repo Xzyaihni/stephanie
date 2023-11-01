@@ -116,8 +116,8 @@ impl World
 		{
 			let chunk = self.overmaps.write()[id].generate_chunk(pos);
 
-            dbg!("remove this later");
 			self.chunk_saver.save(pos, chunk.clone());
+
 			chunk
 		})
 	}

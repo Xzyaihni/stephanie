@@ -290,7 +290,6 @@ impl<S: Saver<WorldChunk>> WorldGenerator<S>
 	{
         self.load_missing(world_chunks, global_mapper);
 
-        dbg!("remove every call to save in here too");
         for z in 0..world_chunks.size().z
         {
             let global_z = global_mapper.to_global_z(z);
@@ -301,38 +300,40 @@ impl<S: Saver<WorldChunk>> WorldGenerator<S>
 
                 wave_collapser.generate(|local_pos, chunk|
                 {
-                    self.saver.save(global_mapper.to_global(local_pos), chunk.clone());
-                });
-            } else if global_z > 0
-            {
-                // above ground
-                
-                world_chunks.flat_slice_iter_mut(z).for_each(|(local_pos, world_chunk)|
-                {
-                    if world_chunk.is_none()
-                    {
-                        let chunk = WorldChunk::none();
-
-                        self.saver.save(global_mapper.to_global(local_pos), chunk);
-
-                        *world_chunk = Some(chunk);
-                    }
+                    self.saver.save(global_mapper.to_global(local_pos), chunk);
                 });
             } else
             {
-                // underground
-
-                world_chunks.flat_slice_iter_mut(z).for_each(|(local_pos, world_chunk)|
+                let this_slice = world_chunks.flat_slice_iter_mut(z).filter(|(_pos, chunk)|
                 {
-                    if world_chunk.is_none()
+                    chunk.is_none()
+                });
+
+                if global_z > 0
+                {
+                    // above ground
+                    
+                    this_slice.for_each(|(local_pos, world_chunk)|
                     {
                         let chunk = WorldChunk::none();
 
                         self.saver.save(global_mapper.to_global(local_pos), chunk);
 
                         *world_chunk = Some(chunk);
-                    }
-                });
+                    });
+                } else
+                {
+                    // underground
+
+                    this_slice.for_each(|(local_pos, world_chunk)|
+                    {
+                        let chunk = WorldChunk::none();
+
+                        self.saver.save(global_mapper.to_global(local_pos), chunk);
+
+                        *world_chunk = Some(chunk);
+                    });
+                }
             }
         }
 	}
@@ -343,15 +344,16 @@ impl<S: Saver<WorldChunk>> WorldGenerator<S>
 		global_mapper: &impl OvermapIndexing
 	)
 	{
-		world_chunks.iter_mut().filter(|(_, chunk)| chunk.is_none())
+		world_chunks.iter_mut()
+            .filter(|(_pos, chunk)| chunk.is_none())
 			.for_each(|(pos, chunk)|
 			{
 				let loaded_chunk = self.saver.load(global_mapper.to_global(pos));
 
-				loaded_chunk.map(|loaded_chunk|
+				if loaded_chunk.is_some()
 				{
-					*chunk = Some(loaded_chunk);
-				});
+					*chunk = loaded_chunk;
+				}
 			});
 	}
 
@@ -675,9 +677,9 @@ impl<'a> WaveCollapser<'a>
         }
     }
 
-    pub fn generate<OnChunk>(&mut self, mut on_chunk: OnChunk)
-	where
-        OnChunk: FnMut(LocalPos, &WorldChunk)
+    pub fn generate<F>(&mut self, mut on_chunk: F)
+    where
+        F: FnMut(LocalPos, WorldChunk)
     {
         let z_level = self.z_level;
 
@@ -693,7 +695,7 @@ impl<'a> WaveCollapser<'a>
 
             let generated_chunk = WorldChunk::new(state.collapse(&self.rules));
 
-            on_chunk(local_pos, &generated_chunk);
+            on_chunk(local_pos, generated_chunk);
 
             self.world_chunks[local_pos] = Some(generated_chunk);
 

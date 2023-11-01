@@ -176,7 +176,7 @@ impl<S: Saver<WorldChunk>> Overmap<WorldChunk> for ServerOvermap<S>
 {
 	fn remove(&mut self, pos: LocalPos)
 	{
-		self.world_chunks[pos] = None;
+        self.world_chunks[pos] = None;
 	}
 
 	fn swap(&mut self, a: LocalPos, b: LocalPos)
