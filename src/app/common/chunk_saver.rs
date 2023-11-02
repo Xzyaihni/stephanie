@@ -15,10 +15,15 @@ use std::{
 
 use parking_lot::Mutex;
 
+use lzma::{LzmaWriter, LzmaReader};
+
 use serde::{Serialize, de::DeserializeOwned};
 
 use crate::common::world::{GlobalPos, Pos3};
 
+
+// goes from 0 to 9, 0 being lowest level of compression
+const LZMA_PRESET: u32 = 1;
 
 pub trait Saveable: Serialize + DeserializeOwned + Send + 'static {}
 
@@ -164,7 +169,11 @@ impl<T: Serialize> BlockingSaver<T>
         {
             let file = File::create(self.chunk_path(pair.pos)).unwrap();
 
-            bincode::serialize_into(file, &pair.value).unwrap();
+            let mut lzma_writer = LzmaWriter::new_compressor(file, LZMA_PRESET).unwrap();
+
+            bincode::serialize_into(&mut lzma_writer, &pair.value).unwrap();
+
+            lzma_writer.finish().unwrap();
 
             self.finish_tx.send(pair.pos).unwrap();
         }
@@ -244,7 +253,9 @@ impl<T: Saveable> FileSaver<T>
 		{
 			Ok(file) =>
 			{
-				Some(bincode::deserialize_from(file).unwrap())
+                let lzma_reader = LzmaReader::new_decompressor(file).unwrap();
+
+				Some(bincode::deserialize_from(lzma_reader).unwrap())
 			},
 			Err(ref err) if err.kind() == io::ErrorKind::NotFound =>
 			{

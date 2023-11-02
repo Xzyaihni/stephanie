@@ -280,7 +280,7 @@ impl<S: Saver<WorldChunk>> WorldGenerator<S>
 		let generator = ChunkGenerator::new(tilemap, &rules)?;
 
 		Ok(Self{generator, saver, rules})
-	}
+    }
 
 	pub fn generate_missing(
 		&mut self,
