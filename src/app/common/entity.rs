@@ -349,6 +349,16 @@ impl ChildEntity
 			}
 		}
 
+        match &self.connection
+        {
+            ChildConnection::Rigid => (),
+            _ =>
+            {
+                // i could just not change the z in calculations above but this is easier
+                self.transform.position.z = 0.0;
+            }
+        }
+
 		let velocity = self.velocity_local(parent_transform);
 		match &mut self.deformation
 		{

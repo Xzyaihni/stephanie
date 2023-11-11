@@ -2,15 +2,22 @@ use nalgebra::Vector3;
 
 use yanyaengine::TransformContainer;
 
-use crate::common::{
-    EntitiesController,
-    physics::PhysicsEntity
+use crate::{
+    client::ConnectionsHandler,
+    common::{
+        EntitiesController,
+        NetworkEntity,
+        player::Player,
+        world::TILE_SIZE,
+        physics::PhysicsEntity
+    }
 };
 
 use super::game_state::{
     GameState,
     MousePosition,
-    Control
+    Control,
+    object_pair::ObjectPair
 };
 
 mod object_transform;
@@ -23,133 +30,186 @@ pub trait DrawableEntity
 
 pub struct Game
 {
-    player: PlayerContainer
+    player: PlayerInfo
 }
 
 impl Game
 {
     pub fn new(self_id: usize) -> Self
     {
-        let player = PlayerContainer::new(self_id);
+        let player = PlayerInfo::new(self_id);
 
         Self{player}
     }
 
+    fn player_container<'a>(&'a mut self, game_state: &'a mut GameState) -> PlayerContainer<'a>
+    {
+        PlayerContainer::new(&mut self.player, game_state)
+    }
+
     pub fn on_player_connected(&mut self, game_state: &mut GameState)
     {
-        self.player.camera_sync_instant(game_state);
+        self.player_container(game_state).camera_sync_instant();
     }
 
     pub fn update(&mut self, game_state: &mut GameState, dt: f32)
     {
-        if !self.player_exists(game_state)
-        {
-            return;
-        }
-
-        let (movement_direction, moved) = Self::movement_direction(game_state);
-
-        if moved
-        {
-            self.player.walk(game_state, dt, movement_direction);
-        }
-
-        self.player.look_at(game_state, game_state.mouse_position);
+        self.player_container(game_state).update(dt)
     }
 
     pub fn player_exists(&mut self, game_state: &mut GameState) -> bool
     {
-        self.player.exists(game_state)
+        self.player_container(game_state).exists()
     }
 
     pub fn camera_sync(&mut self, game_state: &mut GameState)
     {
-        self.player.camera_sync(game_state);
-    }
-
-    fn movement_direction(game_state: &mut GameState) -> (Vector3<f32>, bool)
-    {
-        let mut movement_direction = Vector3::zeros();
-        let mut moved = false;
-
-        if game_state.pressed(Control::MoveRight)
-        {
-            movement_direction.x += 1.0;
-            moved = true;
-        }
-
-        if game_state.pressed(Control::MoveLeft)
-        {
-            movement_direction.x -= 1.0;
-            moved = true;
-        }
-
-        if game_state.pressed(Control::MoveUp)
-        {
-            movement_direction.y -= 1.0;
-            moved = true;
-        }
-
-        if game_state.pressed(Control::MoveDown)
-        {
-            movement_direction.y += 1.0;
-            moved = true;
-        }
-
-        if game_state.pressed(Control::Jump)
-        {
-            movement_direction.z += 0.1;
-            moved = true;
-        }
-
-        if game_state.pressed(Control::Crouch)
-        {
-            movement_direction.z -= 0.1;
-            moved = true;
-        }
-
-        (movement_direction, moved)
+        self.player_container(game_state).camera_sync();
     }
 }
 
-struct PlayerContainer
+struct PlayerInfo
 {
     id: usize,
     camera_follow: f32
 }
 
-impl PlayerContainer
+impl PlayerInfo
 {
     pub fn new(id: usize) -> Self
     {
         Self{id, camera_follow: 0.25}
     }
+}
 
-    pub fn exists(&self, game_state: &mut GameState) -> bool
+struct PlayerContainer<'a>
+{
+    info: &'a mut PlayerInfo,
+    game_state: &'a mut GameState
+}
+
+impl<'a> PlayerContainer<'a>
+{
+    pub fn new(info: &'a mut PlayerInfo, game_state: &'a mut GameState) -> Self
     {
-        game_state.entities.player_exists(self.id)
+        Self{info, game_state}
     }
 
-    pub fn walk(&self, game_state: &mut GameState, dt: f32, direction: Vector3<f32>)
+    pub fn exists(&self) -> bool
     {
-        let mut player = game_state.player_mut(self.id);
+        self.game_state.entities.player_exists(self.info.id)
+    }
+
+    pub fn camera_sync(&self)
+    {
+        let position = self.player_ref().transform_ref().position;
+
+        self.game_state.camera.write().translate_to(&position, self.info.camera_follow);
+
+        self.camera_sync_z();
+    }
+
+    pub fn camera_sync_instant(&self)
+    {
+        let position = self.player_ref().transform_ref().position;
+
+        self.game_state.camera.write().set_position(position.into());
+
+        self.camera_sync_z();
+    }
+
+    fn camera_sync_z(&self)
+    {
+        let player_z = self.player_ref().transform_ref().position.z;
+
+        let z = (player_z / TILE_SIZE).ceil() * TILE_SIZE;
+
+        self.game_state.camera.write().set_position_z(z);
+    }
+
+    pub fn update(&mut self, dt: f32)
+    {
+        if !self.exists()
+        {
+            return;
+        }
+
+        if let Some(movement) = self.movement_direction()
+        {
+            self.walk(dt, movement);
+        }
+
+        self.look_at(self.game_state.mouse_position);
+    }
+
+    fn movement_direction(&self) -> Option<Vector3<f32>>
+    {
+        let mut movement_direction = None;
+
+        let mut move_direction = |direction: Vector3<f32>|
+        {
+            if let Some(movement) = movement_direction.as_mut()
+            {
+                *movement += direction;
+            } else
+            {
+                movement_direction = Some(direction);
+            }
+        };
+
+        if self.game_state.pressed(Control::MoveRight)
+        {
+            move_direction(Vector3::x());
+        }
+
+        if self.game_state.pressed(Control::MoveLeft)
+        {
+            move_direction(-Vector3::x());
+        }
+
+        if self.game_state.pressed(Control::MoveUp)
+        {
+            move_direction(-Vector3::y());
+        }
+
+        if self.game_state.pressed(Control::MoveDown)
+        {
+            move_direction(Vector3::y());
+        }
+
+        if self.game_state.pressed(Control::Jump)
+        {
+            move_direction(Vector3::z());
+        }
+
+        if self.game_state.pressed(Control::Crouch)
+        {
+            move_direction(-Vector3::z());
+        }
+
+        movement_direction
+    }
+
+    pub fn walk(&mut self, dt: f32, direction: Vector3<f32>)
+    {
+        let mut player = self.player_mut();
 
         let change = direction * player.inner().entity.speed() * dt;
 
         player.velocity_add(change);
     }
 
-    pub fn look_at(&self, game_state: &mut GameState, mouse_position: MousePosition)
+    pub fn look_at(&mut self, mouse_position: MousePosition)
     {
         let (mouse_x, mouse_y) = (mouse_position.x - 0.5, mouse_position.y - 0.5);
 
         let (aspect, camera_pos) = {
-            let camera_ref = game_state.camera.read();
+            let camera_ref = self.game_state.camera.read();
 
             (camera_ref.aspect(), camera_ref.position().xy().coords)
         };
 
-        let mut player_mut = game_state.player_mut(self.id);
+        let mut player_mut = self.player_mut();
         let player_pos = player_mut.position().xy();
 
         let player_offset = player_pos - camera_pos;
@@ -163,23 +223,13 @@ impl PlayerContainer
         player_mut.set_rotation(rotation);
     }
 
-    pub fn camera_sync(&self, game_state: &mut GameState)
+    fn player_ref(&self) -> &ObjectPair<Player>
     {
-        let player = game_state.player_ref(self.id);
-
-        let position = player.transform_ref().position;
-
-        let mut camera_mut = game_state.camera.write();
-        camera_mut.translate_to(&position, self.camera_follow);
-        camera_mut.set_position_z(position.z);
+        self.game_state.player_ref(self.info.id)
     }
 
-    pub fn camera_sync_instant(&self, game_state: &mut GameState)
+    fn player_mut(&mut self) -> NetworkEntity<'_, ConnectionsHandler, ObjectPair<Player>>
     {
-        let player = game_state.player_ref(self.id);
-
-        let position = player.transform_ref().position;
-
-        game_state.camera.write().set_position(position.into());
+        self.game_state.player_mut(self.info.id)
     }
 }

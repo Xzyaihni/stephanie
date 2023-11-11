@@ -34,7 +34,6 @@ impl Default for CharacterProperties
 	{
 		let entity_properties = EntityProperties{..Default::default()};
 
-        // way too fast im gonna change it to something normal later
 		let speed = 30.0;
 
 		Self{entity_properties, speed}
