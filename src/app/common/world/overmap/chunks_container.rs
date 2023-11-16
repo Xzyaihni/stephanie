@@ -1,5 +1,8 @@
 use std::{
-	slice::{IterMut, Iter},
+	slice::{
+        IterMut as SliceIterMut,
+        Iter as SliceIter
+    },
 	iter::Enumerate,
 	ops::{Index, IndexMut}
 };
@@ -85,14 +88,14 @@ macro_rules! implement_common
                 }
             }
 
-            pub fn iter(&self) -> ChunksIter<$indexer_name, T>
+            pub fn iter(&self) -> Iter<$indexer_name, T>
             {
-                ChunksIter::new(self.chunks.iter().enumerate(), self.indexer.clone())
+                Iter::new(self.chunks.iter(), self.indexer.clone())
             }
 
-            pub fn iter_mut(&mut self) -> ChunksIterMut<$indexer_name, T>
+            pub fn iter_mut(&mut self) -> IterMut<$indexer_name, T>
             {
-                ChunksIterMut::new(self.chunks.iter_mut().enumerate(), self.indexer.clone())
+                IterMut::new(self.chunks.iter_mut(), self.indexer.clone())
             }
         }
     }
@@ -106,57 +109,40 @@ pub trait ChunkIndexing
 
 pub type ValuePair<T> = (LocalPos, T);
 
-pub struct ChunksIter<'a, I, T>
+macro_rules! impl_iter
 {
-	chunks: Enumerate<Iter<'a, T>>,
-	indexer: I
+    ($name:ident, $other_iter:ident) =>
+    {
+        pub struct $name<'a, I, T>
+        {
+            data: Enumerate<$other_iter<'a, T>>,
+            indexer: I
+        }
+
+        impl<'a, I, T> $name<'a, I, T>
+        {
+            pub fn new(data: $other_iter<'a, T>, indexer: I) -> Self
+            {
+                Self{data: data.enumerate(), indexer}
+            }
+        }
+
+        impl<'a, I, T> Iterator for $name<'a, I, T>
+        where
+            I: ChunkIndexing
+        {
+            type Item = ValuePair<<$other_iter<'a, T> as Iterator>::Item>;
+
+            fn next(&mut self) -> Option<Self::Item>
+            {
+                self.data.next().map(|(index, value)| (self.indexer.index_to_pos(index), value))
+            }
+        }
+    }
 }
 
-impl<'a, I, T> ChunksIter<'a, I, T>
-{
-	pub fn new(chunks: Enumerate<Iter<'a, T>>, indexer: I) -> Self
-	{
-		Self{chunks, indexer}
-	}
-}
-
-impl<'a, I, T> Iterator for ChunksIter<'a, I, T>
-where
-	I: ChunkIndexing
-{
-	type Item = ValuePair<&'a T>;
-
-	fn next(&mut self) -> Option<Self::Item>
-	{
-		self.chunks.next().map(|(index, item)| (self.indexer.index_to_pos(index), item))
-	}
-}
-
-pub struct ChunksIterMut<'a, I, T>
-{
-	chunks: Enumerate<IterMut<'a, T>>,
-	indexer: I
-}
-
-impl<'a, I, T> ChunksIterMut<'a, I, T>
-{
-	pub fn new(chunks: Enumerate<IterMut<'a, T>>, indexer: I) -> Self
-	{
-		Self{chunks, indexer}
-	}
-}
-
-impl<'a, I, T> Iterator for ChunksIterMut<'a, I, T>
-where
-	I: ChunkIndexing
-{
-	type Item = ValuePair<&'a mut T>;
-
-	fn next(&mut self) -> Option<Self::Item>
-	{
-		self.chunks.next().map(|(index, item)| (self.indexer.index_to_pos(index), item))
-	}
-}
+impl_iter!{Iter, SliceIter}
+impl_iter!{IterMut, SliceIterMut}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Indexer
@@ -241,19 +227,19 @@ impl<T> ChunksContainer<T>
     }
 
     #[allow(dead_code)]
-    pub fn flat_slice_iter(&self, z: usize) -> ChunksIter<FlatIndexer, T>
+    pub fn flat_slice_iter(&self, z: usize) -> Iter<FlatIndexer, T>
     {
-        let s = self.flat_slice(z).iter().enumerate();
+        let s = self.flat_slice(z).iter();
 
-		ChunksIter::new(s, FlatIndexer::from(self.indexer.clone()).with_z(z))
+		Iter::new(s, FlatIndexer::from(self.indexer.clone()).with_z(z))
     }
 
-    pub fn flat_slice_iter_mut(&mut self, z: usize) -> ChunksIterMut<FlatIndexer, T>
+    pub fn flat_slice_iter_mut(&mut self, z: usize) -> IterMut<FlatIndexer, T>
     {
         let indexer = FlatIndexer::from(self.indexer.clone()).with_z(z);
-        let s = self.flat_slice_mut(z).iter_mut().enumerate();
+        let s = self.flat_slice_mut(z).iter_mut();
 
-		ChunksIterMut::new(s, indexer)
+		IterMut::new(s, indexer)
     }
 
     pub fn map_slice_ref<U, F>(&self, z: usize, f: F) -> FlatChunksContainer<U>
