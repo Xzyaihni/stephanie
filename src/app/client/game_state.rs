@@ -351,7 +351,7 @@ impl GameState
 
 	pub fn update_buffers(&mut self, partial_info: UpdateBuffersPartialInfo)
     {
-        let mut info = UpdateBuffersInfo::new(partial_info, &*self.camera.read());
+        let mut info = UpdateBuffersInfo::new(partial_info, &self.camera.read());
         let info = &mut info;
 
         self.camera.write().update();

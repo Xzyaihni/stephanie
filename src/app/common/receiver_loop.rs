@@ -17,7 +17,7 @@ where
 		{
 			if let Ok(messages) = messager.receive()
 			{
-				messages.into_iter().for_each(|message| on_message(message));
+				messages.into_iter().for_each(&mut on_message);
 			} else
 			{
 				on_close();

@@ -59,6 +59,14 @@ impl<T: Mul<Output=T> + Add<Output=T> + Copy> Pos3<T>
     }
 }
 
+impl From<Pos3<f32>> for Vector3<f32>
+{
+    fn from(value: Pos3<f32>) -> Self
+    {
+        Self::new(value.x, value.y, value.z)
+    }
+}
+
 impl Pos3<f32>
 {
 	pub fn tile_height(self) -> usize
@@ -579,7 +587,7 @@ impl LocalPos
 	{
         (!self.right_edge()).then(||
         {
-            let mut value = self.clone();
+            let mut value = *self;
 
             value.pos.x += 1;
             debug_assert!(value.in_bounds());
@@ -592,7 +600,7 @@ impl LocalPos
 	{
         (!self.left_edge()).then(||
         {
-            let mut value = self.clone();
+            let mut value = *self;
 
             value.pos.x -= 1;
             debug_assert!(value.in_bounds());
@@ -605,7 +613,7 @@ impl LocalPos
 	{
         (!self.top_edge()).then(||
         {
-            let mut value = self.clone();
+            let mut value = *self;
 
             value.pos.y += 1;
             debug_assert!(value.in_bounds());
@@ -618,7 +626,7 @@ impl LocalPos
 	{
         (!self.bottom_edge()).then(||
         {
-            let mut value = self.clone();
+            let mut value = *self;
 
             value.pos.y -= 1;
             debug_assert!(value.in_bounds());

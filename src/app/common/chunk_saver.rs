@@ -4,7 +4,7 @@ use std::{
     marker::PhantomData,
     cmp::Ordering,
     time::{Instant, Duration},
-    path::PathBuf,
+    path::{Path, PathBuf},
 	fs::{self, File},
     collections::{HashMap, BinaryHeap},
     sync::{
@@ -148,7 +148,7 @@ impl<T> BlockingSaver<T>
         Self::chunk_path_assoc(&self.parent_path, pos)
     }
 
-    pub fn chunk_path_assoc(parent_path: &PathBuf, pos: GlobalPos) -> PathBuf
+    pub fn chunk_path_assoc(parent_path: &Path, pos: GlobalPos) -> PathBuf
     {
         parent_path.join(Self::encode_position(pos))
     }
@@ -296,7 +296,7 @@ impl<T: Saveable> ChunkSaver<T>
 
 		fs::create_dir_all(&parent_path).unwrap();
 
-        let file_saver = FileSaver::new(parent_path.into());
+        let file_saver = FileSaver::new(parent_path);
 
 		Self{
             start: Instant::now(),

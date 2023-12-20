@@ -76,13 +76,13 @@ impl<'a> Debug for BorrowedChunkRule<'a>
             }).reduce(|acc, v|
             {
                 format!("{acc}, {v}")
-            }).unwrap_or_else(|| String::new());
+            }).unwrap_or_default();
 
             format!("{direction:?}: {neighbors}")
         }).reduce(|acc, v|
         {
             format!("{acc}, {v}")
-        }).unwrap_or_else(|| String::new());
+        }).unwrap_or_default();
 
         write!(f, "ChunkRule{{name: \"{}\", neighbors: {{{}}}}}", self.name(), neighbors)
     }
@@ -144,7 +144,7 @@ impl ChunkRules
         self.rules.get(id).map(|rule|
         {
             BorrowedChunkRule{
-                rules: &self,
+                rules: self,
                 rule
             }
         })
@@ -155,12 +155,12 @@ impl ChunkRules
         self.get_maybe(id).unwrap_or_else(|| panic!("{} out of range", id))
     }
 
-    pub fn iter<'a>(&'a self) -> impl Iterator<Item=BorrowedChunkRule<'a>> + 'a
+    pub fn iter(&self) -> impl Iterator<Item=BorrowedChunkRule<'_>> + '_
     {
         self.rules.iter().skip(1).map(move |rule|
         {
             BorrowedChunkRule{
-                rules: &self,
+                rules: self,
                 rule
             }
         })

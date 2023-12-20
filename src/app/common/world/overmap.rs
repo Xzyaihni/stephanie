@@ -24,7 +24,7 @@ pub trait Overmap<T>: OvermapIndexing
 
 	fn get(&self, pos: GlobalPos) -> Option<&T>
 	{
-		self.to_local(pos).map(|local_pos| self.get_local(local_pos).as_ref()).flatten()
+		self.to_local(pos).and_then(|local_pos| self.get_local(local_pos).as_ref())
 	}
 
 	fn generate_missing(&mut self);
@@ -79,6 +79,8 @@ pub trait Overmap<T>: OvermapIndexing
 			{
 				let is_edge = |pos, offset, limit|
 				{
+                    // wut r u smoking clippy?
+                    #[allow(clippy::comparison_chain)]
 					if offset == 0
 					{
 						false

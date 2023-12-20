@@ -90,20 +90,9 @@ impl ParseError
 
     pub fn printable(&self) -> Option<String>
     {
-        match &self.kind
+        if let ParseErrorKind::Lua(rlua::Error::SyntaxError{message, ..}) = &self.kind
         {
-            ParseErrorKind::Lua(lua) =>
-            {
-                match lua
-                {
-                    rlua::Error::SyntaxError{message, ..} =>
-                    {
-                        return Some(message.clone());
-                    },
-                    _ => ()
-                }
-            },
-            _ => ()
+            return Some(message.clone());
         }
 
         None
@@ -178,13 +167,13 @@ impl ChunkGenerator
 
         this.setup_lua_state()?;
 
-		rules.iter().map(|rule|
+		rules.iter().try_for_each(|rule|
 		{
             let name = rule.name();
             let filename = parent_directory.join(format!("{name}.lua"));
 
 			this.parse_function(filename, name)
-		}).collect::<Result<(), _>>()?;
+		})?;
 
 		Ok(this)
 	}
@@ -225,9 +214,9 @@ impl ChunkGenerator
         Ok(())
     }
 
-	pub fn generate_chunk<'a>(
+	pub fn generate_chunk(
 		&self,
-		group: AlwaysGroup<&'a str>
+		group: AlwaysGroup<&str>
 	) -> ChunksContainer<Tile>
 	{
         if group.this == "none"
@@ -666,7 +655,7 @@ impl<'a> WaveCollapser<'a>
                 {
                     let (this, other) = self.entropies.get_two_mut(pos, direction_pos);
 
-                    let changed = other.constrain(&self.rules, this, direction);
+                    let changed = other.constrain(self.rules, this, direction);
 
                     if changed
                     {
@@ -693,7 +682,7 @@ impl<'a> WaveCollapser<'a>
                 size: local_pos.size
             };
 
-            let generated_chunk = WorldChunk::new(state.collapse(&self.rules));
+            let generated_chunk = WorldChunk::new(state.collapse(self.rules));
 
             on_chunk(local_pos, generated_chunk);
 

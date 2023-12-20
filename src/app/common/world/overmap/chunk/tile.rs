@@ -44,6 +44,6 @@ impl<'lua> FromLua<'lua> for Tile
 {
     fn from_lua(value: rlua::Value<'lua>, lua: rlua::Context<'lua>) -> rlua::Result<Self>
     {
-        usize::from_lua(value, lua).map(|value| Tile::new(value))
+        usize::from_lua(value, lua).map(Tile::new)
     }
 }

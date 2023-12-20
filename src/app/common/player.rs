@@ -45,13 +45,17 @@ impl Default for PlayerProperties
 	{
 		let damp_factor = 0.001;
 
-		let mut transform = Transform::default();
-		transform.scale = Vector3::new(0.1, 0.1, 0.1);
+		let transform = Transform{
+		    scale: Vector3::repeat(0.1),
+            ..Default::default()
+        };
 
 		let texture = "player/hair.png".to_owned();
 
 		let name = String::new();
 
+        // does clippy want me to update everything if i add another value to a struct?
+        #[allow(clippy::needless_update)]
 		Self{
 			character_properties: CharacterProperties{
 				entity_properties: EntityProperties{

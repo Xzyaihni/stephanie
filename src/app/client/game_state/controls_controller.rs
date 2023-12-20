@@ -132,13 +132,9 @@ impl ControlsController
     {
         self.keys.iter_mut().for_each(|key|
         {
-            match *key
+            if let ControlState::Clicked = *key
             {
-                ControlState::Clicked =>
-                {
-                    *key = ControlState::Held;
-                },
-                _ => ()
+                *key = ControlState::Held;
             }
         });
     }

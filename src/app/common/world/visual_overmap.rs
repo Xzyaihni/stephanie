@@ -245,6 +245,7 @@ impl VisualOvermap
 			},
 			Err(_) =>
 			{
+                #[allow(clippy::needless_return)]
 				return;
 			}
 		}

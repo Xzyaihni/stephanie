@@ -47,7 +47,7 @@ where
 
 	pub fn inner(&self) -> &T
 	{
-		&self.entity
+		self.entity
 	}
 
 	pub fn sync(&mut self)

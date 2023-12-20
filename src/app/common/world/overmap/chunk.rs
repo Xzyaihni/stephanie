@@ -43,7 +43,7 @@ impl ChunkLocal
 
 	pub fn maybe_group(self) -> MaybeGroup<Self>
 	{
-		self.0.maybe_group().map(|local_pos| Self(local_pos))
+		self.0.maybe_group().map(Self)
 	}
 
 	pub fn overflow(&self, direction: PosDirection) -> Self
@@ -58,7 +58,7 @@ impl ChunkLocal
 	{
 		let local_pos = self.0.offset(direction);
 
-		local_pos.map(|local_pos| Self(local_pos))
+		local_pos.map(Self)
 	}
 
 	pub fn pos(&self) -> Pos3<usize>
@@ -92,14 +92,10 @@ impl Chunk
 	{
 		let chunk_pos = Pos3::<f32>::from(pos.0) * CHUNK_VISUAL_SIZE;
 
-		let mut transform = Transform::default();
-		transform.position = Vector3::new(
-			chunk_pos.x,
-			chunk_pos.y,
-			chunk_pos.z
-		);
-
-		transform
+		Transform{
+		    position: Vector3::from(chunk_pos),
+            ..Default::default()
+        }
 	}
 
 	fn index_of(pos: Pos3<usize>) -> usize

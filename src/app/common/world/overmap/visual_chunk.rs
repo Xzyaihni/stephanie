@@ -86,7 +86,7 @@ impl VisualChunk
 
 			PosDirection::iter().for_each(|direction|
 			{
-				tiles[direction].map(|gradient_tile|
+				if let Some(gradient_tile) = tiles[direction]
 				{
 					if !info_map[gradient_tile].transparent && gradient_tile != tiles.this
 					{
@@ -97,7 +97,7 @@ impl VisualChunk
 							gradient_tile
 						);
 					}
-				});
+				}
 			});
 
 			let draw_next = info_map[tiles.this].transparent;
