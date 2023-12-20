@@ -127,7 +127,7 @@ impl<'a> PlayerContainer<'a>
         self.game_state.camera.write().set_position_z(z);
     }
 
-    pub fn update(&mut self, dt: f32)
+    pub fn update(&mut self, _dt: f32)
     {
         if !self.exists()
         {
@@ -136,7 +136,7 @@ impl<'a> PlayerContainer<'a>
 
         if let Some(movement) = self.movement_direction()
         {
-            self.walk(dt, movement);
+            self.walk(movement);
         }
 
         self.look_at(self.game_state.mouse_position);
@@ -187,16 +187,21 @@ impl<'a> PlayerContainer<'a>
             move_direction(-Vector3::z());
         }
 
+        if let Some(direction) = movement_direction.as_mut()
+        {
+            direction.try_normalize_mut(1.0);
+        }
+
         movement_direction
     }
 
-    pub fn walk(&mut self, dt: f32, direction: Vector3<f32>)
+    pub fn walk(&mut self, direction: Vector3<f32>)
     {
         let mut player = self.player_mut();
 
-        let change = direction * player.inner().entity.speed() * dt;
+        let velocity = direction * player.inner().entity.speed();
 
-        player.velocity_add(change);
+        player.set_velocity(velocity);
     }
 
     pub fn look_at(&mut self, mouse_position: MousePosition)

@@ -27,6 +27,11 @@ pub trait PhysicsEntity: TransformContainer
 		self.transform_callback(self.transform_clone());
 	}
 
+	fn set_velocity(&mut self, velocity: Vector3<f32>)
+	{
+        self.entity_mut().velocity = velocity;
+    }
+
 	fn velocity_add(&mut self, velocity: Vector3<f32>)
 	{
 		self.entity_mut().velocity += velocity;
