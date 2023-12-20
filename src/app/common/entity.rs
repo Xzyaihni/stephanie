@@ -56,9 +56,9 @@ impl ValueAnimation
 
 		match self
 		{
-			ValueAnimation::Linear => value,
-			ValueAnimation::EaseIn(strength) => value.powf(*strength),
-			ValueAnimation::EaseOut(strength) => 1.0 - (1.0 - value).powf(*strength)
+			Self::Linear => value,
+			Self::EaseIn(strength) => value.powf(*strength),
+			Self::EaseOut(strength) => 1.0 - (1.0 - value).powf(*strength)
 		}
 	}
 }

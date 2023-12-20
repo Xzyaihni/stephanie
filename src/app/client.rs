@@ -15,11 +15,6 @@ use vulkano::{
 	memory::allocator::StandardMemoryAllocator
 };
 
-use winit::event::{
-	VirtualKeyCode,
-	ButtonId
-};
-
 use image::error::ImageError;
 
 use yanyaengine::{
@@ -92,13 +87,6 @@ impl ObjectAllocator
 	{
 		self.frames
 	}
-}
-
-#[derive(Debug)]
-pub enum GameInput
-{
-	KeyboardInput(VirtualKeyCode),
-	MouseInput(ButtonId)
 }
 
 pub struct ClientInitInfo

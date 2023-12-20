@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use winit::event::{ElementState, VirtualKeyCode};
+use yanyaengine::{ElementState, PhysicalKey, KeyCode, MouseButton};
 
 use enum_amount::EnumCount;
 
@@ -55,8 +55,8 @@ impl From<&yanyaengine::Control> for ControlState
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 enum KeyMapping
 {
-    Keyboard(VirtualKeyCode),
-    Mouse(u32)
+    Keyboard(KeyCode),
+    Mouse(MouseButton)
 }
 
 impl KeyMapping
@@ -65,9 +65,13 @@ impl KeyMapping
     {
         match value
         {
-            yanyaengine::Control::Keyboard{keycode, ..} => Some(KeyMapping::Keyboard(keycode)),
+            yanyaengine::Control::Keyboard{
+                keycode: PhysicalKey::Code(code),
+                ..
+            } => Some(KeyMapping::Keyboard(code)),
             yanyaengine::Control::Mouse{button, ..} => Some(KeyMapping::Mouse(button)),
-            yanyaengine::Control::Scroll{..} => None
+            yanyaengine::Control::Scroll{..} => None,
+            _ => None
         }
     }
 }
@@ -83,17 +87,17 @@ impl ControlsController
     pub fn new() -> Self
     {
         let key_mapping = [
-            (KeyMapping::Keyboard(VirtualKeyCode::D), Control::MoveRight),
-            (KeyMapping::Keyboard(VirtualKeyCode::A), Control::MoveLeft),
-            (KeyMapping::Keyboard(VirtualKeyCode::S), Control::MoveDown),
-            (KeyMapping::Keyboard(VirtualKeyCode::W), Control::MoveUp),
-            (KeyMapping::Mouse(3), Control::MainAction),
-            (KeyMapping::Mouse(1), Control::SecondaryAction),
-			(KeyMapping::Keyboard(VirtualKeyCode::Space), Control::Jump),
-			(KeyMapping::Keyboard(VirtualKeyCode::LControl), Control::Crouch),
-			(KeyMapping::Keyboard(VirtualKeyCode::Equals), Control::ZoomIn),
-			(KeyMapping::Keyboard(VirtualKeyCode::Minus), Control::ZoomOut),
-			(KeyMapping::Keyboard(VirtualKeyCode::Key0), Control::ZoomReset)
+            (KeyMapping::Keyboard(KeyCode::KeyD), Control::MoveRight),
+            (KeyMapping::Keyboard(KeyCode::KeyA), Control::MoveLeft),
+            (KeyMapping::Keyboard(KeyCode::KeyS), Control::MoveDown),
+            (KeyMapping::Keyboard(KeyCode::KeyW), Control::MoveUp),
+            (KeyMapping::Mouse(MouseButton::Left), Control::MainAction),
+            (KeyMapping::Mouse(MouseButton::Right), Control::SecondaryAction),
+			(KeyMapping::Keyboard(KeyCode::Space), Control::Jump),
+			(KeyMapping::Keyboard(KeyCode::ControlLeft), Control::Crouch),
+			(KeyMapping::Keyboard(KeyCode::Equal), Control::ZoomIn),
+			(KeyMapping::Keyboard(KeyCode::Minus), Control::ZoomOut),
+			(KeyMapping::Keyboard(KeyCode::Digit0), Control::ZoomReset)
         ].into_iter().collect();
 
         Self{
