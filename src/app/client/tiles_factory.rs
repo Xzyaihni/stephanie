@@ -124,25 +124,22 @@ impl ChunkModelBuilder
 		let x = id % side;
 		let y = id / side;
 
-		let to_uv = |x, y|
-		{
-			(
-				x as f32 / side as f32,
-				y as f32 / side as f32
-			)
-		};
+        let to_uv = |value|
+        {
+            value as f32 / side as f32
+        };
 
-		let pixel_fraction = self.tilemap.pixel_fraction(0.01);
+		let pixel_fraction = self.tilemap.pixel_fraction(1.0);
 
-		let (x_end, y_end) = to_uv(x + 1, y + 1);
-		let (x_end, y_end) = (x_end - pixel_fraction, y_end - pixel_fraction);
+		let x_end = to_uv(x + 1) - pixel_fraction;
+        let y_end = to_uv(y + 1) - pixel_fraction;
 
-		let (x, y) = to_uv(x, y);
-		let (x, y) = (x + pixel_fraction, y + pixel_fraction);
+		let x = to_uv(x) + pixel_fraction;
+        let y = to_uv(y) + pixel_fraction;
 
 		if flip_xy
 		{
-			vec![
+			[
 				[x, y], // 1
 				[x_end, y], // 3
 				[x, y_end], // 2
@@ -152,7 +149,7 @@ impl ChunkModelBuilder
 			]
 		} else
 		{
-			vec![
+			[
 				[x, y],
 				[x, y_end],
 				[x_end, y],

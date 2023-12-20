@@ -1,3 +1,7 @@
+#![allow(clippy::suspicious_else_formatting)]
+#![allow(clippy::match_like_matches_macro)]
+#![allow(clippy::new_without_default)]
+
 use yanyaengine::{App, ShadersContainer, ShadersInfo};
 
 pub use app::{common, server, client};
@@ -37,7 +41,6 @@ fn main()
         .with_textures_path("textures/normal")
         .with_icon("icon.png")
         .with_shaders(shaders)
-        .without_multisampling()
         .with_clear_color([0.0, 0.0, 0.0])
         .run();
 }

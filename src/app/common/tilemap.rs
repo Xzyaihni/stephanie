@@ -26,7 +26,10 @@ use yanyaengine::object::{
 use crate::common::world::Tile;
 
 
-pub const TEXTURE_TILE_SIZE: usize = 32;
+const TEXTURE_TILE_SIZE: usize = 32;
+
+const PADDING: usize = 1;
+const PADDED_TILE_SIZE: usize = TEXTURE_TILE_SIZE + PADDING * 2;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TileInfo
@@ -131,7 +134,7 @@ impl TileMap
 
 	pub fn pixel_fraction(&self, fraction: f32) -> f32
 	{
-		fraction / (self.texture_row_size() * TEXTURE_TILE_SIZE) as f32
+		fraction / (self.texture_row_size() * PADDED_TILE_SIZE) as f32
 	}
 
 	pub fn load_mask(&self) -> Result<SimpleImage, ImageError>
@@ -223,25 +226,47 @@ impl TileMap
 	{
 		let side = self.texture_row_size();
 
-		let row = side * TEXTURE_TILE_SIZE;
-		let combined_images = (0..(row * row)).map(|index|
-		{
-			let pixel_x = index % row;
-			let pixel_y = index / row;
+		let row = side * PADDED_TILE_SIZE;
+		let mut tilemap = SimpleImage::new(vec![Color::new(0, 0, 0, 255); row * row], row, row);
 
-			let cell_x = pixel_x / TEXTURE_TILE_SIZE;
-			let cell_y = pixel_y / TEXTURE_TILE_SIZE;
+        textures.iter().enumerate().for_each(|(index, texture)|
+        {
+            let x = (index % side) * PADDED_TILE_SIZE;
+            let y = (index / side) * PADDED_TILE_SIZE;
 
-			if let Some(cell_texture) = textures.get(cell_y * side + cell_x)
-			{
-				cell_texture.get_pixel(pixel_x % TEXTURE_TILE_SIZE, pixel_y % TEXTURE_TILE_SIZE)
-			} else
-			{
-				Color::new(0, 0, 0, 255)
-			}
-		}).collect();
+            let nearest_pixel = |value: usize|
+            {
+                value.saturating_sub(PADDING).min(TEXTURE_TILE_SIZE - PADDING)
+            };
 
-		let tilemap = SimpleImage::new(combined_images, row, row);
+            let pad = |tilemap: &mut SimpleImage, begin, offset|
+            {
+                for p_y in 0..PADDED_TILE_SIZE
+                {
+                    let border_color = texture.get_pixel(
+                        begin,
+                        nearest_pixel(p_y)
+                    );
+
+                    tilemap.set_pixel(border_color, x + begin + offset, y + p_y);
+                }
+
+                for p_x in 0..PADDED_TILE_SIZE
+                {
+                    let border_color = texture.get_pixel(
+                        nearest_pixel(p_x),
+                        begin
+                    );
+
+                    tilemap.set_pixel(border_color, x + p_x, y + begin + offset);
+                }
+            };
+
+            pad(&mut tilemap, 0, 0);
+            pad(&mut tilemap, TEXTURE_TILE_SIZE - 1, PADDING * 2);
+
+            tilemap.blit(texture, x + PADDING, y + PADDING);
+        });
 
 		Texture::new(resource_uploader, tilemap.into())
 	}
