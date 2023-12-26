@@ -259,7 +259,7 @@ mod tests
             WorldGenerator::new(saver, tilemap, "world_generation/city.json").unwrap()
         ));
 
-        let size = Pos3::new(3, 4, 5);
+        let size = Pos3::new(10, 11, 12);
 
         let random_chunk = ||
         {

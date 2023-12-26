@@ -36,6 +36,15 @@ impl<T> Pos3<T>
 		Pos3::<V>{x: f(self.x), y: f(self.y), z: f(self.z)}
 	}
 
+    pub fn zip<V>(self, other: Pos3<V>) -> Pos3<(T, V)>
+    {
+        Pos3{
+            x: (self.x, other.x),
+            y: (self.y, other.y),
+            z: (self.z, other.z)
+        }
+    }
+
     #[allow(dead_code)]
     pub fn cast<V: From<T>>(self) -> Pos3<V>
     {

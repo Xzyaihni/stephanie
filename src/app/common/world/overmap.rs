@@ -176,34 +176,26 @@ pub trait OvermapIndexing
         padding: Pos3<i32>
     ) -> GlobalPos
     {
-        let pos = self.to_local_unconverted(pos).0;
+        let values = self.to_local_unconverted(pos).0.zip(self.size()).zip(margin).zip(padding);
 
-        let size = self.size();
-
-        let over_bounds = |value, limit, margin, padding| -> i32
+        values.map(|(((value, limit), margin), padding)| -> i32
         {
-            let value_difference = value - padding;
-            let limit_difference = value + padding - limit as i32 + 1;
+            let lower_diff = value - padding;
+            let upper_diff = value - (limit as i32 - 1 - padding);
 
-            if value_difference < 0
+            if lower_diff < 0
             {
                 // under lower bound
-                value_difference - margin
-            } else if limit_difference > 0
+                lower_diff - margin
+            } else if upper_diff > 0
             {
                 // above upper bound
-                limit_difference + margin
+                upper_diff + margin
             } else
             {
                 0
             }
-        };
-
-        GlobalPos::new(
-            over_bounds(pos.x, size.x, margin.x, padding.x),
-            over_bounds(pos.y, size.y, margin.y, padding.y),
-            over_bounds(pos.z, size.z, margin.z, padding.z)
-        )
+        }).into()
     }
 
 	fn player_offset(&self, pos: LocalPos) -> GlobalPos
@@ -223,7 +215,7 @@ mod tests
     {
         fn size(&self) -> Pos3<usize>
         {
-            Pos3::new(3, 4, 5)
+            Pos3::new(9, 4, 2)
         }
 
         fn player_position(&self) -> GlobalPos
@@ -235,17 +227,20 @@ mod tests
     #[test]
     fn over_bounds()
     {
-        let overmap = TestOvermap(GlobalPos::new(1, 2, 2));
+        let overmap = TestOvermap(GlobalPos::new(-8, 2, -10));
 
-        let test = GlobalPos::new(1, 2, -5);
-        assert_eq!(test, overmap.to_local_unconverted(test));
+        let test = GlobalPos::new(6, -8, 0);
+        assert_eq!(GlobalPos::new(18, -8, 11), overmap.to_local_unconverted(test));
+
+        // how much over/under:
+        // (13, -9, 11)
 
         assert_eq!(
-            GlobalPos::new(2, -2, 3),
+            GlobalPos::new(14, -11, 12),
             overmap.over_bounds_with_padding(
-                GlobalPos::new(2, -1, 4),
-                Pos3::new(1, 1, 1),
-                Pos3::new(1, 0, 2)
+                test,
+                Pos3::new(1, 2, 1), // margin
+                Pos3::new(3, 1, 1) // padding
             )
         )
     }
