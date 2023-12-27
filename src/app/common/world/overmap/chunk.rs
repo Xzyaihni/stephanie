@@ -6,7 +6,7 @@ use nalgebra::Vector3;
 
 use tile::Tile;
 
-use crate::common::{Saveable, Transform};
+use crate::common::Transform;
 pub use pos::*;
 
 pub mod tile;
@@ -103,8 +103,6 @@ impl Chunk
 		pos.z * CHUNK_SIZE * CHUNK_SIZE + pos.y * CHUNK_SIZE + pos.x
 	}
 }
-
-impl Saveable for Chunk {}
 
 impl From<Box<[Tile]>> for Chunk
 {

@@ -45,6 +45,13 @@ impl<T> Pos3<T>
         }
     }
 
+    pub fn product(self) -> T
+    where
+        T: Mul<T, Output=T>
+    {
+        self.x * self.y * self.z
+    }
+
     #[allow(dead_code)]
     pub fn cast<V: From<T>>(self) -> Pos3<V>
     {

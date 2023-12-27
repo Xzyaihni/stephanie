@@ -22,7 +22,7 @@ pub use tilemap::TileMap;
 
 pub use entity::ChildContainer;
 
-pub use chunk_saver::{Saver, Saveable, ChunkSaver};
+pub use chunk_saver::{SaveLoad, WorldChunkSaver, ChunkSaver};
 
 use player::Player;
 use entity::ChildEntity;

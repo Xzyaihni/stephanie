@@ -1,9 +1,11 @@
 use std::{
-	io,
     fs,
 	fmt,
+    mem,
+    slice,
     ops::Index,
     collections::HashSet,
+	io::{self, Write},
 	path::{Path, PathBuf}
 };
 
@@ -13,13 +15,11 @@ use parking_lot::Mutex;
 
 use rlua::Lua;
 
-use serde::{Serialize, Deserialize};
-
 use crate::common::{
 	TileMap,
-    Saver,
-    Saveable,
+    SaveLoad,
 	world::{
+        CHUNK_SIZE,
 		Pos3,
 		LocalPos,
 		AlwaysGroup,
@@ -115,7 +115,60 @@ impl From<rlua::Error> for ParseError
     }
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub enum MaybeWorldChunk
+{
+    None,
+    Some(WorldChunk)
+}
+
+impl From<MaybeWorldChunk> for Option<WorldChunk>
+{
+    fn from(value: MaybeWorldChunk) -> Self
+    {
+        match value
+        {
+            MaybeWorldChunk::None => None,
+            MaybeWorldChunk::Some(value) => Some(value)
+        }
+    }
+}
+
+impl MaybeWorldChunk
+{
+    pub const fn size_of() -> usize
+    {
+        mem::size_of::<Self>()
+    }
+
+    pub const fn index_of(index: usize) -> usize
+    {
+        index * Self::size_of()
+    }
+
+    pub fn write_into(self, mut writer: impl Write)
+    {
+        let size = mem::size_of::<Self>();
+        let bytes: &[u8] = unsafe{
+            slice::from_raw_parts(&self as *const Self as *const u8, size)
+        };
+
+        writer.write_all(bytes).unwrap();
+    }
+
+    pub fn from_bytes(bytes: &[u8]) -> Self
+    {
+        assert_eq!(bytes.len(), mem::size_of::<Self>());
+
+        unsafe{
+            (bytes.as_ptr() as *const Self).read()
+        }
+    }
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct WorldChunk
 {
 	id: usize
@@ -145,9 +198,12 @@ impl WorldChunk
 	}
 }
 
-impl Saveable for WorldChunk {}
-
 pub const WORLD_CHUNK_SIZE: Pos3<usize> = Pos3{x: 16, y: 16, z: 1};
+pub const CHUNK_RATIO: Pos3<usize> = Pos3{
+    x: CHUNK_SIZE / WORLD_CHUNK_SIZE.x,
+    y: CHUNK_SIZE / WORLD_CHUNK_SIZE.y,
+    z: CHUNK_SIZE / WORLD_CHUNK_SIZE.z
+};
 
 pub struct ChunkGenerator
 {
@@ -256,7 +312,7 @@ pub struct WorldGenerator<S>
 	rules: ChunkRules
 }
 
-impl<S: Saver<WorldChunk>> WorldGenerator<S>
+impl<S: SaveLoad<WorldChunk>> WorldGenerator<S>
 {
 	pub fn new<P: AsRef<Path>>(
 		saver: S,

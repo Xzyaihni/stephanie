@@ -4,12 +4,13 @@ use parking_lot::Mutex;
 
 use super::world_generator::{
     WORLD_CHUNK_SIZE,
+    CHUNK_RATIO,
     WorldGenerator,
     WorldChunk
 };
 
 use crate::common::{
-    Saver,
+    SaveLoad,
     world::{
         CHUNK_SIZE,
         LocalPos,
@@ -55,11 +56,10 @@ pub struct ServerOvermap<S>
 {
 	world_generator: Arc<Mutex<WorldGenerator<S>>>,
 	world_chunks: ChunksContainer<Option<WorldChunk>>,
-	chunk_ratio: Pos3<usize>,
 	indexer: Indexer
 }
 
-impl<S: Saver<WorldChunk>> ServerOvermap<S>
+impl<S: SaveLoad<WorldChunk>> ServerOvermap<S>
 {
 	pub fn new(
 		world_generator: Arc<Mutex<WorldGenerator<S>>>,
@@ -71,13 +71,7 @@ impl<S: Saver<WorldChunk>> ServerOvermap<S>
 		assert_eq!(CHUNK_SIZE % WORLD_CHUNK_SIZE.y, 0);
 		assert_eq!(CHUNK_SIZE % WORLD_CHUNK_SIZE.z, 0);
 
-		let chunk_ratio = Pos3{
-			x: CHUNK_SIZE / WORLD_CHUNK_SIZE.x,
-			y: CHUNK_SIZE / WORLD_CHUNK_SIZE.y,
-			z: CHUNK_SIZE / WORLD_CHUNK_SIZE.z
-		};
-
-		let size = chunk_ratio * size;
+		let size = CHUNK_RATIO * size;
 
 		let indexer = Indexer::new(size, player_position.rounded());
 
@@ -86,7 +80,6 @@ impl<S: Saver<WorldChunk>> ServerOvermap<S>
 		let mut this = Self{
 			world_generator,
 			world_chunks,
-			chunk_ratio,
 			indexer
 		};
 
@@ -97,13 +90,14 @@ impl<S: Saver<WorldChunk>> ServerOvermap<S>
 
 	pub fn generate_chunk(&mut self, pos: GlobalPos) -> Chunk
 	{
-        let chunk_ratio = Pos3::from(self.chunk_ratio);
+        let chunk_ratio = GlobalPos::from(CHUNK_RATIO);
+
         let pos = pos * chunk_ratio;
 
 		let shift_offset = self.over_bounds_with_padding(
             pos,
             Pos3::repeat(1),
-            chunk_ratio + 1
+            chunk_ratio.0 + 1
         );
 
 		let non_shifted = shift_offset.0 == Pos3::repeat(0_i32);
@@ -129,11 +123,11 @@ impl<S: Saver<WorldChunk>> ServerOvermap<S>
 	{
         let mut chunk = Chunk::new();
 
-        for z in 0..self.chunk_ratio.z
+        for z in 0..CHUNK_RATIO.z
         {
-            for y in 0..self.chunk_ratio.y
+            for y in 0..CHUNK_RATIO.y
             {
-                for x in 0..self.chunk_ratio.x
+                for x in 0..CHUNK_RATIO.x
                 {
                     let this_pos = Pos3::new(x, y, z);
 
@@ -172,7 +166,7 @@ impl<S: Saver<WorldChunk>> ServerOvermap<S>
     }
 }
 
-impl<S: Saver<WorldChunk>> Overmap<WorldChunk> for ServerOvermap<S>
+impl<S: SaveLoad<WorldChunk>> Overmap<WorldChunk> for ServerOvermap<S>
 {
 	fn remove(&mut self, pos: LocalPos)
 	{
@@ -233,7 +227,7 @@ mod tests
         }
     }
 
-    impl<T: Clone> Saver<T> for TestSaver<T>
+    impl<T: Clone> SaveLoad<T> for TestSaver<T>
     {
         fn save(&mut self, pos: GlobalPos, chunk: T)
         {

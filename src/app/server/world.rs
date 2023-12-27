@@ -11,8 +11,9 @@ use crate::{
 	server::ConnectionsHandler,
 	common::{
 		TileMap,
+        WorldChunkSaver,
         ChunkSaver,
-        Saver,
+        SaveLoad,
 		EntityPasser,
 		message::Message,
 		world::{
@@ -25,7 +26,7 @@ use crate::{
 	}
 };
 
-use world_generator::{WorldGenerator, WorldChunk};
+use world_generator::WorldGenerator;
 
 use server_overmap::ServerOvermap;
 
@@ -38,16 +39,15 @@ mod server_overmap;
 pub const SERVER_OVERMAP_SIZE: usize = CLIENT_OVERMAP_SIZE + 1;
 pub const SERVER_OVERMAP_SIZE_Z: usize = CLIENT_OVERMAP_SIZE_Z + 1;
 
-type SaverType = ChunkSaver<WorldChunk>;
-type OvermapsType = Arc<RwLock<Slab<ServerOvermap<SaverType>>>>;
+type OvermapsType = Arc<RwLock<Slab<ServerOvermap<WorldChunkSaver>>>>;
 
 #[derive(Debug)]
 pub struct World
 {
 	message_handler: Arc<RwLock<ConnectionsHandler>>,
 	world_name: String,
-	world_generator: Arc<Mutex<WorldGenerator<SaverType>>>,
-	chunk_saver: ChunkSaver<Chunk>,
+	world_generator: Arc<Mutex<WorldGenerator<WorldChunkSaver>>>,
+	chunk_saver: ChunkSaver,
 	overmaps: OvermapsType
 }
 
@@ -64,7 +64,7 @@ impl World
 		let chunk_saver = ChunkSaver::new(world_path.join("chunks"), 100);
 
 		let world_generator = {
-			let chunk_saver = ChunkSaver::new(world_path.join("world_chunks"), 10);
+			let chunk_saver = WorldChunkSaver::new(world_path.join("world_chunks"), 10);
 
 			WorldGenerator::new(chunk_saver, tilemap, "world_generation/city.json")
 		}?;
