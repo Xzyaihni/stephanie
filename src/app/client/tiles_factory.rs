@@ -131,8 +131,8 @@ impl ChunkModelBuilder
 
 		let pixel_fraction = self.tilemap.pixel_fraction(1.0);
 
-		let x_end = to_uv(x + 1) - pixel_fraction;
-        let y_end = to_uv(y + 1) - pixel_fraction;
+		let x_end = to_uv(x + 1) - pixel_fraction * 2.0;
+        let y_end = to_uv(y + 1) - pixel_fraction * 2.0;
 
 		let x = to_uv(x) + pixel_fraction;
         let y = to_uv(y) + pixel_fraction;

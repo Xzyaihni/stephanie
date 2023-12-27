@@ -43,6 +43,7 @@ fn main()
         .with_textures_path("textures/normal")
         .with_icon("icon.png")
         .with_shaders(shaders)
+        .without_multisampling()
         .with_clear_color([0.0, 0.0, 0.0])
         .run();
 }
