@@ -77,9 +77,9 @@ impl Player
 			ChildEntity::new(
 				ChildConnection::Spring(
                     SpringConnection{
-                        limit: 0.1,
-                        damping: 0.1,
-                        strength: 0.4
+                        limit: transform.scale.x * 0.1,
+                        damping: 0.02,
+                        strength: 0.9
                     }
                 ),
                 ChildRotation::Instant,
@@ -87,7 +87,7 @@ impl Player
 					StretchDeformation{
                         animation: ValueAnimation::EaseOut(2.0),
                         limit: 0.4,
-                        strength: 0.1
+                        strength: 0.3
                     }
 				),
 				entity,

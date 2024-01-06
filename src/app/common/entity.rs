@@ -155,11 +155,6 @@ impl PhysicsEntity for Entity
 
 	fn physics_update(&mut self, dt: f32)
     {
-		self.children.iter_mut().for_each(|child|
-		{
-			child.update(&self.physical, dt);
-		});
-
         // remove this after i add collisions
         if !self.children.is_empty()
         {
@@ -167,6 +162,11 @@ impl PhysicsEntity for Entity
         }
 
         self.physical_mut().physics_update(dt);
+
+		self.children.iter_mut().for_each(|child|
+		{
+			child.update(&self.physical, dt);
+		});
     }
 }
 

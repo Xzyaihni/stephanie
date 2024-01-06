@@ -161,26 +161,6 @@ impl ChildEntity
 	{
         let origin = self.origin(&parent_physical.transform);
 
-		match &self.connection
-		{
-			ChildConnection::Rigid =>
-            {
-                self.entity.physical = parent_physical.clone();
-                self.entity.physical.transform.position += origin;
-            },
-			ChildConnection::Spring(connection) =>
-			{
-                let target_position = parent_physical.position() + origin;
-
-                let distance = target_position - self.position();
-
-                let spring_force = distance * connection.strength;
-
-                self.entity.add_force(spring_force);
-                self.entity.damp_velocity(connection.damping, dt);
-			}
-		}
-
         match &self.rotation
         {
             ChildRotation::Instant =>
@@ -201,10 +181,52 @@ impl ChildEntity
 			}
 		}
 
-        self.entity.physics_update(dt);
+		match &self.connection
+		{
+			ChildConnection::Rigid =>
+            {
+                self.entity.physical = parent_physical.clone();
+                self.entity.physical.transform.position += origin;
+            },
+			ChildConnection::Spring(connection) =>
+			{
+                let target_position = parent_physical.position() + origin;
 
-        self.entity.physical.transform.position.z = parent_physical.transform.position.z;
+                let distance = target_position - self.position();
+
+                let spring_force = distance * connection.strength;
+
+                self.entity.add_force(spring_force);
+                self.entity.damp_velocity(connection.damping, dt);
+
+                self.entity.physics_update(dt);
+
+                if distance.magnitude() > connection.limit
+                {
+                    let target_position = parent_physical.position() + origin;
+
+                    self.clamp_distance(target_position, connection.limit);
+                }
+
+                self.entity.physical.transform.position.z = parent_physical.transform.position.z;
+			}
+		}
 	}
+
+    fn clamp_distance(&mut self, target_position: Vector3<f32>, limit: f32)
+    {
+        let distance = target_position - self.position();
+
+        // checking again cuz this is after the physics update
+        if distance.magnitude() < limit
+        {
+            return;
+        }
+
+        let limited_position = distance.normalize() * limit;
+
+        self.transform_mut().position = target_position - limited_position;
+    }
 }
 
 entity_forward!{ChildEntity, entity}
