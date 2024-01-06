@@ -9,7 +9,7 @@ use parking_lot::{RwLock, Mutex};
 
 use slab::Slab;
 
-use yanyaengine::TransformContainer;
+use yanyaengine::{TransformContainer, Transform};
 
 use super::{
 	ConnectionsHandler,
@@ -27,8 +27,12 @@ use crate::common::{
 	EntitiesContainer,
 	EntitiesController,
 	MessagePasser,
+    PlayerProperties,
+    CharacterProperties,
+    EntityProperties,
+    PhysicalProperties,
     world::chunk::TILE_SIZE,
-	player::{Player, PlayerProperties},
+	player::Player,
 	message::{
 		Message,
 		MessageBuffer
@@ -140,8 +144,24 @@ impl GameServer
 	{
 		let player_info = self.player_info(stream)?;
 
+        let player_index = self.entities.players_ref().len() + 1;
+
 		let player_properties = PlayerProperties{
-			..Default::default()
+            name: format!("stephanie #{player_index}"),
+            character_properties: CharacterProperties{
+                speed: 1.0,
+                entity_properties: EntityProperties{
+                    texture: "player/hair.png".to_owned(),
+                    physical: PhysicalProperties{
+                        mass: 50.0,
+                        friction: 0.5,
+                        transform: Transform{
+                            scale: Vector3::repeat(0.1),
+                            ..Default::default()
+                        }
+                    }
+                }
+            }
 		};
 
 		let player = {

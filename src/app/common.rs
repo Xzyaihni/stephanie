@@ -7,11 +7,9 @@ use parking_lot::RwLock;
 
 use slab::Slab;
 
-use nalgebra::Vector3;
-
-use yanyaengine::{Transform, TransformContainer};
-
 use message::Message;
+
+pub use yanyaengine::{Transform, TransformContainer};
 
 pub use entity_type::EntityType;
 pub use network_entity::NetworkEntity;
@@ -20,9 +18,12 @@ pub use receiver_loop::receiver_loop;
 
 pub use tilemap::TileMap;
 
-pub use entity::ChildContainer;
+pub use entity::{Entity, Physical, ChildContainer, EntityProperties, PhysicalProperties};
 
 pub use chunk_saver::{SaveLoad, WorldChunkSaver, ChunkSaver};
+
+pub use character::CharacterProperties;
+pub use player::PlayerProperties;
 
 use player::Player;
 use entity::ChildEntity;
@@ -70,9 +71,9 @@ pub trait EntityPasser
 	fn send_single(&mut self, id: usize, message: Message);
 	fn send_message(&mut self, message: Message);
 
-	fn sync_entity(&mut self, id: EntityType, transform: Transform, velocity: Vector3<f32>)
+	fn sync_transform(&mut self, id: EntityType, transform: Transform)
 	{
-        let message = Message::EntityTrasformPhysics{entity_type: id, transform, velocity};
+        let message = Message::EntitySyncTransform{entity_type: id, transform};
 
 		self.send_message(message);
 	}
@@ -105,11 +106,11 @@ pub trait EntitiesContainer
 		self.players_ref().vacant_key()
 	}
 
-	fn sync_entity(&mut self, id: EntityType, transform: Transform, velocity: Vector3<f32>)
+	fn sync_transform(&mut self, id: EntityType, other: Transform)
 	{
 		match id
 		{
-			EntityType::Player(id) => self.player_mut(id).set_entity(transform, velocity)
+			EntityType::Player(id) => self.player_mut(id).sync_transform(other)
 		}
 	}
 
@@ -122,9 +123,9 @@ pub trait EntitiesContainer
 				self.players_mut().remove(id);
 				None
 			},
-			Message::EntityTrasformPhysics{entity_type, transform, velocity} =>
+			Message::EntitySyncTransform{entity_type, transform} =>
 			{
-				self.sync_entity(entity_type, transform, velocity);
+				self.sync_transform(entity_type, transform);
 				None
 			},
 			_ => Some(message)

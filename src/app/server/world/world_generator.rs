@@ -115,7 +115,7 @@ impl From<rlua::Error> for ParseError
     }
 }
 
-#[repr(C)]
+#[repr(C, u8)]
 #[derive(Debug, Clone, Copy)]
 pub enum MaybeWorldChunk
 {

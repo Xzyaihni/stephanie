@@ -16,9 +16,10 @@ use yanyaengine::{
 use crate::common::{
 	PlayerGet,
 	ChildContainer,
+    Physical,
 	physics::PhysicsEntity,
 	player::Player,
-	entity::{ChildEntity, Entity}
+	entity::{EntityContainer, ChildEntity}
 };
 
 use crate::client::DrawableEntity;
@@ -33,7 +34,7 @@ pub struct ObjectPair<T>
 	pub entity: T
 }
 
-impl<T: PhysicsEntity + DrawableEntity + ChildContainer> ObjectPair<T>
+impl<T: EntityContainer> ObjectPair<T>
 {
 	pub fn new(create_info: &ObjectCreateInfo, entity: T) -> Self
 	{
@@ -125,7 +126,7 @@ impl<T: PhysicsEntity + ChildContainer> GameObject for ObjectPair<T>
     }
 }
 
-impl<T: TransformContainer + ChildContainer> OnTransformCallback for ObjectPair<T>
+impl<T: EntityContainer> OnTransformCallback for ObjectPair<T>
 {
 	fn transform_callback(&mut self, _transform: Transform)
 	{
@@ -167,7 +168,7 @@ impl<T: TransformContainer + ChildContainer> OnTransformCallback for ObjectPair<
 	}
 }
 
-impl<T: TransformContainer + ChildContainer> TransformContainer for ObjectPair<T>
+impl<T: EntityContainer> TransformContainer for ObjectPair<T>
 {
 	fn transform_ref(&self) -> &Transform
 	{
@@ -180,27 +181,20 @@ impl<T: TransformContainer + ChildContainer> TransformContainer for ObjectPair<T
 	}
 }
 
-impl<T: PhysicsEntity + ChildContainer> PhysicsEntity for ObjectPair<T>
+impl<T: EntityContainer> PhysicsEntity for ObjectPair<T>
 {
-	fn entity_ref(&self) -> &Entity
+	fn physical_ref(&self) -> &Physical
 	{
-		self.entity.entity_ref()
+		self.entity.physical_ref()
 	}
 
-	fn entity_mut(&mut self) -> &mut Entity
+	fn physical_mut(&mut self) -> &mut Physical
 	{
-		self.entity.entity_mut()
+		self.entity.physical_mut()
 	}
 
 	fn physics_update(&mut self, dt: f32)
-	{
-		self.entity.physics_update(dt);
-
-		self.transform_callback(self.transform_clone());
-	}
-
-	fn velocity_add(&mut self, velocity: Vector3<f32>)
-	{
-		self.entity.velocity_add(velocity);
-	}
+    {
+        self.entity.physics_update(dt);
+    }
 }

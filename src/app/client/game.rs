@@ -192,7 +192,12 @@ impl<'a> PlayerContainer<'a>
             direction.try_normalize_mut(1.0);
         }
 
-        movement_direction
+        movement_direction.map(|mut x|
+        {
+            x.z *= 0.1;
+
+            x
+        })
     }
 
     pub fn walk(&mut self, direction: Vector3<f32>)

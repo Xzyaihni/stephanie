@@ -7,68 +7,37 @@ use yanyaengine::{
 };
 
 use crate::{
-	client::DrawableEntity,
+    entity_forward,
 	common::{
+        ChildEntity,
 		PlayerGet,
-		ChildEntity,
-		ChildContainer,
-		character::{Character, CharacterProperties},
-		physics::PhysicsEntity,
+        CharacterProperties,
+        EntityProperties,
+        PhysicalProperties,
+		character::Character,
 		entity::{
 			ValueAnimation,
 			ChildConnection,
 			ChildDeformation,
 			SpringConnection,
-			StretchDeformation,
-			EntityProperties,
-			Entity
+			StretchDeformation
 		},
 	}
 };
 
-use nalgebra::{
-	Unit,
-	Vector3
-};
 
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PlayerProperties
 {
 	pub character_properties: CharacterProperties,
 	pub name: String
 }
 
-impl Default for PlayerProperties
+impl PlayerProperties
 {
-	fn default() -> Self
-	{
-		let damp_factor = 0.001;
-
-		let transform = Transform{
-		    scale: Vector3::repeat(0.1),
-            ..Default::default()
-        };
-
-		let texture = "player/hair.png".to_owned();
-
-		let name = String::new();
-
-        // does clippy want me to update everything if i add another value to a struct?
-        #[allow(clippy::needless_update)]
-		Self{
-			character_properties: CharacterProperties{
-				entity_properties: EntityProperties{
-					damp_factor,
-					transform,
-					texture,
-					..Default::default()
-				},
-				..Default::default()
-			},
-			name
-		}
-	}
+    pub fn physical(&self) -> &PhysicalProperties
+    {
+        self.character_properties.physical()
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -82,6 +51,8 @@ impl Player
 {
 	pub fn new(player_properties: PlayerProperties) -> Self
 	{
+        let pon_scale = player_properties.physical().transform.scale * 0.4;
+
 		let name = player_properties.name;
 
 		let mut player = Self{
@@ -92,16 +63,19 @@ impl Player
         let pon = {
 			let entity = Entity::new(EntityProperties{
 				texture: "player/pon.png".to_owned(),
-                transform: Transform{
-                    scale: Vector3::repeat(0.4),
-                    ..Default::default()
-                },
-				..Default::default()
+                physical: PhysicalProperties{
+                    mass: 0.01,
+                    friction: 0.8,
+                    transform: Transform{
+                        scale: pon_scale,
+                        ..Default::default()
+                    }
+                }
 			});
 
 			ChildEntity::new(
 				ChildConnection::Spring(
-                    SpringConnection::new(0.1, 0.02, 0.2)
+                    SpringConnection::new(0.1, 0.4)
                 ),
 				ChildDeformation::Stretch(
 					StretchDeformation::new(ValueAnimation::EaseOut(2.0), 0.4, 0.1)
@@ -113,7 +87,7 @@ impl Player
 
         let top_pon = {
             let mut pon = pon.clone();
-		    pon.set_origin(&player, Vector3::new(-0.15, 0.35, 0.0));
+		    pon.with_parent(&player).set_origin(Vector3::new(-0.15, 0.35, 0.0));
 
             pon
         };
@@ -122,7 +96,7 @@ impl Player
 
         let bottom_pon = {
             let mut pon = pon;
-		    pon.set_origin(&player, Vector3::new(-0.15, -0.35, 0.0));
+		    pon.with_parent(&player).set_origin(Vector3::new(-0.15, -0.35, 0.0));
 
             pon
         };
@@ -151,87 +125,4 @@ impl PlayerGet for Player
 	}
 }
 
-impl OnTransformCallback for Player
-{
-	fn transform_callback(&mut self, transform: Transform)
-	{
-		self.character.transform_callback(transform);
-	}
-
-	fn position_callback(&mut self, position: Vector3<f32>)
-	{
-		self.character.position_callback(position);
-	}
-
-	fn scale_callback(&mut self, scale: Vector3<f32>)
-	{
-		self.character.scale_callback(scale);
-	}
-
-	fn rotation_callback(&mut self, rotation: f32)
-	{
-		self.character.rotation_callback(rotation);
-	}
-
-	fn rotation_axis_callback(&mut self, axis: Unit<Vector3<f32>>)
-	{
-		self.character.rotation_axis_callback(axis);
-	}
-}
-
-impl TransformContainer for Player
-{
-	fn transform_ref(&self) -> &Transform
-	{
-		self.character.transform_ref()
-	}
-
-	fn transform_mut(&mut self) -> &mut Transform
-	{
-		self.character.transform_mut()
-	}
-}
-
-impl ChildContainer for Player
-{
-	fn children_ref(&self) -> &[ChildEntity]
-	{
-		self.character.children_ref()
-	}
-
-	fn children_mut(&mut self) -> &mut Vec<ChildEntity>
-	{
-		self.character.children_mut()
-	}
-}
-
-impl PhysicsEntity for Player
-{
-	fn entity_ref(&self) -> &Entity
-	{
-		self.character.entity_ref()
-	}
-
-	fn entity_mut(&mut self) -> &mut Entity
-	{
-		self.character.entity_mut()
-	}
-
-	fn physics_update(&mut self, dt: f32)
-	{
-		self.character.physics_update(dt);
-	}
-
-	fn velocity_add(&mut self, velocity: Vector3<f32>)
-	{
-		self.character.velocity_add(velocity);
-	}
-}
-
-impl DrawableEntity for Player
-{
-	fn texture(&self) -> &str
-	{
-		self.character.texture()
-	}
-}
+entity_forward!{Player, character}

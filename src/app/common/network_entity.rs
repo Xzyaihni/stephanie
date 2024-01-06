@@ -16,7 +16,7 @@ use yanyaengine::{
 use crate::common::{
 	EntityType,
 	EntityPasser,
-	entity::Entity,
+    Physical,
 	physics::PhysicsEntity
 };
 
@@ -53,9 +53,8 @@ where
 	pub fn sync(&mut self)
 	{
 		let transform = self.entity.transform_clone();
-		let velocity = self.entity.entity_ref().velocity;
 
-		self.entity_passer.write().sync_entity(self.entity_type, transform, velocity);
+		self.entity_passer.write().sync_transform(self.entity_type, transform);
 	}
 }
 
@@ -132,26 +131,19 @@ where
 	T: PhysicsEntity,
 	E: EntityPasser
 {
-	fn entity_ref(&self) -> &Entity
-	{
-		self.entity.entity_ref()
-	}
+	fn physical_ref(&self) -> &Physical
+    {
+        self.entity.physical_ref()
+    }
 
-	fn entity_mut(&mut self) -> &mut Entity
-	{
-		self.entity.entity_mut()
-	}
+	fn physical_mut(&mut self) -> &mut Physical
+    {
+        self.entity.physical_mut()
+    }
 
 	fn physics_update(&mut self, dt: f32)
 	{
 		self.entity.physics_update(dt);
-
-		self.transform_callback(self.transform_clone());
-	}
-
-	fn velocity_add(&mut self, velocity: Vector3<f32>)
-	{
-		self.entity.velocity_add(velocity);
 
 		self.transform_callback(self.transform_clone());
 	}
