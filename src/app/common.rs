@@ -66,6 +66,11 @@ macro_rules! time_this
     }
 }
 
+pub fn lerp(x: f32, y: f32, a: f32) -> f32
+{
+    (1.0 - a) * x + y * a
+}
+
 pub trait EntityPasser
 {
 	fn send_single(&mut self, id: usize, message: Message);

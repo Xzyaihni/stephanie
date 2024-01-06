@@ -1,3 +1,5 @@
+use std::f32;
+
 use serde::{Serialize, Deserialize};
 
 use nalgebra::{Rotation, Vector2};
@@ -8,7 +10,7 @@ use yanyaengine::{
 	OnTransformCallback
 };
 
-use crate::entity_forward;
+use crate::{entity_forward, common::lerp};
 
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -43,10 +45,17 @@ pub struct SpringConnection
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LerpRotation
+{
+    pub strength: f32
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StretchDeformation
 {
 	pub animation: ValueAnimation,
 	pub limit: f32,
+    pub onset: f32,
 	pub strength: f32
 }
 
@@ -54,8 +63,8 @@ impl StretchDeformation
 {
 	pub fn stretch(&self, velocity: Vector3<f32>) -> (f32, Vector2<f32>)
 	{
-		let amount = self.animation.apply(velocity.magnitude() * self.strength);
-		let stretch = (1.0 + amount).max(self.limit);
+		let amount = self.animation.apply(velocity.magnitude() * self.onset);
+		let stretch = (1.0 + amount * self.strength).max(self.limit);
 
 		let angle = velocity.y.atan2(-velocity.x);
 
@@ -73,7 +82,8 @@ pub enum ChildConnection
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ChildRotation
 {
-    Instant
+    Instant,
+    Lerp(LerpRotation)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -161,12 +171,32 @@ impl ChildEntity
 	{
         let origin = self.origin(&parent_physical.transform);
 
+        self.set_rotation_axis(*parent_physical.rotation_axis());
         match &self.rotation
         {
             ChildRotation::Instant =>
             {
                 self.set_rotation(parent_physical.rotation());
-                self.set_rotation_axis(*parent_physical.rotation_axis());
+            },
+            ChildRotation::Lerp(props) =>
+            {
+                let rotation_difference = parent_physical.rotation() - self.rotation();
+                let rotation_difference = if rotation_difference > f32::consts::PI
+                {
+                    rotation_difference - 2.0 * f32::consts::PI
+                } else if rotation_difference < -f32::consts::PI
+                {
+                    rotation_difference + 2.0 * f32::consts::PI
+                } else
+                {
+                    rotation_difference
+                };
+
+                let amount = 1.0 - props.strength.powf(dt);
+
+                let rotation = self.rotation() + lerp(0.0, rotation_difference, amount);
+
+                self.set_rotation(rotation);
             }
         }
 
@@ -185,8 +215,7 @@ impl ChildEntity
 		{
 			ChildConnection::Rigid =>
             {
-                self.entity.physical = parent_physical.clone();
-                self.entity.physical.transform.position += origin;
+                self.transform_mut().position = parent_physical.position() + origin;
             },
 			ChildConnection::Spring(connection) =>
 			{

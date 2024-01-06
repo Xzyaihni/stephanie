@@ -21,6 +21,7 @@ use crate::{
             ChildRotation,
 			ChildDeformation,
 			SpringConnection,
+            LerpRotation,
 			StretchDeformation
 		},
 	}
@@ -82,12 +83,17 @@ impl Player
                         strength: 0.9
                     }
                 ),
-                ChildRotation::Instant,
+                ChildRotation::Lerp(
+                    LerpRotation{
+                        strength: 0.5
+                    }
+                ),
 				ChildDeformation::Stretch(
 					StretchDeformation{
                         animation: ValueAnimation::EaseOut(2.0),
                         limit: 0.4,
-                        strength: 0.3
+                        onset: 0.3,
+                        strength: 0.5
                     }
 				),
 				entity,
