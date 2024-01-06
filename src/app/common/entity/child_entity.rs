@@ -1,6 +1,6 @@
 use serde::{Serialize, Deserialize};
 
-use nalgebra::Vector2;
+use nalgebra::{Rotation, Vector2};
 
 use yanyaengine::{
     Transform,
@@ -37,36 +37,22 @@ impl ValueAnimation
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SpringConnection
 {
-	limit: f32,
-	strength: f32
-}
-
-impl SpringConnection
-{
-	#[allow(dead_code)]
-	pub fn new(limit: f32, strength: f32) -> Self
-	{
-		Self{limit, strength}
-	}
+	pub limit: f32,
+    pub damping: f32,
+	pub strength: f32
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StretchDeformation
 {
-	animation: ValueAnimation,
-	limit: f32,
-	strength: f32
+	pub animation: ValueAnimation,
+	pub limit: f32,
+	pub strength: f32
 }
 
 impl StretchDeformation
 {
-	#[allow(dead_code)]
-	pub fn new(animation: ValueAnimation, limit: f32, strength: f32) -> Self
-	{
-		Self{animation, limit, strength}
-	}
-
-	pub fn stretch(&mut self, velocity: Vector3<f32>) -> (f32, Vector2<f32>)
+	pub fn stretch(&self, velocity: Vector3<f32>) -> (f32, Vector2<f32>)
 	{
 		let amount = self.animation.apply(velocity.magnitude() * self.strength);
 		let stretch = (1.0 + amount).max(self.limit);
@@ -82,6 +68,12 @@ pub enum ChildConnection
 {
 	Rigid,
 	Spring(SpringConnection)
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ChildRotation
+{
+    Instant
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -105,12 +97,20 @@ where
 	{
 		self.entity.origin = origin.component_mul(self.parent.scale());
 	}
+
+    pub fn sync_position(&mut self)
+    {
+        let new_position = self.parent.position() + self.entity.origin(self.parent.transform_ref());
+
+        self.entity.physical_mut().transform.position = new_position;
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChildEntity
 {
 	connection: ChildConnection,
+    rotation: ChildRotation,
 	deformation: ChildDeformation,
 	origin: Vector3<f32>,
 	entity: Entity,
@@ -121,14 +121,16 @@ impl ChildEntity
 {
 	pub fn new(
 		connection: ChildConnection,
+        rotation: ChildRotation,
 		deformation: ChildDeformation,
-		entity: Entity,
+		mut entity: Entity,
+        origin: Vector3<f32>,
 		z_level: i32
 	) -> Self
 	{
-		let origin = Vector3::zeros();
+        entity.physical.transform.position += origin;
 
-		Self{connection, deformation, origin, entity, z_level}
+		Self{connection, rotation, deformation, origin, entity, z_level}
 	}
 
     pub fn with_parent<'a, P>(&'a mut self, parent: &'a P) -> ChildEntityRef<'a, P>
@@ -145,37 +147,50 @@ impl ChildEntity
 		self.z_level
 	}
 
-	pub fn origin(&self) -> Vector3<f32>
+	fn origin(&self, parent_transform: &Transform) -> Vector3<f32>
 	{
-		self.origin
+        let rotation = Rotation::from_axis_angle(
+            &parent_transform.rotation_axis,
+            parent_transform.rotation
+        );
+
+		rotation * self.origin
 	}
 
 	pub fn update(&mut self, parent_physical: &Physical, dt: f32)
 	{
-		let requires_physics = match &mut self.connection
+        let origin = self.origin(&parent_physical.transform);
+
+		match &self.connection
 		{
 			ChildConnection::Rigid =>
             {
                 self.entity.physical = parent_physical.clone();
-
-                false
+                self.entity.physical.transform.position += origin;
             },
 			ChildConnection::Spring(connection) =>
 			{
-                let transform = &self.entity.physical.transform;
-                let parent_transform = &parent_physical.transform;
+                let target_position = parent_physical.position() + origin;
 
-                let distance = parent_transform.position - transform.position;
+                let distance = target_position - self.position();
 
                 let spring_force = distance * connection.strength;
 
-                self.entity.physical.force += spring_force;
-
-                true
+                self.entity.add_force(spring_force);
+                self.entity.damp_velocity(connection.damping, dt);
 			}
-		};
+		}
 
-		match &mut self.deformation
+        match &self.rotation
+        {
+            ChildRotation::Instant =>
+            {
+                self.set_rotation(parent_physical.rotation());
+                self.set_rotation_axis(*parent_physical.rotation_axis());
+            }
+        }
+
+		match &self.deformation
 		{
 			ChildDeformation::Rigid => (),
 			ChildDeformation::Stretch(deformation) =>
@@ -186,12 +201,9 @@ impl ChildEntity
 			}
 		}
 
-        if requires_physics
-        {
-            self.entity.physics_update(dt);
+        self.entity.physics_update(dt);
 
-            self.entity.physical.transform.position.z = parent_physical.transform.position.z;
-        }
+        self.entity.physical.transform.position.z = parent_physical.transform.position.z;
 	}
 }
 

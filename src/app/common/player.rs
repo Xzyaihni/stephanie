@@ -18,6 +18,7 @@ use crate::{
 		entity::{
 			ValueAnimation,
 			ChildConnection,
+            ChildRotation,
 			ChildDeformation,
 			SpringConnection,
 			StretchDeformation
@@ -51,7 +52,7 @@ impl Player
 {
 	pub fn new(player_properties: PlayerProperties) -> Self
 	{
-        let pon_scale = player_properties.physical().transform.scale * 0.4;
+        let transform = player_properties.physical().transform.clone();
 
 		let name = player_properties.name;
 
@@ -67,41 +68,52 @@ impl Player
                     mass: 0.01,
                     friction: 0.8,
                     transform: Transform{
-                        scale: pon_scale,
-                        ..Default::default()
+                        scale: transform.scale * 0.4,
+                        ..transform
                     }
                 }
 			});
 
 			ChildEntity::new(
 				ChildConnection::Spring(
-                    SpringConnection::new(0.1, 0.4)
+                    SpringConnection{
+                        limit: 0.1,
+                        damping: 0.1,
+                        strength: 0.4
+                    }
                 ),
+                ChildRotation::Instant,
 				ChildDeformation::Stretch(
-					StretchDeformation::new(ValueAnimation::EaseOut(2.0), 0.4, 0.1)
+					StretchDeformation{
+                        animation: ValueAnimation::EaseOut(2.0),
+                        limit: 0.4,
+                        strength: 0.1
+                    }
 				),
 				entity,
+                Vector3::zeros(),
 				1
 			)
         };
 
-        let top_pon = {
-            let mut pon = pon.clone();
-		    pon.with_parent(&player).set_origin(Vector3::new(-0.15, 0.35, 0.0));
+        let mut add_pon = |position|
+        {
+            let child_pon = {
+                let mut pon = pon.clone();
 
-            pon
+                let mut parented_pon = pon.with_parent(&player);
+
+                parented_pon.set_origin(position);
+                parented_pon.sync_position();
+
+                pon
+            };
+
+            player.add_child(child_pon);
         };
 
-		player.add_child(top_pon);
-
-        let bottom_pon = {
-            let mut pon = pon;
-		    pon.with_parent(&player).set_origin(Vector3::new(-0.15, -0.35, 0.0));
-
-            pon
-        };
-
-		player.add_child(bottom_pon);
+        add_pon(Vector3::new(-0.15, 0.35, 0.0));
+        add_pon(Vector3::new(-0.15, -0.35, 0.0));
 
 		player
 	}

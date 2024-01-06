@@ -149,7 +149,7 @@ impl GameServer
 		let player_properties = PlayerProperties{
             name: format!("stephanie #{player_index}"),
             character_properties: CharacterProperties{
-                speed: 1.0,
+                speed: 0.5,
                 entity_properties: EntityProperties{
                     texture: "player/hair.png".to_owned(),
                     physical: PhysicalProperties{

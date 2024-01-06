@@ -149,9 +149,19 @@ pub trait PhysicsEntity: TransformContainer
         self.physical_mut().force += force;
     }
 
+    fn sub_impulse(&mut self, impulse: Vector3<f32>)
+    {
+        self.physical_mut().sub_impulse(impulse);
+    }
+
     fn add_impulse(&mut self, impulse: Vector3<f32>)
     {
         self.physical_mut().add_impulse(impulse);
+    }
+
+    fn damp_velocity(&mut self, damping: f32, dt: f32)
+    {
+        self.physical_mut().velocity *= damping.powf(dt);
     }
 
 	fn physics_update(&mut self, dt: f32)

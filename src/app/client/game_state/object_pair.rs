@@ -19,7 +19,7 @@ use crate::common::{
     Physical,
 	physics::PhysicsEntity,
 	player::Player,
-	entity::{EntityContainer, ChildEntity}
+	entity::EntityContainer
 };
 
 use crate::client::DrawableEntity;
@@ -44,7 +44,7 @@ impl<T: EntityContainer> ObjectPair<T>
 
         let child_objects = children.iter().map(|child|
         {
-            Self::child_object_create(create_info, child)
+            Self::object_create(create_info, child)
         }).collect();
 
         let z_index = children.iter().position(|child| child.z_level() > 0).unwrap_or(0);
@@ -76,18 +76,6 @@ impl<T: EntityContainer> ObjectPair<T>
             }
 		)
 	}
-
-    fn child_object_create(
-        create_info: &ObjectCreateInfo,
-        entity: &ChildEntity
-    ) -> Object
-    {
-        let mut object = Self::object_create(create_info, entity.entity_ref());
-
-		object.set_origin(entity.origin());
-
-        object
-    }
 }
 
 impl PlayerGet for ObjectPair<Player>
