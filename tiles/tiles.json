@@ -1,27 +1,22 @@
 [
     {
-        "name": "air",
-        "texture": "",
-        "transparent": true
-    },
-    {
         "name": "asphalt",
-        "texture": "asphalt.png",
-        "transparent": false
+        "texture": "asphalt.png"
     },
     {
         "name": "grass",
-        "texture": "grassie.png",
-        "transparent": false
+        "texture": "grassie.png"
     },
     {
         "name": "concrete",
-        "texture": "concrete.png",
-        "transparent": false
+        "texture": "concrete.png"
     },
     {
         "name": "wood",
-        "texture": "wood.png",
-        "transparent": false
+        "texture": "wood.png"
+    },
+    {
+        "name": "soil",
+        "texture": "soil.png"
     }
 ]

@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use strum::IntoEnumIterator;
 
 use yanyaengine::{
@@ -8,17 +10,17 @@ use yanyaengine::{
 use crate::{
 	client::tiles_factory::{TilesFactory, ChunkInfo, ChunkModelBuilder},
 	common::{
-		tilemap::TileInfoMap,
-		world::{
-			GlobalPos,
-			CHUNK_SIZE,
-			PosDirection,
-			visual_overmap::{
-				TileInfo,
-				TileReader
-			}
-		}
-	}
+        TileMap,
+        world::{
+            GlobalPos,
+            CHUNK_SIZE,
+            PosDirection,
+            visual_overmap::{
+                TileInfo,
+                TileReader
+            }
+        }
+    }
 };
 
 
@@ -37,7 +39,7 @@ impl VisualChunk
 	}
 
 	pub fn create(
-		info_map: TileInfoMap,
+		tilemap: Arc<TileMap>,
 		mut model_builder: ChunkModelBuilder,
 		pos: GlobalPos,
 		tiles: TileReader
@@ -49,7 +51,7 @@ impl VisualChunk
 		}).for_each(|(x, y)|
 		{
 			Self::create_tile_line(
-				&info_map,
+				&tilemap,
 				&mut model_builder,
 				x,
 				y,
@@ -68,7 +70,7 @@ impl VisualChunk
 	}
 
 	fn create_tile_line(
-		info_map: &TileInfoMap,
+		tilemap: &TileMap,
 		model_builder: &mut ChunkModelBuilder,
 		x: usize,
 		y: usize,
@@ -88,7 +90,7 @@ impl VisualChunk
 			{
 				if let Some(gradient_tile) = tiles[direction]
 				{
-					if !info_map[gradient_tile].transparent && gradient_tile != tiles.this
+					if !tilemap[gradient_tile].transparent && gradient_tile != tiles.this
 					{
 						model_builder.create_direction(
 							direction,
@@ -100,7 +102,7 @@ impl VisualChunk
 				}
 			});
 
-			let draw_next = info_map[tiles.this].transparent;
+			let draw_next = tilemap[tiles.this].transparent;
 
 			if !draw_next
 			{

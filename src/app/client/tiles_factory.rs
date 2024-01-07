@@ -23,7 +23,8 @@ use yanyaengine::{
 
 use crate::common::{
 	TileMap,
-	tilemap::{GradientMask, TileInfoMap, TileInfo},
+    TileMapWithTextures,
+	tilemap::{GradientMask, TileInfo},
 	world::{
         CHUNK_VISUAL_SIZE,
 		TILE_SIZE,
@@ -131,8 +132,8 @@ impl ChunkModelBuilder
 
 		let pixel_fraction = self.tilemap.pixel_fraction(1.0);
 
-		let x_end = to_uv(x + 1) - pixel_fraction * 2.0;
-        let y_end = to_uv(y + 1) - pixel_fraction * 2.0;
+		let x_end = to_uv(x + 1) - pixel_fraction;
+        let y_end = to_uv(y + 1) - pixel_fraction;
 
 		let x = to_uv(x) + pixel_fraction;
         let y = to_uv(y) + pixel_fraction;
@@ -222,11 +223,14 @@ impl TilesFactory
 {
 	pub fn new(
         init_info: &mut InitInfo,
-		tilemap: TileMap
+		tilemap: TileMapWithTextures
 	) -> Result<Self, ImageError>
 	{
-		let mask_texture = tilemap.load_mask()?;
-		let base_textures = tilemap.load_textures()?;
+        let TileMapWithTextures{
+            tilemap,
+            gradient_mask: mask_texture,
+            textures: base_textures
+        } = tilemap;
 
 		let mut make_tilemap = |textures: &[_]|
 		{
@@ -278,9 +282,9 @@ impl TilesFactory
 		ChunkModelBuilder::new(self.tilemap.clone())
 	}
 
-	pub fn info_map(&self) -> TileInfoMap
+	pub fn tilemap(&self) -> &Arc<TileMap>
 	{
-		TileInfoMap::new(self.tilemap.clone())
+		&self.tilemap
 	}
 
 	pub fn info(&self, tile: Tile) -> &TileInfo

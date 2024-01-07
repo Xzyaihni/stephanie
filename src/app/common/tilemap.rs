@@ -1,9 +1,9 @@
 use std::{
 	io,
+    iter,
 	ops::Index,
 	collections::HashMap,
 	fs::File,
-	sync::Arc,
 	path::{Path, PathBuf}
 };
 
@@ -32,34 +32,33 @@ const PADDING: usize = 1;
 const PADDED_TILE_SIZE: usize = TEXTURE_TILE_SIZE + PADDING * 2;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TileInfoRaw
+{
+	pub name: String,
+	pub texture: PathBuf
+}
+
+#[derive(Debug, Clone)]
 pub struct TileInfo
 {
 	pub name: String,
-	pub texture: PathBuf,
 	pub transparent: bool
 }
 
-pub struct TileInfoMap
+impl TileInfo
 {
-	tilemap: Arc<TileMap>
-}
+    fn from_raw(texture: &SimpleImage, tile_raw: TileInfoRaw) -> Self
+    {
+        let transparent = texture.colors.iter().any(|color|
+        {
+            color.a != u8::MAX
+        });
 
-impl TileInfoMap
-{
-	pub fn new(tilemap: Arc<TileMap>) -> Self
-	{
-		Self{tilemap}
-	}
-}
-
-impl Index<Tile> for TileInfoMap
-{
-	type Output = TileInfo;
-
-	fn index(&self, tile: Tile) -> &Self::Output
-	{
-		self.tilemap.tiles.get(tile.id()).unwrap()
-	}
+        TileInfo{
+            name: tile_raw.name,
+            transparent
+        }
+    }
 }
 
 #[derive(Debug, EnumIter, EnumCount)]
@@ -69,36 +68,85 @@ pub enum GradientMask
 	Inner
 }
 
+pub struct TileMapWithTextures
+{
+    pub tilemap: TileMap,
+	pub gradient_mask: SimpleImage,
+    pub textures: Vec<SimpleImage>
+}
+
+#[derive(Debug)]
+pub enum TileMapError
+{
+    Io(io::Error),
+    Image{error: ImageError, path: Option<PathBuf>}
+}
+
+impl From<serde_json::Error> for TileMapError
+{
+    fn from(value: serde_json::Error) -> Self
+    {
+        Self::Io(value.into())
+    }
+}
+
+impl From<io::Error> for TileMapError
+{
+    fn from(value: io::Error) -> Self
+    {
+        Self::Io(value)
+    }
+}
+
 #[derive(Debug)]
 pub struct TileMap
 {
-	gradient_mask: PathBuf,
 	tiles: Vec<TileInfo>
 }
 
 #[allow(dead_code)]
 impl TileMap
 {
-	pub fn parse(tiles_path: &str, textures_root: &str) -> Result<Self, io::Error>
+	pub fn parse(
+        tiles_path: &str,
+        textures_root: &str
+    ) -> Result<TileMapWithTextures, TileMapError>
 	{
 		let textures_root = Path::new(textures_root);
 		let gradient_mask = textures_root.join("gradient.png");
 
-		let tiles = match serde_json::from_reader::<_, Vec<TileInfo>>(File::open(tiles_path)?)
-		{
-			Ok(mut tiles) =>
-			{
-				tiles.iter_mut().skip(1).for_each(|tile|
-				{
-					tile.texture = textures_root.join(&tile.texture);
-				});
+        let gradient_mask = Self::load_texture(
+            TEXTURE_TILE_SIZE as u32 * 2,
+            TEXTURE_TILE_SIZE as u32,
+            gradient_mask
+        )?;
 
-				tiles
-			},
-			Err(err) => return Err(err.into())
-		};
+		let tiles = serde_json::from_reader::<_, Vec<TileInfoRaw>>(File::open(tiles_path)?)?;
 
-		Ok(Self{gradient_mask, tiles})
+        let textures = tiles.iter().map(|tile_raw|
+        {
+            let texture = textures_root.join(&tile_raw.texture);
+
+            Self::load_texture(
+                TEXTURE_TILE_SIZE as u32,
+                TEXTURE_TILE_SIZE as u32,
+                texture
+            )
+        }).collect::<Result<Vec<SimpleImage>, _>>()?;
+
+        let tiles = iter::once(TileInfo{
+            name: "air".to_owned(),
+            transparent: true
+        }).chain(tiles.into_iter().zip(textures.iter()).map(|(tile_raw, texture)|
+        {
+            TileInfo::from_raw(texture, tile_raw)
+        })).collect();
+
+		Ok(TileMapWithTextures{
+            tilemap: Self{tiles},
+            gradient_mask,
+            textures
+        })
 	}
 
 	pub fn names_map(&self) -> HashMap<&str, Tile>
@@ -137,12 +185,16 @@ impl TileMap
 		fraction / (self.texture_row_size() * PADDED_TILE_SIZE) as f32
 	}
 
-	pub fn load_mask(&self) -> Result<SimpleImage, ImageError>
-	{
-		let image = image::open(&self.gradient_mask)?;
-
-        let width = TEXTURE_TILE_SIZE as u32 * 2;
-        let height = TEXTURE_TILE_SIZE as u32;
+    fn load_texture(
+        width: u32,
+        height: u32,
+        path: PathBuf
+    ) -> Result<SimpleImage, TileMapError>
+    {
+		let image = image::open(&path).map_err(|error| 
+        {
+            TileMapError::Image{error, path: Some(path)}
+        })?;
 
         let image = if (image.width() == width) && (image.height() == height)
         {
@@ -156,33 +208,8 @@ impl TileMap
 			)
         };
 
-		SimpleImage::try_from(image)
-	}
-
-	pub fn load_textures(&self) -> Result<Vec<SimpleImage>, ImageError>
-	{
-		self.tiles.iter().skip(1).map(|tile_info|
-		{
-			let image = image::open(&tile_info.texture)?;
-
-            let width = TEXTURE_TILE_SIZE as u32;
-            let height = TEXTURE_TILE_SIZE as u32;
-
-            let image = if (image.width() == width) && (image.height() == height)
-            {
-                image
-            } else
-            {
-				image.resize_exact(
-					width,
-					height,
-					FilterType::Lanczos3
-				)
-            };
-
-			SimpleImage::try_from(image)
-		}).collect::<Result<Vec<SimpleImage>, _>>()
-	}
+		SimpleImage::try_from(image).map_err(|error| TileMapError::Image{error, path: None})
+    }
 
 	pub fn apply_texture_mask<'a, I>(mask_type: GradientMask, mask: &SimpleImage, textures: I)
 	where
@@ -269,5 +296,15 @@ impl TileMap
         });
 
 		Texture::new(resource_uploader, tilemap.into())
+	}
+}
+
+impl Index<Tile> for TileMap
+{
+	type Output = TileInfo;
+
+	fn index(&self, tile: Tile) -> &Self::Output
+	{
+		self.tiles.get(tile.id()).unwrap()
 	}
 }

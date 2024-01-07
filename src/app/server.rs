@@ -5,7 +5,7 @@ use std::{
 
 use parking_lot::Mutex;
 
-use crate::common::TileMap;
+use crate::common::TileMapWithTextures;
 
 use game_server::{GameServer, ParseError};
 
@@ -27,14 +27,15 @@ pub struct Server
 impl Server
 {
 	pub fn new(
-		tilemap: TileMap,
+		tilemap: TileMapWithTextures,
 		address: &str,
 		connections_limit: usize
 	) -> Result<Self, ParseError>
 	{
 		let listener = TcpListener::bind(address)?;
 
-		let game_server = Arc::new(Mutex::new(GameServer::new(tilemap, connections_limit)?));
+        let game_server = GameServer::new(tilemap.tilemap, connections_limit)?;
+		let game_server = Arc::new(Mutex::new(game_server));
 
 		Ok(Self{
 			listener,

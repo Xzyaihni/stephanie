@@ -209,7 +209,7 @@ impl VisualOvermap
 		let sender = self.sender.clone();
 
 		let (info_map, model_builder) =
-			(self.tiles_factory.info_map(), self.tiles_factory.builder());
+			(self.tiles_factory.tilemap().clone(), self.tiles_factory.builder());
 
 		thread::spawn(move ||
 		{

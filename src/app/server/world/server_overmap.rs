@@ -247,7 +247,7 @@ mod tests
 
         let tiles = "tiles/tiles.json";
 
-        let tilemap = TileMap::parse(tiles, "textures/").unwrap();
+        let tilemap = TileMap::parse(tiles, "textures/tiles/").unwrap().tilemap;
 
         let world_generator = Arc::new(Mutex::new(
             WorldGenerator::new(saver, tilemap, "world_generation/city.json").unwrap()

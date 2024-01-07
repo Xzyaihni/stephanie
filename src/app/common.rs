@@ -16,7 +16,7 @@ pub use network_entity::NetworkEntity;
 pub use sender_loop::{sender_loop, BufferSender};
 pub use receiver_loop::receiver_loop;
 
-pub use tilemap::TileMap;
+pub use tilemap::{TileMap, TileMapWithTextures};
 
 pub use entity::{Entity, Physical, ChildContainer, EntityProperties, PhysicalProperties};
 

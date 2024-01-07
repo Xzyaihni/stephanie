@@ -33,7 +33,7 @@ use game_state::GameState;
 
 use crate::common::{
 	MessagePasser,
-	tilemap::TileMap
+	tilemap::TileMapWithTextures
 };
 
 pub use game::DrawableEntity;
@@ -92,7 +92,7 @@ impl ObjectAllocator
 pub struct ClientInitInfo
 {
     pub client_info: ClientInfo,
-    pub tilemap: TileMap
+    pub tilemap: TileMapWithTextures
 }
 
 pub struct ClientInfo
