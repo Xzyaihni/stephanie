@@ -2,7 +2,8 @@ use std::{
     fs::File,
     fmt::{self, Debug},
     path::Path,
-    collections::HashMap
+    collections::HashMap,
+    ops::Index
 };
 
 use strum::IntoEnumIterator;
@@ -29,6 +30,7 @@ pub struct ChunkRuleRaw
 pub struct ChunkRulesRaw
 {
     rules: Vec<ChunkRuleRaw>,
+    underground: String,
     fallback: String
 }
 
@@ -92,6 +94,7 @@ impl<'a> Debug for BorrowedChunkRule<'a>
 pub struct ChunkRules
 {
     rules: Box<[ChunkRule]>,
+    underground: usize,
     fallback: usize,
     total_weight: f64,
     entropy: f64
@@ -117,6 +120,11 @@ impl ChunkRules
     pub fn name(&self, id: usize) -> &str
     {
         &self.rules.get(id).unwrap_or_else(|| panic!("{} out of range", id)).name
+    }
+
+    pub fn underground(&self) -> usize
+    {
+        self.underground
     }
 
     pub fn total_weight(&self) -> f64
@@ -167,6 +175,31 @@ impl ChunkRules
     }
 }
 
+struct NameMappings(HashMap<String, usize>);
+
+impl FromIterator<(String, usize)> for NameMappings
+{
+    fn from_iter<I>(iter: I) -> Self
+    where
+        I: IntoIterator<Item=(String, usize)>
+    {
+        Self(HashMap::from_iter(iter))
+    }
+}
+
+impl Index<&str> for NameMappings
+{
+    type Output = usize;
+
+    fn index(&self, index: &str) -> &Self::Output
+    {
+        self.0.get(index).unwrap_or_else(||
+        {
+            panic!("worldchunk '{index}' not found")
+        })
+    }
+}
+
 impl From<ChunkRulesRaw> for ChunkRules
 {
     fn from(rules: ChunkRulesRaw) -> Self
@@ -179,16 +212,18 @@ impl From<ChunkRulesRaw> for ChunkRules
         let name_mappings = rules.rules.iter().enumerate().map(|(id, rule)|
         {
             (rule.name.clone(), id)
-        }).collect::<HashMap<String, usize>>();
+        }).collect::<NameMappings>();
 
         let ChunkRulesRaw{
             rules,
+            underground,
             fallback
         } = rules;
 
         Self{
             total_weight: 1.0,
             entropy,
+            underground: name_mappings[&underground],
             fallback: name_mappings[&fallback],
             rules: rules.into_iter().map(|rule|
             {

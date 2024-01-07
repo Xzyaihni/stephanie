@@ -372,7 +372,9 @@ impl<S: SaveLoad<WorldChunk>> WorldGenerator<S>
 
                     this_slice.for_each(|(local_pos, world_chunk)|
                     {
-                        let chunk = WorldChunk::none();
+                        let chunk = WorldChunk{
+                            id: self.rules.underground()
+                        };
 
                         self.saver.save(global_mapper.to_global(local_pos), chunk);
 
