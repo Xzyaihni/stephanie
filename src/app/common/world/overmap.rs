@@ -29,6 +29,24 @@ pub trait Overmap<T>: OvermapIndexing
 
 	fn generate_missing(&mut self);
 
+	fn force_regenerate(&mut self)
+    {
+        let size = self.size();
+
+        for z in 0..size.z
+        {
+            for y in 0..size.y
+            {
+                for x in 0..size.x
+                {
+                    self.remove(LocalPos::new(Pos3{x, y, z}, size));
+                }
+            }
+        }
+
+        self.generate_missing();
+    }
+
 	fn position_offset(&mut self, offset: GlobalPos)
 	{
 		self.shift_chunks(offset);

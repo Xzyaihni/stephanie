@@ -22,6 +22,7 @@ use crate::common::{
         CHUNK_SIZE,
 		Pos3,
 		LocalPos,
+        GlobalPos,
 		AlwaysGroup,
 		overmap::{OvermapIndexing, FlatChunksContainer, ChunksContainer, ChunkIndexing},
 		chunk::{
@@ -115,6 +116,13 @@ impl From<rlua::Error> for ParseError
     }
 }
 
+pub const WORLD_CHUNK_SIZE: Pos3<usize> = Pos3{x: 16, y: 16, z: 1};
+pub const CHUNK_RATIO: Pos3<usize> = Pos3{
+    x: CHUNK_SIZE / WORLD_CHUNK_SIZE.x,
+    y: CHUNK_SIZE / WORLD_CHUNK_SIZE.y,
+    z: CHUNK_SIZE / WORLD_CHUNK_SIZE.z
+};
+
 #[repr(C, u8)]
 #[derive(Debug, Clone, Copy)]
 pub enum MaybeWorldChunk
@@ -196,14 +204,43 @@ impl WorldChunk
 	{
 		self.id
 	}
-}
 
-pub const WORLD_CHUNK_SIZE: Pos3<usize> = Pos3{x: 16, y: 16, z: 1};
-pub const CHUNK_RATIO: Pos3<usize> = Pos3{
-    x: CHUNK_SIZE / WORLD_CHUNK_SIZE.x,
-    y: CHUNK_SIZE / WORLD_CHUNK_SIZE.y,
-    z: CHUNK_SIZE / WORLD_CHUNK_SIZE.z
-};
+    pub fn belongs_to(pos: GlobalPos) -> GlobalPos
+    {
+        GlobalPos::from(pos.0.zip(CHUNK_RATIO).map(|(value, ratio)|
+        {
+            let ratio = ratio as i32;
+
+            if value < 0
+            {
+                value / ratio - 1
+            } else
+            {
+                value / ratio
+            }
+        }))
+    }
+
+    pub fn global_to_index(pos: GlobalPos) -> usize
+    {
+        let local_pos = pos.0.zip(CHUNK_RATIO).map(|(x, ratio)|
+        {
+            let m = x % ratio as i32;
+
+            if m < 0
+            {
+                (ratio as i32 + m) as usize
+            } else
+            {
+                m as usize
+            }
+        });
+
+        local_pos.z * CHUNK_RATIO.y * CHUNK_RATIO.x
+            + local_pos.y * CHUNK_RATIO.x
+            + local_pos.x
+    }
+}
 
 pub struct ChunkGenerator
 {
@@ -354,31 +391,34 @@ impl<S: SaveLoad<WorldChunk>> WorldGenerator<S>
                     chunk.is_none()
                 });
 
+                let mut applier = |pair: (LocalPos, &mut Option<WorldChunk>), chunk|
+                {
+                    *pair.1 = Some(chunk);
+
+                    self.saver.save(global_mapper.to_global(pair.0), chunk);
+                };
+
                 if global_z > 0
                 {
                     // above ground
                     
-                    this_slice.for_each(|(local_pos, world_chunk)|
+                    this_slice.for_each(|pair|
                     {
                         let chunk = WorldChunk::none();
 
-                        self.saver.save(global_mapper.to_global(local_pos), chunk);
-
-                        *world_chunk = Some(chunk);
+                        applier(pair, chunk);
                     });
                 } else
                 {
                     // underground
 
-                    this_slice.for_each(|(local_pos, world_chunk)|
+                    this_slice.for_each(|pair|
                     {
                         let chunk = WorldChunk{
                             id: self.rules.underground()
                         };
 
-                        self.saver.save(global_mapper.to_global(local_pos), chunk);
-
-                        *world_chunk = Some(chunk);
+                        applier(pair, chunk);
                     });
                 }
             }

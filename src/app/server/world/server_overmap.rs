@@ -116,7 +116,7 @@ impl<S: SaveLoad<WorldChunk>> ServerOvermap<S>
 
 		self.indexer.player_position = new_player_position;
 
-		self.position_offset(shift_offset);
+        self.position_offset(shift_offset);
 	}
 
 	fn generate_existing_chunk(&self, local_pos: LocalPos) -> Chunk

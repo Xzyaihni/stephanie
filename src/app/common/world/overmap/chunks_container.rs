@@ -405,3 +405,36 @@ impl<T> ChunkIndexing for FlatChunksContainer<T>
         self.indexer.index_to_pos(index)
     }
 }
+
+#[cfg(test)]
+mod tests
+{
+    use super::*;
+
+    #[test]
+    fn flat_slice_z()
+    {
+        let size = Pos3{
+            x: fastrand::usize(10..20),
+            y: fastrand::usize(10..20),
+            z: fastrand::usize(10..20)
+        };
+
+        let mut value = 0;
+        let container = ChunksContainer::new_with(size, |_| { value += 1; value });
+
+        let random_z = fastrand::usize(0..size.z);
+
+        let manual_flat_slice = container.iter().filter(|(pos, _value)|
+        {
+            pos.pos.z == random_z
+        });
+
+        let flat_slice_iter = container.flat_slice_iter(random_z);
+
+        flat_slice_iter.zip(manual_flat_slice).for_each(|(a, b)|
+        {
+            assert_eq!(a, b);
+        });
+    }
+}

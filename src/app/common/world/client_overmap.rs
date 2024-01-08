@@ -110,41 +110,22 @@ impl ClientOvermap
 	{
 		self.visual_overmap.camera_moved(position);
 
-		let tile_height_same =
-			position.tile_height() == self.indexer.player_position.tile_height();
+		let is_same_tile = position.tile_height() == self.indexer.player_position.tile_height();
 
 		let rounded_position = position.rounded();
 		let old_rounded_position = self.indexer.player_position.rounded();
 
-		if !tile_height_same
-		{
-			self.force_regenerate();
-		}
+        let position_difference = rounded_position - old_rounded_position;
 
 		self.indexer.player_position = position;
 
-		if rounded_position != old_rounded_position
+		if !is_same_tile || position_difference.0.z != 0
 		{
-			let chunk_height_same = rounded_position.0.z == old_rounded_position.0.z;
-			if !chunk_height_same
-			{
-				self.force_regenerate();
-			}
-
-			self.position_offset(rounded_position - old_rounded_position);
+			self.force_regenerate();
+		} else if position_difference.0 != Pos3::repeat(0)
+		{
+			self.position_offset(position_difference);
 		}
-	}
-
-	fn force_regenerate(&mut self)
-	{
-		self.visual_overmap.mark_all_ungenerated();
-		self.chunk_ordering.iter().for_each(|pos|
-		{
-			if pos.pos.z == 0
-			{
-				self.check_vertical(*pos);
-			}
-		});
 	}
 
 	fn request_chunk(&self, pos: GlobalPos)
@@ -223,6 +204,18 @@ impl Overmap<Arc<Chunk>> for ClientOvermap
 
 				self.request_chunk(global_pos);
 			});
+	}
+
+	fn force_regenerate(&mut self)
+	{
+		self.visual_overmap.mark_all_ungenerated();
+		self.chunk_ordering.iter().for_each(|pos|
+		{
+			if pos.pos.z == 0
+			{
+				self.check_vertical(*pos);
+			}
+		});
 	}
 }
 

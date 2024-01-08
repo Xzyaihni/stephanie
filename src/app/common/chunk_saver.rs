@@ -486,32 +486,6 @@ where
         }
 	}
 
-    fn to_rounded(pos: GlobalPos) -> GlobalPos
-    {
-        pos / CHUNK_RATIO.map(|x| x as i32)
-    }
-
-    fn to_index(pos: GlobalPos) -> usize
-    {
-        let local_pos = pos.0.zip(CHUNK_RATIO).map(|(x, ratio)|
-        {
-            let m = x % ratio as i32;
-
-            if m < 0
-            {
-                (ratio as i32 + m) as usize
-            } else
-            {
-                m as usize
-            }
-        });
-
-        local_pos.z * CHUNK_RATIO.y * CHUNK_RATIO.x
-            + local_pos.y * CHUNK_RATIO.x
-            + local_pos.x
-
-    }
-
     fn free_cache(&mut self, amount: usize)
     {
         let until_len = self.cache_amount - amount;
@@ -536,9 +510,9 @@ impl SaveLoad<WorldChunk> for WorldChunkSaver
 {
 	fn load(&mut self, pos: GlobalPos) -> Option<WorldChunk>
 	{
-        let index = Self::to_index(pos);
+        let index = WorldChunk::global_to_index(pos);
 
-        let rounded_pos = Self::to_rounded(pos);
+        let rounded_pos = WorldChunk::belongs_to(pos);
 
         if let Some(found) = self.cache.iter().find(|pair|
         {
@@ -554,10 +528,10 @@ impl SaveLoad<WorldChunk> for WorldChunkSaver
 
 	fn save(&mut self, pos: GlobalPos, chunk: WorldChunk)
 	{
-        let index = Self::to_index(pos);
+        let index = WorldChunk::global_to_index(pos);
 
         let value = SaveValueGroup{value: chunk, index};
-        let pair = ValuePair::new(Self::to_rounded(pos), value);
+        let pair = ValuePair::new(WorldChunk::belongs_to(pos), value);
 
         self.inner_save(pair);
 	}
