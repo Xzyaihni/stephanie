@@ -6,7 +6,7 @@ use nalgebra::Vector3;
 
 use tile::Tile;
 
-use crate::common::Transform;
+use crate::{impl_directionals, common::Transform};
 pub use pos::*;
 
 pub mod tile;
@@ -21,56 +21,56 @@ pub const CHUNK_VISUAL_SIZE: f32 = CHUNK_SIZE as f32  * TILE_SIZE;
 pub const TILE_SIZE: f32 = 0.1;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub struct ChunkLocal(pub LocalPos);
+pub struct ChunkLocal(Pos3<usize>);
 
 impl PartialEq for ChunkLocal
 {
 	fn eq(&self, other: &Self) -> bool
 	{
-		self.0.pos == other.0.pos
+		self.0 == other.0
 	}
 }
+
+impl From<Pos3<usize>> for ChunkLocal
+{
+    fn from(value: Pos3<usize>) -> Self
+    {
+        let this = Self(value);
+
+        debug_assert!(this.in_bounds());
+
+        this
+    }
+}
+
+impl_directionals!{ChunkLocal}
 
 impl ChunkLocal
 {
 	pub fn new(x: usize, y: usize, z: usize) -> Self
 	{
-		let size = Pos3::new(CHUNK_SIZE, CHUNK_SIZE, CHUNK_SIZE);
-		let local_pos = LocalPos::new(Pos3::new(x, y, z), size);
-
-		Self(local_pos)
+	    Self::from(Pos3::new(x, y, z))
 	}
 
-	pub fn maybe_group(self) -> MaybeGroup<Self>
-	{
-		self.0.maybe_group().map(Self)
-	}
+    fn moved(&self, x: usize, y: usize, z: usize) -> Self
+    {
+        Self::new(x, y, z)
+    }
 
-	pub fn overflow(&self, direction: PosDirection) -> Self
-	{
-		let local_pos = self.0.overflow(direction);
+    fn size(&self) -> Pos3<usize>
+    {
+        Pos3::repeat(CHUNK_SIZE)
+    }
 
-		Self(local_pos)
-	}
+    fn pos_mut(&mut self) -> &mut Pos3<usize>
+    {
+        &mut self.0
+    }
 
-	#[allow(dead_code)]
-	pub fn offset(&self, direction: PosDirection) -> Option<Self>
-	{
-		let local_pos = self.0.offset(direction);
-
-		local_pos.map(Self)
-	}
-
-	pub fn pos(&self) -> Pos3<usize>
-	{
-		self.0.pos
-	}
-
-	#[allow(dead_code)]
-	pub fn size(&self) -> Pos3<usize>
-	{
-		self.0.size
-	}
+    pub fn pos(&self) -> &Pos3<usize>
+    {
+        &self.0
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -98,8 +98,10 @@ impl Chunk
         }
 	}
 
-	fn index_of(pos: Pos3<usize>) -> usize
+	fn index_of(pos: ChunkLocal) -> usize
 	{
+        let pos = pos.0;
+
 		pos.z * CHUNK_SIZE * CHUNK_SIZE + pos.y * CHUNK_SIZE + pos.x
 	}
 }
@@ -112,31 +114,13 @@ impl From<Box<[Tile]>> for Chunk
 	}
 }
 
-impl Index<Pos3<usize>> for Chunk
-{
-	type Output = Tile;
-
-	fn index(&self, index: Pos3<usize>) -> &Self::Output
-	{
-		&self.tiles[Self::index_of(index)]
-	}
-}
-
-impl IndexMut<Pos3<usize>> for Chunk
-{
-	fn index_mut(&mut self, index: Pos3<usize>) -> &mut Self::Output
-	{
-		&mut self.tiles[Self::index_of(index)]
-	}
-}
-
 impl Index<ChunkLocal> for Chunk
 {
 	type Output = Tile;
 
 	fn index(&self, index: ChunkLocal) -> &Self::Output
 	{
-		&self.tiles[Self::index_of(index.pos())]
+		&self.tiles[Self::index_of(index)]
 	}
 }
 
@@ -144,6 +128,6 @@ impl IndexMut<ChunkLocal> for Chunk
 {
 	fn index_mut(&mut self, index: ChunkLocal) -> &mut Self::Output
 	{
-		&mut self.tiles[Self::index_of(index.pos())]
+		&mut self.tiles[Self::index_of(index)]
 	}
 }

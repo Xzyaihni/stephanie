@@ -17,13 +17,16 @@ use yanyaengine::{
 use crate::common::{
 	sender_loop,
 	receiver_loop,
+    TileMap,
 	EntitiesContainer,
 	EntitiesController,
 	message::Message,
 	player::Player,
 	world::{
 		World,
-		Pos3
+		Pos3,
+        Tile,
+        TilePos
 	}
 };
 
@@ -149,6 +152,7 @@ pub struct GameState
     pub controls: ControlsController,
 	pub running: bool,
 	pub debug_mode: bool,
+    pub tilemap: Arc<TileMap>,
 	player_id: usize,
 	world: World,
 	connections_handler: Arc<RwLock<ConnectionsHandler>>,
@@ -172,6 +176,8 @@ impl GameState
 		let entities = ClientEntitiesContainer::new();
         let controls = ControlsController::new();
 		let connections_handler = Arc::new(RwLock::new(ConnectionsHandler::new(message_passer)));
+
+        let tilemap = tiles_factory.tilemap().clone();
 
 		let world_receiver = WorldReceiver::new(connections_handler.clone());
 		let world = World::new(
@@ -201,6 +207,7 @@ impl GameState
             controls,
 			running: true,
 			debug_mode: client_info.debug_mode,
+            tilemap,
 			player_id,
 			world,
 			connections_handler,
@@ -343,6 +350,16 @@ impl GameState
 		camera.rescale(scale);
 		self.world.rescale(camera.aspect());
 	}
+
+    pub fn tile(&self, index: TilePos) -> Option<&Tile>
+    {
+        self.world.tile(index)
+    }
+
+    pub fn player_tile(&self) -> TilePos
+    {
+        self.world.player_tile()
+    }
 
 	pub fn player_connected(&mut self) -> bool
 	{

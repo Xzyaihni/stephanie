@@ -6,8 +6,6 @@ use std::{
     ops::Index
 };
 
-use strum::IntoEnumIterator;
-
 use serde::Deserialize;
 
 use super::{PossibleStates, ParseError};
@@ -70,7 +68,7 @@ impl<'a> Debug for BorrowedChunkRule<'a>
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
     {
-        let neighbors = PosDirection::iter().map(|direction|
+        let neighbors = PosDirection::iter_non_z().map(|direction|
         {
             let neighbors = self.neighbors(direction).iter().map(|id|
             {

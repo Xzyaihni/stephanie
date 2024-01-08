@@ -7,8 +7,6 @@ use serde::{Serialize, Deserialize};
 
 use num_enum::TryFromPrimitive;
 
-use strum_macros::EnumIter;
-
 use enum_amount::EnumCount;
 
 use nalgebra::{Vector3, Point3, Scalar};
@@ -24,6 +22,22 @@ pub struct Pos3<T>
 	pub z: T
 }
 
+impl<T, V> Pos3<(T, V)>
+{
+    pub fn unzip(self) -> (Pos3<T>, Pos3<V>)
+    {
+        (Pos3{
+            x: self.x.0,
+            y: self.y.0,
+            z: self.z.0
+        }, Pos3{
+            x: self.x.1,
+            y: self.y.1,
+            z: self.z.1
+        })
+    }
+}
+
 impl<T> Pos3<T>
 {
 	pub fn new(x: T, y: T, z: T) -> Self
@@ -31,10 +45,35 @@ impl<T> Pos3<T>
 		Self{x, y, z}
 	}
 
+    pub fn plane_of(&self, direction: PosDirection) -> &T
+    {
+        match direction
+        {
+            PosDirection::Right | PosDirection::Left => &self.x,
+            PosDirection::Up | PosDirection::Down => &self.y,
+            PosDirection::Forward | PosDirection::Back => &self.z
+        }
+    }
+
+    pub fn plane_of_mut(&mut self, direction: PosDirection) -> &mut T
+    {
+        match direction
+        {
+            PosDirection::Right | PosDirection::Left => &mut self.x,
+            PosDirection::Up | PosDirection::Down => &mut self.y,
+            PosDirection::Forward | PosDirection::Back => &mut self.z
+        }
+    }
+
 	pub fn map<F: FnMut(T) -> V, V>(self, mut f: F) -> Pos3<V>
 	{
 		Pos3::<V>{x: f(self.x), y: f(self.y), z: f(self.z)}
 	}
+
+    pub fn all<F: FnMut(T) -> bool>(self, mut f: F) -> bool
+    {
+        f(self.x) && f(self.y) && f(self.z)
+    }
 
     pub fn zip<V>(self, other: Pos3<V>) -> Pos3<(T, V)>
     {
@@ -87,8 +126,13 @@ impl Pos3<f32>
 {
 	pub fn tile_height(self) -> usize
 	{
-		(self.modulo(CHUNK_VISUAL_SIZE).z / TILE_SIZE) as usize
+        self.to_tile().z
 	}
+
+    pub fn to_tile(self) -> Pos3<usize>
+    {
+        (self.modulo(CHUNK_VISUAL_SIZE) / TILE_SIZE).map(|x| x as usize)
+    }
 
 	pub fn rounded(self) -> GlobalPos
 	{
@@ -332,17 +376,29 @@ impl From<Pos3<usize>> for GlobalPos
 }
 
 #[repr(u8)]
-#[derive(Debug, Clone, Copy, TryFromPrimitive, EnumCount, EnumIter)]
+#[derive(Debug, Clone, Copy, TryFromPrimitive, EnumCount)]
 pub enum PosDirection
 {
 	Right,
 	Left,
 	Up,
-	Down
+	Down,
+    Forward,
+    Back
 }
 
 impl PosDirection
 {
+    pub fn iter_non_z() -> impl Iterator<Item=Self>
+    {
+        [
+            PosDirection::Right,
+            PosDirection::Left,
+            PosDirection::Up,
+            PosDirection::Down
+        ].into_iter()
+    }
+
     pub fn opposite(self) -> Self
     {
         match self
@@ -350,7 +406,18 @@ impl PosDirection
             PosDirection::Right => PosDirection::Left,
             PosDirection::Left => PosDirection::Right,
             PosDirection::Up => PosDirection::Down,
-            PosDirection::Down => PosDirection::Up
+            PosDirection::Down => PosDirection::Up,
+            PosDirection::Forward => PosDirection::Back,
+            PosDirection::Back => PosDirection::Forward
+        }
+    }
+
+    pub fn is_negative(&self) -> bool
+    {
+        match self
+        {
+            PosDirection::Right | PosDirection::Up | PosDirection::Forward => false,
+            PosDirection::Left | PosDirection::Down | PosDirection::Back => true
         }
     }
 }
@@ -390,7 +457,8 @@ impl<T> Index<PosDirection> for DirectionsGroup<T>
 			PosDirection::Right => &self.right,
 			PosDirection::Left => &self.left,
 			PosDirection::Up => &self.up,
-			PosDirection::Down => &self.down
+			PosDirection::Down => &self.down,
+            PosDirection::Forward | PosDirection::Back => unreachable!()
 		}
 	}
 }
@@ -469,12 +537,234 @@ impl<T> Index<PosDirection> for AlwaysGroup<T>
 	}
 }
 
+#[macro_export]
+macro_rules! impl_directionals
+{
+    ($name:ident) =>
+    {
+        impl $name
+        {
+            #[allow(dead_code)]
+            pub fn directions_group(self) -> DirectionsGroup<Option<Self>>
+            {
+                DirectionsGroup{
+                    right: self.right(),
+                    left: self.left(),
+                    up: self.up(),
+                    down: self.down()
+                }
+            }
+
+            pub fn directions_always_group(self) -> Option<DirectionsGroup<Self>>
+            {
+                let directions = self.directions_group();
+
+                let any_none =
+                    directions.right.is_none()
+                    || directions.left.is_none()
+                    || directions.up.is_none()
+                    || directions.down.is_none();
+
+                if any_none
+                {
+                    return None;
+                }
+
+                // u cant reach this part if any of the directions r none
+                Some(directions.map(|_direction, value|
+                {
+                    unsafe{ value.unwrap_unchecked() }
+                }))
+            }
+
+            pub fn maybe_group(self) -> MaybeGroup<Self>
+            {
+                MaybeGroup{
+                    this: self,
+                    other: self.directions_group()
+                }
+            }
+
+            pub fn always_group(self) -> Option<AlwaysGroup<Self>>
+            {
+                self.directions_always_group().map(|other|
+                {
+                    AlwaysGroup{
+                        this: self,
+                        other
+                    }
+                })
+            }
+
+            pub fn overflow(&self, direction: PosDirection) -> Self
+            {
+                let pos = self.pos();
+
+                match direction
+                {
+                    PosDirection::Right => self.moved(0, pos.y, pos.z),
+                    PosDirection::Left => self.moved(self.size().x - 1, pos.y, pos.z),
+                    PosDirection::Up => self.moved(pos.x, 0, pos.z),
+                    PosDirection::Down => self.moved(pos.x, self.size().y - 1, pos.z),
+                    PosDirection::Forward => self.moved(pos.x, pos.y, 0),
+                    PosDirection::Back => self.moved(pos.x, pos.y, self.size().z - 1)
+                }
+            }
+
+            #[allow(dead_code)]
+            pub fn offset(&self, direction: PosDirection) -> Option<Self>
+            {
+                let edge = if direction.is_negative()
+                {
+                    0
+                } else
+                {
+                    self.size().plane_of(direction) - 1
+                };
+
+                let is_edge = *self.pos().plane_of(direction) == edge;
+
+                (!is_edge).then(||
+                {
+                    let mut value = *self;
+
+                    *value.pos_mut().plane_of_mut(direction) += 1;
+                    debug_assert!(value.in_bounds());
+
+                    value
+                })
+            }
+
+            pub fn right(&self) -> Option<Self>
+            {
+                (!self.right_edge()).then(||
+                {
+                    let mut value = *self;
+
+                    value.pos_mut().x += 1;
+                    debug_assert!(value.in_bounds());
+
+                    value
+                })
+            }
+
+            pub fn left(&self) -> Option<Self>
+            {
+                (!self.left_edge()).then(||
+                {
+                    let mut value = *self;
+
+                    value.pos_mut().x -= 1;
+                    debug_assert!(value.in_bounds());
+
+                    value
+                })
+            }
+
+            pub fn forward(&self) -> Option<Self>
+            {
+                (!self.forward_edge()).then(||
+                {
+                    let mut value = *self;
+
+                    value.pos_mut().z += 1;
+                    debug_assert!(value.in_bounds());
+
+                    value
+                })
+            }
+
+            pub fn back(&self) -> Option<Self>
+            {
+                (!self.back_edge()).then(||
+                {
+                    let mut value = *self;
+
+                    value.pos_mut().z -= 1;
+                    debug_assert!(value.in_bounds());
+
+                    value
+                })
+            }
+
+            pub fn up(&self) -> Option<Self>
+            {
+                (!self.top_edge()).then(||
+                {
+                    let mut value = *self;
+
+                    value.pos_mut().y += 1;
+                    debug_assert!(value.in_bounds());
+
+                    value
+                })
+            }
+
+            pub fn down(&self) -> Option<Self>
+            {
+                (!self.bottom_edge()).then(||
+                {
+                    let mut value = *self;
+
+                    value.pos_mut().y -= 1;
+                    debug_assert!(value.in_bounds());
+
+                    value
+                })
+            }
+
+            #[allow(dead_code)]
+            pub fn top_edge(&self) -> bool
+            {
+                self.pos().y == (self.size().y - 1)
+            }
+
+            #[allow(dead_code)]
+            pub fn bottom_edge(&self) -> bool
+            {
+                self.pos().y == 0
+            }
+
+            #[allow(dead_code)]
+            pub fn forward_edge(&self) -> bool
+            {
+                self.pos().z == (self.size().z - 1)
+            }
+
+            #[allow(dead_code)]
+            pub fn back_edge(&self) -> bool
+            {
+                self.pos().z == 0
+            }
+
+            #[allow(dead_code)]
+            pub fn right_edge(&self) -> bool
+            {
+                self.pos().x == (self.size().x - 1)
+            }
+
+            #[allow(dead_code)]
+            pub fn left_edge(&self) -> bool
+            {
+                self.pos().x == 0
+            }
+
+            pub fn in_bounds(&self) -> bool
+            {
+                self.pos().zip(self.size()).all(|(pos, size)| pos < size)
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
 pub struct LocalPos
 {
 	pub pos: Pos3<usize>,
 	pub size: Pos3<usize>
 }
+
+impl_directionals!{LocalPos}
 
 impl LocalPos
 {
@@ -485,18 +775,11 @@ impl LocalPos
 
 	pub fn from_global(other: GlobalPos, size: Pos3<usize>) -> Option<Self>
 	{
-		let in_range = |value, limit| (0..limit as i32).contains(&value);
-
 		let GlobalPos(pos) = other;
 
-		let in_range = in_range(pos.x, size.x)
-            && in_range(pos.y, size.y)
-            && in_range(pos.z, size.z);
+        let this = Self::new(Pos3::new(pos.x as usize, pos.y as usize, pos.z as usize), size);
 
-		in_range.then(||
-		{
-			Self::new(Pos3::new(pos.x as usize, pos.y as usize, pos.z as usize), size)
-		})
+        this.in_bounds().then(|| this)
 	}
 
 	pub fn moved(&self, x: usize, y: usize, z: usize) -> Self
@@ -515,165 +798,20 @@ impl LocalPos
 		[Some(self), self.right(), self.left(), self.up(), self.down()].into_iter()
 	}
 
-	#[allow(dead_code)]
-	pub fn directions_group(self) -> DirectionsGroup<Option<Self>>
-	{
-		DirectionsGroup{
-			right: self.right(),
-			left: self.left(),
-			up: self.up(),
-			down: self.down()
-		}
-	}
-
-    pub fn directions_always_group(self) -> Option<DirectionsGroup<Self>>
+    fn size(&self) -> Pos3<usize>
     {
-		let directions = self.directions_group();
-
-		let any_none =
-			directions.right.is_none()
-			|| directions.left.is_none()
-			|| directions.up.is_none()
-			|| directions.down.is_none();
-
-		if any_none
-		{
-			return None;
-		}
-
-        // u cant reach this part if any of the directions r none
-		Some(directions.map(|_direction, value|
-        {
-            unsafe{ value.unwrap_unchecked() }
-        }))
+        self.size
     }
 
-	pub fn maybe_group(self) -> MaybeGroup<Self>
-	{
-		MaybeGroup{
-			this: self,
-			other: self.directions_group()
-		}
-	}
-
-	pub fn always_group(self) -> Option<AlwaysGroup<Self>>
-	{
-        self.directions_always_group().map(|other|
-        {
-            AlwaysGroup{
-                this: self,
-                other
-            }
-        })
-	}
-
-	pub fn overflow(&self, direction: PosDirection) -> Self
-	{
-		let pos = self.pos;
-
-		match direction
-		{
-			PosDirection::Right => self.moved(0, pos.y, pos.z),
-			PosDirection::Left => self.moved(self.size.x - 1, pos.y, pos.z),
-			PosDirection::Up => self.moved(pos.x, 0, pos.z),
-			PosDirection::Down => self.moved(pos.x, self.size.y - 1, pos.z)
-		}
-	}
-
-	#[allow(dead_code)]
-	pub fn offset(&self, direction: PosDirection) -> Option<Self>
-	{
-		match direction
-		{
-			PosDirection::Right => self.right(),
-			PosDirection::Left => self.left(),
-			PosDirection::Up => self.up(),
-			PosDirection::Down => self.down()
-		}
-	}
-
-    pub fn in_bounds(&self) -> bool
+    fn pos_mut(&mut self) -> &mut Pos3<usize>
     {
-        (0..self.size.x).contains(&self.pos.x)
-            && (0..self.size.y).contains(&self.pos.y)
-            && (0..self.size.z).contains(&self.pos.z)
+        &mut self.pos
     }
 
-	pub fn right(&self) -> Option<Self>
-	{
-        (!self.right_edge()).then(||
-        {
-            let mut value = *self;
-
-            value.pos.x += 1;
-            debug_assert!(value.in_bounds());
-
-            value
-        })
-	}
-
-	pub fn left(&self) -> Option<Self>
-	{
-        (!self.left_edge()).then(||
-        {
-            let mut value = *self;
-
-            value.pos.x -= 1;
-            debug_assert!(value.in_bounds());
-
-            value
-        })
-	}
-
-	pub fn up(&self) -> Option<Self>
-	{
-        (!self.top_edge()).then(||
-        {
-            let mut value = *self;
-
-            value.pos.y += 1;
-            debug_assert!(value.in_bounds());
-
-            value
-        })
-	}
-
-	pub fn down(&self) -> Option<Self>
-	{
-        (!self.bottom_edge()).then(||
-        {
-            let mut value = *self;
-
-            value.pos.y -= 1;
-            debug_assert!(value.in_bounds());
-
-            value
-        })
-	}
-
-    #[allow(dead_code)]
-	pub fn top_edge(&self) -> bool
-	{
-		self.pos.y == (self.size.y - 1)
-	}
-
-    #[allow(dead_code)]
-	pub fn bottom_edge(&self) -> bool
-	{
-		self.pos.y == 0
-	}
-
-    #[allow(dead_code)]
-	pub fn right_edge(&self) -> bool
-	{
-		self.pos.x == (self.size.x - 1)
-	}
-
-    #[allow(dead_code)]
-	pub fn left_edge(&self) -> bool
-	{
-		self.pos.x == 0
-	}
+    fn pos(&self) -> &Pos3<usize>
+    {
+        &self.pos
+    }
 
 	#[allow(dead_code)]
 	pub fn to_cube(self, side: usize) -> usize

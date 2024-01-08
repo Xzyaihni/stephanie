@@ -25,6 +25,8 @@ pub use overmap::chunk::{
 	tile::Tile
 };
 
+pub use client_overmap::TilePos;
+
 use client_overmap::ClientOvermap;
 use visual_overmap::VisualOvermap;
 
@@ -77,6 +79,16 @@ impl World
 
 		(min_scale, max_scale)
 	}
+
+    pub fn tile(&self, index: TilePos) -> Option<&Tile>
+    {
+        self.overmap.tile(index)
+    }
+
+    pub fn player_tile(&self) -> TilePos
+    {
+        self.overmap.player_tile()
+    }
 
 	pub fn update(&mut self, dt: f32)
 	{

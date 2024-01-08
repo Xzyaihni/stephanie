@@ -1,7 +1,5 @@
 use std::sync::Arc;
 
-use strum::IntoEnumIterator;
-
 use yanyaengine::{
     Object,
     game_object::*
@@ -86,7 +84,7 @@ impl VisualChunk
 
 			model_builder.create(chunk_depth, pos, tiles.this);
 
-			PosDirection::iter().for_each(|direction|
+			PosDirection::iter_non_z().for_each(|direction|
 			{
 				if let Some(gradient_tile) = tiles[direction]
 				{

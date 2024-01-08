@@ -5,16 +5,19 @@ use yanyaengine::game_object::*;
 use crate::client::world_receiver::WorldReceiver;
 
 use super::{
+    Tile,
 	visual_overmap::VisualOvermap,
 	overmap::{
 		ChunksContainer,
 		Overmap,
 		OvermapIndexing,
 		chunk::{
+            CHUNK_SIZE,
 			Pos3,
 			Chunk,
 			GlobalPos,
-			LocalPos
+			LocalPos,
+            ChunkLocal
 		}
 	}
 };
@@ -46,6 +49,47 @@ impl OvermapIndexing for Indexer
 	{
 		self.player_position.rounded()
 	}
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct TilePos
+{
+    chunk: GlobalPos,
+    local: ChunkLocal
+}
+
+impl TilePos
+{
+    pub fn offset(self, offset: Pos3<i32>) -> Self
+    {
+        let (chunk, local) = self.local.pos()
+            .zip(self.chunk.0)
+            .zip(offset)
+            .map(|((local, chunk), offset)|
+            {
+                let new_local = local as i32 + offset;
+
+                let chunk_size = CHUNK_SIZE as i32;
+
+                if new_local < 0
+                {
+                    let out_local = (chunk_size + new_local % chunk_size) as usize;
+
+                    (chunk - 1 + new_local / chunk_size, out_local)
+                } else if new_local >= chunk_size
+                {
+                    (chunk + new_local / chunk_size, (new_local % chunk_size) as usize)
+                } else
+                {
+                    (chunk, new_local as usize)
+                }
+            }).unzip();
+
+        TilePos{
+            chunk: GlobalPos::from(chunk),
+            local: ChunkLocal::from(local)
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -106,11 +150,33 @@ impl ClientOvermap
 		self.visual_overmap.update(dt);
 	}
 
+    pub fn tile(&self, index: TilePos) -> Option<&Tile>
+    {
+        self.to_local(index.chunk).and_then(|local_pos|
+        {
+            self.chunks[local_pos].as_ref()
+        }).map(|chunk|
+        {
+            &chunk[index.local]
+        })
+    }
+
+    pub fn player_tile(&self) -> TilePos
+    {
+        let pos = self.indexer.player_position;
+
+        TilePos{
+            chunk: pos.rounded(),
+            local: ChunkLocal::from(pos.to_tile())
+        }
+    }
+
 	pub fn camera_moved(&mut self, position: Pos3<f32>)
 	{
 		self.visual_overmap.camera_moved(position);
 
-		let is_same_tile = position.tile_height() == self.indexer.player_position.tile_height();
+		let is_same_tile_height =
+            position.tile_height() == self.indexer.player_position.tile_height();
 
 		let rounded_position = position.rounded();
 		let old_rounded_position = self.indexer.player_position.rounded();
@@ -119,13 +185,28 @@ impl ClientOvermap
 
 		self.indexer.player_position = position;
 
-		if !is_same_tile || position_difference.0.z != 0
-		{
-			self.force_regenerate();
-		} else if position_difference.0 != Pos3::repeat(0)
+        let z_changed = !is_same_tile_height || position_difference.0.z != 0;
+
+        if z_changed
+        {
+		    self.visual_overmap.mark_all_ungenerated();
+        }
+
+        if position_difference.0 != Pos3::repeat(0)
 		{
 			self.position_offset(position_difference);
 		}
+
+        if z_changed
+        {
+            self.chunk_ordering.iter().for_each(|pos|
+            {
+                if pos.pos.z == 0
+                {
+                    self.check_vertical(*pos);
+                }
+            });
+        }
 	}
 
 	fn request_chunk(&self, pos: GlobalPos)
@@ -204,18 +285,6 @@ impl Overmap<Arc<Chunk>> for ClientOvermap
 
 				self.request_chunk(global_pos);
 			});
-	}
-
-	fn force_regenerate(&mut self)
-	{
-		self.visual_overmap.mark_all_ungenerated();
-		self.chunk_ordering.iter().for_each(|pos|
-		{
-			if pos.pos.z == 0
-			{
-				self.check_vertical(*pos);
-			}
-		});
 	}
 }
 

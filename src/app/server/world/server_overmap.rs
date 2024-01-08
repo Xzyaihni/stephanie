@@ -17,6 +17,7 @@ use crate::common::{
         GlobalPos,
         Pos3,
         Chunk,
+        ChunkLocal,
         chunk::tile::Tile,
         overmap::{Overmap, OvermapIndexing, ChunksContainer}
     }
@@ -159,7 +160,7 @@ impl<S: SaveLoad<WorldChunk>> ServerOvermap<S>
                 for x in 0..size.x
                 {
                     let this_pos = Pos3::new(x, y, z);
-                    chunk[pos + this_pos] = world_chunk[this_pos];
+                    chunk[ChunkLocal::from(pos + this_pos)] = world_chunk[this_pos];
                 }
             }
         }

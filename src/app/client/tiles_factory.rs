@@ -89,7 +89,7 @@ impl ChunkModelBuilder
 	)
 	{
 		let pos = {
-            let mut pos = Pos3::<f32>::from(chunk_pos.pos()) * TILE_SIZE;
+            let mut pos = Pos3::<f32>::from(*chunk_pos.pos()) * TILE_SIZE;
 
             pos.z -= chunk_depth as f32 * CHUNK_VISUAL_SIZE;
 
@@ -181,7 +181,7 @@ impl ChunkModelBuilder
 		let transform = Chunk::transform_of_chunk(pos);
 
 		let textures_indices = (iter::once(0)).chain(
-			PosDirection::iter().map(Self::direction_texture_index)
+			PosDirection::iter_non_z().map(Self::direction_texture_index)
 		);
 
 		self.models.into_iter().zip(textures_indices)
@@ -203,7 +203,8 @@ impl ChunkModelBuilder
 		let mapped_mask = match direction
 		{
 			PosDirection::Up | PosDirection::Right => GradientMask::Outer,
-			PosDirection::Down | PosDirection::Left => GradientMask::Inner
+			PosDirection::Down | PosDirection::Left => GradientMask::Inner,
+            _ => unreachable!()
 		};
 
 		mapped_mask as usize + 1

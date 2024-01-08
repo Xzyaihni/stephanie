@@ -8,7 +8,7 @@ use crate::{
         EntitiesController,
         NetworkEntity,
         player::Player,
-        world::TILE_SIZE,
+        world::{TILE_SIZE, Pos3},
         physics::PhysicsEntity
     }
 };
@@ -132,6 +132,32 @@ impl<'a> PlayerContainer<'a>
         if !self.exists()
         {
             return;
+        }
+
+        if self.game_state.clicked(Control::MainAction)
+        {
+            let tile_pos = self.game_state.player_tile();
+
+            let my_tile = self.game_state.tile(tile_pos);
+            let tile_below = self.game_state.tile(
+                tile_pos.offset(Pos3{x: 0, y: 0, z: -1})
+            );
+
+            let name_of = |tile|
+            {
+                if let Some(tile) = tile
+                {
+                    &self.game_state.tilemap[tile].name
+                } else
+                {
+                    "none"
+                }
+            };
+
+            let my_tile = name_of(my_tile.copied());
+            let tile_below = name_of(tile_below.copied());
+
+            eprintln!("my tile: {my_tile}, tile below me: {tile_below}");
         }
 
         if let Some(movement) = self.movement_direction()

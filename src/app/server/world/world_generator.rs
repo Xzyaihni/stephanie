@@ -9,8 +9,6 @@ use std::{
 	path::{Path, PathBuf}
 };
 
-use strum::IntoEnumIterator;
-
 use parking_lot::Mutex;
 
 use rlua::Lua;
@@ -321,7 +319,7 @@ impl ChunkGenerator
         {
             let function = ctx.globals().get::<_, rlua::Function>(group.this)?;
 
-            let neighbors = PosDirection::iter().map(|direction| group[direction])
+            let neighbors = PosDirection::iter_non_z().map(|direction| group[direction])
                 .collect::<Vec<_>>();
 
             function.call(neighbors)
