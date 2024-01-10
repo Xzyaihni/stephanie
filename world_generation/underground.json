@@ -1,0 +1,15 @@
+{
+    "rules": [
+        {
+            "name": "underground",
+            "weight": 1,
+            "neighbors": {
+                "up": [],
+                "down": [],
+                "right": [],
+                "left": []
+            }
+        }
+    ],
+    "fallback": "underground"
+}

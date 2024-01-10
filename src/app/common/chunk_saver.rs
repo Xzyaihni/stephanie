@@ -565,6 +565,8 @@ mod tests
 {
     use super::*;
 
+    use crate::server::world::world_generator::WorldChunkId;
+
     use std::iter;
 
 
@@ -604,9 +606,14 @@ mod tests
             fastrand::usize(40..70)
         );
 
+        let random_worldchunk = ||
+        {
+            WorldChunk::new(WorldChunkId::from_raw(fastrand::usize(0..100)))
+        };
+
         let mut chunks: Vec<_> = iter::repeat_with(||
             {
-                WorldChunk::new(fastrand::usize(0..100))
+                random_worldchunk()
             }).zip((0..).map(|index|
             {
                 let x = index % size.x;
@@ -626,7 +633,7 @@ mod tests
 
         for i in 1..10
         {
-            saver.save(GlobalPos::from(size + i), WorldChunk::new(55));
+            saver.save(GlobalPos::from(size + i), random_worldchunk());
         }
 
         let mut shuffled_chunks = Vec::with_capacity(chunks.len());

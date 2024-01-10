@@ -251,7 +251,7 @@ mod tests
         let tilemap = TileMap::parse(tiles, "textures/tiles/").unwrap().tilemap;
 
         let world_generator = Arc::new(Mutex::new(
-            WorldGenerator::new(saver, tilemap, "world_generation/city.json").unwrap()
+            WorldGenerator::new(saver, tilemap, "world_generation/").unwrap()
         ));
 
         let size = Pos3::new(10, 11, 12);

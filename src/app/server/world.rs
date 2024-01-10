@@ -64,9 +64,9 @@ impl World
 		let chunk_saver = ChunkSaver::new(world_path.join("chunks"), 100);
 
 		let world_generator = {
-			let chunk_saver = WorldChunkSaver::new(world_path.join("world_chunks"), 10);
+			let chunk_saver = WorldChunkSaver::new(world_path.join("world_chunks"), 100);
 
-			WorldGenerator::new(chunk_saver, tilemap, "world_generation/city.json")
+			WorldGenerator::new(chunk_saver, tilemap, "world_generation/")
 		}?;
 
 		let world_generator = Arc::new(Mutex::new(world_generator));

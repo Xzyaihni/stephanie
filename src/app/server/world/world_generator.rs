@@ -1,12 +1,10 @@
 use std::{
     fs,
+	io,
 	fmt,
-    mem,
-    slice,
     ops::Index,
     collections::HashSet,
-	io::{self, Write},
-	path::{Path, PathBuf}
+	path::PathBuf
 };
 
 use parking_lot::Mutex;
@@ -17,10 +15,8 @@ use crate::common::{
 	TileMap,
     SaveLoad,
 	world::{
-        CHUNK_SIZE,
 		Pos3,
 		LocalPos,
-        GlobalPos,
 		AlwaysGroup,
 		overmap::{OvermapIndexing, FlatChunksContainer, ChunksContainer, ChunkIndexing},
 		chunk::{
@@ -30,7 +26,9 @@ use crate::common::{
 	}
 };
 
-use chunk_rules::ChunkRules;
+use chunk_rules::{ChunkRulesGroup, ChunkRules};
+
+pub use chunk_rules::{WORLD_CHUNK_SIZE, CHUNK_RATIO, MaybeWorldChunk, WorldChunk, WorldChunkId};
 
 mod chunk_rules;
 
@@ -114,132 +112,6 @@ impl From<rlua::Error> for ParseError
     }
 }
 
-pub const WORLD_CHUNK_SIZE: Pos3<usize> = Pos3{x: 16, y: 16, z: 1};
-pub const CHUNK_RATIO: Pos3<usize> = Pos3{
-    x: CHUNK_SIZE / WORLD_CHUNK_SIZE.x,
-    y: CHUNK_SIZE / WORLD_CHUNK_SIZE.y,
-    z: CHUNK_SIZE / WORLD_CHUNK_SIZE.z
-};
-
-#[repr(C, u8)]
-#[derive(Debug, Clone, Copy)]
-pub enum MaybeWorldChunk
-{
-    None,
-    Some(WorldChunk)
-}
-
-impl From<MaybeWorldChunk> for Option<WorldChunk>
-{
-    fn from(value: MaybeWorldChunk) -> Self
-    {
-        match value
-        {
-            MaybeWorldChunk::None => None,
-            MaybeWorldChunk::Some(value) => Some(value)
-        }
-    }
-}
-
-impl MaybeWorldChunk
-{
-    pub const fn size_of() -> usize
-    {
-        mem::size_of::<Self>()
-    }
-
-    pub const fn index_of(index: usize) -> usize
-    {
-        index * Self::size_of()
-    }
-
-    pub fn write_into(self, mut writer: impl Write)
-    {
-        let size = mem::size_of::<Self>();
-        let bytes: &[u8] = unsafe{
-            slice::from_raw_parts(&self as *const Self as *const u8, size)
-        };
-
-        writer.write_all(bytes).unwrap();
-    }
-
-    pub fn from_bytes(bytes: &[u8]) -> Self
-    {
-        assert_eq!(bytes.len(), mem::size_of::<Self>());
-
-        unsafe{
-            (bytes.as_ptr() as *const Self).read()
-        }
-    }
-}
-
-#[repr(C)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct WorldChunk
-{
-	id: usize
-}
-
-impl WorldChunk
-{
-	pub fn new(id: usize) -> Self
-	{
-		Self{id}
-	}
-
-	#[allow(dead_code)]
-	pub fn none() -> Self
-	{
-		Self{id: 0}
-	}
-
-    pub fn is_none(&self) -> bool
-    {
-        self.id == 0
-    }
-
-	pub fn id(&self) -> usize
-	{
-		self.id
-	}
-
-    pub fn belongs_to(pos: GlobalPos) -> GlobalPos
-    {
-        GlobalPos::from(pos.0.zip(CHUNK_RATIO).map(|(value, ratio)|
-        {
-            let ratio = ratio as i32;
-
-            if value < 0
-            {
-                value / ratio - 1
-            } else
-            {
-                value / ratio
-            }
-        }))
-    }
-
-    pub fn global_to_index(pos: GlobalPos) -> usize
-    {
-        let local_pos = pos.0.zip(CHUNK_RATIO).map(|(x, ratio)|
-        {
-            let m = x % ratio as i32;
-
-            if m < 0
-            {
-                (ratio as i32 + m) as usize
-            } else
-            {
-                m as usize
-            }
-        });
-
-        local_pos.z * CHUNK_RATIO.y * CHUNK_RATIO.x
-            + local_pos.y * CHUNK_RATIO.x
-            + local_pos.x
-    }
-}
-
 pub struct ChunkGenerator
 {
     lua: Mutex<Lua>,
@@ -248,7 +120,7 @@ pub struct ChunkGenerator
 
 impl ChunkGenerator
 {
-	pub fn new(tilemap: TileMap, rules: &ChunkRules) -> Result<Self, ParseError>
+	pub fn new(tilemap: TileMap, rules: &ChunkRulesGroup) -> Result<Self, ParseError>
 	{
 		let lua = Mutex::new(Lua::new());
 
@@ -258,9 +130,13 @@ impl ChunkGenerator
 
         this.setup_lua_state()?;
 
-		rules.iter().try_for_each(|rule|
+		rules.iter_names().filter(|name|
+        {
+            let name: &str = name.as_ref();
+
+            name != "none"
+        }).try_for_each(|name|
 		{
-            let name = rule.name();
             let filename = parent_directory.join(format!("{name}.lua"));
 
 			this.parse_function(filename, name)
@@ -344,18 +220,18 @@ pub struct WorldGenerator<S>
 {
 	generator: ChunkGenerator,
 	saver: S,
-	rules: ChunkRules
+	rules: ChunkRulesGroup
 }
 
 impl<S: SaveLoad<WorldChunk>> WorldGenerator<S>
 {
-	pub fn new<P: AsRef<Path>>(
+	pub fn new(
 		saver: S,
 		tilemap: TileMap,
-		path: P
+		path: impl Into<PathBuf>
 	) -> Result<Self, ParseError>
 	{
-        let rules = ChunkRules::load(path.as_ref())?;
+        let rules = ChunkRulesGroup::load(path.into())?;
 
 		let generator = ChunkGenerator::new(tilemap, &rules)?;
 
@@ -376,7 +252,7 @@ impl<S: SaveLoad<WorldChunk>> WorldGenerator<S>
 
             if global_z == 0
             {
-                let mut wave_collapser = WaveCollapser::new(&self.rules, world_chunks, z);
+                let mut wave_collapser = WaveCollapser::new(&self.rules.ground, world_chunks, z);
 
                 wave_collapser.generate(|local_pos, chunk|
                 {
@@ -412,9 +288,7 @@ impl<S: SaveLoad<WorldChunk>> WorldGenerator<S>
 
                     this_slice.for_each(|pair|
                     {
-                        let chunk = WorldChunk{
-                            id: self.rules.underground()
-                        };
+                        let chunk = WorldChunk::new(self.rules.underground.fallback());
 
                         applier(pair, chunk);
                     });
@@ -456,7 +330,7 @@ impl<S: SaveLoad<WorldChunk>> WorldGenerator<S>
 
 struct PossibleStates
 {
-    states: Vec<usize>,
+    states: Vec<WorldChunkId>,
     total: f64,
     entropy: f64,
     collapsed: bool,
@@ -467,7 +341,7 @@ impl PossibleStates
 {
     pub fn new(rules: &ChunkRules) -> Self
     {
-        let states = (1..rules.len()).collect();
+        let states = rules.ids().copied().collect();
 
         Self{
             states,
@@ -504,7 +378,7 @@ impl PossibleStates
         let mut any_constrained = false;
 
         let fallback_array = [rules.fallback()];
-        let other_states: &[usize] = if other.states.is_empty()
+        let other_states: &[WorldChunkId] = if other.states.is_empty()
         {
             eprintln!("using fallback worldchunk");
             &fallback_array
@@ -543,7 +417,7 @@ impl PossibleStates
         any_constrained
     }
 
-    pub fn collapse(&mut self, rules: &ChunkRules) -> usize
+    pub fn collapse(&mut self, rules: &ChunkRules) -> WorldChunkId
     {
         let id = if self.states.is_empty()
         {
