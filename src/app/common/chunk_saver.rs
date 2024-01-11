@@ -71,7 +71,7 @@ impl SaveValueGroup
 
         writer.seek(SeekFrom::Start(start as u64)).unwrap();
 
-        MaybeWorldChunk::Some(self.value).write_into(writer)
+        MaybeWorldChunk::from(self.value).write_into(writer)
     }
 }
 
@@ -425,7 +425,7 @@ impl FileSave for FileSaver<SaveValueGroup, LoadValueGroup>
 
                     for _ in 0..CHUNK_RATIO.product()
                     {
-                        MaybeWorldChunk::None.write_into(&mut file);
+                        MaybeWorldChunk::default().write_into(&mut file);
                     }
 
                     file

@@ -1,7 +1,5 @@
 use std::{
     iter,
-    mem,
-    slice,
     io::Write,
     fs::File,
     fmt::{self, Debug},
@@ -10,7 +8,9 @@ use std::{
     ops::Index
 };
 
-use serde::Deserialize;
+use serde::{Serialize, Deserialize};
+
+use bincode::Options;
 
 use super::{PossibleStates, ParseError};
 
@@ -30,60 +30,88 @@ pub const CHUNK_RATIO: Pos3<usize> = Pos3{
     z: CHUNK_SIZE / WORLD_CHUNK_SIZE.z
 };
 
-#[repr(C, u8)]
-#[derive(Debug, Clone, Copy)]
-pub enum MaybeWorldChunk
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct MaybeWorldChunk(pub Option<WorldChunk>);
+
+impl From<WorldChunk> for MaybeWorldChunk
 {
-    None,
-    Some(WorldChunk)
+    fn from(value: WorldChunk) -> Self
+    {
+        Self(Some(value))
+    }
 }
 
 impl From<MaybeWorldChunk> for Option<WorldChunk>
 {
     fn from(value: MaybeWorldChunk) -> Self
     {
-        match value
-        {
-            MaybeWorldChunk::None => None,
-            MaybeWorldChunk::Some(value) => Some(value)
-        }
+        value.0
+    }
+}
+
+impl Default for MaybeWorldChunk
+{
+    fn default() -> Self
+    {
+        Self::none()
     }
 }
 
 impl MaybeWorldChunk
 {
-    pub const fn size_of() -> usize
+    pub fn none() -> Self
     {
-        mem::size_of::<Self>()
+        Self(None)
     }
 
-    pub const fn index_of(index: usize) -> usize
+    fn options_prelimit() -> impl Options
+    {
+        bincode::DefaultOptions::new()
+            .with_fixint_encoding()
+            .allow_trailing_bytes()
+    }
+
+    fn options() -> impl Options
+    {
+        Self::options_prelimit().with_limit(Self::size_of() as u64)
+    }
+
+    pub fn size_of() -> usize
+    {
+        Self::options_prelimit().serialized_size(
+            &Self(Some(WorldChunk::new(WorldChunkId(0))))
+        ).unwrap() as usize
+    }
+
+    pub fn index_of(index: usize) -> usize
     {
         index * Self::size_of()
     }
 
     pub fn write_into(self, mut writer: impl Write)
     {
-        let size = mem::size_of::<Self>();
-        let bytes: &[u8] = unsafe{
-            slice::from_raw_parts(&self as *const Self as *const u8, size)
-        };
+        let mut bytes = Self::options().serialize(&self).unwrap();
 
-        writer.write_all(bytes).unwrap();
+        let size = Self::size_of();
+
+        assert!(bytes.len() <= size);
+
+        bytes.resize_with(size, Default::default);
+
+        assert_eq!(bytes.len(), size);
+
+        writer.write_all(&bytes).unwrap();
     }
 
     pub fn from_bytes(bytes: &[u8]) -> Self
     {
-        assert_eq!(bytes.len(), mem::size_of::<Self>());
+        assert_eq!(bytes.len(), Self::size_of());
 
-        unsafe{
-            (bytes.as_ptr() as *const Self).read()
-        }
+        Self::options().deserialize(bytes).unwrap()
     }
 }
 
-#[repr(C)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct WorldChunkId(usize);
 
 impl fmt::Display for WorldChunkId
@@ -103,8 +131,7 @@ impl WorldChunkId
     }
 }
 
-#[repr(C)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WorldChunk
 {
 	id: WorldChunkId
