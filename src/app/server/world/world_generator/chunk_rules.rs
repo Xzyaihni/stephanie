@@ -5,7 +5,7 @@ use std::{
     fmt::{self, Debug},
     path::{Path, PathBuf},
     collections::HashMap,
-    ops::Index
+    ops::{Range, Index}
 };
 
 use serde::{Serialize, Deserialize};
@@ -78,8 +78,12 @@ impl MaybeWorldChunk
 
     pub fn size_of() -> usize
     {
+        // usize::MAX is the same size as 0 but maybe i wanna use varint encoding later
         Self::options_prelimit().serialized_size(
-            &Self(Some(WorldChunk::new(WorldChunkId(0))))
+            &Self(Some(WorldChunk::new(
+                WorldChunkId(usize::MAX),
+                Some(WorldChunkTag::Building{height: u64::MAX})
+            )))
         ).unwrap() as usize
     }
 
@@ -132,22 +136,40 @@ impl WorldChunkId
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum WorldChunkTag
+{
+    Building{height: u64}
+}
+
+impl From<ChunkRuleTag> for WorldChunkTag
+{
+    fn from(value: ChunkRuleTag) -> Self
+    {
+        match value
+        {
+            ChunkRuleTag::Building{height} => Self::Building{height: fastrand::u64(height)}
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WorldChunk
 {
-	id: WorldChunkId
+	id: WorldChunkId,
+    tags: Option<WorldChunkTag>
 }
 
 impl WorldChunk
 {
-    pub fn new(id: WorldChunkId) -> Self
+    pub fn new(id: WorldChunkId, tags: Option<WorldChunkTag>) -> Self
     {
-        Self{id}
+        Self{id, tags}
     }
 
 	#[allow(dead_code)]
 	pub fn none() -> Self
 	{
-		Self{id: WorldChunkId(0)}
+		Self{id: WorldChunkId(0), tags: None}
 	}
 
     pub fn is_none(&self) -> bool
@@ -197,10 +219,18 @@ impl WorldChunk
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub enum ChunkRuleTag
+{
+    Building{height: Range<u64>}
+}
+
 #[derive(Debug, Deserialize)]
 pub struct ChunkRuleRaw
 {
 	pub name: String,
+    #[serde(default)]
+    pub tags: Option<ChunkRuleTag>,
     pub weight: f64,
 	pub neighbors: DirectionsGroup<Vec<String>>
 }
@@ -213,9 +243,10 @@ pub struct ChunkRulesRaw
 }
 
 #[derive(Debug, Clone)]
-struct ChunkRule
+pub struct ChunkRule
 {
     name: String,
+    tags: Option<ChunkRuleTag>,
     weight: f64,
 	neighbors: DirectionsGroup<Vec<WorldChunkId>>
 }
@@ -226,12 +257,14 @@ impl ChunkRule
     {
         let ChunkRuleRaw{
             name,
+            tags,
             weight,
             neighbors
         } = rule;
 
         Self{
             name,
+            tags,
             weight: weight / total_weight,
             neighbors: neighbors.map(|_, direction|
             {
@@ -242,28 +275,20 @@ impl ChunkRule
             })
         }
     }
-}
 
-pub struct BorrowedChunkRule<'a>
-{
-    rule: &'a ChunkRule
-}
-
-impl<'a> BorrowedChunkRule<'a>
-{
     pub fn name(&self) -> &str
     {
-        &self.rule.name
+        &self.name
     }
 
     pub fn weight(&self) -> f64
     {
-        self.rule.weight
+        self.weight
     }
 
     pub fn neighbors(&self, direction: PosDirection) -> &[WorldChunkId]
     {
-        &self.rule.neighbors[direction]
+        &self.neighbors[direction]
     }
 }
 
@@ -472,6 +497,13 @@ impl ChunkRules
         }
     }
 
+    pub fn generate(&self, id: WorldChunkId) -> WorldChunk
+    {
+        let rule = self.get(id);
+
+        WorldChunk::new(id, rule.tags.clone().map(WorldChunkTag::from))
+    }
+
     pub fn ids(&self) -> impl Iterator<Item=&WorldChunkId>
     {
         self.rules.keys()
@@ -502,28 +534,18 @@ impl ChunkRules
         self.rules.len()
     }
 
-    pub fn get_maybe(&self, id: WorldChunkId) -> Option<BorrowedChunkRule<'_>>
+    pub fn get_maybe(&self, id: WorldChunkId) -> Option<&ChunkRule>
     {
-        self.rules.get(&id).map(|rule|
-        {
-            BorrowedChunkRule{
-                rule
-            }
-        })
+        self.rules.get(&id)
     }
 
-    pub fn get(&self, id: WorldChunkId) -> BorrowedChunkRule<'_>
+    pub fn get(&self, id: WorldChunkId) -> &ChunkRule
     {
         self.get_maybe(id).unwrap_or_else(|| panic!("{id} out of range"))
     }
 
-    pub fn iter(&self) -> impl Iterator<Item=BorrowedChunkRule<'_>> + '_
+    pub fn iter(&self) -> impl Iterator<Item=&ChunkRule> + '_
     {
-        self.rules.values().map(move |rule|
-        {
-            BorrowedChunkRule{
-                rule
-            }
-        })
+        self.rules.values()
     }
 }

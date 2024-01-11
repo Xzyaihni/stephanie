@@ -299,7 +299,7 @@ impl<S: SaveLoad<WorldChunk>> WorldGenerator<S>
 
                 this_slice.for_each(|pair|
                 {
-                    let chunk = WorldChunk::new(self.rules.underground.fallback());
+                    let chunk = WorldChunk::new(self.rules.underground.fallback(), None);
 
                     applier(pair, chunk);
                 });
@@ -647,7 +647,7 @@ impl<'a> WaveCollapser<'a>
     {
 		while let Some((local_pos, state)) = self.entropies.lowest_entropy()
 		{
-            let generated_chunk = WorldChunk::new(state.collapse(self.rules));
+            let generated_chunk = self.rules.generate(state.collapse(self.rules));
 
             on_chunk(local_pos, generated_chunk);
 

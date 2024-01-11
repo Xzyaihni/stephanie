@@ -608,7 +608,7 @@ mod tests
 
         let random_worldchunk = ||
         {
-            WorldChunk::new(WorldChunkId::from_raw(fastrand::usize(0..100)))
+            WorldChunk::new(WorldChunkId::from_raw(fastrand::usize(0..100)), None)
         };
 
         let mut chunks: Vec<_> = iter::repeat_with(||
