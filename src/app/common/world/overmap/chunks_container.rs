@@ -1,4 +1,5 @@
 use std::{
+    fmt,
 	slice::{
         IterMut as SliceIterMut,
         Iter as SliceIter
@@ -51,6 +52,28 @@ macro_rules! implement_common
                 Self{chunks, indexer}
             }
 
+            pub fn map<F, U>(&self, f: F) -> $name<U>
+            where
+                F: FnMut(&T) -> U
+            {
+                $name{
+                    chunks: self.chunks.iter().map(f).collect(),
+                    indexer: self.indexer.clone()
+                }
+            }
+
+            #[allow(dead_code)]
+            fn to_index(&self, pos: Pos3<usize>) -> usize
+            {
+                self.indexer.to_index(pos)
+            }
+
+            #[allow(dead_code)]
+            fn index_to_pos(&self, index: usize) -> LocalPos
+            {
+                self.indexer.index_to_pos(index)
+            }
+
             pub fn swap(&mut self, a: LocalPos, b: LocalPos)
             {
                 let (index_a, index_b) = (self.indexer.to_index(a.pos), self.indexer.to_index(b.pos));
@@ -88,6 +111,13 @@ macro_rules! implement_common
                 }
             }
 
+            pub fn positions(&self) -> impl Iterator<Item=LocalPos>
+            {
+                let indexer = self.indexer.clone();
+
+                (0..self.chunks.len()).map(move |index| indexer.index_to_pos(index))
+            }
+
             pub fn iter(&self) -> Iter<$indexer_name, T>
             {
                 Iter::new(self.chunks.iter(), self.indexer.clone())
@@ -96,6 +126,42 @@ macro_rules! implement_common
             pub fn iter_mut(&mut self) -> IterMut<$indexer_name, T>
             {
                 IterMut::new(self.chunks.iter_mut(), self.indexer.clone())
+            }
+        }
+
+        impl<T> Index<Pos3<usize>> for $name<T>
+        {
+            type Output = T;
+
+            fn index(&self, value: Pos3<usize>) -> &Self::Output
+            {
+                &self.chunks[self.indexer.to_index(value)]
+            }
+        }
+
+        impl<T> IndexMut<Pos3<usize>> for $name<T>
+        {
+            fn index_mut(&mut self, value: Pos3<usize>) -> &mut Self::Output
+            {
+                &mut self.chunks[self.indexer.to_index(value)]
+            }
+        }
+
+        impl<T> Index<LocalPos> for $name<T>
+        {
+            type Output = T;
+
+            fn index(&self, value: LocalPos) -> &Self::Output
+            {
+                &self.chunks[self.indexer.to_index(value.pos)]
+            }
+        }
+
+        impl<T> IndexMut<LocalPos> for $name<T>
+        {
+            fn index_mut(&mut self, value: LocalPos) -> &mut Self::Output
+            {
+                &mut self.chunks[self.indexer.to_index(value.pos)]
             }
         }
     }
@@ -253,55 +319,6 @@ impl<T> ChunksContainer<T>
     }
 }
 
-impl<T> Index<Pos3<usize>> for ChunksContainer<T>
-{
-	type Output = T;
-
-	fn index(&self, value: Pos3<usize>) -> &Self::Output
-	{
-		&self.chunks[self.indexer.to_index(value)]
-	}
-}
-
-impl<T> IndexMut<Pos3<usize>> for ChunksContainer<T>
-{
-	fn index_mut(&mut self, value: Pos3<usize>) -> &mut Self::Output
-	{
-		&mut self.chunks[self.indexer.to_index(value)]
-	}
-}
-
-impl<T> Index<LocalPos> for ChunksContainer<T>
-{
-	type Output = T;
-
-	fn index(&self, value: LocalPos) -> &Self::Output
-	{
-		&self.chunks[self.indexer.to_index(value.pos)]
-	}
-}
-
-impl<T> IndexMut<LocalPos> for ChunksContainer<T>
-{
-	fn index_mut(&mut self, value: LocalPos) -> &mut Self::Output
-	{
-		&mut self.chunks[self.indexer.to_index(value.pos)]
-	}
-}
-
-impl<T> ChunkIndexing for ChunksContainer<T>
-{
-	fn to_index(&self, pos: Pos3<usize>) -> usize
-	{
-        self.indexer.to_index(pos)
-	}
-
-	fn index_to_pos(&self, index: usize) -> LocalPos
-    {
-        self.indexer.index_to_pos(index)
-    }
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FlatIndexer
 {
@@ -311,8 +328,10 @@ pub struct FlatIndexer
 
 impl FlatIndexer
 {
-	pub fn new(size: Pos3<usize>) -> Self
+	pub fn new(mut size: Pos3<usize>) -> Self
 	{
+        size.z = 1;
+
 		Self{size, z: 0}
 	}
 
@@ -357,52 +376,49 @@ pub struct FlatChunksContainer<T>
 
 implement_common!{FlatChunksContainer, FlatIndexer}
 
-impl<T> Index<LocalPos> for FlatChunksContainer<T>
+impl<T> FlatChunksContainer<T>
 {
-	type Output = T;
-
-	fn index(&self, value: LocalPos) -> &Self::Output
-	{
-		&self.chunks[self.indexer.to_index(value.pos)]
-	}
-}
-
-impl<T> IndexMut<LocalPos> for FlatChunksContainer<T>
-{
-	fn index_mut(&mut self, value: LocalPos) -> &mut Self::Output
-	{
-		&mut self.chunks[self.indexer.to_index(value.pos)]
-	}
-}
-
-impl<T> Index<usize> for FlatChunksContainer<T>
-{
-	type Output = T;
-
-	fn index(&self, value: usize) -> &Self::Output
-	{
-		&self.chunks[value]
-	}
-}
-
-impl<T> IndexMut<usize> for FlatChunksContainer<T>
-{
-	fn index_mut(&mut self, value: usize) -> &mut Self::Output
-	{
-		&mut self.chunks[value]
-	}
-}
-
-impl<T> ChunkIndexing for FlatChunksContainer<T>
-{
-	fn to_index(&self, pos: Pos3<usize>) -> usize
-	{
-        self.indexer.to_index(pos)
-	}
-
-	fn index_to_pos(&self, index: usize) -> LocalPos
+    pub fn pretty_print_with<F>(&self, mut f: F) -> String
+    where
+        F: FnMut(&T) -> String
     {
-        self.indexer.index_to_pos(index)
+        let longest_value = self.chunks.iter()
+            .map(&mut f)
+            .map(|s| s.len())
+            .max()
+            .unwrap_or(1);
+
+        let row = self.indexer.size.x;
+
+        self.chunks.iter().enumerate().map(|(index, value)|
+        {
+            let mut output = String::new();
+
+            if index != 0 && (index % row) == 0
+            {
+                output.push('\n');
+            }
+
+            if index % row != 0
+            {
+                output.push(' ');
+            }
+
+            output += &format!("{:^1$}", f(value), longest_value);
+
+            output
+        }).reduce(|acc, value|
+        {
+            acc + &value
+        }).unwrap_or_default()
+    }
+}
+
+impl<T: fmt::Display> FlatChunksContainer<T>
+{
+    pub fn pretty_print(&self) -> String
+    {
+        self.pretty_print_with(T::to_string)
     }
 }
 

@@ -219,7 +219,6 @@ impl ChunkRule
 
 pub struct BorrowedChunkRule<'a>
 {
-    rules: &'a ChunkRules,
     rule: &'a ChunkRule
 }
 
@@ -315,7 +314,7 @@ impl Index<&str> for NameMappings
 pub struct ChunkRulesGroup
 {
     world_chunks: Box<[String]>,
-    pub ground: ChunkRules,
+    pub surface: ChunkRules,
     pub underground: UndergroundRules,
     pub city: CityRules
 }
@@ -358,7 +357,7 @@ impl ChunkRulesGroup
 
         Ok(Self{
             world_chunks,
-            ground: Self::load_rules(path.join("ground.json"), |file|
+            surface: Self::load_rules(path.join("surface.json"), |file|
             {
                 ChunkRules::load(&name_mappings, file)
             })?,
@@ -481,7 +480,6 @@ impl ChunkRules
         self.rules.get(&id).map(|rule|
         {
             BorrowedChunkRule{
-                rules: self,
                 rule
             }
         })
@@ -497,7 +495,6 @@ impl ChunkRules
         self.rules.values().map(move |rule|
         {
             BorrowedChunkRule{
-                rules: self,
                 rule
             }
         })

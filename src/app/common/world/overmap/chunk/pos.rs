@@ -75,6 +75,11 @@ impl<T> Pos3<T>
         f(self.x) && f(self.y) && f(self.z)
     }
 
+    pub fn any<F: FnMut(T) -> bool>(self, mut f: F) -> bool
+    {
+        f(self.x) || f(self.y) || f(self.z)
+    }
+
     pub fn zip<V>(self, other: Pos3<V>) -> Pos3<(T, V)>
     {
         Pos3{

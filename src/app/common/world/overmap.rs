@@ -47,28 +47,28 @@ pub trait Overmap<T>: OvermapIndexing
         self.generate_missing();
     }
 
-	fn position_offset(&mut self, offset: GlobalPos)
+	fn position_offset(&mut self, offset: Pos3<i32>)
 	{
 		self.shift_chunks(offset);
 		self.generate_missing();
 	}
 
-	fn shift_chunks(&mut self, offset: GlobalPos)
+	fn shift_chunks(&mut self, offset: Pos3<i32>)
 	{
 		let size = self.size();
 
 		let maybe_reverse = |reverse, value, max| if reverse {max - value - 1} else {value};
 		for z in 0..size.z
 		{
-			let z = maybe_reverse(offset.0.z < 0, z, size.z);
+			let z = maybe_reverse(offset.z < 0, z, size.z);
 
 			for y in 0..size.y
 			{
-				let y = maybe_reverse(offset.0.y < 0, y, size.y);
+				let y = maybe_reverse(offset.y < 0, y, size.y);
 
 				for x in 0..size.x
 				{
-					let x = maybe_reverse(offset.0.x < 0, x, size.x);
+					let x = maybe_reverse(offset.x < 0, x, size.x);
 
 					let old_local = LocalPos::new(Pos3::new(x, y, z), size);
 					self.shift_chunk(offset, old_local);
@@ -77,7 +77,7 @@ pub trait Overmap<T>: OvermapIndexing
 		}
 	}
 
-	fn shift_chunk(&mut self, offset: GlobalPos, old_local: LocalPos)
+	fn shift_chunk(&mut self, offset: Pos3<i32>, old_local: LocalPos)
 	{
 		//early return if the chunk is empty
 		if self.get_local(old_local).is_none()
@@ -93,31 +93,10 @@ pub trait Overmap<T>: OvermapIndexing
 			//move the chunk to the new position
 			self.swap(old_local, local_pos);
 
-			let is_edge_chunk =
-			{
-				let is_edge = |pos, offset, limit|
-				{
-                    // wut r u smoking clippy?
-                    #[allow(clippy::comparison_chain)]
-					if offset == 0
-					{
-						false
-					} else if offset < 0
-					{
-						(pos as i32 + offset) == 0
-					} else
-					{
-						(pos as i32 + offset) == (limit as i32 - 1)
-					}
-				};
-
-				let size = self.size();
-				let x_edge = is_edge(local_pos.pos.x, offset.0.x, size.x);
-				let y_edge = is_edge(local_pos.pos.y, offset.0.y, size.y);
-				let z_edge = is_edge(local_pos.pos.z, offset.0.z, size.z);
-
-				x_edge || y_edge || z_edge
-			};
+			let is_edge_chunk = old_local.pos.zip(self.size()).any(|(pos, size)|
+            {
+                pos == 0 || pos == (size - 1)
+            });
 
 			if is_edge_chunk
 			{
@@ -182,7 +161,7 @@ pub trait OvermapIndexing
         (z as i32 - self.size().z as i32 / 2) + self.player_position().0.z
     }
 
-    fn over_bounds(&self, pos: GlobalPos, margin: Pos3<i32>) -> GlobalPos
+    fn over_bounds(&self, pos: GlobalPos, margin: Pos3<i32>) -> Pos3<i32>
     {
         self.over_bounds_with_padding(pos, margin, Pos3::repeat(0))
     }
@@ -192,7 +171,7 @@ pub trait OvermapIndexing
         pos: GlobalPos,
         margin: Pos3<i32>,
         padding: Pos3<i32>
-    ) -> GlobalPos
+    ) -> Pos3<i32>
     {
         let values = self.to_local_unconverted(pos).0.zip(self.size()).zip(margin).zip(padding);
 
@@ -213,7 +192,7 @@ pub trait OvermapIndexing
             {
                 0
             }
-        }).into()
+        })
     }
 
 	fn player_offset(&self, pos: LocalPos) -> GlobalPos
@@ -254,7 +233,7 @@ mod tests
         // (13, -9, 11)
 
         assert_eq!(
-            GlobalPos::new(14, -11, 12),
+            Pos3::new(14, -11, 12),
             overmap.over_bounds_with_padding(
                 test,
                 Pos3::new(1, 2, 1), // margin

@@ -19,7 +19,7 @@ use crate::common::{
         Chunk,
         ChunkLocal,
         chunk::tile::Tile,
-        overmap::{Overmap, OvermapIndexing, ChunksContainer}
+        overmap::{Overmap, OvermapIndexing, FlatChunksContainer, ChunksContainer}
     }
 };
 
@@ -53,10 +53,86 @@ impl OvermapIndexing for Indexer
 }
 
 #[derive(Debug)]
+struct WorldPlane<S>
+{
+	world_generator: Arc<Mutex<WorldGenerator<S>>>,
+    chunks: FlatChunksContainer<Option<WorldChunk>>,
+    indexer: Indexer
+}
+
+impl<S> WorldPlane<S>
+{
+    pub fn new(
+        world_generator: Arc<Mutex<WorldGenerator<S>>>,
+        mut size: Pos3<usize>,
+        player_position: GlobalPos
+    ) -> Self
+    {
+        size.z = 1;
+
+        let mut this = Self{
+            world_generator,
+            chunks: FlatChunksContainer::new(size),
+            indexer: Indexer::new(size, GlobalPos::from(Pos3::repeat(0)))
+        };
+
+        this.set_player_position(player_position);
+
+        this
+    }
+
+    pub fn set_player_position(&mut self, mut player_position: GlobalPos)
+    {
+        player_position.0.z = 0;
+
+        self.indexer.player_position = player_position;
+    }
+}
+
+impl<S: SaveLoad<WorldChunk>> Overmap<WorldChunk> for WorldPlane<S>
+{
+	fn remove(&mut self, pos: LocalPos)
+	{
+        self.chunks[pos] = None;
+	}
+
+	fn swap(&mut self, a: LocalPos, b: LocalPos)
+	{
+		self.chunks.swap(a, b);
+	}
+
+	fn get_local(&self, pos: LocalPos) -> &Option<WorldChunk>
+	{
+		&self.chunks[pos]
+	}
+
+	fn mark_ungenerated(&mut self, _pos: LocalPos) {}
+
+	fn generate_missing(&mut self)
+	{
+		self.world_generator.lock().generate_surface(&mut self.chunks, &self.indexer);
+	}
+}
+
+impl<S> OvermapIndexing for WorldPlane<S>
+{
+	fn size(&self) -> Pos3<usize>
+	{
+		self.indexer.size
+	}
+
+	fn player_position(&self) -> GlobalPos
+	{
+		self.indexer.player_position
+	}
+}
+
+#[derive(Debug)]
 pub struct ServerOvermap<S>
 {
 	world_generator: Arc<Mutex<WorldGenerator<S>>>,
 	world_chunks: ChunksContainer<Option<WorldChunk>>,
+    world_plane: WorldPlane<S>,
 	indexer: Indexer
 }
 
@@ -78,9 +154,18 @@ impl<S: SaveLoad<WorldChunk>> ServerOvermap<S>
 
 		let world_chunks = ChunksContainer::new(size);
 
+		let mut world_plane = WorldPlane::new(
+            world_generator.clone(),
+            size,
+            indexer.player_position
+        );
+
+        world_plane.generate_missing();
+
 		let mut this = Self{
 			world_generator,
 			world_chunks,
+            world_plane,
 			indexer
 		};
 
@@ -101,8 +186,7 @@ impl<S: SaveLoad<WorldChunk>> ServerOvermap<S>
             chunk_ratio.0 + 1
         );
 
-		let non_shifted = shift_offset.0 == Pos3::repeat(0_i32);
-
+		let non_shifted = shift_offset == Pos3::repeat(0_i32);
 		if !non_shifted
 		{
 			self.shift_overmap_by(shift_offset);
@@ -111,11 +195,19 @@ impl<S: SaveLoad<WorldChunk>> ServerOvermap<S>
 		self.generate_existing_chunk(self.to_local(pos).unwrap())
 	}
 
-	fn shift_overmap_by(&mut self, shift_offset: GlobalPos)
+	fn shift_overmap_by(&mut self, shift_offset: Pos3<i32>)
 	{
-		let new_player_position = self.indexer.player_position + shift_offset;
+		self.indexer.player_position = self.indexer.player_position + shift_offset;
 
-		self.indexer.player_position = new_player_position;
+        let moved_vertically_only = shift_offset.x == 0 && shift_offset.y == 0;
+        if !moved_vertically_only
+        {
+            let mut non_vertical_offset = shift_offset;
+            non_vertical_offset.z = 0;
+
+            self.world_plane.set_player_position(self.indexer.player_position);
+            self.world_plane.position_offset(non_vertical_offset);
+        }
 
         self.position_offset(shift_offset);
 	}

@@ -18,7 +18,7 @@ use crate::common::{
 		Pos3,
 		LocalPos,
 		AlwaysGroup,
-		overmap::{OvermapIndexing, FlatChunksContainer, ChunksContainer, ChunkIndexing},
+		overmap::{OvermapIndexing, FlatChunksContainer, ChunksContainer},
 		chunk::{
             PosDirection,
             tile::Tile
@@ -238,73 +238,87 @@ impl<S: SaveLoad<WorldChunk>> WorldGenerator<S>
 		Ok(Self{generator, saver, rules})
     }
 
+    pub fn generate_surface(
+        &mut self,
+        world_chunks: &mut FlatChunksContainer<Option<WorldChunk>>,
+		global_mapper: &impl OvermapIndexing
+    )
+    {
+        self.load_missing(world_chunks.iter_mut(), global_mapper);
+
+        let mut wave_collapser = WaveCollapser::new(&self.rules.surface, world_chunks);
+
+        wave_collapser.generate(|local_pos, chunk|
+        {
+            self.saver.save(global_mapper.to_global(local_pos), chunk);
+        });
+    }
+
 	pub fn generate_missing(
 		&mut self,
 		world_chunks: &mut ChunksContainer<Option<WorldChunk>>,
 		global_mapper: &impl OvermapIndexing
 	)
 	{
-        self.load_missing(world_chunks, global_mapper);
+        self.load_missing(world_chunks.iter_mut(), global_mapper);
 
-        for z in 0..world_chunks.size().z
+        for z in (0..world_chunks.size().z).rev()
         {
             let global_z = global_mapper.to_global_z(z);
 
             if global_z == 0
             {
-                let mut wave_collapser = WaveCollapser::new(&self.rules.ground, world_chunks, z);
+                continue;
+            }
 
-                wave_collapser.generate(|local_pos, chunk|
+            let this_slice = world_chunks.flat_slice_iter_mut(z).filter(|(_pos, chunk)|
+            {
+                chunk.is_none()
+            });
+
+            let mut applier = |pair: (LocalPos, &mut Option<WorldChunk>), chunk|
+            {
+                *pair.1 = Some(chunk);
+
+                self.saver.save(global_mapper.to_global(pair.0), chunk);
+            };
+
+            if global_z > 0
+            {
+                // above ground
+                
+                this_slice.for_each(|pair|
                 {
-                    self.saver.save(global_mapper.to_global(local_pos), chunk);
+                    let chunk = WorldChunk::none();
+
+                    applier(pair, chunk);
                 });
             } else
             {
-                let this_slice = world_chunks.flat_slice_iter_mut(z).filter(|(_pos, chunk)|
+                // underground
+
+                this_slice.for_each(|pair|
                 {
-                    chunk.is_none()
+                    let chunk = WorldChunk::new(self.rules.underground.fallback());
+
+                    applier(pair, chunk);
                 });
-
-                let mut applier = |pair: (LocalPos, &mut Option<WorldChunk>), chunk|
-                {
-                    *pair.1 = Some(chunk);
-
-                    self.saver.save(global_mapper.to_global(pair.0), chunk);
-                };
-
-                if global_z > 0
-                {
-                    // above ground
-                    
-                    this_slice.for_each(|pair|
-                    {
-                        let chunk = WorldChunk::none();
-
-                        applier(pair, chunk);
-                    });
-                } else
-                {
-                    // underground
-
-                    this_slice.for_each(|pair|
-                    {
-                        let chunk = WorldChunk::new(self.rules.underground.fallback());
-
-                        applier(pair, chunk);
-                    });
-                }
             }
         }
 	}
 
-	fn load_missing(
+    pub fn rules(&self) -> &ChunkRulesGroup
+    {
+        &self.rules
+    }
+
+	fn load_missing<'a>(
 		&mut self,
-		world_chunks: &mut ChunksContainer<Option<WorldChunk>>,
+		world_chunks: impl Iterator<Item=(LocalPos, &'a mut Option<WorldChunk>)>,
 		global_mapper: &impl OvermapIndexing
 	)
 	{
-		world_chunks.iter_mut()
-            .filter(|(_pos, chunk)| chunk.is_none())
+		world_chunks.filter(|(_pos, chunk)| chunk.is_none())
 			.for_each(|(pos, chunk)|
 			{
 				let loaded_chunk = self.saver.load(global_mapper.to_global(pos));
@@ -507,14 +521,9 @@ struct Entropies(FlatChunksContainer<PossibleStates>);
 
 impl Entropies
 {
-    pub fn len(&self) -> usize
+    pub fn positions(&self) -> impl Iterator<Item=LocalPos>
     {
-        self.0.len()
-    }
-
-    pub fn index_to_pos(&self, index: usize) -> LocalPos
-    {
-        self.0.index_to_pos(index)
+        self.0.positions()
     }
 
     pub fn get_two_mut(
@@ -574,19 +583,17 @@ struct WaveCollapser<'a>
 {
     rules: &'a ChunkRules,
     entropies: Entropies,
-    world_chunks: &'a mut ChunksContainer<Option<WorldChunk>>,
-    z_level: usize
+    world_chunks: &'a mut FlatChunksContainer<Option<WorldChunk>>
 }
 
 impl<'a> WaveCollapser<'a>
 {
     pub fn new(
         rules: &'a ChunkRules,
-        world_chunks: &'a mut ChunksContainer<Option<WorldChunk>>,
-        z_level: usize
+        world_chunks: &'a mut FlatChunksContainer<Option<WorldChunk>>
     ) -> Self
     {
-        let entropies = Entropies(world_chunks.map_slice_ref(z_level, |(_local_pos, chunk)|
+        let entropies = Entropies(world_chunks.map(|chunk|
         {
             if let Some(chunk) = chunk
             {
@@ -597,7 +604,7 @@ impl<'a> WaveCollapser<'a>
             }
         }));
 
-        let mut this = Self{rules, entropies, world_chunks, z_level};
+        let mut this = Self{rules, entropies, world_chunks};
 
         this.constrain_all();
 
@@ -606,10 +613,8 @@ impl<'a> WaveCollapser<'a>
 
     fn constrain_all(&mut self)
     {
-        for i in 0..self.entropies.len()
+        for pos in self.entropies.positions()
         {
-            let pos = self.entropies.index_to_pos(i);
-
             let mut visited = VisitedTracker::new();
             self.constrain(&mut visited, pos);
         }
@@ -640,18 +645,8 @@ impl<'a> WaveCollapser<'a>
     where
         F: FnMut(LocalPos, WorldChunk)
     {
-        let z_level = self.z_level;
-
 		while let Some((local_pos, state)) = self.entropies.lowest_entropy()
 		{
-            let local_pos = LocalPos{
-                pos: Pos3{
-                    z: z_level,
-                    ..local_pos.pos
-                },
-                size: local_pos.size
-            };
-
             let generated_chunk = WorldChunk::new(state.collapse(self.rules));
 
             on_chunk(local_pos, generated_chunk);

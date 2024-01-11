@@ -181,18 +181,17 @@ impl ClientOvermap
 		let rounded_position = position.rounded();
 		let old_rounded_position = self.indexer.player_position.rounded();
 
-        let position_difference = rounded_position - old_rounded_position;
+        let position_difference = (rounded_position - old_rounded_position).0;
 
 		self.indexer.player_position = position;
 
-        let z_changed = !is_same_tile_height || position_difference.0.z != 0;
-
+        let z_changed = !is_same_tile_height || position_difference.z != 0;
         if z_changed
         {
 		    self.visual_overmap.mark_all_ungenerated();
         }
 
-        if position_difference.0 != Pos3::repeat(0)
+        if position_difference != Pos3::repeat(0)
 		{
 			self.position_offset(position_difference);
 		}
