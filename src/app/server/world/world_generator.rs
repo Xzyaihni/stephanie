@@ -30,7 +30,14 @@ use super::server_overmap::WorldPlane;
 
 use chunk_rules::{ChunkRulesGroup, ChunkRules};
 
-pub use chunk_rules::{WORLD_CHUNK_SIZE, CHUNK_RATIO, MaybeWorldChunk, WorldChunk, WorldChunkId};
+pub use chunk_rules::{
+    WORLD_CHUNK_SIZE,
+    CHUNK_RATIO,
+    MaybeWorldChunk,
+    WorldChunk,
+    WorldChunkId,
+    WorldChunkTag
+};
 
 mod chunk_rules;
 

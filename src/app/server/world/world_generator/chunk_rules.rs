@@ -1,5 +1,6 @@
 use std::{
     iter,
+    mem,
     io::Write,
     fs::File,
     fmt::{self, Debug},
@@ -64,6 +65,11 @@ impl MaybeWorldChunk
         Self(None)
     }
 
+    pub fn take_tags(&mut self) -> Vec<WorldChunkTag>
+    {
+        self.0.as_mut().map(WorldChunk::take_tags).unwrap_or_default()
+    }
+
     fn options_prelimit() -> impl Options
     {
         bincode::DefaultOptions::new()
@@ -78,17 +84,11 @@ impl MaybeWorldChunk
 
     pub fn size_of() -> usize
     {
-        // remove the vec![] from here later, make it empty
-        let a = 0;
-
         // using the MAX const so it doesnt give wrong size if i wanna use varint
         Self::options_prelimit().serialized_size(
             &Self(Some(WorldChunk::new(
                 WorldChunkId(usize::MAX),
-                vec![WorldChunkTag{
-                    name: TextId(usize::MAX),
-                    content: TagContent::Range(i64::MAX..i64::MAX)
-                }]
+                Vec::new()
             )))
         ).unwrap() as usize
     }
@@ -190,6 +190,7 @@ impl From<&ChunkRuleTag> for WorldChunkTag
 pub struct WorldChunk
 {
 	id: WorldChunkId,
+    #[serde(skip)]
     tags: Vec<WorldChunkTag>
 }
 
@@ -215,6 +216,19 @@ impl WorldChunk
 	{
 		self.id
 	}
+
+    pub fn take_tags(&mut self) -> Vec<WorldChunkTag>
+    {
+        mem::take(&mut self.tags)
+    }
+
+    pub fn with_tags(self, tags: Vec<WorldChunkTag>) -> Self
+    {
+        Self{
+            tags,
+            ..self
+        }
+    }
 
     pub fn belongs_to(pos: GlobalPos) -> GlobalPos
     {

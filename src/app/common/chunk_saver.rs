@@ -18,7 +18,7 @@ use parking_lot::Mutex;
 use lzma::{LzmaWriter, LzmaReader};
 
 use crate::{
-    server::world::world_generator::{CHUNK_RATIO, MaybeWorldChunk, WorldChunk},
+    server::world::world_generator::{CHUNK_RATIO, MaybeWorldChunk, WorldChunk, WorldChunkTag},
     common::world::{
         Chunk,
         GlobalPos,
@@ -80,7 +80,8 @@ impl SaveValueGroup
 #[derive(Debug)]
 pub struct LoadValueGroup
 {
-    file: File
+    file: File,
+    tags_file: Option<File>
 }
 
 impl LoadValueGroup
@@ -99,7 +100,17 @@ impl LoadValueGroup
             .read_to_end(&mut bytes)
             .unwrap();
 
-        MaybeWorldChunk::from_bytes(&bytes).into()
+        let world_chunk: Option<_> = MaybeWorldChunk::from_bytes(&bytes).into();
+
+        world_chunk.map(|world_chunk: WorldChunk|
+        {
+            let tags = self.tags_file.as_mut().map(|file|
+            {
+                bincode::deserialize_from(file).unwrap()
+            }).unwrap_or_default();
+
+            world_chunk.with_tags(tags)
+        })
     }
 }
 
@@ -234,17 +245,12 @@ impl<T> BlockingSaver<T>
         Self{parent_path, save_rx, finish_tx}
     }
 
-    pub fn chunk_path(&self, pos: GlobalPos) -> PathBuf
+    fn parent_path(&self, pos: GlobalPos) -> PathBuf
     {
-        Self::chunk_path_assoc(&self.parent_path, pos)
+        Self::parent_path_assoc(&self.parent_path, pos)
     }
 
-    fn full_parent_path(&self, pos: GlobalPos) -> PathBuf
-    {
-        Self::full_parent_path_assoc(&self.parent_path, pos)
-    }
-
-    fn full_parent_path_assoc(parent_path: &Path, pos: GlobalPos) -> PathBuf
+    fn parent_path_assoc(parent_path: &Path, pos: GlobalPos) -> PathBuf
     {
         let pos_modulo = pos.0.map(|value| value / SAVE_MODULO as i32);
 
@@ -252,11 +258,6 @@ impl<T> BlockingSaver<T>
             .join(pos_modulo.z.to_string())
             .join(pos_modulo.y.to_string())
             .join(pos_modulo.x.to_string())
-    }
-
-    pub fn chunk_path_assoc(parent_path: &Path, pos: GlobalPos) -> PathBuf
-    {
-        Self::full_parent_path_assoc(parent_path, pos).join(Self::encode_position(pos))
     }
 
     fn encode_position(pos: GlobalPos) -> String
@@ -271,15 +272,18 @@ impl<T> BlockingSaver<T>
 {
     pub fn run<F>(self, mut save_fn: F)
     where
-        F: FnMut(PathBuf, T)
+        F: FnMut(PathBuf, ValuePair<T>)
     {
         while let Ok(pair) = self.save_rx.recv()
         {
-            fs::create_dir_all(self.full_parent_path(pair.pos)).unwrap();
+            let pos = pair.pos;
+            let path = self.parent_path(pos);
 
-            save_fn(self.chunk_path(pair.pos), pair.value);
+            fs::create_dir_all(&path).unwrap();
 
-            self.finish_tx.send(pair.pos).unwrap();
+            save_fn(path, pair);
+
+            self.finish_tx.send(pos).unwrap();
         }
     }
 }
@@ -300,7 +304,7 @@ impl<SaveT: Saveable, LoadT> FileSaver<SaveT, LoadT>
 {
     fn new_with_saver<F>(parent_path: PathBuf, save_fn: F) -> Self
     where
-        F: FnMut(PathBuf, SaveT) + Send + 'static
+        F: FnMut(PathBuf, ValuePair<SaveT>) + Send + 'static
     {
         let (save_tx, save_rx) = mpsc::channel();
         let (finish_tx, finish_rx) = mpsc::channel();
@@ -355,24 +359,26 @@ impl<SaveT: Saveable, LoadT> FileSaver<SaveT, LoadT>
 
     fn load_with<F>(&mut self, pos: GlobalPos, load_fn: F) -> Option<LoadT>
     where
-        F: FnOnce(File) -> LoadT
+        F: FnOnce(PathBuf, File) -> LoadT
     {
         if self.is_unsaved(pos)
         {
             self.block_until(pos);
         }
 
-		match File::open(self.chunk_path(pos))
+        let parent_path = self.parent_path(pos);
+
+		match File::open(Self::chunk_path(parent_path.clone(), pos))
 		{
 			Ok(file) =>
 			{
-                Some(load_fn(file))
+                Some(load_fn(parent_path, file))
 			},
 			Err(ref err) if err.kind() == io::ErrorKind::NotFound =>
 			{
 				None
 			},
-			Err(err) => panic!("error loading chunk from file: {err:?}")
+			Err(err) => panic!("error loading chunk from file: {err}")
 		}
     }
 
@@ -384,9 +390,46 @@ impl<SaveT: Saveable, LoadT> FileSaver<SaveT, LoadT>
         self.save_tx.send(pair).unwrap();
     }
 
-    fn chunk_path(&self, pos: GlobalPos) -> PathBuf
+    fn parent_path(&self, pos: GlobalPos) -> PathBuf
     {
-        BlockingSaver::<SaveT>::chunk_path_assoc(&self.parent_path, pos)
+        BlockingSaver::<SaveT>::parent_path_assoc(&self.parent_path, pos)
+    }
+
+    fn encode_position(pos: GlobalPos) -> String
+    {
+        BlockingSaver::<SaveT>::encode_position(pos)
+    }
+
+    fn chunk_path(parent_path: PathBuf, pos: GlobalPos) -> PathBuf
+    {
+        parent_path.join(Self::encode_position(pos))
+    }
+
+    // i keep making these functions, i feel silly
+    fn tags_parent_path(parent_path: PathBuf) -> PathBuf
+    {
+        parent_path.join("tags")
+    }
+
+    fn save_tags(parent_path: PathBuf, pos: GlobalPos, tags: &[WorldChunkTag])
+    {
+        if tags.is_empty()
+        {
+            return;
+        }
+
+        let parent_path = Self::tags_parent_path(parent_path);
+
+        match fs::create_dir(&parent_path)
+        {
+            Ok(_) => (),
+            Err(err) if err.kind() == io::ErrorKind::AlreadyExists => (),
+            Err(err) => panic!("{err}")
+        }
+
+        let file = File::create(Self::chunk_path(parent_path, pos)).unwrap();
+
+        bincode::serialize_into(file, tags).unwrap();
     }
 }
 
@@ -397,13 +440,13 @@ impl FileSave for FileSaver<Chunk>
 
 	fn new(parent_path: PathBuf) -> Self
 	{
-        Self::new_with_saver(parent_path, |path, value|
+        Self::new_with_saver(parent_path, |path, pair|
         {
-            let file = File::create(path).unwrap();
+            let file = File::create(Self::chunk_path(path, pair.pos)).unwrap();
 
             let mut lzma_writer = LzmaWriter::new_compressor(file, LZMA_PRESET).unwrap();
 
-            bincode::serialize_into(&mut lzma_writer, &value).unwrap();
+            bincode::serialize_into(&mut lzma_writer, &pair.value).unwrap();
 
             lzma_writer.finish().unwrap();
         })
@@ -416,7 +459,7 @@ impl FileSave for FileSaver<Chunk>
 
     fn load(&mut self, pos: GlobalPos) -> Option<Self::LoadItem>
     {
-        self.load_with(pos, |file|
+        self.load_with(pos, |_parent_path, file|
         {
             let lzma_reader = LzmaReader::new_decompressor(file).unwrap();
 
@@ -432,24 +475,30 @@ impl FileSave for FileSaver<SaveValueGroup, LoadValueGroup>
 
 	fn new(parent_path: PathBuf) -> Self
 	{
-        Self::new_with_saver(parent_path, |path, value|
+        Self::new_with_saver(parent_path, |path, pair|
         {
-            let file = match OpenOptions::new().write(true).open(&path)
+            let chunk_path = Self::chunk_path(path.clone(), pair.pos);
+            let file = match OpenOptions::new().write(true).open(&chunk_path)
             {
                 Ok(file) => file,
                 Err(ref err) if err.kind() == io::ErrorKind::NotFound =>
                 {
-                    let mut file = File::create(path).unwrap();
+                    let mut file = File::create(chunk_path).unwrap();
 
-                    for _ in 0..CHUNK_RATIO.product()
+                    (0..CHUNK_RATIO.product()).for_each(|_|
                     {
                         MaybeWorldChunk::default().write_into(&mut file);
-                    }
+                    });
 
                     file
                 },
-                Err(err) => panic!("error loading worldchunk from file: {err:?}")
+                Err(err) => panic!("error loading worldchunk from file: {err}")
             };
+
+            let mut value = pair.value;
+            let tags = value.value.take_tags();
+
+            Self::save_tags(path, pair.pos, &tags);
 
             value.write_into(file);
         })
@@ -462,9 +511,21 @@ impl FileSave for FileSaver<SaveValueGroup, LoadValueGroup>
 
     fn load(&mut self, pos: GlobalPos) -> Option<Self::LoadItem>
     {
-        self.load_with(pos, |file|
+        self.load_with(pos, |parent_path, file|
         {
-            LoadValueGroup{file}
+            let chunk_path = Self::chunk_path(Self::tags_parent_path(parent_path), pos);
+
+            let tags_file = match File::open(chunk_path)
+            {
+                Ok(file) => Some(file),
+                Err(ref err) if err.kind() == io::ErrorKind::NotFound =>
+                {
+                    None
+                },
+                Err(err) => panic!("error loading tags from file: {err}")
+            };
+
+            LoadValueGroup{file, tags_file}
         })
     }
 }
