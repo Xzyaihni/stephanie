@@ -30,7 +30,7 @@ pub const CHUNK_RATIO: Pos3<usize> = Pos3{
     z: CHUNK_SIZE / WORLD_CHUNK_SIZE.z
 };
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MaybeWorldChunk(pub Option<WorldChunk>);
 
 impl From<WorldChunk> for MaybeWorldChunk
@@ -78,11 +78,14 @@ impl MaybeWorldChunk
 
     pub fn size_of() -> usize
     {
-        // usize::MAX is the same size as 0 but maybe i wanna use varint encoding later
+        // using the MAX const so it doesnt give wrong size if i wanna use varint
         Self::options_prelimit().serialized_size(
             &Self(Some(WorldChunk::new(
                 WorldChunkId(usize::MAX),
-                Some(WorldChunkTag::Building{height: u64::MAX})
+                vec![WorldChunkTag{
+                    name: TextId(usize::MAX),
+                    content: TagContent::Range(i64::MAX..i64::MAX)
+                }]
             )))
         ).unwrap() as usize
     }
@@ -136,32 +139,60 @@ impl WorldChunkId
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum WorldChunkTag
+pub struct TextId(usize);
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum TagContent
 {
-    Building{height: u64}
+    Number(i64),
+    Range(Range<i64>),
+    Text(TextId),
+    Boolean(bool)
 }
 
-impl From<ChunkRuleTag> for WorldChunkTag
+impl From<&RuleTagContent> for TagContent
 {
-    fn from(value: ChunkRuleTag) -> Self
+    fn from(value: &RuleTagContent) -> Self
     {
         match value
         {
-            ChunkRuleTag::Building{height} => Self::Building{height: fastrand::u64(height)}
+            RuleTagContent::Number(x) => Self::Number(*x),
+            RuleTagContent::Range(x) => Self::Range(x.clone()),
+            RuleTagContent::Random(x) => Self::Number(fastrand::i64(x.clone())),
+            RuleTagContent::Text(x) => Self::Text(*x),
+            RuleTagContent::Boolean(x) => Self::Boolean(*x)
         }
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WorldChunkTag
+{
+    name: TextId,
+    content: TagContent
+}
+
+impl From<&ChunkRuleTag> for WorldChunkTag
+{
+    fn from(tag: &ChunkRuleTag) -> Self
+    {
+        Self{
+            name: tag.name,
+            content: TagContent::from(&tag.content)
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WorldChunk
 {
 	id: WorldChunkId,
-    tags: Option<WorldChunkTag>
+    tags: Vec<WorldChunkTag>
 }
 
 impl WorldChunk
 {
-    pub fn new(id: WorldChunkId, tags: Option<WorldChunkTag>) -> Self
+    pub fn new(id: WorldChunkId, tags: Vec<WorldChunkTag>) -> Self
     {
         Self{id, tags}
     }
@@ -169,7 +200,7 @@ impl WorldChunk
 	#[allow(dead_code)]
 	pub fn none() -> Self
 	{
-		Self{id: WorldChunkId(0), tags: None}
+		Self{id: WorldChunkId(0), tags: Vec::new()}
 	}
 
     pub fn is_none(&self) -> bool
@@ -220,9 +251,20 @@ impl WorldChunk
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-pub enum ChunkRuleTag
+pub enum RuleRawTagContent
 {
-    Building{height: Range<u64>}
+    Number(i64),
+    Range(Range<i64>),
+    Random(Range<i64>),
+    Text(String),
+    Boolean(bool)
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct ChunkRuleRawTag
+{
+    name: String,
+    content: RuleRawTagContent
 }
 
 #[derive(Debug, Deserialize)]
@@ -230,7 +272,7 @@ pub struct ChunkRuleRaw
 {
 	pub name: String,
     #[serde(default)]
-    pub tags: Option<ChunkRuleTag>,
+    pub tags: Vec<ChunkRuleRawTag>,
     pub weight: f64,
 	pub neighbors: DirectionsGroup<Vec<String>>
 }
@@ -243,34 +285,74 @@ pub struct ChunkRulesRaw
 }
 
 #[derive(Debug, Clone)]
+pub enum RuleTagContent
+{
+    Number(i64),
+    Range(Range<i64>),
+    Random(Range<i64>),
+    Text(TextId),
+    Boolean(bool)
+}
+
+impl RuleTagContent
+{
+    fn from_raw(text_mapping: &mut TextMapping, raw_tag: RuleRawTagContent) -> Self
+    {
+        // not sure if i should just make this a generic >_<
+        match raw_tag
+        {
+            RuleRawTagContent::Number(x) => Self::Number(x),
+            RuleRawTagContent::Range(x) => Self::Range(x),
+            RuleRawTagContent::Random(x) => Self::Random(x),
+            RuleRawTagContent::Text(x) => Self::Text(text_mapping.to_id(x)),
+            RuleRawTagContent::Boolean(x) => Self::Boolean(x)
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ChunkRuleTag
+{
+    name: TextId,
+    content: RuleTagContent
+}
+
+impl ChunkRuleTag
+{
+    fn from_raw(text_mapping: &mut TextMapping, raw_tag: ChunkRuleRawTag) -> Self
+    {
+        Self{
+            name: text_mapping.to_id(raw_tag.name),
+            content: RuleTagContent::from_raw(text_mapping, raw_tag.content)
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct ChunkRule
 {
     name: String,
-    tags: Option<ChunkRuleTag>,
+    tags: Vec<ChunkRuleTag>,
     weight: f64,
 	neighbors: DirectionsGroup<Vec<WorldChunkId>>
 }
 
 impl ChunkRule
 {
-    fn from_raw(name_mappings: &NameMappings, rule: ChunkRuleRaw, total_weight: f64) -> Self
+    fn from_raw(name_mappings: &mut NameMappings, rule: ChunkRuleRaw, total_weight: f64) -> Self
     {
-        let ChunkRuleRaw{
-            name,
-            tags,
-            weight,
-            neighbors
-        } = rule;
-
         Self{
-            name,
-            tags,
-            weight: weight / total_weight,
-            neighbors: neighbors.map(|_, direction|
+            name: rule.name,
+            tags: rule.tags.into_iter().map(|tag|
+            {
+                ChunkRuleTag::from_raw(&mut name_mappings.text, tag)
+            }).collect(),
+            weight: rule.weight / total_weight,
+            neighbors: rule.neighbors.map(|_, direction|
             {
                 direction.into_iter().map(|name|
                 {
-                    name_mappings[&name]
+                    name_mappings.world_chunk[&name]
                 }).collect::<Vec<_>>()
             })
         }
@@ -298,7 +380,7 @@ pub struct UndergroundRules(ChunkRules);
 impl UndergroundRules
 {
     fn load(
-        name_mappings: &NameMappings,
+        name_mappings: &mut NameMappings,
         file: File
     ) -> Result<Self, serde_json::Error>
     {
@@ -308,7 +390,7 @@ impl UndergroundRules
     }
 
     fn from_raw(
-        name_mappings: &NameMappings,
+        name_mappings: &mut NameMappings,
         rules: ChunkRulesRaw
     ) -> Self
     {
@@ -329,7 +411,7 @@ pub struct CityRules
 impl CityRules
 {
     fn load(
-        _name_mappings: &NameMappings,
+        _name_mappings: &mut NameMappings,
         _file: File
     ) -> Result<Self, serde_json::Error>
     {
@@ -337,35 +419,79 @@ impl CityRules
     }
 }
 
-struct NameMappings(HashMap<String, WorldChunkId>);
+struct NameIndexer<T>(HashMap<String, T>);
 
-impl FromIterator<(String, WorldChunkId)> for NameMappings
+impl<T> NameIndexer<T>
+{
+    pub fn new() -> Self
+    {
+        Self(HashMap::new())
+    }
+
+    pub fn insert(&mut self, key: String, value: T)
+    {
+        self.0.insert(key, value);
+    }
+}
+
+impl<T> FromIterator<(String, T)> for NameIndexer<T>
 {
     fn from_iter<I>(iter: I) -> Self
     where
-        I: IntoIterator<Item=(String, WorldChunkId)>
+        I: IntoIterator<Item=(String, T)>
     {
         Self(HashMap::from_iter(iter))
     }
 }
 
-impl Index<&str> for NameMappings
+impl<T> Index<&str> for NameIndexer<T>
 {
-    type Output = WorldChunkId;
+    type Output = T;
 
     fn index(&self, index: &str) -> &Self::Output
     {
         self.0.get(index).unwrap_or_else(||
         {
-            panic!("worldchunk '{index}' not found")
+            panic!("'{index}' not found")
         })
     }
+}
+
+struct TextMapping
+{
+    text: Vec<String>,
+    indexer: NameIndexer<TextId>
+}
+
+impl TextMapping
+{
+    pub fn new() -> Self
+    {
+        Self{text: Vec::new(), indexer: NameIndexer::new()}
+    }
+
+    pub fn to_id(&mut self, value: String) -> TextId
+    {
+        let id = TextId(self.text.len());
+
+        self.text.push(value.clone());
+        self.indexer.insert(value, id);
+
+        id
+    }
+}
+
+struct NameMappings
+{
+    pub world_chunk: NameIndexer<WorldChunkId>,
+    pub text: TextMapping
 }
 
 #[derive(Debug)]
 pub struct ChunkRulesGroup
 {
     world_chunks: Box<[String]>,
+
     pub surface: ChunkRules,
     pub underground: UndergroundRules,
     pub city: CityRules
@@ -401,25 +527,32 @@ impl ChunkRulesGroup
             }))
             .collect::<Result<Box<[String]>, _>>()?;
 
-        let name_mappings = world_chunks.iter().enumerate().map(|(index, name)|
-        {
-            (name.clone(), WorldChunkId(index))
-        }).collect::<NameMappings>();
+        let mut name_mappings = {
+            let world_chunk = world_chunks.iter().enumerate().map(|(index, name)|
+            {
+                (name.clone(), WorldChunkId(index))
+            }).collect::<NameIndexer<WorldChunkId>>();
+
+            NameMappings{
+                world_chunk,
+                text: TextMapping::new()
+            }
+        };
 
 
         Ok(Self{
             world_chunks,
             surface: Self::load_rules(path.join("surface.json"), |file|
             {
-                ChunkRules::load(&name_mappings, file)
+                ChunkRules::load(&mut name_mappings, file)
             })?,
             underground: Self::load_rules(path.join("underground.json"), |file|
             {
-                UndergroundRules::load(&name_mappings, file)
+                UndergroundRules::load(&mut name_mappings, file)
             })?,
             city: Self::load_rules(path.join("city.json"), |file|
             {
-                CityRules::load(&name_mappings, file)
+                CityRules::load(&mut name_mappings, file)
             })?
         })
     }
@@ -462,7 +595,7 @@ pub struct ChunkRules
 impl ChunkRules
 {
     fn load(
-        name_mappings: &NameMappings,
+        name_mappings: &mut NameMappings,
         file: File
     ) -> Result<Self, serde_json::Error>
     {
@@ -471,26 +604,21 @@ impl ChunkRules
         Ok(Self::from_raw(name_mappings, rules))
     }
 
-    fn from_raw(name_mappings: &NameMappings, rules: ChunkRulesRaw) -> Self
+    fn from_raw(name_mappings: &mut NameMappings, rules: ChunkRulesRaw) -> Self
     {
         let weights = rules.rules.iter().map(|rule| rule.weight);
 
         let total_weight: f64 = weights.clone().sum();
         let entropy = PossibleStates::calculate_entropy(weights);
 
-        let ChunkRulesRaw{
-            rules,
-            fallback
-        } = rules;
-
         Self{
             total_weight: 1.0,
             entropy,
-            fallback: name_mappings[&fallback],
-            rules: rules.into_iter().map(|rule|
+            fallback: name_mappings.world_chunk[&rules.fallback],
+            rules: rules.rules.into_iter().map(|rule|
             {
                 let rule = ChunkRule::from_raw(name_mappings, rule, total_weight);
-                let id = name_mappings[&rule.name];
+                let id = name_mappings.world_chunk[&rule.name];
 
                 (id, rule)
             }).collect::<HashMap<WorldChunkId, ChunkRule>>()
@@ -501,7 +629,7 @@ impl ChunkRules
     {
         let rule = self.get(id);
 
-        WorldChunk::new(id, rule.tags.clone().map(WorldChunkTag::from))
+        WorldChunk::new(id, rule.tags.iter().map(WorldChunkTag::from).collect())
     }
 
     pub fn ids(&self) -> impl Iterator<Item=&WorldChunkId>

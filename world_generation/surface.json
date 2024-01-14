@@ -2,14 +2,17 @@
     "rules": [
         {
             "name": "building",
-            "tags": {
-                "Building": {
-                    "height": {
-                        "start": 3,
-                        "end": 20
+            "tags": [
+                {
+                    "name": "building_height",
+                    "content": {
+                        "Random": {
+                            "start": 3,
+                            "end": 20
+                        }
                     }
                 }
-            },
+            ],
             "weight": 4,
             "neighbors": {
                 "up": [

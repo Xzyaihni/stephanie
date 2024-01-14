@@ -53,7 +53,7 @@ impl OvermapIndexing for Indexer
 }
 
 #[derive(Debug)]
-struct WorldPlane<S>
+pub struct WorldPlane<S>
 {
 	world_generator: Arc<Mutex<WorldGenerator<S>>>,
     chunks: FlatChunksContainer<Option<WorldChunk>>,
@@ -86,6 +86,14 @@ impl<S> WorldPlane<S>
         player_position.0.z = 0;
 
         self.indexer.player_position = player_position;
+    }
+
+    pub fn world_chunk(&self, pos: LocalPos) -> &WorldChunk
+    where
+        S: SaveLoad<WorldChunk>
+    {
+        // flatindexer ignores the z pos, so i dont have to clear it
+        self.get_local(pos).as_ref().unwrap()
     }
 }
 
@@ -229,7 +237,7 @@ impl<S: SaveLoad<WorldChunk>> ServerOvermap<S>
 		            let group = local_pos.always_group().expect("chunk must not touch edges");
 		            let group = group.map(|position|
                     {
-                        self.world_chunks[position].unwrap()
+                        self.world_chunks[position].clone().unwrap()
                     });
 
 		            let world_chunk = self.world_generator.lock().generate_chunk(group);
@@ -280,7 +288,8 @@ impl<S: SaveLoad<WorldChunk>> Overmap<WorldChunk> for ServerOvermap<S>
 
 	fn generate_missing(&mut self)
 	{
-		self.world_generator.lock().generate_missing(&mut self.world_chunks, &self.indexer);
+		self.world_generator.lock()
+            .generate_missing(&mut self.world_chunks, &self.world_plane, &self.indexer);
 	}
 }
 

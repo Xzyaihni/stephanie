@@ -26,6 +26,8 @@ use crate::common::{
 	}
 };
 
+use super::server_overmap::WorldPlane;
+
 use chunk_rules::{ChunkRulesGroup, ChunkRules};
 
 pub use chunk_rules::{WORLD_CHUNK_SIZE, CHUNK_RATIO, MaybeWorldChunk, WorldChunk, WorldChunkId};
@@ -250,13 +252,14 @@ impl<S: SaveLoad<WorldChunk>> WorldGenerator<S>
 
         wave_collapser.generate(|local_pos, chunk|
         {
-            self.saver.save(global_mapper.to_global(local_pos), chunk);
+            self.saver.save(global_mapper.to_global(local_pos), chunk.clone());
         });
     }
 
 	pub fn generate_missing(
 		&mut self,
 		world_chunks: &mut ChunksContainer<Option<WorldChunk>>,
+        world_plane: &WorldPlane<S>,
 		global_mapper: &impl OvermapIndexing
 	)
 	{
@@ -276,11 +279,11 @@ impl<S: SaveLoad<WorldChunk>> WorldGenerator<S>
                 chunk.is_none()
             });
 
-            let mut applier = |pair: (LocalPos, &mut Option<WorldChunk>), chunk|
+            let mut applier = |pair: (LocalPos, &mut Option<WorldChunk>), chunk: WorldChunk|
             {
-                *pair.1 = Some(chunk);
+                self.saver.save(global_mapper.to_global(pair.0), chunk.clone());
 
-                self.saver.save(global_mapper.to_global(pair.0), chunk);
+                *pair.1 = Some(chunk);
             };
 
             if global_z > 0
@@ -299,7 +302,7 @@ impl<S: SaveLoad<WorldChunk>> WorldGenerator<S>
 
                 this_slice.for_each(|pair|
                 {
-                    let chunk = WorldChunk::new(self.rules.underground.fallback(), None);
+                    let chunk = WorldChunk::new(self.rules.underground.fallback(), Vec::new());
 
                     applier(pair, chunk);
                 });
@@ -643,13 +646,13 @@ impl<'a> WaveCollapser<'a>
 
     pub fn generate<F>(&mut self, mut on_chunk: F)
     where
-        F: FnMut(LocalPos, WorldChunk)
+        F: FnMut(LocalPos, &WorldChunk)
     {
 		while let Some((local_pos, state)) = self.entropies.lowest_entropy()
 		{
             let generated_chunk = self.rules.generate(state.collapse(self.rules));
 
-            on_chunk(local_pos, generated_chunk);
+            on_chunk(local_pos, &generated_chunk);
 
             self.world_chunks[local_pos] = Some(generated_chunk);
 

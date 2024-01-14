@@ -519,7 +519,7 @@ impl SaveLoad<WorldChunk> for WorldChunkSaver
             (*pair.pos() == rounded_pos) && (pair.value().index == index)
         })
         {
-            return Some(found.value().value);
+            return Some(found.value().value.clone());
         }
 
         self.file_saver.lock().load(rounded_pos)
@@ -608,7 +608,7 @@ mod tests
 
         let random_worldchunk = ||
         {
-            WorldChunk::new(WorldChunkId::from_raw(fastrand::usize(0..100)), None)
+            WorldChunk::new(WorldChunkId::from_raw(fastrand::usize(0..100)), Vec::new())
         };
 
         let mut chunks: Vec<_> = iter::repeat_with(||
