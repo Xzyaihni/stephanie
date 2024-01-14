@@ -42,6 +42,11 @@ impl Character
 	{
 		self.speed
 	}
+
+    pub fn set_speed(&mut self, speed: f32)
+    {
+        self.speed = speed;
+    }
 }
 
 entity_forward!{Character, entity}

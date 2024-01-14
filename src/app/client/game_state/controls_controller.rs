@@ -19,7 +19,8 @@ pub enum Control
 	Crouch,
 	ZoomIn,
 	ZoomOut,
-	ZoomReset
+	ZoomReset,
+    DebugConsole
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -97,7 +98,8 @@ impl ControlsController
 			(KeyMapping::Keyboard(KeyCode::ControlLeft), Control::Crouch),
 			(KeyMapping::Keyboard(KeyCode::Equal), Control::ZoomIn),
 			(KeyMapping::Keyboard(KeyCode::Minus), Control::ZoomOut),
-			(KeyMapping::Keyboard(KeyCode::Digit0), Control::ZoomReset)
+			(KeyMapping::Keyboard(KeyCode::Digit0), Control::ZoomReset),
+			(KeyMapping::Keyboard(KeyCode::Backquote), Control::DebugConsole)
         ].into_iter().collect();
 
         Self{

@@ -50,6 +50,11 @@ where
 		self.entity
 	}
 
+	pub fn inner_mut(&mut self) -> &mut T
+	{
+		self.entity
+	}
+
 	pub fn sync(&mut self)
 	{
 		let transform = self.entity.transform_clone();

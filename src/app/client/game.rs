@@ -160,6 +160,16 @@ impl<'a> PlayerContainer<'a>
             eprintln!("my tile: {my_tile}, tile below me: {tile_below}");
         }
 
+        if self.game_state.debug_mode && self.game_state.clicked(Control::DebugConsole)
+        {
+            dbg!("make this an actual console thingy later");
+
+            let mut player = self.player_mut();
+            let player = &mut player.inner_mut().entity;
+
+            player.set_speed(player.speed() * 2.0);
+        }
+
         if let Some(movement) = self.movement_direction()
         {
             self.walk(movement);

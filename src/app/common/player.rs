@@ -129,6 +129,11 @@ impl Player
 		self.character.speed()
 	}
 
+    pub fn set_speed(&mut self, speed: f32)
+    {
+        self.character.set_speed(speed);
+    }
+
 	pub fn name(&self) -> &str
 	{
 		&self.name

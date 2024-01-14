@@ -29,6 +29,7 @@ use crate::{
 
 // goes from 0 to 9, 0 being lowest level of compression
 const LZMA_PRESET: u32 = 1;
+const SAVE_MODULO: u32 = 20;
 
 pub trait Saveable: Send + 'static {}
 
@@ -233,14 +234,29 @@ impl<T> BlockingSaver<T>
         Self{parent_path, save_rx, finish_tx}
     }
 
-    fn chunk_path(&self, pos: GlobalPos) -> PathBuf
+    pub fn chunk_path(&self, pos: GlobalPos) -> PathBuf
     {
         Self::chunk_path_assoc(&self.parent_path, pos)
     }
 
+    fn full_parent_path(&self, pos: GlobalPos) -> PathBuf
+    {
+        Self::full_parent_path_assoc(&self.parent_path, pos)
+    }
+
+    fn full_parent_path_assoc(parent_path: &Path, pos: GlobalPos) -> PathBuf
+    {
+        let pos_modulo = pos.0.map(|value| value / SAVE_MODULO as i32);
+
+        parent_path
+            .join(pos_modulo.z.to_string())
+            .join(pos_modulo.y.to_string())
+            .join(pos_modulo.x.to_string())
+    }
+
     pub fn chunk_path_assoc(parent_path: &Path, pos: GlobalPos) -> PathBuf
     {
-        parent_path.join(Self::encode_position(pos))
+        Self::full_parent_path_assoc(parent_path, pos).join(Self::encode_position(pos))
     }
 
     fn encode_position(pos: GlobalPos) -> String
@@ -259,6 +275,8 @@ impl<T> BlockingSaver<T>
     {
         while let Ok(pair) = self.save_rx.recv()
         {
+            fs::create_dir_all(self.full_parent_path(pair.pos)).unwrap();
+
             save_fn(self.chunk_path(pair.pos), pair.value);
 
             self.finish_tx.send(pair.pos).unwrap();

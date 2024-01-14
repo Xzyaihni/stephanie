@@ -78,6 +78,9 @@ impl MaybeWorldChunk
 
     pub fn size_of() -> usize
     {
+        // remove the vec![] from here later, make it empty
+        let a = 0;
+
         // using the MAX const so it doesnt give wrong size if i wanna use varint
         Self::options_prelimit().serialized_size(
             &Self(Some(WorldChunk::new(
