@@ -122,6 +122,7 @@ impl MaybeWorldChunk
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
 pub struct WorldChunkId(usize);
 
 impl fmt::Display for WorldChunkId
@@ -142,6 +143,7 @@ impl WorldChunkId
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(transparent)]
 pub struct TextId(usize);
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -187,6 +189,7 @@ impl From<&ChunkRuleTag> for WorldChunkTag
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(transparent)]
 pub struct WorldChunk
 {
 	id: WorldChunkId,
