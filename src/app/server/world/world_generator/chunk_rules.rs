@@ -685,6 +685,8 @@ impl TextMapping
         Self{text: Vec::new(), indexer: NameIndexer::new()}
     }
 
+    // this is the best name i could come up with, cmon :/
+    #[allow(clippy::wrong_self_convention)]
     pub fn to_id(&mut self, value: String) -> TextId
     {
         let id = TextId(self.text.len());

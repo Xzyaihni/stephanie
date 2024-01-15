@@ -61,7 +61,7 @@ pub trait ChildContainer: TransformContainer
 
 	fn add_children(&mut self, children: &[ChildEntity])
 	{
-        children.into_iter().for_each(|child|
+        children.iter().for_each(|child|
         {
             self.add_child_inner(child.clone());
         });
@@ -188,7 +188,7 @@ macro_rules! entity_forward
             Vector3
         };
 
-        use crate::{
+        use $crate::{
             client::DrawableEntity,
             common::{
                 Physical,
@@ -270,12 +270,12 @@ macro_rules! entity_forward
 
         impl ChildContainer for $name
         {
-            fn children_ref(&self) -> &[crate::common::ChildEntity]
+            fn children_ref(&self) -> &[$crate::common::ChildEntity]
             {
                 self.$child_name.children_ref()
             }
 
-            fn children_mut(&mut self) -> &mut Vec<crate::common::ChildEntity>
+            fn children_mut(&mut self) -> &mut Vec<$crate::common::ChildEntity>
             {
                 self.$child_name.children_mut()
             }

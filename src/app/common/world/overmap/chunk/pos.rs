@@ -784,7 +784,7 @@ impl LocalPos
 
         let this = Self::new(Pos3::new(pos.x as usize, pos.y as usize, pos.z as usize), size);
 
-        this.in_bounds().then(|| this)
+        this.in_bounds().then_some(this)
 	}
 
 	pub fn moved(&self, x: usize, y: usize, z: usize) -> Self
