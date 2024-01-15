@@ -423,19 +423,85 @@ impl UndergroundRules
     }
 }
 
+#[derive(Debug, Deserialize)]
+enum ConditionalVariable
+{
+    Height
+}
+
+// this is literally just cmp::Ordering, but it doesnt implement deserialize >-<
+#[derive(Debug, Deserialize)]
+enum ConditionalCondition
+{
+    Less,
+    Equal,
+    Greater
+}
+
+#[derive(Debug, Deserialize)]
+struct ConditionalRuleRaw
+{
+    name: String,
+    variable: ConditionalVariable,
+    tag: String,
+    condition: ConditionalCondition
+}
+
+#[derive(Debug, Deserialize)]
+struct CityRulesRaw
+{
+    rules: Vec<ConditionalRuleRaw>
+}
+
+#[derive(Debug)]
+struct ConditionalRule
+{
+    name: WorldChunkId,
+    variable: ConditionalVariable,
+    tag: TextId,
+    condition: ConditionalCondition
+}
+
+impl ConditionalRule
+{
+    fn from_raw(name_mappings: &NameMappings, rule: ConditionalRuleRaw) -> Self
+    {
+        Self{
+            name: name_mappings.world_chunk[&rule.name],
+            variable: rule.variable,
+            condition: rule.condition,
+            tag: name_mappings.text[&rule.tag]
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct CityRules
 {
+    rules: Vec<ConditionalRule>
 }
 
 impl CityRules
 {
     fn load(
-        _name_mappings: &mut NameMappings,
-        _file: File
+        name_mappings: &NameMappings,
+        file: File
     ) -> Result<Self, serde_json::Error>
     {
-        Ok(Self{})
+		let rules = serde_json::from_reader::<_, CityRulesRaw>(file)?;
+
+        Ok(Self::from_raw(name_mappings, rules))
+    }
+
+    fn from_raw(name_mappings: &NameMappings, rules: CityRulesRaw) -> Self
+    {
+        // rules rules rules!!!!!!
+        Self{
+            rules: rules.rules.into_iter().map(|rule|
+            {
+                ConditionalRule::from_raw(name_mappings, rule)
+            }).collect()
+        }
     }
 }
 
@@ -498,6 +564,16 @@ impl TextMapping
         self.indexer.insert(value, id);
 
         id
+    }
+}
+
+impl Index<&str> for TextMapping
+{
+    type Output = TextId;
+
+    fn index(&self, index: &str) -> &Self::Output
+    {
+        self.indexer.index(index)
     }
 }
 
@@ -572,7 +648,7 @@ impl ChunkRulesGroup
             })?,
             city: Self::load_rules(path.join("city.json"), |file|
             {
-                CityRules::load(&mut name_mappings, file)
+                CityRules::load(&name_mappings, file)
             })?
         })
     }

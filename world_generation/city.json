@@ -1,0 +1,10 @@
+{
+    "rules": [
+        {
+            "name": "building_walls",
+            "variable": "Height",
+            "tag": "building_height",
+            "condition": "Less"
+        }
+    ]
+}
