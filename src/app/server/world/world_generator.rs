@@ -18,7 +18,7 @@ use crate::common::{
 		Pos3,
 		LocalPos,
 		AlwaysGroup,
-		overmap::{OvermapIndexing, FlatChunksContainer, ChunksContainer},
+		overmap::{Overmap, OvermapIndexing, FlatChunksContainer, ChunksContainer},
 		chunk::{
             PosDirection,
             tile::Tile
@@ -28,7 +28,7 @@ use crate::common::{
 
 use super::server_overmap::WorldPlane;
 
-use chunk_rules::{ChunkRulesGroup, ChunkRules};
+use chunk_rules::{ChunkRulesGroup, ChunkRules, ConditionalInfo};
 
 pub use chunk_rules::{
     WORLD_CHUNK_SIZE,
@@ -332,7 +332,18 @@ impl<S: SaveLoad<WorldChunk>> WorldGenerator<S>
                 
                 this_slice.for_each(|pair|
                 {
-                    let chunk = WorldChunk::none();
+                    let pos = pair.0;
+
+                    let this_surface = world_plane.get_local(pos)
+                        .as_ref()
+                        .expect("world_plane must be completely generated");
+
+                    let info = ConditionalInfo{
+                        height: global_z,
+                        tags: this_surface.tags()
+                    };
+
+                    let chunk = self.rules.city.generate(info);
 
                     applier(pair, chunk);
                 });

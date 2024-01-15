@@ -1,6 +1,7 @@
 use std::{
     iter,
     mem,
+    cmp::Ordering,
     io::Write,
     fs::File,
     fmt::{self, Debug},
@@ -149,8 +150,8 @@ pub struct TextId(usize);
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TagContent
 {
-    Number(i64),
-    Range(Range<i64>),
+    Number(i32),
+    Range(Range<i32>),
     Text(TextId),
     Boolean(bool)
 }
@@ -163,9 +164,41 @@ impl From<&RuleTagContent> for TagContent
         {
             RuleTagContent::Number(x) => Self::Number(*x),
             RuleTagContent::Range(x) => Self::Range(x.clone()),
-            RuleTagContent::Random(x) => Self::Number(fastrand::i64(x.clone())),
+            RuleTagContent::Random(x) => Self::Number(fastrand::i32(x.clone())),
             RuleTagContent::Text(x) => Self::Text(*x),
             RuleTagContent::Boolean(x) => Self::Boolean(*x)
+        }
+    }
+}
+
+impl TagContent
+{
+    fn compare(&self, other: &Self) -> Option<Condition>
+    {
+        match (self, other)
+        {
+            (Self::Number(a), Self::Number(b)) => Some(a.cmp(b).into()),
+            (Self::Boolean(a), Self::Boolean(b)) =>
+            {
+                if a == b
+                {
+                    Some(Condition::Equal)
+                } else
+                {
+                    Some(Condition::Unequal)
+                }
+            },
+            (Self::Text(a), Self::Text(b)) =>
+            {
+                if a == b
+                {
+                    Some(Condition::Equal)
+                } else
+                {
+                    Some(Condition::Unequal)
+                }
+            },
+            (_, _) => None
         }
     }
 }
@@ -197,6 +230,14 @@ pub struct WorldChunk
     tags: Vec<WorldChunkTag>
 }
 
+impl Default for WorldChunk
+{
+    fn default() -> Self
+    {
+        Self::none()
+    }
+}
+
 impl WorldChunk
 {
     pub fn new(id: WorldChunkId, tags: Vec<WorldChunkTag>) -> Self
@@ -219,6 +260,11 @@ impl WorldChunk
 	{
 		self.id
 	}
+
+    pub fn tags(&self) -> &[WorldChunkTag]
+    {
+        &self.tags
+    }
 
     pub fn take_tags(&mut self) -> Vec<WorldChunkTag>
     {
@@ -273,9 +319,9 @@ impl WorldChunk
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub enum RuleRawTagContent
 {
-    Number(i64),
-    Range(Range<i64>),
-    Random(Range<i64>),
+    Number(i32),
+    Range(Range<i32>),
+    Random(Range<i32>),
     Text(String),
     Boolean(bool)
 }
@@ -307,9 +353,9 @@ pub struct ChunkRulesRaw
 #[derive(Debug, Clone)]
 pub enum RuleTagContent
 {
-    Number(i64),
-    Range(Range<i64>),
-    Random(Range<i64>),
+    Number(i32),
+    Range(Range<i32>),
+    Random(Range<i32>),
     Text(TextId),
     Boolean(bool)
 }
@@ -423,19 +469,51 @@ impl UndergroundRules
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Copy, Deserialize)]
 enum ConditionalVariable
 {
     Height
 }
 
-// this is literally just cmp::Ordering, but it doesnt implement deserialize >-<
-#[derive(Debug, Deserialize)]
-enum ConditionalCondition
+#[derive(Debug, Clone, Copy, Deserialize)]
+enum Condition
 {
     Less,
+    Greater,
     Equal,
-    Greater
+    Unequal
+}
+
+impl From<Ordering> for Condition
+{
+    fn from(value: Ordering) -> Self
+    {
+        match value
+        {
+            Ordering::Less => Self::Less,
+            Ordering::Greater => Self::Greater,
+            Ordering::Equal => Self::Equal
+        }
+    }
+}
+
+impl Condition
+{
+    pub fn contains(&self, ordering: Condition) -> bool
+    {
+        match (ordering, self)
+        {
+            (Self::Less, Self::Less) => true,
+            (Self::Equal, Self::Equal) => true,
+            (Self::Greater, Self::Greater) => true,
+            (Self::Unequal, Self::Unequal) => true,
+            (Self::Unequal, Self::Less) => true,
+            (Self::Unequal, Self::Greater) => true,
+            (Self::Less, Self::Unequal) => true,
+            (Self::Greater, Self::Unequal) => true,
+            (_, _) => false
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -444,7 +522,7 @@ struct ConditionalRuleRaw
     name: String,
     variable: ConditionalVariable,
     tag: String,
-    condition: ConditionalCondition
+    condition: Condition
 }
 
 #[derive(Debug, Deserialize)]
@@ -459,7 +537,7 @@ struct ConditionalRule
     name: WorldChunkId,
     variable: ConditionalVariable,
     tag: TextId,
-    condition: ConditionalCondition
+    condition: Condition
 }
 
 impl ConditionalRule
@@ -471,6 +549,45 @@ impl ConditionalRule
             variable: rule.variable,
             condition: rule.condition,
             tag: name_mappings.text[&rule.tag]
+        }
+    }
+
+    pub fn matches(&self, info: &ConditionalInfo) -> bool
+    {
+        if let Some(tag_value) = info.get_tag(self.tag)
+        {
+            let variable = info.get_variable(self.variable);
+
+            let condition = variable.compare(tag_value)
+                .expect("tag value and variable must be comparable");
+
+            self.condition.contains(condition)
+        } else
+        {
+            false
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct ConditionalInfo<'a>
+{
+    pub height: i32,
+    pub tags: &'a [WorldChunkTag]
+}
+
+impl ConditionalInfo<'_>
+{
+    fn get_tag(&self, search_tag: TextId) -> Option<&TagContent>
+    {
+        self.tags.iter().find(|tag| tag.name == search_tag).map(|tag| &tag.content)
+    }
+
+    fn get_variable(&self, variable: ConditionalVariable) -> TagContent
+    {
+        match variable
+        {
+            ConditionalVariable::Height => TagContent::Number(self.height)
         }
     }
 }
@@ -502,6 +619,18 @@ impl CityRules
                 ConditionalRule::from_raw(name_mappings, rule)
             }).collect()
         }
+    }
+
+    pub fn generate(&self, info: ConditionalInfo) -> WorldChunk
+    {
+        // imagine using find_map, couldnt be me
+        self.rules.iter().find(|rule|
+        {
+            rule.matches(&info)
+        }).map(|rule|
+        {
+            WorldChunk::new(rule.name, Vec::new())
+        }).unwrap_or_default()
     }
 }
 
@@ -587,7 +716,6 @@ struct NameMappings
 pub struct ChunkRulesGroup
 {
     world_chunks: Box<[String]>,
-
     pub surface: ChunkRules,
     pub underground: UndergroundRules,
     pub city: CityRules
