@@ -1,4 +1,5 @@
 use std::{
+    fmt,
 	net::TcpStream,
 	sync::Arc
 };
@@ -77,6 +78,21 @@ pub enum ConnectionError
 	BincodeError(bincode::Error),
 	WrongConnectionMessage,
 	IdMismatch
+}
+
+impl fmt::Display for ConnectionError
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
+    {
+        let s = match self
+        {
+            Self::BincodeError(x) => x.to_string(),
+            Self::WrongConnectionMessage => "wrong connection message".to_owned(),
+            Self::IdMismatch => "id mismatch".to_owned()
+        };
+
+        write!(f, "{s}")
+    }
 }
 
 impl From<bincode::Error> for ConnectionError
@@ -275,7 +291,7 @@ impl GameServer
 					id_mismatch();
 				}
 			},
-			x => panic!("unhandled message: {:?}", x)
+			x => panic!("unhandled message: {x:?}")
 		}
 	}
 

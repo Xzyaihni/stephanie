@@ -223,7 +223,7 @@ impl GameState
 
 		if let Err(x) = handler.send_blocking(&message)
 		{
-			panic!("error connecting to server: {:?}", x);
+			panic!("error connecting to server: {x}");
 		}
 
 		match handler.receive_blocking()
@@ -232,7 +232,7 @@ impl GameState
 			{
 				id
 			},
-			x => panic!("received wrong message on connect: {:?}", x)
+			x => panic!("received wrong message on connect: {x:?}")
 		}
 	}
 
@@ -295,7 +295,7 @@ impl GameState
 			{
 				self.notifications.set(Notification::PlayerConnected);
 			},
-			x => panic!("unhandled message: {:?}", x)
+			x => panic!("unhandled message: {x:?}")
 		}
 	}
 

@@ -1,5 +1,6 @@
 use std::{
 	io,
+    fmt,
     iter,
 	ops::Index,
 	collections::HashMap,
@@ -80,6 +81,33 @@ pub enum TileMapError
 {
     Io(io::Error),
     Image{error: ImageError, path: Option<PathBuf>}
+}
+
+impl fmt::Display for TileMapError
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
+    {
+        let s = match self
+        {
+            Self::Io(x) => x.to_string(),
+            Self::Image{error, path} =>
+            {
+                let err = error.to_string();
+
+                if let Some(path) = path
+                {
+                    let path = path.display();
+
+                    format!("error at {path}: {err}")
+                } else
+                {
+                    err
+                }
+            }
+        };
+
+        write!(f, "{s}")
+    }
 }
 
 impl From<serde_json::Error> for TileMapError

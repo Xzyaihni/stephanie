@@ -40,7 +40,7 @@ pub fn sender_loop<B: BufferSender + Send + Sync + 'static>(sender: Arc<RwLock<B
 			let result = sender.write().send_buffered();
 			if let Err(ref x) = result
 			{
-				eprintln!("error in sender loop: {x:?}, closing");
+				eprintln!("error in sender loop: {x}, closing");
 			}
 
 			result.is_err()

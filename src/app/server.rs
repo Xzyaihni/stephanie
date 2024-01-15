@@ -52,17 +52,21 @@ impl Server
 	{
 		for connection in self.listener.incoming()
 		{
-			if let Ok(stream) = connection
+			match connection
 			{
-				if let Err(x) = GameServer::connect(self.game_server.clone(), stream)
-				{
-					eprintln!("error in player connection: {x:?}");
-					continue;
-				}
-			} else
-			{
-				eprintln!("connection error: {connection:?}");
-				continue;
+                Ok(stream) =>
+                {
+                    if let Err(x) = GameServer::connect(self.game_server.clone(), stream)
+                    {
+                        eprintln!("error in player connection: {x}");
+                        continue;
+                    }
+                },
+                Err(err) =>
+                {
+				    eprintln!("connection error: {err}");
+				    continue;
+                }
 			}
 		}
 	}

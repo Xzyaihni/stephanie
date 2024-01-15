@@ -81,7 +81,7 @@ impl YanyaApp for App
                             {
                                 panic!("{}", err.printable().unwrap())
                             },
-                            Err(err) => panic!("{:?}", err)
+                            Err(err) => panic!("{err}")
                         };
 
                         let port = server.port();
@@ -89,7 +89,7 @@ impl YanyaApp for App
 
                         server.run()
                     },
-                    Err(err) => panic!("error parsing tilemap: {:?}", err)
+                    Err(err) => panic!("error parsing tilemap: {err}")
                 }
             });
 

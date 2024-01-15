@@ -50,6 +50,21 @@ pub enum ParseErrorKind
     Lua(rlua::Error)
 }
 
+impl fmt::Display for ParseErrorKind
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
+    {
+        let s = match self
+        {
+            Self::Io(x) => x.to_string(),
+            Self::Json(x) => x.to_string(),
+            Self::Lua(x) => x.to_string()
+        };
+
+        write!(f, "{s}")
+    }
+}
+
 impl From<io::Error> for ParseErrorKind
 {
 	fn from(value: io::Error) -> Self
@@ -80,6 +95,24 @@ pub struct ParseError
 {
     filename: Option<PathBuf>,
     kind: ParseErrorKind
+}
+
+impl fmt::Display for ParseError
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
+    {
+        let err = &self.kind;
+
+        if let Some(filename) = &self.filename
+        {
+            let filename = filename.display();
+
+            write!(f, "error at {filename}: {err}")
+        } else
+        {
+            write!(f, "{err}")
+        }
+    }
 }
 
 impl ParseError
