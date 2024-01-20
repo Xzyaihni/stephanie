@@ -7,3 +7,6 @@ cd stephanie
 cargo b -r
 ./target/release/stephanie
 ```
+
+build dependices (but i dont remember all of them, lmao)
+liblzma-dev
