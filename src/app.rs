@@ -77,10 +77,6 @@ impl YanyaApp for App
                         let mut server = match Server::new(tilemap, &format!("0.0.0.0:{port}"), 16)
                         {
                             Ok(x) => x,
-                            Err(err) if err.printable().is_some() =>
-                            {
-                                panic!("{}", err.printable().unwrap())
-                            },
                             Err(err) => panic!("{err}")
                         };
 

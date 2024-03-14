@@ -10,7 +10,6 @@ use crate::{
     entity_forward,
 	common::{
         ChildEntity,
-		PlayerGet,
         CharacterProperties,
         EntityProperties,
         PhysicalProperties,
@@ -137,14 +136,6 @@ impl Player
 	pub fn name(&self) -> &str
 	{
 		&self.name
-	}
-}
-
-impl PlayerGet for Player
-{
-	fn player(&self) -> Player
-	{
-		self.clone()
 	}
 }
 

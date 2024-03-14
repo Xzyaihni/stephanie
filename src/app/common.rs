@@ -24,14 +24,18 @@ pub use chunk_saver::{SaveLoad, WorldChunkSaver, ChunkSaver};
 
 pub use character::CharacterProperties;
 pub use player::PlayerProperties;
+pub use enemy::{EnemyProperties, Enemy};
 
 use player::Player;
 use entity::ChildEntity;
 
 use physics::PhysicsEntity;
 
+pub mod lisp;
+
 pub mod entity;
 pub mod player;
+pub mod enemy;
 pub mod character;
 
 pub mod message;
@@ -84,17 +88,21 @@ pub trait EntityPasser
 	}
 }
 
-pub trait PlayerGet
+pub trait GettableInner<T>
 {
-	fn player(&self) -> Player;
+	fn get_inner(&self) -> T;
 }
 
 pub trait EntitiesContainer
 {
-	type PlayerObject: TransformContainer + PlayerGet + PhysicsEntity;
+	type PlayerObject: TransformContainer + GettableInner<Player> + PhysicsEntity;
+	type EnemyObject: TransformContainer + GettableInner<Enemy> + PhysicsEntity;
 
 	fn players_ref(&self) -> &Slab<Self::PlayerObject>;
 	fn players_mut(&mut self) -> &mut Slab<Self::PlayerObject>;
+
+	fn enemies_ref(&self) -> &Slab<Self::EnemyObject>;
+	fn enemies_mut(&mut self) -> &mut Slab<Self::EnemyObject>;
 
 	fn player_ref(&self, id: usize) -> &Self::PlayerObject
 	{
@@ -109,6 +117,11 @@ pub trait EntitiesContainer
 	fn empty_player(&self) -> usize
 	{
 		self.players_ref().vacant_key()
+	}
+
+	fn empty_enemy(&self) -> usize
+	{
+		self.enemies_ref().vacant_key()
 	}
 
 	fn sync_transform(&mut self, id: EntityType, other: Transform)
@@ -152,10 +165,23 @@ pub trait EntitiesController
 		player_associated: <Self::Container as EntitiesContainer>::PlayerObject
 	) -> usize
 	{
-		let player = player_associated.player();
+		let player = player_associated.get_inner();
 		let id = self.container_mut().players_mut().insert(player_associated);
 
 		self.passer().write().send_message(Message::PlayerCreate{id, player});
+
+		id
+	}
+
+	fn add_enemy(
+		&mut self,
+		enemy_associated: <Self::Container as EntitiesContainer>::EnemyObject
+	) -> usize
+	{
+		let enemy = enemy_associated.get_inner();
+		let id = self.container_mut().enemies_mut().insert(enemy_associated);
+
+		self.passer().write().send_message(Message::EnemyCreate{id, enemy});
 
 		id
 	}

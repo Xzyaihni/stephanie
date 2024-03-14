@@ -24,7 +24,6 @@ argparse = "0.2.2"
 num_enum = "0.6.0"
 strum = "0.24.1"
 strum_macros = "0.24.3"
-rlua = "0.19.4"
 rust-lzma = "0.6.0"
 
 [profile.dev]

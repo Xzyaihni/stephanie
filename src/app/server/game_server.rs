@@ -34,6 +34,7 @@ use crate::common::{
     PhysicalProperties,
     world::chunk::TILE_SIZE,
 	player::Player,
+    enemy::Enemy,
 	message::{
 		Message,
 		MessageBuffer
@@ -44,7 +45,8 @@ use crate::common::{
 #[derive(Debug)]
 pub struct ServerEntitiesContainer
 {
-	players: Slab<Player>
+	players: Slab<Player>,
+    enemies: Slab<Enemy>
 }
 
 impl ServerEntitiesContainer
@@ -52,14 +54,16 @@ impl ServerEntitiesContainer
 	pub fn new(limit: usize) -> Self
 	{
 		let players = Slab::with_capacity(limit);
+        let enemies = Slab::with_capacity(limit);
 
-		Self{players}
+		Self{players, enemies}
 	}
 }
 
 impl EntitiesContainer for ServerEntitiesContainer
 {
 	type PlayerObject = Player;
+    type EnemyObject = Enemy;
 
 	fn players_ref(&self) -> &Slab<Self::PlayerObject>
 	{
@@ -69,6 +73,16 @@ impl EntitiesContainer for ServerEntitiesContainer
 	fn players_mut(&mut self) -> &mut Slab<Self::PlayerObject>
 	{
 		&mut self.players
+	}
+
+	fn enemies_ref(&self) -> &Slab<Self::EnemyObject>
+	{
+		&self.enemies
+	}
+
+	fn enemies_mut(&mut self) -> &mut Slab<Self::EnemyObject>
+	{
+		&mut self.enemies
 	}
 }
 
@@ -264,6 +278,17 @@ impl GameServer
 	fn process_message_inner(&mut self, message: Message, id: usize)
 	{
 		let id_mismatch = || panic!("id mismatch in serverside process message");
+
+        let message = match message
+        {
+            Message::RepeatMessage{message} =>
+            {
+                self.connection_handler.write().send_message(*message);
+
+                return;
+            },
+            x => x
+        };
 
 		if message.forward()
 		{

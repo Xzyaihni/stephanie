@@ -29,7 +29,8 @@ use crate::common::world::Tile;
 
 const TEXTURE_TILE_SIZE: usize = 32;
 
-const PADDING: usize = 1;
+// this makes the texture size always a power of 2
+pub const PADDING: usize = TEXTURE_TILE_SIZE / 2;
 const PADDED_TILE_SIZE: usize = TEXTURE_TILE_SIZE + PADDING * 2;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -205,7 +206,7 @@ impl TileMap
 
 	pub fn texture_row_size(&self) -> usize
 	{
-		((self.tiles.len() - 1) as f64).sqrt().ceil() as usize
+		(((self.tiles.len() - 1) as f64).sqrt().ceil() as usize).max(2)
 	}
 
 	pub fn pixel_fraction(&self, fraction: f32) -> f32
@@ -317,8 +318,11 @@ impl TileMap
                 }
             };
 
-            pad(&mut tilemap, 0, 0);
-            pad(&mut tilemap, TEXTURE_TILE_SIZE - 1, PADDING * 2);
+            for p in 0..PADDING
+            {
+                pad(&mut tilemap, 0, p);
+                pad(&mut tilemap, TEXTURE_TILE_SIZE - 1, PADDING + 1 + p);
+            }
 
             tilemap.blit(texture, x + PADDING, y + PADDING);
         });

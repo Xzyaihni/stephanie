@@ -191,6 +191,7 @@ macro_rules! entity_forward
         use $crate::{
             client::DrawableEntity,
             common::{
+                GettableInner,
                 Physical,
                 ChildContainer,
                 entity::{
@@ -200,6 +201,15 @@ macro_rules! entity_forward
                 physics::PhysicsEntity
             }
         };
+
+        // i wish specialization was a thing..
+        impl GettableInner<$name> for $name
+        {
+            fn get_inner(&self) -> Self
+            {
+                self.clone()
+            }
+        }
 
         impl PhysicsEntity for $name
         {

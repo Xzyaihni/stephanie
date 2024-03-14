@@ -8,6 +8,7 @@ use crate::common::{
 	Transform,
 	EntityType,
 	player::Player,
+    enemy::Enemy,
 	world::{Chunk, GlobalPos}
 };
 
@@ -15,6 +16,8 @@ use crate::common::{
 #[derive(Debug, Clone, EnumCount, Serialize, Deserialize)]
 pub enum Message
 {
+	EnemyCreate{id: usize, enemy: Enemy},
+	EnemyDestroy{id: usize},
 	PlayerConnect{name: String},
 	PlayerCreate{id: usize, player: Player},
 	PlayerDestroy{id: usize},
@@ -22,7 +25,8 @@ pub enum Message
 	PlayerFullyConnected,
 	EntitySyncTransform{entity_type: EntityType, transform: Transform},
 	ChunkRequest{pos: GlobalPos},
-	ChunkSync{pos: GlobalPos, chunk: Chunk}
+	ChunkSync{pos: GlobalPos, chunk: Chunk},
+    RepeatMessage{message: Box<Message>}
 }
 
 impl Message

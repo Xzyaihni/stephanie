@@ -3,17 +3,14 @@ use std::{
 	io,
 	fmt,
     ops::Index,
-    collections::HashSet,
+    collections::{HashMap, HashSet},
 	path::PathBuf
 };
-
-use parking_lot::Mutex;
-
-use rlua::Lua;
 
 use crate::common::{
 	TileMap,
     SaveLoad,
+    lisp::{self, Lisp},
 	world::{
 		Pos3,
 		LocalPos,
@@ -47,7 +44,7 @@ pub enum ParseErrorKind
 {
 	Io(io::Error),
 	Json(serde_json::Error),
-    Lua(rlua::Error)
+    Lisp(lisp::Error)
 }
 
 impl fmt::Display for ParseErrorKind
@@ -58,7 +55,7 @@ impl fmt::Display for ParseErrorKind
         {
             Self::Io(x) => x.to_string(),
             Self::Json(x) => x.to_string(),
-            Self::Lua(x) => x.to_string()
+            Self::Lisp(x) => x.to_string()
         };
 
         write!(f, "{s}")
@@ -81,11 +78,11 @@ impl From<serde_json::Error> for ParseErrorKind
 	}
 }
 
-impl From<rlua::Error> for ParseErrorKind
+impl From<lisp::Error> for ParseErrorKind
 {
-	fn from(value: rlua::Error) -> Self
+	fn from(value: lisp::Error) -> Self
 	{
-		ParseErrorKind::Lua(value)
+		ParseErrorKind::Lisp(value)
 	}
 }
 
@@ -126,16 +123,6 @@ impl ParseError
     {
         Self{filename: None, kind: kind.into()}
     }
-
-    pub fn printable(&self) -> Option<String>
-    {
-        if let ParseErrorKind::Lua(rlua::Error::SyntaxError{message, ..}) = &self.kind
-        {
-            return Some(message.clone());
-        }
-
-        None
-    }
 }
 
 impl From<io::Error> for ParseError
@@ -146,9 +133,9 @@ impl From<io::Error> for ParseError
     }
 }
 
-impl From<rlua::Error> for ParseError
+impl From<lisp::Error> for ParseError
 {
-    fn from(value: rlua::Error) -> Self
+    fn from(value: lisp::Error) -> Self
     {
         ParseError::new(value)
     }
@@ -156,7 +143,7 @@ impl From<rlua::Error> for ParseError
 
 pub struct ChunkGenerator
 {
-    lua: Mutex<Lua>,
+    chunks: HashMap<String, Lisp>,
 	tilemap: TileMap
 }
 
@@ -164,13 +151,11 @@ impl ChunkGenerator
 {
 	pub fn new(tilemap: TileMap, rules: &ChunkRulesGroup) -> Result<Self, ParseError>
 	{
-		let lua = Mutex::new(Lua::new());
+		let chunks = HashMap::new();
 
         let parent_directory = PathBuf::from("world_generation/chunks/");
 
-        let mut this = Self{lua, tilemap};
-
-        this.setup_lua_state()?;
+        let mut this = Self{chunks, tilemap};
 
 		rules.iter_names().filter(|name|
         {
@@ -187,22 +172,10 @@ impl ChunkGenerator
 		Ok(this)
 	}
 
-    fn setup_lua_state(&mut self) -> Result<(), ParseError>
-    {
-        self.lua.lock().context(|ctx|
-        {
-            let tilemap = self.tilemap.names_map();
-
-            ctx.globals().set("tilemap", tilemap)
-        })?;
-
-        Ok(())
-    }
-
 	fn parse_function(
         &mut self,
         filepath: PathBuf,
-        function_name: &str
+        name: &str
     ) -> Result<(), ParseError>
 	{
         let code = fs::read_to_string(&filepath).map_err(|err|
@@ -211,14 +184,7 @@ impl ChunkGenerator
             ParseError::new_named(filepath.clone(), err)
         })?;
 
-        self.lua.lock().context(|ctx|
-        {
-            let function: rlua::Function = ctx.load(&code).set_name(function_name)?.eval()?;
-
-            ctx.globals().set(function_name, function)?;
-
-            Ok(())
-        }).map_err(|err: rlua::Error| ParseError::new_named(filepath, err))?;
+        self.chunks.insert(name.to_owned(), Lisp::new(&code));
 	    
         Ok(())
     }
@@ -233,15 +199,7 @@ impl ChunkGenerator
             return ChunksContainer::new_with(WORLD_CHUNK_SIZE, |_| Tile::none());
         }
 
-        let tiles: Vec<Tile> = self.lua.lock().context(|ctx|
-        {
-            let function = ctx.globals().get::<_, rlua::Function>(group.this)?;
-
-            let neighbors = PosDirection::iter_non_z().map(|direction| group[direction])
-                .collect::<Vec<_>>();
-
-            function.call(neighbors)
-        }).expect("if this crashes its my bad lua skills anyways");
+        let tiles: Vec<Tile> = self.chunks[group.this].run();
 
         ChunksContainer::new_indexed(WORLD_CHUNK_SIZE, |index| tiles[index])
 	}

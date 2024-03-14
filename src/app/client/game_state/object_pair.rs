@@ -14,11 +14,10 @@ use yanyaengine::{
 };
 
 use crate::common::{
-	PlayerGet,
+	GettableInner,
 	ChildContainer,
     Physical,
 	physics::PhysicsEntity,
-	player::Player,
 	entity::EntityContainer
 };
 
@@ -78,9 +77,9 @@ impl<T: EntityContainer> ObjectPair<T>
 	}
 }
 
-impl PlayerGet for ObjectPair<Player>
+impl<T: Clone> GettableInner<T> for ObjectPair<T>
 {
-	fn player(&self) -> Player
+	fn get_inner(&self) -> T
 	{
 		self.entity.clone()
 	}

@@ -1,10 +1,15 @@
 use nalgebra::Vector3;
 
-use yanyaengine::TransformContainer;
+use yanyaengine::{Transform, TransformContainer};
 
 use crate::{
     client::ConnectionsHandler,
     common::{
+        Enemy,
+        EnemyProperties,
+        CharacterProperties,
+        EntityProperties,
+        PhysicalProperties,
         EntitiesController,
         NetworkEntity,
         player::Player,
@@ -164,10 +169,32 @@ impl<'a> PlayerContainer<'a>
         {
             dbg!("make this an actual console thingy later");
 
-            let mut player = self.player_mut();
+            let position = *self.player_ref().position();
+            let props = EnemyProperties{
+                character_properties: CharacterProperties{
+                    entity_properties: EntityProperties{
+                        texture: "enemy/body.png".to_owned(),
+                        physical: PhysicalProperties{
+                            transform: Transform{
+                                position,
+                                scale: Vector3::repeat(0.1),
+                                rotation: fastrand::f32() * (3.141596 * 2.0),
+                                ..Default::default()
+                            },
+                            mass: 50.0,
+                            friction: 0.5
+                        }
+                    },
+                    speed: 1.0
+                }
+            };
+
+            let enemy = Enemy::new(props);
+            self.game_state.add_client_enemy(enemy);
+            /*let mut player = self.player_mut();
             let player = &mut player.inner_mut().entity;
 
-            player.set_speed(player.speed() * 2.0);
+            player.set_speed(player.speed() * 2.0);*/
         }
 
         if let Some(movement) = self.movement_direction()

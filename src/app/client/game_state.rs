@@ -18,10 +18,12 @@ use crate::common::{
 	sender_loop,
 	receiver_loop,
     TileMap,
+    EntityPasser,
 	EntitiesContainer,
 	EntitiesController,
 	message::Message,
 	player::Player,
+    enemy::Enemy,
 	world::{
 		World,
 		Pos3,
@@ -55,6 +57,7 @@ mod notifications;
 pub struct ClientEntitiesContainer
 {
 	players: Slab<ObjectPair<Player>>,
+	enemies: Slab<ObjectPair<Enemy>>,
 	main_player: Option<usize>
 }
 
@@ -63,14 +66,16 @@ impl ClientEntitiesContainer
 	pub fn new() -> Self
 	{
 		let players = Slab::new();
+		let enemies = Slab::new();
 		let main_player = None;
 
-		Self{players, main_player}
+		Self{players, enemies, main_player}
 	}
 
 	pub fn update(&mut self, dt: f32)
 	{
 		self.players.iter_mut().for_each(|(_, pair)| pair.update(dt));
+		self.enemies.iter_mut().for_each(|(_, pair)| pair.update(dt));
 	}
 
 	pub fn player_exists(&self, id: usize) -> bool
@@ -84,6 +89,7 @@ impl GameObject for ClientEntitiesContainer
 	fn update_buffers(&mut self, info: &mut UpdateBuffersInfo)
     {
 		self.players.iter_mut().for_each(|(_, pair)| pair.update_buffers(info));
+		self.enemies.iter_mut().for_each(|(_, pair)| pair.update_buffers(info));
     }
 
 	fn draw(&self, info: &mut DrawInfo)
@@ -96,16 +102,17 @@ impl GameObject for ClientEntitiesContainer
 			self.players[player_id].draw(info);
 		} else
 		{
-			self.players.iter().for_each(|(_, pair)|
-				pair.draw(info)
-			);
+			self.players.iter().for_each(|(_, pair)| pair.draw(info));
 		}
+
+        self.enemies.iter().for_each(|(_, pair)| pair.draw(info));
     }
 }
 
 impl EntitiesContainer for ClientEntitiesContainer
 {
 	type PlayerObject = ObjectPair<Player>;
+	type EnemyObject = ObjectPair<Enemy>;
 
 	fn players_ref(&self) -> &Slab<Self::PlayerObject>
 	{
@@ -115,6 +122,16 @@ impl EntitiesContainer for ClientEntitiesContainer
 	fn players_mut(&mut self) -> &mut Slab<Self::PlayerObject>
 	{
 		&mut self.players
+	}
+
+	fn enemies_ref(&self) -> &Slab<Self::EnemyObject>
+	{
+		&self.enemies
+	}
+
+	fn enemies_mut(&mut self) -> &mut Slab<Self::EnemyObject>
+	{
+		&mut self.enemies
 	}
 }
 
@@ -282,6 +299,15 @@ impl GameState
 
 		match message
 		{
+			Message::EnemyCreate{id, enemy} =>
+			{
+				let enemy = ObjectPair::new(create_info, enemy);
+
+				if id != self.entities.enemies_mut().insert(enemy)
+				{
+					id_mismatch();
+				}
+			},
 			Message::PlayerCreate{id, player} =>
 			{
 				let player = ObjectPair::new(create_info, player);
@@ -350,6 +376,19 @@ impl GameState
 		camera.rescale(scale);
 		self.world.rescale(camera.aspect());
 	}
+
+    pub fn add_client_enemy(&self, enemy: Enemy)
+    {
+        let id = self.entities.empty_enemy();
+        self.echo_message(Message::EnemyCreate{id, enemy});
+    }
+
+    pub fn echo_message(&self, message: Message)
+    {
+        let message = Message::RepeatMessage{message: Box::new(message)};
+
+        self.connections_handler.write().send_message(message);
+    }
 
     pub fn tile(&self, index: TilePos) -> Option<&Tile>
     {
