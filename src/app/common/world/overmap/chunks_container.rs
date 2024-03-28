@@ -30,6 +30,13 @@ macro_rules! implement_common
 
         impl<T> $name<T>
         {
+            pub fn from_raw(size: Pos3<usize>, chunks: Box<[T]>) -> Self
+            {
+                let indexer = $indexer_name::new(size);
+
+                Self{chunks, indexer}
+            }
+
             pub fn new_with<F: FnMut(LocalPos) -> T>(size: Pos3<usize>, mut default_function: F) -> Self
             {
                 let indexer = Indexer::new(size);
@@ -42,14 +49,12 @@ macro_rules! implement_common
                 mut default_function: F
             ) -> Self
             {
-                let indexer = $indexer_name::new(size);
-
-                let chunks = (0..(size.x * size.y * size.z)).map(|index|
+                let data = (0..(size.x * size.y * size.z)).map(|index|
                 {
                     default_function(index)
                 }).collect::<Box<[_]>>();
 
-                Self{chunks, indexer}
+                Self::from_raw(size, data)
             }
 
             pub fn map<F, U>(&self, f: F) -> $name<U>

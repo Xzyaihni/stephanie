@@ -164,7 +164,7 @@ impl ChunkGenerator
             name != "none"
         }).try_for_each(|name|
 		{
-            let filename = parent_directory.join(format!("{name}.lua"));
+            let filename = parent_directory.join(format!("{name}.scm"));
 
 			this.parse_function(filename, name)
 		})?;
@@ -184,7 +184,12 @@ impl ChunkGenerator
             ParseError::new_named(filepath.clone(), err)
         })?;
 
-        self.chunks.insert(name.to_owned(), Lisp::new(&code));
+        let lisp = Lisp::new(&code).unwrap_or_else(|err|
+        {
+            panic!("error parsing {name}: {err}")
+        });
+
+        self.chunks.insert(name.to_owned(), lisp);
 	    
         Ok(())
     }
@@ -199,9 +204,29 @@ impl ChunkGenerator
             return ChunksContainer::new_with(WORLD_CHUNK_SIZE, |_| Tile::none());
         }
 
-        let tiles: Vec<Tile> = self.chunks[group.this].run();
+        // mfin tree lmao
+        let tiles = self.chunks[group.this].run()
+            .unwrap_or_else(|err|
+            {
+                panic!("runtime lisp error: {err}")
+            })
+            .as_vector()
+            .unwrap_or_else(|err|
+            {
+                panic!("expected vector, got {err}")
+            })
+            .as_vec_usize()
+            .unwrap_or_else(|err|
+            {
+                panic!("expected vector of numbers, got {err}")
+            })
+            .into_iter()
+            .map(|x|
+            {
+                Tile::new(x)
+            }).collect();
 
-        ChunksContainer::new_indexed(WORLD_CHUNK_SIZE, |index| tiles[index])
+        ChunksContainer::from_raw(WORLD_CHUNK_SIZE, tiles)
 	}
 }
 
