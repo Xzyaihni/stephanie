@@ -1,5 +1,4 @@
 use std::{
-    mem,
     ops::Range,
     fmt::{self, Display, Debug},
     collections::HashMap
@@ -562,28 +561,26 @@ impl MemoryBlock
 
 pub struct LispMemory
 {
-    memory: MemoryBlock,
-    swap_memory: MemoryBlock,
+    memory: MemoryBlock
 }
 
 impl LispMemory
 {
     pub fn new(memory_size: usize) -> Self
     {
-        let half_memory = memory_size / 2;
-        let memory = MemoryBlock::new(half_memory);
-        let swap_memory = MemoryBlock::new(half_memory);
+        let memory = MemoryBlock::new(memory_size);
 
-        Self{memory, swap_memory}
+        Self{memory}
+    }
+
+    pub fn clear(&mut self)
+    {
+        self.memory.clear();
     }
 
     fn gc(&mut self)
     {
-        self.swap_memory.clear();
-
-        todo!();
-
-        mem::swap(&mut self.memory, &mut self.swap_memory);
+        panic!("due to my bespoke decisions gc is too hard to implement :( out of memory btw");
     }
 
     pub fn get_vector_ref(&self, id: usize) -> LispVectorRef
@@ -742,10 +739,15 @@ impl Lisp
 {
     pub fn new(code: &str) -> Result<Self, Error>
     {
-        let program = Program::parse(code)?;
-
         let memory_size = 1 << 10;
         let memory = LispMemory::new(memory_size);
+
+        Self::new_with_memory(memory, code)
+    }
+
+    pub fn new_with_memory(memory: LispMemory, code: &str) -> Result<Self, Error>
+    {
+        let program = Program::parse(code)?;
 
         Ok(Self{program, memory})
     }
@@ -884,22 +886,26 @@ mod tests
     }
 
     #[test]
-    fn garbage_collection()
+    fn uses_lots_of_memory_or_something_lol()
     {
         let code = "
             (define (factorial-list n)
                 (if (= n 1)
                     (quote (1))
-                    (let ((
+                    (let ((next (factorial-list (- n 1))))
+                        (let ((this (* n (car next))))
+                            (cons this next)))))
 
-            (factorial-list 7)
+            (define (silly x) (car (factorial-list x)))
+
+            (+ (silly 7) (silly 5) (silly 6) (silly 11) (silly 4))
         ";
 
         let mut lisp = Lisp::new(code).unwrap();
 
         let value = lisp.run().unwrap().as_integer().unwrap();
 
-        assert_eq!(value, 5040_i32);
+        assert_eq!(value, 39_922_704_i32);
     }
 
     fn list_equals(memory: &LispMemory, list: LispList, check: &[i32])
