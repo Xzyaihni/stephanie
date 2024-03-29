@@ -1,6 +1,5 @@
 use std::{
     mem,
-    iter,
     fmt::{self, Display, Debug},
     collections::HashMap
 };
@@ -77,17 +76,24 @@ pub union ValueRaw
 {
     integer: i32,
     float: f32,
+    char: char,
+    len: usize,
     procedure: usize,
+    tag: ValueTag,
     special: Special,
     list: usize,
-    symbol: usize
+    symbol: usize,
+    string: usize,
+    vector: usize
 }
 
-#[derive(Debug, Clone, Copy)]
+#[repr(u32)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ValueTag
 {
     Integer,
     Float,
+    Char,
     String,
     Symbol,
     Special,
@@ -104,14 +110,26 @@ pub struct LispVector
 
 impl LispVector
 {
+    // eh
     pub fn as_vec_usize(self) -> Result<Vec<usize>, Error>
     {
         match self.tag
         {
-            // eh
             ValueTag::Integer => Ok(self.values.into_iter().map(|x| 
             {
                 unsafe{ x.integer as usize }
+            }).collect()),
+            x => Err(Error::WrongType(x))
+        }
+    }
+
+    pub fn as_vec_char(self) -> Result<Vec<char>, Error>
+    {
+        match self.tag
+        {
+            ValueTag::Char => Ok(self.values.into_iter().map(|x| 
+            {
+                unsafe{ x.char }
             }).collect()),
             x => Err(Error::WrongType(x))
         }
@@ -152,6 +170,7 @@ impl Debug for LispValue
         {
             ValueTag::Integer => unsafe{ self.value.integer.to_string() },
             ValueTag::Float => unsafe{ self.value.float.to_string() },
+            ValueTag::Char => unsafe{ self.value.char.to_string() },
             ValueTag::Special => unsafe{ self.value.special.to_string() },
             ValueTag::String => unimplemented!(),
             ValueTag::Symbol => unimplemented!(),
@@ -176,6 +195,20 @@ impl LispValue
     {
         unsafe{
             Self::new(ValueTag::List, ValueRaw{list})
+        }
+    }
+
+    pub fn new_vector(vector: usize) -> Self
+    {
+        unsafe{
+            Self::new(ValueTag::Vector, ValueRaw{vector})
+        }
+    }
+
+    pub fn new_string(string: usize) -> Self
+    {
+        unsafe{
+            Self::new(ValueTag::String, ValueRaw{string})
         }
     }
 
@@ -348,7 +381,7 @@ impl Display for Error
 
 struct MemoryBlock
 {
-    general: Vec<LispValue>,
+    general: Vec<ValueRaw>,
     cars: Vec<LispValue>,
     cdrs: Vec<LispValue>
 }
@@ -369,18 +402,33 @@ impl MemoryBlock
         Self{general, cars, cdrs}
     }
 
+    pub fn get_vector(&self, id: usize) -> Result<LispVector, Error>
+    {
+        let len = unsafe{ self.general[id].len };
+        let tag = unsafe{ self.general[id + 1].tag };
+
+        let start = id + 2;
+        let values: Vec<ValueRaw> = (start..(start + len)).map(|index|
+        {
+            self.general[index]
+        }).collect();
+
+        Ok(LispVector{
+            tag,
+            values
+        })
+    }
+
     pub fn get_symbol(&self, id: usize) -> Result<String, Error>
     {
-        let len = self.general[id].as_integer()? as usize;
+        let vec = self.get_vector(id)?;
 
-        let start = id + 1;
-        (start..(start + len)).map(|index|
+        if vec.tag != ValueTag::Char
         {
-            self.general[index].as_integer().and_then(|x|
-            {
-                char::from_u32(x as u32).ok_or(Error::CharOutOfRange)
-            })
-        }).collect()
+            return Err(Error::WrongType(vec.tag));
+        }
+
+        Ok(vec.values.into_iter().map(|x| unsafe{ x.char }).collect())
     }
 
     pub fn get_list(&self, id: usize) -> LispList
@@ -413,19 +461,22 @@ impl MemoryBlock
         LispValue::new_list(id)
     }
 
-    fn allocate_iter(&mut self, iter: impl Iterator<Item=LispValue>) -> usize
+    fn allocate_iter(
+        &mut self,
+        len: usize,
+        tag: ValueTag,
+        iter: impl Iterator<Item=ValueRaw>
+    ) -> usize
     {
         let id = self.general.len();
 
-        iter.for_each(|value|
-        {
-            self.general.push(value);
-        });
+        let iter = [ValueRaw{len}, ValueRaw{tag}].into_iter().chain(iter);
+        self.general.extend(iter);
 
         id
     }
 
-    fn remaining_of(v: &Vec<LispValue>) -> usize
+    fn remaining_of<T>(v: &Vec<T>) -> usize
     {
         v.capacity() - v.len()
     }
@@ -518,9 +569,17 @@ impl LispMemory
         self.memory.cons(car, cdr)
     }
 
-    fn allocate_iter(&mut self, iter: impl Iterator<Item=LispValue>) -> usize
+    fn allocate_vec(
+        &mut self,
+        vec: LispVector
+    ) -> usize
     {
-        self.memory.allocate_iter(iter)
+        let len = vec.values.len();
+
+        // +2 for the length and for the type tag
+        self.need_memory(len + 2);
+
+        self.memory.allocate_iter(len, vec.tag, vec.values.into_iter())
     }
 
     pub fn allocate_expression(&mut self, expression: &Expression) -> LispValue
@@ -540,15 +599,12 @@ impl LispMemory
             },
             Expression::Value(x) =>
             {
-                let len = x.chars().count();
+                let vec = LispVector{
+                    tag: ValueTag::Char,
+                    values: x.chars().map(|c| ValueRaw{char: c}).collect()
+                };
 
-                // +1 for the length itself
-                self.need_memory(len + 1);
-
-                let iter = iter::once(LispValue::new_integer(len as i32))
-                    .chain(x.chars().map(|c| LispValue::new_integer(c as i32)));
-
-                let id = self.allocate_iter(iter);
+                let id = self.allocate_vec(vec);
 
                 LispValue::new_symbol(id)
             },

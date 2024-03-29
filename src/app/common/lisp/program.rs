@@ -170,7 +170,7 @@ impl PrimitiveProcedure
 
                 env.define(key, value);
 
-                return Ok(LispValue::new_integer(0));
+                Ok(LispValue::new_integer(0))
             },
             Self::If =>
             {
@@ -658,7 +658,7 @@ impl Expression
 
         let id = lambdas.add(lambda);
 
-        return Ok(Self::Lambda(id));
+        Ok(Self::Lambda(id))
     }
 
     fn ast_to_expression(ast: Ast) -> Result<Self, Error>
