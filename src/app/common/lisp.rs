@@ -1,5 +1,6 @@
 use std::{
     mem,
+    ops::Range,
     fmt::{self, Display, Debug},
     collections::HashMap
 };
@@ -102,11 +103,15 @@ pub enum ValueTag
     Vector
 }
 
-pub struct LispVector
+pub struct LispVectorInner<T>
 {
     tag: ValueTag,
-    values: Vec<ValueRaw>
+    values: T
 }
+
+pub type LispVector = LispVectorInner<Vec<ValueRaw>>;
+pub type LispVectorRef<'a> = LispVectorInner<&'a [ValueRaw]>;
+pub type LispVectorMut<'a> = LispVectorInner<&'a mut [ValueRaw]>;
 
 impl LispVector
 {
@@ -301,11 +306,29 @@ impl LispValue
         }
     }
 
+    pub fn as_vector_ref(self, memory: &LispMemory) -> Result<LispVectorRef, Error>
+    {
+        match self.tag
+        {
+            ValueTag::Vector => Ok(memory.get_vector_ref(unsafe{ self.value.vector })),
+            x => Err(Error::WrongType(x))
+        }
+    }
+
+    pub fn as_vector_mut(self, memory: &mut LispMemory) -> Result<LispVectorMut, Error>
+    {
+        match self.tag
+        {
+            ValueTag::Vector => Ok(memory.get_vector_mut(unsafe{ self.value.vector })),
+            x => Err(Error::WrongType(x))
+        }
+    }
+
     pub fn as_vector(self, memory: &LispMemory) -> Result<LispVector, Error>
     {
         match self.tag
         {
-            ValueTag::Vector => memory.get_vector(unsafe{ self.value.vector }),
+            ValueTag::Vector => Ok(memory.get_vector(unsafe{ self.value.vector })),
             x => Err(Error::WrongType(x))
         }
     }
@@ -360,7 +383,9 @@ pub enum Error
     UndefinedVariable(String),
     ApplyNonApplication,
     WrongArgumentsCount,
+    IndexOutOfRange(i32),
     CharOutOfRange,
+    VectorWrongType{expected: ValueTag, got: ValueTag},
     ExpectedSameNumberType,
     ExpectedArg,
     ExpectedOp,
@@ -380,7 +405,10 @@ impl Display for Error
             Self::ApplyNonApplication => "apply was called on a non application".to_owned(),
             Self::ExpectedSameNumberType => "primitive operation expected 2 numbers of same type".to_owned(),
             Self::WrongArgumentsCount => "wrong amount of arguments passed to procedure".to_owned(),
+            Self::IndexOutOfRange(i) => format!("index {i} out of range"),
             Self::CharOutOfRange => "char out of range".to_owned(),
+            Self::VectorWrongType{expected, got} =>
+                format!("vector expected `{expected:?}` got `{got:?}`"),
             Self::ExpectedArg => "expected an argument".to_owned(),
             Self::ExpectedOp => "expected an operator".to_owned(),
             Self::ExpectedClose => "expected a closing parenthesis".to_owned(),
@@ -414,26 +442,48 @@ impl MemoryBlock
         Self{general, cars, cdrs}
     }
 
-    pub fn get_vector(&self, id: usize) -> Result<LispVector, Error>
+    fn vector_info(&self, id: usize) -> (ValueTag, Range<usize>)
     {
         let len = unsafe{ self.general[id].len };
         let tag = unsafe{ self.general[id + 1].tag };
 
         let start = id + 2;
-        let values: Vec<ValueRaw> = (start..(start + len)).map(|index|
-        {
-            self.general[index]
-        }).collect();
+        (tag, start..(start + len))
+    }
 
-        Ok(LispVector{
+    pub fn get_vector_ref(&self, id: usize) -> LispVectorRef
+    {
+        let (tag, range) = self.vector_info(id);
+
+        LispVectorRef{
             tag,
-            values
-        })
+            values: &self.general[range]
+        }
+    }
+
+    pub fn get_vector_mut(&mut self, id: usize) -> LispVectorMut
+    {
+        let (tag, range) = self.vector_info(id);
+
+        LispVectorMut{
+            tag,
+            values: &mut self.general[range]
+        }
+    }
+
+    pub fn get_vector(&self, id: usize) -> LispVector
+    {
+        let (tag, range) = self.vector_info(id);
+
+        LispVector{
+            tag,
+            values: self.general[range].to_vec()
+        }
     }
 
     pub fn get_symbol(&self, id: usize) -> Result<String, Error>
     {
-        let vec = self.get_vector(id)?;
+        let vec = self.get_vector(id);
 
         if vec.tag != ValueTag::Char
         {
@@ -536,7 +586,17 @@ impl LispMemory
         mem::swap(&mut self.memory, &mut self.swap_memory);
     }
 
-    pub fn get_vector(&self, id: usize) -> Result<LispVector, Error>
+    pub fn get_vector_ref(&self, id: usize) -> LispVectorRef
+    {
+        self.memory.get_vector_ref(id)
+    }
+
+    pub fn get_vector_mut(&mut self, id: usize) -> LispVectorMut
+    {
+        self.memory.get_vector_mut(id)
+    }
+
+    pub fn get_vector(&self, id: usize) -> LispVector
     {
         self.memory.get_vector(id)
     }
@@ -586,7 +646,7 @@ impl LispMemory
         self.memory.cons(car, cdr)
     }
 
-    pub fn allocate_vec(&mut self, vec: LispVector) -> usize
+    pub fn allocate_vector(&mut self, vec: LispVector) -> usize
     {
         let len = vec.values.len();
 
@@ -618,7 +678,7 @@ impl LispMemory
                     values: x.chars().map(|c| ValueRaw{char: c}).collect()
                 };
 
-                let id = self.allocate_vec(vec);
+                let id = self.allocate_vector(vec);
 
                 LispValue::new_symbol(id)
             },
@@ -781,6 +841,67 @@ mod tests
         assert_eq!(value, 5040_i32);
     }
 
+    #[test]
+    fn let_thingy()
+    {
+        let code = "
+            (let ((x (+ 2 1)) (y (* 4 7)))
+                (let ((z (+ x y)))
+                    (+ z y x)))
+        ";
+
+        let mut lisp = Lisp::new(code).unwrap();
+
+        let value = lisp.run().unwrap().as_integer().unwrap();
+
+        // simple math too hard for me sry
+        assert_eq!(value, (34_i32 + 28));
+    }
+
+    #[test]
+    fn begin()
+    {
+        let code = "
+            (define v (make-vector 3 123))
+
+            (vector-set!
+                (begin
+                    (vector-set! v 0 1)
+                    (vector-set! v 1 2)
+                    v)
+                2
+                3)
+
+            v
+        ";
+
+        let mut lisp = Lisp::new(code).unwrap();
+
+        let output = lisp.run().unwrap();
+        let value = lisp.get_vector(output).unwrap().as_vec_integer().unwrap();
+
+        assert_eq!(value, vec![1, 2, 3]);
+    }
+
+    #[test]
+    fn garbage_collection()
+    {
+        let code = "
+            (define (factorial-list n)
+                (if (= n 1)
+                    (quote (1))
+                    (let ((
+
+            (factorial-list 7)
+        ";
+
+        let mut lisp = Lisp::new(code).unwrap();
+
+        let value = lisp.run().unwrap().as_integer().unwrap();
+
+        assert_eq!(value, 5040_i32);
+    }
+
     fn list_equals(memory: &LispMemory, list: LispList, check: &[i32])
     {
         let car = list.car().as_integer().unwrap();
@@ -873,6 +994,33 @@ mod tests
         let value = lisp.get_vector(output).unwrap().as_vec_integer().unwrap();
 
         assert_eq!(value, vec![999, 999, 999, 999, 999]);
+    }
+
+    #[test]
+    fn manip_vector()
+    {
+        let code = "
+            (define x (make-vector 5 999))
+
+            (vector-set! x 3 123)
+            (vector-set! x 2 5)
+            (vector-set! x 1 9)
+            (vector-set! x 4 1000)
+
+            (vector-set!
+                x
+                0
+                (+ (vector-ref x 2) (vector-ref x 4)))
+
+            x
+        ";
+
+        let mut lisp = Lisp::new(code).unwrap();
+
+        let output = lisp.run().unwrap();
+        let value = lisp.get_vector(output).unwrap().as_vec_integer().unwrap();
+
+        assert_eq!(value, vec![1005, 9, 5, 123, 1000]);
     }
 
     #[test]

@@ -10,6 +10,7 @@ use parser::{Parser, Ast, PrimitiveType};
 mod parser;
 
 
+// primitive? yeah
 #[derive(Debug, Clone, Copy)]
 pub enum PrimitiveProcedure
 {
@@ -25,7 +26,11 @@ pub enum PrimitiveProcedure
     Define,
     Quote,
     If,
+    Let,
+    Begin,
     MakeVector,
+    VectorSet,
+    VectorRef,
     Cons,
     Car,
     Cdr,
@@ -120,6 +125,17 @@ impl PrimitiveProcedure
         }
     }
 
+    fn check_inbounds<T>(values: &[T], index: i32) -> Result<(), Error>
+    {
+        if index < 0 || index as usize >= values.len()
+        {
+            Err(Error::IndexOutOfRange(index))
+        } else
+        {
+            Ok(())
+        }
+    }
+
     fn apply(
         self,
         lambdas: &Lambdas, 
@@ -192,7 +208,7 @@ impl PrimitiveProcedure
 
                 env.define(key, value);
 
-                Ok(LispValue::new_integer(0))
+                Ok(LispValue::new_empty_list())
             },
             Self::If =>
             {
@@ -220,7 +236,39 @@ impl PrimitiveProcedure
                     values: vec![fill.value; len]
                 };
 
-                Ok(LispValue::new_vector(memory.allocate_vec(vec)))
+                Ok(LispValue::new_vector(memory.allocate_vector(vec)))
+            },
+            Self::VectorSet =>
+            {
+                let mut args = Expression::apply_args(lambdas, memory, env, args)?;
+
+                let vec = args.pop()?.as_vector_mut(memory)?;
+                let index = args.pop()?.as_integer()?;
+                let value = args.pop()?;
+
+                if vec.tag != value.tag
+                {
+                    return Err(Error::VectorWrongType{expected: vec.tag, got: value.tag});
+                }
+
+                Self::check_inbounds(&vec.values, index)?;
+
+                vec.values[index as usize] = value.value;
+
+                Ok(LispValue::new_empty_list())
+            },
+            Self::VectorRef =>
+            {
+                let mut args = Expression::apply_args(lambdas, memory, env, args)?;
+
+                let vec = args.pop()?.as_vector_ref(memory)?;
+                let index = args.pop()?.as_integer()?;
+
+                Self::check_inbounds(&vec.values, index)?;
+
+                let value = vec.values[index as usize];
+
+                Ok(unsafe{ LispValue::new(vec.tag, value) })
             },
             Self::Cons =>
             {
@@ -270,6 +318,8 @@ impl PrimitiveProcedure
 
                 Ok(LispValue::new_bool(is_bool))
             },
+            Self::Let => unreachable!(),
+            Self::Begin => unreachable!(),
             Self::Lambda => unreachable!()
         }
     }
@@ -306,8 +356,12 @@ impl From<String> for Procedure
             "lambda" => Self::Primitive(PrimitiveProcedure::Lambda),
             "define" => Self::Primitive(PrimitiveProcedure::Define),
             "if" => Self::Primitive(PrimitiveProcedure::If),
+            "let" => Self::Primitive(PrimitiveProcedure::Let),
+            "begin" => Self::Primitive(PrimitiveProcedure::Begin),
             "quote" => Self::Primitive(PrimitiveProcedure::Quote),
             "make-vector" => Self::Primitive(PrimitiveProcedure::MakeVector),
+            "vector-set!" => Self::Primitive(PrimitiveProcedure::VectorSet),
+            "vector-ref" => Self::Primitive(PrimitiveProcedure::VectorRef),
             "cons" => Self::Primitive(PrimitiveProcedure::Cons),
             "car" => Self::Primitive(PrimitiveProcedure::Car),
             "cdr" => Self::Primitive(PrimitiveProcedure::Cdr),
@@ -638,12 +692,7 @@ impl Expression
         {
             let op = Self::eval(lambdas, ast.car())?;
 
-            let op = match op
-            {
-                Self::Value(name) => Procedure::from(name),
-                Self::Lambda(id) => Procedure::Compound(CompoundProcedure::Lambda(id)),
-                _ => return Err(Error::ExpectedOp)
-            };
+            let op = Self::eval_op(op)?;
 
             let args = ast.cdr();
 
@@ -654,6 +703,18 @@ impl Expression
         }
     }
 
+    fn eval_op(op: Self) -> Result<Procedure, Error>
+    {
+        let value = match op
+        {
+            Self::Value(name) => Procedure::from(name),
+            Self::Lambda(id) => Procedure::Compound(CompoundProcedure::Lambda(id)),
+            _ => return Err(Error::ExpectedOp)
+        };
+
+        Ok(value)
+    }
+
     fn eval_nonatom(lambdas: &mut Lambdas, op: Procedure, args: Ast) -> Result<Self, Error>
     {
         let args = match op
@@ -662,6 +723,37 @@ impl Expression
             {
                 match p
                 {
+                    PrimitiveProcedure::Begin =>
+                    {
+                        return Self::eval_sequence(lambdas, args);
+                    },
+                    PrimitiveProcedure::Let =>
+                    {
+                        Self::argument_count_ast(2, &args)?;
+
+                        let bindings = args.car();
+                        let body = args.cdr().car();
+
+                        let params = bindings.map_list(|x| x.car());
+                        let apply_args = Self::eval_args(
+                            lambdas,
+                            bindings.map_list(|x| x.cdr().car())
+                        )?;
+
+                        let lambda_args =
+                            Ast::cons(
+                                params,
+                                Ast::cons(
+                                    body,
+                                    Ast::EmptyList));
+
+                        let lambda = Self::eval_lambda(lambdas, lambda_args)?;
+
+                        return Ok(Self::Application{
+                            op: Self::eval_op(lambda)?,
+                            args: Box::new(apply_args)
+                        });
+                    },
                     PrimitiveProcedure::Define =>
                     {
                         let first = args.car();
@@ -705,23 +797,34 @@ impl Expression
             _ => Self::eval_args(lambdas, args)?
         };
 
+        Self::verify(&op, &args)?;
+
+        let args = Box::new(args);
+
+        Ok(Self::Application{op, args})
+    }
+
+    fn verify(op: &Procedure, args: &Self) -> Result<(), Error>
+    {
         match op
         {
             Procedure::Primitive(p) =>
             {
                 match p
                 {
-                    PrimitiveProcedure::If =>
+                    PrimitiveProcedure::If
+                        | PrimitiveProcedure::VectorSet =>
                     {
-                        Self::argument_count(3, &args)?;
+                        Self::argument_count(3, args)?;
                     },
                     PrimitiveProcedure::Cons
                         | PrimitiveProcedure::Rem
                         | PrimitiveProcedure::Lambda
                         | PrimitiveProcedure::Define
-                        | PrimitiveProcedure::MakeVector =>
+                        | PrimitiveProcedure::MakeVector
+                        | PrimitiveProcedure::VectorRef =>
                     {
-                        Self::argument_count(2, &args)?;
+                        Self::argument_count(2, args)?;
                     },
                     PrimitiveProcedure::Car
                         | PrimitiveProcedure::Cdr
@@ -733,7 +836,7 @@ impl Expression
                         | PrimitiveProcedure::IsPair
                         | PrimitiveProcedure::IsNumber =>
                     {
-                        Self::argument_count(1, &args)?;
+                        Self::argument_count(1, args)?;
                     },
                     PrimitiveProcedure::Add
                         | PrimitiveProcedure::Sub
@@ -742,15 +845,15 @@ impl Expression
                         | PrimitiveProcedure::IsEqual
                         | PrimitiveProcedure::IsGreater
                         | PrimitiveProcedure::IsLess
-                        | PrimitiveProcedure::Quote => ()
+                        | PrimitiveProcedure::Quote
+                        | PrimitiveProcedure::Begin
+                        | PrimitiveProcedure::Let => ()
                 }
             },
             _ => ()
         }
 
-        let args = Box::new(args);
-
-        Ok(Self::Application{op, args})
+        Ok(())
     }
 
     fn eval_lambda(lambdas: &mut Lambdas, args: Ast) -> Result<Self, Error>

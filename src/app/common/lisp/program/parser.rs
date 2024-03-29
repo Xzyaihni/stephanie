@@ -48,6 +48,24 @@ impl Ast
         Self::List{car: Box::new(car), cdr: Box::new(cdr)}
     }
 
+    pub fn map_list<F>(&self, mut f: F) -> Self
+    where
+        F: FnMut(Self) -> Self
+    {
+        if self.is_null()
+        {
+            return Self::EmptyList;
+        }
+
+        let car = self.car();
+        let cdr = self.cdr();
+
+        Self::List{
+            car: Box::new(f(car)),
+            cdr: Box::new(cdr.map_list(f))
+        }
+    }
+
     pub fn parse_primitive(x: &str) -> Result<PrimitiveType, Error>
     {
         if x.starts_with(|c: char| !c.is_ascii_digit())
