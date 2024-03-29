@@ -123,6 +123,18 @@ impl LispVector
         }
     }
 
+    pub fn as_vec_integer(self) -> Result<Vec<i32>, Error>
+    {
+        match self.tag
+        {
+            ValueTag::Integer => Ok(self.values.into_iter().map(|x| 
+            {
+                unsafe{ x.integer }
+            }).collect()),
+            x => Err(Error::WrongType(x))
+        }
+    }
+
     pub fn as_vec_char(self) -> Result<Vec<char>, Error>
     {
         match self.tag
@@ -275,7 +287,7 @@ impl LispValue
     {
         match self.tag
         {
-            ValueTag::Symbol => memory.get_symbol( unsafe{ self.value.symbol }),
+            ValueTag::Symbol => memory.get_symbol(unsafe{ self.value.symbol }),
             x => Err(Error::WrongType(x))
         }
     }
@@ -284,16 +296,16 @@ impl LispValue
     {
         match self.tag
         {
-            ValueTag::List => Ok(memory.get_list( unsafe{ self.value.list })),
+            ValueTag::List => Ok(memory.get_list(unsafe{ self.value.list })),
             x => Err(Error::WrongType(x))
         }
     }
 
-    pub fn as_vector(self) -> Result<LispVector, Error>
+    pub fn as_vector(self, memory: &LispMemory) -> Result<LispVector, Error>
     {
         match self.tag
         {
-            ValueTag::Vector => todo!(),
+            ValueTag::Vector => memory.get_vector(unsafe{ self.value.vector }),
             x => Err(Error::WrongType(x))
         }
     }
@@ -524,6 +536,11 @@ impl LispMemory
         mem::swap(&mut self.memory, &mut self.swap_memory);
     }
 
+    pub fn get_vector(&self, id: usize) -> Result<LispVector, Error>
+    {
+        self.memory.get_vector(id)
+    }
+
     pub fn get_symbol(&self, id: usize) -> Result<String, Error>
     {
         self.memory.get_symbol(id)
@@ -569,10 +586,7 @@ impl LispMemory
         self.memory.cons(car, cdr)
     }
 
-    fn allocate_vec(
-        &mut self,
-        vec: LispVector
-    ) -> usize
+    pub fn allocate_vec(&mut self, vec: LispVector) -> usize
     {
         let len = vec.values.len();
 
@@ -691,6 +705,11 @@ impl Lisp
     pub fn get_symbol(&self, value: LispValue) -> Result<String, Error>
     {
         value.as_symbol(&self.memory)
+    }
+
+    pub fn get_vector(&self, value: LispValue) -> Result<LispVector, Error>
+    {
+        value.as_vector(&self.memory)
     }
 
     pub fn get_list(&self, value: LispValue) -> Result<LispList, Error>
@@ -842,6 +861,21 @@ mod tests
     }
 
     #[test]
+    fn make_vector()
+    {
+        let code = "
+            (make-vector 5 999)
+        ";
+
+        let mut lisp = Lisp::new(code).unwrap();
+
+        let output = lisp.run().unwrap();
+        let value = lisp.get_vector(output).unwrap().as_vec_integer().unwrap();
+
+        assert_eq!(value, vec![999, 999, 999, 999, 999]);
+    }
+
+    #[test]
     fn if_test()
     {
         let code = "
@@ -859,6 +893,28 @@ mod tests
         let value = lisp.run().unwrap().as_integer().unwrap();
 
         assert_eq!(value, 10_i32);
+    }
+
+    #[test]
+    fn predicates_stuff()
+    {
+        let code = "
+            (define (x a)
+                (if a
+                    1
+                    0))
+
+            (+
+                (x (boolean? (= 2 3)))
+                (x (pair? (quote (1 2 3))))
+                (x (number? (quote abcdefg))))
+        ";
+
+        let mut lisp = Lisp::new(code).unwrap();
+
+        let value = lisp.run().unwrap().as_integer().unwrap();
+
+        assert_eq!(value, 2_i32);
     }
 
     #[test]

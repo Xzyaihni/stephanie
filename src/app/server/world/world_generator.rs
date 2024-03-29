@@ -204,18 +204,20 @@ impl ChunkGenerator
             return ChunksContainer::new_with(WORLD_CHUNK_SIZE, |_| Tile::none());
         }
 
-        // mfin tree lmao
-        let tiles = self.chunks.get_mut(group.this)
+        let this_chunk = self.chunks.get_mut(group.this)
             .unwrap_or_else(||
             {
                 panic!("worldchunk named `{}` doesnt exist", group.this)
-            })
-            .run()
+            });
+
+        let output = this_chunk.run()
             .unwrap_or_else(|err|
             {
                 panic!("runtime lisp error: {err}")
-            })
-            .as_vector()
+            });
+
+        // mfin tree lmao
+        let tiles = this_chunk.get_vector(output)
             .unwrap_or_else(|err|
             {
                 panic!("expected vector, got {err}")

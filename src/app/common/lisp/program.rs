@@ -4,7 +4,7 @@ use std::{
     ops::{Add, Sub, Mul, Div, Rem}
 };
 
-pub use super::{Error, Environment, LispValue, LispMemory, ValueTag};
+pub use super::{Error, Environment, LispValue, LispMemory, ValueTag, LispVector};
 use parser::{Parser, Ast, PrimitiveType};
 
 mod parser;
@@ -25,9 +25,17 @@ pub enum PrimitiveProcedure
     Define,
     Quote,
     If,
+    MakeVector,
     Cons,
     Car,
-    Cdr
+    Cdr,
+    IsBoolean,
+    IsSymbol,
+    IsChar,
+    IsVector,
+    IsProcedure,
+    IsPair,
+    IsNumber
 }
 
 impl PrimitiveProcedure
@@ -150,6 +158,20 @@ impl PrimitiveProcedure
             }
         }
 
+        macro_rules! is_tag
+        {
+            ($tag:expr) =>
+            {
+                {
+                    let arg = args.car().apply(lambdas, memory, env)?;
+
+                    let is_equal = arg.tag == $tag;
+
+                    Ok(LispValue::new_bool(is_equal))
+                }
+            }
+        }
+
         match self
         {
             Self::Add => do_op!(add),
@@ -186,6 +208,20 @@ impl PrimitiveProcedure
                     on_false.apply(lambdas, memory, env)
                 }
             },
+            Self::MakeVector =>
+            {
+                let mut args = Expression::apply_args(lambdas, memory, env, args)?;
+
+                let len = args.pop()?.as_integer()? as usize;
+                let fill = args.pop()?;
+
+                let vec = LispVector{
+                    tag: fill.tag,
+                    values: vec![fill.value; len]
+                };
+
+                Ok(LispValue::new_vector(memory.allocate_vec(vec)))
+            },
             Self::Cons =>
             {
                 let mut args = Expression::apply_args(lambdas, memory, env, args)?;
@@ -212,6 +248,27 @@ impl PrimitiveProcedure
             Self::Quote =>
             {
                 Ok(memory.allocate_expression(args))
+            },
+            Self::IsSymbol => is_tag!(ValueTag::Symbol),
+            Self::IsPair => is_tag!(ValueTag::List),
+            Self::IsChar => is_tag!(ValueTag::Char),
+            Self::IsVector => is_tag!(ValueTag::Vector),
+            Self::IsProcedure => is_tag!(ValueTag::Procedure),
+            Self::IsNumber =>
+            {
+                let arg = args.car().apply(lambdas, memory, env)?;
+
+                let is_number = arg.tag == ValueTag::Integer || arg.tag == ValueTag::Float;
+
+                Ok(LispValue::new_bool(is_number))
+            },
+            Self::IsBoolean =>
+            {
+                let arg = args.car().apply(lambdas, memory, env)?;
+
+                let is_bool = arg.as_bool().map(|_| true).unwrap_or(false);
+
+                Ok(LispValue::new_bool(is_bool))
             },
             Self::Lambda => unreachable!()
         }
@@ -250,9 +307,17 @@ impl From<String> for Procedure
             "define" => Self::Primitive(PrimitiveProcedure::Define),
             "if" => Self::Primitive(PrimitiveProcedure::If),
             "quote" => Self::Primitive(PrimitiveProcedure::Quote),
+            "make-vector" => Self::Primitive(PrimitiveProcedure::MakeVector),
             "cons" => Self::Primitive(PrimitiveProcedure::Cons),
             "car" => Self::Primitive(PrimitiveProcedure::Car),
             "cdr" => Self::Primitive(PrimitiveProcedure::Cdr),
+            "boolean?" => Self::Primitive(PrimitiveProcedure::IsBoolean),
+			"symbol?" => Self::Primitive(PrimitiveProcedure::IsSymbol),
+			"char?" => Self::Primitive(PrimitiveProcedure::IsChar),
+			"vector?" => Self::Primitive(PrimitiveProcedure::IsVector),
+			"procedure?" => Self::Primitive(PrimitiveProcedure::IsProcedure),
+			"pair?" => Self::Primitive(PrimitiveProcedure::IsPair),
+			"number?" => Self::Primitive(PrimitiveProcedure::IsNumber),
             _ => Self::Compound(CompoundProcedure::Identifier(s))
         }
     }
@@ -477,8 +542,6 @@ impl Expression
         env: &mut Environment
     ) -> Result<LispValue, Error>
     {
-        dbg!(self);
-
         match self
         {
             Self::Integer(x) => Ok(LispValue::new_integer(*x)),
@@ -624,7 +687,7 @@ impl Expression
                             Self::cons(name, Self::cons(lambda, Self::EmptyList))
                         } else
                         {
-                            Self::argument_count(2, &args)?;
+                            Self::argument_count_ast(2, &args)?;
 
                             Self::eval_args(lambdas, args)?
                         }
@@ -632,7 +695,7 @@ impl Expression
                     PrimitiveProcedure::Lambda => return Self::eval_lambda(lambdas, args),
                     PrimitiveProcedure::Quote =>
                     {
-                        Self::argument_count(1, &args)?;
+                        Self::argument_count_ast(1, &args)?;
 
                         Self::ast_to_expression(args.car())?
                     },
@@ -642,6 +705,49 @@ impl Expression
             _ => Self::eval_args(lambdas, args)?
         };
 
+        match op
+        {
+            Procedure::Primitive(p) =>
+            {
+                match p
+                {
+                    PrimitiveProcedure::If =>
+                    {
+                        Self::argument_count(3, &args)?;
+                    },
+                    PrimitiveProcedure::Cons
+                        | PrimitiveProcedure::Rem
+                        | PrimitiveProcedure::Lambda
+                        | PrimitiveProcedure::Define
+                        | PrimitiveProcedure::MakeVector =>
+                    {
+                        Self::argument_count(2, &args)?;
+                    },
+                    PrimitiveProcedure::Car
+                        | PrimitiveProcedure::Cdr
+                        | PrimitiveProcedure::IsBoolean
+                        | PrimitiveProcedure::IsSymbol
+                        | PrimitiveProcedure::IsChar
+                        | PrimitiveProcedure::IsVector
+                        | PrimitiveProcedure::IsProcedure
+                        | PrimitiveProcedure::IsPair
+                        | PrimitiveProcedure::IsNumber =>
+                    {
+                        Self::argument_count(1, &args)?;
+                    },
+                    PrimitiveProcedure::Add
+                        | PrimitiveProcedure::Sub
+                        | PrimitiveProcedure::Mul
+                        | PrimitiveProcedure::Div
+                        | PrimitiveProcedure::IsEqual
+                        | PrimitiveProcedure::IsGreater
+                        | PrimitiveProcedure::IsLess
+                        | PrimitiveProcedure::Quote => ()
+                }
+            },
+            _ => ()
+        }
+
         let args = Box::new(args);
 
         Ok(Self::Application{op, args})
@@ -649,7 +755,7 @@ impl Expression
 
     fn eval_lambda(lambdas: &mut Lambdas, args: Ast) -> Result<Self, Error>
     {
-        Self::argument_count(2, &args)?;
+        Self::argument_count_ast(2, &args)?;
 
         let params = Self::ast_to_expression(args.car())?;
         let body = Self::eval(lambdas, args.cdr().car())?;
@@ -723,7 +829,7 @@ impl Expression
         })
     }
 
-    fn argument_count(count: usize, args: &Ast) -> Result<(), Error>
+    fn argument_count(count: usize, args: &Self) -> Result<(), Error>
     {
         if count < 1
         {
@@ -737,5 +843,21 @@ impl Expression
         }
 
         Self::argument_count(count - 1, &args.cdr())
+    }
+
+    fn argument_count_ast(count: usize, args: &Ast) -> Result<(), Error>
+    {
+        if count < 1
+        {
+            return if args.is_null()
+            {
+                Ok(())
+            } else
+            {
+                Err(Error::WrongArgumentsCount)
+            };
+        }
+
+        Self::argument_count_ast(count - 1, &args.cdr())
     }
 }
