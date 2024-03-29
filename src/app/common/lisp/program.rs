@@ -195,8 +195,20 @@ impl PrimitiveProcedure
 
                 Ok(memory.cons(car, cdr))
             },
-            Self::Car => unreachable!(),
-            Self::Cdr => unreachable!(),
+            Self::Car =>
+            {
+                let value = args.car().apply(lambdas, memory, env)?
+                    .as_list(memory)?;
+
+                Ok(value.car)
+            },
+            Self::Cdr =>
+            {
+                let value = args.car().apply(lambdas, memory, env)?
+                    .as_list(memory)?;
+
+                Ok(value.cdr)
+            },
             Self::Quote =>
             {
                 Ok(memory.allocate_expression(args))
@@ -612,16 +624,15 @@ impl Expression
                             Self::cons(name, Self::cons(lambda, Self::EmptyList))
                         } else
                         {
+                            Self::argument_count(2, &args)?;
+
                             Self::eval_args(lambdas, args)?
                         }
                     },
                     PrimitiveProcedure::Lambda => return Self::eval_lambda(lambdas, args),
                     PrimitiveProcedure::Quote =>
                     {
-                        if !args.cdr().is_null()
-                        {
-                            return Err(Error::WrongArgumentsCount);
-                        }
+                        Self::argument_count(1, &args)?;
 
                         Self::ast_to_expression(args.car())?
                     },
@@ -638,6 +649,8 @@ impl Expression
 
     fn eval_lambda(lambdas: &mut Lambdas, args: Ast) -> Result<Self, Error>
     {
+        Self::argument_count(2, &args)?;
+
         let params = Self::ast_to_expression(args.car())?;
         let body = Self::eval(lambdas, args.cdr().car())?;
 
@@ -708,5 +721,21 @@ impl Expression
                 after: Box::new(Self::eval_sequence(lambdas, cdr)?)
             }
         })
+    }
+
+    fn argument_count(count: usize, args: &Ast) -> Result<(), Error>
+    {
+        if count < 1
+        {
+            return if args.is_null()
+            {
+                Ok(())
+            } else
+            {
+                Err(Error::WrongArgumentsCount)
+            };
+        }
+
+        Self::argument_count(count - 1, &args.cdr())
     }
 }

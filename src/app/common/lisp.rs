@@ -1,5 +1,6 @@
 use std::{
     mem,
+    iter,
     fmt::{self, Display, Debug},
     collections::HashMap
 };
@@ -78,7 +79,8 @@ pub union ValueRaw
     float: f32,
     procedure: usize,
     special: Special,
-    list: usize
+    list: usize,
+    symbol: usize
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -177,6 +179,13 @@ impl LispValue
         }
     }
 
+    pub fn new_symbol(symbol: usize) -> Self
+    {
+        unsafe{
+            Self::new(ValueTag::Symbol, ValueRaw{symbol})
+        }
+    }
+
     pub fn new_procedure(procedure: usize) -> Self
     {
         unsafe{
@@ -226,6 +235,15 @@ impl LispValue
         {
             ValueTag::Special => unsafe{ self.value.special.is_true() },
             _ => true
+        }
+    }
+
+    pub fn as_symbol(self, memory: &LispMemory) -> Result<String, Error>
+    {
+        match self.tag
+        {
+            ValueTag::Symbol => memory.get_symbol( unsafe{ self.value.symbol }),
+            x => Err(Error::WrongType(x))
         }
     }
 
@@ -297,6 +315,7 @@ pub enum Error
     UndefinedVariable(String),
     ApplyNonApplication,
     WrongArgumentsCount,
+    CharOutOfRange,
     ExpectedSameNumberType,
     ExpectedArg,
     ExpectedOp,
@@ -316,6 +335,7 @@ impl Display for Error
             Self::ApplyNonApplication => "apply was called on a non application".to_owned(),
             Self::ExpectedSameNumberType => "primitive operation expected 2 numbers of same type".to_owned(),
             Self::WrongArgumentsCount => "wrong amount of arguments passed to procedure".to_owned(),
+            Self::CharOutOfRange => "char out of range".to_owned(),
             Self::ExpectedArg => "expected an argument".to_owned(),
             Self::ExpectedOp => "expected an operator".to_owned(),
             Self::ExpectedClose => "expected a closing parenthesis".to_owned(),
@@ -328,6 +348,7 @@ impl Display for Error
 
 struct MemoryBlock
 {
+    general: Vec<LispValue>,
     cars: Vec<LispValue>,
     cdrs: Vec<LispValue>
 }
@@ -337,18 +358,47 @@ impl MemoryBlock
     pub fn new(memory_size: usize) -> Self
     {
         let half_memory = memory_size / 2;
-        let cars = Vec::with_capacity(half_memory);
-        let cdrs = Vec::with_capacity(half_memory);
 
-        Self{cars, cdrs}
+        let general = Vec::with_capacity(half_memory);
+
+        let half_half = half_memory / 2;
+
+        let cars = Vec::with_capacity(half_half);
+        let cdrs = Vec::with_capacity(half_half);
+
+        Self{general, cars, cdrs}
+    }
+
+    pub fn get_symbol(&self, id: usize) -> Result<String, Error>
+    {
+        let len = self.general[id].as_integer()? as usize;
+
+        let start = id + 1;
+        (start..(start + len)).map(|index|
+        {
+            self.general[index].as_integer().and_then(|x|
+            {
+                char::from_u32(x as u32).ok_or(Error::CharOutOfRange)
+            })
+        }).collect()
     }
 
     pub fn get_list(&self, id: usize) -> LispList
     {
         LispList{
-            car: self.cars[id],
-            cdr: self.cdrs[id]
+            car: self.get_car(id),
+            cdr: self.get_cdr(id)
         }
+    }
+
+    pub fn get_car(&self, id: usize) -> LispValue
+    {
+        self.cars[id]
+    }
+
+    pub fn get_cdr(&self, id: usize) -> LispValue
+    {
+        self.cdrs[id]
     }
 
     pub fn cons(&mut self, car: LispValue, cdr: LispValue) -> LispValue
@@ -363,9 +413,31 @@ impl MemoryBlock
         LispValue::new_list(id)
     }
 
+    fn allocate_iter(&mut self, iter: impl Iterator<Item=LispValue>) -> usize
+    {
+        let id = self.general.len();
+
+        iter.for_each(|value|
+        {
+            self.general.push(value);
+        });
+
+        id
+    }
+
+    fn remaining_of(v: &Vec<LispValue>) -> usize
+    {
+        v.capacity() - v.len()
+    }
+
     pub fn remaining(&self) -> usize
     {
-        self.cars.capacity() - self.cars.len()
+        Self::remaining_of(&self.general)
+    }
+
+    pub fn list_remaining(&self) -> usize
+    {
+        Self::remaining_of(&self.cars)
     }
 
     pub fn clear(&mut self)
@@ -401,19 +473,54 @@ impl LispMemory
         mem::swap(&mut self.memory, &mut self.swap_memory);
     }
 
+    pub fn get_symbol(&self, id: usize) -> Result<String, Error>
+    {
+        self.memory.get_symbol(id)
+    }
+
     pub fn get_list(&self, id: usize) -> LispList
     {
         self.memory.get_list(id)
     }
 
-    pub fn cons(&mut self, car: LispValue, cdr: LispValue) -> LispValue
+    #[allow(dead_code)]
+    pub fn get_car(&self, id: usize) -> LispValue
     {
-        if self.memory.remaining() < 1
+        self.memory.get_car(id)
+    }
+
+    #[allow(dead_code)]
+    pub fn get_cdr(&self, id: usize) -> LispValue
+    {
+        self.memory.get_car(id)
+    }
+
+    fn need_list_memory(&mut self, amount: usize)
+    {
+        if self.memory.list_remaining() < amount
         {
             self.gc();
         }
+    }
+
+    fn need_memory(&mut self, amount: usize)
+    {
+        if self.memory.remaining() < amount
+        {
+            self.gc();
+        }
+    }
+
+    pub fn cons(&mut self, car: LispValue, cdr: LispValue) -> LispValue
+    {
+        self.need_list_memory(1);
 
         self.memory.cons(car, cdr)
+    }
+
+    fn allocate_iter(&mut self, iter: impl Iterator<Item=LispValue>) -> usize
+    {
+        self.memory.allocate_iter(iter)
     }
 
     pub fn allocate_expression(&mut self, expression: &Expression) -> LispValue
@@ -433,9 +540,17 @@ impl LispMemory
             },
             Expression::Value(x) =>
             {
-                dbg!(x);
+                let len = x.chars().count();
 
-                unimplemented!()
+                // +1 for the length itself
+                self.need_memory(len + 1);
+
+                let iter = iter::once(LispValue::new_integer(len as i32))
+                    .chain(x.chars().map(|c| LispValue::new_integer(c as i32)));
+
+                let id = self.allocate_iter(iter);
+
+                LispValue::new_symbol(id)
             },
             Expression::Application{..} => unreachable!(),
             Expression::Sequence{..} => unreachable!()
@@ -515,6 +630,11 @@ impl Lisp
         let mut env = Environment::new();
 
         self.program.apply(&mut self.memory, &mut env)
+    }
+
+    pub fn get_symbol(&self, value: LispValue) -> Result<String, Error>
+    {
+        value.as_symbol(&self.memory)
     }
 
     pub fn get_list(&self, value: LispValue) -> Result<LispList, Error>
@@ -629,6 +749,40 @@ mod tests
         let value = lisp.get_list(output).unwrap();
 
         list_equals(lisp.memory(), value, &[3, 4, 5]);
+    }
+
+    #[test]
+    fn carring()
+    {
+        let code = "
+            (define x (cons 3 (cons 4 (cons 5 (quote ())))))
+
+            (car (cdr (cdr x)))
+        ";
+
+        let mut lisp = Lisp::new(code).unwrap();
+
+        let value = lisp.run().unwrap().as_integer().unwrap();
+
+        assert_eq!(value, 5_i32);
+    }
+
+    #[test]
+    fn symbols()
+    {
+        // hmm
+        let code = "
+            (define x (quote (bratty lisp 💢 correction needed)))
+
+            (car (cdr (cdr x)))
+        ";
+
+        let mut lisp = Lisp::new(code).unwrap();
+
+        let output = lisp.run().unwrap();
+        let value = lisp.get_symbol(output).unwrap();
+
+        assert_eq!(value, "💢".to_owned());
     }
 
     #[test]
