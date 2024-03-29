@@ -4,7 +4,7 @@ use std::{
     ops::{Add, Sub, Mul, Div, Rem}
 };
 
-pub use super::{Error, Environment, LispValue, ValueTag};
+pub use super::{Error, Environment, LispValue, LispMemory, ValueTag};
 use parser::{Parser, Ast, PrimitiveType};
 
 mod parser;
@@ -23,13 +23,18 @@ pub enum PrimitiveProcedure
     IsLess,
     Lambda,
     Define,
-    If
+    Quote,
+    If,
+    Cons,
+    Car,
+    Cdr
 }
 
 impl PrimitiveProcedure
 {
-    fn do_op<FI, FF>(
-        mut args: ArgValues,
+    fn call_op<FI, FF>(
+        a: LispValue,
+        b: LispValue,
         op_integer: FI,
         op_float: FF
     ) -> Result<LispValue, Error>
@@ -39,21 +44,62 @@ impl PrimitiveProcedure
     {
         // i cant be bothered with implicit type coercions im just gonna panic
 
-        let first = args.pop()?;
-        let second = args.pop()?;
-
-        let output = match (first.tag(), second.tag())
+        let output = match (a.tag(), b.tag())
         {
             (ValueTag::Integer, ValueTag::Integer) =>
             {
-                op_integer(first.as_integer()?, second.as_integer()?)
+                op_integer(a.as_integer()?, b.as_integer()?)
             },
             (ValueTag::Float, ValueTag::Float) =>
             {
-                op_float(first.as_float()?, second.as_float()?)
+                op_float(a.as_float()?, b.as_float()?)
             },
             _ => return Err(Error::ExpectedSameNumberType)
         };
+
+        Ok(output)
+    }
+
+    fn do_cond<FI, FF>(
+        mut args: ArgValues,
+        op_integer: FI,
+        op_float: FF
+    ) -> Result<LispValue, Error>
+    where
+        FI: Fn(i32, i32) -> LispValue,
+        FF: Fn(f32, f32) -> LispValue
+    {
+        let first = args.pop()?;
+        let second = args.pop()?;
+
+        let output = Self::call_op(first, second, &op_integer, &op_float)?;
+
+        let is_true = output.as_bool()?;
+
+        if !is_true || args.is_empty()
+        {
+            Ok(output)
+        } else
+        {
+            args.push(second);
+
+            Self::do_cond(args, op_integer, op_float)
+        }
+    }
+
+    fn do_op<FI, FF>(
+        mut args: ArgValues,
+        op_integer: FI,
+        op_float: FF
+    ) -> Result<LispValue, Error>
+    where
+        FI: Fn(i32, i32) -> LispValue,
+        FF: Fn(f32, f32) -> LispValue
+    {
+        let first = args.pop()?;
+        let second = args.pop()?;
+
+        let output = Self::call_op(first, second, &op_integer, &op_float)?;
 
         if args.is_empty()
         {
@@ -69,6 +115,7 @@ impl PrimitiveProcedure
     fn apply(
         self,
         lambdas: &Lambdas, 
+        memory: &mut LispMemory,
         env: &mut Environment,
         args: &Expression
     ) -> Result<LispValue, Error>
@@ -78,9 +125,9 @@ impl PrimitiveProcedure
             ($f:expr) =>
             {
                 {
-                    let args = Expression::apply_args(lambdas, env, args)?;
+                    let args = Expression::apply_args(lambdas, memory, env, args)?;
 
-                    Self::do_op(args, $f, $f)
+                    Self::do_cond(args, $f, $f)
                 }
             }
         }
@@ -90,7 +137,7 @@ impl PrimitiveProcedure
             ($op:ident) =>
             {
                 {
-                    let args = Expression::apply_args(lambdas, env, args)?;
+                    let args = Expression::apply_args(lambdas, memory, env, args)?;
 
                     Self::do_op(args, |a, b|
                     {
@@ -119,7 +166,7 @@ impl PrimitiveProcedure
                 let second = args.cdr().car();
 
                 let key = first.as_value()?;
-                let value = second.apply(lambdas, env)?;
+                let value = second.apply(lambdas, memory, env)?;
 
                 env.define(key, value);
 
@@ -127,17 +174,32 @@ impl PrimitiveProcedure
             },
             Self::If =>
             {
-                let predicate = args.car().apply(lambdas, env)?;
+                let predicate = args.car().apply(lambdas, memory, env)?;
                 let on_true = args.cdr().car();
                 let on_false = args.cdr().cdr().car();
 
                 if predicate.is_true()
                 {
-                    on_true.apply(lambdas, env)
+                    on_true.apply(lambdas, memory, env)
                 } else
                 {
-                    on_false.apply(lambdas, env)
+                    on_false.apply(lambdas, memory, env)
                 }
+            },
+            Self::Cons =>
+            {
+                let mut args = Expression::apply_args(lambdas, memory, env, args)?;
+
+                let car = args.pop()?;
+                let cdr = args.pop()?;
+
+                Ok(memory.cons(car, cdr))
+            },
+            Self::Car => unreachable!(),
+            Self::Cdr => unreachable!(),
+            Self::Quote =>
+            {
+                Ok(memory.allocate_expression(args))
             },
             Self::Lambda => unreachable!()
         }
@@ -175,6 +237,10 @@ impl From<String> for Procedure
             "lambda" => Self::Primitive(PrimitiveProcedure::Lambda),
             "define" => Self::Primitive(PrimitiveProcedure::Define),
             "if" => Self::Primitive(PrimitiveProcedure::If),
+            "quote" => Self::Primitive(PrimitiveProcedure::Quote),
+            "cons" => Self::Primitive(PrimitiveProcedure::Cons),
+            "car" => Self::Primitive(PrimitiveProcedure::Car),
+            "cdr" => Self::Primitive(PrimitiveProcedure::Cdr),
             _ => Self::Compound(CompoundProcedure::Identifier(s))
         }
     }
@@ -204,6 +270,7 @@ impl StoredLambda
     pub fn apply(
         &self,
         lambdas: &Lambdas,
+        memory: &mut LispMemory,
         env: &Environment,
         args: ArgValues
     ) -> Result<LispValue, Error>
@@ -219,7 +286,7 @@ impl StoredLambda
             new_env.define(key, value);
         });
 
-        self.body.apply(lambdas, &mut new_env)
+        self.body.apply(lambdas, memory, &mut new_env)
     }
 }
 
@@ -270,9 +337,13 @@ impl Program
         Ok(Self{lambdas, expression})
     }
 
-    pub fn apply(&self, env: &mut Environment) -> Result<LispValue, Error>
+    pub fn apply(
+        &self,
+        memory: &mut LispMemory,
+        env: &mut Environment
+    ) -> Result<LispValue, Error>
     {
-        self.expression.apply(&self.lambdas, env)
+        self.expression.apply(&self.lambdas, memory, env)
     }
 }
 
@@ -364,6 +435,11 @@ impl Expression
         }
     }
 
+    fn cons(car: Self, cdr: Self) -> Self
+    {
+        Self::List{car: Box::new(car), cdr: Box::new(cdr)}
+    }
+
     fn is_null(&self) -> bool
     {
         match self
@@ -385,6 +461,7 @@ impl Expression
     pub fn apply(
         &self,
         lambdas: &Lambdas, 
+        memory: &mut LispMemory,
         env: &mut Environment
     ) -> Result<LispValue, Error>
     {
@@ -406,15 +483,15 @@ impl Expression
             {
                 match op
                 {
-                    Procedure::Compound(p) => Self::apply_compound(lambdas, env, p, args),
-                    Procedure::Primitive(p) => p.apply(lambdas, env, args)
+                    Procedure::Compound(p) => Self::apply_compound(lambdas, memory, env, p, args),
+                    Procedure::Primitive(p) => p.apply(lambdas, memory, env, args)
                 }
             },
             Self::Sequence{first, after} =>
             {
-                first.apply(lambdas, env)?;
+                first.apply(lambdas, memory, env)?;
 
-                after.apply(lambdas, env)
+                after.apply(lambdas, memory, env)
             },
             _ => Err(Error::ApplyNonApplication)
         }
@@ -443,18 +520,20 @@ impl Expression
 
     fn apply_args(
         lambdas: &Lambdas, 
+        memory: &mut LispMemory,
         env: &mut Environment,
         args: &Self
     ) -> Result<ArgValues, Error>
     {
         args.map_list(|arg|
         {
-            arg.apply(lambdas, env)
+            arg.apply(lambdas, memory, env)
         })
     }
 
     fn apply_compound(
         lambdas: &Lambdas, 
+        memory: &mut LispMemory,
         env: &mut Environment,
         proc: &CompoundProcedure,
         args: &Self
@@ -473,9 +552,9 @@ impl Expression
 
         let proc = lambdas.get(id);
 
-        let args = Self::apply_args(lambdas, env, args)?;
+        let args = Self::apply_args(lambdas, memory, env, args)?;
 
-        proc.apply(lambdas, env, args)
+        proc.apply(lambdas, memory, env, args)
     }
 
     fn eval(lambdas: &mut Lambdas, ast: Ast) -> Result<Self, Error>
@@ -521,26 +600,31 @@ impl Expression
 
                             let params = first.cdr();
 
-                            let lambda_args = Ast::List{
-                                car: Box::new(params),
-                                cdr: Box::new(body)
-                            };
+                            let lambda_args =
+                                Ast::cons(
+                                    params,
+                                    Ast::cons(
+                                        body,
+                                        Ast::EmptyList));
 
                             let lambda = Self::eval_lambda(lambdas, lambda_args)?;
 
-                            Self::List{
-                                car: Box::new(name),
-                                cdr: Box::new(Self::List{
-                                    car: Box::new(lambda),
-                                    cdr: Box::new(Self::EmptyList)
-                                })
-                            }
+                            Self::cons(name, Self::cons(lambda, Self::EmptyList))
                         } else
                         {
                             Self::eval_args(lambdas, args)?
                         }
                     },
                     PrimitiveProcedure::Lambda => return Self::eval_lambda(lambdas, args),
+                    PrimitiveProcedure::Quote =>
+                    {
+                        if !args.cdr().is_null()
+                        {
+                            return Err(Error::WrongArgumentsCount);
+                        }
+
+                        Self::ast_to_expression(args.car())?
+                    },
                     _ => Self::eval_args(lambdas, args)?
                 }
             },
@@ -568,7 +652,7 @@ impl Expression
     {
         let out = match ast
         {
-            Ast::Value(s) => Self::Value(s),
+            Ast::Value(s) => Self::eval_primitive_ast(Ast::parse_primitive(&s)?),
             Ast::EmptyList => Self::EmptyList,
             Ast::List{car, cdr} => Self::List{
                 car: Box::new(Self::ast_to_expression(*car)?),
@@ -594,16 +678,19 @@ impl Expression
         Ok(out)
     }
 
-    fn eval_atom(ast: Ast) -> Result<Self, Error>
+    fn eval_primitive_ast(primitive: PrimitiveType) -> Self
     {
-        let out = match ast.as_value()?
+        match primitive
         {
             PrimitiveType::Value(x) => Self::Value(x),
             PrimitiveType::Float(x) => Self::Float(x),
             PrimitiveType::Integer(x) => Self::Integer(x)
-        };
+        }
+    }
 
-        Ok(out)
+    fn eval_atom(ast: Ast) -> Result<Self, Error>
+    {
+        Ok(Self::eval_primitive_ast(ast.as_value()?))
     }
 
     fn eval_sequence(lambdas: &mut Lambdas, ast: Ast) -> Result<Self, Error>

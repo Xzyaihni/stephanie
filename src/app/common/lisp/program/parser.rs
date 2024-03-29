@@ -25,7 +25,7 @@ pub enum Ast
 
 impl Ast
 {
-    pub fn car(&self) -> Ast
+    pub fn car(&self) -> Self
     {
         match self
         {
@@ -34,7 +34,7 @@ impl Ast
         }
     }
 
-    pub fn cdr(&self) -> Ast
+    pub fn cdr(&self) -> Self
     {
         match self
         {
@@ -43,29 +43,36 @@ impl Ast
         }
     }
 
+    pub fn cons(car: Self, cdr: Self) -> Self
+    {
+        Self::List{car: Box::new(car), cdr: Box::new(cdr)}
+    }
+
+    pub fn parse_primitive(x: &str) -> Result<PrimitiveType, Error>
+    {
+        if x.starts_with(|c: char| !c.is_ascii_digit())
+        {
+            return Ok(PrimitiveType::Value(x.to_owned()));
+        }
+
+        let out = if x.contains('.')
+        {
+            PrimitiveType::Float(
+                x.parse().map_err(|_| Error::NumberParse(x.to_owned()))?)
+        } else
+        {
+            PrimitiveType::Integer(
+                x.parse().map_err(|_| Error::NumberParse(x.to_owned()))?)
+        };
+
+        Ok(out)
+    }
+
     pub fn as_value(&self) -> Result<PrimitiveType, Error>
     {
         match self
         {
-            Self::Value(x) =>
-            {
-                if x.starts_with(|c: char| !c.is_ascii_digit())
-                {
-                    return Ok(PrimitiveType::Value(x.clone()));
-                }
-
-                let out = if x.contains('.')
-                {
-                    PrimitiveType::Float(
-                        x.parse().map_err(|_| Error::NumberParse(x.clone()))?)
-                } else
-                {
-                    PrimitiveType::Integer(
-                        x.parse().map_err(|_| Error::NumberParse(x.clone()))?)
-                };
-
-                Ok(out)
-            },
+            Self::Value(x) => Self::parse_primitive(x),
             x => panic!("as_number must be called on a value, called on {x:?}")
         }
     }

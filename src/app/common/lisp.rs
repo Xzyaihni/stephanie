@@ -4,10 +4,72 @@ use std::{
     collections::HashMap
 };
 
-use program::Program;
+use program::{Program, Expression};
 
 mod program;
 
+
+#[repr(u32)]
+#[derive(Debug, Clone, Copy)]
+pub enum Special
+{
+    True,
+    False,
+    EmptyList
+}
+
+impl Special
+{
+    pub fn new_bool(value: bool) -> Self
+    {
+        if value
+        {
+            Self::True
+        } else
+        {
+            Self::False
+        }
+    }
+
+    pub fn new_empty_list() -> Self
+    {
+        Self::EmptyList
+    }
+
+    pub fn is_true(&self) -> bool
+    {
+        match self
+        {
+            Self::False => false,
+            _ => true
+        }
+    }
+
+    pub fn as_bool(&self) -> Option<bool>
+    {
+        match self
+        {
+            Self::True => Some(true),
+            Self::False => Some(false),
+            _ => None
+        }
+    }
+}
+
+impl Display for Special
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
+    {
+        let s = match self
+        {
+            Self::True => "#t",
+            Self::False => "#f",
+            Self::EmptyList => "()"
+        };
+
+        write!(f, "{}", s)
+    }
+}
 
 #[derive(Clone, Copy)]
 pub union ValueRaw
@@ -15,7 +77,8 @@ pub union ValueRaw
     integer: i32,
     float: f32,
     procedure: usize,
-    ptr: usize
+    special: Special,
+    list: usize
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -25,9 +88,7 @@ pub enum ValueTag
     Float,
     String,
     Symbol,
-    True,
-    False,
-    EmptyList,
+    Special,
     Procedure,
     List,
     Vector
@@ -55,6 +116,25 @@ impl LispVector
     }
 }
 
+pub struct LispList
+{
+    car: LispValue,
+    cdr: LispValue
+}
+
+impl LispList
+{
+    pub fn car(&self) -> &LispValue
+    {
+        &self.car
+    }
+
+    pub fn cdr(&self) -> &LispValue
+    {
+        &self.cdr
+    }
+}
+
 #[derive(Clone, Copy)]
 pub struct LispValue
 {
@@ -70,11 +150,9 @@ impl Debug for LispValue
         {
             ValueTag::Integer => unsafe{ self.value.integer.to_string() },
             ValueTag::Float => unsafe{ self.value.float.to_string() },
-            ValueTag::True => "#t".to_owned(),
-            ValueTag::False => "#f".to_owned(),
+            ValueTag::Special => unsafe{ self.value.special.to_string() },
             ValueTag::String => unimplemented!(),
             ValueTag::Symbol => unimplemented!(),
-            ValueTag::EmptyList => "()".to_owned(),
             ValueTag::Procedure => format!("<procedure #{}>", unsafe{ self.value.procedure }),
             ValueTag::List => unimplemented!(),
             ValueTag::Vector => unimplemented!()
@@ -92,39 +170,48 @@ impl LispValue
         Self{tag, value}
     }
 
+    pub fn new_list(list: usize) -> Self
+    {
+        unsafe{
+            Self::new(ValueTag::List, ValueRaw{list})
+        }
+    }
+
     pub fn new_procedure(procedure: usize) -> Self
     {
         unsafe{
-            LispValue::new(ValueTag::Procedure, ValueRaw{procedure})
+            Self::new(ValueTag::Procedure, ValueRaw{procedure})
         }
     }
 
     pub fn new_bool(value: bool) -> Self
     {
-        let tag = if value
-        {
-            ValueTag::True
-        } else
-        {
-            ValueTag::False
-        };
+        Self::new_special(Special::new_bool(value))
+    }
 
+    pub fn new_empty_list() -> Self
+    {
+        Self::new_special(Special::new_empty_list())
+    }
+
+    fn new_special(special: Special) -> Self
+    {
         unsafe{
-            LispValue::new(tag, ValueRaw{integer: 0})
+            Self::new(ValueTag::Special, ValueRaw{special})
         }
     }
 
     pub fn new_integer(value: i32) -> Self
     {
         unsafe{
-            LispValue::new(ValueTag::Integer, ValueRaw{integer: value})
+            Self::new(ValueTag::Integer, ValueRaw{integer: value})
         }
     }
 
     pub fn new_float(value: f32) -> Self
     {
         unsafe{
-            LispValue::new(ValueTag::Float, ValueRaw{float: value})
+            Self::new(ValueTag::Float, ValueRaw{float: value})
         }
     }
 
@@ -137,8 +224,17 @@ impl LispValue
     {
         match self.tag
         {
-            ValueTag::False => false,
+            ValueTag::Special => unsafe{ self.value.special.is_true() },
             _ => true
+        }
+    }
+
+    pub fn as_list(self, memory: &LispMemory) -> Result<LispList, Error>
+    {
+        match self.tag
+        {
+            ValueTag::List => Ok(memory.get_list( unsafe{ self.value.list })),
+            x => Err(Error::WrongType(x))
         }
     }
 
@@ -146,7 +242,7 @@ impl LispValue
     {
         match self.tag
         {
-            ValueTag::Vector => todo!(),// Ok(unsafe{ LispVector::from_raw(self.value) }),
+            ValueTag::Vector => todo!(),
             x => Err(Error::WrongType(x))
         }
     }
@@ -165,6 +261,20 @@ impl LispValue
         match self.tag
         {
             ValueTag::Float => Ok(unsafe{ self.value.float }),
+            x => Err(Error::WrongType(x))
+        }
+    }
+
+    pub fn as_bool(self) -> Result<bool, Error>
+    {
+        match self.tag
+        {
+            ValueTag::Special =>
+            {
+                let special = unsafe{ self.value.special };
+
+                special.as_bool().ok_or_else(|| Error::WrongType(ValueTag::Special))
+            },
             x => Err(Error::WrongType(x))
         }
     }
@@ -233,6 +343,26 @@ impl MemoryBlock
         Self{cars, cdrs}
     }
 
+    pub fn get_list(&self, id: usize) -> LispList
+    {
+        LispList{
+            car: self.cars[id],
+            cdr: self.cdrs[id]
+        }
+    }
+
+    pub fn cons(&mut self, car: LispValue, cdr: LispValue) -> LispValue
+    {
+        let id = self.cars.len();
+
+        debug_assert!(self.cdrs.len() == id);
+
+        self.cars.push(car);
+        self.cdrs.push(cdr);
+
+        LispValue::new_list(id)
+    }
+
     pub fn remaining(&self) -> usize
     {
         self.cars.capacity() - self.cars.len()
@@ -245,7 +375,7 @@ impl MemoryBlock
     }
 }
 
-struct LispMemory
+pub struct LispMemory
 {
     memory: MemoryBlock,
     swap_memory: MemoryBlock,
@@ -266,17 +396,50 @@ impl LispMemory
     {
         self.swap_memory.clear();
 
+        todo!();
+
         mem::swap(&mut self.memory, &mut self.swap_memory);
     }
 
-    pub fn cons(&mut self, car: LispValue, cdr: LispValue)
+    pub fn get_list(&self, id: usize) -> LispList
+    {
+        self.memory.get_list(id)
+    }
+
+    pub fn cons(&mut self, car: LispValue, cdr: LispValue) -> LispValue
     {
         if self.memory.remaining() < 1
         {
             self.gc();
         }
 
-        todo!();
+        self.memory.cons(car, cdr)
+    }
+
+    pub fn allocate_expression(&mut self, expression: &Expression) -> LispValue
+    {
+        match expression
+        {
+            Expression::Float(x) => LispValue::new_float(*x),
+            Expression::Integer(x) => LispValue::new_integer(*x),
+            Expression::EmptyList => LispValue::new_empty_list(),
+            Expression::Lambda(x) => LispValue::new_procedure(*x),
+            Expression::List{car, cdr} =>
+            {
+                let car = self.allocate_expression(car);
+                let cdr = self.allocate_expression(cdr);
+
+                self.cons(car, cdr)
+            },
+            Expression::Value(x) =>
+            {
+                dbg!(x);
+
+                unimplemented!()
+            },
+            Expression::Application{..} => unreachable!(),
+            Expression::Sequence{..} => unreachable!()
+        }
     }
 }
 
@@ -342,11 +505,21 @@ impl Lisp
         Ok(Self{program, memory})
     }
 
-    pub fn run(&self) -> Result<LispValue, Error>
+    pub fn memory(&self) -> &LispMemory
+    {
+        &self.memory
+    }
+
+    pub fn run(&mut self) -> Result<LispValue, Error>
     {
         let mut env = Environment::new();
 
-        self.program.apply(&mut env)
+        self.program.apply(&mut self.memory, &mut env)
+    }
+
+    pub fn get_list(&self, value: LispValue) -> Result<LispList, Error>
+    {
+        value.as_list(&self.memory)
     }
 }
 
@@ -368,11 +541,30 @@ mod tests
                 7)
         ";
 
-        let lisp = Lisp::new(code).unwrap();
+        let mut lisp = Lisp::new(code).unwrap();
 
         let value = lisp.run().unwrap().as_integer().unwrap();
 
         assert_eq!(value, 5040_i32);
+    }
+
+    #[test]
+    fn equalities()
+    {
+        let code = "
+            (define (test x y z)
+                (if (= x y z)
+                    7
+                    1))
+
+            (+ (test 1 2 3) (test 7 2 1) (test 3 2 2) (test 3 3 3))
+        ";
+
+        let mut lisp = Lisp::new(code).unwrap();
+
+        let value = lisp.run().unwrap().as_integer().unwrap();
+
+        assert_eq!(value, 10_i32);
     }
 
     #[test]
@@ -387,11 +579,56 @@ mod tests
             (factorial 7)
         ";
 
-        let lisp = Lisp::new(code).unwrap();
+        let mut lisp = Lisp::new(code).unwrap();
 
         let value = lisp.run().unwrap().as_integer().unwrap();
 
         assert_eq!(value, 5040_i32);
+    }
+
+    fn list_equals(memory: &LispMemory, list: LispList, check: &[i32])
+    {
+        let car = list.car().as_integer().unwrap();
+
+        assert_eq!(car, check[0]);
+
+        let check = &check[1..];
+        if check.is_empty()
+        {
+            return;
+        }
+
+        list_equals(memory, list.cdr().as_list(memory).unwrap(), check)
+    }
+
+    #[test]
+    fn quoting()
+    {
+        let code = "
+            (quote (1 2 3 4 5))
+        ";
+
+        let mut lisp = Lisp::new(code).unwrap();
+
+        let output = lisp.run().unwrap();
+        let value = lisp.get_list(output).unwrap();
+
+        list_equals(lisp.memory(), value, &[1, 2, 3, 4, 5]);
+    }
+
+    #[test]
+    fn list()
+    {
+        let code = "
+            (cons 3 (cons 4 (cons 5 (quote ()))))
+        ";
+
+        let mut lisp = Lisp::new(code).unwrap();
+
+        let output = lisp.run().unwrap();
+        let value = lisp.get_list(output).unwrap();
+
+        list_equals(lisp.memory(), value, &[3, 4, 5]);
     }
 
     #[test]
@@ -407,7 +644,7 @@ mod tests
             (+ (x 1) (x 5))
         ";
 
-        let lisp = Lisp::new(code).unwrap();
+        let mut lisp = Lisp::new(code).unwrap();
 
         let value = lisp.run().unwrap().as_integer().unwrap();
 
@@ -423,7 +660,7 @@ mod tests
             x
         ";
 
-        let lisp = Lisp::new(code).unwrap();
+        let mut lisp = Lisp::new(code).unwrap();
 
         let value = lisp.run().unwrap().as_integer().unwrap();
 
@@ -439,7 +676,7 @@ mod tests
             (x 1312)
         ";
 
-        let lisp = Lisp::new(code).unwrap();
+        let mut lisp = Lisp::new(code).unwrap();
 
         let value = lisp.run().unwrap().as_integer().unwrap();
 
@@ -453,7 +690,7 @@ mod tests
             (+ 3 6)
         ";
 
-        let lisp = Lisp::new(code).unwrap();
+        let mut lisp = Lisp::new(code).unwrap();
 
         let value = lisp.run().unwrap().as_integer().unwrap();
 
@@ -467,7 +704,7 @@ mod tests
             (+ 1 2 3)
         ";
 
-        let lisp = Lisp::new(code).unwrap();
+        let mut lisp = Lisp::new(code).unwrap();
 
         let value = lisp.run().unwrap().as_integer().unwrap();
 
@@ -484,7 +721,7 @@ mod tests
               )
         ";
 
-        let lisp = Lisp::new(code).unwrap();
+        let mut lisp = Lisp::new(code).unwrap();
 
         let value = lisp.run().unwrap().as_integer().unwrap();
 

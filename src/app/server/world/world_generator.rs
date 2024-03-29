@@ -195,7 +195,7 @@ impl ChunkGenerator
     }
 
 	pub fn generate_chunk(
-		&self,
+		&mut self,
 		group: AlwaysGroup<&str>
 	) -> ChunksContainer<Tile>
 	{
@@ -205,7 +205,12 @@ impl ChunkGenerator
         }
 
         // mfin tree lmao
-        let tiles = self.chunks[group.this].run()
+        let tiles = self.chunks.get_mut(group.this)
+            .unwrap_or_else(||
+            {
+                panic!("worldchunk named `{}` doesnt exist", group.this)
+            })
+            .run()
             .unwrap_or_else(|err|
             {
                 panic!("runtime lisp error: {err}")
@@ -368,7 +373,7 @@ impl<S: SaveLoad<WorldChunk>> WorldGenerator<S>
 	}
 
 	pub fn generate_chunk(
-		&self,
+		&mut self,
 		group: AlwaysGroup<WorldChunk>
 	) -> ChunksContainer<Tile>
 	{
