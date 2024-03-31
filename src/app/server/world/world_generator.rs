@@ -5,7 +5,7 @@ use std::{
     sync::Arc,
     ops::Index,
     collections::{HashMap, HashSet},
-	path::PathBuf
+	path::{Path, PathBuf}
 };
 
 use parking_lot::Mutex;
@@ -13,7 +13,7 @@ use parking_lot::Mutex;
 use crate::common::{
 	TileMap,
     SaveLoad,
-    lisp::{self, Lisp, LispConfig, LispMemory},
+    lisp::{self, Lisp, LispRef, LispConfig, LispMemory, Environment, Lambdas, ValueTag},
 	world::{
 		Pos3,
 		LocalPos,
@@ -146,8 +146,10 @@ impl From<lisp::Error> for ParseError
 
 pub struct ChunkGenerator
 {
+    environment: Arc<Environment<'static>>,
+    lambdas: Lambdas,
     memory: Arc<Mutex<LispMemory>>,
-    chunks: HashMap<String, Lisp<Arc<Mutex<LispMemory>>>>,
+    chunks: HashMap<String, LispRef>,
 	tilemap: TileMap
 }
 
@@ -157,11 +159,16 @@ impl ChunkGenerator
 	{
 		let chunks = HashMap::new();
 
-        let parent_directory = PathBuf::from("world_generation/chunks/");
+        let parent_directory = PathBuf::from("world_generation");
 
-        let memory = Arc::new(Mutex::new(LispMemory::new(512)));
+        let (environment, lambdas) = Self::default_environment(&parent_directory);
 
-        let mut this = Self{memory, chunks, tilemap};
+        let environment = Arc::new(environment);
+        let memory = Arc::new(Mutex::new(LispMemory::new(1024)));
+
+        let mut this = Self{environment, lambdas, memory, chunks, tilemap};
+
+        let parent_directory = parent_directory.join("chunks");
 
 		rules.iter_names().filter(|name|
         {
@@ -178,6 +185,24 @@ impl ChunkGenerator
 		Ok(this)
 	}
 
+    fn default_environment(path: &Path) -> (Environment<'static>, Lambdas)
+    {
+        let name = "default.scm";
+        let path = path.join(name);
+        let default_code = fs::read_to_string(path)
+            .unwrap_or_else(|err| panic!("{name} must exist >_< ({err})"));
+
+        let mut lisp = Lisp::new(&default_code)
+            .unwrap_or_else(|err| panic!("{name} must be valid ({err})"));
+
+        let mut env = lisp.run_environment()
+            .unwrap_or_else(|err| panic!("{name} must run ({err})"));
+
+        let lambdas = env.compact_lambdas(lisp.lambdas());
+
+        (env, lambdas)
+    }
+
 	fn parse_function(
         &mut self,
         filepath: PathBuf,
@@ -191,11 +216,12 @@ impl ChunkGenerator
         })?;
 
         let config = LispConfig{
-            memory: self.memory.clone(),
+            environment: Some(self.environment.clone()),
+            lambdas: Some(self.lambdas.clone()),
             primitives: HashMap::new()
         };
 
-        let lisp = Lisp::new_with_config(config, &code).unwrap_or_else(|err|
+        let lisp = unsafe{ LispRef::new_with_config(config, &code) }.unwrap_or_else(|err|
         {
             panic!("error parsing {name}: {err}")
         });
@@ -215,33 +241,35 @@ impl ChunkGenerator
             return ChunksContainer::new_with(WORLD_CHUNK_SIZE, |_| Tile::none());
         }
 
+        let memory = &mut self.memory.lock();
+
         let this_chunk = self.chunks.get_mut(group.this)
             .unwrap_or_else(||
             {
                 panic!("worldchunk named `{}` doesnt exist", group.this)
             });
 
-        let output = this_chunk.run()
+        let output = this_chunk.run(memory)
             .unwrap_or_else(|err|
             {
                 panic!("runtime lisp error: {err}")
             });
 
-        // mfin tree lmao
-        let tiles = this_chunk.get_vector(output)
+        let output = output.as_vector_ref()
             .unwrap_or_else(|err|
             {
-                panic!("expected vector, got {err}")
-            })
-            .as_vec_usize()
-            .unwrap_or_else(|err|
-            {
-                panic!("expected vector of numbers, got {err}")
-            })
-            .into_iter()
+                panic!("expected vector: {err}")
+            });
+
+        if output.tag != ValueTag::Integer
+        {
+            panic!("wrong vector type `{:?}`", output.tag);
+        }
+
+        let tiles = output.values.iter()
             .map(|x|
             {
-                Tile::new(x)
+                Tile::new(unsafe{ x.integer as usize })
             }).collect();
 
         ChunksContainer::from_raw(WORLD_CHUNK_SIZE, tiles)

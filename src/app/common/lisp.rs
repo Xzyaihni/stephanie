@@ -6,27 +6,11 @@ use std::{
     collections::HashMap
 };
 
-use parking_lot::{Mutex, MutexGuard};
-
-pub use program::PrimitiveProcedureInfo;
+pub use program::{PrimitiveProcedureInfo, Lambdas};
 use program::{Program, Expression};
 
 mod program;
 
-
-pub trait Memoryable
-{
-    type OutputRef<'a>: Deref<Target=LispMemory>
-    where
-        Self: 'a;
-
-    type OutputMut<'a>: Deref<Target=LispMemory> + DerefMut
-    where
-        Self: 'a;
-
-    fn as_ref(&self) -> Self::OutputRef<'_>;
-    fn as_mut(&mut self) -> Self::OutputMut<'_>;
-}
 
 #[repr(u32)]
 #[derive(Debug, Clone, Copy)]
@@ -93,13 +77,14 @@ impl Display for Special
 #[derive(Clone, Copy)]
 pub union ValueRaw
 {
-    integer: i32,
-    float: f32,
-    char: char,
-    len: usize,
-    procedure: usize,
+    unsigned: u32,
+    pub integer: i32,
+    pub float: f32,
+    pub char: char,
+    pub len: usize,
+    pub procedure: usize,
     tag: ValueTag,
-    special: Special,
+    pub special: Special,
     list: usize,
     symbol: usize,
     string: usize,
@@ -123,15 +108,15 @@ pub enum ValueTag
 
 pub struct LispVectorInner<T>
 {
-    tag: ValueTag,
-    values: T
+    pub tag: ValueTag,
+    pub values: T
 }
 
 pub type LispVector = LispVectorInner<Vec<ValueRaw>>;
 pub type LispVectorRef<'a> = LispVectorInner<&'a [ValueRaw]>;
 pub type LispVectorMut<'a> = LispVectorInner<&'a mut [ValueRaw]>;
 
-impl LispVector
+impl<T: IntoIterator<Item=ValueRaw>> LispVectorInner<T>
 {
     // eh
     pub fn as_vec_usize(self) -> Result<Vec<usize>, Error>
@@ -445,6 +430,21 @@ struct MemoryBlock
     cdrs: Vec<LispValue>
 }
 
+impl Debug for MemoryBlock
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
+    {
+        // all fields r at least 32 bits long and u32 has no invalid states
+        let general = self.general.iter().map(|raw| unsafe{ raw.unsigned }).collect::<Vec<u32>>();
+
+        f.debug_struct("MemoryBlock")
+            .field("cars", &self.cars)
+            .field("cdrs", &self.cdrs)
+            .field("general", &general)
+            .finish()
+    }
+}
+
 impl MemoryBlock
 {
     pub fn new(memory_size: usize) -> Self
@@ -574,71 +574,9 @@ impl MemoryBlock
 
     pub fn clear(&mut self)
     {
+        self.general.clear();
         self.cars.clear();
         self.cdrs.clear();
-    }
-}
-
-impl Memoryable for LispMemory
-{
-    type OutputRef<'a> = &'a LispMemory
-    where
-        Self: 'a;
-
-    type OutputMut<'a> = &'a mut LispMemory
-    where
-        Self: 'a;
-
-    fn as_ref(&self) -> Self::OutputRef<'_>
-    {
-        self
-    }
-
-    fn as_mut(&mut self) -> Self::OutputMut<'_>
-    {
-        self
-    }
-}
-
-impl Memoryable for &mut LispMemory
-{
-    type OutputRef<'a> = &'a LispMemory
-    where
-        Self: 'a;
-
-    type OutputMut<'a> = &'a mut LispMemory
-    where
-        Self: 'a;
-
-    fn as_ref(&self) -> Self::OutputRef<'_>
-    {
-        self
-    }
-
-    fn as_mut(&mut self) -> Self::OutputMut<'_>
-    {
-        self
-    }
-}
-
-impl Memoryable for Arc<Mutex<LispMemory>>
-{
-    type OutputRef<'a> = MutexGuard<'a, LispMemory>
-    where
-        Self: 'a;
-
-    type OutputMut<'a> = MutexGuard<'a, LispMemory>
-    where
-        Self: 'a;
-
-    fn as_ref(&self) -> Self::OutputRef<'_>
-    {
-        self.lock()
-    }
-
-    fn as_mut(&mut self) -> Self::OutputMut<'_>
-    {
-        self.lock()
     }
 }
 
@@ -768,6 +706,7 @@ impl LispMemory
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct Environment<'a>
 {
     parent: Option<&'a Self>,
@@ -810,21 +749,64 @@ impl<'a> Environment<'a>
     {
         self.try_lookup(key).ok_or_else(|| Error::UndefinedVariable(key.to_owned()))
     }
+
+    pub fn compact_lambdas(&mut self, lambdas: &Lambdas) -> Lambdas
+    {
+        assert!(self.parent.is_none());
+
+        let mut new_lambdas = Lambdas::new();
+
+        self.mappings.iter_mut()
+            .filter(|(_key, value)| value.tag == ValueTag::Procedure)
+            .for_each(|(_key, value)|
+            {
+                let proc = value.as_procedure().expect("filtered for procedures");
+
+                let new_proc = new_lambdas.add(lambdas.get(proc).clone());
+
+                *value = LispValue::new_procedure(new_proc);
+            });
+
+        new_lambdas
+    }
 }
 
-pub struct LispConfig<M>
+pub struct OutputWrapper<'a>
 {
-    pub memory: M,
+    memory: &'a mut LispMemory,
+    pub value: LispValue
+}
+
+impl<'a> Drop for OutputWrapper<'a>
+{
+    fn drop(&mut self)
+    {
+        self.memory.clear();
+    }
+}
+
+impl<'a> OutputWrapper<'a>
+{
+    pub fn as_vector_ref(&'a self) -> Result<LispVectorRef<'a>, Error>
+    {
+        self.value.as_vector_ref(self.memory)
+    }
+}
+
+pub struct LispConfig
+{
+    pub environment: Option<Arc<Environment<'static>>>,
+    pub lambdas: Option<Lambdas>,
     pub primitives: HashMap<String, PrimitiveProcedureInfo>
 }
 
-pub struct Lisp<M>
+pub struct Lisp
 {
-    memory: M,
-    program: Program
+    memory: LispMemory,
+    lisp: LispRef
 }
 
-impl Lisp<LispMemory>
+impl Lisp
 {
     pub fn new(code: &str) -> Result<Self, Error>
     {
@@ -832,43 +814,112 @@ impl Lisp<LispMemory>
         let memory = LispMemory::new(memory_size);
 
         let config = LispConfig{
-            memory,
+            environment: None,
+            lambdas: None,
             primitives: HashMap::new()
         };
 
-        Self::new_with_config(config, code)
-    }
-}
-
-impl<M: Memoryable> Lisp<M>
-{
-    pub fn new_with_config(config: LispConfig<M>, code: &str) -> Result<Self, Error>
-    {
-        let program = Program::parse(config.primitives, code)?;
-
-        Ok(Self{program, memory: config.memory})
+        Ok(Self{
+            memory,
+            lisp: unsafe{ LispRef::new_with_config(config, code)? }
+        })
     }
 
-    pub fn run(&mut self) -> Result<LispValue, Error>
+    pub fn run(&mut self) -> Result<OutputWrapper, Error>
     {
-        let mut env = Environment::new();
+        self.lisp.run(&mut self.memory)
+    }
 
-        self.program.apply(&mut self.memory.as_mut(), &mut env)
+    pub fn run_environment(&mut self) -> Result<Environment<'static>, Error>
+    {
+        self.lisp.run_environment(&mut self.memory)
     }
 
     pub fn get_symbol(&self, value: LispValue) -> Result<String, Error>
     {
-        value.as_symbol(&self.memory.as_ref())
+        value.as_symbol(&self.memory)
     }
 
     pub fn get_vector(&self, value: LispValue) -> Result<LispVector, Error>
     {
-        value.as_vector(&self.memory.as_ref())
+        value.as_vector(&self.memory)
     }
 
     pub fn get_list(&self, value: LispValue) -> Result<LispList, Error>
     {
-        value.as_list(&self.memory.as_ref())
+        value.as_list(&self.memory)
+    }
+}
+
+impl Deref for Lisp
+{
+    type Target = LispRef;
+
+    fn deref(&self) -> &Self::Target
+    {
+        &self.lisp
+    }
+}
+
+impl DerefMut for Lisp
+{
+    fn deref_mut(&mut self) -> &mut Self::Target
+    {
+        &mut self.lisp
+    }
+}
+
+pub struct LispRef
+{
+    environment: Option<Arc<Environment<'static>>>,
+    program: Program
+}
+
+impl LispRef
+{
+    // if an env has some invalid data it will cause ub
+    pub unsafe fn new_with_config(config: LispConfig, code: &str) -> Result<Self, Error>
+    {
+        let program = Program::parse(config.primitives, config.lambdas, code)?;
+
+        Ok(Self{program, environment: config.environment})
+    }
+
+    pub fn run<'a>(&mut self, memory: &'a mut LispMemory) -> Result<OutputWrapper<'a>, Error>
+    {
+        self.run_inner(memory).map(|(_env, value)| value)
+    }
+
+    pub fn lambdas(&self) -> &Lambdas
+    {
+        self.program.lambdas()
+    }
+
+    pub fn run_environment(
+        &mut self,
+        memory: &mut LispMemory
+    ) -> Result<Environment<'static>, Error>
+    {
+        self.run_inner(memory).map(|(env, _value)| env)
+    }
+
+    fn run_inner<'a>(
+        &mut self,
+        memory: &'a mut LispMemory
+    ) -> Result<(Environment<'static>, OutputWrapper<'a>), Error>
+    {
+        let mut env = self.environment.as_ref().map(|x|
+            {
+                let env: &Environment = &x;
+
+                env.clone()
+            }).unwrap_or_else(|| Environment::new());
+
+        let value = self.program.apply(memory, &mut env)?;
+
+        let value = OutputWrapper{memory, value};
+
+        Ok((env, value))
     }
 }
 

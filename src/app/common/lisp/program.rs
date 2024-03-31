@@ -79,7 +79,7 @@ impl Debug for PrimitiveProcedureInfo
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
     {
         let args_count = self.args_count.map(|x| x.to_string())
-            .unwrap_or_else(|| "none".to_owned());
+            .unwrap_or_else(|| "no".to_owned());
 
         write!(f, "<procedure with {args_count} args>")
     }
@@ -236,6 +236,7 @@ impl Program
 {
     pub fn parse(
         mut primitives: HashMap<String, PrimitiveProcedureInfo>,
+        lambdas: Option<Lambdas>,
         code: &str
     ) -> Result<Self, Error>
     {
@@ -244,13 +245,18 @@ impl Program
         Self::add_default_primitives(&mut primitives);
 
         let mut state = State{
-            lambdas: Lambdas::new(),
+            lambdas: lambdas.unwrap_or_else(|| Lambdas::new()),
             primitives
         };
 
         let expression = Expression::eval_sequence(&mut state, ast)?;
 
         Ok(Self{state, expression})
+    }
+
+    pub fn lambdas(&self) -> &Lambdas
+    {
+        &self.state.lambdas
     }
 
     pub fn apply(
