@@ -6,7 +6,7 @@ use std::{
     collections::HashMap
 };
 
-pub use program::{PrimitiveProcedureInfo, Lambdas};
+pub use program::{PrimitiveProcedureInfo, Primitives, Lambdas};
 use program::{Program, Expression};
 
 mod program;
@@ -797,7 +797,7 @@ pub struct LispConfig
 {
     pub environment: Option<Arc<Environment<'static>>>,
     pub lambdas: Option<Lambdas>,
-    pub primitives: HashMap<String, PrimitiveProcedureInfo>
+    pub primitives: Arc<Primitives>
 }
 
 pub struct Lisp
@@ -816,7 +816,7 @@ impl Lisp
         let config = LispConfig{
             environment: None,
             lambdas: None,
-            primitives: HashMap::new()
+            primitives: Arc::new(Primitives::new())
         };
 
         Ok(Self{

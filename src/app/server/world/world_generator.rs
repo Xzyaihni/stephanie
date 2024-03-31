@@ -13,7 +13,17 @@ use parking_lot::Mutex;
 use crate::common::{
 	TileMap,
     SaveLoad,
-    lisp::{self, Lisp, LispRef, LispConfig, LispMemory, Environment, Lambdas, ValueTag},
+    lisp::{
+        self,
+        Lisp,
+        LispRef,
+        LispConfig,
+        LispMemory,
+        Environment,
+        Lambdas,
+        ValueTag,
+        Primitives
+    },
 	world::{
 		Pos3,
 		LocalPos,
@@ -148,6 +158,7 @@ pub struct ChunkGenerator
 {
     environment: Arc<Environment<'static>>,
     lambdas: Lambdas,
+    primitives: Arc<Primitives>,
     memory: Arc<Mutex<LispMemory>>,
     chunks: HashMap<String, LispRef>,
 	tilemap: TileMap
@@ -166,7 +177,9 @@ impl ChunkGenerator
         let environment = Arc::new(environment);
         let memory = Arc::new(Mutex::new(LispMemory::new(1024)));
 
-        let mut this = Self{environment, lambdas, memory, chunks, tilemap};
+        let primitives = Arc::new(Primitives::new());
+
+        let mut this = Self{environment, lambdas, primitives, memory, chunks, tilemap};
 
         let parent_directory = parent_directory.join("chunks");
 
@@ -218,7 +231,7 @@ impl ChunkGenerator
         let config = LispConfig{
             environment: Some(self.environment.clone()),
             lambdas: Some(self.lambdas.clone()),
-            primitives: HashMap::new()
+            primitives: self.primitives.clone()
         };
 
         let lisp = unsafe{ LispRef::new_with_config(config, &code) }.unwrap_or_else(|err|
@@ -266,11 +279,10 @@ impl ChunkGenerator
             panic!("wrong vector type `{:?}`", output.tag);
         }
 
-        let tiles = output.values.iter()
-            .map(|x|
-            {
-                Tile::new(unsafe{ x.integer as usize })
-            }).collect();
+        let tiles = output.values.iter().map(|x|
+        {
+            Tile::new(unsafe{ x.integer as usize })
+        }).collect();
 
         ChunksContainer::from_raw(WORLD_CHUNK_SIZE, tiles)
 	}

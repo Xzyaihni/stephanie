@@ -4,7 +4,7 @@ use std::{
     fmt::{self, Debug},
     sync::Arc,
     collections::HashMap,
-    ops::{Add, Sub, Mul, Div, Rem}
+    ops::{Add, Sub, Mul, Div, Rem, Deref, DerefMut}
 };
 
 pub use super::{Error, Environment, LispValue, LispMemory, ValueTag, LispVector};
@@ -219,56 +219,29 @@ impl Lambdas
 }
 
 #[derive(Debug, Clone)]
-pub struct State
+pub struct Primitives(HashMap<String, PrimitiveProcedureInfo>);
+
+impl Deref for Primitives
 {
-    pub lambdas: Lambdas,
-    pub primitives: HashMap<String, PrimitiveProcedureInfo>
+    type Target = HashMap<String, PrimitiveProcedureInfo>;
+
+    fn deref(&self) -> &Self::Target
+    {
+        &self.0
+    }
 }
 
-#[derive(Debug, Clone)]
-pub struct Program
+impl DerefMut for Primitives
 {
-    state: State,
-    expression: Expression
+    fn deref_mut(&mut self) -> &mut Self::Target
+    {
+        &mut self.0
+    }
 }
 
-impl Program
+impl Primitives
 {
-    pub fn parse(
-        mut primitives: HashMap<String, PrimitiveProcedureInfo>,
-        lambdas: Option<Lambdas>,
-        code: &str
-    ) -> Result<Self, Error>
-    {
-        let ast = Parser::parse(code)?;
-
-        Self::add_default_primitives(&mut primitives);
-
-        let mut state = State{
-            lambdas: lambdas.unwrap_or_else(|| Lambdas::new()),
-            primitives
-        };
-
-        let expression = Expression::eval_sequence(&mut state, ast)?;
-
-        Ok(Self{state, expression})
-    }
-
-    pub fn lambdas(&self) -> &Lambdas
-    {
-        &self.state.lambdas
-    }
-
-    pub fn apply(
-        &self,
-        memory: &mut LispMemory,
-        env: &mut Environment
-    ) -> Result<LispValue, Error>
-    {
-        self.expression.apply(&self.state, memory, env)
-    }
-
-    fn add_default_primitives(primitives: &mut HashMap<String, PrimitiveProcedureInfo>)
+    pub fn new() -> Self
     {
         macro_rules! do_cond
         {
@@ -317,7 +290,7 @@ impl Program
             }
         }
 
-        let procs = [
+        let primitives = [
             ("make-vector", PrimitiveProcedureInfo::new_simple(2, Arc::new(|state, memory, env, args|
             {
                 let mut args = Expression::apply_args(state, memory, env, args)?;
@@ -537,9 +510,9 @@ impl Program
 
                     Ok(value.cdr)
                 }))),
-        ].into_iter().map(|(k, v)| (k.to_owned(), v));
+        ].into_iter().map(|(k, v)| (k.to_owned(), v)).collect();
 
-        primitives.extend(procs);
+        Self(primitives)
     }
 
     fn call_op<FI, FF>(
@@ -631,6 +604,55 @@ impl Program
         {
             Ok(())
         }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct State
+{
+    pub lambdas: Lambdas,
+    pub primitives: Arc<Primitives>
+}
+
+#[derive(Debug, Clone)]
+pub struct Program
+{
+    state: State,
+    expression: Expression
+}
+
+impl Program
+{
+    pub fn parse(
+        primitives: Arc<Primitives>,
+        lambdas: Option<Lambdas>,
+        code: &str
+    ) -> Result<Self, Error>
+    {
+        let ast = Parser::parse(code)?;
+
+        let mut state = State{
+            lambdas: lambdas.unwrap_or_else(|| Lambdas::new()),
+            primitives
+        };
+
+        let expression = Expression::eval_sequence(&mut state, ast)?;
+
+        Ok(Self{state, expression})
+    }
+
+    pub fn lambdas(&self) -> &Lambdas
+    {
+        &self.state.lambdas
+    }
+
+    pub fn apply(
+        &self,
+        memory: &mut LispMemory,
+        env: &mut Environment
+    ) -> Result<LispValue, Error>
+    {
+        self.expression.apply(&self.state, memory, env)
     }
 }
 
