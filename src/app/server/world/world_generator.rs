@@ -2,15 +2,18 @@ use std::{
     fs,
 	io,
 	fmt,
+    sync::Arc,
     ops::Index,
     collections::{HashMap, HashSet},
 	path::PathBuf
 };
 
+use parking_lot::Mutex;
+
 use crate::common::{
 	TileMap,
     SaveLoad,
-    lisp::{self, Lisp},
+    lisp::{self, Lisp, LispConfig, LispMemory},
 	world::{
 		Pos3,
 		LocalPos,
@@ -143,7 +146,8 @@ impl From<lisp::Error> for ParseError
 
 pub struct ChunkGenerator
 {
-    chunks: HashMap<String, Lisp>,
+    memory: Arc<Mutex<LispMemory>>,
+    chunks: HashMap<String, Lisp<Arc<Mutex<LispMemory>>>>,
 	tilemap: TileMap
 }
 
@@ -155,7 +159,9 @@ impl ChunkGenerator
 
         let parent_directory = PathBuf::from("world_generation/chunks/");
 
-        let mut this = Self{chunks, tilemap};
+        let memory = Arc::new(Mutex::new(LispMemory::new(512)));
+
+        let mut this = Self{memory, chunks, tilemap};
 
 		rules.iter_names().filter(|name|
         {
@@ -184,7 +190,12 @@ impl ChunkGenerator
             ParseError::new_named(filepath.clone(), err)
         })?;
 
-        let lisp = Lisp::new(&code).unwrap_or_else(|err|
+        let config = LispConfig{
+            memory: self.memory.clone(),
+            primitives: HashMap::new()
+        };
+
+        let lisp = Lisp::new_with_config(config, &code).unwrap_or_else(|err|
         {
             panic!("error parsing {name}: {err}")
         });

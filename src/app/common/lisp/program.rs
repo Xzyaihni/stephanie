@@ -1,6 +1,9 @@
 use std::{
     vec,
     iter,
+    fmt::{self, Debug},
+    sync::Arc,
+    collections::HashMap,
     ops::{Add, Sub, Mul, Div, Rem}
 };
 
@@ -10,41 +13,529 @@ use parser::{Parser, Ast, PrimitiveType};
 mod parser;
 
 
-// primitive? yeah
-#[derive(Debug, Clone, Copy)]
-pub enum PrimitiveProcedure
+// unreadable, great
+pub type OnApply = Arc<
+    dyn Fn(
+        &State,
+        &mut LispMemory,
+        &mut Environment,
+        &Expression
+    ) -> Result<LispValue, Error> + Send + Sync>;
+
+pub type OnEval = Arc<
+    dyn Fn(
+        Option<OnApply>,
+        &mut State,
+        Ast
+    ) -> Result<Expression, Error> + Send + Sync>;
+
+#[derive(Clone)]
+pub struct PrimitiveProcedureInfo
 {
-    Add,
-    Sub,
-    Mul,
-    Div,
-    Rem,
-    IsEqual,
-    IsGreater,
-    IsLess,
-    Lambda,
-    Define,
-    Quote,
-    If,
-    Let,
-    Begin,
-    MakeVector,
-    VectorSet,
-    VectorRef,
-    Cons,
-    Car,
-    Cdr,
-    IsBoolean,
-    IsSymbol,
-    IsChar,
-    IsVector,
-    IsProcedure,
-    IsPair,
-    IsNumber
+    args_count: Option<usize>,
+    on_eval: Option<OnEval>,
+    on_apply: Option<OnApply>
 }
 
-impl PrimitiveProcedure
+impl PrimitiveProcedureInfo
 {
+    pub fn new_eval(
+        args_count: impl Into<Option<usize>>,
+        on_eval: OnEval
+    ) -> Self
+    {
+        Self{
+            args_count: args_count.into(),
+            on_eval: Some(on_eval),
+            on_apply: None
+        }
+    }
+
+    pub fn new(
+        args_count: impl Into<Option<usize>>,
+        on_eval: OnEval,
+        on_apply: OnApply
+    ) -> Self
+    {
+        Self{
+            args_count: args_count.into(),
+            on_eval: Some(on_eval),
+            on_apply: Some(on_apply)
+        }
+    }
+
+    pub fn new_simple(args_count: impl Into<Option<usize>>, on_apply: OnApply) -> Self
+    {
+        Self{
+            args_count: args_count.into(),
+            on_eval: None,
+            on_apply: Some(on_apply)
+        }
+    }
+}
+
+impl Debug for PrimitiveProcedureInfo
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
+    {
+        let args_count = self.args_count.map(|x| x.to_string())
+            .unwrap_or_else(|| "none".to_owned());
+
+        write!(f, "<procedure with {args_count} args>")
+    }
+}
+
+#[derive(Clone)]
+pub struct PrimitiveProcedure(pub OnApply);
+
+impl Debug for PrimitiveProcedure
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
+    {
+        write!(f, "<primitive procedure>")
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum CompoundProcedure
+{
+    Identifier(String),
+    Lambda(usize)
+}
+
+#[derive(Debug, Clone)]
+pub enum Procedure
+{
+    Compound(CompoundProcedure),
+    Primitive(PrimitiveProcedure)
+}
+
+impl Procedure
+{
+    pub fn parse(state: &mut State, ast: Ast, s: String) -> Result<Expression, Error>
+    {
+        if let Some(primitive) = state.primitives.get(&s).cloned()
+        {
+            if let Some(count) = primitive.args_count
+            {
+                Expression::argument_count_ast(count, &ast)?;
+            }
+
+            if let Some(on_eval) = primitive.on_eval.as_ref()
+            {
+                on_eval(primitive.on_apply, state, ast)
+            } else
+            {
+                let args = Expression::eval_args(state, ast)?;
+                let p = PrimitiveProcedure(primitive.on_apply.expect("apply must be provided"));
+
+                Ok(Expression::Application{
+                    op: Self::Primitive(p),
+                    args: Box::new(args)
+                })
+            }
+        } else
+        {
+            let op = Self::Compound(CompoundProcedure::Identifier(s));
+
+            Ok(Expression::Application{
+                op,
+                args: Box::new(Expression::eval_args(state, ast)?)
+            })
+        }
+    }
+}
+
+// i dont wanna store the body over and over in the virtual memory
+// but this seems silly, so i dunno >~<
+#[derive(Debug, Clone)]
+pub struct StoredLambda
+{
+    params: ArgValues<String>,
+    body: Expression
+}
+
+impl StoredLambda
+{
+    pub fn new(params: Expression, body: Expression) -> Result<Self, Error>
+    {
+        let params = params.map_list(|arg|
+        {
+            arg.as_value()
+        })?;
+
+        Ok(Self{params, body})
+    }
+
+    pub fn apply(
+        &self,
+        state: &State,
+        memory: &mut LispMemory,
+        env: &Environment,
+        args: ArgValues
+    ) -> Result<LispValue, Error>
+    {
+        if self.params.len() != args.len()
+        {
+            return Err(Error::WrongArgumentsCount);
+        }
+
+        let mut new_env = Environment::child(env);
+        self.params.iter().zip(args.into_iter()).for_each(|(key, value)|
+        {
+            new_env.define(key, value);
+        });
+
+        self.body.apply(state, memory, &mut new_env)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Lambdas
+{
+    lambdas: Vec<StoredLambda>
+}
+
+impl Lambdas
+{
+    pub fn new() -> Self
+    {
+        Self{lambdas: Vec::new()}
+    }
+
+    pub fn add(&mut self, lambda: StoredLambda) -> usize
+    {
+        let id = self.lambdas.len();
+
+        self.lambdas.push(lambda);
+
+        id
+    }
+
+    pub fn get(&self, index: usize) -> &StoredLambda
+    {
+        &self.lambdas[index]
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct State
+{
+    pub lambdas: Lambdas,
+    pub primitives: HashMap<String, PrimitiveProcedureInfo>
+}
+
+#[derive(Debug, Clone)]
+pub struct Program
+{
+    state: State,
+    expression: Expression
+}
+
+impl Program
+{
+    pub fn parse(
+        mut primitives: HashMap<String, PrimitiveProcedureInfo>,
+        code: &str
+    ) -> Result<Self, Error>
+    {
+        let ast = Parser::parse(code)?;
+
+        Self::add_default_primitives(&mut primitives);
+
+        let mut state = State{
+            lambdas: Lambdas::new(),
+            primitives
+        };
+
+        let expression = Expression::eval_sequence(&mut state, ast)?;
+
+        Ok(Self{state, expression})
+    }
+
+    pub fn apply(
+        &self,
+        memory: &mut LispMemory,
+        env: &mut Environment
+    ) -> Result<LispValue, Error>
+    {
+        self.expression.apply(&self.state, memory, env)
+    }
+
+    fn add_default_primitives(primitives: &mut HashMap<String, PrimitiveProcedureInfo>)
+    {
+        macro_rules! do_cond
+        {
+            ($f:expr) =>
+            {
+                Arc::new(|state, memory, env, args|
+                {
+                    let args = Expression::apply_args(state, memory, env, args)?;
+
+                    Self::do_cond(args, $f, $f)
+                })
+            }
+        }
+
+        macro_rules! do_op
+        {
+            ($op:ident) =>
+            {
+                Arc::new(|state, memory, env, args|
+                {
+                    let args = Expression::apply_args(state, memory, env, args)?;
+
+                    Self::do_op(args, |a, b|
+                    {
+                        LispValue::new_integer(a.$op(b))
+                    }, |a, b|
+                    {
+                        LispValue::new_float(a.$op(b))
+                    })
+                })
+            }
+        }
+
+        macro_rules! is_tag
+        {
+            ($tag:expr) =>
+            {
+                Arc::new(|state, memory, env, args|
+                {
+                    let arg = args.car().apply(state, memory, env)?;
+
+                    let is_equal = arg.tag == $tag;
+
+                    Ok(LispValue::new_bool(is_equal))
+                })
+            }
+        }
+
+        let procs = [
+            ("make-vector", PrimitiveProcedureInfo::new_simple(2, Arc::new(|state, memory, env, args|
+            {
+                let mut args = Expression::apply_args(state, memory, env, args)?;
+
+                let len = args.pop()?.as_integer()? as usize;
+                let fill = args.pop()?;
+
+                let vec = LispVector{
+                    tag: fill.tag,
+                    values: vec![fill.value; len]
+                };
+
+                Ok(LispValue::new_vector(memory.allocate_vector(vec)))
+            }))),
+            ("vector-set!", PrimitiveProcedureInfo::new_simple(3, Arc::new(|state, memory, env, args|
+            {
+                let mut args = Expression::apply_args(state, memory, env, args)?;
+
+                let vec = args.pop()?.as_vector_mut(memory)?;
+                let index = args.pop()?.as_integer()?;
+                let value = args.pop()?;
+
+                if vec.tag != value.tag
+                {
+                    return Err(Error::VectorWrongType{expected: vec.tag, got: value.tag});
+                }
+
+                Self::check_inbounds(&vec.values, index)?;
+
+                vec.values[index as usize] = value.value;
+
+                Ok(LispValue::new_empty_list())
+            }))),
+            ("vector-ref", PrimitiveProcedureInfo::new_simple(2, Arc::new(|state, memory, env, args|
+            {
+                let mut args = Expression::apply_args(state, memory, env, args)?;
+
+                let vec = args.pop()?.as_vector_ref(memory)?;
+                let index = args.pop()?.as_integer()?;
+
+                Self::check_inbounds(&vec.values, index)?;
+
+                let value = vec.values[index as usize];
+
+                Ok(unsafe{ LispValue::new(vec.tag, value) })
+            }))),
+            ("symbol?", PrimitiveProcedureInfo::new_simple(1, is_tag!(ValueTag::Symbol))),
+            ("pair?", PrimitiveProcedureInfo::new_simple(1, is_tag!(ValueTag::List))),
+            ("char?", PrimitiveProcedureInfo::new_simple(1, is_tag!(ValueTag::Char))),
+            ("vector?", PrimitiveProcedureInfo::new_simple(1, is_tag!(ValueTag::Vector))),
+            ("procedure?", PrimitiveProcedureInfo::new_simple(1, is_tag!(ValueTag::Procedure))),
+            ("number?", PrimitiveProcedureInfo::new_simple(1, Arc::new(|state, memory, env, args|
+            {
+                let arg = args.car().apply(state, memory, env)?;
+
+                let is_number = arg.tag == ValueTag::Integer || arg.tag == ValueTag::Float;
+
+                Ok(LispValue::new_bool(is_number))
+            }))),
+            ("boolean?", PrimitiveProcedureInfo::new_simple(1, Arc::new(|state, memory, env, args|
+            {
+                let arg = args.car().apply(state, memory, env)?;
+
+                let is_bool = arg.as_bool().map(|_| true).unwrap_or(false);
+
+                Ok(LispValue::new_bool(is_bool))
+            }))),
+            ("+", PrimitiveProcedureInfo::new_simple(None, do_op!(add))),
+            ("-", PrimitiveProcedureInfo::new_simple(None, do_op!(sub))),
+            ("*", PrimitiveProcedureInfo::new_simple(None, do_op!(mul))),
+            ("/", PrimitiveProcedureInfo::new_simple(None, do_op!(div))),
+            ("remainder", PrimitiveProcedureInfo::new_simple(2, do_op!(rem))),
+            ("=",
+                PrimitiveProcedureInfo::new_simple(
+                    None,
+                    do_cond!(|a, b| LispValue::new_bool(a == b)))),
+            (">",
+                PrimitiveProcedureInfo::new_simple(
+                    None,
+                    do_cond!(|a, b| LispValue::new_bool(a > b)))),
+            ("<",
+                PrimitiveProcedureInfo::new_simple(
+                    None,
+                    do_cond!(|a, b| LispValue::new_bool(a < b)))),
+            ("if",
+                PrimitiveProcedureInfo::new_simple(3, Arc::new(|state, memory, env, args|
+                {
+                    let predicate = args.car().apply(state, memory, env)?;
+                    let on_true = args.cdr().car();
+                    let on_false = args.cdr().cdr().car();
+
+                    if predicate.is_true()
+                    {
+                        on_true.apply(state, memory, env)
+                    } else
+                    {
+                        on_false.apply(state, memory, env)
+                    }
+                }))),
+            ("let",
+                PrimitiveProcedureInfo::new_eval(2, Arc::new(|_on_apply, state, args|
+                {
+                    let bindings = args.car();
+                    let body = args.cdr().car();
+
+                    let params = bindings.map_list(|x| x.car());
+                    let apply_args = Expression::eval_args(
+                        state,
+                        bindings.map_list(|x| x.cdr().car())
+                    )?;
+
+                    let lambda_args =
+                        Ast::cons(
+                            params,
+                            Ast::cons(
+                                body,
+                                Ast::EmptyList));
+
+                    let lambda = Expression::eval_lambda(state, lambda_args)?;
+
+                    Ok(Expression::Application{
+                        op: Procedure::Compound(CompoundProcedure::Lambda(lambda)),
+                        args: Box::new(apply_args)
+                    })
+                }))),
+            ("begin",
+                PrimitiveProcedureInfo::new_eval(None, Arc::new(|_on_apply, state, args|
+                {
+                    Expression::eval_sequence(state, args)
+                }))),
+            ("lambda",
+                PrimitiveProcedureInfo::new_eval(2, Arc::new(|_on_apply, state, args|
+                {
+                    Ok(Expression::Lambda(Expression::eval_lambda(state, args)?))
+                }))),
+            ("define",
+                PrimitiveProcedureInfo::new(2, Arc::new(|on_apply, state, args|
+                {
+                    let first = args.car();
+                    let body = args.cdr().car();
+                    let is_procedure = first.is_list();
+
+                    let args = if is_procedure
+                    {
+                        let name = Expression::ast_to_expression(first.car())?;
+                        let name = Expression::Value(name.as_value()?);
+
+                        let params = first.cdr();
+
+                        let lambda_args =
+                            Ast::cons(
+                                params,
+                                Ast::cons(
+                                    body,
+                                    Ast::EmptyList));
+
+                        let lambda = Expression::eval_lambda(state, lambda_args)?;
+
+                        Expression::cons(
+                            name,
+                            Expression::cons(
+                                Expression::Lambda(lambda),
+                                Expression::EmptyList))
+                    } else
+                    {
+                        Expression::argument_count_ast(2, &args)?;
+
+                        Expression::eval_args(state, args)?
+                    };
+
+                    Ok(Expression::new_application(on_apply, args))
+                }), Arc::new(|state, memory, env, args|
+                {
+                    let first = args.car();
+                    let second = args.cdr().car();
+
+                    let key = first.as_value()?;
+                    let value = second.apply(state, memory, env)?;
+
+                    env.define(key, value);
+
+                    Ok(LispValue::new_empty_list())
+                }))),
+            ("quote",
+                PrimitiveProcedureInfo::new(1, Arc::new(|on_apply, _state, args|
+                {
+                    let arg = Expression::ast_to_expression(args.car())?;
+
+                    Ok(Expression::new_application(on_apply, arg))
+                }), Arc::new(|_state, memory, _env, args|
+                {
+                    Ok(memory.allocate_expression(args))
+                }))),
+            ("cons",
+                PrimitiveProcedureInfo::new_simple(2, Arc::new(|state, memory, env, args|
+                {
+                    let mut args = Expression::apply_args(state, memory, env, args)?;
+
+                    let car = args.pop()?;
+                    let cdr = args.pop()?;
+
+                    Ok(memory.cons(car, cdr))
+                }))),
+            ("car",
+                PrimitiveProcedureInfo::new_simple(1, Arc::new(|state, memory, env, args|
+                {
+                    let value = args.car().apply(state, memory, env)?
+                        .as_list(memory)?;
+
+                    Ok(value.car)
+                }))),
+            ("cdr",
+                PrimitiveProcedureInfo::new_simple(1, Arc::new(|state, memory, env, args|
+                {
+                    let value = args.car().apply(state, memory, env)?
+                        .as_list(memory)?;
+
+                    Ok(value.cdr)
+                }))),
+        ].into_iter().map(|(k, v)| (k.to_owned(), v));
+
+        primitives.extend(procs);
+    }
+
     fn call_op<FI, FF>(
         a: LispValue,
         b: LispValue,
@@ -135,347 +626,6 @@ impl PrimitiveProcedure
             Ok(())
         }
     }
-
-    fn apply(
-        self,
-        lambdas: &Lambdas, 
-        memory: &mut LispMemory,
-        env: &mut Environment,
-        args: &Expression
-    ) -> Result<LispValue, Error>
-    {
-        macro_rules! do_cond
-        {
-            ($f:expr) =>
-            {
-                {
-                    let args = Expression::apply_args(lambdas, memory, env, args)?;
-
-                    Self::do_cond(args, $f, $f)
-                }
-            }
-        }
-
-        macro_rules! do_op
-        {
-            ($op:ident) =>
-            {
-                {
-                    let args = Expression::apply_args(lambdas, memory, env, args)?;
-
-                    Self::do_op(args, |a, b|
-                    {
-                        LispValue::new_integer(a.$op(b))
-                    }, |a, b|
-                    {
-                        LispValue::new_float(a.$op(b))
-                    })
-                }
-            }
-        }
-
-        macro_rules! is_tag
-        {
-            ($tag:expr) =>
-            {
-                {
-                    let arg = args.car().apply(lambdas, memory, env)?;
-
-                    let is_equal = arg.tag == $tag;
-
-                    Ok(LispValue::new_bool(is_equal))
-                }
-            }
-        }
-
-        match self
-        {
-            Self::Add => do_op!(add),
-            Self::Sub => do_op!(sub),
-            Self::Mul => do_op!(mul),
-            Self::Div => do_op!(div),
-            Self::Rem => do_op!(rem),
-            Self::IsEqual => do_cond!(|a, b| LispValue::new_bool(a == b)),
-            Self::IsGreater => do_cond!(|a, b| LispValue::new_bool(a > b)),
-            Self::IsLess => do_cond!(|a, b| LispValue::new_bool(a < b)),
-            Self::Define =>
-            {
-                let first = args.car();
-                let second = args.cdr().car();
-
-                let key = first.as_value()?;
-                let value = second.apply(lambdas, memory, env)?;
-
-                env.define(key, value);
-
-                Ok(LispValue::new_empty_list())
-            },
-            Self::If =>
-            {
-                let predicate = args.car().apply(lambdas, memory, env)?;
-                let on_true = args.cdr().car();
-                let on_false = args.cdr().cdr().car();
-
-                if predicate.is_true()
-                {
-                    on_true.apply(lambdas, memory, env)
-                } else
-                {
-                    on_false.apply(lambdas, memory, env)
-                }
-            },
-            Self::MakeVector =>
-            {
-                let mut args = Expression::apply_args(lambdas, memory, env, args)?;
-
-                let len = args.pop()?.as_integer()? as usize;
-                let fill = args.pop()?;
-
-                let vec = LispVector{
-                    tag: fill.tag,
-                    values: vec![fill.value; len]
-                };
-
-                Ok(LispValue::new_vector(memory.allocate_vector(vec)))
-            },
-            Self::VectorSet =>
-            {
-                let mut args = Expression::apply_args(lambdas, memory, env, args)?;
-
-                let vec = args.pop()?.as_vector_mut(memory)?;
-                let index = args.pop()?.as_integer()?;
-                let value = args.pop()?;
-
-                if vec.tag != value.tag
-                {
-                    return Err(Error::VectorWrongType{expected: vec.tag, got: value.tag});
-                }
-
-                Self::check_inbounds(&vec.values, index)?;
-
-                vec.values[index as usize] = value.value;
-
-                Ok(LispValue::new_empty_list())
-            },
-            Self::VectorRef =>
-            {
-                let mut args = Expression::apply_args(lambdas, memory, env, args)?;
-
-                let vec = args.pop()?.as_vector_ref(memory)?;
-                let index = args.pop()?.as_integer()?;
-
-                Self::check_inbounds(&vec.values, index)?;
-
-                let value = vec.values[index as usize];
-
-                Ok(unsafe{ LispValue::new(vec.tag, value) })
-            },
-            Self::Cons =>
-            {
-                let mut args = Expression::apply_args(lambdas, memory, env, args)?;
-
-                let car = args.pop()?;
-                let cdr = args.pop()?;
-
-                Ok(memory.cons(car, cdr))
-            },
-            Self::Car =>
-            {
-                let value = args.car().apply(lambdas, memory, env)?
-                    .as_list(memory)?;
-
-                Ok(value.car)
-            },
-            Self::Cdr =>
-            {
-                let value = args.car().apply(lambdas, memory, env)?
-                    .as_list(memory)?;
-
-                Ok(value.cdr)
-            },
-            Self::Quote =>
-            {
-                Ok(memory.allocate_expression(args))
-            },
-            Self::IsSymbol => is_tag!(ValueTag::Symbol),
-            Self::IsPair => is_tag!(ValueTag::List),
-            Self::IsChar => is_tag!(ValueTag::Char),
-            Self::IsVector => is_tag!(ValueTag::Vector),
-            Self::IsProcedure => is_tag!(ValueTag::Procedure),
-            Self::IsNumber =>
-            {
-                let arg = args.car().apply(lambdas, memory, env)?;
-
-                let is_number = arg.tag == ValueTag::Integer || arg.tag == ValueTag::Float;
-
-                Ok(LispValue::new_bool(is_number))
-            },
-            Self::IsBoolean =>
-            {
-                let arg = args.car().apply(lambdas, memory, env)?;
-
-                let is_bool = arg.as_bool().map(|_| true).unwrap_or(false);
-
-                Ok(LispValue::new_bool(is_bool))
-            },
-            Self::Let => unreachable!(),
-            Self::Begin => unreachable!(),
-            Self::Lambda => unreachable!()
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub enum CompoundProcedure
-{
-    Identifier(String),
-    Lambda(usize)
-}
-
-#[derive(Debug, Clone)]
-pub enum Procedure
-{
-    Compound(CompoundProcedure),
-    Primitive(PrimitiveProcedure)
-}
-
-impl From<String> for Procedure
-{
-    fn from(s: String) -> Self
-    {
-        match s.as_ref()
-        {
-            "+" => Self::Primitive(PrimitiveProcedure::Add),
-            "-" => Self::Primitive(PrimitiveProcedure::Sub),
-            "*" => Self::Primitive(PrimitiveProcedure::Mul),
-            "/" => Self::Primitive(PrimitiveProcedure::Div),
-            "=" => Self::Primitive(PrimitiveProcedure::IsEqual),
-            ">" => Self::Primitive(PrimitiveProcedure::IsGreater),
-            "<" => Self::Primitive(PrimitiveProcedure::IsLess),
-            "remainder" => Self::Primitive(PrimitiveProcedure::Rem),
-            "lambda" => Self::Primitive(PrimitiveProcedure::Lambda),
-            "define" => Self::Primitive(PrimitiveProcedure::Define),
-            "if" => Self::Primitive(PrimitiveProcedure::If),
-            "let" => Self::Primitive(PrimitiveProcedure::Let),
-            "begin" => Self::Primitive(PrimitiveProcedure::Begin),
-            "quote" => Self::Primitive(PrimitiveProcedure::Quote),
-            "make-vector" => Self::Primitive(PrimitiveProcedure::MakeVector),
-            "vector-set!" => Self::Primitive(PrimitiveProcedure::VectorSet),
-            "vector-ref" => Self::Primitive(PrimitiveProcedure::VectorRef),
-            "cons" => Self::Primitive(PrimitiveProcedure::Cons),
-            "car" => Self::Primitive(PrimitiveProcedure::Car),
-            "cdr" => Self::Primitive(PrimitiveProcedure::Cdr),
-            "boolean?" => Self::Primitive(PrimitiveProcedure::IsBoolean),
-			"symbol?" => Self::Primitive(PrimitiveProcedure::IsSymbol),
-			"char?" => Self::Primitive(PrimitiveProcedure::IsChar),
-			"vector?" => Self::Primitive(PrimitiveProcedure::IsVector),
-			"procedure?" => Self::Primitive(PrimitiveProcedure::IsProcedure),
-			"pair?" => Self::Primitive(PrimitiveProcedure::IsPair),
-			"number?" => Self::Primitive(PrimitiveProcedure::IsNumber),
-            _ => Self::Compound(CompoundProcedure::Identifier(s))
-        }
-    }
-}
-
-// i dont wanna store the body over and over in the virtual memory
-// but this seems silly, so i dunno >~<
-#[derive(Debug, Clone)]
-pub struct StoredLambda
-{
-    params: ArgValues<String>,
-    body: Expression
-}
-
-impl StoredLambda
-{
-    pub fn new(params: Expression, body: Expression) -> Result<Self, Error>
-    {
-        let params = params.map_list(|arg|
-        {
-            arg.as_value()
-        })?;
-
-        Ok(Self{params, body})
-    }
-
-    pub fn apply(
-        &self,
-        lambdas: &Lambdas,
-        memory: &mut LispMemory,
-        env: &Environment,
-        args: ArgValues
-    ) -> Result<LispValue, Error>
-    {
-        if self.params.len() != args.len()
-        {
-            return Err(Error::WrongArgumentsCount);
-        }
-
-        let mut new_env = Environment::child(env);
-        self.params.iter().zip(args.into_iter()).for_each(|(key, value)|
-        {
-            new_env.define(key, value);
-        });
-
-        self.body.apply(lambdas, memory, &mut new_env)
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct Lambdas
-{
-    lambdas: Vec<StoredLambda>
-}
-
-impl Lambdas
-{
-    pub fn new() -> Self
-    {
-        Self{lambdas: Vec::new()}
-    }
-
-    pub fn add(&mut self, lambda: StoredLambda) -> usize
-    {
-        let id = self.lambdas.len();
-
-        self.lambdas.push(lambda);
-
-        id
-    }
-
-    pub fn get(&self, index: usize) -> &StoredLambda
-    {
-        &self.lambdas[index]
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct Program
-{
-    lambdas: Lambdas,
-    expression: Expression
-}
-
-impl Program
-{
-    pub fn parse(code: &str) -> Result<Self, Error>
-    {
-        let ast = Parser::parse(code)?;
-
-        let mut lambdas = Lambdas::new();
-        let expression = Expression::eval_sequence(&mut lambdas, ast)?;
-
-        Ok(Self{lambdas, expression})
-    }
-
-    pub fn apply(
-        &self,
-        memory: &mut LispMemory,
-        env: &mut Environment
-    ) -> Result<LispValue, Error>
-    {
-        self.expression.apply(&self.lambdas, memory, env)
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -548,7 +698,7 @@ pub enum Expression
 
 impl Expression
 {
-    fn car(&self) -> &Self
+    pub fn car(&self) -> &Self
     {
         match self
         {
@@ -557,7 +707,7 @@ impl Expression
         }
     }
 
-    fn cdr(&self) -> &Self
+    pub fn cdr(&self) -> &Self
     {
         match self
         {
@@ -566,12 +716,12 @@ impl Expression
         }
     }
 
-    fn cons(car: Self, cdr: Self) -> Self
+    pub fn cons(car: Self, cdr: Self) -> Self
     {
         Self::List{car: Box::new(car), cdr: Box::new(cdr)}
     }
 
-    fn is_null(&self) -> bool
+    pub fn is_null(&self) -> bool
     {
         match self
         {
@@ -580,7 +730,7 @@ impl Expression
         }
     }
 
-    fn as_value(&self) -> Result<String, Error>
+    pub fn as_value(&self) -> Result<String, Error>
     {
         match self
         {
@@ -591,7 +741,7 @@ impl Expression
 
     pub fn apply(
         &self,
-        lambdas: &Lambdas, 
+        state: &State, 
         memory: &mut LispMemory,
         env: &mut Environment
     ) -> Result<LispValue, Error>
@@ -612,21 +762,21 @@ impl Expression
             {
                 match op
                 {
-                    Procedure::Compound(p) => Self::apply_compound(lambdas, memory, env, p, args),
-                    Procedure::Primitive(p) => p.apply(lambdas, memory, env, args)
+                    Procedure::Compound(p) => Self::apply_compound(state, memory, env, p, args),
+                    Procedure::Primitive(p) => p.0(state, memory, env, args)
                 }
             },
             Self::Sequence{first, after} =>
             {
-                first.apply(lambdas, memory, env)?;
+                first.apply(state, memory, env)?;
 
-                after.apply(lambdas, memory, env)
+                after.apply(state, memory, env)
             },
             _ => Err(Error::ApplyNonApplication)
         }
     }
 
-    fn map_list<T, F>(&self, mut f: F) -> Result<ArgValues<T>, Error>
+    pub fn map_list<T, F>(&self, mut f: F) -> Result<ArgValues<T>, Error>
     where
         F: FnMut(&Self) -> Result<T, Error>
     {
@@ -647,8 +797,8 @@ impl Expression
         }
     }
 
-    fn apply_args(
-        lambdas: &Lambdas, 
+    pub fn apply_args(
+        state: &State, 
         memory: &mut LispMemory,
         env: &mut Environment,
         args: &Self
@@ -656,12 +806,12 @@ impl Expression
     {
         args.map_list(|arg|
         {
-            arg.apply(lambdas, memory, env)
+            arg.apply(state, memory, env)
         })
     }
 
-    fn apply_compound(
-        lambdas: &Lambdas, 
+    pub fn apply_compound(
+        state: &State, 
         memory: &mut LispMemory,
         env: &mut Environment,
         proc: &CompoundProcedure,
@@ -679,198 +829,58 @@ impl Expression
             CompoundProcedure::Lambda(id) => *id
         };
 
-        let proc = lambdas.get(id);
+        let proc = state.lambdas.get(id);
 
-        let args = Self::apply_args(lambdas, memory, env, args)?;
+        let args = Self::apply_args(state, memory, env, args)?;
 
-        proc.apply(lambdas, memory, env, args)
+        proc.apply(state, memory, env, args)
     }
 
-    fn eval(lambdas: &mut Lambdas, ast: Ast) -> Result<Self, Error>
+    pub fn eval(state: &mut State, ast: Ast) -> Result<Self, Error>
     {
         if ast.is_list()
         {
-            let op = Self::eval(lambdas, ast.car())?;
-
-            let op = Self::eval_op(op)?;
+            let op = Self::eval(state, ast.car())?;
 
             let args = ast.cdr();
-
-            Self::eval_nonatom(lambdas, op, args)
+            Self::eval_op(state, op, args)
         } else
         {
             Self::eval_atom(ast)
         }
     }
 
-    fn eval_op(op: Self) -> Result<Procedure, Error>
-    {
-        let value = match op
-        {
-            Self::Value(name) => Procedure::from(name),
-            Self::Lambda(id) => Procedure::Compound(CompoundProcedure::Lambda(id)),
-            _ => return Err(Error::ExpectedOp)
-        };
-
-        Ok(value)
-    }
-
-    fn eval_nonatom(lambdas: &mut Lambdas, op: Procedure, args: Ast) -> Result<Self, Error>
-    {
-        let args = match op
-        {
-            Procedure::Primitive(p) =>
-            {
-                match p
-                {
-                    PrimitiveProcedure::Begin =>
-                    {
-                        return Self::eval_sequence(lambdas, args);
-                    },
-                    PrimitiveProcedure::Let =>
-                    {
-                        Self::argument_count_ast(2, &args)?;
-
-                        let bindings = args.car();
-                        let body = args.cdr().car();
-
-                        let params = bindings.map_list(|x| x.car());
-                        let apply_args = Self::eval_args(
-                            lambdas,
-                            bindings.map_list(|x| x.cdr().car())
-                        )?;
-
-                        let lambda_args =
-                            Ast::cons(
-                                params,
-                                Ast::cons(
-                                    body,
-                                    Ast::EmptyList));
-
-                        let lambda = Self::eval_lambda(lambdas, lambda_args)?;
-
-                        return Ok(Self::Application{
-                            op: Self::eval_op(lambda)?,
-                            args: Box::new(apply_args)
-                        });
-                    },
-                    PrimitiveProcedure::Define =>
-                    {
-                        let first = args.car();
-                        let body = args.cdr().car();
-                        let is_procedure = first.is_list();
-
-                        if is_procedure
-                        {
-                            let name = Self::ast_to_expression(first.car())?;
-                            let name = Self::Value(name.as_value()?);
-
-                            let params = first.cdr();
-
-                            let lambda_args =
-                                Ast::cons(
-                                    params,
-                                    Ast::cons(
-                                        body,
-                                        Ast::EmptyList));
-
-                            let lambda = Self::eval_lambda(lambdas, lambda_args)?;
-
-                            Self::cons(name, Self::cons(lambda, Self::EmptyList))
-                        } else
-                        {
-                            Self::argument_count_ast(2, &args)?;
-
-                            Self::eval_args(lambdas, args)?
-                        }
-                    },
-                    PrimitiveProcedure::Lambda => return Self::eval_lambda(lambdas, args),
-                    PrimitiveProcedure::Quote =>
-                    {
-                        Self::argument_count_ast(1, &args)?;
-
-                        Self::ast_to_expression(args.car())?
-                    },
-                    _ => Self::eval_args(lambdas, args)?
-                }
-            },
-            _ => Self::eval_args(lambdas, args)?
-        };
-
-        Self::verify(&op, &args)?;
-
-        let args = Box::new(args);
-
-        Ok(Self::Application{op, args})
-    }
-
-    fn verify(op: &Procedure, args: &Self) -> Result<(), Error>
+    pub fn eval_op(state: &mut State, op: Self, ast: Ast) -> Result<Self, Error>
     {
         match op
         {
-            Procedure::Primitive(p) =>
+            Self::Value(name) => Procedure::parse(state, ast, name),
+            Self::Lambda(id) =>
             {
-                match p
-                {
-                    PrimitiveProcedure::If
-                        | PrimitiveProcedure::VectorSet =>
-                    {
-                        Self::argument_count(3, args)?;
-                    },
-                    PrimitiveProcedure::Cons
-                        | PrimitiveProcedure::Rem
-                        | PrimitiveProcedure::Lambda
-                        | PrimitiveProcedure::Define
-                        | PrimitiveProcedure::MakeVector
-                        | PrimitiveProcedure::VectorRef =>
-                    {
-                        Self::argument_count(2, args)?;
-                    },
-                    PrimitiveProcedure::Car
-                        | PrimitiveProcedure::Cdr
-                        | PrimitiveProcedure::IsBoolean
-                        | PrimitiveProcedure::IsSymbol
-                        | PrimitiveProcedure::IsChar
-                        | PrimitiveProcedure::IsVector
-                        | PrimitiveProcedure::IsProcedure
-                        | PrimitiveProcedure::IsPair
-                        | PrimitiveProcedure::IsNumber =>
-                    {
-                        Self::argument_count(1, args)?;
-                    },
-                    PrimitiveProcedure::Add
-                        | PrimitiveProcedure::Sub
-                        | PrimitiveProcedure::Mul
-                        | PrimitiveProcedure::Div
-                        | PrimitiveProcedure::IsEqual
-                        | PrimitiveProcedure::IsGreater
-                        | PrimitiveProcedure::IsLess
-                        | PrimitiveProcedure::Quote
-                        | PrimitiveProcedure::Begin
-                        | PrimitiveProcedure::Let => ()
-                }
+                Ok(Self::Application{
+                    op: Procedure::Compound(CompoundProcedure::Lambda(id)),
+                    args: Box::new(Self::eval_args(state, ast)?)
+                })
             },
-            _ => ()
+            _ => Err(Error::ExpectedOp)
         }
-
-        Ok(())
     }
 
-    fn eval_lambda(lambdas: &mut Lambdas, args: Ast) -> Result<Self, Error>
+    pub fn eval_lambda(state: &mut State, args: Ast) -> Result<usize, Error>
     {
         Self::argument_count_ast(2, &args)?;
 
         let params = Self::ast_to_expression(args.car())?;
-        let body = Self::eval(lambdas, args.cdr().car())?;
+        let body = Self::eval(state, args.cdr().car())?;
 
         let lambda = StoredLambda::new(params, body)?;
 
-        let id = lambdas.add(lambda);
+        let id = state.lambdas.add(lambda);
 
-        Ok(Self::Lambda(id))
+        Ok(id)
     }
 
-    fn ast_to_expression(ast: Ast) -> Result<Self, Error>
+    pub fn ast_to_expression(ast: Ast) -> Result<Self, Error>
     {
         let out = match ast
         {
@@ -885,7 +895,7 @@ impl Expression
         Ok(out)
     }
 
-    fn eval_args(lambdas: &mut Lambdas, args: Ast) -> Result<Self, Error>
+    pub fn eval_args(state: &mut State, args: Ast) -> Result<Self, Error>
     {
         if args.is_null()
         {
@@ -893,14 +903,14 @@ impl Expression
         }
 
         let out = Self::List{
-            car: Box::new(Self::eval(lambdas, args.car())?),
-            cdr: Box::new(Self::eval_args(lambdas, args.cdr())?)
+            car: Box::new(Self::eval(state, args.car())?),
+            cdr: Box::new(Self::eval_args(state, args.cdr())?)
         };
 
         Ok(out)
     }
 
-    fn eval_primitive_ast(primitive: PrimitiveType) -> Self
+    pub fn eval_primitive_ast(primitive: PrimitiveType) -> Self
     {
         match primitive
         {
@@ -910,14 +920,14 @@ impl Expression
         }
     }
 
-    fn eval_atom(ast: Ast) -> Result<Self, Error>
+    pub fn eval_atom(ast: Ast) -> Result<Self, Error>
     {
         Ok(Self::eval_primitive_ast(ast.as_value()?))
     }
 
-    fn eval_sequence(lambdas: &mut Lambdas, ast: Ast) -> Result<Self, Error>
+    pub fn eval_sequence(state: &mut State, ast: Ast) -> Result<Self, Error>
     {
-        let car = Self::eval(lambdas, ast.car())?;
+        let car = Self::eval(state, ast.car())?;
         let cdr = ast.cdr();
 
         Ok(if cdr.is_null()
@@ -927,12 +937,23 @@ impl Expression
         {
             Self::Sequence{
                 first: Box::new(car),
-                after: Box::new(Self::eval_sequence(lambdas, cdr)?)
+                after: Box::new(Self::eval_sequence(state, cdr)?)
             }
         })
     }
 
-    fn argument_count(count: usize, args: &Self) -> Result<(), Error>
+    pub fn new_application(on_apply: Option<OnApply>, expr: Self) -> Self
+    {
+        let op =
+            Procedure::Primitive(PrimitiveProcedure(on_apply.expect("apply must be provided")));
+
+        Expression::Application{
+            op,
+            args: Box::new(expr)
+        }
+    }
+
+    pub fn argument_count(count: usize, args: &Self) -> Result<(), Error>
     {
         if count < 1
         {
@@ -948,7 +969,7 @@ impl Expression
         Self::argument_count(count - 1, &args.cdr())
     }
 
-    fn argument_count_ast(count: usize, args: &Ast) -> Result<(), Error>
+    pub fn argument_count_ast(count: usize, args: &Ast) -> Result<(), Error>
     {
         if count < 1
         {

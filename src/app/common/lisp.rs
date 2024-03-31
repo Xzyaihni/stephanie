@@ -1,13 +1,32 @@
 use std::{
+    sync::Arc,
     ops::Range,
     fmt::{self, Display, Debug},
+    ops::{Deref, DerefMut},
     collections::HashMap
 };
 
+use parking_lot::{Mutex, MutexGuard};
+
+pub use program::PrimitiveProcedureInfo;
 use program::{Program, Expression};
 
 mod program;
 
+
+pub trait Memoryable
+{
+    type OutputRef<'a>: Deref<Target=LispMemory>
+    where
+        Self: 'a;
+
+    type OutputMut<'a>: Deref<Target=LispMemory> + DerefMut
+    where
+        Self: 'a;
+
+    fn as_ref(&self) -> Self::OutputRef<'_>;
+    fn as_mut(&mut self) -> Self::OutputMut<'_>;
+}
 
 #[repr(u32)]
 #[derive(Debug, Clone, Copy)]
@@ -188,9 +207,10 @@ impl Debug for LispValue
             ValueTag::Float => unsafe{ self.value.float.to_string() },
             ValueTag::Char => unsafe{ self.value.char.to_string() },
             ValueTag::Special => unsafe{ self.value.special.to_string() },
+            ValueTag::Procedure => format!("<procedure #{}>", unsafe{ self.value.procedure }),
+            // these use lisp memory and i cant access it from here
             ValueTag::String => unimplemented!(),
             ValueTag::Symbol => unimplemented!(),
-            ValueTag::Procedure => format!("<procedure #{}>", unsafe{ self.value.procedure }),
             ValueTag::List => unimplemented!(),
             ValueTag::Vector => unimplemented!()
         };
@@ -559,6 +579,69 @@ impl MemoryBlock
     }
 }
 
+impl Memoryable for LispMemory
+{
+    type OutputRef<'a> = &'a LispMemory
+    where
+        Self: 'a;
+
+    type OutputMut<'a> = &'a mut LispMemory
+    where
+        Self: 'a;
+
+    fn as_ref(&self) -> Self::OutputRef<'_>
+    {
+        self
+    }
+
+    fn as_mut(&mut self) -> Self::OutputMut<'_>
+    {
+        self
+    }
+}
+
+impl Memoryable for &mut LispMemory
+{
+    type OutputRef<'a> = &'a LispMemory
+    where
+        Self: 'a;
+
+    type OutputMut<'a> = &'a mut LispMemory
+    where
+        Self: 'a;
+
+    fn as_ref(&self) -> Self::OutputRef<'_>
+    {
+        self
+    }
+
+    fn as_mut(&mut self) -> Self::OutputMut<'_>
+    {
+        self
+    }
+}
+
+impl Memoryable for Arc<Mutex<LispMemory>>
+{
+    type OutputRef<'a> = MutexGuard<'a, LispMemory>
+    where
+        Self: 'a;
+
+    type OutputMut<'a> = MutexGuard<'a, LispMemory>
+    where
+        Self: 'a;
+
+    fn as_ref(&self) -> Self::OutputRef<'_>
+    {
+        self.lock()
+    }
+
+    fn as_mut(&mut self) -> Self::OutputMut<'_>
+    {
+        self.lock()
+    }
+}
+
 pub struct LispMemory
 {
     memory: MemoryBlock
@@ -729,54 +812,63 @@ impl<'a> Environment<'a>
     }
 }
 
-pub struct Lisp
+pub struct LispConfig<M>
 {
-    memory: LispMemory,
+    pub memory: M,
+    pub primitives: HashMap<String, PrimitiveProcedureInfo>
+}
+
+pub struct Lisp<M>
+{
+    memory: M,
     program: Program
 }
 
-impl Lisp
+impl Lisp<LispMemory>
 {
     pub fn new(code: &str) -> Result<Self, Error>
     {
         let memory_size = 1 << 10;
         let memory = LispMemory::new(memory_size);
 
-        Self::new_with_memory(memory, code)
+        let config = LispConfig{
+            memory,
+            primitives: HashMap::new()
+        };
+
+        Self::new_with_config(config, code)
     }
+}
 
-    pub fn new_with_memory(memory: LispMemory, code: &str) -> Result<Self, Error>
+impl<M: Memoryable> Lisp<M>
+{
+    pub fn new_with_config(config: LispConfig<M>, code: &str) -> Result<Self, Error>
     {
-        let program = Program::parse(code)?;
+        let program = Program::parse(config.primitives, code)?;
 
-        Ok(Self{program, memory})
-    }
-
-    pub fn memory(&self) -> &LispMemory
-    {
-        &self.memory
+        Ok(Self{program, memory: config.memory})
     }
 
     pub fn run(&mut self) -> Result<LispValue, Error>
     {
         let mut env = Environment::new();
 
-        self.program.apply(&mut self.memory, &mut env)
+        self.program.apply(&mut self.memory.as_mut(), &mut env)
     }
 
     pub fn get_symbol(&self, value: LispValue) -> Result<String, Error>
     {
-        value.as_symbol(&self.memory)
+        value.as_symbol(&self.memory.as_ref())
     }
 
     pub fn get_vector(&self, value: LispValue) -> Result<LispVector, Error>
     {
-        value.as_vector(&self.memory)
+        value.as_vector(&self.memory.as_ref())
     }
 
     pub fn get_list(&self, value: LispValue) -> Result<LispList, Error>
     {
-        value.as_list(&self.memory)
+        value.as_list(&self.memory.as_ref())
     }
 }
 
@@ -908,7 +1000,7 @@ mod tests
         assert_eq!(value, 39_922_704_i32);
     }
 
-    fn list_equals(memory: &LispMemory, list: LispList, check: &[i32])
+    fn list_equals(lisp: &Lisp<LispMemory>, list: LispList, check: &[i32])
     {
         let car = list.car().as_integer().unwrap();
 
@@ -920,7 +1012,7 @@ mod tests
             return;
         }
 
-        list_equals(memory, list.cdr().as_list(memory).unwrap(), check)
+        list_equals(lisp, lisp.get_list(*list.cdr()).unwrap(), check)
     }
 
     #[test]
@@ -935,7 +1027,7 @@ mod tests
         let output = lisp.run().unwrap();
         let value = lisp.get_list(output).unwrap();
 
-        list_equals(lisp.memory(), value, &[1, 2, 3, 4, 5]);
+        list_equals(&lisp, value, &[1, 2, 3, 4, 5]);
     }
 
     #[test]
@@ -950,7 +1042,7 @@ mod tests
         let output = lisp.run().unwrap();
         let value = lisp.get_list(output).unwrap();
 
-        list_equals(lisp.memory(), value, &[3, 4, 5]);
+        list_equals(&lisp, value, &[3, 4, 5]);
     }
 
     #[test]
