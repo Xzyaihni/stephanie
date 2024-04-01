@@ -1,6 +1,5 @@
 (fill-area
     (filled-chunk (tile (quote concrete)))
-    (make-area
-        (make-point 2 0)
-        (make-point (- size-y 3) (- size-y 1)))
+    (make-point 2 0)
+    (make-point (- size-x 4) size-y)
     (tile (quote asphalt)))

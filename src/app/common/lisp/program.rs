@@ -29,10 +29,38 @@ pub type OnEval = Arc<
         Ast
     ) -> Result<Expression, Error> + Send + Sync>;
 
+#[derive(Debug, Clone, Copy)]
+pub enum ArgsCount
+{
+    Min(usize),
+    Some(usize),
+    None
+}
+
+impl From<usize> for ArgsCount
+{
+    fn from(value: usize) -> Self
+    {
+        Self::Some(value)
+    }
+}
+
+impl From<Option<usize>> for ArgsCount
+{
+    fn from(value: Option<usize>) -> Self
+    {
+        match value
+        {
+            Some(x) => Self::Some(x),
+            None => Self::None
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct PrimitiveProcedureInfo
 {
-    args_count: Option<usize>,
+    args_count: ArgsCount,
     on_eval: Option<OnEval>,
     on_apply: Option<OnApply>
 }
@@ -40,7 +68,7 @@ pub struct PrimitiveProcedureInfo
 impl PrimitiveProcedureInfo
 {
     pub fn new_eval(
-        args_count: impl Into<Option<usize>>,
+        args_count: impl Into<ArgsCount>,
         on_eval: OnEval
     ) -> Self
     {
@@ -52,7 +80,7 @@ impl PrimitiveProcedureInfo
     }
 
     pub fn new(
-        args_count: impl Into<Option<usize>>,
+        args_count: impl Into<ArgsCount>,
         on_eval: OnEval,
         on_apply: OnApply
     ) -> Self
@@ -64,7 +92,7 @@ impl PrimitiveProcedureInfo
         }
     }
 
-    pub fn new_simple(args_count: impl Into<Option<usize>>, on_apply: OnApply) -> Self
+    pub fn new_simple(args_count: impl Into<ArgsCount>, on_apply: OnApply) -> Self
     {
         Self{
             args_count: args_count.into(),
@@ -78,8 +106,12 @@ impl Debug for PrimitiveProcedureInfo
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
     {
-        let args_count = self.args_count.map(|x| x.to_string())
-            .unwrap_or_else(|| "no".to_owned());
+        let args_count = match self.args_count
+        {
+            ArgsCount::Some(x) => x.to_string(),
+            ArgsCount::None => "no".to_owned(),
+            ArgsCount::Min(x) => format!("at least {x}")
+        };
 
         write!(f, "<procedure with {args_count} args>")
     }
@@ -116,9 +148,19 @@ impl Procedure
     {
         if let Some(primitive) = state.primitives.get(&s).cloned()
         {
-            if let Some(count) = primitive.args_count
+            match primitive.args_count
             {
-                Expression::argument_count_ast(s.clone(), count, &ast)?;
+                ArgsCount::Some(count) => Expression::argument_count_ast(s.clone(), count, &ast)?,
+                ArgsCount::Min(expected) =>
+                {
+                    let got = Expression::arg_count_ast(&ast);
+
+                    if expected > got
+                    {
+                        return Err(Error::WrongArgumentsCount{proc: s.clone(), expected, got});
+                    }
+                },
+                ArgsCount::None => ()
             }
 
             if let Some(on_eval) = primitive.on_eval.as_ref()
@@ -362,22 +404,22 @@ impl Primitives
 
                 Ok(LispValue::new_bool(is_bool))
             }))),
-            ("+", PrimitiveProcedureInfo::new_simple(None, do_op!(add))),
-            ("-", PrimitiveProcedureInfo::new_simple(None, do_op!(sub))),
-            ("*", PrimitiveProcedureInfo::new_simple(None, do_op!(mul))),
-            ("/", PrimitiveProcedureInfo::new_simple(None, do_op!(div))),
+            ("+", PrimitiveProcedureInfo::new_simple(ArgsCount::Min(2), do_op!(add))),
+            ("-", PrimitiveProcedureInfo::new_simple(ArgsCount::Min(2), do_op!(sub))),
+            ("*", PrimitiveProcedureInfo::new_simple(ArgsCount::Min(2), do_op!(mul))),
+            ("/", PrimitiveProcedureInfo::new_simple(ArgsCount::Min(2), do_op!(div))),
             ("remainder", PrimitiveProcedureInfo::new_simple(2, do_op!(rem))),
             ("=",
                 PrimitiveProcedureInfo::new_simple(
-                    None,
+                    ArgsCount::Min(2),
                     do_cond!(|a, b| LispValue::new_bool(a == b)))),
             (">",
                 PrimitiveProcedureInfo::new_simple(
-                    None,
+                    ArgsCount::Min(2),
                     do_cond!(|a, b| LispValue::new_bool(a > b)))),
             ("<",
                 PrimitiveProcedureInfo::new_simple(
-                    None,
+                    ArgsCount::Min(2),
                     do_cond!(|a, b| LispValue::new_bool(a < b)))),
             ("if",
                 PrimitiveProcedureInfo::new_simple(3, Arc::new(|state, memory, env, args|

@@ -127,7 +127,7 @@ impl<T: IntoIterator<Item=ValueRaw>> LispVectorInner<T>
             {
                 unsafe{ x.integer as usize }
             }).collect()),
-            x => Err(Error::WrongType(x))
+            x => Err(Error::VectorWrongType{expected: ValueTag::Integer, got: x})
         }
     }
 
@@ -139,7 +139,7 @@ impl<T: IntoIterator<Item=ValueRaw>> LispVectorInner<T>
             {
                 unsafe{ x.integer }
             }).collect()),
-            x => Err(Error::WrongType(x))
+            x => Err(Error::VectorWrongType{expected: ValueTag::Integer, got: x})
         }
     }
 }
@@ -285,7 +285,7 @@ impl LispValue
         match self.tag
         {
             ValueTag::Symbol => memory.get_symbol(unsafe{ self.value.symbol }),
-            x => Err(Error::WrongType(x))
+            x => Err(Error::WrongType{expected: ValueTag::Symbol, got: x})
         }
     }
 
@@ -294,7 +294,7 @@ impl LispValue
         match self.tag
         {
             ValueTag::List => Ok(memory.get_list(unsafe{ self.value.list })),
-            x => Err(Error::WrongType(x))
+            x => Err(Error::WrongType{expected: ValueTag::List, got: x})
         }
     }
 
@@ -303,7 +303,7 @@ impl LispValue
         match self.tag
         {
             ValueTag::Vector => Ok(memory.get_vector_ref(unsafe{ self.value.vector })),
-            x => Err(Error::WrongType(x))
+            x => Err(Error::WrongType{expected: ValueTag::Vector, got: x})
         }
     }
 
@@ -312,7 +312,7 @@ impl LispValue
         match self.tag
         {
             ValueTag::Vector => Ok(memory.get_vector_mut(unsafe{ self.value.vector })),
-            x => Err(Error::WrongType(x))
+            x => Err(Error::WrongType{expected: ValueTag::Vector, got: x})
         }
     }
 
@@ -321,7 +321,7 @@ impl LispValue
         match self.tag
         {
             ValueTag::Vector => Ok(memory.get_vector(unsafe{ self.value.vector })),
-            x => Err(Error::WrongType(x))
+            x => Err(Error::WrongType{expected: ValueTag::Vector, got: x})
         }
     }
 
@@ -330,7 +330,7 @@ impl LispValue
         match self.tag
         {
             ValueTag::Integer => Ok(unsafe{ self.value.integer }),
-            x => Err(Error::WrongType(x))
+            x => Err(Error::WrongType{expected: ValueTag::Integer, got: x})
         }
     }
 
@@ -339,7 +339,7 @@ impl LispValue
         match self.tag
         {
             ValueTag::Float => Ok(unsafe{ self.value.float }),
-            x => Err(Error::WrongType(x))
+            x => Err(Error::WrongType{expected: ValueTag::Float, got: x})
         }
     }
 
@@ -351,9 +351,12 @@ impl LispValue
             {
                 let special = unsafe{ self.value.special };
 
-                special.as_bool().ok_or_else(|| Error::WrongType(ValueTag::Special))
+                special.as_bool().ok_or_else(||
+                {
+                    Error::WrongSpecial{expected: "boolean"}
+                })
             },
-            x => Err(Error::WrongType(x))
+            x => Err(Error::WrongType{expected: ValueTag::Special, got: x})
         }
     }
 
@@ -362,7 +365,7 @@ impl LispValue
         match self.tag
         {
             ValueTag::Procedure => Ok(unsafe{ self.value.procedure }),
-            x => Err(Error::WrongType(x))
+            x => Err(Error::WrongType{expected: ValueTag::Procedure, got: x})
         }
     }
 }
@@ -370,7 +373,8 @@ impl LispValue
 #[derive(Debug, Clone)]
 pub enum Error
 {
-    WrongType(ValueTag),
+    WrongType{expected: ValueTag, got: ValueTag},
+    WrongSpecial{expected: &'static str},
     NumberParse(String),
     UndefinedVariable(String),
     ApplyNonApplication,
@@ -391,7 +395,8 @@ impl Display for Error
     {
         let s = match self
         {
-            Self::WrongType(tag) => format!("wrong type `{tag:?}`"),
+            Self::WrongType{expected, got} => format!("expected type `{expected:?}` got `{got:?}`"),
+            Self::WrongSpecial{expected} => format!("wrong special, expected `{expected:?}`"),
             Self::NumberParse(s) => format!("cant parse `{s}` as number"),
             Self::UndefinedVariable(s) => format!("variable `{s}` is undefined"),
             Self::ApplyNonApplication => "apply was called on a non application".to_owned(),
@@ -495,7 +500,7 @@ impl MemoryBlock
 
         if vec.tag != ValueTag::Char
         {
-            return Err(Error::WrongType(vec.tag));
+            return Err(Error::VectorWrongType{expected: ValueTag::Char, got: vec.tag});
         }
 
         Ok(vec.values.iter().map(|x| unsafe{ x.char }).collect())
