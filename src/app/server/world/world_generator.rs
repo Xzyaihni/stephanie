@@ -21,8 +21,10 @@ use crate::common::{
         LispMemory,
         Environment,
         Lambdas,
+        LispValue,
         ValueTag,
-        Primitives
+        Primitives,
+        PrimitiveProcedureInfo
     },
 	world::{
 		Pos3,
@@ -177,7 +179,7 @@ impl ChunkGenerator
         let environment = Arc::new(environment);
         let memory = Arc::new(Mutex::new(LispMemory::new(1024)));
 
-        let primitives = Arc::new(Primitives::new());
+        let primitives = Arc::new(Self::default_primitives(&tilemap));
 
         let mut this = Self{environment, lambdas, primitives, memory, chunks, tilemap};
 
@@ -197,6 +199,28 @@ impl ChunkGenerator
 
 		Ok(this)
 	}
+
+    fn default_primitives(tilemap: &TileMap) -> Primitives
+    {
+        let mut primitives = Primitives::new();
+
+        let names_map: HashMap<String, Tile> = tilemap.names_owned_map();
+
+        primitives.add(
+            "tile",
+            PrimitiveProcedureInfo::new_simple(1, Arc::new(move |state, memory, env, args|
+            {
+                let arg = args.car().apply(state, memory, env)?;
+
+                let name = arg.as_symbol(memory)?;
+
+                let tile = names_map[&name];
+
+                Ok(LispValue::new_integer(tile.id() as i32))
+            })));
+
+        primitives
+    }
 
     fn default_environment(path: &Path) -> (Environment<'static>, Lambdas)
     {

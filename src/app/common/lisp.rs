@@ -142,18 +142,6 @@ impl<T: IntoIterator<Item=ValueRaw>> LispVectorInner<T>
             x => Err(Error::WrongType(x))
         }
     }
-
-    pub fn as_vec_char(self) -> Result<Vec<char>, Error>
-    {
-        match self.tag
-        {
-            ValueTag::Char => Ok(self.values.into_iter().map(|x| 
-            {
-                unsafe{ x.char }
-            }).collect()),
-            x => Err(Error::WrongType(x))
-        }
-    }
 }
 
 pub struct LispList
@@ -502,14 +490,14 @@ impl MemoryBlock
 
     pub fn get_symbol(&self, id: usize) -> Result<String, Error>
     {
-        let vec = self.get_vector(id);
+        let vec = self.get_vector_ref(id);
 
         if vec.tag != ValueTag::Char
         {
             return Err(Error::WrongType(vec.tag));
         }
 
-        Ok(vec.values.into_iter().map(|x| unsafe{ x.char }).collect())
+        Ok(vec.values.iter().map(|x| unsafe{ x.char }).collect())
     }
 
     pub fn get_list(&self, id: usize) -> LispList
@@ -542,16 +530,18 @@ impl MemoryBlock
         LispValue::new_list(id)
     }
 
-    fn allocate_iter(
+    fn allocate_iter<'a>(
         &mut self,
         len: usize,
         tag: ValueTag,
-        iter: impl Iterator<Item=ValueRaw>
+        iter: impl Iterator<Item=&'a ValueRaw>
     ) -> usize
     {
         let id = self.general.len();
 
-        let iter = [ValueRaw{len}, ValueRaw{tag}].into_iter().chain(iter);
+        let beginning = [ValueRaw{len}, ValueRaw{tag}];
+        let iter = beginning.into_iter().chain(iter.copied());
+
         self.general.extend(iter);
 
         id
@@ -664,7 +654,7 @@ impl LispMemory
         self.memory.cons(car, cdr)
     }
 
-    pub fn allocate_vector(&mut self, vec: LispVector) -> usize
+    pub fn allocate_vector(&mut self, vec: LispVectorInner<&[ValueRaw]>) -> usize
     {
         let len = vec.values.len();
 
@@ -691,9 +681,10 @@ impl LispMemory
             },
             Expression::Value(x) =>
             {
-                let vec = LispVector{
+                let values: Vec<ValueRaw> = x.chars().map(|x| ValueRaw{char: x}).collect();
+                let vec = LispVectorRef{
                     tag: ValueTag::Char,
-                    values: x.chars().map(|c| ValueRaw{char: c}).collect()
+                    values: &values
                 };
 
                 let id = self.allocate_vector(vec);
@@ -773,7 +764,7 @@ impl<'a> Environment<'a>
 
 pub struct OutputWrapper<'a>
 {
-    memory: &'a mut LispMemory,
+    pub memory: &'a mut LispMemory,
     pub value: LispValue
 }
 
@@ -790,6 +781,26 @@ impl<'a> OutputWrapper<'a>
     pub fn as_vector_ref(&'a self) -> Result<LispVectorRef<'a>, Error>
     {
         self.value.as_vector_ref(self.memory)
+    }
+
+    pub fn as_vector(&self) -> Result<LispVector, Error>
+    {
+        self.value.as_vector(&self.memory)
+    }
+
+    pub fn as_symbol(&self) -> Result<String, Error>
+    {
+        self.value.as_symbol(&self.memory)
+    }
+
+    pub fn as_list(&self) -> Result<LispList, Error>
+    {
+        self.value.as_list(&self.memory)
+    }
+
+    pub fn as_integer(self) -> Result<i32, Error>
+    {
+        self.value.as_integer()
     }
 }
 
@@ -1023,7 +1034,7 @@ mod tests
         let mut lisp = Lisp::new(code).unwrap();
 
         let output = lisp.run().unwrap();
-        let value = lisp.get_vector(output).unwrap().as_vec_integer().unwrap();
+        let value = output.as_vector().unwrap().as_vec_integer().unwrap();
 
         assert_eq!(value, vec![1, 2, 3]);
     }
@@ -1051,7 +1062,7 @@ mod tests
         assert_eq!(value, 39_922_704_i32);
     }
 
-    fn list_equals(lisp: &Lisp<LispMemory>, list: LispList, check: &[i32])
+    fn list_equals(memory: &LispMemory, list: LispList, check: &[i32])
     {
         let car = list.car().as_integer().unwrap();
 
@@ -1063,7 +1074,7 @@ mod tests
             return;
         }
 
-        list_equals(lisp, lisp.get_list(*list.cdr()).unwrap(), check)
+        list_equals(memory, list.cdr().as_list(memory).unwrap(), check)
     }
 
     #[test]
@@ -1075,10 +1086,14 @@ mod tests
 
         let mut lisp = Lisp::new(code).unwrap();
 
-        let output = lisp.run().unwrap();
-        let value = lisp.get_list(output).unwrap();
+        let OutputWrapper{
+            ref memory,
+            value: ref output
+        } = lisp.run().unwrap();
 
-        list_equals(&lisp, value, &[1, 2, 3, 4, 5]);
+        let value = output.as_list(memory).unwrap();
+
+        list_equals(memory, value, &[1, 2, 3, 4, 5]);
     }
 
     #[test]
@@ -1090,10 +1105,14 @@ mod tests
 
         let mut lisp = Lisp::new(code).unwrap();
 
-        let output = lisp.run().unwrap();
-        let value = lisp.get_list(output).unwrap();
+        let OutputWrapper{
+            ref memory,
+            value: ref output
+        } = lisp.run().unwrap();
 
-        list_equals(&lisp, value, &[3, 4, 5]);
+        let value = output.as_list(memory).unwrap();
+
+        list_equals(memory, value, &[3, 4, 5]);
     }
 
     #[test]
@@ -1125,7 +1144,7 @@ mod tests
         let mut lisp = Lisp::new(code).unwrap();
 
         let output = lisp.run().unwrap();
-        let value = lisp.get_symbol(output).unwrap();
+        let value = output.as_symbol().unwrap();
 
         assert_eq!(value, "💢".to_owned());
     }
@@ -1140,7 +1159,7 @@ mod tests
         let mut lisp = Lisp::new(code).unwrap();
 
         let output = lisp.run().unwrap();
-        let value = lisp.get_vector(output).unwrap().as_vec_integer().unwrap();
+        let value = output.as_vector().unwrap().as_vec_integer().unwrap();
 
         assert_eq!(value, vec![999, 999, 999, 999, 999]);
     }
@@ -1167,7 +1186,7 @@ mod tests
         let mut lisp = Lisp::new(code).unwrap();
 
         let output = lisp.run().unwrap();
-        let value = lisp.get_vector(output).unwrap().as_vec_integer().unwrap();
+        let value = output.as_vector().unwrap().as_vec_integer().unwrap();
 
         assert_eq!(value, vec![1005, 9, 5, 123, 1000]);
     }

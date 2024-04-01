@@ -180,11 +180,21 @@ impl TileMap
 
 	pub fn names_map(&self) -> HashMap<&str, Tile>
 	{
+		self.names_iter().collect()
+	}
+
+	pub fn names_owned_map(&self) -> HashMap<String, Tile>
+	{
+		self.names_iter().map(|(key, value)| (key.to_owned(), value)).collect()
+	}
+
+    fn names_iter(&self) -> impl Iterator<Item=(&str, Tile)>
+    {
 		self.tiles.iter().enumerate().map(|(index, tile_info)|
 		{
 			(tile_info.name.as_str(), Tile::new(index))
-		}).collect()
-	}
+		})
+    }
 
 	pub fn tile_named(&self, name: &str) -> Option<Tile>
 	{

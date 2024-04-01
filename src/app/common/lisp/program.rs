@@ -7,7 +7,7 @@ use std::{
     ops::{Add, Sub, Mul, Div, Rem, Deref, DerefMut}
 };
 
-pub use super::{Error, Environment, LispValue, LispMemory, ValueTag, LispVector};
+pub use super::{Error, Environment, LispValue, LispMemory, ValueTag, LispVectorRef};
 use parser::{Parser, Ast, PrimitiveType};
 
 mod parser;
@@ -298,9 +298,9 @@ impl Primitives
                 let len = args.pop()?.as_integer()? as usize;
                 let fill = args.pop()?;
 
-                let vec = LispVector{
+                let vec = LispVectorRef{
                     tag: fill.tag,
-                    values: vec![fill.value; len]
+                    values: &vec![fill.value; len]
                 };
 
                 Ok(LispValue::new_vector(memory.allocate_vector(vec)))
@@ -513,6 +513,11 @@ impl Primitives
         ].into_iter().map(|(k, v)| (k.to_owned(), v)).collect();
 
         Self(primitives)
+    }
+
+    pub fn add(&mut self, name: impl Into<String>, procedure: PrimitiveProcedureInfo)
+    {
+        self.0.insert(name.into(), procedure);
     }
 
     fn call_op<FI, FF>(
