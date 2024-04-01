@@ -118,7 +118,7 @@ impl Procedure
         {
             if let Some(count) = primitive.args_count
             {
-                Expression::argument_count_ast(count, &ast)?;
+                Expression::argument_count_ast(s.clone(), count, &ast)?;
             }
 
             if let Some(on_eval) = primitive.on_eval.as_ref()
@@ -177,7 +177,11 @@ impl StoredLambda
     {
         if self.params.len() != args.len()
         {
-            return Err(Error::WrongArgumentsCount);
+            return Err(Error::WrongArgumentsCount{
+                proc: format!("<compound procedure {:?}>", self.params),
+                expected: self.params.len(),
+                got: args.len()
+            });
         }
 
         let mut new_env = Environment::child(env);
@@ -456,8 +460,6 @@ impl Primitives
                                 Expression::EmptyList))
                     } else
                     {
-                        Expression::argument_count_ast(2, &args)?;
-
                         Expression::eval_args(state, args)?
                     };
 
@@ -763,6 +765,15 @@ impl Expression
         }
     }
 
+    pub fn is_list(&self) -> bool
+    {
+        match self
+        {
+            Self::List{..} | Self::EmptyList => true,
+            _ => false
+        }
+    }
+
     pub fn as_value(&self) -> Result<String, Error>
     {
         match self
@@ -901,7 +912,7 @@ impl Expression
 
     pub fn eval_lambda(state: &mut State, args: Ast) -> Result<usize, Error>
     {
-        Self::argument_count_ast(2, &args)?;
+        Self::argument_count_ast("lambda".to_owned(), 2, &args)?;
 
         let params = Self::ast_to_expression(args.car())?;
         let body = Self::eval(state, args.cdr().car())?;
@@ -986,35 +997,49 @@ impl Expression
         }
     }
 
-    pub fn argument_count(count: usize, args: &Self) -> Result<(), Error>
+    pub fn argument_count(name: String, count: usize, args: &Self) -> Result<(), Error>
     {
-        if count < 1
+        let got = Self::arg_count(args);
+        if got == count
         {
-            return if args.is_null()
-            {
-                Ok(())
-            } else
-            {
-                Err(Error::WrongArgumentsCount)
-            };
+            Ok(())
+        } else
+        {
+            Err(Error::WrongArgumentsCount{proc: name, expected: count, got})
         }
-
-        Self::argument_count(count - 1, &args.cdr())
     }
 
-    pub fn argument_count_ast(count: usize, args: &Ast) -> Result<(), Error>
+    pub fn argument_count_ast(name: String, count: usize, args: &Ast) -> Result<(), Error>
     {
-        if count < 1
+        let got = Self::arg_count_ast(args);
+        if got == count
         {
-            return if args.is_null()
-            {
-                Ok(())
-            } else
-            {
-                Err(Error::WrongArgumentsCount)
-            };
+            Ok(())
+        } else
+        {
+            Err(Error::WrongArgumentsCount{proc: name, expected: count, got})
         }
+    }
 
-        Self::argument_count_ast(count - 1, &args.cdr())
+    fn arg_count(args: &Self) -> usize
+    {
+        if args.is_null() || !args.is_list()
+        {
+            0
+        } else
+        {
+            1 + Self::arg_count(&args.cdr())
+        }
+    }
+
+    fn arg_count_ast(args: &Ast) -> usize
+    {
+        if args.is_null() || !args.is_list()
+        {
+            0
+        } else
+        {
+            1 + Self::arg_count_ast(&args.cdr())
+        }
     }
 }

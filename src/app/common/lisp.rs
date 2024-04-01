@@ -374,7 +374,7 @@ pub enum Error
     NumberParse(String),
     UndefinedVariable(String),
     ApplyNonApplication,
-    WrongArgumentsCount,
+    WrongArgumentsCount{proc: String, expected: usize, got: usize},
     IndexOutOfRange(i32),
     CharOutOfRange,
     VectorWrongType{expected: ValueTag, got: ValueTag},
@@ -396,7 +396,8 @@ impl Display for Error
             Self::UndefinedVariable(s) => format!("variable `{s}` is undefined"),
             Self::ApplyNonApplication => "apply was called on a non application".to_owned(),
             Self::ExpectedSameNumberType => "primitive operation expected 2 numbers of same type".to_owned(),
-            Self::WrongArgumentsCount => "wrong amount of arguments passed to procedure".to_owned(),
+            Self::WrongArgumentsCount{proc, expected, got} =>
+                format!("wrong amount of arguments (got {got}) passed to {proc} (expected {expected})"),
             Self::IndexOutOfRange(i) => format!("index {i} out of range"),
             Self::CharOutOfRange => "char out of range".to_owned(),
             Self::VectorWrongType{expected, got} =>
@@ -739,26 +740,6 @@ impl<'a> Environment<'a>
     pub fn lookup(&self, key: &str) -> Result<LispValue, Error>
     {
         self.try_lookup(key).ok_or_else(|| Error::UndefinedVariable(key.to_owned()))
-    }
-
-    pub fn compact_lambdas(&mut self, lambdas: &Lambdas) -> Lambdas
-    {
-        assert!(self.parent.is_none());
-
-        let mut new_lambdas = Lambdas::new();
-
-        self.mappings.iter_mut()
-            .filter(|(_key, value)| value.tag == ValueTag::Procedure)
-            .for_each(|(_key, value)|
-            {
-                let proc = value.as_procedure().expect("filtered for procedures");
-
-                let new_proc = new_lambdas.add(lambdas.get(proc).clone());
-
-                *value = LispValue::new_procedure(new_proc);
-            });
-
-        new_lambdas
     }
 }
 

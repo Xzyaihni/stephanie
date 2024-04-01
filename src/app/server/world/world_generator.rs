@@ -232,12 +232,10 @@ impl ChunkGenerator
         let mut lisp = Lisp::new(&default_code)
             .unwrap_or_else(|err| panic!("{name} must be valid ({err})"));
 
-        let mut env = lisp.run_environment()
+        let env = lisp.run_environment()
             .unwrap_or_else(|err| panic!("{name} must run ({err})"));
 
-        let lambdas = env.compact_lambdas(lisp.lambdas());
-
-        (env, lambdas)
+        (env, lisp.lambdas().clone())
     }
 
 	fn parse_function(
@@ -280,7 +278,8 @@ impl ChunkGenerator
 
         let memory = &mut self.memory.lock();
 
-        let this_chunk = self.chunks.get_mut(group.this)
+        let chunk_name = group.this;
+        let this_chunk = self.chunks.get_mut(chunk_name)
             .unwrap_or_else(||
             {
                 panic!("worldchunk named `{}` doesnt exist", group.this)
@@ -289,7 +288,7 @@ impl ChunkGenerator
         let output = this_chunk.run(memory)
             .unwrap_or_else(|err|
             {
-                panic!("runtime lisp error: {err}")
+                panic!("runtime lisp error: {err} (in {chunk_name})")
             });
 
         let output = output.as_vector_ref()
