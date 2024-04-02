@@ -1,8 +1,39 @@
 use std::{
     iter,
+    fmt::{self, Display},
     str::Chars
 };
 
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CodePosition
+{
+    line: usize,
+    char: usize
+}
+
+impl CodePosition
+{
+    pub fn new() -> Self
+    {
+        Self{line: 1, char: 1}
+    }
+}
+
+impl Display for CodePosition
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
+    {
+        write!(f, "{}:{}", self.line, self.char)
+    }
+}
+
+#[derive(Debug)]
+pub struct LexemePos
+{
+    pub position: CodePosition,
+    pub lexeme: Lexeme
+}
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Lexeme
@@ -14,26 +45,31 @@ pub enum Lexeme
 
 pub struct Lexer<'a>
 {
+    position: CodePosition,
     chars: Chars<'a>,
     current_char: Option<char>
 }
 
 impl<'a> Lexer<'a>
 {
-    pub fn parse(text: &'a str) -> Vec<Lexeme>
+    pub fn parse(text: &'a str) -> Vec<LexemePos>
     {
-        let this = Self{chars: text.chars(), current_char: None};
+        let this = Self{
+            position: CodePosition::new(),
+            chars: text.chars(),
+            current_char: None
+        };
 
         this.parse_lexemes()
     }
 
     // wow not returning an iterator? so inefficient wow wow wow
-    fn parse_lexemes(mut self) -> Vec<Lexeme>
+    fn parse_lexemes(mut self) -> Vec<LexemePos>
     {
         iter::from_fn(|| self.parse_one()).collect()
     }
 
-    fn parse_one(&mut self) -> Option<Lexeme>
+    fn parse_one(&mut self) -> Option<LexemePos>
     {
         let mut current = String::new();
         
@@ -48,10 +84,12 @@ impl<'a> Lexer<'a>
                     if current.is_empty()
                     {
                         continue;
-                    } else
-                    {
-                        return Some(Lexeme::Value(current));
                     }
+
+                    return Some(LexemePos{
+                        position: self.position,
+                        lexeme: Lexeme::Value(current)
+                    });
                 }
 
                 if (c == '(') || (c == ')')
@@ -71,11 +109,16 @@ impl<'a> Lexer<'a>
                             unreachable!()
                         };
 
-                        return Some(lexeme);
-                    } else
-                    {
-                        return Some(Lexeme::Value(current));
+                        return Some(LexemePos{
+                            position: self.position,
+                            lexeme
+                        });
                     }
+
+                    return Some(LexemePos{
+                        position: self.position,
+                        lexeme: Lexeme::Value(current)
+                    });
                 }
 
                 current.push(c);
@@ -85,10 +128,12 @@ impl<'a> Lexer<'a>
                 if current.is_empty()
                 {
                     return None;
-                } else
-                {
-                    return Some(Lexeme::Value(current));
                 }
+
+                return Some(LexemePos{
+                    position: self.position,
+                    lexeme: Lexeme::Value(current)
+                });
             }
         }
     }

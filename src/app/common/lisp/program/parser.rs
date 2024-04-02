@@ -1,8 +1,10 @@
-use std::{iter, vec};
+use std::{iter, vec, ops::Deref};
 
-use super::Error;
+use super::{Error, ErrorPos};
 
-use lexer::{Lexer, Lexeme};
+pub use lexer::CodePosition;
+
+use lexer::{Lexer, Lexeme, LexemePos};
 
 mod lexer;
 
@@ -16,36 +18,38 @@ pub enum PrimitiveType
 }
 
 #[derive(Debug, Clone)]
-pub enum Ast
+pub struct AstPos
 {
-    Value(String),
-    EmptyList,
-    List{car: Box<Ast>, cdr: Box<Ast>}
+    pub position: CodePosition,
+    pub ast: Ast
 }
 
-impl Ast
+impl AstPos
 {
-    pub fn car(&self) -> Self
-    {
-        match self
-        {
-            Self::List{car, ..} => *car.clone(),
-            x => panic!("car must be called on a list, called on {x:?}")
-        }
-    }
-
-    pub fn cdr(&self) -> Self
-    {
-        match self
-        {
-            Self::List{cdr, ..} => *cdr.clone(),
-            x => panic!("cdr must be called on a list, called on {x:?}")
-        }
-    }
-
     pub fn cons(car: Self, cdr: Self) -> Self
     {
-        Self::List{car: Box::new(car), cdr: Box::new(cdr)}
+        Self{
+            position: car.position,
+            ast: Ast::List{car: Box::new(car), cdr: Box::new(cdr)}
+        }
+    }
+
+    pub fn as_value(&self) -> Result<PrimitiveType, ErrorPos>
+    {
+        match &self.ast
+        {
+            Ast::Value(x) => Ast::parse_primitive(x)
+                .map_err(|error| ErrorPos{position: self.position, error}),
+            x => panic!("as_number must be called on a value, called on {x:?}")
+        }
+    }
+
+    pub fn map(self, f: impl FnOnce(Ast) -> Ast) -> Self
+    {
+        Self{
+            ast: f(self.ast),
+            ..self
+        }
     }
 
     pub fn map_list<F>(&self, mut f: F) -> Self
@@ -54,15 +58,57 @@ impl Ast
     {
         if self.is_null()
         {
-            return Self::EmptyList;
+            return self.clone();
         }
 
         let car = self.car();
         let cdr = self.cdr();
 
-        Self::List{
-            car: Box::new(f(car)),
-            cdr: Box::new(cdr.map_list(f))
+        AstPos{
+            position: self.position,
+            ast: Ast::List{
+                car: Box::new(f(car)),
+                cdr: Box::new(cdr.map_list(f))
+            }
+        }
+    }
+}
+
+impl Deref for AstPos
+{
+    type Target = Ast;
+
+    fn deref(&self) -> &Self::Target
+    {
+        &self.ast
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum Ast
+{
+    Value(String),
+    EmptyList,
+    List{car: Box<AstPos>, cdr: Box<AstPos>}
+}
+
+impl Ast
+{
+    pub fn car(&self) -> AstPos
+    {
+        match self
+        {
+            Self::List{car, ..} => *car.clone(),
+            x => panic!("car must be called on a list, called on {x:?}")
+        }
+    }
+
+    pub fn cdr(&self) -> AstPos
+    {
+        match self
+        {
+            Self::List{cdr, ..} => *cdr.clone(),
+            x => panic!("cdr must be called on a list, called on {x:?}")
         }
     }
 
@@ -84,15 +130,6 @@ impl Ast
         };
 
         Ok(out)
-    }
-
-    pub fn as_value(&self) -> Result<PrimitiveType, Error>
-    {
-        match self
-        {
-            Self::Value(x) => Self::parse_primitive(x),
-            x => panic!("as_number must be called on a value, called on {x:?}")
-        }
     }
 
     pub fn is_list(&self) -> bool
@@ -128,78 +165,133 @@ impl Ast
     }
 }
 
+pub trait WithPosition
+{
+    type Output: Sized;
+
+    fn with_position(self, position: CodePosition) -> Self::Output;
+}
+
+impl WithPosition for Option<Ast>
+{
+    type Output = Result<AstPos, ErrorPos>;
+
+    fn with_position(self, position: CodePosition) -> Self::Output
+    {
+        Ok(AstPos{
+            position,
+            ast: self.ok_or(ErrorPos{position, error: Error::UnexpectedClose})?
+        })
+    }
+}
+
+impl WithPosition for Ast
+{
+    type Output = AstPos;
+
+    fn with_position(self, position: CodePosition) -> Self::Output
+    {
+        AstPos{
+            position,
+            ast: self
+        }
+    }
+}
+
 pub struct Parser
 {
+    current_position: CodePosition,
     // of course i have to spell out the whole iterator type
     lexemes: iter::Chain<
         iter::Chain<
-            iter::Once<Lexeme>,
-            vec::IntoIter<Lexeme>>,
-        iter::Once<Lexeme>>
+            iter::Once<LexemePos>,
+            vec::IntoIter<LexemePos>>,
+        iter::Once<LexemePos>>
 }
 
 impl Parser
 {
-    pub fn parse(code: &str) -> Result<Ast, Error>
+    pub fn parse(code: &str) -> Result<AstPos, ErrorPos>
     {
         let lexemes = Lexer::parse(code);
 
-        let lexemes = iter::once(Lexeme::OpenParen)
+        let open = LexemePos{position: CodePosition::new(), lexeme: Lexeme::OpenParen};
+        let close = LexemePos{position: CodePosition::new(), lexeme: Lexeme::CloseParen};
+
+        let lexemes = iter::once(open)
             .chain(lexemes.into_iter())
-            .chain(iter::once(Lexeme::CloseParen));
+            .chain(iter::once(close));
 
-        let mut this = Self{lexemes};
+        let mut this = Self{current_position: CodePosition::new(), lexemes};
 
-        let ast = this.parse_one()?.ok_or(Error::UnexpectedClose)?;
-        Ok(ast)
+        let (pos, ast) = this.parse_one()?;
+
+        ast.with_position(pos)
     }
 
-    fn parse_one(&mut self) -> Result<Option<Ast>, Error>
+    fn parse_one(&mut self) -> Result<(CodePosition, Option<Ast>), ErrorPos>
     {
-        let lexeme = self.lexemes.next().ok_or(Error::ExpectedClose)?;
+        let position = self.current_position;
+        let lexeme = self.lexemes.next().ok_or(ErrorPos{position, error: Error::ExpectedClose})?;
 
-        match lexeme
+        let ast = match lexeme.lexeme
         {
             Lexeme::Value(x) =>
             {
-                Ok(Some(Ast::Value(x)))
+                Some(Ast::Value(x))
             },
             Lexeme::OpenParen =>
             {
-                self.parse_list().map(|x| Some(x))
+                self.parse_list().map(|x| Some(x))?.map(|x| x.ast)
             },
             Lexeme::CloseParen =>
             {
-                Ok(None)
+                None
             }
-        }
+        };
+
+        Ok((lexeme.position, ast))
     }
 
-    fn parse_list(&mut self) -> Result<Ast, Error>
+    fn parse_list(&mut self) -> Result<AstPos, ErrorPos>
     {
-        let car = self.parse_one()?.map(|x| Box::new(x));
+        let (pos, car) = self.parse_one()?;
 
         if let Some(car) = car
         {
-            self.parse_list_with_car(car)
+            self.parse_list_with_car(AstPos{position: pos, ast: car})
         } else
         {
-            Ok(Ast::EmptyList)
+            Ok(AstPos{
+                position: pos,
+                ast: Ast::EmptyList
+            })
         }
     }
 
-    fn parse_list_with_car(&mut self, car: Box<Ast>) -> Result<Ast, Error>
+    fn parse_list_with_car(&mut self, car: AstPos) -> Result<AstPos, ErrorPos>
     {
-        let cdr = self.parse_one()?.map(|x| Box::new(x));
+        let car = Box::new(car);
+        let (pos, cdr) = self.parse_one()?;
 
-        if let Some(cdr) = cdr
+        let ast = if let Some(cdr) = cdr
         {
-            let new_cdr = self.parse_list_with_car(cdr)?;
+            let new_cdr = self.parse_list_with_car(AstPos{position: pos, ast: cdr})?;
 
-            Ok(Ast::List{car, cdr: Box::new(new_cdr)})
+            Ast::List{car, cdr: Box::new(new_cdr)}
         } else
         {
-            Ok(Ast::List{car, cdr: Box::new(Ast::EmptyList)})
-        }
+            let cdr = AstPos{
+                position: pos,
+                ast: Ast::EmptyList
+            };
+
+            Ast::List{car, cdr: Box::new(cdr)}
+        };
+
+        Ok(AstPos{
+            position: pos,
+            ast
+        })
     }
 }

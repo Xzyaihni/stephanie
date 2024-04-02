@@ -6,8 +6,8 @@ use std::{
     collections::HashMap
 };
 
-pub use program::{PrimitiveProcedureInfo, Primitives, Lambdas};
-use program::{Program, Expression};
+pub use program::{PrimitiveProcedureInfo, Primitives, Lambdas, WithPosition};
+use program::{Program, Expression, CodePosition};
 
 mod program;
 
@@ -371,6 +371,21 @@ impl LispValue
 }
 
 #[derive(Debug, Clone)]
+pub struct ErrorPos
+{
+    pub position: CodePosition,
+    pub error: Error
+}
+
+impl Display for ErrorPos
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
+    {
+        write!(f, "{}: {}", self.position, self.error)
+    }
+}
+
+#[derive(Debug, Clone)]
 pub enum Error
 {
     WrongType{expected: ValueTag, got: ValueTag},
@@ -680,8 +695,8 @@ impl LispMemory
             Expression::Lambda(x) => LispValue::new_procedure(*x),
             Expression::List{car, cdr} =>
             {
-                let car = self.allocate_expression(car);
-                let cdr = self.allocate_expression(cdr);
+                let car = self.allocate_expression(&car.expression);
+                let cdr = self.allocate_expression(&cdr.expression);
 
                 self.cons(car, cdr)
             },
@@ -805,7 +820,7 @@ pub struct Lisp
 
 impl Lisp
 {
-    pub fn new(code: &str) -> Result<Self, Error>
+    pub fn new(code: &str) -> Result<Self, ErrorPos>
     {
         let memory_size = 1 << 10;
         let memory = LispMemory::new(memory_size);
@@ -822,12 +837,12 @@ impl Lisp
         })
     }
 
-    pub fn run(&mut self) -> Result<OutputWrapper, Error>
+    pub fn run(&mut self) -> Result<OutputWrapper, ErrorPos>
     {
         self.lisp.run(&mut self.memory)
     }
 
-    pub fn run_environment(&mut self) -> Result<Environment<'static>, Error>
+    pub fn run_environment(&mut self) -> Result<Environment<'static>, ErrorPos>
     {
         self.lisp.run_environment(&mut self.memory)
     }
@@ -875,14 +890,14 @@ pub struct LispRef
 impl LispRef
 {
     // if an env has some invalid data it will cause ub
-    pub unsafe fn new_with_config(config: LispConfig, code: &str) -> Result<Self, Error>
+    pub unsafe fn new_with_config(config: LispConfig, code: &str) -> Result<Self, ErrorPos>
     {
         let program = Program::parse(config.primitives, config.lambdas, code)?;
 
         Ok(Self{program, environment: config.environment})
     }
 
-    pub fn run<'a>(&mut self, memory: &'a mut LispMemory) -> Result<OutputWrapper<'a>, Error>
+    pub fn run<'a>(&mut self, memory: &'a mut LispMemory) -> Result<OutputWrapper<'a>, ErrorPos>
     {
         self.run_inner(memory).map(|(_env, value)| value)
     }
@@ -895,7 +910,7 @@ impl LispRef
     pub fn run_environment(
         &mut self,
         memory: &mut LispMemory
-    ) -> Result<Environment<'static>, Error>
+    ) -> Result<Environment<'static>, ErrorPos>
     {
         self.run_inner(memory).map(|(env, _value)| env)
     }
@@ -903,7 +918,7 @@ impl LispRef
     fn run_inner<'a>(
         &mut self,
         memory: &'a mut LispMemory
-    ) -> Result<(Environment<'static>, OutputWrapper<'a>), Error>
+    ) -> Result<(Environment<'static>, OutputWrapper<'a>), ErrorPos>
     {
         let mut env = self.environment.as_ref().map(|x|
             {

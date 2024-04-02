@@ -23,6 +23,7 @@ use crate::common::{
         Lambdas,
         LispValue,
         ValueTag,
+        WithPosition,
         Primitives,
         PrimitiveProcedureInfo
     },
@@ -212,7 +213,7 @@ impl ChunkGenerator
             {
                 let arg = args.car().apply(state, memory, env)?;
 
-                let name = arg.as_symbol(memory)?;
+                let name = arg.as_symbol(memory).with_position(args.position)?;
 
                 let tile = names_map[&name];
 
