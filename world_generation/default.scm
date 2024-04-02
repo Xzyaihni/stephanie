@@ -27,7 +27,7 @@
                     tile)
                 (vertical-line-length
                     chunk
-                    (make-point x (- y 1))
+                    pos
                     (- len 1)
                     tile)))))
 
@@ -45,7 +45,7 @@
                     tile)
                 (horizontal-line-length
                     chunk
-                    (make-point (- x 1) y)
+                    pos
                     (- len 1)
                     tile)))))
 
@@ -58,7 +58,7 @@
         (begin
             (vertical-line-length
                 chunk
-                (- (+ (point-x pos) (point-x size)) 1)
+                (make-point (- (+ (point-x pos) (point-x size)) 1) (point-y pos))
                 (point-y size)
                 tile)
             (fill-area
