@@ -18,6 +18,17 @@ impl CodePosition
     {
         Self{line: 1, char: 1}
     }
+
+    pub fn next_char(&mut self)
+    {
+        self.char += 1;
+    }
+
+    pub fn next_line(&mut self)
+    {
+        self.line += 1;
+        self.char = 1;
+    }
 }
 
 impl Display for CodePosition
@@ -77,8 +88,15 @@ impl<'a> Lexer<'a>
         {
             if let Some(c) = self.next_char()
             {
+                self.position.next_char();
+
                 if c.is_whitespace()
                 {
+                    if c == '\n'
+                    {
+                        self.position.next_line();
+                    }
+
                     self.consume_char();
 
                     if current.is_empty()
