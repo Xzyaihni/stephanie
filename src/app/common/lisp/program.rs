@@ -475,7 +475,7 @@ impl Primitives
 
         let primitives = [
             ("make-vector",
-                PrimitiveProcedureInfo::new_simple(2, |_state, memory, _env, mut args|
+                PrimitiveProcedureInfo::new_simple(2, |_state, memory, env, mut args|
                 {
                     let len = args.pop(memory).as_integer()? as usize;
                     let fill = args.pop(memory);
@@ -485,7 +485,7 @@ impl Primitives
                         values: &vec![fill.value; len]
                     };
 
-                    let value = LispValue::new_vector(memory.allocate_vector(vec));
+                    let value = LispValue::new_vector(memory.allocate_vector(env, vec));
                     memory.push_return(value);
 
                     Ok(())
@@ -710,7 +710,7 @@ impl Primitives
                     let arg = Expression::ast_to_expression(args.car())?;
 
                     Ok(ExpressionPos::new_application(on_apply, arg))
-                }), Arc::new(|_state, memory, _env, args, action|
+                }), Arc::new(|_state, memory, env, args, action|
                 {
                     match action
                     {
@@ -718,18 +718,18 @@ impl Primitives
                         Action::None => return Ok(())
                     }
 
-                    let value = memory.allocate_expression(args);
+                    let value = memory.allocate_expression(env, args);
                     memory.push_return(value);
 
                     Ok(())
                 }))),
             ("cons",
-                PrimitiveProcedureInfo::new_simple(2, |_state, memory, _env, mut args|
+                PrimitiveProcedureInfo::new_simple(2, |_state, memory, env, mut args|
                 {
                     let car = args.pop(memory);
                     let cdr = args.pop(memory);
 
-                    let value = memory.cons(car, cdr);
+                    let value = memory.cons(env, car, cdr);
                     memory.push_return(value);
 
                     Ok(())

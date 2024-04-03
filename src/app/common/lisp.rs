@@ -648,7 +648,7 @@ impl LispMemory
         self.memory.clear();
     }
 
-    fn gc(&mut self)
+    fn gc(&mut self, env: &Environment)
     {
         todo!();
     }
@@ -705,44 +705,48 @@ impl LispMemory
         self.memory.get_car(id)
     }
 
-    fn need_list_memory(&mut self, amount: usize)
+    fn need_list_memory(&mut self, env: &Environment, amount: usize)
     {
         if self.memory.list_remaining() < amount
         {
-            self.gc();
+            self.gc(env);
         }
     }
 
-    fn need_memory(&mut self, amount: usize)
+    fn need_memory(&mut self, env: &Environment, amount: usize)
     {
         if self.memory.remaining() < amount
         {
-            self.gc();
+            self.gc(env);
         }
     }
 
-    pub fn cons(&mut self, car: LispValue, cdr: LispValue) -> LispValue
+    pub fn cons(&mut self, env: &Environment, car: LispValue, cdr: LispValue) -> LispValue
     {
         eprintln!("cons, remaining memory: {}", self.memory.list_remaining());
 
-        self.need_list_memory(1);
+        self.need_list_memory(env, 1);
 
         self.memory.cons(car, cdr)
     }
 
-    pub fn allocate_vector(&mut self, vec: LispVectorInner<&[ValueRaw]>) -> usize
+    pub fn allocate_vector(
+        &mut self,
+        env: &Environment,
+        vec: LispVectorInner<&[ValueRaw]>
+    ) -> usize
     {
         eprintln!("vec, remaining memory: {}", self.memory.remaining());
 
         let len = vec.values.len();
 
         // +2 for the length and for the type tag
-        self.need_memory(len + 2);
+        self.need_memory(env, len + 2);
 
         self.memory.allocate_iter(len, vec.tag, vec.values.into_iter())
     }
 
-    pub fn allocate_expression(&mut self, expression: &Expression) -> LispValue
+    pub fn allocate_expression(&mut self, env: &Environment, expression: &Expression) -> LispValue
     {
         match expression
         {
@@ -752,10 +756,10 @@ impl LispMemory
             Expression::Lambda(x) => LispValue::new_procedure(*x),
             Expression::List{car, cdr} =>
             {
-                let car = self.allocate_expression(&car.expression);
-                let cdr = self.allocate_expression(&cdr.expression);
+                let car = self.allocate_expression(env, &car.expression);
+                let cdr = self.allocate_expression(env, &cdr.expression);
 
-                self.cons(car, cdr)
+                self.cons(env, car, cdr)
             },
             Expression::Value(x) =>
             {
@@ -765,7 +769,7 @@ impl LispMemory
                     values: &values
                 };
 
-                let id = self.allocate_vector(vec);
+                let id = self.allocate_vector(env, vec);
 
                 LispValue::new_symbol(id)
             },
@@ -983,11 +987,11 @@ impl LispRef
     ) -> Result<(Environment<'static>, OutputWrapper<'a>), ErrorPos>
     {
         let mut env = self.environment.as_ref().map(|x|
-            {
-                let env: &Environment = &x;
+        {
+            let env: &Environment = &x;
 
-                env.clone()
-            }).unwrap_or_else(|| Environment::new());
+            env.clone()
+        }).unwrap_or_else(|| Environment::new());
 
         self.program.apply(memory, &mut env)?;
         let value = memory.pop_return();
