@@ -21,8 +21,9 @@ pub type OnApply = Arc<
         &State,
         &mut LispMemory,
         &mut Environment,
-        &ExpressionPos
-    ) -> Result<LispValue, ErrorPos> + Send + Sync>;
+        &ExpressionPos,
+        Action
+    ) -> Result<(), ErrorPos> + Send + Sync>;
 
 pub type OnEval = Arc<
     dyn Fn(
@@ -30,6 +31,58 @@ pub type OnEval = Arc<
         &mut State,
         AstPos
     ) -> Result<ExpressionPos, ErrorPos> + Send + Sync>;
+
+pub struct ArgsWrapper
+{
+    count: usize
+}
+
+impl ArgsWrapper
+{
+    pub fn new() -> Self
+    {
+        Self{count: 0}
+    }
+
+    pub fn pop(&mut self, memory: &mut LispMemory) -> LispValue
+    {
+        self.count -= 1;
+
+        memory.pop_return()
+    }
+
+    pub fn push(&mut self, memory: &mut LispMemory, value: LispValue)
+    {
+        self.count += 1;
+
+        memory.push_return(value);
+    }
+
+    pub fn clear(&mut self, memory: &mut LispMemory)
+    {
+        while !self.is_empty()
+        {
+            self.pop(memory);
+        }
+    }
+
+    pub fn len(&self) -> usize
+    {
+        self.count
+    }
+
+    pub fn is_empty(&self) -> bool
+    {
+        self.count == 0
+    }
+
+    pub fn increment(mut self) -> Self
+    {
+        self.count += 1;
+
+        self
+    }
+}
 
 #[derive(Debug, Clone, Copy)]
 pub enum ArgsCount
@@ -117,8 +170,48 @@ impl PrimitiveProcedureInfo
         }
     }
 
-    pub fn new_simple(args_count: impl Into<ArgsCount>, on_apply: OnApply) -> Self
+    // i suck at naming but this one is actually for lazy procs or ones that have a side effect
+    pub fn new_simple_lazy(args_count: impl Into<ArgsCount>, on_apply: OnApply) -> Self
     {
+        Self{
+            args_count: args_count.into(),
+            on_eval: None,
+            on_apply: Some(on_apply)
+        }
+    }
+
+    pub fn new_simple<F>(
+        args_count: impl Into<ArgsCount>,
+        on_apply: F
+    ) -> Self
+    where
+        F: Fn(
+            &State,
+            &mut LispMemory,
+            &mut Environment,
+            ArgsWrapper
+        ) -> Result<(), Error> + Send + Sync + 'static
+    {
+        let on_apply = Arc::new(move |
+            state: &State,
+            memory: &mut LispMemory,
+            env: &mut Environment,
+            args: &ExpressionPos,
+            action: Action
+        |
+        {
+            let position = args.position;
+            let args = args.apply_args(state, memory, env, action)?;
+
+            match action
+            {
+                Action::Return => (),
+                Action::None => return Ok(())
+            }
+
+            on_apply(state, memory, env, args).with_position(position)
+        });
+
         Self{
             args_count: args_count.into(),
             on_eval: None,
@@ -254,8 +347,9 @@ impl StoredLambda
         state: &State,
         memory: &mut LispMemory,
         env: &Environment,
-        args: ArgValues
-    ) -> Result<LispValue, ErrorPos>
+        mut args: ArgsWrapper,
+        action: Action
+    ) -> Result<(), ErrorPos>
     {
         if self.params.len() != args.len()
         {
@@ -270,12 +364,14 @@ impl StoredLambda
         }
 
         let mut new_env = Environment::child(env);
-        self.params.iter().zip(args.into_iter()).for_each(|(key, value)|
+        self.params.iter().for_each(|key|
         {
+            let value = args.pop(memory);
+
             new_env.define(key, value);
         });
 
-        self.body.apply(state, memory, &mut new_env)
+        self.body.apply(state, memory, &mut new_env, action)
     }
 }
 
@@ -336,12 +432,10 @@ impl Primitives
         {
             ($f:expr) =>
             {
-                Arc::new(|state, memory, env, args|
+                |_state, memory, _env, args|
                 {
-                    let args = args.apply_args(state, memory, env)?;
-
-                    Self::do_cond(args, $f, $f)
-                })
+                    Self::do_cond(memory, args, $f, $f)
+                }
             }
         }
 
@@ -349,18 +443,16 @@ impl Primitives
         {
             ($op:ident) =>
             {
-                Arc::new(|state, memory, env, args|
+                |_state, memory, _env, args|
                 {
-                    let args = args.apply_args(state, memory, env)?;
-
-                    Self::do_op(args, |a, b|
+                    Self::do_op(memory, args, |a, b|
                     {
                         LispValue::new_integer(a.$op(b))
                     }, |a, b|
                     {
                         LispValue::new_float(a.$op(b))
                     })
-                })
+                }
             }
         }
 
@@ -368,90 +460,116 @@ impl Primitives
         {
             ($tag:expr) =>
             {
-                Arc::new(|state, memory, env, args|
+                |_state, memory, _env, mut args|
                 {
-                    let arg = args.car().apply(state, memory, env)?;
+                    let arg = args.pop(memory);
 
                     let is_equal = arg.tag == $tag;
 
-                    Ok(LispValue::new_bool(is_equal))
-                })
+                    memory.push_return(LispValue::new_bool(is_equal));
+
+                    Ok(())
+                }
             }
         }
 
         let primitives = [
-            ("make-vector", PrimitiveProcedureInfo::new_simple(2, Arc::new(|state, memory, env, args|
-            {
-                let mut args = args.apply_args(state, memory, env)?;
-
-                let len = args.pop()?.as_integer().with_position(args.position)? as usize;
-                let fill = args.pop()?;
-
-                let vec = LispVectorRef{
-                    tag: fill.tag,
-                    values: &vec![fill.value; len]
-                };
-
-                Ok(LispValue::new_vector(memory.allocate_vector(vec)))
-            }))),
-            ("vector-set!", PrimitiveProcedureInfo::new_simple(3, Arc::new(|state, memory, env, args|
-            {
-                let mut args = args.apply_args(state, memory, env)?;
-                let position = args.position;
-
-                let vec = args.pop()?.as_vector_mut(memory).with_position(position)?;
-                let index = args.pop()?.as_integer().with_position(position)?;
-                let value = args.pop()?;
-
-                if vec.tag != value.tag
+            ("make-vector",
+                PrimitiveProcedureInfo::new_simple(2, |_state, memory, _env, mut args|
                 {
-                    return Err(ErrorPos{
-                        position,
-                        error: Error::VectorWrongType{expected: vec.tag, got: value.tag}
-                    });
-                }
+                    let len = args.pop(memory).as_integer()? as usize;
+                    let fill = args.pop(memory);
 
-                Self::check_inbounds(&vec.values, index).with_position(position)?;
+                    let vec = LispVectorRef{
+                        tag: fill.tag,
+                        values: &vec![fill.value; len]
+                    };
 
-                vec.values[index as usize] = value.value;
+                    let value = LispValue::new_vector(memory.allocate_vector(vec));
+                    memory.push_return(value);
 
-                Ok(LispValue::new_empty_list())
-            }))),
-            ("vector-ref", PrimitiveProcedureInfo::new_simple(2, Arc::new(|state, memory, env, args|
-            {
-                let mut args = args.apply_args(state, memory, env)?;
-                let position = args.position;
+                    Ok(())
+                })),
+            ("vector-set!",
+                PrimitiveProcedureInfo::new_simple_lazy(
+                    3,
+                    Arc::new(|state, memory, env, args, action|
+                    {
+                        let position = args.position;
+                        let mut args = args.apply_args(state, memory, env, Action::Return)?;
 
-                let vec = args.pop()?.as_vector_ref(memory).with_position(position)?;
-                let index = args.pop()?.as_integer().with_position(position)?;
+                        let vec = args.pop(memory);
+                        let index = args.pop(memory);
+                        let value = args.pop(memory);
 
-                Self::check_inbounds(&vec.values, index).with_position(position)?;
+                        let vec = vec.as_vector_mut(memory).with_position(position)?;
 
-                let value = vec.values[index as usize];
+                        let index = index.as_integer().with_position(position)?;
 
-                Ok(unsafe{ LispValue::new(vec.tag, value) })
-            }))),
+                        if vec.tag != value.tag
+                        {
+                            return Err(ErrorPos{
+                                position,
+                                error: Error::VectorWrongType{expected: vec.tag, got: value.tag}
+                            });
+                        }
+
+                        Self::check_inbounds(&vec.values, index).with_position(position)?;
+
+                        vec.values[index as usize] = value.value;
+
+                        match action
+                        {
+                            Action::Return => memory.push_return(LispValue::new_empty_list()),
+                            Action::None => ()
+                        }
+
+                        Ok(())
+                    }))),
+            ("vector-ref",
+                PrimitiveProcedureInfo::new_simple(2, |_state, memory, _env, mut args|
+                {
+                    let vec = args.pop(memory);
+                    let index = args.pop(memory);
+
+                    let vec = vec.as_vector_ref(memory)?;
+                    let index = index.as_integer()?;
+
+                    Self::check_inbounds(&vec.values, index)?;
+
+                    let value = vec.values[index as usize];
+
+                    memory.push_return(unsafe{ LispValue::new(vec.tag, value) });
+
+                    Ok(())
+                })),
             ("symbol?", PrimitiveProcedureInfo::new_simple(1, is_tag!(ValueTag::Symbol))),
             ("pair?", PrimitiveProcedureInfo::new_simple(1, is_tag!(ValueTag::List))),
             ("char?", PrimitiveProcedureInfo::new_simple(1, is_tag!(ValueTag::Char))),
             ("vector?", PrimitiveProcedureInfo::new_simple(1, is_tag!(ValueTag::Vector))),
             ("procedure?", PrimitiveProcedureInfo::new_simple(1, is_tag!(ValueTag::Procedure))),
-            ("number?", PrimitiveProcedureInfo::new_simple(1, Arc::new(|state, memory, env, args|
-            {
-                let arg = args.car().apply(state, memory, env)?;
+            ("number?",
+                PrimitiveProcedureInfo::new_simple(1, |_state, memory, _env, mut args|
+                {
+                    let arg = args.pop(memory);
 
-                let is_number = arg.tag == ValueTag::Integer || arg.tag == ValueTag::Float;
+                    let is_number = arg.tag == ValueTag::Integer || arg.tag == ValueTag::Float;
 
-                Ok(LispValue::new_bool(is_number))
-            }))),
-            ("boolean?", PrimitiveProcedureInfo::new_simple(1, Arc::new(|state, memory, env, args|
-            {
-                let arg = args.car().apply(state, memory, env)?;
+                    memory.push_return(LispValue::new_bool(is_number));
 
-                let is_bool = arg.as_bool().map(|_| true).unwrap_or(false);
+                    Ok(())
+                })),
+            ("boolean?",
+                PrimitiveProcedureInfo::new_simple(1, |_state, memory, _env, mut args|
+                {
+                    let arg = args.pop(memory);
 
-                Ok(LispValue::new_bool(is_bool))
-            }))),
+                    let is_bool = arg.as_bool().map(|_| true).unwrap_or(false);
+
+                    memory.push_return(LispValue::new_bool(is_bool));
+
+                    Ok(())
+                })),
             ("+", PrimitiveProcedureInfo::new_simple(ArgsCount::Min(2), do_op!(add))),
             ("-", PrimitiveProcedureInfo::new_simple(ArgsCount::Min(2), do_op!(sub))),
             ("*", PrimitiveProcedureInfo::new_simple(ArgsCount::Min(2), do_op!(mul))),
@@ -470,20 +588,24 @@ impl Primitives
                     ArgsCount::Min(2),
                     do_cond!(|a, b| LispValue::new_bool(a < b)))),
             ("if",
-                PrimitiveProcedureInfo::new_simple(3, Arc::new(|state, memory, env, args|
-                {
-                    let predicate = args.car().apply(state, memory, env)?;
-                    let on_true = args.cdr().car();
-                    let on_false = args.cdr().cdr().car();
+                PrimitiveProcedureInfo::new_simple_lazy(
+                    3,
+                    Arc::new(|state, memory, env, args, action|
+                    {
+                        args.car().apply(state, memory, env, Action::Return)?;
+                        let predicate = memory.pop_return();
 
-                    if predicate.is_true()
-                    {
-                        on_true.apply(state, memory, env)
-                    } else
-                    {
-                        on_false.apply(state, memory, env)
-                    }
-                }))),
+                        let on_true = args.cdr().car();
+                        let on_false = args.cdr().cdr().car();
+
+                        if predicate.is_true()
+                        {
+                            on_true.apply(state, memory, env, action)
+                        } else
+                        {
+                            on_false.apply(state, memory, env, action)
+                        }
+                    }))),
             ("let",
                 PrimitiveProcedureInfo::new_eval(2, Arc::new(|_on_apply, state, args|
                 {
@@ -562,17 +684,25 @@ impl Primitives
                     };
 
                     Ok(ExpressionPos::new_application(on_apply, args))
-                }), Arc::new(|state, memory, env, args|
+                }), Arc::new(|state, memory, env, args, action|
                 {
                     let first = args.car();
                     let second = args.cdr().car();
 
                     let key = first.as_value()?;
-                    let value = second.apply(state, memory, env)?;
+
+                    second.apply(state, memory, env, Action::Return)?;
+                    let value = memory.pop_return();
 
                     env.define(key, value);
 
-                    Ok(LispValue::new_empty_list())
+                    match action
+                    {
+                        Action::Return => memory.push_return(LispValue::new_empty_list()),
+                        Action::None => ()
+                    }
+
+                    Ok(())
                 }))),
             ("quote",
                 PrimitiveProcedureInfo::new(1, Arc::new(|on_apply, _state, args|
@@ -580,36 +710,50 @@ impl Primitives
                     let arg = Expression::ast_to_expression(args.car())?;
 
                     Ok(ExpressionPos::new_application(on_apply, arg))
-                }), Arc::new(|_state, memory, _env, args|
+                }), Arc::new(|_state, memory, _env, args, action|
                 {
-                    Ok(memory.allocate_expression(args))
+                    match action
+                    {
+                        Action::Return => (),
+                        Action::None => return Ok(())
+                    }
+
+                    let value = memory.allocate_expression(args);
+                    memory.push_return(value);
+
+                    Ok(())
                 }))),
             ("cons",
-                PrimitiveProcedureInfo::new_simple(2, Arc::new(|state, memory, env, args|
+                PrimitiveProcedureInfo::new_simple(2, |_state, memory, _env, mut args|
                 {
-                    let mut args = args.apply_args(state, memory, env)?;
+                    let car = args.pop(memory);
+                    let cdr = args.pop(memory);
 
-                    let car = args.pop()?;
-                    let cdr = args.pop()?;
+                    let value = memory.cons(car, cdr);
+                    memory.push_return(value);
 
-                    Ok(memory.cons(car, cdr))
-                }))),
+                    Ok(())
+                })),
             ("car",
-                PrimitiveProcedureInfo::new_simple(1, Arc::new(|state, memory, env, args|
+                PrimitiveProcedureInfo::new_simple(1, |_state, memory, _env, mut args|
                 {
-                    let arg = args.car().apply(state, memory, env)?;
-                    let value = arg.as_list(memory).with_position(args.position)?;
+                    let arg = args.pop(memory);
+                    let value = arg.as_list(memory)?;
 
-                    Ok(value.car)
-                }))),
+                    memory.push_return(value.car);
+
+                    Ok(())
+                })),
             ("cdr",
-                PrimitiveProcedureInfo::new_simple(1, Arc::new(|state, memory, env, args|
+                PrimitiveProcedureInfo::new_simple(1, |_state, memory, _env, mut args|
                 {
-                    let arg = args.car().apply(state, memory, env)?;
-                    let value = arg.as_list(memory).with_position(args.position)?;
+                    let arg = args.pop(memory);
+                    let value = arg.as_list(memory)?;
 
-                    Ok(value.cdr)
-                }))),
+                    memory.push_return(value.cdr);
+
+                    Ok(())
+                })),
         ].into_iter().map(|(k, v)| (k.to_owned(), v)).collect();
 
         Self(primitives)
@@ -649,56 +793,61 @@ impl Primitives
     }
 
     fn do_cond<FI, FF>(
-        mut args: ArgValues,
+        memory: &mut LispMemory,
+        mut args: ArgsWrapper,
         op_integer: FI,
         op_float: FF
-    ) -> Result<LispValue, ErrorPos>
+    ) -> Result<(), Error>
     where
         FI: Fn(i32, i32) -> LispValue,
         FF: Fn(f32, f32) -> LispValue
     {
-        let first = args.pop()?;
-        let second = args.pop()?;
+        let first = args.pop(memory);
+        let second = args.pop(memory);
 
-        let output = Self::call_op(first, second, &op_integer, &op_float)
-            .with_position(args.position)?;
+        let output = Self::call_op(first, second, &op_integer, &op_float)?;
 
-        let is_true = output.as_bool().with_position(args.position)?;
+        let is_true = output.as_bool()?;
 
         if !is_true || args.is_empty()
         {
-            Ok(output)
+            args.clear(memory);
+            memory.push_return(output);
+
+            Ok(())
         } else
         {
-            args.push(second);
+            args.push(memory, second);
 
-            Self::do_cond(args, op_integer, op_float)
+            Self::do_cond(memory, args, op_integer, op_float)
         }
     }
 
     fn do_op<FI, FF>(
-        mut args: ArgValues,
+        memory: &mut LispMemory,
+        mut args: ArgsWrapper,
         op_integer: FI,
         op_float: FF
-    ) -> Result<LispValue, ErrorPos>
+    ) -> Result<(), Error>
     where
         FI: Fn(i32, i32) -> LispValue,
         FF: Fn(f32, f32) -> LispValue
     {
-        let first = args.pop()?;
-        let second = args.pop()?;
+        let first = args.pop(memory);
+        let second = args.pop(memory);
 
-        let output = Self::call_op(first, second, &op_integer, &op_float)
-            .with_position(args.position)?;
+        let output = Self::call_op(first, second, &op_integer, &op_float)?;
 
         if args.is_empty()
         {
-            Ok(output)
+            memory.push_return(output);
+
+            Ok(())
         } else
         {
-            args.push(output);
+            args.push(memory, output);
 
-            Self::do_op(args, op_integer, op_float)
+            Self::do_op(memory, args, op_integer, op_float)
         }
     }
 
@@ -757,9 +906,9 @@ impl Program
         &self,
         memory: &mut LispMemory,
         env: &mut Environment
-    ) -> Result<LispValue, ErrorPos>
+    ) -> Result<(), ErrorPos>
     {
-        self.expression.apply(&self.state, memory, env)
+        self.expression.apply(&self.state, memory, env, Action::Return)
     }
 }
 
@@ -827,11 +976,26 @@ impl<T> IntoIterator for ArgValues<T>
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
+pub enum Action
+{
+    None,
+    Return
+}
+
+#[derive(Clone)]
 pub struct ExpressionPos
 {
     pub position: CodePosition,
     pub expression: Expression
+}
+
+impl Debug for ExpressionPos
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
+    {
+        write!(f, "{:#?}", self.expression)
+    }
 }
 
 impl ExpressionPos
@@ -853,11 +1017,92 @@ impl ExpressionPos
         }
     }
 
+    pub fn apply(
+        &self,
+        state: &State, 
+        memory: &mut LispMemory,
+        env: &mut Environment,
+        action: Action
+    ) -> Result<(), ErrorPos>
+    {
+        let value = match &self.expression
+        {
+            Expression::Integer(x) =>
+            {
+                LispValue::new_integer(*x)
+            },
+            Expression::Float(x) =>
+            {
+                LispValue::new_float(*x)
+            },
+            Expression::Value(s) =>
+            {
+                env.lookup(s).map_err(|error| ErrorPos{position: self.position, error})?
+            },
+            Expression::Lambda(id) =>
+            {
+                LispValue::new_procedure(*id)
+            },
+            Expression::Application{op, args} =>
+            {
+                return match op
+                {
+                    Procedure::Compound(p) => args.apply_compound(state, memory, env, p, action),
+                    Procedure::Primitive(p) => p.0(state, memory, env, args, action)
+                };
+            },
+            Expression::Sequence{first, after} =>
+            {
+                first.apply(state, memory, env, Action::None)?;
+
+                return after.apply(state, memory, env, action);
+            },
+            _ => return Err(ErrorPos{position: self.position, error: Error::ApplyNonApplication})
+        };
+
+        match action
+        {
+            Action::Return =>
+            {
+                memory.push_return(value);
+
+                Ok(())
+            },
+            Action::None => Ok(())
+        }
+    }
+
+    pub fn apply_compound(
+        &self,
+        state: &State, 
+        memory: &mut LispMemory,
+        env: &mut Environment,
+        proc: &CompoundProcedure,
+        action: Action
+    ) -> Result<(), ErrorPos>
+    {
+        let id = match proc
+        {
+            CompoundProcedure::Identifier(name) =>
+            {
+                let proc = env.lookup(name)
+                    .map_err(|error| ErrorPos{position: self.position, error})?;
+
+                proc.as_procedure().with_position(self.position)?
+            },
+            CompoundProcedure::Lambda(id) => *id
+        };
+
+        let proc = state.lambdas.get(id);
+
+        let args = self.apply_args(state, memory, env, Action::Return)?;
+        proc.apply(state, memory, env, args, action)
+    }
+
     pub fn map_list<T, F>(&self, mut f: F) -> Result<ArgValues<T>, ErrorPos>
     where
         F: FnMut(&Self) -> Result<T, ErrorPos>
     {
-        // could be done iteratively but im lazy
         if self.is_null()
         {
             // i got it backwards, whatever who CARES
@@ -875,81 +1120,28 @@ impl ExpressionPos
         }
     }
 
-    pub fn apply(
-        &self,
-        state: &State, 
-        memory: &mut LispMemory,
-        env: &mut Environment
-    ) -> Result<LispValue, ErrorPos>
-    {
-        match &self.expression
-        {
-            Expression::Integer(x) => Ok(LispValue::new_integer(*x)),
-            Expression::Float(x) => Ok(LispValue::new_float(*x)),
-            Expression::Value(s) =>
-            {
-                env.lookup(s).map_err(|error| ErrorPos{position: self.position, error})
-            },
-            Expression::Lambda(id) =>
-            {
-                Ok(LispValue::new_procedure(*id))
-            },
-            Expression::Application{op, args} =>
-            {
-                match op
-                {
-                    Procedure::Compound(p) => args.apply_compound(state, memory, env, p),
-                    Procedure::Primitive(p) => p.0(state, memory, env, args)
-                }
-            },
-            Expression::Sequence{first, after} =>
-            {
-                first.apply(state, memory, env)?;
-
-                after.apply(state, memory, env)
-            },
-            _ => Err(ErrorPos{position: self.position, error: Error::ApplyNonApplication})
-        }
-    }
-
-    pub fn apply_compound(
-        &self,
-        state: &State, 
-        memory: &mut LispMemory,
-        env: &mut Environment,
-        proc: &CompoundProcedure
-    ) -> Result<LispValue, ErrorPos>
-    {
-        let id = match proc
-        {
-            CompoundProcedure::Identifier(name) =>
-            {
-                let proc = env.lookup(name)
-                    .map_err(|error| ErrorPos{position: self.position, error})?;
-
-                proc.as_procedure().with_position(self.position)?
-            },
-            CompoundProcedure::Lambda(id) => *id
-        };
-
-        let proc = state.lambdas.get(id);
-
-        let args = self.apply_args(state, memory, env)?;
-
-        proc.apply(state, memory, env, args)
-    }
-
     pub fn apply_args(
         &self,
         state: &State, 
         memory: &mut LispMemory,
-        env: &mut Environment
-    ) -> Result<ArgValues, ErrorPos>
+        env: &mut Environment,
+        action: Action
+    ) -> Result<ArgsWrapper, ErrorPos>
     {
-        self.map_list(|arg|
+        if self.is_null()
         {
-            arg.apply(state, memory, env)
-        })
+            Ok(ArgsWrapper::new())
+        } else
+        {
+            let car = self.car();
+            let cdr = self.cdr();
+
+            let args = cdr.apply_args(state, memory, env, action)?;
+
+            car.apply(state, memory, env, action)?;
+
+            Ok(args.increment())
+        }
     }
 
     pub fn eval(state: &mut State, ast: AstPos) -> Result<Self, ErrorPos>

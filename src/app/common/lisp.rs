@@ -174,19 +174,7 @@ impl Debug for LispValue
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
     {
-        let s = match self.tag
-        {
-            ValueTag::Integer => unsafe{ self.value.integer.to_string() },
-            ValueTag::Float => unsafe{ self.value.float.to_string() },
-            ValueTag::Char => unsafe{ self.value.char.to_string() },
-            ValueTag::Special => unsafe{ self.value.special.to_string() },
-            ValueTag::Procedure => format!("<procedure #{}>", unsafe{ self.value.procedure }),
-            // these use lisp memory and i cant access it from here
-            ValueTag::String => unimplemented!(),
-            ValueTag::Symbol => unimplemented!(),
-            ValueTag::List => unimplemented!(),
-            ValueTag::Vector => unimplemented!()
-        };
+        let s = self.maybe_to_string(None).unwrap_or_else(|| "<value>".to_owned());
 
         write!(f, "{s}")
     }
@@ -366,6 +354,53 @@ impl LispValue
         {
             ValueTag::Procedure => Ok(unsafe{ self.value.procedure }),
             x => Err(Error::WrongType{expected: ValueTag::Procedure, got: x})
+        }
+    }
+
+    pub fn to_string(&self, memory: &LispMemory) -> String
+    {
+        self.maybe_to_string(Some(memory)).expect("always returns some with memory")
+    }
+
+    fn maybe_to_string(&self, memory: Option<&LispMemory>) -> Option<String>
+    {
+        match self.tag
+        {
+            ValueTag::Integer => Some(unsafe{ self.value.integer.to_string() }),
+            ValueTag::Float => Some(unsafe{ self.value.float.to_string() }),
+            ValueTag::Char => Some(unsafe{ self.value.char.to_string() }),
+            ValueTag::Special => Some(unsafe{ self.value.special.to_string() }),
+            ValueTag::Procedure => Some(format!("<procedure #{}>", unsafe{ self.value.procedure })),
+            ValueTag::String => unimplemented!(),
+            ValueTag::Symbol => memory.map(|memory|
+            {
+                let s = memory.get_symbol(unsafe{ self.value.symbol }).unwrap();
+
+                format!("'{s}")
+            }),
+            ValueTag::List => memory.map(|memory|
+            {
+                let list = memory.get_list(unsafe{ self.value.list });
+
+                let car = list.car.to_string(memory);
+                let cdr = list.cdr.to_string(memory);
+
+                format!("({car} {cdr})")
+            }),
+            ValueTag::Vector => memory.map(|memory|
+            {
+                let vec = memory.get_vector_ref(unsafe{ self.value.vector });
+
+                let mut s = vec.values.iter().map(|raw| unsafe{ LispValue::new(vec.tag, *raw) })
+                    .fold("#(".to_owned(), |acc, value|
+                    {
+                        acc + " " + &value.to_string(memory)
+                    });
+
+                s.push(')');
+
+                s
+            })
         }
     }
 }
@@ -593,16 +628,19 @@ impl MemoryBlock
 
 pub struct LispMemory
 {
-    memory: MemoryBlock
+    stack_size: usize,
+    memory: MemoryBlock,
+    returns: Vec<LispValue>
 }
 
 impl LispMemory
 {
     pub fn new(memory_size: usize) -> Self
     {
+        let stack_size = 256;
         let memory = MemoryBlock::new(memory_size);
 
-        Self{memory}
+        Self{stack_size, memory, returns: Vec::with_capacity(stack_size)}
     }
 
     pub fn clear(&mut self)
@@ -612,7 +650,22 @@ impl LispMemory
 
     fn gc(&mut self)
     {
-        panic!("due to my bespoke decisions gc is too hard to implement :( out of memory btw");
+        todo!();
+    }
+
+    pub fn push_return(&mut self, value: LispValue)
+    {
+        if self.returns.len() >= self.stack_size
+        {
+            panic!("stack overflow!!!! ahhhh!!");
+        }
+
+        self.returns.push(value);
+    }
+
+    pub fn pop_return(&mut self) -> LispValue
+    {
+        self.returns.pop().expect("cant pop from an empty stack, how did this happen?")
     }
 
     pub fn get_vector_ref(&self, id: usize) -> LispVectorRef
@@ -670,6 +723,8 @@ impl LispMemory
 
     pub fn cons(&mut self, car: LispValue, cdr: LispValue) -> LispValue
     {
+        eprintln!("cons, remaining memory: {}", self.memory.list_remaining());
+
         self.need_list_memory(1);
 
         self.memory.cons(car, cdr)
@@ -677,6 +732,8 @@ impl LispMemory
 
     pub fn allocate_vector(&mut self, vec: LispVectorInner<&[ValueRaw]>) -> usize
     {
+        eprintln!("vec, remaining memory: {}", self.memory.remaining());
+
         let len = vec.values.len();
 
         // +2 for the length and for the type tag
@@ -825,15 +882,9 @@ impl Lisp
         let memory_size = 1 << 10;
         let memory = LispMemory::new(memory_size);
 
-        let config = LispConfig{
-            environment: None,
-            lambdas: None,
-            primitives: Arc::new(Primitives::new())
-        };
-
         Ok(Self{
             memory,
-            lisp: unsafe{ LispRef::new_with_config(config, code)? }
+            lisp: LispRef::new(code)?
         })
     }
 
@@ -897,6 +948,17 @@ impl LispRef
         Ok(Self{program, environment: config.environment})
     }
 
+    pub fn new(code: &str) -> Result<Self, ErrorPos>
+    {
+        let config = LispConfig{
+            environment: None,
+            lambdas: None,
+            primitives: Arc::new(Primitives::new())
+        };
+
+        unsafe{ Self::new_with_config(config, code) }
+    }
+
     pub fn run<'a>(&mut self, memory: &'a mut LispMemory) -> Result<OutputWrapper<'a>, ErrorPos>
     {
         self.run_inner(memory).map(|(_env, value)| value)
@@ -927,7 +989,8 @@ impl LispRef
                 env.clone()
             }).unwrap_or_else(|| Environment::new());
 
-        let value = self.program.apply(memory, &mut env)?;
+        self.program.apply(memory, &mut env)?;
+        let value = memory.pop_return();
 
         let value = OutputWrapper{memory, value};
 
@@ -1041,7 +1104,7 @@ mod tests
     }
 
     #[test]
-    fn uses_lots_of_memory_or_something_lol()
+    fn gc()
     {
         let code = "
             (define (factorial-list n)
@@ -1056,9 +1119,12 @@ mod tests
             (+ (silly 7) (silly 5) (silly 6) (silly 11) (silly 4))
         ";
 
-        let mut lisp = Lisp::new(code).unwrap();
+        let memory_size = 32;
+        let mut memory = LispMemory::new(memory_size);
 
-        let value = lisp.run().unwrap().as_integer().unwrap();
+        let mut lisp = LispRef::new(code).unwrap();
+
+        let value = lisp.run(&mut memory).unwrap().as_integer().unwrap();
 
         assert_eq!(value, 39_922_704_i32);
     }

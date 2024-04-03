@@ -23,7 +23,6 @@ use crate::common::{
         Lambdas,
         LispValue,
         ValueTag,
-        WithPosition,
         Primitives,
         PrimitiveProcedureInfo
     },
@@ -209,16 +208,18 @@ impl ChunkGenerator
 
         primitives.add(
             "tile",
-            PrimitiveProcedureInfo::new_simple(1, Arc::new(move |state, memory, env, args|
+            PrimitiveProcedureInfo::new_simple(1, move |_state, memory, _env, mut args|
             {
-                let arg = args.car().apply(state, memory, env)?;
+                let arg = args.pop(memory);
 
-                let name = arg.as_symbol(memory).with_position(args.position)?;
+                let name = arg.as_symbol(memory)?;
 
                 let tile = names_map[&name];
 
-                Ok(LispValue::new_integer(tile.id() as i32))
-            })));
+                memory.push_return(LispValue::new_integer(tile.id() as i32));
+
+                Ok(())
+            }));
 
         primitives
     }
