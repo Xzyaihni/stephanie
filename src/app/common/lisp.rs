@@ -648,7 +648,7 @@ impl LispMemory
         self.memory.clear();
     }
 
-    fn gc(&mut self, env: &Environment)
+    fn gc(&mut self, env: &mut Environment)
     {
         todo!();
     }
@@ -705,7 +705,7 @@ impl LispMemory
         self.memory.get_car(id)
     }
 
-    fn need_list_memory(&mut self, env: &Environment, amount: usize)
+    fn need_list_memory(&mut self, env: &mut Environment, amount: usize)
     {
         if self.memory.list_remaining() < amount
         {
@@ -713,7 +713,7 @@ impl LispMemory
         }
     }
 
-    fn need_memory(&mut self, env: &Environment, amount: usize)
+    fn need_memory(&mut self, env: &mut Environment, amount: usize)
     {
         if self.memory.remaining() < amount
         {
@@ -721,7 +721,7 @@ impl LispMemory
         }
     }
 
-    pub fn cons(&mut self, env: &Environment, car: LispValue, cdr: LispValue) -> LispValue
+    pub fn cons(&mut self, env: &mut Environment, car: LispValue, cdr: LispValue) -> LispValue
     {
         eprintln!("cons, remaining memory: {}", self.memory.list_remaining());
 
@@ -732,7 +732,7 @@ impl LispMemory
 
     pub fn allocate_vector(
         &mut self,
-        env: &Environment,
+        env: &mut Environment,
         vec: LispVectorInner<&[ValueRaw]>
     ) -> usize
     {
@@ -746,7 +746,11 @@ impl LispMemory
         self.memory.allocate_iter(len, vec.tag, vec.values.into_iter())
     }
 
-    pub fn allocate_expression(&mut self, env: &Environment, expression: &Expression) -> LispValue
+    pub fn allocate_expression(
+        &mut self,
+        env: &mut Environment,
+        expression: &Expression
+    ) -> LispValue
     {
         match expression
         {
