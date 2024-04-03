@@ -1,10 +1,14 @@
 use std::{
+    mem,
+    cell::RefCell,
     sync::Arc,
     ops::Range,
     fmt::{self, Display, Debug},
     ops::{Deref, DerefMut},
     collections::HashMap
 };
+
+use parking_lot::Mutex;
 
 pub use program::{PrimitiveProcedureInfo, Primitives, Lambdas, WithPosition};
 use program::{Program, Expression, CodePosition};
@@ -630,6 +634,7 @@ pub struct LispMemory
 {
     stack_size: usize,
     memory: MemoryBlock,
+    swap_memory: MemoryBlock,
     returns: Vec<LispValue>
 }
 
@@ -639,8 +644,9 @@ impl LispMemory
     {
         let stack_size = 256;
         let memory = MemoryBlock::new(memory_size);
+        let swap_memory = MemoryBlock::new(memory_size);
 
-        Self{stack_size, memory, returns: Vec::with_capacity(stack_size)}
+        Self{stack_size, memory, swap_memory, returns: Vec::with_capacity(stack_size)}
     }
 
     pub fn clear(&mut self)
@@ -648,9 +654,24 @@ impl LispMemory
         self.memory.clear();
     }
 
-    fn gc(&mut self, env: &mut Environment)
+    fn transfer_to_swap(&mut self, env: &Environment)
     {
+        /*if let Some(parent) = env.parent
+        {
+
+        }*/
+
+        // env.mappings.iter_mut()
         todo!();
+    }
+
+    fn gc(&mut self, env: &Environment)
+    {
+        self.swap_memory.clear();
+
+        self.transfer_to_swap(env);
+
+        mem::swap(&mut self.memory, &mut self.swap_memory);
     }
 
     pub fn push_return(&mut self, value: LispValue)
@@ -705,23 +726,38 @@ impl LispMemory
         self.memory.get_car(id)
     }
 
-    fn need_list_memory(&mut self, env: &mut Environment, amount: usize)
+    fn need_list_memory(&mut self, env: &Environment, amount: usize)
     {
         if self.memory.list_remaining() < amount
         {
             self.gc(env);
+
+            if self.memory.list_remaining() < amount
+            {
+                panic!("out of memory");
+            }
         }
     }
 
-    fn need_memory(&mut self, env: &mut Environment, amount: usize)
+    fn need_memory(&mut self, env: &Environment, amount: usize)
     {
         if self.memory.remaining() < amount
         {
             self.gc(env);
+
+            if self.memory.remaining() < amount
+            {
+                panic!("out of memory");
+            }
         }
     }
 
-    pub fn cons(&mut self, env: &mut Environment, car: LispValue, cdr: LispValue) -> LispValue
+    pub fn cons(
+        &mut self,
+        env: &Environment,
+        car: LispValue,
+        cdr: LispValue
+    ) -> LispValue
     {
         eprintln!("cons, remaining memory: {}", self.memory.list_remaining());
 
@@ -732,7 +768,7 @@ impl LispMemory
 
     pub fn allocate_vector(
         &mut self,
-        env: &mut Environment,
+        env: &Environment,
         vec: LispVectorInner<&[ValueRaw]>
     ) -> usize
     {
@@ -748,7 +784,7 @@ impl LispMemory
 
     pub fn allocate_expression(
         &mut self,
-        env: &mut Environment,
+        env: &Environment,
         expression: &Expression
     ) -> LispValue
     {
@@ -786,36 +822,43 @@ impl LispMemory
 #[derive(Debug, Clone)]
 pub struct Environment<'a>
 {
-    parent: Option<&'a Self>,
-    mappings: HashMap<String, LispValue>
+    parent: Option<&'a Environment<'a>>,
+    mappings: RefCell<HashMap<String, LispValue>>
+}
+
+// this isnt completely safe actually, if theres a Some inside a 'static lifetime env
+// then its not safe, but wutever
+unsafe impl Send for Environment<'static> {}
+
+impl Environment<'static>
+{
+    pub fn new() -> Self
+    {
+        let mappings = RefCell::new(HashMap::new());
+
+        Self{parent: None, mappings}
+    }
 }
 
 impl<'a> Environment<'a>
 {
-    pub fn new() -> Self
+    pub fn child(parent: &'a Environment<'a>) -> Environment<'a>
     {
-        let mappings = HashMap::new();
-
-        Self{parent: None, mappings}
-    }
-
-    pub fn child(parent: &'a Self) -> Self
-    {
-        let mappings = HashMap::new();
+        let mappings = RefCell::new(HashMap::new());
 
         Self{parent: Some(parent), mappings}
     }
 
-    pub fn define(&mut self, key: impl Into<String>, value: LispValue)
+    pub fn define(&self, key: impl Into<String>, value: LispValue)
     {
-        self.mappings.insert(key.into(), value);
+        self.mappings.borrow_mut().insert(key.into(), value);
     }
 
     pub fn try_lookup(&self, key: &str) -> Option<LispValue>
     {
-        self.mappings.get(key).copied().or_else(||
+        self.mappings.borrow().get(key).copied().or_else(||
         {
-            self.parent.and_then(|parent|
+            self.parent.as_ref().and_then(|parent|
             {
                 parent.try_lookup(key)
             })
@@ -872,7 +915,7 @@ impl<'a> OutputWrapper<'a>
 
 pub struct LispConfig
 {
-    pub environment: Option<Arc<Environment<'static>>>,
+    pub environment: Option<Arc<Mutex<Environment<'static>>>>,
     pub lambdas: Option<Lambdas>,
     pub primitives: Arc<Primitives>
 }
@@ -942,7 +985,7 @@ impl DerefMut for Lisp
 
 pub struct LispRef
 {
-    environment: Option<Arc<Environment<'static>>>,
+    environment: Option<Arc<Mutex<Environment<'static>>>>,
     program: Program
 }
 
@@ -985,19 +1028,24 @@ impl LispRef
         self.run_inner(memory).map(|(env, _value)| env)
     }
 
-    fn run_inner<'a>(
-        &mut self,
+    fn new_environment(&self) -> Environment<'static>
+    {
+        self.environment.as_ref().map(|x|
+        {
+            let env: &Environment<'static> = &x.lock();
+
+            Environment::clone(env)
+        }).unwrap_or_else(|| Environment::new())
+    }
+
+    fn run_inner<'a, 'b>(
+        &'b mut self,
         memory: &'a mut LispMemory
     ) -> Result<(Environment<'static>, OutputWrapper<'a>), ErrorPos>
     {
-        let mut env = self.environment.as_ref().map(|x|
-        {
-            let env: &Environment = &x;
+        let env = self.new_environment();
 
-            env.clone()
-        }).unwrap_or_else(|| Environment::new());
-
-        self.program.apply(memory, &mut env)?;
+        self.program.apply(memory, &env)?;
         let value = memory.pop_return();
 
         let value = OutputWrapper{memory, value};
@@ -1127,7 +1175,7 @@ mod tests
             (+ (silly 7) (silly 5) (silly 6) (silly 11) (silly 4))
         ";
 
-        let memory_size = 32;
+        let memory_size = 64;
         let mut memory = LispMemory::new(memory_size);
 
         let mut lisp = LispRef::new(code).unwrap();

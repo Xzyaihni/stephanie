@@ -88,6 +88,7 @@ impl<'a> Lexer<'a>
         {
             if let Some(c) = self.next_char()
             {
+                let position = self.position;
                 self.position.next_char();
 
                 if c.is_whitespace()
@@ -105,7 +106,7 @@ impl<'a> Lexer<'a>
                     }
 
                     return Some(LexemePos{
-                        position: self.position,
+                        position,
                         lexeme: Lexeme::Value(current)
                     });
                 }
@@ -128,13 +129,13 @@ impl<'a> Lexer<'a>
                         };
 
                         return Some(LexemePos{
-                            position: self.position,
+                            position,
                             lexeme
                         });
                     }
 
                     return Some(LexemePos{
-                        position: self.position,
+                        position,
                         lexeme: Lexeme::Value(current)
                     });
                 }

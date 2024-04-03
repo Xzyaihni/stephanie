@@ -20,7 +20,7 @@ pub type OnApply = Arc<
     dyn Fn(
         &State,
         &mut LispMemory,
-        &mut Environment,
+        &Environment,
         &ExpressionPos,
         Action
     ) -> Result<(), ErrorPos> + Send + Sync>;
@@ -188,14 +188,14 @@ impl PrimitiveProcedureInfo
         F: Fn(
             &State,
             &mut LispMemory,
-            &mut Environment,
+            &Environment,
             ArgsWrapper
         ) -> Result<(), Error> + Send + Sync + 'static
     {
         let on_apply = Arc::new(move |
             state: &State,
             memory: &mut LispMemory,
-            env: &mut Environment,
+            env: &Environment,
             args: &ExpressionPos,
             action: Action
         |
@@ -363,7 +363,7 @@ impl StoredLambda
             });
         }
 
-        let mut new_env = Environment::child(env);
+        let new_env = Environment::child(env);
         self.params.iter().for_each(|key|
         {
             let value = args.pop(memory);
@@ -371,7 +371,7 @@ impl StoredLambda
             new_env.define(key, value);
         });
 
-        self.body.apply(state, memory, &mut new_env, action)
+        self.body.apply(state, memory, &new_env, action)
     }
 }
 
@@ -905,7 +905,7 @@ impl Program
     pub fn apply(
         &self,
         memory: &mut LispMemory,
-        env: &mut Environment
+        env: &Environment
     ) -> Result<(), ErrorPos>
     {
         self.expression.apply(&self.state, memory, env, Action::Return)
@@ -1021,10 +1021,11 @@ impl ExpressionPos
         &self,
         state: &State, 
         memory: &mut LispMemory,
-        env: &mut Environment,
+        env: &Environment,
         action: Action
     ) -> Result<(), ErrorPos>
     {
+        eprintln!("before: {env:#?}");
         let value = match &self.expression
         {
             Expression::Integer(x) =>
@@ -1076,7 +1077,7 @@ impl ExpressionPos
         &self,
         state: &State, 
         memory: &mut LispMemory,
-        env: &mut Environment,
+        env: &Environment,
         proc: &CompoundProcedure,
         action: Action
     ) -> Result<(), ErrorPos>
@@ -1124,7 +1125,7 @@ impl ExpressionPos
         &self,
         state: &State, 
         memory: &mut LispMemory,
-        env: &mut Environment,
+        env: &Environment,
         action: Action
     ) -> Result<ArgsWrapper, ErrorPos>
     {

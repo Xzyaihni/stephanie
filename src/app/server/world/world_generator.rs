@@ -158,7 +158,7 @@ impl From<lisp::Error> for ParseError
 
 pub struct ChunkGenerator
 {
-    environment: Arc<Environment<'static>>,
+    environment: Arc<Mutex<Environment<'static>>>,
     lambdas: Lambdas,
     primitives: Arc<Primitives>,
     memory: Arc<Mutex<LispMemory>>,
@@ -176,7 +176,7 @@ impl ChunkGenerator
 
         let (environment, lambdas) = Self::default_environment(&parent_directory);
 
-        let environment = Arc::new(environment);
+        let environment = Arc::new(Mutex::new(environment));
         let memory = Arc::new(Mutex::new(LispMemory::new(1024)));
 
         let primitives = Arc::new(Self::default_primitives(&tilemap));
