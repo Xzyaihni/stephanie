@@ -22,7 +22,8 @@ pub enum Special
 {
     True,
     False,
-    EmptyList
+    EmptyList,
+    BrokenHeart
 }
 
 impl Special
@@ -41,6 +42,20 @@ impl Special
     pub fn new_empty_list() -> Self
     {
         Self::EmptyList
+    }
+
+    pub fn new_broken_heart() -> Self
+    {
+        Self::BrokenHeart
+    }
+
+    pub fn is_broken_heart(&self) -> bool
+    {
+        match self
+        {
+            Self::BrokenHeart => true,
+            _ => false
+        }
     }
 
     pub fn is_true(&self) -> bool
@@ -71,7 +86,8 @@ impl Display for Special
         {
             Self::True => "#t",
             Self::False => "#f",
-            Self::EmptyList => "()"
+            Self::EmptyList => "()",
+            Self::BrokenHeart => "<broken-heart>"
         };
 
         write!(f, "{}", s)
@@ -237,6 +253,11 @@ impl LispValue
         Self::new_special(Special::new_empty_list())
     }
 
+    pub fn new_broken_heart() -> Self
+    {
+        Self::new_special(Special::new_broken_heart())
+    }
+
     fn new_special(special: Special) -> Self
     {
         unsafe{
@@ -263,12 +284,22 @@ impl LispValue
         self.tag
     }
 
+    pub fn is_broken_heart(&self) -> bool
+    {
+        self.as_special().map(|x| x.is_broken_heart()).unwrap_or(false)
+    }
+
     pub fn is_true(&self) -> bool
+    {
+        self.as_special().map(|x| x.is_true()).unwrap_or(true)
+    }
+
+    fn as_special(&self) -> Option<Special>
     {
         match self.tag
         {
-            ValueTag::Special => unsafe{ self.value.special.is_true() },
-            _ => true
+            ValueTag::Special => Some(unsafe{ self.value.special }),
+            _ => None
         }
     }
 
@@ -578,6 +609,16 @@ impl MemoryBlock
         self.cdrs[id]
     }
 
+    pub fn set_car(&mut self, id: usize, value: LispValue)
+    {
+        self.cars[id] = value;
+    }
+
+    pub fn set_cdr(&mut self, id: usize, value: LispValue)
+    {
+        self.cdrs[id] = value;
+    }
+
     pub fn cons(&mut self, car: LispValue, cdr: LispValue) -> LispValue
     {
         let id = self.cars.len();
@@ -654,22 +695,82 @@ impl LispMemory
         self.memory.clear();
     }
 
-    fn transfer_to_swap(&mut self, env: &Environment)
+    fn transfer_to_swap_value(
+        memory: &mut MemoryBlock,
+        swap_memory: &mut MemoryBlock,
+        value: LispValue
+    ) -> LispValue
     {
-        /*if let Some(parent) = env.parent
+        match value.tag
         {
+            ValueTag::Integer
+                | ValueTag::Float
+                | ValueTag::Char
+                | ValueTag::Procedure
+                | ValueTag::Special => value,
+            ValueTag::List =>
+            {
+                let id = unsafe{ value.value.list };
 
-        }*/
+                let list = memory.get_list(id);
 
-        // env.mappings.iter_mut()
-        todo!();
+                if list.car.is_broken_heart()
+                {
+                    return list.cdr;
+                }
+
+                let new_car = Self::transfer_to_swap_value(memory, swap_memory, list.car);
+                let new_cdr = Self::transfer_to_swap_value(memory, swap_memory, list.cdr);
+
+                let output = swap_memory.cons(new_car, new_cdr);
+
+                memory.set_car(id, LispValue::new_broken_heart());
+                memory.set_cdr(id, output);
+
+                output
+            },
+            ValueTag::Symbol =>
+            {
+                todo!()
+            },
+            ValueTag::Vector =>
+            {
+                todo!()
+            },
+            ValueTag::String =>
+            {
+                todo!()
+            }
+        }
+    }
+
+    fn transfer_to_swap_env(&mut self, env: &Environment)
+    {
+        if let Some(parent) = env.parent
+        {
+            self.transfer_to_swap_env(parent);
+        }
+
+        env.mappings.borrow_mut().iter_mut().for_each(|(_key, value)|
+        {
+            *value = Self::transfer_to_swap_value(&mut self.memory, &mut self.swap_memory, *value);
+        });
+    }
+
+    fn transfer_to_swap_returns(&mut self)
+    {
+        self.returns.iter_mut().for_each(|value|
+        {
+            *value = Self::transfer_to_swap_value(&mut self.memory, &mut self.swap_memory, *value);
+        });
     }
 
     fn gc(&mut self, env: &Environment)
     {
         self.swap_memory.clear();
 
-        self.transfer_to_swap(env);
+        self.transfer_to_swap_env(env);
+        self.transfer_to_swap_returns();
 
         mem::swap(&mut self.memory, &mut self.swap_memory);
     }

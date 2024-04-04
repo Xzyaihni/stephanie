@@ -1025,7 +1025,6 @@ impl ExpressionPos
         action: Action
     ) -> Result<(), ErrorPos>
     {
-        eprintln!("before: {env:#?}");
         let value = match &self.expression
         {
             Expression::Integer(x) =>
