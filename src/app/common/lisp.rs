@@ -729,13 +729,24 @@ impl LispMemory
 
                 output
             },
-            ValueTag::Symbol =>
+            ValueTag::Symbol | ValueTag::Vector =>
             {
-                todo!()
-            },
-            ValueTag::Vector =>
-            {
-                todo!()
+                // doesnt do broken hearts stuff so cycles will blow up memory
+                // but wutever!
+                let id = unsafe{ value.value.vector };
+
+                let (tag, range) = memory.vector_info(id);
+
+                let s = &memory.general[range];
+
+                let id = swap_memory.allocate_iter(s.len(), tag, s.iter());
+
+                match value.tag
+                {
+                    ValueTag::Symbol => LispValue::new_symbol(id),
+                    ValueTag::Vector => LispValue::new_vector(id),
+                    _ => unreachable!()
+                }
             },
             ValueTag::String =>
             {
