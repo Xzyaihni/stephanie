@@ -860,8 +860,6 @@ impl LispMemory
         cdr: LispValue
     ) -> LispValue
     {
-        eprintln!("cons, remaining memory: {}", self.memory.list_remaining());
-
         self.need_list_memory(env, 1);
 
         self.memory.cons(car, cdr)
@@ -873,8 +871,6 @@ impl LispMemory
         vec: LispVectorInner<&[ValueRaw]>
     ) -> usize
     {
-        eprintln!("vec, remaining memory: {}", self.memory.remaining());
-
         let len = vec.values.len();
 
         // +2 for the length and for the type tag
