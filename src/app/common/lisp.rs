@@ -126,6 +126,25 @@ pub enum ValueTag
     Vector
 }
 
+impl ValueTag
+{
+    pub fn is_boxed(self) -> bool
+    {
+        match self
+        {
+            ValueTag::Integer
+                | ValueTag::Float
+                | ValueTag::Char
+                | ValueTag::Procedure
+                | ValueTag::Special => false,
+            ValueTag::String
+                | ValueTag::Symbol
+                | ValueTag::List
+                | ValueTag::Vector => true
+        }
+    }
+}
+
 pub struct LispVectorInner<T>
 {
     pub tag: ValueTag,
@@ -703,11 +722,7 @@ impl LispMemory
     {
         match value.tag
         {
-            ValueTag::Integer
-                | ValueTag::Float
-                | ValueTag::Char
-                | ValueTag::Procedure
-                | ValueTag::Special => value,
+            x if !x.is_boxed() => value,
             ValueTag::List =>
             {
                 let id = unsafe{ value.value.list };
@@ -737,6 +752,19 @@ impl LispMemory
 
                 let (tag, range) = memory.vector_info(id);
 
+                if tag.is_boxed()
+                {
+                    for index in range.clone()
+                    {
+                        let lisp_value = unsafe{ LispValue::new(tag, memory.general[index]) };
+
+                        let new_value =
+                            Self::transfer_to_swap_value(memory, swap_memory, lisp_value);
+
+                        memory.general[index] = new_value.value;
+                    }
+                }
+
                 let s = &memory.general[range];
 
                 let id = swap_memory.allocate_iter(s.len(), tag, s.iter());
@@ -751,7 +779,8 @@ impl LispMemory
             ValueTag::String =>
             {
                 todo!()
-            }
+            },
+            _ => unreachable!()
         }
     }
 
