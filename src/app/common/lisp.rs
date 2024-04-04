@@ -425,7 +425,10 @@ impl LispValue
             ValueTag::Char => Some(unsafe{ self.value.char.to_string() }),
             ValueTag::Special => Some(unsafe{ self.value.special.to_string() }),
             ValueTag::Procedure => Some(format!("<procedure #{}>", unsafe{ self.value.procedure })),
-            ValueTag::String => unimplemented!(),
+            ValueTag::String => memory.map(|memory|
+            {
+                memory.get_string(unsafe{ self.value.string }).unwrap()
+            }),
             ValueTag::Symbol => memory.map(|memory|
             {
                 let s = memory.get_symbol(unsafe{ self.value.symbol }).unwrap();
@@ -600,6 +603,11 @@ impl MemoryBlock
 
     pub fn get_symbol(&self, id: usize) -> Result<String, Error>
     {
+        self.get_string(id)
+    }
+
+    pub fn get_string(&self, id: usize) -> Result<String, Error>
+    {
         let vec = self.get_vector_ref(id);
 
         if vec.tag != ValueTag::Char
@@ -744,7 +752,7 @@ impl LispMemory
 
                 output
             },
-            ValueTag::Symbol | ValueTag::Vector =>
+            ValueTag::Symbol | ValueTag::Vector | ValueTag::String =>
             {
                 // doesnt do broken hearts stuff so cycles will blow up memory
                 // but wutever!
@@ -772,13 +780,10 @@ impl LispMemory
                 match value.tag
                 {
                     ValueTag::Symbol => LispValue::new_symbol(id),
+                    ValueTag::String => LispValue::new_string(id),
                     ValueTag::Vector => LispValue::new_vector(id),
                     _ => unreachable!()
                 }
-            },
-            ValueTag::String =>
-            {
-                todo!()
             },
             _ => unreachable!()
         }
@@ -848,6 +853,11 @@ impl LispMemory
     pub fn get_symbol(&self, id: usize) -> Result<String, Error>
     {
         self.memory.get_symbol(id)
+    }
+
+    pub fn get_string(&self, id: usize) -> Result<String, Error>
+    {
+        self.memory.get_string(id)
     }
 
     pub fn get_list(&self, id: usize) -> LispList
