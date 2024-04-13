@@ -17,6 +17,8 @@ use crate::common::{
 	receiver_loop,
     ObjectsStore,
     TileMap,
+    EntityType,
+    EntityAny,
     EntityPasser,
 	EntitiesContainer,
 	EntitiesController,
@@ -363,7 +365,10 @@ impl GameState
     pub fn add_client_enemy(&self, enemy: Enemy)
     {
         let id = self.entities.empty_enemy();
-        todo!()// self.echo_message(Message::EnemyCreate{id, enemy});
+
+        let id = EntityType::Enemy(id);
+        let entity = EntityAny::Enemy(enemy);
+        self.echo_message(Message::EntityCreate{id, entity});
     }
 
     pub fn echo_message(&self, message: Message)
