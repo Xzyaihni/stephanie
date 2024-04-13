@@ -7,8 +7,7 @@ use enum_amount::EnumCount;
 use crate::common::{
 	Transform,
 	EntityType,
-	player::Player,
-    enemy::Enemy,
+    EntityAny,
 	world::{Chunk, GlobalPos}
 };
 
@@ -16,11 +15,9 @@ use crate::common::{
 #[derive(Debug, Clone, EnumCount, Serialize, Deserialize)]
 pub enum Message
 {
-	EnemyCreate{id: usize, enemy: Enemy},
-	EnemyDestroy{id: usize},
+    EntityCreate{id: EntityType, entity: EntityAny},
+    EntityDestroy{id: EntityType},
 	PlayerConnect{name: String},
-	PlayerCreate{id: usize, player: Player},
-	PlayerDestroy{id: usize},
 	PlayerOnConnect{id: usize},
 	PlayerFullyConnected,
 	EntitySyncTransform{entity_type: EntityType, transform: Transform},

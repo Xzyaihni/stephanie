@@ -212,8 +212,13 @@ macro_rules! entity_forward
         };
 
         // i wish specialization was a thing..
-        impl GettableInner<$name> for $name
+        impl GettableInner<(), $name> for $name
         {
+            fn wrap(info: (), value: $name) -> Self
+            {
+                value
+            }
+
             fn get_inner(&self) -> Self
             {
                 self.clone()

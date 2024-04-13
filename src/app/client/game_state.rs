@@ -108,7 +108,7 @@ impl GameObject for ClientEntitiesContainer
     }
 }
 
-impl EntitiesContainer for ClientEntitiesContainer
+impl<'a> EntitiesContainer<&ObjectCreateInfo<'a>> for ClientEntitiesContainer
 {
 	type PlayerObject = ObjectPair<Player>;
 	type EnemyObject = ObjectPair<Enemy>;
@@ -296,17 +296,9 @@ impl GameState
 
 		match message
 		{
-			Message::EnemyCreate{id, enemy} =>
+			Message::EntityCreate{id, entity} =>
 			{
-				let enemy = ObjectPair::new(create_info, enemy);
-
-				self.entities.enemies_mut().insert(id, enemy);
-			},
-			Message::PlayerCreate{id, player} =>
-			{
-				let player = ObjectPair::new(create_info, player);
-
-				self.entities.players_mut().insert(id, player);
+				self.entities.insert(id, create_info, entity);
 			},
 			Message::PlayerFullyConnected =>
 			{
@@ -371,7 +363,7 @@ impl GameState
     pub fn add_client_enemy(&self, enemy: Enemy)
     {
         let id = self.entities.empty_enemy();
-        self.echo_message(Message::EnemyCreate{id, enemy});
+        todo!()// self.echo_message(Message::EnemyCreate{id, enemy});
     }
 
     pub fn echo_message(&self, message: Message)
@@ -469,7 +461,7 @@ impl GameState
 	}
 }
 
-impl EntitiesController for GameState
+impl<'a> EntitiesController<&ObjectCreateInfo<'a>> for GameState
 {
 	type Container = ClientEntitiesContainer;
 	type Passer = ConnectionsHandler;

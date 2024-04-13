@@ -3,6 +3,8 @@ use std::{
 	net::TcpStream
 };
 
+use serde::{Serialize, Deserialize};
+
 use parking_lot::RwLock;
 
 use message::Message;
@@ -18,7 +20,13 @@ pub use receiver_loop::receiver_loop;
 
 pub use tilemap::{TileMap, TileMapWithTextures};
 
-pub use entity::{Entity, Physical, ChildContainer, EntityProperties, PhysicalProperties};
+pub use entity::{
+    Entity,
+    Physical,
+    ChildContainer,
+    EntityProperties,
+    PhysicalProperties
+};
 
 pub use chunk_saver::{SaveLoad, WorldChunkSaver, ChunkSaver};
 
@@ -76,6 +84,13 @@ pub fn lerp(x: f32, y: f32, a: f32) -> f32
     (1.0 - a) * x + y * a
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum EntityAny
+{
+    Player(Player),
+    Enemy(Enemy)
+}
+
 pub trait EntityPasser
 {
 	fn send_single(&mut self, id: usize, message: Message);
@@ -89,15 +104,16 @@ pub trait EntityPasser
 	}
 }
 
-pub trait GettableInner<T>
+pub trait GettableInner<I, T>
 {
+    fn wrap(info: I, value: T) -> Self;
 	fn get_inner(&self) -> T;
 }
 
-pub trait EntitiesContainer
+pub trait EntitiesContainer<I>
 {
-	type PlayerObject: TransformContainer + GettableInner<Player> + PhysicsEntity;
-	type EnemyObject: TransformContainer + GettableInner<Enemy> + PhysicsEntity;
+	type PlayerObject: TransformContainer + GettableInner<I, Player> + PhysicsEntity;
+	type EnemyObject: TransformContainer + GettableInner<I, Enemy> + PhysicsEntity;
 
 	fn players_ref(&self) -> &ObjectsStore<Self::PlayerObject>;
 	fn players_mut(&mut self) -> &mut ObjectsStore<Self::PlayerObject>;
@@ -105,15 +121,21 @@ pub trait EntitiesContainer
 	fn enemies_ref(&self) -> &ObjectsStore<Self::EnemyObject>;
 	fn enemies_mut(&mut self) -> &mut ObjectsStore<Self::EnemyObject>;
 
-	fn player_ref(&self, id: usize) -> &Self::PlayerObject
-	{
-		self.players_ref().get(id).unwrap()
-	}
-
-	fn player_mut(&mut self, id: usize) -> &mut Self::PlayerObject
-	{
-		self.players_mut().get_mut(id).unwrap()
-	}
+    fn insert(&mut self, id: EntityType, info: I, entity: EntityAny)
+    {
+        match (id, entity)
+        {
+            (EntityType::Player(id), EntityAny::Player(entity)) =>
+            {
+                self.players_mut().insert(id, Self::PlayerObject::wrap(info, entity));
+            },
+            (EntityType::Enemy(id), EntityAny::Enemy(entity)) =>
+            {
+                self.enemies_mut().insert(id, Self::EnemyObject::wrap(info, entity));
+            },
+            x => panic!("unhandled message: {x:?}")
+        }
+    }
 
 	fn empty_player(&self) -> usize
 	{
@@ -129,7 +151,8 @@ pub trait EntitiesContainer
 	{
 		match id
 		{
-			EntityType::Player(id) => self.player_mut(id).sync_transform(other)
+			EntityType::Player(id) => self.players_mut()[id].sync_transform(other),
+			EntityType::Enemy(id) => self.enemies_mut()[id].sync_transform(other)
 		}
 	}
 
@@ -137,9 +160,20 @@ pub trait EntitiesContainer
 	{
 		match message
 		{
-			Message::PlayerDestroy{id} =>
+			Message::EntityDestroy{id} =>
 			{
-				self.players_mut().remove(id);
+                match id
+                {
+				    EntityType::Player(id) =>
+                    {
+                        self.players_mut().remove(id);
+                    },
+				    EntityType::Enemy(id) =>
+                    {
+                        self.enemies_mut().remove(id);
+                    }
+                }
+
 				None
 			},
 			Message::EntitySyncTransform{entity_type, transform} =>
@@ -152,9 +186,9 @@ pub trait EntitiesContainer
 	}
 }
 
-pub trait EntitiesController
+pub trait EntitiesController<I>
 {
-	type Container: EntitiesContainer;
+	type Container: EntitiesContainer<I>;
 	type Passer: EntityPasser;
 
 	fn container_ref(&self) -> &Self::Container;
@@ -163,49 +197,49 @@ pub trait EntitiesController
 
 	fn add_player(
 		&mut self,
-		player_associated: <Self::Container as EntitiesContainer>::PlayerObject
+		player_associated: <Self::Container as EntitiesContainer<I>>::PlayerObject
 	) -> usize
 	{
-		let player = player_associated.get_inner();
+		/*let player = player_associated.get_inner();
 		let id = self.container_mut().players_mut().push(player_associated);
 
 		self.passer().write().send_message(Message::PlayerCreate{id, player});
 
-		id
+		id*/todo!()
 	}
 
 	fn add_enemy(
 		&mut self,
-		enemy_associated: <Self::Container as EntitiesContainer>::EnemyObject
+		enemy_associated: <Self::Container as EntitiesContainer<I>>::EnemyObject
 	) -> usize
 	{
-		let enemy = enemy_associated.get_inner();
+		/*let enemy = enemy_associated.get_inner();
 		let id = self.container_mut().enemies_mut().push(enemy_associated);
 
 		self.passer().write().send_message(Message::EnemyCreate{id, enemy});
 
-		id
+		id*/todo!()
 	}
 
 	fn remove_player(&mut self, id: usize)
 	{
 		self.container_mut().players_mut().remove(id);
-		self.passer().write().send_message(Message::PlayerDestroy{id});
+		todo!()// self.passer().write().send_message(Message::PlayerDestroy{id});
 	}
 
 	fn player_mut(
 		&mut self,
 		id: usize
-	) -> NetworkEntity<Self::Passer, <Self::Container as EntitiesContainer>::PlayerObject>
+	) -> NetworkEntity<Self::Passer, <Self::Container as EntitiesContainer<I>>::PlayerObject>
 	{
 		let passer = self.passer();
 		let container = self.container_mut();
-		NetworkEntity::new(passer, EntityType::Player(id), container.player_mut(id))
+		todo!()// NetworkEntity::new(passer, EntityType::Player(id), container.player_mut(id))
 	}
 
-	fn player_ref(&self, id: usize) -> &<Self::Container as EntitiesContainer>::PlayerObject
+	fn player_ref(&self, id: usize) -> &<Self::Container as EntitiesContainer<I>>::PlayerObject
 	{
-		self.container_ref().player_ref(id)
+		todo!()// self.container_ref().player_ref(id)
 	}
 }
 

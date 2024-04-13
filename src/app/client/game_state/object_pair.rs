@@ -77,8 +77,13 @@ impl<T: EntityContainer> ObjectPair<T>
 	}
 }
 
-impl<T: Clone> GettableInner<T> for ObjectPair<T>
+impl<'a, T: EntityContainer + Clone> GettableInner<&ObjectCreateInfo<'a>, T> for ObjectPair<T>
 {
+    fn wrap(info: &ObjectCreateInfo<'a>, value: T) -> Self
+    {
+        ObjectPair::new(info, value)
+    }
+
 	fn get_inner(&self) -> T
 	{
 		self.entity.clone()

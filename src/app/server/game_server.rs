@@ -21,6 +21,8 @@ pub use super::world::ParseError;
 use crate::common::{
 	sender_loop,
 	receiver_loop,
+    EntityType,
+    EntityAny,
     ObjectsStore,
 	TileMap,
 	EntityPasser,
@@ -59,7 +61,7 @@ impl ServerEntitiesContainer
 	}
 }
 
-impl EntitiesContainer for ServerEntitiesContainer
+impl EntitiesContainer<()> for ServerEntitiesContainer
 {
 	type PlayerObject = Player;
     type EnemyObject = Enemy;
@@ -254,7 +256,12 @@ impl GameServer
 
 		self.entities.players_ref().iter().try_for_each(|(index, player)|
 		{
-			messager.send_blocking(Message::PlayerCreate{id: index, player: player.clone()})
+            let id = EntityType::Player(index);
+            let entity = EntityAny::Player(player.clone());
+
+            let message = Message::EntityCreate{id, entity};
+
+			messager.send_blocking(message)
 		})?;
 
 		messager.send_blocking(Message::PlayerFullyConnected)?;
@@ -306,9 +313,9 @@ impl GameServer
 
 		match message
 		{
-			Message::PlayerCreate{id, player} =>
+			Message::EntityCreate{id, entity} =>
 			{
-				self.entities.players_mut().insert(id, player);
+                self.entities.insert(id, (), entity);
 			},
 			x => panic!("unhandled message: {x:?}")
 		}
@@ -321,7 +328,7 @@ impl GameServer
 	}
 }
 
-impl EntitiesController for GameServer
+impl EntitiesController<()> for GameServer
 {
 	type Container = ServerEntitiesContainer;
 	type Passer = ConnectionsHandler;
