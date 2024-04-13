@@ -200,12 +200,14 @@ pub trait EntitiesController<I>
 		player_associated: <Self::Container as EntitiesContainer<I>>::PlayerObject
 	) -> usize
 	{
-		/*let player = player_associated.get_inner();
-		let id = self.container_mut().players_mut().push(player_associated);
+		let entity = EntityAny::Player(player_associated.get_inner());
 
-		self.passer().write().send_message(Message::PlayerCreate{id, player});
+        let raw_id = self.container_mut().players_mut().push(player_associated);
+		let id = EntityType::Player(raw_id);
 
-		id*/todo!()
+		self.passer().write().send_message(Message::EntityCreate{id, entity});
+
+		raw_id
 	}
 
 	fn add_enemy(
@@ -213,33 +215,42 @@ pub trait EntitiesController<I>
 		enemy_associated: <Self::Container as EntitiesContainer<I>>::EnemyObject
 	) -> usize
 	{
-		/*let enemy = enemy_associated.get_inner();
-		let id = self.container_mut().enemies_mut().push(enemy_associated);
+		let entity = EntityAny::Enemy(enemy_associated.get_inner());
 
-		self.passer().write().send_message(Message::EnemyCreate{id, enemy});
+		let raw_id = self.container_mut().enemies_mut().push(enemy_associated);
+        let id = EntityType::Enemy(raw_id);
 
-		id*/todo!()
+		self.passer().write().send_message(Message::EntityCreate{id, entity});
+
+		raw_id
 	}
 
 	fn remove_player(&mut self, id: usize)
 	{
 		self.container_mut().players_mut().remove(id);
-		todo!()// self.passer().write().send_message(Message::PlayerDestroy{id});
+
+        let id = EntityType::Player(id);
+		self.passer().write().send_message(Message::EntityDestroy{id});
 	}
 
-	fn player_mut(
-		&mut self,
+	fn player_mut<'a>(
+		&'a mut self,
 		id: usize
-	) -> NetworkEntity<Self::Passer, <Self::Container as EntitiesContainer<I>>::PlayerObject>
+	) -> NetworkEntity<'a, Self::Passer, <Self::Container as EntitiesContainer<I>>::PlayerObject>
+    where
+        Self::Container: 'a
 	{
 		let passer = self.passer();
 		let container = self.container_mut();
-		todo!()// NetworkEntity::new(passer, EntityType::Player(id), container.player_mut(id))
+
+		NetworkEntity::new(passer, EntityType::Player(id), &mut container.players_mut()[id])
 	}
 
-	fn player_ref(&self, id: usize) -> &<Self::Container as EntitiesContainer<I>>::PlayerObject
+	fn player_ref<'a>(&'a self, id: usize) -> &<Self::Container as EntitiesContainer<I>>::PlayerObject
+    where
+        Self::Container: 'a
 	{
-		todo!()// self.container_ref().player_ref(id)
+		&self.container_ref().players_ref()[id]
 	}
 }
 

@@ -214,7 +214,7 @@ macro_rules! entity_forward
         // i wish specialization was a thing..
         impl GettableInner<(), $name> for $name
         {
-            fn wrap(info: (), value: $name) -> Self
+            fn wrap(_info: (), value: $name) -> Self
             {
                 value
             }
