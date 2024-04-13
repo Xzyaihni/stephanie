@@ -14,6 +14,7 @@ use yanyaengine::{
 };
 
 use crate::common::{
+    ChildEntity,
 	EntityType,
 	EntityPasser,
     Physical,
@@ -54,6 +55,10 @@ where
 	{
 		self.entity
 	}
+
+    pub fn add_child(&mut self, position: Vector3<f32>, child: ChildEntity)
+    {
+    }
 
 	pub fn sync(&mut self)
 	{

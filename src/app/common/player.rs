@@ -22,7 +22,7 @@ use crate::{
 			SpringConnection,
             LerpRotation,
 			StretchDeformation
-		},
+		}
 	}
 };
 
@@ -103,18 +103,7 @@ impl Player
 
         let mut add_pon = |position|
         {
-            let child_pon = {
-                let mut pon = pon.clone();
-
-                let mut parented_pon = pon.with_parent(&player);
-
-                parented_pon.set_origin(position);
-                parented_pon.sync_position();
-
-                pon
-            };
-
-            player.add_child(child_pon);
+            player.add_child(position, pon.clone());
         };
 
         add_pon(Vector3::new(-0.15, 0.35, 0.0));

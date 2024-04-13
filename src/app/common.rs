@@ -5,11 +5,11 @@ use std::{
 
 use parking_lot::RwLock;
 
-use slab::Slab;
-
 use message::Message;
 
 pub use yanyaengine::{Transform, TransformContainer};
+
+pub use objects_store::ObjectsStore;
 
 pub use entity_type::EntityType;
 pub use network_entity::NetworkEntity;
@@ -32,6 +32,7 @@ use entity::ChildEntity;
 use physics::PhysicsEntity;
 
 pub mod lisp;
+pub mod objects_store;
 
 pub mod entity;
 pub mod player;
@@ -98,11 +99,11 @@ pub trait EntitiesContainer
 	type PlayerObject: TransformContainer + GettableInner<Player> + PhysicsEntity;
 	type EnemyObject: TransformContainer + GettableInner<Enemy> + PhysicsEntity;
 
-	fn players_ref(&self) -> &Slab<Self::PlayerObject>;
-	fn players_mut(&mut self) -> &mut Slab<Self::PlayerObject>;
+	fn players_ref(&self) -> &ObjectsStore<Self::PlayerObject>;
+	fn players_mut(&mut self) -> &mut ObjectsStore<Self::PlayerObject>;
 
-	fn enemies_ref(&self) -> &Slab<Self::EnemyObject>;
-	fn enemies_mut(&mut self) -> &mut Slab<Self::EnemyObject>;
+	fn enemies_ref(&self) -> &ObjectsStore<Self::EnemyObject>;
+	fn enemies_mut(&mut self) -> &mut ObjectsStore<Self::EnemyObject>;
 
 	fn player_ref(&self, id: usize) -> &Self::PlayerObject
 	{
@@ -166,7 +167,7 @@ pub trait EntitiesController
 	) -> usize
 	{
 		let player = player_associated.get_inner();
-		let id = self.container_mut().players_mut().insert(player_associated);
+		let id = self.container_mut().players_mut().push(player_associated);
 
 		self.passer().write().send_message(Message::PlayerCreate{id, player});
 
@@ -179,7 +180,7 @@ pub trait EntitiesController
 	) -> usize
 	{
 		let enemy = enemy_associated.get_inner();
-		let id = self.container_mut().enemies_mut().insert(enemy_associated);
+		let id = self.container_mut().enemies_mut().push(enemy_associated);
 
 		self.passer().write().send_message(Message::EnemyCreate{id, enemy});
 

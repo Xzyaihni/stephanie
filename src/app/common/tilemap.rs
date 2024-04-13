@@ -27,7 +27,7 @@ use yanyaengine::object::{
 use crate::common::world::Tile;
 
 
-const TEXTURE_TILE_SIZE: usize = 32;
+const TEXTURE_TILE_SIZE: usize = 16;
 
 // this makes the texture size always a power of 2
 pub const PADDING: usize = TEXTURE_TILE_SIZE / 2;

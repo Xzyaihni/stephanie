@@ -1,5 +1,7 @@
 use serde::{Serialize, Deserialize};
 
+use nalgebra::Vector3;
+
 use yanyaengine::{
     Transform,
     TransformContainer,
@@ -52,8 +54,15 @@ pub trait ChildContainer: TransformContainer
         this_children.insert(index, child);
     }
 
-	fn add_child(&mut self, child: ChildEntity)
+	fn add_child(&mut self, position: Vector3<f32>, mut child: ChildEntity)
 	{
+        {
+            let mut parented = child.with_parent(self);
+
+            parented.set_origin(position);
+            parented.sync_position();
+        }
+
         self.add_child_inner(child);
 
 		self.transform_callback(self.transform_clone());

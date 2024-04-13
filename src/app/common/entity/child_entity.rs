@@ -93,13 +93,13 @@ pub enum ChildDeformation
 	Stretch(StretchDeformation)
 }
 
-pub struct ChildEntityRef<'a, P>
+pub struct ChildEntityRef<'a, P: ?Sized>
 {
     parent: &'a P,
     entity: &'a mut ChildEntity
 }
 
-impl<'a, P> ChildEntityRef<'a, P>
+impl<'a, P: ?Sized> ChildEntityRef<'a, P>
 where
     P: TransformContainer
 {
@@ -143,7 +143,7 @@ impl ChildEntity
 		Self{connection, rotation, deformation, origin, entity, z_level}
 	}
 
-    pub fn with_parent<'a, P>(&'a mut self, parent: &'a P) -> ChildEntityRef<'a, P>
+    pub fn with_parent<'a, P: ?Sized>(&'a mut self, parent: &'a P) -> ChildEntityRef<'a, P>
     where
         P: TransformContainer
     {

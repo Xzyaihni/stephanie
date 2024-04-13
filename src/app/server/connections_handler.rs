@@ -1,6 +1,5 @@
-use slab::Slab;
-
 use crate::common::{
+    ObjectsStore,
 	EntityType,
 	BufferSender,
 	EntityPasser,
@@ -42,7 +41,7 @@ impl PlayerInfo
 #[derive(Debug)]
 pub struct ConnectionsHandler
 {
-	connections: Slab<PlayerInfo>,
+	connections: ObjectsStore<PlayerInfo>,
 	limit: usize
 }
 
@@ -50,7 +49,7 @@ impl ConnectionsHandler
 {
 	pub fn new(limit: usize) -> Self
 	{
-		let connections = Slab::with_capacity(limit);
+		let connections = ObjectsStore::with_capacity(limit);
 
 		Self{connections, limit}
 	}
@@ -67,7 +66,7 @@ impl ConnectionsHandler
 
 	pub fn connect(&mut self, player_info: PlayerInfo) -> usize
 	{
-		self.connections.insert(player_info)
+		self.connections.push(player_info)
 	}
 
 	pub fn get_mut(&mut self, id: usize) -> &mut PlayerInfo

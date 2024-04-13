@@ -8,8 +8,6 @@ use nalgebra::Vector3;
 
 use parking_lot::{RwLock, Mutex};
 
-use slab::Slab;
-
 use yanyaengine::{TransformContainer, Transform};
 
 use super::{
@@ -23,6 +21,7 @@ pub use super::world::ParseError;
 use crate::common::{
 	sender_loop,
 	receiver_loop,
+    ObjectsStore,
 	TileMap,
 	EntityPasser,
 	EntitiesContainer,
@@ -45,16 +44,16 @@ use crate::common::{
 #[derive(Debug)]
 pub struct ServerEntitiesContainer
 {
-	players: Slab<Player>,
-    enemies: Slab<Enemy>
+	players: ObjectsStore<Player>,
+    enemies: ObjectsStore<Enemy>
 }
 
 impl ServerEntitiesContainer
 {
 	pub fn new(limit: usize) -> Self
 	{
-		let players = Slab::with_capacity(limit);
-        let enemies = Slab::with_capacity(limit);
+		let players = ObjectsStore::with_capacity(limit);
+        let enemies = ObjectsStore::with_capacity(limit);
 
 		Self{players, enemies}
 	}
@@ -65,22 +64,22 @@ impl EntitiesContainer for ServerEntitiesContainer
 	type PlayerObject = Player;
     type EnemyObject = Enemy;
 
-	fn players_ref(&self) -> &Slab<Self::PlayerObject>
+	fn players_ref(&self) -> &ObjectsStore<Self::PlayerObject>
 	{
 		&self.players
 	}
 
-	fn players_mut(&mut self) -> &mut Slab<Self::PlayerObject>
+	fn players_mut(&mut self) -> &mut ObjectsStore<Self::PlayerObject>
 	{
 		&mut self.players
 	}
 
-	fn enemies_ref(&self) -> &Slab<Self::EnemyObject>
+	fn enemies_ref(&self) -> &ObjectsStore<Self::EnemyObject>
 	{
 		&self.enemies
 	}
 
-	fn enemies_mut(&mut self) -> &mut Slab<Self::EnemyObject>
+	fn enemies_mut(&mut self) -> &mut ObjectsStore<Self::EnemyObject>
 	{
 		&mut self.enemies
 	}
@@ -277,8 +276,6 @@ impl GameServer
 
 	fn process_message_inner(&mut self, message: Message, id: usize)
 	{
-		let id_mismatch = || panic!("id mismatch in serverside process message");
-
         let message = match message
         {
             Message::RepeatMessage{message} =>
@@ -311,10 +308,7 @@ impl GameServer
 		{
 			Message::PlayerCreate{id, player} =>
 			{
-				if id != self.entities.players_mut().insert(player)
-				{
-					id_mismatch();
-				}
+				self.entities.players_mut().insert(id, player);
 			},
 			x => panic!("unhandled message: {x:?}")
 		}

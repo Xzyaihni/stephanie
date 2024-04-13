@@ -76,14 +76,15 @@ impl Game
 struct PlayerInfo
 {
     id: usize,
-    camera_follow: f32
+    camera_follow: f32,
+    selected_weapon: bool
 }
 
 impl PlayerInfo
 {
     pub fn new(id: usize) -> Self
     {
-        Self{id, camera_follow: 0.25}
+        Self{id, camera_follow: 0.25, selected_weapon: false}
     }
 }
 
@@ -130,6 +131,16 @@ impl<'a> PlayerContainer<'a>
         let z = (player_z / TILE_SIZE).ceil() * TILE_SIZE;
 
         self.game_state.camera.write().set_position_z(z);
+    }
+
+    fn update_weapon(&mut self)
+    {
+        if !self.info.selected_weapon
+        {
+            // self.player_mut().
+
+            self.info.selected_weapon = true;
+        }
     }
 
     pub fn update(&mut self, _dt: f32)

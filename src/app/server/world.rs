@@ -5,11 +5,10 @@ use std::{
 
 use parking_lot::{Mutex, RwLock};
 
-use slab::Slab;
-
 use crate::{
 	server::ConnectionsHandler,
 	common::{
+        ObjectsStore,
 		TileMap,
         WorldChunkSaver,
         ChunkSaver,
@@ -39,7 +38,7 @@ mod server_overmap;
 pub const SERVER_OVERMAP_SIZE: usize = CLIENT_OVERMAP_SIZE + 1;
 pub const SERVER_OVERMAP_SIZE_Z: usize = CLIENT_OVERMAP_SIZE_Z + 1;
 
-type OvermapsType = Arc<RwLock<Slab<ServerOvermap<WorldChunkSaver>>>>;
+type OvermapsType = Arc<RwLock<ObjectsStore<ServerOvermap<WorldChunkSaver>>>>;
 
 #[derive(Debug)]
 pub struct World
@@ -71,7 +70,7 @@ impl World
 
 		let world_generator = Arc::new(Mutex::new(world_generator));
 
-		let overmaps = Arc::new(RwLock::new(Slab::new()));
+		let overmaps = Arc::new(RwLock::new(ObjectsStore::new()));
 
 		Ok(Self{
 			message_handler,
@@ -91,7 +90,7 @@ impl World
 			position
 		);
 
-		self.overmaps.write().insert(overmap)
+		self.overmaps.write().push(overmap)
 	}
 
 	pub fn remove_player(&mut self, id: usize)

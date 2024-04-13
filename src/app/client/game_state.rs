@@ -5,8 +5,6 @@ use std::sync::{
 
 use parking_lot::{RwLock, Mutex};
 
-use slab::Slab;
-
 use yanyaengine::{
     Assets,
     ObjectFactory,
@@ -17,6 +15,7 @@ use yanyaengine::{
 use crate::common::{
 	sender_loop,
 	receiver_loop,
+    ObjectsStore,
     TileMap,
     EntityPasser,
 	EntitiesContainer,
@@ -56,8 +55,8 @@ mod notifications;
 #[derive(Debug)]
 pub struct ClientEntitiesContainer
 {
-	players: Slab<ObjectPair<Player>>,
-	enemies: Slab<ObjectPair<Enemy>>,
+	players: ObjectsStore<ObjectPair<Player>>,
+	enemies: ObjectsStore<ObjectPair<Enemy>>,
 	main_player: Option<usize>
 }
 
@@ -65,8 +64,8 @@ impl ClientEntitiesContainer
 {
 	pub fn new() -> Self
 	{
-		let players = Slab::new();
-		let enemies = Slab::new();
+		let players = ObjectsStore::new();
+		let enemies = ObjectsStore::new();
 		let main_player = None;
 
 		Self{players, enemies, main_player}
@@ -114,22 +113,22 @@ impl EntitiesContainer for ClientEntitiesContainer
 	type PlayerObject = ObjectPair<Player>;
 	type EnemyObject = ObjectPair<Enemy>;
 
-	fn players_ref(&self) -> &Slab<Self::PlayerObject>
+	fn players_ref(&self) -> &ObjectsStore<Self::PlayerObject>
 	{
 		&self.players
 	}
 
-	fn players_mut(&mut self) -> &mut Slab<Self::PlayerObject>
+	fn players_mut(&mut self) -> &mut ObjectsStore<Self::PlayerObject>
 	{
 		&mut self.players
 	}
 
-	fn enemies_ref(&self) -> &Slab<Self::EnemyObject>
+	fn enemies_ref(&self) -> &ObjectsStore<Self::EnemyObject>
 	{
 		&self.enemies
 	}
 
-	fn enemies_mut(&mut self) -> &mut Slab<Self::EnemyObject>
+	fn enemies_mut(&mut self) -> &mut ObjectsStore<Self::EnemyObject>
 	{
 		&mut self.enemies
 	}
@@ -283,8 +282,6 @@ impl GameState
 
 	fn process_message_inner(&mut self, create_info: &mut ObjectCreateInfo, message: Message)
 	{
-		let id_mismatch = || panic!("id mismatch in clientside process message");
-
 		let message = match self.entities.handle_message(message)
 		{
 			Some(x) => x,
@@ -303,19 +300,13 @@ impl GameState
 			{
 				let enemy = ObjectPair::new(create_info, enemy);
 
-				if id != self.entities.enemies_mut().insert(enemy)
-				{
-					id_mismatch();
-				}
+				self.entities.enemies_mut().insert(id, enemy);
 			},
 			Message::PlayerCreate{id, player} =>
 			{
 				let player = ObjectPair::new(create_info, player);
 
-				if id != self.entities.players_mut().insert(player)
-				{
-					id_mismatch();
-				}
+				self.entities.players_mut().insert(id, player);
 			},
 			Message::PlayerFullyConnected =>
 			{
