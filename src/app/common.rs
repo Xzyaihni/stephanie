@@ -91,10 +91,20 @@ pub enum EntityAny
     Enemy(Enemy)
 }
 
+pub trait EntityAnyWrappable
+{
+    fn wrap_any(self) -> EntityAny;
+}
+
 pub trait EntityPasser
 {
 	fn send_single(&mut self, id: usize, message: Message);
 	fn send_message(&mut self, message: Message);
+
+    fn sync_entity(&mut self, id: EntityType, entity: EntityAny)
+    {
+        self.send_message(Message::EntitySet{id, entity});
+    }
 
 	fn sync_transform(&mut self, id: EntityType, transform: Transform)
 	{
@@ -205,7 +215,7 @@ pub trait EntitiesController<I>
         let raw_id = self.container_mut().players_mut().push(player_associated);
 		let id = EntityType::Player(raw_id);
 
-		self.passer().write().send_message(Message::EntityCreate{id, entity});
+		self.passer().write().send_message(Message::EntitySet{id, entity});
 
 		raw_id
 	}
@@ -220,7 +230,7 @@ pub trait EntitiesController<I>
 		let raw_id = self.container_mut().enemies_mut().push(enemy_associated);
         let id = EntityType::Enemy(raw_id);
 
-		self.passer().write().send_message(Message::EntityCreate{id, entity});
+		self.passer().write().send_message(Message::EntitySet{id, entity});
 
 		raw_id
 	}

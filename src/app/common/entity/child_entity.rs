@@ -47,7 +47,7 @@ pub struct SpringConnection
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LerpRotation
 {
-    pub strength: f32
+    pub damping: f32
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -110,7 +110,7 @@ where
 
     pub fn sync_position(&mut self)
     {
-        let new_position = self.parent.position() + self.entity.origin(self.parent.transform_ref());
+        let new_position = self.parent.position() + self.entity.origin();
 
         self.entity.physical_mut().transform.position = new_position;
     }
@@ -123,6 +123,7 @@ pub struct ChildEntity
     rotation: ChildRotation,
 	deformation: ChildDeformation,
 	origin: Vector3<f32>,
+    origin_rotation: f32,
 	entity: Entity,
 	z_level: i32
 }
@@ -133,14 +134,19 @@ impl ChildEntity
 		connection: ChildConnection,
         rotation: ChildRotation,
 		deformation: ChildDeformation,
-		mut entity: Entity,
-        origin: Vector3<f32>,
+		entity: Entity,
 		z_level: i32
 	) -> Self
 	{
-        entity.physical.transform.position += origin;
-
-		Self{connection, rotation, deformation, origin, entity, z_level}
+		Self{
+            connection,
+            rotation,
+            deformation,
+            origin: Vector3::zeros(),
+            origin_rotation: entity.rotation(),
+            entity,
+            z_level
+        }
 	}
 
     pub fn with_parent<'a, P: ?Sized>(&'a mut self, parent: &'a P) -> ChildEntityRef<'a, P>
@@ -157,11 +163,11 @@ impl ChildEntity
 		self.z_level
 	}
 
-	fn origin(&self, parent_transform: &Transform) -> Vector3<f32>
+	fn origin(&self) -> Vector3<f32>
 	{
         let rotation = Rotation::from_axis_angle(
-            &parent_transform.rotation_axis,
-            parent_transform.rotation
+            &self.rotation_axis(),
+            self.rotation() - self.origin_rotation
         );
 
 		rotation * self.origin
@@ -169,37 +175,6 @@ impl ChildEntity
 
 	pub fn update(&mut self, parent_physical: &Physical, dt: f32)
 	{
-        let origin = self.origin(&parent_physical.transform);
-
-        self.set_rotation_axis(*parent_physical.rotation_axis());
-        match &self.rotation
-        {
-            ChildRotation::Instant =>
-            {
-                self.set_rotation(parent_physical.rotation());
-            },
-            ChildRotation::Lerp(props) =>
-            {
-                let rotation_difference = parent_physical.rotation() - self.rotation();
-                let rotation_difference = if rotation_difference > f32::consts::PI
-                {
-                    rotation_difference - 2.0 * f32::consts::PI
-                } else if rotation_difference < -f32::consts::PI
-                {
-                    rotation_difference + 2.0 * f32::consts::PI
-                } else
-                {
-                    rotation_difference
-                };
-
-                let amount = 1.0 - props.strength.powf(dt);
-
-                let rotation = self.rotation() + lerp(0.0, rotation_difference, amount);
-
-                self.set_rotation(rotation);
-            }
-        }
-
 		match &self.deformation
 		{
 			ChildDeformation::Rigid => (),
@@ -211,17 +186,54 @@ impl ChildEntity
 			}
 		}
 
+        let target_rotation = parent_physical.rotation() + self.origin_rotation;
+
+        self.set_rotation_axis(*parent_physical.rotation_axis());
+
+        match &self.rotation
+        {
+            ChildRotation::Instant =>
+            {
+                self.set_rotation(target_rotation);
+            },
+            ChildRotation::Lerp(props) =>
+            {
+                let rotation_difference = target_rotation - self.rotation();
+                let rotation_difference = if rotation_difference > f32::consts::PI
+                {
+                    rotation_difference - 2.0 * f32::consts::PI
+                } else if rotation_difference < -f32::consts::PI
+                {
+                    rotation_difference + 2.0 * f32::consts::PI
+                } else
+                {
+                    rotation_difference
+                };
+
+                let target_rotation = rotation_difference + self.rotation();
+
+                let amount = 1.0 - props.damping.powf(dt);
+
+                let rotation = lerp(self.rotation(), target_rotation, amount);
+
+                self.set_rotation(rotation);
+            }
+        }
+
+        let target_position = |this: &Self|
+        {
+            parent_physical.position() + this.origin()
+        };
+
 		match &self.connection
 		{
 			ChildConnection::Rigid =>
             {
-                self.transform_mut().position = parent_physical.position() + origin;
+                self.transform_mut().position = target_position(self);
             },
 			ChildConnection::Spring(connection) =>
 			{
-                let target_position = parent_physical.position() + origin;
-
-                let distance = target_position - self.position();
+                let distance = target_position(self) - self.position();
 
                 let spring_force = distance * connection.strength;
 
@@ -232,9 +244,7 @@ impl ChildEntity
 
                 if distance.magnitude() > connection.limit
                 {
-                    let target_position = parent_physical.position() + origin;
-
-                    self.clamp_distance(target_position, connection.limit);
+                    self.clamp_distance(target_position(self), connection.limit);
                 }
 
                 self.entity.physical.transform.position.z = parent_physical.transform.position.z;

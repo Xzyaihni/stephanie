@@ -9,6 +9,8 @@ use yanyaengine::{
 use crate::{
     entity_forward,
 	common::{
+        EntityAny,
+        EntityAnyWrappable,
         CharacterProperties,
         PhysicalProperties,
 		character::Character,
@@ -52,6 +54,14 @@ impl Enemy
     pub fn set_speed(&mut self, speed: f32)
     {
         self.character.set_speed(speed);
+    }
+}
+
+impl EntityAnyWrappable for Enemy
+{
+    fn wrap_any(self) -> EntityAny
+    {
+        EntityAny::Enemy(self)
     }
 }
 

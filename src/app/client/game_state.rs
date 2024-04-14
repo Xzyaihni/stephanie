@@ -95,6 +95,8 @@ impl GameObject for ClientEntitiesContainer
 
 	fn draw(&self, info: &mut DrawInfo)
     {
+        self.enemies.iter().for_each(|(_, pair)| pair.draw(info));
+
 		if let Some(player_id) = self.main_player
 		{
 			self.players.iter().filter(|(id, _)| *id != player_id)
@@ -105,8 +107,6 @@ impl GameObject for ClientEntitiesContainer
 		{
 			self.players.iter().for_each(|(_, pair)| pair.draw(info));
 		}
-
-        self.enemies.iter().for_each(|(_, pair)| pair.draw(info));
     }
 }
 
@@ -298,7 +298,7 @@ impl GameState
 
 		match message
 		{
-			Message::EntityCreate{id, entity} =>
+			Message::EntitySet{id, entity} =>
 			{
 				self.entities.insert(id, create_info, entity);
 			},
@@ -368,7 +368,7 @@ impl GameState
 
         let id = EntityType::Enemy(id);
         let entity = EntityAny::Enemy(enemy);
-        self.echo_message(Message::EntityCreate{id, entity});
+        self.echo_message(Message::EntitySet{id, entity});
     }
 
     pub fn echo_message(&self, message: Message)

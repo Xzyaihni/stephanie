@@ -16,9 +16,11 @@ use yanyaengine::{
 use crate::common::{
 	GettableInner,
 	ChildContainer,
+    EntityAny,
+    EntityAnyWrappable,
     Physical,
 	physics::PhysicsEntity,
-	entity::EntityContainer
+	entity::{ChildEntity, EntityContainer}
 };
 
 use crate::client::DrawableEntity;
@@ -75,6 +77,27 @@ impl<T: EntityContainer> ObjectPair<T>
             }
 		)
 	}
+}
+
+impl<T: EntityContainer + ChildContainer> ChildContainer for ObjectPair<T>
+{
+	fn children_ref(&self) -> &[ChildEntity]
+    {
+        self.entity.children_ref()
+    }
+
+	fn children_mut(&mut self) -> &mut Vec<ChildEntity>
+    {
+        self.entity.children_mut()
+    }
+}
+
+impl<T: EntityAnyWrappable + Clone> EntityAnyWrappable for &ObjectPair<T>
+{
+    fn wrap_any(self) -> EntityAny
+    {
+        self.entity.clone().wrap_any()
+    }
 }
 
 impl<'a, T: EntityContainer + Clone> GettableInner<&ObjectCreateInfo<'a>, T> for ObjectPair<T>

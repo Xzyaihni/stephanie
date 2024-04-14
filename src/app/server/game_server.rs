@@ -259,7 +259,7 @@ impl GameServer
             let id = EntityType::Player(index);
             let entity = EntityAny::Player(player.clone());
 
-            let message = Message::EntityCreate{id, entity};
+            let message = Message::EntitySet{id, entity};
 
 			messager.send_blocking(message)
 		})?;
@@ -313,7 +313,7 @@ impl GameServer
 
 		match message
 		{
-			Message::EntityCreate{id, entity} =>
+			Message::EntitySet{id, entity} =>
 			{
                 self.entities.insert(id, (), entity);
 			},

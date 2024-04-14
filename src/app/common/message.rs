@@ -15,7 +15,7 @@ use crate::common::{
 #[derive(Debug, Clone, EnumCount, Serialize, Deserialize)]
 pub enum Message
 {
-    EntityCreate{id: EntityType, entity: EntityAny},
+    EntitySet{id: EntityType, entity: EntityAny},
     EntityDestroy{id: EntityType},
 	PlayerConnect{name: String},
 	PlayerOnConnect{id: usize},

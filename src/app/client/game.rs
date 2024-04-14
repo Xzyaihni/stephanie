@@ -137,7 +137,10 @@ impl<'a> PlayerContainer<'a>
     {
         if !self.info.selected_weapon
         {
-            // self.player_mut().
+            // let position = todo!();
+            // let weapon = todo!();
+
+            // self.player_mut().add_child(position, weapon);
 
             self.info.selected_weapon = true;
         }
@@ -149,6 +152,8 @@ impl<'a> PlayerContainer<'a>
         {
             return;
         }
+
+        self.update_weapon();
 
         if self.game_state.clicked(Control::MainAction)
         {

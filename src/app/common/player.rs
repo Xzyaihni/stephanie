@@ -1,3 +1,5 @@
+use std::f32;
+
 use serde::{Serialize, Deserialize};
 
 use yanyaengine::{
@@ -9,6 +11,8 @@ use yanyaengine::{
 use crate::{
     entity_forward,
 	common::{
+        EntityAny,
+        EntityAnyWrappable,
         ChildEntity,
         CharacterProperties,
         EntityProperties,
@@ -61,7 +65,8 @@ impl Player
 			name
 		};
 
-        let pon = {
+        let mut add_pon = |position|
+        {
 			let entity = Entity::new(EntityProperties{
 				texture: "player/pon.png".to_owned(),
                 physical: PhysicalProperties{
@@ -74,7 +79,7 @@ impl Player
                 }
 			});
 
-			ChildEntity::new(
+			let pon = ChildEntity::new(
 				ChildConnection::Spring(
                     SpringConnection{
                         limit: transform.scale.x * 0.1,
@@ -84,7 +89,7 @@ impl Player
                 ),
                 ChildRotation::Lerp(
                     LerpRotation{
-                        strength: 0.5
+                        damping: 0.0001
                     }
                 ),
 				ChildDeformation::Stretch(
@@ -96,18 +101,53 @@ impl Player
                     }
 				),
 				entity,
-                Vector3::zeros(),
 				1
-			)
-        };
+			);
 
-        let mut add_pon = |position|
-        {
-            player.add_child(position, pon.clone());
+            player.add_child(position, pon);
         };
 
         add_pon(Vector3::new(-0.15, 0.35, 0.0));
         add_pon(Vector3::new(-0.15, -0.35, 0.0));
+
+        let item_size = 0.2;
+        let held_item = {
+			let entity = Entity::new(EntityProperties{
+				texture: "items/weapons/pistol.png".to_owned(),
+                physical: PhysicalProperties{
+                    mass: 0.5,
+                    friction: 0.4,
+                    transform: Transform{
+                        scale: transform.scale.component_mul(&Vector3::new(
+                            item_size,
+                            item_size * 4.143,
+                            item_size)),
+                        rotation: f32::consts::FRAC_PI_2,
+                        ..transform
+                    }
+                }
+			});
+
+			ChildEntity::new(
+				ChildConnection::Spring(
+                    SpringConnection{
+                        limit: transform.scale.x * 0.1,
+                        damping: 0.02,
+                        strength: 6.0
+                    }
+                ),
+                ChildRotation::Lerp(
+                    LerpRotation{
+                        damping: 0.00001
+                    }
+                ),
+				ChildDeformation::Rigid,
+				entity,
+				-1
+			)
+        };
+
+        player.add_child(Vector3::new(1.0, 0.0, 0.0), held_item);
 
 		player
 	}
@@ -126,6 +166,14 @@ impl Player
 	{
 		&self.name
 	}
+}
+
+impl EntityAnyWrappable for Player
+{
+    fn wrap_any(self) -> EntityAny
+    {
+        EntityAny::Player(self)
+    }
 }
 
 entity_forward!{Player, character}
