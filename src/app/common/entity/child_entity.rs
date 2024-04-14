@@ -47,8 +47,37 @@ pub struct SpringConnection
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EaseOutRotation
 {
-    pub strength: f32
+    pub strength: f32,
+    pub momentum: f32
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConstantRotation
+{
+    pub speed: f32,
+    pub momentum: f32
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RotationInfo<T>
+{
+    last_move: f32,
+    props: T
+}
+
+impl<T> From<T> for RotationInfo<T>
+{
+    fn from(props: T) -> Self
+    {
+        Self{
+            last_move: 0.0,
+            props
+        }
+    }
+}
+
+pub type EaseOutRotationInfo = RotationInfo<EaseOutRotation>;
+pub type ConstantRotationInfo = RotationInfo<ConstantRotation>;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StretchDeformation
@@ -83,8 +112,8 @@ pub enum ChildConnection
 pub enum ChildRotation
 {
     Instant,
-    EaseOut(EaseOutRotation),
-    Constant{speed: f32}
+    EaseOut(EaseOutRotationInfo),
+    Constant(ConstantRotationInfo)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -199,8 +228,10 @@ impl ChildEntity
             },
             ChildRotation::EaseOut(..) | ChildRotation::Constant{..} =>
             {
-                let rotation_difference = target_rotation - self.rotation();
-                let rotation_difference = if rotation_difference > f32::consts::PI
+                let pi2 = 2.0 * f32::consts::PI;
+                let rotation_difference = (target_rotation - self.rotation()) % pi2;
+
+                let short_difference = if rotation_difference > f32::consts::PI
                 {
                     rotation_difference - 2.0 * f32::consts::PI
                 } else if rotation_difference < -f32::consts::PI
@@ -211,28 +242,74 @@ impl ChildEntity
                     rotation_difference
                 };
 
-                let target_rotation = rotation_difference + self.rotation();
-
-                match &self.rotation
+                let half = -f32::consts::PI..f32::consts::PI;
+                let long_difference = if half.contains(&rotation_difference)
                 {
-                    ChildRotation::EaseOut(props) =>
+                    if rotation_difference < 0.0
                     {
-                        let amount = 1.0 - props.strength.powf(dt);
+                        (2.0 * f32::consts::PI) + rotation_difference
+                    } else
+                    {
+                        (-2.0 * f32::consts::PI) + rotation_difference
+                    }
+                } else
+                {
+                    rotation_difference
+                };
 
-                        let rotation = lerp(self.rotation(), target_rotation, amount);
+                let short_fraction = -short_difference / long_difference;
 
-                        self.set_rotation(rotation);
+                let current_difference = |last_move: f32, momentum: f32|
+                {
+                    if (last_move * short_difference).is_sign_positive()
+                    {
+                        // was moving in the shortest direction already
+                        short_difference
+                    } else
+                    {
+                        if momentum < short_fraction
+                        {
+                            long_difference
+                        } else
+                        {
+                            short_difference
+                        }
+                    }
+                };
+
+                let rotation = self.rotation();
+
+                match &mut self.rotation
+                {
+                    ChildRotation::EaseOut(info) =>
+                    {
+                        let amount = 1.0 - info.props.strength.powf(dt);
+
+                        let current_difference =
+                            current_difference(info.last_move, info.props.momentum);
+
+                        let target_rotation = current_difference + rotation;
+
+                        let new_rotation = lerp(rotation, target_rotation, amount);
+
+                        info.last_move = new_rotation - rotation;
+
+                        self.set_rotation(new_rotation);
                     },
-                    ChildRotation::Constant{speed} =>
+                    ChildRotation::Constant(info) =>
                     {
-                        let distance = target_rotation - self.rotation();
+                        let max_move = info.props.speed * dt;
 
-                        let max_move = speed * dt;
-                        let move_amount = distance.clamp(-max_move, max_move);
+                        let current_difference =
+                            current_difference(info.last_move, info.props.momentum);
 
-                        let rotation = self.rotation() + move_amount;
+                        let move_amount = current_difference.clamp(-max_move, max_move);
 
-                        self.set_rotation(rotation);
+                        info.last_move = move_amount;
+
+                        let new_rotation = rotation + move_amount;
+
+                        self.set_rotation(new_rotation);
                     },
                     _ => unreachable!()
                 }

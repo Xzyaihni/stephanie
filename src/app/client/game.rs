@@ -77,14 +77,14 @@ struct PlayerInfo
 {
     id: usize,
     camera_follow: f32,
-    selected_weapon: bool
+    selected_weapon: ()
 }
 
 impl PlayerInfo
 {
     pub fn new(id: usize) -> Self
     {
-        Self{id, camera_follow: 0.25, selected_weapon: false}
+        Self{id, camera_follow: 0.25, selected_weapon: ()}
     }
 }
 
@@ -135,15 +135,33 @@ impl<'a> PlayerContainer<'a>
 
     fn update_weapon(&mut self)
     {
-        if !self.info.selected_weapon
+        // later
+    }
+
+    fn weapon_attack(&mut self)
+    {
+        let tile_pos = self.game_state.player_tile();
+
+        let my_tile = self.game_state.tile(tile_pos);
+        let tile_below = self.game_state.tile(
+            tile_pos.offset(Pos3{x: 0, y: 0, z: -1})
+        );
+
+        let name_of = |tile|
         {
-            // let position = todo!();
-            // let weapon = todo!();
+            if let Some(tile) = tile
+            {
+                &self.game_state.tilemap[tile].name
+            } else
+            {
+                "none"
+            }
+        };
 
-            // self.player_mut().add_child(position, weapon);
+        let my_tile = name_of(my_tile.copied());
+        let tile_below = name_of(tile_below.copied());
 
-            self.info.selected_weapon = true;
-        }
+        eprintln!("my tile: {my_tile}, tile below me: {tile_below}");
     }
 
     pub fn update(&mut self, _dt: f32)
@@ -157,28 +175,7 @@ impl<'a> PlayerContainer<'a>
 
         if self.game_state.clicked(Control::MainAction)
         {
-            let tile_pos = self.game_state.player_tile();
-
-            let my_tile = self.game_state.tile(tile_pos);
-            let tile_below = self.game_state.tile(
-                tile_pos.offset(Pos3{x: 0, y: 0, z: -1})
-            );
-
-            let name_of = |tile|
-            {
-                if let Some(tile) = tile
-                {
-                    &self.game_state.tilemap[tile].name
-                } else
-                {
-                    "none"
-                }
-            };
-
-            let my_tile = name_of(my_tile.copied());
-            let tile_below = name_of(tile_below.copied());
-
-            eprintln!("my tile: {my_tile}, tile below me: {tile_below}");
+            self.weapon_attack();
         }
 
         if self.game_state.debug_mode && self.game_state.clicked(Control::DebugConsole)

@@ -25,6 +25,7 @@ use crate::{
 			ChildDeformation,
 			SpringConnection,
             EaseOutRotation,
+            ConstantRotation,
 			StretchDeformation
 		}
 	}
@@ -89,8 +90,9 @@ impl Player
                 ),
                 ChildRotation::EaseOut(
                     EaseOutRotation{
-                        strength: 0.0001
-                    }
+                        strength: 0.0001,
+                        momentum: 0.5
+                    }.into()
                 ),
 				ChildDeformation::Stretch(
 					StretchDeformation{
@@ -136,7 +138,12 @@ impl Player
                         strength: 6.0
                     }
                 ),
-                ChildRotation::Constant{speed: 5.0},
+                ChildRotation::Constant(
+                    ConstantRotation{
+                        speed: 5.0,
+                        momentum: 0.5
+                    }.into()
+                ),
 				ChildDeformation::Rigid,
 				entity,
 				-1
