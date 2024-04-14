@@ -45,9 +45,9 @@ pub struct SpringConnection
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct LerpRotation
+pub struct EaseOutRotation
 {
-    pub damping: f32
+    pub strength: f32
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -83,7 +83,8 @@ pub enum ChildConnection
 pub enum ChildRotation
 {
     Instant,
-    Lerp(LerpRotation)
+    EaseOut(EaseOutRotation),
+    Constant{speed: f32}
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -196,7 +197,7 @@ impl ChildEntity
             {
                 self.set_rotation(target_rotation);
             },
-            ChildRotation::Lerp(props) =>
+            ChildRotation::EaseOut(..) | ChildRotation::Constant{..} =>
             {
                 let rotation_difference = target_rotation - self.rotation();
                 let rotation_difference = if rotation_difference > f32::consts::PI
@@ -212,11 +213,29 @@ impl ChildEntity
 
                 let target_rotation = rotation_difference + self.rotation();
 
-                let amount = 1.0 - props.damping.powf(dt);
+                match &self.rotation
+                {
+                    ChildRotation::EaseOut(props) =>
+                    {
+                        let amount = 1.0 - props.strength.powf(dt);
 
-                let rotation = lerp(self.rotation(), target_rotation, amount);
+                        let rotation = lerp(self.rotation(), target_rotation, amount);
 
-                self.set_rotation(rotation);
+                        self.set_rotation(rotation);
+                    },
+                    ChildRotation::Constant{speed} =>
+                    {
+                        let distance = target_rotation - self.rotation();
+
+                        let max_move = speed * dt;
+                        let move_amount = distance.clamp(-max_move, max_move);
+
+                        let rotation = self.rotation() + move_amount;
+
+                        self.set_rotation(rotation);
+                    },
+                    _ => unreachable!()
+                }
             }
         }
 
