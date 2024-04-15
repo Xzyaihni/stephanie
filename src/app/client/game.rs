@@ -8,12 +8,14 @@ use crate::{
         Enemy,
         EnemyProperties,
         CharacterProperties,
+        EntityType,
+        EntityAny,
         EntityProperties,
         PhysicalProperties,
         EntitiesController,
         NetworkEntity,
         player::Player,
-        world::{TILE_SIZE, Pos3},
+        world::TILE_SIZE,
         physics::PhysicsEntity
     }
 };
@@ -22,6 +24,8 @@ use super::game_state::{
     GameState,
     MousePosition,
     Control,
+    RaycastInfo,
+    RaycastHit,
     object_pair::ObjectPair
 };
 
@@ -140,28 +144,40 @@ impl<'a> PlayerContainer<'a>
 
     fn weapon_attack(&mut self)
     {
-        let tile_pos = self.game_state.player_tile();
+        let start = self.player_ref().position();
 
-        let my_tile = self.game_state.tile(tile_pos);
-        let tile_below = self.game_state.tile(
-            tile_pos.offset(Pos3{x: 0, y: 0, z: -1})
-        );
+        let mouse = self.game_state.mouse_position.center_offset();
+        let end = start + Vector3::new(mouse.x, mouse.y, 0.0);
 
-        let name_of = |tile|
-        {
-            if let Some(tile) = tile
-            {
-                &self.game_state.tilemap[tile].name
-            } else
-            {
-                "none"
-            }
+        let info = RaycastInfo{
+            pierce: None,
+            ignore_end: true
         };
 
-        let my_tile = name_of(my_tile.copied());
-        let tile_below = name_of(tile_below.copied());
+        let player_id = EntityType::Player(self.info.id);
 
-        eprintln!("my tile: {my_tile}, tile below me: {tile_below}");
+        let hits = self.game_state.raycast(info, start, &end)
+            .into_iter()
+            .filter(|x|
+            {
+                match x
+                {
+                    RaycastHit::Entity(id) => *id != player_id,
+                    _ => true
+                }
+            });
+
+        for hit in hits
+        {
+            match hit
+            {
+                RaycastHit::Entity(id) =>
+                {
+                    self.game_state.remove_client_entity(id);
+                },
+                _ => ()
+            }
+        }
     }
 
     pub fn update(&mut self, _dt: f32)
@@ -183,27 +199,16 @@ impl<'a> PlayerContainer<'a>
             dbg!("make this an actual console thingy later");
 
             let position = *self.player_ref().position();
-            let props = EnemyProperties{
-                character_properties: CharacterProperties{
-                    entity_properties: EntityProperties{
-                        texture: "enemy/body.png".to_owned(),
-                        physical: PhysicalProperties{
-                            transform: Transform{
-                                position,
-                                scale: Vector3::repeat(0.1),
-                                rotation: fastrand::f32() * (3.141596 * 2.0),
-                                ..Default::default()
-                            },
-                            mass: 50.0,
-                            friction: 0.5
-                        }
-                    },
-                    speed: 1.0
-                }
-            };
 
-            let enemy = Enemy::new(props);
-            self.game_state.add_client_enemy(enemy);
+            for x in 0..20
+            {
+                for y in 0..20
+                {
+                    let pos = position + Vector3::new(x as f32 * 0.1, y as f32 * 0.1, 0.0);
+
+                    self.add_enemy(pos);
+                }
+            }
             /*let mut player = self.player_mut();
             let player = &mut player.inner_mut().entity;
 
@@ -216,6 +221,35 @@ impl<'a> PlayerContainer<'a>
         }
 
         self.look_at(self.game_state.mouse_position);
+    }
+
+    // temporary thing for testing
+    fn add_enemy(&self, position: Vector3<f32>)
+    {
+        let props = |pos|
+        {
+            EnemyProperties{
+                character_properties: CharacterProperties{
+                    entity_properties: EntityProperties{
+                        texture: "enemy/body.png".to_owned(),
+                        physical: PhysicalProperties{
+                            transform: Transform{
+                                position: pos,
+                                scale: Vector3::repeat(0.1),
+                                rotation: fastrand::f32() * (3.141596 * 2.0),
+                                ..Default::default()
+                            },
+                            mass: 50.0,
+                            friction: 0.5
+                        }
+                    },
+                    speed: 1.0
+                }
+            }
+        };
+
+        let enemy = Enemy::new(props(position));
+        self.game_state.add_client_entity(EntityAny::Enemy(enemy));
     }
 
     fn movement_direction(&self) -> Option<Vector3<f32>>
@@ -287,7 +321,7 @@ impl<'a> PlayerContainer<'a>
 
     pub fn look_at(&mut self, mouse_position: MousePosition)
     {
-        let (mouse_x, mouse_y) = (mouse_position.x - 0.5, mouse_position.y - 0.5);
+        let mouse = mouse_position.center_offset();
 
         let (aspect, camera_pos) = {
             let camera_ref = self.game_state.camera.read();
@@ -302,7 +336,7 @@ impl<'a> PlayerContainer<'a>
 
         let player_offset = (player_offset.x / aspect.0, player_offset.y / aspect.1);
 
-        let (x, y) = (mouse_x - player_offset.0, mouse_y - player_offset.1);
+        let (x, y) = (mouse.x - player_offset.0, mouse.y - player_offset.1);
 
         let rotation = y.atan2(x);
 

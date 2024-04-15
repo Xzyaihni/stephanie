@@ -16,6 +16,7 @@ use crate::common::{
 pub enum Message
 {
     EntitySet{id: EntityType, entity: EntityAny},
+    EntityAdd{entity: EntityAny},
     EntityDestroy{id: EntityType},
 	PlayerConnect{name: String},
 	PlayerOnConnect{id: usize},
@@ -50,7 +51,7 @@ impl Message
 	{
 		match self
 		{
-			Message::ChunkRequest{..} => false,
+			Message::ChunkRequest{..} | Message::EntityAdd{..} => false,
 			_ => true
 		}
 	}

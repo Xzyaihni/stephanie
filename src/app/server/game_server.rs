@@ -317,6 +317,13 @@ impl GameServer
 			{
                 self.entities.insert(id, (), entity);
 			},
+            Message::EntityAdd{entity} =>
+            {
+                let id = self.entities.push((), entity.clone());
+
+                let message = Message::EntitySet{id, entity};
+                self.connection_handler.write().send_message(message);
+            },
 			x => panic!("unhandled message: {x:?}")
 		}
 	}

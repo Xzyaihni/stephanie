@@ -131,6 +131,25 @@ pub trait EntitiesContainer<I>
 	fn enemies_ref(&self) -> &ObjectsStore<Self::EnemyObject>;
 	fn enemies_mut(&mut self) -> &mut ObjectsStore<Self::EnemyObject>;
 
+    fn push(&mut self, info: I, entity: EntityAny) -> EntityType
+    {
+        match entity
+        {
+            EntityAny::Player(entity) =>
+            {
+                let id = self.players_mut().push(Self::PlayerObject::wrap(info, entity));
+
+                EntityType::Player(id)
+            },
+            EntityAny::Enemy(entity) =>
+            {
+                let id = self.enemies_mut().push(Self::EnemyObject::wrap(info, entity));
+
+                EntityType::Enemy(id)
+            }
+        }
+    }
+
     fn insert(&mut self, id: EntityType, info: I, entity: EntityAny)
     {
         match (id, entity)

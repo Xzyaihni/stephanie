@@ -13,17 +13,19 @@ use yanyaengine::{
     game_object::*
 };
 
-use crate::common::{
-	GettableInner,
-	ChildContainer,
-    EntityAny,
-    EntityAnyWrappable,
-    Physical,
-	physics::PhysicsEntity,
-	entity::{ChildEntity, EntityContainer}
+use crate::{
+    client::DrawableEntity,
+    common::{
+        Entity,
+        GettableInner,
+        ChildContainer,
+        EntityAny,
+        EntityAnyWrappable,
+        Physical,
+        physics::PhysicsEntity,
+        entity::{ChildEntity, EntityContainer}
+    }
 };
-
-use crate::client::DrawableEntity;
 
 
 #[derive(Debug)]
@@ -35,7 +37,7 @@ pub struct ObjectPair<T>
 	pub entity: T
 }
 
-impl<T: EntityContainer> ObjectPair<T>
+impl<T: EntityContainer + DrawableEntity> ObjectPair<T>
 {
 	pub fn new(create_info: &ObjectCreateInfo, entity: T) -> Self
 	{
@@ -100,7 +102,9 @@ impl<T: EntityAnyWrappable + Clone> EntityAnyWrappable for &ObjectPair<T>
     }
 }
 
-impl<'a, T: EntityContainer + Clone> GettableInner<&ObjectCreateInfo<'a>, T> for ObjectPair<T>
+impl<'a, T> GettableInner<&ObjectCreateInfo<'a>, T> for ObjectPair<T>
+where
+    T: EntityContainer + Clone + DrawableEntity
 {
     fn wrap(info: &ObjectCreateInfo<'a>, value: T) -> Self
     {
@@ -211,5 +215,18 @@ impl<T: EntityContainer> PhysicsEntity for ObjectPair<T>
 	fn physics_update(&mut self, dt: f32)
     {
         self.entity.physics_update(dt);
+    }
+}
+
+impl<T: EntityContainer> EntityContainer for ObjectPair<T>
+{
+    fn entity_ref(&self) -> &Entity
+    {
+        self.entity.entity_ref()
+    }
+
+    fn entity_mut(&mut self) -> &mut Entity
+    {
+        self.entity.entity_mut()
     }
 }

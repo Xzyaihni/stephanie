@@ -5,9 +5,12 @@ use std::sync::{
 
 use parking_lot::{RwLock, Mutex};
 
+use nalgebra::{Unit, Vector3, Vector2};
+
 use yanyaengine::{
     Assets,
     ObjectFactory,
+    TransformContainer,
     camera::Camera,
     game_object::*
 };
@@ -17,11 +20,13 @@ use crate::common::{
 	receiver_loop,
     ObjectsStore,
     TileMap,
+    Entity,
     EntityType,
     EntityAny,
     EntityPasser,
 	EntitiesContainer,
 	EntitiesController,
+    entity::EntityContainer,
 	message::Message,
 	player::Player,
     enemy::Enemy,
@@ -54,6 +59,12 @@ pub mod object_pair;
 mod notifications;
 
 
+struct RaycastResult
+{
+    distance: f32,
+    pierce: f32
+}
+
 #[derive(Debug)]
 pub struct ClientEntitiesContainer
 {
@@ -83,6 +94,83 @@ impl ClientEntitiesContainer
 	{
 		self.players.contains(id)
 	}
+
+    fn raycast_entity(
+        start: &Vector3<f32>,
+        direction: &Unit<Vector3<f32>>,
+        entity: &Entity
+    ) -> Option<RaycastResult>
+    {
+        let scale = entity.scale();
+
+        // im not dealing with this
+        debug_assert!(scale.x == scale.y && scale.x == scale.z);
+        let radius = scale.x / 2.0;
+
+        let position = entity.position();
+
+        let offset = start - position;
+
+        let left = direction.dot(&offset).powi(2);
+        let right = offset.magnitude_squared() - radius.powi(2);
+
+        // math ppl keep making fake letters
+        let nabla = left - right;
+
+        if nabla < 0.0
+        {
+            None
+        } else
+        {
+            let sqrt_nabla = nabla.sqrt();
+            let left = -(direction.dot(&offset));
+
+            let first = left - sqrt_nabla;
+            let second = left + sqrt_nabla;
+
+            let close = first.min(second);
+            let far = first.max(second);
+
+            let pierce = far - close;
+
+            Some(RaycastResult{distance: close, pierce})
+        }
+    }
+
+    pub fn raycast(
+        &self,
+        info: RaycastInfo,
+        start: &Vector3<f32>,
+        end: &Vector3<f32>
+    ) -> Vec<RaycastHit>
+    {
+        let direction = end - start;
+
+        let max_distance = direction.magnitude();
+        let direction = Unit::new_normalize(direction);
+
+        self.enemies.iter()
+            .map(|(id, enemy)| (EntityType::Enemy(id), enemy.entity_ref()))
+            .chain(self.players.iter()
+                .map(|(id, player)| (EntityType::Player(id), player.entity_ref())))
+            .filter_map(|(id, entity)|
+            {
+                Self::raycast_entity(start, &direction, entity).and_then(|hit|
+                {
+                    let backwards = (hit.distance + hit.pierce) < 0.0;
+                    let past_end = (hit.distance > max_distance) && !info.ignore_end;
+
+                    if backwards || past_end
+                    {
+                        None
+                    } else
+                    {
+                        Some(RaycastHit::Entity(id))
+                    }
+                })
+            })
+            .collect()
+    }
 }
 
 impl GameObject for ClientEntitiesContainer
@@ -149,6 +237,11 @@ impl MousePosition
 	{
 		Self{x, y}
 	}
+
+    pub fn center_offset(self) -> Vector2<f32>
+    {
+        Vector2::new(self.x - 0.5, self.y - 0.5)
+    }
 }
 
 impl From<(f64, f64)> for MousePosition
@@ -157,6 +250,20 @@ impl From<(f64, f64)> for MousePosition
 	{
 		Self{x: value.0 as f32, y: value.1 as f32}
 	}
+}
+
+pub struct RaycastInfo
+{
+    pub pierce: Option<f32>,
+    pub ignore_end: bool
+}
+
+#[derive(Debug)]
+pub enum RaycastHit
+{
+    Entity(EntityType),
+    // later
+    Tile
 }
 
 pub struct GameState
@@ -232,6 +339,16 @@ impl GameState
 			receiver
 		}
 	}
+
+    pub fn raycast(
+        &self,
+        info: RaycastInfo,
+        start: &Vector3<f32>,
+        end: &Vector3<f32>
+    ) -> Vec<RaycastHit>
+    {
+        self.entities.raycast(info, start, end)
+    }
 
 	fn connect_to_server(handler: Arc<RwLock<ConnectionsHandler>>, name: &str) -> usize
 	{
@@ -362,13 +479,14 @@ impl GameState
 		self.world.rescale(camera.aspect());
 	}
 
-    pub fn add_client_enemy(&self, enemy: Enemy)
+    pub fn remove_client_entity(&self, id: EntityType)
     {
-        let id = self.entities.empty_enemy();
+        self.connections_handler.write().send_message(Message::EntityDestroy{id});
+    }
 
-        let id = EntityType::Enemy(id);
-        let entity = EntityAny::Enemy(enemy);
-        self.echo_message(Message::EntitySet{id, entity});
+    pub fn add_client_entity(&self, entity: EntityAny)
+    {
+        self.connections_handler.write().send_message(Message::EntityAdd{entity});
     }
 
     pub fn echo_message(&self, message: Message)

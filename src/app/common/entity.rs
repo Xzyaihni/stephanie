@@ -79,7 +79,7 @@ pub trait ChildContainer: TransformContainer
 	}
 }
 
-pub trait EntityContainer: PhysicsEntity + DrawableEntity + ChildContainer
+pub trait EntityContainer: PhysicsEntity + ChildContainer
 {
     fn entity_ref(&self) -> &Entity;
     fn entity_mut(&mut self) -> &mut Entity;
