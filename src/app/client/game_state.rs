@@ -553,7 +553,7 @@ impl GameState
 	{
         match self.controls.state(control)
         {
-            ControlState::Held => true,
+            ControlState::Pressed => true,
             _ => false
         }
 	}
@@ -561,11 +561,7 @@ impl GameState
 	#[allow(dead_code)]
 	pub fn clicked(&mut self, control: Control) -> bool
 	{
-        match self.controls.state(control)
-        {
-            ControlState::Clicked => true,
-            _ => false
-        }
+        self.controls.is_clicked(control)
 	}
 
 	pub fn camera_moved(&mut self)

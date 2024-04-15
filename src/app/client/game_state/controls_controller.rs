@@ -6,7 +6,7 @@ use enum_amount::EnumCount;
 
 
 #[repr(usize)]
-#[derive(Debug, Clone, Copy, EnumCount)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumCount)]
 pub enum Control
 {
 	MoveUp = 0,
@@ -23,12 +23,11 @@ pub enum Control
     DebugConsole
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ControlState
 {
     Released,
-    Held,
-    Clicked
+    Pressed
 }
 
 impl From<&yanyaengine::Control> for ControlState
@@ -39,7 +38,7 @@ impl From<&yanyaengine::Control> for ControlState
         {
             match *estate
             {
-                ElementState::Pressed => ControlState::Clicked,
+                ElementState::Pressed => ControlState::Pressed,
                 ElementState::Released => ControlState::Released
             }
         };
@@ -48,7 +47,7 @@ impl From<&yanyaengine::Control> for ControlState
         {
             yanyaengine::Control::Keyboard{state, ..} => estate_to_state(state),
             yanyaengine::Control::Mouse{state, ..} => estate_to_state(state),
-            yanyaengine::Control::Scroll{..} => ControlState::Clicked
+            yanyaengine::Control::Scroll{..} => ControlState::Pressed
         }
     }
 }
@@ -80,7 +79,8 @@ impl KeyMapping
 pub struct ControlsController
 {
     key_mapping: HashMap<KeyMapping, Control>,
-    keys: [ControlState; Control::COUNT]
+    keys: [ControlState; Control::COUNT],
+    clicked: Vec<Control>
 }
 
 impl ControlsController
@@ -104,8 +104,14 @@ impl ControlsController
 
         Self{
             key_mapping,
-            keys: [ControlState::Released; Control::COUNT]
+            keys: [ControlState::Released; Control::COUNT],
+            clicked: Vec::new()
         }
+    }
+
+    pub fn is_clicked(&self, control: Control) -> bool
+    {
+        self.clicked.contains(&control)
     }
 
     pub fn state(&self, control: Control) -> ControlState
@@ -125,6 +131,11 @@ impl ControlsController
 
             if let Some(matched) = matched
             {
+                if state == ControlState::Pressed
+                {
+                    self.clicked.push(*matched);
+                }
+
                 self.keys[*matched as usize] = state;
             }
         }
@@ -132,12 +143,6 @@ impl ControlsController
 
     pub fn release_clicked(&mut self)
     {
-        self.keys.iter_mut().for_each(|key|
-        {
-            if let ControlState::Clicked = *key
-            {
-                *key = ControlState::Held;
-            }
-        });
+        self.clicked.clear();
     }
 }
