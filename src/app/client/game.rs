@@ -1,4 +1,4 @@
-use nalgebra::Vector3;
+use nalgebra::{Vector3, Vector2};
 
 use yanyaengine::{Transform, TransformContainer};
 
@@ -146,7 +146,12 @@ impl<'a> PlayerContainer<'a>
     {
         let start = self.player_ref().position();
 
-        let mouse = self.game_state.mouse_position.center_offset();
+        let camera_size = self.game_state.camera.read().aspect();
+        let scale = Vector2::new(camera_size.0, camera_size.1);
+
+        let mouse: Vector2<f32> = self.game_state.mouse_position.center_offset()
+            .component_mul(&scale);
+        
         let end = start + Vector3::new(mouse.x, mouse.y, 0.0);
 
         let info = RaycastInfo{
