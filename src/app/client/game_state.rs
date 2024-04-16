@@ -149,9 +149,19 @@ impl ClientEntitiesContainer
         let max_distance = direction.magnitude();
         let direction = Unit::new_normalize(direction);
 
-        self.enemies.iter()
+        let mut hits: Vec<_> = self.enemies.iter()
             .map(|(id, enemy)| (EntityType::Enemy(id), enemy.entity_ref()))
             .chain(self.players.iter()
+                .filter(|(id, _)|
+                {
+                    if info.ignore_player
+                    {
+                        self.main_player != Some(*id)
+                    } else
+                    {
+                        true
+                    }
+                })
                 .map(|(id, player)| (EntityType::Player(id), player.entity_ref())))
             .filter_map(|(id, entity)|
             {
@@ -165,11 +175,35 @@ impl ClientEntitiesContainer
                         None
                     } else
                     {
-                        Some(RaycastHit::Entity(id))
+                        let id = RaycastHitId::Entity(id);
+                        Some(RaycastHit{id, distance: hit.distance, width: hit.pierce})
                     }
                 })
             })
-            .collect()
+            .collect();
+
+        hits.sort_unstable_by(|a, b| a.distance.partial_cmp(&b.distance).unwrap());
+
+        if let Some(mut pierce) = info.pierce
+        {
+            hits.into_iter().take_while(|x|
+            {
+                if pierce > 0.0
+                {
+                    pierce -= x.width;
+
+                    true
+                } else
+                {
+                    false
+                }
+            }).collect()
+        } else
+        {
+            let first = hits.into_iter().next();
+
+            first.map(|x| vec![x]).unwrap_or_else(|| Vec::new())
+        }
     }
 }
 
@@ -190,7 +224,8 @@ impl GameObject for ClientEntitiesContainer
 			self.players.iter().filter(|(id, _)| *id != player_id)
 				.for_each(|(_, pair)| pair.draw(info));
 
-			self.players[player_id].draw(info);
+            // player could be uninitialized
+			self.players.get(player_id).map(|player| player.draw(info));
 		} else
 		{
 			self.players.iter().for_each(|(_, pair)| pair.draw(info));
@@ -255,15 +290,24 @@ impl From<(f64, f64)> for MousePosition
 pub struct RaycastInfo
 {
     pub pierce: Option<f32>,
+    pub ignore_player: bool,
     pub ignore_end: bool
 }
 
 #[derive(Debug)]
-pub enum RaycastHit
+pub enum RaycastHitId
 {
     Entity(EntityType),
     // later
     Tile
+}
+
+#[derive(Debug)]
+pub struct RaycastHit
+{
+    pub id: RaycastHitId,
+    pub distance: f32,
+    pub width: f32
 }
 
 pub struct GameState
@@ -298,7 +342,7 @@ impl GameState
 		let mouse_position = MousePosition::new(0.0, 0.0);
 
 		let notifications = Notifications::new();
-		let entities = ClientEntitiesContainer::new();
+		let mut entities = ClientEntitiesContainer::new();
         let controls = ControlsController::new();
 		let connections_handler = Arc::new(RwLock::new(ConnectionsHandler::new(message_passer)));
 
@@ -313,6 +357,7 @@ impl GameState
 		);
 
 		let player_id = Self::connect_to_server(connections_handler.clone(), &client_info.name);
+        entities.main_player = Some(player_id);
 
 		sender_loop(connections_handler.clone());
 

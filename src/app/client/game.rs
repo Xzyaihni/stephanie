@@ -8,7 +8,6 @@ use crate::{
         Enemy,
         EnemyProperties,
         CharacterProperties,
-        EntityType,
         EntityAny,
         EntityProperties,
         PhysicalProperties,
@@ -24,7 +23,7 @@ use super::game_state::{
     GameState,
     Control,
     RaycastInfo,
-    RaycastHit,
+    RaycastHitId,
     object_pair::ObjectPair
 };
 
@@ -150,28 +149,18 @@ impl<'a> PlayerContainer<'a>
         let end = start + Vector3::new(mouse.x, mouse.y, 0.0);
 
         let info = RaycastInfo{
-            pierce: None,
+            pierce: Some(0.5),
+            ignore_player: true,
             ignore_end: true
         };
 
-        let player_id = EntityType::Player(self.info.id);
-
-        let hits = self.game_state.raycast(info, start, &end)
-            .into_iter()
-            .filter(|x|
-            {
-                match x
-                {
-                    RaycastHit::Entity(id) => *id != player_id,
-                    _ => true
-                }
-            });
+        let hits = self.game_state.raycast(info, start, &end);
 
         for hit in hits
         {
-            match hit
+            match hit.id
             {
-                RaycastHit::Entity(id) =>
+                RaycastHitId::Entity(id) =>
                 {
                     self.game_state.remove_client_entity(id);
                 },
