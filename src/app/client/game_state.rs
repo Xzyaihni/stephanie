@@ -564,6 +564,14 @@ impl GameState
         self.controls.is_clicked(control)
 	}
 
+    pub fn world_mouse_position(&self) -> Vector2<f32>
+    {
+        let camera_size = self.camera.read().aspect();
+        let scale = Vector2::new(camera_size.0, camera_size.1);
+
+        self.mouse_position.center_offset().component_mul(&scale)
+    }
+
 	pub fn camera_moved(&mut self)
 	{
 		let pos = *self.camera.read().position();

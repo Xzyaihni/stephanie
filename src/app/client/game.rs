@@ -22,7 +22,6 @@ use crate::{
 
 use super::game_state::{
     GameState,
-    MousePosition,
     Control,
     RaycastInfo,
     RaycastHit,
@@ -146,11 +145,7 @@ impl<'a> PlayerContainer<'a>
     {
         let start = self.player_ref().position();
 
-        let camera_size = self.game_state.camera.read().aspect();
-        let scale = Vector2::new(camera_size.0, camera_size.1);
-
-        let mouse: Vector2<f32> = self.game_state.mouse_position.center_offset()
-            .component_mul(&scale);
+        let mouse = self.game_state.world_mouse_position();
         
         let end = start + Vector3::new(mouse.x, mouse.y, 0.0);
 
@@ -225,7 +220,7 @@ impl<'a> PlayerContainer<'a>
             self.walk(movement);
         }
 
-        self.look_at(self.game_state.mouse_position);
+        self.look_at_mouse();
     }
 
     // temporary thing for testing
@@ -324,10 +319,15 @@ impl<'a> PlayerContainer<'a>
         player.set_velocity(velocity);
     }
 
-    pub fn look_at(&mut self, mouse_position: MousePosition)
+    pub fn look_at_mouse(&mut self)
     {
-        let mouse = mouse_position.center_offset();
+        let mouse = self.game_state.world_mouse_position();
 
+        self.look_at(mouse)
+    }
+
+    pub fn look_at(&mut self, look_position: Vector2<f32>)
+    {
         let (aspect, camera_pos) = {
             let camera_ref = self.game_state.camera.read();
 
@@ -341,7 +341,7 @@ impl<'a> PlayerContainer<'a>
 
         let player_offset = (player_offset.x / aspect.0, player_offset.y / aspect.1);
 
-        let (x, y) = (mouse.x - player_offset.0, mouse.y - player_offset.1);
+        let (x, y) = (look_position.x - player_offset.0, look_position.y - player_offset.1);
 
         let rotation = y.atan2(x);
 
