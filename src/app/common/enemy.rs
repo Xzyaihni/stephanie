@@ -46,7 +46,7 @@ impl Enemy
 		}
 	}
 
-	pub fn speed(&self) -> f32
+	pub fn speed(&self) -> Option<f32>
 	{
 		self.character.speed()
 	}

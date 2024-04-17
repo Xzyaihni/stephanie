@@ -8,6 +8,8 @@ use crate::{
         Enemy,
         EnemyProperties,
         CharacterProperties,
+        Anatomy,
+        HumanAnatomy,
         EntityAny,
         EntityProperties,
         PhysicalProperties,
@@ -232,7 +234,7 @@ impl<'a> PlayerContainer<'a>
                             friction: 0.5
                         }
                     },
-                    speed: 1.0
+                    anatomy: Anatomy::Human(HumanAnatomy::default())
                 }
             }
         };
@@ -303,9 +305,12 @@ impl<'a> PlayerContainer<'a>
     {
         let mut player = self.player_mut();
 
-        let velocity = direction * player.inner().entity.speed();
+        if let Some(speed) = player.inner().entity.speed()
+        {
+            let velocity = direction * speed;
 
-        player.set_velocity(velocity);
+            player.set_velocity(velocity);
+        }
     }
 
     pub fn look_at_mouse(&mut self)

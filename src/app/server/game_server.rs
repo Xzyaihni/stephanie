@@ -25,6 +25,8 @@ use crate::common::{
     EntityAny,
     ObjectsStore,
 	TileMap,
+    Anatomy,
+    HumanAnatomy,
 	EntityPasser,
 	EntitiesContainer,
 	EntitiesController,
@@ -180,7 +182,7 @@ impl GameServer
 		let player_properties = PlayerProperties{
             name: format!("stephanie #{player_index}"),
             character_properties: CharacterProperties{
-                speed: 0.5,
+                anatomy: Anatomy::Human(HumanAnatomy::default()),
                 entity_properties: EntityProperties{
                     texture: "player/hair.png".to_owned(),
                     physical: PhysicalProperties{

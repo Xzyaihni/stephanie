@@ -4,14 +4,14 @@ use yanyaengine::{Transform, OnTransformCallback, TransformContainer};
 
 use crate::{
     entity_forward,
-	common::{PhysicalProperties, entity::EntityProperties}
+	common::{Anatomy, PhysicalProperties, entity::EntityProperties}
 };
 
 
 pub struct CharacterProperties
 {
 	pub entity_properties: EntityProperties,
-	pub speed: f32
+	pub anatomy: Anatomy
 }
 
 impl CharacterProperties
@@ -26,26 +26,26 @@ impl CharacterProperties
 pub struct Character
 {
 	entity: Entity,
-	speed: f32
+    anatomy: Anatomy
 }
 
 impl Character
 {
 	pub fn new(properties: CharacterProperties) -> Self
 	{
-		let speed = properties.speed;
+		let anatomy = properties.anatomy;
 
-		Self{entity: Entity::new(properties.entity_properties), speed}
+		Self{entity: Entity::new(properties.entity_properties), anatomy}
 	}
 
-	pub fn speed(&self) -> f32
+	pub fn speed(&self) -> Option<f32>
 	{
-		self.speed
+		self.anatomy.speed()
 	}
 
     pub fn set_speed(&mut self, speed: f32)
     {
-        self.speed = speed;
+        self.anatomy.set_speed(speed);
     }
 }
 

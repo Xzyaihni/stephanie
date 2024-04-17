@@ -30,6 +30,8 @@ pub use entity::{
 
 pub use chunk_saver::{SaveLoad, WorldChunkSaver, ChunkSaver};
 
+pub use anatomy::{Anatomy, HumanAnatomy};
+
 pub use character::CharacterProperties;
 pub use player::PlayerProperties;
 pub use enemy::{EnemyProperties, Enemy};
@@ -41,6 +43,8 @@ use physics::PhysicsEntity;
 
 pub mod lisp;
 pub mod objects_store;
+
+pub mod anatomy;
 
 pub mod entity;
 pub mod player;
