@@ -29,15 +29,41 @@ impl Anatomy
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BoneChild<Data>
+{
+    side: Option<Side>,
+    data: Data
+}
+
+impl<Data> From<Data> for BoneChild<Data>
+{
+    fn from(data: Data) -> Self
+    {
+        Self{
+            side: None,
+            data
+        }
+    }
+}
+
+impl<Data> BoneChild<Data>
+{
+    pub fn new(side: Side, data: Data) -> Self
+    {
+        Self{side: Some(side), data}
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Bone<Data>
 {
     data: Data,
-    children: Vec<BodyPart<Bone<Data>>>
+    children: Vec<BoneChild<BodyPart<Bone<Data>>>>
 }
 
 impl<Data> Bone<Data>
 {
-    pub fn new(data: Data, children: Vec<BodyPart<Bone<Data>>>) -> Self
+    pub fn new(data: Data, children: Vec<BoneChild<BodyPart<Bone<Data>>>>) -> Self
     {
         Self{data, children}
     }
@@ -155,11 +181,57 @@ impl<T> Halves<T>
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum Side
 {
     Left,
     Right
+}
+
+impl From<Side2d> for Side
+{
+    fn from(side: Side2d) -> Self
+    {
+        match side
+        {
+            Side2d::Left => Self::Left,
+            Side2d::Right => Self::Right,
+            x => panic!("cant cast {x:?} to Side")
+        }
+    }
+}
+
+impl Side
+{
+    pub fn opposite(self) -> Self
+    {
+        match self
+        {
+            Self::Left => Self::Right,
+            Self::Right => Self::Left
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum Side2d
+{
+    Left,
+    Right,
+    Forward,
+    Back
+}
+
+impl From<Side> for Side2d
+{
+    fn from(side: Side) -> Self
+    {
+        match side
+        {
+            Side::Left => Self::Left,
+            Side::Right => Self::Right
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -303,16 +375,37 @@ impl HumanBoneSingle
 pub type HumanBone = Bone<HumanBoneSingle>;
 pub type HumanPart = BodyPart<HumanBone>;
 
+#[derive(Debug, Clone)]
+struct LimbSpeed(f32);
+
+impl LimbSpeed
+{
+    fn new(speed: f32) -> Self
+    {
+        Self(speed)
+    }
+
+    fn resolve(self, health_mult: f32, motor: Option<f32>, children: f32) -> f32
+    {
+        let motor = motor.unwrap_or(1.0);
+
+        children + self.0 * health_mult * motor
+    }
+}
+
+#[derive(Debug, Clone)]
 struct Speeds
 {
     arms: f32,
     legs: f32
 }
 
+#[derive(Debug, Clone)]
 struct SpeedsState
 {
     conseq_leg: u32,
     conseq_arm: u32,
+    side: Option<Side>,
     halves: Halves<Speeds>
 }
 
@@ -351,10 +444,10 @@ impl Default for HumanAnatomy
                                 HumanPart::new(
                                     5000.0,
                                     HumanBone::leaf(HumanBoneSingle::Foot)
-                                )
+                                ).into()
                             ]
                         )
-                    )
+                    ).into()
                 ]
             )
         );
@@ -372,10 +465,10 @@ impl Default for HumanAnatomy
                                 HumanPart::new(
                                     4000.0,
                                     HumanBone::leaf(HumanBoneSingle::Hand)
-                                )
+                                ).into()
                             ]
                         )
-                    )
+                    ).into()
                 ]
             )
         );
@@ -392,17 +485,17 @@ impl Default for HumanAnatomy
                             HumanOrgan::Eye(Eye::left()),
                             HumanOrgan::Eye(Eye::right())
                         ]})
-                    ),
+                    ).into(),
                     HumanPart::new(
                         6000.0,
                         HumanBone::new(
                             HumanBoneSingle::Pelvis,
                             vec![
-                                leg.clone(),
-                                leg
+                                BoneChild::new(Side::Left, leg.clone()),
+                                BoneChild::new(Side::Right, leg)
                             ]
                         )
-                    ),
+                    ).into(),
                     HumanPart::new(
                         3300.0,
                         HumanBone::new(
@@ -411,17 +504,17 @@ impl Default for HumanAnatomy
                                 HumanOrgan::Lung(Lung::right())
                             ]},
                             vec![
-                                arm.clone(),
-                                arm
+                                BoneChild::new(Side::Left, arm.clone()),
+                                BoneChild::new(Side::Right, arm)
                             ]
                         )
-                    )
+                    ).into()
                 ]
             )
         );
 
         let mut this = Self{
-            base_speed: 0.5,
+            base_speed: 0.3,
             body,
             cached: Default::default()
         };
@@ -444,137 +537,129 @@ impl HumanAnatomy
         self.base_speed = speed;
     }
 
-    fn leg_speeds(conseq: u32, health_mult: f32, part: &HumanPart) -> (u32, f32, Option<f32>)
+    fn leg_speed(
+        conseq: &mut u32,
+        bone: &HumanBone
+    ) -> f32
     {
-        let bone = &part.part;
-
         match bone.data
         {
             HumanBoneSingle::Femur =>
             {
-                (1, 0.1, Some(health_mult))
+                *conseq = 1;
+                0.4
             },
             HumanBoneSingle::Tibia =>
             {
-                let base = 0.05;
-                if conseq == 1
+                if *conseq == 1
                 {
-                    (2, base, Some(health_mult * 2.0))
+                    *conseq = 2;
+                    0.12
                 } else
                 {
-                    (0, base, Some(health_mult * 0.9))
+                    *conseq = 0;
+                    0.05
                 }
             },
             HumanBoneSingle::Foot =>
             {
-                let base = 0.01;
-                if bone.children.is_empty()
+                let value = if bone.children.is_empty() && *conseq == 2
                 {
-                    if conseq == 2
-                    {
-                        (0, base, Some(health_mult * 3.0))
-                    } else
-                    {
-                        (0, base, Some(health_mult * 0.5))
-                    }
+                    0.07
                 } else
                 {
-                    (0, base, None)
-                }
+                    0.01
+                };
+
+                *conseq = 0;
+
+                value
             },
-            _ => (0, 0.0, None)
+            _ =>
+            {
+                *conseq = 0;
+                0.0
+            }
         }
     }
 
-    fn arm_speeds(conseq: u32, health_mult: f32, part: &HumanPart) -> (u32, f32, Option<f32>)
+    fn arm_speed(
+        conseq: &mut u32,
+        bone: &HumanBone
+    ) -> f32
     {
-        let bone = &part.part;
-
         match bone.data
         {
             HumanBoneSingle::Humerus =>
             {
-                (1, 0.1, Some(health_mult))
+                *conseq = 1;
+                0.2
             },
             HumanBoneSingle::Radius =>
             {
-                let base = 0.05;
-                if conseq == 1
+                if *conseq == 1
                 {
-                    (2, base, Some(health_mult * 1.5))
+                    *conseq = 2;
+                    0.1
                 } else
                 {
-                    (0, base, Some(health_mult * 0.9))
+                    *conseq = 0;
+                    0.05
                 }
             },
             HumanBoneSingle::Hand =>
             {
-                let base = 0.01;
-                if bone.children.is_empty()
+                let value = if bone.children.is_empty() && *conseq == 2
                 {
-                    if conseq == 2
-                    {
-                        (0, base, Some(health_mult * 2.0))
-                    } else
-                    {
-                        (0, base, Some(health_mult * 0.2))
-                    }
+                    0.05
                 } else
                 {
-                    (0, base, None)
-                }
+                    0.01
+                };
+
+                *conseq = 0;
+
+                value
             },
-            _ => (0, 0.0, None)
+            _ =>
+            {
+                *conseq = 0;
+
+                0.0
+            }
         }
     }
 
-    fn speed_scale(state: &mut SpeedsState, part: &HumanPart) -> Speeds
+    fn speed_scale(
+        state: &mut SpeedsState,
+        part: &HumanPart
+    ) -> Speeds
     {
         let health_mult = (part.bone.fraction() * 0.9 + 0.1) * part.muscle.fraction();
 
-        let (conseq_leg, base_leg, mult_leg) = Self::leg_speeds(
-            state.conseq_leg,
-            health_mult,
-            part
-        );
-
-        state.conseq_leg = conseq_leg;
-
-        let (conseq_arm, base_arm, mult_arm) = Self::arm_speeds(
-            state.conseq_arm,
-            health_mult,
-            part
-        );
-
-        state.conseq_arm = conseq_arm;
+        let motor = state.side.as_ref().map(|side| &state.halves[*side]);
 
         let bone = &part.part;
 
+        let leg_speed = Self::leg_speed(&mut state.conseq_leg, bone);
+        let arm_speed = Self::arm_speed(&mut state.conseq_arm, bone);
+
         let children_speed: Speeds = bone.children.iter().map(|child|
         {
-            Self::speed_scale(state, child)
+            let mut state = SpeedsState{
+                side: child.side.map(|side| side.opposite()),
+                ..state.clone()
+            };
+
+            Self::speed_scale(&mut state, &child.data)
         }).reduce(|acc, x| Speeds{arms: acc.arms + x.arms, legs: acc.legs + x.legs})
             .unwrap_or_else(|| Speeds{arms: 0.0, legs: 0.0});
 
-        let leg_speed = if let Some(mult_leg) = mult_leg
-        {
-            mult_leg * children_speed.legs
-        } else
-        {
-            children_speed.legs
-        };
-
-        let arm_speed = if let Some(mult_arm) = mult_arm
-        {
-            mult_arm * children_speed.arms
-        } else
-        {
-            children_speed.arms
-        };
-
         Speeds{
-            arms: arm_speed + base_arm,
-            legs: leg_speed + base_leg
+            arms: LimbSpeed::new(arm_speed)
+                .resolve(health_mult, motor.map(|x| x.arms), children_speed.arms),
+            legs: LimbSpeed::new(leg_speed)
+                .resolve(health_mult, motor.map(|x| x.legs), children_speed.legs)
         }
     }
 
@@ -597,7 +682,7 @@ impl HumanAnatomy
             }
         }
 
-        bone.children.iter().find_map(|part| Self::brain_search(&part.part))
+        bone.children.iter().find_map(|part| Self::brain_search(&part.data.part))
     }
 
     fn brain(&self) -> Option<&Brain>
@@ -618,6 +703,7 @@ impl HumanAnatomy
         let mut state = SpeedsState{
             conseq_leg: 0,
             conseq_arm: 0,
+            side: None,
             halves: brain.map_ref(|hemisphere|
             {
                 Speeds{
@@ -645,7 +731,7 @@ impl HumanAnatomy
             None
         } else
         {
-            Some(self.base_speed)
+            Some(self.base_speed * speed_scale)
         }
     }
 
