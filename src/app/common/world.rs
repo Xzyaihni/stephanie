@@ -1,3 +1,5 @@
+use serde::{Serialize, Deserialize};
+
 use yanyaengine::game_object::*;
 
 use crate::{
@@ -38,6 +40,26 @@ mod visual_overmap;
 
 pub const CLIENT_OVERMAP_SIZE: usize = 5;
 pub const CLIENT_OVERMAP_SIZE_Z: usize = 2;
+
+#[derive(Debug, Clone)]
+pub struct ChunkWithEntities
+{
+    pub chunk: Chunk
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChunkOwningEntities
+{
+    pub chunk: Chunk
+}
+
+impl ChunkOwningEntities
+{
+    pub fn new(chunk: Chunk) -> Self
+    {
+        Self{chunk}
+    }
+}
 
 #[derive(Debug)]
 pub struct World

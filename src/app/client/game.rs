@@ -1,18 +1,13 @@
 use nalgebra::{Vector3, Vector2};
 
-use yanyaengine::{Transform, TransformContainer};
+use yanyaengine::TransformContainer;
 
 use crate::{
     client::ConnectionsHandler,
     common::{
-        Enemy,
-        EnemyProperties,
-        CharacterProperties,
-        Anatomy,
-        HumanAnatomy,
+        EnemyBuilder,
         EntityAny,
-        EntityProperties,
-        PhysicalProperties,
+        EntityType,
         EntitiesController,
         NetworkEntity,
         player::Player,
@@ -164,6 +159,12 @@ impl<'a> PlayerContainer<'a>
             {
                 RaycastHitId::Entity(id) =>
                 {
+                    match id
+                    {
+                        EntityType::Player(_) => continue,
+                        _ => ()
+                    }
+
                     self.game_state.remove_client_entity(id);
                 },
                 _ => ()
@@ -217,29 +218,7 @@ impl<'a> PlayerContainer<'a>
     // temporary thing for testing
     fn add_enemy(&self, position: Vector3<f32>)
     {
-        let props = |pos|
-        {
-            EnemyProperties{
-                character_properties: CharacterProperties{
-                    entity_properties: EntityProperties{
-                        texture: "enemy/body.png".to_owned(),
-                        physical: PhysicalProperties{
-                            transform: Transform{
-                                position: pos,
-                                scale: Vector3::repeat(0.1),
-                                rotation: fastrand::f32() * (3.141596 * 2.0),
-                                ..Default::default()
-                            },
-                            mass: 50.0,
-                            friction: 0.5
-                        }
-                    },
-                    anatomy: Anatomy::Human(HumanAnatomy::default())
-                }
-            }
-        };
-
-        let enemy = Enemy::new(props(position));
+        let enemy = EnemyBuilder::new(position).build();
         self.game_state.add_client_entity(EntityAny::Enemy(enemy));
     }
 
@@ -305,9 +284,11 @@ impl<'a> PlayerContainer<'a>
     {
         let mut player = self.player_mut();
 
-        if let Some(speed) = player.inner().entity.speed()
+        let entity = &player.inner().entity;
+
+        if let Some(speed) = entity.speed()
         {
-            let velocity = direction * speed;
+            let velocity = direction * speed / entity.physical_ref().mass;
 
             player.set_velocity(velocity);
         }

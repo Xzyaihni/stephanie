@@ -19,6 +19,8 @@ use crate::{
 			CLIENT_OVERMAP_SIZE,
 			CLIENT_OVERMAP_SIZE_Z,
 			Chunk,
+            ChunkWithEntities,
+            ChunkOwningEntities,
 			GlobalPos,
 			Pos3
 		}
@@ -100,20 +102,27 @@ impl World
 
 	pub fn send_chunk(&mut self, id: usize, pos: GlobalPos)
 	{
-		let chunk = self.load_chunk(id, pos);
+		let ChunkOwningEntities{chunk} = self.load_chunk(id, pos);
 
         let message = Message::ChunkSync{pos, chunk};
 
 		self.message_handler.write().send_single(id, message);
 	}
 
-	fn load_chunk(&mut self, id: usize, pos: GlobalPos) -> Chunk
+    fn add_entities(chunk: Chunk) -> ChunkOwningEntities
+    {
+        ChunkOwningEntities{chunk}
+    }
+
+	fn load_chunk(&mut self, id: usize, pos: GlobalPos) -> ChunkOwningEntities
 	{
 		let loaded_chunk = self.chunk_saver.load(pos);
 
 		loaded_chunk.unwrap_or_else(||
 		{
 			let chunk = self.overmaps.write()[id].generate_chunk(pos);
+
+            let chunk = Self::add_entities(chunk);
 
 			self.chunk_saver.save(pos, chunk.clone());
 

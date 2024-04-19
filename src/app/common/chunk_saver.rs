@@ -21,6 +21,7 @@ use crate::{
     server::world::world_generator::{CHUNK_RATIO, MaybeWorldChunk, WorldChunk, WorldChunkTag},
     common::world::{
         Chunk,
+        ChunkOwningEntities,
         GlobalPos,
         Pos3
     }
@@ -33,7 +34,7 @@ const SAVE_MODULO: u32 = 20;
 
 pub trait Saveable: Send + 'static {}
 
-impl Saveable for Chunk {}
+impl Saveable for ChunkOwningEntities {}
 impl Saveable for SaveValueGroup {}
 
 pub trait SaveLoad<T>
@@ -433,10 +434,10 @@ impl<SaveT: Saveable, LoadT> FileSaver<SaveT, LoadT>
     }
 }
 
-impl FileSave for FileSaver<Chunk>
+impl FileSave for FileSaver<ChunkOwningEntities>
 {
-    type SaveItem = Chunk;
-    type LoadItem = Chunk;
+    type SaveItem = ChunkOwningEntities;
+    type LoadItem = ChunkOwningEntities;
 
 	fn new(parent_path: PathBuf) -> Self
 	{
@@ -530,7 +531,7 @@ impl FileSave for FileSaver<SaveValueGroup, LoadValueGroup>
     }
 }
 
-pub type ChunkSaver = Saver<FileSaver<Chunk>, Chunk>;
+pub type ChunkSaver = Saver<FileSaver<ChunkOwningEntities>, ChunkOwningEntities>;
 pub type WorldChunkSaver = Saver<FileSaver<SaveValueGroup, LoadValueGroup>, SaveValueGroup, LoadValueGroup>;
 
 // again, shouldnt be public
@@ -616,9 +617,9 @@ impl SaveLoad<WorldChunk> for WorldChunkSaver
 	}
 }
 
-impl SaveLoad<Chunk> for ChunkSaver
+impl SaveLoad<ChunkOwningEntities> for ChunkSaver
 {
-	fn load(&mut self, pos: GlobalPos) -> Option<Chunk>
+	fn load(&mut self, pos: GlobalPos) -> Option<ChunkOwningEntities>
 	{
         if let Some(found) = self.cache.iter().find(|pair|
         {
@@ -631,7 +632,7 @@ impl SaveLoad<Chunk> for ChunkSaver
         self.file_saver.lock().load(pos)
 	}
 
-	fn save(&mut self, pos: GlobalPos, chunk: Chunk)
+	fn save(&mut self, pos: GlobalPos, chunk: ChunkOwningEntities)
 	{
         let pair = ValuePair::new(pos, chunk);
 

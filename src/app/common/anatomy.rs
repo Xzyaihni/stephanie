@@ -514,7 +514,7 @@ impl Default for HumanAnatomy
         );
 
         let mut this = Self{
-            base_speed: 0.3,
+            base_speed: 12.0,
             body,
             cached: Default::default()
         };
