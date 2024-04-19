@@ -102,7 +102,7 @@ impl World
 
 	pub fn send_chunk(&mut self, id: usize, pos: GlobalPos)
 	{
-		let ChunkOwningEntities{chunk} = self.load_chunk(id, pos);
+		let ChunkOwningEntities{chunk, entities} = self.load_chunk(id, pos);
 
         let message = Message::ChunkSync{pos, chunk};
 
@@ -111,7 +111,8 @@ impl World
 
     fn add_entities(chunk: Chunk) -> ChunkOwningEntities
     {
-        ChunkOwningEntities{chunk}
+        dbg!();
+        ChunkOwningEntities{chunk, entities: Vec::new()}
     }
 
 	fn load_chunk(&mut self, id: usize, pos: GlobalPos) -> ChunkOwningEntities

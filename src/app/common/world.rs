@@ -7,7 +7,11 @@ use crate::{
 		TilesFactory,
 		world_receiver::WorldReceiver
 	},
-	common::message::Message
+	common::{
+        EntityType,
+        EntityAny,
+        message::Message
+    }
 };
 
 pub use overmap::chunk::{
@@ -44,21 +48,15 @@ pub const CLIENT_OVERMAP_SIZE_Z: usize = 2;
 #[derive(Debug, Clone)]
 pub struct ChunkWithEntities
 {
-    pub chunk: Chunk
+    pub chunk: Chunk,
+    pub entities: Vec<EntityType>
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChunkOwningEntities
 {
-    pub chunk: Chunk
-}
-
-impl ChunkOwningEntities
-{
-    pub fn new(chunk: Chunk) -> Self
-    {
-        Self{chunk}
-    }
+    pub chunk: Chunk,
+    pub entities: Vec<EntityAny>
 }
 
 #[derive(Debug)]
