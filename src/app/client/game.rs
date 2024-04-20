@@ -5,8 +5,6 @@ use yanyaengine::TransformContainer;
 use crate::{
     client::ConnectionsHandler,
     common::{
-        EnemyBuilder,
-        EntityAny,
         EntityType,
         EntitiesController,
         NetworkEntity,
@@ -190,21 +188,13 @@ impl<'a> PlayerContainer<'a>
         {
             dbg!("make this an actual console thingy later");
 
-            let position = *self.player_ref().position();
-
-            for x in 0..20
-            {
-                for y in 0..20
-                {
-                    let pos = position + Vector3::new(x as f32 * 0.1, y as f32 * 0.1, 0.0);
-
-                    self.add_enemy(pos);
-                }
-            }
-            /*let mut player = self.player_mut();
+            let mut player = self.player_mut();
             let player = &mut player.inner_mut().entity;
 
-            player.set_speed(player.speed() * 2.0);*/
+            if let Some(speed) = player.speed()
+            {
+                player.set_speed(speed * 2.0);
+            }
         }
 
         if let Some(movement) = self.movement_direction()
@@ -213,13 +203,6 @@ impl<'a> PlayerContainer<'a>
         }
 
         self.look_at_mouse();
-    }
-
-    // temporary thing for testing
-    fn add_enemy(&self, position: Vector3<f32>)
-    {
-        let enemy = EnemyBuilder::new(position).build();
-        self.game_state.add_client_entity(EntityAny::Enemy(enemy));
     }
 
     fn movement_direction(&self) -> Option<Vector3<f32>>

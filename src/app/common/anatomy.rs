@@ -535,6 +535,8 @@ impl HumanAnatomy
     pub fn set_speed(&mut self, speed: f32)
     {
         self.base_speed = speed;
+
+        self.update();
     }
 
     fn leg_speed(
