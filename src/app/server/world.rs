@@ -145,25 +145,50 @@ impl World
         chunk: &Chunk
     )
     {
-        let spawns = fastrand::usize(0..20);
+        let spawns = fastrand::usize(0..3);
 
         let entities: Vec<_> = (0..spawns)
             .map(|_|
             {
                 ChunkLocal::new(
                     fastrand::usize(0..CHUNK_SIZE),
-                    fastrand::usize(0..CHUNK_SIZE - 1),
-                    fastrand::usize(0..CHUNK_SIZE)
+                    fastrand::usize(0..CHUNK_SIZE),
+                    fastrand::usize(0..CHUNK_SIZE - 1)
                 )
             })
             .filter_map(|pos|
             {
-                let has_ground = !chunk[pos].is_none();
+                let mut current_pos = pos;
 
-                let above = ChunkLocal::from(*pos.pos() + Pos3{x: 0, y: 1, z: 0});
+                let is_ground = |p|
+                {
+                    !chunk[p].is_none()
+                };
+
+                loop
+                {
+                    if is_ground(current_pos)
+                    {
+                        return Some(current_pos);
+                    }
+
+                    if current_pos.pos().z == 0
+                    {
+                        return None;
+                    }
+
+                    let new_pos = *current_pos.pos();
+                    let new_pos = Pos3{z: new_pos.z - 1, ..new_pos};
+
+                    current_pos = ChunkLocal::from(new_pos);
+                }
+            })
+            .filter_map(|pos|
+            {
+                let above = ChunkLocal::from(*pos.pos() + Pos3{x: 0, y: 0, z: 1});
                 let has_space = chunk[above].is_none();
 
-                (has_ground && has_space).then(||
+                has_space.then(||
                 {
                     let pos = chunk_pos + above.pos().map(|x| x as f32 * TILE_SIZE);
 
