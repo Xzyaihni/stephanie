@@ -12,15 +12,15 @@ use crate::{
 		TileMap,
         WorldChunkSaver,
         ChunkSaver,
+        EntitiesSaver,
         SaveLoad,
 		EntityPasser,
+        EntityAny,
 		message::Message,
 		world::{
 			CLIENT_OVERMAP_SIZE,
 			CLIENT_OVERMAP_SIZE_Z,
 			Chunk,
-            ChunkWithEntities,
-            ChunkOwningEntities,
 			GlobalPos,
 			Pos3
 		}
@@ -49,6 +49,7 @@ pub struct World
 	world_name: String,
 	world_generator: Arc<Mutex<WorldGenerator<WorldChunkSaver>>>,
 	chunk_saver: ChunkSaver,
+    entities_saver: EntitiesSaver,
 	overmaps: OvermapsType
 }
 
@@ -63,6 +64,7 @@ impl World
 
         let world_path = Self::world_path_associated(&world_name);
 		let chunk_saver = ChunkSaver::new(world_path.join("chunks"), 100);
+		let entities_saver = EntitiesSaver::new(world_path.join("entities"), 10);
 
 		let world_generator = {
 			let chunk_saver = WorldChunkSaver::new(world_path.join("world_chunks"), 100);
@@ -79,6 +81,7 @@ impl World
 			world_name,
 			world_generator,
 			chunk_saver,
+            entities_saver,
 			overmaps
 		})
 	}
@@ -102,28 +105,40 @@ impl World
 
 	pub fn send_chunk(&mut self, id: usize, pos: GlobalPos)
 	{
-		let ChunkOwningEntities{chunk, entities} = self.load_chunk(id, pos);
+		let chunk = self.load_chunk(id, pos);
 
         let message = Message::ChunkSync{pos, chunk};
 
 		self.message_handler.write().send_single(id, message);
 	}
 
-    fn add_entities(chunk: Chunk) -> ChunkOwningEntities
+    fn create_entities(&mut self, chunk: Vec<EntityAny>)
     {
-        dbg!();
-        ChunkOwningEntities{chunk, entities: Vec::new()}
+        todo!()
     }
 
-	fn load_chunk(&mut self, id: usize, pos: GlobalPos) -> ChunkOwningEntities
+    fn add_entities(&mut self, chunk: &Chunk)
+    {
+        self.create_entities(todo!());
+    }
+
+	fn load_chunk(&mut self, id: usize, pos: GlobalPos) -> Chunk
 	{
 		let loaded_chunk = self.chunk_saver.load(pos);
+
+        if loaded_chunk.is_some()
+        {
+            if let Some(entities) = self.entities_saver.load(pos)
+            {
+                self.create_entities(entities);
+            }
+        }
 
 		loaded_chunk.unwrap_or_else(||
 		{
 			let chunk = self.overmaps.write()[id].generate_chunk(pos);
 
-            let chunk = Self::add_entities(chunk);
+            self.add_entities(&chunk);
 
 			self.chunk_saver.save(pos, chunk.clone());
 

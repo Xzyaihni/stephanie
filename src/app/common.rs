@@ -28,7 +28,7 @@ pub use entity::{
     PhysicalProperties
 };
 
-pub use chunk_saver::{SaveLoad, WorldChunkSaver, ChunkSaver};
+pub use chunk_saver::{SaveLoad, WorldChunkSaver, ChunkSaver, EntitiesSaver};
 
 pub use anatomy::{Anatomy, HumanAnatomy};
 

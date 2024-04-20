@@ -17,13 +17,17 @@ use parking_lot::Mutex;
 
 use lzma::{LzmaWriter, LzmaReader};
 
+use serde::{Serialize, Deserialize};
+
 use crate::{
     server::world::world_generator::{CHUNK_RATIO, MaybeWorldChunk, WorldChunk, WorldChunkTag},
-    common::world::{
-        Chunk,
-        ChunkOwningEntities,
-        GlobalPos,
-        Pos3
+    common::{
+        EntityAny,
+        world::{
+            Chunk,
+            GlobalPos,
+            Pos3
+        }
     }
 };
 
@@ -34,7 +38,8 @@ const SAVE_MODULO: u32 = 20;
 
 pub trait Saveable: Send + 'static {}
 
-impl Saveable for ChunkOwningEntities {}
+impl Saveable for Chunk {}
+impl Saveable for Vec<EntityAny> {}
 impl Saveable for SaveValueGroup {}
 
 pub trait SaveLoad<T>
@@ -434,10 +439,12 @@ impl<SaveT: Saveable, LoadT> FileSaver<SaveT, LoadT>
     }
 }
 
-impl FileSave for FileSaver<ChunkOwningEntities>
+impl<T> FileSave for FileSaver<T>
+where
+    for<'a> T: Saveable + Deserialize<'a> + Serialize
 {
-    type SaveItem = ChunkOwningEntities;
-    type LoadItem = ChunkOwningEntities;
+    type SaveItem = T;
+    type LoadItem = T;
 
 	fn new(parent_path: PathBuf) -> Self
 	{
@@ -531,7 +538,8 @@ impl FileSave for FileSaver<SaveValueGroup, LoadValueGroup>
     }
 }
 
-pub type ChunkSaver = Saver<FileSaver<ChunkOwningEntities>, ChunkOwningEntities>;
+pub type ChunkSaver = Saver<FileSaver<Chunk>, Chunk>;
+pub type EntitiesSaver = Saver<FileSaver<Vec<EntityAny>>, Vec<EntityAny>>;
 pub type WorldChunkSaver = Saver<FileSaver<SaveValueGroup, LoadValueGroup>, SaveValueGroup, LoadValueGroup>;
 
 // again, shouldnt be public
@@ -617,9 +625,12 @@ impl SaveLoad<WorldChunk> for WorldChunkSaver
 	}
 }
 
-impl SaveLoad<ChunkOwningEntities> for ChunkSaver
+impl<T> SaveLoad<T> for Saver<FileSaver<T>, T>
+where
+    T: Saveable + Clone,
+    FileSaver<T>: FileSave<LoadItem=T, SaveItem=T>
 {
-	fn load(&mut self, pos: GlobalPos) -> Option<ChunkOwningEntities>
+	fn load(&mut self, pos: GlobalPos) -> Option<T>
 	{
         if let Some(found) = self.cache.iter().find(|pair|
         {
@@ -632,9 +643,9 @@ impl SaveLoad<ChunkOwningEntities> for ChunkSaver
         self.file_saver.lock().load(pos)
 	}
 
-	fn save(&mut self, pos: GlobalPos, chunk: ChunkOwningEntities)
+	fn save(&mut self, pos: GlobalPos, value: T)
 	{
-        let pair = ValuePair::new(pos, chunk);
+        let pair = ValuePair::new(pos, value);
 
         self.inner_save(pair);
 	}
