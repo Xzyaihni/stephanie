@@ -44,6 +44,6 @@ fn main()
         .with_icon("icon.png")
         .with_shaders(shaders)
         .without_multisampling()
-        .with_clear_color([0.0, 0.0, 0.0])
+        .with_clear_color([0.831, 0.941, 0.988])
         .run();
 }
