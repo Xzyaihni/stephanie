@@ -60,7 +60,14 @@ impl ServerEntitiesContainer
         let enemies = ObjectsStore::with_capacity(limit);
 
 		Self{players, enemies}
-	}
+    }
+
+    pub fn push_entity(&mut self, entity: EntityAny) -> Message
+    {
+        let id = self.push((), entity.clone());
+
+        Message::EntitySet{id, entity}
+    }
 }
 
 impl EntitiesContainer<()> for ServerEntitiesContainer
@@ -301,7 +308,7 @@ impl GameServer
 			self.connection_handler.write().send_message(message.clone());
 		}
 
-		let message = match self.world.handle_message(id, message)
+		let message = match self.world.handle_message(&mut self.entities, id, message)
 		{
 			Some(x) => x,
 			None => return
@@ -321,9 +328,8 @@ impl GameServer
 			},
             Message::EntityAdd{entity} =>
             {
-                let id = self.entities.push((), entity.clone());
+                let message = self.entities.push_entity(entity.clone());
 
-                let message = Message::EntitySet{id, entity};
                 self.connection_handler.write().send_message(message);
             },
 			x => panic!("unhandled message: {x:?}")

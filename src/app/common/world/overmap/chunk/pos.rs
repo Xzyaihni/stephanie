@@ -11,7 +11,7 @@ use enum_amount::EnumCount;
 
 use nalgebra::{Vector3, Point3, Scalar};
 
-use super::{CHUNK_VISUAL_SIZE, CHUNK_SIZE, TILE_SIZE};
+use super::{CHUNK_VISUAL_SIZE, TILE_SIZE};
 
 
 #[derive(Debug, Clone, Copy, Hash, Eq, PartialEq, Serialize, Deserialize)]
@@ -44,6 +44,11 @@ impl<T> Pos3<T>
 	{
 		Self{x, y, z}
 	}
+
+    pub fn new_with(mut f: impl FnMut() -> T) -> Self
+    {
+        Self{x: f(), y: f(), z: f()}
+    }
 
     pub fn plane_of(&self, direction: PosDirection) -> &T
     {
@@ -127,6 +132,17 @@ impl From<Pos3<f32>> for Vector3<f32>
     }
 }
 
+impl From<GlobalPos> for Pos3<f32>
+{
+    fn from(value: GlobalPos) -> Self
+    {
+        value.0.map(|value|
+        {
+            value as f32 * CHUNK_VISUAL_SIZE
+        })
+    }
+}
+
 impl Pos3<f32>
 {
 	pub fn tile_height(self) -> usize
@@ -143,8 +159,7 @@ impl Pos3<f32>
 	{
 		GlobalPos(self.map(|value|
 		{
-			let size = CHUNK_SIZE as f32 * TILE_SIZE;
-			let value = value / size;
+			let value = value / CHUNK_VISUAL_SIZE;
 
 			if value < 0.0
 			{
@@ -242,16 +257,6 @@ impl<T: Neg<Output=T>> Neg for Pos3<T>
     {
         self.map(|v| -v)
     }
-}
-
-impl From<GlobalPos> for Pos3<f32>
-{
-	fn from(value: GlobalPos) -> Self
-	{
-		let GlobalPos(pos) = value;
-
-		pos.map(|value| value as f32)
-	}
 }
 
 impl From<Pos3<i32>> for Pos3<f32>

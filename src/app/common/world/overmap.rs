@@ -27,6 +27,11 @@ pub trait Overmap<T>: OvermapIndexing
 		self.to_local(pos).and_then(|local_pos| self.get_local(local_pos).as_ref())
 	}
 
+    fn contains(&self, pos: GlobalPos) -> bool
+    {
+        self.to_local(pos).is_some()
+    }
+
 	fn generate_missing(&mut self);
 
 	fn force_regenerate(&mut self)

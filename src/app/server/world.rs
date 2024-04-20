@@ -6,8 +6,9 @@ use std::{
 use parking_lot::{Mutex, RwLock};
 
 use crate::{
-	server::ConnectionsHandler,
+	server::{game_server::ServerEntitiesContainer, ConnectionsHandler},
 	common::{
+        EnemyBuilder,
         ObjectsStore,
 		TileMap,
         WorldChunkSaver,
@@ -18,11 +19,15 @@ use crate::{
         EntityAny,
 		message::Message,
 		world::{
+            CHUNK_SIZE,
+            TILE_SIZE,
 			CLIENT_OVERMAP_SIZE,
 			CLIENT_OVERMAP_SIZE_Z,
 			Chunk,
+            ChunkLocal,
 			GlobalPos,
-			Pos3
+			Pos3,
+            overmap::Overmap
 		}
 	}
 };
@@ -103,34 +108,95 @@ impl World
 		self.overmaps.write().remove(id);
 	}
 
-	pub fn send_chunk(&mut self, id: usize, pos: GlobalPos)
+	pub fn send_chunk(
+        &mut self,
+        container: &mut ServerEntitiesContainer,
+        id: usize,
+        pos: GlobalPos
+    )
 	{
-		let chunk = self.load_chunk(id, pos);
+		let chunk = self.load_chunk(container, id, pos);
 
         let message = Message::ChunkSync{pos, chunk};
 
 		self.message_handler.write().send_single(id, message);
 	}
 
-    fn create_entities(&mut self, chunk: Vec<EntityAny>)
+    fn create_entities(
+        &mut self,
+        container: &mut ServerEntitiesContainer,
+        entities: Vec<EntityAny>
+    )
     {
-        todo!()
+        let mut writer = self.message_handler.write();
+
+        entities.into_iter().for_each(|entity|
+        {
+            let message = container.push_entity(entity);
+
+            writer.send_message(message);
+        });
     }
 
-    fn add_entities(&mut self, chunk: &Chunk)
+    fn add_entities(
+        &mut self,
+        container: &mut ServerEntitiesContainer,
+        chunk_pos: Pos3<f32>,
+        chunk: &Chunk
+    )
     {
-        self.create_entities(todo!());
+        let spawns = fastrand::usize(0..20);
+
+        let entities: Vec<_> = (0..spawns)
+            .map(|_|
+            {
+                ChunkLocal::new(
+                    fastrand::usize(0..CHUNK_SIZE),
+                    fastrand::usize(0..CHUNK_SIZE - 1),
+                    fastrand::usize(0..CHUNK_SIZE)
+                )
+            })
+            .filter_map(|pos|
+            {
+                let has_ground = !chunk[pos].is_none();
+
+                let above = ChunkLocal::from(*pos.pos() + Pos3{x: 0, y: 1, z: 0});
+                let has_space = chunk[above].is_none();
+
+                (has_ground && has_space).then(||
+                {
+                    let pos = chunk_pos + above.pos().map(|x| x as f32 * TILE_SIZE);
+
+                    EntityAny::Enemy(EnemyBuilder::new(pos.into()).build())
+                })
+            })
+            .collect();
+
+        self.create_entities(container, entities);
     }
 
-	fn load_chunk(&mut self, id: usize, pos: GlobalPos) -> Chunk
+	fn load_chunk(
+        &mut self,
+        container: &mut ServerEntitiesContainer,
+        id: usize,
+        pos: GlobalPos
+    ) -> Chunk
 	{
 		let loaded_chunk = self.chunk_saver.load(pos);
 
         if loaded_chunk.is_some()
         {
-            if let Some(entities) = self.entities_saver.load(pos)
+            let any_contains = self.overmaps.read().iter().any(|(_, overmap)|
             {
-                self.create_entities(entities);
+                overmap.contains(pos)
+            });
+
+            if !any_contains
+            {
+                if let Some(entities) = self.entities_saver.load(pos)
+                {
+                    self.create_entities(container, entities);
+                }
             }
         }
 
@@ -138,7 +204,7 @@ impl World
 		{
 			let chunk = self.overmaps.write()[id].generate_chunk(pos);
 
-            self.add_entities(&chunk);
+            self.add_entities(container, pos.into(), &chunk);
 
 			self.chunk_saver.save(pos, chunk.clone());
 
@@ -157,13 +223,18 @@ impl World
 		PathBuf::from("worlds").join(name)
 	}
 
-	pub fn handle_message(&mut self, id: usize, message: Message) -> Option<Message>
+	pub fn handle_message(
+        &mut self,
+        container: &mut ServerEntitiesContainer,
+        id: usize,
+        message: Message
+    ) -> Option<Message>
 	{
 		match message
 		{
 			Message::ChunkRequest{pos} =>
 			{
-				self.send_chunk(id, pos);
+				self.send_chunk(container, id, pos);
 				None
 			},
 			_ => Some(message)
