@@ -229,9 +229,8 @@ impl World
 		{
 			let chunk = {
                 let overmap = &mut self.overmaps.write()[id];
-                let mut overmap = overmap.attach_info(&mut self.entities_saver);
 
-                overmap.generate_chunk(pos)
+                overmap.attach_info(container, &mut self.entities_saver).generate_chunk(pos)
             };
 
             self.add_entities(container, pos.into(), &chunk);

@@ -9,18 +9,21 @@ use super::world_generator::{
     WorldChunk
 };
 
-use crate::common::{
-    SaveLoad,
-    EntityAny,
-    world::{
-        CHUNK_SIZE,
-        LocalPos,
-        GlobalPos,
-        Pos3,
-        Chunk,
-        ChunkLocal,
-        chunk::tile::Tile,
-        overmap::{Overmap, OvermapIndexing, FlatChunksContainer, ChunksContainer}
+use crate::{
+    server::game_server::ServerEntitiesContainer,
+    common::{
+        SaveLoad,
+        EntityAny,
+        world::{
+            CHUNK_SIZE,
+            LocalPos,
+            GlobalPos,
+            Pos3,
+            Chunk,
+            ChunkLocal,
+            chunk::tile::Tile,
+            overmap::{Overmap, OvermapIndexing, FlatChunksContainer, ChunksContainer}
+        }
     }
 };
 
@@ -216,11 +219,13 @@ impl<S: SaveLoad<WorldChunk>> ServerOvermapData<S>
 
     pub fn attach_info<'a, ES>(
         &'a mut self,
+        entities: &'a mut ServerEntitiesContainer,
         entities_saver: &'a mut ES
     ) -> ServerOvermap<'a, S, ES>
     {
         ServerOvermap{
             data: self,
+            entities,
             entities_saver
         }
     }
@@ -269,6 +274,7 @@ impl<S> OvermapIndexing for ServerOvermapData<S>
 pub struct ServerOvermap<'a, S, ES>
 {
     data: &'a mut ServerOvermapData<S>,
+    entities: &'a mut ServerEntitiesContainer,
     entities_saver: &'a mut ES
 }
 
@@ -474,6 +480,8 @@ mod tests
         let saver = TestSaver::new();
         let mut entities_saver = TestSaver::new();
 
+        let mut entities = ServerEntitiesContainer::new(1000);
+
         let tiles = "tiles/tiles.json";
 
         let tilemap = TileMap::parse(tiles, "textures/tiles/").unwrap().tilemap;
@@ -504,7 +512,8 @@ mod tests
 
         for _ in 0..30
         {
-            let _chunk = overmap.attach_info(&mut entities_saver).generate_chunk(random_chunk());
+            let _chunk = overmap.attach_info(&mut entities, &mut entities_saver)
+                .generate_chunk(random_chunk());
         }
     }
 }
