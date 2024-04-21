@@ -26,15 +26,14 @@ use crate::{
 			Chunk,
             ChunkLocal,
 			GlobalPos,
-			Pos3,
-            overmap::Overmap
+			Pos3
 		}
 	}
 };
 
 use world_generator::WorldGenerator;
 
-use server_overmap::ServerOvermap;
+use server_overmap::ServerOvermapData;
 
 pub use world_generator::ParseError;
 
@@ -45,7 +44,7 @@ mod server_overmap;
 pub const SERVER_OVERMAP_SIZE: usize = CLIENT_OVERMAP_SIZE + 1;
 pub const SERVER_OVERMAP_SIZE_Z: usize = CLIENT_OVERMAP_SIZE_Z + 1;
 
-type OvermapsType = Arc<RwLock<ObjectsStore<ServerOvermap<WorldChunkSaver>>>>;
+type OvermapsType = Arc<RwLock<ObjectsStore<ServerOvermapData<WorldChunkSaver>>>>;
 
 #[derive(Debug)]
 pub struct World
@@ -94,7 +93,7 @@ impl World
 	pub fn add_player(&mut self, position: Pos3<f32>) -> usize
 	{
 		let size = Pos3::new(SERVER_OVERMAP_SIZE, SERVER_OVERMAP_SIZE, SERVER_OVERMAP_SIZE_Z);
-		let overmap = ServerOvermap::new(
+		let overmap = ServerOvermapData::new(
 			self.world_generator.clone(),
 			size,
 			position
@@ -211,12 +210,13 @@ impl World
 
         if loaded_chunk.is_some()
         {
-            let any_contains = self.overmaps.read().iter().any(|(_, overmap)|
+            let containing_amount = self.overmaps.read().iter().filter(|(_, overmap)|
             {
-                overmap.contains(pos)
-            });
+                overmap.inbounds_chunk(pos)
+            }).count();
 
-            if !any_contains
+            // only 1 overmap contains chunk
+            if containing_amount == 1
             {
                 if let Some(entities) = self.entities_saver.load(pos)
                 {
@@ -227,7 +227,12 @@ impl World
 
 		loaded_chunk.unwrap_or_else(||
 		{
-			let chunk = self.overmaps.write()[id].generate_chunk(pos);
+			let chunk = {
+                let overmap = &mut self.overmaps.write()[id];
+                let mut overmap = overmap.attach_info(&mut self.entities_saver);
+
+                overmap.generate_chunk(pos)
+            };
 
             self.add_entities(container, pos.into(), &chunk);
 

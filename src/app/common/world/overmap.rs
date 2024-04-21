@@ -29,6 +29,11 @@ pub trait Overmap<T>: OvermapIndexing
 
     fn contains(&self, pos: GlobalPos) -> bool
     {
+        self.get(pos).is_some()
+    }
+
+    fn inbounds(&self, pos: GlobalPos) -> bool
+    {
         self.to_local(pos).is_some()
     }
 
