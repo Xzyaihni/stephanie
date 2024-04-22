@@ -37,7 +37,7 @@ pub struct ObjectPair<T>
 	pub entity: T
 }
 
-impl<T: EntityContainer + DrawableEntity> ObjectPair<T>
+impl<T: EntityContainer + PhysicsEntity + ChildContainer + DrawableEntity> ObjectPair<T>
 {
 	pub fn new(create_info: &ObjectCreateInfo, entity: T) -> Self
 	{
@@ -81,7 +81,7 @@ impl<T: EntityContainer + DrawableEntity> ObjectPair<T>
 	}
 }
 
-impl<T: EntityContainer + ChildContainer> ChildContainer for ObjectPair<T>
+impl<T: EntityContainer + PhysicsEntity + ChildContainer> ChildContainer for ObjectPair<T>
 {
 	fn children_ref(&self) -> &[ChildEntity]
     {
@@ -104,7 +104,7 @@ impl<T: EntityAnyWrappable + Clone> EntityAnyWrappable for &ObjectPair<T>
 
 impl<'a, T> GettableInner<&ObjectCreateInfo<'a>, T> for ObjectPair<T>
 where
-    T: EntityContainer + Clone + DrawableEntity
+    T: EntityContainer + PhysicsEntity + ChildContainer + Clone + DrawableEntity
 {
     fn wrap(info: &ObjectCreateInfo<'a>, value: T) -> Self
     {
@@ -145,7 +145,7 @@ impl<T: PhysicsEntity + ChildContainer> GameObject for ObjectPair<T>
     }
 }
 
-impl<T: EntityContainer> OnTransformCallback for ObjectPair<T>
+impl<T: EntityContainer + PhysicsEntity + ChildContainer> OnTransformCallback for ObjectPair<T>
 {
 	fn transform_callback(&mut self, _transform: Transform)
 	{
@@ -187,7 +187,7 @@ impl<T: EntityContainer> OnTransformCallback for ObjectPair<T>
 	}
 }
 
-impl<T: EntityContainer> TransformContainer for ObjectPair<T>
+impl<T: EntityContainer + PhysicsEntity + ChildContainer> TransformContainer for ObjectPair<T>
 {
 	fn transform_ref(&self) -> &Transform
 	{
@@ -200,7 +200,7 @@ impl<T: EntityContainer> TransformContainer for ObjectPair<T>
 	}
 }
 
-impl<T: EntityContainer> PhysicsEntity for ObjectPair<T>
+impl<T: EntityContainer + PhysicsEntity + ChildContainer> PhysicsEntity for ObjectPair<T>
 {
 	fn physical_ref(&self) -> &Physical
 	{

@@ -5,7 +5,6 @@ use yanyaengine::TransformContainer;
 use crate::{
     client::ConnectionsHandler,
     common::{
-        EntityType,
         EntitiesController,
         NetworkEntity,
         player::Player,
@@ -157,10 +156,9 @@ impl<'a> PlayerContainer<'a>
             {
                 RaycastHitId::Entity(id) =>
                 {
-                    match id
+                    if id.is_player()
                     {
-                        EntityType::Player(_) => continue,
-                        _ => ()
+                        continue;
                     }
 
                     self.game_state.remove_client_entity(id);

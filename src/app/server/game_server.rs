@@ -68,6 +68,24 @@ impl ServerEntitiesContainer
 
         Message::EntitySet{id, entity}
     }
+
+    pub fn remove_entity(&mut self, id: EntityType) -> Message
+    {
+        self.remove(id);
+
+        Message::EntityDestroy{id}
+    }
+
+    pub fn entities_iter(&self) -> impl Iterator<Item=(EntityType, EntityAny)> + '_
+    {
+        self.enemies_ref().iter().map(|(id, x)|
+        {
+            (EntityType::Enemy(id), EntityAny::Enemy(x.clone()))
+        }).chain(self.players_ref().iter().map(|(id, x)|
+        {
+            (EntityType::Player(id), EntityAny::Player(x.clone()))
+        }))
+    }
 }
 
 impl EntitiesContainer<()> for ServerEntitiesContainer

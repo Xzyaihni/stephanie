@@ -25,7 +25,8 @@ pub use entity::{
     Physical,
     ChildContainer,
     EntityProperties,
-    PhysicalProperties
+    PhysicalProperties,
+    EntityContainer
 };
 
 pub use chunk_saver::{SaveLoad, WorldChunkSaver, ChunkSaver, EntitiesSaver};
@@ -41,7 +42,7 @@ pub use enemy::{EnemyProperties, Enemy};
 use player::Player;
 use entity::ChildEntity;
 
-use physics::PhysicsEntity;
+pub use physics::PhysicsEntity;
 
 pub mod lisp;
 pub mod objects_store;
@@ -97,6 +98,39 @@ pub enum EntityAny
 {
     Player(Player),
     Enemy(Enemy)
+}
+
+impl EntityContainer for EntityAny
+{
+    fn entity_ref(&self) -> &Entity
+    {
+        match self
+        {
+            Self::Player(x) => x.entity_ref(),
+            Self::Enemy(x) => x.entity_ref()
+        }
+    }
+
+    fn entity_mut(&mut self) -> &mut Entity
+    {
+        match self
+        {
+            Self::Player(x) => x.entity_mut(),
+            Self::Enemy(x) => x.entity_mut()
+        }
+    }
+}
+
+impl EntityAny
+{
+    pub fn is_player(&self) -> bool
+    {
+        match self
+        {
+            Self::Player(_) => true,
+            _ => false
+        }
+    }
 }
 
 pub trait EntityAnyWrappable
@@ -171,6 +205,21 @@ pub trait EntitiesContainer<I>
                 self.enemies_mut().insert(id, Self::EnemyObject::wrap(info, entity));
             },
             x => panic!("unhandled message: {x:?}")
+        }
+    }
+
+    fn remove(&mut self, id: EntityType)
+    {
+        match id
+        {
+            EntityType::Player(id) =>
+            {
+                self.players_mut().remove(id);
+            },
+            EntityType::Enemy(id) =>
+            {
+                self.enemies_mut().remove(id);
+            }
         }
     }
 

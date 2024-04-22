@@ -2,6 +2,8 @@ use std::sync::Arc;
 
 use parking_lot::Mutex;
 
+use yanyaengine::TransformContainer;
+
 use super::world_generator::{
     WORLD_CHUNK_SIZE,
     CHUNK_RATIO,
@@ -14,6 +16,7 @@ use crate::{
     common::{
         SaveLoad,
         EntityAny,
+        EntityContainer,
         world::{
             CHUNK_SIZE,
             LocalPos,
@@ -385,7 +388,23 @@ where
             }
         }
 
-        eprintln!("delete {chunk_pos:?}");
+        let (delete_ids, delete_entities): (Vec<_>, Vec<_>) = self.entities.entities_iter()
+            .filter(|(_, x)| !x.is_player())
+            .filter(|(_, x)|
+            {
+                let pos: Pos3<f32> = (*x.entity_ref().position()).into();
+
+                pos.rounded() == chunk_pos
+            }).unzip();
+
+        delete_ids.into_iter().for_each(|id|
+        {
+            let message = self.entities.remove_entity(id);
+
+            dbg!(message);
+        });
+
+        self.entities_saver.save(chunk_pos, delete_entities);
     }
 }
 
