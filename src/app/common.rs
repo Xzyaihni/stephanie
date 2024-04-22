@@ -248,18 +248,7 @@ pub trait EntitiesContainer<I>
 		{
 			Message::EntityDestroy{id} =>
 			{
-                match id
-                {
-				    EntityType::Player(id) =>
-                    {
-                        self.players_mut().remove(id);
-                    },
-				    EntityType::Enemy(id) =>
-                    {
-                        self.enemies_mut().remove(id);
-                    }
-                }
-
+                self.remove(id);
 				None
 			},
 			Message::EntitySyncTransform{entity_type, transform} =>

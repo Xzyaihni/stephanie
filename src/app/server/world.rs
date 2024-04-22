@@ -122,7 +122,7 @@ impl World
 	}
 
     fn create_entities(
-        &mut self,
+        &self,
         container: &mut ServerEntitiesContainer,
         entities: Vec<EntityAny>
     )
@@ -138,7 +138,7 @@ impl World
     }
 
     fn add_entities(
-        &mut self,
+        &self,
         container: &mut ServerEntitiesContainer,
         chunk_pos: Pos3<f32>,
         chunk: &Chunk
@@ -227,14 +227,23 @@ impl World
 
 		loaded_chunk.unwrap_or_else(||
 		{
-			let chunk = {
-                let overmap = &mut self.overmaps.write()[id];
+			let (delete_ids, chunk) = {
+                let mut overmap = self.overmaps.write();
+                let mut overmap = overmap[id].attach_info(container, &mut self.entities_saver);
 
-                overmap.attach_info(container, &mut self.entities_saver).generate_chunk(pos)
+                let chunk = overmap.generate_chunk(pos);
+                (overmap.delete_ids(), chunk)
             };
 
             self.add_entities(container, pos.into(), &chunk);
 
+            delete_ids.into_iter().for_each(|id|
+            {
+                let message = container.remove_entity(id);
+
+                self.message_handler.write().send_message(message);
+            });
+                
 			self.chunk_saver.save(pos, chunk.clone());
 
 			chunk

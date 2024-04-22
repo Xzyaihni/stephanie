@@ -50,7 +50,7 @@ impl<T> ObjectsStore<T>
     {
         let id = self.new_id();
 
-        self.data.push(Some(value));
+        self.insert(id, value);
 
         id
     }
@@ -134,5 +134,61 @@ impl<T> IndexMut<usize> for ObjectsStore<T>
     fn index_mut(&mut self, index: usize) -> &mut Self::Output
     {
         self.get_mut(index).unwrap_or_else(|| panic!("{index} is out of range"))
+    }
+}
+
+#[cfg(test)]
+mod tests
+{
+    use std::fmt::Debug;
+
+    use super::*;
+
+
+    fn compare<T>(store: &ObjectsStore<T>, slice: &[T])
+    where
+        T: Debug + PartialEq
+    {
+        store.iter().zip(slice.iter()).for_each(|((_, a), b)|
+        {
+            assert_eq!(a, b);
+        });
+    }
+
+    #[test]
+    fn basic_stuff()
+    {
+        let mut s = ObjectsStore::new();
+
+        s.push("first");
+
+        compare(&s, &["first"]);
+
+        s.push("test");
+        s.push("three");
+
+        s.insert(0, "changed!");
+
+        compare(&s, &["changed!", "test", "three"]);
+
+        assert_eq!(s.iter().map(|(id, _)| id).collect::<Vec<_>>(), vec![0, 1, 2]);
+
+        s.remove(1);
+
+        compare(&s, &["changed!", "three"]);
+
+        s.remove(0);
+
+        compare(&s, &["three"]);
+
+        s.insert(2, "last");
+
+        compare(&s, &["last"]);
+
+        assert_eq!(s.iter().map(|(id, _)| id).collect::<Vec<_>>(), vec![2]);
+
+        s.push("before!");
+
+        compare(&s, &["before!", "last"]);
     }
 }

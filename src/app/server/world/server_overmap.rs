@@ -16,6 +16,7 @@ use crate::{
     common::{
         SaveLoad,
         EntityAny,
+        EntityType,
         EntityContainer,
         world::{
             CHUNK_SIZE,
@@ -229,7 +230,8 @@ impl<S: SaveLoad<WorldChunk>> ServerOvermapData<S>
         ServerOvermap{
             data: self,
             entities,
-            entities_saver
+            entities_saver,
+            delete_ids: Vec::new()
         }
     }
 }
@@ -278,7 +280,8 @@ pub struct ServerOvermap<'a, S, ES>
 {
     data: &'a mut ServerOvermapData<S>,
     entities: &'a mut ServerEntitiesContainer,
-    entities_saver: &'a mut ES
+    entities_saver: &'a mut ES,
+    delete_ids: Vec<EntityType>
 }
 
 impl<S, ES> ServerOvermap<'_, S, ES>
@@ -286,6 +289,11 @@ where
     S: SaveLoad<WorldChunk>,
     ES: SaveLoad<Vec<EntityAny>>
 {
+    pub fn delete_ids(self) -> Vec<EntityType>
+    {
+        self.delete_ids
+    }
+
 	pub fn generate_chunk(&mut self, pos: GlobalPos) -> Chunk
 	{
         let pos = worldchunk_pos(pos);
@@ -367,6 +375,22 @@ where
         }
     }
 
+    fn unload_entities(&mut self, chunk_pos: GlobalPos)
+    {
+        let (delete_ids, delete_entities): (Vec<_>, Vec<_>) = self.entities.entities_iter()
+            .filter(|(_, x)| !x.is_player())
+            .filter(|(_, x)|
+            {
+                let pos: Pos3<f32> = (*x.entity_ref().position()).into();
+
+                pos.rounded() == chunk_pos
+            }).unzip();
+
+        self.delete_ids = delete_ids;
+
+        self.entities_saver.save(chunk_pos, delete_entities);
+    }
+
     fn maybe_unload_entities(&mut self, global: GlobalPos)
     {
         let chunk_pos = chunk_pos(global);
@@ -388,23 +412,7 @@ where
             }
         }
 
-        let (delete_ids, delete_entities): (Vec<_>, Vec<_>) = self.entities.entities_iter()
-            .filter(|(_, x)| !x.is_player())
-            .filter(|(_, x)|
-            {
-                let pos: Pos3<f32> = (*x.entity_ref().position()).into();
-
-                pos.rounded() == chunk_pos
-            }).unzip();
-
-        delete_ids.into_iter().for_each(|id|
-        {
-            let message = self.entities.remove_entity(id);
-
-            dbg!(message);
-        });
-
-        self.entities_saver.save(chunk_pos, delete_entities);
+        self.unload_entities(chunk_pos);
     }
 }
 
@@ -527,7 +535,11 @@ mod tests
             )
         };
 
-        let mut overmap = ServerOvermapData::new(world_generator, size, Pos3::repeat(0.0));
+        let mut overmap = ServerOvermapData::new(
+            world_generator,
+            size,
+            Pos3::repeat(0.0)
+        );
 
         for _ in 0..30
         {
