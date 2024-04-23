@@ -1,7 +1,7 @@
 use std::{
     path::PathBuf,
     sync::Arc,
-    collections::HashMap
+    collections::{hash_map::Entry, HashMap}
 };
 
 use parking_lot::{Mutex, RwLock};
@@ -194,7 +194,6 @@ impl World
 
         entities.into_iter().for_each(|entity|
         {
-            eprintln!("creating entity {:?}", Pos3::<f32>::from(*entity.entity_ref().position()).rounded().0);
             let message = container.push_entity(entity);
 
             writer.send_message(message);
@@ -274,20 +273,19 @@ impl World
 
         if loaded_chunk.is_some()
         {
-            // make this use client indexers
-            /*let containing_amount = self.overmaps.read().iter().filter(|(_, overmap)|
+            let containing_amount = self.client_indexers.iter().filter(|(_, indexer)|
             {
-                overmap.inbounds_chunk(pos)
+                indexer.inbounds(pos)
             }).count();
 
             // only 1 overmap contains chunk
             if containing_amount == 1
             {
-                /*if let Some(entities) = self.entities_saver.load(pos)
+                if let Some(entities) = self.entities_saver.load(pos)
                 {
                     self.create_entities(container, entities);
-                }*/
-            }*/
+                }
+            }
         }
 
 		loaded_chunk.unwrap_or_else(||
@@ -307,15 +305,23 @@ impl World
         I: Iterator<Item=(EntityType, (GlobalPos, EntityAny))>
     {
         let mut delete_ids = Vec::new();
-        let mut delete_entities = HashMap::new();
+        let mut delete_entities: HashMap<GlobalPos, Vec<EntityAny>> = HashMap::new();
 
         while let Some((id, (pos, entity))) = iter.next()
         {
             delete_ids.push(id);
 
-            delete_entities.entry(pos)
-                .and_modify(|entities: &mut Vec<_>| entities.push(entity))
-                .or_default();
+            match delete_entities.entry(pos)
+            {
+                Entry::Occupied(mut occupied) =>
+                {
+                    occupied.get_mut().push(entity);
+                },
+                Entry::Vacant(vacant) =>
+                {
+                    vacant.insert(vec![entity]);
+                }
+            }
         }
 
         (delete_ids, delete_entities)
@@ -352,7 +358,6 @@ impl World
 
         delete_ids.into_iter().for_each(|id|
         {
-            eprintln!("deleting {id:?}");
             let message = container.remove_entity(id);
 
             message_handler.send_message(message);
