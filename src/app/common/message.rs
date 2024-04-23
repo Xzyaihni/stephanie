@@ -33,16 +33,9 @@ impl Message
 	{
 		match self
 		{
+            Message::EntitySet{id, ..} => Some(*id),
+            Message::EntityDestroy{id, ..} => Some(*id),
 			Message::EntitySyncTransform{entity_type, ..} => Some(*entity_type),
-			_ => None
-		}
-	}
-
-	pub fn overwriting(&self) -> Option<usize>
-	{
-		match self
-		{
-			Message::EntitySyncTransform{..} => Some(0),
 			_ => None
 		}
 	}
@@ -57,12 +50,9 @@ impl Message
 	}
 }
 
-const OVERWRITING_COUNT: usize = 1;
-
 #[derive(Debug, Clone)]
 pub struct MessageBuffer
 {
-	overwriting_buffer: [Option<Message>; OVERWRITING_COUNT],
 	buffer: Vec<Message>
 }
 
@@ -70,29 +60,16 @@ impl MessageBuffer
 {
 	pub fn new() -> Self
 	{
-		let overwriting_buffer = [None; OVERWRITING_COUNT];
-
-		Self{overwriting_buffer, buffer: Vec::new()}
+		Self{buffer: Vec::new()}
 	}
 
 	pub fn set_message(&mut self, message: Message)
 	{
-		if let Some(id) = message.overwriting()
-		{
-			self.overwriting_buffer[id] = Some(message);
-		} else
-		{
-			self.buffer.push(message);
-		}
+        self.buffer.push(message);
 	}
 
 	pub fn get_buffered(&mut self) -> impl Iterator<Item=Message> + '_
 	{
 		mem::take(&mut self.buffer).into_iter()
-			.chain(
-				mem::replace(&mut self.overwriting_buffer, [None; OVERWRITING_COUNT])
-					.into_iter()
-					.flatten()
-			)
 	}
 }

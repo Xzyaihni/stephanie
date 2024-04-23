@@ -323,7 +323,7 @@ impl GameServer
 
 		if message.forward()
 		{
-			self.connection_handler.write().send_message(message.clone());
+			self.connection_handler.write().send_message_without(id, message.clone());
 		}
 
 		let message = match self.world.handle_message(&mut self.entities, id, message)

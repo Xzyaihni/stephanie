@@ -32,11 +32,6 @@ pub trait Overmap<T>: OvermapIndexing
         self.get(pos).is_some()
     }
 
-    fn inbounds(&self, pos: GlobalPos) -> bool
-    {
-        self.to_local(pos).is_some()
-    }
-
 	fn generate_missing(&mut self);
 
 	fn force_regenerate(&mut self)
@@ -169,6 +164,11 @@ pub trait OvermapIndexing
     fn to_global_z(&self, z: usize) -> i32
     {
         (z as i32 - self.size().z as i32 / 2) + self.player_position().0.z
+    }
+
+    fn inbounds(&self, pos: GlobalPos) -> bool
+    {
+        self.to_local(pos).is_some()
     }
 
     fn over_bounds(&self, pos: GlobalPos, margin: Pos3<i32>) -> Pos3<i32>

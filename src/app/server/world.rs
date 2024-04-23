@@ -1,13 +1,17 @@
 use std::{
     path::PathBuf,
-    sync::Arc
+    sync::Arc,
+    collections::HashMap
 };
 
 use parking_lot::{Mutex, RwLock};
 
+use yanyaengine::TransformContainer;
+
 use crate::{
 	server::{game_server::ServerEntitiesContainer, ConnectionsHandler},
 	common::{
+        self,
         EnemyBuilder,
         ObjectsStore,
 		TileMap,
@@ -17,6 +21,8 @@ use crate::{
         SaveLoad,
 		EntityPasser,
         EntityAny,
+        EntityType,
+        EntityContainer,
 		message::Message,
 		world::{
             CHUNK_SIZE,
@@ -26,14 +32,15 @@ use crate::{
 			Chunk,
             ChunkLocal,
 			GlobalPos,
-			Pos3
+			Pos3,
+            overmap::OvermapIndexing
 		}
 	}
 };
 
 use world_generator::WorldGenerator;
 
-use server_overmap::ServerOvermapData;
+use server_overmap::ServerOvermap;
 
 pub use world_generator::ParseError;
 
@@ -44,7 +51,27 @@ mod server_overmap;
 pub const SERVER_OVERMAP_SIZE: usize = CLIENT_OVERMAP_SIZE + 1;
 pub const SERVER_OVERMAP_SIZE_Z: usize = CLIENT_OVERMAP_SIZE_Z + 1;
 
-type OvermapsType = Arc<RwLock<ObjectsStore<ServerOvermapData<WorldChunkSaver>>>>;
+type OvermapsType = Arc<RwLock<ObjectsStore<ServerOvermap<WorldChunkSaver>>>>;
+
+#[derive(Debug)]
+struct ClientIndexer
+{
+    size: Pos3<usize>,
+    player_position: GlobalPos
+}
+
+impl OvermapIndexing for ClientIndexer
+{
+	fn size(&self) -> Pos3<usize>
+	{
+		self.size
+	}
+
+	fn player_position(&self) -> GlobalPos
+	{
+		self.player_position
+	}
+}
 
 #[derive(Debug)]
 pub struct World
@@ -54,7 +81,8 @@ pub struct World
 	world_generator: Arc<Mutex<WorldGenerator<WorldChunkSaver>>>,
 	chunk_saver: ChunkSaver,
     entities_saver: EntitiesSaver,
-	overmaps: OvermapsType
+	overmaps: OvermapsType,
+    client_indexers: ObjectsStore<ClientIndexer>
 }
 
 impl World
@@ -79,6 +107,7 @@ impl World
 		let world_generator = Arc::new(Mutex::new(world_generator));
 
 		let overmaps = Arc::new(RwLock::new(ObjectsStore::new()));
+        let client_indexers = ObjectsStore::new();
 
 		Ok(Self{
 			message_handler,
@@ -86,26 +115,60 @@ impl World
 			world_generator,
 			chunk_saver,
             entities_saver,
-			overmaps
+			overmaps,
+            client_indexers
 		})
 	}
 
 	pub fn add_player(&mut self, position: Pos3<f32>) -> usize
 	{
 		let size = Pos3::new(SERVER_OVERMAP_SIZE, SERVER_OVERMAP_SIZE, SERVER_OVERMAP_SIZE_Z);
-		let overmap = ServerOvermapData::new(
+		let overmap = ServerOvermap::new(
 			self.world_generator.clone(),
 			size,
 			position
 		);
+
+        let indexer_size = common::world::World::overmap_size();
+        let indexer = ClientIndexer{size: indexer_size, player_position: position.rounded()};
+
+        self.client_indexers.push(indexer);
 
 		self.overmaps.write().push(overmap)
 	}
 
 	pub fn remove_player(&mut self, id: usize)
 	{
+		self.client_indexers.remove(id);
 		self.overmaps.write().remove(id);
 	}
+
+    pub fn player_moved(
+        &mut self,
+        container: &mut ServerEntitiesContainer,
+        id: usize,
+        new_position: Pos3<f32>
+    )
+    {
+        let previous_position = &mut self.client_indexers[id].player_position;
+        let new_position = new_position.rounded();
+
+        let position_changed = *previous_position != new_position;
+
+        *previous_position = new_position;
+
+        if position_changed
+        {
+            let mut writer = self.message_handler.write();
+            Self::unload_entities(&mut self.entities_saver, container, &mut writer, |global|
+            {
+                self.client_indexers.iter().any(|(_, indexer)|
+                {
+                    indexer.inbounds(global)
+                })
+            });
+        }
+    }
 
 	pub fn send_chunk(
         &mut self,
@@ -131,6 +194,7 @@ impl World
 
         entities.into_iter().for_each(|entity|
         {
+            eprintln!("creating entity {:?}", Pos3::<f32>::from(*entity.entity_ref().position()).rounded().0);
             let message = container.push_entity(entity);
 
             writer.send_message(message);
@@ -210,7 +274,8 @@ impl World
 
         if loaded_chunk.is_some()
         {
-            let containing_amount = self.overmaps.read().iter().filter(|(_, overmap)|
+            // make this use client indexers
+            /*let containing_amount = self.overmaps.read().iter().filter(|(_, overmap)|
             {
                 overmap.inbounds_chunk(pos)
             }).count();
@@ -218,37 +283,81 @@ impl World
             // only 1 overmap contains chunk
             if containing_amount == 1
             {
-                if let Some(entities) = self.entities_saver.load(pos)
+                /*if let Some(entities) = self.entities_saver.load(pos)
                 {
                     self.create_entities(container, entities);
-                }
-            }
+                }*/
+            }*/
         }
 
 		loaded_chunk.unwrap_or_else(||
 		{
-			let (delete_ids, chunk) = {
-                let mut overmap = self.overmaps.write();
-                let mut overmap = overmap[id].attach_info(container, &mut self.entities_saver);
-
-                let chunk = overmap.generate_chunk(pos);
-                (overmap.delete_ids(), chunk)
-            };
+			let chunk = self.overmaps.write()[id].generate_chunk(pos);
 
             self.add_entities(container, pos.into(), &chunk);
-
-            delete_ids.into_iter().for_each(|id|
-            {
-                let message = container.remove_entity(id);
-
-                self.message_handler.write().send_message(message);
-            });
                 
 			self.chunk_saver.save(pos, chunk.clone());
 
 			chunk
 		})
 	}
+
+    fn collect_to_delete<I>(mut iter: I) -> (Vec<EntityType>, HashMap<GlobalPos, Vec<EntityAny>>)
+    where
+        I: Iterator<Item=(EntityType, (GlobalPos, EntityAny))>
+    {
+        let mut delete_ids = Vec::new();
+        let mut delete_entities = HashMap::new();
+
+        while let Some((id, (pos, entity))) = iter.next()
+        {
+            delete_ids.push(id);
+
+            delete_entities.entry(pos)
+                .and_modify(|entities: &mut Vec<_>| entities.push(entity))
+                .or_default();
+        }
+
+        (delete_ids, delete_entities)
+    }
+
+    pub fn unload_entities<F>(
+        saver: &mut EntitiesSaver,
+        container: &mut ServerEntitiesContainer,
+        message_handler: &mut ConnectionsHandler,
+        keep: F
+    )
+    where
+        F: Fn(GlobalPos) -> bool
+    {
+        let delete_entities = container.entities_iter()
+            .filter(|(_, x)| !x.is_player())
+            .filter_map(|(id, x)|
+            {
+                let pos: Pos3<f32> = (*x.entity_ref().position()).into();
+                let pos = pos.rounded();
+
+                (!keep(pos)).then(||
+                {
+                    (id, (pos, x))
+                })
+            });
+
+        let (delete_ids, delete_entities) = Self::collect_to_delete(delete_entities);
+
+        delete_entities.into_iter().for_each(|(pos, entities)|
+        {
+            saver.save(pos, entities);
+        });
+
+        delete_ids.into_iter().for_each(|id|
+        {
+            eprintln!("deleting {id:?}");
+            let message = container.remove_entity(id);
+
+            message_handler.send_message(message);
+        });
+    }
 
 	#[allow(dead_code)]
 	fn world_path(&self) -> PathBuf
@@ -268,6 +377,27 @@ impl World
         message: Message
     ) -> Option<Message>
 	{
+        let new_position = (message.entity_type() == Some(EntityType::Player(id))).then(||
+        {
+            match &message
+            {
+                Message::EntitySet{entity, ..} =>
+                {
+                    Some(entity.entity_ref().position())
+                },
+                Message::EntitySyncTransform{transform, ..} =>
+                {
+                    Some(&transform.position)
+                },
+                _ => None
+            }
+        }).flatten();
+
+        if let Some(new_position) = new_position
+        {
+            self.player_moved(container, id, (*new_position).into());
+        }
+
 		match message
 		{
 			Message::ChunkRequest{pos} =>

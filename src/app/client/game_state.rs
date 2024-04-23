@@ -508,7 +508,6 @@ impl GameState
 				1.0
 			};
 
-
 			lowest *= adjust_factor;
 			lowest = lowest.max(min_scale);
 		}
@@ -526,18 +525,23 @@ impl GameState
 
     pub fn remove_client_entity(&self, id: EntityType)
     {
-        self.connections_handler.write().send_message(Message::EntityDestroy{id});
+        self.send_message(Message::EntityDestroy{id});
     }
 
     pub fn add_client_entity(&self, entity: EntityAny)
     {
-        self.connections_handler.write().send_message(Message::EntityAdd{entity});
+        self.send_message(Message::EntityAdd{entity});
     }
 
     pub fn echo_message(&self, message: Message)
     {
         let message = Message::RepeatMessage{message: Box::new(message)};
 
+        self.send_message(message);
+    }
+
+    pub fn send_message(&self, message: Message)
+    {
         self.connections_handler.write().send_message(message);
     }
 

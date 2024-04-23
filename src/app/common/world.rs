@@ -74,7 +74,7 @@ impl World
 		player_position: Pos3<f32>
 	) -> Self
 	{
-		let size = Pos3::new(CLIENT_OVERMAP_SIZE, CLIENT_OVERMAP_SIZE, CLIENT_OVERMAP_SIZE);
+		let size = Self::overmap_size();
 
 		let visual_overmap = VisualOvermap::new(tiles_factory, size, camera_size, player_position);
 		let overmap = ClientOvermap::new(
@@ -86,6 +86,11 @@ impl World
 
 		Self{overmap}
 	}
+
+    pub fn overmap_size() -> Pos3<usize>
+    {
+        Pos3::new(CLIENT_OVERMAP_SIZE, CLIENT_OVERMAP_SIZE, CLIENT_OVERMAP_SIZE_Z)
+    }
 
 	pub fn zoom_limits() -> (f32, f32)
 	{

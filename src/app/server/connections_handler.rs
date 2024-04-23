@@ -73,6 +73,26 @@ impl ConnectionsHandler
 	{
 		self.connections.get_mut(id).unwrap()
 	}
+
+    pub fn send_message_without(&mut self, id: usize, message: Message)
+    {
+        self.send_message_inner(Some(id), message);
+    }
+
+    fn send_message_inner(&mut self, skip_id: Option<usize>, message: Message)
+    {
+		let entity_type = message.entity_type();
+
+		self.connections.iter_mut().filter(|(index, _)|
+		{
+			let same_sync = Some(EntityType::Player(*index)) == entity_type;
+
+            !same_sync && skip_id != Some(*index)
+		}).for_each(|(_, player_info)|
+		{
+			player_info.set_message(message.clone());
+		});
+    }
 }
 
 impl EntityPasser for ConnectionsHandler
@@ -84,15 +104,7 @@ impl EntityPasser for ConnectionsHandler
 
 	fn send_message(&mut self, message: Message)
 	{
-		let entity_type = message.entity_type();
-
-		self.connections.iter_mut().filter(|(index, _)|
-		{
-			Some(EntityType::Player(*index)) != entity_type
-		}).for_each(|(_, player_info)|
-		{
-			player_info.set_message(message.clone());
-		});
+        self.send_message_inner(None, message);
 	}
 }
 

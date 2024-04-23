@@ -2,8 +2,6 @@ use std::sync::Arc;
 
 use parking_lot::Mutex;
 
-use yanyaengine::TransformContainer;
-
 use super::world_generator::{
     WORLD_CHUNK_SIZE,
     CHUNK_RATIO,
@@ -11,28 +9,22 @@ use super::world_generator::{
     WorldChunk
 };
 
-use crate::{
-    server::game_server::ServerEntitiesContainer,
-    common::{
-        SaveLoad,
-        EntityAny,
-        EntityType,
-        EntityContainer,
-        world::{
-            CHUNK_SIZE,
-            LocalPos,
-            GlobalPos,
-            Pos3,
-            Chunk,
-            ChunkLocal,
-            chunk::tile::Tile,
-            overmap::{Overmap, OvermapIndexing, FlatChunksContainer, ChunksContainer}
-        }
+use crate::common::{
+    SaveLoad,
+    world::{
+        CHUNK_SIZE,
+        LocalPos,
+        GlobalPos,
+        Pos3,
+        Chunk,
+        ChunkLocal,
+        chunk::tile::Tile,
+        overmap::{Overmap, OvermapIndexing, FlatChunksContainer, ChunksContainer}
     }
 };
 
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct Indexer
 {
 	pub size: Pos3<usize>,
@@ -153,6 +145,7 @@ fn worldchunk_pos(pos: GlobalPos) -> GlobalPos
     pos * chunk_ratio()
 }
 
+#[allow(dead_code)]
 fn chunk_pos(pos: GlobalPos) -> GlobalPos
 {
     let pos = pos.0.zip(CHUNK_RATIO.map(|x| x as i32)).map(|(pos, ratio)|
@@ -170,7 +163,7 @@ fn chunk_pos(pos: GlobalPos) -> GlobalPos
 }
 
 #[derive(Debug)]
-pub struct ServerOvermapData<S>
+pub struct ServerOvermap<S>
 {
 	world_generator: Arc<Mutex<WorldGenerator<S>>>,
 	world_chunks: ChunksContainer<Option<WorldChunk>>,
@@ -178,7 +171,7 @@ pub struct ServerOvermapData<S>
 	indexer: Indexer
 }
 
-impl<S: SaveLoad<WorldChunk>> ServerOvermapData<S>
+impl<S: SaveLoad<WorldChunk>> ServerOvermap<S>
 {
 	pub fn new(
 		world_generator: Arc<Mutex<WorldGenerator<S>>>,
@@ -216,27 +209,112 @@ impl<S: SaveLoad<WorldChunk>> ServerOvermapData<S>
 		this
 	}
 
+    #[allow(dead_code)]
     pub fn inbounds_chunk(&self, pos: GlobalPos) -> bool
     {
-        self.inbounds(worldchunk_pos(pos))
+        let world_pos = worldchunk_pos(pos);
+        for x in 0..CHUNK_RATIO.x
+        {
+            for y in 0..CHUNK_RATIO.y
+            {
+                for z in 0..CHUNK_RATIO.z
+                {
+                    let check_pos = world_pos + GlobalPos::from(Pos3{x, y, z});
+
+                    if self.inbounds(check_pos)
+                    {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        false
     }
 
-    pub fn attach_info<'a, ES>(
-        &'a mut self,
-        entities: &'a mut ServerEntitiesContainer,
-        entities_saver: &'a mut ES
-    ) -> ServerOvermap<'a, S, ES>
+	pub fn generate_chunk(&mut self, pos: GlobalPos) -> Chunk
+	{
+        let pos = worldchunk_pos(pos);
+
+		let shift_offset = self.over_bounds_with_padding(
+            pos,
+            Pos3::repeat(1),
+            CHUNK_RATIO.map(|x| x as i32) + 1
+        );
+
+		if shift_offset != Pos3::repeat(0_i32)
+		{
+			self.shift_overmap_by(shift_offset);
+		}
+
+		self.generate_existing_chunk(self.to_local(pos).unwrap())
+	}
+
+	fn shift_overmap_by(&mut self, shift_offset: Pos3<i32>)
+	{
+		self.indexer.player_position = self.indexer.player_position + shift_offset;
+
+        let moved_vertically_only = shift_offset.x == 0 && shift_offset.y == 0;
+        if !moved_vertically_only
+        {
+            let mut non_vertical_offset = shift_offset;
+            non_vertical_offset.z = 0;
+
+            self.world_plane.set_player_position(self.indexer.player_position);
+            self.world_plane.position_offset(non_vertical_offset);
+        }
+
+        self.position_offset(shift_offset);
+	}
+
+	fn generate_existing_chunk(&self, local_pos: LocalPos) -> Chunk
+	{
+        let mut chunk = Chunk::new();
+
+        for z in 0..CHUNK_RATIO.z
+        {
+            for y in 0..CHUNK_RATIO.y
+            {
+                for x in 0..CHUNK_RATIO.x
+                {
+                    let this_pos = Pos3::new(x, y, z);
+
+                    let local_pos = local_pos + this_pos;
+
+		            let group = local_pos.always_group().expect("chunk must not touch edges");
+		            let group = group.map(|position|
+                    {
+                        self.world_chunks[position].clone().unwrap()
+                    });
+
+		            let world_chunk = self.world_generator.lock().generate_chunk(group);
+
+                    Self::partially_fill(&mut chunk, world_chunk, this_pos);
+                }
+            }
+        }
+
+        chunk
+	}
+
+    fn partially_fill(chunk: &mut Chunk, world_chunk: ChunksContainer<Tile>, pos: Pos3<usize>)
     {
-        ServerOvermap{
-            data: self,
-            entities,
-            entities_saver,
-            delete_ids: Vec::new()
+        let size = world_chunk.size();
+        for z in 0..size.z
+        {
+            for y in 0..size.y
+            {
+                for x in 0..size.x
+                {
+                    let this_pos = Pos3::new(x, y, z);
+                    chunk[ChunkLocal::from(pos + this_pos)] = world_chunk[this_pos];
+                }
+            }
         }
     }
 }
 
-impl<S: SaveLoad<WorldChunk>> Overmap<WorldChunk> for ServerOvermapData<S>
+impl<S: SaveLoad<WorldChunk>> Overmap<WorldChunk> for ServerOvermap<S>
 {
 	fn remove(&mut self, pos: LocalPos)
 	{
@@ -262,7 +340,7 @@ impl<S: SaveLoad<WorldChunk>> Overmap<WorldChunk> for ServerOvermapData<S>
 	}
 }
 
-impl<S> OvermapIndexing for ServerOvermapData<S>
+impl<S> OvermapIndexing for ServerOvermap<S>
 {
 	fn size(&self) -> Pos3<usize>
 	{
@@ -272,196 +350,6 @@ impl<S> OvermapIndexing for ServerOvermapData<S>
 	fn player_position(&self) -> GlobalPos
 	{
 		self.indexer.player_position
-	}
-}
-
-#[derive(Debug)]
-pub struct ServerOvermap<'a, S, ES>
-{
-    data: &'a mut ServerOvermapData<S>,
-    entities: &'a mut ServerEntitiesContainer,
-    entities_saver: &'a mut ES,
-    delete_ids: Vec<EntityType>
-}
-
-impl<S, ES> ServerOvermap<'_, S, ES>
-where
-    S: SaveLoad<WorldChunk>,
-    ES: SaveLoad<Vec<EntityAny>>
-{
-    pub fn delete_ids(self) -> Vec<EntityType>
-    {
-        self.delete_ids
-    }
-
-	pub fn generate_chunk(&mut self, pos: GlobalPos) -> Chunk
-	{
-        let pos = worldchunk_pos(pos);
-
-		let shift_offset = self.over_bounds_with_padding(
-            pos,
-            Pos3::repeat(1),
-            CHUNK_RATIO.map(|x| x as i32) + 1
-        );
-
-		if shift_offset != Pos3::repeat(0_i32)
-		{
-			self.shift_overmap_by(shift_offset);
-		}
-
-		self.generate_existing_chunk(self.to_local(pos).unwrap())
-	}
-
-	fn shift_overmap_by(&mut self, shift_offset: Pos3<i32>)
-	{
-		self.data.indexer.player_position = self.data.indexer.player_position + shift_offset;
-
-        let moved_vertically_only = shift_offset.x == 0 && shift_offset.y == 0;
-        if !moved_vertically_only
-        {
-            let mut non_vertical_offset = shift_offset;
-            non_vertical_offset.z = 0;
-
-            self.data.world_plane.set_player_position(self.data.indexer.player_position);
-            self.data.world_plane.position_offset(non_vertical_offset);
-        }
-
-        self.position_offset(shift_offset);
-	}
-
-	fn generate_existing_chunk(&self, local_pos: LocalPos) -> Chunk
-	{
-        let mut chunk = Chunk::new();
-
-        for z in 0..CHUNK_RATIO.z
-        {
-            for y in 0..CHUNK_RATIO.y
-            {
-                for x in 0..CHUNK_RATIO.x
-                {
-                    let this_pos = Pos3::new(x, y, z);
-
-                    let local_pos = local_pos + this_pos;
-
-		            let group = local_pos.always_group().expect("chunk must not touch edges");
-		            let group = group.map(|position|
-                    {
-                        self.data.world_chunks[position].clone().unwrap()
-                    });
-
-		            let world_chunk = self.data.world_generator.lock().generate_chunk(group);
-
-                    Self::partially_fill(&mut chunk, world_chunk, this_pos);
-                }
-            }
-        }
-
-        chunk
-	}
-
-    fn partially_fill(chunk: &mut Chunk, world_chunk: ChunksContainer<Tile>, pos: Pos3<usize>)
-    {
-        let size = world_chunk.size();
-        for z in 0..size.z
-        {
-            for y in 0..size.y
-            {
-                for x in 0..size.x
-                {
-                    let this_pos = Pos3::new(x, y, z);
-                    chunk[ChunkLocal::from(pos + this_pos)] = world_chunk[this_pos];
-                }
-            }
-        }
-    }
-
-    fn unload_entities(&mut self, chunk_pos: GlobalPos)
-    {
-        let (delete_ids, delete_entities): (Vec<_>, Vec<_>) = self.entities.entities_iter()
-            .filter(|(_, x)| !x.is_player())
-            .filter(|(_, x)|
-            {
-                let pos: Pos3<f32> = (*x.entity_ref().position()).into();
-
-                pos.rounded() == chunk_pos
-            }).unzip();
-
-        self.delete_ids = delete_ids;
-
-        self.entities_saver.save(chunk_pos, delete_entities);
-    }
-
-    fn maybe_unload_entities(&mut self, global: GlobalPos)
-    {
-        let chunk_pos = chunk_pos(global);
-        let rounded_global = worldchunk_pos(chunk_pos);
-
-        for x in 0..CHUNK_RATIO.x
-        {
-            for y in 0..CHUNK_RATIO.y
-            {
-                for z in 0..CHUNK_RATIO.z
-                {
-                    let check_pos = rounded_global + GlobalPos::from(Pos3{x, y, z});
-
-                    if self.contains(check_pos)
-                    {
-                        return;
-                    }
-                }
-            }
-        }
-
-        self.unload_entities(chunk_pos);
-    }
-}
-
-impl<S, ES> Overmap<WorldChunk> for ServerOvermap<'_, S, ES>
-where
-    S: SaveLoad<WorldChunk>,
-    ES: SaveLoad<Vec<EntityAny>>
-{
-	fn remove(&mut self, pos: LocalPos)
-	{
-        self.data.remove(pos);
-
-        self.maybe_unload_entities(self.to_global(pos));
-	}
-
-	fn swap(&mut self, a: LocalPos, b: LocalPos)
-	{
-        self.data.swap(a, b);
-	}
-
-	fn get_local(&self, pos: LocalPos) -> &Option<WorldChunk>
-	{
-        self.data.get_local(pos)
-	}
-
-	fn mark_ungenerated(&mut self, pos: LocalPos)
-    {
-        self.data.mark_ungenerated(pos);
-    }
-
-	fn generate_missing(&mut self)
-	{
-        self.data.generate_missing();
-	}
-}
-
-impl<S, ES> OvermapIndexing for ServerOvermap<'_, S, ES>
-where
-    S: SaveLoad<WorldChunk>,
-    ES: SaveLoad<Vec<EntityAny>>
-{
-	fn size(&self) -> Pos3<usize>
-	{
-		self.data.size()
-	}
-
-	fn player_position(&self) -> GlobalPos
-	{
-		self.data.player_position()
 	}
 }
 
@@ -505,9 +393,6 @@ mod tests
     fn moving_around()
     {
         let saver = TestSaver::new();
-        let mut entities_saver = TestSaver::new();
-
-        let mut entities = ServerEntitiesContainer::new(1000);
 
         let tiles = "tiles/tiles.json";
 
@@ -535,7 +420,7 @@ mod tests
             )
         };
 
-        let mut overmap = ServerOvermapData::new(
+        let mut overmap = ServerOvermap::new(
             world_generator,
             size,
             Pos3::repeat(0.0)
@@ -543,8 +428,7 @@ mod tests
 
         for _ in 0..30
         {
-            let _chunk = overmap.attach_info(&mut entities, &mut entities_saver)
-                .generate_chunk(random_chunk());
+            let _chunk = overmap.generate_chunk(random_chunk());
         }
     }
 }
