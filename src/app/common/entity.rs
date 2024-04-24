@@ -188,7 +188,7 @@ impl DrawableEntity for Entity
 }
 
 #[macro_export]
-macro_rules! entity_forward
+macro_rules! basic_entity_forward
 {
     ($name:ident, $child_name:ident) =>
     {
@@ -197,33 +197,17 @@ macro_rules! entity_forward
             Vector3
         };
 
-        use $crate::{
-            client::DrawableEntity,
-            common::{
-                GettableInner,
-                Physical,
-                ChildContainer,
-                entity::{
-                    Entity,
-                    EntityContainer
-                },
-                physics::PhysicsEntity
-            }
+        use yanyaengine::OnTransformCallback;
+
+        use $crate::common::{
+            Physical,
+            ChildContainer,
+            entity::{
+                Entity,
+                EntityContainer
+            },
+            physics::PhysicsEntity
         };
-
-        // i wish specialization was a thing..
-        impl GettableInner<(), $name> for $name
-        {
-            fn wrap(_info: (), value: $name) -> Self
-            {
-                value
-            }
-
-            fn get_inner(&self) -> Self
-            {
-                self.clone()
-            }
-        }
 
         impl PhysicsEntity for $name
         {
@@ -240,14 +224,6 @@ macro_rules! entity_forward
             fn physics_update(&mut self, dt: f32)
             {
                 self.$child_name.physics_update(dt);
-            }
-        }
-
-        impl DrawableEntity for $name
-        {
-            fn texture(&self) -> &str
-            {
-                self.$child_name.texture()
             }
         }
 
@@ -315,6 +291,43 @@ macro_rules! entity_forward
             fn entity_mut(&mut self) -> &mut Entity
             {
                 self.$child_name.entity_mut()
+            }
+        }
+    }
+}
+
+#[macro_export]
+macro_rules! entity_forward
+{
+    ($name:ident, $child_name:ident) =>
+    {
+        use $crate::{
+            basic_entity_forward,
+            client::DrawableEntity,
+            common::GettableInner
+        };
+
+        basic_entity_forward!{$name, $child_name}
+
+        // i wish specialization was a thing..
+        impl GettableInner<(), $name> for $name
+        {
+            fn wrap(_info: (), value: $name) -> Self
+            {
+                value
+            }
+
+            fn get_inner(&self) -> Self
+            {
+                self.clone()
+            }
+        }
+
+        impl DrawableEntity for $name
+        {
+            fn texture(&self) -> &str
+            {
+                self.$child_name.texture()
             }
         }
     }

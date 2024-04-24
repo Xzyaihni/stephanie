@@ -2,7 +2,6 @@ use serde::{Serialize, Deserialize};
 
 use yanyaengine::{
     Transform,
-    OnTransformCallback,
     TransformContainer
 };
 
@@ -20,7 +19,8 @@ use crate::{
 
 pub struct EnemyProperties
 {
-	pub character_properties: CharacterProperties
+	pub character_properties: CharacterProperties,
+    pub behavior: EnemyBehavior
 }
 
 impl EnemyProperties
@@ -32,9 +32,35 @@ impl EnemyProperties
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum EnemyBehavior
+{
+    Melee
+}
+
+impl EnemyBehavior
+{
+    pub fn start_state(&self) -> BehaviorState
+    {
+        match self
+        {
+            Self::Melee => BehaviorState::Wait
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum BehaviorState
+{
+    Wait,
+    MoveTo(Vector3<f32>)
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Enemy
 {
-	character: Character
+	character: Character,
+    behavior: EnemyBehavior,
+    behavior_state: BehaviorState
 }
 
 impl Enemy
@@ -42,7 +68,9 @@ impl Enemy
 	pub fn new(enemy_properties: EnemyProperties) -> Self
 	{
 		Self{
-			character: Character::new(enemy_properties.character_properties)
+			character: Character::new(enemy_properties.character_properties),
+            behavior_state: enemy_properties.behavior.start_state(),
+            behavior: enemy_properties.behavior
 		}
 	}
 

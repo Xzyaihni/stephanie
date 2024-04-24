@@ -1,10 +1,9 @@
 use std::{
     fmt,
 	net::TcpStream,
-	sync::Arc
+	sync::Arc,
+    ops::{Deref, DerefMut}
 };
-
-use nalgebra::Vector3;
 
 use parking_lot::{RwLock, Mutex};
 
@@ -18,38 +17,81 @@ use super::{
 
 pub use super::world::ParseError;
 
-use crate::common::{
-	sender_loop,
-	receiver_loop,
-    EntityType,
-    EntityAny,
-    ObjectsStore,
-	TileMap,
-    Anatomy,
-    HumanAnatomy,
-	EntityPasser,
-	EntitiesContainer,
-	EntitiesController,
-	MessagePasser,
-    PlayerProperties,
-    CharacterProperties,
-    EntityProperties,
-    PhysicalProperties,
-    world::chunk::TILE_SIZE,
-	player::Player,
-    enemy::Enemy,
-	message::{
-		Message,
-		MessageBuffer
-	}
+use crate::{
+    basic_entity_forward,
+    common::{
+        sender_loop,
+        receiver_loop,
+        EntityType,
+        EntityAny,
+        GettableInner,
+        ObjectsStore,
+        TileMap,
+        Anatomy,
+        HumanAnatomy,
+        EntityPasser,
+        EntitiesContainer,
+        EntitiesController,
+        MessagePasser,
+        PlayerProperties,
+        CharacterProperties,
+        EntityProperties,
+        PhysicalProperties,
+        world::chunk::TILE_SIZE,
+        player::Player,
+        enemy::Enemy,
+        message::{
+            Message,
+            MessageBuffer
+        }
+    }
 };
 
+
+#[derive(Debug)]
+pub struct ServerEnemy
+{
+    enemy: Enemy
+}
+
+impl Deref for ServerEnemy
+{
+    type Target = Enemy;
+
+    fn deref(&self) -> &Self::Target
+    {
+        &self.enemy
+    }
+}
+
+basic_entity_forward!{ServerEnemy, enemy}
+
+impl DerefMut for ServerEnemy
+{
+    fn deref_mut(&mut self) -> &mut Self::Target
+    {
+        &mut self.enemy
+    }
+}
+
+impl GettableInner<(), Enemy> for ServerEnemy
+{
+    fn wrap(info: (), enemy: Enemy) -> Self
+    {
+        ServerEnemy{enemy}
+    }
+
+	fn get_inner(&self) -> Enemy
+	{
+		self.enemy.clone()
+	}
+}
 
 #[derive(Debug)]
 pub struct ServerEntitiesContainer
 {
 	players: ObjectsStore<Player>,
-    enemies: ObjectsStore<Enemy>
+    enemies: ObjectsStore<ServerEnemy>
 }
 
 impl ServerEntitiesContainer
@@ -80,7 +122,7 @@ impl ServerEntitiesContainer
     {
         self.enemies_ref().iter().map(|(id, x)|
         {
-            (EntityType::Enemy(id), EntityAny::Enemy(x.clone()))
+            (EntityType::Enemy(id), EntityAny::Enemy((**x).clone()))
         }).chain(self.players_ref().iter().map(|(id, x)|
         {
             (EntityType::Player(id), EntityAny::Player(x.clone()))
@@ -91,7 +133,7 @@ impl ServerEntitiesContainer
 impl EntitiesContainer<()> for ServerEntitiesContainer
 {
 	type PlayerObject = Player;
-    type EnemyObject = Enemy;
+    type EnemyObject = ServerEnemy;
 
 	fn players_ref(&self) -> &ObjectsStore<Self::PlayerObject>
 	{

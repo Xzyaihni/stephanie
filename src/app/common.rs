@@ -22,6 +22,7 @@ pub use tilemap::{TileMap, TileMapWithTextures};
 
 pub use entity::{
     Entity,
+    ChildEntity,
     Physical,
     ChildContainer,
     EntityProperties,
@@ -40,9 +41,10 @@ pub use player::PlayerProperties;
 pub use enemy::{EnemyProperties, Enemy};
 
 use player::Player;
-use entity::ChildEntity;
 
 pub use physics::PhysicsEntity;
+
+pub mod animator;
 
 pub mod lisp;
 pub mod objects_store;

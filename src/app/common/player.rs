@@ -4,7 +4,6 @@ use serde::{Serialize, Deserialize};
 
 use yanyaengine::{
     Transform,
-    OnTransformCallback,
     TransformContainer
 };
 

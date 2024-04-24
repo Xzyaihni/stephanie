@@ -5,6 +5,7 @@ use yanyaengine::Transform;
 use crate::common::{
     Enemy,
     EnemyProperties,
+    enemy::EnemyBehavior,
     CharacterProperties,
     Anatomy,
     HumanAnatomy,
@@ -43,7 +44,8 @@ impl EnemyBuilder
                     }
                 },
                 anatomy: Anatomy::Human(HumanAnatomy::default())
-            }
+            },
+            behavior: EnemyBehavior::Melee
         };
 
         Enemy::new(props)

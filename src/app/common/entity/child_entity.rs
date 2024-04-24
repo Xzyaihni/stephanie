@@ -6,8 +6,7 @@ use nalgebra::{Rotation, Vector2};
 
 use yanyaengine::{
     Transform,
-    TransformContainer,
-	OnTransformCallback
+    TransformContainer
 };
 
 use crate::{entity_forward, common::lerp};
