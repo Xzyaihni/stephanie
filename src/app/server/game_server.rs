@@ -314,9 +314,19 @@ impl GameServer
         {
             Message::RepeatMessage{message} =>
             {
-                self.connection_handler.write().send_message(*message);
+                self.send_message(*message);
 
                 return;
+            },
+            Message::EntityDestroy{id: entity_id} =>
+            {
+                {
+                    let message = self.entities.remove_entity(entity_id);
+
+                    self.connection_handler.write().send_single(id, message);
+                }
+
+                message
             },
             x => x
         };
@@ -348,11 +358,16 @@ impl GameServer
             {
                 let message = self.entities.push_entity(entity.clone());
 
-                self.connection_handler.write().send_message(message);
+                self.send_message(message);
             },
 			x => panic!("unhandled message: {x:?}")
 		}
 	}
+
+    fn send_message(&mut self, message: Message)
+    {
+        self.connection_handler.write().send_message(message);
+    }
 
 	pub fn player_by_name(&self, _name: &str) -> Option<PlayerInfo>
 	{
