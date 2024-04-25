@@ -6,7 +6,7 @@ use std::{
     time::{Instant, Duration},
     path::{Path, PathBuf},
 	fs::{self, OpenOptions, File},
-    collections::{HashMap, BinaryHeap},
+    collections::{HashMap, BinaryHeap, HashSet},
     sync::{
         Arc,
         mpsc::{self, Sender, Receiver}
@@ -37,10 +37,13 @@ const LZMA_PRESET: u32 = 1;
 const SAVE_MODULO: u32 = 20;
 
 pub trait Saveable: Send + 'static {}
+pub trait AutoSaveable: Saveable {}
 
 impl Saveable for Chunk {}
 impl Saveable for Vec<EntityAny> {}
 impl Saveable for SaveValueGroup {}
+
+impl AutoSaveable for Chunk {}
 
 pub trait SaveLoad<T>
 {
@@ -539,7 +542,7 @@ impl FileSave for FileSaver<SaveValueGroup, LoadValueGroup>
 }
 
 pub type ChunkSaver = Saver<FileSaver<Chunk>, Chunk>;
-pub type EntitiesSaver = Saver<FileSaver<Vec<EntityAny>>, Vec<EntityAny>>;
+pub type EntitiesSaver = DestructiveSaver<FileSaver<Vec<EntityAny>>, Vec<EntityAny>>;
 pub type WorldChunkSaver = Saver<FileSaver<SaveValueGroup, LoadValueGroup>, SaveValueGroup, LoadValueGroup>;
 
 // again, shouldnt be public
@@ -625,9 +628,76 @@ impl SaveLoad<WorldChunk> for WorldChunkSaver
 	}
 }
 
+#[derive(Debug)]
+pub struct DestructiveSaver<S, SaveT: Saveable, LoadT=SaveT>
+where
+    S: FileSave<SaveItem=SaveT, LoadItem=LoadT>
+{
+    saver: Saver<S, SaveT, LoadT>,
+    loaded: HashSet<GlobalPos>
+}
+
+impl<S, SaveT: Saveable, LoadT> DestructiveSaver<S, SaveT, LoadT>
+where
+    S: FileSave<SaveItem=SaveT, LoadItem=LoadT>
+{
+	pub fn new(parent_path: impl Into<PathBuf>, cache_amount: usize) -> Self
+	{
+        let parent_path = parent_path.into();
+
+        let saver = Saver::new(parent_path, cache_amount);
+
+        Self{saver, loaded: HashSet::new()}
+	}
+}
+
+impl SaveLoad<Vec<EntityAny>> for EntitiesSaver
+{
+	fn load(&mut self, pos: GlobalPos) -> Option<Vec<EntityAny>>
+	{
+        self.loaded.insert(pos);
+
+        if let Some(found) = self.saver.cache.iter().find(|pair|
+        {
+            *pair.pos() == pos
+        })
+        {
+            return Some(found.value().clone());
+        }
+
+        self.saver.file_saver.lock().load(pos)
+	}
+
+	fn save(&mut self, pos: GlobalPos, mut entities: Vec<EntityAny>)
+	{
+        if self.loaded.remove(&pos)
+        {
+            let pair = ValuePair::new(pos, entities);
+
+            self.saver.inner_save(pair);
+
+            return;
+        }
+
+        let entities = if let Some(mut contained) = self.load(pos)
+        {
+            contained.append(&mut entities);
+
+            contained
+        } else
+        {
+            entities
+        };
+
+        let pair = ValuePair::new(pos, entities);
+
+        self.saver.inner_save(pair);
+	}
+}
+
 impl<T> SaveLoad<T> for Saver<FileSaver<T>, T>
 where
-    T: Saveable + Clone,
+    T: AutoSaveable + Clone,
     FileSaver<T>: FileSave<LoadItem=T, SaveItem=T>
 {
 	fn load(&mut self, pos: GlobalPos) -> Option<T>

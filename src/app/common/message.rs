@@ -8,7 +8,6 @@ use crate::common::{
 	Transform,
 	EntityType,
     EntityAny,
-    enemy::BehaviorState,
 	world::{Chunk, GlobalPos}
 };
 
@@ -22,7 +21,6 @@ pub enum Message
 	PlayerConnect{name: String},
 	PlayerOnConnect{id: usize},
 	PlayerFullyConnected,
-    EnemyStateChanged{id: usize, state: BehaviorState},
 	EntitySyncTransform{entity_type: EntityType, transform: Transform},
 	ChunkRequest{pos: GlobalPos},
 	ChunkSync{pos: GlobalPos, chunk: Chunk},

@@ -8,6 +8,8 @@ use crate::{
     server::ConnectionsHandler,
     common::{
         Enemy,
+        EntityType,
+        EntityAnyWrappable,
         EntityPasser,
         message::Message
     }
@@ -49,9 +51,9 @@ impl ServerEnemy
             self.enemy.next_state();
             self.current_state_left = Self::state_duration(&self.enemy);
 
-            let message = Message::EnemyStateChanged{
-                id,
-                state: self.enemy.behavior_state().clone()
+            let message = Message::EntitySet{
+                id: EntityType::Enemy(id),
+                entity: self.clone().wrap_any()
             };
 
             messager.send_message(message);

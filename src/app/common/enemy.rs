@@ -98,8 +98,11 @@ impl Enemy
                 {
                     BehaviorState::Wait =>
                     {
-                        let x = fastrand::f32();
-                        let direction = Unit::new_normalize(Vector3::new(x, 1.0 - x, 0.0));
+                        let x = fastrand::f32() * 2.0 - 1.0;
+
+                        let y = 1.0 - x.abs();
+
+                        let direction = Unit::new_normalize(Vector3::new(x, y, 0.0));
 
                         BehaviorState::MoveDirection(direction)
                     },

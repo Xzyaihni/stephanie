@@ -164,11 +164,7 @@ impl PhysicsEntity for Entity
 
 	fn physics_update(&mut self, dt: f32)
     {
-        // remove this after i add collisions
-        if !self.children.is_empty()
-        {
-            self.physical.grounded = true;
-        }
+        self.physical.grounded = true;
 
         self.physical_mut().physics_update(dt);
 
