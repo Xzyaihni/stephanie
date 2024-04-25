@@ -56,6 +56,8 @@ impl ServerEnemy
 
             messager.send_message(message);
         }
+
+        self.physics_update(dt);
     }
 }
 
