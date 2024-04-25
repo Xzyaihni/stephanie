@@ -221,7 +221,8 @@ impl Debug for LispValue
 
 impl LispValue
 {
-    // tag and value in the union must match
+    /// # Safety
+    /// tag and value in the union must match
     pub unsafe fn new(tag: ValueTag, value: ValueRaw) -> Self
     {
         Self{tag, value}
@@ -393,10 +394,7 @@ impl LispValue
             {
                 let special = unsafe{ self.value.special };
 
-                special.as_bool().ok_or_else(||
-                {
-                    Error::WrongSpecial{expected: "boolean"}
-                })
+                special.as_bool().ok_or(Error::WrongSpecial{expected: "boolean"})
             },
             x => Err(Error::WrongType{expected: ValueTag::Special, got: x})
         }
@@ -926,7 +924,7 @@ impl LispMemory
         // +2 for the length and for the type tag
         self.need_memory(env, len + 2);
 
-        self.memory.allocate_iter(len, vec.tag, vec.values.into_iter())
+        self.memory.allocate_iter(len, vec.tag, vec.values.iter())
     }
 
     pub fn allocate_expression(
@@ -1041,17 +1039,17 @@ impl<'a> OutputWrapper<'a>
 
     pub fn as_vector(&self) -> Result<LispVector, Error>
     {
-        self.value.as_vector(&self.memory)
+        self.value.as_vector(self.memory)
     }
 
     pub fn as_symbol(&self) -> Result<String, Error>
     {
-        self.value.as_symbol(&self.memory)
+        self.value.as_symbol(self.memory)
     }
 
     pub fn as_list(&self) -> Result<LispList, Error>
     {
-        self.value.as_list(&self.memory)
+        self.value.as_list(self.memory)
     }
 
     pub fn as_integer(self) -> Result<i32, Error>
@@ -1138,7 +1136,8 @@ pub struct LispRef
 
 impl LispRef
 {
-    // if an env has some invalid data it will cause ub
+    /// # Safety
+    /// if an env has some invalid data it will cause ub
     pub unsafe fn new_with_config(config: LispConfig, code: &str) -> Result<Self, ErrorPos>
     {
         let program = Program::parse(config.primitives, config.lambdas, code)?;
@@ -1182,11 +1181,11 @@ impl LispRef
             let env: &Environment<'static> = &x.lock();
 
             Environment::clone(env)
-        }).unwrap_or_else(|| Environment::new())
+        }).unwrap_or_else(Environment::new)
     }
 
-    fn run_inner<'a, 'b>(
-        &'b mut self,
+    fn run_inner<'a>(
+        &mut self,
         memory: &'a mut LispMemory
     ) -> Result<(Environment<'static>, OutputWrapper<'a>), ErrorPos>
     {

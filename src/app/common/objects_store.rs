@@ -91,12 +91,12 @@ impl<T> ObjectsStore<T>
 
     pub fn get(&self, index: usize) -> Option<&T>
     {
-        self.data.get(index).map(Option::as_ref).flatten()
+        self.data.get(index).and_then(Option::as_ref)
     }
 
     pub fn get_mut(&mut self, index: usize) -> Option<&mut T>
     {
-        self.data.get_mut(index).map(Option::as_mut).flatten()
+        self.data.get_mut(index).and_then(Option::as_mut)
     }
 
     pub fn contains(&self, index: usize) -> bool

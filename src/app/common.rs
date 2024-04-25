@@ -320,10 +320,10 @@ pub trait EntitiesController
 		self.passer().write().send_message(Message::EntityDestroy{id});
 	}
 
-	fn player_mut<'a>(
-		&'a mut self,
+	fn player_mut(
+		&mut self,
 		id: usize
-	) -> NetworkEntity<'a, Self::Passer, <Self::Container as EntitiesContainer>::PlayerObject>
+	) -> NetworkEntity<'_, Self::Passer, <Self::Container as EntitiesContainer>::PlayerObject>
 	{
 		let passer = self.passer();
 		let container = self.container_mut();
@@ -331,8 +331,8 @@ pub trait EntitiesController
 		NetworkEntity::new(passer, EntityType::Player(id), &mut container.players_mut()[id])
 	}
 
-	fn player_ref<'a>(
-        &'a self,
+	fn player_ref(
+        &self,
         id: usize
     ) -> &<Self::Container as EntitiesContainer>::PlayerObject
 	{

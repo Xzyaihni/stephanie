@@ -300,14 +300,14 @@ impl World
 		})
 	}
 
-    fn collect_to_delete<I>(mut iter: I) -> (Vec<EntityType>, HashMap<GlobalPos, Vec<EntityAny>>)
+    fn collect_to_delete<I>(iter: I) -> (Vec<EntityType>, HashMap<GlobalPos, Vec<EntityAny>>)
     where
         I: Iterator<Item=(EntityType, (GlobalPos, EntityAny))>
     {
         let mut delete_ids = Vec::new();
         let mut delete_entities: HashMap<GlobalPos, Vec<EntityAny>> = HashMap::new();
 
-        while let Some((id, (pos, entity))) = iter.next()
+        for (id, (pos, entity)) in iter
         {
             delete_ids.push(id);
 
@@ -343,10 +343,7 @@ impl World
                 let pos: Pos3<f32> = (*x.entity_ref().position()).into();
                 let pos = pos.rounded();
 
-                (!keep(pos)).then(||
-                {
-                    (id, (pos, x))
-                })
+                (!keep(pos)).then_some((id, (pos, x)))
             });
 
         let (delete_ids, delete_entities) = Self::collect_to_delete(delete_entities);

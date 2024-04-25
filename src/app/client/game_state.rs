@@ -217,7 +217,7 @@ impl ClientEntitiesContainer
         {
             let first = hits.into_iter().next();
 
-            first.map(|x| vec![x]).unwrap_or_else(|| Vec::new())
+            first.map(|x| vec![x]).unwrap_or_default()
         }
     }
 }
@@ -240,7 +240,10 @@ impl GameObject for ClientEntitiesContainer
 				.for_each(|(_, pair)| pair.draw(info));
 
             // player could be uninitialized
-			self.players.get(player_id).map(|player| player.draw(info));
+			if let Some(player) = self.players.get(player_id)
+            {
+                player.draw(info);
+            }
 		} else
 		{
 			self.players.iter().for_each(|(_, pair)| pair.draw(info));
@@ -446,7 +449,7 @@ impl GameState
 				{
 					self.process_message_inner(create_info, message);
 				},
-				Err(err) if err == TryRecvError::Empty =>
+				Err(TryRecvError::Empty) =>
 				{
 					return;
 				},

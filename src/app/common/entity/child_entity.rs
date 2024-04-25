@@ -195,7 +195,7 @@ impl ChildEntity
 	fn origin(&self) -> Vector3<f32>
 	{
         let rotation = Rotation::from_axis_angle(
-            &self.rotation_axis(),
+            self.rotation_axis(),
             self.rotation() - self.origin_rotation
         );
 
@@ -260,6 +260,7 @@ impl ChildEntity
 
                 let current_difference = |last_move: f32, momentum: f32|
                 {
+                    #[allow(clippy::collapsible_else_if)]
                     if (last_move * short_difference).is_sign_positive()
                     {
                         // was moving in the shortest direction already

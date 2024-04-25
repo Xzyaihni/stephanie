@@ -152,6 +152,7 @@ impl<'a> PlayerContainer<'a>
 
         for hit in hits
         {
+            #[allow(clippy::single_match)]
             match hit.id
             {
                 RaycastHitId::Entity(id) =>

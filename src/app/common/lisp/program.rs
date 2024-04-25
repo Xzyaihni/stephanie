@@ -514,7 +514,7 @@ impl Primitives
                             });
                         }
 
-                        Self::check_inbounds(&vec.values, index).with_position(position)?;
+                        Self::check_inbounds(vec.values, index).with_position(position)?;
 
                         vec.values[index as usize] = value.value;
 
@@ -535,7 +535,7 @@ impl Primitives
                     let vec = vec.as_vector_ref(memory)?;
                     let index = index.as_integer()?;
 
-                    Self::check_inbounds(&vec.values, index)?;
+                    Self::check_inbounds(vec.values, index)?;
 
                     let value = vec.values[index as usize];
 
@@ -888,7 +888,7 @@ impl Program
         let ast = Parser::parse(code)?;
 
         let mut state = State{
-            lambdas: lambdas.unwrap_or_else(|| Lambdas::new()),
+            lambdas: lambdas.unwrap_or_else(Lambdas::new),
             primitives
         };
 
@@ -1377,7 +1377,7 @@ impl Expression
             0
         } else
         {
-            1 + Self::arg_count(&args.cdr())
+            1 + Self::arg_count(args.cdr())
         }
     }
 

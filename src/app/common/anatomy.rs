@@ -277,6 +277,7 @@ pub struct FrontalLobe
     motor: MotorCortex
 }
 
+#[allow(clippy::derivable_impls)]
 impl Default for FrontalLobe
 {
     fn default() -> Self
@@ -655,7 +656,7 @@ impl HumanAnatomy
 
             Self::speed_scale(&mut state, &child.data)
         }).reduce(|acc, x| Speeds{arms: acc.arms + x.arms, legs: acc.legs + x.legs})
-            .unwrap_or_else(|| Speeds{arms: 0.0, legs: 0.0});
+            .unwrap_or(Speeds{arms: 0.0, legs: 0.0});
 
         Speeds{
             arms: LimbSpeed::new(arm_speed)
@@ -694,13 +695,7 @@ impl HumanAnatomy
 
     fn updated_speed(&mut self) -> Option<f32>
     {
-        let brain = if let Some(brain) = self.brain()
-        {
-            brain
-        } else
-        {
-            return None;
-        };
+        let brain = self.brain()?;
 
         let mut state = SpeedsState{
             conseq_leg: 0,

@@ -219,7 +219,7 @@ impl Parser
         let close = LexemePos{position: CodePosition::new(), lexeme: Lexeme::CloseParen};
 
         let lexemes = iter::once(open)
-            .chain(lexemes.into_iter())
+            .chain(lexemes)
             .chain(iter::once(close));
 
         let mut this = Self{current_position: CodePosition::new(), lexemes};
@@ -242,7 +242,7 @@ impl Parser
             },
             Lexeme::OpenParen =>
             {
-                self.parse_list().map(|x| Some(x))?.map(|x| x.ast)
+                Some(self.parse_list()?.ast)
             },
             Lexeme::CloseParen =>
             {

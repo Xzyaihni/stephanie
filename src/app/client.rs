@@ -1,5 +1,7 @@
 use std::{
 	sync::Arc,
+    rc::Rc,
+    cell::RefCell,
 	net::TcpStream
 };
 
@@ -53,7 +55,7 @@ pub mod world_receiver;
 #[derive(Debug, Clone)]
 pub struct ObjectAllocator
 {
-	allocator: Arc<SubbufferAllocator>,
+	allocator: Rc<SubbufferAllocator>,
 	frames: usize
 }
 
@@ -70,7 +72,7 @@ impl ObjectAllocator
 			}
 		);
 
-		let allocator = Arc::new(allocator);
+		let allocator = Rc::new(allocator);
 
 		Self{allocator, frames}
 	}
@@ -104,7 +106,7 @@ pub struct ClientInfo
 
 pub struct Client
 {
-	game_state: Arc<RwLock<GameState>>,
+	game_state: Rc<RefCell<GameState>>,
 	game: Game
 }
 
@@ -135,24 +137,24 @@ impl Client
 		);
 
 		let game = Game::new(game_state.player_id());
-		let game_state = Arc::new(RwLock::new(game_state));
+		let game_state = Rc::new(RefCell::new(game_state));
 
 		Ok(Self{game_state, game})
 	}
 
 	pub fn resize(&mut self, aspect: f32)
 	{
-		self.game_state.write().resize(aspect);
+		self.game_state.borrow_mut().resize(aspect);
 	}
 
 	pub fn running(&self) -> bool
 	{
-		self.game_state.read().running
+		self.game_state.borrow().running
 	}
 
     pub fn update(&mut self, dt: f32)
     {
-		let mut writer = self.game_state.write();
+		let mut writer = self.game_state.borrow_mut();
 
 		self.game.update(&mut writer, dt);
 
@@ -171,21 +173,21 @@ impl Client
 
     pub fn update_buffers(&mut self, partial_info: UpdateBuffersPartialInfo)
     {
-	    self.game_state.write().update_buffers(partial_info);
+	    self.game_state.borrow_mut().update_buffers(partial_info);
     }
 
     pub fn draw(&mut self, mut info: DrawInfo)
     {
-	    self.game_state.read().draw(&mut info);
+	    self.game_state.borrow().draw(&mut info);
     }
 
 	pub fn input(&mut self, control: Control)
 	{
-        self.game_state.write().input(control);
+        self.game_state.borrow_mut().input(control);
 	}
 
 	pub fn mouse_move(&mut self, position: (f64, f64))
 	{
-		self.game_state.write().mouse_position = position.into();
+		self.game_state.borrow_mut().mouse_position = position.into();
 	}
 }

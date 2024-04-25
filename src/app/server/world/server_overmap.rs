@@ -171,6 +171,8 @@ pub struct ServerOvermap<S>
 	indexer: Indexer
 }
 
+// have u heard of a constant clippy?
+#[allow(clippy::modulo_one)]
 impl<S: SaveLoad<WorldChunk>> ServerOvermap<S>
 {
 	pub fn new(
