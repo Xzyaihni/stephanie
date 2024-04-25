@@ -1,12 +1,12 @@
 use std::{
     fmt,
 	net::TcpStream,
-	sync::Arc,
-    borrow::Borrow,
-    ops::{Deref, DerefMut}
+	sync::Arc
 };
 
 use parking_lot::{RwLock, Mutex};
+
+use nalgebra::Vector3;
 
 use yanyaengine::{TransformContainer, Transform};
 
@@ -18,40 +18,40 @@ use super::{
 
 pub use super::world::ParseError;
 
-use crate::{
-    basic_entity_forward,
-    common::{
-        sender_loop,
-        receiver_loop,
-        EntityType,
-        EntityAny,
-        ObjectsStore,
-        TileMap,
-        Anatomy,
-        HumanAnatomy,
-        EntityPasser,
-        EntitiesContainer,
-        EntitiesController,
-        MessagePasser,
-        PlayerProperties,
-        CharacterProperties,
-        EntityProperties,
-        PhysicalProperties,
-        world::chunk::TILE_SIZE,
-        player::Player,
-        enemy::Enemy,
-        message::{
-            Message,
-            MessageBuffer
-        }
+use crate::common::{
+    sender_loop,
+    receiver_loop,
+    EntityType,
+    EntityAny,
+    ObjectsStore,
+    TileMap,
+    Anatomy,
+    HumanAnatomy,
+    EntityPasser,
+    EntitiesContainer,
+    EntitiesController,
+    MessagePasser,
+    PlayerProperties,
+    CharacterProperties,
+    EntityProperties,
+    PhysicalProperties,
+    world::chunk::TILE_SIZE,
+    player::Player,
+    message::{
+        Message,
+        MessageBuffer
     }
 };
+
+use server_enemy::ServerEnemy;
+
+mod server_enemy;
 
 
 impl EntityAny
 {
     // >with info
-    // its future proof at least!!
+    // its future proofed at least!!
     pub fn with_info_server(
         self
     ) -> EntityAny<Player, ServerEnemy>
@@ -61,48 +61,6 @@ impl EntityAny
             Self::Player(x) => EntityAny::Player(x),
             Self::Enemy(x) => EntityAny::Enemy(ServerEnemy::new(x))
         }
-    }
-}
-
-#[derive(Debug)]
-pub struct ServerEnemy
-{
-    enemy: Enemy
-}
-
-impl ServerEnemy
-{
-    pub fn new(enemy: Enemy) -> Self
-    {
-        Self{enemy}
-    }
-}
-
-basic_entity_forward!{ServerEnemy, enemy}
-
-impl Deref for ServerEnemy
-{
-    type Target = Enemy;
-
-    fn deref(&self) -> &Self::Target
-    {
-        &self.enemy
-    }
-}
-
-impl DerefMut for ServerEnemy
-{
-    fn deref_mut(&mut self) -> &mut Self::Target
-    {
-        &mut self.enemy
-    }
-}
-
-impl Borrow<Enemy> for ServerEnemy
-{
-    fn borrow(&self) -> &Enemy
-    {
-        &self.enemy
     }
 }
 
@@ -227,6 +185,15 @@ impl GameServer
 
 		Ok(Self{entities, world, connection_handler})
 	}
+
+    pub fn update(&mut self, dt: f32)
+    {
+        let mut messager = self.connection_handler.write();
+        self.entities.enemies_mut().iter_mut().for_each(|(id, enemy)|
+        {
+            enemy.update(&mut messager, id, dt);
+        });
+    }
 
 	pub fn connect(this: Arc<Mutex<Self>>, stream: TcpStream) -> Result<(), ConnectionError>
 	{

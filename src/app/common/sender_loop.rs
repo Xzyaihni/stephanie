@@ -12,10 +12,11 @@ pub trait BufferSender
 }
 
 const TICK_COUNT: usize = 30;
+pub const DELTA_TIME: f64 = 1.0 / TICK_COUNT as f64;
 
 pub fn waiting_loop<F: FnMut() -> bool>(mut f: F)
 {
-	let frame_duration = Duration::from_secs_f64(1.0 / TICK_COUNT as f64);
+	let frame_duration = Duration::from_secs_f64(DELTA_TIME);
 	let mut last_tick = Instant::now();
 
 	loop

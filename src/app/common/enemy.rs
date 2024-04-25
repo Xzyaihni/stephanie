@@ -46,13 +46,28 @@ impl EnemyBehavior
             Self::Melee => BehaviorState::Wait
         }
     }
+
+    pub fn duration_of(&self, state: &BehaviorState) -> f32
+    {
+        match self
+        {
+            Self::Melee =>
+            {
+                match state
+                {
+                    BehaviorState::Wait => 0.5,
+                    BehaviorState::MoveDirection(_) => 1.0
+                }
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum BehaviorState
 {
     Wait,
-    MoveTo(Vector3<f32>)
+    MoveDirection(Unit<Vector3<f32>>)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -73,6 +88,44 @@ impl Enemy
             behavior: enemy_properties.behavior
 		}
 	}
+
+    pub fn next_state(&mut self)
+    {
+        let new_state = match &self.behavior
+        {
+            EnemyBehavior::Melee =>
+            {
+                match &self.behavior_state
+                {
+                    BehaviorState::Wait =>
+                    {
+                        let x = fastrand::f32();
+                        let direction = Unit::new_normalize(Vector3::new(x, 1.0 - x, 0.0));
+
+                        BehaviorState::MoveDirection(direction)
+                    },
+                    BehaviorState::MoveDirection(_) => BehaviorState::Wait
+                }
+            }
+        };
+
+        self.behavior_state = new_state;
+    }
+
+    pub fn behavior(&self) -> &EnemyBehavior
+    {
+        &self.behavior
+    }
+
+    pub fn behavior_state(&self) -> &BehaviorState
+    {
+        &self.behavior_state
+    }
+
+    pub fn set_behavior_state(&mut self, state: BehaviorState)
+    {
+        self.behavior_state = state;
+    }
 
 	pub fn speed(&self) -> Option<f32>
 	{

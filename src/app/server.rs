@@ -1,11 +1,12 @@
 use std::{
+    thread,
 	net::TcpListener,
 	sync::Arc
 };
 
 use parking_lot::Mutex;
 
-use crate::common::TileMapWithTextures;
+use crate::common::{sender_loop::{waiting_loop, DELTA_TIME}, TileMapWithTextures};
 
 use game_server::{GameServer, ParseError};
 
@@ -36,6 +37,19 @@ impl Server
 
         let game_server = GameServer::new(tilemap.tilemap, connections_limit)?;
 		let game_server = Arc::new(Mutex::new(game_server));
+
+        {
+            let game_server = game_server.clone();
+            thread::spawn(move ||
+            {
+                waiting_loop(||
+                {
+                    game_server.lock().update(DELTA_TIME as f32);
+
+                    false
+                });
+            });
+        }
 
 		Ok(Self{
 			listener,

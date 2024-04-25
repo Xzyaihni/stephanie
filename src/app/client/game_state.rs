@@ -486,6 +486,10 @@ impl GameState
 			{
 				self.notifications.set(Notification::PlayerConnected);
 			},
+            Message::EnemyStateChanged{id, state} =>
+            {
+                self.entities.enemies_mut()[id].entity.set_behavior_state(state);
+            },
 			x => panic!("unhandled message: {x:?}")
 		}
 	}

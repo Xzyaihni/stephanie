@@ -156,6 +156,11 @@ impl<T: Clone> Animator<T>
         self.is_playing
     }
 
+    pub fn set_duration(&mut self, duration: Duration)
+    {
+        self.duration = duration;
+    }
+
     fn lerp(range: &RangeInclusive<f32>, a: f32) -> f32
     {
         range.start() * (1.0 - a) + range.end() * a
