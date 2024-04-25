@@ -2,6 +2,7 @@ use std::{
     fmt,
 	net::TcpStream,
 	sync::Arc,
+    borrow::Borrow,
     ops::{Deref, DerefMut}
 };
 
@@ -24,7 +25,6 @@ use crate::{
         receiver_loop,
         EntityType,
         EntityAny,
-        GettableInner,
         ObjectsStore,
         TileMap,
         Anatomy,
@@ -48,11 +48,37 @@ use crate::{
 };
 
 
+impl EntityAny
+{
+    // >with info
+    // its future proof at least!!
+    pub fn with_info_server(
+        self
+    ) -> EntityAny<Player, ServerEnemy>
+    {
+        match self
+        {
+            Self::Player(x) => EntityAny::Player(x),
+            Self::Enemy(x) => EntityAny::Enemy(ServerEnemy::new(x))
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct ServerEnemy
 {
     enemy: Enemy
 }
+
+impl ServerEnemy
+{
+    pub fn new(enemy: Enemy) -> Self
+    {
+        Self{enemy}
+    }
+}
+
+basic_entity_forward!{ServerEnemy, enemy}
 
 impl Deref for ServerEnemy
 {
@@ -64,8 +90,6 @@ impl Deref for ServerEnemy
     }
 }
 
-basic_entity_forward!{ServerEnemy, enemy}
-
 impl DerefMut for ServerEnemy
 {
     fn deref_mut(&mut self) -> &mut Self::Target
@@ -74,17 +98,12 @@ impl DerefMut for ServerEnemy
     }
 }
 
-impl GettableInner<(), Enemy> for ServerEnemy
+impl Borrow<Enemy> for ServerEnemy
 {
-    fn wrap(info: (), enemy: Enemy) -> Self
+    fn borrow(&self) -> &Enemy
     {
-        ServerEnemy{enemy}
+        &self.enemy
     }
-
-	fn get_inner(&self) -> Enemy
-	{
-		self.enemy.clone()
-	}
 }
 
 #[derive(Debug)]
@@ -106,7 +125,7 @@ impl ServerEntitiesContainer
 
     pub fn push_entity(&mut self, entity: EntityAny) -> Message
     {
-        let id = self.push((), entity.clone());
+        let id = self.push(entity.clone().with_info_server());
 
         Message::EntitySet{id, entity}
     }
@@ -130,7 +149,7 @@ impl ServerEntitiesContainer
     }
 }
 
-impl EntitiesContainer<()> for ServerEntitiesContainer
+impl EntitiesContainer for ServerEntitiesContainer
 {
 	type PlayerObject = Player;
     type EnemyObject = ServerEnemy;
@@ -394,7 +413,7 @@ impl GameServer
 		{
 			Message::EntitySet{id, entity} =>
 			{
-                self.entities.insert(id, (), entity);
+                self.entities.insert(id, entity.with_info_server());
 			},
             Message::EntityAdd{entity} =>
             {
@@ -418,7 +437,7 @@ impl GameServer
 	}
 }
 
-impl EntitiesController<()> for GameServer
+impl EntitiesController for GameServer
 {
 	type Container = ServerEntitiesContainer;
 	type Passer = ConnectionsHandler;

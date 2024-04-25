@@ -303,25 +303,10 @@ macro_rules! entity_forward
     {
         use $crate::{
             basic_entity_forward,
-            client::DrawableEntity,
-            common::GettableInner
+            client::DrawableEntity
         };
 
         basic_entity_forward!{$name, $child_name}
-
-        // i wish specialization was a thing..
-        impl GettableInner<(), $name> for $name
-        {
-            fn wrap(_info: (), value: $name) -> Self
-            {
-                value
-            }
-
-            fn get_inner(&self) -> Self
-            {
-                self.clone()
-            }
-        }
 
         impl DrawableEntity for $name
         {

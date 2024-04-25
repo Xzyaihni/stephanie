@@ -59,6 +59,21 @@ pub mod object_pair;
 mod notifications;
 
 
+impl EntityAny
+{
+    pub fn with_info_client(
+        self,
+        info: &ObjectCreateInfo
+    ) -> EntityAny<ObjectPair<Player>, ObjectPair<Enemy>>
+    {
+        match self
+        {
+            Self::Player(x) => EntityAny::Player(ObjectPair::new(info, x)),
+            Self::Enemy(x) => EntityAny::Enemy(ObjectPair::new(info, x))
+        }
+    }
+}
+
 struct RaycastResult
 {
     distance: f32,
@@ -233,7 +248,7 @@ impl GameObject for ClientEntitiesContainer
     }
 }
 
-impl<'a> EntitiesContainer<&ObjectCreateInfo<'a>> for ClientEntitiesContainer
+impl EntitiesContainer for ClientEntitiesContainer
 {
 	type PlayerObject = ObjectPair<Player>;
 	type EnemyObject = ObjectPair<Enemy>;
@@ -462,7 +477,7 @@ impl GameState
 		{
 			Message::EntitySet{id, entity} =>
 			{
-				self.entities.insert(id, create_info, entity);
+				self.entities.insert(id, entity.with_info_client(create_info));
 			},
 			Message::PlayerFullyConnected =>
 			{
@@ -637,7 +652,7 @@ impl GameState
 	}
 }
 
-impl<'a> EntitiesController<&ObjectCreateInfo<'a>> for GameState
+impl EntitiesController for GameState
 {
 	type Container = ClientEntitiesContainer;
 	type Passer = ConnectionsHandler;

@@ -1,6 +1,8 @@
 use std::{
+    fmt::Debug,
 	sync::Arc,
-	net::TcpStream
+	net::TcpStream,
+    borrow::Borrow
 };
 
 use serde::{Serialize, Deserialize};
@@ -96,10 +98,10 @@ pub fn lerp(x: f32, y: f32, a: f32) -> f32
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum EntityAny
+pub enum EntityAny<PlayerType=Player, EnemyType=Enemy>
 {
-    Player(Player),
-    Enemy(Enemy)
+    Player(PlayerType),
+    Enemy(EnemyType)
 }
 
 impl EntityContainer for EntityAny
@@ -158,16 +160,17 @@ pub trait EntityPasser
 	}
 }
 
-pub trait GettableInner<I, T>
+pub trait EntitiesContainer
 {
-    fn wrap(info: I, value: T) -> Self;
-	fn get_inner(&self) -> T;
-}
+	type PlayerObject: TransformContainer
+        + Debug
+        + Borrow<Player>
+        + PhysicsEntity;
 
-pub trait EntitiesContainer<I>
-{
-	type PlayerObject: TransformContainer + GettableInner<I, Player> + PhysicsEntity;
-	type EnemyObject: TransformContainer + GettableInner<I, Enemy> + PhysicsEntity;
+	type EnemyObject: TransformContainer
+        + Debug
+        + Borrow<Enemy>
+        + PhysicsEntity;
 
 	fn players_ref(&self) -> &ObjectsStore<Self::PlayerObject>;
 	fn players_mut(&mut self) -> &mut ObjectsStore<Self::PlayerObject>;
@@ -175,36 +178,43 @@ pub trait EntitiesContainer<I>
 	fn enemies_ref(&self) -> &ObjectsStore<Self::EnemyObject>;
 	fn enemies_mut(&mut self) -> &mut ObjectsStore<Self::EnemyObject>;
 
-    fn push(&mut self, info: I, entity: EntityAny) -> EntityType
+    fn push(
+        &mut self,
+        entity: EntityAny<Self::PlayerObject, Self::EnemyObject>
+    ) -> EntityType
     {
         match entity
         {
             EntityAny::Player(entity) =>
             {
-                let id = self.players_mut().push(Self::PlayerObject::wrap(info, entity));
+                let id = self.players_mut().push(entity);
 
                 EntityType::Player(id)
             },
             EntityAny::Enemy(entity) =>
             {
-                let id = self.enemies_mut().push(Self::EnemyObject::wrap(info, entity));
+                let id = self.enemies_mut().push(entity);
 
                 EntityType::Enemy(id)
             }
         }
     }
 
-    fn insert(&mut self, id: EntityType, info: I, entity: EntityAny)
+    fn insert(
+        &mut self,
+        id: EntityType,
+        entity: EntityAny<Self::PlayerObject, Self::EnemyObject>
+    )
     {
         match (id, entity)
         {
             (EntityType::Player(id), EntityAny::Player(entity)) =>
             {
-                self.players_mut().insert(id, Self::PlayerObject::wrap(info, entity));
+                self.players_mut().insert(id, entity);
             },
             (EntityType::Enemy(id), EntityAny::Enemy(entity)) =>
             {
-                self.enemies_mut().insert(id, Self::EnemyObject::wrap(info, entity));
+                self.enemies_mut().insert(id, entity);
             },
             x => panic!("unhandled message: {x:?}")
         }
@@ -263,9 +273,9 @@ pub trait EntitiesContainer<I>
 	}
 }
 
-pub trait EntitiesController<I>
+pub trait EntitiesController
 {
-	type Container: EntitiesContainer<I>;
+	type Container: EntitiesContainer;
 	type Passer: EntityPasser;
 
 	fn container_ref(&self) -> &Self::Container;
@@ -274,10 +284,10 @@ pub trait EntitiesController<I>
 
 	fn add_player(
 		&mut self,
-		player_associated: <Self::Container as EntitiesContainer<I>>::PlayerObject
+		player_associated: <Self::Container as EntitiesContainer>::PlayerObject
 	) -> usize
 	{
-		let entity = EntityAny::Player(player_associated.get_inner());
+		let entity = EntityAny::Player(player_associated.borrow().clone());
 
         let raw_id = self.container_mut().players_mut().push(player_associated);
 		let id = EntityType::Player(raw_id);
@@ -289,10 +299,10 @@ pub trait EntitiesController<I>
 
 	fn add_enemy(
 		&mut self,
-		enemy_associated: <Self::Container as EntitiesContainer<I>>::EnemyObject
+		enemy_associated: <Self::Container as EntitiesContainer>::EnemyObject
 	) -> usize
 	{
-		let entity = EntityAny::Enemy(enemy_associated.get_inner());
+		let entity = EntityAny::Enemy(enemy_associated.borrow().clone());
 
 		let raw_id = self.container_mut().enemies_mut().push(enemy_associated);
         let id = EntityType::Enemy(raw_id);
@@ -313,9 +323,7 @@ pub trait EntitiesController<I>
 	fn player_mut<'a>(
 		&'a mut self,
 		id: usize
-	) -> NetworkEntity<'a, Self::Passer, <Self::Container as EntitiesContainer<I>>::PlayerObject>
-    where
-        Self::Container: 'a
+	) -> NetworkEntity<'a, Self::Passer, <Self::Container as EntitiesContainer>::PlayerObject>
 	{
 		let passer = self.passer();
 		let container = self.container_mut();
@@ -323,9 +331,10 @@ pub trait EntitiesController<I>
 		NetworkEntity::new(passer, EntityType::Player(id), &mut container.players_mut()[id])
 	}
 
-	fn player_ref<'a>(&'a self, id: usize) -> &<Self::Container as EntitiesContainer<I>>::PlayerObject
-    where
-        Self::Container: 'a
+	fn player_ref<'a>(
+        &'a self,
+        id: usize
+    ) -> &<Self::Container as EntitiesContainer>::PlayerObject
 	{
 		&self.container_ref().players_ref()[id]
 	}

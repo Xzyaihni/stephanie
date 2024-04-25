@@ -1,3 +1,5 @@
+use std::borrow::Borrow;
+
 use nalgebra::{
 	Unit,
 	Vector3
@@ -17,7 +19,6 @@ use crate::{
     client::DrawableEntity,
     common::{
         Entity,
-        GettableInner,
         ChildContainer,
         EntityAny,
         EntityAnyWrappable,
@@ -81,6 +82,14 @@ impl<T: EntityContainer + PhysicsEntity + ChildContainer + DrawableEntity> Objec
 	}
 }
 
+impl<T> Borrow<T> for ObjectPair<T>
+{
+    fn borrow(&self) -> &T
+    {
+        &self.entity
+    }
+}
+
 impl<T: EntityContainer + PhysicsEntity + ChildContainer> ChildContainer for ObjectPair<T>
 {
 	fn children_ref(&self) -> &[ChildEntity]
@@ -100,21 +109,6 @@ impl<T: EntityAnyWrappable + Clone> EntityAnyWrappable for &ObjectPair<T>
     {
         self.entity.clone().wrap_any()
     }
-}
-
-impl<'a, T> GettableInner<&ObjectCreateInfo<'a>, T> for ObjectPair<T>
-where
-    T: EntityContainer + PhysicsEntity + ChildContainer + Clone + DrawableEntity
-{
-    fn wrap(info: &ObjectCreateInfo<'a>, value: T) -> Self
-    {
-        ObjectPair::new(info, value)
-    }
-
-	fn get_inner(&self) -> T
-	{
-		self.entity.clone()
-	}
 }
 
 impl<T: PhysicsEntity + ChildContainer> GameObject for ObjectPair<T>
