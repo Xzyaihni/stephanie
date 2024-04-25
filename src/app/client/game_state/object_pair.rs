@@ -141,9 +141,9 @@ impl<T: PhysicsEntity + ChildContainer> GameObject for ObjectPair<T>
 
 impl<T: EntityContainer + PhysicsEntity + ChildContainer> OnTransformCallback for ObjectPair<T>
 {
-	fn transform_callback(&mut self, _transform: Transform)
+	fn transform_callback(&mut self, transform: Transform)
 	{
-        self.main_object.set_transform(self.entity.transform_clone());
+        self.main_object.set_transform(transform);
 
 		self.child_objects.iter_mut().zip(self.entity.children_ref().iter())
             .for_each(|(object, child)|
@@ -209,6 +209,8 @@ impl<T: EntityContainer + PhysicsEntity + ChildContainer> PhysicsEntity for Obje
 	fn physics_update(&mut self, dt: f32)
     {
         self.entity.physics_update(dt);
+
+        self.transform_callback(self.transform_clone());
     }
 }
 

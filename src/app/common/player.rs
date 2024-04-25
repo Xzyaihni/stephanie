@@ -2,11 +2,6 @@ use std::f32;
 
 use serde::{Serialize, Deserialize};
 
-use yanyaengine::{
-    Transform,
-    TransformContainer
-};
-
 use crate::{
     entity_forward,
 	common::{
@@ -153,6 +148,11 @@ impl Player
 
 		player
 	}
+
+    pub fn move_speed(&self) -> Option<f32>
+    {
+        self.character.move_speed()
+    }
 
 	pub fn speed(&self) -> Option<f32>
 	{

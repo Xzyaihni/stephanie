@@ -188,24 +188,12 @@ impl DrawableEntity for Entity
 }
 
 #[macro_export]
-macro_rules! basic_entity_forward
+macro_rules! entity_forward_physics
 {
     ($name:ident, $child_name:ident) =>
     {
-        use nalgebra::{
-            Unit,
-            Vector3
-        };
-
-        use yanyaengine::OnTransformCallback;
-
         use $crate::common::{
             Physical,
-            ChildContainer,
-            entity::{
-                Entity,
-                EntityContainer
-            },
             physics::PhysicsEntity
         };
 
@@ -226,6 +214,20 @@ macro_rules! basic_entity_forward
                 self.$child_name.physics_update(dt);
             }
         }
+    }
+}
+
+#[macro_export]
+macro_rules! entity_forward_transform
+{
+    ($name:ident, $child_name:ident) =>
+    {
+        use nalgebra::{
+            Unit,
+            Vector3
+        };
+
+        use yanyaengine::{Transform, TransformContainer, OnTransformCallback};
 
         impl OnTransformCallback for $name
         {
@@ -267,6 +269,21 @@ macro_rules! basic_entity_forward
                 self.$child_name.transform_mut()
             }
         }
+    }
+}
+
+#[macro_export]
+macro_rules! entity_forward_parent
+{
+    ($name:ident, $child_name:ident) =>
+    {
+        use $crate::common::{
+            ChildContainer,
+            entity::{
+                Entity,
+                EntityContainer
+            }
+        };
 
         impl ChildContainer for $name
         {
@@ -293,6 +310,23 @@ macro_rules! basic_entity_forward
                 self.$child_name.entity_mut()
             }
         }
+    }
+}
+
+#[macro_export]
+macro_rules! basic_entity_forward
+{
+    ($name:ident, $child_name:ident) =>
+    {
+        use $crate::{
+            entity_forward_transform,
+            entity_forward_physics,
+            entity_forward_parent
+        };
+
+        entity_forward_parent!{$name, $child_name}
+        entity_forward_transform!{$name, $child_name}
+        entity_forward_physics!{$name, $child_name}
     }
 }
 

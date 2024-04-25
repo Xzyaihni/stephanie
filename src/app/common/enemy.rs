@@ -1,18 +1,17 @@
 use serde::{Serialize, Deserialize};
 
-use yanyaengine::{
-    Transform,
-    TransformContainer
-};
-
 use crate::{
-    entity_forward,
+    entity_forward_transform,
+    entity_forward_parent,
+    client::DrawableEntity,
 	common::{
         EntityAny,
         EntityAnyWrappable,
         CharacterProperties,
         PhysicalProperties,
-		character::Character,
+        Physical,
+        physics::PhysicsEntity,
+		character::Character
 	}
 };
 
@@ -112,6 +111,24 @@ impl Enemy
         self.behavior_state = new_state;
     }
 
+    pub fn update(&mut self)
+    {
+        let move_speed = match self.move_speed()
+        {
+            Some(x) => x,
+            None => return
+        };
+
+        match &self.behavior_state
+        {
+            BehaviorState::MoveDirection(direction) =>
+            {
+                self.set_velocity(direction.into_inner() * move_speed);
+            },
+            BehaviorState::Wait => ()
+        }
+    }
+
     pub fn behavior(&self) -> &EnemyBehavior
     {
         &self.behavior
@@ -125,6 +142,11 @@ impl Enemy
     pub fn set_behavior_state(&mut self, state: BehaviorState)
     {
         self.behavior_state = state;
+    }
+
+    pub fn move_speed(&self) -> Option<f32>
+    {
+        self.character.move_speed()
     }
 
 	pub fn speed(&self) -> Option<f32>
@@ -146,4 +168,32 @@ impl EntityAnyWrappable for Enemy
     }
 }
 
-entity_forward!{Enemy, character}
+entity_forward_parent!{Enemy, character}
+entity_forward_transform!{Enemy, character}
+
+impl PhysicsEntity for Enemy
+{
+    fn physical_ref(&self) -> &Physical
+    {
+        self.character.physical_ref()
+    }
+
+    fn physical_mut(&mut self) -> &mut Physical
+    {
+        self.character.physical_mut()
+    }
+
+    fn physics_update(&mut self, dt: f32)
+    {
+        self.update();
+        self.character.physics_update(dt);
+    }
+}
+
+impl DrawableEntity for Enemy
+{
+    fn texture(&self) -> &str
+    {
+        self.character.texture()
+    }
+}

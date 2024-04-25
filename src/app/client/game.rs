@@ -268,9 +268,9 @@ impl<'a> PlayerContainer<'a>
 
         let entity = &player.inner().entity;
 
-        if let Some(speed) = entity.speed()
+        if let Some(speed) = entity.move_speed()
         {
-            let velocity = direction * speed / entity.physical_ref().mass;
+            let velocity = direction * speed;
 
             player.set_velocity(velocity);
         }

@@ -1,7 +1,5 @@
 use serde::{Serialize, Deserialize};
 
-use yanyaengine::{Transform, TransformContainer};
-
 use crate::{
     entity_forward,
 	common::{Anatomy, PhysicalProperties, entity::EntityProperties}
@@ -37,6 +35,11 @@ impl Character
 
 		Self{entity: Entity::new(properties.entity_properties), anatomy}
 	}
+
+    pub fn move_speed(&self) -> Option<f32>
+    {
+        self.speed().map(|speed| speed / self.physical_ref().mass)
+    }
 
 	pub fn speed(&self) -> Option<f32>
 	{
