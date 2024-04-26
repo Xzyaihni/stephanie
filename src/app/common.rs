@@ -292,7 +292,7 @@ pub trait EntitiesController
         let raw_id = self.container_mut().players_mut().push(player_associated);
 		let id = EntityType::Player(raw_id);
 
-		self.passer().write().send_message(Message::EntitySet{id, entity});
+		self.passer().write().sync_entity(id, entity);
 
 		raw_id
 	}
@@ -307,7 +307,7 @@ pub trait EntitiesController
 		let raw_id = self.container_mut().enemies_mut().push(enemy_associated);
         let id = EntityType::Enemy(raw_id);
 
-		self.passer().write().send_message(Message::EntitySet{id, entity});
+		self.passer().write().sync_entity(id, entity);
 
 		raw_id
 	}
