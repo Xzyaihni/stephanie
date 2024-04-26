@@ -19,22 +19,14 @@ use crate::{
 #[derive(Debug)]
 pub struct ServerEnemy
 {
-    enemy: Enemy,
-    current_state_left: f32
+    enemy: Enemy
 }
 
 impl ServerEnemy
 {
     pub fn new(enemy: Enemy) -> Self
     {
-        let current_state_left = Self::state_duration(&enemy);
-
-        Self{enemy, current_state_left}
-    }
-
-    fn state_duration(enemy: &Enemy) -> f32
-    {
-        enemy.behavior().duration_of(enemy.behavior_state())
+        Self{enemy}
     }
 
     pub fn update(
@@ -44,13 +36,10 @@ impl ServerEnemy
         dt: f32
     )
     {
-        self.current_state_left -= dt;
+        let needs_sync = self.enemy.update(dt);
 
-        if self.current_state_left <= 0.0
+        if needs_sync
         {
-            self.enemy.next_state();
-            self.current_state_left = Self::state_duration(&self.enemy);
-
             let message = Message::EntitySet{
                 id: EntityType::Enemy(id),
                 entity: self.clone().wrap_any()
@@ -58,8 +47,6 @@ impl ServerEnemy
 
             messager.send_message(message);
         }
-
-        self.physics_update(dt);
     }
 }
 

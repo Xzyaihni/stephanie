@@ -74,16 +74,20 @@ pub struct Enemy
 {
 	character: Character,
     behavior: EnemyBehavior,
-    behavior_state: BehaviorState
+    behavior_state: BehaviorState,
+    current_state_left: f32
 }
 
 impl Enemy
 {
 	pub fn new(enemy_properties: EnemyProperties) -> Self
 	{
+        let behavior_state = enemy_properties.behavior.start_state();
+
 		Self{
 			character: Character::new(enemy_properties.character_properties),
-            behavior_state: enemy_properties.behavior.start_state(),
+            current_state_left: enemy_properties.behavior.duration_of(&behavior_state),
+            behavior_state,
             behavior: enemy_properties.behavior
 		}
 	}
@@ -113,7 +117,7 @@ impl Enemy
         self.behavior_state = new_state;
     }
 
-    pub fn update(&mut self)
+    fn do_behavior(&mut self)
     {
         let move_speed = match self.move_speed()
         {
@@ -129,6 +133,25 @@ impl Enemy
             },
             BehaviorState::Wait => ()
         }
+    }
+
+    pub fn update(&mut self, dt: f32) -> bool
+    {
+        self.current_state_left -= dt;
+
+        let needs_update = self.current_state_left <= 0.0;
+
+        if needs_update
+        {
+            self.next_state();
+            self.current_state_left = self.behavior.duration_of(&self.behavior_state);
+        }
+
+        self.do_behavior();
+
+        self.character.physics_update(dt);
+
+        needs_update
     }
 
     pub fn behavior(&self) -> &EnemyBehavior
@@ -187,8 +210,7 @@ impl PhysicsEntity for Enemy
 
     fn physics_update(&mut self, dt: f32)
     {
-        self.update();
-        self.character.physics_update(dt);
+        self.update(dt);
     }
 }
 
