@@ -54,7 +54,7 @@ impl EnemyBehavior
             {
                 match state
                 {
-                    BehaviorState::Wait => 0.5,
+                    BehaviorState::Wait => 2.5,
                     BehaviorState::MoveDirection(_) => 1.0
                 }
             }
@@ -99,8 +99,7 @@ impl Enemy
                     BehaviorState::Wait =>
                     {
                         let x = fastrand::f32() * 2.0 - 1.0;
-
-                        let y = 1.0 - x.abs();
+                        let y = fastrand::f32() * 2.0 - 1.0;
 
                         let direction = Unit::new_normalize(Vector3::new(x, y, 0.0));
 
