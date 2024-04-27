@@ -188,10 +188,15 @@ impl GameServer
 
     pub fn update(&mut self, dt: f32)
     {
+        const STEPS: u32 = 2;
+
         let mut messager = self.connection_handler.write();
         self.entities.enemies_mut().iter_mut().for_each(|(id, enemy)|
         {
-            enemy.update(&mut messager, id, dt);
+            for _ in 0..STEPS
+            {
+                enemy.update(&mut messager, id, dt / STEPS as f32);
+            }
         });
     }
 
