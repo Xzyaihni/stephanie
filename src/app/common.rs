@@ -2,7 +2,8 @@ use std::{
     fmt::Debug,
 	sync::Arc,
 	net::TcpStream,
-    borrow::Borrow
+    borrow::Borrow,
+    ops::RangeInclusive
 };
 
 use serde::{Serialize, Deserialize};
@@ -89,6 +90,49 @@ macro_rules! time_this
 
             eprintln!("{} took {} ms", $name, start_time.elapsed().as_millis());
         }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SeededRandom(u64);
+
+impl From<u64> for SeededRandom
+{
+    fn from(value: u64) -> Self
+    {
+        Self(value)
+    }
+}
+
+impl SeededRandom
+{
+    // splitmix64 by sebastiano vigna
+    pub fn next_u64(&mut self) -> u64
+    {
+        self.0 = self.0.wrapping_add(0x9e3779b97f4a7c15);
+
+        let x = self.0;
+
+        let x = (x ^ (x >> 30)).wrapping_mul(0xbf58476d1ce4e5b9);
+        let x = (x ^ (x >> 27)).wrapping_mul(0x94d049bb133111eb);
+
+        x ^ (x >> 31)
+    }
+
+    pub fn next_f32(&mut self) -> f32
+    {
+        let x = self.next_u64();
+
+        x as f32 / u64::MAX as f32
+    }
+
+    pub fn next_f32_between(&mut self, range: RangeInclusive<f32>) -> f32
+    {
+        let x = self.next_f32();
+
+        let size = range.end() - range.start();
+
+        range.start() + x * size
     }
 }
 

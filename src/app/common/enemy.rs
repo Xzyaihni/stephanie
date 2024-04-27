@@ -5,6 +5,7 @@ use crate::{
     entity_forward_parent,
     client::DrawableEntity,
 	common::{
+        SeededRandom,
         EntityAny,
         EntityAnyWrappable,
         CharacterProperties,
@@ -46,7 +47,7 @@ impl EnemyBehavior
         }
     }
 
-    pub fn duration_of(&self, state: &BehaviorState) -> f32
+    pub fn duration_of(&self, rng: &mut SeededRandom, state: &BehaviorState) -> f32
     {
         match self
         {
@@ -54,8 +55,8 @@ impl EnemyBehavior
             {
                 match state
                 {
-                    BehaviorState::Wait => 2.5,
-                    BehaviorState::MoveDirection(_) => 1.0
+                    BehaviorState::Wait => rng.next_f32_between(2.0..=5.0),
+                    BehaviorState::MoveDirection(_) => rng.next_f32_between(0.5..=1.0)
                 }
             }
         }
@@ -75,20 +76,23 @@ pub struct Enemy
 	character: Character,
     behavior: EnemyBehavior,
     behavior_state: BehaviorState,
-    current_state_left: f32
+    current_state_left: f32,
+    rng: SeededRandom
 }
 
 impl Enemy
 {
 	pub fn new(enemy_properties: EnemyProperties) -> Self
 	{
+        let mut rng = SeededRandom::from(fastrand::u64(0..u64::MAX));
         let behavior_state = enemy_properties.behavior.start_state();
 
 		Self{
 			character: Character::new(enemy_properties.character_properties),
-            current_state_left: enemy_properties.behavior.duration_of(&behavior_state),
+            current_state_left: enemy_properties.behavior.duration_of(&mut rng, &behavior_state),
             behavior_state,
-            behavior: enemy_properties.behavior
+            behavior: enemy_properties.behavior,
+            rng
 		}
 	}
 
@@ -144,7 +148,11 @@ impl Enemy
         if needs_update
         {
             self.next_state();
-            self.current_state_left = self.behavior.duration_of(&self.behavior_state);
+
+            self.current_state_left = self.behavior.duration_of(
+                &mut self.rng,
+                &self.behavior_state
+            );
         }
 
         self.do_behavior();
