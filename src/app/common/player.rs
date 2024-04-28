@@ -82,7 +82,7 @@ impl Player
                 ),
                 ChildRotation::EaseOut(
                     EaseOutRotation{
-                        strength: 0.0001,
+                        resistance: 0.0001,
                         momentum: 0.5
                     }.into()
                 ),

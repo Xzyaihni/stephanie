@@ -114,6 +114,7 @@ impl Enemy
         let physical = PhysicalProperties{
             transform: Transform{
                 position: Vector3::zeros(),
+                rotation: 0.0,
                 ..entity_properties.physical.transform
             },
             ..entity_properties.physical
@@ -121,7 +122,7 @@ impl Enemy
 
         let entity = ChildEntity::new(
             ChildConnection::Rigid,
-            ChildRotation::Instant,
+            ChildRotation::EaseOut(EaseOutRotation{resistance: 0.01, momentum: 0.0}.into()),
             ChildDeformation::Rigid,
             Entity::new(EntityProperties{texture, physical}),
             0
@@ -169,7 +170,10 @@ impl Enemy
         {
             BehaviorState::MoveDirection(direction) =>
             {
+                let angle = direction.y.atan2(direction.x);
+
                 self.set_velocity(direction.into_inner() * move_speed);
+                self.set_rotation(angle);
             },
             BehaviorState::Wait => ()
         }

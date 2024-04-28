@@ -41,7 +41,7 @@ pub struct SpringConnection
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EaseOutRotation
 {
-    pub strength: f32,
+    pub resistance: f32,
     pub momentum: f32
 }
 
@@ -262,7 +262,7 @@ impl ChildEntity
                         short_difference
                     } else
                     {
-                        if momentum < short_fraction
+                        if (1.0 - momentum) < short_fraction
                         {
                             long_difference
                         } else
@@ -278,7 +278,7 @@ impl ChildEntity
                 {
                     ChildRotation::EaseOut(info) =>
                     {
-                        let amount = 1.0 - info.props.strength.powf(dt);
+                        let amount = 1.0 - info.props.resistance.powf(dt);
 
                         let current_difference =
                             current_difference(info.last_move, info.props.momentum);
