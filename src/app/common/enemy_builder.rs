@@ -31,7 +31,7 @@ impl EnemyBuilder
         let props = EnemyProperties{
             character_properties: CharacterProperties{
                 entity_properties: EntityProperties{
-                    texture: "enemy/body.png".to_owned(),
+                    texture: Some("enemy/body.png".to_owned()),
                     physical: PhysicalProperties{
                         transform: Transform{
                             position: self.pos,

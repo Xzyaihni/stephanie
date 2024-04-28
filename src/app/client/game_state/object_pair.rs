@@ -32,7 +32,7 @@ use crate::{
 #[derive(Debug)]
 pub struct ObjectPair<T>
 {
-    main_object: Object,
+    main_object: Option<Object>,
 	child_objects: Vec<Object>,
     z_index: usize,
 	pub entity: T
@@ -46,7 +46,7 @@ impl<T: EntityContainer + PhysicsEntity + ChildContainer + DrawableEntity> Objec
 
         let children = entity.children_ref();
 
-        let child_objects = children.iter().map(|child|
+        let child_objects = children.iter().filter_map(|child|
         {
             Self::object_create(create_info, child)
         }).collect();
@@ -64,21 +64,22 @@ impl<T: EntityContainer + PhysicsEntity + ChildContainer + DrawableEntity> Objec
 	fn object_create<E: DrawableEntity + TransformContainer>(
         create_info: &ObjectCreateInfo,
 		entity: &E
-	) -> Object
+	) -> Option<Object>
 	{
         let partial = &create_info.partial;
         let assets = &*partial.assets.lock();
 
 		let model = assets.default_model(DefaultModel::Square);
-        let texture = assets.texture(entity.texture());
-
-        partial.object_factory.create(
-            ObjectInfo{
-                model,
-                texture,
-                transform: entity.transform_clone()
-            }
-		)
+        entity.texture().map(|texture|
+        {
+            partial.object_factory.create(
+                ObjectInfo{
+                    model,
+                    texture: assets.texture(texture),
+                    transform: entity.transform_clone()
+                }
+            )
+        })
 	}
 }
 
@@ -115,7 +116,11 @@ impl<T: PhysicsEntity + ChildContainer> GameObject for ObjectPair<T>
 {
 	fn update_buffers(&mut self, info: &mut UpdateBuffersInfo)
     {
-        self.main_object.update_buffers(info);
+        if let Some(object) = self.main_object.as_mut()
+        {
+            object.update_buffers(info);
+        }
+
 		self.child_objects.iter_mut().for_each(|object| object.update_buffers(info));
     }
 
@@ -123,14 +128,20 @@ impl<T: PhysicsEntity + ChildContainer> GameObject for ObjectPair<T>
     {
         if self.child_objects.is_empty()
         {
-            self.main_object.draw(info);
+            if let Some(object) = self.main_object.as_ref()
+            {
+                object.draw(info);
+            }
         } else
         {
 		    self.child_objects.iter().enumerate().for_each(|(index, object)|
             {
                 if self.z_index == index
                 {
-                    self.main_object.draw(info);
+                    if let Some(object) = self.main_object.as_ref()
+                    {
+                        object.draw(info);
+                    }
                 }
 
                 object.draw(info);
@@ -143,7 +154,10 @@ impl<T: EntityContainer + PhysicsEntity + ChildContainer> OnTransformCallback fo
 {
 	fn transform_callback(&mut self, transform: Transform)
 	{
-        self.main_object.set_transform(transform);
+        if let Some(object) = self.main_object.as_mut()
+        {
+            object.set_transform(transform);
+        }
 
 		self.child_objects.iter_mut().zip(self.entity.children_ref().iter())
             .for_each(|(object, child)|

@@ -9,8 +9,11 @@ use crate::{
         EntityAny,
         EntityAnyWrappable,
         CharacterProperties,
+        EntityProperties,
         PhysicalProperties,
         Physical,
+        ChildEntity,
+        entity::child_entity::*,
         physics::PhysicsEntity,
 		character::Character
 	}
@@ -87,13 +90,46 @@ impl Enemy
         let mut rng = SeededRandom::from(fastrand::u64(0..u64::MAX));
         let behavior_state = enemy_properties.behavior.start_state();
 
-		Self{
-			character: Character::new(enemy_properties.character_properties),
+        let character_properties = enemy_properties.character_properties;
+
+        let entity_properties = character_properties.entity_properties;
+
+        let props = CharacterProperties{
+            entity_properties: EntityProperties{
+                texture: None,
+                ..entity_properties.clone()
+            },
+            ..character_properties
+        };
+
+		let mut this = Self{
+			character: Character::new(props),
             current_state_left: enemy_properties.behavior.duration_of(&mut rng, &behavior_state),
             behavior_state,
             behavior: enemy_properties.behavior,
             rng
-		}
+		};
+
+        let texture = entity_properties.texture;
+        let physical = PhysicalProperties{
+            transform: Transform{
+                position: Vector3::zeros(),
+                ..entity_properties.physical.transform
+            },
+            ..entity_properties.physical
+        };
+
+        let entity = ChildEntity::new(
+            ChildConnection::Rigid,
+            ChildRotation::Instant,
+            ChildDeformation::Rigid,
+            Entity::new(EntityProperties{texture, physical}),
+            0
+        );
+
+        this.add_child(Vector3::zeros(), entity);
+
+        this
 	}
 
     pub fn next_state(&mut self)
@@ -224,7 +260,7 @@ impl PhysicsEntity for Enemy
 
 impl DrawableEntity for Enemy
 {
-    fn texture(&self) -> &str
+    fn texture(&self) -> Option<&str>
     {
         self.character.texture()
     }

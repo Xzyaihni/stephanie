@@ -242,7 +242,7 @@ impl GameServer
             character_properties: CharacterProperties{
                 anatomy: Anatomy::Human(HumanAnatomy::default()),
                 entity_properties: EntityProperties{
-                    texture: "player/hair.png".to_owned(),
+                    texture: Some("player/hair.png".to_owned()),
                     physical: PhysicalProperties{
                         mass: 50.0,
                         friction: 0.5,

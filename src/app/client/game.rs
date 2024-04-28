@@ -26,7 +26,7 @@ mod object_transform;
 
 pub trait DrawableEntity
 {
-    fn texture(&self) -> &str;
+    fn texture(&self) -> Option<&str>;
 }
 
 pub struct Game

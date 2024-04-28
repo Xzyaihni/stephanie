@@ -7,6 +7,7 @@ use yanyaengine::{Transform, TransformContainer, OnTransformCallback};
 
 pub const GRAVITY: Vector3<f32> = Vector3::new(0.0, 0.0, -9.81);
 
+#[derive(Clone)]
 pub struct PhysicalProperties
 {
 	pub transform: Transform,

@@ -13,10 +13,8 @@ use crate::{
         PhysicalProperties,
 		character::Character,
 		entity::{
+            child_entity::*,
 			ValueAnimation,
-			ChildConnection,
-            ChildRotation,
-			ChildDeformation,
 			SpringConnection,
             EaseOutRotation,
             ConstantRotation,
@@ -63,7 +61,7 @@ impl Player
         let mut add_pon = |position|
         {
 			let entity = Entity::new(EntityProperties{
-				texture: "player/pon.png".to_owned(),
+				texture: Some("player/pon.png".to_owned()),
                 physical: PhysicalProperties{
                     mass: 0.01,
                     friction: 0.8,
@@ -109,7 +107,7 @@ impl Player
         let item_size = 0.2;
         let held_item = {
 			let entity = Entity::new(EntityProperties{
-				texture: "items/weapons/pistol.png".to_owned(),
+				texture: Some("items/weapons/pistol.png".to_owned()),
                 physical: PhysicalProperties{
                     mass: 0.5,
                     friction: 0.4,

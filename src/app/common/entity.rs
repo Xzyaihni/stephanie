@@ -20,12 +20,13 @@ pub use crate::common::physics::{
 
 pub use child_entity::*;
 
-mod child_entity;
+pub mod child_entity;
 
 
+#[derive(Clone)]
 pub struct EntityProperties
 {
-	pub texture: String,
+	pub texture: Option<String>,
     pub physical: PhysicalProperties
 }
 
@@ -88,7 +89,7 @@ pub trait EntityContainer
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Entity
 {
-	texture: String,
+	texture: Option<String>,
     physical: Physical,
 	children: Vec<ChildEntity>
 }
@@ -177,9 +178,9 @@ impl PhysicsEntity for Entity
 
 impl DrawableEntity for Entity
 {
-	fn texture(&self) -> &str
+	fn texture(&self) -> Option<&str>
 	{
-		&self.texture
+		self.texture.as_deref()
 	}
 }
 
@@ -340,7 +341,7 @@ macro_rules! entity_forward
 
         impl DrawableEntity for $name
         {
-            fn texture(&self) -> &str
+            fn texture(&self) -> Option<&str>
             {
                 self.$child_name.texture()
             }
