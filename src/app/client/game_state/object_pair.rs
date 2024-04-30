@@ -18,6 +18,9 @@ use yanyaengine::{
 use crate::{
     client::DrawableEntity,
     common::{
+        Damage,
+        DamageDirection,
+        Damageable,
         Entity,
         ChildContainer,
         EntityAny,
@@ -238,5 +241,13 @@ impl<T: EntityContainer> EntityContainer for ObjectPair<T>
     fn entity_mut(&mut self) -> &mut Entity
     {
         self.entity.entity_mut()
+    }
+}
+
+impl<T: Damageable> Damageable for ObjectPair<T>
+{
+    fn damage(&mut self, direction: DamageDirection, damage: Damage)
+    {
+        self.entity.damage(direction, damage);
     }
 }

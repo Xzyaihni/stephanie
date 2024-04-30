@@ -1,4 +1,5 @@
-use enum_amount::EnumCount;
+use strum::EnumCount;
+use strum_macros::EnumCount;
 
 
 #[derive(Debug, Clone, EnumCount)]
@@ -22,12 +23,12 @@ impl Notifications
 
 	pub fn set(&mut self, notification: Notification)
 	{
-		self.notifications[notification.index()] = true;
+		self.notifications[notification as usize] = true;
 	}
 
 	pub fn get(&mut self, notification: Notification) -> bool
 	{
-		let notif = self.notifications.get_mut(notification.index()).unwrap();
+		let notif = self.notifications.get_mut(notification as usize).unwrap();
 		if *notif
 		{
 			*notif = false;

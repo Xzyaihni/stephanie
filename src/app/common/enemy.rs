@@ -3,6 +3,7 @@ use serde::{Serialize, Deserialize};
 use crate::{
     entity_forward_transform,
     entity_forward_parent,
+    forward_damageable,
     client::DrawableEntity,
 	common::{
         SeededRandom,
@@ -241,6 +242,7 @@ impl EntityAnyWrappable for Enemy
     }
 }
 
+forward_damageable!{Enemy, character}
 entity_forward_parent!{Enemy, character}
 entity_forward_transform!{Enemy, character}
 

@@ -6,6 +6,10 @@ use crate::{
     client::ConnectionsHandler,
     common::{
         EntitiesController,
+        Damage,
+        DamageDirection,
+        Side2d,
+        DamageHeight,
         NetworkEntity,
         player::Player,
         world::TILE_SIZE,
@@ -150,19 +154,29 @@ impl<'a> PlayerContainer<'a>
 
         let hits = self.game_state.raycast(info, start, &end);
 
-        for hit in hits
+        let damage = Damage::Bullet(fastrand::f32() * 5.0 + 2.5);
+
+        let height = DamageHeight::random();
+
+        for hit in &hits.hits
         {
             #[allow(clippy::single_match)]
             match hit.id
             {
                 RaycastHitId::Entity(id) =>
                 {
-                    if id.is_player()
-                    {
-                        continue;
-                    }
+                    let entity = self.game_state.get_entity_ref(id);
 
-                    self.game_state.remove_client_entity(id);
+                    let hit_position = hits.hit_position(&hit);
+                    let side = Side2d::from_positions(
+                        entity.rotation(),
+                        *entity.position(),
+                        hit_position
+                    );
+
+                    let direction = DamageDirection{side, height};
+
+                    self.game_state.damage_entity(id, direction, damage);
                 },
                 _ => ()
             }

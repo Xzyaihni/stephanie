@@ -36,6 +36,7 @@ pub use entity::{
 pub use chunk_saver::{SaveLoad, WorldChunkSaver, ChunkSaver, EntitiesSaver};
 
 pub use anatomy::{Anatomy, HumanAnatomy};
+pub use damage::{Damageable, Damage, DamageDirection, Side2d, DamageHeight};
 
 pub use enemy_builder::EnemyBuilder;
 
@@ -52,6 +53,7 @@ pub mod animator;
 pub mod lisp;
 pub mod objects_store;
 
+pub mod damage;
 pub mod anatomy;
 
 pub mod enemy_builder;
@@ -275,6 +277,21 @@ pub trait EntitiesContainer
             EntityType::Enemy(id) =>
             {
                 self.enemies_mut().remove(id);
+            }
+        }
+    }
+
+    fn get_entity_ref(&self, id: EntityType) -> &Entity
+    {
+        match id
+        {
+            EntityType::Player(id) =>
+            {
+                self.players_ref()[id].borrow().entity_ref()
+            },
+            EntityType::Enemy(id) =>
+            {
+                self.enemies_ref()[id].borrow().entity_ref()
             }
         }
     }

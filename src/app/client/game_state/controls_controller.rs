@@ -2,10 +2,10 @@ use std::collections::HashMap;
 
 use yanyaengine::{ElementState, PhysicalKey, KeyCode, MouseButton};
 
-use enum_amount::EnumCount;
+use strum::EnumCount;
+use strum_macros::EnumCount;
 
 
-#[repr(usize)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, EnumCount)]
 pub enum Control
 {

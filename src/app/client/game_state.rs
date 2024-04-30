@@ -1,6 +1,9 @@
-use std::sync::{
-    Arc,
-    mpsc::{self, TryRecvError, Receiver}
+use std::{
+    process,
+    sync::{
+        Arc,
+        mpsc::{self, TryRecvError, Receiver}
+    }
 };
 
 use parking_lot::{RwLock, Mutex};
@@ -20,6 +23,9 @@ use crate::common::{
 	receiver_loop,
     ObjectsStore,
     TileMap,
+    Damage,
+    DamageDirection,
+    Damageable,
     Entity,
     EntityType,
     EntityAny,
@@ -157,7 +163,7 @@ impl ClientEntitiesContainer
         info: RaycastInfo,
         start: &Vector3<f32>,
         end: &Vector3<f32>
-    ) -> Vec<RaycastHit>
+    ) -> RaycastHits
     {
         let direction = end - start;
 
@@ -199,7 +205,7 @@ impl ClientEntitiesContainer
 
         hits.sort_unstable_by(|a, b| a.distance.partial_cmp(&b.distance).unwrap());
 
-        if let Some(mut pierce) = info.pierce
+        let hits = if let Some(mut pierce) = info.pierce
         {
             hits.into_iter().take_while(|x|
             {
@@ -218,7 +224,9 @@ impl ClientEntitiesContainer
             let first = hits.into_iter().next();
 
             first.map(|x| vec![x]).unwrap_or_default()
-        }
+        };
+
+        RaycastHits{start: *start, direction, hits}
     }
 }
 
@@ -328,6 +336,22 @@ pub struct RaycastHit
     pub width: f32
 }
 
+#[derive(Debug)]
+pub struct RaycastHits
+{
+    start: Vector3<f32>,
+    direction: Unit<Vector3<f32>>,
+    pub hits: Vec<RaycastHit>
+}
+
+impl RaycastHits
+{
+    pub fn hit_position(&self, hit: &RaycastHit) -> Vector3<f32>
+    {
+        self.start + self.direction.into_inner() * hit.distance
+    }
+}
+
 pub struct GameState
 {
 	pub mouse_position: MousePosition,
@@ -383,7 +407,13 @@ impl GameState
 
 		let (sender, receiver) = mpsc::channel();
 
-		receiver_loop(handler, move |message| sender.send(message).unwrap(), || ());
+		receiver_loop(handler, move |message|
+        {
+            if let Err(_) = sender.send(message)
+            {
+                process::exit(0);
+            }
+        }, || ());
 
 		Self{
 			mouse_position,
@@ -408,7 +438,7 @@ impl GameState
         info: RaycastInfo,
         start: &Vector3<f32>,
         end: &Vector3<f32>
-    ) -> Vec<RaycastHit>
+    ) -> RaycastHits
     {
         self.entities.raycast(info, start, end)
     }
@@ -433,6 +463,18 @@ impl GameState
 			x => panic!("received wrong message on connect: {x:?}")
 		}
 	}
+
+    pub fn damage_entity(&mut self, id: EntityType, direction: DamageDirection, damage: Damage)
+    {
+        match id
+        {
+            EntityType::Player(..) => (),
+            EntityType::Enemy(id) =>
+            {
+                self.entities.enemies_mut()[id].damage(direction, damage);
+            }
+        }
+    }
 
 	pub fn player_id(&self) -> usize
 	{
@@ -577,6 +619,11 @@ impl GameState
 	{
 		self.notifications.get(Notification::PlayerConnected)
 	}
+
+    pub fn get_entity_ref(&self, id: EntityType) -> &Entity
+    {
+        self.entities.get_entity_ref(id)
+    }
 
 	pub fn update_buffers(&mut self, partial_info: UpdateBuffersPartialInfo)
     {

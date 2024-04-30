@@ -17,7 +17,7 @@ use image::{
 
 use strum_macros::EnumIter;
 
-use enum_amount::EnumCount;
+use strum_macros::EnumCount;
 
 use yanyaengine::object::{
     resource_uploader::ResourceUploader,

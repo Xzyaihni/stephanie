@@ -5,7 +5,7 @@ use std::{
 
 use image::error::ImageError;
 
-use strum::IntoEnumIterator;
+use strum::{EnumCount, IntoEnumIterator};
 
 use parking_lot::RwLock;
 

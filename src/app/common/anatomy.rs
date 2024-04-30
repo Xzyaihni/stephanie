@@ -1,6 +1,14 @@
-use std::ops::{Index, IndexMut};
+use std::{
+    iter,
+    ops::{Index, IndexMut}
+};
 
 use serde::{Serialize, Deserialize};
+
+use strum::EnumCount;
+use strum_macros::{EnumCount, FromRepr};
+
+use crate::common::{Damage, DamageDirection, DamageHeight, Side2d, Damageable};
 
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -28,29 +36,84 @@ impl Anatomy
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct BoneChild<Data>
+impl Damageable for Anatomy
 {
-    side: Option<Side>,
-    data: Data
-}
-
-impl<Data> From<Data> for BoneChild<Data>
-{
-    fn from(data: Data) -> Self
+    fn damage(&mut self, direction: DamageDirection, damage: Damage)
     {
-        Self{
-            side: None,
-            data
+        match self
+        {
+            Self::Human(x) => x.damage(direction, damage)
         }
     }
 }
 
-impl<Data> BoneChild<Data>
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BoneChildren<T>([Option<T>; Side3d::COUNT]);
+
+impl<T: Clone> From<Vec<(Side3d, T)>> for BoneChildren<T>
 {
-    pub fn new(side: Side, data: Data) -> Self
+    fn from(values: Vec<(Side3d, T)>) -> Self
     {
-        Self{side: Some(side), data}
+        let mut output = Self::empty();
+
+        for (key, value) in values
+        {
+            let spot = output.get_mut(key);
+
+            if spot.is_some()
+            {
+                panic!("duplicate definition of {key:?}");
+            }
+
+            *spot = Some(value);
+        }
+
+        output
+    }
+}
+
+impl<T: Clone> BoneChildren<T>
+{
+    pub fn empty() -> Self
+    {
+        let values = iter::repeat(None)
+            .take(Side3d::COUNT)
+            .collect::<Vec<_>>()
+            .try_into()
+            .unwrap_or_else(|_| unreachable!());
+
+        Self(values)
+    }
+
+    pub fn is_empty(&self) -> bool
+    {
+        self.0.iter().all(|x| x.is_none())
+    }
+
+    pub fn get(&self, index: Side3d) -> &Option<T>
+    {
+        self.0.get(index as usize).unwrap()
+    }
+
+    pub fn get_mut(&mut self, index: Side3d) -> &mut Option<T>
+    {
+        self.0.get_mut(index as usize).unwrap()
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item=(Side3d, &T)>
+    {
+        self.0.iter().enumerate().filter_map(|(index, value)|
+        {
+            value.as_ref().map(|value| (Side3d::from_repr(index).unwrap(), value))
+        })
+    }
+
+    pub fn iter_mut(&mut self) -> impl Iterator<Item=(Side3d, &mut T)>
+    {
+        self.0.iter_mut().enumerate().filter_map(|(index, value)|
+        {
+            value.as_mut().map(|value| (Side3d::from_repr(index).unwrap(), value))
+        })
     }
 }
 
@@ -58,19 +121,19 @@ impl<Data> BoneChild<Data>
 pub struct Bone<Data>
 {
     data: Data,
-    children: Vec<BoneChild<BodyPart<Bone<Data>>>>
+    children: Box<BoneChildren<BodyPart<Bone<Data>>>>
 }
 
-impl<Data> Bone<Data>
+impl<Data: Clone> Bone<Data>
 {
-    pub fn new(data: Data, children: Vec<BoneChild<BodyPart<Bone<Data>>>>) -> Self
+    pub fn new(data: Data, children: BoneChildren<BodyPart<Bone<Data>>>) -> Self
     {
-        Self{data, children}
+        Self{data, children: Box::new(children)}
     }
 
     pub fn leaf(data: Data) -> Self
     {
-        Self::new(data, Vec::new())
+        Self::new(data, BoneChildren::empty())
     }
 }
 
@@ -188,15 +251,32 @@ pub enum Side
     Right
 }
 
-impl From<Side2d> for Side
+impl TryFrom<Side3d> for Side
 {
-    fn from(side: Side2d) -> Self
+    type Error = ();
+
+    fn try_from(side: Side3d) -> Result<Self, ()>
     {
         match side
         {
-            Side2d::Left => Self::Left,
-            Side2d::Right => Self::Right,
-            x => panic!("cant cast {x:?} to Side")
+            Side3d::Left => Ok(Self::Left),
+            Side3d::Right => Ok(Self::Right),
+            _ => Err(())
+        }
+    }
+}
+
+impl TryFrom<Side2d> for Side
+{
+    type Error = ();
+
+    fn try_from(side: Side2d) -> Result<Self, ()>
+    {
+        match side
+        {
+            Side2d::Left => Ok(Self::Left),
+            Side2d::Right => Ok(Self::Right),
+            _ => Err(())
         }
     }
 }
@@ -213,15 +293,6 @@ impl Side
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum Side2d
-{
-    Left,
-    Right,
-    Forward,
-    Back
-}
-
 impl From<Side> for Side2d
 {
     fn from(side: Side) -> Self
@@ -232,6 +303,17 @@ impl From<Side> for Side2d
             Side::Right => Self::Right
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, EnumCount, FromRepr, Serialize, Deserialize)]
+pub enum Side3d
+{
+    Left,
+    Right,
+    Top,
+    Bottom,
+    Front,
+    Back
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -437,19 +519,19 @@ impl Default for HumanAnatomy
             HumanBone::new(
                 HumanBoneSingle::Femur,
                 vec![
-                    HumanPart::new(
+                    (Side3d::Bottom, HumanPart::new(
                         3500.0,
                         HumanBone::new(
                             HumanBoneSingle::Tibia,
                             vec![
-                                HumanPart::new(
+                                (Side3d::Bottom, HumanPart::new(
                                     5000.0,
                                     HumanBone::leaf(HumanBoneSingle::Foot)
-                                ).into()
-                            ]
+                                ))
+                            ].into()
                         )
-                    ).into()
-                ]
+                    ))
+                ].into()
             )
         );
 
@@ -458,19 +540,19 @@ impl Default for HumanAnatomy
             HumanBone::new(
                 HumanBoneSingle::Humerus,
                 vec![
-                    HumanPart::new(
+                    (Side3d::Bottom, HumanPart::new(
                         2000.0,
                         HumanBone::new(
                             HumanBoneSingle::Radius,
                             vec![
-                                HumanPart::new(
+                                (Side3d::Bottom, HumanPart::new(
                                     4000.0,
                                     HumanBone::leaf(HumanBoneSingle::Hand)
-                                ).into()
-                            ]
+                                ))
+                            ].into()
                         )
-                    ).into()
-                ]
+                    ))
+                ].into()
             )
         );
 
@@ -479,25 +561,25 @@ impl Default for HumanAnatomy
             HumanBone::new(
                 HumanBoneSingle::Spine,
                 vec![
-                    HumanPart::new(
+                    (Side3d::Top, HumanPart::new(
                         5000.0,
                         HumanBone::leaf(HumanBoneSingle::Skull{contents: vec![
                             HumanOrgan::Brain(Brain::default()),
                             HumanOrgan::Eye(Eye::left()),
                             HumanOrgan::Eye(Eye::right())
                         ]})
-                    ).into(),
-                    HumanPart::new(
+                    )),
+                    (Side3d::Bottom, HumanPart::new(
                         6000.0,
                         HumanBone::new(
                             HumanBoneSingle::Pelvis,
                             vec![
-                                BoneChild::new(Side::Left, leg.clone()),
-                                BoneChild::new(Side::Right, leg)
-                            ]
+                                (Side3d::Left, leg.clone()),
+                                (Side3d::Right, leg)
+                            ].into()
                         )
-                    ).into(),
-                    HumanPart::new(
+                    )),
+                    (Side3d::Front, HumanPart::new(
                         3300.0,
                         HumanBone::new(
                             HumanBoneSingle::Ribcage{contents: vec![
@@ -505,12 +587,12 @@ impl Default for HumanAnatomy
                                 HumanOrgan::Lung(Lung::right())
                             ]},
                             vec![
-                                BoneChild::new(Side::Left, arm.clone()),
-                                BoneChild::new(Side::Right, arm)
-                            ]
+                                (Side3d::Left, arm.clone()),
+                                (Side3d::Right, arm)
+                            ].into()
                         )
-                    ).into()
-                ]
+                    ))
+                ].into()
             )
         );
 
@@ -538,6 +620,24 @@ impl HumanAnatomy
         self.base_speed = speed;
 
         self.update();
+    }
+
+    fn select_part(&self, direction: DamageDirection) -> &HumanPart
+    {
+        dbg!();
+        return &self.body;
+        /*match direction.height
+        {
+            DamageHeight::Top =>
+            {
+            },
+            DamageHeight::Middle =>
+            {
+            },
+            DamageHeight::Bottom =>
+            {
+            }
+        }*/
     }
 
     fn leg_speed(
@@ -647,14 +747,19 @@ impl HumanAnatomy
         let leg_speed = Self::leg_speed(&mut state.conseq_leg, bone);
         let arm_speed = Self::arm_speed(&mut state.conseq_arm, bone);
 
-        let children_speed: Speeds = bone.children.iter().map(|child|
+        let children_speed: Speeds = bone.children.iter().map(|(side, child)|
         {
-            let mut state = SpeedsState{
-                side: child.side.map(|side| side.opposite()),
-                ..state.clone()
-            };
+            let mut state = state.clone();
 
-            Self::speed_scale(&mut state, &child.data)
+            if let Ok(side) = side.try_into()
+            {
+                // :/
+                let side: Side = side;
+
+                state.side = Some(side.opposite());
+            }
+
+            Self::speed_scale(&mut state, child)
         }).reduce(|acc, x| Speeds{arms: acc.arms + x.arms, legs: acc.legs + x.legs})
             .unwrap_or(Speeds{arms: 0.0, legs: 0.0});
 
@@ -685,7 +790,7 @@ impl HumanAnatomy
             }
         }
 
-        bone.children.iter().find_map(|part| Self::brain_search(&part.data.part))
+        bone.children.iter().find_map(|(_, part)| Self::brain_search(&part.part))
     }
 
     fn brain(&self) -> Option<&Brain>
@@ -735,5 +840,14 @@ impl HumanAnatomy
     fn update(&mut self)
     {
         self.cached.speed = self.updated_speed();
+    }
+}
+
+impl Damageable for HumanAnatomy
+{
+    fn damage(&mut self, direction: DamageDirection, damage: Damage)
+    {
+        let part = self.select_part(direction);
+        dbg!(part, damage);
     }
 }

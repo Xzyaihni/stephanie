@@ -4,6 +4,7 @@ use serde::{Serialize, Deserialize};
 
 use crate::{
     entity_forward,
+    forward_damageable,
 	common::{
         EntityAny,
         EntityAnyWrappable,
@@ -176,4 +177,5 @@ impl EntityAnyWrappable for Player
     }
 }
 
+forward_damageable!{Player, character}
 entity_forward!{Player, character}

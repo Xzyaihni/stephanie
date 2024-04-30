@@ -5,9 +5,7 @@ use std::{
 
 use serde::{Serialize, Deserialize};
 
-use num_enum::TryFromPrimitive;
-
-use enum_amount::EnumCount;
+use strum_macros::{FromRepr, EnumCount};
 
 use nalgebra::{Vector3, Point3, Scalar};
 
@@ -385,8 +383,7 @@ impl From<Pos3<usize>> for GlobalPos
 	}
 }
 
-#[repr(u8)]
-#[derive(Debug, Clone, Copy, TryFromPrimitive, EnumCount)]
+#[derive(Debug, Clone, Copy, FromRepr, EnumCount)]
 pub enum PosDirection
 {
 	Right,

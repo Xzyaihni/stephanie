@@ -52,4 +52,22 @@ impl Character
     }
 }
 
+#[macro_export]
+macro_rules! forward_damageable
+{
+    ($name:ident, $child_name:ident) =>
+    {
+        use $crate::common::{Damageable, Damage, DamageDirection};
+
+        impl Damageable for $name
+        {
+            fn damage(&mut self, direction: DamageDirection, damage: Damage)
+            {
+                self.$child_name.damage(direction, damage);
+            }
+        }
+    }
+}
+
+forward_damageable!{Character, anatomy}
 entity_forward!{Character, entity}
