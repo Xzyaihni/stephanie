@@ -8,7 +8,15 @@ use serde::{Serialize, Deserialize};
 use strum::EnumCount;
 use strum_macros::{EnumCount, FromRepr};
 
-use crate::common::{Damage, DamageDirection, DamageHeight, Side2d, Damageable};
+use crate::common::{
+    SeededRandom,
+    WeightedPicker,
+    Damage,
+    DamageDirection,
+    DamageHeight,
+    Side2d,
+    Damageable
+};
 
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -38,11 +46,11 @@ impl Anatomy
 
 impl Damageable for Anatomy
 {
-    fn damage(&mut self, direction: DamageDirection, damage: Damage)
+    fn damage(&mut self, damage: Damage)
     {
         match self
         {
-            Self::Human(x) => x.damage(direction, damage)
+            Self::Human(x) => x.damage(damage)
         }
     }
 }
@@ -72,9 +80,11 @@ impl<T: Clone> From<Vec<(Side3d, T)>> for BoneChildren<T>
     }
 }
 
-impl<T: Clone> BoneChildren<T>
+impl<T> BoneChildren<T>
 {
     pub fn empty() -> Self
+    where
+        T: Clone
     {
         let values = iter::repeat(None)
             .take(Side3d::COUNT)
@@ -171,24 +181,38 @@ pub struct BodyPart<Data>
     bone: Health,
     skin: Health,
     muscle: Health,
+    size: f64,
     part: Data
 }
 
 impl<Data> BodyPart<Data>
 {
-    pub fn new(bone: impl Into<Health>, part: Data) -> Self
+    pub fn new(bone: impl Into<Health>, size: f64, part: Data) -> Self
     {
-        Self::new_full(bone, 100.0, 500.0, part)
+        Self::new_full(bone, 100.0, 500.0, size, part)
     }
 
     pub fn new_full(
         bone: impl Into<Health>,
         skin: impl Into<Health>,
         muscle: impl Into<Health>,
+        size: f64,
         part: Data
     ) -> Self
     {
-        Self{bone: bone.into(), skin: skin.into(), muscle: muscle.into(), part}
+        Self{bone: bone.into(), skin: skin.into(), muscle: muscle.into(), size, part}
+    }
+}
+
+impl<Data> BodyPart<Bone<Data>>
+{
+    pub fn for_each<'a>(&'a self, f: &mut impl FnMut(&'a Self))
+    where
+        Data: 'a
+    {
+        f(self);
+
+        self.part.children.iter().for_each(|(_, child)| child.for_each(f));
     }
 }
 
@@ -516,16 +540,19 @@ impl Default for HumanAnatomy
         // like half of them i just made up
         let leg = HumanPart::new(
             4000.0,
+            0.6,
             HumanBone::new(
                 HumanBoneSingle::Femur,
                 vec![
                     (Side3d::Bottom, HumanPart::new(
                         3500.0,
+                        0.44,
                         HumanBone::new(
                             HumanBoneSingle::Tibia,
                             vec![
                                 (Side3d::Bottom, HumanPart::new(
                                     5000.0,
+                                    0.17,
                                     HumanBone::leaf(HumanBoneSingle::Foot)
                                 ))
                             ].into()
@@ -537,16 +564,19 @@ impl Default for HumanAnatomy
 
         let arm = HumanPart::new(
             2500.0,
+            0.2,
             HumanBone::new(
                 HumanBoneSingle::Humerus,
                 vec![
                     (Side3d::Bottom, HumanPart::new(
                         2000.0,
+                        0.17,
                         HumanBone::new(
                             HumanBoneSingle::Radius,
                             vec![
                                 (Side3d::Bottom, HumanPart::new(
                                     4000.0,
+                                    0.07,
                                     HumanBone::leaf(HumanBoneSingle::Hand)
                                 ))
                             ].into()
@@ -558,11 +588,13 @@ impl Default for HumanAnatomy
 
         let body = HumanPart::new(
             3400.0,
+            0.6,
             HumanBone::new(
                 HumanBoneSingle::Spine,
                 vec![
                     (Side3d::Top, HumanPart::new(
                         5000.0,
+                        0.39,
                         HumanBone::leaf(HumanBoneSingle::Skull{contents: vec![
                             HumanOrgan::Brain(Brain::default()),
                             HumanOrgan::Eye(Eye::left()),
@@ -571,6 +603,7 @@ impl Default for HumanAnatomy
                     )),
                     (Side3d::Bottom, HumanPart::new(
                         6000.0,
+                        0.37,
                         HumanBone::new(
                             HumanBoneSingle::Pelvis,
                             vec![
@@ -581,6 +614,7 @@ impl Default for HumanAnatomy
                     )),
                     (Side3d::Front, HumanPart::new(
                         3300.0,
+                        0.82,
                         HumanBone::new(
                             HumanBoneSingle::Ribcage{contents: vec![
                                 HumanOrgan::Lung(Lung::left()),
@@ -622,22 +656,35 @@ impl HumanAnatomy
         self.update();
     }
 
-    fn select_part(&self, direction: DamageDirection) -> &HumanPart
+    fn select_random_part(
+        &self,
+        mut rng: SeededRandom,
+        direction: DamageDirection
+    ) -> Option<&HumanPart>
     {
-        dbg!();
-        return &self.body;
-        /*match direction.height
+        let child = match direction.height
         {
-            DamageHeight::Top =>
+            DamageHeight::Top => Side3d::Top,
+            DamageHeight::Bottom => Side3d::Bottom,
+            DamageHeight::Middle => Side3d::Front
+        };
+
+        let mut parts: Vec<&_> = Vec::new();
+
+        if let Some(child) = self.body.part.children.get(child)
+        {
+            let mut c = |part|
             {
-            },
-            DamageHeight::Middle =>
-            {
-            },
-            DamageHeight::Bottom =>
-            {
-            }
-        }*/
+                parts.push(part);
+            };
+
+            child.for_each(&mut c);
+        }
+
+        // u can hit the spine at any height
+        parts.push(&self.body);
+
+        WeightedPicker::pick_from(rng.next_f64(), parts, |part| part.size)
     }
 
     fn leg_speed(
@@ -845,9 +892,9 @@ impl HumanAnatomy
 
 impl Damageable for HumanAnatomy
 {
-    fn damage(&mut self, direction: DamageDirection, damage: Damage)
+    fn damage(&mut self, damage: Damage)
     {
-        let part = self.select_part(direction);
-        dbg!(part, damage);
+        let part = self.select_random_part(damage.rng, damage.direction);
+        dbg!(part, damage.data);
     }
 }

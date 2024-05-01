@@ -13,6 +13,7 @@ use parking_lot::Mutex;
 use crate::common::{
 	TileMap,
     SaveLoad,
+    WeightedPicker,
     lisp::{
         self,
         Lisp,
@@ -561,16 +562,14 @@ impl PossibleStates
             self.states[0]
         } else
         {
-            let mut r = fastrand::f64() * self.total;
+            *WeightedPicker::new(self.total, &self.states)
+                .pick_with(fastrand::f64(), |value|
+                {
+                    let rule = rules.get(*value);
 
-            *self.states.iter().find(|value|
-            {
-                let rule = rules.get(**value);
-
-                r -= rule.weight();
-
-                r <= 0.0
-            }).expect("rules cannot be empty and all scaled weights must add up to 1")
+                    rule.weight()
+                })
+                .expect("rules cannot be empty")
         };
 
         self.states = vec![id];

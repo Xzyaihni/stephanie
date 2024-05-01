@@ -7,6 +7,7 @@ use crate::{
     common::{
         EntitiesController,
         Damage,
+        DamageType,
         DamageDirection,
         Side2d,
         DamageHeight,
@@ -154,7 +155,7 @@ impl<'a> PlayerContainer<'a>
 
         let hits = self.game_state.raycast(info, start, &end);
 
-        let damage = Damage::Bullet(fastrand::f32() * 5.0 + 2.5);
+        let damage = DamageType::Bullet(fastrand::f32() * 5.0 + 2.5);
 
         let height = DamageHeight::random();
 
@@ -176,7 +177,9 @@ impl<'a> PlayerContainer<'a>
 
                     let direction = DamageDirection{side, height};
 
-                    self.game_state.damage_entity(id, direction, damage);
+                    let damage = Damage::new(direction, damage);
+
+                    self.game_state.damage_entity(id, damage);
                 },
                 _ => ()
             }

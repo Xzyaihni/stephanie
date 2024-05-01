@@ -24,7 +24,6 @@ use crate::common::{
     ObjectsStore,
     TileMap,
     Damage,
-    DamageDirection,
     Damageable,
     Entity,
     EntityType,
@@ -464,14 +463,14 @@ impl GameState
 		}
 	}
 
-    pub fn damage_entity(&mut self, id: EntityType, direction: DamageDirection, damage: Damage)
+    pub fn damage_entity(&mut self, id: EntityType, damage: Damage)
     {
         match id
         {
             EntityType::Player(..) => (),
             EntityType::Enemy(id) =>
             {
-                self.entities.enemies_mut()[id].damage(direction, damage);
+                self.entities.enemies_mut()[id].damage(damage);
             }
         }
     }

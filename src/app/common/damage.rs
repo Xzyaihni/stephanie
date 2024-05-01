@@ -4,9 +4,27 @@ use nalgebra::Vector3;
 
 use serde::{Serialize, Deserialize};
 
+use crate::common::SeededRandom;
 
-#[derive(Debug, Clone, Copy)]
-pub enum Damage
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Damage
+{
+    pub rng: SeededRandom,
+    pub data: DamageType,
+    pub direction: DamageDirection
+}
+
+impl Damage
+{
+    pub fn new(direction: DamageDirection, data: DamageType) -> Self
+    {
+        Self{rng: SeededRandom::new(), data, direction}
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub enum DamageType
 {
     Bullet(f32)
 }
@@ -50,7 +68,7 @@ impl Side2d
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DamageHeight
 {
     Top,
@@ -72,7 +90,7 @@ impl DamageHeight
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct DamageDirection
 {
     pub side: Side2d,
@@ -81,5 +99,5 @@ pub struct DamageDirection
 
 pub trait Damageable
 {
-    fn damage(&mut self, direction: DamageDirection, damage: Damage);
+    fn damage(&mut self, damage: Damage);
 }

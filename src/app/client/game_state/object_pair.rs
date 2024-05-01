@@ -19,7 +19,6 @@ use crate::{
     client::DrawableEntity,
     common::{
         Damage,
-        DamageDirection,
         Damageable,
         Entity,
         ChildContainer,
@@ -246,8 +245,8 @@ impl<T: EntityContainer> EntityContainer for ObjectPair<T>
 
 impl<T: Damageable> Damageable for ObjectPair<T>
 {
-    fn damage(&mut self, direction: DamageDirection, damage: Damage)
+    fn damage(&mut self, damage: Damage)
     {
-        self.entity.damage(direction, damage);
+        self.entity.damage(damage);
     }
 }

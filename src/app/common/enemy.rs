@@ -88,7 +88,7 @@ impl Enemy
 {
 	pub fn new(enemy_properties: EnemyProperties) -> Self
 	{
-        let mut rng = SeededRandom::from(fastrand::u64(0..u64::MAX));
+        let mut rng = SeededRandom::new();
         let behavior_state = enemy_properties.behavior.start_state();
 
         let character_properties = enemy_properties.character_properties;

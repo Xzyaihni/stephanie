@@ -36,7 +36,7 @@ pub use entity::{
 pub use chunk_saver::{SaveLoad, WorldChunkSaver, ChunkSaver, EntitiesSaver};
 
 pub use anatomy::{Anatomy, HumanAnatomy};
-pub use damage::{Damageable, Damage, DamageDirection, Side2d, DamageHeight};
+pub use damage::{Damageable, Damage, DamageType, DamageDirection, Side2d, DamageHeight};
 
 pub use enemy_builder::EnemyBuilder;
 
@@ -95,6 +95,51 @@ macro_rules! time_this
     }
 }
 
+pub struct WeightedPicker<I>
+{
+    total: f64,
+    values: I
+}
+
+impl<I> WeightedPicker<I>
+where
+    I: IntoIterator + Clone,
+    I::Item: Copy
+{
+    pub fn new(total: f64, values: I) -> Self
+    {
+        Self{total, values}
+    }
+
+    pub fn pick_from(
+        random_value: f64,
+        values: I,
+        get_weight: impl Fn(I::Item) -> f64
+    ) -> Option<I::Item>
+    {
+        let total = values.clone().into_iter().map(|value| get_weight(value)).sum();
+
+        Self::new(total, values).pick_with(random_value, get_weight)
+    }
+
+    pub fn pick_with(
+        &self,
+        random_value: f64,
+        get_weight: impl Fn(I::Item) -> f64
+    ) -> Option<I::Item>
+    {
+        let mut random_value = random_value * self.total;
+
+        self.values.clone().into_iter().find(|value|
+        {
+            let weight = get_weight(*value);
+            random_value -= weight;
+
+            random_value <= 0.0
+        })
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SeededRandom(u64);
 
@@ -108,6 +153,11 @@ impl From<u64> for SeededRandom
 
 impl SeededRandom
 {
+    pub fn new() -> Self
+    {
+        Self(fastrand::u64(0..u64::MAX))
+    }
+
     // splitmix64 by sebastiano vigna
     pub fn next_u64(&mut self) -> u64
     {
@@ -126,6 +176,13 @@ impl SeededRandom
         let x = self.next_u64();
 
         x as f32 / u64::MAX as f32
+    }
+
+    pub fn next_f64(&mut self) -> f64
+    {
+        let x = self.next_u64();
+
+        x as f64 / u64::MAX as f64
     }
 
     pub fn next_f32_between(&mut self, range: RangeInclusive<f32>) -> f32
