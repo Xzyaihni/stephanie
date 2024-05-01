@@ -14,6 +14,7 @@ use crate::common::{
     Damage,
     DamageDirection,
     DamageHeight,
+    DamageType,
     Side2d,
     Damageable
 };
@@ -53,6 +54,11 @@ impl Damageable for Anatomy
             Self::Human(x) => x.damage(damage)
         }
     }
+}
+
+trait DamageReceiver
+{
+    fn damage(&mut self, side: Side2d, damage: DamageType);
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -146,6 +152,11 @@ impl<T> BoneChildren<T>
         self.0.iter().all(|x| x.is_none())
     }
 
+    pub fn clear(&mut self)
+    {
+        self.0.iter_mut().for_each(|x| *x = None);
+    }
+
     pub fn get(&self, index: Side3d) -> &Option<T>
     {
         self.0.get(index as usize).unwrap()
@@ -219,6 +230,27 @@ impl Health
     {
         self.current / self.max
     }
+
+    pub fn is_zero(&self) -> bool
+    {
+        self.current == 0.0
+    }
+
+    pub fn damage_pierce(&mut self, damage: DamageType) -> Option<DamageType>
+    {
+        match damage
+        {
+            DamageType::Bullet(damage) =>
+            {
+                self.simple_pierce(damage).map(|x| DamageType::Bullet(x))
+            }
+        }
+    }
+
+    fn simple_pierce(&mut self, damage: f32) -> Option<f32>
+    {
+        todo!();
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -272,6 +304,27 @@ impl<Data> BodyPart<Bone<Data>>
             PartId::Next{id, next} =>
             {
                 self.part.children.get_mut(*id).as_mut()?.get_mut(next)
+            }
+        }
+    }
+
+    fn damage(&mut self, side: Side2d, damage: DamageType)
+    where
+        Data: DamageReceiver
+    {
+        if let Some(pierce) = self.skin.damage_pierce(damage)
+        {
+            if let Some(pierce) = self.muscle.damage_pierce(pierce)
+            {
+                if let Some(pierce) = self.bone.damage_pierce(pierce)
+                {
+                    if self.bone.is_zero()
+                    {
+                        self.part.children.clear();
+                    }
+
+                    self.part.data.damage(side, pierce);
+                }
             }
         }
     }
@@ -571,6 +624,13 @@ impl HumanBoneSingle
             Self::Ribcage{contents} => Some(contents),
             _ => None
         }
+    }
+}
+
+impl DamageReceiver for HumanBoneSingle
+{
+    fn damage(&mut self, side: Side2d, damage: DamageType)
+    {
     }
 }
 
@@ -1035,8 +1095,9 @@ impl Damageable for HumanAnatomy
 {
     fn damage(&mut self, damage: Damage)
     {
-        let part = self.select_random_part(damage.rng, damage.direction);
-
-        dbg!(&part.unwrap().part.data, damage.data);
+        if let Some(part) = self.select_random_part(damage.rng, damage.direction)
+        {
+            part.damage(damage.direction.side, damage.data);
+        }
     }
 }
