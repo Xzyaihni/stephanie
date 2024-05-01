@@ -56,6 +56,28 @@ impl Damageable for Anatomy
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum PartId
+{
+    This,
+    Next{id: Side3d, next: Box<PartId>}
+}
+
+impl PartId
+{
+    pub fn replace_tail(&self, id: Side3d) -> Self
+    {
+        match self
+        {
+            Self::This => Self::Next{id, next: Box::new(Self::This)},
+            Self::Next{id: this_id, next} =>
+            {
+                Self::Next{id: *this_id, next: Box::new(next.replace_tail(id))}
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BoneChildren<T>([Option<T>; Side3d::COUNT]);
 
 impl<T: Clone> From<Vec<(Side3d, T)>> for BoneChildren<T>
@@ -206,13 +228,48 @@ impl<Data> BodyPart<Data>
 
 impl<Data> BodyPart<Bone<Data>>
 {
-    pub fn for_each<'a>(&'a self, f: &mut impl FnMut(&'a Self))
-    where
-        Data: 'a
+    pub fn get<'a>(&self, index: &'a PartId) -> &'_ Self
     {
-        f(self);
+        match index
+        {
+            PartId::This => self,
+            PartId::Next{id, next} =>
+            {
+                self.part.children.get(*id).as_ref().expect("out of bounds").get(next)
+            }
+        }
+    }
 
-        self.part.children.iter().for_each(|(_, child)| child.for_each(f));
+    pub fn get_mut<'a>(&mut self, index: &'a PartId) -> &'_ mut Self
+    {
+        match index
+        {
+            PartId::This => self,
+            PartId::Next{id, next} =>
+            {
+                self.part.children.get_mut(*id).as_mut().expect("out of bounds").get_mut(next)
+            }
+        }
+    }
+
+    pub fn enumerate(&self, mut f: impl FnMut(&PartId))
+    {
+        self.enumerate_inner(PartId::This, &mut f)
+    }
+
+    pub fn enumerate_with(&self, start: PartId, mut f: impl FnMut(&PartId))
+    {
+        self.enumerate_inner(start, &mut f)
+    }
+
+    fn enumerate_inner(&self, part_id: PartId, f: &mut impl FnMut(&PartId))
+    {
+        f(&part_id);
+
+        self.part.children.iter().for_each(|(id, child)|
+        {
+            child.enumerate_inner(part_id.replace_tail(id), f)
+        });
     }
 }
 
@@ -658,34 +715,34 @@ impl HumanAnatomy
     }
 
     fn select_random_part(
-        &self,
+        &mut self,
         mut rng: SeededRandom,
         direction: DamageDirection
-    ) -> Option<&HumanPart>
+    ) -> Option<&mut HumanPart>
     {
-        let child = match direction.height
+        let child_side = match direction.height
         {
             DamageHeight::Top => Side3d::Top,
             DamageHeight::Bottom => Side3d::Bottom,
             DamageHeight::Middle => Side3d::Front
         };
 
-        let mut parts: Vec<&_> = Vec::new();
+        let mut ids = Vec::new();
 
-        if let Some(child) = self.body.part.children.get(child)
+        if let Some(child) = self.body.part.children.get(child_side)
         {
-            let mut c = |part|
-            {
-                parts.push(part);
-            };
-
-            child.for_each(&mut c);
+            let start = PartId::Next{id: child_side, next: Box::new(PartId::This)};
+            child.enumerate_with(start, |id| ids.push(id.clone()));
         }
 
         // u can hit the spine at any height
-        parts.push(&self.body);
+        ids.push(PartId::This);
 
-        WeightedPicker::pick_from(rng.next_f64(), parts, |part| part.size)
+        let ids: &Vec<_> = &ids;
+
+        let picked = WeightedPicker::pick_from(rng.next_f64(), ids, |id| self.body.get(id).size);
+
+        picked.map(|picked| self.body.get_mut(picked))
     }
 
     fn leg_speed(
@@ -896,6 +953,7 @@ impl Damageable for HumanAnatomy
     fn damage(&mut self, damage: Damage)
     {
         let part = self.select_random_part(damage.rng, damage.direction);
+
         dbg!(part, damage.data);
     }
 }
