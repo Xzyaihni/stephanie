@@ -75,6 +75,30 @@ impl PartId
             }
         }
     }
+
+    pub fn with_parent(self, parent: Side3d) -> Self
+    {
+        Self::Next{id: parent, next: Box::new(self)}
+    }
+
+    pub fn is_child_of(&self, other: &Self) -> bool
+    {
+        match (self, other)
+        {
+            (_, Self::This) => true,
+            (Self::This, Self::Next{..}) => false,
+            (Self::Next{id, next}, Self::Next{id: other_id, next: other_next}) =>
+            {
+                if *id != *other_id
+                {
+                    false
+                } else
+                {
+                    next.is_child_of(other_next)
+                }
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -228,26 +252,26 @@ impl<Data> BodyPart<Data>
 
 impl<Data> BodyPart<Bone<Data>>
 {
-    pub fn get<'a>(&self, index: &'a PartId) -> &'_ Self
+    pub fn get<'a>(&self, index: &'a PartId) -> Option<&'_ Self>
     {
         match index
         {
-            PartId::This => self,
+            PartId::This => Some(self),
             PartId::Next{id, next} =>
             {
-                self.part.children.get(*id).as_ref().expect("out of bounds").get(next)
+                self.part.children.get(*id).as_ref()?.get(next)
             }
         }
     }
 
-    pub fn get_mut<'a>(&mut self, index: &'a PartId) -> &'_ mut Self
+    pub fn get_mut<'a>(&mut self, index: &'a PartId) -> Option<&'_ mut Self>
     {
         match index
         {
-            PartId::This => self,
+            PartId::This => Some(self),
             PartId::Next{id, next} =>
             {
-                self.part.children.get_mut(*id).as_mut().expect("out of bounds").get_mut(next)
+                self.part.children.get_mut(*id).as_mut()?.get_mut(next)
             }
         }
     }
@@ -386,7 +410,21 @@ impl From<Side> for Side2d
     }
 }
 
-#[derive(Debug, Clone, Copy, EnumCount, FromRepr, Serialize, Deserialize)]
+impl From<Side2d> for Side3d
+{
+    fn from(side: Side2d) -> Self
+    {
+        match side
+        {
+            Side2d::Left => Self::Left,
+            Side2d::Right => Self::Right,
+            Side2d::Front => Self::Front,
+            Side2d::Back => Self::Back
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumCount, FromRepr, Serialize, Deserialize)]
 pub enum Side3d
 {
     Left,
@@ -727,12 +765,44 @@ impl HumanAnatomy
             DamageHeight::Middle => Side3d::Front
         };
 
+        let occluded_parts = match direction.side
+        {
+            Side2d::Front | Side2d::Back => Vec::new(),
+            Side2d::Left | Side2d::Right =>
+            {
+                match child_side
+                {
+                    Side3d::Top => Vec::new(),
+                    Side3d::Front | Side3d::Bottom =>
+                    {
+                        vec![
+                            PartId::This
+                                .with_parent(direction.side.opposite().into())
+                                .with_parent(child_side)
+                        ]
+                    },
+                    _ => unreachable!()
+                }
+            }
+        };
+
         let mut ids = Vec::new();
 
         if let Some(child) = self.body.part.children.get(child_side)
         {
             let start = PartId::Next{id: child_side, next: Box::new(PartId::This)};
-            child.enumerate_with(start, |id| ids.push(id.clone()));
+            child.enumerate_with(start, |id|
+            {
+                let skip = occluded_parts.iter().any(|skip_part|
+                {
+                    id.is_child_of(skip_part)
+                });
+
+                if !skip
+                {
+                    ids.push(id.clone());
+                }
+            });
         }
 
         // u can hit the spine at any height
@@ -740,9 +810,22 @@ impl HumanAnatomy
 
         let ids: &Vec<_> = &ids;
 
-        let picked = WeightedPicker::pick_from(rng.next_f64(), ids, |id| self.body.get(id).size);
+        let picked = WeightedPicker::pick_from(
+            rng.next_f64(),
+            ids,
+            |id| self.body.get(id).expect("must be inbounds").size
+        );
 
-        picked.map(|picked| self.body.get_mut(picked))
+        // borrow checker silliness
+        if let Some(picked) = picked
+        {
+            Some(self.body.get_mut(picked).expect("must be inbounds"))
+        } else
+        {
+            occluded_parts.iter().rev()
+                .find(|id| self.body.get_mut(id).is_some())
+                .map(|id| self.body.get_mut(id).expect("must be inbounds"))
+        }
     }
 
     fn leg_speed(
@@ -954,6 +1037,6 @@ impl Damageable for HumanAnatomy
     {
         let part = self.select_random_part(damage.rng, damage.direction);
 
-        dbg!(part, damage.data);
+        dbg!(&part.unwrap().part.data, damage.data);
     }
 }

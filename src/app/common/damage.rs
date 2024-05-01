@@ -66,6 +66,17 @@ impl Side2d
             Self::Back
         }
     }
+
+    pub fn opposite(self) -> Self
+    {
+        match self
+        {
+            Self::Left => Self::Right,
+            Self::Right => Self::Left,
+            Self::Front => Self::Back,
+            Self::Back => Self::Front
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
