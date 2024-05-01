@@ -586,9 +586,10 @@ impl Default for HumanAnatomy
             )
         );
 
+        // the spine is very complex sizing wise so im just gonna pick a low-ish number
         let body = HumanPart::new(
             3400.0,
-            0.6,
+            0.25,
             HumanBone::new(
                 HumanBoneSingle::Spine,
                 vec![
