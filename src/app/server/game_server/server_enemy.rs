@@ -4,6 +4,7 @@ use std::{
 };
 
 use crate::{
+    forward_damageable,
     basic_entity_forward,
     server::ConnectionsHandler,
     common::{
@@ -50,6 +51,7 @@ impl ServerEnemy
     }
 }
 
+forward_damageable!{ServerEnemy, enemy}
 basic_entity_forward!{ServerEnemy, enemy}
 
 impl Deref for ServerEnemy

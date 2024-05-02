@@ -8,6 +8,7 @@ use crate::common::{
 	Transform,
 	EntityType,
     EntityAny,
+    Damage,
 	world::{Chunk, GlobalPos}
 };
 
@@ -18,6 +19,7 @@ pub enum Message
     EntitySet{id: EntityType, entity: EntityAny},
     EntityAdd{entity: EntityAny},
     EntityDestroy{id: EntityType},
+    EntityDamage{id: EntityType, damage: Damage},
 	PlayerConnect{name: String},
 	PlayerOnConnect{id: usize},
 	PlayerFullyConnected,
@@ -36,6 +38,7 @@ impl Message
             Message::EntitySet{id, ..} => Some(*id),
             Message::EntityDestroy{id, ..} => Some(*id),
 			Message::EntitySyncTransform{entity_type, ..} => Some(*entity_type),
+            Message::EntityDamage{id, ..} => Some(*id),
 			_ => None
 		}
 	}

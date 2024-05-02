@@ -393,6 +393,10 @@ impl GameServer
 
                 self.send_message(message);
             },
+            Message::EntityDamage{id, damage} =>
+            {
+                self.entities.damage(id, damage)
+            },
 			x => panic!("unhandled message: {x:?}")
 		}
 	}

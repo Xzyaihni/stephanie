@@ -158,6 +158,11 @@ impl SeededRandom
         Self(fastrand::u64(0..u64::MAX))
     }
 
+    pub fn set_state(&mut self, value: u64)
+    {
+        self.0 = value;
+    }
+
     // splitmix64 by sebastiano vigna
     pub fn next_u64(&mut self) -> u64
     {
@@ -287,11 +292,13 @@ pub trait EntitiesContainer
 	type PlayerObject: TransformContainer
         + Debug
         + Borrow<Player>
+        + Damageable
         + PhysicsEntity;
 
 	type EnemyObject: TransformContainer
         + Debug
         + Borrow<Enemy>
+        + Damageable
         + PhysicsEntity;
 
 	fn players_ref(&self) -> &ObjectsStore<Self::PlayerObject>;
@@ -353,6 +360,21 @@ pub trait EntitiesContainer
             EntityType::Enemy(id) =>
             {
                 self.enemies_mut().remove(id);
+            }
+        }
+    }
+
+    fn damage(&mut self, id: EntityType, damage: Damage)
+    {
+        match id
+        {
+            EntityType::Player(id) =>
+            {
+                self.players_mut()[id].damage(damage);
+            },
+            EntityType::Enemy(id) =>
+            {
+                self.enemies_mut()[id].damage(damage);
             }
         }
     }

@@ -276,6 +276,11 @@ impl Health
         self.health.is_zero()
     }
 
+    pub fn current(&self) -> f32
+    {
+        self.health.current()
+    }
+
     pub fn damage_pierce(&mut self, damage: DamageType) -> Option<DamageType>
     {
         match damage
@@ -429,6 +434,18 @@ impl<Data> BodyPart<Bone<Data>>
         {
             child.enumerate_inner(part_id.replace_tail(id), f)
         });
+    }
+
+    pub fn for_each(&self, mut f: impl FnMut(&Self))
+    {
+        self.for_each_inner(&mut f);
+    }
+
+    fn for_each_inner(&self, f: &mut impl FnMut(&Self))
+    {
+        f(self);
+
+        self.part.children.iter().for_each(|(_, child)| child.for_each_inner(f));
     }
 }
 

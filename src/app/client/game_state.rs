@@ -24,7 +24,6 @@ use crate::common::{
     ObjectsStore,
     TileMap,
     Damage,
-    Damageable,
     Entity,
     EntityType,
     EntityAny,
@@ -465,14 +464,14 @@ impl GameState
 
     pub fn damage_entity(&mut self, id: EntityType, damage: Damage)
     {
-        match id
+        if id.is_player()
         {
-            EntityType::Player(..) => (),
-            EntityType::Enemy(id) =>
-            {
-                self.entities.enemies_mut()[id].damage(damage);
-            }
+            return;
         }
+
+        self.send_message(Message::EntityDamage{id, damage: damage.clone()});
+
+        self.entities.damage(id, damage);
     }
 
 	pub fn player_id(&self) -> usize
