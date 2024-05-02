@@ -205,18 +205,35 @@ impl<Data: Clone> Bone<Data>
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Health
+pub struct SimpleHealth
 {
-    max_block: f32,
     max: f32,
     current: f32
 }
 
-impl Health
+impl From<f32> for SimpleHealth
 {
-    pub fn new(max_block: f32, max: f32) -> Self
+    fn from(value: f32) -> Self
     {
-        Self{max_block, max, current: max}
+        Self::new(value)
+    }
+}
+
+impl SimpleHealth
+{
+    pub fn new(max: f32) -> Self
+    {
+        Self{max, current: max}
+    }
+
+    pub fn subtract_hp(&mut self, amount: f32)
+    {
+        self.current = (self.current - amount).clamp(0.0, self.max);
+    }
+
+    pub fn current(&self) -> f32
+    {
+        self.current
     }
 
     pub fn fraction(&self) -> f32
@@ -227,6 +244,31 @@ impl Health
     pub fn is_zero(&self) -> bool
     {
         self.current == 0.0
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Health
+{
+    max_block: f32,
+    health: SimpleHealth
+}
+
+impl Health
+{
+    pub fn new(max_block: f32, max: f32) -> Self
+    {
+        Self{max_block, health: SimpleHealth::new(max)}
+    }
+
+    pub fn fraction(&self) -> f32
+    {
+        self.health.fraction()
+    }
+
+    pub fn is_zero(&self) -> bool
+    {
+        self.health.is_zero()
     }
 
     pub fn damage_pierce(&mut self, damage: DamageType) -> Option<DamageType>
@@ -240,15 +282,10 @@ impl Health
         }
     }
 
-    pub fn subtract_hp(&mut self, amount: f32)
-    {
-        self.current = (self.current - amount).clamp(0.0, self.max);
-    }
-
     fn simple_pierce(&mut self, damage: f32) -> Option<f32>
     {
-        let pass = damage - self.max_block.min(self.current);
-        self.subtract_hp(damage);
+        let pass = damage - self.max_block.min(self.health.current());
+        self.health.subtract_hp(damage);
 
         if pass <= 0.0
         {
@@ -699,13 +736,15 @@ pub struct CachedProps
 {
     speed: Option<f32>,
     attack: Option<f32>,
-    vision: Option<f32>
+    vision: Option<f32>,
+    blood_change: f32
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HumanAnatomy
 {
     base_speed: f32,
+    blood: SimpleHealth,
     body: HumanPart,
     cached: CachedProps
 }
@@ -823,11 +862,12 @@ impl Default for HumanAnatomy
 
         let mut this = Self{
             base_speed: 12.0,
+            blood: SimpleHealth::new(4.0),
             body,
             cached: Default::default()
         };
 
-        this.update();
+        this.update_cache();
 
         this
     }
@@ -844,7 +884,7 @@ impl HumanAnatomy
     {
         self.base_speed = speed;
 
-        self.update();
+        self.update_cache();
     }
 
     fn select_random_part(
@@ -860,7 +900,7 @@ impl HumanAnatomy
             DamageHeight::Middle => Side3d::Front
         };
 
-        let occluded_parts = match direction.side
+        let mut occluded_parts = match direction.side
         {
             Side2d::Front | Side2d::Back => Vec::new(),
             Side2d::Left | Side2d::Right =>
@@ -880,6 +920,30 @@ impl HumanAnatomy
                 }
             }
         };
+
+        match child_side
+        {
+            Side3d::Top =>
+            {
+                match direction.side
+                {
+                    Side2d::Front => (),
+                    _ =>
+                    {
+                        let left_eye = PartId::This
+                            .with_parent(Side3d::Left)
+                            .with_parent(child_side);
+
+                        let right_eye = PartId::This
+                            .with_parent(Side3d::Right)
+                            .with_parent(child_side);
+
+                        occluded_parts.extend([left_eye, right_eye]);
+                    }
+                }
+            },
+            _ => ()
+        }
 
         let mut ids = Vec::new();
 
@@ -1121,7 +1185,7 @@ impl HumanAnatomy
         }
     }
 
-    fn update(&mut self)
+    fn update_cache(&mut self)
     {
         self.cached.speed = self.updated_speed();
     }
@@ -1135,7 +1199,7 @@ impl Damageable for HumanAnatomy
         {
             part.damage(damage.direction.side, damage.data);
 
-            self.update();
+            self.update_cache();
         }
     }
 }
