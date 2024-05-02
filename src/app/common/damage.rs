@@ -29,6 +29,17 @@ pub enum DamageType
     Bullet(f32)
 }
 
+impl DamageType
+{
+    pub fn as_flat(self) -> f32
+    {
+        match self
+        {
+            Self::Bullet(x) => x
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum Side2d
 {

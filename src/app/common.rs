@@ -3,7 +3,7 @@ use std::{
 	sync::Arc,
 	net::TcpStream,
     borrow::Borrow,
-    ops::RangeInclusive
+    ops::{Range, RangeInclusive}
 };
 
 use serde::{Serialize, Deserialize};
@@ -171,6 +171,20 @@ impl SeededRandom
         x ^ (x >> 31)
     }
 
+    pub fn next_u64_between(&mut self, range: Range<u64>) -> u64
+    {
+        let difference = range.end - range.start;
+
+        range.start + self.next_u64() % difference
+    }
+
+    pub fn next_usize_between(&mut self, range: Range<usize>) -> usize
+    {
+        let difference = range.end - range.start;
+
+        range.start + (self.next_u64() as usize) % difference
+    }
+
     pub fn next_f32(&mut self) -> f32
     {
         let x = self.next_u64();
@@ -192,6 +206,11 @@ impl SeededRandom
         let size = range.end() - range.start();
 
         range.start() + x * size
+    }
+
+    pub fn next_bool(&mut self) -> bool
+    {
+        self.next_u64() % 2 == 0
     }
 }
 

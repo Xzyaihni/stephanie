@@ -1,6 +1,6 @@
 use std::{
     iter,
-    ops::{Index, IndexMut}
+    ops::{Index, IndexMut, ControlFlow}
 };
 
 use serde::{Serialize, Deserialize};
@@ -58,7 +58,12 @@ impl Damageable for Anatomy
 
 trait DamageReceiver
 {
-    fn damage(&mut self, side: Side2d, damage: DamageType);
+    fn damage(
+        &mut self,
+        rng: &mut SeededRandom,
+        side: Side2d,
+        damage: DamageType
+    ) -> Option<DamageType>;
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -295,6 +300,30 @@ impl Health
             Some(pass)
         }
     }
+
+    pub fn pierce_many<T>(
+        damage: DamageType,
+        mut parts: impl Iterator<Item=T>,
+        mut f: impl FnMut(T, DamageType) -> Option<DamageType>
+    ) -> Option<DamageType>
+    {
+        let result = parts.try_fold(damage, |acc, x|
+        {
+            if let Some(pierce) = f(x, acc)
+            {
+                ControlFlow::Continue(pierce)
+            } else
+            {
+                ControlFlow::Break(())
+            }
+        });
+
+        match result
+        {
+            ControlFlow::Continue(x) => Some(x),
+            ControlFlow::Break(_) => None
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -358,7 +387,7 @@ impl<Data> BodyPart<Bone<Data>>
         }
     }
 
-    fn damage(&mut self, side: Side2d, damage: DamageType)
+    fn damage(&mut self, rng: &mut SeededRandom, side: Side2d, damage: DamageType)
     where
         Data: DamageReceiver
     {
@@ -376,7 +405,7 @@ impl<Data> BodyPart<Bone<Data>>
                         self.part.children.clear();
                     }
 
-                    self.part.data.damage(side, pierce);
+                    self.part.data.damage(rng, side, pierce);
                 }
             }
         }
@@ -553,8 +582,45 @@ impl Default for MotorCortex
     fn default() -> Self
     {
         Self{
-            arms: Health::new(0.0, 5.0),
-            legs: Health::new(0.0, 5.0)
+            arms: Health::new(4.0, 5.0),
+            legs: Health::new(4.0, 5.0)
+        }
+    }
+}
+
+impl DamageReceiver for MotorCortex
+{
+    fn damage(
+        &mut self,
+        rng: &mut SeededRandom,
+        side: Side2d,
+        damage: DamageType
+    ) -> Option<DamageType>
+    {
+        let mut order = vec![&mut self.arms, &mut self.legs];
+
+        match side
+        {
+            Side2d::Left | Side2d::Right =>
+            {
+                let order = if rng.next_bool()
+                {
+                    order.into_iter().rev().collect()
+                } else
+                {
+                    order
+                };
+
+                Health::pierce_many(damage, order.into_iter(), |part, damage|
+                {
+                    part.damage_pierce(damage)
+                })
+            },
+            Side2d::Front | Side2d::Back =>
+            {
+                let len = order.len();
+                order[rng.next_usize_between(0..len)].damage_pierce(damage)
+            }
         }
     }
 }
@@ -574,6 +640,28 @@ impl Default for FrontalLobe
     }
 }
 
+impl DamageReceiver for FrontalLobe
+{
+    fn damage(
+        &mut self,
+        rng: &mut SeededRandom,
+        side: Side2d,
+        damage: DamageType
+    ) -> Option<DamageType>
+    {
+        self.motor.damage(rng, side, damage)
+    }
+}
+
+#[derive(Debug, Clone, Copy, FromRepr, EnumCount, Serialize, Deserialize)]
+pub enum LobeId
+{
+    Frontal,
+    Parietal,
+    Temporal,
+    Occipital
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Hemisphere
 {
@@ -589,10 +677,72 @@ impl Default for Hemisphere
     {
         Self{
             frontal: FrontalLobe::default(),
-            parietal: Health::new(0.0, 5.0),
-            temporal: Health::new(0.0, 5.0),
-            occipital: Health::new(0.0, 5.0)
+            parietal: Health::new(4.0, 5.0),
+            temporal: Health::new(4.0, 5.0),
+            occipital: Health::new(4.0, 5.0)
         }
+    }
+}
+
+impl Hemisphere
+{
+    fn damage_lobe(
+        &mut self,
+        lobe: LobeId,
+        rng: &mut SeededRandom,
+        side: Side2d,
+        damage: DamageType
+    ) -> Option<DamageType>
+    {
+        match lobe
+        {
+            LobeId::Frontal => self.frontal.damage(rng, side, damage),
+            LobeId::Parietal => self.parietal.damage_pierce(damage),
+            LobeId::Temporal => self.temporal.damage_pierce(damage),
+            LobeId::Occipital => self.occipital.damage_pierce(damage)
+        }
+    }
+}
+
+impl DamageReceiver for Hemisphere
+{
+    fn damage(
+        &mut self,
+        rng: &mut SeededRandom,
+        side: Side2d,
+        damage: DamageType
+    ) -> Option<DamageType>
+    {
+        let middle = if rng.next_bool()
+        {
+            LobeId::Parietal
+        } else
+        {
+            LobeId::Temporal
+        };
+
+        let order = match side
+        {
+            Side2d::Left | Side2d::Right =>
+            {
+                let lobe = LobeId::from_repr(rng.next_usize_between(0..LobeId::COUNT)).unwrap();
+
+                return self.damage_lobe(lobe, rng, side, damage);
+            },
+            Side2d::Front =>
+            {
+                vec![LobeId::Frontal, middle, LobeId::Occipital]
+            },
+            Side2d::Back =>
+            {
+                vec![LobeId::Occipital, middle, LobeId::Frontal]
+            }
+        };
+
+        Health::pierce_many(damage, order.into_iter(), |id, damage|
+        {
+            self.damage_lobe(id, rng, side, damage)
+        })
     }
 }
 
@@ -609,6 +759,7 @@ impl Default for Brain
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Lung
 {
+    health: Health,
     side: Side
 }
 
@@ -616,12 +767,30 @@ impl Lung
 {
     fn left() -> Self
     {
-        Self{side: Side::Left}
+        Self::new(Side::Left)
     }
 
     fn right() -> Self
     {
-        Self{side: Side::Right}
+        Self::new(Side::Right)
+    }
+
+    fn new(side: Side) -> Self
+    {
+        Self{health: Health::new(3.0, 20.0), side}
+    }
+}
+
+impl DamageReceiver for Lung
+{
+    fn damage(
+        &mut self,
+        _rng: &mut SeededRandom,
+        _side: Side2d,
+        damage: DamageType
+    ) -> Option<DamageType>
+    {
+        self.health.damage_pierce(damage)
     }
 }
 
@@ -634,9 +803,40 @@ pub enum HumanOrgan
 
 impl DamageReceiver for HumanOrgan
 {
-    fn damage(&mut self, side: Side2d, damage: DamageType)
+    fn damage(
+        &mut self,
+        rng: &mut SeededRandom,
+        side: Side2d,
+        damage: DamageType
+    ) -> Option<DamageType>
     {
-        todo!()
+        match self
+        {
+            Self::Brain(brain) =>
+            {
+                let is_left = match side
+                {
+                    Side2d::Left => true,
+                    Side2d::Right => false,
+                    Side2d::Front | Side2d::Back =>
+                    {
+                        rng.next_bool()
+                    }
+                };
+
+                if is_left
+                {
+                    brain.left.damage(rng, side, damage)
+                } else
+                {
+                    brain.right.damage(rng, side, damage)
+                }
+            },
+            Self::Lung(lung) =>
+            {
+                lung.damage(rng, side, damage)
+            }
+        }
     }
 }
 
@@ -685,12 +885,19 @@ impl HumanBoneSingle
 
 impl DamageReceiver for HumanBoneSingle
 {
-    fn damage(&mut self, side: Side2d, damage: DamageType)
+    fn damage(
+        &mut self,
+        rng: &mut SeededRandom,
+        side: Side2d,
+        damage: DamageType
+    ) -> Option<DamageType>
     {
         if let Some(contents) = self.contents_mut()
         {
-            contents.iter_mut().for_each(|organ| organ.damage(side, damage));
+            contents.iter_mut().for_each(|organ| { organ.damage(rng, side, damage); });
         }
+
+        None
     }
 }
 
@@ -889,7 +1096,7 @@ impl HumanAnatomy
 
     fn select_random_part(
         &mut self,
-        mut rng: SeededRandom,
+        rng: &mut SeededRandom,
         direction: DamageDirection
     ) -> Option<&mut HumanPart>
     {
@@ -1193,11 +1400,11 @@ impl HumanAnatomy
 
 impl Damageable for HumanAnatomy
 {
-    fn damage(&mut self, damage: Damage)
+    fn damage(&mut self, mut damage: Damage)
     {
-        if let Some(part) = self.select_random_part(damage.rng, damage.direction)
+        if let Some(part) = self.select_random_part(&mut damage.rng, damage.direction)
         {
-            part.damage(damage.direction.side, damage.data);
+            part.damage(&mut damage.rng, damage.direction.side, damage.data);
 
             self.update_cache();
         }
