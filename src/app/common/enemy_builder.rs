@@ -31,7 +31,7 @@ impl EnemyBuilder
         let props = EnemyProperties{
             character_properties: CharacterProperties{
                 entity_properties: EntityProperties{
-                    texture: Some("enemy/body.png".to_owned()),
+                    texture: None,
                     physical: PhysicalProperties{
                         transform: Transform{
                             position: self.pos,
@@ -43,7 +43,9 @@ impl EnemyBuilder
                         friction: 0.5
                     }
                 },
-                anatomy: Anatomy::Human(HumanAnatomy::default())
+                anatomy: Anatomy::Human(HumanAnatomy::default()),
+                main_texture: "enemy/body.png".to_owned(),
+                immobile_texture: "enemy/lying.png".to_owned()
             },
             behavior: EnemyBehavior::Melee
         };

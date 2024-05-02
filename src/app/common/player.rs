@@ -54,11 +54,21 @@ impl Player
 
 		let name = player_properties.name;
 
+        let character_properties = player_properties.character_properties;
+        let character_properties = CharacterProperties{
+            entity_properties: EntityProperties{
+                texture: Some(character_properties.main_texture.clone()),
+                ..character_properties.entity_properties
+            },
+            ..character_properties
+        };
+
 		let mut player = Self{
-			character: Character::new(player_properties.character_properties),
+			character: Character::new(character_properties),
 			name
 		};
 
+        let mut current_z = 1;
         let mut add_pon = |position|
         {
 			let entity = Entity::new(EntityProperties{
@@ -96,8 +106,10 @@ impl Player
                     }
 				),
 				entity,
-				1
+				current_z
 			);
+
+            current_z += 1;
 
             player.add_child(position, pon);
         };

@@ -3,8 +3,8 @@ use serde::{Serialize, Deserialize};
 use crate::{
     entity_forward_transform,
     entity_forward_parent,
-    entity_forward_drawable,
     forward_damageable,
+    client::DrawableEntity,
 	common::{
         SeededRandom,
         EntityAny,
@@ -14,9 +14,12 @@ use crate::{
         PhysicalProperties,
         Physical,
         ChildEntity,
-        entity::child_entity::*,
         physics::PhysicsEntity,
-		character::Character
+		character::Character,
+        entity::{
+            ChildId,
+            child_entity::*
+        }
 	}
 };
 
@@ -81,6 +84,7 @@ pub struct Enemy
     behavior: EnemyBehavior,
     behavior_state: BehaviorState,
     current_state_left: f32,
+    main_id: ChildId,
     rng: SeededRandom
 }
 
@@ -93,25 +97,11 @@ impl Enemy
 
         let character_properties = enemy_properties.character_properties;
 
-        let entity_properties = character_properties.entity_properties;
+        let texture = Some(character_properties.main_texture.clone());
+        let entity_properties = character_properties.entity_properties.clone();
 
-        let props = CharacterProperties{
-            entity_properties: EntityProperties{
-                texture: None,
-                ..entity_properties.clone()
-            },
-            ..character_properties
-        };
+        let mut character = Character::new(character_properties);
 
-		let mut this = Self{
-			character: Character::new(props),
-            current_state_left: enemy_properties.behavior.duration_of(&mut rng, &behavior_state),
-            behavior_state,
-            behavior: enemy_properties.behavior,
-            rng
-		};
-
-        let texture = entity_properties.texture;
         let physical = PhysicalProperties{
             transform: Transform{
                 position: Vector3::zeros(),
@@ -129,9 +119,16 @@ impl Enemy
             0
         );
 
-        this.add_child(Vector3::zeros(), entity);
+        let main_id = character.add_child(Vector3::zeros(), entity);
 
-        this
+		Self{
+			character,
+            current_state_left: enemy_properties.behavior.duration_of(&mut rng, &behavior_state),
+            behavior_state,
+            behavior: enemy_properties.behavior,
+            main_id,
+            rng
+		}
 	}
 
     pub fn next_state(&mut self)
@@ -245,7 +242,28 @@ impl EntityAnyWrappable for Enemy
 forward_damageable!{Enemy, character}
 entity_forward_parent!{Enemy, character}
 entity_forward_transform!{Enemy, character}
-entity_forward_drawable!{Enemy, character}
+
+impl DrawableEntity for Enemy
+{
+    fn texture(&self) -> Option<&str>
+    {
+        self.character.texture()
+    }
+
+    fn needs_redraw(&mut self) -> bool
+    {
+        let redraw = self.character.needs_redraw();
+
+        if redraw
+        {
+            let new_texture = self.character.pick_texture().to_owned();
+
+            self.set_child_texture(self.main_id, new_texture);
+        }
+
+        redraw
+    }
+}
 
 impl PhysicsEntity for Enemy
 {

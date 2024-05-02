@@ -10,7 +10,9 @@ use crate::{
 pub struct CharacterProperties
 {
 	pub entity_properties: EntityProperties,
-	pub anatomy: Anatomy
+	pub anatomy: Anatomy,
+    pub main_texture: String,
+    pub immobile_texture: String
 }
 
 impl CharacterProperties
@@ -26,6 +28,8 @@ pub struct Character
 {
 	entity: Entity,
     anatomy: Anatomy,
+    main_texture: String,
+    immobile_texture: String,
     could_move: bool
 }
 
@@ -35,7 +39,13 @@ impl Character
 	{
 		let anatomy = properties.anatomy;
 
-		Self{entity: Entity::new(properties.entity_properties), anatomy, could_move: true}
+		Self{
+            entity: Entity::new(properties.entity_properties),
+            anatomy,
+            main_texture: properties.main_texture,
+            immobile_texture: properties.immobile_texture,
+            could_move: true
+        }
 	}
 
     pub fn move_speed(&self) -> Option<f32>
@@ -61,6 +71,17 @@ impl Character
         self.could_move = current_move;
 
         move_changed
+    }
+
+    pub fn pick_texture(&self) -> &str
+    {
+        if self.speed().is_some()
+        {
+            &self.main_texture
+        } else
+        {
+            &self.immobile_texture
+        }
     }
 }
 

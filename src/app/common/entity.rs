@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use serde::{Serialize, Deserialize};
 
 use nalgebra::Vector3;
@@ -38,24 +40,29 @@ impl EntityProperties
     }
 }
 
+// derives vomit
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ChildId(usize);
+
+pub type ChildrenContainer = BTreeMap<i32, (ChildEntity, ChildId)>;
+
 pub trait ChildContainer: TransformContainer
 {
-	fn children_ref(&self) -> &[ChildEntity];
-	fn children_mut(&mut self) -> &mut Vec<ChildEntity>;
+	fn children_ref(&self) -> &ChildrenContainer;
+	fn children_mut(&mut self) -> &mut ChildrenContainer;
 
-    fn add_child_inner(&mut self, child: ChildEntity)
+    fn add_child_inner(&mut self, child: ChildEntity) -> ChildId
     {
 		let this_children = self.children_mut();
 
-        let index = this_children.binary_search_by(|other|
-        {
-            other.z_level().cmp(&child.z_level())
-        }).unwrap_or_else(|partition| partition);
+        let id = ChildId(this_children.len());
 
-        this_children.insert(index, child);
+        this_children.insert(child.z_level(), (child, id));
+
+        id
     }
 
-	fn add_child(&mut self, position: Vector3<f32>, mut child: ChildEntity)
+	fn add_child(&mut self, position: Vector3<f32>, mut child: ChildEntity) -> ChildId
 	{
         {
             let mut parented = child.with_parent(self);
@@ -64,9 +71,11 @@ pub trait ChildContainer: TransformContainer
             parented.sync_position();
         }
 
-        self.add_child_inner(child);
+        let id = self.add_child_inner(child);
 
 		self.transform_callback(self.transform_clone());
+
+        id
 	}
 
 	fn add_children(&mut self, children: &[ChildEntity])
@@ -78,6 +87,29 @@ pub trait ChildContainer: TransformContainer
 
 		self.transform_callback(self.transform_clone());
 	}
+
+    fn get_child(&self, id: ChildId) -> &ChildEntity
+    {
+        self.children_ref()
+            .iter()
+            .find_map(|(_, (child, this_id))| (*this_id == id).then_some(child))
+            .expect("all ids must be valid")
+    }
+
+    fn get_child_mut(&mut self, id: ChildId) -> &mut ChildEntity
+    {
+        self.children_mut()
+            .iter_mut()
+            .find_map(|(_, (child, this_id))| (*this_id == id).then_some(child))
+            .expect("all ids must be valid")
+    }
+
+    fn set_child_texture(&mut self, id: ChildId, texture: impl Into<String>)
+    {
+        let child = self.get_child_mut(id).entity_mut();
+
+        child.texture = Some(texture.into());
+    }
 }
 
 pub trait EntityContainer
@@ -91,7 +123,7 @@ pub struct Entity
 {
 	texture: Option<String>,
     physical: Physical,
-	children: Vec<ChildEntity>
+	children: ChildrenContainer
 }
 
 impl Entity
@@ -100,7 +132,7 @@ impl Entity
 	{
         let physical = Physical::from(properties.physical);
 
-		let children = Vec::new();
+		let children = BTreeMap::new();
 
 		Self{
             texture: properties.texture,
@@ -140,12 +172,12 @@ impl TransformContainer for Entity
 
 impl ChildContainer for Entity
 {
-	fn children_ref(&self) -> &[ChildEntity]
+	fn children_ref(&self) -> &ChildrenContainer
 	{
 		&self.children
 	}
 
-	fn children_mut(&mut self) -> &mut Vec<ChildEntity>
+	fn children_mut(&mut self) -> &mut ChildrenContainer
 	{
 		&mut self.children
 	}
@@ -169,7 +201,7 @@ impl PhysicsEntity for Entity
 
         self.physical_mut().physics_update(dt);
 
-		self.children.iter_mut().for_each(|child|
+		self.children.iter_mut().for_each(|(_, (child, _))|
 		{
 			child.update(&self.physical, dt);
 		});
@@ -283,18 +315,19 @@ macro_rules! entity_forward_parent
             ChildContainer,
             entity::{
                 Entity,
-                EntityContainer
+                EntityContainer,
+                ChildrenContainer
             }
         };
 
         impl ChildContainer for $name
         {
-            fn children_ref(&self) -> &[$crate::common::ChildEntity]
+            fn children_ref(&self) -> &ChildrenContainer
             {
                 self.$child_name.children_ref()
             }
 
-            fn children_mut(&mut self) -> &mut Vec<$crate::common::ChildEntity>
+            fn children_mut(&mut self) -> &mut ChildrenContainer
             {
                 self.$child_name.children_mut()
             }

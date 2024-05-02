@@ -26,7 +26,7 @@ use crate::{
         EntityAnyWrappable,
         Physical,
         physics::PhysicsEntity,
-        entity::{ChildEntity, EntityContainer}
+        entity::{ChildrenContainer, EntityContainer}
     }
 };
 
@@ -67,12 +67,12 @@ impl<T: EntityContainer + PhysicsEntity + ChildContainer + DrawableEntity> Objec
 
         let children = self.entity.children_ref();
 
-        self.child_objects = children.iter().filter_map(|child|
+        self.child_objects = children.iter().filter_map(|(_, (child, _))|
         {
             Self::object_create(create_info, child)
         }).collect();
 
-        self.z_index = children.iter().position(|child| child.z_level() > 0).unwrap_or(0);
+        self.z_index = children.iter().position(|(z_level, _)| *z_level > 0).unwrap_or(0);
     }
 
 	fn object_create<E: DrawableEntity + TransformContainer>(
@@ -107,12 +107,12 @@ impl<T> Borrow<T> for ObjectPair<T>
 
 impl<T: EntityContainer + PhysicsEntity + ChildContainer> ChildContainer for ObjectPair<T>
 {
-	fn children_ref(&self) -> &[ChildEntity]
+	fn children_ref(&self) -> &ChildrenContainer
     {
         self.entity.children_ref()
     }
 
-	fn children_mut(&mut self) -> &mut Vec<ChildEntity>
+	fn children_mut(&mut self) -> &mut ChildrenContainer
     {
         self.entity.children_mut()
     }
@@ -181,7 +181,7 @@ impl<T: EntityContainer + PhysicsEntity + ChildContainer> OnTransformCallback fo
         }
 
 		self.child_objects.iter_mut().zip(self.entity.children_ref().iter())
-            .for_each(|(object, child)|
+            .for_each(|(object, (_, (child, _)))|
             {
                 object.set_transform(child.entity_ref().transform_clone())
             });
