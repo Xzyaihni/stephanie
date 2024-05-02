@@ -32,6 +32,7 @@ mod object_transform;
 pub trait DrawableEntity
 {
     fn texture(&self) -> Option<&str>;
+    fn needs_redraw(&mut self) -> bool;
 }
 
 pub struct Game

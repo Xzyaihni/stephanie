@@ -44,24 +44,36 @@ impl<T: EntityContainer + PhysicsEntity + ChildContainer + DrawableEntity> Objec
 {
 	pub fn new(create_info: &ObjectCreateInfo, entity: T) -> Self
 	{
-        let main_object = Self::object_create(create_info, &entity);
+		let mut this = Self{
+            main_object: None,
+            child_objects: Vec::new(),
+            z_index: 0,
+            entity
+        };
 
-        let children = entity.children_ref();
+        this.update_objects(create_info);
 
-        let child_objects = children.iter().filter_map(|child|
-        {
-            Self::object_create(create_info, child)
-        }).collect();
-
-        let z_index = children.iter().position(|child| child.z_level() > 0).unwrap_or(0);
-
-		Self{main_object, child_objects, z_index, entity}
+        this
 	}
 
 	pub fn update(&mut self, dt: f32)
 	{
 		self.physics_update(dt);
 	}
+
+    fn update_objects(&mut self, create_info: &ObjectCreateInfo)
+    {
+        self.main_object = Self::object_create(create_info, &self.entity);
+
+        let children = self.entity.children_ref();
+
+        self.child_objects = children.iter().filter_map(|child|
+        {
+            Self::object_create(create_info, child)
+        }).collect();
+
+        self.z_index = children.iter().position(|child| child.z_level() > 0).unwrap_or(0);
+    }
 
 	fn object_create<E: DrawableEntity + TransformContainer>(
         create_info: &ObjectCreateInfo,
@@ -114,10 +126,17 @@ impl<T: EntityAnyWrappable + Clone> EntityAnyWrappable for &ObjectPair<T>
     }
 }
 
-impl<T: PhysicsEntity + ChildContainer> GameObject for ObjectPair<T>
+impl<T> GameObject for ObjectPair<T>
+where
+    T: DrawableEntity + PhysicsEntity + EntityContainer + ChildContainer
 {
 	fn update_buffers(&mut self, info: &mut UpdateBuffersInfo)
     {
+        if self.entity.needs_redraw()
+        {
+            self.update_objects(&info.object_info);
+        }
+
         if let Some(object) = self.main_object.as_mut()
         {
             object.update_buffers(info);

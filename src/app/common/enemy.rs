@@ -3,8 +3,8 @@ use serde::{Serialize, Deserialize};
 use crate::{
     entity_forward_transform,
     entity_forward_parent,
+    entity_forward_drawable,
     forward_damageable,
-    client::DrawableEntity,
 	common::{
         SeededRandom,
         EntityAny,
@@ -245,6 +245,7 @@ impl EntityAnyWrappable for Enemy
 forward_damageable!{Enemy, character}
 entity_forward_parent!{Enemy, character}
 entity_forward_transform!{Enemy, character}
+entity_forward_drawable!{Enemy, character}
 
 impl PhysicsEntity for Enemy
 {
@@ -261,13 +262,5 @@ impl PhysicsEntity for Enemy
     fn physics_update(&mut self, dt: f32)
     {
         self.update(dt);
-    }
-}
-
-impl DrawableEntity for Enemy
-{
-    fn texture(&self) -> Option<&str>
-    {
-        self.character.texture()
     }
 }

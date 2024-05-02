@@ -1,7 +1,8 @@
 use serde::{Serialize, Deserialize};
 
 use crate::{
-    entity_forward,
+    basic_entity_forward,
+    client::DrawableEntity,
 	common::{Anatomy, PhysicalProperties, entity::EntityProperties}
 };
 
@@ -24,7 +25,8 @@ impl CharacterProperties
 pub struct Character
 {
 	entity: Entity,
-    anatomy: Anatomy
+    anatomy: Anatomy,
+    could_move: bool
 }
 
 impl Character
@@ -33,7 +35,7 @@ impl Character
 	{
 		let anatomy = properties.anatomy;
 
-		Self{entity: Entity::new(properties.entity_properties), anatomy}
+		Self{entity: Entity::new(properties.entity_properties), anatomy, could_move: true}
 	}
 
     pub fn move_speed(&self) -> Option<f32>
@@ -49,6 +51,16 @@ impl Character
     pub fn set_speed(&mut self, speed: f32)
     {
         self.anatomy.set_speed(speed);
+    }
+
+    fn this_needs_redraw(&mut self) -> bool
+    {
+        let current_move = self.speed().is_some();
+        let move_changed = current_move != self.could_move;
+
+        self.could_move = current_move;
+
+        move_changed
     }
 }
 
@@ -70,4 +82,17 @@ macro_rules! forward_damageable
 }
 
 forward_damageable!{Character, anatomy}
-entity_forward!{Character, entity}
+basic_entity_forward!{Character, entity}
+
+impl DrawableEntity for Character
+{
+	fn texture(&self) -> Option<&str>
+	{
+        self.entity.texture()
+	}
+
+    fn needs_redraw(&mut self) -> bool
+    {
+        self.this_needs_redraw() || self.entity.needs_redraw()
+    }
+}

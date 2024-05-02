@@ -182,6 +182,11 @@ impl DrawableEntity for Entity
 	{
 		self.texture.as_deref()
 	}
+
+    fn needs_redraw(&mut self) -> bool
+    {
+        false
+    }
 }
 
 #[macro_export]
@@ -328,16 +333,11 @@ macro_rules! basic_entity_forward
 }
 
 #[macro_export]
-macro_rules! entity_forward
+macro_rules! entity_forward_drawable
 {
     ($name:ident, $child_name:ident) =>
     {
-        use $crate::{
-            basic_entity_forward,
-            client::DrawableEntity
-        };
-
-        basic_entity_forward!{$name, $child_name}
+        use $crate::client::DrawableEntity;
 
         impl DrawableEntity for $name
         {
@@ -345,6 +345,26 @@ macro_rules! entity_forward
             {
                 self.$child_name.texture()
             }
+
+            fn needs_redraw(&mut self) -> bool
+            {
+                self.$child_name.needs_redraw()
+            }
         }
+    }
+}
+
+#[macro_export]
+macro_rules! entity_forward
+{
+    ($name:ident, $child_name:ident) =>
+    {
+        use $crate::{
+            basic_entity_forward,
+            entity_forward_drawable
+        };
+
+        basic_entity_forward!{$name, $child_name}
+        entity_forward_drawable!{$name, $child_name}
     }
 }
