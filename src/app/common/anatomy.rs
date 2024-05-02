@@ -207,23 +207,16 @@ impl<Data: Clone> Bone<Data>
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Health
 {
+    max_block: f32,
     max: f32,
     current: f32
 }
 
-impl From<f32> for Health
-{
-    fn from(value: f32) -> Self
-    {
-        Self::new(value)
-    }
-}
-
 impl Health
 {
-    pub fn new(max: f32) -> Self
+    pub fn new(max_block: f32, max: f32) -> Self
     {
-        Self{max, current: max}
+        Self{max_block, max, current: max}
     }
 
     pub fn fraction(&self) -> f32
@@ -247,9 +240,23 @@ impl Health
         }
     }
 
+    pub fn subtract_hp(&mut self, amount: f32)
+    {
+        self.current = (self.current - amount).clamp(0.0, self.max);
+    }
+
     fn simple_pierce(&mut self, damage: f32) -> Option<f32>
     {
-        todo!();
+        let pass = damage - self.max_block.min(self.current);
+        self.subtract_hp(damage);
+
+        if pass <= 0.0
+        {
+            None
+        } else
+        {
+            Some(pass)
+        }
     }
 }
 
@@ -265,20 +272,26 @@ pub struct BodyPart<Data>
 
 impl<Data> BodyPart<Data>
 {
-    pub fn new(bone: impl Into<Health>, size: f64, part: Data) -> Self
+    pub fn new(bone: f32, size: f64, part: Data) -> Self
     {
-        Self::new_full(bone, 100.0, 500.0, size, part)
+        Self::new_full(
+            Health::new(bone * 0.05, bone),
+            Health::new(5.0, 100.0),
+            Health::new(20.0, 500.0),
+            size,
+            part
+        )
     }
 
     pub fn new_full(
         bone: impl Into<Health>,
-        skin: impl Into<Health>,
-        muscle: impl Into<Health>,
+        skin: Health,
+        muscle: Health,
         size: f64,
         part: Data
     ) -> Self
     {
-        Self{bone: bone.into(), skin: skin.into(), muscle: muscle.into(), size, part}
+        Self{bone: bone.into(), skin, muscle, size, part}
     }
 }
 
@@ -519,8 +532,8 @@ impl Default for MotorCortex
     fn default() -> Self
     {
         Self{
-            arms: Health::new(5.0),
-            legs: Health::new(5.0)
+            arms: Health::new(0.0, 5.0),
+            legs: Health::new(0.0, 5.0)
         }
     }
 }
@@ -555,9 +568,9 @@ impl Default for Hemisphere
     {
         Self{
             frontal: FrontalLobe::default(),
-            parietal: Health::new(5.0),
-            temporal: Health::new(5.0),
-            occipital: Health::new(5.0)
+            parietal: Health::new(0.0, 5.0),
+            temporal: Health::new(0.0, 5.0),
+            occipital: Health::new(0.0, 5.0)
         }
     }
 }
@@ -599,6 +612,27 @@ pub enum HumanOrgan
     Lung(Lung)
 }
 
+impl DamageReceiver for HumanOrgan
+{
+    fn damage(&mut self, side: Side2d, damage: DamageType)
+    {
+        todo!()
+    }
+}
+
+macro_rules! impl_contents
+{
+    ($self:ident) =>
+    {
+        match $self
+        {
+            Self::Skull{contents} => Some(contents),
+            Self::Ribcage{contents} => Some(contents),
+            _ => None
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum HumanBoneSingle
 {
@@ -618,12 +652,12 @@ impl HumanBoneSingle
 {
     pub fn contents(&self) -> Option<&[HumanOrgan]>
     {
-        match self
-        {
-            Self::Skull{contents} => Some(contents),
-            Self::Ribcage{contents} => Some(contents),
-            _ => None
-        }
+        impl_contents!(self)
+    }
+
+    pub fn contents_mut(&mut self) -> Option<&mut [HumanOrgan]>
+    {
+        impl_contents!(self)
     }
 }
 
@@ -631,6 +665,10 @@ impl DamageReceiver for HumanBoneSingle
 {
     fn damage(&mut self, side: Side2d, damage: DamageType)
     {
+        if let Some(contents) = self.contents_mut()
+        {
+            contents.iter_mut().for_each(|organ| organ.damage(side, damage));
+        }
     }
 }
 
@@ -1098,6 +1136,8 @@ impl Damageable for HumanAnatomy
         if let Some(part) = self.select_random_part(damage.rng, damage.direction)
         {
             part.damage(damage.direction.side, damage.data);
+
+            self.update();
         }
     }
 }
