@@ -263,35 +263,35 @@ impl Health
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BodyPart<Data>
 {
-    bone: Health,
-    skin: Health,
-    muscle: Health,
+    this: Health,
+    skin: Option<Health>,
+    muscle: Option<Health>,
     size: f64,
     part: Data
 }
 
 impl<Data> BodyPart<Data>
 {
-    pub fn new(bone: f32, size: f64, part: Data) -> Self
+    pub fn new(this: f32, size: f64, part: Data) -> Self
     {
         Self::new_full(
-            Health::new(bone * 0.05, bone),
-            Health::new(5.0, 100.0),
-            Health::new(20.0, 500.0),
+            Health::new(this * 0.05, this),
+            Some(Health::new(5.0, 100.0)),
+            Some(Health::new(20.0, 500.0)),
             size,
             part
         )
     }
 
     pub fn new_full(
-        bone: impl Into<Health>,
-        skin: Health,
-        muscle: Health,
+        this: Health,
+        skin: Option<Health>,
+        muscle: Option<Health>,
         size: f64,
         part: Data
     ) -> Self
     {
-        Self{bone: bone.into(), skin, muscle, size, part}
+        Self{this, skin, muscle, size, part}
     }
 }
 
@@ -325,13 +325,16 @@ impl<Data> BodyPart<Bone<Data>>
     where
         Data: DamageReceiver
     {
-        if let Some(pierce) = self.skin.damage_pierce(damage)
+        // huh
+        if let Some(pierce) = self.skin.as_mut().map(|x| x.damage_pierce(damage))
+            .unwrap_or(Some(damage))
         {
-            if let Some(pierce) = self.muscle.damage_pierce(pierce)
+            if let Some(pierce) = self.muscle.as_mut().map(|x| x.damage_pierce(damage))
+                .unwrap_or(Some(pierce))
             {
-                if let Some(pierce) = self.bone.damage_pierce(pierce)
+                if let Some(pierce) = self.this.damage_pierce(pierce)
                 {
-                    if self.bone.is_zero()
+                    if self.this.is_zero()
                     {
                         self.part.children.clear();
                     }
@@ -502,25 +505,6 @@ pub enum Side3d
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Eye
-{
-    side: Side
-}
-
-impl Eye
-{
-    fn left() -> Self
-    {
-        Self{side: Side::Left}
-    }
-
-    fn right() -> Self
-    {
-        Self{side: Side::Right}
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MotorCortex
 {
     arms: Health,
@@ -607,7 +591,6 @@ impl Lung
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum HumanOrgan
 {
-    Eye(Eye),
     Brain(Brain),
     Lung(Lung)
 }
@@ -638,6 +621,8 @@ pub enum HumanBoneSingle
 {
     Skull{contents: Vec<HumanOrgan>},
     Ribcage{contents: Vec<HumanOrgan>},
+    // the eye bone lol
+    Eye,
     Spine,
     Pelvis,
     Femur,
@@ -779,6 +764,14 @@ impl Default for HumanAnatomy
             )
         );
 
+        let eye = HumanPart::new_full(
+            Health::new(50.0, 100.0),
+            None,
+            None,
+            0.01,
+            HumanBone::leaf(HumanBoneSingle::Eye)
+        );
+
         // the spine is very complex sizing wise so im just gonna pick a low-ish number
         let body = HumanPart::new(
             3400.0,
@@ -789,11 +782,15 @@ impl Default for HumanAnatomy
                     (Side3d::Top, HumanPart::new(
                         5000.0,
                         0.39,
-                        HumanBone::leaf(HumanBoneSingle::Skull{contents: vec![
-                            HumanOrgan::Brain(Brain::default()),
-                            HumanOrgan::Eye(Eye::left()),
-                            HumanOrgan::Eye(Eye::right())
-                        ]})
+                        HumanBone::new(
+                            HumanBoneSingle::Skull{contents: vec![
+                                HumanOrgan::Brain(Brain::default())
+                            ]},
+                            vec![
+                                (Side3d::Left, eye.clone()),
+                                (Side3d::Right, eye)
+                            ].into()
+                        )
                     )),
                     (Side3d::Bottom, HumanPart::new(
                         6000.0,
@@ -1024,7 +1021,8 @@ impl HumanAnatomy
         part: &HumanPart
     ) -> Speeds
     {
-        let health_mult = (part.bone.fraction() * 0.9 + 0.1) * part.muscle.fraction();
+        let muscle_health = part.muscle.as_ref().map(|x| x.fraction()).unwrap_or(0.0);
+        let health_mult = (part.this.fraction() * 0.9 + 0.1) * muscle_health;
 
         let motor = state.side.as_ref().map(|side| &state.halves[*side]);
 
