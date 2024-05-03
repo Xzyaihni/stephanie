@@ -85,6 +85,7 @@ pub struct Enemy
     behavior_state: BehaviorState,
     current_state_left: f32,
     main_id: ChildId,
+    main_size: f32,
     rng: SeededRandom
 }
 
@@ -111,6 +112,8 @@ impl Enemy
             ..entity_properties.physical
         };
 
+        let main_size = physical.transform.scale.x;
+
         let entity = ChildEntity::new(
             ChildConnection::Rigid,
             ChildRotation::EaseOut(EaseOutRotation{resistance: 0.01, momentum: 0.0}.into()),
@@ -127,6 +130,7 @@ impl Enemy
             behavior_state,
             behavior: enemy_properties.behavior,
             main_id,
+            main_size,
             rng
 		}
 	}
@@ -256,6 +260,16 @@ impl DrawableEntity for Enemy
 
         if redraw
         {
+            let new_size = if self.character.speed().is_some()
+            {
+                self.main_size
+            } else
+            {
+                self.main_size * 1.3
+            };
+
+            self.get_child_mut(self.main_id).set_scale(Vector3::repeat(new_size));
+
             let new_texture = self.character.pick_texture().to_owned();
 
             self.set_child_texture(self.main_id, new_texture);

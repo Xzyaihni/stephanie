@@ -156,7 +156,7 @@ impl<'a> PlayerContainer<'a>
 
         let hits = self.game_state.raycast(info, start, &end);
 
-        let damage = DamageType::Bullet(fastrand::f32() * 15.0 + 100.0);
+        let damage = DamageType::Bullet(fastrand::f32() * 20.0 + 400.0);
 
         let height = DamageHeight::random();
 
