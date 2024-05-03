@@ -90,13 +90,13 @@ macro_rules! forward_damageable
 {
     ($name:ident, $child_name:ident) =>
     {
-        use $crate::common::{Damageable, Damage};
+        use $crate::common::{Damageable, Damage, DamageType};
 
         impl Damageable for $name
         {
-            fn damage(&mut self, damage: Damage)
+            fn damage(&mut self, damage: Damage) -> Option<DamageType>
             {
-                self.$child_name.damage(damage);
+                self.$child_name.damage(damage)
             }
         }
     }

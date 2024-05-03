@@ -47,7 +47,7 @@ impl Anatomy
 
 impl Damageable for Anatomy
 {
-    fn damage(&mut self, damage: Damage)
+    fn damage(&mut self, damage: Damage) -> Option<DamageType>
     {
         match self
         {
@@ -392,7 +392,12 @@ impl<Data> BodyPart<Bone<Data>>
         }
     }
 
-    fn damage(&mut self, rng: &mut SeededRandom, side: Side2d, damage: DamageType)
+    fn damage(
+        &mut self,
+        rng: &mut SeededRandom,
+        side: Side2d,
+        damage: DamageType
+    ) -> Option<DamageType>
     where
         Data: DamageReceiver
     {
@@ -410,10 +415,12 @@ impl<Data> BodyPart<Bone<Data>>
                         self.part.children.clear();
                     }
 
-                    self.part.data.damage(rng, side, pierce);
+                    return self.part.data.damage(rng, side, pierce);
                 }
             }
         }
+
+        None
     }
 
     pub fn enumerate(&self, mut f: impl FnMut(&PartId))
@@ -923,7 +930,10 @@ impl DamageReceiver for HumanBoneSingle
     {
         if let Some(contents) = self.contents_mut()
         {
-            contents.iter_mut().for_each(|organ| { organ.damage(rng, side, damage); });
+            contents.iter_mut().for_each(|organ|
+            {
+                organ.damage(rng, side, damage);
+            });
         }
 
         None
@@ -1429,13 +1439,18 @@ impl HumanAnatomy
 
 impl Damageable for HumanAnatomy
 {
-    fn damage(&mut self, mut damage: Damage)
+    fn damage(&mut self, mut damage: Damage) -> Option<DamageType>
     {
         if let Some(part) = self.select_random_part(&mut damage.rng, damage.direction)
         {
-            part.damage(&mut damage.rng, damage.direction.side, damage.data);
+            let pierce = part.damage(&mut damage.rng, damage.direction.side, damage.data);
 
             self.update_cache();
+
+            pierce
+        } else
+        {
+            None
         }
     }
 }

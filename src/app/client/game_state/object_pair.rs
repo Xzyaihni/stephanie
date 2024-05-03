@@ -20,6 +20,7 @@ use crate::{
     common::{
         Damage,
         Damageable,
+        DamageType,
         Entity,
         ChildContainer,
         EntityAny,
@@ -264,8 +265,8 @@ impl<T: EntityContainer> EntityContainer for ObjectPair<T>
 
 impl<T: Damageable> Damageable for ObjectPair<T>
 {
-    fn damage(&mut self, damage: Damage)
+    fn damage(&mut self, damage: Damage) -> Option<DamageType>
     {
-        self.entity.damage(damage);
+        self.entity.damage(damage)
     }
 }

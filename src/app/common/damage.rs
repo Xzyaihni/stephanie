@@ -121,5 +121,5 @@ pub struct DamageDirection
 
 pub trait Damageable
 {
-    fn damage(&mut self, damage: Damage);
+    fn damage(&mut self, damage: Damage) -> Option<DamageType>;
 }
