@@ -748,11 +748,11 @@ impl DamageReceiver for Hemisphere
             },
             Side2d::Front =>
             {
-                vec![LobeId::Frontal, middle, LobeId::Occipital]
+                [LobeId::Frontal, middle, LobeId::Occipital]
             },
             Side2d::Back =>
             {
-                vec![LobeId::Occipital, middle, LobeId::Frontal]
+                [LobeId::Occipital, middle, LobeId::Frontal]
             }
         };
 
@@ -831,22 +831,34 @@ impl DamageReceiver for HumanOrgan
         {
             Self::Brain(brain) =>
             {
-                let is_left = match side
+                let hemispheres = [&mut brain.left, &mut brain.right];
+
+                match side
                 {
-                    Side2d::Left => true,
-                    Side2d::Right => false,
+                    Side2d::Left =>
+                    {
+                        Health::pierce_many(damage, hemispheres.into_iter(), |part, damage|
+                        {
+                            part.damage(rng, side, damage)
+                        })
+                    },
+                    Side2d::Right =>
+                    {
+                        Health::pierce_many(damage, hemispheres.into_iter().rev(), |part, damage|
+                        {
+                            part.damage(rng, side, damage)
+                        })
+                    },
                     Side2d::Front | Side2d::Back =>
                     {
-                        rng.next_bool()
+                        if rng.next_bool()
+                        {
+                            hemispheres[0].damage(rng, side, damage)
+                        } else
+                        {
+                            hemispheres[1].damage(rng, side, damage)
+                        }
                     }
-                };
-
-                if is_left
-                {
-                    brain.left.damage(rng, side, damage)
-                } else
-                {
-                    brain.right.damage(rng, side, damage)
                 }
             },
             Self::Lung(lung) =>

@@ -197,7 +197,10 @@ impl PhysicsEntity for Entity
 
 	fn physics_update(&mut self, dt: f32)
     {
-        self.physical.grounded = true;
+        if !self.physical.floating
+        {
+            self.physical.grounded = true;
+        }
 
         self.physical_mut().physics_update(dt);
 

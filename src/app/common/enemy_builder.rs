@@ -40,7 +40,8 @@ impl EnemyBuilder
                             ..Default::default()
                         },
                         mass: 50.0,
-                        friction: 0.5
+                        friction: 0.5,
+                        floating: false
                     }
                 },
                 anatomy: Anatomy::Human(HumanAnatomy::default()),

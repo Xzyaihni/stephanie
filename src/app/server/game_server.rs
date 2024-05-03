@@ -246,6 +246,7 @@ impl GameServer
                     physical: PhysicalProperties{
                         mass: 50.0,
                         friction: 0.5,
+                        floating: false,
                         transform: Transform{
                             scale: Vector3::repeat(0.1),
                             ..Default::default()

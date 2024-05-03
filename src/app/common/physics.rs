@@ -12,7 +12,8 @@ pub struct PhysicalProperties
 {
 	pub transform: Transform,
     pub mass: f32,
-    pub friction: f32
+    pub friction: f32,
+    pub floating: bool
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -21,6 +22,7 @@ pub struct Physical
 	pub transform: Transform,
     pub mass: f32,
 	pub friction: f32,
+    pub floating: bool,
     pub grounded: bool,
 	pub velocity: Vector3<f32>,
 	pub force: Vector3<f32>,
@@ -34,6 +36,7 @@ impl From<PhysicalProperties> for Physical
             transform: value.transform,
             mass: value.mass,
             friction: value.friction,
+            floating: value.floating,
             grounded: false,
             velocity: Vector3::zeros(),
             force: Vector3::zeros()

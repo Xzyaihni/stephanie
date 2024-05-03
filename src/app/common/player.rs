@@ -76,6 +76,7 @@ impl Player
                 physical: PhysicalProperties{
                     mass: 0.01,
                     friction: 0.8,
+                    floating: true,
                     transform: Transform{
                         scale: transform.scale * 0.4,
                         ..transform
@@ -124,6 +125,7 @@ impl Player
                 physical: PhysicalProperties{
                     mass: 0.5,
                     friction: 0.4,
+                    floating: true,
                     transform: Transform{
                         scale: transform.scale.component_mul(&Vector3::new(
                             item_size,
