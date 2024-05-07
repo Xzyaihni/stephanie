@@ -1,6 +1,6 @@
 use crate::common::{
     ObjectsStore,
-	EntityType,
+	EntityId,
 	BufferSender,
 	EntityPasser,
 	MessagePasser,
@@ -83,7 +83,7 @@ impl ConnectionsHandler
     {
 		let entity_type = message.entity_type();
 
-		self.connections.iter_mut().filter(|(index, _)|
+		/*self.connections.iter_mut().filter(|(index, _)|
 		{
 			let same_sync = Some(EntityType::Player(*index)) == entity_type;
 
@@ -91,7 +91,8 @@ impl ConnectionsHandler
 		}).for_each(|(_, player_info)|
 		{
 			player_info.set_message(message.clone());
-		});
+		});*/
+        todo!();
     }
 }
 

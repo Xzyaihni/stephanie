@@ -21,116 +21,41 @@ pub use super::world::ParseError;
 use crate::common::{
     sender_loop,
     receiver_loop,
-    EntityType,
-    EntityAny,
     ObjectsStore,
     TileMap,
+    Entity,
     Anatomy,
     HumanAnatomy,
     EntityPasser,
     EntitiesContainer,
     EntitiesController,
     MessagePasser,
-    PlayerProperties,
-    CharacterProperties,
-    EntityProperties,
-    PhysicalProperties,
     world::chunk::TILE_SIZE,
-    player::Player,
     message::{
         Message,
         MessageBuffer
     }
 };
 
-use server_enemy::ServerEnemy;
-
-mod server_enemy;
-
-
-impl EntityAny
-{
-    // >with info
-    // its future proofed at least!!
-    pub fn with_info_server(
-        self
-    ) -> EntityAny<Player, ServerEnemy>
-    {
-        match self
-        {
-            Self::Player(x) => EntityAny::Player(x),
-            Self::Enemy(x) => EntityAny::Enemy(ServerEnemy::new(x))
-        }
-    }
-}
 
 #[derive(Debug)]
 pub struct ServerEntitiesContainer
 {
-	players: ObjectsStore<Player>,
-    enemies: ObjectsStore<ServerEnemy>
+    entities: ObjectsStore<Entity>
 }
 
 impl ServerEntitiesContainer
 {
 	pub fn new(limit: usize) -> Self
 	{
-		let players = ObjectsStore::with_capacity(limit);
-        let enemies = ObjectsStore::with_capacity(limit);
+        let entities = ObjectsStore::with_capacity(limit);
 
-		Self{players, enemies}
-    }
-
-    pub fn push_entity(&mut self, entity: EntityAny) -> Message
-    {
-        let id = self.push(entity.clone().with_info_server());
-
-        Message::EntitySet{id, entity}
-    }
-
-    pub fn remove_entity(&mut self, id: EntityType) -> Message
-    {
-        self.remove(id);
-
-        Message::EntityDestroy{id}
-    }
-
-    pub fn entities_iter(&self) -> impl Iterator<Item=(EntityType, EntityAny)> + '_
-    {
-        self.enemies_ref().iter().map(|(id, x)|
-        {
-            (EntityType::Enemy(id), EntityAny::Enemy((**x).clone()))
-        }).chain(self.players_ref().iter().map(|(id, x)|
-        {
-            (EntityType::Player(id), EntityAny::Player(x.clone()))
-        }))
+		Self{entities}
     }
 }
 
 impl EntitiesContainer for ServerEntitiesContainer
 {
-	type PlayerObject = Player;
-    type EnemyObject = ServerEnemy;
-
-	fn players_ref(&self) -> &ObjectsStore<Self::PlayerObject>
-	{
-		&self.players
-	}
-
-	fn players_mut(&mut self) -> &mut ObjectsStore<Self::PlayerObject>
-	{
-		&mut self.players
-	}
-
-	fn enemies_ref(&self) -> &ObjectsStore<Self::EnemyObject>
-	{
-		&self.enemies
-	}
-
-	fn enemies_mut(&mut self) -> &mut ObjectsStore<Self::EnemyObject>
-	{
-		&mut self.enemies
-	}
 }
 
 #[derive(Debug)]
@@ -191,13 +116,14 @@ impl GameServer
         const STEPS: u32 = 2;
 
         let mut messager = self.connection_handler.write();
-        self.entities.enemies_mut().iter_mut().for_each(|(id, enemy)|
+        /*self.entities.enemies_mut().iter_mut().for_each(|(id, enemy)|
         {
             for _ in 0..STEPS
             {
-                enemy.update(&mut messager, id, dt / STEPS as f32);
+                enemy.update_server(&mut messager, id, dt / STEPS as f32);
             }
-        });
+        });*/
+        todo!();
     }
 
 	pub fn connect(this: Arc<Mutex<Self>>, stream: TcpStream) -> Result<(), ConnectionError>
@@ -235,14 +161,13 @@ impl GameServer
 	{
 		let player_info = self.player_info(stream)?;
 
-        let player_index = self.entities.players_ref().len() + 1;
+        /*let player_index = self.entities.players_ref().len() + 1;
 
 		let player_properties = PlayerProperties{
             name: format!("stephanie #{player_index}"),
             character_properties: CharacterProperties{
                 anatomy: Anatomy::Human(HumanAnatomy::default()),
                 entity_properties: EntityProperties{
-                    texture: None,
                     physical: PhysicalProperties{
                         mass: 50.0,
                         friction: 0.5,
@@ -252,14 +177,13 @@ impl GameServer
                             ..Default::default()
                         }
                     }
-                },
-                main_texture: "player/hair.png".to_owned(),
-                immobile_texture: "todo".to_owned()
+                }
             }
-		};
+		};*/
 
-		let player = {
-			let mut player = Player::new(player_properties);
+        todo!();
+		/*let player = {
+			let mut player = todo!();
 			player.translate(Vector3::new(0.0, 0.0, TILE_SIZE));
 
 			player
@@ -273,7 +197,7 @@ impl GameServer
 			return Err(ConnectionError::IdMismatch);
 		}
 
-		self.player_create(player_info, inserted_id)
+		self.player_create(player_info, inserted_id)*/
 	}
 
 	fn player_info(&self, stream: TcpStream) -> Result<PlayerInfo, ConnectionError>
@@ -317,7 +241,7 @@ impl GameServer
 
 		messager.send_blocking(Message::PlayerOnConnect{id: player_id})?;
 
-		self.entities.players_ref().iter().try_for_each(|(index, player)|
+		/*self.entities.players_ref().iter().try_for_each(|(index, player)|
 		{
             let id = EntityType::Player(index);
             let entity = EntityAny::Player(player.clone());
@@ -325,7 +249,8 @@ impl GameServer
             let message = Message::EntitySet{id, entity};
 
 			messager.send_blocking(message)
-		})?;
+		})?;*/
+        todo!();
 
 		messager.send_blocking(Message::PlayerFullyConnected)?;
 
@@ -334,14 +259,15 @@ impl GameServer
 
 	fn connection_close(&mut self, id: usize)
 	{
-		let player = self.player_ref(id);
+		/*let player = self.player_ref(id);
 
 		println!("player \"{}\" disconnected", player.name());
 
 		self.world.remove_player(id);
 
 		self.connection_handler.write().remove_connection(id);
-		self.remove_player(id);
+		self.remove_player(id);*/
+        todo!();
 	}
 
 	fn process_message_inner(&mut self, message: Message, id: usize)
@@ -357,9 +283,10 @@ impl GameServer
             Message::EntityDestroy{id: entity_id} =>
             {
                 {
-                    let message = self.entities.remove_entity(entity_id);
+                    todo!();
+                    /*let message = self.entities.remove_entity(entity_id);
 
-                    self.connection_handler.write().send_single(id, message);
+                    self.connection_handler.write().send_single(id, message);*/
                 }
 
                 message
@@ -388,17 +315,20 @@ impl GameServer
 		{
 			Message::EntitySet{id, entity} =>
 			{
-                self.entities.insert(id, entity.with_info_server());
+                todo!();
+                // self.entities.insert(id, entity.with_info_server());
 			},
             Message::EntityAdd{entity} =>
             {
-                let message = self.entities.push_entity(entity.clone());
+                todo!();
+                /*let message = self.entities.push_entity(entity.clone());
 
-                self.send_message(message);
+                self.send_message(message);*/
             },
             Message::EntityDamage{id, damage} =>
             {
-                self.entities.damage(id, damage)
+                todo!();
+                // self.entities.damage(id, damage)
             },
 			x => panic!("unhandled message: {x:?}")
 		}

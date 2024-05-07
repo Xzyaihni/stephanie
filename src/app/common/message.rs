@@ -6,8 +6,8 @@ use strum_macros::EnumCount;
 
 use crate::common::{
 	Transform,
-	EntityType,
-    EntityAny,
+	EntityId,
+    Entity,
     Damage,
 	world::{Chunk, GlobalPos}
 };
@@ -16,14 +16,14 @@ use crate::common::{
 #[derive(Debug, Clone, EnumCount, Serialize, Deserialize)]
 pub enum Message
 {
-    EntitySet{id: EntityType, entity: EntityAny},
-    EntityAdd{entity: EntityAny},
-    EntityDestroy{id: EntityType},
-    EntityDamage{id: EntityType, damage: Damage},
+    EntitySet{id: EntityId, entity: Entity},
+    EntityAdd{entity: Entity},
+    EntityDestroy{id: EntityId},
+    EntityDamage{id: EntityId, damage: Damage},
 	PlayerConnect{name: String},
 	PlayerOnConnect{id: usize},
 	PlayerFullyConnected,
-	EntitySyncTransform{entity_type: EntityType, transform: Transform},
+	EntitySyncTransform{entity_type: EntityId, transform: Transform},
 	ChunkRequest{pos: GlobalPos},
 	ChunkSync{pos: GlobalPos, chunk: Chunk},
     RepeatMessage{message: Box<Message>}
@@ -31,7 +31,7 @@ pub enum Message
 
 impl Message
 {
-	pub fn entity_type(&self) -> Option<EntityType>
+	pub fn entity_type(&self) -> Option<EntityId>
 	{
 		match self
 		{

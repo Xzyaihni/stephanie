@@ -16,8 +16,6 @@ pub use yanyaengine::{Transform, TransformContainer};
 
 pub use objects_store::ObjectsStore;
 
-pub use entity_type::EntityType;
-pub use network_entity::NetworkEntity;
 pub use sender_loop::{sender_loop, BufferSender};
 pub use receiver_loop::receiver_loop;
 
@@ -25,12 +23,7 @@ pub use tilemap::{TileMap, TileMapWithTextures};
 
 pub use entity::{
     Entity,
-    ChildEntity,
-    Physical,
-    ChildContainer,
-    EntityProperties,
-    PhysicalProperties,
-    EntityContainer
+    EntityId
 };
 
 pub use chunk_saver::{SaveLoad, WorldChunkSaver, ChunkSaver, EntitiesSaver};
@@ -39,12 +32,6 @@ pub use anatomy::{Anatomy, HumanAnatomy};
 pub use damage::{Damageable, Damage, DamageType, DamageDirection, Side2d, DamageHeight};
 
 pub use enemy_builder::EnemyBuilder;
-
-pub use character::CharacterProperties;
-pub use player::PlayerProperties;
-pub use enemy::{EnemyProperties, Enemy};
-
-use player::Player;
 
 pub use physics::PhysicsEntity;
 
@@ -59,13 +46,8 @@ pub mod anatomy;
 pub mod enemy_builder;
 
 pub mod entity;
-pub mod player;
-pub mod enemy;
-pub mod character;
 
 pub mod message;
-pub mod entity_type;
-pub mod network_entity;
 
 pub mod sender_loop;
 pub mod receiver_loop;
@@ -224,211 +206,17 @@ pub fn lerp(x: f32, y: f32, a: f32) -> f32
     (1.0 - a) * x + y * a
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum EntityAny<PlayerType=Player, EnemyType=Enemy>
-{
-    Player(PlayerType),
-    Enemy(EnemyType)
-}
-
-impl EntityContainer for EntityAny
-{
-    fn entity_ref(&self) -> &Entity
-    {
-        match self
-        {
-            Self::Player(x) => x.entity_ref(),
-            Self::Enemy(x) => x.entity_ref()
-        }
-    }
-
-    fn entity_mut(&mut self) -> &mut Entity
-    {
-        match self
-        {
-            Self::Player(x) => x.entity_mut(),
-            Self::Enemy(x) => x.entity_mut()
-        }
-    }
-}
-
-impl EntityAny
-{
-    pub fn is_player(&self) -> bool
-    {
-        match self
-        {
-            Self::Player(_) => true,
-            _ => false
-        }
-    }
-}
-
-pub trait EntityAnyWrappable
-{
-    fn wrap_any(self) -> EntityAny;
-}
-
 pub trait EntityPasser
 {
 	fn send_single(&mut self, id: usize, message: Message);
 	fn send_message(&mut self, message: Message);
-
-    fn sync_entity(&mut self, id: EntityType, entity: EntityAny)
-    {
-        self.send_message(Message::EntitySet{id, entity});
-    }
-
-	fn sync_transform(&mut self, id: EntityType, transform: Transform)
-	{
-        let message = Message::EntitySyncTransform{entity_type: id, transform};
-
-		self.send_message(message);
-	}
 }
 
 pub trait EntitiesContainer
 {
-	type PlayerObject: TransformContainer
-        + Debug
-        + Borrow<Player>
-        + Damageable
-        + PhysicsEntity;
-
-	type EnemyObject: TransformContainer
-        + Debug
-        + Borrow<Enemy>
-        + Damageable
-        + PhysicsEntity;
-
-	fn players_ref(&self) -> &ObjectsStore<Self::PlayerObject>;
-	fn players_mut(&mut self) -> &mut ObjectsStore<Self::PlayerObject>;
-
-	fn enemies_ref(&self) -> &ObjectsStore<Self::EnemyObject>;
-	fn enemies_mut(&mut self) -> &mut ObjectsStore<Self::EnemyObject>;
-
-    fn push(
-        &mut self,
-        entity: EntityAny<Self::PlayerObject, Self::EnemyObject>
-    ) -> EntityType
-    {
-        match entity
-        {
-            EntityAny::Player(entity) =>
-            {
-                let id = self.players_mut().push(entity);
-
-                EntityType::Player(id)
-            },
-            EntityAny::Enemy(entity) =>
-            {
-                let id = self.enemies_mut().push(entity);
-
-                EntityType::Enemy(id)
-            }
-        }
-    }
-
-    fn insert(
-        &mut self,
-        id: EntityType,
-        entity: EntityAny<Self::PlayerObject, Self::EnemyObject>
-    )
-    {
-        match (id, entity)
-        {
-            (EntityType::Player(id), EntityAny::Player(entity)) =>
-            {
-                self.players_mut().insert(id, entity);
-            },
-            (EntityType::Enemy(id), EntityAny::Enemy(entity)) =>
-            {
-                self.enemies_mut().insert(id, entity);
-            },
-            x => panic!("unhandled message: {x:?}")
-        }
-    }
-
-    fn remove(&mut self, id: EntityType)
-    {
-        match id
-        {
-            EntityType::Player(id) =>
-            {
-                self.players_mut().remove(id);
-            },
-            EntityType::Enemy(id) =>
-            {
-                self.enemies_mut().remove(id);
-            }
-        }
-    }
-
-    fn damage(&mut self, id: EntityType, damage: Damage)
-    {
-        match id
-        {
-            EntityType::Player(id) =>
-            {
-                self.players_mut()[id].damage(damage);
-            },
-            EntityType::Enemy(id) =>
-            {
-                self.enemies_mut()[id].damage(damage);
-            }
-        }
-    }
-
-    fn get_entity_ref(&self, id: EntityType) -> &Entity
-    {
-        match id
-        {
-            EntityType::Player(id) =>
-            {
-                self.players_ref()[id].borrow().entity_ref()
-            },
-            EntityType::Enemy(id) =>
-            {
-                self.enemies_ref()[id].borrow().entity_ref()
-            }
-        }
-    }
-
-	fn empty_player(&self) -> usize
-	{
-		self.players_ref().vacant_key()
-	}
-
-	fn empty_enemy(&self) -> usize
-	{
-		self.enemies_ref().vacant_key()
-	}
-
-	fn sync_transform(&mut self, id: EntityType, other: Transform)
-	{
-		match id
-		{
-			EntityType::Player(id) => self.players_mut()[id].sync_transform(other),
-			EntityType::Enemy(id) => self.enemies_mut()[id].sync_transform(other)
-		}
-	}
-
 	fn handle_message(&mut self, message: Message) -> Option<Message>
 	{
-		match message
-		{
-			Message::EntityDestroy{id} =>
-			{
-                self.remove(id);
-				None
-			},
-			Message::EntitySyncTransform{entity_type, transform} =>
-			{
-				self.sync_transform(entity_type, transform);
-				None
-			},
-			_ => Some(message)
-		}
+        Some(message)
 	}
 }
 
@@ -440,63 +228,6 @@ pub trait EntitiesController
 	fn container_ref(&self) -> &Self::Container;
 	fn container_mut(&mut self) -> &mut Self::Container;
 	fn passer(&self) -> Arc<RwLock<Self::Passer>>;
-
-	fn add_player(
-		&mut self,
-		player_associated: <Self::Container as EntitiesContainer>::PlayerObject
-	) -> usize
-	{
-		let entity = EntityAny::Player(player_associated.borrow().clone());
-
-        let raw_id = self.container_mut().players_mut().push(player_associated);
-		let id = EntityType::Player(raw_id);
-
-		self.passer().write().sync_entity(id, entity);
-
-		raw_id
-	}
-
-	fn add_enemy(
-		&mut self,
-		enemy_associated: <Self::Container as EntitiesContainer>::EnemyObject
-	) -> usize
-	{
-		let entity = EntityAny::Enemy(enemy_associated.borrow().clone());
-
-		let raw_id = self.container_mut().enemies_mut().push(enemy_associated);
-        let id = EntityType::Enemy(raw_id);
-
-		self.passer().write().sync_entity(id, entity);
-
-		raw_id
-	}
-
-	fn remove_player(&mut self, id: usize)
-	{
-		self.container_mut().players_mut().remove(id);
-
-        let id = EntityType::Player(id);
-		self.passer().write().send_message(Message::EntityDestroy{id});
-	}
-
-	fn player_mut(
-		&mut self,
-		id: usize
-	) -> NetworkEntity<'_, Self::Passer, <Self::Container as EntitiesContainer>::PlayerObject>
-	{
-		let passer = self.passer();
-		let container = self.container_mut();
-
-		NetworkEntity::new(passer, EntityType::Player(id), &mut container.players_mut()[id])
-	}
-
-	fn player_ref(
-        &self,
-        id: usize
-    ) -> &<Self::Container as EntitiesContainer>::PlayerObject
-	{
-		&self.container_ref().players_ref()[id]
-	}
 }
 
 #[derive(Debug)]

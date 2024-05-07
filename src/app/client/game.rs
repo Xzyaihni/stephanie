@@ -1,6 +1,6 @@
 use nalgebra::{Vector3, Vector2};
 
-use yanyaengine::TransformContainer;
+use yanyaengine::{TextureId, TransformContainer};
 
 use crate::{
     client::ConnectionsHandler,
@@ -11,8 +11,6 @@ use crate::{
         DamageDirection,
         Side2d,
         DamageHeight,
-        NetworkEntity,
-        player::Player,
         world::TILE_SIZE,
         physics::PhysicsEntity
     }
@@ -22,8 +20,7 @@ use super::game_state::{
     GameState,
     Control,
     RaycastInfo,
-    RaycastHitId,
-    object_pair::ObjectPair
+    RaycastHitId
 };
 
 mod object_transform;
@@ -31,7 +28,7 @@ mod object_transform;
 
 pub trait DrawableEntity
 {
-    fn texture(&self) -> Option<&str>;
+    fn texture(&self) -> Option<TextureId>;
     fn needs_redraw(&mut self) -> bool;
 }
 
@@ -51,27 +48,32 @@ impl Game
 
     fn player_container<'a>(&'a mut self, game_state: &'a mut GameState) -> PlayerContainer<'a>
     {
-        PlayerContainer::new(&mut self.player, game_state)
+        todo!();
+        // PlayerContainer::new(&mut self.player, game_state)
     }
 
     pub fn on_player_connected(&mut self, game_state: &mut GameState)
     {
-        self.player_container(game_state).camera_sync_instant();
+        todo!();
+        // self.player_container(game_state).camera_sync_instant();
     }
 
     pub fn update(&mut self, game_state: &mut GameState, dt: f32)
     {
-        self.player_container(game_state).update(dt)
+        todo!();
+        // self.player_container(game_state).update(dt)
     }
 
     pub fn player_exists(&mut self, game_state: &mut GameState) -> bool
     {
-        self.player_container(game_state).exists()
+        todo!();
+        // self.player_container(game_state).exists()
     }
 
     pub fn camera_sync(&mut self, game_state: &mut GameState)
     {
-        self.player_container(game_state).camera_sync();
+        todo!();
+        // self.player_container(game_state).camera_sync();
     }
 }
 
@@ -98,7 +100,7 @@ struct PlayerContainer<'a>
 
 impl<'a> PlayerContainer<'a>
 {
-    pub fn new(info: &'a mut PlayerInfo, game_state: &'a mut GameState) -> Self
+    /*pub fn new(info: &'a mut PlayerInfo, game_state: &'a mut GameState) -> Self
     {
         Self{info, game_state}
     }
@@ -321,15 +323,5 @@ impl<'a> PlayerContainer<'a>
         let rotation = y.atan2(x);
 
         player_mut.set_rotation(rotation);
-    }
-
-    fn player_ref(&self) -> &ObjectPair<Player>
-    {
-        self.game_state.player_ref(self.info.id)
-    }
-
-    fn player_mut(&mut self) -> NetworkEntity<'_, ConnectionsHandler, ObjectPair<Player>>
-    {
-        self.game_state.player_mut(self.info.id)
-    }
+    }*/
 }

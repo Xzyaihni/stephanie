@@ -25,15 +25,11 @@ use crate::common::{
     TileMap,
     Damage,
     Entity,
-    EntityType,
-    EntityAny,
+    EntityId,
     EntityPasser,
 	EntitiesContainer,
 	EntitiesController,
-    entity::EntityContainer,
 	message::Message,
-	player::Player,
-    enemy::Enemy,
 	world::{
 		World,
 		Pos3,
@@ -54,29 +50,12 @@ pub use controls_controller::Control;
 
 use controls_controller::{ControlsController, ControlState};
 
-use object_pair::ObjectPair;
 use notifications::{Notifications, Notification};
 
 mod controls_controller;
 
-pub mod object_pair;
 mod notifications;
 
-
-impl EntityAny
-{
-    pub fn with_info_client(
-        self,
-        info: &ObjectCreateInfo
-    ) -> EntityAny<ObjectPair<Player>, ObjectPair<Enemy>>
-    {
-        match self
-        {
-            Self::Player(x) => EntityAny::Player(ObjectPair::new(info, x)),
-            Self::Enemy(x) => EntityAny::Enemy(ObjectPair::new(info, x))
-        }
-    }
-}
 
 struct RaycastResult
 {
@@ -87,8 +66,7 @@ struct RaycastResult
 #[derive(Debug)]
 pub struct ClientEntitiesContainer
 {
-	players: ObjectsStore<ObjectPair<Player>>,
-	enemies: ObjectsStore<ObjectPair<Enemy>>,
+	entity: ObjectsStore<Entity>,
 	main_player: Option<usize>
 }
 
@@ -96,22 +74,22 @@ impl ClientEntitiesContainer
 {
 	pub fn new() -> Self
 	{
-		let players = ObjectsStore::new();
-		let enemies = ObjectsStore::new();
+		let entity = ObjectsStore::new();
 		let main_player = None;
 
-		Self{players, enemies, main_player}
+		Self{entity, main_player}
 	}
 
 	pub fn update(&mut self, dt: f32)
 	{
-		self.players.iter_mut().for_each(|(_, pair)| pair.update(dt));
-		self.enemies.iter_mut().for_each(|(_, pair)| pair.update(dt));
+        todo!();
+		// self.entities.iter_mut().for_each(|(_, pair)| pair.update(dt));
 	}
 
 	pub fn player_exists(&self, id: usize) -> bool
 	{
-		self.players.contains(id)
+        todo!();
+		// self.players.contains(id)
 	}
 
     fn raycast_entity(
@@ -120,18 +98,18 @@ impl ClientEntitiesContainer
         entity: &Entity
     ) -> Option<RaycastResult>
     {
-        let scale = entity.scale();
+        /*let scale = entity.scale();
 
         // im not dealing with this
         debug_assert!(scale.x == scale.y && scale.x == scale.z);
         let radius = scale.x / 2.0;
 
-        let position = entity.position();
+        let position = todo!();//entity.position();
 
         let offset = start - position;
 
         let left = direction.dot(&offset).powi(2);
-        let right = offset.magnitude_squared() - radius.powi(2);
+        let right = todo!();//offset.magnitude_squared() - radius.powi(2);
 
         // math ppl keep making fake letters
         let nabla = left - right;
@@ -153,7 +131,8 @@ impl ClientEntitiesContainer
             let pierce = far - close;
 
             Some(RaycastResult{distance: close, pierce})
-        }
+        }*/
+        todo!();
     }
 
     pub fn raycast(
@@ -168,7 +147,7 @@ impl ClientEntitiesContainer
         let max_distance = direction.magnitude();
         let direction = Unit::new_normalize(direction);
 
-        let mut hits: Vec<_> = self.enemies.iter()
+        /*let mut hits: Vec<_> = self.enemies.iter()
             .map(|(id, enemy)| (EntityType::Enemy(id), enemy.entity_ref()))
             .chain(self.players.iter()
                 .filter(|(id, _)|
@@ -224,7 +203,8 @@ impl ClientEntitiesContainer
             first.map(|x| vec![x]).unwrap_or_default()
         };
 
-        RaycastHits{start: *start, direction, hits}
+        RaycastHits{start: *start, direction, hits}*/
+        todo!();
     }
 }
 
@@ -232,13 +212,15 @@ impl GameObject for ClientEntitiesContainer
 {
 	fn update_buffers(&mut self, info: &mut UpdateBuffersInfo)
     {
-		self.players.iter_mut().for_each(|(_, pair)| pair.update_buffers(info));
-		self.enemies.iter_mut().for_each(|(_, pair)| pair.update_buffers(info));
+        todo!();
+		// self.players.iter_mut().for_each(|(_, pair)| pair.update_buffers(info));
+		// self.enemies.iter_mut().for_each(|(_, pair)| pair.update_buffers(info));
     }
 
 	fn draw(&self, info: &mut DrawInfo)
     {
-        self.enemies.iter().for_each(|(_, pair)| pair.draw(info));
+        todo!();
+        /*self.enemies.iter().for_each(|(_, pair)| pair.draw(info));
 
 		if let Some(player_id) = self.main_player
 		{
@@ -253,34 +235,12 @@ impl GameObject for ClientEntitiesContainer
 		} else
 		{
 			self.players.iter().for_each(|(_, pair)| pair.draw(info));
-		}
+		}*/
     }
 }
 
 impl EntitiesContainer for ClientEntitiesContainer
 {
-	type PlayerObject = ObjectPair<Player>;
-	type EnemyObject = ObjectPair<Enemy>;
-
-	fn players_ref(&self) -> &ObjectsStore<Self::PlayerObject>
-	{
-		&self.players
-	}
-
-	fn players_mut(&mut self) -> &mut ObjectsStore<Self::PlayerObject>
-	{
-		&mut self.players
-	}
-
-	fn enemies_ref(&self) -> &ObjectsStore<Self::EnemyObject>
-	{
-		&self.enemies
-	}
-
-	fn enemies_mut(&mut self) -> &mut ObjectsStore<Self::EnemyObject>
-	{
-		&mut self.enemies
-	}
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -321,7 +281,7 @@ pub struct RaycastInfo
 #[derive(Debug)]
 pub enum RaycastHitId
 {
-    Entity(EntityType),
+    Entity(EntityId),
     // later
     Tile
 }
@@ -462,7 +422,7 @@ impl GameState
 		}
 	}
 
-    pub fn damage_entity(&mut self, id: EntityType, damage: Damage)
+    /*pub fn damage_entity(&mut self, id: EntityType, damage: Damage)
     {
         if id.is_player()
         {
@@ -472,7 +432,7 @@ impl GameState
         self.send_message(Message::EntityDamage{id, damage: damage.clone()});
 
         self.entities.damage(id, damage);
-    }
+    }*/
 
 	pub fn player_id(&self) -> usize
 	{
@@ -520,7 +480,8 @@ impl GameState
 		{
 			Message::EntitySet{id, entity} =>
 			{
-				self.entities.insert(id, entity.with_info_client(create_info));
+                todo!();
+				// self.entities.insert(id, entity.with_info_client(create_info));
 			},
 			Message::PlayerFullyConnected =>
 			{
@@ -581,7 +542,7 @@ impl GameState
 		self.world.rescale(camera.aspect());
 	}
 
-    pub fn remove_client_entity(&self, id: EntityType)
+    /*pub fn remove_client_entity(&self, id: EntityType)
     {
         self.send_message(Message::EntityDestroy{id});
     }
@@ -589,7 +550,7 @@ impl GameState
     pub fn add_client_entity(&self, entity: EntityAny)
     {
         self.send_message(Message::EntityAdd{entity});
-    }
+    }*/
 
     pub fn echo_message(&self, message: Message)
     {
@@ -617,11 +578,6 @@ impl GameState
 	{
 		self.notifications.get(Notification::PlayerConnected)
 	}
-
-    pub fn get_entity_ref(&self, id: EntityType) -> &Entity
-    {
-        self.entities.get_entity_ref(id)
-    }
 
 	pub fn update_buffers(&mut self, partial_info: UpdateBuffersPartialInfo)
     {

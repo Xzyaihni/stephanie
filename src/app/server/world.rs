@@ -20,9 +20,8 @@ use crate::{
         EntitiesSaver,
         SaveLoad,
 		EntityPasser,
-        EntityAny,
-        EntityType,
-        EntityContainer,
+        Entity,
+        EntityId,
 		message::Message,
 		world::{
             CHUNK_SIZE,
@@ -187,16 +186,17 @@ impl World
     fn create_entities(
         &self,
         container: &mut ServerEntitiesContainer,
-        entities: Vec<EntityAny>
+        entities: Vec<Entity>
     )
     {
         let mut writer = self.message_handler.write();
 
         entities.into_iter().for_each(|entity|
         {
-            let message = container.push_entity(entity);
+            todo!();
+            // let message = container.push_entity(entity);
 
-            writer.send_message(message);
+            // writer.send_message(message);
         });
     }
 
@@ -254,7 +254,8 @@ impl World
                 {
                     let pos = chunk_pos + above.pos().map(|x| x as f32 * TILE_SIZE);
 
-                    EntityAny::Enemy(EnemyBuilder::new(pos.into()).build())
+                    todo!();
+                    // Entity::Enemy(EnemyBuilder::new(pos.into()).build())
                 })
             })
             .collect();
@@ -300,12 +301,12 @@ impl World
 		})
 	}
 
-    fn collect_to_delete<I>(iter: I) -> (Vec<EntityType>, HashMap<GlobalPos, Vec<EntityAny>>)
+    fn collect_to_delete<I>(iter: I) -> (Vec<EntityId>, HashMap<GlobalPos, Vec<Entity>>)
     where
-        I: Iterator<Item=(EntityType, (GlobalPos, EntityAny))>
+        I: Iterator<Item=(EntityId, (GlobalPos, Entity))>
     {
         let mut delete_ids = Vec::new();
-        let mut delete_entities: HashMap<GlobalPos, Vec<EntityAny>> = HashMap::new();
+        let mut delete_entities: HashMap<GlobalPos, Vec<Entity>> = HashMap::new();
 
         for (id, (pos, entity)) in iter
         {
@@ -336,7 +337,7 @@ impl World
     where
         F: Fn(GlobalPos) -> bool
     {
-        let delete_entities = container.entities_iter()
+        /*let delete_entities = container.entities_iter()
             .filter(|(_, x)| !x.is_player())
             .filter_map(|(id, x)|
             {
@@ -358,7 +359,8 @@ impl World
             let message = container.remove_entity(id);
 
             message_handler.send_message(message);
-        });
+        });*/
+        todo!();
     }
 
 	#[allow(dead_code)]
@@ -379,7 +381,7 @@ impl World
         message: Message
     ) -> Option<Message>
 	{
-        let new_position = (message.entity_type() == Some(EntityType::Player(id))).then(||
+        /*let new_position = (message.entity_type() == Some(EntityId::Player(id))).then(||
         {
             match &message
             {
@@ -398,7 +400,8 @@ impl World
         if let Some(new_position) = new_position
         {
             self.player_moved(container, id, (*new_position).into());
-        }
+        }*/
+        todo!();
 
 		match message
 		{

@@ -1,17 +1,6 @@
 use nalgebra::Vector3;
 
-use yanyaengine::Transform;
-
-use crate::common::{
-    Enemy,
-    EnemyProperties,
-    enemy::EnemyBehavior,
-    CharacterProperties,
-    Anatomy,
-    HumanAnatomy,
-    EntityProperties,
-    PhysicalProperties
-};
+use crate::common::Entity;
 
 
 pub struct EnemyBuilder
@@ -26,12 +15,11 @@ impl EnemyBuilder
         Self{pos}
     }
 
-    pub fn build(self) -> Enemy
+    pub fn build(self) -> Entity
     {
-        let props = EnemyProperties{
+        /*let props = EnemyProperties{
             character_properties: CharacterProperties{
                 entity_properties: EntityProperties{
-                    texture: None,
                     physical: PhysicalProperties{
                         transform: Transform{
                             position: self.pos,
@@ -44,13 +32,12 @@ impl EnemyBuilder
                         floating: false
                     }
                 },
-                anatomy: Anatomy::Human(HumanAnatomy::default()),
-                main_texture: "enemy/body.png".to_owned(),
-                immobile_texture: "enemy/lying.png".to_owned()
+                anatomy: Anatomy::Human(HumanAnatomy::default())
             },
             behavior: EnemyBehavior::Melee
         };
 
-        Enemy::new(props)
+        Enemy::new(props)*/
+        todo!();
     }
 }

@@ -43,6 +43,8 @@ pub use game::DrawableEntity;
 pub use connections_handler::ConnectionsHandler;
 pub use tiles_factory::{TilesFactory, ChunkInfo};
 
+pub mod ui;
+
 pub mod game_state;
 pub mod game;
 

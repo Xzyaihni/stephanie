@@ -8,8 +8,8 @@ use crate::{
 		world_receiver::WorldReceiver
 	},
 	common::{
-        EntityType,
-        EntityAny,
+        Entity,
+        EntityId,
         message::Message
     }
 };
@@ -49,14 +49,14 @@ pub const CLIENT_OVERMAP_SIZE_Z: usize = 2;
 pub struct ChunkWithEntities
 {
     pub chunk: Chunk,
-    pub entities: Vec<EntityType>
+    pub entities: Vec<EntityId>
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChunkOwningEntities
 {
     pub chunk: Chunk,
-    pub entities: Vec<EntityAny>
+    pub entities: Vec<Entity>
 }
 
 #[derive(Debug)]
