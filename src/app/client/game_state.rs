@@ -12,6 +12,7 @@ use nalgebra::{Unit, Vector3, Vector2};
 
 use yanyaengine::{
     Assets,
+    Object,
     ObjectFactory,
     TransformContainer,
     camera::Camera,
@@ -26,6 +27,7 @@ use crate::common::{
     Damage,
     Entity,
     Entities,
+    Component,
     EntityPasser,
 	EntitiesController,
 	message::Message,
@@ -62,9 +64,11 @@ struct RaycastResult
     pierce: f32
 }
 
+type ClientEntities = Entities<Object>;
+
 pub struct ClientEntitiesContainer
 {
-	entities: Entities,
+	entities: ClientEntities,
 	main_player: Option<Entity>
 }
 
@@ -92,9 +96,7 @@ impl ClientEntitiesContainer
 
 	pub fn player_exists(&self, entity: Entity) -> bool
 	{
-        return false;
-        todo!();
-		// self.players.contains(id)
+		self.entities.exists(entity)
 	}
 
     fn raycast_entity(
@@ -217,30 +219,31 @@ impl GameObject for ClientEntitiesContainer
 {
 	fn update_buffers(&mut self, info: &mut UpdateBuffersInfo)
     {
-        todo!();
-		// self.players.iter_mut().for_each(|(_, pair)| pair.update_buffers(info));
-		// self.enemies.iter_mut().for_each(|(_, pair)| pair.update_buffers(info));
+        self.entities.render.iter_mut().for_each(|(_, entity)| entity.update_buffers(info));
     }
 
 	fn draw(&self, info: &mut DrawInfo)
     {
-        todo!();
-        /*self.enemies.iter().for_each(|(_, pair)| pair.draw(info));
-
-		if let Some(player_id) = self.main_player
+		if let Some(player) = self.main_player
 		{
-			self.players.iter().filter(|(id, _)| *id != player_id)
-				.for_each(|(_, pair)| pair.draw(info));
+            let player_id = self.entities.components
+                .get(player.get_raw())
+                .and_then(|x| x[Component::RenderType as usize]);
 
-            // player could be uninitialized
-			if let Some(player) = self.players.get(player_id)
+			self.entities.render.iter().filter(|(id, _)| Some(*id) != player_id)
+				.for_each(|(_, entity)| entity.draw(info));
+
+            if self.entities.exists(player)
             {
-                player.draw(info);
+                if let Some(player) = self.entities.render(player)
+                {
+                    player.draw(info);
+                }
             }
 		} else
 		{
-			self.players.iter().for_each(|(_, pair)| pair.draw(info));
-		}*/
+		    self.entities.render.iter().for_each(|(_, entity)| entity.draw(info));
+		}
     }
 }
 
@@ -430,12 +433,12 @@ impl GameState
         self.entities.damage(id, damage);
     }*/
 
-    pub fn entities(&self) -> &Entities
+    pub fn entities(&self) -> &ClientEntities
     {
         &self.entities.entities
     }
 
-    pub fn entities_mut(&mut self) -> &mut Entities
+    pub fn entities_mut(&mut self) -> &mut ClientEntities
     {
         &mut self.entities.entities
     }

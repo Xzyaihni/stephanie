@@ -6,6 +6,14 @@ use serde::{Serialize, Deserialize};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Entity(usize);
 
+impl Entity
+{
+    pub fn get_raw(&self) -> usize
+    {
+        self.0
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Player
 {
@@ -27,7 +35,7 @@ macro_rules! define_entities
         $default_type:ident
     )),+) =>
     {
-        use yanyaengine::{Object, Transform};
+        use yanyaengine::Transform;
 
         use crate::common::{ObjectsStore, Message};
 
@@ -72,7 +80,7 @@ macro_rules! define_entities
 
         pub struct Entities<$($component_type=$default_type,)+>
         {
-            components: ObjectsStore<Vec<Option<usize>>>,
+            pub components: ObjectsStore<Vec<Option<usize>>>,
             $(pub $name: ObjectsStore<$component_type>,)+
         }
 
@@ -84,6 +92,11 @@ macro_rules! define_entities
                     components: ObjectsStore::new(),
                     $($name: ObjectsStore::new(),)+
                 }
+            }
+
+            pub fn exists(&self, entity: Entity) -> bool
+            {
+                self.components.get(entity.0).is_some()
             }
 
             pub fn entities_iter(&self) -> impl Iterator<Item=(Entity, &[Option<usize>])>
