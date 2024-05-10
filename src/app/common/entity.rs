@@ -165,6 +165,18 @@ macro_rules! define_entities
                 Entity(id)
             }
 
+            pub fn remove(&mut self, entity: Entity)
+            {
+                let components = &self.components[entity.0];
+
+                $(if let Some(id) = components[Component::$component_type as usize]
+                {
+                    self.$name.remove(id);
+                })+
+
+                self.components.remove(entity.0);
+            }
+
             fn info_components(
                 &mut self,
                 info: EntityInfo<$($component_type,)+>
@@ -316,6 +328,13 @@ macro_rules! define_entities
                 let entity = self.push(info.clone());
 
                 Message::EntitySet{entity, info}
+            }
+
+            pub fn remove_message(&mut self, entity: Entity) -> Message
+            {
+                self.remove(entity);
+
+                Message::EntityDestroy{entity}
             }
 
             pub fn handle_message(&mut self, message: Message) -> Option<Message>

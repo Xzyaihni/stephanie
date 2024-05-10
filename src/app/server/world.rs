@@ -304,32 +304,32 @@ impl World
 		})
 	}
 
-    /*fn collect_to_delete<I>(iter: I) -> (Vec<Entity>, HashMap<GlobalPos, Vec<Entity>>)
+    fn collect_to_delete<I>(iter: I) -> (Vec<Entity>, HashMap<GlobalPos, Vec<EntityInfo>>)
     where
-        I: Iterator<Item=(Entity, (GlobalPos, Entity))>
+        I: Iterator<Item=(Entity, EntityInfo, GlobalPos)>
     {
         let mut delete_ids = Vec::new();
-        let mut delete_entities: HashMap<GlobalPos, Vec<Entity>> = HashMap::new();
+        let mut delete_entities: HashMap<GlobalPos, Vec<EntityInfo>> = HashMap::new();
 
-        for (id, (pos, entity)) in iter
+        for (entity, info, pos) in iter
         {
-            delete_ids.push(id);
+            delete_ids.push(entity);
 
             match delete_entities.entry(pos)
             {
                 Entry::Occupied(mut occupied) =>
                 {
-                    occupied.get_mut().push(entity);
+                    occupied.get_mut().push(info);
                 },
                 Entry::Vacant(vacant) =>
                 {
-                    vacant.insert(vec![entity]);
+                    vacant.insert(vec![info]);
                 }
             }
         }
 
         (delete_ids, delete_entities)
-    }*/
+    }
 
     pub fn unload_entities<F>(
         saver: &mut EntitiesSaver,
@@ -340,14 +340,20 @@ impl World
     where
         F: Fn(GlobalPos) -> bool
     {
-        /*let delete_entities = container.entities_iter()
-            .filter(|(_, x)| !x.is_player())
-            .filter_map(|(id, x)|
+        let delete_entities = container.entities_iter()
+            .filter(|(entity, _)| container.player(*entity).is_none())
+            .filter_map(|(entity, _)|
             {
-                let pos: Pos3<f32> = (*x.entity_ref().position()).into();
-                let pos = pos.rounded();
+                container.transform(entity).map(|transform|
+                {
+                    let pos: Pos3<f32> = transform.position.into();
 
-                (!keep(pos)).then_some((id, (pos, x)))
+                    (entity, pos.rounded())
+                })
+            })
+            .filter_map(|(entity, pos)|
+            {
+                (!keep(pos)).then_some((entity, container.info(entity), pos))
             });
 
         let (delete_ids, delete_entities) = Self::collect_to_delete(delete_entities);
@@ -357,13 +363,12 @@ impl World
             saver.save(pos, entities);
         });
 
-        delete_ids.into_iter().for_each(|id|
+        delete_ids.into_iter().for_each(|entity|
         {
-            let message = container.remove_entity(id);
+            let message = container.remove_message(entity);
 
             message_handler.send_message(message);
-        });*/
-        todo!();
+        });
     }
 
 	#[allow(dead_code)]

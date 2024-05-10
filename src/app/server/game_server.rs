@@ -148,6 +148,7 @@ impl GameServer
 
         let transform = Transform{
             scale: Vector3::repeat(0.1),
+            position: Vector3::new(0.0, 0.0, TILE_SIZE),
             ..Default::default()
         };
 
