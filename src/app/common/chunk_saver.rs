@@ -22,7 +22,7 @@ use serde::{Serialize, Deserialize};
 use crate::{
     server::world::world_generator::{CHUNK_RATIO, MaybeWorldChunk, WorldChunk, WorldChunkTag},
     common::{
-        Entity,
+        EntityInfo,
         world::{
             Chunk,
             GlobalPos,
@@ -40,7 +40,7 @@ pub trait Saveable: Send + 'static {}
 pub trait AutoSaveable: Saveable {}
 
 impl Saveable for Chunk {}
-impl Saveable for Vec<Entity> {}
+impl Saveable for Vec<EntityInfo> {}
 impl Saveable for SaveValueGroup {}
 
 impl AutoSaveable for Chunk {}
@@ -542,7 +542,7 @@ impl FileSave for FileSaver<SaveValueGroup, LoadValueGroup>
 }
 
 pub type ChunkSaver = Saver<FileSaver<Chunk>, Chunk>;
-pub type EntitiesSaver = DestructiveSaver<FileSaver<Vec<Entity>>, Vec<Entity>>;
+pub type EntitiesSaver = DestructiveSaver<FileSaver<Vec<EntityInfo>>, Vec<EntityInfo>>;
 pub type WorldChunkSaver = Saver<FileSaver<SaveValueGroup, LoadValueGroup>, SaveValueGroup, LoadValueGroup>;
 
 // again, shouldnt be public
@@ -651,9 +651,9 @@ where
 	}
 }
 
-impl SaveLoad<Vec<Entity>> for EntitiesSaver
+impl SaveLoad<Vec<EntityInfo>> for EntitiesSaver
 {
-	fn load(&mut self, pos: GlobalPos) -> Option<Vec<Entity>>
+	fn load(&mut self, pos: GlobalPos) -> Option<Vec<EntityInfo>>
 	{
         self.loaded.insert(pos);
 
@@ -668,7 +668,7 @@ impl SaveLoad<Vec<Entity>> for EntitiesSaver
         self.saver.file_saver.lock().load(pos)
 	}
 
-	fn save(&mut self, pos: GlobalPos, mut entities: Vec<Entity>)
+	fn save(&mut self, pos: GlobalPos, mut entities: Vec<EntityInfo>)
 	{
         if self.loaded.remove(&pos)
         {

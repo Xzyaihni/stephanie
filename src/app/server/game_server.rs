@@ -144,8 +144,6 @@ impl GameServer
 		stream: TcpStream
 	) -> Result<(Entity, usize, MessagePasser), ConnectionError>
 	{
-		let player_info = self.player_info(stream)?;
-
         let player_index = self.entities.player.len() + 1;
 
         let transform = Transform{
@@ -176,12 +174,14 @@ impl GameServer
 		let inserted = self.entities.push(info);
 		self.world.add_player(inserted, position.into());
 
+		let player_info = self.player_info(stream, inserted)?;
+
 		let (connection, messager) = self.player_create(inserted, player_info)?;
 
         Ok((inserted, connection, messager))
 	}
 
-	fn player_info(&self, stream: TcpStream) -> Result<PlayerInfo, ConnectionError>
+	fn player_info(&self, stream: TcpStream, entity: Entity) -> Result<PlayerInfo, ConnectionError>
 	{
 		let mut message_passer = MessagePasser::new(stream);
 
@@ -196,12 +196,7 @@ impl GameServer
 
 		println!("player \"{name}\" connected");
 
-		let player_info = self.player_by_name(&name);
-
-		Ok(player_info.unwrap_or_else(||
-		{
-			PlayerInfo::new(MessageBuffer::new(), message_passer)
-		}))
+		Ok(PlayerInfo::new(MessageBuffer::new(), message_passer, entity))
 	}
 
 	fn player_create(
@@ -294,12 +289,6 @@ impl GameServer
     {
         self.connection_handler.write().send_message(message);
     }
-
-	pub fn player_by_name(&self, _name: &str) -> Option<PlayerInfo>
-	{
-		eprintln!("nyo player loading for now,,");
-		None
-	}
 }
 
 impl EntitiesController for GameServer

@@ -273,7 +273,7 @@ impl World
 	{
 		let loaded_chunk = self.chunk_saver.load(pos);
 
-        /*if loaded_chunk.is_some()
+        if loaded_chunk.is_some()
         {
             let containing_amount = self.client_indexers.iter().filter(|(_, indexer)|
             {
@@ -288,7 +288,7 @@ impl World
                     self.create_entities(container, entities.into_iter());
                 }
             }
-        }*/
+        }
 
 		loaded_chunk.unwrap_or_else(||
 		{
@@ -385,28 +385,25 @@ impl World
         message: Message
     ) -> Option<Message>
 	{
-        return None;
-        /*let new_position = (message.entity_type() == Some(EntityId::Player(id))).then(||
-        {
+        let new_position = (message.entity() == Some(entity)).then(||
             match &message
             {
-                Message::EntitySet{entity, ..} =>
+                Message::EntitySet{entity: check_entity, info} =>
                 {
-                    Some(entity.entity_ref().position())
+                    info.transform.as_ref().map(|x| x.position)
                 },
-                Message::EntitySyncTransform{transform, ..} =>
+                Message::SetTransform{entity: check_entity, transform} =>
                 {
-                    Some(&transform.position)
+                    Some(transform.position)
                 },
                 _ => None
             }
-        }).flatten();
+        ).flatten();
 
         if let Some(new_position) = new_position
         {
-            self.player_moved(container, id, (*new_position).into());
-        }*/
-        todo!();
+            self.player_moved(container, entity, new_position.into());
+        }
 
 		match message
 		{

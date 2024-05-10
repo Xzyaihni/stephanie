@@ -42,6 +42,25 @@ impl Message
 			_ => true
 		}
 	}
+
+    pub fn entity(&self) -> Option<Entity>
+    {
+        match self
+        {
+            Message::EntitySet{entity, ..} => Some(entity),
+            Message::SetTransform{entity, ..} => Some(entity),
+            Message::SetRender{entity, ..} => Some(entity),
+            Message::SetPlayer{entity, ..} => Some(entity),
+            Message::EntityDestroy{entity, ..} => Some(entity),
+            Message::EntityDamage{entity, ..} => Some(entity),
+            Message::PlayerConnect{..}
+            | Message::PlayerOnConnect{..}
+            | Message::PlayerFullyConnected
+            | Message::ChunkRequest{..}
+            | Message::ChunkSync{..}
+            | Message::RepeatMessage{..} => None
+        }.copied()
+    }
 }
 
 #[derive(Debug, Clone)]

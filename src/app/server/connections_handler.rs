@@ -1,6 +1,7 @@
 use crate::common::{
     ObjectsStore,
 	BufferSender,
+    Entity,
 	EntityPasser,
 	MessagePasser,
 	message::{Message, MessageBuffer}
@@ -11,14 +12,19 @@ use crate::common::{
 pub struct PlayerInfo
 {
 	message_buffer: MessageBuffer,
-	message_passer: MessagePasser
+	message_passer: MessagePasser,
+    entity: Entity
 }
 
 impl PlayerInfo
 {
-	pub fn new(message_buffer: MessageBuffer, message_passer: MessagePasser) -> Self
+	pub fn new(
+        message_buffer: MessageBuffer,
+        message_passer: MessagePasser,
+        entity: Entity
+    ) -> Self
 	{
-		Self{message_buffer, message_passer}
+		Self{message_buffer, message_passer, entity}
 	}
 
 	pub fn set_message(&mut self, message: Message)
@@ -80,18 +86,17 @@ impl ConnectionsHandler
 
     fn send_message_inner(&mut self, skip_id: Option<usize>, message: Message)
     {
-		/*let entity_type = message.entity_type();
+		let entity_type = message.entity();
 
-		self.connections.iter_mut().filter(|(index, _)|
+		self.connections.iter_mut().filter(|(index, player_info)|
 		{
-			let same_sync = Some(EntityType::Player(*index)) == entity_type;
+			let same_sync = Some(player_info.entity) == entity_type;
 
             !same_sync && skip_id != Some(*index)
 		}).for_each(|(_, player_info)|
 		{
 			player_info.set_message(message.clone());
-		});*/
-        todo!();
+		});
     }
 }
 
