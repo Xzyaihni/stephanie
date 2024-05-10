@@ -12,8 +12,7 @@ use crate::{
         DamageDirection,
         Side2d,
         DamageHeight,
-        world::TILE_SIZE,
-        physics::PhysicsEntity
+        world::TILE_SIZE
     }
 };
 
@@ -214,8 +213,7 @@ impl<'a> PlayerContainer<'a>
 
         if let Some(movement) = self.movement_direction()
         {
-            // self.walk(movement);
-            todo!();
+            self.walk(movement);
         }
 
         self.look_at_mouse();
@@ -279,9 +277,9 @@ impl<'a> PlayerContainer<'a>
         })
     }
 
-    /*pub fn walk(&mut self, direction: Vector3<f32>)
+    pub fn walk(&mut self, direction: Vector3<f32>)
     {
-        let mut player = self.player_mut();
+        /*let mut player = self.player_mut();
 
         let entity = &player.inner().entity;
 
@@ -290,8 +288,9 @@ impl<'a> PlayerContainer<'a>
             let velocity = direction * speed;
 
             player.set_velocity(velocity);
-        }
-    }*/
+        }*/
+        todo!();
+    }
 
     pub fn look_at_mouse(&mut self)
     {
@@ -302,16 +301,17 @@ impl<'a> PlayerContainer<'a>
 
     pub fn look_at(&mut self, look_position: Vector2<f32>)
     {
-        return;
-        todo!();
-        /*let (aspect, camera_pos) = {
+        let (aspect, camera_pos) = {
             let camera_ref = self.game_state.camera.read();
 
             (camera_ref.aspect(), camera_ref.position().xy().coords)
         };
 
-        let mut player_mut = self.player_mut();
-        let player_pos = player_mut.position().xy();
+        let player_transform = self.game_state.entities_mut()
+            .transform_mut(self.info.entity)
+            .expect("player must have a transform");
+
+        let player_pos = player_transform.position.xy();
 
         let player_offset = player_pos - camera_pos;
 
@@ -321,7 +321,7 @@ impl<'a> PlayerContainer<'a>
 
         let rotation = y.atan2(x);
 
-        player_mut.set_rotation(rotation);*/
+        player_transform.rotation = rotation;
     }
 
     fn player_position(&self) -> Vector3<f32>

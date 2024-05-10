@@ -222,6 +222,7 @@ impl GameObject for ClientEntitiesContainer
 {
 	fn update_buffers(&mut self, info: &mut UpdateBuffersInfo)
     {
+        self.entities.update_render();
         self.entities.render.iter_mut().for_each(|(_, entity)| entity.update_buffers(info));
     }
 
@@ -231,7 +232,7 @@ impl GameObject for ClientEntitiesContainer
 		{
             let player_id = self.entities.components
                 .get(player.get_raw())
-                .and_then(|x| x[Component::RenderType as usize]);
+                .and_then(|x| x[Component::render as usize]);
 
 			self.entities.render.iter().filter(|(id, _)| Some(*id) != player_id)
 				.for_each(|(_, entity)| entity.draw(info));

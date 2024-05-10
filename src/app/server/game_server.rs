@@ -34,6 +34,7 @@ use crate::common::{
     EntityPasser,
     EntitiesController,
     MessagePasser,
+    PhysicalProperties,
     world::chunk::TILE_SIZE,
     message::{
         Message,
@@ -96,19 +97,14 @@ impl GameServer
 
     pub fn update(&mut self, dt: f32)
     {
-        return;
-
         const STEPS: u32 = 2;
 
-        let mut messager = self.connection_handler.write();
-        /*self.entities.enemies_mut().iter_mut().for_each(|(id, enemy)|
+        for _ in 0..STEPS
         {
-            for _ in 0..STEPS
-            {
-                enemy.update_server(&mut messager, id, dt / STEPS as f32);
-            }
-        });*/
-        todo!();
+            let dt = dt / STEPS as f32;
+
+            self.entities.update_physical(dt);
+        }
     }
 
 	pub fn connect(this: Arc<Mutex<Self>>, stream: TcpStream) -> Result<(), ConnectionError>
@@ -169,7 +165,12 @@ impl GameServer
 		let info = EntityInfo{
             player: Some(Player{name: format!("stephanie #{player_index}")}),
             transform: Some(transform),
-            render: Some(RenderInfo{texture: "player/hair.png".to_owned()})
+            render: Some(RenderInfo{texture: "player/hair.png".to_owned()}),
+            physical: Some(PhysicalProperties{
+                mass: 50.0,
+                friction: 0.5,
+                floating: false
+            }.into())
 		};
 
 		let inserted = self.entities.push(info);
@@ -213,7 +214,7 @@ impl GameServer
 
 		messager.send_blocking(Message::PlayerOnConnect{entity})?;
 
-		self.entities.entities_iter().try_for_each(|(entity, _)|
+		self.entities.entities_iter().try_for_each(|entity|
 	    {
             let info = self.entities.info(entity);
             let message = Message::EntitySet{entity, info};

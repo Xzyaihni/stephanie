@@ -2,7 +2,7 @@ use nalgebra::Vector3;
 
 use serde::{Serialize, Deserialize};
 
-use yanyaengine::{Transform, TransformContainer, OnTransformCallback};
+use yanyaengine::Transform;
 
 
 pub const GRAVITY: Vector3<f32> = Vector3::new(0.0, 0.0, -9.81);
@@ -10,7 +10,6 @@ pub const GRAVITY: Vector3<f32> = Vector3::new(0.0, 0.0, -9.81);
 #[derive(Clone)]
 pub struct PhysicalProperties
 {
-	pub transform: Transform,
     pub mass: f32,
     pub friction: f32,
     pub floating: bool
@@ -19,7 +18,6 @@ pub struct PhysicalProperties
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Physical
 {
-	pub transform: Transform,
     pub mass: f32,
 	pub friction: f32,
     pub floating: bool,
@@ -33,7 +31,6 @@ impl From<PhysicalProperties> for Physical
     fn from(value: PhysicalProperties) -> Self
     {
         Self{
-            transform: value.transform,
             mass: value.mass,
             friction: value.friction,
             floating: value.floating,
@@ -44,37 +41,9 @@ impl From<PhysicalProperties> for Physical
     }
 }
 
-impl OnTransformCallback for Physical {}
-
-impl TransformContainer for Physical
-{
-	fn transform_ref(&self) -> &Transform
-	{
-		&self.transform
-	}
-
-	fn transform_mut(&mut self) -> &mut Transform
-	{
-		&mut self.transform
-	}
-}
-
-impl PhysicsEntity for Physical
-{
-	fn physical_ref(&self) -> &Physical
-    {
-        self
-    }
-
-	fn physical_mut(&mut self) -> &mut Physical
-    {
-        self
-    }
-}
-
 impl Physical
 {
-    pub fn physics_update(&mut self, dt: f32)
+    pub fn physics_update(&mut self, transform: &mut Transform, dt: f32)
     {
         self.velocity += (self.force * dt) / self.mass;
 
@@ -88,7 +57,7 @@ impl Physical
             self.apply_friction(normal_impulse);
         }
 
-        self.transform.position += self.velocity * dt;
+        transform.position += self.velocity * dt;
 
         self.force = Vector3::zeros();
     }
@@ -136,49 +105,4 @@ impl Physical
             self.velocity.y = 0.0;
         }
     }
-}
-
-pub trait PhysicsEntity: TransformContainer
-{
-	fn physical_ref(&self) -> &Physical;
-	fn physical_mut(&mut self) -> &mut Physical;
-
-    fn set_velocity(&mut self, velocity: Vector3<f32>)
-    {
-        self.physical_mut().velocity = velocity;
-    }
-
-    fn add_force(&mut self, force: Vector3<f32>)
-    {
-        self.physical_mut().force += force;
-    }
-
-    fn sub_impulse(&mut self, impulse: Vector3<f32>)
-    {
-        self.physical_mut().sub_impulse(impulse);
-    }
-
-    fn add_impulse(&mut self, impulse: Vector3<f32>)
-    {
-        self.physical_mut().add_impulse(impulse);
-    }
-
-    fn damp_velocity(&mut self, damping: f32, dt: f32)
-    {
-        self.physical_mut().velocity *= damping.powf(dt);
-    }
-
-	fn physics_update(&mut self, dt: f32)
-    {
-        self.physical_mut().physics_update(dt);
-    }
-
-	fn sync_transform(&mut self, other: Transform)
-	{
-		let physical = self.physical_mut();
-
-        physical.transform = other;
-
-		self.transform_callback(self.transform_clone());
-	}
 }

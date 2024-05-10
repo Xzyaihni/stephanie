@@ -2,7 +2,7 @@ use nalgebra::Vector3;
 
 use yanyaengine::Transform;
 
-use crate::common::{RenderInfo, EntityInfo};
+use crate::common::{PhysicalProperties, RenderInfo, EntityInfo};
 
 
 pub struct EnemyBuilder
@@ -27,6 +27,11 @@ impl EnemyBuilder
                 ..Default::default()
             }),
             render: Some(RenderInfo{texture: "enemy/body.png".to_owned()}),
+            physical: Some(PhysicalProperties{
+                mass: 50.0,
+                friction: 0.5,
+                floating: false
+            }.into()),
             ..Default::default()
         }
     }

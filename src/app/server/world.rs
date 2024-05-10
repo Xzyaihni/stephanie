@@ -341,8 +341,8 @@ impl World
         F: Fn(GlobalPos) -> bool
     {
         let delete_entities = container.entities_iter()
-            .filter(|(entity, _)| container.player(*entity).is_none())
-            .filter_map(|(entity, _)|
+            .filter(|entity| container.player(*entity).is_none())
+            .filter_map(|entity|
             {
                 container.transform(entity).map(|transform|
                 {

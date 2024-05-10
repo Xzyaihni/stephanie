@@ -30,7 +30,7 @@ pub use damage::{Damageable, Damage, DamageType, DamageDirection, Side2d, Damage
 
 pub use enemy_builder::EnemyBuilder;
 
-pub use physics::PhysicsEntity;
+pub use physics::{Physical, PhysicalProperties};
 
 pub mod animator;
 

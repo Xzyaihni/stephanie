@@ -2,6 +2,8 @@ use serde::{Serialize, Deserialize};
 
 use yanyaengine::{DefaultModel, Object, ObjectInfo, game_object::*};
 
+use crate::common::Physical;
+
 
 pub trait ServerToClient<T>
 {
@@ -67,6 +69,40 @@ pub struct RenderInfo
     pub texture: String
 }
 
+macro_rules! get_component
+{
+    ($this:expr, $components:expr, $access_type:ident, $component:ident) =>
+    {
+        $components[Component::$component as usize]
+            .map(|id| $this.$component.$access_type(id).unwrap())
+    }
+}
+
+macro_rules! get_required_component
+{
+    ($this:expr, $components:expr, $access_type:ident, $component:ident) =>
+    {
+        get_component!($this, $components, $access_type, $component)
+            .unwrap_or_else(|| panic!("{}", stringify!($component)))
+    }
+}
+
+macro_rules! get_entity
+{
+    ($this:expr, $entity:expr, $access_type:ident, $component:ident) =>
+    {
+        get_component!($this, $this.components[$entity.0], $access_type, $component)
+    }
+}
+
+macro_rules! get_required_entity
+{
+    ($this:expr, $entity:expr, $access_type:ident, $component:ident) =>
+    {
+        get_required_component!($this, $this.components[$entity.0], $access_type, $component)
+    }
+}
+
 macro_rules! define_entities
 {
     ($(($name:ident,
@@ -81,9 +117,10 @@ macro_rules! define_entities
         use crate::common::{ObjectsStore, Message};
 
 
+        #[allow(non_camel_case_types)]
         pub enum Component
         {
-            $($component_type,)+
+            $($name,)+
         }
 
         #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -126,31 +163,41 @@ macro_rules! define_entities
                 self.components.contains(entity.0)
             }
 
-            pub fn entities_iter(&self) -> impl Iterator<Item=(Entity, &[Option<usize>])>
+            pub fn entities_iter(&self) -> impl Iterator<Item=Entity> + '_
             {
-                self.components.iter().map(|(index, components)|
+                self.components.iter().map(|(index, _)|
                 {
-                    let components: &[_] = components;
-
-                    (Entity(index), components)
+                    Entity(index)
                 })
+            }
+
+            // i hate rust generics
+            pub fn update_physical(&mut self, dt: f32)
+            where
+                for<'a> &'a mut TransformType: Into<&'a mut Transform>,
+                for<'a> &'a mut PhysicalType: Into<&'a mut Physical>
+            {
+                self.components.iter().for_each(|(_, components)|
+                {
+                    if let Some(physical) = get_component!(self, components, get_mut, physical)
+                    {
+                        let transform = get_required_component!(self, components, get_mut, transform);
+
+                        let physical: &mut Physical = physical.into();
+                        physical.physics_update(transform.into(), dt);
+                    }
+                });
             }
 
             $(
                 pub fn $name(&self, entity: Entity) -> Option<&$component_type>
                 {
-                    self.components[entity.0][Component::$component_type as usize].map(|id|
-                    {
-                        &self.$name[id]
-                    })
+                    get_entity!(self, entity, get, $name)
                 }
 
                 pub fn $mut_func(&mut self, entity: Entity) -> Option<&mut $component_type>
                 {
-                    self.components[entity.0][Component::$component_type as usize].map(|id|
-                    {
-                        &mut self.$name[id]
-                    })
+                    get_entity!(self, entity, get_mut, $name)
                 }
             )+
 
@@ -174,7 +221,7 @@ macro_rules! define_entities
 
                 let components = &self.components[entity.0];
 
-                $(if let Some(id) = components[Component::$component_type as usize]
+                $(if let Some(id) = components[Component::$name as usize]
                 {
                     self.$name.remove(id);
                 })+
@@ -201,7 +248,7 @@ macro_rules! define_entities
             {
                 vec![$(
                     {
-                        let _ = Component::$component_type;
+                        let _ = Component::$name;
                         None
                     }
                 ,)+]
@@ -274,7 +321,7 @@ macro_rules! define_entities
 
                         let slot = &mut self.components
                             [entity.0]
-                            [Component::$component_type as usize];
+                            [Component::$name as usize];
 
                         if let Some(id) = slot
                         {
@@ -292,6 +339,21 @@ macro_rules! define_entities
                 }
             }
 
+            pub fn update_render(&mut self)
+            {
+                self.components.iter().for_each(|(_, components)|
+                {
+                    if let Some(object) = get_component!(self, components, get_mut, render)
+                    {
+                        let transform = get_required_component!(self, components, get, transform);
+
+                        use yanyaengine::TransformContainer;
+
+                        object.set_transform(transform.clone());
+                    }
+                });
+            }
+
             fn set_existing_entity(
                 &mut self,
                 create_info: &mut ObjectCreateInfo,
@@ -304,7 +366,7 @@ macro_rules! define_entities
                 let transform = info.transform.clone();
 
                 $({
-                    let component = &mut components[Component::$component_type as usize];
+                    let component = &mut components[Component::$name as usize];
 
                     let new_component = info.$name.map(|c|
                     {
@@ -337,7 +399,7 @@ macro_rules! define_entities
                 let components = &self.components[entity.0];
 
                 EntityInfo{$(
-                    $name: components[Component::$component_type as usize].map(|id|
+                    $name: components[Component::$name as usize].map(|id|
                     {
                         self.$name[id].clone()
                     }),
@@ -369,5 +431,6 @@ macro_rules! define_entities
 define_entities!{
     (render, render_mut, SetRender, RenderType, RenderInfo),
     (transform, transform_mut, SetTransform, TransformType, Transform),
-    (player, player_mut, SetPlayer, PlayerType, Player)
+    (player, player_mut, SetPlayer, PlayerType, Player),
+    (physical, physical_mut, SetPhysical, PhysicalType, Physical)
 }
