@@ -24,10 +24,14 @@ use crate::common::{
     ObjectsStore,
     TileMap,
     Entity,
+    EntityInfo,
+    Component,
+    RenderInfo,
+    Player,
+    Entities,
     Anatomy,
     HumanAnatomy,
     EntityPasser,
-    EntitiesContainer,
     EntitiesController,
     MessagePasser,
     world::chunk::TILE_SIZE,
@@ -37,26 +41,6 @@ use crate::common::{
     }
 };
 
-
-#[derive(Debug)]
-pub struct ServerEntitiesContainer
-{
-    entities: ObjectsStore<Entity>
-}
-
-impl ServerEntitiesContainer
-{
-	pub fn new(limit: usize) -> Self
-	{
-        let entities = ObjectsStore::with_capacity(limit);
-
-		Self{entities}
-    }
-}
-
-impl EntitiesContainer for ServerEntitiesContainer
-{
-}
 
 #[derive(Debug)]
 pub enum ConnectionError
@@ -89,10 +73,11 @@ impl From<bincode::Error> for ConnectionError
 	}
 }
 
-#[derive(Debug)]
+pub type ServerEntitiesContainer = Entities;
+
 pub struct GameServer
 {
-	entities: ServerEntitiesContainer,
+	entities: Entities,
 	world: World,
 	connection_handler: Arc<RwLock<ConnectionsHandler>>
 }
@@ -101,7 +86,7 @@ impl GameServer
 {
 	pub fn new(tilemap: TileMap, limit: usize) -> Result<Self, ParseError>
 	{
-		let entities = ServerEntitiesContainer::new(limit);
+		let entities = Entities::new();
 		let connection_handler = Arc::new(RwLock::new(ConnectionsHandler::new(limit)));
 
 		let world = World::new(connection_handler.clone(), tilemap)?;
@@ -113,6 +98,8 @@ impl GameServer
 
     pub fn update(&mut self, dt: f32)
     {
+        return;
+
         const STEPS: u32 = 2;
 
         let mut messager = self.connection_handler.write();
@@ -142,12 +129,12 @@ impl GameServer
 		stream: TcpStream
 	) -> Result<(), ConnectionError>
 	{
-		let (id, messager) = this.lock().player_connect_inner(stream)?;
+		let (player, id, messager) = this.lock().player_connect_inner(stream)?;
 
 		let other_this = this.clone();
 		receiver_loop(
 			messager,
-			move |message| this.lock().process_message_inner(message, id),
+			move |message| this.lock().process_message_inner(message, id, player),
 			move || other_this.lock().connection_close(id)
 		);
 
@@ -157,47 +144,43 @@ impl GameServer
 	fn player_connect_inner(
 		&mut self,
 		stream: TcpStream
-	) -> Result<(usize, MessagePasser), ConnectionError>
+	) -> Result<(Entity, usize, MessagePasser), ConnectionError>
 	{
 		let player_info = self.player_info(stream)?;
 
-        /*let player_index = self.entities.players_ref().len() + 1;
+        let player_index = self.entities.player.len() + 1;
 
-		let player_properties = PlayerProperties{
-            name: format!("stephanie #{player_index}"),
-            character_properties: CharacterProperties{
-                anatomy: Anatomy::Human(HumanAnatomy::default()),
-                entity_properties: EntityProperties{
-                    physical: PhysicalProperties{
-                        mass: 50.0,
-                        friction: 0.5,
-                        floating: false,
-                        transform: Transform{
-                            scale: Vector3::repeat(0.1),
-                            ..Default::default()
-                        }
-                    }
-                }
+        let transform = Transform{
+            scale: Vector3::repeat(0.1),
+            ..Default::default()
+        };
+
+        /*let physical = PhysicalProperties{
+            mass: 50.0,
+            friction: 0.5,
+            floating: false,
+            transform: Transform{
+                scale: Vector3::repeat(0.1),
+                ..Default::default()
             }
-		};*/
+        };*/
 
-        todo!();
-		/*let player = {
-			let mut player = todo!();
-			player.translate(Vector3::new(0.0, 0.0, TILE_SIZE));
+        let anatomy = Anatomy::Human(HumanAnatomy::default());
 
-			player
+        let position = transform.position;
+
+		let info = EntityInfo{
+            player: Some(Player{name: format!("stephanie #{player_index}")}),
+            transform: Some(transform),
+            render: Some(RenderInfo{texture: "player/hair.png".to_owned()})
 		};
 
-		let world_id = self.world.add_player((*player.position()).into());
-		let inserted_id = self.add_player(player);
+		let inserted = self.entities.push(info);
+		self.world.add_player(inserted, position.into());
 
-		if world_id != inserted_id
-		{
-			return Err(ConnectionError::IdMismatch);
-		}
+		let (connection, messager) = self.player_create(inserted, player_info)?;
 
-		self.player_create(player_info, inserted_id)*/
+        Ok((inserted, connection, messager))
 	}
 
 	fn player_info(&self, stream: TcpStream) -> Result<PlayerInfo, ConnectionError>
@@ -225,36 +208,28 @@ impl GameServer
 
 	fn player_create(
 		&mut self,
-		player_info: PlayerInfo,
-		check_id: usize
+        entity: Entity,
+		player_info: PlayerInfo
 	) -> Result<(usize, MessagePasser), ConnectionError>
 	{
 		let mut connection_handler = self.connection_handler.write();
-		let player_id = connection_handler.connect(player_info);
+		let connection_id = connection_handler.connect(player_info);
 
-		let messager = connection_handler.get_mut(player_id);
+		let messager = connection_handler.get_mut(connection_id);
 
-		if player_id != check_id
-		{
-			return Err(ConnectionError::IdMismatch);
-		}
+		messager.send_blocking(Message::PlayerOnConnect{entity})?;
 
-		messager.send_blocking(Message::PlayerOnConnect{id: player_id})?;
-
-		/*self.entities.players_ref().iter().try_for_each(|(index, player)|
-		{
-            let id = EntityType::Player(index);
-            let entity = EntityAny::Player(player.clone());
-
-            let message = Message::EntitySet{id, entity};
-
-			messager.send_blocking(message)
-		})?;*/
-        todo!();
+		self.entities.entities_iter().try_for_each(|(entity, components)|
+	    {
+            Component::message_set(&self.entities, entity, components).try_for_each(|message|
+            {
+                messager.send_blocking(message)
+            })
+		})?;
 
 		messager.send_blocking(Message::PlayerFullyConnected)?;
 
-		Ok((player_id, messager.clone_messager()))
+		Ok((connection_id, messager.clone_messager()))
 	}
 
 	fn connection_close(&mut self, id: usize)
@@ -270,7 +245,7 @@ impl GameServer
         todo!();
 	}
 
-	fn process_message_inner(&mut self, message: Message, id: usize)
+	fn process_message_inner(&mut self, message: Message, id: usize, player: Entity)
 	{
         let message = match message
         {
@@ -280,7 +255,7 @@ impl GameServer
 
                 return;
             },
-            Message::EntityDestroy{id: entity_id} =>
+            Message::EntityDestroy{entity} =>
             {
                 {
                     todo!();
@@ -299,7 +274,7 @@ impl GameServer
 			self.connection_handler.write().send_message_without(id, message.clone());
 		}
 
-		let message = match self.world.handle_message(&mut self.entities, id, message)
+		let message = match self.world.handle_message(&mut self.entities, id, player, message)
 		{
 			Some(x) => x,
 			None => return
@@ -313,23 +288,6 @@ impl GameServer
 
 		match message
 		{
-			Message::EntitySet{id, entity} =>
-			{
-                todo!();
-                // self.entities.insert(id, entity.with_info_server());
-			},
-            Message::EntityAdd{entity} =>
-            {
-                todo!();
-                /*let message = self.entities.push_entity(entity.clone());
-
-                self.send_message(message);*/
-            },
-            Message::EntityDamage{id, damage} =>
-            {
-                todo!();
-                // self.entities.damage(id, damage)
-            },
 			x => panic!("unhandled message: {x:?}")
 		}
 	}
@@ -348,7 +306,7 @@ impl GameServer
 
 impl EntitiesController for GameServer
 {
-	type Container = ServerEntitiesContainer;
+	type Container = Entities;
 	type Passer = ConnectionsHandler;
 
 	fn container_ref(&self) -> &Self::Container

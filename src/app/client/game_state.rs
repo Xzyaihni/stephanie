@@ -25,9 +25,8 @@ use crate::common::{
     TileMap,
     Damage,
     Entity,
-    EntityId,
+    Entities,
     EntityPasser,
-	EntitiesContainer,
 	EntitiesController,
 	message::Message,
 	world::{
@@ -63,31 +62,37 @@ struct RaycastResult
     pierce: f32
 }
 
-#[derive(Debug)]
 pub struct ClientEntitiesContainer
 {
-	entity: ObjectsStore<Entity>,
-	main_player: Option<usize>
+	entities: Entities,
+	main_player: Option<Entity>
 }
 
 impl ClientEntitiesContainer
 {
 	pub fn new() -> Self
 	{
-		let entity = ObjectsStore::new();
+		let entities = Entities::new();
 		let main_player = None;
 
-		Self{entity, main_player}
+		Self{entities, main_player}
 	}
+    
+    pub fn handle_message(&mut self, message: Message) -> Option<Message>
+    {
+        self.entities.handle_message(message)
+    }
 
 	pub fn update(&mut self, dt: f32)
 	{
+        return;
         todo!();
-		// self.entities.iter_mut().for_each(|(_, pair)| pair.update(dt));
+		// self.entities.iter_mut().for_each(|(_, entity)| entity.update(dt));
 	}
 
-	pub fn player_exists(&self, id: usize) -> bool
+	pub fn player_exists(&self, entity: Entity) -> bool
 	{
+        return false;
         todo!();
 		// self.players.contains(id)
 	}
@@ -239,10 +244,6 @@ impl GameObject for ClientEntitiesContainer
     }
 }
 
-impl EntitiesContainer for ClientEntitiesContainer
-{
-}
-
 #[derive(Debug, Clone, Copy)]
 pub struct MousePosition
 {
@@ -281,7 +282,7 @@ pub struct RaycastInfo
 #[derive(Debug)]
 pub enum RaycastHitId
 {
-    Entity(EntityId),
+    Entity(Entity),
     // later
     Tile
 }
@@ -322,7 +323,6 @@ pub struct GameState
 	pub running: bool,
 	pub debug_mode: bool,
     pub tilemap: Arc<TileMap>,
-	player_id: usize,
 	world: World,
 	connections_handler: Arc<RwLock<ConnectionsHandler>>,
 	receiver: Receiver<Message>
@@ -384,7 +384,6 @@ impl GameState
 			running: true,
 			debug_mode: client_info.debug_mode,
             tilemap,
-			player_id,
 			world,
 			connections_handler,
 			receiver
@@ -401,7 +400,7 @@ impl GameState
         self.entities.raycast(info, start, end)
     }
 
-	fn connect_to_server(handler: Arc<RwLock<ConnectionsHandler>>, name: &str) -> usize
+	fn connect_to_server(handler: Arc<RwLock<ConnectionsHandler>>, name: &str) -> Entity
 	{
 		let message = Message::PlayerConnect{name: name.to_owned()};
 
@@ -414,10 +413,7 @@ impl GameState
 
 		match handler.receive_blocking()
 		{
-			Ok(Some(Message::PlayerOnConnect{id})) =>
-			{
-				id
-			},
+			Ok(Some(Message::PlayerOnConnect{entity})) => entity,
 			x => panic!("received wrong message on connect: {x:?}")
 		}
 	}
@@ -434,9 +430,19 @@ impl GameState
         self.entities.damage(id, damage);
     }*/
 
-	pub fn player_id(&self) -> usize
+    pub fn entities(&self) -> &Entities
+    {
+        &self.entities.entities
+    }
+
+    pub fn entities_mut(&mut self) -> &mut Entities
+    {
+        &mut self.entities.entities
+    }
+
+	pub fn player(&self) -> Entity
 	{
-		self.player_id
+		self.entities.main_player.unwrap()
 	}
 
 	pub fn process_messages(&mut self, create_info: &mut ObjectCreateInfo)
@@ -478,11 +484,6 @@ impl GameState
 
 		match message
 		{
-			Message::EntitySet{id, entity} =>
-			{
-                todo!();
-				// self.entities.insert(id, entity.with_info_client(create_info));
-			},
 			Message::PlayerFullyConnected =>
 			{
 				self.notifications.set(Notification::PlayerConnected);

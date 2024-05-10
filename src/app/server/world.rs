@@ -21,7 +21,6 @@ use crate::{
         SaveLoad,
 		EntityPasser,
         Entity,
-        EntityId,
 		message::Message,
 		world::{
             CHUNK_SIZE,
@@ -50,7 +49,7 @@ mod server_overmap;
 pub const SERVER_OVERMAP_SIZE: usize = CLIENT_OVERMAP_SIZE + 1;
 pub const SERVER_OVERMAP_SIZE_Z: usize = CLIENT_OVERMAP_SIZE_Z + 1;
 
-type OvermapsType = Arc<RwLock<ObjectsStore<ServerOvermap<WorldChunkSaver>>>>;
+type OvermapsType = Arc<RwLock<HashMap<Entity, ServerOvermap<WorldChunkSaver>>>>;
 
 #[derive(Debug)]
 struct ClientIndexer
@@ -81,7 +80,7 @@ pub struct World
 	chunk_saver: ChunkSaver,
     entities_saver: EntitiesSaver,
 	overmaps: OvermapsType,
-    client_indexers: ObjectsStore<ClientIndexer>
+    client_indexers: HashMap<Entity, ClientIndexer>
 }
 
 impl World
@@ -105,8 +104,8 @@ impl World
 
 		let world_generator = Arc::new(Mutex::new(world_generator));
 
-		let overmaps = Arc::new(RwLock::new(ObjectsStore::new()));
-        let client_indexers = ObjectsStore::new();
+		let overmaps = Arc::new(RwLock::new(HashMap::new()));
+        let client_indexers = HashMap::new();
 
 		Ok(Self{
 			message_handler,
@@ -119,7 +118,7 @@ impl World
 		})
 	}
 
-	pub fn add_player(&mut self, position: Pos3<f32>) -> usize
+	pub fn add_player(&mut self, entity: Entity, position: Pos3<f32>)
 	{
 		let size = Pos3::new(SERVER_OVERMAP_SIZE, SERVER_OVERMAP_SIZE, SERVER_OVERMAP_SIZE_Z);
 		let overmap = ServerOvermap::new(
@@ -131,25 +130,27 @@ impl World
         let indexer_size = common::world::World::overmap_size();
         let indexer = ClientIndexer{size: indexer_size, player_position: position.rounded()};
 
-        self.client_indexers.push(indexer);
-
-		self.overmaps.write().push(overmap)
+        self.client_indexers.insert(entity, indexer);
+		self.overmaps.write().insert(entity, overmap);
 	}
 
-	pub fn remove_player(&mut self, id: usize)
+	pub fn remove_player(&mut self, entity: Entity)
 	{
-		self.client_indexers.remove(id);
-		self.overmaps.write().remove(id);
+		self.client_indexers.remove(&entity);
+		self.overmaps.write().remove(&entity);
 	}
 
     pub fn player_moved(
         &mut self,
         container: &mut ServerEntitiesContainer,
-        id: usize,
+        entity: Entity,
         new_position: Pos3<f32>
     )
     {
-        let previous_position = &mut self.client_indexers[id].player_position;
+        let previous_position = &mut self.client_indexers.get_mut(&entity)
+            .expect("id must be valid")
+            .player_position;
+
         let new_position = new_position.rounded();
 
         let position_changed = *previous_position != new_position;
@@ -173,10 +174,11 @@ impl World
         &mut self,
         container: &mut ServerEntitiesContainer,
         id: usize,
+        entity: Entity,
         pos: GlobalPos
     )
 	{
-		let chunk = self.load_chunk(container, id, pos);
+		let chunk = self.load_chunk(container, entity, pos);
 
         let message = Message::ChunkSync{pos, chunk};
 
@@ -186,12 +188,12 @@ impl World
     fn create_entities(
         &self,
         container: &mut ServerEntitiesContainer,
-        entities: Vec<Entity>
+        entities: impl Iterator<Item=Entity>
     )
     {
         let mut writer = self.message_handler.write();
 
-        entities.into_iter().for_each(|entity|
+        entities.for_each(|entity|
         {
             todo!();
             // let message = container.push_entity(entity);
@@ -209,7 +211,7 @@ impl World
     {
         let spawns = fastrand::usize(0..3);
 
-        let entities: Vec<_> = (0..spawns)
+        let entities = (0..spawns)
             .map(|_|
             {
                 ChunkLocal::new(
@@ -254,11 +256,11 @@ impl World
                 {
                     let pos = chunk_pos + above.pos().map(|x| x as f32 * TILE_SIZE);
 
+                    let info = EnemyBuilder::new(pos.into()).build();
+
                     todo!();
-                    // Entity::Enemy(EnemyBuilder::new(pos.into()).build())
                 })
-            })
-            .collect();
+            });
 
         self.create_entities(container, entities);
     }
@@ -266,13 +268,13 @@ impl World
 	fn load_chunk(
         &mut self,
         container: &mut ServerEntitiesContainer,
-        id: usize,
+        entity: Entity,
         pos: GlobalPos
     ) -> Chunk
 	{
 		let loaded_chunk = self.chunk_saver.load(pos);
 
-        if loaded_chunk.is_some()
+        /*if loaded_chunk.is_some()
         {
             let containing_amount = self.client_indexers.iter().filter(|(_, indexer)|
             {
@@ -284,14 +286,16 @@ impl World
             {
                 if let Some(entities) = self.entities_saver.load(pos)
                 {
-                    self.create_entities(container, entities);
+                    self.create_entities(container, entities.into_iter());
                 }
             }
-        }
+        }*/
 
 		loaded_chunk.unwrap_or_else(||
 		{
-			let chunk = self.overmaps.write()[id].generate_chunk(pos);
+			let chunk = self.overmaps.write().get_mut(&entity)
+                .expect("id must be valid")
+                .generate_chunk(pos);
 
             self.add_entities(container, pos.into(), &chunk);
                 
@@ -301,9 +305,9 @@ impl World
 		})
 	}
 
-    fn collect_to_delete<I>(iter: I) -> (Vec<EntityId>, HashMap<GlobalPos, Vec<Entity>>)
+    /*fn collect_to_delete<I>(iter: I) -> (Vec<Entity>, HashMap<GlobalPos, Vec<Entity>>)
     where
-        I: Iterator<Item=(EntityId, (GlobalPos, Entity))>
+        I: Iterator<Item=(Entity, (GlobalPos, Entity))>
     {
         let mut delete_ids = Vec::new();
         let mut delete_entities: HashMap<GlobalPos, Vec<Entity>> = HashMap::new();
@@ -326,7 +330,7 @@ impl World
         }
 
         (delete_ids, delete_entities)
-    }
+    }*/
 
     pub fn unload_entities<F>(
         saver: &mut EntitiesSaver,
@@ -378,9 +382,11 @@ impl World
         &mut self,
         container: &mut ServerEntitiesContainer,
         id: usize,
+        entity: Entity,
         message: Message
     ) -> Option<Message>
 	{
+        return None;
         /*let new_position = (message.entity_type() == Some(EntityId::Player(id))).then(||
         {
             match &message
@@ -407,7 +413,7 @@ impl World
 		{
 			Message::ChunkRequest{pos} =>
 			{
-				self.send_chunk(container, id, pos);
+				self.send_chunk(container, id, entity, pos);
 				None
 			},
 			_ => Some(message)

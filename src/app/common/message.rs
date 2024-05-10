@@ -6,8 +6,9 @@ use strum_macros::EnumCount;
 
 use crate::common::{
 	Transform,
-	EntityId,
     Entity,
+    RenderInfo,
+    Player,
     Damage,
 	world::{Chunk, GlobalPos}
 };
@@ -16,14 +17,14 @@ use crate::common::{
 #[derive(Debug, Clone, EnumCount, Serialize, Deserialize)]
 pub enum Message
 {
-    EntitySet{id: EntityId, entity: Entity},
-    EntityAdd{entity: Entity},
-    EntityDestroy{id: EntityId},
-    EntityDamage{id: EntityId, damage: Damage},
+    SetTransform{entity: Entity, transform: Transform},
+    SetRender{entity: Entity, render: RenderInfo},
+    SetPlayer{entity: Entity, player: Player},
+    EntityDestroy{entity: Entity},
+    EntityDamage{entity: Entity, damage: Damage},
 	PlayerConnect{name: String},
-	PlayerOnConnect{id: usize},
+	PlayerOnConnect{entity: Entity},
 	PlayerFullyConnected,
-	EntitySyncTransform{entity_type: EntityId, transform: Transform},
 	ChunkRequest{pos: GlobalPos},
 	ChunkSync{pos: GlobalPos, chunk: Chunk},
     RepeatMessage{message: Box<Message>}
@@ -31,23 +32,11 @@ pub enum Message
 
 impl Message
 {
-	pub fn entity_type(&self) -> Option<EntityId>
-	{
-		match self
-		{
-            Message::EntitySet{id, ..} => Some(*id),
-            Message::EntityDestroy{id, ..} => Some(*id),
-			Message::EntitySyncTransform{entity_type, ..} => Some(*entity_type),
-            Message::EntityDamage{id, ..} => Some(*id),
-			_ => None
-		}
-	}
-
 	pub fn forward(&self) -> bool
 	{
 		match self
 		{
-			Message::ChunkRequest{..} | Message::EntityAdd{..} => false,
+			Message::ChunkRequest{..} => false,
 			_ => true
 		}
 	}

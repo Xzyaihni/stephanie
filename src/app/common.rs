@@ -21,10 +21,7 @@ pub use receiver_loop::receiver_loop;
 
 pub use tilemap::{TileMap, TileMapWithTextures};
 
-pub use entity::{
-    Entity,
-    EntityId
-};
+pub use entity::{Component, Player, RenderInfo, Entity, EntityInfo, Entities};
 
 pub use chunk_saver::{SaveLoad, WorldChunkSaver, ChunkSaver, EntitiesSaver};
 
@@ -212,17 +209,9 @@ pub trait EntityPasser
 	fn send_message(&mut self, message: Message);
 }
 
-pub trait EntitiesContainer
-{
-	fn handle_message(&mut self, message: Message) -> Option<Message>
-	{
-        Some(message)
-	}
-}
-
 pub trait EntitiesController
 {
-	type Container: EntitiesContainer;
+	type Container;
 	type Passer: EntityPasser;
 
 	fn container_ref(&self) -> &Self::Container;

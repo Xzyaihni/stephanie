@@ -5,6 +5,7 @@ use yanyaengine::{TextureId, TransformContainer};
 use crate::{
     client::ConnectionsHandler,
     common::{
+        Entity,
         EntitiesController,
         Damage,
         DamageType,
@@ -39,56 +40,51 @@ pub struct Game
 
 impl Game
 {
-    pub fn new(self_id: usize) -> Self
+    pub fn new(player: Entity) -> Self
     {
-        let player = PlayerInfo::new(self_id);
+        let player = PlayerInfo::new(player);
 
         Self{player}
     }
 
     fn player_container<'a>(&'a mut self, game_state: &'a mut GameState) -> PlayerContainer<'a>
     {
-        todo!();
-        // PlayerContainer::new(&mut self.player, game_state)
+        PlayerContainer::new(&mut self.player, game_state)
     }
 
     pub fn on_player_connected(&mut self, game_state: &mut GameState)
     {
-        todo!();
-        // self.player_container(game_state).camera_sync_instant();
+        self.player_container(game_state).camera_sync_instant();
     }
 
     pub fn update(&mut self, game_state: &mut GameState, dt: f32)
     {
-        todo!();
-        // self.player_container(game_state).update(dt)
+        self.player_container(game_state).update(dt)
     }
 
     pub fn player_exists(&mut self, game_state: &mut GameState) -> bool
     {
-        todo!();
-        // self.player_container(game_state).exists()
+        self.player_container(game_state).exists()
     }
 
     pub fn camera_sync(&mut self, game_state: &mut GameState)
     {
-        todo!();
-        // self.player_container(game_state).camera_sync();
+        self.player_container(game_state).camera_sync();
     }
 }
 
 struct PlayerInfo
 {
-    id: usize,
+    entity: Entity,
     camera_follow: f32,
     selected_weapon: ()
 }
 
 impl PlayerInfo
 {
-    pub fn new(id: usize) -> Self
+    pub fn new(entity: Entity) -> Self
     {
-        Self{id, camera_follow: 0.25, selected_weapon: ()}
+        Self{entity, camera_follow: 0.25, selected_weapon: ()}
     }
 }
 
@@ -100,19 +96,19 @@ struct PlayerContainer<'a>
 
 impl<'a> PlayerContainer<'a>
 {
-    /*pub fn new(info: &'a mut PlayerInfo, game_state: &'a mut GameState) -> Self
+    pub fn new(info: &'a mut PlayerInfo, game_state: &'a mut GameState) -> Self
     {
         Self{info, game_state}
     }
 
     pub fn exists(&self) -> bool
     {
-        self.game_state.entities.player_exists(self.info.id)
+        self.game_state.entities.player_exists(self.info.entity)
     }
 
     pub fn camera_sync(&self)
     {
-        let position = self.player_ref().transform_ref().position;
+        let position = self.player_position();
 
         self.game_state.camera.write().translate_to(&position, self.info.camera_follow);
 
@@ -121,7 +117,7 @@ impl<'a> PlayerContainer<'a>
 
     pub fn camera_sync_instant(&self)
     {
-        let position = self.player_ref().transform_ref().position;
+        let position = self.player_position();
 
         self.game_state.camera.write().set_position(position.into());
 
@@ -130,7 +126,7 @@ impl<'a> PlayerContainer<'a>
 
     fn camera_sync_z(&self)
     {
-        let player_z = self.player_ref().transform_ref().position.z;
+        let player_z = self.player_position().z;
 
         let z = (player_z / TILE_SIZE).ceil() * TILE_SIZE;
 
@@ -144,7 +140,7 @@ impl<'a> PlayerContainer<'a>
 
     fn weapon_attack(&mut self)
     {
-        let start = self.player_ref().position();
+        /*let start = self.player_ref().position();
 
         let mouse = self.game_state.world_mouse_position();
         
@@ -186,7 +182,7 @@ impl<'a> PlayerContainer<'a>
                 },
                 _ => ()
             }
-        }
+        }*/
     }
 
     pub fn update(&mut self, _dt: f32)
@@ -207,18 +203,19 @@ impl<'a> PlayerContainer<'a>
         {
             dbg!("make this an actual console thingy later");
 
-            let mut player = self.player_mut();
+            /*let mut player = self.player_mut();
             let player = &mut player.inner_mut().entity;
 
             if let Some(speed) = player.speed()
             {
                 player.set_speed(speed * 2.0);
-            }
+            }*/
         }
 
         if let Some(movement) = self.movement_direction()
         {
-            self.walk(movement);
+            // self.walk(movement);
+            todo!();
         }
 
         self.look_at_mouse();
@@ -282,7 +279,7 @@ impl<'a> PlayerContainer<'a>
         })
     }
 
-    pub fn walk(&mut self, direction: Vector3<f32>)
+    /*pub fn walk(&mut self, direction: Vector3<f32>)
     {
         let mut player = self.player_mut();
 
@@ -294,7 +291,7 @@ impl<'a> PlayerContainer<'a>
 
             player.set_velocity(velocity);
         }
-    }
+    }*/
 
     pub fn look_at_mouse(&mut self)
     {
@@ -305,7 +302,9 @@ impl<'a> PlayerContainer<'a>
 
     pub fn look_at(&mut self, look_position: Vector2<f32>)
     {
-        let (aspect, camera_pos) = {
+        return;
+        todo!();
+        /*let (aspect, camera_pos) = {
             let camera_ref = self.game_state.camera.read();
 
             (camera_ref.aspect(), camera_ref.position().xy().coords)
@@ -322,6 +321,14 @@ impl<'a> PlayerContainer<'a>
 
         let rotation = y.atan2(x);
 
-        player_mut.set_rotation(rotation);
-    }*/
+        player_mut.set_rotation(rotation);*/
+    }
+
+    fn player_position(&self) -> Vector3<f32>
+    {
+        self.game_state.entities()
+            .transform(self.info.entity)
+            .expect("player must have a position")
+            .position
+    }
 }

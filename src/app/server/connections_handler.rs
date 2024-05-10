@@ -1,6 +1,5 @@
 use crate::common::{
     ObjectsStore,
-	EntityId,
 	BufferSender,
 	EntityPasser,
 	MessagePasser,
@@ -81,9 +80,9 @@ impl ConnectionsHandler
 
     fn send_message_inner(&mut self, skip_id: Option<usize>, message: Message)
     {
-		let entity_type = message.entity_type();
+		/*let entity_type = message.entity_type();
 
-		/*self.connections.iter_mut().filter(|(index, _)|
+		self.connections.iter_mut().filter(|(index, _)|
 		{
 			let same_sync = Some(EntityType::Player(*index)) == entity_type;
 

@@ -1,6 +1,6 @@
 use nalgebra::Vector3;
 
-use crate::common::Entity;
+use crate::common::EntityInfo;
 
 
 pub struct EnemyBuilder
@@ -15,29 +15,10 @@ impl EnemyBuilder
         Self{pos}
     }
 
-    pub fn build(self) -> Entity
+    pub fn build(self) -> EntityInfo
     {
-        /*let props = EnemyProperties{
-            character_properties: CharacterProperties{
-                entity_properties: EntityProperties{
-                    physical: PhysicalProperties{
-                        transform: Transform{
-                            position: self.pos,
-                            scale: Vector3::repeat(0.1),
-                            rotation: fastrand::f32() * (3.141596 * 2.0),
-                            ..Default::default()
-                        },
-                        mass: 50.0,
-                        friction: 0.5,
-                        floating: false
-                    }
-                },
-                anatomy: Anatomy::Human(HumanAnatomy::default())
-            },
-            behavior: EnemyBehavior::Melee
-        };
-
-        Enemy::new(props)*/
-        todo!();
+        EntityInfo{
+            ..Default::default()
+        }
     }
 }
