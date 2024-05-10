@@ -1,6 +1,8 @@
 use nalgebra::Vector3;
 
-use crate::common::EntityInfo;
+use yanyaengine::Transform;
+
+use crate::common::{RenderInfo, EntityInfo};
 
 
 pub struct EnemyBuilder
@@ -18,6 +20,13 @@ impl EnemyBuilder
     pub fn build(self) -> EntityInfo
     {
         EntityInfo{
+            transform: Some(Transform{
+                position: self.pos,
+                scale: Vector3::repeat(0.1),
+                rotation: fastrand::f32() * (3.141596 * 2.0),
+                ..Default::default()
+            }),
+            render: Some(RenderInfo{texture: "enemy/body.png".to_owned()}),
             ..Default::default()
         }
     }

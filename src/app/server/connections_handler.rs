@@ -74,6 +74,11 @@ impl ConnectionsHandler
 		self.connections.push(player_info)
 	}
 
+	pub fn get(&self, id: usize) -> &PlayerInfo
+	{
+		self.connections.get(id).unwrap()
+	}
+
 	pub fn get_mut(&mut self, id: usize) -> &mut PlayerInfo
 	{
 		self.connections.get_mut(id).unwrap()

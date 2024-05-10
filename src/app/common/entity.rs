@@ -167,6 +167,11 @@ macro_rules! define_entities
 
             pub fn remove(&mut self, entity: Entity)
             {
+                if !self.exists(entity)
+                {
+                    return;
+                }
+
                 let components = &self.components[entity.0];
 
                 $(if let Some(id) = components[Component::$component_type as usize]
@@ -201,6 +206,20 @@ macro_rules! define_entities
                     }
                 ,)+]
             }
+
+            fn handle_message_common(&mut self, message: Message) -> Option<Message>
+            {
+                match message
+                {
+                    Message::EntityDestroy{entity} =>
+                    {
+                        self.remove(entity);
+
+                        None
+                    },
+                    x => Some(x)
+                }
+            }
         }
 
         impl ClientEntities
@@ -211,6 +230,8 @@ macro_rules! define_entities
                 message: Message
             ) -> Option<Message>
             {
+                let message = self.handle_message_common(message)?;
+
                 match message
                 {
                     Message::EntitySet{entity, info} =>
@@ -339,7 +360,7 @@ macro_rules! define_entities
 
             pub fn handle_message(&mut self, message: Message) -> Option<Message>
             {
-                Some(message)
+                self.handle_message_common(message)
             }
         }
     }

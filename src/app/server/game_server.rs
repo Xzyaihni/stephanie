@@ -133,7 +133,7 @@ impl GameServer
 		receiver_loop(
 			messager,
 			move |message| this.lock().process_message_inner(message, id, player),
-			move || other_this.lock().connection_close(id)
+			move || other_this.lock().connection_close(id, player)
 		);
 
 		Ok(())
@@ -226,17 +226,20 @@ impl GameServer
 		Ok((connection_id, messager.clone_messager()))
 	}
 
-	fn connection_close(&mut self, id: usize)
+	fn connection_close(&mut self, id: usize, entity: Entity)
 	{
-		/*let player = self.player_ref(id);
+        let mut writer = self.connection_handler.write();
 
-		println!("player \"{}\" disconnected", player.name());
+		self.world.remove_player(entity);
 
-		self.world.remove_player(id);
+		writer.remove_connection(id);
 
-		self.connection_handler.write().remove_connection(id);
-		self.remove_player(id);*/
-        todo!();
+		if let Some(player) = self.entities.player(entity)
+        {
+            println!("player \"{}\" disconnected", player.name);
+
+            writer.send_message(self.entities.remove_message(entity));
+        }
 	}
 
 	fn process_message_inner(&mut self, message: Message, id: usize, player: Entity)
@@ -248,17 +251,6 @@ impl GameServer
                 self.send_message(*message);
 
                 return;
-            },
-            Message::EntityDestroy{entity} =>
-            {
-                {
-                    todo!();
-                    /*let message = self.entities.remove_entity(entity_id);
-
-                    self.connection_handler.write().send_single(id, message);*/
-                }
-
-                message
             },
             x => x
         };

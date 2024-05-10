@@ -393,11 +393,11 @@ impl World
         let new_position = (message.entity() == Some(entity)).then(||
             match &message
             {
-                Message::EntitySet{entity: check_entity, info} =>
+                Message::EntitySet{info, ..} =>
                 {
                     info.transform.as_ref().map(|x| x.position)
                 },
-                Message::SetTransform{entity: check_entity, transform} =>
+                Message::SetTransform{transform, ..} =>
                 {
                     Some(transform.position)
                 },

@@ -549,16 +549,6 @@ impl GameState
 		self.world.rescale(camera.aspect());
 	}
 
-    /*pub fn remove_client_entity(&self, id: EntityType)
-    {
-        self.send_message(Message::EntityDestroy{id});
-    }
-
-    pub fn add_client_entity(&self, entity: EntityAny)
-    {
-        self.send_message(Message::EntityAdd{entity});
-    }*/
-
     pub fn echo_message(&self, message: Message)
     {
         let message = Message::RepeatMessage{message: Box::new(message)};
