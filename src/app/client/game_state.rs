@@ -30,6 +30,7 @@ use crate::common::{
     Component,
     EntityPasser,
 	EntitiesController,
+    entity::ClientEntities,
 	message::Message,
 	world::{
 		World,
@@ -64,8 +65,6 @@ struct RaycastResult
     pierce: f32
 }
 
-type ClientEntities = Entities<Object>;
-
 pub struct ClientEntitiesContainer
 {
 	entities: ClientEntities,
@@ -82,9 +81,13 @@ impl ClientEntitiesContainer
 		Self{entities, main_player}
 	}
     
-    pub fn handle_message(&mut self, message: Message) -> Option<Message>
+    pub fn handle_message(
+        &mut self,
+        create_info: &mut ObjectCreateInfo,
+        message: Message
+    ) -> Option<Message>
     {
-        self.entities.handle_message(message)
+        self.entities.handle_message(create_info, message)
     }
 
 	pub fn update(&mut self, dt: f32)
@@ -473,7 +476,7 @@ impl GameState
 
 	fn process_message_inner(&mut self, create_info: &mut ObjectCreateInfo, message: Message)
 	{
-		let message = match self.entities.handle_message(message)
+		let message = match self.entities.handle_message(create_info, message)
 		{
 			Some(x) => x,
 			None => return

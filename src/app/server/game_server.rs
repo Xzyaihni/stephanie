@@ -73,8 +73,6 @@ impl From<bincode::Error> for ConnectionError
 	}
 }
 
-pub type ServerEntitiesContainer = Entities;
-
 pub struct GameServer
 {
 	entities: Entities,
@@ -219,12 +217,12 @@ impl GameServer
 
 		messager.send_blocking(Message::PlayerOnConnect{entity})?;
 
-		self.entities.entities_iter().try_for_each(|(entity, components)|
+		self.entities.entities_iter().try_for_each(|(entity, _)|
 	    {
-            Component::message_set(&self.entities, entity, components).try_for_each(|message|
-            {
-                messager.send_blocking(message)
-            })
+            let info = self.entities.info(entity);
+            let message = Message::EntitySet{entity, info};
+
+            messager.send_blocking(message)
 		})?;
 
 		messager.send_blocking(Message::PlayerFullyConnected)?;

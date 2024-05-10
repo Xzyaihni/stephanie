@@ -9,7 +9,7 @@ use parking_lot::{Mutex, RwLock};
 use yanyaengine::TransformContainer;
 
 use crate::{
-	server::{game_server::ServerEntitiesContainer, ConnectionsHandler},
+	server::ConnectionsHandler,
 	common::{
         self,
         EnemyBuilder,
@@ -21,6 +21,8 @@ use crate::{
         SaveLoad,
 		EntityPasser,
         Entity,
+        EntityInfo,
+        entity::ServerEntities,
 		message::Message,
 		world::{
             CHUNK_SIZE,
@@ -142,7 +144,7 @@ impl World
 
     pub fn player_moved(
         &mut self,
-        container: &mut ServerEntitiesContainer,
+        container: &mut ServerEntities,
         entity: Entity,
         new_position: Pos3<f32>
     )
@@ -172,7 +174,7 @@ impl World
 
 	pub fn send_chunk(
         &mut self,
-        container: &mut ServerEntitiesContainer,
+        container: &mut ServerEntities,
         id: usize,
         entity: Entity,
         pos: GlobalPos
@@ -187,24 +189,23 @@ impl World
 
     fn create_entities(
         &self,
-        container: &mut ServerEntitiesContainer,
-        entities: impl Iterator<Item=Entity>
+        container: &mut ServerEntities,
+        entities: impl Iterator<Item=EntityInfo>
     )
     {
         let mut writer = self.message_handler.write();
 
-        entities.for_each(|entity|
+        entities.for_each(|entity_info|
         {
-            todo!();
-            // let message = container.push_entity(entity);
+            let message = container.push_message(entity_info);
 
-            // writer.send_message(message);
+            writer.send_message(message);
         });
     }
 
     fn add_entities(
         &self,
-        container: &mut ServerEntitiesContainer,
+        container: &mut ServerEntities,
         chunk_pos: Pos3<f32>,
         chunk: &Chunk
     )
@@ -256,9 +257,7 @@ impl World
                 {
                     let pos = chunk_pos + above.pos().map(|x| x as f32 * TILE_SIZE);
 
-                    let info = EnemyBuilder::new(pos.into()).build();
-
-                    todo!();
+                    EnemyBuilder::new(pos.into()).build()
                 })
             });
 
@@ -267,7 +266,7 @@ impl World
 
 	fn load_chunk(
         &mut self,
-        container: &mut ServerEntitiesContainer,
+        container: &mut ServerEntities,
         entity: Entity,
         pos: GlobalPos
     ) -> Chunk
@@ -334,7 +333,7 @@ impl World
 
     pub fn unload_entities<F>(
         saver: &mut EntitiesSaver,
-        container: &mut ServerEntitiesContainer,
+        container: &mut ServerEntities,
         message_handler: &mut ConnectionsHandler,
         keep: F
     )
@@ -380,7 +379,7 @@ impl World
 
 	pub fn handle_message(
         &mut self,
-        container: &mut ServerEntitiesContainer,
+        container: &mut ServerEntities,
         id: usize,
         entity: Entity,
         message: Message

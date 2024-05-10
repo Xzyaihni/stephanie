@@ -7,6 +7,7 @@ use strum_macros::EnumCount;
 use crate::common::{
 	Transform,
     Entity,
+    EntityInfo,
     RenderInfo,
     Player,
     Damage,
@@ -17,6 +18,7 @@ use crate::common::{
 #[derive(Debug, Clone, EnumCount, Serialize, Deserialize)]
 pub enum Message
 {
+    EntitySet{entity: Entity, info: EntityInfo},
     SetTransform{entity: Entity, transform: Transform},
     SetRender{entity: Entity, render: RenderInfo},
     SetPlayer{entity: Entity, player: Player},
