@@ -92,9 +92,7 @@ impl ClientEntitiesContainer
 
 	pub fn update(&mut self, dt: f32)
 	{
-        return;
-        todo!();
-		// self.entities.iter_mut().for_each(|(_, entity)| entity.update(dt));
+        self.entities.update_physical(dt);
 	}
 
 	pub fn player_exists(&self, entity: Entity) -> bool

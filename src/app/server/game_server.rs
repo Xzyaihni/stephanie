@@ -148,15 +148,11 @@ impl GameServer
             ..Default::default()
         };
 
-        /*let physical = PhysicalProperties{
+        let physical = PhysicalProperties{
             mass: 50.0,
             friction: 0.5,
-            floating: false,
-            transform: Transform{
-                scale: Vector3::repeat(0.1),
-                ..Default::default()
-            }
-        };*/
+            floating: false
+        };
 
         let anatomy = Anatomy::Human(HumanAnatomy::default());
 
@@ -166,11 +162,8 @@ impl GameServer
             player: Some(Player{name: format!("stephanie #{player_index}")}),
             transform: Some(transform),
             render: Some(RenderInfo{texture: "player/hair.png".to_owned()}),
-            physical: Some(PhysicalProperties{
-                mass: 50.0,
-                friction: 0.5,
-                floating: false
-            }.into())
+            physical: Some(physical.into()),
+            anatomy: Some(anatomy)
 		};
 
 		let inserted = self.entities.push(info);

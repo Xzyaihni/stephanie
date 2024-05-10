@@ -2,7 +2,7 @@ use serde::{Serialize, Deserialize};
 
 use yanyaengine::{DefaultModel, Object, ObjectInfo, game_object::*};
 
-use crate::common::Physical;
+use crate::common::{Anatomy, Physical};
 
 
 pub trait ServerToClient<T>
@@ -432,5 +432,6 @@ define_entities!{
     (render, render_mut, SetRender, RenderType, RenderInfo),
     (transform, transform_mut, SetTransform, TransformType, Transform),
     (player, player_mut, SetPlayer, PlayerType, Player),
-    (physical, physical_mut, SetPhysical, PhysicalType, Physical)
+    (physical, physical_mut, SetPhysical, PhysicalType, Physical),
+    (anatomy, anatomy_mut, SetAnatomy, AnatomyType, Anatomy)
 }

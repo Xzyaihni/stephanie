@@ -45,6 +45,11 @@ impl Physical
 {
     pub fn physics_update(&mut self, transform: &mut Transform, dt: f32)
     {
+        if !self.floating
+        {
+            self.grounded = true;
+        }
+
         self.velocity += (self.force * dt) / self.mass;
 
         // move this up after i add collisions

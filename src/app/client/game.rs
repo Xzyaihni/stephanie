@@ -279,17 +279,15 @@ impl<'a> PlayerContainer<'a>
 
     pub fn walk(&mut self, direction: Vector3<f32>)
     {
-        /*let mut player = self.player_mut();
+        let entities = self.game_state.entities_mut();
 
-        let entity = &player.inner().entity;
-
-        if let Some(speed) = entity.move_speed()
+        if let Some(speed) = entities.anatomy(self.info.entity).unwrap().speed()
         {
-            let velocity = direction * speed;
+            let physical = entities.physical_mut(self.info.entity).unwrap();
+            let velocity = direction * speed / physical.mass;
 
-            player.set_velocity(velocity);
-        }*/
-        todo!();
+            physical.velocity = velocity;
+        }
     }
 
     pub fn look_at_mouse(&mut self)

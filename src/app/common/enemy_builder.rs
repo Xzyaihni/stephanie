@@ -2,7 +2,7 @@ use nalgebra::Vector3;
 
 use yanyaengine::Transform;
 
-use crate::common::{PhysicalProperties, RenderInfo, EntityInfo};
+use crate::common::{Anatomy, HumanAnatomy, PhysicalProperties, RenderInfo, EntityInfo};
 
 
 pub struct EnemyBuilder
@@ -32,6 +32,7 @@ impl EnemyBuilder
                 friction: 0.5,
                 floating: false
             }.into()),
+            anatomy: Some(Anatomy::Human(HumanAnatomy::default())),
             ..Default::default()
         }
     }
