@@ -77,6 +77,7 @@ impl Physical
         self.velocity -= self.impulse_to_velocity(impulse);
     }
 
+    #[allow(dead_code)]
     fn add_impulse(&mut self, impulse: Vector3<f32>)
     {
         self.velocity += self.impulse_to_velocity(impulse);

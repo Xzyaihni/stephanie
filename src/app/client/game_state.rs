@@ -12,9 +12,8 @@ use nalgebra::{Unit, Vector3, Vector2};
 
 use yanyaengine::{
     Assets,
-    Object,
     ObjectFactory,
-    TransformContainer,
+    Transform,
     camera::Camera,
     game_object::*
 };
@@ -22,11 +21,11 @@ use yanyaengine::{
 use crate::common::{
 	sender_loop,
 	receiver_loop,
-    ObjectsStore,
     TileMap,
     Damage,
     Entity,
     Entities,
+    Damageable,
     Component,
     EntityPasser,
 	EntitiesController,
@@ -103,21 +102,21 @@ impl ClientEntitiesContainer
     fn raycast_entity(
         start: &Vector3<f32>,
         direction: &Unit<Vector3<f32>>,
-        entity: &Entity
+        transform: &Transform
     ) -> Option<RaycastResult>
     {
-        /*let scale = entity.scale();
+        let scale = transform.scale;
 
         // im not dealing with this
         debug_assert!(scale.x == scale.y && scale.x == scale.z);
         let radius = scale.x / 2.0;
 
-        let position = todo!();//entity.position();
+        let position = transform.position;
 
         let offset = start - position;
 
         let left = direction.dot(&offset).powi(2);
-        let right = todo!();//offset.magnitude_squared() - radius.powi(2);
+        let right = offset.magnitude_squared() - radius.powi(2);
 
         // math ppl keep making fake letters
         let nabla = left - right;
@@ -139,8 +138,7 @@ impl ClientEntitiesContainer
             let pierce = far - close;
 
             Some(RaycastResult{distance: close, pierce})
-        }*/
-        todo!();
+        }
     }
 
     pub fn raycast(
@@ -155,23 +153,25 @@ impl ClientEntitiesContainer
         let max_distance = direction.magnitude();
         let direction = Unit::new_normalize(direction);
 
-        /*let mut hits: Vec<_> = self.enemies.iter()
-            .map(|(id, enemy)| (EntityType::Enemy(id), enemy.entity_ref()))
-            .chain(self.players.iter()
-                .filter(|(id, _)|
+        let mut hits: Vec<_> = self.entities.entities_iter()
+            .filter_map(|entity|
+            {
+                let transform = self.entities.transform(entity);
+
+                transform.and_then(|transform|
                 {
                     if info.ignore_player
                     {
-                        self.main_player != Some(*id)
+                        (self.main_player != Some(entity)).then_some((entity, transform))
                     } else
                     {
-                        true
+                        Some((entity, transform))
                     }
                 })
-                .map(|(id, player)| (EntityType::Player(id), player.entity_ref())))
-            .filter_map(|(id, entity)|
+            })
+            .filter_map(|(entity, transform)|
             {
-                Self::raycast_entity(start, &direction, entity).and_then(|hit|
+                Self::raycast_entity(start, &direction, transform).and_then(|hit|
                 {
                     let backwards = (hit.distance + hit.pierce) < 0.0;
                     let past_end = (hit.distance > max_distance) && !info.ignore_end;
@@ -181,7 +181,7 @@ impl ClientEntitiesContainer
                         None
                     } else
                     {
-                        let id = RaycastHitId::Entity(id);
+                        let id = RaycastHitId::Entity(entity);
                         Some(RaycastHit{id, distance: hit.distance, width: hit.pierce})
                     }
                 })
@@ -211,8 +211,7 @@ impl ClientEntitiesContainer
             first.map(|x| vec![x]).unwrap_or_default()
         };
 
-        RaycastHits{start: *start, direction, hits}*/
-        todo!();
+        RaycastHits{start: *start, direction, hits}
     }
 }
 
@@ -423,17 +422,20 @@ impl GameState
 		}
 	}
 
-    /*pub fn damage_entity(&mut self, id: EntityType, damage: Damage)
+    pub fn damage_entity(&mut self, entity: Entity, damage: Damage)
     {
-        if id.is_player()
+        if self.entities().player(entity).is_some()
         {
             return;
         }
 
-        self.send_message(Message::EntityDamage{id, damage: damage.clone()});
+        self.send_message(Message::EntityDamage{entity, damage: damage.clone()});
 
-        self.entities.damage(id, damage);
-    }*/
+        if let Some(anatomy) = self.entities_mut().anatomy_mut(entity)
+        {
+            anatomy.damage(damage);
+        }
+    }
 
     pub fn entities(&self) -> &ClientEntities
     {

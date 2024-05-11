@@ -95,6 +95,7 @@ macro_rules! get_entity
     }
 }
 
+#[allow(unused_macros)]
 macro_rules! get_required_entity
 {
     ($this:expr, $entity:expr, $access_type:ident, $component:ident) =>

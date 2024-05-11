@@ -8,7 +8,7 @@ use parking_lot::{RwLock, Mutex};
 
 use nalgebra::Vector3;
 
-use yanyaengine::{TransformContainer, Transform};
+use yanyaengine::Transform;
 
 use super::{
 	ConnectionsHandler,
@@ -21,11 +21,10 @@ pub use super::world::ParseError;
 use crate::common::{
     sender_loop,
     receiver_loop,
-    ObjectsStore,
     TileMap,
     Entity,
     EntityInfo,
-    Component,
+    Damageable,
     RenderInfo,
     Player,
     Entities,
@@ -47,8 +46,7 @@ use crate::common::{
 pub enum ConnectionError
 {
 	BincodeError(bincode::Error),
-	WrongConnectionMessage,
-	IdMismatch
+	WrongConnectionMessage
 }
 
 impl fmt::Display for ConnectionError
@@ -58,8 +56,7 @@ impl fmt::Display for ConnectionError
         let s = match self
         {
             Self::BincodeError(x) => x.to_string(),
-            Self::WrongConnectionMessage => "wrong connection message".to_owned(),
-            Self::IdMismatch => "id mismatch".to_owned()
+            Self::WrongConnectionMessage => "wrong connection message".to_owned()
         };
 
         write!(f, "{s}")
@@ -268,6 +265,10 @@ impl GameServer
 
 		match message
 		{
+            Message::EntityDamage{entity, damage} =>
+            {
+                self.entities.anatomy_mut(entity).unwrap().damage(damage);
+            },
 			x => panic!("unhandled message: {x:?}")
 		}
 	}

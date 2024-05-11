@@ -1,19 +1,15 @@
 use nalgebra::{Vector3, Vector2};
 
-use yanyaengine::{TextureId, TransformContainer};
+use yanyaengine::TextureId;
 
-use crate::{
-    client::ConnectionsHandler,
-    common::{
-        Entity,
-        EntitiesController,
-        Damage,
-        DamageType,
-        DamageDirection,
-        Side2d,
-        DamageHeight,
-        world::TILE_SIZE
-    }
+use crate::common::{
+    Entity,
+    Damage,
+    DamageType,
+    DamageDirection,
+    Side2d,
+    DamageHeight,
+    world::TILE_SIZE
 };
 
 use super::game_state::{
@@ -139,7 +135,7 @@ impl<'a> PlayerContainer<'a>
 
     fn weapon_attack(&mut self)
     {
-        /*let start = self.player_ref().position();
+        let start = self.player_position();
 
         let mouse = self.game_state.world_mouse_position();
         
@@ -151,7 +147,7 @@ impl<'a> PlayerContainer<'a>
             ignore_end: true
         };
 
-        let hits = self.game_state.raycast(info, start, &end);
+        let hits = self.game_state.raycast(info, &start, &end);
 
         let damage = DamageType::Bullet(fastrand::f32() * 20.0 + 400.0);
 
@@ -164,12 +160,13 @@ impl<'a> PlayerContainer<'a>
             {
                 RaycastHitId::Entity(id) =>
                 {
-                    let entity = self.game_state.get_entity_ref(id);
+                    let transform = self.game_state.entities().transform(id)
+                        .unwrap();
 
                     let hit_position = hits.hit_position(&hit);
                     let side = Side2d::from_positions(
-                        entity.rotation(),
-                        *entity.position(),
+                        transform.rotation,
+                        transform.position,
                         hit_position
                     );
 
@@ -181,7 +178,7 @@ impl<'a> PlayerContainer<'a>
                 },
                 _ => ()
             }
-        }*/
+        }
     }
 
     pub fn update(&mut self, _dt: f32)
@@ -201,14 +198,6 @@ impl<'a> PlayerContainer<'a>
         if self.game_state.debug_mode && self.game_state.clicked(Control::DebugConsole)
         {
             dbg!("make this an actual console thingy later");
-
-            /*let mut player = self.player_mut();
-            let player = &mut player.inner_mut().entity;
-
-            if let Some(speed) = player.speed()
-            {
-                player.set_speed(speed * 2.0);
-            }*/
         }
 
         if let Some(movement) = self.movement_direction()

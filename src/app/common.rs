@@ -2,7 +2,6 @@ use std::{
     fmt::Debug,
 	sync::Arc,
 	net::TcpStream,
-    borrow::Borrow,
     ops::{Range, RangeInclusive}
 };
 
