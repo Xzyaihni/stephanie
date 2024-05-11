@@ -4,6 +4,7 @@ use crate::common::{
     Entity,
 	EntityPasser,
 	MessagePasser,
+    ConnectionId,
 	message::{Message, MessageBuffer}
 };
 
@@ -59,9 +60,9 @@ impl ConnectionsHandler
 		Self{connections, limit}
 	}
 
-	pub fn remove_connection(&mut self, id: usize)
+	pub fn remove_connection(&mut self, id: ConnectionId)
 	{
-		self.connections.remove(id);
+		self.connections.remove(id.0);
 	}
 
 	pub fn under_limit(&self) -> bool
@@ -69,27 +70,27 @@ impl ConnectionsHandler
 		self.connections.len() < self.limit
 	}
 
-	pub fn connect(&mut self, player_info: PlayerInfo) -> usize
+	pub fn connect(&mut self, player_info: PlayerInfo) -> ConnectionId
 	{
-		self.connections.push(player_info)
+		ConnectionId(self.connections.push(player_info))
 	}
 
-	pub fn get(&self, id: usize) -> &PlayerInfo
+	pub fn get(&self, id: ConnectionId) -> &PlayerInfo
 	{
-		self.connections.get(id).unwrap()
+		self.connections.get(id.0).unwrap()
 	}
 
-	pub fn get_mut(&mut self, id: usize) -> &mut PlayerInfo
+	pub fn get_mut(&mut self, id: ConnectionId) -> &mut PlayerInfo
 	{
-		self.connections.get_mut(id).unwrap()
+		self.connections.get_mut(id.0).unwrap()
 	}
 
-    pub fn send_message_without(&mut self, id: usize, message: Message)
+    pub fn send_message_without(&mut self, id: ConnectionId, message: Message)
     {
         self.send_message_inner(Some(id), message);
     }
 
-    fn send_message_inner(&mut self, skip_id: Option<usize>, message: Message)
+    fn send_message_inner(&mut self, skip_id: Option<ConnectionId>, message: Message)
     {
 		let entity_type = message.entity();
 
@@ -97,7 +98,7 @@ impl ConnectionsHandler
 		{
 			let same_sync = Some(player_info.entity) == entity_type;
 
-            !same_sync && skip_id != Some(*index)
+            !same_sync && skip_id != Some(ConnectionId(*index))
 		}).for_each(|(_, player_info)|
 		{
 			player_info.set_message(message.clone());
@@ -107,9 +108,9 @@ impl ConnectionsHandler
 
 impl EntityPasser for ConnectionsHandler
 {
-	fn send_single(&mut self, id: usize, message: Message)
+	fn send_single(&mut self, id: ConnectionId, message: Message)
 	{
-		self.connections[id].set_message(message);
+		self.connections[id.0].set_message(message);
 	}
 
 	fn send_message(&mut self, message: Message)

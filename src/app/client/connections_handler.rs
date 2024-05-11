@@ -2,6 +2,7 @@ use crate::common::{
 	BufferSender,
 	EntityPasser,
 	MessagePasser,
+    ConnectionId,
 	message::{Message, MessageBuffer}
 };
 
@@ -40,7 +41,7 @@ impl ConnectionsHandler
 
 impl EntityPasser for ConnectionsHandler
 {
-	fn send_single(&mut self, _id: usize, _message: Message)
+	fn send_single(&mut self, _id: ConnectionId, _message: Message)
 	{
 		unimplemented!()
 	}

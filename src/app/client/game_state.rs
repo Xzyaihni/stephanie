@@ -405,6 +405,13 @@ impl GameState
         self.entities.raycast(info, start, end)
     }
 
+    pub fn sync_transform(&mut self, entity: Entity)
+    {
+        let transform = self.entities().transform(entity).unwrap().clone();
+
+        self.send_message(Message::SetTransform{entity, transform});
+    }
+
 	fn connect_to_server(handler: Arc<RwLock<ConnectionsHandler>>, name: &str) -> Entity
 	{
 		let message = Message::PlayerConnect{name: name.to_owned()};

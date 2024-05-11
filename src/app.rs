@@ -35,7 +35,7 @@ impl YanyaApp for App
     {
         let deferred_parse = || TileMap::parse("tiles/tiles.json", "textures/tiles/");
 
-        let mut name = "stephanie #1".to_owned();
+        let mut name = "player_name".to_owned();
 
         let mut address = None;
         let mut port = None;

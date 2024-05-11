@@ -32,6 +32,7 @@ use crate::common::{
     EntityPasser,
     EntitiesController,
     MessagePasser,
+    ConnectionId,
     PhysicalProperties,
     world::chunk::TILE_SIZE,
     message::{
@@ -135,7 +136,7 @@ impl GameServer
 	fn player_connect_inner(
 		&mut self,
 		stream: TcpStream
-	) -> Result<(Entity, usize, MessagePasser), ConnectionError>
+	) -> Result<(Entity, ConnectionId, MessagePasser), ConnectionError>
 	{
         let player_index = self.entities.player.len() + 1;
 
@@ -164,12 +165,14 @@ impl GameServer
             ..Default::default()
 		};
 
-		let inserted = self.entities.push(info);
-		self.world.add_player(inserted, position.into());
+		let inserted = self.entities.push(info.clone());
+        self.connection_handler.write().send_message(Message::EntitySet{entity: inserted, info});
 
 		let player_info = self.player_info(stream, inserted)?;
 
 		let (connection, messager) = self.player_create(inserted, player_info)?;
+
+		self.world.add_player(connection, position.into());
 
         Ok((inserted, connection, messager))
 	}
@@ -196,7 +199,7 @@ impl GameServer
 		&mut self,
         entity: Entity,
 		player_info: PlayerInfo
-	) -> Result<(usize, MessagePasser), ConnectionError>
+	) -> Result<(ConnectionId, MessagePasser), ConnectionError>
 	{
 		let mut connection_handler = self.connection_handler.write();
 		let connection_id = connection_handler.connect(player_info);
@@ -218,15 +221,18 @@ impl GameServer
 		Ok((connection_id, messager.clone_messager()))
 	}
 
-	fn connection_close(&mut self, id: usize, entity: Entity)
+	fn connection_close(&mut self, id: ConnectionId, entity: Entity)
 	{
         let mut writer = self.connection_handler.write();
 
-		self.world.remove_player(entity);
-
+		self.world.remove_player(id);
 		writer.remove_connection(id);
 
-		if let Some(player) = self.entities.player(entity)
+        let player = (self.entities.exists(entity))
+            .then(|| self.entities.player(entity))
+            .flatten();
+
+		if let Some(player) = player
         {
             println!("player \"{}\" disconnected", player.name);
 
@@ -234,7 +240,7 @@ impl GameServer
         }
 	}
 
-	fn process_message_inner(&mut self, message: Message, id: usize, player: Entity)
+	fn process_message_inner(&mut self, message: Message, id: ConnectionId, player: Entity)
 	{
         let message = match message
         {

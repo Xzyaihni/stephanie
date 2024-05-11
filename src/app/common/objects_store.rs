@@ -43,7 +43,14 @@ impl<T> ObjectsStore<T>
     {
         self.extend_to_contain(index);
 
-        self.data[index] = Some(value);
+        let slot = &mut self.data[index];
+
+        if slot.is_none()
+        {
+            self.free_list.retain(|id| *id != index);
+        }
+
+        *slot = Some(value);
     }
 
     pub fn push(&mut self, value: T) -> usize
@@ -57,7 +64,10 @@ impl<T> ObjectsStore<T>
 
     pub fn remove(&mut self, index: usize) -> Option<T>
     {
-        self.free_list.push(index);
+        if self.data[index].is_some()
+        {
+            self.free_list.push(index);
+        }
 
         self.data[index].take()
     }
@@ -86,7 +96,7 @@ impl<T> ObjectsStore<T>
 
     pub fn len(&self) -> usize
     {
-        self.data.len()
+        self.data.len() - self.free_list.len()
     }
 
     pub fn get(&self, index: usize) -> Option<&T>
@@ -97,11 +107,6 @@ impl<T> ObjectsStore<T>
     pub fn get_mut(&mut self, index: usize) -> Option<&mut T>
     {
         self.data.get_mut(index).and_then(Option::as_mut)
-    }
-
-    pub fn contains(&self, index: usize) -> bool
-    {
-        self.get(index).is_some()
     }
 
     fn extend_to_contain(&mut self, index: usize)

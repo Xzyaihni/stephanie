@@ -44,7 +44,10 @@ impl Message
 	{
 		match self
 		{
-			Message::ChunkRequest{..} => false,
+			Message::ChunkRequest{..}
+            | Message::PlayerConnect{..}
+            | Message::PlayerOnConnect{..}
+            | Message::PlayerFullyConnected => false,
 			_ => true
 		}
 	}

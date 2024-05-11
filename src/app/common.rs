@@ -206,9 +206,12 @@ pub fn lerp(x: f32, y: f32, a: f32) -> f32
 	(1.0 - a) * x + y * a
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ConnectionId(pub usize);
+
 pub trait EntityPasser
 {
-	fn send_single(&mut self, id: usize, message: Message);
+	fn send_single(&mut self, id: ConnectionId, message: Message);
 	fn send_message(&mut self, message: Message);
 }
 

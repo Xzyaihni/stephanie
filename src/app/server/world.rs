@@ -19,6 +19,7 @@ use crate::{
 		EntityPasser,
         Entity,
         EntityInfo,
+        ConnectionId,
         entity::ServerEntities,
 		message::Message,
 		world::{
@@ -48,7 +49,7 @@ mod server_overmap;
 pub const SERVER_OVERMAP_SIZE: usize = CLIENT_OVERMAP_SIZE + 1;
 pub const SERVER_OVERMAP_SIZE_Z: usize = CLIENT_OVERMAP_SIZE_Z + 1;
 
-type OvermapsType = Arc<RwLock<HashMap<Entity, ServerOvermap<WorldChunkSaver>>>>;
+type OvermapsType = Arc<RwLock<HashMap<ConnectionId, ServerOvermap<WorldChunkSaver>>>>;
 
 #[derive(Debug)]
 struct ClientIndexer
@@ -79,7 +80,7 @@ pub struct World
 	chunk_saver: ChunkSaver,
     entities_saver: EntitiesSaver,
 	overmaps: OvermapsType,
-    client_indexers: HashMap<Entity, ClientIndexer>
+    client_indexers: HashMap<ConnectionId, ClientIndexer>
 }
 
 impl World
@@ -117,7 +118,7 @@ impl World
 		})
 	}
 
-	pub fn add_player(&mut self, entity: Entity, position: Pos3<f32>)
+	pub fn add_player(&mut self, id: ConnectionId, position: Pos3<f32>)
 	{
 		let size = Pos3::new(SERVER_OVERMAP_SIZE, SERVER_OVERMAP_SIZE, SERVER_OVERMAP_SIZE_Z);
 		let overmap = ServerOvermap::new(
@@ -129,24 +130,24 @@ impl World
         let indexer_size = common::world::World::overmap_size();
         let indexer = ClientIndexer{size: indexer_size, player_position: position.rounded()};
 
-        self.client_indexers.insert(entity, indexer);
-		self.overmaps.write().insert(entity, overmap);
+        self.client_indexers.insert(id, indexer);
+		self.overmaps.write().insert(id, overmap);
 	}
 
-	pub fn remove_player(&mut self, entity: Entity)
+	pub fn remove_player(&mut self, id: ConnectionId)
 	{
-		self.client_indexers.remove(&entity);
-		self.overmaps.write().remove(&entity);
+		self.client_indexers.remove(&id);
+		self.overmaps.write().remove(&id);
 	}
 
     pub fn player_moved(
         &mut self,
         container: &mut ServerEntities,
-        entity: Entity,
+        id: ConnectionId,
         new_position: Pos3<f32>
     )
     {
-        let previous_position = &mut self.client_indexers.get_mut(&entity)
+        let previous_position = &mut self.client_indexers.get_mut(&id)
             .expect("id must be valid")
             .player_position;
 
@@ -172,12 +173,11 @@ impl World
 	pub fn send_chunk(
         &mut self,
         container: &mut ServerEntities,
-        id: usize,
-        entity: Entity,
+        id: ConnectionId,
         pos: GlobalPos
     )
 	{
-		let chunk = self.load_chunk(container, entity, pos);
+		let chunk = self.load_chunk(container, id, pos);
 
         let message = Message::ChunkSync{pos, chunk};
 
@@ -264,7 +264,7 @@ impl World
 	fn load_chunk(
         &mut self,
         container: &mut ServerEntities,
-        entity: Entity,
+        id: ConnectionId,
         pos: GlobalPos
     ) -> Chunk
 	{
@@ -289,7 +289,7 @@ impl World
 
 		loaded_chunk.unwrap_or_else(||
 		{
-			let chunk = self.overmaps.write().get_mut(&entity)
+			let chunk = self.overmaps.write().get_mut(&id)
                 .expect("id must be valid")
                 .generate_chunk(pos);
 
@@ -382,7 +382,7 @@ impl World
 	pub fn handle_message(
         &mut self,
         container: &mut ServerEntities,
-        id: usize,
+        id: ConnectionId,
         entity: Entity,
         message: Message
     ) -> Option<Message>
@@ -404,14 +404,14 @@ impl World
 
         if let Some(new_position) = new_position
         {
-            self.player_moved(container, entity, new_position.into());
+            self.player_moved(container, id, new_position.into());
         }
 
 		match message
 		{
 			Message::ChunkRequest{pos} =>
 			{
-				self.send_chunk(container, id, entity, pos);
+				self.send_chunk(container, id, pos);
 				None
 			},
 			_ => Some(message)

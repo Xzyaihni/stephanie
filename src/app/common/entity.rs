@@ -116,6 +116,7 @@ macro_rules! define_entities
 {
     ($(($name:ident,
         $mut_func:ident,
+        $set_func:ident,
         $message_name:ident,
         $component_type:ident,
         $default_type:ident
@@ -169,7 +170,7 @@ macro_rules! define_entities
 
             pub fn exists(&self, entity: Entity) -> bool
             {
-                self.components.contains(entity.0)
+                self.components.get(entity.0).is_some()
             }
 
             pub fn entities_iter(&self) -> impl Iterator<Item=Entity> + '_
@@ -232,15 +233,35 @@ macro_rules! define_entities
                 {
                     get_entity!(self, entity, get_mut, $name)
                 }
+
+                pub fn $set_func(&mut self, entity: Entity, component: $component_type)
+                {
+                    if !self.exists(entity)
+                    {
+                        self.components.insert(entity.0, Self::empty_components());
+                    }
+
+                    let slot = &mut self.components
+                        [entity.0]
+                        [Component::$name as usize];
+
+                    if let Some(id) = slot
+                    {
+                        self.$name.insert(*id, component);
+                    } else
+                    {
+                        let id = self.$name.push(component);
+                        
+                        *slot = Some(id);
+                    }
+                }
             )+
 
             pub fn push(&mut self, info: EntityInfo<$($component_type,)+>) -> Entity
             {
                 let indices = self.info_components(info);
 
-                let id = self.components.len();
-
-                self.components.push(indices);
+                let id = self.components.push(indices);
 
                 Entity(id)
             }
@@ -356,27 +377,13 @@ macro_rules! define_entities
                     },
                     $(Message::$message_name{entity, $name} =>
                     {
-                        // i could pass a some here but its just wasted effort
-                        let component = $name.server_to_client(None, create_info);
+                        let transform = (self.exists(entity))
+                            .then(|| self.transform(entity).cloned())
+                            .flatten();
 
-                        if !self.exists(entity)
-                        {
-                            self.components.insert(entity.0, Self::empty_components());
-                        }
+                        let component = $name.server_to_client(transform, create_info);
 
-                        let slot = &mut self.components
-                            [entity.0]
-                            [Component::$name as usize];
-
-                        if let Some(id) = slot
-                        {
-                            self.$name.insert(*id, component);
-                        } else
-                        {
-                            let id = self.$name.push(component);
-                            
-                            *slot = Some(id);
-                        }
+                        self.$set_func(entity, component);
 
                         None
                     },)+
@@ -467,17 +474,28 @@ macro_rules! define_entities
 
             pub fn handle_message(&mut self, message: Message) -> Option<Message>
             {
-                self.handle_message_common(message)
+                let message = self.handle_message_common(message)?;
+
+                match message
+                {
+                    $(Message::$message_name{entity, $name} =>
+                    {
+                        self.$set_func(entity, $name);
+
+                        None
+                    },)+
+                    x => Some(x)
+                }
             }
         }
     }
 }
 
 define_entities!{
-    (render, render_mut, SetRender, RenderType, RenderInfo),
-    (transform, transform_mut, SetTransform, TransformType, Transform),
-    (player, player_mut, SetPlayer, PlayerType, Player),
-    (enemy, enemy_mut, SetEnemy, EnemyType, Enemy),
-    (physical, physical_mut, SetPhysical, PhysicalType, Physical),
-    (anatomy, anatomy_mut, SetAnatomy, AnatomyType, Anatomy)
+    (render, render_mut, set_render, SetRender, RenderType, RenderInfo),
+    (transform, transform_mut, set_transform, SetTransform, TransformType, Transform),
+    (player, player_mut, set_player, SetPlayer, PlayerType, Player),
+    (enemy, enemy_mut, set_enemy, SetEnemy, EnemyType, Enemy),
+    (physical, physical_mut, set_physical, SetPhysical, PhysicalType, Physical),
+    (anatomy, anatomy_mut, set_anatomy, SetAnatomy, AnatomyType, Anatomy)
 }

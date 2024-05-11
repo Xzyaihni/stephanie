@@ -206,6 +206,8 @@ impl<'a> PlayerContainer<'a>
 		}
 
 		self.look_at_mouse();
+
+        self.game_state.sync_transform(self.info.entity);
 	}
 
 	fn movement_direction(&self) -> Option<Vector3<f32>>
