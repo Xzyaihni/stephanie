@@ -24,7 +24,6 @@ use crate::common::{
     TileMap,
     Entity,
     EntityInfo,
-    Damageable,
     RenderInfo,
     Player,
     Entities,
@@ -100,6 +99,7 @@ impl GameServer
         {
             let dt = dt / STEPS as f32;
 
+            self.entities.update_enemy(dt);
             self.entities.update_physical(dt);
         }
     }
@@ -160,7 +160,8 @@ impl GameServer
             transform: Some(transform),
             render: Some(RenderInfo{texture: "player/hair.png".to_owned()}),
             physical: Some(physical.into()),
-            anatomy: Some(anatomy)
+            anatomy: Some(anatomy),
+            ..Default::default()
 		};
 
 		let inserted = self.entities.push(info);
@@ -265,10 +266,6 @@ impl GameServer
 
 		match message
 		{
-            Message::EntityDamage{entity, damage} =>
-            {
-                self.entities.anatomy_mut(entity).unwrap().damage(damage);
-            },
 			x => panic!("unhandled message: {x:?}")
 		}
 	}

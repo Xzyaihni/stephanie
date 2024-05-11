@@ -2,7 +2,7 @@ use serde::{Serialize, Deserialize};
 
 use yanyaengine::{DefaultModel, Object, ObjectInfo, game_object::*};
 
-use crate::common::{Anatomy, Physical};
+use crate::common::{Anatomy, Enemy, Physical};
 
 
 pub trait ServerToClient<T>
@@ -74,7 +74,13 @@ macro_rules! get_component
     ($this:expr, $components:expr, $access_type:ident, $component:ident) =>
     {
         $components[Component::$component as usize]
-            .map(|id| $this.$component.$access_type(id).unwrap())
+            .map(|id|
+            {
+                $this.$component.$access_type(id).unwrap_or_else(||
+                {
+                    panic!("pointer to {} is out of bounds", stringify!($component))
+                })
+            })
     }
 }
 
@@ -82,8 +88,10 @@ macro_rules! get_required_component
 {
     ($this:expr, $components:expr, $access_type:ident, $component:ident) =>
     {
-        get_component!($this, $components, $access_type, $component)
-            .unwrap_or_else(|| panic!("{}", stringify!($component)))
+        get_component!($this, $components, $access_type, $component).unwrap_or_else(||
+        {
+            panic!("has no {} component", stringify!($component))
+        })
     }
 }
 
@@ -184,8 +192,32 @@ macro_rules! define_entities
                     {
                         let transform = get_required_component!(self, components, get_mut, transform);
 
-                        let physical: &mut Physical = physical.into();
-                        physical.physics_update(transform.into(), dt);
+                        physical.into().physics_update(transform.into(), dt);
+                    }
+                });
+            }
+
+            pub fn update_enemy(&mut self, dt: f32)
+            where
+                for<'a> &'a mut EnemyType: Into<&'a mut Enemy>,
+                for<'a> &'a AnatomyType: Into<&'a Anatomy>,
+                for<'a> &'a mut TransformType: Into<&'a mut Transform>,
+                for<'a> &'a mut PhysicalType: Into<&'a mut Physical>
+            {
+                self.components.iter().for_each(|(_, components)|
+                {
+                    if let Some(enemy) = get_component!(self, components, get_mut, enemy)
+                    {
+                        let anatomy = get_required_component!(self, components, get, anatomy);
+                        let transform = get_required_component!(self, components, get_mut, transform);
+                        let physical = get_required_component!(self, components, get_mut, physical);
+
+                        enemy.into().update(
+                            anatomy.into(),
+                            transform.into(),
+                            physical.into(),
+                            dt
+                        );
                     }
                 });
             }
@@ -256,9 +288,21 @@ macro_rules! define_entities
             }
 
             fn handle_message_common(&mut self, message: Message) -> Option<Message>
+            where
+                for<'a> &'a mut AnatomyType: Into<&'a mut Anatomy>
             {
                 match message
                 {
+                    Message::EntityDamage{entity, damage} =>
+                    {
+                        let anatomy = get_required_entity!(self, entity, get_mut, anatomy);
+
+                        use crate::common::Damageable;
+
+                        anatomy.into().damage(damage);
+
+                        None
+                    },
                     Message::EntityDestroy{entity} =>
                     {
                         self.remove(entity);
@@ -433,6 +477,7 @@ define_entities!{
     (render, render_mut, SetRender, RenderType, RenderInfo),
     (transform, transform_mut, SetTransform, TransformType, Transform),
     (player, player_mut, SetPlayer, PlayerType, Player),
+    (enemy, enemy_mut, SetEnemy, EnemyType, Enemy),
     (physical, physical_mut, SetPhysical, PhysicalType, Physical),
     (anatomy, anatomy_mut, SetAnatomy, AnatomyType, Anatomy)
 }

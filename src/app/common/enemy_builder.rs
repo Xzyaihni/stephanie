@@ -2,7 +2,15 @@ use nalgebra::Vector3;
 
 use yanyaengine::Transform;
 
-use crate::common::{Anatomy, HumanAnatomy, PhysicalProperties, RenderInfo, EntityInfo};
+use crate::common::{
+    Anatomy,
+    HumanAnatomy,
+    EnemyProperties,
+    EnemyBehavior,
+    PhysicalProperties,
+    RenderInfo,
+    EntityInfo
+};
 
 
 pub struct EnemyBuilder
@@ -33,6 +41,9 @@ impl EnemyBuilder
                 floating: false
             }.into()),
             anatomy: Some(Anatomy::Human(HumanAnatomy::default())),
+            enemy: Some(EnemyProperties{
+                behavior: EnemyBehavior::Melee
+            }.into()),
             ..Default::default()
         }
     }

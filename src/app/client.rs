@@ -162,13 +162,13 @@ impl Client
 
 		writer.update(dt);
 
-		if writer.player_connected()
-		{
-			self.game.on_player_connected(&mut writer);
-		}
-
 		if self.game.player_exists(&mut writer)
 		{
+            if writer.player_connected()
+            {
+                self.game.on_player_connected(&mut writer);
+            }
+
 			self.game.camera_sync(&mut writer);
 		}
     }

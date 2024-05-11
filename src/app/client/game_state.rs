@@ -91,6 +91,7 @@ impl ClientEntitiesContainer
 
 	pub fn update(&mut self, dt: f32)
 	{
+        self.entities.update_enemy(dt);
         self.entities.update_physical(dt);
 	}
 

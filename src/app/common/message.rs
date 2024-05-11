@@ -11,6 +11,7 @@ use crate::common::{
     EntityInfo,
     RenderInfo,
     Player,
+    Enemy,
     Damage,
     Anatomy,
 	world::{Chunk, GlobalPos}
@@ -26,6 +27,7 @@ pub enum Message
     SetPlayer{entity: Entity, player: Player},
     SetPhysical{entity: Entity, physical: Physical},
     SetAnatomy{entity: Entity, anatomy: Anatomy},
+    SetEnemy{entity: Entity, enemy: Enemy},
     EntityDestroy{entity: Entity},
     EntityDamage{entity: Entity, damage: Damage},
 	PlayerConnect{name: String},
@@ -57,6 +59,7 @@ impl Message
             Message::SetPlayer{entity, ..} => Some(entity),
             Message::SetPhysical{entity, ..} => Some(entity),
             Message::SetAnatomy{entity, ..} => Some(entity),
+            Message::SetEnemy{entity, ..} => Some(entity),
             Message::EntityDestroy{entity, ..} => Some(entity),
             Message::EntityDamage{entity, ..} => Some(entity),
             Message::PlayerConnect{..}
