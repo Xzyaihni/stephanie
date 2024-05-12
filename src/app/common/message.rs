@@ -11,9 +11,11 @@ use crate::common::{
     EntityInfo,
     RenderInfo,
     Player,
+    Parent,
     Enemy,
     Damage,
     Anatomy,
+    LazyTransform,
 	world::{Chunk, GlobalPos}
 };
 
@@ -22,7 +24,9 @@ use crate::common::{
 pub enum Message
 {
     EntitySet{entity: Entity, info: EntityInfo},
+    SetParent{entity: Entity, parent: Parent},
     SetTransform{entity: Entity, transform: Transform},
+    SetLazyTransform{entity: Entity, lazy_transform: LazyTransform},
     SetRender{entity: Entity, render: RenderInfo},
     SetPlayer{entity: Entity, player: Player},
     SetPhysical{entity: Entity, physical: Physical},
@@ -57,7 +61,9 @@ impl Message
         match self
         {
             Message::EntitySet{entity, ..} => Some(entity),
+            Message::SetParent{entity, ..} => Some(entity),
             Message::SetTransform{entity, ..} => Some(entity),
+            Message::SetLazyTransform{entity, ..} => Some(entity),
             Message::SetRender{entity, ..} => Some(entity),
             Message::SetPlayer{entity, ..} => Some(entity),
             Message::SetPhysical{entity, ..} => Some(entity),

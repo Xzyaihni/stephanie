@@ -25,6 +25,7 @@ use crate::common::{
     Entity,
     EntityInfo,
     RenderInfo,
+    Parent,
     Player,
     Entities,
     Anatomy,
@@ -34,6 +35,7 @@ use crate::common::{
     MessagePasser,
     ConnectionId,
     PhysicalProperties,
+    LazyTransformInfo,
     world::chunk::TILE_SIZE,
     message::{
         Message,
@@ -161,14 +163,48 @@ impl GameServer
 		let info = EntityInfo{
             player: Some(Player{name: format!("stephanie #{player_index}")}),
             transform: Some(transform),
-            render: Some(RenderInfo{texture: "player/hair.png".to_owned()}),
+            render: Some(RenderInfo{texture: "player/hair.png".to_owned(), z_level: 0}),
             physical: Some(physical.into()),
             anatomy: Some(anatomy),
             ..Default::default()
 		};
 
-		let inserted = self.entities.push(info.clone());
-        self.connection_handler.write().send_message(Message::EntitySet{entity: inserted, info});
+        let mut inserter = |info: EntityInfo|
+        {
+            let inserted = self.entities.push(info.clone());
+            self.connection_handler.write().send_message(Message::EntitySet{entity: inserted, info});
+
+            inserted
+        };
+
+        let inserted = inserter(info);
+
+        let pon = |position|
+        {
+            EntityInfo{
+                transform: Some(Default::default()),
+                lazy_transform: Some(LazyTransformInfo{
+                }.into()),
+                parent: Some(Parent::new(
+                    inserted,
+                    Transform{
+                        position,
+                        scale: Vector3::repeat(0.4),
+                        ..Default::default()
+                    }
+                )),
+                render: Some(RenderInfo{texture: "player/pon.png".to_owned(), z_level: 2}),
+                physical: Some(PhysicalProperties{
+                    mass: 0.01,
+                    friction: 0.8,
+                    floating: true
+                }.into()),
+                ..Default::default()
+            }
+        };
+
+        inserter(pon(Vector3::new(-0.15, 0.35, 0.0)));
+        inserter(pon(Vector3::new(-0.15, -0.35, 0.0)));
 
 		let player_info = self.player_info(stream, inserted)?;
 

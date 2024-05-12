@@ -26,7 +26,6 @@ use crate::common::{
     Entity,
     Entities,
     Damageable,
-    Component,
     EntityPasser,
 	EntitiesController,
     entity::ClientEntities,
@@ -91,6 +90,8 @@ impl ClientEntitiesContainer
 
 	pub fn update(&mut self, dt: f32)
 	{
+        self.entities.update_children();
+        self.entities.update_lazy(dt);
         self.entities.update_enemy(dt);
         self.entities.update_physical(dt);
 	}
@@ -221,31 +222,16 @@ impl GameObject for ClientEntitiesContainer
 	fn update_buffers(&mut self, info: &mut UpdateBuffersInfo)
     {
         self.entities.update_render();
-        self.entities.render.iter_mut().for_each(|(_, entity)| entity.update_buffers(info));
+        self.entities.render.iter_mut().for_each(|(_, entity)| entity.object.update_buffers(info));
     }
 
 	fn draw(&self, info: &mut DrawInfo)
     {
-		if let Some(player) = self.main_player
-		{
-            let player_id = self.entities.components
-                .get(player.get_raw())
-                .and_then(|x| x[Component::render as usize]);
+        let mut queue: Vec<_> = self.entities.render.iter().map(|(_, x)| x).collect();
 
-			self.entities.render.iter().filter(|(id, _)| Some(*id) != player_id)
-				.for_each(|(_, entity)| entity.draw(info));
+        queue.sort_unstable_by_key(|render| render.z_level);
 
-            if self.entities.exists(player)
-            {
-                if let Some(player) = self.entities.render(player)
-                {
-                    player.draw(info);
-                }
-            }
-		} else
-		{
-		    self.entities.render.iter().for_each(|(_, entity)| entity.draw(info));
-		}
+        queue.into_iter().for_each(|render| render.object.draw(info));
     }
 }
 

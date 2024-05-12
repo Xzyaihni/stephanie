@@ -4,7 +4,7 @@ use yanyaengine::{DefaultModel, Object, ObjectInfo, game_object::*};
 
 use crate::{
     server::ConnectionsHandler,
-    common::{EntityPasser, Anatomy, Enemy, Physical}
+    common::{EntityPasser, Anatomy, Enemy, Physical, LazyTransform}
 };
 
 
@@ -29,13 +29,13 @@ impl<T> ServerToClient<T> for T
     }
 }
 
-impl ServerToClient<Object> for RenderInfo
+impl ServerToClient<ClientRenderInfo> for RenderInfo
 {
     fn server_to_client(
         self,
         transform: Option<Transform>,
         create_info: &mut ObjectCreateInfo
-    ) -> Object
+    ) -> ClientRenderInfo
     {
         let assets = create_info.partial.assets.lock();
 
@@ -45,7 +45,9 @@ impl ServerToClient<Object> for RenderInfo
             transform: transform.expect("renderable must have a transform")
         };
 
-        create_info.partial.object_factory.create(info)
+        let object = create_info.partial.object_factory.create(info);
+
+        ClientRenderInfo{object, z_level: self.z_level}
     }
 }
 
@@ -60,6 +62,33 @@ impl Entity
     }
 }
 
+// parent must always come before child !! (index wise)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Parent
+{
+    parent: Entity,
+    child_transform: Transform
+}
+
+impl Parent
+{
+    pub fn new(parent: Entity, child_transform: Transform) -> Self
+    {
+        Self{parent, child_transform}
+    }
+
+    pub fn combine(&self, parent: Transform) -> Transform
+    {
+        let mut transform = self.child_transform.clone();
+
+        transform.position = transform.position.component_mul(&parent.scale) + parent.position;
+        transform.rotation += parent.rotation;
+        transform.scale.component_mul_assign(&parent.scale);
+
+        transform
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Player
 {
@@ -69,7 +98,14 @@ pub struct Player
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RenderInfo
 {
-    pub texture: String
+    pub texture: String,
+    pub z_level: i32
+}
+
+pub struct ClientRenderInfo
+{
+    pub object: Object,
+    pub z_level: i32
 }
 
 macro_rules! get_component
@@ -115,6 +151,28 @@ macro_rules! get_required_entity
     }
 }
 
+// the borrow checker forces me to create these stupid macros and i hate it
+macro_rules! update_child
+{
+    ($this:expr, $components:expr) =>
+    {
+        let parent = get_component!($this, $components, get, parent);
+
+        if let Some(parent) = parent
+        {
+            let parent_transform = get_entity!($this, parent.parent, get, transform)
+                .cloned();
+
+            let target_transform = get_required_component!($this, $components, get_mut, lazy_transform);
+
+            if let Some(parent_transform) = parent_transform
+            {
+                target_transform.target = parent.combine(parent_transform);
+            }
+        }
+    }
+}
+
 macro_rules! define_entities
 {
     ($(($name:ident,
@@ -152,7 +210,7 @@ macro_rules! define_entities
             }
         }
 
-        pub type ClientEntities = Entities<Object>;
+        pub type ClientEntities = Entities<ClientRenderInfo>;
         pub type ServerEntities = Entities;
 
         pub struct Entities<$($component_type=$default_type,)+>
@@ -272,9 +330,16 @@ macro_rules! define_entities
 
             pub fn push(&mut self, info: EntityInfo<$($component_type,)+>) -> Entity
             {
+                let is_child = info.parent.is_some();
                 let indices = self.info_components(info);
 
-                let id = self.components.push(indices);
+                let id = if is_child
+                {
+                    self.components.push_last(indices)
+                } else
+                {
+                    self.components.push(indices)
+                };
 
                 Entity(id)
             }
@@ -386,6 +451,18 @@ macro_rules! define_entities
                             self.components.insert(entity.0, components);
                         }
 
+                        let components = &self.components[entity.0];
+                        update_child!(self, components);
+
+                        let lazy = get_component!(self, components, get_mut, lazy_transform);
+
+                        if let Some(lazy) = lazy
+                        {
+                            let transform = get_required_component!(self, components, get_mut, transform);
+
+                            *transform = lazy.target.clone();
+                        }
+
                         None
                     },
                     $(Message::$message_name{entity, $name} =>
@@ -414,7 +491,30 @@ macro_rules! define_entities
 
                         use yanyaengine::TransformContainer;
 
-                        object.set_transform(transform.clone());
+                        object.object.set_transform(transform.clone());
+                    }
+                });
+            }
+
+            pub fn update_children(&mut self)
+            {
+                self.components.iter().for_each(|(_, components)|
+                {
+                    update_child!(self, components);
+                });
+            }
+
+            pub fn update_lazy(&mut self, dt: f32)
+            {
+                self.components.iter().for_each(|(_, components)|
+                {
+                    let lazy = get_component!(self, components, get_mut, lazy_transform);
+
+                    if let Some(lazy) = lazy
+                    {
+                        let transform = get_required_component!(self, components, get_mut, transform);
+
+                        *transform = lazy.next(dt);
                     }
                 });
             }
@@ -527,6 +627,8 @@ macro_rules! define_entities
 
 define_entities!{
     (render, render_mut, set_render, SetRender, RenderType, RenderInfo),
+    (parent, parent_mut, set_parent, SetParent, ParentType, Parent),
+    (lazy_transform, lazy_transform_mut, set_lazy_transform, SetLazyTransform, LazyTransformType, LazyTransform),
     (transform, transform_mut, set_transform, SetTransform, TransformType, Transform),
     (player, player_mut, set_player, SetPlayer, PlayerType, Player),
     (enemy, enemy_mut, set_enemy, SetEnemy, EnemyType, Enemy),

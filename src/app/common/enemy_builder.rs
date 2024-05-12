@@ -34,7 +34,7 @@ impl EnemyBuilder
                 rotation: fastrand::f32() * (3.141596 * 2.0),
                 ..Default::default()
             }),
-            render: Some(RenderInfo{texture: "enemy/body.png".to_owned()}),
+            render: Some(RenderInfo{texture: "enemy/body.png".to_owned(), z_level: -1}),
             physical: Some(PhysicalProperties{
                 mass: 50.0,
                 friction: 0.5,

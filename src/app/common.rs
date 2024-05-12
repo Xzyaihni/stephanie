@@ -20,7 +20,20 @@ pub use receiver_loop::receiver_loop;
 
 pub use tilemap::{TileMap, TileMapWithTextures};
 
-pub use entity::{Component, Player, RenderInfo, Entity, EntityInfo, Entities};
+pub use lazy_transform::{
+    LazyTransform,
+    LazyTransformInfo
+};
+
+pub use entity::{
+    Component,
+    Player,
+    Parent,
+    RenderInfo,
+    Entity,
+    EntityInfo,
+    Entities
+};
 
 pub use enemy::{EnemyProperties, EnemyBehavior, Enemy};
 
@@ -43,6 +56,7 @@ pub mod anatomy;
 
 pub mod enemy_builder;
 
+pub mod lazy_transform;
 pub mod entity;
 
 pub mod enemy;
@@ -204,6 +218,21 @@ impl SeededRandom
 pub fn lerp(x: f32, y: f32, a: f32) -> f32
 {
 	(1.0 - a) * x + y * a
+}
+
+pub fn get_two_mut<T>(s: &mut [T], one: usize, two: usize) -> (&mut T, &mut T)
+{
+    if one > two
+    {
+        let (left, right) = s.split_at_mut(one);
+
+        (&mut right[0], &mut left[two])
+    } else
+    {
+        let (left, right) = s.split_at_mut(two);
+
+        (&mut left[one], &mut right[0])
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

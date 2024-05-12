@@ -10,9 +10,12 @@ use std::{
 
 use serde::{Serialize, Deserialize};
 
-use crate::common::world::{
-	Pos3,
-	LocalPos
+use crate::common::{
+    get_two_mut,
+    world::{
+        Pos3,
+        LocalPos
+    }
 };
 
 
@@ -103,17 +106,7 @@ macro_rules! implement_common
                 let one = self.indexer.to_index(one.pos);
                 let two = self.indexer.to_index(two.pos);
 
-                if one > two
-                {
-                    let (left, right) = self.chunks.split_at_mut(one);
-
-                    (&mut right[0], &mut left[two])
-                } else
-                {
-                    let (left, right) = self.chunks.split_at_mut(two);
-
-                    (&mut left[one], &mut right[0])
-                }
+                get_two_mut(&mut self.chunks, one, two)
             }
 
             pub fn positions(&self) -> impl Iterator<Item=LocalPos>
