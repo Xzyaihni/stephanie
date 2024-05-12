@@ -96,11 +96,13 @@ impl GameServer
     {
         const STEPS: u32 = 2;
 
+        let mut messager = self.connection_handler.write();
+
         for _ in 0..STEPS
         {
             let dt = dt / STEPS as f32;
 
-            self.entities.update_enemy(dt);
+            self.entities.update_enemy(&mut messager, dt);
             self.entities.update_physical(dt);
         }
     }

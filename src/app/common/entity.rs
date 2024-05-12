@@ -2,7 +2,10 @@ use serde::{Serialize, Deserialize};
 
 use yanyaengine::{DefaultModel, Object, ObjectInfo, game_object::*};
 
-use crate::common::{Anatomy, Enemy, Physical};
+use crate::{
+    server::ConnectionsHandler,
+    common::{EntityPasser, Anatomy, Enemy, Physical}
+};
 
 
 pub trait ServerToClient<T>
@@ -198,14 +201,19 @@ macro_rules! define_entities
                 });
             }
 
-            pub fn update_enemy(&mut self, dt: f32)
+            fn update_enemy_common<F>(
+                &mut self,
+                dt: f32,
+                mut on_state_change: F
+            )
             where
+                F: FnMut(Entity, &mut EnemyType, &mut TransformType),
                 for<'a> &'a mut EnemyType: Into<&'a mut Enemy>,
                 for<'a> &'a AnatomyType: Into<&'a Anatomy>,
                 for<'a> &'a mut TransformType: Into<&'a mut Transform>,
                 for<'a> &'a mut PhysicalType: Into<&'a mut Physical>
             {
-                self.components.iter().for_each(|(_, components)|
+                self.components.iter().for_each(|(entity, components)|
                 {
                     if let Some(enemy) = get_component!(self, components, get_mut, enemy)
                     {
@@ -213,12 +221,17 @@ macro_rules! define_entities
                         let transform = get_required_component!(self, components, get_mut, transform);
                         let physical = get_required_component!(self, components, get_mut, physical);
 
-                        enemy.into().update(
+                        let state_changed = enemy.into().update(
                             anatomy.into(),
                             transform.into(),
                             physical.into(),
                             dt
                         );
+
+                        if state_changed
+                        {
+                            on_state_change(Entity(entity), enemy, transform)
+                        }
                     }
                 });
             }
@@ -406,6 +419,11 @@ macro_rules! define_entities
                 });
             }
 
+            pub fn update_enemy(&mut self, dt: f32)
+            {
+                self.update_enemy_common(dt, |_, _, _| {});
+            }
+
             fn set_existing_entity(
                 &mut self,
                 create_info: &mut ObjectCreateInfo,
@@ -456,6 +474,22 @@ macro_rules! define_entities
                         self.$name[id].clone()
                     }),
                 )+}
+            }
+
+            pub fn update_enemy(&mut self, messager: &mut ConnectionsHandler, dt: f32)
+            {
+                self.update_enemy_common(dt, |entity, enemy, transform|
+                {
+                    messager.send_message(Message::SetEnemy{
+                        entity,
+                        enemy: enemy.clone()
+                    });
+
+                    messager.send_message(Message::SetTransform{
+                        entity,
+                        transform: transform.clone()
+                    });
+                });
             }
 
             pub fn push_message(&mut self, info: EntityInfo) -> Message

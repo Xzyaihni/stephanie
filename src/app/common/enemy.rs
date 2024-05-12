@@ -139,9 +139,9 @@ impl Enemy
     {
         self.current_state_left -= dt;
 
-        let needs_update = self.current_state_left <= 0.0;
+        let changed_state = self.current_state_left <= 0.0;
 
-        if needs_update
+        if changed_state
         {
             self.next_state();
 
@@ -153,7 +153,7 @@ impl Enemy
 
         self.do_behavior(anatomy, transform, physical);
 
-        needs_update
+        changed_state
     }
 
     pub fn behavior(&self) -> &EnemyBehavior
