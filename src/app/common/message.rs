@@ -35,7 +35,7 @@ pub enum Message
     EntityDestroy{entity: Entity},
     EntityDamage{entity: Entity, damage: Damage},
     PlayerConnect{name: String},
-    PlayerOnConnect{entity: Entity},
+    PlayerOnConnect{entity: Entity, children: Vec<Entity>},
     PlayerFullyConnected,
     ChunkRequest{pos: GlobalPos},
     ChunkSync{pos: GlobalPos, chunk: Chunk},

@@ -1,4 +1,5 @@
 use std::{
+    f32,
     fmt,
     net::TcpStream,
     sync::Arc
@@ -179,17 +180,77 @@ impl GameServer
 
         let inserted = inserter(info);
 
+        let mut player_children = Vec::new();
+
+        let item_size = 0.2;
+        let held_item = EntityInfo{
+            transform: Some(Default::default()),
+            render: Some(RenderInfo{texture: "items/weapons/pistol.png".to_owned(), z_level: -1}),
+            physical: Some(PhysicalProperties{
+                mass: 0.5,
+                friction: 0.4,
+                floating: true
+            }.into()),
+            parent: Some(Parent::new(
+                inserted,
+                Vector3::new(1.0, 0.0, 0.0),
+                Transform{
+                    scale: Vector3::new(
+                        item_size,
+                        item_size * 4.143,
+                        item_size
+                    ),
+                    rotation: f32::consts::FRAC_PI_2,
+                    ..Default::default()
+                }
+            )),
+            lazy_transform: Some(LazyTransformInfo{
+                connection: Connection::Spring(
+                    SpringConnection{
+                        limit: 0.04,
+                        damping: 0.02,
+                        strength: 6.0
+                    }
+                ),
+                rotation: Rotation::Constant(
+                    ConstantRotation{
+                        speed: 5.0,
+                        momentum: 0.5
+                    }.into()
+                ),
+                deformation: Deformation::Rigid
+            }.into()),
+            ..Default::default()
+        };
+
+        player_children.push(inserter(held_item));
+
         let pon = |position|
         {
             EntityInfo{
                 transform: Some(Default::default()),
                 lazy_transform: Some(LazyTransformInfo{
-                    deformation: Deformation::Stretch(StretchDeformation{
-                        animation: ValueAnimation::EaseOut(2.0),
-                        limit: 0.4,
-                        onset: 0.3,
-                        strength: 0.5
-                    }),
+                    connection: Connection::Spring(
+                        SpringConnection{
+                            limit: 0.04,
+                            damping: 0.02,
+                            strength: 0.9
+                        }
+                    ),
+                    rotation: Rotation::EaseOut(
+                        EaseOutRotation{
+                            resistance: 0.0001,
+                            momentum: 0.5
+                        }.into()
+                    ),
+                    deformation: Deformation::Stretch(
+                        StretchDeformation{
+                            animation: ValueAnimation::EaseOut(2.0),
+                            limit: 0.4,
+                            onset: 0.3,
+                            strength: 0.5
+                        }
+                    )
                 }.into()),
                 parent: Some(Parent::new(
                     inserted,
@@ -209,12 +270,12 @@ impl GameServer
             }
         };
 
-        inserter(pon(Vector3::new(-0.15, 0.35, 0.0)));
-        inserter(pon(Vector3::new(-0.15, -0.35, 0.0)));
+        player_children.push(inserter(pon(Vector3::new(-0.15, 0.35, 0.0))));
+        player_children.push(inserter(pon(Vector3::new(-0.15, -0.35, 0.0))));
 
         let player_info = self.player_info(stream, inserted)?;
 
-        let (connection, messager) = self.player_create(inserted, player_info)?;
+        let (connection, messager) = self.player_create(inserted, player_children, player_info)?;
 
         self.world.add_player(connection, position.into());
 
@@ -242,6 +303,7 @@ impl GameServer
     fn player_create(
         &mut self,
         entity: Entity,
+        player_children: Vec<Entity>,
         player_info: PlayerInfo
     ) -> Result<(ConnectionId, MessagePasser), ConnectionError>
     {
@@ -250,7 +312,7 @@ impl GameServer
 
         let messager = connection_handler.get_mut(connection_id);
 
-        messager.send_blocking(Message::PlayerOnConnect{entity})?;
+        messager.send_blocking(Message::PlayerOnConnect{entity, children: player_children})?;
 
         self.entities.entities_iter().try_for_each(|entity|
         {

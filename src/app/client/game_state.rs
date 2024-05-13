@@ -66,17 +66,19 @@ struct RaycastResult
 pub struct ClientEntitiesContainer
 {
     entities: ClientEntities,
-    main_player: Option<Entity>
+    main_player: Option<Entity>,
+    player_children: Vec<Entity>
 }
 
 impl ClientEntitiesContainer
 {
     pub fn new() -> Self
     {
-        let entities = Entities::new();
-        let main_player = None;
-
-        Self{entities, main_player}
+        Self{
+            entities: Entities::new(),
+            main_player: None,
+            player_children: Vec::new()
+        }
     }
     
     pub fn handle_message(
@@ -109,9 +111,7 @@ impl ClientEntitiesContainer
     {
         let scale = transform.scale;
 
-        // im not dealing with this
-        debug_assert!(scale.x == scale.y && scale.x == scale.z);
-        let radius = scale.x / 2.0;
+        let radius = scale.x.max(scale.y.max(scale.z)) / 2.0;
 
         let position = transform.position;
 
@@ -164,7 +164,10 @@ impl ClientEntitiesContainer
                 {
                     if info.ignore_player
                     {
-                        (self.main_player != Some(entity)).then_some((entity, transform))
+                        let is_player = self.main_player == Some(entity)
+                            || self.player_children.contains(&entity);
+
+                        (!is_player).then_some((entity, transform))
                     } else
                     {
                         Some((entity, transform))
@@ -347,8 +350,13 @@ impl GameState
             Pos3::new(0.0, 0.0, 0.0)
         );
 
-        let player_id = Self::connect_to_server(connections_handler.clone(), &client_info.name);
+        let (player_id, player_children) = Self::connect_to_server(
+            connections_handler.clone(),
+            &client_info.name
+        );
+
         entities.main_player = Some(player_id);
+        entities.player_children = player_children;
 
         sender_loop(connections_handler.clone());
 
@@ -398,7 +406,10 @@ impl GameState
         self.send_message(Message::SetTransform{entity, transform});
     }
 
-    fn connect_to_server(handler: Arc<RwLock<ConnectionsHandler>>, name: &str) -> Entity
+    fn connect_to_server(
+        handler: Arc<RwLock<ConnectionsHandler>>,
+        name: &str
+    ) -> (Entity, Vec<Entity>)
     {
         let message = Message::PlayerConnect{name: name.to_owned()};
 
@@ -411,7 +422,10 @@ impl GameState
 
         match handler.receive_blocking()
         {
-            Ok(Some(Message::PlayerOnConnect{entity})) => entity,
+            Ok(Some(Message::PlayerOnConnect{entity, children})) =>
+            {
+                (entity, children)
+            },
             x => panic!("received wrong message on connect: {x:?}")
         }
     }

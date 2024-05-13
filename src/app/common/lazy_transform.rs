@@ -31,6 +31,49 @@ impl ValueAnimation
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SpringConnection
+{
+    pub limit: f32,
+    pub damping: f32,
+    pub strength: f32
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EaseOutRotation
+{
+    pub resistance: f32,
+    pub momentum: f32
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConstantRotation
+{
+    pub speed: f32,
+    pub momentum: f32
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RotationInfo<T>
+{
+    last_move: f32,
+    props: T
+}
+
+impl<T> From<T> for RotationInfo<T>
+{
+    fn from(props: T) -> Self
+    {
+        Self{
+            last_move: 0.0,
+            props
+        }
+    }
+}
+
+pub type EaseOutRotationInfo = RotationInfo<EaseOutRotation>;
+pub type ConstantRotationInfo = RotationInfo<ConstantRotation>;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StretchDeformation
 {
     pub animation: ValueAnimation,
@@ -53,6 +96,21 @@ impl StretchDeformation
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum Connection
+{
+    Rigid,
+    Spring(SpringConnection)
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum Rotation
+{
+    Instant,
+    EaseOut(EaseOutRotationInfo),
+    Constant(ConstantRotationInfo)
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Deformation
 {
     Rigid,
@@ -61,6 +119,8 @@ pub enum Deformation
 
 pub struct LazyTransformInfo
 {
+    pub connection: Connection,
+    pub rotation: Rotation,
     pub deformation: Deformation
 }
 
@@ -68,6 +128,8 @@ pub struct LazyTransformInfo
 pub struct LazyTransform
 {
     pub target: Transform,
+    connection: Connection,
+    rotation: Rotation,
     deformation: Deformation
 }
 
@@ -77,6 +139,8 @@ impl From<LazyTransformInfo> for LazyTransform
     {
         Self{
             target: Default::default(),
+            connection: info.connection,
+            rotation: info.rotation,
             deformation: info.deformation
         }
     }
