@@ -9,7 +9,8 @@ use crate::common::{
     EnemyBehavior,
     PhysicalProperties,
     RenderInfo,
-    EntityInfo
+    EntityInfo,
+    lazy_transform::*
 };
 
 
@@ -28,12 +29,25 @@ impl EnemyBuilder
     pub fn build(self) -> EntityInfo
     {
         EntityInfo{
-            transform: Some(Transform{
-                position: self.pos,
-                scale: Vector3::repeat(0.1),
-                rotation: fastrand::f32() * (3.141596 * 2.0),
-                ..Default::default()
-            }),
+            transform: Some(Default::default()),
+            lazy_transform: Some(LazyTransformInfo{
+                connection: Connection::Rigid,
+                deformation: Deformation::Rigid,
+                rotation: Rotation::EaseOut(
+                    EaseOutRotation{
+                        resistance: 0.01,
+                        momentum: 0.0
+                    }.into()
+                ),
+                origin_rotation: 0.0,
+                origin: Vector3::zeros(),
+                transform: Transform{
+                    position: self.pos,
+                    scale: Vector3::repeat(0.1),
+                    rotation: fastrand::f32() * (3.141596 * 2.0),
+                    ..Default::default()
+                }
+            }.into()),
             render: Some(RenderInfo{texture: "enemy/body.png".to_owned(), z_level: -1}),
             physical: Some(PhysicalProperties{
                 mass: 50.0,

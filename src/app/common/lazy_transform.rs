@@ -8,7 +8,6 @@ use yanyaengine::Transform;
 
 use crate::common::{
     lerp,
-    Parent,
     Physical
 };
 
@@ -39,6 +38,7 @@ impl ValueAnimation
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SpringConnection
 {
+    pub physical: Physical,
     pub limit: f32,
     pub damping: f32,
     pub strength: f32
@@ -123,18 +123,62 @@ pub enum Deformation
     Stretch(StretchDeformation)
 }
 
+pub trait LazyTargettable
+{
+    fn target(&mut self) -> &mut Transform;
+}
+
 pub struct LazyTransformInfo
 {
     pub connection: Connection,
     pub rotation: Rotation,
-    pub deformation: Deformation
+    pub deformation: Deformation,
+    pub origin_rotation: f32,
+    pub origin: Vector3<f32>,
+    pub transform: Transform
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LazyTransformServer
+{
+    pub target_local: Transform,
+    origin_rotation: f32,
+    origin: Vector3<f32>,
+    connection: Connection,
+    rotation: Rotation,
+    deformation: Deformation
+}
+
+impl From<LazyTransformInfo> for LazyTransformServer
+{
+    fn from(info: LazyTransformInfo) -> Self
+    {
+        Self{
+            target_local: info.transform,
+            origin_rotation: info.origin_rotation,
+            origin: info.origin,
+            connection: info.connection,
+            rotation: info.rotation,
+            deformation: info.deformation
+        }
+    }
+}
+
+impl LazyTargettable for LazyTransformServer
+{
+    fn target(&mut self) -> &mut Transform
+    {
+        &mut self.target_local
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct LazyTransform
 {
-    pub target: Transform,
+    pub target_local: Transform,
     current: Transform,
+    origin_rotation: f32,
+    origin: Vector3<f32>,
     connection: Connection,
     rotation: Rotation,
     deformation: Deformation
@@ -145,8 +189,10 @@ impl From<LazyTransformInfo> for LazyTransform
     fn from(info: LazyTransformInfo) -> Self
     {
         Self{
-            target: Default::default(),
-            current: Default::default(),
+            target_local: info.transform.clone(),
+            current: info.transform,
+            origin_rotation: info.origin_rotation,
+            origin: info.origin,
             connection: info.connection,
             rotation: info.rotation,
             deformation: info.deformation
@@ -154,27 +200,53 @@ impl From<LazyTransformInfo> for LazyTransform
     }
 }
 
+impl From<LazyTransformServer> for LazyTransform
+{
+    fn from(info: LazyTransformServer) -> Self
+    {
+        Self{
+            target_local: info.target_local.clone(),
+            current: info.target_local,
+            origin_rotation: info.origin_rotation,
+            origin: info.origin,
+            connection: info.connection,
+            rotation: info.rotation,
+            deformation: info.deformation
+        }
+    }
+}
+
+impl LazyTargettable for LazyTransform
+{
+    fn target(&mut self) -> &mut Transform
+    {
+        &mut self.target_local
+    }
+}
+
 impl LazyTransform
 {
     pub fn next(
         &mut self,
-        parent: Option<&Parent>,
-        physical: &mut Physical,
+        parent_transform: Option<Transform>,
         dt: f32
     ) -> Transform
     {
+        let target_global = parent_transform.as_ref().map(|parent| self.combine(parent))
+            .unwrap_or_else(|| self.target_local.clone());
+
         let mut current = self.current.clone();
 
         match &self.rotation
         {
             Rotation::Instant =>
             {
-                current.rotation = self.target.rotation;
+                current.rotation = target_global.rotation;
             },
             Rotation::EaseOut(..) | Rotation::Constant{..} =>
             {
                 let pi2 = 2.0 * f32::consts::PI;
-                let rotation_difference = (self.target.rotation - current.rotation) % pi2;
+                let rotation_difference = (target_global.rotation - current.rotation) % pi2;
 
                 let short_difference = if rotation_difference > f32::consts::PI
                 {
@@ -262,24 +334,29 @@ impl LazyTransform
             }
         }
 
-        match &self.connection
+        match &mut self.connection
         {
             Connection::Rigid =>
             {
-                current.position = self.target.position;
+                current.position = target_global.position;
             },
             Connection::Spring(connection) =>
             {
-                let distance = self.target.position - current.position;
+                let distance = target_global.position - current.position;
 
                 let spring_force = distance * connection.strength;
 
-                physical.force += spring_force;
-                physical.damp_velocity(connection.damping, dt);
+                connection.physical.force += spring_force;
+                connection.physical.damp_velocity(connection.damping, dt);
+                connection.physical.physics_update(&mut current, dt);
 
-                current.position = self.clamp_distance(current.position, connection.limit);
+                current.position = Self::clamp_distance(
+                    target_global.position,
+                    current.position,
+                    connection.limit
+                );
 
-                current.position.z = self.target.position.z;
+                current.position.z = target_global.position.z;
             }
         }
 
@@ -288,37 +365,59 @@ impl LazyTransform
             Deformation::Rigid => (),
             Deformation::Stretch(deformation) =>
             {
-                current.stretch = deformation.stretch(physical.velocity);
+                let velocity = self.physical().map(|x| x.velocity).unwrap_or_else(Vector3::zeros);
+
+                current.stretch = deformation.stretch(velocity);
             }
         }
 
         self.current = current.clone();
 
-        if let Some(parent) = parent
+        if let Some(parent) = parent_transform
         {
             let rotation = NRotation::from_axis_angle(
                 &current.rotation_axis,
-                current.rotation + parent.origin_rotation()
+                current.rotation + self.origin_rotation
             );
 
-            let original_position = parent.child_transform().position;
+            let relative_position = current.position - parent.position;
 
-            let origin = parent.origin().component_mul(&self.target.scale);
-            let offset_position = original_position - origin;
-            current.position += rotation * offset_position - original_position;
+            let origin = self.origin.component_mul(&target_global.scale);
+            let offset_position = relative_position - origin;
+            current.position = rotation * offset_position + parent.position;
         }
 
         current
     }
 
-    pub fn reset_current(&mut self)
+    pub fn combine(&self, parent: &Transform) -> Transform
     {
-        self.current = self.target.clone();
+        let mut transform = self.target_local.clone();
+
+        transform.position += parent.position;
+        transform.rotation += parent.rotation;
+        transform.scale.component_mul_assign(&parent.scale);
+
+        transform
     }
 
-    fn clamp_distance(&mut self, current: Vector3<f32>, limit: f32) -> Vector3<f32>
+    pub fn reset_current(&mut self, target: Transform)
     {
-        let distance = self.target.position - current;
+        self.current = target;
+    }
+
+    fn physical(&self) -> Option<&Physical>
+    {
+        match &self.connection
+        {
+            Connection::Spring(x) => Some(&x.physical),
+            _ => None
+        }
+    }
+
+    fn clamp_distance(target: Vector3<f32>, current: Vector3<f32>, limit: f32) -> Vector3<f32>
+    {
+        let distance = target - current;
 
         // checking again cuz this is after the physics update
         if distance.magnitude() < limit
@@ -328,6 +427,6 @@ impl LazyTransform
 
         let limited_position = distance.normalize() * limit;
 
-        self.target.position - limited_position
+        target - limited_position
     }
 }

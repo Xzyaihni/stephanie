@@ -107,6 +107,7 @@ impl GameServer
 
             self.entities.update_enemy(&mut messager, dt);
             self.entities.update_physical(dt);
+            self.entities.update_lazy();
         }
     }
 
@@ -185,30 +186,16 @@ impl GameServer
         let item_size = 0.2;
         let held_item = EntityInfo{
             transform: Some(Default::default()),
-            render: Some(RenderInfo{texture: "items/weapons/pistol.png".to_owned(), z_level: -1}),
-            physical: Some(PhysicalProperties{
-                mass: 0.5,
-                friction: 0.4,
-                floating: true
-            }.into()),
-            parent: Some(Parent::new(
-                inserted,
-                -f32::consts::FRAC_PI_2,
-                Vector3::zeros(),
-                Transform{
-                    scale: Vector3::new(
-                        item_size,
-                        item_size * 4.143,
-                        item_size
-                    ),
-                    rotation: f32::consts::FRAC_PI_2,
-                    position: Vector3::new(transform.scale.x, 0.0, 0.0),
-                    ..Default::default()
-                }
-            )),
+            render: Some(RenderInfo{texture: "items/weapons/pistol.png".to_owned(), z_level: -2}),
+            parent: Some(Parent::new(inserted)),
             lazy_transform: Some(LazyTransformInfo{
                 connection: Connection::Spring(
                     SpringConnection{
+                        physical: PhysicalProperties{
+                            mass: 0.5,
+                            friction: 0.4,
+                            floating: true
+                        }.into(),
                         limit: 0.004,
                         damping: 0.02,
                         strength: 6.0
@@ -220,7 +207,19 @@ impl GameServer
                         momentum: 0.5
                     }.into()
                 ),
-                deformation: Deformation::Rigid
+                deformation: Deformation::Rigid,
+                origin_rotation: -f32::consts::FRAC_PI_2,
+                origin: Vector3::zeros(),
+                transform: Transform{
+                    scale: Vector3::new(
+                        item_size,
+                        item_size * 4.143,
+                        item_size
+                    ),
+                    rotation: f32::consts::FRAC_PI_2,
+                    position: Vector3::new(transform.scale.x, 0.0, 0.0),
+                    ..Default::default()
+                }
             }.into()),
             ..Default::default()
         };
@@ -234,6 +233,11 @@ impl GameServer
                 lazy_transform: Some(LazyTransformInfo{
                     connection: Connection::Spring(
                         SpringConnection{
+                            physical: PhysicalProperties{
+                                mass: 0.01,
+                                friction: 0.8,
+                                floating: true
+                            }.into(),
                             limit: 0.004,
                             damping: 0.02,
                             strength: 0.9
@@ -252,24 +256,17 @@ impl GameServer
                             onset: 0.3,
                             strength: 0.5
                         }
-                    )
-                }.into()),
-                parent: Some(Parent::new(
-                    inserted,
-                    0.0,
-                    Vector3::zeros(),
-                    Transform{
+                    ),
+                    origin_rotation: 0.0,
+                    origin: Vector3::zeros(),
+                    transform: Transform{
                         scale: Vector3::repeat(0.4),
                         position: position.component_mul(&transform.scale),
                         ..Default::default()
                     }
-                )),
-                render: Some(RenderInfo{texture: "player/pon.png".to_owned(), z_level: 2}),
-                physical: Some(PhysicalProperties{
-                    mass: 0.01,
-                    friction: 0.8,
-                    floating: true
                 }.into()),
+                parent: Some(Parent::new(inserted)),
+                render: Some(RenderInfo{texture: "player/pon.png".to_owned(), z_level: 2}),
                 ..Default::default()
             }
         };

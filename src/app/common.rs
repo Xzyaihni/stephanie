@@ -22,7 +22,9 @@ pub use tilemap::{TileMap, TileMapWithTextures};
 
 pub use lazy_transform::{
     LazyTransform,
-    LazyTransformInfo
+    LazyTransformInfo,
+    LazyTransformServer,
+    LazyTargettable
 };
 
 pub use entity::{
