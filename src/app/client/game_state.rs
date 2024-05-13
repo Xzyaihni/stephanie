@@ -93,9 +93,9 @@ impl ClientEntitiesContainer
     pub fn update(&mut self, dt: f32)
     {
         self.entities.update_children();
+        self.entities.update_physical(dt);
         self.entities.update_lazy(dt);
         self.entities.update_enemy(dt);
-        self.entities.update_physical(dt);
     }
 
     pub fn player_exists(&self, entity: Entity) -> bool

@@ -111,4 +111,9 @@ impl Physical
             self.velocity.y = 0.0;
         }
     }
+
+    pub fn damp_velocity(&mut self, damping: f32, dt: f32)
+    {
+        self.velocity *= damping.powf(dt);
+    }
 }

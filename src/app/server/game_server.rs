@@ -163,7 +163,7 @@ impl GameServer
 
         let info = EntityInfo{
             player: Some(Player{name: format!("stephanie #{player_index}")}),
-            transform: Some(transform),
+            transform: Some(transform.clone()),
             render: Some(RenderInfo{texture: "player/hair.png".to_owned(), z_level: 0}),
             physical: Some(physical.into()),
             anatomy: Some(anatomy),
@@ -193,7 +193,8 @@ impl GameServer
             }.into()),
             parent: Some(Parent::new(
                 inserted,
-                Vector3::new(1.0, 0.0, 0.0),
+                -f32::consts::FRAC_PI_2,
+                Vector3::zeros(),
                 Transform{
                     scale: Vector3::new(
                         item_size,
@@ -201,13 +202,14 @@ impl GameServer
                         item_size
                     ),
                     rotation: f32::consts::FRAC_PI_2,
+                    position: Vector3::new(transform.scale.x, 0.0, 0.0),
                     ..Default::default()
                 }
             )),
             lazy_transform: Some(LazyTransformInfo{
                 connection: Connection::Spring(
                     SpringConnection{
-                        limit: 0.04,
+                        limit: 0.004,
                         damping: 0.02,
                         strength: 6.0
                     }
@@ -225,14 +227,14 @@ impl GameServer
 
         player_children.push(inserter(held_item));
 
-        let pon = |position|
+        let pon = |position: Vector3<f32>|
         {
             EntityInfo{
                 transform: Some(Default::default()),
                 lazy_transform: Some(LazyTransformInfo{
                     connection: Connection::Spring(
                         SpringConnection{
-                            limit: 0.04,
+                            limit: 0.004,
                             damping: 0.02,
                             strength: 0.9
                         }
@@ -254,9 +256,11 @@ impl GameServer
                 }.into()),
                 parent: Some(Parent::new(
                     inserted,
-                    position,
+                    0.0,
+                    Vector3::zeros(),
                     Transform{
                         scale: Vector3::repeat(0.4),
+                        position: position.component_mul(&transform.scale),
                         ..Default::default()
                     }
                 )),

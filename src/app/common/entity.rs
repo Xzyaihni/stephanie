@@ -1,6 +1,6 @@
 use serde::{Serialize, Deserialize};
 
-use nalgebra::{Vector3, Rotation};
+use nalgebra::Vector3;
 
 use yanyaengine::{DefaultModel, Object, ObjectInfo, game_object::*};
 
@@ -69,6 +69,7 @@ impl Entity
 pub struct Parent
 {
     parent: Entity,
+    origin_rotation: f32,
     origin: Vector3<f32>,
     child_transform: Transform
 }
@@ -77,29 +78,39 @@ impl Parent
 {
     pub fn new(
         parent: Entity,
+        origin_rotation: f32,
         origin: Vector3<f32>,
         child_transform: Transform
     ) -> Self
     {
         Self{
             parent,
+            origin_rotation,
             origin,
             child_transform
         }
+    }
+
+    pub fn origin(&self) -> &Vector3<f32>
+    {
+        &self.origin
+    }
+
+    pub fn origin_rotation(&self) -> f32
+    {
+        self.origin_rotation
+    }
+
+    pub fn child_transform(&self) -> &Transform
+    {
+        &self.child_transform
     }
 
     pub fn combine(&self, parent: Transform) -> Transform
     {
         let mut transform = self.child_transform.clone();
 
-        let rotation = Rotation::from_axis_angle(
-            &parent.rotation_axis,
-            parent.rotation
-        );
-
-        let origin = rotation * self.origin;
-
-        transform.position += origin.component_mul(&parent.scale) + parent.position;
+        transform.position += parent.position;
         transform.rotation += parent.rotation;
         transform.scale.component_mul_assign(&parent.scale);
 
@@ -478,6 +489,7 @@ macro_rules! define_entities
                         {
                             let transform = get_required_component!(self, components, get_mut, transform);
 
+                            lazy.reset_current();
                             *transform = lazy.target.clone();
                         }
 
@@ -532,8 +544,9 @@ macro_rules! define_entities
                     {
                         let transform = get_required_component!(self, components, get_mut, transform);
                         let physical = get_required_component!(self, components, get_mut, physical);
+                        let parent = get_component!(self, components, get, parent);
 
-                        *transform = lazy.next(physical, dt);
+                        *transform = lazy.next(parent, physical, dt);
                     }
                 });
             }
