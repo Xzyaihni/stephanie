@@ -82,6 +82,35 @@ impl Entity
     }
 }
 
+pub trait OnSet<EntitiesType>
+{
+    fn on_set(&mut self, entities: &mut EntitiesType, entity: Entity);
+}
+
+macro_rules! no_on_set
+{
+    ($($name:ident),*) =>
+    {
+        $(impl<E> OnSet<E> for $name
+        {
+            fn on_set(&mut self, _entities: &mut E, _entity: Entity) {}
+        })*
+    }
+}
+
+no_on_set!{
+    ClientRenderInfo,
+    RenderInfo,
+    LazyTransform,
+    LazyTransformServer,
+    Parent,
+    Transform,
+    Player,
+    Enemy,
+    Physical,
+    Anatomy
+}
+
 // parent must always come before child !! (index wise)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Parent
@@ -205,7 +234,7 @@ macro_rules! define_entities
             $(pub $name: ObjectsStore<$component_type>,)+
         }
 
-        impl<$($component_type,)+> Entities<$($component_type,)+>
+        impl<$($component_type: OnSet<Self>,)+> Entities<$($component_type,)+>
         {
             pub fn new() -> Self
             {
@@ -300,12 +329,14 @@ macro_rules! define_entities
                     get_entity!(self, entity, get_mut, $name)
                 }
 
-                pub fn $set_func(&mut self, entity: Entity, component: $component_type)
+                pub fn $set_func(&mut self, entity: Entity, mut component: $component_type)
                 {
                     if !self.exists(entity)
                     {
                         self.components.insert(entity.0, Self::empty_components());
                     }
+
+                    component.on_set(self, entity);
 
                     let slot = &mut self.components
                         [entity.0]
