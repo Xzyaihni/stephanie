@@ -19,31 +19,31 @@ use yanyaengine::{
 };
 
 use crate::common::{
-	sender_loop,
-	receiver_loop,
+    sender_loop,
+    receiver_loop,
     TileMap,
     Damage,
     Entity,
     Entities,
     Damageable,
     EntityPasser,
-	EntitiesController,
+    EntitiesController,
     entity::ClientEntities,
-	message::Message,
-	world::{
-		World,
-		Pos3,
+    message::Message,
+    world::{
+        World,
+        Pos3,
         Tile,
         TilePos
-	}
+    }
 };
 
 use super::{
-	ClientInfo,
-	MessagePasser,
-	ConnectionsHandler,
-	TilesFactory,
-	world_receiver::WorldReceiver
+    ClientInfo,
+    MessagePasser,
+    ConnectionsHandler,
+    TilesFactory,
+    world_receiver::WorldReceiver
 };
 
 pub use controls_controller::Control;
@@ -65,19 +65,19 @@ struct RaycastResult
 
 pub struct ClientEntitiesContainer
 {
-	entities: ClientEntities,
-	main_player: Option<Entity>
+    entities: ClientEntities,
+    main_player: Option<Entity>
 }
 
 impl ClientEntitiesContainer
 {
-	pub fn new() -> Self
-	{
-		let entities = Entities::new();
-		let main_player = None;
+    pub fn new() -> Self
+    {
+        let entities = Entities::new();
+        let main_player = None;
 
-		Self{entities, main_player}
-	}
+        Self{entities, main_player}
+    }
     
     pub fn handle_message(
         &mut self,
@@ -88,18 +88,18 @@ impl ClientEntitiesContainer
         self.entities.handle_message(create_info, message)
     }
 
-	pub fn update(&mut self, dt: f32)
-	{
+    pub fn update(&mut self, dt: f32)
+    {
         self.entities.update_children();
         self.entities.update_lazy(dt);
         self.entities.update_enemy(dt);
         self.entities.update_physical(dt);
-	}
+    }
 
-	pub fn player_exists(&self, entity: Entity) -> bool
-	{
-		self.entities.exists(entity)
-	}
+    pub fn player_exists(&self, entity: Entity) -> bool
+    {
+        self.entities.exists(entity)
+    }
 
     fn raycast_entity(
         start: &Vector3<f32>,
@@ -219,13 +219,13 @@ impl ClientEntitiesContainer
 
 impl GameObject for ClientEntitiesContainer
 {
-	fn update_buffers(&mut self, info: &mut UpdateBuffersInfo)
+    fn update_buffers(&mut self, info: &mut UpdateBuffersInfo)
     {
         self.entities.update_render();
         self.entities.render.iter_mut().for_each(|(_, entity)| entity.object.update_buffers(info));
     }
 
-	fn draw(&self, info: &mut DrawInfo)
+    fn draw(&self, info: &mut DrawInfo)
     {
         let mut queue: Vec<_> = self.entities.render.iter().map(|(_, x)| x).collect();
 
@@ -238,16 +238,16 @@ impl GameObject for ClientEntitiesContainer
 #[derive(Debug, Clone, Copy)]
 pub struct MousePosition
 {
-	pub x: f32,
-	pub y: f32
+    pub x: f32,
+    pub y: f32
 }
 
 impl MousePosition
 {
-	pub fn new(x: f32, y: f32) -> Self
-	{
-		Self{x, y}
-	}
+    pub fn new(x: f32, y: f32) -> Self
+    {
+        Self{x, y}
+    }
 
     pub fn center_offset(self) -> Vector2<f32>
     {
@@ -257,10 +257,10 @@ impl MousePosition
 
 impl From<(f64, f64)> for MousePosition
 {
-	fn from(value: (f64, f64)) -> Self
-	{
-		Self{x: value.0 as f32, y: value.1 as f32}
-	}
+    fn from(value: (f64, f64)) -> Self
+    {
+        Self{x: value.0 as f32, y: value.1 as f32}
+    }
 }
 
 pub struct RaycastInfo
@@ -304,59 +304,59 @@ impl RaycastHits
 
 pub struct GameState
 {
-	pub mouse_position: MousePosition,
-	pub camera: Arc<RwLock<Camera>>,
+    pub mouse_position: MousePosition,
+    pub camera: Arc<RwLock<Camera>>,
     pub assets: Arc<Mutex<Assets>>,
-	pub object_factory: Arc<ObjectFactory>,
-	pub notifications: Notifications,
-	pub entities: ClientEntitiesContainer,
+    pub object_factory: Arc<ObjectFactory>,
+    pub notifications: Notifications,
+    pub entities: ClientEntitiesContainer,
     pub controls: ControlsController,
-	pub running: bool,
-	pub debug_mode: bool,
+    pub running: bool,
+    pub debug_mode: bool,
     pub tilemap: Arc<TileMap>,
-	world: World,
-	connections_handler: Arc<RwLock<ConnectionsHandler>>,
-	receiver: Receiver<Message>
+    world: World,
+    connections_handler: Arc<RwLock<ConnectionsHandler>>,
+    receiver: Receiver<Message>
 }
 
 impl GameState
 {
-	pub fn new(
-		camera: Arc<RwLock<Camera>>,
+    pub fn new(
+        camera: Arc<RwLock<Camera>>,
         assets: Arc<Mutex<Assets>>,
-		object_factory: Arc<ObjectFactory>,
-		tiles_factory: TilesFactory,
-		message_passer: MessagePasser,
-		client_info: &ClientInfo
-	) -> Self
-	{
-		let mouse_position = MousePosition::new(0.0, 0.0);
+        object_factory: Arc<ObjectFactory>,
+        tiles_factory: TilesFactory,
+        message_passer: MessagePasser,
+        client_info: &ClientInfo
+    ) -> Self
+    {
+        let mouse_position = MousePosition::new(0.0, 0.0);
 
-		let notifications = Notifications::new();
-		let mut entities = ClientEntitiesContainer::new();
+        let notifications = Notifications::new();
+        let mut entities = ClientEntitiesContainer::new();
         let controls = ControlsController::new();
-		let connections_handler = Arc::new(RwLock::new(ConnectionsHandler::new(message_passer)));
+        let connections_handler = Arc::new(RwLock::new(ConnectionsHandler::new(message_passer)));
 
         let tilemap = tiles_factory.tilemap().clone();
 
-		let world_receiver = WorldReceiver::new(connections_handler.clone());
-		let world = World::new(
-			world_receiver,
-			tiles_factory,
-			camera.read().aspect(),
-			Pos3::new(0.0, 0.0, 0.0)
-		);
+        let world_receiver = WorldReceiver::new(connections_handler.clone());
+        let world = World::new(
+            world_receiver,
+            tiles_factory,
+            camera.read().aspect(),
+            Pos3::new(0.0, 0.0, 0.0)
+        );
 
-		let player_id = Self::connect_to_server(connections_handler.clone(), &client_info.name);
+        let player_id = Self::connect_to_server(connections_handler.clone(), &client_info.name);
         entities.main_player = Some(player_id);
 
-		sender_loop(connections_handler.clone());
+        sender_loop(connections_handler.clone());
 
-		let handler = connections_handler.read().passer_clone();
+        let handler = connections_handler.read().passer_clone();
 
-		let (sender, receiver) = mpsc::channel();
+        let (sender, receiver) = mpsc::channel();
 
-		receiver_loop(handler, move |message|
+        receiver_loop(handler, move |message|
         {
             if let Err(_) = sender.send(message)
             {
@@ -364,22 +364,22 @@ impl GameState
             }
         }, || ());
 
-		Self{
-			mouse_position,
-			camera,
+        Self{
+            mouse_position,
+            camera,
             assets,
-			object_factory,
-			notifications,
+            object_factory,
+            notifications,
             entities,
             controls,
-			running: true,
-			debug_mode: client_info.debug_mode,
+            running: true,
+            debug_mode: client_info.debug_mode,
             tilemap,
-			world,
-			connections_handler,
-			receiver
-		}
-	}
+            world,
+            connections_handler,
+            receiver
+        }
+    }
 
     pub fn raycast(
         &self,
@@ -398,23 +398,23 @@ impl GameState
         self.send_message(Message::SetTransform{entity, transform});
     }
 
-	fn connect_to_server(handler: Arc<RwLock<ConnectionsHandler>>, name: &str) -> Entity
-	{
-		let message = Message::PlayerConnect{name: name.to_owned()};
+    fn connect_to_server(handler: Arc<RwLock<ConnectionsHandler>>, name: &str) -> Entity
+    {
+        let message = Message::PlayerConnect{name: name.to_owned()};
 
-		let mut handler = handler.write();
+        let mut handler = handler.write();
 
-		if let Err(x) = handler.send_blocking(&message)
-		{
-			panic!("error connecting to server: {x}");
-		}
+        if let Err(x) = handler.send_blocking(&message)
+        {
+            panic!("error connecting to server: {x}");
+        }
 
-		match handler.receive_blocking()
-		{
-			Ok(Some(Message::PlayerOnConnect{entity})) => entity,
-			x => panic!("received wrong message on connect: {x:?}")
-		}
-	}
+        match handler.receive_blocking()
+        {
+            Ok(Some(Message::PlayerOnConnect{entity})) => entity,
+            x => panic!("received wrong message on connect: {x:?}")
+        }
+    }
 
     pub fn damage_entity(&mut self, entity: Entity, damage: Damage)
     {
@@ -441,108 +441,108 @@ impl GameState
         &mut self.entities.entities
     }
 
-	pub fn player(&self) -> Entity
-	{
-		self.entities.main_player.unwrap()
-	}
+    pub fn player(&self) -> Entity
+    {
+        self.entities.main_player.unwrap()
+    }
 
-	pub fn process_messages(&mut self, create_info: &mut ObjectCreateInfo)
-	{
-		loop
-		{
-			match self.receiver.try_recv()
-			{
-				Ok(message) =>
-				{
-					self.process_message_inner(create_info, message);
-				},
-				Err(TryRecvError::Empty) =>
-				{
-					return;
-				},
-				Err(_) =>
-				{
-					self.running = false;
-					return;
-				}
-			}
-		}
-	}
+    pub fn process_messages(&mut self, create_info: &mut ObjectCreateInfo)
+    {
+        loop
+        {
+            match self.receiver.try_recv()
+            {
+                Ok(message) =>
+                {
+                    self.process_message_inner(create_info, message);
+                },
+                Err(TryRecvError::Empty) =>
+                {
+                    return;
+                },
+                Err(_) =>
+                {
+                    self.running = false;
+                    return;
+                }
+            }
+        }
+    }
 
-	fn process_message_inner(&mut self, create_info: &mut ObjectCreateInfo, message: Message)
-	{
-		let message = match self.entities.handle_message(create_info, message)
-		{
-			Some(x) => x,
-			None => return
-		};
+    fn process_message_inner(&mut self, create_info: &mut ObjectCreateInfo, message: Message)
+    {
+        let message = match self.entities.handle_message(create_info, message)
+        {
+            Some(x) => x,
+            None => return
+        };
 
-		let message = match self.world.handle_message(message)
-		{
-			Some(x) => x,
-			None => return
-		};
+        let message = match self.world.handle_message(message)
+        {
+            Some(x) => x,
+            None => return
+        };
 
-		match message
-		{
-			Message::PlayerFullyConnected =>
-			{
-				self.notifications.set(Notification::PlayerConnected);
-			},
-			x => panic!("unhandled message: {x:?}")
-		}
-	}
+        match message
+        {
+            Message::PlayerFullyConnected =>
+            {
+                self.notifications.set(Notification::PlayerConnected);
+            },
+            x => panic!("unhandled message: {x:?}")
+        }
+    }
 
-	fn check_resize_camera(&mut self, dt: f32)
-	{
-		const ZOOM_SPEED: f32 = 2.0;
+    fn check_resize_camera(&mut self, dt: f32)
+    {
+        const ZOOM_SPEED: f32 = 2.0;
 
-		if self.pressed(Control::ZoomIn)
-		{
-			self.resize_camera(1.0 - dt * ZOOM_SPEED);
-		} else if self.pressed(Control::ZoomOut)
-		{
-			self.resize_camera(1.0 + dt * ZOOM_SPEED);
-		} else if self.pressed(Control::ZoomReset)
-		{
-			self.set_camera_scale(1.0);
-		}
-	}
+        if self.pressed(Control::ZoomIn)
+        {
+            self.resize_camera(1.0 - dt * ZOOM_SPEED);
+        } else if self.pressed(Control::ZoomOut)
+        {
+            self.resize_camera(1.0 + dt * ZOOM_SPEED);
+        } else if self.pressed(Control::ZoomReset)
+        {
+            self.set_camera_scale(1.0);
+        }
+    }
 
-	fn resize_camera(&mut self, factor: f32)
-	{
-		let camera_scale = self.camera.read().aspect();
-		let (highest, mut lowest) = (
-			camera_scale.0.max(camera_scale.1) * factor,
-			camera_scale.1.min(camera_scale.0) * factor
-		);
+    fn resize_camera(&mut self, factor: f32)
+    {
+        let camera_scale = self.camera.read().aspect();
+        let (highest, mut lowest) = (
+            camera_scale.0.max(camera_scale.1) * factor,
+            camera_scale.1.min(camera_scale.0) * factor
+        );
 
-		if !self.debug_mode
-		{
-			let (min_scale, max_scale) = World::zoom_limits();
+        if !self.debug_mode
+        {
+            let (min_scale, max_scale) = World::zoom_limits();
 
-			let adjust_factor = if highest > max_scale
-			{
-				max_scale / highest
-			} else
-			{
-				1.0
-			};
+            let adjust_factor = if highest > max_scale
+            {
+                max_scale / highest
+            } else
+            {
+                1.0
+            };
 
-			lowest *= adjust_factor;
-			lowest = lowest.max(min_scale);
-		}
+            lowest *= adjust_factor;
+            lowest = lowest.max(min_scale);
+        }
 
-		self.set_camera_scale(lowest);
-	}
+        self.set_camera_scale(lowest);
+    }
 
-	fn set_camera_scale(&mut self, scale: f32)
-	{
-		let mut camera = self.camera.write();
+    fn set_camera_scale(&mut self, scale: f32)
+    {
+        let mut camera = self.camera.write();
 
-		camera.rescale(scale);
-		self.world.rescale(camera.aspect());
-	}
+        camera.rescale(scale);
+        self.world.rescale(camera.aspect());
+    }
 
     pub fn echo_message(&self, message: Message)
     {
@@ -566,63 +566,63 @@ impl GameState
         self.world.player_tile()
     }
 
-	pub fn player_connected(&mut self) -> bool
-	{
-		self.notifications.get(Notification::PlayerConnected)
-	}
+    pub fn player_connected(&mut self) -> bool
+    {
+        self.notifications.get(Notification::PlayerConnected)
+    }
 
-	pub fn update_buffers(&mut self, partial_info: UpdateBuffersPartialInfo)
+    pub fn update_buffers(&mut self, partial_info: UpdateBuffersPartialInfo)
     {
         let mut info = UpdateBuffersInfo::new(partial_info, &self.camera.read());
         let info = &mut info;
 
         self.camera.write().update();
 
-		self.process_messages(&mut info.object_info);
+        self.process_messages(&mut info.object_info);
 
-		self.world.update_buffers(info);
+        self.world.update_buffers(info);
 
-		self.entities.update_buffers(info);
+        self.entities.update_buffers(info);
     }
 
-	pub fn draw(&self, info: &mut DrawInfo)
+    pub fn draw(&self, info: &mut DrawInfo)
     {
-		self.world.draw(info);
+        self.world.draw(info);
 
-		self.entities.draw(info);
+        self.entities.draw(info);
     }
 
-	pub fn update(&mut self, dt: f32)
-	{
-		self.check_resize_camera(dt);
-		self.camera_moved();
+    pub fn update(&mut self, dt: f32)
+    {
+        self.check_resize_camera(dt);
+        self.camera_moved();
 
-		self.world.update(dt);
+        self.world.update(dt);
 
-		self.entities.update(dt);
+        self.entities.update(dt);
 
         self.controls.release_clicked();
-	}
+    }
 
-	pub fn input(&mut self, control: yanyaengine::Control)
-	{
+    pub fn input(&mut self, control: yanyaengine::Control)
+    {
         self.controls.handle_input(control);
     }
 
-	pub fn pressed(&self, control: Control) -> bool
-	{
+    pub fn pressed(&self, control: Control) -> bool
+    {
         match self.controls.state(control)
         {
             ControlState::Pressed => true,
             _ => false
         }
-	}
+    }
 
-	#[allow(dead_code)]
-	pub fn clicked(&mut self, control: Control) -> bool
-	{
+    #[allow(dead_code)]
+    pub fn clicked(&mut self, control: Control) -> bool
+    {
         self.controls.is_clicked(control)
-	}
+    }
 
     pub fn world_mouse_position(&self) -> Vector2<f32>
     {
@@ -632,39 +632,39 @@ impl GameState
         self.mouse_position.center_offset().component_mul(&scale)
     }
 
-	pub fn camera_moved(&mut self)
-	{
-		let pos = *self.camera.read().position();
+    pub fn camera_moved(&mut self)
+    {
+        let pos = *self.camera.read().position();
 
-		self.world.camera_moved(pos.into());
-	}
+        self.world.camera_moved(pos.into());
+    }
 
-	pub fn resize(&mut self, aspect: f32)
-	{
-		let mut camera = self.camera.write();
-		camera.resize(aspect);
+    pub fn resize(&mut self, aspect: f32)
+    {
+        let mut camera = self.camera.write();
+        camera.resize(aspect);
 
-		self.world.rescale(camera.aspect());
-	}
+        self.world.rescale(camera.aspect());
+    }
 }
 
 impl EntitiesController for GameState
 {
-	type Container = ClientEntitiesContainer;
-	type Passer = ConnectionsHandler;
+    type Container = ClientEntitiesContainer;
+    type Passer = ConnectionsHandler;
 
-	fn container_ref(&self) -> &Self::Container
-	{
-		&self.entities
-	}
+    fn container_ref(&self) -> &Self::Container
+    {
+        &self.entities
+    }
 
-	fn container_mut(&mut self) -> &mut Self::Container
-	{
-		&mut self.entities
-	}
+    fn container_mut(&mut self) -> &mut Self::Container
+    {
+        &mut self.entities
+    }
 
-	fn passer(&self) -> Arc<RwLock<Self::Passer>>
-	{
-		self.connections_handler.clone()
-	}
+    fn passer(&self) -> Arc<RwLock<Self::Passer>>
+    {
+        self.connections_handler.clone()
+    }
 }

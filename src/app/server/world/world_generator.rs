@@ -1,17 +1,17 @@
 use std::{
     fs,
-	io,
-	fmt,
+    io,
+    fmt,
     sync::Arc,
     ops::Index,
     collections::{HashMap, HashSet},
-	path::{Path, PathBuf}
+    path::{Path, PathBuf}
 };
 
 use parking_lot::Mutex;
 
 use crate::common::{
-	TileMap,
+    TileMap,
     SaveLoad,
     WeightedPicker,
     lisp::{
@@ -27,16 +27,16 @@ use crate::common::{
         Primitives,
         PrimitiveProcedureInfo
     },
-	world::{
-		Pos3,
-		LocalPos,
-		AlwaysGroup,
-		overmap::{Overmap, OvermapIndexing, FlatChunksContainer, ChunksContainer},
-		chunk::{
+    world::{
+        Pos3,
+        LocalPos,
+        AlwaysGroup,
+        overmap::{Overmap, OvermapIndexing, FlatChunksContainer, ChunksContainer},
+        chunk::{
             PosDirection,
             tile::Tile
         }
-	}
+    }
 };
 
 use super::server_overmap::WorldPlane;
@@ -58,8 +58,8 @@ mod chunk_rules;
 #[derive(Debug)]
 pub enum ParseErrorKind
 {
-	Io(io::Error),
-	Json(serde_json::Error),
+    Io(io::Error),
+    Json(serde_json::Error),
     Lisp(lisp::Error)
 }
 
@@ -80,26 +80,26 @@ impl fmt::Display for ParseErrorKind
 
 impl From<io::Error> for ParseErrorKind
 {
-	fn from(value: io::Error) -> Self
-	{
-		ParseErrorKind::Io(value)
-	}
+    fn from(value: io::Error) -> Self
+    {
+        ParseErrorKind::Io(value)
+    }
 }
     
 impl From<serde_json::Error> for ParseErrorKind
 {
-	fn from(value: serde_json::Error) -> Self
-	{
-		ParseErrorKind::Json(value)
-	}
+    fn from(value: serde_json::Error) -> Self
+    {
+        ParseErrorKind::Json(value)
+    }
 }
 
 impl From<lisp::Error> for ParseErrorKind
 {
-	fn from(value: lisp::Error) -> Self
-	{
-		ParseErrorKind::Lisp(value)
-	}
+    fn from(value: lisp::Error) -> Self
+    {
+        ParseErrorKind::Lisp(value)
+    }
 }
 
 #[allow(dead_code)]
@@ -164,14 +164,14 @@ pub struct ChunkGenerator
     primitives: Arc<Primitives>,
     memory: Arc<Mutex<LispMemory>>,
     chunks: HashMap<String, LispRef>,
-	tilemap: TileMap
+    tilemap: TileMap
 }
 
 impl ChunkGenerator
 {
-	pub fn new(tilemap: TileMap, rules: &ChunkRulesGroup) -> Result<Self, ParseError>
-	{
-		let chunks = HashMap::new();
+    pub fn new(tilemap: TileMap, rules: &ChunkRulesGroup) -> Result<Self, ParseError>
+    {
+        let chunks = HashMap::new();
 
         let parent_directory = PathBuf::from("world_generation");
 
@@ -186,20 +186,20 @@ impl ChunkGenerator
 
         let parent_directory = parent_directory.join("chunks");
 
-		rules.iter_names().filter(|name|
+        rules.iter_names().filter(|name|
         {
             let name: &str = name.as_ref();
 
             name != "none"
         }).try_for_each(|name|
-		{
+        {
             let filename = parent_directory.join(format!("{name}.scm"));
 
-			this.parse_function(filename, name)
-		})?;
+            this.parse_function(filename, name)
+        })?;
 
-		Ok(this)
-	}
+        Ok(this)
+    }
 
     fn default_primitives(tilemap: &TileMap) -> Primitives
     {
@@ -241,12 +241,12 @@ impl ChunkGenerator
         (env, lisp.lambdas().clone())
     }
 
-	fn parse_function(
+    fn parse_function(
         &mut self,
         filepath: PathBuf,
         name: &str
     ) -> Result<(), ParseError>
-	{
+    {
         let code = fs::read_to_string(&filepath).map_err(|err|
         {
             // cant remove the clone cuz ? is cringe or something
@@ -265,15 +265,15 @@ impl ChunkGenerator
         });
 
         self.chunks.insert(name.to_owned(), lisp);
-	    
+        
         Ok(())
     }
 
-	pub fn generate_chunk(
-		&mut self,
-		group: AlwaysGroup<&str>
-	) -> ChunksContainer<Tile>
-	{
+    pub fn generate_chunk(
+        &mut self,
+        group: AlwaysGroup<&str>
+    ) -> ChunksContainer<Tile>
+    {
         if group.this == "none"
         {
             return ChunksContainer::new_with(WORLD_CHUNK_SIZE, |_| Tile::none());
@@ -311,46 +311,46 @@ impl ChunkGenerator
         }).collect();
 
         ChunksContainer::from_raw(WORLD_CHUNK_SIZE, tiles)
-	}
+    }
 }
 
 impl fmt::Debug for ChunkGenerator
 {
-	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
-	{
-		f.debug_struct("ChunkGenerator")
-			.field("tilemap", &self.tilemap)
-			.finish()
-	}
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
+    {
+        f.debug_struct("ChunkGenerator")
+            .field("tilemap", &self.tilemap)
+            .finish()
+    }
 }
 
 #[derive(Debug)]
 pub struct WorldGenerator<S>
 {
-	generator: ChunkGenerator,
-	saver: S,
-	rules: ChunkRulesGroup
+    generator: ChunkGenerator,
+    saver: S,
+    rules: ChunkRulesGroup
 }
 
 impl<S: SaveLoad<WorldChunk>> WorldGenerator<S>
 {
-	pub fn new(
-		saver: S,
-		tilemap: TileMap,
-		path: impl Into<PathBuf>
-	) -> Result<Self, ParseError>
-	{
+    pub fn new(
+        saver: S,
+        tilemap: TileMap,
+        path: impl Into<PathBuf>
+    ) -> Result<Self, ParseError>
+    {
         let rules = ChunkRulesGroup::load(path.into())?;
 
-		let generator = ChunkGenerator::new(tilemap, &rules)?;
+        let generator = ChunkGenerator::new(tilemap, &rules)?;
 
-		Ok(Self{generator, saver, rules})
+        Ok(Self{generator, saver, rules})
     }
 
     pub fn generate_surface(
         &mut self,
         world_chunks: &mut FlatChunksContainer<Option<WorldChunk>>,
-		global_mapper: &impl OvermapIndexing
+        global_mapper: &impl OvermapIndexing
     )
     {
         self.load_missing(world_chunks.iter_mut(), global_mapper);
@@ -363,13 +363,13 @@ impl<S: SaveLoad<WorldChunk>> WorldGenerator<S>
         });
     }
 
-	pub fn generate_missing(
-		&mut self,
-		world_chunks: &mut ChunksContainer<Option<WorldChunk>>,
+    pub fn generate_missing(
+        &mut self,
+        world_chunks: &mut ChunksContainer<Option<WorldChunk>>,
         world_plane: &WorldPlane<S>,
-		global_mapper: &impl OvermapIndexing
-	)
-	{
+        global_mapper: &impl OvermapIndexing
+    )
+    {
         self.load_missing(world_chunks.iter_mut(), global_mapper);
 
         for z in (0..world_chunks.size().z).rev()
@@ -426,41 +426,41 @@ impl<S: SaveLoad<WorldChunk>> WorldGenerator<S>
                 });
             }
         }
-	}
+    }
 
     pub fn rules(&self) -> &ChunkRulesGroup
     {
         &self.rules
     }
 
-	fn load_missing<'a>(
-		&mut self,
-		world_chunks: impl Iterator<Item=(LocalPos, &'a mut Option<WorldChunk>)>,
-		global_mapper: &impl OvermapIndexing
-	)
-	{
-		world_chunks.filter(|(_pos, chunk)| chunk.is_none())
-			.for_each(|(pos, chunk)|
-			{
-				let loaded_chunk = self.saver.load(global_mapper.to_global(pos));
+    fn load_missing<'a>(
+        &mut self,
+        world_chunks: impl Iterator<Item=(LocalPos, &'a mut Option<WorldChunk>)>,
+        global_mapper: &impl OvermapIndexing
+    )
+    {
+        world_chunks.filter(|(_pos, chunk)| chunk.is_none())
+            .for_each(|(pos, chunk)|
+            {
+                let loaded_chunk = self.saver.load(global_mapper.to_global(pos));
 
-				if loaded_chunk.is_some()
-				{
-					*chunk = loaded_chunk;
-				}
-			});
-	}
+                if loaded_chunk.is_some()
+                {
+                    *chunk = loaded_chunk;
+                }
+            });
+    }
 
-	pub fn generate_chunk(
-		&mut self,
-		group: AlwaysGroup<WorldChunk>
-	) -> ChunksContainer<Tile>
-	{
-		self.generator.generate_chunk(group.map(|world_chunk|
-		{
+    pub fn generate_chunk(
+        &mut self,
+        group: AlwaysGroup<WorldChunk>
+    ) -> ChunksContainer<Tile>
+    {
+        self.generator.generate_chunk(group.map(|world_chunk|
+        {
             self.rules.name(world_chunk.id())
-		}))
-	}
+        }))
+    }
 }
 
 struct PossibleStates
@@ -764,8 +764,8 @@ impl<'a> WaveCollapser<'a>
     where
         F: FnMut(LocalPos, &WorldChunk)
     {
-		while let Some((local_pos, state)) = self.entropies.lowest_entropy()
-		{
+        while let Some((local_pos, state)) = self.entropies.lowest_entropy()
+        {
             let generated_chunk = self.rules.generate(state.collapse(self.rules));
 
             on_chunk(local_pos, &generated_chunk);
@@ -774,6 +774,6 @@ impl<'a> WaveCollapser<'a>
 
             let mut visited = VisitedTracker::new();
             self.constrain(&mut visited, local_pos);
-		}
+        }
     }
 }

@@ -1,7 +1,7 @@
 use chunk::{
-	Pos3,
-	GlobalPos,
-	LocalPos
+    Pos3,
+    GlobalPos,
+    LocalPos
 };
 
 pub use chunks_container::{ChunkIndexing, ChunksContainer, FlatChunksContainer};
@@ -14,27 +14,27 @@ pub mod chunks_container;
 
 pub trait Overmap<T>: OvermapIndexing
 {
-	fn remove(&mut self, pos: LocalPos);
+    fn remove(&mut self, pos: LocalPos);
 
-	fn swap(&mut self, a: LocalPos, b: LocalPos);
+    fn swap(&mut self, a: LocalPos, b: LocalPos);
 
-	fn get_local(&self, pos: LocalPos) -> &Option<T>;
+    fn get_local(&self, pos: LocalPos) -> &Option<T>;
 
-	fn mark_ungenerated(&mut self, pos: LocalPos);
+    fn mark_ungenerated(&mut self, pos: LocalPos);
 
-	fn get(&self, pos: GlobalPos) -> Option<&T>
-	{
-		self.to_local(pos).and_then(|local_pos| self.get_local(local_pos).as_ref())
-	}
+    fn get(&self, pos: GlobalPos) -> Option<&T>
+    {
+        self.to_local(pos).and_then(|local_pos| self.get_local(local_pos).as_ref())
+    }
 
     fn contains(&self, pos: GlobalPos) -> bool
     {
         self.get(pos).is_some()
     }
 
-	fn generate_missing(&mut self);
+    fn generate_missing(&mut self);
 
-	fn force_regenerate(&mut self)
+    fn force_regenerate(&mut self)
     {
         let size = self.size();
 
@@ -52,114 +52,114 @@ pub trait Overmap<T>: OvermapIndexing
         self.generate_missing();
     }
 
-	fn position_offset(&mut self, offset: Pos3<i32>)
-	{
-		self.shift_chunks(offset);
-		self.generate_missing();
-	}
+    fn position_offset(&mut self, offset: Pos3<i32>)
+    {
+        self.shift_chunks(offset);
+        self.generate_missing();
+    }
 
-	fn shift_chunks(&mut self, offset: Pos3<i32>)
-	{
-		let size = self.size();
+    fn shift_chunks(&mut self, offset: Pos3<i32>)
+    {
+        let size = self.size();
 
-		let maybe_reverse = |reverse, value, max| if reverse {max - value - 1} else {value};
-		for z in 0..size.z
-		{
-			let z = maybe_reverse(offset.z < 0, z, size.z);
+        let maybe_reverse = |reverse, value, max| if reverse {max - value - 1} else {value};
+        for z in 0..size.z
+        {
+            let z = maybe_reverse(offset.z < 0, z, size.z);
 
-			for y in 0..size.y
-			{
-				let y = maybe_reverse(offset.y < 0, y, size.y);
+            for y in 0..size.y
+            {
+                let y = maybe_reverse(offset.y < 0, y, size.y);
 
-				for x in 0..size.x
-				{
-					let x = maybe_reverse(offset.x < 0, x, size.x);
+                for x in 0..size.x
+                {
+                    let x = maybe_reverse(offset.x < 0, x, size.x);
 
-					let old_local = LocalPos::new(Pos3::new(x, y, z), size);
-					self.shift_chunk(offset, old_local);
-				}
-			}
-		}
-	}
+                    let old_local = LocalPos::new(Pos3::new(x, y, z), size);
+                    self.shift_chunk(offset, old_local);
+                }
+            }
+        }
+    }
 
-	fn shift_chunk(&mut self, offset: Pos3<i32>, old_local: LocalPos)
-	{
-		//early return if the chunk is empty
-		if self.get_local(old_local).is_none()
-		{
-			return;
-		}
+    fn shift_chunk(&mut self, offset: Pos3<i32>, old_local: LocalPos)
+    {
+        //early return if the chunk is empty
+        if self.get_local(old_local).is_none()
+        {
+            return;
+        }
 
-		let old_position = self.to_global(old_local);
-		let position = old_position - offset;
+        let old_position = self.to_global(old_local);
+        let position = old_position - offset;
 
-		if let Some(local_pos) = self.to_local(position)
-		{
-			//move the chunk to the new position
-			self.swap(old_local, local_pos);
+        if let Some(local_pos) = self.to_local(position)
+        {
+            //move the chunk to the new position
+            self.swap(old_local, local_pos);
 
-			let is_edge_chunk = old_local.pos.zip(self.size()).any(|(pos, size)|
+            let is_edge_chunk = old_local.pos.zip(self.size()).any(|(pos, size)|
             {
                 pos == 0 || pos == (size - 1)
             });
 
-			if is_edge_chunk
-			{
-				self.mark_ungenerated(local_pos);
-			}
-		} else
-		{
-			//chunk now outside the player range, remove it
-			self.remove(old_local);
-		}
-	}
+            if is_edge_chunk
+            {
+                self.mark_ungenerated(local_pos);
+            }
+        } else
+        {
+            //chunk now outside the player range, remove it
+            self.remove(old_local);
+        }
+    }
 }
 
 pub trait OvermapIndexing
 {
-	fn size(&self) -> Pos3<usize>;
-	fn player_position(&self) -> GlobalPos;
+    fn size(&self) -> Pos3<usize>;
+    fn player_position(&self) -> GlobalPos;
 
-	fn default_ordering(
-		&self,
-		positions: impl Iterator<Item=LocalPos>
-	) -> Box<[LocalPos]>
-	{
-		let mut ordering = positions.collect::<Vec<_>>();
+    fn default_ordering(
+        &self,
+        positions: impl Iterator<Item=LocalPos>
+    ) -> Box<[LocalPos]>
+    {
+        let mut ordering = positions.collect::<Vec<_>>();
 
-		ordering.sort_unstable_by(move |a, b|
-		{
-			let distance = |local_pos| -> f32
-			{
-				let GlobalPos(pos) = self.player_offset(local_pos);
+        ordering.sort_unstable_by(move |a, b|
+        {
+            let distance = |local_pos| -> f32
+            {
+                let GlobalPos(pos) = self.player_offset(local_pos);
 
-				((pos.x.pow(2) + pos.y.pow(2) + pos.z.pow(2)) as f32).sqrt()
-			};
+                ((pos.x.pow(2) + pos.y.pow(2) + pos.z.pow(2)) as f32).sqrt()
+            };
 
-			distance(*a).total_cmp(&distance(*b))
-		});
+            distance(*a).total_cmp(&distance(*b))
+        });
 
-		ordering.into_boxed_slice()
-	}
+        ordering.into_boxed_slice()
+    }
 
-	fn to_local(&self, pos: GlobalPos) -> Option<LocalPos>
-	{
-		let pos = self.to_local_unconverted(pos);
+    fn to_local(&self, pos: GlobalPos) -> Option<LocalPos>
+    {
+        let pos = self.to_local_unconverted(pos);
 
-		LocalPos::from_global(pos, self.size())
-	}
+        LocalPos::from_global(pos, self.size())
+    }
 
-	fn to_local_unconverted(&self, pos: GlobalPos) -> GlobalPos
-	{
-		let player_distance = pos - self.player_position();
+    fn to_local_unconverted(&self, pos: GlobalPos) -> GlobalPos
+    {
+        let player_distance = pos - self.player_position();
 
-		player_distance + GlobalPos::from(self.size()) / 2
-	}
+        player_distance + GlobalPos::from(self.size()) / 2
+    }
 
-	fn to_global(&self, pos: LocalPos) -> GlobalPos
-	{
-		self.player_offset(pos) + self.player_position()
-	}
+    fn to_global(&self, pos: LocalPos) -> GlobalPos
+    {
+        self.player_offset(pos) + self.player_position()
+    }
 
     fn to_global_z(&self, z: usize) -> i32
     {
@@ -205,10 +205,10 @@ pub trait OvermapIndexing
         })
     }
 
-	fn player_offset(&self, pos: LocalPos) -> GlobalPos
-	{
-		GlobalPos::from(pos) - GlobalPos::from(self.size()) / 2
-	}
+    fn player_offset(&self, pos: LocalPos) -> GlobalPos
+    {
+        GlobalPos::from(pos) - GlobalPos::from(self.size()) / 2
+    }
 }
 
 #[cfg(test)]

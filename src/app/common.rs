@@ -1,8 +1,8 @@
 use std::{
-	fmt::Debug,
-	sync::Arc,
-	net::TcpStream,
-	ops::{Range, RangeInclusive}
+    fmt::Debug,
+    sync::Arc,
+    net::TcpStream,
+    ops::{Range, RangeInclusive}
 };
 
 use serde::{Serialize, Deserialize};
@@ -77,63 +77,63 @@ pub mod physics;
 #[macro_export]
 macro_rules! time_this
 {
-	($name:expr, $($tt:tt),*) =>
-	{
-		{
-			use std::time::Instant;
+    ($name:expr, $($tt:tt),*) =>
+    {
+        {
+            use std::time::Instant;
 
-			let start_time = Instant::now();
+            let start_time = Instant::now();
 
-			$($tt)*
+            $($tt)*
 
-			eprintln!("{} took {} ms", $name, start_time.elapsed().as_millis());
-		}
-	}
+            eprintln!("{} took {} ms", $name, start_time.elapsed().as_millis());
+        }
+    }
 }
 
 pub struct WeightedPicker<I>
 {
-	total: f64,
-	values: I
+    total: f64,
+    values: I
 }
 
 impl<I> WeightedPicker<I>
 where
-	I: IntoIterator + Clone,
-	I::Item: Copy
+    I: IntoIterator + Clone,
+    I::Item: Copy
 {
-	pub fn new(total: f64, values: I) -> Self
-	{
-		Self{total, values}
-	}
+    pub fn new(total: f64, values: I) -> Self
+    {
+        Self{total, values}
+    }
 
-	pub fn pick_from(
-		random_value: f64,
-		values: I,
-		get_weight: impl Fn(I::Item) -> f64
-	) -> Option<I::Item>
-	{
-		let total = values.clone().into_iter().map(|value| get_weight(value)).sum();
+    pub fn pick_from(
+        random_value: f64,
+        values: I,
+        get_weight: impl Fn(I::Item) -> f64
+    ) -> Option<I::Item>
+    {
+        let total = values.clone().into_iter().map(|value| get_weight(value)).sum();
 
-		Self::new(total, values).pick_with(random_value, get_weight)
-	}
+        Self::new(total, values).pick_with(random_value, get_weight)
+    }
 
-	pub fn pick_with(
-		&self,
-		random_value: f64,
-		get_weight: impl Fn(I::Item) -> f64
-	) -> Option<I::Item>
-	{
-		let mut random_value = random_value * self.total;
+    pub fn pick_with(
+        &self,
+        random_value: f64,
+        get_weight: impl Fn(I::Item) -> f64
+    ) -> Option<I::Item>
+    {
+        let mut random_value = random_value * self.total;
 
-		self.values.clone().into_iter().find(|value|
-		{
-			let weight = get_weight(*value);
-			random_value -= weight;
+        self.values.clone().into_iter().find(|value|
+        {
+            let weight = get_weight(*value);
+            random_value -= weight;
 
-			random_value <= 0.0
-		})
-	}
+            random_value <= 0.0
+        })
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -141,83 +141,83 @@ pub struct SeededRandom(u64);
 
 impl From<u64> for SeededRandom
 {
-	fn from(value: u64) -> Self
-	{
-		Self(value)
-	}
+    fn from(value: u64) -> Self
+    {
+        Self(value)
+    }
 }
 
 impl SeededRandom
 {
-	pub fn new() -> Self
-	{
-		Self(fastrand::u64(0..u64::MAX))
-	}
+    pub fn new() -> Self
+    {
+        Self(fastrand::u64(0..u64::MAX))
+    }
 
-	pub fn set_state(&mut self, value: u64)
-	{
-		self.0 = value;
-	}
+    pub fn set_state(&mut self, value: u64)
+    {
+        self.0 = value;
+    }
 
-	// splitmix64 by sebastiano vigna
-	pub fn next_u64(&mut self) -> u64
-	{
-		self.0 = self.0.wrapping_add(0x9e3779b97f4a7c15);
+    // splitmix64 by sebastiano vigna
+    pub fn next_u64(&mut self) -> u64
+    {
+        self.0 = self.0.wrapping_add(0x9e3779b97f4a7c15);
 
-		let x = self.0;
+        let x = self.0;
 
-		let x = (x ^ (x >> 30)).wrapping_mul(0xbf58476d1ce4e5b9);
-		let x = (x ^ (x >> 27)).wrapping_mul(0x94d049bb133111eb);
+        let x = (x ^ (x >> 30)).wrapping_mul(0xbf58476d1ce4e5b9);
+        let x = (x ^ (x >> 27)).wrapping_mul(0x94d049bb133111eb);
 
-		x ^ (x >> 31)
-	}
+        x ^ (x >> 31)
+    }
 
-	pub fn next_u64_between(&mut self, range: Range<u64>) -> u64
-	{
-		let difference = range.end - range.start;
+    pub fn next_u64_between(&mut self, range: Range<u64>) -> u64
+    {
+        let difference = range.end - range.start;
 
-		range.start + self.next_u64() % difference
-	}
+        range.start + self.next_u64() % difference
+    }
 
-	pub fn next_usize_between(&mut self, range: Range<usize>) -> usize
-	{
-		let difference = range.end - range.start;
+    pub fn next_usize_between(&mut self, range: Range<usize>) -> usize
+    {
+        let difference = range.end - range.start;
 
-		range.start + (self.next_u64() as usize) % difference
-	}
+        range.start + (self.next_u64() as usize) % difference
+    }
 
-	pub fn next_f32(&mut self) -> f32
-	{
-		let x = self.next_u64();
+    pub fn next_f32(&mut self) -> f32
+    {
+        let x = self.next_u64();
 
-		x as f32 / u64::MAX as f32
-	}
+        x as f32 / u64::MAX as f32
+    }
 
-	pub fn next_f64(&mut self) -> f64
-	{
-		let x = self.next_u64();
+    pub fn next_f64(&mut self) -> f64
+    {
+        let x = self.next_u64();
 
-		x as f64 / u64::MAX as f64
-	}
+        x as f64 / u64::MAX as f64
+    }
 
-	pub fn next_f32_between(&mut self, range: RangeInclusive<f32>) -> f32
-	{
-		let x = self.next_f32();
+    pub fn next_f32_between(&mut self, range: RangeInclusive<f32>) -> f32
+    {
+        let x = self.next_f32();
 
-		let size = range.end() - range.start();
+        let size = range.end() - range.start();
 
-		range.start() + x * size
-	}
+        range.start() + x * size
+    }
 
-	pub fn next_bool(&mut self) -> bool
-	{
-		self.next_u64() % 2 == 0
-	}
+    pub fn next_bool(&mut self) -> bool
+    {
+        self.next_u64() % 2 == 0
+    }
 }
 
 pub fn lerp(x: f32, y: f32, a: f32) -> f32
 {
-	(1.0 - a) * x + y * a
+    (1.0 - a) * x + y * a
 }
 
 pub fn get_two_mut<T>(s: &mut [T], one: usize, two: usize) -> (&mut T, &mut T)
@@ -240,55 +240,55 @@ pub struct ConnectionId(pub usize);
 
 pub trait EntityPasser
 {
-	fn send_single(&mut self, id: ConnectionId, message: Message);
-	fn send_message(&mut self, message: Message);
+    fn send_single(&mut self, id: ConnectionId, message: Message);
+    fn send_message(&mut self, message: Message);
 }
 
 pub trait EntitiesController
 {
-	type Container;
-	type Passer: EntityPasser;
+    type Container;
+    type Passer: EntityPasser;
 
-	fn container_ref(&self) -> &Self::Container;
-	fn container_mut(&mut self) -> &mut Self::Container;
-	fn passer(&self) -> Arc<RwLock<Self::Passer>>;
+    fn container_ref(&self) -> &Self::Container;
+    fn container_mut(&mut self) -> &mut Self::Container;
+    fn passer(&self) -> Arc<RwLock<Self::Passer>>;
 }
 
 #[derive(Debug)]
 pub struct MessagePasser
 {
-	stream: TcpStream
+    stream: TcpStream
 }
 
 impl MessagePasser
 {
-	pub fn new(stream: TcpStream) -> Self
-	{
-		Self{stream}
-	}
+    pub fn new(stream: TcpStream) -> Self
+    {
+        Self{stream}
+    }
 
-	pub fn send_one(&mut self, message: &Message) -> Result<(), bincode::Error>
-	{
-		self.send_many(&vec![message.clone()])
-	}
+    pub fn send_one(&mut self, message: &Message) -> Result<(), bincode::Error>
+    {
+        self.send_many(&vec![message.clone()])
+    }
 
-	pub fn send_many(&mut self, messages: &Vec<Message>) -> Result<(), bincode::Error>
-	{
-		bincode::serialize_into(&mut self.stream, messages)
-	}
+    pub fn send_many(&mut self, messages: &Vec<Message>) -> Result<(), bincode::Error>
+    {
+        bincode::serialize_into(&mut self.stream, messages)
+    }
 
-	pub fn receive(&mut self) -> Result<Vec<Message>, bincode::Error>
-	{
-		bincode::deserialize_from(&mut self.stream)
-	}
+    pub fn receive(&mut self) -> Result<Vec<Message>, bincode::Error>
+    {
+        bincode::deserialize_from(&mut self.stream)
+    }
 
-	pub fn receive_one(&mut self) -> Result<Option<Message>, bincode::Error>
-	{
-		self.receive().map(|messages| messages.into_iter().next())
-	}
+    pub fn receive_one(&mut self) -> Result<Option<Message>, bincode::Error>
+    {
+        self.receive().map(|messages| messages.into_iter().next())
+    }
 
-	pub fn try_clone(&self) -> Self
-	{
-		Self{stream: self.stream.try_clone().unwrap()}
-	}
+    pub fn try_clone(&self) -> Self
+    {
+        Self{stream: self.stream.try_clone().unwrap()}
+    }
 }

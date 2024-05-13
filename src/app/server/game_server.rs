@@ -1,7 +1,7 @@
 use std::{
     fmt,
-	net::TcpStream,
-	sync::Arc
+    net::TcpStream,
+    sync::Arc
 };
 
 use parking_lot::{RwLock, Mutex};
@@ -11,9 +11,9 @@ use nalgebra::Vector3;
 use yanyaengine::Transform;
 
 use super::{
-	ConnectionsHandler,
-	connections_handler::PlayerInfo,
-	world::World
+    ConnectionsHandler,
+    connections_handler::PlayerInfo,
+    world::World
 };
 
 pub use super::world::ParseError;
@@ -47,8 +47,8 @@ use crate::common::{
 #[derive(Debug)]
 pub enum ConnectionError
 {
-	BincodeError(bincode::Error),
-	WrongConnectionMessage
+    BincodeError(bincode::Error),
+    WrongConnectionMessage
 }
 
 impl fmt::Display for ConnectionError
@@ -67,32 +67,32 @@ impl fmt::Display for ConnectionError
 
 impl From<bincode::Error> for ConnectionError
 {
-	fn from(value: bincode::Error) -> Self
-	{
-		ConnectionError::BincodeError(value)
-	}
+    fn from(value: bincode::Error) -> Self
+    {
+        ConnectionError::BincodeError(value)
+    }
 }
 
 pub struct GameServer
 {
-	entities: Entities,
-	world: World,
-	connection_handler: Arc<RwLock<ConnectionsHandler>>
+    entities: Entities,
+    world: World,
+    connection_handler: Arc<RwLock<ConnectionsHandler>>
 }
 
 impl GameServer
 {
-	pub fn new(tilemap: TileMap, limit: usize) -> Result<Self, ParseError>
-	{
-		let entities = Entities::new();
-		let connection_handler = Arc::new(RwLock::new(ConnectionsHandler::new(limit)));
+    pub fn new(tilemap: TileMap, limit: usize) -> Result<Self, ParseError>
+    {
+        let entities = Entities::new();
+        let connection_handler = Arc::new(RwLock::new(ConnectionsHandler::new(limit)));
 
-		let world = World::new(connection_handler.clone(), tilemap)?;
+        let world = World::new(connection_handler.clone(), tilemap)?;
 
-		sender_loop(connection_handler.clone());
+        sender_loop(connection_handler.clone());
 
-		Ok(Self{entities, world, connection_handler})
-	}
+        Ok(Self{entities, world, connection_handler})
+    }
 
     pub fn update(&mut self, dt: f32)
     {
@@ -109,39 +109,39 @@ impl GameServer
         }
     }
 
-	pub fn connect(this: Arc<Mutex<Self>>, stream: TcpStream) -> Result<(), ConnectionError>
-	{
-		if this.lock().connection_handler.read().under_limit()
-		{
-			Self::player_connect(this, stream)
-		} else
-		{
-			Ok(())
-		}
-	}
+    pub fn connect(this: Arc<Mutex<Self>>, stream: TcpStream) -> Result<(), ConnectionError>
+    {
+        if this.lock().connection_handler.read().under_limit()
+        {
+            Self::player_connect(this, stream)
+        } else
+        {
+            Ok(())
+        }
+    }
 
-	pub fn player_connect(
-		this: Arc<Mutex<Self>>,
-		stream: TcpStream
-	) -> Result<(), ConnectionError>
-	{
-		let (player, id, messager) = this.lock().player_connect_inner(stream)?;
+    pub fn player_connect(
+        this: Arc<Mutex<Self>>,
+        stream: TcpStream
+    ) -> Result<(), ConnectionError>
+    {
+        let (player, id, messager) = this.lock().player_connect_inner(stream)?;
 
-		let other_this = this.clone();
-		receiver_loop(
-			messager,
-			move |message| this.lock().process_message_inner(message, id, player),
-			move || other_this.lock().connection_close(id, player)
-		);
+        let other_this = this.clone();
+        receiver_loop(
+            messager,
+            move |message| this.lock().process_message_inner(message, id, player),
+            move || other_this.lock().connection_close(id, player)
+        );
 
-		Ok(())
-	}
+        Ok(())
+    }
 
-	fn player_connect_inner(
-		&mut self,
-		stream: TcpStream
-	) -> Result<(Entity, ConnectionId, MessagePasser), ConnectionError>
-	{
+    fn player_connect_inner(
+        &mut self,
+        stream: TcpStream
+    ) -> Result<(Entity, ConnectionId, MessagePasser), ConnectionError>
+    {
         let player_index = self.entities.player.len() + 1;
 
         let transform = Transform{
@@ -160,14 +160,14 @@ impl GameServer
 
         let position = transform.position;
 
-		let info = EntityInfo{
+        let info = EntityInfo{
             player: Some(Player{name: format!("stephanie #{player_index}")}),
             transform: Some(transform),
             render: Some(RenderInfo{texture: "player/hair.png".to_owned(), z_level: 0}),
             physical: Some(physical.into()),
             anatomy: Some(anatomy),
             ..Default::default()
-		};
+        };
 
         let mut inserter = |info: EntityInfo|
         {
@@ -212,80 +212,80 @@ impl GameServer
         inserter(pon(Vector3::new(-0.15, 0.35, 0.0)));
         inserter(pon(Vector3::new(-0.15, -0.35, 0.0)));
 
-		let player_info = self.player_info(stream, inserted)?;
+        let player_info = self.player_info(stream, inserted)?;
 
-		let (connection, messager) = self.player_create(inserted, player_info)?;
+        let (connection, messager) = self.player_create(inserted, player_info)?;
 
-		self.world.add_player(connection, position.into());
+        self.world.add_player(connection, position.into());
 
         Ok((inserted, connection, messager))
-	}
+    }
 
-	fn player_info(&self, stream: TcpStream, entity: Entity) -> Result<PlayerInfo, ConnectionError>
-	{
-		let mut message_passer = MessagePasser::new(stream);
+    fn player_info(&self, stream: TcpStream, entity: Entity) -> Result<PlayerInfo, ConnectionError>
+    {
+        let mut message_passer = MessagePasser::new(stream);
 
-		let name = match message_passer.receive_one()?
-		{
-			Some(Message::PlayerConnect{name}) => name,
-			_ =>
-			{
-				return Err(ConnectionError::WrongConnectionMessage);
-			}
-		};
+        let name = match message_passer.receive_one()?
+        {
+            Some(Message::PlayerConnect{name}) => name,
+            _ =>
+            {
+                return Err(ConnectionError::WrongConnectionMessage);
+            }
+        };
 
-		println!("player \"{name}\" connected");
+        println!("player \"{name}\" connected");
 
-		Ok(PlayerInfo::new(MessageBuffer::new(), message_passer, entity))
-	}
+        Ok(PlayerInfo::new(MessageBuffer::new(), message_passer, entity))
+    }
 
-	fn player_create(
-		&mut self,
+    fn player_create(
+        &mut self,
         entity: Entity,
-		player_info: PlayerInfo
-	) -> Result<(ConnectionId, MessagePasser), ConnectionError>
-	{
-		let mut connection_handler = self.connection_handler.write();
-		let connection_id = connection_handler.connect(player_info);
+        player_info: PlayerInfo
+    ) -> Result<(ConnectionId, MessagePasser), ConnectionError>
+    {
+        let mut connection_handler = self.connection_handler.write();
+        let connection_id = connection_handler.connect(player_info);
 
-		let messager = connection_handler.get_mut(connection_id);
+        let messager = connection_handler.get_mut(connection_id);
 
-		messager.send_blocking(Message::PlayerOnConnect{entity})?;
+        messager.send_blocking(Message::PlayerOnConnect{entity})?;
 
-		self.entities.entities_iter().try_for_each(|entity|
-	    {
+        self.entities.entities_iter().try_for_each(|entity|
+        {
             let info = self.entities.info(entity);
             let message = Message::EntitySet{entity, info};
 
             messager.send_blocking(message)
-		})?;
+        })?;
 
-		messager.send_blocking(Message::PlayerFullyConnected)?;
+        messager.send_blocking(Message::PlayerFullyConnected)?;
 
-		Ok((connection_id, messager.clone_messager()))
-	}
+        Ok((connection_id, messager.clone_messager()))
+    }
 
-	fn connection_close(&mut self, id: ConnectionId, entity: Entity)
-	{
+    fn connection_close(&mut self, id: ConnectionId, entity: Entity)
+    {
         let mut writer = self.connection_handler.write();
 
-		self.world.remove_player(id);
-		writer.remove_connection(id);
+        self.world.remove_player(id);
+        writer.remove_connection(id);
 
         let player = (self.entities.exists(entity))
             .then(|| self.entities.player(entity))
             .flatten();
 
-		if let Some(player) = player
+        if let Some(player) = player
         {
             println!("player \"{}\" disconnected", player.name);
 
             writer.send_message(self.entities.remove_message(entity));
         }
-	}
+    }
 
-	fn process_message_inner(&mut self, message: Message, id: ConnectionId, player: Entity)
-	{
+    fn process_message_inner(&mut self, message: Message, id: ConnectionId, player: Entity)
+    {
         let message = match message
         {
             Message::RepeatMessage{message} =>
@@ -297,28 +297,28 @@ impl GameServer
             x => x
         };
 
-		if message.forward()
-		{
-			self.connection_handler.write().send_message_without(id, message.clone());
-		}
+        if message.forward()
+        {
+            self.connection_handler.write().send_message_without(id, message.clone());
+        }
 
-		let message = match self.world.handle_message(&mut self.entities, id, player, message)
-		{
-			Some(x) => x,
-			None => return
-		};
+        let message = match self.world.handle_message(&mut self.entities, id, player, message)
+        {
+            Some(x) => x,
+            None => return
+        };
 
-		let message = match self.entities.handle_message(message)
-		{
-			Some(x) => x,
-			None => return
-		};
+        let message = match self.entities.handle_message(message)
+        {
+            Some(x) => x,
+            None => return
+        };
 
-		match message
-		{
-			x => panic!("unhandled message: {x:?}")
-		}
-	}
+        match message
+        {
+            x => panic!("unhandled message: {x:?}")
+        }
+    }
 
     fn send_message(&mut self, message: Message)
     {
@@ -328,21 +328,21 @@ impl GameServer
 
 impl EntitiesController for GameServer
 {
-	type Container = Entities;
-	type Passer = ConnectionsHandler;
+    type Container = Entities;
+    type Passer = ConnectionsHandler;
 
-	fn container_ref(&self) -> &Self::Container
-	{
-		&self.entities
-	}
+    fn container_ref(&self) -> &Self::Container
+    {
+        &self.entities
+    }
 
-	fn container_mut(&mut self) -> &mut Self::Container
-	{
-		&mut self.entities
-	}
+    fn container_mut(&mut self) -> &mut Self::Container
+    {
+        &mut self.entities
+    }
 
-	fn passer(&self) -> Arc<RwLock<Self::Passer>>
-	{
-		self.connection_handler.clone()
-	}
+    fn passer(&self) -> Arc<RwLock<Self::Passer>>
+    {
+        self.connection_handler.clone()
+    }
 }

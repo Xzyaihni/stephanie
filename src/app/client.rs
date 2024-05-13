@@ -1,31 +1,31 @@
 use std::{
-	sync::Arc,
+    sync::Arc,
     rc::Rc,
     cell::RefCell,
-	net::TcpStream
+    net::TcpStream
 };
 
 use parking_lot::RwLock;
 
 use vulkano::{
-	device::Device,
-	buffer::{
-		BufferUsage,
-		Subbuffer,
-		allocator::{SubbufferAllocator, SubbufferAllocatorCreateInfo}
-	},
-	memory::allocator::StandardMemoryAllocator
+    device::Device,
+    buffer::{
+        BufferUsage,
+        Subbuffer,
+        allocator::{SubbufferAllocator, SubbufferAllocatorCreateInfo}
+    },
+    memory::allocator::StandardMemoryAllocator
 };
 
 use image::error::ImageError;
 
 use yanyaengine::{
     Control,
-	camera::Camera,
-	object::{
-		ObjectVertex,
-		model::Model
-	},
+    camera::Camera,
+    object::{
+        ObjectVertex,
+        model::Model
+    },
     game_object::*
 };
 
@@ -34,8 +34,8 @@ use game::Game;
 use game_state::GameState;
 
 use crate::common::{
-	MessagePasser,
-	tilemap::TileMapWithTextures
+    MessagePasser,
+    tilemap::TileMapWithTextures
 };
 
 pub use game::DrawableEntity;
@@ -57,40 +57,40 @@ pub mod world_receiver;
 #[derive(Debug, Clone)]
 pub struct ObjectAllocator
 {
-	allocator: Rc<SubbufferAllocator>,
-	frames: usize
+    allocator: Rc<SubbufferAllocator>,
+    frames: usize
 }
 
 impl ObjectAllocator
 {
-	pub fn new(device: Arc<Device>, frames: usize) -> Self
-	{
-		let allocator = StandardMemoryAllocator::new_default(device);
-		let allocator = SubbufferAllocator::new(
-			Arc::new(allocator),
-			SubbufferAllocatorCreateInfo{
-				buffer_usage: BufferUsage::VERTEX_BUFFER | BufferUsage::TRANSFER_DST,
-				..Default::default()
-			}
-		);
+    pub fn new(device: Arc<Device>, frames: usize) -> Self
+    {
+        let allocator = StandardMemoryAllocator::new_default(device);
+        let allocator = SubbufferAllocator::new(
+            Arc::new(allocator),
+            SubbufferAllocatorCreateInfo{
+                buffer_usage: BufferUsage::VERTEX_BUFFER | BufferUsage::TRANSFER_DST,
+                ..Default::default()
+            }
+        );
 
-		let allocator = Rc::new(allocator);
+        let allocator = Rc::new(allocator);
 
-		Self{allocator, frames}
-	}
+        Self{allocator, frames}
+    }
 
-	pub fn subbuffers(&self, model: &Model) -> Box<[Subbuffer<[ObjectVertex]>]>
-	{
-		(0..self.frames).map(|_|
-		{
-			self.allocator.allocate_slice(model.vertices.len() as u64).unwrap()
-		}).collect::<Vec<_>>().into_boxed_slice()
-	}
+    pub fn subbuffers(&self, model: &Model) -> Box<[Subbuffer<[ObjectVertex]>]>
+    {
+        (0..self.frames).map(|_|
+        {
+            self.allocator.allocate_slice(model.vertices.len() as u64).unwrap()
+        }).collect::<Vec<_>>().into_boxed_slice()
+    }
 
-	pub fn subbuffers_amount(&self) -> usize
-	{
-		self.frames
-	}
+    pub fn subbuffers_amount(&self) -> usize
+    {
+        self.frames
+    }
 }
 
 pub struct ClientInitInfo
@@ -101,95 +101,95 @@ pub struct ClientInitInfo
 
 pub struct ClientInfo
 {
-	pub address: String,
-	pub name: String,
-	pub debug_mode: bool
+    pub address: String,
+    pub name: String,
+    pub debug_mode: bool
 }
 
 pub struct Client
 {
-	game_state: Rc<RefCell<GameState>>,
-	game: Game
+    game_state: Rc<RefCell<GameState>>,
+    game: Game
 }
 
 impl Client
 {
-	pub fn new(
+    pub fn new(
         info: InitPartialInfo,
         client_init_info: ClientInitInfo
-	) -> Result<Self, ImageError>
-	{
-		let camera = Camera::new(info.aspect, -1.0..1.0);
+    ) -> Result<Self, ImageError>
+    {
+        let camera = Camera::new(info.aspect, -1.0..1.0);
         let mut info = InitInfo::new(info, &camera);
 
         let camera = Arc::new(RwLock::new(camera));
 
-		let tiles_factory = TilesFactory::new(&mut info, client_init_info.tilemap)?;
+        let tiles_factory = TilesFactory::new(&mut info, client_init_info.tilemap)?;
 
-		let stream = TcpStream::connect(&client_init_info.client_info.address)?;
-		let message_passer = MessagePasser::new(stream);
+        let stream = TcpStream::connect(&client_init_info.client_info.address)?;
+        let message_passer = MessagePasser::new(stream);
 
-		let game_state = GameState::new(
-			camera,
+        let game_state = GameState::new(
+            camera,
             info.object_info.partial.assets,
-			info.object_info.partial.object_factory,
-			tiles_factory,
-			message_passer,
-		    &client_init_info.client_info
-		);
+            info.object_info.partial.object_factory,
+            tiles_factory,
+            message_passer,
+            &client_init_info.client_info
+        );
 
-		let game = Game::new(game_state.player());
-		let game_state = Rc::new(RefCell::new(game_state));
+        let game = Game::new(game_state.player());
+        let game_state = Rc::new(RefCell::new(game_state));
 
-		Ok(Self{game_state, game})
-	}
+        Ok(Self{game_state, game})
+    }
 
-	pub fn resize(&mut self, aspect: f32)
-	{
-		self.game_state.borrow_mut().resize(aspect);
-	}
+    pub fn resize(&mut self, aspect: f32)
+    {
+        self.game_state.borrow_mut().resize(aspect);
+    }
 
-	pub fn running(&self) -> bool
-	{
-		self.game_state.borrow().running
-	}
+    pub fn running(&self) -> bool
+    {
+        self.game_state.borrow().running
+    }
 
     pub fn update(&mut self, dt: f32)
     {
-		let mut writer = self.game_state.borrow_mut();
+        let mut writer = self.game_state.borrow_mut();
 
-		self.game.update(&mut writer, dt);
+        self.game.update(&mut writer, dt);
 
-		writer.update(dt);
+        writer.update(dt);
 
-		if self.game.player_exists(&mut writer)
-		{
+        if self.game.player_exists(&mut writer)
+        {
             if writer.player_connected()
             {
                 self.game.on_player_connected(&mut writer);
             }
 
-			self.game.camera_sync(&mut writer);
-		}
+            self.game.camera_sync(&mut writer);
+        }
     }
 
     pub fn update_buffers(&mut self, partial_info: UpdateBuffersPartialInfo)
     {
-	    self.game_state.borrow_mut().update_buffers(partial_info);
+        self.game_state.borrow_mut().update_buffers(partial_info);
     }
 
     pub fn draw(&mut self, mut info: DrawInfo)
     {
-	    self.game_state.borrow().draw(&mut info);
+        self.game_state.borrow().draw(&mut info);
     }
 
-	pub fn input(&mut self, control: Control)
-	{
+    pub fn input(&mut self, control: Control)
+    {
         self.game_state.borrow_mut().input(control);
-	}
+    }
 
-	pub fn mouse_move(&mut self, position: (f64, f64))
-	{
-		self.game_state.borrow_mut().mouse_position = position.into();
-	}
+    pub fn mouse_move(&mut self, position: (f64, f64))
+    {
+        self.game_state.borrow_mut().mouse_position = position.into();
+    }
 }

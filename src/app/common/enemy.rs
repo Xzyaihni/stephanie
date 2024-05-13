@@ -67,12 +67,12 @@ impl From<EnemyProperties> for Enemy
         let mut rng = SeededRandom::new();
         let behavior_state = properties.behavior.start_state();
 
-		Self{
+        Self{
             current_state_left: properties.behavior.duration_of(&mut rng, &behavior_state),
             behavior_state,
             behavior: properties.behavior,
             rng
-		}
+        }
     }
 }
 

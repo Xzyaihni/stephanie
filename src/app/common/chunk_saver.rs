@@ -5,7 +5,7 @@ use std::{
     io::{self, Write, Read, Seek, SeekFrom},
     time::{Instant, Duration},
     path::{Path, PathBuf},
-	fs::{self, OpenOptions, File},
+    fs::{self, OpenOptions, File},
     collections::{HashMap, BinaryHeap, HashSet},
     sync::{
         Arc,
@@ -47,8 +47,8 @@ impl AutoSaveable for Chunk {}
 
 pub trait SaveLoad<T>
 {
-	fn save(&mut self, pos: GlobalPos, chunk: T);
-	fn load(&mut self, pos: GlobalPos) -> Option<T>;
+    fn save(&mut self, pos: GlobalPos, chunk: T);
+    fn load(&mut self, pos: GlobalPos) -> Option<T>;
 }
 
 // this shouldnt be public but sure, rust
@@ -377,18 +377,18 @@ impl<SaveT: Saveable, LoadT> FileSaver<SaveT, LoadT>
 
         let parent_path = self.parent_path(pos);
 
-		match File::open(Self::chunk_path(parent_path.clone(), pos))
-		{
-			Ok(file) =>
-			{
+        match File::open(Self::chunk_path(parent_path.clone(), pos))
+        {
+            Ok(file) =>
+            {
                 Some(load_fn(parent_path, file))
-			},
-			Err(ref err) if err.kind() == io::ErrorKind::NotFound =>
-			{
-				None
-			},
-			Err(err) => panic!("error loading chunk from file: {err}")
-		}
+            },
+            Err(ref err) if err.kind() == io::ErrorKind::NotFound =>
+            {
+                None
+            },
+            Err(err) => panic!("error loading chunk from file: {err}")
+        }
     }
 
     fn save_inner(&mut self, pair: ValuePair<SaveT>)
@@ -449,8 +449,8 @@ where
     type SaveItem = T;
     type LoadItem = T;
 
-	fn new(parent_path: PathBuf) -> Self
-	{
+    fn new(parent_path: PathBuf) -> Self
+    {
         Self::new_with_saver(parent_path, |path, pair|
         {
             let file = File::create(Self::chunk_path(path, pair.pos)).unwrap();
@@ -484,8 +484,8 @@ impl FileSave for FileSaver<SaveValueGroup, LoadValueGroup>
     type SaveItem = SaveValueGroup;
     type LoadItem = LoadValueGroup;
 
-	fn new(parent_path: PathBuf) -> Self
-	{
+    fn new(parent_path: PathBuf) -> Self
+    {
         Self::new_with_saver(parent_path, |path, pair|
         {
             let chunk_path = Self::chunk_path(path.clone(), pair.pos);
@@ -561,21 +561,21 @@ impl<S, SaveT: Saveable, LoadT> Saver<S, SaveT, LoadT>
 where
     S: FileSave<SaveItem=SaveT, LoadItem=LoadT>
 {
-	pub fn new(parent_path: impl Into<PathBuf>, cache_amount: usize) -> Self
-	{
+    pub fn new(parent_path: impl Into<PathBuf>, cache_amount: usize) -> Self
+    {
         let parent_path = parent_path.into();
 
-		fs::create_dir_all(&parent_path).unwrap();
+        fs::create_dir_all(&parent_path).unwrap();
 
         let file_saver = S::new(parent_path);
 
-		Self{
+        Self{
             start: Instant::now(),
             file_saver: Arc::new(Mutex::new(file_saver)),
             cache_amount,
             cache: BinaryHeap::new()
         }
-	}
+    }
 
     fn free_cache(&mut self, amount: usize)
     {
@@ -599,8 +599,8 @@ where
 
 impl SaveLoad<WorldChunk> for WorldChunkSaver
 {
-	fn load(&mut self, pos: GlobalPos) -> Option<WorldChunk>
-	{
+    fn load(&mut self, pos: GlobalPos) -> Option<WorldChunk>
+    {
         let index = WorldChunk::global_to_index(pos);
 
         let rounded_pos = WorldChunk::belongs_to(pos);
@@ -615,17 +615,17 @@ impl SaveLoad<WorldChunk> for WorldChunkSaver
 
         self.file_saver.lock().load(rounded_pos)
             .and_then(|mut load_chunk| load_chunk.get(index))
-	}
+    }
 
-	fn save(&mut self, pos: GlobalPos, chunk: WorldChunk)
-	{
+    fn save(&mut self, pos: GlobalPos, chunk: WorldChunk)
+    {
         let index = WorldChunk::global_to_index(pos);
 
         let value = SaveValueGroup{value: chunk, index};
         let pair = ValuePair::new(WorldChunk::belongs_to(pos), value);
 
         self.inner_save(pair);
-	}
+    }
 }
 
 #[derive(Debug)]
@@ -641,20 +641,20 @@ impl<S, SaveT: Saveable, LoadT> DestructiveSaver<S, SaveT, LoadT>
 where
     S: FileSave<SaveItem=SaveT, LoadItem=LoadT>
 {
-	pub fn new(parent_path: impl Into<PathBuf>, cache_amount: usize) -> Self
-	{
+    pub fn new(parent_path: impl Into<PathBuf>, cache_amount: usize) -> Self
+    {
         let parent_path = parent_path.into();
 
         let saver = Saver::new(parent_path, cache_amount);
 
         Self{saver, loaded: HashSet::new()}
-	}
+    }
 }
 
 impl SaveLoad<Vec<EntityInfo>> for EntitiesSaver
 {
-	fn load(&mut self, pos: GlobalPos) -> Option<Vec<EntityInfo>>
-	{
+    fn load(&mut self, pos: GlobalPos) -> Option<Vec<EntityInfo>>
+    {
         self.loaded.insert(pos);
 
         if let Some(found) = self.saver.cache.iter().find(|pair|
@@ -666,10 +666,10 @@ impl SaveLoad<Vec<EntityInfo>> for EntitiesSaver
         }
 
         self.saver.file_saver.lock().load(pos)
-	}
+    }
 
-	fn save(&mut self, pos: GlobalPos, mut entities: Vec<EntityInfo>)
-	{
+    fn save(&mut self, pos: GlobalPos, mut entities: Vec<EntityInfo>)
+    {
         if self.loaded.remove(&pos)
         {
             let pair = ValuePair::new(pos, entities);
@@ -692,7 +692,7 @@ impl SaveLoad<Vec<EntityInfo>> for EntitiesSaver
         let pair = ValuePair::new(pos, entities);
 
         self.saver.inner_save(pair);
-	}
+    }
 }
 
 impl<T> SaveLoad<T> for Saver<FileSaver<T>, T>
@@ -700,8 +700,8 @@ where
     T: AutoSaveable + Clone,
     FileSaver<T>: FileSave<LoadItem=T, SaveItem=T>
 {
-	fn load(&mut self, pos: GlobalPos) -> Option<T>
-	{
+    fn load(&mut self, pos: GlobalPos) -> Option<T>
+    {
         if let Some(found) = self.cache.iter().find(|pair|
         {
             *pair.pos() == pos
@@ -711,14 +711,14 @@ where
         }
 
         self.file_saver.lock().load(pos)
-	}
+    }
 
-	fn save(&mut self, pos: GlobalPos, value: T)
-	{
+    fn save(&mut self, pos: GlobalPos, value: T)
+    {
         let pair = ValuePair::new(pos, value);
 
         self.inner_save(pair);
-	}
+    }
 }
 
 #[cfg(test)]

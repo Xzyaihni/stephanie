@@ -1,11 +1,11 @@
 use std::{
     fmt,
-	slice::{
+    slice::{
         IterMut as SliceIterMut,
         Iter as SliceIter
     },
-	iter::Enumerate,
-	ops::{Index, IndexMut}
+    iter::Enumerate,
+    ops::{Index, IndexMut}
 };
 
 use serde::{Serialize, Deserialize};
@@ -167,8 +167,8 @@ macro_rules! implement_common
 
 pub trait ChunkIndexing
 {
-	fn to_index(&self, pos: Pos3<usize>) -> usize;
-	fn index_to_pos(&self, index: usize) -> LocalPos;
+    fn to_index(&self, pos: Pos3<usize>) -> usize;
+    fn index_to_pos(&self, index: usize) -> LocalPos;
 }
 
 pub type ValuePair<T> = (LocalPos, T);
@@ -211,15 +211,15 @@ impl_iter!{IterMut, SliceIterMut}
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Indexer
 {
-	size: Pos3<usize>
+    size: Pos3<usize>
 }
 
 impl Indexer
 {
-	pub fn new(size: Pos3<usize>) -> Self
-	{
-		Self{size}
-	}
+    pub fn new(size: Pos3<usize>) -> Self
+    {
+        Self{size}
+    }
 
     pub fn size(&self) -> &Pos3<usize>
     {
@@ -229,26 +229,26 @@ impl Indexer
 
 impl ChunkIndexing for Indexer
 {
-	fn to_index(&self, pos: Pos3<usize>) -> usize
-	{
-		pos.to_rectangle(self.size.x, self.size.y)
-	}
+    fn to_index(&self, pos: Pos3<usize>) -> usize
+    {
+        pos.to_rectangle(self.size.x, self.size.y)
+    }
 
-	fn index_to_pos(&self, index: usize) -> LocalPos
-	{
-		let x = index % self.size.x;
-		let y = (index / self.size.x) % self.size.y;
-		let z = index / (self.size.x * self.size.y);
+    fn index_to_pos(&self, index: usize) -> LocalPos
+    {
+        let x = index % self.size.x;
+        let y = (index / self.size.x) % self.size.y;
+        let z = index / (self.size.x * self.size.y);
 
-		LocalPos::new(Pos3::new(x, y, z), self.size)
-	}
+        LocalPos::new(Pos3::new(x, y, z), self.size)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChunksContainer<T>
 {
-	chunks: Box<[T]>,
-	indexer: Indexer
+    chunks: Box<[T]>,
+    indexer: Indexer
 }
 
 implement_common!{ChunksContainer, Indexer}
@@ -295,7 +295,7 @@ impl<T> ChunksContainer<T>
     {
         let s = self.flat_slice(z).iter();
 
-		Iter::new(s, FlatIndexer::from(self.indexer.clone()).with_z(z))
+        Iter::new(s, FlatIndexer::from(self.indexer.clone()).with_z(z))
     }
 
     pub fn flat_slice_iter_mut(&mut self, z: usize) -> IterMut<FlatIndexer, T>
@@ -303,7 +303,7 @@ impl<T> ChunksContainer<T>
         let indexer = FlatIndexer::from(self.indexer.clone()).with_z(z);
         let s = self.flat_slice_mut(z).iter_mut();
 
-		IterMut::new(s, indexer)
+        IterMut::new(s, indexer)
     }
 
     pub fn map_slice_ref<U, F>(&self, z: usize, f: F) -> FlatChunksContainer<U>
@@ -320,18 +320,18 @@ impl<T> ChunksContainer<T>
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FlatIndexer
 {
-	size: Pos3<usize>,
+    size: Pos3<usize>,
     z: usize
 }
 
 impl FlatIndexer
 {
-	pub fn new(mut size: Pos3<usize>) -> Self
-	{
+    pub fn new(mut size: Pos3<usize>) -> Self
+    {
         size.z = 1;
 
-		Self{size, z: 0}
-	}
+        Self{size, z: 0}
+    }
 
     pub fn with_z(mut self, z: usize) -> Self
     {
@@ -351,25 +351,25 @@ impl From<Indexer> for FlatIndexer
 
 impl ChunkIndexing for FlatIndexer
 {
-	fn to_index(&self, pos: Pos3<usize>) -> usize
-	{
-		pos.y * self.size.x + pos.x
-	}
+    fn to_index(&self, pos: Pos3<usize>) -> usize
+    {
+        pos.y * self.size.x + pos.x
+    }
 
-	fn index_to_pos(&self, index: usize) -> LocalPos
-	{
-		let x = index % self.size.x;
-		let y = (index / self.size.x) % self.size.y;
+    fn index_to_pos(&self, index: usize) -> LocalPos
+    {
+        let x = index % self.size.x;
+        let y = (index / self.size.x) % self.size.y;
 
-		LocalPos::new(Pos3::new(x, y, self.z), self.size)
-	}
+        LocalPos::new(Pos3::new(x, y, self.z), self.size)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FlatChunksContainer<T>
 {
-	chunks: Box<[T]>,
-	indexer: FlatIndexer
+    chunks: Box<[T]>,
+    indexer: FlatIndexer
 }
 
 implement_common!{FlatChunksContainer, FlatIndexer}

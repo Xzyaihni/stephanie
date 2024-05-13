@@ -1,18 +1,18 @@
 use std::{
-	io,
+    io,
     fmt,
     iter,
-	ops::Index,
-	collections::HashMap,
-	fs::File,
-	path::{Path, PathBuf}
+    ops::Index,
+    collections::HashMap,
+    fs::File,
+    path::{Path, PathBuf}
 };
 
 use serde::{Serialize, Deserialize};
 
 use image::{
-	imageops::FilterType,
-	error::ImageError
+    imageops::FilterType,
+    error::ImageError
 };
 
 use strum_macros::EnumIter;
@@ -36,15 +36,15 @@ const PADDED_TILE_SIZE: usize = TEXTURE_TILE_SIZE + PADDING * 2;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TileInfoRaw
 {
-	pub name: String,
-	pub texture: PathBuf
+    pub name: String,
+    pub texture: PathBuf
 }
 
 #[derive(Debug, Clone)]
 pub struct TileInfo
 {
-	pub name: String,
-	pub transparent: bool
+    pub name: String,
+    pub transparent: bool
 }
 
 impl TileInfo
@@ -66,14 +66,14 @@ impl TileInfo
 #[derive(Debug, EnumIter, EnumCount)]
 pub enum GradientMask
 {
-	Outer,
-	Inner
+    Outer,
+    Inner
 }
 
 pub struct TileMapWithTextures
 {
     pub tilemap: TileMap,
-	pub gradient_mask: SimpleImage,
+    pub gradient_mask: SimpleImage,
     pub textures: Vec<SimpleImage>
 }
 
@@ -130,19 +130,19 @@ impl From<io::Error> for TileMapError
 #[derive(Debug)]
 pub struct TileMap
 {
-	tiles: Vec<TileInfo>
+    tiles: Vec<TileInfo>
 }
 
 #[allow(dead_code)]
 impl TileMap
 {
-	pub fn parse(
+    pub fn parse(
         tiles_path: &str,
         textures_root: &str
     ) -> Result<TileMapWithTextures, TileMapError>
-	{
-		let textures_root = Path::new(textures_root);
-		let gradient_mask = textures_root.join("gradient.png");
+    {
+        let textures_root = Path::new(textures_root);
+        let gradient_mask = textures_root.join("gradient.png");
 
         let gradient_mask = Self::load_texture(
             TEXTURE_TILE_SIZE as u32 * 2,
@@ -150,7 +150,7 @@ impl TileMap
             gradient_mask
         )?;
 
-		let tiles = serde_json::from_reader::<_, Vec<TileInfoRaw>>(File::open(tiles_path)?)?;
+        let tiles = serde_json::from_reader::<_, Vec<TileInfoRaw>>(File::open(tiles_path)?)?;
 
         let textures = tiles.iter().map(|tile_raw|
         {
@@ -171,58 +171,58 @@ impl TileMap
             TileInfo::from_raw(texture, tile_raw)
         })).collect();
 
-		Ok(TileMapWithTextures{
+        Ok(TileMapWithTextures{
             tilemap: Self{tiles},
             gradient_mask,
             textures
         })
-	}
+    }
 
-	pub fn names_map(&self) -> HashMap<&str, Tile>
-	{
-		self.names_iter().collect()
-	}
+    pub fn names_map(&self) -> HashMap<&str, Tile>
+    {
+        self.names_iter().collect()
+    }
 
-	pub fn names_owned_map(&self) -> HashMap<String, Tile>
-	{
-		self.names_iter().map(|(key, value)| (key.to_owned(), value)).collect()
-	}
+    pub fn names_owned_map(&self) -> HashMap<String, Tile>
+    {
+        self.names_iter().map(|(key, value)| (key.to_owned(), value)).collect()
+    }
 
     fn names_iter(&self) -> impl Iterator<Item=(&str, Tile)>
     {
-		self.tiles.iter().enumerate().map(|(index, tile_info)|
-		{
-			(tile_info.name.as_str(), Tile::new(index))
-		})
+        self.tiles.iter().enumerate().map(|(index, tile_info)|
+        {
+            (tile_info.name.as_str(), Tile::new(index))
+        })
     }
 
-	pub fn tile_named(&self, name: &str) -> Option<Tile>
-	{
-		self.tiles.iter().position(|tile_info|
-		{
-			tile_info.name == name
-		}).map(Tile::new)
-	}
+    pub fn tile_named(&self, name: &str) -> Option<Tile>
+    {
+        self.tiles.iter().position(|tile_info|
+        {
+            tile_info.name == name
+        }).map(Tile::new)
+    }
 
-	pub fn info(&self, tile: Tile) -> &TileInfo
-	{
-		self.tiles.get(tile.id()).unwrap()
-	}
+    pub fn info(&self, tile: Tile) -> &TileInfo
+    {
+        self.tiles.get(tile.id()).unwrap()
+    }
 
-	pub fn len(&self) -> usize
-	{
-		self.tiles.len()
-	}
+    pub fn len(&self) -> usize
+    {
+        self.tiles.len()
+    }
 
-	pub fn texture_row_size(&self) -> usize
-	{
-		(((self.tiles.len() - 1) as f64).sqrt().ceil() as usize).max(2)
-	}
+    pub fn texture_row_size(&self) -> usize
+    {
+        (((self.tiles.len() - 1) as f64).sqrt().ceil() as usize).max(2)
+    }
 
-	pub fn pixel_fraction(&self, fraction: f32) -> f32
-	{
-		fraction / (self.texture_row_size() * PADDED_TILE_SIZE) as f32
-	}
+    pub fn pixel_fraction(&self, fraction: f32) -> f32
+    {
+        fraction / (self.texture_row_size() * PADDED_TILE_SIZE) as f32
+    }
 
     fn load_texture(
         width: u32,
@@ -230,7 +230,7 @@ impl TileMap
         path: PathBuf
     ) -> Result<SimpleImage, TileMapError>
     {
-		let image = image::open(&path).map_err(|error| 
+        let image = image::open(&path).map_err(|error| 
         {
             TileMapError::Image{error, path: Some(path)}
         })?;
@@ -240,60 +240,60 @@ impl TileMap
             image
         } else
         {
-			image.resize_exact(
-				width,
-				height,
-				FilterType::Lanczos3
-			)
+            image.resize_exact(
+                width,
+                height,
+                FilterType::Lanczos3
+            )
         };
 
-		SimpleImage::try_from(image).map_err(|error| TileMapError::Image{error, path: None})
+        SimpleImage::try_from(image).map_err(|error| TileMapError::Image{error, path: None})
     }
 
-	pub fn apply_texture_mask<'a, I>(mask_type: GradientMask, mask: &SimpleImage, textures: I)
-	where
-		I: Iterator<Item=&'a mut SimpleImage>
-	{
-		textures.for_each(|texture|
-		{
-			for y in 0..TEXTURE_TILE_SIZE
-			{
-				for x in 0..TEXTURE_TILE_SIZE
-				{
-					let (mask_x, mask_y) = match mask_type
-					{
-						GradientMask::Outer => (x, y),
-						GradientMask::Inner => (TEXTURE_TILE_SIZE + x, y)
-					};
+    pub fn apply_texture_mask<'a, I>(mask_type: GradientMask, mask: &SimpleImage, textures: I)
+    where
+        I: Iterator<Item=&'a mut SimpleImage>
+    {
+        textures.for_each(|texture|
+        {
+            for y in 0..TEXTURE_TILE_SIZE
+            {
+                for x in 0..TEXTURE_TILE_SIZE
+                {
+                    let (mask_x, mask_y) = match mask_type
+                    {
+                        GradientMask::Outer => (x, y),
+                        GradientMask::Inner => (TEXTURE_TILE_SIZE + x, y)
+                    };
 
-					let mask_pixel = mask.get_pixel(mask_x, mask_y);
+                    let mask_pixel = mask.get_pixel(mask_x, mask_y);
 
-					let mask = mask_pixel.r;
-					let mask = match mask_type
-					{
-						GradientMask::Inner => mask,
-						_ => u8::MAX - mask
-					};
+                    let mask = mask_pixel.r;
+                    let mask = match mask_type
+                    {
+                        GradientMask::Inner => mask,
+                        _ => u8::MAX - mask
+                    };
 
-					let mut pixel = texture.get_pixel(x, y);
+                    let mut pixel = texture.get_pixel(x, y);
 
-					pixel.a = mask;
-					texture.set_pixel(pixel, x, y);
-				}
-			}
-		});
-	}
+                    pixel.a = mask;
+                    texture.set_pixel(pixel, x, y);
+                }
+            }
+        });
+    }
 
-	pub fn generate_tilemap(
-		&self,
-		resource_uploader: &mut ResourceUploader,
-		textures: &[SimpleImage]
-	) -> Texture
-	{
-		let side = self.texture_row_size();
+    pub fn generate_tilemap(
+        &self,
+        resource_uploader: &mut ResourceUploader,
+        textures: &[SimpleImage]
+    ) -> Texture
+    {
+        let side = self.texture_row_size();
 
-		let row = side * PADDED_TILE_SIZE;
-		let mut tilemap = SimpleImage::new(vec![Color::new(0, 0, 0, 255); row * row], row, row);
+        let row = side * PADDED_TILE_SIZE;
+        let mut tilemap = SimpleImage::new(vec![Color::new(0, 0, 0, 255); row * row], row, row);
 
         textures.iter().enumerate().for_each(|(index, texture)|
         {
@@ -337,16 +337,16 @@ impl TileMap
             tilemap.blit(texture, x + PADDING, y + PADDING);
         });
 
-		Texture::new(resource_uploader, tilemap.into())
-	}
+        Texture::new(resource_uploader, tilemap.into())
+    }
 }
 
 impl Index<Tile> for TileMap
 {
-	type Output = TileInfo;
+    type Output = TileInfo;
 
-	fn index(&self, tile: Tile) -> &Self::Output
-	{
-		self.tiles.get(tile.id()).unwrap()
-	}
+    fn index(&self, tile: Tile) -> &Self::Output
+    {
+        self.tiles.get(tile.id()).unwrap()
+    }
 }

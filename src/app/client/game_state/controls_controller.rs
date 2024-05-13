@@ -9,17 +9,17 @@ use strum_macros::EnumCount;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, EnumCount)]
 pub enum Control
 {
-	MoveUp = 0,
-	MoveDown,
-	MoveRight,
-	MoveLeft,
-	MainAction,
-	SecondaryAction,
-	Jump,
-	Crouch,
-	ZoomIn,
-	ZoomOut,
-	ZoomReset,
+    MoveUp = 0,
+    MoveDown,
+    MoveRight,
+    MoveLeft,
+    MainAction,
+    SecondaryAction,
+    Jump,
+    Crouch,
+    ZoomIn,
+    ZoomOut,
+    ZoomReset,
     DebugConsole
 }
 
@@ -94,12 +94,12 @@ impl ControlsController
             (KeyMapping::Keyboard(KeyCode::KeyW), Control::MoveUp),
             (KeyMapping::Mouse(MouseButton::Left), Control::MainAction),
             (KeyMapping::Mouse(MouseButton::Right), Control::SecondaryAction),
-			(KeyMapping::Keyboard(KeyCode::Space), Control::Jump),
-			(KeyMapping::Keyboard(KeyCode::ControlLeft), Control::Crouch),
-			(KeyMapping::Keyboard(KeyCode::Equal), Control::ZoomIn),
-			(KeyMapping::Keyboard(KeyCode::Minus), Control::ZoomOut),
-			(KeyMapping::Keyboard(KeyCode::Digit0), Control::ZoomReset),
-			(KeyMapping::Keyboard(KeyCode::Backquote), Control::DebugConsole)
+            (KeyMapping::Keyboard(KeyCode::Space), Control::Jump),
+            (KeyMapping::Keyboard(KeyCode::ControlLeft), Control::Crouch),
+            (KeyMapping::Keyboard(KeyCode::Equal), Control::ZoomIn),
+            (KeyMapping::Keyboard(KeyCode::Minus), Control::ZoomOut),
+            (KeyMapping::Keyboard(KeyCode::Digit0), Control::ZoomReset),
+            (KeyMapping::Keyboard(KeyCode::Backquote), Control::DebugConsole)
         ].into_iter().collect();
 
         Self{

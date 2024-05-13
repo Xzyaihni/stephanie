@@ -5,7 +5,7 @@ use serde::{Serialize, Deserialize};
 use strum_macros::EnumCount;
 
 use crate::common::{
-	Transform,
+    Transform,
     Physical,
     Entity,
     EntityInfo,
@@ -16,7 +16,7 @@ use crate::common::{
     Damage,
     Anatomy,
     LazyTransform,
-	world::{Chunk, GlobalPos}
+    world::{Chunk, GlobalPos}
 };
 
 
@@ -34,27 +34,27 @@ pub enum Message
     SetEnemy{entity: Entity, enemy: Enemy},
     EntityDestroy{entity: Entity},
     EntityDamage{entity: Entity, damage: Damage},
-	PlayerConnect{name: String},
-	PlayerOnConnect{entity: Entity},
-	PlayerFullyConnected,
-	ChunkRequest{pos: GlobalPos},
-	ChunkSync{pos: GlobalPos, chunk: Chunk},
+    PlayerConnect{name: String},
+    PlayerOnConnect{entity: Entity},
+    PlayerFullyConnected,
+    ChunkRequest{pos: GlobalPos},
+    ChunkSync{pos: GlobalPos, chunk: Chunk},
     RepeatMessage{message: Box<Message>}
 }
 
 impl Message
 {
-	pub fn forward(&self) -> bool
-	{
-		match self
-		{
-			Message::ChunkRequest{..}
+    pub fn forward(&self) -> bool
+    {
+        match self
+        {
+            Message::ChunkRequest{..}
             | Message::PlayerConnect{..}
             | Message::PlayerOnConnect{..}
             | Message::PlayerFullyConnected => false,
-			_ => true
-		}
-	}
+            _ => true
+        }
+    }
 
     pub fn entity(&self) -> Option<Entity>
     {
@@ -84,23 +84,23 @@ impl Message
 #[derive(Debug, Clone)]
 pub struct MessageBuffer
 {
-	buffer: Vec<Message>
+    buffer: Vec<Message>
 }
 
 impl MessageBuffer
 {
-	pub fn new() -> Self
-	{
-		Self{buffer: Vec::new()}
-	}
+    pub fn new() -> Self
+    {
+        Self{buffer: Vec::new()}
+    }
 
-	pub fn set_message(&mut self, message: Message)
-	{
+    pub fn set_message(&mut self, message: Message)
+    {
         self.buffer.push(message);
-	}
+    }
 
-	pub fn get_buffered(&mut self) -> impl Iterator<Item=Message> + '_
-	{
-		mem::take(&mut self.buffer).into_iter()
-	}
+    pub fn get_buffered(&mut self) -> impl Iterator<Item=Message> + '_
+    {
+        mem::take(&mut self.buffer).into_iter()
+    }
 }

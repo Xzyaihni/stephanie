@@ -7,33 +7,33 @@ use std::{
 use parking_lot::{Mutex, RwLock};
 
 use crate::{
-	server::ConnectionsHandler,
-	common::{
+    server::ConnectionsHandler,
+    common::{
         self,
         EnemyBuilder,
-		TileMap,
+        TileMap,
         WorldChunkSaver,
         ChunkSaver,
         EntitiesSaver,
         SaveLoad,
-		EntityPasser,
+        EntityPasser,
         Entity,
         EntityInfo,
         ConnectionId,
         entity::ServerEntities,
-		message::Message,
-		world::{
+        message::Message,
+        world::{
             CHUNK_SIZE,
             TILE_SIZE,
-			CLIENT_OVERMAP_SIZE,
-			CLIENT_OVERMAP_SIZE_Z,
-			Chunk,
+            CLIENT_OVERMAP_SIZE,
+            CLIENT_OVERMAP_SIZE_Z,
+            Chunk,
             ChunkLocal,
-			GlobalPos,
-			Pos3,
+            GlobalPos,
+            Pos3,
             overmap::OvermapIndexing
-		}
-	}
+        }
+    }
 };
 
 use world_generator::WorldGenerator;
@@ -60,85 +60,85 @@ struct ClientIndexer
 
 impl OvermapIndexing for ClientIndexer
 {
-	fn size(&self) -> Pos3<usize>
-	{
-		self.size
-	}
+    fn size(&self) -> Pos3<usize>
+    {
+        self.size
+    }
 
-	fn player_position(&self) -> GlobalPos
-	{
-		self.player_position
-	}
+    fn player_position(&self) -> GlobalPos
+    {
+        self.player_position
+    }
 }
 
 #[derive(Debug)]
 pub struct World
 {
-	message_handler: Arc<RwLock<ConnectionsHandler>>,
-	world_name: String,
-	world_generator: Arc<Mutex<WorldGenerator<WorldChunkSaver>>>,
-	chunk_saver: ChunkSaver,
+    message_handler: Arc<RwLock<ConnectionsHandler>>,
+    world_name: String,
+    world_generator: Arc<Mutex<WorldGenerator<WorldChunkSaver>>>,
+    chunk_saver: ChunkSaver,
     entities_saver: EntitiesSaver,
-	overmaps: OvermapsType,
+    overmaps: OvermapsType,
     client_indexers: HashMap<ConnectionId, ClientIndexer>
 }
 
 impl World
 {
-	pub fn new(
-		message_handler: Arc<RwLock<ConnectionsHandler>>,
-		tilemap: TileMap
-	) -> Result<Self, ParseError>
-	{
-		let world_name = "default".to_owned();
+    pub fn new(
+        message_handler: Arc<RwLock<ConnectionsHandler>>,
+        tilemap: TileMap
+    ) -> Result<Self, ParseError>
+    {
+        let world_name = "default".to_owned();
 
         let world_path = Self::world_path_associated(&world_name);
-		let chunk_saver = ChunkSaver::new(world_path.join("chunks"), 100);
-		let entities_saver = EntitiesSaver::new(world_path.join("entities"), 10);
+        let chunk_saver = ChunkSaver::new(world_path.join("chunks"), 100);
+        let entities_saver = EntitiesSaver::new(world_path.join("entities"), 10);
 
-		let world_generator = {
-			let chunk_saver = WorldChunkSaver::new(world_path.join("world_chunks"), 100);
+        let world_generator = {
+            let chunk_saver = WorldChunkSaver::new(world_path.join("world_chunks"), 100);
 
-			WorldGenerator::new(chunk_saver, tilemap, "world_generation/")
-		}?;
+            WorldGenerator::new(chunk_saver, tilemap, "world_generation/")
+        }?;
 
-		let world_generator = Arc::new(Mutex::new(world_generator));
+        let world_generator = Arc::new(Mutex::new(world_generator));
 
-		let overmaps = Arc::new(RwLock::new(HashMap::new()));
+        let overmaps = Arc::new(RwLock::new(HashMap::new()));
         let client_indexers = HashMap::new();
 
-		Ok(Self{
-			message_handler,
-			world_name,
-			world_generator,
-			chunk_saver,
+        Ok(Self{
+            message_handler,
+            world_name,
+            world_generator,
+            chunk_saver,
             entities_saver,
-			overmaps,
+            overmaps,
             client_indexers
-		})
-	}
+        })
+    }
 
-	pub fn add_player(&mut self, id: ConnectionId, position: Pos3<f32>)
-	{
-		let size = Pos3::new(SERVER_OVERMAP_SIZE, SERVER_OVERMAP_SIZE, SERVER_OVERMAP_SIZE_Z);
-		let overmap = ServerOvermap::new(
-			self.world_generator.clone(),
-			size,
-			position
-		);
+    pub fn add_player(&mut self, id: ConnectionId, position: Pos3<f32>)
+    {
+        let size = Pos3::new(SERVER_OVERMAP_SIZE, SERVER_OVERMAP_SIZE, SERVER_OVERMAP_SIZE_Z);
+        let overmap = ServerOvermap::new(
+            self.world_generator.clone(),
+            size,
+            position
+        );
 
         let indexer_size = common::world::World::overmap_size();
         let indexer = ClientIndexer{size: indexer_size, player_position: position.rounded()};
 
         self.client_indexers.insert(id, indexer);
-		self.overmaps.write().insert(id, overmap);
-	}
+        self.overmaps.write().insert(id, overmap);
+    }
 
-	pub fn remove_player(&mut self, id: ConnectionId)
-	{
-		self.client_indexers.remove(&id);
-		self.overmaps.write().remove(&id);
-	}
+    pub fn remove_player(&mut self, id: ConnectionId)
+    {
+        self.client_indexers.remove(&id);
+        self.overmaps.write().remove(&id);
+    }
 
     pub fn player_moved(
         &mut self,
@@ -170,19 +170,19 @@ impl World
         }
     }
 
-	pub fn send_chunk(
+    pub fn send_chunk(
         &mut self,
         container: &mut ServerEntities,
         id: ConnectionId,
         pos: GlobalPos
     )
-	{
-		let chunk = self.load_chunk(container, id, pos);
+    {
+        let chunk = self.load_chunk(container, id, pos);
 
         let message = Message::ChunkSync{pos, chunk};
 
-		self.message_handler.write().send_single(id, message);
-	}
+        self.message_handler.write().send_single(id, message);
+    }
 
     fn create_entities(
         &self,
@@ -261,14 +261,14 @@ impl World
         self.create_entities(container, entities);
     }
 
-	fn load_chunk(
+    fn load_chunk(
         &mut self,
         container: &mut ServerEntities,
         id: ConnectionId,
         pos: GlobalPos
     ) -> Chunk
-	{
-		let loaded_chunk = self.chunk_saver.load(pos);
+    {
+        let loaded_chunk = self.chunk_saver.load(pos);
 
         if loaded_chunk.is_some()
         {
@@ -287,19 +287,19 @@ impl World
             }
         }
 
-		loaded_chunk.unwrap_or_else(||
-		{
-			let chunk = self.overmaps.write().get_mut(&id)
+        loaded_chunk.unwrap_or_else(||
+        {
+            let chunk = self.overmaps.write().get_mut(&id)
                 .expect("id must be valid")
                 .generate_chunk(pos);
 
             self.add_entities(container, pos.into(), &chunk);
                 
-			self.chunk_saver.save(pos, chunk.clone());
+            self.chunk_saver.save(pos, chunk.clone());
 
-			chunk
-		})
-	}
+            chunk
+        })
+    }
 
     fn collect_to_delete<I>(iter: I) -> (Vec<Entity>, HashMap<GlobalPos, Vec<EntityInfo>>)
     where
@@ -368,25 +368,25 @@ impl World
         });
     }
 
-	#[allow(dead_code)]
-	fn world_path(&self) -> PathBuf
-	{
-		Self::world_path_associated(&self.world_name)
-	}
+    #[allow(dead_code)]
+    fn world_path(&self) -> PathBuf
+    {
+        Self::world_path_associated(&self.world_name)
+    }
 
-	fn world_path_associated(name: &str) -> PathBuf
-	{
-		PathBuf::from("worlds").join(name)
-	}
+    fn world_path_associated(name: &str) -> PathBuf
+    {
+        PathBuf::from("worlds").join(name)
+    }
 
-	pub fn handle_message(
+    pub fn handle_message(
         &mut self,
         container: &mut ServerEntities,
         id: ConnectionId,
         entity: Entity,
         message: Message
     ) -> Option<Message>
-	{
+    {
         let new_position = (message.entity() == Some(entity)).then(||
             match &message
             {
@@ -407,14 +407,14 @@ impl World
             self.player_moved(container, id, new_position.into());
         }
 
-		match message
-		{
-			Message::ChunkRequest{pos} =>
-			{
-				self.send_chunk(container, id, pos);
-				None
-			},
-			_ => Some(message)
-		}
-	}
+        match message
+        {
+            Message::ChunkRequest{pos} =>
+            {
+                self.send_chunk(container, id, pos);
+                None
+            },
+            _ => Some(message)
+        }
+    }
 }

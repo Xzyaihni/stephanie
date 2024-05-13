@@ -19,11 +19,11 @@ pub struct PhysicalProperties
 pub struct Physical
 {
     pub mass: f32,
-	pub friction: f32,
+    pub friction: f32,
     pub floating: bool,
     pub grounded: bool,
-	pub velocity: Vector3<f32>,
-	pub force: Vector3<f32>,
+    pub velocity: Vector3<f32>,
+    pub force: Vector3<f32>,
 }
 
 impl From<PhysicalProperties> for Physical

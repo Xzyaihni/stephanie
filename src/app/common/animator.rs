@@ -12,24 +12,24 @@ pub trait Animatable<T: Clone>
 #[derive(Debug, Clone)]
 pub enum ValueAnimation
 {
-	Linear,
-	EaseIn(f32),
-	EaseOut(f32)
+    Linear,
+    EaseIn(f32),
+    EaseOut(f32)
 }
 
 impl ValueAnimation
 {
-	pub fn apply(&self, value: f32) -> f32
-	{
-		let value = value.clamp(0.0, 1.0);
+    pub fn apply(&self, value: f32) -> f32
+    {
+        let value = value.clamp(0.0, 1.0);
 
-		match self
-		{
-			Self::Linear => value,
-			Self::EaseIn(strength) => value.powf(*strength),
-			Self::EaseOut(strength) => 1.0 - (1.0 - value).powf(*strength)
-		}
-	}
+        match self
+        {
+            Self::Linear => value,
+            Self::EaseIn(strength) => value.powf(*strength),
+            Self::EaseOut(strength) => 1.0 - (1.0 - value).powf(*strength)
+        }
+    }
 
     pub fn reversed(&self) -> Self
     {

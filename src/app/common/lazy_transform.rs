@@ -10,53 +10,53 @@ use crate::common::Physical;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ValueAnimation
 {
-	Linear,
-	EaseIn(f32),
-	EaseOut(f32)
+    Linear,
+    EaseIn(f32),
+    EaseOut(f32)
 }
 
 impl ValueAnimation
 {
-	pub fn apply(&self, value: f32) -> f32
-	{
-		let value = value.clamp(0.0, 1.0);
+    pub fn apply(&self, value: f32) -> f32
+    {
+        let value = value.clamp(0.0, 1.0);
 
-		match self
-		{
-			Self::Linear => value,
-			Self::EaseIn(strength) => value.powf(*strength),
-			Self::EaseOut(strength) => 1.0 - (1.0 - value).powf(*strength)
-		}
-	}
+        match self
+        {
+            Self::Linear => value,
+            Self::EaseIn(strength) => value.powf(*strength),
+            Self::EaseOut(strength) => 1.0 - (1.0 - value).powf(*strength)
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StretchDeformation
 {
-	pub animation: ValueAnimation,
-	pub limit: f32,
+    pub animation: ValueAnimation,
+    pub limit: f32,
     pub onset: f32,
-	pub strength: f32
+    pub strength: f32
 }
 
 impl StretchDeformation
 {
-	pub fn stretch(&self, velocity: Vector3<f32>) -> (f32, Vector2<f32>)
-	{
-		let amount = self.animation.apply(velocity.magnitude() * self.onset);
-		let stretch = (1.0 + amount * self.strength).max(self.limit);
+    pub fn stretch(&self, velocity: Vector3<f32>) -> (f32, Vector2<f32>)
+    {
+        let amount = self.animation.apply(velocity.magnitude() * self.onset);
+        let stretch = (1.0 + amount * self.strength).max(self.limit);
 
-		let angle = velocity.y.atan2(-velocity.x);
+        let angle = velocity.y.atan2(-velocity.x);
 
-		(angle, Vector2::new(stretch, 1.0 / stretch))
-	}
+        (angle, Vector2::new(stretch, 1.0 / stretch))
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Deformation
 {
-	Rigid,
-	Stretch(StretchDeformation)
+    Rigid,
+    Stretch(StretchDeformation)
 }
 
 pub struct LazyTransformInfo
@@ -93,13 +93,13 @@ impl LazyTransform
         let mut output = self.target.clone();
 
         match &self.deformation
-		{
-			Deformation::Rigid => (),
-			Deformation::Stretch(deformation) =>
-			{
-				output.stretch = deformation.stretch(physical.velocity);
-			}
-		}
+        {
+            Deformation::Rigid => (),
+            Deformation::Stretch(deformation) =>
+            {
+                output.stretch = deformation.stretch(physical.velocity);
+            }
+        }
 
         output
     }

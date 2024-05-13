@@ -1,6 +1,6 @@
 use std::{
-	fmt::{self, Display},
-	ops::{Index, Sub, Add, Mul, Div, Neg}
+    fmt::{self, Display},
+    ops::{Index, Sub, Add, Mul, Div, Neg}
 };
 
 use serde::{Serialize, Deserialize};
@@ -15,9 +15,9 @@ use super::{CHUNK_VISUAL_SIZE, TILE_SIZE};
 #[derive(Debug, Clone, Copy, Hash, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Pos3<T>
 {
-	pub x: T,
-	pub y: T,
-	pub z: T
+    pub x: T,
+    pub y: T,
+    pub z: T
 }
 
 impl<T, V> Pos3<(T, V)>
@@ -38,10 +38,10 @@ impl<T, V> Pos3<(T, V)>
 
 impl<T> Pos3<T>
 {
-	pub fn new(x: T, y: T, z: T) -> Self
-	{
-		Self{x, y, z}
-	}
+    pub fn new(x: T, y: T, z: T) -> Self
+    {
+        Self{x, y, z}
+    }
 
     pub fn new_with(mut f: impl FnMut() -> T) -> Self
     {
@@ -68,10 +68,10 @@ impl<T> Pos3<T>
         }
     }
 
-	pub fn map<F: FnMut(T) -> V, V>(self, mut f: F) -> Pos3<V>
-	{
-		Pos3::<V>{x: f(self.x), y: f(self.y), z: f(self.z)}
-	}
+    pub fn map<F: FnMut(T) -> V, V>(self, mut f: F) -> Pos3<V>
+    {
+        Pos3::<V>{x: f(self.x), y: f(self.y), z: f(self.z)}
+    }
 
     pub fn all<F: FnMut(T) -> bool>(self, mut f: F) -> bool
     {
@@ -118,7 +118,7 @@ impl<T: Mul<Output=T> + Add<Output=T> + Copy> Pos3<T>
 {
     pub fn to_rectangle(self, x: T, y: T) -> T
     {
-		self.x + self.y * x + self.z * x * y
+        self.x + self.y * x + self.z * x * y
     }
 }
 
@@ -143,69 +143,69 @@ impl From<GlobalPos> for Pos3<f32>
 
 impl Pos3<f32>
 {
-	pub fn tile_height(self) -> usize
-	{
+    pub fn tile_height(self) -> usize
+    {
         self.to_tile().z
-	}
+    }
 
     pub fn to_tile(self) -> Pos3<usize>
     {
         (self.modulo(CHUNK_VISUAL_SIZE) / TILE_SIZE).map(|x| x as usize)
     }
 
-	pub fn rounded(self) -> GlobalPos
-	{
-		GlobalPos(self.map(|value|
-		{
-			let value = value / CHUNK_VISUAL_SIZE;
+    pub fn rounded(self) -> GlobalPos
+    {
+        GlobalPos(self.map(|value|
+        {
+            let value = value / CHUNK_VISUAL_SIZE;
 
-			if value < 0.0
-			{
-				value as i32 - 1
-			} else
-			{
-				value as i32
-			}
-		}))
-	}
+            if value < 0.0
+            {
+                value as i32 - 1
+            } else
+            {
+                value as i32
+            }
+        }))
+    }
 
-	pub fn modulo(self, divisor: f32) -> Pos3<f32>
-	{
-		self.map(|value|
-		{
-			if value < 0.0
-			{
-				divisor + (value % divisor)
-			} else
-			{
-				value % divisor
-			}
-		})
-	}
+    pub fn modulo(self, divisor: f32) -> Pos3<f32>
+    {
+        self.map(|value|
+        {
+            if value < 0.0
+            {
+                divisor + (value % divisor)
+            } else
+            {
+                value % divisor
+            }
+        })
+    }
 }
 
 impl<T: Display> Display for Pos3<T>
 {
-	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
-	{
-		write!(f, "[{}, {}, {}]", self.x, self.y, self.z)
-	}
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
+    {
+        write!(f, "[{}, {}, {}]", self.x, self.y, self.z)
+    }
 }
 
 impl<T: Copy> From<Vector3<T>> for Pos3<T>
 {
-	fn from(value: Vector3<T>) -> Self
-	{
-		Self{x: value[0], y: value[1], z: value[2]}
-	}
+    fn from(value: Vector3<T>) -> Self
+    {
+        Self{x: value[0], y: value[1], z: value[2]}
+    }
 }
 
 impl<T: Copy + Scalar + fmt::Debug> From<Point3<T>> for Pos3<T>
 {
-	fn from(value: Point3<T>) -> Self
-	{
-		Self{x: value.x, y: value.y, z: value.z}
-	}
+    fn from(value: Point3<T>) -> Self
+    {
+        Self{x: value.x, y: value.y, z: value.z}
+    }
 }
 
 macro_rules! pos3_op_impl
@@ -259,36 +259,36 @@ impl<T: Neg<Output=T>> Neg for Pos3<T>
 
 impl From<Pos3<i32>> for Pos3<f32>
 {
-	fn from(value: Pos3<i32>) -> Self
-	{
-		value.map(|value| value as f32)
-	}
+    fn from(value: Pos3<i32>) -> Self
+    {
+        value.map(|value| value as f32)
+    }
 }
 
 impl From<Pos3<usize>> for Pos3<f32>
 {
-	fn from(value: Pos3<usize>) -> Self
-	{
-		value.map(|value| value as f32)
-	}
+    fn from(value: Pos3<usize>) -> Self
+    {
+        value.map(|value| value as f32)
+    }
 }
 
 impl From<Pos3<usize>> for Pos3<i32>
 {
-	fn from(value: Pos3<usize>) -> Self
-	{
-		value.map(|value| value as i32)
-	}
+    fn from(value: Pos3<usize>) -> Self
+    {
+        value.map(|value| value as i32)
+    }
 }
 
 impl From<LocalPos> for Pos3<f32>
 {
-	fn from(value: LocalPos) -> Self
-	{
-		let pos = value.pos;
+    fn from(value: LocalPos) -> Self
+    {
+        let pos = value.pos;
 
-		Self{x: pos.x as f32, y: pos.y as f32, z: pos.z as f32}
-	}
+        Self{x: pos.x as f32, y: pos.y as f32, z: pos.z as f32}
+    }
 }
 
 #[derive(Debug, Clone, Copy, Hash, Eq, PartialEq, Serialize, Deserialize)]
@@ -296,10 +296,10 @@ pub struct GlobalPos(pub Pos3<i32>);
 
 impl GlobalPos
 {
-	pub fn new(x: i32, y: i32, z: i32) -> Self
-	{
-		Self(Pos3::new(x, y, z))
-	}
+    pub fn new(x: i32, y: i32, z: i32) -> Self
+    {
+        Self(Pos3::new(x, y, z))
+    }
 }
 
 macro_rules! globalpos_op_impl
@@ -355,41 +355,41 @@ impl Neg for GlobalPos
 
 impl From<LocalPos> for GlobalPos
 {
-	fn from(value: LocalPos) -> Self
-	{
-		let LocalPos{pos, ..} = value;
+    fn from(value: LocalPos) -> Self
+    {
+        let LocalPos{pos, ..} = value;
 
-		Self::new(
-			pos.x as i32,
-			pos.y as i32,
-			pos.z as i32
-		)
-	}
+        Self::new(
+            pos.x as i32,
+            pos.y as i32,
+            pos.z as i32
+        )
+    }
 }
 
 impl From<Pos3<i32>> for GlobalPos
 {
-	fn from(value: Pos3<i32>) -> Self
-	{
-		Self(value)
-	}
+    fn from(value: Pos3<i32>) -> Self
+    {
+        Self(value)
+    }
 }
 
 impl From<Pos3<usize>> for GlobalPos
 {
-	fn from(value: Pos3<usize>) -> Self
-	{
-		Self(value.into())
-	}
+    fn from(value: Pos3<usize>) -> Self
+    {
+        Self(value.into())
+    }
 }
 
 #[derive(Debug, Clone, Copy, FromRepr, EnumCount)]
 pub enum PosDirection
 {
-	Right,
-	Left,
-	Up,
-	Down,
+    Right,
+    Left,
+    Up,
+    Down,
     Forward,
     Back
 }
@@ -432,116 +432,116 @@ impl PosDirection
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DirectionsGroup<T>
 {
-	pub right: T,
-	pub left: T,
-	pub up: T,
-	pub down: T
+    pub right: T,
+    pub left: T,
+    pub up: T,
+    pub down: T
 }
 
 impl<T> DirectionsGroup<T>
 {
-	pub fn map<D, F>(self, mut direction_map: F) -> DirectionsGroup<D>
-	where
-		F: FnMut(PosDirection, T) -> D
-	{
-		DirectionsGroup{
-			right: direction_map(PosDirection::Right, self.right),
-			left: direction_map(PosDirection::Left, self.left),
-			up: direction_map(PosDirection::Up, self.up),
-			down: direction_map(PosDirection::Down, self.down)
-		}
-	}
+    pub fn map<D, F>(self, mut direction_map: F) -> DirectionsGroup<D>
+    where
+        F: FnMut(PosDirection, T) -> D
+    {
+        DirectionsGroup{
+            right: direction_map(PosDirection::Right, self.right),
+            left: direction_map(PosDirection::Left, self.left),
+            up: direction_map(PosDirection::Up, self.up),
+            down: direction_map(PosDirection::Down, self.down)
+        }
+    }
 }
 
 impl<T> Index<PosDirection> for DirectionsGroup<T>
 {
-	type Output = T;
+    type Output = T;
 
-	fn index(&self, index: PosDirection) -> &Self::Output
-	{
-		match index
-		{
-			PosDirection::Right => &self.right,
-			PosDirection::Left => &self.left,
-			PosDirection::Up => &self.up,
-			PosDirection::Down => &self.down,
+    fn index(&self, index: PosDirection) -> &Self::Output
+    {
+        match index
+        {
+            PosDirection::Right => &self.right,
+            PosDirection::Left => &self.left,
+            PosDirection::Up => &self.up,
+            PosDirection::Down => &self.down,
             PosDirection::Forward | PosDirection::Back => unreachable!()
-		}
-	}
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MaybeGroup<T>
 {
-	pub this: T,
-	pub other: DirectionsGroup<Option<T>>
+    pub this: T,
+    pub other: DirectionsGroup<Option<T>>
 }
 
 impl<T> MaybeGroup<T>
 {
-	pub fn map<D, F>(self, mut direction_map: F) -> MaybeGroup<D>
-	where
-		F: FnMut(T) -> D
-	{
-		MaybeGroup{
-			this: direction_map(self.this),
-			other: self.other.map(|_direction, value|
-			{
-				value.map(&mut direction_map)
-			})
-		}
-	}
+    pub fn map<D, F>(self, mut direction_map: F) -> MaybeGroup<D>
+    where
+        F: FnMut(T) -> D
+    {
+        MaybeGroup{
+            this: direction_map(self.this),
+            other: self.other.map(|_direction, value|
+            {
+                value.map(&mut direction_map)
+            })
+        }
+    }
 
-	pub fn remap<D, TF, DF>(self, this_map: TF, mut direction_map: DF) -> MaybeGroup<D>
-	where
-		TF: FnOnce(T) -> D,
-		DF: FnMut(PosDirection, Option<T>) -> Option<D>
-	{
-		MaybeGroup{
-			this: this_map(self.this),
-			other: self.other.map(&mut direction_map)
-		}
-	}
+    pub fn remap<D, TF, DF>(self, this_map: TF, mut direction_map: DF) -> MaybeGroup<D>
+    where
+        TF: FnOnce(T) -> D,
+        DF: FnMut(PosDirection, Option<T>) -> Option<D>
+    {
+        MaybeGroup{
+            this: this_map(self.this),
+            other: self.other.map(&mut direction_map)
+        }
+    }
 }
 
 impl<T> Index<PosDirection> for MaybeGroup<T>
 {
-	type Output = Option<T>;
+    type Output = Option<T>;
 
-	fn index(&self, index: PosDirection) -> &Self::Output
-	{
-		&self.other[index]
-	}
+    fn index(&self, index: PosDirection) -> &Self::Output
+    {
+        &self.other[index]
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AlwaysGroup<T>
 {
-	pub this: T,
-	pub other: DirectionsGroup<T>
+    pub this: T,
+    pub other: DirectionsGroup<T>
 }
 
 impl<T> AlwaysGroup<T>
 {
-	pub fn map<D, F>(self, mut direction_map: F) -> AlwaysGroup<D>
-	where
-		F: FnMut(T) -> D
-	{
-		AlwaysGroup{
-			this: direction_map(self.this),
-			other: self.other.map(|_direction, value| direction_map(value))
-		}
-	}
+    pub fn map<D, F>(self, mut direction_map: F) -> AlwaysGroup<D>
+    where
+        F: FnMut(T) -> D
+    {
+        AlwaysGroup{
+            this: direction_map(self.this),
+            other: self.other.map(|_direction, value| direction_map(value))
+        }
+    }
 }
 
 impl<T> Index<PosDirection> for AlwaysGroup<T>
 {
-	type Output = T;
+    type Output = T;
 
-	fn index(&self, index: PosDirection) -> &Self::Output
-	{
-		&self.other[index]
-	}
+    fn index(&self, index: PosDirection) -> &Self::Output
+    {
+        &self.other[index]
+    }
 }
 
 #[macro_export]
@@ -767,43 +767,43 @@ macro_rules! impl_directionals
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
 pub struct LocalPos
 {
-	pub pos: Pos3<usize>,
-	pub size: Pos3<usize>
+    pub pos: Pos3<usize>,
+    pub size: Pos3<usize>
 }
 
 impl_directionals!{LocalPos}
 
 impl LocalPos
 {
-	pub fn new(pos: Pos3<usize>, size: Pos3<usize>) -> Self
-	{
-		Self{pos, size}
-	}
+    pub fn new(pos: Pos3<usize>, size: Pos3<usize>) -> Self
+    {
+        Self{pos, size}
+    }
 
-	pub fn from_global(other: GlobalPos, size: Pos3<usize>) -> Option<Self>
-	{
-		let GlobalPos(pos) = other;
+    pub fn from_global(other: GlobalPos, size: Pos3<usize>) -> Option<Self>
+    {
+        let GlobalPos(pos) = other;
 
         let this = Self::new(Pos3::new(pos.x as usize, pos.y as usize, pos.z as usize), size);
 
         this.in_bounds().then_some(this)
-	}
+    }
 
-	pub fn moved(&self, x: usize, y: usize, z: usize) -> Self
-	{
-		Self{pos: Pos3::new(x, y, z), size: self.size}
-	}
+    pub fn moved(&self, x: usize, y: usize, z: usize) -> Self
+    {
+        Self{pos: Pos3::new(x, y, z), size: self.size}
+    }
 
-	#[allow(dead_code)]
-	pub fn directions(&self) -> impl Iterator<Item=Option<Self>>
-	{
-		[self.right(), self.left(), self.up(), self.down()].into_iter()
-	}
+    #[allow(dead_code)]
+    pub fn directions(&self) -> impl Iterator<Item=Option<Self>>
+    {
+        [self.right(), self.left(), self.up(), self.down()].into_iter()
+    }
 
-	pub fn directions_inclusive(self) -> impl Iterator<Item=Option<Self>>
-	{
-		[Some(self), self.right(), self.left(), self.up(), self.down()].into_iter()
-	}
+    pub fn directions_inclusive(self) -> impl Iterator<Item=Option<Self>>
+    {
+        [Some(self), self.right(), self.left(), self.up(), self.down()].into_iter()
+    }
 
     fn size(&self) -> Pos3<usize>
     {
@@ -820,16 +820,16 @@ impl LocalPos
         &self.pos
     }
 
-	#[allow(dead_code)]
-	pub fn to_cube(self, side: usize) -> usize
-	{
-		self.to_rectangle(side, side)
-	}
+    #[allow(dead_code)]
+    pub fn to_cube(self, side: usize) -> usize
+    {
+        self.to_rectangle(side, side)
+    }
 
-	pub fn to_rectangle(self, x: usize, y: usize) -> usize
-	{
-		self.pos.to_rectangle(x, y)
-	}
+    pub fn to_rectangle(self, x: usize, y: usize) -> usize
+    {
+        self.pos.to_rectangle(x, y)
+    }
 }
 
 macro_rules! localpos_op_impl

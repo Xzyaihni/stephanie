@@ -225,7 +225,7 @@ impl From<&ChunkRuleTag> for WorldChunkTag
 #[serde(transparent)]
 pub struct WorldChunk
 {
-	id: WorldChunkId,
+    id: WorldChunkId,
     #[serde(skip)]
     tags: Vec<WorldChunkTag>
 }
@@ -245,21 +245,21 @@ impl WorldChunk
         Self{id, tags}
     }
 
-	#[allow(dead_code)]
-	pub fn none() -> Self
-	{
-		Self{id: WorldChunkId(0), tags: Vec::new()}
-	}
+    #[allow(dead_code)]
+    pub fn none() -> Self
+    {
+        Self{id: WorldChunkId(0), tags: Vec::new()}
+    }
 
     pub fn is_none(&self) -> bool
     {
         self.id.0 == 0
     }
 
-	pub fn id(&self) -> WorldChunkId
-	{
-		self.id
-	}
+    pub fn id(&self) -> WorldChunkId
+    {
+        self.id
+    }
 
     pub fn tags(&self) -> &[WorldChunkTag]
     {
@@ -336,11 +336,11 @@ pub struct ChunkRuleRawTag
 #[derive(Debug, Deserialize)]
 pub struct ChunkRuleRaw
 {
-	pub name: String,
+    pub name: String,
     #[serde(default)]
     pub tags: Vec<ChunkRuleRawTag>,
     pub weight: f64,
-	pub neighbors: DirectionsGroup<Vec<String>>
+    pub neighbors: DirectionsGroup<Vec<String>>
 }
 
 #[derive(Debug, Deserialize)]
@@ -400,7 +400,7 @@ pub struct ChunkRule
     name: String,
     tags: Vec<ChunkRuleTag>,
     weight: f64,
-	neighbors: DirectionsGroup<Vec<WorldChunkId>>
+    neighbors: DirectionsGroup<Vec<WorldChunkId>>
 }
 
 impl ChunkRule
@@ -450,7 +450,7 @@ impl UndergroundRules
         file: File
     ) -> Result<Self, serde_json::Error>
     {
-		let rules = serde_json::from_reader::<_, ChunkRulesRaw>(file)?;
+        let rules = serde_json::from_reader::<_, ChunkRulesRaw>(file)?;
 
         Ok(Self::from_raw(name_mappings, rules))
     }
@@ -605,7 +605,7 @@ impl CityRules
         file: File
     ) -> Result<Self, serde_json::Error>
     {
-		let rules = serde_json::from_reader::<_, CityRulesRaw>(file)?;
+        let rules = serde_json::from_reader::<_, CityRulesRaw>(file)?;
 
         Ok(Self::from_raw(name_mappings, rules))
     }
@@ -825,7 +825,7 @@ impl ChunkRules
         file: File
     ) -> Result<Self, serde_json::Error>
     {
-		let rules = serde_json::from_reader::<_, ChunkRulesRaw>(file)?;
+        let rules = serde_json::from_reader::<_, ChunkRulesRaw>(file)?;
 
         Ok(Self::from_raw(name_mappings, rules))
     }
