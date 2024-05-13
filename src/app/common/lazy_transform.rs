@@ -200,22 +200,6 @@ impl From<LazyTransformInfo> for LazyTransform
     }
 }
 
-impl From<LazyTransformServer> for LazyTransform
-{
-    fn from(info: LazyTransformServer) -> Self
-    {
-        Self{
-            target_local: info.target_local.clone(),
-            current: info.target_local,
-            origin_rotation: info.origin_rotation,
-            origin: info.origin,
-            connection: info.connection,
-            rotation: info.rotation,
-            deformation: info.deformation
-        }
-    }
-}
-
 impl LazyTargettable for LazyTransform
 {
     fn target(&mut self) -> &mut Transform
@@ -404,6 +388,19 @@ impl LazyTransform
     pub fn reset_current(&mut self, target: Transform)
     {
         self.current = target;
+    }
+
+    pub fn from_server(transform: Transform, info: LazyTransformServer) -> Self
+    {
+        Self{
+            target_local: info.target_local,
+            current: transform,
+            origin_rotation: info.origin_rotation,
+            origin: info.origin,
+            connection: info.connection,
+            rotation: info.rotation,
+            deformation: info.deformation
+        }
     }
 
     fn physical(&self) -> Option<&Physical>

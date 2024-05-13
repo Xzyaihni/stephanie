@@ -41,11 +41,11 @@ impl ServerToClient<LazyTransform> for LazyTransformServer
 {
     fn server_to_client(
         self,
-        _transform: Option<Transform>,
+        transform: Option<Transform>,
         _create_info: &mut ObjectCreateInfo
     ) -> LazyTransform
     {
-        self.into()
+        LazyTransform::from_server(transform.expect("lazy must have a transform"), self)
     }
 }
 
