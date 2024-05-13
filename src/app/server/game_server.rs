@@ -35,7 +35,7 @@ use crate::common::{
     MessagePasser,
     ConnectionId,
     PhysicalProperties,
-    LazyTransformInfo,
+    lazy_transform::*,
     world::chunk::TILE_SIZE,
     message::{
         Message,
@@ -184,11 +184,17 @@ impl GameServer
             EntityInfo{
                 transform: Some(Default::default()),
                 lazy_transform: Some(LazyTransformInfo{
+                    deformation: Deformation::Stretch(StretchDeformation{
+                        animation: ValueAnimation::EaseOut(2.0),
+                        limit: 0.4,
+                        onset: 0.3,
+                        strength: 0.5
+                    }),
                 }.into()),
                 parent: Some(Parent::new(
                     inserted,
+                    position,
                     Transform{
-                        position,
                         scale: Vector3::repeat(0.4),
                         ..Default::default()
                     }

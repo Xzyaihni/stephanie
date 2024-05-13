@@ -1,5 +1,7 @@
 use serde::{Serialize, Deserialize};
 
+use nalgebra::{Vector3, Rotation};
+
 use yanyaengine::{DefaultModel, Object, ObjectInfo, game_object::*};
 
 use crate::{
@@ -67,21 +69,37 @@ impl Entity
 pub struct Parent
 {
     parent: Entity,
+    origin: Vector3<f32>,
     child_transform: Transform
 }
 
 impl Parent
 {
-    pub fn new(parent: Entity, child_transform: Transform) -> Self
+    pub fn new(
+        parent: Entity,
+        origin: Vector3<f32>,
+        child_transform: Transform
+    ) -> Self
     {
-        Self{parent, child_transform}
+        Self{
+            parent,
+            origin,
+            child_transform
+        }
     }
 
     pub fn combine(&self, parent: Transform) -> Transform
     {
         let mut transform = self.child_transform.clone();
 
-        transform.position = transform.position.component_mul(&parent.scale) + parent.position;
+        let rotation = Rotation::from_axis_angle(
+            &parent.rotation_axis,
+            parent.rotation
+        );
+
+        let origin = rotation * self.origin;
+
+        transform.position += origin.component_mul(&parent.scale) + parent.position;
         transform.rotation += parent.rotation;
         transform.scale.component_mul_assign(&parent.scale);
 
@@ -513,8 +531,9 @@ macro_rules! define_entities
                     if let Some(lazy) = lazy
                     {
                         let transform = get_required_component!(self, components, get_mut, transform);
+                        let physical = get_required_component!(self, components, get_mut, physical);
 
-                        *transform = lazy.next(dt);
+                        *transform = lazy.next(physical, dt);
                     }
                 });
             }
