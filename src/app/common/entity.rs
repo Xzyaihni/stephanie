@@ -473,13 +473,14 @@ macro_rules! define_entities
                 {
                     Message::EntityDamage{entity, damage} =>
                     {
-                        let anatomy = get_required_entity!(self, entity, get_mut, anatomy);
+                        if let Some(anatomy) = get_entity!(self, entity, get_mut, anatomy)
+                        {
+                            use crate::common::Damageable;
 
-                        use crate::common::Damageable;
+                            anatomy.into().damage(damage);
 
-                        anatomy.into().damage(damage);
-
-                        AnatomyType::on_set(None, self, entity);
+                            AnatomyType::on_set(None, self, entity);
+                        }
 
                         None
                     },
