@@ -15,6 +15,8 @@ pub use yanyaengine::{Transform, TransformContainer};
 
 pub use objects_store::ObjectsStore;
 
+pub use render_info::{RenderInfo, ClientRenderInfo};
+
 pub use sender_loop::{sender_loop, BufferSender};
 pub use receiver_loop::receiver_loop;
 
@@ -31,13 +33,12 @@ pub use entity::{
     Component,
     Player,
     Parent,
-    RenderInfo,
     Entity,
     EntityInfo,
     Entities
 };
 
-pub use enemy::{EnemyBehavior, Enemy};
+pub use enemy::{EnemyBehavior, ClientEnemy, ServerEnemy, Enemy};
 pub use enemy_builder::EnemyBuilder;
 pub use enemies_info::{EnemyId, EnemiesInfo};
 
@@ -52,6 +53,8 @@ pub mod animator;
 
 pub mod lisp;
 pub mod objects_store;
+
+pub mod render_info;
 
 pub mod damage;
 pub mod anatomy;

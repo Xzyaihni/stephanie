@@ -91,11 +91,17 @@ impl ClientEntitiesContainer
         self.entities.handle_message(create_info, message)
     }
 
-    pub fn update(&mut self, enemies_info: &EnemiesInfo, dt: f32)
+    fn update_objects(&mut self, enemies_info: &EnemiesInfo, info: &mut UpdateBuffersInfo)
+    {
+        self.entities.update_sprites(&mut info.object_info, enemies_info);
+        self.update_buffers(info);
+    }
+
+    pub fn update(&mut self, dt: f32)
     {
         self.entities.update_physical(dt);
         self.entities.update_lazy(dt);
-        self.entities.update_enemy(enemies_info, dt);
+        self.entities.update_enemy(dt);
     }
 
     pub fn player_exists(&self, entity: Entity) -> bool
@@ -462,6 +468,8 @@ impl GameState
         if let Some(anatomy) = self.entities_mut().anatomy_mut(entity)
         {
             anatomy.damage(damage);
+
+            self.entities_mut().anatomy_changed(entity);
         }
     }
 
@@ -616,7 +624,7 @@ impl GameState
 
         self.world.update_buffers(info);
 
-        self.entities.update_buffers(info);
+        self.entities.update_objects(&self.enemies_info, info);
     }
 
     pub fn draw(&self, info: &mut DrawInfo)
@@ -633,7 +641,7 @@ impl GameState
 
         self.world.update(dt);
 
-        self.entities.update(&self.enemies_info, dt);
+        self.entities.update(dt);
 
         self.controls.release_clicked();
     }

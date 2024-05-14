@@ -1,4 +1,5 @@
 use std::{
+    mem,
     iter,
     ops::{Index, IndexMut}
 };
@@ -39,7 +40,7 @@ impl<T> ObjectsStore<T>
         })
     }
 
-    pub fn insert(&mut self, index: usize, value: T)
+    pub fn insert(&mut self, index: usize, value: T) -> Option<T>
     {
         self.extend_to_contain(index);
 
@@ -50,7 +51,7 @@ impl<T> ObjectsStore<T>
             self.free_list.retain(|id| *id != index);
         }
 
-        *slot = Some(value);
+        mem::replace(slot, Some(value))
     }
 
     pub fn push(&mut self, value: T) -> usize

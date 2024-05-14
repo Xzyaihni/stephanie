@@ -62,7 +62,7 @@ impl YanyaApp for App
         
         let enemies_info = EnemiesInfo::parse(
             &partial_info.assets.lock(),
-            "textures/normal/enemy",
+            "enemy",
             "enemies/enemies.json"
         );
 

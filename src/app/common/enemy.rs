@@ -2,9 +2,16 @@ use serde::{Serialize, Deserialize};
 
 use nalgebra::{Unit, Vector3};
 
-use yanyaengine::Transform;
+use yanyaengine::{Transform, game_object::*};
 
-use crate::common::{SeededRandom, EnemiesInfo, EnemyId, Anatomy, Physical};
+use crate::common::{
+    SeededRandom,
+    ClientRenderInfo,
+    EnemiesInfo,
+    EnemyId,
+    Anatomy,
+    Physical
+};
 
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -74,9 +81,19 @@ impl<T> From<T> for Stateful<T>
 impl<T> Stateful<T>
 {
     pub fn set_state(&mut self, value: T)
+    where
+        T: PartialEq
     {
-        self.value = value;
-        self.changed = true;
+        if self.value != value
+        {
+            self.value = value;
+            self.changed = true;
+        }
+    }
+
+    pub fn value(&self) -> &T
+    {
+        &self.value
     }
 
     pub fn changed(&mut self) -> bool
@@ -89,18 +106,51 @@ impl<T> Stateful<T>
     }
 }
 
+pub struct ClientInfo
+{
+    sprite_state: Stateful<SpriteState>
+}
+
+impl Default for ClientInfo
+{
+    fn default() -> Self
+    {
+        Self{
+            sprite_state: SpriteState::Normal.into()
+        }
+    }
+}
+
+pub type ServerEnemy = Enemy<()>;
+pub type ClientEnemy = Enemy<ClientInfo>;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Enemy
+pub struct Enemy<Info>
 {
     behavior: EnemyBehavior,
     behavior_state: BehaviorState,
     current_state_left: f32,
-    sprite_state: Stateful<SpriteState>,
     id: EnemyId,
-    rng: SeededRandom
+    rng: SeededRandom,
+    info: Info
 }
 
-impl Enemy
+impl From<ServerEnemy> for ClientEnemy
+{
+    fn from(enemy: ServerEnemy) -> Self
+    {
+        Self{
+            behavior: enemy.behavior,
+            behavior_state: enemy.behavior_state,
+            current_state_left: enemy.current_state_left,
+            id: enemy.id,
+            rng: enemy.rng,
+            info: ClientInfo::default()
+        }
+    }
+}
+
+impl ServerEnemy
 {
     pub fn new(enemies_info: &EnemiesInfo, id: EnemyId) -> Self
     {
@@ -113,12 +163,16 @@ impl Enemy
             current_state_left: behavior.duration_of(&mut rng, &behavior_state),
             behavior_state,
             behavior,
-            sprite_state: SpriteState::Normal.into(),
             id,
-            rng
+            rng,
+            info: ()
         }
     }
 
+}
+
+impl<Info> Enemy<Info>
+{
     pub fn next_state(&mut self)
     {
         let new_state = match &self.behavior
@@ -197,21 +251,6 @@ impl Enemy
         changed_state
     }
 
-    pub fn update_sprite(&mut self, enemies_info: &EnemiesInfo)
-    {
-        if !self.sprite_state.changed()
-        {
-            return;
-        }
-
-        todo!();
-    }
-
-    pub fn set_sprite(&mut self, state: SpriteState)
-    {
-        self.sprite_state.set_state(state);
-    }
-
     pub fn behavior(&self) -> &EnemyBehavior
     {
         &self.behavior
@@ -225,5 +264,41 @@ impl Enemy
     pub fn set_behavior_state(&mut self, state: BehaviorState)
     {
         self.behavior_state = state;
+    }
+}
+
+impl ClientEnemy
+{
+    pub fn with_previous(&mut self, previous: Self)
+    {
+        self.info = previous.info;
+    }
+
+    pub fn update_sprite(
+        &mut self,
+        create_info: &mut ObjectCreateInfo,
+        transform: Option<&Transform>,
+        enemies_info: &EnemiesInfo,
+        render: &mut ClientRenderInfo
+    )
+    {
+        if !self.info.sprite_state.changed()
+        {
+            return;
+        }
+
+        let info = enemies_info.get(self.id);
+        let texture = match self.info.sprite_state.value()
+        {
+            SpriteState::Normal => info.normal,
+            SpriteState::Lying => info.lying
+        };
+
+        render.set_sprite(create_info, transform, texture);
+    }
+
+    pub fn set_sprite(&mut self, state: SpriteState)
+    {
+        self.info.sprite_state.set_state(state);
     }
 }

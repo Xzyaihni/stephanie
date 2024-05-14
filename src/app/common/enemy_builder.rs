@@ -5,7 +5,7 @@ use yanyaengine::Transform;
 use crate::common::{
     Anatomy,
     HumanAnatomy,
-    Enemy,
+    ServerEnemy,
     EnemyId,
     EnemiesInfo,
     PhysicalProperties,
@@ -62,7 +62,7 @@ impl<'a> EnemyBuilder<'a>
                 floating: false
             }.into()),
             anatomy: Some(Anatomy::Human(HumanAnatomy::default())),
-            enemy: Some(Enemy::new(self.enemies_info, self.id)),
+            enemy: Some(ServerEnemy::new(self.enemies_info, self.id)),
             ..Default::default()
         }
     }

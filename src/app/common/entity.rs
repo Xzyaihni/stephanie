@@ -1,6 +1,6 @@
 use serde::{Serialize, Deserialize};
 
-use yanyaengine::{DefaultModel, Object, ObjectInfo, game_object::*};
+use yanyaengine::{DefaultModel, ObjectInfo, game_object::*};
 
 use crate::{
     server::ConnectionsHandler,
@@ -8,14 +8,61 @@ use crate::{
         EntityPasser,
         Anatomy,
         Enemy,
+        ClientEnemy,
+        ServerEnemy,
         EnemiesInfo,
         Physical,
+        RenderInfo,
+        ClientRenderInfo,
         LazyTransform,
         LazyTransformServer,
         LazyTargettable
     }
 };
 
+
+macro_rules! get_component
+{
+    ($this:expr, $components:expr, $access_type:ident, $component:ident) =>
+    {
+        $components[Component::$component as usize]
+            .map(|id|
+            {
+                $this.$component.$access_type(id).unwrap_or_else(||
+                {
+                    panic!("pointer to {} is out of bounds", stringify!($component))
+                })
+            })
+    }
+}
+
+macro_rules! get_required_component
+{
+    ($this:expr, $components:expr, $access_type:ident, $component:ident) =>
+    {
+        get_component!($this, $components, $access_type, $component).unwrap_or_else(||
+        {
+            panic!("has no {} component", stringify!($component))
+        })
+    }
+}
+
+macro_rules! get_entity
+{
+    ($this:expr, $entity:expr, $access_type:ident, $component:ident) =>
+    {
+        get_component!($this, $this.components[$entity.0], $access_type, $component)
+    }
+}
+
+#[allow(unused_macros)]
+macro_rules! get_required_entity
+{
+    ($this:expr, $entity:expr, $access_type:ident, $component:ident) =>
+    {
+        get_required_component!($this, $this.components[$entity.0], $access_type, $component)
+    }
+}
 
 pub trait ServerToClient<T>
 {
@@ -35,6 +82,18 @@ impl<T> ServerToClient<T> for T
     ) -> T
     {
         self
+    }
+}
+
+impl ServerToClient<ClientEnemy> for ServerEnemy
+{
+    fn server_to_client(
+        self,
+        _transform: Option<Transform>,
+        _create_info: &mut ObjectCreateInfo
+    ) -> ClientEnemy
+    {
+        self.into()
     }
 }
 
@@ -87,8 +146,10 @@ impl Entity
 }
 
 pub trait OnSet<EntitiesType>
+where
+    Self: Sized
 {
-    fn on_set(entities: &mut EntitiesType, entity: Entity);
+    fn on_set(previous: Option<Self>, entities: &mut EntitiesType, entity: Entity);
 }
 
 macro_rules! no_on_set
@@ -97,8 +158,19 @@ macro_rules! no_on_set
     {
         $(impl<E> OnSet<E> for $name
         {
-            fn on_set(_entities: &mut E, _entity: Entity) {}
+            fn on_set(_previous: Option<Self>, _entities: &mut E, _entity: Entity) {}
         })*
+    }
+}
+
+macro_rules! no_on_set_for
+{
+    ($container:ident, $name:ident) =>
+    {
+        impl OnSet<$container> for $name
+        {
+            fn on_set(_previous: Option<Self>, _entities: &mut $container, _entity: Entity) {}
+        }
     }
 }
 
@@ -110,18 +182,30 @@ no_on_set!{
     Parent,
     Transform,
     Player,
-    Enemy,
+    ServerEnemy,
     Physical
 }
 
-impl OnSet<ServerEntities> for Anatomy
+no_on_set_for!{ServerEntities, ClientEnemy}
+
+impl OnSet<ClientEntities> for ClientEnemy
 {
-    fn on_set(_entities: &mut ServerEntities, _entity: Entity) {}
+    fn on_set(previous: Option<Self>, entities: &mut ClientEntities, entity: Entity)
+    {
+        if let Some(previous) = previous
+        {
+            let enemy = entities.enemy_mut(entity).unwrap();
+
+            enemy.with_previous(previous);
+        }
+    }
 }
+
+no_on_set_for!{ServerEntities, Anatomy}
 
 impl OnSet<ClientEntities> for Anatomy
 {
-    fn on_set(entities: &mut ClientEntities, entity: Entity)
+    fn on_set(_previous: Option<Self>, entities: &mut ClientEntities, entity: Entity)
     {
         entities.anatomy_changed(entity);
     }
@@ -146,62 +230,6 @@ impl Parent
 pub struct Player
 {
     pub name: String
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RenderInfo
-{
-    pub texture: Option<String>,
-    pub z_level: i32
-}
-
-pub struct ClientRenderInfo
-{
-    pub object: Option<Object>,
-    pub z_level: i32
-}
-
-macro_rules! get_component
-{
-    ($this:expr, $components:expr, $access_type:ident, $component:ident) =>
-    {
-        $components[Component::$component as usize]
-            .map(|id|
-            {
-                $this.$component.$access_type(id).unwrap_or_else(||
-                {
-                    panic!("pointer to {} is out of bounds", stringify!($component))
-                })
-            })
-    }
-}
-
-macro_rules! get_required_component
-{
-    ($this:expr, $components:expr, $access_type:ident, $component:ident) =>
-    {
-        get_component!($this, $components, $access_type, $component).unwrap_or_else(||
-        {
-            panic!("has no {} component", stringify!($component))
-        })
-    }
-}
-
-macro_rules! get_entity
-{
-    ($this:expr, $entity:expr, $access_type:ident, $component:ident) =>
-    {
-        get_component!($this, $this.components[$entity.0], $access_type, $component)
-    }
-}
-
-#[allow(unused_macros)]
-macro_rules! get_required_entity
-{
-    ($this:expr, $entity:expr, $access_type:ident, $component:ident) =>
-    {
-        get_required_component!($this, $this.components[$entity.0], $access_type, $component)
-    }
 }
 
 macro_rules! define_entities
@@ -241,7 +269,7 @@ macro_rules! define_entities
             }
         }
 
-        pub type ClientEntities = Entities<ClientRenderInfo, LazyTransform>;
+        pub type ClientEntities = Entities<ClientRenderInfo, LazyTransform, ClientEnemy>;
         pub type ServerEntities = Entities;
 
         pub struct Entities<$($component_type=$default_type,)+>
@@ -299,14 +327,14 @@ macro_rules! define_entities
                 });
             }
 
-            fn update_enemy_common<F>(
+            fn update_enemy_common<EnemyInfo, F>(
                 &mut self,
                 dt: f32,
                 mut on_state_change: F
             )
             where
-                F: FnMut(bool, Entity, &mut EnemyType, &mut LazyTransformType),
-                for<'a> &'a mut EnemyType: Into<&'a mut Enemy>,
+                F: FnMut(Entity, &mut EnemyType, &mut LazyTransformType),
+                for<'a> &'a mut EnemyType: Into<&'a mut Enemy<EnemyInfo>>,
                 for<'a> &'a AnatomyType: Into<&'a Anatomy>,
                 for<'a> &'a mut PhysicalType: Into<&'a mut Physical>,
                 LazyTransformType: LazyTargettable
@@ -326,7 +354,14 @@ macro_rules! define_entities
                             dt
                         );
 
-                        on_state_change(state_changed, Entity(entity), enemy, lazy_transform)
+                        if state_changed
+                        {
+                            on_state_change(
+                                Entity(entity),
+                                enemy,
+                                lazy_transform
+                            )
+                        }
                     }
                 });
             }
@@ -342,28 +377,33 @@ macro_rules! define_entities
                     get_entity!(self, entity, get_mut, $name)
                 }
 
-                pub fn $set_func(&mut self, entity: Entity, component: $component_type)
+                pub fn $set_func(&mut self, entity: Entity, component: Option<$component_type>)
                 {
                     if !self.exists(entity)
                     {
                         self.components.insert(entity.0, Self::empty_components());
                     }
 
-                    let slot = &mut self.components
-                        [entity.0]
-                        [Component::$name as usize];
+                    if let Some(component) = component
+                    {
+                        let slot = &mut self.components
+                            [entity.0]
+                            [Component::$name as usize];
 
-                    if let Some(id) = slot
-                    {
-                        self.$name.insert(*id, component);
-                    } else
-                    {
-                        let id = self.$name.push(component);
-                        
-                        *slot = Some(id);
+                        let previous = if let Some(id) = slot
+                        {
+                            self.$name.insert(*id, component)
+                        } else
+                        {
+                            let id = self.$name.push(component);
+                            
+                            *slot = Some(id);
+
+                            None
+                        };
+
+                        $component_type::on_set(previous, self, entity);
                     }
-
-                    $component_type::on_set(self, entity);
                 }
             )+
 
@@ -439,7 +479,7 @@ macro_rules! define_entities
 
                         anatomy.into().damage(damage);
 
-                        AnatomyType::on_set(self, entity);
+                        AnatomyType::on_set(None, self, entity);
 
                         None
                     },
@@ -468,29 +508,15 @@ macro_rules! define_entities
                 {
                     Message::EntitySet{entity, info} =>
                     {
-                        if self.exists(entity)
-                        {
-                            self.set_existing_entity(create_info, entity, info);
-                        } else
-                        {
-                            let transform = info.transform.clone();
+                        let transform = info.transform.clone();
+                        $({
+                            let component = info.$name.map(|x|
+                            {
+                                x.server_to_client(transform.clone(), create_info)
+                            });
 
-                            let components = vec![
-                                $({
-                                    info.$name.map(|component|
-                                    {
-                                        let component = component.server_to_client(
-                                            transform.clone(),
-                                            create_info
-                                        );
-
-                                        self.$name.push(component)
-                                    })
-                                },)+
-                            ];
-
-                            self.components.insert(entity.0, components);
-                        }
+                            self.$set_func(entity, component);
+                        })+
 
                         let components = &self.components[entity.0];
 
@@ -530,7 +556,7 @@ macro_rules! define_entities
 
                         let component = $name.server_to_client(transform, create_info);
 
-                        self.$set_func(entity, component);
+                        self.$set_func(entity, Some(component));
 
                         None
                     },)+
@@ -577,15 +603,30 @@ macro_rules! define_entities
                 });
             }
 
-            pub fn update_enemy(&mut self, enemies_info: &EnemiesInfo, dt: f32)
+            pub fn update_enemy(&mut self, dt: f32 )
             {
-                self.update_enemy_common(dt, |_, entity, enemy, _|
+                self.update_enemy_common(dt, |_, _, _| {});
+            }
+
+            pub fn update_sprites(
+                &mut self,
+                create_info: &mut ObjectCreateInfo,
+                enemies_info: &EnemiesInfo
+            )
+            {
+                self.components.iter().for_each(|(_, components)|
                 {
-                    enemy.update_sprite(enemies_info);
+                    if let Some(enemy) = get_component!(self, components, get_mut, enemy)
+                    {
+                        let transform = get_component!(self, components, get, transform);
+                        let render = get_required_component!(self, components, get_mut, render);
+
+                        enemy.update_sprite(create_info, transform, enemies_info, render);
+                    }
                 });
             }
 
-            fn anatomy_changed(&mut self, entity: Entity)
+            pub fn anatomy_changed(&mut self, entity: Entity)
             {
                 if let Some(enemy) = get_entity!(self, entity, get_mut, enemy)
                 {
@@ -606,43 +647,6 @@ macro_rules! define_entities
                     enemy.set_sprite(state);
                 }
             }
-
-            fn set_existing_entity(
-                &mut self,
-                create_info: &mut ObjectCreateInfo,
-                entity: Entity,
-                info: EntityInfo
-            )
-            {
-                let components = &mut self.components[entity.0];
-
-                let transform = info.transform.clone();
-
-                $({
-                    let component = &mut components[Component::$name as usize];
-
-                    let new_component = info.$name.map(|c|
-                    {
-                        c.server_to_client(transform.clone(), create_info)
-                    });
-
-                    if let Some(new_component) = new_component
-                    {
-                        if let Some(id) = component
-                        {
-                            self.$name[*id] = new_component;
-                        } else
-                        {
-                            let id = self.$name.push(new_component);
-
-                            *component = Some(id);
-                        }
-                    } else
-                    {
-                        *component = None;
-                    }
-                })+
-            }
         }
 
         impl ServerEntities
@@ -661,20 +665,17 @@ macro_rules! define_entities
 
             pub fn update_enemy(&mut self, messager: &mut ConnectionsHandler, dt: f32)
             {
-                self.update_enemy_common(dt, |changed, entity, enemy, lazy_transform|
+                self.update_enemy_common(dt, |entity, enemy, lazy_transform|
                 {
-                    if changed
-                    {
-                        messager.send_message(Message::SetEnemy{
-                            entity,
-                            enemy: enemy.clone()
-                        });
+                    messager.send_message(Message::SetEnemy{
+                        entity,
+                        enemy: enemy.clone()
+                    });
 
-                        messager.send_message(Message::SetLazyTransform{
-                            entity,
-                            lazy_transform: lazy_transform.clone()
-                        });
-                    }
+                    messager.send_message(Message::SetLazyTransform{
+                        entity,
+                        lazy_transform: lazy_transform.clone()
+                    });
                 });
             }
 
@@ -724,7 +725,7 @@ macro_rules! define_entities
                 {
                     $(Message::$message_name{entity, $name} =>
                     {
-                        self.$set_func(entity, $name);
+                        self.$set_func(entity, Some($name));
 
                         None
                     },)+
@@ -738,10 +739,10 @@ macro_rules! define_entities
 define_entities!{
     (render, render_mut, set_render, SetRender, RenderType, RenderInfo),
     (lazy_transform, lazy_transform_mut, set_lazy_transform, SetLazyTransform, LazyTransformType, LazyTransformServer),
+    (enemy, enemy_mut, set_enemy, SetEnemy, EnemyType, ServerEnemy),
     (parent, parent_mut, set_parent, SetParent, ParentType, Parent),
     (transform, transform_mut, set_transform, SetTransform, TransformType, Transform),
     (player, player_mut, set_player, SetPlayer, PlayerType, Player),
-    (enemy, enemy_mut, set_enemy, SetEnemy, EnemyType, Enemy),
     (physical, physical_mut, set_physical, SetPhysical, PhysicalType, Physical),
     (anatomy, anatomy_mut, set_anatomy, SetAnatomy, AnatomyType, Anatomy)
 }
