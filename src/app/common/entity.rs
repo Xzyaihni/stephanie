@@ -685,7 +685,7 @@ macro_rules! define_entities
                 {
                     let lazy = get_component!(self, components, get, lazy_transform);
 
-                    if lazy.is_some()
+                    if let Some(lazy) = lazy
                     {
                         let parent = get_component!(self, components, get, parent);
 
@@ -694,11 +694,12 @@ macro_rules! define_entities
                             get_entity!(self, parent.parent, get, transform).cloned()
                         }).flatten();
 
-                        if let Some(target) = target_global
-                        {
-                            let transform = get_required_component!(self, components, get_mut, transform);
-                            *transform = target;
-                        }
+                        let transform = get_required_component!(self, components, get_mut, transform);
+
+                        *transform = LazyTransform::target_global(
+                            lazy.target_local.clone(),
+                            target_global.as_ref()
+                        );
                     }
                 });
             }

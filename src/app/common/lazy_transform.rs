@@ -216,8 +216,10 @@ impl LazyTransform
         dt: f32
     ) -> Transform
     {
-        let target_global = parent_transform.as_ref().map(|parent| self.combine(parent))
-            .unwrap_or_else(|| self.target_local.clone());
+        let target_global = Self::target_global(
+            self.target_local.clone(),
+            parent_transform.as_ref()
+        );
 
         let mut current = self.current.clone();
 
@@ -376,13 +378,27 @@ impl LazyTransform
 
     pub fn combine(&self, parent: &Transform) -> Transform
     {
-        let mut transform = self.target_local.clone();
+        Self::combine_parent(self.target_local.clone(), parent)
+    }
 
+    pub fn combine_parent(mut transform: Transform, parent: &Transform) -> Transform
+    {
         transform.position += parent.position;
         transform.rotation += parent.rotation;
         transform.scale.component_mul_assign(&parent.scale);
 
         transform
+    }
+
+    pub fn target_global(transform: Transform, parent: Option<&Transform>) -> Transform
+    {
+        if let Some(parent) = parent
+        {
+            Self::combine_parent(transform, parent)
+        } else
+        {
+            transform
+        }
     }
 
     pub fn reset_current(&mut self, target: Transform)
