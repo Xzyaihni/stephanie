@@ -290,8 +290,18 @@ impl ClientEnemy
         let info = enemies_info.get(self.id);
         let texture = match self.info.sprite_state.value()
         {
-            SpriteState::Normal => info.normal,
-            SpriteState::Lying => info.lying
+            SpriteState::Normal =>
+            {
+                render.z_level = -1;
+
+                info.normal
+            },
+            SpriteState::Lying =>
+            {
+                render.z_level = -3;
+
+                info.lying
+            }
         };
 
         render.set_sprite(create_info, transform, texture);
