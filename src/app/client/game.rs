@@ -198,6 +198,14 @@ impl<'a> PlayerContainer<'a>
         if self.game_state.debug_mode && self.game_state.clicked(Control::DebugConsole)
         {
             dbg!("make this an actual console thingy later");
+
+            let anatomy = self.game_state.entities_mut().anatomy_mut(self.info.entity)
+                .unwrap();
+
+            if let Some(speed) = anatomy.speed()
+            {
+                anatomy.set_speed(speed * 2.0);
+            }
         }
 
         if let Some(movement) = self.movement_direction()
