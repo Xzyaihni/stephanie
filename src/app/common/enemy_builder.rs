@@ -5,8 +5,9 @@ use yanyaengine::Transform;
 use crate::common::{
     Anatomy,
     HumanAnatomy,
-    EnemyProperties,
-    EnemyBehavior,
+    Enemy,
+    EnemyId,
+    EnemiesInfo,
     PhysicalProperties,
     RenderInfo,
     EntityInfo,
@@ -14,16 +15,22 @@ use crate::common::{
 };
 
 
-pub struct EnemyBuilder
+pub struct EnemyBuilder<'a>
 {
-    pos: Vector3<f32>
+    enemies_info: &'a EnemiesInfo,
+    pos: Vector3<f32>,
+    id: EnemyId
 }
 
-impl EnemyBuilder
+impl<'a> EnemyBuilder<'a>
 {
-    pub fn new(pos: Vector3<f32>) -> Self
+    pub fn new(
+        enemies_info: &'a EnemiesInfo,
+        id: EnemyId,
+        pos: Vector3<f32>
+    ) -> Self
     {
-        Self{pos}
+        Self{enemies_info, pos, id}
     }
 
     pub fn build(self) -> EntityInfo
@@ -48,16 +55,14 @@ impl EnemyBuilder
                     ..Default::default()
                 }
             }.into()),
-            render: Some(RenderInfo{texture: "enemy/body.png".to_owned(), z_level: -1}),
+            render: Some(RenderInfo{texture: None, z_level: -1}),
             physical: Some(PhysicalProperties{
                 mass: 50.0,
                 friction: 0.5,
                 floating: false
             }.into()),
             anatomy: Some(Anatomy::Human(HumanAnatomy::default())),
-            enemy: Some(EnemyProperties{
-                behavior: EnemyBehavior::Melee
-            }.into()),
+            enemy: Some(Enemy::new(self.enemies_info, self.id)),
             ..Default::default()
         }
     }

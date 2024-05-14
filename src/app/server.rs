@@ -6,7 +6,11 @@ use std::{
 
 use parking_lot::Mutex;
 
-use crate::common::{sender_loop::{waiting_loop, DELTA_TIME}, TileMapWithTextures};
+use crate::common::{
+    sender_loop::{waiting_loop, DELTA_TIME},
+    EnemiesInfo,
+    TileMapWithTextures
+};
 
 use game_server::{GameServer, ParseError};
 
@@ -29,13 +33,14 @@ impl Server
 {
     pub fn new(
         tilemap: TileMapWithTextures,
+        enemies_info: Arc<EnemiesInfo>,
         address: &str,
         connections_limit: usize
     ) -> Result<Self, ParseError>
     {
         let listener = TcpListener::bind(address)?;
 
-        let game_server = GameServer::new(tilemap.tilemap, connections_limit)?;
+        let game_server = GameServer::new(tilemap.tilemap, enemies_info, connections_limit)?;
         let game_server = Arc::new(Mutex::new(game_server));
 
         {

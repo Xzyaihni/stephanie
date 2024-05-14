@@ -25,6 +25,7 @@ use crate::common::{
     Damage,
     Entity,
     Entities,
+    EnemiesInfo,
     Damageable,
     EntityPasser,
     EntitiesController,
@@ -90,11 +91,11 @@ impl ClientEntitiesContainer
         self.entities.handle_message(create_info, message)
     }
 
-    pub fn update(&mut self, dt: f32)
+    pub fn update(&mut self, enemies_info: &EnemiesInfo, dt: f32)
     {
         self.entities.update_physical(dt);
         self.entities.update_lazy(dt);
-        self.entities.update_enemy(dt);
+        self.entities.update_enemy(enemies_info, dt);
     }
 
     pub fn player_exists(&self, entity: Entity) -> bool
@@ -224,7 +225,13 @@ impl GameObject for ClientEntitiesContainer
     fn update_buffers(&mut self, info: &mut UpdateBuffersInfo)
     {
         self.entities.update_render();
-        self.entities.render.iter_mut().for_each(|(_, entity)| entity.object.update_buffers(info));
+        self.entities.render.iter_mut().for_each(|(_, entity)|
+        {
+            if let Some(object) = entity.object.as_mut()
+            {
+                object.update_buffers(info);
+            }
+        });
     }
 
     fn draw(&self, info: &mut DrawInfo)
@@ -233,7 +240,13 @@ impl GameObject for ClientEntitiesContainer
 
         queue.sort_unstable_by_key(|render| render.z_level);
 
-        queue.into_iter().for_each(|render| render.object.draw(info));
+        queue.into_iter().for_each(|render|
+        {
+            if let Some(object) = render.object.as_ref()
+            {
+                object.draw(info);
+            }
+        });
     }
 }
 
@@ -304,6 +317,17 @@ impl RaycastHits
     }
 }
 
+pub struct GameStateInfo<'a>
+{
+    pub camera: Arc<RwLock<Camera>>,
+    pub assets: Arc<Mutex<Assets>>,
+    pub enemies_info: Arc<EnemiesInfo>,
+    pub object_factory: Arc<ObjectFactory>,
+    pub tiles_factory: TilesFactory,
+    pub message_passer: MessagePasser,
+    pub client_info: &'a ClientInfo
+}
+
 pub struct GameState
 {
     pub mouse_position: MousePosition,
@@ -316,6 +340,7 @@ pub struct GameState
     pub running: bool,
     pub debug_mode: bool,
     pub tilemap: Arc<TileMap>,
+    enemies_info: Arc<EnemiesInfo>,
     world: World,
     connections_handler: Arc<RwLock<ConnectionsHandler>>,
     receiver: Receiver<Message>
@@ -323,35 +348,30 @@ pub struct GameState
 
 impl GameState
 {
-    pub fn new(
-        camera: Arc<RwLock<Camera>>,
-        assets: Arc<Mutex<Assets>>,
-        object_factory: Arc<ObjectFactory>,
-        tiles_factory: TilesFactory,
-        message_passer: MessagePasser,
-        client_info: &ClientInfo
-    ) -> Self
+    pub fn new(info: GameStateInfo) -> Self
     {
         let mouse_position = MousePosition::new(0.0, 0.0);
 
         let notifications = Notifications::new();
         let mut entities = ClientEntitiesContainer::new();
         let controls = ControlsController::new();
-        let connections_handler = Arc::new(RwLock::new(ConnectionsHandler::new(message_passer)));
 
-        let tilemap = tiles_factory.tilemap().clone();
+        let handler = ConnectionsHandler::new(info.message_passer);
+        let connections_handler = Arc::new(RwLock::new(handler));
+
+        let tilemap = info.tiles_factory.tilemap().clone();
 
         let world_receiver = WorldReceiver::new(connections_handler.clone());
         let world = World::new(
             world_receiver,
-            tiles_factory,
-            camera.read().aspect(),
+            info.tiles_factory,
+            info.camera.read().aspect(),
             Pos3::new(0.0, 0.0, 0.0)
         );
 
         let (player_id, player_children) = Self::connect_to_server(
             connections_handler.clone(),
-            &client_info.name
+            &info.client_info.name
         );
 
         entities.main_player = Some(player_id);
@@ -373,14 +393,15 @@ impl GameState
 
         Self{
             mouse_position,
-            camera,
-            assets,
-            object_factory,
+            camera: info.camera,
+            assets: info.assets,
+            object_factory: info.object_factory,
             notifications,
             entities,
+            enemies_info: info.enemies_info,
             controls,
             running: true,
-            debug_mode: client_info.debug_mode,
+            debug_mode: info.client_info.debug_mode,
             tilemap,
             world,
             connections_handler,
@@ -612,7 +633,7 @@ impl GameState
 
         self.world.update(dt);
 
-        self.entities.update(dt);
+        self.entities.update(&self.enemies_info, dt);
 
         self.controls.release_clicked();
     }

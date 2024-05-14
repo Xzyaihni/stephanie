@@ -1,0 +1,14 @@
+[
+    {
+        "name": "zob",
+        "behavior": "Melee",
+        "normal": "zob.png",
+        "lying": "lying.png"
+    },
+    {
+        "name": "runner",
+        "behavior": "Melee",
+        "normal": "zob.png",
+        "lying": "lying.png"
+    }
+]

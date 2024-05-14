@@ -25,6 +25,7 @@ use crate::common::{
     TileMap,
     Entity,
     EntityInfo,
+    EnemiesInfo,
     RenderInfo,
     Parent,
     Player,
@@ -83,12 +84,16 @@ pub struct GameServer
 
 impl GameServer
 {
-    pub fn new(tilemap: TileMap, limit: usize) -> Result<Self, ParseError>
+    pub fn new(
+        tilemap: TileMap,
+        enemies_info: Arc<EnemiesInfo>,
+        limit: usize
+    ) -> Result<Self, ParseError>
     {
         let entities = Entities::new();
         let connection_handler = Arc::new(RwLock::new(ConnectionsHandler::new(limit)));
 
-        let world = World::new(connection_handler.clone(), tilemap)?;
+        let world = World::new(connection_handler.clone(), tilemap, enemies_info)?;
 
         sender_loop(connection_handler.clone());
 
@@ -165,7 +170,7 @@ impl GameServer
         let info = EntityInfo{
             player: Some(Player{name: format!("stephanie #{player_index}")}),
             transform: Some(transform.clone()),
-            render: Some(RenderInfo{texture: "player/hair.png".to_owned(), z_level: 0}),
+            render: Some(RenderInfo{texture: Some("player/hair.png".to_owned()), z_level: 0}),
             physical: Some(physical.into()),
             anatomy: Some(anatomy),
             ..Default::default()
@@ -186,7 +191,10 @@ impl GameServer
         let item_size = 0.2;
         let held_item = EntityInfo{
             transform: Some(Default::default()),
-            render: Some(RenderInfo{texture: "items/weapons/pistol.png".to_owned(), z_level: -2}),
+            render: Some(RenderInfo{
+                texture: Some("items/weapons/pistol.png".to_owned()),
+                z_level: -2
+            }),
             parent: Some(Parent::new(inserted)),
             lazy_transform: Some(LazyTransformInfo{
                 connection: Connection::Spring(
@@ -266,7 +274,7 @@ impl GameServer
                     }
                 }.into()),
                 parent: Some(Parent::new(inserted)),
-                render: Some(RenderInfo{texture: "player/pon.png".to_owned(), z_level: 2}),
+                render: Some(RenderInfo{texture: Some("player/pon.png".to_owned()), z_level: 2}),
                 ..Default::default()
             }
         };

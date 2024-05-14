@@ -15,6 +15,7 @@ use crate::{
         WorldChunkSaver,
         ChunkSaver,
         EntitiesSaver,
+        EnemiesInfo,
         SaveLoad,
         EntityPasser,
         Entity,
@@ -71,7 +72,6 @@ impl OvermapIndexing for ClientIndexer
     }
 }
 
-#[derive(Debug)]
 pub struct World
 {
     message_handler: Arc<RwLock<ConnectionsHandler>>,
@@ -79,6 +79,7 @@ pub struct World
     world_generator: Arc<Mutex<WorldGenerator<WorldChunkSaver>>>,
     chunk_saver: ChunkSaver,
     entities_saver: EntitiesSaver,
+    enemies_info: Arc<EnemiesInfo>,
     overmaps: OvermapsType,
     client_indexers: HashMap<ConnectionId, ClientIndexer>
 }
@@ -87,7 +88,8 @@ impl World
 {
     pub fn new(
         message_handler: Arc<RwLock<ConnectionsHandler>>,
-        tilemap: TileMap
+        tilemap: TileMap,
+        enemies_info: Arc<EnemiesInfo>
     ) -> Result<Self, ParseError>
     {
         let world_name = "default".to_owned();
@@ -113,6 +115,7 @@ impl World
             world_generator,
             chunk_saver,
             entities_saver,
+            enemies_info,
             overmaps,
             client_indexers
         })
@@ -254,7 +257,11 @@ impl World
                 {
                     let pos = chunk_pos + above.pos().map(|x| x as f32 * TILE_SIZE);
 
-                    EnemyBuilder::new(pos.into()).build()
+                    EnemyBuilder::new(
+                        &self.enemies_info,
+                        self.enemies_info.id("zob"),
+                        pos.into()
+                    ).build()
                 })
             });
 

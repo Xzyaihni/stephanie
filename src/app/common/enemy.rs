@@ -4,7 +4,7 @@ use nalgebra::{Unit, Vector3};
 
 use yanyaengine::Transform;
 
-use crate::common::{SeededRandom, Anatomy, Physical};
+use crate::common::{SeededRandom, EnemiesInfo, EnemyId, Anatomy, Physical};
 
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -46,9 +46,47 @@ pub enum BehaviorState
     MoveDirection(Unit<Vector3<f32>>)
 }
 
-pub struct EnemyProperties
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SpriteState
 {
-    pub behavior: EnemyBehavior
+    Normal,
+    Lying
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct Stateful<T>
+{
+    changed: bool,
+    value: T
+}
+
+impl<T> From<T> for Stateful<T>
+{
+    fn from(value: T) -> Self
+    {
+        Self{
+            changed: true,
+            value
+        }
+    }
+}
+
+impl<T> Stateful<T>
+{
+    pub fn set_state(&mut self, value: T)
+    {
+        self.value = value;
+        self.changed = true;
+    }
+
+    pub fn changed(&mut self) -> bool
+    {
+        let state = self.changed;
+
+        self.changed = false;
+
+        state
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -57,27 +95,30 @@ pub struct Enemy
     behavior: EnemyBehavior,
     behavior_state: BehaviorState,
     current_state_left: f32,
+    sprite_state: Stateful<SpriteState>,
+    id: EnemyId,
     rng: SeededRandom
-}
-
-impl From<EnemyProperties> for Enemy
-{
-    fn from(properties: EnemyProperties) -> Self
-    {
-        let mut rng = SeededRandom::new();
-        let behavior_state = properties.behavior.start_state();
-
-        Self{
-            current_state_left: properties.behavior.duration_of(&mut rng, &behavior_state),
-            behavior_state,
-            behavior: properties.behavior,
-            rng
-        }
-    }
 }
 
 impl Enemy
 {
+    pub fn new(enemies_info: &EnemiesInfo, id: EnemyId) -> Self
+    {
+        let behavior = enemies_info.get(id).behavior.clone();
+
+        let mut rng = SeededRandom::new();
+        let behavior_state = behavior.start_state();
+
+        Self{
+            current_state_left: behavior.duration_of(&mut rng, &behavior_state),
+            behavior_state,
+            behavior,
+            sprite_state: SpriteState::Normal.into(),
+            id,
+            rng
+        }
+    }
+
     pub fn next_state(&mut self)
     {
         let new_state = match &self.behavior
@@ -154,6 +195,21 @@ impl Enemy
         self.do_behavior(anatomy, transform, physical);
 
         changed_state
+    }
+
+    pub fn update_sprite(&mut self, enemies_info: &EnemiesInfo)
+    {
+        if !self.sprite_state.changed()
+        {
+            return;
+        }
+
+        todo!();
+    }
+
+    pub fn set_sprite(&mut self, state: SpriteState)
+    {
+        self.sprite_state.set_state(state);
     }
 
     pub fn behavior(&self) -> &EnemyBehavior

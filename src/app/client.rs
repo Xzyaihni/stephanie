@@ -31,9 +31,10 @@ use yanyaengine::{
 
 use game::Game;
 
-use game_state::GameState;
+use game_state::{GameState, GameStateInfo};
 
 use crate::common::{
+    EnemiesInfo,
     MessagePasser,
     tilemap::TileMapWithTextures
 };
@@ -96,7 +97,8 @@ impl ObjectAllocator
 pub struct ClientInitInfo
 {
     pub client_info: ClientInfo,
-    pub tilemap: TileMapWithTextures
+    pub tilemap: TileMapWithTextures,
+    pub enemies_info: Arc<EnemiesInfo>
 }
 
 pub struct ClientInfo
@@ -129,14 +131,17 @@ impl Client
         let stream = TcpStream::connect(&client_init_info.client_info.address)?;
         let message_passer = MessagePasser::new(stream);
 
-        let game_state = GameState::new(
+        let info = GameStateInfo{
             camera,
-            info.object_info.partial.assets,
-            info.object_info.partial.object_factory,
+            assets: info.object_info.partial.assets,
+            enemies_info: client_init_info.enemies_info,
+            object_factory: info.object_info.partial.object_factory,
             tiles_factory,
             message_passer,
-            &client_init_info.client_info
-        );
+            client_info: &client_init_info.client_info
+        };
+
+        let game_state = GameState::new(info);
 
         let game = Game::new(game_state.player());
         let game_state = Rc::new(RefCell::new(game_state));

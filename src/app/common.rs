@@ -37,14 +37,14 @@ pub use entity::{
     Entities
 };
 
-pub use enemy::{EnemyProperties, EnemyBehavior, Enemy};
+pub use enemy::{EnemyBehavior, Enemy};
+pub use enemy_builder::EnemyBuilder;
+pub use enemies_info::{EnemyId, EnemiesInfo};
 
 pub use chunk_saver::{SaveLoad, WorldChunkSaver, ChunkSaver, EntitiesSaver};
 
 pub use anatomy::{Anatomy, HumanAnatomy};
 pub use damage::{Damageable, Damage, DamageType, DamageDirection, Side2d, DamageHeight};
-
-pub use enemy_builder::EnemyBuilder;
 
 pub use physics::{Physical, PhysicalProperties};
 
@@ -56,12 +56,12 @@ pub mod objects_store;
 pub mod damage;
 pub mod anatomy;
 
-pub mod enemy_builder;
-
 pub mod lazy_transform;
 pub mod entity;
 
 pub mod enemy;
+pub mod enemy_builder;
+pub mod enemies_info;
 
 pub mod message;
 
