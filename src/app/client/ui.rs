@@ -1,4 +1,4 @@
-/*use std::{
+use std::{
     rc::{Weak, Rc},
     cell::{Ref, RefMut, RefCell},
     ops::{Range, ControlFlow, Index}
@@ -6,11 +6,16 @@
 
 use nalgebra::Vector2;
 
-use crate::{
-    client::game_state::MousePosition,
-    common::animator::Animatable
-};
+use yanyaengine::{Assets, TextureId};
 
+use crate::common::animator::Animatable;
+
+
+pub struct Rect
+{
+    top_left: Vector2<f32>,
+    bottom_right: Vector2<f32>
+}
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ComplexId(usize);
@@ -177,7 +182,7 @@ impl PartialEq for ScrollElement
     }
 }
 
-/*impl ScrollElement
+impl ScrollElement
 {
     fn new_with<T: TopLevelAdder>(
         info: ScrollElementInfo,
@@ -301,7 +306,7 @@ impl PartialEq for ScrollElement
     {
         textures.set_button_texture(pos, element, self.dragging)
     }
-}*/
+}
 
 pub struct Children<'a>(&'a [Item]);
 
@@ -348,7 +353,7 @@ pub struct ListElement
     item_height: f32,
     last_scroll: f32,
     draw_range: Range<usize>,
-    mouse_pos: MousePosition,
+    mouse_pos: Vector2<f32>,
     selected_index: Option<usize>,
     textures: ButtonTextures
 }
@@ -489,7 +494,8 @@ impl ListElement
 
     fn draw_custom(&self, ui: &Ui)
     {
-        let background = &self.background.borrow().element;
+        todo!();
+        /*let background = &self.background.borrow().element;
         ui.draw_element(background);
 
         let parent_size = ui.pixels_size_inner(&background).map(|x| x as usize);
@@ -530,21 +536,16 @@ impl ListElement
             }
         });
 
-        ui.draw_texture(&clip_texture, background);
+        ui.draw_texture(&clip_texture, background);*/
     }
 
-    /*fn create_rect(parent_height: i32, pos: Vector2<f32>, size: Vector2<f32>) -> Rect
+    fn create_rect(parent_height: f32, pos: Vector2<f32>, size: Vector2<f32>) -> Rect
     {
-        let pos = pos.map(|x| x as i32);
-        let size = size.map(|x| x as u32 + 1);
-
-        Rect::new(
-            pos.x,
-            parent_height - pos.y - size.y as i32,
-            size.x,
-            size.y
-        )
-    }*/
+        Rect{
+            top_left: Vector2::new(pos.x, parent_height - pos.y - size.y),
+            bottom_right: size
+        }
+    }
 
     fn update_scroll(&mut self, scroll: f32)
     {
@@ -1154,7 +1155,7 @@ impl UiElementGlobal
 
     pub fn local_position(&self, pos: Vector2<f32>) -> Vector2<f32>
     {
-        (pos - self.global_pos) / self.global_size
+        (pos - self.global_pos).component_div(&self.global_size)
     }
 
     pub fn inside_position(&self, pos: Vector2<f32>) -> Option<Vector2<f32>>
@@ -1230,7 +1231,7 @@ impl UiPrimitive
         element: UiElementPrimitiveWithFlags
     ) -> Rc<RefCell<Self>>
     {
-        let zero = Vector2::<f32>::zero();
+        let zero = Vector2::zeros();
 
         Rc::new(RefCell::new(Self{
             parent,
@@ -1278,10 +1279,11 @@ impl UiPrimitive
         {
             let child = &mut child.element;
 
-            let aspect = this.global_size.aspect();
+            let aspect = this.global_size.x / this.global_size.y;
 
-            child.global_pos = this.global_pos + child.inner.pos * this.global_size;
-            child.global_size = child.inner.size.to_size(aspect) * this.global_size;
+            child.global_pos = child.inner.pos.component_mul(&this.global_size) + this.global_pos;
+            child.global_size = child.inner.size.to_size(aspect)
+                .component_mul(&this.global_size);
         }
 
         child.update_children();
@@ -1332,7 +1334,9 @@ impl UiPrimitive
     {
         let aspect = if let Some((_id, parent)) = self.parent.clone()
         {
-            parent.upgrade().unwrap().borrow().element.global_size.aspect()
+            let s = parent.upgrade().unwrap().borrow().element.global_size;
+
+            s.x / s.y
         } else
         {
             1.0
@@ -1444,11 +1448,11 @@ impl<'a> TemporaryTexture<'a>
 
         self.inner.update_texture(self.id, &image)
     }
-}
+}*/
 
 struct UiGeneral
 {
-    window: Rc<RefCell<WindowWrapper>>,
+    // window: Rc<RefCell<WindowWrapper>>,
     assets: Rc<RefCell<Assets>>,
     elements: Vec<Rc<RefCell<UiPrimitive>>>,
     temporary_texture: TextureId
@@ -1464,7 +1468,7 @@ pub struct Ui
 #[allow(dead_code)]
 impl Ui
 {
-    pub fn new(window: Rc<RefCell<WindowWrapper>>, assets: Rc<RefCell<Assets>>) -> Self
+    /*pub fn new(window: Rc<RefCell<WindowWrapper>>, assets: Rc<RefCell<Assets>>) -> Self
     {
         let empty_image = Image::repeat(1, 1, Color{r: 0, g: 0, b: 0, a: 0});
         let temporary_texture = assets.borrow_mut().add_texture_access(
@@ -1480,7 +1484,7 @@ impl Ui
         };
 
         Self{complex: Vec::new(), ui}
-    }
+    }*/
 
     pub fn push(&mut self, element: impl Into<UiElement>) -> ElementId
     {
@@ -1549,7 +1553,7 @@ impl Ui
         ComplexId(id)
     }
 
-    pub fn pixels_size(&self, id: &ElementId) -> Vector2<u32>
+    /*pub fn pixels_size(&self, id: &ElementId) -> Vector2<u32>
     {
         let ele = self.get(id);
         let ele = ele.borrow();
@@ -1563,14 +1567,15 @@ impl Ui
 
         (element.global_size * window_size)
             .map(|x| x.round() as u32)
-    }
+    }*/
 
     fn aspect(&self) -> f32
     {
-        self.window_size().map(|x| x as f32).aspect()
+        todo!();
+        // self.window_size().map(|x| x as f32).aspect()
     }
 
-    fn window_size(&self) -> Vector2<u32>
+    /*fn window_size(&self) -> Vector2<u32>
     {
         self.ui.window.borrow().window_size()
     }
@@ -1682,7 +1687,7 @@ impl Ui
         {
             complex.borrow().draw_custom(self);
         });
-    }
+    }*/
 
     pub fn mouse_move(&self, pos: Vector2<f32>)
     {
@@ -1766,4 +1771,4 @@ impl Ui
             ControlFlow::<()>::Continue(())
         });
     }
-}*/*/
+}
