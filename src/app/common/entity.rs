@@ -330,22 +330,22 @@ macro_rules! define_entities
                 for<'a> &'a mut PhysicalType: Into<&'a mut Physical>,
                 LazyTransformType: LazyTargettable
             {
-                self.components.iter().for_each(|(_, components)|
+                self.physical.iter_mut().for_each(|(_, ComponentWrapper{
+                    entity,
+                    component: physical
+                })|
                 {
-                    if let Some(physical) = get_component!(self, components, get_mut, physical)
+                    let target = if let Some(lazy) = get_entity!(self, entity, get_mut, lazy_transform)
                     {
-                        let target = if let Some(lazy) = get_component!(self, components, get_mut, lazy_transform)
-                        {
-                            lazy.target()
-                        } else
-                        {
-                            let transform = get_required_component!(self, components, get_mut, transform);
+                        lazy.target()
+                    } else
+                    {
+                        let transform = get_required_entity!(self, entity, get_mut, transform);
 
-                            transform.into()
-                        };
+                        transform.into()
+                    };
 
-                        physical.into().physics_update(target, dt);
-                    }
+                    physical.into().physics_update(target, dt);
                 });
             }
 
@@ -361,29 +361,29 @@ macro_rules! define_entities
                 for<'a> &'a mut PhysicalType: Into<&'a mut Physical>,
                 LazyTransformType: LazyTargettable
             {
-                self.components.iter().for_each(|(entity, components)|
+                self.enemy.iter_mut().for_each(|(_, ComponentWrapper{
+                    entity,
+                    component: enemy
+                })|
                 {
-                    if let Some(enemy) = get_component!(self, components, get_mut, enemy)
+                    let anatomy = get_required_entity!(self, entity, get, anatomy);
+                    let lazy_transform = get_required_entity!(self, entity, get_mut, lazy_transform);
+                    let physical = get_required_entity!(self, entity, get_mut, physical);
+
+                    let state_changed = enemy.into().update(
+                        anatomy.into(),
+                        lazy_transform.target(),
+                        physical.into(),
+                        dt
+                    );
+
+                    if state_changed
                     {
-                        let anatomy = get_required_component!(self, components, get, anatomy);
-                        let lazy_transform = get_required_component!(self, components, get_mut, lazy_transform);
-                        let physical = get_required_component!(self, components, get_mut, physical);
-
-                        let state_changed = enemy.into().update(
-                            anatomy.into(),
-                            lazy_transform.target(),
-                            physical.into(),
-                            dt
-                        );
-
-                        if state_changed
-                        {
-                            on_state_change(
-                                Entity(entity),
-                                enemy,
-                                lazy_transform
-                            )
-                        }
+                        on_state_change(
+                            *entity,
+                            enemy,
+                            lazy_transform
+                        )
                     }
                 });
             }
@@ -607,40 +607,38 @@ macro_rules! define_entities
 
             pub fn update_render(&mut self)
             {
-                self.components.iter().for_each(|(_, components)|
+                self.render.iter_mut().for_each(|(_, ComponentWrapper{
+                    entity,
+                    component: object
+                })|
                 {
-                    if let Some(object) = get_component!(self, components, get_mut, render)
+                    let transform = get_required_entity!(self, entity, get, transform);
+
+                    use yanyaengine::TransformContainer;
+
+                    if let Some(object) = object.object.as_mut()
                     {
-                        let transform = get_required_component!(self, components, get, transform);
-
-                        use yanyaengine::TransformContainer;
-
-                        if let Some(object) = object.object.as_mut()
-                        {
-                            object.set_transform(transform.clone());
-                        }
+                        object.set_transform(transform.clone());
                     }
                 });
             }
 
             pub fn update_lazy(&mut self, dt: f32)
             {
-                self.components.iter().for_each(|(_, components)|
+                self.lazy_transform.iter_mut().for_each(|(_, ComponentWrapper{
+                    entity,
+                    component: lazy
+                })|
                 {
-                    let lazy = get_component!(self, components, get_mut, lazy_transform);
+                    let parent = get_entity!(self, entity, get, parent);
 
-                    if let Some(lazy) = lazy
+                    let target_global = parent.map(|parent|
                     {
-                        let parent = get_component!(self, components, get, parent);
+                        get_entity!(self, parent.parent, get, transform).cloned()
+                    }).flatten();
 
-                        let target_global = parent.map(|parent|
-                        {
-                            get_entity!(self, parent.parent, get, transform).cloned()
-                        }).flatten();
-
-                        let transform = get_required_component!(self, components, get_mut, transform);
-                        *transform = lazy.next(target_global, dt);
-                    }
+                    let transform = get_required_entity!(self, entity, get_mut, transform);
+                    *transform = lazy.next(target_global, dt);
                 });
             }
 
@@ -655,28 +653,28 @@ macro_rules! define_entities
                 enemies_info: &EnemiesInfo
             )
             {
-                self.components.iter().for_each(|(_, components)|
+                self.enemy.iter_mut().for_each(|(_, ComponentWrapper{
+                    entity,
+                    component: enemy
+                })|
                 {
-                    if let Some(enemy) = get_component!(self, components, get_mut, enemy)
-                    {
-                        let lazy = get_required_component!(self, components, get_mut, lazy_transform);
-                        let render = get_required_component!(self, components, get_mut, render);
-                        let transform = get_required_component!(self, components, get_mut, transform);
+                    let lazy = get_required_entity!(self, entity, get_mut, lazy_transform);
+                    let render = get_required_entity!(self, entity, get_mut, render);
+                    let transform = get_required_entity!(self, entity, get_mut, transform);
 
-                        let updated = enemy.update_sprite(
-                            lazy,
-                            enemies_info,
-                            render,
-                            |render, texture|
-                            {
-                                render.set_sprite(create_info, Some(transform), texture);
-                            }
-                        );
-
-                        if updated
+                    let updated = enemy.update_sprite(
+                        lazy,
+                        enemies_info,
+                        render,
+                        |render, texture|
                         {
-                            *transform = lazy.target_local.clone();
+                            render.set_sprite(create_info, Some(transform), texture);
                         }
+                    );
+
+                    if updated
+                    {
+                        *transform = lazy.target_local.clone();
                     }
                 });
             }
@@ -736,26 +734,24 @@ macro_rules! define_entities
 
             pub fn update_lazy(&mut self)
             {
-                self.components.iter().for_each(|(_, components)|
+                self.lazy_transform.iter_mut().for_each(|(_, ComponentWrapper{
+                    entity,
+                    component: lazy
+                })|
                 {
-                    let lazy = get_component!(self, components, get, lazy_transform);
+                    let parent = get_entity!(self, entity, get, parent);
 
-                    if let Some(lazy) = lazy
+                    let target_global = parent.map(|parent|
                     {
-                        let parent = get_component!(self, components, get, parent);
+                        get_entity!(self, parent.parent, get, transform).cloned()
+                    }).flatten();
 
-                        let target_global = parent.map(|parent|
-                        {
-                            get_entity!(self, parent.parent, get, transform).cloned()
-                        }).flatten();
+                    let transform = get_required_entity!(self, entity, get_mut, transform);
 
-                        let transform = get_required_component!(self, components, get_mut, transform);
-
-                        *transform = LazyTransform::target_global(
-                            lazy.target_local.clone(),
-                            target_global.as_ref()
-                        );
-                    }
+                    *transform = LazyTransform::target_global(
+                        lazy.target_local.clone(),
+                        target_global.as_ref()
+                    );
                 });
             }
 
@@ -764,14 +760,14 @@ macro_rules! define_entities
                 enemies_info: &EnemiesInfo
             )
             {
-                self.components.iter().for_each(|(_, components)|
+                self.enemy.iter_mut().for_each(|(_, ComponentWrapper{
+                    entity,
+                    component: enemy
+                })|
                 {
-                    if let Some(enemy) = get_component!(self, components, get_mut, enemy)
-                    {
-                        let lazy = get_required_component!(self, components, get_mut, lazy_transform);
+                    let lazy = get_required_entity!(self, entity, get_mut, lazy_transform);
 
-                        enemy.update_sprite_common(lazy, enemies_info);
-                    }
+                    enemy.update_sprite_common(lazy, enemies_info);
                 });
             }
 
