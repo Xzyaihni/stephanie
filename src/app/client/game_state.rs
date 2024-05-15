@@ -233,7 +233,7 @@ impl GameObject for ClientEntitiesContainer
         self.entities.update_render();
         self.entities.render.iter_mut().for_each(|(_, entity)|
         {
-            if let Some(object) = entity.object.as_mut()
+            if let Some(object) = entity.get_mut().object.as_mut()
             {
                 object.update_buffers(info);
             }
@@ -244,11 +244,11 @@ impl GameObject for ClientEntitiesContainer
     {
         let mut queue: Vec<_> = self.entities.render.iter().map(|(_, x)| x).collect();
 
-        queue.sort_unstable_by_key(|render| render.z_level);
+        queue.sort_unstable_by_key(|render| render.get().z_level);
 
         queue.into_iter().for_each(|render|
         {
-            if let Some(object) = render.object.as_ref()
+            if let Some(object) = render.get().object.as_ref()
             {
                 object.draw(info);
             }

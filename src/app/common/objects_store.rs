@@ -89,7 +89,7 @@ impl<T> ObjectsStore<T>
             last
         } else
         {
-            self.data.len()
+            self.last_key()
         }
     }
 
@@ -100,8 +100,13 @@ impl<T> ObjectsStore<T>
             *last
         } else
         {
-            self.data.len()
+            self.last_key()
         }
+    }
+
+    pub fn last_key(&self) -> usize
+    {
+        self.data.len()
     }
 
     pub fn len(&self) -> usize

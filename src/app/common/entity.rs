@@ -30,7 +30,7 @@ macro_rules! get_component
                 $this.$component.$access_type(id).unwrap_or_else(||
                 {
                     panic!("pointer to {} is out of bounds", stringify!($component))
-                })
+                }).$access_type()
             })
     }
 }
@@ -234,6 +234,26 @@ pub struct Player
 
 type UiElementServer = ();
 
+#[derive(Debug, Clone)]
+pub struct ComponentWrapper<T>
+{
+    entity: Entity,
+    component: T
+}
+
+impl<T> ComponentWrapper<T>
+{
+    pub fn get(&self) -> &T
+    {
+        &self.component
+    }
+
+    pub fn get_mut(&mut self) -> &mut T
+    {
+        &mut self.component
+    }
+}
+
 macro_rules! define_entities
 {
     ($(($name:ident,
@@ -277,7 +297,7 @@ macro_rules! define_entities
         pub struct Entities<$($component_type=$default_type,)+>
         {
             pub components: ObjectsStore<Vec<Option<usize>>>,
-            $(pub $name: ObjectsStore<$component_type>,)+
+            $(pub $name: ObjectsStore<ComponentWrapper<$component_type>>,)+
         }
 
         impl<$($component_type: OnSet<Self>,)+> Entities<$($component_type,)+>
@@ -392,6 +412,8 @@ macro_rules! define_entities
                             [entity.0]
                             [Component::$name as usize];
 
+                        let component = ComponentWrapper{entity, component};
+
                         let previous = if let Some(id) = slot
                         {
                             self.$name.insert(*id, component)
@@ -404,7 +426,11 @@ macro_rules! define_entities
                             None
                         };
 
-                        $component_type::on_set(previous, self, entity);
+                        $component_type::on_set(
+                            previous.map(|x| x.component),
+                            self,
+                            entity
+                        );
                     }
                 }
             )+
@@ -412,17 +438,28 @@ macro_rules! define_entities
             pub fn push(&mut self, info: EntityInfo<$($component_type,)+>) -> Entity
             {
                 let is_child = info.parent.is_some();
-                let indices = self.info_components(info);
 
                 let id = if is_child
                 {
-                    self.components.push_last(indices)
+                    self.components.last_key()
                 } else
                 {
-                    self.components.push(indices)
+                    self.components.vacant_key()
                 };
 
-                Entity(id)
+                let id = Entity(id);
+
+                let indices = self.info_components(id, info);
+
+                if is_child
+                {
+                    self.components.push_last(indices);
+                } else
+                {
+                    self.components.push(indices);
+                }
+
+                id
             }
 
             pub fn remove(&mut self, entity: Entity)
@@ -444,6 +481,7 @@ macro_rules! define_entities
 
             fn info_components(
                 &mut self,
+                entity: Entity,
                 info: EntityInfo<$($component_type,)+>
             ) -> Vec<Option<usize>>
             {
@@ -451,7 +489,7 @@ macro_rules! define_entities
                     $({
                         info.$name.map(|component|
                         {
-                            self.$name.push(component)
+                            self.$name.push(ComponentWrapper{entity, component})
                         })
                     },)+
                 ]
@@ -675,7 +713,7 @@ macro_rules! define_entities
                 EntityInfo{$(
                     $name: components[Component::$name as usize].map(|id|
                     {
-                        self.$name[id].clone()
+                        self.$name[id].component.clone()
                     }),
                 )+}
             }
