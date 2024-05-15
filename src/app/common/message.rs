@@ -32,6 +32,7 @@ pub enum Message
     SetPhysical{entity: Entity, physical: Physical},
     SetAnatomy{entity: Entity, anatomy: Anatomy},
     SetEnemy{entity: Entity, enemy: Enemy},
+    SetUiElement{entity: Entity, ui_element: ()},
     EntityDestroy{entity: Entity},
     EntityDamage{entity: Entity, damage: Damage},
     PlayerConnect{name: String},
@@ -69,6 +70,7 @@ impl Message
             Message::SetPhysical{entity, ..} => Some(entity),
             Message::SetAnatomy{entity, ..} => Some(entity),
             Message::SetEnemy{entity, ..} => Some(entity),
+            Message::SetUiElement{entity, ..} => Some(entity),
             Message::EntityDestroy{entity, ..} => Some(entity),
             Message::EntityDamage{entity, ..} => Some(entity),
             Message::PlayerConnect{..}

@@ -375,6 +375,12 @@ impl GameState
             Pos3::new(0.0, 0.0, 0.0)
         );
 
+        {
+            let (x, y) = info.camera.read().aspect();
+
+            Self::create_ui(&mut entities.entities, x / y);
+        }
+
         let (player_id, player_children) = Self::connect_to_server(
             connections_handler.clone(),
             &info.client_info.name
@@ -413,6 +419,16 @@ impl GameState
             connections_handler,
             receiver
         }
+    }
+
+    fn create_ui(entities: &mut ClientEntities, aspect: f32)
+    {
+        /*entities.push(UiElementPrimitive{
+            kind: UiElementType::Panel,
+            pos: Vector2::new(0.1, 0.25),
+            size: KeepAspect::new(StretchMode::Min, Vector2::new(0.8, 0.5)).into(),
+            texture: Some(assets.texture_id("ui/background.png"))
+        });*/
     }
 
     pub fn raycast(
@@ -551,6 +567,13 @@ impl GameState
         }
     }
 
+    fn aspect(&self) -> f32
+    {
+        let (x, y) = self.camera.read().aspect();
+
+        x / y
+    }
+
     fn resize_camera(&mut self, factor: f32)
     {
         let camera_scale = self.camera.read().aspect();
@@ -686,7 +709,8 @@ impl GameState
         let mut camera = self.camera.write();
         camera.resize(aspect);
 
-        self.world.rescale(camera.aspect());
+        let aspect = camera.aspect();
+        self.world.rescale(aspect);
     }
 }
 

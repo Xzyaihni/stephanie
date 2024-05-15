@@ -35,6 +35,8 @@ impl<'a> EnemyBuilder<'a>
 
     pub fn build(self) -> EntityInfo
     {
+        let info = self.enemies_info.get(self.id);
+
         EntityInfo{
             transform: Some(Default::default()),
             lazy_transform: Some(LazyTransformInfo{
@@ -50,6 +52,7 @@ impl<'a> EnemyBuilder<'a>
                 origin: Vector3::zeros(),
                 transform: Transform{
                     position: self.pos,
+                    scale: Vector3::repeat(info.scale),
                     rotation: fastrand::f32() * (3.141596 * 2.0),
                     ..Default::default()
                 }

@@ -4,6 +4,7 @@ use yanyaengine::{DefaultModel, ObjectInfo, game_object::*};
 
 use crate::{
     server::ConnectionsHandler,
+    client::ui_element::UiElement,
     common::{
         EntityPasser,
         Anatomy,
@@ -80,6 +81,18 @@ impl<T> ServerToClient<T> for T
     ) -> T
     {
         self
+    }
+}
+
+impl ServerToClient<UiElement> for ()
+{
+    fn server_to_client(
+        self,
+        _transform: Option<Transform>,
+        _create_info: &mut ObjectCreateInfo
+    ) -> UiElement
+    {
+        unreachable!()
     }
 }
 
@@ -168,7 +181,9 @@ no_on_set!{
     Parent,
     Transform,
     Player,
-    Physical
+    Physical,
+    UiElement,
+    UiElementServer
 }
 
 no_on_set_for!{ServerEntities, Enemy}
@@ -217,6 +232,8 @@ pub struct Player
     pub name: String
 }
 
+type UiElementServer = ();
+
 macro_rules! define_entities
 {
     ($(($name:ident,
@@ -254,7 +271,7 @@ macro_rules! define_entities
             }
         }
 
-        pub type ClientEntities = Entities<ClientRenderInfo, LazyTransform>;
+        pub type ClientEntities = Entities<ClientRenderInfo, LazyTransform, UiElement>;
         pub type ServerEntities = Entities;
 
         pub struct Entities<$($component_type=$default_type,)+>
@@ -756,6 +773,7 @@ macro_rules! define_entities
 define_entities!{
     (render, render_mut, set_render, SetRender, RenderType, RenderInfo),
     (lazy_transform, lazy_transform_mut, set_lazy_transform, SetLazyTransform, LazyTransformType, LazyTransformServer),
+    (ui_element, ui_element_mut, set_ui_element, SetUiElement, UiElementType, UiElementServer),
     (enemy, enemy_mut, set_enemy, SetEnemy, EnemyType, Enemy),
     (parent, parent_mut, set_parent, SetParent, ParentType, Parent),
     (transform, transform_mut, set_transform, SetTransform, TransformType, Transform),
