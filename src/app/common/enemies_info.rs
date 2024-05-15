@@ -16,6 +16,7 @@ struct EnemyInfoRaw
 {
     name: String,
     behavior: EnemyBehavior,
+    scale: Option<f32>,
     normal: String,
     lying: String
 }
@@ -29,6 +30,7 @@ pub struct EnemyInfo
 {
     pub name: String,
     pub behavior: EnemyBehavior,
+    pub scale: f32,
     pub normal: TextureId,
     pub lying: TextureId
 }
@@ -52,6 +54,7 @@ impl EnemyInfo
         Self{
             name: raw.name,
             behavior: raw.behavior,
+            scale: raw.scale.unwrap_or(1.0) * 0.1,
             normal: get_texture(raw.normal),
             lying: get_texture(raw.lying)
         }

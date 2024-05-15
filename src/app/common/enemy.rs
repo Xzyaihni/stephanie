@@ -2,7 +2,7 @@ use serde::{Serialize, Deserialize};
 
 use nalgebra::{Unit, Vector3};
 
-use yanyaengine::{Transform, game_object::*};
+use yanyaengine::{Transform, TextureId};
 
 use crate::common::{
     SeededRandom,
@@ -10,7 +10,8 @@ use crate::common::{
     EnemiesInfo,
     EnemyId,
     Anatomy,
-    Physical
+    Physical,
+    LazyTargettable
 };
 
 
@@ -106,51 +107,18 @@ impl<T> Stateful<T>
     }
 }
 
-pub struct ClientInfo
-{
-    sprite_state: Stateful<SpriteState>
-}
-
-impl Default for ClientInfo
-{
-    fn default() -> Self
-    {
-        Self{
-            sprite_state: SpriteState::Normal.into()
-        }
-    }
-}
-
-pub type ServerEnemy = Enemy<()>;
-pub type ClientEnemy = Enemy<ClientInfo>;
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Enemy<Info>
+pub struct Enemy
 {
     behavior: EnemyBehavior,
     behavior_state: BehaviorState,
     current_state_left: f32,
     id: EnemyId,
     rng: SeededRandom,
-    info: Info
+    sprite_state: Stateful<SpriteState>
 }
 
-impl From<ServerEnemy> for ClientEnemy
-{
-    fn from(enemy: ServerEnemy) -> Self
-    {
-        Self{
-            behavior: enemy.behavior,
-            behavior_state: enemy.behavior_state,
-            current_state_left: enemy.current_state_left,
-            id: enemy.id,
-            rng: enemy.rng,
-            info: ClientInfo::default()
-        }
-    }
-}
-
-impl ServerEnemy
+impl Enemy
 {
     pub fn new(enemies_info: &EnemiesInfo, id: EnemyId) -> Self
     {
@@ -165,14 +133,10 @@ impl ServerEnemy
             behavior,
             id,
             rng,
-            info: ()
+            sprite_state: SpriteState::Normal.into()
         }
     }
 
-}
-
-impl<Info> Enemy<Info>
-{
     pub fn next_state(&mut self)
     {
         let new_state = match &self.behavior
@@ -232,6 +196,11 @@ impl<Info> Enemy<Info>
         dt: f32
     ) -> bool
     {
+        if anatomy.speed().is_none()
+        {
+            return false;
+        }
+
         self.current_state_left -= dt;
 
         let changed_state = self.current_state_left <= 0.0;
@@ -265,30 +234,54 @@ impl<Info> Enemy<Info>
     {
         self.behavior_state = state;
     }
-}
 
-impl ClientEnemy
-{
     pub fn with_previous(&mut self, previous: Self)
     {
-        self.info = previous.info;
+        self.sprite_state.set_state(*previous.sprite_state.value());
+    }
+
+    pub fn update_sprite_common(
+        &mut self,
+        lazy_transform: &mut impl LazyTargettable,
+        enemies_info: &EnemiesInfo
+    ) -> bool
+    {
+        if !self.sprite_state.changed()
+        {
+            return false;
+        }
+
+        let info = enemies_info.get(self.id);
+        match self.sprite_state.value()
+        {
+            SpriteState::Normal =>
+            {
+                lazy_transform.target().scale = Vector3::repeat(info.scale);
+            },
+            SpriteState::Lying =>
+            {
+                lazy_transform.target().scale = Vector3::repeat(info.scale * 1.3);
+            }
+        }
+
+        true
     }
 
     pub fn update_sprite(
         &mut self,
-        create_info: &mut ObjectCreateInfo,
-        transform: Option<&Transform>,
+        lazy_transform: &mut impl LazyTargettable,
         enemies_info: &EnemiesInfo,
-        render: &mut ClientRenderInfo
-    )
+        render: &mut ClientRenderInfo,
+        set_sprite: impl FnOnce(&mut ClientRenderInfo, TextureId)
+    ) -> bool
     {
-        if !self.info.sprite_state.changed()
+        if !self.update_sprite_common(lazy_transform, enemies_info)
         {
-            return;
+            return false;
         }
 
         let info = enemies_info.get(self.id);
-        let texture = match self.info.sprite_state.value()
+        let texture = match self.sprite_state.value()
         {
             SpriteState::Normal =>
             {
@@ -304,11 +297,13 @@ impl ClientEnemy
             }
         };
 
-        render.set_sprite(create_info, transform, texture);
+        set_sprite(render, texture);
+
+        true
     }
 
     pub fn set_sprite(&mut self, state: SpriteState)
     {
-        self.info.sprite_state.set_state(state);
+        self.sprite_state.set_state(state);
     }
 }

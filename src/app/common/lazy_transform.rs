@@ -223,6 +223,8 @@ impl LazyTransform
 
         let mut current = self.current.clone();
 
+        current.scale = target_global.scale;
+
         match &self.rotation
         {
             Rotation::Instant =>

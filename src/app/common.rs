@@ -38,7 +38,7 @@ pub use entity::{
     Entities
 };
 
-pub use enemy::{EnemyBehavior, ClientEnemy, ServerEnemy, Enemy};
+pub use enemy::{EnemyBehavior, Enemy};
 pub use enemy_builder::EnemyBuilder;
 pub use enemies_info::{EnemyId, EnemiesInfo};
 

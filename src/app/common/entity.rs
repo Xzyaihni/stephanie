@@ -8,8 +8,6 @@ use crate::{
         EntityPasser,
         Anatomy,
         Enemy,
-        ClientEnemy,
-        ServerEnemy,
         EnemiesInfo,
         Physical,
         RenderInfo,
@@ -82,18 +80,6 @@ impl<T> ServerToClient<T> for T
     ) -> T
     {
         self
-    }
-}
-
-impl ServerToClient<ClientEnemy> for ServerEnemy
-{
-    fn server_to_client(
-        self,
-        _transform: Option<Transform>,
-        _create_info: &mut ObjectCreateInfo
-    ) -> ClientEnemy
-    {
-        self.into()
     }
 }
 
@@ -182,13 +168,12 @@ no_on_set!{
     Parent,
     Transform,
     Player,
-    ServerEnemy,
     Physical
 }
 
-no_on_set_for!{ServerEntities, ClientEnemy}
+no_on_set_for!{ServerEntities, Enemy}
 
-impl OnSet<ClientEntities> for ClientEnemy
+impl OnSet<ClientEntities> for Enemy
 {
     fn on_set(previous: Option<Self>, entities: &mut ClientEntities, entity: Entity)
     {
@@ -269,7 +254,7 @@ macro_rules! define_entities
             }
         }
 
-        pub type ClientEntities = Entities<ClientRenderInfo, LazyTransform, ClientEnemy>;
+        pub type ClientEntities = Entities<ClientRenderInfo, LazyTransform>;
         pub type ServerEntities = Entities;
 
         pub struct Entities<$($component_type=$default_type,)+>
@@ -327,14 +312,14 @@ macro_rules! define_entities
                 });
             }
 
-            fn update_enemy_common<EnemyInfo, F>(
+            fn update_enemy_common<F>(
                 &mut self,
                 dt: f32,
                 mut on_state_change: F
             )
             where
                 F: FnMut(Entity, &mut EnemyType, &mut LazyTransformType),
-                for<'a> &'a mut EnemyType: Into<&'a mut Enemy<EnemyInfo>>,
+                for<'a> &'a mut EnemyType: Into<&'a mut Enemy>,
                 for<'a> &'a AnatomyType: Into<&'a Anatomy>,
                 for<'a> &'a mut PhysicalType: Into<&'a mut Physical>,
                 LazyTransformType: LazyTargettable
@@ -619,10 +604,24 @@ macro_rules! define_entities
                 {
                     if let Some(enemy) = get_component!(self, components, get_mut, enemy)
                     {
-                        let transform = get_component!(self, components, get, transform);
+                        let lazy = get_required_component!(self, components, get_mut, lazy_transform);
                         let render = get_required_component!(self, components, get_mut, render);
+                        let transform = get_required_component!(self, components, get_mut, transform);
 
-                        enemy.update_sprite(create_info, transform, enemies_info, render);
+                        let updated = enemy.update_sprite(
+                            lazy,
+                            enemies_info,
+                            render,
+                            |render, texture|
+                            {
+                                render.set_sprite(create_info, Some(transform), texture);
+                            }
+                        );
+
+                        if updated
+                        {
+                            *transform = lazy.target_local.clone();
+                        }
                     }
                 });
             }
@@ -705,6 +704,22 @@ macro_rules! define_entities
                 });
             }
 
+            pub fn update_sprites(
+                &mut self,
+                enemies_info: &EnemiesInfo
+            )
+            {
+                self.components.iter().for_each(|(_, components)|
+                {
+                    if let Some(enemy) = get_component!(self, components, get_mut, enemy)
+                    {
+                        let lazy = get_required_component!(self, components, get_mut, lazy_transform);
+
+                        enemy.update_sprite_common(lazy, enemies_info);
+                    }
+                });
+            }
+
             pub fn push_message(&mut self, info: EntityInfo) -> Message
             {
                 let entity = self.push(info.clone());
@@ -741,7 +756,7 @@ macro_rules! define_entities
 define_entities!{
     (render, render_mut, set_render, SetRender, RenderType, RenderInfo),
     (lazy_transform, lazy_transform_mut, set_lazy_transform, SetLazyTransform, LazyTransformType, LazyTransformServer),
-    (enemy, enemy_mut, set_enemy, SetEnemy, EnemyType, ServerEnemy),
+    (enemy, enemy_mut, set_enemy, SetEnemy, EnemyType, Enemy),
     (parent, parent_mut, set_parent, SetParent, ParentType, Parent),
     (transform, transform_mut, set_transform, SetTransform, TransformType, Transform),
     (player, player_mut, set_player, SetPlayer, PlayerType, Player),

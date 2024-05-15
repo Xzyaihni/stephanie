@@ -5,7 +5,7 @@ use yanyaengine::Transform;
 use crate::common::{
     Anatomy,
     HumanAnatomy,
-    ServerEnemy,
+    Enemy,
     EnemyId,
     EnemiesInfo,
     PhysicalProperties,
@@ -50,7 +50,6 @@ impl<'a> EnemyBuilder<'a>
                 origin: Vector3::zeros(),
                 transform: Transform{
                     position: self.pos,
-                    scale: Vector3::repeat(0.1),
                     rotation: fastrand::f32() * (3.141596 * 2.0),
                     ..Default::default()
                 }
@@ -62,7 +61,7 @@ impl<'a> EnemyBuilder<'a>
                 floating: false
             }.into()),
             anatomy: Some(Anatomy::Human(HumanAnatomy::default())),
-            enemy: Some(ServerEnemy::new(self.enemies_info, self.id)),
+            enemy: Some(Enemy::new(self.enemies_info, self.id)),
             ..Default::default()
         }
     }
