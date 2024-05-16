@@ -96,7 +96,7 @@ impl World
 
         let world_path = Self::world_path_associated(&world_name);
         let chunk_saver = ChunkSaver::new(world_path.join("chunks"), 100);
-        let entities_saver = EntitiesSaver::new(world_path.join("entities"), 10);
+        let entities_saver = EntitiesSaver::new(world_path.join("entities"), 0);
 
         let world_generator = {
             let chunk_saver = WorldChunkSaver::new(world_path.join("world_chunks"), 100);

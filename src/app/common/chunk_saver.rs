@@ -6,7 +6,7 @@ use std::{
     time::{Instant, Duration},
     path::{Path, PathBuf},
     fs::{self, OpenOptions, File},
-    collections::{HashMap, BinaryHeap, HashSet},
+    collections::{HashMap, BinaryHeap},
     sync::{
         Arc,
         mpsc::{self, Sender, Receiver}
@@ -542,7 +542,7 @@ impl FileSave for FileSaver<SaveValueGroup, LoadValueGroup>
 }
 
 pub type ChunkSaver = Saver<FileSaver<Chunk>, Chunk>;
-pub type EntitiesSaver = DestructiveSaver<FileSaver<Vec<EntityInfo>>, Vec<EntityInfo>>;
+pub type EntitiesSaver = Saver<FileSaver<Vec<EntityInfo>>, Vec<EntityInfo>>;
 pub type WorldChunkSaver = Saver<FileSaver<SaveValueGroup, LoadValueGroup>, SaveValueGroup, LoadValueGroup>;
 
 // again, shouldnt be public
@@ -579,7 +579,7 @@ where
 
     fn free_cache(&mut self, amount: usize)
     {
-        let until_len = self.cache_amount - amount;
+        let until_len = self.cache_amount.saturating_sub(amount);
 
         while self.cache.len() > until_len
         {
@@ -628,36 +628,11 @@ impl SaveLoad<WorldChunk> for WorldChunkSaver
     }
 }
 
-#[derive(Debug)]
-pub struct DestructiveSaver<S, SaveT: Saveable, LoadT=SaveT>
-where
-    S: FileSave<SaveItem=SaveT, LoadItem=LoadT>
-{
-    saver: Saver<S, SaveT, LoadT>,
-    loaded: HashSet<GlobalPos>
-}
-
-impl<S, SaveT: Saveable, LoadT> DestructiveSaver<S, SaveT, LoadT>
-where
-    S: FileSave<SaveItem=SaveT, LoadItem=LoadT>
-{
-    pub fn new(parent_path: impl Into<PathBuf>, cache_amount: usize) -> Self
-    {
-        let parent_path = parent_path.into();
-
-        let saver = Saver::new(parent_path, cache_amount);
-
-        Self{saver, loaded: HashSet::new()}
-    }
-}
-
 impl SaveLoad<Vec<EntityInfo>> for EntitiesSaver
 {
     fn load(&mut self, pos: GlobalPos) -> Option<Vec<EntityInfo>>
     {
-        self.loaded.insert(pos);
-
-        if let Some(found) = self.saver.cache.iter().find(|pair|
+        if let Some(found) = self.cache.iter().find(|pair|
         {
             *pair.pos() == pos
         })
@@ -665,20 +640,11 @@ impl SaveLoad<Vec<EntityInfo>> for EntitiesSaver
             return Some(found.value().clone());
         }
 
-        self.saver.file_saver.lock().load(pos)
+        self.file_saver.lock().load(pos)
     }
 
     fn save(&mut self, pos: GlobalPos, mut entities: Vec<EntityInfo>)
     {
-        if self.loaded.remove(&pos)
-        {
-            let pair = ValuePair::new(pos, entities);
-
-            self.saver.inner_save(pair);
-
-            return;
-        }
-
         let entities = if let Some(mut contained) = self.load(pos)
         {
             contained.append(&mut entities);
@@ -691,7 +657,7 @@ impl SaveLoad<Vec<EntityInfo>> for EntitiesSaver
 
         let pair = ValuePair::new(pos, entities);
 
-        self.saver.inner_save(pair);
+        self.inner_save(pair);
     }
 }
 
