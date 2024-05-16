@@ -1,6 +1,6 @@
 use serde::{Serialize, Deserialize};
 
-use yanyaengine::{DefaultModel, ObjectInfo, game_object::*};
+use yanyaengine::game_object::*;
 
 use crate::{
     server::ConnectionsHandler,
@@ -81,55 +81,6 @@ impl<T> ServerToClient<T> for T
     ) -> T
     {
         self
-    }
-}
-
-impl ServerToClient<UiElement> for ()
-{
-    fn server_to_client(
-        self,
-        _transform: Option<Transform>,
-        _create_info: &mut ObjectCreateInfo
-    ) -> UiElement
-    {
-        unreachable!()
-    }
-}
-
-impl ServerToClient<LazyTransform> for LazyTransformServer
-{
-    fn server_to_client(
-        self,
-        transform: Option<Transform>,
-        _create_info: &mut ObjectCreateInfo
-    ) -> LazyTransform
-    {
-        LazyTransform::from_server(transform.expect("lazy must have a transform"), self)
-    }
-}
-
-impl ServerToClient<ClientRenderInfo> for RenderInfo
-{
-    fn server_to_client(
-        self,
-        transform: Option<Transform>,
-        create_info: &mut ObjectCreateInfo
-    ) -> ClientRenderInfo
-    {
-        let object = self.texture.map(|texture|
-        {
-            let assets = create_info.partial.assets.lock();
-
-            let info = ObjectInfo{
-                model: assets.model(assets.default_model(DefaultModel::Square)).clone(),
-                texture: assets.texture_by_name(&texture).clone(),
-                transform: transform.expect("renderable must have a transform")
-            };
-
-            create_info.partial.object_factory.create(info)
-        });
-
-        ClientRenderInfo{object, z_level: self.z_level}
     }
 }
 
@@ -281,7 +232,7 @@ macro_rules! define_entities
             $(pub $name: Option<$component_type>,)+
         }
 
-        impl Default for EntityInfo
+        impl<$($component_type,)+> Default for EntityInfo<$($component_type,)+>
         {
             fn default() -> Self
             {
@@ -291,6 +242,7 @@ macro_rules! define_entities
             }
         }
 
+        pub type ClientEntityInfo = EntityInfo<ClientRenderInfo, LazyTransform, UiElement>;
         pub type ClientEntities = Entities<ClientRenderInfo, LazyTransform, UiElement>;
         pub type ServerEntities = Entities;
 

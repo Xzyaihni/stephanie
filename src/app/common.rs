@@ -30,11 +30,13 @@ pub use lazy_transform::{
 };
 
 pub use entity::{
+    ServerToClient,
     Component,
     Player,
     Parent,
     Entity,
     EntityInfo,
+    ClientEntityInfo,
     Entities
 };
 

@@ -218,9 +218,7 @@ impl GameServer
                         momentum: 0.5
                     }.into()
                 ),
-                deformation: Deformation::Rigid,
                 origin_rotation: -f32::consts::FRAC_PI_2,
-                origin: Vector3::zeros(),
                 transform: Transform{
                     scale: Vector3::new(
                         item_size,
@@ -230,7 +228,8 @@ impl GameServer
                     rotation: f32::consts::FRAC_PI_2,
                     position: Vector3::new(transform.scale.x, 0.0, 0.0),
                     ..Default::default()
-                }
+                },
+                ..Default::default()
             }.into()),
             ..Default::default()
         };
@@ -268,13 +267,12 @@ impl GameServer
                             strength: 0.5
                         }
                     ),
-                    origin_rotation: 0.0,
-                    origin: Vector3::zeros(),
                     transform: Transform{
                         scale: Vector3::repeat(0.4),
                         position: position.component_mul(&transform.scale),
                         ..Default::default()
-                    }
+                    },
+                    ..Default::default()
                 }.into()),
                 parent: Some(Parent::new(inserted)),
                 render: Some(RenderInfo{texture: Some("player/pon.png".to_owned()), z_level: 2}),

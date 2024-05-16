@@ -24,13 +24,17 @@ use crate::common::{
     TileMap,
     Damage,
     Entity,
+    EntityInfo,
     Entities,
     EnemiesInfo,
     Damageable,
+    RenderInfo,
+    ServerToClient,
     EntityPasser,
     EntitiesController,
     entity::ClientEntities,
     message::Message,
+    lazy_transform::*,
     world::{
         World,
         Pos3,
@@ -44,6 +48,7 @@ use super::{
     MessagePasser,
     ConnectionsHandler,
     TilesFactory,
+    ui_element::*,
     world_receiver::WorldReceiver
 };
 
@@ -66,6 +71,7 @@ struct RaycastResult
 
 pub struct ClientEntitiesContainer
 {
+    local_entities: ClientEntities,
     entities: ClientEntities,
     main_player: Option<Entity>,
     player_children: Vec<Entity>
@@ -76,6 +82,7 @@ impl ClientEntitiesContainer
     pub fn new() -> Self
     {
         Self{
+            local_entities: Entities::new(),
             entities: Entities::new(),
             main_player: None,
             player_children: Vec::new()
@@ -94,14 +101,22 @@ impl ClientEntitiesContainer
     fn update_objects(&mut self, enemies_info: &EnemiesInfo, info: &mut UpdateBuffersInfo)
     {
         self.entities.update_sprites(&mut info.object_info, enemies_info);
+        self.local_entities.update_sprites(&mut info.object_info, enemies_info);
+
         self.update_buffers(info);
     }
 
     pub fn update(&mut self, dt: f32)
     {
-        self.entities.update_physical(dt);
-        self.entities.update_lazy(dt);
-        self.entities.update_enemy(dt);
+        Self::update_entities(&mut self.entities, dt);
+        Self::update_entities(&mut self.local_entities, dt);
+    }
+
+    fn update_entities(entities: &mut ClientEntities, dt: f32)
+    {
+        entities.update_physical(dt);
+        entities.update_lazy(dt);
+        entities.update_enemy(dt);
     }
 
     pub fn player_exists(&self, entity: Entity) -> bool
@@ -231,7 +246,12 @@ impl GameObject for ClientEntitiesContainer
     fn update_buffers(&mut self, info: &mut UpdateBuffersInfo)
     {
         self.entities.update_render();
-        self.entities.render.iter_mut().for_each(|(_, entity)|
+        self.local_entities.update_render();
+
+        let renders = self.entities.render.iter_mut()
+            .chain(self.local_entities.render.iter_mut());
+
+        renders.for_each(|(_, entity)|
         {
             if let Some(object) = entity.get_mut().object.as_mut()
             {
@@ -242,7 +262,10 @@ impl GameObject for ClientEntitiesContainer
 
     fn draw(&self, info: &mut DrawInfo)
     {
-        let mut queue: Vec<_> = self.entities.render.iter().map(|(_, x)| x).collect();
+        let renders = self.entities.render.iter()
+            .chain(self.local_entities.render.iter());
+
+        let mut queue: Vec<_> = renders.map(|(_, x)| x).collect();
 
         queue.sort_unstable_by_key(|render| render.get().z_level);
 
@@ -326,9 +349,8 @@ impl RaycastHits
 pub struct GameStateInfo<'a>
 {
     pub camera: Arc<RwLock<Camera>>,
-    pub assets: Arc<Mutex<Assets>>,
+    pub object_info: ObjectCreateInfo<'a>,
     pub enemies_info: Arc<EnemiesInfo>,
-    pub object_factory: Arc<ObjectFactory>,
     pub tiles_factory: TilesFactory,
     pub message_passer: MessagePasser,
     pub client_info: &'a ClientInfo
@@ -354,16 +376,16 @@ pub struct GameState
 
 impl GameState
 {
-    pub fn new(info: GameStateInfo) -> Self
+    pub fn new(mut info: GameStateInfo) -> Self
     {
         let mouse_position = MousePosition::new(0.0, 0.0);
 
         let notifications = Notifications::new();
-        let mut entities = ClientEntitiesContainer::new();
         let controls = ControlsController::new();
 
         let handler = ConnectionsHandler::new(info.message_passer);
         let connections_handler = Arc::new(RwLock::new(handler));
+        let mut entities = ClientEntitiesContainer::new();
 
         let tilemap = info.tiles_factory.tilemap().clone();
 
@@ -374,12 +396,6 @@ impl GameState
             info.camera.read().aspect(),
             Pos3::new(0.0, 0.0, 0.0)
         );
-
-        {
-            let (x, y) = info.camera.read().aspect();
-
-            Self::create_ui(&mut entities.entities, x / y);
-        }
 
         let (player_id, player_children) = Self::connect_to_server(
             connections_handler.clone(),
@@ -403,11 +419,17 @@ impl GameState
             }
         }, || ());
 
+        {
+            let (x, y) = info.camera.read().aspect();
+
+            Self::create_ui(&mut info.object_info, &mut entities.local_entities, x / y);
+        }
+
         Self{
             mouse_position,
             camera: info.camera,
-            assets: info.assets,
-            object_factory: info.object_factory,
+            assets: info.object_info.partial.assets,
+            object_factory: info.object_info.partial.object_factory,
             notifications,
             entities,
             enemies_info: info.enemies_info,
@@ -421,14 +443,31 @@ impl GameState
         }
     }
 
-    fn create_ui(entities: &mut ClientEntities, aspect: f32)
+    fn create_ui(
+        object_info: &mut ObjectCreateInfo,
+        entities: &mut ClientEntities,
+        aspect: f32
+    )
     {
-        /*entities.push(UiElementPrimitive{
-            kind: UiElementType::Panel,
-            pos: Vector2::new(0.1, 0.25),
-            size: KeepAspect::new(StretchMode::Min, Vector2::new(0.8, 0.5)).into(),
-            texture: Some(assets.texture_id("ui/background.png"))
-        });*/
+        return;
+        let transform: Transform = Default::default();
+
+        entities.push(EntityInfo{
+            transform: Some(Default::default()),
+            lazy_transform: Some(LazyTransformInfo{
+                transform: transform.clone(),
+                ..Default::default()
+            }.into()),
+            ui_element: Some(UiElement{
+                kind: UiElementType::Panel
+            }),
+            render: Some(RenderInfo{
+                texture: Some("ui/background.png".to_owned()),
+                z_level: 100
+            }.server_to_client(Some(transform), object_info)),
+            parent: None,
+            ..Default::default()
+        });
     }
 
     pub fn raycast(

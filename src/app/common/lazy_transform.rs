@@ -4,11 +4,12 @@ use serde::{Serialize, Deserialize};
 
 use nalgebra::{Vector2, Vector3, Rotation as NRotation};
 
-use yanyaengine::Transform;
+use yanyaengine::{Transform, game_object::*};
 
 use crate::common::{
     lerp,
-    Physical
+    Physical,
+    ServerToClient
 };
 
 
@@ -138,6 +139,21 @@ pub struct LazyTransformInfo
     pub transform: Transform
 }
 
+impl Default for LazyTransformInfo
+{
+    fn default() -> Self
+    {
+        Self{
+            connection: Connection::Rigid,
+            rotation: Rotation::Instant,
+            deformation: Deformation::Rigid,
+            origin_rotation: 0.0,
+            origin: Vector3::zeros(),
+            transform: Transform::default()
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LazyTransformServer
 {
@@ -169,6 +185,18 @@ impl LazyTargettable for LazyTransformServer
     fn target(&mut self) -> &mut Transform
     {
         &mut self.target_local
+    }
+}
+
+impl ServerToClient<LazyTransform> for LazyTransformServer
+{
+    fn server_to_client(
+        self,
+        transform: Option<Transform>,
+        _create_info: &mut ObjectCreateInfo
+    ) -> LazyTransform
+    {
+        LazyTransform::from_server(transform.expect("lazy must have a transform"), self)
     }
 }
 

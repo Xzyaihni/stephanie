@@ -133,9 +133,8 @@ impl Client
 
         let info = GameStateInfo{
             camera,
-            assets: info.object_info.partial.assets,
+            object_info: info.object_info,
             enemies_info: client_init_info.enemies_info,
-            object_factory: info.object_info.partial.object_factory,
             tiles_factory,
             message_passer,
             client_info: &client_init_info.client_info

@@ -40,22 +40,19 @@ impl<'a> EnemyBuilder<'a>
         EntityInfo{
             transform: Some(Default::default()),
             lazy_transform: Some(LazyTransformInfo{
-                connection: Connection::Rigid,
-                deformation: Deformation::Rigid,
                 rotation: Rotation::EaseOut(
                     EaseOutRotation{
                         resistance: 0.01,
                         momentum: 0.0
                     }.into()
                 ),
-                origin_rotation: 0.0,
-                origin: Vector3::zeros(),
                 transform: Transform{
                     position: self.pos,
                     scale: Vector3::repeat(info.scale),
                     rotation: fastrand::f32() * (3.141596 * 2.0),
                     ..Default::default()
-                }
+                },
+                ..Default::default()
             }.into()),
             render: Some(RenderInfo{texture: None, z_level: -1}),
             physical: Some(PhysicalProperties{
