@@ -1,5 +1,7 @@
 use serde::{Serialize, Deserialize};
 
+use nalgebra::Vector2;
+
 use yanyaengine::game_object::*;
 
 use crate::{
@@ -60,6 +62,22 @@ macro_rules! get_required_entity
     ($this:expr, $entity:expr, $access_type:ident, $component:ident) =>
     {
         get_required_component!($this, $this.components[$entity.0], $access_type, $component)
+    }
+}
+
+macro_rules! transform_target
+{
+    ($this:expr, $entity:expr) =>
+    {
+        if let Some(lazy) = get_entity!($this, $entity, get_mut, lazy_transform)
+        {
+            lazy.target()
+        } else
+        {
+            let transform = get_required_entity!($this, $entity, get_mut, transform);
+
+            transform.into()
+        }
     }
 }
 
@@ -278,8 +296,8 @@ macro_rules! define_entities
             // i hate rust generics
             pub fn update_physical(&mut self, dt: f32)
             where
-                for<'a> &'a mut TransformType: Into<&'a mut Transform>,
                 for<'a> &'a mut PhysicalType: Into<&'a mut Physical>,
+                for<'a> &'a mut TransformType: Into<&'a mut Transform>,
                 LazyTransformType: LazyTargettable
             {
                 self.physical.iter_mut().for_each(|(_, ComponentWrapper{
@@ -287,15 +305,7 @@ macro_rules! define_entities
                     component: physical
                 })|
                 {
-                    let target = if let Some(lazy) = get_entity!(self, entity, get_mut, lazy_transform)
-                    {
-                        lazy.target()
-                    } else
-                    {
-                        let transform = get_required_entity!(self, entity, get_mut, transform);
-
-                        transform.into()
-                    };
+                    let target = transform_target!(self, *entity);
 
                     physical.into().physics_update(target, dt);
                 });
@@ -597,6 +607,16 @@ macro_rules! define_entities
             pub fn update_enemy(&mut self, dt: f32 )
             {
                 self.update_enemy_common(dt, |_, _, _| {});
+            }
+
+            pub fn update_ui(&mut self, _size: Vector2<f32>)
+            {
+                /*self.ui_element.iter().for_each(|(_, ComponentWrapper{
+                    entity,
+                    component: ui_element
+                })|
+                {
+                });*/
             }
 
             pub fn update_sprites(

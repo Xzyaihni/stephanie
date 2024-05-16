@@ -27,6 +27,7 @@ use crate::common::{
     EntityInfo,
     Entities,
     EnemiesInfo,
+    Parent,
     Damageable,
     RenderInfo,
     ServerToClient,
@@ -106,9 +107,34 @@ impl ClientEntitiesContainer
         self.update_buffers(info);
     }
 
-    pub fn update(&mut self, dt: f32)
+    pub fn update(
+        &mut self,
+        camera_size: Vector2<f32>,
+        ui: Entity,
+        dt: f32
+    )
     {
+        let player_exists = self.player_exists();
+
+        let ui_transform = self.local_entities.transform_mut(ui)
+            .unwrap();
+
+        let ui_scale = &mut ui_transform.scale;
+
+        ui_scale.x = camera_size.x;
+        ui_scale.y = camera_size.y;
+
+        if player_exists
+        {
+            let player_transform = self.entities.transform(self.main_player.unwrap())
+                .unwrap();
+
+            ui_transform.position = player_transform.position;
+        }
+
         Self::update_entities(&mut self.entities, dt);
+
+        self.local_entities.update_ui(camera_size);
         Self::update_entities(&mut self.local_entities, dt);
     }
 
@@ -119,9 +145,15 @@ impl ClientEntitiesContainer
         entities.update_enemy(dt);
     }
 
-    pub fn player_exists(&self, entity: Entity) -> bool
+    pub fn player_exists(&self) -> bool
     {
-        self.entities.exists(entity)
+        if let Some(player) = self.main_player
+        {
+            self.entities.exists(player)
+        } else
+        {
+            false
+        }
     }
 
     fn raycast_entity(
@@ -370,6 +402,7 @@ pub struct GameState
     pub tilemap: Arc<TileMap>,
     enemies_info: Arc<EnemiesInfo>,
     world: World,
+    ui: Entity,
     connections_handler: Arc<RwLock<ConnectionsHandler>>,
     receiver: Receiver<Message>
 }
@@ -419,10 +452,20 @@ impl GameState
             }
         }, || ());
 
+        let ui = entities.local_entities.push(EntityInfo{
+            transform: Some(Default::default()),
+            ..Default::default()
+        });
+
         {
             let (x, y) = info.camera.read().aspect();
 
-            Self::create_ui(&mut info.object_info, &mut entities.local_entities, x / y);
+            Self::create_ui(
+                &mut info.object_info,
+                &mut entities.local_entities,
+                ui,
+                x / y
+            );
         }
 
         Self{
@@ -438,6 +481,7 @@ impl GameState
             debug_mode: info.client_info.debug_mode,
             tilemap,
             world,
+            ui,
             connections_handler,
             receiver
         }
@@ -446,16 +490,18 @@ impl GameState
     fn create_ui(
         object_info: &mut ObjectCreateInfo,
         entities: &mut ClientEntities,
-        aspect: f32
+        ui: Entity,
+        _aspect: f32
     )
     {
         return;
-        let transform: Transform = Default::default();
-
         entities.push(EntityInfo{
             transform: Some(Default::default()),
             lazy_transform: Some(LazyTransformInfo{
-                transform: transform.clone(),
+                transform: Transform{
+                    scale: Vector3::new(0.4, 0.4, 1.0),
+                    ..Default::default()
+                },
                 ..Default::default()
             }.into()),
             ui_element: Some(UiElement{
@@ -464,8 +510,8 @@ impl GameState
             render: Some(RenderInfo{
                 texture: Some("ui/background.png".to_owned()),
                 z_level: 100
-            }.server_to_client(Some(transform), object_info)),
-            parent: None,
+            }.server_to_client(Some(Default::default()), object_info)),
+            parent: Some(Parent::new(ui)),
             ..Default::default()
         });
     }
@@ -606,13 +652,6 @@ impl GameState
         }
     }
 
-    fn aspect(&self) -> f32
-    {
-        let (x, y) = self.camera.read().aspect();
-
-        x / y
-    }
-
     fn resize_camera(&mut self, factor: f32)
     {
         let camera_scale = self.camera.read().aspect();
@@ -703,7 +742,10 @@ impl GameState
 
         self.world.update(dt);
 
-        self.entities.update(dt);
+        let (x, y) = self.camera.read().aspect();
+        let camera_size = Vector2::new(x, y);
+
+        self.entities.update(camera_size, self.ui, dt);
 
         self.controls.release_clicked();
     }

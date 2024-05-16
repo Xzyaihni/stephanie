@@ -136,6 +136,7 @@ pub struct LazyTransformInfo
     pub deformation: Deformation,
     pub origin_rotation: f32,
     pub origin: Vector3<f32>,
+    pub inherit_scale: bool,
     pub transform: Transform
 }
 
@@ -149,6 +150,7 @@ impl Default for LazyTransformInfo
             deformation: Deformation::Rigid,
             origin_rotation: 0.0,
             origin: Vector3::zeros(),
+            inherit_scale: true,
             transform: Transform::default()
         }
     }
@@ -189,6 +191,7 @@ pub struct LazyTransformCommon<Info>
     pub target_local: Transform,
     origin_rotation: f32,
     origin: Vector3<f32>,
+    inherit_scale: bool,
     connection: Connection,
     rotation: Rotation,
     deformation: Deformation,
@@ -203,6 +206,7 @@ impl From<LazyTransformInfo> for LazyTransformServer
             target_local: info.transform,
             origin_rotation: info.origin_rotation,
             origin: info.origin,
+            inherit_scale: info.inherit_scale,
             connection: info.connection,
             rotation: info.rotation,
             deformation: info.deformation,
@@ -219,6 +223,7 @@ impl From<LazyTransformInfo> for LazyTransform
             target_local: info.transform.clone(),
             origin_rotation: info.origin_rotation,
             origin: info.origin,
+            inherit_scale: info.inherit_scale,
             connection: info.connection,
             rotation: info.rotation,
             deformation: info.deformation,
@@ -404,6 +409,7 @@ impl LazyTransform
             target_local: info.target_local,
             origin_rotation: info.origin_rotation,
             origin: info.origin,
+            inherit_scale: info.inherit_scale,
             connection: info.connection,
             rotation: info.rotation,
             deformation: info.deformation,
@@ -420,7 +426,11 @@ impl<T> LazyTransformCommon<T>
 
         transform.position += parent.position;
         transform.rotation += parent.rotation;
-        transform.scale.component_mul_assign(&parent.scale);
+
+        if self.inherit_scale
+        {
+            transform.scale.component_mul_assign(&parent.scale);
+        }
 
         transform
     }

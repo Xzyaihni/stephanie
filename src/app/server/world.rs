@@ -285,7 +285,7 @@ impl World
             }).count();
 
             // only 1 overmap contains chunk
-            if containing_amount == 1
+            if containing_amount <= 1
             {
                 if let Some(entities) = self.entities_saver.load(pos)
                 {

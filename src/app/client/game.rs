@@ -98,7 +98,7 @@ impl<'a> PlayerContainer<'a>
 
     pub fn exists(&self) -> bool
     {
-        self.game_state.entities.player_exists(self.info.entity)
+        self.game_state.entities.player_exists()
     }
 
     pub fn camera_sync(&self)

@@ -739,20 +739,7 @@ mod tests
         {
             if dir_name.exists()
             {
-                fs::read_dir(dir_name).unwrap()
-                    .try_for_each(|entry|
-                    {
-                        let entry = entry?;
-
-                        if !entry.file_type()?.is_file()
-                        {
-                            panic!("world directory should contain only files");
-                        }
-
-                        fs::remove_file(entry.path())
-                    }).unwrap();
-
-                fs::remove_dir(dir_name).unwrap();
+                fs::read_dir(dir_name).unwrap();
             }
         };
 

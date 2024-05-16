@@ -61,9 +61,15 @@ pub enum SpriteState
     Lying
 }
 
+fn true_fn() -> bool
+{
+    true
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct Stateful<T>
 {
+    #[serde(skip, default="true_fn")]
     changed: bool,
     value: T
 }
