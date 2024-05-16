@@ -106,6 +106,8 @@ impl StretchDeformation
 pub enum Connection
 {
     Rigid,
+    Constant{speed: f32},
+    EaseOut{resistance: f32, limit: f32},
     Spring(SpringConnection)
 }
 
@@ -343,13 +345,13 @@ impl LazyTransform
             }
         }
 
+        let rotation = NRotation::from_axis_angle(
+            &current.rotation_axis,
+            current.rotation + self.origin_rotation
+        );
+
         if let Some(parent) = parent_transform
         {
-            let rotation = NRotation::from_axis_angle(
-                &current.rotation_axis,
-                current.rotation + self.origin_rotation
-            );
-
             let origin = self.origin.component_mul(&parent.scale);
             let offset_position = self.target_local.position - origin;
 
@@ -361,6 +363,30 @@ impl LazyTransform
             Connection::Rigid =>
             {
                 current.position = target_global.position;
+            },
+            Connection::Constant{speed} =>
+            {
+                let max_move = Vector3::repeat(*speed * dt);
+
+                let current_difference = target_global.position - current.position;
+
+                let move_amount = current_difference.zip_map(&max_move, |diff, limit|
+                {
+                    diff.clamp(-limit, limit)
+                });
+
+                current.position += move_amount;
+            },
+            Connection::EaseOut{resistance, limit} =>
+            {
+                let amount = 1.0 - resistance.powf(dt);
+
+                let new_position = current.position.lerp(&target_global.position, amount);
+                current.position = Self::clamp_distance(
+                    target_global.position,
+                    new_position,
+                    *limit
+                );
             },
             Connection::Spring(connection) =>
             {
@@ -387,9 +413,10 @@ impl LazyTransform
             Deformation::Rigid => (),
             Deformation::Stretch(deformation) =>
             {
-                let velocity = self.physical().map(|x| x.velocity).unwrap_or_else(Vector3::zeros);
+                let velocity = self.physical().map(|x| x.velocity)
+                    .unwrap_or_else(Vector3::zeros);
 
-                current.stretch = deformation.stretch(velocity);
+                current.stretch = deformation.stretch(rotation * velocity);
             }
         }
 

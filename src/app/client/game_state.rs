@@ -498,6 +498,7 @@ impl GameState
         entities.push(EntityInfo{
             transform: Some(Default::default()),
             lazy_transform: Some(LazyTransformInfo{
+                connection: Connection::EaseOut{resistance: 0.5, limit: 1.0},
                 transform: Transform{
                     scale: Vector3::new(0.4, 0.4, 1.0),
                     ..Default::default()
