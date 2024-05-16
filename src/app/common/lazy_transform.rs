@@ -154,33 +154,16 @@ impl Default for LazyTransformInfo
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct LazyTransformServer
+#[derive(Debug, Clone)]
+pub struct ClientInfo
 {
-    pub target_local: Transform,
-    origin_rotation: f32,
-    origin: Vector3<f32>,
-    connection: Connection,
-    rotation: Rotation,
-    deformation: Deformation
+    current: Transform
 }
 
-impl From<LazyTransformInfo> for LazyTransformServer
-{
-    fn from(info: LazyTransformInfo) -> Self
-    {
-        Self{
-            target_local: info.transform,
-            origin_rotation: info.origin_rotation,
-            origin: info.origin,
-            connection: info.connection,
-            rotation: info.rotation,
-            deformation: info.deformation
-        }
-    }
-}
+pub type LazyTransform = LazyTransformCommon<ClientInfo>;
+pub type LazyTransformServer = LazyTransformCommon<()>;
 
-impl LazyTargettable for LazyTransformServer
+impl<T> LazyTargettable for LazyTransformCommon<T>
 {
     fn target(&mut self) -> &mut Transform
     {
@@ -200,16 +183,32 @@ impl ServerToClient<LazyTransform> for LazyTransformServer
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct LazyTransform
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LazyTransformCommon<Info>
 {
     pub target_local: Transform,
-    current: Transform,
     origin_rotation: f32,
     origin: Vector3<f32>,
     connection: Connection,
     rotation: Rotation,
-    deformation: Deformation
+    deformation: Deformation,
+    info: Info
+}
+
+impl From<LazyTransformInfo> for LazyTransformServer
+{
+    fn from(info: LazyTransformInfo) -> Self
+    {
+        Self{
+            target_local: info.transform,
+            origin_rotation: info.origin_rotation,
+            origin: info.origin,
+            connection: info.connection,
+            rotation: info.rotation,
+            deformation: info.deformation,
+            info: ()
+        }
+    }
 }
 
 impl From<LazyTransformInfo> for LazyTransform
@@ -218,21 +217,13 @@ impl From<LazyTransformInfo> for LazyTransform
     {
         Self{
             target_local: info.transform.clone(),
-            current: info.transform,
             origin_rotation: info.origin_rotation,
             origin: info.origin,
             connection: info.connection,
             rotation: info.rotation,
-            deformation: info.deformation
+            deformation: info.deformation,
+            info: ClientInfo{current: info.transform}
         }
-    }
-}
-
-impl LazyTargettable for LazyTransform
-{
-    fn target(&mut self) -> &mut Transform
-    {
-        &mut self.target_local
     }
 }
 
@@ -244,12 +235,9 @@ impl LazyTransform
         dt: f32
     ) -> Transform
     {
-        let target_global = Self::target_global(
-            self.target_local.clone(),
-            parent_transform.as_ref()
-        );
+        let mut target_global = self.target_global(parent_transform.as_ref());
 
-        let mut current = self.current.clone();
+        let mut current = self.info.current.clone();
 
         current.scale = target_global.scale;
 
@@ -350,6 +338,19 @@ impl LazyTransform
             }
         }
 
+        if let Some(parent) = parent_transform
+        {
+            let rotation = NRotation::from_axis_angle(
+                &current.rotation_axis,
+                current.rotation + self.origin_rotation
+            );
+
+            let origin = self.origin.component_mul(&parent.scale);
+            let offset_position = self.target_local.position - origin;
+
+            target_global.position = rotation * offset_position + parent.position + origin;
+        }
+
         match &mut self.connection
         {
             Connection::Rigid =>
@@ -387,32 +388,36 @@ impl LazyTransform
             }
         }
 
-        self.current = current.clone();
-
-        if let Some(parent) = parent_transform
-        {
-            let rotation = NRotation::from_axis_angle(
-                &current.rotation_axis,
-                current.rotation + self.origin_rotation
-            );
-
-            let relative_position = current.position - parent.position;
-
-            let origin = self.origin.component_mul(&target_global.scale);
-            let offset_position = relative_position - origin;
-            current.position = rotation * offset_position + parent.position;
-        }
+        self.info.current = current.clone();
 
         current
     }
 
-    pub fn combine(&self, parent: &Transform) -> Transform
+    pub fn reset_current(&mut self, target: Transform)
     {
-        Self::combine_parent(self.target_local.clone(), parent)
+        self.info.current = target;
     }
 
-    pub fn combine_parent(mut transform: Transform, parent: &Transform) -> Transform
+    pub fn from_server(transform: Transform, info: LazyTransformServer) -> Self
     {
+        Self{
+            target_local: info.target_local,
+            origin_rotation: info.origin_rotation,
+            origin: info.origin,
+            connection: info.connection,
+            rotation: info.rotation,
+            deformation: info.deformation,
+            info: ClientInfo{current: transform}
+        }
+    }
+}
+
+impl<T> LazyTransformCommon<T>
+{
+    pub fn combine(&self, parent: &Transform) -> Transform
+    {
+        let mut transform = self.target_local.clone();
+
         transform.position += parent.position;
         transform.rotation += parent.rotation;
         transform.scale.component_mul_assign(&parent.scale);
@@ -420,32 +425,17 @@ impl LazyTransform
         transform
     }
 
-    pub fn target_global(transform: Transform, parent: Option<&Transform>) -> Transform
+    pub fn target_global(
+        &self,
+        parent: Option<&Transform>
+    ) -> Transform
     {
         if let Some(parent) = parent
         {
-            Self::combine_parent(transform, parent)
+            self.combine(parent)
         } else
         {
-            transform
-        }
-    }
-
-    pub fn reset_current(&mut self, target: Transform)
-    {
-        self.current = target;
-    }
-
-    pub fn from_server(transform: Transform, info: LazyTransformServer) -> Self
-    {
-        Self{
-            target_local: info.target_local,
-            current: transform,
-            origin_rotation: info.origin_rotation,
-            origin: info.origin,
-            connection: info.connection,
-            rotation: info.rotation,
-            deformation: info.deformation
+            self.target_local.clone()
         }
     }
 

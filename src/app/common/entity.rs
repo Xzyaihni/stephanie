@@ -700,10 +700,7 @@ macro_rules! define_entities
 
                     let transform = get_required_entity!(self, entity, get_mut, transform);
 
-                    *transform = LazyTransform::target_global(
-                        lazy.target_local.clone(),
-                        target_global.as_ref()
-                    );
+                    *transform = lazy.target_global(target_global.as_ref());
                 });
             }
 
