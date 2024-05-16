@@ -381,12 +381,17 @@ impl LazyTransform
             {
                 let amount = 1.0 - resistance.powf(dt);
 
-                let new_position = current.position.lerp(&target_global.position, amount);
+                current.position = Self::clamp_distance(
+                    target_global.position,
+                    current.position,
+                    *limit
+                );
+                /*let new_position = current.position.lerp(&target_global.position, amount);
                 current.position = Self::clamp_distance(
                     target_global.position,
                     new_position,
                     *limit
-                );
+                );*/
             },
             Connection::Spring(connection) =>
             {
@@ -423,6 +428,23 @@ impl LazyTransform
         self.info.current = current.clone();
 
         current
+    }
+
+    pub fn set_connection_limit(&mut self, new_limit: f32)
+    {
+        match &mut self.connection
+        {
+            Connection::Rigid{..} => (),
+            Connection::Constant{..} => (),
+            Connection::EaseOut{limit, ..} =>
+            {
+                *limit = new_limit;
+            },
+            Connection::Spring(connection) =>
+            {
+                connection.limit = new_limit;
+            }
+        }
     }
 
     pub fn reset_current(&mut self, target: Transform)

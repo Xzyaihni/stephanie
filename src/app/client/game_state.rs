@@ -1,5 +1,5 @@
 use std::{
-    process,
+    ops::ControlFlow,
     sync::{
         Arc,
         mpsc::{self, TryRecvError, Receiver}
@@ -116,10 +116,15 @@ impl ClientEntitiesContainer
     {
         let player_exists = self.player_exists();
 
-        let ui_transform = self.local_entities.transform_mut(ui)
+        let ui_transform = self.local_entities.lazy_transform_mut(ui)
             .unwrap();
 
-        let ui_scale = &mut ui_transform.scale;
+        let min_size = camera_size.x.min(camera_size.y);
+        ui_transform.set_connection_limit(min_size * 0.3);
+
+        let ui_target = ui_transform.target();
+
+        let ui_scale = &mut ui_target.scale;
 
         ui_scale.x = camera_size.x;
         ui_scale.y = camera_size.y;
@@ -129,7 +134,7 @@ impl ClientEntitiesContainer
             let player_transform = self.entities.transform(self.main_player.unwrap())
                 .unwrap();
 
-            ui_transform.position = player_transform.position;
+            ui_target.position = player_transform.position;
         }
 
         Self::update_entities(&mut self.entities, dt);
@@ -448,12 +453,19 @@ impl GameState
         {
             if let Err(_) = sender.send(message)
             {
-                process::exit(0);
+                ControlFlow::Break(())
+            } else
+            {
+                ControlFlow::Continue(())
             }
         }, || ());
 
         let ui = entities.local_entities.push(EntityInfo{
             transform: Some(Default::default()),
+            lazy_transform: Some(LazyTransformInfo{
+                connection: Connection::EaseOut{resistance: 0.5, limit: 1.0},
+                ..Default::default()
+            }.into()),
             ..Default::default()
         });
 
@@ -494,11 +506,9 @@ impl GameState
         _aspect: f32
     )
     {
-        return;
         entities.push(EntityInfo{
             transform: Some(Default::default()),
             lazy_transform: Some(LazyTransformInfo{
-                connection: Connection::EaseOut{resistance: 0.5, limit: 1.0},
                 transform: Transform{
                     scale: Vector3::new(0.4, 0.4, 1.0),
                     ..Default::default()

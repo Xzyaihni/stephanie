@@ -1,6 +1,7 @@
 use std::{
     f32,
     fmt,
+    ops::ControlFlow,
     net::TcpStream,
     sync::Arc
 };
@@ -140,7 +141,12 @@ impl GameServer
         let other_this = this.clone();
         receiver_loop(
             messager,
-            move |message| this.lock().process_message_inner(message, id, player),
+            move |message|
+            {
+                this.lock().process_message_inner(message, id, player);
+
+                ControlFlow::Continue(())
+            },
             move || other_this.lock().connection_close(id, player)
         );
 

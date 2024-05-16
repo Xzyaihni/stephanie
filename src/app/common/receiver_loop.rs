@@ -1,4 +1,7 @@
-use std::thread;
+use std::{
+    thread,
+    ops::ControlFlow
+};
 
 use crate::common::{
     MessagePasser,
@@ -8,7 +11,7 @@ use crate::common::{
 
 pub fn receiver_loop<F, D>(mut messager: MessagePasser, mut on_message: F, on_close: D)
 where
-    F: FnMut(Message) + Send + 'static,
+    F: FnMut(Message) -> ControlFlow<()> + Send + 'static,
     D: FnOnce() + Send + 'static
 {
     thread::spawn(move ||
@@ -17,7 +20,15 @@ where
         {
             if let Ok(messages) = messager.receive()
             {
-                messages.into_iter().for_each(&mut on_message);
+                match messages.into_iter().try_for_each(&mut on_message)
+                {
+                    ControlFlow::Break(_) =>
+                    {
+                        on_close();
+                        return;
+                    },
+                    _ => ()
+                }
             } else
             {
                 on_close();
