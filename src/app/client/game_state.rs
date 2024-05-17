@@ -728,6 +728,7 @@ impl GameState
     {
         let mut camera = self.camera.write();
         camera.resize(aspect);
+        camera.rescale(self.camera_scale);
 
         let size = camera.size();
         self.world.rescale(size);
