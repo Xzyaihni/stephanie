@@ -38,25 +38,51 @@ impl Ui
             ..Default::default()
         });
 
-        entities.push(EntityInfo{
-            transform: Some(Default::default()),
-            lazy_transform: Some(LazyTransformInfo{
-                transform: Transform{
-                    scale: Vector3::new(0.4, 0.4, 1.0),
+        let mut z_level = 100;
+
+        let mut add_ui = |parent, position, scale, ui_element|
+        {
+            z_level += 1;
+
+            entities.push(EntityInfo{
+                transform: Some(Default::default()),
+                lazy_transform: Some(LazyTransformInfo{
+                    transform: Transform{
+                        scale,
+                        position,
+                        ..Default::default()
+                    },
                     ..Default::default()
-                },
+                }.into()),
+                ui_element: Some(ui_element),
+                render: Some(RenderInfo{
+                    texture: Some("ui/background.png".to_owned()),
+                    z_level
+                }.server_to_client(Some(Default::default()), object_info)),
+                parent: Some(Parent::new(parent)),
                 ..Default::default()
-            }.into()),
-            ui_element: Some(UiElement{
+            })
+        };
+
+        let inventory = add_ui(
+            anchor,
+            Vector3::zeros(),
+            Vector3::new(0.4, 0.4, 1.0),
+            UiElement{
                 kind: UiElementType::Panel
-            }),
-            render: Some(RenderInfo{
-                texture: Some("ui/background.png".to_owned()),
-                z_level: 100
-            }.server_to_client(Some(Default::default()), object_info)),
-            parent: Some(Parent::new(anchor)),
-            ..Default::default()
-        });
+            }
+        );
+
+        let panel_size = 0.2;
+
+        let top_panel = add_ui(
+            inventory,
+            Vector3::new(0.0, -(1.0 / 2.0 - panel_size / 2.0), 0.0),
+            Vector3::new(1.0, panel_size, 1.0),
+            UiElement{
+                kind: UiElementType::Panel
+            }
+        );
 
         Self{
             anchor

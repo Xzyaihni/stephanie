@@ -353,10 +353,11 @@ impl LazyTransform
 
         if let Some(parent) = parent_transform
         {
-            let origin = self.origin.component_mul(&parent.scale);
-            let offset_position = self.target_local.position - origin;
+            let scaled_origin = self.origin.component_mul(&parent.scale);
+            let offset_position =
+                self.target_local.position.component_mul(&parent.scale) - scaled_origin;
 
-            target_global.position = rotation * offset_position + parent.position + origin;
+            target_global.position = rotation * offset_position + parent.position + scaled_origin;
         }
 
         match &mut self.connection
@@ -481,7 +482,7 @@ impl<T> LazyTransformCommon<T>
     {
         let mut transform = self.target_local.clone();
 
-        transform.position += parent.position;
+        transform.position = transform.position.component_mul(&parent.scale) + parent.position;
         transform.rotation += parent.rotation;
 
         if self.inherit_scale

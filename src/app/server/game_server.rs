@@ -235,7 +235,7 @@ impl GameServer
                         item_size
                     ),
                     rotation: f32::consts::FRAC_PI_2,
-                    position: Vector3::new(transform.scale.x, 0.0, 0.0),
+                    position: Vector3::new(1.0, 0.0, 0.0),
                     ..Default::default()
                 },
                 ..Default::default()
@@ -278,7 +278,7 @@ impl GameServer
                     ),
                     transform: Transform{
                         scale: Vector3::repeat(0.4),
-                        position: position.component_mul(&transform.scale),
+                        position,
                         ..Default::default()
                     },
                     ..Default::default()

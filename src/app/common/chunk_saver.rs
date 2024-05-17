@@ -44,6 +44,7 @@ impl Saveable for Vec<EntityInfo> {}
 impl Saveable for SaveValueGroup {}
 
 impl AutoSaveable for Chunk {}
+impl AutoSaveable for Vec<EntityInfo> {}
 
 pub trait SaveLoad<T>
 {
@@ -542,8 +543,12 @@ impl FileSave for FileSaver<SaveValueGroup, LoadValueGroup>
 }
 
 pub type ChunkSaver = Saver<FileSaver<Chunk>, Chunk>;
-pub type EntitiesSaver = Saver<FileSaver<Vec<EntityInfo>>, Vec<EntityInfo>>;
 pub type WorldChunkSaver = Saver<FileSaver<SaveValueGroup, LoadValueGroup>, SaveValueGroup, LoadValueGroup>;
+
+pub struct EntitiesSaver
+{
+    saver: Saver<FileSaver<Vec<EntityInfo>>, Vec<EntityInfo>>
+}
 
 // again, shouldnt be public
 #[derive(Debug)]
@@ -628,24 +633,30 @@ impl SaveLoad<WorldChunk> for WorldChunkSaver
     }
 }
 
-impl SaveLoad<Vec<EntityInfo>> for EntitiesSaver
+impl EntitiesSaver
 {
-    fn load(&mut self, pos: GlobalPos) -> Option<Vec<EntityInfo>>
+    pub fn new(parent_path: impl Into<PathBuf>, cache_amount: usize) -> Self
     {
-        if let Some(found) = self.cache.iter().find(|pair|
-        {
-            *pair.pos() == pos
-        })
-        {
-            return Some(found.value().clone());
+        Self{
+            saver: Saver::new(parent_path, cache_amount)
         }
-
-        self.file_saver.lock().load(pos)
     }
 
-    fn save(&mut self, pos: GlobalPos, mut entities: Vec<EntityInfo>)
+    pub fn load(&mut self, pos: GlobalPos) -> Option<Vec<EntityInfo>>
     {
-        let entities = if let Some(mut contained) = self.load(pos)
+        let loaded = self.saver.load(pos);
+
+        if loaded.is_some()
+        {
+            self.saver.save(pos, Vec::new());
+        }
+
+        loaded
+    }
+
+    pub fn save(&mut self, pos: GlobalPos, mut entities: Vec<EntityInfo>)
+    {
+        let entities = if let Some(mut contained) = self.saver.load(pos)
         {
             contained.append(&mut entities);
 
@@ -655,9 +666,7 @@ impl SaveLoad<Vec<EntityInfo>> for EntitiesSaver
             entities
         };
 
-        let pair = ValuePair::new(pos, entities);
-
-        self.inner_save(pair);
+        self.saver.save(pos, entities);
     }
 }
 

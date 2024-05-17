@@ -612,7 +612,11 @@ impl GameState
     {
         let (min_scale, max_scale) = World::zoom_limits();
 
-        self.camera_scale = (self.camera_scale * factor).clamp(min_scale, max_scale);
+        self.camera_scale *= factor;
+        if !self.debug_mode
+        {
+            self.camera_scale = self.camera_scale.clamp(min_scale, max_scale);
+        }
 
         self.set_camera_scale(self.camera_scale);
     }
