@@ -23,19 +23,15 @@ use crate::common::{
     receiver_loop,
     TileMap,
     Damage,
+    ItemsInfo,
     Entity,
-    EntityInfo,
     Entities,
     EnemiesInfo,
-    Parent,
     Damageable,
-    RenderInfo,
-    ServerToClient,
     EntityPasser,
     EntitiesController,
     entity::ClientEntities,
     message::Message,
-    lazy_transform::*,
     world::{
         World,
         Pos3,
@@ -49,7 +45,6 @@ use super::{
     MessagePasser,
     ConnectionsHandler,
     TilesFactory,
-    ui_element::*,
     world_receiver::WorldReceiver
 };
 
@@ -59,9 +54,13 @@ use controls_controller::{ControlsController, ControlState};
 
 use notifications::{Notifications, Notification};
 
+use ui::Ui;
+
 mod controls_controller;
 
 mod notifications;
+
+mod ui;
 
 
 struct RaycastResult
@@ -107,39 +106,9 @@ impl ClientEntitiesContainer
         self.update_buffers(info);
     }
 
-    pub fn update(
-        &mut self,
-        camera_size: Vector2<f32>,
-        ui: Entity,
-        dt: f32
-    )
+    pub fn update(&mut self, dt: f32)
     {
-        let player_exists = self.player_exists();
-
-        let ui_transform = self.local_entities.lazy_transform_mut(ui)
-            .unwrap();
-
-        let min_size = camera_size.x.min(camera_size.y);
-        ui_transform.set_connection_limit(min_size * 0.3);
-
-        let ui_target = ui_transform.target();
-
-        let ui_scale = &mut ui_target.scale;
-
-        ui_scale.x = camera_size.x;
-        ui_scale.y = camera_size.y;
-
-        if player_exists
-        {
-            let player_transform = self.entities.transform(self.main_player.unwrap())
-                .unwrap();
-
-            ui_target.position = player_transform.position;
-        }
-
         Self::update_entities(&mut self.entities, dt);
-
-        self.local_entities.update_ui(camera_size);
         Self::update_entities(&mut self.local_entities, dt);
     }
 
@@ -148,6 +117,14 @@ impl ClientEntitiesContainer
         entities.update_physical(dt);
         entities.update_lazy(dt);
         entities.update_enemy(dt);
+    }
+
+    pub fn player_transform(&self) -> Option<&Transform>
+    {
+        self.player_exists().then(||
+        {
+            self.entities.transform(self.main_player.unwrap()).unwrap()
+        })
     }
 
     pub fn player_exists(&self) -> bool
@@ -387,6 +364,7 @@ pub struct GameStateInfo<'a>
 {
     pub camera: Arc<RwLock<Camera>>,
     pub object_info: ObjectCreateInfo<'a>,
+    pub items_info: Arc<ItemsInfo>,
     pub enemies_info: Arc<EnemiesInfo>,
     pub tiles_factory: TilesFactory,
     pub message_passer: MessagePasser,
@@ -405,9 +383,10 @@ pub struct GameState
     pub running: bool,
     pub debug_mode: bool,
     pub tilemap: Arc<TileMap>,
+    items_info: Arc<ItemsInfo>,
     enemies_info: Arc<EnemiesInfo>,
     world: World,
-    ui: Entity,
+    ui: Ui,
     connections_handler: Arc<RwLock<ConnectionsHandler>>,
     receiver: Receiver<Message>
 }
@@ -460,25 +439,12 @@ impl GameState
             }
         }, || ());
 
-        let ui = entities.local_entities.push(EntityInfo{
-            transform: Some(Default::default()),
-            lazy_transform: Some(LazyTransformInfo{
-                connection: Connection::EaseOut{resistance: 0.5, limit: 1.0},
-                ..Default::default()
-            }.into()),
-            ..Default::default()
-        });
-
-        {
-            let (x, y) = info.camera.read().aspect();
-
-            Self::create_ui(
-                &mut info.object_info,
-                &mut entities.local_entities,
-                ui,
-                x / y
-            );
-        }
+        let (x, y) = info.camera.read().aspect();
+        let ui = Ui::new(
+            &mut info.object_info,
+            &mut entities.local_entities,
+            x / y
+        );
 
         Self{
             mouse_position,
@@ -487,6 +453,7 @@ impl GameState
             object_factory: info.object_info.partial.object_factory,
             notifications,
             entities,
+            items_info: info.items_info,
             enemies_info: info.enemies_info,
             controls,
             running: true,
@@ -497,34 +464,6 @@ impl GameState
             connections_handler,
             receiver
         }
-    }
-
-    fn create_ui(
-        object_info: &mut ObjectCreateInfo,
-        entities: &mut ClientEntities,
-        ui: Entity,
-        _aspect: f32
-    )
-    {
-        entities.push(EntityInfo{
-            transform: Some(Default::default()),
-            lazy_transform: Some(LazyTransformInfo{
-                transform: Transform{
-                    scale: Vector3::new(0.4, 0.4, 1.0),
-                    ..Default::default()
-                },
-                ..Default::default()
-            }.into()),
-            ui_element: Some(UiElement{
-                kind: UiElementType::Panel
-            }),
-            render: Some(RenderInfo{
-                texture: Some("ui/background.png".to_owned()),
-                z_level: 100
-            }.server_to_client(Some(Default::default()), object_info)),
-            parent: Some(Parent::new(ui)),
-            ..Default::default()
-        });
     }
 
     pub fn raycast(
@@ -756,7 +695,10 @@ impl GameState
         let (x, y) = self.camera.read().aspect();
         let camera_size = Vector2::new(x, y);
 
-        self.entities.update(camera_size, self.ui, dt);
+        let player_transform = self.entities.player_transform().cloned();
+
+        self.ui.update(&mut self.entities.local_entities, player_transform, camera_size);
+        self.entities.update(dt);
 
         self.controls.release_clicked();
     }

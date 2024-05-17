@@ -9,7 +9,9 @@ use crate::{
     client::ui_element::UiElement,
     common::{
         EntityPasser,
+        Inventory,
         Anatomy,
+        Player,
         Enemy,
         EnemiesInfo,
         Physical,
@@ -147,6 +149,7 @@ no_on_set!{
     RenderInfo,
     LazyTransform,
     LazyTransformServer,
+    Inventory,
     Parent,
     Transform,
     Player,
@@ -193,12 +196,6 @@ impl Parent
     {
         Self{parent}
     }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Player
-{
-    pub name: String
 }
 
 type UiElementServer = ();
@@ -777,6 +774,7 @@ define_entities!{
     (render, render_mut, set_render, SetRender, RenderType, RenderInfo),
     (lazy_transform, lazy_transform_mut, set_lazy_transform, SetLazyTransform, LazyTransformType, LazyTransformServer),
     (ui_element, ui_element_mut, set_ui_element, SetUiElement, UiElementType, UiElementServer),
+    (inventory, inventory_mut, set_inventory, SetInventory, InventoryType, Inventory),
     (enemy, enemy_mut, set_enemy, SetEnemy, EnemyType, Enemy),
     (parent, parent_mut, set_parent, SetParent, ParentType, Parent),
     (transform, transform_mut, set_transform, SetTransform, TransformType, Transform),

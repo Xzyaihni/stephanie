@@ -106,6 +106,7 @@ impl StretchDeformation
 pub enum Connection
 {
     Rigid,
+    Limit{limit: f32},
     Constant{speed: f32},
     EaseOut{resistance: f32, limit: f32},
     Spring(SpringConnection)
@@ -377,21 +378,24 @@ impl LazyTransform
 
                 current.position += move_amount;
             },
-            Connection::EaseOut{resistance, limit} =>
+            Connection::Limit{limit} =>
             {
-                let amount = 1.0 - resistance.powf(dt);
-
                 current.position = Self::clamp_distance(
                     target_global.position,
                     current.position,
                     *limit
                 );
-                /*let new_position = current.position.lerp(&target_global.position, amount);
+            },
+            Connection::EaseOut{resistance, limit} =>
+            {
+                let amount = 1.0 - resistance.powf(dt);
+
+                let new_position = current.position.lerp(&target_global.position, amount);
                 current.position = Self::clamp_distance(
                     target_global.position,
                     new_position,
                     *limit
-                );*/
+                );
             },
             Connection::Spring(connection) =>
             {
@@ -408,10 +412,10 @@ impl LazyTransform
                     current.position,
                     connection.limit
                 );
-
-                current.position.z = target_global.position.z;
             }
         }
+
+        current.position.z = target_global.position.z;
 
         match &self.deformation
         {
@@ -436,6 +440,10 @@ impl LazyTransform
         {
             Connection::Rigid{..} => (),
             Connection::Constant{..} => (),
+            Connection::Limit{limit} =>
+            {
+                *limit = new_limit;
+            },
             Connection::EaseOut{limit, ..} =>
             {
                 *limit = new_limit;

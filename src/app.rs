@@ -11,7 +11,7 @@ use yanyaengine::{
     game_object::*
 };
 
-use common::{TileMap, EnemiesInfo};
+use common::{TileMap, ItemsInfo, EnemiesInfo};
 
 use server::Server;
 
@@ -60,12 +60,19 @@ impl YanyaApp for App
             parser.parse_args_or_exit();
         }
         
+        let items_info = ItemsInfo::parse(
+            &partial_info.assets.lock(),
+            "items",
+            "items/items.json"
+        );
+        
         let enemies_info = EnemiesInfo::parse(
             &partial_info.assets.lock(),
             "enemy",
             "enemies/enemies.json"
         );
 
+        let items_info = Arc::new(items_info);
         let enemies_info = Arc::new(enemies_info);
 
         let client_address = if let Some(address) = address
@@ -75,6 +82,7 @@ impl YanyaApp for App
         {
             let (tx, rx) = mpsc::channel();
 
+            let items_info = items_info.clone();
             let enemies_info = enemies_info.clone();
             thread::spawn(move ||
             {
@@ -86,6 +94,7 @@ impl YanyaApp for App
 
                         let server = Server::new(
                             tilemap,
+                            items_info,
                             enemies_info,
                             &format!("0.0.0.0:{port}"),
                             16
@@ -119,6 +128,7 @@ impl YanyaApp for App
                 debug_mode
             },
             tilemap: deferred_parse().unwrap(),
+            items_info,
             enemies_info
         };
 

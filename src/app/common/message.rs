@@ -7,6 +7,7 @@ use strum_macros::EnumCount;
 use crate::common::{
     Transform,
     Physical,
+    Inventory,
     Entity,
     EntityInfo,
     RenderInfo,
@@ -27,6 +28,7 @@ pub enum Message
     SetParent{entity: Entity, parent: Parent},
     SetTransform{entity: Entity, transform: Transform},
     SetLazyTransform{entity: Entity, lazy_transform: LazyTransformServer},
+    SetInventory{entity: Entity, inventory: Inventory},
     SetRender{entity: Entity, render: RenderInfo},
     SetPlayer{entity: Entity, player: Player},
     SetPhysical{entity: Entity, physical: Physical},
@@ -61,25 +63,26 @@ impl Message
     {
         match self
         {
-            Message::EntitySet{entity, ..} => Some(entity),
-            Message::SetParent{entity, ..} => Some(entity),
-            Message::SetTransform{entity, ..} => Some(entity),
-            Message::SetLazyTransform{entity, ..} => Some(entity),
-            Message::SetRender{entity, ..} => Some(entity),
-            Message::SetPlayer{entity, ..} => Some(entity),
-            Message::SetPhysical{entity, ..} => Some(entity),
-            Message::SetAnatomy{entity, ..} => Some(entity),
-            Message::SetEnemy{entity, ..} => Some(entity),
-            Message::SetUiElement{entity, ..} => Some(entity),
-            Message::EntityDestroy{entity, ..} => Some(entity),
-            Message::EntityDamage{entity, ..} => Some(entity),
+            Message::EntitySet{entity, ..}
+            | Message::SetParent{entity, ..}
+            | Message::SetTransform{entity, ..}
+            | Message::SetLazyTransform{entity, ..}
+            | Message::SetInventory{entity, ..}
+            | Message::SetRender{entity, ..}
+            | Message::SetPlayer{entity, ..}
+            | Message::SetPhysical{entity, ..}
+            | Message::SetAnatomy{entity, ..}
+            | Message::SetEnemy{entity, ..}
+            | Message::SetUiElement{entity, ..}
+            | Message::EntityDestroy{entity, ..}
+            | Message::EntityDamage{entity, ..} => Some(*entity),
             Message::PlayerConnect{..}
             | Message::PlayerOnConnect{..}
             | Message::PlayerFullyConnected
             | Message::ChunkRequest{..}
             | Message::ChunkSync{..}
             | Message::RepeatMessage{..} => None
-        }.copied()
+        }
     }
 }
 

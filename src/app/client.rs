@@ -34,6 +34,7 @@ use game::Game;
 use game_state::{GameState, GameStateInfo};
 
 use crate::common::{
+    ItemsInfo,
     EnemiesInfo,
     MessagePasser,
     tilemap::TileMapWithTextures
@@ -98,6 +99,7 @@ pub struct ClientInitInfo
 {
     pub client_info: ClientInfo,
     pub tilemap: TileMapWithTextures,
+    pub items_info: Arc<ItemsInfo>,
     pub enemies_info: Arc<EnemiesInfo>
 }
 
@@ -134,6 +136,7 @@ impl Client
         let info = GameStateInfo{
             camera,
             object_info: info.object_info,
+            items_info: client_init_info.items_info,
             enemies_info: client_init_info.enemies_info,
             tiles_factory,
             message_passer,

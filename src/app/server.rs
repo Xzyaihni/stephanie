@@ -8,6 +8,7 @@ use parking_lot::Mutex;
 
 use crate::common::{
     sender_loop::{waiting_loop, DELTA_TIME},
+    ItemsInfo,
     EnemiesInfo,
     TileMapWithTextures
 };
@@ -33,6 +34,7 @@ impl Server
 {
     pub fn new(
         tilemap: TileMapWithTextures,
+        items_info: Arc<ItemsInfo>,
         enemies_info: Arc<EnemiesInfo>,
         address: &str,
         connections_limit: usize
@@ -40,7 +42,13 @@ impl Server
     {
         let listener = TcpListener::bind(address)?;
 
-        let game_server = GameServer::new(tilemap.tilemap, enemies_info, connections_limit)?;
+        let game_server = GameServer::new(
+            tilemap.tilemap,
+            items_info,
+            enemies_info,
+            connections_limit
+        )?;
+
         let game_server = Arc::new(Mutex::new(game_server));
 
         {

@@ -32,13 +32,19 @@ pub use lazy_transform::{
 pub use entity::{
     ServerToClient,
     Component,
-    Player,
     Parent,
     Entity,
     EntityInfo,
     ClientEntityInfo,
     Entities
 };
+
+pub use item::Item;
+pub use items_info::ItemsInfo;
+
+pub use inventory::Inventory;
+
+pub use player::Player;
 
 pub use enemy::{EnemyBehavior, Enemy};
 pub use enemy_builder::EnemyBuilder;
@@ -63,6 +69,13 @@ pub mod anatomy;
 
 pub mod lazy_transform;
 pub mod entity;
+
+pub mod item;
+pub mod items_info;
+
+pub mod inventory;
+
+pub mod player;
 
 pub mod enemy;
 pub mod enemy_builder;
