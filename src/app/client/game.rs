@@ -299,11 +299,7 @@ impl<'a> PlayerContainer<'a>
 
     pub fn look_at(&mut self, look_position: Vector2<f32>)
     {
-        let (aspect, camera_pos) = {
-            let camera_ref = self.game_state.camera.read();
-
-            (camera_ref.aspect(), camera_ref.position().xy().coords)
-        };
+        let camera_pos = self.game_state.camera.read().position().xy().coords;
 
         let player_transform = self.game_state.entities_mut()
             .transform_mut(self.info.entity)
@@ -313,11 +309,9 @@ impl<'a> PlayerContainer<'a>
 
         let player_offset = player_pos - camera_pos;
 
-        let player_offset = (player_offset.x / aspect.0, player_offset.y / aspect.1);
+        let pos = look_position - player_offset;
 
-        let (x, y) = (look_position.x - player_offset.0, look_position.y - player_offset.1);
-
-        let rotation = y.atan2(x);
+        let rotation = pos.y.atan2(pos.x);
 
         player_transform.rotation = rotation;
     }

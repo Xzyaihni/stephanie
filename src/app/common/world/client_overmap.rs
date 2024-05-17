@@ -1,5 +1,7 @@
 use std::sync::Arc;
 
+use nalgebra::Vector2;
+
 use yanyaengine::game_object::*;
 
 use crate::client::world_receiver::WorldReceiver;
@@ -130,7 +132,7 @@ impl ClientOvermap
         this
     }
 
-    pub fn rescale(&mut self, camera_size: (f32, f32))
+    pub fn rescale(&mut self, camera_size: Vector2<f32>)
     {
         self.visual_overmap.rescale(camera_size);
     }

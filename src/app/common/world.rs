@@ -1,3 +1,5 @@
+use nalgebra::Vector2;
+
 use yanyaengine::game_object::*;
 
 use crate::{
@@ -60,7 +62,7 @@ impl World
     pub fn new(
         world_receiver: WorldReceiver,
         tiles_factory: TilesFactory,
-        camera_size: (f32, f32),
+        camera_size: Vector2<f32>,
         player_position: Pos3<f32>
     ) -> Self
     {
@@ -110,7 +112,7 @@ impl World
         self.overmap.update(dt);
     }
 
-    pub fn rescale(&mut self, size: (f32, f32))
+    pub fn rescale(&mut self, size: Vector2<f32>)
     {
         self.overmap.rescale(size);
     }

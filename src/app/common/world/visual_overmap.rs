@@ -9,6 +9,8 @@ use std::{
 
 use parking_lot::RwLock;
 
+use nalgebra::Vector2;
+
 use yanyaengine::game_object::*;
 
 use crate::client::{
@@ -48,13 +50,17 @@ struct VisualGenerated
 struct VisibilityChecker
 {
     pub size: Pos3<usize>,
-    pub camera_size: (f32, f32),
+    pub camera_size: Vector2<f32>,
     pub player_position: Arc<RwLock<Pos3<f32>>>
 }
 
 impl VisibilityChecker
 {
-    pub fn new(size: Pos3<usize>, camera_size: (f32, f32), player_position: Pos3<f32>) -> Self
+    pub fn new(
+        size: Pos3<usize>,
+        camera_size: Vector2<f32>,
+        player_position: Pos3<f32>
+    ) -> Self
     {
         let player_position = Arc::new(RwLock::new(player_position));
 
@@ -76,8 +82,8 @@ impl VisibilityChecker
             ((-limit - CHUNK_VISUAL_SIZE)..limit).contains(&value)
         };
 
-        in_range(chunk_offset.x, self.camera_size.0)
-            && in_range(chunk_offset.y, self.camera_size.1)
+        in_range(chunk_offset.x, self.camera_size.x)
+            && in_range(chunk_offset.y, self.camera_size.y)
     }
 }
 
@@ -176,7 +182,7 @@ impl VisualOvermap
     pub fn new(
         tiles_factory: TilesFactory,
         size: Pos3<usize>,
-        camera_size: (f32, f32),
+        camera_size: Vector2<f32>,
         player_position: Pos3<f32>
     ) -> Self
     {
@@ -268,7 +274,7 @@ impl VisualOvermap
         }
     }
 
-    pub fn rescale(&mut self, camera_size: (f32, f32))
+    pub fn rescale(&mut self, camera_size: Vector2<f32>)
     {
         self.visibility_checker.camera_size = camera_size;
     }

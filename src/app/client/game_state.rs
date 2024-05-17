@@ -1,5 +1,6 @@
 use std::{
     ops::ControlFlow,
+    cmp::Ordering,
     sync::{
         Arc,
         mpsc::{self, TryRecvError, Receiver}
@@ -228,7 +229,10 @@ impl ClientEntitiesContainer
             })
             .collect();
 
-        hits.sort_unstable_by(|a, b| a.distance.partial_cmp(&b.distance).unwrap());
+        hits.sort_unstable_by(|a, b|
+        {
+            a.distance.partial_cmp(&b.distance).unwrap_or(Ordering::Equal)
+        });
 
         let hits = if let Some(mut pierce) = info.pierce
         {
@@ -383,6 +387,7 @@ pub struct GameState
     pub running: bool,
     pub debug_mode: bool,
     pub tilemap: Arc<TileMap>,
+    camera_scale: f32,
     items_info: Arc<ItemsInfo>,
     enemies_info: Arc<EnemiesInfo>,
     world: World,
@@ -410,7 +415,7 @@ impl GameState
         let world = World::new(
             world_receiver,
             info.tiles_factory,
-            info.camera.read().aspect(),
+            info.camera.read().size(),
             Pos3::new(0.0, 0.0, 0.0)
         );
 
@@ -439,11 +444,11 @@ impl GameState
             }
         }, || ());
 
-        let (x, y) = info.camera.read().aspect();
+        let aspect = info.camera.read().aspect();
         let ui = Ui::new(
             &mut info.object_info,
             &mut entities.local_entities,
-            x / y
+            aspect
         );
 
         Self{
@@ -459,6 +464,7 @@ impl GameState
             running: true,
             debug_mode: info.client_info.debug_mode,
             tilemap,
+            camera_scale: 1.0,
             world,
             ui,
             connections_handler,
@@ -604,29 +610,11 @@ impl GameState
 
     fn resize_camera(&mut self, factor: f32)
     {
-        let camera_scale = self.camera.read().aspect();
-        let (highest, mut lowest) = (
-            camera_scale.0.max(camera_scale.1) * factor,
-            camera_scale.1.min(camera_scale.0) * factor
-        );
+        let (min_scale, max_scale) = World::zoom_limits();
 
-        if !self.debug_mode
-        {
-            let (min_scale, max_scale) = World::zoom_limits();
+        self.camera_scale = (self.camera_scale * factor).clamp(min_scale, max_scale);
 
-            let adjust_factor = if highest > max_scale
-            {
-                max_scale / highest
-            } else
-            {
-                1.0
-            };
-
-            lowest *= adjust_factor;
-            lowest = lowest.max(min_scale);
-        }
-
-        self.set_camera_scale(lowest);
+        self.set_camera_scale(self.camera_scale);
     }
 
     fn set_camera_scale(&mut self, scale: f32)
@@ -634,7 +622,7 @@ impl GameState
         let mut camera = self.camera.write();
 
         camera.rescale(scale);
-        self.world.rescale(camera.aspect());
+        self.world.rescale(camera.size());
     }
 
     pub fn echo_message(&self, message: Message)
@@ -692,8 +680,7 @@ impl GameState
 
         self.world.update(dt);
 
-        let (x, y) = self.camera.read().aspect();
-        let camera_size = Vector2::new(x, y);
+        let camera_size = self.camera.read().size();
 
         let player_transform = self.entities.player_transform().cloned();
 
@@ -725,10 +712,9 @@ impl GameState
 
     pub fn world_mouse_position(&self) -> Vector2<f32>
     {
-        let camera_size = self.camera.read().aspect();
-        let scale = Vector2::new(camera_size.0, camera_size.1);
+        let camera_size = self.camera.read().size();
 
-        self.mouse_position.center_offset().component_mul(&scale)
+        self.mouse_position.center_offset().component_mul(&camera_size)
     }
 
     pub fn camera_moved(&mut self)
@@ -743,8 +729,8 @@ impl GameState
         let mut camera = self.camera.write();
         camera.resize(aspect);
 
-        let aspect = camera.aspect();
-        self.world.rescale(aspect);
+        let size = camera.size();
+        self.world.rescale(size);
     }
 }
 
