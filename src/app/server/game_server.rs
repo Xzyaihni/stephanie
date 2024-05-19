@@ -29,6 +29,7 @@ use crate::common::{
     EntityInfo,
     EnemiesInfo,
     RenderInfo,
+    RenderObject,
     Parent,
     Player,
     Entities,
@@ -182,7 +183,12 @@ impl GameServer
         let info = EntityInfo{
             player: Some(Player{name: format!("stephanie #{player_index}")}),
             transform: Some(transform.clone()),
-            render: Some(RenderInfo{texture: Some("player/hair.png".to_owned()), z_level: 0}),
+            render: Some(RenderInfo{
+                object: Some(RenderObject::Texture{
+                    name: "player/hair.png".to_owned()
+                }),
+                z_level: 0
+            }),
             physical: Some(physical.into()),
             anatomy: Some(anatomy),
             ..Default::default()
@@ -204,7 +210,9 @@ impl GameServer
         let held_item = EntityInfo{
             transform: Some(Default::default()),
             render: Some(RenderInfo{
-                texture: Some("items/weapons/pistol.png".to_owned()),
+                object: Some(RenderObject::Texture{
+                    name: "items/weapons/pistol.png".to_owned()
+                }),
                 z_level: -2
             }),
             parent: Some(Parent::new(inserted)),
@@ -284,7 +292,12 @@ impl GameServer
                     ..Default::default()
                 }.into()),
                 parent: Some(Parent::new(inserted)),
-                render: Some(RenderInfo{texture: Some("player/pon.png".to_owned()), z_level: 2}),
+                render: Some(RenderInfo{
+                    object: Some(RenderObject::Texture{
+                        name: "player/pon.png".to_owned()
+                    }),
+                    z_level: 2
+                }),
                 ..Default::default()
             }
         };

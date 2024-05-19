@@ -54,7 +54,7 @@ impl<'a> EnemyBuilder<'a>
                 },
                 ..Default::default()
             }.into()),
-            render: Some(RenderInfo{texture: None, z_level: -1}),
+            render: Some(RenderInfo{object: None, z_level: -1}),
             physical: Some(PhysicalProperties{
                 mass: 50.0,
                 friction: 0.5,

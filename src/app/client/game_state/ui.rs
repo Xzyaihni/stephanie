@@ -9,6 +9,7 @@ use crate::{
         Entity,
         ServerToClient,
         EntityInfo,
+        RenderObject,
         RenderInfo,
         lazy_transform::*,
         entity::ClientEntities
@@ -56,7 +57,7 @@ impl Ui
                 }.into()),
                 ui_element: Some(ui_element),
                 render: Some(RenderInfo{
-                    texture: Some("ui/background.png".to_owned()),
+                    object: Some(RenderObject::Texture{name: "ui/background.png".to_owned()}),
                     z_level
                 }.server_to_client(Some(Default::default()), object_info)),
                 parent: Some(Parent::new(parent)),
@@ -84,7 +85,28 @@ impl Ui
             }
         );
 
-        
+        z_level += 1;
+        entities.push(EntityInfo{
+            transform: Some(Default::default()),
+            lazy_transform: Some(LazyTransformInfo{
+                transform: Transform{
+                    ..Default::default()
+                },
+                ..Default::default()
+            }.into()),
+            ui_element: Some(UiElement{
+                kind: UiElementType::Panel
+            }),
+            render: Some(RenderInfo{
+                object: Some(RenderObject::Text{
+                    text: "im an inventory whatsup".to_owned(),
+                    font_size: 40
+                }),
+                z_level
+            }.server_to_client(Some(Default::default()), object_info)),
+            parent: Some(Parent::new(top_panel)),
+            ..Default::default()
+        });
 
         Self{
             anchor

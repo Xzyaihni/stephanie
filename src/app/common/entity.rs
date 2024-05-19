@@ -573,8 +573,6 @@ macro_rules! define_entities
                 {
                     let transform = get_required_entity!(self, entity, get, transform);
 
-                    use yanyaengine::TransformContainer;
-
                     if let Some(object) = object.object.as_mut()
                     {
                         object.set_transform(transform.clone());

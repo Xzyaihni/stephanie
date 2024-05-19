@@ -15,7 +15,7 @@ pub use yanyaengine::{Transform, TransformContainer};
 
 pub use objects_store::ObjectsStore;
 
-pub use render_info::{RenderInfo, ClientRenderInfo};
+pub use render_info::{RenderObject, RenderInfo, ClientRenderInfo};
 
 pub use sender_loop::{sender_loop, BufferSender};
 pub use receiver_loop::receiver_loop;
