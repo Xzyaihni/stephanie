@@ -508,7 +508,9 @@ macro_rules! define_entities
                 {
                     Message::EntitySet{entity, info} =>
                     {
-                        let transform = info.transform.clone();
+                        let transform = self.transform_clone(entity)
+                            .or_else(|| info.transform.clone());
+
                         $({
                             let component = info.$name.map(|x|
                             {
@@ -550,9 +552,7 @@ macro_rules! define_entities
                     },
                     $(Message::$message_name{entity, $name} =>
                     {
-                        let transform = (self.exists(entity))
-                            .then(|| self.transform(entity).cloned())
-                            .flatten();
+                        let transform = self.transform_clone(entity);
 
                         let component = $name.server_to_client(transform, create_info);
 
@@ -562,6 +562,13 @@ macro_rules! define_entities
                     },)+
                     x => Some(x)
                 }
+            }
+
+            fn transform_clone(&self, entity: Entity) -> Option<Transform>
+            {
+                (self.exists(entity))
+                    .then(|| self.transform(entity).cloned())
+                    .flatten()
             }
 
             pub fn update_render(&mut self)
@@ -696,26 +703,6 @@ macro_rules! define_entities
                         entity,
                         lazy_transform: lazy_transform.clone()
                     });
-                });
-            }
-
-            pub fn update_lazy(&mut self)
-            {
-                self.lazy_transform.iter_mut().for_each(|(_, ComponentWrapper{
-                    entity,
-                    component: lazy
-                })|
-                {
-                    let parent = get_entity!(self, entity, get, parent);
-
-                    let target_global = parent.map(|parent|
-                    {
-                        get_entity!(self, parent.parent, get, transform).cloned()
-                    }).flatten();
-
-                    let transform = get_required_entity!(self, entity, get_mut, transform);
-
-                    *transform = lazy.target_global(target_global.as_ref());
                 });
             }
 
