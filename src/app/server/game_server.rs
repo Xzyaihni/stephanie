@@ -25,6 +25,7 @@ use crate::common::{
     receiver_loop,
     TileMap,
     ItemsInfo,
+    Inventory,
     Entity,
     EntityInfo,
     EnemiesInfo,
@@ -189,6 +190,7 @@ impl GameServer
                 }),
                 z_level: 0
             }),
+            inventory: Some(Inventory::new()),
             physical: Some(physical.into()),
             anatomy: Some(anatomy),
             ..Default::default()
@@ -197,7 +199,9 @@ impl GameServer
         let mut inserter = |info: EntityInfo|
         {
             let inserted = self.entities.push(info.clone());
-            self.connection_handler.write().send_message(Message::EntitySet{entity: inserted, info});
+
+            let message = Message::EntitySet{entity: inserted, info};
+            self.connection_handler.write().send_message(message);
 
             inserted
         };
@@ -333,8 +337,8 @@ impl GameServer
     }
 
     fn player_create(
-        &mut self,
-        entity: Entity,
+        &mut self,  
+        player_entity: Entity,
         player_children: Vec<Entity>,
         player_info: PlayerInfo
     ) -> Result<(ConnectionId, MessagePasser), ConnectionError>
@@ -344,7 +348,12 @@ impl GameServer
 
         let messager = connection_handler.get_mut(connection_id);
 
-        messager.send_blocking(Message::PlayerOnConnect{entity, children: player_children})?;
+        let message = Message::PlayerOnConnect{
+            entity: player_entity,
+            children: player_children.clone()
+        };
+
+        messager.send_blocking(message)?;
 
         self.entities.entities_iter().try_for_each(|entity|
         {

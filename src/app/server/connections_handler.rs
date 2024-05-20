@@ -125,7 +125,7 @@ impl BufferSender for ConnectionsHandler
     {
         self.connections.iter_mut().try_for_each(|(_, connection)|
         {
-            let buffer = connection.message_buffer.get_buffered().collect::<Vec<_>>();
+            let buffer = connection.message_buffer.get_buffered();
 
             connection.message_passer.send_many(&buffer)
         })

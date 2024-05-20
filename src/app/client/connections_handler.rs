@@ -56,7 +56,7 @@ impl BufferSender for ConnectionsHandler
 {
     fn send_buffered(&mut self) -> Result<(), bincode::Error>
     {
-        let buffer = self.message_buffer.get_buffered().collect::<Vec<_>>();
+        let buffer = self.message_buffer.get_buffered();
 
         self.message_passer.send_many(&buffer)
     }

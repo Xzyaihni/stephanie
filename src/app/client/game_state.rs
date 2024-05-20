@@ -586,6 +586,7 @@ impl GameState
         {
             Message::PlayerFullyConnected =>
             {
+                self.update_inventory(create_info);
                 self.notifications.set(Notification::PlayerConnected);
             },
             x => panic!("unhandled message: {x:?}")
@@ -692,6 +693,27 @@ impl GameState
         self.entities.update(dt);
 
         self.controls.release_clicked();
+    }
+
+    pub fn update_inventory(
+        &mut self,
+        object_info: &mut ObjectCreateInfo
+    )
+    {
+        let player_id = self.player();
+
+        let entities = &mut self.entities.entities;
+        let local_entities = &mut self.entities.local_entities;
+
+        let player = entities.player(player_id).unwrap();
+        let inventory = entities.inventory(player_id).unwrap();
+
+        self.ui.player_inventory.update(
+            object_info,
+            local_entities,
+            player.name.clone(),
+            inventory
+        );
     }
 
     pub fn input(&mut self, control: yanyaengine::Control)

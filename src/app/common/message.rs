@@ -104,8 +104,8 @@ impl MessageBuffer
         self.buffer.push(message);
     }
 
-    pub fn get_buffered(&mut self) -> impl Iterator<Item=Message> + '_
+    pub fn get_buffered(&mut self) -> Vec<Message>
     {
-        mem::take(&mut self.buffer).into_iter()
+        mem::take(&mut self.buffer)
     }
 }
