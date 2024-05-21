@@ -700,10 +700,10 @@ macro_rules! define_entities
                         enemy: enemy.clone()
                     });
 
-                    /*messager.send_message(Message::SetLazyTransform{
+                    messager.send_message(Message::SetLazyTransform{
                         entity,
                         lazy_transform: lazy_transform.clone()
-                    });*/
+                    });
                 });
             }
 
