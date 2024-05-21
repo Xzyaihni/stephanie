@@ -484,6 +484,7 @@ impl<T> LazyTransformCommon<T>
 
         transform.position = transform.position.component_mul(&parent.scale) + parent.position;
         transform.rotation += parent.rotation;
+        transform.rotation = transform.rotation % (f32::consts::PI * 2.0);
 
         if self.inherit_scale
         {

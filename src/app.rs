@@ -137,7 +137,7 @@ impl YanyaApp for App
 
     fn update(&mut self, dt: f32)
     {
-        self.0.update(dt.min(0.01));
+        self.0.update(dt.min(0.1));
     }
 
     fn update_buffers(&mut self, partial_info: UpdateBuffersPartialInfo)

@@ -109,6 +109,11 @@ pub struct Entity(usize);
 
 impl Entity
 {
+    pub fn from_raw(raw: usize) -> Entity
+    {
+        Entity(raw)
+    }
+
     pub fn get_raw(&self) -> usize
     {
         self.0
@@ -602,6 +607,7 @@ macro_rules! define_entities
                     }).flatten();
 
                     let transform = get_required_entity!(self, entity, get_mut, transform);
+
                     *transform = lazy.next(target_global, dt);
                 });
             }
@@ -636,7 +642,7 @@ macro_rules! define_entities
                     let render = get_required_entity!(self, entity, get_mut, render);
                     let transform = get_required_entity!(self, entity, get_mut, transform);
 
-                    let updated = enemy.update_sprite(
+                    enemy.update_sprite(
                         lazy,
                         enemies_info,
                         render,
@@ -645,11 +651,6 @@ macro_rules! define_entities
                             render.set_sprite(create_info, Some(transform), texture);
                         }
                     );
-
-                    if updated
-                    {
-                        *transform = lazy.target_local.clone();
-                    }
                 });
             }
 
@@ -699,10 +700,10 @@ macro_rules! define_entities
                         enemy: enemy.clone()
                     });
 
-                    messager.send_message(Message::SetLazyTransform{
+                    /*messager.send_message(Message::SetLazyTransform{
                         entity,
                         lazy_transform: lazy_transform.clone()
-                    });
+                    });*/
                 });
             }
 
