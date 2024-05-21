@@ -120,6 +120,7 @@ impl GameServer
             let dt = (dt / STEPS as f32).min(0.1);
 
             self.entities.update_physical(dt);
+            self.entities.update_lazy();
             self.entities.update_enemy(&mut messager, dt);
         }
     }

@@ -707,6 +707,26 @@ macro_rules! define_entities
                 });
             }
 
+            pub fn update_lazy(&mut self)
+            {
+                self.lazy_transform.iter_mut().for_each(|(_, ComponentWrapper{
+                    entity,
+                    component: lazy
+                })|
+                {
+                    let parent = get_entity!(self, entity, get, parent);
+
+                    let target_global = parent.map(|parent|
+                    {
+                        get_entity!(self, parent.parent, get, transform).cloned()
+                    }).flatten();
+
+                    let transform = get_required_entity!(self, entity, get_mut, transform);
+
+                    *transform = lazy.target_global(target_global.as_ref());
+                });
+            }
+
             pub fn update_sprites(
                 &mut self,
                 enemies_info: &EnemiesInfo
