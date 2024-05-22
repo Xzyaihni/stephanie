@@ -128,7 +128,7 @@ impl UiList
         items: impl Iterator<Item=String>
     )
     {
-        self.items.iter().for_each(|x| creator.entities.remove(*x));
+        self.items.iter().chain(&self.frames).for_each(|x| creator.entities.remove(*x));
         self.items.clear();
 
         let frames: Vec<_> = items.map(|name|
@@ -168,7 +168,6 @@ impl UiList
 
             let text_id = creator.push(info);
 
-            self.items.push(id);
             self.items.push(text_id);
 
             id
@@ -194,10 +193,10 @@ impl UiList
 
             transform.scale.y = self.height * 0.9;
 
-            transform.position = Ui::ui_position(
+            transform.position.y = Ui::ui_position(
                 transform.scale,
                 Vector3::new(0.0, index as f32 * over_height - start, 0.0)
-            );
+            ).y;
         });
     }
 }

@@ -419,7 +419,7 @@ macro_rules! define_entities
                     info.transform = Some(lazy_transform.target_ref().clone());
                 }
 
-                let indices = self.info_components(id, info);
+                let indices = self.push_info_components(id, info);
 
                 if is_child
                 {
@@ -449,17 +449,25 @@ macro_rules! define_entities
                 self.components.remove(entity.0);
             }
 
-            fn info_components(
+            fn push_info_components(
                 &mut self,
                 entity: Entity,
                 info: EntityInfo<$($component_type,)+>
             ) -> Vec<Option<usize>>
             {
+                let is_child = info.parent.is_some();
                 vec![
                     $({
                         info.$name.map(|component|
                         {
-                            self.$name.push(ComponentWrapper{entity, component})
+                            let wrapper = ComponentWrapper{entity, component};
+                            if is_child
+                            {
+                                self.$name.push_last(wrapper)
+                            } else
+                            {
+                                self.$name.push(wrapper)
+                            }
                         })
                     },)+
                 ]
