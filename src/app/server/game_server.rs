@@ -212,7 +212,6 @@ impl GameServer
 
         let item_size = 0.2;
         let held_item = EntityInfo{
-            transform: Some(Default::default()),
             render: Some(RenderInfo{
                 object: Some(RenderObject::Texture{
                     name: "items/weapons/pistol.png".to_owned()
@@ -260,7 +259,6 @@ impl GameServer
         let pon = |position: Vector3<f32>|
         {
             EntityInfo{
-                transform: Some(Default::default()),
                 lazy_transform: Some(LazyTransformInfo{
                     connection: Connection::Spring(
                         SpringConnection{

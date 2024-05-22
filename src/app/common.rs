@@ -25,7 +25,6 @@ pub use tilemap::{TileMap, TileMapWithTextures};
 pub use lazy_transform::{
     LazyTransform,
     LazyTransformInfo,
-    LazyTransformServer,
     LazyTargettable
 };
 

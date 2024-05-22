@@ -114,6 +114,24 @@ impl ControlsController
         self.clicked.contains(&control)
     }
 
+    pub fn is_down(&self, control: Control) -> bool
+    {
+        match self.state(control)
+        {
+            ControlState::Pressed => true,
+            _ => false
+        }
+    }
+
+    pub fn is_up(&self, control: Control) -> bool
+    {
+        match self.state(control)
+        {
+            ControlState::Released => true,
+            _ => false
+        }
+    }
+
     pub fn state(&self, control: Control) -> ControlState
     {
         self.keys[control as usize]

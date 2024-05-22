@@ -4,12 +4,11 @@ use serde::{Serialize, Deserialize};
 
 use nalgebra::{Vector2, Vector3, Rotation as NRotation};
 
-use yanyaengine::{Transform, game_object::*};
+use yanyaengine::Transform;
 
 use crate::common::{
     lerp,
-    Physical,
-    ServerToClient
+    Physical
 };
 
 
@@ -127,9 +126,10 @@ pub enum Deformation
     Stretch(StretchDeformation)
 }
 
-pub trait LazyTargettable
+pub trait LazyTargettable<T=Transform>
 {
-    fn target(&mut self) -> &mut Transform;
+    fn target_ref(&self) -> &T;
+    fn target(&mut self) -> &mut T;
 }
 
 pub struct LazyTransformInfo
@@ -159,37 +159,8 @@ impl Default for LazyTransformInfo
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct ClientInfo
-{
-    current: Transform
-}
-
-pub type LazyTransform = LazyTransformCommon<ClientInfo>;
-pub type LazyTransformServer = LazyTransformCommon<()>;
-
-impl<T> LazyTargettable for LazyTransformCommon<T>
-{
-    fn target(&mut self) -> &mut Transform
-    {
-        &mut self.target_local
-    }
-}
-
-impl ServerToClient<LazyTransform> for LazyTransformServer
-{
-    fn server_to_client(
-        self,
-        transform: Option<Transform>,
-        _create_info: &mut ObjectCreateInfo
-    ) -> LazyTransform
-    {
-        LazyTransform::from_server(transform.expect("lazy must have a transform"), self)
-    }
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct LazyTransformCommon<Info>
+pub struct LazyTransform
 {
     pub target_local: Transform,
     origin_rotation: f32,
@@ -197,11 +168,23 @@ pub struct LazyTransformCommon<Info>
     inherit_scale: bool,
     connection: Connection,
     rotation: Rotation,
-    deformation: Deformation,
-    info: Info
+    deformation: Deformation
 }
 
-impl From<LazyTransformInfo> for LazyTransformServer
+impl LazyTargettable for LazyTransform
+{
+    fn target_ref(&self) -> &Transform
+    {
+        &self.target_local
+    }
+
+    fn target(&mut self) -> &mut Transform
+    {
+        &mut self.target_local
+    }
+}
+
+impl From<LazyTransformInfo> for LazyTransform
 {
     fn from(info: LazyTransformInfo) -> Self
     {
@@ -212,25 +195,7 @@ impl From<LazyTransformInfo> for LazyTransformServer
             inherit_scale: info.inherit_scale,
             connection: info.connection,
             rotation: info.rotation,
-            deformation: info.deformation,
-            info: ()
-        }
-    }
-}
-
-impl From<LazyTransformInfo> for LazyTransform
-{
-    fn from(info: LazyTransformInfo) -> Self
-    {
-        Self{
-            target_local: info.transform.clone(),
-            origin_rotation: info.origin_rotation,
-            origin: info.origin,
-            inherit_scale: info.inherit_scale,
-            connection: info.connection,
-            rotation: info.rotation,
-            deformation: info.deformation,
-            info: ClientInfo{current: info.transform}
+            deformation: info.deformation
         }
     }
 }
@@ -239,13 +204,12 @@ impl LazyTransform
 {
     pub fn next(
         &mut self,
+        mut current: Transform,
         parent_transform: Option<Transform>,
         dt: f32
     ) -> Transform
     {
         let mut target_global = self.target_global(parent_transform.as_ref());
-
-        let mut current = self.info.current.clone();
 
         current.scale = target_global.scale;
 
@@ -430,8 +394,6 @@ impl LazyTransform
             }
         }
 
-        self.info.current = current.clone();
-
         current
     }
 
@@ -456,28 +418,6 @@ impl LazyTransform
         }
     }
 
-    pub fn reset_current(&mut self, target: Transform)
-    {
-        self.info.current = target;
-    }
-
-    pub fn from_server(transform: Transform, info: LazyTransformServer) -> Self
-    {
-        Self{
-            target_local: info.target_local,
-            origin_rotation: info.origin_rotation,
-            origin: info.origin,
-            inherit_scale: info.inherit_scale,
-            connection: info.connection,
-            rotation: info.rotation,
-            deformation: info.deformation,
-            info: ClientInfo{current: transform}
-        }
-    }
-}
-
-impl<T> LazyTransformCommon<T>
-{
     pub fn combine(&self, parent: &Transform) -> Transform
     {
         let mut transform = self.target_local.clone();

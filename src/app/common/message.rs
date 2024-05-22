@@ -16,7 +16,7 @@ use crate::common::{
     Enemy,
     Damage,
     Anatomy,
-    LazyTransformServer,
+    LazyTransform,
     world::{Chunk, GlobalPos}
 };
 
@@ -27,7 +27,7 @@ pub enum Message
     EntitySet{entity: Entity, info: EntityInfo},
     SetParent{entity: Entity, parent: Parent},
     SetTransform{entity: Entity, transform: Transform},
-    SetLazyTransform{entity: Entity, lazy_transform: LazyTransformServer},
+    SetLazyTransform{entity: Entity, lazy_transform: LazyTransform},
     SetInventory{entity: Entity, inventory: Inventory},
     SetRender{entity: Entity, render: RenderInfo},
     SetPlayer{entity: Entity, player: Player},

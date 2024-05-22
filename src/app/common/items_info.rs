@@ -8,6 +8,8 @@ use serde::{Serialize, Deserialize};
 
 use yanyaengine::{Assets, TextureId};
 
+use crate::common::Item;
+
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ItemId(usize);
@@ -23,8 +25,8 @@ pub type ItemsInfoRaw = Vec<ItemInfoRaw>;
 
 pub struct ItemInfo
 {
-    name: String,
-    texture: Option<TextureId>
+    pub name: String,
+    pub texture: Option<TextureId>
 }
 
 impl ItemInfo
@@ -90,5 +92,12 @@ impl ItemsInfo
     pub fn get(&self, id: ItemId) -> &ItemInfo
     {
         &self.items[id.0]
+    }
+
+    pub fn random(&self) -> Item
+    {
+        let id = ItemId(fastrand::usize(0..self.items.len()));
+
+        Item{id}
     }
 }

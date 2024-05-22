@@ -38,7 +38,6 @@ impl<'a> EnemyBuilder<'a>
         let info = self.enemies_info.get(self.id);
 
         EntityInfo{
-            transform: Some(Default::default()),
             lazy_transform: Some(LazyTransformInfo{
                 rotation: Rotation::EaseOut(
                     EaseOutRotation{

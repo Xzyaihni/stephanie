@@ -448,6 +448,7 @@ impl GameState
         let ui = Ui::new(
             &mut info.object_info,
             &mut entities.local_entities,
+            info.items_info.clone(),
             aspect
         );
 
@@ -669,6 +670,16 @@ impl GameState
         self.world.update_buffers(info);
 
         self.entities.update_objects(&self.enemies_info, info);
+
+        if self.controls.is_down(Control::MainAction)
+        {
+            let player = self.player();
+            let inventory = self.entities.entities.inventory_mut(player).unwrap();
+
+            inventory.push(&self.items_info, self.items_info.random());
+
+            self.update_inventory(&mut info.object_info);
+        }
     }
 
     pub fn draw(&self, info: &mut DrawInfo)

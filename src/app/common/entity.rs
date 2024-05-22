@@ -18,7 +18,6 @@ use crate::{
         RenderInfo,
         ClientRenderInfo,
         LazyTransform,
-        LazyTransformServer,
         LazyTargettable
     }
 };
@@ -153,7 +152,6 @@ no_on_set!{
     ClientRenderInfo,
     RenderInfo,
     LazyTransform,
-    LazyTransformServer,
     Inventory,
     Parent,
     Transform,
@@ -399,7 +397,10 @@ macro_rules! define_entities
                 }
             )+
 
-            pub fn push(&mut self, info: EntityInfo<$($component_type,)+>) -> Entity
+            pub fn push(&mut self, mut info: EntityInfo<$($component_type,)+>) -> Entity
+            where
+                TransformType: Clone,
+                LazyTransformType: LazyTargettable<TransformType>
             {
                 let is_child = info.parent.is_some();
 
@@ -412,6 +413,11 @@ macro_rules! define_entities
                 };
 
                 let id = Entity(id);
+
+                if let Some(lazy_transform) = info.lazy_transform.as_ref()
+                {
+                    info.transform = Some(lazy_transform.target_ref().clone());
+                }
 
                 let indices = self.info_components(id, info);
 
@@ -546,8 +552,6 @@ macro_rules! define_entities
                                 lazy.target_local.clone()
                             };
 
-                            lazy.reset_current(new_transform.clone());
-
                             let transform = get_required_component!(self, components, get_mut, transform);
 
                             *transform = new_transform;
@@ -608,7 +612,7 @@ macro_rules! define_entities
 
                     let transform = get_required_entity!(self, entity, get_mut, transform);
 
-                    *transform = lazy.next(target_global, dt);
+                    *transform = lazy.next(transform.clone(), target_global, dt);
                 });
             }
 
@@ -745,9 +749,9 @@ macro_rules! define_entities
 
             pub fn push_message(&mut self, info: EntityInfo) -> Message
             {
-                let entity = self.push(info.clone());
+                let entity = self.push(info);
 
-                Message::EntitySet{entity, info}
+                Message::EntitySet{entity, info: self.info(entity)}
             }
 
             pub fn remove_message(&mut self, entity: Entity) -> Message
@@ -778,7 +782,7 @@ macro_rules! define_entities
 
 define_entities!{
     (render, render_mut, set_render, SetRender, RenderType, RenderInfo),
-    (lazy_transform, lazy_transform_mut, set_lazy_transform, SetLazyTransform, LazyTransformType, LazyTransformServer),
+    (lazy_transform, lazy_transform_mut, set_lazy_transform, SetLazyTransform, LazyTransformType, LazyTransform),
     (ui_element, ui_element_mut, set_ui_element, SetUiElement, UiElementType, UiElementServer),
     (inventory, inventory_mut, set_inventory, SetInventory, InventoryType, Inventory),
     (enemy, enemy_mut, set_enemy, SetEnemy, EnemyType, Enemy),
