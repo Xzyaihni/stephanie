@@ -50,6 +50,7 @@ use super::{
 };
 
 pub use controls_controller::Control;
+pub use entity_creator::EntityCreator;
 
 use controls_controller::{ControlsController, ControlState};
 
@@ -61,6 +62,7 @@ mod controls_controller;
 
 mod notifications;
 
+mod entity_creator;
 mod ui;
 
 
@@ -445,9 +447,14 @@ impl GameState
         }, || ());
 
         let aspect = info.camera.read().aspect();
+
+        let mut entity_creator = EntityCreator{
+            object_info: &mut info.object_info,
+            entities: &mut entities.local_entities
+        };
+
         let ui = Ui::new(
-            &mut info.object_info,
-            &mut entities.local_entities,
+            &mut entity_creator,
             info.items_info.clone(),
             aspect
         );
@@ -719,9 +726,10 @@ impl GameState
         let player = entities.player(player_id).unwrap();
         let inventory = entities.inventory(player_id).unwrap();
 
+        let mut entity_creator = EntityCreator{object_info, entities: local_entities};
+
         self.ui.player_inventory.update(
-            object_info,
-            local_entities,
+            &mut entity_creator,
             player.name.clone(),
             inventory
         );
