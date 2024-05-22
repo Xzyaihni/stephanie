@@ -94,6 +94,7 @@ impl ControlsController
             (KeyMapping::Keyboard(KeyCode::KeyW), Control::MoveUp),
             (KeyMapping::Mouse(MouseButton::Left), Control::MainAction),
             (KeyMapping::Mouse(MouseButton::Right), Control::SecondaryAction),
+            (KeyMapping::Keyboard(KeyCode::KeyV), Control::SecondaryAction),
             (KeyMapping::Keyboard(KeyCode::Space), Control::Jump),
             (KeyMapping::Keyboard(KeyCode::ControlLeft), Control::Crouch),
             (KeyMapping::Keyboard(KeyCode::Equal), Control::ZoomIn),

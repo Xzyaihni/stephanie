@@ -678,7 +678,7 @@ impl GameState
 
         self.entities.update_objects(&self.enemies_info, info);
 
-        if self.controls.is_down(Control::MainAction)
+        if self.controls.is_clicked(Control::SecondaryAction)
         {
             let player = self.player();
             let inventory = self.entities.entities.inventory_mut(player).unwrap();
@@ -687,6 +687,8 @@ impl GameState
 
             self.update_inventory(&mut info.object_info);
         }
+
+        self.controls.release_clicked();
     }
 
     pub fn draw(&self, info: &mut DrawInfo)
@@ -709,8 +711,6 @@ impl GameState
 
         self.ui.update(&mut self.entities.local_entities, player_transform, camera_size);
         self.entities.update(dt);
-
-        self.controls.release_clicked();
     }
 
     pub fn update_inventory(
