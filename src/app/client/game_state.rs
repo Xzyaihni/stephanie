@@ -147,9 +147,7 @@ impl ClientEntitiesContainer
         transform: &Transform
     ) -> Option<RaycastResult>
     {
-        let scale = transform.scale;
-
-        let radius = scale.x.max(scale.y.max(scale.z)) / 2.0;
+        let radius = transform.max_scale() / 2.0;
 
         let position = transform.position;
 
@@ -291,10 +289,7 @@ impl GameObject for ClientEntitiesContainer
 
         queue.into_iter().for_each(|render|
         {
-            if let Some(object) = render.get().object.as_ref()
-            {
-                object.draw(info);
-            }
+            render.get().draw(info);
         });
     }
 }
@@ -678,7 +673,7 @@ impl GameState
 
         self.entities.update_objects(&self.enemies_info, info);
 
-        if self.controls.is_clicked(Control::SecondaryAction)
+        if self.controls.is_down(Control::SecondaryAction)
         {
             let player = self.player();
             let inventory = self.entities.entities.inventory_mut(player).unwrap();

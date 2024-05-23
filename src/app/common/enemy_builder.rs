@@ -10,6 +10,7 @@ use crate::common::{
     EnemiesInfo,
     PhysicalProperties,
     RenderInfo,
+    BoundingShape,
     EntityInfo,
     lazy_transform::*
 };
@@ -53,7 +54,11 @@ impl<'a> EnemyBuilder<'a>
                 },
                 ..Default::default()
             }.into()),
-            render: Some(RenderInfo{object: None, z_level: -1}),
+            render: Some(RenderInfo{
+                object: None,
+                shape: Some(BoundingShape::Circle),
+                z_level: -1
+            }),
             physical: Some(PhysicalProperties{
                 mass: 50.0,
                 friction: 0.5,

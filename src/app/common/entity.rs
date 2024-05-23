@@ -399,37 +399,30 @@ macro_rules! define_entities
 
             pub fn push(&mut self, mut info: EntityInfo<$($component_type,)+>) -> Entity
             where
+                for<'a> &'a ParentType: Into<&'a Parent>,
                 TransformType: Clone,
                 LazyTransformType: LazyTargettable<TransformType>
             {
-                let is_child = info.parent.is_some();
-
-                let id = if is_child
+                let id = if let Some(parent) = info.parent.as_ref()
                 {
-                    self.components.last_key()
+                    self.components.take_after_key(parent.into().parent.0)
                 } else
                 {
-                    self.components.vacant_key()
+                    self.components.take_vacant_key()
                 };
 
-                let id = Entity(id);
+                let entity_id = Entity(id);
 
                 if let Some(lazy_transform) = info.lazy_transform.as_ref()
                 {
                     info.transform = Some(lazy_transform.target_ref().clone());
                 }
 
-                let indices = self.push_info_components(id, info);
+                let indices = self.push_info_components(entity_id, info);
 
-                if is_child
-                {
-                    self.components.push_last(indices);
-                } else
-                {
-                    self.components.push(indices);
-                }
+                self.components.insert(id, indices);
 
-                id
+                entity_id
             }
 
             pub fn remove(&mut self, entity: Entity)
@@ -454,16 +447,18 @@ macro_rules! define_entities
                 entity: Entity,
                 info: EntityInfo<$($component_type,)+>
             ) -> Vec<Option<usize>>
+            where
+                for<'a> &'a ParentType: Into<&'a Parent>,
             {
-                let is_child = info.parent.is_some();
+                let parent = info.parent.as_ref().map(|x| x.into().parent.0);
                 vec![
                     $({
                         info.$name.map(|component|
                         {
                             let wrapper = ComponentWrapper{entity, component};
-                            if is_child
+                            if let Some(parent) = parent
                             {
-                                self.$name.push_last(wrapper)
+                                self.$name.push_after(parent, wrapper)
                             } else
                             {
                                 self.$name.push(wrapper)

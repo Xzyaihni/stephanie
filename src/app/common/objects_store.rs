@@ -56,7 +56,7 @@ impl<T> ObjectsStore<T>
 
     pub fn push(&mut self, value: T) -> usize
     {
-        let id = self.new_id();
+        let id = self.take_vacant_key();
 
         self.insert(id, value);
 
@@ -66,6 +66,15 @@ impl<T> ObjectsStore<T>
     pub fn push_last(&mut self, value: T) -> usize
     {
         let id = self.data.len();
+
+        self.insert(id, value);
+
+        id
+    }
+
+    pub fn push_after(&mut self, origin: usize, value: T) -> usize
+    {
+        let id = self.take_after_key(origin);
 
         self.insert(id, value);
 
@@ -82,11 +91,22 @@ impl<T> ObjectsStore<T>
         self.data[index].take()
     }
 
-    fn new_id(&mut self) -> usize
+    pub fn take_vacant_key(&mut self) -> usize
     {
         if let Some(last) = self.free_list.pop()
         {
             last
+        } else
+        {
+            self.last_key()
+        }
+    }
+
+    pub fn take_after_key(&mut self, origin: usize) -> usize
+    {
+        if let Some(key) = self.free_list.iter().position(|x| *x > origin)
+        {
+            self.free_list.swap_remove(key)
         } else
         {
             self.last_key()

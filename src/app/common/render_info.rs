@@ -64,10 +64,17 @@ impl RenderObject
     }
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub enum BoundingShape
+{
+    Circle
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RenderInfo
 {
     pub object: Option<RenderObject>,
+    pub shape: Option<BoundingShape>,
     pub z_level: i32
 }
 
@@ -100,6 +107,15 @@ impl ClientRenderObject
             }
         }
     }
+
+    fn transform(&self) -> Option<&Transform>
+    {
+        match self
+        {
+            Self::Normal(x) => Some(x.transform_ref()),
+            Self::Text(x) => x.transform()
+        }
+    }
 }
 
 impl GameObject for ClientRenderObject
@@ -126,6 +142,7 @@ impl GameObject for ClientRenderObject
 pub struct ClientRenderInfo
 {
     pub object: Option<ClientRenderObject>,
+    pub shape: Option<BoundingShape>,
     pub z_level: i32
 }
 
@@ -142,7 +159,7 @@ impl ServerToClient<ClientRenderInfo> for RenderInfo
             object.into_client(transform.expect("renderable must have a transform"), create_info)
         });
 
-        ClientRenderInfo{object, z_level: self.z_level}
+        ClientRenderInfo{object, shape: self.shape, z_level: self.z_level}
     }
 }
 
@@ -182,6 +199,44 @@ impl ClientRenderInfo
             );
 
             self.object = Some(object);
+        }
+    }
+
+    fn visible(&self, transform: &Transform) -> bool
+    {
+        let shape = if let Some(x) = self.shape
+        {
+            x
+        } else
+        {
+            return true;
+        };
+
+        match shape
+        {
+            BoundingShape::Circle =>
+            {
+                let diameter = transform.max_scale();
+
+                return true;
+                todo!()
+            }
+        }
+    }
+
+    pub fn draw(&self, info: &mut DrawInfo)
+    {
+        if let Some(object) = self.object.as_ref()
+        {
+            if let Some(transform) = object.transform()
+            {
+                if !self.visible(transform)
+                {
+                    return;
+                }
+            }
+
+            object.draw(info);
         }
     }
 }

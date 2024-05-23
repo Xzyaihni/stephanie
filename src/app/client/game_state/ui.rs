@@ -76,6 +76,7 @@ impl UiList
                 }),
                 render: Some(creator.to_client(RenderInfo{
                     object: None,
+                    shape: None,
                     z_level: 150
                 })),
                 parent: Some(Parent::new(background)),
@@ -102,6 +103,7 @@ impl UiList
                 }),
                 render: Some(creator.to_client(RenderInfo{
                     object: Some(RenderObject::Texture{name: "ui/light.png".to_owned()}),
+                    shape: None,
                     z_level: 150
                 })),
                 parent: Some(Parent::new(background)),
@@ -142,6 +144,7 @@ impl UiList
                     object: Some(RenderObject::Texture{
                         name: "ui/lighter.png".to_owned()
                     }),
+                    shape: None,
                     z_level: 150
                 })),
                 parent: Some(Parent::new(self.panel)),
@@ -160,6 +163,7 @@ impl UiList
                         text: name,
                         font_size: 40
                     }),
+                    shape: None,
                     z_level: 151
                 })),
                 parent: Some(Parent::new(id)),
@@ -233,6 +237,7 @@ impl UiInventory
                 ui_element: Some(ui_element),
                 render: Some(creator.to_client(RenderInfo{
                     object,
+                    shape: None,
                     z_level: *z_level
                 })),
                 parent: Some(Parent::new(parent)),
@@ -302,6 +307,15 @@ impl UiInventory
         name: String
     )
     {
+        let new_render = creator.to_client_object(
+            RenderObject::Texture{name: "ui/light.png".to_owned()}
+        );
+
+        if let Some(render) = creator.entities.render_mut(self.list.scroll.background)
+        {
+            render.object = new_render;
+        }
+        return;
         let new_render = creator.to_client_object(RenderObject::Text{
             text: name,
             font_size: 40
@@ -335,7 +349,7 @@ impl UiInventory
     )
     {
         self.update_name(creator, name);
-        self.update_inventory(creator, inventory);
+        // self.update_inventory(creator, inventory);
     }
 }
 

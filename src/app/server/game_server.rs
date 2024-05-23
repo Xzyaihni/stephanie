@@ -31,6 +31,7 @@ use crate::common::{
     EnemiesInfo,
     RenderInfo,
     RenderObject,
+    BoundingShape,
     Parent,
     Player,
     Entities,
@@ -188,6 +189,7 @@ impl GameServer
                 object: Some(RenderObject::Texture{
                     name: "player/hair.png".to_owned()
                 }),
+                shape: Some(BoundingShape::Circle),
                 z_level: 0
             }),
             inventory: Some(Inventory::new()),
@@ -216,6 +218,7 @@ impl GameServer
                 object: Some(RenderObject::Texture{
                     name: "items/weapons/pistol.png".to_owned()
                 }),
+                shape: Some(BoundingShape::Circle),
                 z_level: -2
             }),
             parent: Some(Parent::new(inserted)),
@@ -298,6 +301,7 @@ impl GameServer
                     object: Some(RenderObject::Texture{
                         name: "player/pon.png".to_owned()
                     }),
+                    shape: Some(BoundingShape::Circle),
                     z_level: 2
                 }),
                 ..Default::default()
