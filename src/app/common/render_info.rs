@@ -1,5 +1,7 @@
 use serde::{Serialize, Deserialize};
 
+use nalgebra::{Vector2, Vector3};
+
 use yanyaengine::{
     Object,
     ObjectInfo,
@@ -202,7 +204,12 @@ impl ClientRenderInfo
         }
     }
 
-    fn visible(&self, transform: &Transform) -> bool
+    fn visible(
+        &self,
+        camera_size: Vector2<f32>,
+        camera_position: Vector3<f32>,
+        transform: &Transform
+    ) -> bool
     {
         let shape = if let Some(x) = self.shape
         {
@@ -212,25 +219,42 @@ impl ClientRenderInfo
             return true;
         };
 
+        let offset = (transform.position - camera_position).xy();
+
         match shape
         {
             BoundingShape::Circle =>
             {
-                let diameter = transform.max_scale();
+                let radius = transform.scale / 2.0;
 
-                return true;
-                todo!()
+                let half_size = camera_size / 2.0;
+
+                let lower = -half_size - radius.xy();
+                let upper = half_size + radius.xy();
+
+                let inbounds = |low, high, pos|
+                {
+                    (low..=high).contains(&pos)
+                };
+
+                inbounds(lower.x, upper.x, offset.x)
+                    && inbounds(lower.y, upper.y, offset.y)
             }
         }
     }
 
-    pub fn draw(&self, info: &mut DrawInfo)
+    pub fn draw(
+        &self,
+        camera_size: Vector2<f32>,
+        camera_position: Vector3<f32>,
+        info: &mut DrawInfo
+    )
     {
         if let Some(object) = self.object.as_ref()
         {
             if let Some(transform) = object.transform()
             {
-                if !self.visible(transform)
+                if !self.visible(camera_size, camera_position, transform)
                 {
                     return;
                 }

@@ -257,11 +257,8 @@ impl ClientEntitiesContainer
 
         RaycastHits{start: *start, direction, hits}
     }
-}
 
-impl GameObject for ClientEntitiesContainer
-{
-    fn update_buffers(&mut self, info: &mut UpdateBuffersInfo)
+    pub fn update_buffers(&mut self, info: &mut UpdateBuffersInfo)
     {
         self.entities.update_render();
         self.local_entities.update_render();
@@ -278,7 +275,12 @@ impl GameObject for ClientEntitiesContainer
         });
     }
 
-    fn draw(&self, info: &mut DrawInfo)
+    pub fn draw(
+        &self,
+        camera_size: Vector2<f32>,
+        camera_position: Vector3<f32>,
+        info: &mut DrawInfo
+    )
     {
         let renders = self.entities.render.iter()
             .chain(self.local_entities.render.iter());
@@ -289,7 +291,7 @@ impl GameObject for ClientEntitiesContainer
 
         queue.into_iter().for_each(|render|
         {
-            render.get().draw(info);
+            render.get().draw(camera_size, camera_position, info);
         });
     }
 }
@@ -690,7 +692,16 @@ impl GameState
     {
         self.world.draw(info);
 
-        self.entities.draw(info);
+        let camera_size;
+        let camera_position;
+        {
+            let camera = self.camera.read();
+
+            camera_size = camera.size();
+            camera_position = camera.position().coords;
+        }
+
+        self.entities.draw(camera_size, camera_position, info);
     }
 
     pub fn update(&mut self, dt: f32)

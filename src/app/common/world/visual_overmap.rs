@@ -79,7 +79,7 @@ impl VisibilityChecker
         {
             let limit = limit / 2.0;
 
-            ((-limit - CHUNK_VISUAL_SIZE)..limit).contains(&value)
+            ((-limit - CHUNK_VISUAL_SIZE)..=limit).contains(&value)
         };
 
         in_range(chunk_offset.x, self.camera_size.x)
