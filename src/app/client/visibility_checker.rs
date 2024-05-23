@@ -25,12 +25,12 @@ impl VisibilityChecker
         {
             BoundingShape::Circle =>
             {
-                let radius = transform.scale / 2.0;
+                let radius = transform.max_scale() / 2.0;
 
                 let half_size = self.size / 2.0;
 
-                let lower = -half_size - radius.xy();
-                let upper = half_size + radius.xy();
+                let lower = -half_size - Vector2::repeat(radius);
+                let upper = half_size + Vector2::repeat(radius);
 
                 let inbounds = |low, high, pos|
                 {
