@@ -40,10 +40,14 @@ use crate::common::{
     tilemap::TileMapWithTextures
 };
 
+pub use visibility_checker::VisibilityChecker;
+
 pub use game::DrawableEntity;
 
 pub use connections_handler::ConnectionsHandler;
 pub use tiles_factory::{TilesFactory, ChunkInfo};
+
+pub mod visibility_checker;
 
 pub mod ui_element;
 

@@ -249,11 +249,7 @@ impl VisualOvermap
             {
                 self.handle_generated(generated);
             },
-            Err(_) =>
-            {
-                #[allow(clippy::needless_return)]
-                return;
-            }
+            _ => ()
         }
     }
 

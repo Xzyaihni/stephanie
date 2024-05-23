@@ -46,6 +46,7 @@ use super::{
     MessagePasser,
     ConnectionsHandler,
     TilesFactory,
+    VisibilityChecker,
     world_receiver::WorldReceiver
 };
 
@@ -101,12 +102,17 @@ impl ClientEntitiesContainer
         self.entities.handle_message(create_info, message)
     }
 
-    fn update_objects(&mut self, enemies_info: &EnemiesInfo, info: &mut UpdateBuffersInfo)
+    fn update_objects(
+        &mut self,
+        visibility: &VisibilityChecker,
+        enemies_info: &EnemiesInfo,
+        info: &mut UpdateBuffersInfo
+    )
     {
         self.entities.update_sprites(&mut info.object_info, enemies_info);
         self.local_entities.update_sprites(&mut info.object_info, enemies_info);
 
-        self.update_buffers(info);
+        self.update_buffers(visibility, info);
     }
 
     pub fn update(&mut self, dt: f32)
@@ -258,7 +264,11 @@ impl ClientEntitiesContainer
         RaycastHits{start: *start, direction, hits}
     }
 
-    pub fn update_buffers(&mut self, info: &mut UpdateBuffersInfo)
+    pub fn update_buffers(
+        &mut self,
+        visibility: &VisibilityChecker,
+        info: &mut UpdateBuffersInfo
+    )
     {
         self.entities.update_render();
         self.local_entities.update_render();
@@ -268,17 +278,13 @@ impl ClientEntitiesContainer
 
         renders.for_each(|(_, entity)|
         {
-            if let Some(object) = entity.get_mut().object.as_mut()
-            {
-                object.update_buffers(info);
-            }
+            entity.get_mut().update_buffers(visibility, info);
         });
     }
 
     pub fn draw(
         &self,
-        camera_size: Vector2<f32>,
-        camera_position: Vector3<f32>,
+        visibility: &VisibilityChecker,
         info: &mut DrawInfo
     )
     {
@@ -291,7 +297,7 @@ impl ClientEntitiesContainer
 
         queue.into_iter().for_each(|render|
         {
-            render.get().draw(camera_size, camera_position, info);
+            render.get().draw(visibility, info);
         });
     }
 }
@@ -671,9 +677,11 @@ impl GameState
 
         self.process_messages(&mut info.object_info);
 
+        let visibility = self.visibility_checker();
+
         self.world.update_buffers(info);
 
-        self.entities.update_objects(&self.enemies_info, info);
+        self.entities.update_objects(&visibility, &self.enemies_info, info);
 
         if self.controls.is_down(Control::SecondaryAction)
         {
@@ -692,16 +700,19 @@ impl GameState
     {
         self.world.draw(info);
 
-        let camera_size;
-        let camera_position;
-        {
-            let camera = self.camera.read();
+        let visibility = self.visibility_checker();
 
-            camera_size = camera.size();
-            camera_position = camera.position().coords;
+        self.entities.draw(&visibility, info);
+    }
+
+    fn visibility_checker(&self) -> VisibilityChecker
+    {
+        let camera = self.camera.read();
+
+        VisibilityChecker{
+            size: camera.size(),
+            position: camera.position().coords
         }
-
-        self.entities.draw(camera_size, camera_position, info);
     }
 
     pub fn update(&mut self, dt: f32)

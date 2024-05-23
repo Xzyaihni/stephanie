@@ -1,7 +1,5 @@
 use serde::{Serialize, Deserialize};
 
-use nalgebra::{Vector2, Vector3};
-
 use yanyaengine::{
     Object,
     ObjectInfo,
@@ -14,7 +12,10 @@ use yanyaengine::{
     game_object::*
 };
 
-use crate::common::ServerToClient;
+use crate::{
+    client::VisibilityChecker,
+    common::ServerToClient
+};
 
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -206,8 +207,7 @@ impl ClientRenderInfo
 
     fn visible(
         &self,
-        camera_size: Vector2<f32>,
-        camera_position: Vector3<f32>,
+        visibility: &VisibilityChecker,
         transform: &Transform
     ) -> bool
     {
@@ -219,34 +219,32 @@ impl ClientRenderInfo
             return true;
         };
 
-        let offset = (transform.position - camera_position).xy();
+        visibility.visible(shape, transform)
+    }
 
-        match shape
+    pub fn update_buffers(
+        &mut self,
+        visibility: &VisibilityChecker,
+        info: &mut UpdateBuffersInfo
+    )
+    {
+        if let Some(transform) = self.object.as_ref().and_then(|x| x.transform())
         {
-            BoundingShape::Circle =>
+            if !self.visible(visibility, transform)
             {
-                let radius = transform.scale / 2.0;
-
-                let half_size = camera_size / 2.0;
-
-                let lower = -half_size - radius.xy();
-                let upper = half_size + radius.xy();
-
-                let inbounds = |low, high, pos|
-                {
-                    (low..=high).contains(&pos)
-                };
-
-                inbounds(lower.x, upper.x, offset.x)
-                    && inbounds(lower.y, upper.y, offset.y)
+                return;
             }
+        }
+
+        if let Some(object) = self.object.as_mut()
+        {
+            object.update_buffers(info);
         }
     }
 
     pub fn draw(
         &self,
-        camera_size: Vector2<f32>,
-        camera_position: Vector3<f32>,
+        visibility: &VisibilityChecker,
         info: &mut DrawInfo
     )
     {
@@ -254,7 +252,7 @@ impl ClientRenderInfo
         {
             if let Some(transform) = object.transform()
             {
-                if !self.visible(camera_size, camera_position, transform)
+                if !self.visible(visibility, transform)
                 {
                     return;
                 }
