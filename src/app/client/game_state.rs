@@ -1,4 +1,5 @@
 use std::{
+    mem,
     ops::ControlFlow,
     cmp::Ordering,
     sync::{
@@ -29,8 +30,10 @@ use crate::common::{
     Entities,
     EnemiesInfo,
     Damageable,
+    ServerToClient,
     EntityPasser,
     EntitiesController,
+    RenderInfo,
     entity::ClientEntities,
     message::Message,
     world::{
@@ -75,6 +78,7 @@ struct RaycastResult
 
 pub struct ClientEntitiesContainer
 {
+    local_objects: Vec<(Entity, RenderInfo)>,
     local_entities: ClientEntities,
     entities: ClientEntities,
     main_player: Option<Entity>,
@@ -86,6 +90,7 @@ impl ClientEntitiesContainer
     pub fn new() -> Self
     {
         Self{
+            local_objects: Vec::new(),
             local_entities: Entities::new(),
             entities: Entities::new(),
             main_player: None,
@@ -111,6 +116,14 @@ impl ClientEntitiesContainer
     {
         self.entities.update_sprites(&mut info.object_info, enemies_info);
         self.local_entities.update_sprites(&mut info.object_info, enemies_info);
+
+        mem::take(&mut self.local_objects).into_iter().for_each(|(entity, object)|
+        {
+            let transform = self.local_entities.transform(entity).cloned();
+
+            let object = object.server_to_client(transform, &mut info.object_info);
+            self.local_entities.set_render(entity, Some(object));
+        });
 
         self.update_buffers(visibility, info);
     }
@@ -403,7 +416,7 @@ pub struct GameState
 
 impl GameState
 {
-    pub fn new(mut info: GameStateInfo) -> Self
+    pub fn new(info: GameStateInfo) -> Self
     {
         let mouse_position = MousePosition::new(0.0, 0.0);
 
@@ -452,7 +465,7 @@ impl GameState
         let aspect = info.camera.read().aspect();
 
         let mut entity_creator = EntityCreator{
-            object_info: &mut info.object_info,
+            objects: &mut entities.local_objects,
             entities: &mut entities.local_entities
         };
 
@@ -597,7 +610,7 @@ impl GameState
         {
             Message::PlayerFullyConnected =>
             {
-                self.update_inventory(create_info);
+                self.update_inventory();
                 self.notifications.set(Notification::PlayerConnected);
             },
             x => panic!("unhandled message: {x:?}")
@@ -677,16 +690,6 @@ impl GameState
 
         self.process_messages(&mut info.object_info);
 
-        if self.controls.is_down(Control::SecondaryAction)
-        {
-            let player = self.player();
-            let inventory = self.entities.entities.inventory_mut(player).unwrap();
-
-            inventory.push(&self.items_info, self.items_info.random());
-
-            self.update_inventory(&mut info.object_info);
-        }
-
         let visibility = self.visibility_checker();
 
         self.world.update_buffers(info);
@@ -722,6 +725,16 @@ impl GameState
 
         self.world.update(dt);
 
+        if self.controls.is_down(Control::SecondaryAction)
+        {
+            let player = self.player();
+            let inventory = self.entities.entities.inventory_mut(player).unwrap();
+
+            inventory.push(&self.items_info, self.items_info.random());
+
+            self.update_inventory();
+        }
+
         let camera_size = self.camera.read().size();
 
         let player_transform = self.entities.player_transform().cloned();
@@ -730,20 +743,21 @@ impl GameState
         self.entities.update(dt);
     }
 
-    pub fn update_inventory(
-        &mut self,
-        object_info: &mut ObjectCreateInfo
-    )
+    pub fn update_inventory(&mut self)
     {
         let player_id = self.player();
 
         let entities = &mut self.entities.entities;
+        let local_objects = &mut self.entities.local_objects;
         let local_entities = &mut self.entities.local_entities;
 
         let player = entities.player(player_id).unwrap();
         let inventory = entities.inventory(player_id).unwrap();
 
-        let mut entity_creator = EntityCreator{object_info, entities: local_entities};
+        let mut entity_creator = EntityCreator{
+            objects: local_objects,
+            entities: local_entities
+        };
 
         self.ui.player_inventory.update(
             &mut entity_creator,

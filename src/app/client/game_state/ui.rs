@@ -62,55 +62,55 @@ impl UiList
         let panel = {
             let size = Vector3::new(width, 1.0, 1.0);
 
-            let info = EntityInfo{
-                lazy_transform: Some(LazyTransformInfo{
-                    transform: Transform{
-                        position: Ui::ui_position(size, Vector3::zeros()),
-                        scale: size,
+            creator.push(
+                EntityInfo{
+                    lazy_transform: Some(LazyTransformInfo{
+                        transform: Transform{
+                            position: Ui::ui_position(size, Vector3::zeros()),
+                            scale: size,
+                            ..Default::default()
+                        },
                         ..Default::default()
-                    },
+                    }.into()),
+                    ui_element: Some(UiElement{
+                        kind: UiElementType::Button
+                    }),
+                    parent: Some(Parent::new(background)),
                     ..Default::default()
-                }.into()),
-                ui_element: Some(UiElement{
-                    kind: UiElementType::Button
-                }),
-                render: Some(creator.to_client(RenderInfo{
+                },
+                RenderInfo{
                     object: None,
                     shape: None,
                     z_level: 150
-                })),
-                parent: Some(Parent::new(background)),
-                ..Default::default()
-            };
-
-            creator.push(info)
+                }
+            )
         };
 
         let scroll = {
             let size = Vector3::new(1.0 - width, 1.0, 1.0);
 
-            let info = EntityInfo{
-                lazy_transform: Some(LazyTransformInfo{
-                    transform: Transform{
-                        position: Ui::ui_position(size, Vector3::new(1.0, 0.0, 0.0)),
-                        scale: size,
+            creator.push(
+                EntityInfo{
+                    lazy_transform: Some(LazyTransformInfo{
+                        transform: Transform{
+                            position: Ui::ui_position(size, Vector3::new(1.0, 0.0, 0.0)),
+                            scale: size,
+                            ..Default::default()
+                        },
                         ..Default::default()
-                    },
+                    }.into()),
+                    ui_element: Some(UiElement{
+                        kind: UiElementType::Button
+                    }),
+                    parent: Some(Parent::new(background)),
                     ..Default::default()
-                }.into()),
-                ui_element: Some(UiElement{
-                    kind: UiElementType::Button
-                }),
-                render: Some(creator.to_client(RenderInfo{
+                },
+                RenderInfo{
                     object: Some(RenderObject::Texture{name: "ui/light.png".to_owned()}),
                     shape: None,
                     z_level: 150
-                })),
-                parent: Some(Parent::new(background)),
-                ..Default::default()
-            };
-
-            creator.push(info)
+                }
+            )
         };
 
         let scroll = UiScroll::new(scroll);
@@ -135,42 +135,42 @@ impl UiList
 
         let frames: Vec<_> = items.map(|name|
         {
-            let info = EntityInfo{
-                lazy_transform: Some(LazyTransformInfo::default().into()),
-                ui_element: Some(UiElement{
-                    kind: UiElementType::Button
-                }),
-                render: Some(creator.to_client(RenderInfo{
+            let id = creator.push(
+                EntityInfo{
+                    lazy_transform: Some(LazyTransformInfo::default().into()),
+                    ui_element: Some(UiElement{
+                        kind: UiElementType::Button
+                    }),
+                    parent: Some(Parent::new(self.panel)),
+                    ..Default::default()
+                },
+                RenderInfo{
                     object: Some(RenderObject::Texture{
                         name: "ui/lighter.png".to_owned()
                     }),
                     shape: None,
                     z_level: 150
-                })),
-                parent: Some(Parent::new(self.panel)),
-                ..Default::default()
-            };
+                }
+            );
 
-            let id = creator.push(info);
-
-            let info = EntityInfo{
-                lazy_transform: Some(LazyTransformInfo::default().into()),
-                ui_element: Some(UiElement{
-                    kind: UiElementType::Panel
-                }),
-                render: Some(creator.to_client(RenderInfo{
+            let text_id = creator.push(
+                EntityInfo{
+                    lazy_transform: Some(LazyTransformInfo::default().into()),
+                    ui_element: Some(UiElement{
+                        kind: UiElementType::Panel
+                    }),
+                    parent: Some(Parent::new(id)),
+                    ..Default::default()
+                },
+                RenderInfo{
                     object: Some(RenderObject::Text{
                         text: name,
                         font_size: 40
                     }),
                     shape: None,
                     z_level: 151
-                })),
-                parent: Some(Parent::new(id)),
-                ..Default::default()
-            };
-
-            let text_id = creator.push(info);
+                }
+            );
 
             self.items.push(text_id);
 
@@ -225,26 +225,26 @@ impl UiInventory
         {
             *z_level += 1;
 
-            let info = EntityInfo{
-                lazy_transform: Some(LazyTransformInfo{
-                    transform: Transform{
-                        scale,
-                        position,
+            creator.push(
+                EntityInfo{
+                    lazy_transform: Some(LazyTransformInfo{
+                        transform: Transform{
+                            scale,
+                            position,
+                            ..Default::default()
+                        },
                         ..Default::default()
-                    },
+                    }.into()),
+                    ui_element: Some(ui_element),
+                    parent: Some(Parent::new(parent)),
                     ..Default::default()
-                }.into()),
-                ui_element: Some(ui_element),
-                render: Some(creator.to_client(RenderInfo{
+                },
+                RenderInfo{
                     object,
                     shape: None,
                     z_level: *z_level
-                })),
-                parent: Some(Parent::new(parent)),
-                ..Default::default()
-            };
-
-            creator.push(info)
+                }
+            )
         };
 
         let inventory = add_ui(
@@ -307,7 +307,7 @@ impl UiInventory
         name: String
     )
     {
-        let new_render = creator.to_client_object(RenderObject::Text{
+        /*let new_render = creator.to_client_object(RenderObject::Text{
             text: name,
             font_size: 40
         });
@@ -315,7 +315,8 @@ impl UiInventory
         if let Some(render) = creator.entities.render_mut(self.name)
         {
             render.object = new_render;
-        }
+        }*/
+        return;
     }
 
     pub fn update_inventory(
@@ -358,7 +359,7 @@ impl Ui
         _aspect: f32
     ) -> Self
     {
-        let anchor = creator.push(EntityInfo{
+        let anchor = creator.entities.push(EntityInfo{
             lazy_transform: Some(LazyTransformInfo{
                 connection: Connection::Limit{limit: 1.0},
                 ..Default::default()

@@ -1,37 +1,29 @@
-use yanyaengine::game_object::*;
-
 use crate::common::{
-    ServerToClient,
     Entity,
     RenderInfo,
-    ClientRenderInfo,
-    RenderObject,
     ClientEntityInfo,
-    render_info::ClientRenderObject,
     entity::ClientEntities
 };
 
 
-pub struct EntityCreator<'a, 'b>
+pub struct EntityCreator<'a>
 {
-    pub object_info: &'a mut ObjectCreateInfo<'b>,
-    pub entities: &'a mut ClientEntities
+    pub entities: &'a mut ClientEntities,
+    pub objects: &'a mut Vec<(Entity, RenderInfo)>
 }
 
-impl EntityCreator<'_, '_>
+impl EntityCreator<'_>
 {
-    pub fn to_client(&mut self, render: RenderInfo) -> ClientRenderInfo
+    pub fn push(
+        &mut self,
+        info: ClientEntityInfo,
+        render: RenderInfo
+    ) -> Entity
     {
-        render.server_to_client(Some(Default::default()), self.object_info)
-    }
+        let entity = self.entities.push(info);
 
-    pub fn to_client_object(&mut self, object: RenderObject) -> Option<ClientRenderObject>
-    {
-        object.into_client(Default::default(), self.object_info)
-    }
+        self.objects.push((entity, render));
 
-    pub fn push(&mut self, info: ClientEntityInfo) -> Entity
-    {
-        self.entities.push(info)
+        entity
     }
 }
