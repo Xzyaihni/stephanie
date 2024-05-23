@@ -677,12 +677,6 @@ impl GameState
 
         self.process_messages(&mut info.object_info);
 
-        let visibility = self.visibility_checker();
-
-        self.world.update_buffers(info);
-
-        self.entities.update_objects(&visibility, &self.enemies_info, info);
-
         if self.controls.is_down(Control::SecondaryAction)
         {
             let player = self.player();
@@ -692,6 +686,12 @@ impl GameState
 
             self.update_inventory(&mut info.object_info);
         }
+
+        let visibility = self.visibility_checker();
+
+        self.world.update_buffers(info);
+
+        self.entities.update_objects(&visibility, &self.enemies_info, info);
 
         self.controls.release_clicked();
     }
