@@ -307,16 +307,13 @@ impl UiInventory
         name: String
     )
     {
-        /*let new_render = creator.to_client_object(RenderObject::Text{
-            text: name,
-            font_size: 40
-        });
-
-        if let Some(render) = creator.entities.render_mut(self.name)
-        {
-            render.object = new_render;
-        }*/
-        return;
+        creator.replace(
+            self.name,
+            RenderObject::Text{
+                text: name,
+                font_size: 40
+            }
+        );
     }
 
     pub fn update_inventory(
