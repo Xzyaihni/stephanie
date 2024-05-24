@@ -767,6 +767,16 @@ impl GameState
         self.controls.is_clicked(control)
     }
 
+    pub fn mouse_moved(&mut self, position: Vector2<f32>)
+    {
+        self.mouse_position = position;
+
+        self.entities.local_entities.update_ui(
+            self.camera.read().position().coords.xy(),
+            UiEvent::MouseMove(self.world_mouse_position())
+        );
+    }
+
     pub fn world_mouse_position(&self) -> Vector2<f32>
     {
         let camera_size = self.camera.read().size();

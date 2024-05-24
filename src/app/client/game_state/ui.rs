@@ -50,6 +50,7 @@ impl UiScroll
 
             UiElement{
                 kind: UiElementType::Drag{
+                    state: Default::default(),
                     on_change: Box::new(move |pos|
                     {
                         scroll.replace(1.0 - (pos.y + 0.5));

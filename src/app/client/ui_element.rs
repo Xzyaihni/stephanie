@@ -26,6 +26,7 @@ pub struct KeyboardEvent
 #[derive(Debug, Clone)]
 pub enum UiEvent
 {
+    MouseMove(Vector2<f32>),
     Mouse(MouseEvent),
     Keyboard(KeyboardEvent)
 }
@@ -67,11 +68,17 @@ impl UiEvent
     }
 }
 
+#[derive(Default)]
+pub struct DragState
+{
+    held: bool
+}
+
 pub enum UiElementType
 {
     Panel,
     Button{on_click: Box<dyn FnMut()>},
-    Drag{on_change: Box<dyn FnMut(Vector2<f32>)>}
+    Drag{state: DragState, on_change: Box<dyn FnMut(Vector2<f32>)>}
 }
 
 pub struct UiElement
@@ -118,17 +125,44 @@ impl UiElement
 
                 false
             },
-            UiElementType::Drag{on_change} =>
+            UiElementType::Drag{state, on_change} =>
             {
-                if let Some(event) = event.as_mouse()
+                let inner_position = |position|
                 {
-                    let down = event.main_button && event.state == ControlState::Pressed;
-                    if down && is_inside(event.position)
-                    {
-                        on_change(distance(event.position));
+                    distance(position).map(|x| x.clamp(-0.5, 0.5))
+                };
 
-                        return true;
-                    }
+                match event
+                {
+                    UiEvent::Mouse(event) =>
+                    {
+                        if event.main_button
+                        {
+                            if event.state == ControlState::Pressed && is_inside(event.position)
+                            {
+                                on_change(inner_position(event.position));
+
+                                state.held = true;
+
+                                return true;
+                            }
+
+                            if event.state == ControlState::Released
+                            {
+                                state.held = false;
+
+                                return true;
+                            }
+                        }
+                    },
+                    UiEvent::MouseMove(position) =>
+                    {
+                        if state.held
+                        {
+                            on_change(inner_position(*position));
+                        }
+                    },
+                    _ => ()
                 }
 
                 false

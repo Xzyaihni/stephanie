@@ -206,6 +206,6 @@ impl Client
     pub fn mouse_move(&mut self, position: (f64, f64))
     {
         let position = Vector2::new(position.0 as f32, position.1 as f32);
-        self.game_state.borrow_mut().mouse_position = position;
+        self.game_state.borrow_mut().mouse_moved(position);
     }
 }
