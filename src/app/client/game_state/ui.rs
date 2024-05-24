@@ -31,8 +31,10 @@ pub struct UiScroll
 {
     background: Entity,
     bar: Entity,
-    scroll: Rc<RefCell<f32>>,
-    saved_scroll: f32
+    size: f32,
+    global_scroll: Rc<RefCell<f32>>,
+    target_scroll: f32,
+    scroll: f32
 }
 
 impl UiScroll
@@ -42,18 +44,18 @@ impl UiScroll
         background: Entity
     ) -> Self
     {
-        let saved_scroll = 0.0;
-        let scroll = Rc::new(RefCell::new(saved_scroll));
+        let target_scroll = 0.0;
+        let global_scroll = Rc::new(RefCell::new(target_scroll));
 
         let drag = {
-            let scroll = scroll.clone();
+            let global_scroll = global_scroll.clone();
 
             UiElement{
                 kind: UiElementType::Drag{
                     state: Default::default(),
                     on_change: Box::new(move |pos|
                     {
-                        scroll.replace(1.0 - (pos.y + 0.5));
+                        global_scroll.replace(1.0 - (pos.y + 0.5));
                     })
                 }
             }
@@ -82,17 +84,36 @@ impl UiScroll
         Self{
             background,
             bar,
-            scroll,
-            saved_scroll
+            size: 1.0,
+            global_scroll,
+            target_scroll,
+            scroll: target_scroll
         }
     }
 
     pub fn update(&mut self, entities: &mut ClientEntities) -> bool
     {
-        let current_scroll = *self.scroll.borrow();
-        if self.saved_scroll != current_scroll
+        let current_scroll = *self.global_scroll.borrow();
+        if self.target_scroll != current_scroll
         {
-            self.saved_scroll = current_scroll;
+            self.target_scroll = current_scroll;
+
+            let half_size = self.size / 2.0;
+
+            let fit_into = |value: f32, low, high|
+            {
+                let span = high - low;
+
+                if span <= 0.0
+                {
+                    0.0
+                } else
+                {
+                    (value.clamp(low, high) - low) / span
+                }
+            };
+
+            self.scroll = fit_into(self.target_scroll, half_size, 1.0 - half_size);
 
             self.update_position(entities);
 
@@ -106,7 +127,8 @@ impl UiScroll
     {
         if let Some(lazy) = entities.lazy_transform_mut(self.bar)
         {
-            lazy.target().scale.y = size;
+            self.size = size;
+            lazy.target().scale.y = self.size;
         }
 
         self.update_position(entities);
@@ -116,11 +138,14 @@ impl UiScroll
     {
         if let Some(lazy) = entities.lazy_transform_mut(self.bar)
         {
-            let half_height = lazy.target_ref().scale.y / 2.0;
-            let position = (self.amount() - 0.5).clamp(
-                -0.5 + half_height,
-                0.5 - half_height
-            );
+            let span = 1.0 - self.size;
+            let position = if span <= 0.0
+            {
+                0.0
+            } else
+            {
+                ((self.amount() - 0.5) * span).clamp(-0.5, 0.5)
+            };
 
             lazy.target().position.y = position;
         }
@@ -128,7 +153,7 @@ impl UiScroll
 
     pub fn amount(&self) -> f32
     {
-        *self.scroll.borrow()
+        self.scroll
     }
 }
 
