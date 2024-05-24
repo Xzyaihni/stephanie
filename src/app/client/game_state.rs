@@ -708,6 +708,11 @@ impl GameState
             self.update_inventory();
         }
 
+        self.entities.local_entities.update_ui(
+            self.camera.read().position().coords.xy(),
+            UiEvent::MouseMove(self.world_mouse_position())
+        );
+
         let camera_size = self.camera.read().size();
 
         let player_transform = self.entities.player_transform().cloned();
@@ -770,11 +775,6 @@ impl GameState
     pub fn mouse_moved(&mut self, position: Vector2<f32>)
     {
         self.mouse_position = position;
-
-        self.entities.local_entities.update_ui(
-            self.camera.read().position().coords.xy(),
-            UiEvent::MouseMove(self.world_mouse_position())
-        );
     }
 
     pub fn world_mouse_position(&self) -> Vector2<f32>
