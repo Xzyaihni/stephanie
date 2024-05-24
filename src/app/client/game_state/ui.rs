@@ -31,8 +31,6 @@ pub struct UiScroll
 {
     background: Entity,
     bar: Entity,
-    item_height: f32,
-    amount: f32,
     scroll: Rc<RefCell<f32>>,
     saved_scroll: f32
 }
@@ -41,7 +39,6 @@ impl UiScroll
 {
     pub fn new(
         creator: &mut EntityCreator,
-        item_height: f32,
         background: Entity
     ) -> Self
     {
@@ -84,8 +81,6 @@ impl UiScroll
         Self{
             background,
             bar,
-            item_height,
-            amount: 1.0,
             scroll,
             saved_scroll
         }
@@ -106,22 +101,14 @@ impl UiScroll
         false
     }
 
-    pub fn update_amount(
-        &mut self,
-        creator: &mut EntityCreator,
-        amount: f32
-    )
+    pub fn update_size(&mut self, entities: &mut ClientEntities, size: f32)
     {
-        self.amount = amount;
-
-        let screens_fit = self.amount * self.item_height;
-
-        if let Some(lazy) = creator.entities.lazy_transform_mut(self.bar)
+        if let Some(lazy) = entities.lazy_transform_mut(self.bar)
         {
-            lazy.target().scale.y = (1.0 / screens_fit).clamp(0.0, 1.0);
+            lazy.target().scale.y = size;
         }
 
-        self.update_position(&mut creator.entities);
+        self.update_position(entities);
     }
 
     fn update_position(&mut self, entities: &mut ClientEntities)
@@ -214,7 +201,7 @@ impl UiList
 
         let height = 1.0 / 5.0;
 
-        let scroll = UiScroll::new(creator, height, scroll);
+        let scroll = UiScroll::new(creator, scroll);
 
         Self{
             panel,
@@ -283,9 +270,22 @@ impl UiList
 
         self.frames = frames;
 
-        self.scroll.update_amount(creator, self.frames.len() as f32);
+        let entities = &mut creator.entities;
 
-        self.update_items(&mut creator.entities);
+        self.update_amount(entities);
+        self.update_items(entities);
+    }
+
+    fn update_amount(&mut self, entities: &mut ClientEntities)
+    {
+        let size = (1.0 / self.screens_fit()).clamp(0.0, 1.0);
+
+        self.scroll.update_size(entities, size);
+    }
+
+    fn screens_fit(&self) -> f32
+    {
+        self.frames.len() as f32 * self.height
     }
 
     fn update_items(
@@ -293,7 +293,8 @@ impl UiList
         entities: &mut ClientEntities
     )
     {
-        let start = self.scroll.amount();
+        let last_start = self.frames.len() as f32 - (1.0 / self.height);
+        let start = self.scroll.amount() * last_start.max(0.0);
 
         let over_height = 1.0 / (1.0 / self.height - 1.0);
 
@@ -303,9 +304,10 @@ impl UiList
 
             transform.scale.y = self.height * 0.9;
 
+            let y = (index as f32 - start) * over_height;
             transform.position.y = Ui::ui_position(
                 transform.scale,
-                Vector3::new(0.0, index as f32 * over_height - start, 0.0)
+                Vector3::new(0.0, y, 0.0)
             ).y;
         });
     }
