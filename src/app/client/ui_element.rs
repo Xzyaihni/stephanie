@@ -16,6 +16,7 @@ pub struct MouseEvent
     state: ControlState
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct KeyboardEvent
 {
