@@ -1,4 +1,4 @@
-use nalgebra::{Vector2, Vector3};
+use nalgebra::Vector2;
 
 use yanyaengine::{Transform, game_object::*};
 
@@ -71,7 +71,7 @@ pub enum UiElementType
 {
     Panel,
     Button{on_click: Box<dyn FnMut()>},
-    Drag{}
+    Drag{on_change: Box<dyn FnMut(Vector2<f32>)>}
 }
 
 pub struct UiElement
@@ -95,6 +95,7 @@ impl UiElement
 {
     pub fn update(
         &mut self,
+        distance: impl Fn(Vector2<f32>) -> Vector2<f32>,
         is_inside: impl Fn(Vector2<f32>) -> bool,
         event: &UiEvent
     ) -> bool
@@ -117,14 +118,15 @@ impl UiElement
 
                 false
             },
-            UiElementType::Drag{} =>
+            UiElementType::Drag{on_change} =>
             {
                 if let Some(event) = event.as_mouse()
                 {
                     let down = event.main_button && event.state == ControlState::Pressed;
-
-                    if is_inside(event.position)
+                    if down && is_inside(event.position)
                     {
+                        on_change(distance(event.position));
+
                         return true;
                     }
                 }
@@ -134,24 +136,27 @@ impl UiElement
         }
     }
 
-    pub fn is_inside(
-        camera_position: Vector3<f32>,
-        transform: &Transform,
+    pub fn distance(
+        element_position: Vector2<f32>,
+        camera_position: Vector2<f32>,
         position: Vector2<f32>
-    ) -> bool
+    ) -> Vector2<f32>
     {
-        let offset = transform.position - camera_position;
+        let offset = element_position - camera_position;
 
-        let mouse_offset = offset.xy() - position;
+        offset.xy() - position
+    }
 
+    pub fn is_inside(scale: Vector2<f32>, position: Vector2<f32>) -> bool
+    {
         let inbounds = |half_size: f32, pos: f32| -> bool
         {
             (-half_size..=half_size).contains(&pos)
         };
 
-        let half_scale = transform.scale / 2.0;
+        let half_scale = scale / 2.0;
 
-        inbounds(half_scale.x, mouse_offset.x)
-            && inbounds(half_scale.y, mouse_offset.y)
+        inbounds(half_scale.x, position.x)
+            && inbounds(half_scale.y, position.y)
     }
 }

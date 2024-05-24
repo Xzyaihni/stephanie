@@ -2,7 +2,7 @@ use std::ops::ControlFlow;
 
 use serde::{Serialize, Deserialize};
 
-use nalgebra::Vector3;
+use nalgebra::Vector2;
 
 use yanyaengine::game_object::*;
 
@@ -635,7 +635,7 @@ macro_rules! define_entities
 
             pub fn update_ui(
                 &mut self,
-                camera_position: Vector3<f32>,
+                camera_position: Vector2<f32>,
                 event: UiEvent
             )
             {
@@ -645,14 +645,33 @@ macro_rules! define_entities
                     component: ui_element
                 })|
                 {
+                    let distance = |position|
+                    {
+                        let transform = get_required_entity!(self, entity, get, transform);
+
+                        let distance = UiElement::distance(
+                            transform.position.xy(),
+                            camera_position,
+                            position
+                        );
+                        
+                        distance.component_div(&transform.scale.xy())
+                    };
+
                     let is_inside = |position|
                     {
                         let transform = get_required_entity!(self, entity, get, transform);
 
-                        UiElement::is_inside(camera_position, transform, position)
+                        let position = UiElement::distance(
+                            transform.position.xy(),
+                            camera_position,
+                            position
+                        );
+
+                        UiElement::is_inside(transform.scale.xy(), position)
                     };
 
-                    let captured = ui_element.update(is_inside, &event);
+                    let captured = ui_element.update(distance, is_inside, &event);
 
                     if captured
                     {

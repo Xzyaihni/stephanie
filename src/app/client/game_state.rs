@@ -732,7 +732,7 @@ impl GameState
             entities: local_entities
         };
 
-        self.ui.player_inventory.update(
+        self.ui.player_inventory.full_update(
             &mut entity_creator,
             player.name.clone(),
             inventory
@@ -749,7 +749,7 @@ impl GameState
             if let Some(event) = event
             {
                 self.entities.local_entities.update_ui(
-                    self.camera.read().position().coords,
+                    self.camera.read().position().coords.xy(),
                     event
                 );
             }

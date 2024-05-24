@@ -1,4 +1,8 @@
-use std::sync::Arc;
+use std::{
+    rc::Rc,
+    cell::RefCell,
+    sync::Arc
+};
 
 use nalgebra::{Vector2, Vector3};
 
@@ -29,7 +33,8 @@ pub struct UiScroll
     bar: Entity,
     item_height: f32,
     amount: f32,
-    scroll: f32
+    scroll: Rc<RefCell<f32>>,
+    saved_scroll: f32
 }
 
 impl UiScroll
@@ -40,6 +45,24 @@ impl UiScroll
         background: Entity
     ) -> Self
     {
+        let saved_scroll = 0.0;
+        let scroll = Rc::new(RefCell::new(saved_scroll));
+
+        let drag = {
+            let scroll = scroll.clone();
+
+            UiElement{
+                kind: UiElementType::Drag{
+                    on_change: Box::new(move |pos|
+                    {
+                        scroll.replace(1.0 - (pos.y + 0.5));
+                    })
+                }
+            }
+        };
+
+        creator.entities.set_ui_element(background, Some(drag));
+
         let bar = creator.push(
             EntityInfo{
                 lazy_transform: Some(LazyTransformInfo{
@@ -63,8 +86,24 @@ impl UiScroll
             bar,
             item_height,
             amount: 1.0,
-            scroll: 0.0
+            scroll,
+            saved_scroll
         }
+    }
+
+    pub fn update(&mut self, entities: &mut ClientEntities) -> bool
+    {
+        let current_scroll = *self.scroll.borrow();
+        if self.saved_scroll != current_scroll
+        {
+            self.saved_scroll = current_scroll;
+
+            self.update_position(entities);
+
+            return true;
+        }
+
+        false
     }
 
     pub fn update_amount(
@@ -82,15 +121,15 @@ impl UiScroll
             lazy.target().scale.y = (1.0 / screens_fit).clamp(0.0, 1.0);
         }
 
-        self.update_position(creator);
+        self.update_position(&mut creator.entities);
     }
 
-    fn update_position(&mut self, creator: &mut EntityCreator)
+    fn update_position(&mut self, entities: &mut ClientEntities)
     {
-        if let Some(lazy) = creator.entities.lazy_transform_mut(self.bar)
+        if let Some(lazy) = entities.lazy_transform_mut(self.bar)
         {
             let half_height = lazy.target_ref().scale.y / 2.0;
-            let position = (self.scroll - 0.5).clamp(
+            let position = (self.amount() - 0.5).clamp(
                 -0.5 + half_height,
                 0.5 - half_height
             );
@@ -101,7 +140,7 @@ impl UiScroll
 
     pub fn amount(&self) -> f32
     {
-        self.scroll
+        *self.scroll.borrow()
     }
 }
 
@@ -162,9 +201,6 @@ impl UiList
                         },
                         ..Default::default()
                     }.into()),
-                    ui_element: Some(UiElement{
-                        kind: UiElementType::Drag{}
-                    }),
                     parent: Some(Parent::new(background)),
                     ..Default::default()
                 },
@@ -249,12 +285,12 @@ impl UiList
 
         self.scroll.update_amount(creator, self.frames.len() as f32);
 
-        self.update_items(creator);
+        self.update_items(&mut creator.entities);
     }
 
     fn update_items(
         &mut self,
-        creator: &mut EntityCreator
+        entities: &mut ClientEntities
     )
     {
         let start = self.scroll.amount();
@@ -263,7 +299,7 @@ impl UiList
 
         self.frames.iter().enumerate().for_each(|(index, item)|
         {
-            let transform = creator.entities.lazy_transform_mut(*item).unwrap().target();
+            let transform = entities.lazy_transform_mut(*item).unwrap().target();
 
             transform.scale.y = self.height * 0.9;
 
@@ -272,6 +308,14 @@ impl UiList
                 Vector3::new(0.0, index as f32 * over_height - start, 0.0)
             ).y;
         });
+    }
+
+    pub fn update(&mut self, entities: &mut ClientEntities)
+    {
+        if self.scroll.update(entities)
+        {
+            self.update_items(entities);
+        }
     }
 }
 
@@ -400,7 +444,7 @@ impl UiInventory
         self.list.set_items(creator, names);
     }
 
-    pub fn update(
+    pub fn full_update(
         &mut self,
         creator: &mut EntityCreator,
         name: String,
@@ -409,6 +453,11 @@ impl UiInventory
     {
         self.update_name(creator, name);
         self.update_inventory(creator, inventory);
+    }
+
+    pub fn update(&mut self, entities: &mut ClientEntities)
+    {
+        self.list.update(entities);
     }
 }
 
@@ -473,6 +522,8 @@ impl Ui
         {
             ui_target.position = player_transform.position;
         }
+
+        self.player_inventory.update(entities);
     }
 
     fn ui_position(scale: Vector3<f32>, position: Vector3<f32>) -> Vector3<f32>
