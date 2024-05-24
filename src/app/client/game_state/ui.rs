@@ -14,6 +14,7 @@ use crate::{
         game_state::EntityCreator
     },
     common::{
+        ease_out,
         Inventory,
         Parent,
         Entity,
@@ -65,9 +66,7 @@ impl UiScroll
 
         let bar = creator.push(
             EntityInfo{
-                lazy_transform: Some(LazyTransformInfo{
-                    ..Default::default()
-                }.into()),
+                lazy_transform: Some(LazyTransformInfo::default().into()),
                 ui_element: Some(UiElement{
                     kind: UiElementType::Panel
                 }),
@@ -91,36 +90,30 @@ impl UiScroll
         }
     }
 
-    pub fn update(&mut self, entities: &mut ClientEntities) -> bool
+    pub fn update(&mut self, entities: &mut ClientEntities, dt: f32)
     {
-        let current_scroll = *self.global_scroll.borrow();
-        if self.target_scroll != current_scroll
+        let half_size = self.size / 2.0;
+
+        let fit_into = |value: f32, low, high|
         {
-            self.target_scroll = current_scroll;
+            let span = high - low;
 
-            let half_size = self.size / 2.0;
-
-            let fit_into = |value: f32, low, high|
+            if span <= 0.0
             {
-                let span = high - low;
+                0.0
+            } else
+            {
+                (value.clamp(low, high) - low) / span
+            }
+        };
 
-                if span <= 0.0
-                {
-                    0.0
-                } else
-                {
-                    (value.clamp(low, high) - low) / span
-                }
-            };
+        let current_scroll = *self.global_scroll.borrow();
 
-            self.scroll = fit_into(self.target_scroll, half_size, 1.0 - half_size);
+        self.target_scroll = fit_into(current_scroll, half_size, 1.0 - half_size);
 
-            self.update_position(entities);
+        self.scroll = ease_out(self.scroll, self.target_scroll, 0.05, dt);
 
-            return true;
-        }
-
-        false
+        self.update_position(entities);
     }
 
     pub fn update_size(&mut self, entities: &mut ClientEntities, size: f32)
@@ -338,12 +331,10 @@ impl UiList
         });
     }
 
-    pub fn update(&mut self, entities: &mut ClientEntities)
+    pub fn update(&mut self, entities: &mut ClientEntities, dt: f32)
     {
-        if self.scroll.update(entities)
-        {
-            self.update_items(entities);
-        }
+        self.scroll.update(entities, dt);
+        self.update_items(entities);
     }
 }
 
@@ -483,9 +474,9 @@ impl UiInventory
         self.update_inventory(creator, inventory);
     }
 
-    pub fn update(&mut self, entities: &mut ClientEntities)
+    pub fn update(&mut self, entities: &mut ClientEntities, dt: f32)
     {
-        self.list.update(entities);
+        self.list.update(entities, dt);
     }
 }
 
@@ -530,7 +521,8 @@ impl Ui
         &mut self,
         entities: &mut ClientEntities,
         player_transform: Option<Transform>,
-        camera_size: Vector2<f32>
+        camera_size: Vector2<f32>,
+        dt: f32
     )
     {
         let ui_transform = entities.lazy_transform_mut(self.anchor)
@@ -551,7 +543,7 @@ impl Ui
             ui_target.position = player_transform.position;
         }
 
-        self.player_inventory.update(entities);
+        self.player_inventory.update(entities, dt);
     }
 
     fn ui_position(scale: Vector3<f32>, position: Vector3<f32>) -> Vector3<f32>

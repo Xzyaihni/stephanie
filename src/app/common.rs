@@ -239,6 +239,13 @@ impl SeededRandom
     }
 }
 
+pub fn ease_out(current: f32, target: f32, resistance: f32, dt: f32) -> f32
+{
+    let amount = 1.0 - resistance.powf(dt);
+
+    lerp(current, target, amount)
+}
+
 pub fn lerp(x: f32, y: f32, a: f32) -> f32
 {
     (1.0 - a) * x + y * a

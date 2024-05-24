@@ -717,7 +717,7 @@ impl GameState
 
         let player_transform = self.entities.player_transform().cloned();
 
-        self.ui.update(&mut self.entities.local_entities, player_transform, camera_size);
+        self.ui.update(&mut self.entities.local_entities, player_transform, camera_size, dt);
         self.entities.update(dt);
     }
 
