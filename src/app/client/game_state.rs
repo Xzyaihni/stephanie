@@ -45,6 +45,7 @@ use crate::common::{
 };
 
 use super::{
+    UiEvent,
     ClientInfo,
     MessagePasser,
     ConnectionsHandler,
@@ -53,10 +54,10 @@ use super::{
     world_receiver::WorldReceiver
 };
 
-pub use controls_controller::Control;
+pub use controls_controller::{Control, ControlState};
 pub use entity_creator::EntityCreator;
 
-use controls_controller::{ControlsController, ControlState};
+use controls_controller::ControlsController;
 
 use notifications::{Notifications, Notification};
 
@@ -121,7 +122,7 @@ impl ClientEntitiesContainer
         {
             let transform = self.local_entities.transform(entity).cloned();
 
-            let object = object.server_to_client(transform, &mut info.object_info);
+            let object = object.server_to_client(|| transform.unwrap(), &mut info.object_info);
             self.local_entities.set_render(entity, Some(object));
         });
 
@@ -315,34 +316,6 @@ impl ClientEntitiesContainer
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct MousePosition
-{
-    pub x: f32,
-    pub y: f32
-}
-
-impl MousePosition
-{
-    pub fn new(x: f32, y: f32) -> Self
-    {
-        Self{x, y}
-    }
-
-    pub fn center_offset(self) -> Vector2<f32>
-    {
-        Vector2::new(self.x - 0.5, self.y - 0.5)
-    }
-}
-
-impl From<(f64, f64)> for MousePosition
-{
-    fn from(value: (f64, f64)) -> Self
-    {
-        Self{x: value.0 as f32, y: value.1 as f32}
-    }
-}
-
 pub struct RaycastInfo
 {
     pub pierce: Option<f32>,
@@ -395,7 +368,7 @@ pub struct GameStateInfo<'a>
 
 pub struct GameState
 {
-    pub mouse_position: MousePosition,
+    pub mouse_position: Vector2<f32>,
     pub camera: Arc<RwLock<Camera>>,
     pub assets: Arc<Mutex<Assets>>,
     pub object_factory: Arc<ObjectFactory>,
@@ -418,7 +391,7 @@ impl GameState
 {
     pub fn new(info: GameStateInfo) -> Self
     {
-        let mouse_position = MousePosition::new(0.0, 0.0);
+        let mouse_position = Vector2::zeros();
 
         let notifications = Notifications::new();
         let controls = ControlsController::new();
@@ -725,7 +698,7 @@ impl GameState
 
         self.world.update(dt);
 
-        if self.controls.is_down(Control::SecondaryAction)
+        if self.controls.is_clicked(Control::SecondaryAction)
         {
             let player = self.player();
             let inventory = self.entities.entities.inventory_mut(player).unwrap();
@@ -768,16 +741,24 @@ impl GameState
 
     pub fn input(&mut self, control: yanyaengine::Control)
     {
-        self.controls.handle_input(control);
+        let matched = self.controls.handle_input(control);
+
+        if let Some((state, control)) = matched
+        {
+            let event = UiEvent::from_control(|| self.world_mouse_position(), state, control);
+            if let Some(event) = event
+            {
+                self.entities.local_entities.update_ui(
+                    self.camera.read().position().coords,
+                    event
+                );
+            }
+        }
     }
 
     pub fn pressed(&self, control: Control) -> bool
     {
-        match self.controls.state(control)
-        {
-            ControlState::Pressed => true,
-            _ => false
-        }
+        self.controls.is_down(control)
     }
 
     #[allow(dead_code)]
@@ -790,7 +771,7 @@ impl GameState
     {
         let camera_size = self.camera.read().size();
 
-        self.mouse_position.center_offset().component_mul(&camera_size)
+        (self.mouse_position - Vector2::repeat(0.5)).component_mul(&camera_size)
     }
 
     pub fn camera_moved(&mut self)

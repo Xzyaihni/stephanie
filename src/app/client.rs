@@ -5,6 +5,8 @@ use std::{
     net::TcpStream
 };
 
+use nalgebra::Vector2;
+
 use parking_lot::RwLock;
 
 use vulkano::{
@@ -20,7 +22,6 @@ use vulkano::{
 use image::error::ImageError;
 
 use yanyaengine::{
-    Control,
     camera::Camera,
     object::{
         ObjectVertex,
@@ -42,7 +43,10 @@ use crate::common::{
 
 pub use visibility_checker::VisibilityChecker;
 
+pub use ui_element::{UiEvent, MouseEvent, UiElement};
+
 pub use game::DrawableEntity;
+pub use game_state::{Control, ControlState};
 
 pub use connections_handler::ConnectionsHandler;
 pub use tiles_factory::{TilesFactory, ChunkInfo};
@@ -194,13 +198,14 @@ impl Client
         self.game_state.borrow().draw(&mut info);
     }
 
-    pub fn input(&mut self, control: Control)
+    pub fn input(&mut self, control: yanyaengine::Control)
     {
         self.game_state.borrow_mut().input(control);
     }
 
     pub fn mouse_move(&mut self, position: (f64, f64))
     {
-        self.game_state.borrow_mut().mouse_position = position.into();
+        let position = Vector2::new(position.0 as f32, position.1 as f32);
+        self.game_state.borrow_mut().mouse_position = position;
     }
 }

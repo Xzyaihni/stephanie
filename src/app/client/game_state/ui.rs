@@ -46,7 +46,7 @@ impl UiScroll
                     ..Default::default()
                 }.into()),
                 ui_element: Some(UiElement{
-                    kind: UiElementType::Button
+                    kind: UiElementType::Panel
                 }),
                 parent: Some(Parent::new(background)),
                 ..Default::default()
@@ -136,7 +136,7 @@ impl UiList
                         ..Default::default()
                     }.into()),
                     ui_element: Some(UiElement{
-                        kind: UiElementType::Button
+                        kind: UiElementType::Panel
                     }),
                     parent: Some(Parent::new(background)),
                     ..Default::default()
@@ -163,7 +163,7 @@ impl UiList
                         ..Default::default()
                     }.into()),
                     ui_element: Some(UiElement{
-                        kind: UiElementType::Button
+                        kind: UiElementType::Drag{}
                     }),
                     parent: Some(Parent::new(background)),
                     ..Default::default()
@@ -200,11 +200,14 @@ impl UiList
 
         let frames: Vec<_> = items.map(|name|
         {
+            let inner_name = name.clone();
             let id = creator.push(
                 EntityInfo{
                     lazy_transform: Some(LazyTransformInfo::default().into()),
                     ui_element: Some(UiElement{
-                        kind: UiElementType::Button
+                        kind: UiElementType::Button{
+                            on_click: Box::new(move || { println!("clicked {inner_name}") })
+                        }
                     }),
                     parent: Some(Parent::new(self.panel)),
                     ..Default::default()
@@ -470,8 +473,6 @@ impl Ui
         {
             ui_target.position = player_transform.position;
         }
-
-        entities.update_ui(camera_size);
     }
 
     fn ui_position(scale: Vector3<f32>, position: Vector3<f32>) -> Vector3<f32>

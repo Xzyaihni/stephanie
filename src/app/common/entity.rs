@@ -1,12 +1,17 @@
+use std::ops::ControlFlow;
+
 use serde::{Serialize, Deserialize};
 
-use nalgebra::Vector2;
+use nalgebra::Vector3;
 
 use yanyaengine::game_object::*;
 
 use crate::{
     server::ConnectionsHandler,
-    client::ui_element::UiElement,
+    client::{
+        UiElement,
+        UiEvent
+    },
     common::{
         EntityPasser,
         Inventory,
@@ -86,7 +91,7 @@ pub trait ServerToClient<T>
 {
     fn server_to_client(
         self,
-        transform: Option<Transform>,
+        transform: impl FnOnce() -> Transform,
         create_info: &mut ObjectCreateInfo
     ) -> T;
 }
@@ -95,7 +100,7 @@ impl<T> ServerToClient<T> for T
 {
     fn server_to_client(
         self,
-        _transform: Option<Transform>,
+        _transform: impl FnOnce() -> Transform,
         _create_info: &mut ObjectCreateInfo
     ) -> T
     {
@@ -528,7 +533,10 @@ macro_rules! define_entities
                         $({
                             let component = info.$name.map(|x|
                             {
-                                x.server_to_client(transform.clone(), create_info)
+                                x.server_to_client(||
+                                {
+                                    transform.clone().expect("server to client expects transform")
+                                }, create_info)
                             });
 
                             self.$set_func(entity, component);
@@ -564,9 +572,10 @@ macro_rules! define_entities
                     },
                     $(Message::$message_name{entity, $name} =>
                     {
-                        let transform = self.transform_clone(entity);
-
-                        let component = $name.server_to_client(transform, create_info);
+                        let component = $name.server_to_client(||
+                        {
+                            self.transform_clone(entity).expect("expects a transform")
+                        }, create_info);
 
                         self.$set_func(entity, Some(component));
 
@@ -624,14 +633,35 @@ macro_rules! define_entities
                 self.update_enemy_common(dt, |_, _, _| {});
             }
 
-            pub fn update_ui(&mut self, _size: Vector2<f32>)
+            pub fn update_ui(
+                &mut self,
+                camera_position: Vector3<f32>,
+                event: UiEvent
+            )
             {
-                /*self.ui_element.iter().for_each(|(_, ComponentWrapper{
+                // reversed to update the children first
+                self.ui_element.iter_mut().rev().try_for_each(|(_, ComponentWrapper{
                     entity,
                     component: ui_element
                 })|
                 {
-                });*/
+                    let is_inside = |position|
+                    {
+                        let transform = get_required_entity!(self, entity, get, transform);
+
+                        UiElement::is_inside(camera_position, transform, position)
+                    };
+
+                    let captured = ui_element.update(is_inside, &event);
+
+                    if captured
+                    {
+                        ControlFlow::Break(())
+                    } else
+                    {
+                        ControlFlow::Continue(())
+                    }
+                });
             }
 
             pub fn update_sprites(

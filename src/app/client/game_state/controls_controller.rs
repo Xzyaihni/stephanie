@@ -138,7 +138,7 @@ impl ControlsController
         self.keys[control as usize]
     }
 
-    pub fn handle_input(&mut self, input: yanyaengine::Control)
+    pub fn handle_input(&mut self, input: yanyaengine::Control) -> Option<(ControlState, Control)>
     {
         let state = ControlState::from(&input);
 
@@ -156,8 +156,12 @@ impl ControlsController
                 }
 
                 self.keys[*matched as usize] = state;
+
+                return Some((state, *matched));
             }
         }
+
+        None
     }
 
     pub fn release_clicked(&mut self)

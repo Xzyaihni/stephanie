@@ -153,13 +153,13 @@ impl ServerToClient<ClientRenderInfo> for RenderInfo
 {
     fn server_to_client(
         self,
-        transform: Option<Transform>,
+        transform: impl FnOnce() -> Transform,
         create_info: &mut ObjectCreateInfo
     ) -> ClientRenderInfo
     {
         let object = self.object.and_then(|object|
         {
-            object.into_client(transform.expect("renderable must have a transform"), create_info)
+            object.into_client(transform(), create_info)
         });
 
         ClientRenderInfo{object, shape: self.shape, z_level: self.z_level}
