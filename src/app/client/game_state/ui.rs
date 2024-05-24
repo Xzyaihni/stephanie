@@ -26,14 +26,77 @@ use crate::{
 pub struct UiScroll
 {
     background: Entity,
+    bar: Entity,
+    item_height: f32,
+    amount: f32,
     scroll: f32
 }
 
 impl UiScroll
 {
-    pub fn new(background: Entity) -> Self
+    pub fn new(
+        creator: &mut EntityCreator,
+        item_height: f32,
+        background: Entity
+    ) -> Self
     {
-        Self{background, scroll: 0.0}
+        let bar = creator.push(
+            EntityInfo{
+                lazy_transform: Some(LazyTransformInfo{
+                    ..Default::default()
+                }.into()),
+                ui_element: Some(UiElement{
+                    kind: UiElementType::Button
+                }),
+                parent: Some(Parent::new(background)),
+                ..Default::default()
+            },
+            RenderInfo{
+                object: Some(RenderObject::Texture{name: "ui/light.png".to_owned()}),
+                shape: None,
+                z_level: 150
+            }
+        );
+
+        Self{
+            background,
+            bar,
+            item_height,
+            amount: 1.0,
+            scroll: 0.0
+        }
+    }
+
+    pub fn update_amount(
+        &mut self,
+        creator: &mut EntityCreator,
+        amount: f32
+    )
+    {
+        self.amount = amount;
+
+        let screens_fit = self.amount * self.item_height;
+
+        if let Some(lazy) = creator.entities.lazy_transform_mut(self.bar)
+        {
+            lazy.target().scale.y = (1.0 / screens_fit).clamp(0.0, 1.0);
+        }
+
+        self.update_position(creator);
+    }
+
+    fn update_position(&mut self, creator: &mut EntityCreator)
+    {
+        if let Some(lazy) = creator.entities.lazy_transform_mut(self.bar)
+        {
+            let half_height = lazy.target_ref().scale.y / 2.0;
+            let position = (self.scroll - 0.5).clamp(
+                -0.5 + half_height,
+                0.5 - half_height
+            );
+
+            lazy.target().position.y = position;
+        }
     }
 
     pub fn amount(&self) -> f32
@@ -113,12 +176,14 @@ impl UiList
             )
         };
 
-        let scroll = UiScroll::new(scroll);
+        let height = 1.0 / 5.0;
+
+        let scroll = UiScroll::new(creator, height, scroll);
 
         Self{
             panel,
             scroll,
-            height: 1.0 / 5.0,
+            height,
             frames: Vec::new(),
             items: Vec::new()
         }
@@ -178,6 +243,8 @@ impl UiList
         }).collect();
 
         self.frames = frames;
+
+        self.scroll.update_amount(creator, self.frames.len() as f32);
 
         self.update_items(creator);
     }
