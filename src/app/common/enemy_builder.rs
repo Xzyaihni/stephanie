@@ -55,9 +55,9 @@ impl<'a> EnemyBuilder<'a>
                 ..Default::default()
             }.into()),
             render: Some(RenderInfo{
-                object: None,
                 shape: Some(BoundingShape::Circle),
-                z_level: -1
+                z_level: -1,
+                ..Default::default()
             }),
             physical: Some(PhysicalProperties{
                 mass: 50.0,

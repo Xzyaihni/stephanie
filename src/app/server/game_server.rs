@@ -190,7 +190,8 @@ impl GameServer
                     name: "player/hair.png".to_owned()
                 }),
                 shape: Some(BoundingShape::Circle),
-                z_level: 0
+                z_level: 0,
+                ..Default::default()
             }),
             inventory: Some(Inventory::new()),
             physical: Some(physical.into()),
@@ -219,7 +220,8 @@ impl GameServer
                     name: "items/weapons/pistol.png".to_owned()
                 }),
                 shape: Some(BoundingShape::Circle),
-                z_level: -2
+                z_level: -2,
+                ..Default::default()
             }),
             parent: Some(Parent::new(inserted)),
             lazy_transform: Some(LazyTransformInfo{
@@ -302,7 +304,8 @@ impl GameServer
                         name: "player/pon.png".to_owned()
                     }),
                     shape: Some(BoundingShape::Circle),
-                    z_level: 2
+                    z_level: 2,
+                    ..Default::default()
                 }),
                 ..Default::default()
             }

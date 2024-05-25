@@ -76,9 +76,23 @@ pub enum BoundingShape
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RenderInfo
 {
+    pub visible: bool,
     pub object: Option<RenderObject>,
     pub shape: Option<BoundingShape>,
     pub z_level: i32
+}
+
+impl Default for RenderInfo
+{
+    fn default() -> Self
+    {
+        Self{
+            visible: true,
+            object: None,
+            shape: None,
+            z_level: 0
+        }
+    }
 }
 
 pub enum ClientRenderObject
@@ -144,6 +158,7 @@ impl GameObject for ClientRenderObject
 
 pub struct ClientRenderInfo
 {
+    pub visible: bool,
     pub object: Option<ClientRenderObject>,
     pub shape: Option<BoundingShape>,
     pub z_level: i32
@@ -162,7 +177,7 @@ impl ServerToClient<ClientRenderInfo> for RenderInfo
             object.into_client(transform(), create_info)
         });
 
-        ClientRenderInfo{object, shape: self.shape, z_level: self.z_level}
+        ClientRenderInfo{visible: true, object, shape: self.shape, z_level: self.z_level}
     }
 }
 
@@ -205,12 +220,22 @@ impl ClientRenderInfo
         }
     }
 
+    pub fn set_visibility(&mut self, visible: bool)
+    {
+        self.visible = visible;
+    }
+
     fn visible(
         &self,
         visibility: &VisibilityChecker,
         transform: &Transform
     ) -> bool
     {
+        if !self.visible
+        {
+            return false;
+        }
+
         let shape = if let Some(x) = self.shape
         {
             x
@@ -228,6 +253,11 @@ impl ClientRenderInfo
         info: &mut UpdateBuffersInfo
     )
     {
+        if !self.visible
+        {
+            return;
+        }
+
         if let Some(transform) = self.object.as_ref().and_then(|x| x.transform())
         {
             if !self.visible(visibility, transform)
@@ -250,6 +280,11 @@ impl ClientRenderInfo
     {
         if let Some(object) = self.object.as_ref()
         {
+            if !self.visible
+            {
+                return;
+            }
+
             if let Some(transform) = object.transform()
             {
                 if !self.visible(visibility, transform)

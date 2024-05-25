@@ -75,8 +75,8 @@ impl UiScroll
             },
             RenderInfo{
                 object: Some(RenderObject::Texture{name: "ui/light.png".to_owned()}),
-                shape: None,
-                z_level: 150
+                z_level: 150,
+                ..Default::default()
             }
         );
 
@@ -150,10 +150,28 @@ impl UiScroll
     }
 }
 
+pub struct VisibleFrames
+{
+    start: usize,
+    previous: Vec<Entity>
+}
+
+impl VisibleFrames
+{
+    pub fn new() -> Self
+    {
+        Self{
+            start: 0,
+            previous: Vec::new()
+        }
+    }
+}
+
 pub struct UiList
 {
     panel: Entity,
     scroll: UiScroll,
+    visible: VisibleFrames,
     height: f32,
     frames: Vec<Entity>,
     items: Vec<Entity>
@@ -187,9 +205,8 @@ impl UiList
                     ..Default::default()
                 },
                 RenderInfo{
-                    object: None,
-                    shape: None,
-                    z_level: 150
+                    z_level: 150,
+                    ..Default::default()
                 }
             )
         };
@@ -212,8 +229,8 @@ impl UiList
                 },
                 RenderInfo{
                     object: Some(RenderObject::Texture{name: "ui/light.png".to_owned()}),
-                    shape: None,
-                    z_level: 150
+                    z_level: 150,
+                    ..Default::default()
                 }
             )
         };
@@ -225,6 +242,7 @@ impl UiList
         Self{
             panel,
             scroll,
+            visible: VisibleFrames::new(),
             height,
             frames: Vec::new(),
             items: Vec::new()
@@ -258,8 +276,8 @@ impl UiList
                     object: Some(RenderObject::Texture{
                         name: "ui/lighter.png".to_owned()
                     }),
-                    shape: None,
-                    z_level: 150
+                    z_level: 150,
+                    ..Default::default()
                 }
             );
 
@@ -277,8 +295,8 @@ impl UiList
                         text: name,
                         font_size: 40
                     }),
-                    shape: None,
-                    z_level: 151
+                    z_level: 151,
+                    ..Default::default()
                 }
             );
 
@@ -374,8 +392,8 @@ impl UiInventory
                 },
                 RenderInfo{
                     object,
-                    shape: None,
-                    z_level: *z_level
+                    z_level: *z_level,
+                    ..Default::default()
                 }
             )
         };

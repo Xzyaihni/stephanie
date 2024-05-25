@@ -38,6 +38,7 @@ impl EntityCreator<'_>
         {
             let new_render = RenderInfo{
                 object: Some(new_object),
+                visible: render.visible,
                 shape: render.shape,
                 z_level: render.z_level
             };
