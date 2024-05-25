@@ -161,8 +161,9 @@ pub struct UiList
     panel: Entity,
     scroll: UiScroll,
     height: f32,
-    amount: u32,
-    items: Vec<ListItem>
+    amount: usize,
+    items: Vec<String>,
+    frames: Vec<ListItem>
 }
 
 impl UiList
@@ -233,7 +234,8 @@ impl UiList
             scroll,
             height,
             amount: 0,
-            items: Self::create_items(creator, panel, max_fit)
+            items: Vec::new(),
+            frames: Self::create_items(creator, panel, max_fit)
         }
     }
 
@@ -252,6 +254,7 @@ impl UiList
                     ..Default::default()
                 },
                 RenderInfo{
+                    visible: false,
                     object: Some(RenderObject::Texture{
                         name: "ui/lighter.png".to_owned()
                     }),
@@ -284,19 +287,27 @@ impl UiList
         items: impl Iterator<Item=String>
     )
     {
-        self.amount = items.count() as u32;
+        self.items = items.collect();
+        self.amount = self.items.len();
 
-        let entities = &mut creator.entities;
-
-        self.update_amount(entities);
-        self.update_items(entities);
+        self.update_amount(creator);
     }
 
-    fn update_amount(&mut self, entities: &mut ClientEntities)
+    fn update_amount(&mut self, creator: &mut EntityCreator)
     {
         let size = (1.0 / self.screens_fit()).clamp(0.0, 1.0);
 
-        self.scroll.update_size(entities, size);
+        self.scroll.update_size(&mut creator.entities, size);
+
+        self.frames.iter().enumerate().for_each(|(index, item)|
+        {
+            if let Some(render) = creator.entities.render_mut(item.frame)
+            {
+                render.visible = index < self.amount;
+            }
+        });
+
+        self.update_items(creator);
     }
 
     fn screens_fit(&self) -> f32
@@ -306,7 +317,7 @@ impl UiList
 
     fn update_items(
         &mut self,
-        entities: &mut ClientEntities
+        creator: &mut EntityCreator
     )
     {
         let last_start = self.amount as f32 - (1.0 / self.height);
@@ -317,9 +328,20 @@ impl UiList
         let y = -start * over_height;
         let y_modulo = y % over_height;
 
-        self.items.iter().enumerate().for_each(|(index, item)|
+        let start_item = start as usize;
+        self.frames.iter().take(self.amount).enumerate().for_each(|(index, item)|
         {
-            let transform = entities.lazy_transform_mut(item.frame).unwrap().target();
+            let item_index = index + start_item;
+
+            creator.replace(
+                item.item,
+                RenderObject::Text{
+                    text: self.items[item_index].clone(),
+                    font_size: 40
+                }
+            );
+
+            let transform = creator.entities.lazy_transform_mut(item.frame).unwrap().target();
 
             transform.scale.y = self.height * 0.9;
 
@@ -330,10 +352,10 @@ impl UiList
         });
     }
 
-    pub fn update(&mut self, entities: &mut ClientEntities, dt: f32)
+    pub fn update(&mut self, creator: &mut EntityCreator, dt: f32)
     {
-        self.scroll.update(entities, dt);
-        self.update_items(entities);
+        self.scroll.update(&mut creator.entities, dt);
+        self.update_items(creator);
     }
 }
 
@@ -473,9 +495,9 @@ impl UiInventory
         self.update_inventory(creator, inventory);
     }
 
-    pub fn update(&mut self, entities: &mut ClientEntities, dt: f32)
+    pub fn update(&mut self, creator: &mut EntityCreator, dt: f32)
     {
-        self.list.update(entities, dt);
+        self.list.update(creator, dt);
     }
 }
 
@@ -518,13 +540,13 @@ impl Ui
 
     pub fn update(
         &mut self,
-        entities: &mut ClientEntities,
+        creator: &mut EntityCreator,
         player_transform: Option<Transform>,
         camera_size: Vector2<f32>,
         dt: f32
     )
     {
-        let ui_transform = entities.lazy_transform_mut(self.anchor)
+        let ui_transform = creator.entities.lazy_transform_mut(self.anchor)
             .unwrap();
 
         let min_size = camera_size.x.min(camera_size.y);
@@ -542,7 +564,7 @@ impl Ui
             ui_target.position = player_transform.position;
         }
 
-        self.player_inventory.update(entities, dt);
+        self.player_inventory.update(creator, dt);
     }
 
     fn ui_position(scale: Vector3<f32>, position: Vector3<f32>) -> Vector3<f32>
