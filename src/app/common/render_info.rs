@@ -1,3 +1,7 @@
+use std::sync::Arc;
+
+use parking_lot::RwLock;
+
 use serde::{Serialize, Deserialize};
 
 use yanyaengine::{
@@ -9,6 +13,7 @@ use yanyaengine::{
     Transform,
     TransformContainer,
     TextInfo,
+    object::Texture,
     game_object::*
 };
 
@@ -188,6 +193,36 @@ impl ServerToClient<ClientRenderInfo> for RenderInfo
 
 impl ClientRenderInfo
 {
+    pub fn set_texture(&mut self, texture: Arc<RwLock<Texture>>)
+    {
+        if let Some(object) = self.object.as_mut()
+        {
+            match object
+            {
+                ClientRenderObject::Normal(x) =>
+                {
+                    x.set_texture(texture);
+                },
+                _ => ()
+            }
+        }
+    }
+
+    pub fn set_inplace_texture(&mut self, texture: Texture)
+    {
+        if let Some(object) = self.object.as_mut()
+        {
+            match object
+            {
+                ClientRenderObject::Normal(x) =>
+                {
+                    x.set_inplace_texture(texture);
+                },
+                _ => ()
+            }
+        }
+    }
+
     pub fn set_sprite(
         &mut self,
         create_info: &mut ObjectCreateInfo,
