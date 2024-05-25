@@ -162,6 +162,8 @@ pub struct UiList
     scroll: UiScroll,
     height: f32,
     amount: usize,
+    amount_changed: bool,
+    current_start: usize,
     items: Vec<String>,
     frames: Vec<ListItem>
 }
@@ -234,6 +236,8 @@ impl UiList
             scroll,
             height,
             amount: 0,
+            amount_changed: true,
+            current_start: 0,
             items: Vec::new(),
             frames: Self::create_items(creator, panel, max_fit)
         }
@@ -295,6 +299,8 @@ impl UiList
 
     fn update_amount(&mut self, creator: &mut EntityCreator)
     {
+        self.amount_changed = true;
+
         let size = (1.0 / self.screens_fit()).clamp(0.0, 1.0);
 
         self.scroll.update_size(&mut creator.entities, size);
@@ -329,17 +335,25 @@ impl UiList
         let y_modulo = y % over_height;
 
         let start_item = start as usize;
+
+        let start_changed = self.current_start != start_item;
+
+        self.current_start = start_item;
+
         self.frames.iter().take(self.amount).enumerate().for_each(|(index, item)|
         {
-            let item_index = index + start_item;
+            if start_changed || self.amount_changed
+            {
+                let item_index = index + start_item;
 
-            creator.replace(
-                item.item,
-                RenderObject::Text{
-                    text: self.items[item_index].clone(),
-                    font_size: 40
-                }
-            );
+                creator.replace(
+                    item.item,
+                    RenderObject::Text{
+                        text: self.items[item_index].clone(),
+                        font_size: 40
+                    }
+                );
+            }
 
             let transform = creator.entities.lazy_transform_mut(item.frame).unwrap().target();
 
@@ -350,6 +364,8 @@ impl UiList
                 Vector3::new(0.0, y_modulo + index as f32 * over_height, 0.0)
             ).y;
         });
+
+        self.amount_changed = false;
     }
 
     pub fn update(&mut self, creator: &mut EntityCreator, dt: f32)
