@@ -150,13 +150,19 @@ impl UiScroll
     }
 }
 
+pub struct ListItem
+{
+    frame: Entity,
+    item: Entity
+}
+
 pub struct UiList
 {
     panel: Entity,
     scroll: UiScroll,
     height: f32,
-    frames: Vec<Entity>,
-    items: Vec<Entity>
+    amount: u32,
+    items: Vec<ListItem>
 }
 
 impl UiList
@@ -217,7 +223,8 @@ impl UiList
             )
         };
 
-        let height = 1.0 / 5.0;
+        let max_fit = 5;
+        let height = 1.0 / max_fit as f32;
 
         let scroll = UiScroll::new(creator, scroll);
 
@@ -225,32 +232,23 @@ impl UiList
             panel,
             scroll,
             height,
-            frames: Vec::new(),
-            items: Vec::new()
+            amount: 0,
+            items: Self::create_items(creator, panel, max_fit)
         }
     }
 
-    pub fn set_items(
-        &mut self,
+    fn create_items(
         creator: &mut EntityCreator,
-        items: impl Iterator<Item=String>
-    )
+        parent: Entity,
+        max_fit: u32
+    ) -> Vec<ListItem>
     {
-        self.items.iter().chain(&self.frames).for_each(|x| creator.entities.remove(*x));
-        self.items.clear();
-
-        let frames: Vec<_> = items.map(|name|
+        (0..=max_fit).map(|_|
         {
-            let inner_name = name.clone();
             let id = creator.push(
                 EntityInfo{
                     lazy_transform: Some(LazyTransformInfo::default().into()),
-                    ui_element: Some(UiElement{
-                        kind: UiElementType::Button{
-                            on_click: Box::new(move || { println!("clicked {inner_name}") })
-                        }
-                    }),
-                    parent: Some(Parent::new(self.panel)),
+                    parent: Some(Parent::new(parent)),
                     ..Default::default()
                 },
                 RenderInfo{
@@ -265,28 +263,28 @@ impl UiList
             let text_id = creator.push(
                 EntityInfo{
                     lazy_transform: Some(LazyTransformInfo::default().into()),
-                    ui_element: Some(UiElement{
-                        kind: UiElementType::Panel
-                    }),
                     parent: Some(Parent::new(id)),
                     ..Default::default()
                 },
                 RenderInfo{
-                    object: Some(RenderObject::Text{
-                        text: name,
-                        font_size: 40
-                    }),
+                    object: None,
                     z_level: 151,
                     ..Default::default()
                 }
             );
 
-            self.items.push(text_id);
+            ListItem{frame: id, item: text_id}
+        }).collect()
 
-            id
-        }).collect();
+    }
 
-        self.frames = frames;
+    pub fn set_items(
+        &mut self,
+        creator: &mut EntityCreator,
+        items: impl Iterator<Item=String>
+    )
+    {
+        self.amount = items.count() as u32;
 
         let entities = &mut creator.entities;
 
@@ -303,7 +301,7 @@ impl UiList
 
     fn screens_fit(&self) -> f32
     {
-        self.frames.len() as f32 * self.height
+        self.amount as f32 * self.height
     }
 
     fn update_items(
@@ -311,21 +309,23 @@ impl UiList
         entities: &mut ClientEntities
     )
     {
-        let last_start = self.frames.len() as f32 - (1.0 / self.height);
+        let last_start = self.amount as f32 - (1.0 / self.height);
         let start = self.scroll.amount() * last_start.max(0.0);
 
         let over_height = 1.0 / (1.0 / self.height - 1.0);
 
-        self.frames.iter().enumerate().for_each(|(index, item)|
+        let y = -start * over_height;
+        let y_modulo = y % over_height;
+
+        self.items.iter().enumerate().for_each(|(index, item)|
         {
-            let transform = entities.lazy_transform_mut(*item).unwrap().target();
+            let transform = entities.lazy_transform_mut(item.frame).unwrap().target();
 
             transform.scale.y = self.height * 0.9;
 
-            let y = (index as f32 - start) * over_height;
             transform.position.y = Ui::ui_position(
                 transform.scale,
-                Vector3::new(0.0, y, 0.0)
+                Vector3::new(0.0, y_modulo + index as f32 * over_height, 0.0)
             ).y;
         });
     }
