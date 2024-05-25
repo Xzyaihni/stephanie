@@ -10,7 +10,8 @@ use crate::common::{
 pub struct EntityCreator<'a>
 {
     pub entities: &'a mut ClientEntities,
-    pub objects: &'a mut Vec<(Entity, RenderInfo)>
+    pub objects: &'a mut Vec<(Entity, RenderInfo)>,
+    pub replace_objects: &'a mut Vec<(Entity, RenderObject)>
 }
 
 impl EntityCreator<'_>
@@ -34,16 +35,6 @@ impl EntityCreator<'_>
         new_object: RenderObject
     )
     {
-        if let Some(render) = self.entities.render(entity)
-        {
-            let new_render = RenderInfo{
-                object: Some(new_object),
-                visible: render.visible,
-                shape: render.shape,
-                z_level: render.z_level
-            };
-
-            self.objects.push((entity, new_render));
-        }
+        self.replace_objects.push((entity, new_object));
     }
 }

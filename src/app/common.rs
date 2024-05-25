@@ -16,6 +16,7 @@ pub use yanyaengine::{Transform, TransformContainer};
 pub use objects_store::ObjectsStore;
 
 pub use render_info::{
+    Scissor,
     BoundingShape,
     RenderObject,
     RenderInfo,

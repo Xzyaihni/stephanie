@@ -34,6 +34,7 @@ use crate::common::{
     EntityPasser,
     EntitiesController,
     RenderInfo,
+    RenderObject,
     entity::ClientEntities,
     message::Message,
     world::{
@@ -80,6 +81,7 @@ struct RaycastResult
 pub struct ClientEntitiesContainer
 {
     local_objects: Vec<(Entity, RenderInfo)>,
+    replace_objects: Vec<(Entity, RenderObject)>,
     local_entities: ClientEntities,
     entities: ClientEntities,
     main_player: Option<Entity>,
@@ -92,6 +94,7 @@ impl ClientEntitiesContainer
     {
         Self{
             local_objects: Vec::new(),
+            replace_objects: Vec::new(),
             local_entities: Entities::new(),
             entities: Entities::new(),
             main_player: None,
@@ -117,6 +120,16 @@ impl ClientEntitiesContainer
     {
         self.entities.update_sprites(&mut info.object_info, enemies_info);
         self.local_entities.update_sprites(&mut info.object_info, enemies_info);
+
+        mem::take(&mut self.replace_objects).into_iter().for_each(|(entity, object)|
+        {
+            let transform = self.local_entities.transform(entity).unwrap().clone();
+
+            if let Some(render) = self.local_entities.render_mut(entity)
+            {
+                render.object = object.into_client(transform, &mut info.object_info);
+            }
+        });
 
         mem::take(&mut self.local_objects).into_iter().for_each(|(entity, object)|
         {
@@ -439,6 +452,7 @@ impl GameState
 
         let mut entity_creator = EntityCreator{
             objects: &mut entities.local_objects,
+            replace_objects: &mut entities.replace_objects,
             entities: &mut entities.local_entities
         };
 
@@ -719,6 +733,7 @@ impl GameState
 
         let mut entity_creator = EntityCreator{
             objects: &mut self.entities.local_objects,
+            replace_objects: &mut self.entities.replace_objects,
             entities: &mut self.entities.local_entities
         };
 
@@ -732,6 +747,7 @@ impl GameState
 
         let entities = &mut self.entities.entities;
         let local_objects = &mut self.entities.local_objects;
+        let replace_objects = &mut self.entities.replace_objects;
         let local_entities = &mut self.entities.local_entities;
 
         let player = entities.player(player_id).unwrap();
@@ -739,6 +755,7 @@ impl GameState
 
         let mut entity_creator = EntityCreator{
             objects: local_objects,
+            replace_objects,
             entities: local_entities
         };
 

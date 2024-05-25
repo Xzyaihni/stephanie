@@ -4,6 +4,8 @@ use parking_lot::RwLock;
 
 use serde::{Serialize, Deserialize};
 
+use vulkano::pipeline::graphics::viewport::Scissor as VulkanoScissor;
+
 use yanyaengine::{
     Object,
     ObjectInfo,
@@ -79,9 +81,26 @@ pub enum BoundingShape
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Scissor
+{
+    pub offset: [f32; 2],
+    pub extent: [f32; 2]
+}
+
+impl Scissor
+{
+    pub fn into_global(self) -> VulkanoScissor
+    {
+        return Default::default();
+        todo!()
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RenderInfo
 {
     pub visible: bool,
+    pub scissor: Option<Scissor>,
     pub object: Option<RenderObject>,
     pub shape: Option<BoundingShape>,
     pub z_level: i32
@@ -93,6 +112,7 @@ impl Default for RenderInfo
     {
         Self{
             visible: true,
+            scissor: None,
             object: None,
             shape: None,
             z_level: 0
@@ -164,6 +184,7 @@ impl GameObject for ClientRenderObject
 pub struct ClientRenderInfo
 {
     pub visible: bool,
+    pub scissor: Option<VulkanoScissor>,
     pub object: Option<ClientRenderObject>,
     pub shape: Option<BoundingShape>,
     pub z_level: i32
@@ -184,6 +205,7 @@ impl ServerToClient<ClientRenderInfo> for RenderInfo
 
         ClientRenderInfo{
             visible: self.visible,
+            scissor: self.scissor.map(|x| x.into_global()),
             object,
             shape: self.shape,
             z_level: self.z_level
@@ -333,7 +355,21 @@ impl ClientRenderInfo
                 }
             }
 
+            if let Some(scissor) = self.scissor
+            {
+                info.object_info.builder_wrapper.builder()
+                    .set_scissor(0, vec![scissor].into())
+                    .unwrap();
+            }
+
             object.draw(info);
+
+            if self.scissor.is_some()
+            {
+                info.object_info.builder_wrapper.builder()
+                    .set_scissor(0, vec![VulkanoScissor::default()].into())
+                    .unwrap();
+            }
         }
     }
 }

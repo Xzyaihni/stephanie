@@ -22,6 +22,7 @@ use crate::{
         EntityInfo,
         RenderObject,
         RenderInfo,
+        Scissor,
         lazy_transform::*,
         entity::ClientEntities
     }
@@ -76,6 +77,10 @@ impl UiScroll
             RenderInfo{
                 object: Some(RenderObject::Texture{name: "ui/light.png".to_owned()}),
                 z_level: 150,
+                scissor: Some(Scissor{
+                    offset: [0.0, 0.0],
+                    extent: [1.0, 0.5]
+                }),
                 ..Default::default()
             }
         );
