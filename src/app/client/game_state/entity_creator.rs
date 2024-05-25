@@ -2,16 +2,23 @@ use crate::common::{
     Entity,
     RenderInfo,
     RenderObject,
+    Scissor,
     ClientEntityInfo,
     entity::ClientEntities
 };
 
 
+pub enum ReplaceObject
+{
+    Full(RenderInfo),
+    Object(RenderObject),
+    Scissor(Scissor)
+}
+
 pub struct EntityCreator<'a>
 {
     pub entities: &'a mut ClientEntities,
-    pub objects: &'a mut Vec<(Entity, RenderInfo)>,
-    pub replace_objects: &'a mut Vec<(Entity, RenderObject)>
+    pub objects: &'a mut Vec<(Entity, ReplaceObject)>
 }
 
 impl EntityCreator<'_>
@@ -24,17 +31,26 @@ impl EntityCreator<'_>
     {
         let entity = self.entities.push(info);
 
-        self.objects.push((entity, render));
+        self.objects.push((entity, ReplaceObject::Full(render)));
 
         entity
     }
 
-    pub fn replace(
+    pub fn replace_object(
         &mut self,
         entity: Entity,
-        new_object: RenderObject
+        object: RenderObject
     )
     {
-        self.replace_objects.push((entity, new_object));
+        self.objects.push((entity, ReplaceObject::Object(object)));
+    }
+
+    pub fn replace_scissor(
+        &mut self,
+        entity: Entity,
+        scissor: Scissor
+    )
+    {
+        self.objects.push((entity, ReplaceObject::Scissor(scissor)));
     }
 }

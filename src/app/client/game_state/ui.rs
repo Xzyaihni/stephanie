@@ -77,10 +77,6 @@ impl UiScroll
             RenderInfo{
                 object: Some(RenderObject::Texture{name: "ui/light.png".to_owned()}),
                 z_level: 150,
-                scissor: Some(Scissor{
-                    offset: [0.0, 0.0],
-                    extent: [1.0, 0.5]
-                }),
                 ..Default::default()
             }
         );
@@ -159,6 +155,15 @@ pub struct ListItem
 {
     frame: Entity,
     item: Entity
+}
+
+impl ListItem
+{
+    pub fn set_scissor(&self, creator: &mut EntityCreator, scissor: Scissor)
+    {
+        creator.replace_scissor(self.frame, scissor.clone());
+        creator.replace_scissor(self.item, scissor);
+    }
 }
 
 pub struct UiList
@@ -351,7 +356,7 @@ impl UiList
             {
                 let item_index = index + start_item;
 
-                creator.replace(
+                creator.replace_object(
                     item.item,
                     RenderObject::Text{
                         text: self.items[item_index].clone(),
@@ -373,9 +378,25 @@ impl UiList
         self.amount_changed = false;
     }
 
+    pub fn update_scissors(&mut self, creator: &mut EntityCreator)
+    {
+        let scissor = Scissor{
+            offset: [0.0, 0.0],
+            extent: [0.0, 0.0]
+        };
+
+        self.frames.first().into_iter()
+            .chain(self.frames.last())
+            .for_each(|item|
+            {
+                item.set_scissor(creator, scissor.clone());
+            });
+    }
+
     pub fn update(&mut self, creator: &mut EntityCreator, dt: f32)
     {
         self.scroll.update(&mut creator.entities, dt);
+        self.update_scissors(creator);
         self.update_items(creator);
     }
 }
@@ -482,7 +503,7 @@ impl UiInventory
         name: String
     )
     {
-        creator.replace(
+        creator.replace_object(
             self.name,
             RenderObject::Text{
                 text: name,
