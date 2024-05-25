@@ -177,7 +177,12 @@ impl ServerToClient<ClientRenderInfo> for RenderInfo
             object.into_client(transform(), create_info)
         });
 
-        ClientRenderInfo{visible: true, object, shape: self.shape, z_level: self.z_level}
+        ClientRenderInfo{
+            visible: self.visible,
+            object,
+            shape: self.shape,
+            z_level: self.z_level
+        }
     }
 }
 
