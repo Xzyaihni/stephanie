@@ -131,7 +131,7 @@ impl Client
         client_init_info: ClientInitInfo
     ) -> Result<Self, ImageError>
     {
-        let camera = Camera::new(info.aspect, -1.0..1.0);
+        let camera = Camera::new(info.aspect(), -1.0..1.0);
         let mut info = InitInfo::new(info, &camera);
 
         let camera = Arc::new(RwLock::new(camera));

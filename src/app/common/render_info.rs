@@ -89,10 +89,19 @@ pub struct Scissor
 
 impl Scissor
 {
-    pub fn into_global(self) -> VulkanoScissor
+    pub fn into_global(self, size: [f32; 2]) -> VulkanoScissor
     {
-        return Default::default();
-        todo!()
+        let [x, y] = size;
+
+        let s = |value, s|
+        {
+            (value * s) as u32
+        };
+
+        VulkanoScissor{
+            offset: [s(self.offset[0], x), s(self.offset[1], y)],
+            extent: [s(self.extent[0], x), s(self.extent[1], y)]
+        }
     }
 }
 
@@ -203,9 +212,14 @@ impl ServerToClient<ClientRenderInfo> for RenderInfo
             object.into_client(transform(), create_info)
         });
 
+        let scissor = self.scissor.map(|x|
+        {
+            x.into_global(create_info.partial.size)
+        });
+
         ClientRenderInfo{
             visible: self.visible,
-            scissor: self.scissor.map(|x| x.into_global()),
+            scissor,
             object,
             shape: self.shape,
             z_level: self.z_level
