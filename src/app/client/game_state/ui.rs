@@ -150,28 +150,10 @@ impl UiScroll
     }
 }
 
-pub struct VisibleFrames
-{
-    start: usize,
-    previous: Vec<Entity>
-}
-
-impl VisibleFrames
-{
-    pub fn new() -> Self
-    {
-        Self{
-            start: 0,
-            previous: Vec::new()
-        }
-    }
-}
-
 pub struct UiList
 {
     panel: Entity,
     scroll: UiScroll,
-    visible: VisibleFrames,
     height: f32,
     frames: Vec<Entity>,
     items: Vec<Entity>
@@ -242,7 +224,6 @@ impl UiList
         Self{
             panel,
             scroll,
-            visible: VisibleFrames::new(),
             height,
             frames: Vec::new(),
             items: Vec::new()
