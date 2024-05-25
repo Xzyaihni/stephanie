@@ -201,7 +201,9 @@ impl GameServer
 
         let mut inserter = |info: EntityInfo|
         {
-            let inserted = self.entities.push(info.clone());
+            let inserted = self.entities.push(info);
+
+            let info = self.entities.info(inserted);
 
             let message = Message::EntitySet{entity: inserted, info};
             self.connection_handler.write().send_message(message);
