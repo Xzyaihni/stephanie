@@ -739,8 +739,6 @@ impl GameState
             UiEvent::MouseMove(self.world_mouse_position())
         );
 
-        let camera_size = self.camera.read().size();
-
         let player_transform = self.entities.player_transform().cloned();
 
         let mut entity_creator = EntityCreator{
@@ -748,7 +746,13 @@ impl GameState
             entities: &mut self.entities.local_entities
         };
 
-        self.ui.update(&mut entity_creator, player_transform, camera_size, dt);
+        self.ui.update(
+            &mut entity_creator,
+            &self.camera.read(),
+            player_transform,
+            dt
+        );
+
         self.entities.update(dt);
     }
 

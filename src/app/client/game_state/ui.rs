@@ -6,7 +6,7 @@ use std::{
 
 use nalgebra::{Vector2, Vector3};
 
-use yanyaengine::Transform;
+use yanyaengine::{Transform, camera::Camera};
 
 use crate::{
     client::{
@@ -378,11 +378,23 @@ impl UiList
         self.amount_changed = false;
     }
 
-    pub fn update_scissors(&mut self, creator: &mut EntityCreator)
+    pub fn update_scissors(
+        &mut self,
+        creator: &mut EntityCreator,
+        camera: &Camera
+    )
     {
+        let transform = creator.entities.transform(self.panel).unwrap();
+
+        let pos = camera.screen_position(transform.position.xy());
+        let pos = pos + Vector2::repeat(0.5);
+
+        let size = camera.screen_size(transform.scale.xy());
+        let pos = pos - size / 2.0;
+
         let scissor = Scissor{
-            offset: [0.0, 0.0],
-            extent: [0.0, 0.0]
+            offset: [pos.x, pos.y],
+            extent: [size.x, size.y]
         };
 
         self.frames.first().into_iter()
@@ -393,16 +405,22 @@ impl UiList
             });
     }
 
-    pub fn update(&mut self, creator: &mut EntityCreator, dt: f32)
+    pub fn update(
+        &mut self,
+        creator: &mut EntityCreator,
+        camera: &Camera,
+        dt: f32
+    )
     {
         self.scroll.update(&mut creator.entities, dt);
-        self.update_scissors(creator);
+        self.update_scissors(creator, camera);
         self.update_items(creator);
     }
 }
 
 pub struct UiInventory
 {
+    inventory: Entity,
     items_info: Arc<ItemsInfo>,
     name: Entity,
     list: UiList
@@ -491,6 +509,7 @@ impl UiInventory
         *z_level += 100;
 
         Self{
+            inventory,
             items_info,
             name,
             list: UiList::new(creator, inventory_panel)
@@ -537,9 +556,22 @@ impl UiInventory
         self.update_inventory(creator, inventory);
     }
 
-    pub fn update(&mut self, creator: &mut EntityCreator, dt: f32)
+    pub fn update(
+        &mut self,
+        creator: &mut EntityCreator,
+        camera: &Camera,
+        dt: f32
+    )
     {
-        self.list.update(creator, dt);
+        if let Some(render) = creator.entities.render(self.inventory)
+        {
+            if !render.visible
+            {
+                return;
+            }
+        }
+
+        self.list.update(creator, camera, dt);
     }
 }
 
@@ -583,11 +615,13 @@ impl Ui
     pub fn update(
         &mut self,
         creator: &mut EntityCreator,
+        camera: &Camera,
         player_transform: Option<Transform>,
-        camera_size: Vector2<f32>,
         dt: f32
     )
     {
+        let camera_size = camera.size();
+
         let ui_transform = creator.entities.lazy_transform_mut(self.anchor)
             .unwrap();
 
@@ -606,7 +640,7 @@ impl Ui
             ui_target.position = player_transform.position;
         }
 
-        self.player_inventory.update(creator, dt);
+        self.player_inventory.update(creator, camera, dt);
     }
 
     fn ui_position(scale: Vector3<f32>, position: Vector3<f32>) -> Vector3<f32>
