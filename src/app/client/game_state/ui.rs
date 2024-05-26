@@ -526,7 +526,7 @@ impl UiInventory
             self.name,
             RenderObject::Text{
                 text: name,
-                font_size: 40
+                font_size: 80
             }
         );
     }

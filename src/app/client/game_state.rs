@@ -1,5 +1,6 @@
 use std::{
     mem,
+    rc::Rc,
     ops::ControlFlow,
     cmp::Ordering,
     sync::{
@@ -397,7 +398,7 @@ pub struct GameState
     pub mouse_position: Vector2<f32>,
     pub camera: Arc<RwLock<Camera>>,
     pub assets: Arc<Mutex<Assets>>,
-    pub object_factory: Arc<ObjectFactory>,
+    pub object_factory: Rc<ObjectFactory>,
     pub notifications: Notifications,
     pub entities: ClientEntitiesContainer,
     pub controls: ControlsController,

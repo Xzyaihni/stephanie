@@ -1,5 +1,6 @@
 use std::{
     iter,
+    rc::Rc,
     sync::Arc
 };
 
@@ -214,7 +215,7 @@ impl ChunkModelBuilder
 #[derive(Debug)]
 pub struct TilesFactory
 {
-    object_factory: Arc<ObjectFactory>,
+    object_factory: Rc<ObjectFactory>,
     tilemap: Arc<TileMap>,
     textures: Vec<Arc<RwLock<Texture>>>
 }
