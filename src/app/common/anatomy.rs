@@ -285,6 +285,10 @@ impl Health
     {
         match damage
         {
+            DamageType::Blunt(damage) =>
+            {
+                self.simple_pierce(damage).map(|x| DamageType::Blunt(x))
+            },
             DamageType::Bullet(damage) =>
             {
                 self.simple_pierce(damage).map(|x| DamageType::Bullet(x))

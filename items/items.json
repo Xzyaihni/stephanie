@@ -1,6 +1,11 @@
 [
     {
-        "name": "pistol"
+        "name": "pistol",
+        "weapon": {
+            "Pistol": {
+                "damage": 1
+            }
+        }
     },
     {
         "name": "cool"

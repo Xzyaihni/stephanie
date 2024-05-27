@@ -16,6 +16,7 @@ use crate::{
     common::{
         ease_out,
         Inventory,
+        InventorySorter,
         Parent,
         Entity,
         ItemsInfo,
@@ -112,7 +113,7 @@ impl UiScroll
 
         self.target_scroll = fit_into(current_scroll, half_size, 1.0 - half_size);
 
-        self.scroll = ease_out(self.scroll, self.target_scroll, 0.05, dt);
+        self.scroll = ease_out(self.scroll, self.target_scroll, 0.015, dt);
 
         self.update_position(entities);
     }
@@ -259,12 +260,20 @@ impl UiList
         max_fit: u32
     ) -> Vec<ListItem>
     {
-        (0..=max_fit).map(|_|
+        (0..=max_fit).map(|index|
         {
             let id = creator.push(
                 EntityInfo{
                     lazy_transform: Some(LazyTransformInfo::default().into()),
                     parent: Some(Parent::new(parent)),
+                    ui_element: Some(UiElement{
+                        kind: UiElementType::Button{
+                            on_click: Box::new(move |query|
+                            {
+                                println!("clicked frame {index}")
+                            })
+                        }
+                    }),
                     ..Default::default()
                 },
                 RenderInfo{
@@ -420,8 +429,9 @@ impl UiList
 
 pub struct UiInventory
 {
-    inventory: Entity,
+    sorter: InventorySorter,
     items_info: Arc<ItemsInfo>,
+    inventory: Entity,
     name: Entity,
     list: UiList
 }
@@ -509,8 +519,9 @@ impl UiInventory
         *z_level += 100;
 
         Self{
-            inventory,
+            sorter: InventorySorter::default(),
             items_info,
+            inventory,
             name,
             list: UiList::new(creator, inventory_panel)
         }
@@ -537,7 +548,13 @@ impl UiInventory
         inventory: &Inventory
     )
     {
-        let names = inventory.items().iter().map(|x|
+        let mut items = inventory.items().to_vec();
+        items.sort_by(|a, b|
+        {
+            self.sorter.order(&self.items_info, a, b)
+        });
+
+        let names = items.into_iter().map(|x|
         {
             self.items_info.get(x.id).name.clone()
         });

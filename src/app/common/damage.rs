@@ -26,6 +26,7 @@ impl Damage
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum DamageType
 {
+    Blunt(f32),
     Bullet(f32)
 }
 
@@ -35,6 +36,7 @@ impl DamageType
     {
         match self
         {
+            Self::Blunt(x) => x,
             Self::Bullet(x) => x
         }
     }

@@ -78,8 +78,32 @@ pub struct DragState
 pub enum UiElementType
 {
     Panel,
-    Button{on_click: Box<dyn FnMut()>},
+    Button{on_click: Box<dyn FnMut(UiQuery)>},
     Drag{state: DragState, on_change: Box<dyn FnMut(Vector2<f32>)>}
+}
+
+pub struct UiQuery
+{
+    transform: Transform,
+    camera_position: Vector2<f32>
+}
+
+impl UiQuery
+{
+    pub fn relative_position(&self) -> Vector2<f32>
+    {
+        self.transform.position.xy() - self.camera_position
+    }
+
+    pub fn distance(&self, position: Vector2<f32>) -> Vector2<f32>
+    {
+        (self.relative_position() - position).component_div(&self.transform.scale.xy())
+    }
+
+    pub fn is_inside(&self, position: Vector2<f32>) -> bool
+    {
+        UiElement::is_inside(self.transform.scale.xy(), self.relative_position() - position)
+    }
 }
 
 pub struct UiElement
@@ -101,13 +125,19 @@ impl ServerToClient<UiElement> for ()
 
 impl UiElement
 {
-    pub fn update(
+    pub fn update<'a>(
         &mut self,
-        distance: impl Fn(Vector2<f32>) -> Vector2<f32>,
-        is_inside: impl Fn(Vector2<f32>) -> bool,
+        transform: impl Fn() -> &'a Transform,
+        camera_position: Vector2<f32>,
         event: &UiEvent
     ) -> bool
     {
+        let query = ||
+        {
+            let transform = transform().clone();
+            UiQuery{transform, camera_position}
+        };
+
         match &mut self.kind
         {
             UiElementType::Panel => false,
@@ -116,9 +146,9 @@ impl UiElement
                 if let Some(event) = event.as_mouse()
                 {
                     let clicked = event.main_button && event.state == ControlState::Pressed;
-                    if clicked && is_inside(event.position)
+                    if clicked && query().is_inside(event.position)
                     {
-                        on_click();
+                        on_click(query());
 
                         return true;
                     }
@@ -130,7 +160,7 @@ impl UiElement
             {
                 let inner_position = |position|
                 {
-                    distance(position).map(|x| x.clamp(-0.5, 0.5))
+                    query().distance(position).map(|x| x.clamp(-0.5, 0.5))
                 };
 
                 match event
@@ -139,7 +169,8 @@ impl UiElement
                     {
                         if event.main_button
                         {
-                            if event.state == ControlState::Pressed && is_inside(event.position)
+                            if event.state == ControlState::Pressed
+                                && query().is_inside(event.position)
                             {
                                 on_change(inner_position(event.position));
 
@@ -169,17 +200,6 @@ impl UiElement
                 false
             }
         }
-    }
-
-    pub fn distance(
-        element_position: Vector2<f32>,
-        camera_position: Vector2<f32>,
-        position: Vector2<f32>
-    ) -> Vector2<f32>
-    {
-        let offset = element_position - camera_position;
-
-        offset.xy() - position
     }
 
     pub fn is_inside(scale: Vector2<f32>, position: Vector2<f32>) -> bool

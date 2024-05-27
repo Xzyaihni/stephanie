@@ -153,7 +153,7 @@ impl Client
 
         let game_state = GameState::new(info);
 
-        let game = Game::new(game_state.player());
+        let game = Game::new(&game_state, game_state.player());
         let game_state = Rc::new(RefCell::new(game_state));
 
         Ok(Self{game_state, game})

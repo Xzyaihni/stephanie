@@ -1,40 +1,18 @@
 use serde::{Serialize, Deserialize};
 
-use crate::common::{ItemsInfo, Item};
+use crate::common::Item;
+
+pub use sorter::InventorySorter;
+
+mod sorter;
 
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum Order
-{
-    Alphabetical
-}
-
-impl Order
-{
-    pub fn before(
-        &self,
-        info: &ItemsInfo,
-        this: &Item,
-        other: &Item
-    ) -> bool
-    {
-        match self
-        {
-            Self::Alphabetical =>
-            {
-                let this = &info.get(this.id).name;
-                let other = &info.get(other.id).name;
-
-                this < other
-            }
-        }
-    }
-}
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct InventoryItem(usize);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Inventory
 {
-    order: Order,
     items: Vec<Item>
 }
 
@@ -42,14 +20,17 @@ impl Inventory
 {
     pub fn new() -> Self
     {
-        Self{order: Order::Alphabetical, items: Vec::new()}
+        Self{items: Vec::new()}
     }
 
-    pub fn push(&mut self, items_info: &ItemsInfo, item: Item)
+    pub fn push(&mut self, item: Item)
     {
-        let index = self.items.partition_point(|x| self.order.before(items_info, x, &item));
+        self.items.push(item);
+    }
 
-        self.items.insert(index, item);
+    pub fn get(&self, id: InventoryItem) -> &Item
+    {
+        &self.items[id.0]
     }
 
     pub fn items(&self) -> &[Item]

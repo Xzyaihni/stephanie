@@ -8,16 +8,69 @@ use serde::{Serialize, Deserialize};
 
 use yanyaengine::{Assets, TextureId};
 
-use crate::common::Item;
+use crate::common::{DamageType, Item};
 
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ItemId(usize);
 
 #[derive(Deserialize)]
+pub enum Weapon
+{
+    Blunt{damage: f32},
+    Pistol{damage: f32}
+}
+
+impl Default for Weapon
+{
+    fn default() -> Self
+    {
+        Self::Blunt{damage: 1.0}
+    }
+}
+
+impl Weapon
+{
+    pub fn piercing(&self) -> bool
+    {
+        match self
+        {
+            Self::Blunt{..} => false,
+            Self::Pistol{..} => true
+        }
+    }
+
+    pub fn damage(&self) -> DamageType
+    {
+        let with_base = |base, value|
+        {
+            let damage = base * value;
+
+            let spread = fastrand::f32() * damage * 0.05;
+
+            damage * spread
+        };
+
+        match self
+        {
+            Self::Blunt{damage} =>
+            {
+                DamageType::Blunt(with_base(5.0, damage))
+            },
+            Self::Pistol{damage} =>
+            {
+                DamageType::Bullet(with_base(400.0, damage))
+            }
+        }
+    }
+}
+
+#[derive(Deserialize)]
 pub struct ItemInfoRaw
 {
     name: String,
+    #[serde(default)]
+    weapon: Weapon,
     texture: Option<String>
 }
 
@@ -26,6 +79,7 @@ pub type ItemsInfoRaw = Vec<ItemInfoRaw>;
 pub struct ItemInfo
 {
     pub name: String,
+    pub weapon: Weapon,
     pub texture: Option<TextureId>
 }
 
@@ -47,6 +101,7 @@ impl ItemInfo
 
         Self{
             name: raw.name,
+            weapon: raw.weapon,
             texture: raw.texture.map(get_texture)
         }
     }

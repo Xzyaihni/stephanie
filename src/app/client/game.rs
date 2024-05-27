@@ -1,11 +1,16 @@
+use std::sync::Arc;
+
 use nalgebra::{Vector3, Vector2};
 
 use yanyaengine::TextureId;
 
 use crate::common::{
     Entity,
+    Player,
+    Inventory,
+    Weapon,
+    ItemsInfo,
     Damage,
-    DamageType,
     DamageDirection,
     Side2d,
     DamageHeight,
@@ -35,9 +40,9 @@ pub struct Game
 
 impl Game
 {
-    pub fn new(player: Entity) -> Self
+    pub fn new(game_state: &GameState, player: Entity) -> Self
     {
-        let player = PlayerInfo::new(player);
+        let player = PlayerInfo::new(game_state.items_info.clone(), player);
 
         Self{player}
     }
@@ -70,16 +75,16 @@ impl Game
 
 struct PlayerInfo
 {
+    items_info: Arc<ItemsInfo>,
     entity: Entity,
-    camera_follow: f32,
-    selected_weapon: ()
+    camera_follow: f32
 }
 
 impl PlayerInfo
 {
-    pub fn new(entity: Entity) -> Self
+    pub fn new(items_info: Arc<ItemsInfo>, entity: Entity) -> Self
     {
-        Self{entity, camera_follow: 0.25, selected_weapon: ()}
+        Self{items_info, entity, camera_follow: 0.25}
     }
 }
 
@@ -128,12 +133,21 @@ impl<'a> PlayerContainer<'a>
         self.game_state.camera.write().set_position_z(z);
     }
 
-    fn update_weapon(&mut self)
+    fn update_weapon(&mut self, weapon: &Weapon)
     {
-        // later
+        /*let render = RenderInfo{
+            object: Some(RenderObject::Texture{
+                name: "items/weapons/pistol.png".to_owned()
+            }),
+            shape: Some(BoundingShape::Circle),
+            z_level: -2,
+            ..Default::default()
+        };
+
+        self.game_state.entities_mut().set_render(self.info.wield_entity, render);*/
     }
 
-    fn weapon_attack(&mut self)
+    fn weapon_attack(&mut self, weapon: &Weapon)
     {
         let start = self.player_position();
 
@@ -142,14 +156,14 @@ impl<'a> PlayerContainer<'a>
         let end = start + Vector3::new(mouse.x, mouse.y, 0.0);
 
         let info = RaycastInfo{
-            pierce: Some(0.5),
+            pierce: None,
             ignore_player: true,
             ignore_end: true
         };
 
         let hits = self.game_state.raycast(info, &start, &end);
 
-        let damage = DamageType::Bullet(fastrand::f32() * 20.0 + 400.0);
+        let damage = weapon.damage();
 
         let height = DamageHeight::random();
 
@@ -188,18 +202,29 @@ impl<'a> PlayerContainer<'a>
             return;
         }
 
-        self.update_weapon();
-
         if self.game_state.clicked(Control::MainAction)
         {
-            self.weapon_attack();
+            let player = self.player();
+            let inventory = self.inventory();
+
+            if let Some(holding) = player.holding
+            {
+                let holding = inventory.get(holding);
+
+                let items_info = self.info.items_info.clone();
+                let weapon = &items_info.get(holding.id).weapon;
+
+                self.update_weapon(weapon);
+                self.weapon_attack(weapon);
+            }
         }
 
         if self.game_state.debug_mode && self.game_state.clicked(Control::DebugConsole)
         {
             dbg!("make this an actual console thingy later");
 
-            let anatomy = self.game_state.entities_mut().anatomy_mut(self.info.entity)
+            let anatomy = self.game_state.entities_mut()
+                .anatomy_mut(self.info.entity)
                 .unwrap();
 
             if let Some(speed) = anatomy.speed()
@@ -314,6 +339,20 @@ impl<'a> PlayerContainer<'a>
         let rotation = pos.y.atan2(pos.x);
 
         player_transform.rotation = rotation;
+    }
+
+    fn player(&self) -> &Player
+    {
+        self.game_state.entities()
+            .player(self.info.entity)
+            .unwrap()
+    }
+
+    fn inventory(&self) -> &Inventory
+    {
+        self.game_state.entities()
+            .inventory(self.info.entity)
+            .unwrap()
     }
 
     fn player_position(&self) -> Vector3<f32>

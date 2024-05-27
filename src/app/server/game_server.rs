@@ -183,7 +183,10 @@ impl GameServer
         let position = transform.position;
 
         let info = EntityInfo{
-            player: Some(Player{name: format!("stephanie #{player_index}")}),
+            player: Some(Player{
+                name: format!("stephanie #{player_index}"),
+                holding: None
+            }),
             transform: Some(transform.clone()),
             render: Some(RenderInfo{
                 object: Some(RenderObject::Texture{
@@ -217,14 +220,6 @@ impl GameServer
 
         let item_size = 0.2;
         let held_item = EntityInfo{
-            render: Some(RenderInfo{
-                object: Some(RenderObject::Texture{
-                    name: "items/weapons/pistol.png".to_owned()
-                }),
-                shape: Some(BoundingShape::Circle),
-                z_level: -2,
-                ..Default::default()
-            }),
             parent: Some(Parent::new(inserted)),
             lazy_transform: Some(LazyTransformInfo{
                 connection: Connection::Spring(

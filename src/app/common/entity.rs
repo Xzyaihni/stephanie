@@ -645,33 +645,12 @@ macro_rules! define_entities
                     component: ui_element
                 })|
                 {
-                    let distance = |position|
+                    let transform = ||
                     {
-                        let transform = get_required_entity!(self, entity, get, transform);
-
-                        let distance = UiElement::distance(
-                            transform.position.xy(),
-                            camera_position,
-                            position
-                        );
-                        
-                        distance.component_div(&transform.scale.xy())
+                        get_required_entity!(self, entity, get, transform)
                     };
 
-                    let is_inside = |position|
-                    {
-                        let transform = get_required_entity!(self, entity, get, transform);
-
-                        let position = UiElement::distance(
-                            transform.position.xy(),
-                            camera_position,
-                            position
-                        );
-
-                        UiElement::is_inside(transform.scale.xy(), position)
-                    };
-
-                    let captured = ui_element.update(distance, is_inside, &event);
+                    let captured = ui_element.update(transform, camera_position, &event);
 
                     if captured
                     {

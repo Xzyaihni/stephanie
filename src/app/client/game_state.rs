@@ -405,8 +405,8 @@ pub struct GameState
     pub running: bool,
     pub debug_mode: bool,
     pub tilemap: Arc<TileMap>,
+    pub items_info: Arc<ItemsInfo>,
     camera_scale: f32,
-    items_info: Arc<ItemsInfo>,
     enemies_info: Arc<EnemiesInfo>,
     world: World,
     ui: Ui,
@@ -730,7 +730,7 @@ impl GameState
             let player = self.player();
             let inventory = self.entities.entities.inventory_mut(player).unwrap();
 
-            inventory.push(&self.items_info, self.items_info.random());
+            inventory.push(self.items_info.random());
 
             self.update_inventory();
         }

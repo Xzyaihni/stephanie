@@ -45,9 +45,9 @@ pub use entity::{
 };
 
 pub use item::Item;
-pub use items_info::ItemsInfo;
+pub use items_info::{ItemsInfo, Weapon};
 
-pub use inventory::Inventory;
+pub use inventory::{InventorySorter, InventoryItem, Inventory};
 
 pub use player::Player;
 
