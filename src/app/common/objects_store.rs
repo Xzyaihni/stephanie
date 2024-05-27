@@ -1,7 +1,7 @@
 use std::{
     mem,
     iter,
-    ops::{Index, IndexMut}
+    ops::{Range, Index, IndexMut}
 };
 
 
@@ -132,6 +132,12 @@ impl<T> ObjectsStore<T>
     pub fn len(&self) -> usize
     {
         self.data.len() - self.free_list.len()
+    }
+
+    #[allow(dead_code)]
+    pub fn index_range(&self) -> Range<usize>
+    {
+        0..self.data.len()
     }
 
     pub fn get(&self, index: usize) -> Option<&T>

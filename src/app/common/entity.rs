@@ -1,4 +1,7 @@
-use std::ops::ControlFlow;
+use std::{
+    cell::{Ref, RefMut, RefCell},
+    ops::ControlFlow
+};
 
 use serde::{Serialize, Deserialize};
 
@@ -35,7 +38,7 @@ macro_rules! get_component
         $components[Component::$component as usize]
             .map(|id|
             {
-                $this.$component.$access_type(id).unwrap_or_else(||
+                $this.$component.get(id).unwrap_or_else(||
                 {
                     panic!("pointer to {} is out of bounds", stringify!($component))
                 }).$access_type()
@@ -68,22 +71,6 @@ macro_rules! get_required_entity
     ($this:expr, $entity:expr, $access_type:ident, $component:ident) =>
     {
         get_required_component!($this, $this.components[$entity.0], $access_type, $component)
-    }
-}
-
-macro_rules! transform_target
-{
-    ($this:expr, $entity:expr) =>
-    {
-        if let Some(lazy) = get_entity!($this, $entity, get_mut, lazy_transform)
-        {
-            lazy.target()
-        } else
-        {
-            let transform = get_required_entity!($this, $entity, get_mut, transform);
-
-            transform.into()
-        }
     }
 }
 
@@ -128,7 +115,7 @@ pub trait OnSet<EntitiesType>
 where
     Self: Sized
 {
-    fn on_set(previous: Option<Self>, entities: &mut EntitiesType, entity: Entity);
+    fn on_set(previous: Option<Self>, entities: &EntitiesType, entity: Entity);
 }
 
 macro_rules! no_on_set
@@ -137,7 +124,7 @@ macro_rules! no_on_set
     {
         $(impl<E> OnSet<E> for $name
         {
-            fn on_set(_previous: Option<Self>, _entities: &mut E, _entity: Entity) {}
+            fn on_set(_previous: Option<Self>, _entities: &E, _entity: Entity) {}
         })*
     }
 }
@@ -148,7 +135,7 @@ macro_rules! no_on_set_for
     {
         impl OnSet<$container> for $name
         {
-            fn on_set(_previous: Option<Self>, _entities: &mut $container, _entity: Entity) {}
+            fn on_set(_previous: Option<Self>, _entities: &$container, _entity: Entity) {}
         }
     }
 }
@@ -170,11 +157,11 @@ no_on_set_for!{ServerEntities, Enemy}
 
 impl OnSet<ClientEntities> for Enemy
 {
-    fn on_set(previous: Option<Self>, entities: &mut ClientEntities, entity: Entity)
+    fn on_set(previous: Option<Self>, entities: &ClientEntities, entity: Entity)
     {
         if let Some(previous) = previous
         {
-            let enemy = entities.enemy_mut(entity).unwrap();
+            let mut enemy = entities.enemy_mut(entity).unwrap();
 
             enemy.with_previous(previous);
         }
@@ -185,7 +172,7 @@ no_on_set_for!{ServerEntities, Anatomy}
 
 impl OnSet<ClientEntities> for Anatomy
 {
-    fn on_set(_previous: Option<Self>, entities: &mut ClientEntities, entity: Entity)
+    fn on_set(_previous: Option<Self>, entities: &ClientEntities, entity: Entity)
     {
         entities.anatomy_changed(entity);
     }
@@ -212,19 +199,19 @@ type UiElementServer = ();
 pub struct ComponentWrapper<T>
 {
     entity: Entity,
-    component: T
+    component: RefCell<T>
 }
 
 impl<T> ComponentWrapper<T>
 {
-    pub fn get(&self) -> &T
+    pub fn get(&self) -> Ref<T>
     {
-        &self.component
+        self.component.borrow()
     }
 
-    pub fn get_mut(&mut self) -> &mut T
+    pub fn get_mut(&self) -> RefMut<T>
     {
-        &mut self.component
+        self.component.borrow_mut()
     }
 }
 
@@ -305,14 +292,15 @@ macro_rules! define_entities
                 for<'a> &'a mut TransformType: Into<&'a mut Transform>,
                 LazyTransformType: LazyTargettable
             {
-                self.physical.iter_mut().for_each(|(_, ComponentWrapper{
+                self.physical.iter().for_each(|(_, ComponentWrapper{
                     entity,
                     component: physical
                 })|
                 {
-                    let target = transform_target!(self, *entity);
+                    let mut target = self.transform_target(*entity);
 
-                    physical.into().physics_update(target, dt);
+                    let mut physical = physical.borrow_mut();
+                    (&mut *physical).into().physics_update(&mut target, dt);
                 });
             }
 
@@ -328,19 +316,20 @@ macro_rules! define_entities
                 for<'a> &'a mut PhysicalType: Into<&'a mut Physical>,
                 LazyTransformType: LazyTargettable
             {
-                self.enemy.iter_mut().for_each(|(_, ComponentWrapper{
+                self.enemy.iter().for_each(|(_, ComponentWrapper{
                     entity,
                     component: enemy
                 })|
                 {
                     let anatomy = get_required_entity!(self, entity, get, anatomy);
-                    let lazy_transform = get_required_entity!(self, entity, get_mut, lazy_transform);
-                    let physical = get_required_entity!(self, entity, get_mut, physical);
+                    let mut lazy_transform = get_required_entity!(self, entity, get_mut, lazy_transform);
+                    let mut physical = get_required_entity!(self, entity, get_mut, physical);
 
-                    let state_changed = enemy.into().update(
-                        anatomy.into(),
+                    let mut enemy = enemy.borrow_mut();
+                    let state_changed = (&mut *enemy).into().update(
+                        (&*anatomy).into(),
                         lazy_transform.target(),
-                        physical.into(),
+                        (&mut *physical).into(),
                         dt
                     );
 
@@ -348,20 +337,20 @@ macro_rules! define_entities
                     {
                         on_state_change(
                             *entity,
-                            enemy,
-                            lazy_transform
+                            &mut enemy,
+                            &mut lazy_transform
                         )
                     }
                 });
             }
 
             $(
-                pub fn $name(&self, entity: Entity) -> Option<&$component_type>
+                pub fn $name(&self, entity: Entity) -> Option<Ref<$component_type>>
                 {
                     get_entity!(self, entity, get, $name)
                 }
 
-                pub fn $mut_func(&mut self, entity: Entity) -> Option<&mut $component_type>
+                pub fn $mut_func(&self, entity: Entity) -> Option<RefMut<$component_type>>
                 {
                     get_entity!(self, entity, get_mut, $name)
                 }
@@ -379,7 +368,10 @@ macro_rules! define_entities
                             [entity.0]
                             [Component::$name as usize];
 
-                        let component = ComponentWrapper{entity, component};
+                        let component = ComponentWrapper{
+                            entity,
+                            component: RefCell::new(component)
+                        };
 
                         let previous = if let Some(id) = slot
                         {
@@ -394,13 +386,27 @@ macro_rules! define_entities
                         };
 
                         $component_type::on_set(
-                            previous.map(|x| x.component),
+                            previous.map(|x| x.component.into_inner()),
                             self,
                             entity
                         );
                     }
                 }
             )+
+
+            pub fn transform_target(&self, entity: Entity) -> RefMut<Transform>
+            where
+                for<'a> &'a mut TransformType: Into<&'a mut Transform>,
+                LazyTransformType: LazyTargettable<Transform>
+            {
+                if let Some(lazy) = self.lazy_transform_mut(entity)
+                {
+                    RefMut::map(lazy, |x| x.target())
+                } else
+                {
+                    RefMut::map(self.transform_mut(entity).unwrap(), |x| x.into())
+                }
+            }
 
             pub fn push(&mut self, mut info: EntityInfo<$($component_type,)+>) -> Entity
             where
@@ -460,7 +466,11 @@ macro_rules! define_entities
                     $({
                         info.$name.map(|component|
                         {
-                            let wrapper = ComponentWrapper{entity, component};
+                            let wrapper = ComponentWrapper{
+                                entity,
+                                component: RefCell::new(component)
+                            };
+
                             if let Some(parent) = parent
                             {
                                 self.$name.push_after(parent, wrapper)
@@ -491,11 +501,11 @@ macro_rules! define_entities
                 {
                     Message::EntityDamage{entity, damage} =>
                     {
-                        if let Some(anatomy) = get_entity!(self, entity, get_mut, anatomy)
+                        if let Some(mut anatomy) = self.anatomy_mut(entity)
                         {
                             use crate::common::Damageable;
 
-                            anatomy.into().damage(damage);
+                            (&mut *anatomy).into().damage(damage);
 
                             AnatomyType::on_set(None, self, entity);
                         }
@@ -553,7 +563,7 @@ macro_rules! define_entities
                             {
                                 if let Some(parent) = get_entity!(self, parent.parent, get, transform)
                                 {
-                                    lazy.combine(parent)
+                                    lazy.combine(&parent)
                                 } else
                                 {
                                     lazy.target_local.clone()
@@ -563,7 +573,7 @@ macro_rules! define_entities
                                 lazy.target_local.clone()
                             };
 
-                            let transform = get_required_component!(self, components, get_mut, transform);
+                            let mut transform = get_required_component!(self, components, get_mut, transform);
 
                             *transform = new_transform;
                         }
@@ -588,7 +598,7 @@ macro_rules! define_entities
             fn transform_clone(&self, entity: Entity) -> Option<Transform>
             {
                 (self.exists(entity))
-                    .then(|| self.transform(entity).cloned())
+                    .then(|| self.transform(entity).as_deref().cloned())
                     .flatten()
             }
 
@@ -601,7 +611,7 @@ macro_rules! define_entities
                 {
                     let transform = get_required_entity!(self, entity, get, transform);
 
-                    if let Some(object) = object.object.as_mut()
+                    if let Some(object) = object.borrow_mut().object.as_mut()
                     {
                         object.set_transform(transform.clone());
                     }
@@ -610,7 +620,7 @@ macro_rules! define_entities
 
             pub fn update_lazy(&mut self, dt: f32)
             {
-                self.lazy_transform.iter_mut().for_each(|(_, ComponentWrapper{
+                self.lazy_transform.iter().for_each(|(_, ComponentWrapper{
                     entity,
                     component: lazy
                 })|
@@ -619,12 +629,12 @@ macro_rules! define_entities
 
                     let target_global = parent.map(|parent|
                     {
-                        get_entity!(self, parent.parent, get, transform).cloned()
+                        get_entity!(self, parent.parent, get, transform).as_deref().cloned()
                     }).flatten();
 
-                    let transform = get_required_entity!(self, entity, get_mut, transform);
+                    let mut transform = get_required_entity!(self, entity, get_mut, transform);
 
-                    *transform = lazy.next(transform.clone(), target_global, dt);
+                    *transform = lazy.borrow_mut().next(transform.clone(), target_global, dt);
                 });
             }
 
@@ -639,18 +649,19 @@ macro_rules! define_entities
                 event: UiEvent
             )
             {
-                // reversed to update the children first
-                self.ui_element.iter_mut().rev().try_for_each(|(_, ComponentWrapper{
+                // borrow checker more like goofy ahh
+                // rev to early exit if child is captured
+                self.ui_element.iter().rev().try_for_each(|(_, ComponentWrapper{
                     entity,
                     component: ui_element
                 })|
                 {
-                    let transform = ||
-                    {
-                        get_required_entity!(self, entity, get, transform)
-                    };
-
-                    let captured = ui_element.update(transform, camera_position, &event);
+                    let captured = ui_element.borrow_mut().update(
+                        &*self,
+                        *entity,
+                        camera_position,
+                        &event
+                    );
 
                     if captured
                     {
@@ -663,35 +674,35 @@ macro_rules! define_entities
             }
 
             pub fn update_sprites(
-                &mut self,
+                &self,
                 create_info: &mut ObjectCreateInfo,
                 enemies_info: &EnemiesInfo
             )
             {
-                self.enemy.iter_mut().for_each(|(_, ComponentWrapper{
+                self.enemy.iter().for_each(|(_, ComponentWrapper{
                     entity,
                     component: enemy
                 })|
                 {
-                    let lazy = get_required_entity!(self, entity, get_mut, lazy_transform);
-                    let render = get_required_entity!(self, entity, get_mut, render);
-                    let transform = get_required_entity!(self, entity, get_mut, transform);
+                    let mut lazy = get_required_entity!(self, entity, get_mut, lazy_transform);
+                    let mut render = get_required_entity!(self, entity, get_mut, render);
+                    let mut transform = get_required_entity!(self, entity, get_mut, transform);
 
-                    enemy.update_sprite(
-                        lazy,
+                    enemy.borrow_mut().update_sprite(
+                        &mut *lazy,
                         enemies_info,
-                        render,
+                        &mut render,
                         |render, texture|
                         {
-                            render.set_sprite(create_info, Some(transform), texture);
+                            render.set_sprite(create_info, Some(&mut transform), texture);
                         }
                     );
                 });
             }
 
-            pub fn anatomy_changed(&mut self, entity: Entity)
+            pub fn anatomy_changed(&self, entity: Entity)
             {
-                if let Some(enemy) = get_entity!(self, entity, get_mut, enemy)
+                if let Some(mut enemy) = get_entity!(self, entity, get_mut, enemy)
                 {
                     let anatomy = get_required_entity!(self, entity, get, anatomy);
 
@@ -721,7 +732,7 @@ macro_rules! define_entities
                 EntityInfo{$(
                     $name: components[Component::$name as usize].map(|id|
                     {
-                        self.$name[id].component.clone()
+                        self.$name[id].component.borrow().clone()
                     }),
                 )+}
             }
@@ -744,7 +755,7 @@ macro_rules! define_entities
 
             pub fn update_lazy(&mut self)
             {
-                self.lazy_transform.iter_mut().for_each(|(_, ComponentWrapper{
+                self.lazy_transform.iter().for_each(|(_, ComponentWrapper{
                     entity,
                     component: lazy
                 })|
@@ -753,12 +764,12 @@ macro_rules! define_entities
 
                     let target_global = parent.map(|parent|
                     {
-                        get_entity!(self, parent.parent, get, transform).cloned()
+                        get_entity!(self, parent.parent, get, transform).as_deref().cloned()
                     }).flatten();
 
-                    let transform = get_required_entity!(self, entity, get_mut, transform);
+                    let mut transform = get_required_entity!(self, entity, get_mut, transform);
 
-                    *transform = lazy.target_global(target_global.as_ref());
+                    *transform = lazy.borrow_mut().target_global(target_global.as_ref());
                 });
             }
 
@@ -767,14 +778,14 @@ macro_rules! define_entities
                 enemies_info: &EnemiesInfo
             )
             {
-                self.enemy.iter_mut().for_each(|(_, ComponentWrapper{
+                self.enemy.iter().for_each(|(_, ComponentWrapper{
                     entity,
                     component: enemy
                 })|
                 {
-                    let lazy = get_required_entity!(self, entity, get_mut, lazy_transform);
+                    let mut lazy = get_required_entity!(self, entity, get_mut, lazy_transform);
 
-                    enemy.update_sprite_common(lazy, enemies_info);
+                    enemy.borrow_mut().update_sprite_common(&mut *lazy, enemies_info);
                 });
             }
 

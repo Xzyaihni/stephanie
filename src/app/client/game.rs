@@ -1,4 +1,7 @@
-use std::sync::Arc;
+use std::{
+    cell::Ref,
+    sync::Arc
+};
 
 use nalgebra::{Vector3, Vector2};
 
@@ -174,15 +177,17 @@ impl<'a> PlayerContainer<'a>
             {
                 RaycastHitId::Entity(id) =>
                 {
-                    let transform = self.game_state.entities().transform(id)
-                        .unwrap();
+                    let side = {
+                        let transform = self.game_state.entities().transform(id)
+                            .unwrap();
 
-                    let hit_position = hits.hit_position(&hit);
-                    let side = Side2d::from_positions(
-                        transform.rotation,
-                        transform.position,
-                        hit_position
-                    );
+                        let hit_position = hits.hit_position(&hit);
+                        Side2d::from_positions(
+                            transform.rotation,
+                            transform.position,
+                            hit_position
+                        )
+                    };
 
                     let direction = DamageDirection{side, height};
 
@@ -214,6 +219,9 @@ impl<'a> PlayerContainer<'a>
                 let items_info = self.info.items_info.clone();
                 let weapon = &items_info.get(holding.id).weapon;
 
+                drop(player);
+                drop(inventory);
+
                 self.update_weapon(weapon);
                 self.weapon_attack(weapon);
             }
@@ -223,7 +231,7 @@ impl<'a> PlayerContainer<'a>
         {
             dbg!("make this an actual console thingy later");
 
-            let anatomy = self.game_state.entities_mut()
+            let mut anatomy = self.game_state.entities_mut()
                 .anatomy_mut(self.info.entity)
                 .unwrap();
 
@@ -307,7 +315,7 @@ impl<'a> PlayerContainer<'a>
 
         if let Some(speed) = entities.anatomy(self.info.entity).unwrap().speed()
         {
-            let physical = entities.physical_mut(self.info.entity).unwrap();
+            let mut physical = entities.physical_mut(self.info.entity).unwrap();
 
             let velocity = direction * (speed / physical.mass);
 
@@ -326,7 +334,7 @@ impl<'a> PlayerContainer<'a>
     {
         let camera_pos = self.game_state.camera.read().position().xy().coords;
 
-        let player_transform = self.game_state.entities_mut()
+        let mut player_transform = self.game_state.entities_mut()
             .transform_mut(self.info.entity)
             .expect("player must have a transform");
 
@@ -341,14 +349,14 @@ impl<'a> PlayerContainer<'a>
         player_transform.rotation = rotation;
     }
 
-    fn player(&self) -> &Player
+    fn player(&self) -> Ref<Player>
     {
         self.game_state.entities()
             .player(self.info.entity)
             .unwrap()
     }
 
-    fn inventory(&self) -> &Inventory
+    fn inventory(&self) -> Ref<Inventory>
     {
         self.game_state.entities()
             .inventory(self.info.entity)

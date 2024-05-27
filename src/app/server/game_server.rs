@@ -377,16 +377,18 @@ impl GameServer
         self.world.remove_player(id);
         writer.remove_connection(id);
 
-        let player = (self.entities.exists(entity))
-            .then(|| self.entities.player(entity))
-            .flatten();
-
-        if let Some(player) = player
         {
-            println!("player \"{}\" disconnected", player.name);
+            let player = (self.entities.exists(entity))
+                .then(|| self.entities.player(entity))
+                .flatten();
 
-            writer.send_message(self.entities.remove_message(entity));
+            if let Some(player) = player
+            {
+                println!("player \"{}\" disconnected", player.name);
+            }
         }
+
+        writer.send_message(self.entities.remove_message(entity));
     }
 
     fn process_message_inner(&mut self, message: Message, id: ConnectionId, player: Entity)

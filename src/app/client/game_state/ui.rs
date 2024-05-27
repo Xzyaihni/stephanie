@@ -60,7 +60,8 @@ impl UiScroll
                     {
                         global_scroll.replace(1.0 - (pos.y + 0.5));
                     })
-                }
+                },
+                ..Default::default()
             }
         };
 
@@ -70,7 +71,8 @@ impl UiScroll
             EntityInfo{
                 lazy_transform: Some(LazyTransformInfo::default().into()),
                 ui_element: Some(UiElement{
-                    kind: UiElementType::Panel
+                    kind: UiElementType::Panel,
+                    ..Default::default()
                 }),
                 parent: Some(Parent::new(background)),
                 ..Default::default()
@@ -120,7 +122,7 @@ impl UiScroll
 
     pub fn update_size(&mut self, entities: &mut ClientEntities, size: f32)
     {
-        if let Some(lazy) = entities.lazy_transform_mut(self.bar)
+        if let Some(mut lazy) = entities.lazy_transform_mut(self.bar)
         {
             self.size = size;
             lazy.target().scale.y = self.size;
@@ -131,7 +133,7 @@ impl UiScroll
 
     fn update_position(&mut self, entities: &mut ClientEntities)
     {
-        if let Some(lazy) = entities.lazy_transform_mut(self.bar)
+        if let Some(mut lazy) = entities.lazy_transform_mut(self.bar)
         {
             let span = 1.0 - self.size;
             let position = if span <= 0.0
@@ -201,7 +203,8 @@ impl UiList
                         ..Default::default()
                     }.into()),
                     ui_element: Some(UiElement{
-                        kind: UiElementType::Panel
+                        kind: UiElementType::Panel,
+                        ..Default::default()
                     }),
                     parent: Some(Parent::new(background)),
                     ..Default::default()
@@ -268,11 +271,13 @@ impl UiList
                     parent: Some(Parent::new(parent)),
                     ui_element: Some(UiElement{
                         kind: UiElementType::Button{
-                            on_click: Box::new(move |query|
+                            on_click: Box::new(move ||
                             {
                                 println!("clicked frame {index}")
                             })
-                        }
+                        },
+                        predicate: UiElementPredicate::Inside(parent),
+                        ..Default::default()
                     }),
                     ..Default::default()
                 },
@@ -326,7 +331,7 @@ impl UiList
 
         self.frames.iter().enumerate().for_each(|(index, item)|
         {
-            if let Some(render) = creator.entities.render_mut(item.frame)
+            if let Some(mut render) = creator.entities.render_mut(item.frame)
             {
                 render.visible = index < self.amount;
             }
@@ -374,7 +379,8 @@ impl UiList
                 );
             }
 
-            let transform = creator.entities.lazy_transform_mut(item.frame).unwrap().target();
+            let mut transform = creator.entities.lazy_transform_mut(item.frame).unwrap();
+            let transform = transform.target();
 
             transform.scale.y = self.height * 0.9;
 
@@ -393,17 +399,19 @@ impl UiList
         camera: &Camera
     )
     {
-        let transform = creator.entities.transform(self.panel).unwrap();
+        let scissor = {
+            let transform = creator.entities.transform(self.panel).unwrap();
 
-        let pos = camera.screen_position(transform.position.xy());
-        let pos = pos + Vector2::repeat(0.5);
+            let pos = camera.screen_position(transform.position.xy());
+            let pos = pos + Vector2::repeat(0.5);
 
-        let size = camera.screen_size(transform.scale.xy());
-        let pos = pos - size / 2.0;
+            let size = camera.screen_size(transform.scale.xy());
+            let pos = pos - size / 2.0;
 
-        let scissor = Scissor{
-            offset: [pos.x, pos.y],
-            extent: [size.x, size.y]
+            Scissor{
+                offset: [pos.x, pos.y],
+                extent: [size.x, size.y]
+            }
         };
 
         self.frames.first().into_iter()
@@ -476,7 +484,8 @@ impl UiInventory
             Vector3::zeros(),
             Vector3::new(0.4, 0.4, 1.0),
             UiElement{
-                kind: UiElementType::Panel
+                kind: UiElementType::Panel,
+                ..Default::default()
             },
             Some(RenderObject::Texture{name: "ui/background.png".to_owned()})
         );
@@ -489,7 +498,8 @@ impl UiInventory
             Ui::ui_position(size, Vector3::zeros()),
             size,
             UiElement{
-                kind: UiElementType::Panel
+                kind: UiElementType::Panel,
+                ..Default::default()
             },
             Some(RenderObject::Texture{name: "ui/background.png".to_owned()})
         );
@@ -501,7 +511,8 @@ impl UiInventory
             Ui::ui_position(size, Vector3::new(0.0, 1.0, 0.0)),
             size,
             UiElement{
-                kind: UiElementType::Panel
+                kind: UiElementType::Panel,
+                ..Default::default()
             },
             None
         );
@@ -511,7 +522,8 @@ impl UiInventory
             Vector3::zeros(),
             Vector3::repeat(1.0),
             UiElement{
-                kind: UiElementType::Panel
+                kind: UiElementType::Panel,
+                ..Default::default()
             },
             None
         );
@@ -639,22 +651,24 @@ impl Ui
     {
         let camera_size = camera.size();
 
-        let ui_transform = creator.entities.lazy_transform_mut(self.anchor)
-            .unwrap();
-
-        let min_size = camera_size.x.min(camera_size.y);
-        ui_transform.set_connection_limit(min_size * 0.3);
-
-        let ui_target = ui_transform.target();
-
-        let ui_scale = &mut ui_target.scale;
-
-        ui_scale.x = camera_size.x;
-        ui_scale.y = camera_size.y;
-
-        if let Some(player_transform) = player_transform
         {
-            ui_target.position = player_transform.position;
+            let mut ui_transform = creator.entities.lazy_transform_mut(self.anchor)
+                .unwrap();
+
+            let min_size = camera_size.x.min(camera_size.y);
+            ui_transform.set_connection_limit(min_size * 0.3);
+
+            let ui_target = ui_transform.target();
+
+            let ui_scale = &mut ui_target.scale;
+
+            ui_scale.x = camera_size.x;
+            ui_scale.y = camera_size.y;
+
+            if let Some(player_transform) = player_transform
+            {
+                ui_target.position = player_transform.position;
+            }
         }
 
         self.player_inventory.update(creator, camera, dt);

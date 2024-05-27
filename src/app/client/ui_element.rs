@@ -1,10 +1,12 @@
+use std::cell::Ref;
+
 use nalgebra::Vector2;
 
 use yanyaengine::{Transform, game_object::*};
 
 use crate::{
     client::{Control, ControlState},
-    common::ServerToClient
+    common::{Entity, ServerToClient, entity::ClientEntities}
 };
 
 
@@ -78,17 +80,39 @@ pub struct DragState
 pub enum UiElementType
 {
     Panel,
-    Button{on_click: Box<dyn FnMut(UiQuery)>},
+    Button{on_click: Box<dyn FnMut()>},
     Drag{state: DragState, on_change: Box<dyn FnMut(Vector2<f32>)>}
 }
 
-pub struct UiQuery
+pub enum UiElementPredicate
 {
-    transform: Transform,
+    None,
+    Inside(Entity)
+}
+
+impl UiElementPredicate
+{
+    pub fn matches(&self) -> bool
+    {
+        match self
+        {
+            Self::None => true,
+            Self::Inside(entity) =>
+            {
+                todo!()
+            }
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct UiQuery<'a>
+{
+    transform: Ref<'a, Transform>,
     camera_position: Vector2<f32>
 }
 
-impl UiQuery
+impl UiQuery<'_>
 {
     pub fn relative_position(&self) -> Vector2<f32>
     {
@@ -108,7 +132,19 @@ impl UiQuery
 
 pub struct UiElement
 {
-    pub kind: UiElementType
+    pub kind: UiElementType,
+    pub predicate: UiElementPredicate
+}
+
+impl Default for UiElement
+{
+    fn default() -> Self
+    {
+        Self{
+            kind: UiElementType::Panel,
+            predicate: UiElementPredicate::None
+        }
+    }
 }
 
 impl ServerToClient<UiElement> for ()
@@ -127,15 +163,20 @@ impl UiElement
 {
     pub fn update<'a>(
         &mut self,
-        transform: impl Fn() -> &'a Transform,
+        entities: &ClientEntities,
+        entity: Entity,
         camera_position: Vector2<f32>,
         event: &UiEvent
     ) -> bool
     {
+        if !self.predicate.matches()
+        {
+            return false;
+        }
+
         let query = ||
         {
-            let transform = transform().clone();
-            UiQuery{transform, camera_position}
+            UiQuery{transform: entities.transform(entity).unwrap(), camera_position}
         };
 
         match &mut self.kind
@@ -148,7 +189,7 @@ impl UiElement
                     let clicked = event.main_button && event.state == ControlState::Pressed;
                     if clicked && query().is_inside(event.position)
                     {
-                        on_click(query());
+                        on_click();
 
                         return true;
                     }

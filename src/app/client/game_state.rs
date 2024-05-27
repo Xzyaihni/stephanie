@@ -1,5 +1,6 @@
 use std::{
     mem,
+    cell::Ref,
     rc::Rc,
     ops::ControlFlow,
     cmp::Ordering,
@@ -120,7 +121,7 @@ impl ClientEntitiesContainer
 
         mem::take(&mut self.local_objects).into_iter().for_each(|(entity, object)|
         {
-            let transform = self.local_entities.transform(entity).cloned();
+            let transform = self.local_entities.transform(entity).as_deref().cloned();
 
             match object
             {
@@ -135,7 +136,7 @@ impl ClientEntitiesContainer
                 },
                 ReplaceObject::Object(object) =>
                 {
-                    if let Some(render) = self.local_entities.render_mut(entity)
+                    if let Some(mut render) = self.local_entities.render_mut(entity)
                     {
                         render.object = object.into_client(
                             transform.unwrap(),
@@ -145,7 +146,7 @@ impl ClientEntitiesContainer
                 },
                 ReplaceObject::Scissor(scissor) =>
                 {
-                    if let Some(render) = self.local_entities.render_mut(entity)
+                    if let Some(mut render) = self.local_entities.render_mut(entity)
                     {
                         render.scissor = Some(scissor.into_global(info.object_info.partial.size));
                     }
@@ -169,7 +170,7 @@ impl ClientEntitiesContainer
         entities.update_enemy(dt);
     }
 
-    pub fn player_transform(&self) -> Option<&Transform>
+    pub fn player_transform(&self) -> Option<Ref<Transform>>
     {
         self.player_exists().then(||
         {
@@ -259,7 +260,7 @@ impl ClientEntitiesContainer
             })
             .filter_map(|(entity, transform)|
             {
-                Self::raycast_entity(start, &direction, transform).and_then(|hit|
+                Self::raycast_entity(start, &direction, &transform).and_then(|hit|
                 {
                     let backwards = (hit.distance + hit.pierce) < 0.0;
                     let past_end = (hit.distance > max_distance) && !info.ignore_end;
@@ -546,11 +547,11 @@ impl GameState
 
         self.send_message(Message::EntityDamage{entity, damage: damage.clone()});
 
-        if let Some(anatomy) = self.entities_mut().anatomy_mut(entity)
+        if let Some(mut anatomy) = self.entities().anatomy_mut(entity)
         {
             anatomy.damage(damage);
 
-            self.entities_mut().anatomy_changed(entity);
+            self.entities().anatomy_changed(entity);
         }
     }
 
@@ -728,9 +729,12 @@ impl GameState
         if self.controls.is_clicked(Control::SecondaryAction)
         {
             let player = self.player();
-            let inventory = self.entities.entities.inventory_mut(player).unwrap();
 
-            inventory.push(self.items_info.random());
+            {
+                let mut inventory = self.entities.entities.inventory_mut(player).unwrap();
+
+                inventory.push(self.items_info.random());
+            }
 
             self.update_inventory();
         }
@@ -740,7 +744,7 @@ impl GameState
             UiEvent::MouseMove(self.world_mouse_position())
         );
 
-        let player_transform = self.entities.player_transform().cloned();
+        let player_transform = self.entities.player_transform().as_deref().cloned();
 
         let mut entity_creator = EntityCreator{
             objects: &mut self.entities.local_objects,
@@ -776,7 +780,7 @@ impl GameState
         self.ui.player_inventory.full_update(
             &mut entity_creator,
             player.name.clone(),
-            inventory
+            &inventory
         );
     }
 
