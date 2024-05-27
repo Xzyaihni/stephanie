@@ -92,14 +92,21 @@ pub enum UiElementPredicate
 
 impl UiElementPredicate
 {
-    pub fn matches(&self) -> bool
+    pub fn matches(
+        &self,
+        entities: &ClientEntities,
+        query: UiQuery,
+        position: Vector2<f32>
+    ) -> bool
     {
         match self
         {
             Self::None => true,
             Self::Inside(entity) =>
             {
-                todo!()
+                let transform = entities.transform(*entity).unwrap();
+
+                query.with_transform(transform).is_inside(position)
             }
         }
     }
@@ -112,8 +119,16 @@ pub struct UiQuery<'a>
     camera_position: Vector2<f32>
 }
 
-impl UiQuery<'_>
+impl<'a> UiQuery<'a>
 {
+    pub fn with_transform(self, transform: Ref<'a, Transform>) -> Self
+    {
+        Self{
+            transform,
+            ..self
+        }
+    }
+
     pub fn relative_position(&self) -> Vector2<f32>
     {
         self.transform.position.xy() - self.camera_position
@@ -169,11 +184,6 @@ impl UiElement
         event: &UiEvent
     ) -> bool
     {
-        if !self.predicate.matches()
-        {
-            return false;
-        }
-
         let query = ||
         {
             UiQuery{transform: entities.transform(entity).unwrap(), camera_position}
@@ -189,6 +199,11 @@ impl UiElement
                     let clicked = event.main_button && event.state == ControlState::Pressed;
                     if clicked && query().is_inside(event.position)
                     {
+                        if !self.predicate.matches(entities, query(), event.position)
+                        {
+                            return false;
+                        }
+
                         on_click();
 
                         return true;
@@ -213,6 +228,11 @@ impl UiElement
                             if event.state == ControlState::Pressed
                                 && query().is_inside(event.position)
                             {
+                                if !self.predicate.matches(entities, query(), event.position)
+                                {
+                                    return false;
+                                }
+
                                 on_change(inner_position(event.position));
 
                                 state.held = true;
