@@ -80,7 +80,8 @@ pub struct ControlsController
 {
     key_mapping: HashMap<KeyMapping, Control>,
     keys: [ControlState; Control::COUNT],
-    clicked: Vec<Control>
+    clicked: Vec<Control>,
+    changed: Vec<(ControlState, Control)>
 }
 
 impl ControlsController
@@ -106,7 +107,8 @@ impl ControlsController
         Self{
             key_mapping,
             keys: [ControlState::Released; Control::COUNT],
-            clicked: Vec::new()
+            clicked: Vec::new(),
+            changed: Vec::new()
         }
     }
 
@@ -157,15 +159,29 @@ impl ControlsController
 
                 self.keys[*matched as usize] = state;
 
-                return Some((state, *matched));
+                let pair = (state, *matched);
+                self.changed.push(pair);
+
+                return Some(pair);
             }
         }
 
         None
     }
 
-    pub fn release_clicked(&mut self)
+    pub fn changed_this_frame(&self) -> &[(ControlState, Control)]
+    {
+        &self.changed
+    }
+
+    fn release_clicked(&mut self)
     {
         self.clicked.clear();
+    }
+
+    pub fn frame_end(&mut self)
+    {
+        self.release_clicked();
+        self.changed.clear();
     }
 }

@@ -697,7 +697,7 @@ impl GameState
 
         self.entities.update_objects(&visibility, &self.enemies_info, info);
 
-        self.controls.release_clicked();
+        self.controls.frame_end();
     }
 
     pub fn draw(&self, info: &mut DrawInfo)
@@ -739,11 +739,6 @@ impl GameState
             self.update_inventory();
         }
 
-        self.entities.local_entities.update_ui(
-            self.camera.read().position().coords.xy(),
-            UiEvent::MouseMove(self.world_mouse_position())
-        );
-
         let player_transform = self.entities.player_transform().as_deref().cloned();
 
         let mut entity_creator = EntityCreator{
@@ -759,6 +754,27 @@ impl GameState
         );
 
         self.entities.update(dt);
+
+        // she borrow on my checker till i for loop????????????
+        let changed = self.controls.changed_this_frame();
+        for i in 0..changed.len()
+        {
+            let (state, control) = changed[i];
+
+            let event = UiEvent::from_control(|| self.world_mouse_position(), state, control);
+            if let Some(event) = event
+            {
+                self.entities.local_entities.update_ui(
+                    self.camera.read().position().coords.xy(),
+                    event
+                );
+            }
+        }
+
+        self.entities.local_entities.update_ui(
+            self.camera.read().position().coords.xy(),
+            UiEvent::MouseMove(self.world_mouse_position())
+        );
 
         let mut entity_creator = EntityCreator{
             objects: &mut self.entities.local_objects,
@@ -793,19 +809,7 @@ impl GameState
 
     pub fn input(&mut self, control: yanyaengine::Control)
     {
-        let matched = self.controls.handle_input(control);
-
-        if let Some((state, control)) = matched
-        {
-            let event = UiEvent::from_control(|| self.world_mouse_position(), state, control);
-            if let Some(event) = event
-            {
-                self.entities.local_entities.update_ui(
-                    self.camera.read().position().coords.xy(),
-                    event
-                );
-            }
-        }
+        self.controls.handle_input(control);
     }
 
     pub fn pressed(&self, control: Control) -> bool
