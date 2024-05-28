@@ -19,6 +19,7 @@ use crate::{
         InventorySorter,
         Parent,
         Entity,
+        Item,
         ItemsInfo,
         EntityInfo,
         RenderObject,
@@ -176,7 +177,7 @@ pub struct UiList
     height: f32,
     amount: usize,
     amount_changed: bool,
-    current_start: usize,
+    current_start: Rc<RefCell<usize>>,
     items: Vec<String>,
     frames: Vec<ListItem>
 }
@@ -185,7 +186,8 @@ impl UiList
 {
     pub fn new(
         creator: &mut EntityCreator,
-        background: Entity
+        background: Entity,
+        on_change: Rc<RefCell<dyn FnMut(usize)>>
     ) -> Self
     {
         let width = 0.92;
@@ -245,26 +247,32 @@ impl UiList
 
         let scroll = UiScroll::new(creator, scroll);
 
+        let current_start = Rc::new(RefCell::new(0));
+
         Self{
             panel,
             scroll,
             height,
             amount: 0,
             amount_changed: true,
-            current_start: 0,
-            items: Vec::new(),
-            frames: Self::create_items(creator, panel, max_fit)
+            frames: Self::create_items(creator, on_change, current_start.clone(), panel, max_fit),
+            current_start,
+            items: Vec::new()
         }
     }
 
     fn create_items(
         creator: &mut EntityCreator,
+        on_change: Rc<RefCell<dyn FnMut(usize)>>,
+        current_start: Rc<RefCell<usize>>,
         parent: Entity,
         max_fit: u32
     ) -> Vec<ListItem>
     {
-        (0..=max_fit).map(|index|
+        (0..=max_fit as usize).map(|index|
         {
+            let on_change = on_change.clone();
+            let current_start = current_start.clone();
             let id = creator.push(
                 EntityInfo{
                     lazy_transform: Some(LazyTransformInfo::default().into()),
@@ -273,7 +281,8 @@ impl UiList
                         kind: UiElementType::Button{
                             on_click: Box::new(move ||
                             {
-                                println!("clicked frame {index}")
+                                let index = index + *current_start.borrow();
+                                (on_change.borrow_mut())(index);
                             })
                         },
                         predicate: UiElementPredicate::Inside(parent),
@@ -345,28 +354,26 @@ impl UiList
         self.amount as f32 * self.height
     }
 
+    fn start_item(&self) -> f32
+    {
+        let last_start = self.amount as f32 - (1.0 / self.height);
+        self.scroll.amount() * last_start.max(0.0)
+    }
+
     fn update_items(
         &mut self,
         creator: &mut EntityCreator
     )
     {
-        let last_start = self.amount as f32 - (1.0 / self.height);
-        let start = self.scroll.amount() * last_start.max(0.0);
+        let start_item = self.start_item() as usize;
 
-        let over_height = 1.0 / (1.0 / self.height - 1.0);
+        let start_changed = *self.current_start.borrow() != start_item;
 
-        let y = -start * over_height;
-        let y_modulo = y % over_height;
+        self.current_start.replace(start_item);
 
-        let start_item = start as usize;
-
-        let start_changed = self.current_start != start_item;
-
-        self.current_start = start_item;
-
-        self.frames.iter().take(self.amount).enumerate().for_each(|(index, item)|
+        if start_changed || self.amount_changed
         {
-            if start_changed || self.amount_changed
+            self.frames.iter().take(self.amount).enumerate().for_each(|(index, item)|
             {
                 let item_index = index + start_item;
 
@@ -374,12 +381,29 @@ impl UiList
                     item.item,
                     RenderObject::Text{
                         text: self.items[item_index].clone(),
-                        font_size: 40
+                        font_size: 60
                     }
                 );
-            }
+            });
 
-            let mut transform = creator.entities.lazy_transform_mut(item.frame).unwrap();
+            self.amount_changed = false;
+        }
+
+        self.update_item_positions(&creator.entities);
+    }
+
+    fn update_item_positions(&mut self, entities: &ClientEntities)
+    {
+        let start = self.start_item();
+
+        let over_height = 1.0 / (1.0 / self.height - 1.0);
+
+        let y = -start * over_height;
+        let y_modulo = y % over_height;
+
+        self.frames.iter().take(self.amount).enumerate().for_each(|(index, item)|
+        {
+            let mut transform = entities.lazy_transform_mut(item.frame).unwrap();
             let transform = transform.target();
 
             transform.scale.y = self.height * 0.9;
@@ -389,8 +413,6 @@ impl UiList
                 Vector3::new(0.0, y_modulo + index as f32 * over_height, 0.0)
             ).y;
         });
-
-        self.amount_changed = false;
     }
 
     pub fn update_scissors(
@@ -409,8 +431,8 @@ impl UiList
             let pos = pos - size / 2.0;
 
             Scissor{
-                offset: [pos.x, pos.y],
-                extent: [size.x, size.y]
+                offset: [0.0, pos.y],
+                extent: [1.0, size.y]
             }
         };
 
@@ -422,15 +444,22 @@ impl UiList
             });
     }
 
+    pub fn update_after(
+        &mut self,
+        creator: &mut EntityCreator,
+        camera: &Camera
+    )
+    {
+        self.update_scissors(creator, camera);
+    }
+
     pub fn update(
         &mut self,
         creator: &mut EntityCreator,
-        camera: &Camera,
         dt: f32
     )
     {
         self.scroll.update(&mut creator.entities, dt);
-        self.update_scissors(creator, camera);
         self.update_items(creator);
     }
 }
@@ -439,6 +468,7 @@ pub struct UiInventory
 {
     sorter: InventorySorter,
     items_info: Arc<ItemsInfo>,
+    items: Rc<RefCell<Vec<Item>>>,
     inventory: Entity,
     name: Entity,
     list: UiList
@@ -482,7 +512,7 @@ impl UiInventory
         let inventory = add_ui(
             anchor,
             Vector3::zeros(),
-            Vector3::new(0.4, 0.4, 1.0),
+            Vector3::new(0.2, 0.2, 1.0),
             UiElement{
                 kind: UiElementType::Panel,
                 ..Default::default()
@@ -530,12 +560,24 @@ impl UiInventory
 
         *z_level += 100;
 
+        let items = Rc::new(RefCell::new(Vec::new()));
+
+        let on_change = {
+            let items = items.clone();
+            Rc::new(RefCell::new(move |index|
+            {
+                let item = &items.borrow()[index];
+                println!("{item:?}")
+            }))
+        };
+
         Self{
             sorter: InventorySorter::default(),
             items_info,
+            items,
             inventory,
             name,
-            list: UiList::new(creator, inventory_panel)
+            list: UiList::new(creator, inventory_panel, on_change)
         }
     }
 
@@ -566,12 +608,14 @@ impl UiInventory
             self.sorter.order(&self.items_info, a, b)
         });
 
-        let names = items.into_iter().map(|x|
+        let names = items.iter().map(|x|
         {
             self.items_info.get(x.id).name.clone()
         });
 
         self.list.set_items(creator, names);
+
+        self.items.replace(items);
     }
 
     pub fn full_update(
@@ -585,10 +629,18 @@ impl UiInventory
         self.update_inventory(creator, inventory);
     }
 
+    pub fn update_after(
+        &mut self,
+        creator: &mut EntityCreator,
+        camera: &Camera
+    )
+    {
+        self.list.update_after(creator, camera);
+    }
+
     pub fn update(
         &mut self,
         creator: &mut EntityCreator,
-        camera: &Camera,
         dt: f32
     )
     {
@@ -600,7 +652,7 @@ impl UiInventory
             }
         }
 
-        self.list.update(creator, camera, dt);
+        self.list.update(creator, dt);
     }
 }
 
@@ -641,6 +693,18 @@ impl Ui
         }
     }
 
+    pub fn update_after(
+        &mut self,
+        creator: &mut EntityCreator,
+        camera: &Camera
+    )
+    {
+        self.for_each_inventory(|inventory|
+        {
+            inventory.update_after(creator, camera);
+        });
+    }
+
     pub fn update(
         &mut self,
         creator: &mut EntityCreator,
@@ -671,7 +735,15 @@ impl Ui
             }
         }
 
-        self.player_inventory.update(creator, camera, dt);
+        self.for_each_inventory(|inventory|
+        {
+            inventory.update(creator, dt);
+        });
+    }
+
+    fn for_each_inventory(&mut self, mut f: impl FnMut(&mut UiInventory))
+    {
+        f(&mut self.player_inventory);
     }
 
     fn ui_position(scale: Vector3<f32>, position: Vector3<f32>) -> Vector3<f32>

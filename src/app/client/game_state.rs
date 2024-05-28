@@ -759,6 +759,13 @@ impl GameState
         );
 
         self.entities.update(dt);
+
+        let mut entity_creator = EntityCreator{
+            objects: &mut self.entities.local_objects,
+            entities: &mut self.entities.local_entities
+        };
+
+        self.ui.update_after(&mut entity_creator, &self.camera.read());
     }
 
     pub fn update_inventory(&mut self)
