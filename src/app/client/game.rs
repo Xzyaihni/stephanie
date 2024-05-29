@@ -167,9 +167,8 @@ impl<'a> PlayerContainer<'a>
     {
         let holding_entity = self.game_state.player_entities().holding;
 
-        let mut render = self.game_state.entities()
-            .render_mut(holding_entity)
-            .unwrap();
+        let entities = self.game_state.entities();
+        let mut render = entities.render_mut(holding_entity).unwrap();
 
         let player = self.player();
 
@@ -183,6 +182,10 @@ impl<'a> PlayerContainer<'a>
             let texture = assets.texture(item.texture);
 
             render.set_texture(texture.clone());
+
+            let size = texture.read().aspect_min();
+            let new_scale = Vector3::new(size.x, size.y, 1.0);
+            entities.transform_target(holding_entity).scale = new_scale;
         }
     }
 
