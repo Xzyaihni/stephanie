@@ -313,8 +313,8 @@ impl GameServer
             }
         };
 
-        player_children.push(inserter(pon(Vector3::new(-0.15, 0.35, 0.0))));
-        player_children.push(inserter(pon(Vector3::new(-0.15, -0.35, 0.0))));
+        player_children.push(inserter(pon(Vector3::new(-0.35, 0.35, 0.0))));
+        player_children.push(inserter(pon(Vector3::new(-0.35, -0.35, 0.0))));
 
         let player_info = self.player_info(stream, inserted)?;
 
