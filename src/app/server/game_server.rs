@@ -252,11 +252,6 @@ impl GameServer
                 ),
                 origin_rotation: -f32::consts::FRAC_PI_2,
                 transform: Transform{
-                    scale: Vector3::new(
-                        item_size,
-                        item_size * 4.143,
-                        item_size
-                    ),
                     rotation: f32::consts::FRAC_PI_2,
                     position: Vector3::new(1.0, 0.0, 0.0),
                     ..Default::default()

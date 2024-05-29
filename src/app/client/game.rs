@@ -183,7 +183,7 @@ impl<'a> PlayerContainer<'a>
 
             render.set_texture(texture.clone());
 
-            let size = texture.read().aspect_min();
+            let size = texture.read().aspect_min() * 0.8;
             let new_scale = Vector3::new(size.x, size.y, 1.0);
             entities.transform_target(holding_entity).scale = new_scale;
         }
