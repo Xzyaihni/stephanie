@@ -656,19 +656,26 @@ macro_rules! define_entities
                     component: ui_element
                 })|
                 {
-                    let captured = ui_element.borrow_mut().update(
-                        &*self,
-                        *entity,
-                        camera_position,
-                        &event
-                    );
-
-                    if captured
-                    {
-                        ControlFlow::Break(())
-                    } else
+                    let is_invisible = self.render(*entity).map(|x| !x.visible).unwrap_or(true);
+                    if is_invisible
                     {
                         ControlFlow::Continue(())
+                    } else
+                    {
+                        let captured = ui_element.borrow_mut().update(
+                            &*self,
+                            *entity,
+                            camera_position,
+                            &event
+                        );
+
+                        if captured
+                        {
+                            ControlFlow::Break(())
+                        } else
+                        {
+                            ControlFlow::Continue(())
+                        }
                     }
                 });
             }
