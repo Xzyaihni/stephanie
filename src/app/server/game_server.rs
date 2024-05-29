@@ -34,6 +34,7 @@ use crate::common::{
     BoundingShape,
     Parent,
     Player,
+    PlayerEntities,
     Entities,
     Anatomy,
     HumanAnatomy,
@@ -220,6 +221,12 @@ impl GameServer
 
         let item_size = 0.2;
         let held_item = EntityInfo{
+            render: Some(RenderInfo{
+                object: None,
+                shape: Some(BoundingShape::Circle),
+                z_level: -2,
+                ..Default::default()
+            }),
             parent: Some(Parent::new(inserted)),
             lazy_transform: Some(LazyTransformInfo{
                 connection: Connection::Spring(
@@ -256,7 +263,7 @@ impl GameServer
             ..Default::default()
         };
 
-        player_children.push(inserter(held_item));
+        let holding = inserter(held_item);
 
         let pon = |position: Vector3<f32>|
         {
@@ -313,7 +320,13 @@ impl GameServer
 
         let player_info = self.player_info(stream, inserted)?;
 
-        let (connection, messager) = self.player_create(inserted, player_children, player_info)?;
+        let player_entities = PlayerEntities{
+            player: inserted,
+            holding,
+            other: player_children
+        };
+
+        let (connection, messager) = self.player_create(player_entities, player_info)?;
 
         self.world.add_player(connection, position.into());
 
@@ -340,8 +353,7 @@ impl GameServer
 
     fn player_create(
         &mut self,  
-        player_entity: Entity,
-        player_children: Vec<Entity>,
+        player_entities: PlayerEntities,
         player_info: PlayerInfo
     ) -> Result<(ConnectionId, MessagePasser), ConnectionError>
     {
@@ -350,10 +362,7 @@ impl GameServer
 
         let messager = connection_handler.get_mut(connection_id);
 
-        let message = Message::PlayerOnConnect{
-            entity: player_entity,
-            children: player_children.clone()
-        };
+        let message = Message::PlayerOnConnect{player_entities};
 
         messager.send_blocking(message)?;
 

@@ -49,7 +49,7 @@ pub use items_info::{ItemsInfo, Weapon};
 
 pub use inventory::{InventorySorter, InventoryItem, Inventory};
 
-pub use player::Player;
+pub use player::{Player, PlayerEntities};
 
 pub use enemy::{EnemyBehavior, Enemy};
 pub use enemy_builder::EnemyBuilder;

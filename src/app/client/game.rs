@@ -1,4 +1,5 @@
 use std::{
+    mem,
     cell::Ref,
     sync::Arc
 };
@@ -13,6 +14,7 @@ use crate::common::{
     Inventory,
     Weapon,
     ItemsInfo,
+    RenderObject,
     Damage,
     DamageDirection,
     Side2d,
@@ -22,9 +24,11 @@ use crate::common::{
 
 use super::game_state::{
     GameState,
+    UserEvent,
     Control,
     RaycastInfo,
-    RaycastHitId
+    RaycastHitId,
+    ReplaceObject
 };
 
 mod object_transform;
@@ -136,18 +140,53 @@ impl<'a> PlayerContainer<'a>
         self.game_state.camera.write().set_position_z(z);
     }
 
+    fn handle_user_event(&mut self, event: UserEvent)
+    {
+        match event
+        {
+            UserEvent::Wield(item) =>
+            {
+                let entities = &mut self.game_state.entities;
+                let player = entities.main_player();
+                entities.entities.player_mut(player).unwrap().holding = Some(item);
+
+                let player = self.player();
+
+                if let Some(holding) = player.holding
+                {
+                    let inventory = self.inventory();
+                    let holding = inventory.get(holding);
+
+                    let items_info = self.info.items_info.clone();
+                    let weapon = &items_info.get(holding.id).weapon;
+
+                    drop(player);
+                    drop(inventory);
+
+                    self.update_weapon(weapon);
+                }
+            }
+        }
+    }
+
+    fn update_user_events(&mut self)
+    {
+        let events = mem::take(&mut *self.game_state.user_receiver.borrow_mut());
+
+        events.into_iter().for_each(|event|
+        {
+            self.handle_user_event(event);
+        });
+    }
+
     fn update_weapon(&mut self, weapon: &Weapon)
     {
-        /*let render = RenderInfo{
-            object: Some(RenderObject::Texture{
-                name: "items/weapons/pistol.png".to_owned()
-            }),
-            shape: Some(BoundingShape::Circle),
-            z_level: -2,
-            ..Default::default()
+        let holding = self.game_state.player_entities().holding;
+        let render = RenderObject::Texture{
+            name: "items/weapons/pistol.png".to_owned()
         };
 
-        self.game_state.entities_mut().set_render(self.info.wield_entity, render);*/
+        self.game_state.object_change(holding, ReplaceObject::Object(render));
     }
 
     fn weapon_attack(&mut self, weapon: &Weapon)
@@ -207,13 +246,15 @@ impl<'a> PlayerContainer<'a>
             return;
         }
 
+        self.update_user_events();
+
         if self.game_state.clicked(Control::MainAction)
         {
             let player = self.player();
-            let inventory = self.inventory();
 
             if let Some(holding) = player.holding
             {
+                let inventory = self.inventory();
                 let holding = inventory.get(holding);
 
                 let items_info = self.info.items_info.clone();
@@ -222,7 +263,6 @@ impl<'a> PlayerContainer<'a>
                 drop(player);
                 drop(inventory);
 
-                self.update_weapon(weapon);
                 self.weapon_attack(weapon);
             }
         }

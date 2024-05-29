@@ -36,6 +36,7 @@ use crate::common::{
     ServerToClient,
     EntityPasser,
     EntitiesController,
+    PlayerEntities,
     entity::ClientEntities,
     message::Message,
     world::{
@@ -81,11 +82,10 @@ struct RaycastResult
 
 pub struct ClientEntitiesContainer
 {
-    local_objects: Vec<(Entity, ReplaceObject)>,
+    pub entities: ClientEntities,
+    local_objects: Vec<(bool, Entity, ReplaceObject)>,
     local_entities: ClientEntities,
-    entities: ClientEntities,
-    main_player: Option<Entity>,
-    player_children: Vec<Entity>
+    player_entities: Option<PlayerEntities>
 }
 
 impl ClientEntitiesContainer
@@ -96,8 +96,7 @@ impl ClientEntitiesContainer
             local_objects: Vec::new(),
             local_entities: Entities::new(),
             entities: Entities::new(),
-            main_player: None,
-            player_children: Vec::new()
+            player_entities: None
         }
     }
     
@@ -120,9 +119,17 @@ impl ClientEntitiesContainer
         self.entities.update_sprites(&mut info.object_info, enemies_info);
         self.local_entities.update_sprites(&mut info.object_info, enemies_info);
 
-        mem::take(&mut self.local_objects).into_iter().for_each(|(entity, object)|
+        mem::take(&mut self.local_objects).into_iter().for_each(|(is_local, entity, object)|
         {
-            let transform = self.local_entities.transform(entity).as_deref().cloned();
+            let entities = if is_local
+            {
+                &mut self.local_entities
+            } else
+            {
+                &mut self.entities
+            };
+
+            let transform = entities.transform(entity).as_deref().cloned();
 
             match object
             {
@@ -133,11 +140,11 @@ impl ClientEntitiesContainer
                         &mut info.object_info
                     );
 
-                    self.local_entities.set_render(entity, Some(object));
+                    entities.set_render(entity, Some(object));
                 },
                 ReplaceObject::Object(object) =>
                 {
-                    if let Some(mut render) = self.local_entities.render_mut(entity)
+                    if let Some(mut render) = entities.render_mut(entity)
                     {
                         render.object = object.into_client(
                             transform.unwrap(),
@@ -147,7 +154,7 @@ impl ClientEntitiesContainer
                 },
                 ReplaceObject::Scissor(scissor) =>
                 {
-                    if let Some(mut render) = self.local_entities.render_mut(entity)
+                    if let Some(mut render) = entities.render_mut(entity)
                     {
                         render.scissor = Some(scissor.into_global(info.object_info.partial.size));
                     }
@@ -171,19 +178,24 @@ impl ClientEntitiesContainer
         entities.update_enemy(dt);
     }
 
+    pub fn main_player(&self) -> Entity
+    {
+        self.player_entities.as_ref().unwrap().player
+    }
+
     pub fn player_transform(&self) -> Option<Ref<Transform>>
     {
         self.player_exists().then(||
         {
-            self.entities.transform(self.main_player.unwrap()).unwrap()
+            self.entities.transform(self.main_player()).unwrap()
         })
     }
 
     pub fn player_exists(&self) -> bool
     {
-        if let Some(player) = self.main_player
+        if let Some(player) = self.player_entities.as_ref()
         {
-            self.entities.exists(player)
+            self.entities.exists(player.player)
         } else
         {
             false
@@ -249,8 +261,9 @@ impl ClientEntitiesContainer
                 {
                     if info.ignore_player
                     {
-                        let is_player = self.main_player == Some(entity)
-                            || self.player_children.contains(&entity);
+                        let is_player = self.player_entities.as_ref()
+                            .map(|x| x.is_player(entity))
+                            .unwrap_or(false);
 
                         (!is_player).then_some((entity, transform))
                     } else
@@ -413,11 +426,11 @@ pub struct GameState
     pub debug_mode: bool,
     pub tilemap: Arc<TileMap>,
     pub items_info: Arc<ItemsInfo>,
+    pub user_receiver: Rc<RefCell<Vec<UserEvent>>>,
     camera_scale: f32,
     enemies_info: Arc<EnemiesInfo>,
     world: World,
     ui: Ui,
-    user_receiver: Receiver<UserEvent>,
     connections_handler: Arc<RwLock<ConnectionsHandler>>,
     receiver: Receiver<Message>
 }
@@ -445,13 +458,10 @@ impl GameState
             Pos3::new(0.0, 0.0, 0.0)
         );
 
-        let (player_id, player_children) = Self::connect_to_server(
+        entities.player_entities = Some(Self::connect_to_server(
             connections_handler.clone(),
             &info.client_info.name
-        );
-
-        entities.main_player = Some(player_id);
-        entities.player_children = player_children;
+        ));
 
         sender_loop(connections_handler.clone());
 
@@ -470,21 +480,24 @@ impl GameState
             }
         }, || ());
 
-        let (user_sender, user_receiver) = mpsc::channel();
+        let user_receiver = Rc::new(RefCell::new(Vec::new()));
 
         let mut entity_creator = EntityCreator{
             objects: &mut entities.local_objects,
             entities: &mut entities.local_entities
         };
 
-        let ui = Ui::new(
-            &mut entity_creator,
-            info.items_info.clone(),
-            move |item|
-            {
-                user_sender.send(UserEvent::Wield(item)).unwrap();
-            }
-        );
+        let ui = {
+            let user_receiver = user_receiver.clone();
+            Ui::new(
+                &mut entity_creator,
+                info.items_info.clone(),
+                move |item|
+                {
+                    user_receiver.borrow_mut().push(UserEvent::Wield(item));
+                }
+            )
+        };
 
         let this = Self{
             mouse_position,
@@ -532,7 +545,7 @@ impl GameState
     fn connect_to_server(
         handler: Arc<RwLock<ConnectionsHandler>>,
         name: &str
-    ) -> (Entity, Vec<Entity>)
+    ) -> PlayerEntities
     {
         let message = Message::PlayerConnect{name: name.to_owned()};
 
@@ -545,9 +558,9 @@ impl GameState
 
         match handler.receive_blocking()
         {
-            Ok(Some(Message::PlayerOnConnect{entity, children})) =>
+            Ok(Some(Message::PlayerOnConnect{player_entities})) =>
             {
-                (entity, children)
+                player_entities
             },
             x => panic!("received wrong message on connect: {x:?}")
         }
@@ -582,9 +595,19 @@ impl GameState
         &mut self.entities.entities
     }
 
+    pub fn object_change(&mut self, entity: Entity, object: ReplaceObject)
+    {
+        self.entities.local_objects.push((false, entity, object));
+    }
+
+    pub fn player_entities(&self) -> &PlayerEntities
+    {
+        self.entities.player_entities.as_ref().unwrap()
+    }
+
     pub fn player(&self) -> Entity
     {
-        self.entities.main_player.unwrap()
+        self.entities.main_player()
     }
 
     pub fn process_messages(&mut self, create_info: &mut ObjectCreateInfo)
@@ -736,50 +759,10 @@ impl GameState
         }
     }
 
-    fn handle_user_event(&mut self, event: UserEvent)
-    {
-        match event
-        {
-            UserEvent::Wield(item) =>
-            {
-                let entities = &mut self.entities;
-                if let Some(player) = entities.main_player
-                {
-                    entities.entities.player_mut(player).unwrap().holding = Some(item);
-                }
-            }
-        }
-    }
-
-    fn update_user_events(&mut self)
-    {
-        loop
-        {
-            match self.user_receiver.try_recv()
-            {
-                Ok(event) =>
-                {
-                    self.handle_user_event(event);
-                },
-                Err(TryRecvError::Empty) =>
-                {
-                    return;
-                },
-                Err(_) =>
-                {
-                    self.running = false;
-                    return;
-                }
-            }
-        }
-    }
-
     pub fn update(&mut self, dt: f32)
     {
         self.check_resize_camera(dt);
         self.camera_moved();
-
-        self.update_user_events();
 
         self.world.update(dt);
 
