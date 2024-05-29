@@ -5,27 +5,15 @@
             "Pistol": {
                 "damage": 1
             }
-        }
+        },
+        "texture": "weapons/pistol.png"
     },
     {
-        "name": "cool"
+        "name": "snel",
+        "texture": "snel.png"
     },
     {
-        "name": "thingy"
-    },
-    {
-        "name": "majingy"
-    },
-    {
-        "name": "nise"
-    },
-    {
-        "name": "snel"
-    },
-    {
-        "name": "bee"
-    },
-    {
-        "name": "test"
+        "name": "bee",
+        "texture": "bee.png"
     }
 ]

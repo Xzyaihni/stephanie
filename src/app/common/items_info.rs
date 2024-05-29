@@ -71,7 +71,7 @@ pub struct ItemInfoRaw
     name: String,
     #[serde(default)]
     weapon: Weapon,
-    texture: Option<String>
+    texture: String
 }
 
 pub type ItemsInfoRaw = Vec<ItemInfoRaw>;
@@ -80,7 +80,7 @@ pub struct ItemInfo
 {
     pub name: String,
     pub weapon: Weapon,
-    pub texture: Option<TextureId>
+    pub texture: TextureId
 }
 
 impl ItemInfo
@@ -102,7 +102,7 @@ impl ItemInfo
         Self{
             name: raw.name,
             weapon: raw.weapon,
-            texture: raw.texture.map(get_texture)
+            texture: get_texture(raw.texture)
         }
     }
 }

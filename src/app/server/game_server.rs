@@ -222,9 +222,12 @@ impl GameServer
         let item_size = 0.2;
         let held_item = EntityInfo{
             render: Some(RenderInfo{
-                object: None,
+                object: Some(RenderObject::Texture{
+                    name: "placeholder.png".to_owned()
+                }),
                 shape: Some(BoundingShape::Circle),
                 z_level: -2,
+                visible: false,
                 ..Default::default()
             }),
             parent: Some(Parent::new(inserted)),

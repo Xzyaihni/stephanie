@@ -14,7 +14,6 @@ use crate::common::{
     Inventory,
     Weapon,
     ItemsInfo,
-    RenderObject,
     Damage,
     DamageDirection,
     Side2d,
@@ -27,8 +26,7 @@ use super::game_state::{
     UserEvent,
     Control,
     RaycastInfo,
-    RaycastHitId,
-    ReplaceObject
+    RaycastHitId
 };
 
 mod object_transform;
@@ -150,21 +148,7 @@ impl<'a> PlayerContainer<'a>
                 let player = entities.main_player();
                 entities.entities.player_mut(player).unwrap().holding = Some(item);
 
-                let player = self.player();
-
-                if let Some(holding) = player.holding
-                {
-                    let inventory = self.inventory();
-                    let holding = inventory.get(holding);
-
-                    let items_info = self.info.items_info.clone();
-                    let weapon = &items_info.get(holding.id).weapon;
-
-                    drop(player);
-                    drop(inventory);
-
-                    self.update_weapon(weapon);
-                }
+                self.update_weapon();
             }
         }
     }
@@ -179,14 +163,27 @@ impl<'a> PlayerContainer<'a>
         });
     }
 
-    fn update_weapon(&mut self, weapon: &Weapon)
+    fn update_weapon(&mut self)
     {
-        let holding = self.game_state.player_entities().holding;
-        let render = RenderObject::Texture{
-            name: "items/weapons/pistol.png".to_owned()
-        };
+        let holding_entity = self.game_state.player_entities().holding;
 
-        self.game_state.object_change(holding, ReplaceObject::Object(render));
+        let mut render = self.game_state.entities()
+            .render_mut(holding_entity)
+            .unwrap();
+
+        let player = self.player();
+
+        render.visible = player.holding.is_some();
+        if let Some(holding) = player.holding
+        {
+            let inventory = self.inventory();
+            let item = self.game_state.items_info.get(inventory.get(holding).id);
+
+            let assets = self.game_state.assets.lock();
+            let texture = assets.texture(item.texture);
+
+            render.set_texture(texture.clone());
+        }
     }
 
     fn weapon_attack(&mut self, weapon: &Weapon)
