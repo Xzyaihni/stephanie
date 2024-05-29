@@ -37,4 +37,9 @@ impl Inventory
     {
         &self.items
     }
+
+    pub fn items_ids(&self) -> impl Iterator<Item=(InventoryItem, &Item)>
+    {
+        self.items.iter().enumerate().map(|(index, item)| (InventoryItem(index), item))
+    }
 }

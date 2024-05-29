@@ -15,11 +15,11 @@ use crate::{
     },
     common::{
         ease_out,
+        InventoryItem,
         Inventory,
         InventorySorter,
         Parent,
         Entity,
-        Item,
         ItemsInfo,
         EntityInfo,
         RenderObject,
@@ -33,7 +33,6 @@ use crate::{
 
 pub struct UiScroll
 {
-    background: Entity,
     bar: Entity,
     size: f32,
     global_scroll: Rc<RefCell<f32>>,
@@ -86,7 +85,6 @@ impl UiScroll
         );
 
         Self{
-            background,
             bar,
             size: 1.0,
             global_scroll,
@@ -468,7 +466,7 @@ pub struct UiInventory
 {
     sorter: InventorySorter,
     items_info: Arc<ItemsInfo>,
-    items: Rc<RefCell<Vec<Item>>>,
+    items: Rc<RefCell<Vec<InventoryItem>>>,
     inventory: Entity,
     name: Entity,
     list: UiList
@@ -480,7 +478,8 @@ impl UiInventory
         creator: &mut EntityCreator,
         items_info: Arc<ItemsInfo>,
         anchor: Entity,
-        z_level: &mut i32
+        z_level: &mut i32,
+        mut on_change: impl FnMut(InventoryItem) + 'static
     ) -> Self
     {
         let mut add_ui = |parent, position, scale, ui_element, object|
@@ -566,8 +565,9 @@ impl UiInventory
             let items = items.clone();
             Rc::new(RefCell::new(move |index|
             {
-                let item = &items.borrow()[index];
-                println!("{item:?}")
+                let item = items.borrow()[index];
+
+                on_change(item);
             }))
         };
 
@@ -602,20 +602,20 @@ impl UiInventory
         inventory: &Inventory
     )
     {
-        let mut items = inventory.items().to_vec();
+        let mut items: Vec<_> = inventory.items_ids().collect();
         items.sort_by(|a, b|
         {
-            self.sorter.order(&self.items_info, a, b)
+            self.sorter.order(&self.items_info, a.1, b.1)
         });
 
         let names = items.iter().map(|x|
         {
-            self.items_info.get(x.id).name.clone()
+            self.items_info.get(x.1.id).name.clone()
         });
 
         self.list.set_items(creator, names);
 
-        self.items.replace(items);
+        self.items.replace(items.into_iter().map(|(index, _)| index).collect());
     }
 
     pub fn full_update(
@@ -667,7 +667,7 @@ impl Ui
     pub fn new(
         creator: &mut EntityCreator,
         items_info: Arc<ItemsInfo>,
-        _aspect: f32
+        on_player_change: impl FnMut(InventoryItem) + 'static
     ) -> Self
     {
         let anchor = creator.entities.push(EntityInfo{
@@ -684,7 +684,8 @@ impl Ui
             creator,
             items_info,
             anchor,
-            &mut z_level
+            &mut z_level,
+            on_player_change
         ); 
 
         Self{

@@ -702,9 +702,9 @@ macro_rules! define_entities
 
             pub fn anatomy_changed(&self, entity: Entity)
             {
-                if let Some(mut enemy) = get_entity!(self, entity, get_mut, enemy)
+                if let Some(mut enemy) = self.enemy_mut(entity)
                 {
-                    let anatomy = get_required_entity!(self, entity, get, anatomy);
+                    let anatomy = self.anatomy(entity).unwrap();
 
                     let can_move = anatomy.speed().is_some();
 

@@ -1,6 +1,6 @@
 use std::{
     mem,
-    cell::Ref,
+    cell::{Ref, RefCell},
     rc::Rc,
     ops::ControlFlow,
     cmp::Ordering,
@@ -28,6 +28,7 @@ use crate::common::{
     TileMap,
     Damage,
     ItemsInfo,
+    InventoryItem,
     Entity,
     Entities,
     EnemiesInfo,
@@ -394,6 +395,11 @@ pub struct GameStateInfo<'a>
     pub client_info: &'a ClientInfo
 }
 
+pub enum UserEvent
+{
+    Wield(InventoryItem)
+}
+
 pub struct GameState
 {
     pub mouse_position: Vector2<f32>,
@@ -411,13 +417,14 @@ pub struct GameState
     enemies_info: Arc<EnemiesInfo>,
     world: World,
     ui: Ui,
+    user_receiver: Receiver<UserEvent>,
     connections_handler: Arc<RwLock<ConnectionsHandler>>,
     receiver: Receiver<Message>
 }
 
 impl GameState
 {
-    pub fn new(info: GameStateInfo) -> Self
+    pub fn new(info: GameStateInfo) -> Rc<RefCell<Self>>
     {
         let mouse_position = Vector2::zeros();
 
@@ -463,7 +470,7 @@ impl GameState
             }
         }, || ());
 
-        let aspect = info.camera.read().aspect();
+        let (user_sender, user_receiver) = mpsc::channel();
 
         let mut entity_creator = EntityCreator{
             objects: &mut entities.local_objects,
@@ -473,10 +480,13 @@ impl GameState
         let ui = Ui::new(
             &mut entity_creator,
             info.items_info.clone(),
-            aspect
+            move |item|
+            {
+                user_sender.send(UserEvent::Wield(item)).unwrap();
+            }
         );
 
-        Self{
+        let this = Self{
             mouse_position,
             camera: info.camera,
             assets: info.object_info.partial.assets,
@@ -492,9 +502,14 @@ impl GameState
             camera_scale: 1.0,
             world,
             ui,
+            user_receiver,
             connections_handler,
             receiver
-        }
+        };
+
+        let this = Rc::new(RefCell::new(this));
+
+        this
     }
 
     pub fn raycast(
@@ -550,6 +565,8 @@ impl GameState
         if let Some(mut anatomy) = self.entities().anatomy_mut(entity)
         {
             anatomy.damage(damage);
+
+            drop(anatomy);
 
             self.entities().anatomy_changed(entity);
         }
@@ -719,10 +736,50 @@ impl GameState
         }
     }
 
+    fn handle_user_event(&mut self, event: UserEvent)
+    {
+        match event
+        {
+            UserEvent::Wield(item) =>
+            {
+                let entities = &mut self.entities;
+                if let Some(player) = entities.main_player
+                {
+                    entities.entities.player_mut(player).unwrap().holding = Some(item);
+                }
+            }
+        }
+    }
+
+    fn update_user_events(&mut self)
+    {
+        loop
+        {
+            match self.user_receiver.try_recv()
+            {
+                Ok(event) =>
+                {
+                    self.handle_user_event(event);
+                },
+                Err(TryRecvError::Empty) =>
+                {
+                    return;
+                },
+                Err(_) =>
+                {
+                    self.running = false;
+                    return;
+                }
+            }
+        }
+    }
+
     pub fn update(&mut self, dt: f32)
     {
         self.check_resize_camera(dt);
         self.camera_moved();
+
+        self.update_user_events();
 
         self.world.update(dt);
 
