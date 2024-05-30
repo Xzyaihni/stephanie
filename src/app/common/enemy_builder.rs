@@ -1,3 +1,5 @@
+use std::f32;
+
 use nalgebra::Vector3;
 
 use yanyaengine::Transform;
@@ -51,7 +53,7 @@ impl<'a> EnemyBuilder<'a>
                 transform: Transform{
                     position: self.pos,
                     scale: Vector3::repeat(info.scale),
-                    rotation: fastrand::f32() * (3.141596 * 2.0),
+                    rotation: fastrand::f32() * (f32::consts::PI * 2.0),
                     ..Default::default()
                 },
                 ..Default::default()

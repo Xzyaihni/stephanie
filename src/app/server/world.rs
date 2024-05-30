@@ -6,6 +6,10 @@ use std::{
 
 use parking_lot::{Mutex, RwLock};
 
+use nalgebra::Vector3;
+
+use yanyaengine::Transform;
+
 use crate::{
     server::ConnectionsHandler,
     common::{
@@ -21,6 +25,13 @@ use crate::{
         Entity,
         EntityInfo,
         ConnectionId,
+        RenderInfo,
+        RenderObject,
+        Collider,
+        ColliderType,
+        PhysicalProperties,
+        BoundingShape,
+        LazyTransformInfo,
         entity::ServerEntities,
         message::Message,
         world::{
@@ -203,16 +214,14 @@ impl World
         });
     }
 
-    fn add_entities(
-        &self,
-        container: &mut ServerEntities,
+    fn add_on_ground<'a>(
         chunk_pos: Pos3<f32>,
-        chunk: &Chunk
-    )
+        chunk: &'a Chunk,
+        amount: usize,
+        f: impl Fn(Vector3<f32>) -> EntityInfo + 'a
+    ) -> impl Iterator<Item=EntityInfo> + 'a
     {
-        let spawns = fastrand::usize(0..3);
-
-        let entities = (0..spawns)
+        (0..amount)
             .map(|_|
             {
                 ChunkLocal::new(
@@ -248,7 +257,7 @@ impl World
                     current_pos = ChunkLocal::from(new_pos);
                 }
             })
-            .filter_map(|pos|
+            .filter_map(move |pos|
             {
                 let above = ChunkLocal::from(*pos.pos() + Pos3{x: 0, y: 0, z: 1});
                 let has_space = chunk[above].is_none();
@@ -257,13 +266,59 @@ impl World
                 {
                     let pos = chunk_pos + above.pos().map(|x| x as f32 * TILE_SIZE);
 
-                    EnemyBuilder::new(
-                        &self.enemies_info,
-                        self.enemies_info.id("zob"),
-                        pos.into()
-                    ).build()
+                    f(pos.into())
                 })
-            });
+            })
+    }
+
+    fn add_entities(
+        &self,
+        container: &mut ServerEntities,
+        chunk_pos: Pos3<f32>,
+        chunk: &Chunk
+    )
+    {
+        let spawns = fastrand::usize(0..3);
+        let crates = fastrand::usize(0..2);
+
+        let entities = Self::add_on_ground(chunk_pos, chunk, spawns, |pos|
+        {
+            EnemyBuilder::new(
+                &self.enemies_info,
+                self.enemies_info.id("zob"),
+                pos
+            ).build()
+        }).chain(Self::add_on_ground(chunk_pos, chunk, crates, |pos|
+        {
+            EntityInfo{
+                lazy_transform: Some(LazyTransformInfo{
+                    transform: Transform{
+                        position: pos,
+                        scale: Vector3::repeat(0.08),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                }.into()),
+                render: Some(RenderInfo{
+                    object: Some(RenderObject::Texture{
+                        name: "furniture/crate.png".to_owned()
+                    }),
+                    shape: Some(BoundingShape::Circle),
+                    z_level: -2,
+                    ..Default::default()
+                }),
+                collider: Some(Collider{
+                    kind: ColliderType::Circle,
+                    is_static: false
+                }),
+                physical: Some(PhysicalProperties{
+                    mass: 50.0,
+                    friction: 0.5,
+                    floating: false
+                }.into()),
+                ..Default::default()
+            }
+        }));
 
         self.create_entities(container, entities);
     }

@@ -507,13 +507,16 @@ macro_rules! define_entities
                     },
                     Message::SetTarget{entity, target} =>
                     {
-                        if let Some(mut lazy) = self.lazy_transform_mut(entity)
+                        if self.exists(entity)
                         {
-                            *lazy.target() = target;
-                        } else
-                        {
-                            let mut transform = self.transform_mut(entity).unwrap();
-                            *(&mut *transform).into() = target;
+                            if let Some(mut lazy) = self.lazy_transform_mut(entity)
+                            {
+                                *lazy.target() = target;
+                            } else
+                            {
+                                let mut transform = self.transform_mut(entity).unwrap();
+                                *(&mut *transform).into() = target;
+                            }
                         }
 
                         None
