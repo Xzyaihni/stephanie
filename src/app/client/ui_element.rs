@@ -181,7 +181,8 @@ impl UiElement
         entities: &ClientEntities,
         entity: Entity,
         camera_position: Vector2<f32>,
-        event: &UiEvent
+        event: &UiEvent,
+        captured: bool
     ) -> bool
     {
         let query = ||
@@ -194,6 +195,11 @@ impl UiElement
             UiElementType::Panel => false,
             UiElementType::Button{on_click} =>
             {
+                if captured
+                {
+                    return true;
+                }
+
                 if let Some(event) = event.as_mouse()
                 {
                     let clicked = event.main_button && event.state == ControlState::Pressed;
@@ -225,7 +231,8 @@ impl UiElement
                     {
                         if event.main_button
                         {
-                            if event.state == ControlState::Pressed
+                            if !captured
+                                && event.state == ControlState::Pressed
                                 && query().is_inside(event.position)
                             {
                                 if !self.predicate.matches(entities, query(), event.position)

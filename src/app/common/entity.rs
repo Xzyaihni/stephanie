@@ -1,7 +1,4 @@
-use std::{
-    cell::{Ref, RefMut, RefCell},
-    ops::ControlFlow
-};
+use std::cell::{Ref, RefMut, RefCell};
 
 use serde::{Serialize, Deserialize};
 
@@ -22,6 +19,8 @@ use crate::{
         Player,
         Enemy,
         EnemiesInfo,
+        Collider,
+        CollidingInfo,
         Physical,
         RenderInfo,
         ClientRenderInfo,
@@ -148,6 +147,7 @@ no_on_set!{
     Parent,
     Transform,
     Player,
+    Collider,
     Physical,
     UiElement,
     UiElementServer
@@ -618,6 +618,39 @@ macro_rules! define_entities
                 });
             }
 
+            pub fn update_colliders(&mut self)
+            {
+                self.collider.iter().for_each(|(_, ComponentWrapper{
+                    entity,
+                    component: collider
+                })|
+                {
+                    let mut transform = self.transform_mut(*entity).unwrap();
+                    let transform = &mut transform;
+                    let collider = *collider.borrow();
+
+                    self.collider.iter().filter(|(_, x)|
+                    {
+                        x.entity != *entity
+                    }).for_each(|(_, ComponentWrapper{
+                        entity,
+                        component: other_collider
+                    })|
+                    {
+                        let this = CollidingInfo{
+                            transform,
+                            collider
+                        };
+
+                        let mut transform = self.transform_mut(*entity).unwrap();
+                        this.resolve(CollidingInfo{
+                            transform: &mut transform,
+                            collider: *other_collider.borrow()
+                        });
+                    });
+                });
+            }
+
             pub fn update_lazy(&mut self, dt: f32)
             {
                 self.lazy_transform.iter().for_each(|(_, ComponentWrapper{
@@ -649,33 +682,24 @@ macro_rules! define_entities
                 event: UiEvent
             )
             {
+                let mut captured = false;
                 // borrow checker more like goofy ahh
                 // rev to early exit if child is captured
-                self.ui_element.iter().rev().try_for_each(|(_, ComponentWrapper{
+                self.ui_element.iter().rev().for_each(|(_, ComponentWrapper{
                     entity,
                     component: ui_element
                 })|
                 {
-                    let is_invisible = self.render(*entity).map(|x| !x.visible).unwrap_or(true);
-                    if is_invisible
+                    let is_visible = self.render(*entity).map(|x| x.visible).unwrap_or(false);
+                    if is_visible
                     {
-                        ControlFlow::Continue(())
-                    } else
-                    {
-                        let captured = ui_element.borrow_mut().update(
+                        captured |= ui_element.borrow_mut().update(
                             &*self,
                             *entity,
                             camera_position,
-                            &event
+                            &event,
+                            captured
                         );
-
-                        if captured
-                        {
-                            ControlFlow::Break(())
-                        } else
-                        {
-                            ControlFlow::Continue(())
-                        }
                     }
                 });
             }
@@ -838,6 +862,7 @@ define_entities!{
     (parent, parent_mut, set_parent, SetParent, ParentType, Parent),
     (transform, transform_mut, set_transform, SetTransform, TransformType, Transform),
     (player, player_mut, set_player, SetPlayer, PlayerType, Player),
+    (collider, collider_mut, set_collider, SetCollider, ColliderType, Collider),
     (physical, physical_mut, set_physical, SetPhysical, PhysicalType, Physical),
     (anatomy, anatomy_mut, set_anatomy, SetAnatomy, AnatomyType, Anatomy)
 }

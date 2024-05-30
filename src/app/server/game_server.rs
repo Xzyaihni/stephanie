@@ -219,7 +219,6 @@ impl GameServer
 
         let mut player_children = Vec::new();
 
-        let item_size = 0.2;
         let held_item = EntityInfo{
             render: Some(RenderInfo{
                 object: Some(RenderObject::Texture{

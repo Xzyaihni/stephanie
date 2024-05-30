@@ -149,6 +149,9 @@ impl<'a> PlayerContainer<'a>
                 entities.entities.player_mut(player).unwrap().holding = Some(item);
 
                 self.update_weapon();
+            },
+            UserEvent::Take(item) =>
+            {
             }
         }
     }

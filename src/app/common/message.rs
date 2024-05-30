@@ -6,6 +6,7 @@ use strum_macros::EnumCount;
 
 use crate::common::{
     Transform,
+    Collider,
     Physical,
     Inventory,
     Entity,
@@ -32,6 +33,7 @@ pub enum Message
     SetInventory{entity: Entity, inventory: Inventory},
     SetRender{entity: Entity, render: RenderInfo},
     SetPlayer{entity: Entity, player: Player},
+    SetCollider{entity: Entity, collider: Collider},
     SetPhysical{entity: Entity, physical: Physical},
     SetAnatomy{entity: Entity, anatomy: Anatomy},
     SetEnemy{entity: Entity, enemy: Enemy},
@@ -71,6 +73,7 @@ impl Message
             | Message::SetInventory{entity, ..}
             | Message::SetRender{entity, ..}
             | Message::SetPlayer{entity, ..}
+            | Message::SetCollider{entity, ..}
             | Message::SetPhysical{entity, ..}
             | Message::SetAnatomy{entity, ..}
             | Message::SetEnemy{entity, ..}

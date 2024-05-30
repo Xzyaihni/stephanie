@@ -19,6 +19,8 @@ use crate::{
         Inventory,
         InventorySorter,
         Parent,
+        ColliderType,
+        Collider,
         Entity,
         ItemsInfo,
         EntityInfo,
@@ -114,7 +116,7 @@ impl UiScroll
 
         self.target_scroll = fit_into(current_scroll, half_size, 1.0 - half_size);
 
-        self.scroll = ease_out(self.scroll, self.target_scroll, 0.015, dt);
+        self.scroll = ease_out(self.scroll, self.target_scroll, 15.0, dt);
 
         self.update_position(entities);
     }
@@ -482,6 +484,36 @@ impl UiInventory
         mut on_change: impl FnMut(InventoryItem) + 'static
     ) -> Self
     {
+        let mut p = Vector3::from_fn(|_, _| fastrand::f32()) * 0.2;
+        p.z = 0.0;
+        let inventory = creator.push(
+            EntityInfo{
+                lazy_transform: Some(LazyTransformInfo{
+                    transform: Transform{
+                        position: p,
+                        scale: Vector3::new(0.2, 0.2, 1.0),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                }.into()),
+                ui_element: Some(UiElement{
+                    kind: UiElementType::Panel,
+                    ..Default::default()
+                }),
+                collider: Some(Collider{
+                    kind: ColliderType::Circle,
+                    is_static: false
+                }),
+                parent: Some(Parent::new(anchor)),
+                ..Default::default()
+            },
+            RenderInfo{
+                object: Some(RenderObject::Texture{name: "ui/background.png".to_owned()}),
+                z_level: *z_level,
+                ..Default::default()
+            }
+        );
+
         let mut add_ui = |parent, position, scale, ui_element, object|
         {
             *z_level += 1;
@@ -507,17 +539,6 @@ impl UiInventory
                 }
             )
         };
-
-        let inventory = add_ui(
-            anchor,
-            Vector3::zeros(),
-            Vector3::new(0.2, 0.2, 1.0),
-            UiElement{
-                kind: UiElementType::Panel,
-                ..Default::default()
-            },
-            Some(RenderObject::Texture{name: "ui/background.png".to_owned()})
-        );
 
         let panel_size = 0.2;
         let size = Vector3::new(1.0, panel_size, 1.0);
@@ -659,7 +680,8 @@ impl UiInventory
 pub struct Ui
 {
     anchor: Entity,
-    pub player_inventory: UiInventory
+    pub player_inventory: UiInventory,
+    pub other_inventory: UiInventory
 }
 
 impl Ui
@@ -667,7 +689,8 @@ impl Ui
     pub fn new(
         creator: &mut EntityCreator,
         items_info: Arc<ItemsInfo>,
-        on_player_change: impl FnMut(InventoryItem) + 'static
+        on_player_change: impl FnMut(InventoryItem) + 'static,
+        on_other_change: impl FnMut(InventoryItem) + 'static
     ) -> Self
     {
         let anchor = creator.entities.push(EntityInfo{
@@ -682,15 +705,24 @@ impl Ui
 
         let player_inventory = UiInventory::new(
             creator,
-            items_info,
+            items_info.clone(),
             anchor,
             &mut z_level,
             on_player_change
         ); 
 
+        let other_inventory = UiInventory::new(
+            creator,
+            items_info,
+            anchor,
+            &mut z_level,
+            on_other_change
+        ); 
+
         Self{
             anchor,
-            player_inventory
+            player_inventory,
+            other_inventory
         }
     }
 
@@ -745,6 +777,7 @@ impl Ui
     fn for_each_inventory(&mut self, mut f: impl FnMut(&mut UiInventory))
     {
         f(&mut self.player_inventory);
+        f(&mut self.other_inventory);
     }
 
     fn ui_position(scale: Vector3<f32>, position: Vector3<f32>) -> Vector3<f32>

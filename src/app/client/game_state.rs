@@ -174,6 +174,7 @@ impl ClientEntitiesContainer
     fn update_entities(entities: &mut ClientEntities, dt: f32)
     {
         entities.update_physical(dt);
+        entities.update_colliders();
         entities.update_lazy(dt);
         entities.update_enemy(dt);
     }
@@ -410,7 +411,8 @@ pub struct GameStateInfo<'a>
 
 pub enum UserEvent
 {
-    Wield(InventoryItem)
+    Wield(InventoryItem),
+    Take(InventoryItem)
 }
 
 pub struct GameState
@@ -488,13 +490,18 @@ impl GameState
         };
 
         let ui = {
-            let user_receiver = user_receiver.clone();
+            let urx0 = user_receiver.clone();
+            let urx1 = user_receiver.clone();
             Ui::new(
                 &mut entity_creator,
                 info.items_info.clone(),
                 move |item|
                 {
-                    user_receiver.borrow_mut().push(UserEvent::Wield(item));
+                    urx0.borrow_mut().push(UserEvent::Wield(item));
+                },
+                move |item|
+                {
+                    urx1.borrow_mut().push(UserEvent::Take(item));
                 }
             )
         };
@@ -795,13 +802,9 @@ impl GameState
 
         self.entities.update(dt);
 
-        // she borrow on my checker till i for loop????????????
-        let changed = self.controls.changed_this_frame();
-        for i in 0..changed.len()
+        for (state, control) in self.controls.changed_this_frame()
         {
-            let (state, control) = changed[i];
-
-            let event = UiEvent::from_control(|| self.world_mouse_position(), state, control);
+            let event = UiEvent::from_control(|| self.world_mouse_position(), *state, *control);
             if let Some(event) = event
             {
                 self.entities.local_entities.update_ui(

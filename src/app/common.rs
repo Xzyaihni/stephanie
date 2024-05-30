@@ -60,6 +60,7 @@ pub use chunk_saver::{SaveLoad, WorldChunkSaver, ChunkSaver, EntitiesSaver};
 pub use anatomy::{Anatomy, HumanAnatomy};
 pub use damage::{Damageable, Damage, DamageType, DamageDirection, Side2d, DamageHeight};
 
+pub use collider::{ColliderType, Collider, CollidingInfo};
 pub use physics::{Physical, PhysicalProperties};
 
 pub mod animator;
@@ -96,6 +97,7 @@ pub mod tilemap;
 pub mod chunk_saver;
 pub mod world;
 
+pub mod collider;
 pub mod physics;
 
 
@@ -240,11 +242,10 @@ impl SeededRandom
     }
 }
 
-pub fn ease_out(current: f32, target: f32, resistance: f32, dt: f32) -> f32
+// thanks freya holmer
+pub fn ease_out(current: f32, target: f32, decay: f32, dt: f32) -> f32
 {
-    let amount = 1.0 - resistance.powf(dt);
-
-    lerp(current, target, amount)
+    target + (current - target) * (-decay * dt).exp()
 }
 
 pub fn lerp(x: f32, y: f32, a: f32) -> f32
