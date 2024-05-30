@@ -484,14 +484,11 @@ impl UiInventory
         mut on_change: impl FnMut(InventoryItem) + 'static
     ) -> Self
     {
-        let mut p = Vector3::from_fn(|_, _| fastrand::f32()) * 0.2;
-        p.z = 0.0;
         let inventory = creator.push(
             EntityInfo{
                 lazy_transform: Some(LazyTransformInfo{
                     transform: Transform{
-                        position: p,
-                        scale: Vector3::new(0.2, 0.2, 1.0),
+                        scale: Vector3::new(0.2, 0.2, 0.2),
                         ..Default::default()
                     },
                     ..Default::default()
@@ -761,6 +758,7 @@ impl Ui
 
             ui_scale.x = camera_size.x;
             ui_scale.y = camera_size.y;
+            ui_scale.z = ui_scale.x;
 
             if let Some(player_transform) = player_transform
             {

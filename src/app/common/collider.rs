@@ -58,9 +58,20 @@ impl<'a> CollidingInfo<'a>
         let max_distance = this_radius + other_radius;
         if distance < max_distance
         {
-            let direction = offset.xy().normalize();
+            let direction = if distance == 0.0
+            {
+                Vector2::new(1.0, 0.0)
+            } else
+            {
+                offset.xy().normalize()
+            };
 
             let shift = max_distance - distance;
+
+            eprintln!(
+                "({:?}, {:?}) max_distance: {max_distance}, shift: {shift}",
+                self.transform.scale,
+                other.transform.scale);
 
             self.resolve_with(other, direction * shift);
         }

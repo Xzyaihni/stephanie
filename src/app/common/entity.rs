@@ -64,15 +64,6 @@ macro_rules! get_entity
     }
 }
 
-#[allow(unused_macros)]
-macro_rules! get_required_entity
-{
-    ($this:expr, $entity:expr, $access_type:ident, $component:ident) =>
-    {
-        get_required_component!($this, $this.components[$entity.0], $access_type, $component)
-    }
-}
-
 pub trait ServerToClient<T>
 {
     fn server_to_client(
@@ -321,9 +312,9 @@ macro_rules! define_entities
                     component: enemy
                 })|
                 {
-                    let anatomy = get_required_entity!(self, entity, get, anatomy);
-                    let mut lazy_transform = get_required_entity!(self, entity, get_mut, lazy_transform);
-                    let mut physical = get_required_entity!(self, entity, get_mut, physical);
+                    let anatomy = self.anatomy(*entity).unwrap();
+                    let mut lazy_transform = self.lazy_transform_mut(*entity).unwrap();
+                    let mut physical = self.physical_mut(*entity).unwrap();
 
                     let mut enemy = enemy.borrow_mut();
                     let state_changed = (&mut *enemy).into().update(
@@ -561,7 +552,7 @@ macro_rules! define_entities
                             let parent = get_component!(self, components, get, parent);
                             let new_transform = if let Some(parent) = parent
                             {
-                                if let Some(parent) = get_entity!(self, parent.parent, get, transform)
+                                if let Some(parent) = self.transform(parent.parent)
                                 {
                                     lazy.combine(&parent)
                                 } else
@@ -604,12 +595,12 @@ macro_rules! define_entities
 
             pub fn update_render(&mut self)
             {
-                self.render.iter_mut().for_each(|(_, ComponentWrapper{
+                self.render.iter().for_each(|(_, ComponentWrapper{
                     entity,
                     component: object
                 })|
                 {
-                    let transform = get_required_entity!(self, entity, get, transform);
+                    let transform = self.transform(*entity).unwrap();
 
                     if let Some(object) = object.borrow_mut().object.as_mut()
                     {
@@ -625,7 +616,7 @@ macro_rules! define_entities
                     component: collider
                 })|
                 {
-                    let mut transform = self.transform_mut(*entity).unwrap();
+                    let mut transform = self.transform_target(*entity);
                     let transform = &mut transform;
                     let collider = *collider.borrow();
 
@@ -642,13 +633,32 @@ macro_rules! define_entities
                             collider
                         };
 
-                        let mut transform = self.transform_mut(*entity).unwrap();
+                        let mut transform = self.transform_target(*entity);
                         this.resolve(CollidingInfo{
                             transform: &mut transform,
                             collider: *other_collider.borrow()
                         });
                     });
                 });
+            }
+
+            fn update_lazy_one(
+                &self,
+                entity: Entity,
+                mut lazy: RefMut<LazyTransform>,
+                dt: f32
+            )
+            {
+                let parent = self.parent(entity);
+
+                let target_global = parent.map(|parent|
+                {
+                    self.transform(parent.parent).as_deref().cloned()
+                }).flatten();
+
+                let mut transform = self.transform_mut(entity).unwrap();
+
+                *transform = lazy.next(transform.clone(), target_global, dt);
             }
 
             pub fn update_lazy(&mut self, dt: f32)
@@ -658,16 +668,7 @@ macro_rules! define_entities
                     component: lazy
                 })|
                 {
-                    let parent = get_entity!(self, entity, get, parent);
-
-                    let target_global = parent.map(|parent|
-                    {
-                        get_entity!(self, parent.parent, get, transform).as_deref().cloned()
-                    }).flatten();
-
-                    let mut transform = get_required_entity!(self, entity, get_mut, transform);
-
-                    *transform = lazy.borrow_mut().next(transform.clone(), target_global, dt);
+                    self.update_lazy_one(*entity, lazy.borrow_mut(), dt);
                 });
             }
 
@@ -715,19 +716,26 @@ macro_rules! define_entities
                     component: enemy
                 })|
                 {
-                    let mut lazy = get_required_entity!(self, entity, get_mut, lazy_transform);
-                    let mut render = get_required_entity!(self, entity, get_mut, render);
-                    let mut transform = get_required_entity!(self, entity, get_mut, transform);
+                    let mut lazy = self.lazy_transform_mut(*entity).unwrap();
+                    let changed = {
+                        let mut render = self.render_mut(*entity).unwrap();
+                        let mut transform = self.transform_mut(*entity).unwrap();
 
-                    enemy.borrow_mut().update_sprite(
-                        &mut *lazy,
-                        enemies_info,
-                        &mut render,
-                        |render, texture|
-                        {
-                            render.set_sprite(create_info, Some(&mut transform), texture);
-                        }
-                    );
+                        enemy.borrow_mut().update_sprite(
+                            &mut *lazy,
+                            enemies_info,
+                            &mut render,
+                            |render, texture|
+                            {
+                                render.set_sprite(create_info, Some(&mut transform), texture);
+                            }
+                        )
+                    };
+
+                    if changed
+                    {
+                        self.update_lazy_one(*entity, lazy, 0.0001);
+                    }
                 });
             }
 
@@ -791,14 +799,14 @@ macro_rules! define_entities
                     component: lazy
                 })|
                 {
-                    let parent = get_entity!(self, entity, get, parent);
+                    let parent = self.parent(*entity);
 
                     let target_global = parent.map(|parent|
                     {
-                        get_entity!(self, parent.parent, get, transform).as_deref().cloned()
+                        self.transform(parent.parent).as_deref().cloned()
                     }).flatten();
 
-                    let mut transform = get_required_entity!(self, entity, get_mut, transform);
+                    let mut transform = self.transform_mut(*entity).unwrap();
 
                     *transform = lazy.borrow_mut().target_global(target_global.as_ref());
                 });
@@ -814,7 +822,7 @@ macro_rules! define_entities
                     component: enemy
                 })|
                 {
-                    let mut lazy = get_required_entity!(self, entity, get_mut, lazy_transform);
+                    let mut lazy = self.lazy_transform_mut(*entity).unwrap();
 
                     enemy.borrow_mut().update_sprite_common(&mut *lazy, enemies_info);
                 });
