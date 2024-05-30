@@ -297,7 +297,7 @@ impl Enemy
             },
             SpriteState::Lying =>
             {
-                render.z_level = -3;
+                render.z_level = -5;
 
                 info.lying
             }

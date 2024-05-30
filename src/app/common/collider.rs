@@ -47,12 +47,41 @@ impl<'a> CollidingInfo<'a>
         }
     }
 
+    fn resolve_with_offset(
+        self,
+        other: CollidingInfo,
+        max_distance: Vector3<f32>,
+        offset: Vector3<f32>
+    )
+    {
+        let offset = max_distance.xy().zip_map(&offset.xy(), |max_distance, offset|
+        {
+            if offset < 0.0
+            {
+                -max_distance - offset
+            } else
+            {
+                max_distance - offset
+            }
+        });
+
+        let offset = if offset.x.abs() < offset.y.abs()
+        {
+            Vector2::new(offset.x, 0.0)
+        } else
+        {
+            Vector2::new(0.0, offset.y)
+        };
+
+        self.resolve_with(other, offset);
+    }
+
     fn circle_circle(self, other: CollidingInfo) -> bool
     {
         let this_radius = self.transform.max_scale() / 2.0;
         let other_radius = other.transform.max_scale() / 2.0;
 
-        let offset = self.transform.position - other.transform.position;
+        let offset = other.transform.position - self.transform.position;
         let distance = offset.x.hypot(offset.y);
 
         let max_distance = this_radius + other_radius;
@@ -67,7 +96,7 @@ impl<'a> CollidingInfo<'a>
                 offset.xy().normalize()
             };
 
-            let shift = -(max_distance - distance);
+            let shift = max_distance - distance;
 
             self.resolve_with(other, direction * shift);
         }
@@ -77,12 +106,40 @@ impl<'a> CollidingInfo<'a>
 
     fn circle_aabb(self, other: CollidingInfo) -> bool
     {
-        todo!()
+        let this_radius = self.transform.max_scale() / 2.0;
+        let other_scale = other.transform.scale / 2.0;
+
+        let offset = other.transform.position - self.transform.position;
+
+        let max_distance = other_scale + Vector3::repeat(this_radius);
+        let collided = (-max_distance.x..max_distance.x).contains(&offset.x)
+            && (-max_distance.y..max_distance.y).contains(&offset.y);
+
+        if collided
+        {
+            self.resolve_with_offset(other, max_distance, offset);
+        }
+
+        collided
     }
 
     fn aabb_aabb(self, other: CollidingInfo) -> bool
     {
-        todo!()
+        let this_scale = self.transform.scale / 2.0;
+        let other_scale = other.transform.scale / 2.0;
+
+        let offset = other.transform.position - self.transform.position;
+
+        let max_distance = this_scale + other_scale;
+        let collided = (-max_distance.x..max_distance.x).contains(&offset.x)
+            && (-max_distance.y..max_distance.y).contains(&offset.y);
+
+        if collided
+        {
+            self.resolve_with_offset(other, max_distance, offset);
+        }
+
+        collided
     }
 
     pub fn resolve(

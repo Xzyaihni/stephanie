@@ -377,13 +377,16 @@ impl UiList
             {
                 let item_index = index + start_item;
 
-                creator.replace_object(
-                    item.item,
-                    RenderObject::Text{
-                        text: self.items[item_index].clone(),
-                        font_size: 60
-                    }
-                );
+                if let Some(text) = self.items.get(item_index)
+                {
+                    creator.replace_object(
+                        item.item,
+                        RenderObject::Text{
+                            text: text.clone(),
+                            font_size: 60
+                        }
+                    );
+                }
             });
 
             self.amount_changed = false;
@@ -499,7 +502,7 @@ impl UiInventory
                     ..Default::default()
                 }),
                 collider: Some(Collider{
-                    kind: ColliderType::Circle,
+                    kind: ColliderType::Aabb,
                     is_static: false
                 }),
                 parent: Some(Parent::new(anchor)),

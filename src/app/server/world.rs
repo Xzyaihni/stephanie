@@ -304,11 +304,11 @@ impl World
                         name: "furniture/crate.png".to_owned()
                     }),
                     shape: Some(BoundingShape::Circle),
-                    z_level: -2,
+                    z_level: -3,
                     ..Default::default()
                 }),
                 collider: Some(Collider{
-                    kind: ColliderType::Circle,
+                    kind: ColliderType::Aabb,
                     is_static: false
                 }),
                 physical: Some(PhysicalProperties{
