@@ -280,7 +280,7 @@ impl GameServer
                     ),
                     rotation: Rotation::EaseOut(
                         EaseOutRotation{
-                            resistance: 0.0001,
+                            decay: 25.0,
                             momentum: 0.5
                         }.into()
                     ),

@@ -49,8 +49,8 @@ impl<'a> CollidingInfo<'a>
 
     fn circle_circle(self, other: CollidingInfo)
     {
-        let this_radius = self.transform.max_scale();
-        let other_radius = other.transform.max_scale();
+        let this_radius = self.transform.max_scale() / 2.0;
+        let other_radius = other.transform.max_scale() / 2.0;
 
         let offset = self.transform.position - other.transform.position;
         let distance = offset.x.hypot(offset.y);
@@ -66,12 +66,7 @@ impl<'a> CollidingInfo<'a>
                 offset.xy().normalize()
             };
 
-            let shift = max_distance - distance;
-
-            eprintln!(
-                "({:?}, {:?}) max_distance: {max_distance}, shift: {shift}",
-                self.transform.scale,
-                other.transform.scale);
+            let shift = -(max_distance - distance);
 
             self.resolve_with(other, direction * shift);
         }

@@ -7,7 +7,7 @@ use nalgebra::{Vector2, Vector3, Rotation as NRotation};
 use yanyaengine::Transform;
 
 use crate::common::{
-    lerp,
+    ease_out,
     Physical
 };
 
@@ -47,7 +47,7 @@ pub struct SpringConnection
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EaseOutRotation
 {
-    pub resistance: f32,
+    pub decay: f32,
     pub momentum: f32
 }
 
@@ -107,7 +107,7 @@ pub enum Connection
     Rigid,
     Limit{limit: f32},
     Constant{speed: f32},
-    EaseOut{resistance: f32, limit: f32},
+    EaseOut{decay: f32, limit: f32},
     Spring(SpringConnection)
 }
 
@@ -277,14 +277,17 @@ impl LazyTransform
                 {
                     Rotation::EaseOut(info) =>
                     {
-                        let amount = 1.0 - info.props.resistance.powf(dt);
-
                         let current_difference =
                             current_difference(info.last_move, info.props.momentum);
 
                         let target_rotation = current_difference + rotation;
 
-                        let new_rotation = lerp(rotation, target_rotation, amount);
+                        let new_rotation = ease_out(
+                            rotation,
+                            target_rotation,
+                            info.props.decay,
+                            dt
+                        );
 
                         info.last_move = new_rotation - rotation;
 
@@ -351,11 +354,13 @@ impl LazyTransform
                     *limit
                 );
             },
-            Connection::EaseOut{resistance, limit} =>
+            Connection::EaseOut{decay, limit} =>
             {
-                let amount = 1.0 - resistance.powf(dt);
+                let new_position = current.position.zip_map(&target_global.position, |a, b|
+                {
+                    ease_out(a, b, *decay, dt)
+                });
 
-                let new_position = current.position.lerp(&target_global.position, amount);
                 current.position = Self::clamp_distance(
                     target_global.position,
                     new_position,

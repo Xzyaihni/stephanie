@@ -42,7 +42,7 @@ impl<'a> EnemyBuilder<'a>
             lazy_transform: Some(LazyTransformInfo{
                 rotation: Rotation::EaseOut(
                     EaseOutRotation{
-                        resistance: 0.01,
+                        decay: 6.0,
                         momentum: 0.0
                     }.into()
                 ),
