@@ -61,3 +61,10 @@ impl BufferSender for ConnectionsHandler
         self.message_passer.send_many(&buffer)
     }
 }
+
+impl EntityPasser for ()
+{
+    fn send_single(&mut self, _id: ConnectionId, _message: Message) {}
+
+    fn send_message(&mut self, _message: Message) {}
+}

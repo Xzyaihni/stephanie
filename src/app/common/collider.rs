@@ -47,7 +47,7 @@ impl<'a> CollidingInfo<'a>
         }
     }
 
-    fn circle_circle(self, other: CollidingInfo)
+    fn circle_circle(self, other: CollidingInfo) -> bool
     {
         let this_radius = self.transform.max_scale() / 2.0;
         let other_radius = other.transform.max_scale() / 2.0;
@@ -56,7 +56,8 @@ impl<'a> CollidingInfo<'a>
         let distance = offset.x.hypot(offset.y);
 
         let max_distance = this_radius + other_radius;
-        if distance < max_distance
+        let collided = distance < max_distance;
+        if collided
         {
             let direction = if distance == 0.0
             {
@@ -70,14 +71,16 @@ impl<'a> CollidingInfo<'a>
 
             self.resolve_with(other, direction * shift);
         }
+
+        collided
     }
 
-    fn circle_aabb(self, other: CollidingInfo)
+    fn circle_aabb(self, other: CollidingInfo) -> bool
     {
         todo!()
     }
 
-    fn aabb_aabb(self, other: CollidingInfo)
+    fn aabb_aabb(self, other: CollidingInfo) -> bool
     {
         todo!()
     }
@@ -85,30 +88,30 @@ impl<'a> CollidingInfo<'a>
     pub fn resolve(
         self,
         other: CollidingInfo
-    )
+    ) -> bool
     {
         if self.collider.is_static && other.collider.is_static
         {
-            return;
+            return false;
         }
 
         match (self.collider.kind, other.collider.kind)
         {
             (ColliderType::Circle, ColliderType::Circle) =>
             {
-                self.circle_circle(other);
+                self.circle_circle(other)
             },
             (ColliderType::Circle, ColliderType::Aabb) =>
             {
-                self.circle_aabb(other);
+                self.circle_aabb(other)
             },
             (ColliderType::Aabb, ColliderType::Circle) =>
             {
-                other.circle_aabb(self);
+                other.circle_aabb(self)
             },
             (ColliderType::Aabb, ColliderType::Aabb) =>
             {
-                self.aabb_aabb(other);
+                self.aabb_aabb(other)
             }
         }
     }

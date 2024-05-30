@@ -32,6 +32,8 @@ use crate::common::{
     RenderInfo,
     RenderObject,
     BoundingShape,
+    Collider,
+    ColliderType,
     Parent,
     Player,
     PlayerEntities,
@@ -196,6 +198,10 @@ impl GameServer
                 shape: Some(BoundingShape::Circle),
                 z_level: 0,
                 ..Default::default()
+            }),
+            collider: Some(Collider{
+                kind: ColliderType::Circle,
+                is_static: false
             }),
             inventory: Some(Inventory::new()),
             physical: Some(physical.into()),

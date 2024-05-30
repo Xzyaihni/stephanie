@@ -165,16 +165,20 @@ impl ClientEntitiesContainer
         self.update_buffers(visibility, info);
     }
 
-    pub fn update(&mut self, dt: f32)
+    pub fn update(&mut self, passer: &mut impl EntityPasser, dt: f32)
     {
-        Self::update_entities(&mut self.entities, dt);
-        Self::update_entities(&mut self.local_entities, dt);
+        Self::update_entities(&mut self.entities, passer, dt);
+        Self::update_entities(&mut self.local_entities, &mut (), dt);
     }
 
-    fn update_entities(entities: &mut ClientEntities, dt: f32)
+    fn update_entities(
+        entities: &mut ClientEntities,
+        passer: &mut impl EntityPasser,
+        dt: f32
+    )
     {
         entities.update_physical(dt);
-        entities.update_colliders();
+        entities.update_colliders(passer);
         entities.update_lazy(dt);
         entities.update_enemy(dt);
     }
@@ -800,7 +804,8 @@ impl GameState
             dt
         );
 
-        self.entities.update(dt);
+        let mut passer = self.connections_handler.write();
+        self.entities.update(&mut *passer, dt);
 
         for (state, control) in self.controls.changed_this_frame()
         {

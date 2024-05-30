@@ -11,6 +11,8 @@ use crate::common::{
     PhysicalProperties,
     RenderInfo,
     BoundingShape,
+    Collider,
+    ColliderType,
     EntityInfo,
     lazy_transform::*
 };
@@ -58,6 +60,10 @@ impl<'a> EnemyBuilder<'a>
                 shape: Some(BoundingShape::Circle),
                 z_level: -1,
                 ..Default::default()
+            }),
+            collider: Some(Collider{
+                kind: ColliderType::Circle,
+                is_static: false
             }),
             physical: Some(PhysicalProperties{
                 mass: 50.0,

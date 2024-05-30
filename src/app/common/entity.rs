@@ -486,7 +486,9 @@ macro_rules! define_entities
 
             fn handle_message_common(&mut self, message: Message) -> Option<Message>
             where
-                for<'a> &'a mut AnatomyType: Into<&'a mut Anatomy>
+                for<'a> &'a mut AnatomyType: Into<&'a mut Anatomy>,
+                for<'a> &'a mut TransformType: Into<&'a mut Transform>,
+                LazyTransformType: LazyTargettable<Transform>
             {
                 match message
                 {
@@ -499,6 +501,19 @@ macro_rules! define_entities
                             (&mut *anatomy).into().damage(damage);
 
                             AnatomyType::on_set(None, self, entity);
+                        }
+
+                        None
+                    },
+                    Message::SetTarget{entity, target} =>
+                    {
+                        if let Some(mut lazy) = self.lazy_transform_mut(entity)
+                        {
+                            *lazy.target() = target;
+                        } else
+                        {
+                            let mut transform = self.transform_mut(entity).unwrap();
+                            *(&mut *transform).into() = target;
                         }
 
                         None
@@ -609,7 +624,7 @@ macro_rules! define_entities
                 });
             }
 
-            pub fn update_colliders(&mut self)
+            pub fn update_colliders(&mut self, passer: &mut impl EntityPasser)
             {
                 self.collider.iter().for_each(|(_, ComponentWrapper{
                     entity,
@@ -634,10 +649,20 @@ macro_rules! define_entities
                         };
 
                         let mut transform = self.transform_target(*entity);
-                        this.resolve(CollidingInfo{
+                        let collision = this.resolve(CollidingInfo{
                             transform: &mut transform,
                             collider: *other_collider.borrow()
                         });
+
+                        if collision
+                        {
+                            let message = Message::SetTarget{
+                                entity: *entity,
+                                target: transform.clone()
+                            };
+
+                            passer.send_message(message);
+                        }
                     });
                 });
             }
