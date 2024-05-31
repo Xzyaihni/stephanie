@@ -13,6 +13,7 @@ use crate::{
         UiEvent
     },
     common::{
+        render_info::*,
         EntityPasser,
         Inventory,
         Anatomy,
@@ -22,8 +23,6 @@ use crate::{
         Collider,
         CollidingInfo,
         Physical,
-        RenderInfo,
-        ClientRenderInfo,
         LazyTransform,
         LazyTargettable
     }

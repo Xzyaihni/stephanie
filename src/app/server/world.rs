@@ -14,6 +14,7 @@ use crate::{
     server::ConnectionsHandler,
     common::{
         self,
+        render_info::*,
         EnemyBuilder,
         TileMap,
         WorldChunkSaver,
@@ -25,12 +26,9 @@ use crate::{
         Entity,
         EntityInfo,
         ConnectionId,
-        RenderInfo,
-        RenderObject,
         Collider,
         ColliderType,
         PhysicalProperties,
-        BoundingShape,
         LazyTransformInfo,
         entity::ServerEntities,
         message::Message,
@@ -304,7 +302,7 @@ impl World
                         name: "furniture/crate.png".to_owned()
                     }),
                     shape: Some(BoundingShape::Circle),
-                    z_level: -3,
+                    z_level: ZLevel::Low,
                     ..Default::default()
                 }),
                 collider: Some(Collider{

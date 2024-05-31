@@ -23,15 +23,14 @@ pub use super::world::ParseError;
 use crate::common::{
     sender_loop,
     receiver_loop,
+    ENTITY_SCALE,
+    render_info::*,
     TileMap,
     ItemsInfo,
     Inventory,
     Entity,
     EntityInfo,
     EnemiesInfo,
-    RenderInfo,
-    RenderObject,
-    BoundingShape,
     Collider,
     ColliderType,
     Parent,
@@ -170,7 +169,7 @@ impl GameServer
         let player_index = self.entities.player.len() + 1;
 
         let transform = Transform{
-            scale: Vector3::repeat(0.1),
+            scale: Vector3::repeat(ENTITY_SCALE),
             position: Vector3::new(0.0, 0.0, TILE_SIZE),
             ..Default::default()
         };
@@ -196,7 +195,7 @@ impl GameServer
                     name: "player/hair.png".to_owned()
                 }),
                 shape: Some(BoundingShape::Circle),
-                z_level: 0,
+                z_level: ZLevel::Higher,
                 ..Default::default()
             }),
             collider: Some(Collider{
@@ -231,7 +230,7 @@ impl GameServer
                     name: "placeholder.png".to_owned()
                 }),
                 shape: Some(BoundingShape::Circle),
-                z_level: -2,
+                z_level: ZLevel::Middle,
                 ..Default::default()
             }),
             parent: Some(Parent::new(inserted, false)),
@@ -292,7 +291,7 @@ impl GameServer
                     deformation: Deformation::Stretch(
                         StretchDeformation{
                             animation: ValueAnimation::EaseOut(2.0),
-                            limit: 0.4,
+                            limit: 1.3,
                             onset: 0.3,
                             strength: 0.5
                         }
@@ -310,7 +309,7 @@ impl GameServer
                         name: "player/pon.png".to_owned()
                     }),
                     shape: Some(BoundingShape::Circle),
-                    z_level: 2,
+                    z_level: ZLevel::Highest,
                     ..Default::default()
                 }),
                 ..Default::default()

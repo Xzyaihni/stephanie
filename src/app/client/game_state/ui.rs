@@ -15,6 +15,7 @@ use crate::{
     },
     common::{
         ease_out,
+        render_info::*,
         InventoryItem,
         Inventory,
         InventorySorter,
@@ -22,9 +23,6 @@ use crate::{
         Entity,
         ItemsInfo,
         EntityInfo,
-        RenderObject,
-        RenderInfo,
-        Scissor,
         lazy_transform::*,
         entity::ClientEntities
     }
@@ -79,7 +77,7 @@ impl UiScroll
             },
             RenderInfo{
                 object: Some(RenderObject::Texture{name: "ui/light.png".to_owned()}),
-                z_level: 150,
+                z_level: ZLevel::UiHigh,
                 ..Default::default()
             }
         );
@@ -209,10 +207,7 @@ impl UiList
                     parent: Some(Parent::new(background, true)),
                     ..Default::default()
                 },
-                RenderInfo{
-                    z_level: 150,
-                    ..Default::default()
-                }
+                RenderInfo::default()
             )
         };
 
@@ -234,7 +229,7 @@ impl UiList
                 },
                 RenderInfo{
                     object: Some(RenderObject::Texture{name: "ui/light.png".to_owned()}),
-                    z_level: 150,
+                    z_level: ZLevel::UiMiddle,
                     ..Default::default()
                 }
             )
@@ -308,7 +303,7 @@ impl UiList
                     object: Some(RenderObject::Texture{
                         name: "ui/lighter.png".to_owned()
                     }),
-                    z_level: 150,
+                    z_level: ZLevel::UiHigh,
                     ..Default::default()
                 }
             );
@@ -321,7 +316,7 @@ impl UiList
                 },
                 RenderInfo{
                     object: None,
-                    z_level: 151,
+                    z_level: ZLevel::UiHigher,
                     ..Default::default()
                 }
             );
@@ -494,7 +489,6 @@ impl UiInventory
         creator: &mut EntityCreator,
         items_info: Arc<ItemsInfo>,
         anchor: Entity,
-        z_level: &mut i32,
         mut on_change: impl FnMut(InventoryItem) + 'static
     ) -> Self
     {
@@ -517,76 +511,87 @@ impl UiInventory
             },
             RenderInfo{
                 object: Some(RenderObject::Texture{name: "ui/background.png".to_owned()}),
-                z_level: *z_level,
+                z_level: ZLevel::UiLow,
                 ..Default::default()
             }
         );
 
-        let mut add_ui = |parent, position, scale, ui_element, object|
-        {
-            *z_level += 1;
-
-            creator.push(
-                EntityInfo{
-                    lazy_transform: Some(LazyTransformInfo{
-                        transform: Transform{
-                            scale,
-                            position,
-                            ..Default::default()
-                        },
-                        ..Default::default()
-                    }.into()),
-                    ui_element: Some(ui_element),
-                    parent: Some(Parent::new(parent, true)),
-                    ..Default::default()
-                },
-                RenderInfo{
-                    object,
-                    z_level: *z_level,
-                    ..Default::default()
-                }
-            )
-        };
-
         let panel_size = 0.2;
-        let size = Vector3::new(1.0, panel_size, 1.0);
+        let scale = Vector3::new(1.0, panel_size, 1.0);
 
-        let top_panel = add_ui(
-            inventory,
-            Ui::ui_position(size, Vector3::zeros()),
-            size,
-            UiElement{
-                kind: UiElementType::Panel,
+        let top_panel = creator.push(
+            EntityInfo{
+                lazy_transform: Some(LazyTransformInfo{
+                    transform: Transform{
+                        scale,
+                        position: Ui::ui_position(scale, Vector3::zeros()),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                }.into()),
+                ui_element: Some(UiElement{
+                    kind: UiElementType::Panel,
+                    ..Default::default()
+                }),
+                parent: Some(Parent::new(inventory, true)),
                 ..Default::default()
             },
-            Some(RenderObject::Texture{name: "ui/background.png".to_owned()})
+            RenderInfo{
+                object: Some(RenderObject::Texture{name: "ui/background.png".to_owned()}),
+                z_level: ZLevel::UiMiddle,
+                ..Default::default()
+            }
         );
 
-        let size = Vector3::new(1.0, 1.0 - panel_size, 1.0);
+        let scale = Vector3::new(1.0, 1.0 - panel_size, 1.0);
 
-        let inventory_panel = add_ui(
-            inventory,
-            Ui::ui_position(size, Vector3::new(0.0, 1.0, 0.0)),
-            size,
-            UiElement{
-                kind: UiElementType::Panel,
+        let inventory_panel = creator.push(
+            EntityInfo{
+                lazy_transform: Some(LazyTransformInfo{
+                    transform: Transform{
+                        scale,
+                        position: Ui::ui_position(scale, Vector3::y()),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                }.into()),
+                ui_element: Some(UiElement{
+                    kind: UiElementType::Panel,
+                    ..Default::default()
+                }),
+                parent: Some(Parent::new(inventory, true)),
                 ..Default::default()
             },
-            None
+            RenderInfo{
+                object: None,
+                z_level: ZLevel::UiMiddle,
+                ..Default::default()
+            }
         );
 
-        let name = add_ui(
-            top_panel,
-            Vector3::zeros(),
-            Vector3::repeat(1.0),
-            UiElement{
-                kind: UiElementType::Panel,
+        let name = creator.push(
+            EntityInfo{
+                lazy_transform: Some(LazyTransformInfo{
+                    transform: Transform{
+                        scale: Vector3::repeat(1.0),
+                        position: Vector3::zeros(),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                }.into()),
+                ui_element: Some(UiElement{
+                    kind: UiElementType::Panel,
+                    ..Default::default()
+                }),
+                parent: Some(Parent::new(top_panel, true)),
                 ..Default::default()
             },
-            None
+            RenderInfo{
+                object: None,
+                z_level: ZLevel::UiHigh,
+                ..Default::default()
+            }
         );
-
-        *z_level += 100;
 
         let items = Rc::new(RefCell::new(Vec::new()));
 
@@ -714,13 +719,10 @@ impl Ui
             ..Default::default()
         });
 
-        let mut z_level = 100;
-
         let player_inventory = UiInventory::new(
             creator,
             items_info.clone(),
             anchor,
-            &mut z_level,
             on_player_change
         ); 
 
@@ -728,7 +730,6 @@ impl Ui
             creator,
             items_info,
             anchor,
-            &mut z_level,
             on_other_change
         ); 
 

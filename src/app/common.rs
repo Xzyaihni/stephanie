@@ -15,14 +15,6 @@ pub use yanyaengine::{Transform, TransformContainer};
 
 pub use objects_store::ObjectsStore;
 
-pub use render_info::{
-    Scissor,
-    BoundingShape,
-    RenderObject,
-    RenderInfo,
-    ClientRenderInfo
-};
-
 pub use sender_loop::{sender_loop, BufferSender};
 pub use receiver_loop::receiver_loop;
 
@@ -45,7 +37,7 @@ pub use entity::{
 };
 
 pub use item::Item;
-pub use items_info::{ItemsInfo, Weapon};
+pub use items_info::{ItemInfo, ItemsInfo, Weapon};
 
 pub use inventory::{InventorySorter, InventoryItem, Inventory};
 
@@ -56,6 +48,8 @@ pub use enemy_builder::EnemyBuilder;
 pub use enemies_info::{EnemyId, EnemiesInfo};
 
 pub use chunk_saver::{SaveLoad, WorldChunkSaver, ChunkSaver, EntitiesSaver};
+
+pub use render_info::RenderInfo;
 
 pub use anatomy::{Anatomy, HumanAnatomy};
 pub use damage::{Damageable, Damage, DamageType, DamageDirection, Side2d, DamageHeight};
@@ -117,6 +111,8 @@ macro_rules! time_this
         }
     }
 }
+
+pub const ENTITY_SCALE: f32 = 0.1;
 
 pub struct WeightedPicker<I>
 {

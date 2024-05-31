@@ -33,6 +33,11 @@ impl Inventory
         &self.items[id.0]
     }
 
+    pub fn remove(&mut self, id: InventoryItem) -> Item
+    {
+        self.items.remove(id.0)
+    }
+
     pub fn items(&self) -> &[Item]
     {
         &self.items

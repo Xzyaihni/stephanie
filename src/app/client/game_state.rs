@@ -110,7 +110,15 @@ impl ClientEntitiesContainer
         self.entities.handle_message(create_info, message)
     }
 
-    fn update_objects(
+    pub fn entity_creator(&mut self) -> EntityCreator
+    {
+        EntityCreator{
+            objects: &mut self.local_objects,
+            entities: &mut self.local_entities
+        }
+    }
+
+    pub fn update_objects(
         &mut self,
         visibility: &VisibilityChecker,
         enemies_info: &EnemiesInfo,
@@ -329,7 +337,7 @@ impl ClientEntitiesContainer
         RaycastHits{start: *start, direction, hits}
     }
 
-    pub fn update_buffers(
+    fn update_buffers(
         &mut self,
         visibility: &VisibilityChecker,
         info: &mut UpdateBuffersInfo
@@ -492,16 +500,11 @@ impl GameState
 
         let user_receiver = Rc::new(RefCell::new(Vec::new()));
 
-        let mut entity_creator = EntityCreator{
-            objects: &mut entities.local_objects,
-            entities: &mut entities.local_entities
-        };
-
         let ui = {
             let urx0 = user_receiver.clone();
             let urx1 = user_receiver.clone();
             Ui::new(
-                &mut entity_creator,
+                &mut entities.entity_creator(),
                 info.items_info.clone(),
                 move |item|
                 {
@@ -804,13 +807,8 @@ impl GameState
 
         let player_transform = self.entities.player_transform().as_deref().cloned();
 
-        let mut entity_creator = EntityCreator{
-            objects: &mut self.entities.local_objects,
-            entities: &mut self.entities.local_entities
-        };
-
         self.ui.update(
-            &mut entity_creator,
+            &mut self.entities.entity_creator(),
             &self.camera.read(),
             player_transform,
             dt
@@ -848,12 +846,7 @@ impl GameState
         let mut passer = self.connections_handler.write();
         self.entities.update(&mut *passer, dt);
 
-        let mut entity_creator = EntityCreator{
-            objects: &mut self.entities.local_objects,
-            entities: &mut self.entities.local_entities
-        };
-
-        self.ui.update_after(&mut entity_creator, &self.camera.read());
+        self.ui.update_after(&mut self.entities.entity_creator(), &self.camera.read());
     }
 
     pub fn update_inventory(&mut self)

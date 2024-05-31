@@ -5,14 +5,13 @@ use nalgebra::Vector3;
 use yanyaengine::Transform;
 
 use crate::common::{
+    render_info::*,
     Anatomy,
     HumanAnatomy,
     Enemy,
     EnemyId,
     EnemiesInfo,
     PhysicalProperties,
-    RenderInfo,
-    BoundingShape,
     Collider,
     ColliderType,
     EntityInfo,
@@ -60,7 +59,7 @@ impl<'a> EnemyBuilder<'a>
             }.into()),
             render: Some(RenderInfo{
                 shape: Some(BoundingShape::Circle),
-                z_level: -1,
+                z_level: ZLevel::High,
                 ..Default::default()
             }),
             collider: Some(Collider{

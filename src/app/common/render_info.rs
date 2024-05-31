@@ -29,6 +29,7 @@ use crate::{
 pub enum RenderObject
 {
     Texture{name: String},
+    TextureId{id: TextureId},
     Text{text: String, font_size: u32}
 }
 
@@ -44,15 +45,22 @@ impl RenderObject
 
         match self
         {
-            Self::Texture{name} =>
+            Self::TextureId{id} =>
             {
                 let info = ObjectInfo{
                     model: assets.model(assets.default_model(DefaultModel::Square)).clone(),
-                    texture: assets.texture_by_name(&name).clone(),
+                    texture: assets.texture(id).clone(),
                     transform
                 };
 
                 Some(ClientRenderObject::Normal(create_info.partial.object_factory.create(info)))
+            },
+            Self::Texture{name} =>
+            {
+                let id = assets.texture_id(&name);
+                drop(assets);
+
+                Self::TextureId{id}.into_client(transform, create_info)
             },
             Self::Text{ref text, font_size} =>
             {
@@ -105,6 +113,21 @@ impl Scissor
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum ZLevel
+{
+    Lowest = 0,
+    Low,
+    Middle,
+    High,
+    Higher,
+    Highest,
+    UiLow,
+    UiMiddle,
+    UiHigh,
+    UiHigher
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RenderInfo
 {
@@ -112,7 +135,7 @@ pub struct RenderInfo
     pub scissor: Option<Scissor>,
     pub object: Option<RenderObject>,
     pub shape: Option<BoundingShape>,
-    pub z_level: i32
+    pub z_level: ZLevel
 }
 
 impl Default for RenderInfo
@@ -124,7 +147,7 @@ impl Default for RenderInfo
             scissor: None,
             object: None,
             shape: None,
-            z_level: 0
+            z_level: ZLevel::Middle
         }
     }
 }
@@ -222,7 +245,7 @@ impl ServerToClient<ClientRenderInfo> for RenderInfo
             scissor,
             object,
             shape: self.shape,
-            z_level: self.z_level
+            z_level: self.z_level as i32
         }
     }
 }

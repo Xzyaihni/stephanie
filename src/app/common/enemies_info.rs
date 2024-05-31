@@ -8,7 +8,10 @@ use serde::{Serialize, Deserialize};
 
 use yanyaengine::{Assets, TextureId};
 
-use crate::common::enemy::EnemyBehavior;
+use crate::common::{
+    ENTITY_SCALE,
+    enemy::EnemyBehavior
+};
 
 
 #[derive(Deserialize)]
@@ -54,7 +57,7 @@ impl EnemyInfo
         Self{
             name: raw.name,
             behavior: raw.behavior,
-            scale: raw.scale.unwrap_or(1.0) * 0.1,
+            scale: raw.scale.unwrap_or(1.0) * ENTITY_SCALE,
             normal: get_texture(raw.normal),
             lying: get_texture(raw.lying)
         }

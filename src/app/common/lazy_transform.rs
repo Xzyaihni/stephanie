@@ -93,7 +93,7 @@ impl StretchDeformation
     pub fn stretch(&self, velocity: Vector3<f32>) -> (f32, Vector2<f32>)
     {
         let amount = self.animation.apply(velocity.magnitude() * self.onset);
-        let stretch = (1.0 + amount * self.strength).max(self.limit);
+        let stretch = (1.0 + amount * self.strength).min(self.limit);
 
         let angle = velocity.y.atan2(-velocity.x);
 

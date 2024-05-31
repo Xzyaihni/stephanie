@@ -1,8 +1,6 @@
 use crate::common::{
+    render_info::*,
     Entity,
-    RenderInfo,
-    RenderObject,
-    Scissor,
     ClientEntityInfo,
     entity::ClientEntities
 };

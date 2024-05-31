@@ -4,6 +4,8 @@ use std::{
     collections::HashMap
 };
 
+use nalgebra::{Vector2, Vector3};
+
 use serde::{Serialize, Deserialize};
 
 use yanyaengine::{Assets, TextureId};
@@ -81,7 +83,7 @@ pub struct ItemInfo
 {
     pub name: String,
     pub weapon: Weapon,
-    pub scale: f32,
+    pub scale: Vector2<f32>,
     pub texture: TextureId
 }
 
@@ -101,12 +103,21 @@ impl ItemInfo
             assets.texture_id(&name)
         };
 
+        let texture = get_texture(raw.texture);
+
+        let aspect = assets.texture(texture).read().aspect_min();
+
         Self{
             name: raw.name,
             weapon: raw.weapon,
-            scale: raw.scale.unwrap_or(0.8),
-            texture: get_texture(raw.texture)
+            scale: aspect * raw.scale.unwrap_or(0.8),
+            texture
         }
+    }
+
+    pub fn scale3(&self) -> Vector3<f32>
+    {
+        self.scale.xyx()
     }
 }
 

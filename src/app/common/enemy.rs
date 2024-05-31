@@ -5,8 +5,8 @@ use nalgebra::{Unit, Vector3};
 use yanyaengine::{Transform, TextureId};
 
 use crate::common::{
+    render_info::*,
     SeededRandom,
-    ClientRenderInfo,
     EnemiesInfo,
     EnemyId,
     Anatomy,

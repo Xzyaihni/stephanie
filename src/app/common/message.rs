@@ -11,13 +11,13 @@ use crate::common::{
     Inventory,
     Entity,
     EntityInfo,
-    RenderInfo,
     Player,
     PlayerEntities,
     Parent,
     Enemy,
     Damage,
     Anatomy,
+    RenderInfo,
     LazyTransform,
     world::{Chunk, GlobalPos}
 };

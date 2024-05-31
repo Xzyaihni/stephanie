@@ -6,13 +6,18 @@ use std::{
 
 use nalgebra::{Vector3, Vector2};
 
-use yanyaengine::TextureId;
+use yanyaengine::{TextureId, Transform};
 
 use crate::common::{
+    ENTITY_SCALE,
+    render_info::*,
+    lazy_transform::*,
     Entity,
+    EntityInfo,
     Player,
     Inventory,
     Weapon,
+    ItemInfo,
     ItemsInfo,
     ColliderType,
     Collider,
@@ -20,6 +25,7 @@ use crate::common::{
     DamageDirection,
     Side2d,
     DamageHeight,
+    InventoryItem,
     world::TILE_SIZE
 };
 
@@ -241,17 +247,14 @@ impl<'a> PlayerContainer<'a>
         parent.visible = player.holding.is_some();
         if let Some(holding) = player.holding
         {
-            let inventory = self.inventory();
-            let item = self.game_state.items_info.get(inventory.get(holding).id);
+            let item = self.item_info(holding);
 
             let assets = self.game_state.assets.lock();
             let texture = assets.texture(item.texture);
 
             render.set_texture(texture.clone());
 
-            let size = texture.read().aspect_min() * item.scale;
-            let new_scale = Vector3::new(size.x, size.y, 1.0);
-            entities.transform_target(holding_entity).scale = new_scale;
+            entities.transform_target(holding_entity).scale = item.scale3();
         }
     }
 
@@ -276,13 +279,50 @@ impl<'a> PlayerContainer<'a>
 
     fn throw_held(&mut self)
     {
-        let entities = &mut self.game_state.entities.entities;
         let player = self.info.entity;
 
-        let held = entities.player_mut(player).unwrap().holding.take();
+        let held = self.game_state.entities_mut().player_mut(player).unwrap().holding.take();
         if let Some(held) = held
         {
-            // spawn a thingy here later
+            let item_info = self.item_info(held);
+            let entity_info = {
+                let holding_entity = self.game_state.player_entities().holding;
+                let holding_transform = self.game_state.entities()
+                    .transform(holding_entity)
+                    .unwrap();
+
+                EntityInfo{
+                    lazy_transform: Some(LazyTransformInfo{
+                        deformation: Deformation::Stretch(StretchDeformation{
+                            animation: ValueAnimation::EaseOut(2.0),
+                            limit: 1.5,
+                            onset: 0.3,
+                            strength: 0.5
+                        }),
+                        transform: Transform{
+                            position: holding_transform.position,
+                            rotation: holding_transform.rotation,
+                            scale: item_info.scale3() * ENTITY_SCALE,
+                            ..Default::default()
+                        },
+                        ..Default::default()
+                    }.into()),
+                    ..Default::default()
+                }
+            };
+
+            let render_info = RenderInfo{
+                object: Some(RenderObject::TextureId{
+                    id: item_info.texture
+                }),
+                z_level: ZLevel::Middle,
+                ..Default::default()
+            };
+
+            self.game_state.entities.entity_creator().push(entity_info, render_info);
+
+            self.game_state.entities_mut().inventory_mut(player).unwrap().remove(held);
+            self.game_state.update_inventory();
 
             self.update_weapon();
         }
@@ -409,7 +449,7 @@ impl<'a> PlayerContainer<'a>
 
         movement_direction.map(|mut x|
         {
-            x.z *= 0.1;
+            x.z *= TILE_SIZE;
 
             x
         })
@@ -467,6 +507,12 @@ impl<'a> PlayerContainer<'a>
         self.game_state.entities()
             .inventory(self.info.entity)
             .unwrap()
+    }
+
+    fn item_info(&self, id: InventoryItem) -> &ItemInfo
+    {
+        let inventory = self.inventory();
+        self.game_state.items_info.get(inventory.get(id).id)
     }
 
     fn player_position(&self) -> Vector3<f32>

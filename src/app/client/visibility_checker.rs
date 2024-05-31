@@ -2,7 +2,7 @@ use nalgebra::{Vector2, Vector3};
 
 use yanyaengine::Transform;
 
-use crate::common::BoundingShape;
+use crate::common::render_info::BoundingShape;
 
 
 pub struct VisibilityChecker

@@ -192,7 +192,24 @@ impl UiElement
 
         match &mut self.kind
         {
-            UiElementType::Panel => false,
+            UiElementType::Panel =>
+            {
+                if captured
+                {
+                    return true;
+                }
+
+                if let Some(event) = event.as_mouse()
+                {
+                    let clicked = event.main_button && event.state == ControlState::Pressed;
+                    if clicked && query().is_inside(event.position)
+                    {
+                        return true;
+                    }
+                }
+
+                false
+            },
             UiElementType::Button{on_click} =>
             {
                 if captured
