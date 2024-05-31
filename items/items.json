@@ -6,16 +6,19 @@
                 "damage": 1
             }
         },
+        "mass": 0.9,
         "texture": "weapons/pistol.png"
     },
     {
         "name": "snel",
         "scale": 0.3,
+        "mass": 0.1,
         "texture": "snel.png"
     },
     {
         "name": "bee",
         "scale": 0.2,
+        "mass": 0.05,
         "texture": "bee.png"
     }
 ]

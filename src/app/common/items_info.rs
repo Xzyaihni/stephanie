@@ -74,6 +74,7 @@ pub struct ItemInfoRaw
     #[serde(default)]
     weapon: Weapon,
     scale: Option<f32>,
+    mass: f32,
     texture: String
 }
 
@@ -84,6 +85,7 @@ pub struct ItemInfo
     pub name: String,
     pub weapon: Weapon,
     pub scale: Vector2<f32>,
+    pub mass: f32,
     pub texture: TextureId
 }
 
@@ -111,6 +113,7 @@ impl ItemInfo
             name: raw.name,
             weapon: raw.weapon,
             scale: aspect * raw.scale.unwrap_or(0.8),
+            mass: raw.mass,
             texture
         }
     }

@@ -648,44 +648,94 @@ macro_rules! define_entities
                 });
             }
 
-            pub fn update_colliders(&mut self, passer: &mut impl EntityPasser)
+            pub fn update_colliders_local(
+                &mut self,
+                others: &Self
+            )
             {
                 self.collider.iter().for_each(|(_, ComponentWrapper{
                     entity,
                     component: collider
                 })|
                 {
-                    let mut transform = self.transform_target(*entity);
-                    let transform = &mut transform;
-                    let collider = *collider.borrow();
-
                     self.collider.iter().filter(|(_, x)|
                     {
                         x.entity != *entity
-                    }).for_each(|(_, ComponentWrapper{
-                        entity,
+                    }).map(|(_, ComponentWrapper{
+                        entity: other_entity,
                         component: other_collider
                     })|
                     {
+                        (self.transform_target(*other_entity), *other_collider.borrow())
+                    }).chain(others.collider.iter().map(|(_, ComponentWrapper{
+                        entity: other_entity,
+                        component: other_collider
+                    })|
+                    {
+                        (others.transform_target(*other_entity), *other_collider.borrow())
+                    })).for_each(|(mut other_transform, other_collider)|
+                    {
+                        let mut transform = self.transform_target(*entity);
+                        let transform = &mut transform;
+                        let collider = *collider.borrow();
+
                         let this = CollidingInfo{
                             transform,
                             collider
                         };
 
+                        this.resolve(CollidingInfo{
+                            transform: &mut other_transform,
+                            collider: other_collider
+                        });
+                    });
+                });
+            }
+
+            pub fn update_colliders(
+                &mut self,
+                passer: &mut impl EntityPasser
+            )
+            {
+                self.collider.iter().for_each(|(_, ComponentWrapper{
+                    entity: other_entity,
+                    component: other_collider
+                })|
+                {
+                    self.collider.iter().filter(|(_, x)|
+                    {
+                        x.entity != *other_entity
+                    }).for_each(|(_, ComponentWrapper{
+                        entity,
+                        component: collider
+                    })|
+                    {
                         let mut transform = self.transform_target(*entity);
+                        let transform = &mut transform;
+                        let collider = *collider.borrow();
+
+                        let this = CollidingInfo{
+                            transform,
+                            collider
+                        };
+
+                        let mut other_transform = self.transform_target(*other_entity);
                         let collision = this.resolve(CollidingInfo{
-                            transform: &mut transform,
+                            transform: &mut other_transform,
                             collider: *other_collider.borrow()
                         });
 
                         if collision
                         {
-                            let message = Message::SetTarget{
+                            passer.send_message(Message::SetTarget{
                                 entity: *entity,
                                 target: transform.clone()
-                            };
+                            });
 
-                            passer.send_message(message);
+                            passer.send_message(Message::SetTarget{
+                                entity: *other_entity,
+                                target: other_transform.clone()
+                            });
                         }
                     });
                 });
@@ -707,7 +757,12 @@ macro_rules! define_entities
 
                 let mut transform = self.transform_mut(entity).unwrap();
 
-                *transform = lazy.next(transform.clone(), target_global, dt);
+                *transform = lazy.next(
+                    self.physical(entity).as_deref(),
+                    transform.clone(),
+                    target_global,
+                    dt
+                );
             }
 
             pub fn update_lazy(&mut self, dt: f32)

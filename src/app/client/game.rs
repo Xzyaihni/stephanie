@@ -12,6 +12,9 @@ use crate::common::{
     ENTITY_SCALE,
     render_info::*,
     lazy_transform::*,
+    collider::*,
+    Physical,
+    PhysicalProperties,
     Entity,
     EntityInfo,
     Player,
@@ -19,8 +22,6 @@ use crate::common::{
     Weapon,
     ItemInfo,
     ItemsInfo,
-    ColliderType,
-    Collider,
     Damage,
     DamageDirection,
     Side2d,
@@ -272,7 +273,8 @@ impl<'a> PlayerContainer<'a>
 
             local_entities.set_collider(inventory, Some(Collider{
                 kind: ColliderType::Aabb,
-                is_static: false
+                layer: ColliderLayer::Ui,
+                ..Default::default()
             }));
         }
     }
@@ -291,13 +293,36 @@ impl<'a> PlayerContainer<'a>
                     .transform(holding_entity)
                     .unwrap();
 
+                let direction = {
+                    let origin_rotation = self.game_state.entities()
+                        .lazy_transform(holding_entity)
+                        .unwrap()
+                        .origin_rotation();
+
+                    let rotation = holding_transform.rotation + origin_rotation;
+
+                    Vector3::new(rotation.cos(), rotation.sin(), 0.0)
+                };
+
+                let mut physical: Physical = PhysicalProperties{
+                    mass: item_info.mass,
+                    friction: 0.5,
+                    floating: false
+                }.into();
+
+                let strength = self.player().newtons();
+                let throw_limit = 0.1 * strength;
+                let throw_amount = (strength / physical.mass).min(throw_limit);
+                physical.velocity = direction * throw_amount;
+
                 EntityInfo{
+                    physical: Some(physical),
                     lazy_transform: Some(LazyTransformInfo{
                         deformation: Deformation::Stretch(StretchDeformation{
                             animation: ValueAnimation::EaseOut(2.0),
-                            limit: 1.5,
-                            onset: 0.3,
-                            strength: 0.5
+                            limit: 2.0,
+                            onset: 0.05,
+                            strength: 2.0
                         }),
                         transform: Transform{
                             position: holding_transform.position,
@@ -307,6 +332,10 @@ impl<'a> PlayerContainer<'a>
                         },
                         ..Default::default()
                     }.into()),
+                    collider: Some(Collider{
+                        kind: ColliderType::Circle,
+                        ..Default::default()
+                    }),
                     ..Default::default()
                 }
             };

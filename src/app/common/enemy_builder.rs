@@ -64,7 +64,7 @@ impl<'a> EnemyBuilder<'a>
             }),
             collider: Some(Collider{
                 kind: ColliderType::Circle,
-                is_static: false
+                ..Default::default()
             }),
             physical: Some(PhysicalProperties{
                 mass: 50.0,

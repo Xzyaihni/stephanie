@@ -25,5 +25,14 @@ impl PlayerEntities
 pub struct Player
 {
     pub name: String,
+    pub strength: f32,
     pub holding: Option<InventoryItem>
+}
+
+impl Player
+{
+    pub fn newtons(&self) -> f32
+    {
+        self.strength * 30.0
+    }
 }

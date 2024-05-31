@@ -307,7 +307,7 @@ impl World
                 }),
                 collider: Some(Collider{
                     kind: ColliderType::Aabb,
-                    is_static: false
+                    ..Default::default()
                 }),
                 physical: Some(PhysicalProperties{
                     mass: 50.0,

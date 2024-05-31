@@ -12,11 +12,31 @@ pub enum ColliderType
     Aabb
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum ColliderLayer
+{
+    Normal,
+    Ui
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct Collider
 {
     pub kind: ColliderType,
+    pub layer: ColliderLayer,
     pub is_static: bool
+}
+
+impl Default for Collider
+{
+    fn default() -> Self
+    {
+        Self{
+            kind: ColliderType::Circle,
+            layer: ColliderLayer::Normal,
+            is_static: false
+        }
+    }
 }
 
 pub struct CollidingInfo<'a>
@@ -147,6 +167,11 @@ impl<'a> CollidingInfo<'a>
         other: CollidingInfo
     ) -> bool
     {
+        if self.collider.layer != other.collider.layer
+        {
+            return false
+        }
+
         if self.collider.is_static && other.collider.is_static
         {
             return false;

@@ -174,22 +174,22 @@ impl ClientEntitiesContainer
 
     pub fn update(&mut self, passer: &mut impl EntityPasser, dt: f32)
     {
-        Self::update_entities(&mut self.entities, passer, dt);
+        Self::update_entities(&mut self.entities, dt);
+        self.entities.update_colliders(passer);
     }
 
     pub fn update_local(&mut self, dt: f32)
     {
-        Self::update_entities(&mut self.local_entities, &mut (), dt);
+        Self::update_entities(&mut self.local_entities, dt);
+        self.local_entities.update_colliders_local(&self.entities);
     }
 
     fn update_entities(
         entities: &mut ClientEntities,
-        passer: &mut impl EntityPasser,
         dt: f32
     )
     {
         entities.update_physical(dt);
-        entities.update_colliders(passer);
         entities.update_lazy(dt);
         entities.update_enemy(dt);
         entities.update_visibility();

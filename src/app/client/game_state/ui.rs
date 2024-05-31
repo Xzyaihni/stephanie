@@ -68,10 +68,6 @@ impl UiScroll
         let bar = creator.push(
             EntityInfo{
                 lazy_transform: Some(LazyTransformInfo::default().into()),
-                ui_element: Some(UiElement{
-                    kind: UiElementType::Panel,
-                    ..Default::default()
-                }),
                 parent: Some(Parent::new(background, true)),
                 ..Default::default()
             },
@@ -529,10 +525,6 @@ impl UiInventory
                     },
                     ..Default::default()
                 }.into()),
-                ui_element: Some(UiElement{
-                    kind: UiElementType::Panel,
-                    ..Default::default()
-                }),
                 parent: Some(Parent::new(inventory, true)),
                 ..Default::default()
             },
@@ -555,10 +547,6 @@ impl UiInventory
                     },
                     ..Default::default()
                 }.into()),
-                ui_element: Some(UiElement{
-                    kind: UiElementType::Panel,
-                    ..Default::default()
-                }),
                 parent: Some(Parent::new(inventory, true)),
                 ..Default::default()
             },
@@ -579,10 +567,6 @@ impl UiInventory
                     },
                     ..Default::default()
                 }.into()),
-                ui_element: Some(UiElement{
-                    kind: UiElementType::Panel,
-                    ..Default::default()
-                }),
                 parent: Some(Parent::new(top_panel, true)),
                 ..Default::default()
             },

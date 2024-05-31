@@ -90,12 +90,12 @@ pub struct StretchDeformation
 
 impl StretchDeformation
 {
-    pub fn stretch(&self, velocity: Vector3<f32>) -> (f32, Vector2<f32>)
+    pub fn stretch(&self, rotation: f32, velocity: Vector3<f32>) -> (f32, Vector2<f32>)
     {
         let amount = self.animation.apply(velocity.magnitude() * self.onset);
         let stretch = (1.0 + amount * self.strength).min(self.limit);
 
-        let angle = velocity.y.atan2(-velocity.x);
+        let angle = velocity.y.atan2(-velocity.x) + rotation;
 
         (angle, Vector2::new(stretch, 1.0 / stretch))
     }
@@ -204,6 +204,7 @@ impl LazyTransform
 {
     pub fn next(
         &mut self,
+        physical: Option<&Physical>,
         mut current: Transform,
         parent_transform: Option<Transform>,
         dt: f32
@@ -392,10 +393,15 @@ impl LazyTransform
             Deformation::Rigid => (),
             Deformation::Stretch(deformation) =>
             {
-                let velocity = self.physical().map(|x| x.velocity)
+                let local_velocity = self.physical().map(|x| x.velocity)
                     .unwrap_or_else(Vector3::zeros);
 
-                current.stretch = deformation.stretch(rotation * velocity);
+                let global_velocity = physical.map(|x| x.velocity)
+                    .unwrap_or_else(Vector3::zeros);
+
+                let velocity = global_velocity + local_velocity;
+
+                current.stretch = deformation.stretch(current.rotation, velocity);
             }
         }
 
@@ -460,6 +466,11 @@ impl LazyTransform
             Connection::Spring(x) => Some(&x.physical),
             _ => None
         }
+    }
+
+    pub fn origin_rotation(&self) -> f32
+    {
+        self.origin_rotation
     }
 
     fn clamp_distance(target: Vector3<f32>, current: Vector3<f32>, limit: f32) -> Vector3<f32>

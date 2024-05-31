@@ -187,6 +187,7 @@ impl GameServer
         let info = EntityInfo{
             player: Some(Player{
                 name: format!("stephanie #{player_index}"),
+                strength: 1.0,
                 holding: None
             }),
             transform: Some(transform.clone()),
@@ -200,7 +201,7 @@ impl GameServer
             }),
             collider: Some(Collider{
                 kind: ColliderType::Circle,
-                is_static: false
+                ..Default::default()
             }),
             inventory: Some(Inventory::new()),
             physical: Some(physical.into()),
