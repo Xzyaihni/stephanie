@@ -15,3 +15,6 @@ test
 *.rdc
 
 **/*.rs.bk
+
+*.svg
+perf.data
