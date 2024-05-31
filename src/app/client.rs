@@ -172,9 +172,7 @@ impl Client
     {
         let mut writer = self.game_state.borrow_mut();
 
-        self.game.update(&mut writer, dt);
-
-        writer.update(dt);
+        writer.update(&mut self.game, dt);
 
         if self.game.player_exists(&mut writer)
         {

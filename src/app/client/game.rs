@@ -14,6 +14,8 @@ use crate::common::{
     Inventory,
     Weapon,
     ItemsInfo,
+    ColliderType,
+    Collider,
     Damage,
     DamageDirection,
     Side2d,
@@ -24,6 +26,7 @@ use crate::common::{
 use super::game_state::{
     GameState,
     UserEvent,
+    ControlState,
     Control,
     RaycastInfo,
     RaycastHitId
@@ -65,6 +68,11 @@ impl Game
     pub fn update(&mut self, game_state: &mut GameState, dt: f32)
     {
         self.player_container(game_state).update(dt)
+    }
+
+    pub fn on_control(&mut self, game_state: &mut GameState, state: ControlState, control: Control)
+    {
+        self.player_container(game_state).on_control(state, control)
     }
 
     pub fn player_exists(&mut self, game_state: &mut GameState) -> bool
@@ -138,20 +146,74 @@ impl<'a> PlayerContainer<'a>
         self.game_state.camera.write().set_position_z(z);
     }
 
+    pub fn on_control(&mut self, state: ControlState, control: Control)
+    {
+        if state != ControlState::Pressed
+        {
+            return;
+        }
+
+        match control
+        {
+            Control::MainAction =>
+            {
+                let player = self.player();
+
+                if let Some(holding) = player.holding
+                {
+                    let inventory = self.inventory();
+                    let holding = inventory.get(holding);
+
+                    let items_info = self.info.items_info.clone();
+                    let weapon = &items_info.get(holding.id).weapon;
+
+                    drop(player);
+                    drop(inventory);
+
+                    self.weapon_attack(weapon);
+                }
+            },
+            Control::Throw =>
+            {
+                self.throw_held();
+            },
+            Control::Inventory =>
+            {
+                self.toggle_inventory();
+            },
+            Control::DebugConsole if self.game_state.debug_mode =>
+            {
+                dbg!("make this an actual console thingy later");
+
+                let mut anatomy = self.game_state.entities_mut()
+                    .anatomy_mut(self.info.entity)
+                    .unwrap();
+
+                if let Some(speed) = anatomy.speed()
+                {
+                    anatomy.set_speed(speed * 2.0);
+                }
+            },
+            _ => ()
+        }
+    }
+
     fn handle_user_event(&mut self, event: UserEvent)
     {
+        let entities = &mut self.game_state.entities.entities;
+        let player = self.info.entity;
+
         match event
         {
             UserEvent::Wield(item) =>
             {
-                let entities = &mut self.game_state.entities;
-                let player = entities.main_player();
-                entities.entities.player_mut(player).unwrap().holding = Some(item);
+                entities.player_mut(player).unwrap().holding = Some(item);
 
                 self.update_weapon();
             },
             UserEvent::Take(item) =>
             {
+                todo!();
             }
         }
     }
@@ -172,10 +234,11 @@ impl<'a> PlayerContainer<'a>
 
         let entities = self.game_state.entities();
         let mut render = entities.render_mut(holding_entity).unwrap();
+        let mut parent = entities.parent_mut(holding_entity).unwrap();
 
         let player = self.player();
 
-        render.visible = player.holding.is_some();
+        parent.visible = player.holding.is_some();
         if let Some(holding) = player.holding
         {
             let inventory = self.inventory();
@@ -186,9 +249,42 @@ impl<'a> PlayerContainer<'a>
 
             render.set_texture(texture.clone());
 
-            let size = texture.read().aspect_min() * 0.8;
+            let size = texture.read().aspect_min() * item.scale;
             let new_scale = Vector3::new(size.x, size.y, 1.0);
             entities.transform_target(holding_entity).scale = new_scale;
+        }
+    }
+
+    fn toggle_inventory(&mut self)
+    {
+        let inventory = self.game_state.ui.player_inventory.body();
+
+        let local_entities = &mut self.game_state.entities.local_entities;
+        let mut parent = local_entities.parent_mut(inventory).unwrap();
+
+        parent.visible = !parent.visible;
+        if parent.visible
+        {
+            drop(parent);
+
+            local_entities.set_collider(inventory, Some(Collider{
+                kind: ColliderType::Aabb,
+                is_static: false
+            }));
+        }
+    }
+
+    fn throw_held(&mut self)
+    {
+        let entities = &mut self.game_state.entities.entities;
+        let player = self.info.entity;
+
+        let held = entities.player_mut(player).unwrap().holding.take();
+        if let Some(held) = held
+        {
+            // spawn a thingy here later
+
+            self.update_weapon();
         }
     }
 
@@ -250,39 +346,6 @@ impl<'a> PlayerContainer<'a>
         }
 
         self.update_user_events();
-
-        if self.game_state.clicked(Control::MainAction)
-        {
-            let player = self.player();
-
-            if let Some(holding) = player.holding
-            {
-                let inventory = self.inventory();
-                let holding = inventory.get(holding);
-
-                let items_info = self.info.items_info.clone();
-                let weapon = &items_info.get(holding.id).weapon;
-
-                drop(player);
-                drop(inventory);
-
-                self.weapon_attack(weapon);
-            }
-        }
-
-        if self.game_state.debug_mode && self.game_state.clicked(Control::DebugConsole)
-        {
-            dbg!("make this an actual console thingy later");
-
-            let mut anatomy = self.game_state.entities_mut()
-                .anatomy_mut(self.info.entity)
-                .unwrap();
-
-            if let Some(speed) = anatomy.speed()
-            {
-                anatomy.set_speed(speed * 2.0);
-            }
-        }
 
         if let Some(movement) = self.movement_direction()
         {

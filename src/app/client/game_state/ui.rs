@@ -19,8 +19,6 @@ use crate::{
         Inventory,
         InventorySorter,
         Parent,
-        ColliderType,
-        Collider,
         Entity,
         ItemsInfo,
         EntityInfo,
@@ -76,7 +74,7 @@ impl UiScroll
                     kind: UiElementType::Panel,
                     ..Default::default()
                 }),
-                parent: Some(Parent::new(background)),
+                parent: Some(Parent::new(background, true)),
                 ..Default::default()
             },
             RenderInfo{
@@ -208,7 +206,7 @@ impl UiList
                         kind: UiElementType::Panel,
                         ..Default::default()
                     }),
-                    parent: Some(Parent::new(background)),
+                    parent: Some(Parent::new(background, true)),
                     ..Default::default()
                 },
                 RenderInfo{
@@ -231,7 +229,7 @@ impl UiList
                         },
                         ..Default::default()
                     }.into()),
-                    parent: Some(Parent::new(background)),
+                    parent: Some(Parent::new(background, true)),
                     ..Default::default()
                 },
                 RenderInfo{
@@ -249,13 +247,21 @@ impl UiList
 
         let current_start = Rc::new(RefCell::new(0));
 
+        let frames = Self::create_items(
+            creator,
+            on_change,
+            current_start.clone(),
+            panel,
+            max_fit
+        );
+
         Self{
             panel,
             scroll,
             height,
             amount: 0,
             amount_changed: true,
-            frames: Self::create_items(creator, on_change, current_start.clone(), panel, max_fit),
+            frames,
             current_start,
             items: Vec::new()
         }
@@ -269,14 +275,22 @@ impl UiList
         max_fit: u32
     ) -> Vec<ListItem>
     {
+        let height = 1.0 / max_fit as f32;
+
         (0..=max_fit as usize).map(|index|
         {
             let on_change = on_change.clone();
             let current_start = current_start.clone();
             let id = creator.push(
                 EntityInfo{
-                    lazy_transform: Some(LazyTransformInfo::default().into()),
-                    parent: Some(Parent::new(parent)),
+                    lazy_transform: Some(LazyTransformInfo{
+                        transform: Transform{
+                            scale: Vector3::new(1.0, height * 0.9, 1.0),
+                            ..Default::default()
+                        },
+                        ..Default::default()
+                    }.into()),
+                    parent: Some(Parent::new(parent, false)),
                     ui_element: Some(UiElement{
                         kind: UiElementType::Button{
                             on_click: Box::new(move ||
@@ -291,7 +305,6 @@ impl UiList
                     ..Default::default()
                 },
                 RenderInfo{
-                    visible: false,
                     object: Some(RenderObject::Texture{
                         name: "ui/lighter.png".to_owned()
                     }),
@@ -303,7 +316,7 @@ impl UiList
             let text_id = creator.push(
                 EntityInfo{
                     lazy_transform: Some(LazyTransformInfo::default().into()),
-                    parent: Some(Parent::new(id)),
+                    parent: Some(Parent::new(id, true)),
                     ..Default::default()
                 },
                 RenderInfo{
@@ -340,9 +353,9 @@ impl UiList
 
         self.frames.iter().enumerate().for_each(|(index, item)|
         {
-            if let Some(mut render) = creator.entities.render_mut(item.frame)
+            if let Some(mut parent) = creator.entities.parent_mut(item.frame)
             {
-                render.visible = index < self.amount;
+                parent.visible = index < self.amount;
             }
         });
 
@@ -404,12 +417,10 @@ impl UiList
         let y = -start * over_height;
         let y_modulo = y % over_height;
 
-        self.frames.iter().take(self.amount).enumerate().for_each(|(index, item)|
+        self.frames.iter().enumerate().for_each(|(index, item)|
         {
             let mut transform = entities.lazy_transform_mut(item.frame).unwrap();
             let transform = transform.target();
-
-            transform.scale.y = self.height * 0.9;
 
             transform.position.y = Ui::ui_position(
                 transform.scale,
@@ -501,11 +512,7 @@ impl UiInventory
                     kind: UiElementType::Panel,
                     ..Default::default()
                 }),
-                collider: Some(Collider{
-                    kind: ColliderType::Aabb,
-                    is_static: false
-                }),
-                parent: Some(Parent::new(anchor)),
+                parent: Some(Parent::new(anchor, false)),
                 ..Default::default()
             },
             RenderInfo{
@@ -530,7 +537,7 @@ impl UiInventory
                         ..Default::default()
                     }.into()),
                     ui_element: Some(ui_element),
-                    parent: Some(Parent::new(parent)),
+                    parent: Some(Parent::new(parent, true)),
                     ..Default::default()
                 },
                 RenderInfo{
@@ -601,6 +608,11 @@ impl UiInventory
             name,
             list: UiList::new(creator, inventory_panel, on_change)
         }
+    }
+
+    pub fn body(&self) -> Entity
+    {
+        self.inventory
     }
 
     pub fn update_name(

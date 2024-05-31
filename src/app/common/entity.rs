@@ -173,14 +173,15 @@ impl OnSet<ClientEntities> for Anatomy
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Parent
 {
-    parent: Entity
+    pub visible: bool,
+    entity: Entity
 }
 
 impl Parent
 {
-    pub fn new(parent: Entity) -> Self
+    pub fn new(entity: Entity, visible: bool) -> Self
     {
-        Self{parent}
+        Self{visible, entity}
     }
 }
 
@@ -407,7 +408,7 @@ macro_rules! define_entities
             {
                 let id = if let Some(parent) = info.parent.as_ref()
                 {
-                    self.components.take_after_key(parent.into().parent.0)
+                    self.components.take_after_key(parent.into().entity.0)
                 } else
                 {
                     self.components.take_vacant_key()
@@ -452,7 +453,7 @@ macro_rules! define_entities
             where
                 for<'a> &'a ParentType: Into<&'a Parent>,
             {
-                let parent = info.parent.as_ref().map(|x| x.into().parent.0);
+                let parent = info.parent.as_ref().map(|x| x.into().entity.0);
                 vec![
                     $({
                         info.$name.map(|component|
@@ -570,7 +571,7 @@ macro_rules! define_entities
                             let parent = get_component!(self, components, get, parent);
                             let new_transform = if let Some(parent) = parent
                             {
-                                if let Some(parent) = self.transform(parent.parent)
+                                if let Some(parent) = self.transform(parent.entity)
                                 {
                                     lazy.combine(&parent)
                                 } else
@@ -609,6 +610,27 @@ macro_rules! define_entities
                 (self.exists(entity))
                     .then(|| self.transform(entity).as_deref().cloned())
                     .flatten()
+            }
+
+            pub fn update_visibility(&mut self)
+            {
+                self.parent.iter().for_each(|(_, ComponentWrapper{
+                    entity,
+                    component: parent
+                })|
+                {
+                    let parent = parent.borrow();
+
+                    if let Some(mut render) = self.render_mut(*entity)
+                    {
+                        let parent_visible = self.render(parent.entity).map(|parent_render|
+                        {
+                            parent_render.visible
+                        }).unwrap_or(true);
+
+                        render.visible = parent.visible && parent_visible;
+                    }
+                });
             }
 
             pub fn update_render(&mut self)
@@ -681,7 +703,7 @@ macro_rules! define_entities
 
                 let target_global = parent.map(|parent|
                 {
-                    self.transform(parent.parent).as_deref().cloned()
+                    self.transform(parent.entity).as_deref().cloned()
                 }).flatten();
 
                 let mut transform = self.transform_mut(entity).unwrap();
@@ -709,7 +731,7 @@ macro_rules! define_entities
                 &mut self,
                 camera_position: Vector2<f32>,
                 event: UiEvent
-            )
+            ) -> bool
             {
                 let mut captured = false;
                 // borrow checker more like goofy ahh
@@ -722,15 +744,17 @@ macro_rules! define_entities
                     let is_visible = self.render(*entity).map(|x| x.visible).unwrap_or(false);
                     if is_visible
                     {
-                        captured |= ui_element.borrow_mut().update(
+                        captured = ui_element.borrow_mut().update(
                             &*self,
                             *entity,
                             camera_position,
                             &event,
                             captured
-                        );
+                        ) || captured;
                     }
                 });
+
+                captured
             }
 
             pub fn update_sprites(
@@ -831,7 +855,7 @@ macro_rules! define_entities
 
                     let target_global = parent.map(|parent|
                     {
-                        self.transform(parent.parent).as_deref().cloned()
+                        self.transform(parent.entity).as_deref().cloned()
                     }).flatten();
 
                     let mut transform = self.transform_mut(*entity).unwrap();

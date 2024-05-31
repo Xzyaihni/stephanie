@@ -1,4 +1,7 @@
-use std::collections::HashMap;
+use std::{
+    mem,
+    collections::HashMap
+};
 
 use yanyaengine::{ElementState, PhysicalKey, KeyCode, MouseButton};
 
@@ -17,6 +20,8 @@ pub enum Control
     SecondaryAction,
     Jump,
     Crouch,
+    Throw,
+    Inventory,
     ZoomIn,
     ZoomOut,
     ZoomReset,
@@ -80,7 +85,6 @@ pub struct ControlsController
 {
     key_mapping: HashMap<KeyMapping, Control>,
     keys: [ControlState; Control::COUNT],
-    clicked: Vec<Control>,
     changed: Vec<(ControlState, Control)>
 }
 
@@ -98,6 +102,8 @@ impl ControlsController
             (KeyMapping::Keyboard(KeyCode::KeyV), Control::SecondaryAction),
             (KeyMapping::Keyboard(KeyCode::Space), Control::Jump),
             (KeyMapping::Keyboard(KeyCode::ControlLeft), Control::Crouch),
+            (KeyMapping::Keyboard(KeyCode::KeyI), Control::Inventory),
+            (KeyMapping::Keyboard(KeyCode::KeyT), Control::Throw),
             (KeyMapping::Keyboard(KeyCode::Equal), Control::ZoomIn),
             (KeyMapping::Keyboard(KeyCode::Minus), Control::ZoomOut),
             (KeyMapping::Keyboard(KeyCode::Digit0), Control::ZoomReset),
@@ -107,14 +113,8 @@ impl ControlsController
         Self{
             key_mapping,
             keys: [ControlState::Released; Control::COUNT],
-            clicked: Vec::new(),
             changed: Vec::new()
         }
-    }
-
-    pub fn is_clicked(&self, control: Control) -> bool
-    {
-        self.clicked.contains(&control)
     }
 
     pub fn is_down(&self, control: Control) -> bool
@@ -128,11 +128,7 @@ impl ControlsController
 
     pub fn is_up(&self, control: Control) -> bool
     {
-        match self.state(control)
-        {
-            ControlState::Released => true,
-            _ => false
-        }
+        !self.is_down(control)
     }
 
     pub fn state(&self, control: Control) -> ControlState
@@ -152,11 +148,6 @@ impl ControlsController
 
             if let Some(matched) = matched
             {
-                if state == ControlState::Pressed
-                {
-                    self.clicked.push(*matched);
-                }
-
                 self.keys[*matched as usize] = state;
 
                 let pair = (state, *matched);
@@ -169,19 +160,8 @@ impl ControlsController
         None
     }
 
-    pub fn changed_this_frame(&self) -> &[(ControlState, Control)]
+    pub fn changed_this_frame(&mut self) -> Vec<(ControlState, Control)>
     {
-        &self.changed
-    }
-
-    fn release_clicked(&mut self)
-    {
-        self.clicked.clear();
-    }
-
-    pub fn frame_end(&mut self)
-    {
-        self.release_clicked();
-        self.changed.clear();
+        mem::take(&mut self.changed)
     }
 }

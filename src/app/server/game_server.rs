@@ -232,10 +232,9 @@ impl GameServer
                 }),
                 shape: Some(BoundingShape::Circle),
                 z_level: -2,
-                visible: false,
                 ..Default::default()
             }),
-            parent: Some(Parent::new(inserted)),
+            parent: Some(Parent::new(inserted, false)),
             lazy_transform: Some(LazyTransformInfo{
                 connection: Connection::Spring(
                     SpringConnection{
@@ -305,7 +304,7 @@ impl GameServer
                     },
                     ..Default::default()
                 }.into()),
-                parent: Some(Parent::new(inserted)),
+                parent: Some(Parent::new(inserted, true)),
                 render: Some(RenderInfo{
                     object: Some(RenderObject::Texture{
                         name: "player/pon.png".to_owned()

@@ -10,10 +10,12 @@
     },
     {
         "name": "snel",
+        "scale": 0.3,
         "texture": "snel.png"
     },
     {
         "name": "bee",
+        "scale": 0.2,
         "texture": "bee.png"
     }
 ]

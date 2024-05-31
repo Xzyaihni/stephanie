@@ -71,6 +71,7 @@ pub struct ItemInfoRaw
     name: String,
     #[serde(default)]
     weapon: Weapon,
+    scale: Option<f32>,
     texture: String
 }
 
@@ -80,6 +81,7 @@ pub struct ItemInfo
 {
     pub name: String,
     pub weapon: Weapon,
+    pub scale: f32,
     pub texture: TextureId
 }
 
@@ -102,6 +104,7 @@ impl ItemInfo
         Self{
             name: raw.name,
             weapon: raw.weapon,
+            scale: raw.scale.unwrap_or(0.8),
             texture: get_texture(raw.texture)
         }
     }

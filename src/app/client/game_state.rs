@@ -48,6 +48,7 @@ use crate::common::{
 };
 
 use super::{
+    Game,
     UiEvent,
     ClientInfo,
     MessagePasser,
@@ -83,8 +84,8 @@ struct RaycastResult
 pub struct ClientEntitiesContainer
 {
     pub entities: ClientEntities,
+    pub local_entities: ClientEntities,
     local_objects: Vec<(bool, Entity, ReplaceObject)>,
-    local_entities: ClientEntities,
     player_entities: Option<PlayerEntities>
 }
 
@@ -129,14 +130,12 @@ impl ClientEntitiesContainer
                 &mut self.entities
             };
 
-            let transform = entities.transform(entity).as_deref().cloned();
-
             match object
             {
                 ReplaceObject::Full(object) =>
                 {
                     let object = object.server_to_client(
-                        || transform.unwrap(),
+                        || entities.transform_target(entity).clone(),
                         &mut info.object_info
                     );
 
@@ -147,7 +146,7 @@ impl ClientEntitiesContainer
                     if let Some(mut render) = entities.render_mut(entity)
                     {
                         render.object = object.into_client(
-                            transform.unwrap(),
+                            entities.transform_target(entity).clone(),
                             &mut info.object_info
                         );
                     }
@@ -168,6 +167,10 @@ impl ClientEntitiesContainer
     pub fn update(&mut self, passer: &mut impl EntityPasser, dt: f32)
     {
         Self::update_entities(&mut self.entities, passer, dt);
+    }
+
+    pub fn update_local(&mut self, dt: f32)
+    {
         Self::update_entities(&mut self.local_entities, &mut (), dt);
     }
 
@@ -181,6 +184,7 @@ impl ClientEntitiesContainer
         entities.update_colliders(passer);
         entities.update_lazy(dt);
         entities.update_enemy(dt);
+        entities.update_visibility();
     }
 
     pub fn main_player(&self) -> Entity
@@ -433,10 +437,10 @@ pub struct GameState
     pub tilemap: Arc<TileMap>,
     pub items_info: Arc<ItemsInfo>,
     pub user_receiver: Rc<RefCell<Vec<UserEvent>>>,
+    pub ui: Ui,
     camera_scale: f32,
     enemies_info: Arc<EnemiesInfo>,
     world: World,
-    ui: Ui,
     connections_handler: Arc<RwLock<ConnectionsHandler>>,
     receiver: Receiver<Message>
 }
@@ -747,8 +751,6 @@ impl GameState
         self.world.update_buffers(info);
 
         self.entities.update_objects(&visibility, &self.enemies_info, info);
-
-        self.controls.frame_end();
     }
 
     pub fn draw(&self, info: &mut DrawInfo)
@@ -770,14 +772,14 @@ impl GameState
         }
     }
 
-    pub fn update(&mut self, dt: f32)
+    fn on_control(&mut self, game: &mut Game, state: ControlState, control: Control)
     {
-        self.check_resize_camera(dt);
-        self.camera_moved();
+        let clicked = |check|
+        {
+            state == ControlState::Pressed && control == check
+        };
 
-        self.world.update(dt);
-
-        if self.controls.is_clicked(Control::SecondaryAction)
+        if clicked(Control::SecondaryAction)
         {
             let player = self.player();
 
@@ -789,6 +791,16 @@ impl GameState
 
             self.update_inventory();
         }
+
+        game.on_control(self, state, control);
+    }
+
+    pub fn update(&mut self, game: &mut Game, dt: f32)
+    {
+        self.check_resize_camera(dt);
+        self.camera_moved();
+
+        self.world.update(dt);
 
         let player_transform = self.entities.player_transform().as_deref().cloned();
 
@@ -804,25 +816,37 @@ impl GameState
             dt
         );
 
-        let mut passer = self.connections_handler.write();
-        self.entities.update(&mut *passer, dt);
+        self.entities.update_local(dt);
 
-        for (state, control) in self.controls.changed_this_frame()
+        game.update(self, dt);
+
+        let changed_this_frame = self.controls.changed_this_frame();
+        for (state, control) in changed_this_frame
         {
-            let event = UiEvent::from_control(|| self.world_mouse_position(), *state, *control);
+            let event = UiEvent::from_control(|| self.world_mouse_position(), state, control);
             if let Some(event) = event
             {
-                self.entities.local_entities.update_ui(
+                let captured = self.entities.local_entities.update_ui(
                     self.camera.read().position().coords.xy(),
                     event
                 );
+
+                if captured
+                {
+                    continue;
+                }
             }
+
+            self.on_control(game, state, control);
         }
 
         self.entities.local_entities.update_ui(
             self.camera.read().position().coords.xy(),
             UiEvent::MouseMove(self.world_mouse_position())
         );
+
+        let mut passer = self.connections_handler.write();
+        self.entities.update(&mut *passer, dt);
 
         let mut entity_creator = EntityCreator{
             objects: &mut self.entities.local_objects,
@@ -863,12 +887,6 @@ impl GameState
     pub fn pressed(&self, control: Control) -> bool
     {
         self.controls.is_down(control)
-    }
-
-    #[allow(dead_code)]
-    pub fn clicked(&mut self, control: Control) -> bool
-    {
-        self.controls.is_clicked(control)
     }
 
     pub fn mouse_moved(&mut self, position: Vector2<f32>)
