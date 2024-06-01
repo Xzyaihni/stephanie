@@ -111,7 +111,10 @@ impl<'a> CollidingInfo<'a>
                     };
                     
                     let previous_velocity = this_physical.velocity;
-                    this_physical.velocity = left + right;
+
+                    let elasticity = 0.9;
+
+                    this_physical.velocity = (left + right) * elasticity;
 
                     let top = {
                         let left = this_physical.mass * (previous_velocity - this_physical.velocity);
@@ -119,7 +122,7 @@ impl<'a> CollidingInfo<'a>
                         left + other_physical.mass * other_physical.velocity
                     };
 
-                    other_physical.velocity = top / other_physical.mass;
+                    other_physical.velocity = (top / other_physical.mass) * elasticity;
 
                     let mass_ratio = this_physical.mass / other_physical.mass;
 
