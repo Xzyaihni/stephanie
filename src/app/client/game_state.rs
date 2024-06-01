@@ -153,7 +153,7 @@ impl ClientEntitiesContainer
                 ReplaceObject::Full(object) =>
                 {
                     let object = object.server_to_client(
-                        || entities.transform_target(entity).clone(),
+                        || entities.transform_target(entity).unwrap().clone(),
                         &mut info.object_info
                     );
 
@@ -164,7 +164,7 @@ impl ClientEntitiesContainer
                     if let Some(mut render) = entities.render_mut(entity)
                     {
                         render.object = object.into_client(
-                            entities.transform_target(entity).clone(),
+                            entities.transform_target(entity).unwrap().clone(),
                             &mut info.object_info
                         );
                     }
@@ -188,10 +188,10 @@ impl ClientEntitiesContainer
         self.entities.update_colliders(passer);
     }
 
-    pub fn update_local(&mut self, dt: f32)
+    pub fn update_local(&mut self, passer: &mut impl EntityPasser, dt: f32)
     {
         Self::update_entities(&mut self.local_entities, dt);
-        self.local_entities.update_colliders_local(&self.entities);
+        self.local_entities.update_colliders_local(passer, &self.entities);
     }
 
     fn update_entities(
@@ -822,7 +822,10 @@ impl GameState
             dt
         );
 
-        self.entities.update_local(dt);
+        {
+            let mut passer = self.connections_handler.write();
+            self.entities.update_local(&mut *passer, dt);
+        }
 
         game.update(self, dt);
 

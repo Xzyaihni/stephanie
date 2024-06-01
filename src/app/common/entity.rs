@@ -287,10 +287,11 @@ macro_rules! define_entities
                     component: physical
                 })|
                 {
-                    let mut target = self.transform_target(*entity);
-
-                    let mut physical = physical.borrow_mut();
-                    (&mut *physical).into().physics_update(&mut target, dt);
+                    if let Some(mut target) = self.transform_target(*entity)
+                    {
+                        let mut physical = physical.borrow_mut();
+                        (&mut *physical).into().physics_update(&mut target, dt);
+                    }
                 });
             }
 
@@ -384,17 +385,20 @@ macro_rules! define_entities
                 }
             )+
 
-            pub fn transform_target(&self, entity: Entity) -> RefMut<Transform>
+            pub fn transform_target(&self, entity: Entity) -> Option<RefMut<Transform>>
             where
                 for<'a> &'a mut TransformType: Into<&'a mut Transform>,
                 LazyTransformType: LazyTargettable<Transform>
             {
                 if let Some(lazy) = self.lazy_transform_mut(entity)
                 {
-                    RefMut::map(lazy, |x| x.target())
+                    Some(RefMut::map(lazy, |x| x.target()))
+                } else if let Some(transform) = self.transform_mut(entity)
+                {
+                    Some(RefMut::map(transform, |x| x.into()))
                 } else
                 {
-                    RefMut::map(self.transform_mut(entity).unwrap(), |x| x.into())
+                    None
                 }
             }
 
@@ -647,11 +651,15 @@ macro_rules! define_entities
                 });
             }
 
-            pub fn update_colliders_local(
+            pub fn update_colliders_local<P>(
                 &mut self,
+                passer: &mut P,
                 others: &Self
             )
+            where
+                P: EntityPasser
             {
+
                 self.collider.iter().for_each(|(_, ComponentWrapper{
                     entity,
                     component: collider
@@ -666,8 +674,9 @@ macro_rules! define_entities
                     })|
                     {
                         (
+                            None,
                             self.physical_mut(*other_entity),
-                            self.transform_target(*other_entity),
+                            self.transform_target(*other_entity).unwrap(),
                             other_collider.borrow().clone()
                         )
                     }).chain(others.collider.iter().map(|(_, ComponentWrapper{
@@ -676,14 +685,34 @@ macro_rules! define_entities
                     })|
                     {
                         (
+                            Some(|passer: &mut P, physical: Option<Physical>, transform: Transform|
+                            {
+                                passer.send_message(Message::SetTarget{
+                                    entity: *other_entity,
+                                    target: transform
+                                });
+
+                                if let Some(physical) = physical
+                                {
+                                    passer.send_message(Message::SetPhysical{
+                                        entity: *other_entity,
+                                        physical
+                                    });
+                                }
+                            }),
                             others.physical_mut(*other_entity),
-                            others.transform_target(*other_entity),
+                            others.transform_target(*other_entity).unwrap(),
                             other_collider.borrow().clone()
                         )
-                    })).for_each(|(mut other_physical, mut other_transform, other_collider)|
+                    })).for_each(|(
+                        on_collision,
+                        mut other_physical,
+                        mut other_transform,
+                        other_collider
+                    )|
                     {
                         let mut physical = self.physical_mut(*entity);
-                        let mut transform = self.transform_target(*entity);
+                        let mut transform = self.transform_target(*entity).unwrap();
 
                         let this = CollidingInfo{
                             physical: physical.as_deref_mut(),
@@ -691,11 +720,20 @@ macro_rules! define_entities
                             collider: collider.borrow().clone()
                         };
 
-                        this.resolve(CollidingInfo{
+                        let collided = this.resolve(CollidingInfo{
                             physical: other_physical.as_deref_mut(),
                             transform: &mut other_transform,
                             collider: other_collider
                         });
+
+                        if let (Some(on_collision), true) = (on_collision, collided)
+                        {
+                            on_collision(
+                                passer,
+                                other_physical.map(|x| x.clone()),
+                                other_transform.clone()
+                            );
+                        }
                     });
                 });
             }
@@ -719,7 +757,7 @@ macro_rules! define_entities
                     })|
                     {
                         let mut physical = self.physical_mut(*entity);
-                        let mut transform = self.transform_target(*entity);
+                        let mut transform = self.transform_target(*entity).unwrap();
 
                         let this = CollidingInfo{
                             physical: physical.as_deref_mut(),
@@ -728,7 +766,7 @@ macro_rules! define_entities
                         };
 
                         let mut other_physical = self.physical_mut(*other_entity);
-                        let mut other_transform = self.transform_target(*other_entity);
+                        let mut other_transform = self.transform_target(*other_entity).unwrap();
                         let collision = this.resolve(CollidingInfo{
                             physical: other_physical.as_deref_mut(),
                             transform: &mut other_transform,
@@ -742,10 +780,26 @@ macro_rules! define_entities
                                 target: transform.clone()
                             });
 
+                            if let Some(physical) = physical
+                            {
+                                passer.send_message(Message::SetPhysical{
+                                    entity: *entity,
+                                    physical: physical.clone()
+                                });
+                            }
+
                             passer.send_message(Message::SetTarget{
                                 entity: *other_entity,
                                 target: other_transform.clone()
                             });
+
+                            if let Some(physical) = other_physical
+                            {
+                                passer.send_message(Message::SetPhysical{
+                                    entity: *other_entity,
+                                    physical: physical.clone()
+                                });
+                            }
                         }
                     });
                 });
