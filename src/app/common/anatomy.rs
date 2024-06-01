@@ -287,11 +287,11 @@ impl Health
         {
             DamageType::Blunt(damage) =>
             {
-                self.simple_pierce(damage).map(|x| DamageType::Blunt(x))
+                self.simple_pierce(damage).map(DamageType::Blunt)
             },
             DamageType::Bullet(damage) =>
             {
-                self.simple_pierce(damage).map(|x| DamageType::Bullet(x))
+                self.simple_pierce(damage).map(DamageType::Bullet)
             }
         }
     }
@@ -372,7 +372,7 @@ impl<Data> BodyPart<Data>
 
 impl<Data> BodyPart<Bone<Data>>
 {
-    pub fn get<'a>(&self, index: &'a PartId) -> Option<&'_ Self>
+    pub fn get<'a>(&'a self, index: &PartId) -> Option<&'a Self>
     {
         match index
         {
@@ -384,7 +384,7 @@ impl<Data> BodyPart<Bone<Data>>
         }
     }
 
-    pub fn get_mut<'a>(&mut self, index: &'a PartId) -> Option<&'_ mut Self>
+    pub fn get_mut<'a>(&'a mut self, index: &PartId) -> Option<&'a mut Self>
     {
         match index
         {
@@ -1171,6 +1171,7 @@ impl HumanAnatomy
             }
         };
 
+        #[allow(clippy::single_match)]
         match child_side
         {
             Side3d::Top =>
@@ -1231,6 +1232,7 @@ impl HumanAnatomy
             Some(self.body.get_mut(picked).expect("must be inbounds"))
         } else
         {
+            #[allow(clippy::manual_find_map)]
             occluded_parts.iter().rev()
                 .find(|id| self.body.get_mut(id).is_some())
                 .map(|id| self.body.get_mut(id).expect("must be inbounds"))

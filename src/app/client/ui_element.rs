@@ -176,7 +176,7 @@ impl ServerToClient<UiElement> for ()
 
 impl UiElement
 {
-    pub fn update<'a>(
+    pub fn update(
         &mut self,
         entities: &ClientEntities,
         entity: Entity,

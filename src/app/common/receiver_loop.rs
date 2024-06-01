@@ -20,14 +20,11 @@ where
         {
             if let Ok(messages) = messager.receive()
             {
-                match messages.into_iter().try_for_each(&mut on_message)
+                let flow = messages.into_iter().try_for_each(&mut on_message);
+                if let ControlFlow::Break(_) = flow
                 {
-                    ControlFlow::Break(_) =>
-                    {
-                        on_close();
-                        return;
-                    },
-                    _ => ()
+                    on_close();
+                    return;
                 }
             } else
             {

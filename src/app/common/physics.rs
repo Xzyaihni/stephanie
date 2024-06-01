@@ -83,6 +83,11 @@ impl Physical
         self.velocity += self.impulse_to_velocity(impulse);
     }
 
+    pub fn invert_velocity(&mut self)
+    {
+        self.velocity = -self.velocity;
+    }
+
     // i have no clue if normal impulse is a real thing lmao
     fn apply_friction(&mut self, normal_impulse: f32)
     {

@@ -254,31 +254,17 @@ impl ClientRenderInfo
 {
     pub fn set_texture(&mut self, texture: Arc<RwLock<Texture>>)
     {
-        if let Some(object) = self.object.as_mut()
+        if let Some(ClientRenderObject::Normal(x)) = self.object.as_mut()
         {
-            match object
-            {
-                ClientRenderObject::Normal(x) =>
-                {
-                    x.set_texture(texture);
-                },
-                _ => ()
-            }
+            x.set_texture(texture);
         }
     }
 
     pub fn set_inplace_texture(&mut self, texture: Texture)
     {
-        if let Some(object) = self.object.as_mut()
+        if let Some(ClientRenderObject::Normal(x)) = self.object.as_mut()
         {
-            match object
-            {
-                ClientRenderObject::Normal(x) =>
-                {
-                    x.set_inplace_texture(texture);
-                },
-                _ => ()
-            }
+            x.set_inplace_texture(texture);
         }
     }
 
@@ -293,16 +279,9 @@ impl ClientRenderInfo
 
         let texture = assets.texture(texture).clone();
 
-        if let Some(object) = self.object.as_mut()
+        if let Some(ClientRenderObject::Normal(x)) = self.object.as_mut()
         {
-            match object
-            {
-                ClientRenderObject::Normal(x) =>
-                {
-                    x.set_texture(texture);
-                },
-                _ => ()
-            }
+            x.set_texture(texture);
         } else
         {
             let info = ObjectInfo{

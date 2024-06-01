@@ -14,14 +14,13 @@ use crate::{
     },
     common::{
         render_info::*,
+        collider::*,
         EntityPasser,
         Inventory,
         Anatomy,
         Player,
         Enemy,
         EnemiesInfo,
-        Collider,
-        CollidingInfo,
         Physical,
         LazyTransform,
         LazyTargettable
@@ -666,25 +665,34 @@ macro_rules! define_entities
                         component: other_collider
                     })|
                     {
-                        (self.transform_target(*other_entity), *other_collider.borrow())
+                        (
+                            self.physical_mut(*other_entity),
+                            self.transform_target(*other_entity),
+                            other_collider.borrow().clone()
+                        )
                     }).chain(others.collider.iter().map(|(_, ComponentWrapper{
                         entity: other_entity,
                         component: other_collider
                     })|
                     {
-                        (others.transform_target(*other_entity), *other_collider.borrow())
-                    })).for_each(|(mut other_transform, other_collider)|
+                        (
+                            others.physical_mut(*other_entity),
+                            others.transform_target(*other_entity),
+                            other_collider.borrow().clone()
+                        )
+                    })).for_each(|(mut other_physical, mut other_transform, other_collider)|
                     {
+                        let mut physical = self.physical_mut(*entity);
                         let mut transform = self.transform_target(*entity);
-                        let transform = &mut transform;
-                        let collider = *collider.borrow();
 
                         let this = CollidingInfo{
-                            transform,
-                            collider
+                            physical: physical.as_deref_mut(),
+                            transform: &mut transform,
+                            collider: collider.borrow().clone()
                         };
 
                         this.resolve(CollidingInfo{
+                            physical: other_physical.as_deref_mut(),
                             transform: &mut other_transform,
                             collider: other_collider
                         });
@@ -710,19 +718,21 @@ macro_rules! define_entities
                         component: collider
                     })|
                     {
+                        let mut physical = self.physical_mut(*entity);
                         let mut transform = self.transform_target(*entity);
-                        let transform = &mut transform;
-                        let collider = *collider.borrow();
 
                         let this = CollidingInfo{
-                            transform,
-                            collider
+                            physical: physical.as_deref_mut(),
+                            transform: &mut transform,
+                            collider: collider.borrow().clone()
                         };
 
+                        let mut other_physical = self.physical_mut(*other_entity);
                         let mut other_transform = self.transform_target(*other_entity);
                         let collision = this.resolve(CollidingInfo{
+                            physical: other_physical.as_deref_mut(),
                             transform: &mut other_transform,
-                            collider: *other_collider.borrow()
+                            collider: other_collider.borrow().clone()
                         });
 
                         if collision

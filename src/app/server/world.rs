@@ -15,6 +15,7 @@ use crate::{
     common::{
         self,
         render_info::*,
+        collider::*,
         EnemyBuilder,
         TileMap,
         WorldChunkSaver,
@@ -26,8 +27,6 @@ use crate::{
         Entity,
         EntityInfo,
         ConnectionId,
-        Collider,
-        ColliderType,
         PhysicalProperties,
         LazyTransformInfo,
         entity::ServerEntities,
@@ -305,10 +304,10 @@ impl World
                     z_level: ZLevel::Low,
                     ..Default::default()
                 }),
-                collider: Some(Collider{
+                collider: Some(ColliderInfo{
                     kind: ColliderType::Aabb,
                     ..Default::default()
-                }),
+                }.into()),
                 physical: Some(PhysicalProperties{
                     mass: 50.0,
                     friction: 0.5,

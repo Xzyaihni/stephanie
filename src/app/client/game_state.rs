@@ -14,6 +14,8 @@ use parking_lot::{RwLock, Mutex};
 
 use nalgebra::{Unit, Vector3, Vector2};
 
+use serde::{Serialize, Deserialize};
+
 use yanyaengine::{
     Assets,
     ObjectFactory,
@@ -79,6 +81,14 @@ struct RaycastResult
 {
     distance: f32,
     pierce: f32
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct GlobalEntityId
+{
+    pub is_local: bool,
+    pub entity: Entity
 }
 
 pub struct ClientEntitiesContainer
@@ -489,7 +499,7 @@ impl GameState
 
         receiver_loop(handler, move |message|
         {
-            if let Err(_) = sender.send(message)
+            if sender.send(message).is_err()
             {
                 ControlFlow::Break(())
             } else
@@ -538,9 +548,7 @@ impl GameState
             receiver
         };
 
-        let this = Rc::new(RefCell::new(this));
-
-        this
+        Rc::new(RefCell::new(this))
     }
 
     pub fn raycast(

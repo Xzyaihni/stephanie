@@ -1,6 +1,7 @@
 #![allow(clippy::suspicious_else_formatting)]
 #![allow(clippy::match_like_matches_macro)]
 #![allow(clippy::new_without_default)]
+#![allow(clippy::needless_update)]
 // this is so stupid
 #![allow(clippy::len_without_is_empty)]
 

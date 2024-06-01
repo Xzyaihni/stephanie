@@ -6,14 +6,13 @@ use yanyaengine::Transform;
 
 use crate::common::{
     render_info::*,
+    collider::*,
     Anatomy,
     HumanAnatomy,
     Enemy,
     EnemyId,
     EnemiesInfo,
     PhysicalProperties,
-    Collider,
-    ColliderType,
     EntityInfo,
     lazy_transform::*
 };
@@ -62,10 +61,10 @@ impl<'a> EnemyBuilder<'a>
                 z_level: ZLevel::High,
                 ..Default::default()
             }),
-            collider: Some(Collider{
+            collider: Some(ColliderInfo{
                 kind: ColliderType::Circle,
                 ..Default::default()
-            }),
+            }.into()),
             physical: Some(PhysicalProperties{
                 mass: 50.0,
                 friction: 0.5,

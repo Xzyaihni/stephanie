@@ -57,8 +57,6 @@ pub use damage::{Damageable, Damage, DamageType, DamageDirection, Side2d, Damage
 pub use collider::{ColliderType, Collider, CollidingInfo};
 pub use physics::{Physical, PhysicalProperties};
 
-pub mod animator;
-
 pub mod lisp;
 pub mod objects_store;
 
@@ -136,7 +134,7 @@ where
         get_weight: impl Fn(I::Item) -> f64
     ) -> Option<I::Item>
     {
-        let total = values.clone().into_iter().map(|value| get_weight(value)).sum();
+        let total = values.clone().into_iter().map(&get_weight).sum();
 
         Self::new(total, values).pick_with(random_value, get_weight)
     }

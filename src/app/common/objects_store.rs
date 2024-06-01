@@ -24,7 +24,7 @@ impl<T> ObjectsStore<T>
         Self{data: Vec::with_capacity(capacity), free_list: Vec::new()}
     }
 
-    pub fn iter(&self) -> impl Iterator<Item=(usize, &T)> + DoubleEndedIterator
+    pub fn iter(&self) -> impl DoubleEndedIterator<Item=(usize, &T)>
     {
         self.data.iter().enumerate().filter_map(|(index, value)|
         {
@@ -32,7 +32,7 @@ impl<T> ObjectsStore<T>
         })
     }
 
-    pub fn iter_mut(&mut self) -> impl Iterator<Item=(usize, &mut T)> + DoubleEndedIterator
+    pub fn iter_mut(&mut self) -> impl DoubleEndedIterator<Item=(usize, &mut T)>
     {
         self.data.iter_mut().enumerate().filter_map(|(index, value)|
         {

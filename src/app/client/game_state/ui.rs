@@ -340,7 +340,7 @@ impl UiList
 
         let size = (1.0 / self.screens_fit()).clamp(0.0, 1.0);
 
-        self.scroll.update_size(&mut creator.entities, size);
+        self.scroll.update_size(creator.entities, size);
 
         self.frames.iter().enumerate().for_each(|(index, item)|
         {
@@ -396,7 +396,7 @@ impl UiList
             self.amount_changed = false;
         }
 
-        self.update_item_positions(&creator.entities);
+        self.update_item_positions(creator.entities);
     }
 
     fn update_item_positions(&mut self, entities: &ClientEntities)
@@ -464,7 +464,7 @@ impl UiList
         dt: f32
     )
     {
-        self.scroll.update(&mut creator.entities, dt);
+        self.scroll.update(creator.entities, dt);
         self.update_items(creator);
     }
 }

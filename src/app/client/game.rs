@@ -271,11 +271,11 @@ impl<'a> PlayerContainer<'a>
         {
             drop(parent);
 
-            local_entities.set_collider(inventory, Some(Collider{
+            local_entities.set_collider(inventory, Some(ColliderInfo{
                 kind: ColliderType::Aabb,
                 layer: ColliderLayer::Ui,
                 ..Default::default()
-            }));
+            }.into()));
         }
     }
 
@@ -332,10 +332,10 @@ impl<'a> PlayerContainer<'a>
                         },
                         ..Default::default()
                     }.into()),
-                    collider: Some(Collider{
+                    collider: Some(ColliderInfo{
                         kind: ColliderType::Circle,
                         ..Default::default()
-                    }),
+                    }.into()),
                     ..Default::default()
                 }
             };
@@ -388,7 +388,7 @@ impl<'a> PlayerContainer<'a>
                         let transform = self.game_state.entities().transform(id)
                             .unwrap();
 
-                        let hit_position = hits.hit_position(&hit);
+                        let hit_position = hits.hit_position(hit);
                         Side2d::from_positions(
                             transform.rotation,
                             transform.position,
@@ -494,7 +494,12 @@ impl<'a> PlayerContainer<'a>
 
             let velocity = direction * (speed / physical.mass);
 
-            physical.velocity = velocity;
+            physical.velocity = (physical.velocity + velocity).zip_map(&velocity, |value, limit|
+            {
+                let limit = limit.abs();
+
+                value.min(limit).max(-limit)
+            });
         }
     }
 

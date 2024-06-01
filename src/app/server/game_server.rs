@@ -25,14 +25,13 @@ use crate::common::{
     receiver_loop,
     ENTITY_SCALE,
     render_info::*,
+    collider::*,
     TileMap,
     ItemsInfo,
     Inventory,
     Entity,
     EntityInfo,
     EnemiesInfo,
-    Collider,
-    ColliderType,
     Parent,
     Player,
     PlayerEntities,
@@ -199,10 +198,10 @@ impl GameServer
                 z_level: ZLevel::Higher,
                 ..Default::default()
             }),
-            collider: Some(Collider{
+            collider: Some(ColliderInfo{
                 kind: ColliderType::Circle,
                 ..Default::default()
-            }),
+            }.into()),
             inventory: Some(Inventory::new()),
             physical: Some(physical.into()),
             anatomy: Some(anatomy),
@@ -432,10 +431,7 @@ impl GameServer
             None => return
         };
 
-        match message
-        {
-            x => panic!("unhandled message: {x:?}")
-        }
+        panic!("unhandled message: {message:?}")
     }
 
     fn send_message(&mut self, message: Message)

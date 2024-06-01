@@ -4,6 +4,8 @@ use nalgebra::{Vector2, Vector3};
 
 use yanyaengine::Transform;
 
+use crate::common::Physical;
+
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum ColliderType
@@ -19,15 +21,15 @@ pub enum ColliderLayer
     Ui
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub struct Collider
+#[derive(Debug, Clone)]
+pub struct ColliderInfo
 {
     pub kind: ColliderType,
     pub layer: ColliderLayer,
     pub is_static: bool
 }
 
-impl Default for Collider
+impl Default for ColliderInfo
 {
     fn default() -> Self
     {
@@ -39,37 +41,124 @@ impl Default for Collider
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Collider
+{
+    pub kind: ColliderType,
+    pub layer: ColliderLayer,
+    pub is_static: bool
+}
+
+impl From<ColliderInfo> for Collider
+{
+    fn from(info: ColliderInfo) -> Self
+    {
+        Self{
+            kind: info.kind,
+            layer: info.layer,
+            is_static: info.is_static
+        }
+    }
+}
+
 pub struct CollidingInfo<'a>
 {
+    pub physical: Option<&'a mut Physical>,
     pub transform: &'a mut Transform,
     pub collider: Collider
 }
 
 impl<'a> CollidingInfo<'a>
 {
-    fn resolve_with(self, other: CollidingInfo, offset: Vector2<f32>)
+    fn resolve_with(&mut self, other: &mut CollidingInfo, offset: Vector2<f32>)
     {
         let offset = Vector3::new(offset.x, offset.y, 0.0);
 
-        // both cant be static cuz i checked :)
+        debug_assert!(!(self.collider.is_static && other.collider.is_static));
+
         if self.collider.is_static
         {
             other.transform.position += offset;
+            if let Some(physical) = &mut other.physical
+            {
+                physical.invert_velocity();
+            }
         } else if other.collider.is_static
         {
             self.transform.position -= offset;
+            if let Some(physical) = &mut self.physical
+            {
+                physical.invert_velocity();
+            }
         } else
         {
-            let half_offset = offset / 2.0;
+            match (&mut self.physical, &mut other.physical)
+            {
+                (Some(this_physical), Some(other_physical)) =>
+                {
+                    let total_mass = this_physical.mass + other_physical.mass;
 
-            self.transform.position -= half_offset;
-            other.transform.position += half_offset;
+                    let left = {
+                        let top = this_physical.mass - other_physical.mass;
+
+                        top / total_mass * this_physical.velocity
+                    };
+
+                    let right = {
+                        let top = other_physical.mass * 2.0;
+
+                        top / total_mass * other_physical.velocity
+                    };
+                    
+                    let previous_velocity = this_physical.velocity;
+                    this_physical.velocity = left + right;
+
+                    let top = {
+                        let left = this_physical.mass * (previous_velocity - this_physical.velocity);
+                        
+                        left + other_physical.mass * other_physical.velocity
+                    };
+
+                    other_physical.velocity = top / other_physical.mass;
+
+                    let mass_ratio = this_physical.mass / other_physical.mass;
+
+                    let (this_scale, other_scale) = if mass_ratio >= 1.0
+                    {
+                        let mass_ratio = other_physical.mass / this_physical.mass;
+
+                        (1.0 - mass_ratio, mass_ratio)
+                    } else
+                    {
+                        (mass_ratio, 1.0 - mass_ratio)
+                    };
+
+                    self.transform.position -= offset * this_scale;
+                    other.transform.position += offset * other_scale;
+                },
+                (Some(this_physical), None) =>
+                {
+                    self.transform.position -= offset;
+                    this_physical.invert_velocity();
+                },
+                (None, Some(other_physical)) =>
+                {
+                    other.transform.position += offset;
+                    other_physical.invert_velocity();
+                },
+                (None, None) =>
+                {
+                    let half_offset = offset / 2.0;
+                    self.transform.position -= half_offset;
+                    other.transform.position += half_offset;
+                }
+            }
         }
     }
 
     fn resolve_with_offset(
-        self,
-        other: CollidingInfo,
+        &mut self,
+        other: &mut CollidingInfo,
         max_distance: Vector3<f32>,
         offset: Vector3<f32>
     )
@@ -96,7 +185,7 @@ impl<'a> CollidingInfo<'a>
         self.resolve_with(other, offset);
     }
 
-    fn circle_circle(self, other: CollidingInfo) -> bool
+    fn circle_circle(&mut self, other: &mut CollidingInfo) -> bool
     {
         let this_radius = self.transform.max_scale() / 2.0;
         let other_radius = other.transform.max_scale() / 2.0;
@@ -124,7 +213,7 @@ impl<'a> CollidingInfo<'a>
         collided
     }
 
-    fn circle_aabb(self, other: CollidingInfo) -> bool
+    fn circle_aabb(&mut self, other: &mut CollidingInfo) -> bool
     {
         let this_radius = self.transform.max_scale() / 2.0;
         let other_scale = other.transform.scale / 2.0;
@@ -143,7 +232,7 @@ impl<'a> CollidingInfo<'a>
         collided
     }
 
-    fn aabb_aabb(self, other: CollidingInfo) -> bool
+    fn aabb_aabb(&mut self, other: &mut CollidingInfo) -> bool
     {
         let this_scale = self.transform.scale / 2.0;
         let other_scale = other.transform.scale / 2.0;
@@ -163,8 +252,8 @@ impl<'a> CollidingInfo<'a>
     }
 
     pub fn resolve(
-        self,
-        other: CollidingInfo
+        mut self,
+        mut other: CollidingInfo
     ) -> bool
     {
         if self.collider.layer != other.collider.layer
@@ -181,19 +270,19 @@ impl<'a> CollidingInfo<'a>
         {
             (ColliderType::Circle, ColliderType::Circle) =>
             {
-                self.circle_circle(other)
+                self.circle_circle(&mut other)
             },
             (ColliderType::Circle, ColliderType::Aabb) =>
             {
-                self.circle_aabb(other)
+                self.circle_aabb(&mut other)
             },
             (ColliderType::Aabb, ColliderType::Circle) =>
             {
-                other.circle_aabb(self)
+                other.circle_aabb(&mut self)
             },
             (ColliderType::Aabb, ColliderType::Aabb) =>
             {
-                self.aabb_aabb(other)
+                self.aabb_aabb(&mut other)
             }
         }
     }

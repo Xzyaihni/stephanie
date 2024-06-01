@@ -243,13 +243,9 @@ impl VisualOvermap
 
     pub fn process_message(&mut self)
     {
-        match self.receiver.try_recv()
+        if let Ok(generated) = self.receiver.try_recv()
         {
-            Ok(generated) =>
-            {
-                self.handle_generated(generated);
-            },
-            _ => ()
+            self.handle_generated(generated);
         }
     }
 
