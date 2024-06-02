@@ -1,4 +1,5 @@
 use std::{
+    f32,
     fmt::Debug,
     sync::Arc,
     net::TcpStream,
@@ -236,6 +237,11 @@ impl SeededRandom
     {
         self.next_u64() % 2 == 0
     }
+}
+
+pub fn random_rotation() -> f32
+{
+    fastrand::f32() * (f32::consts::PI * 2.0)
 }
 
 // thanks freya holmer

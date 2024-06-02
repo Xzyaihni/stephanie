@@ -132,6 +132,7 @@ pub enum ZLevel
 pub struct RenderInfo
 {
     pub visible: bool,
+    pub outlined: bool,
     pub scissor: Option<Scissor>,
     pub object: Option<RenderObject>,
     pub shape: Option<BoundingShape>,
@@ -144,6 +145,7 @@ impl Default for RenderInfo
     {
         Self{
             visible: true,
+            outlined: false,
             scissor: None,
             object: None,
             shape: Some(BoundingShape::Circle),
@@ -216,6 +218,7 @@ impl GameObject for ClientRenderObject
 pub struct ClientRenderInfo
 {
     pub visible: bool,
+    pub outlined: bool,
     pub scissor: Option<VulkanoScissor>,
     pub object: Option<ClientRenderObject>,
     pub shape: Option<BoundingShape>,
@@ -242,6 +245,7 @@ impl ServerToClient<ClientRenderInfo> for RenderInfo
 
         ClientRenderInfo{
             visible: self.visible,
+            outlined: self.outlined,
             scissor,
             object,
             shape: self.shape,

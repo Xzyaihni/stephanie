@@ -373,7 +373,8 @@ impl<'a> PlayerContainer<'a>
                         Watcher{
                             kind: WatcherType::Lifetime(2.5),
                             action: WatcherAction::Explode(ExplodeInfo{
-                                amount: 2..5,
+                                amount: 3..5,
+                                speed: 0.1,
                                 info: EntityInfo{
                                     physical: Some(PhysicalProperties{
                                         mass: 0.05,
@@ -381,8 +382,9 @@ impl<'a> PlayerContainer<'a>
                                         floating: true
                                     }.into()),
                                     lazy_transform: Some(LazyTransformInfo{
+                                        scaling: Scaling::EaseOut{decay: 4.0},
                                         transform: Transform{
-                                            scale: Vector3::repeat(ENTITY_SCALE * 0.3),
+                                            scale: Vector3::repeat(ENTITY_SCALE * 0.4),
                                             ..Default::default()
                                         },
                                         ..Default::default()
@@ -394,6 +396,19 @@ impl<'a> PlayerContainer<'a>
                                         z_level: ZLevel::Low,
                                         ..Default::default()
                                     }),
+                                    watchers: Some(Watchers::new(vec![
+                                        Watcher{
+                                            kind: WatcherType::Instant,
+                                            action: WatcherAction::SetTargetScale(Vector3::zeros())
+                                        },
+                                        Watcher{
+                                            kind: WatcherType::ScaleDistance{
+                                                from: Vector3::zeros(),
+                                                near: 0.01
+                                            },
+                                            action: WatcherAction::Remove
+                                        }
+                                    ])),
                                     ..Default::default()
                                 }
                             })

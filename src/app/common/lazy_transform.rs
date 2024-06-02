@@ -430,10 +430,10 @@ impl LazyTransform
             Deformation::Stretch(deformation) =>
             {
                 let local_velocity = self.physical().map(|x| x.velocity)
-                    .unwrap_or_else(Vector3::zeros);
+                    .unwrap_or_default();
 
                 let global_velocity = physical.map(|x| x.velocity)
-                    .unwrap_or_else(Vector3::zeros);
+                    .unwrap_or_default();
 
                 let velocity = global_velocity + local_velocity;
 

@@ -187,18 +187,47 @@ impl Parent
 
 pub type UiElementServer = ();
 
+macro_rules! normal_define
+{
+    ($(($fn_ref:ident, $fn_mut:ident, $value:ident)),+) =>
+    {
+        $(
+        fn $fn_ref(&self, entity: Entity) -> Option<Ref<$value>>;
+        fn $fn_mut(&self, entity: Entity) -> Option<RefMut<$value>>;
+        )+
+    }
+}
+
+macro_rules! normal_forward_impl
+{
+    ($(($fn_ref:ident, $fn_mut:ident, $value:ident)),+) =>
+    {
+        $(
+        fn $fn_ref(&self, entity: Entity) -> Option<Ref<$value>>
+        {
+            Self::$fn_ref(self, entity)
+        }
+
+        fn $fn_mut(&self, entity: Entity) -> Option<RefMut<$value>>
+        {
+            Self::$fn_mut(self, entity)
+        }
+        )+
+    }
+}
+
 pub trait AnyEntities
 {
     type CreateInfo<'a>;
 
-    fn transform(&self, entity: Entity) -> Option<Ref<Transform>>;
-    fn transform_mut(&self, entity: Entity) -> Option<RefMut<Transform>>;
+    normal_define!{
+        (transform, transform_mut, Transform),
+        (parent, parent_mut, Parent),
+        (physical, physical_mut, Physical)
+    }
 
     fn lazy_target_ref(&self, entity: Entity) -> Option<Ref<Transform>>;
     fn lazy_target(&self, entity: Entity) -> Option<RefMut<Transform>>;
-
-    fn parent(&self, entity: Entity) -> Option<Ref<Parent>>;
-    fn parent_mut(&self, entity: Entity) -> Option<RefMut<Parent>>;
 
     fn visible_target(&self, entity: Entity) -> Option<RefMut<bool>>;
 
@@ -247,14 +276,10 @@ macro_rules! common_trait_impl
 {
     () =>
     {
-        fn transform(&self, entity: Entity) -> Option<Ref<Transform>>
-        {
-            Self::transform(self, entity)
-        }
-
-        fn transform_mut(&self, entity: Entity) -> Option<RefMut<Transform>>
-        {
-            Self::transform_mut(self, entity)
+        normal_forward_impl!{
+            (transform, transform_mut, Transform),
+            (parent, parent_mut, Parent),
+            (physical, physical_mut, Physical)
         }
 
         fn lazy_target_ref(&self, entity: Entity) -> Option<Ref<Transform>>
@@ -271,16 +296,6 @@ macro_rules! common_trait_impl
             {
                 RefMut::map(lazy, |x| x.target())
             })
-        }
-
-        fn parent(&self, entity: Entity) -> Option<Ref<Parent>>
-        {
-            Self::parent(self, entity)
-        }
-
-        fn parent_mut(&self, entity: Entity) -> Option<RefMut<Parent>>
-        {
-            Self::parent_mut(self, entity)
         }
 
         fn visible_target(&self, entity: Entity) -> Option<RefMut<bool>>

@@ -5,6 +5,7 @@ use nalgebra::Vector3;
 use yanyaengine::Transform;
 
 use crate::common::{
+    random_rotation,
     render_info::*,
     collider::*,
     Anatomy,
@@ -51,7 +52,7 @@ impl<'a> EnemyBuilder<'a>
                 transform: Transform{
                     position: self.pos,
                     scale: Vector3::repeat(info.scale),
-                    rotation: fastrand::f32() * (f32::consts::PI * 2.0),
+                    rotation: random_rotation(),
                     ..Default::default()
                 },
                 ..Default::default()
