@@ -108,7 +108,8 @@ pub struct ClientInitInfo
     pub client_info: ClientInfo,
     pub tilemap: TileMapWithTextures,
     pub items_info: Arc<ItemsInfo>,
-    pub enemies_info: Arc<EnemiesInfo>
+    pub enemies_info: Arc<EnemiesInfo>,
+    pub host: bool
 }
 
 pub struct ClientInfo
@@ -148,7 +149,8 @@ impl Client
             enemies_info: client_init_info.enemies_info,
             tiles_factory,
             message_passer,
-            client_info: &client_init_info.client_info
+            client_info: &client_init_info.client_info,
+            host: client_init_info.host
         };
 
         let game_state = GameState::new(info);

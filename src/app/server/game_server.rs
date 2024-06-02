@@ -154,7 +154,7 @@ impl GameServer
 
                 ControlFlow::Continue(())
             },
-            move || other_this.lock().connection_close(id, player)
+            move || other_this.lock().connection_close(false, id, player)
         );
 
         Ok(())
@@ -329,7 +329,7 @@ impl GameServer
 
         let (connection, messager) = self.player_create(player_entities, player_info)?;
 
-        self.world.add_player(connection, position.into());
+        self.world.add_player(&mut self.entities, connection, position.into());
 
         Ok((inserted, connection, messager))
     }
@@ -380,12 +380,24 @@ impl GameServer
         Ok((connection_id, messager.clone_messager()))
     }
 
-    fn connection_close(&mut self, id: ConnectionId, entity: Entity)
+    fn connection_close(&mut self, host: bool, id: ConnectionId, entity: Entity)
     {
-        let mut writer = self.connection_handler.write();
+        let removed = self.connection_handler.write().remove_connection(id);
 
-        self.world.remove_player(id);
-        writer.remove_connection(id);
+        self.world.remove_player(&mut self.entities, id);
+
+        if host
+        {
+            self.world.exit(&mut self.entities);
+        }
+
+        if let Some(mut removed) = removed
+        {
+            if let Err(err) = removed.send_blocking(Message::PlayerDisconnectFinished)
+            {
+                eprintln!("error while disconnecting: {err}");
+            }
+        }
 
         {
             let player = (self.entities.exists(entity))
@@ -398,7 +410,7 @@ impl GameServer
             }
         }
 
-        writer.send_message(self.entities.remove_message(entity));
+        self.connection_handler.write().send_message(self.entities.remove_message(entity));
     }
 
     fn process_message_inner(&mut self, message: Message, id: ConnectionId, player: Entity)
@@ -431,7 +443,11 @@ impl GameServer
             None => return
         };
 
-        panic!("unhandled message: {message:?}")
+        match message
+        {
+            Message::PlayerDisconnect{host} => self.connection_close(host, id, player),
+            x => panic!("unhandled message: {x:?}")
+        }
     }
 
     fn send_message(&mut self, message: Message)

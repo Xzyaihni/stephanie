@@ -60,9 +60,16 @@ impl ConnectionsHandler
         Self{connections, limit}
     }
 
-    pub fn remove_connection(&mut self, id: ConnectionId)
+    pub fn remove_connection(&mut self, id: ConnectionId) -> Option<PlayerInfo>
     {
-        self.connections.remove(id.0);
+        let mut removed = self.connections.remove(id.0);
+
+        if let Some(removed) = removed.as_mut()
+        {
+            removed.message_buffer.clear();
+        }
+
+        removed
     }
 
     pub fn under_limit(&self) -> bool

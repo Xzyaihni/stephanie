@@ -75,9 +75,9 @@ impl YanyaApp for App
         let items_info = Arc::new(items_info);
         let enemies_info = Arc::new(enemies_info);
 
-        let client_address = if let Some(address) = address
+        let (host, client_address) = if let Some(address) = address
         {
-            address
+            (false, address)
         } else
         {
             let (tx, rx) = mpsc::channel();
@@ -118,7 +118,7 @@ impl YanyaApp for App
             let port = rx.recv().unwrap();
 
             println!("listening on port {port}");
-            format!("127.0.0.1:{port}")
+            (true, format!("127.0.0.1:{port}"))
         };
 
         let client_init_info = ClientInitInfo{
@@ -129,7 +129,8 @@ impl YanyaApp for App
             },
             tilemap: deferred_parse().unwrap(),
             items_info,
-            enemies_info
+            enemies_info,
+            host
         };
 
         Self(Client::new(partial_info, client_init_info).unwrap())

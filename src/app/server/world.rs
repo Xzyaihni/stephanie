@@ -129,7 +129,12 @@ impl World
         })
     }
 
-    pub fn add_player(&mut self, id: ConnectionId, position: Pos3<f32>)
+    pub fn add_player(
+        &mut self,
+        container: &mut ServerEntities,
+        id: ConnectionId,
+        position: Pos3<f32>
+    )
     {
         let size = Pos3::new(SERVER_OVERMAP_SIZE, SERVER_OVERMAP_SIZE, SERVER_OVERMAP_SIZE_Z);
         let overmap = ServerOvermap::new(
@@ -143,12 +148,20 @@ impl World
 
         self.client_indexers.insert(id, indexer);
         self.overmaps.write().insert(id, overmap);
+
+        self.unload_entities(container);
     }
 
-    pub fn remove_player(&mut self, id: ConnectionId)
+    pub fn remove_player(
+        &mut self,
+        container: &mut ServerEntities,
+        id: ConnectionId
+    )
     {
         self.client_indexers.remove(&id);
         self.overmaps.write().remove(&id);
+
+        self.unload_entities(container);
     }
 
     pub fn player_moved(
@@ -170,15 +183,32 @@ impl World
 
         if position_changed
         {
-            let mut writer = self.message_handler.write();
-            Self::unload_entities(&mut self.entities_saver, container, &mut writer, |global|
-            {
-                self.client_indexers.iter().any(|(_, indexer)|
-                {
-                    indexer.inbounds(global)
-                })
-            });
+            self.unload_entities(container);
         }
+    }
+
+    pub fn unload_entities(
+        &mut self,
+        container: &mut ServerEntities
+    )
+    {
+        let mut writer = self.message_handler.write();
+        Self::unload_entities_inner(&mut self.entities_saver, container, &mut writer, |global|
+        {
+            self.client_indexers.iter().any(|(_, indexer)|
+            {
+                indexer.inbounds(global)
+            })
+        });
+    }
+
+    pub fn exit(&mut self, container: &mut ServerEntities)
+    {
+        let mut writer = self.message_handler.write();
+        Self::unload_entities_inner(&mut self.entities_saver, container, &mut writer, |global|
+        {
+            false
+        });
     }
 
     pub fn send_chunk(
@@ -387,7 +417,7 @@ impl World
         (delete_ids, delete_entities)
     }
 
-    pub fn unload_entities<F>(
+    fn unload_entities_inner<F>(
         saver: &mut EntitiesSaver,
         container: &mut ServerEntities,
         message_handler: &mut ConnectionsHandler,

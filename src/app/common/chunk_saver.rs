@@ -155,6 +155,7 @@ where
 {
     fn drop(&mut self)
     {
+        // eprintln!("saving: {}", std::any::type_name::<T>().split("::").last().unwrap());
         self.file_saver.lock().save(self.pair.take().unwrap());
     }
 }

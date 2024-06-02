@@ -301,6 +301,11 @@ impl MessagePasser
 
     pub fn send_many(&mut self, messages: &Vec<Message>) -> Result<(), bincode::Error>
     {
+        if messages.is_empty()
+        {
+            return Ok(());
+        }
+
         bincode::serialize_into(&mut self.stream, messages)
     }
 

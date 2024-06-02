@@ -44,6 +44,8 @@ pub enum Message
     PlayerConnect{name: String},
     PlayerOnConnect{player_entities: PlayerEntities},
     PlayerFullyConnected,
+    PlayerDisconnect{host: bool},
+    PlayerDisconnectFinished,
     ChunkRequest{pos: GlobalPos},
     ChunkSync{pos: GlobalPos, chunk: Chunk},
     RepeatMessage{message: Box<Message>}
@@ -58,7 +60,9 @@ impl Message
             Message::ChunkRequest{..}
             | Message::PlayerConnect{..}
             | Message::PlayerOnConnect{..}
-            | Message::PlayerFullyConnected => false,
+            | Message::PlayerFullyConnected
+            | Message::PlayerDisconnect{..}
+            | Message::PlayerDisconnectFinished => false,
             _ => true
         }
     }
@@ -85,6 +89,8 @@ impl Message
             Message::PlayerConnect{..}
             | Message::PlayerOnConnect{..}
             | Message::PlayerFullyConnected
+            | Message::PlayerDisconnect{..}
+            | Message::PlayerDisconnectFinished
             | Message::ChunkRequest{..}
             | Message::ChunkSync{..}
             | Message::RepeatMessage{..} => None
@@ -108,6 +114,11 @@ impl MessageBuffer
     pub fn set_message(&mut self, message: Message)
     {
         self.buffer.push(message);
+    }
+
+    pub fn clear(&mut self)
+    {
+        self.buffer.clear();
     }
 
     pub fn get_buffered(&mut self) -> Vec<Message>

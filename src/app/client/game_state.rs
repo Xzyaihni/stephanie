@@ -432,7 +432,8 @@ pub struct GameStateInfo<'a>
     pub enemies_info: Arc<EnemiesInfo>,
     pub tiles_factory: TilesFactory,
     pub message_passer: MessagePasser,
-    pub client_info: &'a ClientInfo
+    pub client_info: &'a ClientInfo,
+    pub host: bool
 }
 
 pub enum UserEvent
@@ -456,11 +457,32 @@ pub struct GameState
     pub items_info: Arc<ItemsInfo>,
     pub user_receiver: Rc<RefCell<Vec<UserEvent>>>,
     pub ui: Ui,
+    host: bool,
     camera_scale: f32,
     enemies_info: Arc<EnemiesInfo>,
     world: World,
     connections_handler: Arc<RwLock<ConnectionsHandler>>,
     receiver: Receiver<Message>
+}
+
+impl Drop for GameState
+{
+    fn drop(&mut self)
+    {
+        let mut writer = self.connections_handler.write();
+        if let Err(err) = writer.send_blocking(&Message::PlayerDisconnect{host: self.host})
+        {
+            eprintln!("error sending player disconnect message: {err}");
+        }
+
+        while let Ok(x) = self.receiver.recv()
+        {
+            if let Message::PlayerDisconnectFinished = x
+            {
+                return;
+            }
+        }
+    }
 }
 
 impl GameState
@@ -543,6 +565,7 @@ impl GameState
             camera_scale: 1.0,
             world,
             ui,
+            host: info.host,
             user_receiver,
             connections_handler,
             receiver
