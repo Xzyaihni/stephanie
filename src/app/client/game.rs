@@ -335,6 +335,8 @@ impl<'a> PlayerContainer<'a>
                     Vector3::new(rotation.cos(), rotation.sin(), 0.0)
                 };
 
+                let dust_texture = self.game_state.common_textures.dust;
+
                 let mut physical: Physical = PhysicalProperties{
                     mass: item_info.mass,
                     friction: 0.5,
@@ -370,7 +372,31 @@ impl<'a> PlayerContainer<'a>
                     watchers: Some(Watchers::new(vec![
                         Watcher{
                             kind: WatcherType::Lifetime(2.5),
-                            action: WatcherAction::Remove
+                            action: WatcherAction::Explode(ExplodeInfo{
+                                amount: 2..5,
+                                info: EntityInfo{
+                                    physical: Some(PhysicalProperties{
+                                        mass: 0.05,
+                                        friction: 0.1,
+                                        floating: true
+                                    }.into()),
+                                    lazy_transform: Some(LazyTransformInfo{
+                                        transform: Transform{
+                                            scale: Vector3::repeat(ENTITY_SCALE * 0.3),
+                                            ..Default::default()
+                                        },
+                                        ..Default::default()
+                                    }.into()),
+                                    render: Some(RenderInfo{
+                                        object: Some(RenderObject::TextureId{
+                                            id: dust_texture
+                                        }),
+                                        z_level: ZLevel::Low,
+                                        ..Default::default()
+                                    }),
+                                    ..Default::default()
+                                }
+                            })
                         }
                     ])),
                     ..Default::default()

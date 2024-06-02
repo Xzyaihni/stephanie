@@ -9,6 +9,7 @@ use serde::{Serialize, Deserialize};
 
 use crate::common::{
     Entity,
+    EntityInfo,
     entity::AnyEntities
 };
 
@@ -54,8 +55,8 @@ impl WatcherType
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExplodeInfo
 {
-    amount: Range<usize>,
-    info: ()
+    pub amount: Range<usize>,
+    pub info: EntityInfo
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -79,6 +80,7 @@ impl WatcherAction
 {
     pub fn execute<E: AnyEntities>(
         self,
+        create_info: &mut E::CreateInfo<'_>,
         entities: &mut E,
         entity: Entity
     )
@@ -97,11 +99,21 @@ impl WatcherAction
             {
                 entities.remove(entity);
             },
-            Self::Explode(info) =>
+            Self::Explode(mut info) =>
             {
+                let position = entities.transform(entity).unwrap().position;
                 entities.remove(entity);
 
-                todo!();
+                let amount = fastrand::usize(info.amount);
+                (0..amount).for_each(|_|
+                {
+                    if let Some(target) = info.info.target()
+                    {
+                        target.position = position;
+                    }
+
+                    entities.push(create_info, info.info.clone());
+                })
             }
         }
     }

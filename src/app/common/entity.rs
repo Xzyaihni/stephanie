@@ -189,6 +189,8 @@ pub type UiElementServer = ();
 
 pub trait AnyEntities
 {
+    type CreateInfo<'a>;
+
     fn transform(&self, entity: Entity) -> Option<Ref<Transform>>;
     fn transform_mut(&self, entity: Entity) -> Option<RefMut<Transform>>;
 
@@ -200,6 +202,8 @@ pub trait AnyEntities
     fn visible_target(&self, entity: Entity) -> Option<RefMut<bool>>;
 
     fn remove(&mut self, entity: Entity);
+    // i cant make remove the &mut cuz reborrowing would stop working :/
+    fn push(&mut self, create_info: &mut Self::CreateInfo<'_>, info: EntityInfo) -> Entity;
 
     fn target(&self, entity: Entity) -> Option<RefMut<Transform>>
     {
@@ -320,18 +324,73 @@ macro_rules! define_entities
             }
         }
 
+        impl EntityInfo
+        {
+            pub fn target_ref(&self) -> Option<&Transform>
+            {
+                self.lazy_transform.as_ref()
+                    .map(|lazy| lazy.target_ref())
+                    .or_else(|| self.transform.as_ref())
+            }
+
+            pub fn target(&mut self) -> Option<&mut Transform>
+            {
+                self.lazy_transform.as_mut()
+                    .map(|lazy| lazy.target())
+                    .or_else(|| self.transform.as_mut())
+            }
+        }
+
         pub type ClientEntityInfo = EntityInfo<ClientRenderInfo, LazyTransform, UiElement>;
         pub type ClientEntities = Entities<ClientRenderInfo, LazyTransform, UiElement>;
         pub type ServerEntities = Entities;
 
+        impl ClientEntityInfo
+        {
+            pub fn from_server(
+                create_info: &mut ObjectCreateInfo,
+                info: EntityInfo
+            ) -> Self
+            {
+                let transform = info.target_ref().cloned();
+
+                Self{
+                    $($name: info.$name.map(|x|
+                    {
+                        x.server_to_client(|| transform.clone().unwrap(), create_info)
+                    }),)+
+                }
+            }
+        }
+
         impl AnyEntities for ClientEntities
         {
+            type CreateInfo<'a> = ObjectCreateInfo<'a>;
+
             common_trait_impl!{}
+
+            fn push(
+                &mut self,
+                create_info: &mut Self::CreateInfo<'_>,
+                info: EntityInfo
+            ) -> Entity
+            {
+                let info = ClientEntityInfo::from_server(create_info, info);
+
+                Self::push(self, info)
+            }
         }
 
         impl AnyEntities for ServerEntities
         {
+            type CreateInfo<'a> = ();
+
             common_trait_impl!{}
+
+            fn push(&mut self, _create_info: &mut (), info: EntityInfo) -> Entity
+            {
+                Self::push(self, info)
+            }
         }
 
         pub struct Entities<$($component_type=$default_type,)+>
@@ -425,7 +484,11 @@ macro_rules! define_entities
                 });
             }
 
-            pub fn update_watchers(&mut self, dt: f32)
+            pub fn update_watchers(
+                &mut self,
+                create_info: &mut <Self as AnyEntities>::CreateInfo<'_>,
+                dt: f32
+            )
             where
                 for<'a> &'a mut WatchersType: Into<&'a mut Watchers>
             {
@@ -444,7 +507,7 @@ macro_rules! define_entities
                 {
                     actions.into_iter().for_each(|action|
                     {
-                        action.execute(self, entity);
+                        action.execute(create_info, self, entity);
                     });
                 });
             }

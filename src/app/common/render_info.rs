@@ -146,7 +146,7 @@ impl Default for RenderInfo
             visible: true,
             scissor: None,
             object: None,
-            shape: None,
+            shape: Some(BoundingShape::Circle),
             z_level: ZLevel::Middle
         }
     }

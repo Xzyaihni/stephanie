@@ -20,6 +20,7 @@ use yanyaengine::{
     Assets,
     ObjectFactory,
     Transform,
+    TextureId,
     camera::Camera,
     game_object::*
 };
@@ -132,11 +133,12 @@ impl ClientEntitiesContainer
         &mut self,
         visibility: &VisibilityChecker,
         enemies_info: &EnemiesInfo,
-        info: &mut UpdateBuffersInfo
+        info: &mut UpdateBuffersInfo,
+        dt: f32
     )
     {
-        self.entities.update_sprites(&mut info.object_info, enemies_info);
-        self.local_entities.update_sprites(&mut info.object_info, enemies_info);
+        Self::update_entities_buffers(enemies_info, info, &mut self.entities, dt);
+        Self::update_entities_buffers(enemies_info, info, &mut self.local_entities, dt);
 
         mem::take(&mut self.local_objects).into_iter().for_each(|(is_local, entity, object)|
         {
@@ -182,6 +184,17 @@ impl ClientEntitiesContainer
         self.update_buffers(visibility, info);
     }
 
+    fn update_entities_buffers(
+        enemies_info: &EnemiesInfo,
+        info: &mut UpdateBuffersInfo,
+        entities: &mut ClientEntities,
+        dt: f32
+    )
+    {
+        entities.update_sprites(&mut info.object_info, enemies_info);
+        entities.update_watchers(&mut info.object_info, dt);
+    }
+
     pub fn update(&mut self, passer: &mut impl EntityPasser, dt: f32)
     {
         Self::update_entities(&mut self.entities, dt);
@@ -203,7 +216,6 @@ impl ClientEntitiesContainer
         entities.update_lazy(dt);
         entities.update_enemy(dt);
         entities.update_visibility();
-        entities.update_watchers(dt);
     }
 
     pub fn main_player(&self) -> Entity
@@ -443,6 +455,21 @@ pub enum UserEvent
     Take(InventoryItem)
 }
 
+pub struct CommonTextures
+{
+    pub dust: TextureId
+}
+
+impl CommonTextures
+{
+    pub fn new(assets: &Assets) -> Self
+    {
+        Self{
+            dust: assets.texture_id("decals/dust.png")
+        }
+    }
+}
+
 pub struct GameState
 {
     pub mouse_position: Vector2<f32>,
@@ -458,8 +485,10 @@ pub struct GameState
     pub items_info: Arc<ItemsInfo>,
     pub user_receiver: Rc<RefCell<Vec<UserEvent>>>,
     pub ui: Ui,
+    pub common_textures: CommonTextures,
     host: bool,
     camera_scale: f32,
+    dt: f32,
     enemies_info: Arc<EnemiesInfo>,
     world: World,
     connections_handler: Arc<RwLock<ConnectionsHandler>>,
@@ -550,10 +579,13 @@ impl GameState
             )
         };
 
+        let assets = info.object_info.partial.assets;
+        let common_textures = CommonTextures::new(&assets.lock());
+
         let this = Self{
             mouse_position,
             camera: info.camera,
-            assets: info.object_info.partial.assets,
+            assets,
             object_factory: info.object_info.partial.object_factory,
             notifications,
             entities,
@@ -564,8 +596,10 @@ impl GameState
             debug_mode: info.client_info.debug_mode,
             tilemap,
             camera_scale: 1.0,
+            dt: 0.0,
             world,
             ui,
+            common_textures,
             host: info.host,
             user_receiver,
             connections_handler,
@@ -785,7 +819,7 @@ impl GameState
 
         self.world.update_buffers(info);
 
-        self.entities.update_objects(&visibility, &self.enemies_info, info);
+        self.entities.update_objects(&visibility, &self.enemies_info, info, self.dt);
     }
 
     pub fn draw(&self, info: &mut DrawInfo)
@@ -882,6 +916,8 @@ impl GameState
         self.entities.update(&mut *passer, dt);
 
         self.ui.update_after(&mut self.entities.entity_creator(), &self.camera.read());
+
+        self.dt = dt;
     }
 
     pub fn update_inventory(&mut self)
