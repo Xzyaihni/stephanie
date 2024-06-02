@@ -27,6 +27,7 @@ pub use lazy_transform::{
 };
 
 pub use entity::{
+    AnyEntities,
     ServerToClient,
     Component,
     Parent,
@@ -65,6 +66,7 @@ pub mod render_info;
 pub mod damage;
 pub mod anatomy;
 
+pub mod watcher;
 pub mod lazy_transform;
 pub mod entity;
 

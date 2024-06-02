@@ -5,6 +5,7 @@ use serde::{Serialize, Deserialize};
 use strum_macros::EnumCount;
 
 use crate::common::{
+    watcher::*,
     Transform,
     Collider,
     Physical,
@@ -19,6 +20,7 @@ use crate::common::{
     Anatomy,
     RenderInfo,
     LazyTransform,
+    entity::UiElementServer,
     world::{Chunk, GlobalPos}
 };
 
@@ -35,9 +37,10 @@ pub enum Message
     SetPlayer{entity: Entity, player: Player},
     SetCollider{entity: Entity, collider: Collider},
     SetPhysical{entity: Entity, physical: Physical},
+    SetWatchers{entity: Entity, watchers: Watchers},
     SetAnatomy{entity: Entity, anatomy: Anatomy},
     SetEnemy{entity: Entity, enemy: Enemy},
-    SetUiElement{entity: Entity, ui_element: ()},
+    SetUiElement{entity: Entity, ui_element: UiElementServer},
     SetTarget{entity: Entity, target: Transform},
     EntityDestroy{entity: Entity},
     EntityDamage{entity: Entity, damage: Damage},
@@ -80,6 +83,7 @@ impl Message
             | Message::SetPlayer{entity, ..}
             | Message::SetCollider{entity, ..}
             | Message::SetPhysical{entity, ..}
+            | Message::SetWatchers{entity, ..}
             | Message::SetAnatomy{entity, ..}
             | Message::SetEnemy{entity, ..}
             | Message::SetUiElement{entity, ..}

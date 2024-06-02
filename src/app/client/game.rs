@@ -13,6 +13,8 @@ use crate::common::{
     render_info::*,
     lazy_transform::*,
     collider::*,
+    watcher::*,
+    AnyEntities,
     Physical,
     PhysicalProperties,
     Entity,
@@ -69,7 +71,9 @@ impl Game
 
     pub fn on_player_connected(&mut self, game_state: &mut GameState)
     {
-        self.player_container(game_state).camera_sync_instant();
+        let mut container = self.player_container(game_state);
+        container.camera_sync_instant();
+        container.update_inventory();
     }
 
     pub fn update(&mut self, game_state: &mut GameState, dt: f32)
@@ -97,6 +101,7 @@ struct PlayerInfo
 {
     items_info: Arc<ItemsInfo>,
     entity: Entity,
+    inventory_open: bool,
     camera_follow: f32
 }
 
@@ -104,7 +109,7 @@ impl PlayerInfo
 {
     pub fn new(items_info: Arc<ItemsInfo>, entity: Entity) -> Self
     {
-        Self{items_info, entity, camera_follow: 0.25}
+        Self{items_info, entity, inventory_open: false, camera_follow: 0.25}
     }
 }
 
@@ -261,21 +266,52 @@ impl<'a> PlayerContainer<'a>
 
     fn toggle_inventory(&mut self)
     {
+        self.info.inventory_open = !self.info.inventory_open;
+
+        self.update_inventory();
+    }
+
+    fn update_inventory(&mut self)
+    {
         let inventory = self.game_state.ui.player_inventory.body();
-
         let local_entities = &mut self.game_state.entities.local_entities;
-        let mut parent = local_entities.parent_mut(inventory).unwrap();
 
-        parent.visible = !parent.visible;
-        if parent.visible
+        if self.info.inventory_open 
         {
-            drop(parent);
-
             local_entities.set_collider(inventory, Some(ColliderInfo{
                 kind: ColliderType::Aabb,
                 layer: ColliderLayer::Ui,
                 ..Default::default()
             }.into()));
+
+            *local_entities.visible_target(inventory).unwrap() = true;
+
+            let mut lazy = local_entities.lazy_transform_mut(inventory).unwrap();
+            lazy.target().scale = Vector3::repeat(0.2);
+        } else
+        {
+            local_entities.set_collider(inventory, None);
+
+            {
+                let mut lazy = local_entities.lazy_transform_mut(inventory).unwrap();
+                lazy.target().scale = Vector3::zeros();
+            }
+
+            if local_entities.watchers(inventory).is_none()
+            {
+                local_entities.set_watchers(inventory, Some(Watchers::default()));
+            }
+
+            let watchers = local_entities.watchers_mut(inventory);
+            if let Some(mut watchers) = watchers
+            {
+                let watcher = Watcher{
+                    kind: WatcherType::ScaleDistance{from: Vector3::zeros(), near: 0.2},
+                    action: WatcherAction::SetVisible(false)
+                };
+
+                watchers.push(watcher);
+            }
         }
     }
 

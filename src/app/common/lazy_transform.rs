@@ -120,6 +120,14 @@ pub enum Rotation
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum Scaling
+{
+    Instant,
+    EaseOut{decay: f32},
+    Constant{speed: f32}
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Deformation
 {
     Rigid,
@@ -136,6 +144,7 @@ pub struct LazyTransformInfo
 {
     pub connection: Connection,
     pub rotation: Rotation,
+    pub scaling: Scaling,
     pub deformation: Deformation,
     pub origin_rotation: f32,
     pub origin: Vector3<f32>,
@@ -150,6 +159,7 @@ impl Default for LazyTransformInfo
         Self{
             connection: Connection::Rigid,
             rotation: Rotation::Instant,
+            scaling: Scaling::Instant,
             deformation: Deformation::Rigid,
             origin_rotation: 0.0,
             origin: Vector3::zeros(),
@@ -166,9 +176,10 @@ pub struct LazyTransform
     origin_rotation: f32,
     origin: Vector3<f32>,
     inherit_scale: bool,
-    connection: Connection,
-    rotation: Rotation,
-    deformation: Deformation
+    pub connection: Connection,
+    pub rotation: Rotation,
+    pub scaling: Scaling,
+    pub deformation: Deformation
 }
 
 impl LazyTargettable for LazyTransform
@@ -195,6 +206,7 @@ impl From<LazyTransformInfo> for LazyTransform
             inherit_scale: info.inherit_scale,
             connection: info.connection,
             rotation: info.rotation,
+            scaling: info.scaling,
             deformation: info.deformation
         }
     }
@@ -212,7 +224,43 @@ impl LazyTransform
     {
         let mut target_global = self.target_global(parent_transform.as_ref());
 
-        current.scale = target_global.scale;
+        let constant_change = |current: &mut Vector3<f32>, target: Vector3<f32>, speed|
+        {
+            let max_move = Vector3::repeat(speed * dt);
+
+            let current_difference = target - *current;
+
+            let move_amount = current_difference.zip_map(&max_move, |diff, limit: f32|
+            {
+                diff.clamp(-limit, limit)
+            });
+
+            *current += move_amount;
+        };
+
+        let ease_out_change = |current: &mut Vector3<f32>, target: Vector3<f32>, decay: f32|
+        {
+            *current = current.zip_map(&target, |a, b|
+            {
+                ease_out(a, b, decay, dt)
+            });
+        };
+
+        match &self.scaling
+        {
+            Scaling::Instant =>
+            {
+                current.scale = target_global.scale;
+            },
+            Scaling::Constant{speed} =>
+            {
+                constant_change(&mut current.scale, target_global.scale, speed)
+            },
+            Scaling::EaseOut{decay} =>
+            {
+                ease_out_change(&mut current.scale, target_global.scale, *decay)
+            }
+        }
 
         match &self.rotation
         {
@@ -336,16 +384,7 @@ impl LazyTransform
             },
             Connection::Constant{speed} =>
             {
-                let max_move = Vector3::repeat(*speed * dt);
-
-                let current_difference = target_global.position - current.position;
-
-                let move_amount = current_difference.zip_map(&max_move, |diff, limit|
-                {
-                    diff.clamp(-limit, limit)
-                });
-
-                current.position += move_amount;
+                constant_change(&mut current.position, target_global.position, speed)
             },
             Connection::Limit{limit} =>
             {
@@ -357,14 +396,11 @@ impl LazyTransform
             },
             Connection::EaseOut{decay, limit} =>
             {
-                let new_position = current.position.zip_map(&target_global.position, |a, b|
-                {
-                    ease_out(a, b, *decay, dt)
-                });
+                ease_out_change(&mut current.position, target_global.position, *decay);
 
                 current.position = Self::clamp_distance(
                     target_global.position,
-                    new_position,
+                    current.position,
                     *limit
                 );
             },

@@ -205,7 +205,7 @@ impl World
     pub fn exit(&mut self, container: &mut ServerEntities)
     {
         let mut writer = self.message_handler.write();
-        Self::unload_entities_inner(&mut self.entities_saver, container, &mut writer, |global|
+        Self::unload_entities_inner(&mut self.entities_saver, container, &mut writer, |_global|
         {
             false
         });

@@ -125,6 +125,8 @@ impl GameServer
             self.entities.update_lazy();
             self.entities.update_enemy(&mut messager, dt);
         }
+
+        self.entities.update_watchers();
     }
 
     pub fn connect(this: Arc<Mutex<Self>>, stream: TcpStream) -> Result<(), ConnectionError>

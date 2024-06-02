@@ -15,6 +15,7 @@ use crate::{
     common::{
         render_info::*,
         collider::*,
+        watcher::*,
         EntityPasser,
         Inventory,
         Anatomy,
@@ -138,6 +139,7 @@ no_on_set!{
     Player,
     Collider,
     Physical,
+    Watchers,
     UiElement,
     UiElementServer
 }
@@ -183,7 +185,28 @@ impl Parent
     }
 }
 
-type UiElementServer = ();
+pub type UiElementServer = ();
+
+pub trait AnyEntities
+{
+    fn transform(&self, entity: Entity) -> Option<Ref<Transform>>;
+    fn transform_mut(&self, entity: Entity) -> Option<RefMut<Transform>>;
+
+    fn lazy_target(&self, entity: Entity) -> Option<RefMut<Transform>>;
+
+    fn parent(&self, entity: Entity) -> Option<Ref<Parent>>;
+    fn parent_mut(&self, entity: Entity) -> Option<RefMut<Parent>>;
+
+    fn visible_target(&self, entity: Entity) -> Option<RefMut<bool>>;
+
+    fn target(&self, entity: Entity) -> Option<RefMut<Transform>>
+    {
+        self.lazy_target(entity).or_else(||
+        {
+            self.transform_mut(entity)
+        })
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct ComponentWrapper<T>
@@ -202,6 +225,54 @@ impl<T> ComponentWrapper<T>
     pub fn get_mut(&self) -> RefMut<T>
     {
         self.component.borrow_mut()
+    }
+}
+
+macro_rules! common_trait_impl
+{
+    () =>
+    {
+        fn transform(&self, entity: Entity) -> Option<Ref<Transform>>
+        {
+            Self::transform(self, entity)
+        }
+
+        fn transform_mut(&self, entity: Entity) -> Option<RefMut<Transform>>
+        {
+            Self::transform_mut(self, entity)
+        }
+
+        fn lazy_target(&self, entity: Entity) -> Option<RefMut<Transform>>
+        {
+            Self::lazy_transform_mut(self, entity).map(|lazy|
+            {
+                RefMut::map(lazy, |x| x.target())
+            })
+        }
+
+        fn parent(&self, entity: Entity) -> Option<Ref<Parent>>
+        {
+            Self::parent(self, entity)
+        }
+
+        fn parent_mut(&self, entity: Entity) -> Option<RefMut<Parent>>
+        {
+            Self::parent_mut(self, entity)
+        }
+
+        fn visible_target(&self, entity: Entity) -> Option<RefMut<bool>>
+        {
+            self.parent_mut(entity).map(|parent|
+            {
+                RefMut::map(parent, |x| &mut x.visible)
+            }).or_else(||
+            {
+                self.render_mut(entity).map(|render|
+                {
+                    RefMut::map(render, |x| &mut x.visible)
+                })
+            })
+        }
     }
 }
 
@@ -246,6 +317,16 @@ macro_rules! define_entities
         pub type ClientEntities = Entities<ClientRenderInfo, LazyTransform, UiElement>;
         pub type ServerEntities = Entities;
 
+        impl AnyEntities for ClientEntities
+        {
+            common_trait_impl!{}
+        }
+
+        impl AnyEntities for ServerEntities
+        {
+            common_trait_impl!{}
+        }
+
         pub struct Entities<$($component_type=$default_type,)+>
         {
             pub components: ObjectsStore<Vec<Option<usize>>>,
@@ -253,6 +334,8 @@ macro_rules! define_entities
         }
 
         impl<$($component_type: OnSet<Self>,)+> Entities<$($component_type,)+>
+        where
+            Self: AnyEntities
         {
             pub fn new() -> Self
             {
@@ -332,6 +415,19 @@ macro_rules! define_entities
                             &mut lazy_transform
                         )
                     }
+                });
+            }
+
+            pub fn update_watchers(&mut self)
+            where
+                for<'a> &'a mut WatchersType: Into<&'a mut Watchers>
+            {
+                self.watchers.iter().for_each(|(_, ComponentWrapper{
+                    entity,
+                    component: watchers
+                })|
+                {
+                    (&mut *watchers.borrow_mut()).into().execute(self, *entity);
                 });
             }
 
@@ -512,13 +608,9 @@ macro_rules! define_entities
                     {
                         if self.exists(entity)
                         {
-                            if let Some(mut lazy) = self.lazy_transform_mut(entity)
+                            if let Some(mut x) = self.target(entity)
                             {
-                                *lazy.target() = target;
-                            } else
-                            {
-                                let mut transform = self.transform_mut(entity).unwrap();
-                                *(&mut *transform).into() = target;
+                                *x = target;
                             }
                         }
 
@@ -1035,6 +1127,7 @@ define_entities!{
     (render, render_mut, set_render, SetRender, RenderType, RenderInfo),
     (lazy_transform, lazy_transform_mut, set_lazy_transform, SetLazyTransform, LazyTransformType, LazyTransform),
     (ui_element, ui_element_mut, set_ui_element, SetUiElement, UiElementType, UiElementServer),
+    (watchers, watchers_mut, set_watchers, SetWatchers, WatchersType, Watchers),
     (inventory, inventory_mut, set_inventory, SetInventory, InventoryType, Inventory),
     (enemy, enemy_mut, set_enemy, SetEnemy, EnemyType, Enemy),
     (parent, parent_mut, set_parent, SetParent, ParentType, Parent),

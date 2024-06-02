@@ -491,9 +491,9 @@ impl UiInventory
         let inventory = creator.push(
             EntityInfo{
                 lazy_transform: Some(LazyTransformInfo{
-                    connection: Connection::Rigid,
+                    scaling: Scaling::EaseOut{decay: 15.0},
                     transform: Transform{
-                        scale: Vector3::new(0.2, 0.2, 0.2),
+                        scale: Vector3::zeros(),
                         ..Default::default()
                     },
                     ..Default::default()
