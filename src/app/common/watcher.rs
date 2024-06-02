@@ -1,3 +1,8 @@
+use std::{
+    mem,
+    ops::Range
+};
+
 use nalgebra::Vector3;
 
 use serde::{Serialize, Deserialize};
@@ -11,6 +16,7 @@ use crate::common::{
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum WatcherType
 {
+    Lifetime(f32),
     ScaleDistance{from: Vector3<f32>, near: f32}
 }
 
@@ -19,7 +25,8 @@ impl WatcherType
     fn meets<E: AnyEntities>(
         &mut self,
         entities: &E,
-        entity: Entity
+        entity: Entity,
+        dt: f32
     ) -> bool
     {
         match self
@@ -33,33 +40,68 @@ impl WatcherType
                 {
                     false
                 }
+            },
+            Self::Lifetime(left) =>
+            {
+                *left -= dt;
+
+                *left <= 0.0
             }
         }
     }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExplodeInfo
+{
+    amount: Range<usize>,
+    info: ()
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum WatcherAction
 {
-    SetVisible(bool)
+    None,
+    SetVisible(bool),
+    Remove,
+    Explode(ExplodeInfo)
+}
+
+impl Default for WatcherAction
+{
+    fn default() -> Self
+    {
+        Self::None
+    }
 }
 
 impl WatcherAction
 {
-    fn execute<E: AnyEntities>(
-        &mut self,
-        entities: &E,
+    pub fn execute<E: AnyEntities>(
+        self,
+        entities: &mut E,
         entity: Entity
     )
     {
         match self
         {
+            Self::None => (),
             Self::SetVisible(value) =>
             {
                 if let Some(mut target) = entities.visible_target(entity)
                 {
-                    *target = *value;
+                    *target = value;
                 }
+            },
+            Self::Remove =>
+            {
+                entities.remove(entity);
+            },
+            Self::Explode(info) =>
+            {
+                entities.remove(entity);
+
+                todo!();
             }
         }
     }
@@ -70,25 +112,6 @@ pub struct Watcher
 {
     pub kind: WatcherType,
     pub action: WatcherAction
-}
-
-impl Watcher
-{
-    fn meets<E: AnyEntities>(
-        &mut self,
-        entities: &E,
-        entity: Entity
-    ) -> bool
-    {
-        let meets = self.kind.meets(entities, entity);
-
-        if meets
-        {
-            self.action.execute(entities, entity);
-        }
-
-        meets
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -104,13 +127,32 @@ impl Default for Watchers
 
 impl Watchers
 {
+    pub fn new(watchers: Vec<Watcher>) -> Self
+    {
+        Self(watchers)
+    }
+
     pub fn execute<E: AnyEntities>(
         &mut self,
         entities: &E,
-        entity: Entity
-    )
+        entity: Entity,
+        dt: f32
+    ) -> Vec<WatcherAction>
     {
-        self.0.retain_mut(|watcher| !watcher.meets(entities, entity));
+        let mut actions = Vec::new();
+        self.0.retain_mut(|watcher|
+        {
+            let meets = watcher.kind.meets(entities, entity, dt);
+
+            if meets
+            {
+                actions.push(mem::take(&mut watcher.action));
+            }
+
+            !meets
+        });
+
+        actions
     }
 
     pub fn push(&mut self, watcher: Watcher)

@@ -367,6 +367,12 @@ impl<'a> PlayerContainer<'a>
                         kind: ColliderType::Circle,
                         ..Default::default()
                     }.into()),
+                    watchers: Some(Watchers::new(vec![
+                        Watcher{
+                            kind: WatcherType::Lifetime(2.5),
+                            action: WatcherAction::Remove
+                        }
+                    ])),
                     ..Default::default()
                 }
             };

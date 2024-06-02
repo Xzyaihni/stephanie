@@ -199,6 +199,8 @@ pub trait AnyEntities
 
     fn visible_target(&self, entity: Entity) -> Option<RefMut<bool>>;
 
+    fn remove(&mut self, entity: Entity);
+
     fn target(&self, entity: Entity) -> Option<RefMut<Transform>>
     {
         self.lazy_target(entity).or_else(||
@@ -272,6 +274,11 @@ macro_rules! common_trait_impl
                     RefMut::map(render, |x| &mut x.visible)
                 })
             })
+        }
+
+        fn remove(&mut self, entity: Entity)
+        {
+            Self::remove(self, entity);
         }
     }
 }
@@ -418,16 +425,27 @@ macro_rules! define_entities
                 });
             }
 
-            pub fn update_watchers(&mut self)
+            pub fn update_watchers(&mut self, dt: f32)
             where
                 for<'a> &'a mut WatchersType: Into<&'a mut Watchers>
             {
-                self.watchers.iter().for_each(|(_, ComponentWrapper{
+                // the borrow checker forcing me to collect into vectors cuz why not!
+                let pairs: Vec<_> = self.watchers.iter().map(|(_, ComponentWrapper{
                     entity,
                     component: watchers
                 })|
                 {
-                    (&mut *watchers.borrow_mut()).into().execute(self, *entity);
+                    let actions = (&mut *watchers.borrow_mut()).into().execute(self, *entity, dt);
+
+                    (*entity, actions)
+                }).collect();
+
+                pairs.into_iter().for_each(|(entity, actions)|
+                {
+                    actions.into_iter().for_each(|action|
+                    {
+                        action.execute(self, entity);
+                    });
                 });
             }
 

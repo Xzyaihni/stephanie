@@ -203,7 +203,7 @@ impl ClientEntitiesContainer
         entities.update_lazy(dt);
         entities.update_enemy(dt);
         entities.update_visibility();
-        entities.update_watchers();
+        entities.update_watchers(dt);
     }
 
     pub fn main_player(&self) -> Entity
