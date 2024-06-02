@@ -28,9 +28,9 @@ impl Inventory
         self.items.push(item);
     }
 
-    pub fn get(&self, id: InventoryItem) -> &Item
+    pub fn get(&self, id: InventoryItem) -> Option<&Item>
     {
-        &self.items[id.0]
+        self.items.get(id.0)
     }
 
     pub fn remove(&mut self, id: InventoryItem) -> Item

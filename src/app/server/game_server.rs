@@ -249,9 +249,9 @@ impl GameServer
                         strength: 6.0
                     }
                 ),
-                rotation: Rotation::Constant(
-                    ConstantRotation{
-                        speed: 5.0,
+                rotation: Rotation::EaseOut(
+                    EaseOutRotation{
+                        decay: 7.0,
                         momentum: 0.5
                     }.into()
                 ),

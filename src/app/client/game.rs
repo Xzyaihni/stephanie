@@ -171,11 +171,9 @@ impl<'a> PlayerContainer<'a>
             {
                 let player = self.player();
 
-                if let Some(holding) = player.holding
+                let inventory = self.inventory();
+                if let Some(holding) = player.holding.and_then(|holding| inventory.get(holding))
                 {
-                    let inventory = self.inventory();
-                    let holding = inventory.get(holding);
-
                     let items_info = self.info.items_info.clone();
                     let weapon = &items_info.get(holding.id).weapon;
 
@@ -253,14 +251,18 @@ impl<'a> PlayerContainer<'a>
         parent.visible = player.holding.is_some();
         if let Some(holding) = player.holding
         {
-            let item = self.item_info(holding);
+            if let Some(item) = self.item_info(holding)
+            {
+                let assets = self.game_state.assets.lock();
+                let texture = assets.texture(item.texture);
 
-            let assets = self.game_state.assets.lock();
-            let texture = assets.texture(item.texture);
+                render.set_texture(texture.clone());
 
-            render.set_texture(texture.clone());
-
-            entities.target(holding_entity).unwrap().scale = item.scale3();
+                entities.target(holding_entity).unwrap().scale = item.scale3();
+            } else
+            {
+                parent.visible = false;
+            }
         }
     }
 
@@ -315,9 +317,16 @@ impl<'a> PlayerContainer<'a>
         let player = self.info.entity;
 
         let held = self.game_state.entities_mut().player_mut(player).unwrap().holding.take();
-        if let Some(held) = held
+        let held = if let Some(x) = held
         {
-            let item_info = self.item_info(held);
+            x
+        } else
+        {
+            return;
+        };
+
+        if let Some(item_info) = self.item_info(held)
+        {
             let entity_info = {
                 let holding_entity = self.game_state.player_entities().holding;
                 let holding_transform = self.game_state.entities()
@@ -621,10 +630,10 @@ impl<'a> PlayerContainer<'a>
             .unwrap()
     }
 
-    fn item_info(&self, id: InventoryItem) -> &ItemInfo
+    fn item_info(&self, id: InventoryItem) -> Option<&ItemInfo>
     {
         let inventory = self.inventory();
-        self.game_state.items_info.get(inventory.get(id).id)
+        inventory.get(id).map(|x| self.game_state.items_info.get(x.id))
     }
 
     fn player_position(&self) -> Vector3<f32>
