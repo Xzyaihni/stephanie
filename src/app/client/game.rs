@@ -297,11 +297,6 @@ impl<'a> PlayerContainer<'a>
                 lazy.target().scale = Vector3::zeros();
             }
 
-            if local_entities.watchers(inventory).is_none()
-            {
-                local_entities.set_watchers(inventory, Some(Watchers::default()));
-            }
-
             let watchers = local_entities.watchers_mut(inventory);
             if let Some(mut watchers) = watchers
             {

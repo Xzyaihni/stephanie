@@ -503,6 +503,7 @@ impl UiInventory
                     ..Default::default()
                 }),
                 parent: Some(Parent::new(anchor, false)),
+                watchers: Some(Default::default()),
                 ..Default::default()
             },
             RenderInfo{
