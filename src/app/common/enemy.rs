@@ -291,13 +291,13 @@ impl Enemy
         {
             SpriteState::Normal =>
             {
-                render.z_level = -1;
+                render.z_level = ZLevel::High;
 
                 info.normal
             },
             SpriteState::Lying =>
             {
-                render.z_level = -5;
+                render.z_level = ZLevel::Lowest;
 
                 info.lying
             }

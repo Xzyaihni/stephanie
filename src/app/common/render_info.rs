@@ -113,7 +113,7 @@ impl Scissor
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum ZLevel
 {
     Lowest = 0,
@@ -219,7 +219,7 @@ pub struct ClientRenderInfo
     pub scissor: Option<VulkanoScissor>,
     pub object: Option<ClientRenderObject>,
     pub shape: Option<BoundingShape>,
-    pub z_level: i32
+    pub z_level: ZLevel
 }
 
 impl ServerToClient<ClientRenderInfo> for RenderInfo
@@ -245,7 +245,7 @@ impl ServerToClient<ClientRenderInfo> for RenderInfo
             scissor,
             object,
             shape: self.shape,
-            z_level: self.z_level as i32
+            z_level: self.z_level
         }
     }
 }

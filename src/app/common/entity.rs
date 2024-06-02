@@ -194,6 +194,7 @@ pub trait AnyEntities
     fn transform(&self, entity: Entity) -> Option<Ref<Transform>>;
     fn transform_mut(&self, entity: Entity) -> Option<RefMut<Transform>>;
 
+    fn lazy_target_ref(&self, entity: Entity) -> Option<Ref<Transform>>;
     fn lazy_target(&self, entity: Entity) -> Option<RefMut<Transform>>;
 
     fn parent(&self, entity: Entity) -> Option<Ref<Parent>>;
@@ -204,6 +205,14 @@ pub trait AnyEntities
     fn remove(&mut self, entity: Entity);
     // i cant make remove the &mut cuz reborrowing would stop working :/
     fn push(&mut self, create_info: &mut Self::CreateInfo<'_>, info: EntityInfo) -> Entity;
+
+    fn target_ref(&self, entity: Entity) -> Option<Ref<Transform>>
+    {
+        self.lazy_target_ref(entity).or_else(||
+        {
+            self.transform(entity)
+        })
+    }
 
     fn target(&self, entity: Entity) -> Option<RefMut<Transform>>
     {
@@ -246,6 +255,14 @@ macro_rules! common_trait_impl
         fn transform_mut(&self, entity: Entity) -> Option<RefMut<Transform>>
         {
             Self::transform_mut(self, entity)
+        }
+
+        fn lazy_target_ref(&self, entity: Entity) -> Option<Ref<Transform>>
+        {
+            Self::lazy_transform(self, entity).map(|lazy|
+            {
+                Ref::map(lazy, |x| x.target_ref())
+            })
         }
 
         fn lazy_target(&self, entity: Entity) -> Option<RefMut<Transform>>
@@ -436,7 +453,7 @@ macro_rules! define_entities
                     component: physical
                 })|
                 {
-                    if let Some(mut target) = self.transform_target(*entity)
+                    if let Some(mut target) = self.target(*entity)
                     {
                         let mut physical = physical.borrow_mut();
                         (&mut *physical).into().physics_update(&mut target, dt);
@@ -561,23 +578,6 @@ macro_rules! define_entities
                     }
                 }
             )+
-
-            pub fn transform_target(&self, entity: Entity) -> Option<RefMut<Transform>>
-            where
-                for<'a> &'a mut TransformType: Into<&'a mut Transform>,
-                LazyTransformType: LazyTargettable<Transform>
-            {
-                if let Some(lazy) = self.lazy_transform_mut(entity)
-                {
-                    Some(RefMut::map(lazy, |x| x.target()))
-                } else if let Some(transform) = self.transform_mut(entity)
-                {
-                    Some(RefMut::map(transform, |x| x.into()))
-                } else
-                {
-                    None
-                }
-            }
 
             pub fn push(&mut self, mut info: EntityInfo<$($component_type,)+>) -> Entity
             where
@@ -849,7 +849,7 @@ macro_rules! define_entities
                         (
                             None,
                             self.physical_mut(*other_entity),
-                            self.transform_target(*other_entity).unwrap(),
+                            self.target(*other_entity).unwrap(),
                             other_collider.borrow().clone()
                         )
                     }).chain(others.collider.iter().map(|(_, ComponentWrapper{
@@ -874,7 +874,7 @@ macro_rules! define_entities
                                 }
                             }),
                             others.physical_mut(*other_entity),
-                            others.transform_target(*other_entity).unwrap(),
+                            others.target(*other_entity).unwrap(),
                             other_collider.borrow().clone()
                         )
                     })).for_each(|(
@@ -885,7 +885,7 @@ macro_rules! define_entities
                     )|
                     {
                         let mut physical = self.physical_mut(*entity);
-                        let mut transform = self.transform_target(*entity).unwrap();
+                        let mut transform = self.target(*entity).unwrap();
 
                         let this = CollidingInfo{
                             physical: physical.as_deref_mut(),
@@ -930,7 +930,7 @@ macro_rules! define_entities
                     })|
                     {
                         let mut physical = self.physical_mut(*entity);
-                        let mut transform = self.transform_target(*entity).unwrap();
+                        let mut transform = self.target(*entity).unwrap();
 
                         let this = CollidingInfo{
                             physical: physical.as_deref_mut(),
@@ -939,7 +939,7 @@ macro_rules! define_entities
                         };
 
                         let mut other_physical = self.physical_mut(*other_entity);
-                        let mut other_transform = self.transform_target(*other_entity).unwrap();
+                        let mut other_transform = self.target(*other_entity).unwrap();
                         let collision = this.resolve(CollidingInfo{
                             physical: other_physical.as_deref_mut(),
                             transform: &mut other_transform,

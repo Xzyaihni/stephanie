@@ -260,7 +260,7 @@ impl<'a> PlayerContainer<'a>
 
             render.set_texture(texture.clone());
 
-            entities.transform_target(holding_entity).unwrap().scale = item.scale3();
+            entities.target(holding_entity).unwrap().scale = item.scale3();
         }
     }
 

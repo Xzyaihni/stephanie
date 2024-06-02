@@ -32,6 +32,7 @@ use crate::common::{
     Damage,
     ItemsInfo,
     InventoryItem,
+    AnyEntities,
     Entity,
     Entities,
     EnemiesInfo,
@@ -155,7 +156,7 @@ impl ClientEntitiesContainer
                 ReplaceObject::Full(object) =>
                 {
                     let object = object.server_to_client(
-                        || entities.transform_target(entity).unwrap().clone(),
+                        || entities.target_ref(entity).unwrap().clone(),
                         &mut info.object_info
                     );
 
@@ -166,7 +167,7 @@ impl ClientEntitiesContainer
                     if let Some(mut render) = entities.render_mut(entity)
                     {
                         render.object = object.into_client(
-                            entities.transform_target(entity).unwrap().clone(),
+                            entities.target_ref(entity).unwrap().clone(),
                             &mut info.object_info
                         );
                     }
