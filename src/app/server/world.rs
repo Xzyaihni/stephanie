@@ -339,7 +339,7 @@ impl World
                     ..Default::default()
                 }.into()),
                 physical: Some(PhysicalProperties{
-                    mass: 50.0,
+                    mass: 200.0,
                     friction: 0.5,
                     floating: false
                 }.into()),

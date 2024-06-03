@@ -96,8 +96,7 @@ pub struct GlobalEntityId
 pub struct ClientEntitiesContainer
 {
     pub entities: ClientEntities,
-    pub local_entities: ClientEntities,
-    local_objects: Vec<(bool, Entity, ReplaceObject)>,
+    local_objects: Vec<(Entity, ReplaceObject)>,
     player_entities: Option<PlayerEntities>
 }
 
@@ -107,7 +106,6 @@ impl ClientEntitiesContainer
     {
         Self{
             local_objects: Vec::new(),
-            local_entities: Entities::new(),
             entities: Entities::new(),
             player_entities: None
         }
@@ -126,7 +124,7 @@ impl ClientEntitiesContainer
     {
         EntityCreator{
             objects: &mut self.local_objects,
-            entities: &mut self.local_entities
+            entities: &mut self.entities
         }
     }
 
@@ -138,43 +136,35 @@ impl ClientEntitiesContainer
         dt: f32
     )
     {
-        Self::update_entities_buffers(enemies_info, info, &mut self.entities, dt);
-        Self::update_entities_buffers(enemies_info, info, &mut self.local_entities, dt);
+        self.entities.update_sprites(&mut info.object_info, enemies_info);
+        self.entities.update_watchers(&mut info.object_info, dt);
 
-        mem::take(&mut self.local_objects).into_iter().for_each(|(is_local, entity, object)|
+        mem::take(&mut self.local_objects).into_iter().for_each(|(entity, object)|
         {
-            let entities = if is_local
-            {
-                &mut self.local_entities
-            } else
-            {
-                &mut self.entities
-            };
-
             match object
             {
                 ReplaceObject::Full(object) =>
                 {
                     let object = object.server_to_client(
-                        || entities.target_ref(entity).unwrap().clone(),
+                        || self.entities.target_ref(entity).unwrap().clone(),
                         &mut info.object_info
                     );
 
-                    entities.set_render(entity, Some(object));
+                    self.entities.set_render(entity, Some(object));
                 },
                 ReplaceObject::Object(object) =>
                 {
-                    if let Some(mut render) = entities.render_mut(entity)
+                    if let Some(mut render) = self.entities.render_mut(entity)
                     {
                         render.object = object.into_client(
-                            entities.target_ref(entity).unwrap().clone(),
+                            self.entities.target_ref(entity).unwrap().clone(),
                             &mut info.object_info
                         );
                     }
                 },
                 ReplaceObject::Scissor(scissor) =>
                 {
-                    if let Some(mut render) = entities.render_mut(entity)
+                    if let Some(mut render) = self.entities.render_mut(entity)
                     {
                         render.scissor = Some(scissor.into_global(info.object_info.partial.size));
                     }
@@ -185,38 +175,13 @@ impl ClientEntitiesContainer
         self.update_buffers(visibility, info);
     }
 
-    fn update_entities_buffers(
-        enemies_info: &EnemiesInfo,
-        info: &mut UpdateBuffersInfo,
-        entities: &mut ClientEntities,
-        dt: f32
-    )
-    {
-        entities.update_sprites(&mut info.object_info, enemies_info);
-        entities.update_watchers(&mut info.object_info, dt);
-    }
-
     pub fn update(&mut self, passer: &mut impl EntityPasser, dt: f32)
     {
-        Self::update_entities(&mut self.entities, dt);
+        self.entities.update_physical(dt);
+        self.entities.update_lazy(dt);
+        self.entities.update_enemy(dt);
+        self.entities.update_visibility();
         self.entities.update_colliders(passer);
-    }
-
-    pub fn update_local(&mut self, passer: &mut impl EntityPasser, dt: f32)
-    {
-        Self::update_entities(&mut self.local_entities, dt);
-        self.local_entities.update_colliders_local(passer, &self.entities);
-    }
-
-    fn update_entities(
-        entities: &mut ClientEntities,
-        dt: f32
-    )
-    {
-        entities.update_physical(dt);
-        entities.update_lazy(dt);
-        entities.update_enemy(dt);
-        entities.update_visibility();
     }
 
     pub fn main_player(&self) -> Entity
@@ -368,12 +333,8 @@ impl ClientEntitiesContainer
     )
     {
         self.entities.update_render();
-        self.local_entities.update_render();
 
-        let renders = self.entities.render.iter_mut()
-            .chain(self.local_entities.render.iter_mut());
-
-        renders.for_each(|(_, entity)|
+        self.entities.render.iter_mut().for_each(|(_, entity)|
         {
             entity.get_mut().update_buffers(visibility, info);
         });
@@ -385,10 +346,7 @@ impl ClientEntitiesContainer
         info: &mut DrawInfo
     )
     {
-        let renders = self.entities.render.iter()
-            .chain(self.local_entities.render.iter());
-
-        let mut queue: Vec<_> = renders.map(|(_, x)| x).collect();
+        let mut queue: Vec<_> = self.entities.render.iter().map(|(_, x)| x).collect();
 
         queue.sort_unstable_by_key(|render| render.get().z_level);
 
@@ -682,7 +640,7 @@ impl GameState
 
     pub fn object_change(&mut self, entity: Entity, object: ReplaceObject)
     {
-        self.entities.local_objects.push((false, entity, object));
+        self.entities.local_objects.push((entity, object));
     }
 
     pub fn player_entities(&self) -> &PlayerEntities
@@ -881,11 +839,6 @@ impl GameState
             dt
         );
 
-        {
-            let mut passer = self.connections_handler.write();
-            self.entities.update_local(&mut *passer, dt);
-        }
-
         game.update(self, dt);
 
         let changed_this_frame = self.controls.changed_this_frame();
@@ -894,7 +847,7 @@ impl GameState
             let event = UiEvent::from_control(|| self.world_mouse_position(), state, control);
             if let Some(event) = event
             {
-                let captured = self.entities.local_entities.update_ui(
+                let captured = self.entities.entities.update_ui(
                     self.camera.read().position().coords.xy(),
                     event
                 );
@@ -908,7 +861,7 @@ impl GameState
             self.on_control(game, state, control);
         }
 
-        self.entities.local_entities.update_ui(
+        self.entities.entities.update_ui(
             self.camera.read().position().coords.xy(),
             UiEvent::MouseMove(self.world_mouse_position())
         );
@@ -925,22 +878,14 @@ impl GameState
     {
         let player_id = self.player();
 
-        let entities = &mut self.entities.entities;
-        let local_objects = &mut self.entities.local_objects;
-        let local_entities = &mut self.entities.local_entities;
-
-        let player = entities.player(player_id).unwrap();
-        let inventory = entities.inventory(player_id).unwrap();
-
         let mut entity_creator = EntityCreator{
-            objects: local_objects,
-            entities: local_entities
+            objects: &mut self.entities.local_objects,
+            entities: &mut self.entities.entities
         };
 
         self.ui.player_inventory.full_update(
             &mut entity_creator,
-            player.name.clone(),
-            &inventory
+            player_id
         );
     }
 

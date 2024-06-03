@@ -60,7 +60,7 @@ impl Game
     pub fn new(game_state: &mut GameState) -> Self
     {
         let player_entity = game_state.player();
-        let mouse_entity = game_state.entities.local_entities.push(true, EntityInfo{
+        let mouse_entity = game_state.entities_mut().push(true, EntityInfo{
             transform: Some(Transform{
                 scale: Vector3::repeat(0.1),
                 ..Default::default()
@@ -235,7 +235,7 @@ impl<'a> PlayerContainer<'a>
 
     fn handle_user_event(&mut self, event: UserEvent)
     {
-        let entities = &mut self.game_state.entities.entities;
+        let entities = self.game_state.entities_mut();
         let player = self.info.entity;
 
         match event
@@ -301,30 +301,30 @@ impl<'a> PlayerContainer<'a>
     fn update_inventory(&mut self)
     {
         let inventory = self.game_state.ui.player_inventory.body();
-        let local_entities = &mut self.game_state.entities.local_entities;
+        let entities = self.game_state.entities_mut();
 
         if self.info.inventory_open 
         {
-            local_entities.set_collider(inventory, Some(ColliderInfo{
+            entities.set_collider(inventory, Some(ColliderInfo{
                 kind: ColliderType::Aabb,
                 layer: ColliderLayer::Ui,
                 ..Default::default()
             }.into()));
 
-            *local_entities.visible_target(inventory).unwrap() = true;
+            *entities.visible_target(inventory).unwrap() = true;
 
-            let mut lazy = local_entities.lazy_transform_mut(inventory).unwrap();
+            let mut lazy = entities.lazy_transform_mut(inventory).unwrap();
             lazy.target().scale = Vector3::repeat(0.2);
         } else
         {
-            local_entities.set_collider(inventory, None);
+            entities.set_collider(inventory, None);
 
             {
-                let mut lazy = local_entities.lazy_transform_mut(inventory).unwrap();
+                let mut lazy = entities.lazy_transform_mut(inventory).unwrap();
                 lazy.target().scale = Vector3::zeros();
             }
 
-            let watchers = local_entities.watchers_mut(inventory);
+            let watchers = entities.watchers_mut(inventory);
             if let Some(mut watchers) = watchers
             {
                 let watcher = Watcher{
@@ -537,7 +537,7 @@ impl<'a> PlayerContainer<'a>
         let mouse_position = Vector3::new(mouse_position.x, mouse_position.y, 0.0);
         let camera_position = self.game_state.camera.read().position().coords;
 
-        self.game_state.entities.local_entities
+        self.game_state.entities_mut()
             .transform_mut(self.info.mouse_entity)
             .unwrap()
             .position = camera_position + mouse_position;

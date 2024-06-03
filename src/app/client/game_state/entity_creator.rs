@@ -16,7 +16,7 @@ pub enum ReplaceObject
 pub struct EntityCreator<'a>
 {
     pub entities: &'a mut ClientEntities,
-    pub objects: &'a mut Vec<(bool, Entity, ReplaceObject)>
+    pub objects: &'a mut Vec<(Entity, ReplaceObject)>
 }
 
 impl EntityCreator<'_>
@@ -29,7 +29,7 @@ impl EntityCreator<'_>
     {
         let entity = self.entities.push(true, info);
 
-        self.objects.push((true, entity, ReplaceObject::Full(render)));
+        self.objects.push((entity, ReplaceObject::Full(render)));
 
         entity
     }
@@ -40,7 +40,7 @@ impl EntityCreator<'_>
         object: RenderObject
     )
     {
-        self.objects.push((true, entity, ReplaceObject::Object(object)));
+        self.objects.push((entity, ReplaceObject::Object(object)));
     }
 
     pub fn replace_scissor(
@@ -49,6 +49,6 @@ impl EntityCreator<'_>
         scissor: Scissor
     )
     {
-        self.objects.push((true, entity, ReplaceObject::Scissor(scissor)));
+        self.objects.push((entity, ReplaceObject::Scissor(scissor)));
     }
 }

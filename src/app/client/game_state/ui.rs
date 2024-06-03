@@ -17,7 +17,6 @@ use crate::{
         ease_out,
         render_info::*,
         InventoryItem,
-        Inventory,
         InventorySorter,
         Parent,
         Entity,
@@ -325,10 +324,10 @@ impl UiList
     pub fn set_items(
         &mut self,
         creator: &mut EntityCreator,
-        items: impl Iterator<Item=String>
+        items: Vec<String>
     )
     {
-        self.items = items.collect();
+        self.items = items;
         self.amount = self.items.len();
 
         self.update_amount(creator);
@@ -623,9 +622,10 @@ impl UiInventory
     pub fn update_inventory(
         &mut self,
         creator: &mut EntityCreator,
-        inventory: &Inventory
+        entity: Entity
     )
     {
+        let inventory = creator.entities.inventory(entity).unwrap();
         let mut items: Vec<_> = inventory.items_ids().collect();
         items.sort_by(|a, b|
         {
@@ -635,22 +635,26 @@ impl UiInventory
         let names = items.iter().map(|x|
         {
             self.items_info.get(x.1.id).name.clone()
-        });
+        }).collect();
 
+        let new_items = items.into_iter().map(|(index, _)| index).collect();
+
+        drop(inventory);
         self.list.set_items(creator, names);
 
-        self.items.replace(items.into_iter().map(|(index, _)| index).collect());
+        self.items.replace(new_items);
     }
 
     pub fn full_update(
         &mut self,
         creator: &mut EntityCreator,
-        name: String,
-        inventory: &Inventory
+        entity: Entity
     )
     {
+        let name = creator.entities.player(entity).unwrap().name.clone();
+
         self.update_name(creator, name);
-        self.update_inventory(creator, inventory);
+        self.update_inventory(creator, entity);
     }
 
     pub fn update_after(
