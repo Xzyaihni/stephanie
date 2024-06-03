@@ -14,7 +14,8 @@ pub struct PlayerInfo
 {
     message_buffer: MessageBuffer,
     message_passer: MessagePasser,
-    entity: Entity
+    entity: Entity,
+    name: String
 }
 
 impl PlayerInfo
@@ -22,10 +23,16 @@ impl PlayerInfo
     pub fn new(
         message_buffer: MessageBuffer,
         message_passer: MessagePasser,
-        entity: Entity
+        entity: Entity,
+        name: String
     ) -> Self
     {
-        Self{message_buffer, message_passer, entity}
+        Self{message_buffer, message_passer, entity, name}
+    }
+
+    pub fn name(&self) -> &str
+    {
+        &self.name
     }
 
     pub fn set_message(&mut self, message: Message)

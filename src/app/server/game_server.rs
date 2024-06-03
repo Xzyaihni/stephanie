@@ -351,7 +351,7 @@ impl GameServer
 
         println!("player \"{name}\" connected");
 
-        Ok(PlayerInfo::new(MessageBuffer::new(), message_passer, entity))
+        Ok(PlayerInfo::new(MessageBuffer::new(), message_passer, entity, name))
     }
 
     fn player_create(
@@ -393,6 +393,8 @@ impl GameServer
             self.world.exit(&mut self.entities);
         }
 
+        let removed_name = removed.as_ref().map(|x| x.name().to_owned());
+
         if let Some(mut removed) = removed
         {
             if let Err(err) = removed.send_blocking(Message::PlayerDisconnectFinished)
@@ -401,15 +403,9 @@ impl GameServer
             }
         }
 
+        if let Some(removed_name) = removed_name
         {
-            let player = (self.entities.exists(entity))
-                .then(|| self.entities.player(entity))
-                .flatten();
-
-            if let Some(player) = player
-            {
-                println!("player \"{}\" disconnected", player.name);
-            }
+            println!("player \"{removed_name}\" disconnected");
         }
 
         self.connection_handler.write().send_message(self.entities.remove_message(entity));
