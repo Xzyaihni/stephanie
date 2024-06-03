@@ -188,7 +188,8 @@ impl WatcherAction
                         physical.velocity.z = 0.0;
                     }
 
-                    entities.push(create_info, info.info.clone());
+                    // for now all watcher created entities r local (i might change that?)
+                    entities.push(create_info, true, info.info.clone());
                 })
             }
         }

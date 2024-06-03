@@ -29,6 +29,34 @@ use crate::{
 };
 
 
+macro_rules! components
+{
+    ($this:expr, $entity:expr) =>
+    {
+        if $entity.local
+        {
+            &$this.local_components
+        } else
+        {
+            &$this.components
+        }
+    }
+}
+
+macro_rules! components_mut
+{
+    ($this:expr, $entity:expr) =>
+    {
+        if $entity.local
+        {
+            &mut $this.local_components
+        } else
+        {
+            &mut $this.components
+        }
+    }
+}
+
 macro_rules! get_component
 {
     ($this:expr, $components:expr, $access_type:ident, $component:ident) =>
@@ -59,7 +87,12 @@ macro_rules! get_entity
 {
     ($this:expr, $entity:expr, $access_type:ident, $component:ident) =>
     {
-        get_component!($this, $this.components[$entity.0], $access_type, $component)
+        get_component!(
+            $this,
+            components!($this, $entity)[$entity.id],
+            $access_type,
+            $component
+        )
     }
 }
 
@@ -85,19 +118,10 @@ impl<T> ServerToClient<T> for T
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct Entity(usize);
-
-impl Entity
+pub struct Entity
 {
-    pub fn from_raw(raw: usize) -> Entity
-    {
-        Entity(raw)
-    }
-
-    pub fn get_raw(&self) -> usize
-    {
-        self.0
-    }
+    local: bool,
+    id: usize
 }
 
 pub trait OnSet<EntitiesType>
@@ -233,7 +257,12 @@ pub trait AnyEntities
 
     fn remove(&mut self, entity: Entity);
     // i cant make remove the &mut cuz reborrowing would stop working :/
-    fn push(&mut self, create_info: &mut Self::CreateInfo<'_>, info: EntityInfo) -> Entity;
+    fn push(
+        &mut self,
+        create_info: &mut Self::CreateInfo<'_>,
+        local: bool,
+        info: EntityInfo
+    ) -> Entity;
 
     fn target_ref(&self, entity: Entity) -> Option<Ref<Transform>>
     {
@@ -404,12 +433,13 @@ macro_rules! define_entities
             fn push(
                 &mut self,
                 create_info: &mut Self::CreateInfo<'_>,
+                local: bool,
                 info: EntityInfo
             ) -> Entity
             {
                 let info = ClientEntityInfo::from_server(create_info, info);
 
-                Self::push(self, info)
+                Self::push(self, local, info)
             }
         }
 
@@ -419,14 +449,15 @@ macro_rules! define_entities
 
             common_trait_impl!{}
 
-            fn push(&mut self, _create_info: &mut (), info: EntityInfo) -> Entity
+            fn push(&mut self, _create_info: &mut (), local: bool, info: EntityInfo) -> Entity
             {
-                Self::push(self, info)
+                Self::push(self, local, info)
             }
         }
 
         pub struct Entities<$($component_type=$default_type,)+>
         {
+            pub local_components: ObjectsStore<Vec<Option<usize>>>,
             pub components: ObjectsStore<Vec<Option<usize>>>,
             $(pub $name: ObjectsStore<ComponentWrapper<$component_type>>,)+
         }
@@ -438,6 +469,7 @@ macro_rules! define_entities
             pub fn new() -> Self
             {
                 Self{
+                    local_components: ObjectsStore::new(),
                     components: ObjectsStore::new(),
                     $($name: ObjectsStore::new(),)+
                 }
@@ -445,15 +477,18 @@ macro_rules! define_entities
 
             pub fn exists(&self, entity: Entity) -> bool
             {
-                self.components.get(entity.0).is_some()
+                components!(self, entity).get(entity.id).is_some()
             }
 
             pub fn entities_iter(&self) -> impl Iterator<Item=Entity> + '_
             {
-                self.components.iter().map(|(index, _)|
+                self.components.iter().map(|(id, _)|
                 {
-                    Entity(index)
-                })
+                    Entity{local: false, id}
+                }).chain(self.local_components.iter().map(|(id, _)|
+                {
+                    Entity{local: true, id}
+                }))
             }
 
             // i hate rust generics
@@ -559,13 +594,14 @@ macro_rules! define_entities
                 {
                     if !self.exists(entity)
                     {
-                        self.components.insert(entity.0, Self::empty_components());
+                        components_mut!(self, entity)
+                            .insert(entity.id, Self::empty_components());
                     }
 
                     if let Some(component) = component
                     {
-                        let slot = &mut self.components
-                            [entity.0]
+                        let slot = &mut components_mut!(self, entity)
+                            [entity.id]
                             [Component::$name as usize];
 
                         let component = ComponentWrapper{
@@ -594,21 +630,33 @@ macro_rules! define_entities
                 }
             )+
 
-            pub fn push(&mut self, mut info: EntityInfo<$($component_type,)+>) -> Entity
+            pub fn push(
+                &mut self,
+                local: bool,
+                mut info: EntityInfo<$($component_type,)+>
+            ) -> Entity
             where
                 for<'a> &'a ParentType: Into<&'a Parent>,
                 TransformType: Clone,
                 LazyTransformType: LazyTargettable<TransformType>
             {
-                let id = if let Some(parent) = info.parent.as_ref()
+                let components = if local
                 {
-                    self.components.take_after_key(parent.into().entity.0)
+                    &mut self.local_components
                 } else
                 {
-                    self.components.take_vacant_key()
+                    &mut self.components
                 };
 
-                let entity_id = Entity(id);
+                let id = if let Some(parent) = info.parent.as_ref()
+                {
+                    components.take_after_key(parent.into().entity.id)
+                } else
+                {
+                    components.take_vacant_key()
+                };
+
+                let entity_id = Entity{local, id};
 
                 if let Some(lazy_transform) = info.lazy_transform.as_ref()
                 {
@@ -617,7 +665,7 @@ macro_rules! define_entities
 
                 let indices = self.push_info_components(entity_id, info);
 
-                self.components.insert(id, indices);
+                components_mut!(self, entity_id).insert(id, indices);
 
                 entity_id
             }
@@ -629,14 +677,14 @@ macro_rules! define_entities
                     return;
                 }
 
-                let components = &self.components[entity.0];
+                let components = &components!(self, entity)[entity.id];
 
                 $(if let Some(id) = components[Component::$name as usize]
                 {
                     self.$name.remove(id);
                 })+
 
-                self.components.remove(entity.0);
+                components_mut!(self, entity).remove(entity.id);
             }
 
             fn push_info_components(
@@ -647,7 +695,7 @@ macro_rules! define_entities
             where
                 for<'a> &'a ParentType: Into<&'a Parent>,
             {
-                let parent = info.parent.as_ref().map(|x| x.into().entity.0);
+                let parent = info.parent.as_ref().map(|x| x.into().entity.id);
                 vec![
                     $({
                         info.$name.map(|component|
@@ -752,7 +800,8 @@ macro_rules! define_entities
                             self.$set_func(entity, component);
                         })+
 
-                        let components = &self.components[entity.0];
+                        debug_assert!(!entity.local);
+                        let components = &self.components[entity.id];
 
                         let lazy = get_component!(self, components, get_mut, lazy_transform);
 
@@ -1124,7 +1173,7 @@ macro_rules! define_entities
         {
             pub fn info(&self, entity: Entity) -> EntityInfo
             {
-                let components = &self.components[entity.0];
+                let components = &components!(self, entity)[entity.id];
 
                 EntityInfo{$(
                     $name: components[Component::$name as usize].map(|id|
@@ -1188,7 +1237,7 @@ macro_rules! define_entities
 
             pub fn push_message(&mut self, info: EntityInfo) -> Message
             {
-                let entity = self.push(info);
+                let entity = self.push(false, info);
 
                 Message::EntitySet{entity, info: self.info(entity)}
             }

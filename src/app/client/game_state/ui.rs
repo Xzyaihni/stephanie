@@ -696,7 +696,7 @@ impl Ui
         on_other_change: impl FnMut(InventoryItem) + 'static
     ) -> Self
     {
-        let anchor = creator.entities.push(EntityInfo{
+        let anchor = creator.entities.push(true, EntityInfo{
             lazy_transform: Some(LazyTransformInfo{
                 connection: Connection::Limit{limit: 1.0},
                 ..Default::default()

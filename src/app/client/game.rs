@@ -60,7 +60,7 @@ impl Game
     pub fn new(game_state: &mut GameState) -> Self
     {
         let player_entity = game_state.player();
-        let mouse_entity = game_state.entities.local_entities.push(EntityInfo{
+        let mouse_entity = game_state.entities.local_entities.push(true, EntityInfo{
             transform: Some(Transform{
                 scale: Vector3::repeat(0.1),
                 ..Default::default()

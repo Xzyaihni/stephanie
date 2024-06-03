@@ -27,7 +27,7 @@ impl EntityCreator<'_>
         render: RenderInfo
     ) -> Entity
     {
-        let entity = self.entities.push(info);
+        let entity = self.entities.push(true, info);
 
         self.objects.push((true, entity, ReplaceObject::Full(render)));
 

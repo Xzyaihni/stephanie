@@ -212,7 +212,7 @@ impl GameServer
 
         let mut inserter = |info: EntityInfo|
         {
-            let inserted = self.entities.push(info);
+            let inserted = self.entities.push(false, info);
 
             let info = self.entities.info(inserted);
 
