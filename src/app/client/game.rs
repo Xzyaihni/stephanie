@@ -65,13 +65,11 @@ impl Game
                 scale: Vector3::repeat(0.1),
                 ..Default::default()
             }),
-            watchers: Some(Watchers::new(vec![
-                Watcher{
-                    kind: WatcherType::Lifetime(0.1.into()),
-                    action: WatcherAction::SetVisible(false),
-                    persistent: true
-                }
-            ])),
+            collider: Some(ColliderInfo{
+                kind: ColliderType::Point,
+                ghost: true,
+                ..Default::default()
+            }.into()),
             ..Default::default()
         });
 
@@ -545,6 +543,8 @@ impl<'a> PlayerContainer<'a>
             .transform_mut(self.info.mouse_entity)
             .unwrap()
             .position = camera_position + mouse_position;
+
+        self.game_state.entities_mut().update_mouse_highlight(self.info.mouse_entity);
 
         if let Some(movement) = self.movement_direction()
         {

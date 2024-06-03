@@ -4,12 +4,13 @@ use nalgebra::{Vector2, Vector3};
 
 use yanyaengine::Transform;
 
-use crate::common::Physical;
+use crate::common::{Entity, Physical};
 
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum ColliderType
 {
+    Point,
     Circle,
     Aabb
 }
@@ -26,6 +27,7 @@ pub struct ColliderInfo
 {
     pub kind: ColliderType,
     pub layer: ColliderLayer,
+    pub ghost: bool,
     pub is_static: bool
 }
 
@@ -36,6 +38,7 @@ impl Default for ColliderInfo
         Self{
             kind: ColliderType::Circle,
             layer: ColliderLayer::Normal,
+            ghost: false,
             is_static: false
         }
     }
@@ -46,7 +49,9 @@ pub struct Collider
 {
     pub kind: ColliderType,
     pub layer: ColliderLayer,
-    pub is_static: bool
+    pub ghost: bool,
+    pub is_static: bool,
+    collided: Option<Entity>
 }
 
 impl From<ColliderInfo> for Collider
@@ -56,8 +61,28 @@ impl From<ColliderInfo> for Collider
         Self{
             kind: info.kind,
             layer: info.layer,
-            is_static: info.is_static
+            ghost: info.ghost,
+            is_static: info.is_static,
+            collided: None
         }
+    }
+}
+
+impl Collider
+{
+    pub fn collided(&self) -> &Option<Entity>
+    {
+        &self.collided
+    }
+
+    pub fn set_collided(&mut self, entity: Entity)
+    {
+        self.collided = Some(entity);
+    }
+
+    pub fn reset_frame(&mut self)
+    {
+        self.collided = None;
     }
 }
 
@@ -74,7 +99,15 @@ impl<'a> CollidingInfo<'a>
     {
         let offset = Vector3::new(offset.x, offset.y, 0.0);
 
-        debug_assert!(!(self.collider.is_static && other.collider.is_static));
+        if self.collider.is_static && other.collider.is_static
+        {
+            return;
+        }
+
+        if self.collider.ghost || other.collider.ghost
+        {
+            return;
+        }
 
         if self.collider.is_static
         {
@@ -216,14 +249,14 @@ impl<'a> CollidingInfo<'a>
         collided
     }
 
-    fn circle_aabb(&mut self, other: &mut CollidingInfo) -> bool
+    fn normal_collision(&mut self, other: &mut CollidingInfo) -> bool
     {
-        let this_radius = self.transform.max_scale() / 2.0;
-        let other_scale = other.transform.scale / 2.0;
+        let this_scale = self.scale();
+        let other_scale = other.scale();
 
         let offset = other.transform.position - self.transform.position;
 
-        let max_distance = other_scale + Vector3::repeat(this_radius);
+        let max_distance = other_scale + this_scale;
         let collided = (-max_distance.x..max_distance.x).contains(&offset.x)
             && (-max_distance.y..max_distance.y).contains(&offset.y);
 
@@ -235,23 +268,14 @@ impl<'a> CollidingInfo<'a>
         collided
     }
 
-    fn aabb_aabb(&mut self, other: &mut CollidingInfo) -> bool
+    fn scale(&self) -> Vector3<f32>
     {
-        let this_scale = self.transform.scale / 2.0;
-        let other_scale = other.transform.scale / 2.0;
-
-        let offset = other.transform.position - self.transform.position;
-
-        let max_distance = this_scale + other_scale;
-        let collided = (-max_distance.x..max_distance.x).contains(&offset.x)
-            && (-max_distance.y..max_distance.y).contains(&offset.y);
-
-        if collided
+        match self.collider.kind
         {
-            self.resolve_with_offset(other, max_distance, offset);
+            ColliderType::Point => Vector3::zeros(),
+            ColliderType::Circle => Vector3::repeat(self.transform.max_scale() / 2.0),
+            ColliderType::Aabb => self.transform.scale / 2.0
         }
-
-        collided
     }
 
     pub fn resolve(
@@ -264,28 +288,22 @@ impl<'a> CollidingInfo<'a>
             return false
         }
 
-        if self.collider.is_static && other.collider.is_static
-        {
-            return false;
-        }
-
         match (self.collider.kind, other.collider.kind)
         {
+            (ColliderType::Point, ColliderType::Point) => false,
             (ColliderType::Circle, ColliderType::Circle) =>
             {
                 self.circle_circle(&mut other)
             },
-            (ColliderType::Circle, ColliderType::Aabb) =>
+            (ColliderType::Circle, ColliderType::Aabb)
+            | (ColliderType::Aabb, ColliderType::Circle)
+            | (ColliderType::Aabb, ColliderType::Aabb)
+            | (ColliderType::Point, ColliderType::Aabb)
+            | (ColliderType::Aabb, ColliderType::Point)
+            | (ColliderType::Point, ColliderType::Circle)
+            | (ColliderType::Circle, ColliderType::Point) =>
             {
-                self.circle_aabb(&mut other)
-            },
-            (ColliderType::Aabb, ColliderType::Circle) =>
-            {
-                other.circle_aabb(&mut self)
-            },
-            (ColliderType::Aabb, ColliderType::Aabb) =>
-            {
-                self.aabb_aabb(&mut other)
+                self.normal_collision(&mut other)
             }
         }
     }

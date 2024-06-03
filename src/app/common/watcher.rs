@@ -45,6 +45,7 @@ impl Lifetime
 pub enum WatcherType
 {
     Instant,
+    Collision,
     Lifetime(Lifetime),
     ScaleDistance{from: Vector3<f32>, near: f32}
 }
@@ -61,6 +62,10 @@ impl WatcherType
         match self
         {
             Self::Instant => true,
+            Self::Collision =>
+            {
+                entities.collider(entity).map(|x| x.collided().is_some()).unwrap_or(false)
+            },
             Self::ScaleDistance{from, near} =>
             {
                 if let Some(transform) = entities.transform(entity)

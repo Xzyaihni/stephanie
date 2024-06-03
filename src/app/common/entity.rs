@@ -255,7 +255,8 @@ pub trait AnyEntities
     normal_define!{
         (transform, transform_mut, Transform),
         (parent, parent_mut, Parent),
-        (physical, physical_mut, Physical)
+        (physical, physical_mut, Physical),
+        (collider, collider_mut, Collider)
     }
 
     fn lazy_target_ref(&self, entity: Entity) -> Option<Ref<Transform>>;
@@ -316,7 +317,8 @@ macro_rules! common_trait_impl
         normal_forward_impl!{
             (transform, transform_mut, Transform),
             (parent, parent_mut, Parent),
-            (physical, physical_mut, Physical)
+            (physical, physical_mut, Physical),
+            (collider, collider_mut, Collider)
         }
 
         fn lazy_target_ref(&self, entity: Entity) -> Option<Ref<Transform>>
@@ -897,11 +899,39 @@ macro_rules! define_entities
                 });
             }
 
+            pub fn update_mouse_highlight(&mut self, mouse: Entity)
+            {
+                self.collider.iter().for_each(|(_, ComponentWrapper{
+                    entity,
+                    component: collider
+                })|
+                {
+                    if let Some(mut render) = self.render_mut(*entity)
+                    {
+                        if *collider.borrow().collided() == Some(mouse)
+                        {
+                            render.set_outlined(true);
+                        } else
+                        {
+                            render.set_outlined(false);
+                        }
+                    }
+                });
+            }
+
             pub fn update_colliders(
                 &mut self,
                 passer: &mut impl EntityPasser
             )
             {
+                self.collider.iter().for_each(|(_, ComponentWrapper{
+                    component: collider,
+                    ..
+                })|
+                {
+                    collider.borrow_mut().reset_frame();
+                });
+
                 self.collider.iter().for_each(|(_, ComponentWrapper{
                     entity: other_entity,
                     component: other_collider
@@ -934,6 +964,9 @@ macro_rules! define_entities
 
                         if collision
                         {
+                            collider.borrow_mut().set_collided(*other_entity);
+                            other_collider.borrow_mut().set_collided(*entity);
+
                             passer.send_message(Message::SetTarget{
                                 entity: *entity,
                                 target: transform.clone()

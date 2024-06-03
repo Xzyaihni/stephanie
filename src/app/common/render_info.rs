@@ -207,6 +207,11 @@ impl ClientRenderObject
         }
     }
 
+    pub fn set_outlined(&mut self, outlined: bool)
+    {
+        self.outlined = outlined;
+    }
+
     fn transform(&self) -> Option<&Transform>
     {
         match &self.kind
@@ -298,6 +303,14 @@ impl ClientRenderInfo
         }) = self.object.as_mut()
         {
             x.set_inplace_texture(texture);
+        }
+    }
+
+    pub fn set_outlined(&mut self, outlined: bool)
+    {
+        if let Some(object) = self.object.as_mut()
+        {
+            object.set_outlined(outlined);
         }
     }
 
