@@ -9,6 +9,7 @@ use crate::{
     },
     common::{
         Entity,
+        render_info::OutlinedInfo,
         message::Message
     }
 };
@@ -145,6 +146,8 @@ impl GameObject for World
 
     fn draw(&self, info: &mut DrawInfo)
     {
+        push_constants(info, OutlinedInfo{outlined: 0});
+
         self.overmap.draw(info);
     }
 }

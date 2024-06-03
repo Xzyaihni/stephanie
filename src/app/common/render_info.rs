@@ -4,7 +4,10 @@ use parking_lot::RwLock;
 
 use serde::{Serialize, Deserialize};
 
-use vulkano::pipeline::graphics::viewport::Scissor as VulkanoScissor;
+use vulkano::{
+    buffer::BufferContents,
+    pipeline::graphics::viewport::Scissor as VulkanoScissor
+};
 
 use yanyaengine::{
     Object,
@@ -24,6 +27,13 @@ use crate::{
     common::ServerToClient
 };
 
+
+#[repr(C)]
+#[derive(BufferContents)]
+pub struct OutlinedInfo
+{
+    pub outlined: u32
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum RenderObject
@@ -56,7 +66,8 @@ impl RenderObject
                 let object = create_info.partial.object_factory.create(info);
 
                 Some(ClientRenderObject{
-                    kind: ClientObjectType::Normal(object)
+                    kind: ClientObjectType::Normal(object),
+                    outlined: false
                 })
             },
             Self::Texture{name} =>
@@ -80,7 +91,8 @@ impl RenderObject
                 } else
                 {
                     Some(ClientRenderObject{
-                        kind: ClientObjectType::Text(object)
+                        kind: ClientObjectType::Text(object),
+                        outlined: false
                     })
                 }
             }
@@ -166,7 +178,8 @@ pub enum ClientObjectType
 
 pub struct ClientRenderObject
 {
-    kind: ClientObjectType
+    kind: ClientObjectType,
+    outlined: bool
 }
 
 impl ClientRenderObject
@@ -216,6 +229,8 @@ impl GameObject for ClientRenderObject
 
     fn draw(&self, info: &mut DrawInfo)
     {
+        push_constants(info, OutlinedInfo{outlined: self.outlined as u32});
+
         match &self.kind
         {
             ClientObjectType::Normal(x) => x.draw(info),
@@ -313,7 +328,8 @@ impl ClientRenderInfo
             let object = ClientRenderObject{
                 kind: ClientObjectType::Normal(
                     create_info.partial.object_factory.create(info)
-                )
+                ),
+                outlined: false
             };
 
             self.object = Some(object);
