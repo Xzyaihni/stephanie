@@ -68,49 +68,7 @@ impl Game
             watchers: Some(Watchers::new(vec![
                 Watcher{
                     kind: WatcherType::Lifetime(0.1.into()),
-                    action: WatcherAction::Explode(Box::new(ExplodeInfo{
-                        keep: true,
-                        amount: 3..5,
-                        speed: 0.1,
-                        info: EntityInfo{
-                            physical: Some(PhysicalProperties{
-                                mass: 0.05,
-                                friction: 0.1,
-                                floating: true
-                            }.into()),
-                            lazy_transform: Some(LazyTransformInfo{
-                                scaling: Scaling::EaseOut{decay: 4.0},
-                                transform: Transform{
-                                    scale: Vector3::repeat(ENTITY_SCALE * 0.4),
-                                    ..Default::default()
-                                },
-                                ..Default::default()
-                            }.into()),
-                            render: Some(RenderInfo{
-                                object: Some(RenderObject::TextureId{
-                                    id: game_state.common_textures.dust
-                                }),
-                                z_level: ZLevel::Low,
-                                ..Default::default()
-                            }),
-                            watchers: Some(Watchers::new(vec![
-                                Watcher{
-                                    kind: WatcherType::Instant,
-                                    action: WatcherAction::SetTargetScale(Vector3::zeros()),
-                                    ..Default::default()
-                                },
-                                Watcher{
-                                    kind: WatcherType::ScaleDistance{
-                                        from: Vector3::zeros(),
-                                        near: 0.01
-                                    },
-                                    action: WatcherAction::Remove,
-                                    ..Default::default()
-                                }
-                            ])),
-                            ..Default::default()
-                        }
-                    })),
+                    action: WatcherAction::SetVisible(false),
                     persistent: true
                 }
             ])),
@@ -471,7 +429,7 @@ impl<'a> PlayerContainer<'a>
                                         object: Some(RenderObject::TextureId{
                                             id: dust_texture
                                         }),
-                                        z_level: ZLevel::Low,
+                                        z_level: ZLevel::Lower,
                                         ..Default::default()
                                     }),
                                     watchers: Some(Watchers::new(vec![

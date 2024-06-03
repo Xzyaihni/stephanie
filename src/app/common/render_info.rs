@@ -135,6 +135,7 @@ impl Scissor
 pub enum ZLevel
 {
     Lowest = 0,
+    Lower,
     Low,
     Middle,
     High,

@@ -286,7 +286,7 @@ impl<S: SaveLoad<WorldChunk>> ServerOvermap<S>
                     let group = local_pos.always_group().expect("chunk must not touch edges");
                     let group = group.map(|position|
                     {
-                        self.world_chunks[position].clone().unwrap()
+                        self.world_chunks[position].clone().unwrap_or_default()
                     });
 
                     let world_chunk = self.world_generator.lock().generate_chunk(group);

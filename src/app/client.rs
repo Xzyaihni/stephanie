@@ -140,6 +140,8 @@ impl Client
         let tiles_factory = TilesFactory::new(&mut info, client_init_info.tilemap)?;
 
         let stream = TcpStream::connect(&client_init_info.client_info.address)?;
+        stream.set_nodelay(true).unwrap();
+
         let message_passer = MessagePasser::new(stream);
 
         let info = GameStateInfo{
