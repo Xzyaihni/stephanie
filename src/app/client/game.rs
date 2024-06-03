@@ -57,9 +57,71 @@ pub struct Game
 
 impl Game
 {
-    pub fn new(game_state: &GameState, player: Entity) -> Self
+    pub fn new(game_state: &mut GameState) -> Self
     {
-        let player = PlayerInfo::new(game_state.items_info.clone(), player);
+        let player_entity = game_state.player();
+        let mouse_entity = game_state.entities.local_entities.push(EntityInfo{
+            transform: Some(Transform{
+                scale: Vector3::repeat(0.1),
+                ..Default::default()
+            }),
+            watchers: Some(Watchers::new(vec![
+                Watcher{
+                    kind: WatcherType::Lifetime(0.1.into()),
+                    action: WatcherAction::Explode(Box::new(ExplodeInfo{
+                        keep: true,
+                        amount: 3..5,
+                        speed: 0.1,
+                        info: EntityInfo{
+                            physical: Some(PhysicalProperties{
+                                mass: 0.05,
+                                friction: 0.1,
+                                floating: true
+                            }.into()),
+                            lazy_transform: Some(LazyTransformInfo{
+                                scaling: Scaling::EaseOut{decay: 4.0},
+                                transform: Transform{
+                                    scale: Vector3::repeat(ENTITY_SCALE * 0.4),
+                                    ..Default::default()
+                                },
+                                ..Default::default()
+                            }.into()),
+                            render: Some(RenderInfo{
+                                object: Some(RenderObject::TextureId{
+                                    id: game_state.common_textures.dust
+                                }),
+                                z_level: ZLevel::Low,
+                                ..Default::default()
+                            }),
+                            watchers: Some(Watchers::new(vec![
+                                Watcher{
+                                    kind: WatcherType::Instant,
+                                    action: WatcherAction::SetTargetScale(Vector3::zeros()),
+                                    ..Default::default()
+                                },
+                                Watcher{
+                                    kind: WatcherType::ScaleDistance{
+                                        from: Vector3::zeros(),
+                                        near: 0.01
+                                    },
+                                    action: WatcherAction::Remove,
+                                    ..Default::default()
+                                }
+                            ])),
+                            ..Default::default()
+                        }
+                    })),
+                    persistent: true
+                }
+            ])),
+            ..Default::default()
+        });
+
+        let player = PlayerInfo::new(
+            game_state.items_info.clone(),
+            player_entity,
+            mouse_entity
+        );
 
         Self{player}
     }
@@ -101,15 +163,20 @@ struct PlayerInfo
 {
     items_info: Arc<ItemsInfo>,
     entity: Entity,
+    mouse_entity: Entity,
     inventory_open: bool,
     camera_follow: f32
 }
 
 impl PlayerInfo
 {
-    pub fn new(items_info: Arc<ItemsInfo>, entity: Entity) -> Self
+    pub fn new(
+        items_info: Arc<ItemsInfo>,
+        entity: Entity,
+        mouse_entity: Entity
+    ) -> Self
     {
-        Self{items_info, entity, inventory_open: false, camera_follow: 0.25}
+        Self{items_info, entity, mouse_entity, inventory_open: false, camera_follow: 0.25}
     }
 }
 
@@ -304,7 +371,8 @@ impl<'a> PlayerContainer<'a>
             {
                 let watcher = Watcher{
                     kind: WatcherType::ScaleDistance{from: Vector3::zeros(), near: 0.2},
-                    action: WatcherAction::SetVisible(false)
+                    action: WatcherAction::SetVisible(false),
+                    ..Default::default()
                 };
 
                 watchers.push(watcher);
@@ -380,8 +448,9 @@ impl<'a> PlayerContainer<'a>
                     }.into()),
                     watchers: Some(Watchers::new(vec![
                         Watcher{
-                            kind: WatcherType::Lifetime(2.5),
-                            action: WatcherAction::Explode(ExplodeInfo{
+                            kind: WatcherType::Lifetime(2.5.into()),
+                            action: WatcherAction::Explode(Box::new(ExplodeInfo{
+                                keep: false,
                                 amount: 3..5,
                                 speed: 0.1,
                                 info: EntityInfo{
@@ -408,19 +477,22 @@ impl<'a> PlayerContainer<'a>
                                     watchers: Some(Watchers::new(vec![
                                         Watcher{
                                             kind: WatcherType::Instant,
-                                            action: WatcherAction::SetTargetScale(Vector3::zeros())
+                                            action: WatcherAction::SetTargetScale(Vector3::zeros()),
+                                            ..Default::default()
                                         },
                                         Watcher{
                                             kind: WatcherType::ScaleDistance{
                                                 from: Vector3::zeros(),
                                                 near: 0.01
                                             },
-                                            action: WatcherAction::Remove
+                                            action: WatcherAction::Remove,
+                                            ..Default::default()
                                         }
                                     ])),
                                     ..Default::default()
                                 }
-                            })
+                            })),
+                            ..Default::default()
                         }
                     ])),
                     ..Default::default()
@@ -502,6 +574,15 @@ impl<'a> PlayerContainer<'a>
         }
 
         self.update_user_events();
+
+        let mouse_position = self.game_state.world_mouse_position();
+        let mouse_position = Vector3::new(mouse_position.x, mouse_position.y, 0.0);
+        let camera_position = self.game_state.camera.read().position().coords;
+
+        self.game_state.entities.local_entities
+            .transform_mut(self.info.mouse_entity)
+            .unwrap()
+            .position = camera_position + mouse_position;
 
         if let Some(movement) = self.movement_direction()
         {

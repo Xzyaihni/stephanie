@@ -16,10 +16,36 @@ use crate::common::{
 
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Lifetime
+{
+    current: f32,
+    start: f32
+}
+
+impl From<f32> for Lifetime
+{
+    fn from(start: f32) -> Self
+    {
+        Self{
+            current: start,
+            start
+        }
+    }
+}
+
+impl Lifetime
+{
+    pub fn reset(&mut self)
+    {
+        self.current = self.start;
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum WatcherType
 {
     Instant,
-    Lifetime(f32),
+    Lifetime(Lifetime),
     ScaleDistance{from: Vector3<f32>, near: f32}
 }
 
@@ -45,11 +71,18 @@ impl WatcherType
                     false
                 }
             },
-            Self::Lifetime(left) =>
+            Self::Lifetime(lifetime) =>
             {
-                *left -= dt;
+                lifetime.current -= dt;
 
-                *left <= 0.0
+                let meets = lifetime.current <= 0.0;
+
+                if meets
+                {
+                    lifetime.reset();
+                }
+
+                meets
             }
         }
     }
@@ -58,6 +91,7 @@ impl WatcherType
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExplodeInfo
 {
+    pub keep: bool,
     pub amount: Range<usize>,
     pub speed: f32,
     pub info: EntityInfo
@@ -70,7 +104,7 @@ pub enum WatcherAction
     SetVisible(bool),
     SetTargetScale(Vector3<f32>),
     Remove,
-    Explode(ExplodeInfo)
+    Explode(Box<ExplodeInfo>)
 }
 
 impl Default for WatcherAction
@@ -124,14 +158,22 @@ impl WatcherAction
 
                 let parent_velocity = entities.physical(entity).map(|x| x.velocity);
 
-                entities.remove(entity);
+                if !info.keep
+                {
+                    entities.remove(entity);
+                }
 
                 let amount = fastrand::usize(info.amount);
                 (0..amount).for_each(|_|
                 {
                     if let Some(target) = info.info.target()
                     {
-                        let offset = scale - scale * 2.0 * fastrand::f32();
+                        let r = ||
+                        {
+                            2.0 * fastrand::f32()
+                        };
+
+                        let offset = scale - Vector3::new(scale.x * r(), scale.y * r(), 0.0);
                         target.position = position + offset / 2.0;
                         target.position.z = 0.0;
 
@@ -157,7 +199,20 @@ impl WatcherAction
 pub struct Watcher
 {
     pub kind: WatcherType,
-    pub action: WatcherAction
+    pub action: WatcherAction,
+    pub persistent: bool
+}
+
+impl Default for Watcher
+{
+    fn default() -> Self
+    {
+        Self{
+            kind: WatcherType::Instant,
+            action: WatcherAction::None,
+            persistent: false
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -192,10 +247,24 @@ impl Watchers
 
             if meets
             {
-                actions.push(mem::take(&mut watcher.action));
+                let replacement = if watcher.persistent
+                {
+                    watcher.action.clone()
+                } else
+                {
+                    Default::default()
+                };
+
+                actions.push(mem::replace(&mut watcher.action, replacement));
             }
 
-            !meets
+            if watcher.persistent
+            {
+                true
+            } else
+            {
+                !meets
+            }
         });
 
         actions

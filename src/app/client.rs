@@ -155,7 +155,7 @@ impl Client
 
         let game_state = GameState::new(info);
 
-        let game = Game::new(&game_state.borrow(), game_state.borrow().player());
+        let game = Game::new(&mut game_state.borrow_mut());
 
         Ok(Self{game_state, game})
     }
