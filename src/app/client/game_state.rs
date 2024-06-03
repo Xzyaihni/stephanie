@@ -732,6 +732,7 @@ impl GameState
 
     fn set_camera_scale(&mut self, scale: f32)
     {
+        self.camera_scale = scale;
         let mut camera = self.camera.write();
 
         camera.rescale(scale);
@@ -839,6 +840,11 @@ impl GameState
             dt
         );
 
+        {
+            let mut passer = self.connections_handler.write();
+            self.entities.update(&mut *passer, dt);
+        }
+
         game.update(self, dt);
 
         let changed_this_frame = self.controls.changed_this_frame();
@@ -865,9 +871,6 @@ impl GameState
             self.camera.read().position().coords.xy(),
             UiEvent::MouseMove(self.world_mouse_position())
         );
-
-        let mut passer = self.connections_handler.write();
-        self.entities.update(&mut *passer, dt);
 
         self.ui.update_after(&mut self.entities.entity_creator(), &self.camera.read());
 

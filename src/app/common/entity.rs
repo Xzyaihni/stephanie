@@ -124,6 +124,14 @@ pub struct Entity
     id: usize
 }
 
+impl Entity
+{
+    pub fn local(&self) -> bool
+    {
+        self.local
+    }
+}
+
 pub trait OnSet<EntitiesType>
 where
     Self: Sized
@@ -831,6 +839,7 @@ macro_rules! define_entities
                     },
                     $(Message::$message_name{entity, $name} =>
                     {
+                        debug_assert!(!entity.local);
                         let component = $name.server_to_client(||
                         {
                             self.transform_clone(entity).expect("expects a transform")
@@ -1170,6 +1179,7 @@ macro_rules! define_entities
                 {
                     $(Message::$message_name{entity, $name} =>
                     {
+                        debug_assert!(!entity.local);
                         self.$set_func(entity, Some($name));
 
                         None

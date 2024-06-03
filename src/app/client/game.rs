@@ -319,16 +319,20 @@ impl<'a> PlayerContainer<'a>
         {
             entities.set_collider(inventory, None);
 
+            let current_scale;
             {
                 let mut lazy = entities.lazy_transform_mut(inventory).unwrap();
+                current_scale = lazy.target_ref().scale;
                 lazy.target().scale = Vector3::zeros();
             }
 
             let watchers = entities.watchers_mut(inventory);
             if let Some(mut watchers) = watchers
             {
+                let near = 0.2 * current_scale.max();
+
                 let watcher = Watcher{
-                    kind: WatcherType::ScaleDistance{from: Vector3::zeros(), near: 0.2},
+                    kind: WatcherType::ScaleDistance{from: Vector3::zeros(), near},
                     action: WatcherAction::SetVisible(false),
                     ..Default::default()
                 };
