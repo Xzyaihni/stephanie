@@ -19,9 +19,12 @@ use strum_macros::EnumIter;
 
 use strum_macros::EnumCount;
 
-use yanyaengine::object::{
-    resource_uploader::ResourceUploader,
-    texture::{Color, SimpleImage, Texture}
+use yanyaengine::{
+    UniformLocation,
+    object::{
+        resource_uploader::ResourceUploader,
+        texture::{Color, SimpleImage, Texture}
+    }
 };
 
 use crate::common::world::Tile;
@@ -337,7 +340,7 @@ impl TileMap
             tilemap.blit(texture, x + PADDING, y + PADDING);
         });
 
-        Texture::new(resource_uploader, tilemap.into())
+        Texture::new(resource_uploader, tilemap.into(), UniformLocation{set: 0, binding: 0})
     }
 }
 

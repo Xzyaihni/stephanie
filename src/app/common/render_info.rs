@@ -53,7 +53,11 @@ impl RenderObject
                     transform
                 };
 
-                Some(ClientRenderObject::Normal(create_info.partial.object_factory.create(info)))
+                let object = create_info.partial.object_factory.create(info);
+
+                Some(ClientRenderObject{
+                    kind: ClientObjectType::Normal(object)
+                })
             },
             Self::Texture{name} =>
             {
@@ -75,7 +79,9 @@ impl RenderObject
                     None
                 } else
                 {
-                    Some(ClientRenderObject::Text(object))
+                    Some(ClientRenderObject{
+                        kind: ClientObjectType::Text(object)
+                    })
                 }
             }
         }
@@ -152,20 +158,25 @@ impl Default for RenderInfo
     }
 }
 
-pub enum ClientRenderObject
+pub enum ClientObjectType
 {
     Normal(Object),
     Text(TextObject)
+}
+
+pub struct ClientRenderObject
+{
+    kind: ClientObjectType
 }
 
 impl ClientRenderObject
 {
     pub fn set_transform(&mut self, transform: Transform)
     {
-        match self
+        match &mut self.kind
         {
-            Self::Normal(x) => x.set_transform(transform),
-            Self::Text(x) =>
+            ClientObjectType::Normal(x) => x.set_transform(transform),
+            ClientObjectType::Text(x) =>
             {
                 let mut scale_changed = false;
                 if let Some(object) = x.object.as_mut()
@@ -184,10 +195,10 @@ impl ClientRenderObject
 
     fn transform(&self) -> Option<&Transform>
     {
-        match self
+        match &self.kind
         {
-            Self::Normal(x) => Some(x.transform_ref()),
-            Self::Text(x) => x.transform()
+            ClientObjectType::Normal(x) => Some(x.transform_ref()),
+            ClientObjectType::Text(x) => x.transform()
         }
     }
 }
@@ -196,19 +207,19 @@ impl GameObject for ClientRenderObject
 {
     fn update_buffers(&mut self, info: &mut UpdateBuffersInfo)
     {
-        match self
+        match &mut self.kind
         {
-            Self::Normal(x) => x.update_buffers(info),
-            Self::Text(x) => x.update_buffers(info)
+            ClientObjectType::Normal(x) => x.update_buffers(info),
+            ClientObjectType::Text(x) => x.update_buffers(info)
         }
     }
 
     fn draw(&self, info: &mut DrawInfo)
     {
-        match self
+        match &self.kind
         {
-            Self::Normal(x) => x.draw(info),
-            Self::Text(x) => x.draw(info)
+            ClientObjectType::Normal(x) => x.draw(info),
+            ClientObjectType::Text(x) => x.draw(info)
         }
     }
 }
@@ -254,7 +265,10 @@ impl ClientRenderInfo
 {
     pub fn set_texture(&mut self, texture: Arc<RwLock<Texture>>)
     {
-        if let Some(ClientRenderObject::Normal(x)) = self.object.as_mut()
+        if let Some(ClientRenderObject{
+            kind: ClientObjectType::Normal(x),
+            ..
+        }) = self.object.as_mut()
         {
             x.set_texture(texture);
         }
@@ -262,7 +276,10 @@ impl ClientRenderInfo
 
     pub fn set_inplace_texture(&mut self, texture: Texture)
     {
-        if let Some(ClientRenderObject::Normal(x)) = self.object.as_mut()
+        if let Some(ClientRenderObject{
+            kind: ClientObjectType::Normal(x),
+            ..
+        }) = self.object.as_mut()
         {
             x.set_inplace_texture(texture);
         }
@@ -279,7 +296,10 @@ impl ClientRenderInfo
 
         let texture = assets.texture(texture).clone();
 
-        if let Some(ClientRenderObject::Normal(x)) = self.object.as_mut()
+        if let Some(ClientRenderObject{
+            kind: ClientObjectType::Normal(x),
+            ..
+        }) = self.object.as_mut()
         {
             x.set_texture(texture);
         } else
@@ -290,9 +310,11 @@ impl ClientRenderInfo
                 transform: transform.expect("renderable must have a transform").clone()
             };
 
-            let object = ClientRenderObject::Normal(
-                create_info.partial.object_factory.create(info)
-            );
+            let object = ClientRenderObject{
+                kind: ClientObjectType::Normal(
+                    create_info.partial.object_factory.create(info)
+                )
+            };
 
             self.object = Some(object);
         }
