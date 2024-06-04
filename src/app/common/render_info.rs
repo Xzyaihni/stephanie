@@ -350,6 +350,14 @@ impl ClientRenderInfo
         }
     }
 
+    pub fn set_transform(&mut self, transform: Transform)
+    {
+        if let Some(x) = self.object.as_mut()
+        {
+            x.set_transform(transform);
+        }
+    }
+
     pub fn set_visibility(&mut self, visible: bool)
     {
         self.visible = visible;

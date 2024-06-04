@@ -222,7 +222,7 @@ impl LazyTransform
         dt: f32
     ) -> Transform
     {
-        let mut target_global = self.target_global(parent_transform.as_ref());
+        let mut target_global = self.target_global_unrotated(parent_transform.as_ref());
 
         let constant_change = |current: &mut Vector3<f32>, target: Vector3<f32>, speed|
         {
@@ -362,19 +362,7 @@ impl LazyTransform
             }
         }
 
-        let rotation = NRotation::from_axis_angle(
-            &current.rotation_axis,
-            current.rotation + self.origin_rotation
-        );
-
-        if let Some(parent) = parent_transform
-        {
-            let scaled_origin = self.origin.component_mul(&parent.scale);
-            let offset_position =
-                self.target_local.position.component_mul(&parent.scale) - scaled_origin;
-
-            target_global.position = rotation * offset_position + parent.position + scaled_origin;
-        }
+        self.apply_rotation(&mut target_global, &current, parent_transform.as_ref());
 
         match &mut self.connection
         {
@@ -481,7 +469,7 @@ impl LazyTransform
         transform
     }
 
-    pub fn target_global(
+    fn target_global_unrotated(
         &self,
         parent: Option<&Transform>
     ) -> Transform
@@ -492,6 +480,41 @@ impl LazyTransform
         } else
         {
             self.target_local.clone()
+        }
+    }
+
+    pub fn target_global(
+        &self,
+        parent: Option<&Transform>
+    ) -> Transform
+    {
+        let mut target = self.target_global_unrotated(parent);
+
+        let current = target.clone();
+        self.apply_rotation(&mut target, &current, parent);
+
+        target
+    }
+
+    fn apply_rotation(
+        &self,
+        target: &mut Transform,
+        current: &Transform,
+        parent_transform: Option<&Transform>
+    )
+    {
+        let rotation = NRotation::from_axis_angle(
+            &current.rotation_axis,
+            current.rotation + self.origin_rotation
+        );
+
+        if let Some(parent) = parent_transform
+        {
+            let scaled_origin = self.origin.component_mul(&parent.scale);
+            let offset_position =
+                self.target_local.position.component_mul(&parent.scale) - scaled_origin;
+
+            target.position = rotation * offset_position + parent.position + scaled_origin;
         }
     }
 

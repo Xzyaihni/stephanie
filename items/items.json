@@ -14,7 +14,7 @@
     },
     {
         "name": "duct tape",
-        "scale": 0.05,
+        "scale": 0.15,
         "mass": 0.1,
         "commonness": 1.0,
         "groups": ["utility"]

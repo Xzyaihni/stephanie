@@ -84,7 +84,6 @@ impl From<bincode::Error> for ConnectionError
 pub struct GameServer
 {
     entities: Entities,
-    items_info: Arc<ItemsInfo>,
     enemies_info: Arc<EnemiesInfo>,
     world: World,
     connection_handler: Arc<RwLock<ConnectionsHandler>>
@@ -111,7 +110,7 @@ impl GameServer
 
         sender_loop(connection_handler.clone());
 
-        Ok(Self{entities, items_info, enemies_info, world, connection_handler})
+        Ok(Self{entities, enemies_info, world, connection_handler})
     }
 
     pub fn update(&mut self, dt: f32)

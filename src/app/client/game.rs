@@ -279,9 +279,8 @@ impl<'a> PlayerContainer<'a>
                 let assets = self.game_state.assets.lock();
                 let texture = assets.texture(item.texture);
 
-                render.set_texture(texture.clone());
-
-                let mut target = entities.target(holding_entity).unwrap();
+                let mut lazy_transform = entities.lazy_transform_mut(holding_entity).unwrap();
+                let target = lazy_transform.target();
                 let scale = item.scale3();
 
                 let distance_from_player = 0.1;
@@ -290,6 +289,16 @@ impl<'a> PlayerContainer<'a>
 
                 target.position = Vector3::new(offset, 0.0, 0.0);
                 target.scale = scale;
+
+                render.set_texture(texture.clone());
+
+                drop(parent);
+                let parent_transform = entities.parent_transform(holding_entity);
+                let new_target = lazy_transform.target_global(parent_transform.as_ref());
+
+                let mut transform = entities.transform_mut(holding_entity).unwrap();
+                transform.scale = new_target.scale;
+                transform.position = new_target.position;
             } else
             {
                 parent.visible = false;

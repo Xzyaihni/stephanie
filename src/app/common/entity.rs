@@ -273,6 +273,14 @@ pub trait AnyEntities
         info: EntityInfo
     ) -> Entity;
 
+    fn parent_transform(&self, entity: Entity) -> Option<Transform>
+    {
+        self.parent(entity).and_then(|parent|
+        {
+            self.transform(parent.entity).as_deref().cloned()
+        })
+    }
+
     fn target_ref(&self, entity: Entity) -> Option<Ref<Transform>>
     {
         self.lazy_target_ref(entity).or_else(||
@@ -1002,19 +1010,14 @@ macro_rules! define_entities
                 });
             }
 
-            fn update_lazy_one(
+            pub fn update_lazy_one(
                 &self,
                 entity: Entity,
                 mut lazy: RefMut<LazyTransform>,
                 dt: f32
             )
             {
-                let parent = self.parent(entity);
-
-                let target_global = parent.map(|parent|
-                {
-                    self.transform(parent.entity).as_deref().cloned()
-                }).flatten();
+                let target_global = self.parent_transform(entity);
 
                 let mut transform = self.transform_mut(entity).unwrap();
 
@@ -1084,24 +1087,22 @@ macro_rules! define_entities
                 })|
                 {
                     let mut lazy = self.lazy_transform_mut(*entity).unwrap();
-                    let changed = {
-                        let mut render = self.render_mut(*entity).unwrap();
-                        let mut transform = self.transform_mut(*entity).unwrap();
-
-                        enemy.borrow_mut().update_sprite(
-                            &mut *lazy,
-                            enemies_info,
-                            &mut render,
-                            |render, texture|
-                            {
-                                render.set_sprite(create_info, Some(&mut transform), texture);
-                            }
-                        )
-                    };
+                    let mut render = self.render_mut(*entity).unwrap();
+                    let mut transform = self.transform_mut(*entity).unwrap();
+                    let changed = enemy.borrow_mut().update_sprite(
+                        &mut *lazy,
+                        enemies_info,
+                        &mut render,
+                        |render, texture|
+                        {
+                            render.set_sprite(create_info, Some(&mut transform), texture);
+                        }
+                    );
 
                     if changed
                     {
-                        self.update_lazy_one(*entity, lazy, 0.0001);
+                        let parent_transform = self.parent_transform(*entity);
+                        transform.scale = lazy.target_global(parent_transform.as_ref()).scale;
                     }
                 });
             }
