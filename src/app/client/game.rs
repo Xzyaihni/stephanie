@@ -405,7 +405,7 @@ impl<'a> PlayerContainer<'a>
                         transform: Transform{
                             position: holding_transform.position,
                             rotation: holding_transform.rotation,
-                            scale: holding_transform.scale * ENTITY_SCALE,
+                            scale: item_info.scale3() * ENTITY_SCALE,
                             ..Default::default()
                         },
                         ..Default::default()
