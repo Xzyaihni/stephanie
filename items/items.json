@@ -1,12 +1,8 @@
 [
     {
         "name": "branch",
-        "weapon": {
-            "Melee": {
-                "comfort": 0.5,
-                "sharpness": 0.5
-            }
-        },
+        "comfort": 0.5,
+        "sharpness": 0.5,
         "scale": 0.6,
         "mass": 4.0,
         "commonness": 1.0,
@@ -21,12 +17,8 @@
     },
     {
         "name": "stick",
-        "weapon": {
-            "Melee": {
-                "comfort": 1.5,
-                "sharpness": 0.15
-            }
-        },
+        "comfort": 1.5,
+        "sharpness": 0.15,
         "scale": 0.5,
         "mass": 3.0,
         "commonness": 1.0,
@@ -34,11 +26,13 @@
     },
     {
         "name": "pistol",
-        "weapon": {
+        "ranged": {
             "Pistol": {
                 "damage": 1
             }
         },
+        "comfort": 0.7,
+        "sharpness": 0.1,
         "scale": 0.11,
         "mass": 0.9,
         "commonness": 0.1,

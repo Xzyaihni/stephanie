@@ -21,7 +21,7 @@ use crate::common::{
     EntityInfo,
     Player,
     Inventory,
-    Weapon,
+    Item,
     ItemInfo,
     ItemsInfo,
     Damage,
@@ -192,18 +192,23 @@ impl<'a> PlayerContainer<'a>
         {
             Control::MainAction =>
             {
-                let player = self.player();
-
-                let inventory = self.inventory();
-                if let Some(holding) = player.holding.and_then(|holding| inventory.get(holding))
+                if let Some(holding) = self.held_item()
                 {
-                    let items_info = self.info.items_info.clone();
-                    let weapon = &items_info.get(holding.id).weapon;
-
-                    drop(player);
-                    drop(inventory);
-
-                    self.weapon_attack(weapon);
+                    self.bash_attack(holding);
+                }
+            },
+            Control::Poke =>
+            {
+                if let Some(holding) = self.held_item()
+                {
+                    self.poke_attack(holding);
+                }
+            },
+            Control::Shoot =>
+            {
+                if let Some(holding) = self.held_item()
+                {
+                    self.ranged_attack(holding);
                 }
             },
             Control::Throw =>
@@ -493,8 +498,27 @@ impl<'a> PlayerContainer<'a>
         }
     }
 
-    fn weapon_attack(&mut self, weapon: &Weapon)
+    fn bash_attack(&self, item: Item)
     {
+        todo!()
+    }
+
+    fn poke_attack(&self, item: Item)
+    {
+        todo!()
+    }
+
+    fn ranged_attack(&self, item: Item)
+    {
+        let items_info = self.info.items_info.clone();
+        let ranged = if let Some(x) = &items_info.get(item.id).ranged
+        {
+            x
+        } else
+        {
+            return;
+        };
+
         let start = self.player_position();
 
         let mouse = self.game_state.world_mouse_position();
@@ -509,7 +533,7 @@ impl<'a> PlayerContainer<'a>
 
         let hits = self.game_state.raycast(info, &start, &end);
 
-        let damage = weapon.damage();
+        let damage = ranged.damage();
 
         let height = DamageHeight::random();
 
@@ -694,6 +718,14 @@ impl<'a> PlayerContainer<'a>
     {
         let inventory = self.inventory();
         inventory.get(id).map(|x| self.game_state.items_info.get(x.id))
+    }
+
+    fn held_item(&self) -> Option<Item>
+    {
+        let player = self.player();
+        let inventory = self.inventory();
+
+        player.holding.and_then(|holding| inventory.get(holding).cloned())
     }
 
     fn player_position(&self) -> Vector3<f32>

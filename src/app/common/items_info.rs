@@ -17,27 +17,17 @@ use crate::common::{DamageType, Item};
 pub struct ItemId(usize);
 
 #[derive(Deserialize)]
-pub enum Weapon
+pub enum Ranged
 {
-    Melee{comfort: f32, sharpness: f32},
     Pistol{damage: f32}
 }
 
-impl Default for Weapon
-{
-    fn default() -> Self
-    {
-        Self::Melee{comfort: 1.0, sharpness: 0.0}
-    }
-}
-
-impl Weapon
+impl Ranged
 {
     pub fn piercing(&self) -> bool
     {
         match self
         {
-            Self::Melee{..} => false,
             Self::Pistol{..} => true
         }
     }
@@ -55,10 +45,6 @@ impl Weapon
 
         match self
         {
-            Self::Melee{comfort, sharpness} =>
-            {
-                todo!()
-            },
             Self::Pistol{damage} =>
             {
                 DamageType::Bullet(with_base(400.0, damage))
@@ -72,8 +58,9 @@ impl Weapon
 pub struct ItemInfoRaw
 {
     name: String,
-    #[serde(default)]
-    weapon: Weapon,
+    ranged: Option<Ranged>,
+    comfort: Option<f32>,
+    sharpness: Option<f32>,
     scale: Option<f32>,
     mass: Option<f32>,
     commonness: Option<f64>,
@@ -86,7 +73,9 @@ pub type ItemsInfoRaw = Vec<ItemInfoRaw>;
 pub struct ItemInfo
 {
     pub name: String,
-    pub weapon: Weapon,
+    pub ranged: Option<Ranged>,
+    pub comfort: f32,
+    pub sharpness: f32,
     pub scale: Vector2<f32>,
     pub mass: f32,
     pub commonness: f64,
@@ -126,7 +115,9 @@ impl ItemInfo
 
         Self{
             name: raw.name,
-            weapon: raw.weapon,
+            ranged: raw.ranged,
+            comfort: raw.comfort.unwrap_or(1.0),
+            sharpness: raw.sharpness.unwrap_or(0.0),
             // scale is in meters
             scale: aspect * raw.scale.unwrap_or(0.1) * 3.0,
             mass: raw.mass.unwrap_or(1.0),

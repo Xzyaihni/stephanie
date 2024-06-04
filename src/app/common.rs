@@ -40,7 +40,7 @@ pub use entity::{
 
 pub use loot::Loot;
 pub use item::Item;
-pub use items_info::{ItemInfo, ItemsInfo, Weapon};
+pub use items_info::{ItemInfo, ItemsInfo, Ranged};
 
 pub use inventory::{InventorySorter, InventoryItem, Inventory};
 

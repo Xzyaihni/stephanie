@@ -609,7 +609,7 @@ impl GameState
         }
     }
 
-    pub fn damage_entity(&mut self, entity: Entity, damage: Damage)
+    pub fn damage_entity(&self, entity: Entity, damage: Damage)
     {
         if self.entities().player(entity).is_some()
         {
