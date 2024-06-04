@@ -256,6 +256,7 @@ impl GameServer
                 rotation: Rotation::EaseOut(
                     EaseOutRotation{
                         decay: 7.0,
+                        speed_significant: 10.0,
                         momentum: 0.5
                     }.into()
                 ),
@@ -291,6 +292,7 @@ impl GameServer
                     rotation: Rotation::EaseOut(
                         EaseOutRotation{
                             decay: 25.0,
+                            speed_significant: 3.0,
                             momentum: 0.5
                         }.into()
                     ),

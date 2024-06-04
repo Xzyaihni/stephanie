@@ -119,7 +119,7 @@ impl ItemInfo
             comfort: raw.comfort.unwrap_or(1.0),
             sharpness: raw.sharpness.unwrap_or(0.0),
             // scale is in meters
-            scale: aspect * raw.scale.unwrap_or(0.1) * 3.0,
+            scale: aspect * raw.scale.unwrap_or(0.1) * 4.0,
             mass: raw.mass.unwrap_or(1.0),
             commonness: raw.commonness.unwrap_or(1.0),
             texture

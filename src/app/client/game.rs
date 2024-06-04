@@ -1,4 +1,5 @@
 use std::{
+    f32,
     mem,
     cell::Ref,
     sync::Arc
@@ -14,6 +15,7 @@ use crate::common::{
     lazy_transform::*,
     collider::*,
     watcher::*,
+    Side1d,
     AnyEntities,
     Physical,
     PhysicalProperties,
@@ -92,6 +94,7 @@ impl Game
         let mut container = self.player_container(game_state);
         container.camera_sync_instant();
         container.update_inventory();
+        container.unstance();
     }
 
     pub fn update(&mut self, game_state: &mut GameState, dt: f32)
@@ -120,6 +123,8 @@ struct PlayerInfo
     items_info: Arc<ItemsInfo>,
     entity: Entity,
     mouse_entity: Entity,
+    stance_time: f32,
+    bash_side: Side1d,
     inventory_open: bool,
     camera_follow: f32
 }
@@ -132,7 +137,15 @@ impl PlayerInfo
         mouse_entity: Entity
     ) -> Self
     {
-        Self{items_info, entity, mouse_entity, inventory_open: false, camera_follow: 0.25}
+        Self{
+            items_info,
+            entity,
+            mouse_entity,
+            stance_time: 0.0,
+            bash_side: Side1d::Left,
+            inventory_open: false,
+            camera_follow: 0.25
+        }
     }
 }
 
@@ -366,7 +379,8 @@ impl<'a> PlayerContainer<'a>
     {
         let player = self.info.entity;
 
-        let held = self.game_state.entities_mut().player_mut(player).unwrap().holding.take();
+        let entities = self.game_state.entities();
+        let held = entities.player_mut(player).unwrap().holding.take();
         let held = if let Some(x) = held
         {
             x
@@ -379,17 +393,10 @@ impl<'a> PlayerContainer<'a>
         {
             let entity_info = {
                 let holding_entity = self.game_state.player_entities().holding;
-                let holding_transform = self.game_state.entities()
-                    .transform(holding_entity)
-                    .unwrap();
+                let holding_transform = entities.transform(holding_entity).unwrap();
 
                 let direction = {
-                    let origin_rotation = self.game_state.entities()
-                        .lazy_transform(holding_entity)
-                        .unwrap()
-                        .origin_rotation();
-
-                    let rotation = holding_transform.rotation + origin_rotation;
+                    let rotation = entities.transform(player).unwrap().rotation;
 
                     Vector3::new(rotation.cos(), rotation.sin(), 0.0)
                 };
@@ -491,16 +498,70 @@ impl<'a> PlayerContainer<'a>
 
             self.game_state.entities.entity_creator().push(entity_info, render_info);
 
-            self.game_state.entities_mut().inventory_mut(player).unwrap().remove(held);
+            self.game_state.entities().inventory_mut(player).unwrap().remove(held);
             self.game_state.update_inventory();
 
             self.update_weapon();
         }
     }
 
-    fn bash_attack(&self, item: Item)
+    fn unstance(&mut self)
     {
-        todo!()
+        let start_rotation = self.default_held_rotation();
+        if let Some(mut lazy) = self.game_state.entities().lazy_transform_mut(self.holding_entity())
+        {
+            match &mut lazy.rotation
+            {
+                Rotation::EaseOut(x) => x.set_decay(7.0),
+                _ => ()
+            }
+
+            lazy.target().rotation = start_rotation;
+        }
+    }
+
+    fn bash_attack(&mut self, item: Item)
+    {
+        self.info.stance_time = 5.0;
+        self.info.bash_side = self.info.bash_side.opposite();
+
+        eprintln!("hitting from {:?}", self.info.bash_side);
+
+        let start_rotation = self.default_held_rotation();
+        if let Some(mut lazy) = self.game_state.entities().lazy_transform_mut(self.holding_entity())
+        {
+            let edge = 0.4;
+
+            let new_rotation = match self.info.bash_side
+            {
+                Side1d::Left =>
+                {
+                    f32::consts::FRAC_PI_2 - edge
+                },
+                Side1d::Right =>
+                {
+                    -f32::consts::FRAC_PI_2 + edge
+                }
+            };
+
+            match &mut lazy.rotation
+            {
+                Rotation::EaseOut(x) => x.set_decay(30.0),
+                _ => ()
+            }
+
+            lazy.target().rotation = start_rotation - new_rotation;
+        }
+    }
+
+    fn default_held_rotation(&self) -> f32
+    {
+        let origin_rotation = self.game_state.entities()
+            .lazy_transform(self.holding_entity())
+            .unwrap()
+            .origin_rotation();
+
+        -origin_rotation
     }
 
     fn poke_attack(&self, item: Item)
@@ -567,11 +628,21 @@ impl<'a> PlayerContainer<'a>
         }
     }
 
-    pub fn update(&mut self, _dt: f32)
+    pub fn update(&mut self, dt: f32)
     {
         if !self.exists()
         {
             return;
+        }
+
+        if self.info.stance_time > 0.0
+        {
+            self.info.stance_time -= dt;
+
+            if self.info.stance_time <= 0.0
+            {
+                self.unstance();
+            }
         }
 
         self.update_user_events();
@@ -726,6 +797,11 @@ impl<'a> PlayerContainer<'a>
         let inventory = self.inventory();
 
         player.holding.and_then(|holding| inventory.get(holding).cloned())
+    }
+
+    fn holding_entity(&self) -> Entity
+    {
+        self.game_state.player_entities().holding
     }
 
     fn player_position(&self) -> Vector3<f32>

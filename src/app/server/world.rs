@@ -170,19 +170,20 @@ impl World
         new_position: Pos3<f32>
     )
     {
-        let previous_position = &mut self.client_indexers.get_mut(&id)
-            .expect("id must be valid")
-            .player_position;
-
-        let new_position = new_position.rounded();
-
-        let position_changed = *previous_position != new_position;
-
-        *previous_position = new_position;
-
-        if position_changed
+        if let Some(indexer) = self.client_indexers.get_mut(&id)
         {
-            self.unload_entities(container);
+            let previous_position = &mut indexer.player_position;
+
+            let new_position = new_position.rounded();
+
+            let position_changed = *previous_position != new_position;
+
+            *previous_position = new_position;
+
+            if position_changed
+            {
+                self.unload_entities(container);
+            }
         }
     }
 

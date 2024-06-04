@@ -15,7 +15,9 @@ use crate::common::{
     DamageDirection,
     DamageHeight,
     DamageType,
+    Side1d,
     Side2d,
+    Side3d,
     Damageable
 };
 
@@ -467,28 +469,28 @@ pub struct Halves<T>
     right: T
 }
 
-impl<T> Index<Side> for Halves<T>
+impl<T> Index<Side1d> for Halves<T>
 {
     type Output = T;
 
-    fn index(&self, side: Side) -> &Self::Output
+    fn index(&self, side: Side1d) -> &Self::Output
     {
         match side
         {
-            Side::Left => &self.left,
-            Side::Right => &self.right
+            Side1d::Left => &self.left,
+            Side1d::Right => &self.right
         }
     }
 }
 
-impl<T> IndexMut<Side> for Halves<T>
+impl<T> IndexMut<Side1d> for Halves<T>
 {
-    fn index_mut(&mut self, side: Side) -> &mut Self::Output
+    fn index_mut(&mut self, side: Side1d) -> &mut Self::Output
     {
         match side
         {
-            Side::Left => &mut self.left,
-            Side::Right => &mut self.right
+            Side1d::Left => &mut self.left,
+            Side1d::Right => &mut self.right
         }
     }
 }
@@ -510,92 +512,6 @@ impl<T> Halves<T>
             right: f(&self.right)
         }
     }
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub enum Side
-{
-    Left,
-    Right
-}
-
-impl TryFrom<Side3d> for Side
-{
-    type Error = ();
-
-    fn try_from(side: Side3d) -> Result<Self, ()>
-    {
-        match side
-        {
-            Side3d::Left => Ok(Self::Left),
-            Side3d::Right => Ok(Self::Right),
-            _ => Err(())
-        }
-    }
-}
-
-impl TryFrom<Side2d> for Side
-{
-    type Error = ();
-
-    fn try_from(side: Side2d) -> Result<Self, ()>
-    {
-        match side
-        {
-            Side2d::Left => Ok(Self::Left),
-            Side2d::Right => Ok(Self::Right),
-            _ => Err(())
-        }
-    }
-}
-
-impl Side
-{
-    pub fn opposite(self) -> Self
-    {
-        match self
-        {
-            Self::Left => Self::Right,
-            Self::Right => Self::Left
-        }
-    }
-}
-
-impl From<Side> for Side2d
-{
-    fn from(side: Side) -> Self
-    {
-        match side
-        {
-            Side::Left => Self::Left,
-            Side::Right => Self::Right
-        }
-    }
-}
-
-impl From<Side2d> for Side3d
-{
-    fn from(side: Side2d) -> Self
-    {
-        match side
-        {
-            Side2d::Left => Self::Left,
-            Side2d::Right => Self::Right,
-            Side2d::Front => Self::Front,
-            Side2d::Back => Self::Back
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumCount, FromRepr, Serialize, Deserialize)]
-pub enum Side3d
-{
-    Left,
-    Right,
-    Top,
-    Bottom,
-    Front,
-    Back
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -788,22 +704,22 @@ impl Default for Brain
 pub struct Lung
 {
     health: Health,
-    side: Side
+    side: Side1d
 }
 
 impl Lung
 {
     fn left() -> Self
     {
-        Self::new(Side::Left)
+        Self::new(Side1d::Left)
     }
 
     fn right() -> Self
     {
-        Self::new(Side::Right)
+        Self::new(Side1d::Right)
     }
 
-    fn new(side: Side) -> Self
+    fn new(side: Side1d) -> Self
     {
         Self{health: Health::new(3.0, 20.0), side}
     }
@@ -977,7 +893,7 @@ struct SpeedsState
 {
     conseq_leg: u32,
     conseq_arm: u32,
-    side: Option<Side>,
+    side: Option<Side1d>,
     halves: Halves<Speeds>
 }
 
@@ -1354,7 +1270,7 @@ impl HumanAnatomy
             if let Ok(side) = side.try_into()
             {
                 // :/
-                let side: Side = side;
+                let side: Side1d = side;
 
                 state.side = Some(side.opposite());
             }

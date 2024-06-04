@@ -1,10 +1,8 @@
 use std::f32;
 
-use nalgebra::Vector3;
-
 use serde::{Serialize, Deserialize};
 
-use crate::common::SeededRandom;
+use crate::common::{Side2d, SeededRandom};
 
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -38,56 +36,6 @@ impl DamageType
         {
             Self::Blunt(x) => x,
             Self::Bullet(x) => x
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub enum Side2d
-{
-    Left,
-    Right,
-    Front,
-    Back
-}
-
-impl Side2d
-{
-    pub fn from_positions(rotation: f32, origin: Vector3<f32>, other: Vector3<f32>) -> Self
-    {
-        let offset = other - origin;
-
-        Self::from_angle(offset.y.atan2(offset.x) - rotation)
-    }
-
-    pub fn from_angle(angle: f32) -> Self
-    {
-        const HALF: f32 = f32::consts::FRAC_PI_2;
-        const QUARTER: f32 = f32::consts::FRAC_PI_4;
-
-        if (-QUARTER..QUARTER).contains(&angle)
-        {
-            Self::Front
-        } else if ((-HALF - QUARTER)..-QUARTER).contains(&angle)
-        {
-            Self::Left
-        } else if (QUARTER..(HALF + QUARTER)).contains(&angle)
-        {
-            Self::Right
-        } else
-        {
-            Self::Back
-        }
-    }
-
-    pub fn opposite(self) -> Self
-    {
-        match self
-        {
-            Self::Left => Self::Right,
-            Self::Right => Self::Left,
-            Self::Front => Self::Back,
-            Self::Back => Self::Front
         }
     }
 }

@@ -56,6 +56,7 @@ impl<'a> EnemyBuilder<'a>
                 rotation: Rotation::EaseOut(
                     EaseOutRotation{
                         decay: 6.0,
+                        speed_significant: 0.0,
                         momentum: 0.0
                     }.into()
                 ),

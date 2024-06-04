@@ -48,6 +48,7 @@ pub struct SpringConnection
 pub struct EaseOutRotation
 {
     pub decay: f32,
+    pub speed_significant: f32,
     pub momentum: f32
 }
 
@@ -78,6 +79,14 @@ impl<T> From<T> for RotationInfo<T>
 
 pub type EaseOutRotationInfo = RotationInfo<EaseOutRotation>;
 pub type ConstantRotationInfo = RotationInfo<ConstantRotation>;
+
+impl EaseOutRotationInfo
+{
+    pub fn set_decay(&mut self, decay: f32)
+    {
+        self.props.decay = decay;
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StretchDeformation
@@ -224,6 +233,10 @@ impl LazyTransform
     {
         let mut target_global = self.target_global_unrotated(parent_transform.as_ref());
 
+        let pi2 = 2.0 * f32::consts::PI;
+        current.rotation %= pi2;
+        target_global.rotation %= pi2;
+
         let constant_change = |current: &mut Vector3<f32>, target: Vector3<f32>, speed|
         {
             let max_move = Vector3::repeat(speed * dt);
@@ -270,8 +283,7 @@ impl LazyTransform
             },
             Rotation::EaseOut(..) | Rotation::Constant{..} =>
             {
-                let pi2 = 2.0 * f32::consts::PI;
-                let rotation_difference = (target_global.rotation - current.rotation) % pi2;
+                let rotation_difference = target_global.rotation - current.rotation;
 
                 let short_difference = if rotation_difference > f32::consts::PI
                 {
@@ -301,7 +313,7 @@ impl LazyTransform
 
                 let short_fraction = -short_difference / long_difference;
 
-                let current_difference = |last_move: f32, momentum: f32|
+                let current_difference = |last_move: f32, momentum: f32, speed_significant: f32|
                 {
                     #[allow(clippy::collapsible_else_if)]
                     if (last_move * short_difference).is_sign_positive()
@@ -310,7 +322,9 @@ impl LazyTransform
                         short_difference
                     } else
                     {
-                        if (1.0 - momentum) < short_fraction
+                        let below_momentum = (1.0 - momentum) < short_fraction;
+
+                        if below_momentum && speed_significant < last_move
                         {
                             long_difference
                         } else
@@ -326,8 +340,11 @@ impl LazyTransform
                 {
                     Rotation::EaseOut(info) =>
                     {
-                        let current_difference =
-                            current_difference(info.last_move, info.props.momentum);
+                        let current_difference = current_difference(
+                            info.last_move,
+                            info.props.momentum,
+                            info.props.speed_significant
+                        );
 
                         let target_rotation = current_difference + rotation;
 
@@ -347,7 +364,7 @@ impl LazyTransform
                         let max_move = info.props.speed * dt;
 
                         let current_difference =
-                            current_difference(info.last_move, info.props.momentum);
+                            current_difference(info.last_move, info.props.momentum, 0.0);
 
                         let move_amount = current_difference.clamp(-max_move, max_move);
 

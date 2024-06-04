@@ -38,6 +38,8 @@ pub use entity::{
     Entities
 };
 
+pub use sides::{Side1d, Side2d, Side3d};
+
 pub use loot::Loot;
 pub use item::Item;
 pub use items_info::{ItemInfo, ItemsInfo, Ranged};
@@ -56,11 +58,12 @@ pub use chunk_saver::{SaveLoad, WorldChunkSaver, ChunkSaver, EntitiesSaver};
 pub use render_info::RenderInfo;
 
 pub use anatomy::{Anatomy, HumanAnatomy};
-pub use damage::{Damageable, Damage, DamageType, DamageDirection, Side2d, DamageHeight};
+pub use damage::{Damageable, Damage, DamageType, DamageDirection, DamageHeight};
 
 pub use collider::{ColliderType, Collider, CollidingInfo};
 pub use physics::{Physical, PhysicalProperties};
 
+pub mod sides;
 pub mod lisp;
 pub mod objects_store;
 
