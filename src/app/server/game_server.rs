@@ -102,7 +102,12 @@ impl GameServer
         let entities = Entities::new();
         let connection_handler = Arc::new(RwLock::new(ConnectionsHandler::new(limit)));
 
-        let world = World::new(connection_handler.clone(), tilemap, enemies_info.clone())?;
+        let world = World::new(
+            connection_handler.clone(),
+            tilemap,
+            enemies_info.clone(),
+            items_info.clone()
+        )?;
 
         sender_loop(connection_handler.clone());
 

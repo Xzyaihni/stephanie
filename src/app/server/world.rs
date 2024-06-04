@@ -8,18 +8,16 @@ use parking_lot::{Mutex, RwLock};
 
 use nalgebra::Vector3;
 
-use yanyaengine::Transform;
-
 use crate::{
     server::ConnectionsHandler,
     common::{
         self,
-        render_info::*,
-        collider::*,
+        FurnitureBuilder,
         EnemyBuilder,
         TileMap,
         WorldChunkSaver,
         ChunkSaver,
+        ItemsInfo,
         EntitiesSaver,
         EnemiesInfo,
         SaveLoad,
@@ -27,8 +25,6 @@ use crate::{
         Entity,
         EntityInfo,
         ConnectionId,
-        PhysicalProperties,
-        LazyTransformInfo,
         entity::ServerEntities,
         message::Message,
         world::{
@@ -88,6 +84,7 @@ pub struct World
     chunk_saver: ChunkSaver,
     entities_saver: EntitiesSaver,
     enemies_info: Arc<EnemiesInfo>,
+    items_info: Arc<ItemsInfo>,
     overmaps: OvermapsType,
     client_indexers: HashMap<ConnectionId, ClientIndexer>
 }
@@ -97,7 +94,8 @@ impl World
     pub fn new(
         message_handler: Arc<RwLock<ConnectionsHandler>>,
         tilemap: TileMap,
-        enemies_info: Arc<EnemiesInfo>
+        enemies_info: Arc<EnemiesInfo>,
+        items_info: Arc<ItemsInfo>
     ) -> Result<Self, ParseError>
     {
         let world_name = "default".to_owned();
@@ -124,6 +122,7 @@ impl World
             chunk_saver,
             entities_saver,
             enemies_info,
+            items_info,
             overmaps,
             client_indexers
         })
@@ -312,39 +311,13 @@ impl World
         {
             EnemyBuilder::new(
                 &self.enemies_info,
+                &self.items_info,
                 self.enemies_info.id("zob"),
                 pos
             ).build()
         }).chain(Self::add_on_ground(chunk_pos, chunk, crates, |pos|
         {
-            EntityInfo{
-                lazy_transform: Some(LazyTransformInfo{
-                    transform: Transform{
-                        position: pos,
-                        scale: Vector3::repeat(0.08),
-                        ..Default::default()
-                    },
-                    ..Default::default()
-                }.into()),
-                render: Some(RenderInfo{
-                    object: Some(RenderObject::Texture{
-                        name: "furniture/crate.png".to_owned()
-                    }),
-                    shape: Some(BoundingShape::Circle),
-                    z_level: ZLevel::Low,
-                    ..Default::default()
-                }),
-                collider: Some(ColliderInfo{
-                    kind: ColliderType::Aabb,
-                    ..Default::default()
-                }.into()),
-                physical: Some(PhysicalProperties{
-                    mass: 200.0,
-                    friction: 0.5,
-                    floating: false
-                }.into()),
-                ..Default::default()
-            }
+            FurnitureBuilder::new(&self.items_info, pos).build()
         }));
 
         self.create_entities(container, entities);

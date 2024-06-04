@@ -8,6 +8,9 @@ use crate::common::{
     random_rotation,
     render_info::*,
     collider::*,
+    ItemsInfo,
+    Loot,
+    Inventory,
     Anatomy,
     HumanAnatomy,
     Enemy,
@@ -22,6 +25,7 @@ use crate::common::{
 pub struct EnemyBuilder<'a>
 {
     enemies_info: &'a EnemiesInfo,
+    items_info: &'a ItemsInfo,
     pos: Vector3<f32>,
     id: EnemyId
 }
@@ -30,16 +34,22 @@ impl<'a> EnemyBuilder<'a>
 {
     pub fn new(
         enemies_info: &'a EnemiesInfo,
+        items_info: &'a ItemsInfo,
         id: EnemyId,
         pos: Vector3<f32>
     ) -> Self
     {
-        Self{enemies_info, pos, id}
+        Self{enemies_info, items_info, pos, id}
     }
 
     pub fn build(self) -> EntityInfo
     {
         let info = self.enemies_info.get(self.id);
+
+        let mut inventory = Inventory::new();
+
+        let mut loot = Loot::new(self.items_info, vec!["utility", "weapons", "animals"], 1.0);
+        loot.create_random(&mut inventory, 1..5);
 
         EntityInfo{
             lazy_transform: Some(LazyTransformInfo{
@@ -71,6 +81,7 @@ impl<'a> EnemyBuilder<'a>
                 friction: 0.5,
                 floating: false
             }.into()),
+            inventory: Some(inventory),
             anatomy: Some(Anatomy::Human(HumanAnatomy::default())),
             enemy: Some(Enemy::new(self.enemies_info, self.id)),
             ..Default::default()

@@ -38,6 +38,7 @@ pub use entity::{
     Entities
 };
 
+pub use loot::Loot;
 pub use item::Item;
 pub use items_info::{ItemInfo, ItemsInfo, Weapon};
 
@@ -47,6 +48,7 @@ pub use player::{Player, PlayerEntities};
 
 pub use enemy::{EnemyBehavior, Enemy};
 pub use enemy_builder::EnemyBuilder;
+pub use furniture_builder::FurnitureBuilder;
 pub use enemies_info::{EnemyId, EnemiesInfo};
 
 pub use chunk_saver::{SaveLoad, WorldChunkSaver, ChunkSaver, EntitiesSaver};
@@ -71,12 +73,15 @@ pub mod watcher;
 pub mod lazy_transform;
 pub mod entity;
 
+pub mod loot;
 pub mod item;
 pub mod items_info;
 
 pub mod inventory;
 
 pub mod player;
+
+pub mod furniture_builder;
 
 pub mod enemy;
 pub mod enemy_builder;

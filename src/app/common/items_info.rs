@@ -1,4 +1,5 @@
 use std::{
+    mem,
     fs::File,
     path::Path,
     collections::HashMap
@@ -19,7 +20,7 @@ pub struct ItemId(usize);
 #[derive(Deserialize)]
 pub enum Weapon
 {
-    Blunt{damage: f32},
+    Melee{comfort: f32, sharpness: f32},
     Pistol{damage: f32}
 }
 
@@ -27,7 +28,7 @@ impl Default for Weapon
 {
     fn default() -> Self
     {
-        Self::Blunt{damage: 1.0}
+        Self::Melee{comfort: 1.0, sharpness: 0.0}
     }
 }
 
@@ -37,7 +38,7 @@ impl Weapon
     {
         match self
         {
-            Self::Blunt{..} => false,
+            Self::Melee{..} => false,
             Self::Pistol{..} => true
         }
     }
@@ -55,9 +56,9 @@ impl Weapon
 
         match self
         {
-            Self::Blunt{damage} =>
+            Self::Melee{comfort, sharpness} =>
             {
-                DamageType::Blunt(with_base(5.0, damage))
+                todo!()
             },
             Self::Pistol{damage} =>
             {
@@ -68,13 +69,16 @@ impl Weapon
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ItemInfoRaw
 {
     name: String,
     #[serde(default)]
     weapon: Weapon,
     scale: Option<f32>,
-    mass: f32,
+    mass: Option<f32>,
+    commonness: Option<f64>,
+    groups: Vec<String>,
     texture: String
 }
 
@@ -86,6 +90,7 @@ pub struct ItemInfo
     pub weapon: Weapon,
     pub scale: Vector2<f32>,
     pub mass: f32,
+    pub commonness: f64,
     pub texture: TextureId
 }
 
@@ -112,8 +117,10 @@ impl ItemInfo
         Self{
             name: raw.name,
             weapon: raw.weapon,
-            scale: aspect * raw.scale.unwrap_or(0.8),
-            mass: raw.mass,
+            // scale is in meters
+            scale: aspect * raw.scale.unwrap_or(0.1) * 5.0,
+            mass: raw.mass.unwrap_or(1.0),
+            commonness: raw.commonness.unwrap_or(1.0),
             texture
         }
     }
@@ -127,7 +134,8 @@ impl ItemInfo
 pub struct ItemsInfo
 {
     mapping: HashMap<String, ItemId>,
-    items: Vec<ItemInfo>
+    items: Vec<ItemInfo>,
+    groups: HashMap<String, Vec<ItemId>>
 }
 
 impl ItemsInfo
@@ -142,9 +150,20 @@ impl ItemsInfo
 
         let items: ItemsInfoRaw = serde_json::from_reader(info).unwrap();
 
+        let mut groups: HashMap<String, Vec<ItemId>> = HashMap::new();
+
         let textures_root = textures_root.as_ref();
-        let items: Vec<_> = items.into_iter().map(|info_raw|
+        let items: Vec<_> = items.into_iter().enumerate().map(|(index, mut info_raw)|
         {
+            let id = ItemId(index);
+
+            mem::take(&mut info_raw.groups).into_iter().for_each(|group|
+            {
+                groups.entry(group)
+                    .and_modify(|x| { x.push(id); })
+                    .or_insert(vec![id]);
+            });
+
             ItemInfo::from_raw(assets, textures_root, info_raw)
         }).collect();
 
@@ -153,7 +172,7 @@ impl ItemsInfo
             (item.name.clone(), ItemId(index))
         }).collect();
 
-        Self{mapping, items}
+        Self{mapping, items, groups}
     }
 
     pub fn id(&self, name: &str) -> ItemId
@@ -164,6 +183,16 @@ impl ItemsInfo
     pub fn get(&self, id: ItemId) -> &ItemInfo
     {
         &self.items[id.0]
+    }
+
+    pub fn items(&self) -> &[ItemInfo]
+    {
+        &self.items
+    }
+
+    pub fn group(&self, name: &str) -> &[ItemId]
+    {
+        &self.groups[name]
     }
 
     pub fn random(&self) -> Item

@@ -909,7 +909,10 @@ macro_rules! define_entities
                     if let Some(mut render) = self.render_mut(*entity)
                     {
                         let overlapping = *collider.borrow().collided() == Some(mouse);
-                        let outline = overlapping && self.player(*entity).is_none();
+                        let is_player = self.player(*entity).is_some();
+                        let has_inventory = self.inventory(*entity).is_some();
+
+                        let outline = !is_player && overlapping && has_inventory;
                         if outline
                         {
                             render.set_outlined(true);
