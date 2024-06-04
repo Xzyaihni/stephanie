@@ -34,7 +34,7 @@ impl<'a> FurnitureBuilder<'a>
     {
         let mut inventory = Inventory::new();
 
-        let mut loot = Loot::new(self.items_info, vec!["utility"], 1.0);
+        let mut loot = Loot::new(self.items_info, vec!["trash", "utility"], 1.0);
         loot.create_random(&mut inventory, 1..4);
 
         EntityInfo{

@@ -281,7 +281,15 @@ impl<'a> PlayerContainer<'a>
 
                 render.set_texture(texture.clone());
 
-                entities.target(holding_entity).unwrap().scale = item.scale3();
+                let mut target = entities.target(holding_entity).unwrap();
+                let scale = item.scale3();
+
+                let distance_from_player = 0.1;
+
+                let offset = scale.y / 2.0 + 0.5 + distance_from_player;
+
+                target.position = Vector3::new(offset, 0.0, 0.0);
+                target.scale = scale;
             } else
             {
                 parent.visible = false;
@@ -397,7 +405,7 @@ impl<'a> PlayerContainer<'a>
                         transform: Transform{
                             position: holding_transform.position,
                             rotation: holding_transform.rotation,
-                            scale: item_info.scale3() * ENTITY_SCALE,
+                            scale: holding_transform.scale * ENTITY_SCALE,
                             ..Default::default()
                         },
                         ..Default::default()

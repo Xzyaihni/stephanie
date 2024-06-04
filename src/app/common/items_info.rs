@@ -1,7 +1,6 @@
 use std::{
-    mem,
     fs::File,
-    path::Path,
+    path::{Path, PathBuf},
     collections::HashMap
 };
 
@@ -79,7 +78,7 @@ pub struct ItemInfoRaw
     mass: Option<f32>,
     commonness: Option<f64>,
     groups: Vec<String>,
-    texture: String
+    texture: Option<String>
 }
 
 pub type ItemsInfoRaw = Vec<ItemInfoRaw>;
@@ -110,7 +109,18 @@ impl ItemInfo
             assets.texture_id(&name)
         };
 
-        let texture = get_texture(raw.texture);
+        let texture_name = raw.texture.unwrap_or_else(||
+        {
+            let folder: String = raw.groups.first().cloned().unwrap_or_default();
+
+            let name = raw.name.replace(' ', "_") + ".png";
+
+            let path = PathBuf::from(folder).join(name);
+
+            path.to_string_lossy().into_owned()
+        });
+
+        let texture = get_texture(texture_name);
 
         let aspect = assets.texture(texture).read().aspect_min();
 
@@ -118,7 +128,7 @@ impl ItemInfo
             name: raw.name,
             weapon: raw.weapon,
             // scale is in meters
-            scale: aspect * raw.scale.unwrap_or(0.1) * 5.0,
+            scale: aspect * raw.scale.unwrap_or(0.1) * 3.0,
             mass: raw.mass.unwrap_or(1.0),
             commonness: raw.commonness.unwrap_or(1.0),
             texture
@@ -153,13 +163,13 @@ impl ItemsInfo
         let mut groups: HashMap<String, Vec<ItemId>> = HashMap::new();
 
         let textures_root = textures_root.as_ref();
-        let items: Vec<_> = items.into_iter().enumerate().map(|(index, mut info_raw)|
+        let items: Vec<_> = items.into_iter().enumerate().map(|(index, info_raw)|
         {
             let id = ItemId(index);
 
-            mem::take(&mut info_raw.groups).into_iter().for_each(|group|
+            info_raw.groups.iter().for_each(|group|
             {
-                groups.entry(group)
+                groups.entry(group.clone())
                     .and_modify(|x| { x.push(id); })
                     .or_insert(vec![id]);
             });
