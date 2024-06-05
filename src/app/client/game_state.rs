@@ -530,28 +530,32 @@ impl GameState
         let user_receiver = Rc::new(RefCell::new(Vec::new()));
 
         let ui = {
-            let urx0 = user_receiver.clone();
-            let urx1 = user_receiver.clone();
+            // mmm i love the borrow checker
+            let urx00 = user_receiver.clone();
+            let urx01 = user_receiver.clone();
+
+            let urx10 = user_receiver.clone();
+            let urx11 = user_receiver.clone();
 
             let player_actions = InventoryActions{
                 on_close: move ||
                 {
-                    println!("should close inventory");
+                    urx00.borrow_mut().push(UserEvent::Close(InventoryWhich::Player));
                 },
                 on_change: move |item|
                 {
-                    urx0.borrow_mut().push(UserEvent::Wield(item));
+                    urx01.borrow_mut().push(UserEvent::Wield(item));
                 }
             };
 
             let other_actions = InventoryActions{
                 on_close: move ||
                 {
-                    println!("should close other inventory");
+                    urx10.borrow_mut().push(UserEvent::Close(InventoryWhich::Other));
                 },
                 on_change: move |item|
                 {
-                    urx1.borrow_mut().push(UserEvent::Take(item));
+                    urx11.borrow_mut().push(UserEvent::Take(item));
                 }
             };
 
