@@ -425,16 +425,28 @@ pub enum UserEvent
 pub struct CommonTextures
 {
     pub dust: TextureId,
-    pub bash_trail: TextureId
+    pub bash_trail_left: TextureId,
+    pub bash_trail_right: TextureId
 }
 
 impl CommonTextures
 {
-    pub fn new(assets: &Assets) -> Self
+    pub fn new(
+        builder_wrapper: &mut BuilderWrapper,
+        assets: &mut Assets
+    ) -> Self
     {
+        let bash_trail = "decals/bash_trail.png";
+        let bash_trail_right = assets.texture_id(bash_trail);
+        let bash_trail_left = assets.edited_copy(builder_wrapper, bash_trail, |image|
+        {
+            *image = image.flipped_horizontal();
+        });
+
         Self{
             dust: assets.texture_id("decals/dust.png"),
-            bash_trail: assets.texture_id("decals/bash_trail.png")
+            bash_trail_left,
+            bash_trail_right
         }
     }
 }
@@ -486,7 +498,7 @@ impl Drop for GameState
 
 impl GameState
 {
-    pub fn new(info: GameStateInfo) -> Rc<RefCell<Self>>
+    pub fn new(mut info: GameStateInfo) -> Rc<RefCell<Self>>
     {
         let mouse_position = Vector2::zeros();
 
@@ -571,7 +583,10 @@ impl GameState
         };
 
         let assets = info.object_info.partial.assets;
-        let common_textures = CommonTextures::new(&assets.lock());
+        let common_textures = CommonTextures::new(
+            &mut info.object_info.partial.builder_wrapper,
+            &mut assets.lock()
+        );
 
         entities.entities.update_ui_aspect(info.camera.read().aspect());
 

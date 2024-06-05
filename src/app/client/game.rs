@@ -126,8 +126,10 @@ struct PlayerInfo
     entity: Entity,
     mouse_entity: Entity,
     other_entity: Option<Entity>,
+    bash_projectile: Option<Entity>,
     stance_time: f32,
     attack_cooldown: f32,
+    projectile_lifetime: f32,
     bash_side: Side1d,
     inventory_open: bool,
     other_inventory_open: bool,
@@ -148,8 +150,10 @@ impl PlayerInfo
             entity,
             mouse_entity,
             other_entity: None,
+            bash_projectile: None,
             stance_time: 0.0,
             attack_cooldown: 0.0,
+            projectile_lifetime: 0.0,
             bash_side: Side1d::Left,
             inventory_open: false,
             other_inventory_open: false,
@@ -589,8 +593,14 @@ impl<'a> PlayerContainer<'a>
         let over_scale = self.info.held_distance + item_scale;
         let scale = 1.0 + over_scale * 2.0;
 
-        let bash_trail = self.game_state.common_textures.bash_trail;
-        self.game_state.entities.entity_creator().push(
+        let bash_trail = match self.info.bash_side
+        {
+            Side1d::Left => self.game_state.common_textures.bash_trail_left,
+            Side1d::Right => self.game_state.common_textures.bash_trail_right
+        };
+
+        self.info.projectile_lifetime = 0.2;
+        self.info.bash_projectile = Some(self.game_state.entities.entity_creator().push(
             EntityInfo{
                 lazy_transform: Some(LazyTransformInfo{
                     transform: Transform{
@@ -600,22 +610,15 @@ impl<'a> PlayerContainer<'a>
                     ..Default::default()
                 }.into()),
                 parent: Some(Parent::new(self.info.entity, true)),
-                watchers: Some(Watchers::new(vec![
-                    Watcher{
-                        kind: WatcherType::Lifetime(0.2.into()),
-                        action: WatcherAction::Remove,
-                        ..Default::default()
-                    }
-                ])),
                 ..Default::default()
             },
             RenderInfo{
                 object: Some(RenderObject::TextureId{id: bash_trail}),
                 ..Default::default()
             }
-        );
+        ));
 
-        eprintln!("hitting from {:?}", self.info.bash_side);
+        eprintln!("hitting to {:?}", self.info.bash_side);
     }
 
     fn bash_attack(&mut self, item: Item)
@@ -628,9 +631,9 @@ impl<'a> PlayerContainer<'a>
         self.info.attack_cooldown = 0.5;
         self.info.stance_time = 5.0;
 
-        self.bash_attack_projectile(item);
-
         self.info.bash_side = self.info.bash_side.opposite();
+
+        self.bash_attack_projectile(item);
 
         let start_rotation = self.default_held_rotation();
         if let Some(mut lazy) = self.game_state.entities().lazy_transform_mut(self.holding_entity())
@@ -755,12 +758,36 @@ impl<'a> PlayerContainer<'a>
             return;
         }
 
+        let decrease_timer = |value|
+        {
+            Self::decrease_timer(value, dt)
+        };
+
         if Self::decrease_timer(&mut self.info.stance_time, dt)
         {
             self.unstance();
         }
 
-        Self::decrease_timer(&mut self.info.attack_cooldown, dt);
+        decrease_timer(&mut self.info.attack_cooldown);
+
+        if decrease_timer(&mut self.info.projectile_lifetime)
+        {
+            if let Some(entity) = self.info.bash_projectile.take()
+            {
+                self.game_state.entities_mut().remove(entity);
+            }
+        }
+
+        if let Some(entity) = self.info.bash_projectile
+        {
+            let entities = self.game_state.entities();
+
+            let holding_rotation = entities.transform(self.holding_entity()).unwrap().rotation;
+
+            let parent_rotation = entities.transform(self.info.entity).unwrap().rotation;
+
+            entities.target(entity).unwrap().rotation = holding_rotation - parent_rotation;
+        }
 
         self.update_user_events();
 
