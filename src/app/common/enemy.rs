@@ -8,6 +8,7 @@ use crate::common::{
     render_info::*,
     SeededRandom,
     EnemiesInfo,
+    EnemyInfo,
     EnemyId,
     Anatomy,
     Physical,
@@ -166,6 +167,11 @@ impl Enemy
         };
 
         self.behavior_state = new_state;
+    }
+
+    pub fn info<'a>(&self, enemies_info: &'a EnemiesInfo) -> &'a EnemyInfo
+    {
+        enemies_info.get(self.id)
     }
 
     fn do_behavior(

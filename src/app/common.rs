@@ -51,7 +51,7 @@ pub use player::{Player, PlayerEntities};
 pub use enemy::{EnemyBehavior, Enemy};
 pub use enemy_builder::EnemyBuilder;
 pub use furniture_builder::FurnitureBuilder;
-pub use enemies_info::{EnemyId, EnemiesInfo};
+pub use enemies_info::{EnemyId, EnemyInfo, EnemiesInfo};
 
 pub use chunk_saver::{SaveLoad, WorldChunkSaver, ChunkSaver, EntitiesSaver};
 

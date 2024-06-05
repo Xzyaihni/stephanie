@@ -256,6 +256,8 @@ pub trait AnyEntities
         (transform, transform_mut, Transform),
         (parent, parent_mut, Parent),
         (physical, physical_mut, Physical),
+        (player, player_mut, Player),
+        (enemy, enemy_mut, Enemy),
         (collider, collider_mut, Collider)
     }
 
@@ -273,6 +275,24 @@ pub trait AnyEntities
         local: bool,
         info: EntityInfo
     ) -> Entity;
+
+    fn name(
+        &self,
+        enemies_info: &EnemiesInfo,
+        entity: Entity
+    ) -> Option<String>
+    {
+        self.player(entity).map(|player|
+        {
+            player.name.clone()
+        }).or_else(||
+        {
+            self.enemy(entity).map(|enemy|
+            {
+                enemy.info(enemies_info).name.clone()
+            })
+        })
+    }
 
     fn parent_transform(&self, entity: Entity) -> Option<Transform>
     {
@@ -327,6 +347,8 @@ macro_rules! common_trait_impl
             (transform, transform_mut, Transform),
             (parent, parent_mut, Parent),
             (physical, physical_mut, Physical),
+            (player, player_mut, Player),
+            (enemy, enemy_mut, Enemy),
             (collider, collider_mut, Collider)
         }
 

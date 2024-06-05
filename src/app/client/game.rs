@@ -124,6 +124,7 @@ struct PlayerInfo
     items_info: Arc<ItemsInfo>,
     entity: Entity,
     mouse_entity: Entity,
+    other_entity: Option<Entity>,
     stance_time: f32,
     bash_side: Side1d,
     inventory_open: bool,
@@ -143,6 +144,7 @@ impl PlayerInfo
             items_info,
             entity,
             mouse_entity,
+            other_entity: None,
             stance_time: 0.0,
             bash_side: Side1d::Left,
             inventory_open: false,
@@ -215,6 +217,8 @@ impl<'a> PlayerContainer<'a>
                 {
                     if entities.is_lootable(mouse_touched)
                     {
+                        self.info.other_entity = Some(mouse_touched);
+
                         self.info.other_inventory_open = true;
                         self.update_inventory(InventoryWhich::Other);
 
@@ -369,15 +373,14 @@ impl<'a> PlayerContainer<'a>
         which: InventoryWhich
     )
     {
-        let ui = &self.game_state.ui;
-        let inventory_id = match which
+        let ui = &mut self.game_state.ui;
+        let inventory_ui = match which
         {
-            InventoryWhich::Player => &ui.player_inventory,
-            InventoryWhich::Other => &ui.other_inventory
+            InventoryWhich::Player => &mut ui.player_inventory,
+            InventoryWhich::Other => &mut ui.other_inventory
         };
 
-        let inventory = inventory_id.body();
-        let entities = self.game_state.entities_mut();
+        let inventory = inventory_ui.body();
 
         let is_open = match which
         {
@@ -387,6 +390,13 @@ impl<'a> PlayerContainer<'a>
         
         if is_open
         {
+            if let InventoryWhich::Other = which
+            {
+                let mut entity_creator = self.game_state.entities.entity_creator();
+                inventory_ui.full_update(&mut entity_creator, self.info.other_entity.unwrap());
+            }
+
+            let entities = self.game_state.entities_mut();
             entities.set_collider(inventory, Some(ColliderInfo{
                 kind: ColliderType::Aabb,
                 layer: ColliderLayer::Ui,
@@ -399,6 +409,7 @@ impl<'a> PlayerContainer<'a>
             lazy.target().scale = Vector3::repeat(0.2);
         } else
         {
+            let entities = self.game_state.entities_mut();
             entities.set_collider(inventory, None);
 
             let current_scale;
