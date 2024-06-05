@@ -227,7 +227,7 @@ impl<'a> CollidingInfo<'a>
         let other_radius = other.transform.max_scale() / 2.0;
 
         let offset = other.transform.position - self.transform.position;
-        let distance = offset.x.hypot(offset.y);
+        let distance = (offset.x.powi(2) + offset.y.powi(2) + offset.z.powi(2)).sqrt();
 
         let max_distance = this_radius + other_radius;
         let collided = distance < max_distance;
@@ -258,7 +258,8 @@ impl<'a> CollidingInfo<'a>
 
         let max_distance = other_scale + this_scale;
         let collided = (-max_distance.x..max_distance.x).contains(&offset.x)
-            && (-max_distance.y..max_distance.y).contains(&offset.y);
+            && (-max_distance.y..max_distance.y).contains(&offset.y)
+            && (-max_distance.z..max_distance.z).contains(&offset.z);
 
         if collided
         {
