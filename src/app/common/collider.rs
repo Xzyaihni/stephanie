@@ -19,7 +19,38 @@ pub enum ColliderType
 pub enum ColliderLayer
 {
     Normal,
+    Damage,
     Ui
+}
+
+impl ColliderLayer
+{
+    pub fn collides(&self, other: &Self) -> bool
+    {
+        macro_rules! define_collisions
+        {
+            ($(($first:ident, $second:ident, $result:literal)),+) =>
+            {
+                #[allow(unreachable_patterns)]
+                match (self, other)
+                {
+                    $(
+                        (Self::$first, Self::$second) => $result,
+                        (Self::$second, Self::$first) => $result
+                    ),+
+                }
+            }
+        }
+
+        define_collisions!{
+            (Normal, Normal, true),
+            (Ui, Ui, true),
+            (Normal, Ui, false),
+            (Damage, Damage, false),
+            (Damage, Normal, true),
+            (Damage, Ui, false)
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -284,7 +315,7 @@ impl<'a> CollidingInfo<'a>
         mut other: CollidingInfo
     ) -> bool
     {
-        if self.collider.layer != other.collider.layer
+        if !self.collider.layer.collides(&other.collider.layer)
         {
             return false
         }

@@ -216,6 +216,11 @@ impl Parent
     {
         Self{visible, entity}
     }
+
+    pub fn entity(&self) -> Entity
+    {
+        self.entity
+    }
 }
 
 pub type UiElementServer = ();
@@ -454,8 +459,8 @@ macro_rules! define_entities
             }
         }
 
-        pub type ClientEntityInfo = EntityInfo<ClientRenderInfo, LazyTransform, UiElement>;
-        pub type ClientEntities = Entities<ClientRenderInfo, LazyTransform, UiElement>;
+        pub type ClientEntityInfo = EntityInfo<ClientRenderInfo, UiElement>;
+        pub type ClientEntities = Entities<ClientRenderInfo, UiElement>;
         pub type ServerEntities = Entities;
 
         impl ClientEntityInfo
@@ -694,6 +699,7 @@ macro_rules! define_entities
                 }
             )+
 
+            // when r TransformType = Transform constraints coming RUST?!?!? 
             pub fn push(
                 &mut self,
                 local: bool,
@@ -701,6 +707,9 @@ macro_rules! define_entities
             ) -> Entity
             where
                 for<'a> &'a ParentType: Into<&'a Parent>,
+                for<'a> &'a LazyTransformType: Into<&'a LazyTransform>,
+                for<'a> &'a TransformType: Into<&'a Transform>,
+                for<'a> &'a mut Option<TransformType>: Into<&'a mut Option<Transform>>,
                 TransformType: Clone,
                 LazyTransformType: LazyTargettable<TransformType>
             {
@@ -722,9 +731,15 @@ macro_rules! define_entities
 
                 let entity_id = Entity{local, id};
 
-                if let Some(lazy_transform) = info.lazy_transform.as_ref()
+                if let Some(lazy) = info.lazy_transform.as_ref()
                 {
-                    info.transform = Some(lazy_transform.target_ref().clone());
+                    let parent_transform = info.parent.as_ref().and_then(|x|
+                    {
+                        self.transform((&*x).into().entity).as_deref().map(|x| x.into()).cloned()
+                    });
+
+                    let new_transform = (&*lazy).into().target_global(parent_transform.as_ref());
+                    *(&mut info.transform).into() = Some(new_transform);
                 }
 
                 let indices = self.push_info_components(entity_id, info);
@@ -916,7 +931,7 @@ macro_rules! define_entities
                     .flatten()
             }
 
-            pub fn update_visibility(&mut self)
+            pub fn update_children(&mut self)
             {
                 self.parent.iter().for_each(|(_, ComponentWrapper{
                     entity,
@@ -1302,8 +1317,8 @@ macro_rules! define_entities
 
 define_entities!{
     (render, render_mut, set_render, SetRender, RenderType, RenderInfo),
-    (lazy_transform, lazy_transform_mut, set_lazy_transform, SetLazyTransform, LazyTransformType, LazyTransform),
     (ui_element, ui_element_mut, set_ui_element, SetUiElement, UiElementType, UiElementServer),
+    (lazy_transform, lazy_transform_mut, set_lazy_transform, SetLazyTransform, LazyTransformType, LazyTransform),
     (watchers, watchers_mut, set_watchers, SetWatchers, WatchersType, Watchers),
     (inventory, inventory_mut, set_inventory, SetInventory, InventoryType, Inventory),
     (enemy, enemy_mut, set_enemy, SetEnemy, EnemyType, Enemy),

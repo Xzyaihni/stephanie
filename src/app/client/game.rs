@@ -17,6 +17,7 @@ use crate::common::{
     watcher::*,
     Side1d,
     AnyEntities,
+    Parent,
     Physical,
     PhysicalProperties,
     Entity,
@@ -126,9 +127,11 @@ struct PlayerInfo
     mouse_entity: Entity,
     other_entity: Option<Entity>,
     stance_time: f32,
+    attack_cooldown: f32,
     bash_side: Side1d,
     inventory_open: bool,
     other_inventory_open: bool,
+    held_distance: f32,
     camera_follow: f32
 }
 
@@ -146,9 +149,11 @@ impl PlayerInfo
             mouse_entity,
             other_entity: None,
             stance_time: 0.0,
+            attack_cooldown: 0.0,
             bash_side: Side1d::Left,
             inventory_open: false,
             other_inventory_open: false,
+            held_distance: 0.1,
             camera_follow: 0.25
         }
     }
@@ -297,7 +302,7 @@ impl<'a> PlayerContainer<'a>
             {
                 entities.player_mut(player).unwrap().holding = Some(item);
 
-                self.update_weapon();
+                self.update_held();
             },
             UserEvent::Take(item) =>
             {
@@ -316,7 +321,7 @@ impl<'a> PlayerContainer<'a>
         });
     }
 
-    fn update_weapon(&mut self)
+    fn update_held(&mut self)
     {
         let holding_entity = self.game_state.player_entities().holding;
 
@@ -338,9 +343,7 @@ impl<'a> PlayerContainer<'a>
                 let target = lazy_transform.target();
                 let scale = item.scale3();
 
-                let distance_from_player = 0.1;
-
-                let offset = scale.y / 2.0 + 0.5 + distance_from_player;
+                let offset = scale.y / 2.0 + 0.5 + self.info.held_distance;
 
                 target.position = Vector3::new(offset, 0.0, 0.0);
                 target.scale = scale;
@@ -561,7 +564,7 @@ impl<'a> PlayerContainer<'a>
             self.game_state.entities().inventory_mut(player).unwrap().remove(held);
             self.game_state.update_inventory();
 
-            self.update_weapon();
+            self.update_held();
         }
     }
 
@@ -580,11 +583,52 @@ impl<'a> PlayerContainer<'a>
         }
     }
 
-    fn bash_attack(&mut self, item: Item)
+    fn bash_attack_projectile(&mut self, item: Item)
     {
-        self.info.stance_time = 5.0;
+        let item_scale = self.game_state.items_info.get(item.id).scale3().y;
+        let over_scale = self.info.held_distance + item_scale;
+        let scale = 1.0 + over_scale * 2.0;
+
+        let bash_trail = self.game_state.common_textures.bash_trail;
+        self.game_state.entities.entity_creator().push(
+            EntityInfo{
+                lazy_transform: Some(LazyTransformInfo{
+                    transform: Transform{
+                        scale: Vector3::repeat(scale),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                }.into()),
+                parent: Some(Parent::new(self.info.entity, true)),
+                watchers: Some(Watchers::new(vec![
+                    Watcher{
+                        kind: WatcherType::Lifetime(0.2.into()),
+                        action: WatcherAction::Remove,
+                        ..Default::default()
+                    }
+                ])),
+                ..Default::default()
+            },
+            RenderInfo{
+                object: Some(RenderObject::TextureId{id: bash_trail}),
+                ..Default::default()
+            }
+        );
 
         eprintln!("hitting from {:?}", self.info.bash_side);
+    }
+
+    fn bash_attack(&mut self, item: Item)
+    {
+        if self.info.attack_cooldown > 0.0
+        {
+            return;
+        }
+
+        self.info.attack_cooldown = 0.5;
+        self.info.stance_time = 5.0;
+
+        self.bash_attack_projectile(item);
 
         self.info.bash_side = self.info.bash_side.opposite();
 
@@ -689,6 +733,21 @@ impl<'a> PlayerContainer<'a>
         }
     }
 
+    fn decrease_timer(time_variable: &mut f32, dt: f32) -> bool
+    {
+        if *time_variable > 0.0
+        {
+            *time_variable -= dt;
+
+            if *time_variable <= 0.0
+            {
+                return true;
+            }
+        }
+
+        false
+    }
+
     pub fn update(&mut self, dt: f32)
     {
         if !self.exists()
@@ -696,15 +755,12 @@ impl<'a> PlayerContainer<'a>
             return;
         }
 
-        if self.info.stance_time > 0.0
+        if Self::decrease_timer(&mut self.info.stance_time, dt)
         {
-            self.info.stance_time -= dt;
-
-            if self.info.stance_time <= 0.0
-            {
-                self.unstance();
-            }
+            self.unstance();
         }
+
+        Self::decrease_timer(&mut self.info.attack_cooldown, dt);
 
         self.update_user_events();
 

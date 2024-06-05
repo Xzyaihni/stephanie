@@ -181,7 +181,7 @@ impl ClientEntitiesContainer
         self.entities.update_physical(dt);
         self.entities.update_lazy(dt);
         self.entities.update_enemy(dt);
-        self.entities.update_visibility();
+        self.entities.update_children();
         self.entities.update_colliders(passer);
     }
 
@@ -424,7 +424,8 @@ pub enum UserEvent
 
 pub struct CommonTextures
 {
-    pub dust: TextureId
+    pub dust: TextureId,
+    pub bash_trail: TextureId
 }
 
 impl CommonTextures
@@ -432,7 +433,8 @@ impl CommonTextures
     pub fn new(assets: &Assets) -> Self
     {
         Self{
-            dust: assets.texture_id("decals/dust.png")
+            dust: assets.texture_id("decals/dust.png"),
+            bash_trail: assets.texture_id("decals/bash_trail.png")
         }
     }
 }
