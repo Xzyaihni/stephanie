@@ -1,4 +1,9 @@
-use std::cell::Ref;
+use std::{
+    fmt::{self, Debug},
+    cell::Ref
+};
+
+use strum_macros::AsRefStr;
 
 use nalgebra::Vector2;
 
@@ -77,6 +82,7 @@ pub struct DragState
     held: bool
 }
 
+#[derive(AsRefStr)]
 pub enum UiElementType
 {
     Panel,
@@ -84,6 +90,15 @@ pub enum UiElementType
     Drag{state: DragState, on_change: Box<dyn FnMut(Vector2<f32>)>}
 }
 
+impl Debug for UiElementType
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
+    {
+        write!(f, "UiElementType::{}", self.as_ref())
+    }
+}
+
+#[derive(Debug)]
 pub enum UiElementPredicate
 {
     None,
@@ -145,12 +160,14 @@ impl<'a> UiQuery<'a>
     }
 }
 
+#[derive(Debug)]
 pub enum AspectMode
 {
     ShrinkX,
     FillRestX
 }
 
+#[derive(Debug)]
 pub struct KeepAspect
 {
     pub scale: Vector2<f32>,
@@ -170,6 +187,7 @@ impl Default for KeepAspect
     }
 }
 
+#[derive(Debug)]
 pub struct UiElement
 {
     pub kind: UiElementType,

@@ -1,4 +1,9 @@
-use std::sync::Arc;
+use std::{
+    fmt::{self, Debug},
+    sync::Arc
+};
+
+use strum_macros::AsRefStr;
 
 use parking_lot::RwLock;
 
@@ -171,12 +176,22 @@ impl Default for RenderInfo
     }
 }
 
+#[derive(AsRefStr)]
 pub enum ClientObjectType
 {
     Normal(Object),
     Text(TextObject)
 }
 
+impl Debug for ClientObjectType
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
+    {
+        write!(f, "ClientObjectType::{}", self.as_ref())
+    }
+}
+
+#[derive(Debug)]
 pub struct ClientRenderObject
 {
     kind: ClientObjectType,
@@ -245,6 +260,7 @@ impl GameObject for ClientRenderObject
     }
 }
 
+#[derive(Debug)]
 pub struct ClientRenderInfo
 {
     pub visible: bool,

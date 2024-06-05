@@ -543,6 +543,18 @@ macro_rules! define_entities
                 }))
             }
 
+            pub fn info_ref(&self, entity: Entity) -> EntityInfo<$(Ref<$component_type>,)+>
+            {
+                let components = &components!(self, entity)[entity.id];
+
+                EntityInfo{$(
+                    $name: components[Component::$name as usize].map(|id|
+                    {
+                        self.$name[id].component.borrow()
+                    }),
+                )+}
+            }
+
             // i hate rust generics
             pub fn update_physical(&mut self, dt: f32)
             where
