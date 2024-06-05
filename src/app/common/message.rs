@@ -40,6 +40,7 @@ pub enum Message
     SetWatchers{entity: Entity, watchers: Watchers},
     SetAnatomy{entity: Entity, anatomy: Anatomy},
     SetEnemy{entity: Entity, enemy: Enemy},
+    SetNamed{entity: Entity, named: String},
     SetUiElement{entity: Entity, ui_element: UiElementServer},
     SetTarget{entity: Entity, target: Transform},
     EntityDestroy{entity: Entity},
@@ -86,6 +87,7 @@ impl Message
             | Message::SetWatchers{entity, ..}
             | Message::SetAnatomy{entity, ..}
             | Message::SetEnemy{entity, ..}
+            | Message::SetNamed{entity, ..}
             | Message::SetUiElement{entity, ..}
             | Message::SetTarget{entity, ..}
             | Message::EntityDestroy{entity, ..}

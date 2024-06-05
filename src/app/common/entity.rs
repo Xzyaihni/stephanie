@@ -166,6 +166,7 @@ no_on_set!{
     RenderInfo,
     LazyTransform,
     Inventory,
+    String,
     Parent,
     Transform,
     Player,
@@ -258,6 +259,7 @@ pub trait AnyEntities
         (physical, physical_mut, Physical),
         (player, player_mut, Player),
         (enemy, enemy_mut, Enemy),
+        (named, named_mut, String),
         (collider, collider_mut, Collider)
     }
 
@@ -291,6 +293,9 @@ pub trait AnyEntities
             {
                 enemy.info(enemies_info).name.clone()
             })
+        }).or_else(||
+        {
+            self.named(entity).as_deref().cloned()
         })
     }
 
@@ -349,6 +354,7 @@ macro_rules! common_trait_impl
             (physical, physical_mut, Physical),
             (player, player_mut, Player),
             (enemy, enemy_mut, Enemy),
+            (named, named_mut, String),
             (collider, collider_mut, Collider)
         }
 
@@ -1289,6 +1295,7 @@ define_entities!{
     (watchers, watchers_mut, set_watchers, SetWatchers, WatchersType, Watchers),
     (inventory, inventory_mut, set_inventory, SetInventory, InventoryType, Inventory),
     (enemy, enemy_mut, set_enemy, SetEnemy, EnemyType, Enemy),
+    (named, named_mut, set_named, SetNamed, NamedType, String),
     (parent, parent_mut, set_parent, SetParent, ParentType, Parent),
     (transform, transform_mut, set_transform, SetTransform, TransformType, Transform),
     (player, player_mut, set_player, SetPlayer, PlayerType, Player),

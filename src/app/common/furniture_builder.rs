@@ -46,6 +46,7 @@ impl<'a> FurnitureBuilder<'a>
                 },
                 ..Default::default()
             }.into()),
+            named: Some("crate".to_owned()),
             render: Some(RenderInfo{
                 object: Some(RenderObject::Texture{
                     name: "furniture/crate.png".to_owned()
