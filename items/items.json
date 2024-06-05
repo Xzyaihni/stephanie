@@ -3,8 +3,8 @@
         "name": "branch",
         "comfort": 0.5,
         "sharpness": 0.5,
-        "scale": 0.6,
-        "mass": 4.0,
+        "scale": 0.3,
+        "mass": 2.0,
         "commonness": 1.0,
         "groups": ["trash"]
     },
@@ -16,13 +16,24 @@
         "groups": ["utility"]
     },
     {
+        "name": "short stick",
+        "comfort": 1.5,
+        "sharpness": 0.15,
+        "scale": 0.2,
+        "mass": 1.0,
+        "commonness": 1.0,
+        "texture": "weapons/stick.png",
+        "groups": ["weapons", "utility"]
+    },
+    {
         "name": "stick",
         "comfort": 1.5,
         "sharpness": 0.15,
-        "scale": 0.5,
-        "mass": 3.0,
-        "commonness": 1.0,
-        "groups": ["weapons", "utility"]
+        "scale": 0.3,
+        "mass": 1.5,
+        "commonness": 0.3,
+        "texture": "weapons/stick.png",
+        "groups": ["weapons"]
     },
     {
         "name": "pistol",

@@ -16,6 +16,7 @@ use crate::{
     common::{
         ease_out,
         render_info::*,
+        AnyEntities,
         InventoryItem,
         InventorySorter,
         Parent,
@@ -50,6 +51,8 @@ impl UiScroll
         let drag = {
             let global_scroll = global_scroll.clone();
 
+            let scale = creator.entities.target_ref(background).unwrap().scale.xy();
+
             UiElement{
                 kind: UiElementType::Drag{
                     state: Default::default(),
@@ -58,6 +61,11 @@ impl UiScroll
                         global_scroll.replace(1.0 - (pos.y + 0.5));
                     })
                 },
+                keep_aspect: Some(KeepAspect{
+                    scale,
+                    position: Vector2::x(),
+                    ..Default::default()
+                }),
                 ..Default::default()
             }
         };
@@ -178,43 +186,37 @@ impl UiList
     pub fn new(
         creator: &mut EntityCreator,
         background: Entity,
+        width: f32,
         on_change: Rc<RefCell<dyn FnMut(usize)>>
     ) -> Self
     {
-        let width = 0.92;
-        let panel = {
-            let size = Vector3::new(width, 1.0, 1.0);
-
-            creator.push(
-                EntityInfo{
-                    lazy_transform: Some(LazyTransformInfo{
-                        transform: Transform{
-                            position: Ui::ui_position(size, Vector3::zeros()),
-                            scale: size,
-                            ..Default::default()
-                        },
-                        ..Default::default()
-                    }.into()),
-                    ui_element: Some(UiElement{
-                        kind: UiElementType::Panel,
+        let panel = creator.push(
+            EntityInfo{
+                lazy_transform: Some(LazyTransformInfo::default().into()),
+                ui_element: Some(UiElement{
+                    kind: UiElementType::Panel,
+                    keep_aspect: Some(KeepAspect{
+                        scale: Vector2::new(1.0 - width, 1.0),
+                        position: Vector2::zeros(),
+                        mode: AspectMode::FillRestX,
                         ..Default::default()
                     }),
-                    parent: Some(Parent::new(background, true)),
                     ..Default::default()
-                },
-                RenderInfo::default()
-            )
-        };
+                }),
+                parent: Some(Parent::new(background, true)),
+                ..Default::default()
+            },
+            RenderInfo::default()
+        );
 
         let scroll = {
-            let size = Vector3::new(1.0 - width, 1.0, 1.0);
+            let scale = Vector3::new(1.0 - width, 1.0, 1.0);
 
             creator.push(
                 EntityInfo{
                     lazy_transform: Some(LazyTransformInfo{
                         transform: Transform{
-                            position: Ui::ui_position(size, Vector3::new(1.0, 0.0, 0.0)),
-                            scale: size,
+                            scale,
                             ..Default::default()
                         },
                         ..Default::default()
@@ -230,7 +232,7 @@ impl UiList
             )
         };
 
-        let max_fit = 5;
+        let max_fit = 7;
         let height = 1.0 / max_fit as f32;
 
         let scroll = UiScroll::new(creator, scroll);
@@ -468,6 +470,15 @@ impl UiList
     }
 }
 
+pub struct InventoryActions<Close, Change>
+where
+    Close: FnMut() + 'static,
+    Change: FnMut(InventoryItem) + 'static
+{
+    pub on_close: Close,
+    pub on_change: Change
+}
+
 pub struct UiInventory
 {
     sorter: InventorySorter,
@@ -480,12 +491,15 @@ pub struct UiInventory
 
 impl UiInventory
 {
-    pub fn new(
+    pub fn new<Close, Change>(
         creator: &mut EntityCreator,
         items_info: Arc<ItemsInfo>,
         anchor: Entity,
-        mut on_change: impl FnMut(InventoryItem) + 'static
+        mut actions: InventoryActions<Close, Change>
     ) -> Self
+    where
+        Close: FnMut() + 'static,
+        Change: FnMut(InventoryItem) + 'static
     {
         let inventory = creator.push(
             EntityInfo{
@@ -512,7 +526,7 @@ impl UiInventory
             }
         );
 
-        let panel_size = 0.2;
+        let panel_size = 0.15;
         let scale = Vector3::new(1.0, panel_size, 1.0);
 
         let top_panel = creator.push(
@@ -557,21 +571,66 @@ impl UiInventory
             }
         );
 
+        let close_button_x = panel_size;
+        let scale = Vector3::new(1.0 - close_button_x, 1.0, 1.0);
         let name = creator.push(
             EntityInfo{
                 lazy_transform: Some(LazyTransformInfo{
                     transform: Transform{
-                        scale: Vector3::repeat(1.0),
-                        position: Vector3::zeros(),
+                        scale,
                         ..Default::default()
                     },
                     ..Default::default()
                 }.into()),
                 parent: Some(Parent::new(top_panel, true)),
+                ui_element: Some(UiElement{
+                    kind: UiElementType::Panel,
+                    keep_aspect: Some(KeepAspect{
+                        scale: Vector2::new(close_button_x, 1.0),
+                        position: Vector2::zeros(),
+                        mode: AspectMode::FillRestX,
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                }),
                 ..Default::default()
             },
             RenderInfo{
                 object: None,
+                z_level: ZLevel::UiHigh,
+                ..Default::default()
+            }
+        );
+
+        let scale = Vector3::new(close_button_x, 1.0, 1.0);
+        creator.push(
+            EntityInfo{
+                lazy_transform: Some(LazyTransformInfo{
+                    transform: Transform{
+                        scale,
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                }.into()),
+                parent: Some(Parent::new(top_panel, true)),
+                ui_element: Some(UiElement{
+                    kind: UiElementType::Button{
+                        on_click: Box::new(move ||
+                        {
+                            (actions.on_close)();
+                        })
+                    },
+                    keep_aspect: Some(KeepAspect{
+                        scale: scale.xy(),
+                        position: Vector2::x(),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+            RenderInfo{
+                object: Some(RenderObject::Texture{name: "ui/close_button.png".to_owned()}),
                 z_level: ZLevel::UiHigh,
                 ..Default::default()
             }
@@ -585,7 +644,7 @@ impl UiInventory
             {
                 let item = items.borrow()[index];
 
-                on_change(item);
+                (actions.on_change)(item);
             }))
         };
 
@@ -595,7 +654,7 @@ impl UiInventory
             items,
             inventory,
             name,
-            list: UiList::new(creator, inventory_panel, on_change)
+            list: UiList::new(creator, inventory_panel, 1.0 - close_button_x, on_change)
         }
     }
 
@@ -693,12 +752,17 @@ pub struct Ui
 
 impl Ui
 {
-    pub fn new(
+    pub fn new<PlayerClose, PlayerChange, OtherClose, OtherChange>(
         creator: &mut EntityCreator,
         items_info: Arc<ItemsInfo>,
-        on_player_change: impl FnMut(InventoryItem) + 'static,
-        on_other_change: impl FnMut(InventoryItem) + 'static
+        player_actions: InventoryActions<PlayerClose, PlayerChange>,
+        other_actions: InventoryActions<OtherClose, OtherChange>
     ) -> Self
+    where
+        PlayerClose: FnMut() + 'static,
+        PlayerChange: FnMut(InventoryItem) + 'static,
+        OtherClose: FnMut() + 'static,
+        OtherChange: FnMut(InventoryItem) + 'static
     {
         let anchor = creator.entities.push(true, EntityInfo{
             lazy_transform: Some(LazyTransformInfo{
@@ -712,14 +776,14 @@ impl Ui
             creator,
             items_info.clone(),
             anchor,
-            on_player_change
+            player_actions
         ); 
 
         let other_inventory = UiInventory::new(
             creator,
             items_info,
             anchor,
-            on_other_change
+            other_actions
         ); 
 
         Self{
@@ -784,7 +848,7 @@ impl Ui
         f(&mut self.other_inventory);
     }
 
-    fn ui_position(scale: Vector3<f32>, position: Vector3<f32>) -> Vector3<f32>
+    pub fn ui_position(scale: Vector3<f32>, position: Vector3<f32>) -> Vector3<f32>
     {
         (position - Vector3::repeat(0.5)).component_mul(&(Vector3::repeat(1.0) - scale))
     }

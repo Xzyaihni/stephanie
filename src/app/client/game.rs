@@ -36,6 +36,7 @@ use crate::common::{
 
 use super::game_state::{
     GameState,
+    InventoryWhich,
     UserEvent,
     ControlState,
     Control,
@@ -93,7 +94,7 @@ impl Game
     {
         let mut container = self.player_container(game_state);
         container.camera_sync_instant();
-        container.update_inventory();
+        container.update_inventory(InventoryWhich::Player);
         container.unstance();
     }
 
@@ -126,6 +127,7 @@ struct PlayerInfo
     stance_time: f32,
     bash_side: Side1d,
     inventory_open: bool,
+    other_inventory_open: bool,
     camera_follow: f32
 }
 
@@ -144,6 +146,7 @@ impl PlayerInfo
             stance_time: 0.0,
             bash_side: Side1d::Left,
             inventory_open: false,
+            other_inventory_open: false,
             camera_follow: 0.25
         }
     }
@@ -205,6 +208,20 @@ impl<'a> PlayerContainer<'a>
         {
             Control::MainAction =>
             {
+                let entities = self.game_state.entities();
+
+                if let Some(mouse_touched) = entities.collider(self.info.mouse_entity)
+                    .and_then(|x| *x.collided())
+                {
+                    if entities.is_lootable(mouse_touched)
+                    {
+                        self.info.other_inventory_open = true;
+                        self.update_inventory(InventoryWhich::Other);
+
+                        return;
+                    }
+                }
+
                 if let Some(holding) = self.held_item()
                 {
                     self.bash_attack(holding);
@@ -256,6 +273,22 @@ impl<'a> PlayerContainer<'a>
 
         match event
         {
+            UserEvent::Close(which) =>
+            {
+                match which
+                {
+                    InventoryWhich::Player =>
+                    {
+                        self.info.inventory_open = false;
+                    },
+                    InventoryWhich::Other =>
+                    {
+                        self.info.other_inventory_open = false;
+                    }
+                }
+
+                self.update_inventory(which);
+            },
             UserEvent::Wield(item) =>
             {
                 entities.player_mut(player).unwrap().holding = Some(item);
@@ -328,15 +361,31 @@ impl<'a> PlayerContainer<'a>
     {
         self.info.inventory_open = !self.info.inventory_open;
 
-        self.update_inventory();
+        self.update_inventory(InventoryWhich::Player);
     }
 
-    fn update_inventory(&mut self)
+    fn update_inventory(
+        &mut self,
+        which: InventoryWhich
+    )
     {
-        let inventory = self.game_state.ui.player_inventory.body();
+        let ui = &self.game_state.ui;
+        let inventory_id = match which
+        {
+            InventoryWhich::Player => &ui.player_inventory,
+            InventoryWhich::Other => &ui.other_inventory
+        };
+
+        let inventory = inventory_id.body();
         let entities = self.game_state.entities_mut();
 
-        if self.info.inventory_open 
+        let is_open = match which
+        {
+            InventoryWhich::Player => self.info.inventory_open,
+            InventoryWhich::Other => self.info.other_inventory_open
+        };
+        
+        if is_open
         {
             entities.set_collider(inventory, Some(ColliderInfo{
                 kind: ColliderType::Aabb,
@@ -523,9 +572,10 @@ impl<'a> PlayerContainer<'a>
     fn bash_attack(&mut self, item: Item)
     {
         self.info.stance_time = 5.0;
-        self.info.bash_side = self.info.bash_side.opposite();
 
         eprintln!("hitting from {:?}", self.info.bash_side);
+
+        self.info.bash_side = self.info.bash_side.opposite();
 
         let start_rotation = self.default_held_rotation();
         if let Some(mut lazy) = self.game_state.entities().lazy_transform_mut(self.holding_entity())

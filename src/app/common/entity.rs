@@ -262,6 +262,7 @@ pub trait AnyEntities
     fn lazy_target_ref(&self, entity: Entity) -> Option<Ref<Transform>>;
     fn lazy_target(&self, entity: Entity) -> Option<RefMut<Transform>>;
 
+    fn is_visible(&self, entity: Entity) -> bool;
     fn visible_target(&self, entity: Entity) -> Option<RefMut<bool>>;
 
     fn remove(&mut self, entity: Entity);
@@ -343,6 +344,11 @@ macro_rules! common_trait_impl
             {
                 RefMut::map(lazy, |x| x.target())
             })
+        }
+
+        fn is_visible(&self, entity: Entity) -> bool
+        {
+            self.render(entity).map(|x| x.visible).unwrap_or(false)
         }
 
         fn visible_target(&self, entity: Entity) -> Option<RefMut<bool>>
@@ -907,6 +913,14 @@ macro_rules! define_entities
                 });
             }
 
+            pub fn is_lootable(&self, entity: Entity) -> bool
+            {
+                let is_player = self.player(entity).is_some();
+                let has_inventory = self.inventory(entity).is_some();
+
+                !is_player && has_inventory
+            }
+
             pub fn update_mouse_highlight(&mut self, mouse: Entity)
             {
                 self.collider.iter().for_each(|(_, ComponentWrapper{
@@ -917,10 +931,8 @@ macro_rules! define_entities
                     if let Some(mut render) = self.render_mut(*entity)
                     {
                         let overlapping = *collider.borrow().collided() == Some(mouse);
-                        let is_player = self.player(*entity).is_some();
-                        let has_inventory = self.inventory(*entity).is_some();
 
-                        let outline = !is_player && overlapping && has_inventory;
+                        let outline = overlapping && self.is_lootable(*entity);
                         if outline
                         {
                             render.set_outlined(true);
@@ -1045,6 +1057,25 @@ macro_rules! define_entities
                 self.update_enemy_common(dt, |_, _, _| {});
             }
 
+            pub fn update_ui_aspect(
+                &mut self,
+                aspect: f32
+            )
+            {
+                self.ui_element.iter().rev().for_each(|(_, ComponentWrapper{
+                    entity,
+                    component: ui_element
+                })|
+                {
+                    if self.is_visible(*entity)
+                    {
+                        let mut target = self.target(*entity).unwrap();
+                        let mut render = self.render_mut(*entity).unwrap();
+                        ui_element.borrow_mut().update_aspect(&mut target, &mut render, aspect);
+                    }
+                });
+            }
+
             pub fn update_ui(
                 &mut self,
                 camera_position: Vector2<f32>,
@@ -1059,8 +1090,7 @@ macro_rules! define_entities
                     component: ui_element
                 })|
                 {
-                    let is_visible = self.render(*entity).map(|x| x.visible).unwrap_or(false);
-                    if is_visible
+                    if self.is_visible(*entity)
                     {
                         captured = ui_element.borrow_mut().update(
                             &*self,

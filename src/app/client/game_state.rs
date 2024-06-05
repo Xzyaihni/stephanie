@@ -69,7 +69,8 @@ use controls_controller::ControlsController;
 
 use notifications::{Notifications, Notification};
 
-use ui::Ui;
+pub use ui::Ui;
+use ui::InventoryActions;
 
 mod controls_controller;
 
@@ -408,8 +409,15 @@ pub struct GameStateInfo<'a>
     pub host: bool
 }
 
+pub enum InventoryWhich
+{
+    Player,
+    Other
+}
+
 pub enum UserEvent
 {
+    Close(InventoryWhich),
     Wield(InventoryItem),
     Take(InventoryItem)
 }
@@ -524,22 +532,41 @@ impl GameState
         let ui = {
             let urx0 = user_receiver.clone();
             let urx1 = user_receiver.clone();
-            Ui::new(
-                &mut entities.entity_creator(),
-                info.items_info.clone(),
-                move |item|
+
+            let player_actions = InventoryActions{
+                on_close: move ||
+                {
+                    println!("should close inventory");
+                },
+                on_change: move |item|
                 {
                     urx0.borrow_mut().push(UserEvent::Wield(item));
+                }
+            };
+
+            let other_actions = InventoryActions{
+                on_close: move ||
+                {
+                    println!("should close other inventory");
                 },
-                move |item|
+                on_change: move |item|
                 {
                     urx1.borrow_mut().push(UserEvent::Take(item));
                 }
+            };
+
+            Ui::new(
+                &mut entities.entity_creator(),
+                info.items_info.clone(),
+                player_actions,
+                other_actions
             )
         };
 
         let assets = info.object_info.partial.assets;
         let common_textures = CommonTextures::new(&assets.lock());
+
+        entities.entities.update_ui_aspect(info.camera.read().aspect());
 
         let this = Self{
             mouse_position,
@@ -928,6 +955,8 @@ impl GameState
 
         let size = camera.size();
         self.world.rescale(size);
+
+        self.entities.entities.update_ui_aspect(aspect);
     }
 }
 

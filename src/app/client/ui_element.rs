@@ -5,8 +5,8 @@ use nalgebra::Vector2;
 use yanyaengine::{Transform, game_object::*};
 
 use crate::{
-    client::{Control, ControlState},
-    common::{Entity, ServerToClient, entity::ClientEntities}
+    client::{Control, ControlState, game_state::Ui},
+    common::{render_info::*, Entity, ServerToClient, entity::ClientEntities}
 };
 
 
@@ -145,10 +145,36 @@ impl<'a> UiQuery<'a>
     }
 }
 
+pub enum AspectMode
+{
+    ShrinkX,
+    FillRestX
+}
+
+pub struct KeepAspect
+{
+    pub scale: Vector2<f32>,
+    pub position: Vector2<f32>,
+    pub mode: AspectMode,
+}
+
+impl Default for KeepAspect
+{
+    fn default() -> Self
+    {
+        Self{
+            scale: Vector2::repeat(1.0),
+            position: Vector2::zeros(),
+            mode: AspectMode::ShrinkX,
+        }
+    }
+}
+
 pub struct UiElement
 {
     pub kind: UiElementType,
-    pub predicate: UiElementPredicate
+    pub predicate: UiElementPredicate,
+    pub keep_aspect: Option<KeepAspect>
 }
 
 impl Default for UiElement
@@ -157,7 +183,8 @@ impl Default for UiElement
     {
         Self{
             kind: UiElementType::Panel,
-            predicate: UiElementPredicate::None
+            predicate: UiElementPredicate::None,
+            keep_aspect: None
         }
     }
 }
@@ -284,6 +311,38 @@ impl UiElement
 
                 false
             }
+        }
+    }
+
+    pub fn update_aspect(
+        &mut self,
+        transform: &mut Transform,
+        render: &mut ClientRenderInfo,
+        aspect: f32
+    )
+    {
+        if let Some(keep_aspect) = &self.keep_aspect
+        {
+            transform.scale.x = match keep_aspect.mode
+            {
+                AspectMode::ShrinkX =>
+                {
+                    keep_aspect.scale.x / aspect
+                },
+                AspectMode::FillRestX =>
+                {
+                    1.0 - keep_aspect.scale.x / aspect
+                }
+            };
+
+            transform.scale.y = keep_aspect.scale.y;
+
+            transform.position = Ui::ui_position(
+                transform.scale,
+                keep_aspect.position.xyy()
+            );
+
+            render.set_transform(transform.clone());
         }
     }
 
