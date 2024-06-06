@@ -1,6 +1,8 @@
+use std::f32;
+
 use serde::{Serialize, Deserialize};
 
-use crate::common::Damage;
+use crate::common::{short_rotation, Entity, Damage};
 
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -22,8 +24,8 @@ impl DamagingPredicate
             Self::None => true,
             Self::ParentAngleLess(less) =>
             {
-                let angle = parent_angle_between();
-                angle.abs() < (*less / 2.0)
+                let angle = short_rotation(parent_angle_between()).abs();
+                angle < (*less / 2.0)
             }
         }
     }
@@ -36,10 +38,59 @@ pub enum DamageTimes
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Damaging
+pub struct DamagingInfo
 {
     pub damage: Damage,
     pub predicate: DamagingPredicate,
     pub times: DamageTimes,
     pub is_player: bool
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Damaging
+{
+    pub damage: Damage,
+    pub predicate: DamagingPredicate,
+    pub is_player: bool,
+    times: DamageTimes,
+    already_damaged: Vec<Entity>
+}
+
+impl From<DamagingInfo> for Damaging
+{
+    fn from(info: DamagingInfo) -> Self
+    {
+        Self{
+            damage: info.damage,
+            predicate: info.predicate,
+            times: info.times,
+            is_player: info.is_player,
+            already_damaged: Vec::new()
+        }
+    }
+}
+
+impl Damaging
+{
+    pub fn can_damage(&self, entity: Entity) -> bool
+    {
+        match self.times
+        {
+            DamageTimes::Once =>
+            {
+                !self.already_damaged.contains(&entity)
+            }
+        }
+    }
+
+    pub fn damaged(&mut self, entity: Entity)
+    {
+        match self.times
+        {
+            DamageTimes::Once =>
+            {
+                self.already_damaged.push(entity);
+            }
+        }
+    }
 }

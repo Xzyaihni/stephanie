@@ -253,6 +253,22 @@ pub fn random_rotation() -> f32
     fastrand::f32() * (f32::consts::PI * 2.0)
 }
 
+pub fn short_rotation(rotation: f32) -> f32
+{
+    let rotation = rotation % (f32::consts::PI * 2.0);
+
+    if rotation > f32::consts::PI
+    {
+        rotation - 2.0 * f32::consts::PI
+    } else if rotation < -f32::consts::PI
+    {
+        rotation + 2.0 * f32::consts::PI
+    } else
+    {
+        rotation
+    }
+}
+
 // thanks freya holmer
 pub fn ease_out(current: f32, target: f32, decay: f32, dt: f32) -> f32
 {

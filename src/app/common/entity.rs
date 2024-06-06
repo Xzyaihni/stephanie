@@ -1003,26 +1003,24 @@ macro_rules! define_entities
                 {
                     let collider = self.collider(*entity).unwrap();
 
-                    if let Some(collided) = collider.collided()
+                    if let Some(collided) = *collider.collided()
                     {
-                        let damaging = damaging.borrow();
+                        let mut damaging = damaging.borrow_mut();
 
                         let same_team = if damaging.is_player
                         {
-                            self.player(*collided).is_some()
+                            self.player(collided).is_some()
                         } else
                         {
-                            self.enemy(*collided).is_some()
+                            self.enemy(collided).is_some()
                         };
-
-                        let can_damage = !same_team;
 
                         let parent_angle_between = ||
                         {
                             let parent = self.parent(*entity).unwrap().entity;
 
                             let parent_transform = self.transform(parent).unwrap();
-                            let collided_transform = self.transform(*collided).unwrap();
+                            let collided_transform = self.transform(collided).unwrap();
 
                             let offset = collided_transform.position - parent_transform.position;
 
@@ -1034,9 +1032,12 @@ macro_rules! define_entities
                             relative_angle % (f32::consts::PI * 2.0)
                         };
 
-                        if can_damage && damaging.predicate.meets(parent_angle_between)
+                        if !same_team
+                            && damaging.can_damage(collided)
+                            && damaging.predicate.meets(parent_angle_between)
                         {
-                            self.damage_entity(passer, *collided, damaging.damage.clone());
+                            damaging.damaged(collided);
+                            self.damage_entity(passer, collided, damaging.damage.clone());
                         }
                     }
                 });

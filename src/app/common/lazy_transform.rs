@@ -7,6 +7,7 @@ use nalgebra::{Vector2, Vector3, Rotation as NRotation};
 use yanyaengine::Transform;
 
 use crate::common::{
+    short_rotation,
     ease_out,
     Entity,
     Physical
@@ -219,16 +220,7 @@ impl Rotation
             {
                 let rotation_difference = target - *current;
 
-                let short_difference = if rotation_difference > f32::consts::PI
-                {
-                    rotation_difference - 2.0 * f32::consts::PI
-                } else if rotation_difference < -f32::consts::PI
-                {
-                    rotation_difference + 2.0 * f32::consts::PI
-                } else
-                {
-                    rotation_difference
-                };
+                let short_difference = short_rotation(rotation_difference);
 
                 let half = -f32::consts::PI..f32::consts::PI;
                 let long_difference = if half.contains(&rotation_difference)

@@ -649,12 +649,12 @@ impl<'a> PlayerContainer<'a>
                     ghost: true,
                     ..Default::default()
                 }.into()),
-                damaging: Some(Damaging{
+                damaging: Some(DamagingInfo{
                     damage,
                     predicate: DamagingPredicate::ParentAngleLess(f32::consts::PI),
                     times: DamageTimes::Once,
                     is_player: true
-                }),
+                }.into()),
                 ..Default::default()
             },
             RenderInfo{
