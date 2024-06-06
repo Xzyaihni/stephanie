@@ -37,7 +37,31 @@ use crate::{
 #[derive(BufferContents)]
 pub struct OutlinedInfo
 {
-    pub outlined: u32
+    other_color: [f32; 3],
+    other_mix: f32,
+    outlined: i32
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct MixColor
+{
+    pub color: [f32; 3],
+    pub amount: f32
+}
+
+impl OutlinedInfo
+{
+    pub fn new(
+        other_color: Option<MixColor>,
+        outline: bool
+    ) -> Self
+    {
+        Self{
+            other_color: other_color.map(|x| x.color).unwrap_or_default(),
+            other_mix: other_color.map(|x| x.amount).unwrap_or_default(),
+            outlined: outline as i32
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -159,6 +183,7 @@ pub struct RenderInfo
     pub scissor: Option<Scissor>,
     pub object: Option<RenderObject>,
     pub shape: Option<BoundingShape>,
+    pub mix: Option<MixColor>,
     pub z_level: ZLevel
 }
 
@@ -171,6 +196,7 @@ impl Default for RenderInfo
             scissor: None,
             object: None,
             shape: Some(BoundingShape::Circle),
+            mix: None,
             z_level: ZLevel::Middle
         }
     }
@@ -235,10 +261,7 @@ impl ClientRenderObject
             ClientObjectType::Text(x) => x.transform()
         }
     }
-}
 
-impl GameObject for ClientRenderObject
-{
     fn update_buffers(&mut self, info: &mut UpdateBuffersInfo)
     {
         match &mut self.kind
@@ -248,9 +271,9 @@ impl GameObject for ClientRenderObject
         }
     }
 
-    fn draw(&self, info: &mut DrawInfo)
+    fn draw(&self, info: &mut DrawInfo, mix: Option<MixColor>)
     {
-        push_constants(info, OutlinedInfo{outlined: self.outlined as u32});
+        push_constants(info, OutlinedInfo::new(mix, self.outlined));
 
         match &self.kind
         {
@@ -267,6 +290,7 @@ pub struct ClientRenderInfo
     pub scissor: Option<VulkanoScissor>,
     pub object: Option<ClientRenderObject>,
     pub shape: Option<BoundingShape>,
+    pub mix: Option<MixColor>,
     pub z_level: ZLevel
 }
 
@@ -293,6 +317,7 @@ impl ServerToClient<ClientRenderInfo> for RenderInfo
             scissor,
             object,
             shape: self.shape,
+            mix: self.mix,
             z_level: self.z_level
         }
     }
@@ -454,7 +479,7 @@ impl ClientRenderInfo
                     .unwrap();
             }
 
-            object.draw(info);
+            object.draw(info, self.mix);
 
             if self.scissor.is_some()
             {

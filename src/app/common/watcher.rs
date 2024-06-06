@@ -9,6 +9,7 @@ use serde::{Serialize, Deserialize};
 
 use crate::common::{
     random_rotation,
+    render_info::*,
     Entity,
     EntityInfo,
     entity::AnyEntities
@@ -107,6 +108,7 @@ pub enum WatcherAction
 {
     None,
     SetVisible(bool),
+    SetMixColor(Option<MixColor>),
     SetTargetScale(Vector3<f32>),
     Remove,
     Explode(Box<ExplodeInfo>)
@@ -135,6 +137,13 @@ impl WatcherAction
             Self::SetVisible(value) =>
             {
                 if let Some(mut target) = entities.visible_target(entity)
+                {
+                    *target = value;
+                }
+            },
+            Self::SetMixColor(value) =>
+            {
+                if let Some(mut target) = entities.mix_color_target(entity)
                 {
                     *target = value;
                 }

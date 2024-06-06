@@ -279,6 +279,7 @@ pub trait AnyEntities
 
     fn is_visible(&self, entity: Entity) -> bool;
     fn visible_target(&self, entity: Entity) -> Option<RefMut<bool>>;
+    fn mix_color_target(&self, entity: Entity) -> Option<RefMut<Option<MixColor>>>;
 
     fn remove(&mut self, entity: Entity);
     // i cant make remove the &mut cuz reborrowing would stop working :/
@@ -439,6 +440,14 @@ macro_rules! common_trait_impl
                 {
                     RefMut::map(render, |x| &mut x.visible)
                 })
+            })
+        }
+
+        fn mix_color_target(&self, entity: Entity) -> Option<RefMut<Option<MixColor>>>
+        {
+            self.render_mut(entity).map(|render|
+            {
+                RefMut::map(render, |x| &mut x.mix)
             })
         }
 
@@ -849,12 +858,25 @@ macro_rules! define_entities
 
             fn damage_entity_common(&self, entity: Entity, damage: Damage)
             where
-                for<'a> &'a mut AnatomyType: Into<&'a mut Anatomy>,
+                for<'a> &'a mut WatchersType: Into<&'a mut Watchers>,
+                for<'a> &'a mut AnatomyType: Into<&'a mut Anatomy>
             {
                 use crate::common::Damageable;
 
                 if let Some(mut anatomy) = self.anatomy_mut(entity)
                 {
+                    if let Some(mut mix_color) = self.mix_color_target(entity)
+                    {
+                        *mix_color = Some(MixColor{color: [1.0; 3], amount: 0.8});
+                    }
+
+                    (&mut *self.watchers_mut(entity).unwrap()).into().push(Watcher{
+                        kind: WatcherType::Lifetime(0.2.into()),
+                        action: WatcherAction::SetMixColor(None),
+                        ..Default::default()
+                    });
+
+
                     (&mut *anatomy).into().damage(damage);
                     drop(anatomy);
 
@@ -864,6 +886,7 @@ macro_rules! define_entities
 
             fn handle_message_common(&mut self, message: Message) -> Option<Message>
             where
+                for<'a> &'a mut WatchersType: Into<&'a mut Watchers>,
                 for<'a> &'a mut AnatomyType: Into<&'a mut Anatomy>,
                 for<'a> &'a mut TransformType: Into<&'a mut Transform>,
                 LazyTransformType: LazyTargettable<Transform>

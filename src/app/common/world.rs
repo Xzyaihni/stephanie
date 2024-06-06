@@ -146,7 +146,7 @@ impl GameObject for World
 
     fn draw(&self, info: &mut DrawInfo)
     {
-        push_constants(info, OutlinedInfo{outlined: 0});
+        push_constants(info, OutlinedInfo::new(None, false));
 
         self.overmap.draw(info);
     }

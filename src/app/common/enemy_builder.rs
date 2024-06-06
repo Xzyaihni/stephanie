@@ -85,6 +85,7 @@ impl<'a> EnemyBuilder<'a>
             inventory: Some(inventory),
             anatomy: Some(Anatomy::Human(HumanAnatomy::default())),
             enemy: Some(Enemy::new(self.enemies_info, self.id)),
+            watchers: Some(Default::default()),
             ..Default::default()
         }
     }
