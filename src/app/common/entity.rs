@@ -1,4 +1,7 @@
-use std::cell::{Ref, RefMut, RefCell};
+use std::{
+    f32,
+    cell::{Ref, RefMut, RefCell}
+};
 
 use serde::{Serialize, Deserialize};
 
@@ -844,7 +847,7 @@ macro_rules! define_entities
                 ,)+]
             }
 
-            fn damage_entity(&self, entity: Entity, damage: Damage)
+            fn damage_entity_common(&self, entity: Entity, damage: Damage)
             where
                 for<'a> &'a mut AnatomyType: Into<&'a mut Anatomy>,
             {
@@ -853,6 +856,7 @@ macro_rules! define_entities
                 if let Some(mut anatomy) = self.anatomy_mut(entity)
                 {
                     (&mut *anatomy).into().damage(damage);
+                    drop(anatomy);
 
                     AnatomyType::on_set(None, self, entity);
                 }
@@ -868,7 +872,7 @@ macro_rules! define_entities
                 {
                     Message::EntityDamage{entity, damage} =>
                     {
-                        self.damage_entity(entity, damage);
+                        self.damage_entity_common(entity, damage);
 
                         None
                     },
@@ -978,7 +982,19 @@ macro_rules! define_entities
 
             impl_common_systems!{}
 
-            pub fn update_damaging(&mut self)
+            pub fn damage_entity(
+                &self,
+                passer: &mut impl EntityPasser,
+                entity: Entity,
+                damage: Damage
+            )
+            {
+                passer.send_message(Message::EntityDamage{entity, damage: damage.clone()});
+
+                self.damage_entity_common(entity, damage);
+            }
+
+            pub fn update_damaging(&mut self, passer: &mut impl EntityPasser)
             {
                 self.damaging.iter().for_each(|(_, ComponentWrapper{
                     entity,
@@ -1001,15 +1017,26 @@ macro_rules! define_entities
 
                         let can_damage = !same_team;
 
-                        if can_damage
+                        let parent_angle_between = ||
                         {
-                            dbg!(self.info_ref(*collided));
-                        }
+                            let parent = self.parent(*entity).unwrap().entity;
 
-                        let transform = self.transform(*entity).unwrap();
-                        if can_damage && damaging.predicate.meets(&transform)
+                            let parent_transform = self.transform(parent).unwrap();
+                            let collided_transform = self.transform(*collided).unwrap();
+
+                            let offset = collided_transform.position - parent_transform.position;
+
+                            let parent_angle = -parent_transform.rotation;
+                            let angle_between = offset.y.atan2(-offset.x);
+
+                            let relative_angle = angle_between + (f32::consts::PI - parent_angle);
+
+                            relative_angle % (f32::consts::PI * 2.0)
+                        };
+
+                        if can_damage && damaging.predicate.meets(parent_angle_between)
                         {
-                            self.damage_entity(*collided, damaging.damage.clone());
+                            self.damage_entity(passer, *collided, damaging.damage.clone());
                         }
                     }
                 });

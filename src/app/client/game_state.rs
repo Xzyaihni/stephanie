@@ -37,7 +37,6 @@ use crate::common::{
     Entity,
     Entities,
     EnemiesInfo,
-    Damageable,
     ServerToClient,
     EntityPasser,
     EntitiesController,
@@ -185,7 +184,7 @@ impl ClientEntitiesContainer
         self.entities.update_enemy(dt);
         self.entities.update_children();
         self.entities.update_colliders(passer);
-        self.entities.update_damaging();
+        self.entities.update_damaging(passer);
     }
 
     pub fn main_player(&self) -> Entity
@@ -674,21 +673,8 @@ impl GameState
 
     pub fn damage_entity(&self, entity: Entity, damage: Damage)
     {
-        if self.entities().player(entity).is_some()
-        {
-            return;
-        }
-
-        self.send_message(Message::EntityDamage{entity, damage: damage.clone()});
-
-        if let Some(mut anatomy) = self.entities().anatomy_mut(entity)
-        {
-            anatomy.damage(damage);
-
-            drop(anatomy);
-
-            self.entities().anatomy_changed(entity);
-        }
+        let mut passer = self.connections_handler.write();
+        self.entities().damage_entity(&mut *passer, entity, damage);
     }
 
     pub fn entities(&self) -> &ClientEntities

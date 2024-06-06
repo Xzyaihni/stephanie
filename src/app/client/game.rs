@@ -651,7 +651,7 @@ impl<'a> PlayerContainer<'a>
                 }.into()),
                 damaging: Some(Damaging{
                     damage,
-                    predicate: DamagingPredicate::AngleLess(f32::consts::PI),
+                    predicate: DamagingPredicate::ParentAngleLess(f32::consts::PI),
                     times: DamageTimes::Once,
                     is_player: true
                 }),

@@ -1,7 +1,5 @@
 use serde::{Serialize, Deserialize};
 
-use yanyaengine::Transform;
-
 use crate::common::Damage;
 
 
@@ -9,21 +7,23 @@ use crate::common::Damage;
 pub enum DamagingPredicate
 {
     None,
-    AngleLess(f32)
+    ParentAngleLess(f32)
 }
 
 impl DamagingPredicate
 {
-    pub fn meets(&self, transform: &Transform) -> bool
+    pub fn meets(
+        &self,
+        parent_angle_between: impl FnOnce() -> f32
+    ) -> bool
     {
         match self
         {
             Self::None => true,
-            Self::AngleLess(less) =>
+            Self::ParentAngleLess(less) =>
             {
-                dbg!(transform.rotation);
-
-                false
+                let angle = parent_angle_between();
+                angle.abs() < (*less / 2.0)
             }
         }
     }
