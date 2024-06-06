@@ -117,17 +117,26 @@ impl Collider
     }
 }
 
-pub struct CollidingInfo<'a>
+pub struct CollidingInfo<'a, F>
 {
     pub physical: Option<&'a mut Physical>,
-    pub target: &'a mut Transform,
+    pub target: F,
     pub transform: Transform,
     pub collider: Collider
 }
 
-impl<'a> CollidingInfo<'a>
+impl<'a, ThisF> CollidingInfo<'a, ThisF>
+where
+    ThisF: FnMut(Vector3<f32>)
 {
-    fn resolve_with(&mut self, other: &mut CollidingInfo, offset: Vector3<f32>)
+    // i hate rust traits so goddamn much >-< haskell ones r so much better
+    fn resolve_with<OtherF>(
+        &mut self,
+        other: &mut CollidingInfo<OtherF>,
+        offset: Vector3<f32>
+    )
+    where
+        OtherF: FnMut(Vector3<f32>)
     {
         if self.collider.is_static && other.collider.is_static
         {
@@ -139,19 +148,23 @@ impl<'a> CollidingInfo<'a>
             return;
         }
 
+        let elasticity = 0.9;
+
         if self.collider.is_static
         {
-            other.target.position += offset;
+            (other.target)(offset);
             if let Some(physical) = &mut other.physical
             {
                 physical.invert_velocity();
+                physical.velocity *= elasticity;
             }
         } else if other.collider.is_static
         {
-            self.target.position -= offset;
+            (self.target)(-offset);
             if let Some(physical) = &mut self.physical
             {
                 physical.invert_velocity();
+                physical.velocity *= elasticity;
             }
         } else
         {
@@ -175,8 +188,6 @@ impl<'a> CollidingInfo<'a>
                     
                     let previous_velocity = this_physical.velocity;
 
-                    let elasticity = 0.9;
-
                     this_physical.velocity = (left + right) * elasticity;
 
                     let top = {
@@ -199,35 +210,39 @@ impl<'a> CollidingInfo<'a>
                         (mass_ratio, 1.0 - mass_ratio)
                     };
 
-                    self.target.position -= offset * this_scale;
-                    other.target.position += offset * other_scale;
+                    (self.target)(-offset * this_scale);
+                    (other.target)(offset * other_scale);
                 },
                 (Some(this_physical), None) =>
                 {
-                    self.target.position -= offset;
+                    (self.target)(-offset);
                     this_physical.invert_velocity();
+                    this_physical.velocity *= elasticity;
                 },
                 (None, Some(other_physical)) =>
                 {
-                    other.target.position += offset;
+                    (other.target)(offset);
                     other_physical.invert_velocity();
+                    other_physical.velocity *= elasticity;
                 },
                 (None, None) =>
                 {
                     let half_offset = offset / 2.0;
-                    self.target.position -= half_offset;
-                    other.target.position += half_offset;
+                    (self.target)(-half_offset);
+                    (other.target)(half_offset);
                 }
             }
         }
     }
 
-    fn resolve_with_offset(
+    fn resolve_with_offset<OtherF>(
         &mut self,
-        other: &mut CollidingInfo,
+        other: &mut CollidingInfo<OtherF>,
         max_distance: Vector3<f32>,
         offset: Vector3<f32>
     )
+    where
+        OtherF: FnMut(Vector3<f32>)
     {
         let offset = max_distance.zip_map(&offset, |max_distance, offset|
         {
@@ -254,7 +269,9 @@ impl<'a> CollidingInfo<'a>
         self.resolve_with(other, offset);
     }
 
-    fn circle_circle(&mut self, other: &mut CollidingInfo) -> bool
+    fn circle_circle<OtherF>(&mut self, other: &mut CollidingInfo<OtherF>) -> bool
+    where
+        OtherF: FnMut(Vector3<f32>)
     {
         let this_radius = self.transform.max_scale() / 2.0;
         let other_radius = other.transform.max_scale() / 2.0;
@@ -282,7 +299,9 @@ impl<'a> CollidingInfo<'a>
         collided
     }
 
-    fn normal_collision(&mut self, other: &mut CollidingInfo) -> bool
+    fn normal_collision<OtherF>(&mut self, other: &mut CollidingInfo<OtherF>) -> bool
+    where
+        OtherF: FnMut(Vector3<f32>)
     {
         let this_scale = self.scale();
         let other_scale = other.scale();
@@ -312,10 +331,12 @@ impl<'a> CollidingInfo<'a>
         }
     }
 
-    pub fn resolve(
+    pub fn resolve<OtherF>(
         mut self,
-        mut other: CollidingInfo
+        mut other: CollidingInfo<OtherF>
     ) -> bool
+    where
+        OtherF: FnMut(Vector3<f32>)
     {
         if !self.collider.layer.collides(&other.collider.layer)
         {

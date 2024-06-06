@@ -472,9 +472,6 @@ impl UiList
 }
 
 pub struct InventoryActions<Close, Change>
-where
-    Close: FnMut() + 'static,
-    Change: FnMut(InventoryItem) + 'static
 {
     pub on_close: Close,
     pub on_change: Change

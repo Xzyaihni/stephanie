@@ -5,7 +5,7 @@ use std::{
 
 use serde::{Serialize, Deserialize};
 
-use nalgebra::Vector2;
+use nalgebra::{Vector2, Vector3};
 
 use yanyaengine::game_object::*;
 
@@ -1135,68 +1135,75 @@ macro_rules! define_entities
                     component: ref other_collider
                 }|
                 {
-                    let mut physical = self.physical_mut(entity);
-                    let transform = self.transform(entity).unwrap().clone();
-                    let mut target = self.target(entity).unwrap();
+                    macro_rules! colliding_info
+                    {
+                        ($result_variable:expr, $physical_name:ident, $collider:expr, $entity:expr) =>
+                        {
+                            let mut $physical_name = self.physical_mut($entity);
 
-                    let this = {
-                        let collider: Ref<Collider> = collider.borrow();
+                            {
+                                let transform = self.transform($entity).unwrap().clone();
+                                let collider: Ref<Collider> = $collider.borrow();
 
-                        CollidingInfo{
-                            physical: physical.as_deref_mut(),
-                            transform,
-                            target: &mut target,
-                            collider: collider.clone()
+                                $result_variable = CollidingInfo{
+                                    physical: $physical_name.as_deref_mut(),
+                                    transform,
+                                    target: |mut offset: Vector3<f32>|
+                                    {
+                                        let mut target = self.target($entity).unwrap();
+
+                                        if let Some(parent) = self.parent($entity)
+                                        {
+                                            let parent_scale = self.transform(parent.entity)
+                                                .unwrap()
+                                                .scale;
+
+                                            offset = offset.component_div(&parent_scale);
+                                        }
+
+                                        target.position += offset;
+                                    },
+                                    collider: collider.clone()
+                                };
+                            }
                         }
-                    };
+                    }
 
-                    let mut other_physical = self.physical_mut(other_entity);
-                    let other_transform = self.transform(other_entity).unwrap().clone();
-                    let mut other_target = self.target(other_entity).unwrap();
+                    let this;
+                    colliding_info!{this, physical, collider, entity};
 
-                    let other = {
-                        let collider: Ref<Collider> = other_collider.borrow();
-
-                        CollidingInfo{
-                            physical: other_physical.as_deref_mut(),
-                            transform: other_transform,
-                            target: &mut other_target,
-                            collider: collider.clone()
-                        }
-                    };
+                    let other;
+                    colliding_info!{other, other_physical, other_collider, other_entity};
 
                     let collision = this.resolve(other);
 
                     if collision
                     {
-                        collider.borrow_mut().set_collided(other_entity);
-                        other_collider.borrow_mut().set_collided(entity);
-
-                        passer.send_message(Message::SetTarget{
+                        let mut on_collision = |
                             entity,
-                            target: target.clone()
-                        });
-
-                        if let Some(physical) = physical
+                            collider: &RefCell<Collider>,
+                            physical: Option<RefMut<Physical>>,
+                            other_entity
+                        |
                         {
-                            passer.send_message(Message::SetPhysical{
+                            collider.borrow_mut().set_collided(other_entity);
+
+                            passer.send_message(Message::SetTarget{
                                 entity,
-                                physical: physical.clone()
+                                target: self.target_ref(entity).unwrap().clone()
                             });
-                        }
 
-                        passer.send_message(Message::SetTarget{
-                            entity: other_entity,
-                            target: other_target.clone()
-                        });
+                            if let Some(physical) = physical
+                            {
+                                passer.send_message(Message::SetPhysical{
+                                    entity,
+                                    physical: physical.clone()
+                                });
+                            }
+                        };
 
-                        if let Some(physical) = other_physical
-                        {
-                            passer.send_message(Message::SetPhysical{
-                                entity: other_entity,
-                                physical: physical.clone()
-                            });
-                        }
+                        on_collision(entity, collider, physical, other_entity);
+                        on_collision(other_entity, other_collider, other_physical, entity);
                     }
                 };
 
