@@ -852,24 +852,6 @@ impl GameState
 
     fn on_control(&mut self, game: &mut Game, state: ControlState, control: Control)
     {
-        let clicked = |check|
-        {
-            state == ControlState::Pressed && control == check
-        };
-
-        if clicked(Control::SecondaryAction)
-        {
-            let player = self.player();
-
-            {
-                let mut inventory = self.entities.entities.inventory_mut(player).unwrap();
-
-                inventory.push(self.items_info.random());
-            }
-
-            self.update_inventory();
-        }
-
         game.on_control(self, state, control);
     }
 

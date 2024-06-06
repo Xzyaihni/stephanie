@@ -310,7 +310,20 @@ impl<'a> PlayerContainer<'a>
             },
             UserEvent::Take(item) =>
             {
-                todo!();
+                if let Some(other_entity) = self.info.other_entity
+                {
+                    {
+                        let entities = self.game_state.entities();
+                        let mut inventory = entities.inventory_mut(other_entity).unwrap();
+
+                        let taken = inventory.remove(item);
+
+                        entities.inventory_mut(self.info.entity).unwrap().push(taken);
+                    }
+
+                    self.update_inventory(InventoryWhich::Player);
+                    self.update_inventory(InventoryWhich::Other);
+                }
             }
         }
     }
@@ -397,10 +410,15 @@ impl<'a> PlayerContainer<'a>
         
         if is_open
         {
-            if let InventoryWhich::Other = which
             {
+                let entity = match which
+                {
+                    InventoryWhich::Other => self.info.other_entity.unwrap(),
+                    InventoryWhich::Player => self.info.entity
+                };
+
                 let mut entity_creator = self.game_state.entities.entity_creator();
-                inventory_ui.full_update(&mut entity_creator, self.info.other_entity.unwrap());
+                inventory_ui.full_update(&mut entity_creator, entity);
             }
 
             let entities = self.game_state.entities_mut();
@@ -778,17 +796,6 @@ impl<'a> PlayerContainer<'a>
             }
         }
 
-        if let Some(entity) = self.info.bash_projectile
-        {
-            let entities = self.game_state.entities();
-
-            let holding_rotation = entities.transform(self.holding_entity()).unwrap().rotation;
-
-            let parent_rotation = entities.transform(self.info.entity).unwrap().rotation;
-
-            entities.target(entity).unwrap().rotation = holding_rotation - parent_rotation;
-        }
-
         self.update_user_events();
 
         let mouse_position = self.game_state.world_mouse_position();
@@ -810,6 +817,20 @@ impl<'a> PlayerContainer<'a>
         self.look_at_mouse();
 
         self.game_state.sync_transform(self.info.entity);
+    }
+
+    pub fn update_pre(&mut self)
+    {
+        if let Some(entity) = self.info.bash_projectile
+        {
+            let entities = self.game_state.entities();
+
+            let holding_rotation = entities.transform(self.holding_entity()).unwrap().rotation;
+
+            let parent_rotation = entities.transform(self.info.entity).unwrap().rotation;
+
+            entities.target(entity).unwrap().rotation = holding_rotation - parent_rotation;
+        }
     }
 
     fn movement_direction(&self) -> Option<Vector3<f32>>
