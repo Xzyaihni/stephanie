@@ -1108,7 +1108,15 @@ macro_rules! define_entities
                 let is_player = self.player(entity).is_some();
                 let has_inventory = self.inventory(entity).is_some();
 
-                !is_player && has_inventory
+                let maybe_anatomy = if let Some(anatomy) = self.anatomy(entity)
+                {
+                    anatomy.speed().is_none()
+                } else
+                {
+                    true
+                };
+
+                !is_player && has_inventory && maybe_anatomy
             }
 
             pub fn update_mouse_highlight(&mut self, mouse: Entity)
