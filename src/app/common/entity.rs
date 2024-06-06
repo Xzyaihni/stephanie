@@ -17,6 +17,8 @@ use crate::{
         collider::*,
         watcher::*,
         lazy_transform::*,
+        damaging::*,
+        Damage,
         EntityPasser,
         Inventory,
         Anatomy,
@@ -172,6 +174,7 @@ no_on_set!{
     Player,
     Collider,
     Physical,
+    Damaging,
     Watchers,
     UiElement,
     UiElementServer
@@ -841,6 +844,20 @@ macro_rules! define_entities
                 ,)+]
             }
 
+            fn damage_entity(&self, entity: Entity, damage: Damage)
+            where
+                for<'a> &'a mut AnatomyType: Into<&'a mut Anatomy>,
+            {
+                use crate::common::Damageable;
+
+                if let Some(mut anatomy) = self.anatomy_mut(entity)
+                {
+                    (&mut *anatomy).into().damage(damage);
+
+                    AnatomyType::on_set(None, self, entity);
+                }
+            }
+
             fn handle_message_common(&mut self, message: Message) -> Option<Message>
             where
                 for<'a> &'a mut AnatomyType: Into<&'a mut Anatomy>,
@@ -851,14 +868,7 @@ macro_rules! define_entities
                 {
                     Message::EntityDamage{entity, damage} =>
                     {
-                        if let Some(mut anatomy) = self.anatomy_mut(entity)
-                        {
-                            use crate::common::Damageable;
-
-                            (&mut *anatomy).into().damage(damage);
-
-                            AnatomyType::on_set(None, self, entity);
-                        }
+                        self.damage_entity(entity, damage);
 
                         None
                     },
@@ -968,6 +978,43 @@ macro_rules! define_entities
 
             impl_common_systems!{}
 
+            pub fn update_damaging(&mut self)
+            {
+                self.damaging.iter().for_each(|(_, ComponentWrapper{
+                    entity,
+                    component: damaging
+                })|
+                {
+                    let collider = self.collider(*entity).unwrap();
+
+                    if let Some(collided) = collider.collided()
+                    {
+                        let damaging = damaging.borrow();
+
+                        let same_team = if damaging.is_player
+                        {
+                            self.player(*collided).is_some()
+                        } else
+                        {
+                            self.enemy(*collided).is_some()
+                        };
+
+                        let can_damage = !same_team;
+
+                        if can_damage
+                        {
+                            dbg!(self.info_ref(*collided));
+                        }
+
+                        let transform = self.transform(*entity).unwrap();
+                        if can_damage && damaging.predicate.meets(&transform)
+                        {
+                            self.damage_entity(*collided, damaging.damage.clone());
+                        }
+                    }
+                });
+            }
+
             pub fn update_children(&mut self)
             {
                 self.parent.iter().for_each(|(_, ComponentWrapper{
@@ -1049,68 +1096,86 @@ macro_rules! define_entities
                     collider.borrow_mut().reset_frame();
                 });
 
-                self.collider.iter().for_each(|(_, ComponentWrapper{
+                let mut pairs_fn = |&ComponentWrapper{
+                    entity,
+                    component: ref collider
+                }, &ComponentWrapper{
                     entity: other_entity,
-                    component: other_collider
-                })|
+                    component: ref other_collider
+                }|
                 {
-                    self.collider.iter().filter(|(_, x)|
-                    {
-                        x.entity != *other_entity
-                    }).for_each(|(_, ComponentWrapper{
-                        entity,
-                        component: collider
-                    })|
-                    {
-                        let mut physical = self.physical_mut(*entity);
-                        let mut transform = self.target(*entity).unwrap();
+                    let mut physical = self.physical_mut(entity);
+                    let transform = self.transform(entity).unwrap().clone();
+                    let mut target = self.target(entity).unwrap();
 
-                        let this = CollidingInfo{
+                    let this = {
+                        let collider: Ref<Collider> = collider.borrow();
+
+                        CollidingInfo{
                             physical: physical.as_deref_mut(),
-                            transform: &mut transform,
-                            collider: collider.borrow().clone()
-                        };
+                            transform,
+                            target: &mut target,
+                            collider: collider.clone()
+                        }
+                    };
 
-                        let mut other_physical = self.physical_mut(*other_entity);
-                        let mut other_transform = self.target(*other_entity).unwrap();
-                        let collision = this.resolve(CollidingInfo{
+                    let mut other_physical = self.physical_mut(other_entity);
+                    let other_transform = self.transform(other_entity).unwrap().clone();
+                    let mut other_target = self.target(other_entity).unwrap();
+
+                    let other = {
+                        let collider: Ref<Collider> = other_collider.borrow();
+
+                        CollidingInfo{
                             physical: other_physical.as_deref_mut(),
-                            transform: &mut other_transform,
-                            collider: other_collider.borrow().clone()
+                            transform: other_transform,
+                            target: &mut other_target,
+                            collider: collider.clone()
+                        }
+                    };
+
+                    let collision = this.resolve(other);
+
+                    if collision
+                    {
+                        collider.borrow_mut().set_collided(other_entity);
+                        other_collider.borrow_mut().set_collided(entity);
+
+                        passer.send_message(Message::SetTarget{
+                            entity,
+                            target: target.clone()
                         });
 
-                        if collision
+                        if let Some(physical) = physical
                         {
-                            collider.borrow_mut().set_collided(*other_entity);
-                            other_collider.borrow_mut().set_collided(*entity);
-
-                            passer.send_message(Message::SetTarget{
-                                entity: *entity,
-                                target: transform.clone()
+                            passer.send_message(Message::SetPhysical{
+                                entity,
+                                physical: physical.clone()
                             });
-
-                            if let Some(physical) = physical
-                            {
-                                passer.send_message(Message::SetPhysical{
-                                    entity: *entity,
-                                    physical: physical.clone()
-                                });
-                            }
-
-                            passer.send_message(Message::SetTarget{
-                                entity: *other_entity,
-                                target: other_transform.clone()
-                            });
-
-                            if let Some(physical) = other_physical
-                            {
-                                passer.send_message(Message::SetPhysical{
-                                    entity: *other_entity,
-                                    physical: physical.clone()
-                                });
-                            }
                         }
-                    });
+
+                        passer.send_message(Message::SetTarget{
+                            entity: other_entity,
+                            target: other_target.clone()
+                        });
+
+                        if let Some(physical) = other_physical
+                        {
+                            passer.send_message(Message::SetPhysical{
+                                entity: other_entity,
+                                physical: physical.clone()
+                            });
+                        }
+                    }
+                };
+
+                let mut colliders = self.collider.iter().map(|(_, x)| x);
+
+                // calls the function for each unique combination (excluding (self, self) pairs)
+                colliders.clone().for_each(|a|
+                {
+                    colliders.by_ref().next();
+                    colliders.clone().for_each(|b| pairs_fn(a, b));
                 });
             }
 
@@ -1360,6 +1425,7 @@ define_entities!{
     (lazy_transform, lazy_transform_mut, set_lazy_transform, SetLazyTransform, LazyTransformType, LazyTransform),
     (follow_rotation, follow_rotation_mut, set_follow_rotation, SetFollowRotation, FollowRotationType, FollowRotation),
     (watchers, watchers_mut, set_watchers, SetWatchers, WatchersType, Watchers),
+    (damaging, damaging_mut, set_damaging, SetDamaging, DamagingType, Damaging),
     (inventory, inventory_mut, set_inventory, SetInventory, InventoryType, Inventory),
     (enemy, enemy_mut, set_enemy, SetEnemy, EnemyType, Enemy),
     (named, named_mut, set_named, SetNamed, NamedType, String),

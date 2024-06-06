@@ -24,7 +24,7 @@ impl<T> ObjectsStore<T>
         Self{data: Vec::with_capacity(capacity), free_list: Vec::new()}
     }
 
-    pub fn iter(&self) -> impl DoubleEndedIterator<Item=(usize, &T)>
+    pub fn iter(&self) -> impl DoubleEndedIterator<Item=(usize, &T)> + Clone
     {
         self.data.iter().enumerate().filter_map(|(index, value)|
         {

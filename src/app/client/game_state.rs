@@ -185,6 +185,7 @@ impl ClientEntitiesContainer
         self.entities.update_enemy(dt);
         self.entities.update_children();
         self.entities.update_colliders(passer);
+        self.entities.update_damaging();
     }
 
     pub fn main_player(&self) -> Entity

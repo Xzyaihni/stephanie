@@ -15,6 +15,7 @@ use crate::common::{
     lazy_transform::*,
     collider::*,
     watcher::*,
+    damaging::*,
     Side1d,
     AnyEntities,
     Parent,
@@ -607,7 +608,8 @@ impl<'a> PlayerContainer<'a>
 
     fn bash_attack_projectile(&mut self, item: Item)
     {
-        let item_scale = self.game_state.items_info.get(item.id).scale3().y;
+        let item_info = self.game_state.items_info.get(item.id);
+        let item_scale = item_info.scale3().y;
         let over_scale = self.info.held_distance + item_scale;
         let scale = 1.0 + over_scale * 2.0;
 
@@ -618,6 +620,13 @@ impl<'a> PlayerContainer<'a>
         };
 
         let holding_entity = self.holding_entity();
+
+        let direction = DamageDirection{
+            side: self.info.bash_side.opposite().into(),
+            height: DamageHeight::random()
+        };
+
+        let damage = Damage::new(direction, item_info.bash_damage());
 
         self.info.projectile_lifetime = 0.2;
         self.info.bash_projectile = Some(self.game_state.entities.entity_creator().push(
@@ -634,6 +643,18 @@ impl<'a> PlayerContainer<'a>
                     ..Default::default()
                 }.into()),
                 parent: Some(Parent::new(self.info.entity, true)),
+                collider: Some(ColliderInfo{
+                    kind: ColliderType::Circle,
+                    layer: ColliderLayer::Damage,
+                    ghost: true,
+                    ..Default::default()
+                }.into()),
+                damaging: Some(Damaging{
+                    damage,
+                    predicate: DamagingPredicate::AngleLess(f32::consts::PI),
+                    times: DamageTimes::Once,
+                    is_player: true
+                }),
                 ..Default::default()
             },
             RenderInfo{
@@ -642,8 +663,6 @@ impl<'a> PlayerContainer<'a>
                 ..Default::default()
             }
         ));
-
-        eprintln!("hitting to {:?}", self.info.bash_side);
     }
 
     fn bash_attack(&mut self, item: Item)

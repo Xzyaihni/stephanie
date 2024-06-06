@@ -7,6 +7,7 @@ use strum_macros::EnumCount;
 use crate::common::{
     watcher::*,
     lazy_transform::*,
+    damaging::*,
     Transform,
     Collider,
     Physical,
@@ -39,6 +40,7 @@ pub enum Message
     SetCollider{entity: Entity, collider: Collider},
     SetPhysical{entity: Entity, physical: Physical},
     SetWatchers{entity: Entity, watchers: Watchers},
+    SetDamaging{entity: Entity, damaging: Damaging},
     SetAnatomy{entity: Entity, anatomy: Anatomy},
     SetEnemy{entity: Entity, enemy: Enemy},
     SetNamed{entity: Entity, named: String},
@@ -87,6 +89,7 @@ impl Message
             | Message::SetCollider{entity, ..}
             | Message::SetPhysical{entity, ..}
             | Message::SetWatchers{entity, ..}
+            | Message::SetDamaging{entity, ..}
             | Message::SetAnatomy{entity, ..}
             | Message::SetEnemy{entity, ..}
             | Message::SetNamed{entity, ..}

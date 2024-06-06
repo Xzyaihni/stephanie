@@ -126,6 +126,11 @@ impl ItemInfo
         }
     }
 
+    pub fn bash_damage(&self) -> DamageType
+    {
+        DamageType::Blunt(self.mass * 100.0)
+    }
+
     pub fn scale3(&self) -> Vector3<f32>
     {
         self.scale.xyx()

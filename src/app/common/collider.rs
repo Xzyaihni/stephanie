@@ -1,6 +1,6 @@
 use serde::{Serialize, Deserialize};
 
-use nalgebra::{Vector2, Vector3};
+use nalgebra::Vector3;
 
 use yanyaengine::Transform;
 
@@ -120,16 +120,15 @@ impl Collider
 pub struct CollidingInfo<'a>
 {
     pub physical: Option<&'a mut Physical>,
-    pub transform: &'a mut Transform,
+    pub target: &'a mut Transform,
+    pub transform: Transform,
     pub collider: Collider
 }
 
 impl<'a> CollidingInfo<'a>
 {
-    fn resolve_with(&mut self, other: &mut CollidingInfo, offset: Vector2<f32>)
+    fn resolve_with(&mut self, other: &mut CollidingInfo, offset: Vector3<f32>)
     {
-        let offset = Vector3::new(offset.x, offset.y, 0.0);
-
         if self.collider.is_static && other.collider.is_static
         {
             return;
@@ -142,14 +141,14 @@ impl<'a> CollidingInfo<'a>
 
         if self.collider.is_static
         {
-            other.transform.position += offset;
+            other.target.position += offset;
             if let Some(physical) = &mut other.physical
             {
                 physical.invert_velocity();
             }
         } else if other.collider.is_static
         {
-            self.transform.position -= offset;
+            self.target.position -= offset;
             if let Some(physical) = &mut self.physical
             {
                 physical.invert_velocity();
@@ -200,24 +199,24 @@ impl<'a> CollidingInfo<'a>
                         (mass_ratio, 1.0 - mass_ratio)
                     };
 
-                    self.transform.position -= offset * this_scale;
-                    other.transform.position += offset * other_scale;
+                    self.target.position -= offset * this_scale;
+                    other.target.position += offset * other_scale;
                 },
                 (Some(this_physical), None) =>
                 {
-                    self.transform.position -= offset;
+                    self.target.position -= offset;
                     this_physical.invert_velocity();
                 },
                 (None, Some(other_physical)) =>
                 {
-                    other.transform.position += offset;
+                    other.target.position += offset;
                     other_physical.invert_velocity();
                 },
                 (None, None) =>
                 {
                     let half_offset = offset / 2.0;
-                    self.transform.position -= half_offset;
-                    other.transform.position += half_offset;
+                    self.target.position -= half_offset;
+                    other.target.position += half_offset;
                 }
             }
         }
@@ -230,7 +229,7 @@ impl<'a> CollidingInfo<'a>
         offset: Vector3<f32>
     )
     {
-        let offset = max_distance.xy().zip_map(&offset.xy(), |max_distance, offset|
+        let offset = max_distance.zip_map(&offset, |max_distance, offset|
         {
             if offset < 0.0
             {
@@ -241,12 +240,15 @@ impl<'a> CollidingInfo<'a>
             }
         });
 
-        let offset = if offset.x.abs() < offset.y.abs()
+        let offset = if (offset.x.abs() < offset.y.abs()) && (offset.x.abs() < offset.z.abs())
         {
-            Vector2::new(offset.x, 0.0)
+            Vector3::new(offset.x, 0.0, 0.0)
+        } else if (offset.y.abs() < offset.x.abs()) && (offset.y.abs() < offset.z.abs())
+        {
+            Vector3::new(0.0, offset.y, 0.0)
         } else
         {
-            Vector2::new(0.0, offset.y)
+            Vector3::new(0.0, 0.0, offset.z)
         };
 
         self.resolve_with(other, offset);
@@ -266,10 +268,10 @@ impl<'a> CollidingInfo<'a>
         {
             let direction = if distance == 0.0
             {
-                Vector2::new(1.0, 0.0)
+                Vector3::x()
             } else
             {
-                offset.xy().normalize()
+                offset.normalize()
             };
 
             let shift = max_distance - distance;

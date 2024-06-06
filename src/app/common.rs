@@ -69,6 +69,7 @@ pub mod objects_store;
 
 pub mod render_info;
 
+pub mod damaging;
 pub mod damage;
 pub mod anatomy;
 
