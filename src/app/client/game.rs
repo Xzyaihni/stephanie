@@ -638,6 +638,7 @@ impl<'a> PlayerContainer<'a>
             },
             RenderInfo{
                 object: Some(RenderObject::TextureId{id: bash_trail}),
+                z_level: ZLevel::Low,
                 ..Default::default()
             }
         ));
@@ -720,6 +721,7 @@ impl<'a> PlayerContainer<'a>
 
         let info = RaycastInfo{
             pierce: None,
+            layer: ColliderLayer::Damage,
             ignore_player: true,
             ignore_end: true
         };
@@ -729,6 +731,8 @@ impl<'a> PlayerContainer<'a>
         let damage = ranged.damage();
 
         let height = DamageHeight::random();
+
+        dbg!(&hits);
 
         for hit in &hits.hits
         {

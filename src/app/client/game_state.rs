@@ -28,6 +28,7 @@ use yanyaengine::{
 use crate::common::{
     sender_loop,
     receiver_loop,
+    collider::*,
     TileMap,
     Damage,
     ItemsInfo,
@@ -41,7 +42,7 @@ use crate::common::{
     EntityPasser,
     EntitiesController,
     PlayerEntities,
-    entity::ClientEntities,
+    entity::{ComponentWrapper, ClientEntities},
     message::Message,
     world::{
         World,
@@ -260,7 +261,17 @@ impl ClientEntitiesContainer
         let max_distance = direction.magnitude();
         let direction = Unit::new_normalize(direction);
 
-        let mut hits: Vec<_> = self.entities.entities_iter()
+        let mut hits: Vec<_> = self.entities.collider.iter()
+            .filter_map(|(_, ComponentWrapper{
+                entity,
+                component: collider
+            })|
+            {
+                collider.borrow().layer.collides(&info.layer).then(||
+                {
+                    *entity
+                })
+            })
             .filter_map(|entity|
             {
                 let transform = self.entities.transform(entity);
@@ -362,6 +373,7 @@ impl ClientEntitiesContainer
 pub struct RaycastInfo
 {
     pub pierce: Option<f32>,
+    pub layer: ColliderLayer,
     pub ignore_player: bool,
     pub ignore_end: bool
 }

@@ -332,8 +332,8 @@ pub trait AnyEntities
 #[derive(Debug, Clone)]
 pub struct ComponentWrapper<T>
 {
-    entity: Entity,
-    component: RefCell<T>
+    pub entity: Entity,
+    pub component: RefCell<T>
 }
 
 impl<T> ComponentWrapper<T>
