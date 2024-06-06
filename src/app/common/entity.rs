@@ -1062,14 +1062,17 @@ macro_rules! define_entities
 
             pub fn update_mouse_highlight(&mut self, mouse: Entity)
             {
+                let mouse_collider = self.collider(mouse).unwrap();
+                let mouse_collided = *mouse_collider.collided();
+
                 self.collider.iter().for_each(|(_, ComponentWrapper{
                     entity,
-                    component: collider
+                    ..
                 })|
                 {
                     if let Some(mut render) = self.render_mut(*entity)
                     {
-                        let overlapping = *collider.borrow().collided() == Some(mouse);
+                        let overlapping = mouse_collided == Some(*entity);
 
                         let outline = overlapping && self.is_lootable(*entity);
                         if outline
