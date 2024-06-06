@@ -617,9 +617,15 @@ impl<'a> PlayerContainer<'a>
             Side1d::Right => self.game_state.common_textures.bash_trail_right
         };
 
+        let holding_entity = self.holding_entity();
+
         self.info.projectile_lifetime = 0.2;
         self.info.bash_projectile = Some(self.game_state.entities.entity_creator().push(
             EntityInfo{
+                follow_rotation: Some(FollowRotation::new(
+                    holding_entity,
+                    Rotation::Instant
+                )),
                 lazy_transform: Some(LazyTransformInfo{
                     transform: Transform{
                         scale: Vector3::repeat(scale),
@@ -817,20 +823,6 @@ impl<'a> PlayerContainer<'a>
         self.look_at_mouse();
 
         self.game_state.sync_transform(self.info.entity);
-    }
-
-    pub fn update_pre(&mut self)
-    {
-        if let Some(entity) = self.info.bash_projectile
-        {
-            let entities = self.game_state.entities();
-
-            let holding_rotation = entities.transform(self.holding_entity()).unwrap().rotation;
-
-            let parent_rotation = entities.transform(self.info.entity).unwrap().rotation;
-
-            entities.target(entity).unwrap().rotation = holding_rotation - parent_rotation;
-        }
     }
 
     fn movement_direction(&self) -> Option<Vector3<f32>>

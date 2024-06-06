@@ -180,6 +180,7 @@ impl ClientEntitiesContainer
     {
         self.entities.update_physical(dt);
         self.entities.update_lazy(dt);
+        self.entities.update_follows(dt);
         self.entities.update_enemy(dt);
         self.entities.update_children();
         self.entities.update_colliders(passer);

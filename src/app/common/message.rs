@@ -6,6 +6,7 @@ use strum_macros::EnumCount;
 
 use crate::common::{
     watcher::*,
+    lazy_transform::*,
     Transform,
     Collider,
     Physical,
@@ -19,7 +20,6 @@ use crate::common::{
     Damage,
     Anatomy,
     RenderInfo,
-    LazyTransform,
     entity::UiElementServer,
     world::{Chunk, GlobalPos}
 };
@@ -32,6 +32,7 @@ pub enum Message
     SetParent{entity: Entity, parent: Parent},
     SetTransform{entity: Entity, transform: Transform},
     SetLazyTransform{entity: Entity, lazy_transform: LazyTransform},
+    SetFollowRotation{entity: Entity, follow_rotation: FollowRotation},
     SetInventory{entity: Entity, inventory: Inventory},
     SetRender{entity: Entity, render: RenderInfo},
     SetPlayer{entity: Entity, player: Player},
@@ -79,6 +80,7 @@ impl Message
             | Message::SetParent{entity, ..}
             | Message::SetTransform{entity, ..}
             | Message::SetLazyTransform{entity, ..}
+            | Message::SetFollowRotation{entity, ..}
             | Message::SetInventory{entity, ..}
             | Message::SetRender{entity, ..}
             | Message::SetPlayer{entity, ..}

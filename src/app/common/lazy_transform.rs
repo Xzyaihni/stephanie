@@ -8,6 +8,7 @@ use yanyaengine::Transform;
 
 use crate::common::{
     ease_out,
+    Entity,
     Physical
 };
 
@@ -120,12 +121,198 @@ pub enum Connection
     Spring(SpringConnection)
 }
 
+impl Connection
+{
+    fn next(
+        &mut self,
+        current: &mut Transform,
+        target: Vector3<f32>,
+        dt: f32
+    )
+    {
+        match self
+        {
+            Connection::Rigid =>
+            {
+                current.position = target;
+            },
+            Connection::Constant{speed} =>
+            {
+                let max_move = Vector3::repeat(*speed * dt);
+
+                let current_difference = target - current.position;
+
+                let move_amount = current_difference.zip_map(&max_move, |diff, limit: f32|
+                {
+                    diff.clamp(-limit, limit)
+                });
+
+                current.position += move_amount;
+            },
+            Connection::Limit{limit} =>
+            {
+                current.position = LazyTransform::clamp_distance(
+                    target,
+                    current.position,
+                    *limit
+                );
+            },
+            Connection::EaseOut{decay, limit} =>
+            {
+                current.position = current.position.zip_map(&target, |a, b|
+                {
+                    ease_out(a, b, *decay, dt)
+                });
+
+                current.position = LazyTransform::clamp_distance(
+                    target,
+                    current.position,
+                    *limit
+                );
+            },
+            Connection::Spring(connection) =>
+            {
+                let distance = target - current.position;
+
+                let spring_force = distance * connection.strength;
+
+                connection.physical.force += spring_force;
+                connection.physical.damp_velocity(connection.damping, dt);
+                connection.physical.physics_update(current, dt);
+
+                current.position = LazyTransform::clamp_distance(
+                    target,
+                    current.position,
+                    connection.limit
+                );
+            }
+        }
+
+        current.position.z = target.z;
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Rotation
 {
     Instant,
     EaseOut(EaseOutRotationInfo),
     Constant(ConstantRotationInfo)
+}
+
+impl Rotation
+{
+    fn next(
+        &mut self,
+        current: &mut f32,
+        target: f32,
+        dt: f32
+    )
+    {
+        match &self
+        {
+            Rotation::Instant =>
+            {
+                *current = target;
+            },
+            Rotation::EaseOut(..) | Rotation::Constant{..} =>
+            {
+                let rotation_difference = target - *current;
+
+                let short_difference = if rotation_difference > f32::consts::PI
+                {
+                    rotation_difference - 2.0 * f32::consts::PI
+                } else if rotation_difference < -f32::consts::PI
+                {
+                    rotation_difference + 2.0 * f32::consts::PI
+                } else
+                {
+                    rotation_difference
+                };
+
+                let half = -f32::consts::PI..f32::consts::PI;
+                let long_difference = if half.contains(&rotation_difference)
+                {
+                    if rotation_difference < 0.0
+                    {
+                        (2.0 * f32::consts::PI) + rotation_difference
+                    } else
+                    {
+                        (-2.0 * f32::consts::PI) + rotation_difference
+                    }
+                } else
+                {
+                    rotation_difference
+                };
+
+                let short_fraction = -short_difference / long_difference;
+
+                let current_difference = |last_move: f32, momentum: f32, speed_significant: f32|
+                {
+                    #[allow(clippy::collapsible_else_if)]
+                    if (last_move * short_difference).is_sign_positive()
+                    {
+                        // was moving in the shortest direction already
+                        short_difference
+                    } else
+                    {
+                        let below_momentum = (1.0 - momentum) < short_fraction;
+
+                        if below_momentum && speed_significant < last_move
+                        {
+                            long_difference
+                        } else
+                        {
+                            short_difference
+                        }
+                    }
+                };
+
+                let rotation = *current;
+
+                match self
+                {
+                    Rotation::EaseOut(info) =>
+                    {
+                        let current_difference = current_difference(
+                            info.last_move,
+                            info.props.momentum,
+                            info.props.speed_significant
+                        );
+
+                        let target_rotation = current_difference + rotation;
+
+                        let new_rotation = ease_out(
+                            rotation,
+                            target_rotation,
+                            info.props.decay,
+                            dt
+                        );
+
+                        info.last_move = new_rotation - rotation;
+
+                        *current = new_rotation;
+                    },
+                    Rotation::Constant(info) =>
+                    {
+                        let max_move = info.props.speed * dt;
+
+                        let current_difference =
+                            current_difference(info.last_move, info.props.momentum, 0.0);
+
+                        let move_amount = current_difference.clamp(-max_move, max_move);
+
+                        info.last_move = move_amount;
+
+                        let new_rotation = rotation + move_amount;
+
+                        *current = new_rotation;
+                    },
+                    _ => unreachable!()
+                }
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -136,11 +323,83 @@ pub enum Scaling
     Constant{speed: f32}
 }
 
+impl Scaling
+{
+    fn next(
+        &mut self,
+        current: &mut Vector3<f32>,
+        target: Vector3<f32>,
+        dt: f32
+    )
+    {
+        match &self
+        {
+            Scaling::Instant =>
+            {
+                *current = target;
+            },
+            Scaling::Constant{speed} =>
+            {
+                let max_move = Vector3::repeat(speed * dt);
+
+                let current_difference = target - *current;
+
+                let move_amount = current_difference.zip_map(&max_move, |diff, limit: f32|
+                {
+                    diff.clamp(-limit, limit)
+                });
+
+                *current += move_amount;
+            },
+            Scaling::EaseOut{decay} =>
+            {
+                *current = current.zip_map(&target, |a, b|
+                {
+                    ease_out(a, b, *decay, dt)
+                });
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Deformation
 {
     Rigid,
     Stretch(StretchDeformation)
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FollowRotation
+{
+    parent: Entity,
+    rotation: Rotation
+}
+
+impl FollowRotation
+{
+    pub fn new(parent: Entity, rotation: Rotation) -> Self
+    {
+        Self{
+            parent,
+            rotation
+        }
+    }
+
+    pub fn parent(&self) -> Entity
+    {
+        self.parent
+    }
+
+    pub fn next(
+        &mut self,
+        current: &mut f32,
+        parent_rotation: f32,
+        dt: f32
+    )
+    {
+        self.rotation.next(current, parent_rotation, dt);
+    }
 }
 
 pub trait LazyTargettable<T=Transform>
@@ -237,197 +496,12 @@ impl LazyTransform
         current.rotation %= pi2;
         target_global.rotation %= pi2;
 
-        let constant_change = |current: &mut Vector3<f32>, target: Vector3<f32>, speed|
-        {
-            let max_move = Vector3::repeat(speed * dt);
-
-            let current_difference = target - *current;
-
-            let move_amount = current_difference.zip_map(&max_move, |diff, limit: f32|
-            {
-                diff.clamp(-limit, limit)
-            });
-
-            *current += move_amount;
-        };
-
-        let ease_out_change = |current: &mut Vector3<f32>, target: Vector3<f32>, decay: f32|
-        {
-            *current = current.zip_map(&target, |a, b|
-            {
-                ease_out(a, b, decay, dt)
-            });
-        };
-
-        match &self.scaling
-        {
-            Scaling::Instant =>
-            {
-                current.scale = target_global.scale;
-            },
-            Scaling::Constant{speed} =>
-            {
-                constant_change(&mut current.scale, target_global.scale, speed)
-            },
-            Scaling::EaseOut{decay} =>
-            {
-                ease_out_change(&mut current.scale, target_global.scale, *decay)
-            }
-        }
-
-        match &self.rotation
-        {
-            Rotation::Instant =>
-            {
-                current.rotation = target_global.rotation;
-            },
-            Rotation::EaseOut(..) | Rotation::Constant{..} =>
-            {
-                let rotation_difference = target_global.rotation - current.rotation;
-
-                let short_difference = if rotation_difference > f32::consts::PI
-                {
-                    rotation_difference - 2.0 * f32::consts::PI
-                } else if rotation_difference < -f32::consts::PI
-                {
-                    rotation_difference + 2.0 * f32::consts::PI
-                } else
-                {
-                    rotation_difference
-                };
-
-                let half = -f32::consts::PI..f32::consts::PI;
-                let long_difference = if half.contains(&rotation_difference)
-                {
-                    if rotation_difference < 0.0
-                    {
-                        (2.0 * f32::consts::PI) + rotation_difference
-                    } else
-                    {
-                        (-2.0 * f32::consts::PI) + rotation_difference
-                    }
-                } else
-                {
-                    rotation_difference
-                };
-
-                let short_fraction = -short_difference / long_difference;
-
-                let current_difference = |last_move: f32, momentum: f32, speed_significant: f32|
-                {
-                    #[allow(clippy::collapsible_else_if)]
-                    if (last_move * short_difference).is_sign_positive()
-                    {
-                        // was moving in the shortest direction already
-                        short_difference
-                    } else
-                    {
-                        let below_momentum = (1.0 - momentum) < short_fraction;
-
-                        if below_momentum && speed_significant < last_move
-                        {
-                            long_difference
-                        } else
-                        {
-                            short_difference
-                        }
-                    }
-                };
-
-                let rotation = current.rotation;
-
-                match &mut self.rotation
-                {
-                    Rotation::EaseOut(info) =>
-                    {
-                        let current_difference = current_difference(
-                            info.last_move,
-                            info.props.momentum,
-                            info.props.speed_significant
-                        );
-
-                        let target_rotation = current_difference + rotation;
-
-                        let new_rotation = ease_out(
-                            rotation,
-                            target_rotation,
-                            info.props.decay,
-                            dt
-                        );
-
-                        info.last_move = new_rotation - rotation;
-
-                        current.rotation = new_rotation;
-                    },
-                    Rotation::Constant(info) =>
-                    {
-                        let max_move = info.props.speed * dt;
-
-                        let current_difference =
-                            current_difference(info.last_move, info.props.momentum, 0.0);
-
-                        let move_amount = current_difference.clamp(-max_move, max_move);
-
-                        info.last_move = move_amount;
-
-                        let new_rotation = rotation + move_amount;
-
-                        current.rotation = new_rotation;
-                    },
-                    _ => unreachable!()
-                }
-            }
-        }
+        self.scaling.next(&mut current.scale, target_global.scale, dt);
+        self.rotation.next(&mut current.rotation, target_global.rotation, dt);
 
         self.apply_rotation(&mut target_global, &current, parent_transform.as_ref());
 
-        match &mut self.connection
-        {
-            Connection::Rigid =>
-            {
-                current.position = target_global.position;
-            },
-            Connection::Constant{speed} =>
-            {
-                constant_change(&mut current.position, target_global.position, speed)
-            },
-            Connection::Limit{limit} =>
-            {
-                current.position = Self::clamp_distance(
-                    target_global.position,
-                    current.position,
-                    *limit
-                );
-            },
-            Connection::EaseOut{decay, limit} =>
-            {
-                ease_out_change(&mut current.position, target_global.position, *decay);
-
-                current.position = Self::clamp_distance(
-                    target_global.position,
-                    current.position,
-                    *limit
-                );
-            },
-            Connection::Spring(connection) =>
-            {
-                let distance = target_global.position - current.position;
-
-                let spring_force = distance * connection.strength;
-
-                connection.physical.force += spring_force;
-                connection.physical.damp_velocity(connection.damping, dt);
-                connection.physical.physics_update(&mut current, dt);
-
-                current.position = Self::clamp_distance(
-                    target_global.position,
-                    current.position,
-                    connection.limit
-                );
-            }
-        }
-
-        current.position.z = target_global.position.z;
+        self.connection.next(&mut current, target_global.position, dt);
 
         match &self.deformation
         {

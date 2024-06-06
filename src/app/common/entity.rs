@@ -16,15 +16,14 @@ use crate::{
         render_info::*,
         collider::*,
         watcher::*,
+        lazy_transform::*,
         EntityPasser,
         Inventory,
         Anatomy,
         Player,
         Enemy,
         EnemiesInfo,
-        Physical,
-        LazyTransform,
-        LazyTargettable
+        Physical
     }
 };
 
@@ -165,6 +164,7 @@ no_on_set!{
     ClientRenderInfo,
     RenderInfo,
     LazyTransform,
+    FollowRotation,
     Inventory,
     String,
     Parent,
@@ -346,6 +346,44 @@ impl<T> ComponentWrapper<T>
     pub fn get_mut(&self) -> RefMut<T>
     {
         self.component.borrow_mut()
+    }
+}
+
+macro_rules! impl_common_systems
+{
+    () =>
+    {
+        pub fn update_physical(&mut self, dt: f32)
+        {
+            self.physical.iter().for_each(|(_, ComponentWrapper{
+                entity,
+                component: physical
+            })|
+            {
+                if let Some(mut target) = self.target(*entity)
+                {
+                    let mut physical = physical.borrow_mut();
+                    physical.physics_update(&mut target, dt);
+                }
+            });
+        }
+
+        pub fn update_follows(&mut self, dt: f32)
+        {
+            self.follow_rotation.iter().for_each(|(_, ComponentWrapper{
+                entity,
+                component: follow_rotation
+            })|
+            {
+                let mut follow_rotation = follow_rotation.borrow_mut();
+
+                let mut transform = self.transform_mut(*entity).unwrap();
+                let current = &mut transform.rotation;
+                let target = self.transform(follow_rotation.parent()).unwrap().rotation;
+
+                follow_rotation.next(current, target, dt);
+            });
+        }
     }
 }
 
@@ -560,26 +598,6 @@ macro_rules! define_entities
                 )+}
             }
 
-            // i hate rust generics
-            pub fn update_physical(&mut self, dt: f32)
-            where
-                for<'a> &'a mut PhysicalType: Into<&'a mut Physical>,
-                for<'a> &'a mut TransformType: Into<&'a mut Transform>,
-                LazyTransformType: LazyTargettable
-            {
-                self.physical.iter().for_each(|(_, ComponentWrapper{
-                    entity,
-                    component: physical
-                })|
-                {
-                    if let Some(mut target) = self.target(*entity)
-                    {
-                        let mut physical = physical.borrow_mut();
-                        (&mut *physical).into().physics_update(&mut target, dt);
-                    }
-                });
-            }
-
             fn update_enemy_common<F>(
                 &mut self,
                 dt: f32,
@@ -708,7 +726,9 @@ macro_rules! define_entities
             where
                 for<'a> &'a ParentType: Into<&'a Parent>,
                 for<'a> &'a LazyTransformType: Into<&'a LazyTransform>,
+                for<'a> &'a FollowRotationType: Into<&'a FollowRotation>,
                 for<'a> &'a TransformType: Into<&'a Transform>,
+                for<'a> &'a mut TransformType: Into<&'a mut Transform>,
                 for<'a> &'a mut Option<TransformType>: Into<&'a mut Option<Transform>>,
                 TransformType: Clone,
                 LazyTransformType: LazyTargettable<TransformType>
@@ -740,6 +760,21 @@ macro_rules! define_entities
 
                     let new_transform = (&*lazy).into().target_global(parent_transform.as_ref());
                     *(&mut info.transform).into() = Some(new_transform);
+                }
+
+                if let Some(follow_rotation) = info.follow_rotation.as_ref()
+                {
+                    let transform = info.transform.as_mut().unwrap();
+                    let transform: &mut Transform = transform.into();
+
+                    let current = &mut transform.rotation;
+
+                    let follow_rotation = follow_rotation.into();
+
+                    let parent_transform = self.transform(follow_rotation.parent()).unwrap();
+                    let target = (&*parent_transform).into().rotation;
+
+                    *current = target;
                 }
 
                 let indices = self.push_info_components(entity_id, info);
@@ -930,6 +965,8 @@ macro_rules! define_entities
                     .then(|| self.transform(entity).as_deref().cloned())
                     .flatten()
             }
+
+            impl_common_systems!{}
 
             pub fn update_children(&mut self)
             {
@@ -1229,6 +1266,8 @@ macro_rules! define_entities
                 )+}
             }
 
+            impl_common_systems!{}
+
             pub fn update_enemy(&mut self, messager: &mut ConnectionsHandler, dt: f32)
             {
                 self.update_enemy_common(dt, |entity, enemy, lazy_transform|
@@ -1319,6 +1358,7 @@ define_entities!{
     (render, render_mut, set_render, SetRender, RenderType, RenderInfo),
     (ui_element, ui_element_mut, set_ui_element, SetUiElement, UiElementType, UiElementServer),
     (lazy_transform, lazy_transform_mut, set_lazy_transform, SetLazyTransform, LazyTransformType, LazyTransform),
+    (follow_rotation, follow_rotation_mut, set_follow_rotation, SetFollowRotation, FollowRotationType, FollowRotation),
     (watchers, watchers_mut, set_watchers, SetWatchers, WatchersType, Watchers),
     (inventory, inventory_mut, set_inventory, SetInventory, InventoryType, Inventory),
     (enemy, enemy_mut, set_enemy, SetEnemy, EnemyType, Enemy),
