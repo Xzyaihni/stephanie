@@ -2,7 +2,7 @@ use std::f32;
 
 use serde::{Serialize, Deserialize};
 
-use crate::common::{short_rotation, Entity, Damage};
+use crate::common::{Entity, Damage};
 
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -24,7 +24,7 @@ impl DamagingPredicate
             Self::None => true,
             Self::ParentAngleLess(less) =>
             {
-                let angle = short_rotation(parent_angle_between()).abs();
+                let angle = parent_angle_between().abs();
                 angle < (*less / 2.0)
             }
         }

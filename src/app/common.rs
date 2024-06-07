@@ -269,6 +269,18 @@ pub fn short_rotation(rotation: f32) -> f32
     }
 }
 
+pub fn angle_between(a: &Transform, b: &Transform) -> f32
+{
+    let offset = b.position - a.position;
+
+    let a_angle = -a.rotation;
+    let angle_between = offset.y.atan2(-offset.x);
+
+    let relative_angle = angle_between + (f32::consts::PI - a_angle);
+
+    short_rotation(relative_angle)
+}
+
 // thanks freya holmer
 pub fn ease_out(current: f32, target: f32, decay: f32, dt: f32) -> f32
 {

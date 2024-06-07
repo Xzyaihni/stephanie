@@ -225,7 +225,8 @@ impl<'a> PlayerContainer<'a>
                 if let Some(mouse_touched) = entities.collider(self.info.mouse_entity)
                     .and_then(|x| *x.collided())
                 {
-                    if entities.is_lootable(mouse_touched)
+                    if entities.within_interactable_distance(self.info.entity, mouse_touched)
+                        && entities.is_lootable(mouse_touched)
                     {
                         self.info.other_entity = Some(mouse_touched);
 
@@ -836,7 +837,10 @@ impl<'a> PlayerContainer<'a>
             .unwrap()
             .position = camera_position + mouse_position;
 
-        self.game_state.entities_mut().update_mouse_highlight(self.info.mouse_entity);
+        self.game_state.entities_mut().update_mouse_highlight(
+            self.info.entity,
+            self.info.mouse_entity
+        );
 
         if let Some(movement) = self.movement_direction()
         {

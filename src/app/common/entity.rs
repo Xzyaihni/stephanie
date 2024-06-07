@@ -16,6 +16,7 @@ use crate::{
         UiEvent
     },
     common::{
+        angle_between,
         render_info::*,
         collider::*,
         watcher::*,
@@ -1045,14 +1046,7 @@ macro_rules! define_entities
                             let parent_transform = self.transform(parent).unwrap();
                             let collided_transform = self.transform(collided).unwrap();
 
-                            let offset = collided_transform.position - parent_transform.position;
-
-                            let parent_angle = -parent_transform.rotation;
-                            let angle_between = offset.y.atan2(-offset.x);
-
-                            let relative_angle = angle_between + (f32::consts::PI - parent_angle);
-
-                            relative_angle % (f32::consts::PI * 2.0)
+                            angle_between(&parent_transform, &collided_transform)
                         };
 
                         if !same_team
@@ -1119,10 +1113,70 @@ macro_rules! define_entities
                 !is_player && has_inventory && maybe_anatomy
             }
 
-            pub fn update_mouse_highlight(&mut self, mouse: Entity)
+            pub fn within_interactable_distance(&self, a: Entity, b: Entity) -> bool
+            {
+                if !self.exists(a) || !self.exists(b)
+                {
+                    return false;
+                }
+
+                let interactable_distance = 0.5;
+
+                let a = if let Some(x) = self.transform(a)
+                {
+                    x.position
+                } else
+                {
+                    return false;
+                };
+
+                let b = if let Some(x) = self.transform(b)
+                {
+                    x.position
+                } else
+                {
+                    return false;
+                };
+
+                a.metric_distance(&b) <= interactable_distance
+            }
+
+            pub fn update_mouse_highlight(&mut self, player: Entity, mouse: Entity)
             {
                 let mouse_collider = self.collider(mouse).unwrap();
                 let mouse_collided = *mouse_collider.collided();
+
+                // i thought about doing it with watchers or something but
+                // that would create so many of them and this thing only runs once
+                // per frame so i dunno if its worth?
+                let unoutline_all = ||
+                {
+                    self.collider.iter().for_each(|(_, ComponentWrapper{
+                        entity,
+                        ..
+                    })|
+                    {
+                        if let Some(mut render) = self.render_mut(*entity)
+                        {
+                            render.set_outlined(false);
+                        }
+                    });
+                };
+
+                let mouse_collided = if let Some(x) = mouse_collided
+                {
+                    x
+                } else
+                {
+                    unoutline_all();
+                    return;
+                };
+
+                if !self.within_interactable_distance(player, mouse_collided)
+                {
+                    unoutline_all();
+                    return;
+                }
 
                 self.collider.iter().for_each(|(_, ComponentWrapper{
                     entity,
@@ -1131,7 +1185,7 @@ macro_rules! define_entities
                 {
                     if let Some(mut render) = self.render_mut(*entity)
                     {
-                        let overlapping = mouse_collided == Some(*entity);
+                        let overlapping = mouse_collided == *entity;
 
                         let outline = overlapping && self.is_lootable(*entity);
                         if outline
