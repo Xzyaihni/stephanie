@@ -1020,12 +1020,12 @@ macro_rules! define_entities
 
             pub fn update_damaging(&mut self, passer: &mut impl EntityPasser)
             {
-                self.damaging.iter().for_each(|(_, ComponentWrapper{
+                self.damaging.iter().for_each(|(_, &ComponentWrapper{
                     entity,
-                    component: damaging
+                    component: ref damaging
                 })|
                 {
-                    let collider = self.collider(*entity).unwrap();
+                    let collider = self.collider(entity).unwrap();
 
                     if let Some(collided) = *collider.collided()
                     {
@@ -1041,7 +1041,7 @@ macro_rules! define_entities
 
                         let parent_angle_between = ||
                         {
-                            let parent = self.parent(*entity).unwrap().entity;
+                            let parent = self.parent(entity).unwrap().entity;
 
                             let parent_transform = self.transform(parent).unwrap();
                             let collided_transform = self.transform(collided).unwrap();
@@ -1054,7 +1054,27 @@ macro_rules! define_entities
                             && damaging.predicate.meets(parent_angle_between)
                         {
                             damaging.damaged(collided);
-                            self.damage_entity(passer, collided, damaging.damage.clone());
+
+                            let collision_info = || -> Option<_>
+                            {
+                                let this_transform = self.transform(entity)?;
+                                let collided_transform = self.transform(collided)?;
+
+                                let this_physical = self.physical(entity)?;
+                                let collided_physical = self.physical(collided)?;
+
+                                Some(CollisionInfo::new(
+                                    &this_transform,
+                                    &collided_transform,
+                                    &this_physical,
+                                    &collided_physical
+                                ))
+                            };
+
+                            if let Some(damage) = damaging.damage.as_damage(collision_info)
+                            {
+                                self.damage_entity(passer, collided, damage);
+                            }
                         }
                     }
                 });

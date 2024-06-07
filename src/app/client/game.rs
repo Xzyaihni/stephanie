@@ -496,9 +496,11 @@ impl<'a> PlayerContainer<'a>
                     floating: false
                 }.into();
 
+                let mass = physical.mass;
+
                 let strength = self.player().newtons();
                 let throw_limit = 0.1 * strength;
-                let throw_amount = (strength / physical.mass).min(throw_limit);
+                let throw_amount = (strength / mass).min(throw_limit);
                 physical.velocity = direction * throw_amount;
 
                 EntityInfo{
@@ -520,6 +522,11 @@ impl<'a> PlayerContainer<'a>
                     }.into()),
                     collider: Some(ColliderInfo{
                         kind: ColliderType::Circle,
+                        ..Default::default()
+                    }.into()),
+                    damaging: Some(DamagingInfo{
+                        damage: DamagingType::Mass(mass),
+                        is_player: true,
                         ..Default::default()
                     }.into()),
                     watchers: Some(Watchers::new(vec![
@@ -651,10 +658,10 @@ impl<'a> PlayerContainer<'a>
                     ..Default::default()
                 }.into()),
                 damaging: Some(DamagingInfo{
-                    damage,
+                    damage: DamagingType::Damage(damage),
                     predicate: DamagingPredicate::ParentAngleLess(f32::consts::PI),
-                    times: DamageTimes::Once,
-                    is_player: true
+                    is_player: true,
+                    ..Default::default()
                 }.into()),
                 ..Default::default()
             },

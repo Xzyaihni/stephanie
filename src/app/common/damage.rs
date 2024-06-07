@@ -60,6 +60,21 @@ impl DamageHeight
             _ => unreachable!()
         }
     }
+
+    pub fn from_z(z: f32) -> Self
+    {
+        if (0.0..0.33).contains(&z)
+        {
+            Self::Bottom
+        } else if (0.33..0.66).contains(&z)
+        {
+            Self::Middle
+        } else
+        {
+            // z bigger than 1? good luck bozo :)
+            Self::Top
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
