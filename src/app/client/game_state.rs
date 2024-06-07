@@ -137,8 +137,9 @@ impl ClientEntitiesContainer
         dt: f32
     )
     {
+        self.entities.create_queued(&mut info.object_info);
         self.entities.update_sprites(&mut info.object_info, enemies_info);
-        self.entities.update_watchers(&mut info.object_info, dt);
+        self.entities.update_watchers(dt);
 
         mem::take(&mut self.local_objects).into_iter().for_each(|(entity, object)|
         {
@@ -671,10 +672,10 @@ impl GameState
         }
     }
 
-    pub fn damage_entity(&self, entity: Entity, damage: Damage)
+    pub fn damage_entity(&mut self, entity: Entity, damage: Damage)
     {
         let mut passer = self.connections_handler.write();
-        self.entities().damage_entity(&mut *passer, entity, damage);
+        self.entities.entities.damage_entity(&mut *passer, entity, damage);
     }
 
     pub fn entities(&self) -> &ClientEntities
@@ -828,7 +829,13 @@ impl GameState
 
         self.world.update_buffers(info);
 
-        self.entities.update_objects(&visibility, &self.enemies_info, info, self.dt);
+        let mut passer = self.connections_handler.write();
+        self.entities.update_objects(
+            &visibility,
+            &self.enemies_info,
+            info,
+            self.dt
+        );
     }
 
     pub fn draw(&self, info: &mut DrawInfo)

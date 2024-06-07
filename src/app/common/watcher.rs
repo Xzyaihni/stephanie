@@ -1,15 +1,12 @@
-use std::{
-    mem,
-    ops::Range
-};
+use std::mem;
 
 use nalgebra::Vector3;
 
 use serde::{Serialize, Deserialize};
 
 use crate::common::{
-    random_rotation,
     render_info::*,
+    particle_creator::*,
     Entity,
     EntityInfo,
     entity::AnyEntities
@@ -98,9 +95,8 @@ impl WatcherType
 pub struct ExplodeInfo
 {
     pub keep: bool,
-    pub amount: Range<usize>,
-    pub speed: f32,
-    pub info: EntityInfo
+    pub info: ParticlesInfo,
+    pub prototype: EntityInfo
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -126,7 +122,6 @@ impl WatcherAction
 {
     pub fn execute<E: AnyEntities>(
         self,
-        create_info: &mut E::CreateInfo<'_>,
         entities: &mut E,
         entity: Entity
     )
@@ -177,34 +172,11 @@ impl WatcherAction
                     entities.remove(entity);
                 }
 
-                let amount = fastrand::usize(info.amount);
-                (0..amount).for_each(|_|
-                {
-                    if let Some(target) = info.info.target()
-                    {
-                        let r = ||
-                        {
-                            2.0 * fastrand::f32()
-                        };
-
-                        let offset = scale - Vector3::new(scale.x * r(), scale.y * r(), 0.0);
-                        target.position = position + offset / 2.0;
-                        target.position.z = 0.0;
-
-                        target.rotation = random_rotation();
-                    }
-
-                    if let Some(physical) = info.info.physical.as_mut()
-                    {
-                        let r = random_rotation();
-                        let velocity = Vector3::new(r.cos(), r.sin(), 0.0) * info.speed;
-                        physical.velocity = parent_velocity.unwrap_or_default() + velocity;
-                        physical.velocity.z = 0.0;
-                    }
-
-                    // for now all watcher created entities r local (i might change that?)
-                    entities.push(create_info, true, info.info.clone());
-                })
+                ParticleCreator::create_particles(
+                    entities,
+                    info.info,
+                    info.prototype
+                );
             }
         }
     }

@@ -1,5 +1,6 @@
 use std::{
     f32,
+    mem,
     cell::{Ref, RefMut, RefCell}
 };
 
@@ -22,6 +23,7 @@ use crate::{
         watcher::*,
         lazy_transform::*,
         damaging::*,
+        particle_creator::*,
         Damage,
         EntityPasser,
         Inventory,
@@ -103,6 +105,13 @@ macro_rules! get_entity
 
 pub trait ServerToClient<T>
 {
+    fn unchanged(self) -> Option<Self>
+    where
+        Self: Sized
+    {
+        None
+    }
+
     fn server_to_client(
         self,
         transform: impl FnOnce() -> Transform,
@@ -112,6 +121,11 @@ pub trait ServerToClient<T>
 
 impl<T> ServerToClient<T> for T
 {
+    fn unchanged(self) -> Option<Self>
+    {
+        Some(self)
+    }
+
     fn server_to_client(
         self,
         _transform: impl FnOnce() -> Transform,
@@ -263,8 +277,6 @@ macro_rules! normal_forward_impl
 
 pub trait AnyEntities
 {
-    type CreateInfo<'a>;
-
     normal_define!{
         (transform, transform_mut, Transform),
         (parent, parent_mut, Parent),
@@ -286,7 +298,6 @@ pub trait AnyEntities
     // i cant make remove the &mut cuz reborrowing would stop working :/
     fn push(
         &mut self,
-        create_info: &mut Self::CreateInfo<'_>,
         local: bool,
         info: EntityInfo
     ) -> Entity;
@@ -537,30 +548,27 @@ macro_rules! define_entities
 
         impl AnyEntities for ClientEntities
         {
-            type CreateInfo<'a> = ObjectCreateInfo<'a>;
-
             common_trait_impl!{}
 
             fn push(
                 &mut self,
-                create_info: &mut Self::CreateInfo<'_>,
                 local: bool,
                 info: EntityInfo
             ) -> Entity
             {
-                let info = ClientEntityInfo::from_server(create_info, info);
+                let entity = self.push(local, Default::default());
 
-                Self::push(self, local, info)
+                self.create_queue.push((entity, info));
+
+                entity
             }
         }
 
         impl AnyEntities for ServerEntities
         {
-            type CreateInfo<'a> = ();
-
             common_trait_impl!{}
 
-            fn push(&mut self, _create_info: &mut (), local: bool, info: EntityInfo) -> Entity
+            fn push(&mut self, local: bool, info: EntityInfo) -> Entity
             {
                 Self::push(self, local, info)
             }
@@ -570,6 +578,7 @@ macro_rules! define_entities
         {
             pub local_components: ObjectsStore<Vec<Option<usize>>>,
             pub components: ObjectsStore<Vec<Option<usize>>>,
+            create_queue: Vec<(Entity, EntityInfo)>,
             $(pub $name: ObjectsStore<ComponentWrapper<$component_type>>,)+
         }
 
@@ -582,6 +591,7 @@ macro_rules! define_entities
                 Self{
                     local_components: ObjectsStore::new(),
                     components: ObjectsStore::new(),
+                    create_queue: Vec::new(),
                     $($name: ObjectsStore::new(),)+
                 }
             }
@@ -656,7 +666,6 @@ macro_rules! define_entities
 
             pub fn update_watchers(
                 &mut self,
-                create_info: &mut <Self as AnyEntities>::CreateInfo<'_>,
                 dt: f32
             )
             where
@@ -677,7 +686,7 @@ macro_rules! define_entities
                 {
                     actions.into_iter().for_each(|action|
                     {
-                        action.execute(create_info, self, entity);
+                        action.execute(self, entity);
                     });
                 });
             }
@@ -1006,6 +1015,19 @@ macro_rules! define_entities
 
             impl_common_systems!{}
 
+            pub fn create_queued(
+                &mut self,
+                create_info: &mut ObjectCreateInfo
+            )
+            {
+                mem::take(&mut self.create_queue).into_iter().for_each(|(entity, info)|
+                {
+                    let info = ClientEntityInfo::from_server(create_info, info);
+
+                    $(self.$set_func(entity, info.$name);)+
+                });
+            }
+
             pub fn damage_entity(
                 &self,
                 passer: &mut impl EntityPasser,
@@ -1015,10 +1037,16 @@ macro_rules! define_entities
             {
                 passer.send_message(Message::EntityDamage{entity, damage: damage.clone()});
 
+                // temporary until i make it better :) (46 years)
+                ParticleCreator::create_particles(self, todo!(), todo!());
+
                 self.damage_entity_common(entity, damage);
             }
 
-            pub fn update_damaging(&mut self, passer: &mut impl EntityPasser)
+            pub fn update_damaging(
+                &mut self,
+                passer: &mut impl EntityPasser
+            )
             {
                 self.damaging.iter().for_each(|(_, &ComponentWrapper{
                     entity,
@@ -1073,7 +1101,7 @@ macro_rules! define_entities
 
                             if let Some(damage) = damaging.damage.as_damage(collision_info)
                             {
-                                self.damage_entity(passer, collided, damage);
+                                self.damage_entity(passer, collided, damage)
                             }
                         }
                     });

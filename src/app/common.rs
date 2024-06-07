@@ -85,6 +85,7 @@ pub mod inventory;
 
 pub mod player;
 
+pub mod particle_creator;
 pub mod furniture_builder;
 
 pub mod enemy;

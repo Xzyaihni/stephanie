@@ -526,8 +526,8 @@ impl Default for MotorCortex
     fn default() -> Self
     {
         Self{
-            arms: Health::new(4.0, 5.0),
-            legs: Health::new(4.0, 5.0)
+            arms: Health::new(4.0, 50.0),
+            legs: Health::new(4.0, 50.0)
         }
     }
 }
@@ -621,9 +621,9 @@ impl Default for Hemisphere
     {
         Self{
             frontal: FrontalLobe::default(),
-            parietal: Health::new(4.0, 5.0),
-            temporal: Health::new(4.0, 5.0),
-            occipital: Health::new(4.0, 5.0)
+            parietal: Health::new(4.0, 50.0),
+            temporal: Health::new(4.0, 50.0),
+            occipital: Health::new(4.0, 50.0)
         }
     }
 }
