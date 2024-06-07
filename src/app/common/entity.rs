@@ -1027,7 +1027,7 @@ macro_rules! define_entities
                 {
                     let collider = self.collider(entity).unwrap();
 
-                    if let Some(collided) = *collider.collided()
+                    collider.collided().iter().copied().for_each(|collided|
                     {
                         let mut damaging = damaging.borrow_mut();
 
@@ -1076,7 +1076,7 @@ macro_rules! define_entities
                                 self.damage_entity(passer, collided, damage);
                             }
                         }
-                    }
+                    });
                 });
             }
 
@@ -1164,7 +1164,7 @@ macro_rules! define_entities
             pub fn update_mouse_highlight(&mut self, player: Entity, mouse: Entity)
             {
                 let mouse_collider = self.collider(mouse).unwrap();
-                let mouse_collided = *mouse_collider.collided();
+                let mouse_collided = mouse_collider.collided().first().copied();
 
                 // i thought about doing it with watchers or something but
                 // that would create so many of them and this thing only runs once
@@ -1291,7 +1291,7 @@ macro_rules! define_entities
                             other_entity
                         |
                         {
-                            collider.borrow_mut().set_collided(other_entity);
+                            collider.borrow_mut().push_collided(other_entity);
 
                             passer.send_message(Message::SetTarget{
                                 entity,

@@ -65,7 +65,7 @@ impl WatcherType
             Self::Instant => true,
             Self::Collision =>
             {
-                entities.collider(entity).map(|x| x.collided().is_some()).unwrap_or(false)
+                entities.collider(entity).map(|x| !x.collided().is_empty()).unwrap_or(false)
             },
             Self::ScaleDistance{from, near} =>
             {

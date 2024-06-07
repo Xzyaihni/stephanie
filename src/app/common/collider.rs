@@ -82,7 +82,7 @@ pub struct Collider
     pub layer: ColliderLayer,
     pub ghost: bool,
     pub is_static: bool,
-    collided: Option<Entity>
+    collided: Vec<Entity>
 }
 
 impl From<ColliderInfo> for Collider
@@ -94,26 +94,26 @@ impl From<ColliderInfo> for Collider
             layer: info.layer,
             ghost: info.ghost,
             is_static: info.is_static,
-            collided: None
+            collided: Vec::new()
         }
     }
 }
 
 impl Collider
 {
-    pub fn collided(&self) -> &Option<Entity>
+    pub fn collided(&self) -> &[Entity]
     {
         &self.collided
     }
 
-    pub fn set_collided(&mut self, entity: Entity)
+    pub fn push_collided(&mut self, entity: Entity)
     {
-        self.collided = Some(entity);
+        self.collided.push(entity);
     }
 
     pub fn reset_frame(&mut self)
     {
-        self.collided = None;
+        self.collided.clear();
     }
 }
 
