@@ -10,6 +10,7 @@ use nalgebra::{Vector3, Vector2};
 use yanyaengine::{TextureId, Transform};
 
 use crate::common::{
+    angle_between,
     ENTITY_SCALE,
     render_info::*,
     lazy_transform::*,
@@ -538,12 +539,13 @@ impl<'a> PlayerContainer<'a>
                                 info: ParticlesInfo{
                                     amount: 3..5,
                                     speed: ParticleSpeed::Random(0.1),
-                                    decay: 4.0,
-                                    scale: ENTITY_SCALE * 0.4
+                                    decay: ParticleDecay::Random(3.5..=5.0),
+                                    scale: ENTITY_SCALE * 0.4,
+                                    min_scale: ENTITY_SCALE * 0.02
                                 },
                                 prototype: EntityInfo{
                                     physical: Some(PhysicalProperties{
-                                        mass: 0.05,
+                                        mass: 0.01,
                                         friction: 0.1,
                                         floating: true
                                     }.into()),
@@ -640,7 +642,10 @@ impl<'a> PlayerContainer<'a>
                     ..Default::default()
                 }.into()),
                 damaging: Some(DamagingInfo{
-                    damage: DamagingType::Damage(damage),
+                    damage: DamagingType::Damage{
+                        angle: self.info.bash_side.opposite().to_angle(),
+                        damage
+                    },
                     predicate: DamagingPredicate::ParentAngleLess(f32::consts::PI),
                     is_player: true,
                     ..Default::default()
@@ -741,8 +746,6 @@ impl<'a> PlayerContainer<'a>
 
         let height = DamageHeight::random();
 
-        dbg!(&hits);
-
         for hit in &hits.hits
         {
             #[allow(clippy::single_match)]
@@ -750,23 +753,25 @@ impl<'a> PlayerContainer<'a>
             {
                 RaycastHitId::Entity(id) =>
                 {
-                    let side = {
-                        let transform = self.game_state.entities().transform(id)
-                            .unwrap();
+                    let transform = self.game_state.entities().transform(id)
+                        .unwrap();
 
-                        let hit_position = hits.hit_position(hit);
-                        Side2d::from_positions(
-                            transform.rotation,
-                            transform.position,
-                            hit_position
-                        )
-                    };
+                    let hit_position = hits.hit_position(hit);
+
+                    let angle = angle_between(hit_position, transform.position);
+
+                    let side = Side2d::from_positions(
+                        transform.rotation,
+                        transform.position,
+                        hit_position
+                    );
 
                     let direction = DamageDirection{side, height};
 
                     let damage = Damage::new(direction, damage);
 
-                    self.game_state.damage_entity(id, damage);
+                    drop(transform);
+                    self.game_state.damage_entity(angle, id, damage);
                 },
                 _ => ()
             }

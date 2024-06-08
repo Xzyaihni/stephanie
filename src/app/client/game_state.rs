@@ -177,7 +177,12 @@ impl ClientEntitiesContainer
         self.update_buffers(visibility, info);
     }
 
-    pub fn update(&mut self, passer: &mut impl EntityPasser, dt: f32)
+    pub fn update(
+        &mut self,
+        passer: &mut impl EntityPasser,
+        damage_info: TextureId,
+        dt: f32
+    )
     {
         self.entities.update_physical(dt);
         self.entities.update_lazy(dt);
@@ -185,7 +190,7 @@ impl ClientEntitiesContainer
         self.entities.update_enemy(dt);
         self.entities.update_children();
         self.entities.update_colliders(passer);
-        self.entities.update_damaging(passer);
+        self.entities.update_damaging(passer, damage_info);
     }
 
     pub fn main_player(&self) -> Entity
@@ -439,6 +444,7 @@ pub enum UserEvent
 pub struct CommonTextures
 {
     pub dust: TextureId,
+    pub blood_texture: TextureId,
     pub bash_trail_left: TextureId,
     pub bash_trail_right: TextureId
 }
@@ -459,6 +465,7 @@ impl CommonTextures
 
         Self{
             dust: assets.texture_id("decals/dust.png"),
+            blood_texture: assets.texture_id("decals/blood.png"),
             bash_trail_left,
             bash_trail_right
         }
@@ -672,10 +679,21 @@ impl GameState
         }
     }
 
-    pub fn damage_entity(&mut self, entity: Entity, damage: Damage)
+    pub fn damage_entity(&mut self, angle: f32, entity: Entity, damage: Damage)
     {
         let mut passer = self.connections_handler.write();
-        self.entities.entities.damage_entity(&mut *passer, entity, damage);
+        self.entities.entities.damage_entity(
+            &mut *passer,
+            self.damage_info(),
+            angle,
+            entity,
+            damage
+        );
+    }
+
+    fn damage_info(&self) -> TextureId
+    {
+        self.common_textures.blood_texture
     }
 
     pub fn entities(&self) -> &ClientEntities
@@ -879,7 +897,7 @@ impl GameState
 
         {
             let mut passer = self.connections_handler.write();
-            self.entities.update(&mut *passer, dt);
+            self.entities.update(&mut *passer, self.damage_info(), dt);
         }
 
         game.update(self, dt);

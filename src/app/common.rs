@@ -10,6 +10,8 @@ use serde::{Serialize, Deserialize};
 
 use parking_lot::RwLock;
 
+use nalgebra::Vector3;
+
 use message::Message;
 
 pub use yanyaengine::{Transform, TransformContainer};
@@ -270,16 +272,13 @@ pub fn short_rotation(rotation: f32) -> f32
     }
 }
 
-pub fn angle_between(a: &Transform, b: &Transform) -> f32
+pub fn angle_between(a: Vector3<f32>, b: Vector3<f32>) -> f32
 {
-    let offset = b.position - a.position;
+    let offset = b - a;
 
-    let a_angle = -a.rotation;
     let angle_between = offset.y.atan2(-offset.x);
 
-    let relative_angle = angle_between + (f32::consts::PI - a_angle);
-
-    short_rotation(relative_angle)
+    short_rotation(angle_between)
 }
 
 // thanks freya holmer

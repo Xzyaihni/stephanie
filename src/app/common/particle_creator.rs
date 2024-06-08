@@ -1,4 +1,4 @@
-use std::ops::Range;
+use std::ops::{Range, RangeInclusive};
 
 use nalgebra::{Vector3, Unit, Rotation as NRotation};
 
@@ -50,12 +50,33 @@ impl ParticleSpeed
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ParticleDecay
+{
+    Random(RangeInclusive<f32>)
+}
+
+impl ParticleDecay
+{
+    pub fn get(&self) -> f32
+    {
+        match self
+        {
+            ParticleDecay::Random(range) =>
+            {
+                fastrand::f32() * (range.end() - range.start()) + range.start()
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ParticlesInfo
 {
     pub amount: Range<usize>,
     pub speed: ParticleSpeed,
-    pub decay: f32,
-    pub scale: f32
+    pub decay: ParticleDecay,
+    pub scale: f32,
+    pub min_scale: f32
 }
 
 pub struct ParticleCreator
@@ -71,15 +92,6 @@ impl ParticleCreator
         mut prototype: EntityInfo
     )
     {
-        prototype.lazy_transform = Some(LazyTransformInfo{
-            scaling: Scaling::EaseOut{decay: info.decay},
-            transform: Transform{
-                scale: Vector3::repeat(info.scale),
-                ..Default::default()
-            },
-            ..Default::default()
-        }.into());
-        
         prototype.watchers = Some(Watchers::new(vec![
             Watcher{
                 kind: WatcherType::Instant,
@@ -89,7 +101,7 @@ impl ParticleCreator
             Watcher{
                 kind: WatcherType::ScaleDistance{
                     from: Vector3::zeros(),
-                    near: 0.01
+                    near: info.min_scale
                 },
                 action: WatcherAction::Remove,
                 ..Default::default()
@@ -110,6 +122,16 @@ impl ParticleCreator
         let amount = fastrand::usize(info.amount);
         (0..amount).for_each(|_|
         {
+            let mut prototype = prototype.clone();
+            prototype.lazy_transform = Some(LazyTransformInfo{
+                scaling: Scaling::EaseOut{decay: info.decay.get()},
+                transform: Transform{
+                    scale: Vector3::repeat(info.scale),
+                    ..Default::default()
+                },
+                ..Default::default()
+            }.into());
+
             if let Some(target) = prototype.target()
             {
                 let r = ||
@@ -131,9 +153,9 @@ impl ParticleCreator
                 physical.velocity = parent_velocity.unwrap_or_default() + velocity;
                 physical.velocity.z = 0.0;
             }
-
+        
             // for now particles r local (i might change that?)
-            entities.push(true, prototype.clone());
+            entities.push(true, prototype);
         })
     }
 }

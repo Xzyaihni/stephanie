@@ -6,7 +6,7 @@ use nalgebra::Vector3;
 
 use yanyaengine::Transform;
 
-use crate::common::{damage::*, Physical, Side2d, Entity};
+use crate::common::{short_rotation, angle_between, damage::*, Physical, Side2d, Entity};
 
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -46,12 +46,13 @@ pub enum DamagingType
 {
     None,
     Mass(f32),
-    Damage(Damage)
+    Damage{angle: f32, damage: Damage}
 }
 
 pub struct CollisionInfo
 {
     pub relative_velocity: Vector3<f32>,
+    pub global_rotation: f32,
     pub relative_rotation: f32,
     pub relative_height: f32
 }
@@ -65,9 +66,12 @@ impl CollisionInfo
         other_physical: &Physical
     ) -> Self
     {
+        let global_rotation = short_rotation(angle_between(this.position, other.position));
+
         Self{
             relative_velocity: other_physical.velocity - this_physical.velocity,
-            relative_rotation: this.rotation - other.rotation,
+            global_rotation,
+            relative_rotation: short_rotation(global_rotation - other.rotation),
             relative_height: other.position.z - this.position.z
         }
     }
@@ -78,7 +82,7 @@ impl DamagingType
     pub fn as_damage(
         &self,
         collision: impl FnOnce() -> Option<CollisionInfo>
-    ) -> Option<Damage>
+    ) -> Option<(f32, Damage)>
     {
         match self
         {
@@ -100,9 +104,9 @@ impl DamagingType
                 let kind = DamageType::Blunt(force.magnitude() * 100.0);
                 let damage = Damage::new(direction, kind);
 
-                Some(damage)
+                Some((info.global_rotation, damage))
             },
-            Self::Damage(damage) => Some(damage.clone())
+            Self::Damage{angle, damage} => Some((*angle, damage.clone()))
         }
     }
 }
