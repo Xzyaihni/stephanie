@@ -115,7 +115,12 @@ impl DamagingType
             {
                 let info = collision()?;
 
-                Some((info.global_rotation + *angle, damage.clone()))
+                let mut damage = damage.clone();
+                damage.direction.side = Side2d::from_angle(
+                    damage.direction.side.to_angle() + info.relative_rotation
+                );
+
+                Some((info.global_rotation + *angle, damage))
             }
         }
     }

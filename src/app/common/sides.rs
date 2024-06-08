@@ -116,6 +116,17 @@ impl Side2d
         }
     }
 
+    pub fn to_angle(self) -> f32
+    {
+        match self
+        {
+            Self::Right => 0.0,
+            Self::Front => f32::consts::FRAC_PI_2,
+            Self::Left => f32::consts::PI,
+            Self::Back => -f32::consts::FRAC_PI_2
+        }
+    }
+
     pub fn opposite(self) -> Self
     {
         match self
