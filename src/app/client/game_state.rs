@@ -273,7 +273,9 @@ impl ClientEntitiesContainer
                 component: collider
             })|
             {
-                collider.borrow().layer.collides(&info.layer).then(||
+                let collides = collider.borrow().layer.collides(&info.layer);
+
+                (collides && !collider.borrow().ghost).then(||
                 {
                     *entity
                 })
