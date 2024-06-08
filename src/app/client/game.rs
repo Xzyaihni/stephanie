@@ -540,7 +540,12 @@ impl<'a> PlayerContainer<'a>
                                     amount: 3..5,
                                     speed: ParticleSpeed::Random(0.1),
                                     decay: ParticleDecay::Random(3.5..=5.0),
-                                    scale: ENTITY_SCALE * 0.4,
+                                    position: ParticlePosition::Spread(1.0),
+                                    rotation: ParticleRotation::Random,
+                                    scale: ParticleScale::Spread{
+                                        scale: Vector3::repeat(ENTITY_SCALE * 0.4),
+                                        variation: 0.1
+                                    },
                                     min_scale: ENTITY_SCALE * 0.02
                                 },
                                 prototype: EntityInfo{
@@ -620,6 +625,8 @@ impl<'a> PlayerContainer<'a>
 
         let damage = Damage::new(direction, item_info.bash_damage());
 
+        let angle = self.info.bash_side.to_angle() - f32::consts::FRAC_PI_2;
+
         self.info.projectile_lifetime = 0.2;
         self.info.bash_projectile = Some(self.game_state.entities.entity_creator().push(
             EntityInfo{
@@ -643,7 +650,7 @@ impl<'a> PlayerContainer<'a>
                 }.into()),
                 damaging: Some(DamagingInfo{
                     damage: DamagingType::Damage{
-                        angle: self.info.bash_side.opposite().to_angle(),
+                        angle,
                         damage
                     },
                     predicate: DamagingPredicate::ParentAngleLess(f32::consts::PI),
@@ -726,6 +733,8 @@ impl<'a> PlayerContainer<'a>
         {
             return;
         };
+
+        self.unstance();
 
         let start = self.player_position();
 

@@ -51,7 +51,7 @@ pub enum DamagingType
 
 pub struct CollisionInfo
 {
-    pub relative_velocity: Vector3<f32>,
+    pub relative_velocity: Option<Vector3<f32>>,
     pub global_rotation: f32,
     pub relative_rotation: f32,
     pub relative_height: f32
@@ -62,14 +62,19 @@ impl CollisionInfo
     pub fn new(
         this: &Transform,
         other: &Transform,
-        this_physical: &Physical,
-        other_physical: &Physical
+        this_physical: Option<&Physical>,
+        other_physical: Option<&Physical>
     ) -> Self
     {
         let global_rotation = short_rotation(angle_between(this.position, other.position));
 
+        let relative_velocity = other_physical.zip(this_physical).map(|(other, this)|
+        {
+            other.velocity - this.velocity
+        });
+
         Self{
-            relative_velocity: other_physical.velocity - this_physical.velocity,
+            relative_velocity,
             global_rotation,
             relative_rotation: short_rotation(global_rotation - other.rotation),
             relative_height: other.position.z - this.position.z
@@ -91,7 +96,7 @@ impl DamagingType
             {
                 let info = collision()?;
 
-                let force = info.relative_velocity * *mass;
+                let force = info.relative_velocity? * *mass;
 
                 let side = Side2d::from_angle(info.relative_rotation);
                 let height = DamageHeight::from_z(info.relative_height);
@@ -106,7 +111,12 @@ impl DamagingType
 
                 Some((info.global_rotation, damage))
             },
-            Self::Damage{angle, damage} => Some((*angle, damage.clone()))
+            Self::Damage{angle, damage} =>
+            {
+                let info = collision()?;
+
+                Some((info.global_rotation + *angle, damage.clone()))
+            }
         }
     }
 }

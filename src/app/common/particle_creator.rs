@@ -8,6 +8,7 @@ use yanyaengine::Transform;
 
 use crate::common::{
     random_rotation,
+    random_f32,
     lazy_transform::*,
     watcher::*,
     AnyEntities,
@@ -20,7 +21,7 @@ use crate::common::{
 pub enum ParticleSpeed
 {
     Random(f32),
-    DirectionSpread(Vector3<f32>, f32)
+    DirectionSpread{direction: Unit<Vector3<f32>>, speed: RangeInclusive<f32>, spread: f32}
 }
 
 impl ParticleSpeed
@@ -38,12 +39,12 @@ impl ParticleSpeed
             {
                 angle_to_direction(random_rotation()) * *speed
             },
-            Self::DirectionSpread(direction, spread) =>
+            Self::DirectionSpread{direction, speed, spread} =>
             {
-                let angle = (fastrand::f32() * 2.0 - 1.0) * spread;
+                let angle = random_f32(-spread..=*spread);
                 let spread = NRotation::from_axis_angle(&Unit::new_normalize(Vector3::z()), angle);
 
-                spread * direction
+                spread * direction.into_inner() * random_f32(speed.clone())
             }
         }
     }
@@ -63,7 +64,43 @@ impl ParticleDecay
         {
             ParticleDecay::Random(range) =>
             {
-                fastrand::f32() * (range.end() - range.start()) + range.start()
+                random_f32(range.clone())
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ParticlePosition
+{
+    Exact,
+    Spread(f32)
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ParticleRotation
+{
+    Exact(f32),
+    Random
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ParticleScale
+{
+    Spread{scale: Vector3<f32>, variation: f32}
+}
+
+impl ParticleScale
+{
+    pub fn get(&self) -> Vector3<f32>
+    {
+        match self
+        {
+            Self::Spread{scale, variation} =>
+            {
+                let mult = 1.0 + random_f32(-variation..=*variation);
+
+                scale * mult
             }
         }
     }
@@ -75,7 +112,9 @@ pub struct ParticlesInfo
     pub amount: Range<usize>,
     pub speed: ParticleSpeed,
     pub decay: ParticleDecay,
-    pub scale: f32,
+    pub position: ParticlePosition,
+    pub rotation: ParticleRotation,
+    pub scale: ParticleScale,
     pub min_scale: f32
 }
 
@@ -126,7 +165,7 @@ impl ParticleCreator
             prototype.lazy_transform = Some(LazyTransformInfo{
                 scaling: Scaling::EaseOut{decay: info.decay.get()},
                 transform: Transform{
-                    scale: Vector3::repeat(info.scale),
+                    scale: info.scale.get(),
                     ..Default::default()
                 },
                 ..Default::default()
@@ -134,16 +173,30 @@ impl ParticleCreator
 
             if let Some(target) = prototype.target()
             {
-                let r = ||
-                {
-                    2.0 * fastrand::f32()
-                };
+                target.position = position;
 
-                let offset = scale - Vector3::new(scale.x * r(), scale.y * r(), 0.0);
-                target.position = position + offset / 2.0;
+                match info.position
+                {
+                    ParticlePosition::Exact => (),
+                    ParticlePosition::Spread(mult) =>
+                    {
+                        let r = ||
+                        {
+                            2.0 * fastrand::f32()
+                        };
+
+                        let offset = scale - Vector3::new(scale.x * r(), scale.y * r(), 0.0);
+                        target.position += (offset / 2.0) * mult;
+                    }
+                }
+
                 target.position.z = 0.0;
 
-                target.rotation = random_rotation();
+                target.rotation = match info.rotation
+                {
+                    ParticleRotation::Exact(x) => x,
+                    ParticleRotation::Random => random_rotation()
+                };
             }
 
             if let Some(physical) = prototype.physical.as_mut()

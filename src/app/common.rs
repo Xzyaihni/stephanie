@@ -172,6 +172,11 @@ where
     }
 }
 
+pub fn random_f32(range: RangeInclusive<f32>) -> f32
+{
+    fastrand::f32() * (range.end() - range.start()) + range.start()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SeededRandom(u64);
 

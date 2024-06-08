@@ -6,7 +6,7 @@ use std::{
 
 use serde::{Serialize, Deserialize};
 
-use nalgebra::{Vector2, Vector3};
+use nalgebra::{Vector2, Vector3, Unit};
 
 use yanyaengine::{game_object::*, TextureId};
 
@@ -1048,17 +1048,28 @@ macro_rules! define_entities
                 {
                     passer.send_message(Message::EntityDamage{entity, damage});
 
-                    let visual_direction = Vector3::new(-angle.cos(), angle.sin(), 0.0);
+                    let visual_direction = Unit::new_normalize(
+                        Vector3::new(-angle.cos(), angle.sin(), 0.0)
+                    );
+
+                    let scale = Vector3::repeat(ENTITY_SCALE * 0.2)
+                        .component_mul(&Vector3::new(2.0, 1.0, 1.0));
 
                     // temporary until i make it better :) (46 years)
                     ParticleCreator::create_particles(
                         self,
                         entity,
                         ParticlesInfo{
-                            amount: 6..10,
-                            speed: ParticleSpeed::DirectionSpread(visual_direction, 0.1),
-                            decay: ParticleDecay::Random(5.0..=7.0),
-                            scale: ENTITY_SCALE * 0.2,
+                            amount: 3..6,
+                            speed: ParticleSpeed::DirectionSpread{
+                                direction: visual_direction,
+                                speed: 0.7..=1.0,
+                                spread: 0.2
+                            },
+                            decay: ParticleDecay::Random(5.0..=6.0),
+                            position: ParticlePosition::Spread(0.1),
+                            rotation: ParticleRotation::Exact(f32::consts::PI - angle),
+                            scale: ParticleScale::Spread{scale, variation: 0.1},
                             min_scale: ENTITY_SCALE * 0.15
                         },
                         EntityInfo{
@@ -1148,14 +1159,14 @@ macro_rules! define_entities
                                 let this_transform = self.transform(entity)?;
                                 let collided_transform = self.transform(collided)?;
 
-                                let this_physical = self.physical(entity)?;
-                                let collided_physical = self.physical(collided)?;
+                                let this_physical = self.physical(entity);
+                                let collided_physical = self.physical(collided);
 
                                 Some(CollisionInfo::new(
                                     &this_transform,
                                     &collided_transform,
-                                    &this_physical,
-                                    &collided_physical
+                                    this_physical.as_deref(),
+                                    collided_physical.as_deref()
                                 ))
                             };
 
