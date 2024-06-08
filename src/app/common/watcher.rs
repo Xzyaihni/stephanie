@@ -154,29 +154,19 @@ impl WatcherAction
             {
                 entities.remove(entity);
             },
-            Self::Explode(mut info) =>
+            Self::Explode(info) =>
             {
-                let position;
-                let scale;
-                {
-                    let transform = entities.transform(entity).unwrap();
-
-                    position = transform.position;
-                    scale = transform.scale;
-                }
-
-                let parent_velocity = entities.physical(entity).map(|x| x.velocity);
+                ParticleCreator::create_particles(
+                    entities,
+                    entity,
+                    info.info,
+                    info.prototype
+                );
 
                 if !info.keep
                 {
                     entities.remove(entity);
                 }
-
-                ParticleCreator::create_particles(
-                    entities,
-                    info.info,
-                    info.prototype
-                );
             }
         }
     }

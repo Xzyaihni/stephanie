@@ -829,7 +829,6 @@ impl GameState
 
         self.world.update_buffers(info);
 
-        let mut passer = self.connections_handler.write();
         self.entities.update_objects(
             &visibility,
             &self.enemies_info,

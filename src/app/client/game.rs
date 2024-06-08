@@ -537,7 +537,9 @@ impl<'a> PlayerContainer<'a>
                                 keep: false,
                                 info: ParticlesInfo{
                                     amount: 3..5,
-                                    speed: ParticleSpeed::Random(0.1)
+                                    speed: ParticleSpeed::Random(0.1),
+                                    decay: 4.0,
+                                    scale: ENTITY_SCALE * 0.4
                                 },
                                 prototype: EntityInfo{
                                     physical: Some(PhysicalProperties{

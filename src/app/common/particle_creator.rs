@@ -1,24 +1,61 @@
 use std::ops::Range;
 
-use nalgebra::Vector3;
+use nalgebra::{Vector3, Unit, Rotation as NRotation};
 
 use serde::{Serialize, Deserialize};
 
-use crate::common::{random_rotation, AnyEntities, EntityInfo};
+use yanyaengine::Transform;
+
+use crate::common::{
+    random_rotation,
+    lazy_transform::*,
+    watcher::*,
+    AnyEntities,
+    Entity,
+    EntityInfo
+};
 
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ParticleSpeed
 {
     Random(f32),
-    DirectionSpread(Vector3<f32>)
+    DirectionSpread(Vector3<f32>, f32)
+}
+
+impl ParticleSpeed
+{
+    fn velocity(&self) -> Vector3<f32>
+    {
+        let angle_to_direction = |r: f32| -> Vector3<f32>
+        {
+            Vector3::new(r.cos(), r.sin(), 0.0)
+        };
+
+        match self
+        {
+            Self::Random(speed) =>
+            {
+                angle_to_direction(random_rotation()) * *speed
+            },
+            Self::DirectionSpread(direction, spread) =>
+            {
+                let angle = (fastrand::f32() * 2.0 - 1.0) * spread;
+                let spread = NRotation::from_axis_angle(&Unit::new_normalize(Vector3::z()), angle);
+
+                spread * direction
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ParticlesInfo
 {
     pub amount: Range<usize>,
-    pub speed: ParticleSpeed
+    pub speed: ParticleSpeed,
+    pub decay: f32,
+    pub scale: f32
 }
 
 pub struct ParticleCreator
@@ -28,15 +65,52 @@ pub struct ParticleCreator
 impl ParticleCreator
 {
     pub fn create_particles<E: AnyEntities>(
-        entities: &E,
+        entities: &mut E,
+        entity: Entity,
         info: ParticlesInfo,
-        prototype: EntityInfo
+        mut prototype: EntityInfo
     )
     {
-        /*let amount = fastrand::usize(info.amount);
+        prototype.lazy_transform = Some(LazyTransformInfo{
+            scaling: Scaling::EaseOut{decay: info.decay},
+            transform: Transform{
+                scale: Vector3::repeat(info.scale),
+                ..Default::default()
+            },
+            ..Default::default()
+        }.into());
+        
+        prototype.watchers = Some(Watchers::new(vec![
+            Watcher{
+                kind: WatcherType::Instant,
+                action: WatcherAction::SetTargetScale(Vector3::zeros()),
+                ..Default::default()
+            },
+            Watcher{
+                kind: WatcherType::ScaleDistance{
+                    from: Vector3::zeros(),
+                    near: 0.01
+                },
+                action: WatcherAction::Remove,
+                ..Default::default()
+            }
+        ]));
+
+        let position;
+        let scale;
+        {
+            let transform = entities.transform(entity).unwrap();
+
+            position = transform.position;
+            scale = transform.scale;
+        }
+
+        let parent_velocity = entities.physical(entity).map(|x| x.velocity);
+
+        let amount = fastrand::usize(info.amount);
         (0..amount).for_each(|_|
         {
-            if let Some(target) = info.info.target()
+            if let Some(target) = prototype.target()
             {
                 let r = ||
                 {
@@ -50,47 +124,16 @@ impl ParticleCreator
                 target.rotation = random_rotation();
             }
 
-            if let Some(physical) = info.info.physical.as_mut()
+            if let Some(physical) = prototype.physical.as_mut()
             {
-                let r = random_rotation();
-                let velocity = Vector3::new(r.cos(), r.sin(), 0.0) * info.speed;
+                let velocity = info.speed.velocity();
+
                 physical.velocity = parent_velocity.unwrap_or_default() + velocity;
                 physical.velocity.z = 0.0;
             }
 
-            // for now all watcher created entities r local (i might change that?)
-            entities.push(true, info.info.clone());
-        })*/
-        /*ExplodeInfo{
-            keep: false,
-            amount: 3..5,
-            speed: 0.1,
-            info: EntityInfo{
-                lazy_transform: Some(LazyTransformInfo{
-                    scaling: Scaling::EaseOut{decay: 4.0},
-                    transform: Transform{
-                        scale: Vector3::repeat(ENTITY_SCALE * 0.4),
-                        ..Default::default()
-                    },
-                    ..Default::default()
-                }.into()),
-                watchers: Some(Watchers::new(vec![
-                    Watcher{
-                        kind: WatcherType::Instant,
-                        action: WatcherAction::SetTargetScale(Vector3::zeros()),
-                        ..Default::default()
-                    },
-                    Watcher{
-                        kind: WatcherType::ScaleDistance{
-                            from: Vector3::zeros(),
-                            near: 0.01
-                        },
-                        action: WatcherAction::Remove,
-                        ..Default::default()
-                    }
-                ])),
-                ..Default::default()
-            }
-        }*/
+            // for now particles r local (i might change that?)
+            entities.push(true, prototype.clone());
+        })
     }
 }

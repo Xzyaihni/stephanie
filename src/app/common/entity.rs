@@ -507,6 +507,46 @@ macro_rules! define_entities
             }
         }
 
+        impl<$($component_type,)+> EntityInfo<$($component_type,)+>
+        {
+            pub fn setup_components(
+                &mut self,
+                entities: &mut impl AnyEntities
+            )
+            where
+                for<'a> &'a FollowRotationType: Into<&'a FollowRotation>,
+                for<'a> &'a ParentType: Into<&'a Parent>,
+                for<'a> &'a LazyTransformType: Into<&'a LazyTransform>,
+                for<'a> &'a mut Option<TransformType>: Into<&'a mut Option<Transform>>,
+                for<'a> &'a mut TransformType: Into<&'a mut Transform>
+            {
+                if let Some(lazy) = self.lazy_transform.as_ref()
+                {
+                    let parent_transform = self.parent.as_ref().and_then(|x|
+                    {
+                        entities.transform((&*x).into().entity).as_deref().cloned()
+                    });
+
+                    let new_transform = (&*lazy).into().target_global(parent_transform.as_ref());
+                    *(&mut self.transform).into() = Some(new_transform);
+                }
+
+                if let Some(follow_rotation) = self.follow_rotation.as_ref()
+                {
+                    let transform = self.transform.as_mut().unwrap();
+
+                    let current = &mut (&mut *transform).into().rotation;
+
+                    let parent_transform = entities.transform((&*follow_rotation).into().parent())
+                        .unwrap();
+
+                    let target = parent_transform.rotation;
+
+                    *current = target;
+                }
+            }
+        }
+
         impl EntityInfo
         {
             pub fn target_ref(&self) -> Option<&Transform>
@@ -553,10 +593,12 @@ macro_rules! define_entities
             fn push(
                 &mut self,
                 local: bool,
-                info: EntityInfo
+                mut info: EntityInfo
             ) -> Entity
             {
                 let entity = self.push(local, Default::default());
+
+                info.setup_components(self);
 
                 self.create_queue.push((entity, info));
 
@@ -749,12 +791,11 @@ macro_rules! define_entities
                 mut info: EntityInfo<$($component_type,)+>
             ) -> Entity
             where
-                for<'a> &'a ParentType: Into<&'a Parent>,
-                for<'a> &'a LazyTransformType: Into<&'a LazyTransform>,
                 for<'a> &'a FollowRotationType: Into<&'a FollowRotation>,
-                for<'a> &'a TransformType: Into<&'a Transform>,
-                for<'a> &'a mut TransformType: Into<&'a mut Transform>,
+                for<'a> &'a LazyTransformType: Into<&'a LazyTransform>,
                 for<'a> &'a mut Option<TransformType>: Into<&'a mut Option<Transform>>,
+                for<'a> &'a mut TransformType: Into<&'a mut Transform>,
+                for<'a> &'a ParentType: Into<&'a Parent>,
                 TransformType: Clone,
                 LazyTransformType: LazyTargettable<TransformType>
             {
@@ -776,31 +817,7 @@ macro_rules! define_entities
 
                 let entity_id = Entity{local, id};
 
-                if let Some(lazy) = info.lazy_transform.as_ref()
-                {
-                    let parent_transform = info.parent.as_ref().and_then(|x|
-                    {
-                        self.transform((&*x).into().entity).as_deref().map(|x| x.into()).cloned()
-                    });
-
-                    let new_transform = (&*lazy).into().target_global(parent_transform.as_ref());
-                    *(&mut info.transform).into() = Some(new_transform);
-                }
-
-                if let Some(follow_rotation) = info.follow_rotation.as_ref()
-                {
-                    let transform = info.transform.as_mut().unwrap();
-                    let transform: &mut Transform = transform.into();
-
-                    let current = &mut transform.rotation;
-
-                    let follow_rotation = follow_rotation.into();
-
-                    let parent_transform = self.transform(follow_rotation.parent()).unwrap();
-                    let target = (&*parent_transform).into().rotation;
-
-                    *current = target;
-                }
+                info.setup_components(self);
 
                 let indices = self.push_info_components(entity_id, info);
 
@@ -866,7 +883,12 @@ macro_rules! define_entities
                 ,)+]
             }
 
-            fn damage_entity_common(&self, entity: Entity, damage: Damage)
+            pub fn damage_entity(
+                &mut self,
+                passer: &mut impl EntityPasser,
+                entity: Entity,
+                damage: Damage
+            )
             where
                 for<'a> &'a mut WatchersType: Into<&'a mut Watchers>,
                 for<'a> &'a mut AnatomyType: Into<&'a mut Anatomy>
@@ -887,11 +909,19 @@ macro_rules! define_entities
                     });
 
 
-                    (&mut *anatomy).into().damage(damage);
+                    (&mut *anatomy).into().damage(damage.clone());
                     drop(anatomy);
 
                     AnatomyType::on_set(None, self, entity);
+                } else
+                {
+                    return;
                 }
+
+                passer.send_message(Message::EntityDamage{entity, damage});
+
+                // temporary until i make it better :) (46 years)
+                ParticleCreator::create_particles(self, entity, todo!(), todo!());
             }
 
             fn handle_message_common(&mut self, message: Message) -> Option<Message>
@@ -905,7 +935,7 @@ macro_rules! define_entities
                 {
                     Message::EntityDamage{entity, damage} =>
                     {
-                        self.damage_entity_common(entity, damage);
+                        self.damage_entity(&mut (), entity, damage);
 
                         None
                     },
@@ -1028,34 +1058,20 @@ macro_rules! define_entities
                 });
             }
 
-            pub fn damage_entity(
-                &self,
-                passer: &mut impl EntityPasser,
-                entity: Entity,
-                damage: Damage
-            )
-            {
-                passer.send_message(Message::EntityDamage{entity, damage: damage.clone()});
-
-                // temporary until i make it better :) (46 years)
-                ParticleCreator::create_particles(self, todo!(), todo!());
-
-                self.damage_entity_common(entity, damage);
-            }
-
             pub fn update_damaging(
                 &mut self,
                 passer: &mut impl EntityPasser
             )
             {
-                self.damaging.iter().for_each(|(_, &ComponentWrapper{
+                // "zero" "cost" "abstractions" "borrow" "checker"
+                let damage_entities = self.damaging.iter().flat_map(|(_, &ComponentWrapper{
                     entity,
                     component: ref damaging
                 })|
                 {
                     let collider = self.collider(entity).unwrap();
 
-                    collider.collided().iter().copied().for_each(|collided|
+                    collider.collided().iter().copied().filter_map(|collided|
                     {
                         let mut damaging = damaging.borrow_mut();
 
@@ -1099,12 +1115,19 @@ macro_rules! define_entities
                                 ))
                             };
 
-                            if let Some(damage) = damaging.damage.as_damage(collision_info)
+                            return damaging.damage.as_damage(collision_info).map(|damage|
                             {
-                                self.damage_entity(passer, collided, damage)
-                            }
+                                (collided, damage)
+                            });
                         }
-                    });
+
+                        None
+                    }).collect::<Vec<_>>()
+                }).collect::<Vec<_>>();
+
+                damage_entities.into_iter().for_each(|(collided, damage)|
+                {
+                    self.damage_entity(passer, collided, damage);
                 });
             }
 
@@ -1136,6 +1159,11 @@ macro_rules! define_entities
                     component: object
                 })|
                 {
+                    if self.transform(*entity).is_none()
+                    {
+                        dbg!(self.info_ref(*entity));
+                    }
+
                     let transform = self.transform(*entity).unwrap();
 
                     if let Some(object) = object.borrow_mut().object.as_mut()
