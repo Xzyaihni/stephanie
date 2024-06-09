@@ -30,7 +30,7 @@ use crate::common::{
     receiver_loop,
     collider::*,
     TileMap,
-    Damage,
+    DamagePartial,
     ItemsInfo,
     InventoryItem,
     AnyEntities,
@@ -681,7 +681,7 @@ impl GameState
         }
     }
 
-    pub fn damage_entity(&mut self, angle: f32, entity: Entity, damage: Damage)
+    pub fn damage_entity(&mut self, angle: f32, entity: Entity, damage: DamagePartial)
     {
         let mut passer = self.connections_handler.write();
         self.entities.entities.damage_entity(

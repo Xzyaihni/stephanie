@@ -26,7 +26,9 @@ use crate::{
         lazy_transform::*,
         damaging::*,
         particle_creator::*,
+        Side2d,
         PhysicalProperties,
+        DamagePartial,
         Damage,
         EntityPasser,
         Inventory,
@@ -1039,18 +1041,29 @@ macro_rules! define_entities
                 blood_texture: TextureId,
                 angle: f32,
                 entity: Entity,
-                damage: Damage
+                damage: DamagePartial
             )
             {
+                let entity_rotation = if let Some(transform) = self.transform(entity)
+                {
+                    transform.rotation
+                } else
+                {
+                    return;
+                };
+
+                let relative_rotation = angle - (-entity_rotation);
+                let damage = damage.with_direction(Side2d::from_angle(relative_rotation));
+
                 let damaged = self.damage_entity_common(entity, damage.clone());
 
                 if damaged
                 {
-                    passer.send_message(Message::EntityDamage{entity, damage});
-
-                    let visual_direction = Unit::new_normalize(
+                    let direction = Unit::new_normalize(
                         Vector3::new(-angle.cos(), angle.sin(), 0.0)
                     );
+
+                    passer.send_message(Message::EntityDamage{entity, damage});
 
                     let scale = Vector3::repeat(ENTITY_SCALE * 0.2)
                         .component_mul(&Vector3::new(2.0, 1.0, 1.0));
@@ -1062,11 +1075,11 @@ macro_rules! define_entities
                         ParticlesInfo{
                             amount: 3..6,
                             speed: ParticleSpeed::DirectionSpread{
-                                direction: visual_direction,
-                                speed: 0.7..=1.0,
+                                direction,
+                                speed: 1.7..=2.0,
                                 spread: 0.2
                             },
-                            decay: ParticleDecay::Random(5.0..=6.0),
+                            decay: ParticleDecay::Random(7.0..=10.0),
                             position: ParticlePosition::Spread(0.1),
                             rotation: ParticleRotation::Exact(f32::consts::PI - angle),
                             scale: ParticleScale::Spread{scale, variation: 0.1},

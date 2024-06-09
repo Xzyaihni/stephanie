@@ -60,7 +60,7 @@ pub use chunk_saver::{SaveLoad, WorldChunkSaver, ChunkSaver, EntitiesSaver};
 pub use render_info::RenderInfo;
 
 pub use anatomy::{Anatomy, HumanAnatomy};
-pub use damage::{Damageable, Damage, DamageType, DamageDirection, DamageHeight};
+pub use damage::{Damageable, Damage, DamageType, DamageDirection, DamageHeight, DamagePartial};
 
 pub use collider::{ColliderType, Collider, CollidingInfo};
 pub use physics::{Physical, PhysicalProperties};

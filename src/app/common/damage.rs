@@ -6,6 +6,26 @@ use crate::common::{Side2d, SeededRandom};
 
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DamagePartial
+{
+    pub data: DamageType,
+    pub height: DamageHeight
+}
+
+impl DamagePartial
+{
+    pub fn with_direction(self, side: Side2d) -> Damage
+    {
+        let direction = DamageDirection{
+            side,
+            height: self.height
+        };
+
+        Damage::new(direction, self.data)
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Damage
 {
     pub rng: SeededRandom,

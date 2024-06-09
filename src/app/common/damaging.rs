@@ -6,7 +6,7 @@ use nalgebra::Vector3;
 
 use yanyaengine::Transform;
 
-use crate::common::{short_rotation, angle_between, damage::*, Physical, Side2d, Entity};
+use crate::common::{short_rotation, angle_between, damage::*, Physical, Entity};
 
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -46,14 +46,13 @@ pub enum DamagingType
 {
     None,
     Mass(f32),
-    Damage{angle: f32, damage: Damage}
+    Damage{angle: f32, damage: DamagePartial}
 }
 
 pub struct CollisionInfo
 {
     pub relative_velocity: Option<Vector3<f32>>,
     pub global_rotation: f32,
-    pub relative_rotation: f32,
     pub relative_height: f32
 }
 
@@ -76,7 +75,6 @@ impl CollisionInfo
         Self{
             relative_velocity,
             global_rotation,
-            relative_rotation: short_rotation(global_rotation - other.rotation),
             relative_height: other.position.z - this.position.z
         }
     }
@@ -87,7 +85,7 @@ impl DamagingType
     pub fn as_damage(
         &self,
         collision: impl FnOnce() -> Option<CollisionInfo>
-    ) -> Option<(f32, Damage)>
+    ) -> Option<(f32, DamagePartial)>
     {
         match self
         {
@@ -98,16 +96,13 @@ impl DamagingType
 
                 let force = info.relative_velocity? * *mass;
 
-                let side = Side2d::from_angle(info.relative_rotation);
                 let height = DamageHeight::from_z(info.relative_height);
 
-                let direction = DamageDirection{
-                    side,
+                let kind = DamageType::Blunt(force.magnitude() * 100.0);
+                let damage = DamagePartial{
+                    data: kind,
                     height
                 };
-
-                let kind = DamageType::Blunt(force.magnitude() * 100.0);
-                let damage = Damage::new(direction, kind);
 
                 Some((info.global_rotation, damage))
             },
@@ -115,12 +110,7 @@ impl DamagingType
             {
                 let info = collision()?;
 
-                let mut damage = damage.clone();
-                damage.direction.side = Side2d::from_angle(
-                    damage.direction.side.to_angle() + info.relative_rotation
-                );
-
-                Some((info.global_rotation + *angle, damage))
+                Some((info.global_rotation + *angle, damage.clone()))
             }
         }
     }

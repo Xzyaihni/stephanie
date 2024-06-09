@@ -30,9 +30,7 @@ use crate::common::{
     Item,
     ItemInfo,
     ItemsInfo,
-    Damage,
-    DamageDirection,
-    Side2d,
+    DamagePartial,
     DamageHeight,
     InventoryItem,
     world::TILE_SIZE
@@ -618,12 +616,10 @@ impl<'a> PlayerContainer<'a>
 
         let holding_entity = self.holding_entity();
 
-        let direction = DamageDirection{
-            side: self.info.bash_side.opposite().into(),
+        let damage = DamagePartial{
+            data: item_info.bash_damage(),
             height: DamageHeight::random()
         };
-
-        let damage = Damage::new(direction, item_info.bash_damage());
 
         let angle = self.info.bash_side.to_angle() - f32::consts::FRAC_PI_2;
 
@@ -769,15 +765,10 @@ impl<'a> PlayerContainer<'a>
 
                     let angle = angle_between(hit_position, transform.position);
 
-                    let side = Side2d::from_positions(
-                        transform.rotation,
-                        transform.position,
-                        hit_position
-                    );
-
-                    let direction = DamageDirection{side, height};
-
-                    let damage = Damage::new(direction, damage);
+                    let damage = DamagePartial{
+                        data: damage,
+                        height
+                    };
 
                     drop(transform);
                     self.game_state.damage_entity(angle, id, damage);

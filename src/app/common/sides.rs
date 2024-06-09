@@ -6,6 +6,8 @@ use strum_macros::{EnumCount, FromRepr};
 
 use nalgebra::Vector3;
 
+use crate::common::short_rotation;
+
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum Side1d
@@ -98,6 +100,8 @@ impl Side2d
 
     pub fn from_angle(angle: f32) -> Self
     {
+        let angle = short_rotation(angle);
+
         const HALF: f32 = f32::consts::FRAC_PI_2;
         const QUARTER: f32 = f32::consts::FRAC_PI_4;
 
@@ -106,10 +110,10 @@ impl Side2d
             Self::Front
         } else if ((-HALF - QUARTER)..-QUARTER).contains(&angle)
         {
-            Self::Left
+            Self::Right
         } else if (QUARTER..(HALF + QUARTER)).contains(&angle)
         {
-            Self::Right
+            Self::Left
         } else
         {
             Self::Back
