@@ -30,9 +30,16 @@ impl<'a> Loot<'a>
     {
         let possible = self.groups.iter().flat_map(|name| self.info.group(name));
 
+        let loot_commonness = (self.rarity as f64).recip();
+
+        let scaled_commonness = |c: f64|
+        {
+            ((c - loot_commonness).exp() + 1.0).ln()
+        };
+
         let id = WeightedPicker::pick_from(fastrand::f64(), possible, |id|
         {
-            self.info.get(*id).commonness
+            scaled_commonness(self.info.get(*id).commonness)
         });
 
         id.map(|&id|

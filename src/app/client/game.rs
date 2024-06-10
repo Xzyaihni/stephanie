@@ -608,6 +608,19 @@ impl<'a> PlayerContainer<'a>
                 _ => ()
             }
 
+            lazy.connection = Connection::Spring(
+                SpringConnection{
+                    physical: PhysicalProperties{
+                        mass: 0.5,
+                        friction: 0.4,
+                        floating: true
+                    }.into(),
+                    limit: 0.004,
+                    damping: 0.02,
+                    strength: 6.0
+                }
+            );
+
             lazy.target().rotation = start_rotation;
         }
     }

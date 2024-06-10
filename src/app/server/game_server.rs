@@ -241,18 +241,6 @@ impl GameServer
             }),
             parent: Some(Parent::new(inserted, false)),
             lazy_transform: Some(LazyTransformInfo{
-                connection: Connection::Spring(
-                    SpringConnection{
-                        physical: PhysicalProperties{
-                            mass: 0.5,
-                            friction: 0.4,
-                            floating: true
-                        }.into(),
-                        limit: 0.004,
-                        damping: 0.02,
-                        strength: 6.0
-                    }
-                ),
                 rotation: Rotation::EaseOut(
                     EaseOutRotation{
                         decay: 7.0,

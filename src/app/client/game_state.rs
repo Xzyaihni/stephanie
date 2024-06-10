@@ -507,7 +507,7 @@ impl Drop for GameState
 
 impl GameState
 {
-    pub fn new(mut info: GameStateInfo) -> Rc<RefCell<Self>>
+    pub fn new(info: GameStateInfo) -> Rc<RefCell<Self>>
     {
         let mouse_position = Vector2::zeros();
 
