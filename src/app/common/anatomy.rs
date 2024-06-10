@@ -291,6 +291,13 @@ impl Health
             {
                 self.simple_pierce(damage).map(DamageType::Blunt)
             },
+            DamageType::Sharp{sharpness, damage} =>
+            {
+                self.pierce_with(sharpness, damage).map(|damage|
+                {
+                    DamageType::Sharp{sharpness, damage}
+                })
+            },
             DamageType::Bullet(damage) =>
             {
                 self.simple_pierce(damage).map(DamageType::Bullet)
@@ -300,7 +307,14 @@ impl Health
 
     fn simple_pierce(&mut self, damage: f32) -> Option<f32>
     {
-        let pass = damage - self.max_block.min(self.health.current());
+        self.pierce_with(0.0, damage)
+    }
+
+    fn pierce_with(&mut self, sharpness: f32, damage: f32) -> Option<f32>
+    {
+        let sharpness_bonus = sharpness * damage;
+
+        let pass = damage - self.max_block.min(self.health.current()) + sharpness_bonus;
         self.health.subtract_hp(damage);
 
         if pass <= 0.0

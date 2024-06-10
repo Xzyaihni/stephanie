@@ -268,6 +268,7 @@ impl GameServer
                 },
                 ..Default::default()
             }.into()),
+            watchers: Some(Default::default()),
             ..Default::default()
         };
 

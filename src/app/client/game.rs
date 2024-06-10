@@ -127,7 +127,7 @@ struct PlayerInfo
     entity: Entity,
     mouse_entity: Entity,
     other_entity: Option<Entity>,
-    bash_projectile: Option<Entity>,
+    projectile: Option<Entity>,
     stance_time: f32,
     attack_cooldown: f32,
     projectile_lifetime: f32,
@@ -135,6 +135,7 @@ struct PlayerInfo
     inventory_open: bool,
     other_inventory_open: bool,
     held_distance: f32,
+    poke_distance: f32,
     camera_follow: f32
 }
 
@@ -151,7 +152,7 @@ impl PlayerInfo
             entity,
             mouse_entity,
             other_entity: None,
-            bash_projectile: None,
+            projectile: None,
             stance_time: 0.0,
             attack_cooldown: 0.0,
             projectile_lifetime: 0.0,
@@ -159,6 +160,7 @@ impl PlayerInfo
             inventory_open: false,
             other_inventory_open: false,
             held_distance: 0.1,
+            poke_distance: 0.75,
             camera_follow: 0.25
         }
     }
@@ -362,9 +364,7 @@ impl<'a> PlayerContainer<'a>
                 let target = lazy_transform.target();
                 let scale = item.scale3();
 
-                let offset = scale.y / 2.0 + 0.5 + self.info.held_distance;
-
-                target.position = Vector3::new(offset, 0.0, 0.0);
+                target.position = self.held_item_position().unwrap();
                 target.scale = scale;
 
                 render.set_texture(texture.clone());
@@ -381,6 +381,17 @@ impl<'a> PlayerContainer<'a>
                 parent.visible = false;
             }
         }
+    }
+
+    fn held_item_position(&self) -> Option<Vector3<f32>>
+    {
+        let holding = self.player().holding?;
+        let item = self.item_info(holding)?;
+        let scale = item.scale3();
+
+        let offset = scale.y / 2.0 + 0.5 + self.info.held_distance;
+
+        Some(Vector3::new(offset, 0.0, 0.0))
     }
 
     fn toggle_inventory(&mut self)
@@ -601,18 +612,12 @@ impl<'a> PlayerContainer<'a>
         }
     }
 
-    fn bash_attack_projectile(&mut self, item: Item)
+    fn bash_projectile(&mut self, item: Item)
     {
         let item_info = self.game_state.items_info.get(item.id);
         let item_scale = item_info.scale3().y;
         let over_scale = self.info.held_distance + item_scale;
         let scale = 1.0 + over_scale * 2.0;
-
-        let bash_trail = match self.info.bash_side
-        {
-            Side1d::Left => self.game_state.common_textures.bash_trail_left,
-            Side1d::Right => self.game_state.common_textures.bash_trail_right
-        };
 
         let holding_entity = self.holding_entity();
 
@@ -624,7 +629,7 @@ impl<'a> PlayerContainer<'a>
         let angle = self.info.bash_side.to_angle() - f32::consts::FRAC_PI_2;
 
         self.info.projectile_lifetime = 0.2;
-        self.info.bash_projectile = Some(self.game_state.entities.entity_creator().push(
+        self.info.projectile = Some(self.game_state.entities.entity_creator().push(
             EntityInfo{
                 follow_rotation: Some(FollowRotation::new(
                     holding_entity,
@@ -656,7 +661,65 @@ impl<'a> PlayerContainer<'a>
                 ..Default::default()
             },
             RenderInfo{
-                object: Some(RenderObject::TextureId{id: bash_trail}),
+                object: None,
+                z_level: ZLevel::Low,
+                ..Default::default()
+            }
+        ));
+    }
+
+    fn poke_projectile(&mut self, item: Item)
+    {
+        let item_info = self.game_state.items_info.get(item.id);
+        let item_scale = item_info.scale3().y;
+        let mut scale = Vector3::repeat(1.0);
+
+        let projectile_scale = self.info.poke_distance / item_scale;
+        scale.y += projectile_scale;
+
+        let offset = projectile_scale / 2.0;
+
+        let holding_entity = self.holding_entity();
+
+        let damage = DamagePartial{
+            data: item_info.poke_damage(),
+            height: DamageHeight::random()
+        };
+
+        self.info.projectile_lifetime = 0.2;
+        self.info.projectile = Some(self.game_state.entities.entity_creator().push(
+            EntityInfo{
+                follow_rotation: Some(FollowRotation::new(
+                    holding_entity,
+                    Rotation::Instant
+                )),
+                lazy_transform: Some(LazyTransformInfo{
+                    transform: Transform{
+                        position: Vector3::new(0.0, offset, 0.0),
+                        scale,
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                }.into()),
+                parent: Some(Parent::new(holding_entity, true)),
+                collider: Some(ColliderInfo{
+                    kind: ColliderType::Circle,
+                    layer: ColliderLayer::Damage,
+                    ghost: true,
+                    ..Default::default()
+                }.into()),
+                damaging: Some(DamagingInfo{
+                    damage: DamagingType::Damage{
+                        angle: 0.0,
+                        damage
+                    },
+                    is_player: true,
+                    ..Default::default()
+                }.into()),
+                ..Default::default()
+            },
+            RenderInfo{
+                object: None,
                 z_level: ZLevel::Low,
                 ..Default::default()
             }
@@ -671,11 +734,11 @@ impl<'a> PlayerContainer<'a>
         }
 
         self.info.attack_cooldown = 0.5;
-        self.info.stance_time = 5.0;
+        self.info.stance_time = self.info.attack_cooldown * 2.0;
 
         self.info.bash_side = self.info.bash_side.opposite();
 
-        self.bash_attack_projectile(item);
+        self.bash_projectile(item);
 
         let start_rotation = self.default_held_rotation();
         if let Some(mut lazy) = self.game_state.entities().lazy_transform_mut(self.holding_entity())
@@ -714,9 +777,36 @@ impl<'a> PlayerContainer<'a>
         -origin_rotation
     }
 
-    fn poke_attack(&self, item: Item)
+    fn poke_attack(&mut self, item: Item)
     {
-        todo!()
+        if self.info.attack_cooldown > 0.0
+        {
+            return;
+        }
+
+        self.unstance();
+
+        self.info.attack_cooldown = 0.5;
+
+        self.poke_projectile(item);
+
+        let entities = self.game_state.entities();
+
+        let holding_entity = self.holding_entity();
+
+        if let Some(mut lazy) = entities.lazy_transform_mut(holding_entity)
+        {
+            let distance = self.info.poke_distance;
+
+            let held_position = self.held_item_position().unwrap();
+            lazy.target().position.x = held_position.x + distance;
+
+            entities.watchers_mut(holding_entity).unwrap().push(Watcher{
+                kind: WatcherType::Lifetime(0.2.into()),
+                action: WatcherAction::SetTargetPosition(held_position),
+                ..Default::default()
+            });
+        }
     }
 
     fn ranged_attack(&mut self, item: Item)
@@ -814,7 +904,7 @@ impl<'a> PlayerContainer<'a>
 
         if decrease_timer(&mut self.info.projectile_lifetime)
         {
-            if let Some(entity) = self.info.bash_projectile.take()
+            if let Some(entity) = self.info.projectile.take()
             {
                 self.game_state.entities_mut().remove(entity);
             }

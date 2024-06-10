@@ -131,6 +131,17 @@ impl ItemInfo
         DamageType::Blunt(self.mass * 100.0)
     }
 
+    pub fn poke_damage(&self) -> DamageType
+    {
+        if self.sharpness == 0.0
+        {
+            DamageType::Blunt(self.mass * 50.0)
+        } else
+        {
+            DamageType::Sharp{sharpness: self.sharpness, damage: self.mass * 100.0}
+        }
+    }
+
     pub fn scale3(&self) -> Vector3<f32>
     {
         self.scale.xyx()

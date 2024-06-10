@@ -446,30 +446,16 @@ pub enum UserEvent
 pub struct CommonTextures
 {
     pub dust: TextureId,
-    pub blood_texture: TextureId,
-    pub bash_trail_left: TextureId,
-    pub bash_trail_right: TextureId
+    pub blood_texture: TextureId
 }
 
 impl CommonTextures
 {
-    pub fn new(
-        builder_wrapper: &mut BuilderWrapper,
-        assets: &mut Assets
-    ) -> Self
+    pub fn new(assets: &mut Assets) -> Self
     {
-        let bash_trail = "decals/bash_trail.png";
-        let bash_trail_right = assets.texture_id(bash_trail);
-        let bash_trail_left = assets.edited_copy(builder_wrapper, bash_trail, |image|
-        {
-            *image = image.flipped_horizontal();
-        });
-
         Self{
             dust: assets.texture_id("decals/dust.png"),
-            blood_texture: assets.texture_id("decals/blood.png"),
-            bash_trail_left,
-            bash_trail_right
+            blood_texture: assets.texture_id("decals/blood.png")
         }
     }
 }
@@ -606,10 +592,7 @@ impl GameState
         };
 
         let assets = info.object_info.partial.assets;
-        let common_textures = CommonTextures::new(
-            &mut info.object_info.partial.builder_wrapper,
-            &mut assets.lock()
-        );
+        let common_textures = CommonTextures::new(&mut assets.lock());
 
         entities.entities.update_ui_aspect(info.camera.read().aspect());
 

@@ -45,6 +45,7 @@ impl Damage
 pub enum DamageType
 {
     Blunt(f32),
+    Sharp{sharpness: f32, damage: f32},
     Bullet(f32)
 }
 
@@ -55,6 +56,7 @@ impl DamageType
         match self
         {
             Self::Blunt(x) => x,
+            Self::Sharp{damage, ..} => damage,
             Self::Bullet(x) => x
         }
     }
