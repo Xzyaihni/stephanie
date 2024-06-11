@@ -312,9 +312,7 @@ impl Health
 
     fn pierce_with(&mut self, sharpness: f32, damage: f32) -> Option<f32>
     {
-        let sharpness_bonus = sharpness * damage;
-
-        let pass = damage - self.max_block.min(self.health.current()) + sharpness_bonus;
+        let pass = (damage - self.max_block.min(self.health.current())) * (sharpness + 1.0);
         self.health.subtract_hp(damage);
 
         if pass <= 0.0

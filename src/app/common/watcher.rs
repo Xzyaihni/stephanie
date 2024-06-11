@@ -7,6 +7,7 @@ use serde::{Serialize, Deserialize};
 use crate::common::{
     render_info::*,
     particle_creator::*,
+    lazy_transform::*,
     Entity,
     EntityInfo,
     entity::AnyEntities
@@ -16,7 +17,7 @@ use crate::common::{
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Lifetime
 {
-    current: f32,
+    pub current: f32,
     start: f32
 }
 
@@ -33,6 +34,11 @@ impl From<f32> for Lifetime
 
 impl Lifetime
 {
+    pub fn fraction(&self) -> f32
+    {
+        self.current / self.start
+    }
+
     pub fn reset(&mut self)
     {
         self.current = self.start;
@@ -99,6 +105,7 @@ pub struct ExplodeInfo
     pub prototype: EntityInfo
 }
 
+// i can just add a closure variant that doesnt get serialized but meh
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum WatcherAction
 {
@@ -107,6 +114,8 @@ pub enum WatcherAction
     SetMixColor(Option<MixColor>),
     SetTargetPosition(Vector3<f32>),
     SetTargetScale(Vector3<f32>),
+    SetLazyRotation(Rotation),
+    SetLazyConnection(Connection),
     Remove,
     Explode(Box<ExplodeInfo>)
 }
@@ -156,6 +165,20 @@ impl WatcherAction
                 if let Some(mut target) = entities.target(entity)
                 {
                     target.scale = scale;
+                }
+            },
+            Self::SetLazyRotation(rotation) =>
+            {
+                if let Some(mut lazy) = entities.lazy_transform_mut(entity)
+                {
+                    lazy.rotation = rotation;
+                }
+            },
+            Self::SetLazyConnection(connection) =>
+            {
+                if let Some(mut lazy) = entities.lazy_transform_mut(entity)
+                {
+                    lazy.connection = connection;
                 }
             },
             Self::Remove =>

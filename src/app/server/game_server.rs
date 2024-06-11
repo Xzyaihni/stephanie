@@ -241,13 +241,6 @@ impl GameServer
             }),
             parent: Some(Parent::new(inserted, false)),
             lazy_transform: Some(LazyTransformInfo{
-                rotation: Rotation::EaseOut(
-                    EaseOutRotation{
-                        decay: 7.0,
-                        speed_significant: 10.0,
-                        momentum: 0.5
-                    }.into()
-                ),
                 origin_rotation: -f32::consts::FRAC_PI_2,
                 transform: Transform{
                     rotation: f32::consts::FRAC_PI_2,

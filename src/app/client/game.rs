@@ -602,25 +602,6 @@ impl<'a> PlayerContainer<'a>
         let start_rotation = self.default_held_rotation();
         if let Some(mut lazy) = self.game_state.entities().lazy_transform_mut(self.holding_entity())
         {
-            match &mut lazy.rotation
-            {
-                Rotation::EaseOut(x) => x.set_decay(7.0),
-                _ => ()
-            }
-
-            lazy.connection = Connection::Spring(
-                SpringConnection{
-                    physical: PhysicalProperties{
-                        mass: 0.5,
-                        friction: 0.4,
-                        floating: true
-                    }.into(),
-                    limit: 0.004,
-                    damping: 0.02,
-                    strength: 6.0
-                }
-            );
-
             lazy.target().rotation = start_rotation;
         }
     }
@@ -737,6 +718,22 @@ impl<'a> PlayerContainer<'a>
                 ..Default::default()
             }
         ));
+
+        if let Some(mut lazy) = self.game_state.entities().lazy_transform_mut(holding_entity)
+        {
+            lazy.connection = Connection::Spring(
+                SpringConnection{
+                    physical: PhysicalProperties{
+                        mass: 0.5,
+                        friction: 0.4,
+                        floating: true
+                    }.into(),
+                    limit: 0.004,
+                    damping: 0.02,
+                    strength: 6.0
+                }
+            );
+        }
     }
 
     fn bash_attack(&mut self, item: Item)
@@ -753,8 +750,10 @@ impl<'a> PlayerContainer<'a>
 
         self.bash_projectile(item);
 
+        let holding_entity = self.holding_entity();
+
         let start_rotation = self.default_held_rotation();
-        if let Some(mut lazy) = self.game_state.entities().lazy_transform_mut(self.holding_entity())
+        if let Some(mut lazy) = self.game_state.entities().lazy_transform_mut(holding_entity)
         {
             let edge = 0.4;
 
@@ -777,6 +776,20 @@ impl<'a> PlayerContainer<'a>
             }
 
             lazy.target().rotation = start_rotation - new_rotation;
+
+            let mut watchers = self.game_state.entities().watchers_mut(holding_entity).unwrap();
+
+            watchers.push(Watcher{
+                kind: WatcherType::Lifetime(0.2.into()),
+                action: WatcherAction::SetLazyRotation(Rotation::EaseOut(
+                    EaseOutRotation{
+                        decay: 7.0,
+                        speed_significant: 10.0,
+                        momentum: 0.5
+                    }.into()
+                )),
+                ..Default::default()
+            });
         }
     }
 
@@ -811,12 +824,46 @@ impl<'a> PlayerContainer<'a>
         {
             let distance = self.info.poke_distance;
 
+            let lifetime = self.info.attack_cooldown;
+            lazy.connection = Connection::Timed{
+                lifetime: lifetime.into(),
+                remaining: 0.99,
+                begin: 0.5
+            };
+
             let held_position = self.held_item_position().unwrap();
+
             lazy.target().position.x = held_position.x + distance;
 
-            entities.watchers_mut(holding_entity).unwrap().push(Watcher{
-                kind: WatcherType::Lifetime(0.2.into()),
+            let parent_transform = entities.parent_transform(holding_entity);
+            let new_target = lazy.target_global(parent_transform.as_ref());
+
+            entities.transform_mut(holding_entity).unwrap().position = new_target.position;
+
+            let mut watchers = entities.watchers_mut(holding_entity).unwrap();
+
+            let extend_time = 0.2;
+
+            watchers.push(Watcher{
+                kind: WatcherType::Lifetime(extend_time.into()),
                 action: WatcherAction::SetTargetPosition(held_position),
+                ..Default::default()
+            });
+
+            watchers.push(Watcher{
+                kind: WatcherType::Lifetime(lifetime.into()),
+                action: WatcherAction::SetLazyConnection(Connection::Spring(
+                    SpringConnection{
+                        physical: PhysicalProperties{
+                            mass: 0.5,
+                            friction: 0.4,
+                            floating: true
+                        }.into(),
+                        limit: 0.004,
+                        damping: 0.02,
+                        strength: 6.0
+                    }
+                )),
                 ..Default::default()
             });
         }

@@ -292,6 +292,11 @@ pub fn ease_out(current: f32, target: f32, decay: f32, dt: f32) -> f32
     target + (current - target) * (-decay * dt).exp()
 }
 
+pub fn lerp_dt(current: f32, target: f32, amount: f32, dt: f32) -> f32
+{
+    target + (current - target) * (1.0 - amount).powf(dt)
+}
+
 pub fn lerp(x: f32, y: f32, a: f32) -> f32
 {
     (1.0 - a) * x + y * a

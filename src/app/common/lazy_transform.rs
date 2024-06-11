@@ -9,8 +9,10 @@ use yanyaengine::Transform;
 use crate::common::{
     short_rotation,
     ease_out,
+    lerp_dt,
     Entity,
-    Physical
+    Physical,
+    watcher::Lifetime
 };
 
 
@@ -117,8 +119,9 @@ pub enum Connection
 {
     Rigid,
     Limit{limit: f32},
+    Timed{lifetime: Lifetime, remaining: f32, begin: f32},
     Constant{speed: f32},
-    EaseOut{decay: f32, limit: f32},
+    EaseOut{decay: f32, limit: Option<f32>},
     Spring(SpringConnection)
 }
 
@@ -136,6 +139,28 @@ impl Connection
             Connection::Rigid =>
             {
                 current.position = target;
+            },
+            Connection::Timed{lifetime, remaining: default_amount, begin} =>
+            {
+                let remaining = 1.0 - lifetime.fraction();
+
+                let amount = if remaining >= *begin
+                {
+                    let total_left = 1.0 - *begin;
+                    let remaining = *default_amount + (remaining - *begin) / total_left;
+
+                    remaining.clamp(0.0, 1.0)
+                } else
+                {
+                    *default_amount
+                };
+
+                current.position = current.position.zip_map(&target, |a, b|
+                {
+                    lerp_dt(a, b, amount, dt)
+                });
+
+                lifetime.current -= dt;
             },
             Connection::Constant{speed} =>
             {
@@ -165,11 +190,14 @@ impl Connection
                     ease_out(a, b, *decay, dt)
                 });
 
-                current.position = LazyTransform::clamp_distance(
-                    target,
-                    current.position,
-                    *limit
-                );
+                if let Some(limit) = limit
+                {
+                    current.position = LazyTransform::clamp_distance(
+                        target,
+                        current.position,
+                        *limit
+                    );
+                }
             },
             Connection::Spring(connection) =>
             {
@@ -519,15 +547,16 @@ impl LazyTransform
     {
         match &mut self.connection
         {
-            Connection::Rigid{..} => (),
-            Connection::Constant{..} => (),
+            Connection::Rigid{..}
+            | Connection::Constant{..}
+            | Connection::Timed{..} => (),
             Connection::Limit{limit} =>
             {
                 *limit = new_limit;
             },
             Connection::EaseOut{limit, ..} =>
             {
-                *limit = new_limit;
+                *limit = Some(new_limit);
             },
             Connection::Spring(connection) =>
             {

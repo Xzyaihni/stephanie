@@ -283,6 +283,7 @@ macro_rules! normal_forward_impl
 pub trait AnyEntities
 {
     normal_define!{
+        (lazy_transform, lazy_transform_mut, LazyTransform),
         (transform, transform_mut, Transform),
         (parent, parent_mut, Parent),
         (physical, physical_mut, Physical),
@@ -551,6 +552,7 @@ macro_rules! common_trait_impl
     () =>
     {
         normal_forward_impl!{
+            (lazy_transform, lazy_transform_mut, LazyTransform),
             (transform, transform_mut, Transform),
             (parent, parent_mut, Parent),
             (physical, physical_mut, Physical),
