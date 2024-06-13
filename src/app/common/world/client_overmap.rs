@@ -143,7 +143,7 @@ impl ClientOvermap
         {
             self.chunks[local_pos] = Some(Arc::new(chunk));
 
-            self.check_neighbors_vertical(local_pos);
+            self.check_neighbors(local_pos);
         }
     }
 
@@ -177,9 +177,6 @@ impl ClientOvermap
     {
         self.visual_overmap.camera_moved(position);
 
-        let is_same_tile_height =
-            position.tile_height() == self.indexer.player_position.tile_height();
-
         let rounded_position = position.rounded();
         let old_rounded_position = self.indexer.player_position.rounded();
 
@@ -187,26 +184,9 @@ impl ClientOvermap
 
         self.indexer.player_position = position;
 
-        let z_changed = !is_same_tile_height || position_difference.z != 0;
-        if z_changed
-        {
-            self.visual_overmap.mark_all_ungenerated();
-        }
-
         if position_difference != Pos3::repeat(0)
         {
             self.position_offset(position_difference);
-        }
-
-        if z_changed
-        {
-            self.chunk_ordering.iter().for_each(|pos|
-            {
-                if pos.pos.z == 0
-                {
-                    self.check_vertical(*pos);
-                }
-            });
         }
     }
 
@@ -215,34 +195,25 @@ impl ClientOvermap
         self.world_receiver.request_chunk(pos);
     }
 
-    fn line_exists(&self, pos: LocalPos) -> bool
-    {
-        (0..self.indexer.size.z).all(|z|
-        {
-            let pos = LocalPos::new(Pos3::new(pos.pos.x, pos.pos.y, z), self.indexer.size);
-
-            self.chunks[pos].is_some()
-        })
-    }
-
-    fn check_neighbors_vertical(&self, pos: LocalPos)
+    fn check_neighbors(&self, pos: LocalPos)
     {
         pos.directions_inclusive().flatten().for_each(|position|
-            self.check_vertical(position)
+            self.check_visual(position)
         );
     }
 
-    fn check_vertical(&self, pos: LocalPos)
+    fn check_visual(&self, pos: LocalPos)
     {
         let this_visual_exists = self.visual_overmap.is_generated(pos);
 
         if !this_visual_exists
         {
-            let ready_to_draw = pos.directions_inclusive().flatten().all(|pos|
-                self.line_exists(pos)
-            );
+            let neighbors_exist = pos.directions_inclusive().flatten().all(|pos|
+            {
+                self.chunks[pos].is_some()
+            });
 
-            if ready_to_draw
+            if neighbors_exist
             {
                 self.visual_overmap.generate(&self.chunks, pos);
             }

@@ -43,7 +43,7 @@ mod visual_overmap;
 
 
 pub const CLIENT_OVERMAP_SIZE: usize = 8;
-pub const CLIENT_OVERMAP_SIZE_Z: usize = 2;
+pub const CLIENT_OVERMAP_SIZE_Z: usize = 3;
 
 #[derive(Debug, Clone)]
 pub struct ChunkWithEntities

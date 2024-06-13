@@ -202,6 +202,16 @@ macro_rules! impl_iter
                 self.data.next().map(|(index, value)| (self.indexer.index_to_pos(index), value))
             }
         }
+
+        impl<'a, I, T> DoubleEndedIterator for $name<'a, I, T>
+        where
+            I: ChunkIndexing
+        {
+            fn next_back(&mut self) -> Option<Self::Item>
+            {
+                self.data.next_back().map(|(index, value)| (self.indexer.index_to_pos(index), value))
+            }
+        }
     }
 }
 

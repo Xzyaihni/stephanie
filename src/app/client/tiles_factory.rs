@@ -27,7 +27,7 @@ use crate::common::{
     TileMapWithTextures,
     tilemap::{PADDING, GradientMask, TileInfo},
     world::{
-        CHUNK_VISUAL_SIZE,
+        CHUNK_SIZE,
         TILE_SIZE,
         Chunk,
         PosDirection,
@@ -49,7 +49,7 @@ pub struct ChunkInfo
 const MODELS_AMOUNT: usize = GradientMask::COUNT + 1;
 pub struct ChunkModelBuilder
 {
-    models: [Model; MODELS_AMOUNT],
+    models: [[Model; MODELS_AMOUNT]; CHUNK_SIZE],
     tilemap: Arc<TileMap>
 }
 
@@ -59,43 +59,40 @@ impl ChunkModelBuilder
         tilemap: Arc<TileMap>
     ) -> Self
     {
-        let models = (0..MODELS_AMOUNT).map(|_| Model::new())
-            .collect::<Vec<_>>().try_into().unwrap();
+        let models = (0..CHUNK_SIZE).map(|_|
+        {
+            (0..MODELS_AMOUNT).map(|_| Model::new())
+                .collect::<Vec<_>>().try_into().unwrap()
+        }).collect::<Vec<_>>().try_into().unwrap();
 
         Self{models, tilemap}
     }
 
-    pub fn create(&mut self, chunk_depth: usize, pos: ChunkLocal, tile: Tile)
+    pub fn create(&mut self, pos: ChunkLocal, tile: Tile)
     {
-        self.create_inner(None, chunk_depth, pos, tile);
+        self.create_inner(None, pos, tile);
     }
 
     pub fn create_direction(
         &mut self,
         direction: PosDirection,
-        chunk_depth: usize,
         pos: ChunkLocal,
         tile: Tile
     )
     {
-        self.create_inner(Some(direction), chunk_depth, pos, tile);
+        self.create_inner(Some(direction), pos, tile);
     }
 
     fn create_inner(
         &mut self,
         direction: Option<PosDirection>,
-        chunk_depth: usize,
         chunk_pos: ChunkLocal,
         tile: Tile
     )
     {
-        let pos = {
-            let mut pos = Pos3::<f32>::from(*chunk_pos.pos()) * TILE_SIZE;
+        let pos = Pos3::<f32>::from(*chunk_pos.pos()) * TILE_SIZE;
 
-            pos.z -= chunk_depth as f32 * CHUNK_VISUAL_SIZE;
-
-            pos
-        };
+        let chunk_height = chunk_pos.pos().z;
 
         let id = direction.map_or(0, Self::direction_texture_index);
 
@@ -108,13 +105,13 @@ impl ChunkModelBuilder
 
             let uvs = self.tile_uvs(tile, flip_axes);
 
-            self.models[id].uvs.extend(uvs);
+            self.models[chunk_height][id].uvs.extend(uvs);
         }
 
         {
             let vertices = self.tile_vertices(pos);
 
-            self.models[id].vertices.extend(vertices);
+            self.models[chunk_height][id].vertices.extend(vertices);
         }
     }
 
@@ -177,26 +174,29 @@ impl ChunkModelBuilder
         ].into_iter()
     }
 
-    pub fn build(self, pos: GlobalPos) -> Box<[ChunkInfo]>
+    pub fn build(self, pos: GlobalPos) -> [Box<[ChunkInfo]>; CHUNK_SIZE]
     {
         let transform = Chunk::transform_of_chunk(pos);
 
-        let textures_indices = (iter::once(0)).chain(
-            PosDirection::iter_non_z().map(Self::direction_texture_index)
-        );
+        self.models.map(|models|
+        {
+            let textures_indices = (iter::once(0)).chain(
+                PosDirection::iter_non_z().map(Self::direction_texture_index)
+            );
 
-        self.models.into_iter().zip(textures_indices)
-            .flat_map(|(model, texture_index)|
-            {
-                (!model.vertices.is_empty()).then(||
+            models.into_iter().zip(textures_indices)
+                .flat_map(|(model, texture_index)|
                 {
-                    ChunkInfo{
-                        model: Arc::new(RwLock::new(model)),
-                        transform: transform.clone(),
-                        texture_index
-                    }
-                })
-            }).collect()
+                    (!model.vertices.is_empty()).then(||
+                    {
+                        ChunkInfo{
+                            model: Arc::new(RwLock::new(model)),
+                            transform: transform.clone(),
+                            texture_index
+                        }
+                    })
+                }).collect()
+        })
     }
 
     fn direction_texture_index(direction: PosDirection) -> usize
@@ -263,20 +263,26 @@ impl TilesFactory
         })
     }
 
-    pub fn build(&mut self, chunk_info: Box<[ChunkInfo]>) -> Box<[Object]>
+    pub fn build(
+        &mut self,
+        chunk_info: [Box<[ChunkInfo]>; CHUNK_SIZE]
+    ) -> [Box<[Object]>; CHUNK_SIZE]
     {
-        chunk_info.into_vec().into_iter().map(|chunk_info|
+        chunk_info.map(|chunk_info|
         {
-            let ChunkInfo{model, transform, texture_index} = chunk_info;
+            chunk_info.into_vec().into_iter().map(|chunk_info|
+            {
+                let ChunkInfo{model, transform, texture_index} = chunk_info;
 
-            let object_info = ObjectInfo{
-                model,
-                texture: self.textures[texture_index].clone(),
-                transform
-            };
+                let object_info = ObjectInfo{
+                    model,
+                    texture: self.textures[texture_index].clone(),
+                    transform
+                };
 
-            self.object_factory.create(object_info)
-        }).collect()
+                self.object_factory.create(object_info)
+            }).collect()
+        })
     }
 
     pub fn builder(&self) -> ChunkModelBuilder

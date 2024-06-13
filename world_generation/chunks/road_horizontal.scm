@@ -1,5 +1,9 @@
-(fill-area
-    (filled-chunk (tile (quote concrete)))
-    (make-point 0 2)
-    (make-point size-x (- size-y 4))
-    (tile (quote asphalt)))
+(let ((chunk
+        (fill-area
+            (filled-chunk (tile (quote concrete)))
+            (make-point 0 2)
+            (make-point size-x (- size-y 4))
+            (tile (quote asphalt)))))
+    (begin
+        (vector-set! chunk 44 (tile (quote air)))
+        chunk))

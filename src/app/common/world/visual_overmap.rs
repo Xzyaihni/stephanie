@@ -13,13 +13,11 @@ use nalgebra::Vector2;
 
 use yanyaengine::game_object::*;
 
-use crate::client::{
-    ChunkInfo,
-    TilesFactory
-};
+use crate::client::TilesFactory;
 
 use super::{
     chunk::{
+        TILE_SIZE,
         CHUNK_SIZE,
         CHUNK_VISUAL_SIZE,
         Pos3,
@@ -33,15 +31,14 @@ use super::{
     overmap::{
         OvermapIndexing,
         ChunksContainer,
-        FlatChunksContainer,
-        visual_chunk::VisualChunk
+        visual_chunk::{VisualChunk, VisualChunkInfo}
     }
 };
 
 
 struct VisualGenerated
 {
-    chunk_info: Box<[ChunkInfo]>,
+    chunk_info: VisualChunkInfo,
     position: GlobalPos,
     timestamp: Instant
 }
@@ -69,7 +66,12 @@ impl VisibilityChecker
 
     pub fn visible(&self, pos: LocalPos) -> bool
     {
-        let player_offset = self.player_position.read().modulo(CHUNK_VISUAL_SIZE);
+        if pos.pos.z > (self.size.z / 2)
+        {
+            return false;
+        }
+
+        let player_offset = self.player_offset();
 
         let offset_position = Pos3::from(pos) - Pos3::from(self.size / 2);
 
@@ -85,83 +87,67 @@ impl VisibilityChecker
         in_range(chunk_offset.x, self.camera_size.x)
             && in_range(chunk_offset.y, self.camera_size.y)
     }
-}
 
-pub struct TileInfo
-{
-    pub pos: ChunkLocal,
-    pub chunk_depth: usize,
-    pub tiles: MaybeGroup<Tile>
+    fn player_offset(&self) -> Pos3<f32>
+    {
+        self.player_position.read().modulo(CHUNK_VISUAL_SIZE)
+    }
+
+    fn player_height(&self) -> usize
+    {
+        (self.player_position.read().z / TILE_SIZE) as usize
+    }
+
+    pub fn height(&self, pos: LocalPos) -> usize
+    {
+        let middle = self.size.z / 2;
+
+        if pos.pos.z == middle
+        {
+            self.player_height()
+        } else
+        {
+            CHUNK_SIZE - 1
+        }
+    }
 }
 
 pub struct TileReader
 {
-    chunks: Box<[MaybeGroup<Arc<Chunk>>]>,
-    player_height: usize
+    group: MaybeGroup<Arc<Chunk>>
 }
 
 impl TileReader
 {
     pub fn new(
         chunks: &ChunksContainer<Option<Arc<Chunk>>>,
-        local_pos: LocalPos,
-        player_height: usize
+        local_pos: LocalPos
     ) -> Self
     {
-        let LocalPos{pos, size} = local_pos;
-
-        let chunks = (0..=(size.z / 2)).rev().map(|z|
+        let group = local_pos.maybe_group().map(|position|
         {
-            let local_pos = local_pos.moved(pos.x, pos.y, z);
+            chunks[position].clone().unwrap()
+        });
 
-            local_pos.maybe_group()
-                .map(|position| chunks[position].clone().unwrap())
-        }).collect::<Box<[_]>>();
-
-        Self{chunks, player_height}
+        Self{group}
     }
 
-    pub fn line(&self, x: usize, y: usize) -> impl Iterator<Item=TileInfo> + '_
+    pub fn tile(&self, pos: ChunkLocal) -> MaybeGroup<Tile>
     {
-        self.chunks.iter().enumerate().flat_map(move |(chunk_depth, chunk_group)|
+        pos.maybe_group().remap(|value|
         {
-            // its a single comparison chill out
-            // the compiler better optimize this away >:(
-            let skip_amount = if chunk_depth == 0
+            self.group.this[value]
+        }, |direction, value|
+        {
+            value.map(|pos|
             {
-                // skips all tiles if the player is at the bottom of the chunk
-                CHUNK_SIZE - self.player_height
-            } else
+                Some(self.group.this[pos])
+            }).unwrap_or_else(||
             {
-                0
-            };
-
-            (0..CHUNK_SIZE).rev().skip(skip_amount).map(move |z|
-            {
-                let chunk_local = ChunkLocal::new(x, y, z);
-
-                let tiles = chunk_local.maybe_group().remap(|value|
+                self.group[direction].as_ref().map(|chunk|
                 {
-                    chunk_group.this[value]
-                }, |direction, value|
-                {
-                    value.map(|pos|
-                    {
-                        Some(chunk_group.this[pos])
-                    }).unwrap_or_else(||
-                    {
-                        chunk_group[direction].as_ref().map(|chunk|
-                        {
-                            chunk[chunk_local.overflow(direction)]
-                        })
-                    })
-                });
-
-                TileInfo{
-                    pos: chunk_local,
-                    chunk_depth,
-                    tiles
-                }
+                    chunk[pos.overflow(direction)]
+                })
             })
         })
     }
@@ -171,7 +157,7 @@ impl TileReader
 pub struct VisualOvermap
 {
     tiles_factory: TilesFactory,
-    chunks: FlatChunksContainer<(Instant, VisualChunk)>,
+    chunks: ChunksContainer<(Instant, VisualChunk)>,
     visibility_checker: VisibilityChecker,
     receiver: Receiver<VisualGenerated>,
     sender: Sender<VisualGenerated>
@@ -188,7 +174,7 @@ impl VisualOvermap
     {
         let visibility_checker = VisibilityChecker::new(size, camera_size, player_position);
 
-        let chunks = FlatChunksContainer::new_with(size, |_| (Instant::now(), VisualChunk::new()));
+        let chunks = ChunksContainer::new_with(size, |_| (Instant::now(), VisualChunk::new()));
 
         let (sender, receiver) = mpsc::channel();
 
@@ -201,16 +187,9 @@ impl VisualOvermap
         pos: LocalPos
     )
     {
-        let player_height = self.visibility_checker.player_position.read().tile_height();
-        let tile_reader = TileReader::new(chunks, pos, player_height);
+        let tile_reader = TileReader::new(chunks, pos);
 
-        let chunk_pos = {
-            let mut pos = pos;
-
-            pos.pos.z = self.size().z / 2;
-
-            self.to_global(pos)
-        };
+        let chunk_pos = self.to_global(pos);
 
         let sender = self.sender.clone();
 
@@ -286,6 +265,7 @@ impl VisualOvermap
         self.chunks[pos].1.mark_ungenerated();
     }
 
+    #[allow(dead_code)]
     pub fn mark_all_ungenerated(&mut self)
     {
         self.chunks.iter_mut().for_each(|(_, (_, chunk))|
@@ -301,18 +281,12 @@ impl VisualOvermap
 
     pub fn remove(&mut self, pos: LocalPos)
     {
-        if pos.pos.z == 0
-        {
-            self.chunks[pos] = (Instant::now(), VisualChunk::new());
-        }
+        self.chunks[pos] = (Instant::now(), VisualChunk::new());
     }
 
     pub fn swap(&mut self, a: LocalPos, b: LocalPos)
     {
-        if a.pos.z == 0 && b.pos.z == 0
-        {
-            self.chunks.swap(a, b);
-        }
+        self.chunks.swap(a, b);
     }
 }
 
@@ -336,7 +310,10 @@ impl GameObject for VisualOvermap
         self.chunks.iter_mut().filter(|(pos, _)|
         {
             self.visibility_checker.visible(*pos)
-        }).for_each(|(_, chunk)| chunk.1.update_buffers(info));
+        }).for_each(|(pos, chunk)|
+        {
+            chunk.1.update_buffers(info, self.visibility_checker.height(pos))
+        });
     }
 
     fn draw(&self, info: &mut DrawInfo)
@@ -344,6 +321,9 @@ impl GameObject for VisualOvermap
         self.chunks.iter().filter(|(pos, _)|
         {
             self.visible(*pos)
-        }).for_each(|(_, chunk)| chunk.1.draw(info));
+        }).for_each(|(pos, chunk)|
+        {
+            chunk.1.draw(info, self.visibility_checker.height(pos))
+        });
     }
 }
