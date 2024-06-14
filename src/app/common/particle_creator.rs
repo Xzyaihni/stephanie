@@ -190,7 +190,7 @@ impl ParticleCreator
                     }
                 }
 
-                target.position.z = 0.0;
+                target.position.z = position.z;
 
                 target.rotation = match info.rotation
                 {
