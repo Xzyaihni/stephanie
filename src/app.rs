@@ -8,6 +8,7 @@ use argparse::{ArgumentParser, StoreOption, StoreTrue, Store};
 use yanyaengine::{
     YanyaApp,
     Control,
+    ShaderId,
     game_object::*
 };
 
@@ -27,13 +28,22 @@ pub mod server;
 pub mod client;
 
 
+pub struct AppInfo
+{
+    pub default: ShaderId,
+    pub world: ShaderId
+}
+
 pub struct App(Client);
 
 impl YanyaApp for App
 {
-    fn init(partial_info: InitPartialInfo) -> Self
+    type AppInfo = Option<AppInfo>;
+
+    fn init(partial_info: InitPartialInfo, app_info: Self::AppInfo) -> Self
     {
         let deferred_parse = || TileMap::parse("tiles/tiles.json", "textures/tiles/");
+        let app_info = app_info.unwrap();
 
         let mut name = "player_name".to_owned();
 
