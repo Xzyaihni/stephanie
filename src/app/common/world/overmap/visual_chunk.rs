@@ -38,6 +38,7 @@ pub struct VisualChunk
 {
     objects: [Box<[Object]>; CHUNK_SIZE],
     draw_height: [usize; CHUNK_SIZE],
+    draw_next: [bool; CHUNK_SIZE],
     generated: bool
 }
 
@@ -59,6 +60,7 @@ impl VisualChunk
         Self{
             objects,
             draw_height: [0; CHUNK_SIZE],
+            draw_next: [true; CHUNK_SIZE],
             generated: false
         }
     }
@@ -112,34 +114,42 @@ impl VisualChunk
 
         let occlusions = chunk_info.occlusions;
 
-        let draw_height = Self::from_occlusions(&occlusions);
+        let (draw_next, draw_height) = Self::from_occlusions(&occlusions);
 
         Self{
             objects,
             generated: true,
-            draw_height
+            draw_height,
+            draw_next
         }
+    }
+
+    pub fn draw_next(&self, height: usize) -> bool
+    {
+        self.draw_next[height]
     }
 
     fn from_occlusions(
         occlusions: &[[bool; CHUNK_SIZE * CHUNK_SIZE]; CHUNK_SIZE]
-    ) -> [usize; CHUNK_SIZE]
+    ) -> ([bool; CHUNK_SIZE], [usize; CHUNK_SIZE])
     {
-        (0..CHUNK_SIZE).map(|index|
+        let (next, height): (Vec<_>, Vec<_>) = (0..CHUNK_SIZE).map(|index|
         {
             let amount = Self::unoccluded_amount(occlusions[0..=index].iter().rev());
 
-            amount.min(index + 1)
-        }).collect::<Vec<_>>()
-            .try_into()
-            .unwrap()
+            let draw_next = amount > (index + 1);
+
+            (draw_next, amount.min(index + 1))
+        }).unzip();
+
+        (next.try_into().unwrap(), height.try_into().unwrap())
     }
 
     fn unoccluded_amount<'a>(
         mut occlusions: impl Iterator<Item=&'a [bool; CHUNK_SIZE * CHUNK_SIZE]>
     ) -> usize
     {
-        let mut current_occlusion = if let Some(x) = occlusions.next()
+        let mut current = if let Some(x) = occlusions.next()
         {
             x.to_vec()
         } else
@@ -147,17 +157,34 @@ impl VisualChunk
             return 0;
         };
 
-        occlusions.take_while(|occlusion|
+        Self::unoccluded_amount_inner(&mut current, &mut occlusions)
+    }
+
+    fn unoccluded_amount_inner<'a>(
+        current: &mut Vec<bool>,
+        occlusions: &mut impl Iterator<Item=&'a [bool; CHUNK_SIZE * CHUNK_SIZE]>
+    ) -> usize
+    {
+        let fully_occluded = current.iter().copied().all(convert::identity);
+
+        if fully_occluded
         {
-            let fully_occluded = current_occlusion.iter().copied().all(convert::identity);
-
-            current_occlusion = current_occlusion.iter().zip(occlusion.iter()).map(|(a, b)|
+            1
+        } else
+        {
+            if let Some(occlusion) = occlusions.next()
             {
-                *a || *b
-            }).collect();
+                *current = current.iter().zip(occlusion.iter()).map(|(a, b)|
+                {
+                    *a || *b
+                }).collect();
 
-            !fully_occluded
-        }).count() + 1
+                1 + Self::unoccluded_amount_inner(current, occlusions)
+            } else
+            {
+                2
+            }
+        }
     }
 
     fn create_tile(

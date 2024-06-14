@@ -66,11 +66,6 @@ impl VisibilityChecker
 
     pub fn visible(&self, pos: LocalPos) -> bool
     {
-        if pos.pos.z > (self.size.z / 2)
-        {
-            return false;
-        }
-
         let player_offset = self.player_offset();
 
         let offset_position = Pos3::from(pos) - Pos3::from(self.size / 2);
@@ -109,6 +104,23 @@ impl VisibilityChecker
         {
             CHUNK_SIZE - 1
         }
+    }
+
+    fn visible_z(
+        &self,
+        chunks: &ChunksContainer<(Instant, VisualChunk)>,
+        pos: LocalPos
+    ) -> impl Iterator<Item=LocalPos>
+    {
+        let top = (self.size.z / 2) + 1;
+        let positions = pos.with_z_range(0..top);
+
+        let draw_amount = positions.clone().rev().take_while(|pos|
+        {
+            chunks[*pos].1.draw_next(self.height(*pos))
+        }).count() + 1;
+
+        positions.skip(top.saturating_sub(draw_amount))
     }
 }
 
@@ -307,23 +319,27 @@ impl GameObject for VisualOvermap
 {
     fn update_buffers(&mut self, info: &mut UpdateBuffersInfo)
     {
-        self.chunks.iter_mut().filter(|(pos, _)|
-        {
-            self.visibility_checker.visible(*pos)
-        }).for_each(|(pos, chunk)|
-        {
-            chunk.1.update_buffers(info, self.visibility_checker.height(pos))
-        });
+        self.chunks.positions_2d()
+            .filter(|pos| self.visibility_checker.visible(*pos))
+            .for_each(|pos|
+            {
+                self.visibility_checker.visible_z(&self.chunks, pos).for_each(|pos|
+                {
+                    self.chunks[pos].1.update_buffers(info, self.visibility_checker.height(pos))
+                });
+            });
     }
 
     fn draw(&self, info: &mut DrawInfo)
     {
-        self.chunks.iter().filter(|(pos, _)|
-        {
-            self.visible(*pos)
-        }).for_each(|(pos, chunk)|
-        {
-            chunk.1.draw(info, self.visibility_checker.height(pos))
-        });
+        self.chunks.positions_2d()
+            .filter(|pos| self.visible(*pos))
+            .for_each(|pos|
+            {
+                self.visibility_checker.visible_z(&self.chunks, pos).for_each(|pos|
+                {
+                    self.chunks[pos].1.draw(info, self.visibility_checker.height(pos))
+                });
+            });
     }
 }

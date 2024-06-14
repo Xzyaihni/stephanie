@@ -116,6 +116,15 @@ macro_rules! implement_common
                 (0..self.chunks.len()).map(move |index| indexer.index_to_pos(index))
             }
 
+            pub fn positions_2d(&self) -> impl Iterator<Item=LocalPos>
+            {
+                let size = self.indexer.size().clone();
+                (0..size.y).flat_map(move |y|
+                {
+                    (0..size.x).map(move |x| LocalPos::new(Pos3::new(x, y, 0), size))
+                })
+            }
+
             pub fn iter(&self) -> Iter<$indexer_name, T>
             {
                 Iter::new(self.chunks.iter(), self.indexer.clone())
@@ -341,6 +350,11 @@ impl FlatIndexer
         size.z = 1;
 
         Self{size, z: 0}
+    }
+
+    pub fn size(&self) -> &Pos3<usize>
+    {
+        &self.size
     }
 
     pub fn with_z(mut self, z: usize) -> Self

@@ -1,6 +1,6 @@
 use std::{
     fmt::{self, Display},
-    ops::{Index, Sub, Add, Mul, Div, Neg}
+    ops::{Range, Index, Sub, Add, Mul, Div, Neg}
 };
 
 use serde::{Serialize, Deserialize};
@@ -792,6 +792,11 @@ impl LocalPos
     pub fn moved(&self, x: usize, y: usize, z: usize) -> Self
     {
         Self{pos: Pos3::new(x, y, z), size: self.size}
+    }
+
+    pub fn with_z_range(self, z: Range<usize>) -> impl DoubleEndedIterator<Item=Self> + Clone
+    {
+        z.map(move |z| Self{pos: Pos3{z, ..self.pos}, ..self})
     }
 
     #[allow(dead_code)]
