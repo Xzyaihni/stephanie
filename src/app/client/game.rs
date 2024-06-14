@@ -515,13 +515,18 @@ impl<'a> PlayerContainer<'a>
         if let Some(item_info) = self.item_info(held)
         {
             let entity_info = {
+                let mouse_transform = entities.transform(self.info.mouse_entity).unwrap();
+
                 let holding_entity = self.game_state.player_entities().holding;
                 let holding_transform = entities.transform(holding_entity).unwrap();
 
                 let direction = {
-                    let rotation = entities.transform(player).unwrap().rotation;
+                    let rotation = angle_between(
+                        mouse_transform.position,
+                        holding_transform.position
+                    );
 
-                    Vector3::new(rotation.cos(), rotation.sin(), 0.0)
+                    Vector3::new(rotation.cos(), -rotation.sin(), 0.0)
                 };
 
                 let dust_texture = self.game_state.common_textures.dust;
