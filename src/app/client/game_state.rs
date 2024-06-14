@@ -809,9 +809,9 @@ impl GameState
         self.world.tile(index)
     }
 
-    pub fn player_tile(&self) -> TilePos
+    pub fn tile_of(&self, position: Pos3<f32>) -> TilePos
     {
-        self.world.player_tile()
+        self.world.tile_of(position)
     }
 
     pub fn player_connected(&mut self) -> bool

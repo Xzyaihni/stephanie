@@ -103,9 +103,9 @@ impl World
         self.overmap.tile(index)
     }
 
-    pub fn player_tile(&self) -> TilePos
+    pub fn tile_of(&self, position: Pos3<f32>) -> TilePos
     {
-        self.overmap.player_tile()
+        self.overmap.tile_of(position)
     }
 
     pub fn update(&mut self, dt: f32)

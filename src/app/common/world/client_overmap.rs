@@ -163,13 +163,11 @@ impl ClientOvermap
         })
     }
 
-    pub fn player_tile(&self) -> TilePos
+    pub fn tile_of(&self, position: Pos3<f32>) -> TilePos
     {
-        let pos = self.indexer.player_position;
-
         TilePos{
-            chunk: pos.rounded(),
-            local: ChunkLocal::from(pos.to_tile())
+            chunk: position.rounded(),
+            local: ChunkLocal::from(position.to_tile())
         }
     }
 
