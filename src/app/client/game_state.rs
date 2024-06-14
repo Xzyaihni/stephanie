@@ -867,7 +867,6 @@ impl GameState
     pub fn update(&mut self, game: &mut Game, dt: f32)
     {
         self.check_resize_camera(dt);
-        self.camera_moved();
 
         self.world.update(dt);
 
@@ -954,11 +953,9 @@ impl GameState
         (self.mouse_position - Vector2::repeat(0.5)).component_mul(&camera_size)
     }
 
-    pub fn camera_moved(&mut self)
+    pub fn camera_moved(&mut self, position: Pos3<f32>)
     {
-        let pos = *self.camera.read().position();
-
-        self.world.camera_moved(pos.into());
+        self.world.camera_moved(position);
     }
 
     pub fn resize(&mut self, aspect: f32)

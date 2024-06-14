@@ -90,7 +90,15 @@ impl VisibilityChecker
 
     fn player_height(&self) -> usize
     {
-        (self.player_position.read().z / TILE_SIZE) as usize
+        let z = ((self.player_position.read().z % CHUNK_VISUAL_SIZE) / TILE_SIZE).floor() as i32;
+
+        if z < 0
+        {
+            (CHUNK_SIZE as i32 + z) as usize
+        } else
+        {
+            z as usize
+        }
     }
 
     pub fn height(&self, pos: LocalPos) -> usize

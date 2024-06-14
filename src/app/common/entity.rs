@@ -300,6 +300,8 @@ pub trait AnyEntities
     fn visible_target(&self, entity: Entity) -> Option<RefMut<bool>>;
     fn mix_color_target(&self, entity: Entity) -> Option<RefMut<Option<MixColor>>>;
 
+    fn exists(&self, entity: Entity) -> bool;
+
     fn remove(&mut self, entity: Entity);
     // i cant make remove the &mut cuz reborrowing would stop working :/
     fn push(
@@ -521,10 +523,12 @@ macro_rules! entity_info_common
         {
             if let Some(lazy) = self.lazy_transform.as_ref()
             {
-                let parent_transform = self.parent.as_ref().and_then(|x|
-                {
-                    entities.transform(x.entity).as_deref().cloned()
-                });
+                let parent_transform = self.parent.as_ref()
+                    .filter(|x| entities.exists(x.entity))
+                    .and_then(|x|
+                    {
+                        entities.transform(x.entity).as_deref().cloned()
+                    });
 
                 let new_transform = lazy.target_global(parent_transform.as_ref());
                 self.transform = Some(new_transform);
@@ -560,6 +564,11 @@ macro_rules! common_trait_impl
             (enemy, enemy_mut, Enemy),
             (named, named_mut, String),
             (collider, collider_mut, Collider)
+        }
+
+        fn exists(&self, entity: Entity) -> bool
+        {
+            Self::exists(self, entity)
         }
 
         fn lazy_target_ref(&self, entity: Entity) -> Option<Ref<Transform>>

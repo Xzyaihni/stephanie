@@ -161,7 +161,7 @@ impl ChunkModelBuilder
 
     fn tile_vertices(&self, pos: Pos3<f32>) -> impl Iterator<Item=[f32; 3]>
     {
-        let (x, y, z) = (pos.x, pos.y, pos.z);
+        let (x, y, z) = (pos.x, pos.y, pos.z - TILE_SIZE);
         let (x_end, y_end) = (pos.x + TILE_SIZE, pos.y + TILE_SIZE);
 
         vec![

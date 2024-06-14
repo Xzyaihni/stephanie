@@ -65,7 +65,9 @@ impl Game
     pub fn new(game_state: &mut GameState) -> Self
     {
         let player_entity = game_state.player();
-        let mouse_entity = game_state.entities_mut().push(true, EntityInfo{
+
+        let entities = game_state.entities_mut();
+        let mouse_entity = entities.push(true, EntityInfo{
             transform: Some(Transform{
                 scale: Vector3::repeat(0.1),
                 ..Default::default()
@@ -78,8 +80,17 @@ impl Game
             ..Default::default()
         });
 
+        let camera_entity = entities.push(true, EntityInfo{
+            lazy_transform: Some(LazyTransformInfo{
+                connection: Connection::EaseOut{decay: 5.0, limit: None},
+                ..Default::default()
+            }.into()),
+            ..Default::default()
+        });
+
         let player = PlayerInfo::new(
             game_state.items_info.clone(),
+            camera_entity,
             player_entity,
             mouse_entity
         );
@@ -94,6 +105,11 @@ impl Game
 
     pub fn on_player_connected(&mut self, game_state: &mut GameState)
     {
+        game_state.entities_mut().set_parent(
+            self.player.camera,
+            Some(Parent::new(self.player.entity, true))
+        );
+
         let mut container = self.player_container(game_state);
         container.camera_sync_instant();
         container.update_inventory(InventoryWhich::Player);
@@ -124,6 +140,7 @@ impl Game
 struct PlayerInfo
 {
     items_info: Arc<ItemsInfo>,
+    camera: Entity,
     entity: Entity,
     mouse_entity: Entity,
     other_entity: Option<Entity>,
@@ -135,20 +152,21 @@ struct PlayerInfo
     inventory_open: bool,
     other_inventory_open: bool,
     held_distance: f32,
-    poke_distance: f32,
-    camera_follow: f32
+    poke_distance: f32
 }
 
 impl PlayerInfo
 {
     pub fn new(
         items_info: Arc<ItemsInfo>,
+        camera: Entity,
         entity: Entity,
         mouse_entity: Entity
     ) -> Self
     {
         Self{
             items_info,
+            camera,
             entity,
             mouse_entity,
             other_entity: None,
@@ -160,8 +178,7 @@ impl PlayerInfo
             inventory_open: false,
             other_inventory_open: false,
             held_distance: 0.1,
-            poke_distance: 0.75,
-            camera_follow: 0.25
+            poke_distance: 0.75
         }
     }
 }
@@ -184,29 +201,37 @@ impl<'a> PlayerContainer<'a>
         self.game_state.entities.player_exists()
     }
 
-    pub fn camera_sync(&self)
+    pub fn camera_sync(&mut self)
     {
-        let position = self.player_position();
+        let position = self.game_state.entities().transform(self.info.camera)
+            .map(|transform| transform.position);
 
-        self.game_state.camera.write().translate_to(&position, self.info.camera_follow);
+        if let Some(position) = position
+        {
+            self.game_state.camera.write().set_position(position.into());
 
-        self.camera_sync_z();
+            self.game_state.camera_moved(position.into());
+
+            self.camera_sync_z();
+        }
     }
 
-    pub fn camera_sync_instant(&self)
+    pub fn camera_sync_instant(&mut self)
     {
-        let position = self.player_position();
+        let entities = self.game_state.entities();
+        if let Some(mut transform) = entities.transform_mut(self.info.camera)
+        {
+            *transform = entities.target_ref(self.info.camera).unwrap().clone();
+        }
 
-        self.game_state.camera.write().set_position(position.into());
-
-        self.camera_sync_z();
+        self.camera_sync();
     }
 
     fn camera_sync_z(&self)
     {
-        let player_z = self.player_position().z;
+        let camera_z = self.game_state.entities().transform(self.info.camera).unwrap().position.z;
 
-        let z = (player_z / TILE_SIZE).ceil() * TILE_SIZE;
+        let z = (camera_z / TILE_SIZE).ceil() * TILE_SIZE;
 
         self.game_state.camera.write().set_position_z(z);
     }
