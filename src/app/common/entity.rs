@@ -8,11 +8,12 @@ use serde::{Serialize, Deserialize};
 
 use nalgebra::{Vector2, Vector3, Unit};
 
-use yanyaengine::{game_object::*, TextureId};
+use yanyaengine::TextureId;
 
 use crate::{
     server::ConnectionsHandler,
     client::{
+        RenderCreateInfo,
         UiElement,
         UiEvent
     },
@@ -120,7 +121,7 @@ pub trait ServerToClient<T>
     fn server_to_client(
         self,
         transform: impl FnOnce() -> Transform,
-        create_info: &mut ObjectCreateInfo
+        create_info: &mut RenderCreateInfo
     ) -> T;
 }
 
@@ -134,7 +135,7 @@ impl<T> ServerToClient<T> for T
     fn server_to_client(
         self,
         _transform: impl FnOnce() -> Transform,
-        _create_info: &mut ObjectCreateInfo
+        _create_info: &mut RenderCreateInfo
     ) -> T
     {
         self
@@ -692,7 +693,7 @@ macro_rules! define_entities
         impl ClientEntityInfo
         {
             pub fn from_server(
-                create_info: &mut ObjectCreateInfo,
+                create_info: &mut RenderCreateInfo,
                 info: EntityInfo
             ) -> Self
             {
@@ -967,7 +968,7 @@ macro_rules! define_entities
         {
             pub fn handle_message(
                 &mut self,
-                create_info: &mut ObjectCreateInfo,
+                create_info: &mut RenderCreateInfo,
                 message: Message
             ) -> Option<Message>
             {
@@ -1117,7 +1118,7 @@ macro_rules! define_entities
 
             pub fn create_queued(
                 &mut self,
-                create_info: &mut ObjectCreateInfo
+                create_info: &mut RenderCreateInfo
             )
             {
                 mem::take(&mut self.create_queue).into_iter().for_each(|(entity, info)|
@@ -1542,7 +1543,7 @@ macro_rules! define_entities
 
             pub fn update_sprites(
                 &self,
-                create_info: &mut ObjectCreateInfo,
+                create_info: &mut RenderCreateInfo,
                 enemies_info: &EnemiesInfo
             )
             {

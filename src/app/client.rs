@@ -9,24 +9,12 @@ use nalgebra::Vector2;
 
 use parking_lot::RwLock;
 
-use vulkano::{
-    device::Device,
-    buffer::{
-        BufferUsage,
-        Subbuffer,
-        allocator::{SubbufferAllocator, SubbufferAllocatorCreateInfo}
-    },
-    memory::allocator::StandardMemoryAllocator
-};
-
 use image::error::ImageError;
 
 use yanyaengine::{
+    UniformLocation,
+    ShaderId,
     camera::Camera,
-    object::{
-        ObjectVertex,
-        model::Model
-    },
     game_object::*
 };
 
@@ -34,11 +22,14 @@ use game::Game;
 
 use game_state::{GameState, GameStateInfo};
 
-use crate::common::{
-    ItemsInfo,
-    EnemiesInfo,
-    MessagePasser,
-    tilemap::TileMapWithTextures
+use crate::{
+    app::AppInfo,
+    common::{
+        ItemsInfo,
+        EnemiesInfo,
+        MessagePasser,
+        tilemap::TileMapWithTextures
+    }
 };
 
 pub use visibility_checker::VisibilityChecker;
@@ -64,48 +55,17 @@ pub mod tiles_factory;
 pub mod world_receiver;
 
 
-#[derive(Debug, Clone)]
-pub struct ObjectAllocator
+pub struct RenderCreateInfo<'a, 'b>
 {
-    allocator: Rc<SubbufferAllocator>,
-    frames: usize
-}
-
-impl ObjectAllocator
-{
-    pub fn new(device: Arc<Device>, frames: usize) -> Self
-    {
-        let allocator = StandardMemoryAllocator::new_default(device);
-        let allocator = SubbufferAllocator::new(
-            Arc::new(allocator),
-            SubbufferAllocatorCreateInfo{
-                buffer_usage: BufferUsage::VERTEX_BUFFER | BufferUsage::TRANSFER_DST,
-                ..Default::default()
-            }
-        );
-
-        let allocator = Rc::new(allocator);
-
-        Self{allocator, frames}
-    }
-
-    pub fn subbuffers(&self, model: &Model) -> Box<[Subbuffer<[ObjectVertex]>]>
-    {
-        (0..self.frames).map(|_|
-        {
-            self.allocator.allocate_slice(model.vertices.len() as u64).unwrap()
-        }).collect::<Vec<_>>().into_boxed_slice()
-    }
-
-    pub fn subbuffers_amount(&self) -> usize
-    {
-        self.frames
-    }
+    pub location: UniformLocation,
+    pub shader: ShaderId,
+    pub object_info: &'a mut ObjectCreateInfo<'b>
 }
 
 pub struct ClientInitInfo
 {
     pub client_info: ClientInfo,
+    pub app_info: AppInfo,
     pub tilemap: TileMapWithTextures,
     pub items_info: Arc<ItemsInfo>,
     pub enemies_info: Arc<EnemiesInfo>,
@@ -137,7 +97,11 @@ impl Client
 
         let camera = Arc::new(RwLock::new(camera));
 
-        let tiles_factory = TilesFactory::new(&mut info, client_init_info.tilemap)?;
+        let tiles_factory = TilesFactory::new(
+            &mut info,
+            client_init_info.app_info.shaders.world,
+            client_init_info.tilemap
+        )?;
 
         let stream = TcpStream::connect(&client_init_info.client_info.address)?;
         stream.set_nodelay(true).unwrap();
@@ -145,6 +109,7 @@ impl Client
         let message_passer = MessagePasser::new(stream);
 
         let info = GameStateInfo{
+            shaders: client_init_info.app_info.shaders,
             camera,
             object_info: info.object_info,
             items_info: client_init_info.items_info,

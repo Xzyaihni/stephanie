@@ -21,33 +21,38 @@ use yanyaengine::{
     ObjectFactory,
     Transform,
     TextureId,
+    UniformLocation,
     camera::Camera,
     game_object::*
 };
 
-use crate::common::{
-    sender_loop,
-    receiver_loop,
-    collider::*,
-    TileMap,
-    DamagePartial,
-    ItemsInfo,
-    InventoryItem,
-    AnyEntities,
-    Entity,
-    Entities,
-    EnemiesInfo,
-    ServerToClient,
-    EntityPasser,
-    EntitiesController,
-    PlayerEntities,
-    entity::{ComponentWrapper, ClientEntities},
-    message::Message,
-    world::{
-        World,
-        Pos3,
-        Tile,
-        TilePos
+use crate::{
+    ProgramShaders,
+    client::RenderCreateInfo,
+    common::{
+        sender_loop,
+        receiver_loop,
+        collider::*,
+        TileMap,
+        DamagePartial,
+        ItemsInfo,
+        InventoryItem,
+        AnyEntities,
+        Entity,
+        Entities,
+        EnemiesInfo,
+        ServerToClient,
+        EntityPasser,
+        EntitiesController,
+        PlayerEntities,
+        entity::{ComponentWrapper, ClientEntities},
+        message::Message,
+        world::{
+            World,
+            Pos3,
+            Tile,
+            TilePos
+        }
     }
 };
 
@@ -114,7 +119,7 @@ impl ClientEntitiesContainer
     
     pub fn handle_message(
         &mut self,
-        create_info: &mut ObjectCreateInfo,
+        create_info: &mut RenderCreateInfo,
         message: Message
     ) -> Option<Message>
     {
@@ -131,14 +136,13 @@ impl ClientEntitiesContainer
 
     pub fn update_objects(
         &mut self,
-        visibility: &VisibilityChecker,
         enemies_info: &EnemiesInfo,
-        info: &mut UpdateBuffersInfo,
+        create_info: &mut RenderCreateInfo,
         dt: f32
     )
     {
-        self.entities.create_queued(&mut info.object_info);
-        self.entities.update_sprites(&mut info.object_info, enemies_info);
+        self.entities.create_queued(create_info);
+        self.entities.update_sprites(create_info, enemies_info);
         self.entities.update_watchers(dt);
 
         mem::take(&mut self.local_objects).into_iter().for_each(|(entity, object)|
@@ -149,7 +153,7 @@ impl ClientEntitiesContainer
                 {
                     let object = object.server_to_client(
                         || self.entities.target_ref(entity).unwrap().clone(),
-                        &mut info.object_info
+                        create_info
                     );
 
                     self.entities.set_render(entity, Some(object));
@@ -160,7 +164,7 @@ impl ClientEntitiesContainer
                     {
                         render.object = object.into_client(
                             self.entities.target_ref(entity).unwrap().clone(),
-                            &mut info.object_info
+                            create_info
                         );
                     }
                 },
@@ -168,13 +172,11 @@ impl ClientEntitiesContainer
                 {
                     if let Some(mut render) = self.entities.render_mut(entity)
                     {
-                        render.scissor = Some(scissor.into_global(info.object_info.partial.size));
+                        render.scissor = Some(scissor.into_global(create_info.object_info.partial.size));
                     }
                 }
             }
         });
-
-        self.update_buffers(visibility, info);
     }
 
     pub fn update(
@@ -420,6 +422,7 @@ impl RaycastHits
 
 pub struct GameStateInfo<'a>
 {
+    pub shaders: ProgramShaders,
     pub camera: Arc<RwLock<Camera>>,
     pub object_info: ObjectCreateInfo<'a>,
     pub items_info: Arc<ItemsInfo>,
@@ -476,6 +479,7 @@ pub struct GameState
     pub user_receiver: Rc<RefCell<Vec<UserEvent>>>,
     pub ui: Ui,
     pub common_textures: CommonTextures,
+    shaders: ProgramShaders,
     host: bool,
     camera_scale: f32,
     dt: f32,
@@ -607,6 +611,7 @@ impl GameState
             enemies_info: info.enemies_info,
             controls,
             running: true,
+            shaders: info.shaders,
             debug_mode: info.client_info.debug_mode,
             tilemap,
             camera_scale: 1.0,
@@ -706,7 +711,7 @@ impl GameState
         self.entities.main_player()
     }
 
-    pub fn process_messages(&mut self, create_info: &mut ObjectCreateInfo)
+    pub fn process_messages(&mut self, create_info: &mut RenderCreateInfo)
     {
         loop
         {
@@ -729,7 +734,7 @@ impl GameState
         }
     }
 
-    fn process_message_inner(&mut self, create_info: &mut ObjectCreateInfo, message: Message)
+    fn process_message_inner(&mut self, create_info: &mut RenderCreateInfo, message: Message)
     {
         let message = match self.entities.handle_message(create_info, message)
         {
@@ -826,23 +831,34 @@ impl GameState
 
         self.camera.write().update();
 
-        self.process_messages(&mut info.object_info);
+        self.world.update_buffers(info);
 
         let visibility = self.visibility_checker();
 
-        self.world.update_buffers(info);
+        let mut create_info = RenderCreateInfo{
+            location: UniformLocation{set: 0, binding: 0},
+            shader: self.shaders.default,
+            object_info: &mut info.object_info
+        };
+
+        self.process_messages(&mut create_info);
 
         self.entities.update_objects(
-            &visibility,
             &self.enemies_info,
-            info,
+            &mut create_info,
             self.dt
         );
+
+        self.entities.update_buffers(&visibility, info);
     }
 
     pub fn draw(&self, info: &mut DrawInfo)
     {
+        info.bind_pipeline(self.shaders.world);
+
         self.world.draw(info);
+
+        info.bind_pipeline(self.shaders.default);
 
         let visibility = self.visibility_checker();
 

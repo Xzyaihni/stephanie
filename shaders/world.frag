@@ -13,5 +13,5 @@ void main()
 {
     vec4 color = texture(tex, tex_coords);
 
-    f_color = vec4(mix(mix(color.xyz, vec3(0.0), 0.99), background_color, depth), color.w);
+    f_color = vec4(mix(color.xyz, background_color, depth), color.w);
 }

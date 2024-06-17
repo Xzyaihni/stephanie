@@ -21,6 +21,7 @@ use strum_macros::EnumCount;
 
 use yanyaengine::{
     UniformLocation,
+    ShaderId,
     object::{
         resource_uploader::ResourceUploader,
         texture::{Color, SimpleImage, Texture}
@@ -290,6 +291,7 @@ impl TileMap
     pub fn generate_tilemap(
         &self,
         resource_uploader: &mut ResourceUploader,
+        shader: ShaderId,
         textures: &[SimpleImage]
     ) -> Texture
     {
@@ -340,7 +342,12 @@ impl TileMap
             tilemap.blit(texture, x + PADDING, y + PADDING);
         });
 
-        Texture::new(resource_uploader, tilemap.into(), UniformLocation{set: 0, binding: 0})
+        Texture::new(
+            resource_uploader,
+            tilemap.into(),
+            UniformLocation{set: 0, binding: 0},
+            shader
+        )
     }
 }
 

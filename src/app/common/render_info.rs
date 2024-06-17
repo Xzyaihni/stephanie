@@ -28,7 +28,7 @@ use yanyaengine::{
 };
 
 use crate::{
-    client::VisibilityChecker,
+    client::{RenderCreateInfo, VisibilityChecker},
     common::ServerToClient
 };
 
@@ -77,10 +77,10 @@ impl RenderObject
     pub fn into_client(
         self,
         transform: Transform,
-        create_info: &mut ObjectCreateInfo
+        create_info: &mut RenderCreateInfo
     ) -> Option<ClientRenderObject>
     {
-        let assets = create_info.partial.assets.lock();
+        let assets = create_info.object_info.partial.assets.lock();
 
         match self
         {
@@ -92,7 +92,7 @@ impl RenderObject
                     transform
                 };
 
-                let object = create_info.partial.object_factory.create(info);
+                let object = create_info.object_info.partial.object_factory.create(info);
 
                 Some(ClientRenderObject{
                     kind: ClientObjectType::Normal(object),
@@ -108,11 +108,15 @@ impl RenderObject
             },
             Self::Text{ref text, font_size} =>
             {
-                let object = create_info.partial.builder_wrapper.create_text(TextInfo{
-                    transform,
-                    font_size,
-                    text
-                });
+                let object = create_info.object_info.partial.builder_wrapper.create_text(
+                    TextInfo{
+                        transform,
+                        font_size,
+                        text
+                    },
+                    create_info.location,
+                    create_info.shader
+                );
 
                 if object.object.is_none()
                 {
@@ -273,7 +277,7 @@ impl ClientRenderObject
 
     fn draw(&self, info: &mut DrawInfo, mix: Option<MixColor>)
     {
-        push_constants(info, OutlinedInfo::new(mix, self.outlined));
+        info.push_constants(OutlinedInfo::new(mix, self.outlined));
 
         match &self.kind
         {
@@ -299,7 +303,7 @@ impl ServerToClient<ClientRenderInfo> for RenderInfo
     fn server_to_client(
         self,
         transform: impl FnOnce() -> Transform,
-        create_info: &mut ObjectCreateInfo
+        create_info: &mut RenderCreateInfo
     ) -> ClientRenderInfo
     {
         let object = self.object.and_then(|object|
@@ -309,7 +313,7 @@ impl ServerToClient<ClientRenderInfo> for RenderInfo
 
         let scissor = self.scissor.map(|x|
         {
-            x.into_global(create_info.partial.size)
+            x.into_global(create_info.object_info.partial.size)
         });
 
         ClientRenderInfo{
@@ -357,12 +361,13 @@ impl ClientRenderInfo
 
     pub fn set_sprite(
         &mut self,
-        create_info: &mut ObjectCreateInfo,
+        create_info: &mut RenderCreateInfo,
         transform: Option<&Transform>,
         texture: TextureId
     )
     {
-        let assets = create_info.partial.assets.lock();
+        let object_info = &mut create_info.object_info.partial;
+        let assets = object_info.assets.lock();
 
         let texture = assets.texture(texture).clone();
 
@@ -382,7 +387,7 @@ impl ClientRenderInfo
 
             let object = ClientRenderObject{
                 kind: ClientObjectType::Normal(
-                    create_info.partial.object_factory.create(info)
+                    object_info.object_factory.create(info)
                 ),
                 outlined: false
             };
@@ -474,18 +479,14 @@ impl ClientRenderInfo
 
             if let Some(scissor) = self.scissor
             {
-                info.object_info.builder_wrapper.builder()
-                    .set_scissor(0, vec![scissor].into())
-                    .unwrap();
+                info.set_scissor(scissor);
             }
 
             object.draw(info, self.mix);
 
             if self.scissor.is_some()
             {
-                info.object_info.builder_wrapper.builder()
-                    .set_scissor(0, vec![VulkanoScissor::default()].into())
-                    .unwrap();
+                info.reset_scissor();
             }
         }
     }

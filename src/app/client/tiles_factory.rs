@@ -15,6 +15,7 @@ use yanyaengine::{
     ObjectInfo,
     Transform,
     ObjectFactory,
+    ShaderId,
     object::{
         Texture,
         Model
@@ -225,6 +226,7 @@ impl TilesFactory
 {
     pub fn new(
         init_info: &mut InitInfo,
+        shader: ShaderId,
         tilemap: TileMapWithTextures
     ) -> Result<Self, ImageError>
     {
@@ -238,6 +240,7 @@ impl TilesFactory
         {
             let tilemap = tilemap.generate_tilemap(
                 init_info.object_info.partial.builder_wrapper.resource_uploader(),
+                shader,
                 textures
             );
 

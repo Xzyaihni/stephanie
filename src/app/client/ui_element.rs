@@ -7,10 +7,10 @@ use strum_macros::AsRefStr;
 
 use nalgebra::Vector2;
 
-use yanyaengine::{Transform, game_object::*};
+use yanyaengine::Transform;
 
 use crate::{
-    client::{Control, ControlState, game_state::Ui},
+    client::{Control, ControlState, RenderCreateInfo, game_state::Ui},
     common::{render_info::*, Entity, ServerToClient, entity::ClientEntities}
 };
 
@@ -212,7 +212,7 @@ impl ServerToClient<UiElement> for ()
     fn server_to_client(
         self,
         _transform: impl FnOnce() -> Transform,
-        _create_info: &mut ObjectCreateInfo
+        _create_info: &mut RenderCreateInfo
     ) -> UiElement
     {
         unreachable!()

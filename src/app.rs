@@ -28,10 +28,15 @@ pub mod server;
 pub mod client;
 
 
-pub struct AppInfo
+pub struct ProgramShaders
 {
     pub default: ShaderId,
     pub world: ShaderId
+}
+
+pub struct AppInfo
+{
+    pub shaders: ProgramShaders
 }
 
 pub struct App(Client);
@@ -137,6 +142,7 @@ impl YanyaApp for App
                 name,
                 debug_mode
             },
+            app_info,
             tilemap: deferred_parse().unwrap(),
             items_info,
             enemies_info,

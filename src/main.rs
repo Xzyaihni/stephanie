@@ -7,7 +7,7 @@
 
 use yanyaengine::{App, ShadersContainer, ShadersInfo};
 
-pub use app::{common, server, client};
+pub use app::{common, server, client, ProgramShaders};
 use app::AppInfo;
 
 mod app;
@@ -55,15 +55,17 @@ fn main()
     ));
 
     let init = AppInfo{
-        default: default_shader,
-        world: world_shader
+        shaders: ProgramShaders{
+            default: default_shader,
+            world: world_shader
+        }
     };
 
     App::<app::App>::new()
         .with_title("stey funy")
         .with_textures_path("textures/normal")
         .with_icon("icon.png")
-        .with_shaders(shaders)
+        .with_shaders(shaders, default_shader)
         .with_app_init(Some(init))
         .without_multisampling()
         .with_clear_color([0.831, 0.941, 0.988])
