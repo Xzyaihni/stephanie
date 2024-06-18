@@ -357,16 +357,25 @@ impl ClientEntitiesContainer
     {
         self.entities.update_render();
 
-        self.entities.render.iter_mut().for_each(|(_, entity)|
+        self.entities.render.iter_mut().for_each(|(_, render)|
         {
-            entity.get_mut().update_buffers(visibility, info);
+            render.get_mut().update_buffers(visibility, info);
         });
+
+        if let Some(player_position) = self.player_transform().map(|x| x.position)
+        {
+            self.entities.occluding_plane.iter_mut().for_each(|(_, plane)|
+            {
+                plane.get_mut().update_buffers(visibility, info, player_position);
+            });
+        }
     }
 
     pub fn draw(
         &self,
         visibility: &VisibilityChecker,
-        info: &mut DrawInfo
+        info: &mut DrawInfo,
+        shaders: &ProgramShaders
     )
     {
         let mut queue: Vec<_> = self.entities.render.iter().map(|(_, x)| x).collect();
@@ -377,6 +386,16 @@ impl ClientEntitiesContainer
         {
             render.get().draw(visibility, info);
         });
+
+        info.bind_pipeline(shaders.shadow);
+
+        if self.player_exists()
+        {
+            self.entities.occluding_plane.iter().for_each(|(_, x)|
+            {
+                x.get().draw(visibility, info);
+            });
+        }
     }
 }
 
@@ -599,6 +618,17 @@ impl GameState
         let common_textures = CommonTextures::new(&mut assets.lock());
 
         entities.entities.update_ui_aspect(info.camera.read().aspect());
+
+        use crate::common::AnyEntities;
+        entities.entities.push(true, crate::common::EntityInfo{
+            transform: Some(Transform{
+                position: Vector3::new(0.5, 0.8, 0.0),
+                rotation: 0.3,
+                ..Default::default()
+            }),
+            occluding_plane: Some(()),
+            ..Default::default()
+        });
 
         let this = Self{
             mouse_position,
@@ -862,7 +892,7 @@ impl GameState
 
         let visibility = self.visibility_checker();
 
-        self.entities.draw(&visibility, info);
+        self.entities.draw(&visibility, info, &self.shaders);
     }
 
     fn visibility_checker(&self) -> VisibilityChecker

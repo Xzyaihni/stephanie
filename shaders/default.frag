@@ -7,15 +7,6 @@ layout(location = 0) out vec4 f_color;
 
 layout(set = 0, binding = 0) uniform sampler2D tex;
 
-/*struct Tile
-{
-    bool transparent;
-};
-
-layout(set = 1, binding = 0) readonly buffer WorldInfo{
-    Tile tiles[];
-} world;*/
-
 layout(push_constant) uniform OutlineInfo{
     vec3 other_color;
     float other_mix;

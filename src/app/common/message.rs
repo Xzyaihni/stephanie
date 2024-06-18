@@ -21,6 +21,7 @@ use crate::common::{
     Damage,
     Anatomy,
     RenderInfo,
+    OccludingPlaneServer,
     entity::UiElementServer,
     world::{Chunk, GlobalPos}
 };
@@ -44,6 +45,7 @@ pub enum Message
     SetAnatomy{entity: Entity, anatomy: Anatomy},
     SetEnemy{entity: Entity, enemy: Enemy},
     SetNamed{entity: Entity, named: String},
+    SetOccludingPlane{entity: Entity, occluding_plane: OccludingPlaneServer},
     SetUiElement{entity: Entity, ui_element: UiElementServer},
     SetTarget{entity: Entity, target: Transform},
     EntityDestroy{entity: Entity},
@@ -93,6 +95,7 @@ impl Message
             | Message::SetAnatomy{entity, ..}
             | Message::SetEnemy{entity, ..}
             | Message::SetNamed{entity, ..}
+            | Message::SetOccludingPlane{entity, ..}
             | Message::SetUiElement{entity, ..}
             | Message::SetTarget{entity, ..}
             | Message::EntityDestroy{entity, ..}

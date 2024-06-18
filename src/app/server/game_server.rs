@@ -26,6 +26,7 @@ use crate::common::{
     ENTITY_SCALE,
     render_info::*,
     collider::*,
+    AnyEntities,
     TileMap,
     ItemsInfo,
     Inventory,

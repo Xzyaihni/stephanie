@@ -27,6 +27,8 @@ use crate::{
         lazy_transform::*,
         damaging::*,
         particle_creator::*,
+        OccludingPlane,
+        OccludingPlaneServer,
         Side2d,
         PhysicalProperties,
         DamagePartial,
@@ -200,6 +202,7 @@ no_on_set!{
     Physical,
     Damaging,
     Watchers,
+    OccludingPlane,
     UiElement,
     UiElementServer
 }
@@ -381,7 +384,7 @@ macro_rules! impl_common_systems
 {
     ($this_entity_info:ident) =>
     {
-        pub fn push(
+        fn push(
             &mut self,
             local: bool,
             mut info: $this_entity_info
@@ -686,8 +689,8 @@ macro_rules! define_entities
             }
         }
 
-        pub type ClientEntityInfo = EntityInfo<ClientRenderInfo, UiElement>;
-        pub type ClientEntities = Entities<ClientRenderInfo, UiElement>;
+        pub type ClientEntityInfo = EntityInfo<ClientRenderInfo, OccludingPlane, UiElement>;
+        pub type ClientEntities = Entities<ClientRenderInfo, OccludingPlane, UiElement>;
         pub type ServerEntities = Entities;
 
         impl ClientEntityInfo
@@ -1045,6 +1048,15 @@ macro_rules! define_entities
                     .flatten()
             }
 
+            pub fn push_client(
+                &mut self,
+                local: bool,
+                info: ClientEntityInfo
+            ) -> Entity
+            {
+                self.push(local, info)
+            }
+
             impl_common_systems!{ClientEntityInfo}
 
             pub fn damage_entity(
@@ -1239,17 +1251,22 @@ macro_rules! define_entities
                     component: object
                 })|
                 {
-                    if self.transform(*entity).is_none()
-                    {
-                        dbg!(self.info_ref(*entity));
-                    }
-
                     let transform = self.transform(*entity).unwrap();
 
                     if let Some(object) = object.borrow_mut().object.as_mut()
                     {
                         object.set_transform(transform.clone());
                     }
+                });
+
+                self.occluding_plane.iter().for_each(|(_, ComponentWrapper{
+                    entity,
+                    component: occluding_plane
+                })|
+                {
+                    let transform = self.transform(*entity).unwrap();
+
+                    occluding_plane.borrow_mut().set_transform(transform.clone());
                 });
             }
 
@@ -1700,6 +1717,7 @@ macro_rules! define_entities
 
 define_entities!{
     (render, render_mut, set_render, SetRender, RenderType, RenderInfo),
+    (occluding_plane, occluding_plane_mut, set_occluding_plane, SetOccludingPlane, OccludingPlaneType, OccludingPlaneServer),
     (ui_element, ui_element_mut, set_ui_element, SetUiElement, UiElementType, UiElementServer),
     (lazy_transform, lazy_transform_mut, set_lazy_transform, SetLazyTransform, LazyTransformType, LazyTransform),
     (follow_rotation, follow_rotation_mut, set_follow_rotation, SetFollowRotation, FollowRotationType, FollowRotation),

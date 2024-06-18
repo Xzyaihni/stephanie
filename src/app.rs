@@ -31,7 +31,8 @@ pub mod client;
 pub struct ProgramShaders
 {
     pub default: ShaderId,
-    pub world: ShaderId
+    pub world: ShaderId,
+    pub shadow: ShaderId
 }
 
 pub struct AppInfo

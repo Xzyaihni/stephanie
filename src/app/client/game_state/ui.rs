@@ -766,7 +766,7 @@ impl Ui
         OtherClose: FnMut() + 'static,
         OtherChange: FnMut(InventoryItem) + 'static
     {
-        let anchor = creator.entities.push(true, EntityInfo{
+        let anchor = creator.entities.push_client(true, EntityInfo{
             lazy_transform: Some(LazyTransformInfo{
                 connection: Connection::Limit{limit: 1.0},
                 ..Default::default()

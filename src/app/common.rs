@@ -57,6 +57,7 @@ pub use enemies_info::{EnemyId, EnemyInfo, EnemiesInfo};
 
 pub use chunk_saver::{SaveLoad, WorldChunkSaver, ChunkSaver, EntitiesSaver};
 
+pub use occluding_plane::{OccludingPlane, OccludingPlaneServer};
 pub use render_info::RenderInfo;
 
 pub use anatomy::{Anatomy, HumanAnatomy};
@@ -70,6 +71,7 @@ pub mod lisp;
 pub mod objects_store;
 
 pub mod render_info;
+pub mod occluding_plane;
 
 pub mod damaging;
 pub mod damage;
