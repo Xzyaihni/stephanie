@@ -661,7 +661,7 @@ impl GameState
     {
         let transform = self.entities().transform(entity).unwrap().clone();
 
-        self.send_message(Message::SetTransform{entity, transform});
+        self.send_message(Message::SetTransform{entity, component: transform});
     }
 
     fn connect_to_server(

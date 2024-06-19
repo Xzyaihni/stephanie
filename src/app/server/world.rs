@@ -233,8 +233,9 @@ impl World
     {
         let mut writer = self.message_handler.write();
 
-        entities.for_each(|entity_info|
+        entities.for_each(|mut entity_info|
         {
+            entity_info.saveable = Some(());
             let message = container.push_message(entity_info);
 
             writer.send_message(message);
@@ -400,7 +401,8 @@ impl World
     where
         F: Fn(GlobalPos) -> bool
     {
-        let delete_entities = container.entities_iter()
+        let delete_entities = container.saveable.iter()
+            .map(|(_, x)| x.entity)
             .filter(|entity| container.player(*entity).is_none())
             .filter_map(|entity|
             {
@@ -457,9 +459,9 @@ impl World
                 {
                     info.transform.as_ref().map(|x| x.position)
                 },
-                Message::SetTransform{transform, ..} =>
+                Message::SetTransform{component, ..} =>
                 {
-                    Some(transform.position)
+                    Some(component.position)
                 },
                 _ => None
             }

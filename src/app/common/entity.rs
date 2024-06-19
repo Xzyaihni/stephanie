@@ -253,6 +253,7 @@ impl Parent
     }
 }
 
+pub type Saveable = ();
 pub type UiElementServer = ();
 
 macro_rules! normal_define
@@ -977,6 +978,7 @@ macro_rules! define_entities
             {
                 let message = self.handle_message_common(message)?;
 
+                #[allow(unreachable_patterns)]
                 match message
                 {
                     Message::EntitySet{entity, info} =>
@@ -1025,10 +1027,10 @@ macro_rules! define_entities
 
                         None
                     },
-                    $(Message::$message_name{entity, $name} =>
+                    $(Message::$message_name{entity, component} =>
                     {
                         debug_assert!(!entity.local);
-                        let component = $name.server_to_client(||
+                        let component = component.server_to_client(||
                         {
                             self.transform_clone(entity).expect("expects a transform")
                         }, create_info);
@@ -1455,7 +1457,7 @@ macro_rules! define_entities
                             {
                                 passer.send_message(Message::SetPhysical{
                                     entity,
-                                    physical: physical.clone()
+                                    component: physical.clone()
                                 });
                             }
                         };
@@ -1635,12 +1637,12 @@ macro_rules! define_entities
                 {
                     messager.send_message(Message::SetEnemy{
                         entity,
-                        enemy: enemy.clone()
+                        component: enemy.clone()
                     });
 
                     messager.send_message(Message::SetLazyTransform{
                         entity,
-                        lazy_transform: lazy_transform.clone()
+                        component: lazy_transform.clone()
                     });
                 });
             }
@@ -1699,12 +1701,13 @@ macro_rules! define_entities
             {
                 let message = self.handle_message_common(message)?;
 
+                #[allow(unreachable_patterns)]
                 match message
                 {
-                    $(Message::$message_name{entity, $name} =>
+                    $(Message::$message_name{entity, component} =>
                     {
                         debug_assert!(!entity.local);
-                        self.$set_func(entity, Some($name));
+                        self.$set_func(entity, Some(component));
 
                         None
                     },)+
@@ -1717,8 +1720,8 @@ macro_rules! define_entities
 
 define_entities!{
     (render, render_mut, set_render, SetRender, RenderType, RenderInfo),
-    (occluding_plane, occluding_plane_mut, set_occluding_plane, SetOccludingPlane, OccludingPlaneType, OccludingPlaneServer),
-    (ui_element, ui_element_mut, set_ui_element, SetUiElement, UiElementType, UiElementServer),
+    (occluding_plane, occluding_plane_mut, set_occluding_plane, SetNone, OccludingPlaneType, OccludingPlaneServer),
+    (ui_element, ui_element_mut, set_ui_element, SetNone, UiElementType, UiElementServer),
     (lazy_transform, lazy_transform_mut, set_lazy_transform, SetLazyTransform, LazyTransformType, LazyTransform),
     (follow_rotation, follow_rotation_mut, set_follow_rotation, SetFollowRotation, FollowRotationType, FollowRotation),
     (watchers, watchers_mut, set_watchers, SetWatchers, WatchersType, Watchers),
@@ -1731,5 +1734,6 @@ define_entities!{
     (player, player_mut, set_player, SetPlayer, PlayerType, Player),
     (collider, collider_mut, set_collider, SetCollider, ColliderType, Collider),
     (physical, physical_mut, set_physical, SetPhysical, PhysicalType, Physical),
-    (anatomy, anatomy_mut, set_anatomy, SetAnatomy, AnatomyType, Anatomy)
+    (anatomy, anatomy_mut, set_anatomy, SetAnatomy, AnatomyType, Anatomy),
+    (saveable, saveable_mut, set_saveable, SetNone, SaveableType, Saveable)
 }

@@ -21,8 +21,6 @@ use crate::common::{
     Damage,
     Anatomy,
     RenderInfo,
-    OccludingPlaneServer,
-    entity::UiElementServer,
     world::{Chunk, GlobalPos}
 };
 
@@ -31,22 +29,21 @@ use crate::common::{
 pub enum Message
 {
     EntitySet{entity: Entity, info: EntityInfo},
-    SetParent{entity: Entity, parent: Parent},
-    SetTransform{entity: Entity, transform: Transform},
-    SetLazyTransform{entity: Entity, lazy_transform: LazyTransform},
-    SetFollowRotation{entity: Entity, follow_rotation: FollowRotation},
-    SetInventory{entity: Entity, inventory: Inventory},
-    SetRender{entity: Entity, render: RenderInfo},
-    SetPlayer{entity: Entity, player: Player},
-    SetCollider{entity: Entity, collider: Collider},
-    SetPhysical{entity: Entity, physical: Physical},
-    SetWatchers{entity: Entity, watchers: Watchers},
-    SetDamaging{entity: Entity, damaging: Damaging},
-    SetAnatomy{entity: Entity, anatomy: Anatomy},
-    SetEnemy{entity: Entity, enemy: Enemy},
-    SetNamed{entity: Entity, named: String},
-    SetOccludingPlane{entity: Entity, occluding_plane: OccludingPlaneServer},
-    SetUiElement{entity: Entity, ui_element: UiElementServer},
+    SetParent{entity: Entity, component: Parent},
+    SetTransform{entity: Entity, component: Transform},
+    SetLazyTransform{entity: Entity, component: LazyTransform},
+    SetFollowRotation{entity: Entity, component: FollowRotation},
+    SetInventory{entity: Entity, component: Inventory},
+    SetRender{entity: Entity, component: RenderInfo},
+    SetPlayer{entity: Entity, component: Player},
+    SetCollider{entity: Entity, component: Collider},
+    SetPhysical{entity: Entity, component: Physical},
+    SetWatchers{entity: Entity, component: Watchers},
+    SetDamaging{entity: Entity, component: Damaging},
+    SetAnatomy{entity: Entity, component: Anatomy},
+    SetEnemy{entity: Entity, component: Enemy},
+    SetNamed{entity: Entity, component: String},
+    SetNone{entity: Entity, component: ()},
     SetTarget{entity: Entity, target: Transform},
     EntityDestroy{entity: Entity},
     EntityDamage{entity: Entity, damage: Damage},
@@ -95,8 +92,7 @@ impl Message
             | Message::SetAnatomy{entity, ..}
             | Message::SetEnemy{entity, ..}
             | Message::SetNamed{entity, ..}
-            | Message::SetOccludingPlane{entity, ..}
-            | Message::SetUiElement{entity, ..}
+            | Message::SetNone{entity, ..}
             | Message::SetTarget{entity, ..}
             | Message::EntityDestroy{entity, ..}
             | Message::EntityDamage{entity, ..} => Some(*entity),
