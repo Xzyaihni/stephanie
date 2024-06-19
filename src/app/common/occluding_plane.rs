@@ -70,7 +70,10 @@ impl OccludingPlane
             return;
         }
 
-        self.0.update_buffers(casters.0[0], info);
+        if let Some(&caster) = casters.0.get(0)
+        {
+            self.0.update_buffers(caster, info);
+        }
     }
 
     pub fn draw(
