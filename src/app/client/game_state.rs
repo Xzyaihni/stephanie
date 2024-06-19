@@ -886,8 +886,11 @@ impl GameState
         self.world.draw(info, &visibility, self.shaders.shadow);
 
         info.bind_pipeline(self.shaders.default);
+        info.set_depth_write(false);
 
         self.entities.draw(&visibility, info, &self.shaders);
+
+        info.set_depth_write(true);
     }
 
     fn visibility_checker(&self) -> VisibilityChecker

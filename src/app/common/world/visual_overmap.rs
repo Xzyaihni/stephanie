@@ -131,7 +131,7 @@ impl VisibilityChecker
             chunks[*pos].1.draw_next(self.height(*pos))
         }).count() + 1;
 
-        positions.skip(top.saturating_sub(draw_amount))
+        positions.rev().take(draw_amount)
     }
 }
 
