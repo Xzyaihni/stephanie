@@ -13,15 +13,19 @@ use yanyaengine::{
 };
 
 use crate::{
-    client::tiles_factory::{
-        ChunkSlice,
-        TilesFactory,
-        OccluderInfo,
-        ChunkInfo,
-        ChunkModelBuilder
+    client::{
+        VisibilityChecker,
+        tiles_factory::{
+            ChunkSlice,
+            TilesFactory,
+            OccluderInfo,
+            ChunkInfo,
+            ChunkModelBuilder
+        }
     },
     common::{
         OccludingPlane,
+        OccludingCasters,
         TileMap,
         world::{
             ChunkLocal,
@@ -92,6 +96,7 @@ impl VisualChunk
     ) -> VisualChunkInfo
     {
         let occluders = Self::create_occluders(
+            &tilemap,
             pos,
             &tiles
         );
@@ -156,6 +161,7 @@ impl VisualChunk
     }
 
     fn create_occluders(
+        tilemap: &TileMap,
         pos: GlobalPos,
         tiles: &TileReader
     ) -> ChunkSlice<Box<[OccluderInfo]>>
@@ -173,38 +179,72 @@ impl VisualChunk
         {
             let mut occluders = Vec::new();
 
-            for y in 0..(CHUNK_SIZE + 1)
+            for y in 0..CHUNK_SIZE
             {
                 for x in 0..CHUNK_SIZE
                 {
-                    let occluder = OccluderInfoRaw{
-                        position: Vector2::new(x, y),
-                        horizontal: false,
-                        length: 1
+                    let tile = tiles.tile(ChunkLocal::new(x, y, z));
+
+                    let is_transparent = |tile|
+                    {
+                        tilemap.info(tile).transparent
                     };
 
-                    occluders.push(occluder);
-                }
-            }
+                    if is_transparent(tile.this)
+                    {
+                        if !is_transparent(tile.other.left.unwrap())
+                        {
+                            occluders.push(OccluderInfoRaw{
+                                position: Vector2::new(x, y),
+                                horizontal: false,
+                                length: 1
+                            });
+                        }
 
-            for x in 0..(CHUNK_SIZE + 1)
-            {
-                for y in 0..CHUNK_SIZE
-                {
-                    let occluder = OccluderInfoRaw{
-                        position: Vector2::new(x, y),
-                        horizontal: true,
-                        length: 1
-                    };
+                        if !is_transparent(tile.other.down.unwrap())
+                        {
+                            occluders.push(OccluderInfoRaw{
+                                position: Vector2::new(x, y),
+                                horizontal: true,
+                                length: 1
+                            });
+                        }
+                    } else
+                    {
+                        if is_transparent(tile.other.left.unwrap())
+                        {
+                            occluders.push(OccluderInfoRaw{
+                                position: Vector2::new(x, y),
+                                horizontal: false,
+                                length: 1
+                            });
+                        }
 
-                    occluders.push(occluder);
+                        if is_transparent(tile.other.down.unwrap())
+                        {
+                            occluders.push(OccluderInfoRaw{
+                                position: Vector2::new(x, y),
+                                horizontal: true,
+                                length: 1
+                            });
+                        }
+                    }
                 }
             }
 
             occluders.into_iter().map(|info: OccluderInfoRaw|
             {
-                let tile_position = Vector3::new(info.position.x, info.position.y, z)
-                    .cast() * TILE_SIZE;
+                let mut tile_position = Vector3::new(info.position.x, info.position.y, z).cast();
+
+                if info.horizontal
+                {
+                    tile_position.x += 0.5;
+                } else
+                {
+                    tile_position.y += 0.5;
+                }
+
+                let tile_position = tile_position * TILE_SIZE;
 
                 OccluderInfo{
                     position: chunk_position + tile_position,
@@ -324,23 +364,53 @@ impl VisualChunk
         (height + 1 - draw_amount)..=height
     }
 
-    pub fn update_buffers(&mut self, info: &mut UpdateBuffersInfo, height: usize)
+    pub fn update_buffers(
+        &mut self,
+        info: &mut UpdateBuffersInfo,
+        visibility: &VisibilityChecker,
+        casters: &OccludingCasters,
+        height: usize
+    )
     {
         let draw_range = self.draw_range(height);
 
-        self.objects[draw_range].iter_mut().for_each(|objects|
+        self.objects[draw_range.clone()].iter_mut().for_each(|objects|
         {
             objects.iter_mut().for_each(|object| object.update_buffers(info));
         });
+
+        self.occluders[draw_range].iter_mut().for_each(|occluders|
+        {
+            occluders.iter_mut().for_each(|x| x.update_buffers(visibility, info, casters));
+        });
     }
 
-    pub fn draw(&self, info: &mut DrawInfo, height: usize)
+    pub fn draw_objects(
+        &self,
+        info: &mut DrawInfo,
+        height: usize
+    )
     {
         let draw_range = self.draw_range(height);
 
         self.objects[draw_range].iter().for_each(|objects|
         {
             objects.iter().for_each(|object| object.draw(info));
+        });
+    }
+
+    pub fn draw_shadows(
+        &self,
+        info: &mut DrawInfo,
+        visibility: &VisibilityChecker,
+        height: usize
+    )
+    {
+        let draw_range = self.draw_range(height);
+
+        self.occluders[draw_range].iter().for_each(|occluders|
+        {
+            occluders.iter().for_each(|x| x.draw(visibility, info));
         });
     }
 }

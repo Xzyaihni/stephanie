@@ -57,7 +57,7 @@ pub use enemies_info::{EnemyId, EnemyInfo, EnemiesInfo};
 
 pub use chunk_saver::{SaveLoad, WorldChunkSaver, ChunkSaver, EntitiesSaver};
 
-pub use occluding_plane::{OccludingPlane, OccludingPlaneServer};
+pub use occluding_plane::{OccludingPlane, OccludingPlaneServer, OccludingCasters};
 pub use render_info::RenderInfo;
 
 pub use anatomy::{Anatomy, HumanAnatomy};

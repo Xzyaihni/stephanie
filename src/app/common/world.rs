@@ -1,14 +1,16 @@
 use nalgebra::Vector2;
 
-use yanyaengine::game_object::*;
+use yanyaengine::{ShaderId, game_object::*};
 
 use crate::{
     client::{
+        VisibilityChecker,
         TilesFactory,
         world_receiver::WorldReceiver
     },
     common::{
         Entity,
+        OccludingCasters,
         message::Message
     }
 };
@@ -133,17 +135,24 @@ impl World
             _ => Some(message)
         }
     }
-}
 
-impl GameObject for World
-{
-    fn update_buffers(&mut self, info: &mut UpdateBuffersInfo)
+    pub fn update_buffers(
+        &mut self,
+        info: &mut UpdateBuffersInfo,
+        visibility: &VisibilityChecker,
+        casters: &OccludingCasters
+    )
     {
-        self.overmap.update_buffers(info);
+        self.overmap.update_buffers(info, visibility, casters);
     }
 
-    fn draw(&self, info: &mut DrawInfo)
+    pub fn draw(
+        &self,
+        info: &mut DrawInfo,
+        visibility: &VisibilityChecker,
+        shadow: ShaderId
+    )
     {
-        self.overmap.draw(info);
+        self.overmap.draw(info, visibility, shadow);
     }
 }

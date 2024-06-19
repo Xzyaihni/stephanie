@@ -15,6 +15,16 @@ use crate::{
 
 pub type OccludingPlaneServer = ();
 
+pub struct OccludingCasters(Vec<Vector3<f32>>);
+
+impl From<Vec<Vector3<f32>>> for OccludingCasters
+{
+    fn from(values: Vec<Vector3<f32>>) -> Self
+    {
+        Self(values)
+    }
+}
+
 pub struct OccludingPlane(OccludingPlaneInner);
 
 impl ServerToClient<OccludingPlane> for OccludingPlaneServer
@@ -52,7 +62,7 @@ impl OccludingPlane
         &mut self,
         visibility: &VisibilityChecker,
         info: &mut UpdateBuffersInfo,
-        origin: Vector3<f32>
+        casters: &OccludingCasters
     )
     {
         if !self.visible(visibility)
@@ -60,7 +70,7 @@ impl OccludingPlane
             return;
         }
 
-        self.0.update_buffers(origin, info);
+        self.0.update_buffers(casters.0[0], info);
     }
 
     pub fn draw(

@@ -13,7 +13,10 @@ use nalgebra::Vector2;
 
 use yanyaengine::game_object::*;
 
-use crate::client::TilesFactory;
+use crate::{
+    client::{VisibilityChecker as EntityVisibilityChecker, TilesFactory},
+    common::OccludingCasters
+};
 
 use super::{
     chunk::{
@@ -307,6 +310,72 @@ impl VisualOvermap
     {
         self.chunks.swap(a, b);
     }
+
+    pub fn update_buffers(
+        &mut self,
+        info: &mut UpdateBuffersInfo,
+        visibility: &EntityVisibilityChecker,
+        casters: &OccludingCasters
+    )
+    {
+        self.chunks.positions_2d()
+            .filter(|pos| self.visibility_checker.visible(*pos))
+            .for_each(|pos|
+            {
+                self.visibility_checker.visible_z(&self.chunks, pos).for_each(|pos|
+                {
+                    self.chunks[pos].1.update_buffers(
+                        info,
+                        visibility,
+                        casters,
+                        self.visibility_checker.height(pos)
+                    )
+                });
+            });
+    }
+
+    fn for_each_visible(&self, mut f: impl FnMut(&VisualChunk, LocalPos))
+    {
+        self.chunks.positions_2d()
+            .filter(|pos| self.visible(*pos))
+            .for_each(|pos|
+            {
+                self.visibility_checker.visible_z(&self.chunks, pos).for_each(|pos|
+                {
+                    f(&self.chunks[pos].1, pos)
+                });
+            });
+    }
+
+    pub fn draw_objects(
+        &self,
+        info: &mut DrawInfo
+    )
+    {
+        self.for_each_visible(|chunk, pos|
+        {
+            chunk.draw_objects(
+                info,
+                self.visibility_checker.height(pos)
+            )
+        });
+    }
+
+    pub fn draw_shadows(
+        &self,
+        info: &mut DrawInfo,
+        visibility: &EntityVisibilityChecker
+    )
+    {
+        self.for_each_visible(|chunk, pos|
+        {
+            chunk.draw_shadows(
+                info,
+                visibility,
+                self.visibility_checker.height(pos)
+            )
+        });
+    }
 }
 
 impl OvermapIndexing for VisualOvermap
@@ -319,34 +388,5 @@ impl OvermapIndexing for VisualOvermap
     fn player_position(&self) -> GlobalPos
     {
         self.visibility_checker.player_position.read().rounded()
-    }
-}
-
-impl GameObject for VisualOvermap
-{
-    fn update_buffers(&mut self, info: &mut UpdateBuffersInfo)
-    {
-        self.chunks.positions_2d()
-            .filter(|pos| self.visibility_checker.visible(*pos))
-            .for_each(|pos|
-            {
-                self.visibility_checker.visible_z(&self.chunks, pos).for_each(|pos|
-                {
-                    self.chunks[pos].1.update_buffers(info, self.visibility_checker.height(pos))
-                });
-            });
-    }
-
-    fn draw(&self, info: &mut DrawInfo)
-    {
-        self.chunks.positions_2d()
-            .filter(|pos| self.visible(*pos))
-            .for_each(|pos|
-            {
-                self.visibility_checker.visible_z(&self.chunks, pos).for_each(|pos|
-                {
-                    self.chunks[pos].1.draw(info, self.visibility_checker.height(pos))
-                });
-            });
     }
 }

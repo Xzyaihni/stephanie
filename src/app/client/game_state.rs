@@ -45,6 +45,7 @@ use crate::{
         EntityPasser,
         EntitiesController,
         PlayerEntities,
+        OccludingCasters,
         entity::{ComponentWrapper, ClientEntities},
         message::Message,
         world::{
@@ -352,7 +353,8 @@ impl ClientEntitiesContainer
     fn update_buffers(
         &mut self,
         visibility: &VisibilityChecker,
-        info: &mut UpdateBuffersInfo
+        info: &mut UpdateBuffersInfo,
+        casters: &OccludingCasters
     )
     {
         self.entities.update_render();
@@ -362,13 +364,10 @@ impl ClientEntitiesContainer
             render.get_mut().update_buffers(visibility, info);
         });
 
-        if let Some(player_position) = self.player_transform().map(|x| x.position)
+        self.entities.occluding_plane.iter_mut().for_each(|(_, plane)|
         {
-            self.entities.occluding_plane.iter_mut().for_each(|(_, plane)|
-            {
-                plane.get_mut().update_buffers(visibility, info, player_position);
-            });
-        }
+            plane.get_mut().update_buffers(visibility, info, casters);
+        });
     }
 
     pub fn draw(
@@ -378,6 +377,11 @@ impl ClientEntitiesContainer
         shaders: &ProgramShaders
     )
     {
+        if !self.player_exists()
+        {
+            return;
+        }
+
         let mut queue: Vec<_> = self.entities.render.iter().map(|(_, x)| x).collect();
 
         queue.sort_unstable_by_key(|render| render.get().z_level);
@@ -388,14 +392,10 @@ impl ClientEntitiesContainer
         });
 
         info.bind_pipeline(shaders.shadow);
-
-        if self.player_exists()
+        self.entities.occluding_plane.iter().for_each(|(_, x)|
         {
-            self.entities.occluding_plane.iter().for_each(|(_, x)|
-            {
-                x.get().draw(visibility, info);
-            });
-        }
+            x.get().draw(visibility, info);
+        });
     }
 }
 
@@ -848,11 +848,17 @@ impl GameState
         let mut info = UpdateBuffersInfo::new(partial_info, &self.camera.read());
         let info = &mut info;
 
+        let casters: Vec<_> = self.entities.player_transform().map(|x| x.position)
+            .into_iter()
+            .collect();
+
+        let casters = OccludingCasters::from(casters);
+
         self.camera.write().update();
 
-        self.world.update_buffers(info);
-
         let visibility = self.visibility_checker();
+
+        self.world.update_buffers(info, &visibility, &casters);
 
         let mut create_info = RenderCreateInfo{
             location: UniformLocation{set: 0, binding: 0},
@@ -868,18 +874,18 @@ impl GameState
             self.dt
         );
 
-        self.entities.update_buffers(&visibility, info);
+        self.entities.update_buffers(&visibility, info, &casters);
     }
 
     pub fn draw(&self, info: &mut DrawInfo)
     {
         info.bind_pipeline(self.shaders.world);
 
-        self.world.draw(info);
+        let visibility = self.visibility_checker();
+
+        self.world.draw(info, &visibility, self.shaders.shadow);
 
         info.bind_pipeline(self.shaders.default);
-
-        let visibility = self.visibility_checker();
 
         self.entities.draw(&visibility, info, &self.shaders);
     }

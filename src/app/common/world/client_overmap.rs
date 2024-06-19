@@ -2,9 +2,15 @@ use std::sync::Arc;
 
 use nalgebra::Vector2;
 
-use yanyaengine::game_object::*;
+use yanyaengine::{ShaderId, game_object::*};
 
-use crate::client::world_receiver::WorldReceiver;
+use crate::{
+    client::{
+        VisibilityChecker,
+        world_receiver::WorldReceiver
+    },
+    common::OccludingCasters
+};
 
 use super::{
     Tile,
@@ -216,6 +222,30 @@ impl ClientOvermap
             }
         }
     }
+
+    pub fn update_buffers(
+        &mut self,
+        info: &mut UpdateBuffersInfo,
+        visibility: &VisibilityChecker,
+        casters: &OccludingCasters
+    )
+    {
+        self.visual_overmap.update_buffers(info, visibility, casters);
+    }
+
+    pub fn draw(
+        &self,
+        info: &mut DrawInfo,
+        visibility: &VisibilityChecker,
+        shadow: ShaderId
+    )
+    {
+        self.visual_overmap.draw_objects(info);
+
+        info.bind_pipeline(shadow);
+
+        self.visual_overmap.draw_shadows(info, visibility);
+    }
 }
 
 impl Overmap<Arc<Chunk>> for ClientOvermap
@@ -267,18 +297,5 @@ impl OvermapIndexing for ClientOvermap
     fn player_position(&self) -> GlobalPos
     {
         self.indexer.player_position()
-    }
-}
-
-impl GameObject for ClientOvermap
-{
-    fn update_buffers(&mut self, info: &mut UpdateBuffersInfo)
-    {
-        self.visual_overmap.update_buffers(info);
-    }
-
-    fn draw(&self, info: &mut DrawInfo)
-    {
-        self.visual_overmap.draw(info);
     }
 }
