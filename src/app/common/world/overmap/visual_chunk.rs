@@ -192,41 +192,53 @@ impl VisualChunk
 
                     if is_transparent(tile.this)
                     {
-                        if !is_transparent(tile.other.left.unwrap())
+                        if let Some(left) = tile.other.left
                         {
-                            occluders.push(OccluderInfoRaw{
-                                position: Vector2::new(x, y),
-                                horizontal: false,
-                                length: 1
-                            });
+                            if !is_transparent(left)
+                            {
+                                occluders.push(OccluderInfoRaw{
+                                    position: Vector2::new(x, y),
+                                    horizontal: false,
+                                    length: 1
+                                });
+                            }
                         }
 
-                        if !is_transparent(tile.other.down.unwrap())
+                        if let Some(down) = tile.other.down
                         {
-                            occluders.push(OccluderInfoRaw{
-                                position: Vector2::new(x, y),
-                                horizontal: true,
-                                length: 1
-                            });
+                            if !is_transparent(down)
+                            {
+                                occluders.push(OccluderInfoRaw{
+                                    position: Vector2::new(x, y),
+                                    horizontal: true,
+                                    length: 1
+                                });
+                            }
                         }
                     } else
                     {
-                        if is_transparent(tile.other.left.unwrap())
+                        if let Some(left) = tile.other.left
                         {
-                            occluders.push(OccluderInfoRaw{
-                                position: Vector2::new(x, y),
-                                horizontal: false,
-                                length: 1
-                            });
+                            if is_transparent(left)
+                            {
+                                occluders.push(OccluderInfoRaw{
+                                    position: Vector2::new(x, y),
+                                    horizontal: false,
+                                    length: 1
+                                });
+                            }
                         }
 
-                        if is_transparent(tile.other.down.unwrap())
+                        if let Some(down) = tile.other.down
                         {
-                            occluders.push(OccluderInfoRaw{
-                                position: Vector2::new(x, y),
-                                horizontal: true,
-                                length: 1
-                            });
+                            if is_transparent(down)
+                            {
+                                occluders.push(OccluderInfoRaw{
+                                    position: Vector2::new(x, y),
+                                    horizontal: true,
+                                    length: 1
+                                });
+                            }
                         }
                     }
                 }
