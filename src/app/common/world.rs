@@ -51,7 +51,6 @@ pub struct ChunkWithEntities
     pub entities: Vec<Entity>
 }
 
-#[derive(Debug)]
 pub struct World
 {
     overmap: ClientOvermap

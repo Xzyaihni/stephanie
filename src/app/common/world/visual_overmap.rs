@@ -173,7 +173,6 @@ impl TileReader
     }
 }
 
-#[derive(Debug)]
 pub struct VisualOvermap
 {
     tiles_factory: TilesFactory,

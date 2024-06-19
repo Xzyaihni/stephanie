@@ -94,7 +94,6 @@ impl TilePos
     }
 }
 
-#[derive(Debug)]
 pub struct ClientOvermap
 {
     world_receiver: WorldReceiver,

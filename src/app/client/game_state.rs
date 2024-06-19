@@ -619,17 +619,6 @@ impl GameState
 
         entities.entities.update_ui_aspect(info.camera.read().aspect());
 
-        use crate::common::AnyEntities;
-        entities.entities.push(true, crate::common::EntityInfo{
-            transform: Some(Transform{
-                position: Vector3::new(0.5, 0.8, 0.0),
-                rotation: 0.3,
-                ..Default::default()
-            }),
-            occluding_plane: Some(()),
-            ..Default::default()
-        });
-
         let this = Self{
             mouse_position,
             camera: info.camera,

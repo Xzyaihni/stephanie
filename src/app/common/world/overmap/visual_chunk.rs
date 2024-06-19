@@ -5,20 +5,31 @@ use std::{
     sync::Arc
 };
 
+use nalgebra::{Vector2, Vector3};
+
 use yanyaengine::{
     Object,
     game_object::*
 };
 
 use crate::{
-    client::tiles_factory::{TilesFactory, ChunkInfo, ChunkModelBuilder},
+    client::tiles_factory::{
+        ChunkSlice,
+        TilesFactory,
+        OccluderInfo,
+        ChunkInfo,
+        ChunkModelBuilder
+    },
     common::{
+        OccludingPlane,
         TileMap,
         world::{
             ChunkLocal,
             GlobalPos,
             MaybeGroup,
+            Chunk,
             Tile,
+            TILE_SIZE,
             CHUNK_SIZE,
             PosDirection,
             visual_overmap::TileReader
@@ -29,16 +40,18 @@ use crate::{
 
 pub struct VisualChunkInfo
 {
-    infos: [Box<[ChunkInfo]>; CHUNK_SIZE],
-    occlusions: [[bool; CHUNK_SIZE * CHUNK_SIZE]; CHUNK_SIZE]
+    infos: ChunkSlice<Box<[ChunkInfo]>>,
+    occluders: ChunkSlice<Box<[OccluderInfo]>>,
+    draw_height: ChunkSlice<usize>,
+    draw_next: ChunkSlice<bool>
 }
 
-#[derive(Debug)]
 pub struct VisualChunk
 {
-    objects: [Box<[Object]>; CHUNK_SIZE],
-    draw_height: [usize; CHUNK_SIZE],
-    draw_next: [bool; CHUNK_SIZE],
+    objects: ChunkSlice<Box<[Object]>>,
+    occluders: ChunkSlice<Box<[OccludingPlane]>>,
+    draw_height: ChunkSlice<usize>,
+    draw_next: ChunkSlice<bool>,
     generated: bool
 }
 
@@ -46,23 +59,29 @@ impl VisualChunk
 {
     pub fn new() -> Self
     {
-        let objects: [Box<[Object]>; CHUNK_SIZE] = iter::repeat_with(||
-            {
-                let b: Box<[Object]> = Box::new([]);
-
-                b
-            })
-            .take(CHUNK_SIZE)
-            .collect::<Vec<_>>()
-            .try_into()
-            .unwrap();
+        let objects: ChunkSlice<Box<[Object]>> = Self::create_empty();
+        let occluders: ChunkSlice<Box<[OccludingPlane]>> = Self::create_empty();
 
         Self{
             objects,
+            occluders,
             draw_height: [0; CHUNK_SIZE],
             draw_next: [true; CHUNK_SIZE],
             generated: false
         }
+    }
+
+    fn create_empty<T>() -> ChunkSlice<Box<[T]>>
+    {
+        iter::repeat_with(||
+        {
+            let b: Box<[T]> = Box::new([]);
+
+            b
+        }).take(CHUNK_SIZE)
+            .collect::<Vec<_>>()
+            .try_into()
+            .unwrap_or_else(|_| unreachable!())
     }
 
     pub fn create(
@@ -72,6 +91,11 @@ impl VisualChunk
         tiles: TileReader
     ) -> VisualChunkInfo
     {
+        let occluders = Self::create_occluders(
+            pos,
+            &tiles
+        );
+
         let mut occlusions = [[false; CHUNK_SIZE * CHUNK_SIZE]; CHUNK_SIZE];
 
         for z in 0..CHUNK_SIZE
@@ -99,9 +123,13 @@ impl VisualChunk
 
         let infos = model_builder.build(pos);
 
+        let (draw_next, draw_height) = Self::from_occlusions(&occlusions);
+
         VisualChunkInfo{
-            occlusions,
-            infos
+            infos,
+            occluders,
+            draw_height,
+            draw_next
         }
     }
 
@@ -111,16 +139,14 @@ impl VisualChunk
     ) -> Self
     {
         let objects = tiles_factory.build(chunk_info.infos);
-
-        let occlusions = chunk_info.occlusions;
-
-        let (draw_next, draw_height) = Self::from_occlusions(&occlusions);
+        let occluders = tiles_factory.build_occluders(chunk_info.occluders);
 
         Self{
             objects,
+            occluders,
             generated: true,
-            draw_height,
-            draw_next
+            draw_height: chunk_info.draw_height,
+            draw_next: chunk_info.draw_next
         }
     }
 
@@ -129,9 +155,69 @@ impl VisualChunk
         self.draw_next[height]
     }
 
+    fn create_occluders(
+        pos: GlobalPos,
+        tiles: &TileReader
+    ) -> ChunkSlice<Box<[OccluderInfo]>>
+    {
+        struct OccluderInfoRaw
+        {
+            position: Vector2<usize>,
+            horizontal: bool,
+            length: usize
+        }
+
+        let chunk_position = Chunk::transform_of_chunk(pos).position;
+
+        (0..CHUNK_SIZE).map(|z|
+        {
+            let mut occluders = Vec::new();
+
+            for y in 0..(CHUNK_SIZE + 1)
+            {
+                for x in 0..CHUNK_SIZE
+                {
+                    let occluder = OccluderInfoRaw{
+                        position: Vector2::new(x, y),
+                        horizontal: false,
+                        length: 1
+                    };
+
+                    occluders.push(occluder);
+                }
+            }
+
+            for x in 0..(CHUNK_SIZE + 1)
+            {
+                for y in 0..CHUNK_SIZE
+                {
+                    let occluder = OccluderInfoRaw{
+                        position: Vector2::new(x, y),
+                        horizontal: true,
+                        length: 1
+                    };
+
+                    occluders.push(occluder);
+                }
+            }
+
+            occluders.into_iter().map(|info: OccluderInfoRaw|
+            {
+                let tile_position = Vector3::new(info.position.x, info.position.y, z)
+                    .cast() * TILE_SIZE;
+
+                OccluderInfo{
+                    position: chunk_position + tile_position,
+                    horizontal: info.horizontal,
+                    length: info.length as f32 * TILE_SIZE
+                }
+            }).collect::<Box<[_]>>()
+        }).collect::<Vec<_>>().try_into().unwrap_or_else(|_| unreachable!())
+    }
+
     fn from_occlusions(
-        occlusions: &[[bool; CHUNK_SIZE * CHUNK_SIZE]; CHUNK_SIZE]
-    ) -> ([bool; CHUNK_SIZE], [usize; CHUNK_SIZE])
+        occlusions: &ChunkSlice<[bool; CHUNK_SIZE * CHUNK_SIZE]>
+    ) -> (ChunkSlice<bool>, ChunkSlice<usize>)
     {
         let (next, height): (Vec<_>, Vec<_>) = (0..CHUNK_SIZE).map(|index|
         {

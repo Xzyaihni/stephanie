@@ -1,4 +1,5 @@
 use std::{
+    f32,
     iter,
     rc::Rc,
     sync::Arc
@@ -9,6 +10,8 @@ use image::error::ImageError;
 use strum::{EnumCount, IntoEnumIterator};
 
 use parking_lot::RwLock;
+
+use nalgebra::Vector3;
 
 use yanyaengine::{
     Object,
@@ -24,6 +27,7 @@ use yanyaengine::{
 };
 
 use crate::common::{
+    OccludingPlane,
     TileMap,
     TileMapWithTextures,
     tilemap::{PADDING, GradientMask, TileInfo},
@@ -40,6 +44,15 @@ use crate::common::{
 };
 
 
+pub type ChunkSlice<T> = [T; CHUNK_SIZE];
+
+pub struct OccluderInfo
+{
+    pub position: Vector3<f32>,
+    pub horizontal: bool,
+    pub length: f32
+}
+
 pub struct ChunkInfo
 {
     model: Arc<RwLock<Model>>,
@@ -50,7 +63,7 @@ pub struct ChunkInfo
 const MODELS_AMOUNT: usize = GradientMask::COUNT + 1;
 pub struct ChunkModelBuilder
 {
-    models: [[Model; MODELS_AMOUNT]; CHUNK_SIZE],
+    models: ChunkSlice<[Model; MODELS_AMOUNT]>,
     tilemap: Arc<TileMap>
 }
 
@@ -175,7 +188,10 @@ impl ChunkModelBuilder
         ].into_iter()
     }
 
-    pub fn build(self, pos: GlobalPos) -> [Box<[ChunkInfo]>; CHUNK_SIZE]
+    pub fn build(
+        self,
+        pos: GlobalPos
+    ) -> ChunkSlice<Box<[ChunkInfo]>>
     {
         let transform = Chunk::transform_of_chunk(pos);
 
@@ -268,8 +284,8 @@ impl TilesFactory
 
     pub fn build(
         &mut self,
-        chunk_info: [Box<[ChunkInfo]>; CHUNK_SIZE]
-    ) -> [Box<[Object]>; CHUNK_SIZE]
+        chunk_info: ChunkSlice<Box<[ChunkInfo]>>
+    ) -> ChunkSlice<Box<[Object]>>
     {
         chunk_info.map(|chunk_info|
         {
@@ -284,6 +300,29 @@ impl TilesFactory
                 };
 
                 self.object_factory.create(object_info)
+            }).collect()
+        })
+    }
+
+    pub fn build_occluders(
+        &mut self,
+        occluders: ChunkSlice<Box<[OccluderInfo]>>
+    ) -> ChunkSlice<Box<[OccludingPlane]>>
+    {
+        occluders.map(|occluders|
+        {
+            occluders.into_iter().map(|occluder|
+            {
+                let transform = Transform{
+                    position: occluder.position,
+                    scale: Vector3::repeat(occluder.length),
+                    rotation: if occluder.horizontal { 0.0 } else { f32::consts::FRAC_PI_2 },
+                    ..Default::default()
+                };
+
+                let occluding = self.object_factory.create_occluding(transform);
+
+                OccludingPlane::new(occluding)
             }).collect()
         })
     }

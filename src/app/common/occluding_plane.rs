@@ -27,12 +27,17 @@ impl ServerToClient<OccludingPlane> for OccludingPlaneServer
     {
         let inner = create_info.object_info.partial.object_factory.create_occluding(transform());
 
-        OccludingPlane(inner)
+        OccludingPlane::new(inner)
     }
 }
 
 impl OccludingPlane
 {
+    pub fn new(inner: OccludingPlaneInner) -> Self
+    {
+        OccludingPlane(inner)
+    }
+
     pub fn set_transform(&mut self, transform: Transform)
     {
         self.0.set_transform(transform);
