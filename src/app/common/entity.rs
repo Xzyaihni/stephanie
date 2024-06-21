@@ -72,11 +72,12 @@ macro_rules! components_mut
     }
 }
 
-macro_rules! get_component
+macro_rules! get_entity
 {
-    ($this:expr, $components:expr, $access_type:ident, $component:ident) =>
+    ($this:expr, $entity:expr, $access_type:ident, $component:ident) =>
     {
-        $components[Component::$component as usize]
+        components!($this, $entity).get($entity.id)
+            .and_then(|components| components[Component::$component as usize])
             .map(|id|
             {
                 $this.$component.get(id).unwrap_or_else(||
@@ -84,30 +85,6 @@ macro_rules! get_component
                     panic!("pointer to {} is out of bounds", stringify!($component))
                 }).$access_type()
             })
-    }
-}
-
-macro_rules! get_required_component
-{
-    ($this:expr, $components:expr, $access_type:ident, $component:ident) =>
-    {
-        get_component!($this, $components, $access_type, $component).unwrap_or_else(||
-        {
-            panic!("has no {} component", stringify!($component))
-        })
-    }
-}
-
-macro_rules! get_entity
-{
-    ($this:expr, $entity:expr, $access_type:ident, $component:ident) =>
-    {
-        get_component!(
-            $this,
-            components!($this, $entity)[$entity.id],
-            $access_type,
-            $component
-        )
     }
 }
 
@@ -529,7 +506,6 @@ macro_rules! entity_info_common
             if let Some(lazy) = self.lazy_transform.as_ref()
             {
                 let parent_transform = self.parent.as_ref()
-                    .filter(|x| entities.exists(x.entity))
                     .and_then(|x|
                     {
                         entities.transform(x.entity).as_deref().cloned()
@@ -999,13 +975,12 @@ macro_rules! define_entities
                         })+
 
                         debug_assert!(!entity.local);
-                        let components = &self.components[entity.id];
 
-                        let lazy = get_component!(self, components, get_mut, lazy_transform);
+                        let lazy = self.lazy_transform_mut(entity);
 
                         if let Some(lazy) = lazy
                         {
-                            let parent = get_component!(self, components, get, parent);
+                            let parent = self.parent(entity);
                             let new_transform = if let Some(parent) = parent
                             {
                                 if let Some(parent) = self.transform(parent.entity)
@@ -1020,7 +995,7 @@ macro_rules! define_entities
                                 lazy.target_local.clone()
                             };
 
-                            let mut transform = get_required_component!(self, components, get_mut, transform);
+                            let mut transform = self.transform_mut(entity).unwrap();
 
                             *transform = new_transform;
                         }
@@ -1045,9 +1020,7 @@ macro_rules! define_entities
 
             fn transform_clone(&self, entity: Entity) -> Option<Transform>
             {
-                (self.exists(entity))
-                    .then(|| self.transform(entity).as_deref().cloned())
-                    .flatten()
+                self.transform(entity).as_deref().cloned()
             }
 
             pub fn push_client(
@@ -1290,11 +1263,6 @@ macro_rules! define_entities
 
             pub fn within_interactable_distance(&self, a: Entity, b: Entity) -> bool
             {
-                if !self.exists(a) || !self.exists(b)
-                {
-                    return false;
-                }
-
                 let interactable_distance = 0.5;
 
                 let a = if let Some(x) = self.transform(a)

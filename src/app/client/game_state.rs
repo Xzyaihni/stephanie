@@ -203,10 +203,7 @@ impl ClientEntitiesContainer
 
     pub fn player_transform(&self) -> Option<Ref<Transform>>
     {
-        self.player_exists().then(||
-        {
-            self.entities.transform(self.main_player()).unwrap()
-        })
+        self.entities.transform(self.main_player())
     }
 
     pub fn player_exists(&self) -> bool
