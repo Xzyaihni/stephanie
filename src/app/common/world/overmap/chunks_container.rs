@@ -434,6 +434,14 @@ impl<T> FlatChunksContainer<T>
             acc + &value
         }).unwrap_or_default()
     }
+
+    #[allow(dead_code)]
+    pub fn with_z(mut self, z: usize) -> Self
+    {
+        self.indexer = self.indexer.with_z(z);
+
+        self
+    }
 }
 
 impl<T: fmt::Display> FlatChunksContainer<T>

@@ -28,7 +28,9 @@ use crate::{
         OccludingCasters,
         TileMap,
         world::{
+            Pos3,
             ChunkLocal,
+            LocalPos,
             GlobalPos,
             MaybeGroup,
             Chunk,
@@ -36,11 +38,26 @@ use crate::{
             TILE_SIZE,
             CHUNK_SIZE,
             PosDirection,
+            overmap::FlatChunksContainer,
             visual_overmap::TileReader
         }
     }
 };
 
+
+#[derive(Default, Clone, Copy)]
+struct OccludingState
+{
+    horizontal: bool,
+    vertical: bool
+}
+
+struct OccluderInfoRaw
+{
+    position: Vector2<usize>,
+    horizontal: bool,
+    length: usize
+}
 
 pub struct VisualChunkInfo
 {
@@ -166,23 +183,41 @@ impl VisualChunk
         tiles: &TileReader
     ) -> ChunkSlice<Box<[OccluderInfo]>>
     {
-        struct OccluderInfoRaw
-        {
-            position: Vector2<usize>,
-            horizontal: bool,
-            length: usize
-        }
-
         let chunk_position = Chunk::transform_of_chunk(pos).position;
+
+        type ContainerType = FlatChunksContainer<Option<OccludingState>>;
+
+        let add_horizontal = |plane: &mut ContainerType, pos: Pos3<usize>|
+        {
+            if let Some(occluding) = plane[pos].as_mut()
+            {
+                occluding.horizontal = true;
+            } else
+            {
+                plane[pos] = Some(OccludingState{horizontal: true, vertical: false})
+            }
+        };
+
+        let add_vertical = |plane: &mut ContainerType, pos: Pos3<usize>|
+        {
+            if let Some(occluding) = plane[pos].as_mut()
+            {
+                occluding.vertical = true;
+            } else
+            {
+                plane[pos] = Some(OccludingState{horizontal: false, vertical: true})
+            }
+        };
 
         (0..CHUNK_SIZE).map(|z|
         {
-            let mut occluders = Vec::new();
+            let mut plane: ContainerType = FlatChunksContainer::new(Pos3::repeat(CHUNK_SIZE));
 
             for y in 0..CHUNK_SIZE
             {
                 for x in 0..CHUNK_SIZE
                 {
+                    let pos = Pos3{x, y, z: 0};
                     let tile = tiles.tile(ChunkLocal::new(x, y, z));
 
                     let is_transparent = |tile|
@@ -196,11 +231,7 @@ impl VisualChunk
                         {
                             if !is_transparent(left)
                             {
-                                occluders.push(OccluderInfoRaw{
-                                    position: Vector2::new(x, y),
-                                    horizontal: false,
-                                    length: 1
-                                });
+                                add_vertical(&mut plane, pos);
                             }
                         }
 
@@ -208,11 +239,7 @@ impl VisualChunk
                         {
                             if !is_transparent(down)
                             {
-                                occluders.push(OccluderInfoRaw{
-                                    position: Vector2::new(x, y),
-                                    horizontal: true,
-                                    length: 1
-                                });
+                                add_horizontal(&mut plane, pos);
                             }
                         }
                     } else
@@ -221,11 +248,7 @@ impl VisualChunk
                         {
                             if is_transparent(left)
                             {
-                                occluders.push(OccluderInfoRaw{
-                                    position: Vector2::new(x, y),
-                                    horizontal: false,
-                                    length: 1
-                                });
+                                add_vertical(&mut plane, pos);
                             }
                         }
 
@@ -233,27 +256,23 @@ impl VisualChunk
                         {
                             if is_transparent(down)
                             {
-                                occluders.push(OccluderInfoRaw{
-                                    position: Vector2::new(x, y),
-                                    horizontal: true,
-                                    length: 1
-                                });
+                                add_horizontal(&mut plane, pos);
                             }
                         }
                     }
                 }
             }
 
-            occluders.into_iter().map(|info: OccluderInfoRaw|
+            Self::simplify_occluders(plane).map(|info: OccluderInfoRaw|
             {
                 let mut tile_position = Vector3::new(info.position.x, info.position.y, z).cast();
 
                 if info.horizontal
                 {
-                    tile_position.x += 0.5;
+                    tile_position.x += info.length as f32 * 0.5;
                 } else
                 {
-                    tile_position.y += 0.5;
+                    tile_position.y += info.length as f32 * 0.5;
                 }
 
                 let tile_position = tile_position * TILE_SIZE;
@@ -265,6 +284,103 @@ impl VisualChunk
                 }
             }).collect::<Box<[_]>>()
         }).collect::<Vec<_>>().try_into().unwrap_or_else(|_| unreachable!())
+    }
+
+    fn simplify_occluders(
+        mut occluders: FlatChunksContainer<Option<OccludingState>>
+    ) -> impl Iterator<Item=OccluderInfoRaw>
+    {
+        let to_pos = |pos: LocalPos|
+        {
+            Vector3::<usize>::from(pos.pos).xy()
+        };
+
+        occluders.positions().flat_map(move |pos|
+        {
+            if let Some(occluding) = occluders[pos]
+            {
+                let mut occluder = |horizontal|
+                {
+                    let positions = if horizontal
+                    {
+                        pos.pos.x..pos.size.x
+                    } else
+                    {
+                        pos.pos.y..pos.size.y
+                    };
+
+                    let length = positions.map(|value|
+                    {
+                        let mut position = pos.pos;
+
+                        if horizontal
+                        {
+                            position.x = value;
+                        } else
+                        {
+                            position.y = value;
+                        }
+
+                        position
+                    }).take_while(|&position|
+                    {
+                        if let Some(occluding) = &mut occluders[position]
+                        {
+                            let is_both = occluding.horizontal && occluding.vertical;
+
+                            if horizontal && occluding.horizontal
+                            {
+                                if is_both
+                                {
+                                    occluding.horizontal = false;
+                                } else
+                                {
+                                    occluders[position] = None;
+                                }
+
+                                true
+                            } else if !horizontal && occluding.vertical
+                            {
+                                if is_both
+                                {
+                                    occluding.vertical = false;
+                                } else
+                                {
+                                    occluders[position] = None;
+                                }
+
+                                true
+                            } else
+                            {
+                                false
+                            }
+                        } else
+                        {
+                            false
+                        }
+                    }).count();
+
+                    OccluderInfoRaw{
+                        position: to_pos(pos),
+                        horizontal,
+                        length
+                    }
+                };
+
+                let horizontal = occluding.horizontal.then(|| occluder(true));
+                let vertical = occluding.vertical.then(|| occluder(false));
+                match (horizontal, vertical)
+                {
+                    (Some(a), Some(b)) => vec![a, b],
+                    (Some(a), None) => vec![a],
+                    (None, Some(b)) => vec![b],
+                    (None, None) => vec![]
+                }
+            } else
+            {
+                vec![]
+            }
+        })
     }
 
     fn from_occlusions(

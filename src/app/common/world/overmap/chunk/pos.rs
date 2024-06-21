@@ -122,9 +122,9 @@ impl<T: Mul<Output=T> + Add<Output=T> + Copy> Pos3<T>
     }
 }
 
-impl From<Pos3<f32>> for Vector3<f32>
+impl<T> From<Pos3<T>> for Vector3<T>
 {
-    fn from(value: Pos3<f32>) -> Self
+    fn from(value: Pos3<T>) -> Self
     {
         Self::new(value.x, value.y, value.z)
     }

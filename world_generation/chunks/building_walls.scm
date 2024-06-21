@@ -1,5 +1,5 @@
 (let ((wall-material (tile (quote concrete))))
-    (horizontal-line
+    (fill-area (fill-area (horizontal-line
         (horizontal-line
             (vertical-line
                 (vertical-line
@@ -11,4 +11,4 @@
             0
             wall-material)
         (- size-y 1)
-        wall-material))
+        wall-material) (make-point 6 6) (make-point 2 2) (tile (quote soil))) (make-point 10 6) (make-point 1 1) (tile (quote soil))))
