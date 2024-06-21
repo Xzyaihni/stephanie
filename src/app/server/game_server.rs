@@ -150,18 +150,21 @@ impl GameServer
         stream: TcpStream
     ) -> Result<(), ConnectionError>
     {
-        let (player, id, messager) = this.lock().player_connect_inner(stream)?;
+        let (entities, id, messager) = this.lock().player_connect_inner(stream)?;
+
+        let entities0 = entities.clone();
+        let entities1 = entities.clone();
 
         let other_this = this.clone();
         receiver_loop(
             messager,
             move |message|
             {
-                this.lock().process_message_inner(message, id, player);
+                this.lock().process_message_inner(message, id, entities0.clone());
 
                 ControlFlow::Continue(())
             },
-            move || other_this.lock().connection_close(false, id, player)
+            move || other_this.lock().connection_close(false, id, entities1)
         );
 
         Ok(())
@@ -170,7 +173,7 @@ impl GameServer
     fn player_connect_inner(
         &mut self,
         stream: TcpStream
-    ) -> Result<(Entity, ConnectionId, MessagePasser), ConnectionError>
+    ) -> Result<(PlayerEntities, ConnectionId, MessagePasser), ConnectionError>
     {
         let player_index = self.entities.player.len() + 1;
 
@@ -318,11 +321,11 @@ impl GameServer
             other: player_children
         };
 
-        let (connection, messager) = self.player_create(player_entities, player_info)?;
+        let (connection, messager) = self.player_create(player_entities.clone(), player_info)?;
 
         self.world.add_player(&mut self.entities, connection, position.into());
 
-        Ok((inserted, connection, messager))
+        Ok((player_entities, connection, messager))
     }
 
     fn player_info(&self, stream: TcpStream, entity: Entity) -> Result<PlayerInfo, ConnectionError>
@@ -371,7 +374,7 @@ impl GameServer
         Ok((connection_id, messager.clone_messager()))
     }
 
-    fn connection_close(&mut self, host: bool, id: ConnectionId, entity: Entity)
+    fn connection_close(&mut self, host: bool, id: ConnectionId, entities: PlayerEntities)
     {
         let removed = self.connection_handler.write().remove_connection(id);
 
@@ -397,10 +400,19 @@ impl GameServer
             println!("player \"{removed_name}\" disconnected");
         }
 
-        self.connection_handler.write().send_message(self.entities.remove_message(entity));
+        let mut writer = self.connection_handler.write();
+        entities.iter().for_each(|&entity|
+        {
+            writer.send_message(self.entities.remove_message(entity));
+        });
     }
 
-    fn process_message_inner(&mut self, message: Message, id: ConnectionId, player: Entity)
+    fn process_message_inner(
+        &mut self,
+        message: Message,
+        id: ConnectionId,
+        entities: PlayerEntities
+    )
     {
         let message = match message
         {
@@ -418,7 +430,12 @@ impl GameServer
             self.connection_handler.write().send_message_without(id, message.clone());
         }
 
-        let message = match self.world.handle_message(&mut self.entities, id, player, message)
+        let message = match self.world.handle_message(
+            &mut self.entities,
+            id,
+            entities.player,
+            message
+        )
         {
             Some(x) => x,
             None => return
@@ -432,7 +449,7 @@ impl GameServer
 
         match message
         {
-            Message::PlayerDisconnect{host} => self.connection_close(host, id, player),
+            Message::PlayerDisconnect{host} => self.connection_close(host, id, entities),
             x => panic!("unhandled message: {x:?}")
         }
     }

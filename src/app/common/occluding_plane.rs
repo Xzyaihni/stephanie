@@ -53,7 +53,7 @@ impl OccludingPlane
         self.0.set_transform(transform);
     }
 
-    fn visible(&self, visibility: &VisibilityChecker) -> bool
+    fn visible(&self, _visibility: &VisibilityChecker) -> bool
     {
         true
     }

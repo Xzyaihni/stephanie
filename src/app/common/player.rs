@@ -19,6 +19,11 @@ impl PlayerEntities
             || self.holding == entity
             || self.other.contains(&entity)
     }
+
+    pub fn iter(&self) -> impl Iterator<Item=&Entity>
+    {
+        [&self.player, &self.holding].into_iter().chain(self.other.iter())
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
