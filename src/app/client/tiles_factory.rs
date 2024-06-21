@@ -104,7 +104,7 @@ impl ChunkModelBuilder
         tile: Tile
     )
     {
-        let pos = Pos3::<f32>::from(*chunk_pos.pos()) * TILE_SIZE;
+        let mut pos = Pos3::<f32>::from(*chunk_pos.pos()) * TILE_SIZE;
 
         let chunk_height = chunk_pos.pos().z;
 
@@ -123,6 +123,11 @@ impl ChunkModelBuilder
         }
 
         {
+            if direction.is_some()
+            {
+                pos.z += 0.01;
+            }
+
             let vertices = self.tile_vertices(pos);
 
             self.models[chunk_height][id].vertices.extend(vertices);
