@@ -597,7 +597,7 @@ impl<'a> PlayerContainer<'a>
                                         object: Some(RenderObject::TextureId{
                                             id: dust_texture
                                         }),
-                                        z_level: ZLevel::Lower,
+                                        z_level: ZLevel::BelowFeet,
                                         ..Default::default()
                                     }),
                                     ..Default::default()
@@ -614,7 +614,7 @@ impl<'a> PlayerContainer<'a>
                 object: Some(RenderObject::TextureId{
                     id: item_info.texture
                 }),
-                z_level: ZLevel::Middle,
+                z_level: ZLevel::Elbow,
                 ..Default::default()
             };
 
@@ -653,7 +653,8 @@ impl<'a> PlayerContainer<'a>
         let angle = self.info.bash_side.to_angle() - f32::consts::FRAC_PI_2;
 
         self.info.projectile_lifetime = 0.2;
-        self.info.projectile = Some(self.game_state.entities.entity_creator().push(
+        self.info.projectile = Some(self.game_state.entities_mut().push(
+            true,
             EntityInfo{
                 follow_rotation: Some(FollowRotation::new(
                     holding_entity,
@@ -683,11 +684,6 @@ impl<'a> PlayerContainer<'a>
                     ..Default::default()
                 }.into()),
                 ..Default::default()
-            },
-            RenderInfo{
-                object: None,
-                z_level: ZLevel::Low,
-                ..Default::default()
             }
         ));
     }
@@ -711,7 +707,8 @@ impl<'a> PlayerContainer<'a>
         };
 
         self.info.projectile_lifetime = 0.2;
-        self.info.projectile = Some(self.game_state.entities.entity_creator().push(
+        self.info.projectile = Some(self.game_state.entities_mut().push(
+            true,
             EntityInfo{
                 follow_rotation: Some(FollowRotation::new(
                     holding_entity,
@@ -740,11 +737,6 @@ impl<'a> PlayerContainer<'a>
                     is_player: true,
                     ..Default::default()
                 }.into()),
-                ..Default::default()
-            },
-            RenderInfo{
-                object: None,
-                z_level: ZLevel::Low,
                 ..Default::default()
             }
         ));

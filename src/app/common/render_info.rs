@@ -167,13 +167,17 @@ impl Scissor
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum ZLevel
 {
-    Lowest = 0,
-    Lower,
-    Low,
-    Middle,
-    High,
-    Higher,
-    Highest,
+    BelowFeet = 0,
+    Feet,
+    Knee,
+    Hips,
+    Waist,
+    Arms,
+    Elbow,
+    Shoulders,
+    Head,
+    Hair,
+    Hat,
     UiLow,
     UiMiddle,
     UiHigh,
@@ -201,7 +205,7 @@ impl Default for RenderInfo
             object: None,
             shape: Some(BoundingShape::Circle),
             mix: None,
-            z_level: ZLevel::Middle
+            z_level: ZLevel::Shoulders
         }
     }
 }

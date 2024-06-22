@@ -70,7 +70,7 @@ impl<'a> EnemyBuilder<'a>
             }.into()),
             render: Some(RenderInfo{
                 shape: Some(BoundingShape::Circle),
-                z_level: ZLevel::High,
+                z_level: ZLevel::Head,
                 ..Default::default()
             }),
             collider: Some(ColliderInfo{

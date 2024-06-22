@@ -1094,7 +1094,7 @@ macro_rules! define_entities
                                 object: Some(RenderObject::TextureId{
                                     id: blood_texture
                                 }),
-                                z_level: ZLevel::Lowest,
+                                z_level: ZLevel::Knee,
                                 ..Default::default()
                             }),
                             ..Default::default()

@@ -52,7 +52,7 @@ impl<'a> FurnitureBuilder<'a>
                     name: "furniture/crate.png".to_owned()
                 }),
                 shape: Some(BoundingShape::Circle),
-                z_level: ZLevel::Low,
+                z_level: ZLevel::Hips,
                 ..Default::default()
             }),
             collider: Some(ColliderInfo{

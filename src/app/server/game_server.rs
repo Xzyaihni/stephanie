@@ -205,7 +205,7 @@ impl GameServer
                     name: "player/hair.png".to_owned()
                 }),
                 shape: Some(BoundingShape::Circle),
-                z_level: ZLevel::Higher,
+                z_level: ZLevel::Head,
                 ..Default::default()
             }),
             collider: Some(ColliderInfo{
@@ -240,7 +240,7 @@ impl GameServer
                     name: "placeholder.png".to_owned()
                 }),
                 shape: Some(BoundingShape::Circle),
-                z_level: ZLevel::Middle,
+                z_level: ZLevel::Arms,
                 ..Default::default()
             }),
             parent: Some(Parent::new(inserted, false)),
@@ -303,7 +303,7 @@ impl GameServer
                         name: "player/pon.png".to_owned()
                     }),
                     shape: Some(BoundingShape::Circle),
-                    z_level: ZLevel::Highest,
+                    z_level: ZLevel::Hair,
                     ..Default::default()
                 }),
                 ..Default::default()
