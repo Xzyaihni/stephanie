@@ -7,11 +7,11 @@
 (define (index-of point)
     (+ (* size-x (point-y point)) (point-x point))) 
 
-(define (make-point x y) (cons x y))
+(define make-point cons)
 
-(define (point-x p) (car p))
+(define point-x car)
 
-(define (point-y p) (cdr p))
+(define point-y cdr)
 
 (define (vertical-line-length chunk pos len tile)
     (if (= len 0)

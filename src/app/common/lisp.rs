@@ -103,6 +103,7 @@ pub union ValueRaw
     pub char: char,
     pub len: usize,
     pub procedure: usize,
+    pub primitive_procedure: usize,
     tag: ValueTag,
     pub special: Special,
     list: usize,
@@ -122,6 +123,7 @@ pub enum ValueTag
     Symbol,
     Special,
     Procedure,
+    PrimitiveProcedure,
     List,
     Vector
 }
@@ -136,6 +138,7 @@ impl ValueTag
                 | ValueTag::Float
                 | ValueTag::Char
                 | ValueTag::Procedure
+                | ValueTag::PrimitiveProcedure
                 | ValueTag::Special => false,
             ValueTag::String
                 | ValueTag::Symbol
@@ -260,6 +263,13 @@ impl LispValue
     {
         unsafe{
             Self::new(ValueTag::Procedure, ValueRaw{procedure})
+        }
+    }
+
+    pub fn new_primitive_procedure(primitive_procedure: usize) -> Self
+    {
+        unsafe{
+            Self::new(ValueTag::PrimitiveProcedure, ValueRaw{primitive_procedure})
         }
     }
 
@@ -409,6 +419,15 @@ impl LispValue
         }
     }
 
+    pub fn as_primitive_procedure(self) -> Result<usize, Error>
+    {
+        match self.tag
+        {
+            ValueTag::PrimitiveProcedure => Ok(unsafe{ self.value.primitive_procedure }),
+            x => Err(Error::WrongType{expected: ValueTag::PrimitiveProcedure, got: x})
+        }
+    }
+
     pub fn to_string(&self, memory: &LispMemory) -> String
     {
         self.maybe_to_string(Some(memory)).expect("always returns some with memory")
@@ -423,6 +442,7 @@ impl LispValue
             ValueTag::Char => Some(unsafe{ self.value.char.to_string() }),
             ValueTag::Special => Some(unsafe{ self.value.special.to_string() }),
             ValueTag::Procedure => Some(format!("<procedure #{}>", unsafe{ self.value.procedure })),
+            ValueTag::PrimitiveProcedure => Some(format!("<primitive procedure #{}>", unsafe{ self.value.primitive_procedure })),
             ValueTag::String => memory.map(|memory|
             {
                 memory.get_string(unsafe{ self.value.string }).unwrap()
@@ -1130,7 +1150,7 @@ impl DerefMut for Lisp
 
 pub struct LispRef
 {
-    environment: Option<Arc<Mutex<Environment<'static>>>>,
+    environment: Arc<Mutex<Environment<'static>>>,
     program: Program
 }
 
@@ -1140,9 +1160,17 @@ impl LispRef
     /// if an env has some invalid data it will cause ub
     pub unsafe fn new_with_config(config: LispConfig, code: &str) -> Result<Self, ErrorPos>
     {
+        let environment = config.environment.unwrap_or_else(||
+        {
+            let mut env = Environment::new();
+            config.primitives.add_to_env(&mut env);
+
+            Arc::new(Mutex::new(env))
+        });
+
         let program = Program::parse(config.primitives, config.lambdas, code)?;
 
-        Ok(Self{program, environment: config.environment})
+        Ok(Self{program, environment})
     }
 
     pub fn new(code: &str) -> Result<Self, ErrorPos>
@@ -1176,12 +1204,9 @@ impl LispRef
 
     fn new_environment(&self) -> Environment<'static>
     {
-        self.environment.as_ref().map(|x|
-        {
-            let env: &Environment<'static> = &x.lock();
+        let env: &Environment<'static> = &self.environment.lock();
 
-            Environment::clone(env)
-        }).unwrap_or_else(Environment::new)
+        Environment::clone(env)
     }
 
     fn run_inner<'a>(
@@ -1278,6 +1303,41 @@ mod tests
 
         // simple math too hard for me sry
         assert_eq!(value, (34_i32 + 28));
+    }
+
+    #[test]
+    fn define_lambdas()
+    {
+        let code = "
+            (define one (lambda (x) (+ x 5)))
+            (define two one)
+
+            (+ (two 4) (one 5))
+        ";
+
+        let mut lisp = Lisp::new(code).unwrap();
+
+        let value = lisp.run().unwrap().as_integer().unwrap();
+
+        assert_eq!(value, 19);
+    }
+
+    #[test]
+    fn redefine_primitive()
+    {
+        let code = "
+            (define cooler-cons cons)
+
+            (define l (cooler-cons 5 3))
+
+            (+ (car l) (cdr l))
+        ";
+
+        let mut lisp = Lisp::new(code).unwrap();
+
+        let value = lisp.run().unwrap().as_integer().unwrap();
+
+        assert_eq!(value, 8);
     }
 
     #[test]

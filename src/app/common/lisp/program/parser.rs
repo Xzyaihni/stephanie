@@ -40,7 +40,7 @@ impl AstPos
         {
             Ast::Value(x) => Ast::parse_primitive(x)
                 .map_err(|error| ErrorPos{position: self.position, error}),
-            x => panic!("as_number must be called on a value, called on {x:?}")
+            x => panic!("as_value must be called on a value, called on {x:?}")
         }
     }
 

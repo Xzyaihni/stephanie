@@ -4,7 +4,7 @@ use std::{
     fmt::{self, Debug},
     sync::Arc,
     collections::HashMap,
-    ops::{Add, Sub, Mul, Div, Rem, Deref, DerefMut}
+    ops::{Add, Sub, Mul, Div, Rem, Deref}
 };
 
 pub use super::{Error, ErrorPos, Environment, LispValue, LispMemory, ValueTag, LispVectorRef};
@@ -135,10 +135,18 @@ impl<T> WithPosition for Result<T, Error>
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PrimitiveProcedureType
+{
+    Simple,
+    Deferred
+}
+
 #[derive(Clone)]
 pub struct PrimitiveProcedureInfo
 {
     args_count: ArgsCount,
+    kind: PrimitiveProcedureType,
     on_eval: Option<OnEval>,
     on_apply: Option<OnApply>
 }
@@ -152,6 +160,7 @@ impl PrimitiveProcedureInfo
     {
         Self{
             args_count: args_count.into(),
+            kind: PrimitiveProcedureType::Deferred,
             on_eval: Some(on_eval),
             on_apply: None
         }
@@ -165,6 +174,7 @@ impl PrimitiveProcedureInfo
     {
         Self{
             args_count: args_count.into(),
+            kind: PrimitiveProcedureType::Deferred,
             on_eval: Some(on_eval),
             on_apply: Some(on_apply)
         }
@@ -175,6 +185,7 @@ impl PrimitiveProcedureInfo
     {
         Self{
             args_count: args_count.into(),
+            kind: PrimitiveProcedureType::Deferred,
             on_eval: None,
             on_apply: Some(on_apply)
         }
@@ -214,6 +225,7 @@ impl PrimitiveProcedureInfo
 
         Self{
             args_count: args_count.into(),
+            kind: PrimitiveProcedureType::Simple,
             on_eval: None,
             on_apply: Some(on_apply)
         }
@@ -269,7 +281,7 @@ impl Procedure
         s: String
     ) -> Result<ExpressionPos, ErrorPos>
     {
-        if let Some(primitive) = state.primitives.get(&s).cloned()
+        if let Some(primitive) = state.primitives.get_by_name(&s).cloned()
         {
             match primitive.args_count
             {
@@ -404,24 +416,10 @@ impl Lambdas
 }
 
 #[derive(Debug, Clone)]
-pub struct Primitives(HashMap<String, PrimitiveProcedureInfo>);
-
-impl Deref for Primitives
+pub struct Primitives
 {
-    type Target = HashMap<String, PrimitiveProcedureInfo>;
-
-    fn deref(&self) -> &Self::Target
-    {
-        &self.0
-    }
-}
-
-impl DerefMut for Primitives
-{
-    fn deref_mut(&mut self) -> &mut Self::Target
-    {
-        &mut self.0
-    }
+    indices: HashMap<String, usize>,
+    primitives: Vec<PrimitiveProcedureInfo>
 }
 
 impl Primitives
@@ -473,7 +471,7 @@ impl Primitives
             }
         }
 
-        let primitives = [
+        let (indices, primitives): (HashMap<_, _>, Vec<_>) = [
             ("make-vector",
                 PrimitiveProcedureInfo::new_simple(2, |_state, memory, env, mut args|
                 {
@@ -754,14 +752,47 @@ impl Primitives
 
                     Ok(())
                 })),
-        ].into_iter().map(|(k, v)| (k.to_owned(), v)).collect();
+        ].into_iter().enumerate().map(|(index, (k, v))|
+        {
+            ((k.to_owned(), index), v)
+        }).unzip();
 
-        Self(primitives)
+        Self{
+            indices,
+            primitives
+        }
     }
 
     pub fn add(&mut self, name: impl Into<String>, procedure: PrimitiveProcedureInfo)
     {
-        self.0.insert(name.into(), procedure);
+        let name = name.into();
+
+        let id = self.primitives.len();
+
+        self.primitives.push(procedure);
+        self.indices.insert(name, id);
+    }
+
+    pub fn get_by_name(&self, name: &str) -> Option<&PrimitiveProcedureInfo>
+    {
+        self.indices.get(name).map(|index| self.get(*index))
+    }
+
+    pub fn get(&self, id: usize) -> &PrimitiveProcedureInfo
+    {
+        &self.primitives[id]
+    }
+
+    pub fn add_to_env(&self, env: &mut Environment)
+    {
+        self.indices.iter()
+            .filter(|(_, value)| self.primitives[**value].kind == PrimitiveProcedureType::Simple)
+            .for_each(|(key, value)|
+            {
+                let value = LispValue::new_primitive_procedure(*value);
+
+                env.define(key, value);
+            });
     }
 
     fn call_op<FI, FF>(
@@ -1088,7 +1119,23 @@ impl ExpressionPos
                 let proc = env.lookup(name)
                     .map_err(|error| ErrorPos{position: self.position, error})?;
 
-                proc.as_procedure().with_position(self.position)?
+                if let ValueTag::Procedure = proc.tag
+                {
+                    proc.as_procedure().with_position(self.position)?
+                } else
+                {
+                    let id = proc.as_primitive_procedure().with_position(self.position)?;
+
+                    let proc = state.primitives.get(id);
+
+                    return (proc.on_apply.as_ref().expect("must have apply"))(
+                        state,
+                        memory,
+                        env,
+                        self,
+                        action
+                    );
+                }
             },
             CompoundProcedure::Lambda(id) => *id
         };
