@@ -8,9 +8,7 @@
     (+ (* size-x (point-y point)) (point-x point))) 
 
 (define make-point cons)
-
 (define point-x car)
-
 (define point-y cdr)
 
 (define (vertical-line-length chunk pos len tile)

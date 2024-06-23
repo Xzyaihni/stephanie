@@ -182,8 +182,10 @@ impl ClientEntitiesContainer
 
     pub fn update(
         &mut self,
+        world: &World,
         passer: &mut impl EntityPasser,
         damage_info: TextureId,
+        is_trusted: bool,
         dt: f32
     )
     {
@@ -192,7 +194,12 @@ impl ClientEntitiesContainer
         self.entities.update_follows(dt);
         self.entities.update_enemy(dt);
         self.entities.update_children();
-        self.entities.update_colliders(passer);
+
+        {
+            let passer = &mut *passer;
+            self.entities.update_colliders(world, is_trusted.then(move || passer));
+        }
+
         self.entities.update_damaging(passer, damage_info);
     }
 
@@ -497,6 +504,7 @@ pub struct GameState
     pub common_textures: CommonTextures,
     shaders: ProgramShaders,
     host: bool,
+    is_trusted: bool,
     camera_scale: f32,
     dt: f32,
     enemies_info: Arc<EnemiesInfo>,
@@ -636,6 +644,7 @@ impl GameState
             ui,
             common_textures,
             host: info.host,
+            is_trusted: false,
             user_receiver,
             connections_handler,
             receiver
@@ -770,6 +779,10 @@ impl GameState
             {
                 self.update_inventory();
                 self.notifications.set(Notification::PlayerConnected);
+            },
+            Message::SetTrusted =>
+            {
+                self.is_trusted = true;
             },
             x => panic!("unhandled message: {x:?}")
         }
@@ -922,7 +935,13 @@ impl GameState
 
         {
             let mut passer = self.connections_handler.write();
-            self.entities.update(&mut *passer, self.damage_info(), dt);
+            self.entities.update(
+                &self.world,
+                &mut *passer,
+                self.damage_info(),
+                self.is_trusted,
+                dt
+            );
         }
 
         game.update(self, dt);

@@ -68,6 +68,38 @@ pub struct TilePos
 
 impl TilePos
 {
+    pub fn position(&self) -> Pos3<f32>
+    {
+        let big_pos: Pos3<f32> = self.chunk.into();
+        let small_pos: Pos3<f32> = self.local.into();
+
+        big_pos + small_pos
+    }
+
+    pub fn tiles_between(&self, other: Self) -> impl Iterator<Item=TilePos> + '_
+    {
+        let distance = self.distance(other);
+
+        (0..=distance.z).flat_map(move |z|
+        {
+            (0..=distance.y).flat_map(move |y|
+            {
+                (0..=distance.x).map(move |x| Pos3::new(x, y, z))
+            })
+        }).map(|pos|
+        {
+            self.offset(pos)
+        })
+    }
+
+    pub fn distance(&self, other: Self) -> Pos3<i32>
+    {
+        let chunk = other.chunk.0 - self.chunk.0;
+        let local = other.local.pos().map(|x| x as i32) - self.local.pos().map(|x| x as i32);
+
+        chunk * CHUNK_SIZE as i32 + local
+    }
+
     pub fn offset(self, offset: Pos3<i32>) -> Self
     {
         let (chunk, local) = self.local.pos()

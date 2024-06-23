@@ -52,6 +52,7 @@ pub enum Message
     PlayerFullyConnected,
     PlayerDisconnect{host: bool},
     PlayerDisconnectFinished,
+    SetTrusted,
     ChunkRequest{pos: GlobalPos},
     ChunkSync{pos: GlobalPos, chunk: Chunk},
     RepeatMessage{message: Box<Message>}
@@ -101,6 +102,7 @@ impl Message
             | Message::PlayerFullyConnected
             | Message::PlayerDisconnect{..}
             | Message::PlayerDisconnectFinished
+            | Message::SetTrusted
             | Message::ChunkRequest{..}
             | Message::ChunkSync{..}
             | Message::RepeatMessage{..} => None

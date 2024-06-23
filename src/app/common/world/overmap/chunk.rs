@@ -31,6 +31,14 @@ impl PartialEq for ChunkLocal
     }
 }
 
+impl From<ChunkLocal> for Pos3<f32>
+{
+    fn from(value: ChunkLocal) -> Self
+    {
+        value.0.map(|x| x as f32 * TILE_SIZE)
+    }
+}
+
 impl From<Pos3<usize>> for ChunkLocal
 {
     fn from(value: Pos3<usize>) -> Self

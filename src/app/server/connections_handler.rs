@@ -55,6 +55,7 @@ impl PlayerInfo
 pub struct ConnectionsHandler
 {
     connections: ObjectsStore<PlayerInfo>,
+    trusted_player: Option<ConnectionId>,
     limit: usize
 }
 
@@ -64,7 +65,7 @@ impl ConnectionsHandler
     {
         let connections = ObjectsStore::with_capacity(limit);
 
-        Self{connections, limit}
+        Self{connections, trusted_player: None, limit}
     }
 
     pub fn remove_connection(&mut self, id: ConnectionId) -> Option<PlayerInfo>
@@ -74,6 +75,11 @@ impl ConnectionsHandler
         if let Some(removed) = removed.as_mut()
         {
             removed.message_buffer.clear();
+        }
+
+        if self.trusted_player == Some(id)
+        {
+            self.update_trusted(self.existing_player());
         }
 
         removed
@@ -86,7 +92,29 @@ impl ConnectionsHandler
 
     pub fn connect(&mut self, player_info: PlayerInfo) -> ConnectionId
     {
-        ConnectionId(self.connections.push(player_info))
+        let id = ConnectionId(self.connections.push(player_info));
+
+        if self.trusted_player.is_none()
+        {
+            self.update_trusted(Some(id));
+        }
+
+        id
+    }
+
+    fn update_trusted(&mut self, trusted: Option<ConnectionId>)
+    {
+        self.trusted_player = trusted;
+
+        if let Some(id) = trusted
+        {
+            self.send_single(id, Message::SetTrusted);
+        }
+    }
+
+    fn existing_player(&self) -> Option<ConnectionId>
+    {
+        self.connections.iter().next().map(|(id, _)| ConnectionId(id))
     }
 
     pub fn get(&self, id: ConnectionId) -> &PlayerInfo

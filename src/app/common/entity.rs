@@ -39,7 +39,8 @@ use crate::{
         Player,
         Enemy,
         EnemiesInfo,
-        Physical
+        Physical,
+        world::World
     }
 };
 
@@ -1344,9 +1345,43 @@ macro_rules! define_entities
 
             pub fn update_colliders(
                 &mut self,
-                passer: &mut impl EntityPasser
+                world: &World,
+                mut passer: Option<&mut impl EntityPasser>
             )
             {
+                macro_rules! colliding_info
+                {
+                    ($result_variable:expr, $physical:expr, $collider:expr, $entity:expr) =>
+                    {
+                        {
+                            let transform = self.transform($entity).unwrap().clone();
+                            let collider: Ref<Collider> = $collider.borrow();
+
+                            $result_variable = CollidingInfo{
+                                entity: $entity,
+                                physical: $physical.as_deref_mut(),
+                                transform,
+                                target: |mut offset: Vector3<f32>|
+                                {
+                                    let mut target = self.target($entity).unwrap();
+
+                                    if let Some(parent) = self.parent($entity)
+                                    {
+                                        let parent_scale = self.transform(parent.entity)
+                                            .unwrap()
+                                            .scale;
+
+                                        offset = offset.component_div(&parent_scale);
+                                    }
+
+                                    target.position += offset;
+                                },
+                                collider: collider.clone()
+                            };
+                        }
+                    }
+                }
+
                 self.collider.iter().for_each(|(_, ComponentWrapper{
                     component: collider,
                     ..
@@ -1363,59 +1398,23 @@ macro_rules! define_entities
                     component: ref other_collider
                 }|
                 {
-                    macro_rules! colliding_info
-                    {
-                        ($result_variable:expr, $physical_name:ident, $collider:expr, $entity:expr) =>
-                        {
-                            let mut $physical_name = self.physical_mut($entity);
-
-                            {
-                                let transform = self.transform($entity).unwrap().clone();
-                                let collider: Ref<Collider> = $collider.borrow();
-
-                                $result_variable = CollidingInfo{
-                                    physical: $physical_name.as_deref_mut(),
-                                    transform,
-                                    target: |mut offset: Vector3<f32>|
-                                    {
-                                        let mut target = self.target($entity).unwrap();
-
-                                        if let Some(parent) = self.parent($entity)
-                                        {
-                                            let parent_scale = self.transform(parent.entity)
-                                                .unwrap()
-                                                .scale;
-
-                                            offset = offset.component_div(&parent_scale);
-                                        }
-
-                                        target.position += offset;
-                                    },
-                                    collider: collider.clone()
-                                };
-                            }
-                        }
-                    }
-
+                    let mut physical = self.physical_mut(entity);
                     let this;
                     colliding_info!{this, physical, collider, entity};
 
+                    let mut other_physical = self.physical_mut(other_entity);
                     let other;
                     colliding_info!{other, other_physical, other_collider, other_entity};
 
                     let collision = this.resolve(other);
 
-                    if collision
+                    if let (true, Some(passer)) = (collision, passer.as_mut())
                     {
                         let mut on_collision = |
                             entity,
-                            collider: &RefCell<Collider>,
-                            physical: Option<RefMut<Physical>>,
-                            other_entity
+                            physical: Option<RefMut<Physical>>
                         |
                         {
-                            collider.borrow_mut().push_collided(other_entity);
-
                             passer.send_message(Message::SetTarget{
                                 entity,
                                 target: self.target_ref(entity).unwrap().clone()
@@ -1430,19 +1429,49 @@ macro_rules! define_entities
                             }
                         };
 
-                        on_collision(entity, collider, physical, other_entity);
-                        on_collision(other_entity, other_collider, other_physical, entity);
+                        on_collision(entity, physical);
+                        on_collision(other_entity, other_physical);
                     }
                 };
 
-                let mut colliders = self.collider.iter().map(|(_, x)| x);
-
-                // calls the function for each unique combination (excluding (self, self) pairs)
-                colliders.clone().for_each(|a|
                 {
-                    colliders.by_ref().next();
-                    colliders.clone().for_each(|b| pairs_fn(a, b));
-                });
+                    let mut colliders = self.collider.iter().map(|(_, x)| x);
+
+                    // calls the function for each unique combination (excluding (self, self) pairs)
+                    colliders.clone().for_each(|a|
+                    {
+                        colliders.by_ref().next();
+                        colliders.clone().for_each(|b| pairs_fn(a, b));
+                    });
+                }
+
+                /*self.collider.iter().for_each(|(_, &ComponentWrapper{
+                    entity,
+                    component: ref collider
+                })|
+                {
+                    let this;
+                    colliding_info!{this, physical, collider, entity};
+
+                    this.resolve_with_world(world);
+                });*/
+
+                let colliders: Vec<_> = self.collider.iter().map(|(_, x)| x.clone()).collect();
+                for ComponentWrapper{entity, component: collider} in colliders
+                {
+                    let mut physical = self.physical_mut(entity).map(|x| x.clone());
+                    let physical = &mut physical;
+
+                    let this = CollidingInfo{
+                        entity,
+                        physical: physical.as_mut(),
+                        transform: self.transform(entity).unwrap().clone(),
+                        target: |_: Vector3<f32>| {},
+                        collider: collider.borrow().clone()
+                    };
+
+                    this.resolve_with_world(self, world);
+                }
             }
 
             pub fn update_lazy_one(

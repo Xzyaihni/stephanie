@@ -4,7 +4,16 @@ use nalgebra::Vector3;
 
 use yanyaengine::Transform;
 
-use crate::common::{Entity, Physical};
+use crate::common::{
+    Entity,
+    Physical,
+    world::{
+        TILE_SIZE,
+        TilePos,
+        Pos3,
+        World
+    }
+};
 
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -119,6 +128,7 @@ impl Collider
 
 pub struct CollidingInfo<'a, F>
 {
+    pub entity: Entity,
     pub physical: Option<&'a mut Physical>,
     pub target: F,
     pub transform: Transform,
@@ -343,7 +353,7 @@ where
             return false
         }
 
-        match (self.collider.kind, other.collider.kind)
+        let collided = match (self.collider.kind, other.collider.kind)
         {
             (ColliderType::Point, ColliderType::Point) => false,
             (ColliderType::Circle, ColliderType::Circle) =>
@@ -360,6 +370,83 @@ where
             {
                 self.normal_collision(&mut other)
             }
+        };
+
+        self.collider.push_collided(other.entity);
+        other.collider.push_collided(self.entity);
+
+        collided
+    }
+
+    pub fn resolve_with_world(
+        self,
+        entities: &mut impl crate::common::AnyEntities,
+        world: &World
+    ) -> bool
+    {
+        let tile_of = |pos: Vector3<f32>|
+        {
+            world.tile_of(pos.into())
+        };
+
+        let size = self.scale();
+
+        let pos = self.transform.position;
+
+        let start_tile = tile_of(pos - size);
+        let end_tile = tile_of(pos + size);
+
+        let tile_pos = |tile: TilePos| -> Vector3<f32>
+        {
+            (tile.position() + Pos3::repeat(TILE_SIZE / 2.0)).into()
+        };
+
+        {
+            use crate::common::{
+                watcher::*,
+                render_info::*
+            };
+
+            let mut make_thingy = |position, scale, name, z_level|
+            {
+                entities.push(true, crate::common::EntityInfo{
+                    transform: Some(Transform{
+                        position,
+                        scale,
+                        ..Default::default()
+                    }),
+                    render: Some(RenderInfo{
+                        object: Some(RenderObject::Texture{name}),
+                        z_level,
+                        ..Default::default()
+                    }),
+                    watchers: Some(Watchers::new(vec![
+                        Watcher{
+                            kind: WatcherType::Lifetime(0.1.into()),
+                            action: WatcherAction::Remove,
+                            ..Default::default()
+                        }
+                    ])),
+                    ..Default::default()
+                });
+            };
+
+            let mut make_tile = |position|
+            {
+                make_thingy(
+                    position,
+                    Vector3::repeat(TILE_SIZE),
+                    "placeholder.png".to_owned(),
+                    ZLevel::Arms
+                );
+            };
+
+            start_tile.tiles_between(end_tile).for_each(|tile|
+            {
+                make_tile(tile_pos(tile));
+            });
         }
+
+        false
     }
 }
