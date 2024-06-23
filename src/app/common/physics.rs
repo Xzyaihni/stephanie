@@ -47,13 +47,11 @@ impl Physical
     {
         if !self.floating
         {
+            self.force += self.mass * GRAVITY;
             self.grounded = true;
         }
 
         self.velocity += (self.force * dt) / self.mass;
-
-        // move this up after i add collisions
-        self.force += self.mass * GRAVITY;
 
         if self.grounded
         {
