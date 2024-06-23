@@ -29,7 +29,8 @@ pub enum ColliderLayer
 {
     Normal,
     Damage,
-    Ui
+    Ui,
+    World
 }
 
 impl ColliderLayer
@@ -57,7 +58,11 @@ impl ColliderLayer
             (Normal, Ui, false),
             (Damage, Damage, false),
             (Damage, Normal, true),
-            (Damage, Ui, false)
+            (Damage, Ui, false),
+            (World, World, false),
+            (World, Normal, true),
+            (World, Damage, true),
+            (World, Ui, false)
         }
     }
 }
@@ -342,7 +347,7 @@ where
     }
 
     pub fn resolve<OtherF>(
-        mut self,
+        &mut self,
         mut other: CollidingInfo<OtherF>
     ) -> bool
     where
@@ -389,7 +394,7 @@ where
     }
 
     pub fn resolve_with_world(
-        self,
+        &mut self,
         world: &World
     ) -> bool
     {
@@ -410,12 +415,33 @@ where
             (tile.position() + Pos3::repeat(TILE_SIZE / 2.0)).into()
         };
 
-        start_tile.tiles_between(end_tile).for_each(|tile|
+        start_tile.tiles_between(end_tile).filter(|tile|
         {
-            let pos = tile_pos(tile);
+            let empty_tile = world.tile(*tile).map(|x| x.is_none()).unwrap_or(true);
 
-            /*self.resolve(CollidingInfo{
-            });*/
+            !empty_tile
+        }).for_each(move |tile|
+        {
+            let position = tile_pos(tile);
+
+            let mut collider = ColliderInfo{
+                kind: ColliderType::Aabb,
+                layer: ColliderLayer::World,
+                ghost: false,
+                is_static: true
+            }.into();
+
+            self.resolve(CollidingInfo{
+                entity: None,
+                physical: None,
+                target: |_| {},
+                transform: Transform{
+                    position,
+                    scale: Vector3::repeat(TILE_SIZE),
+                    ..Default::default()
+                },
+                collider: &mut collider
+            });
         });
 
         false

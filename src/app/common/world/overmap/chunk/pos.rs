@@ -9,7 +9,7 @@ use strum_macros::{FromRepr, EnumCount};
 
 use nalgebra::{Vector3, Point3, Scalar};
 
-use super::{CHUNK_VISUAL_SIZE, TILE_SIZE};
+use super::{CHUNK_SIZE, CHUNK_VISUAL_SIZE, TILE_SIZE};
 
 
 #[derive(Debug, Clone, Copy, Hash, Eq, PartialEq, Serialize, Deserialize)]
@@ -150,7 +150,10 @@ impl Pos3<f32>
 
     pub fn to_tile(self) -> Pos3<usize>
     {
-        (self.modulo(CHUNK_VISUAL_SIZE) / TILE_SIZE).map(|x| x as usize)
+        (self.modulo(CHUNK_VISUAL_SIZE) / TILE_SIZE).map(|x|
+        {
+            (x as usize).min(CHUNK_SIZE - 1)
+        })
     }
 
     pub fn rounded(self) -> GlobalPos

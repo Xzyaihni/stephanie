@@ -1399,7 +1399,7 @@ macro_rules! define_entities
                 }|
                 {
                     let mut physical = self.physical_mut(entity);
-                    let this;
+                    let mut this;
                     colliding_info!{this, physical, collider, entity};
 
                     let mut other_physical = self.physical_mut(other_entity);
@@ -1451,7 +1451,7 @@ macro_rules! define_entities
                 })|
                 {
                     let mut physical = self.physical_mut(entity);
-                    let this;
+                    let mut this;
                     colliding_info!{this, physical, collider, entity};
 
                     this.resolve_with_world(world);
