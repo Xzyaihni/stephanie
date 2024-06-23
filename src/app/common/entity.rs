@@ -1353,12 +1353,12 @@ macro_rules! define_entities
                 {
                     ($result_variable:expr, $physical:expr, $collider:expr, $entity:expr) =>
                     {
+                        let mut collider: RefMut<Collider> = $collider.borrow_mut();
                         {
                             let transform = self.transform($entity).unwrap().clone();
-                            let collider: Ref<Collider> = $collider.borrow();
 
                             $result_variable = CollidingInfo{
-                                entity: $entity,
+                                entity: Some($entity),
                                 physical: $physical.as_deref_mut(),
                                 transform,
                                 target: |mut offset: Vector3<f32>|
@@ -1376,7 +1376,7 @@ macro_rules! define_entities
 
                                     target.position += offset;
                                 },
-                                collider: collider.clone()
+                                collider: &mut collider
                             };
                         }
                     }
@@ -1445,33 +1445,17 @@ macro_rules! define_entities
                     });
                 }
 
-                /*self.collider.iter().for_each(|(_, &ComponentWrapper{
+                self.collider.iter().for_each(|(_, &ComponentWrapper{
                     entity,
                     component: ref collider
                 })|
                 {
+                    let mut physical = self.physical_mut(entity);
                     let this;
                     colliding_info!{this, physical, collider, entity};
 
                     this.resolve_with_world(world);
-                });*/
-
-                let colliders: Vec<_> = self.collider.iter().map(|(_, x)| x.clone()).collect();
-                for ComponentWrapper{entity, component: collider} in colliders
-                {
-                    let mut physical = self.physical_mut(entity).map(|x| x.clone());
-                    let physical = &mut physical;
-
-                    let this = CollidingInfo{
-                        entity,
-                        physical: physical.as_mut(),
-                        transform: self.transform(entity).unwrap().clone(),
-                        target: |_: Vector3<f32>| {},
-                        collider: collider.borrow().clone()
-                    };
-
-                    this.resolve_with_world(self, world);
-                }
+                });
             }
 
             pub fn update_lazy_one(

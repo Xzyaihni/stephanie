@@ -128,11 +128,11 @@ impl Collider
 
 pub struct CollidingInfo<'a, F>
 {
-    pub entity: Entity,
+    pub entity: Option<Entity>,
     pub physical: Option<&'a mut Physical>,
     pub target: F,
     pub transform: Transform,
-    pub collider: Collider
+    pub collider: &'a mut Collider
 }
 
 impl<'a, ThisF> CollidingInfo<'a, ThisF>
@@ -372,15 +372,24 @@ where
             }
         };
 
-        self.collider.push_collided(other.entity);
-        other.collider.push_collided(self.entity);
+        if collided
+        {
+            if let Some(other) = other.entity
+            {
+                self.collider.push_collided(other);
+            }
+
+            if let Some(entity) = self.entity
+            {
+                other.collider.push_collided(entity);
+            }
+        }
 
         collided
     }
 
     pub fn resolve_with_world(
         self,
-        entities: &mut impl crate::common::AnyEntities,
         world: &World
     ) -> bool
     {
@@ -401,51 +410,13 @@ where
             (tile.position() + Pos3::repeat(TILE_SIZE / 2.0)).into()
         };
 
+        start_tile.tiles_between(end_tile).for_each(|tile|
         {
-            use crate::common::{
-                watcher::*,
-                render_info::*
-            };
+            let pos = tile_pos(tile);
 
-            let mut make_thingy = |position, scale, name, z_level|
-            {
-                entities.push(true, crate::common::EntityInfo{
-                    transform: Some(Transform{
-                        position,
-                        scale,
-                        ..Default::default()
-                    }),
-                    render: Some(RenderInfo{
-                        object: Some(RenderObject::Texture{name}),
-                        z_level,
-                        ..Default::default()
-                    }),
-                    watchers: Some(Watchers::new(vec![
-                        Watcher{
-                            kind: WatcherType::Lifetime(0.1.into()),
-                            action: WatcherAction::Remove,
-                            ..Default::default()
-                        }
-                    ])),
-                    ..Default::default()
-                });
-            };
-
-            let mut make_tile = |position|
-            {
-                make_thingy(
-                    position,
-                    Vector3::repeat(TILE_SIZE),
-                    "placeholder.png".to_owned(),
-                    ZLevel::Arms
-                );
-            };
-
-            start_tile.tiles_between(end_tile).for_each(|tile|
-            {
-                make_tile(tile_pos(tile));
-            });
-        }
+            /*self.resolve(CollidingInfo{
+            });*/
+        });
 
         false
     }
