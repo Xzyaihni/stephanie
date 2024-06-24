@@ -69,7 +69,7 @@ impl Game
         let entities = game_state.entities_mut();
         let mouse_entity = entities.push(true, EntityInfo{
             transform: Some(Transform{
-                scale: Vector3::repeat(0.1),
+                scale: Vector3::repeat(TILE_SIZE * 5.0),
                 ..Default::default()
             }),
             collider: Some(ColliderInfo{

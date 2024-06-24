@@ -368,7 +368,14 @@ where
     {
         match self.collider.kind
         {
-            ColliderType::Point => Vector3::zeros(),
+            ColliderType::Point =>
+            {
+                let mut size = Vector3::zeros();
+
+                size.z = self.transform.scale.z / 2.0;
+
+                size
+            },
             ColliderType::Circle => Vector3::repeat(self.transform.max_scale() / 2.0),
             ColliderType::Aabb => self.transform.scale / 2.0
         }
