@@ -49,7 +49,7 @@ impl Physical
     {
         if !self.floating
         {
-            // self.force += self.mass * GRAVITY;
+            self.force += self.mass * GRAVITY;
             self.grounded = true;
         }
 

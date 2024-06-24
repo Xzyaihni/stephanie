@@ -127,7 +127,7 @@ macro_rules! time_this
     }
 }
 
-pub const ENTITY_SCALE: f32 = 0.1;
+pub const ENTITY_SCALE: f32 = 0.09;
 
 pub struct WeightedPicker<I>
 {
