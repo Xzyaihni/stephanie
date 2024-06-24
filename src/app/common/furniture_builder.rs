@@ -3,6 +3,7 @@ use nalgebra::Vector3;
 use yanyaengine::Transform;
 
 use crate::common::{
+    ENTITY_SCALE,
     lazy_transform::*,
     collider::*,
     render_info::*,
@@ -41,7 +42,7 @@ impl<'a> FurnitureBuilder<'a>
             lazy_transform: Some(LazyTransformInfo{
                 transform: Transform{
                     position: self.pos,
-                    scale: Vector3::repeat(0.08),
+                    scale: Vector3::repeat(ENTITY_SCALE * 0.8),
                     ..Default::default()
                 },
                 ..Default::default()

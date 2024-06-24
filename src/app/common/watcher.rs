@@ -117,6 +117,7 @@ pub enum WatcherAction
     SetLazyRotation(Rotation),
     SetLazyConnection(Connection),
     Remove,
+    Create(Box<EntityInfo>),
     Explode(Box<ExplodeInfo>)
 }
 
@@ -184,6 +185,10 @@ impl WatcherAction
             Self::Remove =>
             {
                 entities.remove(entity);
+            },
+            Self::Create(info) =>
+            {
+                entities.push(true, *info);
             },
             Self::Explode(info) =>
             {

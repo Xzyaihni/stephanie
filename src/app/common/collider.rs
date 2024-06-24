@@ -5,6 +5,7 @@ use nalgebra::Vector3;
 use yanyaengine::Transform;
 
 use crate::common::{
+    group_by,
     Entity,
     Physical,
     world::{
@@ -73,6 +74,7 @@ pub struct ColliderInfo
     pub kind: ColliderType,
     pub layer: ColliderLayer,
     pub ghost: bool,
+    pub move_z: bool,
     pub is_static: bool
 }
 
@@ -84,6 +86,7 @@ impl Default for ColliderInfo
             kind: ColliderType::Circle,
             layer: ColliderLayer::Normal,
             ghost: false,
+            move_z: true,
             is_static: false
         }
     }
@@ -95,6 +98,7 @@ pub struct Collider
     pub kind: ColliderType,
     pub layer: ColliderLayer,
     pub ghost: bool,
+    pub move_z: bool,
     pub is_static: bool,
     collided: Vec<Entity>
 }
@@ -107,6 +111,7 @@ impl From<ColliderInfo> for Collider
             kind: info.kind,
             layer: info.layer,
             ghost: info.ghost,
+            move_z: info.move_z,
             is_static: info.is_static,
             collided: Vec::new()
         }
@@ -153,6 +158,24 @@ pub struct CollidingInfo<'a, F>
     pub collider: &'a mut Collider
 }
 
+fn transform_target(
+    move_z: bool,
+    target: impl FnOnce(Vector3<f32>)
+) -> impl FnOnce(Vector3<f32>)
+{
+    let handle_z = move |mut values: Vector3<f32>|
+    {
+        if !move_z
+        {
+            values.z = 0.0;
+        }
+
+        values
+    };
+
+    move |offset: Vector3<f32>| target(handle_z(offset))
+}
+
 impl<'a, ThisF> CollidingInfo<'a, ThisF>
 where
     ThisF: FnMut(Vector3<f32>)
@@ -176,11 +199,14 @@ where
             return;
         }
 
+        let this_target = transform_target(self.collider.move_z, &mut self.target);
+        let other_target = transform_target(other.collider.move_z, &mut other.target);
+
         let elasticity = 0.9;
 
         if self.collider.is_static
         {
-            (other.target)(offset);
+            other_target(offset);
             if let Some(physical) = &mut other.physical
             {
                 physical.invert_velocity();
@@ -188,7 +214,7 @@ where
             }
         } else if other.collider.is_static
         {
-            (self.target)(-offset);
+            this_target(-offset);
             if let Some(physical) = &mut self.physical
             {
                 physical.invert_velocity();
@@ -238,26 +264,26 @@ where
                         (mass_ratio, 1.0 - mass_ratio)
                     };
 
-                    (self.target)(-offset * this_scale);
-                    (other.target)(offset * other_scale);
+                    this_target(-offset * this_scale);
+                    other_target(offset * other_scale);
                 },
                 (Some(this_physical), None) =>
                 {
-                    (self.target)(-offset);
+                    this_target(-offset);
                     this_physical.invert_velocity();
                     this_physical.velocity *= elasticity;
                 },
                 (None, Some(other_physical)) =>
                 {
-                    (other.target)(offset);
+                    other_target(offset);
                     other_physical.invert_velocity();
                     other_physical.velocity *= elasticity;
                 },
                 (None, None) =>
                 {
                     let half_offset = offset / 2.0;
-                    (self.target)(-half_offset);
-                    (other.target)(half_offset);
+                    this_target(-half_offset);
+                    other_target(half_offset);
                 }
             }
         }
@@ -285,15 +311,15 @@ where
 
         let abs_offset = offset.map(|x| x.abs());
 
-        let offset = if (abs_offset.x <= abs_offset.y) && (abs_offset.x <= abs_offset.z)
+        let offset = if (abs_offset.z <= abs_offset.x) && (abs_offset.z <= abs_offset.y)
         {
-            Vector3::new(offset.x, 0.0, 0.0)
+            Vector3::new(0.0, 0.0, offset.z)
         } else if (abs_offset.y <= abs_offset.x) && (abs_offset.y <= abs_offset.z)
         {
             Vector3::new(0.0, offset.y, 0.0)
         } else
         {
-            Vector3::new(0.0, 0.0, offset.z)
+            Vector3::new(offset.x, 0.0, 0.0)
         };
 
         self.resolve_with(other, offset);
@@ -447,6 +473,7 @@ where
 
     pub fn resolve_with_world(
         &mut self,
+        entities: &impl crate::common::AnyEntities,
         world: &World
     ) -> bool
     {
@@ -471,10 +498,11 @@ where
             kind: ColliderType::Aabb,
             layer: ColliderLayer::World,
             ghost: false,
+            move_z: false,
             is_static: true
         }.into();
 
-        let (amount, total_position) = start_tile.tiles_between(end_tile).filter(|tile|
+        let collisions = start_tile.tiles_between(end_tile).filter(|tile|
         {
             let empty_tile = world.tile(*tile).map(|x| x.is_none()).unwrap_or(true);
 
@@ -492,15 +520,59 @@ where
                 },
                 collider: &mut collider
             }).map(|_| position)
-        }).fold((0, Vector3::zeros()), |(count, acc), x|
-        {
-            (count + 1, acc + x)
         });
 
-        let collided = amount != 0;
-        if collided
+        let collisions = group_by(|a, b|
         {
-            let collision_point = total_position / amount as f32;
+            let eqs = a.zip_map(b, |a, b| a == b);
+
+            (eqs.x && eqs.y)
+                || (eqs.x && eqs.z)
+                || (eqs.y && eqs.z)
+        }, collisions);
+
+        let collided = !collisions.is_empty();
+        collisions.into_iter().for_each(|group|
+        {
+            let amount = group.len() as f32;
+
+            let total_position = group.into_iter().reduce(|acc, x| acc + x)
+                .expect("must have at least one element");
+
+            let collision_point = total_position / amount;
+
+            use crate::common::{
+                EntityInfo,
+                render_info::*,
+                watcher::*
+            };
+
+            if let Some(mut watchers) = entities.watchers_mut(self.entity.unwrap())
+            {
+                /*watchers.push(Watcher{
+                    kind: WatcherType::Instant,
+                    action: WatcherAction::Create(Box::new(EntityInfo{
+                        transform: Some(Transform{
+                            position: collision_point - Vector3::repeat(TILE_SIZE) / 2.0,
+                            scale: Vector3::repeat(TILE_SIZE),
+                            ..Default::default()
+                        }),
+                        render: Some(RenderInfo{
+                            object: Some(RenderObject::Texture{name: "placeholder.png".to_owned()}),
+                            ..Default::default()
+                        }),
+                        watchers: Some(Watchers::new(vec![
+                            Watcher{
+                                kind: WatcherType::Lifetime(0.5.into()),
+                                action: WatcherAction::Remove,
+                                ..Default::default()
+                            }
+                        ])),
+                        ..Default::default()
+                    })),
+                    ..Default::default()
+                });*/
+            }
 
             let mut other = CollidingInfo{
                 entity: None,
@@ -520,7 +592,7 @@ where
             {
                 resolve(self, &mut other);
             }
-        }
+        });
 
         collided
     }

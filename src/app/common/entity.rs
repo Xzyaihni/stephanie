@@ -258,7 +258,8 @@ pub trait AnyEntities
         (player, player_mut, Player),
         (enemy, enemy_mut, Enemy),
         (named, named_mut, String),
-        (collider, collider_mut, Collider)
+        (collider, collider_mut, Collider),
+        (watchers, watchers_mut, Watchers)
     }
 
     fn lazy_target_ref(&self, entity: Entity) -> Option<Ref<Transform>>;
@@ -529,7 +530,8 @@ macro_rules! common_trait_impl
             (player, player_mut, Player),
             (enemy, enemy_mut, Enemy),
             (named, named_mut, String),
-            (collider, collider_mut, Collider)
+            (collider, collider_mut, Collider),
+            (watchers, watchers_mut, Watchers)
         }
 
         fn exists(&self, entity: Entity) -> bool
@@ -1002,7 +1004,12 @@ macro_rules! define_entities_both
 
                 queue.into_iter().for_each(|(entity, info)|
                 {
-                    let info = ClientEntityInfo::from_server(create_info, info);
+                    let info = ClientEntityInfo::from_server(
+                        self,
+                        entity,
+                        create_info,
+                        info
+                    );
 
                     $(self.$set_func(entity, info.$name);)+
                 });
@@ -1346,10 +1353,10 @@ macro_rules! define_entities_both
                     let mut this;
                     colliding_info!{this, physical, collider, entity};
 
-                    if this.resolve_with_world(world)
+                    /*if this.resolve_with_world(self, world)
                     {
                         on_collision(entity, physical);
-                    }
+                    }*/
                 });
             }
 
@@ -1626,16 +1633,27 @@ macro_rules! define_entities
         impl ClientEntityInfo
         {
             pub fn from_server(
+                entities: &ClientEntities,
+                entity: Entity,
                 create_info: &mut RenderCreateInfo,
                 info: EntityInfo
             ) -> Self
             {
-                let transform = info.target_ref().cloned();
+                let transform = entities.transform_clone(entity).or_else(||
+                {
+                    info.target_ref().cloned()
+                });
 
                 Self{
                     $($side_name: info.$side_name.map(|x|
                     {
-                        x.server_to_client(|| transform.clone().unwrap(), create_info)
+                        x.server_to_client(||
+                        {
+                            transform.clone().unwrap_or_else(||
+                            {
+                                panic!("{} expected transform, got none", stringify!($side_name))
+                            })
+                        }, create_info)
                     }),)+
                     $($name: info.$name,)+
                 }
@@ -1676,7 +1694,13 @@ macro_rules! define_entities
                             {
                                 x.server_to_client(||
                                 {
-                                    transform.clone().expect("server to client expects transform")
+                                    transform.clone().unwrap_or_else(||
+                                    {
+                                        panic!(
+                                            "{} expected transform, got none",
+                                            stringify!($side_name)
+                                        )
+                                    })
                                 }, create_info)
                             });
 
@@ -1718,7 +1742,13 @@ macro_rules! define_entities
                         debug_assert!(!entity.local);
                         let component = component.server_to_client(||
                         {
-                            self.transform_clone(entity).expect("expects a transform")
+                            self.transform_clone(entity).unwrap_or_else(||
+                            {
+                                panic!(
+                                    "{} expected transform, got none",
+                                    stringify!($side_message_name)
+                                )
+                            })
                         }, create_info);
 
                         self.$side_set_func(entity, Some(component));

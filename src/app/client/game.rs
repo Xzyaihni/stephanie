@@ -463,6 +463,7 @@ impl<'a> PlayerContainer<'a>
             entities.set_collider(inventory, Some(ColliderInfo{
                 kind: ColliderType::Aabb,
                 layer: ColliderLayer::Ui,
+                move_z: false,
                 ..Default::default()
             }.into()));
 
