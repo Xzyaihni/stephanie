@@ -8,7 +8,7 @@ use serde::{Serialize, Deserialize};
 
 use nalgebra::{Vector2, Vector3, Unit};
 
-use yanyaengine::TextureId;
+use yanyaengine::{TextureId, Transform};
 
 use crate::{
     server::ConnectionsHandler,
@@ -40,6 +40,8 @@ use crate::{
         Enemy,
         EnemiesInfo,
         Physical,
+        ObjectsStore,
+        Message,
         world::World
     }
 };
@@ -286,7 +288,6 @@ pub trait AnyEntities
     fn exists(&self, entity: Entity) -> bool;
 
     fn remove(&mut self, entity: Entity);
-    // i cant make remove the &mut cuz reborrowing would stop working :/
     fn push(
         &mut self,
         local: bool,
@@ -501,7 +502,7 @@ macro_rules! entity_info_common
     {
         pub fn setup_components(
             &mut self,
-            entities: &mut impl AnyEntities
+            entities: &impl AnyEntities
         )
         {
             if let Some(lazy) = self.lazy_transform.as_ref()
@@ -603,7 +604,7 @@ macro_rules! common_trait_impl
     }
 }
 
-macro_rules! define_entities
+macro_rules! define_entities_both
 {
     ($(($name:ident,
         $mut_func:ident,
@@ -611,13 +612,8 @@ macro_rules! define_entities
         $message_name:ident,
         $component_type:ident,
         $default_type:ident
-    )),+) =>
+    )),+,) =>
     {
-        use yanyaengine::Transform;
-
-        use crate::common::{ObjectsStore, Message};
-
-
         #[allow(non_camel_case_types)]
         pub enum Component
         {
@@ -667,28 +663,6 @@ macro_rules! define_entities
             }
         }
 
-        pub type ClientEntityInfo = EntityInfo<ClientRenderInfo, OccludingPlane, UiElement>;
-        pub type ClientEntities = Entities<ClientRenderInfo, OccludingPlane, UiElement>;
-        pub type ServerEntities = Entities;
-
-        impl ClientEntityInfo
-        {
-            pub fn from_server(
-                create_info: &mut RenderCreateInfo,
-                info: EntityInfo
-            ) -> Self
-            {
-                let transform = info.target_ref().cloned();
-
-                Self{
-                    $($name: info.$name.map(|x|
-                    {
-                        x.server_to_client(|| transform.clone().unwrap(), create_info)
-                    }),)+
-                }
-            }
-        }
-
         impl AnyEntities for ClientEntities
         {
             common_trait_impl!{}
@@ -699,11 +673,11 @@ macro_rules! define_entities
                 mut info: EntityInfo
             ) -> Entity
             {
-                let entity = self.push(local, Default::default());
+                let entity = self.push(local, info.shared());
 
                 info.setup_components(self);
 
-                self.create_queue.push((entity, info));
+                self.create_queue.borrow_mut().push((entity, info));
 
                 entity
             }
@@ -723,7 +697,7 @@ macro_rules! define_entities
         {
             pub local_components: ObjectsStore<Vec<Option<usize>>>,
             pub components: ObjectsStore<Vec<Option<usize>>>,
-            create_queue: Vec<(Entity, EntityInfo)>,
+            create_queue: RefCell<Vec<(Entity, EntityInfo)>>,
             $(pub $name: ObjectsStore<ComponentWrapper<$component_type>>,)+
         }
 
@@ -736,7 +710,7 @@ macro_rules! define_entities
                 Self{
                     local_components: ObjectsStore::new(),
                     components: ObjectsStore::new(),
-                    create_queue: Vec::new(),
+                    create_queue: RefCell::new(Vec::new()),
                     $($name: ObjectsStore::new(),)+
                 }
             }
@@ -1109,7 +1083,13 @@ macro_rules! define_entities
                 create_info: &mut RenderCreateInfo
             )
             {
-                mem::take(&mut self.create_queue).into_iter().for_each(|(entity, info)|
+                let queue = {
+                    let mut create_queue = self.create_queue.borrow_mut();
+
+                    mem::take(&mut *create_queue)
+                };
+
+                queue.into_iter().for_each(|(entity, info)|
                 {
                     let info = ClientEntityInfo::from_server(create_info, info);
 
@@ -1699,10 +1679,72 @@ macro_rules! define_entities
     }
 }
 
+macro_rules! define_entities
+{
+    ((side_specific
+        $(($side_name:ident,
+            $side_mut_func:ident,
+            $side_set_func:ident,
+            $side_message_name:ident,
+            $side_component_type:ident,
+            $side_default_type:ident,
+            $client_type:ident
+        )),+),
+        $(($name:ident,
+            $mut_func:ident,
+            $set_func:ident,
+            $message_name:ident,
+            $component_type:ident,
+            $default_type:ident
+        )),+
+    ) =>
+    {
+        define_entities_both!{
+            $(($side_name, $side_mut_func, $side_set_func, $side_message_name, $side_component_type, $side_default_type),)+
+            $(($name, $mut_func, $set_func, $message_name, $component_type, $default_type),)+
+        }
+
+        pub type ClientEntityInfo = EntityInfo<$($client_type,)+>;
+        pub type ClientEntities = Entities<$($client_type,)+>;
+        pub type ServerEntities = Entities;
+
+        impl ClientEntityInfo
+        {
+            pub fn from_server(
+                create_info: &mut RenderCreateInfo,
+                info: EntityInfo
+            ) -> Self
+            {
+                let transform = info.target_ref().cloned();
+
+                Self{
+                    $($side_name: info.$side_name.map(|x|
+                    {
+                        x.server_to_client(|| transform.clone().unwrap(), create_info)
+                    }),)+
+                    $($name: info.$name,)+
+                }
+            }
+        }
+
+        impl EntityInfo
+        {
+            pub fn shared(&mut self) -> ClientEntityInfo
+            {
+                ClientEntityInfo{
+                    $($side_name: None,)+
+                    $($name: self.$name.take(),)+
+                }
+            }
+        }
+    }
+}
+
 define_entities!{
-    (render, render_mut, set_render, SetRender, RenderType, RenderInfo),
-    (occluding_plane, occluding_plane_mut, set_occluding_plane, SetNone, OccludingPlaneType, OccludingPlaneServer),
-    (ui_element, ui_element_mut, set_ui_element, SetNone, UiElementType, UiElementServer),
+    (side_specific
+        (render, render_mut, set_render, SetRender, RenderType, RenderInfo, ClientRenderInfo),
+        (occluding_plane, occluding_plane_mut, set_occluding_plane, SetNone, OccludingPlaneType, OccludingPlaneServer, OccludingPlane),
+        (ui_element, ui_element_mut, set_ui_element, SetNone, UiElementType, UiElementServer, UiElement)),
     (lazy_transform, lazy_transform_mut, set_lazy_transform, SetLazyTransform, LazyTransformType, LazyTransform),
     (follow_rotation, follow_rotation_mut, set_follow_rotation, SetFollowRotation, FollowRotationType, FollowRotation),
     (watchers, watchers_mut, set_watchers, SetWatchers, WatchersType, Watchers),
