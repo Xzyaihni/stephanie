@@ -107,23 +107,6 @@ pub trait ServerToClient<T>
     ) -> T;
 }
 
-impl<T> ServerToClient<T> for T
-{
-    fn unchanged(self) -> Option<Self>
-    {
-        Some(self)
-    }
-
-    fn server_to_client(
-        self,
-        _transform: impl FnOnce() -> Transform,
-        _create_info: &mut RenderCreateInfo
-    ) -> T
-    {
-        self
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Entity
 {
@@ -921,78 +904,6 @@ macro_rules! define_entities_both
 
         impl ClientEntities
         {
-            pub fn handle_message(
-                &mut self,
-                create_info: &mut RenderCreateInfo,
-                message: Message
-            ) -> Option<Message>
-            {
-                let message = self.handle_message_common(message)?;
-
-                #[allow(unreachable_patterns)]
-                match message
-                {
-                    Message::EntitySet{entity, info} =>
-                    {
-                        let transform = self.transform_clone(entity)
-                            .or_else(|| info.transform.clone());
-
-                        $({
-                            let component = info.$name.map(|x|
-                            {
-                                x.server_to_client(||
-                                {
-                                    transform.clone().expect("server to client expects transform")
-                                }, create_info)
-                            });
-
-                            self.$set_func(entity, component);
-                        })+
-
-                        debug_assert!(!entity.local);
-
-                        let lazy = self.lazy_transform_mut(entity);
-
-                        if let Some(lazy) = lazy
-                        {
-                            let parent = self.parent(entity);
-                            let new_transform = if let Some(parent) = parent
-                            {
-                                if let Some(parent) = self.transform(parent.entity)
-                                {
-                                    lazy.combine(&parent)
-                                } else
-                                {
-                                    lazy.target_local.clone()
-                                }
-                            } else
-                            {
-                                lazy.target_local.clone()
-                            };
-
-                            let mut transform = self.transform_mut(entity).unwrap();
-
-                            *transform = new_transform;
-                        }
-
-                        None
-                    },
-                    $(Message::$message_name{entity, component} =>
-                    {
-                        debug_assert!(!entity.local);
-                        let component = component.server_to_client(||
-                        {
-                            self.transform_clone(entity).expect("expects a transform")
-                        }, create_info);
-
-                        self.$set_func(entity, Some(component));
-
-                        None
-                    },)+
-                    x => Some(x)
-                }
-            }
-
             fn transform_clone(&self, entity: Entity) -> Option<Transform>
             {
                 self.transform(entity).as_deref().cloned()
@@ -1734,6 +1645,90 @@ macro_rules! define_entities
                 ClientEntityInfo{
                     $($side_name: None,)+
                     $($name: self.$name.take(),)+
+                }
+            }
+        }
+
+        impl ClientEntities
+        {
+            pub fn handle_message(
+                &mut self,
+                create_info: &mut RenderCreateInfo,
+                message: Message
+            ) -> Option<Message>
+            {
+                let message = self.handle_message_common(message)?;
+
+                #[allow(unreachable_patterns)]
+                match message
+                {
+                    Message::EntitySet{entity, info} =>
+                    {
+                        let transform = self.transform_clone(entity)
+                            .or_else(|| info.transform.clone());
+
+                        $({
+                            let component = info.$side_name.map(|x|
+                            {
+                                x.server_to_client(||
+                                {
+                                    transform.clone().expect("server to client expects transform")
+                                }, create_info)
+                            });
+
+                            self.$side_set_func(entity, component);
+                        })+
+
+                        $(self.$set_func(entity, info.$name);)+
+
+                        debug_assert!(!entity.local);
+
+                        let lazy = self.lazy_transform_mut(entity);
+
+                        if let Some(lazy) = lazy
+                        {
+                            let parent = self.parent(entity);
+                            let new_transform = if let Some(parent) = parent
+                            {
+                                if let Some(parent) = self.transform(parent.entity)
+                                {
+                                    lazy.combine(&parent)
+                                } else
+                                {
+                                    lazy.target_local.clone()
+                                }
+                            } else
+                            {
+                                lazy.target_local.clone()
+                            };
+
+                            let mut transform = self.transform_mut(entity).unwrap();
+
+                            *transform = new_transform;
+                        }
+
+                        None
+                    },
+                    $(Message::$side_message_name{entity, component} =>
+                    {
+                        debug_assert!(!entity.local);
+                        let component = component.server_to_client(||
+                        {
+                            self.transform_clone(entity).expect("expects a transform")
+                        }, create_info);
+
+                        self.$side_set_func(entity, Some(component));
+
+                        None
+                    },)+
+                    $(Message::$message_name{entity, component} =>
+                    {
+                        debug_assert!(!entity.local);
+                        self.$set_func(entity, Some(component));
+
+                        None
+                    },)+
+                    x => Some(x)
                 }
             }
         }
