@@ -4,8 +4,10 @@ use serde::{Serialize, Deserialize};
 
 use yanyaengine::Transform;
 
+use crate::common::ENTITY_SCALE;
 
-pub const GRAVITY: Vector3<f32> = Vector3::new(0.0, 0.0, -9.81);
+
+pub const GRAVITY: Vector3<f32> = Vector3::new(0.0, 0.0, -9.81 * ENTITY_SCALE);
 
 #[derive(Clone)]
 pub struct PhysicalProperties
@@ -47,7 +49,7 @@ impl Physical
     {
         if !self.floating
         {
-            self.force += self.mass * GRAVITY;
+            // self.force += self.mass * GRAVITY;
             self.grounded = true;
         }
 

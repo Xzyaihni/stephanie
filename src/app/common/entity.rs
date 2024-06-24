@@ -1273,6 +1273,28 @@ macro_rules! define_entities_both
                     }
                 }
 
+                let mut on_collision = |
+                    entity,
+                    physical: Option<RefMut<Physical>>
+                |
+                {
+                    if let Some(passer) = passer.as_mut()
+                    {
+                        passer.send_message(Message::SetTarget{
+                            entity,
+                            target: self.target_ref(entity).unwrap().clone()
+                        });
+
+                        if let Some(physical) = physical
+                        {
+                            passer.send_message(Message::SetPhysical{
+                                entity,
+                                component: physical.clone()
+                            });
+                        }
+                    }
+                };
+
                 self.collider.iter().for_each(|(_, ComponentWrapper{
                     component: collider,
                     ..
@@ -1297,29 +1319,8 @@ macro_rules! define_entities_both
                     let other;
                     colliding_info!{other, other_physical, other_collider, other_entity};
 
-                    let collision = this.resolve(other);
-
-                    if let (true, Some(passer)) = (collision, passer.as_mut())
+                    if this.resolve(other)
                     {
-                        let mut on_collision = |
-                            entity,
-                            physical: Option<RefMut<Physical>>
-                        |
-                        {
-                            passer.send_message(Message::SetTarget{
-                                entity,
-                                target: self.target_ref(entity).unwrap().clone()
-                            });
-
-                            if let Some(physical) = physical
-                            {
-                                passer.send_message(Message::SetPhysical{
-                                    entity,
-                                    component: physical.clone()
-                                });
-                            }
-                        };
-
                         on_collision(entity, physical);
                         on_collision(other_entity, other_physical);
                     }
@@ -1345,7 +1346,10 @@ macro_rules! define_entities_both
                     let mut this;
                     colliding_info!{this, physical, collider, entity};
 
-                    this.resolve_with_world(world);
+                    if this.resolve_with_world(world)
+                    {
+                        on_collision(entity, physical);
+                    }
                 });
             }
 

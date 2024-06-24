@@ -52,7 +52,7 @@ macro_rules! implement_common
                 mut default_function: F
             ) -> Self
             {
-                let data = (0..(size.x * size.y * size.z)).map(|index|
+                let data = (0..size.product()).map(|index|
                 {
                     default_function(index)
                 }).collect::<Box<[_]>>();
@@ -113,7 +113,7 @@ macro_rules! implement_common
             {
                 let indexer = self.indexer.clone();
 
-                (0..self.chunks.len()).map(move |index| indexer.index_to_pos(index))
+                indexer.positions()
             }
 
             pub fn positions_2d(&self) -> impl Iterator<Item=LocalPos>
@@ -174,10 +174,34 @@ macro_rules! implement_common
     }
 }
 
-pub trait ChunkIndexing
+pub trait CommonIndexing
 {
-    fn to_index(&self, pos: Pos3<usize>) -> usize;
-    fn index_to_pos(&self, index: usize) -> LocalPos;
+    fn size(&self) -> Pos3<usize>;
+
+    fn to_index(&self, pos: Pos3<usize>) -> usize
+    {
+        let size = self.size();
+
+        pos.to_rectangle(size.x, size.y)
+    }
+
+    fn index_to_pos(&self, index: usize) -> LocalPos
+    {
+        let size = self.size();
+
+        let x = index % size.x;
+        let y = (index / size.x) % size.y;
+        let z = index / (size.x * size.y);
+
+        LocalPos::new(Pos3::new(x, y, z), size)
+    }
+
+    fn positions(self) -> impl Iterator<Item=LocalPos>
+    where
+        Self: Sized
+    {
+        (0..self.size().product()).map(move |index| self.index_to_pos(index))
+    }
 }
 
 pub type ValuePair<T> = (LocalPos, T);
@@ -202,7 +226,7 @@ macro_rules! impl_iter
 
         impl<'a, I, T> Iterator for $name<'a, I, T>
         where
-            I: ChunkIndexing
+            I: CommonIndexing
         {
             type Item = ValuePair<<$other_iter<'a, T> as Iterator>::Item>;
 
@@ -214,7 +238,7 @@ macro_rules! impl_iter
 
         impl<'a, I, T> DoubleEndedIterator for $name<'a, I, T>
         where
-            I: ChunkIndexing
+            I: CommonIndexing
         {
             fn next_back(&mut self) -> Option<Self::Item>
             {
@@ -239,27 +263,13 @@ impl Indexer
     {
         Self{size}
     }
-
-    pub fn size(&self) -> &Pos3<usize>
-    {
-        &self.size
-    }
 }
 
-impl ChunkIndexing for Indexer
+impl CommonIndexing for Indexer
 {
-    fn to_index(&self, pos: Pos3<usize>) -> usize
+    fn size(&self) -> Pos3<usize>
     {
-        pos.to_rectangle(self.size.x, self.size.y)
-    }
-
-    fn index_to_pos(&self, index: usize) -> LocalPos
-    {
-        let x = index % self.size.x;
-        let y = (index / self.size.x) % self.size.y;
-        let z = index / (self.size.x * self.size.y);
-
-        LocalPos::new(Pos3::new(x, y, z), self.size)
+        self.size
     }
 }
 
@@ -373,8 +383,13 @@ impl From<Indexer> for FlatIndexer
     }
 }
 
-impl ChunkIndexing for FlatIndexer
+impl CommonIndexing for FlatIndexer
 {
+    fn size(&self) -> Pos3<usize>
+    {
+        self.size
+    }
+
     fn to_index(&self, pos: Pos3<usize>) -> usize
     {
         pos.y * self.size.x + pos.x

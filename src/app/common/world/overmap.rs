@@ -4,7 +4,11 @@ use chunk::{
     LocalPos
 };
 
-pub use chunks_container::{ChunkIndexing, ChunksContainer, FlatChunksContainer};
+pub use chunks_container::{
+    CommonIndexing,
+    ChunksContainer,
+    FlatChunksContainer
+};
 
 pub mod chunk;
 pub mod visual_chunk;
@@ -115,9 +119,8 @@ pub trait Overmap<T>: OvermapIndexing
     }
 }
 
-pub trait OvermapIndexing
+pub trait OvermapIndexing: CommonIndexing
 {
-    fn size(&self) -> Pos3<usize>;
     fn player_position(&self) -> GlobalPos;
 
     fn default_ordering(
@@ -218,13 +221,16 @@ mod tests
 
     struct TestOvermap(GlobalPos);
 
-    impl OvermapIndexing for TestOvermap
+    impl CommonIndexing for TestOvermap
     {
         fn size(&self) -> Pos3<usize>
         {
             Pos3::new(9, 4, 2)
         }
+    }
 
+    impl OvermapIndexing for TestOvermap
+    {
         fn player_position(&self) -> GlobalPos
         {
             self.0

@@ -36,7 +36,7 @@ use crate::{
             ChunkLocal,
             GlobalPos,
             Pos3,
-            overmap::OvermapIndexing
+            overmap::{OvermapIndexing, CommonIndexing}
         }
     }
 };
@@ -56,20 +56,23 @@ pub const SERVER_OVERMAP_SIZE_Z: usize = CLIENT_OVERMAP_SIZE_Z + 1;
 
 type OvermapsType = Arc<RwLock<HashMap<ConnectionId, ServerOvermap<WorldChunkSaver>>>>;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct ClientIndexer
 {
     size: Pos3<usize>,
     player_position: GlobalPos
 }
 
-impl OvermapIndexing for ClientIndexer
+impl CommonIndexing for ClientIndexer
 {
     fn size(&self) -> Pos3<usize>
     {
         self.size
     }
+}
 
+impl OvermapIndexing for ClientIndexer
+{
     fn player_position(&self) -> GlobalPos
     {
         self.player_position
@@ -208,6 +211,22 @@ impl World
         Self::unload_entities_inner(&mut self.entities_saver, container, &mut writer, |_global|
         {
             false
+        });
+    }
+
+    pub fn send_all(
+        &mut self,
+        container: &mut ServerEntities,
+        id: ConnectionId
+    )
+    {
+        let indexer = self.client_indexers[&id].clone();
+
+        let ordering = indexer.default_ordering(indexer.clone().positions());
+
+        ordering.into_iter().for_each(|pos|
+        {
+            self.send_chunk(container, id, indexer.to_global(*pos));
         });
     }
 

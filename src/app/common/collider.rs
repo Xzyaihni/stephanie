@@ -131,6 +131,19 @@ impl Collider
     }
 }
 
+pub struct CollisionResult
+{
+    max_distance: Vector3<f32>,
+    offset: Vector3<f32>
+}
+
+pub struct CircleCollisionResult
+{
+    max_distance: f32,
+    distance: f32,
+    offset: Vector3<f32>
+}
+
 pub struct CollidingInfo<'a, F>
 {
     pub entity: Option<Entity>,
@@ -270,10 +283,12 @@ where
             }
         });
 
-        let offset = if (offset.x.abs() < offset.y.abs()) && (offset.x.abs() < offset.z.abs())
+        let abs_offset = offset.map(|x| x.abs());
+
+        let offset = if (abs_offset.x <= abs_offset.y) && (abs_offset.x <= abs_offset.z)
         {
             Vector3::new(offset.x, 0.0, 0.0)
-        } else if (offset.y.abs() < offset.x.abs()) && (offset.y.abs() < offset.z.abs())
+        } else if (abs_offset.y <= abs_offset.x) && (abs_offset.y <= abs_offset.z)
         {
             Vector3::new(0.0, offset.y, 0.0)
         } else
@@ -284,7 +299,10 @@ where
         self.resolve_with(other, offset);
     }
 
-    fn circle_circle<OtherF>(&mut self, other: &mut CollidingInfo<OtherF>) -> bool
+    fn circle_circle<OtherF>(
+        &self,
+        other: &CollidingInfo<OtherF>
+    ) -> Option<CircleCollisionResult>
     where
         OtherF: FnMut(Vector3<f32>)
     {
@@ -296,25 +314,14 @@ where
 
         let max_distance = this_radius + other_radius;
         let collided = distance < max_distance;
-        if collided
-        {
-            let direction = if distance == 0.0
-            {
-                Vector3::x()
-            } else
-            {
-                offset.normalize()
-            };
 
-            let shift = max_distance - distance;
-
-            self.resolve_with(other, direction * shift);
-        }
-
-        collided
+        collided.then(|| CircleCollisionResult{max_distance, distance, offset})
     }
 
-    fn normal_collision<OtherF>(&mut self, other: &mut CollidingInfo<OtherF>) -> bool
+    fn normal_collision<OtherF>(
+        &self,
+        other: &CollidingInfo<OtherF>
+    ) -> Option<CollisionResult>
     where
         OtherF: FnMut(Vector3<f32>)
     {
@@ -328,12 +335,7 @@ where
             && (-max_distance.y..max_distance.y).contains(&offset.y)
             && (-max_distance.z..max_distance.z).contains(&offset.z);
 
-        if collided
-        {
-            self.resolve_with_offset(other, max_distance, offset);
-        }
-
-        collided
+        collided.then(|| CollisionResult{max_distance, offset})
     }
 
     fn scale(&self) -> Vector3<f32>
@@ -343,6 +345,67 @@ where
             ColliderType::Point => Vector3::zeros(),
             ColliderType::Circle => Vector3::repeat(self.transform.max_scale() / 2.0),
             ColliderType::Aabb => self.transform.scale / 2.0
+        }
+    }
+
+    fn collision<OtherF>(
+        &self,
+        other: &CollidingInfo<OtherF>
+    ) -> Option<impl FnOnce(&mut Self, &mut CollidingInfo<OtherF>)>
+    where
+        OtherF: FnMut(Vector3<f32>)
+    {
+        enum CollisionWhich
+        {
+            Circle(CircleCollisionResult),
+            Normal(CollisionResult)
+        }
+
+        let handle = |collision|
+        {
+            move |this: &mut Self, other: &mut CollidingInfo<OtherF>|
+            {
+                match collision
+                {
+                    CollisionWhich::Circle(CircleCollisionResult{max_distance, distance, offset}) =>
+                    {
+                        let direction = if distance == 0.0
+                        {
+                            Vector3::x()
+                        } else
+                        {
+                            offset.normalize()
+                        };
+
+                        let shift = max_distance - distance;
+
+                        this.resolve_with(other, direction * shift);
+                    },
+                    CollisionWhich::Normal(CollisionResult{max_distance, offset}) =>
+                    {
+                        this.resolve_with_offset(other, max_distance, offset);
+                    }
+                }
+            }
+        };
+
+        match (self.collider.kind, other.collider.kind)
+        {
+            (ColliderType::Point, ColliderType::Point) => None,
+            (ColliderType::Circle, ColliderType::Circle) =>
+            {
+                self.circle_circle(other).map(|x| CollisionWhich::Circle(x)).map(handle)
+            },
+            (ColliderType::Circle, ColliderType::Aabb)
+            | (ColliderType::Aabb, ColliderType::Circle)
+            | (ColliderType::Aabb, ColliderType::Aabb)
+            | (ColliderType::Point, ColliderType::Aabb)
+            | (ColliderType::Aabb, ColliderType::Point)
+            | (ColliderType::Point, ColliderType::Circle)
+            | (ColliderType::Circle, ColliderType::Point) =>
+            {
+                self.normal_collision(other).map(|x| CollisionWhich::Normal(x)).map(handle)
+            }
         }
     }
 
@@ -358,24 +421,13 @@ where
             return false
         }
 
-        let collided = match (self.collider.kind, other.collider.kind)
+        let result = self.collision(&other);
+        let collided = result.is_some();
+
+        if let Some(handle) = result
         {
-            (ColliderType::Point, ColliderType::Point) => false,
-            (ColliderType::Circle, ColliderType::Circle) =>
-            {
-                self.circle_circle(&mut other)
-            },
-            (ColliderType::Circle, ColliderType::Aabb)
-            | (ColliderType::Aabb, ColliderType::Circle)
-            | (ColliderType::Aabb, ColliderType::Aabb)
-            | (ColliderType::Point, ColliderType::Aabb)
-            | (ColliderType::Aabb, ColliderType::Point)
-            | (ColliderType::Point, ColliderType::Circle)
-            | (ColliderType::Circle, ColliderType::Point) =>
-            {
-                self.normal_collision(&mut other)
-            }
-        };
+            handle(self, &mut other);
+        }
 
         if collided
         {
@@ -420,10 +472,8 @@ where
             let empty_tile = world.tile(*tile).map(|x| x.is_none()).unwrap_or(true);
 
             !empty_tile
-        }).for_each(move |tile|
+        }).map(tile_pos).for_each(|position|
         {
-            let position = tile_pos(tile);
-
             let mut collider = ColliderInfo{
                 kind: ColliderType::Aabb,
                 layer: ColliderLayer::World,

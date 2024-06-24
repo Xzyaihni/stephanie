@@ -33,6 +33,7 @@ use super::{
     },
     overmap::{
         OvermapIndexing,
+        CommonIndexing,
         ChunksContainer,
         visual_chunk::{VisualChunk, VisualChunkInfo}
     }
@@ -378,13 +379,16 @@ impl VisualOvermap
     }
 }
 
-impl OvermapIndexing for VisualOvermap
+impl CommonIndexing for VisualOvermap
 {
     fn size(&self) -> Pos3<usize>
     {
         self.visibility_checker.size
     }
+}
 
+impl OvermapIndexing for VisualOvermap
+{
     fn player_position(&self) -> GlobalPos
     {
         self.visibility_checker.player_position.read().rounded()

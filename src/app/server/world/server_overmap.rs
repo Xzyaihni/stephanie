@@ -19,7 +19,13 @@ use crate::common::{
         Chunk,
         ChunkLocal,
         chunk::tile::Tile,
-        overmap::{Overmap, OvermapIndexing, FlatChunksContainer, ChunksContainer}
+        overmap::{
+            Overmap,
+            OvermapIndexing,
+            CommonIndexing,
+            FlatChunksContainer,
+            ChunksContainer
+        }
     }
 };
 
@@ -39,13 +45,16 @@ impl Indexer
     }
 }
 
-impl OvermapIndexing for Indexer
+impl CommonIndexing for Indexer
 {
     fn size(&self) -> Pos3<usize>
     {
         self.size
     }
+}
 
+impl OvermapIndexing for Indexer
+{
     fn player_position(&self) -> GlobalPos
     {
         self.player_position
@@ -122,13 +131,16 @@ impl<S: SaveLoad<WorldChunk>> Overmap<WorldChunk> for WorldPlane<S>
     }
 }
 
-impl<S> OvermapIndexing for WorldPlane<S>
+impl<S> CommonIndexing for WorldPlane<S>
 {
     fn size(&self) -> Pos3<usize>
     {
         self.indexer.size
     }
+}
 
+impl<S> OvermapIndexing for WorldPlane<S>
+{
     fn player_position(&self) -> GlobalPos
     {
         self.indexer.player_position
@@ -342,13 +354,16 @@ impl<S: SaveLoad<WorldChunk>> Overmap<WorldChunk> for ServerOvermap<S>
     }
 }
 
-impl<S> OvermapIndexing for ServerOvermap<S>
+impl<S> CommonIndexing for ServerOvermap<S>
 {
     fn size(&self) -> Pos3<usize>
     {
         self.indexer.size
     }
+}
 
+impl<S> OvermapIndexing for ServerOvermap<S>
+{
     fn player_position(&self) -> GlobalPos
     {
         self.indexer.player_position

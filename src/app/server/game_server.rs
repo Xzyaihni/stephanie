@@ -177,9 +177,11 @@ impl GameServer
     {
         let player_index = self.entities.player.len() + 1;
 
+        let half_tile = TILE_SIZE / 2.0;
+
         let transform = Transform{
             scale: Vector3::repeat(ENTITY_SCALE),
-            position: Vector3::new(0.0, 0.0, TILE_SIZE),
+            position: Vector3::new(0.0, 0.0, TILE_SIZE) + Vector3::repeat(half_tile),
             ..Default::default()
         };
 
@@ -321,9 +323,20 @@ impl GameServer
             other: player_children
         };
 
-        let (connection, messager) = self.player_create(player_entities.clone(), player_info)?;
+        let (connection, mut messager) = self.player_create(
+            player_entities.clone(),
+            player_info
+        )?;
 
-        self.world.add_player(&mut self.entities, connection, position.into());
+        self.world.add_player(
+            &mut self.entities,
+            connection,
+            position.into()
+        );
+
+        self.world.send_all(&mut self.entities, connection);
+
+        messager.send_one(&Message::PlayerFullyConnected)?;
 
         Ok((player_entities, connection, messager))
     }
@@ -347,7 +360,7 @@ impl GameServer
     }
 
     fn player_create(
-        &mut self,  
+        &mut self,
         player_entities: PlayerEntities,
         player_info: PlayerInfo
     ) -> Result<(ConnectionId, MessagePasser), ConnectionError>
@@ -368,8 +381,6 @@ impl GameServer
 
             messager.send_blocking(message)
         })?;
-
-        messager.send_blocking(Message::PlayerFullyConnected)?;
 
         Ok((connection_id, messager.clone_messager()))
     }

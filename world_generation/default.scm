@@ -11,6 +11,12 @@
 (define point-x car)
 (define point-y cdr)
 
+(define side-up 0)
+(define side-down 1)
+(define side-left 2)
+(define side-right 3)
+(define random-side side-up)
+
 (define (vertical-line-length chunk pos len tile)
     (if (= len 0)
         chunk

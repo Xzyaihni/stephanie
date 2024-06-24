@@ -19,6 +19,7 @@ use super::{
         ChunksContainer,
         Overmap,
         OvermapIndexing,
+        CommonIndexing,
         chunk::{
             CHUNK_SIZE,
             Pos3,
@@ -46,13 +47,16 @@ impl Indexer
     }
 }
 
-impl OvermapIndexing for Indexer
+impl CommonIndexing for Indexer
 {
     fn size(&self) -> Pos3<usize>
     {
         self.size
     }
+}
 
+impl OvermapIndexing for Indexer
+{
     fn player_position(&self) -> GlobalPos
     {
         self.player_position.rounded()
@@ -154,7 +158,7 @@ impl ClientOvermap
 
         let chunks = ChunksContainer::new(size);
 
-        let chunk_ordering = indexer.default_ordering(chunks.iter().map(|(pos, _)| pos));
+        let chunk_ordering = indexer.default_ordering(chunks.positions());
 
         let mut this = Self{
             world_receiver,
@@ -319,13 +323,16 @@ impl Overmap<Arc<Chunk>> for ClientOvermap
     }
 }
 
-impl OvermapIndexing for ClientOvermap
+impl CommonIndexing for ClientOvermap
 {
     fn size(&self) -> Pos3<usize>
     {
         self.indexer.size()
     }
+}
 
+impl OvermapIndexing for ClientOvermap
+{
     fn player_position(&self) -> GlobalPos
     {
         self.indexer.player_position()
