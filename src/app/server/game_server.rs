@@ -217,6 +217,7 @@ impl GameServer
             inventory: Some(Inventory::new()),
             physical: Some(physical.into()),
             anatomy: Some(anatomy),
+            watchers: Some(Default::default()),
             ..Default::default()
         };
 

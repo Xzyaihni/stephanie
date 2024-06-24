@@ -198,9 +198,11 @@ pub fn get_two_mut<T>(s: &mut [T], one: usize, two: usize) -> (&mut T, &mut T)
     }
 }
 
-pub fn group_by<T>(predicate: impl Fn(&T, &T) -> bool, values: impl Iterator<Item=T>) -> Vec<Vec<T>>
+pub fn group_by<T>(
+    predicate: impl Fn(&[T], &T) -> bool,
+    values: impl Iterator<Item=T>
+) -> Vec<Vec<T>>
 where
-    // i dont NEED this but i dont like rearranging functions
     T: Copy
 {
     let mut groups = Vec::new();
@@ -209,9 +211,8 @@ where
     {
         groups.iter_mut().find_map(|group: &mut Vec<T>|
         {
-            let head = group.first().expect("all groups have at least 1 element");
-
-            predicate(&value, head).then(||
+            let fits = predicate(group, &value);
+            fits.then(||
             {
                 group.push(value);
             })

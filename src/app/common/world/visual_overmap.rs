@@ -368,6 +368,7 @@ impl VisualOvermap
         visibility: &EntityVisibilityChecker
     )
     {
+        return;
         self.for_each_visible(|chunk, pos|
         {
             chunk.draw_shadows(

@@ -529,13 +529,12 @@ where
             }).map(|_| position)
         });
 
-        let collisions = group_by(|a, b|
-        {
-            let eqs = a.zip_map(b, |a, b| a == b);
 
-            (eqs.x && eqs.y)
-                || (eqs.x && eqs.z)
-                || (eqs.y && eqs.z)
+        let collisions = group_by(|group, value|
+        {
+            group.iter().all(|check| value.x == check.x && value.y == check.y)
+            || group.iter().all(|check| value.x == check.x && value.z == check.z)
+            || group.iter().all(|check| value.y == check.y && value.z == check.z)
         }, collisions);
 
         let collided = !collisions.is_empty();
@@ -556,11 +555,11 @@ where
 
             if let Some(mut watchers) = entities.watchers_mut(self.entity.unwrap())
             {
-                /*watchers.push(Watcher{
+                watchers.push(Watcher{
                     kind: WatcherType::Instant,
                     action: WatcherAction::Create(Box::new(EntityInfo{
                         transform: Some(Transform{
-                            position: collision_point - Vector3::repeat(TILE_SIZE) / 2.0,
+                            position: collision_point,
                             scale: Vector3::repeat(TILE_SIZE),
                             ..Default::default()
                         }),
@@ -578,7 +577,7 @@ where
                         ..Default::default()
                     })),
                     ..Default::default()
-                });*/
+                });
             }
 
             let mut other = CollidingInfo{
