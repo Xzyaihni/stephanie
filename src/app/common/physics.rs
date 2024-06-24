@@ -7,7 +7,7 @@ use yanyaengine::Transform;
 use crate::common::ENTITY_SCALE;
 
 
-pub const GRAVITY: Vector3<f32> = Vector3::new(0.0, 0.0, -9.81 * ENTITY_SCALE);
+pub const GRAVITY: f32 = -9.81 * ENTITY_SCALE;
 
 #[derive(Clone)]
 pub struct PhysicalProperties
@@ -45,11 +45,15 @@ impl From<PhysicalProperties> for Physical
 
 impl Physical
 {
-    pub fn physics_update(&mut self, transform: &mut Transform, dt: f32)
+    pub fn physics_update(
+        &mut self,
+        transform: &mut Transform,
+        dt: f32
+    )
     {
         if !self.floating
         {
-            // self.force += self.mass * GRAVITY;
+            self.force.y -= self.mass * GRAVITY;
             self.grounded = true;
         }
 
@@ -57,7 +61,7 @@ impl Physical
 
         if self.grounded
         {
-            let normal_impulse = (-self.force.z * dt).max(0.0);
+            let normal_impulse = (self.force.y * dt).max(0.0);
 
             self.apply_friction(normal_impulse);
         }

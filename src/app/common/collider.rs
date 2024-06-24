@@ -204,21 +204,30 @@ where
 
         let elasticity = 0.9;
 
+        let invert_some = |physical: &mut Physical|
+        {
+            let moved = offset.map(|x| x != 0.0);
+
+            let new_velocity = -physical.velocity * elasticity;
+
+            if moved.x { physical.velocity.x = new_velocity.x }
+            if moved.y { physical.velocity.y = new_velocity.y }
+            if moved.z { physical.velocity.z = new_velocity.z }
+        };
+
         if self.collider.is_static
         {
             other_target(offset);
             if let Some(physical) = &mut other.physical
             {
-                physical.invert_velocity();
-                physical.velocity *= elasticity;
+                invert_some(physical);
             }
         } else if other.collider.is_static
         {
             this_target(-offset);
             if let Some(physical) = &mut self.physical
             {
-                physical.invert_velocity();
-                physical.velocity *= elasticity;
+                invert_some(physical);
             }
         } else
         {
@@ -270,14 +279,12 @@ where
                 (Some(this_physical), None) =>
                 {
                     this_target(-offset);
-                    this_physical.invert_velocity();
-                    this_physical.velocity *= elasticity;
+                    invert_some(this_physical);
                 },
                 (None, Some(other_physical)) =>
                 {
                     other_target(offset);
-                    other_physical.invert_velocity();
-                    other_physical.velocity *= elasticity;
+                    invert_some(other_physical);
                 },
                 (None, None) =>
                 {
