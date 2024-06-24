@@ -467,21 +467,21 @@ where
             (tile.position() + Pos3::repeat(TILE_SIZE / 2.0)).into()
         };
 
-        start_tile.tiles_between(end_tile).filter(|tile|
+        let mut collider = ColliderInfo{
+            kind: ColliderType::Aabb,
+            layer: ColliderLayer::World,
+            ghost: false,
+            is_static: true
+        }.into();
+
+        let (amount, total_position) = start_tile.tiles_between(end_tile).filter(|tile|
         {
             let empty_tile = world.tile(*tile).map(|x| x.is_none()).unwrap_or(true);
 
             !empty_tile
-        }).map(tile_pos).for_each(|position|
+        }).map(tile_pos).filter_map(|position|
         {
-            let mut collider = ColliderInfo{
-                kind: ColliderType::Aabb,
-                layer: ColliderLayer::World,
-                ghost: false,
-                is_static: true
-            }.into();
-
-            self.resolve(CollidingInfo{
+            self.collision(&CollidingInfo{
                 entity: None,
                 physical: None,
                 target: |_| {},
@@ -491,9 +491,37 @@ where
                     ..Default::default()
                 },
                 collider: &mut collider
-            });
+            }).map(|_| position)
+        }).fold((0, Vector3::zeros()), |(count, acc), x|
+        {
+            (count + 1, acc + x)
         });
 
-        false
+        let collided = amount != 0;
+        if collided
+        {
+            let collision_point = total_position / amount as f32;
+
+            let mut other = CollidingInfo{
+                entity: None,
+                physical: None,
+                target: |_| {},
+                transform: Transform{
+                    position: collision_point,
+                    scale: Vector3::repeat(TILE_SIZE),
+                    ..Default::default()
+                },
+                collider: &mut collider
+            };
+
+            let result = self.collision(&other);
+
+            if let Some(resolve) = result
+            {
+                resolve(self, &mut other);
+            }
+        }
+
+        collided
     }
 }
