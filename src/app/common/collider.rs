@@ -394,6 +394,11 @@ where
             Normal(CollisionResult)
         }
 
+        if !self.collider.layer.collides(&other.collider.layer)
+        {
+            return None;
+        }
+
         let handle = |collision|
         {
             move |this: &mut Self, other: &mut CollidingInfo<OtherF>|
@@ -449,11 +454,6 @@ where
     where
         OtherF: FnMut(Vector3<f32>)
     {
-        if !self.collider.layer.collides(&other.collider.layer)
-        {
-            return false
-        }
-
         let result = self.collision(&other);
         let collided = result.is_some();
 
