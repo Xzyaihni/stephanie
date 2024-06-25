@@ -53,7 +53,7 @@ impl Physical
     {
         if !self.floating
         {
-            self.force.y -= self.mass * GRAVITY;
+            self.force.z += self.mass * GRAVITY;
             self.grounded = true;
         }
 
@@ -61,7 +61,7 @@ impl Physical
 
         if self.grounded
         {
-            let normal_impulse = (self.force.y * dt).max(0.0);
+            let normal_impulse = (-self.force.z * dt).max(0.0);
 
             self.apply_friction(normal_impulse);
         }

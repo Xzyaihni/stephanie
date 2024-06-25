@@ -326,16 +326,9 @@ impl GameServer
 
         let (connection, mut messager) = self.player_create(
             player_entities.clone(),
-            player_info
+            player_info,
+            position
         )?;
-
-        self.world.add_player(
-            &mut self.entities,
-            connection,
-            position.into()
-        );
-
-        self.world.send_all(&mut self.entities, connection);
 
         messager.send_one(&Message::PlayerFullyConnected)?;
 
@@ -363,17 +356,33 @@ impl GameServer
     fn player_create(
         &mut self,
         player_entities: PlayerEntities,
-        player_info: PlayerInfo
+        player_info: PlayerInfo,
+        position: Vector3<f32>
     ) -> Result<(ConnectionId, MessagePasser), ConnectionError>
     {
-        let mut connection_handler = self.connection_handler.write();
-        let connection_id = connection_handler.connect(player_info);
+        let connection_id = self.connection_handler.write().connect(player_info);
 
-        let messager = connection_handler.get_mut(connection_id);
+        {
+            let mut writer = self.connection_handler.write();
 
-        let message = Message::PlayerOnConnect{player_entities};
+            let messager = writer.get_mut(connection_id);
 
-        messager.send_blocking(message)?;
+            let message = Message::PlayerOnConnect{player_entities};
+
+            messager.send_blocking(message)?;
+        }
+
+        self.world.add_player(
+            &mut self.entities,
+            connection_id,
+            position.into()
+        );
+
+        self.world.send_all(&mut self.entities, connection_id);
+
+        let mut writer = self.connection_handler.write();
+
+        let messager = writer.get_mut(connection_id);
 
         self.entities.entities_iter().try_for_each(|entity|
         {

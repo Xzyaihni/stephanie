@@ -504,7 +504,7 @@ impl<'a> PlayerContainer<'a>
         let player = self.info.entity;
 
         let entities = self.game_state.entities();
-        let held = entities.player_mut(player).unwrap().holding.take();
+        let held = entities.player_mut(player).and_then(|mut x| x.holding.take());
         let held = if let Some(x) = held
         {
             x
@@ -1044,7 +1044,7 @@ impl<'a> PlayerContainer<'a>
             move_direction(-Vector3::x());
         }
 
-        /*if self.game_state.pressed(Control::MoveUp)
+        if self.game_state.pressed(Control::MoveUp)
         {
             move_direction(-Vector3::y());
         }
@@ -1052,16 +1052,6 @@ impl<'a> PlayerContainer<'a>
         if self.game_state.pressed(Control::MoveDown)
         {
             move_direction(Vector3::y());
-        }*/
-
-        if self.game_state.pressed(Control::Jump)
-        {
-            move_direction(Vector3::z());
-        }
-
-        if self.game_state.pressed(Control::Crouch)
-        {
-            move_direction(-Vector3::z());
         }
 
         if let Some(direction) = movement_direction.as_mut()
@@ -1095,7 +1085,7 @@ impl<'a> PlayerContainer<'a>
             });
 
             physical.velocity.x = new_velocity.x;
-            // physical.velocity.y = new_velocity.y;
+            physical.velocity.y = new_velocity.y;
         }
     }
 

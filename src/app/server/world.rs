@@ -311,7 +311,8 @@ impl World
 
                 has_space.then(||
                 {
-                    let pos = chunk_pos + above.pos().map(|x| x as f32 * TILE_SIZE);
+                    let half_tile = TILE_SIZE / 2.0;
+                    let pos = chunk_pos + above.pos().map(|x| x as f32 * TILE_SIZE) + half_tile;
 
                     f(pos.into())
                 })
