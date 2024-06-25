@@ -187,7 +187,7 @@ impl GameServer
 
         let physical = PhysicalProperties{
             mass: 50.0,
-            friction: 0.5,
+            friction: 0.99,
             floating: false
         };
 
@@ -217,7 +217,6 @@ impl GameServer
             inventory: Some(Inventory::new()),
             physical: Some(physical.into()),
             anatomy: Some(anatomy),
-            watchers: Some(Default::default()),
             ..Default::default()
         };
 
@@ -256,6 +255,7 @@ impl GameServer
                 },
                 ..Default::default()
             }.into()),
+            watchers: Some(Default::default()),
             ..Default::default()
         };
 

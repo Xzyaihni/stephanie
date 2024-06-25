@@ -70,6 +70,13 @@ macro_rules! implement_common
                 }
             }
 
+            pub fn clear(&mut self)
+            where
+                T: Default
+            {
+                self.chunks.iter_mut().for_each(|x| *x = Default::default());
+            }
+
             #[allow(dead_code)]
             fn to_index(&self, pos: Pos3<usize>) -> usize
             {

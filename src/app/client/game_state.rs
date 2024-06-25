@@ -864,8 +864,6 @@ impl GameState
 
         let casters = OccludingCasters::from(casters);
 
-        self.camera.write().update();
-
         let visibility = self.visibility_checker();
 
         self.world.update_buffers(info, &visibility, &casters);

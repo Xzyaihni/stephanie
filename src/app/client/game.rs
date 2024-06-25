@@ -221,7 +221,11 @@ impl<'a> PlayerContainer<'a>
         let entities = self.game_state.entities();
         if let Some(mut transform) = entities.transform_mut(self.info.camera)
         {
-            *transform = entities.target_ref(self.info.camera).unwrap().clone();
+            let parent_transform = entities.parent_transform(self.info.camera);
+
+            *transform = entities.lazy_transform_mut(self.info.camera)
+                .unwrap()
+                .target_global(parent_transform.as_ref());
         }
 
         self.camera_sync();
@@ -233,7 +237,9 @@ impl<'a> PlayerContainer<'a>
 
         let z = (camera_z / TILE_SIZE).ceil() * TILE_SIZE;
 
-        self.game_state.camera.write().set_position_z(z);
+        let mut camera = self.game_state.camera.write();
+        camera.set_position_z(z);
+        camera.update();
     }
 
     pub fn on_control(&mut self, state: ControlState, control: Control)
@@ -289,6 +295,7 @@ impl<'a> PlayerContainer<'a>
             },
             Control::Inventory =>
             {
+                self.camera_sync_instant();
                 self.toggle_inventory();
             },
             Control::DebugConsole if self.game_state.debug_mode =>
@@ -1137,10 +1144,13 @@ impl<'a> PlayerContainer<'a>
 
     fn held_item(&self) -> Option<Item>
     {
-        let player = self.player();
-        let inventory = self.inventory();
+        self.game_state.entities().exists(self.info.entity).then(||
+        {
+            let player = self.player();
+            let inventory = self.inventory();
 
-        player.holding.and_then(|holding| inventory.get(holding).cloned())
+            player.holding.and_then(|holding| inventory.get(holding).cloned())
+        }).flatten()
     }
 
     fn holding_entity(&self) -> Entity
