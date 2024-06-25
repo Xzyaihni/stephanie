@@ -487,7 +487,6 @@ where
 
     pub fn resolve_with_world(
         &mut self,
-        entities: &impl crate::common::AnyEntities,
         world: &World
     ) -> bool
     {
@@ -553,39 +552,6 @@ where
                 .expect("must have at least one element");
 
             let collision_point = total_position / amount;
-
-            use crate::common::{
-                EntityInfo,
-                render_info::*,
-                watcher::*
-            };
-
-            if let Some(mut watchers) = entities.watchers_mut(self.entity.unwrap())
-            {
-                watchers.push(Watcher{
-                    kind: WatcherType::Instant,
-                    action: WatcherAction::Create(Box::new(EntityInfo{
-                        transform: Some(Transform{
-                            position: collision_point,
-                            scale: Vector3::repeat(TILE_SIZE),
-                            ..Default::default()
-                        }),
-                        render: Some(RenderInfo{
-                            object: Some(RenderObject::Texture{name: "placeholder.png".to_owned()}),
-                            ..Default::default()
-                        }),
-                        watchers: Some(Watchers::new(vec![
-                            Watcher{
-                                kind: WatcherType::Lifetime(0.5.into()),
-                                action: WatcherAction::Remove,
-                                ..Default::default()
-                            }
-                        ])),
-                        ..Default::default()
-                    })),
-                    ..Default::default()
-                });
-            }
 
             let mut other = CollidingInfo{
                 entity: None,
