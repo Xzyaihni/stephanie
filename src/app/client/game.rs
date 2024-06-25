@@ -1044,7 +1044,7 @@ impl<'a> PlayerContainer<'a>
             move_direction(-Vector3::x());
         }
 
-        if self.game_state.pressed(Control::MoveUp)
+        /*if self.game_state.pressed(Control::MoveUp)
         {
             move_direction(-Vector3::y());
         }
@@ -1052,7 +1052,7 @@ impl<'a> PlayerContainer<'a>
         if self.game_state.pressed(Control::MoveDown)
         {
             move_direction(Vector3::y());
-        }
+        }*/
 
         if self.game_state.pressed(Control::Jump)
         {
@@ -1087,12 +1087,15 @@ impl<'a> PlayerContainer<'a>
 
             let velocity = direction * (speed / physical.mass);
 
-            physical.velocity = (physical.velocity + velocity).zip_map(&velocity, |value, limit|
+            let new_velocity = (physical.velocity + velocity).zip_map(&velocity, |value, limit|
             {
                 let limit = limit.abs();
 
                 value.min(limit).max(-limit)
             });
+
+            physical.velocity.x = new_velocity.x;
+            // physical.velocity.y = new_velocity.y;
         }
     }
 
