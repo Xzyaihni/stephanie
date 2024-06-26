@@ -6,6 +6,8 @@ use yanyaengine::Transform;
 
 use crate::common::{
     SeededRandom,
+    AnyEntities,
+    Entity,
     EnemiesInfo,
     EnemyInfo,
     EnemyId,
@@ -30,19 +32,22 @@ impl EnemyBehavior
         }
     }
 
-    pub fn duration_of(&self, rng: &mut SeededRandom, state: &BehaviorState) -> f32
+    pub fn duration_of(&self, rng: &mut SeededRandom, state: &BehaviorState) -> Option<f32>
     {
-        match self
+        let range = match self
         {
             Self::Melee =>
             {
                 match state
                 {
-                    BehaviorState::Wait => rng.next_f32_between(2.0..=5.0),
-                    BehaviorState::MoveDirection(_) => rng.next_f32_between(0.5..=1.0)
+                    BehaviorState::Wait => 2.0..=5.0,
+                    BehaviorState::MoveDirection(_) => 0.5..=1.0,
+                    BehaviorState::Attack(_) => return None
                 }
             }
-        }
+        };
+
+        Some(rng.next_f32_between(range))
     }
 }
 
@@ -50,7 +55,8 @@ impl EnemyBehavior
 pub enum BehaviorState
 {
     Wait,
-    MoveDirection(Unit<Vector3<f32>>)
+    MoveDirection(Unit<Vector3<f32>>),
+    Attack(Entity)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -58,7 +64,7 @@ pub struct Enemy
 {
     behavior: EnemyBehavior,
     behavior_state: BehaviorState,
-    current_state_left: f32,
+    current_state_left: Option<f32>,
     id: EnemyId,
     rng: SeededRandom
 }
@@ -98,7 +104,8 @@ impl Enemy
 
                         BehaviorState::MoveDirection(direction)
                     },
-                    BehaviorState::MoveDirection(_) => BehaviorState::Wait
+                    BehaviorState::MoveDirection(_) => BehaviorState::Wait,
+                    BehaviorState::Attack(_) => BehaviorState::Wait
                 }
             }
         };
@@ -133,40 +140,55 @@ impl Enemy
                 physical.velocity = direction.into_inner() * move_speed;
                 transform.rotation = angle;
             },
+            BehaviorState::Attack(entity) =>
+            {
+                dbg!(entity);
+            },
             BehaviorState::Wait => ()
         }
     }
 
     pub fn update(
         &mut self,
-        anatomy: &Anatomy,
-        transform: &mut Transform,
-        physical: &mut Physical,
+        entities: &impl AnyEntities,
+        entity: Entity,
         dt: f32
     ) -> bool
     {
+        let anatomy = entities.anatomy(entity).unwrap();
+
         if anatomy.speed().is_none()
         {
             return false;
         }
 
-        self.current_state_left -= dt;
-
-        let changed_state = self.current_state_left <= 0.0;
-
-        if changed_state
+        let changed = if let Some(current_state_left) = self.current_state_left.as_mut()
         {
-            self.next_state();
+            *current_state_left -= dt;
 
-            self.current_state_left = self.behavior.duration_of(
-                &mut self.rng,
-                &self.behavior_state
-            );
-        }
+            let changed_state = *current_state_left <= 0.0;
+            if changed_state
+            {
+                self.next_state();
 
-        self.do_behavior(anatomy, transform, physical);
+                self.current_state_left = self.behavior.duration_of(
+                    &mut self.rng,
+                    &self.behavior_state
+                );
+            }
 
-        changed_state
+            changed_state
+        } else
+        {
+            false
+        };
+
+        let mut transform = entities.target(entity).unwrap();
+        let mut physical = entities.physical_mut(entity).unwrap();
+
+        self.do_behavior(&anatomy, &mut transform, &mut physical);
+
+        changed
     }
 
     pub fn behavior(&self) -> &EnemyBehavior

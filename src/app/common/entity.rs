@@ -220,20 +220,9 @@ impl Parent
 pub type Saveable = ();
 pub type UiElementServer = ();
 
-macro_rules! normal_define
-{
-    ($(($fn_ref:ident, $fn_mut:ident, $value:ident)),+) =>
-    {
-        $(
-        fn $fn_ref(&self, entity: Entity) -> Option<Ref<$value>>;
-        fn $fn_mut(&self, entity: Entity) -> Option<RefMut<$value>>;
-        )+
-    }
-}
-
 macro_rules! normal_forward_impl
 {
-    ($(($fn_ref:ident, $fn_mut:ident, $value:ident)),+) =>
+    ($(($fn_ref:ident, $fn_mut:ident, $value:ident)),+,) =>
     {
         $(
         fn $fn_ref(&self, entity: Entity) -> Option<Ref<$value>>
@@ -246,82 +235,6 @@ macro_rules! normal_forward_impl
             Self::$fn_mut(self, entity)
         }
         )+
-    }
-}
-
-pub trait AnyEntities
-{
-    normal_define!{
-        (lazy_transform, lazy_transform_mut, LazyTransform),
-        (transform, transform_mut, Transform),
-        (parent, parent_mut, Parent),
-        (physical, physical_mut, Physical),
-        (player, player_mut, Player),
-        (enemy, enemy_mut, Enemy),
-        (named, named_mut, String),
-        (collider, collider_mut, Collider),
-        (watchers, watchers_mut, Watchers)
-    }
-
-    fn lazy_target_ref(&self, entity: Entity) -> Option<Ref<Transform>>;
-    fn lazy_target(&self, entity: Entity) -> Option<RefMut<Transform>>;
-
-    fn is_visible(&self, entity: Entity) -> bool;
-    fn visible_target(&self, entity: Entity) -> Option<RefMut<bool>>;
-    fn mix_color_target(&self, entity: Entity) -> Option<RefMut<Option<MixColor>>>;
-
-    fn exists(&self, entity: Entity) -> bool;
-
-    fn remove(&mut self, entity: Entity);
-    fn push(
-        &mut self,
-        local: bool,
-        info: EntityInfo
-    ) -> Entity;
-
-    fn name(
-        &self,
-        enemies_info: &EnemiesInfo,
-        entity: Entity
-    ) -> Option<String>
-    {
-        self.player(entity).map(|player|
-        {
-            player.name.clone()
-        }).or_else(||
-        {
-            self.enemy(entity).map(|enemy|
-            {
-                enemy.info(enemies_info).name.clone()
-            })
-        }).or_else(||
-        {
-            self.named(entity).as_deref().cloned()
-        })
-    }
-
-    fn parent_transform(&self, entity: Entity) -> Option<Transform>
-    {
-        self.parent(entity).and_then(|parent|
-        {
-            self.transform(parent.entity).as_deref().cloned()
-        })
-    }
-
-    fn target_ref(&self, entity: Entity) -> Option<Ref<Transform>>
-    {
-        self.lazy_target_ref(entity).or_else(||
-        {
-            self.transform(entity)
-        })
-    }
-
-    fn target(&self, entity: Entity) -> Option<RefMut<Transform>>
-    {
-        self.lazy_target(entity).or_else(||
-        {
-            self.transform_mut(entity)
-        })
     }
 }
 
@@ -412,6 +325,39 @@ macro_rules! impl_common_systems
                 },
                 x => Some(x)
             }
+        }
+
+        fn update_enemy_common<F>(
+            &mut self,
+            dt: f32,
+            mut on_state_change: F
+        )
+        where
+            F: FnMut(Entity, &mut Enemy, &mut LazyTransform)
+        {
+            self.enemy.iter().for_each(|(_, &ComponentWrapper{
+                entity,
+                component: ref enemy
+            })|
+            {
+                let mut enemy = enemy.borrow_mut();
+                let state_changed = enemy.update(
+                    self,
+                    entity,
+                    dt
+                );
+
+                if state_changed
+                {
+                    let mut lazy_transform = self.lazy_transform_mut(entity).unwrap();
+
+                    on_state_change(
+                        entity,
+                        &mut enemy,
+                        &mut lazy_transform
+                    )
+                }
+            });
         }
 
         pub fn damage_entity_common(
@@ -521,18 +467,10 @@ macro_rules! entity_info_common
 
 macro_rules! common_trait_impl
 {
-    () =>
+    ($(($fn_ref:ident, $fn_mut:ident, $value_type:ident)),+,) =>
     {
         normal_forward_impl!{
-            (lazy_transform, lazy_transform_mut, LazyTransform),
-            (transform, transform_mut, Transform),
-            (parent, parent_mut, Parent),
-            (physical, physical_mut, Physical),
-            (player, player_mut, Player),
-            (enemy, enemy_mut, Enemy),
-            (named, named_mut, String),
-            (collider, collider_mut, Collider),
-            (watchers, watchers_mut, Watchers)
+            $(($fn_ref, $fn_mut, $value_type),)+
         }
 
         fn exists(&self, entity: Entity) -> bool
@@ -649,36 +587,6 @@ macro_rules! define_entities_both
             }
         }
 
-        impl AnyEntities for ClientEntities
-        {
-            common_trait_impl!{}
-
-            fn push(
-                &mut self,
-                local: bool,
-                mut info: EntityInfo
-            ) -> Entity
-            {
-                let entity = self.push(local, info.shared());
-
-                info.setup_components(self);
-
-                self.create_queue.borrow_mut().push((entity, info));
-
-                entity
-            }
-        }
-
-        impl AnyEntities for ServerEntities
-        {
-            common_trait_impl!{}
-
-            fn push(&mut self, local: bool, info: EntityInfo) -> Entity
-            {
-                Self::push(self, local, info)
-            }
-        }
-
         pub struct Entities<$($component_type=$default_type,)+>
         {
             pub local_components: ObjectsStore<Vec<Option<usize>>>,
@@ -727,46 +635,6 @@ macro_rules! define_entities_both
                         self.$name[id].component.borrow()
                     }),
                 )+}
-            }
-
-            fn update_enemy_common<F>(
-                &mut self,
-                dt: f32,
-                mut on_state_change: F
-            )
-            where
-                F: FnMut(Entity, &mut EnemyType, &mut LazyTransformType),
-                for<'a> &'a mut EnemyType: Into<&'a mut Enemy>,
-                for<'a> &'a AnatomyType: Into<&'a Anatomy>,
-                for<'a> &'a mut PhysicalType: Into<&'a mut Physical>,
-                LazyTransformType: LazyTargettable
-            {
-                self.enemy.iter().for_each(|(_, ComponentWrapper{
-                    entity,
-                    component: enemy
-                })|
-                {
-                    let anatomy = self.anatomy(*entity).unwrap();
-                    let mut lazy_transform = self.lazy_transform_mut(*entity).unwrap();
-                    let mut physical = self.physical_mut(*entity).unwrap();
-
-                    let mut enemy = enemy.borrow_mut();
-                    let state_changed = (&mut *enemy).into().update(
-                        (&*anatomy).into(),
-                        lazy_transform.target(),
-                        (&mut *physical).into(),
-                        dt
-                    );
-
-                    if state_changed
-                    {
-                        on_state_change(
-                            *entity,
-                            &mut enemy,
-                            &mut lazy_transform
-                        )
-                    }
-                });
             }
 
             pub fn update_watchers(
@@ -1623,6 +1491,105 @@ macro_rules! define_entities
         define_entities_both!{
             $(($side_name, $side_mut_func, $side_set_func, $side_message_name, $side_component_type, $side_default_type),)+
             $(($name, $mut_func, $set_func, $message_name, $component_type, $default_type),)+
+        }
+
+        impl AnyEntities for ClientEntities
+        {
+            common_trait_impl!{$(($name, $mut_func, $default_type),)+}
+
+            fn push(
+                &mut self,
+                local: bool,
+                mut info: EntityInfo
+            ) -> Entity
+            {
+                let entity = self.push(local, info.shared());
+
+                info.setup_components(self);
+
+                self.create_queue.borrow_mut().push((entity, info));
+
+                entity
+            }
+        }
+
+        impl AnyEntities for ServerEntities
+        {
+            common_trait_impl!{$(($name, $mut_func, $default_type),)+}
+
+            fn push(&mut self, local: bool, info: EntityInfo) -> Entity
+            {
+                Self::push(self, local, info)
+            }
+        }
+
+        pub trait AnyEntities
+        {
+            $(
+                fn $name(&self, entity: Entity) -> Option<Ref<$default_type>>;
+                fn $mut_func(&self, entity: Entity) -> Option<RefMut<$default_type>>;
+            )+
+
+            fn lazy_target_ref(&self, entity: Entity) -> Option<Ref<Transform>>;
+            fn lazy_target(&self, entity: Entity) -> Option<RefMut<Transform>>;
+
+            fn is_visible(&self, entity: Entity) -> bool;
+            fn visible_target(&self, entity: Entity) -> Option<RefMut<bool>>;
+            fn mix_color_target(&self, entity: Entity) -> Option<RefMut<Option<MixColor>>>;
+
+            fn exists(&self, entity: Entity) -> bool;
+
+            fn remove(&mut self, entity: Entity);
+            fn push(
+                &mut self,
+                local: bool,
+                info: EntityInfo
+            ) -> Entity;
+
+            fn name(
+                &self,
+                enemies_info: &EnemiesInfo,
+                entity: Entity
+            ) -> Option<String>
+            {
+                self.player(entity).map(|player|
+                {
+                    player.name.clone()
+                }).or_else(||
+                {
+                    self.enemy(entity).map(|enemy|
+                    {
+                        enemy.info(enemies_info).name.clone()
+                    })
+                }).or_else(||
+                {
+                    self.named(entity).as_deref().cloned()
+                })
+            }
+
+            fn parent_transform(&self, entity: Entity) -> Option<Transform>
+            {
+                self.parent(entity).and_then(|parent|
+                {
+                    self.transform(parent.entity).as_deref().cloned()
+                })
+            }
+
+            fn target_ref(&self, entity: Entity) -> Option<Ref<Transform>>
+            {
+                self.lazy_target_ref(entity).or_else(||
+                {
+                    self.transform(entity)
+                })
+            }
+
+            fn target(&self, entity: Entity) -> Option<RefMut<Transform>>
+            {
+                self.lazy_target(entity).or_else(||
+                {
+                    self.transform_mut(entity)
+                })
+            }
         }
 
         pub type ClientEntityInfo = EntityInfo<$($client_type,)+>;
