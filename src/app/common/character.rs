@@ -6,6 +6,8 @@ use yanyaengine::{Transform, TextureId};
 
 use crate::common::{
     render_info::*,
+    CharacterId,
+    CharactersInfo,
     Anatomy
 };
 
@@ -72,14 +74,16 @@ impl<T> Stateful<T>
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Character
 {
+    id: CharacterId,
     sprite_state: Stateful<SpriteState>
 }
 
 impl Character
 {
-    pub fn new() -> Self
+    pub fn new(id: CharacterId) -> Self
     {
         Self{
+            id,
             sprite_state: SpriteState::Normal.into()
         }
     }
@@ -91,16 +95,16 @@ impl Character
 
     pub fn update_sprite_common(
         &mut self,
+        characters_info: &CharactersInfo,
         transform: &mut Transform
     ) -> bool
     {
-        false
-        /*if !self.sprite_state.changed()
+        if !self.sprite_state.changed()
         {
             return false;
         }
 
-        let info = enemies_info.get(self.id);
+        let info = characters_info.get(self.id);
         match self.sprite_state.value()
         {
             SpriteState::Normal =>
@@ -113,23 +117,23 @@ impl Character
             }
         }
 
-        true*/
+        true
     }
 
     pub fn update_sprite(
         &mut self,
+        characters_info: &CharactersInfo,
         transform: &mut Transform,
         render: &mut ClientRenderInfo,
-        set_sprite: impl FnOnce(&mut ClientRenderInfo, TextureId)
+        set_sprite: impl FnOnce(&mut ClientRenderInfo, &Transform, TextureId)
     ) -> bool
     {
-        false
-        /*if !self.update_sprite_common(transform, enemies_info)
+        if !self.update_sprite_common(characters_info, transform)
         {
             return false;
         }
 
-        let info = enemies_info.get(self.id);
+        let info = characters_info.get(self.id);
         let texture = match self.sprite_state.value()
         {
             SpriteState::Normal =>
@@ -146,16 +150,14 @@ impl Character
             }
         };
 
-        set_sprite(render, texture);
+        set_sprite(render, transform, texture);
 
-        true*/
+        true
     }
 
     pub fn anatomy_changed(&mut self, anatomy: &Anatomy)
     {
         let can_move = anatomy.speed().is_some();
-
-        use crate::common::character::SpriteState;
 
         let state = if can_move
         {

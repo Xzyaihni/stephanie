@@ -5,11 +5,14 @@ use std::{
 
 use serde::Deserialize;
 
-use yanyaengine::{Assets, TextureId};
+use yanyaengine::Assets;
 
 use crate::common::{
     ENTITY_SCALE,
     generic_info::*,
+    CharactersInfo,
+    CharacterInfo,
+    CharacterId,
     enemy::EnemyBehavior
 };
 
@@ -32,9 +35,8 @@ pub struct EnemyInfo
 {
     pub name: String,
     pub behavior: EnemyBehavior,
-    pub scale: f32,
-    pub normal: TextureId,
-    pub lying: TextureId
+    pub character: CharacterId,
+    pub scale: f32
 }
 
 impl GenericItem for EnemyInfo
@@ -49,6 +51,7 @@ impl EnemyInfo
 {
     fn from_raw(
         assets: &Assets,
+        characters_info: &mut CharactersInfo,
         textures_root: &Path,
         raw: EnemyInfoRaw
     ) -> Self
@@ -61,12 +64,19 @@ impl EnemyInfo
             assets.texture_id(&name)
         };
 
+        let scale = raw.scale.unwrap_or(1.0) * ENTITY_SCALE;
+
+        let character = characters_info.push(CharacterInfo{
+            scale,
+            normal: get_texture(raw.normal),
+            lying: get_texture(raw.lying)
+        });
+
         Self{
             name: raw.name,
             behavior: raw.behavior,
-            scale: raw.scale.unwrap_or(1.0) * ENTITY_SCALE,
-            normal: get_texture(raw.normal),
-            lying: get_texture(raw.lying)
+            character,
+            scale
         }
     }
 }
@@ -77,6 +87,7 @@ impl EnemiesInfo
 {
     pub fn parse(
         assets: &Assets,
+        characters_info: &mut CharactersInfo,
         textures_root: impl AsRef<Path>,
         info: impl AsRef<Path>
     ) -> Self
@@ -88,7 +99,7 @@ impl EnemiesInfo
         let textures_root = textures_root.as_ref();
         let enemies: Vec<_> = enemies.into_iter().map(|info_raw|
         {
-            EnemyInfo::from_raw(assets, textures_root, info_raw)
+            EnemyInfo::from_raw(assets, characters_info, textures_root, info_raw)
         }).collect();
 
         GenericInfo::new(enemies)

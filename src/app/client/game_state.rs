@@ -39,9 +39,9 @@ use crate::{
         ItemsInfo,
         InventoryItem,
         AnyEntities,
+        CharactersInfo,
         Entity,
         Entities,
-        EnemiesInfo,
         ServerToClient,
         EntityPasser,
         EntitiesController,
@@ -138,13 +138,13 @@ impl ClientEntitiesContainer
 
     pub fn update_objects(
         &mut self,
-        enemies_info: &EnemiesInfo,
+        characters_info: &CharactersInfo,
         create_info: &mut RenderCreateInfo,
         dt: f32
     )
     {
         self.entities.create_queued(create_info);
-        self.entities.update_sprites(create_info, enemies_info);
+        self.entities.update_sprites(create_info, characters_info);
         self.entities.update_watchers(dt);
 
         mem::take(&mut self.local_objects).into_iter().for_each(|(entity, object)|
@@ -507,7 +507,7 @@ pub struct GameState
     is_trusted: bool,
     camera_scale: f32,
     dt: f32,
-    enemies_info: Arc<EnemiesInfo>,
+    characters_info: Arc<CharactersInfo>,
     world: World,
     connections_handler: Arc<RwLock<ConnectionsHandler>>,
     receiver: Receiver<Message>
@@ -632,7 +632,7 @@ impl GameState
             notifications,
             entities,
             items_info: info.data_infos.items_info,
-            enemies_info: info.data_infos.enemies_info,
+            characters_info: info.data_infos.characters_info,
             controls,
             running: true,
             shaders: info.shaders,
@@ -882,7 +882,7 @@ impl GameState
         self.process_messages(&mut create_info);
 
         self.entities.update_objects(
-            &self.enemies_info,
+            &self.characters_info,
             &mut create_info,
             self.dt
         );

@@ -25,6 +25,7 @@ impl From<Vec<Vector3<f32>>> for OccludingCasters
     }
 }
 
+#[derive(Debug)]
 pub struct OccludingPlane(OccludingPlaneInner);
 
 impl ServerToClient<OccludingPlane> for OccludingPlaneServer

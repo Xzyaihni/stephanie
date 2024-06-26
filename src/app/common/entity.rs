@@ -36,6 +36,7 @@ use crate::{
         EntityPasser,
         Inventory,
         Anatomy,
+        CharactersInfo,
         Character,
         Player,
         Enemy,
@@ -1446,7 +1447,7 @@ macro_rules! define_entities_both
             pub fn update_sprites(
                 &self,
                 create_info: &mut RenderCreateInfo,
-                enemies_info: &EnemiesInfo
+                characters_info: &CharactersInfo
             )
             {
                 self.character.iter().for_each(|(_, &ComponentWrapper{
@@ -1455,31 +1456,34 @@ macro_rules! define_entities_both
                 })|
                 {
                     let mut render = self.render_mut(entity).unwrap();
-                    let mut transform = self.transform_mut(entity).unwrap();
+                    let mut target = self.target(entity).unwrap();
                     let changed = character.borrow_mut().update_sprite(
-                        &mut transform,
-                        // enemies_info,
+                        characters_info,
+                        &mut target,
                         &mut render,
-                        |render, texture|
+                        |render, transform, texture|
                         {
-                            render.set_sprite(
-                                create_info,
-                                self.transform(entity).as_deref(),
-                                texture
-                            );
+                            render.set_sprite(create_info, Some(transform), texture);
                         }
                     );
 
                     if changed
                     {
-                        if let Some(lazy) = self.lazy_transform(entity)
-                        {
-                            let parent_transform = self.parent_transform(entity);
-
-                            transform.scale = lazy.target_global(parent_transform.as_ref()).scale;
-                        }
+                        drop(target);
+                        self.lazy_instant_set(entity);
                     }
                 });
+            }
+
+            pub fn lazy_instant_set(&self, entity: Entity)
+            {
+                if let Some(lazy) = self.lazy_transform(entity)
+                {
+                    let parent_transform = self.parent_transform(entity);
+                    let mut transform = self.transform_mut(entity).unwrap();
+
+                    transform.scale = lazy.target_global(parent_transform.as_ref()).scale;
+                }
             }
 
             pub fn anatomy_changed(&self, entity: Entity)
@@ -1547,7 +1551,7 @@ macro_rules! define_entities_both
 
             pub fn update_sprites(
                 &mut self,
-                enemies_info: &EnemiesInfo
+                characters_info: &CharactersInfo
             )
             {
                 self.character.iter().for_each(|(_, ComponentWrapper{
@@ -1555,9 +1559,9 @@ macro_rules! define_entities_both
                     component: character
                 })|
                 {
-                    let mut transform = self.transform_mut(*entity).unwrap();
+                    let mut target = self.target(*entity).unwrap();
 
-                    character.borrow_mut().update_sprite_common(&mut transform, /*enemies_info*/);
+                    character.borrow_mut().update_sprite_common(characters_info, &mut target);
                 });
             }
 

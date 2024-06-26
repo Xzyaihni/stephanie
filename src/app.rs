@@ -12,7 +12,7 @@ use yanyaengine::{
     game_object::*
 };
 
-use common::{TileMap, DataInfos, ItemsInfo, EnemiesInfo};
+use common::{TileMap, DataInfos, ItemsInfo, EnemiesInfo, CharactersInfo, CharacterInfo};
 
 use server::Server;
 
@@ -82,18 +82,24 @@ impl YanyaApp for App
             "items/items.json"
         );
         
+        let mut characters_info = CharactersInfo::new();
+
+        let player_character = characters_info.push(CharacterInfo::player(
+            &partial_info.assets.lock()
+        ));
+
         let enemies_info = EnemiesInfo::parse(
             &partial_info.assets.lock(),
+            &mut characters_info,
             "enemy",
             "enemies/enemies.json"
         );
 
-        let items_info = Arc::new(items_info);
-        let enemies_info = Arc::new(enemies_info);
-
         let data_infos = DataInfos{
-            items_info,
-            enemies_info
+            items_info: Arc::new(items_info),
+            enemies_info: Arc::new(enemies_info),
+            characters_info: Arc::new(characters_info),
+            player_character
         };
 
         let (host, client_address) = if let Some(address) = address

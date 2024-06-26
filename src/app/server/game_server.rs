@@ -32,8 +32,9 @@ use crate::common::{
     Inventory,
     Entity,
     EntityInfo,
-    EnemiesInfo,
     Parent,
+    CharactersInfo,
+    CharacterId,
     Character,
     Player,
     PlayerEntities,
@@ -86,7 +87,8 @@ impl From<bincode::Error> for ConnectionError
 pub struct GameServer
 {
     entities: Entities,
-    enemies_info: Arc<EnemiesInfo>,
+    player_character: CharacterId,
+    characters_info: Arc<CharactersInfo>,
     world: World,
     connection_handler: Arc<RwLock<ConnectionsHandler>>
 }
@@ -113,7 +115,8 @@ impl GameServer
 
         Ok(Self{
             entities,
-            enemies_info: data_infos.enemies_info,
+            player_character: data_infos.player_character,
+            characters_info: data_infos.characters_info,
             world,
             connection_handler
         })
@@ -125,7 +128,7 @@ impl GameServer
 
         let mut messager = self.connection_handler.write();
 
-        self.entities.update_sprites(&self.enemies_info);
+        self.entities.update_sprites(&self.characters_info);
 
         for _ in 0..STEPS
         {
@@ -221,7 +224,7 @@ impl GameServer
             }.into()),
             inventory: Some(Inventory::new()),
             physical: Some(physical.into()),
-            character: Some(Character::new()),
+            character: Some(Character::new(self.player_character)),
             anatomy: Some(anatomy),
             ..Default::default()
         };

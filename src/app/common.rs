@@ -46,7 +46,7 @@ pub use items_info::{ItemInfo, ItemsInfo, Ranged};
 pub use inventory::{InventorySorter, InventoryItem, Inventory};
 
 pub use character::Character;
-pub use characters_info::CharactersInfo;
+pub use characters_info::{CharacterId, CharactersInfo, CharacterInfo};
 
 pub use player::{Player, PlayerEntities};
 
@@ -140,7 +140,9 @@ pub const ENTITY_SCALE: f32 = 0.09;
 pub struct DataInfos
 {
     pub items_info: Arc<ItemsInfo>,
-    pub enemies_info: Arc<EnemiesInfo>
+    pub enemies_info: Arc<EnemiesInfo>,
+    pub characters_info: Arc<CharactersInfo>,
+    pub player_character: CharacterId
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

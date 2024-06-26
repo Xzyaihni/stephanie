@@ -2,17 +2,15 @@ use serde::{Serialize, Deserialize};
 
 use nalgebra::{Unit, Vector3};
 
-use yanyaengine::{Transform, TextureId};
+use yanyaengine::Transform;
 
 use crate::common::{
-    render_info::*,
     SeededRandom,
     EnemiesInfo,
     EnemyInfo,
     EnemyId,
     Anatomy,
-    Physical,
-    LazyTargettable
+    Physical
 };
 
 
