@@ -609,9 +609,12 @@ impl SaveLoad<WorldChunk> for WorldChunkSaver
         let index = WorldChunk::global_to_index(pos);
 
         let value = SaveValueGroup{value: chunk, index};
-        let pair = ValuePair{key: WorldChunk::belongs_to(pos), value};
+        let pos = WorldChunk::belongs_to(pos);
 
-        self.inner_save(pair);
+        let key = CachedKey::new(self.start, pos);
+
+        self.free_cache(1);
+        self.cache.push(CachedValue{key, value});
     }
 }
 

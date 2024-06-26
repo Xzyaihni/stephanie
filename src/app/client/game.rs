@@ -303,10 +303,6 @@ impl<'a> PlayerContainer<'a>
             },
             Control::Inventory =>
             {
-                let position = self.player_position();
-                let current_tile = self.game_state.tile_of(position.into());
-                self.game_state.destroy_tile(current_tile.offset(crate::common::world::Pos3::new(0, 1, 0)));
-
                 self.toggle_inventory();
             },
             Control::DebugConsole if self.game_state.debug_mode =>
