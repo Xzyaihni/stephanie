@@ -3,7 +3,7 @@ use std::{
     path::Path
 };
 
-use serde::{Serialize, Deserialize};
+use serde::Deserialize;
 
 use yanyaengine::{Assets, TextureId};
 

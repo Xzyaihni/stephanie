@@ -6,7 +6,7 @@ use std::{
 
 use nalgebra::{Vector2, Vector3};
 
-use serde::{Serialize, Deserialize};
+use serde::Deserialize;
 
 use yanyaengine::{Assets, TextureId};
 

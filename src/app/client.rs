@@ -25,8 +25,7 @@ use game_state::{GameState, GameStateInfo};
 use crate::{
     app::AppInfo,
     common::{
-        ItemsInfo,
-        EnemiesInfo,
+        DataInfos,
         MessagePasser,
         tilemap::TileMapWithTextures
     }
@@ -67,8 +66,7 @@ pub struct ClientInitInfo
     pub client_info: ClientInfo,
     pub app_info: AppInfo,
     pub tilemap: TileMapWithTextures,
-    pub items_info: Arc<ItemsInfo>,
-    pub enemies_info: Arc<EnemiesInfo>,
+    pub data_infos: DataInfos,
     pub host: bool
 }
 
@@ -112,8 +110,7 @@ impl Client
             shaders: client_init_info.app_info.shaders,
             camera,
             object_info: info.object_info,
-            items_info: client_init_info.items_info,
-            enemies_info: client_init_info.enemies_info,
+            data_infos: client_init_info.data_infos,
             tiles_factory,
             message_passer,
             client_info: &client_init_info.client_info,

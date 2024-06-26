@@ -517,7 +517,7 @@ where
 
         let collisions = start_tile.tiles_between(end_tile).filter(|tile|
         {
-            let empty_tile = world.tile(*tile).map(|x| x.is_none()).unwrap_or(true);
+            let empty_tile = world.tile(*tile).map(|x| x.is_none()).unwrap_or(false);
 
             !empty_tile
         }).map(tile_pos).filter_map(|position|

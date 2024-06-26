@@ -28,4 +28,9 @@ impl CharactersInfo
 
         CharacterId(id)
     }
+
+    pub fn get(&self, id: CharacterId) -> &CharacterInfo
+    {
+        &self.items[id.0]
+    }
 }

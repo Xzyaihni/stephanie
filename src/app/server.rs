@@ -8,8 +8,7 @@ use parking_lot::Mutex;
 
 use crate::common::{
     sender_loop::{waiting_loop, DELTA_TIME},
-    ItemsInfo,
-    EnemiesInfo,
+    DataInfos,
     TileMapWithTextures
 };
 
@@ -34,8 +33,7 @@ impl Server
 {
     pub fn new(
         tilemap: TileMapWithTextures,
-        items_info: Arc<ItemsInfo>,
-        enemies_info: Arc<EnemiesInfo>,
+        data_infos: DataInfos,
         address: &str,
         connections_limit: usize
     ) -> Result<Self, ParseError>
@@ -44,8 +42,7 @@ impl Server
 
         let game_server = GameServer::new(
             tilemap.tilemap,
-            items_info,
-            enemies_info,
+            data_infos,
             connections_limit
         )?;
 

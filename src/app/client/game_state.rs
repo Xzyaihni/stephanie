@@ -35,6 +35,7 @@ use crate::{
         collider::*,
         TileMap,
         DamagePartial,
+        DataInfos,
         ItemsInfo,
         InventoryItem,
         AnyEntities,
@@ -448,8 +449,7 @@ pub struct GameStateInfo<'a>
     pub shaders: ProgramShaders,
     pub camera: Arc<RwLock<Camera>>,
     pub object_info: ObjectCreateInfo<'a>,
-    pub items_info: Arc<ItemsInfo>,
-    pub enemies_info: Arc<EnemiesInfo>,
+    pub data_infos: DataInfos,
     pub tiles_factory: TilesFactory,
     pub message_passer: MessagePasser,
     pub client_info: &'a ClientInfo,
@@ -612,8 +612,8 @@ impl GameState
 
             Ui::new(
                 &mut entities.entity_creator(),
-                info.enemies_info.clone(),
-                info.items_info.clone(),
+                info.data_infos.enemies_info.clone(),
+                info.data_infos.items_info.clone(),
                 player_actions,
                 other_actions
             )
@@ -631,8 +631,8 @@ impl GameState
             object_factory: info.object_info.partial.object_factory,
             notifications,
             entities,
-            items_info: info.items_info,
-            enemies_info: info.enemies_info,
+            items_info: info.data_infos.items_info,
+            enemies_info: info.data_infos.enemies_info,
             controls,
             running: true,
             shaders: info.shaders,

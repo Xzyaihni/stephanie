@@ -12,7 +12,7 @@ use yanyaengine::{
     game_object::*
 };
 
-use common::{TileMap, ItemsInfo, EnemiesInfo};
+use common::{TileMap, DataInfos, ItemsInfo, EnemiesInfo};
 
 use server::Server;
 
@@ -91,6 +91,11 @@ impl YanyaApp for App
         let items_info = Arc::new(items_info);
         let enemies_info = Arc::new(enemies_info);
 
+        let data_infos = DataInfos{
+            items_info,
+            enemies_info
+        };
+
         let (host, client_address) = if let Some(address) = address
         {
             (false, address)
@@ -98,8 +103,7 @@ impl YanyaApp for App
         {
             let (tx, rx) = mpsc::channel();
 
-            let items_info = items_info.clone();
-            let enemies_info = enemies_info.clone();
+            let data_infos = data_infos.clone();
             thread::spawn(move ||
             {
                 match deferred_parse()
@@ -110,8 +114,7 @@ impl YanyaApp for App
 
                         let server = Server::new(
                             tilemap,
-                            items_info,
-                            enemies_info,
+                            data_infos,
                             &format!("0.0.0.0:{port}"),
                             16
                         );
@@ -145,8 +148,7 @@ impl YanyaApp for App
             },
             app_info,
             tilemap: deferred_parse().unwrap(),
-            items_info,
-            enemies_info,
+            data_infos,
             host
         };
 

@@ -28,7 +28,7 @@ use crate::common::{
     collider::*,
     AnyEntities,
     TileMap,
-    ItemsInfo,
+    DataInfos,
     Inventory,
     Entity,
     EntityInfo,
@@ -95,8 +95,7 @@ impl GameServer
 {
     pub fn new(
         tilemap: TileMap,
-        items_info: Arc<ItemsInfo>,
-        enemies_info: Arc<EnemiesInfo>,
+        data_infos: DataInfos,
         limit: usize
     ) -> Result<Self, ParseError>
     {
@@ -106,13 +105,18 @@ impl GameServer
         let world = World::new(
             connection_handler.clone(),
             tilemap,
-            enemies_info.clone(),
-            items_info.clone()
+            data_infos.enemies_info.clone(),
+            data_infos.items_info.clone()
         )?;
 
         sender_loop(connection_handler.clone());
 
-        Ok(Self{entities, enemies_info, world, connection_handler})
+        Ok(Self{
+            entities,
+            enemies_info: data_infos.enemies_info,
+            world,
+            connection_handler
+        })
     }
 
     pub fn update(&mut self, dt: f32)

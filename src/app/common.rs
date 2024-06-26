@@ -136,6 +136,13 @@ macro_rules! time_this
 
 pub const ENTITY_SCALE: f32 = 0.09;
 
+#[derive(Clone)]
+pub struct DataInfos
+{
+    pub items_info: Arc<ItemsInfo>,
+    pub enemies_info: Arc<EnemiesInfo>
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ConnectionId(pub usize);
 
