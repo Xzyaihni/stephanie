@@ -55,6 +55,7 @@ pub struct ChunkWithEntities
 
 pub struct World
 {
+    world_receiver: WorldReceiver,
     overmap: ClientOvermap
 }
 
@@ -71,13 +72,13 @@ impl World
 
         let visual_overmap = VisualOvermap::new(tiles_factory, size, camera_size, player_position);
         let overmap = ClientOvermap::new(
-            world_receiver,
+            world_receiver.clone(),
             visual_overmap,
             size,
             player_position
         );
 
-        Self{overmap}
+        Self{world_receiver, overmap}
     }
 
     pub fn overmap_size() -> Pos3<usize>
@@ -108,6 +109,26 @@ impl World
         self.overmap.tile_of(position)
     }
 
+    pub fn set_tile(&mut self, pos: TilePos, tile: Tile)
+    {
+        if self.set_tile_local(pos, tile)
+        {
+            self.world_receiver.set_tile(pos, tile);
+        }
+    }
+
+    fn set_tile_local(&mut self, pos: TilePos, new_tile: Tile) -> bool
+    {
+        if self.tile(pos).copied() == Some(new_tile)
+        {
+            return false;
+        }
+
+        self.overmap.set_tile(pos, new_tile);
+
+        return true;
+    }
+
     pub fn update(&mut self, dt: f32)
     {
         self.overmap.update(dt);
@@ -127,6 +148,11 @@ impl World
     {
         match message
         {
+            Message::SetTile{pos, tile} =>
+            {
+                self.set_tile_local(pos, tile);
+                None
+            },
             Message::ChunkSync{pos, chunk} =>
             {
                 self.overmap.set(pos, chunk);

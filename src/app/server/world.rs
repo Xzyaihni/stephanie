@@ -32,6 +32,8 @@ use crate::{
             TILE_SIZE,
             CLIENT_OVERMAP_SIZE,
             CLIENT_OVERMAP_SIZE_Z,
+            TilePos,
+            Tile,
             Chunk,
             ChunkLocal,
             GlobalPos,
@@ -129,6 +131,16 @@ impl World
             overmaps,
             client_indexers
         })
+    }
+
+    fn set_tile_local(&mut self, pos: TilePos, tile: Tile)
+    {
+        if let Some(chunk) = self.chunk_saver.load(pos.chunk)
+        {
+            let chunk = chunk.with_set_tile(pos.local, tile);
+
+            self.chunk_saver.save(pos.chunk, chunk);
+        }
     }
 
     pub fn add_player(
@@ -494,6 +506,11 @@ impl World
 
         match message
         {
+            Message::SetTile{pos, tile} =>
+            {
+                self.set_tile_local(pos, tile);
+                None
+            },
             Message::ChunkRequest{pos} =>
             {
                 self.send_chunk(container, id, pos);

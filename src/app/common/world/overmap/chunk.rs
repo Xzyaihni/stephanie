@@ -96,6 +96,16 @@ impl Chunk
         Self{tiles}
     }
 
+    #[must_use]
+    pub fn with_set_tile(&self, pos: ChunkLocal, tile: Tile) -> Self
+    {
+        let mut new_chunk = self.clone();
+
+        new_chunk[pos] = tile;
+
+        new_chunk
+    }
+
     pub fn transform_of_chunk(pos: GlobalPos) -> Transform
     {
         let chunk_pos = Pos3::<f32>::from(pos.0) * CHUNK_VISUAL_SIZE;

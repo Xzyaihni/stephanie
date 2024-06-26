@@ -2,6 +2,8 @@ use std::sync::Arc;
 
 use nalgebra::Vector2;
 
+use serde::{Serialize, Deserialize};
+
 use yanyaengine::{ShaderId, game_object::*};
 
 use crate::{
@@ -63,11 +65,11 @@ impl OvermapIndexing for Indexer
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct TilePos
 {
-    chunk: GlobalPos,
-    local: ChunkLocal
+    pub chunk: GlobalPos,
+    pub local: ChunkLocal
 }
 
 impl TilePos
@@ -202,6 +204,24 @@ impl ClientOvermap
         {
             &chunk[index.local]
         })
+    }
+
+    pub fn set_tile(&mut self, pos: TilePos, tile: Tile)
+    {
+        if let Some(local) = self.to_local(pos.chunk)
+        {
+            if let Some(ref chunk) = self.chunks[local]
+            {
+                let new_chunk = chunk.with_set_tile(pos.local, tile);
+
+                self.chunks[local] = Some(Arc::new(new_chunk));
+
+                local.directions_inclusive().flatten().for_each(|pos|
+                {
+                    self.visual_overmap.generate(&self.chunks, pos)
+                });
+            }
+        }
     }
 
     pub fn tile_of(&self, position: Pos3<f32>) -> TilePos

@@ -848,6 +848,11 @@ impl GameState
         self.world.tile_of(position)
     }
 
+    pub fn destroy_tile(&mut self, tile: TilePos)
+    {
+        self.world.set_tile(tile, Tile::none());
+    }
+
     pub fn player_connected(&mut self) -> bool
     {
         self.notifications.get(Notification::PlayerConnected)

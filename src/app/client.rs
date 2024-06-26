@@ -149,6 +149,8 @@ impl Client
             {
                 self.game.on_player_connected(&mut writer);
             }
+
+            self.game.camera_sync(&mut writer);
         }
     }
 

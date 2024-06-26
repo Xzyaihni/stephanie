@@ -6,7 +6,7 @@ use std::{
     time::{Instant, Duration},
     path::{Path, PathBuf},
     fs::{self, OpenOptions, File},
-    collections::{HashMap, BinaryHeap},
+    collections::{HashMap, BTreeMap},
     sync::{
         Arc,
         mpsc::{self, Sender, Receiver}
@@ -124,103 +124,24 @@ impl LoadValueGroup
     }
 }
 
-// again, shouldnt be public
-#[derive(Debug)]
 pub struct ValuePair<T>
 {
-    pub pos: GlobalPos,
+    pub key: GlobalPos,
     pub value: T
 }
 
-impl<T> ValuePair<T>
-{
-    pub fn new(pos: GlobalPos, value: T) -> Self
-    {
-        Self{pos, value}
-    }
-}
-
 #[derive(Debug)]
-struct InnerValue<S, T: Saveable>
-where
-    S: FileSave<SaveItem=T>
-{
-    file_saver: Arc<Mutex<S>>,
-    pub pair: Option<ValuePair<T>>
-}
-
-impl<S, T: Saveable> Drop for InnerValue<S, T>
-where
-    S: FileSave<SaveItem=T>
-{
-    fn drop(&mut self)
-    {
-        // eprintln!("saving: {}", std::any::type_name::<T>().split("::").last().unwrap());
-        self.file_saver.lock().save(self.pair.take().unwrap());
-    }
-}
-
-impl<S, T: Saveable> InnerValue<S, T>
-where
-    S: FileSave<SaveItem=T>
-{
-    pub fn new(file_saver: Arc<Mutex<S>>, pair: ValuePair<T>) -> Self
-    {
-        Self{file_saver, pair: Some(pair)}
-    }
-}
-
-#[derive(Debug)]
-struct CachedValue<S, T: Saveable>
-where
-    S: FileSave<SaveItem=T>
+pub struct CachedKey
 {
     age: Duration,
-    pub value: InnerValue<S, T>
+    pub pos: GlobalPos
 }
 
-impl<S, T: Saveable> CachedValue<S, T>
-where
-    S: FileSave<SaveItem=T>
-{
-    pub fn new(parent_path: Arc<Mutex<S>>, start: Instant, pair: ValuePair<T>) -> Self
-    {
-        Self{
-            age: start.elapsed(),
-            value: InnerValue::new(parent_path, pair)
-        }
-    }
-
-    pub fn pos(&self) -> &GlobalPos
-    {
-        &self.value.pair.as_ref().unwrap().pos
-    }
-
-    pub fn value(&self) -> &T
-    {
-        &self.value.pair.as_ref().unwrap().value
-    }
-}
-
-impl<S, T: Saveable> PartialEq for CachedValue<S, T>
-where
-    S: FileSave<SaveItem=T>
-{
-    fn eq(&self, other: &Self) -> bool
-    {
-        self.age.eq(&other.age)
-    }
-}
-
-impl<S, T: Saveable> Eq for CachedValue<S, T>
-where
-    S: FileSave<SaveItem=T>
+impl Eq for CachedKey
 {
 }
 
-impl<S, T: Saveable> PartialOrd for CachedValue<S, T>
-where
-    S: FileSave<SaveItem=T>
+impl PartialOrd for CachedKey
 {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering>
     {
@@ -228,13 +149,27 @@ where
     }
 }
 
-impl<S, T: Saveable> Ord for CachedValue<S, T>
-where
-    S: FileSave<SaveItem=T>
+impl Ord for CachedKey
 {
     fn cmp(&self, other: &Self) -> Ordering
     {
-        other.age.cmp(&self.age)
+        self.age.cmp(&other.age)
+    }
+}
+
+impl PartialEq for CachedKey
+{
+    fn eq(&self, other: &Self) -> bool
+    {
+        self.age.eq(&other.age)
+    }
+}
+
+impl CachedKey
+{
+    pub fn new(start: Instant, pos: GlobalPos) -> Self
+    {
+        Self{age: start.elapsed(), pos}
     }
 }
 
@@ -287,7 +222,7 @@ impl<T> BlockingSaver<T>
     {
         while let Ok(pair) = self.save_rx.recv()
         {
-            let pos = pair.pos;
+            let pos = pair.key;
             let path = self.parent_path(pos);
 
             fs::create_dir_all(&path).unwrap();
@@ -395,7 +330,7 @@ impl<SaveT: Saveable, LoadT> FileSaver<SaveT, LoadT>
 
     fn save_inner(&mut self, pair: ValuePair<SaveT>)
     {
-        let entry = self.unsaved_chunks.entry(pair.pos).or_insert(0);
+        let entry = self.unsaved_chunks.entry(pair.key).or_insert(0);
         *entry += 1;
 
         self.save_tx.send(pair).unwrap();
@@ -455,7 +390,7 @@ where
     {
         Self::new_with_saver(parent_path, |path, pair|
         {
-            let file = File::create(Self::chunk_path(path, pair.pos)).unwrap();
+            let file = File::create(Self::chunk_path(path, pair.key)).unwrap();
 
             let mut lzma_writer = LzmaWriter::new_compressor(file, LZMA_PRESET).unwrap();
 
@@ -490,7 +425,7 @@ impl FileSave for FileSaver<SaveValueGroup, LoadValueGroup>
     {
         Self::new_with_saver(parent_path, |path, pair|
         {
-            let chunk_path = Self::chunk_path(path.clone(), pair.pos);
+            let chunk_path = Self::chunk_path(path.clone(), pair.key);
             let file = match OpenOptions::new().write(true).open(&chunk_path)
             {
                 Ok(file) => file,
@@ -511,7 +446,7 @@ impl FileSave for FileSaver<SaveValueGroup, LoadValueGroup>
             let mut value = pair.value;
             let tags = value.value.take_tags();
 
-            Self::save_tags(path, pair.pos, &tags);
+            Self::save_tags(path, pair.key, &tags);
 
             value.write_into(file);
         })
@@ -559,7 +494,7 @@ where
 {
     start: Instant,
     cache_amount: usize,
-    cache: BinaryHeap<CachedValue<S, SaveT>>,
+    cache: BTreeMap<CachedKey, SaveT>,
     file_saver: Arc<Mutex<S>>
 }
 
@@ -579,7 +514,7 @@ where
             start: Instant::now(),
             file_saver: Arc::new(Mutex::new(file_saver)),
             cache_amount,
-            cache: BinaryHeap::new()
+            cache: BTreeMap::new()
         }
     }
 
@@ -589,7 +524,9 @@ where
 
         while self.cache.len() > until_len
         {
-            self.cache.pop().unwrap();
+            let (CachedKey{pos: key, ..}, value) = self.cache.pop_first().unwrap();
+
+            self.file_saver.lock().save(ValuePair{key, value});
         }
     }
 
@@ -597,9 +534,9 @@ where
     {
         self.free_cache(1);
 
-        let value = CachedValue::new(self.file_saver.clone(), self.start, pair);
+        let key = CachedKey::new(self.start, pair.key);
 
-        self.cache.push(value);
+        self.cache.insert(key, pair.value);
     }
 }
 
@@ -611,12 +548,12 @@ impl SaveLoad<WorldChunk> for WorldChunkSaver
 
         let rounded_pos = WorldChunk::belongs_to(pos);
 
-        if let Some(found) = self.cache.iter().find(|pair|
+        if let Some((_, found)) = self.cache.iter().find(|(key, value)|
         {
-            (*pair.pos() == rounded_pos) && (pair.value().index == index)
+            (key.pos == rounded_pos) && (value.index == index)
         })
         {
-            return Some(found.value().value.clone());
+            return Some(found.value.clone());
         }
 
         self.file_saver.lock().load(rounded_pos)
@@ -628,7 +565,7 @@ impl SaveLoad<WorldChunk> for WorldChunkSaver
         let index = WorldChunk::global_to_index(pos);
 
         let value = SaveValueGroup{value: chunk, index};
-        let pair = ValuePair::new(WorldChunk::belongs_to(pos), value);
+        let pair = ValuePair{key: WorldChunk::belongs_to(pos), value};
 
         self.inner_save(pair);
     }
@@ -678,12 +615,12 @@ where
 {
     fn load(&mut self, pos: GlobalPos) -> Option<T>
     {
-        if let Some(found) = self.cache.iter().find(|pair|
+        if let Some((_, found)) = self.cache.iter().find(|(key, _)|
         {
-            *pair.pos() == pos
+            key.pos == pos
         })
         {
-            return Some(found.value().clone());
+            return Some(found.clone());
         }
 
         self.file_saver.lock().load(pos)
@@ -691,7 +628,7 @@ where
 
     fn save(&mut self, pos: GlobalPos, value: T)
     {
-        let pair = ValuePair::new(pos, value);
+        let pair = ValuePair{key: pos, value};
 
         self.inner_save(pair);
     }

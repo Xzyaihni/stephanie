@@ -21,7 +21,7 @@ use crate::common::{
     Damage,
     Anatomy,
     RenderInfo,
-    world::{Chunk, GlobalPos}
+    world::{TilePos, Tile, Chunk, GlobalPos}
 };
 
 
@@ -55,6 +55,7 @@ pub enum Message
     SetTrusted,
     ChunkRequest{pos: GlobalPos},
     ChunkSync{pos: GlobalPos, chunk: Chunk},
+    SetTile{pos: TilePos, tile: Tile},
     RepeatMessage{message: Box<Message>}
 }
 
@@ -105,6 +106,7 @@ impl Message
             | Message::SetTrusted
             | Message::ChunkRequest{..}
             | Message::ChunkSync{..}
+            | Message::SetTile{..}
             | Message::RepeatMessage{..} => None
         }
     }

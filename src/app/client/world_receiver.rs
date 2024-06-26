@@ -7,26 +7,33 @@ use crate::{
     common::{
         EntityPasser,
         message::Message,
-        world::GlobalPos
+        world::{TilePos, Tile, GlobalPos}
     }
 };
 
 
-#[derive(Debug)]
-pub struct WorldReceiver
-{
-    message_handler: Arc<RwLock<ConnectionsHandler>>
-}
+#[derive(Debug, Clone)]
+pub struct WorldReceiver(Arc<RwLock<ConnectionsHandler>>);
 
 impl WorldReceiver
 {
     pub fn new(message_handler: Arc<RwLock<ConnectionsHandler>>) -> Self
     {
-        Self{message_handler}
+        Self(message_handler)
+    }
+
+    pub fn set_tile(&self, pos: TilePos, tile: Tile)
+    {
+        self.send_message(Message::SetTile{pos, tile});
     }
 
     pub fn request_chunk(&self, pos: GlobalPos)
     {
-        self.message_handler.write().send_message(Message::ChunkRequest{pos});
+        self.send_message(Message::ChunkRequest{pos});
+    }
+
+    fn send_message(&self, message: Message)
+    {
+        self.0.write().send_message(message);
     }
 }

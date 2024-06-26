@@ -105,15 +105,7 @@ impl Game
 
     pub fn on_player_connected(&mut self, game_state: &mut GameState)
     {
-        game_state.entities_mut().set_parent(
-            self.player.camera,
-            Some(Parent::new(self.player.entity, true))
-        );
-
-        let mut container = self.player_container(game_state);
-        container.camera_sync_instant();
-        container.update_inventory(InventoryWhich::Player);
-        container.unstance();
+        self.player_container(game_state).on_player_connected();
     }
 
     pub fn update(&mut self, game_state: &mut GameState, dt: f32)
@@ -199,6 +191,22 @@ impl<'a> PlayerContainer<'a>
     pub fn exists(&self) -> bool
     {
         self.game_state.entities.player_exists()
+    }
+
+    pub fn on_player_connected(&mut self)
+    {
+        self.game_state.entities_mut().set_parent(
+            self.info.camera,
+            Some(Parent::new(self.info.entity, true))
+        );
+
+        let position = self.player_position();
+        let current_tile = self.game_state.tile_of(position.into());
+        self.game_state.destroy_tile(current_tile);
+
+        self.camera_sync_instant();
+        self.update_inventory(InventoryWhich::Player);
+        self.unstance();
     }
 
     pub fn camera_sync(&mut self)
@@ -295,7 +303,10 @@ impl<'a> PlayerContainer<'a>
             },
             Control::Inventory =>
             {
-                self.camera_sync_instant();
+                let position = self.player_position();
+                let current_tile = self.game_state.tile_of(position.into());
+                self.game_state.destroy_tile(current_tile.offset(crate::common::world::Pos3::new(0, 1, 0)));
+
                 self.toggle_inventory();
             },
             Control::DebugConsole if self.game_state.debug_mode =>
