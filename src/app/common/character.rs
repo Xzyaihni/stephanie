@@ -61,6 +61,11 @@ impl<T> Stateful<T>
         &self.value
     }
 
+    pub fn dirty(&mut self)
+    {
+        self.changed = true;
+    }
+
     pub fn changed(&mut self) -> bool
     {
         let state = self.changed;
@@ -91,6 +96,7 @@ impl Character
     pub fn with_previous(&mut self, previous: Self)
     {
         self.sprite_state.set_state(*previous.sprite_state.value());
+        self.sprite_state.dirty();
     }
 
     pub fn update_sprite_common(
