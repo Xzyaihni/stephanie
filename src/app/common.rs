@@ -46,6 +46,7 @@ pub use items_info::{ItemInfo, ItemsInfo, Ranged};
 pub use inventory::{InventorySorter, InventoryItem, Inventory};
 
 pub use character::Character;
+pub use characters_info::CharactersInfo;
 
 pub use player::{Player, PlayerEntities};
 
@@ -79,6 +80,7 @@ pub mod damage;
 pub mod anatomy;
 
 pub mod character;
+pub mod characters_info;
 
 pub mod watcher;
 pub mod lazy_transform;
