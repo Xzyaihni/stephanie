@@ -6,7 +6,7 @@ use std::{
     time::{Instant, Duration},
     path::{Path, PathBuf},
     fs::{self, OpenOptions, File},
-    collections::{HashMap, BTreeMap},
+    collections::{HashMap, BinaryHeap},
     sync::{
         Arc,
         mpsc::{self, Sender, Receiver}
@@ -170,6 +170,41 @@ impl CachedKey
     pub fn new(start: Instant, pos: GlobalPos) -> Self
     {
         Self{age: start.elapsed(), pos}
+    }
+}
+
+#[derive(Debug)]
+pub struct CachedValue<T>
+{
+    pub key: CachedKey,
+    pub value: T
+}
+
+impl<T> Eq for CachedValue<T>
+{
+}
+
+impl<T> PartialOrd for CachedValue<T>
+{
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering>
+    {
+        self.key.partial_cmp(&other.key)
+    }
+}
+
+impl<T> Ord for CachedValue<T>
+{
+    fn cmp(&self, other: &Self) -> Ordering
+    {
+        other.key.cmp(&self.key)
+    }
+}
+
+impl<T> PartialEq for CachedValue<T>
+{
+    fn eq(&self, other: &Self) -> bool
+    {
+        self.key.eq(&other.key)
     }
 }
 
@@ -494,7 +529,7 @@ where
 {
     start: Instant,
     cache_amount: usize,
-    cache: BTreeMap<CachedKey, SaveT>,
+    cache: BinaryHeap<CachedValue<SaveT>>,
     file_saver: Arc<Mutex<S>>
 }
 
@@ -514,7 +549,7 @@ where
             start: Instant::now(),
             file_saver: Arc::new(Mutex::new(file_saver)),
             cache_amount,
-            cache: BTreeMap::new()
+            cache: BinaryHeap::new()
         }
     }
 
@@ -524,7 +559,7 @@ where
 
         while self.cache.len() > until_len
         {
-            let (CachedKey{pos: key, ..}, value) = self.cache.pop_first().unwrap();
+            let CachedValue{key: CachedKey{pos: key, ..}, value} = self.cache.pop().unwrap();
 
             self.file_saver.lock().save(ValuePair{key, value});
         }
@@ -532,11 +567,17 @@ where
 
     fn inner_save(&mut self, pair: ValuePair<SaveT>)
     {
-        self.free_cache(1);
-
         let key = CachedKey::new(self.start, pair.key);
 
-        self.cache.insert(key, pair.value);
+        if self.cache.iter().any(|CachedValue{key, ..}| key.pos == pair.key)
+        {
+            self.cache.retain(|CachedValue{key, ..}| key.pos != pair.key);
+        } else
+        {
+            self.free_cache(1);
+        }
+
+        self.cache.push(CachedValue{key, value: pair.value});
     }
 }
 
@@ -548,7 +589,10 @@ impl SaveLoad<WorldChunk> for WorldChunkSaver
 
         let rounded_pos = WorldChunk::belongs_to(pos);
 
-        if let Some((_, found)) = self.cache.iter().find(|(key, value)|
+        if let Some(CachedValue{
+            value: found,
+            ..
+        }) = self.cache.iter().find(|CachedValue{key, value}|
         {
             (key.pos == rounded_pos) && (value.index == index)
         })
@@ -615,7 +659,10 @@ where
 {
     fn load(&mut self, pos: GlobalPos) -> Option<T>
     {
-        if let Some((_, found)) = self.cache.iter().find(|(key, _)|
+        if let Some(CachedValue{
+            value: found,
+            ..
+        }) = self.cache.iter().find(|CachedValue{key, ..}|
         {
             key.pos == pos
         })
