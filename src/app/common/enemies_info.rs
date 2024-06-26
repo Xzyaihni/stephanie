@@ -1,7 +1,6 @@
 use std::{
     fs::File,
-    path::Path,
-    collections::HashMap
+    path::Path
 };
 
 use serde::{Serialize, Deserialize};
@@ -10,6 +9,7 @@ use yanyaengine::{Assets, TextureId};
 
 use crate::common::{
     ENTITY_SCALE,
+    generic_info::*,
     enemy::EnemyBehavior
 };
 
@@ -26,8 +26,7 @@ struct EnemyInfoRaw
 
 type EnemiesInfoRaw = Vec<EnemyInfoRaw>;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub struct EnemyId(usize);
+define_info_id!{EnemyId}
 
 pub struct EnemyInfo
 {
@@ -36,6 +35,14 @@ pub struct EnemyInfo
     pub scale: f32,
     pub normal: TextureId,
     pub lying: TextureId
+}
+
+impl GenericItem for EnemyInfo
+{
+    fn name(&self) -> String
+    {
+        self.name.clone()
+    }
 }
 
 impl EnemyInfo
@@ -64,11 +71,7 @@ impl EnemyInfo
     }
 }
 
-pub struct EnemiesInfo
-{
-    mapping: HashMap<String, EnemyId>,
-    enemies: Vec<EnemyInfo>
-}
+pub type EnemiesInfo = GenericInfo<EnemyId, EnemyInfo>;
 
 impl EnemiesInfo
 {
@@ -88,21 +91,6 @@ impl EnemiesInfo
             EnemyInfo::from_raw(assets, textures_root, info_raw)
         }).collect();
 
-        let mapping = enemies.iter().enumerate().map(|(index, enemy)|
-        {
-            (enemy.name.clone(), EnemyId(index))
-        }).collect();
-
-        Self{mapping, enemies}
-    }
-
-    pub fn id(&self, name: &str) -> EnemyId
-    {
-        self.mapping[name]
-    }
-
-    pub fn get(&self, id: EnemyId) -> &EnemyInfo
-    {
-        &self.enemies[id.0]
+        GenericInfo::new(enemies)
     }
 }

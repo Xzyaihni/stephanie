@@ -36,6 +36,7 @@ use crate::{
         EntityPasser,
         Inventory,
         Anatomy,
+        Character,
         Player,
         Enemy,
         EnemiesInfo,
@@ -160,6 +161,7 @@ no_on_set!{
     String,
     Parent,
     Transform,
+    Enemy,
     Player,
     Collider,
     Physical,
@@ -170,17 +172,15 @@ no_on_set!{
     UiElementServer
 }
 
-no_on_set_for!{ServerEntities, Enemy}
+no_on_set_for!{ServerEntities, Character}
 
-impl OnSet<ClientEntities> for Enemy
+impl OnSet<ClientEntities> for Character
 {
     fn on_set(previous: Option<Self>, entities: &ClientEntities, entity: Entity)
     {
         if let Some(previous) = previous
         {
-            let mut enemy = entities.enemy_mut(entity).unwrap();
-
-            enemy.with_previous(previous);
+            entities.character_mut(entity).unwrap().with_previous(previous);
         }
     }
 }
@@ -1449,51 +1449,46 @@ macro_rules! define_entities_both
                 enemies_info: &EnemiesInfo
             )
             {
-                self.enemy.iter().for_each(|(_, ComponentWrapper{
+                self.character.iter().for_each(|(_, &ComponentWrapper{
                     entity,
-                    component: enemy
+                    component: ref character
                 })|
                 {
-                    let mut lazy = self.lazy_transform_mut(*entity).unwrap();
-                    let mut render = self.render_mut(*entity).unwrap();
-                    let mut transform = self.transform_mut(*entity).unwrap();
-                    let changed = enemy.borrow_mut().update_sprite(
-                        &mut *lazy,
-                        enemies_info,
+                    let mut render = self.render_mut(entity).unwrap();
+                    let mut transform = self.transform_mut(entity).unwrap();
+                    let changed = character.borrow_mut().update_sprite(
+                        &mut transform,
+                        // enemies_info,
                         &mut render,
                         |render, texture|
                         {
-                            render.set_sprite(create_info, Some(&mut transform), texture);
+                            render.set_sprite(
+                                create_info,
+                                self.transform(entity).as_deref(),
+                                texture
+                            );
                         }
                     );
 
                     if changed
                     {
-                        let parent_transform = self.parent_transform(*entity);
-                        transform.scale = lazy.target_global(parent_transform.as_ref()).scale;
+                        if let Some(lazy) = self.lazy_transform(entity)
+                        {
+                            let parent_transform = self.parent_transform(entity);
+
+                            transform.scale = lazy.target_global(parent_transform.as_ref()).scale;
+                        }
                     }
                 });
             }
 
             pub fn anatomy_changed(&self, entity: Entity)
             {
-                if let Some(mut enemy) = self.enemy_mut(entity)
+                if let Some(mut character) = self.character_mut(entity)
                 {
                     let anatomy = self.anatomy(entity).unwrap();
 
-                    let can_move = anatomy.speed().is_some();
-
-                    use crate::common::enemy::SpriteState;
-
-                    let state = if can_move
-                    {
-                        SpriteState::Normal
-                    } else
-                    {
-                        SpriteState::Lying
-                    };
-
-                    enemy.set_sprite(state);
+                    character.anatomy_changed(&anatomy);
                 }
             }
         }
@@ -1555,14 +1550,14 @@ macro_rules! define_entities_both
                 enemies_info: &EnemiesInfo
             )
             {
-                self.enemy.iter().for_each(|(_, ComponentWrapper{
+                self.character.iter().for_each(|(_, ComponentWrapper{
                     entity,
-                    component: enemy
+                    component: character
                 })|
                 {
-                    let mut lazy = self.lazy_transform_mut(*entity).unwrap();
+                    let mut transform = self.transform_mut(*entity).unwrap();
 
-                    enemy.borrow_mut().update_sprite_common(&mut *lazy, enemies_info);
+                    character.borrow_mut().update_sprite_common(&mut transform, /*enemies_info*/);
                 });
             }
 
@@ -1779,10 +1774,11 @@ define_entities!{
     (watchers, watchers_mut, set_watchers, SetWatchers, WatchersType, Watchers),
     (damaging, damaging_mut, set_damaging, SetDamaging, DamagingType, Damaging),
     (inventory, inventory_mut, set_inventory, SetInventory, InventoryType, Inventory),
-    (enemy, enemy_mut, set_enemy, SetEnemy, EnemyType, Enemy),
     (named, named_mut, set_named, SetNamed, NamedType, String),
     (parent, parent_mut, set_parent, SetParent, ParentType, Parent),
     (transform, transform_mut, set_transform, SetTransform, TransformType, Transform),
+    (character, character_mut, set_character, SetCharacter, CharacterType, Character),
+    (enemy, enemy_mut, set_enemy, SetEnemy, EnemyType, Enemy),
     (player, player_mut, set_player, SetPlayer, PlayerType, Player),
     (collider, collider_mut, set_collider, SetCollider, ColliderType, Collider),
     (physical, physical_mut, set_physical, SetPhysical, PhysicalType, Physical),

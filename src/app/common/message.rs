@@ -14,6 +14,7 @@ use crate::common::{
     Inventory,
     Entity,
     EntityInfo,
+    Character,
     Player,
     PlayerEntities,
     Parent,
@@ -35,12 +36,13 @@ pub enum Message
     SetFollowRotation{entity: Entity, component: FollowRotation},
     SetInventory{entity: Entity, component: Inventory},
     SetRender{entity: Entity, component: RenderInfo},
-    SetPlayer{entity: Entity, component: Player},
     SetCollider{entity: Entity, component: Collider},
     SetPhysical{entity: Entity, component: Physical},
     SetWatchers{entity: Entity, component: Watchers},
     SetDamaging{entity: Entity, component: Damaging},
     SetAnatomy{entity: Entity, component: Anatomy},
+    SetCharacter{entity: Entity, component: Character},
+    SetPlayer{entity: Entity, component: Player},
     SetEnemy{entity: Entity, component: Enemy},
     SetNamed{entity: Entity, component: String},
     SetNone{entity: Entity, component: ()},
@@ -86,12 +88,13 @@ impl Message
             | Message::SetFollowRotation{entity, ..}
             | Message::SetInventory{entity, ..}
             | Message::SetRender{entity, ..}
-            | Message::SetPlayer{entity, ..}
             | Message::SetCollider{entity, ..}
             | Message::SetPhysical{entity, ..}
             | Message::SetWatchers{entity, ..}
             | Message::SetDamaging{entity, ..}
             | Message::SetAnatomy{entity, ..}
+            | Message::SetCharacter{entity, ..}
+            | Message::SetPlayer{entity, ..}
             | Message::SetEnemy{entity, ..}
             | Message::SetNamed{entity, ..}
             | Message::SetNone{entity, ..}

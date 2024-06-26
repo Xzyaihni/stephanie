@@ -34,6 +34,7 @@ use crate::common::{
     EntityInfo,
     EnemiesInfo,
     Parent,
+    Character,
     Player,
     PlayerEntities,
     Entities,
@@ -216,6 +217,7 @@ impl GameServer
             }.into()),
             inventory: Some(Inventory::new()),
             physical: Some(physical.into()),
+            character: Some(Character::new()),
             anatomy: Some(anatomy),
             ..Default::default()
         };

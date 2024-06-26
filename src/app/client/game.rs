@@ -548,13 +548,13 @@ impl<'a> PlayerContainer<'a>
 
                 let mut physical: Physical = PhysicalProperties{
                     mass: item_info.mass,
-                    friction: 0.5,
+                    friction: 0.99,
                     floating: false
                 }.into();
 
                 let mass = physical.mass;
 
-                let strength = self.player().newtons();
+                let strength = self.player().newtons() * 0.4;
                 let throw_limit = 0.1 * strength;
                 let throw_amount = (strength / mass).min(throw_limit);
                 physical.velocity = direction * throw_amount;

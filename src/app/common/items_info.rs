@@ -10,11 +10,10 @@ use serde::{Serialize, Deserialize};
 
 use yanyaengine::{Assets, TextureId};
 
-use crate::common::{DamageType, Item};
+use crate::common::{generic_info::*, DamageType, Item};
 
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct ItemId(usize);
+define_info_id!{ItemId}
 
 #[derive(Deserialize)]
 pub enum Ranged
@@ -80,6 +79,14 @@ pub struct ItemInfo
     pub mass: f32,
     pub commonness: f64,
     pub texture: TextureId
+}
+
+impl GenericItem for ItemInfo
+{
+    fn name(&self) -> String
+    {
+        self.name.clone()
+    }
 }
 
 impl ItemInfo
@@ -150,8 +157,7 @@ impl ItemInfo
 
 pub struct ItemsInfo
 {
-    mapping: HashMap<String, ItemId>,
-    items: Vec<ItemInfo>,
+    generic_info: GenericInfo<ItemId, ItemInfo>,
     groups: HashMap<String, Vec<ItemId>>
 }
 
@@ -184,27 +190,24 @@ impl ItemsInfo
             ItemInfo::from_raw(assets, textures_root, info_raw)
         }).collect();
 
-        let mapping = items.iter().enumerate().map(|(index, item)|
-        {
-            (item.name.clone(), ItemId(index))
-        }).collect();
+        let generic_info = GenericInfo::new(items);
 
-        Self{mapping, items, groups}
+        Self{generic_info, groups}
     }
 
     pub fn id(&self, name: &str) -> ItemId
     {
-        self.mapping[name]
+        self.generic_info.id(name)
     }
 
     pub fn get(&self, id: ItemId) -> &ItemInfo
     {
-        &self.items[id.0]
+        self.generic_info.get(id)
     }
 
     pub fn items(&self) -> &[ItemInfo]
     {
-        &self.items
+        self.generic_info.items()
     }
 
     pub fn group(&self, name: &str) -> &[ItemId]
@@ -214,7 +217,7 @@ impl ItemsInfo
 
     pub fn random(&self) -> Item
     {
-        let id = ItemId(fastrand::usize(0..self.items.len()));
+        let id = ItemId(fastrand::usize(0..self.generic_info.items().len()));
 
         Item{id}
     }
