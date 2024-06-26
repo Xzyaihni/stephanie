@@ -920,11 +920,9 @@ impl<'a> PlayerContainer<'a>
         self.unstance();
 
         let start = self.player_position();
-
-        let mouse = self.game_state.world_mouse_position();
+        let mut end = self.mouse_position();
+        end.z = start.z;
         
-        let end = start + Vector3::new(mouse.x, mouse.y, 0.0);
-
         let info = RaycastInfo{
             pierce: None,
             layer: ColliderLayer::Damage,
@@ -1170,6 +1168,14 @@ impl<'a> PlayerContainer<'a>
         self.game_state.entities()
             .transform(self.info.entity)
             .expect("player must have a position")
+            .position
+    }
+
+    fn mouse_position(&self) -> Vector3<f32>
+    {
+        self.game_state.entities()
+            .transform(self.info.mouse_entity)
+            .expect("mouse must have a position")
             .position
     }
 }
