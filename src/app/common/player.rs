@@ -8,6 +8,7 @@ pub struct PlayerEntities
 {
     pub player: Entity,
     pub holding: Entity,
+    pub holding_right: Entity,
     pub other: Vec<Entity>
 }
 

@@ -138,13 +138,13 @@ impl Enemy
         {
             BehaviorState::MoveDirection(direction) =>
             {
-                Self::move_direction(transform, physical, *direction, move_speed);
+                Self::move_direction(transform, physical, direction.into_inner(), move_speed);
             },
             BehaviorState::Attack(entity) =>
             {
                 let other = entities.transform(*entity).unwrap().position;
 
-                let direction = Unit::new_normalize(other - transform.position);
+                let direction = other - transform.position;
 
                 Self::move_direction(transform, physical, direction, move_speed);
             },
@@ -155,10 +155,14 @@ impl Enemy
     fn move_direction(
         transform: &mut Transform,
         physical: &mut Physical,
-        direction: Unit<Vector3<f32>>,
+        mut direction: Vector3<f32>,
         move_speed: f32
     )
     {
+        direction.z = 0.0;
+
+        let direction = Unit::new_normalize(direction);
+
         let angle = direction.y.atan2(direction.x);
 
         physical.velocity = direction.into_inner() * move_speed;

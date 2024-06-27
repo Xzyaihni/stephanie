@@ -207,6 +207,7 @@ impl<'a> PlayerContainer<'a>
         self.camera_sync_instant();
         self.update_inventory(InventoryWhich::Player);
         self.unstance();
+        self.update_held();
     }
 
     pub fn camera_sync(&mut self)
@@ -384,42 +385,80 @@ impl<'a> PlayerContainer<'a>
     fn update_held(&mut self)
     {
         let holding_entity = self.game_state.player_entities().holding;
+        let holding_right = self.game_state.player_entities().holding_right;
 
         let entities = self.game_state.entities();
-        let mut render = entities.render_mut(holding_entity).unwrap();
+
         let mut parent = entities.parent_mut(holding_entity).unwrap();
+        let mut parent_right = entities.parent_mut(holding_right).unwrap();
+
+        parent.visible = true;
+        drop(parent);
 
         let player = self.player();
 
-        parent.visible = player.holding.is_some();
-        if let Some(holding) = player.holding
+        let assets = self.game_state.assets.lock();
+
+        if let Some(item) = player.holding.and_then(|holding| self.item_info(holding))
         {
-            if let Some(item) = self.item_info(holding)
+            parent_right.visible = false;
+
+            let texture = assets.texture(item.texture);
+
+            let mut lazy_transform = entities.lazy_transform_mut(holding_entity).unwrap();
+            let target = lazy_transform.target();
+
+            target.scale = item.scale3();
+            target.position = self.item_position(target.scale);
+
+            let mut render = entities.render_mut(holding_entity).unwrap();
+            render.set_texture(texture.clone());
+        } else
+        {
+            let holding_left = holding_entity;
+
+            parent_right.visible = true;
+
+            let player_character = entities.character(self.info.entity).unwrap();
+            let player_character = self.game_state.characters_info.get(player_character.id);
+
+            let texture = assets.texture(player_character.hand);
+
+            let set_for = |entity, y|
             {
-                let assets = self.game_state.assets.lock();
-                let texture = assets.texture(item.texture);
+                let mut lazy = entities.lazy_transform_mut(entity).unwrap();
+                let target = lazy.target();
 
-                let mut lazy_transform = entities.lazy_transform_mut(holding_entity).unwrap();
-                let target = lazy_transform.target();
-                let scale = item.scale3();
+                target.scale = Vector3::repeat(0.3);
 
-                target.position = self.held_item_position().unwrap();
-                target.scale = scale;
+                target.position = self.item_position(target.scale);
+                target.position.y = y;
+
+                let mut render = entities.render_mut(entity).unwrap();
 
                 render.set_texture(texture.clone());
+            };
 
-                drop(parent);
-                let parent_transform = entities.parent_transform(holding_entity);
-                let new_target = lazy_transform.target_global(parent_transform.as_ref());
-
-                let mut transform = entities.transform_mut(holding_entity).unwrap();
-                transform.scale = new_target.scale;
-                transform.position = new_target.position;
-            } else
-            {
-                parent.visible = false;
-            }
+            set_for(holding_left, -0.3);
+            set_for(holding_right, 0.3);
         }
+
+        drop(parent_right);
+
+        let lazy_for = |entity|
+        {
+            let lazy_transform = entities.lazy_transform(entity).unwrap();
+
+            let parent_transform = entities.parent_transform(entity);
+            let new_target = lazy_transform.target_global(parent_transform.as_ref());
+
+            let mut transform = entities.transform_mut(entity).unwrap();
+            transform.scale = new_target.scale;
+            transform.position = new_target.position;
+        };
+
+        lazy_for(holding_entity);
+        lazy_for(holding_right);
     }
 
     fn held_item_position(&self) -> Option<Vector3<f32>>
@@ -428,9 +467,14 @@ impl<'a> PlayerContainer<'a>
         let item = self.item_info(holding)?;
         let scale = item.scale3();
 
+        Some(self.item_position(scale))
+    }
+
+    fn item_position(&self, scale: Vector3<f32>) -> Vector3<f32>
+    {
         let offset = scale.y / 2.0 + 0.5 + self.info.held_distance;
 
-        Some(Vector3::new(offset, 0.0, 0.0))
+        Vector3::new(offset, 0.0, 0.0)
     }
 
     fn toggle_inventory(&mut self)

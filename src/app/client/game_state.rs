@@ -7,7 +7,8 @@ use std::{
     sync::{
         Arc,
         mpsc::{self, TryRecvError, Receiver}
-    }
+    },
+    collections::HashMap
 };
 
 use parking_lot::{RwLock, Mutex};
@@ -21,8 +22,10 @@ use yanyaengine::{
     ObjectFactory,
     Transform,
     TextureId,
+    ModelId,
     UniformLocation,
     camera::Camera,
+    object::model::Uvs,
     game_object::*
 };
 
@@ -165,6 +168,7 @@ impl ClientEntitiesContainer
                     if let Some(mut render) = self.entities.render_mut(entity)
                     {
                         render.object = object.into_client(
+                            Default::default(),
                             self.entities.target_ref(entity).unwrap().clone(),
                             create_info
                         );
@@ -499,6 +503,7 @@ pub struct GameState
     pub debug_mode: bool,
     pub tilemap: Arc<TileMap>,
     pub items_info: Arc<ItemsInfo>,
+    pub characters_info: Arc<CharactersInfo>,
     pub user_receiver: Rc<RefCell<Vec<UserEvent>>>,
     pub ui: Ui,
     pub common_textures: CommonTextures,
@@ -507,7 +512,6 @@ pub struct GameState
     is_trusted: bool,
     camera_scale: f32,
     dt: f32,
-    characters_info: Arc<CharactersInfo>,
     world: World,
     connections_handler: Arc<RwLock<ConnectionsHandler>>,
     receiver: Receiver<Message>
@@ -858,7 +862,11 @@ impl GameState
         self.notifications.get(Notification::PlayerConnected)
     }
 
-    pub fn update_buffers(&mut self, partial_info: UpdateBuffersPartialInfo)
+    pub fn update_buffers(
+        &mut self,
+        squares: &HashMap<Uvs, ModelId>,
+        partial_info: UpdateBuffersPartialInfo
+    )
     {
         let mut info = UpdateBuffersInfo::new(partial_info, &self.camera.read());
         let info = &mut info;
@@ -876,6 +884,7 @@ impl GameState
         let mut create_info = RenderCreateInfo{
             location: UniformLocation{set: 0, binding: 0},
             shader: self.shaders.default,
+            squares,
             object_info: &mut info.object_info
         };
 

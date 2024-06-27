@@ -3,7 +3,7 @@ use std::{
     sync::Arc
 };
 
-use strum_macros::AsRefStr;
+use strum::AsRefStr;
 
 use parking_lot::RwLock;
 
@@ -26,6 +26,8 @@ use yanyaengine::{
     object::Texture,
     game_object::*
 };
+
+pub use yanyaengine::object::model::Uvs;
 
 use crate::{
     client::{RenderCreateInfo, VisibilityChecker},
@@ -76,6 +78,7 @@ impl RenderObject
 {
     pub fn into_client(
         self,
+        uvs: Uvs,
         transform: Transform,
         create_info: &mut RenderCreateInfo
     ) -> Option<ClientRenderObject>
@@ -87,7 +90,7 @@ impl RenderObject
             Self::TextureId{id} =>
             {
                 let info = ObjectInfo{
-                    model: assets.model(assets.default_model(DefaultModel::Square)).clone(),
+                    model: assets.model(create_info.squares[&uvs]).clone(),
                     texture: assets.texture(id).clone(),
                     transform
                 };
@@ -104,7 +107,7 @@ impl RenderObject
                 let id = assets.texture_id(&name);
                 drop(assets);
 
-                Self::TextureId{id}.into_client(transform, create_info)
+                Self::TextureId{id}.into_client(uvs, transform, create_info)
             },
             Self::Text{ref text, font_size} =>
             {
@@ -192,6 +195,7 @@ pub struct RenderInfo
     pub object: Option<RenderObject>,
     pub shape: Option<BoundingShape>,
     pub mix: Option<MixColor>,
+    pub flip: Uvs,
     pub z_level: ZLevel
 }
 
@@ -205,6 +209,7 @@ impl Default for RenderInfo
             object: None,
             shape: Some(BoundingShape::Circle),
             mix: None,
+            flip: Uvs::default(),
             z_level: ZLevel::Shoulders
         }
     }
@@ -312,7 +317,7 @@ impl ServerToClient<ClientRenderInfo> for RenderInfo
     {
         let object = self.object.and_then(|object|
         {
-            object.into_client(transform(), create_info)
+            object.into_client(self.flip, transform(), create_info)
         });
 
         let scissor = self.scissor.map(|x|

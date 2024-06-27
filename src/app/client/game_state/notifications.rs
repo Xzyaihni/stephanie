@@ -1,5 +1,4 @@
 use strum::EnumCount;
-use strum_macros::EnumCount;
 
 
 #[derive(Debug, Clone, EnumCount)]

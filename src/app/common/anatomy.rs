@@ -5,8 +5,7 @@ use std::{
 
 use serde::{Serialize, Deserialize};
 
-use strum::EnumCount;
-use strum_macros::{EnumCount, FromRepr};
+use strum::{EnumCount, FromRepr};
 
 use nalgebra::Vector3;
 

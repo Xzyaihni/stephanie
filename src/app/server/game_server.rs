@@ -246,30 +246,35 @@ impl GameServer
 
         let mut player_children = Vec::new();
 
-        let held_item = EntityInfo{
-            render: Some(RenderInfo{
-                object: Some(RenderObject::Texture{
-                    name: "placeholder.png".to_owned()
-                }),
-                shape: Some(BoundingShape::Circle),
-                z_level: ZLevel::Arms,
-                ..Default::default()
-            }),
-            parent: Some(Parent::new(inserted, false)),
-            lazy_transform: Some(LazyTransformInfo{
-                origin_rotation: -f32::consts::FRAC_PI_2,
-                transform: Transform{
-                    rotation: f32::consts::FRAC_PI_2,
-                    position: Vector3::new(1.0, 0.0, 0.0),
+        let held_item = |flip|
+        {
+            EntityInfo{
+                render: Some(RenderInfo{
+                    object: Some(RenderObject::Texture{
+                        name: "placeholder.png".to_owned()
+                    }),
+                    flip: if flip { Uvs::FlipHorizontal } else { Uvs::Normal },
+                    shape: Some(BoundingShape::Circle),
+                    z_level: ZLevel::Arms,
                     ..Default::default()
-                },
+                }),
+                parent: Some(Parent::new(inserted, false)),
+                lazy_transform: Some(LazyTransformInfo{
+                    origin_rotation: -f32::consts::FRAC_PI_2,
+                    transform: Transform{
+                        rotation: f32::consts::FRAC_PI_2,
+                        position: Vector3::new(1.0, 0.0, 0.0),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                }.into()),
+                watchers: Some(Default::default()),
                 ..Default::default()
-            }.into()),
-            watchers: Some(Default::default()),
-            ..Default::default()
+            }
         };
 
-        let holding = inserter(held_item);
+        let holding = inserter(held_item(true));
+        let holding_right = inserter(held_item(false));
 
         let pon = |position: Vector3<f32>|
         {
@@ -330,6 +335,7 @@ impl GameServer
         let player_entities = PlayerEntities{
             player: inserted,
             holding,
+            holding_right,
             other: player_children
         };
 

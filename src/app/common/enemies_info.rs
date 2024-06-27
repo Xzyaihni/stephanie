@@ -24,7 +24,8 @@ struct EnemyInfoRaw
     behavior: EnemyBehavior,
     scale: Option<f32>,
     normal: String,
-    lying: String
+    lying: String,
+    hand: String
 }
 
 type EnemiesInfoRaw = Vec<EnemyInfoRaw>;
@@ -69,7 +70,8 @@ impl EnemyInfo
         let character = characters_info.push(CharacterInfo{
             scale,
             normal: get_texture(raw.normal),
-            lying: get_texture(raw.lying)
+            lying: get_texture(raw.lying),
+            hand: get_texture(raw.hand)
         });
 
         Self{

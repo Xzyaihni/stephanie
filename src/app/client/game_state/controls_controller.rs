@@ -6,7 +6,6 @@ use std::{
 use yanyaengine::{ElementState, PhysicalKey, KeyCode, MouseButton};
 
 use strum::EnumCount;
-use strum_macros::EnumCount;
 
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, EnumCount)]

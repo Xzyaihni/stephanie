@@ -12,7 +12,8 @@ pub struct CharacterInfo
 {
     pub scale: f32,
     pub normal: TextureId,
-    pub lying: TextureId
+    pub lying: TextureId,
+    pub hand: TextureId
 }
 
 impl CharacterInfo
@@ -22,7 +23,8 @@ impl CharacterInfo
         Self{
             scale: ENTITY_SCALE,
             normal: assets.texture_id("player/hair.png"),
-            lying: assets.texture_id("player/lying.png")
+            lying: assets.texture_id("player/lying.png"),
+            hand: assets.texture_id("player/hand.png")
         }
     }
 }

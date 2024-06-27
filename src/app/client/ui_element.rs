@@ -3,7 +3,7 @@ use std::{
     cell::Ref
 };
 
-use strum_macros::AsRefStr;
+use strum::AsRefStr;
 
 use nalgebra::Vector2;
 

@@ -2,7 +2,8 @@ use std::{
     sync::Arc,
     rc::Rc,
     cell::RefCell,
-    net::TcpStream
+    net::TcpStream,
+    collections::HashMap
 };
 
 use nalgebra::Vector2;
@@ -11,10 +12,15 @@ use parking_lot::RwLock;
 
 use image::error::ImageError;
 
+use strum::IntoEnumIterator;
+
 use yanyaengine::{
     UniformLocation,
+    DefaultModel,
     ShaderId,
+    ModelId,
     camera::Camera,
+    object::{Model, model::Uvs},
     game_object::*
 };
 
@@ -58,6 +64,7 @@ pub struct RenderCreateInfo<'a, 'b>
 {
     pub location: UniformLocation,
     pub shader: ShaderId,
+    pub squares: &'a HashMap<Uvs, ModelId>,
     pub object_info: &'a mut ObjectCreateInfo<'b>
 }
 
@@ -80,7 +87,8 @@ pub struct ClientInfo
 pub struct Client
 {
     game_state: Rc<RefCell<GameState>>,
-    game: Game
+    game: Game,
+    squares: HashMap<Uvs, ModelId>
 }
 
 impl Client
@@ -106,6 +114,7 @@ impl Client
 
         let message_passer = MessagePasser::new(stream);
 
+        let assets = info.object_info.partial.assets.clone();
         let info = GameStateInfo{
             shaders: client_init_info.app_info.shaders,
             camera,
@@ -121,7 +130,21 @@ impl Client
 
         let game = Game::new(&mut game_state.borrow_mut());
 
-        Ok(Self{game_state, game})
+        let mut assets = assets.lock();
+        let squares = Uvs::iter().map(|uvs|
+        {
+            let square = if uvs == Uvs::Normal
+            {
+                assets.default_model(DefaultModel::Square)
+            } else
+            {
+                assets.push_model(Model::square_with_uvs(uvs, 1.0))
+            };
+
+            (uvs, square)
+        }).collect();
+
+        Ok(Self{game_state, game, squares})
     }
 
     pub fn resize(&mut self, aspect: f32)
@@ -153,7 +176,7 @@ impl Client
 
     pub fn update_buffers(&mut self, partial_info: UpdateBuffersPartialInfo)
     {
-        self.game_state.borrow_mut().update_buffers(partial_info);
+        self.game_state.borrow_mut().update_buffers(&self.squares, partial_info);
     }
 
     pub fn draw(&mut self, mut info: DrawInfo)

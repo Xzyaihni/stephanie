@@ -2,7 +2,7 @@ use std::f32;
 
 use serde::{Serialize, Deserialize};
 
-use strum_macros::{EnumCount, FromRepr};
+use strum::{EnumCount, FromRepr};
 
 use nalgebra::Vector3;
 

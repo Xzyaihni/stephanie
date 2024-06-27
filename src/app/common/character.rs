@@ -100,8 +100,8 @@ impl Faction
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Character
 {
-    id: CharacterId,
-    faction: Faction,
+    pub id: CharacterId,
+    pub faction: Faction,
     sprite_state: Stateful<SpriteState>
 }
 

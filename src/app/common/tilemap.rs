@@ -15,9 +15,7 @@ use image::{
     error::ImageError
 };
 
-use strum_macros::EnumIter;
-
-use strum_macros::EnumCount;
+use strum::{EnumIter, EnumCount};
 
 use yanyaengine::{
     UniformLocation,

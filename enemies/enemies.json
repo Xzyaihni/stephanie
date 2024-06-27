@@ -2,13 +2,15 @@
     {
         "name": "zob",
         "behavior": "Melee",
-        "normal": "zob.png",
-        "lying": "lying.png"
+        "normal": "zob/zob.png",
+        "lying": "zob/lying.png",
+        "hand": "hand.png"
     },
     {
         "name": "runner",
         "behavior": "Melee",
-        "normal": "zob.png",
-        "lying": "lying.png"
+        "normal": "runner/zob.png",
+        "lying": "runner/lying.png",
+        "hand": "hand.png"
     }
 ]

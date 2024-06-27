@@ -2,7 +2,7 @@ use std::mem;
 
 use serde::{Serialize, Deserialize};
 
-use strum_macros::EnumCount;
+use strum::EnumCount;
 
 use crate::common::{
     watcher::*,
