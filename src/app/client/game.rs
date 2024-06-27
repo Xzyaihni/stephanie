@@ -21,6 +21,7 @@ use crate::common::{
     Side1d,
     AnyEntities,
     Parent,
+    Faction,
     Physical,
     PhysicalProperties,
     Entity,
@@ -626,7 +627,7 @@ impl<'a> PlayerContainer<'a>
                     }.into()),
                     damaging: Some(DamagingInfo{
                         damage: DamagingType::Mass(mass),
-                        is_player: true,
+                        faction: Some(Faction::Player),
                         ..Default::default()
                     }.into()),
                     watchers: Some(Watchers::new(vec![
@@ -739,7 +740,7 @@ impl<'a> PlayerContainer<'a>
                         damage
                     },
                     predicate: DamagingPredicate::ParentAngleLess(f32::consts::PI),
-                    is_player: true,
+                    faction: Some(Faction::Player),
                     ..Default::default()
                 }.into()),
                 ..Default::default()
@@ -793,7 +794,7 @@ impl<'a> PlayerContainer<'a>
                         angle: 0.0,
                         damage
                     },
-                    is_player: true,
+                    faction: Some(Faction::Player),
                     ..Default::default()
                 }.into()),
                 ..Default::default()
@@ -1000,7 +1001,7 @@ impl<'a> PlayerContainer<'a>
                     };
 
                     drop(transform);
-                    self.game_state.damage_entity(angle, id, damage);
+                    self.game_state.damage_entity(angle, id, Faction::Player, damage);
                 },
                 _ => ()
             }

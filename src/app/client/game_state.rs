@@ -39,6 +39,7 @@ use crate::{
         TileMap,
         DamagePartial,
         DataInfos,
+        Faction,
         ItemsInfo,
         InventoryItem,
         AnyEntities,
@@ -698,7 +699,13 @@ impl GameState
         }
     }
 
-    pub fn damage_entity(&mut self, angle: f32, entity: Entity, damage: DamagePartial)
+    pub fn damage_entity(
+        &mut self,
+        angle: f32,
+        entity: Entity,
+        faction: Faction,
+        damage: DamagePartial
+    )
     {
         let mut passer = self.connections_handler.write();
         self.entities.entities.damage_entity(
@@ -706,6 +713,7 @@ impl GameState
             self.damage_info(),
             angle,
             entity,
+            faction,
             damage
         );
     }

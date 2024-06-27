@@ -6,7 +6,7 @@ use nalgebra::Vector3;
 
 use yanyaengine::Transform;
 
-use crate::common::{short_rotation, angle_between, damage::*, Physical, Entity};
+use crate::common::{short_rotation, angle_between, damage::*, Faction, Physical, Entity};
 
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -122,7 +122,7 @@ pub struct DamagingInfo
     pub damage: DamagingType,
     pub predicate: DamagingPredicate,
     pub times: DamageTimes,
-    pub is_player: bool
+    pub faction: Option<Faction>
 }
 
 impl Default for DamagingInfo
@@ -133,7 +133,7 @@ impl Default for DamagingInfo
             damage: DamagingType::None,
             predicate: DamagingPredicate::None,
             times: DamageTimes::Once,
-            is_player: false
+            faction: None
         }
     }
 }
@@ -143,7 +143,7 @@ pub struct Damaging
 {
     pub damage: DamagingType,
     pub predicate: DamagingPredicate,
-    pub is_player: bool,
+    pub faction: Faction,
     times: DamageTimes,
     already_damaged: Vec<Entity>
 }
@@ -156,7 +156,7 @@ impl From<DamagingInfo> for Damaging
             damage: info.damage,
             predicate: info.predicate,
             times: info.times,
-            is_player: info.is_player,
+            faction: info.faction.expect("faction must be specified"),
             already_damaged: Vec::new()
         }
     }

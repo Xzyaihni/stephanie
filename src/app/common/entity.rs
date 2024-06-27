@@ -31,6 +31,7 @@ use crate::{
         OccludingPlaneServer,
         Side2d,
         PhysicalProperties,
+        Faction,
         DamagePartial,
         Damage,
         EntityPasser,
@@ -299,9 +300,9 @@ macro_rules! impl_common_systems
         {
             match message
             {
-                Message::EntityDamage{entity, damage} =>
+                Message::EntityDamage{entity, faction, damage} =>
                 {
-                    self.damage_entity_common(entity, damage);
+                    self.damage_entity_common(entity, faction, damage);
 
                     None
                 },
@@ -352,9 +353,7 @@ macro_rules! impl_common_systems
                 component: ref enemy
             })|
             {
-                let mut enemy = enemy.borrow_mut();
-
-                if enemy.check_hostiles()
+                if enemy.borrow().check_hostiles()
                 {
                     let character = self.character_mut(entity).unwrap();
                     self.character.iter()
@@ -381,11 +380,12 @@ macro_rules! impl_common_systems
                             ..
                         }|
                         {
-                            enemy.set_attacking(other_entity);
+                            enemy.borrow_mut().set_attacking(other_entity);
+                            on_state_change(entity);
                         });
                 }
 
-                let state_changed = enemy.update(
+                let state_changed = enemy.borrow_mut().update(
                     self,
                     entity,
                     dt
@@ -393,7 +393,6 @@ macro_rules! impl_common_systems
 
                 if state_changed
                 {
-                    drop(enemy);
                     on_state_change(entity);
                 }
             });
@@ -402,27 +401,43 @@ macro_rules! impl_common_systems
         pub fn damage_entity_common(
             &mut self,
             entity: Entity,
+            faction: Faction,
             damage: Damage
         ) -> bool
         {
             use crate::common::Damageable;
 
-            if let Some(mut anatomy) = self.anatomy_mut(entity)
+            if let Some(other) = self.faction(entity)
+            {
+                if !faction.aggressive(&other)
+                {
+                    return false;
+                }
+            } else
+            {
+                return false;
+            }
+
+            if self.anatomy(entity).is_some()
             {
                 if let Some(mut mix_color) = self.mix_color_target(entity)
                 {
                     *mix_color = Some(MixColor{color: [1.0; 3], amount: 0.8});
                 }
 
-                self.watchers_mut(entity).unwrap().push(Watcher{
-                    kind: WatcherType::Lifetime(0.2.into()),
-                    action: WatcherAction::SetMixColor(None),
-                    ..Default::default()
-                });
+                self.add_watcher(
+                    entity,
+                    Watcher{
+                        kind: WatcherType::Lifetime(0.2.into()),
+                        action: WatcherAction::SetMixColor(None),
+                        ..Default::default()
+                    }
+                );
 
-
-                anatomy.damage(damage);
-                drop(anatomy);
+                if let Some(mut anatomy) = self.anatomy_mut(entity)
+                {
+                    anatomy.damage(damage);
+                }
 
                 Anatomy::on_set(None, self, entity);
 
@@ -430,6 +445,27 @@ macro_rules! impl_common_systems
             }
 
             false
+        }
+
+        pub fn faction(&self, entity: Entity) -> Option<Faction>
+        {
+            self.character(entity).map(|character|
+            {
+                character.faction
+            })
+        }
+
+        pub fn add_watcher(&mut self, entity: Entity, watcher: Watcher)
+        {
+            if let Some(mut watchers) = self.watchers_mut(entity)
+            {
+                watchers.push(watcher);
+
+                return
+            }
+
+            // an else statement is too advanced for the borrow checker rn
+            self.set_watchers(entity, Some(Watchers::new(vec![watcher])));
         }
 
         pub fn update_physical(&mut self, dt: f32)
@@ -836,6 +872,7 @@ macro_rules! define_entities_both
                 blood_texture: TextureId,
                 angle: f32,
                 entity: Entity,
+                faction: Faction,
                 damage: DamagePartial
             )
             {
@@ -850,7 +887,7 @@ macro_rules! define_entities_both
                 let relative_rotation = angle - (-entity_rotation);
                 let damage = damage.with_direction(Side2d::from_angle(relative_rotation));
 
-                let damaged = self.damage_entity_common(entity, damage.clone());
+                let damaged = self.damage_entity_common(entity, faction, damage.clone());
 
                 if damaged
                 {
@@ -858,7 +895,7 @@ macro_rules! define_entities_both
                         Vector3::new(-angle.cos(), angle.sin(), 0.0)
                     );
 
-                    passer.send_message(Message::EntityDamage{entity, damage});
+                    passer.send_message(Message::EntityDamage{entity, faction, damage});
 
                     let scale = Vector3::repeat(ENTITY_SCALE * 0.2)
                         .component_mul(&Vector3::new(2.0, 1.0, 1.0));
@@ -941,14 +978,6 @@ macro_rules! define_entities_both
                     {
                         let mut damaging = damaging.borrow_mut();
 
-                        let same_team = if damaging.is_player
-                        {
-                            self.player(collided).is_some()
-                        } else
-                        {
-                            self.enemy(collided).is_some()
-                        };
-
                         let parent_angle_between = ||
                         {
                             let parent = self.parent(entity).unwrap().entity;
@@ -967,8 +996,7 @@ macro_rules! define_entities_both
                             short_rotation(relative_angle)
                         };
 
-                        if !same_team
-                            && damaging.can_damage(collided)
+                        if damaging.can_damage(collided)
                             && damaging.predicate.meets(parent_angle_between)
                         {
                             damaging.damaged(collided);
@@ -991,7 +1019,7 @@ macro_rules! define_entities_both
 
                             return damaging.damage.as_damage(collision_info).map(|(angle, damage)|
                             {
-                                (collided, angle, damage)
+                                (collided, angle, damaging.faction, damage)
                             });
                         }
 
@@ -999,9 +1027,9 @@ macro_rules! define_entities_both
                     }).collect::<Vec<_>>()
                 }).collect::<Vec<_>>();
 
-                damage_entities.into_iter().for_each(|(collided, angle, damage)|
+                damage_entities.into_iter().for_each(|(collided, angle, faction, damage)|
                 {
-                    self.damage_entity(passer, blood_texture, angle, collided, damage);
+                    self.damage_entity(passer, blood_texture, angle, collided, faction, damage);
                 });
             }
 
