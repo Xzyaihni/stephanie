@@ -8,6 +8,8 @@ use serde::{Serialize, Deserialize};
 use strum::EnumCount;
 use strum_macros::{EnumCount, FromRepr};
 
+use nalgebra::Vector3;
+
 use crate::common::{
     SeededRandom,
     WeightedPicker,
@@ -45,6 +47,13 @@ impl Anatomy
         {
             Self::Human(x) => x.vision_distance()
         }
+    }
+
+    pub fn sees(&self, this_position: &Vector3<f32>, other_position: &Vector3<f32>) -> bool
+    {
+        let distance = this_position.metric_distance(other_position);
+
+        self.vision_distance() >= distance
     }
 
     pub fn set_speed(&mut self, speed: f32)

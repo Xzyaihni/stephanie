@@ -374,10 +374,7 @@ macro_rules! impl_common_systems
                             let transform = self.transform(entity).unwrap();
                             let other_transform = self.transform(other_entity).unwrap();
 
-                            let distance = transform.position
-                                .metric_distance(&other_transform.position);
-
-                            anatomy.vision_distance() >= distance
+                            anatomy.sees(&transform.position, &other_transform.position)
                         })
                         .for_each(|&ComponentWrapper{
                             entity: other_entity,
