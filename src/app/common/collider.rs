@@ -5,6 +5,7 @@ use nalgebra::Vector3;
 use yanyaengine::Transform;
 
 use crate::common::{
+    define_layers,
     group_by,
     Entity,
     Physical,
@@ -38,22 +39,8 @@ impl ColliderLayer
 {
     pub fn collides(&self, other: &Self) -> bool
     {
-        macro_rules! define_collisions
-        {
-            ($(($first:ident, $second:ident, $result:literal)),+) =>
-            {
-                #[allow(unreachable_patterns)]
-                match (self, other)
-                {
-                    $(
-                        (Self::$first, Self::$second) => $result,
-                        (Self::$second, Self::$first) => $result
-                    ),+
-                }
-            }
-        }
-
-        define_collisions!{
+        define_layers!{
+            self, other,
             (Normal, Normal, true),
             (Ui, Ui, true),
             (Normal, Ui, false),

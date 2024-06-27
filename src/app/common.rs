@@ -45,7 +45,7 @@ pub use items_info::{ItemInfo, ItemsInfo, Ranged};
 
 pub use inventory::{InventorySorter, InventoryItem, Inventory};
 
-pub use character::Character;
+pub use character::{Character, Faction};
 pub use characters_info::{CharacterId, CharactersInfo, CharacterInfo};
 
 pub use player::{Player, PlayerEntities};

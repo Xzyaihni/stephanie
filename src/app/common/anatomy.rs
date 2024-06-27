@@ -18,7 +18,8 @@ use crate::common::{
     Side1d,
     Side2d,
     Side3d,
-    Damageable
+    Damageable,
+    world::TILE_SIZE
 };
 
 
@@ -35,6 +36,14 @@ impl Anatomy
         match self
         {
             Self::Human(x) => x.speed()
+        }
+    }
+
+    pub fn vision_distance(&self) -> f32
+    {
+        match self
+        {
+            Self::Human(x) => x.vision_distance()
         }
     }
 
@@ -1056,6 +1065,11 @@ impl HumanAnatomy
     pub fn speed(&self) -> Option<f32>
     {
         self.cached.speed
+    }
+
+    pub fn vision_distance(&self) -> f32
+    {
+        TILE_SIZE * 8.0
     }
 
     pub fn set_speed(&mut self, speed: f32)

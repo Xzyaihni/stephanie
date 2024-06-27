@@ -13,6 +13,7 @@ use crate::common::{
     Inventory,
     Anatomy,
     HumanAnatomy,
+    Faction,
     Character,
     Enemy,
     EnemyId,
@@ -85,7 +86,7 @@ impl<'a> EnemyBuilder<'a>
             }.into()),
             inventory: Some(inventory),
             anatomy: Some(Anatomy::Human(HumanAnatomy::default())),
-            character: Some(Character::new(info.character)),
+            character: Some(Character::new(info.character, Faction::Zob)),
             enemy: Some(Enemy::new(self.enemies_info, self.id)),
             watchers: Some(Default::default()),
             ..Default::default()

@@ -5,6 +5,7 @@ use nalgebra::Vector3;
 use yanyaengine::{Transform, TextureId};
 
 use crate::common::{
+    define_layers,
     render_info::*,
     CharacterId,
     CharactersInfo,
@@ -77,18 +78,43 @@ impl<T> Stateful<T>
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum Faction
+{
+    Player,
+    Zob
+}
+
+impl Faction
+{
+    pub fn aggressive(&self, other: &Self) -> bool
+    {
+        define_layers!{
+            self, other,
+            (Player, Player, false),
+            (Zob, Zob, false),
+            (Player, Zob, true)
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Character
 {
     id: CharacterId,
+    faction: Faction,
     sprite_state: Stateful<SpriteState>
 }
 
 impl Character
 {
-    pub fn new(id: CharacterId) -> Self
+    pub fn new(
+        id: CharacterId,
+        faction: Faction
+    ) -> Self
     {
         Self{
             id,
+            faction,
             sprite_state: SpriteState::Normal.into()
         }
     }
@@ -174,6 +200,11 @@ impl Character
         };
 
         self.set_sprite(state);
+    }
+
+    pub fn aggressive(&self, other: &Self) -> bool
+    {
+        self.faction.aggressive(&other.faction)
     }
 
     fn set_sprite(&mut self, state: SpriteState)

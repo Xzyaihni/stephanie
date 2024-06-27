@@ -335,12 +335,59 @@ macro_rules! impl_common_systems
         where
             F: FnMut(Entity, &mut Enemy, &mut LazyTransform)
         {
+            let mut on_state_change = |entity|
+            {
+                let mut enemy = self.enemy_mut(entity).unwrap();
+                let mut lazy_transform = self.lazy_transform_mut(entity).unwrap();
+
+                on_state_change(
+                    entity,
+                    &mut enemy,
+                    &mut lazy_transform
+                )
+            };
+
             self.enemy.iter().for_each(|(_, &ComponentWrapper{
                 entity,
                 component: ref enemy
             })|
             {
                 let mut enemy = enemy.borrow_mut();
+
+                if enemy.check_hostiles()
+                {
+                    let character = self.character_mut(entity).unwrap();
+                    self.character.iter()
+                        .map(|(_, x)| x)
+                        .filter(|x| x.entity != entity)
+                        .filter(|x|
+                        {
+                            let other_character = x.component.borrow();
+                            character.aggressive(&other_character)
+                        })
+                        .filter(|x|
+                        {
+                            let other_entity = x.entity;
+
+                            let anatomy = self.anatomy(entity).unwrap();
+
+                            let transform = self.transform(entity).unwrap();
+                            let other_transform = self.transform(other_entity).unwrap();
+
+                            let distance = transform.position
+                                .metric_distance(&other_transform.position);
+
+                            anatomy.vision_distance() >= distance
+                        })
+                        .for_each(|&ComponentWrapper{
+                            entity: other_entity,
+                            ..
+                        }|
+                        {
+                            enemy.set_attacking(other_entity);
+                        });
+                }
+
                 let state_changed = enemy.update(
                     self,
                     entity,
@@ -349,13 +396,8 @@ macro_rules! impl_common_systems
 
                 if state_changed
                 {
-                    let mut lazy_transform = self.lazy_transform_mut(entity).unwrap();
-
-                    on_state_change(
-                        entity,
-                        &mut enemy,
-                        &mut lazy_transform
-                    )
+                    drop(enemy);
+                    on_state_change(entity);
                 }
             });
         }

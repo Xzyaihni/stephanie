@@ -65,6 +65,7 @@ pub struct Enemy
     behavior: EnemyBehavior,
     behavior_state: BehaviorState,
     current_state_left: Option<f32>,
+    hostile_timer: f32,
     id: EnemyId,
     rng: SeededRandom
 }
@@ -82,6 +83,7 @@ impl Enemy
             current_state_left: behavior.duration_of(&mut rng, &behavior_state),
             behavior_state,
             behavior,
+            hostile_timer: 0.0,
             id,
             rng
         }
@@ -120,6 +122,7 @@ impl Enemy
 
     fn do_behavior(
         &mut self,
+        entities: &impl AnyEntities,
         anatomy: &Anatomy,
         transform: &mut Transform,
         physical: &mut Physical
@@ -135,17 +138,31 @@ impl Enemy
         {
             BehaviorState::MoveDirection(direction) =>
             {
-                let angle = direction.y.atan2(direction.x);
-
-                physical.velocity = direction.into_inner() * move_speed;
-                transform.rotation = angle;
+                Self::move_direction(transform, physical, *direction, move_speed);
             },
             BehaviorState::Attack(entity) =>
             {
-                dbg!(entity);
+                let other = entities.transform(*entity).unwrap().position;
+
+                let direction = Unit::new_normalize(other - transform.position);
+
+                Self::move_direction(transform, physical, direction, move_speed);
             },
             BehaviorState::Wait => ()
         }
+    }
+
+    fn move_direction(
+        transform: &mut Transform,
+        physical: &mut Physical,
+        direction: Unit<Vector3<f32>>,
+        move_speed: f32
+    )
+    {
+        let angle = direction.y.atan2(direction.x);
+
+        physical.velocity = direction.into_inner() * move_speed;
+        transform.rotation = angle;
     }
 
     pub fn update(
@@ -160,6 +177,14 @@ impl Enemy
         if anatomy.speed().is_none()
         {
             return false;
+        }
+
+        if self.hostile_timer <= 0.0
+        {
+            self.hostile_timer = 0.5;
+        } else
+        {
+            self.hostile_timer -= dt;
         }
 
         let changed = if let Some(current_state_left) = self.current_state_left.as_mut()
@@ -186,9 +211,28 @@ impl Enemy
         let mut transform = entities.target(entity).unwrap();
         let mut physical = entities.physical_mut(entity).unwrap();
 
-        self.do_behavior(&anatomy, &mut transform, &mut physical);
+        self.do_behavior(entities, &anatomy, &mut transform, &mut physical);
 
         changed
+    }
+
+    pub fn set_attacking(&mut self, entity: Entity)
+    {
+        self.behavior_state = BehaviorState::Attack(entity);
+    }
+
+    pub fn is_attacking(&self) -> bool
+    {
+        match self.behavior_state
+        {
+            BehaviorState::Attack(_) => true,
+            _ => false
+        }
+    }
+
+    pub fn check_hostiles(&self) -> bool
+    {
+        !self.is_attacking() && (self.hostile_timer <= 0.0)
     }
 
     pub fn behavior(&self) -> &EnemyBehavior

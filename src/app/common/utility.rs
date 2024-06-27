@@ -7,6 +7,24 @@ use serde::{Deserialize, Serialize};
 
 use nalgebra::Vector3;
 
+pub use crate::define_layers;
+
+
+#[macro_export]
+macro_rules! define_layers
+{
+    ($left:expr, $right:expr, $(($first:ident, $second:ident, $result:literal)),+) =>
+    {
+        #[allow(unreachable_patterns)]
+        match ($left, $right)
+        {
+            $(
+                (Self::$first, Self::$second) => $result,
+                (Self::$second, Self::$first) => $result
+            ),+
+        }
+    }
+}
 
 pub struct WeightedPicker<I>
 {
