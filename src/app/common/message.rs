@@ -4,6 +4,8 @@ use serde::{Serialize, Deserialize};
 
 use strum::EnumCount;
 
+use nalgebra::Vector3;
+
 use crate::common::{
     watcher::*,
     lazy_transform::*,
@@ -48,6 +50,7 @@ pub enum Message
     SetNamed{entity: Entity, component: String},
     SetNone{entity: Entity, component: ()},
     SetTarget{entity: Entity, target: Transform},
+    SetTargetPosition{entity: Entity, position: Vector3<f32>},
     EntityDestroy{entity: Entity},
     EntityDamage{entity: Entity, faction: Faction, damage: Damage},
     PlayerConnect{name: String},
@@ -100,6 +103,7 @@ impl Message
             | Message::SetNamed{entity, ..}
             | Message::SetNone{entity, ..}
             | Message::SetTarget{entity, ..}
+            | Message::SetTargetPosition{entity, ..}
             | Message::EntityDestroy{entity, ..}
             | Message::EntityDamage{entity, ..} => Some(*entity),
             Message::PlayerConnect{..}

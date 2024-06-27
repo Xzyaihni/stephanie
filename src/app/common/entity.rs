@@ -308,12 +308,18 @@ macro_rules! impl_common_systems
                 },
                 Message::SetTarget{entity, target} =>
                 {
-                    if self.exists(entity)
+                    if let Some(mut x) = self.target(entity)
                     {
-                        if let Some(mut x) = self.target(entity)
-                        {
-                            *x = target;
-                        }
+                        *x = target;
+                    }
+
+                    None
+                },
+                Message::SetTargetPosition{entity, position} =>
+                {
+                    if let Some(mut x) = self.target(entity)
+                    {
+                        x.position = position;
                     }
 
                     None
@@ -466,6 +472,16 @@ macro_rules! impl_common_systems
 
             // an else statement is too advanced for the borrow checker rn
             self.set_watchers(entity, Some(Watchers::new(vec![watcher])));
+        }
+
+        pub fn lazy_target_end(&self, entity: Entity) -> Option<Transform>
+        {
+            self.lazy_transform(entity).map(|lazy|
+            {
+                let parent_transform = self.parent_transform(entity);
+
+                lazy.target_global(parent_transform.as_ref())
+            })
         }
 
         pub fn update_physical(&mut self, dt: f32)
@@ -1223,9 +1239,9 @@ macro_rules! define_entities_both
                 {
                     if let Some(passer) = passer.as_mut()
                     {
-                        passer.send_message(Message::SetTarget{
+                        passer.send_message(Message::SetTargetPosition{
                             entity,
-                            target: self.target_ref(entity).unwrap().clone()
+                            position: self.target_ref(entity).unwrap().position
                         });
 
                         if let Some(physical) = physical
@@ -1405,20 +1421,15 @@ macro_rules! define_entities_both
                     if changed
                     {
                         drop(target);
-                        self.lazy_instant_set(entity);
+
+                        if let Some(end) = self.lazy_target_end(entity)
+                        {
+                            let mut transform = self.transform_mut(entity).unwrap();
+
+                            transform.scale = end.scale;
+                        }
                     }
                 });
-            }
-
-            pub fn lazy_instant_set(&self, entity: Entity)
-            {
-                if let Some(lazy) = self.lazy_transform(entity)
-                {
-                    let parent_transform = self.parent_transform(entity);
-                    let mut transform = self.transform_mut(entity).unwrap();
-
-                    transform.scale = lazy.target_global(parent_transform.as_ref()).scale;
-                }
             }
 
             pub fn anatomy_changed(&self, entity: Entity)
@@ -1466,21 +1477,17 @@ macro_rules! define_entities_both
 
             pub fn update_lazy(&mut self)
             {
-                self.lazy_transform.iter().for_each(|(_, ComponentWrapper{
+                self.lazy_transform.iter().for_each(|(_, &ComponentWrapper{
                     entity,
-                    component: lazy
+                    ..
                 })|
                 {
-                    let parent = self.parent(*entity);
-
-                    let target_global = parent.map(|parent|
+                    if let Some(end) = self.lazy_target_end(entity)
                     {
-                        self.transform(parent.entity).as_deref().cloned()
-                    }).flatten();
+                        let mut transform = self.transform_mut(entity).unwrap();
 
-                    let mut transform = self.transform_mut(*entity).unwrap();
-
-                    *transform = lazy.borrow_mut().target_global(target_global.as_ref());
+                        *transform = end;
+                    }
                 });
             }
 
@@ -1489,14 +1496,26 @@ macro_rules! define_entities_both
                 characters_info: &CharactersInfo
             )
             {
-                self.character.iter().for_each(|(_, ComponentWrapper{
+                self.character.iter().for_each(|(_, &ComponentWrapper{
                     entity,
-                    component: character
+                    component: ref character
                 })|
                 {
-                    let mut target = self.target(*entity).unwrap();
+                    let mut target = self.target(entity).unwrap();
 
-                    character.borrow_mut().update_sprite_common(characters_info, &mut target);
+                    let changed = character.borrow_mut()
+                        .update_sprite_common(characters_info, &mut target);
+
+                    if changed
+                    {
+                        drop(target);
+                        if let Some(end) = self.lazy_target_end(entity)
+                        {
+                            let mut transform = self.transform_mut(entity).unwrap();
+
+                            transform.scale = end.scale;
+                        }
+                    }
                 });
             }
 
