@@ -396,6 +396,7 @@ impl GameServer
         self.world.send_all(&mut self.entities, connection_id);
 
         let mut writer = self.connection_handler.write();
+        writer.flush()?;
 
         let messager = writer.get_mut(connection_id);
 

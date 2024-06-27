@@ -162,17 +162,13 @@ impl ClientOvermap
 
         let chunk_ordering = indexer.default_ordering(chunks.positions());
 
-        let mut this = Self{
+        Self{
             world_receiver,
             visual_overmap,
             chunks,
             chunk_ordering,
             indexer
-        };
-
-        this.generate_missing();
-
-        this
+        }
     }
 
     pub fn rescale(&mut self, camera_size: Vector2<f32>)

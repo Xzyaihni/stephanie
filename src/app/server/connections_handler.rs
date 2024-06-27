@@ -102,6 +102,11 @@ impl ConnectionsHandler
         id
     }
 
+    pub fn flush(&mut self) -> Result<(), bincode::Error>
+    {
+        self.send_buffered()
+    }
+
     fn update_trusted(&mut self, trusted: Option<ConnectionId>)
     {
         self.trusted_player = trusted;
