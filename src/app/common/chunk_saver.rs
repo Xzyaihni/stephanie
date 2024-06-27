@@ -1,5 +1,6 @@
 use std::{
     thread,
+    fmt::Debug,
     marker::PhantomData,
     cmp::Ordering,
     io::{self, Write, Read, Seek, SeekFrom},
@@ -36,7 +37,7 @@ use crate::{
 const LZMA_PRESET: u32 = 1;
 const SAVE_MODULO: u32 = 20;
 
-pub trait Saveable: Send + 'static {}
+pub trait Saveable: Debug + Send + 'static {}
 pub trait AutoSaveable: Saveable {}
 
 impl Saveable for Chunk {}
@@ -62,6 +63,8 @@ pub trait FileSave
 
     fn save(&mut self, pair: ValuePair<Self::SaveItem>);
     fn load(&mut self, pos: GlobalPos) -> Option<Self::LoadItem>;
+
+    fn flush(&mut self);
 }
 
 // again, shouldnt be public
@@ -178,6 +181,19 @@ pub struct CachedValue<T>
 {
     pub key: CachedKey,
     pub value: T
+}
+
+impl<T> From<CachedValue<T>> for ValuePair<T>
+{
+    fn from(value: CachedValue<T>) -> Self
+    {
+        let CachedValue{
+            key: CachedKey{pos: key, ..},
+            value
+        } = value;
+
+        ValuePair{key, value}
+    }
 }
 
 impl<T> Eq for CachedValue<T>
@@ -314,8 +330,29 @@ impl<SaveT: Saveable, LoadT> FileSaver<SaveT, LoadT>
         }
     }
 
+    #[allow(dead_code)]
+    fn has_unsaved(&self) -> bool
+    {
+        !self.unsaved_chunks.is_empty()
+    }
+
+    fn flush(&mut self)
+    {
+        self.block_until_with(|_| false);
+    }
+
     fn block_until(&mut self, pos: GlobalPos)
     {
+        self.block_until_with(|finished_pos| finished_pos == pos);
+    }
+
+    fn block_until_with(&mut self, predicate: impl Fn(GlobalPos) -> bool)
+    {
+        if self.unsaved_chunks.is_empty()
+        {
+            return;
+        }
+
         while let Ok(finished_pos) = self.finish_rx.recv()
         {
             let count = self.unsaved_chunks.get_mut(&finished_pos).unwrap();
@@ -325,7 +362,7 @@ impl<SaveT: Saveable, LoadT> FileSaver<SaveT, LoadT>
             {
                 self.unsaved_chunks.remove(&finished_pos);
 
-                if finished_pos == pos
+                if predicate(finished_pos) || self.unsaved_chunks.is_empty()
                 {
                     return;
                 }
@@ -449,6 +486,11 @@ where
             bincode::deserialize_from(lzma_reader).unwrap()
         })
     }
+
+    fn flush(&mut self)
+    {
+        self.flush();
+    }
 }
 
 impl FileSave for FileSaver<SaveValueGroup, LoadValueGroup>
@@ -511,6 +553,11 @@ impl FileSave for FileSaver<SaveValueGroup, LoadValueGroup>
             LoadValueGroup{file, tags_file}
         })
     }
+
+    fn flush(&mut self)
+    {
+        self.flush();
+    }
 }
 
 pub type ChunkSaver = Saver<FileSaver<Chunk>, Chunk>;
@@ -531,6 +578,23 @@ where
     cache_amount: usize,
     cache: BinaryHeap<CachedValue<SaveT>>,
     file_saver: Arc<Mutex<S>>
+}
+
+impl<S, SaveT: Saveable, LoadT> Drop for Saver<S, SaveT, LoadT>
+where
+    S: FileSave<SaveItem=SaveT, LoadItem=LoadT>
+{
+    fn drop(&mut self)
+    {
+        let mut file_saver = self.file_saver.lock();
+
+        while let Some(value) = self.cache.pop()
+        {
+            file_saver.save(value.into());
+        }
+
+        file_saver.flush();
+    }
 }
 
 impl<S, SaveT: Saveable, LoadT> Saver<S, SaveT, LoadT>
@@ -559,9 +623,9 @@ where
 
         while self.cache.len() > until_len
         {
-            let CachedValue{key: CachedKey{pos: key, ..}, value} = self.cache.pop().unwrap();
+            let value = self.cache.pop().unwrap();
 
-            self.file_saver.lock().save(ValuePair{key, value});
+            self.file_saver.lock().save(value.into());
         }
     }
 
@@ -689,24 +753,29 @@ mod tests
 {
     use super::*;
 
-    use crate::server::world::world_generator::WorldChunkId;
+    use crate::server::world::world_generator::*;
 
     use std::iter;
 
+
+    fn clear_dir(dir_name: &Path)
+    {
+        if dir_name.exists()
+        {
+            fs::read_dir(dir_name).unwrap();
+        }
+    }
+
+    fn dir_name(name: &str) -> PathBuf
+    {
+        PathBuf::from(name)
+    }
 
     #[ignore]
     #[test]
     fn world_chunk_saving()
     {
-        let clear_dir = |dir_name: &Path|
-        {
-            if dir_name.exists()
-            {
-                fs::read_dir(dir_name).unwrap();
-            }
-        };
-
-        let dir_name = PathBuf::from("test_world");
+        let dir_name = dir_name("test_world");
 
         clear_dir(&dir_name);
 
@@ -762,5 +831,78 @@ mod tests
         }
 
         clear_dir(&dir_name);
+    }
+
+    #[ignore]
+    #[test]
+    fn world_chunk_reload()
+    {
+        let dir_name = dir_name("test_world_reload");
+
+        clear_dir(&dir_name);
+
+        let size = Pos3::new(
+            fastrand::usize(4..7),
+            fastrand::usize(4..7),
+            fastrand::usize(40..70)
+        );
+
+        let random_worldchunk = ||
+        {
+            WorldChunk::new(WorldChunkId::from_raw(fastrand::usize(0..100)), Vec::new())
+        };
+
+        let chunks: Vec<_> = iter::repeat_with(||
+            {
+                random_worldchunk()
+            }).zip((0..).map(|index|
+            {
+                let x = index % size.x;
+                let y = (index / size.x) % size.y;
+                let z = index / (size.x * size.y);
+
+                GlobalPos::from(Pos3::new(x, y, z))
+            })).take(size.product() - 10 + fastrand::usize(0..20))
+            .collect();
+
+        {
+            let mut saver = WorldChunkSaver::new(&dir_name, 3);
+
+            for (chunk, pos) in chunks.iter().cloned()
+            {
+                saver.save(pos, chunk.clone());
+                assert_eq!(Some(chunk), saver.load(pos));
+            }
+
+            for (chunk, pos) in chunks.iter().cloned()
+            {
+                assert_eq!(Some(chunk), saver.load(pos));
+            }
+        }
+
+        {
+            let mut saver = WorldChunkSaver::new(&dir_name, 2);
+
+            let compared: Vec<_> = chunks.iter().cloned().map(|(chunk, pos)|
+            {
+                Some(chunk) != saver.load(pos)
+            }).collect();
+
+            let total = compared.len();
+            let wrongs: i32 = compared.into_iter().map(|x| if x { 1 } else { 0 }).sum();
+
+            for (chunk, pos) in chunks.iter().cloned()
+            {
+                assert_eq!(Some(chunk), saver.load(pos), "{pos:?}, misses: {total}/{wrongs}");
+            }
+
+            clear_dir(&dir_name);
+
+            dbg!("dropping saver");
+            drop(saver);
+            dbg!("dropping rest");
+        }
+
+        dbg!("dropped");
     }
 }
