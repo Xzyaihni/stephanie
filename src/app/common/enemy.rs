@@ -142,11 +142,12 @@ impl Enemy
             },
             BehaviorState::Attack(entity) =>
             {
-                let other = entities.transform(*entity).unwrap().position;
+                if let Some(other_transform) = entities.transform(*entity)
+                {
+                    let direction = other_transform.position - transform.position;
 
-                let direction = other - transform.position;
-
-                Self::move_direction(transform, physical, direction, move_speed);
+                    Self::move_direction(transform, physical, direction, move_speed);
+                }
             },
             BehaviorState::Wait => ()
         }

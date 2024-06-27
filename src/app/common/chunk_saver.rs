@@ -51,6 +51,8 @@ pub trait SaveLoad<T>
 {
     fn save(&mut self, pos: GlobalPos, chunk: T);
     fn load(&mut self, pos: GlobalPos) -> Option<T>;
+
+    fn exit(&mut self);
 }
 
 // this shouldnt be public but sure, rust
@@ -586,14 +588,7 @@ where
 {
     fn drop(&mut self)
     {
-        let mut file_saver = self.file_saver.lock();
-
-        while let Some(value) = self.cache.pop()
-        {
-            file_saver.save(value.into());
-        }
-
-        file_saver.flush();
+        self.exit();
     }
 }
 
@@ -615,6 +610,19 @@ where
             cache_amount,
             cache: BinaryHeap::new()
         }
+    }
+
+    pub fn exit(&mut self)
+    {
+        // eprintln!("dropping {}", std::any::type_name::<SaveT>());
+        let mut file_saver = self.file_saver.lock();
+
+        while let Some(value) = self.cache.pop()
+        {
+            file_saver.save(value.into());
+        }
+
+        file_saver.flush();
     }
 
     fn free_cache(&mut self, amount: usize)
@@ -680,6 +688,11 @@ impl SaveLoad<WorldChunk> for WorldChunkSaver
         self.free_cache(1);
         self.cache.push(CachedValue{key, value});
     }
+
+    fn exit(&mut self)
+    {
+        self.exit();
+    }
 }
 
 impl EntitiesSaver
@@ -689,6 +702,11 @@ impl EntitiesSaver
         Self{
             saver: Saver::new(parent_path, cache_amount)
         }
+    }
+
+    pub fn exit(&mut self)
+    {
+        self.saver.exit();
     }
 
     pub fn load(&mut self, pos: GlobalPos) -> Option<Vec<EntityInfo>>
@@ -746,6 +764,11 @@ where
 
         self.inner_save(pair);
     }
+
+    fn exit(&mut self)
+    {
+        self.exit();
+    }
 }
 
 #[cfg(test)]
@@ -753,7 +776,10 @@ mod tests
 {
     use super::*;
 
-    use crate::server::world::world_generator::*;
+    use crate::{
+        common::world::*,
+        server::world::world_generator::*
+    };
 
     use std::iter;
 
@@ -904,5 +930,70 @@ mod tests
         }
 
         dbg!("dropped");
+    }
+
+    #[ignore]
+    #[test]
+    fn chunk_saving()
+    {
+        let dir_name = dir_name("test_world_normal");
+
+        clear_dir(&dir_name);
+
+        let size = Pos3::new(
+            fastrand::usize(4..7),
+            fastrand::usize(4..7),
+            fastrand::usize(40..70)
+        );
+
+        let random_chunk = ||
+        {
+            Chunk::new_with(|_| Tile::new(fastrand::usize(0..100)))
+        };
+
+        let chunks: Vec<_> = iter::repeat_with(||
+            {
+                random_chunk()
+            }).zip((0..).map(|index|
+            {
+                let x = index % size.x;
+                let y = (index / size.x) % size.y;
+                let z = index / (size.x * size.y);
+
+                GlobalPos::from(Pos3::new(x, y, z))
+            })).take(size.product() - 10 + fastrand::usize(0..20))
+            .collect();
+
+        {
+            let mut saver = ChunkSaver::new(&dir_name, 4);
+
+            for (chunk, pos) in chunks.iter().cloned()
+            {
+                saver.save(pos, chunk.clone());
+                assert_eq!(Some(chunk), saver.load(pos));
+            }
+
+            for (chunk, pos) in chunks.iter().cloned()
+            {
+                assert_eq!(Some(chunk), saver.load(pos));
+            }
+        }
+
+        let mut saver = ChunkSaver::new(&dir_name, 2);
+
+        let compared: Vec<_> = chunks.iter().cloned().map(|(chunk, pos)|
+        {
+            Some(chunk) != saver.load(pos)
+        }).collect();
+
+        let total = compared.len();
+        let wrongs: i32 = compared.into_iter().map(|x| if x { 1 } else { 0 }).sum();
+
+        for (chunk, pos) in chunks.iter().cloned()
+        {
+            assert_eq!(Some(chunk), saver.load(pos), "{pos:?}, misses: {total}/{wrongs}");
+        }
+
+        clear_dir(&dir_name);
     }
 }

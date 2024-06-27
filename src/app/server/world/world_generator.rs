@@ -347,6 +347,11 @@ impl<S: SaveLoad<WorldChunk>> WorldGenerator<S>
         Ok(Self{generator, saver, rules})
     }
 
+    pub fn exit(&mut self)
+    {
+        self.saver.exit();
+    }
+
     pub fn generate_surface(
         &mut self,
         world_chunks: &mut FlatChunksContainer<Option<WorldChunk>>,

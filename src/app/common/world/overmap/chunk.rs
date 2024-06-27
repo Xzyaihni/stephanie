@@ -81,7 +81,7 @@ impl ChunkLocal
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Chunk
 {
     tiles: Box<[Tile]>
@@ -92,6 +92,13 @@ impl Chunk
     pub fn new() -> Self
     {
         let tiles = vec![Tile::none(); CHUNK_VOLUME].into_boxed_slice();
+
+        Self{tiles}
+    }
+
+    pub fn new_with(f: impl FnMut(usize) -> Tile) -> Self
+    {
+        let tiles = (0..CHUNK_VOLUME).map(f).collect();
 
         Self{tiles}
     }

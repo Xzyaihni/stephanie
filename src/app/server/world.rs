@@ -224,6 +224,12 @@ impl World
         {
             false
         });
+
+        // i want my destuctors pls bro pls pls bro
+        self.chunk_saver.exit();
+        self.entities_saver.exit();
+
+        self.world_generator.lock().exit();
     }
 
     pub fn send_all(

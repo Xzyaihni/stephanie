@@ -404,6 +404,8 @@ mod tests
         {
             self.data.get(&pos).cloned()
         }
+
+        fn exit(&mut self) {}
     }
 
     #[test]
