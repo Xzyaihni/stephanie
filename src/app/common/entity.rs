@@ -11,7 +11,6 @@ use nalgebra::{Vector2, Vector3, Unit};
 use yanyaengine::{TextureId, Transform};
 
 use crate::{
-    server::ConnectionsHandler,
     client::{
         RenderCreateInfo,
         UiElement,
@@ -332,76 +331,6 @@ macro_rules! impl_common_systems
                 },
                 x => Some(x)
             }
-        }
-
-        fn update_enemy_common<F>(
-            &mut self,
-            dt: f32,
-            mut on_state_change: F
-        )
-        where
-            F: FnMut(Entity, &mut Enemy, &mut LazyTransform)
-        {
-            let mut on_state_change = |entity|
-            {
-                let mut enemy = self.enemy_mut(entity).unwrap();
-                let mut lazy_transform = self.lazy_transform_mut(entity).unwrap();
-
-                on_state_change(
-                    entity,
-                    &mut enemy,
-                    &mut lazy_transform
-                )
-            };
-
-            self.enemy.iter().for_each(|(_, &ComponentWrapper{
-                entity,
-                component: ref enemy
-            })|
-            {
-                if enemy.borrow().check_hostiles()
-                {
-                    let character = self.character_mut(entity).unwrap();
-                    self.character.iter()
-                        .map(|(_, x)| x)
-                        .filter(|x| x.entity != entity)
-                        .filter(|x|
-                        {
-                            let other_character = x.component.borrow();
-                            character.aggressive(&other_character)
-                        })
-                        .filter(|x|
-                        {
-                            let other_entity = x.entity;
-
-                            let anatomy = self.anatomy(entity).unwrap();
-
-                            let transform = self.transform(entity).unwrap();
-                            let other_transform = self.transform(other_entity).unwrap();
-
-                            anatomy.sees(&transform.position, &other_transform.position)
-                        })
-                        .for_each(|&ComponentWrapper{
-                            entity: other_entity,
-                            ..
-                        }|
-                        {
-                            enemy.borrow_mut().set_attacking(other_entity);
-                            on_state_change(entity);
-                        });
-                }
-
-                let state_changed = enemy.borrow_mut().update(
-                    self,
-                    entity,
-                    dt
-                );
-
-                if state_changed
-                {
-                    on_state_change(entity);
-                }
-            });
         }
 
         pub fn damage_entity_common(
@@ -1319,16 +1248,17 @@ macro_rules! define_entities_both
                 dt: f32
             )
             {
-                let target_global = self.parent_transform(entity);
+                if let Some(mut transform) = self.transform_mut(entity)
+                {
+                    let target_global = self.parent_transform(entity);
 
-                let mut transform = self.transform_mut(entity).unwrap();
-
-                *transform = lazy.next(
-                    self.physical(entity).as_deref(),
-                    transform.clone(),
-                    target_global,
-                    dt
-                );
+                    *transform = lazy.next(
+                        self.physical(entity).as_deref(),
+                        transform.clone(),
+                        target_global,
+                        dt
+                    );
+                }
             }
 
             pub fn update_lazy(&mut self, dt: f32)
@@ -1342,9 +1272,72 @@ macro_rules! define_entities_both
                 });
             }
 
-            pub fn update_enemy(&mut self, dt: f32 )
+            pub fn update_enemy(&mut self, passer: &mut impl EntityPasser, dt: f32)
             {
-                self.update_enemy_common(dt, |_, _, _| {});
+                let mut on_state_change = |entity|
+                {
+                    let enemy = self.enemy(entity).unwrap();
+                    let lazy_transform = self.lazy_transform(entity).unwrap();
+
+                    passer.send_message(Message::SetEnemy{
+                        entity,
+                        component: enemy.clone()
+                    });
+
+                    passer.send_message(Message::SetLazyTransform{
+                        entity,
+                        component: lazy_transform.clone()
+                    });
+                };
+
+                self.enemy.iter().for_each(|(_, &ComponentWrapper{
+                    entity,
+                    component: ref enemy
+                })|
+                {
+                    if enemy.borrow().check_hostiles()
+                    {
+                        let character = self.character_mut(entity).unwrap();
+                        self.character.iter()
+                            .map(|(_, x)| x)
+                            .filter(|x| x.entity != entity)
+                            .filter(|x|
+                            {
+                                let other_character = x.component.borrow();
+                                character.aggressive(&other_character)
+                            })
+                            .filter(|x|
+                            {
+                                let other_entity = x.entity;
+
+                                let anatomy = self.anatomy(entity).unwrap();
+
+                                let transform = self.transform(entity).unwrap();
+                                let other_transform = self.transform(other_entity).unwrap();
+
+                                anatomy.sees(&transform.position, &other_transform.position)
+                            })
+                            .for_each(|&ComponentWrapper{
+                                entity: other_entity,
+                                ..
+                            }|
+                            {
+                                enemy.borrow_mut().set_attacking(other_entity);
+                                on_state_change(entity);
+                            });
+                    }
+
+                    let state_changed = enemy.borrow_mut().update(
+                        self,
+                        entity,
+                        dt
+                    );
+
+                    if state_changed
+                    {
+                        on_state_change(entity);
+                    }
+                });
             }
 
             pub fn update_ui_aspect(
@@ -1459,22 +1452,6 @@ macro_rules! define_entities_both
 
             impl_common_systems!{EntityInfo}
 
-            pub fn update_enemy(&mut self, messager: &mut ConnectionsHandler, dt: f32)
-            {
-                self.update_enemy_common(dt, |entity, enemy, lazy_transform|
-                {
-                    messager.send_message(Message::SetEnemy{
-                        entity,
-                        component: enemy.clone()
-                    });
-
-                    messager.send_message(Message::SetLazyTransform{
-                        entity,
-                        component: lazy_transform.clone()
-                    });
-                });
-            }
-
             pub fn update_lazy(&mut self)
             {
                 self.lazy_transform.iter().for_each(|(_, &ComponentWrapper{
@@ -1482,10 +1459,10 @@ macro_rules! define_entities_both
                     ..
                 })|
                 {
-                    if let Some(end) = self.lazy_target_end(entity)
+                    if let (
+                        Some(end), Some(mut transform)
+                    ) = (self.lazy_target_end(entity), self.transform_mut(entity))
                     {
-                        let mut transform = self.transform_mut(entity).unwrap();
-
                         *transform = end;
                     }
                 });
@@ -1763,28 +1740,12 @@ macro_rules! define_entities
 
                         debug_assert!(!entity.local);
 
-                        let lazy = self.lazy_transform_mut(entity);
-
-                        if let Some(lazy) = lazy
+                        if let (
+                            Some(end),
+                            Some(mut transform)
+                        ) = (self.lazy_target_end(entity), self.transform_mut(entity))
                         {
-                            let parent = self.parent(entity);
-                            let new_transform = if let Some(parent) = parent
-                            {
-                                if let Some(parent) = self.transform(parent.entity)
-                                {
-                                    lazy.combine(&parent)
-                                } else
-                                {
-                                    lazy.target_local.clone()
-                                }
-                            } else
-                            {
-                                lazy.target_local.clone()
-                            };
-
-                            let mut transform = self.transform_mut(entity).unwrap();
-
-                            *transform = new_transform;
+                            *transform = end;
                         }
 
                         None

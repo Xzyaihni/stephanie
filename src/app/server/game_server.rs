@@ -21,6 +21,7 @@ use super::{
 pub use super::world::ParseError;
 
 use crate::common::{
+    some_or_return,
     sender_loop,
     receiver_loop,
     ENTITY_SCALE,
@@ -127,8 +128,6 @@ impl GameServer
     {
         const STEPS: u32 = 2;
 
-        let mut messager = self.connection_handler.write();
-
         self.entities.update_sprites(&self.characters_info);
 
         for _ in 0..STEPS
@@ -137,7 +136,6 @@ impl GameServer
 
             self.entities.update_physical(dt);
             self.entities.update_lazy();
-            self.entities.update_enemy(&mut messager, dt);
         }
 
         self.entities.update_watchers(dt);
@@ -467,22 +465,14 @@ impl GameServer
             self.connection_handler.write().send_message_without(id, message.clone());
         }
 
-        let message = match self.world.handle_message(
+        let message = some_or_return!{self.world.handle_message(
             &mut self.entities,
             id,
             entities.player,
             message
-        )
-        {
-            Some(x) => x,
-            None => return
-        };
+        )};
 
-        let message = match self.entities.handle_message(message)
-        {
-            Some(x) => x,
-            None => return
-        };
+        let message = some_or_return!{self.entities.handle_message(message)};
 
         match message
         {

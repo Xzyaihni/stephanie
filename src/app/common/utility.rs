@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use nalgebra::Vector3;
 
-pub use crate::define_layers;
+pub use crate::{define_layers, some_or_value, some_or_return};
 
 
 #[macro_export]
@@ -23,6 +23,28 @@ macro_rules! define_layers
                 (Self::$second, Self::$first) => $result
             ),+
         }
+    }
+}
+
+#[macro_export]
+macro_rules! some_or_value
+{
+    ($value:expr, $return_value:expr) =>
+    {
+        match $value
+        {
+            Some(x) => x,
+            None => return $return_value
+        }
+    }
+}
+
+#[macro_export]
+macro_rules! some_or_return
+{
+    ($value:expr) =>
+    {
+        $crate::some_or_value!{$value, ()}
     }
 }
 

@@ -5,6 +5,8 @@ use nalgebra::{Unit, Vector3};
 use yanyaengine::Transform;
 
 use crate::common::{
+    some_or_return,
+    some_or_value,
     SeededRandom,
     AnyEntities,
     Entity,
@@ -128,11 +130,9 @@ impl Enemy
         physical: &mut Physical
     )
     {
-        let move_speed = match anatomy.speed()
-        {
-            Some(x) => x / physical.mass,
-            None => return
-        };
+        let speed = some_or_return!{anatomy.speed()};
+
+        let move_speed = speed / physical.mass;
 
         match &self.behavior_state
         {
@@ -177,7 +177,7 @@ impl Enemy
         dt: f32
     ) -> bool
     {
-        let anatomy = entities.anatomy(entity).unwrap();
+        let anatomy = some_or_value!{entities.anatomy(entity), false};
 
         if anatomy.speed().is_none()
         {

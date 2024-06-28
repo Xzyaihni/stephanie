@@ -33,6 +33,7 @@ use crate::{
     ProgramShaders,
     client::RenderCreateInfo,
     common::{
+        some_or_return,
         sender_loop,
         receiver_loop,
         collider::*,
@@ -198,7 +199,7 @@ impl ClientEntitiesContainer
         self.entities.update_physical(dt);
         self.entities.update_lazy(dt);
         self.entities.update_follows(dt);
-        self.entities.update_enemy(dt);
+        self.entities.update_enemy(passer, dt);
         self.entities.update_children();
 
         {
@@ -773,17 +774,8 @@ impl GameState
 
     fn process_message_inner(&mut self, create_info: &mut RenderCreateInfo, message: Message)
     {
-        let message = match self.entities.handle_message(create_info, message)
-        {
-            Some(x) => x,
-            None => return
-        };
-
-        let message = match self.world.handle_message(message)
-        {
-            Some(x) => x,
-            None => return
-        };
+        let message = some_or_return!{self.entities.handle_message(create_info, message)};
+        let message = some_or_return!{self.world.handle_message(message)};
 
         match message
         {
