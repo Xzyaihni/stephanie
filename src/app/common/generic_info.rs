@@ -70,4 +70,9 @@ where
     {
         &self.items
     }
+
+    pub fn random(&self) -> Id
+    {
+        Id::from(fastrand::usize(0..self.items.len()))
+    }
 }

@@ -34,7 +34,7 @@ use crate::common::{
     DamagePartial,
     DamageHeight,
     InventoryItem,
-    world::TILE_SIZE
+    world::{TILE_SIZE, Pos3}
 };
 
 use super::game_state::{
@@ -203,7 +203,18 @@ impl<'a> PlayerContainer<'a>
 
         let position = self.player_position();
         let current_tile = self.game_state.tile_of(position.into());
-        self.game_state.destroy_tile(current_tile);
+
+        let r = 3;
+        for y in 0..r
+        {
+            for x in 0..r
+            {
+                let hr = r / 2;
+                let pos = Pos3::new(x - hr, y - hr, 0);
+
+                self.game_state.destroy_tile(current_tile.offset(pos));
+            }
+        }
 
         self.camera_sync_instant();
         self.update_inventory(InventoryWhich::Player);

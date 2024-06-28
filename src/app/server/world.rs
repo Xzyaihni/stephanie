@@ -352,7 +352,7 @@ impl World
             EnemyBuilder::new(
                 &self.enemies_info,
                 &self.items_info,
-                self.enemies_info.id("zob"),
+                self.enemies_info.random(),
                 pos
             ).build()
         }).chain(Self::add_on_ground(chunk_pos, chunk, crates, |pos|
