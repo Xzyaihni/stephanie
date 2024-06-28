@@ -212,7 +212,8 @@ impl ClientOvermap
 
                 self.chunks[local] = Some(Arc::new(new_chunk));
 
-                local.directions_inclusive().flatten().for_each(|pos|
+                self.visual_overmap.generate(&self.chunks, local);
+                local.directions().flatten().for_each(|pos|
                 {
                     self.visual_overmap.generate(&self.chunks, pos)
                 });
@@ -292,11 +293,18 @@ impl ClientOvermap
         shadow: ShaderId
     )
     {
-        self.visual_overmap.draw_objects(info);
+        self.visual_overmap.draw_tiles(info);
 
+        let original_pipeline = info.current_pipeline_id().unwrap();
         info.bind_pipeline(shadow);
 
         self.visual_overmap.draw_shadows(info, visibility);
+
+        info.bind_pipeline(original_pipeline);
+
+        info.set_depth_write(false);
+
+        self.visual_overmap.draw_gradients(info);
     }
 }
 

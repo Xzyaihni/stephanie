@@ -17,6 +17,7 @@ use crate::{
         VisibilityChecker,
         tiles_factory::{
             ChunkSlice,
+            ChunkObjects,
             TilesFactory,
             OccluderInfo,
             ChunkInfo,
@@ -61,7 +62,7 @@ struct OccluderInfoRaw
 
 pub struct VisualChunkInfo
 {
-    infos: ChunkSlice<Box<[ChunkInfo]>>,
+    infos: ChunkSlice<ChunkObjects<Option<ChunkInfo>>>,
     occluders: ChunkSlice<Box<[OccluderInfo]>>,
     draw_height: ChunkSlice<usize>,
     draw_next: ChunkSlice<bool>
@@ -69,7 +70,7 @@ pub struct VisualChunkInfo
 
 pub struct VisualChunk
 {
-    objects: ChunkSlice<Box<[Object]>>,
+    objects: ChunkSlice<ChunkObjects<Option<Object>>>,
     occluders: ChunkSlice<Box<[OccludingPlane]>>,
     draw_height: ChunkSlice<usize>,
     draw_next: ChunkSlice<bool>,
@@ -80,29 +81,32 @@ impl VisualChunk
 {
     pub fn new() -> Self
     {
-        let objects: ChunkSlice<Box<[Object]>> = Self::create_empty();
-        let occluders: ChunkSlice<Box<[OccludingPlane]>> = Self::create_empty();
-
         Self{
-            objects,
-            occluders,
+            objects: Self::create_empty_slice(|| ChunkObjects::repeat_with(|| None)),
+            occluders: Self::create_empty(),
             draw_height: [0; CHUNK_SIZE],
             draw_next: [true; CHUNK_SIZE],
             generated: false
         }
     }
 
+    fn create_empty_slice<T>(f: impl FnMut() -> T) -> ChunkSlice<T>
+    {
+        iter::repeat_with(f)
+            .take(CHUNK_SIZE)
+            .collect::<Vec<_>>()
+            .try_into()
+            .unwrap_or_else(|_| unreachable!())
+    }
+
     fn create_empty<T>() -> ChunkSlice<Box<[T]>>
     {
-        iter::repeat_with(||
+        Self::create_empty_slice(||
         {
             let b: Box<[T]> = Box::new([]);
 
             b
-        }).take(CHUNK_SIZE)
-            .collect::<Vec<_>>()
-            .try_into()
-            .unwrap_or_else(|_| unreachable!())
+        })
     }
 
     pub fn create(
@@ -504,7 +508,8 @@ impl VisualChunk
 
         self.objects[draw_range.clone()].iter_mut().for_each(|objects|
         {
-            objects.iter_mut().for_each(|object| object.update_buffers(info));
+            objects.iter_mut().filter_map(Option::as_mut)
+                .for_each(|object| object.update_buffers(info));
         });
 
         self.occluders[draw_range].iter_mut().for_each(|occluders|
@@ -513,7 +518,21 @@ impl VisualChunk
         });
     }
 
-    pub fn draw_objects(
+    pub fn draw_tiles(
+        &self,
+        info: &mut DrawInfo,
+        height: usize
+    )
+    {
+        let draw_range = self.draw_range(height);
+
+        self.objects[draw_range].iter().filter_map(|x| x.normal.as_ref()).for_each(|object|
+        {
+            object.draw(info);
+        });
+    }
+
+    pub fn draw_gradients(
         &self,
         info: &mut DrawInfo,
         height: usize
@@ -523,7 +542,7 @@ impl VisualChunk
 
         self.objects[draw_range].iter().for_each(|objects|
         {
-            objects.iter().for_each(|object| object.draw(info));
+            objects.gradients.iter().flatten().for_each(|object| object.draw(info));
         });
     }
 

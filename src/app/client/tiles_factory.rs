@@ -1,13 +1,15 @@
 use std::{
     f32,
     iter,
+    array,
     rc::Rc,
-    sync::Arc
+    sync::Arc,
+    ops::{Index, IndexMut}
 };
 
 use image::error::ImageError;
 
-use strum::{EnumCount, IntoEnumIterator};
+use strum::IntoEnumIterator;
 
 use parking_lot::RwLock;
 
@@ -46,6 +48,96 @@ use crate::common::{
 
 pub type ChunkSlice<T> = [T; CHUNK_SIZE];
 
+#[derive(Debug)]
+pub struct ChunkObjects<T>
+{
+    pub normal: T,
+    pub gradients: [T; 2]
+}
+
+impl<T> ChunkObjects<T>
+{
+    pub fn repeat(value: T) -> Self
+    where
+        T: Clone
+    {
+        Self::repeat_with(|| value.clone())
+    }
+
+    pub fn repeat_with(mut value: impl FnMut() -> T) -> Self
+    {
+        Self{
+            gradients: [value(), value()],
+            normal: value()
+        }
+    }
+
+    pub fn iter_mut(&mut self) -> impl Iterator<Item=&mut T>
+    {
+        iter::once(&mut self.normal).chain(self.gradients.iter_mut())
+    }
+}
+
+impl<T> IntoIterator for ChunkObjects<T>
+{
+    type Item = T;
+    type IntoIter = iter::Chain<iter::Once<T>, array::IntoIter<T, 2>>;
+
+    fn into_iter(self) -> Self::IntoIter
+    {
+        iter::once(self.normal).chain(self.gradients)
+    }
+}
+
+impl<T> FromIterator<T> for ChunkObjects<T>
+{
+    fn from_iter<I>(iter: I) -> Self
+    where
+        I: IntoIterator<Item=T>
+    {
+        let mut iter = iter.into_iter();
+
+        let value = ChunkObjects{
+            normal: iter.next().unwrap(),
+            gradients: [iter.next().unwrap(), iter.next().unwrap()]
+        };
+
+        assert!(iter.next().is_none());
+
+        value
+    }
+}
+
+impl<T> Index<Option<usize>> for ChunkObjects<T>
+{
+    type Output = T;
+
+    fn index(&self, index: Option<usize>) -> &Self::Output
+    {
+        if let Some(index) = index
+        {
+            &self.gradients[index]
+        } else
+        {
+            &self.normal
+        }
+    }
+}
+
+impl<T> IndexMut<Option<usize>> for ChunkObjects<T>
+{
+    fn index_mut(&mut self, index: Option<usize>) -> &mut Self::Output
+    {
+        if let Some(index) = index
+        {
+            &mut self.gradients[index]
+        } else
+        {
+            &mut self.normal
+        }
+    }
+}
+
 pub struct OccluderInfo
 {
     pub position: Vector3<f32>,
@@ -60,10 +152,9 @@ pub struct ChunkInfo
     texture_index: usize
 }
 
-const MODELS_AMOUNT: usize = GradientMask::COUNT + 1;
 pub struct ChunkModelBuilder
 {
-    models: ChunkSlice<[Model; MODELS_AMOUNT]>,
+    models: ChunkSlice<ChunkObjects<Model>>,
     tilemap: Arc<TileMap>
 }
 
@@ -75,8 +166,7 @@ impl ChunkModelBuilder
     {
         let models = (0..CHUNK_SIZE).map(|_|
         {
-            (0..MODELS_AMOUNT).map(|_| Model::new())
-                .collect::<Vec<_>>().try_into().unwrap()
+            ChunkObjects::repeat_with(Model::new)
         }).collect::<Vec<_>>().try_into().unwrap();
 
         Self{models, tilemap}
@@ -108,7 +198,7 @@ impl ChunkModelBuilder
 
         let chunk_height = chunk_pos.pos().z;
 
-        let id = direction.map_or(0, Self::direction_texture_index);
+        let id = direction.map(|d| Self::direction_texture_index(d) - 1);
 
         {
             let flip_axes = match direction
@@ -125,7 +215,7 @@ impl ChunkModelBuilder
         {
             if direction.is_some()
             {
-                pos.z += 0.01;
+                pos.z += 0.0001;
             }
 
             let vertices = self.tile_vertices(pos);
@@ -196,18 +286,14 @@ impl ChunkModelBuilder
     pub fn build(
         self,
         pos: GlobalPos
-    ) -> ChunkSlice<Box<[ChunkInfo]>>
+    ) -> ChunkSlice<ChunkObjects<Option<ChunkInfo>>>
     {
         let transform = Chunk::transform_of_chunk(pos);
 
         self.models.map(|models|
         {
-            let textures_indices = (iter::once(0)).chain(
-                PosDirection::iter_non_z().map(Self::direction_texture_index)
-            );
-
-            models.into_iter().zip(textures_indices)
-                .flat_map(|(model, texture_index)|
+            models.into_iter().enumerate()
+                .map(|(texture_index, model)|
                 {
                     (!model.vertices.is_empty()).then(||
                     {
@@ -289,22 +375,23 @@ impl TilesFactory
 
     pub fn build(
         &mut self,
-        chunk_info: ChunkSlice<Box<[ChunkInfo]>>
-    ) -> ChunkSlice<Box<[Object]>>
+        chunk_info: ChunkSlice<ChunkObjects<Option<ChunkInfo>>>
+    ) -> ChunkSlice<ChunkObjects<Option<Object>>>
     {
         chunk_info.map(|chunk_info|
         {
-            chunk_info.into_vec().into_iter().map(|chunk_info|
+            chunk_info.into_iter().map(|chunk_info|
             {
-                let ChunkInfo{model, transform, texture_index} = chunk_info;
+                chunk_info.map(|ChunkInfo{model, transform, texture_index}|
+                {
+                    let object_info = ObjectInfo{
+                        model,
+                        texture: self.textures[texture_index].clone(),
+                        transform
+                    };
 
-                let object_info = ObjectInfo{
-                    model,
-                    texture: self.textures[texture_index].clone(),
-                    transform
-                };
-
-                self.object_factory.create(object_info)
+                    self.object_factory.create(object_info)
+                })
             }).collect()
         })
     }
