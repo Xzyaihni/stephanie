@@ -68,7 +68,7 @@ impl Game
         let player_entity = game_state.player();
 
         let entities = game_state.entities_mut();
-        let mouse_entity = entities.push(true, EntityInfo{
+        let mouse_entity = entities.push_eager(true, EntityInfo{
             transform: Some(Transform{
                 scale: Vector3::repeat(TILE_SIZE * 5.0),
                 ..Default::default()
@@ -81,7 +81,7 @@ impl Game
             ..Default::default()
         });
 
-        let camera_entity = entities.push(true, EntityInfo{
+        let camera_entity = entities.push_eager(true, EntityInfo{
             lazy_transform: Some(LazyTransformInfo{
                 connection: Connection::EaseOut{decay: 5.0, limit: None},
                 ..Default::default()

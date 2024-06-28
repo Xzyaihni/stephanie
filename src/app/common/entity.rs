@@ -63,25 +63,11 @@ macro_rules! components
     }
 }
 
-macro_rules! components_mut
-{
-    ($this:expr, $entity:expr) =>
-    {
-        if $entity.local
-        {
-            &mut $this.local_components
-        } else
-        {
-            &mut $this.components
-        }
-    }
-}
-
 macro_rules! get_entity
 {
     ($this:expr, $entity:expr, $access_type:ident, $component:ident) =>
     {
-        components!($this, $entity).get($entity.id)
+        components!($this, $entity).borrow().get($entity.id)
             .and_then(|components| components[Component::$component as usize])
             .map(|id|
             {
@@ -268,31 +254,16 @@ macro_rules! impl_common_systems
             mut info: $this_entity_info
         ) -> Entity
         {
-            let components = if local
-            {
-                &mut self.local_components
-            } else
-            {
-                &mut self.components
-            };
-
-            let id = if let Some(parent) = info.parent.as_ref()
-            {
-                components.take_after_key(parent.entity.id)
-            } else
-            {
-                components.take_vacant_key()
-            };
-
-            let entity_id = Entity{local, id};
+            let entity = self.push_empty(local, info.parent.as_ref().map(|x| x.entity));
 
             info.setup_components(self);
 
-            let indices = self.push_info_components(entity_id, info);
+            let indices = self.push_info_components(entity, info);
 
-            components_mut!(self, entity_id).insert(id, indices);
+            let components = components!(self, entity);
+            components.borrow_mut().insert(entity.id, indices);
 
-            entity_id
+            entity
         }
 
         fn handle_message_common(&mut self, message: Message) -> Option<Message>
@@ -545,6 +516,15 @@ macro_rules! common_trait_impl
         {
             Self::remove(self, entity);
         }
+
+        fn push(&self, local: bool, info: EntityInfo) -> Entity
+        {
+            let entity = self.push_empty(local, info.parent.as_ref().map(|x| x.entity));
+
+            self.create_queue.borrow_mut().push((entity, info));
+
+            entity
+        }
     }
 }
 
@@ -609,8 +589,8 @@ macro_rules! define_entities_both
 
         pub struct Entities<$($component_type=$default_type,)+>
         {
-            pub local_components: ObjectsStore<Vec<Option<usize>>>,
-            pub components: ObjectsStore<Vec<Option<usize>>>,
+            pub local_components: RefCell<ObjectsStore<Vec<Option<usize>>>>,
+            pub components: RefCell<ObjectsStore<Vec<Option<usize>>>>,
             create_queue: RefCell<Vec<(Entity, EntityInfo)>>,
             $(pub $name: ObjectsStore<ComponentWrapper<$component_type>>,)+
         }
@@ -622,8 +602,8 @@ macro_rules! define_entities_both
             pub fn new() -> Self
             {
                 Self{
-                    local_components: ObjectsStore::new(),
-                    components: ObjectsStore::new(),
+                    local_components: RefCell::new(ObjectsStore::new()),
+                    components: RefCell::new(ObjectsStore::new()),
                     create_queue: RefCell::new(Vec::new()),
                     $($name: ObjectsStore::new(),)+
                 }
@@ -631,23 +611,23 @@ macro_rules! define_entities_both
 
             pub fn exists(&self, entity: Entity) -> bool
             {
-                components!(self, entity).get(entity.id).is_some()
+                components!(self, entity).borrow().get(entity.id).is_some()
             }
 
-            pub fn entities_iter(&self) -> impl Iterator<Item=Entity> + '_
+            pub fn try_for_each_entity<E>(
+                &self,
+                mut f: impl FnMut(Entity) -> Result<(), E>
+            ) -> Result<(), E>
             {
-                self.components.iter().map(|(id, _)|
+                self.components.borrow().iter().try_for_each(|(id, _)|
                 {
-                    Entity{local: false, id}
-                }).chain(self.local_components.iter().map(|(id, _)|
-                {
-                    Entity{local: true, id}
-                }))
+                    f(Entity{local: false, id})
+                })
             }
 
             pub fn info_ref(&self, entity: Entity) -> EntityInfo<$(Ref<$component_type>,)+>
             {
-                let components = &components!(self, entity)[entity.id];
+                let components = &components!(self, entity).borrow()[entity.id];
 
                 EntityInfo{$(
                     $name: components[Component::$name as usize].map(|id|
@@ -655,6 +635,66 @@ macro_rules! define_entities_both
                         self.$name[id].component.borrow()
                     }),
                 )+}
+            }
+
+            fn has_no_components(&self, entity: Entity) -> bool
+            {
+                components!(self, entity).borrow()[entity.id].is_empty()
+            }
+
+            fn create_queued_common(
+                &mut self,
+                mut f: impl FnMut(&mut Self, Entity, EntityInfo) -> EntityInfo<$($component_type,)+>
+            )
+            where
+                for<'a> &'a ParentType: Into<&'a Parent>,
+            {
+                let queue = {
+                    let mut create_queue = self.create_queue.borrow_mut();
+
+                    mem::take(&mut *create_queue)
+                };
+
+                queue.into_iter().for_each(|(entity, info)|
+                {
+                    let info = f(self, entity, info);
+
+                    if self.has_no_components(entity)
+                    {
+                        let indices = self.push_info_components(entity, info);
+
+                        let components = components!(self, entity);
+                        components.borrow_mut().insert(entity.id, indices);
+                    } else
+                    {
+                        $(self.$set_func(entity, info.$name);)+
+                    }
+                });
+            }
+
+            fn push_empty(&self, local: bool, parent_entity: Option<Entity>) -> Entity
+            {
+                let components = if local
+                {
+                    &self.local_components
+                } else
+                {
+                    &self.components
+                };
+
+                let mut components = components.borrow_mut();
+
+                let id = if let Some(parent) = parent_entity
+                {
+                    components.take_after_key(parent.id)
+                } else
+                {
+                    components.take_vacant_key()
+                };
+
+                components.insert(id, vec![]);
+
+                Entity{local, id}
             }
 
             pub fn update_watchers(
@@ -699,31 +739,35 @@ macro_rules! define_entities_both
                 {
                     if !self.exists(entity)
                     {
-                        components_mut!(self, entity)
+                        components!(self, entity)
+                            .borrow_mut()
                             .insert(entity.id, Self::empty_components());
                     }
 
                     if let Some(component) = component
                     {
-                        let slot = &mut components_mut!(self, entity)
-                            [entity.id]
-                            [Component::$name as usize];
+                        let previous = {
+                            let mut components = components!(self, entity).borrow_mut();
+                            let slot = &mut components
+                                [entity.id]
+                                [Component::$name as usize];
 
-                        let component = ComponentWrapper{
-                            entity,
-                            component: RefCell::new(component)
-                        };
+                            let component = ComponentWrapper{
+                                entity,
+                                component: RefCell::new(component)
+                            };
 
-                        let previous = if let Some(id) = slot
-                        {
-                            self.$name.insert(*id, component)
-                        } else
-                        {
-                            let id = self.$name.push(component);
-                            
-                            *slot = Some(id);
+                            if let Some(id) = slot
+                            {
+                                self.$name.insert(*id, component)
+                            } else
+                            {
+                                let id = self.$name.push(component);
+                                
+                                *slot = Some(id);
 
-                            None
+                                None
+                            }
                         };
 
                         $component_type::on_set(
@@ -742,14 +786,17 @@ macro_rules! define_entities_both
                     return;
                 }
 
-                let components = &components!(self, entity)[entity.id];
-
-                $(if let Some(id) = components[Component::$name as usize]
                 {
-                    self.$name.remove(id);
-                })+
+                    let components = &components!(self, entity).borrow()[entity.id];
 
-                components_mut!(self, entity).remove(entity.id);
+                    $(if let Some(id) = components[Component::$name as usize]
+                    {
+                        self.$name.remove(id);
+                    })+
+                }
+
+                let components = components!(self, entity);
+                components.borrow_mut().remove(entity.id);
             }
 
             fn push_info_components(
@@ -886,22 +933,14 @@ macro_rules! define_entities_both
                 create_info: &mut RenderCreateInfo
             )
             {
-                let queue = {
-                    let mut create_queue = self.create_queue.borrow_mut();
-
-                    mem::take(&mut *create_queue)
-                };
-
-                queue.into_iter().for_each(|(entity, info)|
+                self.create_queued_common(|this, entity, info|
                 {
-                    let info = ClientEntityInfo::from_server(
-                        self,
+                    ClientEntityInfo::from_server(
+                        this,
                         entity,
                         create_info,
                         info
-                    );
-
-                    $(self.$set_func(entity, info.$name);)+
+                    )
                 });
             }
 
@@ -1440,7 +1479,7 @@ macro_rules! define_entities_both
         {
             pub fn info(&self, entity: Entity) -> EntityInfo
             {
-                let components = &components!(self, entity)[entity.id];
+                let components = &components!(self, entity).borrow()[entity.id];
 
                 EntityInfo{$(
                     $name: components[Component::$name as usize].map(|id|
@@ -1494,6 +1533,11 @@ macro_rules! define_entities_both
                         }
                     }
                 });
+            }
+
+            pub fn create_queued(&mut self)
+            {
+                self.create_queued_common(|_, _, x| x);
             }
 
             pub fn push_message(&mut self, info: EntityInfo) -> Message
@@ -1560,7 +1604,7 @@ macro_rules! define_entities
         {
             common_trait_impl!{$(($name, $mut_func, $default_type),)+}
 
-            fn push(
+            fn push_eager(
                 &mut self,
                 local: bool,
                 mut info: EntityInfo
@@ -1580,7 +1624,7 @@ macro_rules! define_entities
         {
             common_trait_impl!{$(($name, $mut_func, $default_type),)+}
 
-            fn push(&mut self, local: bool, info: EntityInfo) -> Entity
+            fn push_eager(&mut self, local: bool, info: EntityInfo) -> Entity
             {
                 Self::push(self, local, info)
             }
@@ -1603,8 +1647,15 @@ macro_rules! define_entities
             fn exists(&self, entity: Entity) -> bool;
 
             fn remove(&mut self, entity: Entity);
-            fn push(
+
+            fn push_eager(
                 &mut self,
+                local: bool,
+                info: EntityInfo
+            ) -> Entity;
+
+            fn push(
+                &self,
                 local: bool,
                 info: EntityInfo
             ) -> Entity;

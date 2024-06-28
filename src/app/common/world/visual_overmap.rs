@@ -219,6 +219,8 @@ impl VisualOvermap
         let (info_map, model_builder) =
             (self.tiles_factory.tilemap().clone(), self.tiles_factory.builder());
 
+        let timestamp = Instant::now();
+
         thread::spawn(move ||
         {
             let chunk_info = VisualChunk::create(
@@ -231,7 +233,7 @@ impl VisualOvermap
             let generated = VisualGenerated{
                 chunk_info,
                 position: chunk_pos,
-                timestamp: Instant::now()
+                timestamp
             };
 
             sender.send(generated).unwrap();
@@ -259,7 +261,7 @@ impl VisualOvermap
         {
             let current_chunk = &mut self.chunks[local_pos];
 
-            if current_chunk.0 < timestamp
+            if current_chunk.0 <= timestamp
             {
                 let chunk = VisualChunk::build(&mut self.tiles_factory, chunk_info);
 

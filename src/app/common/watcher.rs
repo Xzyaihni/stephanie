@@ -188,7 +188,7 @@ impl WatcherAction
             },
             Self::Create(info) =>
             {
-                entities.push(true, *info);
+                entities.push_eager(true, *info);
             },
             Self::Explode(info) =>
             {

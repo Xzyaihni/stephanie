@@ -139,6 +139,7 @@ impl GameServer
         }
 
         self.entities.update_watchers(dt);
+        self.entities.create_queued();
     }
 
     pub fn connect(this: Arc<Mutex<Self>>, stream: TcpStream) -> Result<(), ConnectionError>
@@ -230,7 +231,7 @@ impl GameServer
 
         let mut inserter = |info: EntityInfo|
         {
-            let inserted = self.entities.push(false, info);
+            let inserted = self.entities.push_eager(false, info);
 
             let info = self.entities.info(inserted);
 
@@ -398,7 +399,7 @@ impl GameServer
 
         let messager = writer.get_mut(connection_id);
 
-        self.entities.entities_iter().try_for_each(|entity|
+        self.entities.try_for_each_entity(|entity|
         {
             let info = self.entities.info(entity);
             let message = Message::EntitySet{entity, info};

@@ -208,7 +208,7 @@ impl ParticleCreator
             }
         
             // for now particles r local (i might change that?)
-            entities.push(true, prototype);
+            entities.push_eager(true, prototype);
         })
     }
 }
