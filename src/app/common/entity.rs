@@ -1276,17 +1276,17 @@ macro_rules! define_entities_both
             {
                 let mut on_state_change = |entity|
                 {
-                    let enemy = self.enemy(entity).unwrap();
-                    let lazy_transform = self.lazy_transform(entity).unwrap();
+                    let enemy = self.enemy(entity).unwrap().clone();
+                    let target = self.target_ref(entity).unwrap().clone();
 
                     passer.send_message(Message::SetEnemy{
                         entity,
-                        component: enemy.clone()
+                        component: enemy
                     });
 
-                    passer.send_message(Message::SetLazyTransform{
+                    passer.send_message(Message::SetTarget{
                         entity,
-                        component: lazy_transform.clone()
+                        target
                     });
                 };
 

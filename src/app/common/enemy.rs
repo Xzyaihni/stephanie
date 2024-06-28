@@ -68,6 +68,7 @@ pub struct Enemy
     behavior_state: BehaviorState,
     current_state_left: Option<f32>,
     hostile_timer: f32,
+    reset_state: bool,
     id: EnemyId,
     rng: SeededRandom
 }
@@ -86,14 +87,15 @@ impl Enemy
             behavior_state,
             behavior,
             hostile_timer: 0.0,
+            reset_state: false,
             id,
             rng
         }
     }
 
-    pub fn next_state(&mut self)
+    fn next_state(&self) -> BehaviorState
     {
-        let new_state = match &self.behavior
+        match &self.behavior
         {
             EnemyBehavior::Melee =>
             {
@@ -112,9 +114,7 @@ impl Enemy
                     BehaviorState::Attack(_) => BehaviorState::Wait
                 }
             }
-        };
-
-        self.behavior_state = new_state;
+        }
     }
 
     pub fn info<'a>(&self, enemies_info: &'a EnemiesInfo) -> &'a EnemyInfo
@@ -147,6 +147,9 @@ impl Enemy
                     let direction = other_transform.position - transform.position;
 
                     Self::move_direction(transform, physical, direction, move_speed);
+                } else
+                {
+                    self.reset_state = true;
                 }
             },
             BehaviorState::Wait => ()
@@ -192,19 +195,14 @@ impl Enemy
             self.hostile_timer -= dt;
         }
 
-        let changed = if let Some(current_state_left) = self.current_state_left.as_mut()
+        let mut changed = if let Some(current_state_left) = self.current_state_left.as_mut()
         {
             *current_state_left -= dt;
 
             let changed_state = *current_state_left <= 0.0;
             if changed_state
             {
-                self.next_state();
-
-                self.current_state_left = self.behavior.duration_of(
-                    &mut self.rng,
-                    &self.behavior_state
-                );
+                self.set_next_state();
             }
 
             changed_state
@@ -212,6 +210,14 @@ impl Enemy
         {
             false
         };
+
+        if self.reset_state
+        {
+            self.reset_state = false;
+
+            changed = true;
+            self.set_next_state();
+        }
 
         let mut transform = entities.target(entity).unwrap();
         let mut physical = entities.physical_mut(entity).unwrap();
@@ -221,9 +227,24 @@ impl Enemy
         changed
     }
 
+    fn set_next_state(&mut self)
+    {
+        self.set_state(self.next_state());
+    }
+
+    fn set_state(&mut self, state: BehaviorState)
+    {
+        self.behavior_state = state;
+
+        self.current_state_left = self.behavior.duration_of(
+            &mut self.rng,
+            &self.behavior_state
+        );
+    }
+
     pub fn set_attacking(&mut self, entity: Entity)
     {
-        self.behavior_state = BehaviorState::Attack(entity);
+        self.set_state(BehaviorState::Attack(entity));
     }
 
     pub fn is_attacking(&self) -> bool
@@ -248,10 +269,5 @@ impl Enemy
     pub fn behavior_state(&self) -> &BehaviorState
     {
         &self.behavior_state
-    }
-
-    pub fn set_behavior_state(&mut self, state: BehaviorState)
-    {
-        self.behavior_state = state;
     }
 }
