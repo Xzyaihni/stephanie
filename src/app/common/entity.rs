@@ -1,6 +1,7 @@
 use std::{
     f32,
     mem,
+    fmt::Debug,
     cell::{Ref, RefMut, RefCell}
 };
 
@@ -18,6 +19,7 @@ use crate::{
         UiEvent
     },
     common::{
+        some_or_return,
         short_rotation,
         angle_between,
         ENTITY_SCALE,
@@ -121,9 +123,7 @@ impl Entity
     }
 }
 
-pub trait OnSet<EntitiesType>
-where
-    Self: Sized
+pub trait OnSet<EntitiesType>: Sized + Debug
 {
     fn on_set(previous: Option<Self>, entities: &EntitiesType, entity: Entity);
 }
@@ -416,50 +416,6 @@ macro_rules! impl_common_systems
             })
         }
 
-        pub fn check_guarantees(&mut self)
-        {
-            let for_components = |components: &RefCell<ObjectsStore<ComponentsIndices>>, local|
-            {
-                let components = components.borrow();
-
-                components.iter().for_each(|(id, indices)|
-                {
-                    let entity = Entity{local, id};
-
-                    if let Some(parent_component_id) = indices[Component::parent as usize]
-                    {
-                        let parent = self.parent[parent_component_id].component
-                            .borrow()
-                            .entity();
-
-                        if let Some((parent_id, child_id)) = component_index!(
-                            self,
-                            parent,
-                            transform
-                        ).and_then(|parent|
-                        {
-                            component_index!(
-                                self,
-                                entity,
-                                transform
-                            ).map(|child| (parent, child))
-                        })
-                        {
-                            assert!(
-                                parent_id < child_id,
-                                "parent: {:#?}, child: {:#?}",
-                                self.info_ref(parent),
-                                self.info_ref(entity)
-                            );
-                        }
-                    }
-                });
-            };
-
-            for_components(&self.components, false);
-            for_components(&self.local_components, true);
-        }
-
         pub fn update_physical(&mut self, dt: f32)
         {
             self.physical.iter().for_each(|(_, ComponentWrapper{
@@ -601,6 +557,52 @@ macro_rules! common_trait_impl
         {
             Self::remove(self, entity);
         }
+
+        fn check_guarantees(&mut self)
+        {
+            let for_components = |components: &RefCell<ObjectsStore<ComponentsIndices>>, local|
+            {
+                let components = components.borrow();
+
+                components.iter().for_each(|(id, indices)|
+                {
+                    let entity = Entity{local, id};
+
+                    if let Some(parent_component_id) = indices[Component::parent as usize]
+                    {
+                        let parent = self.parent[parent_component_id].component
+                            .borrow()
+                            .entity();
+
+                        if let Some((parent_id, child_id)) = component_index!(
+                            self,
+                            parent,
+                            transform
+                        ).and_then(|parent|
+                        {
+                            component_index!(
+                                self,
+                                entity,
+                                transform
+                            ).map(|child| (parent, child))
+                        })
+                        {
+                            assert!(
+                                parent_id < child_id,
+                                "({} ({parent:?}) < {} ({entity:?})), parent: {:#?}, child: {:#?}",
+                                parent_id,
+                                child_id,
+                                self.info_ref(parent),
+                                self.info_ref(entity)
+                            );
+                        }
+                    }
+                });
+            };
+
+            for_components(&self.components, false);
+            for_components(&self.local_components, true);
+        }
     }
 }
 
@@ -615,6 +617,7 @@ macro_rules! define_entities_both
     )),+,) =>
     {
         #[allow(non_camel_case_types)]
+        #[derive(PartialEq, Eq)]
         pub enum Component
         {
             $($name,)+
@@ -682,7 +685,8 @@ macro_rules! define_entities_both
 
         impl<$($component_type: OnSet<Self>,)+> Entities<$($component_type,)+>
         where
-            Self: AnyEntities
+            Self: AnyEntities,
+            for<'a> &'a ParentType: Into<&'a Parent>
         {
             pub fn new() -> Self
             {
@@ -719,7 +723,7 @@ macro_rules! define_entities_both
                 EntityInfo{$(
                     $name: components[Component::$name as usize].map(|id|
                     {
-                        self.$name[id].component.borrow()
+                        self.$name[id].get()
                     }),
                 )+}
             }
@@ -794,6 +798,8 @@ macro_rules! define_entities_both
 
                 pub fn $set_func(&mut self, entity: Entity, component: Option<$component_type>)
                 {
+                    let parent_order_sensitive = Self::order_sensitive(Component::$name);
+
                     if !self.exists(entity)
                     {
                         components!(self, entity)
@@ -804,10 +810,17 @@ macro_rules! define_entities_both
                     if let Some(component) = component
                     {
                         let previous = {
+                            let parent = parent_order_sensitive.then(||
+                            {
+                                self.parent(entity).and_then(|parent_entity|
+                                {
+                                    component_index!(self, (&*parent_entity).into().entity(), $name)
+                                })
+                            }).flatten();
+
                             let mut components = components!(self, entity).borrow_mut();
-                            let slot = &mut components
-                                [entity.id]
-                                [Component::$name as usize];
+
+                            let slot = &mut components[entity.id][Component::$name as usize];
 
                             let component = ComponentWrapper{
                                 entity,
@@ -819,9 +832,21 @@ macro_rules! define_entities_both
                                 self.$name.insert(*id, component)
                             } else
                             {
-                                let id = self.$name.push(component);
+                                let id = if let Some(id) = parent
+                                {
+                                    self.$name.push_after(id, component)
+                                } else
+                                {
+                                    self.$name.push(component)
+                                };
                                 
                                 *slot = Some(id);
+
+                                drop(components);
+                                if parent_order_sensitive
+                                {
+                                    self.resort_transforms(entity);
+                                }
 
                                 None
                             }
@@ -835,6 +860,61 @@ macro_rules! define_entities_both
                     }
                 }
             )+
+
+            fn resort_transforms(&mut self, parent_entity: Entity)
+            {
+                let child = self.transform.iter().find_map(|(component_id, &ComponentWrapper{
+                    entity,
+                    ..
+                })|
+                {
+                    self.parent(entity).and_then(|parent|
+                    {
+                        ((&*parent).into().entity() == parent_entity).then(||
+                        {
+                            (component_id, entity)
+                        })
+                    })
+                });
+
+                let (child_component, child) = some_or_return!(child);
+
+                let parent_component = component_index!(self, parent_entity, transform).unwrap();
+
+                // swap contents
+                self.transform.swap(child_component, parent_component);
+
+                // swap pointers
+                {
+                    let transform_id = Component::transform as usize;
+
+                    let components_a = components!(self, child);
+                    let mut components_a = components_a.borrow_mut();
+
+                    if child.local() == parent_entity.local()
+                    {
+                        let b = components_a.get(parent_entity.id).unwrap()[transform_id];
+
+                        let a = &mut components_a.get_mut(child.id).unwrap()[transform_id];
+                        let temp = *a;
+
+                        *a = b;
+
+                        components_a.get_mut(parent_entity.id).unwrap()[transform_id] = temp;
+                    } else
+                    {
+                        let components_b = components!(self, parent_entity);
+                        let mut components_b = components_b.borrow_mut();
+
+                        let a = &mut components_a.get_mut(child.id).unwrap()[transform_id];
+                        let b = &mut components_b.get_mut(parent_entity.id).unwrap()[transform_id];
+
+                        mem::swap(a, b);
+                    }
+                }
+
+                self.resort_transforms(child);
+            }
 
             pub fn remove(&mut self, entity: Entity)
             {
@@ -856,13 +936,16 @@ macro_rules! define_entities_both
                 components.borrow_mut().remove(entity.id);
             }
 
+            fn order_sensitive(component: Component) -> bool
+            {
+                component == Component::transform
+            }
+
             fn push_info_components(
                 &mut self,
                 entity: Entity,
                 info: EntityInfo<$($component_type,)+>
             ) -> ComponentsIndices
-            where
-                for<'a> &'a ParentType: Into<&'a Parent>,
             {
                 let parent = info.parent.as_ref().map(|x| x.into().entity);
                 [
@@ -874,10 +957,15 @@ macro_rules! define_entities_both
                                 component: RefCell::new(component)
                             };
 
-                            if let Some(id) = parent.and_then(|parent_entity|
+                            let parent_id = Self::order_sensitive(Component::$name).then(||
                             {
-                                component_index!(self, parent_entity, $name)
-                            })
+                                parent.and_then(|parent_entity|
+                                {
+                                    component_index!(self, parent_entity, $name)
+                                })
+                            }).flatten();
+
+                            if let Some(id) = parent_id
                             {
                                 self.$name.push_after(id, wrapper)
                             } else
@@ -1402,7 +1490,7 @@ macro_rules! define_entities_both
                             .filter(|x| x.entity != entity)
                             .filter(|x|
                             {
-                                let other_character = x.component.borrow();
+                                let other_character = x.get();
                                 character.aggressive(&other_character)
                             })
                             .filter(|x|
@@ -1553,7 +1641,7 @@ macro_rules! define_entities_both
                 EntityInfo{$(
                     $name: components[Component::$name as usize].map(|id|
                     {
-                        self.$name[id].component.borrow().clone()
+                        self.$name[id].get().clone()
                     }),
                 )+}
             }
@@ -1807,6 +1895,8 @@ macro_rules! define_entities
                     self.transform_mut(entity)
                 })
             }
+
+            fn check_guarantees(&mut self);
         }
 
         pub type ClientEntityInfo = EntityInfo<$($client_type,)+>;
@@ -1941,13 +2031,13 @@ define_entities!{
         (render, render_mut, set_render, SetRender, RenderType, RenderInfo, ClientRenderInfo),
         (occluding_plane, occluding_plane_mut, set_occluding_plane, SetNone, OccludingPlaneType, OccludingPlaneServer, OccludingPlane),
         (ui_element, ui_element_mut, set_ui_element, SetNone, UiElementType, UiElementServer, UiElement)),
+    (parent, parent_mut, set_parent, SetParent, ParentType, Parent),
     (lazy_transform, lazy_transform_mut, set_lazy_transform, SetLazyTransform, LazyTransformType, LazyTransform),
     (follow_rotation, follow_rotation_mut, set_follow_rotation, SetFollowRotation, FollowRotationType, FollowRotation),
     (watchers, watchers_mut, set_watchers, SetWatchers, WatchersType, Watchers),
     (damaging, damaging_mut, set_damaging, SetDamaging, DamagingType, Damaging),
     (inventory, inventory_mut, set_inventory, SetInventory, InventoryType, Inventory),
     (named, named_mut, set_named, SetNamed, NamedType, String),
-    (parent, parent_mut, set_parent, SetParent, ParentType, Parent),
     (transform, transform_mut, set_transform, SetTransform, TransformType, Transform),
     (character, character_mut, set_character, SetCharacter, CharacterType, Character),
     (enemy, enemy_mut, set_enemy, SetEnemy, EnemyType, Enemy),

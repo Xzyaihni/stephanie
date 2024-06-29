@@ -150,6 +150,11 @@ impl<T> ObjectsStore<T>
         self.data.get_mut(index).and_then(Option::as_mut)
     }
 
+    pub fn swap(&mut self, a: usize, b: usize)
+    {
+        self.data.swap(a, b);
+    }
+
     fn extend_to_contain(&mut self, index: usize)
     {
         if index < self.data.len()

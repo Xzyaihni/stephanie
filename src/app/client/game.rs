@@ -86,6 +86,7 @@ impl Game
                 connection: Connection::EaseOut{decay: 5.0, limit: None},
                 ..Default::default()
             }.into()),
+            parent: Some(Parent::new(player_entity, false)),
             ..Default::default()
         });
 
@@ -196,11 +197,6 @@ impl<'a> PlayerContainer<'a>
 
     pub fn on_player_connected(&mut self)
     {
-        self.game_state.entities_mut().set_parent(
-            self.info.camera,
-            Some(Parent::new(self.info.entity, true))
-        );
-
         let position = self.player_position();
         let current_tile = self.game_state.tile_of(position.into());
 
