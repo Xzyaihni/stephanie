@@ -139,7 +139,9 @@ impl GameServer
         }
 
         self.entities.update_watchers(dt);
-        self.entities.create_queued();
+
+        let mut writer = self.connection_handler.write();
+        self.entities.create_queued(&mut writer);
     }
 
     pub fn connect(this: Arc<Mutex<Self>>, stream: TcpStream) -> Result<(), ConnectionError>

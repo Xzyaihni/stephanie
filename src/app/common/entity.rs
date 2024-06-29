@@ -11,6 +11,7 @@ use nalgebra::{Vector2, Vector3, Unit};
 use yanyaengine::{TextureId, Transform};
 
 use crate::{
+    server,
     client::{
         RenderCreateInfo,
         UiElement,
@@ -256,7 +257,7 @@ macro_rules! impl_common_systems
         {
             let entity = self.push_empty(local, info.parent.as_ref().map(|x| x.entity));
 
-            info.setup_components(self);
+            info.setup_components(self, entity);
 
             let indices = self.push_info_components(entity, info);
 
@@ -374,6 +375,27 @@ macro_rules! impl_common_systems
             self.set_watchers(entity, Some(Watchers::new(vec![watcher])));
         }
 
+        fn create_queued_common(
+            &mut self,
+            mut f: impl FnMut(&mut Self, Entity, EntityInfo) -> $this_entity_info
+        )
+        {
+            let queue = {
+                let mut create_queue = self.create_queue.borrow_mut();
+
+                mem::take(&mut *create_queue)
+            };
+
+            queue.into_iter().for_each(|(entity, mut info)|
+            {
+                info.setup_components(self, entity);
+
+                let info = f(self, entity, info);
+
+                self.set_each(entity, info);
+            });
+        }
+
         pub fn lazy_target_end(&self, entity: Entity) -> Option<Transform>
         {
             self.lazy_transform(entity).map(|lazy|
@@ -424,7 +446,8 @@ macro_rules! entity_info_common
     {
         pub fn setup_components(
             &mut self,
-            entities: &impl AnyEntities
+            entities: &mut impl AnyEntities,
+            entity: Entity
         )
         {
             if let Some(lazy) = self.lazy_transform.as_ref()
@@ -451,6 +474,14 @@ macro_rules! entity_info_common
                 let target = parent_transform.rotation;
 
                 *current = target;
+            }
+
+            if let Some(character) = self.character.as_mut()
+            {
+                character.initialize(entity, |info|
+                {
+                    entities.push(entity.local(), info)
+                });
             }
         }
     }
@@ -610,10 +641,12 @@ macro_rules! define_entities_both
                 mut f: impl FnMut(Entity) -> Result<(), E>
             ) -> Result<(), E>
             {
-                self.components.borrow().iter().try_for_each(|(id, _)|
-                {
-                    f(Entity{local: false, id})
-                })
+                self.components.borrow().iter()
+                    .map(|(id, _)| Entity{local: false, id})
+                    .try_for_each(|entity|
+                    {
+                        f(entity)
+                    })
             }
 
             pub fn info_ref(&self, entity: Entity) -> EntityInfo<$(Ref<$component_type>,)+>
@@ -628,39 +661,9 @@ macro_rules! define_entities_both
                 )+}
             }
 
-            fn has_no_components(&self, entity: Entity) -> bool
+            fn set_each(&mut self, entity: Entity, info: EntityInfo<$($component_type,)+>)
             {
-                components!(self, entity).borrow()[entity.id].is_empty()
-            }
-
-            fn create_queued_common(
-                &mut self,
-                mut f: impl FnMut(&mut Self, Entity, EntityInfo) -> EntityInfo<$($component_type,)+>
-            )
-            where
-                for<'a> &'a ParentType: Into<&'a Parent>,
-            {
-                let queue = {
-                    let mut create_queue = self.create_queue.borrow_mut();
-
-                    mem::take(&mut *create_queue)
-                };
-
-                queue.into_iter().for_each(|(entity, info)|
-                {
-                    let info = f(self, entity, info);
-
-                    if self.has_no_components(entity)
-                    {
-                        let indices = self.push_info_components(entity, info);
-
-                        let components = components!(self, entity);
-                        components.borrow_mut().insert(entity.id, indices);
-                    } else
-                    {
-                        $(self.$set_func(entity, info.$name);)+
-                    }
-                });
+                $(self.$set_func(entity, info.$name);)+
             }
 
             fn push_empty(&self, local: bool, parent_entity: Option<Entity>) -> Entity
@@ -683,7 +686,7 @@ macro_rules! define_entities_both
                     components.take_vacant_key()
                 };
 
-                components.insert(id, vec![]);
+                components.insert(id, Self::empty_components());
 
                 Entity{local, id}
             }
@@ -1526,9 +1529,19 @@ macro_rules! define_entities_both
                 });
             }
 
-            pub fn create_queued(&mut self)
+            pub fn create_queued(
+                &mut self,
+                writer: &mut server::ConnectionsHandler
+            )
             {
-                self.create_queued_common(|_, _, x| x);
+                self.create_queued_common(|_this, entity, info|
+                {
+                    let message = Message::EntitySet{entity, info: info.clone()};
+
+                    writer.send_message(message);
+
+                    info
+                });
             }
 
             pub fn push_message(&mut self, info: EntityInfo) -> Message
@@ -1606,7 +1619,7 @@ macro_rules! define_entities
 
                 let entity = self.push(local, info.shared());
 
-                info.setup_components(self);
+                info.setup_components(self, entity);
 
                 self.create_queue.borrow_mut().push((entity, info));
 
@@ -1781,8 +1794,8 @@ macro_rules! define_entities
                 {
                     Message::EntitySet{entity, info} =>
                     {
-                        let transform = self.transform_clone(entity)
-                            .or_else(|| info.transform.clone());
+                        let transform = info.transform.clone()
+                            .or_else(||self.transform_clone(entity));
 
                         $({
                             let component = info.$side_name.map(|x|

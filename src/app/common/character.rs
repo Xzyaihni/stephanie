@@ -142,15 +142,10 @@ impl Character
 
     pub fn initialize(
         &mut self,
-        entities: &mut impl AnyEntities,
-        entity: Entity
+        entity: Entity,
+        mut inserter: impl FnMut(EntityInfo) -> Entity
     )
     {
-        let mut inserter = |info| -> Entity
-        {
-            entities.push_eager(entity.local(), info)
-        };
-
         let held_item = |flip|
         {
             EntityInfo{
