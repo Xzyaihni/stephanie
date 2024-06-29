@@ -1,3 +1,5 @@
+use std::f32;
+
 use serde::{Serialize, Deserialize};
 
 use nalgebra::Vector3;
@@ -5,11 +7,19 @@ use nalgebra::Vector3;
 use yanyaengine::{Transform, TextureId};
 
 use crate::common::{
+    some_or_return,
     define_layers,
     render_info::*,
+    lazy_transform::*,
+    AnyEntities,
+    Entity,
+    EntityInfo,
     CharacterId,
     CharactersInfo,
-    Anatomy
+    InventoryItem,
+    Parent,
+    Anatomy,
+    entity::ClientEntities
 };
 
 
@@ -98,10 +108,19 @@ impl Faction
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AfterInfo
+{
+    holding: Entity,
+    holding_right: Entity
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Character
 {
     pub id: CharacterId,
     pub faction: Faction,
+    pub holding: Option<InventoryItem>,
+    info: Option<AfterInfo>,
     sprite_state: Stateful<SpriteState>
 }
 
@@ -115,14 +134,139 @@ impl Character
         Self{
             id,
             faction,
+            info: None,
+            holding: None,
             sprite_state: SpriteState::Normal.into()
         }
+    }
+
+    pub fn initialize(
+        &mut self,
+        entities: &mut impl AnyEntities,
+        entity: Entity
+    )
+    {
+        let mut inserter = |info| -> Entity
+        {
+            entities.push_eager(entity.local(), info)
+        };
+
+        let held_item = |flip|
+        {
+            EntityInfo{
+                render: Some(RenderInfo{
+                    object: Some(RenderObject::Texture{
+                        name: "placeholder.png".to_owned()
+                    }),
+                    flip: if flip { Uvs::FlipHorizontal } else { Uvs::Normal },
+                    shape: Some(BoundingShape::Circle),
+                    z_level: ZLevel::Arms,
+                    ..Default::default()
+                }),
+                parent: Some(Parent::new(entity, false)),
+                lazy_transform: Some(LazyTransformInfo{
+                    origin_rotation: -f32::consts::FRAC_PI_2,
+                    transform: Transform{
+                        rotation: f32::consts::FRAC_PI_2,
+                        position: Vector3::new(1.0, 0.0, 0.0),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                }.into()),
+                watchers: Some(Default::default()),
+                ..Default::default()
+            }
+        };
+
+        let info = AfterInfo{
+            holding: inserter(held_item(true)),
+            holding_right: inserter(held_item(false))
+        };
+
+        self.info = Some(info);
     }
 
     pub fn with_previous(&mut self, previous: Self)
     {
         self.sprite_state.set_state(*previous.sprite_state.value());
         self.sprite_state.dirty();
+    }
+
+    fn update_held(&mut self, entities: &ClientEntities)
+    {
+        let info = some_or_return!(self.info.as_ref());
+
+        let holding_entity = info.holding;
+        let holding_right = info.holding_right;
+
+        let mut parent = entities.parent_mut(holding_entity).unwrap();
+        let mut parent_right = entities.parent_mut(holding_right).unwrap();
+
+        parent.visible = true;
+        drop(parent);
+
+        /*
+        let assets = self.game_state.assets.lock();
+
+        if let Some(item) = self.holding.and_then(|holding| self.item_info(holding))
+        {
+            parent_right.visible = false;
+
+            let texture = assets.texture(item.texture);
+
+            let mut lazy_transform = entities.lazy_transform_mut(holding_entity).unwrap();
+            let target = lazy_transform.target();
+
+            target.scale = item.scale3();
+            target.position = self.item_position(target.scale);
+
+            let mut render = entities.render_mut(holding_entity).unwrap();
+            render.set_texture(texture.clone());
+        } else
+        {
+            let holding_left = holding_entity;
+
+            parent_right.visible = true;
+
+            let character_info = self.game_state.characters_info.get(self.id);
+
+            let texture = assets.texture(player_character.hand);
+
+            let set_for = |entity, y|
+            {
+                let mut lazy = entities.lazy_transform_mut(entity).unwrap();
+                let target = lazy.target();
+
+                target.scale = Vector3::repeat(0.3);
+
+                target.position = self.item_position(target.scale);
+                target.position.y = y;
+
+                let mut render = entities.render_mut(entity).unwrap();
+
+                render.set_texture(texture.clone());
+            };
+
+            set_for(holding_left, -0.3);
+            set_for(holding_right, 0.3);
+        }
+
+        drop(parent_right);
+
+        let lazy_for = |entity|
+        {
+            let lazy_transform = entities.lazy_transform(entity).unwrap();
+
+            let parent_transform = entities.parent_transform(entity);
+            let new_target = lazy_transform.target_global(parent_transform.as_ref());
+
+            let mut transform = entities.transform_mut(entity).unwrap();
+            transform.scale = new_target.scale;
+            transform.position = new_target.position;
+        };
+
+        lazy_for(holding_entity);
+        lazy_for(holding_right);*/
     }
 
     pub fn update_sprite_common(

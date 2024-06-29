@@ -516,15 +516,6 @@ macro_rules! common_trait_impl
         {
             Self::remove(self, entity);
         }
-
-        fn push(&self, local: bool, info: EntityInfo) -> Entity
-        {
-            let entity = self.push_empty(local, info.parent.as_ref().map(|x| x.entity));
-
-            self.create_queue.borrow_mut().push((entity, info));
-
-            entity
-        }
     }
 }
 
@@ -1610,9 +1601,24 @@ macro_rules! define_entities
                 mut info: EntityInfo
             ) -> Entity
             {
+                // clients cant create global entities
+                assert!(local);
+
                 let entity = self.push(local, info.shared());
 
                 info.setup_components(self);
+
+                self.create_queue.borrow_mut().push((entity, info));
+
+                entity
+            }
+
+            fn push(&self, local: bool, info: EntityInfo) -> Entity
+            {
+                // clients cant create global entities
+                assert!(local);
+
+                let entity = self.push_empty(local, info.parent.as_ref().map(|x| x.entity));
 
                 self.create_queue.borrow_mut().push((entity, info));
 
@@ -1627,6 +1633,15 @@ macro_rules! define_entities
             fn push_eager(&mut self, local: bool, info: EntityInfo) -> Entity
             {
                 Self::push(self, local, info)
+            }
+
+            fn push(&self, local: bool, info: EntityInfo) -> Entity
+            {
+                let entity = self.push_empty(local, info.parent.as_ref().map(|x| x.entity));
+
+                self.create_queue.borrow_mut().push((entity, info));
+
+                entity
             }
         }
 
