@@ -36,6 +36,7 @@ use crate::{
         Damage,
         EntityPasser,
         Inventory,
+        ItemsInfo,
         Anatomy,
         CharactersInfo,
         Character,
@@ -45,6 +46,7 @@ use crate::{
         Physical,
         ObjectsStore,
         Message,
+        character::CombinedInfo,
         world::World
     }
 };
@@ -64,12 +66,20 @@ macro_rules! components
     }
 }
 
+macro_rules! component_index
+{
+    ($this:expr, $entity:expr, $component:ident) =>
+    {
+        components!($this, $entity).borrow().get($entity.id)
+            .and_then(|components| components[Component::$component as usize])
+    }
+}
+
 macro_rules! get_entity
 {
     ($this:expr, $entity:expr, $access_type:ident, $component:ident) =>
     {
-        components!($this, $entity).borrow().get($entity.id)
-            .and_then(|components| components[Component::$component as usize])
+        component_index!($this, $entity, $component)
             .map(|id|
             {
                 $this.$component.get(id).unwrap_or_else(||
@@ -566,6 +576,13 @@ macro_rules! define_entities_both
             $($name,)+
         }
 
+        const fn count_components() -> usize
+        {
+            0 $(+ {Component::$name; 1})+
+        }
+
+        pub const COMPONENTS_COUNT: usize = count_components();
+
         #[derive(Debug, Clone, Serialize, Deserialize)]
         pub struct EntityInfo<$($component_type=$default_type,)+>
         {
@@ -609,10 +626,12 @@ macro_rules! define_entities_both
             }
         }
 
+        pub type ComponentsIndices = Vec<Option<usize>>;
+
         pub struct Entities<$($component_type=$default_type,)+>
         {
-            pub local_components: RefCell<ObjectsStore<Vec<Option<usize>>>>,
-            pub components: RefCell<ObjectsStore<Vec<Option<usize>>>>,
+            pub local_components: RefCell<ObjectsStore<ComponentsIndices>>,
+            pub components: RefCell<ObjectsStore<ComponentsIndices>>,
             create_queue: RefCell<Vec<(Entity, EntityInfo)>>,
             $(pub $name: ObjectsStore<ComponentWrapper<$component_type>>,)+
         }
@@ -801,7 +820,7 @@ macro_rules! define_entities_both
             where
                 for<'a> &'a ParentType: Into<&'a Parent>,
             {
-                let parent = info.parent.as_ref().map(|x| x.into().entity.id);
+                let parent = info.parent.as_ref().map(|x| x.into().entity);
                 vec![
                     $({
                         info.$name.map(|component|
@@ -811,9 +830,12 @@ macro_rules! define_entities_both
                                 component: RefCell::new(component)
                             };
 
-                            if let Some(parent) = parent
+                            if let Some(id) = parent.and_then(|parent_entity|
                             {
-                                self.$name.push_after(parent, wrapper)
+                                component_index!(self, parent_entity, $name)
+                            })
+                            {
+                                self.$name.push_after(id, wrapper)
                             } else
                             {
                                 self.$name.push(wrapper)
@@ -1424,30 +1446,39 @@ macro_rules! define_entities_both
             pub fn update_sprites(
                 &self,
                 create_info: &mut RenderCreateInfo,
-                characters_info: &CharactersInfo
+                characters_info: &CharactersInfo,
+                items_info: &ItemsInfo
             )
             {
+                let assets = create_info.object_info.partial.assets.clone();
                 self.character.iter().for_each(|(_, &ComponentWrapper{
                     entity,
                     component: ref character
                 })|
                 {
-                    let mut render = self.render_mut(entity).unwrap();
-                    let mut target = self.target(entity).unwrap();
-                    let changed = character.borrow_mut().update_sprite(
-                        characters_info,
-                        &mut target,
-                        &mut render,
-                        |render, transform, texture|
-                        {
-                            render.set_sprite(create_info, Some(transform), texture);
-                        }
-                    );
+                    let changed = {
+                        let combined_info = CombinedInfo{
+                            entities: self,
+                            assets: &assets,
+                            items_info,
+                            characters_info
+                        };
+
+                        character.borrow_mut().update_sprite(
+                            combined_info,
+                            entity,
+                            |texture|
+                            {
+                                let mut render = self.render_mut(entity).unwrap();
+                                let transform = self.target_ref(entity).unwrap();
+
+                                render.set_sprite(create_info, Some(&transform), texture);
+                            }
+                        )
+                    };
 
                     if changed
                     {
-                        drop(target);
-
                         if let Some(end) = self.lazy_target_end(entity)
                         {
                             let mut transform = self.transform_mut(entity).unwrap();
@@ -1484,6 +1515,25 @@ macro_rules! define_entities_both
             }
 
             impl_common_systems!{EntityInfo}
+
+            pub fn check_guarantees(&mut self)
+            {
+                let for_components = |components: &RefCell<ObjectsStore<ComponentsIndices>>|
+                {
+                    let components = components.borrow();
+
+                    components.iter().map(|(id, indices)|
+                    {
+                        if let Some(parent_component_id) = indices[Component::parent as usize]
+                        {
+
+                        }
+                    });
+                };
+
+                for_components(&self.components);
+                for_components(&self.local_components);
+            }
 
             pub fn update_lazy(&mut self)
             {

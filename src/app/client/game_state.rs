@@ -144,12 +144,17 @@ impl ClientEntitiesContainer
     pub fn update_objects(
         &mut self,
         characters_info: &CharactersInfo,
+        items_info: &ItemsInfo,
         create_info: &mut RenderCreateInfo,
         dt: f32
     )
     {
         self.entities.create_queued(create_info);
-        self.entities.update_sprites(create_info, characters_info);
+
+        {
+            self.entities.update_sprites(create_info, characters_info, items_info);
+        }
+
         self.entities.update_watchers(dt);
 
         mem::take(&mut self.local_objects).into_iter().for_each(|(entity, object)|
@@ -892,6 +897,7 @@ impl GameState
 
         self.entities.update_objects(
             &self.characters_info,
+            &self.items_info,
             &mut create_info,
             self.dt
         );

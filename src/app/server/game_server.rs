@@ -92,7 +92,8 @@ pub struct GameServer
     player_character: CharacterId,
     characters_info: Arc<CharactersInfo>,
     world: World,
-    connection_handler: Arc<RwLock<ConnectionsHandler>>
+    connection_handler: Arc<RwLock<ConnectionsHandler>>,
+    rare_timer: f32
 }
 
 impl GameServer
@@ -120,7 +121,8 @@ impl GameServer
             player_character: data_infos.player_character,
             characters_info: data_infos.characters_info,
             world,
-            connection_handler
+            connection_handler,
+            rare_timer: 0.0
         })
     }
 
@@ -140,8 +142,28 @@ impl GameServer
 
         self.entities.update_watchers(dt);
 
-        let mut writer = self.connection_handler.write();
-        self.entities.create_queued(&mut writer);
+        {
+            let mut writer = self.connection_handler.write();
+            self.entities.create_queued(&mut writer);
+        }
+
+        if self.rare_timer <= 0.0
+        {
+            self.rare();
+            
+            self.rare_timer = 5.0;
+        } else
+        {
+            self.rare_timer -= dt;
+        }
+    }
+
+    fn rare(&mut self)
+    {
+        if cfg!(debug_assertions)
+        {
+            self.entities.check_guarantees();
+        }
     }
 
     pub fn connect(this: Arc<Mutex<Self>>, stream: TcpStream) -> Result<(), ConnectionError>
@@ -208,8 +230,7 @@ impl GameServer
         let info = EntityInfo{
             player: Some(Player{
                 name: format!("stephanie #{player_index}"),
-                strength: 1.0,
-                holding: None
+                strength: 1.0
             }),
             transform: Some(transform.clone()),
             render: Some(RenderInfo{
@@ -335,8 +356,6 @@ impl GameServer
 
         let player_entities = PlayerEntities{
             player: inserted,
-            holding,
-            holding_right,
             other: player_children
         };
 

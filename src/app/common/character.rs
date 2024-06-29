@@ -1,10 +1,15 @@
-use std::f32;
+use std::{
+    f32,
+    sync::Arc
+};
+
+use parking_lot::Mutex;
 
 use serde::{Serialize, Deserialize};
 
 use nalgebra::Vector3;
 
-use yanyaengine::{Transform, TextureId};
+use yanyaengine::{Assets, Transform, TextureId};
 
 use crate::common::{
     some_or_return,
@@ -16,7 +21,9 @@ use crate::common::{
     EntityInfo,
     CharacterId,
     CharactersInfo,
+    ItemsInfo,
     InventoryItem,
+    ItemInfo,
     Parent,
     Anatomy,
     entity::ClientEntities
@@ -107,9 +114,21 @@ impl Faction
     }
 }
 
+pub const HELD_DISTANCE: f32 = 0.1;
+
+#[derive(Clone, Copy)]
+pub struct CombinedInfo<'a>
+{
+    pub entities: &'a ClientEntities,
+    pub assets: &'a Arc<Mutex<Assets>>,
+    pub items_info: &'a ItemsInfo,
+    pub characters_info: &'a CharactersInfo
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AfterInfo
 {
+    this: Entity,
     holding: Entity,
     holding_right: Entity
 }
@@ -158,12 +177,12 @@ impl Character
                     z_level: ZLevel::Arms,
                     ..Default::default()
                 }),
-                parent: Some(Parent::new(entity, false)),
+                parent: Some(Parent::new(entity, {let reminder = ""; true})),
                 lazy_transform: Some(LazyTransformInfo{
                     origin_rotation: -f32::consts::FRAC_PI_2,
                     transform: Transform{
                         rotation: f32::consts::FRAC_PI_2,
-                        position: Vector3::new(1.0, 0.0, 0.0),
+                        position: Vector3::new(1.0, {let reminder = ""; if flip {0.0} else {0.5}}, 0.0),
                         ..Default::default()
                     },
                     ..Default::default()
@@ -174,6 +193,7 @@ impl Character
         };
 
         let info = AfterInfo{
+            this: entity,
             holding: inserter(held_item(true)),
             holding_right: inserter(held_item(false))
         };
@@ -187,27 +207,35 @@ impl Character
         self.sprite_state.dirty();
     }
 
-    fn update_held(&mut self, entities: &ClientEntities)
+    fn update_held(
+        &mut self,
+        combined_info: CombinedInfo
+    )
     {
+        return;
+        let entities = &combined_info.entities;
+
         let info = some_or_return!(self.info.as_ref());
 
         let holding_entity = info.holding;
         let holding_right = info.holding_right;
 
-        let mut parent = entities.parent_mut(holding_entity).unwrap();
-        let mut parent_right = entities.parent_mut(holding_right).unwrap();
+        let mut parent = some_or_return!(entities.parent_mut(holding_entity));
+        let mut parent_right = some_or_return!(entities.parent_mut(holding_right));
 
         parent.visible = true;
         drop(parent);
 
-        /*
-        let assets = self.game_state.assets.lock();
+        let get_texture = |texture|
+        {
+            combined_info.assets.lock().texture(texture).clone()
+        };
 
-        if let Some(item) = self.holding.and_then(|holding| self.item_info(holding))
+        if let Some(item) = self.holding.and_then(|holding| self.item_info(combined_info, holding))
         {
             parent_right.visible = false;
 
-            let texture = assets.texture(item.texture);
+            let texture = get_texture(item.texture);
 
             let mut lazy_transform = entities.lazy_transform_mut(holding_entity).unwrap();
             let target = lazy_transform.target();
@@ -216,16 +244,16 @@ impl Character
             target.position = self.item_position(target.scale);
 
             let mut render = entities.render_mut(holding_entity).unwrap();
-            render.set_texture(texture.clone());
+            render.set_texture(texture);
         } else
         {
             let holding_left = holding_entity;
 
             parent_right.visible = true;
 
-            let character_info = self.game_state.characters_info.get(self.id);
+            let character_info = combined_info.characters_info.get(self.id);
 
-            let texture = assets.texture(player_character.hand);
+            let texture = get_texture(character_info.hand);
 
             let set_for = |entity, y|
             {
@@ -261,7 +289,38 @@ impl Character
         };
 
         lazy_for(holding_entity);
-        lazy_for(holding_right);*/
+        lazy_for(holding_right);
+    }
+
+    fn item_info<'a>(
+        &'a self,
+        combined_info: CombinedInfo<'a>,
+        id: InventoryItem
+    ) -> Option<&'a ItemInfo>
+    {
+        self.info.as_ref().and_then(move |info|
+        {
+            let inventory = combined_info.entities.inventory(info.this).unwrap();
+            inventory.get(id).map(|x| combined_info.items_info.get(x.id))
+        })
+    }
+
+    fn held_item_position(
+        &self,
+        combined_info: CombinedInfo
+    ) -> Option<Vector3<f32>>
+    {
+        let item = self.item_info(combined_info, self.holding?)?;
+        let scale = item.scale3();
+
+        Some(self.item_position(scale))
+    }
+
+    fn item_position(&self, scale: Vector3<f32>) -> Vector3<f32>
+    {
+        let offset = scale.y / 2.0 + 0.5 + HELD_DISTANCE;
+
+        Vector3::new(offset, 0.0, 0.0)
     }
 
     pub fn update_sprite_common(
@@ -293,18 +352,38 @@ impl Character
 
     pub fn update_sprite(
         &mut self,
-        characters_info: &CharactersInfo,
-        transform: &mut Transform,
-        render: &mut ClientRenderInfo,
-        set_sprite: impl FnOnce(&mut ClientRenderInfo, &Transform, TextureId)
+        combined_info: CombinedInfo,
+        entity: Entity,
+        set_sprite: impl FnOnce(TextureId)
     ) -> bool
     {
-        if !self.update_sprite_common(characters_info, transform)
+        let entities = &combined_info.entities;
+
+        {
+            let reminder = "";
+            if let Some(info) = self.info.as_ref()
+            {
+                if let Some(mut parent) = entities.parent_mut(info.holding)
+                {
+                    if let Some(mut parent_right) = entities.parent_mut(info.holding_right)
+                    {
+                        assert!(entities.transform(parent.entity()).is_some());
+                        parent.visible = false;
+                        parent_right.visible = false;
+                    }
+                }
+            }
+        }
+
+        let mut render = entities.render_mut(entity).unwrap();
+        let mut target = entities.target(entity).unwrap();
+
+        if !self.update_sprite_common(combined_info.characters_info, &mut target)
         {
             return false;
         }
 
-        let info = characters_info.get(self.id);
+        let info = combined_info.characters_info.get(self.id);
         let texture = match self.sprite_state.value()
         {
             SpriteState::Normal =>
@@ -321,7 +400,12 @@ impl Character
             }
         };
 
-        set_sprite(render, transform, texture);
+        drop(render);
+        drop(target);
+
+        self.update_held(combined_info);
+
+        set_sprite(texture);
 
         true
     }

@@ -219,7 +219,6 @@ impl<'a> PlayerContainer<'a>
         self.camera_sync_instant();
         self.update_inventory(InventoryWhich::Player);
         self.unstance();
-        self.update_held();
     }
 
     pub fn camera_sync(&mut self)
@@ -360,9 +359,8 @@ impl<'a> PlayerContainer<'a>
             },
             UserEvent::Wield(item) =>
             {
-                entities.player_mut(player).unwrap().holding = Some(item);
-
-                self.update_held();
+                todo!();
+                // entities.player_mut(player).unwrap().holding = Some(item);
             },
             UserEvent::Take(item) =>
             {
@@ -392,101 +390,6 @@ impl<'a> PlayerContainer<'a>
         {
             self.handle_user_event(event);
         });
-    }
-
-    fn update_held(&mut self)
-    {
-        let holding_entity = self.game_state.player_entities().holding;
-        let holding_right = self.game_state.player_entities().holding_right;
-
-        let entities = self.game_state.entities();
-
-        let mut parent = entities.parent_mut(holding_entity).unwrap();
-        let mut parent_right = entities.parent_mut(holding_right).unwrap();
-
-        parent.visible = true;
-        drop(parent);
-
-        let player = self.player();
-
-        let assets = self.game_state.assets.lock();
-
-        if let Some(item) = player.holding.and_then(|holding| self.item_info(holding))
-        {
-            parent_right.visible = false;
-
-            let texture = assets.texture(item.texture);
-
-            let mut lazy_transform = entities.lazy_transform_mut(holding_entity).unwrap();
-            let target = lazy_transform.target();
-
-            target.scale = item.scale3();
-            target.position = self.item_position(target.scale);
-
-            let mut render = entities.render_mut(holding_entity).unwrap();
-            render.set_texture(texture.clone());
-        } else
-        {
-            let holding_left = holding_entity;
-
-            parent_right.visible = true;
-
-            let player_character = entities.character(self.info.entity).unwrap();
-            let player_character = self.game_state.characters_info.get(player_character.id);
-
-            let texture = assets.texture(player_character.hand);
-
-            let set_for = |entity, y|
-            {
-                let mut lazy = entities.lazy_transform_mut(entity).unwrap();
-                let target = lazy.target();
-
-                target.scale = Vector3::repeat(0.3);
-
-                target.position = self.item_position(target.scale);
-                target.position.y = y;
-
-                let mut render = entities.render_mut(entity).unwrap();
-
-                render.set_texture(texture.clone());
-            };
-
-            set_for(holding_left, -0.3);
-            set_for(holding_right, 0.3);
-        }
-
-        drop(parent_right);
-
-        let lazy_for = |entity|
-        {
-            let lazy_transform = entities.lazy_transform(entity).unwrap();
-
-            let parent_transform = entities.parent_transform(entity);
-            let new_target = lazy_transform.target_global(parent_transform.as_ref());
-
-            let mut transform = entities.transform_mut(entity).unwrap();
-            transform.scale = new_target.scale;
-            transform.position = new_target.position;
-        };
-
-        lazy_for(holding_entity);
-        lazy_for(holding_right);
-    }
-
-    fn held_item_position(&self) -> Option<Vector3<f32>>
-    {
-        let holding = self.player().holding?;
-        let item = self.item_info(holding)?;
-        let scale = item.scale3();
-
-        Some(self.item_position(scale))
-    }
-
-    fn item_position(&self, scale: Vector3<f32>) -> Vector3<f32>
-    {
-        let offset = scale.y / 2.0 + 0.5 + self.info.held_distance;
-
-        Vector3::new(offset, 0.0, 0.0)
     }
 
     fn toggle_inventory(&mut self)
@@ -571,17 +474,10 @@ impl<'a> PlayerContainer<'a>
 
     fn throw_held(&mut self)
     {
-        let player = self.info.entity;
+        /*let player = self.info.entity;
 
         let entities = self.game_state.entities();
-        let held = entities.player_mut(player).and_then(|mut x| x.holding.take());
-        let held = if let Some(x) = held
-        {
-            x
-        } else
-        {
-            return;
-        };
+        let held = some_or_return!(entities.player_mut(player).and_then(|mut x| x.holding.take()));
 
         if let Some(item_info) = self.item_info(held)
         {
@@ -693,18 +589,19 @@ impl<'a> PlayerContainer<'a>
 
             self.game_state.entities().inventory_mut(player).unwrap().remove(held);
             self.game_state.update_inventory();
-
-            self.update_held();
-        }
+        }*/
+        todo!();
     }
 
     fn unstance(&mut self)
     {
-        let start_rotation = self.default_held_rotation();
+        let reminder = "";
+
+        /*let start_rotation = self.default_held_rotation();
         if let Some(mut lazy) = self.game_state.entities().lazy_transform_mut(self.holding_entity())
         {
             lazy.target().rotation = start_rotation;
-        }
+        }*/
     }
 
     fn bash_projectile(&mut self, item: Item)
@@ -898,7 +795,7 @@ impl<'a> PlayerContainer<'a>
 
     fn poke_attack(&mut self, item: Item)
     {
-        if self.info.attack_cooldown > 0.0
+        /*if self.info.attack_cooldown > 0.0
         {
             return;
         }
@@ -959,19 +856,14 @@ impl<'a> PlayerContainer<'a>
                 )),
                 ..Default::default()
             });
-        }
+        }*/
+        todo!();
     }
 
     fn ranged_attack(&mut self, item: Item)
     {
-        let items_info = self.info.items_info.clone();
-        let ranged = if let Some(x) = &items_info.get(item.id).ranged
-        {
-            x
-        } else
-        {
-            return;
-        };
+        /*let items_info = self.info.items_info.clone();
+        let ranged = some_or_return!(&items_info.get(item.id).ranged);
 
         self.unstance();
 
@@ -1016,7 +908,8 @@ impl<'a> PlayerContainer<'a>
                 },
                 _ => ()
             }
-        }
+        }*/
+        todo!();
     }
 
     fn decrease_timer(time_variable: &mut f32, dt: f32) -> bool
@@ -1205,18 +1098,20 @@ impl<'a> PlayerContainer<'a>
 
     fn held_item(&self) -> Option<Item>
     {
-        self.game_state.entities().exists(self.info.entity).then(||
+        /*self.game_state.entities().exists(self.info.entity).then(||
         {
             let player = self.player();
             let inventory = self.inventory();
 
             player.holding.and_then(|holding| inventory.get(holding).cloned())
-        }).flatten()
+        }).flatten()*/
+        todo!();
     }
 
     fn holding_entity(&self) -> Entity
     {
-        self.game_state.player_entities().holding
+        todo!();
+        // self.game_state.player_entities().holding
     }
 
     fn player_position(&self) -> Vector3<f32>
