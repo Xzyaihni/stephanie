@@ -626,7 +626,7 @@ macro_rules! define_entities_both
             }
         }
 
-        pub type ComponentsIndices = Vec<Option<usize>>;
+        pub type ComponentsIndices = [Option<usize>; COMPONENTS_COUNT];
 
         pub struct Entities<$($component_type=$default_type,)+>
         {
@@ -816,12 +816,12 @@ macro_rules! define_entities_both
                 &mut self,
                 entity: Entity,
                 info: EntityInfo<$($component_type,)+>
-            ) -> Vec<Option<usize>>
+            ) -> ComponentsIndices
             where
                 for<'a> &'a ParentType: Into<&'a Parent>,
             {
                 let parent = info.parent.as_ref().map(|x| x.into().entity);
-                vec![
+                [
                     $({
                         info.$name.map(|component|
                         {
@@ -845,9 +845,9 @@ macro_rules! define_entities_both
                 ]
             }
 
-            fn empty_components() -> Vec<Option<usize>>
+            fn empty_components() -> ComponentsIndices
             {
-                vec![$(
+                [$(
                     {
                         let _ = Component::$name;
                         None
