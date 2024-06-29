@@ -416,6 +416,50 @@ macro_rules! impl_common_systems
             })
         }
 
+        pub fn check_guarantees(&mut self)
+        {
+            let for_components = |components: &RefCell<ObjectsStore<ComponentsIndices>>, local|
+            {
+                let components = components.borrow();
+
+                components.iter().for_each(|(id, indices)|
+                {
+                    let entity = Entity{local, id};
+
+                    if let Some(parent_component_id) = indices[Component::parent as usize]
+                    {
+                        let parent = self.parent[parent_component_id].component
+                            .borrow()
+                            .entity();
+
+                        if let Some((parent_id, child_id)) = component_index!(
+                            self,
+                            parent,
+                            transform
+                        ).and_then(|parent|
+                        {
+                            component_index!(
+                                self,
+                                entity,
+                                transform
+                            ).map(|child| (parent, child))
+                        })
+                        {
+                            assert!(
+                                parent_id < child_id,
+                                "parent: {:#?}, child: {:#?}",
+                                self.info_ref(parent),
+                                self.info_ref(entity)
+                            );
+                        }
+                    }
+                });
+            };
+
+            for_components(&self.components, false);
+            for_components(&self.local_components, true);
+        }
+
         pub fn update_physical(&mut self, dt: f32)
         {
             self.physical.iter().for_each(|(_, ComponentWrapper{
@@ -578,7 +622,7 @@ macro_rules! define_entities_both
 
         const fn count_components() -> usize
         {
-            0 $(+ {Component::$name; 1})+
+            0 $(+ {let _ = Component::$name; 1})+
         }
 
         pub const COMPONENTS_COUNT: usize = count_components();
@@ -1515,25 +1559,6 @@ macro_rules! define_entities_both
             }
 
             impl_common_systems!{EntityInfo}
-
-            pub fn check_guarantees(&mut self)
-            {
-                let for_components = |components: &RefCell<ObjectsStore<ComponentsIndices>>|
-                {
-                    let components = components.borrow();
-
-                    components.iter().map(|(id, indices)|
-                    {
-                        if let Some(parent_component_id) = indices[Component::parent as usize]
-                        {
-
-                        }
-                    });
-                };
-
-                for_components(&self.components);
-                for_components(&self.local_components);
-            }
 
             pub fn update_lazy(&mut self)
             {

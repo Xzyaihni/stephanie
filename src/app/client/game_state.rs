@@ -519,6 +519,7 @@ pub struct GameState
     is_trusted: bool,
     camera_scale: f32,
     dt: f32,
+    rare_timer: f32,
     world: World,
     connections_handler: Arc<RwLock<ConnectionsHandler>>,
     receiver: Receiver<Message>
@@ -651,6 +652,7 @@ impl GameState
             tilemap,
             camera_scale: 1.0,
             dt: 0.0,
+            rare_timer: 0.0,
             world,
             ui,
             common_textures,
@@ -991,6 +993,24 @@ impl GameState
         self.ui.update_after(&mut self.entities.entity_creator(), &self.camera.read());
 
         self.dt = dt;
+
+        if self.rare_timer <= 0.0
+        {
+            self.rare();
+            
+            self.rare_timer = 5.0;
+        } else
+        {
+            self.rare_timer -= dt;
+        }
+    }
+
+    fn rare(&mut self)
+    {
+        if cfg!(debug_assertions)
+        {
+            self.entities.entities.check_guarantees();
+        }
     }
 
     pub fn update_inventory(&mut self)
