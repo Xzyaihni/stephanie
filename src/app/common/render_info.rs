@@ -149,6 +149,14 @@ pub struct Scissor
     pub extent: [f32; 2]
 }
 
+impl Default for Scissor
+{
+    fn default() -> Self
+    {
+        Self{offset: [0.0, 0.0], extent: [1.0, 1.0]}
+    }
+}
+
 impl Scissor
 {
     pub fn into_global(self, size: [f32; 2]) -> VulkanoScissor

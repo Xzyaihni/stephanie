@@ -161,15 +161,6 @@ pub struct ListItem
     item: Entity
 }
 
-impl ListItem
-{
-    pub fn set_scissor(&self, creator: &mut EntityCreator, scissor: Scissor)
-    {
-        creator.replace_scissor(self.frame, scissor.clone());
-        creator.replace_scissor(self.item, scissor);
-    }
-}
-
 pub struct UiList
 {
     panel: Entity,
@@ -177,6 +168,7 @@ pub struct UiList
     height: f32,
     amount: usize,
     amount_changed: bool,
+    scissor: Scissor,
     current_start: Rc<RefCell<usize>>,
     items: Vec<String>,
     frames: Vec<ListItem>
@@ -248,16 +240,21 @@ impl UiList
             max_fit
         );
 
-        Self{
+        let mut this = Self{
             panel,
             scroll,
             height,
             amount: 0,
             amount_changed: true,
             frames,
+            scissor: Default::default(),
             current_start,
             items: Vec::new()
-        }
+        };
+
+        this.update_frame_scissors(creator);
+
+        this
     }
 
     fn create_items(
@@ -274,7 +271,8 @@ impl UiList
         {
             let on_change = on_change.clone();
             let current_start = current_start.clone();
-            let id = creator.push(
+            let id = creator.entities.push_client(
+                true,
                 EntityInfo{
                     lazy_transform: Some(LazyTransformInfo{
                         transform: Transform{
@@ -296,13 +294,6 @@ impl UiList
                         ..Default::default()
                     }),
                     ..Default::default()
-                },
-                RenderInfo{
-                    object: Some(RenderObject::Texture{
-                        name: "ui/lighter.png".to_owned()
-                    }),
-                    z_level: ZLevel::UiHigh,
-                    ..Default::default()
                 }
             );
 
@@ -317,7 +308,6 @@ impl UiList
 
             ListItem{frame: id, item: text_id}
         }).collect()
-
     }
 
     pub fn set_items(
@@ -387,6 +377,7 @@ impl UiList
                             font_size: 60
                         }),
                         z_level: ZLevel::UiHigher,
+                        scissor: Some(self.scissor.clone()),
                         ..Default::default()
                     };
 
@@ -427,7 +418,7 @@ impl UiList
         camera: &Camera
     )
     {
-        let scissor = {
+        self.scissor = {
             let transform = creator.entities.transform(self.panel).unwrap();
 
             let pos = camera.screen_position(transform.position.xy());
@@ -442,12 +433,39 @@ impl UiList
             }
         };
 
-        self.frames.first().into_iter()
-            .chain(self.frames.last())
-            .for_each(|item|
+        self.update_frame_scissors(creator);
+    }
+
+    fn update_frame_scissors(&mut self, creator: &mut EntityCreator)
+    {
+        self.frames.iter().enumerate().for_each(|(item_index, item)|
+        {
+            let render = RenderInfo{
+                object: Some(RenderObject::Texture{
+                    name: "ui/lighter.png".to_owned()
+                }),
+                z_level: ZLevel::UiHigh,
+                scissor: Some(self.scissor.clone()),
+                ..Default::default()
+            };
+
+            creator.entities.set_deferred_render(item.frame, render);
+
+            if let Some(text) = self.items.get(item_index)
             {
-                item.set_scissor(creator, scissor.clone());
-            });
+                let render = RenderInfo{
+                    object: Some(RenderObject::Text{
+                        text: text.clone(),
+                        font_size: 60
+                    }),
+                    z_level: ZLevel::UiHigher,
+                    scissor: Some(self.scissor.clone()),
+                    ..Default::default()
+                };
+
+                creator.entities.set_deferred_render(item.item, render);
+            }
+        });
     }
 
     pub fn update_after(

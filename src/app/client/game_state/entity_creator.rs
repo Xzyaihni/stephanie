@@ -6,13 +6,6 @@ use crate::common::{
 };
 
 
-pub enum ReplaceObject
-{
-    Full(RenderInfo),
-    Object(RenderObject),
-    Scissor(Scissor)
-}
-
 pub struct EntityCreator<'a>
 {
     pub entities: &'a mut ClientEntities
@@ -31,14 +24,5 @@ impl EntityCreator<'_>
         self.entities.set_deferred_render(entity, render);
 
         entity
-    }
-
-    pub fn replace_scissor(
-        &mut self,
-        entity: Entity,
-        scissor: Scissor
-    )
-    {
-        todo!();
     }
 }

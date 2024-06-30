@@ -71,7 +71,7 @@ use super::{
 };
 
 pub use controls_controller::{Control, ControlState, KeyMapping};
-pub use entity_creator::{EntityCreator, ReplaceObject};
+pub use entity_creator::EntityCreator;
 
 use controls_controller::ControlsController;
 
@@ -692,11 +692,6 @@ impl GameState
     pub fn entities_mut(&mut self) -> &mut ClientEntities
     {
         &mut self.entities.entities
-    }
-
-    pub fn object_change(&mut self, entity: Entity, object: ReplaceObject)
-    {
-        todo!();
     }
 
     pub fn player_entity(&self) -> Entity
