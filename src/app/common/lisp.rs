@@ -8,7 +8,14 @@ use std::{
     collections::HashMap
 };
 
-pub use program::{PrimitiveProcedureInfo, Primitives, Lambdas, WithPosition};
+pub use program::{
+    PrimitiveProcedureInfo,
+    Primitives,
+    Lambdas,
+    WithPosition,
+    ArgsWrapper
+};
+
 use program::{Program, Expression, CodePosition};
 
 mod program;
@@ -498,6 +505,7 @@ pub enum Error
 {
     WrongType{expected: ValueTag, got: ValueTag},
     WrongSpecial{expected: &'static str},
+    Custom(String),
     NumberParse(String),
     UndefinedVariable(String),
     ApplyNonApplication,
@@ -520,6 +528,7 @@ impl Display for Error
         {
             Self::WrongType{expected, got} => format!("expected type `{expected:?}` got `{got:?}`"),
             Self::WrongSpecial{expected} => format!("wrong special, expected `{expected:?}`"),
+            Self::Custom(s) => s.clone(),
             Self::NumberParse(s) => format!("cant parse `{s}` as number"),
             Self::UndefinedVariable(s) => format!("variable `{s}` is undefined"),
             Self::ApplyNonApplication => "apply was called on a non application".to_owned(),
@@ -932,6 +941,23 @@ impl LispMemory
         self.memory.cons(car, cdr)
     }
 
+    pub fn new_symbol(
+        &mut self,
+        env: &Environment,
+        x: &str
+    ) -> LispValue
+    {
+        let values: Vec<ValueRaw> = x.chars().map(|x| ValueRaw{char: x}).collect();
+        let vec = LispVectorRef{
+            tag: ValueTag::Char,
+            values: &values
+        };
+
+        let id = self.allocate_vector(env, vec);
+
+        LispValue::new_symbol(id)
+    }
+
     pub fn allocate_vector(
         &mut self,
         env: &Environment,
@@ -967,15 +993,7 @@ impl LispMemory
             },
             Expression::Value(x) =>
             {
-                let values: Vec<ValueRaw> = x.chars().map(|x| ValueRaw{char: x}).collect();
-                let vec = LispVectorRef{
-                    tag: ValueTag::Char,
-                    values: &values
-                };
-
-                let id = self.allocate_vector(env, vec);
-
-                LispValue::new_symbol(id)
+                self.new_symbol(env, x)
             },
             Expression::Application{..} => unreachable!(),
             Expression::Sequence{..} => unreachable!()

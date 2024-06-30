@@ -117,6 +117,16 @@ pub struct Entity
 
 impl Entity
 {
+    pub fn from_raw(local: bool, id: usize) -> Entity
+    {
+        Self{local, id}
+    }
+
+    pub fn id(&self) -> usize
+    {
+        self.id
+    }
+
     pub fn local(&self) -> bool
     {
         self.local

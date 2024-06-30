@@ -33,14 +33,14 @@ pub type OnApply = Rc<
         &Environment,
         &ExpressionPos,
         Action
-    ) -> Result<(), ErrorPos> + Send + Sync>;
+    ) -> Result<(), ErrorPos>>;
 
 pub type OnEval = Rc<
     dyn Fn(
         Option<OnApply>,
         &mut State,
         AstPos
-    ) -> Result<ExpressionPos, ErrorPos> + Send + Sync>;
+    ) -> Result<ExpressionPos, ErrorPos>>;
 
 pub struct ArgsWrapper
 {
@@ -211,7 +211,7 @@ impl PrimitiveProcedureInfo
             &mut LispMemory,
             &Environment,
             ArgsWrapper
-        ) -> Result<(), Error> + Send + Sync + 'static
+        ) -> Result<(), Error> + 'static
     {
         let on_apply = Rc::new(move |
             state: &State,

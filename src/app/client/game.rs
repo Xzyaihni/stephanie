@@ -36,7 +36,7 @@ use crate::{
         DamagePartial,
         DamageHeight,
         InventoryItem,
-        lisp::*,
+        lisp::{self, *},
         world::{TILE_SIZE, Pos3}
     }
 };
@@ -162,12 +162,23 @@ impl Game
     {
         if self.info.console_contents.is_some()
         {
-            if key == KeyCode::Enter
+            match key
             {
-                let contents = self.info.console_contents.take().unwrap();
-                self.console_command(contents);
+                KeyCode::Enter =>
+                {
+                    let contents = self.info.console_contents.take().unwrap();
+                    self.console_command(contents);
 
-                return true;
+                    return true;
+                },
+                KeyCode::Backspace =>
+                {
+                    let contents = self.info.console_contents.as_mut().unwrap();
+                    contents.pop();
+
+                    return true;
+                },
+                _ => ()
             }
 
             let contents = self.info.console_contents.as_mut().unwrap();
@@ -184,56 +195,124 @@ impl Game
         }
     }
 
+    fn pop_entity(args: &mut ArgsWrapper, memory: &mut LispMemory) -> Result<Entity, lisp::Error>
+    {
+        let lst = args.pop(memory).as_list(memory)?;
+
+        let tag = lst.car().as_symbol(memory)?;
+        if tag != "entity"
+        {
+            let s = format!("(expected tag `entity` got `{tag}`)");
+
+            return Err(lisp::Error::Custom(s));
+        }
+
+        let tail = lst.cdr().as_list(memory)?;
+
+        let local = tail.car().as_bool()?;
+        let id = tail.cdr().as_integer()?;
+
+        let entity = Entity::from_raw(local, id as usize);
+
+        Ok(entity)
+    }
+
+    fn push_entity(env: &Environment, memory: &mut LispMemory, entity: Entity) -> LispValue
+    {
+        let tag = memory.new_symbol(env, "entity");
+        let local = LispValue::new_bool(entity.local());
+        let id = LispValue::new_integer(entity.id() as i32);
+
+        let tail = memory.cons(env, local, id);
+
+        memory.cons(env, tag, tail)
+    }
+
     fn console_command(&mut self, command: String)
     {
-        /*let mut primitives = Primitives::new();
+        let mut primitives = Primitives::new();
 
-        primitives.add(
-            "mouse-colliders",
-            PrimitiveProcedureInfo::new_simple(0, move |_state, memory, _env, _args|
-            {
-                let entities = self.game_state.entities();
-                entities.collider(self.info.mouse_entity)
-                    .map(|x| x.collided().to_vec()).into_iter().flatten()
-                    .for_each(|collided|
-                    {
-                        let info = format!("{:#?}", entities.info_ref(collided));
-                        eprintln!("mouse colliding with {collided:?}: {info}");
-                    });
+        {
+            let game_state = self.game_state.clone();
+            let mouse_entity = self.info.mouse_entity;
 
-                memory.push_return(LispValue::new_empty_list());
+            primitives.add(
+                "print-mouse-colliders",
+                PrimitiveProcedureInfo::new_simple(0, move |_state, memory, _env, _args|
+                {
+                    let game_state = game_state.borrow();
+                    let entities = game_state.entities();
 
-                Ok(())
-            }));
+                    entities.collider(mouse_entity)
+                        .map(|x| x.collided().to_vec()).into_iter().flatten()
+                        .for_each(|collided|
+                        {
+                            eprintln!("mouse colliding with {collided:?}");
+                        });
 
-        primitives.add(
-            "set-speed",
-            PrimitiveProcedureInfo::new_simple(2, move |_state, memory, _env, mut args|
-            {
-                todo!();
-                /*let entity = args.pop(memory).as_symbol(memory)?;
+                    memory.push_return(LispValue::new_empty_list());
 
-                let mut anatomy = self.game_state.entities_mut()
-                    .anatomy_mut(entity)
-                    .unwrap();
+                    Ok(())
+                }));
+        }
 
-                anatomy.set_speed(speed);*/
+        {
+            let game_state = self.game_state.clone();
 
-                memory.push_return(LispValue::new_empty_list());
+            primitives.add(
+                "set-speed",
+                PrimitiveProcedureInfo::new_simple(2, move |_state, memory, _env, mut args|
+                {
+                    let mut game_state = game_state.borrow_mut();
+                    let entities = game_state.entities_mut();
 
-                Ok(())
-            }));
+                    let entity = Self::pop_entity(&mut args, memory)?;
+                    let speed = args.pop(memory).as_float()?;
 
-        primitives.add(
-            "player-entity",
-            PrimitiveProcedureInfo::new_simple(0, move |_state, memory, _env, _args|
-            {
-                todo!();
+                    let mut anatomy = entities.anatomy_mut(entity).unwrap();
 
-                memory.push_return(LispValue::new_empty_list());
+                    anatomy.set_speed(speed);
 
-                Ok(())
-            }));
+                    memory.push_return(LispValue::new_empty_list());
+
+                    Ok(())
+                }));
+        }
+
+        {
+            let player_entity = self.info.entity;
+
+            primitives.add(
+                "player-entity",
+                PrimitiveProcedureInfo::new_simple(0, move |_state, memory, env, _args|
+                {
+                    let entity = Self::push_entity(env, memory, player_entity);
+
+                    memory.push_return(entity);
+
+                    Ok(())
+                }));
+        }
+
+        {
+            let game_state = self.game_state.clone();
+
+            primitives.add(
+                "print-entity-info",
+                PrimitiveProcedureInfo::new_simple(1, move |_state, memory, env, mut args|
+                {
+                    let game_state = game_state.borrow();
+                    let entities = game_state.entities();
+
+                    let entity = Self::pop_entity(&mut args, memory)?;
+
+                    eprintln!("entity info: {:?}", entities.info_ref(entity));
+
+                    memory.push_return(LispValue::new_empty_list());
+
+                    Ok(())
+                }));
+        }
 
         let config = LispConfig{
             environment: None,
@@ -262,7 +341,7 @@ impl Game
             }
         };
 
-        eprintln!("ran command {command}, result: {result}");*/
+        eprintln!("ran command {command}, result: {result}");
     }
 
     pub fn player_exists(&mut self) -> bool
