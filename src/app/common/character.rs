@@ -140,6 +140,7 @@ pub struct Character
     pub faction: Faction,
     pub holding: Option<InventoryItem>,
     info: Option<AfterInfo>,
+    held_initialized: bool,
     sprite_state: Stateful<SpriteState>
 }
 
@@ -155,6 +156,7 @@ impl Character
             faction,
             info: None,
             holding: None,
+            held_initialized: false,
             sprite_state: SpriteState::Normal.into()
         }
     }
@@ -177,7 +179,7 @@ impl Character
                     z_level: ZLevel::Arms,
                     ..Default::default()
                 }),
-                parent: Some(Parent::new(entity, {let reminder = ""; true})),
+                parent: Some(Parent::new(entity, false)),
                 lazy_transform: Some(LazyTransformInfo{
                     origin_rotation: -f32::consts::FRAC_PI_2,
                     transform: Transform{
@@ -212,7 +214,6 @@ impl Character
         combined_info: CombinedInfo
     )
     {
-        return;
         let entities = &combined_info.entities;
 
         let info = some_or_return!(self.info.as_ref());
@@ -222,6 +223,8 @@ impl Character
 
         let mut parent = some_or_return!(entities.parent_mut(holding_entity));
         let mut parent_right = some_or_return!(entities.parent_mut(holding_right));
+
+        self.held_initialized = true;
 
         parent.visible = true;
         drop(parent);
@@ -359,23 +362,9 @@ impl Character
     {
         let entities = &combined_info.entities;
 
+        if !self.held_initialized
         {
-            let reminder = "";
-            if let Some(info) = self.info.as_ref()
-            {
-                if let Some(mut parent) = entities.parent_mut(info.holding)
-                {
-                    if let Some(mut parent_right) = entities.parent_mut(info.holding_right)
-                    {
-                        let parent_entity = parent.entity();
-
-                        if let Some(named) = entities.named(parent_entity)
-                        {
-                            dbg!(named);
-                        }
-                    }
-                }
-            }
+            self.update_held(combined_info);
         }
 
         let mut render = entities.render_mut(entity).unwrap();
