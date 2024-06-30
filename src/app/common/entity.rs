@@ -969,6 +969,29 @@ macro_rules! define_entities_both
 
                 let components = components!(self, entity);
                 components.borrow_mut().remove(entity.id);
+
+                self.remove_children(entity);
+            }
+
+            pub fn remove_children(&mut self, parent_entity: Entity)
+            {
+                let remove_list: Vec<_> = self.parent.iter().filter_map(|(_, &ComponentWrapper{
+                    entity,
+                    component: ref parent
+                })|
+                {
+                    let parent = parent.borrow();
+
+                    ((&*parent).into().entity() == parent_entity).then(||
+                    {
+                        entity
+                    })
+                }).collect();
+
+                remove_list.into_iter().for_each(|entity|
+                {
+                    self.remove(entity);
+                });
             }
 
             fn order_sensitive(component: Component) -> bool
