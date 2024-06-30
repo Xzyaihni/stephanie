@@ -48,7 +48,7 @@ pub use inventory::{InventorySorter, InventoryItem, Inventory};
 pub use character::{Character, Faction};
 pub use characters_info::{CharacterId, CharactersInfo, CharacterInfo};
 
-pub use player::{Player, PlayerEntities};
+pub use player::Player;
 
 pub use enemy::{EnemyBehavior, Enemy};
 pub use enemy_builder::EnemyBuilder;

@@ -165,7 +165,6 @@ impl Character
         mut inserter: impl FnMut(EntityInfo) -> Entity
     )
     {
-        let remove_me = ""; use crate::common::collider::*;
         let held_item = |flip|
         {
             EntityInfo{
@@ -178,18 +177,12 @@ impl Character
                     z_level: ZLevel::Arms,
                     ..Default::default()
                 }),
-                collider: Some({let reminder = ""; ColliderInfo{
-                    kind: ColliderType::Aabb,
-                    layer: ColliderLayer::Normal,
-                    ghost: true,
-                    ..Default::default()
-                }.into()}),
                 parent: Some(Parent::new(entity, {let reminder = ""; true})),
                 lazy_transform: Some(LazyTransformInfo{
                     origin_rotation: -f32::consts::FRAC_PI_2,
                     transform: Transform{
                         rotation: f32::consts::FRAC_PI_2,
-                        position: Vector3::new(1.0, {let reminder = ""; if flip {0.0} else {0.5}}, 0.0),
+                        position: Vector3::new(1.0, 0.0, 0.0),
                         ..Default::default()
                     },
                     ..Default::default()

@@ -50,7 +50,6 @@ use crate::{
         ServerToClient,
         EntityPasser,
         EntitiesController,
-        PlayerEntities,
         OccludingCasters,
         entity::{ComponentWrapper, ClientEntities},
         message::Message,
@@ -109,7 +108,7 @@ pub struct ClientEntitiesContainer
 {
     pub entities: ClientEntities,
     local_objects: Vec<(Entity, ReplaceObject)>,
-    player_entities: Option<PlayerEntities>
+    player_entity: Option<Entity>
 }
 
 impl ClientEntitiesContainer
@@ -119,7 +118,7 @@ impl ClientEntitiesContainer
         Self{
             local_objects: Vec::new(),
             entities: Entities::new(),
-            player_entities: None
+            player_entity: None
         }
     }
     
@@ -216,7 +215,7 @@ impl ClientEntitiesContainer
 
     pub fn main_player(&self) -> Entity
     {
-        self.player_entities.as_ref().unwrap().player
+        self.player_entity.unwrap()
     }
 
     pub fn player_transform(&self) -> Option<Ref<Transform>>
@@ -226,13 +225,7 @@ impl ClientEntitiesContainer
 
     pub fn player_exists(&self) -> bool
     {
-        if let Some(player) = self.player_entities.as_ref()
-        {
-            self.entities.exists(player.player)
-        } else
-        {
-            false
-        }
+        self.player_entity.map(|player| self.entities.exists(player)).unwrap_or(false)
     }
 
     fn raycast_entity(
@@ -306,8 +299,8 @@ impl ClientEntitiesContainer
                 {
                     if info.ignore_player
                     {
-                        let is_player = self.player_entities.as_ref()
-                            .map(|x| x.is_player(entity))
+                        let is_player = self.player_entity
+                            .map(|x| x == entity)
                             .unwrap_or(false);
 
                         (!is_player).then_some((entity, transform))
@@ -567,7 +560,7 @@ impl GameState
             Pos3::new(0.0, 0.0, 0.0)
         );
 
-        entities.player_entities = Some(Self::connect_to_server(
+        entities.player_entity = Some(Self::connect_to_server(
             connections_handler.clone(),
             &info.client_info.name
         ));
@@ -685,7 +678,7 @@ impl GameState
     fn connect_to_server(
         handler: Arc<RwLock<ConnectionsHandler>>,
         name: &str
-    ) -> PlayerEntities
+    ) -> Entity
     {
         let message = Message::PlayerConnect{name: name.to_owned()};
 
@@ -698,9 +691,9 @@ impl GameState
 
         match handler.receive_blocking()
         {
-            Ok(Some(Message::PlayerOnConnect{player_entities})) =>
+            Ok(Some(Message::PlayerOnConnect{player_entity})) =>
             {
-                player_entities
+                player_entity
             },
             x => panic!("received wrong message on connect: {x:?}")
         }
@@ -745,9 +738,9 @@ impl GameState
         self.entities.local_objects.push((entity, object));
     }
 
-    pub fn player_entities(&self) -> &PlayerEntities
+    pub fn player_entity(&self) -> Entity
     {
-        self.entities.player_entities.as_ref().unwrap()
+        self.entities.player_entity.unwrap()
     }
 
     pub fn player(&self) -> Entity

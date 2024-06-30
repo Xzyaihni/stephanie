@@ -42,7 +42,6 @@ use crate::common::{
     CharacterId,
     Character,
     Player,
-    PlayerEntities,
     Entities,
     Anatomy,
     HumanAnatomy,
@@ -105,8 +104,8 @@ pub struct GameServer
     player_character: CharacterId,
     characters_info: Arc<CharactersInfo>,
     world: World,
-    sender: Sender<(ConnectionId, Message, PlayerEntities)>,
-    receiver: Receiver<(ConnectionId, Message, PlayerEntities)>,
+    sender: Sender<(ConnectionId, Message, Entity)>,
+    receiver: Receiver<(ConnectionId, Message, Entity)>,
     connection_receiver: Receiver<TcpStream>,
     connection_handler: Arc<RwLock<ConnectionsHandler>>,
     rare_timer: f32
@@ -281,7 +280,7 @@ impl GameServer
     fn player_connect_inner(
         &mut self,
         stream: TcpStream
-    ) -> Result<(PlayerEntities, ConnectionId, MessagePasser), ConnectionError>
+    ) -> Result<(Entity, ConnectionId, MessagePasser), ConnectionError>
     {
         let player_index = self.entities.player.len() + 1;
 
@@ -340,7 +339,7 @@ impl GameServer
             inserted
         };
 
-        let inserted = inserter(info);
+        let player_entity = inserter(info);
 
         let mut player_children = Vec::new();
 
@@ -382,7 +381,7 @@ impl GameServer
                     },
                     ..Default::default()
                 }.into()),
-                parent: Some(Parent::new(inserted, true)),
+                parent: Some(Parent::new(player_entity, true)),
                 render: Some(RenderInfo{
                     object: Some(RenderObject::Texture{
                         name: "player/pon.png".to_owned()
@@ -398,22 +397,17 @@ impl GameServer
         player_children.push(inserter(pon(Vector3::new(-0.35, 0.35, 0.0))));
         player_children.push(inserter(pon(Vector3::new(-0.35, -0.35, 0.0))));
 
-        let player_info = self.player_info(stream, inserted)?;
-
-        let player_entities = PlayerEntities{
-            player: inserted,
-            other: player_children
-        };
+        let player_info = self.player_info(stream, player_entity)?;
 
         let (connection, mut messager) = self.player_create(
-            player_entities.clone(),
+            player_entity,
             player_info,
             position
         )?;
 
         messager.send_one(&Message::PlayerFullyConnected)?;
 
-        Ok((player_entities, connection, messager))
+        Ok((player_entity, connection, messager))
     }
 
     fn player_info(&self, stream: TcpStream, entity: Entity) -> Result<PlayerInfo, ConnectionError>
@@ -436,7 +430,7 @@ impl GameServer
 
     fn player_create(
         &mut self,
-        player_entities: PlayerEntities,
+        player_entity: Entity,
         player_info: PlayerInfo,
         position: Vector3<f32>
     ) -> Result<(ConnectionId, MessagePasser), ConnectionError>
@@ -448,7 +442,7 @@ impl GameServer
 
             let messager = writer.get_mut(connection_id);
 
-            let message = Message::PlayerOnConnect{player_entities};
+            let message = Message::PlayerOnConnect{player_entity};
 
             messager.send_blocking(message)?;
         }
@@ -477,7 +471,7 @@ impl GameServer
         Ok((connection_id, messager.clone_messager()))
     }
 
-    fn connection_close(&mut self, host: bool, id: ConnectionId, entities: PlayerEntities)
+    fn connection_close(&mut self, host: bool, id: ConnectionId, entity: Entity)
     {
         let removed = self.connection_handler.write().remove_connection(id);
 
@@ -504,17 +498,14 @@ impl GameServer
         }
 
         let mut writer = self.connection_handler.write();
-        entities.iter().for_each(|&entity|
-        {
-            writer.send_message(self.entities.remove_message(entity));
-        });
+        writer.send_message(self.entities.remove_message(entity));
     }
 
     fn process_message_inner(
         &mut self,
         message: Message,
         id: ConnectionId,
-        entities: PlayerEntities
+        entity: Entity
     )
     {
         let message = match message
@@ -536,7 +527,7 @@ impl GameServer
         let message = some_or_return!{self.world.handle_message(
             &mut self.entities,
             id,
-            entities.player,
+            entity,
             message
         )};
 
@@ -544,7 +535,7 @@ impl GameServer
 
         match message
         {
-            Message::PlayerDisconnect{host} => self.connection_close(host, id, entities),
+            Message::PlayerDisconnect{host} => self.connection_close(host, id, entity),
             x => panic!("unhandled message: {x:?}")
         }
     }
