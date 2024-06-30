@@ -72,7 +72,7 @@ impl Game
     {
         let info = {
             let mut game_state = game_state.borrow_mut();
-            let player_entity = game_state.player();
+            let player = game_state.player();
 
             let entities = game_state.entities_mut();
             let mouse_entity = entities.push_eager(true, EntityInfo{
@@ -88,20 +88,39 @@ impl Game
                 ..Default::default()
             });
 
-            let camera_entity = entities.push_eager(true, EntityInfo{
+            let camera = entities.push_eager(true, EntityInfo{
                 lazy_transform: Some(LazyTransformInfo{
                     connection: Connection::EaseOut{decay: 5.0, limit: None},
                     ..Default::default()
                 }.into()),
-                parent: Some(Parent::new(player_entity, false)),
+                parent: Some(Parent::new(player, false)),
                 ..Default::default()
             });
 
-            PlayerInfo::new(
-                camera_entity,
-                player_entity,
-                mouse_entity
-            )
+            let console_entity = entities.push_eager(true, EntityInfo{
+                lazy_transform: Some(LazyTransformInfo{
+                    scaling: Scaling::Ignore,
+                    rotation: Rotation::Ignore,
+                    transform: Transform{
+                        scale: Vector3::new(1.0, 0.2, 1.0),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                }.into()),
+                parent: Some(Parent::new(player, false)),
+                render: Some(RenderInfo{
+                    z_level: ZLevel::UiHigh,
+                    ..Default::default()
+                }),
+                ..Default::default()
+            });
+
+            PlayerInfo::new(PlayerCreateInfo{
+                camera,
+                entity: player,
+                mouse_entity,
+                console_entity
+            })
         };
 
         Self{info, game_state}
@@ -169,12 +188,16 @@ impl Game
                     let contents = self.info.console_contents.take().unwrap();
                     self.console_command(contents);
 
+                    self.player_container(|mut x| x.update_console());
+
                     return true;
                 },
                 KeyCode::Backspace =>
                 {
                     let contents = self.info.console_contents.as_mut().unwrap();
                     contents.pop();
+
+                    self.player_container(|mut x| x.update_console());
 
                     return true;
                 },
@@ -187,6 +210,8 @@ impl Game
             {
                 *contents += text;
             }
+
+            self.player_container(|mut x| x.update_console());
 
             true
         } else
@@ -299,14 +324,14 @@ impl Game
 
             primitives.add(
                 "print-entity-info",
-                PrimitiveProcedureInfo::new_simple(1, move |_state, memory, env, mut args|
+                PrimitiveProcedureInfo::new_simple(1, move |_state, memory, _env, mut args|
                 {
                     let game_state = game_state.borrow();
                     let entities = game_state.entities();
 
                     let entity = Self::pop_entity(&mut args, memory)?;
 
-                    eprintln!("entity info: {:?}", entities.info_ref(entity));
+                    eprintln!("entity info: {:#?}", entities.info_ref(entity));
 
                     memory.push_return(LispValue::new_empty_list());
 
@@ -355,6 +380,14 @@ impl Game
     }
 }
 
+struct PlayerCreateInfo
+{
+    pub camera: Entity,
+    pub entity: Entity,
+    pub mouse_entity: Entity,
+    pub console_entity: Entity
+}
+
 struct PlayerInfo
 {
     camera: Entity,
@@ -362,6 +395,7 @@ struct PlayerInfo
     mouse_entity: Entity,
     other_entity: Option<Entity>,
     projectile: Option<Entity>,
+    console_entity: Entity,
     console_contents: Option<String>,
     stance_time: f32,
     attack_cooldown: f32,
@@ -375,18 +409,15 @@ struct PlayerInfo
 
 impl PlayerInfo
 {
-    pub fn new(
-        camera: Entity,
-        entity: Entity,
-        mouse_entity: Entity
-    ) -> Self
+    pub fn new(info: PlayerCreateInfo) -> Self
     {
         Self{
-            camera,
-            entity,
-            mouse_entity,
+            camera: info.camera,
+            entity: info.entity,
+            mouse_entity: info.mouse_entity,
             other_entity: None,
             projectile: None,
+            console_entity: info.console_entity,
             console_contents: None,
             stance_time: 0.0,
             attack_cooldown: 0.0,
@@ -546,11 +577,26 @@ impl<'a> PlayerContainer<'a>
                     Some(String::new())
                 };
 
+                self.update_console();
+
                 let state = if self.info.console_contents.is_some() { "opened" } else { "closed" };
                 eprintln!("debug console {state}");
             },
             _ => ()
         }
+    }
+
+    fn update_console(&mut self)
+    {
+        self.game_state.entities()
+            .parent_mut(self.info.console_entity)
+            .unwrap()
+            .visible = self.info.console_contents.is_some();
+
+        let text = self.info.console_contents.clone().unwrap_or_else(String::new);
+
+        let mut creator = self.game_state.entity_creator();
+        creator.replace_object(self.info.console_entity, RenderObject::Text{text, font_size: 30});
     }
 
     fn handle_user_event(&mut self, event: UserEvent)

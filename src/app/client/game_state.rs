@@ -755,6 +755,11 @@ impl GameState
         self.entities.main_player()
     }
 
+    pub fn entity_creator(&mut self) -> EntityCreator
+    {
+        self.entities.entity_creator()
+    }
+
     pub fn process_messages(&mut self, create_info: &mut RenderCreateInfo)
     {
         loop

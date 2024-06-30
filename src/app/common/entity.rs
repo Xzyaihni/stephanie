@@ -724,16 +724,21 @@ macro_rules! define_entities_both
                     })
             }
 
-            pub fn info_ref(&self, entity: Entity) -> EntityInfo<$(Ref<$component_type>,)+>
+            pub fn info_ref(&self, entity: Entity) -> Option<EntityInfo<$(Ref<$component_type>,)+>>
             {
+                if !self.exists(entity)
+                {
+                    return None;
+                }
+
                 let components = &components!(self, entity).borrow()[entity.id];
 
-                EntityInfo{$(
+                Some(EntityInfo{$(
                     $name: components[Component::$name as usize].map(|id|
                     {
                         self.$name[id].get()
                     }),
-                )+}
+                )+})
             }
 
             fn set_each(&mut self, entity: Entity, info: EntityInfo<$($component_type,)+>)
@@ -899,7 +904,9 @@ macro_rules! define_entities_both
 
                 let (child_component, child) = some_or_return!(child);
 
-                let parent_component = component_index!(self, parent_entity, transform).unwrap();
+                let parent_component = some_or_return!(
+                    component_index!(self, parent_entity, transform)
+                );
 
                 if parent_component < child_component
                 {

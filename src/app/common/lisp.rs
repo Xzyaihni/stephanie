@@ -512,6 +512,7 @@ pub enum Error
     WrongArgumentsCount{proc: String, expected: usize, got: usize},
     IndexOutOfRange(i32),
     CharOutOfRange,
+    EmptySequence,
     VectorWrongType{expected: ValueTag, got: ValueTag},
     ExpectedSameNumberType,
     ExpectedArg,
@@ -537,6 +538,7 @@ impl Display for Error
                 format!("wrong amount of arguments (got {got}) passed to {proc} (expected {expected})"),
             Self::IndexOutOfRange(i) => format!("index {i} out of range"),
             Self::CharOutOfRange => "char out of range".to_owned(),
+            Self::EmptySequence => "empty sequence".to_owned(),
             Self::VectorWrongType{expected, got} =>
                 format!("vector expected `{expected:?}` got `{got:?}`"),
             Self::ExpectedArg => "expected an argument".to_owned(),

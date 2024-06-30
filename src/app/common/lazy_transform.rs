@@ -224,6 +224,7 @@ impl Connection
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Rotation
 {
+    Ignore,
     Instant,
     EaseOut(EaseOutRotationInfo),
     Constant(ConstantRotationInfo)
@@ -240,6 +241,7 @@ impl Rotation
     {
         match &self
         {
+            Rotation::Ignore => (),
             Rotation::Instant =>
             {
                 *current = target;
@@ -338,6 +340,7 @@ impl Rotation
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Scaling
 {
+    Ignore,
     Instant,
     EaseOut{decay: f32},
     Constant{speed: f32}
@@ -354,6 +357,7 @@ impl Scaling
     {
         match &self
         {
+            Scaling::Ignore => (),
             Scaling::Instant =>
             {
                 *current = target;

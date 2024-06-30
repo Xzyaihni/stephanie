@@ -1273,6 +1273,11 @@ impl ExpressionPos
 
     pub fn eval_sequence(state: &mut State, ast: AstPos) -> Result<Self, ErrorPos>
     {
+        if ast.is_null()
+        {
+            return Err(ErrorPos{position: ast.position, error: Error::EmptySequence});
+        }
+
         let car = Self::eval(state, ast.car())?;
         let cdr = ast.cdr();
 
