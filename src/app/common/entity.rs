@@ -844,7 +844,6 @@ macro_rules! define_entities_both
                                 *slot = Some(id);
 
                                 drop(components);
-                                eprintln!("{} component set at id {id} ({entity:?})", stringify!($name));
 
                                 if parent_order_sensitive
                                 {
