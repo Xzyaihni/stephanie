@@ -1,8 +1,8 @@
 use std::{
     vec,
     iter,
+    rc::Rc,
     fmt::{self, Debug},
-    sync::Arc,
     collections::HashMap,
     ops::{Add, Sub, Mul, Div, Rem, Deref}
 };
@@ -26,7 +26,7 @@ mod parser;
 
 
 // unreadable, great
-pub type OnApply = Arc<
+pub type OnApply = Rc<
     dyn Fn(
         &State,
         &mut LispMemory,
@@ -35,7 +35,7 @@ pub type OnApply = Arc<
         Action
     ) -> Result<(), ErrorPos> + Send + Sync>;
 
-pub type OnEval = Arc<
+pub type OnEval = Rc<
     dyn Fn(
         Option<OnApply>,
         &mut State,
@@ -213,7 +213,7 @@ impl PrimitiveProcedureInfo
             ArgsWrapper
         ) -> Result<(), Error> + Send + Sync + 'static
     {
-        let on_apply = Arc::new(move |
+        let on_apply = Rc::new(move |
             state: &State,
             memory: &mut LispMemory,
             env: &Environment,
@@ -501,7 +501,7 @@ impl Primitives
             ("vector-set!",
                 PrimitiveProcedureInfo::new_simple_lazy(
                     3,
-                    Arc::new(|state, memory, env, args, action|
+                    Rc::new(|state, memory, env, args, action|
                     {
                         let position = args.position;
                         let mut args = args.apply_args(state, memory, env, Action::Return)?;
@@ -598,7 +598,7 @@ impl Primitives
             ("if",
                 PrimitiveProcedureInfo::new_simple_lazy(
                     3,
-                    Arc::new(|state, memory, env, args, action|
+                    Rc::new(|state, memory, env, args, action|
                     {
                         args.car().apply(state, memory, env, Action::Return)?;
                         let predicate = memory.pop_return();
@@ -615,7 +615,7 @@ impl Primitives
                         }
                     }))),
             ("let",
-                PrimitiveProcedureInfo::new_eval(2, Arc::new(|_on_apply, state, args|
+                PrimitiveProcedureInfo::new_eval(2, Rc::new(|_on_apply, state, args|
                 {
                     let bindings = args.car();
                     let body = args.cdr().car();
@@ -644,12 +644,12 @@ impl Primitives
                     })
                 }))),
             ("begin",
-                PrimitiveProcedureInfo::new_eval(None, Arc::new(|_on_apply, state, args|
+                PrimitiveProcedureInfo::new_eval(None, Rc::new(|_on_apply, state, args|
                 {
                     ExpressionPos::eval_sequence(state, args)
                 }))),
             ("lambda",
-                PrimitiveProcedureInfo::new_eval(2, Arc::new(|_on_apply, state, args|
+                PrimitiveProcedureInfo::new_eval(2, Rc::new(|_on_apply, state, args|
                 {
                     Ok(ExpressionPos{
                         position: args.position,
@@ -657,7 +657,7 @@ impl Primitives
                     })
                 }))),
             ("define",
-                PrimitiveProcedureInfo::new(2, Arc::new(|on_apply, state, args|
+                PrimitiveProcedureInfo::new(2, Rc::new(|on_apply, state, args|
                 {
                     let first = args.car();
                     let body = args.cdr().car();
@@ -692,7 +692,7 @@ impl Primitives
                     };
 
                     Ok(ExpressionPos::new_application(on_apply, args))
-                }), Arc::new(|state, memory, env, args, action|
+                }), Rc::new(|state, memory, env, args, action|
                 {
                     let first = args.car();
                     let second = args.cdr().car();
@@ -713,12 +713,12 @@ impl Primitives
                     Ok(())
                 }))),
             ("quote",
-                PrimitiveProcedureInfo::new(1, Arc::new(|on_apply, _state, args|
+                PrimitiveProcedureInfo::new(1, Rc::new(|on_apply, _state, args|
                 {
                     let arg = Expression::ast_to_expression(args.car())?;
 
                     Ok(ExpressionPos::new_application(on_apply, arg))
-                }), Arc::new(|_state, memory, env, args, action|
+                }), Rc::new(|_state, memory, env, args, action|
                 {
                     match action
                     {
@@ -908,7 +908,7 @@ impl Primitives
 pub struct State
 {
     pub lambdas: Lambdas,
-    pub primitives: Arc<Primitives>
+    pub primitives: Rc<Primitives>
 }
 
 #[derive(Debug, Clone)]
@@ -921,7 +921,7 @@ pub struct Program
 impl Program
 {
     pub fn parse(
-        primitives: Arc<Primitives>,
+        primitives: Rc<Primitives>,
         lambdas: Option<Lambdas>,
         code: &str
     ) -> Result<Self, ErrorPos>

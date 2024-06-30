@@ -2,13 +2,12 @@ use std::{
     fs,
     io,
     fmt,
-    sync::Arc,
+    rc::Rc,
+    cell::RefCell,
     ops::Index,
     collections::{HashMap, HashSet},
     path::{Path, PathBuf}
 };
-
-use parking_lot::Mutex;
 
 use crate::common::{
     TileMap,
@@ -20,7 +19,6 @@ use crate::common::{
         LispRef,
         LispConfig,
         LispMemory,
-        Environment,
         Mappings,
         Lambdas,
         LispValue,
@@ -160,10 +158,10 @@ impl From<lisp::Error> for ParseError
 
 pub struct ChunkGenerator
 {
-    environment: Arc<Mutex<Mappings>>,
+    environment: Rc<RefCell<Mappings>>,
     lambdas: Lambdas,
-    primitives: Arc<Primitives>,
-    memory: Arc<Mutex<LispMemory>>,
+    primitives: Rc<Primitives>,
+    memory: Rc<RefCell<LispMemory>>,
     chunks: HashMap<String, LispRef>,
     tilemap: TileMap
 }
@@ -178,10 +176,10 @@ impl ChunkGenerator
 
         let (environment, lambdas) = Self::default_environment(&parent_directory);
 
-        let environment = Arc::new(Mutex::new(environment));
-        let memory = Arc::new(Mutex::new(LispMemory::new(1024)));
+        let environment = Rc::new(RefCell::new(environment));
+        let memory = Rc::new(RefCell::new(LispMemory::new(1024)));
 
-        let primitives = Arc::new(Self::default_primitives(&tilemap));
+        let primitives = Rc::new(Self::default_primitives(&tilemap));
 
         let mut this = Self{environment, lambdas, primitives, memory, chunks, tilemap};
 
@@ -280,7 +278,7 @@ impl ChunkGenerator
             return ChunksContainer::new_with(WORLD_CHUNK_SIZE, |_| Tile::none());
         }
 
-        let memory = &mut self.memory.lock();
+        let memory = &mut self.memory.borrow_mut();
 
         let chunk_name = group.this;
         let this_chunk = self.chunks.get_mut(chunk_name)

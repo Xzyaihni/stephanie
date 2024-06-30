@@ -149,7 +149,7 @@ impl Game
 
     fn console_command(&mut self, command: String)
     {
-        let mut primitives = Primitives::new();
+        /*let mut primitives = Primitives::new();
 
         primitives.add(
             "mouse-colliders",
@@ -226,7 +226,7 @@ impl Game
             }
         };
 
-        eprintln!("ran command {command}, result: {result}");
+        eprintln!("ran command {command}, result: {result}");*/
     }
 
     pub fn player_exists(&mut self, game_state: &mut GameState) -> bool

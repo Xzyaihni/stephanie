@@ -1,14 +1,12 @@
 use std::{
     mem,
+    rc::Rc,
     cell::RefCell,
-    sync::Arc,
     ops::Range,
     fmt::{self, Display, Debug},
     ops::{Deref, DerefMut},
     collections::HashMap
 };
-
-use parking_lot::Mutex;
 
 pub use program::{PrimitiveProcedureInfo, Primitives, Lambdas, WithPosition};
 use program::{Program, Expression, CodePosition};
@@ -1121,9 +1119,9 @@ impl<'a> OutputWrapper<'a>
 
 pub struct LispConfig
 {
-    pub environment: Option<Arc<Mutex<Mappings>>>,
+    pub environment: Option<Rc<RefCell<Mappings>>>,
     pub lambdas: Option<Lambdas>,
-    pub primitives: Arc<Primitives>
+    pub primitives: Rc<Primitives>
 }
 
 pub struct Lisp
@@ -1195,7 +1193,7 @@ impl DerefMut for Lisp
 
 pub struct LispRef
 {
-    environment: Arc<Mutex<Mappings>>,
+    environment: Rc<RefCell<Mappings>>,
     program: Program
 }
 
@@ -1210,7 +1208,7 @@ impl LispRef
             let mut env = Mappings::new();
             config.primitives.add_to_env(&mut env);
 
-            Arc::new(Mutex::new(env))
+            Rc::new(RefCell::new(env))
         });
 
         let program = Program::parse(config.primitives, config.lambdas, code)?;
@@ -1223,7 +1221,7 @@ impl LispRef
         let config = LispConfig{
             environment: None,
             lambdas: None,
-            primitives: Arc::new(Primitives::new())
+            primitives: Rc::new(Primitives::new())
         };
 
         unsafe{ Self::new_with_config(config, code) }
@@ -1252,7 +1250,7 @@ impl LispRef
 
     fn new_environment(&self) -> Mappings
     {
-        let env: &Mappings = &self.environment.lock();
+        let env: &Mappings = &self.environment.borrow();
 
         Mappings::clone(env)
     }

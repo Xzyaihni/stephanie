@@ -12,7 +12,15 @@ use yanyaengine::{
     game_object::*
 };
 
-use common::{TileMap, DataInfos, ItemsInfo, EnemiesInfo, CharactersInfo, CharacterInfo};
+use common::{
+    TileMap,
+    DataInfos,
+    ItemsInfo,
+    EnemiesInfo,
+    CharactersInfo,
+    CharacterInfo,
+    sender_loop::{waiting_loop, DELTA_TIME}
+};
 
 use server::Server;
 
@@ -118,14 +126,14 @@ impl YanyaApp for App
                     {
                         let port = port.unwrap_or(0);
 
-                        let server = Server::new(
+                        let x = Server::new(
                             tilemap,
                             data_infos,
                             &format!("0.0.0.0:{port}"),
                             16
                         );
 
-                        let mut server = match server
+                        let (mut game_server, mut server) = match x
                         {
                             Ok(x) => x,
                             Err(err) => panic!("{err}")
@@ -134,7 +142,17 @@ impl YanyaApp for App
                         let port = server.port();
                         tx.send(port).unwrap();
 
-                        server.run()
+                        thread::spawn(move ||
+                        {
+                            server.run();
+                        });
+
+                        waiting_loop(||
+                        {
+                            game_server.update(DELTA_TIME as f32);
+
+                            false
+                        });
                     },
                     Err(err) => panic!("error parsing tilemap: {err}")
                 }
