@@ -107,7 +107,6 @@ pub struct GlobalEntityId
 pub struct ClientEntitiesContainer
 {
     pub entities: ClientEntities,
-    local_objects: Vec<(Entity, ReplaceObject)>,
     player_entity: Option<Entity>
 }
 
@@ -116,7 +115,6 @@ impl ClientEntitiesContainer
     pub fn new() -> Self
     {
         Self{
-            local_objects: Vec::new(),
             entities: Entities::new(),
             player_entity: None
         }
@@ -134,7 +132,6 @@ impl ClientEntitiesContainer
     pub fn entity_creator(&mut self) -> EntityCreator
     {
         EntityCreator{
-            objects: &mut self.local_objects,
             entities: &mut self.entities
         }
     }
@@ -154,40 +151,6 @@ impl ClientEntitiesContainer
         }
 
         self.entities.update_watchers(dt);
-
-        mem::take(&mut self.local_objects).into_iter().for_each(|(entity, object)|
-        {
-            match object
-            {
-                ReplaceObject::Full(object) =>
-                {
-                    let object = object.server_to_client(
-                        || self.entities.target_ref(entity).unwrap().clone(),
-                        create_info
-                    );
-
-                    self.entities.set_render(entity, Some(object));
-                },
-                ReplaceObject::Object(object) =>
-                {
-                    if let Some(mut render) = self.entities.render_mut(entity)
-                    {
-                        render.object = object.into_client(
-                            Default::default(),
-                            self.entities.target_ref(entity).unwrap().clone(),
-                            create_info
-                        );
-                    }
-                },
-                ReplaceObject::Scissor(scissor) =>
-                {
-                    if let Some(mut render) = self.entities.render_mut(entity)
-                    {
-                        render.scissor = Some(scissor.into_global(create_info.object_info.partial.size));
-                    }
-                }
-            }
-        });
     }
 
     pub fn update(
@@ -735,7 +698,7 @@ impl GameState
 
     pub fn object_change(&mut self, entity: Entity, object: ReplaceObject)
     {
-        self.entities.local_objects.push((entity, object));
+        todo!();
     }
 
     pub fn player_entity(&self) -> Entity
@@ -991,7 +954,6 @@ impl GameState
         let player_id = self.player();
 
         let mut entity_creator = EntityCreator{
-            objects: &mut self.entities.local_objects,
             entities: &mut self.entities.entities
         };
 
