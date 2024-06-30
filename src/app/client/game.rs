@@ -1,41 +1,44 @@
 use std::{
     f32,
     mem,
-    cell::Ref,
-    sync::Arc
+    rc::Rc,
+    cell::{Ref, RefCell}
 };
 
 use nalgebra::{Vector3, Vector2};
 
 use yanyaengine::{TextureId, Transform, Key, KeyCode};
 
-use crate::common::{
-    angle_between,
-    ENTITY_SCALE,
-    render_info::*,
-    lazy_transform::*,
-    collider::*,
-    watcher::*,
-    damaging::*,
-    particle_creator::*,
-    Side1d,
-    AnyEntities,
-    Parent,
-    Faction,
-    Physical,
-    PhysicalProperties,
-    Entity,
-    EntityInfo,
-    Player,
-    Inventory,
-    Item,
-    ItemInfo,
-    ItemsInfo,
-    DamagePartial,
-    DamageHeight,
-    InventoryItem,
-    lisp::*,
-    world::{TILE_SIZE, Pos3}
+use crate::{
+    client::UiEvent,
+    common::{
+        angle_between,
+        ENTITY_SCALE,
+        render_info::*,
+        lazy_transform::*,
+        collider::*,
+        watcher::*,
+        damaging::*,
+        particle_creator::*,
+        Side1d,
+        AnyEntities,
+        Parent,
+        Faction,
+        Physical,
+        PhysicalProperties,
+        Entity,
+        EntityInfo,
+        Player,
+        Inventory,
+        Item,
+        ItemInfo,
+        ItemsInfo,
+        DamagePartial,
+        DamageHeight,
+        InventoryItem,
+        lisp::*,
+        world::{TILE_SIZE, Pos3}
+    }
 };
 
 use super::game_state::{
@@ -59,66 +62,100 @@ pub trait DrawableEntity
 
 pub struct Game
 {
+    game_state: Rc<RefCell<GameState>>,
     info: PlayerInfo
 }
 
 impl Game
 {
-    pub fn new(game_state: &mut GameState) -> Self
+    pub fn new(game_state: Rc<RefCell<GameState>>) -> Self
     {
-        let player_entity = game_state.player();
+        let info = {
+            let mut game_state = game_state.borrow_mut();
+            let player_entity = game_state.player();
 
-        let entities = game_state.entities_mut();
-        let mouse_entity = entities.push_eager(true, EntityInfo{
-            transform: Some(Transform{
-                scale: Vector3::repeat(TILE_SIZE * 5.0),
+            let entities = game_state.entities_mut();
+            let mouse_entity = entities.push_eager(true, EntityInfo{
+                transform: Some(Transform{
+                    scale: Vector3::repeat(TILE_SIZE * 5.0),
+                    ..Default::default()
+                }),
+                collider: Some(ColliderInfo{
+                    kind: ColliderType::Point,
+                    ghost: true,
+                    ..Default::default()
+                }.into()),
                 ..Default::default()
-            }),
-            collider: Some(ColliderInfo{
-                kind: ColliderType::Point,
-                ghost: true,
+            });
+
+            let camera_entity = entities.push_eager(true, EntityInfo{
+                lazy_transform: Some(LazyTransformInfo{
+                    connection: Connection::EaseOut{decay: 5.0, limit: None},
+                    ..Default::default()
+                }.into()),
+                parent: Some(Parent::new(player_entity, false)),
                 ..Default::default()
-            }.into()),
-            ..Default::default()
-        });
+            });
 
-        let camera_entity = entities.push_eager(true, EntityInfo{
-            lazy_transform: Some(LazyTransformInfo{
-                connection: Connection::EaseOut{decay: 5.0, limit: None},
-                ..Default::default()
-            }.into()),
-            parent: Some(Parent::new(player_entity, false)),
-            ..Default::default()
-        });
+            PlayerInfo::new(
+                camera_entity,
+                player_entity,
+                mouse_entity
+            )
+        };
 
-        let info = PlayerInfo::new(
-            game_state.items_info.clone(),
-            camera_entity,
-            player_entity,
-            mouse_entity
-        );
-
-        Self{info}
+        Self{info, game_state}
     }
 
-    fn player_container<'a>(&'a mut self, game_state: &'a mut GameState) -> PlayerContainer<'a>
+    fn player_container<T>(&mut self, f: impl FnOnce(PlayerContainer) -> T) -> T
     {
-        PlayerContainer::new(&mut self.info, game_state)
+        let mut game_state = self.game_state.borrow_mut();
+
+        f(PlayerContainer::new(&mut self.info, &mut game_state))
     }
 
-    pub fn on_player_connected(&mut self, game_state: &mut GameState)
+    pub fn on_player_connected(&mut self)
     {
-        self.player_container(game_state).on_player_connected();
+        self.player_container(|mut x| x.on_player_connected());
     }
 
-    pub fn update(&mut self, game_state: &mut GameState, dt: f32)
+    pub fn update(&mut self, dt: f32)
     {
-        self.player_container(game_state).update(dt)
+        self.game_state.borrow_mut().update_pre(dt);
+
+        self.player_container(|mut x| x.this_update(dt));
+
+        let mut game_state = self.game_state.borrow_mut();
+        let changed_this_frame = game_state.controls.changed_this_frame();
+        let mouse_position = game_state.world_mouse_position();
+
+        drop(game_state);
+
+        for (state, control) in changed_this_frame
+        {
+            let event = UiEvent::from_control(mouse_position, state, control);
+            if let Some(event) = event
+            {
+                let mut game_state = self.game_state.borrow_mut();
+                let camera_position = game_state.camera.read().position().coords.xy();
+
+                let captured = game_state.entities.entities.update_ui(camera_position, event);
+
+                if captured
+                {
+                    continue;
+                }
+            }
+
+            self.on_control(state, control);
+        }
+
+        self.game_state.borrow_mut().update(dt);
     }
 
-    pub fn on_control(&mut self, game_state: &mut GameState, state: ControlState, control: Control)
+    pub fn on_control(&mut self, state: ControlState, control: Control)
     {
-        self.player_container(game_state).on_control(state, control)
+        self.player_container(|mut x| x.on_control(state, control));
     }
 
     pub fn on_key(&mut self, logical: Key, key: KeyCode) -> bool
@@ -155,15 +192,14 @@ impl Game
             "mouse-colliders",
             PrimitiveProcedureInfo::new_simple(0, move |_state, memory, _env, _args|
             {
-                todo!();
-                /*let entities = self.game_state.entities();
+                let entities = self.game_state.entities();
                 entities.collider(self.info.mouse_entity)
                     .map(|x| x.collided().to_vec()).into_iter().flatten()
                     .for_each(|collided|
                     {
                         let info = format!("{:#?}", entities.info_ref(collided));
                         eprintln!("mouse colliding with {collided:?}: {info}");
-                    });*/
+                    });
 
                 memory.push_return(LispValue::new_empty_list());
 
@@ -202,7 +238,7 @@ impl Game
         let config = LispConfig{
             environment: None,
             lambdas: None,
-            primitives: Arc::new(primitives)
+            primitives: Rc::new(primitives)
         };
 
         let mut lisp = match unsafe{ LispRef::new_with_config(config, &command) }
@@ -229,20 +265,19 @@ impl Game
         eprintln!("ran command {command}, result: {result}");*/
     }
 
-    pub fn player_exists(&mut self, game_state: &mut GameState) -> bool
+    pub fn player_exists(&mut self) -> bool
     {
-        self.player_container(game_state).exists()
+        self.player_container(|x| x.exists())
     }
 
-    pub fn camera_sync(&mut self, game_state: &mut GameState)
+    pub fn camera_sync(&mut self)
     {
-        self.player_container(game_state).camera_sync();
+        self.player_container(|mut x| x.camera_sync());
     }
 }
 
 struct PlayerInfo
 {
-    items_info: Arc<ItemsInfo>,
     camera: Entity,
     entity: Entity,
     mouse_entity: Entity,
@@ -262,14 +297,12 @@ struct PlayerInfo
 impl PlayerInfo
 {
     pub fn new(
-        items_info: Arc<ItemsInfo>,
         camera: Entity,
         entity: Entity,
         mouse_entity: Entity
     ) -> Self
     {
         Self{
-            items_info,
             camera,
             entity,
             mouse_entity,
@@ -1034,7 +1067,7 @@ impl<'a> PlayerContainer<'a>
         false
     }
 
-    pub fn update(&mut self, dt: f32)
+    pub fn this_update(&mut self, dt: f32)
     {
         if !self.exists()
         {

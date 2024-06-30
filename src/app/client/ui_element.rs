@@ -54,7 +54,7 @@ impl UiEvent
 impl UiEvent
 {
     pub fn from_control(
-        mouse_position: impl FnOnce() -> Vector2<f32>,
+        mouse_position: Vector2<f32>,
         state: ControlState,
         control: Control
     ) -> Option<Self>
@@ -63,12 +63,12 @@ impl UiEvent
         {
             Control::MainAction =>
             {
-                let event = MouseEvent{main_button: true, position: mouse_position(), state};
+                let event = MouseEvent{main_button: true, position: mouse_position, state};
                 Some(UiEvent::Mouse(event))
             },
             Control::SecondaryAction =>
             {
-                let event = MouseEvent{main_button: false, position: mouse_position(), state};
+                let event = MouseEvent{main_button: false, position: mouse_position, state};
                 Some(UiEvent::Mouse(event))
             },
             _ => None

@@ -64,7 +64,6 @@ use crate::{
 };
 
 use super::{
-    Game,
     UiEvent,
     ClientInfo,
     MessagePasser,
@@ -932,7 +931,7 @@ impl GameState
         }
     }
 
-    pub fn update(&mut self, game: &mut Game, dt: f32)
+    pub fn update_pre(&mut self, dt: f32)
     {
         self.check_resize_camera(dt);
 
@@ -957,29 +956,10 @@ impl GameState
                 dt
             );
         }
+    }
 
-        game.update(self, dt);
-
-        let changed_this_frame = self.controls.changed_this_frame();
-        for (state, control) in changed_this_frame
-        {
-            let event = UiEvent::from_control(|| self.world_mouse_position(), state, control);
-            if let Some(event) = event
-            {
-                let captured = self.entities.entities.update_ui(
-                    self.camera.read().position().coords.xy(),
-                    event
-                );
-
-                if captured
-                {
-                    continue;
-                }
-            }
-
-            game.on_control(self, state, control);
-        }
-
+    pub fn update(&mut self, dt: f32)
+    {
         self.entities.entities.update_ui(
             self.camera.read().position().coords.xy(),
             UiEvent::MouseMove(self.world_mouse_position())

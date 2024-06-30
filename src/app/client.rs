@@ -129,7 +129,7 @@ impl Client
 
         let game_state = GameState::new(info);
 
-        let game = Game::new(&mut game_state.borrow_mut());
+        let game = Game::new(game_state.clone());
 
         let mut assets = assets.lock();
         let squares = Uvs::iter().map(|uvs|
@@ -160,18 +160,16 @@ impl Client
 
     pub fn update(&mut self, dt: f32)
     {
-        let mut writer = self.game_state.borrow_mut();
+        self.game.update(dt);
 
-        writer.update(&mut self.game, dt);
-
-        if self.game.player_exists(&mut writer)
+        if self.game.player_exists()
         {
-            if writer.player_connected()
+            if self.game_state.borrow_mut().player_connected()
             {
-                self.game.on_player_connected(&mut writer);
+                self.game.on_player_connected();
             }
 
-            self.game.camera_sync(&mut writer);
+            self.game.camera_sync();
         }
     }
 
