@@ -1050,6 +1050,14 @@ impl<'a> Drop for OutputWrapper<'a>
     }
 }
 
+impl<'a> Display for OutputWrapper<'a>
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
+    {
+        write!(f, "{}", self.value.to_string(self.memory))
+    }
+}
+
 impl<'a> OutputWrapper<'a>
 {
     pub fn as_vector_ref(&'a self) -> Result<LispVectorRef<'a>, Error>
@@ -1095,8 +1103,7 @@ impl Lisp
 {
     pub fn new(code: &str) -> Result<Self, ErrorPos>
     {
-        let memory_size = 1 << 10;
-        let memory = LispMemory::new(memory_size);
+        let memory = Self::default_memory();
 
         Ok(Self{
             memory,
@@ -1104,9 +1111,14 @@ impl Lisp
         })
     }
 
+    pub fn default_memory() -> LispMemory
+    {
+        LispMemory::new(1 << 10)
+    }
+
     pub fn run(&mut self) -> Result<OutputWrapper, ErrorPos>
     {
-        self.lisp.run(&mut self.memory)
+        self.lisp.run_with_memory(&mut self.memory)
     }
 
     pub fn run_environment(&mut self) -> Result<Environment<'static>, ErrorPos>
@@ -1184,7 +1196,10 @@ impl LispRef
         unsafe{ Self::new_with_config(config, code) }
     }
 
-    pub fn run<'a>(&mut self, memory: &'a mut LispMemory) -> Result<OutputWrapper<'a>, ErrorPos>
+    pub fn run_with_memory<'a>(
+        &mut self,
+        memory: &'a mut LispMemory
+    ) -> Result<OutputWrapper<'a>, ErrorPos>
     {
         self.run_inner(memory).map(|(_env, value)| value)
     }
@@ -1386,7 +1401,7 @@ mod tests
 
         let mut lisp = LispRef::new(code).unwrap();
 
-        let value = lisp.run(&mut memory).unwrap().as_integer().unwrap();
+        let value = lisp.run_with_memory(&mut memory).unwrap().as_integer().unwrap();
 
         assert_eq!(value, 39_922_704_i32);
     }

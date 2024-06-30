@@ -74,7 +74,7 @@ use super::{
     world_receiver::WorldReceiver
 };
 
-pub use controls_controller::{Control, ControlState};
+pub use controls_controller::{Control, ControlState, KeyMapping};
 pub use entity_creator::{EntityCreator, ReplaceObject};
 
 use controls_controller::ControlsController;
@@ -932,11 +932,6 @@ impl GameState
         }
     }
 
-    fn on_control(&mut self, game: &mut Game, state: ControlState, control: Control)
-    {
-        game.on_control(self, state, control);
-    }
-
     pub fn update(&mut self, game: &mut Game, dt: f32)
     {
         self.check_resize_camera(dt);
@@ -982,7 +977,7 @@ impl GameState
                 }
             }
 
-            self.on_control(game, state, control);
+            game.on_control(self, state, control);
         }
 
         self.entities.entities.update_ui(

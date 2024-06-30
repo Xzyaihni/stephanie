@@ -59,7 +59,7 @@ impl From<&yanyaengine::Control> for ControlState
 }
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
-enum KeyMapping
+pub enum KeyMapping
 {
     Keyboard(KeyCode),
     Mouse(MouseButton)

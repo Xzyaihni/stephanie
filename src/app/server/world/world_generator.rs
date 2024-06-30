@@ -288,7 +288,7 @@ impl ChunkGenerator
                 panic!("worldchunk named `{}` doesnt exist", group.this)
             });
 
-        let output = this_chunk.run(memory)
+        let output = this_chunk.run_with_memory(memory)
             .unwrap_or_else(|err|
             {
                 panic!("runtime lisp error: {err} (in {chunk_name})")

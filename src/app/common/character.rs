@@ -165,6 +165,7 @@ impl Character
         mut inserter: impl FnMut(EntityInfo) -> Entity
     )
     {
+        let remove_me = ""; use crate::common::collider::*;
         let held_item = |flip|
         {
             EntityInfo{
@@ -177,6 +178,12 @@ impl Character
                     z_level: ZLevel::Arms,
                     ..Default::default()
                 }),
+                collider: Some({let reminder = ""; ColliderInfo{
+                    kind: ColliderType::Aabb,
+                    layer: ColliderLayer::Normal,
+                    ghost: true,
+                    ..Default::default()
+                }.into()}),
                 parent: Some(Parent::new(entity, {let reminder = ""; true})),
                 lazy_transform: Some(LazyTransformInfo{
                     origin_rotation: -f32::consts::FRAC_PI_2,
@@ -367,9 +374,12 @@ impl Character
                 {
                     if let Some(mut parent_right) = entities.parent_mut(info.holding_right)
                     {
-                        assert!(entities.transform(parent.entity()).is_some());
-                        parent.visible = false;
-                        parent_right.visible = false;
+                        let parent_entity = parent.entity();
+
+                        if let Some(named) = entities.named(parent_entity)
+                        {
+                            dbg!(named);
+                        }
                     }
                 }
             }

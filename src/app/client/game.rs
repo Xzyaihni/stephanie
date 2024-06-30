@@ -7,7 +7,7 @@ use std::{
 
 use nalgebra::{Vector3, Vector2};
 
-use yanyaengine::{TextureId, Transform};
+use yanyaengine::{TextureId, Transform, Key, KeyCode};
 
 use crate::common::{
     angle_between,
@@ -34,6 +34,7 @@ use crate::common::{
     DamagePartial,
     DamageHeight,
     InventoryItem,
+    lisp::*,
     world::{TILE_SIZE, Pos3}
 };
 
@@ -58,7 +59,7 @@ pub trait DrawableEntity
 
 pub struct Game
 {
-    player: PlayerInfo
+    info: PlayerInfo
 }
 
 impl Game
@@ -90,19 +91,19 @@ impl Game
             ..Default::default()
         });
 
-        let player = PlayerInfo::new(
+        let info = PlayerInfo::new(
             game_state.items_info.clone(),
             camera_entity,
             player_entity,
             mouse_entity
         );
 
-        Self{player}
+        Self{info}
     }
 
     fn player_container<'a>(&'a mut self, game_state: &'a mut GameState) -> PlayerContainer<'a>
     {
-        PlayerContainer::new(&mut self.player, game_state)
+        PlayerContainer::new(&mut self.info, game_state)
     }
 
     pub fn on_player_connected(&mut self, game_state: &mut GameState)
@@ -118,6 +119,114 @@ impl Game
     pub fn on_control(&mut self, game_state: &mut GameState, state: ControlState, control: Control)
     {
         self.player_container(game_state).on_control(state, control)
+    }
+
+    pub fn on_key(&mut self, logical: Key, key: KeyCode) -> bool
+    {
+        if self.info.console_contents.is_some()
+        {
+            if key == KeyCode::Enter
+            {
+                let contents = self.info.console_contents.take().unwrap();
+                self.console_command(contents);
+
+                return true;
+            }
+
+            let contents = self.info.console_contents.as_mut().unwrap();
+
+            if let Some(text) = logical.to_text()
+            {
+                *contents += text;
+            }
+
+            true
+        } else
+        {
+            false
+        }
+    }
+
+    fn console_command(&mut self, command: String)
+    {
+        let mut primitives = Primitives::new();
+
+        primitives.add(
+            "mouse-colliders",
+            PrimitiveProcedureInfo::new_simple(0, move |_state, memory, _env, _args|
+            {
+                todo!();
+                /*let entities = self.game_state.entities();
+                entities.collider(self.info.mouse_entity)
+                    .map(|x| x.collided().to_vec()).into_iter().flatten()
+                    .for_each(|collided|
+                    {
+                        let info = format!("{:#?}", entities.info_ref(collided));
+                        eprintln!("mouse colliding with {collided:?}: {info}");
+                    });*/
+
+                memory.push_return(LispValue::new_empty_list());
+
+                Ok(())
+            }));
+
+        primitives.add(
+            "set-speed",
+            PrimitiveProcedureInfo::new_simple(2, move |_state, memory, _env, mut args|
+            {
+                todo!();
+                /*let entity = args.pop(memory).as_symbol(memory)?;
+
+                let mut anatomy = self.game_state.entities_mut()
+                    .anatomy_mut(entity)
+                    .unwrap();
+
+                anatomy.set_speed(speed);*/
+
+                memory.push_return(LispValue::new_empty_list());
+
+                Ok(())
+            }));
+
+        primitives.add(
+            "player-entity",
+            PrimitiveProcedureInfo::new_simple(0, move |_state, memory, _env, _args|
+            {
+                todo!();
+
+                memory.push_return(LispValue::new_empty_list());
+
+                Ok(())
+            }));
+
+        let config = LispConfig{
+            environment: None,
+            lambdas: None,
+            primitives: Arc::new(primitives)
+        };
+
+        let mut lisp = match unsafe{ LispRef::new_with_config(config, &command) }
+        {
+            Ok(x) => x,
+            Err(err) =>
+            {
+                eprintln!("error parsing {command}: {err}");
+                return;
+            }
+        };
+
+        let mut memory = Lisp::default_memory();
+        let result = match lisp.run_with_memory(&mut memory)
+        {
+            Ok(x) => x,
+            Err(err) =>
+            {
+                eprintln!("error running {command}: {err}");
+                return;
+            }
+        };
+
+        eprintln!("ran command {command}, result: {result}");
     }
 
     pub fn player_exists(&mut self, game_state: &mut GameState) -> bool
@@ -139,6 +248,7 @@ struct PlayerInfo
     mouse_entity: Entity,
     other_entity: Option<Entity>,
     projectile: Option<Entity>,
+    console_contents: Option<String>,
     stance_time: f32,
     attack_cooldown: f32,
     projectile_lifetime: f32,
@@ -165,6 +275,7 @@ impl PlayerInfo
             mouse_entity,
             other_entity: None,
             projectile: None,
+            console_contents: None,
             stance_time: 0.0,
             attack_cooldown: 0.0,
             projectile_lifetime: 0.0,
@@ -315,16 +426,16 @@ impl<'a> PlayerContainer<'a>
             },
             Control::DebugConsole if self.game_state.debug_mode =>
             {
-                dbg!("make this an actual console thingy later");
-
-                let mut anatomy = self.game_state.entities_mut()
-                    .anatomy_mut(self.info.entity)
-                    .unwrap();
-
-                if let Some(speed) = anatomy.speed()
+                self.info.console_contents = if self.info.console_contents.is_some()
                 {
-                    anatomy.set_speed(speed * 2.0);
-                }
+                    None
+                } else
+                {
+                    Some(String::new())
+                };
+
+                let state = if self.info.console_contents.is_some() { "opened" } else { "closed" };
+                eprintln!("debug console {state}");
             },
             _ => ()
         }

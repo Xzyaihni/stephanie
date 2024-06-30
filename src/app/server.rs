@@ -1,7 +1,7 @@
 use std::{
     thread,
-    net::TcpListener,
-    sync::Arc
+    net::{TcpStream, TcpListener},
+    sync::{Arc, mpsc::Sender}
 };
 
 use parking_lot::Mutex;
@@ -26,7 +26,7 @@ pub mod world;
 pub struct Server
 {
     listener: TcpListener,
-    game_server: Arc<Mutex<GameServer>>
+    connector: Sender<TcpStream>
 }
 
 impl Server
@@ -40,7 +40,7 @@ impl Server
     {
         let listener = TcpListener::bind(address)?;
 
-        let game_server = GameServer::new(
+        let (connector, game_server) = GameServer::new(
             tilemap.tilemap,
             data_infos,
             connections_limit
@@ -63,7 +63,7 @@ impl Server
 
         Ok(Self{
             listener,
-            game_server
+            connector
         })
     }
 
@@ -80,7 +80,7 @@ impl Server
             {
                 Ok(stream) =>
                 {
-                    if let Err(x) = GameServer::connect(self.game_server.clone(), stream)
+                    if let Err(x) = self.connector.send(stream)
                     {
                         eprintln!("error in player connection: {x}");
                         continue;

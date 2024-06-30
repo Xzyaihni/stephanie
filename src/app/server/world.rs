@@ -347,6 +347,14 @@ impl World
         let spawns = fastrand::usize(0..3);
         let crates = fastrand::usize(0..2);
 
+        let spawns = if fastrand::usize(0..20) == 0
+        {
+            1
+        } else
+        {
+            0
+        };
+
         let entities = Self::add_on_ground(chunk_pos, chunk, spawns, |pos|
         {
             EnemyBuilder::new(

@@ -15,6 +15,7 @@ use image::error::ImageError;
 use strum::IntoEnumIterator;
 
 use yanyaengine::{
+    ElementState,
     UniformLocation,
     DefaultModel,
     ShaderId,
@@ -42,7 +43,7 @@ pub use visibility_checker::VisibilityChecker;
 pub use ui_element::{UiEvent, MouseEvent, UiElement};
 
 pub use game::DrawableEntity;
-pub use game_state::{Control, ControlState};
+pub use game_state::{Control, ControlState, KeyMapping};
 
 pub use connections_handler::ConnectionsHandler;
 pub use tiles_factory::{TilesFactory, ChunkInfo};
@@ -186,6 +187,21 @@ impl Client
 
     pub fn input(&mut self, control: yanyaengine::Control)
     {
+        if let yanyaengine::Control::Keyboard{
+            logical,
+            state: ElementState::Pressed,
+            ..
+        } = control.clone()
+        {
+            if let Some(KeyMapping::Keyboard(key)) = KeyMapping::from_control(control.clone())
+            {
+                if self.game.on_key(logical, key)
+                {
+                    return;
+                }
+            }
+        }
+
         self.game_state.borrow_mut().input(control);
     }
 

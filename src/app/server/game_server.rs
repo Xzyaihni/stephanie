@@ -3,10 +3,13 @@ use std::{
     fmt,
     ops::ControlFlow,
     net::TcpStream,
-    sync::Arc
+    sync::{
+        Arc,
+        mpsc::{self, Sender, Receiver, TryRecvError}
+    }
 };
 
-use parking_lot::{RwLock, Mutex};
+use parking_lot::RwLock;
 
 use nalgebra::Vector3;
 
@@ -61,6 +64,7 @@ use crate::common::{
 pub enum ConnectionError
 {
     BincodeError(bincode::Error),
+    ReceiverError(TryRecvError),
     WrongConnectionMessage
 }
 
@@ -71,10 +75,19 @@ impl fmt::Display for ConnectionError
         let s = match self
         {
             Self::BincodeError(x) => x.to_string(),
+            Self::ReceiverError(x) => x.to_string(),
             Self::WrongConnectionMessage => "wrong connection message".to_owned()
         };
 
         write!(f, "{s}")
+    }
+}
+
+impl From<TryRecvError> for ConnectionError
+{
+    fn from(value: TryRecvError) -> Self
+    {
+        ConnectionError::ReceiverError(value)
     }
 }
 
@@ -92,6 +105,9 @@ pub struct GameServer
     player_character: CharacterId,
     characters_info: Arc<CharactersInfo>,
     world: World,
+    sender: Sender<(ConnectionId, Message, PlayerEntities)>,
+    receiver: Receiver<(ConnectionId, Message, PlayerEntities)>,
+    connection_receiver: Receiver<TcpStream>,
     connection_handler: Arc<RwLock<ConnectionsHandler>>,
     rare_timer: f32
 }
@@ -102,7 +118,7 @@ impl GameServer
         tilemap: TileMap,
         data_infos: DataInfos,
         limit: usize
-    ) -> Result<Self, ParseError>
+    ) -> Result<(Sender<TcpStream>, Self), ParseError>
     {
         let entities = Entities::new();
         let connection_handler = Arc::new(RwLock::new(ConnectionsHandler::new(limit)));
@@ -116,29 +132,31 @@ impl GameServer
 
         sender_loop(connection_handler.clone());
 
-        Ok(Self{
+        let (sender, receiver) = mpsc::channel();
+
+        let (connector, connection_receiver) = mpsc::channel();
+
+        Ok((connector, Self{
             entities,
             player_character: data_infos.player_character,
             characters_info: data_infos.characters_info,
             world,
+            sender,
+            receiver,
+            connection_receiver,
             connection_handler,
             rare_timer: 0.0
-        })
+        }))
     }
 
     pub fn update(&mut self, dt: f32)
     {
-        const STEPS: u32 = 2;
+        self.process_messages();
 
         self.entities.update_sprites(&self.characters_info);
 
-        for _ in 0..STEPS
-        {
-            let dt = (dt / STEPS as f32).min(0.1);
-
-            self.entities.update_physical(dt);
-            self.entities.update_lazy();
-        }
+        self.entities.update_physical(dt);
+        self.entities.update_lazy();
 
         self.entities.update_watchers(dt);
 
@@ -166,11 +184,61 @@ impl GameServer
         }
     }
 
-    pub fn connect(this: Arc<Mutex<Self>>, stream: TcpStream) -> Result<(), ConnectionError>
+    fn process_connecting(&mut self) -> Result<(), ConnectionError>
     {
-        if this.lock().connection_handler.read().under_limit()
+        loop
         {
-            Self::player_connect(this, stream)
+            match self.connection_receiver.try_recv()
+            {
+                Ok(stream) =>
+                {
+                    self.connect(stream)?;
+                },
+                Err(TryRecvError::Empty) =>
+                {
+                    return Ok(());
+                },
+                Err(err) =>
+                {
+                    return Err(err.into());
+                }
+            }
+        }
+    }
+
+    pub fn process_messages(&mut self)
+    {
+        if let Err(err) = self.process_connecting()
+        {
+            eprintln!("error connecting: {err}");
+        }
+
+        loop
+        {
+            match self.receiver.try_recv()
+            {
+                Ok((id, message, player_entities)) =>
+                {
+                    self.process_message_inner(message, id, player_entities);
+                },
+                Err(TryRecvError::Empty) =>
+                {
+                    return;
+                },
+                Err(err) =>
+                {
+                    eprintln!("error reading message: {err}");
+                    return;
+                }
+            }
+        }
+    }
+
+    pub fn connect(&mut self, stream: TcpStream) -> Result<(), ConnectionError>
+    {
+        if self.connection_handler.read().under_limit()
+        {
+            self.player_connect(stream)
         } else
         {
             Ok(())
@@ -178,25 +246,33 @@ impl GameServer
     }
 
     pub fn player_connect(
-        this: Arc<Mutex<Self>>,
+        &mut self,
         stream: TcpStream
     ) -> Result<(), ConnectionError>
     {
-        let (entities, id, messager) = this.lock().player_connect_inner(stream)?;
+        let (entities, id, messager) = self.player_connect_inner(stream)?;
 
         let entities0 = entities.clone();
         let entities1 = entities.clone();
+        let sender0 = self.sender.clone();
+        let sender1 = self.sender.clone();
 
-        let other_this = this.clone();
         receiver_loop(
             messager,
             move |message|
             {
-                this.lock().process_message_inner(message, id, entities0.clone());
-
-                ControlFlow::Continue(())
+                if sender0.send((id, message, entities0.clone())).is_err()
+                {
+                    ControlFlow::Break(())
+                } else
+                {
+                    ControlFlow::Continue(())
+                }
             },
-            move || other_this.lock().connection_close(false, id, entities1)
+            move ||
+            {
+                let _ = sender1.send((id, Message::PlayerDisconnect{host: false}, entities1));
+            }
         );
 
         Ok(())
@@ -267,36 +343,6 @@ impl GameServer
         let inserted = inserter(info);
 
         let mut player_children = Vec::new();
-
-        let held_item = |flip|
-        {
-            EntityInfo{
-                render: Some(RenderInfo{
-                    object: Some(RenderObject::Texture{
-                        name: "placeholder.png".to_owned()
-                    }),
-                    flip: if flip { Uvs::FlipHorizontal } else { Uvs::Normal },
-                    shape: Some(BoundingShape::Circle),
-                    z_level: ZLevel::Arms,
-                    ..Default::default()
-                }),
-                parent: Some(Parent::new(inserted, false)),
-                lazy_transform: Some(LazyTransformInfo{
-                    origin_rotation: -f32::consts::FRAC_PI_2,
-                    transform: Transform{
-                        rotation: f32::consts::FRAC_PI_2,
-                        position: Vector3::new(1.0, 0.0, 0.0),
-                        ..Default::default()
-                    },
-                    ..Default::default()
-                }.into()),
-                watchers: Some(Default::default()),
-                ..Default::default()
-            }
-        };
-
-        let holding = inserter(held_item(true));
-        let holding_right = inserter(held_item(false));
 
         let pon = |position: Vector3<f32>|
         {
