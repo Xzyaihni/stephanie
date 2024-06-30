@@ -688,7 +688,7 @@ macro_rules! define_entities_both
             pub local_components: RefCell<ObjectsStore<ComponentsIndices>>,
             pub components: RefCell<ObjectsStore<ComponentsIndices>>,
             create_queue: RefCell<Vec<(Entity, EntityInfo)>>,
-            create_render_queue: RefCell<Vec<(Entity, RenderInfo)>>,
+            create_render_queue: RefCell<Vec<(Entity, RenderComponent)>>,
             $(pub $name: ObjectsStore<ComponentWrapper<$component_type>>,)+
         }
 
@@ -890,7 +890,14 @@ macro_rules! define_entities_both
 
             pub fn set_deferred_render(&self, entity: Entity, render: RenderInfo)
             {
-                self.create_render_queue.borrow_mut().push((entity, render));
+                self.create_render_queue.borrow_mut()
+                    .push((entity, RenderComponent::Full(render)));
+            }
+
+            pub fn set_deferred_render_object(&self, entity: Entity, object: RenderObject)
+            {
+                self.create_render_queue.borrow_mut()
+                    .push((entity, RenderComponent::Object(object)));
             }
 
             fn resort_transforms(&mut self, parent_entity: Entity)
@@ -1093,9 +1100,9 @@ macro_rules! define_entities_both
                                 floating: true
                             }.into()),
                             render: Some(RenderInfo{
-                                object: Some(RenderObject::TextureId{
+                                object: Some(RenderObjectKind::TextureId{
                                     id: blood_texture
-                                }),
+                                }.into()),
                                 z_level: ZLevel::Knee,
                                 ..Default::default()
                             }),
@@ -1136,12 +1143,27 @@ macro_rules! define_entities_both
                         })
                     };
 
-                    let render = render.server_to_client(
-                        transform,
-                        create_info
-                    );
+                    match render
+                    {
+                        RenderComponent::Full(render) =>
+                        {
+                            let render = render.server_to_client(
+                                transform,
+                                create_info
+                            );
 
-                    self.set_render(entity, Some(render));
+                            self.set_render(entity, Some(render));
+                        },
+                        RenderComponent::Object(object) =>
+                        {
+                            if let Some(mut render) = self.render_mut(entity)
+                            {
+                                let object = object.into_client(transform(), create_info);
+
+                                render.object = object;
+                            }
+                        }
+                    }
                 });
             }
 

@@ -309,9 +309,9 @@ impl GameServer
             }),
             transform: Some(transform.clone()),
             render: Some(RenderInfo{
-                object: Some(RenderObject::Texture{
+                object: Some(RenderObjectKind::Texture{
                     name: "player/hair.png".to_owned()
-                }),
+                }.into()),
                 shape: Some(BoundingShape::Circle),
                 z_level: ZLevel::Head,
                 ..Default::default()
@@ -383,9 +383,9 @@ impl GameServer
                 }.into()),
                 parent: Some(Parent::new(player_entity, true)),
                 render: Some(RenderInfo{
-                    object: Some(RenderObject::Texture{
+                    object: Some(RenderObjectKind::Texture{
                         name: "player/pon.png".to_owned()
-                    }),
+                    }.into()),
                     shape: Some(BoundingShape::Circle),
                     z_level: ZLevel::Hair,
                     ..Default::default()

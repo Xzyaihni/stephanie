@@ -49,9 +49,9 @@ impl<'a> FurnitureBuilder<'a>
             }.into()),
             named: Some("crate".to_owned()),
             render: Some(RenderInfo{
-                object: Some(RenderObject::Texture{
+                object: Some(RenderObjectKind::Texture{
                     name: "furniture/crate.png".to_owned()
-                }),
+                }.into()),
                 shape: Some(BoundingShape::Circle),
                 z_level: ZLevel::Hips,
                 ..Default::default()

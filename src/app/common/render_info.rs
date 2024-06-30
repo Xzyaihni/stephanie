@@ -66,15 +66,22 @@ impl OutlinedInfo
     }
 }
 
+#[derive(Debug)]
+pub enum RenderComponent
+{
+    Full(RenderInfo),
+    Object(RenderObject)
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum RenderObject
+pub enum RenderObjectKind
 {
     Texture{name: String},
     TextureId{id: TextureId},
     Text{text: String, font_size: u32}
 }
 
-impl RenderObject
+impl RenderObjectKind
 {
     pub fn into_client(
         self,
@@ -133,6 +140,33 @@ impl RenderObject
                 }
             }
         }
+    }
+}
+
+impl RenderObject
+{
+    pub fn into_client(
+        self,
+        transform: Transform,
+        create_info: &mut RenderCreateInfo
+    ) -> Option<ClientRenderObject>
+    {
+        self.kind.into_client(self.flip, transform, create_info)
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RenderObject
+{
+    pub kind: RenderObjectKind,
+    pub flip: Uvs
+}
+
+impl From<RenderObjectKind> for RenderObject
+{
+    fn from(kind: RenderObjectKind) -> Self
+    {
+        Self{kind, flip: Uvs::default()}
     }
 }
 
@@ -203,7 +237,6 @@ pub struct RenderInfo
     pub object: Option<RenderObject>,
     pub shape: Option<BoundingShape>,
     pub mix: Option<MixColor>,
-    pub flip: Uvs,
     pub z_level: ZLevel
 }
 
@@ -217,7 +250,6 @@ impl Default for RenderInfo
             object: None,
             shape: Some(BoundingShape::Circle),
             mix: None,
-            flip: Uvs::default(),
             z_level: ZLevel::Shoulders
         }
     }
@@ -325,7 +357,7 @@ impl ServerToClient<ClientRenderInfo> for RenderInfo
     {
         let object = self.object.and_then(|object|
         {
-            object.into_client(self.flip, transform(), create_info)
+            object.into_client(transform(), create_info)
         });
 
         let scissor = self.scissor.map(|x|

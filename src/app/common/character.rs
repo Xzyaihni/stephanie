@@ -184,10 +184,12 @@ impl Character
         {
             EntityInfo{
                 render: Some(RenderInfo{
-                    object: Some(RenderObject::Texture{
-                        name: "placeholder.png".to_owned()
+                    object: Some(RenderObject{
+                        kind: RenderObjectKind::Texture{
+                            name: "placeholder.png".to_owned()
+                        },
+                        flip: if flip { Uvs::FlipHorizontal } else { Uvs::Normal }
                     }),
-                    flip: if flip { Uvs::FlipHorizontal } else { Uvs::Normal },
                     shape: Some(BoundingShape::Circle),
                     z_level: ZLevel::Arms,
                     ..Default::default()

@@ -80,7 +80,7 @@ impl UiScroll
                 ..Default::default()
             },
             RenderInfo{
-                object: Some(RenderObject::Texture{name: "ui/light.png".to_owned()}),
+                object: Some(RenderObjectKind::Texture{name: "ui/light.png".to_owned()}.into()),
                 z_level: ZLevel::UiHigh,
                 ..Default::default()
             }
@@ -218,7 +218,7 @@ impl UiList
                     ..Default::default()
                 },
                 RenderInfo{
-                    object: Some(RenderObject::Texture{name: "ui/light.png".to_owned()}),
+                    object: Some(RenderObjectKind::Texture{name: "ui/light.png".to_owned()}.into()),
                     z_level: ZLevel::UiMiddle,
                     ..Default::default()
                 }
@@ -371,17 +371,12 @@ impl UiList
 
                 if let Some(text) = self.items.get(item_index)
                 {
-                    let render = RenderInfo{
-                        object: Some(RenderObject::Text{
-                            text: text.clone(),
-                            font_size: 60
-                        }),
-                        z_level: ZLevel::UiHigher,
-                        scissor: Some(self.scissor.clone()),
-                        ..Default::default()
-                    };
+                    let object = RenderObjectKind::Text{
+                        text: text.clone(),
+                        font_size: 60
+                    }.into();
 
-                    creator.entities.set_deferred_render(item.item, render);
+                    creator.entities.set_deferred_render_object(item.item, object);
                 }
             });
 
@@ -441,9 +436,9 @@ impl UiList
         self.frames.iter().enumerate().for_each(|(item_index, item)|
         {
             let render = RenderInfo{
-                object: Some(RenderObject::Texture{
+                object: Some(RenderObjectKind::Texture{
                     name: "ui/lighter.png".to_owned()
-                }),
+                }.into()),
                 z_level: ZLevel::UiHigh,
                 scissor: Some(self.scissor.clone()),
                 ..Default::default()
@@ -454,10 +449,10 @@ impl UiList
             if let Some(text) = self.items.get(item_index)
             {
                 let render = RenderInfo{
-                    object: Some(RenderObject::Text{
+                    object: Some(RenderObjectKind::Text{
                         text: text.clone(),
                         font_size: 60
-                    }),
+                    }.into()),
                     z_level: ZLevel::UiHigher,
                     scissor: Some(self.scissor.clone()),
                     ..Default::default()
@@ -537,7 +532,7 @@ impl UiInventory
                 ..Default::default()
             },
             RenderInfo{
-                object: Some(RenderObject::Texture{name: "ui/background.png".to_owned()}),
+                object: Some(RenderObjectKind::Texture{name: "ui/background.png".to_owned()}.into()),
                 z_level: ZLevel::UiLow,
                 ..Default::default()
             }
@@ -560,7 +555,7 @@ impl UiInventory
                 ..Default::default()
             },
             RenderInfo{
-                object: Some(RenderObject::Texture{name: "ui/background.png".to_owned()}),
+                object: Some(RenderObjectKind::Texture{name: "ui/background.png".to_owned()}.into()),
                 z_level: ZLevel::UiMiddle,
                 ..Default::default()
             }
@@ -590,8 +585,7 @@ impl UiInventory
 
         let close_button_x = panel_size;
         let scale = Vector3::new(1.0 - close_button_x, 1.0, 1.0);
-        let name = creator.entities.push_client(
-            true,
+        let name = creator.push(
             EntityInfo{
                 lazy_transform: Some(LazyTransformInfo{
                     transform: Transform{
@@ -611,6 +605,11 @@ impl UiInventory
                     }),
                     ..Default::default()
                 }),
+                ..Default::default()
+            },
+            RenderInfo{
+                object: None,
+                z_level: ZLevel::UiHigh,
                 ..Default::default()
             }
         );
@@ -643,7 +642,7 @@ impl UiInventory
                 ..Default::default()
             },
             RenderInfo{
-                object: Some(RenderObject::Texture{name: "ui/close_button.png".to_owned()}),
+                object: Some(RenderObjectKind::Texture{name: "ui/close_button.png".to_owned()}.into()),
                 z_level: ZLevel::UiHigh,
                 ..Default::default()
             }
@@ -683,16 +682,12 @@ impl UiInventory
         name: String
     )
     {
-        let render = RenderInfo{
-            object: Some(RenderObject::Text{
-                text: name,
-                font_size: 80
-            }),
-            z_level: ZLevel::UiHigh,
-            ..Default::default()
-        };
+        let object = RenderObjectKind::Text{
+            text: name,
+            font_size: 80
+        }.into();
 
-        creator.entities.set_deferred_render(self.name, render);
+        creator.entities.set_deferred_render_object(self.name, object);
     }
 
     pub fn update_inventory(

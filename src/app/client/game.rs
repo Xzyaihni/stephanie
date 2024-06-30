@@ -108,6 +108,10 @@ impl Game
                     },
                     ..Default::default()
                 }.into()),
+                render: Some(RenderInfo{
+                    z_level: ZLevel::UiHigh,
+                    ..Default::default()
+                }),
                 parent: Some(Parent::new(player, false)),
                 ..Default::default()
             });
@@ -595,13 +599,9 @@ impl<'a> PlayerContainer<'a>
 
         let text = self.info.console_contents.clone().unwrap_or_else(String::new);
 
-        let render = RenderInfo{
-            object: Some(RenderObject::Text{text, font_size: 30}),
-            z_level: ZLevel::UiHigh,
-            ..Default::default()
-        };
+        let object = RenderObjectKind::Text{text, font_size: 30}.into();
 
-        self.game_state.entities().set_deferred_render(self.info.console_entity, render);
+        self.game_state.entities().set_deferred_render_object(self.info.console_entity, object);
     }
 
     fn handle_user_event(&mut self, event: UserEvent)
