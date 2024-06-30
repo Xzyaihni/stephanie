@@ -19,6 +19,7 @@ use crate::{
         collider::*,
         watcher::*,
         damaging::*,
+        character::*,
         particle_creator::*,
         Side1d,
         AnyEntities,
@@ -540,28 +541,23 @@ impl<'a> PlayerContainer<'a>
                     }
                 }
 
-                if let Some(holding) = self.held_item()
-                {
-                    self.bash_attack(holding);
-                }
+                self.character_action(CharacterAction::Bash);
             },
             Control::Poke =>
             {
-                if let Some(holding) = self.held_item()
-                {
-                    self.poke_attack(holding);
-                }
+                self.character_action(CharacterAction::Poke);
             },
             Control::Shoot =>
             {
-                if let Some(holding) = self.held_item()
-                {
-                    self.ranged_attack(holding);
-                }
+                self.character_action(CharacterAction::Ranged);
             },
             Control::Throw =>
             {
-                self.throw_held();
+                let mouse_transform = self.game_state.entities()
+                    .transform(self.info.mouse_entity)
+                    .unwrap();
+
+                self.character_action(CharacterAction::Throw(mouse_transform.position));
             },
             Control::Inventory =>
             {
@@ -584,6 +580,14 @@ impl<'a> PlayerContainer<'a>
             },
             _ => ()
         }
+    }
+
+    fn character_action(&self, action: CharacterAction)
+    {
+        self.game_state.entities()
+            .character_mut(self.info.entity)
+            .unwrap()
+            .push_action(action);
     }
 
     fn update_console(&mut self)
@@ -624,8 +628,7 @@ impl<'a> PlayerContainer<'a>
             },
             UserEvent::Wield(item) =>
             {
-                todo!();
-                // entities.player_mut(player).unwrap().holding = Some(item);
+                entities.character_mut(player).unwrap().set_holding(Some(item));
             },
             UserEvent::Take(item) =>
             {
@@ -735,127 +738,6 @@ impl<'a> PlayerContainer<'a>
                 watchers.push(watcher);
             }
         }
-    }
-
-    fn throw_held(&mut self)
-    {
-        /*let player = self.info.entity;
-
-        let entities = self.game_state.entities();
-        let held = some_or_return!(entities.player_mut(player).and_then(|mut x| x.holding.take()));
-
-        if let Some(item_info) = self.item_info(held)
-        {
-            let entity_info = {
-                let mouse_transform = entities.transform(self.info.mouse_entity).unwrap();
-
-                let holding_entity = self.game_state.player_entities().holding;
-                let holding_transform = entities.transform(holding_entity).unwrap();
-
-                let direction = {
-                    let rotation = angle_between(
-                        mouse_transform.position,
-                        holding_transform.position
-                    );
-
-                    Vector3::new(rotation.cos(), -rotation.sin(), 0.0)
-                };
-
-                let dust_texture = self.game_state.common_textures.dust;
-
-                let mut physical: Physical = PhysicalProperties{
-                    mass: item_info.mass,
-                    friction: 0.99,
-                    floating: false
-                }.into();
-
-                let mass = physical.mass;
-
-                let strength = self.player().newtons() * 0.4;
-                let throw_limit = 0.1 * strength;
-                let throw_amount = (strength / mass).min(throw_limit);
-                physical.velocity = direction * throw_amount;
-
-                EntityInfo{
-                    physical: Some(physical),
-                    lazy_transform: Some(LazyTransformInfo{
-                        deformation: Deformation::Stretch(StretchDeformation{
-                            animation: ValueAnimation::EaseOut(2.0),
-                            limit: 2.0,
-                            onset: 0.05,
-                            strength: 2.0
-                        }),
-                        transform: Transform{
-                            position: holding_transform.position,
-                            rotation: holding_transform.rotation,
-                            scale: item_info.scale3() * ENTITY_SCALE,
-                            ..Default::default()
-                        },
-                        ..Default::default()
-                    }.into()),
-                    collider: Some(ColliderInfo{
-                        kind: ColliderType::Circle,
-                        ..Default::default()
-                    }.into()),
-                    damaging: Some(DamagingInfo{
-                        damage: DamagingType::Mass(mass),
-                        faction: Some(Faction::Player),
-                        ..Default::default()
-                    }.into()),
-                    watchers: Some(Watchers::new(vec![
-                        Watcher{
-                            kind: WatcherType::Lifetime(2.5.into()),
-                            action: WatcherAction::Explode(Box::new(ExplodeInfo{
-                                keep: false,
-                                info: ParticlesInfo{
-                                    amount: 3..5,
-                                    speed: ParticleSpeed::Random(0.1),
-                                    decay: ParticleDecay::Random(3.5..=5.0),
-                                    position: ParticlePosition::Spread(1.0),
-                                    rotation: ParticleRotation::Random,
-                                    scale: ParticleScale::Spread{
-                                        scale: Vector3::repeat(ENTITY_SCALE * 0.4),
-                                        variation: 0.1
-                                    },
-                                    min_scale: ENTITY_SCALE * 0.02
-                                },
-                                prototype: EntityInfo{
-                                    physical: Some(PhysicalProperties{
-                                        mass: 0.01,
-                                        friction: 0.1,
-                                        floating: true
-                                    }.into()),
-                                    render: Some(RenderInfo{
-                                        object: Some(RenderObject::TextureId{
-                                            id: dust_texture
-                                        }),
-                                        z_level: ZLevel::BelowFeet,
-                                        ..Default::default()
-                                    }),
-                                    ..Default::default()
-                                }
-                            })),
-                            ..Default::default()
-                        }
-                    ])),
-                    ..Default::default()
-                }
-            };
-
-            let render_info = RenderInfo{
-                object: Some(RenderObject::TextureId{
-                    id: item_info.texture
-                }),
-                z_level: ZLevel::Elbow,
-                ..Default::default()
-            };
-
-            self.game_state.entities.entity_creator().push(entity_info, render_info);
-
-            self.game_state.entities().inventory_mut(player).unwrap().remove(held);
-            self.game_state.update_inventory();
-        }*/
-        todo!();
     }
 
     fn unstance(&mut self)
@@ -989,192 +871,6 @@ impl<'a> PlayerContainer<'a>
                 }
             );
         }
-    }
-
-    fn bash_attack(&mut self, item: Item)
-    {
-        if self.info.attack_cooldown > 0.0
-        {
-            return;
-        }
-
-        self.info.attack_cooldown = 0.5;
-        self.info.stance_time = self.info.attack_cooldown * 2.0;
-
-        self.info.bash_side = self.info.bash_side.opposite();
-
-        self.bash_projectile(item);
-
-        let holding_entity = self.holding_entity();
-
-        let start_rotation = self.default_held_rotation();
-        if let Some(mut lazy) = self.game_state.entities().lazy_transform_mut(holding_entity)
-        {
-            let edge = 0.4;
-
-            let new_rotation = match self.info.bash_side
-            {
-                Side1d::Left =>
-                {
-                    f32::consts::FRAC_PI_2 - edge
-                },
-                Side1d::Right =>
-                {
-                    -f32::consts::FRAC_PI_2 + edge
-                }
-            };
-
-            match &mut lazy.rotation
-            {
-                Rotation::EaseOut(x) => x.set_decay(30.0),
-                _ => ()
-            }
-
-            lazy.target().rotation = start_rotation - new_rotation;
-
-            let mut watchers = self.game_state.entities().watchers_mut(holding_entity).unwrap();
-
-            watchers.push(Watcher{
-                kind: WatcherType::Lifetime(0.2.into()),
-                action: WatcherAction::SetLazyRotation(Rotation::EaseOut(
-                    EaseOutRotation{
-                        decay: 7.0,
-                        speed_significant: 10.0,
-                        momentum: 0.5
-                    }.into()
-                )),
-                ..Default::default()
-            });
-        }
-    }
-
-    fn default_held_rotation(&self) -> f32
-    {
-        let origin_rotation = self.game_state.entities()
-            .lazy_transform(self.holding_entity())
-            .unwrap()
-            .origin_rotation();
-
-        -origin_rotation
-    }
-
-    fn poke_attack(&mut self, item: Item)
-    {
-        /*if self.info.attack_cooldown > 0.0
-        {
-            return;
-        }
-
-        self.unstance();
-
-        self.info.attack_cooldown = 0.5;
-
-        self.poke_projectile(item);
-
-        let entities = self.game_state.entities();
-
-        let holding_entity = self.holding_entity();
-
-        if let Some(mut lazy) = entities.lazy_transform_mut(holding_entity)
-        {
-            let distance = self.info.poke_distance;
-
-            let lifetime = self.info.attack_cooldown;
-            lazy.connection = Connection::Timed{
-                lifetime: lifetime.into(),
-                remaining: 0.99,
-                begin: 0.5
-            };
-
-            let held_position = self.held_item_position().unwrap();
-
-            lazy.target().position.x = held_position.x + distance;
-
-            let parent_transform = entities.parent_transform(holding_entity);
-            let new_target = lazy.target_global(parent_transform.as_ref());
-
-            entities.transform_mut(holding_entity).unwrap().position = new_target.position;
-
-            let mut watchers = entities.watchers_mut(holding_entity).unwrap();
-
-            let extend_time = 0.2;
-
-            watchers.push(Watcher{
-                kind: WatcherType::Lifetime(extend_time.into()),
-                action: WatcherAction::SetTargetPosition(held_position),
-                ..Default::default()
-            });
-
-            watchers.push(Watcher{
-                kind: WatcherType::Lifetime(lifetime.into()),
-                action: WatcherAction::SetLazyConnection(Connection::Spring(
-                    SpringConnection{
-                        physical: PhysicalProperties{
-                            mass: 0.5,
-                            friction: 0.4,
-                            floating: true
-                        }.into(),
-                        limit: 0.004,
-                        damping: 0.02,
-                        strength: 6.0
-                    }
-                )),
-                ..Default::default()
-            });
-        }*/
-        todo!();
-    }
-
-    fn ranged_attack(&mut self, item: Item)
-    {
-        /*let items_info = self.info.items_info.clone();
-        let ranged = some_or_return!(&items_info.get(item.id).ranged);
-
-        self.unstance();
-
-        let start = self.player_position();
-        let mut end = self.mouse_position();
-        end.z = start.z;
-        
-        let info = RaycastInfo{
-            pierce: None,
-            layer: ColliderLayer::Damage,
-            ignore_player: true,
-            ignore_end: true
-        };
-
-        let hits = self.game_state.raycast(info, &start, &end);
-
-        let damage = ranged.damage();
-
-        let height = DamageHeight::random();
-
-        for hit in &hits.hits
-        {
-            #[allow(clippy::single_match)]
-            match hit.id
-            {
-                RaycastHitId::Entity(id) =>
-                {
-                    let transform = self.game_state.entities().transform(id)
-                        .unwrap();
-
-                    let hit_position = hits.hit_position(hit);
-
-                    let angle = angle_between(hit_position, transform.position);
-
-                    let damage = DamagePartial{
-                        data: damage,
-                        height
-                    };
-
-                    drop(transform);
-                    self.game_state.damage_entity(angle, id, Faction::Player, damage);
-                },
-                _ => ()
-            }
-        }*/
-        todo!();
     }
 
     fn decrease_timer(time_variable: &mut f32, dt: f32) -> bool
@@ -1359,18 +1055,6 @@ impl<'a> PlayerContainer<'a>
     {
         let inventory = self.inventory();
         inventory.get(id).map(|x| self.game_state.items_info.get(x.id))
-    }
-
-    fn held_item(&self) -> Option<Item>
-    {
-        /*self.game_state.entities().exists(self.info.entity).then(||
-        {
-            let player = self.player();
-            let inventory = self.inventory();
-
-            player.holding.and_then(|holding| inventory.get(holding).cloned())
-        }).flatten()*/
-        todo!();
     }
 
     fn holding_entity(&self) -> Entity

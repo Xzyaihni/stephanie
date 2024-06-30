@@ -688,6 +688,7 @@ macro_rules! define_entities_both
             pub local_components: RefCell<ObjectsStore<ComponentsIndices>>,
             pub components: RefCell<ObjectsStore<ComponentsIndices>>,
             create_queue: RefCell<Vec<(Entity, EntityInfo)>>,
+            create_render_queue: RefCell<Vec<(Entity, RenderInfo)>>,
             $(pub $name: ObjectsStore<ComponentWrapper<$component_type>>,)+
         }
 
@@ -702,6 +703,7 @@ macro_rules! define_entities_both
                     local_components: RefCell::new(ObjectsStore::new()),
                     components: RefCell::new(ObjectsStore::new()),
                     create_queue: RefCell::new(Vec::new()),
+                    create_render_queue: RefCell::new(Vec::new()),
                     $($name: ObjectsStore::new(),)+
                 }
             }
@@ -885,6 +887,11 @@ macro_rules! define_entities_both
                     }
                 }
             )+
+
+            pub fn set_deferred_render(&self, entity: Entity, render: RenderInfo)
+            {
+                self.create_render_queue.borrow_mut().push((entity, render));
+            }
 
             fn resort_transforms(&mut self, parent_entity: Entity)
             {
@@ -1111,6 +1118,30 @@ macro_rules! define_entities_both
                         create_info,
                         info
                     )
+                });
+
+                let render_queue = {
+                    let mut render_queue = self.create_render_queue.borrow_mut();
+
+                    mem::take(&mut *render_queue)
+                };
+
+                render_queue.into_iter().for_each(|(entity, render)|
+                {
+                    let transform = ||
+                    {
+                        self.transform_clone(entity).unwrap_or_else(||
+                        {
+                            panic!("deferred render expected transform, got none")
+                        })
+                    };
+
+                    let render = render.server_to_client(
+                        transform,
+                        create_info
+                    );
+
+                    self.set_render(entity, Some(render));
                 });
             }
 
@@ -1618,7 +1649,7 @@ macro_rules! define_entities_both
                             characters_info
                         };
 
-                        character.borrow_mut().update_sprite(
+                        character.borrow_mut().update(
                             combined_info,
                             entity,
                             |texture|
@@ -1699,7 +1730,7 @@ macro_rules! define_entities_both
                     let mut target = self.target(entity).unwrap();
 
                     let changed = character.borrow_mut()
-                        .update_sprite_common(characters_info, &mut target);
+                        .update_common(characters_info, &mut target);
 
                     if changed
                     {
@@ -1727,6 +1758,8 @@ macro_rules! define_entities_both
 
                     info
                 });
+
+                self.create_render_queue.borrow_mut().clear();
             }
 
             pub fn push_message(&mut self, info: EntityInfo) -> Message
