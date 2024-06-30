@@ -109,10 +109,6 @@ impl Game
                     ..Default::default()
                 }.into()),
                 parent: Some(Parent::new(player, false)),
-                render: Some(RenderInfo{
-                    z_level: ZLevel::UiHigh,
-                    ..Default::default()
-                }),
                 ..Default::default()
             });
 
@@ -599,8 +595,13 @@ impl<'a> PlayerContainer<'a>
 
         let text = self.info.console_contents.clone().unwrap_or_else(String::new);
 
-        let mut creator = self.game_state.entity_creator();
-        creator.replace_object(self.info.console_entity, RenderObject::Text{text, font_size: 30});
+        let render = RenderInfo{
+            object: Some(RenderObject::Text{text, font_size: 30}),
+            z_level: ZLevel::UiHigh,
+            ..Default::default()
+        };
+
+        self.game_state.entities().set_deferred_render(self.info.console_entity, render);
     }
 
     fn handle_user_event(&mut self, event: UserEvent)

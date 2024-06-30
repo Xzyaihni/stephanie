@@ -306,15 +306,11 @@ impl UiList
                 }
             );
 
-            let text_id = creator.push(
+            let text_id = creator.entities.push_client(
+                true,
                 EntityInfo{
                     lazy_transform: Some(LazyTransformInfo::default().into()),
                     parent: Some(Parent::new(id, true)),
-                    ..Default::default()
-                },
-                RenderInfo{
-                    object: None,
-                    z_level: ZLevel::UiHigher,
                     ..Default::default()
                 }
             );
@@ -385,13 +381,16 @@ impl UiList
 
                 if let Some(text) = self.items.get(item_index)
                 {
-                    creator.replace_object(
-                        item.item,
-                        RenderObject::Text{
+                    let render = RenderInfo{
+                        object: Some(RenderObject::Text{
                             text: text.clone(),
                             font_size: 60
-                        }
-                    );
+                        }),
+                        z_level: ZLevel::UiHigher,
+                        ..Default::default()
+                    };
+
+                    creator.entities.set_deferred_render(item.item, render);
                 }
             });
 
@@ -573,7 +572,8 @@ impl UiInventory
 
         let close_button_x = panel_size;
         let scale = Vector3::new(1.0 - close_button_x, 1.0, 1.0);
-        let name = creator.push(
+        let name = creator.entities.push_client(
+            true,
             EntityInfo{
                 lazy_transform: Some(LazyTransformInfo{
                     transform: Transform{
@@ -593,11 +593,6 @@ impl UiInventory
                     }),
                     ..Default::default()
                 }),
-                ..Default::default()
-            },
-            RenderInfo{
-                object: None,
-                z_level: ZLevel::UiHigh,
                 ..Default::default()
             }
         );
@@ -670,13 +665,16 @@ impl UiInventory
         name: String
     )
     {
-        creator.replace_object(
-            self.name,
-            RenderObject::Text{
+        let render = RenderInfo{
+            object: Some(RenderObject::Text{
                 text: name,
                 font_size: 80
-            }
-        );
+            }),
+            z_level: ZLevel::UiHigh,
+            ..Default::default()
+        };
+
+        creator.entities.set_deferred_render(self.name, render);
     }
 
     pub fn update_inventory(

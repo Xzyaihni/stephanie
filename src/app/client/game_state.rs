@@ -1,5 +1,4 @@
 use std::{
-    mem,
     cell::{Ref, RefCell},
     rc::Rc,
     ops::ControlFlow,
@@ -47,7 +46,6 @@ use crate::{
         CharactersInfo,
         Entity,
         Entities,
-        ServerToClient,
         EntityPasser,
         EntitiesController,
         OccludingCasters,

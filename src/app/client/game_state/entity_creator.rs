@@ -33,15 +33,6 @@ impl EntityCreator<'_>
         entity
     }
 
-    pub fn replace_object(
-        &mut self,
-        entity: Entity,
-        object: RenderObject
-    )
-    {
-        todo!();
-    }
-
     pub fn replace_scissor(
         &mut self,
         entity: Entity,
