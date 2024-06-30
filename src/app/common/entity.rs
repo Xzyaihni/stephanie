@@ -900,6 +900,12 @@ macro_rules! define_entities_both
                     .push((entity, RenderComponent::Object(object)));
             }
 
+            pub fn set_deferred_render_scissor(&self, entity: Entity, scissor: Scissor)
+            {
+                self.create_render_queue.borrow_mut()
+                    .push((entity, RenderComponent::Scissor(scissor)));
+            }
+
             fn resort_transforms(&mut self, parent_entity: Entity)
             {
                 let child = self.transform.iter().find_map(|(component_id, &ComponentWrapper{
@@ -1161,6 +1167,16 @@ macro_rules! define_entities_both
                                 let object = object.into_client(transform(), create_info);
 
                                 render.object = object;
+                            }
+                        },
+                        RenderComponent::Scissor(scissor) =>
+                        {
+                            if let Some(mut render) = self.render_mut(entity)
+                            {
+                                let size = create_info.object_info.partial.size;
+                                let scissor = scissor.into_global(size);
+
+                                render.scissor = Some(scissor);
                             }
                         }
                     }

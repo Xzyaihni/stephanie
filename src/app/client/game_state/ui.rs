@@ -271,8 +271,7 @@ impl UiList
         {
             let on_change = on_change.clone();
             let current_start = current_start.clone();
-            let id = creator.entities.push_client(
-                true,
+            let id = creator.push(
                 EntityInfo{
                     lazy_transform: Some(LazyTransformInfo{
                         transform: Transform{
@@ -294,14 +293,24 @@ impl UiList
                         ..Default::default()
                     }),
                     ..Default::default()
+                },
+                RenderInfo{
+                    object: Some(RenderObjectKind::Texture{
+                        name: "ui/lighter.png".to_owned()
+                    }.into()),
+                    z_level: ZLevel::UiHigh,
+                    ..Default::default()
                 }
             );
 
-            let text_id = creator.entities.push_client(
-                true,
+            let text_id = creator.push(
                 EntityInfo{
                     lazy_transform: Some(LazyTransformInfo::default().into()),
                     parent: Some(Parent::new(id, true)),
+                    ..Default::default()
+                },
+                RenderInfo{
+                    z_level: ZLevel::UiHigher,
                     ..Default::default()
                 }
             );
@@ -433,33 +442,10 @@ impl UiList
 
     fn update_frame_scissors(&mut self, creator: &mut EntityCreator)
     {
-        self.frames.iter().enumerate().for_each(|(item_index, item)|
+        self.frames.iter().for_each(|item|
         {
-            let render = RenderInfo{
-                object: Some(RenderObjectKind::Texture{
-                    name: "ui/lighter.png".to_owned()
-                }.into()),
-                z_level: ZLevel::UiHigh,
-                scissor: Some(self.scissor.clone()),
-                ..Default::default()
-            };
-
-            creator.entities.set_deferred_render(item.frame, render);
-
-            if let Some(text) = self.items.get(item_index)
-            {
-                let render = RenderInfo{
-                    object: Some(RenderObjectKind::Text{
-                        text: text.clone(),
-                        font_size: 60
-                    }.into()),
-                    z_level: ZLevel::UiHigher,
-                    scissor: Some(self.scissor.clone()),
-                    ..Default::default()
-                };
-
-                creator.entities.set_deferred_render(item.item, render);
-            }
+            creator.entities.set_deferred_render_scissor(item.frame, self.scissor.clone());
+            creator.entities.set_deferred_render_scissor(item.item, self.scissor.clone());
         });
     }
 

@@ -70,7 +70,8 @@ impl OutlinedInfo
 pub enum RenderComponent
 {
     Full(RenderInfo),
-    Object(RenderObject)
+    Object(RenderObject),
+    Scissor(Scissor)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
