@@ -269,10 +269,7 @@ macro_rules! impl_common_systems
 
             info.setup_components(self, entity);
 
-            let indices = self.push_info_components(entity, info);
-
-            let components = components!(self, entity);
-            components.borrow_mut().insert(entity.id, indices);
+            self.set_each(entity, info);
 
             entity
         }
@@ -675,6 +672,7 @@ macro_rules! define_entities_both
 
         pub type ComponentsIndices = [Option<usize>; COMPONENTS_COUNT];
 
+        #[derive(Debug)]
         pub struct Entities<$($component_type=$default_type,)+>
         {
             pub local_components: RefCell<ObjectsStore<ComponentsIndices>>,
@@ -812,9 +810,12 @@ macro_rules! define_entities_both
                         let previous = {
                             let parent = parent_order_sensitive.then(||
                             {
-                                self.parent(entity).and_then(|parent_entity|
+                                self.parent(entity).map(|x|
                                 {
-                                    component_index!(self, (&*parent_entity).into().entity(), $name)
+                                    (&*x).into().entity()
+                                }).and_then(|parent_entity|
+                                {
+                                    component_index!(self, parent_entity, $name)
                                 })
                             }).flatten();
 
@@ -843,9 +844,19 @@ macro_rules! define_entities_both
                                 *slot = Some(id);
 
                                 drop(components);
+                                eprintln!("{} component set at id {id} ({entity:?})", stringify!($name));
+
                                 if parent_order_sensitive
                                 {
                                     self.resort_transforms(entity);
+                                } else if Component::$name == Component::parent
+                                {
+                                    let parent_entity = self.parent(entity).map(|x|
+                                    {
+                                        (&*x).into().entity()
+                                    }).unwrap();
+
+                                    self.resort_transforms(parent_entity);
                                 }
 
                                 None
@@ -881,39 +892,47 @@ macro_rules! define_entities_both
 
                 let parent_component = component_index!(self, parent_entity, transform).unwrap();
 
+                if parent_component < child_component
+                {
+                    return;
+                }
+
                 // swap contents
                 self.transform.swap(child_component, parent_component);
 
-                // swap pointers
-                {
-                    let transform_id = Component::transform as usize;
+                self.swap_transform_indices(child, parent_entity);
 
-                    let components_a = components!(self, child);
-                    let mut components_a = components_a.borrow_mut();
-
-                    if child.local() == parent_entity.local()
-                    {
-                        let b = components_a.get(parent_entity.id).unwrap()[transform_id];
-
-                        let a = &mut components_a.get_mut(child.id).unwrap()[transform_id];
-                        let temp = *a;
-
-                        *a = b;
-
-                        components_a.get_mut(parent_entity.id).unwrap()[transform_id] = temp;
-                    } else
-                    {
-                        let components_b = components!(self, parent_entity);
-                        let mut components_b = components_b.borrow_mut();
-
-                        let a = &mut components_a.get_mut(child.id).unwrap()[transform_id];
-                        let b = &mut components_b.get_mut(parent_entity.id).unwrap()[transform_id];
-
-                        mem::swap(a, b);
-                    }
-                }
-
+                self.resort_transforms(parent_entity);
                 self.resort_transforms(child);
+            }
+
+            fn swap_transform_indices(&mut self, a: Entity, b: Entity)
+            {
+                let transform_id = Component::transform as usize;
+
+                let components_a = components!(self, a);
+                let mut components_a = components_a.borrow_mut();
+
+                if a.local() == b.local()
+                {
+                    let b_i = components_a.get(b.id).unwrap()[transform_id];
+
+                    let a_i = &mut components_a.get_mut(a.id).unwrap()[transform_id];
+                    let temp = *a_i;
+
+                    *a_i = b_i;
+
+                    components_a.get_mut(b.id).unwrap()[transform_id] = temp;
+                } else
+                {
+                    let components_b = components!(self, b);
+                    let mut components_b = components_b.borrow_mut();
+
+                    let a = &mut components_a.get_mut(a.id).unwrap()[transform_id];
+                    let b = &mut components_b.get_mut(b.id).unwrap()[transform_id];
+
+                    mem::swap(a, b);
+                }
             }
 
             pub fn remove(&mut self, entity: Entity)
@@ -939,42 +958,6 @@ macro_rules! define_entities_both
             fn order_sensitive(component: Component) -> bool
             {
                 component == Component::transform
-            }
-
-            fn push_info_components(
-                &mut self,
-                entity: Entity,
-                info: EntityInfo<$($component_type,)+>
-            ) -> ComponentsIndices
-            {
-                let parent = info.parent.as_ref().map(|x| x.into().entity);
-                [
-                    $({
-                        info.$name.map(|component|
-                        {
-                            let wrapper = ComponentWrapper{
-                                entity,
-                                component: RefCell::new(component)
-                            };
-
-                            let parent_id = Self::order_sensitive(Component::$name).then(||
-                            {
-                                parent.and_then(|parent_entity|
-                                {
-                                    component_index!(self, parent_entity, $name)
-                                })
-                            }).flatten();
-
-                            if let Some(id) = parent_id
-                            {
-                                self.$name.push_after(id, wrapper)
-                            } else
-                            {
-                                self.$name.push(wrapper)
-                            }
-                        })
-                    },)+
-                ]
             }
 
             fn empty_components() -> ComponentsIndices
