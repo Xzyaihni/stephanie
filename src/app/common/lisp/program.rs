@@ -7,7 +7,17 @@ use std::{
     ops::{Add, Sub, Mul, Div, Rem, Deref}
 };
 
-pub use super::{Error, ErrorPos, Environment, LispValue, LispMemory, ValueTag, LispVectorRef};
+pub use super::{
+    Error,
+    ErrorPos,
+    Environment,
+    Mappings,
+    LispValue,
+    LispMemory,
+    ValueTag,
+    LispVectorRef
+};
+
 pub use parser::{CodePosition, WithPosition};
 
 use parser::{Parser, Ast, AstPos, PrimitiveType};
@@ -783,7 +793,7 @@ impl Primitives
         &self.primitives[id]
     }
 
-    pub fn add_to_env(&self, env: &mut Environment)
+    pub fn add_to_env(&self, env: &mut Mappings)
     {
         self.indices.iter()
             .filter(|(_, value)| self.primitives[**value].kind == PrimitiveProcedureType::Simple)

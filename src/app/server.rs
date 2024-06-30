@@ -1,10 +1,8 @@
 use std::{
     thread,
     net::{TcpStream, TcpListener},
-    sync::{Arc, mpsc::Sender}
+    sync::mpsc::Sender
 };
-
-use parking_lot::Mutex;
 
 use crate::common::{
     sender_loop::{waiting_loop, DELTA_TIME},
@@ -40,26 +38,21 @@ impl Server
     {
         let listener = TcpListener::bind(address)?;
 
-        let (connector, game_server) = GameServer::new(
+        let (connector, mut game_server) = GameServer::new(
             tilemap.tilemap,
             data_infos,
             connections_limit
         )?;
 
-        let game_server = Arc::new(Mutex::new(game_server));
-
+        thread::spawn(move ||
         {
-            let game_server = game_server.clone();
-            thread::spawn(move ||
+            waiting_loop(||
             {
-                waiting_loop(||
-                {
-                    game_server.lock().update(DELTA_TIME as f32);
+                game_server.update(DELTA_TIME as f32);
 
-                    false
-                });
+                false
             });
-        }
+        });
 
         Ok(Self{
             listener,

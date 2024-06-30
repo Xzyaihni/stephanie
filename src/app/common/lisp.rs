@@ -809,12 +809,13 @@ impl LispMemory
 
     fn transfer_to_swap_env(&mut self, env: &Environment)
     {
-        if let Some(parent) = env.parent
+        match env
         {
-            self.transfer_to_swap_env(parent);
+            Environment::Child(parent, _) => self.transfer_to_swap_env(&parent),
+            _ => ()
         }
 
-        env.mappings.borrow_mut().iter_mut().for_each(|(_key, value)|
+        env.mappings().0.borrow_mut().iter_mut().for_each(|(_key, value)|
         {
             *value = Self::transfer_to_swap_value(&mut self.memory, &mut self.swap_memory, *value);
         });
@@ -985,49 +986,81 @@ impl LispMemory
 }
 
 #[derive(Debug, Clone)]
-pub struct Environment<'a>
-{
-    parent: Option<&'a Environment<'a>>,
-    mappings: RefCell<HashMap<String, LispValue>>
-}
+pub struct Mappings(pub RefCell<HashMap<String, LispValue>>);
 
-// this isnt completely safe actually, if theres a Some inside a 'static lifetime env
-// then its not safe, but wutever
-unsafe impl Send for Environment<'static> {}
-
-impl Environment<'static>
+impl Mappings
 {
     pub fn new() -> Self
     {
-        let mappings = RefCell::new(HashMap::new());
-
-        Self{parent: None, mappings}
-    }
-}
-
-impl<'a> Environment<'a>
-{
-    pub fn child(parent: &'a Environment<'a>) -> Environment<'a>
-    {
-        let mappings = RefCell::new(HashMap::new());
-
-        Self{parent: Some(parent), mappings}
+        Self(RefCell::new(HashMap::new()))
     }
 
     pub fn define(&self, key: impl Into<String>, value: LispValue)
     {
-        self.mappings.borrow_mut().insert(key.into(), value);
+        self.0.borrow_mut().insert(key.into(), value);
     }
 
     pub fn try_lookup(&self, key: &str) -> Option<LispValue>
     {
-        self.mappings.borrow().get(key).copied().or_else(||
+        self.0.borrow().get(key).copied()
+    }
+}
+
+unsafe impl Send for Mappings {}
+
+#[derive(Debug, Clone)]
+pub enum Environment<'a>
+{
+    TopLevel(Mappings),
+    Child(&'a Environment<'a>, Mappings)
+}
+
+impl<'a> Environment<'a>
+{
+    pub fn new() -> Self
+    {
+        Self::TopLevel(Mappings::new())
+    }
+
+    pub fn top_level(mappings: Mappings) -> Self
+    {
+        Self::TopLevel(mappings)
+    }
+
+    pub fn child(parent: &'a Environment<'a>) -> Self
+    {
+        Self::Child(parent, Mappings::new())
+    }
+
+    pub fn mappings(&self) -> &Mappings
+    {
+        match self
         {
-            self.parent.as_ref().and_then(|parent|
+            Self::TopLevel(x) => &x,
+            Self::Child(_, x) => &x
+        }
+    }
+
+    pub fn define(&self, key: impl Into<String>, value: LispValue)
+    {
+        self.mappings().define(key, value);
+    }
+
+    pub fn try_lookup(&self, key: &str) -> Option<LispValue>
+    {
+        let this_lookup = self.mappings().try_lookup(key);
+
+        match self
+        {
+            Self::TopLevel(_) => this_lookup,
+            Self::Child(parent, _) => 
             {
-                parent.try_lookup(key)
-            })
-        })
+                this_lookup.or_else(||
+                {
+                    parent.try_lookup(key)
+                })
+            }
+        }
     }
 
     pub fn lookup(&self, key: &str) -> Result<LispValue, Error>
@@ -1088,7 +1121,7 @@ impl<'a> OutputWrapper<'a>
 
 pub struct LispConfig
 {
-    pub environment: Option<Arc<Mutex<Environment<'static>>>>,
+    pub environment: Option<Arc<Mutex<Mappings>>>,
     pub lambdas: Option<Lambdas>,
     pub primitives: Arc<Primitives>
 }
@@ -1121,7 +1154,7 @@ impl Lisp
         self.lisp.run_with_memory(&mut self.memory)
     }
 
-    pub fn run_environment(&mut self) -> Result<Environment<'static>, ErrorPos>
+    pub fn run_environment(&mut self) -> Result<Mappings, ErrorPos>
     {
         self.lisp.run_environment(&mut self.memory)
     }
@@ -1162,7 +1195,7 @@ impl DerefMut for Lisp
 
 pub struct LispRef
 {
-    environment: Arc<Mutex<Environment<'static>>>,
+    environment: Arc<Mutex<Mappings>>,
     program: Program
 }
 
@@ -1174,7 +1207,7 @@ impl LispRef
     {
         let environment = config.environment.unwrap_or_else(||
         {
-            let mut env = Environment::new();
+            let mut env = Mappings::new();
             config.primitives.add_to_env(&mut env);
 
             Arc::new(Mutex::new(env))
@@ -1212,31 +1245,37 @@ impl LispRef
     pub fn run_environment(
         &mut self,
         memory: &mut LispMemory
-    ) -> Result<Environment<'static>, ErrorPos>
+    ) -> Result<Mappings, ErrorPos>
     {
         self.run_inner(memory).map(|(env, _value)| env)
     }
 
-    fn new_environment(&self) -> Environment<'static>
+    fn new_environment(&self) -> Mappings
     {
-        let env: &Environment<'static> = &self.environment.lock();
+        let env: &Mappings = &self.environment.lock();
 
-        Environment::clone(env)
+        Mappings::clone(env)
     }
 
     fn run_inner<'a>(
         &mut self,
         memory: &'a mut LispMemory
-    ) -> Result<(Environment<'static>, OutputWrapper<'a>), ErrorPos>
+    ) -> Result<(Mappings, OutputWrapper<'a>), ErrorPos>
     {
-        let env = self.new_environment();
+        let env = Environment::TopLevel(self.new_environment());
 
         self.program.apply(memory, &env)?;
         let value = memory.pop_return();
 
         let value = OutputWrapper{memory, value};
 
-        Ok((env, value))
+        let mappings = match env
+        {
+            Environment::TopLevel(x) => x,
+            Environment::Child(_, x) => x
+        };
+
+        Ok((mappings, value))
     }
 }
 

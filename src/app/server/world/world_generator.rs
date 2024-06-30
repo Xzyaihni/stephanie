@@ -21,6 +21,7 @@ use crate::common::{
         LispConfig,
         LispMemory,
         Environment,
+        Mappings,
         Lambdas,
         LispValue,
         ValueTag,
@@ -159,7 +160,7 @@ impl From<lisp::Error> for ParseError
 
 pub struct ChunkGenerator
 {
-    environment: Arc<Mutex<Environment<'static>>>,
+    environment: Arc<Mutex<Mappings>>,
     lambdas: Lambdas,
     primitives: Arc<Primitives>,
     memory: Arc<Mutex<LispMemory>>,
@@ -225,7 +226,7 @@ impl ChunkGenerator
         primitives
     }
 
-    fn default_environment(path: &Path) -> (Environment<'static>, Lambdas)
+    fn default_environment(path: &Path) -> (Mappings, Lambdas)
     {
         let name = "default.scm";
         let path = path.join(name);
