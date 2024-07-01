@@ -157,12 +157,12 @@ impl GameServer
         self.entities.update_physical(dt);
         self.entities.update_lazy();
 
-        self.entities.update_watchers(dt);
-
         {
             let mut writer = self.connection_handler.write();
             self.entities.create_queued(&mut writer);
         }
+
+        self.entities.update_watchers(dt);
 
         if self.rare_timer <= 0.0
         {

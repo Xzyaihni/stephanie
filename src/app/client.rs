@@ -44,6 +44,7 @@ pub use ui_element::{UiEvent, MouseEvent, UiElement};
 
 pub use game::DrawableEntity;
 pub use game_state::{
+    Ui,
     Control,
     ControlState,
     KeyMapping,

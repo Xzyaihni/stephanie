@@ -460,7 +460,7 @@ pub struct GameState
     pub items_info: Arc<ItemsInfo>,
     pub characters_info: Arc<CharactersInfo>,
     pub user_receiver: Rc<RefCell<Vec<UserEvent>>>,
-    pub ui: Ui,
+    pub ui: Rc<RefCell<Ui>>,
     pub common_textures: CommonTextures,
     shaders: ProgramShaders,
     host: bool,
@@ -578,6 +578,8 @@ impl GameState
                 other_actions
             )
         };
+
+        let ui = Rc::new(RefCell::new(ui));
 
         let assets = info.object_info.partial.assets;
         let common_textures = CommonTextures::new(&mut assets.lock());
@@ -736,7 +738,6 @@ impl GameState
         {
             Message::PlayerFullyConnected =>
             {
-                self.update_inventory();
                 self.notifications.set(Notification::PlayerConnected);
             },
             Message::SetTrusted =>
@@ -849,7 +850,8 @@ impl GameState
             &mut create_info,
             &self.common_textures,
             &self.characters_info,
-            &self.items_info
+            &self.items_info,
+            self.dt
         );
 
         self.entities.update_objects(
@@ -858,6 +860,8 @@ impl GameState
         );
 
         self.entities.update_buffers(&visibility, info, &casters);
+
+        self.entities.entities.handle_on_change();
     }
 
     pub fn draw(&self, info: &mut DrawInfo)
@@ -893,7 +897,7 @@ impl GameState
 
         let player_transform = self.entities.player_transform().as_deref().cloned();
 
-        self.ui.update(
+        self.ui.borrow_mut().update(
             &mut self.entities.entity_creator(),
             &self.camera.read(),
             player_transform,
@@ -919,7 +923,7 @@ impl GameState
             UiEvent::MouseMove(self.world_mouse_position())
         );
 
-        self.ui.update_after(&mut self.entities.entity_creator(), &self.camera.read());
+        self.ui.borrow_mut().update_after(&mut self.entities.entity_creator(), &self.camera.read());
 
         self.dt = dt;
 
@@ -940,20 +944,6 @@ impl GameState
         {
             self.entities.entities.check_guarantees();
         }
-    }
-
-    pub fn update_inventory(&mut self)
-    {
-        let player_id = self.player();
-
-        let mut entity_creator = EntityCreator{
-            entities: &mut self.entities.entities
-        };
-
-        self.ui.player_inventory.full_update(
-            &mut entity_creator,
-            player_id
-        );
     }
 
     pub fn input(&mut self, control: yanyaengine::Control)

@@ -2,7 +2,7 @@ use std::{
     f32,
     mem,
     rc::Rc,
-    cell::{Ref, RefCell}
+    cell::RefCell
 };
 
 use nalgebra::{Vector3, Vector2};
@@ -10,33 +10,17 @@ use nalgebra::{Vector3, Vector2};
 use yanyaengine::{TextureId, Transform, Key, KeyCode};
 
 use crate::{
-    client::UiEvent,
+    client::{Ui, UiEvent},
     common::{
-        angle_between,
-        ENTITY_SCALE,
         render_info::*,
         lazy_transform::*,
         collider::*,
         watcher::*,
-        damaging::*,
         character::*,
-        particle_creator::*,
-        Side1d,
         AnyEntities,
         Parent,
-        Faction,
-        Physical,
-        PhysicalProperties,
         Entity,
         EntityInfo,
-        Player,
-        Inventory,
-        Item,
-        ItemInfo,
-        ItemsInfo,
-        DamagePartial,
-        DamageHeight,
-        InventoryItem,
         entity::ClientEntities,
         lisp::{self, *},
         world::{TILE_SIZE, Pos3}
@@ -45,12 +29,11 @@ use crate::{
 
 use super::game_state::{
     GameState,
+    EntityCreator,
     InventoryWhich,
     UserEvent,
     ControlState,
-    Control,
-    RaycastInfo,
-    RaycastHitId
+    Control
 };
 
 mod object_transform;
@@ -140,10 +123,10 @@ impl Game
     {
         {
             let mut game_state = self.game_state.borrow_mut();
-            let inner_game_state = self.game_state.clone();
+            let ui = game_state.ui.clone();
             let info = self.info.clone();
 
-            game_state.entities_mut().on_inventory(Box::new(move |entity|
+            game_state.entities_mut().on_inventory(Box::new(move |entities, entity|
             {
                 let info = info.borrow();
 
@@ -158,13 +141,16 @@ impl Game
                     None
                 };
 
-                eprintln!("{which:?}");
-
                 if let Some(which) = which
                 {
-                    let mut game_state = inner_game_state.borrow_mut();
+                    let mut ui = ui.borrow_mut();
 
-                    PlayerContainer::update_inventory_inner(&mut game_state, &info, which);
+                    PlayerContainer::update_inventory_inner(
+                        entities,
+                        &mut ui,
+                        &info,
+                        which
+                    );
                 }
             }));
         }
@@ -478,17 +464,10 @@ struct PlayerInfo
     entity: Entity,
     mouse_entity: Entity,
     other_entity: Option<Entity>,
-    projectile: Option<Entity>,
     console_entity: Entity,
     console_contents: Option<String>,
-    stance_time: f32,
-    attack_cooldown: f32,
-    projectile_lifetime: f32,
-    bash_side: Side1d,
     inventory_open: bool,
-    other_inventory_open: bool,
-    held_distance: f32,
-    poke_distance: f32
+    other_inventory_open: bool
 }
 
 impl PlayerInfo
@@ -500,17 +479,10 @@ impl PlayerInfo
             entity: info.entity,
             mouse_entity: info.mouse_entity,
             other_entity: None,
-            projectile: None,
             console_entity: info.console_entity,
             console_contents: None,
-            stance_time: 0.0,
-            attack_cooldown: 0.0,
-            projectile_lifetime: 0.0,
-            bash_side: Side1d::Left,
             inventory_open: false,
-            other_inventory_open: false,
-            held_distance: 0.1,
-            poke_distance: 0.75
+            other_inventory_open: false
         }
     }
 }
@@ -553,7 +525,6 @@ impl<'a> PlayerContainer<'a>
         self.camera_sync_instant();
         self.update_inventory(InventoryWhich::Player);
         self.update_inventory(InventoryWhich::Other);
-        self.unstance();
     }
 
     pub fn camera_sync(&mut self)
@@ -753,16 +724,24 @@ impl<'a> PlayerContainer<'a>
 
     fn update_inventory(&mut self, which: InventoryWhich)
     {
-        Self::update_inventory_inner(&mut self.game_state, &self.info, which);
+        let entities = &mut self.game_state.entities.entities;
+        let mut ui = self.game_state.ui.borrow_mut();
+
+        Self::update_inventory_inner(
+            entities,
+            &mut ui,
+            &self.info,
+            which
+        );
     }
 
     fn update_inventory_inner(
-        game_state: &mut GameState,
+        entities: &mut ClientEntities,
+        ui: &mut Ui,
         info: &PlayerInfo,
         which: InventoryWhich
     )
     {
-        let ui = &mut game_state.ui;
         let inventory_ui = match which
         {
             InventoryWhich::Player => &mut ui.player_inventory,
@@ -786,11 +765,10 @@ impl<'a> PlayerContainer<'a>
                     InventoryWhich::Player => info.entity
                 };
 
-                let mut entity_creator = game_state.entities.entity_creator();
+                let mut entity_creator = EntityCreator{entities};
                 inventory_ui.full_update(&mut entity_creator, entity);
             }
 
-            let entities = game_state.entities_mut();
             entities.set_collider(inventory, Some(ColliderInfo{
                 kind: ColliderType::Aabb,
                 layer: ColliderLayer::Ui,
@@ -804,7 +782,6 @@ impl<'a> PlayerContainer<'a>
             lazy.target().scale = Vector3::repeat(0.2);
         } else
         {
-            let entities = game_state.entities_mut();
             entities.set_collider(inventory, None);
 
             let current_scale;
@@ -830,179 +807,11 @@ impl<'a> PlayerContainer<'a>
         }
     }
 
-    fn unstance(&mut self)
-    {
-        let reminder = "";
-
-        /*let start_rotation = self.default_held_rotation();
-        if let Some(mut lazy) = self.game_state.entities().lazy_transform_mut(self.holding_entity())
-        {
-            lazy.target().rotation = start_rotation;
-        }*/
-    }
-
-    fn bash_projectile(&mut self, item: Item)
-    {
-        let item_info = self.game_state.items_info.get(item.id);
-        let item_scale = item_info.scale3().y;
-        let over_scale = self.info.held_distance + item_scale;
-        let scale = 1.0 + over_scale * 2.0;
-
-        let holding_entity = self.holding_entity();
-
-        let damage = DamagePartial{
-            data: item_info.bash_damage(),
-            height: DamageHeight::random()
-        };
-
-        let angle = self.info.bash_side.to_angle() - f32::consts::FRAC_PI_2;
-
-        self.info.projectile_lifetime = 0.2;
-        self.info.projectile = Some(self.game_state.entities_mut().push(
-            true,
-            EntityInfo{
-                follow_rotation: Some(FollowRotation::new(
-                    holding_entity,
-                    Rotation::Instant
-                )),
-                lazy_transform: Some(LazyTransformInfo{
-                    transform: Transform{
-                        scale: Vector3::repeat(scale),
-                        ..Default::default()
-                    },
-                    ..Default::default()
-                }.into()),
-                parent: Some(Parent::new(self.info.entity, true)),
-                collider: Some(ColliderInfo{
-                    kind: ColliderType::Circle,
-                    layer: ColliderLayer::Damage,
-                    ghost: true,
-                    ..Default::default()
-                }.into()),
-                damaging: Some(DamagingInfo{
-                    damage: DamagingType::Damage{
-                        angle,
-                        damage
-                    },
-                    predicate: DamagingPredicate::ParentAngleLess(f32::consts::PI),
-                    faction: Some(Faction::Player),
-                    ..Default::default()
-                }.into()),
-                ..Default::default()
-            }
-        ));
-    }
-
-    fn poke_projectile(&mut self, item: Item)
-    {
-        let item_info = self.game_state.items_info.get(item.id);
-        let item_scale = item_info.scale3().y;
-        let mut scale = Vector3::repeat(1.0);
-
-        let projectile_scale = self.info.poke_distance / item_scale;
-        scale.y += projectile_scale;
-
-        let offset = projectile_scale / 2.0;
-
-        let holding_entity = self.holding_entity();
-
-        let damage = DamagePartial{
-            data: item_info.poke_damage(),
-            height: DamageHeight::random()
-        };
-
-        self.info.projectile_lifetime = 0.2;
-        self.info.projectile = Some(self.game_state.entities_mut().push(
-            true,
-            EntityInfo{
-                follow_rotation: Some(FollowRotation::new(
-                    holding_entity,
-                    Rotation::Instant
-                )),
-                lazy_transform: Some(LazyTransformInfo{
-                    transform: Transform{
-                        position: Vector3::new(0.0, offset, 0.0),
-                        scale,
-                        ..Default::default()
-                    },
-                    ..Default::default()
-                }.into()),
-                parent: Some(Parent::new(holding_entity, true)),
-                collider: Some(ColliderInfo{
-                    kind: ColliderType::Circle,
-                    layer: ColliderLayer::Damage,
-                    ghost: true,
-                    ..Default::default()
-                }.into()),
-                damaging: Some(DamagingInfo{
-                    damage: DamagingType::Damage{
-                        angle: 0.0,
-                        damage
-                    },
-                    faction: Some(Faction::Player),
-                    ..Default::default()
-                }.into()),
-                ..Default::default()
-            }
-        ));
-
-        if let Some(mut lazy) = self.game_state.entities().lazy_transform_mut(holding_entity)
-        {
-            lazy.connection = Connection::Spring(
-                SpringConnection{
-                    physical: PhysicalProperties{
-                        mass: 0.5,
-                        friction: 0.4,
-                        floating: true
-                    }.into(),
-                    limit: 0.004,
-                    damping: 0.02,
-                    strength: 6.0
-                }
-            );
-        }
-    }
-
-    fn decrease_timer(time_variable: &mut f32, dt: f32) -> bool
-    {
-        if *time_variable > 0.0
-        {
-            *time_variable -= dt;
-
-            if *time_variable <= 0.0
-            {
-                return true;
-            }
-        }
-
-        false
-    }
-
-    pub fn this_update(&mut self, dt: f32)
+    pub fn this_update(&mut self, _dt: f32)
     {
         if !self.exists()
         {
             return;
-        }
-
-        let decrease_timer = |value|
-        {
-            Self::decrease_timer(value, dt)
-        };
-
-        if Self::decrease_timer(&mut self.info.stance_time, dt)
-        {
-            self.unstance();
-        }
-
-        decrease_timer(&mut self.info.attack_cooldown);
-
-        if decrease_timer(&mut self.info.projectile_lifetime)
-        {
-            if let Some(entity) = self.info.projectile.take()
-            {
-                self.game_state.entities_mut().remove(entity);
-            }
         }
 
         self.update_user_events();
@@ -1127,45 +936,11 @@ impl<'a> PlayerContainer<'a>
         player_transform.rotation = rotation;
     }
 
-    fn player(&self) -> Ref<Player>
-    {
-        self.game_state.entities()
-            .player(self.info.entity)
-            .unwrap()
-    }
-
-    fn inventory(&self) -> Ref<Inventory>
-    {
-        self.game_state.entities()
-            .inventory(self.info.entity)
-            .unwrap()
-    }
-
-    fn item_info(&self, id: InventoryItem) -> Option<&ItemInfo>
-    {
-        let inventory = self.inventory();
-        inventory.get(id).map(|x| self.game_state.items_info.get(x.id))
-    }
-
-    fn holding_entity(&self) -> Entity
-    {
-        todo!();
-        // self.game_state.player_entities().holding
-    }
-
     fn player_position(&self) -> Vector3<f32>
     {
         self.game_state.entities()
             .transform(self.info.entity)
             .expect("player must have a position")
-            .position
-    }
-
-    fn mouse_position(&self) -> Vector3<f32>
-    {
-        self.game_state.entities()
-            .transform(self.info.mouse_entity)
-            .expect("mouse must have a position")
             .position
     }
 }

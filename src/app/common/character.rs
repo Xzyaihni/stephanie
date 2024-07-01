@@ -23,8 +23,10 @@ use crate::{
         lazy_transform::*,
         collider::*,
         watcher::*,
+        damage::*,
         damaging::*,
         particle_creator::*,
+        Side1d,
         Physical,
         PhysicalProperties,
         AnyEntities,
@@ -137,6 +139,7 @@ pub enum CharacterAction
 }
 
 pub const HELD_DISTANCE: f32 = 0.1;
+pub const POKE_DISTANCE: f32 = 0.75;
 
 #[derive(Clone, Copy)]
 pub struct CombinedInfo<'a>
@@ -165,6 +168,11 @@ pub struct Character
     holding: Option<InventoryItem>,
     info: Option<AfterInfo>,
     held_update: bool,
+    stance_time: f32,
+    attack_cooldown: f32,
+    projectile: Option<Entity>,
+    projectile_lifetime: f32,
+    bash_side: Side1d,
     actions: Vec<CharacterAction>,
     sprite_state: Stateful<SpriteState>
 }
@@ -184,6 +192,11 @@ impl Character
             info: None,
             holding: None,
             held_update: true,
+            stance_time: 0.0,
+            attack_cooldown: 0.0,
+            projectile: None,
+            projectile_lifetime: 0.0,
+            bash_side: Side1d::Left,
             actions: Vec::new(),
             sprite_state: SpriteState::Normal.into()
         }
@@ -464,26 +477,27 @@ impl Character
     {
         let item = some_or_return!(self.held_item(combined_info));
 
-        /*if self.info.attack_cooldown > 0.0
+        if self.attack_cooldown > 0.0
         {
             return;
         }
 
-        self.info.attack_cooldown = 0.5;
-        self.info.stance_time = self.info.attack_cooldown * 2.0;
+        self.attack_cooldown = 0.5;
+        self.stance_time = self.attack_cooldown * 2.0;
 
-        self.info.bash_side = self.info.bash_side.opposite();
+        self.bash_side = self.bash_side.opposite();
 
-        self.bash_projectile(item);
+        self.bash_projectile(combined_info, item);
 
-        let holding_entity = self.holding_entity();
+        let info = some_or_return!(self.info.as_ref());
+        let holding_entity = info.holding;
 
-        let start_rotation = self.default_held_rotation();
-        if let Some(mut lazy) = self.game_state.entities().lazy_transform_mut(holding_entity)
+        let start_rotation = self.default_held_rotation(combined_info);
+        if let Some(mut lazy) = combined_info.entities.lazy_transform_mut(holding_entity)
         {
             let edge = 0.4;
 
-            let new_rotation = match self.info.bash_side
+            let new_rotation = match self.bash_side
             {
                 Side1d::Left =>
                 {
@@ -503,7 +517,7 @@ impl Character
 
             lazy.target().rotation = start_rotation - new_rotation;
 
-            let mut watchers = self.game_state.entities().watchers_mut(holding_entity).unwrap();
+            let mut watchers = combined_info.entities.watchers_mut(holding_entity).unwrap();
 
             watchers.push(Watcher{
                 kind: WatcherType::Lifetime(0.2.into()),
@@ -516,18 +530,28 @@ impl Character
                 )),
                 ..Default::default()
             });
-        }*/
+        }
     }
 
-    fn default_held_rotation(&self) -> f32
+    fn default_held_rotation(&self, combined_info: CombinedInfo) -> f32
     {
-        /*let origin_rotation = self.game_state.entities()
-            .lazy_transform(self.holding_entity())
+        let origin_rotation = combined_info.entities
+            .lazy_transform(self.info.as_ref().unwrap().holding)
             .unwrap()
             .origin_rotation();
 
-        -origin_rotation*/
-        todo!();
+        -origin_rotation
+    }
+
+    fn unstance(&mut self, combined_info: CombinedInfo)
+    {
+        let info = some_or_return!(self.info.as_ref());
+
+        let start_rotation = self.default_held_rotation(combined_info);
+        if let Some(mut lazy) = combined_info.entities.lazy_transform_mut(info.holding)
+        {
+            lazy.target().rotation = start_rotation;
+        }
     }
 
     fn poke_attack(&mut self, combined_info: CombinedInfo)
@@ -651,6 +675,128 @@ impl Character
         }*/
     }
 
+    fn bash_projectile(&mut self, combined_info: CombinedInfo, item: Item)
+    {
+        let info = some_or_return!(self.info.as_ref());
+
+        let item_info = combined_info.items_info.get(item.id);
+        let item_scale = item_info.scale3().y;
+        let over_scale = HELD_DISTANCE + item_scale;
+        let scale = 1.0 + over_scale * 2.0;
+
+        let damage = DamagePartial{
+            data: item_info.bash_damage(),
+            height: DamageHeight::random()
+        };
+
+        let angle = self.bash_side.to_angle() - f32::consts::FRAC_PI_2;
+
+        self.projectile_lifetime = 0.2;
+        self.projectile = Some(combined_info.entities.push(
+            true,
+            EntityInfo{
+                follow_rotation: Some(FollowRotation::new(
+                    info.holding,
+                    Rotation::Instant
+                )),
+                lazy_transform: Some(LazyTransformInfo{
+                    transform: Transform{
+                        scale: Vector3::repeat(scale),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                }.into()),
+                parent: Some(Parent::new(info.this, true)),
+                collider: Some(ColliderInfo{
+                    kind: ColliderType::Circle,
+                    layer: ColliderLayer::Damage,
+                    ghost: true,
+                    ..Default::default()
+                }.into()),
+                damaging: Some(DamagingInfo{
+                    damage: DamagingType::Damage{
+                        angle,
+                        damage
+                    },
+                    predicate: DamagingPredicate::ParentAngleLess(f32::consts::PI),
+                    faction: Some(Faction::Player),
+                    ..Default::default()
+                }.into()),
+                ..Default::default()
+            }
+        ));
+    }
+
+    fn poke_projectile(&mut self, item: Item)
+    {
+        /*let item_info = self.game_state.items_info.get(item.id);
+        let item_scale = item_info.scale3().y;
+        let mut scale = Vector3::repeat(1.0);
+
+        let projectile_scale = self.info.poke_distance / item_scale;
+        scale.y += projectile_scale;
+
+        let offset = projectile_scale / 2.0;
+
+        let holding_entity = self.holding_entity();
+
+        let damage = DamagePartial{
+            data: item_info.poke_damage(),
+            height: DamageHeight::random()
+        };
+
+        self.info.projectile_lifetime = 0.2;
+        self.info.projectile = Some(self.game_state.entities_mut().push(
+            true,
+            EntityInfo{
+                follow_rotation: Some(FollowRotation::new(
+                    holding_entity,
+                    Rotation::Instant
+                )),
+                lazy_transform: Some(LazyTransformInfo{
+                    transform: Transform{
+                        position: Vector3::new(0.0, offset, 0.0),
+                        scale,
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                }.into()),
+                parent: Some(Parent::new(holding_entity, true)),
+                collider: Some(ColliderInfo{
+                    kind: ColliderType::Circle,
+                    layer: ColliderLayer::Damage,
+                    ghost: true,
+                    ..Default::default()
+                }.into()),
+                damaging: Some(DamagingInfo{
+                    damage: DamagingType::Damage{
+                        angle: 0.0,
+                        damage
+                    },
+                    faction: Some(Faction::Player),
+                    ..Default::default()
+                }.into()),
+                ..Default::default()
+            }
+        ));
+
+        if let Some(mut lazy) = self.game_state.entities().lazy_transform_mut(holding_entity)
+        {
+            lazy.connection = Connection::Spring(
+                SpringConnection{
+                    physical: PhysicalProperties{
+                        mass: 0.5,
+                        friction: 0.4,
+                        floating: true
+                    }.into(),
+                    limit: 0.004,
+                    damping: 0.02,
+                    strength: 6.0
+                }
+            );
+        }*/
+    }
+
     fn handle_actions(&mut self, combined_info: CombinedInfo)
     {
         if self.info.is_none()
@@ -685,14 +831,15 @@ impl Character
 
     fn held_item(&self, combined_info: CombinedInfo) -> Option<Item>
     {
-        /*self.game_state.entities().exists(self.info.entity).then(||
+        self.info.as_ref().and_then(|info|
         {
-            let player = self.player();
-            let inventory = self.inventory();
+            combined_info.entities.exists(info.this).then(||
+            {
+                let inventory = combined_info.entities.inventory(info.this).unwrap();
 
-            player.holding.and_then(|holding| inventory.get(holding).cloned())
-        }).flatten()*/
-        todo!();
+                self.holding.and_then(|holding| inventory.get(holding).cloned())
+            }).flatten()
+        })
     }
 
     fn held_item_position(
@@ -711,6 +858,48 @@ impl Character
         let offset = scale.y / 2.0 + 0.5 + HELD_DISTANCE;
 
         Vector3::new(offset, 0.0, 0.0)
+    }
+
+    fn decrease_timer(time_variable: &mut f32, dt: f32) -> bool
+    {
+        if *time_variable > 0.0
+        {
+            *time_variable -= dt;
+
+            if *time_variable <= 0.0
+            {
+                return true;
+            }
+        }
+
+        false
+    }
+
+    fn update_attacks(
+        &mut self,
+        combined_info: CombinedInfo,
+        dt: f32
+    )
+    {
+        let decrease_timer = |value|
+        {
+            Self::decrease_timer(value, dt)
+        };
+
+        if Self::decrease_timer(&mut self.stance_time, dt)
+        {
+            self.unstance(combined_info);
+        }
+
+        decrease_timer(&mut self.attack_cooldown);
+
+        if decrease_timer(&mut self.projectile_lifetime)
+        {
+            if let Some(entity) = self.projectile.take()
+            {
+                combined_info.entities.remove_lazy(entity);
+            }
+        }
     }
 
     pub fn update_common(
@@ -744,6 +933,7 @@ impl Character
         &mut self,
         combined_info: CombinedInfo,
         entity: Entity,
+        dt: f32,
         set_sprite: impl FnOnce(TextureId)
     ) -> bool
     {
@@ -755,6 +945,8 @@ impl Character
         {
             self.update_held(combined_info);
         }
+
+        self.update_attacks(combined_info, dt);
 
         let mut render = entities.render_mut(entity).unwrap();
         let mut target = entities.target(entity).unwrap();

@@ -1,6 +1,7 @@
 use std::{
     f32,
     mem,
+    rc::Rc,
     fmt::Debug,
     cell::{Ref, RefMut, RefCell}
 };
@@ -398,12 +399,13 @@ macro_rules! impl_common_systems
             mut f: impl FnMut(&mut Self, Entity, EntityInfo) -> $this_entity_info
         )
         {
-            let queue = {
-                let mut create_queue = self.create_queue.borrow_mut();
+            let queue = mem::take(self.remove_queue.get_mut());
+            queue.into_iter().for_each(|entity|
+            {
+                self.remove(entity);
+            });
 
-                mem::take(&mut *create_queue)
-            };
-
+            let queue = mem::take(self.create_queue.get_mut());
             queue.into_iter().for_each(|(entity, mut info)|
             {
                 info.setup_components(self, entity);
@@ -682,11 +684,11 @@ macro_rules! define_entities_both
             }
         }
 
-        pub type OnComponentChange = Box<dyn FnMut(Entity)>;
+        pub type OnComponentChange = Box<dyn FnMut(&mut ClientEntities, Entity)>;
 
         pub type ComponentsIndices = [Option<usize>; COMPONENTS_COUNT];
 
-        #[derive(Default)]
+        #[derive(Debug, Default)]
         struct ChangedEntities
         {
             $($name: Vec<Entity>,)+
@@ -697,9 +699,10 @@ macro_rules! define_entities_both
             pub local_components: RefCell<ObjectsStore<ComponentsIndices>>,
             pub components: RefCell<ObjectsStore<ComponentsIndices>>,
             create_queue: RefCell<Vec<(Entity, EntityInfo)>>,
+            remove_queue: RefCell<Vec<Entity>>,
             create_render_queue: RefCell<Vec<(Entity, RenderComponent)>>,
             changed_entities: RefCell<ChangedEntities>,
-            $($on_name: Vec<OnComponentChange>,)+
+            $($on_name: Rc<RefCell<Vec<OnComponentChange>>>,)+
             $(pub $name: ObjectsStore<ComponentWrapper<$component_type>>,)+
         }
 
@@ -714,9 +717,10 @@ macro_rules! define_entities_both
                     local_components: RefCell::new(ObjectsStore::new()),
                     components: RefCell::new(ObjectsStore::new()),
                     create_queue: RefCell::new(Vec::new()),
+                    remove_queue: RefCell::new(Vec::new()),
                     create_render_queue: RefCell::new(Vec::new()),
                     changed_entities: RefCell::new(Default::default()),
-                    $($on_name: Vec::new(),)+
+                    $($on_name: Rc::new(RefCell::new(Vec::new())),)+
                     $($name: ObjectsStore::new(),)+
                 }
             }
@@ -903,26 +907,11 @@ macro_rules! define_entities_both
                         );
                     }
                 }
-
-                pub fn $on_name(&mut self, f: OnComponentChange)
-                {
-                    self.$on_name.push(f);
-                }
             )+
 
-            pub fn handle_on_change(&mut self)
+            pub fn remove_lazy(&self, entity: Entity)
             {
-                let changed_entities = self.changed_entities.get_mut();
-
-                $(
-                    mem::take(&mut changed_entities.$name).into_iter().for_each(|entity|
-                    {
-                        self.$on_name.iter_mut().for_each(|on_change|
-                        {
-                            on_change(entity);
-                        });
-                    });
-                )+
+                self.remove_queue.borrow_mut().push(entity);
             }
 
             pub fn set_deferred_render(&self, entity: Entity, render: RenderInfo)
@@ -1084,6 +1073,31 @@ macro_rules! define_entities_both
             }
 
             impl_common_systems!{ClientEntityInfo}
+
+            $(
+                pub fn $on_name(&self, f: OnComponentChange)
+                {
+                    self.$on_name.borrow_mut().push(f);
+                }
+            )+
+
+            pub fn handle_on_change(&mut self)
+            {
+                $(
+                    let changed_entities = self.changed_entities.get_mut();
+
+                    let taken = mem::take(&mut changed_entities.$name);
+                    taken.into_iter().for_each(|entity|
+                    {
+                        let listeners = self.$on_name.clone();
+
+                        listeners.borrow_mut().iter_mut().for_each(|on_change|
+                        {
+                            on_change(self, entity);
+                        });
+                    });
+                )+
+            }
 
             pub fn damage_entity(
                 &mut self,
@@ -1708,7 +1722,8 @@ macro_rules! define_entities_both
                 create_info: &mut RenderCreateInfo,
                 common_textures: &CommonTextures,
                 characters_info: &CharactersInfo,
-                items_info: &ItemsInfo
+                items_info: &ItemsInfo,
+                dt: f32
             )
             {
                 let assets = create_info.object_info.partial.assets.clone();
@@ -1729,6 +1744,7 @@ macro_rules! define_entities_both
                         character.borrow_mut().update(
                             combined_info,
                             entity,
+                            dt,
                             |texture|
                             {
                                 let mut render = self.render_mut(entity).unwrap();
