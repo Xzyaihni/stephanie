@@ -13,7 +13,11 @@ use nalgebra::Vector3;
 use yanyaengine::{Assets, Transform, TextureId};
 
 use crate::{
-    client::CommonTextures,
+    client::{
+        CommonTextures,
+        RaycastInfo,
+        RaycastHitId
+    },
     common::{
         some_or_return,
         define_layers,
@@ -135,7 +139,7 @@ pub enum CharacterAction
     Throw(Vector3<f32>),
     Poke,
     Bash,
-    Ranged
+    Ranged(Vector3<f32>)
 }
 
 pub const HELD_DISTANCE: f32 = 0.1;
@@ -273,6 +277,11 @@ impl Character
         combined_info: CombinedInfo
     )
     {
+        if *self.sprite_state.value() == SpriteState::Lying
+        {
+            return;
+        }
+
         let entities = &combined_info.entities;
 
         let info = some_or_return!(self.info.as_ref());
@@ -357,7 +366,7 @@ impl Character
     fn throw_held(
         &mut self,
         combined_info: CombinedInfo,
-        aim_position: Vector3<f32>
+        target: Vector3<f32>
     )
     {
         let entities = &combined_info.entities;
@@ -372,7 +381,7 @@ impl Character
 
                 let direction = {
                     let rotation = angle_between(
-                        aim_position,
+                        target,
                         holding_transform.position
                     );
 
@@ -558,42 +567,40 @@ impl Character
     {
         let item = some_or_return!(self.held_item(combined_info));
 
-        /*if self.info.attack_cooldown > 0.0
+        if self.attack_cooldown > 0.0
         {
             return;
         }
 
-        self.unstance();
+        self.unstance(combined_info);
 
-        self.info.attack_cooldown = 0.5;
+        self.attack_cooldown = 0.5;
 
-        self.poke_projectile(item);
+        self.poke_projectile(combined_info, item);
 
-        let entities = self.game_state.entities();
+        let info = some_or_return!(self.info.as_ref());
 
-        let holding_entity = self.holding_entity();
+        let entities = &combined_info.entities;
 
-        if let Some(mut lazy) = entities.lazy_transform_mut(holding_entity)
+        if let Some(mut lazy) = entities.lazy_transform_mut(info.holding)
         {
-            let distance = self.info.poke_distance;
-
-            let lifetime = self.info.attack_cooldown;
+            let lifetime = self.attack_cooldown;
             lazy.connection = Connection::Timed{
                 lifetime: lifetime.into(),
                 remaining: 0.99,
                 begin: 0.5
             };
 
-            let held_position = self.held_item_position().unwrap();
+            let held_position = self.held_item_position(combined_info).unwrap();
 
-            lazy.target().position.x = held_position.x + distance;
+            lazy.target().position.x = held_position.x + POKE_DISTANCE;
 
-            let parent_transform = entities.parent_transform(holding_entity);
+            let parent_transform = entities.parent_transform(info.holding);
             let new_target = lazy.target_global(parent_transform.as_ref());
 
-            entities.transform_mut(holding_entity).unwrap().position = new_target.position;
+            entities.transform_mut(info.holding).unwrap().position = new_target.position;
 
-            let mut watchers = entities.watchers_mut(holding_entity).unwrap();
+            let mut watchers = entities.watchers_mut(info.holding).unwrap();
 
             let extend_time = 0.2;
 
@@ -619,21 +626,25 @@ impl Character
                 )),
                 ..Default::default()
             });
-        }*/
+        }
     }
 
-    fn ranged_attack(&mut self, combined_info: CombinedInfo)
+    fn ranged_attack(
+        &mut self,
+        combined_info: CombinedInfo,
+        target: Vector3<f32>
+    )
     {
         let item = some_or_return!(self.held_item(combined_info));
 
-        /*let items_info = self.info.items_info.clone();
+        let items_info = combined_info.items_info;
         let ranged = some_or_return!(&items_info.get(item.id).ranged);
 
-        self.unstance();
+        self.unstance(combined_info);
 
-        let start = self.player_position();
-        let mut end = self.mouse_position();
-        end.z = start.z;
+        let info = some_or_return!(self.info.as_ref());
+
+        let start = &combined_info.entities.transform(info.this).unwrap().position;
         
         let info = RaycastInfo{
             pierce: None,
@@ -642,20 +653,20 @@ impl Character
             ignore_end: true
         };
 
-        let hits = self.game_state.raycast(info, &start, &end);
+        let hits = todo!(); // self.game_state.raycast(info, start, &target);
 
         let damage = ranged.damage();
 
         let height = DamageHeight::random();
 
-        for hit in &hits.hits
+        /*for hit in &hits.hits
         {
             #[allow(clippy::single_match)]
             match hit.id
             {
                 RaycastHitId::Entity(id) =>
                 {
-                    let transform = self.game_state.entities().transform(id)
+                    let transform = combined_info.entities.transform(id)
                         .unwrap();
 
                     let hit_position = hits.hit_position(hit);
@@ -668,7 +679,8 @@ impl Character
                     };
 
                     drop(transform);
-                    self.game_state.damage_entity(angle, id, Faction::Player, damage);
+                    // self.game_state.damage_entity(angle, id, Faction::Player, damage);
+                    todo!();
                 },
                 _ => ()
             }
@@ -719,7 +731,7 @@ impl Character
                         damage
                     },
                     predicate: DamagingPredicate::ParentAngleLess(f32::consts::PI),
-                    faction: Some(Faction::Player),
+                    faction: Some(self.faction),
                     ..Default::default()
                 }.into()),
                 ..Default::default()
@@ -727,30 +739,30 @@ impl Character
         ));
     }
 
-    fn poke_projectile(&mut self, item: Item)
+    fn poke_projectile(&mut self, combined_info: CombinedInfo, item: Item)
     {
-        /*let item_info = self.game_state.items_info.get(item.id);
+        let info = some_or_return!(self.info.as_ref());
+
+        let item_info = combined_info.items_info.get(item.id);
         let item_scale = item_info.scale3().y;
         let mut scale = Vector3::repeat(1.0);
 
-        let projectile_scale = self.info.poke_distance / item_scale;
+        let projectile_scale = POKE_DISTANCE / item_scale;
         scale.y += projectile_scale;
 
         let offset = projectile_scale / 2.0;
-
-        let holding_entity = self.holding_entity();
 
         let damage = DamagePartial{
             data: item_info.poke_damage(),
             height: DamageHeight::random()
         };
 
-        self.info.projectile_lifetime = 0.2;
-        self.info.projectile = Some(self.game_state.entities_mut().push(
+        self.projectile_lifetime = 0.2;
+        self.projectile = Some(combined_info.entities.push(
             true,
             EntityInfo{
                 follow_rotation: Some(FollowRotation::new(
-                    holding_entity,
+                    info.holding,
                     Rotation::Instant
                 )),
                 lazy_transform: Some(LazyTransformInfo{
@@ -761,7 +773,7 @@ impl Character
                     },
                     ..Default::default()
                 }.into()),
-                parent: Some(Parent::new(holding_entity, true)),
+                parent: Some(Parent::new(info.holding, true)),
                 collider: Some(ColliderInfo{
                     kind: ColliderType::Circle,
                     layer: ColliderLayer::Damage,
@@ -773,14 +785,14 @@ impl Character
                         angle: 0.0,
                         damage
                     },
-                    faction: Some(Faction::Player),
+                    faction: Some(self.faction),
                     ..Default::default()
                 }.into()),
                 ..Default::default()
             }
         ));
 
-        if let Some(mut lazy) = self.game_state.entities().lazy_transform_mut(holding_entity)
+        if let Some(mut lazy) = combined_info.entities.lazy_transform_mut(info.holding)
         {
             lazy.connection = Connection::Spring(
                 SpringConnection{
@@ -794,7 +806,7 @@ impl Character
                     strength: 6.0
                 }
             );
-        }*/
+        }
     }
 
     fn handle_actions(&mut self, combined_info: CombinedInfo)
@@ -808,10 +820,10 @@ impl Character
         {
             match action
             {
-                CharacterAction::Throw(aim) => self.throw_held(combined_info, aim),
+                CharacterAction::Throw(target) => self.throw_held(combined_info, target),
                 CharacterAction::Poke => self.poke_attack(combined_info),
                 CharacterAction::Bash => self.bash_attack(combined_info),
-                CharacterAction::Ranged => self.ranged_attack(combined_info)
+                CharacterAction::Ranged(target) => self.ranged_attack(combined_info, target)
             }
         });
     }
@@ -948,7 +960,6 @@ impl Character
 
         self.update_attacks(combined_info, dt);
 
-        let mut render = entities.render_mut(entity).unwrap();
         let mut target = entities.target(entity).unwrap();
 
         if !self.update_common(combined_info.characters_info, &mut target)
@@ -956,20 +967,42 @@ impl Character
             return false;
         }
 
-        let info = combined_info.characters_info.get(self.id);
+        let character_info = combined_info.characters_info.get(self.id);
+
+        let mut render = entities.render_mut(entity).unwrap();
+
+        let set_held_visibility = |is_visible|
+        {
+            let set_visible = |entity|
+            {
+                if let Some(mut parent) = entities.parent_mut(entity)
+                {
+                    parent.visible = is_visible;
+                }
+            };
+
+            if let Some(info) = self.info.as_ref()
+            {
+                set_visible(info.holding);
+                set_visible(info.holding_right);
+            }
+        };
+
         let texture = match self.sprite_state.value()
         {
             SpriteState::Normal =>
             {
                 render.z_level = ZLevel::Head;
+                set_held_visibility(true);
 
-                info.normal
+                character_info.normal
             },
             SpriteState::Lying =>
             {
                 render.z_level = ZLevel::Feet;
+                set_held_visibility(false);
 
-                info.lying
+                character_info.lying
             }
         };
 

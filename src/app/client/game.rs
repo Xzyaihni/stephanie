@@ -604,7 +604,10 @@ impl<'a> PlayerContainer<'a>
             },
             Control::Shoot =>
             {
-                self.character_action(CharacterAction::Ranged);
+                let mut target = self.mouse_position();
+                target.z = self.player_position().z;
+
+                self.character_action(CharacterAction::Ranged(target));
             },
             Control::Throw =>
             {
@@ -941,6 +944,14 @@ impl<'a> PlayerContainer<'a>
         self.game_state.entities()
             .transform(self.info.entity)
             .expect("player must have a position")
+            .position
+    }
+
+    fn mouse_position(&self) -> Vector3<f32>
+    {
+        self.game_state.entities()
+            .transform(self.info.mouse_entity)
+            .expect("mouse must have a position")
             .position
     }
 }
