@@ -136,17 +136,11 @@ impl ClientEntitiesContainer
 
     pub fn update_objects(
         &mut self,
-        characters_info: &CharactersInfo,
-        items_info: &ItemsInfo,
         create_info: &mut RenderCreateInfo,
         dt: f32
     )
     {
         self.entities.create_queued(create_info);
-
-        {
-            self.entities.update_sprites(create_info, characters_info, items_info);
-        }
 
         self.entities.update_watchers(dt);
     }
@@ -420,6 +414,7 @@ pub struct GameStateInfo<'a>
     pub host: bool
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InventoryWhich
 {
     Player,
@@ -850,9 +845,14 @@ impl GameState
 
         self.process_messages(&mut create_info);
 
-        self.entities.update_objects(
+        self.entities.entities.update_characters(
+            &mut create_info,
+            &self.common_textures,
             &self.characters_info,
-            &self.items_info,
+            &self.items_info
+        );
+
+        self.entities.update_objects(
             &mut create_info,
             self.dt
         );

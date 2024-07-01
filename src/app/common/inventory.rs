@@ -33,9 +33,15 @@ impl Inventory
         self.items.get(id.0)
     }
 
-    pub fn remove(&mut self, id: InventoryItem) -> Item
+    pub fn remove(&mut self, id: InventoryItem) -> Option<Item>
     {
-        self.items.remove(id.0)
+        if self.items.get(id.0).is_none()
+        {
+            None
+        } else
+        {
+            Some(self.items.remove(id.0))
+        }
     }
 
     pub fn items(&self) -> &[Item]

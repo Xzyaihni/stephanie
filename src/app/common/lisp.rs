@@ -518,7 +518,8 @@ pub enum Error
     ExpectedArg,
     ExpectedOp,
     ExpectedClose,
-    UnexpectedClose
+    UnexpectedClose,
+    UnexpectedEndOfFile
 }
 
 impl Display for Error
@@ -544,7 +545,8 @@ impl Display for Error
             Self::ExpectedArg => "expected an argument".to_owned(),
             Self::ExpectedOp => "expected an operator".to_owned(),
             Self::ExpectedClose => "expected a closing parenthesis".to_owned(),
-            Self::UnexpectedClose => "unexpected closing parenthesis".to_owned()
+            Self::UnexpectedClose => "unexpected closing parenthesis".to_owned(),
+            Self::UnexpectedEndOfFile => "unexpected end of file".to_owned()
         };
 
         write!(f, "{}", s)
@@ -1495,6 +1497,44 @@ mod tests
         let value = output.as_list(memory).unwrap();
 
         list_equals(memory, value, &[1, 2, 3, 4, 5]);
+    }
+
+    #[test]
+    fn quoting_tick_list()
+    {
+        let code = "
+            '(1 2 3 4 5)
+        ";
+
+        let mut lisp = Lisp::new(code).unwrap();
+
+        let OutputWrapper{
+            ref memory,
+            value: ref output
+        } = lisp.run().unwrap();
+
+        let value = output.as_list(memory).unwrap();
+
+        list_equals(memory, value, &[1, 2, 3, 4, 5]);
+    }
+
+    #[test]
+    fn quoting_tick()
+    {
+        let code = "
+            'heyyy
+        ";
+
+        let mut lisp = Lisp::new(code).unwrap();
+
+        let OutputWrapper{
+            ref memory,
+            value: ref output
+        } = lisp.run().unwrap();
+
+        let value = output.as_symbol(memory).unwrap();
+
+        assert_eq!(value, "heyyy".to_owned());
     }
 
     #[test]

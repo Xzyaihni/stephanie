@@ -51,6 +51,7 @@ pub enum Lexeme
 {
     OpenParen,
     CloseParen,
+    Quote,
     Value(String)
 }
 
@@ -103,6 +104,24 @@ impl<'a> Lexer<'a>
                     if current.is_empty()
                     {
                         continue;
+                    }
+
+                    return Some(LexemePos{
+                        position,
+                        lexeme: Lexeme::Value(current)
+                    });
+                }
+
+                if c == '\''
+                {
+                    if current.is_empty()
+                    {
+                        self.consume_char();
+
+                        return Some(LexemePos{
+                            position,
+                            lexeme: Lexeme::Quote
+                        });
                     }
 
                     return Some(LexemePos{

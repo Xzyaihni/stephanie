@@ -240,6 +240,22 @@ impl Parser
             {
                 Some(Ast::Value(x))
             },
+            Lexeme::Quote =>
+            {
+                let (_, rest) = self.parse_one()?;
+
+                let rest = rest.with_position(position).map(|x| x.ast)?;
+
+                let rest = Ast::List{
+                    car: Box::new(AstPos{position, ast: rest}),
+                    cdr: Box::new(AstPos{position, ast: Ast::EmptyList})
+                };
+
+                let car = Box::new(AstPos{position, ast: Ast::Value("quote".to_owned())});
+                let cdr = Box::new(AstPos{position, ast: rest});
+
+                Some(Ast::List{car, cdr})
+            },
             Lexeme::OpenParen =>
             {
                 Some(self.parse_list()?.ast)
@@ -250,7 +266,7 @@ impl Parser
             }
         };
 
-        Ok((lexeme.position, ast))
+        Ok((position, ast))
     }
 
     fn parse_list(&mut self) -> Result<AstPos, ErrorPos>

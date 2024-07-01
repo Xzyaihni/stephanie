@@ -37,6 +37,7 @@ use crate::{
         DamagePartial,
         DamageHeight,
         InventoryItem,
+        entity::ClientEntities,
         lisp::{self, *},
         world::{TILE_SIZE, Pos3}
     }
@@ -64,7 +65,7 @@ pub trait DrawableEntity
 pub struct Game
 {
     game_state: Rc<RefCell<GameState>>,
-    info: PlayerInfo
+    info: Rc<RefCell<PlayerInfo>>
 }
 
 impl Game
@@ -124,18 +125,50 @@ impl Game
             })
         };
 
-        Self{info, game_state}
+        Self{info: Rc::new(RefCell::new(info)), game_state}
     }
 
     fn player_container<T>(&mut self, f: impl FnOnce(PlayerContainer) -> T) -> T
     {
         let mut game_state = self.game_state.borrow_mut();
+        let mut info = self.info.borrow_mut();
 
-        f(PlayerContainer::new(&mut self.info, &mut game_state))
+        f(PlayerContainer::new(&mut info, &mut game_state))
     }
 
     pub fn on_player_connected(&mut self)
     {
+        {
+            let mut game_state = self.game_state.borrow_mut();
+            let inner_game_state = self.game_state.clone();
+            let info = self.info.clone();
+
+            game_state.entities_mut().on_inventory(Box::new(move |entity|
+            {
+                let info = info.borrow();
+
+                let which = if entity == info.entity
+                {
+                    Some(InventoryWhich::Player)
+                } else if Some(entity) == info.other_entity
+                {
+                    Some(InventoryWhich::Other)
+                } else
+                {
+                    None
+                };
+
+                eprintln!("{which:?}");
+
+                if let Some(which) = which
+                {
+                    let mut game_state = inner_game_state.borrow_mut();
+
+                    PlayerContainer::update_inventory_inner(&mut game_state, &info, which);
+                }
+            }));
+        }
+
         self.player_container(|mut x| x.on_player_connected());
     }
 
@@ -180,13 +213,18 @@ impl Game
 
     pub fn on_key(&mut self, logical: Key, key: KeyCode) -> bool
     {
-        if self.info.console_contents.is_some()
+        if self.info.borrow().console_contents.is_some()
         {
             match key
             {
                 KeyCode::Enter =>
                 {
-                    let contents = self.info.console_contents.take().unwrap();
+                    let contents = {
+                        let mut info = self.info.borrow_mut();
+
+                        info.console_contents.take().unwrap()
+                    };
+
                     self.console_command(contents);
 
                     self.player_container(|mut x| x.update_console());
@@ -195,8 +233,12 @@ impl Game
                 },
                 KeyCode::Backspace =>
                 {
-                    let contents = self.info.console_contents.as_mut().unwrap();
-                    contents.pop();
+                    {
+                        let mut info = self.info.borrow_mut();
+
+                        let contents = info.console_contents.as_mut().unwrap();
+                        contents.pop();
+                    }
 
                     self.player_container(|mut x| x.update_console());
 
@@ -205,11 +247,15 @@ impl Game
                 _ => ()
             }
 
-            let contents = self.info.console_contents.as_mut().unwrap();
-
-            if let Some(text) = logical.to_text()
             {
-                *contents += text;
+                let mut info = self.info.borrow_mut();
+
+                let contents = info.console_contents.as_mut().unwrap();
+
+                if let Some(text) = logical.to_text()
+                {
+                    *contents += text;
+                }
             }
 
             self.player_container(|mut x| x.update_console());
@@ -254,59 +300,96 @@ impl Game
         memory.cons(env, tag, tail)
     }
 
+    fn add_simple_setter<F>(&self, primitives: &mut Primitives, name: &str, f: F)
+    where
+        F: Fn(&mut ClientEntities, Entity, &mut LispMemory, ArgsWrapper) -> Result<(), lisp::Error> + 'static
+    {
+        let game_state = self.game_state.clone();
+
+        primitives.add(
+            name,
+            PrimitiveProcedureInfo::new_simple(2, move |_state, memory, _env, mut args|
+            {
+                let mut game_state = game_state.borrow_mut();
+                let entities = game_state.entities_mut();
+
+                let entity = Self::pop_entity(&mut args, memory)?;
+                f(entities, entity, memory, args)?;
+
+                memory.push_return(LispValue::new_empty_list());
+
+                Ok(())
+            }));
+    }
+
     fn console_command(&mut self, command: String)
     {
         let mut primitives = Primitives::new();
 
         {
             let game_state = self.game_state.clone();
-            let mouse_entity = self.info.mouse_entity;
+            let mouse_entity = self.info.borrow().mouse_entity;
 
             primitives.add(
-                "print-mouse-colliders",
-                PrimitiveProcedureInfo::new_simple(0, move |_state, memory, _env, _args|
+                "mouse-collided",
+                PrimitiveProcedureInfo::new_simple(0, move |_state, memory, env, _args|
                 {
                     let game_state = game_state.borrow();
                     let entities = game_state.entities();
 
-                    entities.collider(mouse_entity)
+                    let collided = entities.collider(mouse_entity)
                         .map(|x| x.collided().to_vec()).into_iter().flatten()
-                        .for_each(|collided|
-                        {
-                            eprintln!("mouse colliding with {collided:?}");
-                        });
+                        .next();
 
-                    memory.push_return(LispValue::new_empty_list());
+                    let entity = collided.map(|collided| Self::push_entity(env, memory, collided))
+                        .unwrap_or_else(|| LispValue::new_empty_list());
+
+                    memory.push_return(entity);
 
                     Ok(())
                 }));
         }
 
+        self.add_simple_setter(&mut primitives, "set-speed", |entities, entity, memory, mut args|
         {
-            let game_state = self.game_state.clone();
+            let speed = args.pop(memory).as_float()?;
 
-            primitives.add(
-                "set-speed",
-                PrimitiveProcedureInfo::new_simple(2, move |_state, memory, _env, mut args|
+            let mut anatomy = entities.anatomy_mut(entity).unwrap();
+
+            anatomy.set_speed(speed);
+
+            Ok(())
+        });
+
+        self.add_simple_setter(&mut primitives, "set-faction", |entities, entity, memory, mut args|
+        {
+            let faction = args.pop(memory).as_symbol(memory)?;
+            let faction: String = faction.to_lowercase().chars().enumerate().map(|(i, c)|
+            {
+                if i == 0
                 {
-                    let mut game_state = game_state.borrow_mut();
-                    let entities = game_state.entities_mut();
+                    c.to_ascii_uppercase()
+                } else
+                {
+                    c
+                }
+            }).collect();
 
-                    let entity = Self::pop_entity(&mut args, memory)?;
-                    let speed = args.pop(memory).as_float()?;
+            let faction = format!("\"{faction}\"");
+            let faction = serde_json::from_str(&faction).map_err(|_|
+            {
+                lisp::Error::Custom(format!("cant deserialize {faction} as Faction"))
+            })?;
 
-                    let mut anatomy = entities.anatomy_mut(entity).unwrap();
+            let mut character = entities.character_mut(entity).unwrap();
 
-                    anatomy.set_speed(speed);
+            character.faction = faction;
 
-                    memory.push_return(LispValue::new_empty_list());
-
-                    Ok(())
-                }));
-        }
+            Ok(())
+        });
 
         {
-            let player_entity = self.info.entity;
+            let player_entity = self.info.borrow().entity;
 
             primitives.add(
                 "player-entity",
@@ -469,6 +552,7 @@ impl<'a> PlayerContainer<'a>
 
         self.camera_sync_instant();
         self.update_inventory(InventoryWhich::Player);
+        self.update_inventory(InventoryWhich::Other);
         self.unstance();
     }
 
@@ -635,17 +719,16 @@ impl<'a> PlayerContainer<'a>
             {
                 if let Some(other_entity) = self.info.other_entity
                 {
+                    let entities = self.game_state.entities();
+                    let mut inventory = entities.inventory_mut(other_entity).unwrap();
+
+                    if let Some(taken) = inventory.remove(item)
                     {
-                        let entities = self.game_state.entities();
-                        let mut inventory = entities.inventory_mut(other_entity).unwrap();
-
-                        let taken = inventory.remove(item);
-
                         entities.inventory_mut(self.info.entity).unwrap().push(taken);
+                    } else
+                    {
+                        eprintln!("tried to take item that doesnt exist");
                     }
-
-                    self.update_inventory(InventoryWhich::Player);
-                    self.update_inventory(InventoryWhich::Other);
                 }
             }
         }
@@ -668,12 +751,18 @@ impl<'a> PlayerContainer<'a>
         self.update_inventory(InventoryWhich::Player);
     }
 
-    fn update_inventory(
-        &mut self,
+    fn update_inventory(&mut self, which: InventoryWhich)
+    {
+        Self::update_inventory_inner(&mut self.game_state, &self.info, which);
+    }
+
+    fn update_inventory_inner(
+        game_state: &mut GameState,
+        info: &PlayerInfo,
         which: InventoryWhich
     )
     {
-        let ui = &mut self.game_state.ui;
+        let ui = &mut game_state.ui;
         let inventory_ui = match which
         {
             InventoryWhich::Player => &mut ui.player_inventory,
@@ -684,8 +773,8 @@ impl<'a> PlayerContainer<'a>
 
         let is_open = match which
         {
-            InventoryWhich::Player => self.info.inventory_open,
-            InventoryWhich::Other => self.info.other_inventory_open
+            InventoryWhich::Player => info.inventory_open,
+            InventoryWhich::Other => info.other_inventory_open
         };
         
         if is_open
@@ -693,15 +782,15 @@ impl<'a> PlayerContainer<'a>
             {
                 let entity = match which
                 {
-                    InventoryWhich::Other => self.info.other_entity.unwrap(),
-                    InventoryWhich::Player => self.info.entity
+                    InventoryWhich::Other => info.other_entity.unwrap(),
+                    InventoryWhich::Player => info.entity
                 };
 
-                let mut entity_creator = self.game_state.entities.entity_creator();
+                let mut entity_creator = game_state.entities.entity_creator();
                 inventory_ui.full_update(&mut entity_creator, entity);
             }
 
-            let entities = self.game_state.entities_mut();
+            let entities = game_state.entities_mut();
             entities.set_collider(inventory, Some(ColliderInfo{
                 kind: ColliderType::Aabb,
                 layer: ColliderLayer::Ui,
@@ -715,7 +804,7 @@ impl<'a> PlayerContainer<'a>
             lazy.target().scale = Vector3::repeat(0.2);
         } else
         {
-            let entities = self.game_state.entities_mut();
+            let entities = game_state.entities_mut();
             entities.set_collider(inventory, None);
 
             let current_scale;

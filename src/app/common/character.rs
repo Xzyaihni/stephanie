@@ -8,27 +8,38 @@ use parking_lot::Mutex;
 
 use serde::{Serialize, Deserialize};
 
-use nalgebra::{Unit, Vector3};
+use nalgebra::Vector3;
 
 use yanyaengine::{Assets, Transform, TextureId};
 
-use crate::common::{
-    some_or_return,
-    define_layers,
-    render_info::*,
-    lazy_transform::*,
-    AnyEntities,
-    Entity,
-    EntityInfo,
-    CharacterId,
-    CharactersInfo,
-    ItemsInfo,
-    Item,
-    InventoryItem,
-    ItemInfo,
-    Parent,
-    Anatomy,
-    entity::ClientEntities
+use crate::{
+    client::CommonTextures,
+    common::{
+        some_or_return,
+        define_layers,
+        angle_between,
+        ENTITY_SCALE,
+        render_info::*,
+        lazy_transform::*,
+        collider::*,
+        watcher::*,
+        damaging::*,
+        particle_creator::*,
+        Physical,
+        PhysicalProperties,
+        AnyEntities,
+        Entity,
+        EntityInfo,
+        CharacterId,
+        CharactersInfo,
+        ItemsInfo,
+        Item,
+        InventoryItem,
+        ItemInfo,
+        Parent,
+        Anatomy,
+        entity::ClientEntities
+    }
 };
 
 
@@ -131,6 +142,7 @@ pub const HELD_DISTANCE: f32 = 0.1;
 pub struct CombinedInfo<'a>
 {
     pub entities: &'a ClientEntities,
+    pub common_textures: &'a CommonTextures,
     pub assets: &'a Arc<Mutex<Assets>>,
     pub items_info: &'a ItemsInfo,
     pub characters_info: &'a CharactersInfo
@@ -149,6 +161,7 @@ pub struct Character
 {
     pub id: CharacterId,
     pub faction: Faction,
+    pub strength: f32,
     holding: Option<InventoryItem>,
     info: Option<AfterInfo>,
     held_update: bool,
@@ -160,12 +173,14 @@ impl Character
 {
     pub fn new(
         id: CharacterId,
-        faction: Faction
+        faction: Faction,
+        strength: f32
     ) -> Self
     {
         Self{
             id,
             faction,
+            strength,
             info: None,
             holding: None,
             held_update: true,
@@ -233,6 +248,11 @@ impl Character
     {
         self.holding = holding;
         self.held_update = true;
+    }
+
+    pub fn newtons(&self) -> f32
+    {
+        self.strength * 30.0
     }
 
     fn update_held(
@@ -334,7 +354,7 @@ impl Character
         {
             let info = self.info.as_ref().unwrap();
 
-            /*let entity_info = {
+            let entity_info = {
                 let holding_transform = entities.transform(info.holding).unwrap();
 
                 let direction = {
@@ -346,8 +366,6 @@ impl Character
                     Vector3::new(rotation.cos(), -rotation.sin(), 0.0)
                 };
 
-                let dust_texture = self.game_state.common_textures.dust;
-
                 let mut physical: Physical = PhysicalProperties{
                     mass: item_info.mass,
                     friction: 0.99,
@@ -356,7 +374,7 @@ impl Character
 
                 let mass = physical.mass;
 
-                let strength = self.player().newtons() * 0.4;
+                let strength = self.newtons() * 0.4;
                 let throw_limit = 0.1 * strength;
                 let throw_amount = (strength / mass).min(throw_limit);
                 physical.velocity = direction * throw_amount;
@@ -378,6 +396,13 @@ impl Character
                         },
                         ..Default::default()
                     }.into()),
+                    render: Some(RenderInfo{
+                        object: Some(RenderObjectKind::TextureId{
+                            id: item_info.texture
+                        }.into()),
+                        z_level: ZLevel::Elbow,
+                        ..Default::default()
+                    }),
                     collider: Some(ColliderInfo{
                         kind: ColliderType::Circle,
                         ..Default::default()
@@ -411,9 +436,9 @@ impl Character
                                         floating: true
                                     }.into()),
                                     render: Some(RenderInfo{
-                                        object: Some(RenderObject::TextureId{
-                                            id: dust_texture
-                                        }),
+                                        object: Some(RenderObjectKind::TextureId{
+                                            id: combined_info.common_textures.dust
+                                        }.into()),
                                         z_level: ZLevel::BelowFeet,
                                         ..Default::default()
                                     }),
@@ -427,18 +452,9 @@ impl Character
                 }
             };
 
-            let render_info = RenderInfo{
-                object: Some(RenderObject::TextureId{
-                    id: item_info.texture
-                }),
-                z_level: ZLevel::Elbow,
-                ..Default::default()
-            };
+            entities.push(true, entity_info);
 
-            self.game_state.entities.entity_creator().push(entity_info, render_info);
-
-            self.game_state.entities().inventory_mut(player).unwrap().remove(held);
-            self.game_state.update_inventory();*/
+            entities.inventory_mut(info.this).unwrap().remove(held);
         }
 
         self.held_update = true;

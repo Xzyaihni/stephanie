@@ -15,6 +15,7 @@ use crate::{
     server,
     client::{
         RenderCreateInfo,
+        CommonTextures,
         UiElement,
         UiEvent
     },
@@ -618,6 +619,7 @@ macro_rules! define_entities_both
     ($(($name:ident,
         $mut_func:ident,
         $set_func:ident,
+        $on_name:ident,
         $message_name:ident,
         $component_type:ident,
         $default_type:ident
@@ -680,15 +682,24 @@ macro_rules! define_entities_both
             }
         }
 
+        pub type OnComponentChange = Box<dyn FnMut(Entity)>;
+
         pub type ComponentsIndices = [Option<usize>; COMPONENTS_COUNT];
 
-        #[derive(Debug)]
+        #[derive(Default)]
+        struct ChangedEntities
+        {
+            $($name: Vec<Entity>,)+
+        }
+
         pub struct Entities<$($component_type=$default_type,)+>
         {
             pub local_components: RefCell<ObjectsStore<ComponentsIndices>>,
             pub components: RefCell<ObjectsStore<ComponentsIndices>>,
             create_queue: RefCell<Vec<(Entity, EntityInfo)>>,
             create_render_queue: RefCell<Vec<(Entity, RenderComponent)>>,
+            changed_entities: RefCell<ChangedEntities>,
+            $($on_name: Vec<OnComponentChange>,)+
             $(pub $name: ObjectsStore<ComponentWrapper<$component_type>>,)+
         }
 
@@ -704,6 +715,8 @@ macro_rules! define_entities_both
                     components: RefCell::new(ObjectsStore::new()),
                     create_queue: RefCell::new(Vec::new()),
                     create_render_queue: RefCell::new(Vec::new()),
+                    changed_entities: RefCell::new(Default::default()),
+                    $($on_name: Vec::new(),)+
                     $($name: ObjectsStore::new(),)+
                 }
             }
@@ -808,11 +821,15 @@ macro_rules! define_entities_both
 
                 pub fn $mut_func(&self, entity: Entity) -> Option<RefMut<$component_type>>
                 {
+                    self.changed_entities.borrow_mut().$name.push(entity);
+
                     get_entity!(self, entity, get_mut, $name)
                 }
 
                 pub fn $set_func(&mut self, entity: Entity, component: Option<$component_type>)
                 {
+                    self.changed_entities.get_mut().$name.push(entity);
+
                     let parent_order_sensitive = Self::order_sensitive(Component::$name);
 
                     if !self.exists(entity)
@@ -886,7 +903,27 @@ macro_rules! define_entities_both
                         );
                     }
                 }
+
+                pub fn $on_name(&mut self, f: OnComponentChange)
+                {
+                    self.$on_name.push(f);
+                }
             )+
+
+            pub fn handle_on_change(&mut self)
+            {
+                let changed_entities = self.changed_entities.get_mut();
+
+                $(
+                    mem::take(&mut changed_entities.$name).into_iter().for_each(|entity|
+                    {
+                        self.$on_name.iter_mut().for_each(|on_change|
+                        {
+                            on_change(entity);
+                        });
+                    });
+                )+
+            }
 
             pub fn set_deferred_render(&self, entity: Entity, render: RenderInfo)
             {
@@ -1666,9 +1703,10 @@ macro_rules! define_entities_both
                 captured
             }
 
-            pub fn update_sprites(
+            pub fn update_characters(
                 &self,
                 create_info: &mut RenderCreateInfo,
+                common_textures: &CommonTextures,
                 characters_info: &CharactersInfo,
                 items_info: &ItemsInfo
             )
@@ -1682,6 +1720,7 @@ macro_rules! define_entities_both
                     let changed = {
                         let combined_info = CombinedInfo{
                             entities: self,
+                            common_textures,
                             assets: &assets,
                             items_info,
                             characters_info
@@ -1841,6 +1880,7 @@ macro_rules! define_entities
         $(($side_name:ident,
             $side_mut_func:ident,
             $side_set_func:ident,
+            $side_on_name:ident,
             $side_message_name:ident,
             $side_component_type:ident,
             $side_default_type:ident,
@@ -1849,6 +1889,7 @@ macro_rules! define_entities
         $(($name:ident,
             $mut_func:ident,
             $set_func:ident,
+            $on_name:ident,
             $message_name:ident,
             $component_type:ident,
             $default_type:ident
@@ -1856,8 +1897,8 @@ macro_rules! define_entities
     ) =>
     {
         define_entities_both!{
-            $(($side_name, $side_mut_func, $side_set_func, $side_message_name, $side_component_type, $side_default_type),)+
-            $(($name, $mut_func, $set_func, $message_name, $component_type, $default_type),)+
+            $(($side_name, $side_mut_func, $side_set_func, $side_on_name, $side_message_name, $side_component_type, $side_default_type),)+
+            $(($name, $mut_func, $set_func, $on_name, $message_name, $component_type, $default_type),)+
         }
 
         impl AnyEntities for ClientEntities
@@ -2119,24 +2160,27 @@ macro_rules! define_entities
     }
 }
 
+// macros still cant be used in ident positions :)
+// this is not pain :)
+// im okay :)
 define_entities!{
     (side_specific
-        (render, render_mut, set_render, SetRender, RenderType, RenderInfo, ClientRenderInfo),
-        (occluding_plane, occluding_plane_mut, set_occluding_plane, SetNone, OccludingPlaneType, OccludingPlaneServer, OccludingPlane),
-        (ui_element, ui_element_mut, set_ui_element, SetNone, UiElementType, UiElementServer, UiElement)),
-    (parent, parent_mut, set_parent, SetParent, ParentType, Parent),
-    (lazy_transform, lazy_transform_mut, set_lazy_transform, SetLazyTransform, LazyTransformType, LazyTransform),
-    (follow_rotation, follow_rotation_mut, set_follow_rotation, SetFollowRotation, FollowRotationType, FollowRotation),
-    (watchers, watchers_mut, set_watchers, SetWatchers, WatchersType, Watchers),
-    (damaging, damaging_mut, set_damaging, SetDamaging, DamagingType, Damaging),
-    (inventory, inventory_mut, set_inventory, SetInventory, InventoryType, Inventory),
-    (named, named_mut, set_named, SetNamed, NamedType, String),
-    (transform, transform_mut, set_transform, SetTransform, TransformType, Transform),
-    (character, character_mut, set_character, SetCharacter, CharacterType, Character),
-    (enemy, enemy_mut, set_enemy, SetEnemy, EnemyType, Enemy),
-    (player, player_mut, set_player, SetPlayer, PlayerType, Player),
-    (collider, collider_mut, set_collider, SetCollider, ColliderType, Collider),
-    (physical, physical_mut, set_physical, SetPhysical, PhysicalType, Physical),
-    (anatomy, anatomy_mut, set_anatomy, SetAnatomy, AnatomyType, Anatomy),
-    (saveable, saveable_mut, set_saveable, SetNone, SaveableType, Saveable)
+        (render, render_mut, set_render, on_render, SetRender, RenderType, RenderInfo, ClientRenderInfo),
+        (occluding_plane, occluding_plane_mut, on_plane_mut, set_occluding_plane, SetNone, OccludingPlaneType, OccludingPlaneServer, OccludingPlane),
+        (ui_element, ui_element_mut, set_ui_element, on_ui_element, SetNone, UiElementType, UiElementServer, UiElement)),
+    (parent, parent_mut, set_parent, on_parent, SetParent, ParentType, Parent),
+    (lazy_transform, lazy_transform_mut, set_lazy_transform, on_lazy_transform, SetLazyTransform, LazyTransformType, LazyTransform),
+    (follow_rotation, follow_rotation_mut, set_follow_rotation, on_follow_rotation, SetFollowRotation, FollowRotationType, FollowRotation),
+    (watchers, watchers_mut, set_watchers, on_watchers, SetWatchers, WatchersType, Watchers),
+    (damaging, damaging_mut, set_damaging, on_damaging, SetDamaging, DamagingType, Damaging),
+    (inventory, inventory_mut, set_inventory, on_inventory, SetInventory, InventoryType, Inventory),
+    (named, named_mut, set_named, on_named, SetNamed, NamedType, String),
+    (transform, transform_mut, set_transform, on_transform, SetTransform, TransformType, Transform),
+    (character, character_mut, set_character, on_character, SetCharacter, CharacterType, Character),
+    (enemy, enemy_mut, set_enemy, on_enemy, SetEnemy, EnemyType, Enemy),
+    (player, player_mut, set_player, on_player, SetPlayer, PlayerType, Player),
+    (collider, collider_mut, set_collider, on_collider, SetCollider, ColliderType, Collider),
+    (physical, physical_mut, set_physical, on_physical, SetPhysical, PhysicalType, Physical),
+    (anatomy, anatomy_mut, set_anatomy, on_anatomy, SetAnatomy, AnatomyType, Anatomy),
+    (saveable, saveable_mut, set_saveable, on_saveable, SetNone, SaveableType, Saveable)
 }

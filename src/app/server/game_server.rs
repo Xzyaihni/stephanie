@@ -304,8 +304,7 @@ impl GameServer
 
         let info = EntityInfo{
             player: Some(Player{
-                name: format!("stephanie #{player_index}"),
-                strength: 1.0
+                name: format!("stephanie #{player_index}")
             }),
             transform: Some(transform.clone()),
             render: Some(RenderInfo{
@@ -322,7 +321,7 @@ impl GameServer
             }.into()),
             inventory: Some(Inventory::new()),
             physical: Some(physical.into()),
-            character: Some(Character::new(self.player_character, Faction::Player)),
+            character: Some(Character::new(self.player_character, Faction::Player, 0.5)),
             anatomy: Some(anatomy),
             ..Default::default()
         };
