@@ -13,11 +13,7 @@ use nalgebra::Vector3;
 use yanyaengine::{Assets, Transform, TextureId};
 
 use crate::{
-    client::{
-        CommonTextures,
-        RaycastInfo,
-        RaycastHitId
-    },
+    client::CommonTextures,
     common::{
         some_or_return,
         define_layers,
@@ -30,6 +26,7 @@ use crate::{
         damage::*,
         damaging::*,
         particle_creator::*,
+        raycast::*,
         Side1d,
         Physical,
         PhysicalProperties,
@@ -653,13 +650,13 @@ impl Character
             ignore_end: true
         };
 
-        let hits = todo!(); // self.game_state.raycast(info, start, &target);
+        let hits = combined_info.entities.raycast(info, start, &target);
 
         let damage = ranged.damage();
 
         let height = DamageHeight::random();
 
-        /*for hit in &hits.hits
+        for hit in &hits.hits
         {
             #[allow(clippy::single_match)]
             match hit.id
@@ -684,7 +681,7 @@ impl Character
                 },
                 _ => ()
             }
-        }*/
+        }
     }
 
     fn bash_projectile(&mut self, combined_info: CombinedInfo, item: Item)

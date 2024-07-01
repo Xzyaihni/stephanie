@@ -48,9 +48,7 @@ pub use game_state::{
     Control,
     ControlState,
     KeyMapping,
-    CommonTextures,
-    RaycastHitId,
-    RaycastInfo
+    CommonTextures
 };
 
 pub use connections_handler::ConnectionsHandler;

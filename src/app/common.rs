@@ -72,6 +72,8 @@ pub mod sides;
 pub mod lisp;
 pub mod objects_store;
 
+pub mod raycast;
+
 pub mod render_info;
 pub mod occluding_plane;
 
