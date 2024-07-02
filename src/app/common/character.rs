@@ -147,6 +147,7 @@ pub const POKE_DISTANCE: f32 = 0.75;
 
 // hands r actually 0.1 meters in size but they look too small that way
 pub const HAND_SCALE: f32 = 0.3;
+const HANDS_UNSTANCE: f32 = 0.5;
 
 #[derive(Clone, Copy)]
 pub struct PartialCombinedInfo<'a>
@@ -325,6 +326,11 @@ impl Character
     pub fn newtons(&self) -> f32
     {
         self.strength * 30.0
+    }
+
+    fn attack_cooldown(&self) -> f32
+    {
+        0.5
     }
 
     fn update_held(
@@ -546,7 +552,7 @@ impl Character
             return;
         }
 
-        self.attack_cooldown = 0.5;
+        self.attack_cooldown = self.attack_cooldown();
         self.stance_time = self.attack_cooldown * 2.0;
 
         self.bash_side = self.bash_side.opposite();
@@ -555,60 +561,78 @@ impl Character
 
         let info = some_or_return!(self.info.as_ref());
 
-        let start_rotation = self.default_held_rotation(combined_info);
-        if let Some(mut lazy) = combined_info.entities.lazy_transform_mut(info.holding)
+        let start_rotation = some_or_return!(self.default_held_rotation(combined_info));
+
+        let holding = if self.holding.is_some()
         {
-            let edge = 0.4;
-
-            let new_rotation = match self.bash_side
+            info.holding
+        } else
+        {
+            match self.bash_side
             {
-                Side1d::Left =>
-                {
-                    f32::consts::FRAC_PI_2 - edge
-                },
-                Side1d::Right =>
-                {
-                    -f32::consts::FRAC_PI_2 + edge
-                }
-            };
-
-            match &mut lazy.rotation
-            {
-                Rotation::EaseOut(x) => x.set_decay(30.0),
-                _ => ()
+                Side1d::Left => info.holding_right,
+                Side1d::Right => info.holding
             }
+        };
 
-            lazy.target().rotation = start_rotation - new_rotation;
+        let mut lazy = some_or_return!(combined_info.entities.lazy_transform_mut(holding));
 
-            let mut watchers = combined_info.entities.watchers_mut(info.holding).unwrap();
+        let edge = 0.4;
 
-            watchers.push(Watcher{
-                kind: WatcherType::Lifetime(0.2.into()),
-                action: WatcherAction::SetLazyRotation(Self::default_lazy_rotation()),
-                ..Default::default()
-            });
+        let new_rotation = match self.bash_side
+        {
+            Side1d::Left =>
+            {
+                f32::consts::FRAC_PI_2 - edge
+            },
+            Side1d::Right =>
+            {
+                -f32::consts::FRAC_PI_2 + edge
+            }
+        };
+
+        match &mut lazy.rotation
+        {
+            Rotation::EaseOut(x) => x.set_decay(30.0),
+            _ => ()
         }
+
+        lazy.target().rotation = start_rotation - new_rotation;
+
+        let mut watchers = combined_info.entities.watchers_mut(holding).unwrap();
+
+        watchers.push(Watcher{
+            kind: WatcherType::Lifetime(0.2.into()),
+            action: WatcherAction::SetLazyRotation(Self::default_lazy_rotation()),
+            ..Default::default()
+        });
     }
 
-    fn default_held_rotation(&self, combined_info: CombinedInfo) -> f32
+    fn default_held_rotation(&self, combined_info: CombinedInfo) -> Option<f32>
     {
         let origin_rotation = combined_info.entities
-            .lazy_transform(self.info.as_ref().unwrap().holding)
-            .unwrap()
+            .lazy_transform(self.info.as_ref().unwrap().holding)?
             .origin_rotation();
 
-        -origin_rotation
+        Some(-origin_rotation)
     }
 
     fn unstance(&mut self, combined_info: CombinedInfo)
     {
         let info = some_or_return!(self.info.as_ref());
 
-        let start_rotation = self.default_held_rotation(combined_info);
-        if let Some(mut lazy) = combined_info.entities.lazy_transform_mut(info.holding)
+        let start_rotation = some_or_return!(self.default_held_rotation(combined_info));
+
+        let set_rotation = |entity|
         {
-            lazy.target().rotation = start_rotation;
-        }
+            if let Some(mut lazy) = combined_info.entities.lazy_transform_mut(entity)
+            {
+                lazy.target().rotation = start_rotation;
+            }
+        };
+
+        set_rotation(info.holding);
+        set_rotation(info.holding_right);
     }
 
     fn poke_attack(&mut self, combined_info: CombinedInfo)
@@ -622,7 +646,7 @@ impl Character
 
         self.unstance(combined_info);
 
-        self.attack_cooldown = 0.5;
+        self.attack_cooldown = self.attack_cooldown();
 
         self.poke_projectile(combined_info, item);
 
@@ -939,17 +963,28 @@ impl Character
         dt: f32
     )
     {
-        let decrease_timer = |value|
-        {
-            Self::decrease_timer(value, dt)
-        };
-
         if Self::decrease_timer(&mut self.stance_time, dt)
         {
             self.unstance(combined_info);
         }
 
-        decrease_timer(&mut self.attack_cooldown);
+        let unstance_hands = |this: &mut Self|
+        {
+            if this.holding.is_none()
+            {
+                this.unstance(combined_info);
+            }
+        };
+
+        if Self::decrease_timer(&mut self.attack_cooldown, dt)
+        {
+            unstance_hands(self);
+        }
+
+        if self.attack_cooldown < (self.attack_cooldown() * HANDS_UNSTANCE)
+        {
+            unstance_hands(self);
+        }
     }
 
     pub fn update_common(
