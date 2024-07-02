@@ -281,10 +281,13 @@ impl VisualChunk
 
                 let tile_position = tile_position * TILE_SIZE;
 
+                // a little padding to hide seams
+                let padding = TILE_SIZE * 0.01;
+
                 OccluderInfo{
                     position: chunk_position + tile_position,
                     horizontal: info.horizontal,
-                    length: info.length as f32 * TILE_SIZE
+                    length: info.length as f32 * TILE_SIZE + padding
                 }
             }).collect::<Box<[_]>>()
         }).collect::<Vec<_>>().try_into().unwrap_or_else(|_| unreachable!())
