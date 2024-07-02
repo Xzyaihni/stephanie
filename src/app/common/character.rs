@@ -1,6 +1,7 @@
 use std::{
     f32,
     mem,
+    borrow::Cow,
     sync::Arc
 };
 
@@ -19,6 +20,7 @@ use crate::{
     },
     common::{
         some_or_return,
+        some_or_value,
         define_layers,
         angle_between,
         ENTITY_SCALE,
@@ -196,6 +198,12 @@ pub struct AfterInfo
     holding_right: Entity
 }
 
+#[derive(Default, Debug, Clone)]
+struct CachedInfo
+{
+    pub bash_distance: Option<f32>
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Character
 {
@@ -203,6 +211,8 @@ pub struct Character
     pub faction: Faction,
     pub strength: f32,
     holding: Option<InventoryItem>,
+    #[serde(skip, default)]
+    cached: CachedInfo,
     info: Option<AfterInfo>,
     held_update: bool,
     stance_time: f32,
@@ -226,6 +236,7 @@ impl Character
             strength,
             info: None,
             holding: None,
+            cached: CachedInfo::default(),
             held_update: true,
             stance_time: 0.0,
             attack_cooldown: 0.0,
@@ -333,6 +344,35 @@ impl Character
         0.5
     }
 
+    pub fn bash_reachable(
+        &self,
+        this: &Transform,
+        other: &Vector3<f32>
+    ) -> bool
+    {
+        let bash_distance = some_or_value!(self.cached.bash_distance, false);
+        let bash_distance = bash_distance * this.scale.x;
+
+        let distance = this.position.metric_distance(other);
+
+        distance <= bash_distance
+    }
+
+    fn bash_distance(&self, combined_info: CombinedInfo) -> f32
+    {
+        let item_info = self.held_info(combined_info);
+
+        let item_scale = item_info.scale3().y;
+        let over_scale = HELD_DISTANCE + item_scale;
+
+        1.0 + over_scale * 2.0
+    }
+
+    fn update_cached(&mut self, combined_info: CombinedInfo)
+    {
+        self.cached.bash_distance = Some(self.bash_distance(combined_info));
+    }
+
     fn update_held(
         &mut self,
         combined_info: CombinedInfo
@@ -354,6 +394,8 @@ impl Character
         let mut parent_right = some_or_return!(entities.parent_mut(holding_right));
 
         self.held_update = false;
+
+        self.update_cached(combined_info);
 
         parent.visible = true;
         drop(parent);
@@ -545,8 +587,6 @@ impl Character
 
     fn bash_attack(&mut self, combined_info: CombinedInfo)
     {
-        let item = self.held_item(combined_info);
-
         if self.attack_cooldown > 0.0
         {
             return;
@@ -557,7 +597,7 @@ impl Character
 
         self.bash_side = self.bash_side.opposite();
 
-        self.bash_projectile(combined_info, item);
+        self.bash_projectile(combined_info);
 
         let info = some_or_return!(self.info.as_ref());
 
@@ -752,22 +792,13 @@ impl Character
         }
     }
 
-    fn bash_projectile(&mut self, combined_info: CombinedInfo, item: Option<Item>)
+    fn bash_projectile(&mut self, combined_info: CombinedInfo)
     {
         let info = some_or_return!(self.info.as_ref());
 
-        let item_info = item.map(|item| combined_info.items_info.get(item.id));
+        let scale = self.bash_distance(combined_info);
 
-        let hand = ItemInfo::hand();
-        let item_info = item_info.unwrap_or(&hand);
-
-        let scale = {
-            let item_scale = item_info.scale3().y;
-            let over_scale = HELD_DISTANCE + item_scale;
-
-            1.0 + over_scale * 2.0
-        };
-
+        let item_info = self.held_info(combined_info);
 
         let damage = DamagePartial{
             data: item_info.bash_damage(),
@@ -909,6 +940,13 @@ impl Character
             let inventory = combined_info.entities.inventory(info.this).unwrap();
             inventory.get(id).map(|x| combined_info.items_info.get(x.id))
         })
+    }
+
+    fn held_info<'a>(&'a self, combined_info: CombinedInfo<'a>) -> Cow<'a, ItemInfo>
+    {
+        self.holding.and_then(|holding| self.item_info(combined_info, holding))
+            .map(|x| Cow::Borrowed(x))
+            .unwrap_or_else(move || Cow::Owned(ItemInfo::hand()))
     }
 
     fn held_item(&self, combined_info: CombinedInfo) -> Option<Item>

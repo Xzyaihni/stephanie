@@ -7,6 +7,7 @@ use yanyaengine::Transform;
 use crate::common::{
     some_or_return,
     some_or_value,
+    character::*,
     SeededRandom,
     AnyEntities,
     Entity,
@@ -167,8 +168,10 @@ impl Enemy
 
                 if let Some(other_transform) = entities.transform(other_entity)
                 {
-                    let aggressive = entities.character(entity).unwrap()
-                        .aggressive(&entities.character(other_entity).unwrap());
+                    let mut character = entities.character_mut(entity).unwrap();
+                    let aggressive = character.aggressive(
+                        &entities.character(other_entity).unwrap()
+                    );
 
                     let sees = anatomy.sees(&transform.position, &other_transform.position);
 
@@ -182,6 +185,11 @@ impl Enemy
                             direction,
                             move_speed
                         );
+
+                        if character.bash_reachable(&transform, &other_transform.position)
+                        {
+                            character.push_action(CharacterAction::Bash);
+                        }
                     } else
                     {
                         self.reset_state = true;

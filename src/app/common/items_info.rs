@@ -20,7 +20,7 @@ use crate::common::{
 
 define_info_id!{ItemId}
 
-#[derive(Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub enum Ranged
 {
     Pistol{damage: f32}
@@ -74,6 +74,7 @@ pub struct ItemInfoRaw
 
 pub type ItemsInfoRaw = Vec<ItemInfoRaw>;
 
+#[derive(Debug, Clone)]
 pub struct ItemInfo
 {
     pub name: String,
