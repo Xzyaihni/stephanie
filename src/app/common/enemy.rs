@@ -61,6 +61,14 @@ pub enum BehaviorState
     Attack(Entity)
 }
 
+impl Default for BehaviorState
+{
+    fn default() -> Self
+    {
+        Self::Wait
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Enemy
 {

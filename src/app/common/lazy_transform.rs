@@ -9,7 +9,7 @@ use yanyaengine::Transform;
 use crate::common::{
     short_rotation,
     ease_out,
-    lerp_dt,
+    lerp,
     Entity,
     Physical,
     watcher::Lifetime
@@ -115,11 +115,26 @@ impl StretchDeformation
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TimedConnection
+{
+    lifetime: Lifetime,
+    start: Option<Vector3<f32>>
+}
+
+impl From<Lifetime> for TimedConnection
+{
+    fn from(lifetime: Lifetime) -> Self
+    {
+        Self{lifetime, start: None}
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Connection
 {
     Rigid,
     Limit{limit: f32},
-    Timed{lifetime: Lifetime, remaining: f32, begin: f32},
+    Timed(TimedConnection),
     Constant{speed: f32},
     EaseOut{decay: f32, limit: Option<f32>},
     Spring(SpringConnection)
@@ -140,24 +155,18 @@ impl Connection
             {
                 current.position = target;
             },
-            Connection::Timed{lifetime, remaining: default_amount, begin} =>
+            Connection::Timed(TimedConnection{lifetime, ref mut start}) =>
             {
+                if start.is_none()
+                {
+                    *start = Some(current.position);
+                }
+
                 let remaining = 1.0 - lifetime.fraction();
 
-                let amount = if remaining >= *begin
+                current.position = start.unwrap().zip_map(&target, |a, b|
                 {
-                    let total_left = 1.0 - *begin;
-                    let remaining = *default_amount + (remaining - *begin) / total_left;
-
-                    remaining.clamp(0.0, 1.0)
-                } else
-                {
-                    *default_amount
-                };
-
-                current.position = current.position.zip_map(&target, |a, b|
-                {
-                    lerp_dt(a, b, amount, dt)
+                    lerp(a, b, remaining)
                 });
 
                 lifetime.current -= dt;
