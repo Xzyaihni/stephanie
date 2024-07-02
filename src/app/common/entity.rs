@@ -93,6 +93,22 @@ macro_rules! get_entity
     }
 }
 
+macro_rules! remove_component
+{
+    ($this:expr, $entity:expr, $component:ident) =>
+    {
+        let id = components!($this, $entity).borrow_mut()
+            [$entity.id]
+            [Component::$component as usize]
+            .take();
+
+        if let Some(id) = id
+        {
+            $this.$component.remove(id);
+        }
+    }
+}
+
 macro_rules! iterate_components_with
 {
     ($this:expr, $component:ident, $iter_func:ident, $handler:expr) => 
@@ -290,7 +306,7 @@ impl<T> ComponentWrapper<T>
 
 macro_rules! impl_common_systems
 {
-    ($this_entity_info:ident) =>
+    ($this_entity_info:ident, $(($name:ident, $set_func:ident)),+,) =>
     {
         fn push(
             &mut self,
@@ -406,6 +422,30 @@ macro_rules! impl_common_systems
             mut f: impl FnMut(&mut Self, Entity, EntityInfo) -> $this_entity_info
         )
         {
+            {
+                let mut lazy_setter = self.lazy_setter.borrow_mut();
+                if lazy_setter.changed
+                {
+                    lazy_setter.changed = false;
+
+                    drop(lazy_setter);
+
+                    $(
+                        let queue = mem::take(&mut self.lazy_setter.borrow_mut().$name);
+                        queue.into_iter().for_each(|(entity, component)|
+                        {
+                            if let Some(component) = component
+                            {
+                                self.$set_func(entity, Some(component));
+                            } else
+                            {
+                                remove_component!(self, entity, $name);
+                            }
+                        });
+                    )+
+                }
+            }
+
             let queue = mem::take(self.create_queue.get_mut());
             queue.into_iter().for_each(|(entity, mut info)|
             {
@@ -694,10 +734,40 @@ macro_rules! define_entities_both
             $($name: Vec<Entity>,)+
         }
 
+        #[derive(Debug)]
+        pub struct SetterQueue<$($component_type,)+>
+        {
+            changed: bool,
+            $($name: Vec<(Entity, Option<$component_type>)>,)+
+        }
+
+        impl<$($component_type,)+> SetterQueue<$($component_type,)+>
+        {
+            $(
+                pub fn $set_func(&mut self, entity: Entity, component: Option<$component_type>)
+                {
+                    self.changed = true;
+                    self.$name.push((entity, component));
+                }
+            )+
+        }
+
+        impl<$($component_type,)+> Default for SetterQueue<$($component_type,)+>
+        {
+            fn default() -> Self
+            {
+                Self{
+                    changed: false,
+                    $($name: Vec::new(),)+
+                }
+            }
+        }
+
         pub struct Entities<$($component_type=$default_type,)+>
         {
             pub local_components: RefCell<ObjectsStore<ComponentsIndices>>,
             pub components: RefCell<ObjectsStore<ComponentsIndices>>,
+            pub lazy_setter: RefCell<SetterQueue<$($component_type,)+>>,
             create_queue: RefCell<Vec<(Entity, EntityInfo)>>,
             create_render_queue: RefCell<Vec<(Entity, RenderComponent)>>,
             changed_entities: RefCell<ChangedEntities>,
@@ -715,6 +785,7 @@ macro_rules! define_entities_both
                 Self{
                     local_components: RefCell::new(ObjectsStore::new()),
                     components: RefCell::new(ObjectsStore::new()),
+                    lazy_setter: RefCell::new(Default::default()),
                     create_queue: RefCell::new(Vec::new()),
                     create_render_queue: RefCell::new(Vec::new()),
                     changed_entities: RefCell::new(Default::default()),
@@ -1063,7 +1134,7 @@ macro_rules! define_entities_both
                 self.push(local, info)
             }
 
-            impl_common_systems!{ClientEntityInfo}
+            impl_common_systems!{ClientEntityInfo, $(($name, $set_func),)+}
 
             $(
                 pub fn $on_name(&self, f: OnComponentChange)
@@ -1864,7 +1935,7 @@ macro_rules! define_entities_both
                 )+}
             }
 
-            impl_common_systems!{EntityInfo}
+            impl_common_systems!{EntityInfo, $(($name, $set_func),)+}
 
             pub fn update_lazy(&mut self)
             {

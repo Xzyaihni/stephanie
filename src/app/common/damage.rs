@@ -60,6 +60,18 @@ impl DamageType
             Self::Bullet(x) => x
         }
     }
+
+    pub fn scale(mut self, scale: f32) -> Self
+    {
+        match &mut self
+        {
+            Self::Blunt(x) => *x *= scale,
+            Self::Sharp{damage, ..} => *damage *= scale,
+            Self::Bullet(x) => *x *= scale
+        }
+
+        self
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

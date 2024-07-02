@@ -801,7 +801,7 @@ impl Character
         let item_info = self.held_info(combined_info);
 
         let damage = DamagePartial{
-            data: item_info.bash_damage(),
+            data: item_info.bash_damage().scale(self.strength),
             height: DamageHeight::random()
         };
 
@@ -859,7 +859,7 @@ impl Character
         let offset = projectile_scale / 2.0;
 
         let damage = DamagePartial{
-            data: item_info.poke_damage(),
+            data: item_info.poke_damage().scale(self.strength),
             height: DamageHeight::random()
         };
 
@@ -1103,6 +1103,17 @@ impl Character
         {
             SpriteState::Normal =>
             {
+                entities.lazy_setter.borrow_mut().set_collider(entity, Some(ColliderInfo{
+                    kind: ColliderType::Circle,
+                    ..Default::default()
+                }.into()));
+
+                entities.lazy_setter.borrow_mut().set_physical(entity, Some(PhysicalProperties{
+                    mass: 50.0,
+                    friction: 0.5,
+                    floating: false
+                }.into()));
+
                 render.z_level = ZLevel::Head;
                 set_held_visibility(true);
 
@@ -1110,6 +1121,9 @@ impl Character
             },
             SpriteState::Lying =>
             {
+                entities.lazy_setter.borrow_mut().set_collider(entity, None);
+                entities.lazy_setter.borrow_mut().set_physical(entity, None);
+
                 render.z_level = ZLevel::Feet;
                 set_held_visibility(false);
 

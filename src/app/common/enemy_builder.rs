@@ -7,7 +7,6 @@ use yanyaengine::Transform;
 use crate::common::{
     random_rotation,
     render_info::*,
-    collider::*,
     ItemsInfo,
     Loot,
     Inventory,
@@ -18,7 +17,6 @@ use crate::common::{
     Enemy,
     EnemyId,
     EnemiesInfo,
-    PhysicalProperties,
     EntityInfo,
     lazy_transform::*
 };
@@ -75,15 +73,6 @@ impl<'a> EnemyBuilder<'a>
                 z_level: ZLevel::Head,
                 ..Default::default()
             }),
-            collider: Some(ColliderInfo{
-                kind: ColliderType::Circle,
-                ..Default::default()
-            }.into()),
-            physical: Some(PhysicalProperties{
-                mass: 50.0,
-                friction: 0.5,
-                floating: false
-            }.into()),
             inventory: Some(inventory),
             anatomy: Some(Anatomy::Human(HumanAnatomy::default())),
             character: Some(Character::new(info.character, Faction::Zob, 1.0)),
