@@ -482,6 +482,11 @@ macro_rules! entity_info_common
                 *current = target;
             }
 
+            if self.anatomy.is_some() && self.watchers.is_none()
+            {
+                self.watchers = Some(Default::default());
+            }
+
             if let Some(character) = self.character.as_mut()
             {
                 character.initialize(entity, |info|

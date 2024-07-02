@@ -88,7 +88,6 @@ impl<'a> EnemyBuilder<'a>
             anatomy: Some(Anatomy::Human(HumanAnatomy::default())),
             character: Some(Character::new(info.character, Faction::Zob, 1.0)),
             enemy: Some(Enemy::new(self.enemies_info, self.id)),
-            watchers: Some(Default::default()),
             ..Default::default()
         }
     }
