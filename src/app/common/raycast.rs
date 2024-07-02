@@ -13,7 +13,7 @@ pub struct RaycastInfo
 {
     pub pierce: Option<f32>,
     pub layer: ColliderLayer,
-    pub ignore_player: bool,
+    pub ignore_entity: Option<Entity>,
     pub ignore_end: bool
 }
 

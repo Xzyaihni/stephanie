@@ -17,7 +17,6 @@ use crate::{
     server,
     client::{
         RenderCreateInfo,
-        CommonTextures,
         UiElement,
         UiEvent
     },
@@ -42,7 +41,6 @@ use crate::{
         Damage,
         EntityPasser,
         Inventory,
-        ItemsInfo,
         Anatomy,
         CharactersInfo,
         Character,
@@ -52,7 +50,7 @@ use crate::{
         Physical,
         ObjectsStore,
         Message,
-        character::CombinedInfo,
+        character::PartialCombinedInfo,
         world::World
     }
 };
@@ -327,7 +325,7 @@ macro_rules! impl_common_systems
         }
 
         pub fn damage_entity_common(
-            &mut self,
+            &self,
             entity: Entity,
             faction: Faction,
             damage: Damage
@@ -353,8 +351,7 @@ macro_rules! impl_common_systems
                     *mix_color = Some(MixColor{color: [1.0; 3], amount: 0.8});
                 }
 
-                self.add_watcher(
-                    entity,
+                self.watchers_mut(entity).unwrap().push(
                     Watcher{
                         kind: WatcherType::Lifetime(0.2.into()),
                         action: WatcherAction::SetMixColor(None),
@@ -381,19 +378,6 @@ macro_rules! impl_common_systems
             {
                 character.faction
             })
-        }
-
-        pub fn add_watcher(&mut self, entity: Entity, watcher: Watcher)
-        {
-            if let Some(mut watchers) = self.watchers_mut(entity)
-            {
-                watchers.push(watcher);
-
-                return
-            }
-
-            // an else statement is too advanced for the borrow checker rn
-            self.set_watchers(entity, Some(Watchers::new(vec![watcher])));
         }
 
         fn create_queued_common(
@@ -1102,7 +1086,7 @@ macro_rules! define_entities_both
             }
 
             pub fn damage_entity(
-                &mut self,
+                &self,
                 passer: &mut impl EntityPasser,
                 blood_texture: TextureId,
                 angle: f32,
@@ -1135,39 +1119,41 @@ macro_rules! define_entities_both
                     let scale = Vector3::repeat(ENTITY_SCALE * 0.2)
                         .component_mul(&Vector3::new(2.0, 1.0, 1.0));
 
-                    // temporary until i make it better :) (46 years)
-                    ParticleCreator::create_particles(
-                        self,
-                        entity,
-                        ParticlesInfo{
-                            amount: 3..6,
-                            speed: ParticleSpeed::DirectionSpread{
-                                direction,
-                                speed: 1.7..=2.0,
-                                spread: 0.2
+                    self.watchers_mut(entity).unwrap().push(Watcher{
+                        kind: WatcherType::Instant,
+                        action: WatcherAction::Explode(Box::new(ExplodeInfo{
+                            keep: true,
+                            info: ParticlesInfo{
+                                amount: 3..6,
+                                speed: ParticleSpeed::DirectionSpread{
+                                    direction,
+                                    speed: 1.7..=2.0,
+                                    spread: 0.2
+                                },
+                                decay: ParticleDecay::Random(7.0..=10.0),
+                                position: ParticlePosition::Spread(0.1),
+                                rotation: ParticleRotation::Exact(f32::consts::PI - angle),
+                                scale: ParticleScale::Spread{scale, variation: 0.1},
+                                min_scale: ENTITY_SCALE * 0.15
                             },
-                            decay: ParticleDecay::Random(7.0..=10.0),
-                            position: ParticlePosition::Spread(0.1),
-                            rotation: ParticleRotation::Exact(f32::consts::PI - angle),
-                            scale: ParticleScale::Spread{scale, variation: 0.1},
-                            min_scale: ENTITY_SCALE * 0.15
-                        },
-                        EntityInfo{
-                            physical: Some(PhysicalProperties{
-                                mass: 0.05,
-                                friction: 0.05,
-                                floating: true
-                            }.into()),
-                            render: Some(RenderInfo{
-                                object: Some(RenderObjectKind::TextureId{
-                                    id: blood_texture
+                            prototype: EntityInfo{
+                                physical: Some(PhysicalProperties{
+                                    mass: 0.05,
+                                    friction: 0.05,
+                                    floating: true
                                 }.into()),
-                                z_level: ZLevel::Knee,
+                                render: Some(RenderInfo{
+                                    object: Some(RenderObjectKind::TextureId{
+                                        id: blood_texture
+                                    }.into()),
+                                    z_level: ZLevel::Knee,
+                                    ..Default::default()
+                                }),
                                 ..Default::default()
-                            }),
-                            ..Default::default()
-                        }
-                    );
+                            }
+                        })),
+                        ..Default::default()
+                    });
                 }
             }
 
@@ -1240,14 +1226,9 @@ macro_rules! define_entities_both
 
                         transform.and_then(|transform|
                         {
-                            if info.ignore_player
+                            if let Some(ignore_entity) = info.ignore_entity
                             {
-                                /*let is_player = self.player_entity
-                                    .map(|x| x == entity)
-                                    .unwrap_or(false);
-
-                                (!is_player).then_some((entity, transform))*/
-                                todo!();
+                                (entity != ignore_entity).then_some((entity, transform))
                             } else
                             {
                                 Some((entity, transform))
@@ -1852,10 +1833,8 @@ macro_rules! define_entities_both
 
             pub fn update_characters(
                 &self,
+                partial: PartialCombinedInfo,
                 create_info: &mut RenderCreateInfo,
-                common_textures: &CommonTextures,
-                characters_info: &CharactersInfo,
-                items_info: &ItemsInfo,
                 dt: f32
             )
             {
@@ -1866,13 +1845,10 @@ macro_rules! define_entities_both
                 })|
                 {
                     let changed = {
-                        let combined_info = CombinedInfo{
-                            entities: self,
-                            common_textures,
-                            assets: &assets,
-                            items_info,
-                            characters_info
-                        };
+                        let combined_info = partial.to_full(
+                            self,
+                            &assets
+                        );
 
                         character.borrow_mut().update(
                             combined_info,

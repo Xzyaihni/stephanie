@@ -4,7 +4,7 @@ use std::{
     sync::Arc
 };
 
-use parking_lot::Mutex;
+use parking_lot::{RwLock, Mutex};
 
 use serde::{Serialize, Deserialize};
 
@@ -13,7 +13,10 @@ use nalgebra::Vector3;
 use yanyaengine::{Assets, Transform, TextureId};
 
 use crate::{
-    client::CommonTextures,
+    client::{
+        CommonTextures,
+        ConnectionsHandler
+    },
     common::{
         some_or_return,
         define_layers,
@@ -143,11 +146,40 @@ pub const HELD_DISTANCE: f32 = 0.1;
 pub const POKE_DISTANCE: f32 = 0.75;
 
 #[derive(Clone, Copy)]
+pub struct PartialCombinedInfo<'a>
+{
+    pub passer: &'a Arc<RwLock<ConnectionsHandler>>,
+    pub common_textures: &'a CommonTextures,
+    pub items_info: &'a ItemsInfo,
+    pub characters_info: &'a CharactersInfo
+}
+
+impl<'a> PartialCombinedInfo<'a>
+{
+    pub fn to_full(
+        self,
+        entities: &'a ClientEntities,
+        assets: &'a Arc<Mutex<Assets>>
+    ) -> CombinedInfo<'a>
+    {
+        CombinedInfo{
+            entities,
+            assets,
+            passer: self.passer,
+            common_textures: self.common_textures,
+            items_info: self.items_info,
+            characters_info: self.characters_info
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
 pub struct CombinedInfo<'a>
 {
+    pub passer: &'a Arc<RwLock<ConnectionsHandler>>,
     pub entities: &'a ClientEntities,
-    pub common_textures: &'a CommonTextures,
     pub assets: &'a Arc<Mutex<Assets>>,
+    pub common_textures: &'a CommonTextures,
     pub items_info: &'a ItemsInfo,
     pub characters_info: &'a CharactersInfo
 }
@@ -646,7 +678,7 @@ impl Character
         let info = RaycastInfo{
             pierce: None,
             layer: ColliderLayer::Damage,
-            ignore_player: true,
+            ignore_entity: Some(info.this),
             ignore_end: true
         };
 
@@ -676,8 +708,16 @@ impl Character
                     };
 
                     drop(transform);
-                    // self.game_state.damage_entity(angle, id, Faction::Player, damage);
-                    todo!();
+
+                    let mut passer = combined_info.passer.write();
+                    combined_info.entities.damage_entity(
+                        &mut *passer,
+                        combined_info.common_textures.blood,
+                        angle,
+                        id,
+                        self.faction,
+                        damage
+                    );
                 },
                 _ => ()
             }

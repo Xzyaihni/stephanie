@@ -2,7 +2,6 @@ use std::{
     cell::{Ref, RefCell},
     rc::Rc,
     ops::ControlFlow,
-    cmp::Ordering,
     sync::{
         Arc,
         mpsc::{self, TryRecvError, Receiver}
@@ -12,7 +11,7 @@ use std::{
 
 use parking_lot::{RwLock, Mutex};
 
-use nalgebra::{Unit, Vector3, Vector2};
+use nalgebra::Vector2;
 
 use serde::{Serialize, Deserialize};
 
@@ -35,11 +34,8 @@ use crate::{
         some_or_return,
         sender_loop,
         receiver_loop,
-        collider::*,
         TileMap,
-        DamagePartial,
         DataInfos,
-        Faction,
         ItemsInfo,
         InventoryItem,
         AnyEntities,
@@ -49,8 +45,9 @@ use crate::{
         EntityPasser,
         EntitiesController,
         OccludingCasters,
-        entity::{ComponentWrapper, ClientEntities},
+        entity::ClientEntities,
         message::Message,
+        character::PartialCombinedInfo,
         world::{
             World,
             Pos3,
@@ -255,7 +252,7 @@ pub enum UserEvent
 pub struct CommonTextures
 {
     pub dust: TextureId,
-    pub blood_texture: TextureId
+    pub blood: TextureId
 }
 
 impl CommonTextures
@@ -264,7 +261,7 @@ impl CommonTextures
     {
         Self{
             dust: assets.texture_id("decals/dust.png"),
-            blood_texture: assets.texture_id("decals/blood.png")
+            blood: assets.texture_id("decals/blood.png")
         }
     }
 }
@@ -471,28 +468,9 @@ impl GameState
         }
     }
 
-    pub fn damage_entity(
-        &mut self,
-        angle: f32,
-        entity: Entity,
-        faction: Faction,
-        damage: DamagePartial
-    )
-    {
-        let mut passer = self.connections_handler.write();
-        self.entities.entities.damage_entity(
-            &mut *passer,
-            self.damage_info(),
-            angle,
-            entity,
-            faction,
-            damage
-        );
-    }
-
     fn damage_info(&self) -> TextureId
     {
-        self.common_textures.blood_texture
+        self.common_textures.blood
     }
 
     pub fn entities(&self) -> &ClientEntities
@@ -660,11 +638,16 @@ impl GameState
 
         self.process_messages(&mut create_info);
 
+        let partial = PartialCombinedInfo{
+            passer: &self.connections_handler,
+            common_textures: &self.common_textures,
+            characters_info: &self.characters_info,
+            items_info: &self.items_info
+        };
+
         self.entities.entities.update_characters(
+            partial,
             &mut create_info,
-            &self.common_textures,
-            &self.characters_info,
-            &self.items_info,
             self.dt
         );
 
