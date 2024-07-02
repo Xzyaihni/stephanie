@@ -21,7 +21,6 @@ use crate::{
         InventorySorter,
         Parent,
         Entity,
-        EnemiesInfo,
         ItemsInfo,
         EntityInfo,
         lazy_transform::*,
@@ -478,7 +477,6 @@ pub struct InventoryActions<Close, Change>
 pub struct UiInventory
 {
     sorter: InventorySorter,
-    enemies_info: Arc<EnemiesInfo>,
     items_info: Arc<ItemsInfo>,
     items: Rc<RefCell<Vec<InventoryItem>>>,
     inventory: Entity,
@@ -490,7 +488,6 @@ impl UiInventory
 {
     pub fn new<Close, Change>(
         creator: &mut EntityCreator,
-        enemies_info: Arc<EnemiesInfo>,
         items_info: Arc<ItemsInfo>,
         anchor: Entity,
         mut actions: InventoryActions<Close, Change>
@@ -648,7 +645,6 @@ impl UiInventory
 
         Self{
             sorter: InventorySorter::default(),
-            enemies_info,
             items_info,
             items,
             inventory,
@@ -708,7 +704,7 @@ impl UiInventory
         entity: Entity
     )
     {
-        let name = creator.entities.name(&self.enemies_info, entity).unwrap_or_else(||
+        let name = creator.entities.named(entity).map(|x| x.clone()).unwrap_or_else(||
         {
             "unnamed".to_owned()
         });
@@ -755,7 +751,6 @@ impl Ui
 {
     pub fn new<PlayerClose, PlayerChange, OtherClose, OtherChange>(
         creator: &mut EntityCreator,
-        enemies_info: Arc<EnemiesInfo>,
         items_info: Arc<ItemsInfo>,
         player_actions: InventoryActions<PlayerClose, PlayerChange>,
         other_actions: InventoryActions<OtherClose, OtherChange>
@@ -776,7 +771,6 @@ impl Ui
 
         let player_inventory = UiInventory::new(
             creator,
-            enemies_info.clone(),
             items_info.clone(),
             anchor,
             player_actions
@@ -784,7 +778,6 @@ impl Ui
 
         let other_inventory = UiInventory::new(
             creator,
-            enemies_info,
             items_info,
             anchor,
             other_actions

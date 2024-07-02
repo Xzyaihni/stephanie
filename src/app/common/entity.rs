@@ -46,7 +46,6 @@ use crate::{
         Character,
         Player,
         Enemy,
-        EnemiesInfo,
         Physical,
         ObjectsStore,
         Message,
@@ -2114,22 +2113,6 @@ macro_rules! define_entities
                 local: bool,
                 info: EntityInfo
             ) -> Entity;
-
-            fn name(
-                &self,
-                enemies_info: &EnemiesInfo,
-                entity: Entity
-            ) -> Option<String>
-            {
-                
-                self.enemy(entity).map(|enemy|
-                {
-                    enemy.info(enemies_info).name.clone()
-                }).or_else(||
-                {
-                    self.named(entity).as_deref().cloned()
-                })
-            }
 
             fn parent_transform(&self, entity: Entity) -> Option<Transform>
             {

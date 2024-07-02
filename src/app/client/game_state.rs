@@ -393,7 +393,6 @@ impl GameState
 
             Ui::new(
                 &mut entities.entity_creator(),
-                info.data_infos.enemies_info.clone(),
                 info.data_infos.items_info.clone(),
                 player_actions,
                 other_actions
