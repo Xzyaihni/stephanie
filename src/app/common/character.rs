@@ -149,7 +149,7 @@ pub const POKE_DISTANCE: f32 = 0.75;
 
 // hands r actually 0.1 meters in size but they look too small that way
 pub const HAND_SCALE: f32 = 0.3;
-const HANDS_UNSTANCE: f32 = 0.5;
+const HANDS_UNSTANCE: f32 = 0.7;
 
 #[derive(Clone, Copy)]
 pub struct PartialCombinedInfo<'a>
@@ -1045,7 +1045,7 @@ impl Character
             },
             SpriteState::Lying =>
             {
-                transform.scale = Vector3::repeat(info.scale * 1.3);
+                transform.scale = Vector3::repeat(info.scale * 1.5);
             }
         }
 

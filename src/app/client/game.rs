@@ -401,7 +401,10 @@ impl Game
 
                     let entity = Self::pop_entity(&mut args, memory)?;
 
-                    eprintln!("entity info: {:#?}", entities.info_ref(entity));
+                    eprintln!(
+                        "entity info: {}",
+                        entities.info_ref(entity).unwrap_or_else(String::new)
+                    );
 
                     memory.push_return(LispValue::new_empty_list());
 

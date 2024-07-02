@@ -93,6 +93,28 @@ macro_rules! get_entity
     }
 }
 
+macro_rules! iterate_components_with
+{
+    ($this:expr, $component:ident, $iter_func:ident, $handler:expr) => 
+    {
+        $this.$component.iter().$iter_func(|(_, &ComponentWrapper{
+            entity,
+            component: ref component
+        })|
+        {
+            $handler(entity, component)
+        })
+    }
+}
+
+macro_rules! for_each_component
+{
+    ($this:expr, $component:ident, $handler:expr) => 
+    {
+        iterate_components_with!($this, $component, for_each, $handler);
+    }
+}
+
 pub trait ServerToClient<T>
 {
     fn unchanged(self) -> Option<Self>
@@ -384,12 +406,6 @@ macro_rules! impl_common_systems
             mut f: impl FnMut(&mut Self, Entity, EntityInfo) -> $this_entity_info
         )
         {
-            let queue = mem::take(self.remove_queue.get_mut());
-            queue.into_iter().for_each(|entity|
-            {
-                self.remove(entity);
-            });
-
             let queue = mem::take(self.create_queue.get_mut());
             queue.into_iter().for_each(|(entity, mut info)|
             {
@@ -413,12 +429,9 @@ macro_rules! impl_common_systems
 
         pub fn update_physical(&mut self, dt: f32)
         {
-            self.physical.iter().for_each(|(_, ComponentWrapper{
-                entity,
-                component: physical
-            })|
+            for_each_component!(self, physical, |entity, physical: &RefCell<Physical>|
             {
-                if let Some(mut target) = self.target(*entity)
+                if let Some(mut target) = self.target(entity)
                 {
                     let mut physical = physical.borrow_mut();
                     physical.physics_update(&mut target, dt);
@@ -428,14 +441,11 @@ macro_rules! impl_common_systems
 
         pub fn update_follows(&mut self, dt: f32)
         {
-            self.follow_rotation.iter().for_each(|(_, ComponentWrapper{
-                entity,
-                component: follow_rotation
-            })|
+            for_each_component!(self, follow_rotation, |entity, follow_rotation: &RefCell<FollowRotation>|
             {
                 let mut follow_rotation = follow_rotation.borrow_mut();
 
-                let mut transform = self.transform_mut(*entity).unwrap();
+                let mut transform = self.transform_mut(entity).unwrap();
                 let current = &mut transform.rotation;
                 let target = self.transform(follow_rotation.parent()).unwrap().rotation;
 
@@ -589,11 +599,11 @@ macro_rules! common_trait_impl
                         {
                             assert!(
                                 parent_id < child_id,
-                                "({} ({parent:?}) < {} ({entity:?})), parent: {:#?}, child: {:#?}",
+                                "({} ({parent:?}) < {} ({entity:?})), parent: {}, child: {}",
                                 parent_id,
                                 child_id,
-                                self.info_ref(parent),
-                                self.info_ref(entity)
+                                self.info_ref(parent).unwrap_or_else(String::new),
+                                self.info_ref(entity).unwrap_or_else(String::new)
                             );
                         }
                     }
@@ -689,7 +699,6 @@ macro_rules! define_entities_both
             pub local_components: RefCell<ObjectsStore<ComponentsIndices>>,
             pub components: RefCell<ObjectsStore<ComponentsIndices>>,
             create_queue: RefCell<Vec<(Entity, EntityInfo)>>,
-            remove_queue: RefCell<Vec<Entity>>,
             create_render_queue: RefCell<Vec<(Entity, RenderComponent)>>,
             changed_entities: RefCell<ChangedEntities>,
             $($on_name: Rc<RefCell<Vec<OnComponentChange>>>,)+
@@ -707,7 +716,6 @@ macro_rules! define_entities_both
                     local_components: RefCell::new(ObjectsStore::new()),
                     components: RefCell::new(ObjectsStore::new()),
                     create_queue: RefCell::new(Vec::new()),
-                    remove_queue: RefCell::new(Vec::new()),
                     create_render_queue: RefCell::new(Vec::new()),
                     changed_entities: RefCell::new(Default::default()),
                     $($on_name: Rc::new(RefCell::new(Vec::new())),)+
@@ -733,7 +741,7 @@ macro_rules! define_entities_both
                     })
             }
 
-            pub fn info_ref(&self, entity: Entity) -> Option<EntityInfo<$(Ref<$component_type>,)+>>
+            pub fn info_ref(&self, entity: Entity) -> Option<String>
             {
                 if !self.exists(entity)
                 {
@@ -742,12 +750,16 @@ macro_rules! define_entities_both
 
                 let components = &components!(self, entity).borrow()[entity.id];
 
-                Some(EntityInfo{$(
-                    $name: components[Component::$name as usize].map(|id|
-                    {
-                        self.$name[id].get()
-                    }),
-                )+})
+                let info = EntityInfo{$(
+                    $name: {
+                        components[Component::$name as usize].map(|id|
+                        {
+                            self.$name[id].get()
+                        })
+                    },
+                )+};
+
+                Some(format!("{info:#?}"))
             }
 
             fn set_each(&mut self, entity: Entity, info: EntityInfo<$($component_type,)+>)
@@ -778,33 +790,6 @@ macro_rules! define_entities_both
                 components.insert(id, Self::empty_components());
 
                 Entity{local, id}
-            }
-
-            pub fn update_watchers(
-                &mut self,
-                dt: f32
-            )
-            where
-                for<'a> &'a mut WatchersType: Into<&'a mut Watchers>
-            {
-                // the borrow checker forcing me to collect into vectors cuz why not!
-                let pairs: Vec<_> = self.watchers.iter().map(|(_, ComponentWrapper{
-                    entity,
-                    component: watchers
-                })|
-                {
-                    let actions = (&mut *watchers.borrow_mut()).into().execute(self, *entity, dt);
-
-                    (*entity, actions)
-                }).collect();
-
-                pairs.into_iter().for_each(|(entity, actions)|
-                {
-                    actions.into_iter().for_each(|action|
-                    {
-                        action.execute(self, entity);
-                    });
-                });
             }
 
             $(
@@ -899,9 +884,28 @@ macro_rules! define_entities_both
                 }
             )+
 
-            pub fn remove_lazy(&self, entity: Entity)
+            pub fn update_watchers(
+                &mut self,
+                dt: f32
+            )
+            where
+                for<'a> &'a mut WatchersType: Into<&'a mut Watchers>
             {
-                self.remove_queue.borrow_mut().push(entity);
+                // the borrow checker forcing me to collect into vectors cuz why not!
+                let pairs: Vec<_> = iterate_components_with!(self, watchers, map, |entity, watchers: &RefCell<WatchersType>|
+                {
+                    let actions = (&mut *watchers.borrow_mut()).into().execute(self, entity, dt);
+
+                    (entity, actions)
+                }).collect();
+
+                pairs.into_iter().for_each(|(entity, actions)|
+                {
+                    actions.into_iter().for_each(|action|
+                    {
+                        action.execute(self, entity);
+                    });
+                });
             }
 
             pub fn set_deferred_render(&self, entity: Entity, render: RenderInfo)
@@ -1011,10 +1015,7 @@ macro_rules! define_entities_both
 
             pub fn remove_children(&mut self, parent_entity: Entity)
             {
-                let remove_list: Vec<_> = self.parent.iter().filter_map(|(_, &ComponentWrapper{
-                    entity,
-                    component: ref parent
-                })|
+                let remove_list: Vec<_> = iterate_components_with!(self, parent, filter_map, |entity, parent: &RefCell<ParentType>|
                 {
                     let parent = parent.borrow();
 
@@ -1211,18 +1212,15 @@ macro_rules! define_entities_both
                 let max_distance = direction.magnitude();
                 let direction = Unit::new_normalize(direction);
 
-                let mut hits: Vec<_> = self.collider.iter()
-                    .filter_map(|(_, ComponentWrapper{
-                        entity,
-                        component: collider
-                    })|
+                let mut hits: Vec<_> = iterate_components_with!(
+                    self,
+                    collider,
+                    filter_map,
+                    |entity, collider: &RefCell<Collider>|
                     {
                         let collides = collider.borrow().layer.collides(&info.layer);
 
-                        (collides && !collider.borrow().ghost).then(||
-                        {
-                            *entity
-                        })
+                        (collides && !collider.borrow().ghost).then_some(entity)
                     })
                     .filter_map(|entity|
                     {
@@ -1359,10 +1357,7 @@ macro_rules! define_entities_both
             )
             {
                 // "zero" "cost" "abstractions" "borrow" "checker"
-                let damage_entities = self.damaging.iter().flat_map(|(_, &ComponentWrapper{
-                    entity,
-                    component: ref damaging
-                })|
+                let damage_entities = iterate_components_with!(self, damaging, flat_map, |entity, damaging: &RefCell<Damaging>|
                 {
                     let collider = self.collider(entity).unwrap();
 
@@ -1427,14 +1422,11 @@ macro_rules! define_entities_both
 
             pub fn update_children(&mut self)
             {
-                self.parent.iter().for_each(|(_, ComponentWrapper{
-                    entity,
-                    component: parent
-                })|
+                iterate_components_with!(self, parent, for_each, |entity, parent: &RefCell<Parent>|
                 {
                     let parent = parent.borrow();
 
-                    if let Some(mut render) = self.render_mut(*entity)
+                    if let Some(mut render) = self.render_mut(entity)
                     {
                         let parent_visible = self.render(parent.entity).map(|parent_render|
                         {
@@ -1448,25 +1440,19 @@ macro_rules! define_entities_both
 
             pub fn update_render(&mut self)
             {
-                self.render.iter().for_each(|(_, ComponentWrapper{
-                    entity,
-                    component: object
-                })|
+                iterate_components_with!(self, render, for_each, |entity, render: &RefCell<ClientRenderInfo>|
                 {
-                    let transform = self.transform(*entity).unwrap();
+                    let transform = self.transform(entity).unwrap();
 
-                    if let Some(object) = object.borrow_mut().object.as_mut()
+                    if let Some(object) = render.borrow_mut().object.as_mut()
                     {
                         object.set_transform(transform.clone());
                     }
                 });
 
-                self.occluding_plane.iter().for_each(|(_, ComponentWrapper{
-                    entity,
-                    component: occluding_plane
-                })|
+                iterate_components_with!(self, occluding_plane, for_each, |entity, occluding_plane: &RefCell<OccludingPlane>|
                 {
-                    let transform = self.transform(*entity).unwrap();
+                    let transform = self.transform(entity).unwrap();
 
                     occluding_plane.borrow_mut().set_transform(transform.clone());
                 });
@@ -1521,12 +1507,9 @@ macro_rules! define_entities_both
                 // per frame so i dunno if its worth?
                 let unoutline_all = ||
                 {
-                    self.collider.iter().for_each(|(_, ComponentWrapper{
-                        entity,
-                        ..
-                    })|
+                    iterate_components_with!(self, collider, for_each, |entity, _collider|
                     {
-                        if let Some(mut render) = self.render_mut(*entity)
+                        if let Some(mut render) = self.render_mut(entity)
                         {
                             render.set_outlined(false);
                         }
@@ -1548,16 +1531,13 @@ macro_rules! define_entities_both
                     return;
                 }
 
-                self.collider.iter().for_each(|(_, ComponentWrapper{
-                    entity,
-                    ..
-                })|
+                iterate_components_with!(self, collider, for_each, |entity, _collider|
                 {
-                    if let Some(mut render) = self.render_mut(*entity)
+                    if let Some(mut render) = self.render_mut(entity)
                     {
-                        let overlapping = mouse_collided == *entity;
+                        let overlapping = mouse_collided == entity;
 
-                        let outline = overlapping && self.is_lootable(*entity);
+                        let outline = overlapping && self.is_lootable(entity);
                         if outline
                         {
                             render.set_outlined(true);
@@ -1630,10 +1610,7 @@ macro_rules! define_entities_both
                     }
                 };
 
-                self.collider.iter().for_each(|(_, ComponentWrapper{
-                    component: collider,
-                    ..
-                })|
+                iterate_components_with!(self, collider, for_each, |_, collider: &RefCell<Collider>|
                 {
                     collider.borrow_mut().reset_frame();
                 });
@@ -1672,10 +1649,7 @@ macro_rules! define_entities_both
                     });
                 }
 
-                self.collider.iter().for_each(|(_, &ComponentWrapper{
-                    entity,
-                    component: ref collider
-                })|
+                iterate_components_with!(self, collider, for_each, |entity, collider: &RefCell<_>|
                 {
                     let mut physical = self.physical_mut(entity);
                     let mut this;
@@ -1710,12 +1684,9 @@ macro_rules! define_entities_both
 
             pub fn update_lazy(&mut self, dt: f32)
             {
-                self.lazy_transform.iter().for_each(|(_, ComponentWrapper{
-                    entity,
-                    component: lazy
-                })|
+                iterate_components_with!(self, lazy_transform, for_each, |entity, lazy: &RefCell<LazyTransform>|
                 {
-                    self.update_lazy_one(*entity, lazy.borrow_mut(), dt);
+                    self.update_lazy_one(entity, lazy.borrow_mut(), dt);
                 });
             }
 
@@ -1737,10 +1708,7 @@ macro_rules! define_entities_both
                     });
                 };
 
-                self.enemy.iter().for_each(|(_, &ComponentWrapper{
-                    entity,
-                    component: ref enemy
-                })|
+                iterate_components_with!(self, enemy, for_each, |entity, enemy: &RefCell<Enemy>|
                 {
                     if enemy.borrow().check_hostiles()
                     {
@@ -1792,17 +1760,14 @@ macro_rules! define_entities_both
                 aspect: f32
             )
             {
-                self.ui_element.iter().rev().for_each(|(_, ComponentWrapper{
-                    entity,
-                    component: ui_element
-                })|
+                iterate_components_with!(self, ui_element, filter_map, |entity, ui_element|
                 {
-                    if self.is_visible(*entity)
-                    {
-                        let mut target = self.target(*entity).unwrap();
-                        let mut render = self.render_mut(*entity).unwrap();
-                        ui_element.borrow_mut().update_aspect(&mut target, &mut render, aspect);
-                    }
+                    self.is_visible(entity).then(|| (entity, ui_element))
+                }).rev().for_each(|(entity, ui_element): (_, &RefCell<UiElement>)|
+                {
+                    let mut target = self.target(entity).unwrap();
+                    let mut render = self.render_mut(entity).unwrap();
+                    ui_element.borrow_mut().update_aspect(&mut target, &mut render, aspect);
                 });
             }
 
@@ -1815,21 +1780,18 @@ macro_rules! define_entities_both
                 let mut captured = false;
                 // borrow checker more like goofy ahh
                 // rev to early exit if child is captured
-                self.ui_element.iter().rev().for_each(|(_, ComponentWrapper{
-                    entity,
-                    component: ui_element
-                })|
+                iterate_components_with!(self, ui_element, filter_map, |entity, ui_element|
                 {
-                    if self.is_visible(*entity)
-                    {
-                        captured = ui_element.borrow_mut().update(
-                            &*self,
-                            *entity,
-                            camera_position,
-                            &event,
-                            captured
-                        ) || captured;
-                    }
+                    self.is_visible(entity).then(|| (entity, ui_element))
+                }).rev().for_each(|(entity, ui_element): (_, &RefCell<UiElement>)|
+                {
+                    captured = ui_element.borrow_mut().update(
+                        &*self,
+                        entity,
+                        camera_position,
+                        &event,
+                        captured
+                    ) || captured;
                 });
 
                 captured
@@ -1843,10 +1805,7 @@ macro_rules! define_entities_both
             )
             {
                 let assets = create_info.object_info.partial.assets.clone();
-                self.character.iter().for_each(|(_, &ComponentWrapper{
-                    entity,
-                    component: ref character
-                })|
+                iterate_components_with!(self, character, for_each, |entity, character: &RefCell<Character>|
                 {
                     let changed = {
                         let combined_info = partial.to_full(
@@ -1909,10 +1868,7 @@ macro_rules! define_entities_both
 
             pub fn update_lazy(&mut self)
             {
-                self.lazy_transform.iter().for_each(|(_, &ComponentWrapper{
-                    entity,
-                    ..
-                })|
+                iterate_components_with!(self, lazy_transform, for_each, |entity, _lazy_transform|
                 {
                     if let (
                         Some(end), Some(mut transform)
@@ -1928,10 +1884,7 @@ macro_rules! define_entities_both
                 characters_info: &CharactersInfo
             )
             {
-                self.character.iter().for_each(|(_, &ComponentWrapper{
-                    entity,
-                    component: ref character
-                })|
+                iterate_components_with!(self, character, for_each, |entity, character: &RefCell<Character>|
                 {
                     let mut target = self.target(entity).unwrap();
 
