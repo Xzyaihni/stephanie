@@ -235,6 +235,20 @@ impl Character
         }
     }
 
+    fn default_connection() -> Connection
+    {
+        Connection::Spring(SpringConnection{
+            physical: PhysicalProperties{
+                mass: 0.5,
+                friction: 0.4,
+                floating: true
+            }.into(),
+            limit: 0.004,
+            damping: 0.02,
+            strength: 6.0
+        })
+    }
+
     pub fn initialize(
         &mut self,
         entity: Entity,
@@ -257,6 +271,7 @@ impl Character
                 }),
                 parent: Some(Parent::new(entity, false)),
                 lazy_transform: Some(LazyTransformInfo{
+                    connection: Self::default_connection(),
                     origin_rotation: -f32::consts::FRAC_PI_2,
                     transform: Transform{
                         rotation: f32::consts::FRAC_PI_2,
@@ -641,18 +656,7 @@ impl Character
 
             watchers.push(Watcher{
                 kind: WatcherType::Lifetime(lifetime.into()),
-                action: WatcherAction::SetLazyConnection(Connection::Spring(
-                    SpringConnection{
-                        physical: PhysicalProperties{
-                            mass: 0.5,
-                            friction: 0.4,
-                            floating: true
-                        }.into(),
-                        limit: 0.004,
-                        damping: 0.02,
-                        strength: 6.0
-                    }
-                )),
+                action: WatcherAction::SetLazyConnection(Self::default_connection()),
                 ..Default::default()
             });
         }
