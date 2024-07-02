@@ -13,7 +13,6 @@ use crate::common::{
     EnemiesInfo,
     EnemyInfo,
     EnemyId,
-    Anatomy,
     Physical
 };
 
@@ -133,12 +132,15 @@ impl Enemy
     fn do_behavior(
         &mut self,
         entities: &impl AnyEntities,
-        anatomy: &Anatomy,
-        transform: &mut Transform,
-        physical: &mut Physical
+        entity: Entity
     )
     {
+        let anatomy = entities.anatomy(entity).unwrap();
+
         let speed = some_or_return!{anatomy.speed()};
+
+        let mut transform = entities.target(entity).unwrap();
+        let mut physical = entities.physical_mut(entity).unwrap();
 
         let move_speed = speed / physical.mass;
 
@@ -146,15 +148,44 @@ impl Enemy
         {
             BehaviorState::MoveDirection(direction) =>
             {
-                Self::move_direction(transform, physical, direction.into_inner(), move_speed);
+                Self::move_direction(
+                    &mut transform,
+                    &mut physical,
+                    direction.into_inner(),
+                    move_speed
+                );
             },
-            BehaviorState::Attack(entity) =>
+            BehaviorState::Attack(other_entity) =>
             {
-                if let Some(other_transform) = entities.transform(*entity)
-                {
-                    let direction = other_transform.position - transform.position;
+                let other_entity = *other_entity;
 
-                    Self::move_direction(transform, physical, direction, move_speed);
+                if entity == other_entity
+                {
+                    self.reset_state = true;
+                    return;
+                }
+
+                if let Some(other_transform) = entities.transform(other_entity)
+                {
+                    let aggressive = entities.character(entity).unwrap()
+                        .aggressive(&entities.character(other_entity).unwrap());
+
+                    let sees = anatomy.sees(&transform.position, &other_transform.position);
+
+                    if aggressive && sees
+                    {
+                        let direction = other_transform.position - transform.position;
+
+                        Self::move_direction(
+                            &mut transform,
+                            &mut physical,
+                            direction,
+                            move_speed
+                        );
+                    } else
+                    {
+                        self.reset_state = true;
+                    }
                 } else
                 {
                     self.reset_state = true;
@@ -227,10 +258,7 @@ impl Enemy
             self.set_next_state();
         }
 
-        let mut transform = entities.target(entity).unwrap();
-        let mut physical = entities.physical_mut(entity).unwrap();
-
-        self.do_behavior(entities, &anatomy, &mut transform, &mut physical);
+        self.do_behavior(entities, entity);
 
         changed
     }

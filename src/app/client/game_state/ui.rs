@@ -708,7 +708,10 @@ impl UiInventory
         entity: Entity
     )
     {
-        let name = creator.entities.name(&self.enemies_info, entity).unwrap();
+        let name = creator.entities.name(&self.enemies_info, entity).unwrap_or_else(||
+        {
+            "unnamed".to_owned()
+        });
 
         self.update_name(creator, name);
         self.update_inventory(creator, entity);
