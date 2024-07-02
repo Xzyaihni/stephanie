@@ -14,7 +14,8 @@ pub enum PrimitiveType
 {
     Value(String),
     Float(f32),
-    Integer(i32)
+    Integer(i32),
+    Bool(bool)
 }
 
 #[derive(Debug, Clone)]
@@ -114,6 +115,18 @@ impl Ast
 
     pub fn parse_primitive(x: &str) -> Result<PrimitiveType, Error>
     {
+        if let Some(special) = x.strip_prefix('#')
+        {
+            let x = match special
+            {
+                "t" => true,
+                "f" => false,
+                unknown => return Err(Error::SpecialParse(unknown.to_owned()))
+            };
+
+            return Ok(PrimitiveType::Bool(x));
+        }
+
         if x.starts_with(|c: char| !c.is_ascii_digit())
         {
             return Ok(PrimitiveType::Value(x.to_owned()));

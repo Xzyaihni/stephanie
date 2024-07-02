@@ -507,6 +507,7 @@ pub enum Error
     WrongSpecial{expected: &'static str},
     Custom(String),
     NumberParse(String),
+    SpecialParse(String),
     UndefinedVariable(String),
     ApplyNonApplication,
     WrongArgumentsCount{proc: String, expected: usize, got: usize},
@@ -532,6 +533,7 @@ impl Display for Error
             Self::WrongSpecial{expected} => format!("wrong special, expected `{expected:?}`"),
             Self::Custom(s) => s.clone(),
             Self::NumberParse(s) => format!("cant parse `{s}` as number"),
+            Self::SpecialParse(s) => format!("cant parse `{s}` as a special"),
             Self::UndefinedVariable(s) => format!("variable `{s}` is undefined"),
             Self::ApplyNonApplication => "apply was called on a non application".to_owned(),
             Self::ExpectedSameNumberType => "primitive operation expected 2 numbers of same type".to_owned(),
@@ -986,6 +988,7 @@ impl LispMemory
         {
             Expression::Float(x) => LispValue::new_float(*x),
             Expression::Integer(x) => LispValue::new_integer(*x),
+            Expression::Bool(x) => LispValue::new_bool(*x),
             Expression::EmptyList => LispValue::new_empty_list(),
             Expression::Lambda(x) => LispValue::new_procedure(*x),
             Expression::List{car, cdr} =>
@@ -1630,6 +1633,20 @@ mod tests
         let value = output.as_vector().unwrap().as_vec_integer().unwrap();
 
         assert_eq!(value, vec![1005, 9, 5, 123, 1000]);
+    }
+
+    #[test]
+    fn booleans()
+    {
+        let code = "
+            (if #t 2 3)
+        ";
+
+        let mut lisp = Lisp::new(code).unwrap();
+
+        let value = lisp.run().unwrap().as_integer().unwrap();
+
+        assert_eq!(value, 2_i32);
     }
 
     #[test]

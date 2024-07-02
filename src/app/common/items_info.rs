@@ -10,7 +10,12 @@ use serde::Deserialize;
 
 use yanyaengine::{Assets, TextureId};
 
-use crate::common::{generic_info::*, DamageType, Item};
+use crate::common::{
+    generic_info::*,
+    character::HAND_SCALE,
+    DamageType,
+    Item
+};
 
 
 define_info_id!{ItemId}
@@ -78,7 +83,7 @@ pub struct ItemInfo
     pub scale: Vector2<f32>,
     pub mass: f32,
     pub commonness: f64,
-    pub texture: TextureId
+    pub texture: Option<TextureId>
 }
 
 impl GenericItem for ItemInfo
@@ -129,7 +134,21 @@ impl ItemInfo
             scale: aspect * raw.scale.unwrap_or(0.1) * 4.0,
             mass: raw.mass.unwrap_or(1.0),
             commonness: raw.commonness.unwrap_or(1.0),
-            texture
+            texture: Some(texture)
+        }
+    }
+
+    pub fn hand() -> Self
+    {
+        Self{
+            name: "hand".to_owned(),
+            ranged: None,
+            comfort: 1.0,
+            sharpness: 0.0,
+            scale: Vector2::repeat(HAND_SCALE),
+            mass: 0.3,
+            commonness: 1.0,
+            texture: None
         }
     }
 

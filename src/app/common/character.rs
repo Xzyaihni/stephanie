@@ -145,6 +145,9 @@ pub enum CharacterAction
 pub const HELD_DISTANCE: f32 = 0.1;
 pub const POKE_DISTANCE: f32 = 0.75;
 
+// hands r actually 0.1 meters in size but they look too small that way
+pub const HAND_SCALE: f32 = 0.3;
+
 #[derive(Clone, Copy)]
 pub struct PartialCombinedInfo<'a>
 {
@@ -203,8 +206,6 @@ pub struct Character
     held_update: bool,
     stance_time: f32,
     attack_cooldown: f32,
-    projectile: Option<Entity>,
-    projectile_lifetime: f32,
     bash_side: Side1d,
     actions: Vec<CharacterAction>,
     sprite_state: Stateful<SpriteState>
@@ -227,8 +228,6 @@ impl Character
             held_update: true,
             stance_time: 0.0,
             attack_cooldown: 0.0,
-            projectile: None,
-            projectile_lifetime: 0.0,
             bash_side: Side1d::Left,
             actions: Vec::new(),
             sprite_state: SpriteState::Normal.into()
@@ -247,6 +246,17 @@ impl Character
             damping: 0.02,
             strength: 6.0
         })
+    }
+
+    fn default_lazy_rotation() -> Rotation
+    {
+        Rotation::EaseOut(
+            EaseOutRotation{
+                decay: 7.0,
+                speed_significant: 10.0,
+                momentum: 0.5
+            }.into()
+        )
     }
 
     pub fn initialize(
@@ -272,6 +282,7 @@ impl Character
                 parent: Some(Parent::new(entity, false)),
                 lazy_transform: Some(LazyTransformInfo{
                     connection: Self::default_connection(),
+                    rotation: Self::default_lazy_rotation(),
                     origin_rotation: -f32::consts::FRAC_PI_2,
                     transform: Transform{
                         rotation: f32::consts::FRAC_PI_2,
@@ -350,7 +361,7 @@ impl Character
         {
             parent_right.visible = false;
 
-            let texture = get_texture(item.texture);
+            let texture = get_texture(item.texture.unwrap());
 
             let mut lazy_transform = entities.lazy_transform_mut(holding_entity).unwrap();
             let target = lazy_transform.target();
@@ -375,7 +386,7 @@ impl Character
                 let mut lazy = entities.lazy_transform_mut(entity).unwrap();
                 let target = lazy.target();
 
-                target.scale = Vector3::repeat(0.3);
+                target.scale = Vector3::repeat(HAND_SCALE);
 
                 target.position = self.item_position(target.scale);
                 target.position.y = y;
@@ -464,7 +475,7 @@ impl Character
                     }.into()),
                     render: Some(RenderInfo{
                         object: Some(RenderObjectKind::TextureId{
-                            id: item_info.texture
+                            id: item_info.texture.unwrap()
                         }.into()),
                         z_level: ZLevel::Elbow,
                         ..Default::default()
@@ -528,7 +539,7 @@ impl Character
 
     fn bash_attack(&mut self, combined_info: CombinedInfo)
     {
-        let item = some_or_return!(self.held_item(combined_info));
+        let item = self.held_item(combined_info);
 
         if self.attack_cooldown > 0.0
         {
@@ -543,10 +554,9 @@ impl Character
         self.bash_projectile(combined_info, item);
 
         let info = some_or_return!(self.info.as_ref());
-        let holding_entity = info.holding;
 
         let start_rotation = self.default_held_rotation(combined_info);
-        if let Some(mut lazy) = combined_info.entities.lazy_transform_mut(holding_entity)
+        if let Some(mut lazy) = combined_info.entities.lazy_transform_mut(info.holding)
         {
             let edge = 0.4;
 
@@ -570,17 +580,11 @@ impl Character
 
             lazy.target().rotation = start_rotation - new_rotation;
 
-            let mut watchers = combined_info.entities.watchers_mut(holding_entity).unwrap();
+            let mut watchers = combined_info.entities.watchers_mut(info.holding).unwrap();
 
             watchers.push(Watcher{
                 kind: WatcherType::Lifetime(0.2.into()),
-                action: WatcherAction::SetLazyRotation(Rotation::EaseOut(
-                    EaseOutRotation{
-                        decay: 7.0,
-                        speed_significant: 10.0,
-                        momentum: 0.5
-                    }.into()
-                )),
+                action: WatcherAction::SetLazyRotation(Self::default_lazy_rotation()),
                 ..Default::default()
             });
         }
@@ -724,14 +728,22 @@ impl Character
         }
     }
 
-    fn bash_projectile(&mut self, combined_info: CombinedInfo, item: Item)
+    fn bash_projectile(&mut self, combined_info: CombinedInfo, item: Option<Item>)
     {
         let info = some_or_return!(self.info.as_ref());
 
-        let item_info = combined_info.items_info.get(item.id);
-        let item_scale = item_info.scale3().y;
-        let over_scale = HELD_DISTANCE + item_scale;
-        let scale = 1.0 + over_scale * 2.0;
+        let item_info = item.map(|item| combined_info.items_info.get(item.id));
+
+        let hand = ItemInfo::hand();
+        let item_info = item_info.unwrap_or(&hand);
+
+        let scale = {
+            let item_scale = item_info.scale3().y;
+            let over_scale = HELD_DISTANCE + item_scale;
+
+            1.0 + over_scale * 2.0
+        };
+
 
         let damage = DamagePartial{
             data: item_info.bash_damage(),
@@ -740,14 +752,9 @@ impl Character
 
         let angle = self.bash_side.to_angle() - f32::consts::FRAC_PI_2;
 
-        self.projectile_lifetime = 0.2;
-        self.projectile = Some(combined_info.entities.push(
+        combined_info.entities.push(
             true,
             EntityInfo{
-                follow_rotation: Some(FollowRotation::new(
-                    info.holding,
-                    Rotation::Instant
-                )),
                 lazy_transform: Some(LazyTransformInfo{
                     transform: Transform{
                         scale: Vector3::repeat(scale),
@@ -771,9 +778,16 @@ impl Character
                     faction: Some(self.faction),
                     ..Default::default()
                 }.into()),
+                watchers: Some(Watchers::new(vec![
+                    Watcher{
+                        kind: WatcherType::Lifetime(0.2.into()),
+                        action: WatcherAction::Remove,
+                        ..Default::default()
+                    }
+                ])),
                 ..Default::default()
             }
-        ));
+        );
     }
 
     fn poke_projectile(&mut self, combined_info: CombinedInfo, item: Item)
@@ -794,8 +808,7 @@ impl Character
             height: DamageHeight::random()
         };
 
-        self.projectile_lifetime = 0.2;
-        self.projectile = Some(combined_info.entities.push(
+        combined_info.entities.push(
             true,
             EntityInfo{
                 follow_rotation: Some(FollowRotation::new(
@@ -825,24 +838,20 @@ impl Character
                     faction: Some(self.faction),
                     ..Default::default()
                 }.into()),
+                watchers: Some(Watchers::new(vec![
+                    Watcher{
+                        kind: WatcherType::Lifetime(0.2.into()),
+                        action: WatcherAction::Remove,
+                        ..Default::default()
+                    }
+                ])),
                 ..Default::default()
             }
-        ));
+        );
 
         if let Some(mut lazy) = combined_info.entities.lazy_transform_mut(info.holding)
         {
-            lazy.connection = Connection::Spring(
-                SpringConnection{
-                    physical: PhysicalProperties{
-                        mass: 0.5,
-                        friction: 0.4,
-                        floating: true
-                    }.into(),
-                    limit: 0.004,
-                    damping: 0.02,
-                    strength: 6.0
-                }
-            );
+            lazy.connection = Self::default_connection();
         }
     }
 
@@ -941,14 +950,6 @@ impl Character
         }
 
         decrease_timer(&mut self.attack_cooldown);
-
-        if decrease_timer(&mut self.projectile_lifetime)
-        {
-            if let Some(entity) = self.projectile.take()
-            {
-                combined_info.entities.remove_lazy(entity);
-            }
-        }
     }
 
     pub fn update_common(

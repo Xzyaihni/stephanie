@@ -1076,6 +1076,10 @@ impl ExpressionPos
             {
                 LispValue::new_float(*x)
             },
+            Expression::Bool(x) =>
+            {
+                LispValue::new_bool(*x)
+            },
             Expression::Value(s) =>
             {
                 env.lookup(s).map_err(|error| ErrorPos{position: self.position, error})?
@@ -1332,6 +1336,7 @@ pub enum Expression
     Value(String),
     Float(f32),
     Integer(i32),
+    Bool(bool),
     EmptyList,
     Lambda(usize),
     List{car: Box<ExpressionPos>, cdr: Box<ExpressionPos>},
@@ -1404,7 +1409,8 @@ impl Expression
         {
             PrimitiveType::Value(x) => Self::Value(x),
             PrimitiveType::Float(x) => Self::Float(x),
-            PrimitiveType::Integer(x) => Self::Integer(x)
+            PrimitiveType::Integer(x) => Self::Integer(x),
+            PrimitiveType::Bool(x) => Self::Bool(x)
         }
     }
 
