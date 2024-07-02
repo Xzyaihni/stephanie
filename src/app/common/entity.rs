@@ -2121,15 +2121,10 @@ macro_rules! define_entities
                 entity: Entity
             ) -> Option<String>
             {
-                self.player(entity).map(|player|
+                
+                self.enemy(entity).map(|enemy|
                 {
-                    player.name.clone()
-                }).or_else(||
-                {
-                    self.enemy(entity).map(|enemy|
-                    {
-                        enemy.info(enemies_info).name.clone()
-                    })
+                    enemy.info(enemies_info).name.clone()
                 }).or_else(||
                 {
                     self.named(entity).as_deref().cloned()

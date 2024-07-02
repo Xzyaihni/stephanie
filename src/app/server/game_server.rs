@@ -303,9 +303,8 @@ impl GameServer
         let position = transform.position;
 
         let info = EntityInfo{
-            player: Some(Player{
-                name: format!("stephanie #{player_index}")
-            }),
+            player: Some(Player),
+            named: Some(format!("stephanie #{player_index}")),
             transform: Some(transform.clone()),
             render: Some(RenderInfo{
                 object: Some(RenderObjectKind::Texture{
