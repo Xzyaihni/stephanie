@@ -1105,6 +1105,7 @@ impl Character
             {
                 entities.lazy_setter.borrow_mut().set_collider(entity, Some(ColliderInfo{
                     kind: ColliderType::Circle,
+                    ghost: false,
                     ..Default::default()
                 }.into()));
 
@@ -1121,7 +1122,12 @@ impl Character
             },
             SpriteState::Lying =>
             {
-                entities.lazy_setter.borrow_mut().set_collider(entity, None);
+                entities.lazy_setter.borrow_mut().set_collider(entity, Some(ColliderInfo{
+                    kind: ColliderType::Circle,
+                    ghost: true,
+                    ..Default::default()
+                }.into()));
+
                 entities.lazy_setter.borrow_mut().set_physical(entity, None);
 
                 render.z_level = ZLevel::Feet;
