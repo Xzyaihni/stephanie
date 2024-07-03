@@ -434,13 +434,7 @@ macro_rules! impl_common_systems
                         let queue = mem::take(&mut self.lazy_setter.borrow_mut().$name);
                         queue.into_iter().for_each(|(entity, component)|
                         {
-                            if let Some(component) = component
-                            {
-                                self.$set_func(entity, Some(component));
-                            } else
-                            {
-                                remove_component!(self, entity, $name);
-                            }
+                            self.$set_func(entity, component);
                         });
                     )+
                 }
@@ -835,7 +829,12 @@ macro_rules! define_entities_both
 
             fn set_each(&mut self, entity: Entity, info: EntityInfo<$($component_type,)+>)
             {
-                $(self.$set_func(entity, info.$name);)+
+                $(
+                    if info.$name.is_some()
+                    {
+                        self.$set_func(entity, info.$name);
+                    }
+                )+
             }
 
             fn push_empty(&self, local: bool, parent_entity: Option<Entity>) -> Entity
@@ -951,6 +950,9 @@ macro_rules! define_entities_both
                             self,
                             entity
                         );
+                    } else
+                    {
+                        remove_component!(self, entity, $name);
                     }
                 }
             )+
@@ -2243,10 +2245,18 @@ macro_rules! define_entities
                                 }, create_info)
                             });
 
-                            self.$side_set_func(entity, component);
+                            if component.is_some()
+                            {
+                                self.$side_set_func(entity, component);
+                            }
                         })+
 
-                        $(self.$set_func(entity, info.$name);)+
+                        $(
+                            if info.$name.is_some()
+                            {
+                                self.$set_func(entity, info.$name);
+                            }
+                        )+
 
                         debug_assert!(!entity.local);
 
