@@ -1,3 +1,5 @@
+use serde::Deserialize;
+
 use yanyaengine::{Assets, TextureId};
 
 use crate::common::{
@@ -8,9 +10,17 @@ use crate::common::{
 
 define_info_id!{CharacterId}
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+pub enum Hairstyle
+{
+    None,
+    Pons(TextureId)
+}
+
 pub struct CharacterInfo
 {
     pub scale: f32,
+    pub hairstyle: Hairstyle,
     pub normal: TextureId,
     pub lying: TextureId,
     pub hand: TextureId
@@ -22,6 +32,7 @@ impl CharacterInfo
     {
         Self{
             scale: ENTITY_SCALE,
+            hairstyle: Hairstyle::Pons(assets.texture_id("player/pon.png")),
             normal: assets.texture_id("player/hair.png"),
             lying: assets.texture_id("player/lying.png"),
             hand: assets.texture_id("player/hand.png")

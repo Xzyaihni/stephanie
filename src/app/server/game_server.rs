@@ -36,7 +36,6 @@ use crate::common::{
     Inventory,
     Entity,
     EntityInfo,
-    Parent,
     Faction,
     CharactersInfo,
     CharacterId,
@@ -50,7 +49,6 @@ use crate::common::{
     MessagePasser,
     ConnectionId,
     PhysicalProperties,
-    lazy_transform::*,
     world::chunk::TILE_SIZE,
     message::{
         Message,
@@ -119,7 +117,7 @@ impl GameServer
         limit: usize
     ) -> Result<(Sender<TcpStream>, Self), ParseError>
     {
-        let entities = Entities::new();
+        let entities = Entities::new(data_infos.clone());
         let connection_handler = Arc::new(RwLock::new(ConnectionsHandler::new(limit)));
 
         let world = World::new(
@@ -338,62 +336,6 @@ impl GameServer
         };
 
         let player_entity = inserter(info);
-
-        let mut player_children = Vec::new();
-
-        let pon = |position: Vector3<f32>|
-        {
-            EntityInfo{
-                lazy_transform: Some(LazyTransformInfo{
-                    connection: Connection::Spring(
-                        SpringConnection{
-                            physical: PhysicalProperties{
-                                mass: 0.01,
-                                friction: 0.8,
-                                floating: true
-                            }.into(),
-                            limit: 0.004,
-                            damping: 0.02,
-                            strength: 0.9
-                        }
-                    ),
-                    rotation: Rotation::EaseOut(
-                        EaseOutRotation{
-                            decay: 25.0,
-                            speed_significant: 3.0,
-                            momentum: 0.5
-                        }.into()
-                    ),
-                    deformation: Deformation::Stretch(
-                        StretchDeformation{
-                            animation: ValueAnimation::EaseOut(2.0),
-                            limit: 1.3,
-                            onset: 0.3,
-                            strength: 0.5
-                        }
-                    ),
-                    transform: Transform{
-                        scale: Vector3::repeat(0.4),
-                        position,
-                        ..Default::default()
-                    },
-                    ..Default::default()
-                }.into()),
-                parent: Some(Parent::new(player_entity, true)),
-                render: Some(RenderInfo{
-                    object: Some(RenderObjectKind::Texture{
-                        name: "player/pon.png".to_owned()
-                    }.into()),
-                    shape: Some(BoundingShape::Circle),
-                    z_level: ZLevel::Hair,
-                    ..Default::default()
-                }),
-                ..Default::default()
-            }
-        };
-
-        player_children.push(inserter(pon(Vector3::new(-0.35, 0.35, 0.0))));
-        player_children.push(inserter(pon(Vector3::new(-0.35, -0.35, 0.0))));
 
         let player_info = self.player_info(stream, player_entity)?;
 

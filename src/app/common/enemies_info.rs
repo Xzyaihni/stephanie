@@ -10,6 +10,7 @@ use yanyaengine::Assets;
 use crate::common::{
     ENTITY_SCALE,
     generic_info::*,
+    Hairstyle,
     CharactersInfo,
     CharacterInfo,
     CharacterId,
@@ -69,6 +70,7 @@ impl EnemyInfo
 
         let character = characters_info.push(CharacterInfo{
             scale,
+            hairstyle: Hairstyle::None,
             normal: get_texture(raw.normal),
             lying: get_texture(raw.lying),
             hand: get_texture(raw.hand)

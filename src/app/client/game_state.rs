@@ -101,10 +101,10 @@ pub struct ClientEntitiesContainer
 
 impl ClientEntitiesContainer
 {
-    pub fn new() -> Self
+    pub fn new(infos: DataInfos) -> Self
     {
         Self{
-            entities: Entities::new(),
+            entities: Entities::new(infos),
             player_entity: None
         }
     }
@@ -326,7 +326,7 @@ impl GameState
 
         let handler = ConnectionsHandler::new(info.message_passer);
         let connections_handler = Arc::new(RwLock::new(handler));
-        let mut entities = ClientEntitiesContainer::new();
+        let mut entities = ClientEntitiesContainer::new(info.data_infos.clone());
 
         let tilemap = info.tiles_factory.tilemap().clone();
 

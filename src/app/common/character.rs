@@ -32,6 +32,7 @@ use crate::{
         damaging::*,
         particle_creator::*,
         raycast::*,
+        Hairstyle,
         Side1d,
         Physical,
         PhysicalProperties,
@@ -195,7 +196,8 @@ pub struct AfterInfo
 {
     this: Entity,
     holding: Entity,
-    holding_right: Entity
+    holding_right: Entity,
+    hair: Vec<Entity>
 }
 
 #[derive(Default, Debug, Clone)]
@@ -273,10 +275,13 @@ impl Character
 
     pub fn initialize(
         &mut self,
+        characters_info: &CharactersInfo,
         entity: Entity,
         mut inserter: impl FnMut(EntityInfo) -> Entity
     )
     {
+        let character_info = characters_info.get(self.id);
+
         let held_item = |flip|
         {
             EntityInfo{
@@ -308,10 +313,74 @@ impl Character
             }
         };
 
+        let mut hair = Vec::new();
+
+        let pon = |texture, position: Vector3<f32>|
+        {
+            EntityInfo{
+                lazy_transform: Some(LazyTransformInfo{
+                    connection: Connection::Spring(
+                        SpringConnection{
+                            physical: PhysicalProperties{
+                                mass: 0.01,
+                                friction: 0.8,
+                                floating: true
+                            }.into(),
+                            limit: 0.004,
+                            damping: 0.02,
+                            strength: 0.9
+                        }
+                    ),
+                    rotation: Rotation::EaseOut(
+                        EaseOutRotation{
+                            decay: 25.0,
+                            speed_significant: 3.0,
+                            momentum: 0.5
+                        }.into()
+                    ),
+                    deformation: Deformation::Stretch(
+                        StretchDeformation{
+                            animation: ValueAnimation::EaseOut(2.0),
+                            limit: 1.3,
+                            onset: 0.3,
+                            strength: 0.5
+                        }
+                    ),
+                    transform: Transform{
+                        scale: Vector3::repeat(0.4),
+                        position,
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                }.into()),
+                parent: Some(Parent::new(entity, true)),
+                render: Some(RenderInfo{
+                    object: Some(RenderObjectKind::TextureId{
+                        id: texture
+                    }.into()),
+                    shape: Some(BoundingShape::Circle),
+                    z_level: ZLevel::Hair,
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }
+        };
+
+        match character_info.hairstyle
+        {
+            Hairstyle::None => (),
+            Hairstyle::Pons(texture) =>
+            {
+                hair.push(inserter(pon(texture, Vector3::new(-0.35, 0.35, 0.0))));
+                hair.push(inserter(pon(texture, Vector3::new(-0.35, -0.35, 0.0))));
+            }
+        }
+
         let info = AfterInfo{
             this: entity,
             holding: inserter(held_item(true)),
-            holding_right: inserter(held_item(false))
+            holding_right: inserter(held_item(false)),
+            hair
         };
 
         self.info = Some(info);
@@ -1087,20 +1156,27 @@ impl Character
 
         let mut render = entities.render_mut(entity).unwrap();
 
-        let set_held_visibility = |is_visible|
+        let set_visible = |entity, is_visible|
         {
-            let set_visible = |entity|
+            if let Some(mut parent) = entities.parent_mut(entity)
             {
-                if let Some(mut parent) = entities.parent_mut(entity)
-                {
-                    parent.visible = is_visible;
-                }
-            };
+                parent.visible = is_visible;
+            } else if let Some(mut render) = entities.render_mut(entity)
+            {
+                render.visible = is_visible;
+            }
+        };
+
+        let set_children_visibility = |is_visible|
+        {
+            let set_visible = |entity| set_visible(entity, is_visible);
 
             if let Some(info) = self.info.as_ref()
             {
                 set_visible(info.holding);
                 set_visible(info.holding_right);
+
+                info.hair.iter().copied().for_each(set_visible);
             }
         };
 
@@ -1121,7 +1197,7 @@ impl Character
                 }.into()));
 
                 render.z_level = ZLevel::Head;
-                set_held_visibility(true);
+                set_children_visibility(true);
 
                 character_info.normal
             },
@@ -1136,7 +1212,7 @@ impl Character
                 entities.lazy_setter.borrow_mut().set_physical(entity, None);
 
                 render.z_level = ZLevel::Feet;
-                set_held_visibility(false);
+                set_children_visibility(false);
 
                 character_info.lying
             }

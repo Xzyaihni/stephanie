@@ -841,7 +841,15 @@ impl<'a> PlayerContainer<'a>
             self.walk(movement);
         }
 
-        self.look_at_mouse();
+        let able_to_move = self.game_state.entities()
+            .anatomy(self.info.entity)
+            .map(|anatomy| anatomy.speed().is_some())
+            .unwrap_or(false);
+
+        if able_to_move
+        {
+            self.look_at_mouse();
+        }
 
         self.game_state.sync_transform(self.info.entity);
     }

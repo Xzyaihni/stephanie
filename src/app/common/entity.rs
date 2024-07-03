@@ -32,6 +32,7 @@ use crate::{
         damaging::*,
         particle_creator::*,
         raycast::*,
+        DataInfos,
         OccludingPlane,
         OccludingPlaneServer,
         Side2d,
@@ -532,7 +533,7 @@ macro_rules! entity_info_common
 
             if let Some(character) = self.character.as_mut()
             {
-                character.initialize(entity, |info|
+                character.initialize(&entities.infos().characters_info, entity, |info|
                 {
                     entities.push(entity.local(), info)
                 });
@@ -547,6 +548,11 @@ macro_rules! common_trait_impl
     {
         normal_forward_impl!{
             $(($fn_ref, $fn_mut, $value_type),)+
+        }
+
+        fn infos(&self) -> &DataInfos
+        {
+            &self.infos
         }
 
         fn exists(&self, entity: Entity) -> bool
@@ -762,6 +768,7 @@ macro_rules! define_entities_both
             pub local_components: RefCell<ObjectsStore<ComponentsIndices>>,
             pub components: RefCell<ObjectsStore<ComponentsIndices>>,
             pub lazy_setter: RefCell<SetterQueue<$($component_type,)+>>,
+            infos: DataInfos,
             create_queue: RefCell<Vec<(Entity, EntityInfo)>>,
             create_render_queue: RefCell<Vec<(Entity, RenderComponent)>>,
             changed_entities: RefCell<ChangedEntities>,
@@ -774,12 +781,13 @@ macro_rules! define_entities_both
             Self: AnyEntities,
             for<'a> &'a ParentType: Into<&'a Parent>
         {
-            pub fn new() -> Self
+            pub fn new(infos: DataInfos) -> Self
             {
                 Self{
                     local_components: RefCell::new(ObjectsStore::new()),
                     components: RefCell::new(ObjectsStore::new()),
                     lazy_setter: RefCell::new(Default::default()),
+                    infos,
                     create_queue: RefCell::new(Vec::new()),
                     create_render_queue: RefCell::new(Vec::new()),
                     changed_entities: RefCell::new(Default::default()),
@@ -2116,6 +2124,8 @@ macro_rules! define_entities
                 fn $name(&self, entity: Entity) -> Option<Ref<$default_type>>;
                 fn $mut_func(&self, entity: Entity) -> Option<RefMut<$default_type>>;
             )+
+
+            fn infos(&self) -> &DataInfos;
 
             fn lazy_target_ref(&self, entity: Entity) -> Option<Ref<Transform>>;
             fn lazy_target(&self, entity: Entity) -> Option<RefMut<Transform>>;
