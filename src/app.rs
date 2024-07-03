@@ -40,7 +40,8 @@ pub struct ProgramShaders
 {
     pub default: ShaderId,
     pub world: ShaderId,
-    pub shadow: ShaderId
+    pub shadow: ShaderId,
+    pub ui: ShaderId
 }
 
 pub struct AppInfo

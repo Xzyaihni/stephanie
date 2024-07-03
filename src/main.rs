@@ -58,6 +58,24 @@ mod shadow_fragment
     }
 }
 
+mod ui_vertex
+{
+    vulkano_shaders::shader!
+    {
+        ty: "vertex",
+        path: "shaders/ui.vert"
+    }
+}
+
+mod ui_fragment
+{
+    vulkano_shaders::shader!
+    {
+        ty: "fragment",
+        path: "shaders/ui.frag"
+    }
+}
+
 fn main()
 {
     let mut shaders = ShadersContainer::new();
@@ -77,11 +95,17 @@ fn main()
         shadow_fragment::load
     ));
 
+    let ui_shader = shaders.push(ShadersInfo::new(
+        ui_vertex::load,
+        ui_fragment::load
+    ));
+
     let init = AppInfo{
         shaders: ProgramShaders{
             default: default_shader,
             world: world_shader,
-            shadow: shadow_shader
+            shadow: shadow_shader,
+            ui: ui_shader
         }
     };
 

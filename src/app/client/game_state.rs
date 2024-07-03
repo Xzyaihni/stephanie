@@ -34,6 +34,7 @@ use crate::{
         some_or_return,
         sender_loop,
         receiver_loop,
+        render_info::*,
         TileMap,
         DataInfos,
         ItemsInfo,
@@ -210,10 +211,26 @@ impl ClientEntitiesContainer
 
         queue.sort_unstable_by_key(|render| render.get().z_level);
 
-        queue.into_iter().for_each(|render|
+        let ui_index = queue.partition_point(|render|
+        {
+            render.get().z_level < ZLevel::UiLow
+        });
+
+        let (normal, ui) = queue.split_at(ui_index);
+
+        normal.into_iter().for_each(|render|
         {
             render.get().draw(visibility, info);
         });
+
+        info.bind_pipeline(shaders.ui);
+        info.set_depth_test(false);
+        ui.into_iter().for_each(|render|
+        {
+            render.get().draw(visibility, info);
+        });
+
+        info.set_depth_test(true);
 
         info.bind_pipeline(shaders.shadow);
         self.entities.occluding_plane.iter().for_each(|(_, x)|

@@ -645,10 +645,10 @@ impl<'a> PlayerContainer<'a>
 
     fn character_action(&self, action: CharacterAction)
     {
-        self.game_state.entities()
-            .character_mut(self.info.entity)
-            .unwrap()
-            .push_action(action);
+        if let Some(mut character) = self.game_state.entities().character_mut(self.info.entity)
+        {
+            character.push_action(action);
+        }
     }
 
     fn update_console(&mut self)
