@@ -770,7 +770,7 @@ impl Character
 
         if let Some(mut lazy) = entities.lazy_transform_mut(info.holding)
         {
-            let lifetime = self.attack_cooldown;
+            let lifetime = self.attack_cooldown.min(0.5);
             lazy.connection = Connection::Timed(TimedConnection::from(Lifetime::from(lifetime)));
 
             let held_position = self.held_item_position(combined_info).unwrap();

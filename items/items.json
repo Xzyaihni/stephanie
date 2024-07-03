@@ -54,8 +54,8 @@
         "sharpness": 0.1,
         "scale": 0.11,
         "mass": 0.9,
-        "commonness": 5.1,
-        "groups": ["weapons", "trash"]
+        "commonness": 0.1,
+        "groups": ["weapons"]
     },
     {
         "name": "snel",
