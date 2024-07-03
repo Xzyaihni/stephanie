@@ -173,6 +173,8 @@ impl Client
             if self.game_state.borrow_mut().player_connected()
             {
                 self.game.on_player_connected();
+
+                self.game_state.borrow_mut().connected_and_ready = true;
             }
 
             self.game.camera_sync();

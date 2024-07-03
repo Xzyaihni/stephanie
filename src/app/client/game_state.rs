@@ -283,6 +283,7 @@ pub struct GameState
     pub user_receiver: Rc<RefCell<Vec<UserEvent>>>,
     pub ui: Rc<RefCell<Ui>>,
     pub common_textures: CommonTextures,
+    pub connected_and_ready: bool,
     shaders: ProgramShaders,
     host: bool,
     is_trusted: bool,
@@ -426,6 +427,7 @@ impl GameState
             world,
             ui,
             common_textures,
+            connected_and_ready: false,
             host: info.host,
             is_trusted: false,
             user_receiver,
@@ -700,6 +702,7 @@ impl GameState
             dt
         );
 
+        if self.connected_and_ready
         {
             let mut passer = self.connections_handler.write();
             self.entities.update(

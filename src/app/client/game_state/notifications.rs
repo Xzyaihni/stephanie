@@ -1,7 +1,7 @@
 use strum::EnumCount;
 
 
-#[derive(Debug, Clone, EnumCount)]
+#[derive(Debug, Clone, Copy, EnumCount)]
 pub enum Notification
 {
     PlayerConnected
@@ -17,7 +17,9 @@ impl Notifications
 {
     pub fn new() -> Self
     {
-        Self{notifications: [false; Notification::COUNT]}
+        Self{
+            notifications: [false; Notification::COUNT]
+        }
     }
 
     pub fn set(&mut self, notification: Notification)
