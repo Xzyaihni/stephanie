@@ -8,6 +8,11 @@
     },
     {
         "name": "runner",
+        "anatomy": {
+            "bone_toughness": 0.5,
+            "muscle_toughness": 0.5,
+            "skin_toughness": 0.5
+        },
         "behavior": "Melee",
         "normal": "runner/zob.png",
         "lying": "runner/lying.png",

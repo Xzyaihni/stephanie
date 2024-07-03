@@ -366,6 +366,24 @@ impl Health
     }
 }
 
+#[derive(Clone)]
+pub struct BodyPartInfo
+{
+    pub muscle_toughness: f32,
+    pub skin_toughness: f32
+}
+
+impl From<HumanAnatomyInfo> for BodyPartInfo
+{
+    fn from(info: HumanAnatomyInfo) -> Self
+    {
+        Self{
+            muscle_toughness: info.muscle_toughness,
+            skin_toughness: info.skin_toughness
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BodyPart<Data>
 {
@@ -378,12 +396,12 @@ pub struct BodyPart<Data>
 
 impl<Data> BodyPart<Data>
 {
-    pub fn new(this: f32, size: f64, part: Data) -> Self
+    pub fn new(info: BodyPartInfo, this: f32, size: f64, part: Data) -> Self
     {
         Self::new_full(
             Health::new(this * 0.05, this),
-            Some(Health::new(5.0, 100.0)),
-            Some(Health::new(20.0, 500.0)),
+            Some(Health::new(info.skin_toughness * 5.0, info.skin_toughness * 100.0)),
+            Some(Health::new(info.muscle_toughness * 20.0, info.muscle_toughness * 500.0)),
             size,
             part
         )
@@ -936,6 +954,26 @@ pub struct CachedProps
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HumanAnatomyInfo
+{
+    pub bone_toughness: f32,
+    pub muscle_toughness: f32,
+    pub skin_toughness: f32
+}
+
+impl Default for HumanAnatomyInfo
+{
+    fn default() -> Self
+    {
+        Self{
+            bone_toughness: 1.0,
+            muscle_toughness: 1.0,
+            skin_toughness: 1.0
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HumanAnatomy
 {
     base_speed: f32,
@@ -948,21 +986,42 @@ impl Default for HumanAnatomy
 {
     fn default() -> Self
     {
+        Self::new(HumanAnatomyInfo::default())
+    }
+}
+
+impl HumanAnatomy
+{
+    pub fn new(info: HumanAnatomyInfo) -> Self
+    {
+        let bone = info.bone_toughness;
+        let part = BodyPartInfo::from(info);
+
+        let new_part = |health, size, other|
+        {
+            HumanPart::new(
+                part.clone(),
+                bone * health,
+                size,
+                other
+            )
+        };
+
         // max hp is amount of newtons i found on the interner needed to break a bone
         // like half of them i just made up
-        let leg = HumanPart::new(
+        let leg = new_part(
             4000.0,
             0.6,
             HumanBone::new(
                 HumanBoneSingle::Femur,
                 vec![
-                    (Side3d::Bottom, HumanPart::new(
+                    (Side3d::Bottom, new_part(
                         3500.0,
                         0.44,
                         HumanBone::new(
                             HumanBoneSingle::Tibia,
                             vec![
-                                (Side3d::Bottom, HumanPart::new(
+                                (Side3d::Bottom, new_part(
                                     5000.0,
                                     0.17,
                                     HumanBone::leaf(HumanBoneSingle::Foot)
@@ -974,19 +1033,19 @@ impl Default for HumanAnatomy
             )
         );
 
-        let arm = HumanPart::new(
+        let arm = new_part(
             2500.0,
             0.2,
             HumanBone::new(
                 HumanBoneSingle::Humerus,
                 vec![
-                    (Side3d::Bottom, HumanPart::new(
+                    (Side3d::Bottom, new_part(
                         2000.0,
                         0.17,
                         HumanBone::new(
                             HumanBoneSingle::Radius,
                             vec![
-                                (Side3d::Bottom, HumanPart::new(
+                                (Side3d::Bottom, new_part(
                                     4000.0,
                                     0.07,
                                     HumanBone::leaf(HumanBoneSingle::Hand)
@@ -1007,13 +1066,13 @@ impl Default for HumanAnatomy
         );
 
         // the spine is very complex sizing wise so im just gonna pick a low-ish number
-        let body = HumanPart::new(
+        let body = new_part(
             3400.0,
             0.25,
             HumanBone::new(
                 HumanBoneSingle::Spine,
                 vec![
-                    (Side3d::Top, HumanPart::new(
+                    (Side3d::Top, new_part(
                         5000.0,
                         0.39,
                         HumanBone::new(
@@ -1026,7 +1085,7 @@ impl Default for HumanAnatomy
                             ].into()
                         )
                     )),
-                    (Side3d::Bottom, HumanPart::new(
+                    (Side3d::Bottom, new_part(
                         6000.0,
                         0.37,
                         HumanBone::new(
@@ -1037,7 +1096,7 @@ impl Default for HumanAnatomy
                             ].into()
                         )
                     )),
-                    (Side3d::Front, HumanPart::new(
+                    (Side3d::Front, new_part(
                         3300.0,
                         0.82,
                         HumanBone::new(
@@ -1066,10 +1125,7 @@ impl Default for HumanAnatomy
 
         this
     }
-}
 
-impl HumanAnatomy
-{
     pub fn speed(&self) -> Option<f32>
     {
         self.cached.speed

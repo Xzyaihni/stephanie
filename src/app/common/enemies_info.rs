@@ -14,6 +14,7 @@ use crate::common::{
     CharactersInfo,
     CharacterInfo,
     CharacterId,
+    anatomy::HumanAnatomyInfo,
     enemy::EnemyBehavior
 };
 
@@ -22,6 +23,8 @@ use crate::common::{
 struct EnemyInfoRaw
 {
     name: String,
+    #[serde(default)]
+    anatomy: HumanAnatomyInfo,
     behavior: EnemyBehavior,
     scale: Option<f32>,
     normal: String,
@@ -36,6 +39,7 @@ define_info_id!{EnemyId}
 pub struct EnemyInfo
 {
     pub name: String,
+    pub anatomy: HumanAnatomyInfo,
     pub behavior: EnemyBehavior,
     pub character: CharacterId,
     pub scale: f32
@@ -78,6 +82,7 @@ impl EnemyInfo
 
         Self{
             name: raw.name,
+            anatomy: raw.anatomy,
             behavior: raw.behavior,
             character,
             scale
