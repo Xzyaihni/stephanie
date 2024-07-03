@@ -122,6 +122,7 @@ pub struct DamagingInfo
     pub damage: DamagingType,
     pub predicate: DamagingPredicate,
     pub times: DamageTimes,
+    pub source: Option<Entity>,
     pub faction: Option<Faction>
 }
 
@@ -133,6 +134,7 @@ impl Default for DamagingInfo
             damage: DamagingType::None,
             predicate: DamagingPredicate::None,
             times: DamageTimes::Once,
+            source: None,
             faction: None
         }
     }
@@ -144,6 +146,7 @@ pub struct Damaging
     pub damage: DamagingType,
     pub predicate: DamagingPredicate,
     pub faction: Faction,
+    pub source: Option<Entity>,
     times: DamageTimes,
     already_damaged: Vec<Entity>
 }
@@ -157,6 +160,7 @@ impl From<DamagingInfo> for Damaging
             predicate: info.predicate,
             times: info.times,
             faction: info.faction.expect("faction must be specified"),
+            source: info.source,
             already_damaged: Vec::new()
         }
     }

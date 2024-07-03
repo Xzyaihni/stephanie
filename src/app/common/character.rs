@@ -659,8 +659,24 @@ impl Character
         self.held_update = true;
     }
 
+    fn can_move(&self, combined_info: CombinedInfo) -> bool
+    {
+        self.info.as_ref().and_then(|info|
+        {
+            combined_info.entities.anatomy(info.this).map(|anatomy|
+            {
+                anatomy.speed().is_some()
+            })
+        }).unwrap_or(true)
+    }
+
     fn bash_attack(&mut self, combined_info: CombinedInfo)
     {
+        if !self.can_move(combined_info)
+        {
+            return;
+        }
+
         if self.attack_cooldown > 0.0
         {
             return;
@@ -751,6 +767,11 @@ impl Character
 
     fn poke_attack(&mut self, combined_info: CombinedInfo)
     {
+        if !self.can_move(combined_info)
+        {
+            return;
+        }
+
         let item = some_or_return!(self.held_item(combined_info));
 
         if self.attack_cooldown > 0.0
@@ -806,6 +827,11 @@ impl Character
         target: Vector3<f32>
     )
     {
+        if !self.can_move(combined_info)
+        {
+            return;
+        }
+
         let item = some_or_return!(self.held_item(combined_info));
 
         let items_info = combined_info.items_info;
@@ -965,6 +991,7 @@ impl Character
                         damage
                     },
                     faction: Some(self.faction),
+                    source: Some(info.this),
                     ..Default::default()
                 }.into()),
                 watchers: Some(Watchers::new(vec![

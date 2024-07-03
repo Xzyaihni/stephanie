@@ -1202,15 +1202,15 @@ macro_rules! define_entities_both
 
                     passer.send_message(Message::EntityDamage{entity, faction, damage});
 
-                    let scale = Vector3::repeat(ENTITY_SCALE * 0.2)
-                        .component_mul(&Vector3::new(2.0, 1.0, 1.0));
+                    let scale = Vector3::repeat(ENTITY_SCALE * 0.1)
+                        .component_mul(&Vector3::new(4.0, 1.0, 1.0));
 
                     self.watchers_mut(entity).unwrap().push(Watcher{
                         kind: WatcherType::Instant,
                         action: WatcherAction::Explode(Box::new(ExplodeInfo{
                             keep: true,
                             info: ParticlesInfo{
-                                amount: 3..6,
+                                amount: 2..4,
                                 speed: ParticleSpeed::DirectionSpread{
                                     direction,
                                     speed: 1.7..=2.0,
@@ -1437,6 +1437,14 @@ macro_rules! define_entities_both
                 blood_texture: TextureId
             )
             {
+                struct DamagingResult
+                {
+                    collided: Entity,
+                    angle: f32,
+                    faction: Faction,
+                    damage: DamagePartial
+                }
+
                 // "zero" "cost" "abstractions" "borrow" "checker"
                 let damage_entities = iterate_components_with!(self, damaging, flat_map, |entity, damaging: &RefCell<Damaging>|
                 {
@@ -1471,7 +1479,15 @@ macro_rules! define_entities_both
 
                             let collision_info = || -> Option<_>
                             {
-                                let this_transform = self.transform(entity)?;
+                                let source_entity = if let Some(other) = damaging.source
+                                {
+                                    other
+                                } else
+                                {
+                                    entity
+                                };
+
+                                let this_transform = self.transform(source_entity)?;
                                 let collided_transform = self.transform(collided)?;
 
                                 let this_physical = self.physical(entity);
@@ -1487,7 +1503,7 @@ macro_rules! define_entities_both
 
                             return damaging.damage.as_damage(collision_info).map(|(angle, damage)|
                             {
-                                (collided, angle, damaging.faction, damage)
+                                DamagingResult{collided, angle, faction: damaging.faction, damage}
                             });
                         }
 
@@ -1495,7 +1511,12 @@ macro_rules! define_entities_both
                     }).collect::<Vec<_>>()
                 }).collect::<Vec<_>>();
 
-                damage_entities.into_iter().for_each(|(collided, angle, faction, damage)|
+                damage_entities.into_iter().for_each(|DamagingResult{
+                    collided,
+                    angle,
+                    faction,
+                    damage
+                }|
                 {
                     self.damage_entity(passer, blood_texture, angle, collided, faction, damage);
                 });
