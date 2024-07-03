@@ -339,9 +339,14 @@ impl Character
         self.strength * 30.0
     }
 
-    fn attack_cooldown(&self) -> f32
+    fn attack_cooldown(&self, combined_info: CombinedInfo) -> f32
     {
-        0.5
+        let item_info = self.held_info(combined_info);
+        let liftability = self.strength / item_info.mass;
+
+        let usability = liftability * item_info.comfort;
+
+        usability.recip()
     }
 
     pub fn bash_reachable(
@@ -592,7 +597,7 @@ impl Character
             return;
         }
 
-        self.attack_cooldown = self.attack_cooldown();
+        self.attack_cooldown = self.attack_cooldown(combined_info);
         self.stance_time = self.attack_cooldown * 2.0;
 
         self.bash_side = self.bash_side.opposite();
@@ -686,7 +691,7 @@ impl Character
 
         self.unstance(combined_info);
 
-        self.attack_cooldown = self.attack_cooldown();
+        self.attack_cooldown = self.attack_cooldown(combined_info);
 
         self.poke_projectile(combined_info, item);
 
@@ -1019,7 +1024,7 @@ impl Character
             unstance_hands(self);
         }
 
-        if self.attack_cooldown < (self.attack_cooldown() * HANDS_UNSTANCE)
+        if self.attack_cooldown < (self.attack_cooldown(combined_info) * HANDS_UNSTANCE)
         {
             unstance_hands(self);
         }

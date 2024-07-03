@@ -144,10 +144,11 @@ impl ItemInfo
         Self{
             name: "hand".to_owned(),
             ranged: None,
-            comfort: 1.0,
+            comfort: 2.0,
             sharpness: 0.0,
             scale: Vector2::repeat(HAND_SCALE),
-            mass: 0.3,
+            // the actual weight is 0.3 kg but i need them to do more damage
+            mass: 1.0,
             commonness: 1.0,
             texture: None
         }

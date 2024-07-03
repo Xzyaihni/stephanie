@@ -75,7 +75,7 @@ impl<'a> EnemyBuilder<'a>
             }),
             inventory: Some(inventory),
             anatomy: Some(Anatomy::Human(HumanAnatomy::default())),
-            character: Some(Character::new(info.character, Faction::Zob, 1.0)),
+            character: Some(Character::new(info.character, Faction::Zob, 2.0)),
             named: Some(self.enemies_info.get(self.id).name.clone()),
             enemy: Some(Enemy::new(self.enemies_info, self.id)),
             ..Default::default()

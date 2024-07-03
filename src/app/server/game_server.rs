@@ -320,7 +320,7 @@ impl GameServer
             }.into()),
             inventory: Some(Inventory::new()),
             physical: Some(physical.into()),
-            character: Some(Character::new(self.player_character, Faction::Player, 0.5)),
+            character: Some(Character::new(self.player_character, Faction::Player, 1.0)),
             anatomy: Some(anatomy),
             ..Default::default()
         };
