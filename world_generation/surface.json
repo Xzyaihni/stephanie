@@ -83,7 +83,7 @@
         },
         {
             "name": "road_intersection",
-            "weight": 1,
+            "weight": 0.5,
             "neighbors": {
                 "up": ["road_vertical"],
                 "down": ["road_vertical"],

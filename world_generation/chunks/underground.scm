@@ -1,1 +1,1 @@
-(filled-chunk (tile (quote soil)))
+(filled-chunk (tile 'soil))

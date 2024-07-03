@@ -15,22 +15,29 @@
 (define side-down 1)
 (define side-left 2)
 (define side-right 3)
+
 (define random-side side-up)
+
+(define (put-tile chunk pos tile)
+    (begin
+        (vector-set!
+            chunk
+            (index-of pos)
+            tile)
+        chunk))
 
 (define (vertical-line-length chunk pos len tile)
     (if (= len 0)
         chunk
         (let ((x (point-x pos)) (y (point-y pos)))
-            (begin
-                (vector-set!
+            (vertical-line-length
+                (put-tile
                     chunk
-                    (index-of (make-point x (+ y (- len 1))))
+                    (make-point x (+ y (- len 1)))
                     tile)
-                (vertical-line-length
-                    chunk
-                    pos
-                    (- len 1)
-                    tile)))))
+                pos
+                (- len 1)
+                tile))))
 
 (define (vertical-line chunk x tile)
     (vertical-line-length chunk (make-point x 0) size-y tile))
@@ -39,16 +46,14 @@
     (if (= len 0)
         chunk
         (let ((x (point-x pos)) (y (point-y pos)))
-            (begin
-                (vector-set!
+            (horizontal-line-length
+                (put-tile
                     chunk
-                    (index-of (make-point (+ x (- len 1)) y))
+                    (make-point (+ x (- len 1)) y)
                     tile)
-                (horizontal-line-length
-                    chunk
-                    pos
-                    (- len 1)
-                    tile)))))
+                pos
+                (- len 1)
+                tile))))
 
 (define (horizontal-line chunk y tile)
     (horizontal-line-length chunk (make-point 0 y) size-x tile))
