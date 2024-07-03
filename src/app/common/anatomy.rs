@@ -958,7 +958,8 @@ pub struct HumanAnatomyInfo
 {
     pub bone_toughness: f32,
     pub muscle_toughness: f32,
-    pub skin_toughness: f32
+    pub skin_toughness: f32,
+    pub base_speed: f32
 }
 
 impl Default for HumanAnatomyInfo
@@ -968,7 +969,8 @@ impl Default for HumanAnatomyInfo
         Self{
             bone_toughness: 1.0,
             muscle_toughness: 1.0,
-            skin_toughness: 1.0
+            skin_toughness: 1.0,
+            base_speed: 1.0
         }
     }
 }
@@ -994,14 +996,15 @@ impl HumanAnatomy
 {
     pub fn new(info: HumanAnatomyInfo) -> Self
     {
-        let bone = info.bone_toughness;
+        let bone_toughness = info.bone_toughness;
+        let base_speed = info.base_speed;
         let part = BodyPartInfo::from(info);
 
         let new_part = |health, size, other|
         {
             HumanPart::new(
                 part.clone(),
-                bone * health,
+                bone_toughness * health,
                 size,
                 other
             )
@@ -1115,7 +1118,7 @@ impl HumanAnatomy
         );
 
         let mut this = Self{
-            base_speed: 12.0,
+            base_speed: base_speed * 12.0,
             blood: SimpleHealth::new(4.0),
             body,
             cached: Default::default()

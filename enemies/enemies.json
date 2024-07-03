@@ -11,7 +11,8 @@
         "anatomy": {
             "bone_toughness": 0.5,
             "muscle_toughness": 0.5,
-            "skin_toughness": 0.5
+            "skin_toughness": 0.5,
+            "base_speed": 1.5
         },
         "behavior": "Melee",
         "normal": "runner/zob.png",
