@@ -512,7 +512,6 @@ where
 
     pub fn resolve_with_world(
         &mut self,
-        entities: &crate::common::entity::ClientEntities,
         world: &World
     ) -> bool
     {
@@ -531,7 +530,6 @@ where
                 {
                     self.transform.position.$c = new_position.$c;
                     let (this_collided, resolved) = self.resolve_with_world_inner(
-                        entities,
                         world,
                         Some(Axis::$C)
                     );
@@ -552,13 +550,12 @@ where
             collided
         } else
         {
-            self.resolve_with_world_inner(entities, world, None).0
+            self.resolve_with_world_inner(world, None).0
         }
     }
 
     fn resolve_with_world_inner(
         &mut self,
-        entities: &crate::common::entity::ClientEntities,
         world: &World,
         axis: Option<Axis>
     ) -> (bool, Option<Vector3<f32>>)
@@ -652,14 +649,21 @@ where
                     planes.push(vec![position]);
                 }
             });
+
+            if planes.is_empty()
+            {
+                return (false, None);
+            }
         } else
         {
-            planes = vec![collisions.collect::<Vec<_>>()];
-        }
+            let collisions = collisions.collect::<Vec<_>>();
 
-        if planes.is_empty()
-        {
-            return (false, None);
+            if collisions.is_empty()
+            {
+                return (false, None);
+            }
+
+            planes = vec![collisions];
         }
 
         for plane in planes.into_iter()

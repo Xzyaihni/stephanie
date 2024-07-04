@@ -5,7 +5,7 @@
         "sharpness": 0.5,
         "scale": 0.3,
         "mass": 2.0,
-        "commonness": 1.0,
+        "commonness": 0.8,
         "groups": ["trash"]
     },
     {
@@ -13,7 +13,7 @@
         "comfort": 0.6,
         "scale": 0.1,
         "mass": 0.5,
-        "commonness": 1.0,
+        "commonness": 1.1,
         "groups": ["trash"]
     },
     {
@@ -34,6 +34,14 @@
         "groups": ["trash"]
     },
     {
+        "name": "bottle",
+        "comfort": 0.3,
+        "scale": 0.2,
+        "mass": 0.02,
+        "commonness": 1.0,
+        "groups": ["trash", "utility"]
+    },
+    {
         "name": "sledgehammer",
         "comfort": 1.1,
         "scale": 0.4,
@@ -45,7 +53,7 @@
         "name": "duct tape",
         "scale": 0.15,
         "mass": 0.1,
-        "commonness": 1.0,
+        "commonness": 0.6,
         "groups": ["utility"]
     },
     {

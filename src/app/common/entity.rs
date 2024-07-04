@@ -1759,7 +1759,7 @@ macro_rules! define_entities_both
                     let mut this;
                     colliding_info!{this, physical, collider, entity};
 
-                    if this.resolve_with_world(self, world)
+                    if this.resolve_with_world(world)
                     {
                         on_collision(entity, physical);
                     }
