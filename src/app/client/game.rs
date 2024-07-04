@@ -18,6 +18,7 @@ use crate::{
         watcher::*,
         character::*,
         AnyEntities,
+        Item,
         Parent,
         Entity,
         EntityInfo,
@@ -373,6 +374,30 @@ impl Game
 
             Ok(())
         });
+
+        {
+            let game_state = self.game_state.clone();
+
+            primitives.add(
+                "add-item",
+                PrimitiveProcedureInfo::new_simple(2, move |_state, memory, _env, mut args|
+                {
+                    let game_state = game_state.borrow_mut();
+                    let entities = game_state.entities();
+
+                    let entity = Self::pop_entity(&mut args, memory)?;
+                    let name = args.pop(memory).as_symbol(memory)?;
+
+                    let mut inventory = entities.inventory_mut(entity).unwrap();
+
+                    let id = game_state.items_info.id(&name);
+                    inventory.push(Item{id});
+
+                    memory.push_return(LispValue::new_empty_list());
+
+                    Ok(())
+                }));
+        }
 
         {
             let player_entity = self.info.borrow().entity;

@@ -23,7 +23,7 @@ define_info_id!{ItemId}
 #[derive(Debug, Clone, Deserialize)]
 pub enum Ranged
 {
-    Pistol{damage: f32}
+    Pistol{cooldown: f32, damage: f32}
 }
 
 impl Ranged
@@ -33,6 +33,14 @@ impl Ranged
         match self
         {
             Self::Pistol{..} => true
+        }
+    }
+
+    pub fn cooldown(&self) -> f32
+    {
+        match self
+        {
+            Self::Pistol{cooldown, ..} => *cooldown
         }
     }
 
@@ -49,7 +57,7 @@ impl Ranged
 
         match self
         {
-            Self::Pistol{damage} =>
+            Self::Pistol{damage, ..} =>
             {
                 DamageType::Bullet(with_base(400.0, damage))
             }

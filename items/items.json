@@ -44,9 +44,10 @@
         "groups": ["weapons"]
     },
     {
-        "name": "pistol",
+        "name": "glock",
         "ranged": {
             "Pistol": {
+                "cooldown": 0.5,
                 "damage": 1
             }
         },

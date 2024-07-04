@@ -837,7 +837,14 @@ impl Character
         let items_info = combined_info.items_info;
         let ranged = some_or_return!(&items_info.get(item.id).ranged);
 
+        if self.attack_cooldown > 0.0
+        {
+            return;
+        }
+
         self.unstance(combined_info);
+
+        self.attack_cooldown = ranged.cooldown();
 
         let info = some_or_return!(self.info.as_ref());
 
