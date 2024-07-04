@@ -15,21 +15,25 @@ use crate::{
     }
 };
 
-pub use overmap::chunk::{
-    self,
-    CHUNK_SIZE,
-    CHUNK_VISUAL_SIZE,
-    TILE_SIZE,
-    Pos3,
-    Chunk,
-    ChunkLocal,
-    GlobalPos,
-    LocalPos,
-    PosDirection,
-    DirectionsGroup,
-    MaybeGroup,
-    AlwaysGroup,
-    tile::Tile
+pub use overmap::{
+    ChunksContainer,
+    Axis,
+    chunk::{
+        self,
+        CHUNK_SIZE,
+        CHUNK_VISUAL_SIZE,
+        TILE_SIZE,
+        Pos3,
+        Chunk,
+        ChunkLocal,
+        GlobalPos,
+        LocalPos,
+        PosDirection,
+        DirectionsGroup,
+        MaybeGroup,
+        AlwaysGroup,
+        tile::Tile
+    }
 };
 
 pub use client_overmap::TilePos;

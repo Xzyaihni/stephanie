@@ -1039,8 +1039,8 @@ macro_rules! define_entities_both
 
                 self.swap_transform_indices(child, parent_entity);
 
-                self.resort_transforms(parent_entity);
                 self.resort_transforms(child);
+                self.resort_transforms(parent_entity);
             }
 
             fn swap_transform_indices(&mut self, a: Entity, b: Entity)
@@ -1683,6 +1683,8 @@ macro_rules! define_entities_both
                                     }
 
                                     target.position += offset;
+
+                                    target.position
                                 },
                                 collider: &mut collider
                             };
@@ -1757,7 +1759,7 @@ macro_rules! define_entities_both
                     let mut this;
                     colliding_info!{this, physical, collider, entity};
 
-                    if this.resolve_with_world(world)
+                    if this.resolve_with_world(self, world)
                     {
                         on_collision(entity, physical);
                     }
@@ -2211,9 +2213,9 @@ macro_rules! define_entities
                 info: EntityInfo
             ) -> Self
             {
-                let transform = entities.transform_clone(entity).or_else(||
+                let transform = info.target_ref().cloned().or_else(||
                 {
-                    info.target_ref().cloned()
+                    entities.transform_clone(entity)
                 });
 
                 Self{

@@ -1,5 +1,6 @@
 use std::{
     f32,
+    fmt::Debug,
     ops::{Range, RangeInclusive}
 };
 
@@ -236,31 +237,4 @@ pub fn get_two_mut<T>(s: &mut [T], one: usize, two: usize) -> (&mut T, &mut T)
 
         (&mut left[one], &mut right[0])
     }
-}
-
-pub fn group_by<T>(
-    predicate: impl Fn(&[T], &T) -> bool,
-    values: impl Iterator<Item=T>
-) -> Vec<Vec<T>>
-where
-    T: Copy
-{
-    let mut groups = Vec::new();
-
-    values.for_each(|value|
-    {
-        groups.iter_mut().find_map(|group: &mut Vec<T>|
-        {
-            let fits = predicate(group, &value);
-            fits.then(||
-            {
-                group.push(value);
-            })
-        }).unwrap_or_else(||
-        {
-            groups.push(vec![value]);
-        });
-    });
-
-    groups
 }

@@ -19,6 +19,14 @@ use crate::common::{
 };
 
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Axis
+{
+    X,
+    Y,
+    Z
+}
+
 macro_rules! implement_common
 {
     ($name:ident, $indexer_name:ident) =>
@@ -35,6 +43,12 @@ macro_rules! implement_common
         {
             pub fn from_raw(size: Pos3<usize>, chunks: Box<[T]>) -> Self
             {
+                debug_assert!(
+                    size.product() == chunks.len(),
+                    "size: {size:?}, len: {}",
+                    chunks.len()
+                );
+
                 let indexer = $indexer_name::new(size);
 
                 Self{chunks, indexer}
@@ -299,6 +313,31 @@ impl<T> ChunksContainer<T>
             chunks: self.chunks.iter().map(f).collect(),
             indexer: self.indexer.clone()
         }
+    }
+
+    pub fn iter_axis(&self, axis: Axis, fixed: usize) -> impl Iterator<Item=&T>
+    {
+        let size = self.indexer.size();
+
+        let (size_one, size_two) = match axis
+        {
+            Axis::X => (size.y, size.z),
+            Axis::Y => (size.x, size.z),
+            Axis::Z => (size.x, size.y)
+        };
+
+        (0..size_one).flat_map(move |a|
+        {
+            (0..size_two).map(move |b|
+            {
+                match axis
+                {
+                    Axis::X => Pos3::new(fixed, a, b),
+                    Axis::Y => Pos3::new(a, fixed, b),
+                    Axis::Z => Pos3::new(a, b, fixed)
+                }
+            })
+        }).map(|pos| &self[pos])
     }
 
     fn flat_slice_range(&self, z: usize) -> (usize, usize)

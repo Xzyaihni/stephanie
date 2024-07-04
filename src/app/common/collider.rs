@@ -1,3 +1,5 @@
+use std::convert;
+
 use serde::{Serialize, Deserialize};
 
 use nalgebra::Vector3;
@@ -6,11 +8,11 @@ use yanyaengine::Transform;
 
 use crate::common::{
     define_layers,
-    group_by,
     Entity,
     Physical,
     world::{
         TILE_SIZE,
+        Axis,
         TilePos,
         Pos3,
         World
@@ -145,51 +147,58 @@ pub struct CollidingInfo<'a, F>
     pub collider: &'a mut Collider
 }
 
-fn transform_target(
-    move_z: bool,
-    target: impl FnOnce(Vector3<f32>)
-) -> impl FnOnce(Vector3<f32>)
-{
-    let handle_z = move |mut values: Vector3<f32>|
-    {
-        if !move_z
-        {
-            values.z = 0.0;
-        }
-
-        values
-    };
-
-    move |offset: Vector3<f32>| target(handle_z(offset))
-}
-
 impl<'a, ThisF> CollidingInfo<'a, ThisF>
 where
-    ThisF: FnMut(Vector3<f32>)
+    ThisF: FnMut(Vector3<f32>) -> Vector3<f32>
 {
     // i hate rust traits so goddamn much >-< haskell ones r so much better
     fn resolve_with<OtherF>(
         &mut self,
         other: &mut CollidingInfo<OtherF>,
         offset: Vector3<f32>
-    )
+    ) -> (Option<Vector3<f32>>, Option<Vector3<f32>>)
     where
-        OtherF: FnMut(Vector3<f32>)
+        OtherF: FnMut(Vector3<f32>) -> Vector3<f32>
     {
+        fn transform_target(
+            move_z: bool,
+            target: impl FnOnce(Vector3<f32>) -> Vector3<f32>
+        ) -> impl FnOnce(Vector3<f32>) -> Vector3<f32>
+        {
+            let handle_z = move |mut values: Vector3<f32>|
+            {
+                if !move_z
+                {
+                    values.z = 0.0;
+                }
+
+                values
+            };
+
+            let add_epsilon = |values: Vector3<f32>|
+            {
+                const EPSILON: f32 = 0.0002;
+
+                values.map(|x| if x == 0.0 { x } else { x + x.signum() * EPSILON })
+            };
+
+            move |offset: Vector3<f32>| target(add_epsilon(handle_z(offset)))
+        }
+
         if self.collider.is_static && other.collider.is_static
         {
-            return;
+            return (None, None);
         }
 
         if self.collider.ghost || other.collider.ghost
         {
-            return;
+            return (None, None);
         }
 
         let this_target = transform_target(self.collider.move_z, &mut self.target);
         let other_target = transform_target(other.collider.move_z, &mut other.target);
 
-        let elasticity = 0.9;
+        let elasticity = 0.5;
 
         let invert_some = |physical: &mut Physical|
         {
@@ -204,18 +213,22 @@ where
 
         if self.collider.is_static
         {
-            other_target(offset);
+            let other_position = other_target(offset);
             if let Some(physical) = &mut other.physical
             {
                 invert_some(physical);
             }
+
+            (None, Some(other_position))
         } else if other.collider.is_static
         {
-            this_target(-offset);
+            let this = this_target(-offset);
             if let Some(physical) = &mut self.physical
             {
                 invert_some(physical);
             }
+
+            (Some(this), None)
         } else
         {
             match (&mut self.physical, &mut other.physical)
@@ -260,24 +273,29 @@ where
                         (mass_ratio, 1.0 - mass_ratio)
                     };
 
-                    this_target(-offset * this_scale);
-                    other_target(offset * other_scale);
+                    (
+                        Some(this_target(-offset * this_scale)),
+                        Some(other_target(offset * other_scale))
+                    )
                 },
                 (Some(this_physical), None) =>
                 {
-                    this_target(-offset);
+                    let this = this_target(-offset);
                     invert_some(this_physical);
+
+                    (Some(this), None)
                 },
                 (None, Some(other_physical)) =>
                 {
-                    other_target(offset);
+                    let other = other_target(offset);
                     invert_some(other_physical);
+
+                    (None, Some(other))
                 },
                 (None, None) =>
                 {
                     let half_offset = offset / 2.0;
-                    this_target(-half_offset);
-                    other_target(half_offset);
+                    (Some(this_target(-half_offset)), Some(other_target(half_offset)))
                 }
             }
         }
@@ -287,10 +305,11 @@ where
         &mut self,
         other: &mut CollidingInfo<OtherF>,
         max_distance: Vector3<f32>,
-        offset: Vector3<f32>
-    )
+        offset: Vector3<f32>,
+        axis: Option<Axis>
+    ) -> (Option<Vector3<f32>>, Option<Vector3<f32>>)
     where
-        OtherF: FnMut(Vector3<f32>)
+        OtherF: FnMut(Vector3<f32>) -> Vector3<f32>
     {
         let offset = max_distance.zip_map(&offset, |max_distance, offset|
         {
@@ -307,16 +326,31 @@ where
 
         let offset = if (abs_offset.z <= abs_offset.x) && (abs_offset.z <= abs_offset.y)
         {
+            if axis != None && axis != Some(Axis::Z)
+            {
+                return (None, None);
+            }
+
             Vector3::new(0.0, 0.0, offset.z)
         } else if (abs_offset.y <= abs_offset.x) && (abs_offset.y <= abs_offset.z)
         {
+            if axis != None && axis != Some(Axis::Y)
+            {
+                return (None, None);
+            }
+
             Vector3::new(0.0, offset.y, 0.0)
         } else
         {
+            if axis != None && axis != Some(Axis::X)
+            {
+                return (None, None);
+            }
+
             Vector3::new(offset.x, 0.0, 0.0)
         };
 
-        self.resolve_with(other, offset);
+        self.resolve_with(other, offset)
     }
 
     fn circle_circle<OtherF>(
@@ -324,7 +358,7 @@ where
         other: &CollidingInfo<OtherF>
     ) -> Option<CircleCollisionResult>
     where
-        OtherF: FnMut(Vector3<f32>)
+        OtherF: FnMut(Vector3<f32>) -> Vector3<f32>
     {
         let this_radius = self.transform.max_scale() / 2.0;
         let other_radius = other.transform.max_scale() / 2.0;
@@ -343,7 +377,7 @@ where
         other: &CollidingInfo<OtherF>
     ) -> Option<CollisionResult>
     where
-        OtherF: FnMut(Vector3<f32>)
+        OtherF: FnMut(Vector3<f32>) -> Vector3<f32>
     {
         let this_scale = self.scale();
         let other_scale = other.scale();
@@ -378,9 +412,13 @@ where
     fn collision<OtherF>(
         &self,
         other: &CollidingInfo<OtherF>
-    ) -> Option<impl FnOnce(&mut Self, &mut CollidingInfo<OtherF>)>
+    ) -> Option<impl FnOnce(
+            &mut Self,
+            &mut CollidingInfo<OtherF>,
+            Option<Axis>
+        ) -> (Option<Vector3<f32>>, Option<Vector3<f32>>)>
     where
-        OtherF: FnMut(Vector3<f32>)
+        OtherF: FnMut(Vector3<f32>) -> Vector3<f32>
     {
         enum CollisionWhich
         {
@@ -395,7 +433,7 @@ where
 
         let handle = |collision|
         {
-            move |this: &mut Self, other: &mut CollidingInfo<OtherF>|
+            move |this: &mut Self, other: &mut CollidingInfo<OtherF>, axis: Option<Axis>|
             {
                 match collision
                 {
@@ -411,11 +449,11 @@ where
 
                         let shift = max_distance - distance;
 
-                        this.resolve_with(other, direction * shift);
+                        this.resolve_with(other, direction * shift)
                     },
                     CollisionWhich::Normal(CollisionResult{max_distance, offset}) =>
                     {
-                        this.resolve_with_offset(other, max_distance, offset);
+                        this.resolve_with_offset(other, max_distance, offset, axis)
                     }
                 }
             }
@@ -446,14 +484,14 @@ where
         mut other: CollidingInfo<OtherF>
     ) -> bool
     where
-        OtherF: FnMut(Vector3<f32>)
+        OtherF: FnMut(Vector3<f32>) -> Vector3<f32>
     {
         let result = self.collision(&other);
         let collided = result.is_some();
 
         if let Some(handle) = result
         {
-            handle(self, &mut other);
+            handle(self, &mut other, None);
         }
 
         if collided
@@ -474,8 +512,56 @@ where
 
     pub fn resolve_with_world(
         &mut self,
+        entities: &crate::common::entity::ClientEntities,
         world: &World
     ) -> bool
+    {
+        if let Some(old_position) = self.physical.as_ref()
+            .and_then(|physical| physical.previous_position)
+        {
+            let new_position = self.transform.position;
+
+            self.transform.position = old_position;
+
+            let mut collided = false;
+
+            macro_rules! handle_axis
+            {
+                ($c:ident, $C:ident) =>
+                {
+                    self.transform.position.$c = new_position.$c;
+                    let (this_collided, resolved) = self.resolve_with_world_inner(
+                        entities,
+                        world,
+                        Some(Axis::$C)
+                    );
+
+                    if let Some(resolved) = resolved
+                    {
+                        self.transform.position = resolved;
+                    }
+
+                    collided |= this_collided;
+                }
+            }
+
+            handle_axis!(x, X);
+            handle_axis!(y, Y);
+            handle_axis!(z, Z);
+
+            collided
+        } else
+        {
+            self.resolve_with_world_inner(entities, world, None).0
+        }
+    }
+
+    fn resolve_with_world_inner(
+        &mut self,
+        entities: &crate::common::entity::ClientEntities,
+        world: &World,
+        axis: Option<Axis>
+    ) -> (bool, Option<Vector3<f32>>)
     {
         let tile_of = |pos: Vector3<f32>|
         {
@@ -512,38 +598,81 @@ where
             self.collision(&CollidingInfo{
                 entity: None,
                 physical: None,
-                target: |_| {},
+                target: convert::identity,
                 transform: Transform{
                     position,
                     scale: Vector3::repeat(TILE_SIZE),
                     ..Default::default()
                 },
                 collider: &mut collider
-            }).map(|_| position)
+            }).map(|_|
+            {
+                position
+            })
         });
 
+        let mut planes = Vec::new();
 
-        let collisions = group_by(|group, value|
+        macro_rules! cmp_axis
         {
-            group.iter().all(|check| value.x == check.x && value.y == check.y)
-            || group.iter().all(|check| value.x == check.x && value.z == check.z)
-            || group.iter().all(|check| value.y == check.y && value.z == check.z)
-        }, collisions);
+            ($a:expr, $b:expr, $c:ident) =>
+            {
+                $a.$c == $b.$c
+            }
+        }
 
-        let collided = !collisions.is_empty();
-        collisions.into_iter().for_each(|group|
+        macro_rules! axis_check
         {
-            let amount = group.len() as f32;
+            ($a:expr, $b:expr, $axis:expr) =>
+            {
+                match $axis
+                {
+                    Axis::X => cmp_axis!($a, $b, x),
+                    Axis::Y => cmp_axis!($a, $b, y),
+                    Axis::Z => cmp_axis!($a, $b, z)
+                }
+            }
+        }
 
-            let total_position = group.into_iter().reduce(|acc, x| acc + x)
-                .expect("must have at least one element");
+        if let Some(axis) = axis
+        {
+            collisions.for_each(|position|
+            {
+                if !planes.iter_mut().any(|plane: &mut Vec<Vector3<f32>>|
+                {
+                    let fits = axis_check!(plane[0], position, axis);
+                    if fits
+                    {
+                        plane.push(position);
+                    }
 
-            let collision_point = total_position / amount;
+                    fits
+                })
+                {
+                    planes.push(vec![position]);
+                }
+            });
+        } else
+        {
+            planes = vec![collisions.collect::<Vec<_>>()];
+        }
+
+        if planes.is_empty()
+        {
+            return (false, None);
+        }
+
+        for plane in planes.into_iter()
+        {
+            let amount = plane.len();
+            let total_position = plane.into_iter().reduce(|acc, x| acc + x).unwrap();
+
+            let collision_point = total_position / amount as f32;
 
             let mut other = CollidingInfo{
                 entity: None,
                 physical: None,
-                target: |_| {},
+                target: convert::identity,
                 transform: Transform{
                     position: collision_point,
                     scale: Vector3::repeat(TILE_SIZE),
@@ -556,10 +685,10 @@ where
 
             if let Some(resolve) = result
             {
-                resolve(self, &mut other);
+                return (true, resolve(self, &mut other, axis).0);
             }
-        });
+        }
 
-        collided
+        (true, None)
     }
 }

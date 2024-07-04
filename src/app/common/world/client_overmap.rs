@@ -1,4 +1,7 @@
-use std::sync::Arc;
+use std::{
+    cmp::Ordering,
+    sync::Arc
+};
 
 use nalgebra::Vector2;
 
@@ -82,9 +85,12 @@ impl TilePos
         big_pos + small_pos
     }
 
-    pub fn tiles_between(&self, other: Self) -> impl Iterator<Item=TilePos> + '_
+    pub fn tiles_between(&self, other: Self) -> impl Iterator<Item=TilePos>
     {
-        let distance = self.distance(other);
+        let start = self.min_componentwise(other);
+        let end = self.max_componentwise(other);
+
+        let distance = start.distance(end);
 
         (0..=distance.z).flat_map(move |z|
         {
@@ -92,10 +98,63 @@ impl TilePos
             {
                 (0..=distance.x).map(move |x| Pos3::new(x, y, z))
             })
-        }).map(|pos|
+        }).map(move |pos|
         {
-            self.offset(pos)
+            start.offset(pos)
         })
+    }
+
+    pub fn min_componentwise(&self, other: Self) -> Self
+    {
+        self.order_componentwise(other, true)
+    }
+
+    pub fn max_componentwise(&self, other: Self) -> Self
+    {
+        self.order_componentwise(other, false)
+    }
+
+    fn order_componentwise(&self, other: Self, min: bool) -> Self
+    {
+        let ordered = |this_chunk: i32, this_local, other_chunk: i32, other_local|
+        {
+            let this_smaller = match this_chunk.cmp(&other_chunk)
+            {
+                Ordering::Less => true,
+                Ordering::Equal =>
+                {
+                    this_local < other_local
+                },
+                Ordering::Greater => false
+            };
+
+            let this_order = !(this_smaller ^ min);
+
+            if this_order
+            {
+                (this_chunk, this_local)
+            } else
+            {
+                (other_chunk, other_local)
+            }
+        };
+
+        macro_rules! ordered_by
+        {
+            ($c:ident) =>
+            {
+                ordered(self.chunk.0.$c, self.local.pos().$c, other.chunk.0.$c, other.local.pos().$c)
+            }
+        }
+
+        let x = ordered_by!(x);
+        let y = ordered_by!(y);
+        let z = ordered_by!(z);
+
+        Self{
+            chunk: GlobalPos::new(x.0, y.0, z.0),
+            local: ChunkLocal::new(x.1, y.1, z.1),
+        }
     }
 
     pub fn distance(&self, other: Self) -> Pos3<i32>
