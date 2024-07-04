@@ -195,6 +195,7 @@ impl ChunkModelBuilder
     )
     {
         let mut pos = Pos3::<f32>::from(*chunk_pos.pos()) * TILE_SIZE;
+        pos.z += TILE_SIZE;
 
         let chunk_height = chunk_pos.pos().z;
 

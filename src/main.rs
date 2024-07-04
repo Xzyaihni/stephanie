@@ -9,6 +9,7 @@ use yanyaengine::{App, ShadersContainer, ShadersInfo};
 
 pub use app::{common, server, client, ProgramShaders};
 use app::AppInfo;
+use common::world::TILE_SIZE;
 
 mod app;
 
@@ -80,18 +81,30 @@ fn main()
 {
     let mut shaders = ShadersContainer::new();
 
+    let default_vertex = |device|
+    {
+        default_vertex::load(device).unwrap().specialize(
+            [(0, TILE_SIZE.into())].into_iter().collect()
+        )
+    };
+
     let default_shader = shaders.push(ShadersInfo::new(
-        default_vertex::load,
+        default_vertex,
         default_fragment::load
     ));
 
     let world_shader = shaders.push(ShadersInfo::new(
-        default_vertex::load,
+        default_vertex,
         world_fragment::load
     ));
 
     let shadow_shader = shaders.push(ShadersInfo::new(
-        shadow_vertex::load,
+        |device|
+        {
+            shadow_vertex::load(device).unwrap().specialize(
+                [(0, TILE_SIZE.into())].into_iter().collect()
+            )
+        },
         shadow_fragment::load
     ));
 
