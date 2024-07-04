@@ -9,7 +9,7 @@ use parking_lot::{RwLock, Mutex};
 
 use serde::{Serialize, Deserialize};
 
-use nalgebra::Vector3;
+use nalgebra::{Unit, Vector3};
 
 use yanyaengine::{Assets, Transform, TextureId};
 
@@ -567,7 +567,7 @@ impl Character
 
                 let mut physical: Physical = PhysicalProperties{
                     mass: item_info.mass,
-                    friction: 0.99,
+                    friction: 0.999,
                     floating: false
                 }.into();
 
@@ -1275,6 +1275,24 @@ impl Character
         };
 
         self.set_sprite(state);
+    }
+
+    pub fn walk(&self, anatomy: &Anatomy, physical: &mut Physical, direction: Unit<Vector3<f32>>)
+    {
+        if let Some(speed) = anatomy.speed()
+        {
+            let velocity = direction.into_inner() * (speed / physical.mass);
+
+            let new_velocity = (physical.velocity + velocity).zip_map(&velocity, |value, limit|
+            {
+                let limit = limit.abs();
+
+                value.min(limit).max(-limit)
+            });
+
+            physical.velocity.x = new_velocity.x;
+            physical.velocity.y = new_velocity.y;
+        }
     }
 
     pub fn aggressive(&self, other: &Self) -> bool

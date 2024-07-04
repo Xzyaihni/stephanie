@@ -48,7 +48,6 @@ use crate::common::{
     EntitiesController,
     MessagePasser,
     ConnectionId,
-    PhysicalProperties,
     world::chunk::TILE_SIZE,
     message::{
         Message,
@@ -290,12 +289,6 @@ impl GameServer
             ..Default::default()
         };
 
-        let physical = PhysicalProperties{
-            mass: 50.0,
-            friction: 0.99,
-            floating: false
-        };
-
         let anatomy = Anatomy::Human(HumanAnatomy::default());
 
         let position = transform.position;
@@ -317,7 +310,7 @@ impl GameServer
                 ..Default::default()
             }.into()),
             inventory: Some(Inventory::new()),
-            physical: Some(physical.into()),
+            physical: None,
             character: Some(Character::new(self.player_character, Faction::Player, 1.0)),
             anatomy: Some(anatomy),
             ..Default::default()

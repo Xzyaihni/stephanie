@@ -5,13 +5,14 @@ use std::{
     cell::RefCell
 };
 
-use nalgebra::{Vector3, Vector2};
+use nalgebra::{Unit, Vector3, Vector2};
 
 use yanyaengine::{TextureId, Transform, Key, KeyCode};
 
 use crate::{
     client::{Ui, UiEvent},
     common::{
+        some_or_return,
         render_info::*,
         lazy_transform::*,
         collider::*,
@@ -879,7 +880,7 @@ impl<'a> PlayerContainer<'a>
         self.game_state.sync_transform(self.info.entity);
     }
 
-    fn movement_direction(&self) -> Option<Vector3<f32>>
+    fn movement_direction(&self) -> Option<Unit<Vector3<f32>>>
     {
         let mut movement_direction = None;
 
@@ -914,38 +915,18 @@ impl<'a> PlayerContainer<'a>
             move_direction(Vector3::y());
         }
 
-        if let Some(direction) = movement_direction.as_mut()
-        {
-            direction.try_normalize_mut(1.0);
-        }
-
-        movement_direction.map(|mut x|
-        {
-            x.z *= TILE_SIZE;
-
-            x
-        })
+        movement_direction.and_then(|x| Unit::try_new(x, 0.1))
     }
 
-    pub fn walk(&mut self, direction: Vector3<f32>)
+    pub fn walk(&mut self, direction: Unit<Vector3<f32>>)
     {
-        let entities = self.game_state.entities_mut();
-
-        if let Some(speed) = entities.anatomy(self.info.entity).unwrap().speed()
+        let entities = self.game_state.entities();
+        if let Some(character) = entities.character(self.info.entity)
         {
-            let mut physical = entities.physical_mut(self.info.entity).unwrap();
+            let anatomy = some_or_return!(entities.anatomy(self.info.entity));
+            let mut physical = some_or_return!(entities.physical_mut(self.info.entity));
 
-            let velocity = direction * (speed / physical.mass);
-
-            let new_velocity = (physical.velocity + velocity).zip_map(&velocity, |value, limit|
-            {
-                let limit = limit.abs();
-
-                value.min(limit).max(-limit)
-            });
-
-            physical.velocity.x = new_velocity.x;
-            physical.velocity.y = new_velocity.y;
+            character.walk(&anatomy, &mut physical, direction);
         }
     }
 

@@ -5,7 +5,6 @@ use nalgebra::{Unit, Vector3};
 use yanyaengine::Transform;
 
 use crate::common::{
-    some_or_return,
     some_or_value,
     character::*,
     SeededRandom,
@@ -14,7 +13,8 @@ use crate::common::{
     EnemiesInfo,
     EnemyInfo,
     EnemyId,
-    Physical
+    Physical,
+    Anatomy
 };
 
 
@@ -138,12 +138,14 @@ impl Enemy
     {
         let anatomy = entities.anatomy(entity).unwrap();
 
-        let speed = some_or_return!{anatomy.speed()};
+        if anatomy.speed().is_none()
+        {
+            return;
+        }
 
         let mut transform = entities.target(entity).unwrap();
         let mut physical = entities.physical_mut(entity).unwrap();
-
-        let move_speed = speed / physical.mass;
+        let mut character = entities.character_mut(entity).unwrap();
 
         match &self.behavior_state
         {
@@ -152,8 +154,9 @@ impl Enemy
                 Self::move_direction(
                     &mut transform,
                     &mut physical,
-                    direction.into_inner(),
-                    move_speed
+                    &character,
+                    &anatomy,
+                    direction.into_inner()
                 );
             },
             BehaviorState::Attack(other_entity) =>
@@ -168,7 +171,6 @@ impl Enemy
 
                 if let Some(other_transform) = entities.transform(other_entity)
                 {
-                    let mut character = entities.character_mut(entity).unwrap();
                     let aggressive = character.aggressive(
                         &entities.character(other_entity).unwrap()
                     );
@@ -182,8 +184,9 @@ impl Enemy
                         Self::move_direction(
                             &mut transform,
                             &mut physical,
-                            direction,
-                            move_speed
+                            &character,
+                            &anatomy,
+                            direction
                         );
 
                         if character.bash_reachable(&transform, &other_transform.position)
@@ -206,8 +209,19 @@ impl Enemy
     fn move_direction(
         transform: &mut Transform,
         physical: &mut Physical,
-        mut direction: Vector3<f32>,
-        move_speed: f32
+        character: &Character,
+        anatomy: &Anatomy,
+        direction: Vector3<f32>
+    )
+    {
+        Self::look_direction(transform, direction);
+
+        character.walk(anatomy, physical, Unit::new_normalize(direction));
+    }
+
+    fn look_direction(
+        transform: &mut Transform,
+        mut direction: Vector3<f32>
     )
     {
         direction.z = 0.0;
@@ -216,7 +230,6 @@ impl Enemy
 
         let angle = direction.y.atan2(direction.x);
 
-        physical.velocity = direction.into_inner() * move_speed;
         transform.rotation = angle;
     }
 
