@@ -4,7 +4,8 @@
         "behavior": "Melee",
         "normal": "zob/zob.png",
         "lying": "zob/lying.png",
-        "hand": "hand.png"
+        "hand": "hand.png",
+        "commonness": 1.0
     },
     {
         "name": "runner",
@@ -12,11 +13,31 @@
             "bone_toughness": 0.5,
             "muscle_toughness": 0.5,
             "skin_toughness": 0.5,
-            "base_speed": 1.5
+            "base_speed": 1.3,
+            "base_strength": 0.5
         },
         "behavior": "Melee",
         "normal": "runner/zob.png",
         "lying": "runner/lying.png",
-        "hand": "hand.png"
+        "hand": "hand.png",
+        "commonness": 0.4
+    },
+    {
+        "name": "me",
+        "anatomy": {
+            "bone_toughness": 0.5,
+            "muscle_toughness": 0.5,
+            "skin_toughness": 0.5,
+            "base_speed": 0.8,
+            "base_strength": 0.4
+        },
+        "behavior": "Melee",
+        "hairstyle": {
+            "Pons": "../player/pon.png"
+        },
+        "normal": "../player/hair.png",
+        "lying": "../player/lying.png",
+        "hand": "../player/hand.png",
+        "commonness": 0.05
     }
 ]

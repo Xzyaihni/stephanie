@@ -11,10 +11,30 @@ use crate::common::{
 define_info_id!{CharacterId}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
-pub enum Hairstyle
+pub enum Hairstyle<T=TextureId>
 {
     None,
-    Pons(TextureId)
+    Pons(T)
+}
+
+impl<T> Default for Hairstyle<T>
+{
+    fn default() -> Self
+    {
+        Self::None
+    }
+}
+
+impl<T> Hairstyle<T>
+{
+    pub fn map<U>(self, mut f: impl FnMut(T) -> U) -> Hairstyle<U>
+    {
+        match self
+        {
+            Self::None => Hairstyle::None,
+            Self::Pons(x) => Hairstyle::Pons(f(x))
+        }
+    }
 }
 
 pub struct CharacterInfo

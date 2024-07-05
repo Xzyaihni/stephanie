@@ -959,7 +959,8 @@ pub struct HumanAnatomyInfo
     pub bone_toughness: f32,
     pub muscle_toughness: f32,
     pub skin_toughness: f32,
-    pub base_speed: f32
+    pub base_speed: f32,
+    pub base_strength: f32
 }
 
 impl Default for HumanAnatomyInfo
@@ -970,7 +971,8 @@ impl Default for HumanAnatomyInfo
             bone_toughness: 1.0,
             muscle_toughness: 1.0,
             skin_toughness: 1.0,
-            base_speed: 1.0
+            base_speed: 1.0,
+            base_strength: 1.0
         }
     }
 }

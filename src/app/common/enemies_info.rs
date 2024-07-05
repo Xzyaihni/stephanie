@@ -1,6 +1,6 @@
 use std::{
     fs::File,
-    path::Path
+    path::{MAIN_SEPARATOR_STR, Path, Component}
 };
 
 use serde::Deserialize;
@@ -24,12 +24,15 @@ struct EnemyInfoRaw
 {
     name: String,
     #[serde(default)]
+    hairstyle: Hairstyle<String>,
+    #[serde(default)]
     anatomy: HumanAnatomyInfo,
     behavior: EnemyBehavior,
     scale: Option<f32>,
     normal: String,
     lying: String,
-    hand: String
+    hand: String,
+    commonness: f32
 }
 
 type EnemiesInfoRaw = Vec<EnemyInfoRaw>;
@@ -42,7 +45,8 @@ pub struct EnemyInfo
     pub anatomy: HumanAnatomyInfo,
     pub behavior: EnemyBehavior,
     pub character: CharacterId,
-    pub scale: f32
+    pub scale: f32,
+    pub commonness: f32
 }
 
 impl GenericItem for EnemyInfo
@@ -64,8 +68,31 @@ impl EnemyInfo
     {
         let get_texture = |name|
         {
-            let path = textures_root.join(name);
-            let name = path.to_string_lossy();
+            let path = textures_root.join(&name);
+
+            let mut components = Vec::new();
+            path.components().for_each(|component|
+            {
+                match component
+                {
+                    Component::ParentDir =>
+                    {
+                        components.pop();
+                    },
+                    x =>
+                    {
+                        components.push(x);
+                    }
+                }
+            });
+
+            let name = components.into_iter().map(|x|
+            {
+                x.as_os_str().to_string_lossy().into_owned()
+            }).reduce(|acc, x|
+            {
+                acc + MAIN_SEPARATOR_STR + &x
+            }).unwrap_or_default();
 
             assets.texture_id(&name)
         };
@@ -74,7 +101,7 @@ impl EnemyInfo
 
         let character = characters_info.push(CharacterInfo{
             scale,
-            hairstyle: Hairstyle::None,
+            hairstyle: raw.hairstyle.map(get_texture),
             normal: get_texture(raw.normal),
             lying: get_texture(raw.lying),
             hand: get_texture(raw.hand)
@@ -85,7 +112,8 @@ impl EnemyInfo
             anatomy: raw.anatomy,
             behavior: raw.behavior,
             character,
-            scale
+            scale,
+            commonness: raw.commonness
         }
     }
 }

@@ -60,7 +60,7 @@ pub use chunk_saver::{SaveLoad, WorldChunkSaver, ChunkSaver, EntitiesSaver};
 pub use occluding_plane::{OccludingPlane, OccludingPlaneServer, OccludingCasters};
 pub use render_info::RenderInfo;
 
-pub use anatomy::{Anatomy, HumanAnatomy};
+pub use anatomy::{Anatomy, HumanAnatomy, HumanAnatomyInfo};
 pub use damage::{Damageable, Damage, DamageType, DamageDirection, DamageHeight, DamagePartial};
 
 pub use collider::{ColliderType, Collider, CollidingInfo};

@@ -212,6 +212,9 @@ pub struct Character
     pub id: CharacterId,
     pub faction: Faction,
     pub strength: f32,
+    pub sprinting: bool,
+    oversprint_cooldown: f32,
+    stamina: f32,
     holding: Option<InventoryItem>,
     #[serde(skip, default)]
     cached: CachedInfo,
@@ -236,6 +239,9 @@ impl Character
             id,
             faction,
             strength,
+            sprinting: false,
+            oversprint_cooldown: 0.0,
+            stamina: 1.0,
             info: None,
             holding: None,
             cached: CachedInfo::default(),
@@ -1131,6 +1137,8 @@ impl Character
         {
             unstance_hands(self);
         }
+
+        Self::decrease_timer(&mut self.oversprint_cooldown, dt);
     }
 
     pub fn update_common(
@@ -1177,6 +1185,7 @@ impl Character
             self.update_held(combined_info);
         }
 
+        self.update_sprint(dt);
         self.update_attacks(combined_info, dt);
 
         let mut target = entities.target(entity).unwrap();
@@ -1277,10 +1286,51 @@ impl Character
         self.set_sprite(state);
     }
 
-    pub fn walk(&self, anatomy: &Anatomy, physical: &mut Physical, direction: Unit<Vector3<f32>>)
+    fn is_sprinting(&self) -> bool
+    {
+        if self.oversprint_cooldown <= 0.0
+        {
+            self.sprinting
+        } else
+        {
+            false
+        }
+    }
+
+    fn update_sprint(&mut self, dt: f32)
+    {
+        if self.sprinting
+        {
+            Self::decrease_timer(&mut self.stamina, dt);
+            if self.stamina < 0.0
+            {
+                self.oversprint_cooldown = 1.0 + self.stamina.abs();
+            }
+        }
+
+        if !self.is_sprinting()
+        {
+            self.stamina += dt;
+        }
+    }
+
+    pub fn walk(
+        &self,
+        anatomy: &Anatomy,
+        physical: &mut Physical,
+        direction: Unit<Vector3<f32>>
+    )
     {
         if let Some(speed) = anatomy.speed()
         {
+            let speed = if self.is_sprinting()
+            {
+                speed * 1.5
+            } else
+            {
+                speed
+            };
+
             let velocity = direction.into_inner() * (speed / physical.mass);
 
             let new_velocity = (physical.velocity + velocity).zip_map(&velocity, |value, limit|

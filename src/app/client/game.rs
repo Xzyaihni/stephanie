@@ -864,6 +864,12 @@ impl<'a> PlayerContainer<'a>
 
         if let Some(movement) = self.movement_direction()
         {
+            if let Some(mut character) = self.game_state.entities()
+                .character_mut(self.info.entity)
+            {
+                character.sprinting = self.game_state.pressed(Control::Sprint);
+            }
+
             self.walk(movement);
         }
 

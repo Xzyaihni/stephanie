@@ -44,6 +44,7 @@ use crate::common::{
     Entities,
     Anatomy,
     HumanAnatomy,
+    HumanAnatomyInfo,
     EntityPasser,
     EntitiesController,
     MessagePasser,
@@ -289,7 +290,10 @@ impl GameServer
             ..Default::default()
         };
 
-        let anatomy = Anatomy::Human(HumanAnatomy::default());
+        let anatomy = Anatomy::Human(HumanAnatomy::new(HumanAnatomyInfo{
+            base_speed: 0.9,
+            ..Default::default()
+        }));
 
         let position = transform.position;
 
