@@ -1039,6 +1039,12 @@ macro_rules! define_entities_both
 
                 self.swap_transform_indices(child, parent_entity);
 
+                if let Some(entity) = self.parent(parent_entity)
+                    .map(|parent| (&*parent).into().entity())
+                {
+                    self.resort_transforms(entity);
+                }
+
                 self.resort_transforms(child);
                 self.resort_transforms(parent_entity);
             }
@@ -1902,7 +1908,7 @@ macro_rules! define_entities_both
             }
 
             pub fn update_characters(
-                &self,
+                &mut self,
                 partial: PartialCombinedInfo,
                 create_info: &mut RenderCreateInfo,
                 dt: f32
