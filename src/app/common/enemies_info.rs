@@ -1,6 +1,6 @@
 use std::{
     fs::File,
-    path::{MAIN_SEPARATOR_STR, Path, Component}
+    path::Path
 };
 
 use serde::Deserialize;
@@ -8,6 +8,7 @@ use serde::Deserialize;
 use yanyaengine::Assets;
 
 use crate::common::{
+    normalize_path,
     ENTITY_SCALE,
     generic_info::*,
     Hairstyle,
@@ -30,6 +31,7 @@ struct EnemyInfoRaw
     behavior: EnemyBehavior,
     scale: Option<f32>,
     normal: String,
+    crawling: String,
     lying: String,
     hand: String,
     commonness: f32
@@ -70,29 +72,7 @@ impl EnemyInfo
         {
             let path = textures_root.join(&name);
 
-            let mut components = Vec::new();
-            path.components().for_each(|component|
-            {
-                match component
-                {
-                    Component::ParentDir =>
-                    {
-                        components.pop();
-                    },
-                    x =>
-                    {
-                        components.push(x);
-                    }
-                }
-            });
-
-            let name = components.into_iter().map(|x|
-            {
-                x.as_os_str().to_string_lossy().into_owned()
-            }).reduce(|acc, x|
-            {
-                acc + MAIN_SEPARATOR_STR + &x
-            }).unwrap_or_default();
+            let name = normalize_path(path);
 
             assets.texture_id(&name)
         };
@@ -103,6 +83,7 @@ impl EnemyInfo
             scale,
             hairstyle: raw.hairstyle.map(get_texture),
             normal: get_texture(raw.normal),
+            crawling: get_texture(raw.crawling),
             lying: get_texture(raw.lying),
             hand: get_texture(raw.hand)
         });

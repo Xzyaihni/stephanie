@@ -42,6 +42,7 @@ pub struct CharacterInfo
     pub scale: f32,
     pub hairstyle: Hairstyle,
     pub normal: TextureId,
+    pub crawling: TextureId,
     pub lying: TextureId,
     pub hand: TextureId
 }
@@ -54,6 +55,7 @@ impl CharacterInfo
             scale: ENTITY_SCALE,
             hairstyle: Hairstyle::Pons(assets.texture_id("player/pon.png")),
             normal: assets.texture_id("player/hair.png"),
+            crawling: assets.texture_id("player/crawling.png"),
             lying: assets.texture_id("player/lying.png"),
             hand: assets.texture_id("player/hand.png")
         }

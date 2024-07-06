@@ -1,6 +1,7 @@
 use std::{
     f32,
     fmt::Debug,
+    path::{Path, Component},
     ops::{Range, RangeInclusive}
 };
 
@@ -113,6 +114,33 @@ where
     {
         scaled_commonness(f(value))
     })
+}
+
+pub fn normalize_path(path: impl AsRef<Path>) -> String
+{
+    let mut components = Vec::new();
+    path.as_ref().components().for_each(|component|
+    {
+        match component
+        {
+            Component::ParentDir =>
+            {
+                components.pop();
+            },
+            x =>
+            {
+                components.push(x);
+            }
+        }
+    });
+
+    components.into_iter().map(|x|
+    {
+        x.as_os_str().to_string_lossy().into_owned()
+    }).reduce(|acc, x|
+    {
+        acc + "/" + &x
+    }).unwrap_or_default()
 }
 
 pub fn random_f32(range: RangeInclusive<f32>) -> f32
