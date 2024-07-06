@@ -245,7 +245,7 @@ impl Character
             rotation: 0.0,
             was_sprinting: false,
             oversprint_cooldown: 0.0,
-            stamina: 1.0,
+            stamina: f32::MAX,
             jiggle: 0.0,
             info: None,
             holding: None,
@@ -1463,8 +1463,10 @@ impl Character
 
         if !self.is_sprinting()
         {
-            self.stamina = (self.stamina + dt * recharge_speed).min(max_stamina);
+            self.stamina += dt * recharge_speed;
         }
+
+        self.stamina = self.stamina.min(max_stamina);
 
         self.was_sprinting = self.is_sprinting();
     }
