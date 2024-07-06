@@ -18,7 +18,7 @@ pub enum Control
     MainAction,
     SecondaryAction,
     Jump,
-    Crouch,
+    Crawl,
     Sprint,
     Poke,
     Shoot,
@@ -55,6 +55,18 @@ impl From<&yanyaengine::Control> for ControlState
             yanyaengine::Control::Keyboard{state, ..} => estate_to_state(state),
             yanyaengine::Control::Mouse{state, ..} => estate_to_state(state),
             yanyaengine::Control::Scroll{..} => ControlState::Pressed
+        }
+    }
+}
+
+impl ControlState
+{
+    pub fn to_bool(self) -> bool
+    {
+        match self
+        {
+            Self::Released => false,
+            Self::Pressed => true
         }
     }
 }
@@ -104,7 +116,7 @@ impl ControlsController
             (KeyMapping::Mouse(MouseButton::Right), Control::SecondaryAction),
             (KeyMapping::Keyboard(KeyCode::KeyV), Control::SecondaryAction),
             (KeyMapping::Keyboard(KeyCode::Space), Control::Jump),
-            (KeyMapping::Keyboard(KeyCode::ControlLeft), Control::Crouch),
+            (KeyMapping::Keyboard(KeyCode::ControlLeft), Control::Crawl),
             (KeyMapping::Keyboard(KeyCode::ShiftLeft), Control::Sprint),
             (KeyMapping::Keyboard(KeyCode::KeyF), Control::Shoot),
             (KeyMapping::Keyboard(KeyCode::KeyG), Control::Poke),

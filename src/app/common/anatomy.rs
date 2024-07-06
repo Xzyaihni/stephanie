@@ -53,6 +53,14 @@ impl Anatomy
     simple_getter!(max_stamina);
     simple_getter!(vision);
 
+    pub fn override_crawling(&mut self, state: bool)
+    {
+        match self
+        {
+            Self::Human(x) => x.override_crawling(state)
+        }
+    }
+
     pub fn is_crawling(&self) -> bool
     {
         match self
@@ -998,6 +1006,7 @@ pub struct HumanAnatomy
 {
     base_speed: f32,
     base_strength: f32,
+    override_crawling: bool,
     blood: SimpleHealth,
     body: HumanPart,
     cached: CachedProps
@@ -1140,6 +1149,7 @@ impl HumanAnatomy
         let mut this = Self{
             base_speed: base_speed * 12.0,
             base_strength,
+            override_crawling: false,
             blood: SimpleHealth::new(4.0),
             body,
             cached: Default::default()
@@ -1471,7 +1481,7 @@ impl HumanAnatomy
         let arms = arms * state.halves.left.arms;
 
         let crawl_speed = arms;
-        let crawling = legs < crawl_speed;
+        let crawling = self.override_crawling || (legs < crawl_speed);
 
         let speed_scale = if !crawling
         {
@@ -1490,6 +1500,12 @@ impl HumanAnatomy
         };
 
         (crawling, speed)
+    }
+
+    fn override_crawling(&mut self, state: bool)
+    {
+        self.override_crawling = state;
+        self.update_cache();
     }
 
     fn updated_strength(&mut self) -> Option<f32>

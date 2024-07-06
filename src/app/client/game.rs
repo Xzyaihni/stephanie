@@ -599,6 +599,22 @@ impl<'a> PlayerContainer<'a>
 
     pub fn on_control(&mut self, state: ControlState, control: Control)
     {
+        match control
+        {
+            Control::Crawl =>
+            {
+                let entities = self.game_state.entities();
+                if let Some(mut anatomy) = entities.anatomy_mut(self.info.entity)
+                {
+                    anatomy.override_crawling(state.to_bool());
+
+                    drop(anatomy);
+                    entities.anatomy_changed(self.info.entity);
+                }
+            },
+            _ => ()
+        }
+
         if state != ControlState::Pressed
         {
             return;
