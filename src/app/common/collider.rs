@@ -63,6 +63,7 @@ pub struct ColliderInfo
     pub kind: ColliderType,
     pub layer: ColliderLayer,
     pub ghost: bool,
+    pub scale: Option<Vector3<f32>>,
     pub move_z: bool,
     pub is_static: bool
 }
@@ -75,6 +76,7 @@ impl Default for ColliderInfo
             kind: ColliderType::Circle,
             layer: ColliderLayer::Normal,
             ghost: false,
+            scale: None,
             move_z: true,
             is_static: false
         }
@@ -87,6 +89,7 @@ pub struct Collider
     pub kind: ColliderType,
     pub layer: ColliderLayer,
     pub ghost: bool,
+    pub scale: Option<Vector3<f32>>,
     pub move_z: bool,
     pub is_static: bool,
     collided: Vec<Entity>
@@ -100,6 +103,7 @@ impl From<ColliderInfo> for Collider
             kind: info.kind,
             layer: info.layer,
             ghost: info.ghost,
+            scale: info.scale,
             move_z: info.move_z,
             is_static: info.is_static,
             collided: Vec::new()
@@ -394,7 +398,7 @@ where
 
     fn scale(&self) -> Vector3<f32>
     {
-        match self.collider.kind
+        let scale = match self.collider.kind
         {
             ColliderType::Point =>
             {
@@ -406,6 +410,14 @@ where
             },
             ColliderType::Circle => Vector3::repeat(self.transform.max_scale() / 2.0),
             ColliderType::Aabb => self.transform.scale / 2.0
+        };
+
+        if let Some(additional_scale) = self.collider.scale
+        {
+            scale.component_mul(&additional_scale)
+        } else
+        {
+            scale
         }
     }
 
@@ -581,6 +593,7 @@ where
             kind: ColliderType::Aabb,
             layer: ColliderLayer::World,
             ghost: false,
+            scale: None,
             move_z: false,
             is_static: true
         }.into();

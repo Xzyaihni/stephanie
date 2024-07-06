@@ -1291,6 +1291,7 @@ impl Character
                     Some(ColliderInfo{
                         kind: ColliderType::Circle,
                         ghost: false,
+                        scale: Some(Vector3::repeat(0.4)),
                         ..Default::default()
                     }.into()),
                     Some(PhysicalProperties{
