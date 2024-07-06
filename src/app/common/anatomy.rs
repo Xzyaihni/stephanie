@@ -1504,7 +1504,7 @@ impl HumanAnatomy
 
     fn updated_max_stamina(&mut self) -> Option<f32>
     {
-        Some(2.0)
+        Some(4.0)
     }
 
     fn updated_vision(&mut self) -> Option<f32>

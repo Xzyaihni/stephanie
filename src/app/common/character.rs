@@ -432,11 +432,8 @@ impl Character
     fn attack_cooldown(&self, combined_info: CombinedInfo) -> Option<f32>
     {
         let item_info = self.held_info(combined_info);
-        let liftability = self.newtons(combined_info)? * 0.05 / item_info.mass;
 
-        let usability = liftability * item_info.comfort;
-
-        Some(usability.recip())
+        Some(item_info.comfort)
     }
 
     pub fn bash_reachable(
@@ -707,11 +704,29 @@ impl Character
             anatomy.speed().is_some()
         }).unwrap_or(true)
     }
+
+    fn attack_stamina_cost(&self, combined_info: CombinedInfo) -> Option<f32>
+    {
+        let item_info = self.held_info(combined_info);
+
+        Some(item_info.mass / self.newtons(combined_info)?)
+    }
+
+    fn consume_attack_stamina(&mut self, combined_info: CombinedInfo)
+    {
+        self.stamina -= some_or_return!(self.attack_stamina_cost(combined_info));
+    }
     
-    pub fn can_attack(&self, _combined_info: CombinedInfo) -> bool
+    pub fn can_attack(&self, combined_info: CombinedInfo) -> bool
     {
         let state = *self.sprite_state.value();
-        state == SpriteState::Normal || state == SpriteState::Crawling
+
+        let attackable_state = state == SpriteState::Normal || state == SpriteState::Crawling;
+
+        let cost = some_or_value!(self.attack_stamina_cost(combined_info), false);
+        let attackable_item = cost <= self.stamina;
+
+        attackable_state && attackable_item
     }
 
     fn anatomy<'a>(&'a self, combined_info: CombinedInfo<'a>) -> Option<Ref<'a, Anatomy>>
@@ -738,6 +753,8 @@ impl Character
         self.stance_time = self.attack_cooldown * 2.0;
 
         self.bash_side = self.bash_side.opposite();
+
+        self.consume_attack_stamina(combined_info);
 
         self.bash_projectile(combined_info);
 
@@ -834,6 +851,8 @@ impl Character
         self.unstance(combined_info);
 
         self.attack_cooldown = some_or_return!(self.attack_cooldown(combined_info));
+
+        self.consume_attack_stamina(combined_info);
 
         self.poke_projectile(combined_info, item);
 
