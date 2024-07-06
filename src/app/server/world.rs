@@ -352,7 +352,7 @@ impl World
             EnemyBuilder::new(
                 &self.enemies_info,
                 &self.items_info,
-                self.enemies_info.random(),
+                self.enemies_info.weighted_random(1.0),
                 pos
             ).build()
         }).chain(Self::add_on_ground(chunk_pos, chunk, crates, |pos|

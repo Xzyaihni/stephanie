@@ -57,6 +57,7 @@ use crate::{
 pub enum SpriteState
 {
     Normal,
+    Crawling,
     Lying
 }
 
@@ -463,12 +464,22 @@ impl Character
         self.cached.bash_distance = Some(self.bash_distance(combined_info));
     }
 
+    fn held_scale(&self) -> f32
+    {
+        match self.sprite_state.value()
+        {
+            SpriteState::Crawling => 1.0 / 1.5,
+            _ => 1.0
+        }
+    }
+
     fn update_held(
         &mut self,
         combined_info: CombinedInfo
     )
     {
-        if *self.sprite_state.value() == SpriteState::Lying
+        let state = *self.sprite_state.value();
+        if state != SpriteState::Normal && state != SpriteState::Crawling
         {
             return;
         }
@@ -504,7 +515,7 @@ impl Character
             let mut lazy_transform = entities.lazy_transform_mut(holding_entity).unwrap();
             let target = lazy_transform.target();
 
-            target.scale = item.scale3();
+            target.scale = item.scale3() * self.held_scale();
             target.position = self.item_position(target.scale);
 
             let mut render = entities.render_mut(holding_entity).unwrap();
@@ -562,6 +573,11 @@ impl Character
         target: Vector3<f32>
     )
     {
+        if !self.can_attack(combined_info)
+        {
+            return;
+        }
+
         let entities = &combined_info.entities;
         let strength = some_or_return!(self.newtons(combined_info)) * 0.2;
         let held = some_or_return!(self.holding.take());
@@ -584,7 +600,7 @@ impl Character
 
                 let mut physical: Physical = PhysicalProperties{
                     mass: item_info.mass,
-                    friction: 0.999,
+                    friction: 0.7,
                     floating: false
                 }.into();
 
@@ -675,12 +691,18 @@ impl Character
         self.held_update = true;
     }
 
-    fn can_move(&self, combined_info: CombinedInfo) -> bool
+    pub fn can_move(&self, combined_info: CombinedInfo) -> bool
     {
         self.anatomy(combined_info).map(|anatomy|
         {
             anatomy.speed().is_some()
         }).unwrap_or(true)
+    }
+    
+    pub fn can_attack(&self, _combined_info: CombinedInfo) -> bool
+    {
+        let state = *self.sprite_state.value();
+        state == SpriteState::Normal || state == SpriteState::Crawling
     }
 
     fn anatomy<'a>(&'a self, combined_info: CombinedInfo<'a>) -> Option<Ref<'a, Anatomy>>
@@ -693,7 +715,7 @@ impl Character
 
     fn bash_attack(&mut self, combined_info: CombinedInfo)
     {
-        if !self.can_move(combined_info)
+        if !self.can_attack(combined_info)
         {
             return;
         }
@@ -788,7 +810,7 @@ impl Character
 
     fn poke_attack(&mut self, combined_info: CombinedInfo)
     {
-        if !self.can_move(combined_info)
+        if !self.can_attack(combined_info)
         {
             return;
         }
@@ -1179,7 +1201,7 @@ impl Character
             {
                 transform.scale = Vector3::repeat(info.scale);
             },
-            SpriteState::Lying =>
+            SpriteState::Crawling | SpriteState::Lying =>
             {
                 transform.scale = Vector3::repeat(info.scale * 1.5);
             }
@@ -1230,56 +1252,91 @@ impl Character
             }
         };
 
-        let set_children_visibility = |is_visible|
-        {
-            let set_visible = |entity| set_visible(entity, is_visible);
-
-            if let Some(info) = self.info.as_ref()
-            {
-                set_visible(info.holding);
-                set_visible(info.holding_right);
-
-                info.hair.iter().copied().for_each(set_visible);
-            }
-        };
-
-        let texture = match self.sprite_state.value()
+        let (
+            collider,
+            physical,
+            z_level,
+            hair_visibility,
+            held_visibility,
+            texture
+        ) = match self.sprite_state.value()
         {
             SpriteState::Normal =>
             {
-                entities.lazy_setter.borrow_mut().set_collider(entity, Some(ColliderInfo{
-                    kind: ColliderType::Circle,
-                    ghost: false,
-                    ..Default::default()
-                }.into()));
-
-                entities.lazy_setter.borrow_mut().set_physical(entity, Some(PhysicalProperties{
-                    mass: 50.0,
-                    friction: 0.5,
-                    floating: false
-                }.into()));
-
-                render.z_level = ZLevel::Head;
-                set_children_visibility(true);
-
-                character_info.normal
+                (
+                    Some(ColliderInfo{
+                        kind: ColliderType::Circle,
+                        ghost: false,
+                        ..Default::default()
+                    }.into()),
+                    Some(PhysicalProperties{
+                        mass: 50.0,
+                        friction: 0.99,
+                        floating: false
+                    }.into()),
+                    ZLevel::Head,
+                    true,
+                    true,
+                    character_info.normal
+                )
+            },
+            SpriteState::Crawling =>
+            {
+                (
+                    Some(ColliderInfo{
+                        kind: ColliderType::Circle,
+                        ghost: false,
+                        ..Default::default()
+                    }.into()),
+                    Some(PhysicalProperties{
+                        mass: 50.0,
+                        friction: 0.999,
+                        floating: false
+                    }.into()),
+                    ZLevel::Feet,
+                    false,
+                    true,
+                    character_info.crawling
+                )
             },
             SpriteState::Lying =>
             {
-                entities.lazy_setter.borrow_mut().set_collider(entity, Some(ColliderInfo{
-                    kind: ColliderType::Circle,
-                    ghost: true,
-                    ..Default::default()
-                }.into()));
-
-                entities.lazy_setter.borrow_mut().set_physical(entity, None);
-
-                render.z_level = ZLevel::Feet;
-                set_children_visibility(false);
-
-                character_info.lying
+                (
+                    Some(ColliderInfo{
+                        kind: ColliderType::Circle,
+                        ghost: true,
+                        ..Default::default()
+                    }.into()),
+                    None,
+                    ZLevel::Feet,
+                    false,
+                    false,
+                    character_info.lying
+                )
             }
         };
+
+        {
+            let mut setter = entities.lazy_setter.borrow_mut();
+            setter.set_collider(entity, collider);
+            setter.set_physical(entity, physical);
+        }
+
+        render.z_level = z_level;
+
+        if let Some(info) = self.info.as_ref()
+        {
+            {
+                let set_visible = |entity| set_visible(entity, held_visibility);
+
+                set_visible(info.holding);
+                set_visible(info.holding_right);
+            }
+
+            let set_visible = |entity| set_visible(entity, hair_visibility);
+
+            info.hair.iter().copied().for_each(set_visible);
+        }
 
         drop(render);
         drop(target);
@@ -1297,7 +1354,13 @@ impl Character
 
         let state = if can_move
         {
-            SpriteState::Normal
+            if anatomy.is_crawling()
+            {
+                SpriteState::Crawling
+            } else
+            {
+                SpriteState::Normal
+            }
         } else
         {
             SpriteState::Lying

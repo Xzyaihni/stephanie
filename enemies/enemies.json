@@ -39,7 +39,7 @@
         "crawling": "bigy/crawling.png",
         "lying": "bigy/lying.png",
         "hand": "hand.png",
-        "commonness": 0.4
+        "commonness": 0.2
     },
     {
         "name": "me",

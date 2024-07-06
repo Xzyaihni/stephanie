@@ -8,6 +8,7 @@ use serde::Deserialize;
 use yanyaengine::Assets;
 
 use crate::common::{
+    pick_by_commonness,
     normalize_path,
     ENTITY_SCALE,
     generic_info::*,
@@ -121,5 +122,15 @@ impl EnemiesInfo
         }).collect();
 
         GenericInfo::new(enemies)
+    }
+
+    pub fn weighted_random(&self, commonness: f64) -> EnemyId
+    {
+        let ids = (0..self.items().len()).map(EnemyId::from);
+
+        pick_by_commonness(commonness, ids, |id|
+        {
+            self.get(id).commonness as f64
+        }).unwrap()
     }
 }

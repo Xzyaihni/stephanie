@@ -10,6 +10,7 @@ use strum::{EnumCount, FromRepr};
 use nalgebra::Vector3;
 
 use crate::common::{
+    some_or_value,
     SeededRandom,
     WeightedPicker,
     Damage,
@@ -51,6 +52,14 @@ impl Anatomy
     simple_getter!(stamina);
     simple_getter!(max_stamina);
     simple_getter!(vision);
+
+    pub fn is_crawling(&self) -> bool
+    {
+        match self
+        {
+            Self::Human(x) => x.is_crawling()
+        }
+    }
 
     pub fn sees(&self, this_position: &Vector3<f32>, other_position: &Vector3<f32>) -> bool
     {
@@ -952,6 +961,7 @@ struct SpeedsState
 pub struct CachedProps
 {
     speed: Option<f32>,
+    is_crawling: bool,
     strength: Option<f32>,
     stamina: Option<f32>,
     max_stamina: Option<f32>,
@@ -1163,6 +1173,11 @@ impl HumanAnatomy
     pub fn vision(&self) -> Option<f32>
     {
         self.cached.vision
+    }
+
+    pub fn is_crawling(&self) -> bool
+    {
+        self.cached.is_crawling
     }
 
     pub fn set_speed(&mut self, speed: f32)
@@ -1433,9 +1448,9 @@ impl HumanAnatomy
         Self::brain_search(&self.body.part)
     }
 
-    fn updated_speed(&mut self) -> Option<f32>
+    fn updated_speed(&mut self) -> (bool, Option<f32>)
     {
-        let brain = self.brain()?;
+        let brain = some_or_value!(self.brain(), (false, None));
 
         let mut state = SpeedsState{
             conseq_leg: 0,
@@ -1455,21 +1470,26 @@ impl HumanAnatomy
         let legs = legs * state.halves.left.legs;
         let arms = arms * state.halves.left.arms;
 
-        let speed_scale = if legs > arms
+        let crawl_speed = arms;
+        let crawling = legs < crawl_speed;
+
+        let speed_scale = if !crawling
         {
             legs
         } else
         {
-            arms + legs
+            crawl_speed
         };
 
-        if speed_scale == 0.0
+        let speed = if speed_scale == 0.0
         {
             None
         } else
         {
             Some(self.base_speed * speed_scale)
-        }
+        };
+
+        (crawling, speed)
     }
 
     fn updated_strength(&mut self) -> Option<f32>
@@ -1494,7 +1514,7 @@ impl HumanAnatomy
 
     fn update_cache(&mut self)
     {
-        self.cached.speed = self.updated_speed();
+        (self.cached.is_crawling, self.cached.speed) = self.updated_speed();
         self.cached.strength = self.updated_strength();
         self.cached.stamina = self.updated_stamina();
         self.cached.max_stamina = self.updated_max_stamina();
@@ -1506,6 +1526,11 @@ impl Damageable for HumanAnatomy
 {
     fn damage(&mut self, mut damage: Damage) -> Option<DamageType>
     {
+        if self.is_crawling()
+        {
+            damage = damage.scale(2.0);
+        }
+
         if let Some(part) = self.select_random_part(&mut damage.rng, damage.direction)
         {
             let pierce = part.damage(&mut damage.rng, damage.direction.side, damage.data);

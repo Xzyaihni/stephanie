@@ -39,6 +39,14 @@ impl Damage
     {
         Self{rng: SeededRandom::new(), data, direction}
     }
+
+    pub fn scale(self, scale: f32) -> Self
+    {
+        Self{
+            data: self.data.scale(scale),
+            ..self
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
