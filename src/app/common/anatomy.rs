@@ -24,6 +24,20 @@ use crate::common::{
 };
 
 
+macro_rules! simple_getter
+{
+    ($name:ident) =>
+    {
+        pub fn $name(&self) -> Option<f32>
+        {
+            match self
+            {
+                Self::Human(x) => x.$name()
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Anatomy
 {
@@ -32,27 +46,17 @@ pub enum Anatomy
 
 impl Anatomy
 {
-    pub fn speed(&self) -> Option<f32>
-    {
-        match self
-        {
-            Self::Human(x) => x.speed()
-        }
-    }
-
-    pub fn vision_distance(&self) -> f32
-    {
-        match self
-        {
-            Self::Human(x) => x.vision_distance()
-        }
-    }
+    simple_getter!(speed);
+    simple_getter!(strength);
+    simple_getter!(stamina);
+    simple_getter!(max_stamina);
+    simple_getter!(vision);
 
     pub fn sees(&self, this_position: &Vector3<f32>, other_position: &Vector3<f32>) -> bool
     {
         let distance = this_position.metric_distance(other_position);
 
-        self.vision_distance() >= distance
+        self.vision().unwrap_or(0.0) >= distance
     }
 
     pub fn set_speed(&mut self, speed: f32)
@@ -948,7 +952,9 @@ struct SpeedsState
 pub struct CachedProps
 {
     speed: Option<f32>,
-    attack: Option<f32>,
+    strength: Option<f32>,
+    stamina: Option<f32>,
+    max_stamina: Option<f32>,
     vision: Option<f32>,
     blood_change: f32
 }
@@ -981,6 +987,7 @@ impl Default for HumanAnatomyInfo
 pub struct HumanAnatomy
 {
     base_speed: f32,
+    base_strength: f32,
     blood: SimpleHealth,
     body: HumanPart,
     cached: CachedProps
@@ -1000,6 +1007,7 @@ impl HumanAnatomy
     {
         let bone_toughness = info.bone_toughness;
         let base_speed = info.base_speed;
+        let base_strength = info.base_strength;
         let part = BodyPartInfo::from(info);
 
         let new_part = |health, size, other|
@@ -1121,6 +1129,7 @@ impl HumanAnatomy
 
         let mut this = Self{
             base_speed: base_speed * 12.0,
+            base_strength,
             blood: SimpleHealth::new(4.0),
             body,
             cached: Default::default()
@@ -1136,9 +1145,24 @@ impl HumanAnatomy
         self.cached.speed
     }
 
-    pub fn vision_distance(&self) -> f32
+    pub fn strength(&self) -> Option<f32>
     {
-        TILE_SIZE * 8.0
+        self.cached.strength
+    }
+
+    pub fn stamina(&self) -> Option<f32>
+    {
+        self.cached.stamina
+    }
+
+    pub fn max_stamina(&self) -> Option<f32>
+    {
+        self.cached.max_stamina
+    }
+
+    pub fn vision(&self) -> Option<f32>
+    {
+        self.cached.vision
     }
 
     pub fn set_speed(&mut self, speed: f32)
@@ -1448,9 +1472,33 @@ impl HumanAnatomy
         }
     }
 
+    fn updated_strength(&mut self) -> Option<f32>
+    {
+        Some(self.base_strength)
+    }
+
+    fn updated_stamina(&mut self) -> Option<f32>
+    {
+        Some(0.5)
+    }
+
+    fn updated_max_stamina(&mut self) -> Option<f32>
+    {
+        Some(2.0)
+    }
+
+    fn updated_vision(&mut self) -> Option<f32>
+    {
+        Some(TILE_SIZE * 8.0)
+    }
+
     fn update_cache(&mut self)
     {
         self.cached.speed = self.updated_speed();
+        self.cached.strength = self.updated_strength();
+        self.cached.stamina = self.updated_stamina();
+        self.cached.max_stamina = self.updated_max_stamina();
+        self.cached.vision = self.updated_vision();
     }
 }
 

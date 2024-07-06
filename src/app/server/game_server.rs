@@ -315,7 +315,7 @@ impl GameServer
             }.into()),
             inventory: Some(Inventory::new()),
             physical: None,
-            character: Some(Character::new(self.player_character, Faction::Player, 1.0)),
+            character: Some(Character::new(self.player_character, Faction::Player)),
             anatomy: Some(anatomy),
             ..Default::default()
         };

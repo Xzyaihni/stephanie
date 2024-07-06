@@ -4,7 +4,7 @@
         "comfort": 0.5,
         "sharpness": 0.5,
         "scale": 0.3,
-        "mass": 2.0,
+        "mass": 0.4,
         "commonness": 0.8,
         "groups": ["trash"]
     },
@@ -27,9 +27,9 @@
     {
         "name": "pipe",
         "comfort": 1.0,
-        "sharpness": 0.05,
+        "sharpness": 0.1,
         "scale": 0.5,
-        "mass": 0.6,
+        "mass": 0.7,
         "commonness": 0.5,
         "groups": ["trash"]
     },
@@ -61,7 +61,7 @@
         "comfort": 1.5,
         "sharpness": 0.15,
         "scale": 0.2,
-        "mass": 1.0,
+        "mass": 0.2,
         "commonness": 1.0,
         "texture": "weapons/stick.png",
         "groups": ["weapons", "utility"]
@@ -71,7 +71,7 @@
         "comfort": 1.5,
         "sharpness": 0.15,
         "scale": 0.3,
-        "mass": 1.5,
+        "mass": 0.3,
         "commonness": 0.3,
         "texture": "weapons/stick.png",
         "groups": ["weapons"]
@@ -80,7 +80,7 @@
         "name": "glock",
         "ranged": {
             "Pistol": {
-                "cooldown": 0.5,
+                "cooldown": 0.2,
                 "damage": 1
             }
         },

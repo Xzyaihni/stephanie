@@ -23,6 +23,22 @@
         "commonness": 0.4
     },
     {
+        "name": "bigy",
+        "anatomy": {
+            "bone_toughness": 2.0,
+            "muscle_toughness": 2.0,
+            "skin_toughness": 2.0,
+            "base_speed": 0.9,
+            "base_strength": 1.5
+        },
+        "scale": 1.3,
+        "behavior": "Melee",
+        "normal": "bigy/zob.png",
+        "lying": "bigy/lying.png",
+        "hand": "hand.png",
+        "commonness": 0.4
+    },
+    {
         "name": "me",
         "anatomy": {
             "bone_toughness": 0.5,

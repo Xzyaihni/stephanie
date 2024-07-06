@@ -94,6 +94,27 @@ where
     }
 }
 
+pub fn pick_by_commonness<I, T, F>(
+    this_commonness: f64,
+    iter: I,
+    f: F
+) -> Option<T>
+where
+    I: Iterator<Item=T> + Clone,
+    T: Copy,
+    F: Fn(T) -> f64
+{
+    let scaled_commonness = |c: f64|
+    {
+        c.powf(this_commonness)
+    };
+
+    WeightedPicker::pick_from(fastrand::f64(), iter, move |value|
+    {
+        scaled_commonness(f(value))
+    })
+}
+
 pub fn random_f32(range: RangeInclusive<f32>) -> f32
 {
     fastrand::f32() * (range.end() - range.start()) + range.start()

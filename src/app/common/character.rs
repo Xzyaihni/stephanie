@@ -1,6 +1,7 @@
 use std::{
     f32,
     mem,
+    cell::Ref,
     borrow::Cow,
     sync::Arc
 };
@@ -211,8 +212,8 @@ pub struct Character
 {
     pub id: CharacterId,
     pub faction: Faction,
-    pub strength: f32,
     pub sprinting: bool,
+    was_sprinting: bool,
     oversprint_cooldown: f32,
     stamina: f32,
     holding: Option<InventoryItem>,
@@ -231,15 +232,14 @@ impl Character
 {
     pub fn new(
         id: CharacterId,
-        faction: Faction,
-        strength: f32
+        faction: Faction
     ) -> Self
     {
         Self{
             id,
             faction,
-            strength,
             sprinting: false,
+            was_sprinting: false,
             oversprint_cooldown: 0.0,
             stamina: 1.0,
             info: None,
@@ -409,19 +409,29 @@ impl Character
         self.held_update = true;
     }
 
-    pub fn newtons(&self) -> f32
+    pub fn newtons(&self, combined_info: CombinedInfo) -> Option<f32>
     {
-        self.strength * 30.0
+        self.anatomy(combined_info).and_then(|x| x.strength().map(|strength| strength * 30.0))
     }
 
-    fn attack_cooldown(&self, combined_info: CombinedInfo) -> f32
+    pub fn stamina(&self, combined_info: CombinedInfo) -> Option<f32>
+    {
+        self.anatomy(combined_info).and_then(|x| x.stamina())
+    }
+
+    pub fn max_stamina(&self, combined_info: CombinedInfo) -> Option<f32>
+    {
+        self.anatomy(combined_info).and_then(|x| x.max_stamina())
+    }
+
+    fn attack_cooldown(&self, combined_info: CombinedInfo) -> Option<f32>
     {
         let item_info = self.held_info(combined_info);
-        let liftability = self.strength / item_info.mass;
+        let liftability = self.newtons(combined_info)? * 0.05 / item_info.mass;
 
         let usability = liftability * item_info.comfort;
 
-        usability.recip()
+        Some(usability.recip())
     }
 
     pub fn bash_reachable(
@@ -553,6 +563,7 @@ impl Character
     )
     {
         let entities = &combined_info.entities;
+        let strength = some_or_return!(self.newtons(combined_info)) * 0.3;
         let held = some_or_return!(self.holding.take());
 
         if let Some(item_info) = self.item_info(combined_info, held)
@@ -579,7 +590,6 @@ impl Character
 
                 let mass = physical.mass;
 
-                let strength = self.newtons() * 0.4;
                 let throw_limit = 0.1 * strength;
                 let throw_amount = (strength / mass).min(throw_limit);
                 physical.velocity = direction * throw_amount;
@@ -667,13 +677,18 @@ impl Character
 
     fn can_move(&self, combined_info: CombinedInfo) -> bool
     {
-        self.info.as_ref().and_then(|info|
+        self.anatomy(combined_info).map(|anatomy|
         {
-            combined_info.entities.anatomy(info.this).map(|anatomy|
-            {
-                anatomy.speed().is_some()
-            })
+            anatomy.speed().is_some()
         }).unwrap_or(true)
+    }
+
+    fn anatomy<'a>(&'a self, combined_info: CombinedInfo<'a>) -> Option<Ref<'a, Anatomy>>
+    {
+        self.info.as_ref().and_then(move |info|
+        {
+            combined_info.entities.anatomy(info.this)
+        })
     }
 
     fn bash_attack(&mut self, combined_info: CombinedInfo)
@@ -688,7 +703,7 @@ impl Character
             return;
         }
 
-        self.attack_cooldown = self.attack_cooldown(combined_info);
+        self.attack_cooldown = some_or_return!(self.attack_cooldown(combined_info));
         self.stance_time = self.attack_cooldown * 2.0;
 
         self.bash_side = self.bash_side.opposite();
@@ -787,7 +802,7 @@ impl Character
 
         self.unstance(combined_info);
 
-        self.attack_cooldown = self.attack_cooldown(combined_info);
+        self.attack_cooldown = some_or_return!(self.attack_cooldown(combined_info));
 
         self.poke_projectile(combined_info, item);
 
@@ -913,8 +928,9 @@ impl Character
 
         let item_info = self.held_info(combined_info);
 
+        let damage_scale = some_or_return!(self.newtons(combined_info)) * 0.03;
         let damage = DamagePartial{
-            data: item_info.bash_damage().scale(self.strength),
+            data: item_info.bash_damage().scale(damage_scale),
             height: DamageHeight::random()
         };
 
@@ -971,8 +987,9 @@ impl Character
 
         let offset = projectile_scale / 2.0;
 
+        let damage_scale = some_or_return!(self.newtons(combined_info)) * 0.03;
         let damage = DamagePartial{
-            data: item_info.poke_damage().scale(self.strength),
+            data: item_info.poke_damage().scale(damage_scale),
             height: DamageHeight::random()
         };
 
@@ -1133,9 +1150,12 @@ impl Character
             unstance_hands(self);
         }
 
-        if self.attack_cooldown < (self.attack_cooldown(combined_info) * HANDS_UNSTANCE)
+        if let Some(attack_cooldown) = self.attack_cooldown(combined_info)
         {
-            unstance_hands(self);
+            if self.attack_cooldown < (attack_cooldown * HANDS_UNSTANCE)
+            {
+                unstance_hands(self);
+            }
         }
 
         Self::decrease_timer(&mut self.oversprint_cooldown, dt);
@@ -1185,7 +1205,7 @@ impl Character
             self.update_held(combined_info);
         }
 
-        self.update_sprint(dt);
+        self.update_sprint(combined_info, dt);
         self.update_attacks(combined_info, dt);
 
         let mut target = entities.target(entity).unwrap();
@@ -1297,21 +1317,33 @@ impl Character
         }
     }
 
-    fn update_sprint(&mut self, dt: f32)
+    fn update_sprint(&mut self, combined_info: CombinedInfo, dt: f32)
     {
-        if self.sprinting
+        let max_stamina = some_or_return!(self.max_stamina(combined_info));
+        let recharge_speed = some_or_return!(self.stamina(combined_info));
+
+        if self.is_sprinting()
         {
             Self::decrease_timer(&mut self.stamina, dt);
             if self.stamina < 0.0
             {
-                self.oversprint_cooldown = 1.0 + self.stamina.abs();
+                let until_half = ((max_stamina / 2.0) - self.stamina) / recharge_speed;
+
+                self.oversprint_cooldown = until_half;
             }
+        }
+
+        if self.was_sprinting && !self.sprinting
+        {
+            self.oversprint_cooldown = 0.7;
         }
 
         if !self.is_sprinting()
         {
-            self.stamina += dt;
+            self.stamina = (self.stamina + dt * recharge_speed).min(max_stamina);
         }
+
+        self.was_sprinting = self.is_sprinting();
     }
 
     pub fn walk(
@@ -1325,7 +1357,7 @@ impl Character
         {
             let speed = if self.is_sprinting()
             {
-                speed * 1.5
+                speed * 1.8
             } else
             {
                 speed
