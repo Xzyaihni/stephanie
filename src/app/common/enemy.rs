@@ -2,8 +2,6 @@ use serde::{Serialize, Deserialize};
 
 use nalgebra::{Unit, Vector3};
 
-use yanyaengine::Transform;
-
 use crate::common::{
     some_or_value,
     character::*,
@@ -143,7 +141,7 @@ impl Enemy
             return;
         }
 
-        let mut transform = entities.target(entity).unwrap();
+        let transform = entities.target_ref(entity).unwrap();
         let mut physical = entities.physical_mut(entity).unwrap();
         let mut character = entities.character_mut(entity).unwrap();
 
@@ -152,9 +150,8 @@ impl Enemy
             BehaviorState::MoveDirection(direction) =>
             {
                 Self::move_direction(
-                    &mut transform,
                     &mut physical,
-                    &character,
+                    &mut character,
                     &anatomy,
                     direction.into_inner()
                 );
@@ -182,9 +179,8 @@ impl Enemy
                         let direction = other_transform.position - transform.position;
 
                         Self::move_direction(
-                            &mut transform,
                             &mut physical,
-                            &character,
+                            &mut character,
                             &anatomy,
                             direction
                         );
@@ -207,20 +203,19 @@ impl Enemy
     }
 
     fn move_direction(
-        transform: &mut Transform,
         physical: &mut Physical,
-        character: &Character,
+        character: &mut Character,
         anatomy: &Anatomy,
         direction: Vector3<f32>
     )
     {
-        Self::look_direction(transform, direction);
+        Self::look_direction(character, direction);
 
         character.walk(anatomy, physical, Unit::new_normalize(direction));
     }
 
     fn look_direction(
-        transform: &mut Transform,
+        character: &mut Character,
         mut direction: Vector3<f32>
     )
     {
@@ -230,7 +225,7 @@ impl Enemy
 
         let angle = direction.y.atan2(direction.x);
 
-        transform.rotation = angle;
+        character.rotation = angle;
     }
 
     pub fn update(

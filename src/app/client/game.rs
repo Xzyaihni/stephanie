@@ -947,8 +947,9 @@ impl<'a> PlayerContainer<'a>
     {
         let camera_pos = self.game_state.camera.read().position().xy().coords;
 
-        let mut player_transform = self.game_state.entities_mut()
-            .transform_mut(self.info.entity)
+        let mut character = self.game_state.entities().character_mut(self.info.entity).unwrap();
+        let player_transform = self.game_state.entities()
+            .transform(self.info.entity)
             .expect("player must have a transform");
 
         let player_pos = player_transform.position.xy();
@@ -959,7 +960,7 @@ impl<'a> PlayerContainer<'a>
 
         let rotation = pos.y.atan2(pos.x);
 
-        player_transform.rotation = rotation;
+        character.rotation = rotation;
     }
 
     fn player_position(&self) -> Vector3<f32>

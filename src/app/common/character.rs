@@ -147,7 +147,7 @@ pub enum CharacterAction
     Ranged(Vector3<f32>)
 }
 
-pub const HELD_DISTANCE: f32 = 0.1;
+pub const DEFAULT_HELD_DISTANCE: f32 = 0.1;
 pub const POKE_DISTANCE: f32 = 0.75;
 
 // hands r actually 0.1 meters in size but they look too small that way
@@ -214,9 +214,11 @@ pub struct Character
     pub id: CharacterId,
     pub faction: Faction,
     pub sprinting: bool,
+    pub rotation: f32,
     was_sprinting: bool,
     oversprint_cooldown: f32,
     stamina: f32,
+    jiggle: f32,
     holding: Option<InventoryItem>,
     #[serde(skip, default)]
     cached: CachedInfo,
@@ -240,9 +242,11 @@ impl Character
             id,
             faction,
             sprinting: false,
+            rotation: 0.0,
             was_sprinting: false,
             oversprint_cooldown: 0.0,
             stamina: 1.0,
+            jiggle: 0.0,
             info: None,
             holding: None,
             cached: CachedInfo::default(),
@@ -454,7 +458,7 @@ impl Character
         let item_info = self.held_info(combined_info);
 
         let item_scale = item_info.scale3().y;
-        HELD_DISTANCE + item_scale
+        self.held_distance() + item_scale
     }
 
     fn bash_distance(&self, combined_info: CombinedInfo) -> f32
@@ -1131,9 +1135,20 @@ impl Character
         Some(self.item_position(scale))
     }
 
+    fn held_distance(&self) -> f32
+    {
+        if *self.sprite_state.value() == SpriteState::Crawling
+        {
+            DEFAULT_HELD_DISTANCE - 0.1
+        } else
+        {
+            DEFAULT_HELD_DISTANCE
+        }
+    }
+
     fn item_position(&self, scale: Vector3<f32>) -> Vector3<f32>
     {
-        let offset = scale.y / 2.0 + 0.5 + HELD_DISTANCE;
+        let offset = scale.y / 2.0 + 0.5 + self.held_distance();
 
         Vector3::new(offset, 0.0, 0.0)
     }
@@ -1232,6 +1247,7 @@ impl Character
             self.update_held(combined_info);
         }
 
+        self.update_jiggle(combined_info, dt);
         self.update_sprint(combined_info, dt);
         self.update_attacks(combined_info, dt);
 
@@ -1384,6 +1400,25 @@ impl Character
         {
             false
         }
+    }
+
+    fn update_jiggle(&mut self, combined_info: CombinedInfo, dt: f32)
+    {
+        let info = some_or_return!(self.info.as_ref());
+        let physical = some_or_return!(combined_info.entities.physical(info.this));
+        let speed = physical.velocity.magnitude() * 50.0;
+
+        self.jiggle = (self.jiggle + dt * speed) % (2.0 * f32::consts::PI);
+
+        let mut target = some_or_return!(combined_info.entities.target(info.this));
+
+        target.rotation = if *self.sprite_state.value() == SpriteState::Crawling
+        {
+            self.rotation + self.jiggle.sin() * 0.25
+        } else
+        {
+            self.rotation
+        };
     }
 
     fn update_sprint(&mut self, combined_info: CombinedInfo, dt: f32)

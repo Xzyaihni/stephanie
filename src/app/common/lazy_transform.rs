@@ -652,6 +652,11 @@ impl LazyTransform
         }
     }
 
+    pub fn set_origin_rotation(&mut self, rotation: f32)
+    {
+        self.origin_rotation = rotation;
+    }
+
     pub fn origin_rotation(&self) -> f32
     {
         self.origin_rotation
