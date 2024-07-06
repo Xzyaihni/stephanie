@@ -563,7 +563,7 @@ impl Character
     )
     {
         let entities = &combined_info.entities;
-        let strength = some_or_return!(self.newtons(combined_info)) * 0.3;
+        let strength = some_or_return!(self.newtons(combined_info)) * 0.2;
         let held = some_or_return!(self.holding.take());
 
         if let Some(item_info) = self.item_info(combined_info, held)
@@ -624,7 +624,7 @@ impl Character
                     }.into()),
                     damaging: Some(DamagingInfo{
                         damage: DamagingType::Mass(mass),
-                        faction: Some(Faction::Player),
+                        faction: Some(self.faction),
                         ..Default::default()
                     }.into()),
                     watchers: Some(Watchers::new(vec![
