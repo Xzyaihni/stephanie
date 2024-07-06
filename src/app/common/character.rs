@@ -205,7 +205,7 @@ pub struct AfterInfo
 #[derive(Default, Debug, Clone)]
 struct CachedInfo
 {
-    pub bash_distance: Option<f32>
+    pub bash_distance_parentless: Option<f32>
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -441,7 +441,7 @@ impl Character
         other: &Vector3<f32>
     ) -> bool
     {
-        let bash_distance = some_or_value!(self.cached.bash_distance, false);
+        let bash_distance = some_or_value!(self.cached.bash_distance_parentless, false);
         let bash_distance = bash_distance * this.scale.x;
 
         let distance = this.position.metric_distance(other);
@@ -449,19 +449,24 @@ impl Character
         distance <= bash_distance
     }
 
-    fn bash_distance(&self, combined_info: CombinedInfo) -> f32
+    fn bash_distance_parentless(&self, combined_info: CombinedInfo) -> f32
     {
         let item_info = self.held_info(combined_info);
 
         let item_scale = item_info.scale3().y;
-        let over_scale = HELD_DISTANCE + item_scale;
+        HELD_DISTANCE + item_scale
+    }
 
-        1.0 + over_scale * 2.0
+    fn bash_distance(&self, combined_info: CombinedInfo) -> f32
+    {
+        1.0 + self.bash_distance_parentless(combined_info) * 2.0
     }
 
     fn update_cached(&mut self, combined_info: CombinedInfo)
     {
-        self.cached.bash_distance = Some(self.bash_distance(combined_info));
+        self.cached.bash_distance_parentless = Some(
+            1.0 + self.bash_distance_parentless(combined_info)
+        );
     }
 
     fn held_scale(&self) -> f32
@@ -535,7 +540,7 @@ impl Character
                 let mut lazy = entities.lazy_transform_mut(entity).unwrap();
                 let target = lazy.target();
 
-                target.scale = Vector3::repeat(HAND_SCALE);
+                target.scale = Vector3::repeat(HAND_SCALE) * self.held_scale();
 
                 target.position = self.item_position(target.scale);
                 target.position.y = y;
