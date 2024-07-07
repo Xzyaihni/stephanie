@@ -71,7 +71,7 @@ impl EnemyInfo
     {
         let get_texture = |name|
         {
-            let path = textures_root.join(&name);
+            let path = textures_root.join(name);
 
             let name = normalize_path(path);
 

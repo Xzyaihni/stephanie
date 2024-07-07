@@ -331,7 +331,7 @@ impl Game
                         .next();
 
                     let entity = collided.map(|collided| Self::push_entity(env, memory, collided))
-                        .unwrap_or_else(|| LispValue::new_empty_list());
+                        .unwrap_or_else(LispValue::new_empty_list);
 
                     memory.push_return(entity);
 
@@ -430,7 +430,7 @@ impl Game
 
                     eprintln!(
                         "entity info: {}",
-                        entities.info_ref(entity).unwrap_or_else(String::new)
+                        entities.info_ref(entity).unwrap_or_default()
                     );
 
                     memory.push_return(LispValue::new_empty_list());
@@ -600,20 +600,16 @@ impl<'a> PlayerContainer<'a>
 
     pub fn on_control(&mut self, state: ControlState, control: Control)
     {
-        match control
+        if let Control::Crawl = control
         {
-            Control::Crawl =>
+            let entities = self.game_state.entities();
+            if let Some(mut anatomy) = entities.anatomy_mut(self.info.entity)
             {
-                let entities = self.game_state.entities();
-                if let Some(mut anatomy) = entities.anatomy_mut(self.info.entity)
-                {
-                    anatomy.override_crawling(state.to_bool());
+                anatomy.override_crawling(state.to_bool());
 
-                    drop(anatomy);
-                    entities.anatomy_changed(self.info.entity);
-                }
-            },
-            _ => ()
+                drop(anatomy);
+                entities.anatomy_changed(self.info.entity);
+            }
         }
 
         if state != ControlState::Pressed
@@ -701,7 +697,7 @@ impl<'a> PlayerContainer<'a>
             .unwrap()
             .visible = self.info.console_contents.is_some();
 
-        let text = self.info.console_contents.clone().unwrap_or_else(String::new);
+        let text = self.info.console_contents.clone().unwrap_or_default();
 
         let object = RenderObjectKind::Text{text, font_size: 30}.into();
 
@@ -779,7 +775,7 @@ impl<'a> PlayerContainer<'a>
         Self::update_inventory_inner(
             entities,
             &mut ui,
-            &self.info,
+            self.info,
             which
         );
     }

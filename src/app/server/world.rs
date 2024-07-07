@@ -1,10 +1,12 @@
 use std::{
     path::PathBuf,
     sync::Arc,
+    rc::Rc,
+    cell::RefCell,
     collections::{hash_map::Entry, HashMap}
 };
 
-use parking_lot::{Mutex, RwLock};
+use parking_lot::RwLock;
 
 use nalgebra::Vector3;
 
@@ -56,7 +58,7 @@ mod server_overmap;
 pub const SERVER_OVERMAP_SIZE: usize = CLIENT_OVERMAP_SIZE + 1;
 pub const SERVER_OVERMAP_SIZE_Z: usize = CLIENT_OVERMAP_SIZE_Z + 1;
 
-type OvermapsType = Arc<RwLock<HashMap<ConnectionId, ServerOvermap<WorldChunkSaver>>>>;
+type OvermapsType = Rc<RefCell<HashMap<ConnectionId, ServerOvermap<WorldChunkSaver>>>>;
 
 #[derive(Debug, Clone)]
 struct ClientIndexer
@@ -85,7 +87,7 @@ pub struct World
 {
     message_handler: Arc<RwLock<ConnectionsHandler>>,
     world_name: String,
-    world_generator: Arc<Mutex<WorldGenerator<WorldChunkSaver>>>,
+    world_generator: Rc<RefCell<WorldGenerator<WorldChunkSaver>>>,
     chunk_saver: ChunkSaver,
     entities_saver: EntitiesSaver,
     enemies_info: Arc<EnemiesInfo>,
@@ -115,9 +117,9 @@ impl World
             WorldGenerator::new(chunk_saver, tilemap, "world_generation/")
         }?;
 
-        let world_generator = Arc::new(Mutex::new(world_generator));
+        let world_generator = Rc::new(RefCell::new(world_generator));
 
-        let overmaps = Arc::new(RwLock::new(HashMap::new()));
+        let overmaps = Rc::new(RefCell::new(HashMap::new()));
         let client_indexers = HashMap::new();
 
         Ok(Self{
@@ -161,7 +163,7 @@ impl World
         let indexer = ClientIndexer{size: indexer_size, player_position: position.rounded()};
 
         self.client_indexers.insert(id, indexer);
-        self.overmaps.write().insert(id, overmap);
+        self.overmaps.borrow_mut().insert(id, overmap);
 
         self.unload_entities(container);
     }
@@ -173,7 +175,7 @@ impl World
     )
     {
         self.client_indexers.remove(&id);
-        self.overmaps.write().remove(&id);
+        self.overmaps.borrow_mut().remove(&id);
 
         self.unload_entities(container);
     }
@@ -229,7 +231,7 @@ impl World
         self.chunk_saver.exit();
         self.entities_saver.exit();
 
-        self.world_generator.lock().exit();
+        self.world_generator.borrow_mut().exit();
     }
 
     pub fn send_all(
@@ -242,7 +244,7 @@ impl World
 
         let ordering = indexer.default_ordering(indexer.clone().positions());
 
-        ordering.into_iter().for_each(|pos|
+        ordering.iter().for_each(|pos|
         {
             self.send_chunk(container, id, indexer.to_global(*pos));
         });
@@ -391,7 +393,7 @@ impl World
 
         loaded_chunk.unwrap_or_else(||
         {
-            let chunk = self.overmaps.write().get_mut(&id)
+            let chunk = self.overmaps.borrow_mut().get_mut(&id)
                 .expect("id must be valid")
                 .generate_chunk(pos);
 

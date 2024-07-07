@@ -228,16 +228,8 @@ impl Default for Watcher
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct Watchers(Vec<Watcher>);
-
-impl Default for Watchers
-{
-    fn default() -> Self
-    {
-        Self(Vec::new())
-    }
-}
 
 impl Watchers
 {

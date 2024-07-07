@@ -822,10 +822,9 @@ impl LispMemory
 
     fn transfer_to_swap_env(&mut self, env: &Environment)
     {
-        match env
+        if let Environment::Child(parent, _) = env
         {
-            Environment::Child(parent, _) => self.transfer_to_swap_env(&parent),
-            _ => ()
+            self.transfer_to_swap_env(parent);
         }
 
         env.mappings().0.borrow_mut().iter_mut().for_each(|(_key, value)|
@@ -1059,8 +1058,8 @@ impl<'a> Environment<'a>
     {
         match self
         {
-            Self::TopLevel(x) => &x,
-            Self::Child(_, x) => &x
+            Self::TopLevel(x) => x,
+            Self::Child(_, x) => x
         }
     }
 

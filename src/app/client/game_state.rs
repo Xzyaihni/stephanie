@@ -161,7 +161,7 @@ impl ClientEntitiesContainer
 
         {
             let passer = &mut *passer;
-            self.entities.update_colliders(world, is_trusted.then(move || passer));
+            self.entities.update_colliders(world, is_trusted.then_some(passer));
         }
 
         self.animation = (self.animation + dt) % (f32::consts::PI * 2.0);
@@ -227,14 +227,14 @@ impl ClientEntitiesContainer
 
         let animation = self.animation.sin();
 
-        normal.into_iter().for_each(|render|
+        normal.iter().for_each(|render|
         {
             render.get().draw(visibility, info, animation);
         });
 
         info.bind_pipeline(shaders.ui);
         info.set_depth_test(false);
-        ui.into_iter().for_each(|render|
+        ui.iter().for_each(|render|
         {
             render.get().draw(visibility, info, animation);
         });

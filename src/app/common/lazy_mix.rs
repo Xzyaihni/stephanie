@@ -29,7 +29,7 @@ impl LazyMix
         dt: f32
     ) -> MixColor
     {
-        let color = current.color.into_iter().zip(self.target.color.into_iter())
+        let color = current.color.into_iter().zip(self.target.color)
             .map(|(current, target)| ease_out(current, target, self.decay, dt))
             .collect::<Vec<_>>()
             .try_into()

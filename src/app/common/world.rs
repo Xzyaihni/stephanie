@@ -130,7 +130,7 @@ impl World
 
         self.overmap.set_tile(pos, new_tile);
 
-        return true;
+        true
     }
 
     pub fn update(&mut self, dt: f32)

@@ -247,10 +247,8 @@ impl GameServer
         stream: TcpStream
     ) -> Result<(), ConnectionError>
     {
-        let (entities, id, messager) = self.player_connect_inner(stream)?;
+        let (entity, id, messager) = self.player_connect_inner(stream)?;
 
-        let entities0 = entities.clone();
-        let entities1 = entities.clone();
         let sender0 = self.sender.clone();
         let sender1 = self.sender.clone();
 
@@ -258,7 +256,7 @@ impl GameServer
             messager,
             move |message|
             {
-                if sender0.send((id, message, entities0.clone())).is_err()
+                if sender0.send((id, message, entity)).is_err()
                 {
                     ControlFlow::Break(())
                 } else
@@ -268,7 +266,7 @@ impl GameServer
             },
             move ||
             {
-                let _ = sender1.send((id, Message::PlayerDisconnect{host: false}, entities1));
+                let _ = sender1.send((id, Message::PlayerDisconnect{host: false}, entity));
             }
         );
 

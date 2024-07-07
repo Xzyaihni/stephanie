@@ -1,6 +1,4 @@
-use std::sync::Arc;
-
-use parking_lot::Mutex;
+use std::{rc::Rc, cell::RefCell};
 
 use super::world_generator::{
     WORLD_CHUNK_SIZE,
@@ -64,7 +62,7 @@ impl OvermapIndexing for Indexer
 #[derive(Debug)]
 pub struct WorldPlane<S>
 {
-    world_generator: Arc<Mutex<WorldGenerator<S>>>,
+    world_generator: Rc<RefCell<WorldGenerator<S>>>,
     chunks: FlatChunksContainer<Option<WorldChunk>>,
     indexer: Indexer
 }
@@ -72,7 +70,7 @@ pub struct WorldPlane<S>
 impl<S> WorldPlane<S>
 {
     pub fn new(
-        world_generator: Arc<Mutex<WorldGenerator<S>>>,
+        world_generator: Rc<RefCell<WorldGenerator<S>>>,
         mut size: Pos3<usize>,
         player_position: GlobalPos
     ) -> Self
@@ -127,7 +125,7 @@ impl<S: SaveLoad<WorldChunk>> Overmap<WorldChunk> for WorldPlane<S>
 
     fn generate_missing(&mut self)
     {
-        self.world_generator.lock().generate_surface(&mut self.chunks, &self.indexer);
+        self.world_generator.borrow_mut().generate_surface(&mut self.chunks, &self.indexer);
     }
 }
 
@@ -177,7 +175,7 @@ fn chunk_pos(pos: GlobalPos) -> GlobalPos
 #[derive(Debug)]
 pub struct ServerOvermap<S>
 {
-    world_generator: Arc<Mutex<WorldGenerator<S>>>,
+    world_generator: Rc<RefCell<WorldGenerator<S>>>,
     world_chunks: ChunksContainer<Option<WorldChunk>>,
     world_plane: WorldPlane<S>,
     indexer: Indexer
@@ -188,7 +186,7 @@ pub struct ServerOvermap<S>
 impl<S: SaveLoad<WorldChunk>> ServerOvermap<S>
 {
     pub fn new(
-        world_generator: Arc<Mutex<WorldGenerator<S>>>,
+        world_generator: Rc<RefCell<WorldGenerator<S>>>,
         size: Pos3<usize>,
         player_position: Pos3<f32>
     ) -> Self
@@ -301,7 +299,7 @@ impl<S: SaveLoad<WorldChunk>> ServerOvermap<S>
                         self.world_chunks[position].clone().unwrap_or_default()
                     });
 
-                    let world_chunk = self.world_generator.lock().generate_chunk(group);
+                    let world_chunk = self.world_generator.borrow_mut().generate_chunk(group);
 
                     Self::partially_fill(&mut chunk, world_chunk, this_pos);
                 }
@@ -349,7 +347,7 @@ impl<S: SaveLoad<WorldChunk>> Overmap<WorldChunk> for ServerOvermap<S>
 
     fn generate_missing(&mut self)
     {
-        self.world_generator.lock()
+        self.world_generator.borrow_mut()
             .generate_missing(&mut self.world_chunks, &self.world_plane, &self.indexer);
     }
 }
@@ -417,7 +415,7 @@ mod tests
 
         let tilemap = TileMap::parse(tiles, "textures/tiles/").unwrap().tilemap;
 
-        let world_generator = Arc::new(Mutex::new(
+        let world_generator = Rc::new(RefCell::new(
             WorldGenerator::new(saver, tilemap, "world_generation/").unwrap()
         ));
 

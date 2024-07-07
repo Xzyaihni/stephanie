@@ -343,7 +343,7 @@ where
 
         let offset = if (abs_offset.z <= abs_offset.x) && (abs_offset.z <= abs_offset.y)
         {
-            if axis != None && axis != Some(Axis::Z)
+            if axis.is_some() && axis != Some(Axis::Z)
             {
                 return (None, None);
             }
@@ -351,7 +351,7 @@ where
             Vector3::new(0.0, 0.0, offset.z)
         } else if (abs_offset.y <= abs_offset.x) && (abs_offset.y <= abs_offset.z)
         {
-            if axis != None && axis != Some(Axis::Y)
+            if axis.is_some() && axis != Some(Axis::Y)
             {
                 return (None, None);
             }
@@ -359,7 +359,7 @@ where
             Vector3::new(0.0, offset.y, 0.0)
         } else
         {
-            if axis != None && axis != Some(Axis::X)
+            if axis.is_some() && axis != Some(Axis::X)
             {
                 return (None, None);
             }
@@ -386,7 +386,7 @@ where
         let max_distance = this_radius + other_radius;
         let collided = distance < max_distance;
 
-        collided.then(|| CircleCollisionResult{max_distance, distance, offset})
+        collided.then_some(CircleCollisionResult{max_distance, distance, offset})
     }
 
     fn normal_collision<OtherF>(
@@ -406,7 +406,7 @@ where
             && (-max_distance.y..max_distance.y).contains(&offset.y)
             && (-max_distance.z..max_distance.z).contains(&offset.z);
 
-        collided.then(|| CollisionResult{max_distance, offset})
+        collided.then_some(CollisionResult{max_distance, offset})
     }
 
     fn scale(&self) -> Vector3<f32>
@@ -489,7 +489,7 @@ where
             (ColliderType::Point, ColliderType::Point) => None,
             (ColliderType::Circle, ColliderType::Circle) =>
             {
-                self.circle_circle(other).map(|x| CollisionWhich::Circle(x)).map(handle)
+                self.circle_circle(other).map(CollisionWhich::Circle).map(handle)
             },
             (ColliderType::Circle, ColliderType::Aabb)
             | (ColliderType::Aabb, ColliderType::Circle)
@@ -499,7 +499,7 @@ where
             | (ColliderType::Point, ColliderType::Circle)
             | (ColliderType::Circle, ColliderType::Point) =>
             {
-                self.normal_collision(other).map(|x| CollisionWhich::Normal(x)).map(handle)
+                self.normal_collision(other).map(CollisionWhich::Normal).map(handle)
             }
         }
     }

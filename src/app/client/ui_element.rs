@@ -247,13 +247,9 @@ impl UiElement
         {
             UiElementType::Button{..} | UiElementType::Drag{..} =>
             {
-                match event
+                if let UiEvent::MouseMove(position) = event
                 {
-                    UiEvent::MouseMove(position) =>
-                    {
-                        highlight(query().is_inside(*position));
-                    },
-                    _ => ()
+                    highlight(query().is_inside(*position));
                 }
             },
             UiElementType::Panel => ()

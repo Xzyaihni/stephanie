@@ -71,7 +71,7 @@ impl OccludingPlane
             return;
         }
 
-        if let Some(&caster) = casters.0.get(0)
+        if let Some(&caster) = casters.0.first()
         {
             self.0.update_buffers(caster, info);
         }

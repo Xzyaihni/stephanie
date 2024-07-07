@@ -790,10 +790,9 @@ impl Character
             }
         };
 
-        match &mut lazy.rotation
+        if let Rotation::EaseOut(x) = &mut lazy.rotation
         {
-            Rotation::EaseOut(x) => x.set_decay(30.0),
-            _ => ()
+            x.set_decay(30.0);
         }
 
         lazy.target().rotation = start_rotation - new_rotation;
@@ -1126,7 +1125,7 @@ impl Character
     fn held_info<'a>(&'a self, combined_info: CombinedInfo<'a>) -> Cow<'a, ItemInfo>
     {
         self.holding.and_then(|holding| self.item_info(combined_info, holding))
-            .map(|x| Cow::Borrowed(x))
+            .map(Cow::Borrowed)
             .unwrap_or_else(move || Cow::Owned(ItemInfo::hand()))
     }
 

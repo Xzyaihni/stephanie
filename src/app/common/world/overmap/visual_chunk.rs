@@ -124,10 +124,8 @@ impl VisualChunk
 
         let mut occlusions = [[false; CHUNK_SIZE * CHUNK_SIZE]; CHUNK_SIZE];
 
-        for z in 0..CHUNK_SIZE
+        for (z, slice_occlusions) in occlusions.iter_mut().enumerate()
         {
-            let slice_occlusions = &mut occlusions[z];
-
             for y in 0..CHUNK_SIZE
             {
                 for x in 0..CHUNK_SIZE
@@ -431,20 +429,17 @@ impl VisualChunk
         if fully_occluded
         {
             1
+        } else if let Some(occlusion) = occlusions.next()
+        {
+            *current = current.iter().zip(occlusion.iter()).map(|(a, b)|
+            {
+                *a || *b
+            }).collect();
+
+            1 + Self::unoccluded_amount_inner(current, occlusions)
         } else
         {
-            if let Some(occlusion) = occlusions.next()
-            {
-                *current = current.iter().zip(occlusion.iter()).map(|(a, b)|
-                {
-                    *a || *b
-                }).collect();
-
-                1 + Self::unoccluded_amount_inner(current, occlusions)
-            } else
-            {
-                2
-            }
+            2
         }
     }
 
@@ -477,6 +472,7 @@ impl VisualChunk
             }
         });
 
+        #[allow(clippy::let_and_return)]
         let occluding = !tilemap[tiles.this].transparent;
 
         occluding

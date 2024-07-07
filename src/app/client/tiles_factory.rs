@@ -404,7 +404,7 @@ impl TilesFactory
     {
         occluders.map(|occluders|
         {
-            occluders.into_iter().map(|occluder|
+            occluders.iter().map(|occluder|
             {
                 let transform = Transform{
                     position: occluder.position,
