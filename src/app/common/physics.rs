@@ -25,8 +25,7 @@ pub struct Physical
     pub floating: bool,
     pub grounded: bool,
     pub velocity: Vector3<f32>,
-    pub force: Vector3<f32>,
-    pub previous_position: Option<Vector3<f32>>
+    pub force: Vector3<f32>
 }
 
 impl From<PhysicalProperties> for Physical
@@ -39,8 +38,7 @@ impl From<PhysicalProperties> for Physical
             floating: value.floating,
             grounded: false,
             velocity: Vector3::zeros(),
-            force: Vector3::zeros(),
-            previous_position: None
+            force: Vector3::zeros()
         }
     }
 }
@@ -68,7 +66,6 @@ impl Physical
             self.apply_friction(normal_impulse);
         }
 
-        self.previous_position = Some(transform.position);
         transform.position += self.velocity * dt;
 
         self.force = Vector3::zeros();

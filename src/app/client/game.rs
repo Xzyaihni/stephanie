@@ -69,6 +69,7 @@ impl Game
                 }),
                 collider: Some(ColliderInfo{
                     kind: ColliderType::Point,
+                    layer: ColliderLayer::Mouse,
                     ghost: true,
                     ..Default::default()
                 }.into()),

@@ -34,7 +34,8 @@ pub enum ColliderLayer
     Normal,
     Damage,
     Ui,
-    World
+    World,
+    Mouse
 }
 
 impl ColliderLayer
@@ -52,7 +53,12 @@ impl ColliderLayer
             (World, World, false),
             (World, Normal, true),
             (World, Damage, true),
-            (World, Ui, false)
+            (World, Ui, false),
+            (Mouse, Normal, true),
+            (Mouse, Damage, false),
+            (Mouse, Ui, true),
+            (Mouse, World, false),
+            (Mouse, Mouse, false)
         }
     }
 }
@@ -92,7 +98,8 @@ pub struct Collider
     pub scale: Option<Vector3<f32>>,
     pub move_z: bool,
     pub is_static: bool,
-    collided: Vec<Entity>
+    collided: Vec<Entity>,
+    previous_position: Option<Vector3<f32>>
 }
 
 impl From<ColliderInfo> for Collider
@@ -106,13 +113,19 @@ impl From<ColliderInfo> for Collider
             scale: info.scale,
             move_z: info.move_z,
             is_static: info.is_static,
-            collided: Vec::new()
+            collided: Vec::new(),
+            previous_position: None
         }
     }
 }
 
 impl Collider
 {
+    pub fn save_previous(&mut self, position: Vector3<f32>)
+    {
+        self.previous_position = Some(position);
+    }
+
     pub fn collided(&self) -> &[Entity]
     {
         &self.collided
@@ -527,8 +540,7 @@ where
         world: &World
     ) -> bool
     {
-        if let Some(old_position) = self.physical.as_ref()
-            .and_then(|physical| physical.previous_position)
+        if let Some(old_position) = self.collider.previous_position
         {
             let new_position = self.transform.position;
 

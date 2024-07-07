@@ -1770,6 +1770,19 @@ macro_rules! define_entities_both
                         on_collision(entity, physical);
                     }
                 });
+
+                self.update_colliders_previous();
+            }
+
+            fn update_colliders_previous(&mut self)
+            {
+                iterate_components_with!(self, collider, for_each, |entity, collider: &RefCell<Collider>|
+                {
+                    if let Some(transform) = self.transform(entity)
+                    {
+                        collider.borrow_mut().save_previous(transform.position);
+                    }
+                });
             }
 
             pub fn update_lazy_one(

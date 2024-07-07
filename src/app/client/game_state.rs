@@ -152,12 +152,12 @@ impl ClientEntitiesContainer
         self.entities.update_enemy(passer, dt);
         self.entities.update_children();
 
+        self.entities.update_damaging(passer, damage_info);
+
         {
             let passer = &mut *passer;
             self.entities.update_colliders(world, is_trusted.then(move || passer));
         }
-
-        self.entities.update_damaging(passer, damage_info);
     }
 
     pub fn main_player(&self) -> Entity

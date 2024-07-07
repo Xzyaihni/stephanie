@@ -1,5 +1,11 @@
 (define (put-entrance side chunk)
-    (put-tile chunk (make-point 7 1) (tile 'air)))
+    (put-tile
+        (put-tile
+            chunk
+            (make-point 7 1)
+            (tile 'air))
+        (make-point 8 1)
+        (tile 'air)))
 
 (let ((wall-material (tile 'concrete))
         (entrance-side random-side))

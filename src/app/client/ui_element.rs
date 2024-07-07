@@ -235,6 +235,33 @@ impl UiElement
             UiQuery{transform: entities.transform(entity).unwrap(), camera_position}
         };
 
+        let highlight = |state: bool|
+        {
+            if let Some(mut render) = entities.render_mut(entity)
+            {
+                render.mix = state.then(||
+                {
+                    MixColor{color: [1.0; 3], amount: 0.5}
+                });
+            }
+        };
+
+        match &self.kind
+        {
+            UiElementType::Button{..} | UiElementType::Drag{..} =>
+            {
+                match event
+                {
+                    UiEvent::MouseMove(position) =>
+                    {
+                        highlight(query().is_inside(*position));
+                    },
+                    _ => ()
+                }
+            },
+            UiElementType::Panel => ()
+        }
+
         match &mut self.kind
         {
             UiElementType::Panel =>
@@ -247,6 +274,7 @@ impl UiElement
                 if let Some(event) = event.as_mouse()
                 {
                     let clicked = event.main_button && event.state == ControlState::Pressed;
+
                     if clicked && query().is_inside(event.position)
                     {
                         return true;
@@ -265,6 +293,7 @@ impl UiElement
                 if let Some(event) = event.as_mouse()
                 {
                     let clicked = event.main_button && event.state == ControlState::Pressed;
+
                     if clicked && query().is_inside(event.position)
                     {
                         if !self.predicate.matches(entities, query(), event.position)
