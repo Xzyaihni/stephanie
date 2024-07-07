@@ -237,12 +237,9 @@ impl UiElement
 
         let highlight = |state: bool|
         {
-            if let Some(mut render) = entities.render_mut(entity)
+            if let Some(mut lazy_mix) = entities.lazy_mix_mut(entity)
             {
-                render.mix = state.then(||
-                {
-                    MixColor{color: [1.0; 3], amount: 0.5}
-                });
+                lazy_mix.target.amount = if state { 0.4 } else { 0.0 };
             }
         };
 

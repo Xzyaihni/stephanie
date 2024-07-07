@@ -1,4 +1,5 @@
 use std::{
+    f32,
     cell::{Ref, RefCell},
     rc::Rc,
     ops::ControlFlow,
@@ -97,7 +98,8 @@ pub struct GlobalEntityId
 pub struct ClientEntitiesContainer
 {
     pub entities: ClientEntities,
-    player_entity: Option<Entity>
+    player_entity: Option<Entity>,
+    animation: f32
 }
 
 impl ClientEntitiesContainer
@@ -106,7 +108,8 @@ impl ClientEntitiesContainer
     {
         Self{
             entities: Entities::new(infos),
-            player_entity: None
+            player_entity: None,
+            animation: 0.0
         }
     }
     
@@ -154,10 +157,14 @@ impl ClientEntitiesContainer
 
         self.entities.update_damaging(passer, damage_info);
 
+        self.entities.update_lazy_mix(dt);
+
         {
             let passer = &mut *passer;
             self.entities.update_colliders(world, is_trusted.then(move || passer));
         }
+
+        self.animation = (self.animation + dt) % (f32::consts::PI * 2.0);
     }
 
     pub fn main_player(&self) -> Entity
@@ -218,16 +225,18 @@ impl ClientEntitiesContainer
 
         let (normal, ui) = queue.split_at(ui_index);
 
+        let animation = self.animation.sin();
+
         normal.into_iter().for_each(|render|
         {
-            render.get().draw(visibility, info);
+            render.get().draw(visibility, info, animation);
         });
 
         info.bind_pipeline(shaders.ui);
         info.set_depth_test(false);
         ui.into_iter().for_each(|render|
         {
-            render.get().draw(visibility, info);
+            render.get().draw(visibility, info, animation);
         });
 
         info.set_depth_test(true);

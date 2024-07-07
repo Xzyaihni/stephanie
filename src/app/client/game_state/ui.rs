@@ -14,8 +14,11 @@ use crate::{
         game_state::EntityCreator
     },
     common::{
+        some_or_return,
         ease_out,
         render_info::*,
+        lazy_transform::*,
+        LazyMix,
         AnyEntities,
         InventoryItem,
         InventorySorter,
@@ -23,7 +26,6 @@ use crate::{
         Entity,
         ItemsInfo,
         EntityInfo,
-        lazy_transform::*,
         entity::ClientEntities
     }
 };
@@ -71,6 +73,7 @@ impl UiScroll
         };
 
         creator.entities.set_ui_element(background, Some(drag));
+        creator.entities.set_lazy_mix(background, Some(LazyMix::ui()));
 
         let bar = creator.push(
             EntityInfo{
@@ -678,7 +681,7 @@ impl UiInventory
         entity: Entity
     )
     {
-        let inventory = creator.entities.inventory(entity).unwrap();
+        let inventory = some_or_return!(creator.entities.inventory(entity));
         let mut items: Vec<_> = inventory.items_ids().collect();
         items.sort_by(|a, b|
         {

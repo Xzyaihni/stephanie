@@ -433,7 +433,7 @@ impl Character
     {
         let item_info = self.held_info(combined_info);
 
-        Some(item_info.comfort)
+        Some(item_info.comfort.recip())
     }
 
     pub fn bash_reachable(

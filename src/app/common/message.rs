@@ -10,6 +10,7 @@ use crate::common::{
     watcher::*,
     lazy_transform::*,
     damaging::*,
+    LazyMix,
     Transform,
     Faction,
     Collider,
@@ -35,6 +36,7 @@ pub enum Message
     SetParent{entity: Entity, component: Parent},
     SetTransform{entity: Entity, component: Transform},
     SetLazyTransform{entity: Entity, component: LazyTransform},
+    SetLazyMix{entity: Entity, component: LazyMix},
     SetFollowRotation{entity: Entity, component: FollowRotation},
     SetInventory{entity: Entity, component: Inventory},
     SetRender{entity: Entity, component: RenderInfo},
@@ -88,6 +90,7 @@ impl Message
             | Message::SetParent{entity, ..}
             | Message::SetTransform{entity, ..}
             | Message::SetLazyTransform{entity, ..}
+            | Message::SetLazyMix{entity, ..}
             | Message::SetFollowRotation{entity, ..}
             | Message::SetInventory{entity, ..}
             | Message::SetRender{entity, ..}

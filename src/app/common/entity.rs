@@ -32,6 +32,7 @@ use crate::{
         damaging::*,
         particle_creator::*,
         raycast::*,
+        LazyMix,
         DataInfos,
         OccludingPlane,
         OccludingPlaneServer,
@@ -203,6 +204,7 @@ macro_rules! no_on_set_for
 no_on_set!{
     ClientRenderInfo,
     RenderInfo,
+    LazyMix,
     LazyTransform,
     FollowRotation,
     Inventory,
@@ -418,6 +420,25 @@ macro_rules! impl_common_systems
             })
         }
 
+        pub fn update_lazy_mix(&mut self, dt: f32)
+        {
+            for_each_component!(self, lazy_mix, |entity, lazy_mix: &RefCell<LazyMix>|
+            {
+                if let Some(mut render) = self.render_mut(entity)
+                {
+                    let lazy_mix = lazy_mix.borrow();
+
+                    render.mix = Some(if let Some(mix) = render.mix
+                    {
+                        lazy_mix.update(mix, dt)
+                    } else
+                    {
+                        lazy_mix.target
+                    });
+                }
+            });
+        }
+
         fn create_queued_common(
             &mut self,
             mut f: impl FnMut(&mut Self, Entity, EntityInfo) -> $this_entity_info
@@ -529,6 +550,19 @@ macro_rules! entity_info_common
             if self.anatomy.is_some() && self.watchers.is_none()
             {
                 self.watchers = Some(Default::default());
+            }
+
+            if self.ui_element.is_some() && self.lazy_mix.is_none()
+            {
+                self.lazy_mix = Some(LazyMix::ui());
+            }
+
+            if let Some(lazy_mix) = self.lazy_mix.as_ref()
+            {
+                if let Some(render) = self.render.as_mut()
+                {
+                    render.mix = Some(lazy_mix.target);
+                }
             }
 
             if let Some(character) = self.character.as_mut()
@@ -1530,7 +1564,7 @@ macro_rules! define_entities_both
 
             pub fn update_children(&mut self)
             {
-                iterate_components_with!(self, parent, for_each, |entity, parent: &RefCell<Parent>|
+                for_each_component!(self, parent, |entity, parent: &RefCell<Parent>|
                 {
                     let parent = parent.borrow();
 
@@ -1548,7 +1582,7 @@ macro_rules! define_entities_both
 
             pub fn update_render(&mut self)
             {
-                iterate_components_with!(self, render, for_each, |entity, render: &RefCell<ClientRenderInfo>|
+                for_each_component!(self, render, |entity, render: &RefCell<ClientRenderInfo>|
                 {
                     let transform = self.transform(entity).unwrap();
 
@@ -1558,7 +1592,7 @@ macro_rules! define_entities_both
                     }
                 });
 
-                iterate_components_with!(self, occluding_plane, for_each, |entity, occluding_plane: &RefCell<OccludingPlane>|
+                for_each_component!(self, occluding_plane, |entity, occluding_plane: &RefCell<OccludingPlane>|
                 {
                     let transform = self.transform(entity).unwrap();
 
@@ -1615,7 +1649,7 @@ macro_rules! define_entities_both
                 // per frame so i dunno if its worth?
                 let unoutline_all = ||
                 {
-                    iterate_components_with!(self, collider, for_each, |entity, _collider|
+                    for_each_component!(self, collider, |entity, _collider|
                     {
                         if let Some(mut render) = self.render_mut(entity)
                         {
@@ -1639,7 +1673,7 @@ macro_rules! define_entities_both
                     return;
                 }
 
-                iterate_components_with!(self, collider, for_each, |entity, _collider|
+                for_each_component!(self, collider, |entity, _collider|
                 {
                     if let Some(mut render) = self.render_mut(entity)
                     {
@@ -1720,7 +1754,7 @@ macro_rules! define_entities_both
                     }
                 };
 
-                iterate_components_with!(self, collider, for_each, |_, collider: &RefCell<Collider>|
+                for_each_component!(self, collider, |_, collider: &RefCell<Collider>|
                 {
                     collider.borrow_mut().reset_frame();
                 });
@@ -1759,7 +1793,7 @@ macro_rules! define_entities_both
                     });
                 }
 
-                iterate_components_with!(self, collider, for_each, |entity, collider: &RefCell<_>|
+                for_each_component!(self, collider, |entity, collider: &RefCell<_>|
                 {
                     let mut physical = self.physical_mut(entity);
                     let mut this;
@@ -1776,7 +1810,7 @@ macro_rules! define_entities_both
 
             fn update_colliders_previous(&mut self)
             {
-                iterate_components_with!(self, collider, for_each, |entity, collider: &RefCell<Collider>|
+                for_each_component!(self, collider, |entity, collider: &RefCell<Collider>|
                 {
                     if let Some(transform) = self.transform(entity)
                     {
@@ -1807,7 +1841,7 @@ macro_rules! define_entities_both
 
             pub fn update_lazy(&mut self, dt: f32)
             {
-                iterate_components_with!(self, lazy_transform, for_each, |entity, lazy: &RefCell<LazyTransform>|
+                for_each_component!(self, lazy_transform, |entity, lazy: &RefCell<LazyTransform>|
                 {
                     self.update_lazy_one(entity, lazy.borrow_mut(), dt);
                 });
@@ -1831,7 +1865,7 @@ macro_rules! define_entities_both
                     });
                 };
 
-                iterate_components_with!(self, enemy, for_each, |entity, enemy: &RefCell<Enemy>|
+                for_each_component!(self, enemy, |entity, enemy: &RefCell<Enemy>|
                 {
                     if enemy.borrow().check_hostiles()
                     {
@@ -1928,7 +1962,7 @@ macro_rules! define_entities_both
             )
             {
                 let assets = create_info.object_info.partial.assets.clone();
-                iterate_components_with!(self, character, for_each, |entity, character: &RefCell<Character>|
+                for_each_component!(self, character, |entity, character: &RefCell<Character>|
                 {
                     let changed = {
                         let combined_info = partial.to_full(
@@ -1991,7 +2025,7 @@ macro_rules! define_entities_both
 
             pub fn update_lazy(&mut self)
             {
-                iterate_components_with!(self, lazy_transform, for_each, |entity, _lazy_transform|
+                for_each_component!(self, lazy_transform, |entity, _lazy_transform|
                 {
                     if let (
                         Some(end), Some(mut transform)
@@ -2007,7 +2041,7 @@ macro_rules! define_entities_both
                 characters_info: &CharactersInfo
             )
             {
-                iterate_components_with!(self, character, for_each, |entity, character: &RefCell<Character>|
+                for_each_component!(self, character, |entity, character: &RefCell<Character>|
                 {
                     let mut target = self.target(entity).unwrap();
 
@@ -2363,6 +2397,7 @@ define_entities!{
         (occluding_plane, occluding_plane_mut, on_plane_mut, set_occluding_plane, SetNone, OccludingPlaneType, OccludingPlaneServer, OccludingPlane),
         (ui_element, ui_element_mut, set_ui_element, on_ui_element, SetNone, UiElementType, UiElementServer, UiElement)),
     (parent, parent_mut, set_parent, on_parent, SetParent, ParentType, Parent),
+    (lazy_mix, lazy_mix_mut, set_lazy_mix, on_lazy_mix, SetLazyMix, LazyMixType, LazyMix),
     (lazy_transform, lazy_transform_mut, set_lazy_transform, on_lazy_transform, SetLazyTransform, LazyTransformType, LazyTransform),
     (follow_rotation, follow_rotation_mut, set_follow_rotation, on_follow_rotation, SetFollowRotation, FollowRotationType, FollowRotation),
     (watchers, watchers_mut, set_watchers, on_watchers, SetWatchers, WatchersType, Watchers),

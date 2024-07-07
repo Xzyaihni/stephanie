@@ -41,6 +41,7 @@ pub struct OutlinedInfo
 {
     other_color: [f32; 3],
     other_mix: f32,
+    animation: f32,
     outlined: i32
 }
 
@@ -55,12 +56,14 @@ impl OutlinedInfo
 {
     pub fn new(
         other_color: Option<MixColor>,
-        outline: bool
+        outline: bool,
+        animation: f32
     ) -> Self
     {
         Self{
             other_color: other_color.map(|x| x.color).unwrap_or_default(),
             other_mix: other_color.map(|x| x.amount).unwrap_or_default(),
+            animation,
             outlined: outline as i32
         }
     }
@@ -325,9 +328,15 @@ impl ClientRenderObject
         }
     }
 
-    fn draw(&self, info: &mut DrawInfo, mix: Option<MixColor>)
+    fn draw(&self, info: &mut DrawInfo, mix: Option<MixColor>, animation: f32)
     {
-        info.push_constants(OutlinedInfo::new(mix, self.outlined));
+        let outline = OutlinedInfo::new(
+            mix,
+            self.outlined,
+            animation
+        );
+
+        info.push_constants(outline);
 
         match &self.kind
         {
@@ -509,7 +518,8 @@ impl ClientRenderInfo
     pub fn draw(
         &self,
         visibility: &VisibilityChecker,
-        info: &mut DrawInfo
+        info: &mut DrawInfo,
+        animation: f32
     )
     {
         if let Some(object) = self.object.as_ref()
@@ -532,7 +542,7 @@ impl ClientRenderInfo
                 info.set_scissor(scissor);
             }
 
-            object.draw(info, self.mix);
+            object.draw(info, self.mix, animation);
 
             if self.scissor.is_some()
             {
