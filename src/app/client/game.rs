@@ -16,7 +16,6 @@ use crate::{
         render_info::*,
         lazy_transform::*,
         collider::*,
-        watcher::*,
         character::*,
         AnyEntities,
         Item,
@@ -76,15 +75,6 @@ impl Game
                 ..Default::default()
             });
 
-            let camera = entities.push_eager(true, EntityInfo{
-                lazy_transform: Some(LazyTransformInfo{
-                    connection: Connection::EaseOut{decay: 5.0, limit: None},
-                    ..Default::default()
-                }.into()),
-                parent: Some(Parent::new(player, false)),
-                ..Default::default()
-            });
-
             let console_entity = entities.push_eager(true, EntityInfo{
                 lazy_transform: Some(LazyTransformInfo{
                     scaling: Scaling::Ignore,
@@ -104,7 +94,7 @@ impl Game
             });
 
             PlayerInfo::new(PlayerCreateInfo{
-                camera,
+                camera: game_state.entities.camera_entity,
                 entity: player,
                 mouse_entity,
                 console_entity
@@ -577,11 +567,10 @@ impl<'a> PlayerContainer<'a>
         let entities = self.game_state.entities();
         if let Some(mut transform) = entities.transform_mut(self.info.camera)
         {
-            let parent_transform = entities.parent_transform(self.info.camera);
-
-            *transform = entities.lazy_transform_mut(self.info.camera)
-                .unwrap()
-                .target_global(parent_transform.as_ref());
+            if let Some(parent_transform) = entities.parent_transform(self.info.camera)
+            {
+                transform.position = parent_transform.position;
+            }
         }
 
         self.camera_sync();
@@ -793,8 +782,6 @@ impl<'a> PlayerContainer<'a>
             InventoryWhich::Other => &mut ui.other_inventory
         };
 
-        let inventory = inventory_ui.body();
-
         let is_open = match which
         {
             InventoryWhich::Player => info.inventory_open,
@@ -814,41 +801,10 @@ impl<'a> PlayerContainer<'a>
                 inventory_ui.full_update(&mut entity_creator, entity);
             }
 
-            entities.set_collider(inventory, Some(ColliderInfo{
-                kind: ColliderType::Aabb,
-                layer: ColliderLayer::Ui,
-                move_z: false,
-                ..Default::default()
-            }.into()));
-
-            *entities.visible_target(inventory).unwrap() = true;
-
-            let mut lazy = entities.lazy_transform_mut(inventory).unwrap();
-            lazy.target().scale = Vector3::repeat(0.2);
+            inventory_ui.open_inventory(entities);
         } else
         {
-            entities.set_collider(inventory, None);
-
-            let current_scale;
-            {
-                let mut lazy = entities.lazy_transform_mut(inventory).unwrap();
-                current_scale = lazy.target_ref().scale;
-                lazy.target().scale = Vector3::zeros();
-            }
-
-            let watchers = entities.watchers_mut(inventory);
-            if let Some(mut watchers) = watchers
-            {
-                let near = 0.2 * current_scale.max();
-
-                let watcher = Watcher{
-                    kind: WatcherType::ScaleDistance{from: Vector3::zeros(), near},
-                    action: WatcherAction::SetVisible(false),
-                    ..Default::default()
-                };
-
-                watchers.push(watcher);
-            }
+            inventory_ui.close_inventory(entities);
         }
     }
 

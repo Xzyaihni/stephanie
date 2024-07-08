@@ -36,6 +36,7 @@ use crate::{
         sender_loop,
         receiver_loop,
         render_info::*,
+        lazy_transform::*,
         TileMap,
         DataInfos,
         ItemsInfo,
@@ -43,6 +44,7 @@ use crate::{
         AnyEntities,
         CharactersInfo,
         Entity,
+        EntityInfo,
         Entities,
         EntityPasser,
         EntitiesController,
@@ -98,17 +100,30 @@ pub struct GlobalEntityId
 pub struct ClientEntitiesContainer
 {
     pub entities: ClientEntities,
-    player_entity: Option<Entity>,
+    pub camera_entity: Entity,
+    player_entity: Entity,
     animation: f32
 }
 
 impl ClientEntitiesContainer
 {
-    pub fn new(infos: DataInfos) -> Self
+    pub fn new(infos: DataInfos, player_entity: Entity) -> Self
     {
+        let mut entities = Entities::new(infos);
+
+        let camera_entity = entities.push_eager(true, EntityInfo{
+            transform: Some(Transform::default()),
+            follow_position: Some(FollowPosition::new(
+                player_entity,
+                Connection::EaseOut{decay: 5.0, limit: None}
+            )),
+            ..Default::default()
+        });
+
         Self{
-            entities: Entities::new(infos),
-            player_entity: None,
+            entities,
+            camera_entity,
+            player_entity,
             animation: 0.0
         }
     }
@@ -167,9 +182,21 @@ impl ClientEntitiesContainer
         self.animation = (self.animation + dt) % (f32::consts::PI * 2.0);
     }
 
+    pub fn update_resize(&mut self, size: Vector2<f32>)
+    {
+        self.entities.target(self.camera_entity).unwrap().scale = size.xyx();
+    }
+
+    pub fn update_aspect(&mut self, size: Vector2<f32>, aspect: f32)
+    {
+        self.update_resize(size);
+
+        self.entities.update_ui_aspect(aspect);
+    }
+
     pub fn main_player(&self) -> Entity
     {
-        self.player_entity.unwrap()
+        self.player_entity
     }
 
     pub fn player_transform(&self) -> Option<Ref<Transform>>
@@ -179,7 +206,7 @@ impl ClientEntitiesContainer
 
     pub fn player_exists(&self) -> bool
     {
-        self.player_entity.map(|player| self.entities.exists(player)).unwrap_or(false)
+        self.entities.exists(self.player_entity)
     }
 
     fn update_buffers(
@@ -352,7 +379,6 @@ impl GameState
 
         let handler = ConnectionsHandler::new(info.message_passer);
         let connections_handler = Arc::new(RwLock::new(handler));
-        let mut entities = ClientEntitiesContainer::new(info.data_infos.clone());
 
         let tilemap = info.tiles_factory.tilemap().clone();
 
@@ -364,10 +390,15 @@ impl GameState
             Pos3::new(0.0, 0.0, 0.0)
         );
 
-        entities.player_entity = Some(Self::connect_to_server(
+        let player_entity = Self::connect_to_server(
             connections_handler.clone(),
             &info.client_info.name
-        ));
+        );
+
+        let mut entities = ClientEntitiesContainer::new(
+            info.data_infos.clone(),
+            player_entity
+        );
 
         sender_loop(connections_handler.clone());
 
@@ -418,9 +449,12 @@ impl GameState
                 }
             };
 
+            let camera_entity = entities.camera_entity;
+
             Ui::new(
                 &mut entities.entity_creator(),
                 info.data_infos.items_info.clone(),
+                camera_entity,
                 player_actions,
                 other_actions
             )
@@ -431,9 +465,7 @@ impl GameState
         let assets = info.object_info.partial.assets;
         let common_textures = CommonTextures::new(&mut assets.lock());
 
-        entities.entities.update_ui_aspect(info.camera.read().aspect());
-
-        let this = Self{
+        let mut this = Self{
             mouse_position,
             camera: info.camera,
             assets,
@@ -460,6 +492,13 @@ impl GameState
             connections_handler,
             receiver
         };
+
+        {
+            let aspect = this.camera.read().aspect();
+
+            this.resize(aspect);
+            this.camera_resized();
+        }
 
         Rc::new(RefCell::new(this))
     }
@@ -512,7 +551,7 @@ impl GameState
 
     pub fn player_entity(&self) -> Entity
     {
-        self.entities.player_entity.unwrap()
+        self.entities.player_entity
     }
 
     pub fn player(&self) -> Entity
@@ -598,11 +637,23 @@ impl GameState
 
     fn set_camera_scale(&mut self, scale: f32)
     {
-        self.camera_scale = scale;
-        let mut camera = self.camera.write();
+        {
+            self.camera_scale = scale;
+            let mut camera = self.camera.write();
 
-        camera.rescale(scale);
-        self.world.rescale(camera.size());
+            camera.rescale(scale);
+        }
+
+        self.camera_resized();
+    }
+
+    fn camera_resized(&mut self)
+    {
+        let size = self.camera.read().size();
+        self.world.rescale(size);
+
+        self.ui.borrow().update_resize(&self.entities.entities, size);
+        self.entities.update_resize(size);
     }
 
     pub fn echo_message(&self, message: Message)
@@ -713,18 +764,19 @@ impl GameState
         }
     }
 
+    pub fn on_player_connected(&mut self)
+    {
+        self.connected_and_ready = true;
+    }
+
     pub fn update_pre(&mut self, dt: f32)
     {
         self.check_resize_camera(dt);
 
         self.world.update(dt);
 
-        let player_transform = self.entities.player_transform().as_deref().cloned();
-
         self.ui.borrow_mut().update(
             &mut self.entities.entity_creator(),
-            &self.camera.read(),
-            player_transform,
             dt
         );
 
@@ -804,9 +856,13 @@ impl GameState
         camera.resize(aspect);
 
         let size = camera.size();
+        drop(camera);
+
         self.world.rescale(size);
 
-        self.entities.entities.update_ui_aspect(aspect);
+        self.ui.borrow().update_resize(&self.entities.entities, size);
+
+        self.entities.update_aspect(size, aspect);
     }
 }
 

@@ -435,6 +435,39 @@ impl FollowRotation
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FollowPosition
+{
+    parent: Entity,
+    connection: Connection
+}
+
+impl FollowPosition
+{
+    pub fn new(parent: Entity, connection: Connection) -> Self
+    {
+        Self{
+            parent,
+            connection
+        }
+    }
+
+    pub fn parent(&self) -> Entity
+    {
+        self.parent
+    }
+
+    pub fn next(
+        &mut self,
+        current: &mut Transform,
+        parent_position: Vector3<f32>,
+        dt: f32
+    )
+    {
+        self.connection.next(current, parent_position, dt);
+    }
+}
+
 pub trait LazyTargettable<T=Transform>
 {
     fn target_ref(&self) -> &T;

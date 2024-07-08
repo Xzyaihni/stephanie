@@ -38,6 +38,7 @@ pub enum Message
     SetLazyTransform{entity: Entity, component: LazyTransform},
     SetLazyMix{entity: Entity, component: LazyMix},
     SetFollowRotation{entity: Entity, component: FollowRotation},
+    SetFollowPosition{entity: Entity, component: FollowPosition},
     SetInventory{entity: Entity, component: Inventory},
     SetRender{entity: Entity, component: RenderInfo},
     SetCollider{entity: Entity, component: Collider},
@@ -92,6 +93,7 @@ impl Message
             | Message::SetLazyTransform{entity, ..}
             | Message::SetLazyMix{entity, ..}
             | Message::SetFollowRotation{entity, ..}
+            | Message::SetFollowPosition{entity, ..}
             | Message::SetInventory{entity, ..}
             | Message::SetRender{entity, ..}
             | Message::SetCollider{entity, ..}

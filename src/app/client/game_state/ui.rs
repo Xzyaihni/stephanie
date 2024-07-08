@@ -18,6 +18,8 @@ use crate::{
         ease_out,
         render_info::*,
         lazy_transform::*,
+        watcher::*,
+        collider::*,
         LazyMix,
         AnyEntities,
         InventoryItem,
@@ -484,7 +486,8 @@ pub struct UiInventory
     items: Rc<RefCell<Vec<InventoryItem>>>,
     inventory: Entity,
     name: Entity,
-    list: UiList
+    list: UiList,
+    resized_update: bool
 }
 
 impl UiInventory
@@ -503,6 +506,7 @@ impl UiInventory
             EntityInfo{
                 lazy_transform: Some(LazyTransformInfo{
                     scaling: Scaling::EaseOut{decay: 15.0},
+                    connection: Connection::Limit{limit: 1.0},
                     transform: Transform{
                         scale: Vector3::zeros(),
                         ..Default::default()
@@ -520,6 +524,7 @@ impl UiInventory
             RenderInfo{
                 object: Some(RenderObjectKind::Texture{name: "ui/background.png".to_owned()}.into()),
                 z_level: ZLevel::UiLow,
+                visible: false,
                 ..Default::default()
             }
         );
@@ -652,7 +657,55 @@ impl UiInventory
             items,
             inventory,
             name,
-            list: UiList::new(creator, inventory_panel, 1.0 - close_button_x, on_change)
+            list: UiList::new(creator, inventory_panel, 1.0 - close_button_x, on_change),
+            resized_update: false
+        }
+    }
+
+    pub fn open_inventory(&mut self, entities: &mut ClientEntities)
+    {
+        let inventory = self.body();
+
+        entities.set_collider(inventory, Some(ColliderInfo{
+            kind: ColliderType::Aabb,
+            layer: ColliderLayer::Ui,
+            move_z: false,
+            ..Default::default()
+        }.into()));
+
+        *entities.visible_target(inventory).unwrap() = true;
+
+        let mut lazy = entities.lazy_transform_mut(inventory).unwrap();
+        lazy.target().scale = Vector3::repeat(0.2);
+
+        self.resized_update = true;
+    }
+
+    pub fn close_inventory(&mut self, entities: &mut ClientEntities)
+    {
+        let inventory = self.body();
+
+        entities.set_collider(inventory, None);
+
+        let current_scale;
+        {
+            let mut lazy = entities.lazy_transform_mut(inventory).unwrap();
+            current_scale = lazy.target_ref().scale;
+            lazy.target().scale = Vector3::zeros();
+        }
+
+        let watchers = entities.watchers_mut(inventory);
+        if let Some(mut watchers) = watchers
+        {
+            let near = 0.2 * current_scale.max();
+
+            let watcher = Watcher{
+                kind: WatcherType::ScaleDistance{from: Vector3::zeros(), near},
+                action: WatcherAction::SetVisible(false),
+                ..Default::default()
+            };
+
+            watchers.push(watcher);
         }
     }
 
@@ -723,6 +776,13 @@ impl UiInventory
     )
     {
         self.list.update_after(creator, camera);
+
+        if self.resized_update
+        {
+            self.resized_update = true;
+
+            update_resize_ui(&creator.entities, camera.size(), self.body());
+        }
     }
 
     pub fn update(
@@ -743,9 +803,31 @@ impl UiInventory
     }
 }
 
+fn update_resize_ui(entities: &ClientEntities, size: Vector2<f32>, entity: Entity)
+{
+    let width_smaller = size.x < size.y;
+
+    let min_size = if width_smaller { size.x } else { size.y };
+
+    if let Some(mut lazy) = entities.lazy_transform_mut(entity)
+    {
+        let scale = {
+            let scale = lazy.target().scale;
+
+            0.5 - if width_smaller { scale.x } else { scale.y } / 2.0
+        };
+
+        lazy.set_connection_limit(min_size * scale);
+    }
+}
+
+pub struct Notification
+{
+}
+
 pub struct Ui
 {
-    anchor: Entity,
+    notifications: Vec<Notification>,
     pub player_inventory: UiInventory,
     pub other_inventory: UiInventory
 }
@@ -755,6 +837,7 @@ impl Ui
     pub fn new<PlayerClose, PlayerChange, OtherClose, OtherChange>(
         creator: &mut EntityCreator,
         items_info: Arc<ItemsInfo>,
+        anchor: Entity,
         player_actions: InventoryActions<PlayerClose, PlayerChange>,
         other_actions: InventoryActions<OtherClose, OtherChange>
     ) -> Self
@@ -764,14 +847,6 @@ impl Ui
         OtherClose: FnMut() + 'static,
         OtherChange: FnMut(InventoryItem) + 'static
     {
-        let anchor = creator.entities.push_client(true, EntityInfo{
-            lazy_transform: Some(LazyTransformInfo{
-                connection: Connection::Limit{limit: 1.0},
-                ..Default::default()
-            }.into()),
-            ..Default::default()
-        });
-
         let player_inventory = UiInventory::new(
             creator,
             items_info.clone(),
@@ -787,7 +862,7 @@ impl Ui
         ); 
 
         Self{
-            anchor,
+            notifications: Vec::new(),
             player_inventory,
             other_inventory
         }
@@ -799,53 +874,44 @@ impl Ui
         camera: &Camera
     )
     {
-        self.for_each_inventory(|inventory|
+        self.inventories_mut().for_each(|inventory|
         {
             inventory.update_after(creator, camera);
+        });
+    }
+
+    pub fn update_resize(
+        &self,
+        entities: &ClientEntities,
+        size: Vector2<f32>
+    )
+    {
+        self.inventories().for_each(|inventory|
+        {
+            update_resize_ui(entities, size, inventory.body());
         });
     }
 
     pub fn update(
         &mut self,
         creator: &mut EntityCreator,
-        camera: &Camera,
-        player_transform: Option<Transform>,
         dt: f32
     )
     {
-        let camera_size = camera.size();
-
-        {
-            let mut ui_transform = creator.entities.lazy_transform_mut(self.anchor)
-                .unwrap();
-
-            let min_size = camera_size.x.min(camera_size.y);
-            ui_transform.set_connection_limit(min_size * 0.3);
-
-            let ui_target = ui_transform.target();
-
-            let ui_scale = &mut ui_target.scale;
-
-            ui_scale.x = camera_size.x;
-            ui_scale.y = camera_size.y;
-            ui_scale.z = ui_scale.x;
-
-            if let Some(player_transform) = player_transform
-            {
-                ui_target.position = player_transform.position;
-            }
-        }
-
-        self.for_each_inventory(|inventory|
+        self.inventories_mut().for_each(|inventory|
         {
             inventory.update(creator, dt);
         });
     }
 
-    fn for_each_inventory(&mut self, mut f: impl FnMut(&mut UiInventory))
+    fn inventories(&self) -> impl Iterator<Item=&UiInventory>
     {
-        f(&mut self.player_inventory);
-        f(&mut self.other_inventory);
+        [&self.player_inventory, &self.other_inventory].into_iter()
+    }
+
+    fn inventories_mut(&mut self) -> impl Iterator<Item=&mut UiInventory>
+    {
+        [&mut self.player_inventory, &mut self.other_inventory].into_iter()
     }
 
     pub fn ui_position(scale: Vector3<f32>, position: Vector3<f32>) -> Vector3<f32>

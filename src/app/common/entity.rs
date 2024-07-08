@@ -207,6 +207,7 @@ no_on_set!{
     LazyMix,
     LazyTransform,
     FollowRotation,
+    FollowPosition,
     Inventory,
     String,
     Parent,
@@ -507,6 +508,16 @@ macro_rules! impl_common_systems
 
                 follow_rotation.next(current, target, dt);
             });
+
+            for_each_component!(self, follow_position, |entity, follow_position: &RefCell<FollowPosition>|
+            {
+                let mut follow_position = follow_position.borrow_mut();
+
+                let mut transform = self.transform_mut(entity).unwrap();
+                let target = self.transform(follow_position.parent()).unwrap().position;
+
+                follow_position.next(&mut transform, target, dt);
+            });
         }
     }
 }
@@ -539,12 +550,26 @@ macro_rules! entity_info_common
 
                 let current = &mut transform.rotation;
 
-                let parent_transform = entities.transform(follow_rotation.parent())
-                    .unwrap();
+                if let Some(parent_transform) = entities.transform(follow_rotation.parent())
+                {
+                    let target = parent_transform.rotation;
 
-                let target = parent_transform.rotation;
+                    *current = target;
+                }
+            }
 
-                *current = target;
+            if let Some(follow_position) = self.follow_position.as_ref()
+            {
+                let transform = self.transform.as_mut().unwrap();
+
+                let current = &mut transform.position;
+
+                if let Some(parent_transform) = entities.transform(follow_position.parent())
+                {
+                    let target = parent_transform.position;
+
+                    *current = target;
+                }
             }
 
             if self.anatomy.is_some() && self.watchers.is_none()
@@ -661,13 +686,13 @@ macro_rules! common_trait_impl
                         if let Some((parent_id, child_id)) = component_index!(
                             self,
                             parent,
-                            transform
+                            lazy_transform
                         ).and_then(|parent|
                         {
                             component_index!(
                                 self,
                                 entity,
-                                transform
+                                lazy_transform
                             ).map(|child| (parent, child))
                         })
                         {
@@ -690,12 +715,37 @@ macro_rules! common_trait_impl
     }
 }
 
+macro_rules! order_sensitives
+{
+    ($(($name:ident, $resort_name:ident)),+) =>
+    {
+        fn order_sensitive(component: Component) -> bool
+        {
+            match component
+            {
+                $(
+                    Component::$name => true,
+                )+
+                _ => false
+            }
+        }
+
+        fn resort_all(&mut self, parent_entity: Entity)
+        {
+            $(
+                self.$resort_name(parent_entity);
+            )+
+        }
+    }
+}
+
 macro_rules! define_entities_both
 {
     ($(($name:ident,
         $mut_func:ident,
         $set_func:ident,
         $on_name:ident,
+        $resort_name:ident,
         $message_name:ident,
         $component_type:ident,
         $default_type:ident
@@ -972,7 +1022,7 @@ macro_rules! define_entities_both
 
                                 if parent_order_sensitive
                                 {
-                                    self.resort_transforms(entity);
+                                    self.$resort_name(entity);
                                 } else if Component::$name == Component::parent
                                 {
                                     let parent_entity = self.parent(entity).map(|x|
@@ -980,7 +1030,7 @@ macro_rules! define_entities_both
                                         (&*x).into().entity()
                                     }).unwrap();
 
-                                    self.resort_transforms(parent_entity);
+                                    self.resort_all(parent_entity);
                                 }
 
                                 None
@@ -996,6 +1046,51 @@ macro_rules! define_entities_both
                     {
                         remove_component!(self, entity, $name);
                     }
+                }
+
+                fn $resort_name(
+                    &mut self,
+                    parent_entity: Entity
+                )
+                {
+                    let child = self.$name.iter().find_map(|(component_id, &ComponentWrapper{
+                        entity,
+                        ..
+                    })|
+                    {
+                        self.parent(entity).and_then(|parent|
+                        {
+                            ((&*parent).into().entity() == parent_entity).then(||
+                            {
+                                (component_id, entity)
+                            })
+                        })
+                    });
+
+                    let (child_component, child) = some_or_return!(child);
+
+                    let parent_component = some_or_return!(
+                        component_index!(self, parent_entity, $name)
+                    );
+
+                    if parent_component < child_component
+                    {
+                        return;
+                    }
+
+                    // swap contents
+                    self.$name.swap(child_component, parent_component);
+
+                    self.swap_component_indices(Component::$name, child, parent_entity);
+
+                    if let Some(entity) = self.parent(parent_entity)
+                        .map(|parent| (&*parent).into().entity())
+                    {
+                        self.$resort_name(entity);
+                    }
+
+                    self.$resort_name(child);
+                    self.$resort_name(parent_entity);
                 }
             )+
 
@@ -1041,72 +1136,30 @@ macro_rules! define_entities_both
                     .push((entity, RenderComponent::Scissor(scissor)));
             }
 
-            fn resort_transforms(&mut self, parent_entity: Entity)
+            fn swap_component_indices(&mut self, component: Component, a: Entity, b: Entity)
             {
-                let child = self.transform.iter().find_map(|(component_id, &ComponentWrapper{
-                    entity,
-                    ..
-                })|
-                {
-                    self.parent(entity).and_then(|parent|
-                    {
-                        ((&*parent).into().entity() == parent_entity).then(||
-                        {
-                            (component_id, entity)
-                        })
-                    })
-                });
-
-                let (child_component, child) = some_or_return!(child);
-
-                let parent_component = some_or_return!(
-                    component_index!(self, parent_entity, transform)
-                );
-
-                if parent_component < child_component
-                {
-                    return;
-                }
-
-                // swap contents
-                self.transform.swap(child_component, parent_component);
-
-                self.swap_transform_indices(child, parent_entity);
-
-                if let Some(entity) = self.parent(parent_entity)
-                    .map(|parent| (&*parent).into().entity())
-                {
-                    self.resort_transforms(entity);
-                }
-
-                self.resort_transforms(child);
-                self.resort_transforms(parent_entity);
-            }
-
-            fn swap_transform_indices(&mut self, a: Entity, b: Entity)
-            {
-                let transform_id = Component::transform as usize;
+                let component_id = component as usize;
 
                 let components_a = components!(self, a);
                 let mut components_a = components_a.borrow_mut();
 
                 if a.local() == b.local()
                 {
-                    let b_i = components_a.get(b.id).unwrap()[transform_id];
+                    let b_i = components_a.get(b.id).unwrap()[component_id];
 
-                    let a_i = &mut components_a.get_mut(a.id).unwrap()[transform_id];
+                    let a_i = &mut components_a.get_mut(a.id).unwrap()[component_id];
                     let temp = *a_i;
 
                     *a_i = b_i;
 
-                    components_a.get_mut(b.id).unwrap()[transform_id] = temp;
+                    components_a.get_mut(b.id).unwrap()[component_id] = temp;
                 } else
                 {
                     let components_b = components!(self, b);
                     let mut components_b = components_b.borrow_mut();
 
-                    let a = &mut components_a.get_mut(a.id).unwrap()[transform_id];
-                    let b = &mut components_b.get_mut(b.id).unwrap()[transform_id];
+                    let a = &mut components_a.get_mut(a.id).unwrap()[component_id];
+                    let b = &mut components_b.get_mut(b.id).unwrap()[component_id];
 
                     mem::swap(a, b);
                 }
@@ -1152,10 +1205,12 @@ macro_rules! define_entities_both
                 });
             }
 
-            fn order_sensitive(component: Component) -> bool
-            {
-                component == Component::transform
-            }
+            order_sensitives!(
+                (lazy_transform, resort_lazy_transform),
+                (follow_rotation, resort_follow_rotation),
+                (follow_position, resort_follow_position),
+                (parent, resort_parent)
+            );
 
             fn empty_components() -> ComponentsIndices
             {
@@ -2120,6 +2175,7 @@ macro_rules! define_entities
             $side_mut_func:ident,
             $side_set_func:ident,
             $side_on_name:ident,
+            $side_resort_name:ident,
             $side_message_name:ident,
             $side_component_type:ident,
             $side_default_type:ident,
@@ -2129,6 +2185,7 @@ macro_rules! define_entities
             $mut_func:ident,
             $set_func:ident,
             $on_name:ident,
+            $resort_name:ident,
             $message_name:ident,
             $component_type:ident,
             $default_type:ident
@@ -2136,8 +2193,8 @@ macro_rules! define_entities
     ) =>
     {
         define_entities_both!{
-            $(($side_name, $side_mut_func, $side_set_func, $side_on_name, $side_message_name, $side_component_type, $side_default_type),)+
-            $(($name, $mut_func, $set_func, $on_name, $message_name, $component_type, $default_type),)+
+            $(($side_name, $side_mut_func, $side_set_func, $side_on_name, $side_resort_name, $side_message_name, $side_component_type, $side_default_type),)+
+            $(($name, $mut_func, $set_func, $on_name, $resort_name, $message_name, $component_type, $default_type),)+
         }
 
         impl AnyEntities for ClientEntities
@@ -2393,23 +2450,24 @@ macro_rules! define_entities
 // im okay :)
 define_entities!{
     (side_specific
-        (render, render_mut, set_render, on_render, SetRender, RenderType, RenderInfo, ClientRenderInfo),
-        (occluding_plane, occluding_plane_mut, on_plane_mut, set_occluding_plane, SetNone, OccludingPlaneType, OccludingPlaneServer, OccludingPlane),
-        (ui_element, ui_element_mut, set_ui_element, on_ui_element, SetNone, UiElementType, UiElementServer, UiElement)),
-    (parent, parent_mut, set_parent, on_parent, SetParent, ParentType, Parent),
-    (lazy_mix, lazy_mix_mut, set_lazy_mix, on_lazy_mix, SetLazyMix, LazyMixType, LazyMix),
-    (lazy_transform, lazy_transform_mut, set_lazy_transform, on_lazy_transform, SetLazyTransform, LazyTransformType, LazyTransform),
-    (follow_rotation, follow_rotation_mut, set_follow_rotation, on_follow_rotation, SetFollowRotation, FollowRotationType, FollowRotation),
-    (watchers, watchers_mut, set_watchers, on_watchers, SetWatchers, WatchersType, Watchers),
-    (damaging, damaging_mut, set_damaging, on_damaging, SetDamaging, DamagingType, Damaging),
-    (inventory, inventory_mut, set_inventory, on_inventory, SetInventory, InventoryType, Inventory),
-    (named, named_mut, set_named, on_named, SetNamed, NamedType, String),
-    (transform, transform_mut, set_transform, on_transform, SetTransform, TransformType, Transform),
-    (character, character_mut, set_character, on_character, SetCharacter, CharacterType, Character),
-    (enemy, enemy_mut, set_enemy, on_enemy, SetEnemy, EnemyType, Enemy),
-    (player, player_mut, set_player, on_player, SetPlayer, PlayerType, Player),
-    (collider, collider_mut, set_collider, on_collider, SetCollider, ColliderType, Collider),
-    (physical, physical_mut, set_physical, on_physical, SetPhysical, PhysicalType, Physical),
-    (anatomy, anatomy_mut, set_anatomy, on_anatomy, SetAnatomy, AnatomyType, Anatomy),
-    (saveable, saveable_mut, set_saveable, on_saveable, SetNone, SaveableType, Saveable)
+        (render, render_mut, set_render, on_render, resort_render, SetRender, RenderType, RenderInfo, ClientRenderInfo),
+        (occluding_plane, occluding_plane_mut, set_occluding_plane, on_plane_mut, resort_occluding_plane, SetNone, OccludingPlaneType, OccludingPlaneServer, OccludingPlane),
+        (ui_element, ui_element_mut, set_ui_element, on_ui_element, resort_ui_element, SetNone, UiElementType, UiElementServer, UiElement)),
+    (parent, parent_mut, set_parent, on_parent, resort_parent, SetParent, ParentType, Parent),
+    (lazy_mix, lazy_mix_mut, set_lazy_mix, on_lazy_mix, resort_lazy_mix, SetLazyMix, LazyMixType, LazyMix),
+    (lazy_transform, lazy_transform_mut, set_lazy_transform, on_lazy_transform, resort_lazy_transform, SetLazyTransform, LazyTransformType, LazyTransform),
+    (follow_rotation, follow_rotation_mut, set_follow_rotation, on_follow_rotation, resort_follow_rotation, SetFollowRotation, FollowRotationType, FollowRotation),
+    (follow_position, follow_position_mut, set_follow_position, on_follow_position, resort_follow_position, SetFollowPosition, FollowPositionType, FollowPosition),
+    (watchers, watchers_mut, set_watchers, on_watchers, resort_watchers, SetWatchers, WatchersType, Watchers),
+    (damaging, damaging_mut, set_damaging, on_damaging, resort_damaging, SetDamaging, DamagingType, Damaging),
+    (inventory, inventory_mut, set_inventory, on_inventory, resort_inventory, SetInventory, InventoryType, Inventory),
+    (named, named_mut, set_named, on_named, resort_named, SetNamed, NamedType, String),
+    (transform, transform_mut, set_transform, on_transform, resort_transform, SetTransform, TransformType, Transform),
+    (character, character_mut, set_character, on_character, resort_character, SetCharacter, CharacterType, Character),
+    (enemy, enemy_mut, set_enemy, on_enemy, resort_enemy, SetEnemy, EnemyType, Enemy),
+    (player, player_mut, set_player, on_player, resort_player, SetPlayer, PlayerType, Player),
+    (collider, collider_mut, set_collider, on_collider, resort_collider, SetCollider, ColliderType, Collider),
+    (physical, physical_mut, set_physical, on_physical, resort_physical, SetPhysical, PhysicalType, Physical),
+    (anatomy, anatomy_mut, set_anatomy, on_anatomy, resort_anatomy, SetAnatomy, AnatomyType, Anatomy),
+    (saveable, saveable_mut, set_saveable, on_saveable, resort_saveable, SetNone, SaveableType, Saveable)
 }

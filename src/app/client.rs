@@ -174,7 +174,7 @@ impl Client
             {
                 self.game.on_player_connected();
 
-                self.game_state.borrow_mut().connected_and_ready = true;
+                self.game_state.borrow_mut().on_player_connected();
             }
 
             self.game.camera_sync();
