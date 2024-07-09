@@ -54,7 +54,14 @@ impl<'a> EnemyBuilder<'a>
             info.loot_commonness * 0.6
         );
 
-        loot.create_random(&mut inventory, 1..5);
+        loot.create_random(&mut inventory, 1..4);
+
+        let mut character = Character::new(info.character, Faction::Zob);
+
+        if fastrand::f32() < 0.1
+        {
+            character.set_holding(Some(inventory.random()));
+        }
 
         EntityInfo{
             lazy_transform: Some(LazyTransformInfo{
@@ -80,7 +87,7 @@ impl<'a> EnemyBuilder<'a>
             }),
             inventory: Some(inventory),
             anatomy: Some(Anatomy::Human(HumanAnatomy::new(info.anatomy.clone()))),
-            character: Some(Character::new(info.character, Faction::Zob)),
+            character: Some(character),
             named: Some(self.enemies_info.get(self.id).name.clone()),
             enemy: Some(Enemy::new(self.enemies_info, self.id)),
             ..Default::default()

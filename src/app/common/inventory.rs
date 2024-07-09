@@ -54,6 +54,13 @@ impl Inventory
         &self.items
     }
 
+    pub fn random(&self) -> InventoryItem
+    {
+        let id = fastrand::usize(0..self.items.len());
+
+        InventoryItem(id)
+    }
+
     pub fn items_ids(&self) -> impl Iterator<Item=(InventoryItem, &Item)>
     {
         self.items.iter().enumerate().map(|(index, item)| (InventoryItem(index), item))
