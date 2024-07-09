@@ -1745,6 +1745,7 @@ macro_rules! define_entities_both
                     ($result_variable:expr, $physical:expr, $collider:expr, $entity:expr) =>
                     {
                         let mut collider: RefMut<Collider> = $collider.borrow_mut();
+                        let target_non_lazy = collider.target_non_lazy;
                         {
                             let transform = self.transform($entity).unwrap().clone();
 
@@ -1754,16 +1755,24 @@ macro_rules! define_entities_both
                                 transform,
                                 target: |mut offset: Vector3<f32>|
                                 {
-                                    let mut target = self.target($entity).unwrap();
-
-                                    if let Some(parent) = self.parent($entity)
+                                    let mut target = if target_non_lazy
                                     {
-                                        let parent_scale = self.transform(parent.entity)
-                                            .unwrap()
-                                            .scale;
+                                        self.transform_mut($entity).unwrap()
+                                    } else
+                                    {
+                                        let target = self.target($entity).unwrap();
 
-                                        offset = offset.component_div(&parent_scale);
-                                    }
+                                        if let Some(parent) = self.parent($entity)
+                                        {
+                                            let parent_scale = self.transform(parent.entity)
+                                                .unwrap()
+                                                .scale;
+
+                                            offset = offset.component_div(&parent_scale);
+                                        }
+
+                                        target
+                                    };
 
                                     target.position += offset;
 

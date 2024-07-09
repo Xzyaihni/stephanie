@@ -671,6 +671,7 @@ impl UiInventory
             kind: ColliderType::Aabb,
             layer: ColliderLayer::Ui,
             move_z: false,
+            target_non_lazy: true,
             ..Default::default()
         }.into()));
 
@@ -881,10 +882,7 @@ impl BarNotification
                     z_level: ZLevel::UiMiddle,
                     ..Default::default()
                 }),
-                lazy_transform: Some(LazyTransformInfo{
-                    scaling: Scaling::EaseOut{decay: 20.0},
-                    ..Default::default()
-                }.into()),
+                lazy_transform: Some(LazyTransformInfo::default().into()),
                 parent: Some(Parent::new(body, true)),
                 ..Default::default()
             }

@@ -71,6 +71,7 @@ pub struct ColliderInfo
     pub ghost: bool,
     pub scale: Option<Vector3<f32>>,
     pub move_z: bool,
+    pub target_non_lazy: bool,
     pub is_static: bool
 }
 
@@ -84,6 +85,7 @@ impl Default for ColliderInfo
             ghost: false,
             scale: None,
             move_z: true,
+            target_non_lazy: false,
             is_static: false
         }
     }
@@ -97,6 +99,7 @@ pub struct Collider
     pub ghost: bool,
     pub scale: Option<Vector3<f32>>,
     pub move_z: bool,
+    pub target_non_lazy: bool,
     pub is_static: bool,
     collided: Vec<Entity>,
     previous_position: Option<Vector3<f32>>
@@ -112,6 +115,7 @@ impl From<ColliderInfo> for Collider
             ghost: info.ghost,
             scale: info.scale,
             move_z: info.move_z,
+            target_non_lazy: info.target_non_lazy,
             is_static: info.is_static,
             collided: Vec::new(),
             previous_position: None
@@ -607,6 +611,7 @@ where
             ghost: false,
             scale: None,
             move_z: false,
+            target_non_lazy: false,
             is_static: true
         }.into();
 

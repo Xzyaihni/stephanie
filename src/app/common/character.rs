@@ -720,7 +720,11 @@ impl Character
     {
         let item_info = self.held_info(combined_info);
 
-        Some(item_info.mass / self.newtons(combined_info)?)
+        let raw_use = item_info.mass / self.newtons(combined_info)? * 70.0;
+
+        let cost = raw_use / item_info.comfort;
+
+        Some(cost)
     }
 
     fn consume_attack_stamina(&mut self, combined_info: CombinedInfo)
@@ -760,7 +764,7 @@ impl Character
             return;
         }
 
-        self.attack_cooldown = some_or_return!(self.attack_cooldown(combined_info));
+        self.attack_cooldown = some_or_return!(self.attack_cooldown(combined_info)) * 0.8;
         self.stance_time = self.attack_cooldown * 2.0;
 
         self.bash_side = self.bash_side.opposite();
@@ -988,7 +992,7 @@ impl Character
 
         let item_info = self.held_info(combined_info);
 
-        let damage_scale = some_or_return!(self.newtons(combined_info)) * 0.03;
+        let damage_scale = some_or_return!(self.newtons(combined_info)) * 0.05;
         let damage = DamagePartial{
             data: item_info.bash_damage().scale(damage_scale),
             height: DamageHeight::random()
