@@ -132,6 +132,7 @@ impl From<Lifetime> for TimedConnection
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Connection
 {
+    Ignore,
     Rigid,
     Limit{limit: f32},
     Timed(TimedConnection),
@@ -151,6 +152,7 @@ impl Connection
     {
         match self
         {
+            Connection::Ignore => (),
             Connection::Rigid =>
             {
                 current.position = target;
@@ -595,7 +597,8 @@ impl LazyTransform
     {
         match &mut self.connection
         {
-            Connection::Rigid{..}
+            Connection::Ignore
+            | Connection::Rigid
             | Connection::Constant{..}
             | Connection::Timed{..} => (),
             Connection::Limit{limit} =>

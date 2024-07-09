@@ -495,30 +495,6 @@ macro_rules! impl_common_systems
                 }
             });
         }
-
-        pub fn update_follows(&mut self, dt: f32)
-        {
-            for_each_component!(self, follow_rotation, |entity, follow_rotation: &RefCell<FollowRotation>|
-            {
-                let mut follow_rotation = follow_rotation.borrow_mut();
-
-                let mut transform = self.transform_mut(entity).unwrap();
-                let current = &mut transform.rotation;
-                let target = self.transform(follow_rotation.parent()).unwrap().rotation;
-
-                follow_rotation.next(current, target, dt);
-            });
-
-            for_each_component!(self, follow_position, |entity, follow_position: &RefCell<FollowPosition>|
-            {
-                let mut follow_position = follow_position.borrow_mut();
-
-                let mut transform = self.transform_mut(entity).unwrap();
-                let target = self.transform(follow_position.parent()).unwrap().position;
-
-                follow_position.next(&mut transform, target, dt);
-            });
-        }
     }
 }
 
@@ -542,6 +518,14 @@ macro_rules! entity_info_common
 
                 let new_transform = lazy.target_global(parent_transform.as_ref());
                 self.transform = Some(new_transform);
+            } else
+            {
+                let must_have_lazy = self.follow_rotation.is_some() || self.follow_position.is_some();
+
+                if must_have_lazy
+                {
+                    self.lazy_transform = Some(LazyTransformInfo::default().into());
+                }
             }
 
             if let Some(follow_rotation) = self.follow_rotation.as_ref()
@@ -556,6 +540,8 @@ macro_rules! entity_info_common
 
                     *current = target;
                 }
+
+                self.lazy_transform.as_mut().unwrap().rotation = Rotation::Ignore;
             }
 
             if let Some(follow_position) = self.follow_position.as_ref()
@@ -570,6 +556,8 @@ macro_rules! entity_info_common
 
                     *current = target;
                 }
+
+                self.lazy_transform.as_mut().unwrap().connection = Connection::Ignore;
             }
 
             if self.anatomy.is_some() && self.watchers.is_none()
@@ -1891,6 +1879,22 @@ macro_rules! define_entities_both
                         target_global,
                         dt
                     );
+
+                    if let Some(mut follow) = self.follow_rotation_mut(entity)
+                    {
+                        let current = &mut transform.rotation;
+
+                        let target = self.transform(follow.parent()).unwrap().rotation;
+
+                        follow.next(current, target, dt);
+                    }
+
+                    if let Some(mut follow) = self.follow_position_mut(entity)
+                    {
+                        let target = self.transform(follow.parent()).unwrap().position;
+
+                        follow.next(&mut transform, target, dt);
+                    }
                 }
             }
 

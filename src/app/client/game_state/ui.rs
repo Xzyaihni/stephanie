@@ -843,11 +843,19 @@ impl BarNotification
 {
     pub fn new(
         creator: &mut EntityCreator,
-        anchor: Entity
+        anchor: Entity,
+        name: String
     ) -> Self
     {
-        let body = creator.push(
+        let body = creator.entities.push(
+            true,
             EntityInfo{
+                render: Some(RenderInfo{
+                    object: Some(RenderObjectKind::Texture{name: "ui/background.png".to_owned()}.into()),
+                    z_level: ZLevel::UiLow,
+                    visible: false,
+                    ..Default::default()
+                }),
                 follow_position: Some(FollowPosition::new(anchor, Connection::Rigid)),
                 lazy_transform: Some(LazyTransformInfo{
                     scaling: Scaling::EaseOut{decay: 20.0},
@@ -859,11 +867,19 @@ impl BarNotification
                 }.into()),
                 watchers: Some(Default::default()),
                 ..Default::default()
-            },
-            RenderInfo{
-                object: Some(RenderObjectKind::Texture{name: "ui/background.png".to_owned()}.into()),
-                z_level: ZLevel::UiLow,
-                visible: false,
+            }
+        );
+
+        creator.entities.push(
+            true,
+            EntityInfo{
+                lazy_transform: Some(LazyTransformInfo::default().into()),
+                render: Some(RenderInfo{
+                    object: Some(RenderObjectKind::Text{text: name, font_size: 30}.into()),
+                    z_level: ZLevel::UiMiddle,
+                    ..Default::default()
+                }),
+                parent: Some(Parent::new(body, true)),
                 ..Default::default()
             }
         );

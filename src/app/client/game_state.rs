@@ -166,7 +166,6 @@ impl ClientEntitiesContainer
     {
         self.entities.update_physical(dt);
         self.entities.update_lazy(dt);
-        self.entities.update_follows(dt);
         self.entities.update_enemy(passer, dt);
         self.entities.update_children();
 
@@ -470,14 +469,14 @@ impl GameState
         let ui_notifications = {
             let mut creator = entities.entity_creator();
 
-            let mut create_bar = || -> ui::Notification
+            let mut create_bar = |name: &str| -> ui::Notification
             {
-                BarNotification::new(&mut creator, player_entity).into()
+                BarNotification::new(&mut creator, player_entity, name.to_owned()).into()
             };
 
             UiNotifications{
-                stamina: ui.push_notification(create_bar()),
-                weapon_cooldown: ui.push_notification(create_bar())
+                stamina: ui.push_notification(create_bar("stamina")),
+                weapon_cooldown: ui.push_notification(create_bar("weapon"))
             }
         };
 
