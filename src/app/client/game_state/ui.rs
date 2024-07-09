@@ -673,10 +673,7 @@ impl UiInventory
             ..Default::default()
         }.into()));
 
-        *entities.visible_target(inventory).unwrap() = true;
-
-        let mut lazy = entities.lazy_transform_mut(inventory).unwrap();
-        lazy.target().scale = Vector3::repeat(0.2);
+        open_ui(entities, inventory, Vector3::repeat(0.2));
 
         self.resized_update = true;
     }
@@ -687,26 +684,7 @@ impl UiInventory
 
         entities.set_collider(inventory, None);
 
-        let current_scale;
-        {
-            let mut lazy = entities.lazy_transform_mut(inventory).unwrap();
-            current_scale = lazy.target_ref().scale;
-            lazy.target().scale = Vector3::zeros();
-        }
-
-        let watchers = entities.watchers_mut(inventory);
-        if let Some(mut watchers) = watchers
-        {
-            let near = 0.2 * current_scale.max();
-
-            let watcher = Watcher{
-                kind: WatcherType::ScaleDistance{from: Vector3::zeros(), near},
-                action: WatcherAction::SetVisible(false),
-                ..Default::default()
-            };
-
-            watchers.push(watcher);
-        }
+        close_ui(entities, inventory);
     }
 
     pub fn body(&self) -> Entity
@@ -821,13 +799,139 @@ fn update_resize_ui(entities: &ClientEntities, size: Vector2<f32>, entity: Entit
     }
 }
 
-pub struct Notification
+fn open_ui(entities: &ClientEntities, entity: Entity, scale: Vector3<f32>)
 {
+    *entities.visible_target(entity).unwrap() = true;
+
+    let mut lazy = entities.lazy_transform_mut(entity).unwrap();
+    lazy.target().scale = scale;
+}
+
+fn close_ui(entities: &ClientEntities, entity: Entity)
+{
+    let current_scale;
+    {
+        let mut lazy = entities.lazy_transform_mut(entity).unwrap();
+        current_scale = lazy.target_ref().scale;
+        lazy.target().scale = Vector3::zeros();
+    }
+
+    let watchers = entities.watchers_mut(entity);
+    if let Some(mut watchers) = watchers
+    {
+        let near = 0.2 * current_scale.max();
+
+        let watcher = Watcher{
+            kind: WatcherType::ScaleDistance{from: Vector3::zeros(), near},
+            action: WatcherAction::SetVisible(false),
+            ..Default::default()
+        };
+
+        watchers.push(watcher);
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct NotificationId(usize);
+
+pub struct BarNotification
+{
+    body: Entity
+}
+
+impl BarNotification
+{
+    pub fn new(
+        creator: &mut EntityCreator,
+        anchor: Entity
+    ) -> Self
+    {
+        let body = creator.push(
+            EntityInfo{
+                follow_position: Some(FollowPosition::new(anchor, Connection::Rigid)),
+                lazy_transform: Some(LazyTransformInfo{
+                    scaling: Scaling::EaseOut{decay: 20.0},
+                    transform: Transform{
+                        scale: Vector3::zeros(),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                }.into()),
+                watchers: Some(Default::default()),
+                ..Default::default()
+            },
+            RenderInfo{
+                object: Some(RenderObjectKind::Texture{name: "ui/background.png".to_owned()}.into()),
+                z_level: ZLevel::UiLow,
+                visible: false,
+                ..Default::default()
+            }
+        );
+
+        Self{
+            body
+        }
+    }
+}
+
+pub enum Notification
+{
+    Bar(BarNotification)
+}
+
+impl From<BarNotification> for Notification
+{
+    fn from(x: BarNotification) -> Self
+    {
+        Self::Bar(x)
+    }
+}
+
+impl Notification
+{
+    pub fn set_visibility(&self, entities: &ClientEntities, state: bool)
+    {
+        let entity = self.body();
+
+        if state
+        {
+            let width = 0.15;
+            let height = width * 0.25;
+
+            open_ui(entities, entity, Vector3::new(width, height, height));
+        } else
+        {
+            close_ui(entities, entity);
+        }
+    }
+
+    pub fn set_position(&self, entities: &ClientEntities, position: f32)
+    {
+        if let Some(mut follow_position) = entities.follow_position_mut(self.body())
+        {
+            follow_position.offset.y = -position;
+        }
+    }
+
+    fn body(&self) -> Entity
+    {
+        match self
+        {
+            Self::Bar(x) => x.body
+        }
+    }
+}
+
+pub struct ActiveNotification
+{
+    id: NotificationId,
+    lifetime: f32
 }
 
 pub struct Ui
 {
     notifications: Vec<Notification>,
+    active_notifications: Vec<ActiveNotification>,
     pub player_inventory: UiInventory,
     pub other_inventory: UiInventory
 }
@@ -863,8 +967,38 @@ impl Ui
 
         Self{
             notifications: Vec::new(),
+            active_notifications: Vec::new(),
             player_inventory,
             other_inventory
+        }
+    }
+
+    pub fn push_notification(&mut self, notification: Notification) -> NotificationId
+    {
+        let id = self.notifications.len();
+
+        self.notifications.push(notification);
+
+        NotificationId(id)
+    }
+
+    pub fn activate_notification(
+        &mut self,
+        entities: &ClientEntities,
+        id: NotificationId,
+        lifetime: f32
+    )
+    {
+        if let Some(notification) = self.active_notifications.iter_mut().find(|x| x.id == id)
+        {
+            notification.lifetime = lifetime;
+        } else
+        {
+            let notification = ActiveNotification{id, lifetime};
+
+            self.notifications[id.0].set_visibility(entities, true);
+
+            self.active_notifications.push(notification);
         }
     }
 
@@ -898,6 +1032,30 @@ impl Ui
         dt: f32
     )
     {
+        self.active_notifications.retain_mut(|ActiveNotification{id, lifetime}|
+        {
+            *lifetime -= dt;
+
+            let keep = *lifetime > 0.0;
+
+            if !keep
+            {
+                self.notifications[id.0].set_visibility(creator.entities, false);
+            }
+
+            keep
+        });
+
+        let distance = 0.04;
+        let start = 0.08;
+
+        self.active_notifications.iter().enumerate().for_each(|(index, ActiveNotification{id, ..})|
+        {
+            let position = start + index as f32 * distance;
+
+            self.notifications[id.0].set_position(creator.entities, position);
+        });
+
         self.inventories_mut().for_each(|inventory|
         {
             inventory.update(creator, dt);

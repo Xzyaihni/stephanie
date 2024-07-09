@@ -406,7 +406,7 @@ pub enum Deformation
 pub struct FollowRotation
 {
     parent: Entity,
-    rotation: Rotation
+    pub rotation: Rotation
 }
 
 impl FollowRotation
@@ -439,7 +439,8 @@ impl FollowRotation
 pub struct FollowPosition
 {
     parent: Entity,
-    connection: Connection
+    pub connection: Connection,
+    pub offset: Vector3<f32>
 }
 
 impl FollowPosition
@@ -448,7 +449,8 @@ impl FollowPosition
     {
         Self{
             parent,
-            connection
+            connection,
+            offset: Vector3::zeros()
         }
     }
 
@@ -464,7 +466,7 @@ impl FollowPosition
         dt: f32
     )
     {
-        self.connection.next(current, parent_position, dt);
+        self.connection.next(current, parent_position + self.offset, dt);
     }
 }
 

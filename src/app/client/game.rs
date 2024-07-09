@@ -837,6 +837,13 @@ impl<'a> PlayerContainer<'a>
                 .character_mut(self.info.entity)
             {
                 character.sprinting = self.game_state.pressed(Control::Sprint);
+
+                if character.sprinting
+                {
+                    let stamina = self.game_state.ui_notifications.stamina;
+
+                    self.game_state.activate_notification(stamina, 1.0);
+                }
             }
 
             self.walk(movement);

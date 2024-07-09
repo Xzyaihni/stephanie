@@ -79,7 +79,7 @@ use controls_controller::ControlsController;
 use notifications::{Notifications, Notification};
 
 pub use ui::Ui;
-use ui::InventoryActions;
+use ui::{InventoryActions, BarNotification, NotificationId};
 
 mod controls_controller;
 
@@ -319,6 +319,12 @@ impl CommonTextures
     }
 }
 
+pub struct UiNotifications
+{
+    pub stamina: NotificationId,
+    pub weapon_cooldown: NotificationId
+}
+
 pub struct GameState
 {
     pub mouse_position: Vector2<f32>,
@@ -326,6 +332,7 @@ pub struct GameState
     pub assets: Arc<Mutex<Assets>>,
     pub object_factory: Rc<ObjectFactory>,
     pub notifications: Notifications,
+    pub ui_notifications: UiNotifications,
     pub entities: ClientEntitiesContainer,
     pub controls: ControlsController,
     pub running: bool,
@@ -419,7 +426,7 @@ impl GameState
 
         let user_receiver = Rc::new(RefCell::new(Vec::new()));
 
-        let ui = {
+        let mut ui = {
             // mmm i love the borrow checker
             let urx00 = user_receiver.clone();
             let urx01 = user_receiver.clone();
@@ -460,6 +467,20 @@ impl GameState
             )
         };
 
+        let ui_notifications = {
+            let mut creator = entities.entity_creator();
+
+            let mut create_bar = || -> ui::Notification
+            {
+                BarNotification::new(&mut creator, player_entity).into()
+            };
+
+            UiNotifications{
+                stamina: ui.push_notification(create_bar()),
+                weapon_cooldown: ui.push_notification(create_bar())
+            }
+        };
+
         let ui = Rc::new(RefCell::new(ui));
 
         let assets = info.object_info.partial.assets;
@@ -471,6 +492,7 @@ impl GameState
             assets,
             object_factory: info.object_info.partial.object_factory,
             notifications,
+            ui_notifications,
             entities,
             items_info: info.data_infos.items_info,
             characters_info: info.data_infos.characters_info,
@@ -666,6 +688,11 @@ impl GameState
     pub fn send_message(&self, message: Message)
     {
         self.connections_handler.write().send_message(message);
+    }
+
+    pub fn activate_notification(&self, id: NotificationId, lifetime: f32)
+    {
+        self.ui.borrow_mut().activate_notification(&self.entities.entities, id, lifetime);
     }
 
     pub fn tile(&self, index: TilePos) -> Option<&Tile>
