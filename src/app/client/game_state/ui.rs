@@ -386,7 +386,8 @@ impl UiList
                 {
                     let object = RenderObjectKind::Text{
                         text: text.clone(),
-                        font_size: 60
+                        font_size: 60,
+                        font: FontStyle::Sans
                     }.into();
 
                     creator.entities.set_deferred_render_object(item.item, object);
@@ -700,7 +701,8 @@ impl UiInventory
     {
         let object = RenderObjectKind::Text{
             text: name,
-            font_size: 80
+            font_size: 80,
+            font: FontStyle::Bold
         }.into();
 
         creator.entities.set_deferred_render_object(self.name, object);
@@ -893,7 +895,11 @@ impl BarNotification
             EntityInfo{
                 lazy_transform: Some(LazyTransformInfo::default().into()),
                 render: Some(RenderInfo{
-                    object: Some(RenderObjectKind::Text{text: name, font_size: 30}.into()),
+                    object: Some(RenderObjectKind::Text{
+                        text: name,
+                        font_size: 30,
+                        font: FontStyle::Bold
+                    }.into()),
                     z_level: ZLevel::UiHigh,
                     ..Default::default()
                 }),

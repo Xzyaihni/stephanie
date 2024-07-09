@@ -690,7 +690,7 @@ impl<'a> PlayerContainer<'a>
 
         let text = self.info.console_contents.clone().unwrap_or_default();
 
-        let object = RenderObjectKind::Text{text, font_size: 30}.into();
+        let object = RenderObjectKind::Text{text, font_size: 30, font: FontStyle::Sans}.into();
 
         self.game_state.entities().set_deferred_render_object(self.info.console_entity, object);
     }
