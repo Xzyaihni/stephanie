@@ -486,6 +486,7 @@ struct PlayerInfo
     other_entity: Option<Entity>,
     console_entity: Entity,
     console_contents: Option<String>,
+    previous_stamina: Option<f32>,
     inventory_open: bool,
     other_inventory_open: bool
 }
@@ -501,6 +502,7 @@ impl PlayerInfo
             other_entity: None,
             console_entity: info.console_entity,
             console_contents: None,
+            previous_stamina: None,
             inventory_open: false,
             other_inventory_open: false
         }
@@ -821,7 +823,7 @@ impl<'a> PlayerContainer<'a>
         let mouse_position = Vector3::new(mouse_position.x, mouse_position.y, 0.0);
         let camera_position = self.game_state.camera.read().position().coords;
 
-        self.game_state.entities_mut()
+        self.game_state.entities()
             .transform_mut(self.info.mouse_entity)
             .unwrap()
             .position = camera_position + mouse_position;
@@ -831,19 +833,27 @@ impl<'a> PlayerContainer<'a>
             self.info.mouse_entity
         );
 
+        if let Some(character) = self.game_state.entities().character(self.info.entity)
+        {
+            let current_stamina = character.stamina_fraction(self.game_state.entities());
+
+            if self.info.previous_stamina != current_stamina
+            {
+                self.info.previous_stamina = current_stamina;
+
+                let stamina = self.game_state.ui_notifications.stamina;
+
+                self.game_state.set_bar(stamina, current_stamina.unwrap_or(0.0));
+                self.game_state.activate_notification(stamina, 1.0);
+            }
+        }
+
         if let Some(movement) = self.movement_direction()
         {
             if let Some(mut character) = self.game_state.entities()
                 .character_mut(self.info.entity)
             {
                 character.sprinting = self.game_state.pressed(Control::Sprint);
-
-                if character.sprinting
-                {
-                    let stamina = self.game_state.ui_notifications.stamina;
-
-                    self.game_state.activate_notification(stamina, 1.0);
-                }
             }
 
             self.walk(movement);

@@ -475,8 +475,8 @@ impl GameState
             };
 
             UiNotifications{
-                stamina: ui.push_notification(create_bar("stamina")),
-                weapon_cooldown: ui.push_notification(create_bar("weapon"))
+                stamina: ui.push_notification(create_bar("STAMINA")),
+                weapon_cooldown: ui.push_notification(create_bar("WEAPON"))
             }
         };
 
@@ -687,6 +687,11 @@ impl GameState
     pub fn send_message(&self, message: Message)
     {
         self.connections_handler.write().send_message(message);
+    }
+
+    pub fn set_bar(&self, id: NotificationId, amount: f32)
+    {
+        self.ui.borrow_mut().set_bar(&self.entities.entities, id, amount);
     }
 
     pub fn activate_notification(&self, id: NotificationId, lifetime: f32)

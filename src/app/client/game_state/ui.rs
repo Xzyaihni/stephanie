@@ -836,7 +836,8 @@ pub struct NotificationId(usize);
 
 pub struct BarNotification
 {
-    body: Entity
+    body: Entity,
+    bar: Entity
 }
 
 impl BarNotification
@@ -870,13 +871,30 @@ impl BarNotification
             }
         );
 
+        let bar = creator.entities.push(
+            true,
+            EntityInfo{
+                render: Some(RenderInfo{
+                    object: Some(RenderObjectKind::Texture{name: "ui/background.png".to_owned()}.into()),
+                    z_level: ZLevel::UiMiddle,
+                    ..Default::default()
+                }),
+                lazy_transform: Some(LazyTransformInfo{
+                    scaling: Scaling::EaseOut{decay: 20.0},
+                    ..Default::default()
+                }.into()),
+                parent: Some(Parent::new(body, true)),
+                ..Default::default()
+            }
+        );
+
         creator.entities.push(
             true,
             EntityInfo{
                 lazy_transform: Some(LazyTransformInfo::default().into()),
                 render: Some(RenderInfo{
                     object: Some(RenderObjectKind::Text{text: name, font_size: 30}.into()),
-                    z_level: ZLevel::UiMiddle,
+                    z_level: ZLevel::UiHigh,
                     ..Default::default()
                 }),
                 parent: Some(Parent::new(body, true)),
@@ -885,14 +903,35 @@ impl BarNotification
         );
 
         Self{
-            body
+            body,
+            bar
         }
     }
+
+    pub fn set_amount(
+        &mut self,
+        entities: &ClientEntities,
+        amount: f32
+    )
+    {
+        let amount = amount.clamp(0.0, 1.0);
+
+        let mut target = some_or_return!(entities.target(self.bar));
+
+        target.position.x = -0.5 + amount / 2.0;
+        target.scale.x = amount;
+    }
+}
+
+pub struct TextNotification
+{
+    body: Entity
 }
 
 pub enum Notification
 {
-    Bar(BarNotification)
+    Bar(BarNotification),
+    Text(TextNotification)
 }
 
 impl From<BarNotification> for Notification
@@ -933,7 +972,8 @@ impl Notification
     {
         match self
         {
-            Self::Bar(x) => x.body
+            Self::Bar(x) => x.body,
+            Self::Text(x) => x.body
         }
     }
 }
@@ -996,6 +1036,14 @@ impl Ui
         self.notifications.push(notification);
 
         NotificationId(id)
+    }
+
+    pub fn set_bar(&mut self, entities: &ClientEntities, id: NotificationId, amount: f32)
+    {
+        if let Notification::Bar(x) = &mut self.notifications[id.0]
+        {
+            x.set_amount(entities, amount);
+        }
     }
 
     pub fn activate_notification(

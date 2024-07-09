@@ -416,17 +416,28 @@ impl Character
 
     pub fn newtons(&self, combined_info: CombinedInfo) -> Option<f32>
     {
-        self.anatomy(combined_info).and_then(|x| x.strength().map(|strength| strength * 30.0))
+        self.anatomy(combined_info.entities).and_then(|x| x.strength().map(|strength| strength * 30.0))
     }
 
-    pub fn stamina(&self, combined_info: CombinedInfo) -> Option<f32>
+    #[allow(dead_code)]
+    pub fn stamina(&self) -> f32
     {
-        self.anatomy(combined_info).and_then(|x| x.stamina())
+        self.stamina
     }
 
-    pub fn max_stamina(&self, combined_info: CombinedInfo) -> Option<f32>
+    pub fn stamina_fraction(&self, entities: &ClientEntities) -> Option<f32>
     {
-        self.anatomy(combined_info).and_then(|x| x.max_stamina())
+        self.max_stamina(entities).map(|max_stamina| self.stamina / max_stamina)
+    }
+
+    pub fn stamina_speed(&self, combined_info: CombinedInfo) -> Option<f32>
+    {
+        self.anatomy(combined_info.entities).and_then(|x| x.stamina())
+    }
+
+    pub fn max_stamina(&self, entities: &ClientEntities) -> Option<f32>
+    {
+        self.anatomy(entities).and_then(|x| x.max_stamina())
     }
 
     fn attack_cooldown(&self, combined_info: CombinedInfo) -> Option<f32>
@@ -699,7 +710,7 @@ impl Character
 
     pub fn can_move(&self, combined_info: CombinedInfo) -> bool
     {
-        self.anatomy(combined_info).map(|anatomy|
+        self.anatomy(combined_info.entities).map(|anatomy|
         {
             anatomy.speed().is_some()
         }).unwrap_or(true)
@@ -729,11 +740,11 @@ impl Character
         attackable_state && attackable_item
     }
 
-    fn anatomy<'a>(&'a self, combined_info: CombinedInfo<'a>) -> Option<Ref<'a, Anatomy>>
+    fn anatomy<'a>(&'a self, entities: &'a ClientEntities) -> Option<Ref<'a, Anatomy>>
     {
         self.info.as_ref().and_then(move |info|
         {
-            combined_info.entities.anatomy(info.this)
+            entities.anatomy(info.this)
         })
     }
 
@@ -1441,8 +1452,8 @@ impl Character
 
     fn update_sprint(&mut self, combined_info: CombinedInfo, dt: f32)
     {
-        let max_stamina = some_or_return!(self.max_stamina(combined_info));
-        let recharge_speed = some_or_return!(self.stamina(combined_info));
+        let max_stamina = some_or_return!(self.max_stamina(combined_info.entities));
+        let recharge_speed = some_or_return!(self.stamina_speed(combined_info));
 
         if self.is_sprinting()
         {
