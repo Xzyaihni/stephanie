@@ -1,12 +1,10 @@
 [
     {
         "name": "zob",
-        "behavior": "Melee",
         "normal": "zob/zob.png",
         "crawling": "zob/crawling.png",
         "lying": "zob/lying.png",
-        "hand": "hand.png",
-        "commonness": 1.0
+        "hand": "hand.png"
     },
     {
         "name": "runner",
@@ -22,7 +20,8 @@
         "crawling": "runner/crawling.png",
         "lying": "runner/lying.png",
         "hand": "hand.png",
-        "commonness": 0.4
+        "commonness": 0.4,
+        "loot_commonness": 0.9
     },
     {
         "name": "bigy",
@@ -39,7 +38,8 @@
         "crawling": "bigy/crawling.png",
         "lying": "bigy/lying.png",
         "hand": "hand.png",
-        "commonness": 0.2
+        "commonness": 0.2,
+        "loot_commonness": 0.5
     },
     {
         "name": "me",
@@ -58,6 +58,7 @@
         "crawling": "../player/crawling.png",
         "lying": "../player/lying.png",
         "hand": "../player/hand.png",
-        "commonness": 0.05
+        "commonness": 0.05,
+        "loot_commonness": 1.1
     }
 ]

@@ -48,7 +48,12 @@ impl<'a> EnemyBuilder<'a>
 
         let mut inventory = Inventory::new();
 
-        let mut loot = Loot::new(self.items_info, vec!["utility", "weapons", "animals"], 1.0);
+        let mut loot = Loot::new(
+            self.items_info,
+            vec!["utility", "weapons", "animals"],
+            info.loot_commonness * 0.6
+        );
+
         loot.create_random(&mut inventory, 1..5);
 
         EntityInfo{
