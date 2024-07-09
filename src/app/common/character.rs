@@ -425,6 +425,11 @@ impl Character
         self.stamina
     }
 
+    pub fn attack_cooldown(&self) -> f32
+    {
+        self.attack_cooldown
+    }
+
     pub fn stamina_fraction(&self, entities: &ClientEntities) -> Option<f32>
     {
         self.max_stamina(entities).map(|max_stamina| self.stamina / max_stamina)
@@ -440,7 +445,7 @@ impl Character
         self.anatomy(entities).and_then(|x| x.max_stamina())
     }
 
-    fn attack_cooldown(&self, combined_info: CombinedInfo) -> Option<f32>
+    fn held_attack_cooldown(&self, combined_info: CombinedInfo) -> Option<f32>
     {
         let item_info = self.held_info(combined_info);
 
@@ -764,7 +769,7 @@ impl Character
             return;
         }
 
-        self.attack_cooldown = some_or_return!(self.attack_cooldown(combined_info)) * 0.8;
+        self.attack_cooldown = some_or_return!(self.held_attack_cooldown(combined_info)) * 0.8;
         self.stance_time = self.attack_cooldown * 2.0;
 
         self.bash_side = self.bash_side.opposite();
@@ -864,7 +869,7 @@ impl Character
 
         self.unstance(combined_info);
 
-        self.attack_cooldown = some_or_return!(self.attack_cooldown(combined_info));
+        self.attack_cooldown = some_or_return!(self.held_attack_cooldown(combined_info));
 
         self.consume_attack_stamina(combined_info);
 
@@ -1225,7 +1230,7 @@ impl Character
             unstance_hands(self);
         }
 
-        if let Some(attack_cooldown) = self.attack_cooldown(combined_info)
+        if let Some(attack_cooldown) = self.held_attack_cooldown(combined_info)
         {
             if self.attack_cooldown < (attack_cooldown * HANDS_UNSTANCE)
             {

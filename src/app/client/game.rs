@@ -487,6 +487,7 @@ struct PlayerInfo
     console_entity: Entity,
     console_contents: Option<String>,
     previous_stamina: Option<f32>,
+    previous_cooldown: (f32, f32),
     inventory_open: bool,
     other_inventory_open: bool
 }
@@ -503,6 +504,7 @@ impl PlayerInfo
             console_entity: info.console_entity,
             console_contents: None,
             previous_stamina: None,
+            previous_cooldown: (0.0, 0.0),
             inventory_open: false,
             other_inventory_open: false
         }
@@ -835,16 +837,45 @@ impl<'a> PlayerContainer<'a>
 
         if let Some(character) = self.game_state.entities().character(self.info.entity)
         {
+            let delay = 0.7;
+
             let current_stamina = character.stamina_fraction(self.game_state.entities());
 
             if self.info.previous_stamina != current_stamina
             {
                 self.info.previous_stamina = current_stamina;
 
-                let stamina = self.game_state.ui_notifications.stamina;
+                let id = self.game_state.ui_notifications.stamina;
 
-                self.game_state.set_bar(stamina, current_stamina.unwrap_or(0.0));
-                self.game_state.activate_notification(stamina, 1.0);
+                self.game_state.set_bar(id, current_stamina.unwrap_or(0.0));
+                self.game_state.activate_notification(id, delay);
+            }
+
+            let current_cooldown = character.attack_cooldown();
+            if self.info.previous_cooldown.1 != current_cooldown
+            {
+                self.info.previous_cooldown.1 = current_cooldown;
+
+                self.info.previous_cooldown.0 = if current_cooldown <= 0.0
+                {
+                    0.0
+                } else
+                {
+                    self.info.previous_cooldown.0.max(current_cooldown)
+                };
+
+                let id = self.game_state.ui_notifications.weapon_cooldown;
+
+                let fraction = if self.info.previous_cooldown.0 > 0.0
+                {
+                    current_cooldown / self.info.previous_cooldown.0
+                } else
+                {
+                    0.0
+                };
+                
+                self.game_state.set_bar(id, fraction);
+                self.game_state.activate_notification(id, delay);
             }
         }
 
