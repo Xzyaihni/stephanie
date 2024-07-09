@@ -42,7 +42,7 @@ pub struct OutlinedInfo
     other_color: [f32; 3],
     other_mix: f32,
     animation: f32,
-    outlined: i32
+    outlined: f32
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -56,7 +56,7 @@ impl OutlinedInfo
 {
     pub fn new(
         other_color: Option<MixColor>,
-        outline: bool,
+        outlined: f32,
         animation: f32
     ) -> Self
     {
@@ -64,7 +64,7 @@ impl OutlinedInfo
             other_color: other_color.map(|x| x.color).unwrap_or_default(),
             other_mix: other_color.map(|x| x.amount).unwrap_or_default(),
             animation,
-            outlined: outline as i32
+            outlined
         }
     }
 }
@@ -110,7 +110,7 @@ impl RenderObjectKind
 
                 Some(ClientRenderObject{
                     kind: ClientObjectType::Normal(object),
-                    outlined: false
+                    outlined: None
                 })
             },
             Self::Texture{name} =>
@@ -140,7 +140,7 @@ impl RenderObjectKind
                 {
                     Some(ClientRenderObject{
                         kind: ClientObjectType::Text(object),
-                        outlined: false
+                        outlined: None
                     })
                 }
             }
@@ -279,7 +279,7 @@ impl Debug for ClientObjectType
 pub struct ClientRenderObject
 {
     kind: ClientObjectType,
-    outlined: bool
+    outlined: Option<f32>
 }
 
 impl ClientRenderObject
@@ -306,7 +306,7 @@ impl ClientRenderObject
         }
     }
 
-    pub fn set_outlined(&mut self, outlined: bool)
+    pub fn set_outlined(&mut self, outlined: Option<f32>)
     {
         self.outlined = outlined;
     }
@@ -333,7 +333,7 @@ impl ClientRenderObject
     {
         let outline = OutlinedInfo::new(
             mix,
-            self.outlined,
+            self.outlined.unwrap_or(0.0),
             animation
         );
 
@@ -411,7 +411,7 @@ impl ClientRenderInfo
         }
     }
 
-    pub fn set_outlined(&mut self, outlined: bool)
+    pub fn set_outlined(&mut self, outlined: Option<f32>)
     {
         if let Some(object) = self.object.as_mut()
         {
@@ -449,7 +449,7 @@ impl ClientRenderInfo
                 kind: ClientObjectType::Normal(
                     object_info.object_factory.create(info)
                 ),
-                outlined: false
+                outlined: None
             };
 
             self.object = Some(object);

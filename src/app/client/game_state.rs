@@ -173,6 +173,8 @@ impl ClientEntitiesContainer
 
         self.entities.update_lazy_mix(dt);
 
+        self.entities.update_outlineable(dt);
+
         {
             let passer = &mut *passer;
             self.entities.update_colliders(world, is_trusted.then_some(passer));

@@ -32,6 +32,7 @@ use crate::{
         damaging::*,
         particle_creator::*,
         raycast::*,
+        Outlineable,
         LazyMix,
         DataInfos,
         OccludingPlane,
@@ -205,6 +206,7 @@ no_on_set!{
     ClientRenderInfo,
     RenderInfo,
     LazyMix,
+    Outlineable,
     LazyTransform,
     FollowRotation,
     FollowPosition,
@@ -576,6 +578,16 @@ macro_rules! entity_info_common
                 {
                     render.mix = Some(lazy_mix.target);
                 }
+            }
+
+            if self.player.is_none() && self.inventory.is_some() && self.outlineable.is_none()
+            {
+                self.outlineable = Some(Outlineable::default());
+            }
+
+            if self.outlineable.is_some() && self.watchers.is_none()
+            {
+                self.watchers = Some(Watchers::default());
             }
 
             if let Some(character) = self.character.as_mut()
@@ -1646,7 +1658,10 @@ macro_rules! define_entities_both
             pub fn is_lootable(&self, entity: Entity) -> bool
             {
                 let is_player = self.player(entity).is_some();
-                let has_inventory = self.inventory(entity).is_some();
+                let has_inventory = self.inventory(entity).map(|inventory|
+                {
+                    !inventory.is_empty()
+                }).unwrap_or(false);
 
                 let maybe_anatomy = if let Some(anatomy) = self.anatomy(entity)
                 {
@@ -1687,49 +1702,57 @@ macro_rules! define_entities_both
                 let mouse_collider = self.collider(mouse).unwrap();
                 let mouse_collided = mouse_collider.collided().first().copied();
 
-                // i thought about doing it with watchers or something but
-                // that would create so many of them and this thing only runs once
-                // per frame so i dunno if its worth?
-                let unoutline_all = ||
-                {
-                    for_each_component!(self, collider, |entity, _collider|
-                    {
-                        if let Some(mut render) = self.render_mut(entity)
-                        {
-                            render.set_outlined(false);
-                        }
-                    });
-                };
-
-                let mouse_collided = if let Some(x) = mouse_collided
-                {
-                    x
-                } else
-                {
-                    unoutline_all();
-                    return;
-                };
+                let mouse_collided = some_or_return!(mouse_collided);
 
                 if !self.within_interactable_distance(player, mouse_collided)
                 {
-                    unoutline_all();
                     return;
                 }
 
-                for_each_component!(self, collider, |entity, _collider|
+                for_each_component!(self, outlineable, |entity, outlineable: &RefCell<Outlineable>|
+                {
+                    let overlapping = mouse_collided == entity;
+
+                    if overlapping && self.is_lootable(entity)
+                    {
+                        if let Some(mut watchers) = self.watchers_mut(entity)
+                        {
+                            outlineable.borrow_mut().enable();
+
+                            let kind = WatcherType::Lifetime(0.1.into());
+                            if let Some(found) = watchers.find(|watcher|
+                            {
+                                // comparison considered harmful
+                                if let WatcherAction::OutlineableDisable = watcher.action
+                                {
+                                    true
+                                } else
+                                {
+                                    false
+                                }
+                            })
+                            {
+                                found.kind = kind;
+                            } else
+                            {
+                                watchers.push(Watcher{
+                                    kind,
+                                    action: WatcherAction::OutlineableDisable,
+                                    ..Default::default()
+                                });
+                            }
+                        }
+                    }
+                });
+            }
+
+            pub fn update_outlineable(&mut self, dt: f32)
+            {
+                for_each_component!(self, outlineable, |entity, outlineable: &RefCell<Outlineable>|
                 {
                     if let Some(mut render) = self.render_mut(entity)
                     {
-                        let overlapping = mouse_collided == entity;
-
-                        let outline = overlapping && self.is_lootable(entity);
-                        if outline
-                        {
-                            render.set_outlined(true);
-                        } else
-                        {
-                            render.set_outlined(false);
-                        }
+                        render.set_outlined(outlineable.borrow_mut().next(dt));
                     }
                 });
             }
@@ -2468,6 +2491,7 @@ define_entities!{
         (ui_element, ui_element_mut, set_ui_element, on_ui_element, resort_ui_element, SetNone, UiElementType, UiElementServer, UiElement)),
     (parent, parent_mut, set_parent, on_parent, resort_parent, SetParent, ParentType, Parent),
     (lazy_mix, lazy_mix_mut, set_lazy_mix, on_lazy_mix, resort_lazy_mix, SetLazyMix, LazyMixType, LazyMix),
+    (outlineable, outlineable_mut, set_outlineable, on_outlineable, resort_outlineable, SetOutlineable, OutlineableType, Outlineable),
     (lazy_transform, lazy_transform_mut, set_lazy_transform, on_lazy_transform, resort_lazy_transform, SetLazyTransform, LazyTransformType, LazyTransform),
     (follow_rotation, follow_rotation_mut, set_follow_rotation, on_follow_rotation, resort_follow_rotation, SetFollowRotation, FollowRotationType, FollowRotation),
     (follow_position, follow_position_mut, set_follow_position, on_follow_position, resort_follow_position, SetFollowPosition, FollowPositionType, FollowPosition),

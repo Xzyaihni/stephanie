@@ -11,6 +11,7 @@ use crate::common::{
     lazy_transform::*,
     damaging::*,
     LazyMix,
+    Outlineable,
     Transform,
     Faction,
     Collider,
@@ -37,6 +38,7 @@ pub enum Message
     SetTransform{entity: Entity, component: Transform},
     SetLazyTransform{entity: Entity, component: LazyTransform},
     SetLazyMix{entity: Entity, component: LazyMix},
+    SetOutlineable{entity: Entity, component: Outlineable},
     SetFollowRotation{entity: Entity, component: FollowRotation},
     SetFollowPosition{entity: Entity, component: FollowPosition},
     SetInventory{entity: Entity, component: Inventory},
@@ -92,6 +94,7 @@ impl Message
             | Message::SetTransform{entity, ..}
             | Message::SetLazyTransform{entity, ..}
             | Message::SetLazyMix{entity, ..}
+            | Message::SetOutlineable{entity, ..}
             | Message::SetFollowRotation{entity, ..}
             | Message::SetFollowPosition{entity, ..}
             | Message::SetInventory{entity, ..}

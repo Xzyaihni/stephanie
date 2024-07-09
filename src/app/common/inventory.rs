@@ -44,6 +44,11 @@ impl Inventory
         }
     }
 
+    pub fn is_empty(&self) -> bool
+    {
+        self.items.is_empty()
+    }
+
     pub fn items(&self) -> &[Item]
     {
         &self.items

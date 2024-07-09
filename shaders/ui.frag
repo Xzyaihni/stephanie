@@ -10,7 +10,7 @@ layout(push_constant) uniform OutlineInfo{
     vec3 other_color;
     float other_mix;
     float animation;
-    bool outlined;
+    float outlined;
 } outline;
 
 void main()

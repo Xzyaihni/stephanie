@@ -110,6 +110,7 @@ pub struct ExplodeInfo
 pub enum WatcherAction
 {
     None,
+    OutlineableDisable,
     SetVisible(bool),
     SetMixColor(Option<MixColor>),
     SetTargetPosition(Vector3<f32>),
@@ -140,6 +141,13 @@ impl WatcherAction
         match self
         {
             Self::None => (),
+            Self::OutlineableDisable =>
+            {
+                if let Some(mut outlineable) = entities.outlineable_mut(entity)
+                {
+                    outlineable.disable();
+                }
+            },
             Self::SetVisible(value) =>
             {
                 if let Some(mut target) = entities.visible_target(entity)
@@ -278,5 +286,10 @@ impl Watchers
     pub fn push(&mut self, watcher: Watcher)
     {
         self.0.push(watcher);
+    }
+
+    pub fn find(&mut self, f: impl Fn(&&mut Watcher) -> bool) -> Option<&mut Watcher>
+    {
+        self.0.iter_mut().find(f)
     }
 }

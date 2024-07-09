@@ -18,6 +18,8 @@ pub use receiver_loop::receiver_loop;
 
 pub use tilemap::{TileMap, TileMapWithTextures};
 
+pub use outlineable::Outlineable;
+
 pub use lazy_mix::LazyMix;
 pub use lazy_transform::{
     LazyTransform,
@@ -84,6 +86,8 @@ pub mod anatomy;
 
 pub mod character;
 pub mod characters_info;
+
+pub mod outlineable;
 
 pub mod watcher;
 pub mod lazy_mix;
