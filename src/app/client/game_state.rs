@@ -79,7 +79,7 @@ use controls_controller::ControlsController;
 use notifications::{Notifications, Notification};
 
 pub use ui::Ui;
-use ui::{InventoryActions, BarNotification, NotificationId};
+use ui::{BarNotification, NotificationId};
 
 mod controls_controller;
 
@@ -428,43 +428,13 @@ impl GameState
         let user_receiver = Rc::new(RefCell::new(Vec::new()));
 
         let mut ui = {
-            // mmm i love the borrow checker
-            let urx00 = user_receiver.clone();
-            let urx01 = user_receiver.clone();
-
-            let urx10 = user_receiver.clone();
-            let urx11 = user_receiver.clone();
-
-            let player_actions = InventoryActions{
-                on_close: move ||
-                {
-                    urx00.borrow_mut().push(UserEvent::Close(InventoryWhich::Player));
-                },
-                on_change: move |item|
-                {
-                    urx01.borrow_mut().push(UserEvent::Wield(item));
-                }
-            };
-
-            let other_actions = InventoryActions{
-                on_close: move ||
-                {
-                    urx10.borrow_mut().push(UserEvent::Close(InventoryWhich::Other));
-                },
-                on_change: move |item|
-                {
-                    urx11.borrow_mut().push(UserEvent::Take(item));
-                }
-            };
-
             let camera_entity = entities.camera_entity;
 
             Ui::new(
                 &mut entities.entity_creator(),
                 info.data_infos.items_info.clone(),
                 camera_entity,
-                player_actions,
-                other_actions
+                user_receiver.clone()
             )
         };
 

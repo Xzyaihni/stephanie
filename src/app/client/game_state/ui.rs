@@ -11,7 +11,7 @@ use yanyaengine::{Transform, camera::Camera};
 use crate::{
     client::{
         ui_element::*,
-        game_state::EntityCreator
+        game_state::{EntityCreator, InventoryWhich, UserEvent}
     },
     common::{
         some_or_return,
@@ -998,31 +998,49 @@ pub struct Ui
 
 impl Ui
 {
-    pub fn new<PlayerClose, PlayerChange, OtherClose, OtherChange>(
+    pub fn new(
         creator: &mut EntityCreator,
         items_info: Arc<ItemsInfo>,
         anchor: Entity,
-        player_actions: InventoryActions<PlayerClose, PlayerChange>,
-        other_actions: InventoryActions<OtherClose, OtherChange>
+        user_receiver: Rc<RefCell<Vec<UserEvent>>>
     ) -> Self
-    where
-        PlayerClose: FnMut() + 'static,
-        PlayerChange: FnMut(InventoryItem) + 'static,
-        OtherClose: FnMut() + 'static,
-        OtherChange: FnMut(InventoryItem) + 'static
     {
+        let urx0 = user_receiver.clone();
+        let urx1 = user_receiver.clone();
+
         let player_inventory = UiInventory::new(
             creator,
             items_info.clone(),
             anchor,
-            player_actions
+            InventoryActions{
+                on_close: move ||
+                {
+                    urx0.borrow_mut().push(UserEvent::Close(InventoryWhich::Player));
+                },
+                on_change: move |item|
+                {
+                    urx1.borrow_mut().push(UserEvent::Wield(item));
+                }
+            }
         ); 
+
+        let urx0 = user_receiver.clone();
+        let urx1 = user_receiver.clone();
 
         let other_inventory = UiInventory::new(
             creator,
             items_info,
             anchor,
-            other_actions
+            InventoryActions{
+                on_close: move ||
+                {
+                    urx0.borrow_mut().push(UserEvent::Close(InventoryWhich::Other));
+                },
+                on_change: move |item|
+                {
+                    urx1.borrow_mut().push(UserEvent::Take(item));
+                }
+            }
         ); 
 
         Self{
