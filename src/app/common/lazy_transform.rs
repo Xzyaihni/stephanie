@@ -8,8 +8,8 @@ use yanyaengine::Transform;
 
 use crate::common::{
     short_rotation,
-    ease_out,
     lerp,
+    EaseOut,
     Entity,
     Physical,
     watcher::Lifetime
@@ -196,10 +196,7 @@ impl Connection
             },
             Connection::EaseOut{decay, limit} =>
             {
-                current.position = current.position.zip_map(&target, |a, b|
-                {
-                    ease_out(a, b, *decay, dt)
-                });
+                current.position = current.position.ease_out(target, *decay, dt);
 
                 if let Some(limit) = limit
                 {
@@ -315,8 +312,7 @@ impl Rotation
 
                         let target_rotation = current_difference + rotation;
 
-                        let new_rotation = ease_out(
-                            rotation,
+                        let new_rotation = rotation.ease_out(
                             target_rotation,
                             info.props.decay,
                             dt
@@ -388,10 +384,7 @@ impl Scaling
             },
             Scaling::EaseOut{decay} =>
             {
-                *current = current.zip_map(&target, |a, b|
-                {
-                    ease_out(a, b, *decay, dt)
-                });
+                *current = current.ease_out(target, *decay, dt);
             }
         }
     }

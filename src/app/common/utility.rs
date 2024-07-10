@@ -257,6 +257,42 @@ pub fn angle_between(a: Vector3<f32>, b: Vector3<f32>) -> f32
     short_rotation(angle_between)
 }
 
+pub trait EaseOut
+{
+    fn ease_out(&self, target: Self, decay: f32, dt: f32) -> Self;
+}
+
+impl EaseOut for f32
+{
+    fn ease_out(&self, target: Self, decay: f32, dt: f32) -> Self
+    {
+        ease_out(*self, target, decay, dt)
+    }
+}
+
+impl EaseOut for [f32; 3]
+{
+    fn ease_out(&self, target: Self, decay: f32, dt: f32) -> Self
+    {
+        self.into_iter().zip(target)
+            .map(|(current, target)| current.ease_out(target, decay, dt))
+            .collect::<Vec<_>>()
+            .try_into()
+            .unwrap()
+    }
+}
+
+impl EaseOut for Vector3<f32>
+{
+    fn ease_out(&self, target: Self, decay: f32, dt: f32) -> Self
+    {
+        self.zip_map(&target, |a, b|
+            {
+                ease_out(a, b, decay, dt)
+            })
+    }
+}
+
 // thanks freya holmer
 pub fn ease_out(current: f32, target: f32, decay: f32, dt: f32) -> f32
 {

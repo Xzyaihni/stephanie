@@ -15,11 +15,11 @@ use crate::{
     },
     common::{
         some_or_return,
-        ease_out,
         render_info::*,
         lazy_transform::*,
         watcher::*,
         collider::*,
+        EaseOut,
         LazyMix,
         AnyEntities,
         InventoryItem,
@@ -120,7 +120,7 @@ impl UiScroll
 
         self.target_scroll = fit_into(current_scroll, half_size, 1.0 - half_size);
 
-        self.scroll = ease_out(self.scroll, self.target_scroll, 15.0, dt);
+        self.scroll = self.scroll.ease_out(self.target_scroll, 15.0, dt);
 
         self.update_position(entities);
     }

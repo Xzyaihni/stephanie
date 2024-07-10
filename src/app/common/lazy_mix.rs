@@ -1,8 +1,8 @@
 use serde::{Serialize, Deserialize};
 
 use crate::common::{
-    ease_out,
-    render_info::*
+    render_info::*,
+    EaseOut
 };
 
 
@@ -29,15 +29,11 @@ impl LazyMix
         dt: f32
     ) -> MixColor
     {
-        let color = current.color.into_iter().zip(self.target.color)
-            .map(|(current, target)| ease_out(current, target, self.decay, dt))
-            .collect::<Vec<_>>()
-            .try_into()
-            .unwrap();
+        let color = current.color.ease_out(self.target.color, self.decay, dt);
 
         MixColor{
             color,
-            amount: ease_out(current.amount, self.target.amount, self.decay, dt)
+            amount: current.amount.ease_out(self.target.amount, self.decay, dt)
         }
     }
 }
