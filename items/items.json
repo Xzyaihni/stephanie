@@ -3,6 +3,7 @@
         "name": "branch",
         "comfort": 0.5,
         "sharpness": 0.5,
+        "side_sharpness": 0.1,
         "scale": 0.3,
         "mass": 0.4,
         "commonness": 0.8,
@@ -38,7 +39,7 @@
         "comfort": 0.5,
         "scale": 0.2,
         "mass": 0.02,
-        "commonness": 1.0,
+        "commonness": 1.2,
         "groups": ["trash", "utility"]
     },
     {
@@ -50,10 +51,48 @@
         "groups": ["weapons"]
     },
     {
+        "name": "hammer",
+        "comfort": 1.4,
+        "side_sharpness": 0.5,
+        "scale": 0.3,
+        "mass": 0.9,
+        "commonness": 0.7,
+        "groups": ["utility", "weapons"]
+    },
+    {
+        "name": "scissors",
+        "comfort": 0.9,
+        "sharpness": 0.9,
+        "scale": 0.15,
+        "mass": 0.15,
+        "commonness": 0.8,
+        "groups": ["utility"]
+    },
+    {
+        "name": "kitchen knife",
+        "comfort": 1.4,
+        "sharpness": 1.5,
+        "side_sharpness": 1.3,
+        "scale": 0.2,
+        "mass": 0.15,
+        "commonness": 0.6,
+        "groups": ["utility"]
+    },
+    {
+        "name": "meat cleaver",
+        "comfort": 1.4,
+        "sharpness": 0.4,
+        "side_sharpness": 1.5,
+        "scale": 0.2,
+        "mass": 0.25,
+        "commonness": 0.4,
+        "groups": ["utility"]
+    },
+    {
         "name": "duct tape",
         "scale": 0.15,
         "mass": 0.1,
-        "commonness": 0.6,
+        "commonness": 1.0,
         "groups": ["utility"]
     },
     {

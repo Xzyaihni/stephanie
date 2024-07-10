@@ -288,10 +288,11 @@ impl GameServer
             ..Default::default()
         };
 
+        let base_health = 1.2;
         let anatomy = Anatomy::Human(HumanAnatomy::new(HumanAnatomyInfo{
-            bone_toughness: 2.0,
-            muscle_toughness: 2.0,
-            skin_toughness: 2.0,
+            bone_toughness: base_health,
+            muscle_toughness: base_health,
+            skin_toughness: base_health,
             base_speed: 0.9,
             ..Default::default()
         }));

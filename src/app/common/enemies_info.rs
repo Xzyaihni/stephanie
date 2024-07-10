@@ -119,10 +119,20 @@ impl EnemiesInfo
         let enemies: EnemiesInfoRaw = serde_json::from_reader(info).unwrap();
 
         let textures_root = textures_root.as_ref();
-        let enemies: Vec<_> = enemies.into_iter().map(|info_raw|
+        let mut enemies: Vec<_> = enemies.into_iter().map(|info_raw|
         {
             EnemyInfo::from_raw(assets, characters_info, textures_root, info_raw)
         }).collect();
+
+        let commonnest = enemies.iter().map(|x| x.commonness).max_by(|a, b|
+        {
+            a.partial_cmp(b).unwrap()
+        }).expect("must have at least one info");
+
+        enemies.iter_mut().for_each(|x|
+        {
+            x.commonness /= commonnest;
+        });
 
         GenericInfo::new(enemies)
     }

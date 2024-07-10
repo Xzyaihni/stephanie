@@ -73,6 +73,7 @@ pub struct ItemInfoRaw
     ranged: Option<Ranged>,
     comfort: Option<f32>,
     sharpness: Option<f32>,
+    side_sharpness: Option<f32>,
     scale: Option<f32>,
     mass: Option<f32>,
     commonness: Option<f64>,
@@ -89,6 +90,7 @@ pub struct ItemInfo
     pub ranged: Option<Ranged>,
     pub comfort: f32,
     pub sharpness: f32,
+    pub side_sharpness: f32,
     pub scale: Vector2<f32>,
     pub mass: f32,
     pub commonness: f64,
@@ -139,6 +141,7 @@ impl ItemInfo
             ranged: raw.ranged,
             comfort: raw.comfort.unwrap_or(1.0),
             sharpness: raw.sharpness.unwrap_or(0.0),
+            side_sharpness: raw.side_sharpness.unwrap_or(0.0),
             // scale is in meters
             scale: aspect * raw.scale.unwrap_or(0.1) * 4.0,
             mass: raw.mass.unwrap_or(1.0),
@@ -154,9 +157,9 @@ impl ItemInfo
             ranged: None,
             comfort: 2.0,
             sharpness: 0.0,
+            side_sharpness: 0.0,
             scale: Vector2::repeat(HAND_SCALE),
-            // the actual weight is 0.3 kg but i need them to do more damage
-            mass: 1.0,
+            mass: 0.3,
             commonness: 1.0,
             texture: None
         }
@@ -164,7 +167,13 @@ impl ItemInfo
 
     pub fn bash_damage(&self) -> DamageType
     {
-        DamageType::Blunt(self.mass * 100.0)
+        if self.side_sharpness == 0.0
+        {
+            DamageType::Blunt(self.mass * 100.0)
+        } else
+        {
+            DamageType::Sharp{sharpness: self.side_sharpness, damage: self.mass * 100.0}
+        }
     }
 
     pub fn poke_damage(&self) -> DamageType
@@ -205,7 +214,7 @@ impl ItemsInfo
         let mut groups: HashMap<String, Vec<ItemId>> = HashMap::new();
 
         let textures_root = textures_root.as_ref();
-        let items: Vec<_> = items.into_iter().enumerate().map(|(index, info_raw)|
+        let mut items: Vec<_> = items.into_iter().enumerate().map(|(index, info_raw)|
         {
             let id = ItemId(index);
 
@@ -218,6 +227,16 @@ impl ItemsInfo
 
             ItemInfo::from_raw(assets, textures_root, info_raw)
         }).collect();
+
+        let commonnest = items.iter().map(|x| x.commonness).max_by(|a, b|
+        {
+            a.partial_cmp(b).unwrap()
+        }).expect("must have at least one info");
+
+        items.iter_mut().for_each(|x|
+        {
+            x.commonness /= commonnest;
+        });
 
         let generic_info = GenericInfo::new(items);
 
