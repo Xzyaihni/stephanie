@@ -11,6 +11,7 @@ use serde::Deserialize;
 use yanyaengine::{Assets, TextureId};
 
 use crate::common::{
+    lerp,
     generic_info::*,
     character::HAND_SCALE,
     DamageType,
@@ -91,7 +92,8 @@ pub struct ItemInfo
     pub comfort: f32,
     pub sharpness: f32,
     pub side_sharpness: f32,
-    pub scale: Vector2<f32>,
+    pub scale: f32,
+    pub aspect: Vector2<f32>,
     pub mass: f32,
     pub commonness: f64,
     pub texture: Option<TextureId>
@@ -136,6 +138,8 @@ impl ItemInfo
 
         let aspect = assets.texture(texture).read().aspect_min();
 
+        let scale = raw.scale.unwrap_or(0.1) * 4.0;
+
         Self{
             name: raw.name,
             ranged: raw.ranged,
@@ -143,7 +147,8 @@ impl ItemInfo
             sharpness: raw.sharpness.unwrap_or(0.0),
             side_sharpness: raw.side_sharpness.unwrap_or(0.0),
             // scale is in meters
-            scale: aspect * raw.scale.unwrap_or(0.1) * 4.0,
+            scale,
+            aspect,
             mass: raw.mass.unwrap_or(1.0),
             commonness: raw.commonness.unwrap_or(1.0),
             texture: Some(texture)
@@ -158,7 +163,8 @@ impl ItemInfo
             comfort: 2.0,
             sharpness: 0.0,
             side_sharpness: 0.0,
-            scale: Vector2::repeat(HAND_SCALE),
+            scale: HAND_SCALE,
+            aspect: Vector2::repeat(1.0),
             mass: 0.3,
             commonness: 1.0,
             texture: None
@@ -189,7 +195,7 @@ impl ItemInfo
 
     pub fn scale3(&self) -> Vector3<f32>
     {
-        self.scale.xyx()
+        (self.aspect * lerp(self.scale, 1.0, 0.3)).xyx()
     }
 }
 
@@ -246,6 +252,11 @@ impl ItemsInfo
     pub fn id(&self, name: &str) -> ItemId
     {
         self.generic_info.id(name)
+    }
+
+    pub fn get_id(&self, name: &str) -> Option<ItemId>
+    {
+        self.generic_info.get_id(name)
     }
 
     pub fn get(&self, id: ItemId) -> &ItemInfo

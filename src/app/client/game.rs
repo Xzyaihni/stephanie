@@ -378,11 +378,15 @@ impl Game
                     let entities = game_state.entities();
 
                     let entity = Self::pop_entity(&mut args, memory)?;
-                    let name = args.pop(memory).as_symbol(memory)?;
+                    let name = args.pop(memory).as_symbol(memory)?.replace('_', " ");
 
                     let mut inventory = entities.inventory_mut(entity).unwrap();
 
-                    let id = game_state.items_info.id(&name);
+                    let id = game_state.items_info.get_id(&name).ok_or_else(||
+                    {
+                        lisp::Error::Custom(format!("item named {name} doesnt exist"))
+                    })?;
+
                     inventory.push(Item{id});
 
                     memory.push_return(LispValue::new_empty_list());

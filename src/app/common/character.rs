@@ -449,7 +449,9 @@ impl Character
     {
         let item_info = self.held_info(combined_info);
 
-        Some(item_info.comfort.recip())
+        let heaviness = item_info.mass / (self.newtons(combined_info)? * 0.01);
+
+        Some(item_info.comfort.recip() * heaviness.clamp(0.5, 2.0))
     }
 
     pub fn bash_reachable(

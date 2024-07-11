@@ -58,7 +58,15 @@ where
 
     pub fn id(&self, name: &str) -> Id
     {
-        self.mapping[name]
+        self.get_id(name).unwrap_or_else(||
+        {
+            panic!("item named {name} doesnt exist")
+        })
+    }
+
+    pub fn get_id(&self, name: &str) -> Option<Id>
+    {
+        self.mapping.get(name).copied()
     }
 
     pub fn get(&self, id: Id) -> &Item
