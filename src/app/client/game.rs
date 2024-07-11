@@ -1,4 +1,5 @@
 use std::{
+    fs,
     f32,
     mem,
     rc::Rc,
@@ -287,7 +288,7 @@ impl Game
 
         primitives.add(
             name,
-            PrimitiveProcedureInfo::new_simple(2, move |_state, memory, _env, mut args|
+            PrimitiveProcedureInfo::new_simple_effect(2, move |_state, memory, _env, mut args|
             {
                 let mut game_state = game_state.borrow_mut();
                 let entities = game_state.entities_mut();
@@ -372,7 +373,7 @@ impl Game
 
             primitives.add(
                 "add-item",
-                PrimitiveProcedureInfo::new_simple(2, move |_state, memory, _env, mut args|
+                PrimitiveProcedureInfo::new_simple_effect(2, move |_state, memory, _env, mut args|
                 {
                     let game_state = game_state.borrow_mut();
                     let entities = game_state.entities();
@@ -415,7 +416,7 @@ impl Game
 
             primitives.add(
                 "print-entity-info",
-                PrimitiveProcedureInfo::new_simple(1, move |_state, memory, _env, mut args|
+                PrimitiveProcedureInfo::new_simple_effect(1, move |_state, memory, _env, mut args|
                 {
                     let game_state = game_state.borrow();
                     let entities = game_state.entities();
@@ -433,9 +434,19 @@ impl Game
                 }));
         }
 
+        let standard_code = {
+            let path = "lisp/standard.scm";
+
+            fs::read_to_string(path)
+                .unwrap_or_else(|err| panic!("{path} must exist ({err})"))
+        };
+
+        let (environment, lambdas) = Lisp::new_mappings_lambdas(&standard_code)
+            .unwrap_or_else(|err| panic!("error in stdlib: {err}"));
+
         let config = LispConfig{
-            environment: None,
-            lambdas: None,
+            environment: Some(Rc::new(RefCell::new(environment))),
+            lambdas: Some(lambdas),
             primitives: Rc::new(primitives)
         };
 

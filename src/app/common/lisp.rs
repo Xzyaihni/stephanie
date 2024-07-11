@@ -54,6 +54,15 @@ impl Special
         Self::BrokenHeart
     }
 
+    pub fn is_null(&self) -> bool
+    {
+        match self
+        {
+            Self::EmptyList => true,
+            _ => false
+        }
+    }
+
     pub fn is_broken_heart(&self) -> bool
     {
         match self
@@ -317,6 +326,11 @@ impl LispValue
     pub fn tag(&self) -> ValueTag
     {
         self.tag
+    }
+
+    pub fn is_null(&self) -> bool
+    {
+        self.as_special().map(|x| x.is_null()).unwrap_or(false)
     }
 
     pub fn is_broken_heart(&self) -> bool
@@ -1166,6 +1180,15 @@ impl Lisp
         })
     }
 
+    pub fn new_mappings_lambdas(code: &str) -> Result<(Mappings, Lambdas), ErrorPos>
+    {
+        let mut lisp = Lisp::new(code)?;
+
+        let env = lisp.run_environment()?;
+
+        Ok((env, lisp.lambdas().clone()))
+    }
+
     pub fn default_memory() -> LispMemory
     {
         LispMemory::new(1 << 10)
@@ -1632,6 +1655,28 @@ mod tests
         let value = output.as_vector().unwrap().as_vec_integer().unwrap();
 
         assert_eq!(value, vec![1005, 9, 5, 123, 1000]);
+    }
+
+    #[test]
+    fn variadic_lambda()
+    {
+        let code = "
+            (define (fold f start xs)
+                (if (null? xs)
+                    start
+                    (fold f (f (car xs) start) (cdr xs))))
+                    
+            (define f (lambda xs
+                (fold + 0 xs)))
+
+            (+ (f 1 2 3) (f 5) (f))
+        ";
+
+        let mut lisp = Lisp::new(code).unwrap();
+
+        let value = lisp.run().unwrap().as_integer().unwrap();
+
+        assert_eq!(value, 11_i32);
     }
 
     #[test]

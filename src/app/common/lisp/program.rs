@@ -56,6 +56,8 @@ impl ArgsWrapper
 
     pub fn pop(&mut self, memory: &mut LispMemory) -> LispValue
     {
+        assert!(self.count > 0);
+
         self.count -= 1;
 
         memory.pop_return()
@@ -66,6 +68,19 @@ impl ArgsWrapper
         self.count += 1;
 
         memory.push_return(value);
+    }
+
+    pub fn as_list(&mut self, env: &Environment, memory: &mut LispMemory) -> LispValue
+    {
+        let lst = (0..self.count).fold(LispValue::new_empty_list(), |acc, _|
+        {
+            let value = memory.pop_return();
+            memory.cons(env, value, acc)
+        });
+
+        self.count = 0;
+
+        lst
     }
 
     pub fn clear(&mut self, memory: &mut LispMemory)
@@ -201,7 +216,37 @@ impl PrimitiveProcedureInfo
         }
     }
 
+    pub fn new_simple_effect<F>(
+        args_count: impl Into<ArgsCount>,
+        on_apply: F
+    ) -> Self
+    where
+        F: Fn(
+            &State,
+            &mut LispMemory,
+            &Environment,
+            ArgsWrapper
+        ) -> Result<(), Error> + 'static
+    {
+        Self::new_simple_maybe_effect::<true, F>(args_count, on_apply)
+    }
+
     pub fn new_simple<F>(
+        args_count: impl Into<ArgsCount>,
+        on_apply: F
+    ) -> Self
+    where
+        F: Fn(
+            &State,
+            &mut LispMemory,
+            &Environment,
+            ArgsWrapper
+        ) -> Result<(), Error> + 'static
+    {
+        Self::new_simple_maybe_effect::<false, F>(args_count, on_apply)
+    }
+
+    fn new_simple_maybe_effect<const EFFECT: bool, F>(
         args_count: impl Into<ArgsCount>,
         on_apply: F
     ) -> Self
@@ -222,12 +267,17 @@ impl PrimitiveProcedureInfo
         |
         {
             let position = args.position;
+
+            let action = if EFFECT { Action::Return } else { action };
             let args = args.apply_args(state, memory, env, action)?;
 
-            match action
+            if !EFFECT
             {
-                Action::Return => (),
-                Action::None => return Ok(())
+                match action
+                {
+                    Action::Return => (),
+                    Action::None => return Ok(())
+                }
             }
 
             on_apply(state, memory, env, args).with_position(position)
@@ -343,12 +393,19 @@ impl Procedure
     }
 }
 
+#[derive(Debug, Clone)]
+pub enum Either<A, B>
+{
+    Left(A),
+    Right(B)
+}
+
 // i dont wanna store the body over and over in the virtual memory
 // but this seems silly, so i dunno >~<
 #[derive(Debug, Clone)]
 pub struct StoredLambda
 {
-    params: ArgValues<String>,
+    params: Either<String, ArgValues<String>>,
     body: ExpressionPos
 }
 
@@ -356,10 +413,14 @@ impl StoredLambda
 {
     pub fn new(params: ExpressionPos, body: ExpressionPos) -> Result<Self, ErrorPos>
     {
-        let params = params.map_list(|arg|
+        let params = match params.as_value()
         {
-            arg.as_value()
-        })?;
+            Ok(x) => Either::Left(x),
+            Err(_) => Either::Right(params.map_list(|arg|
+            {
+                arg.as_value()
+            })?)
+        };
 
         Ok(Self{params, body})
     }
@@ -373,25 +434,38 @@ impl StoredLambda
         action: Action
     ) -> Result<(), ErrorPos>
     {
-        if self.params.len() != args.len()
-        {
-            return Err(ErrorPos{
-                position: self.body.position,
-                error: Error::WrongArgumentsCount{
-                    proc: format!("<compound procedure {:?}>", self.params),
-                    expected: self.params.len(),
-                    got: args.len()
-                }
-            });
-        }
-
         let new_env = Environment::child(env);
-        self.params.iter().for_each(|key|
-        {
-            let value = args.pop(memory);
 
-            new_env.define(key, value);
-        });
+        match &self.params
+        {
+            Either::Right(params) =>
+            {
+                if params.len() != args.len()
+                {
+                    return Err(ErrorPos{
+                        position: self.body.position,
+                        error: Error::WrongArgumentsCount{
+                            proc: format!("<compound procedure {:?}>", self.params),
+                            expected: params.len(),
+                            got: args.len()
+                        }
+                    });
+                }
+
+                params.iter().for_each(|key|
+                {
+                    let value = args.pop(memory);
+
+                    new_env.define(key, value);
+                });
+            },
+            Either::Left(name) =>
+            {
+                let lst = args.as_list(env, memory);
+
+                new_env.define(name, lst);
+            }
+        }
 
         self.body.apply(state, memory, &new_env, action)
     }
@@ -551,6 +625,14 @@ impl Primitives
 
                     Ok(())
                 })),
+            ("null?", PrimitiveProcedureInfo::new_simple(1, |_state, memory, _env, mut args|
+            {
+                let arg = args.pop(memory);
+
+                memory.push_return(LispValue::new_bool(arg.is_null()));
+
+                Ok(())
+            })),
             ("symbol?", PrimitiveProcedureInfo::new_simple(1, is_tag!(ValueTag::Symbol))),
             ("pair?", PrimitiveProcedureInfo::new_simple(1, is_tag!(ValueTag::List))),
             ("char?", PrimitiveProcedureInfo::new_simple(1, is_tag!(ValueTag::Char))),

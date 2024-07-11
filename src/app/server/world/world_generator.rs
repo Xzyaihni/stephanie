@@ -231,13 +231,8 @@ impl ChunkGenerator
         let default_code = fs::read_to_string(path)
             .unwrap_or_else(|err| panic!("{name} must exist >_< ({err})"));
 
-        let mut lisp = Lisp::new(&default_code)
-            .unwrap_or_else(|err| panic!("{name} must be valid ({err})"));
-
-        let env = lisp.run_environment()
-            .unwrap_or_else(|err| panic!("{name} must run ({err})"));
-
-        (env, lisp.lambdas().clone())
+        Lisp::new_mappings_lambdas(&default_code)
+            .unwrap_or_else(|err| panic!("{name} must run ({err})"))
     }
 
     fn parse_function(

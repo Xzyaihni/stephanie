@@ -195,7 +195,7 @@ impl ItemInfo
 
     pub fn scale3(&self) -> Vector3<f32>
     {
-        (self.aspect * lerp(self.scale, 1.0, 0.3)).xyx()
+        (self.aspect * lerp(self.scale, 1.0, 0.2)).xyx()
     }
 }
 
