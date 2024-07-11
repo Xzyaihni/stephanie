@@ -1461,21 +1461,8 @@ macro_rules! define_entities_both
                 RaycastHits{start: *start, direction, hits}
             }
 
-            pub fn create_queued(
-                &mut self,
-                create_info: &mut RenderCreateInfo
-            )
+            pub fn create_render_queued(&mut self, create_info: &mut RenderCreateInfo)
             {
-                self.create_queued_common(|this, entity, info|
-                {
-                    ClientEntityInfo::from_server(
-                        this,
-                        entity,
-                        create_info,
-                        info
-                    )
-                });
-
                 let render_queue = {
                     let mut render_queue = self.create_render_queue.borrow_mut();
 
@@ -1523,6 +1510,22 @@ macro_rules! define_entities_both
                             }
                         }
                     }
+                });
+            }
+
+            pub fn create_queued(
+                &mut self,
+                create_info: &mut RenderCreateInfo
+            )
+            {
+                self.create_queued_common(|this, entity, info|
+                {
+                    ClientEntityInfo::from_server(
+                        this,
+                        entity,
+                        create_info,
+                        info
+                    )
                 });
             }
 

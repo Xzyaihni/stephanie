@@ -10,6 +10,14 @@
         "groups": ["trash"]
     },
     {
+        "name": "baseball bat",
+        "comfort": 1.5,
+        "scale": 0.5,
+        "mass": 0.95,
+        "commonness": 0.3,
+        "groups": ["weapons"]
+    },
+    {
         "name": "rock",
         "comfort": 0.6,
         "scale": 0.1,
@@ -41,6 +49,15 @@
         "mass": 0.02,
         "commonness": 1.2,
         "groups": ["trash", "utility"]
+    },
+    {
+        "name": "axe",
+        "comfort": 1.4,
+        "side_sharpness": 1.2,
+        "scale": 0.5,
+        "mass": 2.2,
+        "commonness": 0.6,
+        "groups": ["weapons"]
     },
     {
         "name": "sledgehammer",
@@ -111,8 +128,7 @@
         "sharpness": 0.15,
         "scale": 0.3,
         "mass": 0.3,
-        "commonness": 0.3,
-        "texture": "weapons/stick.png",
+        "commonness": 0.5,
         "groups": ["weapons"]
     },
     {
@@ -134,14 +150,14 @@
         "name": "snel",
         "scale": 0.03,
         "mass": 0.1,
-        "commonness": 1.0,
+        "commonness": 0.7,
         "groups": ["animals"]
     },
     {
         "name": "bee",
         "scale": 0.02,
         "mass": 0.05,
-        "commonness": 0.2,
+        "commonness": 0.6,
         "groups": ["animals"]
     }
 ]

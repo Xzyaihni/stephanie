@@ -151,6 +151,7 @@ impl ClientEntitiesContainer
     )
     {
         self.entities.create_queued(create_info);
+        self.entities.create_render_queued(create_info);
 
         self.entities.update_watchers(dt);
     }
@@ -780,6 +781,7 @@ impl GameState
 
         self.ui.borrow_mut().update(
             &mut self.entities.entity_creator(),
+            &self.camera.read(),
             dt
         );
 

@@ -456,21 +456,22 @@ impl UiList
 
     pub fn update_after(
         &mut self,
-        creator: &mut EntityCreator,
-        camera: &Camera
+        _creator: &mut EntityCreator,
+        _camera: &Camera
     )
     {
-        self.update_scissors(creator, camera);
     }
 
     pub fn update(
         &mut self,
         creator: &mut EntityCreator,
+        camera: &Camera,
         dt: f32
     )
     {
         self.scroll.update(creator.entities, dt);
         self.update_items(creator);
+        self.update_scissors(creator, camera);
     }
 }
 
@@ -769,6 +770,7 @@ impl UiInventory
     pub fn update(
         &mut self,
         creator: &mut EntityCreator,
+        camera: &Camera,
         dt: f32
     )
     {
@@ -780,7 +782,7 @@ impl UiInventory
             }
         }
 
-        self.list.update(creator, dt);
+        self.list.update(creator, camera, dt);
     }
 }
 
@@ -1115,6 +1117,7 @@ impl Ui
     pub fn update(
         &mut self,
         creator: &mut EntityCreator,
+        camera: &Camera,
         dt: f32
     )
     {
@@ -1144,7 +1147,7 @@ impl Ui
 
         self.inventories_mut().for_each(|inventory|
         {
-            inventory.update(creator, dt);
+            inventory.update(creator, camera, dt);
         });
     }
 
