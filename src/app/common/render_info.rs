@@ -77,6 +77,13 @@ pub enum RenderComponent
     Scissor(Scissor)
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Aspect
+{
+    KeepMax,
+    Fill
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum RenderObjectKind
 {
@@ -242,6 +249,7 @@ pub struct RenderInfo
     pub object: Option<RenderObject>,
     pub shape: Option<BoundingShape>,
     pub mix: Option<MixColor>,
+    pub aspect: Aspect,
     pub z_level: ZLevel
 }
 
@@ -255,6 +263,7 @@ impl Default for RenderInfo
             object: None,
             shape: Some(BoundingShape::Circle),
             mix: None,
+            aspect: Aspect::Fill,
             z_level: ZLevel::Shoulders
         }
     }
@@ -284,7 +293,7 @@ pub struct ClientRenderObject
 
 impl ClientRenderObject
 {
-    pub fn set_transform(&mut self, transform: Transform)
+    fn set_transform(&mut self, transform: Transform)
     {
         match &mut self.kind
         {
@@ -355,6 +364,7 @@ pub struct ClientRenderInfo
     pub object: Option<ClientRenderObject>,
     pub shape: Option<BoundingShape>,
     pub mix: Option<MixColor>,
+    pub aspect: Aspect,
     pub z_level: ZLevel
 }
 
@@ -366,9 +376,10 @@ impl ServerToClient<ClientRenderInfo> for RenderInfo
         create_info: &mut RenderCreateInfo
     ) -> ClientRenderInfo
     {
+        let transform = transform();
         let object = self.object.and_then(|object|
         {
-            object.into_client(transform(), create_info)
+            object.into_client(transform.clone(), create_info)
         });
 
         let scissor = self.scissor.map(|x|
@@ -376,14 +387,20 @@ impl ServerToClient<ClientRenderInfo> for RenderInfo
             x.into_global(create_info.object_info.partial.size)
         });
 
-        ClientRenderInfo{
+        let mut this = ClientRenderInfo{
             visible: self.visible,
             scissor,
             object,
             shape: self.shape,
             mix: self.mix,
+            aspect: self.aspect,
             z_level: self.z_level
-        }
+        };
+
+        let transform = this.transform_with_aspect(transform);
+        this.set_transform(transform);
+
+        this
     }
 }
 
@@ -408,6 +425,15 @@ impl ClientRenderInfo
         }) = self.object.as_mut()
         {
             x.set_inplace_texture(texture);
+        }
+    }
+
+    pub fn texture(&self) -> Option<&Arc<RwLock<Texture>>>
+    {
+        match &self.object.as_ref()?.kind
+        {
+            ClientObjectType::Normal(x) => Some(x.texture()),
+            ClientObjectType::Text(x) => x.texture()
         }
     }
 
@@ -439,10 +465,13 @@ impl ClientRenderInfo
             x.set_texture(texture);
         } else
         {
+            let transform = transform.expect("renderable must have a transform").clone();
+            let transform = self.transform_with_aspect(transform);
+
             let info = ObjectInfo{
                 model: assets.model(assets.default_model(DefaultModel::Square)).clone(),
                 texture,
-                transform: transform.expect("renderable must have a transform").clone()
+                transform
             };
 
             let object = ClientRenderObject{
@@ -458,6 +487,7 @@ impl ClientRenderInfo
 
     pub fn set_transform(&mut self, transform: Transform)
     {
+        let transform = self.transform_with_aspect(transform);
         if let Some(x) = self.object.as_mut()
         {
             x.set_transform(transform);
@@ -467,6 +497,33 @@ impl ClientRenderInfo
     pub fn set_visibility(&mut self, visible: bool)
     {
         self.visible = visible;
+    }
+
+    fn transform_with_aspect(&self, mut transform: Transform) -> Transform
+    {
+        match self.aspect
+        {
+            Aspect::Fill => transform,
+            Aspect::KeepMax =>
+            {
+                if let Some(texture) = self.texture()
+                {
+                    let aspect = texture.read().aspect_min();
+
+                    let scale = if aspect.y > aspect.x
+                    {
+                        transform.scale.yy()
+                    } else
+                    {
+                        transform.scale.xx()
+                    };
+
+                    transform.scale = scale.component_mul(&aspect).xyx();
+                }
+
+                transform
+            }
+        }
     }
 
     fn visible(

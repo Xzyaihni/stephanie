@@ -309,6 +309,7 @@ impl GameServer
                 }.into()),
                 shape: Some(BoundingShape::Circle),
                 z_level: ZLevel::Head,
+                aspect: Aspect::KeepMax,
                 ..Default::default()
             }),
             collider: Some(ColliderInfo{

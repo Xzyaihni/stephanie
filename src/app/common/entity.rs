@@ -1552,12 +1552,12 @@ macro_rules! define_entities_both
                     {
                         let mut damaging = damaging.borrow_mut();
 
-                        let parent_angle_between = ||
+                        let parent_angle_between = || -> Option<_>
                         {
-                            let parent = self.parent(entity).unwrap().entity;
+                            let parent = self.parent(entity)?.entity;
 
-                            let parent_transform = self.transform(parent).unwrap();
-                            let collided_transform = self.transform(collided).unwrap();
+                            let parent_transform = self.transform(parent)?;
+                            let collided_transform = self.transform(collided)?;
 
                             let angle = angle_between(
                                 parent_transform.position,
@@ -1567,11 +1567,11 @@ macro_rules! define_entities_both
                             let parent_angle = -parent_transform.rotation;
                             let relative_angle = angle + (f32::consts::PI - parent_angle);
 
-                            short_rotation(relative_angle)
+                            Some(short_rotation(relative_angle))
                         };
 
                         if damaging.can_damage(collided)
-                            && damaging.predicate.meets(parent_angle_between)
+                            && damaging.predicate.meets(|| parent_angle_between().unwrap_or(0.0))
                         {
                             damaging.damaged(collided);
 
@@ -1644,10 +1644,7 @@ macro_rules! define_entities_both
                 {
                     let transform = self.transform(entity).unwrap();
 
-                    if let Some(object) = render.borrow_mut().object.as_mut()
-                    {
-                        object.set_transform(transform.clone());
-                    }
+                    render.borrow_mut().set_transform(transform.clone());
                 });
 
                 for_each_component!(self, occluding_plane, |entity, occluding_plane: &RefCell<OccludingPlane>|

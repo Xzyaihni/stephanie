@@ -83,6 +83,7 @@ impl<'a> EnemyBuilder<'a>
             render: Some(RenderInfo{
                 shape: Some(BoundingShape::Circle),
                 z_level: ZLevel::Head,
+                aspect: Aspect::KeepMax,
                 ..Default::default()
             }),
             inventory: Some(inventory),
