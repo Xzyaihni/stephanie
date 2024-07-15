@@ -1035,7 +1035,7 @@ impl Ui
                 on_close: on_close(&user_receiver, InventoryWhich::Player),
                 on_change: move |item|
                 {
-                    urx.borrow_mut().push(UserEvent::PopUp(vec![
+                    urx.borrow_mut().push(UserEvent::Popup(vec![
                         UserEvent::Wield(item),
                         UserEvent::Drop{which: InventoryWhich::Player, item},
                         UserEvent::Info{which: InventoryWhich::Player, item}
@@ -1054,7 +1054,7 @@ impl Ui
                 on_close: on_close(&user_receiver, InventoryWhich::Other),
                 on_change: move |item|
                 {
-                    urx.borrow_mut().push(UserEvent::PopUp(vec![
+                    urx.borrow_mut().push(UserEvent::Popup(vec![
                         UserEvent::Take(item),
                         UserEvent::Info{which: InventoryWhich::Other, item}
                     ]));

@@ -297,7 +297,7 @@ pub enum InventoryWhich
 #[derive(Debug, Clone)]
 pub enum UserEvent
 {
-    PopUp(Vec<UserEvent>),
+    Popup(Vec<UserEvent>),
     Info{which: InventoryWhich, item: InventoryItem},
     Drop{which: InventoryWhich, item: InventoryItem},
     Close(InventoryWhich),
@@ -311,9 +311,9 @@ impl UserEvent
     {
         match self
         {
+            Self::Popup{..} => "popup",
             Self::Info{..} => "info",
             Self::Drop{..} => "drop",
-            Self::PopUp(..) => "popup",
             Self::Close(..) => "close",
             Self::Wield(..) => "wield",
             Self::Take(..) => "take"

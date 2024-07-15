@@ -718,7 +718,7 @@ impl<'a> PlayerContainer<'a>
         self.game_state.close_popup();
         match event
         {
-            UserEvent::PopUp(responses) =>
+            UserEvent::Popup(responses) =>
             {
                 self.game_state.create_popup(responses);
             },
