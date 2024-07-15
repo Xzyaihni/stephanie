@@ -365,7 +365,7 @@ impl GameServer
 
         println!("player \"{name}\" connected");
 
-        *self.entities.named_mut(entity).unwrap() = name.clone();
+        self.entities.named_mut(entity).unwrap().clone_from(&name);
 
         Ok(PlayerInfo::new(MessageBuffer::new(), message_passer, entity, name))
     }

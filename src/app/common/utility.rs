@@ -274,7 +274,7 @@ impl EaseOut for [f32; 3]
 {
     fn ease_out(&self, target: Self, decay: f32, dt: f32) -> Self
     {
-        self.into_iter().zip(target)
+        self.iter().zip(target)
             .map(|(current, target)| current.ease_out(target, decay, dt))
             .collect::<Vec<_>>()
             .try_into()
@@ -321,5 +321,82 @@ pub fn get_two_mut<T>(s: &mut [T], one: usize, two: usize) -> (&mut T, &mut T)
         let (left, right) = s.split_at_mut(two);
 
         (&mut left[one], &mut right[0])
+    }
+}
+
+pub fn insertion_sort_with<T, KeyGetter, Swapper, Sortable>(
+    values: &mut [T],
+    get_key: KeyGetter,
+    mut swapper: Swapper
+)
+where
+    Sortable: Ord,
+    KeyGetter: Fn(&T) -> Sortable,
+    Swapper: FnMut(&T, &T)
+{
+    let mut swap = |values: &mut [T], a, b|
+    {
+        swapper(&values[a], &values[b]);
+
+        values.swap(a, b);
+    };
+
+    let mut current = 0;
+
+    while current < values.len()
+    {
+        for i in (1..=current).rev()
+        {
+            let current = get_key(&values[i]);
+            let other = get_key(&values[i - 1]);
+
+            if current >= other
+            {
+                break;
+            } else
+            {
+                swap(values, i, i - 1);
+            }
+        }
+
+        current += 1;
+    }
+}
+
+#[cfg(test)]
+mod tests
+{
+    use std::iter;
+
+    use super::*;
+
+
+    #[test]
+    fn insertion_sort()
+    {
+        for l in 1..10
+        {
+            let mut values: Vec<_> = iter::repeat_with(|| fastrand::i32(-10..10)).take(l)
+                .collect();
+
+            println!("sorting {values:?}");
+
+            insertion_sort_with(&mut values, |x| *x, |a, b|
+            {
+                println!("swapping {a:?} and {b:?}");
+            });
+
+            println!("sorted {values:?}");
+
+            values.iter().reduce(|acc, x|
+            {
+                if acc > x
+                {
+                    panic!("not sorted");
+                }
+
+                x
+            });
+        }
     }
 }

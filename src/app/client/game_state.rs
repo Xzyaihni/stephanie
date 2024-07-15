@@ -1,5 +1,6 @@
 use std::{
     f32,
+    mem,
     cell::{Ref, RefCell},
     rc::Rc,
     ops::ControlFlow,
@@ -12,7 +13,7 @@ use std::{
 
 use parking_lot::{RwLock, Mutex};
 
-use nalgebra::Vector2;
+use nalgebra::{Vector2, Vector3};
 
 use serde::{Serialize, Deserialize};
 
@@ -243,27 +244,23 @@ impl ClientEntitiesContainer
             return;
         }
 
-        let mut queue: Vec<_> = self.entities.render.iter().map(|(_, x)| x).collect();
-
-        queue.sort_unstable_by_key(|render| render.get().z_level);
-
-        let ui_index = queue.partition_point(|render|
+        let ui_end = some_or_return!(self.entities.render.iter().rev().find_map(|(id, render)|
         {
-            render.get().z_level < ZLevel::UiLow
-        });
+            (render.get().z_level < ZLevel::UiLow).then_some(id)
+        }));
 
-        let (normal, ui) = queue.split_at(ui_index);
+        let (normal, ui) = self.entities.render.split_at(ui_end + 1);
 
         let animation = self.animation.sin();
 
-        normal.iter().for_each(|render|
+        normal.iter().filter_map(|x| x.as_ref()).for_each(|render|
         {
             render.get().draw(visibility, info, animation);
         });
 
         info.bind_pipeline(shaders.ui);
         info.set_depth_test(false);
-        ui.iter().for_each(|render|
+        ui.iter().filter_map(|x| x.as_ref()).for_each(|render|
         {
             render.get().draw(visibility, info, animation);
         });
@@ -290,18 +287,66 @@ pub struct GameStateInfo<'a>
     pub host: bool
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InventoryWhich
 {
     Player,
     Other
 }
 
+#[derive(Debug, Clone)]
 pub enum UserEvent
 {
+    PopUp(Vec<UserEvent>),
+    Info{which: InventoryWhich, item: InventoryItem},
+    Drop{which: InventoryWhich, item: InventoryItem},
     Close(InventoryWhich),
     Wield(InventoryItem),
     Take(InventoryItem)
+}
+
+impl UserEvent
+{
+    pub fn name(&self) -> &str
+    {
+        match self
+        {
+            Self::Info{..} => "info",
+            Self::Drop{..} => "drop",
+            Self::PopUp(..) => "popup",
+            Self::Close(..) => "close",
+            Self::Wield(..) => "wield",
+            Self::Take(..) => "take"
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct UiReceiver
+{
+    events: Vec<UserEvent>
+}
+
+impl UiReceiver
+{
+    pub fn new() -> Rc<RefCell<Self>>
+    {
+        let this = Self{
+            events: Vec::new()
+        };
+
+        Rc::new(RefCell::new(this))
+    }
+
+    pub fn push(&mut self, event: UserEvent)
+    {
+        self.events.push(event);
+    }
+
+    pub fn consume(&mut self) -> impl Iterator<Item=UserEvent>
+    {
+        mem::take(&mut self.events).into_iter()
+    }
 }
 
 pub struct CommonTextures
@@ -342,7 +387,7 @@ pub struct GameState
     pub tilemap: Arc<TileMap>,
     pub items_info: Arc<ItemsInfo>,
     pub characters_info: Arc<CharactersInfo>,
-    pub user_receiver: Rc<RefCell<Vec<UserEvent>>>,
+    pub user_receiver: Rc<RefCell<UiReceiver>>,
     pub ui: Rc<RefCell<Ui>>,
     pub common_textures: CommonTextures,
     pub connected_and_ready: bool,
@@ -426,7 +471,7 @@ impl GameState
             }
         }, || ());
 
-        let user_receiver = Rc::new(RefCell::new(Vec::new()));
+        let user_receiver = UiReceiver::new();
 
         let mut ui = {
             let camera_entity = entities.camera_entity;
@@ -660,6 +705,28 @@ impl GameState
     pub fn send_message(&self, message: Message)
     {
         self.connections_handler.write().send_message(message);
+    }
+
+    pub fn create_popup(&mut self, responses: Vec<UserEvent>)
+    {
+        let mouse_position = self.world_mouse_position();
+
+        let mut creator = EntityCreator{
+            entities: &mut self.entities.entities
+        };
+
+        self.ui.borrow_mut().create_popup(
+            Vector3::new(mouse_position.x, mouse_position.y, 0.0),
+            &mut creator,
+            self.user_receiver.clone(),
+            self.entities.camera_entity,
+            responses
+        );
+    }
+
+    pub fn close_popup(&mut self)
+    {
+        self.ui.borrow_mut().close_popup(&mut self.entities.entities);
     }
 
     pub fn set_bar(&self, id: NotificationId, amount: f32)

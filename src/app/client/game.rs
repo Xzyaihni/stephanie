@@ -1,7 +1,6 @@
 use std::{
     fs,
     f32,
-    mem,
     rc::Rc,
     cell::RefCell
 };
@@ -714,11 +713,23 @@ impl<'a> PlayerContainer<'a>
 
     fn handle_user_event(&mut self, event: UserEvent)
     {
-        let entities = self.game_state.entities_mut();
         let player = self.info.entity;
 
+        self.game_state.close_popup();
         match event
         {
+            UserEvent::PopUp(responses) =>
+            {
+                self.game_state.create_popup(responses);
+            },
+            UserEvent::Info{which, item} =>
+            {
+                eprintln!("show info {which:?} {item:?} later :)");
+            },
+            UserEvent::Drop{which, item} =>
+            {
+                eprintln!("drop {which:?} {item:?} later :)");
+            },
             UserEvent::Close(which) =>
             {
                 match which
@@ -737,7 +748,7 @@ impl<'a> PlayerContainer<'a>
             },
             UserEvent::Wield(item) =>
             {
-                entities.character_mut(player).unwrap().set_holding(Some(item));
+                self.game_state.entities().character_mut(player).unwrap().set_holding(Some(item));
             },
             UserEvent::Take(item) =>
             {
@@ -760,9 +771,8 @@ impl<'a> PlayerContainer<'a>
 
     fn update_user_events(&mut self)
     {
-        let events = mem::take(&mut *self.game_state.user_receiver.borrow_mut());
-
-        events.into_iter().for_each(|event|
+        let events = self.game_state.user_receiver.borrow_mut().consume();
+        events.for_each(|event|
         {
             self.handle_user_event(event);
         });
@@ -795,12 +805,6 @@ impl<'a> PlayerContainer<'a>
         which: InventoryWhich
     )
     {
-        let inventory_ui = match which
-        {
-            InventoryWhich::Player => &mut ui.player_inventory,
-            InventoryWhich::Other => &mut ui.other_inventory
-        };
-
         let is_open = match which
         {
             InventoryWhich::Player => info.inventory_open,
@@ -809,22 +813,24 @@ impl<'a> PlayerContainer<'a>
         
         if is_open
         {
+            let entity = match which
             {
-                let entity = match which
-                {
-                    InventoryWhich::Other => info.other_entity.unwrap(),
-                    InventoryWhich::Player => info.entity
-                };
+                InventoryWhich::Other => info.other_entity.unwrap(),
+                InventoryWhich::Player => info.entity
+            };
 
-                let mut entity_creator = EntityCreator{entities};
-                inventory_ui.full_update(&mut entity_creator, entity);
-            }
+            let mut entity_creator = EntityCreator{entities};
 
-            inventory_ui.open_inventory(entities);
-        } else
-        {
-            inventory_ui.close_inventory(entities);
+            let inventory = match which
+            {
+                InventoryWhich::Player => &mut ui.player_inventory,
+                InventoryWhich::Other => &mut ui.other_inventory
+            };
+
+            inventory.full_update(&mut entity_creator, entity);
         }
+
+        ui.set_inventory_state(entities, which, is_open);
     }
 
     pub fn this_update(&mut self, _dt: f32)

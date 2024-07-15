@@ -238,7 +238,10 @@ pub enum ZLevel
     UiLow,
     UiMiddle,
     UiHigh,
-    UiHigher
+    UiHigher,
+    UiPopupLow,
+    UiPopupMiddle,
+    UiPopupHigh
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

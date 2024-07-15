@@ -11,9 +11,10 @@ use yanyaengine::{Transform, camera::Camera};
 use crate::{
     client::{
         ui_element::*,
-        game_state::{EntityCreator, InventoryWhich, UserEvent}
+        game_state::{EntityCreator, InventoryWhich, UserEvent, UiReceiver}
     },
     common::{
+        lerp,
         some_or_return,
         render_info::*,
         lazy_transform::*,
@@ -203,7 +204,10 @@ impl UiList
                 parent: Some(Parent::new(background, true)),
                 ..Default::default()
             },
-            RenderInfo::default()
+            RenderInfo{
+                z_level: ZLevel::UiLow,
+                ..Default::default()
+            }
         );
 
         let scroll = {
@@ -763,7 +767,7 @@ impl UiInventory
         {
             self.resized_update = true;
 
-            update_resize_ui(&creator.entities, camera.size(), self.body());
+            update_resize_ui(creator.entities, camera.size(), self.body());
         }
     }
 
@@ -833,6 +837,19 @@ fn close_ui(entities: &ClientEntities, entity: Entity)
         };
 
         watchers.push(watcher);
+    }
+}
+
+fn on_close(
+    user_receiver: &Rc<RefCell<UiReceiver>>,
+    which: InventoryWhich
+) -> impl FnMut()
+{
+    let receiver = user_receiver.clone();
+
+    move ||
+    {
+        receiver.borrow_mut().push(UserEvent::Close(which));
     }
 }
 
@@ -994,6 +1011,7 @@ pub struct Ui
 {
     notifications: Vec<Notification>,
     active_notifications: Vec<ActiveNotification>,
+    active_popup: Option<Entity>,
     pub player_inventory: UiInventory,
     pub other_inventory: UiInventory
 }
@@ -1004,43 +1022,42 @@ impl Ui
         creator: &mut EntityCreator,
         items_info: Arc<ItemsInfo>,
         anchor: Entity,
-        user_receiver: Rc<RefCell<Vec<UserEvent>>>
+        user_receiver: Rc<RefCell<UiReceiver>>
     ) -> Self
     {
-        let urx0 = user_receiver.clone();
-        let urx1 = user_receiver.clone();
+        let urx = user_receiver.clone();
 
         let player_inventory = UiInventory::new(
             creator,
             items_info.clone(),
             anchor,
             InventoryActions{
-                on_close: move ||
-                {
-                    urx0.borrow_mut().push(UserEvent::Close(InventoryWhich::Player));
-                },
+                on_close: on_close(&user_receiver, InventoryWhich::Player),
                 on_change: move |item|
                 {
-                    urx1.borrow_mut().push(UserEvent::Wield(item));
+                    urx.borrow_mut().push(UserEvent::PopUp(vec![
+                        UserEvent::Wield(item),
+                        UserEvent::Drop{which: InventoryWhich::Player, item},
+                        UserEvent::Info{which: InventoryWhich::Player, item}
+                    ]));
                 }
             }
         ); 
 
-        let urx0 = user_receiver.clone();
-        let urx1 = user_receiver.clone();
+        let urx = user_receiver.clone();
 
         let other_inventory = UiInventory::new(
             creator,
             items_info,
             anchor,
             InventoryActions{
-                on_close: move ||
-                {
-                    urx0.borrow_mut().push(UserEvent::Close(InventoryWhich::Other));
-                },
+                on_close: on_close(&user_receiver, InventoryWhich::Other),
                 on_change: move |item|
                 {
-                    urx1.borrow_mut().push(UserEvent::Take(item));
+                    urx.borrow_mut().push(UserEvent::PopUp(vec![
+                        UserEvent::Take(item),
+                        UserEvent::Info{which: InventoryWhich::Other, item}
+                    ]));
                 }
             }
         ); 
@@ -1048,8 +1065,165 @@ impl Ui
         Self{
             notifications: Vec::new(),
             active_notifications: Vec::new(),
+            active_popup: None,
             player_inventory,
             other_inventory
+        }
+    }
+
+    pub fn set_inventory_state(
+        &mut self,
+        entities: &mut ClientEntities,
+        which: InventoryWhich,
+        state: bool
+    )
+    {
+        if !state
+        {
+            self.close_popup(entities);
+        }
+
+        let inventory_ui = match which
+        {
+            InventoryWhich::Player => &mut self.player_inventory,
+            InventoryWhich::Other => &mut self.other_inventory
+        };
+
+        if state
+        {
+            inventory_ui.open_inventory(entities);
+        } else
+        {
+            inventory_ui.close_inventory(entities);
+        }
+    }
+
+    pub fn create_popup(
+        &mut self,
+        mouse_position: Vector3<f32>,
+        creator: &mut EntityCreator,
+        user_receiver: Rc<RefCell<UiReceiver>>,
+        camera: Entity,
+        responses: Vec<UserEvent>
+    )
+    {
+        let button_size = Vector2::new(0.15, 0.03);
+        let padding = button_size.y * 0.2;
+
+        let mut scale = Vector2::new(button_size.x, padding * 2.0);
+        scale.y += button_size.y * responses.len() as f32;
+        scale.y += padding * responses.len().saturating_sub(1) as f32;
+
+        let scale = Vector3::new(scale.x, scale.y, 0.0);
+
+        let camera_size = some_or_return!(creator.entities.transform(camera)).scale;
+
+        let position = mouse_position.component_div(&camera_size) + scale / 2.0;
+        let position = position - Vector3::new(padding * 3.0, padding * 2.0, 0.0);
+
+        let body = creator.push(
+            EntityInfo{
+                lazy_transform: Some(LazyTransformInfo{
+                    connection: Connection::Ignore,
+                    transform: Transform{
+                        position,
+                        scale,
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                }.into()),
+                ui_element: Some(UiElement{
+                    kind: UiElementType::Panel,
+                    ..Default::default()
+                }),
+                parent: Some(Parent::new(camera, true)),
+                ..Default::default()
+            },
+            RenderInfo{
+                object: Some(RenderObjectKind::Texture{name: "ui/background.png".to_owned()}.into()),
+                z_level: ZLevel::UiPopupLow,
+                ..Default::default()
+            }
+        );
+
+        let total = responses.len();
+        responses.into_iter().enumerate().for_each(|(index, response)|
+        {
+            let i = index as f32 / (total - 1) as f32;
+
+            let fraction_scale = button_size.y / scale.y;
+
+            let depth = {
+                let padding = padding / scale.y;
+                let half_scale = fraction_scale / 2.0;
+
+                lerp(-0.5 + half_scale + padding, 0.5 - half_scale - padding, i)
+            };
+
+            let position = Vector3::new(0.0, depth, 0.0);
+
+            let name = response.name().to_owned();
+
+            let urx = user_receiver.clone();
+            let button = creator.push(
+                EntityInfo{
+                    lazy_transform: Some(LazyTransformInfo{
+                        transform: Transform{
+                            position,
+                            scale: Vector3::new(1.0, fraction_scale, 1.0),
+                            ..Default::default()
+                        },
+                        ..Default::default()
+                    }.into()),
+                    parent: Some(Parent::new(body, true)),
+                    ui_element: Some(UiElement{
+                        kind: UiElementType::Button{
+                            on_click: Box::new(move ||
+                            {
+                                urx.borrow_mut().push(response.clone());
+                            })
+                        },
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+                RenderInfo{
+                    object: Some(RenderObjectKind::Texture{
+                        name: "ui/lighter.png".to_owned()
+                    }.into()),
+                    z_level: ZLevel::UiPopupMiddle,
+                    ..Default::default()
+                }
+            );
+
+            creator.push(
+                EntityInfo{
+                    lazy_transform: Some(LazyTransformInfo::default().into()),
+                    parent: Some(Parent::new(button, true)),
+                    ..Default::default()
+                },
+                RenderInfo{
+                    object: Some(RenderObjectKind::Text{
+                        text: name,
+                        font_size: 80,
+                        font: FontStyle::Bold
+                    }.into()),
+                    z_level: ZLevel::UiPopupHigh,
+                    ..Default::default()
+                }
+            );
+        });
+
+        self.close_popup(creator.entities);
+
+        self.active_popup = Some(body);
+    }
+
+    pub fn close_popup(&mut self, entities: &mut ClientEntities)
+    {
+        if let Some(previous) = self.active_popup.take()
+        {
+            entities.remove(previous);
         }
     }
 
@@ -1112,6 +1286,11 @@ impl Ui
         {
             update_resize_ui(entities, size, inventory.body());
         });
+
+        if let Some(popup) = self.active_popup
+        {
+            update_resize_ui(entities, size, popup);
+        }
     }
 
     pub fn update(

@@ -12,6 +12,17 @@ pub struct ObjectsStore<T>
     free_list: Vec<usize>
 }
 
+impl<T> From<Vec<T>> for ObjectsStore<T>
+{
+    fn from(v: Vec<T>) -> Self
+    {
+        Self{
+            data: v.into_iter().map(Some).collect(),
+            free_list: Vec::new()
+        }
+    }
+}
+
 impl<T> ObjectsStore<T>
 {
     pub fn new() -> Self
@@ -38,6 +49,11 @@ impl<T> ObjectsStore<T>
         {
             value.as_mut().map(|value| (index, value))
         })
+    }
+
+    pub fn split_at(&self, mid: usize) -> (&[Option<T>], &[Option<T>])
+    {
+        self.data.split_at(mid)
     }
 
     pub fn insert(&mut self, index: usize, value: T) -> Option<T>

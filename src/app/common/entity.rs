@@ -22,8 +22,7 @@ use crate::{
     },
     common::{
         some_or_return,
-        short_rotation,
-        angle_between,
+        insertion_sort_with,
         ENTITY_SCALE,
         render_info::*,
         collider::*,
@@ -57,6 +56,13 @@ use crate::{
     }
 };
 
+pub use crate::iterate_components_with;
+
+mod damaging_system;
+mod ui_system;
+
+
+// too many macros, the syntax is horrible, why r they so limiting? wuts up with that?
 
 macro_rules! components
 {
@@ -72,12 +78,40 @@ macro_rules! components
     }
 }
 
+macro_rules! component_index_with_enum
+{
+    ($this:expr, $entity:expr, $component:expr) =>
+    {
+        components!($this, $entity).borrow().get($entity.id)
+            .and_then(|components| components[$component as usize])
+    }
+}
+
 macro_rules! component_index
 {
     ($this:expr, $entity:expr, $component:ident) =>
     {
-        components!($this, $entity).borrow().get($entity.id)
-            .and_then(|components| components[Component::$component as usize])
+        component_index_with_enum!($this, $entity, Component::$component)
+    }
+}
+
+macro_rules! swap_indices_of
+{
+    ($this:expr, $component:ident, $a:expr, $b:expr) =>
+    {
+        let a = some_or_return!(component_index!($this, $a, $component));
+        let b = some_or_return!(component_index!($this, $b, $component));
+
+        $this.$component.swap(a, b);
+    }
+}
+
+macro_rules! swap_fully
+{
+    ($this:expr, $component:ident, $a:expr, $b:expr) =>
+    {
+        $this.swap_component_indices(Component::$component, $a, $b);
+        swap_indices_of!($this, $component, $a, $b);
     }
 }
 
@@ -112,11 +146,12 @@ macro_rules! remove_component
     }
 }
 
+#[macro_export]
 macro_rules! iterate_components_with
 {
     ($this:expr, $component:ident, $iter_func:ident, $handler:expr) => 
     {
-        $this.$component.iter().$iter_func(|(_, &ComponentWrapper{
+        $this.$component.iter().$iter_func(|(_, &$crate::common::entity::ComponentWrapper{
             entity,
             component: ref component
         })|
@@ -468,11 +503,20 @@ macro_rules! impl_common_systems
             let queue = mem::take(self.create_queue.get_mut());
             queue.into_iter().for_each(|(entity, mut info)|
             {
-                info.setup_components(self, entity);
+                if self.exists(entity)
+                {
+                    info.setup_components(self, entity);
 
-                let info = f(self, entity, info);
+                    let info = f(self, entity, info);
 
-                self.set_each(entity, info);
+                    self.set_each(entity, info);
+                }
+            });
+
+            let queue = mem::take(self.remove_queue.get_mut());
+            queue.into_iter().for_each(|entity|
+            {
+                self.remove(entity);
             });
         }
 
@@ -635,6 +679,11 @@ macro_rules! common_trait_impl
             })
         }
 
+        fn z_level(&self, entity: Entity) -> Option<ZLevel>
+        {
+            self.render(entity).map(|x| x.z_level)
+        }
+
         fn is_visible(&self, entity: Entity) -> bool
         {
             self.render(entity).map(|x| x.visible).unwrap_or(false)
@@ -660,6 +709,11 @@ macro_rules! common_trait_impl
             {
                 RefMut::map(render, |x| &mut x.mix)
             })
+        }
+
+        fn remove_deferred(&self, entity: Entity)
+        {
+            self.remove_queue.borrow_mut().push(entity);
         }
 
         fn remove(&mut self, entity: Entity)
@@ -711,6 +765,28 @@ macro_rules! common_trait_impl
 
             for_components(&self.components, false);
             for_components(&self.local_components, true);
+
+            let reducer = |(before, before_z), x@(after, after_z)|
+            {
+                assert!(
+                    before_z <= after_z,
+                    "({before_z:?} ({before:?}) <= {after_z:?} ({after:?})), before: {}, after: {}",
+                    self.info_ref(before).unwrap_or_else(String::new),
+                    self.info_ref(after).unwrap_or_else(String::new)
+                );
+
+                x
+            };
+
+            iterate_components_with!(self, render, map, |entity, _|
+            {
+                (entity, self.z_level(entity).unwrap())
+            }).reduce(reducer);
+
+            iterate_components_with!(self, ui_element, filter_map, |entity, _|
+            {
+                self.z_level(entity).map(|z| (entity, z))
+            }).reduce(reducer);
         }
     }
 }
@@ -853,6 +929,7 @@ macro_rules! define_entities_both
             pub components: RefCell<ObjectsStore<ComponentsIndices>>,
             pub lazy_setter: RefCell<SetterQueue<$($component_type,)+>>,
             infos: DataInfos,
+            remove_queue: RefCell<Vec<Entity>>,
             create_queue: RefCell<Vec<(Entity, EntityInfo)>>,
             create_render_queue: RefCell<Vec<(Entity, RenderComponent)>>,
             changed_entities: RefCell<ChangedEntities>,
@@ -872,6 +949,7 @@ macro_rules! define_entities_both
                     components: RefCell::new(ObjectsStore::new()),
                     lazy_setter: RefCell::new(Default::default()),
                     infos,
+                    remove_queue: RefCell::new(Vec::new()),
                     create_queue: RefCell::new(Vec::new()),
                     create_render_queue: RefCell::new(Vec::new()),
                     changed_entities: RefCell::new(Default::default()),
@@ -954,6 +1032,37 @@ macro_rules! define_entities_both
                 Entity{local, id}
             }
 
+            fn resort_by_z(&mut self, only_ui: bool)
+            {
+                // cycle sort has the least amount of swaps but i dunno
+                // if its worth the increased amount of checks
+
+                // maybe shellsort is better?
+
+                let mut z_levels: Vec<_> = iterate_components_with!(self, ui_element, filter_map, |entity, _|
+                {
+                    self.z_level(entity).map(|z| (z, entity))
+                }).collect();
+
+                insertion_sort_with(&mut z_levels, |(z_level, _)| *z_level, |&(_, before), &(_, after)|
+                {
+                    swap_fully!(self, ui_element, before, after);
+                });
+
+                if !only_ui
+                {
+                    let mut z_levels: Vec<_> = iterate_components_with!(self, render, map, |entity, _|
+                    {
+                        (self.z_level(entity), entity)
+                    }).collect();
+
+                    insertion_sort_with(&mut z_levels, |(z_level, _)| *z_level, |&(_, before), &(_, after)|
+                    {
+                        swap_fully!(self, render, before, after);
+                    });
+                }
+            }
+
             $(
                 pub fn $name(&self, entity: Entity) -> Option<Ref<$component_type>>
                 {
@@ -1031,6 +1140,14 @@ macro_rules! define_entities_both
                                     }).unwrap();
 
                                     self.resort_all(parent_entity);
+                                }
+
+                                if Component::$name == Component::render
+                                {
+                                    self.resort_by_z(false);
+                                } else if Component::$name == Component::ui_element
+                                {
+                                    self.resort_by_z(true);
                                 }
 
                                 None
@@ -1136,7 +1253,12 @@ macro_rules! define_entities_both
                     .push((entity, RenderComponent::Scissor(scissor)));
             }
 
-            fn swap_component_indices(&mut self, component: Component, a: Entity, b: Entity)
+            fn swap_component_indices(
+                &mut self,
+                component: Component,
+                a: Entity,
+                b: Entity
+            )
             {
                 let component_id = component as usize;
 
@@ -1471,42 +1593,45 @@ macro_rules! define_entities_both
 
                 render_queue.into_iter().for_each(|(entity, render)|
                 {
-                    let transform = ||
+                    if self.exists(entity)
                     {
-                        self.transform_clone(entity).unwrap_or_else(||
+                        let transform = ||
                         {
-                            panic!("deferred render expected transform, got none")
-                        })
-                    };
-
-                    match render
-                    {
-                        RenderComponent::Full(render) =>
-                        {
-                            let render = render.server_to_client(
-                                transform,
-                                create_info
-                            );
-
-                            self.set_render(entity, Some(render));
-                        },
-                        RenderComponent::Object(object) =>
-                        {
-                            if let Some(mut render) = self.render_mut(entity)
+                            self.transform_clone(entity).unwrap_or_else(||
                             {
-                                let object = object.into_client(transform(), create_info);
+                                panic!("deferred render expected transform, got none")
+                            })
+                        };
 
-                                render.object = object;
-                            }
-                        },
-                        RenderComponent::Scissor(scissor) =>
+                        match render
                         {
-                            if let Some(mut render) = self.render_mut(entity)
+                            RenderComponent::Full(render) =>
                             {
-                                let size = create_info.object_info.partial.size;
-                                let scissor = scissor.into_global(size);
+                                let render = render.server_to_client(
+                                    transform,
+                                    create_info
+                                );
 
-                                render.scissor = Some(scissor);
+                                self.set_render(entity, Some(render));
+                            },
+                            RenderComponent::Object(object) =>
+                            {
+                                if let Some(mut render) = self.render_mut(entity)
+                                {
+                                    let object = object.into_client(transform(), create_info);
+
+                                    render.object = object;
+                                }
+                            },
+                            RenderComponent::Scissor(scissor) =>
+                            {
+                                if let Some(mut render) = self.render_mut(entity)
+                                {
+                                    let size = create_info.object_info.partial.size;
+                                    let scissor = scissor.into_global(size);
+
+                                    render.scissor = Some(scissor);
+                                }
                             }
                         }
                     }
@@ -1535,89 +1660,7 @@ macro_rules! define_entities_both
                 blood_texture: TextureId
             )
             {
-                struct DamagingResult
-                {
-                    collided: Entity,
-                    angle: f32,
-                    faction: Faction,
-                    damage: DamagePartial
-                }
-
-                // "zero" "cost" "abstractions" "borrow" "checker"
-                let damage_entities = iterate_components_with!(self, damaging, flat_map, |entity, damaging: &RefCell<Damaging>|
-                {
-                    let collider = self.collider(entity).unwrap();
-
-                    collider.collided().iter().copied().filter_map(|collided|
-                    {
-                        let mut damaging = damaging.borrow_mut();
-
-                        let parent_angle_between = || -> Option<_>
-                        {
-                            let parent = self.parent(entity)?.entity;
-
-                            let parent_transform = self.transform(parent)?;
-                            let collided_transform = self.transform(collided)?;
-
-                            let angle = angle_between(
-                                parent_transform.position,
-                                collided_transform.position
-                            );
-
-                            let parent_angle = -parent_transform.rotation;
-                            let relative_angle = angle + (f32::consts::PI - parent_angle);
-
-                            Some(short_rotation(relative_angle))
-                        };
-
-                        if damaging.can_damage(collided)
-                            && damaging.predicate.meets(|| parent_angle_between().unwrap_or(0.0))
-                        {
-                            damaging.damaged(collided);
-
-                            let collision_info = || -> Option<_>
-                            {
-                                let source_entity = if let Some(other) = damaging.source
-                                {
-                                    other
-                                } else
-                                {
-                                    entity
-                                };
-
-                                let this_transform = self.transform(source_entity)?;
-                                let collided_transform = self.transform(collided)?;
-
-                                let this_physical = self.physical(entity);
-                                let collided_physical = self.physical(collided);
-
-                                Some(CollisionInfo::new(
-                                    &this_transform,
-                                    &collided_transform,
-                                    this_physical.as_deref(),
-                                    collided_physical.as_deref()
-                                ))
-                            };
-
-                            return damaging.damage.as_damage(collision_info).map(|(angle, damage)|
-                            {
-                                DamagingResult{collided, angle, faction: damaging.faction, damage}
-                            });
-                        }
-
-                        None
-                    }).collect::<Vec<_>>()
-                }).collect::<Vec<_>>();
-
-                damage_entities.into_iter().for_each(|DamagingResult{
-                    collided,
-                    angle,
-                    faction,
-                    damage
-                }|
-                {
-                    self.damage_entity(passer, blood_texture, angle, collided, faction, damage);
-                });
+                damaging_system::update(self, passer, blood_texture);
             }
 
             pub fn update_children(&mut self)
@@ -2025,24 +2068,7 @@ macro_rules! define_entities_both
                 event: UiEvent
             ) -> bool
             {
-                let mut captured = false;
-                // borrow checker more like goofy ahh
-                // rev to early exit if child is captured
-                iterate_components_with!(self, ui_element, filter_map, |entity, ui_element|
-                {
-                    self.is_visible(entity).then(|| (entity, ui_element))
-                }).rev().for_each(|(entity, ui_element): (_, &RefCell<UiElement>)|
-                {
-                    captured = ui_element.borrow_mut().update(
-                        &*self,
-                        entity,
-                        camera_position,
-                        &event,
-                        captured
-                    ) || captured;
-                });
-
-                captured
+                ui_system::update(self, camera_position, event)
             }
 
             pub fn update_characters(
@@ -2299,12 +2325,14 @@ macro_rules! define_entities
             fn lazy_target_ref(&self, entity: Entity) -> Option<Ref<Transform>>;
             fn lazy_target(&self, entity: Entity) -> Option<RefMut<Transform>>;
 
+            fn z_level(&self, entity: Entity) -> Option<ZLevel>;
             fn is_visible(&self, entity: Entity) -> bool;
             fn visible_target(&self, entity: Entity) -> Option<RefMut<bool>>;
             fn mix_color_target(&self, entity: Entity) -> Option<RefMut<Option<MixColor>>>;
 
             fn exists(&self, entity: Entity) -> bool;
 
+            fn remove_deferred(&self, entity: Entity);
             fn remove(&mut self, entity: Entity);
 
             fn push_eager(

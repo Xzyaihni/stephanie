@@ -11,7 +11,7 @@ use yanyaengine::Transform;
 
 use crate::{
     client::{Control, ControlState, RenderCreateInfo, game_state::Ui},
-    common::{render_info::*, Entity, ServerToClient, entity::ClientEntities}
+    common::{render_info::*, AnyEntities, Entity, ServerToClient, entity::ClientEntities}
 };
 
 
@@ -192,6 +192,7 @@ pub struct UiElement
 {
     pub kind: UiElementType,
     pub predicate: UiElementPredicate,
+    pub tooltip: bool,
     pub keep_aspect: Option<KeepAspect>
 }
 
@@ -202,6 +203,7 @@ impl Default for UiElement
         Self{
             kind: UiElementType::Panel,
             predicate: UiElementPredicate::None,
+            tooltip: false,
             keep_aspect: None
         }
     }
@@ -243,17 +245,36 @@ impl UiElement
             }
         };
 
+        let position = match event
+        {
+            UiEvent::MouseMove(position) => Some(*position),
+            UiEvent::Mouse(event) => Some(event.position),
+            UiEvent::Keyboard(..) => None
+        };
+
+        let is_inside = position.map(|position| query().is_inside(position));
+
         match &self.kind
         {
             UiElementType::Button{..} | UiElementType::Drag{..} =>
             {
-                if let UiEvent::MouseMove(position) = event
+                if let Some(is_inside) = is_inside
                 {
-                    highlight(query().is_inside(*position));
+                    highlight(is_inside && !captured);
                 }
             },
             UiElementType::Panel => ()
         }
+
+        if let Some(is_inside) = is_inside
+        {
+            if !is_inside && self.tooltip
+            {
+                entities.remove_deferred(entity);
+            }
+        }
+
+        let capture_this = is_inside.unwrap_or(false);
 
         match &mut self.kind
         {
@@ -263,18 +284,6 @@ impl UiElement
                 {
                     return true;
                 }
-
-                if let Some(event) = event.as_mouse()
-                {
-                    let clicked = event.main_button && event.state == ControlState::Pressed;
-
-                    if clicked && query().is_inside(event.position)
-                    {
-                        return true;
-                    }
-                }
-
-                false
             },
             UiElementType::Button{on_click} =>
             {
@@ -291,16 +300,12 @@ impl UiElement
                     {
                         if !self.predicate.matches(entities, query(), event.position)
                         {
-                            return false;
+                            return capture_this;
                         }
 
                         on_click();
-
-                        return true;
                     }
                 }
-
-                false
             },
             UiElementType::Drag{state, on_change} =>
             {
@@ -315,27 +320,30 @@ impl UiElement
                     {
                         if event.main_button
                         {
-                            if !captured
-                                && event.state == ControlState::Pressed
-                                && query().is_inside(event.position)
+                            match event.state
                             {
-                                if !self.predicate.matches(entities, query(), event.position)
+                                ControlState::Pressed =>
                                 {
-                                    return false;
+                                    if !captured
+                                        && query().is_inside(event.position)
+                                    {
+                                        if !self.predicate.matches(entities, query(), event.position)
+                                        {
+                                            return capture_this;
+                                        }
+
+                                        on_change(inner_position(event.position));
+
+                                        state.held = true;
+                                    }
+                                },
+                                ControlState::Released =>
+                                {
+                                    if event.state == ControlState::Released
+                                    {
+                                        state.held = false;
+                                    }
                                 }
-
-                                on_change(inner_position(event.position));
-
-                                state.held = true;
-
-                                return true;
-                            }
-
-                            if event.state == ControlState::Released
-                            {
-                                state.held = false;
-
-                                return true;
                             }
                         }
                     },
@@ -348,10 +356,10 @@ impl UiElement
                     },
                     _ => ()
                 }
-
-                false
             }
         }
+
+        capture_this
     }
 
     pub fn update_aspect(
