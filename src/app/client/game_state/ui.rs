@@ -495,6 +495,7 @@ pub struct UiInventory
     inventory: Entity,
     name: Entity,
     list: UiList,
+    is_open: bool,
     resized_update: bool
 }
 
@@ -666,12 +667,20 @@ impl UiInventory
             inventory,
             name,
             list: UiList::new(creator, inventory_panel, 1.0 - close_button_x, on_change),
+            is_open: false,
             resized_update: false
         }
     }
 
     pub fn open_inventory(&mut self, entities: &mut ClientEntities)
     {
+        if self.is_open
+        {
+            return;
+        }
+
+        self.is_open = true;
+
         let inventory = self.body();
 
         entities.set_collider(inventory, Some(ColliderInfo{
@@ -689,6 +698,13 @@ impl UiInventory
 
     pub fn close_inventory(&mut self, entities: &mut ClientEntities)
     {
+        if !self.is_open
+        {
+            return;
+        }
+
+        self.is_open = false;
+
         let inventory = self.body();
 
         entities.set_collider(inventory, None);
@@ -812,6 +828,14 @@ fn update_resize_ui(entities: &ClientEntities, size: Vector2<f32>, entity: Entit
 
 fn open_ui(entities: &ClientEntities, entity: Entity, scale: Vector3<f32>)
 {
+    entities.target(entity).unwrap().scale = scale
+        .component_mul(&Vector3::new(4.0, 0.01, 1.0));
+
+    entities.end_sync(entity, |mut current, end|
+    {
+        current.scale = end.scale;
+    });
+
     *entities.visible_target(entity).unwrap() = true;
 
     let mut lazy = entities.lazy_transform_mut(entity).unwrap();
