@@ -414,6 +414,14 @@ impl Character
         self.held_update = true;
     }
 
+    pub fn dropped_item(&mut self, item: InventoryItem)
+    {
+        if Some(item) == self.holding
+        {
+            self.set_holding(None);
+        }
+    }
+
     pub fn newtons(&self, combined_info: CombinedInfo) -> Option<f32>
     {
         self.anatomy(combined_info.entities).and_then(|x| x.strength().map(|strength| strength * 30.0))

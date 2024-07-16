@@ -2,7 +2,7 @@ use std::{
     fs,
     f32,
     rc::Rc,
-    cell::RefCell
+    cell::{RefMut, RefCell}
 };
 
 use nalgebra::{Unit, Vector3, Vector2};
@@ -19,6 +19,7 @@ use crate::{
         character::*,
         AnyEntities,
         Item,
+        Inventory,
         Parent,
         Entity,
         EntityInfo,
@@ -729,7 +730,19 @@ impl<'a> PlayerContainer<'a>
             },
             UserEvent::Drop{which, item} =>
             {
-                eprintln!("drop {which:?} {item:?} later :)");
+                if self.get_inventory(which)
+                    .and_then(|mut inventory| inventory.remove(item))
+                    .is_some() && which == InventoryWhich::Player
+                {
+                    if let Some(mut character) = self.game_state.entities()
+                        .character_mut(self.info.entity)
+                    {
+                        character.dropped_item(item);
+                    }
+                } else
+                {
+                    eprintln!("tried to drop item that doesnt exist");
+                }
             },
             UserEvent::Close(which) =>
             {
@@ -753,21 +766,35 @@ impl<'a> PlayerContainer<'a>
             },
             UserEvent::Take(item) =>
             {
-                if let Some(other_entity) = self.info.other_entity
+                if let Some(taken) = self.get_inventory(InventoryWhich::Other)
+                    .and_then(|mut inventory| inventory.remove(item))
                 {
-                    let entities = self.game_state.entities();
-                    let mut inventory = entities.inventory_mut(other_entity).unwrap();
-
-                    if let Some(taken) = inventory.remove(item)
-                    {
-                        entities.inventory_mut(self.info.entity).unwrap().push(taken);
-                    } else
-                    {
-                        eprintln!("tried to take item that doesnt exist");
-                    }
+                    self.game_state.entities()
+                        .inventory_mut(self.info.entity)
+                        .unwrap()
+                        .push(taken);
+                } else
+                {
+                    eprintln!("tried to take item that doesnt exist");
                 }
             }
         }
+    }
+
+    fn get_inventory_entity(&self, which: InventoryWhich) -> Option<Entity>
+    {
+        match which
+        {
+            InventoryWhich::Other => self.info.other_entity,
+            InventoryWhich::Player => Some(self.info.entity)
+        }
+    }
+
+    fn get_inventory(&self, which: InventoryWhich) -> Option<RefMut<Inventory>>
+    {
+        let entity = self.get_inventory_entity(which);
+
+        entity.and_then(|entity| self.game_state.entities().inventory_mut(entity))
     }
 
     fn update_user_events(&mut self)
