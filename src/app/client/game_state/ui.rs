@@ -11,7 +11,7 @@ use yanyaengine::{Transform, camera::Camera};
 use crate::{
     client::{
         ui_element::*,
-        game_state::{EntityCreator, InventoryWhich, UserEvent, UiReceiver}
+        game_state::{EntityCreator, WindowWhich, InventoryWhich, UserEvent, UiReceiver}
     },
     common::{
         lerp,
@@ -23,6 +23,7 @@ use crate::{
         EaseOut,
         LazyMix,
         AnyEntities,
+        Item,
         InventoryItem,
         InventorySorter,
         Parent,
@@ -481,37 +482,28 @@ impl UiList
     }
 }
 
-pub struct InventoryActions<Close, Change>
+struct UiWindow
 {
-    pub on_close: Close,
-    pub on_change: Change
-}
-
-pub struct UiInventory
-{
-    sorter: InventorySorter,
-    items_info: Arc<ItemsInfo>,
-    items: Rc<RefCell<Vec<InventoryItem>>>,
-    inventory: Entity,
+    body: Entity,
     name: Entity,
-    list: UiList,
+    panel: Entity,
+    close_button_x: f32,
     is_open: bool,
     resized_update: bool
 }
 
-impl UiInventory
+impl UiWindow
 {
-    pub fn new<Close, Change>(
+    pub fn new<Close>(
         creator: &mut EntityCreator,
-        items_info: Arc<ItemsInfo>,
         anchor: Entity,
-        mut actions: InventoryActions<Close, Change>
+        name: String,
+        mut on_close: Close
     ) -> Self
     where
-        Close: FnMut() + 'static,
-        Change: FnMut(Entity, InventoryItem) + 'static
+        Close: FnMut() + 'static
     {
-        let inventory = creator.push(
+        let body = creator.push(
             EntityInfo{
                 lazy_transform: Some(LazyTransformInfo{
                     scaling: Scaling::EaseOut{decay: 15.0},
@@ -551,7 +543,7 @@ impl UiInventory
                     },
                     ..Default::default()
                 }.into()),
-                parent: Some(Parent::new(inventory, true)),
+                parent: Some(Parent::new(body, true)),
                 ..Default::default()
             },
             RenderInfo{
@@ -563,7 +555,7 @@ impl UiInventory
 
         let scale = Vector3::new(1.0, 1.0 - panel_size, 1.0);
 
-        let inventory_panel = creator.push(
+        let panel = creator.push(
             EntityInfo{
                 lazy_transform: Some(LazyTransformInfo{
                     transform: Transform{
@@ -573,7 +565,7 @@ impl UiInventory
                     },
                     ..Default::default()
                 }.into()),
-                parent: Some(Parent::new(inventory, true)),
+                parent: Some(Parent::new(body, true)),
                 ..Default::default()
             },
             RenderInfo{
@@ -608,7 +600,11 @@ impl UiInventory
                 ..Default::default()
             },
             RenderInfo{
-                object: None,
+                object: Some(RenderObjectKind::Text{
+                    text: name,
+                    font_size: 80,
+                    font: FontStyle::Bold
+                }.into()),
                 z_level: ZLevel::UiHigh,
                 ..Default::default()
             }
@@ -629,7 +625,7 @@ impl UiInventory
                     kind: UiElementType::Button{
                         on_click: Box::new(move ||
                         {
-                            (actions.on_close)();
+                            on_close();
                         })
                     },
                     keep_aspect: Some(KeepAspect{
@@ -648,31 +644,17 @@ impl UiInventory
             }
         );
 
-        let items = Rc::new(RefCell::new(Vec::new()));
-
-        let on_change = {
-            let items = items.clone();
-            Rc::new(RefCell::new(move |entity, index|
-            {
-                let item = items.borrow()[index];
-
-                (actions.on_change)(entity, item);
-            }))
-        };
-
         Self{
-            sorter: InventorySorter::default(),
-            items_info,
-            items,
-            inventory,
+            body,
             name,
-            list: UiList::new(creator, inventory_panel, 1.0 - close_button_x, on_change),
+            panel,
+            close_button_x,
             is_open: false,
-            resized_update: false
+            resized_update: true
         }
     }
 
-    pub fn open_inventory(&mut self, entities: &mut ClientEntities)
+    pub fn open(&mut self, entities: &mut ClientEntities)
     {
         if self.is_open
         {
@@ -681,7 +663,7 @@ impl UiInventory
 
         self.is_open = true;
 
-        let inventory = self.body();
+        let inventory = self.body;
 
         entities.set_collider(inventory, Some(ColliderInfo{
             kind: ColliderType::Aabb,
@@ -696,7 +678,7 @@ impl UiInventory
         self.resized_update = true;
     }
 
-    pub fn close_inventory(&mut self, entities: &mut ClientEntities)
+    pub fn close(&mut self, entities: &mut ClientEntities)
     {
         if !self.is_open
         {
@@ -705,16 +687,11 @@ impl UiInventory
 
         self.is_open = false;
 
-        let inventory = self.body();
+        let inventory = self.body;
 
         entities.set_collider(inventory, None);
 
         close_ui(entities, inventory);
-    }
-
-    pub fn body(&self) -> Entity
-    {
-        self.inventory
     }
 
     pub fn update_name(
@@ -730,6 +707,102 @@ impl UiInventory
         }.into();
 
         creator.entities.set_deferred_render_object(self.name, object);
+    }
+
+    pub fn update_after(
+        &mut self,
+        creator: &mut EntityCreator,
+        camera: &Camera
+    )
+    {
+        if self.resized_update
+        {
+            self.resized_update = false;
+
+            update_resize_ui(creator.entities, camera.size(), self.body);
+        }
+    }
+}
+
+pub struct InventoryActions<Close, Change>
+{
+    pub on_close: Close,
+    pub on_change: Change
+}
+
+pub struct UiInventory
+{
+    sorter: InventorySorter,
+    items_info: Arc<ItemsInfo>,
+    items: Rc<RefCell<Vec<InventoryItem>>>,
+    inventory: Entity,
+    window: UiWindow,
+    list: UiList
+}
+
+impl UiInventory
+{
+    pub fn new<Close, Change>(
+        creator: &mut EntityCreator,
+        items_info: Arc<ItemsInfo>,
+        anchor: Entity,
+        actions: InventoryActions<Close, Change>
+    ) -> Self
+    where
+        Close: FnMut() + 'static,
+        Change: FnMut(Entity, InventoryItem) + 'static
+    {
+        let InventoryActions{
+            on_close,
+            mut on_change
+        } = actions;
+
+        let window = UiWindow::new(creator, anchor, String::new(), on_close);
+
+        let items = Rc::new(RefCell::new(Vec::new()));
+
+        let on_change = {
+            let items = items.clone();
+            Rc::new(RefCell::new(move |entity, index|
+            {
+                let item = items.borrow()[index];
+
+                on_change(entity, item);
+            }))
+        };
+
+        Self{
+            sorter: InventorySorter::default(),
+            items_info,
+            items,
+            inventory: window.body,
+            list: UiList::new(creator, window.panel, 1.0 - window.close_button_x, on_change),
+            window
+        }
+    }
+
+    pub fn open_inventory(&mut self, entities: &mut ClientEntities)
+    {
+        self.window.open(entities);
+    }
+
+    pub fn close_inventory(&mut self, entities: &mut ClientEntities)
+    {
+        self.window.close(entities);
+    }
+
+    pub fn body(&self) -> Entity
+    {
+        self.inventory
+    }
+
+    pub fn update_name(
+        &mut self,
+        creator: &mut EntityCreator,
+        name: String
+    )
+    {
+        self.window.update_name(creator, name);
     }
 
     pub fn update_inventory(
@@ -781,12 +854,7 @@ impl UiInventory
     {
         self.list.update_after(creator, camera);
 
-        if self.resized_update
-        {
-            self.resized_update = true;
-
-            update_resize_ui(creator.entities, camera.size(), self.body());
-        }
+        self.window.update_after(creator, camera);
     }
 
     pub fn update(
@@ -805,6 +873,64 @@ impl UiInventory
         }
 
         self.list.update(creator, camera, dt);
+    }
+}
+
+struct UiItemInfo
+{
+    items_info: Arc<ItemsInfo>,
+    window: UiWindow
+}
+
+impl UiItemInfo
+{
+    pub fn new<Close>(
+        creator: &mut EntityCreator,
+        items_info: Arc<ItemsInfo>,
+        anchor: Entity,
+        on_close: Close
+    ) -> Self
+    where
+        Close: FnMut() + 'static,
+    {
+        let window = UiWindow::new(creator, anchor, String::new(), on_close);
+
+        Self{
+            items_info,
+            window
+        }
+    }
+
+    pub fn body(&self) -> Entity
+    {
+        self.window.body
+    }
+
+    pub fn set_item(&mut self, creator: &mut EntityCreator, item: Item)
+    {
+        let title = format!("info about - {}", self.items_info.get(item.id).name);
+
+        self.window.update_name(creator, title);
+    }
+
+    pub fn open(&mut self, entities: &mut ClientEntities)
+    {
+        self.window.open(entities);
+    }
+
+    #[allow(dead_code)]
+    pub fn close(&mut self, entities: &mut ClientEntities)
+    {
+        self.window.close(entities);
+    }
+
+    pub fn update_after(
+        &mut self,
+        creator: &mut EntityCreator,
+        camera: &Camera
+    )
+    {
+        self.window.update_after(creator, camera);
     }
 }
 
@@ -868,7 +994,7 @@ pub fn close_ui(entities: &ClientEntities, entity: Entity)
 
 fn on_close(
     user_receiver: &Rc<RefCell<UiReceiver>>,
-    which: InventoryWhich
+    which: WindowWhich
 ) -> impl FnMut()
 {
     let receiver = user_receiver.clone();
@@ -1038,6 +1164,7 @@ pub struct Ui
     notifications: Vec<Notification>,
     active_notifications: Vec<ActiveNotification>,
     active_popup: Option<Entity>,
+    item_info: UiItemInfo,
     pub player_inventory: UiInventory,
     pub other_inventory: UiInventory
 }
@@ -1058,7 +1185,7 @@ impl Ui
             items_info.clone(),
             anchor,
             InventoryActions{
-                on_close: on_close(&user_receiver, InventoryWhich::Player),
+                on_close: on_close(&user_receiver, WindowWhich::Inventory(InventoryWhich::Player)),
                 on_change: move |anchor, item|
                 {
                     urx.borrow_mut().push(UserEvent::Popup{
@@ -1077,10 +1204,10 @@ impl Ui
 
         let other_inventory = UiInventory::new(
             creator,
-            items_info,
+            items_info.clone(),
             anchor,
             InventoryActions{
-                on_close: on_close(&user_receiver, InventoryWhich::Other),
+                on_close: on_close(&user_receiver, WindowWhich::Inventory(InventoryWhich::Other)),
                 on_change: move |anchor, item|
                 {
                     urx.borrow_mut().push(UserEvent::Popup{
@@ -1092,12 +1219,20 @@ impl Ui
                     });
                 }
             }
-        ); 
+        );
+
+        let item_info = UiItemInfo::new(
+            creator,
+            items_info,
+            anchor,
+            on_close(&user_receiver, WindowWhich::ItemInfo)
+        );
 
         Self{
             notifications: Vec::new(),
             active_notifications: Vec::new(),
             active_popup: None,
+            item_info,
             player_inventory,
             other_inventory
         }
@@ -1258,6 +1393,21 @@ impl Ui
         }
     }
 
+    pub fn create_info_window(
+        &mut self,
+        creator: &mut EntityCreator,
+        item: Item
+    )
+    {
+        self.item_info.set_item(creator, item);
+        self.item_info.open(creator.entities);
+    }
+
+    pub fn close_info_window(&mut self, entities: &mut ClientEntities)
+    {
+        self.item_info.close(entities);
+    }
+
     pub fn push_notification(&mut self, notification: Notification) -> NotificationId
     {
         let id = self.notifications.len();
@@ -1305,6 +1455,8 @@ impl Ui
         {
             inventory.update_after(creator, camera);
         });
+
+        self.item_info.update_after(creator, camera);
     }
 
     pub fn update_resize(
@@ -1317,6 +1469,8 @@ impl Ui
         {
             update_resize_ui(entities, size, inventory.body());
         });
+
+        update_resize_ui(entities, size, self.item_info.body());
 
         if let Some(popup) = self.active_popup
         {

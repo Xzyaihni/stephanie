@@ -32,6 +32,7 @@ use crate::{
 use super::game_state::{
     GameState,
     EntityCreator,
+    WindowWhich,
     InventoryWhich,
     UserEvent,
     ControlState,
@@ -726,7 +727,14 @@ impl<'a> PlayerContainer<'a>
             },
             UserEvent::Info{which, item} =>
             {
-                eprintln!("show info {which:?} {item:?} later :)");
+                if let Some(item) = self.get_inventory(which)
+                    .and_then(|inventory| inventory.get(item).cloned())
+                {
+                    self.game_state.create_info_window(item);
+                } else
+                {
+                    eprintln!("tried to show info for an item that doesnt exist");
+                }
             },
             UserEvent::Drop{which, item} =>
             {
@@ -748,17 +756,27 @@ impl<'a> PlayerContainer<'a>
             {
                 match which
                 {
-                    InventoryWhich::Player =>
+                    WindowWhich::ItemInfo =>
                     {
-                        self.info.inventory_open = false;
+                        self.game_state.close_info_window();
                     },
-                    InventoryWhich::Other =>
+                    WindowWhich::Inventory(which) =>
                     {
-                        self.info.other_inventory_open = false;
+                        match which
+                        {
+                            InventoryWhich::Player =>
+                            {
+                                self.info.inventory_open = false;
+                            },
+                            InventoryWhich::Other =>
+                            {
+                                self.info.other_inventory_open = false;
+                            }
+                        }
+
+                        self.update_inventory(which);
                     }
                 }
-
-                self.update_inventory(which);
             },
             UserEvent::Wield(item) =>
             {

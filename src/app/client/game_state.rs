@@ -40,6 +40,7 @@ use crate::{
         lazy_transform::*,
         TileMap,
         DataInfos,
+        Item,
         ItemsInfo,
         InventoryItem,
         AnyEntities,
@@ -294,13 +295,20 @@ pub enum InventoryWhich
     Other
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WindowWhich
+{
+    ItemInfo,
+    Inventory(InventoryWhich)
+}
+
 #[derive(Debug, Clone)]
 pub enum UserEvent
 {
     Popup{anchor: Entity, responses: Vec<UserEvent>},
     Info{which: InventoryWhich, item: InventoryItem},
     Drop{which: InventoryWhich, item: InventoryItem},
-    Close(InventoryWhich),
+    Close(WindowWhich),
     Wield(InventoryItem),
     Take(InventoryItem)
 }
@@ -745,6 +753,20 @@ impl GameState
     pub fn close_popup(&mut self)
     {
         self.ui.borrow_mut().close_popup(&mut self.entities.entities);
+    }
+
+    pub fn create_info_window(&mut self, item: Item)
+    {
+        let mut creator = EntityCreator{
+            entities: &mut self.entities.entities
+        };
+
+        self.ui.borrow_mut().create_info_window(&mut creator, item);
+    }
+
+    pub fn close_info_window(&mut self)
+    {
+        self.ui.borrow_mut().close_info_window(&mut self.entities.entities);
     }
 
     pub fn set_bar(&self, id: NotificationId, amount: f32)
