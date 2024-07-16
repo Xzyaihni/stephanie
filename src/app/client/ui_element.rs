@@ -86,6 +86,8 @@ pub struct DragState
 pub enum UiElementType
 {
     Panel,
+    Tooltip,
+    ActiveTooltip,
     Button{on_click: Box<dyn FnMut()>},
     Drag{state: DragState, on_change: Box<dyn FnMut(Vector2<f32>)>}
 }
@@ -130,8 +132,8 @@ impl UiElementPredicate
 #[derive(Debug)]
 pub struct UiQuery<'a>
 {
-    transform: Ref<'a, Transform>,
-    camera_position: Vector2<f32>
+    pub transform: Ref<'a, Transform>,
+    pub camera_position: Vector2<f32>
 }
 
 impl<'a> UiQuery<'a>
@@ -192,7 +194,6 @@ pub struct UiElement
 {
     pub kind: UiElementType,
     pub predicate: UiElementPredicate,
-    pub tooltip: bool,
     pub keep_aspect: Option<KeepAspect>
 }
 
@@ -203,7 +204,6 @@ impl Default for UiElement
         Self{
             kind: UiElementType::Panel,
             predicate: UiElementPredicate::None,
-            tooltip: false,
             keep_aspect: None
         }
     }
@@ -253,28 +253,26 @@ impl UiElement
         };
 
         let is_inside = position.map(|position| query().is_inside(position));
+        let predicate = position.map(|position|
+        {
+            self.predicate.matches(entities, query(), position)
+        }).unwrap_or(false);
+
+        let capture_this = is_inside.unwrap_or(false);
 
         match &self.kind
         {
             UiElementType::Button{..} | UiElementType::Drag{..} =>
             {
-                if let Some(is_inside) = is_inside
-                {
-                    highlight(is_inside && !captured);
-                }
+                highlight(capture_this && !captured && predicate);
             },
-            UiElementType::Panel => ()
+            UiElementType::Panel | UiElementType::Tooltip | UiElementType::ActiveTooltip => ()
         }
 
-        if let Some(is_inside) = is_inside
+        let remove_this = ||
         {
-            if !is_inside && self.tooltip
-            {
-                entities.remove_deferred(entity);
-            }
-        }
-
-        let capture_this = is_inside.unwrap_or(false);
+            entities.remove_deferred(entity);
+        };
 
         match &mut self.kind
         {
@@ -283,6 +281,46 @@ impl UiElement
                 if captured
                 {
                     return true;
+                }
+            },
+            UiElementType::Tooltip =>
+            {
+                if let Some(is_inside) = is_inside
+                {
+                    if !is_inside
+                    {
+                        remove_this();
+                    }
+                }
+
+                if captured
+                {
+                    return true;
+                }
+            },
+            UiElementType::ActiveTooltip =>
+            {
+                if captured
+                {
+                    return true;
+                }
+
+                match event
+                {
+                    UiEvent::MouseMove(_) => (),
+                    UiEvent::Mouse(event) =>
+                    {
+                        if !capture_this && event.state == ControlState::Pressed
+                        {
+                            remove_this();
+                        }
+                    }, UiEvent::Keyboard(..) =>
+                    {
+                        if !capture_this
+                        {
+                            remove_this();
+                        }
+                    }
                 }
             },
             UiElementType::Button{on_click} =>
@@ -298,9 +336,9 @@ impl UiElement
 
                     if clicked && query().is_inside(event.position)
                     {
-                        if !self.predicate.matches(entities, query(), event.position)
+                        if !predicate
                         {
-                            return capture_this;
+                            return false;
                         }
 
                         on_click();
@@ -327,9 +365,9 @@ impl UiElement
                                     if !captured
                                         && query().is_inside(event.position)
                                     {
-                                        if !self.predicate.matches(entities, query(), event.position)
+                                        if !predicate
                                         {
-                                            return capture_this;
+                                            return false;
                                         }
 
                                         on_change(inner_position(event.position));

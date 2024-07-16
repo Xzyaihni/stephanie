@@ -185,7 +185,7 @@ impl UiList
         creator: &mut EntityCreator,
         background: Entity,
         width: f32,
-        on_change: Rc<RefCell<dyn FnMut(usize)>>
+        on_change: Rc<RefCell<dyn FnMut(Entity, usize)>>
     ) -> Self
     {
         let panel = creator.push(
@@ -267,7 +267,7 @@ impl UiList
 
     fn create_items(
         creator: &mut EntityCreator,
-        on_change: Rc<RefCell<dyn FnMut(usize)>>,
+        on_change: Rc<RefCell<dyn FnMut(Entity, usize)>>,
         current_start: Rc<RefCell<usize>>,
         parent: Entity,
         max_fit: u32
@@ -288,18 +288,8 @@ impl UiList
                         },
                         ..Default::default()
                     }.into()),
+                    lazy_mix: Some(LazyMix::ui()),
                     parent: Some(Parent::new(parent, false)),
-                    ui_element: Some(UiElement{
-                        kind: UiElementType::Button{
-                            on_click: Box::new(move ||
-                            {
-                                let index = index + *current_start.borrow();
-                                (on_change.borrow_mut())(index);
-                            })
-                        },
-                        predicate: UiElementPredicate::Inside(parent),
-                        ..Default::default()
-                    }),
                     ..Default::default()
                 },
                 RenderInfo{
@@ -310,6 +300,18 @@ impl UiList
                     ..Default::default()
                 }
             );
+
+            creator.entities.set_ui_element(id, Some(UiElement{
+                kind: UiElementType::Button{
+                    on_click: Box::new(move ||
+                    {
+                        let index = index + *current_start.borrow();
+                        (on_change.borrow_mut())(id, index);
+                    })
+                },
+                predicate: UiElementPredicate::Inside(parent),
+                ..Default::default()
+            }));
 
             let text_id = creator.push(
                 EntityInfo{
@@ -506,7 +508,7 @@ impl UiInventory
     ) -> Self
     where
         Close: FnMut() + 'static,
-        Change: FnMut(InventoryItem) + 'static
+        Change: FnMut(Entity, InventoryItem) + 'static
     {
         let inventory = creator.push(
             EntityInfo{
@@ -649,11 +651,11 @@ impl UiInventory
 
         let on_change = {
             let items = items.clone();
-            Rc::new(RefCell::new(move |index|
+            Rc::new(RefCell::new(move |entity, index|
             {
                 let item = items.borrow()[index];
 
-                (actions.on_change)(item);
+                (actions.on_change)(entity, item);
             }))
         };
 
@@ -1033,13 +1035,16 @@ impl Ui
             anchor,
             InventoryActions{
                 on_close: on_close(&user_receiver, InventoryWhich::Player),
-                on_change: move |item|
+                on_change: move |anchor, item|
                 {
-                    urx.borrow_mut().push(UserEvent::Popup(vec![
-                        UserEvent::Wield(item),
-                        UserEvent::Drop{which: InventoryWhich::Player, item},
-                        UserEvent::Info{which: InventoryWhich::Player, item}
-                    ]));
+                    urx.borrow_mut().push(UserEvent::Popup{
+                        anchor,
+                        responses: vec![
+                            UserEvent::Wield(item),
+                            UserEvent::Drop{which: InventoryWhich::Player, item},
+                            UserEvent::Info{which: InventoryWhich::Player, item}
+                        ]
+                    });
                 }
             }
         ); 
@@ -1052,12 +1057,15 @@ impl Ui
             anchor,
             InventoryActions{
                 on_close: on_close(&user_receiver, InventoryWhich::Other),
-                on_change: move |item|
+                on_change: move |anchor, item|
                 {
-                    urx.borrow_mut().push(UserEvent::Popup(vec![
-                        UserEvent::Take(item),
-                        UserEvent::Info{which: InventoryWhich::Other, item}
-                    ]));
+                    urx.borrow_mut().push(UserEvent::Popup{
+                        anchor,
+                        responses: vec![
+                            UserEvent::Take(item),
+                            UserEvent::Info{which: InventoryWhich::Other, item}
+                        ]
+                    });
                 }
             }
         ); 
@@ -1100,43 +1108,39 @@ impl Ui
 
     pub fn create_popup(
         &mut self,
-        mouse_position: Vector3<f32>,
+        mut popup_position: Vector2<f32>,
         creator: &mut EntityCreator,
         user_receiver: Rc<RefCell<UiReceiver>>,
-        camera: Entity,
+        anchor: Entity,
         responses: Vec<UserEvent>
     )
     {
-        let button_size = Vector2::new(0.15, 0.03);
+        let button_size = Vector2::new(0.5, 1.0);
         let padding = button_size.y * 0.2;
 
         let mut scale = Vector2::new(button_size.x, padding * 2.0);
         scale.y += button_size.y * responses.len() as f32;
         scale.y += padding * responses.len().saturating_sub(1) as f32;
 
+        popup_position += scale / 2.0;
+
         let scale = Vector3::new(scale.x, scale.y, 0.0);
-
-        let camera_size = some_or_return!(creator.entities.transform(camera)).scale;
-
-        let position = mouse_position.component_div(&camera_size) + scale / 2.0;
-        let position = position - Vector3::new(padding * 3.0, padding * 2.0, 0.0);
 
         let body = creator.push(
             EntityInfo{
                 lazy_transform: Some(LazyTransformInfo{
-                    connection: Connection::Ignore,
                     transform: Transform{
-                        position,
+                        position: Vector3::new(popup_position.x, popup_position.y, 0.0),
                         scale,
                         ..Default::default()
                     },
                     ..Default::default()
                 }.into()),
                 ui_element: Some(UiElement{
-                    kind: UiElementType::Panel,
+                    kind: UiElementType::ActiveTooltip,
                     ..Default::default()
                 }),
-                parent: Some(Parent::new(camera, true)),
+                parent: Some(Parent::new(anchor, true)),
                 ..Default::default()
             },
             RenderInfo{

@@ -530,6 +530,17 @@ macro_rules! impl_common_systems
             })
         }
 
+        pub fn end_sync(&self, entity: Entity, f: impl FnOnce(RefMut<Transform>, Transform))
+        {
+            if let Some(transform) = self.transform_mut(entity)
+            {
+                if let Some(end) = self.lazy_target_end(entity)
+                {
+                    f(transform, end);
+                }
+            }
+        }
+
         pub fn update_physical(&mut self, dt: f32)
         {
             for_each_component!(self, physical, |entity, physical: &RefCell<Physical>|

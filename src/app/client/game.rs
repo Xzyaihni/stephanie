@@ -583,6 +583,7 @@ impl<'a> PlayerContainer<'a>
     pub fn camera_sync_instant(&mut self)
     {
         let entities = self.game_state.entities();
+
         if let Some(mut transform) = entities.transform_mut(self.info.camera)
         {
             if let Some(parent_transform) = entities.parent_transform(self.info.camera)
@@ -718,9 +719,9 @@ impl<'a> PlayerContainer<'a>
         self.game_state.close_popup();
         match event
         {
-            UserEvent::Popup(responses) =>
+            UserEvent::Popup{anchor, responses} =>
             {
-                self.game_state.create_popup(responses);
+                self.game_state.create_popup(anchor, responses);
             },
             UserEvent::Info{which, item} =>
             {

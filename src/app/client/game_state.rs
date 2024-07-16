@@ -13,7 +13,7 @@ use std::{
 
 use parking_lot::{RwLock, Mutex};
 
-use nalgebra::{Vector2, Vector3};
+use nalgebra::Vector2;
 
 use serde::{Serialize, Deserialize};
 
@@ -31,7 +31,7 @@ use yanyaengine::{
 
 use crate::{
     ProgramShaders,
-    client::RenderCreateInfo,
+    client::{ui_element::*, RenderCreateInfo},
     common::{
         some_or_return,
         sender_loop,
@@ -297,7 +297,7 @@ pub enum InventoryWhich
 #[derive(Debug, Clone)]
 pub enum UserEvent
 {
-    Popup(Vec<UserEvent>),
+    Popup{anchor: Entity, responses: Vec<UserEvent>},
     Info{which: InventoryWhich, item: InventoryItem},
     Drop{which: InventoryWhich, item: InventoryItem},
     Close(InventoryWhich),
@@ -707,19 +707,37 @@ impl GameState
         self.connections_handler.write().send_message(message);
     }
 
-    pub fn create_popup(&mut self, responses: Vec<UserEvent>)
+    pub fn create_popup(&mut self, anchor: Entity, responses: Vec<UserEvent>)
     {
-        let mouse_position = self.world_mouse_position();
+        let distance = {
+            let mouse_position = self.world_mouse_position();
+
+            let transform_of = |entity|
+            {
+                self.entities.entities.transform(entity)
+            };
+
+            let camera_position = some_or_return!(transform_of(self.entities.camera_entity))
+                .position
+                .xy();
+
+            let query = UiQuery{
+                transform: some_or_return!(transform_of(anchor)),
+                camera_position
+            };
+
+            -query.distance(mouse_position.xy())
+        };
 
         let mut creator = EntityCreator{
             entities: &mut self.entities.entities
         };
 
         self.ui.borrow_mut().create_popup(
-            Vector3::new(mouse_position.x, mouse_position.y, 0.0),
+            distance,
             &mut creator,
             self.user_receiver.clone(),
-            self.entities.camera_entity,
+            anchor,
             responses
         );
     }
