@@ -10,8 +10,8 @@ use nalgebra::Vector2;
 use yanyaengine::Transform;
 
 use crate::{
-    client::{Control, ControlState, RenderCreateInfo, game_state::Ui},
-    common::{render_info::*, AnyEntities, Entity, ServerToClient, entity::ClientEntities}
+    client::{Control, ControlState, RenderCreateInfo, game_state::{close_ui, Ui}},
+    common::{render_info::*, Entity, ServerToClient, entity::ClientEntities}
 };
 
 
@@ -271,7 +271,7 @@ impl UiElement
 
         let remove_this = ||
         {
-            entities.remove_deferred(entity);
+            close_ui(entities, entity);
         };
 
         match &mut self.kind

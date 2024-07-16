@@ -818,11 +818,11 @@ fn open_ui(entities: &ClientEntities, entity: Entity, scale: Vector3<f32>)
     lazy.target().scale = scale;
 }
 
-fn close_ui(entities: &ClientEntities, entity: Entity)
+pub fn close_ui(entities: &ClientEntities, entity: Entity)
 {
     let current_scale;
     {
-        let mut lazy = entities.lazy_transform_mut(entity).unwrap();
+        let mut lazy = some_or_return!(entities.lazy_transform_mut(entity));
         current_scale = lazy.target_ref().scale;
         lazy.target().scale = Vector3::zeros();
     }
@@ -830,7 +830,7 @@ fn close_ui(entities: &ClientEntities, entity: Entity)
     let watchers = entities.watchers_mut(entity);
     if let Some(mut watchers) = watchers
     {
-        let near = 0.2 * current_scale.max();
+        let near = 0.2 * current_scale.min();
 
         let watcher = Watcher{
             kind: WatcherType::ScaleDistance{from: Vector3::zeros(), near},
@@ -1129,9 +1129,9 @@ impl Ui
         let body = creator.push(
             EntityInfo{
                 lazy_transform: Some(LazyTransformInfo{
+                    scaling: Scaling::EaseOut{decay: 20.0},
                     transform: Transform{
                         position: Vector3::new(popup_position.x, popup_position.y, 0.0),
-                        scale,
                         ..Default::default()
                     },
                     ..Default::default()
@@ -1141,6 +1141,7 @@ impl Ui
                     ..Default::default()
                 }),
                 parent: Some(Parent::new(anchor, true)),
+                watchers: Some(Default::default()),
                 ..Default::default()
             },
             RenderInfo{
@@ -1149,6 +1150,8 @@ impl Ui
                 ..Default::default()
             }
         );
+
+        creator.entities.target(body).unwrap().scale = scale;
 
         let total = responses.len();
         responses.into_iter().enumerate().for_each(|(index, response)|
@@ -1227,7 +1230,7 @@ impl Ui
     {
         if let Some(previous) = self.active_popup.take()
         {
-            entities.remove(previous);
+            close_ui(entities, previous);
         }
     }
 

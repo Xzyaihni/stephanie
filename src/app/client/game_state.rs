@@ -79,7 +79,7 @@ use controls_controller::ControlsController;
 
 use notifications::{Notifications, Notification};
 
-pub use ui::Ui;
+pub use ui::{close_ui, Ui};
 use ui::{BarNotification, NotificationId};
 
 mod controls_controller;
