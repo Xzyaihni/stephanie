@@ -938,7 +938,7 @@ impl UiItemInfo
         self.window.update_name(creator, title);
 
         let description = format!(
-            "{} weighs around {} kg\nand is around {} meters in size!\nbla bla bla",
+            "{} weighs around {} kg\nand is about {} meters in size!\nbla bla bla",
             info.name,
             info.mass,
             info.scale
