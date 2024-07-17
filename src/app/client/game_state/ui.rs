@@ -879,7 +879,8 @@ impl UiInventory
 struct UiItemInfo
 {
     items_info: Arc<ItemsInfo>,
-    window: UiWindow
+    window: UiWindow,
+    text_panel: Entity
 }
 
 impl UiItemInfo
@@ -895,9 +896,31 @@ impl UiItemInfo
     {
         let window = UiWindow::new(creator, anchor, String::new(), on_close);
 
+        let padding = 0.05;
+
+        let text_panel = creator.push(
+            EntityInfo{
+                lazy_transform: Some(LazyTransformInfo{
+                    transform: Transform{
+                        scale: Vector3::new(1.0 - padding, 1.0, 1.0),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                }.into()),
+                parent: Some(Parent::new(window.panel, true)),
+                ..Default::default()
+            },
+            RenderInfo{
+                object: None,
+                z_level: ZLevel::UiHigh,
+                ..Default::default()
+            }
+        );
+
         Self{
             items_info,
-            window
+            window,
+            text_panel
         }
     }
 
@@ -908,9 +931,24 @@ impl UiItemInfo
 
     pub fn set_item(&mut self, creator: &mut EntityCreator, item: Item)
     {
-        let title = format!("info about - {}", self.items_info.get(item.id).name);
+        let info = self.items_info.get(item.id);
+
+        let title = format!("info about - {}", info.name);
 
         self.window.update_name(creator, title);
+
+        let description = format!(
+            "{} weighs around {} kg\nand is around {} meters in size!\nbla bla bla",
+            info.name,
+            info.mass,
+            info.scale
+        );
+
+        creator.entities.set_deferred_render_object(self.text_panel, RenderObjectKind::Text{
+            text: description,
+            font_size: 40,
+            font: FontStyle::Bold
+        }.into());
     }
 
     pub fn open(&mut self, entities: &mut ClientEntities)
@@ -955,7 +993,7 @@ fn update_resize_ui(entities: &ClientEntities, size: Vector2<f32>, entity: Entit
 fn open_ui(entities: &ClientEntities, entity: Entity, scale: Vector3<f32>)
 {
     entities.target(entity).unwrap().scale = scale
-        .component_mul(&Vector3::new(4.0, 0.01, 1.0));
+        .component_mul(&Vector3::new(4.0, 0.1, 1.0));
 
     entities.end_sync(entity, |mut current, end|
     {
