@@ -273,6 +273,19 @@ impl Default for RenderInfo
     }
 }
 
+impl RenderInfo
+{
+    pub fn z_level(&self) -> ZLevel
+    {
+        self.z_level
+    }
+
+    pub fn set_z_level(&mut self, z_level: ZLevel)
+    {
+        self.z_level = z_level;
+    }
+}
+
 #[derive(AsRefStr)]
 pub enum ClientObjectType
 {
@@ -369,7 +382,7 @@ pub struct ClientRenderInfo
     pub shape: Option<BoundingShape>,
     pub mix: Option<MixColor>,
     pub aspect: Aspect,
-    pub z_level: ZLevel
+    z_level: ZLevel
 }
 
 impl ServerToClient<ClientRenderInfo> for RenderInfo
@@ -430,6 +443,16 @@ impl ClientRenderInfo
         {
             x.set_inplace_texture(texture);
         }
+    }
+
+    pub fn z_level(&self) -> ZLevel
+    {
+        self.z_level
+    }
+
+    pub fn set_z_level(&mut self, z_level: ZLevel)
+    {
+        self.z_level = z_level;
     }
 
     pub fn texture(&self) -> Option<&Arc<RwLock<Texture>>>

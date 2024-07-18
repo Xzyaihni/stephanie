@@ -1249,6 +1249,24 @@ impl Character
         Self::decrease_timer(&mut self.oversprint_cooldown, dt);
     }
 
+    fn this_physical(&self, combined_info: CombinedInfo) -> PhysicalProperties
+    {
+        let physical = some_or_value!(
+            combined_info.entities.physical(self.info.as_ref().unwrap().this),
+            PhysicalProperties{
+                mass: 50.0,
+                friction: 0.999,
+                floating: false
+            }
+        );
+
+        PhysicalProperties{
+            mass: physical.mass,
+            friction: physical.friction,
+            floating: physical.floating
+        }
+    }
+
     pub fn update_common(
         &mut self,
         characters_info: &CharactersInfo,
@@ -1279,11 +1297,11 @@ impl Character
     pub fn update(
         &mut self,
         combined_info: CombinedInfo,
-        entity: Entity,
         dt: f32,
         set_sprite: impl FnOnce(TextureId)
     ) -> bool
     {
+        let entity = some_or_value!(self.info.as_ref(), false).this;
         let entities = &combined_info.entities;
 
         self.handle_actions(combined_info);
@@ -1305,8 +1323,6 @@ impl Character
         }
 
         let character_info = combined_info.characters_info.get(self.id);
-
-        let mut render = entities.render_mut(entity).unwrap();
 
         let set_visible = |entity, is_visible|
         {
@@ -1336,11 +1352,7 @@ impl Character
                         ghost: false,
                         ..Default::default()
                     }.into()),
-                    Some(PhysicalProperties{
-                        mass: 50.0,
-                        friction: 0.99,
-                        floating: false
-                    }.into()),
+                    Some(self.this_physical(combined_info).into()),
                     ZLevel::Head,
                     true,
                     true,
@@ -1356,11 +1368,7 @@ impl Character
                         scale: Some(Vector3::repeat(0.4)),
                         ..Default::default()
                     }.into()),
-                    Some(PhysicalProperties{
-                        mass: 50.0,
-                        friction: 0.999,
-                        floating: false
-                    }.into()),
+                    Some(self.this_physical(combined_info).into()),
                     ZLevel::Feet,
                     false,
                     true,
@@ -1390,7 +1398,7 @@ impl Character
             setter.set_physical(entity, physical);
         }
 
-        render.z_level = z_level;
+        entities.set_z_level(entity, z_level);
 
         if let Some(info) = self.info.as_ref()
         {
@@ -1406,7 +1414,6 @@ impl Character
             info.hair.iter().copied().for_each(set_visible);
         }
 
-        drop(render);
         drop(target);
 
         self.update_held(combined_info);

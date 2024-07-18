@@ -693,7 +693,14 @@ macro_rules! common_trait_impl
 
         fn z_level(&self, entity: Entity) -> Option<ZLevel>
         {
-            self.render(entity).map(|x| x.z_level)
+            self.render(entity).map(|x| x.z_level())
+        }
+
+        fn set_z_level(&self, entity: Entity, z_level: ZLevel)
+        {
+            self.render_mut(entity).map(|mut x| x.set_z_level(z_level));
+            
+            *self.z_changed.borrow_mut() = true;
         }
 
         fn is_visible(&self, entity: Entity) -> bool
@@ -951,6 +958,7 @@ macro_rules! define_entities_both
             pub components: RefCell<ObjectsStore<ComponentsIndices>>,
             pub lazy_setter: RefCell<SetterQueue<$($component_type,)+>>,
             infos: DataInfos,
+            z_changed: RefCell<bool>,
             remove_queue: RefCell<Vec<Entity>>,
             create_queue: RefCell<Vec<(Entity, EntityInfo)>>,
             create_render_queue: RefCell<Vec<(Entity, RenderComponent)>>,
@@ -971,6 +979,7 @@ macro_rules! define_entities_both
                     components: RefCell::new(ObjectsStore::new()),
                     lazy_setter: RefCell::new(Default::default()),
                     infos,
+                    z_changed: RefCell::new(false),
                     remove_queue: RefCell::new(Vec::new()),
                     create_queue: RefCell::new(Vec::new()),
                     create_render_queue: RefCell::new(Vec::new()),
@@ -1613,7 +1622,7 @@ macro_rules! define_entities_both
                     mem::take(&mut *render_queue)
                 };
 
-                render_queue.into_iter().for_each(|(entity, render)|
+                let needs_resort = render_queue.into_iter().map(|(entity, render)|
                 {
                     if self.exists(entity)
                     {
@@ -1635,6 +1644,8 @@ macro_rules! define_entities_both
                                 );
 
                                 self.set_render(entity, Some(render));
+
+                                false
                             },
                             RenderComponent::Object(object) =>
                             {
@@ -1643,6 +1654,11 @@ macro_rules! define_entities_both
                                     let object = object.into_client(transform(), create_info);
 
                                     render.object = object;
+
+                                    true
+                                } else
+                                {
+                                    false
                                 }
                             },
                             RenderComponent::Scissor(scissor) =>
@@ -1654,10 +1670,20 @@ macro_rules! define_entities_both
 
                                     render.scissor = Some(scissor);
                                 }
+
+                                false
                             }
                         }
+                    } else
+                    {
+                        false
                     }
-                });
+                }).reduce(|x, y| x || y).unwrap_or(false);
+
+                if needs_resort
+                {
+                    self.resort_by_z(false);
+                }
             }
 
             pub fn create_queued(
@@ -1705,6 +1731,8 @@ macro_rules! define_entities_both
 
             pub fn update_render(&mut self)
             {
+                self.resort_by_z(false);
+
                 for_each_component!(self, render, |entity, render: &RefCell<ClientRenderInfo>|
                 {
                     let transform = self.transform(entity).unwrap();
@@ -2111,7 +2139,6 @@ macro_rules! define_entities_both
 
                         character.borrow_mut().update(
                             combined_info,
-                            entity,
                             dt,
                             |texture|
                             {
@@ -2348,6 +2375,7 @@ macro_rules! define_entities
             fn lazy_target(&self, entity: Entity) -> Option<RefMut<Transform>>;
 
             fn z_level(&self, entity: Entity) -> Option<ZLevel>;
+            fn set_z_level(&self, entity: Entity, z_level: ZLevel);
             fn is_visible(&self, entity: Entity) -> bool;
             fn visible_target(&self, entity: Entity) -> Option<RefMut<bool>>;
             fn mix_color_target(&self, entity: Entity) -> Option<RefMut<Option<MixColor>>>;

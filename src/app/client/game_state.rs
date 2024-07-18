@@ -1,6 +1,7 @@
 use std::{
     f32,
     mem,
+    env,
     cell::{Ref, RefCell},
     rc::Rc,
     ops::ControlFlow,
@@ -247,7 +248,7 @@ impl ClientEntitiesContainer
 
         let ui_end = some_or_return!(self.entities.render.iter().rev().find_map(|(id, render)|
         {
-            (render.get().z_level < ZLevel::UiLow).then_some(id)
+            (render.get().z_level() < ZLevel::UiLow).then_some(id)
         }));
 
         let (normal, ui) = self.entities.render.split_at(ui_end + 1);
@@ -920,7 +921,9 @@ impl GameState
         {
             self.rare();
             
-            self.rare_timer = 5.0;
+            self.rare_timer = env::var("STEPHANIE_RARE_TIMER")
+                .map(|x| x.parse().unwrap())
+                .unwrap_or(5.0);
         } else
         {
             self.rare_timer -= dt;
