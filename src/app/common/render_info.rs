@@ -27,7 +27,7 @@ use yanyaengine::{
     game_object::*
 };
 
-pub use yanyaengine::{FontStyle, object::model::Uvs};
+pub use yanyaengine::{FontStyle, TextAlign, HorizontalAlign, VerticalAlign, object::model::Uvs};
 
 use crate::{
     client::{RenderCreateInfo, VisibilityChecker},
@@ -89,7 +89,7 @@ pub enum RenderObjectKind
 {
     Texture{name: String},
     TextureId{id: TextureId},
-    Text{text: String, font_size: u32, font: FontStyle}
+    Text{text: String, font_size: u32, font: FontStyle, align: TextAlign}
 }
 
 impl RenderObjectKind
@@ -127,13 +127,14 @@ impl RenderObjectKind
 
                 Self::TextureId{id}.into_client(uvs, transform, create_info)
             },
-            Self::Text{ref text, font_size, font} =>
+            Self::Text{ref text, font_size, font, align} =>
             {
                 let object = create_info.object_info.partial.builder_wrapper.create_text(
                     TextInfo{
                         transform,
                         font_size,
                         font,
+                        align,
                         text
                     },
                     create_info.location,

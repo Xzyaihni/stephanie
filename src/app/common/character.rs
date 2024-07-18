@@ -215,7 +215,6 @@ pub struct Character
     pub faction: Faction,
     pub sprinting: bool,
     pub rotation: f32,
-    was_sprinting: bool,
     oversprint_cooldown: f32,
     stamina: f32,
     jiggle: f32,
@@ -243,7 +242,6 @@ impl Character
             faction,
             sprinting: false,
             rotation: 0.0,
-            was_sprinting: false,
             oversprint_cooldown: 0.0,
             stamina: f32::MAX,
             jiggle: 0.0,
@@ -1485,19 +1483,12 @@ impl Character
             }
         }
 
-        if self.was_sprinting && !self.sprinting
-        {
-            self.oversprint_cooldown = 0.7;
-        }
-
         if !self.is_sprinting()
         {
             self.stamina += dt * recharge_speed;
         }
 
         self.stamina = self.stamina.min(max_stamina);
-
-        self.was_sprinting = self.is_sprinting();
     }
 
     pub fn walk(

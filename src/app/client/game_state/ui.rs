@@ -394,7 +394,11 @@ impl UiList
                     let object = RenderObjectKind::Text{
                         text: text.clone(),
                         font_size: 60,
-                        font: FontStyle::Sans
+                        font: FontStyle::Sans,
+                        align: TextAlign{
+                            horizontal: HorizontalAlign::Left,
+                            vertical: VerticalAlign::Middle
+                        }
                     }.into();
 
                     creator.entities.set_deferred_render_object(item.item, object);
@@ -603,7 +607,8 @@ impl UiWindow
                 object: Some(RenderObjectKind::Text{
                     text: name,
                     font_size: 80,
-                    font: FontStyle::Bold
+                    font: FontStyle::Bold,
+                    align: TextAlign::centered()
                 }.into()),
                 z_level: ZLevel::UiHigh,
                 ..Default::default()
@@ -703,7 +708,8 @@ impl UiWindow
         let object = RenderObjectKind::Text{
             text: name,
             font_size: 80,
-            font: FontStyle::Bold
+            font: FontStyle::Bold,
+            align: TextAlign::centered()
         }.into();
 
         creator.entities.set_deferred_render_object(self.name, object);
@@ -947,7 +953,8 @@ impl UiItemInfo
         creator.entities.set_deferred_render_object(self.text_panel, RenderObjectKind::Text{
             text: description,
             font_size: 40,
-            font: FontStyle::Bold
+            font: FontStyle::Bold,
+            align: TextAlign::default()
         }.into());
     }
 
@@ -1105,7 +1112,8 @@ impl BarNotification
                     object: Some(RenderObjectKind::Text{
                         text: name,
                         font_size: 30,
-                        font: FontStyle::Bold
+                        font: FontStyle::Bold,
+                        align: TextAlign::centered()
                     }.into()),
                     z_level: ZLevel::UiHigh,
                     ..Default::default()
@@ -1410,7 +1418,8 @@ impl Ui
                     object: Some(RenderObjectKind::Text{
                         text: name,
                         font_size: 80,
-                        font: FontStyle::Bold
+                        font: FontStyle::Bold,
+                        align: TextAlign::centered()
                     }.into()),
                     z_level: ZLevel::UiPopupHigh,
                     ..Default::default()
