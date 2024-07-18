@@ -263,7 +263,7 @@ impl Game
         let tail = lst.cdr().as_list(memory)?;
 
         let local = tail.car().as_bool()?;
-        let id = tail.cdr().as_integer()?;
+        let id = tail.cdr().as_list(memory)?.car().as_integer()?;
 
         let entity = Entity::from_raw(local, id as usize);
 
@@ -276,9 +276,7 @@ impl Game
         let local = LispValue::new_bool(entity.local());
         let id = LispValue::new_integer(entity.id() as i32);
 
-        let tail = memory.cons(env, local, id);
-
-        memory.cons(env, tag, tail)
+        memory.cons_list(env, [tag, local, id])
     }
 
     fn add_simple_setter<F>(&self, primitives: &mut Primitives, name: &str, f: F)
@@ -335,9 +333,7 @@ impl Game
         {
             let state = args.pop(memory).as_bool()?;
 
-            let mut physical = entities.physical_mut(entity).unwrap();
-
-            physical.floating = state;
+            entities.physical_mut(entity).unwrap().floating = state;
 
             Ok(())
         });
@@ -346,9 +342,37 @@ impl Game
         {
             let speed = args.pop(memory).as_float()?;
 
-            let mut anatomy = entities.anatomy_mut(entity).unwrap();
+            entities.anatomy_mut(entity).unwrap().set_speed(speed);
 
-            anatomy.set_speed(speed);
+            Ok(())
+        });
+
+        self.add_simple_setter(&mut primitives, "set-ghost", |entities, entity, memory, mut args|
+        {
+            let state = args.pop(memory).as_bool()?;
+
+            entities.collider_mut(entity).unwrap().ghost = state;
+
+            Ok(())
+        });
+
+        self.add_simple_setter(&mut primitives, "set-position", |entities, entity, memory, mut args|
+        {
+            let mut list = args.pop(memory).as_list(memory);
+
+            let mut next_float = ||
+            {
+                let current = list.clone()?;
+                let value = current.car().as_float();
+
+                list = current.cdr().as_list(memory);
+
+                value
+            };
+
+            let position = Vector3::new(next_float()?, next_float()?, next_float()?);
+
+            entities.transform_mut(entity).unwrap().position = position;
 
             Ok(())
         });
@@ -373,9 +397,7 @@ impl Game
                 lisp::Error::Custom(format!("cant deserialize {faction} as Faction"))
             })?;
 
-            let mut character = entities.character_mut(entity).unwrap();
-
-            character.faction = faction;
+            entities.character_mut(entity).unwrap().faction = faction;
 
             Ok(())
         });
@@ -427,6 +449,27 @@ impl Game
             let game_state = self.game_state.clone();
 
             primitives.add(
+                "position-entity",
+                PrimitiveProcedureInfo::new_simple(1, move |_state, memory, env, mut args|
+                {
+                    let game_state = game_state.borrow();
+                    let entities = game_state.entities();
+
+                    let entity = Self::pop_entity(&mut args, memory)?;
+
+                    let position = entities.transform(entity).unwrap().position;
+
+                    let list = memory.cons_list(env, [position.x, position.y, position.z]);
+                    memory.push_return(list);
+
+                    Ok(())
+                }));
+        }
+
+        {
+            let game_state = self.game_state.clone();
+
+            primitives.add(
                 "print-entity-info",
                 PrimitiveProcedureInfo::new_simple_effect(1, move |_state, memory, _env, mut args|
                 {
@@ -444,19 +487,39 @@ impl Game
         }
 
         let standard_code = {
-            let path = "lisp/standard.scm";
+            let load = |path: &str|
+            {
+                fs::read_to_string(path)
+                    .unwrap_or_else(|err| panic!("{path} must exist ({err})"))
+            };
 
-            fs::read_to_string(path)
-                .unwrap_or_else(|err| panic!("{path} must exist ({err})"))
+            load("lisp/standard.scm") + &load("lisp/console.scm")
         };
 
-        let (environment, lambdas) = Lisp::new_mappings_lambdas(&standard_code)
-            .unwrap_or_else(|err| panic!("error in stdlib: {err}"));
+        let primitives = Rc::new(primitives);
+
+        let (environment, lambdas) = {
+            let config = LispConfig{
+                environment: None,
+                lambdas: None,
+                primitives: primitives.clone()
+            };
+
+            let lisp = unsafe{ LispRef::new_with_config(config, &standard_code) };
+
+            let mut memory = Lisp::default_memory();
+            lisp.and_then(|mut x|
+            {
+                let mappings = x.run_environment(&mut memory)?;
+
+                Ok((mappings, x.lambdas().clone()))
+            }).unwrap_or_else(|err| panic!("error in stdlib: {err}"))
+        };
 
         let config = LispConfig{
             environment: Some(Rc::new(RefCell::new(environment))),
             lambdas: Some(lambdas),
-            primitives: Rc::new(primitives)
+            primitives
         };
 
         let mut lisp = match unsafe{ LispRef::new_with_config(config, &command) }

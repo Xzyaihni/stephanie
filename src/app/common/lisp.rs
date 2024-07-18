@@ -200,6 +200,7 @@ impl<T: IntoIterator<Item=ValueRaw>> LispVectorInner<T>
     }
 }
 
+#[derive(Clone, Copy)]
 pub struct LispList
 {
     car: LispValue,
@@ -216,6 +217,38 @@ impl LispList
     pub fn cdr(&self) -> &LispValue
     {
         &self.cdr
+    }
+}
+
+impl From<f32> for LispValue
+{
+    fn from(x: f32) -> Self
+    {
+        LispValue::new_float(x)
+    }
+}
+
+impl From<i32> for LispValue
+{
+    fn from(x: i32) -> Self
+    {
+        LispValue::new_integer(x)
+    }
+}
+
+impl From<bool> for LispValue
+{
+    fn from(x: bool) -> Self
+    {
+        LispValue::new_bool(x)
+    }
+}
+
+impl From<()> for LispValue
+{
+    fn from(_x: ()) -> Self
+    {
+        LispValue::new_empty_list()
     }
 }
 
@@ -958,6 +991,22 @@ impl LispMemory
         self.need_list_memory(env, 1);
 
         self.memory.cons(car, cdr)
+    }
+
+    pub fn cons_list<I, V>(
+        &mut self,
+        env: &Environment,
+        values: I
+    ) -> LispValue
+    where
+        V: Into<LispValue>,
+        I: IntoIterator<Item=V>,
+        I::IntoIter: DoubleEndedIterator
+    {
+        values.into_iter().rev().map(|x| x.into()).fold(LispValue::new_empty_list(), |acc, x|
+        {
+            self.cons(env, x, acc)
+        })
     }
 
     pub fn new_symbol(
