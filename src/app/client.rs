@@ -1,4 +1,6 @@
 use std::{
+    fs,
+    io,
     sync::Arc,
     rc::Rc,
     cell::RefCell,
@@ -30,6 +32,7 @@ use game::Game;
 use game_state::{GameState, GameStateInfo};
 
 use crate::{
+    LOG_PATH,
     app::AppInfo,
     common::{
         DataInfos,
@@ -105,6 +108,16 @@ impl Client
         client_init_info: ClientInitInfo
     ) -> Result<Self, ImageError>
     {
+        match fs::remove_file(LOG_PATH)
+        {
+            Ok(_) => (),
+            Err(err) if err.kind() == io::ErrorKind::NotFound => (),
+            Err(err) => 
+            {
+                eprintln!("error removing log file: {err}");
+            }
+        }
+
         let camera = Camera::new(info.aspect(), -1.0..1.0);
         let mut info = InitInfo::new(info, &camera);
 

@@ -211,7 +211,7 @@ impl Enemy
     {
         Self::look_direction(character, direction);
 
-        character.walk(anatomy, physical, Unit::new_normalize(direction));
+        character.walk(anatomy, physical, direction);
     }
 
     fn look_direction(

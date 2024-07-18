@@ -1,6 +1,8 @@
 use std::{
     f32,
+    io::Write,
     fmt::Debug,
+    fs::File,
     path::{Path, Component},
     ops::{Range, RangeInclusive}
 };
@@ -9,7 +11,7 @@ use serde::{Deserialize, Serialize};
 
 use nalgebra::Vector3;
 
-pub use crate::{define_layers, some_or_value, some_or_return};
+pub use crate::{LOG_PATH, define_layers, some_or_value, some_or_return};
 
 
 #[macro_export]
@@ -321,6 +323,21 @@ pub fn get_two_mut<T>(s: &mut [T], one: usize, two: usize) -> (&mut T, &mut T)
         let (left, right) = s.split_at_mut(two);
 
         (&mut left[one], &mut right[0])
+    }
+}
+
+pub fn write_log(text: impl Into<String>)
+{
+    match File::options().append(true).create(true).open(LOG_PATH)
+    {
+        Ok(mut x) =>
+        {
+            x.write(text.into().as_bytes()).map(|_| {}).unwrap_or_else(|err|
+            {
+                eprintln!("error writing to log: {err}");
+            });
+        },
+        Err(err) => eprintln!("error writing to log: {err}")
     }
 }
 

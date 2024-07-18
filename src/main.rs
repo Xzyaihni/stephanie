@@ -77,6 +77,8 @@ mod ui_fragment
     }
 }
 
+pub const LOG_PATH: &str = "log.txt";
+
 fn main()
 {
     let mut shaders = ShadersContainer::new();

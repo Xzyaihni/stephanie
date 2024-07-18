@@ -1495,9 +1495,14 @@ impl Character
         &self,
         anatomy: &Anatomy,
         physical: &mut Physical,
-        direction: Unit<Vector3<f32>>
+        mut direction: Vector3<f32>
     )
     {
+        let z = direction.z;
+
+        direction.z = 0.0;
+        let direction = Unit::new_normalize(direction);
+
         if let Some(speed) = anatomy.speed()
         {
             let speed = if self.is_sprinting()
@@ -1508,7 +1513,7 @@ impl Character
                 speed
             };
 
-            let velocity = direction.into_inner() * (speed / physical.mass);
+            let velocity = *direction * (speed / physical.mass);
 
             let new_velocity = (physical.velocity + velocity).zip_map(&velocity, |value, limit|
             {
@@ -1519,6 +1524,11 @@ impl Character
 
             physical.velocity.x = new_velocity.x;
             physical.velocity.y = new_velocity.y;
+
+            if physical.floating
+            {
+                physical.velocity.z = z;
+            }
         }
     }
 

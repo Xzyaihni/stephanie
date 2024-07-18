@@ -331,6 +331,17 @@ impl Game
                 }));
         }
 
+        self.add_simple_setter(&mut primitives, "set-floating", |entities, entity, memory, mut args|
+        {
+            let state = args.pop(memory).as_bool()?;
+
+            let mut physical = entities.physical_mut(entity).unwrap();
+
+            physical.floating = state;
+
+            Ok(())
+        });
+
         self.add_simple_setter(&mut primitives, "set-speed", |entities, entity, memory, mut args|
         {
             let speed = args.pop(memory).as_float()?;
@@ -424,10 +435,7 @@ impl Game
 
                     let entity = Self::pop_entity(&mut args, memory)?;
 
-                    eprintln!(
-                        "entity info: {}",
-                        entities.info_ref(entity).unwrap_or_default()
-                    );
+                    eprintln!("entity info: {}", entities.info_ref(entity));
 
                     memory.push_return(LispValue::new_empty_list());
 
@@ -975,7 +983,7 @@ impl<'a> PlayerContainer<'a>
         self.game_state.sync_transform(self.info.entity);
     }
 
-    fn movement_direction(&self) -> Option<Unit<Vector3<f32>>>
+    fn movement_direction(&self) -> Option<Vector3<f32>>
     {
         let mut movement_direction = None;
 
@@ -1010,10 +1018,35 @@ impl<'a> PlayerContainer<'a>
             move_direction(Vector3::y());
         }
 
-        movement_direction.and_then(|x| Unit::try_new(x, 0.1))
+        movement_direction.and_then(|x|
+        {
+            Unit::try_new(x, 0.1).as_deref().copied()
+        }).map(|mut direction|
+        {
+            if self.game_state.entities().physical(self.info.entity).map(|x|
+            {
+                x.floating
+            }).unwrap_or(false)
+            {
+                let flight_speed = 0.1;
+
+                direction.z = if self.game_state.pressed(Control::Jump)
+                {
+                    flight_speed
+                } else if self.game_state.pressed(Control::Crawl)
+                {
+                    -flight_speed
+                } else
+                {
+                    0.0
+                };
+            }
+
+            direction
+        })
     }
 
-    pub fn walk(&mut self, direction: Unit<Vector3<f32>>)
+    pub fn walk(&mut self, direction: Vector3<f32>)
     {
         let entities = self.game_state.entities();
         if let Some(character) = entities.character(self.info.entity)

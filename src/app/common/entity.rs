@@ -22,6 +22,7 @@ use crate::{
     },
     common::{
         some_or_return,
+        write_log,
         insertion_sort_with,
         ENTITY_SCALE,
         render_info::*,
@@ -761,14 +762,18 @@ macro_rules! common_trait_impl
                             ).map(|child| (parent, child))
                         })
                         {
-                            assert!(
-                                parent_id < child_id,
-                                "({} ({parent:?}) < {} ({entity:?})), parent: {}, child: {}",
-                                parent_id,
-                                child_id,
-                                self.info_ref(parent).unwrap_or_else(String::new),
-                                self.info_ref(entity).unwrap_or_else(String::new)
-                            );
+                            if !(parent_id < child_id)
+                            {
+                                let body = format!("[CHILD-PARENT FAILED] ({parent_id} ({parent:?}) < {child_id} ({entity:?}))",);
+
+                                eprintln!("{body}");
+
+                                write_log(format!(
+                                    "{body} parent: {}, child: {}",
+                                    self.info_ref(parent),
+                                    self.info_ref(entity)
+                                ));
+                            }
                         }
                     }
                 });
@@ -779,12 +784,18 @@ macro_rules! common_trait_impl
 
             let reducer = |(before, before_z), x@(after, after_z)|
             {
-                assert!(
-                    before_z <= after_z,
-                    "({before_z:?} ({before:?}) <= {after_z:?} ({after:?})), before: {}, after: {}",
-                    self.info_ref(before).unwrap_or_else(String::new),
-                    self.info_ref(after).unwrap_or_else(String::new)
-                );
+                if !(before_z <= after_z)
+                {
+                    let body = format!("[Z-ORDER FAILED] ({before_z:?} ({before:?}) <= {after_z:?} ({after:?}))");
+
+                    eprintln!("{body}");
+
+                    write_log(format!(
+                        "before: {}, after: {}",
+                        self.info_ref(before),
+                        self.info_ref(after)
+                    ));
+                }
 
                 x
             };
@@ -987,11 +998,11 @@ macro_rules! define_entities_both
                     })
             }
 
-            pub fn info_ref(&self, entity: Entity) -> Option<String>
+            pub fn info_ref(&self, entity: Entity) -> String
             {
                 if !self.exists(entity)
                 {
-                    return None;
+                    return String::new();
                 }
 
                 let components = &components!(self, entity).borrow()[entity.id];
@@ -1005,7 +1016,7 @@ macro_rules! define_entities_both
                     },
                 )+};
 
-                Some(format!("{info:#?}"))
+                format!("{info:#?}")
             }
 
             fn set_each(&mut self, entity: Entity, info: EntityInfo<$($component_type,)+>)
