@@ -113,12 +113,17 @@ impl Chunk
         new_chunk
     }
 
-    pub fn transform_of_chunk(pos: GlobalPos) -> Transform
+    pub fn position_of_chunk(pos: GlobalPos) -> Vector3<f32>
     {
         let chunk_pos = Pos3::<f32>::from(pos.0) * CHUNK_VISUAL_SIZE;
 
+        Vector3::from(chunk_pos)
+    }
+
+    pub fn transform_of_chunk(pos: GlobalPos) -> Transform
+    {
         Transform{
-            position: Vector3::from(chunk_pos),
+            position: Self::position_of_chunk(pos),
             ..Default::default()
         }
     }

@@ -511,10 +511,7 @@ impl VisualChunk
                 .for_each(|object| object.update_buffers(info));
         });
 
-        self.occluders[draw_range].iter_mut().for_each(|occluders|
-        {
-            occluders.iter_mut().for_each(|x| x.update_buffers(visibility, info, casters));
-        });
+        self.occluders[height].iter_mut().for_each(|x| x.update_buffers(visibility, info, casters));
     }
 
     pub fn draw_tiles(

@@ -2,7 +2,7 @@ use std::{
     f32,
     mem,
     rc::Rc,
-    fmt::Debug,
+    fmt::{self, Debug},
     cmp::Ordering,
     cell::{Ref, RefMut, RefCell}
 };
@@ -870,10 +870,25 @@ macro_rules! define_entities_both
 
         pub const COMPONENTS_COUNT: usize = count_components();
 
-        #[derive(Debug, Clone, Serialize, Deserialize)]
+        #[derive(Clone, Serialize, Deserialize)]
         pub struct EntityInfo<$($component_type=$default_type,)+>
         {
             $(pub $name: Option<$component_type>,)+
+        }
+
+        impl<$($component_type: Debug,)+> Debug for EntityInfo<$($component_type,)+>
+        {
+            fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
+            {
+                let mut s = f.debug_struct("EntityInfo");
+
+                $(if let Some(component) = self.$name.as_ref()
+                {
+                    s.field(stringify!($name), component);
+                })+
+
+                s.finish()
+            }
         }
 
         impl<$($component_type,)+> Default for EntityInfo<$($component_type,)+>
