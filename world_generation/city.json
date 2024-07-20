@@ -1,16 +1,16 @@
 {
     "rules": [
         {
+            "name": "building_first_floor",
+            "variable": "Height",
+            "tag": "building_first",
+            "condition": "Equal"
+        },
+        {
             "name": "building_walls",
             "variable": "Height",
             "tag": "building_height",
             "condition": "Less"
-        },
-        {
-            "name": "building_first_floor",
-            "variable": "Height",
-            "tag": "building_zero",
-            "condition": "Equal"
         }
     ]
 }

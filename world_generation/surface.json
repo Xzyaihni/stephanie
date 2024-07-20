@@ -13,9 +13,9 @@
                     }
                 },
                 {
-                    "name": "building_zero",
+                    "name": "building_first",
                     "content": {
-                        "Number": 2
+                        "Number": 1
                     }
                 }
             ],

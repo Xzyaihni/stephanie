@@ -1,7 +1,4 @@
-(define this-chunk (filled-chunk (tile 'glass)))
-;(define this-chunk (residential-building))
-
-(display '(hey i ran))
+(define this-chunk (residential-building))
 
 (define (this-tile point tile) (put-tile this-chunk point tile))
 
