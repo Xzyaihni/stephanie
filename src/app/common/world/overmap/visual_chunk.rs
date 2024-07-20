@@ -552,11 +552,6 @@ impl VisualChunk
         height: usize
     )
     {
-        let draw_range = self.draw_range(height);
-
-        self.occluders[draw_range].iter().for_each(|occluders|
-        {
-            occluders.iter().for_each(|x| x.draw(visibility, info));
-        });
+        self.occluders[height].iter().for_each(|x| x.draw(visibility, info));
     }
 }

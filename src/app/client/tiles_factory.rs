@@ -138,6 +138,7 @@ impl<T> IndexMut<Option<usize>> for ChunkObjects<T>
     }
 }
 
+#[derive(Debug)]
 pub struct OccluderInfo
 {
     pub position: Vector3<f32>,
@@ -145,6 +146,7 @@ pub struct OccluderInfo
     pub length: f32
 }
 
+#[derive(Debug)]
 pub struct ChunkInfo
 {
     model: Arc<RwLock<Model>>,
