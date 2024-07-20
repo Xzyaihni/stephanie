@@ -226,7 +226,7 @@ impl PrimitiveProcedureInfo
             &mut LispMemory,
             &Environment,
             ArgsWrapper
-        ) -> Result<(), Error> + 'static
+        ) -> Result<LispValue, Error> + 'static
     {
         Self::new_simple_maybe_effect::<true, F>(args_count, on_apply)
     }
@@ -241,7 +241,7 @@ impl PrimitiveProcedureInfo
             &mut LispMemory,
             &Environment,
             ArgsWrapper
-        ) -> Result<(), Error> + 'static
+        ) -> Result<LispValue, Error> + 'static
     {
         Self::new_simple_maybe_effect::<false, F>(args_count, on_apply)
     }
@@ -256,7 +256,7 @@ impl PrimitiveProcedureInfo
             &mut LispMemory,
             &Environment,
             ArgsWrapper
-        ) -> Result<(), Error> + 'static
+        ) -> Result<LispValue, Error> + 'static
     {
         let on_apply = Rc::new(move |
             state: &State,
@@ -282,21 +282,18 @@ impl PrimitiveProcedureInfo
                 }
 
                 on_apply(state, memory, env, args).with_position(position)
-            };
+            }?;
 
-            if EFFECT
+            match action
             {
-                match action
+                Action::Return =>
                 {
-                    Action::Return => (),
-                    Action::None =>
-                    {
-                        memory.pop_return();
-                    }
-                }
+                    memory.push_return(value);
+                },
+                Action::None => ()
             }
 
-            value
+            Ok(())
         });
 
         Self{
@@ -564,9 +561,7 @@ impl Primitives
 
                     let is_equal = arg.tag == $tag;
 
-                    memory.push_return(LispValue::new_bool(is_equal));
-
-                    Ok(())
+                    Ok(LispValue::new_bool(is_equal))
                 }
             }
         }
@@ -579,9 +574,7 @@ impl Primitives
 
                     println!("{}", arg.to_string(memory));
 
-                    memory.push_return(LispValue::new_empty_list());
-
-                    Ok(())
+                    Ok(LispValue::new_empty_list())
                 })),
             ("make-vector",
                 PrimitiveProcedureInfo::new_simple(2, |_state, memory, env, mut args|
@@ -594,10 +587,7 @@ impl Primitives
                         values: &vec![fill.value; len]
                     };
 
-                    let value = LispValue::new_vector(memory.allocate_vector(env, vec));
-                    memory.push_return(value);
-
-                    Ok(())
+                    Ok(LispValue::new_vector(memory.allocate_vector(env, vec)))
                 })),
             ("vector-set!",
                 PrimitiveProcedureInfo::new_simple_lazy(
@@ -648,17 +638,13 @@ impl Primitives
 
                     let value = vec.values[index as usize];
 
-                    memory.push_return(unsafe{ LispValue::new(vec.tag, value) });
-
-                    Ok(())
+                    Ok(unsafe{ LispValue::new(vec.tag, value) })
                 })),
             ("null?", PrimitiveProcedureInfo::new_simple(1, |_state, memory, _env, mut args|
             {
                 let arg = args.pop(memory);
 
-                memory.push_return(LispValue::new_bool(arg.is_null()));
-
-                Ok(())
+                Ok(LispValue::new_bool(arg.is_null()))
             })),
             ("symbol?", PrimitiveProcedureInfo::new_simple(1, is_tag!(ValueTag::Symbol))),
             ("pair?", PrimitiveProcedureInfo::new_simple(1, is_tag!(ValueTag::List))),
@@ -672,9 +658,7 @@ impl Primitives
 
                     let is_number = arg.tag == ValueTag::Integer || arg.tag == ValueTag::Float;
 
-                    memory.push_return(LispValue::new_bool(is_number));
-
-                    Ok(())
+                    Ok(LispValue::new_bool(is_number))
                 })),
             ("boolean?",
                 PrimitiveProcedureInfo::new_simple(1, |_state, memory, _env, mut args|
@@ -683,9 +667,7 @@ impl Primitives
 
                     let is_bool = arg.as_bool().map(|_| true).unwrap_or(false);
 
-                    memory.push_return(LispValue::new_bool(is_bool));
-
-                    Ok(())
+                    Ok(LispValue::new_bool(is_bool))
                 })),
             ("+", PrimitiveProcedureInfo::new_simple(ArgsCount::Min(2), do_op!(add))),
             ("-", PrimitiveProcedureInfo::new_simple(ArgsCount::Min(2), do_op!(sub))),
@@ -846,10 +828,7 @@ impl Primitives
                     let car = args.pop(memory);
                     let cdr = args.pop(memory);
 
-                    let value = memory.cons(env, car, cdr);
-                    memory.push_return(value);
-
-                    Ok(())
+                    Ok(memory.cons(env, car, cdr))
                 })),
             ("car",
                 PrimitiveProcedureInfo::new_simple(1, |_state, memory, _env, mut args|
@@ -857,9 +836,7 @@ impl Primitives
                     let arg = args.pop(memory);
                     let value = arg.as_list(memory)?;
 
-                    memory.push_return(value.car);
-
-                    Ok(())
+                    Ok(value.car)
                 })),
             ("cdr",
                 PrimitiveProcedureInfo::new_simple(1, |_state, memory, _env, mut args|
@@ -867,9 +844,7 @@ impl Primitives
                     let arg = args.pop(memory);
                     let value = arg.as_list(memory)?;
 
-                    memory.push_return(value.cdr);
-
-                    Ok(())
+                    Ok(value.cdr)
                 })),
         ].into_iter().enumerate().map(|(index, (k, v))|
         {
@@ -947,7 +922,7 @@ impl Primitives
         mut args: ArgsWrapper,
         op_integer: FI,
         op_float: FF
-    ) -> Result<(), Error>
+    ) -> Result<LispValue, Error>
     where
         FI: Fn(i32, i32) -> LispValue,
         FF: Fn(f32, f32) -> LispValue
@@ -962,9 +937,8 @@ impl Primitives
         if !is_true || args.is_empty()
         {
             args.clear(memory);
-            memory.push_return(output);
 
-            Ok(())
+            Ok(output)
         } else
         {
             args.push(memory, second);
@@ -978,7 +952,7 @@ impl Primitives
         mut args: ArgsWrapper,
         op_integer: FI,
         op_float: FF
-    ) -> Result<(), Error>
+    ) -> Result<LispValue, Error>
     where
         FI: Fn(i32, i32) -> LispValue,
         FF: Fn(f32, f32) -> LispValue
@@ -990,9 +964,7 @@ impl Primitives
 
         if args.is_empty()
         {
-            memory.push_return(output);
-
-            Ok(())
+            Ok(output)
         } else
         {
             args.push(memory, output);

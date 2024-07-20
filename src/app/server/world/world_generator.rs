@@ -219,9 +219,7 @@ impl ChunkGenerator
 
                 let tile = names_map[&name];
 
-                memory.push_return(LispValue::new_integer(tile.id() as i32));
-
-                Ok(())
+                Ok(LispValue::new_integer(tile.id() as i32))
             }));
 
         primitives

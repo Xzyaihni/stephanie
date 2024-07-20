@@ -295,9 +295,7 @@ impl Game
                 let entity = Self::pop_entity(&mut args, memory)?;
                 f(entities, entity, memory, args)?;
 
-                memory.push_return(LispValue::new_empty_list());
-
-                Ok(())
+                Ok(LispValue::new_empty_list())
             }));
     }
 
@@ -323,9 +321,7 @@ impl Game
                     let entity = collided.map(|collided| Self::push_entity(env, memory, collided))
                         .unwrap_or_else(LispValue::new_empty_list);
 
-                    memory.push_return(entity);
-
-                    Ok(())
+                    Ok(entity)
                 }));
         }
 
@@ -424,9 +420,7 @@ impl Game
 
                     inventory.push(Item{id});
 
-                    memory.push_return(LispValue::new_empty_list());
-
-                    Ok(())
+                    Ok(LispValue::new_empty_list())
                 }));
         }
 
@@ -437,11 +431,7 @@ impl Game
                 "player-entity",
                 PrimitiveProcedureInfo::new_simple(0, move |_state, memory, env, _args|
                 {
-                    let entity = Self::push_entity(env, memory, player_entity);
-
-                    memory.push_return(entity);
-
-                    Ok(())
+                    Ok(Self::push_entity(env, memory, player_entity))
                 }));
         }
 
@@ -459,10 +449,7 @@ impl Game
 
                     let position = entities.transform(entity).unwrap().position;
 
-                    let list = memory.cons_list(env, [position.x, position.y, position.z]);
-                    memory.push_return(list);
-
-                    Ok(())
+                    Ok(memory.cons_list(env, [position.x, position.y, position.z]))
                 }));
         }
 
@@ -480,9 +467,7 @@ impl Game
 
                     eprintln!("entity info: {}", entities.info_ref(entity));
 
-                    memory.push_return(LispValue::new_empty_list());
-
-                    Ok(())
+                    Ok(LispValue::new_empty_list())
                 }));
         }
 
