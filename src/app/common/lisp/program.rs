@@ -266,21 +266,37 @@ impl PrimitiveProcedureInfo
             action: Action
         |
         {
-            let position = args.position;
+            let value = {
+                let position = args.position;
 
-            let action = if EFFECT { Action::Return } else { action };
-            let args = args.apply_args(state, memory, env, action)?;
+                let action = if EFFECT { Action::Return } else { action };
+                let args = args.apply_args(state, memory, env, action)?;
 
-            if !EFFECT
+                if !EFFECT
+                {
+                    match action
+                    {
+                        Action::Return => (),
+                        Action::None => return Ok(())
+                    }
+                }
+
+                on_apply(state, memory, env, args).with_position(position)
+            };
+
+            if EFFECT
             {
                 match action
                 {
                     Action::Return => (),
-                    Action::None => return Ok(())
+                    Action::None =>
+                    {
+                        memory.pop_return();
+                    }
                 }
             }
 
-            on_apply(state, memory, env, args).with_position(position)
+            value
         });
 
         Self{
@@ -556,6 +572,17 @@ impl Primitives
         }
 
         let (indices, primitives): (HashMap<_, _>, Vec<_>) = [
+            ("display",
+                PrimitiveProcedureInfo::new_simple_effect(1, move |_state, memory, _env, mut args|
+                {
+                    let arg = args.pop(memory);
+
+                    println!("{}", arg.to_string(memory));
+
+                    memory.push_return(LispValue::new_empty_list());
+
+                    Ok(())
+                })),
             ("make-vector",
                 PrimitiveProcedureInfo::new_simple(2, |_state, memory, env, mut args|
                 {

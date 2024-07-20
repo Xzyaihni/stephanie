@@ -11,6 +11,12 @@
                             "end": 20
                         }
                     }
+                },
+                {
+                    "name": "building_zero",
+                    "content": {
+                        "Number": 2
+                    }
                 }
             ],
             "weight": 4,

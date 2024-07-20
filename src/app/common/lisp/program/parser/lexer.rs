@@ -83,26 +83,51 @@ impl<'a> Lexer<'a>
 
     fn parse_one(&mut self) -> Option<LexemePos>
     {
+        let mut position = self.position;
         let mut current = String::new();
+        let mut comment = false;
         
         loop
         {
             if let Some(c) = self.next_char()
             {
-                let position = self.position;
                 self.position.next_char();
+
+                if c == '\n'
+                {
+                    self.position.next_line();
+
+                    if comment
+                    {
+                        self.consume_char();
+
+                        comment = false;
+                        continue;
+                    }
+                }
+
+                if comment || c == ';'
+                {
+                    if current.is_empty()
+                    {
+                        self.consume_char();
+                        comment = true;
+                        continue;
+                    }
+
+                    return Some(LexemePos{
+                        position,
+                        lexeme: Lexeme::Value(current)
+                    });
+                }
 
                 if c.is_whitespace()
                 {
-                    if c == '\n'
-                    {
-                        self.position.next_line();
-                    }
-
                     self.consume_char();
 
                     if current.is_empty()
                     {
+                        position = self.position;
                         continue;
                     }
 

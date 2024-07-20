@@ -1,22 +1,20 @@
 [
     {
-        "name": "asphalt",
-        "texture": "asphalt.png"
+        "name": "asphalt"
     },
     {
-        "name": "grass",
-        "texture": "grassie.png"
+        "name": "grassie"
     },
     {
-        "name": "concrete",
-        "texture": "concrete.png"
+        "name": "concrete"
     },
     {
-        "name": "wood",
-        "texture": "wood.png"
+        "name": "wood"
     },
     {
-        "name": "soil",
-        "texture": "soil.png"
+        "name": "soil"
+    },
+    {
+        "name": "glass"
     }
 ]

@@ -174,12 +174,15 @@ impl ChunkGenerator
 
         let parent_directory = PathBuf::from("world_generation");
 
-        let (environment, lambdas) = Self::default_environment(&parent_directory);
+        let primitives = Rc::new(Self::default_primitives(&tilemap));
+
+        let (environment, lambdas) = Self::default_environment(
+            primitives.clone(),
+            &parent_directory
+        );
 
         let environment = Rc::new(RefCell::new(environment));
         let memory = Rc::new(RefCell::new(LispMemory::new(1024)));
-
-        let primitives = Rc::new(Self::default_primitives(&tilemap));
 
         let mut this = Self{environment, lambdas, primitives, memory, chunks, tilemap};
 
@@ -224,15 +227,28 @@ impl ChunkGenerator
         primitives
     }
 
-    fn default_environment(path: &Path) -> (Mappings, Lambdas)
+    fn default_environment(
+        primitives: Rc<Primitives>,
+        path: &Path
+    ) -> (Mappings, Lambdas)
     {
         let name = "default.scm";
         let path = path.join(name);
         let default_code = fs::read_to_string(path)
             .unwrap_or_else(|err| panic!("{name} must exist >_< ({err})"));
 
-        Lisp::new_mappings_lambdas(&default_code)
-            .unwrap_or_else(|err| panic!("{name} must run ({err})"))
+        let mut memory = Lisp::default_memory();
+        let config = LispConfig{
+            environment: None,
+            lambdas: None,
+            primitives
+        };
+
+        unsafe{ LispRef::new_with_config(config, &default_code) }
+            .and_then(|mut x|
+            {
+                x.run_mappings_lambdas(&mut memory)
+            }).unwrap_or_else(|err| panic!("{name} must run ({err})"))
     }
 
     fn parse_function(
@@ -275,34 +291,38 @@ impl ChunkGenerator
 
         let memory = &mut self.memory.borrow_mut();
 
-        let chunk_name = group.this;
-        let this_chunk = self.chunks.get_mut(chunk_name)
-            .unwrap_or_else(||
+        let tiles = {
+            let chunk_name = group.this;
+            let this_chunk = self.chunks.get_mut(chunk_name)
+                .unwrap_or_else(||
+                {
+                    panic!("worldchunk named `{}` doesnt exist", group.this)
+                });
+
+            let output = this_chunk.run_with_memory(memory)
+                .unwrap_or_else(|err|
+                {
+                    panic!("runtime lisp error: {err} (in {chunk_name})")
+                });
+
+            let output = output.as_vector_ref()
+                .unwrap_or_else(|err|
+                {
+                    panic!("expected vector: {err}")
+                });
+
+            if output.tag != ValueTag::Integer
             {
-                panic!("worldchunk named `{}` doesnt exist", group.this)
-            });
+                panic!("wrong vector type `{:?}`", output.tag);
+            }
 
-        let output = this_chunk.run_with_memory(memory)
-            .unwrap_or_else(|err|
+            output.values.iter().map(|x|
             {
-                panic!("runtime lisp error: {err} (in {chunk_name})")
-            });
+                Tile::new(unsafe{ x.integer as usize })
+            }).collect()
+        };
 
-        let output = output.as_vector_ref()
-            .unwrap_or_else(|err|
-            {
-                panic!("expected vector: {err}")
-            });
-
-        if output.tag != ValueTag::Integer
-        {
-            panic!("wrong vector type `{:?}`", output.tag);
-        }
-
-        let tiles = output.values.iter().map(|x|
-        {
-            Tile::new(unsafe{ x.integer as usize })
-        }).collect();
+        debug_assert!(memory.returns_len() == 0);
 
         ChunksContainer::from_raw(WORLD_CHUNK_SIZE, tiles)
     }

@@ -1508,9 +1508,10 @@ impl Character
         let z = direction.z;
 
         direction.z = 0.0;
-        let direction = Unit::new_normalize(direction);
+        let direction = Unit::try_new(direction, 0.01);
 
-        if let Some(speed) = anatomy.speed()
+        if let Some((speed, direction)) = anatomy.speed()
+            .and_then(|speed| direction.map(|direction| (speed, direction)))
         {
             let speed = if self.is_sprinting()
             {

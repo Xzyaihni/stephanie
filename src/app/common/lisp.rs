@@ -153,9 +153,9 @@ impl ValueTag
                 | ValueTag::Char
                 | ValueTag::Procedure
                 | ValueTag::PrimitiveProcedure
+                | ValueTag::Symbol
                 | ValueTag::Special => false,
             ValueTag::String
-                | ValueTag::Symbol
                 | ValueTag::List
                 | ValueTag::Vector => true
         }
@@ -389,7 +389,7 @@ impl LispValue
     {
         match self.tag
         {
-            ValueTag::Symbol => memory.get_symbol(unsafe{ self.value.symbol }),
+            ValueTag::Symbol => Ok(memory.get_symbol(unsafe{ self.value.symbol })),
             x => Err(Error::WrongType{expected: ValueTag::Symbol, got: x})
         }
     }
@@ -501,7 +501,7 @@ impl LispValue
             }),
             ValueTag::Symbol => memory.map(|memory|
             {
-                let s = memory.get_symbol(unsafe{ self.value.symbol }).unwrap();
+                let s = memory.get_symbol(unsafe{ self.value.symbol });
 
                 format!("'{s}")
             }),
@@ -679,11 +679,6 @@ impl MemoryBlock
         }
     }
 
-    pub fn get_symbol(&self, id: usize) -> Result<String, Error>
-    {
-        self.get_string(id)
-    }
-
     pub fn get_string(&self, id: usize) -> Result<String, Error>
     {
         let vec = self.get_vector_ref(id);
@@ -779,6 +774,7 @@ impl MemoryBlock
 pub struct LispMemory
 {
     stack_size: usize,
+    symbols: Vec<String>,
     memory: MemoryBlock,
     swap_memory: MemoryBlock,
     returns: Vec<LispValue>
@@ -789,10 +785,18 @@ impl LispMemory
     pub fn new(memory_size: usize) -> Self
     {
         let stack_size = 256;
+
+        let symbols = Vec::new();
         let memory = MemoryBlock::new(memory_size);
         let swap_memory = MemoryBlock::new(memory_size);
 
-        Self{stack_size, memory, swap_memory, returns: Vec::with_capacity(stack_size)}
+        Self{
+            stack_size,
+            symbols,
+            memory,
+            swap_memory,
+            returns: Vec::with_capacity(stack_size)
+        }
     }
 
     pub fn clear(&mut self)
@@ -830,7 +834,7 @@ impl LispMemory
 
                 output
             },
-            ValueTag::Symbol | ValueTag::Vector | ValueTag::String =>
+            ValueTag::Vector | ValueTag::String =>
             {
                 // doesnt do broken hearts stuff so cycles will blow up memory
                 // but wutever!
@@ -857,7 +861,6 @@ impl LispMemory
 
                 match value.tag
                 {
-                    ValueTag::Symbol => LispValue::new_symbol(id),
                     ValueTag::String => LispValue::new_string(id),
                     ValueTag::Vector => LispValue::new_vector(id),
                     _ => unreachable!()
@@ -910,7 +913,17 @@ impl LispMemory
 
     pub fn pop_return(&mut self) -> LispValue
     {
-        self.returns.pop().expect("cant pop from an empty stack, how did this happen?")
+        self.try_pop_return().expect("cant pop from an empty stack, how did this happen?")
+    }
+
+    pub fn try_pop_return(&mut self) -> Option<LispValue>
+    {
+        self.returns.pop()
+    }
+
+    pub fn returns_len(&self) -> usize
+    {
+        self.returns.len()
     }
 
     pub fn get_vector_ref(&self, id: usize) -> LispVectorRef
@@ -928,9 +941,9 @@ impl LispMemory
         self.memory.get_vector(id)
     }
 
-    pub fn get_symbol(&self, id: usize) -> Result<String, Error>
+    pub fn get_symbol(&self, id: usize) -> String
     {
-        self.memory.get_symbol(id)
+        self.symbols[id].clone()
     }
 
     pub fn get_string(&self, id: usize) -> Result<String, Error>
@@ -988,7 +1001,13 @@ impl LispMemory
         cdr: LispValue
     ) -> LispValue
     {
+        self.push_return(car);
+        self.push_return(cdr);
+
         self.need_list_memory(env, 1);
+
+        let cdr = self.pop_return();
+        let car = self.pop_return();
 
         self.memory.cons(car, cdr)
     }
@@ -1011,17 +1030,11 @@ impl LispMemory
 
     pub fn new_symbol(
         &mut self,
-        env: &Environment,
-        x: &str
+        x: impl Into<String>
     ) -> LispValue
     {
-        let values: Vec<ValueRaw> = x.chars().map(|x| ValueRaw{char: x}).collect();
-        let vec = LispVectorRef{
-            tag: ValueTag::Char,
-            values: &values
-        };
-
-        let id = self.allocate_vector(env, vec);
+        let id = self.symbols.len();
+        self.symbols.push(x.into());
 
         LispValue::new_symbol(id)
     }
@@ -1056,13 +1069,21 @@ impl LispMemory
             Expression::List{car, cdr} =>
             {
                 let car = self.allocate_expression(env, &car.expression);
-                let cdr = self.allocate_expression(env, &cdr.expression);
+                self.push_return(car);
 
-                self.cons(env, car, cdr)
+                let cdr = self.allocate_expression(env, &cdr.expression);
+                self.push_return(cdr);
+
+                let this = self.cons(env, car, cdr);
+
+                let _cdr = self.pop_return();
+                let _car = self.pop_return();
+
+                this
             },
             Expression::Value(x) =>
             {
-                self.new_symbol(env, x)
+                self.new_symbol(x)
             },
             Expression::Application{..} => unreachable!(),
             Expression::Sequence{..} => unreachable!()
@@ -1164,6 +1185,8 @@ impl<'a> Drop for OutputWrapper<'a>
 {
     fn drop(&mut self)
     {
+        debug_assert!(self.memory.returns_len() == 0);
+
         self.memory.clear();
     }
 }
@@ -1250,7 +1273,11 @@ impl Lisp
 
     pub fn run_environment(&mut self) -> Result<Mappings, ErrorPos>
     {
-        self.lisp.run_environment(&mut self.memory)
+        let result = self.lisp.run_environment(&mut self.memory);
+
+        debug_assert!(self.memory.returns_len() == 0);
+
+        result
     }
 
     pub fn get_symbol(&self, value: LispValue) -> Result<String, Error>
@@ -1334,6 +1361,16 @@ impl LispRef
     pub fn lambdas(&self) -> &Lambdas
     {
         self.program.lambdas()
+    }
+
+    pub fn run_mappings_lambdas(
+        &mut self,
+        memory: &mut LispMemory
+    ) -> Result<(Mappings, Lambdas), ErrorPos>
+    {
+        let mappings = self.run_environment(memory)?;
+
+        Ok((mappings, self.lambdas().clone()))
     }
 
     pub fn run_environment(
@@ -1726,6 +1763,86 @@ mod tests
         let value = lisp.run().unwrap().as_integer().unwrap();
 
         assert_eq!(value, 11_i32);
+    }
+
+    #[test]
+    fn comments()
+    {
+        let code = "
+            ; hey this is a comment
+            ;this too is a comment
+            (+ 1 2 3) ; this adds some numbers!
+            ; yea
+        ";
+
+        let mut lisp = Lisp::new(code).unwrap();
+
+        let value = lisp.run().unwrap().as_integer().unwrap();
+
+        assert_eq!(value, 6);
+    }
+
+    #[test]
+    fn displaying_one()
+    {
+        let code = "
+            (display 'hey)
+
+            0
+        ";
+
+        let mut lisp = Lisp::new(code).unwrap();
+
+        let value = lisp.run().unwrap().as_integer().unwrap();
+
+        assert_eq!(value, 0);
+    }
+
+    #[test]
+    fn displaying()
+    {
+        let code = "
+            (display 'hey)
+            (display 'nice)
+            (display '(very nested stuff over here woooooo nice pro cool cooler cooleo #t cool true 3))
+
+            0
+        ";
+
+        let mut lisp = Lisp::new(code).unwrap();
+
+        let value = lisp.run().unwrap().as_integer().unwrap();
+
+        assert_eq!(value, 0);
+    }
+
+    #[test]
+    fn displaying_lots()
+    {
+        let code = "
+            (define (print-garbage)
+                (begin
+                    (display 'hey)
+                    (display 'nice)
+                    (display '(very nested stuff over here woooooo nice pro cool cooler cooleo #t cool true 3))))
+
+            (define (loop f i)
+                (if (= i 0)
+                    '()
+                    (begin
+                        (f)
+                        (loop f (- i 1)))))
+            
+            (loop print-garbage 50)
+
+            0
+        ";
+
+        let mut lisp = Lisp::new(code).unwrap();
+
+        let value = lisp.run().unwrap().as_integer().unwrap();
+
+        assert_eq!(value, 0);
     }
 
     #[test]

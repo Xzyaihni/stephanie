@@ -72,3 +72,50 @@
                 pos
                 (make-point (- (point-x size) 1) (point-y size))
                 tile))))
+
+(define (residential-building)
+    (begin
+        (define this-chunk (filled-chunk (tile 'air)))
+
+        (define (this-tile point tile) (put-tile this-chunk point tile))
+
+        (define wall-material (tile 'concrete))
+
+        ; walls
+        (vertical-line-length
+            this-chunk
+            (make-point 1 1)
+            (- size-y 2)
+            wall-material)
+
+        (vertical-line-length
+            this-chunk
+            (make-point (- size-x 2) 1)
+            (- size-y 2)
+            wall-material)
+
+        (horizontal-line-length
+            this-chunk
+            (make-point 1 1)
+            (- size-x 2)
+            wall-material)
+
+        (horizontal-line-length
+            this-chunk
+            (make-point 1 (- size-y 2))
+            (- size-x 2)
+            wall-material)
+
+        (define (add-windows x)
+            (begin
+                (this-tile
+                    (make-point x 3)
+                    (tile 'glass))
+                (this-tile
+                    (make-point x (- size-y 4))
+                    (tile 'glass))))
+
+        (add-windows 1)
+        (add-windows (- size-x 2))
+
+        this-chunk))

@@ -39,7 +39,7 @@ const PADDED_TILE_SIZE: usize = TEXTURE_TILE_SIZE + PADDING * 2;
 pub struct TileInfoRaw
 {
     pub name: String,
-    pub texture: PathBuf
+    pub texture: Option<PathBuf>
 }
 
 #[derive(Debug, Clone)]
@@ -156,7 +156,10 @@ impl TileMap
 
         let textures = tiles.iter().map(|tile_raw|
         {
-            let texture = textures_root.join(&tile_raw.texture);
+            let default_texture = format!("{}.png", tile_raw.name).into();
+
+            let texture = textures_root.join(tile_raw.texture.as_ref()
+                .unwrap_or(&default_texture));
 
             Self::load_texture(
                 TEXTURE_TILE_SIZE as u32,

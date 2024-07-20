@@ -272,7 +272,7 @@ impl Game
 
     fn push_entity(env: &Environment, memory: &mut LispMemory, entity: Entity) -> LispValue
     {
-        let tag = memory.new_symbol(env, "entity");
+        let tag = memory.new_symbol("entity");
         let local = LispValue::new_bool(entity.local());
         let id = LispValue::new_integer(entity.id() as i32);
 
@@ -510,9 +510,7 @@ impl Game
             let mut memory = Lisp::default_memory();
             lisp.and_then(|mut x|
             {
-                let mappings = x.run_environment(&mut memory)?;
-
-                Ok((mappings, x.lambdas().clone()))
+                x.run_mappings_lambdas(&mut memory)
             }).unwrap_or_else(|err| panic!("error in stdlib: {err}"))
         };
 
@@ -681,7 +679,12 @@ impl<'a> PlayerContainer<'a>
 
     pub fn on_control(&mut self, state: ControlState, control: Control)
     {
-        if let Control::Crawl = control
+        let is_floating = self.game_state.entities().physical(self.info.entity).map(|x|
+        {
+            x.floating
+        }).unwrap_or(false);
+
+        if control == Control::Crawl && !is_floating 
         {
             let entities = self.game_state.entities();
             if let Some(mut anatomy) = entities.anatomy_mut(self.info.entity)
@@ -1081,32 +1084,48 @@ impl<'a> PlayerContainer<'a>
             move_direction(Vector3::y());
         }
 
-        movement_direction.and_then(|x|
+        let is_flying = self.game_state.entities().physical(self.info.entity).map(|x|
         {
-            Unit::try_new(x, 0.1).as_deref().copied()
-        }).map(|mut direction|
+            x.floating
+        }).unwrap_or(false);
+
+        let add_flight = |direction: Option<Vector3<f32>>|
         {
-            if self.game_state.entities().physical(self.info.entity).map(|x|
-            {
-                x.floating
-            }).unwrap_or(false)
+            if is_flying
             {
                 let flight_speed = 0.1;
 
-                direction.z = if self.game_state.pressed(Control::Jump)
+                let z = if self.game_state.pressed(Control::Jump)
                 {
-                    flight_speed
+                    Some(flight_speed)
                 } else if self.game_state.pressed(Control::Crawl)
                 {
-                    -flight_speed
+                    Some(-flight_speed)
                 } else
                 {
-                    0.0
+                    None
                 };
-            }
 
-            direction
-        })
+                if let Some(z) = z
+                {
+                    let mut direction = direction.unwrap_or_default();
+                    direction.z = z;
+
+                    Some(direction)
+                } else
+                {
+                    direction
+                }
+            } else
+            {
+                direction
+            }
+        };
+
+        add_flight(movement_direction.and_then(|x|
+        {
+            Unit::try_new(x, 0.1).as_deref().copied()
+        }))
     }
 
     pub fn walk(&mut self, direction: Vector3<f32>)

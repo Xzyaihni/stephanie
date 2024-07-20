@@ -1,1 +1,1 @@
-(filled-chunk (tile 'grass))
+(filled-chunk (tile 'grassie))

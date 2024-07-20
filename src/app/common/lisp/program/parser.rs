@@ -247,6 +247,8 @@ impl Parser
         let position = self.current_position;
         let lexeme = self.lexemes.next().ok_or(ErrorPos{position, error: Error::ExpectedClose})?;
 
+        let position = lexeme.position;
+
         let ast = match lexeme.lexeme
         {
             Lexeme::Value(x) =>

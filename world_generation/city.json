@@ -5,6 +5,12 @@
             "variable": "Height",
             "tag": "building_height",
             "condition": "Less"
+        },
+        {
+            "name": "building_first_floor",
+            "variable": "Height",
+            "tag": "building_zero",
+            "condition": "Equal"
         }
     ]
 }
