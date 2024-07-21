@@ -68,6 +68,7 @@ pub struct VisualChunkInfo
     draw_next: ChunkSlice<bool>
 }
 
+#[derive(Debug)]
 pub struct VisualChunk
 {
     objects: ChunkSlice<ChunkObjects<Option<Object>>>,

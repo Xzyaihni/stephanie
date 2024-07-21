@@ -5,6 +5,7 @@ use std::{
     rc::Rc,
     cell::RefCell,
     ops::Index,
+    cmp::Ordering,
     collections::{HashMap, HashSet},
     path::{Path, PathBuf}
 };
@@ -393,11 +394,6 @@ impl<S: SaveLoad<WorldChunk>> WorldGenerator<S>
         {
             let global_z = global_mapper.to_global_z(z);
 
-            if global_z == 0
-            {
-                continue;
-            }
-
             let this_slice = world_chunks.flat_slice_iter_mut(z).filter(|(_pos, chunk)|
             {
                 chunk.is_none()
@@ -410,37 +406,48 @@ impl<S: SaveLoad<WorldChunk>> WorldGenerator<S>
                 *pair.1 = Some(chunk);
             };
 
-            if global_z > 0
+            match global_z.cmp(&0)
             {
-                // above ground
-                
-                this_slice.for_each(|pair|
+                Ordering::Equal =>
                 {
-                    let pos = pair.0;
-
-                    let this_surface = world_plane.get_local(pos)
-                        .as_ref()
-                        .expect("world_plane must be completely generated");
-
-                    let info = ConditionalInfo{
-                        height: global_z,
-                        tags: this_surface.tags()
-                    };
-
-                    let chunk = self.rules.city.generate(info);
-
-                    applier(pair, chunk);
-                });
-            } else
-            {
-                // underground
-
-                this_slice.for_each(|pair|
+                    this_slice.for_each(|(pos, chunk)|
+                    {
+                        *chunk = Some(self.saver.load(global_mapper.to_global(pos)).unwrap());
+                    });
+                },
+                Ordering::Greater =>
                 {
-                    let chunk = WorldChunk::new(self.rules.underground.fallback(), Vec::new());
+                    // above ground
+                    
+                    this_slice.for_each(|pair|
+                    {
+                        let pos = pair.0;
 
-                    applier(pair, chunk);
-                });
+                        let this_surface = world_plane.get_local(pos)
+                            .as_ref()
+                            .expect("world_plane must be completely generated");
+
+                        let info = ConditionalInfo{
+                            height: global_z,
+                            tags: this_surface.tags()
+                        };
+
+                        let chunk = self.rules.city.generate(info);
+
+                        applier(pair, chunk);
+                    });
+                },
+                Ordering::Less =>
+                {
+                    // underground
+
+                    this_slice.for_each(|pair|
+                    {
+                        let chunk = WorldChunk::new(self.rules.underground.fallback(), Vec::new());
+
+                        applier(pair, chunk);
+                    });
+                }
             }
         }
     }

@@ -103,6 +103,11 @@ impl World
         (min_scale, max_scale)
     }
 
+    pub fn debug_chunk(&self, pos: Pos3<f32>) -> String
+    {
+        self.overmap.debug_chunk(self.tile_of(pos).chunk)
+    }
+
     pub fn tile(&self, index: TilePos) -> Option<&Tile>
     {
         self.overmap.tile(index)

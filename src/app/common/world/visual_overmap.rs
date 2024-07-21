@@ -299,9 +299,14 @@ impl VisualOvermap
         });
     }
 
+    pub fn get(&self, pos: LocalPos) -> &VisualChunk
+    {
+        &self.chunks[pos].1
+    }
+
     pub fn is_generated(&self, pos: LocalPos) -> bool
     {
-        self.chunks[pos].1.is_generated()
+        self.get(pos).is_generated()
     }
 
     pub fn remove(&mut self, pos: LocalPos)

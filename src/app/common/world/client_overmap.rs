@@ -245,6 +245,16 @@ impl ClientOvermap
         }
     }
 
+    pub fn debug_chunk(&self, pos: GlobalPos) -> String
+    {
+        self.to_local(pos).map(|local|
+        {
+            let s = format!("chunk: {:#?}\n", self.get(pos));
+
+            s + &format!("visual chunk: {:#?}", self.visual_overmap.get(local))
+        }).unwrap_or_default()
+    }
+
     pub fn update(&mut self, dt: f32)
     {
         self.visual_overmap.update(dt);

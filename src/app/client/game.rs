@@ -325,6 +325,24 @@ impl Game
                 }));
         }
 
+        {
+            let game_state = self.game_state.clone();
+
+            primitives.add(
+                "print-chunk-of",
+                PrimitiveProcedureInfo::new_simple_effect(1, move |_state, memory, _env, mut args|
+                {
+                    let game_state = game_state.borrow();
+
+                    let entity = Self::pop_entity(&mut args, memory)?;
+                    let position = game_state.entities().transform(entity).unwrap().position;
+
+                    eprintln!("entity info: {}", game_state.world.debug_chunk(position.into()));
+
+                    Ok(LispValue::new_empty_list())
+                }));
+        }
+
         self.add_simple_setter(&mut primitives, "set-floating", |entities, entity, memory, mut args|
         {
             let state = args.pop(memory).as_bool()?;
