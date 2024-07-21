@@ -159,7 +159,7 @@ impl From<lisp::Error> for ParseError
 
 pub struct ChunkGenerator
 {
-    environment: Rc<RefCell<Mappings>>,
+    environment: Rc<Mappings>,
     lambdas: Lambdas,
     primitives: Rc<Primitives>,
     memory: Rc<RefCell<LispMemory>>,
@@ -182,7 +182,7 @@ impl ChunkGenerator
             &parent_directory
         );
 
-        let environment = Rc::new(RefCell::new(environment));
+        let environment = Rc::new(environment);
         let memory = Rc::new(RefCell::new(LispMemory::new(1024)));
 
         let mut this = Self{environment, lambdas, primitives, memory, chunks, tilemap};

@@ -103,7 +103,41 @@ impl Game
             })
         };
 
-        Self{info: Rc::new(RefCell::new(info)), game_state}
+        let mut this = Self{info: Rc::new(RefCell::new(info)), game_state};
+
+        let standard_code = {
+            let load = |path: &str|
+            {
+                fs::read_to_string(path)
+                    .unwrap_or_else(|err| panic!("{path} must exist ({err})"))
+            };
+
+            load("lisp/standard.scm") + &load("lisp/console.scm")
+        };
+
+        let console_infos = {
+            let primitives = this.console_primitives();
+
+            let config = LispConfig{
+                environment: None,
+                lambdas: None,
+                primitives: primitives.clone()
+            };
+
+            let lisp = unsafe{ LispRef::new_with_config(config, &standard_code) };
+
+            let mut memory = Lisp::default_memory();
+            let (environment, lambdas) = lisp.and_then(|mut x|
+            {
+                x.run_mappings_lambdas(&mut memory)
+            }).unwrap_or_else(|err| panic!("error in stdlib: {err}"));
+
+            (Rc::new(environment), lambdas, primitives)
+        };
+
+        this.info.borrow_mut().console_infos = Some(console_infos);
+
+        this
     }
 
     fn player_container<T>(&mut self, f: impl FnOnce(PlayerContainer) -> T) -> T
@@ -299,7 +333,7 @@ impl Game
             }));
     }
 
-    fn console_command(&mut self, command: String)
+    fn console_primitives(&mut self) -> Rc<Primitives>
     {
         let mut primitives = Primitives::new();
 
@@ -475,6 +509,31 @@ impl Game
             let game_state = self.game_state.clone();
 
             primitives.add(
+                "print-component",
+                PrimitiveProcedureInfo::new_simple_effect(2, move |_state, memory, _env, mut args|
+                {
+                    let game_state = game_state.borrow();
+                    let entities = game_state.entities();
+
+                    let entity = Self::pop_entity(&mut args, memory)?;
+                    let component = args.pop(memory).as_symbol(memory)?;
+
+                    if let Some(info) = entities.component_info(entity, &component)
+                    {
+                        eprintln!("{component}: {info}");
+                    } else
+                    {
+                        eprintln!("{component} doesnt exist");
+                    }
+
+                    Ok(LispValue::new_empty_list())
+                }));
+        }
+
+        {
+            let game_state = self.game_state.clone();
+
+            primitives.add(
                 "print-entity-info",
                 PrimitiveProcedureInfo::new_simple_effect(1, move |_state, memory, _env, mut args|
                 {
@@ -489,38 +548,20 @@ impl Game
                 }));
         }
 
-        let standard_code = {
-            let load = |path: &str|
-            {
-                fs::read_to_string(path)
-                    .unwrap_or_else(|err| panic!("{path} must exist ({err})"))
-            };
+        Rc::new(primitives)
+    }
 
-            load("lisp/standard.scm") + &load("lisp/console.scm")
-        };
+    fn console_command(&mut self, command: String)
+    {
+        let config = {
+            let infos = self.info.borrow();
+            let infos = infos.console_infos.as_ref().expect("always initialized");
 
-        let primitives = Rc::new(primitives);
-
-        let (environment, lambdas) = {
-            let config = LispConfig{
-                environment: None,
-                lambdas: None,
-                primitives: primitives.clone()
-            };
-
-            let lisp = unsafe{ LispRef::new_with_config(config, &standard_code) };
-
-            let mut memory = Lisp::default_memory();
-            lisp.and_then(|mut x|
-            {
-                x.run_mappings_lambdas(&mut memory)
-            }).unwrap_or_else(|err| panic!("error in stdlib: {err}"))
-        };
-
-        let config = LispConfig{
-            environment: Some(Rc::new(RefCell::new(environment))),
-            lambdas: Some(lambdas),
-            primitives
+            LispConfig{
+                environment: Some(infos.0.clone()),
+                lambdas: Some(infos.1.clone()),
+                primitives: infos.2.clone()
+            }
         };
 
         let mut lisp = match unsafe{ LispRef::new_with_config(config, &command) }
@@ -534,7 +575,7 @@ impl Game
         };
 
         let mut memory = Lisp::default_memory();
-        let result = match lisp.run_with_memory(&mut memory)
+        let (new_env, result) = match lisp.run_with_memory_environment(&mut memory)
         {
             Ok(x) => x,
             Err(err) =>
@@ -543,6 +584,8 @@ impl Game
                 return;
             }
         };
+
+        self.info.borrow_mut().update_environment(new_env, lisp.lambdas().clone());
 
         eprintln!("ran command {command}, result: {result}");
     }
@@ -574,6 +617,7 @@ struct PlayerInfo
     other_entity: Option<Entity>,
     console_entity: Entity,
     console_contents: Option<String>,
+    console_infos: Option<(Rc<Mappings>, Lambdas, Rc<Primitives>)>,
     previous_stamina: Option<f32>,
     previous_cooldown: (f32, f32),
     inventory_open: bool,
@@ -591,10 +635,20 @@ impl PlayerInfo
             other_entity: None,
             console_entity: info.console_entity,
             console_contents: None,
+            console_infos: None,
             previous_stamina: None,
             previous_cooldown: (0.0, 0.0),
             inventory_open: false,
             other_inventory_open: false
+        }
+    }
+
+    pub fn update_environment(&mut self, new_env: Mappings, lambdas: Lambdas)
+    {
+        if let Some(x) = self.console_infos.as_mut()
+        {
+            x.0 = Rc::new(new_env);
+            x.1 = lambdas;
         }
     }
 }

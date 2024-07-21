@@ -1229,7 +1229,7 @@ impl<'a> OutputWrapper<'a>
 
 pub struct LispConfig
 {
-    pub environment: Option<Rc<RefCell<Mappings>>>,
+    pub environment: Option<Rc<Mappings>>,
     pub lambdas: Option<Lambdas>,
     pub primitives: Rc<Primitives>
 }
@@ -1314,9 +1314,10 @@ impl DerefMut for Lisp
     }
 }
 
+#[derive(Debug)]
 pub struct LispRef
 {
-    environment: Rc<RefCell<Mappings>>,
+    environment: Rc<Mappings>,
     program: Program
 }
 
@@ -1331,7 +1332,7 @@ impl LispRef
             let mut env = Mappings::new();
             config.primitives.add_to_env(&mut env);
 
-            Rc::new(RefCell::new(env))
+            Rc::new(env)
         });
 
         let program = Program::parse(config.primitives, config.lambdas, code)?;
@@ -1355,7 +1356,7 @@ impl LispRef
         memory: &'a mut LispMemory
     ) -> Result<OutputWrapper<'a>, ErrorPos>
     {
-        self.run_inner(memory).map(|(_env, value)| value)
+        self.run_with_memory_environment(memory).map(|(_env, value)| value)
     }
 
     pub fn lambdas(&self) -> &Lambdas
@@ -1378,17 +1379,17 @@ impl LispRef
         memory: &mut LispMemory
     ) -> Result<Mappings, ErrorPos>
     {
-        self.run_inner(memory).map(|(env, _value)| env)
+        self.run_with_memory_environment(memory).map(|(env, _value)| env)
     }
 
     fn new_environment(&self) -> Mappings
     {
-        let env: &Mappings = &self.environment.borrow();
+        let env: &Mappings = &self.environment;
 
         Mappings::clone(env)
     }
 
-    fn run_inner<'a>(
+    pub fn run_with_memory_environment<'a>(
         &mut self,
         memory: &'a mut LispMemory
     ) -> Result<(Mappings, OutputWrapper<'a>), ErrorPos>

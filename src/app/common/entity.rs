@@ -982,7 +982,7 @@ macro_rules! define_entities_both
             $(pub $name: ObjectsStore<ComponentWrapper<$component_type>>,)+
         }
 
-        impl<$($component_type: OnSet<Self>,)+> Entities<$($component_type,)+>
+        impl<$($component_type: OnSet<Self> + Debug,)+> Entities<$($component_type,)+>
         where
             Self: AnyEntities,
             for<'a> &'a ParentType: Into<&'a Parent>
@@ -1020,6 +1020,28 @@ macro_rules! define_entities_both
                     {
                         f(entity)
                     })
+            }
+
+            pub fn component_info(&self, entity: Entity, name: &str) -> Option<String>
+            {
+                let name = name.replace(' ', "_").to_lowercase();
+                match name.as_ref()
+                {
+                    $(stringify!($name) =>
+                    {
+                        let info = self.$name(entity)
+                            .map(|component|
+                            {
+                                format!("{component:#?}")
+                            }).unwrap_or_else(||
+                            {
+                                format!("entity doesnt have {name} component")
+                            });
+
+                        Some(info)
+                    },)+
+                    _ => None
+                }
             }
 
             pub fn info_ref(&self, entity: Entity) -> String
