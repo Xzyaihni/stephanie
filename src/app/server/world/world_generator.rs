@@ -360,11 +360,6 @@ impl<S: SaveLoad<WorldChunk>> WorldGenerator<S>
         Ok(Self{generator, saver, rules})
     }
 
-    pub fn exit(&mut self)
-    {
-        self.saver.exit();
-    }
-
     pub fn generate_surface(
         &mut self,
         world_chunks: &mut FlatChunksContainer<Option<WorldChunk>>,
@@ -389,6 +384,18 @@ impl<S: SaveLoad<WorldChunk>> WorldGenerator<S>
     )
     {
         self.load_missing(world_chunks.iter_mut(), global_mapper);
+        debug_assert!(world_plane.all_exist());
+
+        if let Some(z) = global_mapper.to_local_z(0)
+        {
+            world_chunks.flat_slice_iter_mut(z).filter(|(_pos, chunk)|
+            {
+                chunk.is_none()
+            }).for_each(|(pos, chunk)|
+            {
+                *chunk = world_plane.get_local(pos).clone();
+            });
+        }
 
         for z in (0..world_chunks.size().z).rev()
         {
@@ -408,13 +415,7 @@ impl<S: SaveLoad<WorldChunk>> WorldGenerator<S>
 
             match global_z.cmp(&0)
             {
-                Ordering::Equal =>
-                {
-                    this_slice.for_each(|(pos, chunk)|
-                    {
-                        *chunk = Some(self.saver.load(global_mapper.to_global(pos)).unwrap());
-                    });
-                },
+                Ordering::Equal => (),
                 Ordering::Greater =>
                 {
                     // above ground
@@ -423,9 +424,7 @@ impl<S: SaveLoad<WorldChunk>> WorldGenerator<S>
                     {
                         let pos = pair.0;
 
-                        let this_surface = world_plane.get_local(pos)
-                            .as_ref()
-                            .expect("world_plane must be completely generated");
+                        let this_surface = world_plane.world_chunk(pos);
 
                         let info = ConditionalInfo{
                             height: global_z,

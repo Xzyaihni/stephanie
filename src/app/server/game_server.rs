@@ -1,6 +1,8 @@
 use std::{
     f32,
     fmt,
+    mem,
+    thread::JoinHandle,
     ops::ControlFlow,
     net::TcpStream,
     sync::{
@@ -106,7 +108,22 @@ pub struct GameServer
     receiver: Receiver<(ConnectionId, Message, Entity)>,
     connection_receiver: Receiver<TcpStream>,
     connection_handler: Arc<RwLock<ConnectionsHandler>>,
+    receiver_handles: Vec<JoinHandle<()>>,
+    exited: bool,
     rare_timer: f32
+}
+
+impl Drop for GameServer
+{
+    fn drop(&mut self)
+    {
+        self.world.exit(&mut self.entities);
+
+        mem::take(&mut self.receiver_handles).into_iter().for_each(|receiver_handle|
+        {
+            receiver_handle.join().unwrap()
+        });
+    }
 }
 
 impl GameServer
@@ -127,7 +144,7 @@ impl GameServer
             data_infos.items_info.clone()
         )?;
 
-        sender_loop(connection_handler.clone());
+        let _sender_handle = sender_loop(connection_handler.clone());
 
         let (sender, receiver) = mpsc::channel();
 
@@ -142,11 +159,13 @@ impl GameServer
             receiver,
             connection_receiver,
             connection_handler,
+            receiver_handles: Vec::new(),
+            exited: false,
             rare_timer: 0.0
         }))
     }
 
-    pub fn update(&mut self, dt: f32)
+    pub fn update(&mut self, dt: f32) -> bool
     {
         self.process_messages();
 
@@ -171,6 +190,8 @@ impl GameServer
         {
             self.rare_timer -= dt;
         }
+
+        self.exited
     }
 
     fn rare(&mut self)
@@ -231,6 +252,11 @@ impl GameServer
         }
     }
 
+    fn exit(&mut self)
+    {
+        self.exited = true;
+    }
+
     pub fn connect(&mut self, stream: TcpStream) -> Result<(), ConnectionError>
     {
         if self.connection_handler.read().under_limit()
@@ -252,11 +278,17 @@ impl GameServer
         let sender0 = self.sender.clone();
         let sender1 = self.sender.clone();
 
-        receiver_loop(
+        let receiver_handle = receiver_loop(
             messager,
             move |message|
             {
-                if sender0.send((id, message, entity)).is_err()
+                let is_disconnect = match message
+                {
+                    Message::PlayerDisconnect{..} => true,
+                    _ => false
+                };
+
+                if sender0.send((id, message, entity)).is_err() || is_disconnect
                 {
                     ControlFlow::Break(())
                 } else
@@ -269,6 +301,8 @@ impl GameServer
                 let _ = sender1.send((id, Message::PlayerDisconnect{host: false}, entity));
             }
         );
+
+        self.receiver_handles.push(receiver_handle);
 
         Ok(())
     }
@@ -421,7 +455,7 @@ impl GameServer
 
         if host
         {
-            self.world.exit(&mut self.entities);
+            self.exit();
         }
 
         let removed_name = removed.as_ref().map(|x| x.name().to_owned());

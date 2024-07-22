@@ -107,6 +107,11 @@ pub type EnemiesInfo = GenericInfo<EnemyId, EnemyInfo>;
 
 impl EnemiesInfo
 {
+    pub fn empty() -> Self
+    {
+        GenericInfo::new(Vec::new())
+    }
+
     pub fn parse(
         assets: &Assets,
         characters_info: &mut CharactersInfo,
@@ -137,13 +142,13 @@ impl EnemiesInfo
         GenericInfo::new(enemies)
     }
 
-    pub fn weighted_random(&self, commonness: f64) -> EnemyId
+    pub fn weighted_random(&self, commonness: f64) -> Option<EnemyId>
     {
         let ids = (0..self.items().len()).map(EnemyId::from);
 
         pick_by_commonness(commonness, ids, |id|
         {
             self.get(id).commonness as f64
-        }).unwrap()
+        })
     }
 }

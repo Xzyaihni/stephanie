@@ -1,7 +1,7 @@
 use std::{
     fs,
     f32,
-    rc::Rc,
+    rc::{Rc, Weak},
     cell::{RefMut, RefCell}
 };
 
@@ -50,15 +50,16 @@ pub trait DrawableEntity
 
 pub struct Game
 {
-    game_state: Rc<RefCell<GameState>>,
+    game_state: Weak<RefCell<GameState>>,
     info: Rc<RefCell<PlayerInfo>>
 }
 
 impl Game
 {
-    pub fn new(game_state: Rc<RefCell<GameState>>) -> Self
+    pub fn new(game_state: Weak<RefCell<GameState>>) -> Self
     {
         let info = {
+            let game_state = game_state.upgrade().unwrap();
             let mut game_state = game_state.borrow_mut();
             let player = game_state.player();
 
@@ -142,7 +143,8 @@ impl Game
 
     fn player_container<T>(&mut self, f: impl FnOnce(PlayerContainer) -> T) -> T
     {
-        let mut game_state = self.game_state.borrow_mut();
+        let game_state = self.game_state.upgrade().unwrap();
+        let mut game_state = game_state.borrow_mut();
         let mut info = self.info.borrow_mut();
 
         f(PlayerContainer::new(&mut info, &mut game_state))
@@ -151,7 +153,8 @@ impl Game
     pub fn on_player_connected(&mut self)
     {
         {
-            let mut game_state = self.game_state.borrow_mut();
+            let game_state = self.game_state.upgrade().unwrap();
+            let mut game_state = game_state.borrow_mut();
             let ui = game_state.ui.clone();
             let info = self.info.clone();
 
@@ -189,22 +192,23 @@ impl Game
 
     pub fn update(&mut self, dt: f32)
     {
-        self.game_state.borrow_mut().update_pre(dt);
+        let game_state = self.game_state.upgrade().unwrap();
+        game_state.borrow_mut().update_pre(dt);
 
         self.player_container(|mut x| x.this_update(dt));
 
-        let mut game_state = self.game_state.borrow_mut();
-        let changed_this_frame = game_state.controls.changed_this_frame();
-        let mouse_position = game_state.world_mouse_position();
+        let mut game_state_mut = game_state.borrow_mut();
+        let changed_this_frame = game_state_mut.controls.changed_this_frame();
+        let mouse_position = game_state_mut.world_mouse_position();
 
-        drop(game_state);
+        drop(game_state_mut);
 
         for (state, control) in changed_this_frame
         {
             let event = UiEvent::from_control(mouse_position, state, control);
             if let Some(event) = event
             {
-                let mut game_state = self.game_state.borrow_mut();
+                let mut game_state = game_state.borrow_mut();
                 let camera_position = game_state.camera.read().position().coords.xy();
 
                 let captured = game_state.entities.entities.update_ui(camera_position, event);
@@ -218,7 +222,7 @@ impl Game
             self.on_control(state, control);
         }
 
-        self.game_state.borrow_mut().update(dt);
+        game_state.borrow_mut().update(dt);
     }
 
     pub fn on_control(&mut self, state: ControlState, control: Control)
@@ -323,6 +327,7 @@ impl Game
             name,
             PrimitiveProcedureInfo::new_simple_effect(2, move |_state, memory, _env, mut args|
             {
+                let game_state = game_state.upgrade().unwrap();
                 let mut game_state = game_state.borrow_mut();
                 let entities = game_state.entities_mut();
 
@@ -345,6 +350,7 @@ impl Game
                 "mouse-collided",
                 PrimitiveProcedureInfo::new_simple(0, move |_state, memory, env, _args|
                 {
+                    let game_state = game_state.upgrade().unwrap();
                     let game_state = game_state.borrow();
                     let entities = game_state.entities();
 
@@ -366,6 +372,7 @@ impl Game
                 "print-chunk-of",
                 PrimitiveProcedureInfo::new_simple_effect(1, move |_state, memory, _env, mut args|
                 {
+                    let game_state = game_state.upgrade().unwrap();
                     let game_state = game_state.borrow();
 
                     let entity = Self::pop_entity(&mut args, memory)?;
@@ -457,6 +464,7 @@ impl Game
                 "add-item",
                 PrimitiveProcedureInfo::new_simple_effect(2, move |_state, memory, _env, mut args|
                 {
+                    let game_state = game_state.upgrade().unwrap();
                     let game_state = game_state.borrow_mut();
                     let entities = game_state.entities();
 
@@ -494,6 +502,7 @@ impl Game
                 "position-entity",
                 PrimitiveProcedureInfo::new_simple(1, move |_state, memory, env, mut args|
                 {
+                    let game_state = game_state.upgrade().unwrap();
                     let game_state = game_state.borrow();
                     let entities = game_state.entities();
 
@@ -512,6 +521,7 @@ impl Game
                 "print-component",
                 PrimitiveProcedureInfo::new_simple_effect(2, move |_state, memory, _env, mut args|
                 {
+                    let game_state = game_state.upgrade().unwrap();
                     let game_state = game_state.borrow();
                     let entities = game_state.entities();
 
@@ -537,6 +547,7 @@ impl Game
                 "print-entity-info",
                 PrimitiveProcedureInfo::new_simple_effect(1, move |_state, memory, _env, mut args|
                 {
+                    let game_state = game_state.upgrade().unwrap();
                     let game_state = game_state.borrow();
                     let entities = game_state.entities();
 

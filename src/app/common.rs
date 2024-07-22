@@ -207,7 +207,12 @@ impl MessagePasser
 
     pub fn receive_one(&mut self) -> Result<Option<Message>, bincode::Error>
     {
-        self.receive().map(|messages| messages.into_iter().next())
+        self.receive().map(|messages|
+        {
+            debug_assert!(messages.len() == 1);
+
+            messages.into_iter().next()
+        })
     }
 
     pub fn try_clone(&self) -> Self

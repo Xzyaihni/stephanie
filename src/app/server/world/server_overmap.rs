@@ -67,7 +67,7 @@ pub struct WorldPlane<S>
     indexer: Indexer
 }
 
-impl<S> WorldPlane<S>
+impl<S: SaveLoad<WorldChunk>> WorldPlane<S>
 {
     pub fn new(
         world_generator: Rc<RefCell<WorldGenerator<S>>>,
@@ -88,11 +88,20 @@ impl<S> WorldPlane<S>
         this
     }
 
+    #[allow(dead_code)]
+    pub fn all_exist(&self) -> bool
+    {
+        self.chunks.iter().all(|x| x.1.is_some())
+    }
+
     pub fn set_player_position(&mut self, mut player_position: GlobalPos)
     {
         player_position.0.z = 0;
 
+        let offset = player_position - self.indexer.player_position;
         self.indexer.player_position = player_position;
+
+        self.position_offset(offset.0);
     }
 
     pub fn world_chunk(&self, pos: LocalPos) -> &WorldChunk
@@ -100,7 +109,7 @@ impl<S> WorldPlane<S>
         S: SaveLoad<WorldChunk>
     {
         // flatindexer ignores the z pos, so i dont have to clear it
-        self.get_local(pos).as_ref().unwrap()
+        self.get_local(pos).as_ref().expect("worldchunk must exist")
     }
 }
 
@@ -273,7 +282,6 @@ impl<S: SaveLoad<WorldChunk>> ServerOvermap<S>
             non_vertical_offset.z = 0;
 
             self.world_plane.set_player_position(self.indexer.player_position);
-            self.world_plane.position_offset(non_vertical_offset);
         }
 
         self.position_offset(shift_offset);
@@ -402,8 +410,6 @@ mod tests
         {
             self.data.get(&pos).cloned()
         }
-
-        fn exit(&mut self) {}
     }
 
     #[test]

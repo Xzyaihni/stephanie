@@ -51,8 +51,6 @@ pub trait SaveLoad<T>
 {
     fn save(&mut self, pos: GlobalPos, chunk: T);
     fn load(&mut self, pos: GlobalPos) -> Option<T>;
-
-    fn exit(&mut self);
 }
 
 // this shouldnt be public but sure, rust
@@ -588,7 +586,14 @@ where
 {
     fn drop(&mut self)
     {
-        self.exit();
+        let mut file_saver = self.file_saver.lock();
+
+        while let Some(value) = self.cache.pop()
+        {
+            file_saver.save(value.into());
+        }
+
+        file_saver.flush();
     }
 }
 
@@ -610,19 +615,6 @@ where
             cache_amount,
             cache: BinaryHeap::new()
         }
-    }
-
-    pub fn exit(&mut self)
-    {
-        // eprintln!("dropping {}", std::any::type_name::<SaveT>());
-        let mut file_saver = self.file_saver.lock();
-
-        while let Some(value) = self.cache.pop()
-        {
-            file_saver.save(value.into());
-        }
-
-        file_saver.flush();
     }
 
     fn free_cache(&mut self, amount: usize)
@@ -685,13 +677,21 @@ impl SaveLoad<WorldChunk> for WorldChunkSaver
 
         let key = CachedKey::new(self.start, pos);
 
-        self.free_cache(1);
-        self.cache.push(CachedValue{key, value});
-    }
+        if self.cache.iter().any(|CachedValue{key, value}|
+        {
+            (key.pos == pos) && (value.index == index)
+        })
+        {
+            self.cache.retain(|CachedValue{key, value}|
+            {
+                !((key.pos == pos) && (value.index == index))
+            });
+        } else
+        {
+            self.free_cache(1);
+        }
 
-    fn exit(&mut self)
-    {
-        self.exit();
+        self.cache.push(CachedValue{key, value});
     }
 }
 
@@ -702,11 +702,6 @@ impl EntitiesSaver
         Self{
             saver: Saver::new(parent_path, cache_amount)
         }
-    }
-
-    pub fn exit(&mut self)
-    {
-        self.saver.exit();
     }
 
     pub fn load(&mut self, pos: GlobalPos) -> Option<Vec<EntityInfo>>
@@ -763,11 +758,6 @@ where
         let pair = ValuePair{key: pos, value};
 
         self.inner_save(pair);
-    }
-
-    fn exit(&mut self)
-    {
-        self.exit();
     }
 }
 

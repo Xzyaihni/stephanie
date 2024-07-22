@@ -667,7 +667,7 @@ macro_rules! common_trait_impl
 
         fn infos(&self) -> &DataInfos
         {
-            &self.infos
+            self.infos.as_ref().unwrap()
         }
 
         fn exists(&self, entity: Entity) -> bool
@@ -972,7 +972,7 @@ macro_rules! define_entities_both
             pub local_components: RefCell<ObjectsStore<ComponentsIndices>>,
             pub components: RefCell<ObjectsStore<ComponentsIndices>>,
             pub lazy_setter: RefCell<SetterQueue<$($component_type,)+>>,
-            infos: DataInfos,
+            infos: Option<DataInfos>,
             z_changed: RefCell<bool>,
             remove_queue: RefCell<Vec<Entity>>,
             create_queue: RefCell<Vec<(Entity, EntityInfo)>>,
@@ -987,13 +987,13 @@ macro_rules! define_entities_both
             Self: AnyEntities,
             for<'a> &'a ParentType: Into<&'a Parent>
         {
-            pub fn new(infos: DataInfos) -> Self
+            pub fn new(infos: impl Into<Option<DataInfos>>) -> Self
             {
                 Self{
                     local_components: RefCell::new(ObjectsStore::new()),
                     components: RefCell::new(ObjectsStore::new()),
                     lazy_setter: RefCell::new(Default::default()),
-                    infos,
+                    infos: infos.into(),
                     z_changed: RefCell::new(false),
                     remove_queue: RefCell::new(Vec::new()),
                     create_queue: RefCell::new(Vec::new()),

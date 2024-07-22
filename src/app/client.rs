@@ -148,7 +148,7 @@ impl Client
 
         let game_state = GameState::new(info);
 
-        let game = Game::new(game_state.clone());
+        let game = Game::new(Rc::downgrade(&game_state));
 
         let mut assets = assets.lock();
         let squares = Uvs::iter().map(|uvs|

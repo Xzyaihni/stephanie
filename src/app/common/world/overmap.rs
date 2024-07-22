@@ -170,6 +170,13 @@ pub trait OvermapIndexing: CommonIndexing
         (z as i32 - self.size().z as i32 / 2) + self.player_position().0.z
     }
 
+    fn to_local_z(&self, z: i32) -> Option<usize>
+    {
+        let z = z - self.player_position().0.z + self.size().z as i32 / 2;
+
+        (0..self.size().z as i32).contains(&z).then(|| z as usize)
+    }
+
     fn inbounds(&self, pos: GlobalPos) -> bool
     {
         self.to_local(pos).is_some()
@@ -279,6 +286,8 @@ mod tests
                 ),
                 size
             );
+
+            assert_eq!(Some(value.pos.z), overmap.to_local_z(overmap.to_global_z(value.pos.z)));
 
             assert_eq!(
                 value, overmap.to_local(overmap.to_global(value)).unwrap_or_else(||

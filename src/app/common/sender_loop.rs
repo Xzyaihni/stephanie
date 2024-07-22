@@ -1,5 +1,5 @@
 use std::{
-    thread,
+    thread::{self, JoinHandle},
     sync::Arc,
     time::{Duration, Instant}
 };
@@ -32,7 +32,9 @@ pub fn waiting_loop<F: FnMut() -> bool>(mut f: F)
     }
 }
 
-pub fn sender_loop<B: BufferSender + Send + Sync + 'static>(sender: Arc<RwLock<B>>)
+pub fn sender_loop<B: BufferSender + Send + Sync + 'static>(
+    sender: Arc<RwLock<B>>
+) -> JoinHandle<()>
 {
     thread::spawn(move ||
     {
@@ -46,5 +48,5 @@ pub fn sender_loop<B: BufferSender + Send + Sync + 'static>(sender: Arc<RwLock<B
 
             result.is_err()
         });
-    });
+    })
 }

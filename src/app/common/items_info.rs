@@ -207,6 +207,14 @@ pub struct ItemsInfo
 
 impl ItemsInfo
 {
+    pub fn empty() -> Self
+    {
+        let generic_info = GenericInfo::new(Vec::new());
+        let groups = HashMap::new();
+
+        Self{generic_info, groups}
+    }
+
     pub fn parse(
         assets: &Assets,
         textures_root: impl AsRef<Path>,
@@ -271,7 +279,17 @@ impl ItemsInfo
 
     pub fn group(&self, name: &str) -> &[ItemId]
     {
-        &self.groups[name]
+        self.groups.get(name).map(|x|
+        {
+            let items: &[_] = x.as_ref();
+
+            items
+        }).unwrap_or_else(||
+        {
+            eprintln!("group named `{name}` doesnt exist");
+
+            &[]
+        })
     }
 
     pub fn random(&self) -> Item

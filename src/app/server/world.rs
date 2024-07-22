@@ -226,12 +226,6 @@ impl World
         {
             false
         });
-
-        // i want my destuctors pls bro pls pls bro
-        self.chunk_saver.exit();
-        self.entities_saver.exit();
-
-        self.world_generator.borrow_mut().exit();
     }
 
     pub fn send_all(
@@ -259,9 +253,7 @@ impl World
     {
         let chunk = self.load_chunk(container, id, pos);
 
-        let message = Message::ChunkSync{pos, chunk};
-
-        self.message_handler.write().send_single(id, message);
+        self.message_handler.write().send_single(id, Message::ChunkSync{pos, chunk});
     }
 
     fn create_entities(
@@ -285,7 +277,7 @@ impl World
         chunk_pos: Pos3<f32>,
         chunk: &'a Chunk,
         amount: usize,
-        f: impl Fn(Vector3<f32>) -> EntityInfo + 'a
+        f: impl Fn(Vector3<f32>) -> Option<EntityInfo> + 'a
     ) -> impl Iterator<Item=EntityInfo> + 'a
     {
         (0..amount)
@@ -335,7 +327,7 @@ impl World
                     let pos = chunk_pos + above.pos().map(|x| x as f32 * TILE_SIZE) + half_tile;
 
                     f(pos.into())
-                })
+                }).flatten()
             })
     }
 
@@ -351,15 +343,17 @@ impl World
 
         let entities = Self::add_on_ground(chunk_pos, chunk, spawns, |pos|
         {
-            EnemyBuilder::new(
+            let picked = self.enemies_info.weighted_random(1.0)?;
+
+            Some(EnemyBuilder::new(
                 &self.enemies_info,
                 &self.items_info,
-                self.enemies_info.weighted_random(1.0),
+                picked,
                 pos
-            ).build()
+            ).build())
         }).chain(Self::add_on_ground(chunk_pos, chunk, crates, |pos|
         {
-            FurnitureBuilder::new(&self.items_info, pos).build()
+            Some(FurnitureBuilder::new(&self.items_info, pos).build())
         }));
 
         self.create_entities(container, entities);
@@ -499,6 +493,10 @@ impl World
                 {
                     info.transform.as_ref().map(|x| x.position)
                 },
+                Message::SetTarget{target, ..} =>
+                {
+                    Some(target.position)
+                },
                 Message::SetTransform{component, ..} =>
                 {
                     Some(component.position)
@@ -525,6 +523,159 @@ impl World
                 None
             },
             _ => Some(message)
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests
+{
+    use std::{fs, thread, net::{TcpStream, TcpListener}};
+
+    use crate::{
+        server::connections_handler::PlayerInfo,
+        common::{AnyEntities, MessagePasser, BufferSender, message::MessageBuffer}
+    };
+
+    use super::*;
+
+
+    #[ignore]
+    #[test]
+    fn world_full()
+    {
+        if PathBuf::from("worlds").exists()
+        {
+            fs::remove_dir_all("worlds").unwrap();
+        }
+
+        fn do_with_world(
+            stream: TcpStream,
+            f: impl FnOnce(&mut ServerEntities, &mut World, ConnectionId)
+        )
+        {
+            let passer = Arc::new(RwLock::new(ConnectionsHandler::new(3)));
+
+            let mut entities = ServerEntities::new(None);
+
+            let player = passer.write().connect(PlayerInfo::new(
+                MessageBuffer::new(),
+                MessagePasser::new(stream),
+                entities.push_eager(false, EntityInfo{..Default::default()}),
+                "test_player".to_owned()
+            ));
+
+            let tilemap = TileMap::parse("tiles/tiles.json", "textures/tiles/")
+                .unwrap();
+
+            let mut world = World::new(
+                passer.clone(),
+                tilemap.tilemap,
+                Arc::new(EnemiesInfo::empty()),
+                Arc::new(ItemsInfo::empty())
+            ).unwrap();
+
+            world.add_player(&mut entities, player, Pos3::new(0.0, 0.0, 0.0));
+
+            f(&mut entities, &mut world, player);
+
+            passer.write().send_buffered().unwrap();
+
+            world.remove_player(&mut entities, player);
+
+            passer.write().remove_connection(player).unwrap();
+            passer.write().send_buffered().unwrap();
+        }
+
+        let listener = TcpListener::bind("localhost:12345").unwrap();
+
+        let handle0 = thread::spawn(move ||
+        {
+            let stream = listener.accept().unwrap().0;
+            do_with_world(stream, |entities, world, player|
+            {
+                world.send_all(entities, player);
+            });
+        });
+
+        let listener = TcpListener::bind("localhost:12346").unwrap();
+
+        let handle1 = thread::spawn(move ||
+        {
+            let stream = listener.accept().unwrap().0;
+            do_with_world(stream, |entities, world, player|
+            {
+                world.send_all(entities, player);
+            });
+        });
+
+        let receiver = |address|
+        {
+            let receiver = TcpStream::connect(address).unwrap();
+
+            MessagePasser::new(receiver)
+        };
+
+        let mut remembered = HashMap::new();
+
+        {
+            let mut receiver = receiver("localhost:12345");
+
+            for message in receiver.receive().unwrap()
+            {
+                match message
+                {
+                    Message::ChunkSync{pos, chunk} =>
+                    {
+                        remembered.insert(pos, chunk);
+                    },
+                    _ => ()
+                }
+            }
+        }
+
+        handle0.join().unwrap();
+
+        let mut deferred_panic = None;
+
+        let mut total = 0;
+        let mut incorrect = 0;
+
+        {
+            let mut receiver = receiver("localhost:12346");
+
+            for message in receiver.receive().unwrap()
+            {
+                match message
+                {
+                    Message::ChunkSync{pos, chunk} =>
+                    {
+                        total += 1;
+
+                        let value = remembered.get(&pos).unwrap().clone();
+
+                        if value != chunk
+                        {
+                            incorrect += 1;
+                            eprintln!("{pos:?} has a mismatch");
+
+                            deferred_panic = Some(move ||
+                            {
+                                panic!("at {pos:?}: {value:#?} != {chunk:#?}");
+                            });
+                        }
+                    },
+                    _ => ()
+                }
+            }
+        }
+
+        handle1.join().unwrap();
+
+        if let Some(deferred_panic) = deferred_panic
+        {
+            eprintln!("{incorrect} incorrect out of {total}");
+            deferred_panic();
         }
     }
 }

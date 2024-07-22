@@ -2,6 +2,7 @@ use std::{
     f32,
     mem,
     env,
+    thread::JoinHandle,
     cell::{Ref, RefCell},
     rc::Rc,
     ops::ControlFlow,
@@ -408,6 +409,7 @@ pub struct GameState
     dt: f32,
     rare_timer: f32,
     connections_handler: Arc<RwLock<ConnectionsHandler>>,
+    receiver_handle: Option<JoinHandle<()>>,
     receiver: Receiver<Message>
 }
 
@@ -425,9 +427,13 @@ impl Drop for GameState
         {
             if let Message::PlayerDisconnectFinished = x
             {
+                self.receiver_handle.take().unwrap().join().unwrap();
+
                 return;
             }
         }
+
+        eprintln!("disconnect finished not receiver, closed improperly");
     }
 }
 
@@ -463,22 +469,28 @@ impl GameState
             player_entity
         );
 
-        sender_loop(connections_handler.clone());
+        let _sender_handle = sender_loop(connections_handler.clone());
 
         let handler = connections_handler.read().passer_clone();
 
         let (sender, receiver) = mpsc::channel();
 
-        receiver_loop(handler, move |message|
+        let receiver_handle = Some(receiver_loop(handler, move |message|
         {
-            if sender.send(message).is_err()
+            let is_disconnect = match message
+            {
+                Message::PlayerDisconnectFinished => true,
+                _ => false
+            };
+
+            if sender.send(message).is_err() || is_disconnect
             {
                 ControlFlow::Break(())
             } else
             {
                 ControlFlow::Continue(())
             }
-        }, || ());
+        }, || ()));
 
         let user_receiver = UiReceiver::new();
 
@@ -538,6 +550,7 @@ impl GameState
             is_trusted: false,
             user_receiver,
             connections_handler,
+            receiver_handle,
             receiver
         };
 

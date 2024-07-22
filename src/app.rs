@@ -150,9 +150,7 @@ impl YanyaApp for App
 
                         waiting_loop(||
                         {
-                            game_server.update(DELTA_TIME as f32);
-
-                            false
+                            game_server.update(DELTA_TIME as f32)
                         });
                     },
                     Err(err) => panic!("error parsing tilemap: {err}")
