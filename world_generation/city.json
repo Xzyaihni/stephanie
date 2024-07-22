@@ -7,6 +7,12 @@
             "condition": "Equal"
         },
         {
+            "name": "building_roof",
+            "variable": "Height",
+            "tag": "building_height",
+            "condition": "Equal"
+        },
+        {
             "name": "building_walls",
             "variable": "Height",
             "tag": "building_height",

@@ -389,14 +389,19 @@ impl VisualOvermap
         visibility: &EntityVisibilityChecker
     )
     {
-        self.for_each_visible(|chunk, pos|
-        {
-            chunk.draw_shadows(
-                info,
-                visibility,
-                self.visibility_checker.height(pos)
-            )
-        });
+        self.chunks.positions_2d()
+            .filter(|pos| self.visible(*pos))
+            .for_each(|pos|
+            {
+                if let Some(pos) = self.visibility_checker.visible_z(&self.chunks, pos).next()
+                {
+                    self.chunks[pos].1.draw_shadows(
+                        info,
+                        visibility,
+                        self.visibility_checker.height(pos)
+                    )
+                }
+            });
     }
 }
 
