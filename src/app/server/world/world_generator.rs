@@ -383,9 +383,7 @@ impl<S: SaveLoad<WorldChunk>> WorldGenerator<S>
         global_mapper: &impl OvermapIndexing
     )
     {
-        self.load_missing(world_chunks.iter_mut(), global_mapper);
         debug_assert!(world_plane.all_exist());
-
         if let Some(z) = global_mapper.to_local_z(0)
         {
             world_chunks.flat_slice_iter_mut(z).filter(|(_pos, chunk)|
@@ -396,6 +394,8 @@ impl<S: SaveLoad<WorldChunk>> WorldGenerator<S>
                 *chunk = world_plane.get_local(pos).clone();
             });
         }
+
+        self.load_missing(world_chunks.iter_mut(), global_mapper);
 
         for z in (0..world_chunks.size().z).rev()
         {
