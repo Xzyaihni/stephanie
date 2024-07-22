@@ -1,13 +1,14 @@
 use std::{
     iter,
     mem,
+    rc::Rc,
     cmp::Ordering,
     io::Write,
     fs::File,
     fmt::{self, Debug},
     path::{Path, PathBuf},
     collections::HashMap,
-    ops::{Range, Index}
+    ops::Index
 };
 
 use serde::{Serialize, Deserialize};
@@ -16,12 +17,15 @@ use bincode::Options;
 
 use super::{PossibleStates, ParseError};
 
-use crate::common::world::{
-    CHUNK_SIZE,
-    GlobalPos,
-    Pos3,
-    DirectionsGroup,
-    chunk::PosDirection
+use crate::common::{
+    lisp::{Lisp, Program, Primitives, LispMemory, Environment},
+    world::{
+        CHUNK_SIZE,
+        GlobalPos,
+        Pos3,
+        DirectionsGroup,
+        chunk::PosDirection
+    }
 };
 
 
@@ -151,24 +155,7 @@ pub struct TextId(usize);
 pub enum TagContent
 {
     Number(i32),
-    Range(Range<i32>),
-    Text(TextId),
-    Boolean(bool)
-}
-
-impl From<&RuleTagContent> for TagContent
-{
-    fn from(value: &RuleTagContent) -> Self
-    {
-        match value
-        {
-            RuleTagContent::Number(x) => Self::Number(*x),
-            RuleTagContent::Range(x) => Self::Range(x.clone()),
-            RuleTagContent::Random(x) => Self::Number(fastrand::i32(x.clone())),
-            RuleTagContent::Text(x) => Self::Text(*x),
-            RuleTagContent::Boolean(x) => Self::Boolean(*x)
-        }
-    }
+    Text(TextId)
 }
 
 impl TagContent
@@ -178,16 +165,6 @@ impl TagContent
         match (self, other)
         {
             (Self::Number(a), Self::Number(b)) => Some(a.cmp(b).into()),
-            (Self::Boolean(a), Self::Boolean(b)) =>
-            {
-                if a == b
-                {
-                    Some(Condition::Equal)
-                } else
-                {
-                    Some(Condition::Unequal)
-                }
-            },
             (Self::Text(a), Self::Text(b)) =>
             {
                 if a == b
@@ -201,6 +178,30 @@ impl TagContent
             (_, _) => None
         }
     }
+
+    fn generate(
+        memory: &mut LispMemory,
+        environment: &Environment,
+        value: &RuleTagContent
+    ) -> Self
+    {
+        match value
+        {
+            RuleTagContent::Number(x) =>
+            {
+                let number = x.apply(memory, environment).unwrap_or_else(|err|
+                {
+                    panic!("lisp error {err}")
+                }).as_integer().unwrap_or_else(|err|
+                {
+                    panic!("{err}")
+                });
+
+                Self::Number(number)
+            },
+            RuleTagContent::Text(x) => Self::Text(*x),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -210,13 +211,17 @@ pub struct WorldChunkTag
     content: TagContent
 }
 
-impl From<&ChunkRuleTag> for WorldChunkTag
+impl WorldChunkTag
 {
-    fn from(tag: &ChunkRuleTag) -> Self
+    fn generate(
+        memory: &mut LispMemory,
+        environment: &Environment,
+        tag: &ChunkRuleTag
+    ) -> Self
     {
         Self{
             name: tag.name,
-            content: TagContent::from(&tag.content)
+            content: TagContent::generate(memory, environment, &tag.content)
         }
     }
 }
@@ -319,11 +324,8 @@ impl WorldChunk
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub enum RuleRawTagContent
 {
-    Number(i32),
-    Range(Range<i32>),
-    Random(Range<i32>),
-    Text(String),
-    Boolean(bool)
+    Number(String),
+    Text(String)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -353,25 +355,31 @@ pub struct ChunkRulesRaw
 #[derive(Debug, Clone)]
 pub enum RuleTagContent
 {
-    Number(i32),
-    Range(Range<i32>),
-    Random(Range<i32>),
-    Text(TextId),
-    Boolean(bool)
+    Number(Program),
+    Text(TextId)
 }
 
 impl RuleTagContent
 {
-    fn from_raw(text_mapping: &mut TextMapping, raw_tag: RuleRawTagContent) -> Self
+    fn from_raw(
+        text_mapping: &mut TextMapping,
+        primitives: Rc<Primitives>,
+        raw_tag: RuleRawTagContent
+    ) -> Self
     {
         // not sure if i should just make this a generic >_<
         match raw_tag
         {
-            RuleRawTagContent::Number(x) => Self::Number(x),
-            RuleRawTagContent::Range(x) => Self::Range(x),
-            RuleRawTagContent::Random(x) => Self::Random(x),
-            RuleRawTagContent::Text(x) => Self::Text(text_mapping.to_id(x)),
-            RuleRawTagContent::Boolean(x) => Self::Boolean(x)
+            RuleRawTagContent::Number(x) =>
+            {
+                let program = Program::parse(primitives, None, &x).unwrap_or_else(|err|
+                {
+                    panic!("error evaluating program: {err}")
+                });
+
+                Self::Number(program)
+            },
+            RuleRawTagContent::Text(x) => Self::Text(text_mapping.to_id(x))
         }
     }
 }
@@ -385,11 +393,15 @@ pub struct ChunkRuleTag
 
 impl ChunkRuleTag
 {
-    fn from_raw(text_mapping: &mut TextMapping, raw_tag: ChunkRuleRawTag) -> Self
+    fn from_raw(
+        text_mapping: &mut TextMapping,
+        primitives: Rc<Primitives>,
+        raw_tag: ChunkRuleRawTag
+    ) -> Self
     {
         Self{
             name: text_mapping.to_id(raw_tag.name),
-            content: RuleTagContent::from_raw(text_mapping, raw_tag.content)
+            content: RuleTagContent::from_raw(text_mapping, primitives, raw_tag.content)
         }
     }
 }
@@ -411,7 +423,11 @@ impl ChunkRule
             name: rule.name,
             tags: rule.tags.into_iter().map(|tag|
             {
-                ChunkRuleTag::from_raw(&mut name_mappings.text, tag)
+                ChunkRuleTag::from_raw(
+                    &mut name_mappings.text,
+                    Self::default_primitives(),
+                    tag
+                )
             }).collect(),
             weight: rule.weight / total_weight,
             neighbors: rule.neighbors.map(|_, direction|
@@ -422,6 +438,11 @@ impl ChunkRule
                 }).collect::<Vec<_>>()
             })
         }
+    }
+
+    fn default_primitives() -> Rc<Primitives>
+    {
+        Rc::new(Primitives::new())
     }
 
     pub fn name(&self) -> &str
@@ -855,7 +876,13 @@ impl ChunkRules
     {
         let rule = self.get(id);
 
-        WorldChunk::new(id, rule.tags.iter().map(WorldChunkTag::from).collect())
+        WorldChunk::new(id, rule.tags.iter().map(|tag|
+        {
+            let mut memory = Lisp::default_memory();
+            let environment = Environment::with_primitives(ChunkRule::default_primitives());
+
+            WorldChunkTag::generate(&mut memory, &environment, tag)
+        }).collect())
     }
 
     pub fn ids(&self) -> impl Iterator<Item=&WorldChunkId>

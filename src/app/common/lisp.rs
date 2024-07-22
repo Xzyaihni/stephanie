@@ -9,6 +9,7 @@ use std::{
 };
 
 pub use program::{
+    Program,
     PrimitiveProcedureInfo,
     Primitives,
     Lambdas,
@@ -16,7 +17,7 @@ pub use program::{
     ArgsWrapper
 };
 
-use program::{Program, Expression, CodePosition};
+use program::{Expression, CodePosition};
 
 mod program;
 
@@ -780,6 +781,14 @@ pub struct LispMemory
     returns: Vec<LispValue>
 }
 
+impl Default for LispMemory
+{
+    fn default() -> Self
+    {
+        Self::new(1 << 10)
+    }
+}
+
 impl LispMemory
 {
     pub fn new(memory_size: usize) -> Self
@@ -1128,6 +1137,14 @@ impl<'a> Environment<'a>
         Self::TopLevel(Mappings::new())
     }
 
+    pub fn with_primitives(primitives: Rc<Primitives>) -> Self
+    {
+        let mut env = Mappings::new();
+        primitives.add_to_env(&mut env);
+
+        Self::TopLevel(env)
+    }
+
     pub fn top_level(mappings: Mappings) -> Self
     {
         Self::TopLevel(mappings)
@@ -1263,7 +1280,7 @@ impl Lisp
 
     pub fn default_memory() -> LispMemory
     {
-        LispMemory::new(1 << 10)
+        LispMemory::default()
     }
 
     pub fn run(&mut self) -> Result<OutputWrapper, ErrorPos>
@@ -1396,8 +1413,7 @@ impl LispRef
     {
         let env = Environment::TopLevel(self.new_environment());
 
-        self.program.apply(memory, &env)?;
-        let value = memory.pop_return();
+        let value = self.program.apply(memory, &env)?;
 
         let value = OutputWrapper{memory, value};
 
@@ -1858,6 +1874,20 @@ mod tests
         let value = lisp.run().unwrap().as_integer().unwrap();
 
         assert_eq!(value, 2_i32);
+    }
+
+    #[test]
+    fn random()
+    {
+        let code = "
+            (random-integer 10)
+        ";
+
+        let mut lisp = Lisp::new(code).unwrap();
+
+        let value = lisp.run().unwrap().as_integer().unwrap();
+
+        assert!((0..10).contains(&value));
     }
 
     #[test]

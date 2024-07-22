@@ -6,16 +6,13 @@
                 {
                     "name": "building_height",
                     "content": {
-                        "Random": {
-                            "start": 3,
-                            "end": 20
-                        }
+                        "Number": "(+ 3 (random-integer 17))"
                     }
                 },
                 {
                     "name": "building_first",
                     "content": {
-                        "Number": 1
+                        "Number": "1"
                     }
                 }
             ],

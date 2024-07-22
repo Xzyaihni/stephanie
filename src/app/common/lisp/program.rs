@@ -576,6 +576,13 @@ impl Primitives
 
                     Ok(LispValue::new_empty_list())
                 })),
+            ("random-integer",
+                PrimitiveProcedureInfo::new_simple(1, move |_state, memory, _env, mut args|
+                {
+                    let limit = args.pop(memory).as_integer()?;
+
+                    Ok(LispValue::new_integer(fastrand::i32(0..limit)))
+                })),
             ("make-vector",
                 PrimitiveProcedureInfo::new_simple(2, |_state, memory, env, mut args|
                 {
@@ -1028,9 +1035,11 @@ impl Program
         &self,
         memory: &mut LispMemory,
         env: &Environment
-    ) -> Result<(), ErrorPos>
+    ) -> Result<LispValue, ErrorPos>
     {
-        self.expression.apply(&self.state, memory, env, Action::Return)
+        self.expression.apply(&self.state, memory, env, Action::Return)?;
+
+        Ok(memory.pop_return())
     }
 }
 
