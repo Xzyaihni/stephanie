@@ -307,7 +307,10 @@ impl<S: SaveLoad<WorldChunk>> ServerOvermap<S>
                         self.world_chunks[position].clone().unwrap()
                     });
 
-                    let world_chunk = self.world_generator.borrow_mut().generate_chunk(group);
+                    let world_chunk = self.world_generator.borrow_mut().generate_chunk(
+                        self.to_global_z(local_pos.pos.z),
+                        group
+                    );
 
                     Self::partially_fill(&mut chunk, world_chunk, this_pos);
                 }

@@ -174,7 +174,7 @@ pub trait OvermapIndexing: CommonIndexing
     {
         let z = z - self.player_position().0.z + self.size().z as i32 / 2;
 
-        (0..self.size().z as i32).contains(&z).then(|| z as usize)
+        (0..self.size().z as i32).contains(&z).then_some(z as usize)
     }
 
     fn inbounds(&self, pos: GlobalPos) -> bool

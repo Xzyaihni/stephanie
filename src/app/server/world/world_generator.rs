@@ -280,6 +280,7 @@ impl ChunkGenerator
 
     pub fn generate_chunk(
         &mut self,
+        height: i32,
         group: AlwaysGroup<&str>
     ) -> ChunksContainer<Tile>
     {
@@ -298,6 +299,7 @@ impl ChunkGenerator
                     panic!("worldchunk named `{}` doesnt exist", group.this)
                 });
 
+            self.environment.define("height", height.into());
             let output = this_chunk.run_with_memory(memory)
                 .unwrap_or_else(|err|
                 {
@@ -391,7 +393,7 @@ impl<S: SaveLoad<WorldChunk>> WorldGenerator<S>
                 chunk.is_none()
             }).for_each(|(pos, chunk)|
             {
-                *chunk = world_plane.get_local(pos).clone();
+                chunk.clone_from(world_plane.get_local(pos));
             });
         }
 
@@ -476,10 +478,11 @@ impl<S: SaveLoad<WorldChunk>> WorldGenerator<S>
 
     pub fn generate_chunk(
         &mut self,
+        height: i32,
         group: AlwaysGroup<WorldChunk>
     ) -> ChunksContainer<Tile>
     {
-        self.generator.generate_chunk(group.map(|world_chunk|
+        self.generator.generate_chunk(height, group.map(|world_chunk|
         {
             self.rules.name(world_chunk.id())
         }))

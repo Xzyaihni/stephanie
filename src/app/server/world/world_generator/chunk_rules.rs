@@ -546,7 +546,7 @@ enum ConditionalNameRaw
 
 impl ConditionalNameRaw
 {
-    fn from_raw(&self, name_mappings: &NameMappings) -> ConditionalName
+    fn to_raw(&self, name_mappings: &NameMappings) -> ConditionalName
     {
         match self
         {
@@ -624,7 +624,7 @@ impl ConditionalRule
     fn from_raw(name_mappings: &NameMappings, rule: ConditionalRuleRaw) -> Self
     {
         Self{
-            name: rule.name.from_raw(name_mappings),
+            name: rule.name.to_raw(name_mappings),
             variable: rule.variable,
             condition: rule.condition,
             tag: name_mappings.text[&rule.tag]

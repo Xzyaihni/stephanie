@@ -10,7 +10,7 @@
         },
         {
             "name": {
-                "Variable": "(if (= height 1) 'building_first_floor (if (= (remainder height 2) 0) 'building_floor 'building_room))"
+                "Variable": "(if (= (remainder height 2) 0) 'building_floor 'building_room)"
             },
             "variable": "Height",
             "tag": "building_height",

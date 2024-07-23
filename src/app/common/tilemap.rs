@@ -38,7 +38,8 @@ const PADDED_TILE_SIZE: usize = TEXTURE_TILE_SIZE + PADDING * 2;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SpecialTile
 {
-    Stairs
+    StairsUp,
+    StairsDown
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -80,15 +81,17 @@ impl TileInfo
             })
         };
 
+        #[allow(clippy::collapsible_match, clippy::single_match)]
         if let Some(special) = this.special.as_ref()
         {
             match special
             {
-                SpecialTile::Stairs =>
+                SpecialTile::StairsUp =>
                 {
                     this.colliding = false;
                     this.transparent = true;
-                }
+                },
+                _ => ()
             }
         }
 
