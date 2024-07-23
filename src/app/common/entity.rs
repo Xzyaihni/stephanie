@@ -1905,7 +1905,6 @@ macro_rules! define_entities_both
                             $result_variable = CollidingInfo{
                                 entity: Some($entity),
                                 physical: $physical.as_deref_mut(),
-                                transform,
                                 target: |mut offset: Vector3<f32>|
                                 {
                                     let mut target = if target_non_lazy
@@ -1931,7 +1930,10 @@ macro_rules! define_entities_both
 
                                     target.position
                                 },
-                                collider: &mut collider
+                                basic: BasicCollidingInfo{
+                                    transform,
+                                    collider: &mut collider
+                                }
                             };
                         }
                     }

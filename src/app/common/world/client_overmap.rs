@@ -3,7 +3,7 @@ use std::{
     sync::Arc
 };
 
-use nalgebra::Vector2;
+use nalgebra::{Vector2, Vector3};
 
 use serde::{Serialize, Deserialize};
 
@@ -26,6 +26,7 @@ use super::{
         OvermapIndexing,
         CommonIndexing,
         chunk::{
+            TILE_SIZE,
             CHUNK_SIZE,
             Pos3,
             Chunk,
@@ -194,6 +195,11 @@ impl TilePos
             chunk: GlobalPos::from(chunk),
             local: ChunkLocal::from(local)
         }
+    }
+
+    pub fn entity_position(&self) -> Vector3<f32>
+    {
+        (self.position() + Pos3::repeat(TILE_SIZE / 2.0)).into()
     }
 }
 

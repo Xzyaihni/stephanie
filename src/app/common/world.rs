@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
-use nalgebra::Vector2;
+use nalgebra::{Vector2, Vector3};
 
-use yanyaengine::{ShaderId, game_object::*};
+use yanyaengine::{Transform, ShaderId, game_object::*};
 
 use crate::{
     client::{
@@ -11,6 +11,7 @@ use crate::{
         world_receiver::WorldReceiver
     },
     common::{
+        collider::*,
         TileMap,
         Entity,
         OccludingCasters,
@@ -116,6 +117,43 @@ impl World
     pub fn debug_chunk(&self, pos: Pos3<f32>) -> String
     {
         self.overmap.debug_chunk(self.tile_of(pos).chunk)
+    }
+
+    pub fn tiles_inside<'a>(
+        &'a self,
+        collider: &'a BasicCollidingInfo<'a>,
+        predicate: impl Fn(Option<&'a Tile>) -> bool + 'a
+    ) -> impl Iterator<Item=TilePos> + 'a
+    {
+        let half_scale = collider.scale();
+
+        let top_left = self.tile_of((collider.transform.position - half_scale).into());
+        let bottom_right = self.tile_of((collider.transform.position + half_scale).into());
+
+        top_left.tiles_between(bottom_right).filter(move |pos|
+        {
+            predicate(self.tile(*pos))
+        }).filter(move |pos|
+        {
+            let mut world_collider = ColliderInfo{
+                kind: ColliderType::Aabb,
+                layer: ColliderLayer::World,
+                ghost: false,
+                scale: None,
+                move_z: false,
+                target_non_lazy: false,
+                is_static: true
+            }.into();
+
+            collider.is_colliding(&BasicCollidingInfo{
+                transform: Transform{
+                    position: pos.entity_position(),
+                    scale: Vector3::repeat(TILE_SIZE),
+                    ..Default::default()
+                },
+                collider: &mut world_collider
+            })
+        })
     }
 
     pub fn tile(&self, index: TilePos) -> Option<&Tile>
