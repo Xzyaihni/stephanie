@@ -9,7 +9,7 @@
     this-chunk
     (make-point 7 2)
     (make-point 2 2)
-    (tile 'air))
+    (tile 'concrete))
 
 (let ((x (if (= (remainder height 4) 0) 7 8)))
     (put-tile

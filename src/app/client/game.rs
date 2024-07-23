@@ -1122,7 +1122,7 @@ impl<'a> PlayerContainer<'a>
             self.look_at_mouse();
         }
 
-        self.basic_colliding_info(|colliding|
+        self.basic_colliding_info(|mut colliding|
         {
             let world = &self.game_state.world;
 
@@ -1140,11 +1140,37 @@ impl<'a> PlayerContainer<'a>
 
                 if world.tile(above).map(|tile|
                 {
-                    world.tile_info(*tile).special != Some(SpecialTile::StairsDown)
-                }).unwrap_or(true)
+                    world.tile_info(*tile).special == Some(SpecialTile::StairsDown)
+                }).unwrap_or(false)
                 {
-                    return;
+                    if self.info.interacted
+                    {
+                        let mut transform = self.game_state.entities()
+                            .transform_mut(self.info.entity)
+                            .unwrap();
+
+                        let target = above.offset(Pos3::new(0, 0, 1));
+                        let mut spot = target.entity_position();
+                        spot.z = target.position().z + transform.scale.z / 2.0;
+
+                        transform.position = spot;
+                    }
                 }
+            }
+
+            colliding.transform.position.z -= TILE_SIZE;
+
+            let stairs = world.tiles_inside(&colliding, |tile|
+            {
+                tile.map(|tile|
+                {
+                    world.tile_info(*tile).special == Some(SpecialTile::StairsDown)
+                }).unwrap_or(false)
+            }).next();
+
+            if let Some(stairs) = stairs
+            {
+                let below = stairs.offset(Pos3::new(0, 0, -1));
 
                 if self.info.interacted
                 {
@@ -1152,9 +1178,8 @@ impl<'a> PlayerContainer<'a>
                         .transform_mut(self.info.entity)
                         .unwrap();
 
-                    let target = above.offset(Pos3::new(0, 0, 1));
-                    let mut spot = target.entity_position();
-                    spot.z = target.position().z + transform.scale.z / 2.0;
+                    let mut spot = below.entity_position();
+                    spot.z = below.position().z + transform.scale.z / 2.0;
 
                     transform.position = spot;
                 }
