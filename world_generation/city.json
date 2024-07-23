@@ -1,19 +1,17 @@
 {
     "rules": [
         {
-            "name": "building_first_floor",
-            "variable": "Height",
-            "tag": "building_first",
-            "condition": "Equal"
-        },
-        {
-            "name": "building_roof",
+            "name": {
+                "Constant": "building_roof"
+            },
             "variable": "Height",
             "tag": "building_height",
             "condition": "Equal"
         },
         {
-            "name": "building_walls",
+            "name": {
+                "Variable": "(if (= height 1) 'building_first_floor (if (= (remainder height 2) 0) 'building_floor 'building_room))"
+            },
             "variable": "Height",
             "tag": "building_height",
             "condition": "Less"

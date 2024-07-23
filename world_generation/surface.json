@@ -6,13 +6,7 @@
                 {
                     "name": "building_height",
                     "content": {
-                        "Number": "(+ 3 (random-integer 17))"
-                    }
-                },
-                {
-                    "name": "building_first",
-                    "content": {
-                        "Number": "1"
+                        "Number": "(* 4 (+ 1 (random-integer 4)))"
                     }
                 }
             ],

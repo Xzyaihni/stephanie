@@ -538,9 +538,35 @@ impl Condition
 }
 
 #[derive(Debug, Deserialize)]
+enum ConditionalNameRaw
+{
+    Constant(String),
+    Variable(String)
+}
+
+impl ConditionalNameRaw
+{
+    fn from_raw(&self, name_mappings: &NameMappings) -> ConditionalName
+    {
+        match self
+        {
+            Self::Constant(name) => ConditionalName::Constant(name_mappings.world_chunk[name]),
+            Self::Variable(program) =>
+            {
+                ConditionalName::Variable(Program::parse(
+                    ChunkRule::default_primitives(),
+                    None,
+                    program
+                ).unwrap_or_else(|err| panic!("lisp error: {err}")))
+            }
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
 struct ConditionalRuleRaw
 {
-    name: String,
+    name: ConditionalNameRaw,
     variable: ConditionalVariable,
     tag: String,
     condition: Condition
@@ -553,9 +579,41 @@ struct CityRulesRaw
 }
 
 #[derive(Debug)]
+enum ConditionalName
+{
+    Constant(WorldChunkId),
+    Variable(Program)
+}
+
+impl ConditionalName
+{
+    fn generate(&self, name_mappings: &NameMappings, info: ConditionalInfo) -> WorldChunkId
+    {
+        match self
+        {
+            Self::Constant(x) => *x,
+            Self::Variable(program) =>
+            {
+                let mut memory = Lisp::empty_memory();
+                let environment = Environment::with_primitives(ChunkRule::default_primitives());
+
+                environment.define("height", info.height.into());
+
+                let value = program.apply(&mut memory, &environment)
+                    .unwrap_or_else(|err| panic!("lisp error: {err}"));
+
+                let name = value.as_symbol(&memory).unwrap_or_else(|err| panic!("{err}"));
+
+                name_mappings.world_chunk[&name]
+            }
+        }
+    }
+}
+
+#[derive(Debug)]
 struct ConditionalRule
 {
-    name: WorldChunkId,
+    name: ConditionalName,
     variable: ConditionalVariable,
     tag: TextId,
     condition: Condition
@@ -566,7 +624,7 @@ impl ConditionalRule
     fn from_raw(name_mappings: &NameMappings, rule: ConditionalRuleRaw) -> Self
     {
         Self{
-            name: name_mappings.world_chunk[&rule.name],
+            name: rule.name.from_raw(name_mappings),
             variable: rule.variable,
             condition: rule.condition,
             tag: name_mappings.text[&rule.tag]
@@ -642,7 +700,7 @@ impl CityRules
         }
     }
 
-    pub fn generate(&self, info: ConditionalInfo) -> WorldChunk
+    pub fn generate(&self, name_mappings: &NameMappings, info: ConditionalInfo) -> WorldChunk
     {
         // imagine using find_map, couldnt be me
         self.rules.iter().find(|rule|
@@ -650,12 +708,15 @@ impl CityRules
             rule.matches(&info)
         }).map(|rule|
         {
-            WorldChunk::new(rule.name, Vec::new())
+            let name = rule.name.generate(name_mappings, info);
+
+            WorldChunk::new(name, Vec::new())
         }).unwrap_or_default()
     }
 }
 
-struct NameIndexer<T>(HashMap<String, T>);
+#[derive(Debug)]
+pub struct NameIndexer<T>(HashMap<String, T>);
 
 impl<T> NameIndexer<T>
 {
@@ -693,7 +754,8 @@ impl<T> Index<&str> for NameIndexer<T>
     }
 }
 
-struct TextMapping
+#[derive(Debug)]
+pub struct TextMapping
 {
     text: Vec<String>,
     indexer: NameIndexer<TextId>
@@ -729,7 +791,8 @@ impl Index<&str> for TextMapping
     }
 }
 
-struct NameMappings
+#[derive(Debug)]
+pub struct NameMappings
 {
     pub world_chunk: NameIndexer<WorldChunkId>,
     pub text: TextMapping
@@ -739,6 +802,7 @@ struct NameMappings
 pub struct ChunkRulesGroup
 {
     world_chunks: Box<[String]>,
+    name_mappings: NameMappings,
     pub surface: ChunkRules,
     pub underground: UndergroundRules,
     pub city: CityRules
@@ -800,7 +864,8 @@ impl ChunkRulesGroup
             city: Self::load_rules(path.join("city.json"), |file|
             {
                 CityRules::load(&name_mappings, file)
-            })?
+            })?,
+            name_mappings
         })
     }
 
@@ -817,6 +882,11 @@ impl ChunkRulesGroup
         {
             ParseError::new_named(path.to_owned(), err)
         })
+    }
+
+    pub fn name_mappings(&self) -> &NameMappings
+    {
+        &self.name_mappings
     }
 
     pub fn name(&self, id: WorldChunkId) -> &str
@@ -878,7 +948,7 @@ impl ChunkRules
 
         WorldChunk::new(id, rule.tags.iter().map(|tag|
         {
-            let mut memory = Lisp::default_memory();
+            let mut memory = Lisp::empty_memory();
             let environment = Environment::with_primitives(ChunkRule::default_primitives());
 
             WorldChunkTag::generate(&mut memory, &environment, tag)

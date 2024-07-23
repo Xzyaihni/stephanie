@@ -82,7 +82,7 @@
 
         (define wall-material (tile 'concrete))
 
-        ; walls
+        ; outer walls
         (vertical-line-length
             this-chunk
             (make-point 1 1)
@@ -106,6 +106,20 @@
             (make-point 1 (- size-y 2))
             (- size-x 2)
             wall-material)
+
+        (define (divisors x)
+            (begin
+                (vertical-line-length
+                    this-chunk
+                    (make-point x 2)
+                    (- size-y 6)
+                    wall-material)
+                (this-tile
+                    (make-point x 13)
+                    wall-material)))
+
+        (divisors 6)
+        (divisors 9)
 
         (define (add-windows x)
             (begin

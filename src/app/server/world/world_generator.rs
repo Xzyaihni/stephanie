@@ -431,7 +431,7 @@ impl<S: SaveLoad<WorldChunk>> WorldGenerator<S>
                             tags: this_surface.tags()
                         };
 
-                        let chunk = self.rules.city.generate(info);
+                        let chunk = self.rules.city.generate(self.rules.name_mappings(), info);
 
                         applier(pair, chunk);
                     });

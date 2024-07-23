@@ -808,6 +808,11 @@ impl LispMemory
         }
     }
 
+    pub fn empty() -> Self
+    {
+        Self::new(0)
+    }
+
     pub fn clear(&mut self)
     {
         self.memory.clear();
@@ -1137,6 +1142,11 @@ impl<'a> Environment<'a>
         Self::TopLevel(Mappings::new())
     }
 
+    pub fn with_default_primitives() -> Self
+    {
+        Self::with_primitives(Rc::new(Primitives::new()))
+    }
+
     pub fn with_primitives(primitives: Rc<Primitives>) -> Self
     {
         let mut env = Mappings::new();
@@ -1276,6 +1286,11 @@ impl Lisp
         let env = lisp.run_environment()?;
 
         Ok((env, lisp.lambdas().clone()))
+    }
+
+    pub fn empty_memory() -> LispMemory
+    {
+        LispMemory::empty()
     }
 
     pub fn default_memory() -> LispMemory
