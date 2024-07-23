@@ -17,6 +17,7 @@ use crate::{
         lazy_transform::*,
         collider::*,
         character::*,
+        SpecialTile,
         AnyEntities,
         Item,
         Inventory,
@@ -1114,7 +1115,56 @@ impl<'a> PlayerContainer<'a>
             self.look_at_mouse();
         }
 
+        self.basic_colliding_info(|colliding|
+        {
+            let world = &self.game_state.world;
+
+            let stairs = world.tiles_inside(&colliding, |tile|
+            {
+                tile.map(|tile|
+                {
+                    world.tile_info(*tile).special == Some(SpecialTile::StairsUp)
+                }).unwrap_or(false)
+            }).next();
+
+            if let Some(stairs) = stairs
+            {
+                let above = stairs.offset(Pos3::new(0, 0, 1));
+
+                if world.tile(above).map(|tile|
+                {
+                    world.tile_info(*tile).special != Some(SpecialTile::StairsDown)
+                }).unwrap_or(true)
+                {
+                    return;
+                }
+
+                let mut transform = self.game_state.entities()
+                    .transform_mut(self.info.entity)
+                    .unwrap();
+
+                let target = above.offset(Pos3::new(0, 0, 1));
+                let mut spot = target.entity_position();
+                spot.z = target.position().z + transform.scale.z / 2.0;
+
+                transform.position = spot;
+            }
+        });
+
         self.game_state.sync_transform(self.info.entity);
+    }
+
+    fn basic_colliding_info(&self, f: impl FnOnce(BasicCollidingInfo))
+    {
+        let entities = self.game_state.entities();
+
+        let transform = some_or_return!(entities.transform(self.info.entity)).clone();
+        let mut collider = some_or_return!(entities.collider_mut(self.info.entity));
+
+        f(BasicCollidingInfo{
+            transform,
+            collider: &mut collider
+        });
     }
 
     fn movement_direction(&self) -> Option<Vector3<f32>>

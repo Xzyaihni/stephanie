@@ -13,6 +13,7 @@ use crate::{
     common::{
         collider::*,
         TileMap,
+        TileInfo,
         Entity,
         OccludingCasters,
         message::Message
@@ -91,9 +92,9 @@ impl World
         Self{tilemap, world_receiver, overmap}
     }
 
-    pub fn colliding(&self, tile: Tile) -> bool
+    pub fn tile_info(&self, tile: Tile) -> &TileInfo
     {
-        self.tilemap.info(tile).colliding
+        self.tilemap.info(tile)
     }
 
     pub fn overmap_size() -> Pos3<usize>

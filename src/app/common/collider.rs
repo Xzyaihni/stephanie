@@ -597,7 +597,7 @@ where
     {
         let collisions = world.tiles_inside(&self.basic, |tile|
         {
-            let empty_tile = tile.map(|x| !world.colliding(*x)).unwrap_or(false);
+            let empty_tile = tile.map(|x| !world.tile_info(*x).colliding).unwrap_or(false);
 
             !empty_tile
         }).map(|pos| pos.entity_position());

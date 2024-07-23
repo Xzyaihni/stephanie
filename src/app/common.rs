@@ -16,7 +16,7 @@ pub use objects_store::ObjectsStore;
 pub use sender_loop::{sender_loop, BufferSender};
 pub use receiver_loop::receiver_loop;
 
-pub use tilemap::{TileMap, TileMapWithTextures};
+pub use tilemap::{TileMap, TileInfo, SpecialTile, TileMapWithTextures};
 
 pub use outlineable::Outlineable;
 

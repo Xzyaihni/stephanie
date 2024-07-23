@@ -1117,18 +1117,20 @@ macro_rules! define_entities_both
                     swap_fully!(self, ui_element, before, after);
                 });
 
-                if !only_ui
+                if only_ui
                 {
-                    let mut z_levels: Vec<_> = iterate_components_with!(self, render, map, |entity, _|
-                    {
-                        (self.z_level(entity), entity)
-                    }).collect();
-
-                    insertion_sort_with(&mut z_levels, |(z_level, _)| *z_level, |&(_, before), &(_, after)|
-                    {
-                        swap_fully!(self, render, before, after);
-                    });
+                    return;
                 }
+
+                let mut z_levels: Vec<_> = iterate_components_with!(self, render, map, |entity, _|
+                {
+                    (self.z_level(entity), entity)
+                }).collect();
+
+                insertion_sort_with(&mut z_levels, |(z_level, _)| *z_level, |&(_, before), &(_, after)|
+                {
+                    swap_fully!(self, render, before, after);
+                });
             }
 
             $(
@@ -1843,34 +1845,36 @@ macro_rules! define_entities_both
                 {
                     let overlapping = mouse_collided == entity;
 
-                    if overlapping && self.is_lootable(entity)
+                    if !overlapping || !self.is_lootable(entity)
                     {
-                        if let Some(mut watchers) = self.watchers_mut(entity)
-                        {
-                            outlineable.borrow_mut().enable();
+                        return;
+                    }
 
-                            let kind = WatcherType::Lifetime(0.1.into());
-                            if let Some(found) = watchers.find(|watcher|
+                    if let Some(mut watchers) = self.watchers_mut(entity)
+                    {
+                        outlineable.borrow_mut().enable();
+
+                        let kind = WatcherType::Lifetime(0.1.into());
+                        if let Some(found) = watchers.find(|watcher|
+                        {
+                            // comparison considered harmful
+                            if let WatcherAction::OutlineableDisable = watcher.action
                             {
-                                // comparison considered harmful
-                                if let WatcherAction::OutlineableDisable = watcher.action
-                                {
-                                    true
-                                } else
-                                {
-                                    false
-                                }
-                            })
-                            {
-                                found.kind = kind;
+                                true
                             } else
                             {
-                                watchers.push(Watcher{
-                                    kind,
-                                    action: WatcherAction::OutlineableDisable,
-                                    ..Default::default()
-                                });
+                                false
                             }
+                        })
+                        {
+                            found.kind = kind;
+                        } else
+                        {
+                            watchers.push(Watcher{
+                                kind,
+                                action: WatcherAction::OutlineableDisable,
+                                ..Default::default()
+                            });
                         }
                     }
                 });
@@ -2253,15 +2257,17 @@ macro_rules! define_entities_both
                     let changed = character.borrow_mut()
                         .update_common(characters_info, &mut target);
 
-                    if changed
+                    if !changed
                     {
-                        drop(target);
-                        if let Some(end) = self.lazy_target_end(entity)
-                        {
-                            let mut transform = self.transform_mut(entity).unwrap();
+                        return;
+                    }
 
-                            transform.scale = end.scale;
-                        }
+                    drop(target);
+                    if let Some(end) = self.lazy_target_end(entity)
+                    {
+                        let mut transform = self.transform_mut(entity).unwrap();
+
+                        transform.scale = end.scale;
                     }
                 });
             }
