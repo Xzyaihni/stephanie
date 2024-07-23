@@ -13,6 +13,5 @@
         (cons (f (car lst)) (map f (cdr lst)))))
 
 (define (for-each f lst)
-    (begin
-        (map f lst)
-        '()))
+    (map f lst)
+    '())

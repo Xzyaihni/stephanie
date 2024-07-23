@@ -205,7 +205,6 @@ impl PrimitiveProcedureInfo
         }
     }
 
-    // i suck at naming but this one is actually for lazy procs or ones that have a side effect
     pub fn new_simple_lazy(args_count: impl Into<ArgsCount>, on_apply: OnApply) -> Self
     {
         Self{
@@ -298,7 +297,13 @@ impl PrimitiveProcedureInfo
 
         Self{
             args_count: args_count.into(),
-            kind: PrimitiveProcedureType::Simple,
+            kind: if EFFECT
+            {
+                PrimitiveProcedureType::Deferred
+            } else
+            { 
+                PrimitiveProcedureType::Simple
+            },
             on_eval: None,
             on_apply: Some(on_apply)
         }
@@ -597,41 +602,31 @@ impl Primitives
                     Ok(LispValue::new_vector(memory.allocate_vector(env, vec)))
                 })),
             ("vector-set!",
-                PrimitiveProcedureInfo::new_simple_lazy(
+                PrimitiveProcedureInfo::new_simple_effect(
                     3,
-                    Rc::new(|state, memory, env, args, action|
+                    |_state, memory, _env, mut args|
                     {
-                        let position = args.position;
-                        let mut args = args.apply_args(state, memory, env, Action::Return)?;
-
                         let vec = args.pop(memory);
                         let index = args.pop(memory);
                         let value = args.pop(memory);
 
-                        let vec = vec.as_vector_mut(memory).with_position(position)?;
+                        let vec = vec.as_vector_mut(memory)?;
 
-                        let index = index.as_integer().with_position(position)?;
+                        let index = index.as_integer()?;
 
                         if vec.tag != value.tag
                         {
-                            return Err(ErrorPos{
-                                position,
-                                error: Error::VectorWrongType{expected: vec.tag, got: value.tag}
-                            });
+                            return Err(
+                                Error::VectorWrongType{expected: vec.tag, got: value.tag}
+                            );
                         }
 
-                        Self::check_inbounds(vec.values, index).with_position(position)?;
+                        Self::check_inbounds(vec.values, index)?;
 
                         vec.values[index as usize] = value.value;
 
-                        match action
-                        {
-                            Action::Return => memory.push_return(LispValue::new_empty_list()),
-                            Action::None => ()
-                        }
-
-                        Ok(())
-                    }))),
+                        Ok(LispValue::new_empty_list())
+                    })),
             ("vector-ref",
                 PrimitiveProcedureInfo::new_simple(2, |_state, memory, _env, mut args|
                 {
@@ -755,15 +750,44 @@ impl Primitives
                     })
                 }))),
             ("define",
-                PrimitiveProcedureInfo::new(2, Rc::new(|on_apply, state, args|
+                PrimitiveProcedureInfo::new(ArgsCount::Min(2), Rc::new(|on_apply, state, mut args|
                 {
                     let first = args.car();
-                    let body = args.cdr().car();
+
                     let is_procedure = first.is_list();
 
                     let args = if is_procedure
                     {
                         let position = args.position;
+
+                        let body: Vec<_> = iter::from_fn(||
+                        {
+                            let next = args.cdr();
+                            args = next.clone();
+
+                            (!next.is_null()).then(|| next.car())
+                        }).collect();
+
+                        let body = if body.len() > 1
+                        {
+                            let body = body.into_iter().rev().fold(
+                                Ast::EmptyList.with_position(position),
+                                |acc, x|
+                                {
+                                    AstPos::cons(x, acc)
+                                });
+
+                            AstPos::cons(
+                                AstPos{
+                                    position: body.position,
+                                    ast: Ast::Value("begin".to_owned())
+                                },
+                                body
+                            )
+                        } else
+                        {
+                            body.into_iter().next().unwrap()
+                        };
 
                         let name = Expression::ast_to_expression(first.car())?;
                         let name = Expression::Value(name.as_value()?).with_position(position);

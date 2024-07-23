@@ -522,9 +522,10 @@ impl LispValue
                 let mut s = vec.values.iter().map(|raw| unsafe{ LispValue::new(vec.tag, *raw) })
                     .fold("#(".to_owned(), |acc, value|
                     {
-                        acc + " " + &value.to_string(memory)
+                        acc + &value.to_string(memory) + " "
                     });
 
+                s.pop();
                 s.push(')');
 
                 s
@@ -1540,6 +1541,26 @@ mod tests
     }
 
     #[test]
+    fn define_many()
+    {
+        let code = "
+            (define v (make-vector 2 0))
+            (define (thingy x)
+                (vector-set! v 0 x)
+                x)
+
+            (define x (thingy 4))
+            (+ x (vector-ref v 0))
+        ";
+
+        let mut lisp = Lisp::new(code).unwrap();
+
+        let value = lisp.run().unwrap().as_integer().unwrap();
+
+        assert_eq!(value, 8);
+    }
+
+    #[test]
     fn redefine_primitive()
     {
         let code = "
@@ -1853,10 +1874,9 @@ mod tests
     {
         let code = "
             (define (print-garbage)
-                (begin
-                    (display 'hey)
-                    (display 'nice)
-                    (display '(very nested stuff over here woooooo nice pro cool cooler cooleo #t cool true 3))))
+                (display 'hey)
+                (display 'nice)
+                (display '(very nested stuff over here woooooo nice pro cool cooler cooleo #t cool true 3)))
 
             (define (loop f i)
                 (if (= i 0)
