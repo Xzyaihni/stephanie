@@ -632,6 +632,7 @@ struct PlayerInfo
     console_infos: Option<(Rc<Mappings>, Lambdas, Rc<Primitives>)>,
     previous_stamina: Option<f32>,
     previous_cooldown: (f32, f32),
+    interacted: bool,
     inventory_open: bool,
     other_inventory_open: bool
 }
@@ -650,6 +651,7 @@ impl PlayerInfo
             console_infos: None,
             previous_stamina: None,
             previous_cooldown: (0.0, 0.0),
+            interacted: false,
             inventory_open: false,
             other_inventory_open: false
         }
@@ -763,6 +765,11 @@ impl<'a> PlayerContainer<'a>
                 drop(anatomy);
                 entities.anatomy_changed(self.info.entity);
             }
+        }
+
+        if control == Control::Interact
+        {
+            self.info.interacted = state == ControlState::Pressed;
         }
 
         if state != ControlState::Pressed
@@ -1139,19 +1146,24 @@ impl<'a> PlayerContainer<'a>
                     return;
                 }
 
-                let mut transform = self.game_state.entities()
-                    .transform_mut(self.info.entity)
-                    .unwrap();
+                if self.info.interacted
+                {
+                    let mut transform = self.game_state.entities()
+                        .transform_mut(self.info.entity)
+                        .unwrap();
 
-                let target = above.offset(Pos3::new(0, 0, 1));
-                let mut spot = target.entity_position();
-                spot.z = target.position().z + transform.scale.z / 2.0;
+                    let target = above.offset(Pos3::new(0, 0, 1));
+                    let mut spot = target.entity_position();
+                    spot.z = target.position().z + transform.scale.z / 2.0;
 
-                transform.position = spot;
+                    transform.position = spot;
+                }
             }
         });
 
         self.game_state.sync_transform(self.info.entity);
+
+        self.info.interacted = false;
     }
 
     fn basic_colliding_info(&self, f: impl FnOnce(BasicCollidingInfo))
