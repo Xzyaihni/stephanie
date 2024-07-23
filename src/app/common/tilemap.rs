@@ -35,10 +35,20 @@ const TEXTURE_TILE_SIZE: usize = 16;
 pub const PADDING: usize = TEXTURE_TILE_SIZE / 2;
 const PADDED_TILE_SIZE: usize = TEXTURE_TILE_SIZE + PADDING * 2;
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SpecialTile
+{
+    Stairs
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TileInfoRaw
 {
     pub name: String,
+    pub special: Option<SpecialTile>,
+    pub colliding: Option<bool>,
+    pub transparent: Option<bool>,
+    pub gradientable: Option<bool>,
     pub texture: Option<PathBuf>
 }
 
@@ -46,6 +56,9 @@ pub struct TileInfoRaw
 pub struct TileInfo
 {
     pub name: String,
+    pub special: Option<SpecialTile>,
+    pub colliding: bool,
+    pub gradientable: bool,
     pub transparent: bool
 }
 
@@ -53,15 +66,33 @@ impl TileInfo
 {
     fn from_raw(texture: &SimpleImage, tile_raw: TileInfoRaw) -> Self
     {
-        let transparent = texture.colors.iter().any(|color|
-        {
-            color.a != u8::MAX
-        });
-
-        TileInfo{
+        let mut this = TileInfo{
             name: tile_raw.name,
-            transparent
+            special: tile_raw.special,
+            colliding: tile_raw.colliding.unwrap_or(true),
+            gradientable: tile_raw.gradientable.unwrap_or(true),
+            transparent: tile_raw.transparent.unwrap_or_else(||
+            {
+                texture.colors.iter().any(|color|
+                {
+                    color.a != u8::MAX
+                })
+            })
+        };
+
+        if let Some(special) = this.special.as_ref()
+        {
+            match special
+            {
+                SpecialTile::Stairs =>
+                {
+                    this.colliding = false;
+                    this.transparent = true;
+                }
+            }
         }
+
+        this
     }
 }
 
@@ -170,6 +201,9 @@ impl TileMap
 
         let tiles = iter::once(TileInfo{
             name: "air".to_owned(),
+            special: None,
+            colliding: false,
+            gradientable: false,
             transparent: true
         }).chain(tiles.into_iter().zip(textures.iter()).map(|(tile_raw, texture)|
         {

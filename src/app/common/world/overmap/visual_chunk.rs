@@ -462,7 +462,16 @@ impl VisualChunk
         {
             if let Some(gradient_tile) = tiles[direction]
             {
-                if !tilemap[gradient_tile].transparent && gradient_tile != tiles.this
+                let fits = |tile|
+                {
+                    let info = &tilemap[tile];
+
+                    !info.transparent && info.gradientable
+                };
+
+                if gradient_tile != tiles.this
+                    && fits(gradient_tile)
+                    && fits(tiles.this)
                 {
                     model_builder.create_direction(
                         direction,

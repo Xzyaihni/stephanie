@@ -2,6 +2,10 @@
 
 (define (this-tile point tile) (put-tile this-chunk point tile))
 
+(this-tile
+    (make-point 8 2)
+    (tile 'stairs))
+
 ; entrance
 (this-tile
     (make-point 7 1)

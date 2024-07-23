@@ -18,6 +18,8 @@
         "name": "glass"
     },
     {
-        "name": "stairs"
+        "name": "stairs",
+        "special": "Stairs",
+        "gradientable": false
     }
 ]

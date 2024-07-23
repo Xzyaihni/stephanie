@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use nalgebra::Vector2;
 
 use yanyaengine::{ShaderId, game_object::*};
@@ -9,6 +11,7 @@ use crate::{
         world_receiver::WorldReceiver
     },
     common::{
+        TileMap,
         Entity,
         OccludingCasters,
         message::Message
@@ -59,6 +62,7 @@ pub struct ChunkWithEntities
 
 pub struct World
 {
+    tilemap: Arc<TileMap>,
     world_receiver: WorldReceiver,
     overmap: ClientOvermap
 }
@@ -72,6 +76,7 @@ impl World
         player_position: Pos3<f32>
     ) -> Self
     {
+        let tilemap = tiles_factory.tilemap().clone();
         let size = Self::overmap_size();
 
         let visual_overmap = VisualOvermap::new(tiles_factory, size, camera_size, player_position);
@@ -82,7 +87,12 @@ impl World
             player_position
         );
 
-        Self{world_receiver, overmap}
+        Self{tilemap, world_receiver, overmap}
+    }
+
+    pub fn colliding(&self, tile: Tile) -> bool
+    {
+        self.tilemap.info(tile).colliding
     }
 
     pub fn overmap_size() -> Pos3<usize>
