@@ -1135,7 +1135,8 @@ impl<'a> PlayerContainer<'a>
 
             let interact_button = ||
             {
-                "E"
+                self.game_state.controls.key_for(&Control::Interact).map(ToString::to_string)
+                    .unwrap_or_else(|| "unassigned".to_owned())
             };
 
             if let Some(stairs) = stairs

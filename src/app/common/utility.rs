@@ -1,8 +1,10 @@
 use std::{
     f32,
+    hash::Hash,
     io::Write,
     fmt::Debug,
     fs::File,
+    collections::HashMap,
     path::{Path, Component},
     ops::{Range, RangeInclusive}
 };
@@ -49,6 +51,41 @@ macro_rules! some_or_return
     ($value:expr) =>
     {
         $crate::some_or_value!{$value, ()}
+    }
+}
+
+pub struct BiMap<K, V>
+{
+    normal: HashMap<K, V>,
+    back: HashMap<V, K>
+}
+
+impl<K: Hash + Eq + Clone, V: Hash + Eq + Clone> FromIterator<(K, V)> for BiMap<K, V>
+{
+    fn from_iter<I>(iter: I) -> Self
+    where
+        I: IntoIterator<Item=(K, V)>
+    {
+        let normal: HashMap<K, V> = iter.into_iter().collect();
+        let back = normal.iter().map(|(k, v)| (v.clone(), k.clone())).collect();
+        
+        Self{
+            normal,
+            back
+        }
+    }
+}
+
+impl<K: Hash + Eq + Clone, V: Hash + Eq + Clone> BiMap<K, V>
+{
+    pub fn get(&self, key: &K) -> Option<&V>
+    {
+        self.normal.get(key)
+    }
+
+    pub fn get_back(&self, key: &V) -> Option<&K>
+    {
+        self.back.get(key)
     }
 }
 

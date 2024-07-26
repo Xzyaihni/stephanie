@@ -1,14 +1,16 @@
 use std::{
     mem,
-    collections::HashMap
+    fmt::{self, Display}
 };
 
-use yanyaengine::{ElementState, PhysicalKey, KeyCode, MouseButton};
+use yanyaengine::{ElementState, PhysicalKey, KeyCode, KeyCodeNamed, MouseButton};
 
 use strum::EnumCount;
 
+use crate::common::BiMap;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumCount)]
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, EnumCount)]
 pub enum Control
 {
     MoveUp = 0,
@@ -79,6 +81,30 @@ pub enum KeyMapping
     Mouse(MouseButton)
 }
 
+impl Display for KeyMapping
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
+    {
+        match self
+        {
+            Self::Keyboard(key) =>
+            {
+                write!(f, "{}", KeyCodeNamed(*key).to_string().trim_start_matches("Key"))
+            },
+            Self::Mouse(button) =>
+            {
+                write!(f, "{}", match button
+                {
+                    MouseButton::Left => "Left mouse",
+                    MouseButton::Right => "Right mouse",
+                    MouseButton::Middle => "Middle mouse",
+                    _ => "unknown"
+                })
+            }
+        }
+    }
+}
+
 impl KeyMapping
 {
     pub fn from_control(value: yanyaengine::Control) -> Option<Self>
@@ -98,7 +124,7 @@ impl KeyMapping
 
 pub struct ControlsController
 {
-    key_mapping: HashMap<KeyMapping, Control>,
+    key_mapping: BiMap<KeyMapping, Control>,
     keys: [ControlState; Control::COUNT],
     changed: Vec<(ControlState, Control)>
 }
@@ -178,6 +204,11 @@ impl ControlsController
         }
 
         None
+    }
+
+    pub fn key_for(&self, control: &Control) -> Option<&KeyMapping>
+    {
+        self.key_mapping.get_back(control)
     }
 
     pub fn changed_this_frame(&mut self) -> Vec<(ControlState, Control)>
