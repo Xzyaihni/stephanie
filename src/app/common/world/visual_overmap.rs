@@ -122,7 +122,7 @@ impl VisibilityChecker
         &self,
         chunks: &ChunksContainer<(Instant, VisualChunk)>,
         pos: LocalPos
-    ) -> impl Iterator<Item=LocalPos>
+    ) -> impl DoubleEndedIterator<Item=LocalPos>
     {
         let top = (self.size.z / 2) + 1;
         let positions = pos.with_z_range(0..top);
@@ -348,7 +348,7 @@ impl VisualOvermap
             .filter(|pos| self.visible(*pos))
             .for_each(|pos|
             {
-                self.visibility_checker.visible_z(&self.chunks, pos).for_each(|pos|
+                self.visibility_checker.visible_z(&self.chunks, pos).rev().for_each(|pos|
                 {
                     f(&self.chunks[pos].1, pos)
                 });

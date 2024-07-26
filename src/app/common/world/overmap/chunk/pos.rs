@@ -797,7 +797,10 @@ impl LocalPos
         Self{pos: Pos3::new(x, y, z), size: self.size}
     }
 
-    pub fn with_z_range(self, z: Range<usize>) -> impl DoubleEndedIterator<Item=Self> + Clone
+    pub fn with_z_range(
+        self,
+        z: Range<usize>
+    ) -> impl DoubleEndedIterator<Item=Self> + ExactSizeIterator + Clone
     {
         z.map(move |z| Self{pos: Pos3{z, ..self.pos}, ..self})
     }

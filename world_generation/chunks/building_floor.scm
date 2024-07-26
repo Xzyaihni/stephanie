@@ -7,13 +7,13 @@
 
 (fill-area
     this-chunk
-    (make-point 7 2)
-    (make-point 2 2)
+    (make-point 5 0)
+    (make-point 6 4)
     (tile 'concrete))
 
-(let ((x (if (= (remainder height 4) 0) 7 8)))
+(let ((x (if (= (remainder height 4) 0) 6 9)))
     (put-tile
         this-chunk
-        (make-point x 2)
+        (make-point x 1)
         (tile 'stairs_down)))
 
