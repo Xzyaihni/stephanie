@@ -1143,9 +1143,18 @@ impl<'a> PlayerContainer<'a>
             {
                 let above = stairs.offset(Pos3::new(0, 0, 1));
 
-                if world.tile(above).map(|tile|
+                if world.tile(above).and_then(|tile|
                 {
-                    world.tile_info(*tile).special == Some(SpecialTile::StairsDown)
+                    if world.tile_info(*tile).special == Some(SpecialTile::StairsDown)
+                    {
+                        world.tile(above.offset(Pos3::new(0, 0, 1))).map(|tile|
+                        {
+                            !world.tile_info(*tile).colliding
+                        })
+                    } else
+                    {
+                        None
+                    }
                 }).unwrap_or(false)
                 {
                     self.show_tile_tooltip(format!("press {} to go up", interact_button()));
@@ -1156,11 +1165,7 @@ impl<'a> PlayerContainer<'a>
                             .transform_mut(self.info.entity)
                             .unwrap();
 
-                        let target = above.offset(Pos3::new(0, 0, 1));
-                        let mut spot = target.entity_position();
-                        spot.z = target.position().z + transform.scale.z / 2.0;
-
-                        transform.position = spot;
+                        transform.position.z += TILE_SIZE * 2.0;
                     }
                 }
             }
@@ -1175,9 +1180,14 @@ impl<'a> PlayerContainer<'a>
                 }).unwrap_or(false)
             }).next();
 
-            if let Some(stairs) = stairs
+            if stairs.and_then(|stairs|
             {
-                let below = stairs.offset(Pos3::new(0, 0, -1));
+                world.tile(stairs.offset(Pos3::new(0, 0, -1))).map(|tile|
+                {
+                    !world.tile_info(*tile).colliding
+                })
+            }).unwrap_or(false)
+            {
                 self.show_tile_tooltip(format!("press {} to go down", interact_button()));
 
                 if self.info.interacted
@@ -1186,10 +1196,7 @@ impl<'a> PlayerContainer<'a>
                         .transform_mut(self.info.entity)
                         .unwrap();
 
-                    let mut spot = below.entity_position();
-                    spot.z = below.position().z + transform.scale.z / 2.0;
-
-                    transform.position = spot;
+                    transform.position.z -= TILE_SIZE * 2.0;
                 }
             }
         });
