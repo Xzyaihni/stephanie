@@ -83,7 +83,7 @@ use controls_controller::ControlsController;
 use notifications::{Notifications, Notification};
 
 pub use ui::{close_ui, Ui};
-use ui::{BarNotification, NotificationId};
+use ui::{BarNotification, TextNotification, NotificationId};
 
 mod controls_controller;
 
@@ -379,7 +379,8 @@ impl CommonTextures
 pub struct UiNotifications
 {
     pub stamina: NotificationId,
-    pub weapon_cooldown: NotificationId
+    pub weapon_cooldown: NotificationId,
+    pub tile_tooltip: NotificationId
 }
 
 pub struct GameState
@@ -515,7 +516,11 @@ impl GameState
 
             UiNotifications{
                 stamina: ui.push_notification(create_bar("STAMINA")),
-                weapon_cooldown: ui.push_notification(create_bar("WEAPON"))
+                weapon_cooldown: ui.push_notification(create_bar("WEAPON")),
+                tile_tooltip: ui.push_notification(
+                    TextNotification::new(&mut creator, player_entity, "undefined".to_owned())
+                        .into()
+                )
             }
         };
 
@@ -788,9 +793,14 @@ impl GameState
         self.ui.borrow_mut().set_bar(&self.entities.entities, id, amount);
     }
 
-    pub fn activate_notification(&self, id: NotificationId, lifetime: f32)
+    pub fn set_notification_text(&self, id: NotificationId, text: String)
     {
-        self.ui.borrow_mut().activate_notification(&self.entities.entities, id, lifetime);
+        self.ui.borrow_mut().set_notification_text(&self.entities.entities, id, text);
+    }
+
+    pub fn activate_notification(&self, id: NotificationId, delay: f32)
+    {
+        self.ui.borrow_mut().activate_notification(&self.entities.entities, id, delay);
     }
 
     pub fn tile(&self, index: TilePos) -> Option<&Tile>

@@ -1060,7 +1060,6 @@ impl<'a> PlayerContainer<'a>
         if let Some(character) = self.game_state.entities().character(self.info.entity)
         {
             let delay = 0.7;
-
             let current_stamina = character.stamina_fraction(self.game_state.entities());
 
             if self.info.previous_stamina != current_stamina
@@ -1134,6 +1133,11 @@ impl<'a> PlayerContainer<'a>
                 }).unwrap_or(false)
             }).next();
 
+            let interact_button = ||
+            {
+                "E"
+            };
+
             if let Some(stairs) = stairs
             {
                 let above = stairs.offset(Pos3::new(0, 0, 1));
@@ -1143,6 +1147,8 @@ impl<'a> PlayerContainer<'a>
                     world.tile_info(*tile).special == Some(SpecialTile::StairsDown)
                 }).unwrap_or(false)
                 {
+                    self.show_tile_tooltip(format!("press {} to go up", interact_button()));
+
                     if self.info.interacted
                     {
                         let mut transform = self.game_state.entities()
@@ -1171,6 +1177,7 @@ impl<'a> PlayerContainer<'a>
             if let Some(stairs) = stairs
             {
                 let below = stairs.offset(Pos3::new(0, 0, -1));
+                self.show_tile_tooltip(format!("press {} to go down", interact_button()));
 
                 if self.info.interacted
                 {
@@ -1189,6 +1196,14 @@ impl<'a> PlayerContainer<'a>
         self.game_state.sync_transform(self.info.entity);
 
         self.info.interacted = false;
+    }
+
+    fn show_tile_tooltip(&self, text: String)
+    {
+        let id = self.game_state.ui_notifications.tile_tooltip;
+
+        self.game_state.set_notification_text(id, text);
+        self.game_state.activate_notification(id, 0.1);
     }
 
     fn basic_colliding_info(&self, f: impl FnOnce(BasicCollidingInfo))

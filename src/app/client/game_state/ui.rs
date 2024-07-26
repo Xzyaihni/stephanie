@@ -1050,6 +1050,32 @@ fn on_close(
     }
 }
 
+fn create_notification_body(creator: &mut EntityCreator, anchor: Entity) -> Entity
+{
+    creator.entities.push(
+        true,
+        EntityInfo{
+            render: Some(RenderInfo{
+                object: Some(RenderObjectKind::Texture{name: "ui/background.png".to_owned()}.into()),
+                z_level: ZLevel::UiLow,
+                visible: false,
+                ..Default::default()
+            }),
+            follow_position: Some(FollowPosition::new(anchor, Connection::Rigid)),
+            lazy_transform: Some(LazyTransformInfo{
+                scaling: Scaling::EaseOut{decay: 20.0},
+                transform: Transform{
+                    scale: Vector3::zeros(),
+                    ..Default::default()
+                },
+                ..Default::default()
+            }.into()),
+            watchers: Some(Default::default()),
+            ..Default::default()
+        }
+    )
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct NotificationId(usize);
 
@@ -1067,28 +1093,7 @@ impl BarNotification
         name: String
     ) -> Self
     {
-        let body = creator.entities.push(
-            true,
-            EntityInfo{
-                render: Some(RenderInfo{
-                    object: Some(RenderObjectKind::Texture{name: "ui/background.png".to_owned()}.into()),
-                    z_level: ZLevel::UiLow,
-                    visible: false,
-                    ..Default::default()
-                }),
-                follow_position: Some(FollowPosition::new(anchor, Connection::Rigid)),
-                lazy_transform: Some(LazyTransformInfo{
-                    scaling: Scaling::EaseOut{decay: 20.0},
-                    transform: Transform{
-                        scale: Vector3::zeros(),
-                        ..Default::default()
-                    },
-                    ..Default::default()
-                }.into()),
-                watchers: Some(Default::default()),
-                ..Default::default()
-            }
-        );
+        let body = create_notification_body(creator, anchor);
 
         let bar = creator.entities.push(
             true,
@@ -1146,7 +1151,60 @@ impl BarNotification
 
 pub struct TextNotification
 {
-    body: Entity
+    body: Entity,
+    text: Entity
+}
+
+impl TextNotification
+{
+    pub fn new(
+        creator: &mut EntityCreator,
+        anchor: Entity,
+        text: String
+    ) -> Self
+    {
+        let body = create_notification_body(creator, anchor);
+
+        let text = creator.entities.push(
+            true,
+            EntityInfo{
+                lazy_transform: Some(LazyTransformInfo::default().into()),
+                render: Some(RenderInfo{
+                    object: Some(RenderObjectKind::Text{
+                        text,
+                        font_size: 30,
+                        font: FontStyle::Bold,
+                        align: TextAlign::centered()
+                    }.into()),
+                    z_level: ZLevel::UiHigh,
+                    ..Default::default()
+                }),
+                parent: Some(Parent::new(body, true)),
+                ..Default::default()
+            }
+        );
+
+        Self{
+            body,
+            text
+        }
+    }
+
+    pub fn set_text(
+        &mut self,
+        entities: &ClientEntities,
+        text: String
+    )
+    {
+        let object = RenderObjectKind::Text{
+            text,
+            font_size: 80,
+            font: FontStyle::Bold,
+            align: TextAlign::centered()
+        }.into();
+
+        entities.set_deferred_render_object(self.text, object);
+    }
 }
 
 pub enum Notification
@@ -1160,6 +1218,14 @@ impl From<BarNotification> for Notification
     fn from(x: BarNotification) -> Self
     {
         Self::Bar(x)
+    }
+}
+
+impl From<TextNotification> for Notification
+{
+    fn from(x: TextNotification) -> Self
+    {
+        Self::Text(x)
     }
 }
 
@@ -1469,6 +1535,19 @@ impl Ui
         if let Notification::Bar(x) = &mut self.notifications[id.0]
         {
             x.set_amount(entities, amount);
+        }
+    }
+
+    pub fn set_notification_text(
+        &mut self,
+        entities: &ClientEntities,
+        id: NotificationId,
+        text: String
+    )
+    {
+        if let Notification::Text(x) = &mut self.notifications[id.0]
+        {
+            x.set_text(entities, text);
         }
     }
 
