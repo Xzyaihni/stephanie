@@ -26,7 +26,7 @@ use crate::{
     },
     common::{
         OccludingPlane,
-        OccludingCasters,
+        OccludingCaster,
         TileMap,
         world::{
             Pos3,
@@ -509,7 +509,7 @@ impl VisualChunk
         &mut self,
         info: &mut UpdateBuffersInfo,
         visibility: &VisibilityChecker,
-        casters: &OccludingCasters,
+        caster: &OccludingCaster,
         height: usize
     )
     {
@@ -521,7 +521,7 @@ impl VisualChunk
                 .for_each(|object| object.update_buffers(info));
         });
 
-        self.occluders[height].iter_mut().for_each(|x| x.update_buffers(visibility, info, casters));
+        self.occluders[height].iter_mut().for_each(|x| x.update_buffers(visibility, info, caster));
     }
 
     pub fn draw_tiles(

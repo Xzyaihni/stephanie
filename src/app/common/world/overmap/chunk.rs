@@ -9,7 +9,7 @@ use nalgebra::Vector3;
 
 use tile::Tile;
 
-use crate::{impl_directionals, common::Transform};
+use crate::{impl_directionals, common::{Transform, world::debug_3d_slices}};
 pub use pos::*;
 
 pub mod tile;
@@ -94,59 +94,10 @@ impl Debug for Chunk
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
     {
-        let max_id = self.tiles.iter().map(|x| x.id()).max().unwrap();
-        let id_len = max_id.to_string().len();
-
-        let mut s = f.debug_struct("Chunk");
-
-        for z in 0..CHUNK_SIZE
+        debug_3d_slices(f, Pos3::repeat(CHUNK_SIZE), |pos|
         {
-            struct Slice
-            {
-                values: Vec<String>
-            }
-
-            impl Debug for Slice
-            {
-                fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
-                {
-                    let mut s = f.debug_struct("z slice");
-
-                    self.values.iter().enumerate().for_each(|(y, xs)|
-                    {
-                        let name = format!("y {:1$}", y, (CHUNK_SIZE - 1).to_string().len());
-
-                        s.field(&name, xs);
-                    });
-
-                    s.finish()
-                }
-            }
-
-            let mut sl = Slice{values: Vec::new()};
-            for y in 0..CHUNK_SIZE
-            {
-                let mut data = "[".to_owned();
-                for x in 0..CHUNK_SIZE
-                {
-                    let pos = ChunkLocal::new(x, y, z);
-
-                    if x != 0
-                    {
-                        data += " ";
-                    }
-
-                    data += &format!("{:1$}", self[pos].id(), id_len);
-                }
-                data += "]";
-
-                sl.values.push(data);
-            }
-
-            s.field(&format!("z {z}"), &sl);
-        }
-
-        s.finish()
+            self[ChunkLocal::from(pos)].id().to_string()
+        })
     }
 }
 

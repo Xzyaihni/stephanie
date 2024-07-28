@@ -8,7 +8,7 @@
 (fill-area
     this-chunk
     (make-point 5 0)
-    (make-point 6 4)
+    (make-point 6 1)
     (tile 'concrete))
 
 (let ((x (if (= (remainder height 4) 0) 6 9)))

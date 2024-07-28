@@ -15,7 +15,7 @@ use crate::{
         TileMap,
         TileInfo,
         Entity,
-        OccludingCasters,
+        OccludingCaster,
         message::Message
     }
 };
@@ -23,6 +23,7 @@ use crate::{
 pub use overmap::{
     ChunksContainer,
     Axis,
+    chunks_container::debug_3d_slices,
     chunk::{
         self,
         CHUNK_SIZE,
@@ -224,10 +225,10 @@ impl World
         &mut self,
         info: &mut UpdateBuffersInfo,
         visibility: &VisibilityChecker,
-        casters: &OccludingCasters
+        caster: &OccludingCaster
     )
     {
-        self.overmap.update_buffers(info, visibility, casters);
+        self.overmap.update_buffers(info, visibility, caster);
     }
 
     pub fn draw(

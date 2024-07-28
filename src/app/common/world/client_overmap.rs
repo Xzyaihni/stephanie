@@ -14,7 +14,7 @@ use crate::{
         VisibilityChecker,
         world_receiver::WorldReceiver
     },
-    common::OccludingCasters
+    common::OccludingCaster
 };
 
 use super::{
@@ -355,10 +355,10 @@ impl ClientOvermap
         &mut self,
         info: &mut UpdateBuffersInfo,
         visibility: &VisibilityChecker,
-        casters: &OccludingCasters
+        caster: &OccludingCaster
     )
     {
-        self.visual_overmap.update_buffers(info, visibility, casters);
+        self.visual_overmap.update_buffers(info, visibility, caster);
     }
 
     pub fn draw(

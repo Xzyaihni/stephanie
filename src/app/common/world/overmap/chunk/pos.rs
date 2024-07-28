@@ -106,6 +106,20 @@ impl<T> Pos3<T>
     }
 }
 
+impl Pos3<usize>
+{
+    pub fn positions(&self) -> impl Iterator<Item=Pos3<usize>> + '_
+    {
+        (0..self.z).flat_map(move |z|
+        {
+            (0..self.y).flat_map(move |y|
+            {
+                (0..self.x).map(move |x| Pos3::new(x, y, z))
+            })
+        })
+    }
+}
+
 impl<T: Copy> Pos3<T>
 {
     pub fn repeat(v: T) -> Self

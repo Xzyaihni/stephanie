@@ -140,7 +140,8 @@ pub enum ValueTag
     Procedure,
     PrimitiveProcedure,
     List,
-    Vector
+    Vector,
+    VectorMoved
 }
 
 impl ValueTag
@@ -155,6 +156,7 @@ impl ValueTag
                 | ValueTag::Procedure
                 | ValueTag::PrimitiveProcedure
                 | ValueTag::Symbol
+                | ValueTag::VectorMoved
                 | ValueTag::Special => false,
             ValueTag::String
                 | ValueTag::List
@@ -496,6 +498,7 @@ impl LispValue
             ValueTag::Special => Some(unsafe{ self.value.special.to_string() }),
             ValueTag::Procedure => Some(format!("<procedure #{}>", unsafe{ self.value.procedure })),
             ValueTag::PrimitiveProcedure => Some(format!("<primitive procedure #{}>", unsafe{ self.value.primitive_procedure })),
+            ValueTag::VectorMoved => Some("<vector-moved>".to_owned()),
             ValueTag::String => memory.map(|memory|
             {
                 memory.get_string(unsafe{ self.value.string }).unwrap()
@@ -615,7 +618,7 @@ impl Debug for MemoryBlock
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
     {
-        // all fields r at least 32 bits long and u32 has no invalid states
+        // all fields r 32 bits long and u32 has no invalid states
         let general = self.general.iter().map(|raw| unsafe{ raw.unsigned }).collect::<Vec<u32>>();
 
         f.debug_struct("MemoryBlock")
@@ -851,9 +854,22 @@ impl LispMemory
             },
             ValueTag::Vector | ValueTag::String =>
             {
-                // doesnt do broken hearts stuff so cycles will blow up memory
-                // but wutever!
                 let id = unsafe{ value.value.vector };
+
+                let create_id = |id|
+                {
+                    match value.tag
+                    {
+                        ValueTag::String => LispValue::new_string(id),
+                        ValueTag::Vector => LispValue::new_vector(id),
+                        _ => unreachable!()
+                    }
+                };
+
+                if let ValueTag::VectorMoved = unsafe{ memory.general[id + 1].tag }
+                {
+                    return create_id(unsafe{ memory.general[id].vector });
+                }
 
                 let (tag, range) = memory.vector_info(id);
 
@@ -872,14 +888,12 @@ impl LispMemory
 
                 let s = &memory.general[range];
 
-                let id = swap_memory.allocate_iter(s.len(), tag, s.iter());
+                let new_id = swap_memory.allocate_iter(s.len(), tag, s.iter());
 
-                match value.tag
-                {
-                    ValueTag::String => LispValue::new_string(id),
-                    ValueTag::Vector => LispValue::new_vector(id),
-                    _ => unreachable!()
-                }
+                memory.general[id] = ValueRaw{vector: new_id};
+                memory.general[id + 1] = ValueRaw{tag: ValueTag::VectorMoved};
+
+                create_id(new_id)
             },
             _ => unreachable!()
         }
@@ -1794,6 +1808,64 @@ mod tests
         let value = output.as_vector().unwrap().as_vec_integer().unwrap();
 
         assert_eq!(value, vec![1005, 9, 5, 123, 1000]);
+    }
+
+    #[test]
+    fn gc_vector()
+    {
+        let code = "
+            (define x (make-vector 5 999))
+
+            (define make-pair cons)
+            (define pair-x car)
+            (define pair-y cdr)
+
+            ; more opportunities for gc bugs this way!
+            (define (pair-index p) (+ (pair-x p) (pair-y p)))
+
+            (vector-set! x 3 123)
+            (vector-set! x 2 5)
+            (vector-set! x 1 9)
+            (vector-set! x 4 1000)
+
+            (define (inc-by-1! x p)
+                (vector-set! x (pair-index p) (+ (vector-ref x (pair-index p)) 1)))
+
+            (define (loop f i)
+                (if (= i 0)
+                    '()
+                    (begin
+                        (f (- i 1))
+                        (loop f (- i 1)))))
+
+            (loop
+                (lambda (i) (vector-set! x i 0))
+                5)
+
+            (loop
+                (lambda (j)
+                    (begin
+                        (display '(lots of stuff and allocations of lists so it triggers a gc))
+                        (loop
+                            (lambda (i) (inc-by-1! x (make-pair 3 (- i 3))))
+                            5)))
+                1000)
+
+            (inc-by-1! x (make-pair 3 1))
+
+            x
+        ";
+
+        let memory_size = 50;
+        let mut memory = LispMemory::new(memory_size);
+
+        let mut lisp = LispRef::new(code).unwrap();
+
+        let output = lisp.run_with_memory(&mut memory).unwrap();
+
+        let value = output.as_vector().unwrap().as_vec_integer().unwrap();
+
+        assert_eq!(value, vec![1000, 1000, 1000, 1000, 1001]);
     }
 
     #[test]

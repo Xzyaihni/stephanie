@@ -52,7 +52,7 @@ use crate::{
         Entities,
         EntityPasser,
         EntitiesController,
-        OccludingCasters,
+        OccludingCaster,
         entity::ClientEntities,
         message::Message,
         character::PartialCombinedInfo,
@@ -219,7 +219,7 @@ impl ClientEntitiesContainer
         &mut self,
         visibility: &VisibilityChecker,
         info: &mut UpdateBuffersInfo,
-        casters: &OccludingCasters
+        casters: &OccludingCaster
     )
     {
         self.entities.update_render();
@@ -832,15 +832,14 @@ impl GameState
         let mut info = UpdateBuffersInfo::new(partial_info, &self.camera.read());
         let info = &mut info;
 
-        let casters: Vec<_> = self.entities.player_transform().map(|x| x.position)
-            .into_iter()
-            .collect();
+        let caster = self.entities.player_transform().map(|x| x.position)
+            .unwrap_or_default();
 
-        let casters = OccludingCasters::from(casters);
+        let caster = OccludingCaster::from(caster);
 
         let visibility = self.visibility_checker();
 
-        self.world.update_buffers(info, &visibility, &casters);
+        self.world.update_buffers(info, &visibility, &caster);
 
         let mut create_info = RenderCreateInfo{
             location: UniformLocation{set: 0, binding: 0},
@@ -869,7 +868,7 @@ impl GameState
             self.dt
         );
 
-        self.entities.update_buffers(&visibility, info, &casters);
+        self.entities.update_buffers(&visibility, info, &caster);
 
         self.entities.entities.handle_on_change();
     }

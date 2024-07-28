@@ -3,6 +3,6 @@
 
 (define (zob) (set-faction (player-entity) 'zob))
 
-(define (noclip)
-    (set-floating (player-entity) #t)
-    (set-ghost (player-entity) #t))
+(define (noclip state)
+    (set-floating (player-entity) state)
+    (set-ghost (player-entity) state))

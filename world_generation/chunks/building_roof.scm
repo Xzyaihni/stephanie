@@ -7,8 +7,8 @@
 
 (fill-area
     this-chunk
-    (make-point 6 0)
-    (make-point 4 1)
+    (make-point 5 0)
+    (make-point 6 1)
     (tile 'concrete))
 
 (put-tile

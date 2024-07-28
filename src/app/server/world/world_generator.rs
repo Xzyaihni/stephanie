@@ -169,7 +169,10 @@ pub struct ChunkGenerator
 
 impl ChunkGenerator
 {
-    pub fn new(tilemap: TileMap, rules: &ChunkRulesGroup) -> Result<Self, ParseError>
+    pub fn new<'a>(
+        tilemap: TileMap,
+        names: impl Iterator<Item=&'a String>
+    ) -> Result<Self, ParseError>
     {
         let chunks = HashMap::new();
 
@@ -189,7 +192,7 @@ impl ChunkGenerator
 
         let parent_directory = parent_directory.join("chunks");
 
-        rules.iter_names().filter(|name|
+        names.filter(|name|
         {
             let name: &str = name.as_ref();
 
@@ -208,6 +211,7 @@ impl ChunkGenerator
     {
         let mut primitives = Primitives::new();
 
+        let fallback_tile = Tile::none();
         let names_map: HashMap<String, Tile> = tilemap.names_owned_map();
 
         primitives.add(
@@ -218,7 +222,12 @@ impl ChunkGenerator
 
                 let name = arg.as_symbol(memory)?;
 
-                let tile = names_map[&name];
+                let tile = names_map.get(&name).unwrap_or_else(||
+                {
+                    eprintln!("no tile named `{name}`, using fallback");
+
+                    &fallback_tile
+                });
 
                 Ok(LispValue::new_integer(tile.id() as i32))
             }));
@@ -231,10 +240,13 @@ impl ChunkGenerator
         path: &Path
     ) -> (Mappings, Lambdas)
     {
-        let name = "default.scm";
-        let path = path.join(name);
-        let default_code = fs::read_to_string(path)
-            .unwrap_or_else(|err| panic!("{name} must exist >_< ({err})"));
+        fn load(name: impl AsRef<Path>) -> String
+        {
+            fs::read_to_string(name.as_ref())
+                .unwrap_or_else(|err| panic!("{} must exist >_< ({err})", name.as_ref().display()))
+        }
+
+        let default_code = load("lisp/standard.scm") + &load(path.join("default.scm"));
 
         let mut memory = Lisp::default_memory();
         let config = LispConfig{
@@ -247,7 +259,7 @@ impl ChunkGenerator
             .and_then(|mut x|
             {
                 x.run_mappings_lambdas(&mut memory)
-            }).unwrap_or_else(|err| panic!("{name} must run ({err})"))
+            }).unwrap_or_else(|err| panic!("stdlib has an error ({err})"))
     }
 
     fn parse_function(
@@ -357,7 +369,7 @@ impl<S: SaveLoad<WorldChunk>> WorldGenerator<S>
     {
         let rules = ChunkRulesGroup::load(path.into())?;
 
-        let generator = ChunkGenerator::new(tilemap, &rules)?;
+        let generator = ChunkGenerator::new(tilemap, rules.iter_names())?;
 
         Ok(Self{generator, saver, rules})
     }
@@ -800,6 +812,95 @@ impl<'a> WaveCollapser<'a>
 
             let mut visited = VisitedTracker::new();
             self.constrain(&mut visited, local_pos);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests
+{
+    use crate::common::world::DirectionsGroup;
+
+    use super::*;
+
+
+    #[test]
+    fn generating()
+    {
+        let tilemap = TileMap::parse("tiles/tiles.json", "textures/tiles/").unwrap().tilemap;
+
+        let get_tile = |name|
+        {
+            tilemap.tile_named(name).unwrap()
+        };
+
+        let a = get_tile("grassie");
+        let b = get_tile("soil");
+        let c = get_tile("glass");
+        let d = get_tile("concrete");
+
+        let names = ["test_chunk"].map(|x| x.to_owned());
+        let mut generator = ChunkGenerator::new(tilemap, names.iter()).unwrap();
+
+        let tiles = generator.generate_chunk(0, AlwaysGroup{
+            this: "test_chunk",
+            other: DirectionsGroup{
+                right: "none",
+                left: "none",
+                down: "none",
+                up: "none"
+            }
+        });
+
+        let check_tiles = ChunksContainer::from_raw(Pos3::new(16, 16, 1), Box::new([
+            a,a,a,a,b,b,b,b,c,c,d,d,d,d,d,d,
+            a,a,a,a,b,b,b,b,b,b,d,d,d,d,d,d,
+            a,a,a,a,b,b,b,b,b,b,b,b,b,b,b,b,
+            a,a,a,a,b,b,b,b,b,b,b,b,b,b,b,b,
+            b,b,b,b,b,b,b,b,b,b,b,b,b,b,b,b,
+            b,b,b,b,b,b,b,b,b,b,b,b,b,b,b,b,
+            b,b,b,b,b,b,b,c,c,c,c,b,b,b,b,b,
+            b,b,b,b,b,b,b,c,c,c,c,b,b,b,b,b,
+            b,b,b,b,b,b,b,c,c,c,c,b,b,b,b,b,
+            b,b,b,d,d,d,d,d,d,d,d,d,b,b,b,b,
+            b,b,b,d,d,d,d,d,d,d,d,d,b,b,b,b,
+            b,b,b,d,d,d,d,d,d,d,d,d,b,b,b,b,
+            b,b,b,d,d,d,d,d,d,d,d,d,b,b,b,b,
+            b,b,b,b,b,b,b,c,c,c,c,b,b,b,b,b,
+            b,b,b,b,b,b,b,b,b,b,b,b,b,b,b,b,
+            b,b,b,b,b,b,b,b,b,b,b,b,b,b,b,b,
+        ]));
+
+        let display_tiles = |tiles: &ChunksContainer<Tile>|
+        {
+            tiles.map(|&id|
+            {
+                if id == a
+                {
+                    "🥬"
+                } else if id == b
+                {
+                    "🟫"
+                } else if id == c
+                {
+                    "🥛"
+                } else if id == d
+                {
+                    "🪨"
+                } else
+                {
+                    panic!("id must be either a b c or d")
+                }
+            }).display()
+        };
+
+        if tiles != check_tiles
+        {
+            panic!(
+                "grassie: {a:?}, soil: {b:?}, glass: {c:?}, concrete: {d:?}\n{:#?} != {:#?}",
+                display_tiles(&tiles),
+                display_tiles(&check_tiles)
+            );
         }
     }
 }

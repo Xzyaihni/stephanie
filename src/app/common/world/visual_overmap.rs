@@ -15,7 +15,7 @@ use yanyaengine::game_object::*;
 
 use crate::{
     client::{VisibilityChecker as EntityVisibilityChecker, TilesFactory},
-    common::OccludingCasters
+    common::OccludingCaster
 };
 
 use super::{
@@ -323,7 +323,7 @@ impl VisualOvermap
         &mut self,
         info: &mut UpdateBuffersInfo,
         visibility: &EntityVisibilityChecker,
-        casters: &OccludingCasters
+        caster: &OccludingCaster
     )
     {
         self.chunks.positions_2d()
@@ -335,7 +335,7 @@ impl VisualOvermap
                     self.chunks[pos].1.update_buffers(
                         info,
                         visibility,
-                        casters,
+                        caster,
                         self.visibility_checker.height(pos)
                     )
                 });

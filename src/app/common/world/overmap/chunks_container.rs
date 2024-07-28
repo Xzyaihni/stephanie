@@ -1,5 +1,5 @@
 use std::{
-    fmt,
+    fmt::{self, Display, Debug},
     slice::{
         IterMut as SliceIterMut,
         Iter as SliceIter
@@ -272,7 +272,7 @@ macro_rules! impl_iter
 impl_iter!{Iter, SliceIter}
 impl_iter!{IterMut, SliceIterMut}
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Indexer
 {
     size: Pos3<usize>
@@ -294,7 +294,7 @@ impl CommonIndexing for Indexer
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
 pub struct ChunksContainer<T>
 {
     chunks: Box<[T]>,
@@ -390,9 +390,16 @@ impl<T> ChunksContainer<T>
             indexer: self.indexer.clone().into()
         }
     }
+
+    pub fn display(self) -> DisplayChunksContainer<T>
+    where
+        T: Display
+    {
+        DisplayChunksContainer(self)
+    }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FlatIndexer
 {
     size: Pos3<usize>,
@@ -450,7 +457,7 @@ impl CommonIndexing for FlatIndexer
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FlatChunksContainer<T>
 {
     chunks: Box<[T]>,
@@ -543,5 +550,84 @@ mod tests
         {
             assert_eq!(a, b);
         });
+    }
+}
+
+pub fn debug_3d_slices(
+    f: &mut fmt::Formatter,
+    size: Pos3<usize>,
+    getter: impl Fn(Pos3<usize>) -> String
+) -> fmt::Result
+{
+    let max_len = size.positions().map(|pos| getter(pos).chars().count()).max().unwrap();
+
+    let mut s = f.debug_struct("Chunk");
+
+    for z in 0..size.z
+    {
+        struct Slice
+        {
+            size_y: usize,
+            values: Vec<String>
+        }
+
+        impl Debug for Slice
+        {
+            fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
+            {
+                let mut s = f.debug_struct("z slice");
+
+                self.values.iter().enumerate().for_each(|(y, xs)|
+                {
+                    let name = format!("y {:1$}", y, (self.size_y - 1).to_string().len());
+
+                    s.field(&name, xs);
+                });
+
+                s.finish()
+            }
+        }
+
+        let mut sl = Slice{size_y: size.y, values: Vec::new()};
+        for y in 0..size.y
+        {
+            let mut data = "[".to_owned();
+            for x in 0..size.x
+            {
+                let pos = Pos3::new(x, y, z);
+
+                if x != 0
+                {
+                    data += " ";
+                }
+
+                data += &format!("{:1$}", getter(pos), max_len);
+            }
+            data += "]";
+
+            sl.values.push(data);
+        }
+
+        s.field(&format!("z {z}"), &sl);
+    }
+
+    s.finish()
+}
+
+pub struct DisplayChunksContainer<T>(ChunksContainer<T>);
+
+impl<T: Display> Debug for DisplayChunksContainer<T>
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
+    {
+        debug_3d_slices(f, self.0.size(), |pos| self.0[pos].to_string())
+    }
+}
+
+impl<T: Debug> Debug for ChunksContainer<T>
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
+    {
+        debug_3d_slices(f, self.size(), |pos| format!("{:?}", self[pos]))
     }
 }

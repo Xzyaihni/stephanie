@@ -101,12 +101,7 @@ fn main()
     ));
 
     let shadow_shader = shaders.push(ShadersInfo::new(
-        |device|
-        {
-            shadow_vertex::load(device).unwrap().specialize(
-                [(0, TILE_SIZE.into())].into_iter().collect()
-            )
-        },
+        shadow_vertex::load,
         shadow_fragment::load
     ));
 
