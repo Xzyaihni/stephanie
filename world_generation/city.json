@@ -3,8 +3,14 @@
         {
             "name": "building",
             "variable": "Height",
-            "tag": "building_height",
-            "condition": "Less"
+            "range": {
+                "start": {
+                    "Number": 0
+                },
+                "end": {
+                    "Tag": "building_height"
+                }
+            }
         }
     ]
 }

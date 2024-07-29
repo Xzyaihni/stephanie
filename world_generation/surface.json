@@ -5,9 +5,7 @@
             "tags": [
                 {
                     "name": "building_height",
-                    "content": {
-                        "Number": "(+ 1 (* 4 (+ 1 (random-integer 4))))"
-                    }
+                    "content": "(+ 1 (* 4 (+ 1 (random-integer 4))))"
                 }
             ],
             "weight": 4,

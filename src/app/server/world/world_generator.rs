@@ -326,7 +326,7 @@ impl ChunkGenerator
 
             info.tags.iter().for_each(|tag|
             {
-                tag.define(self.rules.name_mappings(), memory, &self.environment);
+                tag.define(self.rules.name_mappings(), &self.environment);
             });
 
             let output = this_chunk.run_with_memory(memory)
@@ -478,7 +478,7 @@ impl<S: SaveLoad<WorldChunk>> WorldGenerator<S>
                             tags: this_surface.tags()
                         };
 
-                        let chunk = self.rules.city.generate(info);
+                        let chunk = self.rules.city.generate(info, this_surface.id());
 
                         applier(pair, chunk);
                     });

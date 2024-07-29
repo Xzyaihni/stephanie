@@ -2,13 +2,12 @@ use std::{
     iter,
     mem,
     rc::Rc,
-    cmp::Ordering,
     io::Write,
     fs::File,
     fmt::{self, Debug},
     path::{Path, PathBuf},
     collections::HashMap,
-    ops::Index
+    ops::{Range, Index}
 };
 
 use serde::{Serialize, Deserialize};
@@ -18,7 +17,7 @@ use bincode::Options;
 use super::{PossibleStates, ParseError};
 
 use crate::common::{
-    lisp::{Lisp, LispValue, Program, Primitives, LispMemory, Environment, Mappings},
+    lisp::{Lisp, Program, Primitives, LispMemory, Environment, Mappings},
     world::{
         CHUNK_SIZE,
         GlobalPos,
@@ -152,80 +151,29 @@ impl WorldChunkId
 pub struct TextId(usize);
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub enum TagContent
-{
-    Number(i32),
-    Text(TextId)
-}
-
-impl TagContent
-{
-    fn as_lisp_value(
-        &self,
-        mappings: &NameMappings,
-        memory: &mut LispMemory
-    ) -> LispValue
-    {
-        match self
-        {
-            Self::Number(x) => (*x).into(),
-            Self::Text(id) => memory.new_symbol(mappings.text.get_name(*id))
-        }
-    }
-
-    fn compare(&self, other: &Self) -> Option<Condition>
-    {
-        match (self, other)
-        {
-            (Self::Number(a), Self::Number(b)) => Some(a.cmp(b).into()),
-            (Self::Text(a), Self::Text(b)) =>
-            {
-                if a == b
-                {
-                    Some(Condition::Equal)
-                } else
-                {
-                    Some(Condition::Unequal)
-                }
-            },
-            (_, _) => None
-        }
-    }
-
-    fn generate(
-        memory: &mut LispMemory,
-        environment: &Environment,
-        value: &RuleTagContent
-    ) -> Self
-    {
-        match value
-        {
-            RuleTagContent::Number(x) =>
-            {
-                let number = x.apply(memory, environment).unwrap_or_else(|err|
-                {
-                    panic!("lisp error {err}")
-                }).as_integer().unwrap_or_else(|err|
-                {
-                    panic!("{err}")
-                });
-
-                Self::Number(number)
-            },
-            RuleTagContent::Text(x) => Self::Text(*x),
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WorldChunkTag
 {
     name: TextId,
-    content: TagContent
+    content: i32
 }
 
 impl WorldChunkTag
 {
+    fn generate_content(
+        memory: &mut LispMemory,
+        environment: &Environment,
+        value: &Program
+    ) -> i32
+    {
+        value.apply(memory, environment).unwrap_or_else(|err|
+        {
+            panic!("lisp error {err}")
+        }).as_integer().unwrap_or_else(|err|
+        {
+            panic!("{err}")
+        })
+    }
+
     fn generate(
         memory: &mut LispMemory,
         environment: &Environment,
@@ -234,21 +182,19 @@ impl WorldChunkTag
     {
         Self{
             name: tag.name,
-            content: TagContent::generate(memory, environment, &tag.content)
+            content: Self::generate_content(memory, environment, &tag.content)
         }
     }
 
     pub fn define(
         &self,
         mappings: &NameMappings,
-        memory: &mut LispMemory,
         environment: &Mappings
     )
     {
         let name = mappings.text.get_name(self.name);
-        let content = self.content.as_lisp_value(mappings, memory);
 
-        environment.define(name, content);
+        environment.define(name, self.content.into());
     }
 }
 
@@ -348,17 +294,10 @@ impl WorldChunk
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-pub enum RuleRawTagContent
-{
-    Number(String),
-    Text(String)
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct ChunkRuleRawTag
 {
     name: String,
-    content: RuleRawTagContent
+    content: String
 }
 
 #[derive(Debug, Deserialize)]
@@ -379,42 +318,10 @@ pub struct ChunkRulesRaw
 }
 
 #[derive(Debug, Clone)]
-pub enum RuleTagContent
-{
-    Number(Program),
-    Text(TextId)
-}
-
-impl RuleTagContent
-{
-    fn from_raw(
-        text_mapping: &mut TextMapping,
-        primitives: Rc<Primitives>,
-        raw_tag: RuleRawTagContent
-    ) -> Self
-    {
-        // not sure if i should just make this a generic >_<
-        match raw_tag
-        {
-            RuleRawTagContent::Number(x) =>
-            {
-                let program = Program::parse(primitives, None, &x).unwrap_or_else(|err|
-                {
-                    panic!("error evaluating program: {err}")
-                });
-
-                Self::Number(program)
-            },
-            RuleRawTagContent::Text(x) => Self::Text(text_mapping.to_id(x))
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
 pub struct ChunkRuleTag
 {
     name: TextId,
-    content: RuleTagContent
+    content: Program
 }
 
 impl ChunkRuleTag
@@ -425,9 +332,14 @@ impl ChunkRuleTag
         raw_tag: ChunkRuleRawTag
     ) -> Self
     {
+        let content = Program::parse(primitives, None, &raw_tag.content).unwrap_or_else(|err|
+        {
+            panic!("error evaluating program: {err}")
+        });
+
         Self{
             name: text_mapping.to_id(raw_tag.name),
-            content: RuleTagContent::from_raw(text_mapping, primitives, raw_tag.content)
+            content
         }
     }
 }
@@ -522,45 +434,11 @@ enum ConditionalVariable
     Height
 }
 
-#[derive(Debug, Clone, Copy, Deserialize)]
-enum Condition
+#[derive(Debug, Clone, Deserialize)]
+enum RangeNumberRaw
 {
-    Less,
-    Greater,
-    Equal,
-    Unequal
-}
-
-impl From<Ordering> for Condition
-{
-    fn from(value: Ordering) -> Self
-    {
-        match value
-        {
-            Ordering::Less => Self::Less,
-            Ordering::Greater => Self::Greater,
-            Ordering::Equal => Self::Equal
-        }
-    }
-}
-
-impl Condition
-{
-    pub fn contains(&self, ordering: Condition) -> bool
-    {
-        match (ordering, self)
-        {
-            (Self::Less, Self::Less) => true,
-            (Self::Equal, Self::Equal) => true,
-            (Self::Greater, Self::Greater) => true,
-            (Self::Unequal, Self::Unequal) => true,
-            (Self::Unequal, Self::Less) => true,
-            (Self::Unequal, Self::Greater) => true,
-            (Self::Less, Self::Unequal) => true,
-            (Self::Greater, Self::Unequal) => true,
-            (_, _) => false
-        }
-    }
+    Number(i32),
+    Tag(String)
 }
 
 #[derive(Debug, Deserialize)]
@@ -568,8 +446,7 @@ struct ConditionalRuleRaw
 {
     name: String,
     variable: ConditionalVariable,
-    tag: String,
-    condition: Condition
+    range: Range<RangeNumberRaw>
 }
 
 #[derive(Debug, Deserialize)]
@@ -579,12 +456,42 @@ struct CityRulesRaw
 }
 
 #[derive(Debug)]
+enum RangeNumber
+{
+    Number(i32),
+    Tag(TextId)
+}
+
+impl RangeNumber
+{
+    fn from_raw(
+        mappings: &NameMappings,
+        value: RangeNumberRaw
+    ) -> Self
+    {
+        match value
+        {
+            RangeNumberRaw::Number(x) => Self::Number(x),
+            RangeNumberRaw::Tag(name) => Self::Tag(mappings.text[&name])
+        }
+    }
+
+    fn as_number(&self, info: &ConditionalInfo) -> i32
+    {
+        match self
+        {
+            Self::Number(x) => *x,
+            Self::Tag(tag) => info.get_tag(*tag).expect("tag must exist")
+        }
+    }
+}
+
+#[derive(Debug)]
 struct ConditionalRule
 {
     name: WorldChunkId,
     variable: ConditionalVariable,
-    tag: TextId,
-    condition: Condition
+    range: Range<RangeNumber>
 }
 
 impl ConditionalRule
@@ -594,21 +501,25 @@ impl ConditionalRule
         Self{
             name: name_mappings.world_chunk[&rule.name],
             variable: rule.variable,
-            condition: rule.condition,
-            tag: name_mappings.text[&rule.tag]
+            range: Range{
+                start: RangeNumber::from_raw(name_mappings, rule.range.start),
+                end: RangeNumber::from_raw(name_mappings, rule.range.end)
+            }
         }
     }
 
-    pub fn matches(&self, info: &ConditionalInfo) -> bool
+    pub fn matches(
+        &self,
+        info: &ConditionalInfo,
+        this: WorldChunkId
+    ) -> bool
     {
-        if let Some(tag_value) = info.get_tag(self.tag)
+        if self.name == this
         {
-            let variable = info.get_variable(self.variable);
+            let start = self.range.start.as_number(info);
+            let end = self.range.end.as_number(info);
 
-            let condition = variable.compare(tag_value)
-                .expect("tag value and variable must be comparable");
-
-            self.condition.contains(condition)
+            (start..end).contains(&info.get_variable(self.variable))
         } else
         {
             false
@@ -625,16 +536,16 @@ pub struct ConditionalInfo<'a>
 
 impl ConditionalInfo<'_>
 {
-    fn get_tag(&self, search_tag: TextId) -> Option<&TagContent>
+    fn get_tag(&self, search_tag: TextId) -> Option<i32>
     {
-        self.tags.iter().find(|tag| tag.name == search_tag).map(|tag| &tag.content)
+        self.tags.iter().find(|tag| tag.name == search_tag).map(|tag| tag.content)
     }
 
-    fn get_variable(&self, variable: ConditionalVariable) -> TagContent
+    fn get_variable(&self, variable: ConditionalVariable) -> i32
     {
         match variable
         {
-            ConditionalVariable::Height => TagContent::Number(self.height)
+            ConditionalVariable::Height => self.height
         }
     }
 }
@@ -668,12 +579,12 @@ impl CityRules
         }
     }
 
-    pub fn generate(&self, info: ConditionalInfo) -> WorldChunk
+    pub fn generate(&self, info: ConditionalInfo, this: WorldChunkId) -> WorldChunk
     {
         // imagine using find_map, couldnt be me
         self.rules.iter().find(|rule|
         {
-            rule.matches(&info)
+            rule.matches(&info, this)
         }).map(|rule|
         {
             WorldChunk::new(rule.name, Vec::new())
