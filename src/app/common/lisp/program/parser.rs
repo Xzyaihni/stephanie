@@ -127,6 +127,17 @@ impl Ast
             return Ok(PrimitiveType::Bool(x));
         }
 
+        let mut x = x;
+
+        let stripped = x.strip_prefix('-');
+
+        let negative = stripped.is_some();
+
+        if let (true, Some(stripped)) = (x.len() > 1, stripped)
+        {
+            x = stripped;
+        }
+
         if x.starts_with(|c: char| !c.is_ascii_digit())
         {
             return Ok(PrimitiveType::Value(x.to_owned()));
@@ -134,12 +145,14 @@ impl Ast
 
         let out = if x.contains('.')
         {
-            PrimitiveType::Float(
-                x.parse().map_err(|_| Error::NumberParse(x.to_owned()))?)
+            let n: f32 = x.parse().map_err(|_| Error::NumberParse(x.to_owned()))?;
+
+            PrimitiveType::Float(if negative { -n } else { n })
         } else
         {
-            PrimitiveType::Integer(
-                x.parse().map_err(|_| Error::NumberParse(x.to_owned()))?)
+            let n: i32 = x.parse().map_err(|_| Error::NumberParse(x.to_owned()))?;
+
+            PrimitiveType::Integer(if negative { -n } else { n })
         };
 
         Ok(out)

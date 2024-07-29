@@ -15,3 +15,11 @@
 (define (for-each f lst)
     (map f lst)
     '())
+
+; technically the specs say it has to be short circuiting but i dont care
+(define (or a b)
+    (if a
+        #t
+        (if b
+            #t
+            #f)))

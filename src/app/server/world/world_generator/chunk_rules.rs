@@ -445,7 +445,7 @@ enum RangeNumberRaw
 struct ConditionalRuleRaw
 {
     name: String,
-    variable: ConditionalVariable,
+    variable: Option<ConditionalVariable>,
     range: Range<RangeNumberRaw>
 }
 
@@ -500,7 +500,7 @@ impl ConditionalRule
     {
         Self{
             name: name_mappings.world_chunk[&rule.name],
-            variable: rule.variable,
+            variable: rule.variable.unwrap_or(ConditionalVariable::Height),
             range: Range{
                 start: RangeNumber::from_raw(name_mappings, rule.range.start),
                 end: RangeNumber::from_raw(name_mappings, rule.range.end)

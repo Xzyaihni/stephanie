@@ -12,6 +12,7 @@ use yanyaengine::{TextureId, Transform, Key, KeyCode};
 use crate::{
     client::{Ui, UiEvent},
     common::{
+        some_or_value,
         some_or_return,
         render_info::*,
         lazy_transform::*,
@@ -341,6 +342,17 @@ impl Game
 
     fn console_primitives(&mut self) -> Rc<Primitives>
     {
+        macro_rules! get_component_mut
+        {
+            ($name:ident, $entities:expr, $entity:expr) =>
+            {
+                some_or_value!(
+                    $entities.$name($entity),
+                    Err(lisp::Error::Custom(format!("component {} is missing", stringify!($name))))
+                )
+            }
+        }
+
         let mut primitives = Primitives::new();
 
         {
@@ -394,7 +406,7 @@ impl Game
         {
             let state = args.pop(memory).as_bool()?;
 
-            entities.physical_mut(entity).unwrap().floating = state;
+            get_component_mut!(physical_mut, entities, entity).floating = state;
 
             Ok(())
         });
@@ -403,7 +415,7 @@ impl Game
         {
             let speed = args.pop(memory).as_float()?;
 
-            entities.anatomy_mut(entity).unwrap().set_speed(speed);
+            get_component_mut!(anatomy_mut, entities, entity).set_speed(speed);
 
             Ok(())
         });
@@ -412,7 +424,7 @@ impl Game
         {
             let state = args.pop(memory).as_bool()?;
 
-            entities.collider_mut(entity).unwrap().ghost = state;
+            get_component_mut!(collider_mut, entities, entity).ghost = state;
 
             Ok(())
         });
@@ -433,7 +445,7 @@ impl Game
 
             let position = Vector3::new(next_float()?, next_float()?, next_float()?);
 
-            entities.transform_mut(entity).unwrap().position = position;
+            get_component_mut!(transform_mut, entities, entity).position = position;
 
             Ok(())
         });
@@ -458,7 +470,7 @@ impl Game
                 lisp::Error::Custom(format!("cant deserialize {faction} as Faction"))
             })?;
 
-            entities.character_mut(entity).unwrap().faction = faction;
+            get_component_mut!(character_mut, entities, entity).faction = faction;
 
             Ok(())
         });

@@ -41,28 +41,10 @@
         (define wall-material (tile 'concrete))
 
         ; outer walls
-        (vertical-line-length
+        (rectangle-outline
             this-chunk
             (make-point 1 1)
-            (- size-y 2)
-            wall-material)
-
-        (vertical-line-length
-            this-chunk
-            (make-point (- size-x 2) 1)
-            (- size-y 2)
-            wall-material)
-
-        (horizontal-line-length
-            this-chunk
-            (make-point 1 1)
-            (- size-x 2)
-            wall-material)
-
-        (horizontal-line-length
-            this-chunk
-            (make-point 1 (- size-y 2))
-            (- size-x 2)
+            (make-point (- size-x 2) (- size-y 2))
             wall-material)
 
         ; hallway

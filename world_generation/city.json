@@ -2,13 +2,23 @@
     "rules": [
         {
             "name": "building",
-            "variable": "Height",
             "range": {
                 "start": {
                     "Number": 0
                 },
                 "end": {
                     "Tag": "building_height"
+                }
+            }
+        },
+        {
+            "name": "bunker",
+            "range": {
+                "start": {
+                    "Number": -2
+                },
+                "end": {
+                    "Number": 3
                 }
             }
         }

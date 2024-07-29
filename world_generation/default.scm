@@ -72,3 +72,28 @@
                 pos
                 (make-point (- (point-x size) 1) (point-y size))
                 tile))))
+
+(define (rectangle-outline chunk position size tile)
+    (vertical-line-length
+        chunk
+        position
+        (point-y size)
+        tile)
+
+    (vertical-line-length
+        chunk
+        (make-point (- (+ (point-x position) (point-x size)) 1) (point-y position))
+        (point-y size)
+        tile)
+
+    (horizontal-line-length
+        chunk
+        position
+        (point-x size)
+        tile)
+
+    (horizontal-line-length
+        chunk
+        (make-point (point-x position) (- (+ (point-y position) (point-y size)) 1))
+        (point-x size)
+        tile))
