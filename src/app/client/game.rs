@@ -379,7 +379,12 @@ impl Game
                     let entity = Self::pop_entity(&mut args, memory)?;
                     let position = game_state.entities().transform(entity).unwrap().position;
 
-                    eprintln!("entity info: {}", game_state.world.debug_chunk(position.into()));
+                    let visual = args.try_pop(memory).map(|x| x.as_bool()).unwrap_or(Ok(false))?;
+
+                    eprintln!(
+                        "entity info: {}",
+                        game_state.world.debug_chunk(position.into(), visual)
+                    );
 
                     Ok(LispValue::new_empty_list())
                 }));

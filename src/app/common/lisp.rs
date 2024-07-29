@@ -2018,6 +2018,21 @@ mod tests
     }
 
     #[test]
+    fn if_no_else()
+    {
+        let code = "
+            (if (null? (if (= 5 1) 8))
+                1)
+        ";
+
+        let mut lisp = Lisp::new(code).unwrap();
+
+        let value = lisp.run().unwrap().as_integer().unwrap();
+
+        assert_eq!(value, 1_i32);
+    }
+
+    #[test]
     fn predicates_stuff()
     {
         let code = "

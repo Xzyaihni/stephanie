@@ -3,6 +3,7 @@ use std::{rc::Rc, cell::RefCell};
 use super::world_generator::{
     WORLD_CHUNK_SIZE,
     CHUNK_RATIO,
+    ConditionalInfo,
     WorldGenerator,
     WorldChunk
 };
@@ -307,8 +308,13 @@ impl<S: SaveLoad<WorldChunk>> ServerOvermap<S>
                         self.world_chunks[position].clone().unwrap()
                     });
 
+                    let info = ConditionalInfo{
+                        height: self.to_global_z(local_pos.pos.z),
+                        tags: self.world_plane.world_chunk(local_pos).tags()
+                    };
+
                     let world_chunk = self.world_generator.borrow_mut().generate_chunk(
-                        self.to_global_z(local_pos.pos.z),
+                        &info,
                         group
                     );
 

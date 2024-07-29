@@ -116,9 +116,9 @@ impl World
         (min_scale, max_scale)
     }
 
-    pub fn debug_chunk(&self, pos: Pos3<f32>) -> String
+    pub fn debug_chunk(&self, pos: Pos3<f32>, visual: bool) -> String
     {
-        self.overmap.debug_chunk(self.tile_of(pos).chunk)
+        self.overmap.debug_chunk(self.tile_of(pos).chunk, visual)
     }
 
     pub fn tiles_inside<'a>(

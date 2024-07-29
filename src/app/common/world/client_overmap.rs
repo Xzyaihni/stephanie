@@ -251,13 +251,24 @@ impl ClientOvermap
         }
     }
 
-    pub fn debug_chunk(&self, pos: GlobalPos) -> String
+    pub fn debug_chunk(
+        &self,
+        pos: GlobalPos,
+        visual: bool
+    ) -> String
     {
         self.to_local(pos).map(|local|
         {
-            let s = format!("chunk: {:#?}\n", self.get(pos));
+            let mut s = format!("global: {pos:?}, local: {local:?}");
 
-            s + &format!("visual chunk: {:#?}", self.visual_overmap.get(local))
+            s += &format!("chunk: {:#?}\n", self.get(pos));
+
+            if visual
+            {
+                s += &format!("visual chunk: {:#?}", self.visual_overmap.get(local));
+            }
+
+            s
         }).unwrap_or_default()
     }
 

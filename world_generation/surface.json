@@ -6,7 +6,7 @@
                 {
                     "name": "building_height",
                     "content": {
-                        "Number": "(* 4 (+ 1 (random-integer 4)))"
+                        "Number": "(+ 1 (* 4 (+ 1 (random-integer 4))))"
                     }
                 }
             ],
@@ -32,6 +32,16 @@
                     "building",
                     "road_vertical"
                 ]
+            }
+        },
+        {
+            "name": "bunker",
+            "weight": 1,
+            "neighbors": {
+                "up": [],
+                "down": [],
+                "right": [],
+                "left": []
             }
         },
         {

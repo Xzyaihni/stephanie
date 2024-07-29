@@ -18,7 +18,7 @@ use bincode::Options;
 use super::{PossibleStates, ParseError};
 
 use crate::common::{
-    lisp::{Lisp, Program, Primitives, LispMemory, Environment},
+    lisp::{Lisp, LispValue, Program, Primitives, LispMemory, Environment, Mappings},
     world::{
         CHUNK_SIZE,
         GlobalPos,
@@ -160,6 +160,19 @@ pub enum TagContent
 
 impl TagContent
 {
+    fn as_lisp_value(
+        &self,
+        mappings: &NameMappings,
+        memory: &mut LispMemory
+    ) -> LispValue
+    {
+        match self
+        {
+            Self::Number(x) => (*x).into(),
+            Self::Text(id) => memory.new_symbol(mappings.text.get_name(*id))
+        }
+    }
+
     fn compare(&self, other: &Self) -> Option<Condition>
     {
         match (self, other)
@@ -223,6 +236,19 @@ impl WorldChunkTag
             name: tag.name,
             content: TagContent::generate(memory, environment, &tag.content)
         }
+    }
+
+    pub fn define(
+        &self,
+        mappings: &NameMappings,
+        memory: &mut LispMemory,
+        environment: &Mappings
+    )
+    {
+        let name = mappings.text.get_name(self.name);
+        let content = self.content.as_lisp_value(mappings, memory);
+
+        environment.define(name, content);
     }
 }
 
@@ -538,35 +564,9 @@ impl Condition
 }
 
 #[derive(Debug, Deserialize)]
-enum ConditionalNameRaw
-{
-    Constant(String),
-    Variable(String)
-}
-
-impl ConditionalNameRaw
-{
-    fn to_raw(&self, name_mappings: &NameMappings) -> ConditionalName
-    {
-        match self
-        {
-            Self::Constant(name) => ConditionalName::Constant(name_mappings.world_chunk[name]),
-            Self::Variable(program) =>
-            {
-                ConditionalName::Variable(Program::parse(
-                    ChunkRule::default_primitives(),
-                    None,
-                    program
-                ).unwrap_or_else(|err| panic!("lisp error: {err}")))
-            }
-        }
-    }
-}
-
-#[derive(Debug, Deserialize)]
 struct ConditionalRuleRaw
 {
-    name: ConditionalNameRaw,
+    name: String,
     variable: ConditionalVariable,
     tag: String,
     condition: Condition
@@ -579,41 +579,9 @@ struct CityRulesRaw
 }
 
 #[derive(Debug)]
-enum ConditionalName
-{
-    Constant(WorldChunkId),
-    Variable(Program)
-}
-
-impl ConditionalName
-{
-    fn generate(&self, name_mappings: &NameMappings, info: ConditionalInfo) -> WorldChunkId
-    {
-        match self
-        {
-            Self::Constant(x) => *x,
-            Self::Variable(program) =>
-            {
-                let mut memory = Lisp::empty_memory();
-                let environment = Environment::with_primitives(ChunkRule::default_primitives());
-
-                environment.define("height", info.height.into());
-
-                let value = program.apply(&mut memory, &environment)
-                    .unwrap_or_else(|err| panic!("lisp error: {err}"));
-
-                let name = value.as_symbol(&memory).unwrap_or_else(|err| panic!("{err}"));
-
-                name_mappings.world_chunk[&name]
-            }
-        }
-    }
-}
-
-#[derive(Debug)]
 struct ConditionalRule
 {
-    name: ConditionalName,
+    name: WorldChunkId,
     variable: ConditionalVariable,
     tag: TextId,
     condition: Condition
@@ -624,7 +592,7 @@ impl ConditionalRule
     fn from_raw(name_mappings: &NameMappings, rule: ConditionalRuleRaw) -> Self
     {
         Self{
-            name: rule.name.to_raw(name_mappings),
+            name: name_mappings.world_chunk[&rule.name],
             variable: rule.variable,
             condition: rule.condition,
             tag: name_mappings.text[&rule.tag]
@@ -700,7 +668,7 @@ impl CityRules
         }
     }
 
-    pub fn generate(&self, name_mappings: &NameMappings, info: ConditionalInfo) -> WorldChunk
+    pub fn generate(&self, info: ConditionalInfo) -> WorldChunk
     {
         // imagine using find_map, couldnt be me
         self.rules.iter().find(|rule|
@@ -708,9 +676,7 @@ impl CityRules
             rule.matches(&info)
         }).map(|rule|
         {
-            let name = rule.name.generate(name_mappings, info);
-
-            WorldChunk::new(name, Vec::new())
+            WorldChunk::new(rule.name, Vec::new())
         }).unwrap_or_default()
     }
 }
@@ -766,6 +732,11 @@ impl TextMapping
     pub fn new() -> Self
     {
         Self{text: Vec::new(), indexer: NameIndexer::new()}
+    }
+
+    pub fn get_name(&self, id: TextId) -> &str
+    {
+        &self.text[id.0]
     }
 
     // this is the best name i could come up with, cmon :/

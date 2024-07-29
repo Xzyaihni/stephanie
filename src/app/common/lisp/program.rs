@@ -56,11 +56,19 @@ impl ArgsWrapper
 
     pub fn pop(&mut self, memory: &mut LispMemory) -> LispValue
     {
-        assert!(self.count > 0);
+        self.try_pop(memory).expect("pop must be called on argcount > 0")
+    }
+
+    pub fn try_pop(&mut self, memory: &mut LispMemory) -> Option<LispValue>
+    {
+        if self.count <= 0
+        {
+            return None;
+        }
 
         self.count -= 1;
 
-        memory.pop_return()
+        Some(memory.pop_return())
     }
 
     pub fn push(&mut self, memory: &mut LispMemory, value: LispValue)
@@ -690,21 +698,33 @@ impl Primitives
                     do_cond!(|a, b| LispValue::new_bool(a < b)))),
             ("if",
                 PrimitiveProcedureInfo::new_simple_lazy(
-                    3,
+                    ArgsCount::Min(2),
                     Rc::new(|state, memory, env, args, action|
                     {
                         args.car().apply(state, memory, env, Action::Return)?;
                         let predicate = memory.pop_return();
 
                         let on_true = args.cdr().car();
-                        let on_false = args.cdr().cdr().car();
+                        let on_false = args.cdr().cdr();
 
                         if predicate.is_true()
                         {
                             on_true.apply(state, memory, env, action)
                         } else
                         {
-                            on_false.apply(state, memory, env, action)
+                            if on_false.is_null()
+                            {
+                                match action
+                                {
+                                    Action::Return => memory.push_return(LispValue::new_empty_list()),
+                                    Action::None => ()
+                                }
+
+                                Ok(())
+                            } else
+                            {
+                                on_false.car().apply(state, memory, env, action)
+                            }
                         }
                     }))),
             ("let",

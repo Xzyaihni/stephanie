@@ -1,17 +1,7 @@
 {
     "rules": [
         {
-            "name": {
-                "Constant": "building_roof"
-            },
-            "variable": "Height",
-            "tag": "building_height",
-            "condition": "Equal"
-        },
-        {
-            "name": {
-                "Variable": "(if (= (remainder height 2) 0) 'building_floor 'building_room)"
-            },
+            "name": "building",
             "variable": "Height",
             "tag": "building_height",
             "condition": "Less"

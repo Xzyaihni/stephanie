@@ -4,7 +4,7 @@ use std::{
     fmt,
     rc::Rc,
     cell::RefCell,
-    ops::Index,
+    ops::{Index, IndexMut},
     cmp::Ordering,
     collections::{HashMap, HashSet},
     path::{Path, PathBuf}
@@ -30,6 +30,7 @@ use crate::common::{
     world::{
         Pos3,
         LocalPos,
+        GlobalPos,
         AlwaysGroup,
         overmap::{Overmap, OvermapIndexing, FlatChunksContainer, ChunksContainer},
         chunk::{
@@ -41,11 +42,12 @@ use crate::common::{
 
 use super::server_overmap::WorldPlane;
 
-use chunk_rules::{ChunkRulesGroup, ChunkRules, ConditionalInfo};
+use chunk_rules::{ChunkRulesGroup, ChunkRules};
 
 pub use chunk_rules::{
     WORLD_CHUNK_SIZE,
     CHUNK_RATIO,
+    ConditionalInfo,
     MaybeWorldChunk,
     WorldChunk,
     WorldChunkId,
@@ -159,6 +161,7 @@ impl From<lisp::Error> for ParseError
 
 pub struct ChunkGenerator
 {
+    rules: Rc<ChunkRulesGroup>,
     environment: Rc<Mappings>,
     lambdas: Lambdas,
     primitives: Rc<Primitives>,
@@ -171,7 +174,7 @@ impl ChunkGenerator
 {
     pub fn new<'a>(
         tilemap: TileMap,
-        names: impl Iterator<Item=&'a String>
+        rules: Rc<ChunkRulesGroup>
     ) -> Result<Self, ParseError>
     {
         let chunks = HashMap::new();
@@ -188,11 +191,19 @@ impl ChunkGenerator
         let environment = Rc::new(environment);
         let memory = Rc::new(RefCell::new(LispMemory::new(1024)));
 
-        let mut this = Self{environment, lambdas, primitives, memory, chunks, tilemap};
+        let mut this = Self{
+            rules: rules.clone(),
+            environment,
+            lambdas,
+            primitives,
+            memory,
+            chunks,
+            tilemap
+        };
 
         let parent_directory = parent_directory.join("chunks");
 
-        names.filter(|name|
+        rules.iter_names().filter(|name|
         {
             let name: &str = name.as_ref();
 
@@ -292,7 +303,7 @@ impl ChunkGenerator
 
     pub fn generate_chunk(
         &mut self,
-        height: i32,
+        info: &ConditionalInfo,
         group: AlwaysGroup<&str>
     ) -> ChunksContainer<Tile>
     {
@@ -311,7 +322,13 @@ impl ChunkGenerator
                     panic!("worldchunk named `{}` doesnt exist", group.this)
                 });
 
-            self.environment.define("height", height.into());
+            self.environment.define("height", info.height.into());
+
+            info.tags.iter().for_each(|tag|
+            {
+                tag.define(self.rules.name_mappings(), memory, &self.environment);
+            });
+
             let output = this_chunk.run_with_memory(memory)
                 .unwrap_or_else(|err|
                 {
@@ -356,7 +373,7 @@ pub struct WorldGenerator<S>
 {
     generator: ChunkGenerator,
     saver: S,
-    rules: ChunkRulesGroup
+    rules: Rc<ChunkRulesGroup>
 }
 
 impl<S: SaveLoad<WorldChunk>> WorldGenerator<S>
@@ -367,9 +384,9 @@ impl<S: SaveLoad<WorldChunk>> WorldGenerator<S>
         path: impl Into<PathBuf>
     ) -> Result<Self, ParseError>
     {
-        let rules = ChunkRulesGroup::load(path.into())?;
+        let rules = Rc::new(ChunkRulesGroup::load(path.into())?);
 
-        let generator = ChunkGenerator::new(tilemap, rules.iter_names())?;
+        let generator = ChunkGenerator::new(tilemap, rules.clone())?;
 
         Ok(Self{generator, saver, rules})
     }
@@ -384,10 +401,26 @@ impl<S: SaveLoad<WorldChunk>> WorldGenerator<S>
 
         let mut wave_collapser = WaveCollapser::new(&self.rules.surface, world_chunks);
 
-        wave_collapser.generate(|local_pos, chunk|
+        let mut on_chunk = |local_pos: LocalPos, chunk: &WorldChunk|
         {
             self.saver.save(global_mapper.to_global(local_pos), chunk.clone());
-        });
+        };
+
+        if let Some(local) = global_mapper.to_local(GlobalPos::new(0, 0, 0))
+        {
+            wave_collapser.generate_single_maybe(
+                local,
+                ||
+                {
+                    let id = self.rules.name_mappings().world_chunk["bunker"];
+
+                    WorldChunk::new(id, Vec::new())
+                },
+                &mut on_chunk
+            );
+        }
+
+        wave_collapser.generate(on_chunk);
     }
 
     pub fn generate_missing(
@@ -445,7 +478,7 @@ impl<S: SaveLoad<WorldChunk>> WorldGenerator<S>
                             tags: this_surface.tags()
                         };
 
-                        let chunk = self.rules.city.generate(self.rules.name_mappings(), info);
+                        let chunk = self.rules.city.generate(info);
 
                         applier(pair, chunk);
                     });
@@ -490,11 +523,11 @@ impl<S: SaveLoad<WorldChunk>> WorldGenerator<S>
 
     pub fn generate_chunk(
         &mut self,
-        height: i32,
+        info: &ConditionalInfo,
         group: AlwaysGroup<WorldChunk>
     ) -> ChunksContainer<Tile>
     {
-        self.generator.generate_chunk(height, group.map(|world_chunk|
+        self.generator.generate_chunk(info, group.map(|world_chunk|
         {
             self.rules.name(world_chunk.id())
         }))
@@ -736,6 +769,14 @@ impl Index<LocalPos> for Entropies
     }
 }
 
+impl IndexMut<LocalPos> for Entropies
+{
+    fn index_mut(&mut self, index: LocalPos) -> &mut Self::Output
+    {
+        &mut self.0[index]
+    }
+}
+
 struct WaveCollapser<'a>
 {
     rules: &'a ChunkRules,
@@ -798,6 +839,44 @@ impl<'a> WaveCollapser<'a>
         }
     }
 
+    pub fn generate_single_maybe<C, F>(
+        &mut self,
+        local: LocalPos,
+        chunk: C,
+        on_chunk: F
+    )
+    where
+        C: FnOnce() -> WorldChunk,
+        F: FnMut(LocalPos, &WorldChunk)
+    {
+        if self.world_chunks[local].is_none()
+        {
+            self.generate_single(local, chunk(), on_chunk);
+        }
+    }
+
+    pub fn generate_single<F>(
+        &mut self,
+        local: LocalPos,
+        chunk: WorldChunk,
+        mut on_chunk: F
+    )
+    where
+        F: FnMut(LocalPos, &WorldChunk)
+    {
+        on_chunk(local, &chunk);
+
+        self.world_chunks[local] = Some(chunk);
+
+        if local.pos.z == 0
+        {
+            self.entropies[local].collapse(self.rules);
+
+            let mut visited = VisitedTracker::new();
+            self.constrain(&mut visited, local);
+        }
+    }
+
     pub fn generate<F>(&mut self, mut on_chunk: F)
     where
         F: FnMut(LocalPos, &WorldChunk)
@@ -806,12 +885,7 @@ impl<'a> WaveCollapser<'a>
         {
             let generated_chunk = self.rules.generate(state.collapse(self.rules));
 
-            on_chunk(local_pos, &generated_chunk);
-
-            self.world_chunks[local_pos] = Some(generated_chunk);
-
-            let mut visited = VisitedTracker::new();
-            self.constrain(&mut visited, local_pos);
+            self.generate_single(local_pos, generated_chunk, &mut on_chunk);
         }
     }
 }
@@ -839,10 +913,16 @@ mod tests
         let c = get_tile("glass");
         let d = get_tile("concrete");
 
-        let names = ["test_chunk"].map(|x| x.to_owned());
-        let mut generator = ChunkGenerator::new(tilemap, names.iter()).unwrap();
+        let rules = Rc::new(ChunkRulesGroup::load(PathBuf::from("world_generation")).unwrap());
+        let mut generator = ChunkGenerator::new(tilemap, rules).unwrap();
 
-        let tiles = generator.generate_chunk(0, AlwaysGroup{
+        let empty = [];
+        let info = ConditionalInfo{
+            height: 0,
+            tags: &empty
+        };
+
+        let tiles = generator.generate_chunk(&info, AlwaysGroup{
             this: "test_chunk",
             other: DirectionsGroup{
                 right: "none",
