@@ -467,10 +467,8 @@ impl<S: SaveLoad<WorldChunk>> WorldGenerator<S>
                 {
                     // above ground
                     
-                    this_slice.for_each(|pair|
+                    this_slice.for_each(|pair@(pos, _)|
                     {
-                        let pos = pair.0;
-
                         let this_surface = world_plane.world_chunk(pos);
 
                         let info = ConditionalInfo{
@@ -487,9 +485,24 @@ impl<S: SaveLoad<WorldChunk>> WorldGenerator<S>
                 {
                     // underground
 
-                    this_slice.for_each(|pair|
+                    this_slice.for_each(|pair@(pos, _)|
                     {
-                        let chunk = WorldChunk::new(self.rules.underground.fallback(), Vec::new());
+                        let this_surface = world_plane.world_chunk(pos);
+
+                        let info = ConditionalInfo{
+                            height: global_z,
+                            tags: this_surface.tags()
+                        };
+
+                        let underground_city = self.rules.city.generate_underground(
+                            info,
+                            this_surface.id()
+                        );
+
+                        let chunk = underground_city.unwrap_or_else(||
+                        {
+                            WorldChunk::new(self.rules.underground.fallback(), Vec::new())
+                        });
 
                         applier(pair, chunk);
                     });

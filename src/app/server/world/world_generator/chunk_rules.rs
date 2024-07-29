@@ -581,6 +581,15 @@ impl CityRules
 
     pub fn generate(&self, info: ConditionalInfo, this: WorldChunkId) -> WorldChunk
     {
+        self.generate_underground(info, this).unwrap_or_default()
+    }
+
+    pub fn generate_underground(
+        &self,
+        info: ConditionalInfo,
+        this: WorldChunkId
+    ) -> Option<WorldChunk>
+    {
         // imagine using find_map, couldnt be me
         self.rules.iter().find(|rule|
         {
@@ -588,7 +597,7 @@ impl CityRules
         }).map(|rule|
         {
             WorldChunk::new(rule.name, Vec::new())
-        }).unwrap_or_default()
+        })
     }
 }
 

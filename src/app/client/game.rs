@@ -27,7 +27,7 @@ use crate::{
         EntityInfo,
         entity::ClientEntities,
         lisp::{self, *},
-        world::{TILE_SIZE, Pos3}
+        world::{CHUNK_VISUAL_SIZE, TILE_SIZE, Pos3}
     }
 };
 
@@ -346,10 +346,14 @@ impl Game
         {
             ($name:ident, $entities:expr, $entity:expr) =>
             {
-                some_or_value!(
-                    $entities.$name($entity),
-                    Err(lisp::Error::Custom(format!("component {} is missing", stringify!($name))))
-                )
+                {
+                    let name = stringify!($name).trim_end_matches("_mut");
+
+                    some_or_value!(
+                        $entities.$name($entity),
+                        Err(lisp::Error::Custom(format!("component {name} is missing")))
+                    )
+                }
             }
         }
 
@@ -704,7 +708,11 @@ impl<'a> PlayerContainer<'a>
 
     pub fn on_player_connected(&mut self)
     {
-        let position = self.player_position();
+        let mut position = Vector3::repeat(CHUNK_VISUAL_SIZE / 2.0);
+        position.z = -TILE_SIZE;
+
+        self.game_state.entities().transform_mut(self.info.entity).unwrap().position = position;
+
         let current_tile = self.game_state.tile_of(position.into());
 
         let r = 3;

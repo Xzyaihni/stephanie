@@ -24,7 +24,7 @@
     (if (= height 1)
         (fill-area
             this-chunk
-            (make-point (/ size-x 2) 2)
+            (make-point (- (/ size-x 2) 1) 2)
             (make-point 2 1)
             (tile 'air))
         (put-tile
