@@ -61,7 +61,7 @@ impl ArgsWrapper
 
     pub fn try_pop(&mut self, memory: &mut LispMemory) -> Option<LispValue>
     {
-        if self.count <= 0
+        if self.count == 0
         {
             return None;
         }
@@ -378,7 +378,13 @@ impl Procedure
 
                     if expected > got
                     {
-                        let error = Error::WrongArgumentsCount{proc: s.clone(), expected, got};
+                        let error = Error::WrongArgumentsCount{
+                            proc: s.clone(),
+                            this_invoked: true,
+                            expected,
+                            got
+                        };
+
                         return Err(ErrorPos{
                             position: ast.position,
                             error
@@ -472,6 +478,7 @@ impl StoredLambda
                         position: self.body.position,
                         error: Error::WrongArgumentsCount{
                             proc: format!("<compound procedure {:?}>", self.params),
+                            this_invoked: true,
                             expected: params.len(),
                             got: args.len()
                         }
@@ -712,6 +719,8 @@ impl Primitives
                             on_true.apply(state, memory, env, action)
                         } else
                         {
+                            // this is more readable come on omg
+                            #[allow(clippy::collapsible_else_if)]
                             if on_false.is_null()
                             {
                                 match action
@@ -1291,7 +1300,25 @@ impl ExpressionPos
         let proc = state.lambdas.get(id);
 
         let args = self.apply_args(state, memory, env, Action::Return)?;
-        proc.apply(state, memory, env, args, action)
+        proc.apply(state, memory, env, args, action).map_err(|mut err|
+        {
+            #[allow(clippy::single_match)]
+            match &mut err.error
+            {
+                Error::WrongArgumentsCount{this_invoked, ..} =>
+                {
+                    if *this_invoked
+                    {
+                        err.position = self.position;
+
+                        *this_invoked = false;
+                    }
+                },
+                _ => ()
+            }
+
+            err
+        })
     }
 
     pub fn map_list<T, F>(&self, mut f: F) -> Result<ArgValues<T>, ErrorPos>
@@ -1567,7 +1594,7 @@ impl Expression
         {
             Err(ErrorPos{
                 position,
-                error: Error::WrongArgumentsCount{proc: name, expected, got}
+                error: Error::WrongArgumentsCount{proc: name, this_invoked: true, expected, got}
             })
         }
     }

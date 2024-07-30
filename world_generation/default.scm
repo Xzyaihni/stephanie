@@ -10,6 +10,18 @@
 (define make-point cons)
 (define point-x car)
 (define point-y cdr)
+(define (point-add a b) (make-point (+ (point-x a) (point-x b)) (+ (point-y a) (point-y b))))
+(define (point-sub a b) (point-add a (make-point (* (point-x b) -1) (* (point-y b) -1))))
+
+(define make-area cons)
+(define area-start car)
+(define area-size cdr)
+(define (area-end area) (point-add (area-start area) (point-sub (area-size area) (make-point 1 1))))
+
+(define (area-offset area offset)
+    (make-area
+        (point-add area-start offset)
+        (area-size area)))
 
 (define side-up 0)
 (define side-down 1)
@@ -26,74 +38,91 @@
         tile)
     chunk)
 
+(define (get-tile chunk pos)
+    (vector-ref chunk (index-of pos)))
+
+(define (for-each-tile f area)
+    (define (for-vertical pos len)
+        (if (not (= len 0))
+            (begin
+                (f (make-point (point-x pos) (- (+ len (point-y pos)) 1)))
+                (for-vertical pos (- len 1)))))
+    (define pos (area-start area))
+    (define size (area-size area))
+    (if (not (= (point-x size) 0))
+        (begin
+            (for-vertical
+                (make-point (- (+ (point-x pos) (point-x size)) 1) (point-y pos))
+                (point-y size))
+            (for-each-tile
+                f
+                (make-area pos (make-point (- (point-x size) 1) (point-y size)))))))
+
 (define (vertical-line-length chunk pos len tile)
-    (if (= len 0)
-        chunk
-        (let ((x (point-x pos)) (y (point-y pos)))
-            (vertical-line-length
-                (put-tile
-                    chunk
-                    (make-point x (+ y (- len 1)))
-                    tile)
-                pos
-                (- len 1)
-                tile))))
+    (for-each-tile
+        (lambda (pos) (put-tile chunk pos tile))
+        (make-area
+            pos
+            (make-point 1 len)))
+    chunk)
 
 (define (vertical-line chunk x tile)
     (vertical-line-length chunk (make-point x 0) size-y tile))
 
 (define (horizontal-line-length chunk pos len tile)
-    (if (= len 0)
-        chunk
-        (let ((x (point-x pos)) (y (point-y pos)))
-            (horizontal-line-length
-                (put-tile
-                    chunk
-                    (make-point (+ x (- len 1)) y)
-                    tile)
-                pos
-                (- len 1)
-                tile))))
+    (for-each-tile
+        (lambda (pos) (put-tile chunk pos tile))
+        (make-area
+            pos
+            (make-point len 1)))
+    chunk)
 
 (define (horizontal-line chunk y tile)
     (horizontal-line-length chunk (make-point 0 y) size-x tile))
 
-(define (fill-area chunk pos size tile)
-    (if (= (point-x size) 0)
-        chunk
-        (begin
-            (vertical-line-length
-                chunk
-                (make-point (- (+ (point-x pos) (point-x size)) 1) (point-y pos))
-                (point-y size)
-                tile)
-            (fill-area
-                chunk
-                pos
-                (make-point (- (point-x size) 1) (point-y size))
-                tile))))
+(define (fill-area chunk area tile)
+    (for-each-tile
+        (lambda (pos) (put-tile chunk pos tile))
+        area)
+    chunk)
 
-(define (rectangle-outline chunk position size tile)
+(define (copy-area chunk area offset)
+    (for-each-tile
+        (lambda (pos) (put-tile chunk (point-add pos offset) (get-tile chunk pos)))
+        area)
+    chunk)
+
+; if the destination overlaps the area it will get cut off
+(define (move-area chunk area offset)
+    (copy-area chunk area offset)
+    (fill-area
+        chunk
+        area
+        (tile 'air)))
+
+(define (rectangle-outline chunk area tile)
+    (define pos (area-start area))
+    (define size (area-size area))
     (vertical-line-length
         chunk
-        position
+        pos
         (point-y size)
         tile)
 
     (vertical-line-length
         chunk
-        (make-point (- (+ (point-x position) (point-x size)) 1) (point-y position))
+        (make-point (- (+ (point-x pos) (point-x size)) 1) (point-y pos))
         (point-y size)
         tile)
 
     (horizontal-line-length
         chunk
-        position
+        pos
         (point-x size)
         tile)
 
     (horizontal-line-length
         chunk
-        (make-point (point-x position) (- (+ (point-y position) (point-y size)) 1))
+        (make-point (point-x pos) (- (+ (point-y pos) (point-y size)) 1))
         (point-x size)
         tile))

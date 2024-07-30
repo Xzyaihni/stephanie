@@ -22,18 +22,24 @@ where
     {
         loop
         {
-            if let Ok(messages) = messager.receive()
+            match messager.receive()
             {
-                let flow = messages.into_iter().try_for_each(&mut on_message);
-                if let ControlFlow::Break(_) = flow
+                Ok(messages) =>
                 {
+                    let flow = messages.into_iter().try_for_each(&mut on_message);
+                    if let ControlFlow::Break(_) = flow
+                    {
+                        on_close();
+                        return;
+                    }
+                },
+                Err(err) =>
+                {
+                    eprintln!("error receiving message: {err}");
+
                     on_close();
                     return;
                 }
-            } else
-            {
-                on_close();
-                return;
             }
         }
     })

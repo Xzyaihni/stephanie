@@ -466,7 +466,7 @@ where
 
             let mut lzma_writer = LzmaWriter::new_compressor(file, LZMA_PRESET).unwrap();
 
-            bincode::serialize_into(&mut lzma_writer, &pair.value).unwrap();
+            ciborium::into_writer(&pair.value, &mut lzma_writer).unwrap();
 
             lzma_writer.finish().unwrap();
         })
@@ -483,7 +483,7 @@ where
         {
             let lzma_reader = LzmaReader::new_decompressor(file).unwrap();
 
-            bincode::deserialize_from(lzma_reader).unwrap()
+            ciborium::from_reader(lzma_reader).unwrap()
         })
     }
 

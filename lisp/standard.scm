@@ -16,6 +16,8 @@
     (map f lst)
     '())
 
+(define (not x) (if x #f #t))
+
 ; technically the specs say it has to be short circuiting but i dont care
 (define (or a b)
     (if a
@@ -23,3 +25,6 @@
         (if b
             #t
             #f)))
+
+(define (>= a b) (or (> a b) (= a b)))
+(define (<= a b) (or (< a b) (= a b)))

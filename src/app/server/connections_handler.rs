@@ -1,4 +1,5 @@
 use crate::common::{
+    MessageSerError,
     ObjectsStore,
     BufferSender,
     Entity,
@@ -40,7 +41,7 @@ impl PlayerInfo
         self.message_buffer.set_message(message);
     }
 
-    pub fn send_blocking(&mut self, message: Message) -> Result<(), bincode::Error>
+    pub fn send_blocking(&mut self, message: Message) -> Result<(), MessageSerError>
     {
         self.message_passer.send_one(&message)
     }
@@ -102,7 +103,7 @@ impl ConnectionsHandler
         id
     }
 
-    pub fn flush(&mut self) -> Result<(), bincode::Error>
+    pub fn flush(&mut self) -> Result<(), MessageSerError>
     {
         self.send_buffered()
     }
@@ -168,7 +169,7 @@ impl EntityPasser for ConnectionsHandler
 
 impl BufferSender for ConnectionsHandler
 {
-    fn send_buffered(&mut self) -> Result<(), bincode::Error>
+    fn send_buffered(&mut self) -> Result<(), MessageSerError>
     {
         self.connections.iter_mut().try_for_each(|(_, connection)|
         {

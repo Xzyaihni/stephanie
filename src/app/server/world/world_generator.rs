@@ -22,7 +22,6 @@ use crate::common::{
         LispMemory,
         Mappings,
         Lambdas,
-        LispValue,
         ValueTag,
         Primitives,
         PrimitiveProcedureInfo
@@ -172,7 +171,7 @@ pub struct ChunkGenerator
 
 impl ChunkGenerator
 {
-    pub fn new<'a>(
+    pub fn new(
         tilemap: TileMap,
         rules: Rc<ChunkRulesGroup>
     ) -> Result<Self, ParseError>
@@ -227,7 +226,7 @@ impl ChunkGenerator
 
         primitives.add(
             "tile",
-            PrimitiveProcedureInfo::new_simple(1, move |_state, memory, _env, mut args|
+            PrimitiveProcedureInfo::new_simple(1, move |_state, memory, env, mut args|
             {
                 let arg = args.pop(memory);
 
@@ -240,7 +239,7 @@ impl ChunkGenerator
                     &fallback_tile
                 });
 
-                Ok(LispValue::new_integer(tile.id() as i32))
+                Ok(tile.as_lisp_value(env, memory))
             }));
 
         primitives
@@ -329,27 +328,30 @@ impl ChunkGenerator
                 tag.define(self.rules.name_mappings(), &self.environment);
             });
 
-            let output = this_chunk.run_with_memory(memory)
+            let output_wrapped = this_chunk.run_with_memory(memory)
                 .unwrap_or_else(|err|
                 {
                     panic!("runtime lisp error: {err} (in {chunk_name})")
                 });
 
-            let output = output.as_vector_ref()
+            let output = output_wrapped.into_value().as_vector_ref(memory)
                 .unwrap_or_else(|err|
                 {
-                    panic!("expected vector: {err}")
+                    panic!("expected vector: {err} (in {chunk_name})")
                 });
 
-            if output.tag != ValueTag::Integer
+            if output.tag != ValueTag::List
             {
-                panic!("wrong vector type `{:?}`", output.tag);
+                panic!("wrong vector type `{:?}` (in {chunk_name})", output.tag);
             }
 
             output.values.iter().map(|x|
             {
-                Tile::new(unsafe{ x.integer as usize })
-            }).collect()
+                unsafe{ Tile::from_lisp_value(memory, *x) }
+            }).collect::<Result<Box<[Tile]>, _>>().unwrap_or_else(|err|
+            {
+                panic!("error getting tile: {err}")
+            })
         };
 
         debug_assert!(memory.returns_len() == 0);

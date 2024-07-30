@@ -1,5 +1,6 @@
 use std::{
     mem,
+    iter,
     rc::Rc,
     cell::RefCell,
     ops::Range,
@@ -121,7 +122,7 @@ pub union ValueRaw
     pub primitive_procedure: usize,
     tag: ValueTag,
     pub special: Special,
-    list: usize,
+    pub list: usize,
     symbol: usize,
     string: usize,
     vector: usize
@@ -397,6 +398,29 @@ impl LispValue
         }
     }
 
+    pub fn as_cons_list(self, memory: &LispMemory) -> Vec<LispValue>
+    {
+        self.as_cons_list_iter(memory).collect()
+    }
+
+    pub fn as_cons_list_iter(self, memory: &LispMemory) -> impl Iterator<Item=LispValue> + '_
+    {
+        let mut current: Option<LispList> = self.as_list(memory).ok();
+
+        iter::from_fn(move || -> Option<LispValue>
+        {
+            current.and_then(|lst|
+            {
+                lst.cdr().as_list(memory).ok()
+            }).map(|lst|
+            {
+                current = Some(lst);
+
+                *lst.car()
+            })
+        })
+    }
+
     pub fn as_list(self, memory: &LispMemory) -> Result<LispList, Error>
     {
         match self.tag
@@ -562,7 +586,7 @@ pub enum Error
     SpecialParse(String),
     UndefinedVariable(String),
     ApplyNonApplication,
-    WrongArgumentsCount{proc: String, expected: usize, got: usize},
+    WrongArgumentsCount{proc: String, this_invoked: bool, expected: usize, got: usize},
     IndexOutOfRange(i32),
     CharOutOfRange,
     EmptySequence,
@@ -589,7 +613,7 @@ impl Display for Error
             Self::UndefinedVariable(s) => format!("variable `{s}` is undefined"),
             Self::ApplyNonApplication => "apply was called on a non application".to_owned(),
             Self::ExpectedSameNumberType => "primitive operation expected 2 numbers of same type".to_owned(),
-            Self::WrongArgumentsCount{proc, expected, got} =>
+            Self::WrongArgumentsCount{proc, this_invoked: _, expected, got} =>
                 format!("wrong amount of arguments (got {got}) passed to {proc} (expected {expected})"),
             Self::IndexOutOfRange(i) => format!("index {i} out of range"),
             Self::CharOutOfRange => "char out of range".to_owned(),
@@ -1219,18 +1243,8 @@ impl<'a> Environment<'a>
 
 pub struct OutputWrapper<'a>
 {
-    pub memory: &'a mut LispMemory,
+    pub memory: &'a LispMemory,
     pub value: LispValue
-}
-
-impl<'a> Drop for OutputWrapper<'a>
-{
-    fn drop(&mut self)
-    {
-        debug_assert!(self.memory.returns_len() == 0);
-
-        self.memory.clear();
-    }
 }
 
 impl<'a> Display for OutputWrapper<'a>
@@ -1243,22 +1257,27 @@ impl<'a> Display for OutputWrapper<'a>
 
 impl<'a> OutputWrapper<'a>
 {
-    pub fn as_vector_ref(&'a self) -> Result<LispVectorRef<'a>, Error>
+    pub fn into_value(self) -> LispValue
+    {
+        self.value
+    }
+
+    pub fn as_vector_ref(self) -> Result<LispVectorRef<'a>, Error>
     {
         self.value.as_vector_ref(self.memory)
     }
 
-    pub fn as_vector(&self) -> Result<LispVector, Error>
+    pub fn as_vector(self) -> Result<LispVector, Error>
     {
         self.value.as_vector(self.memory)
     }
 
-    pub fn as_symbol(&self) -> Result<String, Error>
+    pub fn as_symbol(self) -> Result<String, Error>
     {
         self.value.as_symbol(self.memory)
     }
 
-    pub fn as_list(&self) -> Result<LispList, Error>
+    pub fn as_list(self) -> Result<LispList, Error>
     {
         self.value.as_list(self.memory)
     }
@@ -1443,6 +1462,7 @@ impl LispRef
     {
         let env = Environment::TopLevel(self.new_environment());
 
+        memory.clear();
         let value = self.program.apply(memory, &env)?;
 
         let value = OutputWrapper{memory, value};

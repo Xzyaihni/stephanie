@@ -1,5 +1,6 @@
 use std::{
     f32,
+    io,
     fmt::Debug,
     sync::Arc,
     net::TcpStream
@@ -125,6 +126,9 @@ pub mod collider;
 pub mod physics;
 
 
+pub type MessageSerError = ciborium::ser::Error<io::Error>;
+pub type MessageDeError = ciborium::de::Error<io::Error>;
+
 #[macro_export]
 macro_rules! time_this
 {
@@ -175,6 +179,7 @@ pub trait EntitiesController
 #[derive(Debug)]
 pub struct MessagePasser
 {
+    buffer: [u8; 64 * 1024],
     stream: TcpStream
 }
 
@@ -182,30 +187,30 @@ impl MessagePasser
 {
     pub fn new(stream: TcpStream) -> Self
     {
-        Self{stream}
+        Self{buffer: [0; 64 * 1024], stream}
     }
 
-    pub fn send_one(&mut self, message: &Message) -> Result<(), bincode::Error>
+    pub fn send_one(&mut self, message: &Message) -> Result<(), MessageSerError>
     {
         self.send_many(&vec![message.clone()])
     }
 
-    pub fn send_many(&mut self, messages: &Vec<Message>) -> Result<(), bincode::Error>
+    pub fn send_many(&mut self, messages: &Vec<Message>) -> Result<(), MessageSerError>
     {
         if messages.is_empty()
         {
             return Ok(());
         }
 
-        bincode::serialize_into(&mut self.stream, messages)
+        ciborium::into_writer(messages, &mut self.stream)
     }
 
-    pub fn receive(&mut self) -> Result<Vec<Message>, bincode::Error>
+    pub fn receive(&mut self) -> Result<Vec<Message>, MessageDeError>
     {
-        bincode::deserialize_from(&mut self.stream)
+        ciborium::from_reader_with_buffer(&mut self.stream, &mut self.buffer)
     }
 
-    pub fn receive_one(&mut self) -> Result<Option<Message>, bincode::Error>
+    pub fn receive_one(&mut self) -> Result<Option<Message>, MessageDeError>
     {
         self.receive().map(|messages|
         {
@@ -217,6 +222,6 @@ impl MessagePasser
 
     pub fn try_clone(&self) -> Self
     {
-        Self{stream: self.stream.try_clone().unwrap()}
+        Self{buffer: self.buffer.clone(), stream: self.stream.try_clone().unwrap()}
     }
 }

@@ -32,6 +32,8 @@ use crate::common::{
     ENTITY_SCALE,
     render_info::*,
     collider::*,
+    MessageSerError,
+    MessageDeError,
     AnyEntities,
     TileMap,
     DataInfos,
@@ -62,7 +64,8 @@ use crate::common::{
 #[derive(Debug)]
 pub enum ConnectionError
 {
-    BincodeError(bincode::Error),
+    MessageSerError(MessageSerError),
+    MessageDeError(MessageDeError),
     ReceiverError(TryRecvError),
     WrongConnectionMessage
 }
@@ -73,7 +76,8 @@ impl fmt::Display for ConnectionError
     {
         let s = match self
         {
-            Self::BincodeError(x) => x.to_string(),
+            Self::MessageSerError(x) => x.to_string(),
+            Self::MessageDeError(x) => x.to_string(),
             Self::ReceiverError(x) => x.to_string(),
             Self::WrongConnectionMessage => "wrong connection message".to_owned()
         };
@@ -90,11 +94,19 @@ impl From<TryRecvError> for ConnectionError
     }
 }
 
-impl From<bincode::Error> for ConnectionError
+impl From<MessageSerError> for ConnectionError
 {
-    fn from(value: bincode::Error) -> Self
+    fn from(value: MessageSerError) -> Self
     {
-        ConnectionError::BincodeError(value)
+        ConnectionError::MessageSerError(value)
+    }
+}
+
+impl From<MessageDeError> for ConnectionError
+{
+    fn from(value: MessageDeError) -> Self
+    {
+        ConnectionError::MessageDeError(value)
     }
 }
 

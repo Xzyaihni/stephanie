@@ -55,6 +55,7 @@ pub enum Message
     SetNone{entity: Entity, component: ()},
     SetTarget{entity: Entity, target: Transform},
     SetTargetPosition{entity: Entity, position: Vector3<f32>},
+    SyncPosition{entity: Entity, position: Vector3<f32>},
     EntityDestroy{entity: Entity},
     EntityDamage{entity: Entity, faction: Faction, damage: Damage},
     PlayerConnect{name: String},
@@ -111,6 +112,7 @@ impl Message
             | Message::SetNone{entity, ..}
             | Message::SetTarget{entity, ..}
             | Message::SetTargetPosition{entity, ..}
+            | Message::SyncPosition{entity, ..}
             | Message::EntityDestroy{entity, ..}
             | Message::EntityDamage{entity, ..} => Some(*entity),
             Message::PlayerConnect{..}

@@ -106,6 +106,7 @@ pub struct ClientEntitiesContainer
     pub entities: ClientEntities,
     pub camera_entity: Entity,
     player_entity: Entity,
+    positions_sync: f32,
     animation: f32
 }
 
@@ -128,6 +129,7 @@ impl ClientEntitiesContainer
             entities,
             camera_entity,
             player_entity,
+            positions_sync: 0.0,
             animation: 0.0
         }
     }
@@ -180,9 +182,18 @@ impl ClientEntitiesContainer
 
         self.entities.update_outlineable(dt);
 
+        self.entities.update_colliders(world);
+
+        if is_trusted
         {
-            let passer = &mut *passer;
-            self.entities.update_colliders(world, is_trusted.then_some(passer));
+            if self.positions_sync <= 0.0
+            {
+                self.entities.sync_all_positions(passer);
+
+                self.positions_sync = 1.0;
+            }
+
+            self.positions_sync -= dt;
         }
 
         self.animation = (self.animation + dt) % (f32::consts::PI * 2.0);
@@ -434,7 +445,7 @@ impl Drop for GameState
             }
         }
 
-        eprintln!("disconnect finished not receiver, closed improperly");
+        eprintln!("disconnect finished improperly");
     }
 }
 
@@ -484,7 +495,11 @@ impl GameState
                 _ => false
             };
 
-            if sender.send(message).is_err() || is_disconnect
+            if let Err(err) = sender.send(message)
+            {
+                eprintln!("error sending: {err}");
+                ControlFlow::Break(())
+            } else if is_disconnect
             {
                 ControlFlow::Break(())
             } else
@@ -644,8 +659,9 @@ impl GameState
                 {
                     return;
                 },
-                Err(_) =>
+                Err(err) =>
                 {
+                    eprintln!("error getting message: {err}");
                     self.running = false;
                     return;
                 }

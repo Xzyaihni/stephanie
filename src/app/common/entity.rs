@@ -393,6 +393,15 @@ macro_rules! impl_common_systems
 
                     None
                 },
+                Message::SyncPosition{entity, position} =>
+                {
+                    if let Some(mut transform) = self.transform_mut(entity)
+                    {
+                        transform.position = position;
+                    }
+
+                    None
+                },
                 Message::EntityDestroy{entity} =>
                 {
                     self.remove(entity);
@@ -1893,8 +1902,7 @@ macro_rules! define_entities_both
 
             pub fn update_colliders(
                 &mut self,
-                world: &World,
-                mut passer: Option<&mut impl EntityPasser>
+                world: &World
             )
             {
                 macro_rules! colliding_info
@@ -1943,34 +1951,12 @@ macro_rules! define_entities_both
                     }
                 }
 
-                let mut on_collision = |
-                    entity,
-                    physical: Option<RefMut<Physical>>
-                |
-                {
-                    if let Some(passer) = passer.as_mut()
-                    {
-                        passer.send_message(Message::SetTargetPosition{
-                            entity,
-                            position: self.target_ref(entity).unwrap().position
-                        });
-
-                        if let Some(physical) = physical
-                        {
-                            passer.send_message(Message::SetPhysical{
-                                entity,
-                                component: physical.clone()
-                            });
-                        }
-                    }
-                };
-
                 for_each_component!(self, collider, |_, collider: &RefCell<Collider>|
                 {
                     collider.borrow_mut().reset_frame();
                 });
 
-                let mut pairs_fn = |&ComponentWrapper{
+                let pairs_fn = |&ComponentWrapper{
                     entity,
                     component: ref collider
                 }, &ComponentWrapper{
@@ -1986,11 +1972,7 @@ macro_rules! define_entities_both
                     let other;
                     colliding_info!{other, other_physical, other_collider, other_entity};
 
-                    if this.resolve(other)
-                    {
-                        on_collision(entity, physical);
-                        on_collision(other_entity, other_physical);
-                    }
+                    this.resolve(other);
                 };
 
                 {
@@ -2010,10 +1992,7 @@ macro_rules! define_entities_both
                     let mut this;
                     colliding_info!{this, physical, collider, entity};
 
-                    if this.resolve_with_world(world)
-                    {
-                        on_collision(entity, physical);
-                    }
+                    this.resolve_with_world(world);
                 });
 
                 self.update_colliders_previous();
@@ -2027,6 +2006,20 @@ macro_rules! define_entities_both
                     {
                         collider.borrow_mut().save_previous(transform.position);
                     }
+                });
+            }
+
+            pub fn sync_all_positions(
+                &self,
+                passer: &mut impl EntityPasser
+            )
+            {
+                for_each_component!(self, transform, |entity, transform: &RefCell<Transform>|
+                {
+                    passer.send_message(Message::SyncPosition{
+                        entity,
+                        position: transform.borrow().position
+                    });
                 });
             }
 

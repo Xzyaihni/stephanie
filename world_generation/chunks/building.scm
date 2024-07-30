@@ -2,28 +2,32 @@
     (define this-chunk
         (fill-area
             (filled-chunk (tile 'concrete))
-            (make-point 2 2)
-            (make-point (- size-x 4) (- size-y 4))
+            (make-area
+                (make-point 2 2)
+                (make-point (- size-x 4) (- size-y 4)))
             (tile 'wood)))
 
     (fill-area
         this-chunk
-        (make-point 6 2)
-        (make-point 4 2)
+        (make-area
+            (make-point 6 2)
+            (make-point 4 2))
         (tile 'concrete)))
 
 (define (generate-floor)
     (define this-chunk
         (fill-area
             (filled-chunk (tile 'air))
-            (make-point 1 1)
-            (make-point (- size-x 2) (- size-y 2))
+            (make-area
+                (make-point 1 1)
+                (make-point (- size-x 2) (- size-y 2)))
             (tile 'wood)))
 
     (fill-area
         this-chunk
-        (make-point 5 0)
-        (make-point 6 3)
+        (make-area
+            (make-point 5 0)
+            (make-point 6 3))
         (tile 'concrete))
 
     (let ((x (if (= (remainder height 4) 0) 6 9)))
@@ -43,34 +47,39 @@
         ; outer walls
         (rectangle-outline
             this-chunk
-            (make-point 1 1)
-            (make-point (- size-x 2) (- size-y 2))
+            (make-area
+                (make-point 1 1)
+                (make-point (- size-x 2) (- size-y 2)))
             wall-material)
 
         ; hallway
         (fill-area
             this-chunk
-            (make-point 6 0)
-            (make-point 4 (- size-x 1))
+            (make-area
+                (make-point 6 0)
+                (make-point 4 (- size-x 1)))
             wall-material)
 
         ; stairwell
         (fill-area
             this-chunk
-            (make-point 5 0)
-            (make-point 6 4)
+            (make-area
+                (make-point 5 0)
+                (make-point 6 4))
             wall-material)
 
         (fill-area
             this-chunk
-            (make-point 6 1)
-            (make-point 4 2)
+            (make-area
+                (make-point 6 1)
+                (make-point 4 2))
             (tile 'air))
 
         (fill-area
             this-chunk
-            (make-point 7 1)
-            (make-point 2 (- size-y 3))
+            (make-area
+                (make-point 7 1)
+                (make-point 2 (- size-y 3)))
             (tile 'air))
 
         (define (door x)
@@ -111,29 +120,51 @@
             (tile 'air))
         this-chunk))
 
-(define (generate-roof)
-    (define this-chunk
-        (fill-area
-            (filled-chunk (tile 'air))
-            (make-point 1 1)
-            (make-point (- size-x 2) (- size-y 2))
-            (tile 'concrete)))
+(define (generate-roof level)
+    (define this-chunk (filled-chunk (tile 'air)))
+    (if (= level 0)
+        (begin
+            (define this-chunk
+                (fill-area
+                    this-chunk
+                    (make-area
+                        (make-point 1 1)
+                        (make-point (- size-x 2) (- size-y 2)))
+                    (tile 'concrete)))
 
-    (fill-area
-        this-chunk
-        (make-point 5 0)
-        (make-point 6 1)
-        (tile 'concrete))
+            (fill-area
+                this-chunk
+                (make-area
+                    (make-point 5 0)
+                    (make-point 6 1))
+                (tile 'concrete))
 
-    (put-tile
-        this-chunk
-        (make-point 6 1)
-        (tile 'stairs_down)))
+            (put-tile
+                this-chunk
+                (make-point 6 1)
+                (tile 'stairs_down)))
+        (if (= level 1)
+            (begin
+                (rectangle-outline
+                    this-chunk
+                    (make-area
+                        (make-point 1 1)
+                        (make-point (- size-x 2) (- size-y 2)))
+                    (tile 'concrete_fence))
+                (move-area
+                    this-chunk
+                    (make-area
+                        (make-point 5 1)
+                        (make-point 6 1))
+                    (make-point 0 -1)))
+            this-chunk)))
+
+(define roof-start (- building-height 3))
 
 (if (= height 0)
     (generate-ground)
-    (if (= height (- building_height 1))
-        (generate-roof)
+    (if (>= height roof-start)
+        (generate-roof (- height roof-start))
         (if (= (remainder height 2) 0)
             (generate-floor)
             (generate-room))))

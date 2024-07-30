@@ -1,8 +1,9 @@
 (define (generate-roof)
     (fill-area
         (filled-chunk (tile 'air))
-        (make-point 2 2)
-        (make-point (- size-x 4) (- size-y 4))
+        (make-area
+            (make-point 2 2)
+            (make-point (- size-x 4) (- size-y 4)))
         (tile 'concrete)))
 
 (define (generate-floor) (filled-chunk (tile 'concrete)))
@@ -18,14 +19,16 @@
     (define this-chunk (filled-chunk (tile 'air)))
     (rectangle-outline
         this-chunk
-        (make-point 2 2)
-        (make-point (- size-x 4) (- size-y 4))
+        (make-area
+            (make-point 2 2)
+            (make-point (- size-x 4) (- size-y 4)))
         (tile 'concrete))
     (if (= height 1)
         (fill-area
             this-chunk
-            (make-point (- (/ size-x 2) 1) 2)
-            (make-point 2 1)
+            (make-area
+                (make-point (- (/ size-x 2) 1) 2)
+                (make-point 2 1))
             (tile 'air))
         (put-tile
             this-chunk

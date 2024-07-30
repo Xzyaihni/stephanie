@@ -1,17 +1,71 @@
 use serde::{Serialize, Deserialize};
 
+use strum::FromRepr;
+
+use crate::common::lisp::{self, Environment, LispMemory, LispValue, ValueRaw};
+
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, FromRepr, Serialize, Deserialize)]
+pub enum TileRotation
+{
+    Up,
+    Right,
+    Left,
+    Down
+}
+
+impl Default for TileRotation
+{
+    fn default() -> Self
+    {
+        Self::Up
+    }
+}
+
+fn is_rotation_default(rotation: &TileRotation) -> bool
+{
+    *rotation == TileRotation::default()
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Tile
 {
-    id: usize
+    id: usize,
+    #[serde(skip_serializing_if = "is_rotation_default", default)]
+    rotation: TileRotation
 }
 
 impl Tile
 {
     pub fn new(id: usize) -> Self
     {
-        Self{id}
+        Self{id, rotation: TileRotation::default()}
+    }
+
+    pub fn as_lisp_value(&self, env: &Environment, memory: &mut LispMemory) -> LispValue
+    {
+        let id: LispValue = (self.id as i32).into();
+        let rotation: LispValue = (self.rotation as i32).into();
+
+        memory.cons(env, id, rotation)
+    }
+
+    pub unsafe fn from_lisp_value(
+        memory: &LispMemory,
+        value: ValueRaw
+    ) -> Result<Self, lisp::Error>
+    {
+        let lst = memory.get_list(unsafe{ value.list });
+
+        let id = lst.car().as_integer()? as usize;
+
+        let rotation = lst.cdr().as_integer()?;
+        let rotation = TileRotation::from_repr(rotation as usize).unwrap_or_else(||
+        {
+            panic!("{rotation} is an invalid rotation number")
+        });
+
+        Ok(Tile{id, rotation})
     }
 
     pub fn id(&self) -> usize
@@ -21,7 +75,7 @@ impl Tile
 
     pub fn none() -> Self
     {
-        Self{id: 0}
+        Self::new(0)
     }
 
     pub fn is_none(&self) -> bool

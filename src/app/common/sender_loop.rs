@@ -6,9 +6,11 @@ use std::{
 
 use parking_lot::RwLock;
 
+use crate::common::MessageSerError;
+
 pub trait BufferSender
 {
-    fn send_buffered(&mut self) -> Result<(), bincode::Error>;
+    fn send_buffered(&mut self) -> Result<(), MessageSerError>;
 }
 
 const TICK_COUNT: usize = 30;

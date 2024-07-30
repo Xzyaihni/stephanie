@@ -35,6 +35,7 @@ use crate::{
     LOG_PATH,
     app::AppInfo,
     common::{
+        some_or_return,
         DataInfos,
         MessagePasser,
         tilemap::TileMapWithTextures
@@ -96,7 +97,7 @@ pub struct ClientInfo
 
 pub struct Client
 {
-    game_state: Rc<RefCell<GameState>>,
+    game_state: Option<Rc<RefCell<GameState>>>,
     game: Game,
     squares: HashMap<Uvs, ModelId>
 }
@@ -164,44 +165,50 @@ impl Client
             (uvs, square)
         }).collect();
 
-        Ok(Self{game_state, game, squares})
+        Ok(Self{
+            game_state: Some(game_state),
+            game,
+            squares
+        })
     }
 
     pub fn resize(&mut self, aspect: f32)
     {
-        self.game_state.borrow_mut().resize(aspect);
-    }
-
-    pub fn running(&self) -> bool
-    {
-        self.game_state.borrow().running
+        some_or_return!(&self.game_state).borrow_mut().resize(aspect);
     }
 
     pub fn update(&mut self, dt: f32)
     {
+        let game_state = some_or_return!(&self.game_state);
+
         self.game.update(dt);
 
         if self.game.player_exists()
         {
-            if self.game_state.borrow_mut().player_connected()
+            if game_state.borrow_mut().player_connected()
             {
                 self.game.on_player_connected();
 
-                self.game_state.borrow_mut().on_player_connected();
+                game_state.borrow_mut().on_player_connected();
             }
 
             self.game.camera_sync();
+        }
+
+        if !game_state.borrow().running
+        {
+            self.game_state.take();
         }
     }
 
     pub fn update_buffers(&mut self, partial_info: UpdateBuffersPartialInfo)
     {
-        self.game_state.borrow_mut().update_buffers(&self.squares, partial_info);
+        some_or_return!(&self.game_state).borrow_mut().update_buffers(&self.squares, partial_info);
     }
 
     pub fn draw(&mut self, mut info: DrawInfo)
     {
-        self.game_state.borrow().draw(&mut info);
+        some_or_return!(&self.game_state).borrow().draw(&mut info);
     }
 
     pub fn input(&mut self, control: yanyaengine::Control)
@@ -221,12 +228,12 @@ impl Client
             }
         }
 
-        self.game_state.borrow_mut().input(control);
+        some_or_return!(&self.game_state).borrow_mut().input(control);
     }
 
     pub fn mouse_move(&mut self, position: (f64, f64))
     {
         let position = Vector2::new(position.0 as f32, position.1 as f32);
-        self.game_state.borrow_mut().mouse_moved(position);
+        some_or_return!(&self.game_state).borrow_mut().mouse_moved(position);
     }
 }
