@@ -12,8 +12,6 @@ use std::{
 
 use serde::{Serialize, Deserialize};
 
-use bincode::Options;
-
 use super::{PossibleStates, ParseError};
 
 use crate::common::{
@@ -74,27 +72,10 @@ impl MaybeWorldChunk
         self.0.as_mut().map(WorldChunk::take_tags).unwrap_or_default()
     }
 
-    fn options_prelimit() -> impl Options
+    pub const fn size_of() -> usize
     {
-        bincode::DefaultOptions::new()
-            .with_fixint_encoding()
-            .allow_trailing_bytes()
-    }
-
-    fn options() -> impl Options
-    {
-        Self::options_prelimit().with_limit(Self::size_of() as u64)
-    }
-
-    pub fn size_of() -> usize
-    {
-        // using the MAX const so it doesnt give wrong size if i wanna use varint
-        Self::options_prelimit().serialized_size(
-            &Self(Some(WorldChunk::new(
-                WorldChunkId(usize::MAX),
-                Vec::new()
-            )))
-        ).unwrap() as usize
+        // is option? (u8) + id (u32)
+        1 + (u32::BITS / 8) as usize
     }
 
     pub fn index_of(index: usize) -> usize
@@ -104,15 +85,14 @@ impl MaybeWorldChunk
 
     pub fn write_into(self, mut writer: impl Write)
     {
-        let mut bytes = Self::options().serialize(&self).unwrap();
+        let bytes = self.0.map(|world_chunk|
+        {
+            let [a, b, c, d] = (world_chunk.id.0 as u32).to_le_bytes();
 
-        let size = Self::size_of();
+            [1, a, b, c, d]
+        }).unwrap_or([0; Self::size_of()]);
 
-        assert!(bytes.len() <= size);
-
-        bytes.resize_with(size, Default::default);
-
-        assert_eq!(bytes.len(), size);
+        assert_eq!(bytes.len(), Self::size_of());
 
         writer.write_all(&bytes).unwrap();
     }
@@ -121,7 +101,14 @@ impl MaybeWorldChunk
     {
         assert_eq!(bytes.len(), Self::size_of());
 
-        Self::options().deserialize(bytes).unwrap()
+        let maybe_world_chunk = (bytes[0] != 0).then(||
+        {
+            let b = [bytes[1], bytes[2], bytes[3], bytes[4]];
+
+            WorldChunk::new(WorldChunkId(u32::from_le_bytes(b) as usize), Vec::new())
+        });
+
+        Self(maybe_world_chunk)
     }
 }
 

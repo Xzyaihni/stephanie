@@ -119,7 +119,7 @@ impl LoadValueGroup
         {
             let tags = self.tags_file.as_mut().map(|file|
             {
-                bincode::deserialize_from(file).unwrap()
+                ciborium::from_reader(file).unwrap()
             }).unwrap_or_default();
 
             world_chunk.with_tags(tags)
@@ -447,7 +447,7 @@ impl<SaveT: Saveable, LoadT> FileSaver<SaveT, LoadT>
 
         let file = File::create(Self::chunk_path(parent_path, pos)).unwrap();
 
-        bincode::serialize_into(file, tags).unwrap();
+        ciborium::into_writer(tags, file).unwrap();
     }
 }
 
