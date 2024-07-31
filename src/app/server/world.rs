@@ -40,7 +40,7 @@ use crate::{
             ChunkLocal,
             GlobalPos,
             Pos3,
-            overmap::{OvermapIndexing, CommonIndexing}
+            overmap::{Overmap, OvermapIndexing, CommonIndexing}
         }
     }
 };
@@ -210,11 +210,13 @@ impl World
     )
     {
         let mut writer = self.message_handler.write();
+        let overmaps = self.overmaps.borrow();
+
         Self::unload_entities_inner(&mut self.entities_saver, container, &mut writer, |global|
         {
-            self.client_indexers.iter().any(|(_, indexer)|
+            overmaps.values().any(|overmap|
             {
-                indexer.inbounds(global)
+                overmap.contains(global)
             })
         });
     }
