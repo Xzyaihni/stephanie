@@ -247,7 +247,15 @@ impl ClientOvermap
         {
             self.chunks[local_pos] = Some(Arc::new(chunk));
 
-            self.check_neighbors(local_pos);
+            self.visual_overmap.mark_ungenerated(local_pos);
+
+            local_pos.directions_inclusive().flatten().for_each(|pos|
+            {
+                if self.get_local(pos).is_some()
+                {
+                    self.check_visual(pos);
+                }
+            });
         }
     }
 
@@ -298,10 +306,11 @@ impl ClientOvermap
 
                 self.chunks[local] = Some(Arc::new(new_chunk));
 
-                self.visual_overmap.generate(&self.chunks, local);
+                self.visual_overmap.force_generate(&self.chunks, local);
+
                 local.directions().flatten().for_each(|pos|
                 {
-                    self.visual_overmap.generate(&self.chunks, pos)
+                    self.visual_overmap.force_generate(&self.chunks, pos)
                 });
             }
         }
@@ -337,14 +346,7 @@ impl ClientOvermap
         self.world_receiver.request_chunk(pos);
     }
 
-    fn check_neighbors(&self, pos: LocalPos)
-    {
-        pos.directions_inclusive().flatten().for_each(|position|
-            self.check_visual(position)
-        );
-    }
-
-    fn check_visual(&self, pos: LocalPos)
+    fn check_visual(&mut self, pos: LocalPos)
     {
         let this_visual_exists = self.visual_overmap.is_generated(pos);
 
@@ -357,7 +359,7 @@ impl ClientOvermap
 
             if neighbors_exist
             {
-                self.visual_overmap.generate(&self.chunks, pos);
+                self.visual_overmap.try_generate(&self.chunks, pos);
             }
         }
     }

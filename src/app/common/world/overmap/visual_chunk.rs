@@ -493,6 +493,11 @@ impl VisualChunk
         self.generated
     }
 
+    pub fn mark_generating(&mut self)
+    {
+        self.generated = true;
+    }
+
     pub fn mark_ungenerated(&mut self)
     {
         self.generated = false;

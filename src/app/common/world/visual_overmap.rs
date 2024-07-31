@@ -204,12 +204,28 @@ impl VisualOvermap
         Self{tiles_factory, chunks, visibility_checker, receiver, sender}
     }
 
-    pub fn generate(
-        &self,
+    pub fn try_generate(
+        &mut self,
         chunks: &ChunksContainer<Option<Arc<Chunk>>>,
         pos: LocalPos
     )
     {
+        if self.is_generated(pos)
+        {
+            return;
+        }
+
+        self.force_generate(chunks, pos);
+    }
+
+    pub fn force_generate(
+        &mut self,
+        chunks: &ChunksContainer<Option<Arc<Chunk>>>,
+        pos: LocalPos
+    )
+    {
+        self.mark_generating(pos);
+
         let tile_reader = TileReader::new(chunks, pos);
 
         let chunk_pos = self.to_global(pos);
@@ -283,6 +299,11 @@ impl VisualOvermap
     pub fn camera_moved(&mut self, position: Pos3<f32>)
     {
         *self.visibility_checker.player_position.write() = position;
+    }
+
+    pub fn mark_generating(&mut self, pos: LocalPos)
+    {
+        self.chunks[pos].1.mark_generating();
     }
 
     pub fn mark_ungenerated(&mut self, pos: LocalPos)
