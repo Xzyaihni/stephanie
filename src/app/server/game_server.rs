@@ -135,6 +135,8 @@ impl Drop for GameServer
         {
             receiver_handle.join().unwrap()
         });
+
+        eprintln!("server shut down properly");
     }
 }
 

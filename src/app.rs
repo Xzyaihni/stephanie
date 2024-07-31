@@ -1,5 +1,5 @@
 use std::{
-    thread,
+    thread::{self, JoinHandle},
     sync::{mpsc, Arc}
 };
 
@@ -49,7 +49,26 @@ pub struct AppInfo
     pub shaders: ProgramShaders
 }
 
-pub struct App(Client);
+pub struct App
+{
+    client: Client,
+    server_handle: Option<JoinHandle<()>>
+}
+
+impl Drop for App
+{
+    fn drop(&mut self)
+    {
+        self.client.exit();
+
+        if let Some(handle) = self.server_handle.take()
+        {
+            handle.join().unwrap();
+        }
+
+        eprintln!("application closed properly");
+    }
+}
 
 impl YanyaApp for App
 {
@@ -111,6 +130,7 @@ impl YanyaApp for App
             player_character
         };
 
+        let mut server_handle = None;
         let (host, client_address) = if let Some(address) = address
         {
             (false, address)
@@ -119,7 +139,7 @@ impl YanyaApp for App
             let (tx, rx) = mpsc::channel();
 
             let data_infos = data_infos.clone();
-            thread::spawn(move ||
+            server_handle = Some(thread::spawn(move ||
             {
                 match deferred_parse()
                 {
@@ -155,7 +175,7 @@ impl YanyaApp for App
                     },
                     Err(err) => panic!("error parsing tilemap: {err}")
                 }
-            });
+            }));
 
             let port = rx.recv().unwrap();
 
@@ -175,36 +195,39 @@ impl YanyaApp for App
             host
         };
 
-        Self(Client::new(partial_info, client_init_info).unwrap())
+        Self{
+            client: Client::new(partial_info, client_init_info).unwrap(),
+            server_handle
+        }
     }
 
     fn update(&mut self, dt: f32)
     {
-        self.0.update(dt.min(0.1));
+        self.client.update(dt.min(0.1));
     }
 
     fn update_buffers(&mut self, partial_info: UpdateBuffersPartialInfo)
     {
-        self.0.update_buffers(partial_info);
+        self.client.update_buffers(partial_info);
     }
 
     fn input(&mut self, control: Control)
     {
-        self.0.input(control);
+        self.client.input(control);
     }
 
     fn mouse_move(&mut self, position: (f64, f64))
     {
-        self.0.mouse_move(position);
+        self.client.mouse_move(position);
     }
 
     fn draw(&mut self, info: DrawInfo)
     {
-        self.0.draw(info);
+        self.client.draw(info);
     }
 
     fn resize(&mut self, aspect: f32)
     {
-        self.0.resize(aspect);
+        self.client.resize(aspect);
     }
 }

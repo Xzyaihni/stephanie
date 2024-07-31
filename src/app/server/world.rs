@@ -497,6 +497,11 @@ impl World
                 {
                     Some(target.position)
                 },
+                Message::SetTargetPosition{position, ..}
+                | Message::SyncPosition{position, ..} =>
+                {
+                    Some(*position)
+                }
                 Message::SetTransform{component, ..} =>
                 {
                     Some(component.position)

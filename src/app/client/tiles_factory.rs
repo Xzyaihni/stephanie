@@ -41,6 +41,7 @@ use crate::common::{
         GlobalPos,
         Pos3,
         Tile,
+        TileRotation,
         chunk::ChunkLocal,
     }
 };
@@ -248,27 +249,34 @@ impl ChunkModelBuilder
         let x = to_uv(x) + pixel_fraction;
         let y = to_uv(y) + pixel_fraction;
 
+        let mut a = [x, y];
+        let mut b = [x, y_end];
+        let mut c = [x_end, y];
+        let mut d = [x_end, y_end];
+
+        match tile.rotation
+        {
+            TileRotation::Up => (),
+            TileRotation::Down =>
+            {
+                (a, b, c, d) = (d, c, b, a);
+            },
+            TileRotation::Right =>
+            {
+                (a, b, c, d) = (b, d, a, c);
+            },
+            TileRotation::Left =>
+            {
+                (a, b, c, d) = (c, a, d, b);
+            }
+        }
+
         if flip_xy
         {
-            [
-                [x, y], // 1
-                [x_end, y], // 3
-                [x, y_end], // 2
-                [x_end, y], // 6
-                [x_end, y_end], // 5
-                [x, y_end] // 4
-            ]
-        } else
-        {
-            [
-                [x, y],
-                [x, y_end],
-                [x_end, y],
-                [x, y_end],
-                [x_end, y_end],
-                [x_end, y]
-            ]
-        }.into_iter()
+            (b, c) = (c, b);
+        }
+
+        [a, b, c, b, d, c].into_iter()
     }
 
     fn tile_vertices(&self, pos: Pos3<f32>) -> impl Iterator<Item=[f32; 3]>

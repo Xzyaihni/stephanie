@@ -172,6 +172,11 @@ impl Client
         })
     }
 
+    pub fn exit(&mut self)
+    {
+        self.game_state.take();
+    }
+
     pub fn resize(&mut self, aspect: f32)
     {
         some_or_return!(&self.game_state).borrow_mut().resize(aspect);
@@ -197,7 +202,7 @@ impl Client
 
         if !game_state.borrow().running
         {
-            self.game_state.take();
+            self.exit();
         }
     }
 

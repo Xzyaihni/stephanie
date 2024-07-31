@@ -2,6 +2,7 @@ use std::{
     fs,
     io,
     fmt,
+    str::FromStr,
     rc::Rc,
     cell::RefCell,
     ops::{Index, IndexMut},
@@ -23,6 +24,7 @@ use crate::common::{
         Mappings,
         Lambdas,
         ValueTag,
+        ArgsCount,
         Primitives,
         PrimitiveProcedureInfo
     },
@@ -34,7 +36,7 @@ use crate::common::{
         overmap::{Overmap, OvermapIndexing, FlatChunksContainer, ChunksContainer},
         chunk::{
             PosDirection,
-            tile::Tile
+            tile::{Tile, TileRotation}
         }
     }
 };
@@ -226,18 +228,28 @@ impl ChunkGenerator
 
         primitives.add(
             "tile",
-            PrimitiveProcedureInfo::new_simple(1, move |_state, memory, env, mut args|
+            PrimitiveProcedureInfo::new_simple(ArgsCount::Min(1), move |_state, memory, env, mut args|
             {
-                let arg = args.pop(memory);
+                let name = args.pop(memory).as_symbol(memory)?;
+                let rotation = args.try_pop(memory);
 
-                let name = arg.as_symbol(memory)?;
-
-                let tile = names_map.get(&name).unwrap_or_else(||
+                let mut tile = *names_map.get(&name).unwrap_or_else(||
                 {
                     eprintln!("no tile named `{name}`, using fallback");
 
                     &fallback_tile
                 });
+
+                if let Some(rotation) = rotation
+                {
+                    let name = rotation.as_symbol(memory)?;
+
+                    match TileRotation::from_str(&name)
+                    {
+                        Ok(x) => tile.rotation = x,
+                        Err(_) => eprintln!("no rotation named `{name}`")
+                    }
+                }
 
                 Ok(tile.as_lisp_value(env, memory))
             }));

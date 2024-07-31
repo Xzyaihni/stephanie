@@ -145,12 +145,15 @@
                 (tile 'stairs_down)))
         (if (= level 1)
             (begin
-                (rectangle-outline
+                (rectangle-outline-different
                     this-chunk
                     (make-area
                         (make-point 1 1)
                         (make-point (- size-x 2) (- size-y 2)))
-                    (tile 'concrete_fence))
+                    (tile 'concrete_fence)
+                    (tile 'concrete_fence 'Right)
+                    (tile 'concrete_fence 'Left)
+                    (tile 'concrete_fence 'Down))
                 (move-area
                     this-chunk
                     (make-area

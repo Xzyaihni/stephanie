@@ -96,7 +96,7 @@ impl Debug for Chunk
     {
         debug_3d_slices(f, Pos3::repeat(CHUNK_SIZE), |pos|
         {
-            self[ChunkLocal::from(pos)].id().to_string()
+            self[ChunkLocal::from(pos)].id_string()
         })
     }
 }

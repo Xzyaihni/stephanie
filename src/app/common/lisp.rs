@@ -15,6 +15,7 @@ pub use program::{
     Primitives,
     Lambdas,
     WithPosition,
+    ArgsCount,
     ArgsWrapper
 };
 

@@ -222,6 +222,6 @@ impl MessagePasser
 
     pub fn try_clone(&self) -> Self
     {
-        Self{buffer: self.buffer.clone(), stream: self.stream.try_clone().unwrap()}
+        Self{buffer: self.buffer, stream: self.stream.try_clone().unwrap()}
     }
 }

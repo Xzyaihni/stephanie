@@ -287,7 +287,7 @@ impl<T> BlockingSaver<T>
 
 // again, shouldnt be public
 #[derive(Debug)]
-pub struct FileSaver<SaveT, LoadT=SaveT>
+pub struct FileSaver<SaveT: Saveable, LoadT=SaveT>
 {
     parent_path: PathBuf,
     // i need the usize field just to count the saves called for the same chunk
@@ -295,6 +295,14 @@ pub struct FileSaver<SaveT, LoadT=SaveT>
     save_tx: Sender<ValuePair<SaveT>>,
     finish_rx: Receiver<GlobalPos>,
     phantom: PhantomData<(SaveT, LoadT)>
+}
+
+impl<SaveT: Saveable, LoadT> Drop for FileSaver<SaveT, LoadT>
+{
+    fn drop(&mut self)
+    {
+        self.flush();
+    }
 }
 
 impl<SaveT: Saveable, LoadT> FileSaver<SaveT, LoadT>
@@ -592,8 +600,6 @@ where
         {
             file_saver.save(value.into());
         }
-
-        file_saver.flush();
     }
 }
 
@@ -931,14 +937,28 @@ mod tests
         clear_dir(&dir_name);
 
         let size = Pos3::new(
-            fastrand::usize(4..7),
-            fastrand::usize(4..7),
-            fastrand::usize(40..70)
+            fastrand::usize(3..7),
+            fastrand::usize(3..7),
+            fastrand::usize(3..7)
         );
 
         let random_chunk = ||
         {
-            Chunk::new_with(|_| Tile::new(fastrand::usize(0..100)))
+            Chunk::new_with(|_|
+            {
+                let mut tile = Tile::new(fastrand::usize(0..100));
+
+                tile.rotation = match fastrand::usize(0..4)
+                {
+                    0 => TileRotation::Up,
+                    1 => TileRotation::Right,
+                    2 => TileRotation::Left,
+                    3 => TileRotation::Down,
+                    _ => unreachable!()
+                };
+
+                tile
+            })
         };
 
         let chunks: Vec<_> = iter::repeat_with(||

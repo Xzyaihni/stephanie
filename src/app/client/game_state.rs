@@ -441,6 +441,7 @@ impl Drop for GameState
             {
                 self.receiver_handle.take().unwrap().join().unwrap();
 
+                eprintln!("client shut down properly");
                 return;
             }
         }

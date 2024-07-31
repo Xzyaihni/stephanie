@@ -100,29 +100,32 @@
         area
         (tile 'air)))
 
-(define (rectangle-outline chunk area tile)
+(define (rectangle-outline-different chunk area up right left down)
     (define pos (area-start area))
     (define size (area-size area))
     (vertical-line-length
         chunk
         pos
         (point-y size)
-        tile)
+        left)
 
     (vertical-line-length
         chunk
         (make-point (- (+ (point-x pos) (point-x size)) 1) (point-y pos))
         (point-y size)
-        tile)
+        right)
 
     (horizontal-line-length
         chunk
         pos
         (point-x size)
-        tile)
+        up)
 
     (horizontal-line-length
         chunk
         (make-point (point-x pos) (- (+ (point-y pos) (point-y size)) 1))
         (point-x size)
-        tile))
+        down))
+
+(define (rectangle-outline chunk area tile)
+    (rectangle-outline-different chunk area tile tile tile tile))

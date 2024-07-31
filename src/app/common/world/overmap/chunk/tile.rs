@@ -1,11 +1,11 @@
 use serde::{Serialize, Deserialize};
 
-use strum::FromRepr;
+use strum::{FromRepr, EnumString};
 
 use crate::common::lisp::{self, Environment, LispMemory, LispValue, ValueRaw};
 
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, FromRepr, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, FromRepr, EnumString, Serialize, Deserialize)]
 pub enum TileRotation
 {
     Up,
@@ -22,6 +22,20 @@ impl Default for TileRotation
     }
 }
 
+impl TileRotation
+{
+    pub fn to_arrow_str(&self) -> &str
+    {
+        match self
+        {
+            Self::Up => "↑",
+            Self::Right => "→",
+            Self::Left => "←",
+            Self::Down => "↓"
+        }
+    }
+}
+
 fn is_rotation_default(rotation: &TileRotation) -> bool
 {
     *rotation == TileRotation::default()
@@ -32,7 +46,7 @@ pub struct Tile
 {
     id: usize,
     #[serde(skip_serializing_if = "is_rotation_default", default)]
-    rotation: TileRotation
+    pub rotation: TileRotation
 }
 
 impl Tile
@@ -40,6 +54,11 @@ impl Tile
     pub fn new(id: usize) -> Self
     {
         Self{id, rotation: TileRotation::default()}
+    }
+
+    pub fn id_string(&self) -> String
+    {
+        format!("{}{}", self.id, self.rotation.to_arrow_str())
     }
 
     pub fn as_lisp_value(&self, env: &Environment, memory: &mut LispMemory) -> LispValue
@@ -50,6 +69,8 @@ impl Tile
         memory.cons(env, id, rotation)
     }
 
+    /// # Safety
+    /// value must be of type ValueTag::List
     pub unsafe fn from_lisp_value(
         memory: &LispMemory,
         value: ValueRaw

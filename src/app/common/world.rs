@@ -38,7 +38,7 @@ pub use overmap::{
         DirectionsGroup,
         MaybeGroup,
         AlwaysGroup,
-        tile::Tile
+        tile::{Tile, TileRotation}
     }
 };
 
