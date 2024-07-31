@@ -34,7 +34,7 @@
         (put-tile
             this-chunk
             (make-point x 1)
-            (tile 'stairs_down))))
+            (tile 'stairs-down))))
 
 (define (generate-room)
     (define (residential-building)
@@ -109,7 +109,7 @@
         (put-tile
             this-chunk
             (make-point x 1)
-            (tile 'stairs_up)))
+            (tile 'stairs-up)))
 
     (if (= height 1)
         ; entrance
@@ -142,7 +142,7 @@
             (put-tile
                 this-chunk
                 (make-point 6 1)
-                (tile 'stairs_down)))
+                (tile 'stairs-down)))
         (if (= level 1)
             (begin
                 (rectangle-fence
@@ -150,15 +150,26 @@
                     (make-area
                         (make-point 1 1)
                         (make-point (- size-x 2) (- size-y 2)))
-                    'concrete_fence
-                    'concrete_fence_l)
-                (move-area
+                    'concrete-fence
+                    'concrete-fence-l)
+                (fill-area
                     this-chunk
                     (make-area
-                        (make-point 5 1)
-                        (make-point 6 1))
-                    (make-point 0 -1)))
-            this-chunk)))
+                        (make-point 5 0)
+                        (make-point 6 3))
+                    (tile 'concrete))
+                (fill-area
+                    this-chunk
+                    (make-area
+                        (make-point 6 1)
+                        (make-point 4 2))
+                    (tile 'air)))
+            (fill-area
+                this-chunk
+                (make-area
+                    (make-point 5 0)
+                    (make-point 6 3))
+                (tile 'concrete)))))
 
 (define roof-start (- building-height 3))
 

@@ -18,22 +18,22 @@
         "name": "glass"
     },
     {
-        "name": "concrete_fence",
+        "name": "concrete-fence",
         "transparent": true,
         "gradientable": false
     },
     {
-        "name": "concrete_fence_l",
+        "name": "concrete-fence-l",
         "transparent": true,
         "gradientable": false
     },
     {
-        "name": "stairs_up",
+        "name": "stairs-up",
         "special": "StairsUp",
         "gradientable": false
     },
     {
-        "name": "stairs_down",
+        "name": "stairs-down",
         "special": "StairsDown",
         "gradientable": false
     }
