@@ -129,3 +129,26 @@
 
 (define (rectangle-outline chunk area tile)
     (rectangle-outline-different chunk area tile tile tile tile))
+
+(define (rectangle-fence chunk area wall corner)
+    (rectangle-outline-different
+        chunk
+        area
+        (tile wall)
+        (tile wall 'Right)
+        (tile wall 'Left)
+        (tile wall 'Down))
+    (let (
+            (end (area-end area))
+            (start (area-start area))
+            (put-corner
+                (lambda (pos rotation)
+                    (put-tile
+                        chunk
+                        pos
+                        (tile corner rotation)))))
+        (begin
+            (put-corner start 'Up)
+            (put-corner (make-point (point-x end) (point-y start)) 'Right)
+            (put-corner end 'Down)
+            (put-corner (make-point (point-x start) (point-y end)) 'Left))))

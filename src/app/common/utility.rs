@@ -378,6 +378,14 @@ pub fn write_log(text: impl Into<String>)
     }
 }
 
+pub fn write_log_ln(text: impl Into<String>)
+{
+    let mut text = text.into();
+    text.push('\n');
+
+    write_log(text)
+}
+
 pub fn insertion_sort_with<T, KeyGetter, Swapper, Sortable>(
     values: &mut [T],
     get_key: KeyGetter,

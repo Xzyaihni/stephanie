@@ -23,6 +23,11 @@
         "gradientable": false
     },
     {
+        "name": "concrete_fence_l",
+        "transparent": true,
+        "gradientable": false
+    },
+    {
         "name": "stairs_up",
         "special": "StairsUp",
         "gradientable": false
