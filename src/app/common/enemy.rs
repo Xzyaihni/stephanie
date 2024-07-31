@@ -40,8 +40,8 @@ impl EnemyBehavior
             {
                 match state
                 {
-                    BehaviorState::Wait => 2.0..=5.0,
-                    BehaviorState::MoveDirection(_) => 0.5..=1.0,
+                    BehaviorState::Wait => 10.0..=20.0,
+                    BehaviorState::MoveDirection(_) => 0.8..=2.0,
                     BehaviorState::Attack(_) => return None
                 }
             }

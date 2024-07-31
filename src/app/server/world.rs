@@ -214,9 +214,10 @@ impl World
 
         Self::unload_entities_inner(&mut self.entities_saver, container, &mut writer, |global|
         {
-            overmaps.values().any(|overmap|
+            self.client_indexers.iter().zip(overmaps.values()).any(|((_, indexer), overmap)|
             {
-                overmap.contains(global)
+                indexer.inbounds(global)
+                    || overmap.contains(global)
             })
         });
     }
