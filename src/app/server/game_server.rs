@@ -185,9 +185,6 @@ impl GameServer
 
         self.entities.update_sprites(&self.characters_info);
 
-        self.entities.update_physical(dt);
-        self.entities.update_lazy();
-
         {
             let mut writer = self.connection_handler.write();
             self.entities.create_queued(&mut writer);

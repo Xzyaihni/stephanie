@@ -454,8 +454,15 @@ impl World
 
         let (delete_ids, delete_entities) = Self::collect_to_delete(delete_entities);
 
-        delete_entities.into_iter().for_each(|(pos, entities)|
+        delete_entities.into_iter().for_each(|(pos, mut entities)|
         {
+            if let Some(mut previous) = saver.load(pos)
+            {
+                previous.append(&mut entities);
+
+                entities = previous;
+            }
+
             saver.save(pos, entities);
         });
 

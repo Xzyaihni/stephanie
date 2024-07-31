@@ -569,12 +569,8 @@ impl FileSave for FileSaver<SaveValueGroup, LoadValueGroup>
 }
 
 pub type ChunkSaver = Saver<FileSaver<Chunk>, Chunk>;
+pub type EntitiesSaver = Saver<FileSaver<Vec<EntityInfo>>, Vec<EntityInfo>>;
 pub type WorldChunkSaver = Saver<FileSaver<SaveValueGroup, LoadValueGroup>, SaveValueGroup, LoadValueGroup>;
-
-pub struct EntitiesSaver
-{
-    saver: Saver<FileSaver<Vec<EntityInfo>>, Vec<EntityInfo>>
-}
 
 // again, shouldnt be public
 #[derive(Debug)]
@@ -698,43 +694,6 @@ impl SaveLoad<WorldChunk> for WorldChunkSaver
         }
 
         self.cache.push(CachedValue{key, value});
-    }
-}
-
-impl EntitiesSaver
-{
-    pub fn new(parent_path: impl Into<PathBuf>, cache_amount: usize) -> Self
-    {
-        Self{
-            saver: Saver::new(parent_path, cache_amount)
-        }
-    }
-
-    pub fn load(&mut self, pos: GlobalPos) -> Option<Vec<EntityInfo>>
-    {
-        let loaded = self.saver.load(pos);
-
-        if loaded.is_some()
-        {
-            self.saver.save(pos, Vec::new());
-        }
-
-        loaded
-    }
-
-    pub fn save(&mut self, pos: GlobalPos, mut entities: Vec<EntityInfo>)
-    {
-        let entities = if let Some(mut contained) = self.saver.load(pos)
-        {
-            contained.append(&mut entities);
-
-            contained
-        } else
-        {
-            entities
-        };
-
-        self.saver.save(pos, entities);
     }
 }
 
