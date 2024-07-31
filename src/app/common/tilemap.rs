@@ -36,16 +36,36 @@ pub const PADDING: usize = TEXTURE_TILE_SIZE / 2;
 const PADDED_TILE_SIZE: usize = TEXTURE_TILE_SIZE + PADDING * 2;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SpawnerTile
+{
+    Door{width: u32}
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SpecialTile
 {
     StairsUp,
-    StairsDown
+    StairsDown,
+    Spawner(SpawnerTile)
+}
+
+impl SpecialTile
+{
+    fn is_spawner(&self) -> bool
+    {
+        match self
+        {
+            Self::Spawner(..) => true,
+            _ => false
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TileInfoRaw
 {
     pub name: String,
+    pub drawable: Option<bool>,
     pub special: Option<SpecialTile>,
     pub colliding: Option<bool>,
     pub transparent: Option<bool>,
@@ -53,10 +73,20 @@ pub struct TileInfoRaw
     pub texture: Option<PathBuf>
 }
 
+impl TileInfoRaw
+{
+    fn has_texture(&self) -> bool
+    {
+        self.drawable.unwrap_or(true)
+            && self.special.as_ref().map(|x| !x.is_spawner()).unwrap_or(true)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct TileInfo
 {
     pub name: String,
+    pub drawable: bool,
     pub special: Option<SpecialTile>,
     pub colliding: bool,
     pub gradientable: bool,
@@ -65,19 +95,20 @@ pub struct TileInfo
 
 impl TileInfo
 {
-    fn from_raw(texture: &SimpleImage, tile_raw: TileInfoRaw) -> Self
+    fn from_raw(texture: &Option<SimpleImage>, tile_raw: TileInfoRaw) -> Self
     {
         let mut this = TileInfo{
             name: tile_raw.name,
+            drawable: tile_raw.drawable.unwrap_or(true),
             special: tile_raw.special,
             colliding: tile_raw.colliding.unwrap_or(true),
             gradientable: tile_raw.gradientable.unwrap_or(true),
             transparent: tile_raw.transparent.unwrap_or_else(||
             {
-                texture.colors.iter().any(|color|
+                texture.as_ref().map(|texture| texture.colors.iter().any(|color|
                 {
                     color.a != u8::MAX
-                })
+                })).unwrap_or(true)
             })
         };
 
@@ -91,8 +122,18 @@ impl TileInfo
                     this.colliding = false;
                     this.transparent = true;
                 },
+                SpecialTile::Spawner(..) =>
+                {
+                    this.drawable = false;
+                    this.colliding = false;
+                },
                 _ => ()
             }
+        }
+
+        if !this.drawable
+        {
+            this.transparent = true;
         }
 
         this
@@ -110,7 +151,7 @@ pub struct TileMapWithTextures
 {
     pub tilemap: TileMap,
     pub gradient_mask: SimpleImage,
-    pub textures: Vec<SimpleImage>
+    pub textures: Vec<Option<SimpleImage>>
 }
 
 #[derive(Debug)]
@@ -190,20 +231,27 @@ impl TileMap
 
         let textures = tiles.iter().map(|tile_raw|
         {
-            let default_texture = format!("{}.png", tile_raw.name).into();
+            if tile_raw.has_texture()
+            {
+                let default_texture = format!("{}.png", tile_raw.name).into();
 
-            let texture = textures_root.join(tile_raw.texture.as_ref()
-                .unwrap_or(&default_texture));
+                let texture = textures_root.join(tile_raw.texture.as_ref()
+                    .unwrap_or(&default_texture));
 
-            Self::load_texture(
-                TEXTURE_TILE_SIZE as u32,
-                TEXTURE_TILE_SIZE as u32,
-                texture
-            )
-        }).collect::<Result<Vec<SimpleImage>, _>>()?;
+                Self::load_texture(
+                    TEXTURE_TILE_SIZE as u32,
+                    TEXTURE_TILE_SIZE as u32,
+                    texture
+                ).map(Option::Some)
+            } else
+            {
+                Ok(None)
+            }
+        }).collect::<Result<Vec<Option<SimpleImage>>, _>>()?;
 
         let tiles = iter::once(TileInfo{
             name: "air".to_owned(),
+            drawable: false,
             special: None,
             colliding: false,
             gradientable: false,
@@ -294,9 +342,9 @@ impl TileMap
 
     pub fn apply_texture_mask<'a, I>(mask_type: GradientMask, mask: &SimpleImage, textures: I)
     where
-        I: Iterator<Item=&'a mut SimpleImage>
+        I: Iterator<Item=&'a mut Option<SimpleImage>>
     {
-        textures.for_each(|texture|
+        textures.filter_map(Option::as_mut).for_each(|texture|
         {
             for y in 0..TEXTURE_TILE_SIZE
             {
@@ -330,7 +378,7 @@ impl TileMap
         &self,
         resource_uploader: &mut ResourceUploader,
         shader: ShaderId,
-        textures: &[SimpleImage]
+        textures: &[Option<SimpleImage>]
     ) -> Texture
     {
         let side = self.texture_row_size();
@@ -338,7 +386,10 @@ impl TileMap
         let row = side * PADDED_TILE_SIZE;
         let mut tilemap = SimpleImage::new(vec![Color::new(0, 0, 0, 255); row * row], row, row);
 
-        textures.iter().enumerate().for_each(|(index, texture)|
+        textures.iter().enumerate().filter_map(|(index, texture)|
+        {
+            texture.as_ref().map(|texture| (index, texture))
+        }).for_each(|(index, texture)|
         {
             let x = (index % side) * PADDED_TILE_SIZE;
             let y = (index / side) * PADDED_TILE_SIZE;

@@ -451,7 +451,7 @@ impl VisualChunk
         tiles: MaybeGroup<Tile>
     ) -> bool
     {
-        if tiles.this.is_none()
+        if !tilemap[tiles.this].drawable
         {
             return false;
         }

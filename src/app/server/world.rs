@@ -380,6 +380,7 @@ impl World
             {
                 if let Some(entities) = self.entities_saver.load(pos)
                 {
+                    self.entities_saver.save(pos, Vec::new());
                     self.create_entities(container, entities.into_iter());
                 }
             }
