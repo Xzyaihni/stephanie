@@ -171,7 +171,7 @@ impl ClientEntitiesContainer
         dt: f32
     )
     {
-        self.entities.update_physical(dt);
+        self.entities.update_physical(world, dt);
         self.entities.update_lazy(dt);
         self.entities.update_enemy(passer, dt);
         self.entities.update_children();

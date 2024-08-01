@@ -21,6 +21,7 @@ use crate::{
 };
 
 pub use overmap::{
+    Overmap,
     ChunksContainer,
     Axis,
     chunks_container::debug_3d_slices,
@@ -116,9 +117,19 @@ impl World
         (min_scale, max_scale)
     }
 
+    fn chunk_of(&self, pos: Pos3<f32>) -> GlobalPos
+    {
+        self.tile_of(pos).chunk
+    }
+
+    pub fn inside_chunk(&self, pos: Pos3<f32>) -> bool
+    {
+        self.overmap.contains(self.chunk_of(pos))
+    }
+
     pub fn debug_chunk(&self, pos: Pos3<f32>, visual: bool) -> String
     {
-        self.overmap.debug_chunk(self.tile_of(pos).chunk, visual)
+        self.overmap.debug_chunk(self.chunk_of(pos), visual)
     }
 
     pub fn tiles_inside<'a>(

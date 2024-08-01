@@ -551,12 +551,21 @@ macro_rules! impl_common_systems
             }
         }
 
-        pub fn update_physical(&mut self, dt: f32)
+        pub fn update_physical(
+            &mut self,
+            world: &World,
+            dt: f32
+        )
         {
             for_each_component!(self, physical, |entity, physical: &RefCell<Physical>|
             {
                 if let Some(mut target) = self.target(entity)
                 {
+                    if !world.inside_chunk(target.position.into())
+                    {
+                        return;
+                    }
+
                     let mut physical = physical.borrow_mut();
                     physical.physics_update(&mut target, dt);
                 }
@@ -1234,7 +1243,6 @@ macro_rules! define_entities_both
                             }
                         };
 
-                        // on_component_set::$set_func();
                         $component_type::on_set(
                             previous.map(|x| x.component.into_inner()),
                             self,
