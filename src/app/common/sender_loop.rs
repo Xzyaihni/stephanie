@@ -42,13 +42,8 @@ pub fn sender_loop<B: BufferSender + Send + Sync + 'static>(
     {
         waiting_loop(||
         {
-            let result = sender.write().send_buffered();
-            if let Err(ref x) = result
-            {
-                eprintln!("error in sender loop: {x}, closing");
-            }
-
-            result.is_err()
+            // error only happens if receiver hung up
+            sender.write().send_buffered().is_err()
         });
     })
 }
