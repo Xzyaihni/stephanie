@@ -657,7 +657,8 @@ macro_rules! entity_info_common
 
             if let Some(character) = self.character.as_mut()
             {
-                character.initialize(&entities.infos().characters_info, entity, |info|
+                let rotation = self.transform.as_ref().map(|x| x.rotation).unwrap_or_default();
+                character.initialize(&entities.infos().characters_info, entity, rotation, |info|
                 {
                     entities.push(entity.local(), info)
                 });
@@ -1233,6 +1234,7 @@ macro_rules! define_entities_both
                             }
                         };
 
+                        // on_component_set::$set_func();
                         $component_type::on_set(
                             previous.map(|x| x.component.into_inner()),
                             self,

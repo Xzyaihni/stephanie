@@ -286,6 +286,7 @@ impl Character
         &mut self,
         characters_info: &CharactersInfo,
         entity: Entity,
+        rotation: f32,
         mut inserter: impl FnMut(EntityInfo) -> Entity
     )
     {
@@ -393,6 +394,8 @@ impl Character
         };
 
         self.info = Some(info);
+
+        self.rotation = rotation;
     }
 
     pub fn with_previous(&mut self, previous: Self)
