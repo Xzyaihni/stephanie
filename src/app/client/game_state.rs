@@ -597,10 +597,9 @@ impl GameState
         name: &str
     ) -> Entity
     {
-        let message = Message::PlayerConnect{name: name.to_owned()};
-
         let mut handler = handler.write();
 
+        let message = Message::PlayerConnect{name: name.to_owned()};
         if let Err(x) = handler.send_blocking(&message)
         {
             panic!("error connecting to server: {x}");

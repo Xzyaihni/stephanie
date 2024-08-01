@@ -418,21 +418,13 @@ impl GameServer
     fn player_create(
         &mut self,
         player_entity: Entity,
-        player_info: PlayerInfo,
+        mut player_info: PlayerInfo,
         position: Vector3<f32>
     ) -> Result<(ConnectionId, MessagePasser), ConnectionError>
     {
+        player_info.send_blocking(Message::PlayerOnConnect{player_entity})?;
+
         let connection_id = self.connection_handler.write().connect(player_info);
-
-        {
-            let mut writer = self.connection_handler.write();
-
-            let messager = writer.get_mut(connection_id);
-
-            let message = Message::PlayerOnConnect{player_entity};
-
-            messager.send_blocking(message)?;
-        }
 
         self.world.add_player(
             &mut self.entities,
