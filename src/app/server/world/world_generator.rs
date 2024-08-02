@@ -168,13 +168,13 @@ pub struct ChunkGenerator
     primitives: Rc<Primitives>,
     memory: Rc<RefCell<LispMemory>>,
     chunks: HashMap<String, LispRef>,
-    tilemap: TileMap
+    tilemap: Rc<TileMap>
 }
 
 impl ChunkGenerator
 {
     pub fn new(
-        tilemap: TileMap,
+        tilemap: Rc<TileMap>,
         rules: Rc<ChunkRulesGroup>
     ) -> Result<Self, ParseError>
     {
@@ -394,7 +394,7 @@ impl<S: SaveLoad<WorldChunk>> WorldGenerator<S>
 {
     pub fn new(
         saver: S,
-        tilemap: TileMap,
+        tilemap: Rc<TileMap>,
         path: impl Into<PathBuf>
     ) -> Result<Self, ParseError>
     {
@@ -941,7 +941,7 @@ mod tests
         let d = get_tile("concrete");
 
         let rules = Rc::new(ChunkRulesGroup::load(PathBuf::from("world_generation")).unwrap());
-        let mut generator = ChunkGenerator::new(tilemap, rules).unwrap();
+        let mut generator = ChunkGenerator::new(Rc::new(tilemap), rules).unwrap();
 
         let empty = [];
         let info = ConditionalInfo{

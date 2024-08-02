@@ -118,6 +118,15 @@ impl Pos3<usize>
             })
         })
     }
+
+    pub fn from_rectangle(size: Pos3<usize>, index: usize) -> Self
+    {
+        let x = index % size.x;
+        let y = (index / size.x) % size.y;
+        let z = index / (size.x * size.y);
+
+        Self{x, y, z}
+    }
 }
 
 impl<T: Copy> Pos3<T>

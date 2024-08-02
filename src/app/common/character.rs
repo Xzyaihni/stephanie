@@ -263,7 +263,8 @@ impl Character
             physical: PhysicalProperties{
                 mass: 0.5,
                 friction: 0.4,
-                floating: true
+                floating: true,
+                ..Default::default()
             }.into(),
             limit: 0.004,
             damping: 0.02,
@@ -334,7 +335,8 @@ impl Character
                             physical: PhysicalProperties{
                                 mass: 0.01,
                                 friction: 0.8,
-                                floating: true
+                                floating: true,
+                                ..Default::default()
                             }.into(),
                             limit: 0.004,
                             damping: 0.02,
@@ -634,7 +636,7 @@ impl Character
                 let mut physical: Physical = PhysicalProperties{
                     mass: item_info.mass,
                     friction: 0.7,
-                    floating: false
+                    ..Default::default()
                 }.into();
 
                 let mass = physical.mass;
@@ -697,7 +699,8 @@ impl Character
                                     physical: Some(PhysicalProperties{
                                         mass: 0.01,
                                         friction: 0.1,
-                                        floating: true
+                                        floating: true,
+                                        ..Default::default()
                                     }.into()),
                                     render: Some(RenderInfo{
                                         object: Some(RenderObjectKind::TextureId{
@@ -1254,20 +1257,17 @@ impl Character
 
     fn this_physical(&self, combined_info: CombinedInfo) -> PhysicalProperties
     {
-        let physical = some_or_value!(
-            combined_info.entities.physical(self.info.as_ref().unwrap().this),
+        combined_info.entities.physical(self.info.as_ref().unwrap().this).map(|x|
+        {
+            x.as_properties()
+        }).unwrap_or_else(||
+        {
             PhysicalProperties{
                 mass: 50.0,
                 friction: 0.999,
-                floating: false
+                ..Default::default()
             }
-        );
-
-        PhysicalProperties{
-            mass: physical.mass,
-            friction: physical.friction,
-            floating: physical.floating
-        }
+        })
     }
 
     pub fn update_common(

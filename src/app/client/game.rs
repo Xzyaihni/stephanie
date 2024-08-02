@@ -387,7 +387,7 @@ impl Game
 
             primitives.add(
                 "print-chunk-of",
-                PrimitiveProcedureInfo::new_simple_effect(ArgsCount::Min(1), move |_state, memory, _env, mut args|
+                PrimitiveProcedureInfo::new_simple_effect(1..=2, move |_state, memory, _env, mut args|
                 {
                     let game_state = game_state.upgrade().unwrap();
                     let game_state = game_state.borrow();

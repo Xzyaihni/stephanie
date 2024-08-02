@@ -431,7 +431,7 @@ mod tests
         let tilemap = TileMap::parse(tiles, "textures/tiles/").unwrap().tilemap;
 
         let world_generator = Rc::new(RefCell::new(
-            WorldGenerator::new(saver, tilemap, "world_generation/").unwrap()
+            WorldGenerator::new(saver, Rc::new(tilemap), "world_generation/").unwrap()
         ));
 
         let size = Pos3::new(10, 11, 12);

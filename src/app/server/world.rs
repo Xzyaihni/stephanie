@@ -14,6 +14,7 @@ use crate::{
     server::ConnectionsHandler,
     common::{
         self,
+        SpecialTile,
         FurnitureBuilder,
         EnemyBuilder,
         TileMap,
@@ -23,9 +24,11 @@ use crate::{
         EntitiesSaver,
         EnemiesInfo,
         SaveLoad,
+        AnyEntities,
         EntityPasser,
         Entity,
         EntityInfo,
+        FullEntityInfo,
         ConnectionId,
         entity::ServerEntities,
         message::Message,
@@ -53,6 +56,8 @@ pub use world_generator::ParseError;
 
 pub mod world_generator;
 mod server_overmap;
+
+mod spawner;
 
 
 pub const SERVER_OVERMAP_SIZE: usize = CLIENT_OVERMAP_SIZE + 1;
@@ -86,6 +91,7 @@ impl OvermapIndexing for ClientIndexer
 pub struct World
 {
     message_handler: Arc<RwLock<ConnectionsHandler>>,
+    tilemap: Rc<TileMap>,
     world_name: String,
     world_generator: Rc<RefCell<WorldGenerator<WorldChunkSaver>>>,
     chunk_saver: ChunkSaver,
@@ -105,6 +111,8 @@ impl World
         items_info: Arc<ItemsInfo>
     ) -> Result<Self, ParseError>
     {
+        let tilemap = Rc::new(tilemap);
+
         let world_name = "default".to_owned();
 
         let world_path = Self::world_path_associated(&world_name);
@@ -114,7 +122,7 @@ impl World
         let world_generator = {
             let chunk_saver = WorldChunkSaver::new(world_path.join("world_chunks"), 100);
 
-            WorldGenerator::new(chunk_saver, tilemap, "world_generation/")
+            WorldGenerator::new(chunk_saver, tilemap.clone(), "world_generation/")
         }?;
 
         let world_generator = Rc::new(RefCell::new(world_generator));
@@ -124,6 +132,7 @@ impl World
 
         Ok(Self{
             message_handler,
+            tilemap,
             world_name,
             world_generator,
             chunk_saver,
@@ -259,6 +268,32 @@ impl World
         self.message_handler.write().send_single(id, Message::ChunkSync{pos, chunk});
     }
 
+    fn create_entities_full(
+        &self,
+        container: &mut ServerEntities,
+        entities: impl Iterator<Item=FullEntityInfo>
+    )
+    {
+        let mut writer = self.message_handler.write();
+
+        entities.for_each(|entity_info|
+        {
+            let mut create = |info|
+            {
+                let entity = container.push(false, info);
+                let message = Message::EntitySet{entity, info: container.info(entity)};
+
+                writer.send_message(message);
+
+                entity
+            };
+
+            let info = entity_info.create(&mut create);
+
+            create(info);
+        });
+    }
+
     fn create_entities(
         &self,
         container: &mut ServerEntities,
@@ -267,9 +302,8 @@ impl World
     {
         let mut writer = self.message_handler.write();
 
-        entities.for_each(|mut entity_info|
+        entities.for_each(|entity_info|
         {
-            entity_info.saveable = Some(());
             let message = container.push_message(entity_info);
 
             writer.send_message(message);
@@ -334,13 +368,37 @@ impl World
             })
     }
 
+    fn create_spawners(
+        &self,
+        container: &mut ServerEntities,
+        chunk_pos: Pos3<f32>,
+        chunk: &mut Chunk
+    )
+    {
+        chunk.iter_mut().for_each(|(pos, tile)|
+        {
+            let info = self.tilemap.info(*tile);
+
+            if let Some(SpecialTile::Spawner(spawner)) = &info.special
+            {
+                let pos = chunk_pos + pos.pos().map(|x| x as f32 * TILE_SIZE);
+
+                spawner::create_spawner(container, pos, spawner);
+
+                *tile = Tile::none();
+            }
+        });
+    }
+
     fn add_entities(
         &self,
         container: &mut ServerEntities,
         chunk_pos: Pos3<f32>,
-        chunk: &Chunk
+        chunk: &mut Chunk
     )
     {
+        self.create_spawners(container, chunk_pos, chunk);
+
         let spawns = fastrand::usize(0..3);
         let crates = fastrand::usize(0..2);
 
@@ -357,7 +415,15 @@ impl World
         }).chain(Self::add_on_ground(chunk_pos, chunk, crates, |pos|
         {
             Some(FurnitureBuilder::new(&self.items_info, pos).build())
-        }));
+        })).map(|mut entity_info|
+        {
+            if entity_info.saveable.is_none()
+            {
+                entity_info.saveable = Some(());
+            }
+
+            entity_info
+        });
 
         self.create_entities(container, entities);
     }
@@ -384,18 +450,18 @@ impl World
                 if let Some(entities) = self.entities_saver.load(pos)
                 {
                     self.entities_saver.save(pos, Vec::new());
-                    self.create_entities(container, entities.into_iter());
+                    self.create_entities_full(container, entities.into_iter());
                 }
             }
         }
 
         loaded_chunk.unwrap_or_else(||
         {
-            let chunk = self.overmaps.borrow_mut().get_mut(&id)
+            let mut chunk = self.overmaps.borrow_mut().get_mut(&id)
                 .expect("id must be valid")
                 .generate_chunk(pos);
 
-            self.add_entities(container, pos.into(), &chunk);
+            self.add_entities(container, pos.into(), &mut chunk);
                 
             self.chunk_saver.save(pos, chunk.clone());
 
@@ -403,12 +469,12 @@ impl World
         })
     }
 
-    fn collect_to_delete<I>(iter: I) -> (Vec<Entity>, HashMap<GlobalPos, Vec<EntityInfo>>)
+    fn collect_to_delete<I>(iter: I) -> (Vec<Entity>, HashMap<GlobalPos, Vec<FullEntityInfo>>)
     where
-        I: Iterator<Item=(Entity, EntityInfo, GlobalPos)>
+        I: Iterator<Item=(Entity, FullEntityInfo, GlobalPos)>
     {
         let mut delete_ids = Vec::new();
-        let mut delete_entities: HashMap<GlobalPos, Vec<EntityInfo>> = HashMap::new();
+        let mut delete_entities: HashMap<GlobalPos, Vec<FullEntityInfo>> = HashMap::new();
 
         for (entity, info, pos) in iter
         {
@@ -440,8 +506,8 @@ impl World
         F: Fn(GlobalPos) -> bool
     {
         let delete_entities = container.saveable.iter()
+            .rev()
             .map(|(_, x)| x.entity)
-            .filter(|entity| container.player(*entity).is_none())
             .filter_map(|entity|
             {
                 container.transform(entity).map(|transform|
@@ -451,9 +517,15 @@ impl World
                     (entity, pos.rounded())
                 })
             })
-            .filter_map(|(entity, pos)|
+            .filter(|(_entity, pos)|
             {
-                (!keep(pos)).then_some((entity, container.info(entity), pos))
+                !keep(*pos)
+            })
+            .map(|(entity, pos)|
+            {
+                let info = container.info(entity);
+
+                (entity, info.to_full(container), pos)
             });
 
         let (delete_ids, delete_entities) = Self::collect_to_delete(delete_entities);

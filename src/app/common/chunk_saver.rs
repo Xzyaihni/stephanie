@@ -23,7 +23,7 @@ use serde::{Serialize, Deserialize};
 use crate::{
     server::world::world_generator::{CHUNK_RATIO, MaybeWorldChunk, WorldChunk, WorldChunkTag},
     common::{
-        EntityInfo,
+        FullEntityInfo,
         world::{
             Chunk,
             GlobalPos,
@@ -41,11 +41,11 @@ pub trait Saveable: Debug + Send + 'static {}
 pub trait AutoSaveable: Saveable {}
 
 impl Saveable for Chunk {}
-impl Saveable for Vec<EntityInfo> {}
+impl Saveable for SaveEntities {}
 impl Saveable for SaveValueGroup {}
 
 impl AutoSaveable for Chunk {}
-impl AutoSaveable for Vec<EntityInfo> {}
+impl AutoSaveable for SaveEntities {}
 
 pub trait SaveLoad<T>
 {
@@ -568,8 +568,10 @@ impl FileSave for FileSaver<SaveValueGroup, LoadValueGroup>
     }
 }
 
+pub type SaveEntities = Vec<FullEntityInfo>;
+
 pub type ChunkSaver = Saver<FileSaver<Chunk>, Chunk>;
-pub type EntitiesSaver = Saver<FileSaver<Vec<EntityInfo>>, Vec<EntityInfo>>;
+pub type EntitiesSaver = Saver<FileSaver<SaveEntities>, SaveEntities>;
 pub type WorldChunkSaver = Saver<FileSaver<SaveValueGroup, LoadValueGroup>, SaveValueGroup, LoadValueGroup>;
 
 // again, shouldnt be public
@@ -777,11 +779,7 @@ mod tests
                 random_worldchunk()
             }).zip((0..).map(|index|
             {
-                let x = index % size.x;
-                let y = (index / size.x) % size.y;
-                let z = index / (size.x * size.y);
-
-                GlobalPos::from(Pos3::new(x, y, z))
+                GlobalPos::from(Pos3::from_rectangle(size, index))
             })).take(size.product() - 10 + fastrand::usize(0..20))
             .collect();
 
@@ -838,11 +836,7 @@ mod tests
                 random_worldchunk()
             }).zip((0..).map(|index|
             {
-                let x = index % size.x;
-                let y = (index / size.x) % size.y;
-                let z = index / (size.x * size.y);
-
-                GlobalPos::from(Pos3::new(x, y, z))
+                GlobalPos::from(Pos3::from_rectangle(size, index))
             })).take(size.product() - 10 + fastrand::usize(0..20))
             .collect();
 
@@ -925,11 +919,7 @@ mod tests
                 random_chunk()
             }).zip((0..).map(|index|
             {
-                let x = index % size.x;
-                let y = (index / size.x) % size.y;
-                let z = index / (size.x * size.y);
-
-                GlobalPos::from(Pos3::new(x, y, z))
+                GlobalPos::from(Pos3::from_rectangle(size, index))
             })).take(size.product() - 10 + fastrand::usize(0..20))
             .collect();
 

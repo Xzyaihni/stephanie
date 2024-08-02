@@ -578,6 +578,8 @@ impl GameState
         {
             let aspect = this.camera.read().aspect();
 
+            this.set_camera_scale(1.6);
+
             this.resize(aspect);
             this.camera_resized();
         }

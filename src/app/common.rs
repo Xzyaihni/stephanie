@@ -17,7 +17,13 @@ pub use objects_store::ObjectsStore;
 pub use sender_loop::{sender_loop, BufferSender};
 pub use receiver_loop::receiver_loop;
 
-pub use tilemap::{TileMap, TileInfo, SpecialTile, TileMapWithTextures};
+pub use tilemap::{
+    TileMap,
+    TileInfo,
+    SpecialTile,
+    SpawnerTile,
+    TileMapWithTextures
+};
 
 pub use outlineable::Outlineable;
 
@@ -36,6 +42,7 @@ pub use entity::{
     Entity,
     EntityInfo,
     ClientEntityInfo,
+    FullEntityInfo,
     Entities
 };
 
@@ -64,6 +71,8 @@ pub use chunk_saver::{SaveLoad, WorldChunkSaver, ChunkSaver, EntitiesSaver};
 pub use occluding_plane::{OccludingPlane, OccludingPlaneServer, OccludingCaster};
 pub use render_info::RenderInfo;
 
+pub use saveable::Saveable;
+
 pub use anatomy::{Anatomy, HumanAnatomy, HumanAnatomyInfo};
 pub use damage::{Damageable, Damage, DamageType, DamageDirection, DamageHeight, DamagePartial};
 
@@ -80,6 +89,8 @@ pub mod raycast;
 
 pub mod render_info;
 pub mod occluding_plane;
+
+pub mod saveable;
 
 pub mod damaging;
 pub mod damage;

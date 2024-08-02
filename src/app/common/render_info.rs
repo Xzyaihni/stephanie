@@ -236,6 +236,7 @@ pub enum ZLevel
     Head,
     Hair,
     Hat,
+    Door,
     UiLow,
     UiMiddle,
     UiHigh,

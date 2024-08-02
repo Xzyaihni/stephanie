@@ -62,8 +62,7 @@ impl<'a> FurnitureBuilder<'a>
             }.into()),
             physical: Some(PhysicalProperties{
                 mass: 200.0,
-                friction: 0.5,
-                floating: false
+                ..Default::default()
             }.into()),
             inventory: Some(inventory),
             ..Default::default()

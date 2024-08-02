@@ -52,6 +52,7 @@ use crate::{
         Physical,
         ObjectsStore,
         Message,
+        Saveable,
         character::PartialCombinedInfo,
         world::World
     }
@@ -305,7 +306,6 @@ impl Parent
     }
 }
 
-pub type Saveable = ();
 pub type UiElementServer = ();
 
 macro_rules! normal_forward_impl
@@ -323,6 +323,56 @@ macro_rules! normal_forward_impl
             Self::$fn_mut(self, entity)
         }
         )+
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FullEntityInfo
+{
+    pub parent: Option<Box<FullEntityInfo>>,
+    pub info: EntityInfo
+}
+
+impl FullEntityInfo
+{
+    pub fn create(self, mut f: impl FnMut(EntityInfo) -> Entity) -> EntityInfo
+    {
+        self.create_inner(&mut f)
+    }
+
+    fn create_inner(mut self, f: &mut impl FnMut(EntityInfo) -> Entity) -> EntityInfo
+    {
+        if let Some(parent) = self.parent
+        {
+            let parent = parent.create_inner(f);
+
+            let entity = f(parent);
+
+            self.info.parent.as_mut().expect("must have a parent component").entity = entity;
+
+            self.info
+        } else
+        {
+            debug_assert!(self.info.parent.is_none());
+
+            self.info
+        }
+    }
+}
+
+impl EntityInfo
+{
+    pub fn to_full(self, entities: &ServerEntities) -> FullEntityInfo
+    {
+        if let Some(parent) = self.parent.as_ref()
+        {
+            let parent = entities.info(parent.entity());
+
+            FullEntityInfo{parent: Some(Box::new(parent.to_full(entities))), info: self}
+        } else
+        {
+            FullEntityInfo{parent: None, info: self}
+        }
     }
 }
 
@@ -566,8 +616,7 @@ macro_rules! impl_common_systems
                         return;
                     }
 
-                    let mut physical = physical.borrow_mut();
-                    physical.physics_update(&mut target, dt);
+                    physical.borrow_mut().physics_update(&mut target, dt);
                 }
             });
         }
@@ -817,7 +866,7 @@ macro_rules! common_trait_impl
                     eprintln!("{body}");
 
                     write_log(format!(
-                        "before: {}, after: {}",
+                        "{body} before: {}, after: {}",
                         self.info_ref(before),
                         self.info_ref(after)
                     ));
@@ -835,6 +884,32 @@ macro_rules! common_trait_impl
             {
                 self.z_level(entity).map(|z| (entity, z))
             }).reduce(reducer);
+
+            for_each_component!(self, saveable, |entity, _|
+            {
+                if let Some(parent) = self.parent(entity)
+                {
+                    let index = component_index!(self, entity, saveable)
+                        .unwrap();
+
+                    if let Some(parent_index) = component_index!(self, parent.entity(), saveable)
+                    {
+                        if !(parent_index < index)
+                        {
+                            let parent_entity = parent.entity();
+                            let body = format!("[SAVEABLE ORDER FAILED] ({parent_index:?} ({parent_entity:?}) < {index:?} ({entity:?}))");
+
+                            eprintln!("{body}");
+
+                            write_log(format!(
+                                "{body} parent: {}, child: {}",
+                                self.info_ref(parent_entity),
+                                self.info_ref(entity)
+                            ));
+                        }
+                    }
+                }
+            });
         }
     }
 }
@@ -1417,10 +1492,11 @@ macro_rules! define_entities_both
             }
 
             order_sensitives!(
+                (parent, resort_parent),
                 (lazy_transform, resort_lazy_transform),
                 (follow_rotation, resort_follow_rotation),
                 (follow_position, resort_follow_position),
-                (parent, resort_parent)
+                (saveable, resort_saveable)
             );
 
             fn empty_components() -> ComponentsIndices
@@ -1532,7 +1608,8 @@ macro_rules! define_entities_both
                                 physical: Some(PhysicalProperties{
                                     mass: 0.05,
                                     friction: 0.05,
-                                    floating: true
+                                    floating: true,
+                                    ..Default::default()
                                 }.into()),
                                 render: Some(RenderInfo{
                                     object: Some(RenderObjectKind::TextureId{

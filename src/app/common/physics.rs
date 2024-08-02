@@ -9,12 +9,42 @@ use crate::common::ENTITY_SCALE;
 
 pub const GRAVITY: f32 = -9.81 * ENTITY_SCALE;
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct PhysicalFixed
+{
+    pub position: bool
+}
+
+impl Default for PhysicalFixed
+{
+    fn default() -> Self
+    {
+        Self{
+            position: false
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct PhysicalProperties
 {
     pub mass: f32,
     pub friction: f32,
-    pub floating: bool
+    pub floating: bool,
+    pub fixed: PhysicalFixed
+}
+
+impl Default for PhysicalProperties
+{
+    fn default() -> Self
+    {
+        Self{
+            mass: 1.0,
+            friction: 0.5,
+            floating: false,
+            fixed: PhysicalFixed::default()
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -23,6 +53,7 @@ pub struct Physical
     pub mass: f32,
     pub friction: f32,
     pub floating: bool,
+    pub fixed: PhysicalFixed,
     pub grounded: bool,
     pub velocity: Vector3<f32>,
     pub force: Vector3<f32>
@@ -36,6 +67,7 @@ impl From<PhysicalProperties> for Physical
             mass: value.mass,
             friction: value.friction,
             floating: value.floating,
+            fixed: value.fixed,
             grounded: false,
             velocity: Vector3::zeros(),
             force: Vector3::zeros()
@@ -45,6 +77,16 @@ impl From<PhysicalProperties> for Physical
 
 impl Physical
 {
+    pub fn as_properties(&self) -> PhysicalProperties
+    {
+        PhysicalProperties{
+            mass: self.mass,
+            friction: self.friction,
+            floating: self.floating,
+            fixed: self.fixed
+        }
+    }
+
     pub fn physics_update(
         &mut self,
         transform: &mut Transform,
@@ -66,7 +108,10 @@ impl Physical
             self.apply_friction(normal_impulse);
         }
 
-        transform.position += self.velocity * dt;
+        if !self.fixed.position
+        {
+            transform.position += self.velocity * dt;
+        }
 
         self.force = Vector3::zeros();
     }

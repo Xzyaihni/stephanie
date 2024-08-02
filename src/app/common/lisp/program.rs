@@ -4,7 +4,7 @@ use std::{
     rc::Rc,
     fmt::{self, Debug},
     collections::HashMap,
-    ops::{Add, Sub, Mul, Div, Rem, Deref}
+    ops::{RangeInclusive, Add, Sub, Mul, Div, Rem, Deref}
 };
 
 pub use super::{
@@ -121,8 +121,17 @@ impl ArgsWrapper
 pub enum ArgsCount
 {
     Min(usize),
+    Between{start: usize, end_inclusive: usize},
     Some(usize),
     None
+}
+
+impl From<RangeInclusive<usize>> for ArgsCount
+{
+    fn from(value: RangeInclusive<usize>) -> Self
+    {
+        Self::Between{start: *value.start(), end_inclusive: *value.end()}
+    }
 }
 
 impl From<usize> for ArgsCount
@@ -326,6 +335,7 @@ impl Debug for PrimitiveProcedureInfo
         {
             ArgsCount::Some(x) => x.to_string(),
             ArgsCount::None => "no".to_owned(),
+            ArgsCount::Between{start, end_inclusive} => format!("between {start} and {end_inclusive}"),
             ArgsCount::Min(x) => format!("at least {x}")
         };
 
@@ -369,29 +379,34 @@ impl Procedure
     {
         if let Some(primitive) = state.primitives.get_by_name(&s).cloned()
         {
-            match primitive.args_count
+            let got = Expression::arg_count_ast(&ast);
+            let (expected, correct) = match primitive.args_count
             {
-                ArgsCount::Some(count) => Expression::argument_count_ast(s.clone(), count, &ast)?,
+                ArgsCount::Some(count) => (count, got == count),
+                ArgsCount::Between{start, end_inclusive} =>
+                {
+                    (start, (start..=end_inclusive).contains(&got))
+                },
                 ArgsCount::Min(expected) =>
                 {
-                    let got = Expression::arg_count_ast(&ast);
-
-                    if expected > got
-                    {
-                        let error = Error::WrongArgumentsCount{
-                            proc: s.clone(),
-                            this_invoked: true,
-                            expected,
-                            got
-                        };
-
-                        return Err(ErrorPos{
-                            position: ast.position,
-                            error
-                        });
-                    }
+                    (expected, got >= expected)
                 },
-                ArgsCount::None => ()
+                ArgsCount::None => (0, got == 0)
+            };
+
+            if !correct
+            {
+                let error = Error::WrongArgumentsCount{
+                    proc: s.clone(),
+                    this_invoked: true,
+                    expected,
+                    got
+                };
+
+                return Err(ErrorPos{
+                    position: ast.position,
+                    error
+                });
             }
 
             if let Some(on_eval) = primitive.on_eval.as_ref()
@@ -705,7 +720,7 @@ impl Primitives
                     do_cond!(|a, b| LispValue::new_bool(a < b)))),
             ("if",
                 PrimitiveProcedureInfo::new_simple_lazy(
-                    ArgsCount::Min(2),
+                    2..=3,
                     Rc::new(|state, memory, env, args, action|
                     {
                         args.car().apply(state, memory, env, Action::Return)?;
@@ -766,7 +781,7 @@ impl Primitives
                     })
                 }))),
             ("begin",
-                PrimitiveProcedureInfo::new_eval(None, Rc::new(|_on_apply, state, args|
+                PrimitiveProcedureInfo::new_eval(ArgsCount::Min(1), Rc::new(|_on_apply, state, args|
                 {
                     ExpressionPos::eval_sequence(state, args)
                 }))),

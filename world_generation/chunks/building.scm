@@ -113,11 +113,16 @@
 
     (if (= height 1)
         ; entrance
-        (horizontal-line-length
-            this-chunk
-            (make-point 7 0)
-            2
-            (tile 'air))
+        (begin
+            (horizontal-line-length
+                this-chunk
+                (make-point 7 0)
+                2
+                (tile 'air))
+            (put-tile
+                this-chunk
+                (make-point 7 0)
+                (tile 'metal-door-wide)))
         this-chunk))
 
 (define (generate-roof level)

@@ -113,7 +113,7 @@ impl TileInfo
         };
 
         #[allow(clippy::collapsible_match, clippy::single_match)]
-        if let Some(special) = this.special.as_ref()
+        if let Some(special) = this.special.as_mut()
         {
             match special
             {
@@ -122,10 +122,22 @@ impl TileInfo
                     this.colliding = false;
                     this.transparent = true;
                 },
-                SpecialTile::Spawner(..) =>
+                SpecialTile::Spawner(spawner) =>
                 {
                     this.drawable = false;
                     this.colliding = false;
+
+                    match spawner
+                    {
+                        SpawnerTile::Door{width} =>
+                        {
+                            if *width == 0
+                            {
+                                eprintln!("width must be above 0, replacing with 1");
+                                *width = 1;
+                            }
+                        }
+                    }
                 },
                 _ => ()
             }

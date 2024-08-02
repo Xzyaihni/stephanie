@@ -210,11 +210,7 @@ pub trait CommonIndexing
     {
         let size = self.size();
 
-        let x = index % size.x;
-        let y = (index / size.x) % size.y;
-        let z = index / (size.x * size.y);
-
-        LocalPos::new(Pos3::new(x, y, z), size)
+        LocalPos::new(Pos3::from_rectangle(size, index), size)
     }
 
     fn positions(self) -> impl Iterator<Item=LocalPos>

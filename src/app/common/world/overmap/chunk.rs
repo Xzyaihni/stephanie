@@ -142,6 +142,21 @@ impl Chunk
         }
     }
 
+    pub fn iter(&self) -> impl Iterator<Item=(ChunkLocal, &Tile)>
+    {
+        self.tiles.iter().enumerate().map(|(index, tile)| (Self::index_to_pos(index), tile))
+    }
+
+    pub fn iter_mut(&mut self) -> impl Iterator<Item=(ChunkLocal, &mut Tile)>
+    {
+        self.tiles.iter_mut().enumerate().map(|(index, tile)| (Self::index_to_pos(index), tile))
+    }
+
+    fn index_to_pos(index: usize) -> ChunkLocal
+    {
+        ChunkLocal(Pos3::from_rectangle(Pos3::repeat(CHUNK_SIZE), index))
+    }
+
     fn index_of(pos: ChunkLocal) -> usize
     {
         let pos = pos.0;

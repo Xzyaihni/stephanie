@@ -2,6 +2,8 @@
 #![allow(clippy::match_like_matches_macro)]
 #![allow(clippy::new_without_default)]
 #![allow(clippy::needless_update)]
+// the fact that i can derive it is a coincidence
+#![allow(clippy::derivable_impls)]
 // this is so stupid
 #![allow(clippy::len_without_is_empty)]
 
