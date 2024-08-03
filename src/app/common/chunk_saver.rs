@@ -119,7 +119,7 @@ impl LoadValueGroup
         {
             let tags = self.tags_file.as_mut().map(|file|
             {
-                ciborium::from_reader(file).unwrap()
+                bincode::deserialize_from(file).unwrap()
             }).unwrap_or_default();
 
             world_chunk.with_tags(tags)
@@ -455,7 +455,7 @@ impl<SaveT: Saveable, LoadT> FileSaver<SaveT, LoadT>
 
         let file = File::create(Self::chunk_path(parent_path, pos)).unwrap();
 
-        ciborium::into_writer(tags, file).unwrap();
+        bincode::serialize_into(file, tags).unwrap();
     }
 }
 
@@ -474,7 +474,7 @@ where
 
             let mut lzma_writer = LzmaWriter::new_compressor(file, LZMA_PRESET).unwrap();
 
-            ciborium::into_writer(&pair.value, &mut lzma_writer).unwrap();
+            bincode::serialize_into(&mut lzma_writer, &pair.value).unwrap();
 
             lzma_writer.finish().unwrap();
         })
@@ -491,7 +491,7 @@ where
         {
             let lzma_reader = LzmaReader::new_decompressor(file).unwrap();
 
-            ciborium::from_reader(lzma_reader).unwrap()
+            bincode::deserialize_from(lzma_reader).unwrap()
         })
     }
 

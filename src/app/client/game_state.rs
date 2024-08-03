@@ -188,7 +188,7 @@ impl ClientEntitiesContainer
         {
             if self.positions_sync <= 0.0
             {
-                self.entities.sync_all_positions(passer);
+                self.entities.sync_physical_positions(passer);
 
                 self.positions_sync = 1.0;
             }

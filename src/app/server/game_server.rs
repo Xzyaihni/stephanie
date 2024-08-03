@@ -102,13 +102,13 @@ impl From<MessageSerError> for ConnectionError
     }
 }
 
-impl From<MessageDeError> for ConnectionError
+/*impl From<MessageDeError> for ConnectionError
 {
     fn from(value: MessageDeError) -> Self
     {
         ConnectionError::MessageDeError(value)
     }
-}
+}*/
 
 pub struct GameServer
 {

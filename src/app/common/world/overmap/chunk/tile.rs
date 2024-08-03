@@ -36,16 +36,10 @@ impl TileRotation
     }
 }
 
-fn is_rotation_default(rotation: &TileRotation) -> bool
-{
-    *rotation == TileRotation::default()
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Tile
 {
     id: usize,
-    #[serde(skip_serializing_if = "is_rotation_default", default)]
     pub rotation: TileRotation
 }
 

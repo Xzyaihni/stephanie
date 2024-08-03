@@ -945,6 +945,7 @@ macro_rules! define_entities_both
         $set_func:ident,
         $on_name:ident,
         $resort_name:ident,
+        $exists_name:ident,
         $message_name:ident,
         $component_type:ident,
         $default_type:ident
@@ -1238,6 +1239,11 @@ macro_rules! define_entities_both
                     self.changed_entities.borrow_mut().$name.push(entity);
 
                     get_entity!(self, entity, get_mut, $name)
+                }
+
+                pub fn $exists_name(&self, entity: Entity) -> bool
+                {
+                    component_index!(self, entity, $name).is_some()
                 }
 
                 pub fn $set_func(&mut self, entity: Entity, component: Option<$component_type>)
@@ -2096,13 +2102,24 @@ macro_rules! define_entities_both
                 });
             }
 
-            pub fn sync_all_positions(
+            pub fn sync_physical_positions(
                 &self,
                 passer: &mut impl EntityPasser
             )
             {
-                for_each_component!(self, transform, |entity, transform: &RefCell<Transform>|
+                for_each_component!(self, transform, |entity: Entity, transform: &RefCell<Transform>|
                 {
+                    if entity.local()
+                    {
+                        return;
+                    }
+
+                    if !self.physical_exists(entity)
+                        && !self.collider_exists(entity)
+                    {
+                        return;
+                    }
+
                     passer.send_message(Message::SyncPosition{
                         entity,
                         position: transform.borrow().position
@@ -2412,6 +2429,7 @@ macro_rules! define_entities
             $side_set_func:ident,
             $side_on_name:ident,
             $side_resort_name:ident,
+            $side_exists_name:ident,
             $side_message_name:ident,
             $side_component_type:ident,
             $side_default_type:ident,
@@ -2422,6 +2440,7 @@ macro_rules! define_entities
             $set_func:ident,
             $on_name:ident,
             $resort_name:ident,
+            $exists_name:ident,
             $message_name:ident,
             $component_type:ident,
             $default_type:ident
@@ -2429,8 +2448,8 @@ macro_rules! define_entities
     ) =>
     {
         define_entities_both!{
-            $(($side_name, $side_mut_func, $side_set_func, $side_on_name, $side_resort_name, $side_message_name, $side_component_type, $side_default_type),)+
-            $(($name, $mut_func, $set_func, $on_name, $resort_name, $message_name, $component_type, $default_type),)+
+            $(($side_name, $side_mut_func, $side_set_func, $side_on_name, $side_resort_name, $side_exists_name, $side_message_name, $side_component_type, $side_default_type),)+
+            $(($name, $mut_func, $set_func, $on_name, $resort_name, $exists_name, $message_name, $component_type, $default_type),)+
         }
 
         impl AnyEntities for ClientEntities
@@ -2689,25 +2708,25 @@ macro_rules! define_entities
 // im okay :)
 define_entities!{
     (side_specific
-        (render, render_mut, set_render, on_render, resort_render, SetRender, RenderType, RenderInfo, ClientRenderInfo),
-        (occluding_plane, occluding_plane_mut, set_occluding_plane, on_plane_mut, resort_occluding_plane, SetNone, OccludingPlaneType, OccludingPlaneServer, OccludingPlane),
-        (ui_element, ui_element_mut, set_ui_element, on_ui_element, resort_ui_element, SetNone, UiElementType, UiElementServer, UiElement)),
-    (parent, parent_mut, set_parent, on_parent, resort_parent, SetParent, ParentType, Parent),
-    (lazy_mix, lazy_mix_mut, set_lazy_mix, on_lazy_mix, resort_lazy_mix, SetLazyMix, LazyMixType, LazyMix),
-    (outlineable, outlineable_mut, set_outlineable, on_outlineable, resort_outlineable, SetOutlineable, OutlineableType, Outlineable),
-    (lazy_transform, lazy_transform_mut, set_lazy_transform, on_lazy_transform, resort_lazy_transform, SetLazyTransform, LazyTransformType, LazyTransform),
-    (follow_rotation, follow_rotation_mut, set_follow_rotation, on_follow_rotation, resort_follow_rotation, SetFollowRotation, FollowRotationType, FollowRotation),
-    (follow_position, follow_position_mut, set_follow_position, on_follow_position, resort_follow_position, SetFollowPosition, FollowPositionType, FollowPosition),
-    (watchers, watchers_mut, set_watchers, on_watchers, resort_watchers, SetWatchers, WatchersType, Watchers),
-    (damaging, damaging_mut, set_damaging, on_damaging, resort_damaging, SetDamaging, DamagingType, Damaging),
-    (inventory, inventory_mut, set_inventory, on_inventory, resort_inventory, SetInventory, InventoryType, Inventory),
-    (named, named_mut, set_named, on_named, resort_named, SetNamed, NamedType, String),
-    (transform, transform_mut, set_transform, on_transform, resort_transform, SetTransform, TransformType, Transform),
-    (character, character_mut, set_character, on_character, resort_character, SetCharacter, CharacterType, Character),
-    (enemy, enemy_mut, set_enemy, on_enemy, resort_enemy, SetEnemy, EnemyType, Enemy),
-    (player, player_mut, set_player, on_player, resort_player, SetPlayer, PlayerType, Player),
-    (collider, collider_mut, set_collider, on_collider, resort_collider, SetCollider, ColliderType, Collider),
-    (physical, physical_mut, set_physical, on_physical, resort_physical, SetPhysical, PhysicalType, Physical),
-    (anatomy, anatomy_mut, set_anatomy, on_anatomy, resort_anatomy, SetAnatomy, AnatomyType, Anatomy),
-    (saveable, saveable_mut, set_saveable, on_saveable, resort_saveable, SetNone, SaveableType, Saveable)
+        (render, render_mut, set_render, on_render, resort_render, render_exists, SetRender, RenderType, RenderInfo, ClientRenderInfo),
+        (occluding_plane, occluding_plane_mut, set_occluding_plane, on_plane_mut, resort_occluding_plane, occluding_plane_exists, SetNone, OccludingPlaneType, OccludingPlaneServer, OccludingPlane),
+        (ui_element, ui_element_mut, set_ui_element, on_ui_element, resort_ui_element, ui_element_exists, SetNone, UiElementType, UiElementServer, UiElement)),
+    (parent, parent_mut, set_parent, on_parent, resort_parent, parent_exists, SetParent, ParentType, Parent),
+    (lazy_mix, lazy_mix_mut, set_lazy_mix, on_lazy_mix, resort_lazy_mix, lazy_mix_exists, SetLazyMix, LazyMixType, LazyMix),
+    (outlineable, outlineable_mut, set_outlineable, on_outlineable, resort_outlineable, outlineable_exists, SetOutlineable, OutlineableType, Outlineable),
+    (lazy_transform, lazy_transform_mut, set_lazy_transform, on_lazy_transform, resort_lazy_transform, lazy_transform_exists, SetLazyTransform, LazyTransformType, LazyTransform),
+    (follow_rotation, follow_rotation_mut, set_follow_rotation, on_follow_rotation, resort_follow_rotation, follow_rotation_exists, SetFollowRotation, FollowRotationType, FollowRotation),
+    (follow_position, follow_position_mut, set_follow_position, on_follow_position, resort_follow_position, follow_position_exists, SetFollowPosition, FollowPositionType, FollowPosition),
+    (watchers, watchers_mut, set_watchers, on_watchers, resort_watchers, watchers_exists, SetWatchers, WatchersType, Watchers),
+    (damaging, damaging_mut, set_damaging, on_damaging, resort_damaging, damaging_exists, SetDamaging, DamagingType, Damaging),
+    (inventory, inventory_mut, set_inventory, on_inventory, resort_inventory, inventory_exists, SetInventory, InventoryType, Inventory),
+    (named, named_mut, set_named, on_named, resort_named, named_exists, SetNamed, NamedType, String),
+    (transform, transform_mut, set_transform, on_transform, resort_transform, transform_exists, SetTransform, TransformType, Transform),
+    (character, character_mut, set_character, on_character, resort_character, character_exists, SetCharacter, CharacterType, Character),
+    (enemy, enemy_mut, set_enemy, on_enemy, resort_enemy, enemy_exists, SetEnemy, EnemyType, Enemy),
+    (player, player_mut, set_player, on_player, resort_player, player_exists, SetPlayer, PlayerType, Player),
+    (collider, collider_mut, set_collider, on_collider, resort_collider, collider_exists, SetCollider, ColliderType, Collider),
+    (physical, physical_mut, set_physical, on_physical, resort_physical, physical_exists, SetPhysical, PhysicalType, Physical),
+    (anatomy, anatomy_mut, set_anatomy, on_anatomy, resort_anatomy, anatomy_exists, SetAnatomy, AnatomyType, Anatomy),
+    (saveable, saveable_mut, set_saveable, on_saveable, resort_saveable, saveable_exists, SetNone, SaveableType, Saveable)
 }
