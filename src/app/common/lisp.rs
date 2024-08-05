@@ -268,7 +268,7 @@ impl Debug for LispValue
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
     {
-        let s = self.maybe_to_string(None).unwrap_or_else(|| "<value>".to_owned());
+        let s = self.maybe_to_string(None, None).unwrap_or_else(|| "<value>".to_owned());
 
         write!(f, "{s}")
     }
@@ -510,11 +510,28 @@ impl LispValue
 
     pub fn to_string(&self, memory: &LispMemory) -> String
     {
-        self.maybe_to_string(Some(memory)).expect("always returns some with memory")
+        self.maybe_to_string(
+            Some(&memory),
+            Some(&memory.memory)
+        ).expect("always returns some with memory")
     }
 
-    fn maybe_to_string(&self, memory: Option<&LispMemory>) -> Option<String>
+    fn to_string_block(&self, memory: &MemoryBlock) -> Option<String>
     {
+        self.maybe_to_string(None, Some(memory))
+    }
+
+    fn maybe_to_string(
+        &self,
+        memory: Option<&LispMemory>,
+        block: Option<&MemoryBlock>
+    ) -> Option<String>
+    {
+        let fallback_string = ||
+        {
+            "<value>".to_owned()
+        };
+
         match self.tag
         {
             ValueTag::Integer => Some(unsafe{ self.value.integer.to_string() }),
@@ -524,7 +541,7 @@ impl LispValue
             ValueTag::Procedure => Some(format!("<procedure #{}>", unsafe{ self.value.procedure })),
             ValueTag::PrimitiveProcedure => Some(format!("<primitive procedure #{}>", unsafe{ self.value.primitive_procedure })),
             ValueTag::VectorMoved => Some("<vector-moved>".to_owned()),
-            ValueTag::String => memory.map(|memory|
+            ValueTag::String => block.map(|memory|
             {
                 memory.get_string(unsafe{ self.value.string }).unwrap()
             }),
@@ -534,23 +551,29 @@ impl LispValue
 
                 format!("'{s}")
             }),
-            ValueTag::List => memory.map(|memory|
+            ValueTag::List => block.map(|block|
             {
-                let list = memory.get_list(unsafe{ self.value.list });
+                let list = block.get_list(unsafe{ self.value.list });
 
-                let car = list.car.to_string(memory);
-                let cdr = list.cdr.to_string(memory);
+                let car = list.car.maybe_to_string(memory, Some(block))
+                    .unwrap_or_else(fallback_string);
+
+                let cdr = list.cdr.maybe_to_string(memory, Some(block))
+                    .unwrap_or_else(fallback_string);
 
                 format!("({car} {cdr})")
             }),
-            ValueTag::Vector => memory.map(|memory|
+            ValueTag::Vector => block.map(|block|
             {
-                let vec = memory.get_vector_ref(unsafe{ self.value.vector });
+                let vec = block.get_vector_ref(unsafe{ self.value.vector });
 
                 let mut s = vec.values.iter().map(|raw| unsafe{ LispValue::new(vec.tag, *raw) })
                     .fold("#(".to_owned(), |acc, value|
                     {
-                        acc + &value.to_string(memory) + " "
+                        let value = value.maybe_to_string(memory, Some(block))
+                            .unwrap_or_else(fallback_string);
+
+                        acc + &value + " "
                     });
 
                 s.pop();
@@ -646,9 +669,17 @@ impl Debug for MemoryBlock
         // all fields r 32 bits long and u32 has no invalid states
         let general = self.general.iter().map(|raw| unsafe{ raw.unsigned }).collect::<Vec<u32>>();
 
+        let pv = |v: &LispValue|
+        {
+            v.to_string_block(self)
+        };
+
+        let cars = self.cars.iter().map(pv).collect::<Vec<_>>();
+        let cdrs = self.cdrs.iter().map(pv).collect::<Vec<_>>();
+
         f.debug_struct("MemoryBlock")
-            .field("cars", &self.cars)
-            .field("cdrs", &self.cdrs)
+            .field("cars", &cars)
+            .field("cdrs", &cdrs)
             .field("general", &general)
             .finish()
     }
@@ -670,10 +701,17 @@ impl MemoryBlock
         Self{general, cars, cdrs}
     }
 
-    fn vector_info(&self, id: usize) -> (ValueTag, Range<usize>)
+    fn vector_raw_info(&self, id: usize) -> (ValueTag, usize)
     {
         let len = unsafe{ self.general[id].len };
         let tag = unsafe{ self.general[id + 1].tag };
+
+        (tag, len)
+    }
+
+    fn vector_info(&self, id: usize) -> (ValueTag, Range<usize>)
+    {
+        let (tag, len) = self.vector_raw_info(id);
 
         let start = id + 2;
         (tag, start..(start + len))
@@ -763,13 +801,13 @@ impl MemoryBlock
 
     fn allocate_iter<'a>(
         &mut self,
-        len: usize,
         tag: ValueTag,
-        iter: impl Iterator<Item=&'a ValueRaw>
+        iter: impl ExactSizeIterator<Item=&'a ValueRaw>
     ) -> usize
     {
         let id = self.general.len();
 
+        let len = iter.len();
         let beginning = [ValueRaw{len}, ValueRaw{tag}];
         let iter = beginning.into_iter().chain(iter.copied());
 
@@ -814,16 +852,14 @@ impl Default for LispMemory
 {
     fn default() -> Self
     {
-        Self::new(1 << 10)
+        Self::new(256, 1 << 10)
     }
 }
 
 impl LispMemory
 {
-    pub fn new(memory_size: usize) -> Self
+    pub fn new(stack_size: usize, memory_size: usize) -> Self
     {
-        let stack_size = 256;
-
         let symbols = Vec::new();
         let memory = MemoryBlock::new(memory_size);
         let swap_memory = MemoryBlock::new(memory_size);
@@ -837,9 +873,9 @@ impl LispMemory
         }
     }
 
-    pub fn empty() -> Self
+    pub fn no_memory() -> Self
     {
-        Self::new(0)
+        Self::new(256, 0)
     }
 
     pub fn clear(&mut self)
@@ -855,7 +891,6 @@ impl LispMemory
     {
         match value.tag
         {
-            x if !x.is_boxed() => value,
             ValueTag::List =>
             {
                 let id = unsafe{ value.value.list };
@@ -867,19 +902,21 @@ impl LispMemory
                     return list.cdr;
                 }
 
-                let new_car = Self::transfer_to_swap_value(memory, swap_memory, list.car);
-                let new_cdr = Self::transfer_to_swap_value(memory, swap_memory, list.cdr);
-
-                let output = swap_memory.cons(new_car, new_cdr);
+                let new_value = swap_memory.cons(list.car, list.cdr);
 
                 memory.set_car(id, LispValue::new_broken_heart());
-                memory.set_cdr(id, output);
+                memory.set_cdr(id, new_value);
 
-                output
+                new_value
             },
             ValueTag::Vector | ValueTag::String =>
             {
-                let id = unsafe{ value.value.vector };
+                let id = match value.tag
+                {
+                    ValueTag::Vector => unsafe{ value.value.vector },
+                    ValueTag::String => unsafe{ value.value.string },
+                    _ => unreachable!()
+                };
 
                 let create_id = |id|
                 {
@@ -898,46 +935,31 @@ impl LispMemory
 
                 let (tag, range) = memory.vector_info(id);
 
-                if tag.is_boxed()
-                {
-                    for index in range.clone()
-                    {
-                        let lisp_value = unsafe{ LispValue::new(tag, memory.general[index]) };
-
-                        let new_value =
-                            Self::transfer_to_swap_value(memory, swap_memory, lisp_value);
-
-                        memory.general[index] = new_value.value;
-                    }
-                }
-
-                let s = &memory.general[range];
-
-                let new_id = swap_memory.allocate_iter(s.len(), tag, s.iter());
+                let new_id = swap_memory.allocate_iter(tag, memory.general[range].iter());
 
                 memory.general[id] = ValueRaw{vector: new_id};
                 memory.general[id + 1] = ValueRaw{tag: ValueTag::VectorMoved};
 
                 create_id(new_id)
             },
-            _ => unreachable!()
+            _ => value
         }
     }
 
-    fn transfer_to_swap_env(&mut self, env: &Environment)
+    fn transfer_env(&mut self, env: &Environment)
     {
         if let Environment::Child(parent, _) = env
         {
-            self.transfer_to_swap_env(parent);
+            self.transfer_env(parent);
         }
 
-        env.mappings().0.borrow_mut().iter_mut().for_each(|(_key, value)|
+        env.mappings().0.borrow_mut().iter_mut().map(|(_key, value)| value).for_each(|value|
         {
             *value = Self::transfer_to_swap_value(&mut self.memory, &mut self.swap_memory, *value);
         });
     }
 
-    fn transfer_to_swap_returns(&mut self)
+    fn transfer_returns(&mut self)
     {
         self.returns.iter_mut().for_each(|value|
         {
@@ -949,8 +971,73 @@ impl LispMemory
     {
         self.swap_memory.clear();
 
-        self.transfer_to_swap_env(env);
-        self.transfer_to_swap_returns();
+        self.transfer_env(env);
+        self.transfer_returns();
+
+        macro_rules! transfer_pair
+        {
+            ($part:ident, $scan:expr) =>
+            {
+                while $scan < self.swap_memory.$part.len()
+                {
+                    let value = self.swap_memory.$part[$scan];
+                    self.swap_memory.$part[$scan] = Self::transfer_to_swap_value(
+                        &mut self.memory,
+                        &mut self.swap_memory,
+                        value
+                    );
+
+                    $scan += 1;
+                }
+            }
+        }
+
+        let mut cars_scan = 0;
+        let mut cdrs_scan = 0;
+
+        let mut general_tag = ValueTag::Integer;
+        let mut general_scan = 0;
+        let mut general_remaining = 0;
+
+        while cars_scan < self.swap_memory.cars.len()
+            || cdrs_scan < self.swap_memory.cdrs.len()
+            || general_scan < self.swap_memory.general.len()
+        {
+            transfer_pair!(cars, cars_scan);
+            transfer_pair!(cdrs, cdrs_scan);
+
+            while general_scan < self.swap_memory.general.len()
+            {
+                if general_remaining == 0
+                {
+                    (general_tag, general_remaining) = self.swap_memory.vector_raw_info(general_scan);
+
+                    general_scan += 2;
+                }
+
+                if general_remaining > 0
+                {
+                    if general_tag.is_boxed()
+                    {
+                        let value = self.swap_memory.general[general_scan];
+                        self.swap_memory.general[general_scan] = Self::transfer_to_swap_value(
+                            &mut self.memory,
+                            &mut self.swap_memory,
+                            LispValue{tag: general_tag, value}
+                        ).value;
+
+                        general_remaining -= 1;
+                        general_scan += 1;
+                    } else
+                    {
+                        general_scan += general_remaining;
+                        general_remaining = 0;
+                    }
+                }
+            }
+        }
+
+        debug_assert!(general_remaining == 0);
 
         mem::swap(&mut self.memory, &mut self.swap_memory);
     }
@@ -1104,7 +1191,7 @@ impl LispMemory
         // +2 for the length and for the type tag
         self.need_memory(env, len + 2);
 
-        self.memory.allocate_iter(len, vec.tag, vec.values.iter())
+        self.memory.allocate_iter(vec.tag, vec.values.iter())
     }
 
     pub fn allocate_expression(
@@ -1325,7 +1412,7 @@ impl Lisp
 
     pub fn empty_memory() -> LispMemory
     {
-        LispMemory::empty()
+        LispMemory::no_memory()
     }
 
     pub fn default_memory() -> LispMemory
@@ -1639,9 +1726,51 @@ mod tests
     }
 
     #[test]
-    fn gc()
+    fn gc_simple()
     {
         let code = "
+            (define old-list (cons (cons 1 2) (cons 3 4)))
+
+            (define (number x)
+                (display
+                    (car
+                        (cons
+                            x
+                            (cons (+ x 1) (+ x 100))))))
+
+            (number 5)
+            (number 7)
+            (number 9)
+            (number 11)
+            (number 13)
+            (number 15)
+            (number 17)
+            (number 19)
+
+            (car (cdr old-list))
+        ";
+
+        let memory_size = 24;
+        let mut memory = LispMemory::new(5, memory_size);
+
+        let mut lisp = LispRef::new(code).unwrap();
+
+        let value = lisp.run_with_memory(&mut memory)
+            .unwrap()
+            .as_integer()
+            .unwrap();
+
+        assert_eq!(value, 3_i32);
+    }
+
+    #[test]
+    fn gc_list()
+    {
+        let code = "
+            (define old-list (cons (cons 1 2) (cons 3 4)))
+
+            (display old-list)
+
             (define (factorial-list n)
                 (if (= n 1)
                     (quote (1))
@@ -1651,17 +1780,30 @@ mod tests
 
             (define (silly x) (car (factorial-list x)))
 
-            (+ (silly 7) (silly 5) (silly 6) (silly 11) (silly 4))
+            (display old-list)
+            (define a (+ (silly 7) (silly 5) (silly 6) (silly 11) (silly 4)))
+            (display old-list)
+
+            (display a)
+
+            (define b (car (cdr old-list)))
+
+            (display b)
+
+            (+ a b)
         ";
 
         let memory_size = 64;
-        let mut memory = LispMemory::new(memory_size);
+        let mut memory = LispMemory::new(32, memory_size);
 
         let mut lisp = LispRef::new(code).unwrap();
 
-        let value = lisp.run_with_memory(&mut memory).unwrap().as_integer().unwrap();
+        let value = lisp.run_with_memory(&mut memory)
+            .unwrap()
+            .as_integer()
+            .unwrap();
 
-        assert_eq!(value, 39_922_704_i32);
+        assert_eq!(value, 39_922_707_i32);
     }
 
     fn list_equals(memory: &LispMemory, list: LispList, check: &[i32])
@@ -1878,7 +2020,7 @@ mod tests
         ";
 
         let memory_size = 50;
-        let mut memory = LispMemory::new(memory_size);
+        let mut memory = LispMemory::new(256, memory_size);
 
         let mut lisp = LispRef::new(code).unwrap();
 

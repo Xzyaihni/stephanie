@@ -69,7 +69,7 @@ pub fn create_spawner(
                     ..Default::default()
                 }),
                 collider: Some(ColliderInfo{
-                    kind: ColliderType::Aabb,
+                    kind: ColliderType::Rectangle,
                     layer: ColliderLayer::Door,
                     target_non_lazy: true,
                     ..Default::default()

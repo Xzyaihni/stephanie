@@ -57,7 +57,7 @@ impl<'a> FurnitureBuilder<'a>
                 ..Default::default()
             }),
             collider: Some(ColliderInfo{
-                kind: ColliderType::Aabb,
+                kind: ColliderType::Rectangle,
                 ..Default::default()
             }.into()),
             physical: Some(PhysicalProperties{

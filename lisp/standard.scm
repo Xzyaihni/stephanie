@@ -16,6 +16,15 @@
     (map f lst)
     '())
 
+(define (filter p lst)
+    (fold
+        (lambda (x acc)
+            (if (p x)
+                (cons x acc)
+                acc))
+        '()
+        lst))
+
 (define (not x) (if x #f #t))
 
 ; technically the specs say it has to be short circuiting but i dont care

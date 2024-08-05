@@ -58,10 +58,11 @@ use crate::{
     }
 };
 
-pub use crate::iterate_components_with;
+pub use crate::{iterate_components_with, for_each_component};
 
 mod damaging_system;
 mod ui_system;
+mod collider_system;
 
 
 // too many macros, the syntax is horrible, why r they so limiting? wuts up with that?
@@ -163,6 +164,7 @@ macro_rules! iterate_components_with
     }
 }
 
+#[macro_export]
 macro_rules! for_each_component
 {
     ($this:expr, $component:ident, $handler:expr) => 
@@ -1104,6 +1106,19 @@ macro_rules! define_entities_both
                 components!(self, entity).borrow().get(entity.id).is_some()
             }
 
+            pub fn for_each_entity(
+                &self,
+                mut f: impl FnMut(Entity)
+            )
+            {
+                self.try_for_each_entity(|x| -> Result<(), ()>
+                {
+                    f(x);
+
+                    Ok(())
+                }).unwrap();
+            }
+
             pub fn try_for_each_entity<E>(
                 &self,
                 mut f: impl FnMut(Entity) -> Result<(), E>
@@ -1998,95 +2013,7 @@ macro_rules! define_entities_both
                 world: &World
             )
             {
-                macro_rules! colliding_info
-                {
-                    ($result_variable:expr, $physical:expr, $collider:expr, $entity:expr) =>
-                    {
-                        let mut collider: RefMut<Collider> = $collider.borrow_mut();
-                        let target_non_lazy = collider.target_non_lazy;
-                        {
-                            let transform = self.transform($entity).unwrap().clone();
-
-                            $result_variable = CollidingInfo{
-                                entity: Some($entity),
-                                physical: $physical.as_deref_mut(),
-                                target: |mut offset: Vector3<f32>|
-                                {
-                                    let mut target = if target_non_lazy
-                                    {
-                                        self.transform_mut($entity).unwrap()
-                                    } else
-                                    {
-                                        let target = self.target($entity).unwrap();
-
-                                        if let Some(parent) = self.parent($entity)
-                                        {
-                                            let parent_scale = self.transform(parent.entity)
-                                                .unwrap()
-                                                .scale;
-
-                                            offset = offset.component_div(&parent_scale);
-                                        }
-
-                                        target
-                                    };
-
-                                    target.position += offset;
-
-                                    target.position
-                                },
-                                basic: BasicCollidingInfo{
-                                    transform,
-                                    collider: &mut collider
-                                }
-                            };
-                        }
-                    }
-                }
-
-                for_each_component!(self, collider, |_, collider: &RefCell<Collider>|
-                {
-                    collider.borrow_mut().reset_frame();
-                });
-
-                let pairs_fn = |&ComponentWrapper{
-                    entity,
-                    component: ref collider
-                }, &ComponentWrapper{
-                    entity: other_entity,
-                    component: ref other_collider
-                }|
-                {
-                    let mut physical = self.physical_mut(entity);
-                    let mut this;
-                    colliding_info!{this, physical, collider, entity};
-
-                    let mut other_physical = self.physical_mut(other_entity);
-                    let other;
-                    colliding_info!{other, other_physical, other_collider, other_entity};
-
-                    this.resolve(other);
-                };
-
-                {
-                    let mut colliders = self.collider.iter().map(|(_, x)| x);
-
-                    // calls the function for each unique combination (excluding (self, self) pairs)
-                    colliders.clone().for_each(|a|
-                    {
-                        colliders.by_ref().next();
-                        colliders.clone().for_each(|b| pairs_fn(a, b));
-                    });
-                }
-
-                for_each_component!(self, collider, |entity, collider: &RefCell<_>|
-                {
-                    let mut physical = self.physical_mut(entity);
-                    let mut this;
-                    colliding_info!{this, physical, collider, entity};
-
-                    this.resolve_with_world(world);
-                });
+                collider_system::update(self, world);
 
                 self.update_colliders_previous();
             }

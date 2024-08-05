@@ -190,7 +190,7 @@ impl ChunkGenerator
         );
 
         let environment = Rc::new(environment);
-        let memory = Rc::new(RefCell::new(LispMemory::new(1024)));
+        let memory = Rc::new(RefCell::new(LispMemory::new(256, 1024)));
 
         let mut this = Self{
             rules: rules.clone(),

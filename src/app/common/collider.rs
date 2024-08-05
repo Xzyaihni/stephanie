@@ -8,6 +8,7 @@ use yanyaengine::Transform;
 
 use crate::common::{
     define_layers,
+    define_layers_enum,
     Entity,
     Physical,
     world::{
@@ -18,12 +19,13 @@ use crate::common::{
 };
 
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ColliderType
 {
     Point,
     Circle,
-    Aabb
+    Aabb,
+    Rectangle
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -156,6 +158,11 @@ impl Collider
     }
 }
 
+pub struct RectangleCollisionResult
+{
+
+}
+
 pub struct CollisionResult
 {
     max_distance: Vector3<f32>,
@@ -212,6 +219,14 @@ impl<'a> BasicCollidingInfo<'a>
         collided.then_some(CollisionResult{max_distance, offset})
     }
 
+    fn rectangle_rectangle(
+        &self,
+        other: &Self
+    ) -> Option<RectangleCollisionResult>
+    {
+        None
+    }
+
     pub fn scale(&self) -> Vector3<f32>
     {
         let scale = match self.collider.kind
@@ -225,7 +240,8 @@ impl<'a> BasicCollidingInfo<'a>
                 size
             },
             ColliderType::Circle => Vector3::repeat(self.transform.max_scale() / 2.0),
-            ColliderType::Aabb => self.transform.scale / 2.0
+            ColliderType::Aabb
+            | ColliderType::Rectangle => self.transform.scale / 2.0
         };
 
         if let Some(additional_scale) = self.collider.scale
@@ -252,7 +268,8 @@ impl<'a> BasicCollidingInfo<'a>
         enum CollisionWhich
         {
             Circle(CircleCollisionResult),
-            Normal(CollisionResult)
+            Normal(CollisionResult),
+            Rectangle(RectangleCollisionResult)
         }
 
         if !self.collider.layer.collides(&other.collider.layer)
@@ -283,28 +300,44 @@ impl<'a> BasicCollidingInfo<'a>
                     CollisionWhich::Normal(CollisionResult{max_distance, offset}) =>
                     {
                         this.resolve_with_offset(other, max_distance, offset, axis)
+                    },
+                    CollisionWhich::Rectangle(_) =>
+                    {
+                        let a = "reminder";
+
+                        (None, None)
                     }
                 }
             }
         };
 
-        match (self.collider.kind, other.collider.kind)
+        let normal_collision = ||
         {
-            (ColliderType::Point, ColliderType::Point) => None,
-            (ColliderType::Circle, ColliderType::Circle) =>
-            {
-                self.circle_circle(other).map(CollisionWhich::Circle).map(handle)
-            },
-            (ColliderType::Circle, ColliderType::Aabb)
-            | (ColliderType::Aabb, ColliderType::Circle)
-            | (ColliderType::Aabb, ColliderType::Aabb)
-            | (ColliderType::Point, ColliderType::Aabb)
-            | (ColliderType::Aabb, ColliderType::Point)
-            | (ColliderType::Point, ColliderType::Circle)
-            | (ColliderType::Circle, ColliderType::Point) =>
-            {
-                self.normal_collision(other).map(CollisionWhich::Normal).map(handle)
-            }
+            self.normal_collision(other).map(CollisionWhich::Normal).map(handle)
+        };
+
+        let rectangle_collision = ||
+        {
+            self.rectangle_rectangle(other).map(CollisionWhich::Rectangle).map(handle)
+        };
+
+        define_layers_enum!{
+            self.collider.kind, other.collider.kind,
+            ColliderType,
+
+            (Point, Point, None),
+
+            (Circle, Circle, self.circle_circle(other).map(CollisionWhich::Circle).map(handle)),
+            (Circle, Point, normal_collision()),
+
+            (Aabb, Aabb, normal_collision()),
+            (Aabb, Point, normal_collision()),
+            (Aabb, Circle, normal_collision()),
+
+            (Rectangle, Rectangle, rectangle_collision()),
+            (Rectangle, Point, None),
+            (Rectangle, Circle, None),
+            (Rectangle, Aabb, rectangle_collision())
         }
     }
 

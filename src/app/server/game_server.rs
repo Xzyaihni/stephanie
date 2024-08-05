@@ -441,6 +441,11 @@ impl GameServer
 
         self.entities.try_for_each_entity(|entity|
         {
+            if entity.local()
+            {
+                return Ok(());
+            }
+
             let info = self.entities.info(entity);
             let message = Message::EntitySet{entity, info};
 

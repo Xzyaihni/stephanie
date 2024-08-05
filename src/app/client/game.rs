@@ -252,6 +252,14 @@ impl Game
 
                     return true;
                 },
+                KeyCode::Escape =>
+                {
+                    self.info.borrow_mut().console_contents.take();
+
+                    self.player_container(|mut x| x.update_console());
+
+                    return true;
+                },
                 KeyCode::Backspace =>
                 {
                     {
@@ -386,6 +394,27 @@ impl Game
             let game_state = self.game_state.clone();
 
             primitives.add(
+                "all-entities",
+                PrimitiveProcedureInfo::new_simple(0, move |_state, memory, env, _args|
+                {
+                    let game_state = game_state.upgrade().unwrap();
+                    let game_state = game_state.borrow();
+                    let entities = game_state.entities();
+
+                    let mut entities_list = Vec::new();
+                    entities.for_each_entity(|entity|
+                    {
+                        entities_list.push(Self::push_entity(env, memory, entity));
+                    });
+
+                    Ok(memory.cons_list(env, entities_list))
+                }));
+        }
+
+        {
+            let game_state = self.game_state.clone();
+
+            primitives.add(
                 "print-chunk-of",
                 PrimitiveProcedureInfo::new_simple_effect(1..=2, move |_state, memory, _env, mut args|
                 {
@@ -449,7 +478,14 @@ impl Game
 
             let position = Vector3::new(next_float()?, next_float()?, next_float()?);
 
-            get_component_mut!(transform_mut, entities, entity).position = position;
+            get_component_mut!(target, entities, entity).position = position;
+
+            Ok(())
+        });
+
+        self.add_simple_setter(&mut primitives, "set-rotation", |entities, entity, memory, mut args|
+        {
+            get_component_mut!(target, entities, entity).rotation = args.pop(memory).as_float()?;
 
             Ok(())
         });
@@ -550,15 +586,19 @@ impl Game
                     let entity = Self::pop_entity(&mut args, memory)?;
                     let component = args.pop(memory).as_symbol(memory)?;
 
-                    if let Some(info) = entities.component_info(entity, &component)
+                    let status = if let Some(info) = entities.component_info(entity, &component)
                     {
                         eprintln!("{component}: {info}");
+
+                        "ok"
                     } else
                     {
                         eprintln!("{component} doesnt exist");
-                    }
 
-                    Ok(LispValue::new_empty_list())
+                        "err"
+                    };
+
+                    Ok(memory.new_symbol(status))
                 }));
         }
 
@@ -607,7 +647,7 @@ impl Game
             }
         };
 
-        let mut memory = Lisp::default_memory();
+        let mut memory = LispMemory::new(2048, 1 << 12);
         let (new_env, result) = match lisp.run_with_memory_environment(&mut memory)
         {
             Ok(x) => x,

@@ -13,22 +13,37 @@ use serde::{Deserialize, Serialize};
 
 use nalgebra::Vector3;
 
-pub use crate::{LOG_PATH, define_layers, some_or_value, some_or_return};
+pub use crate::{
+    LOG_PATH,
+    define_layers,
+    define_layers_enum,
+    some_or_value,
+    some_or_return
+};
 
 
 #[macro_export]
-macro_rules! define_layers
+macro_rules! define_layers_enum
 {
-    ($left:expr, $right:expr, $(($first:ident, $second:ident, $result:literal)),+) =>
+    ($left:expr, $right:expr, $base:ident, $(($first:ident, $second:ident, $result:expr)),+ $(,)?) =>
     {
         #[allow(unreachable_patterns)]
         match ($left, $right)
         {
             $(
-                (Self::$first, Self::$second) => $result,
-                (Self::$second, Self::$first) => $result
+                ($base::$first, $base::$second) => $result,
+                ($base::$second, $base::$first) => $result
             ),+
         }
+    }
+}
+
+#[macro_export]
+macro_rules! define_layers
+{
+    ($left:expr, $right:expr, $(($first:ident, $second:ident, $result:expr)),+) =>
+    {
+        crate::define_layers_enum!($left, $right, Self, $(($first, $second, $result),)+)
     }
 }
 
