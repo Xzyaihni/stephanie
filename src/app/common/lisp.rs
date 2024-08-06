@@ -9,6 +9,8 @@ use std::{
     collections::HashMap
 };
 
+use crate::common::write_log;
+
 pub use program::{
     Program,
     PrimitiveProcedureInfo,
@@ -655,11 +657,32 @@ impl Display for Error
     }
 }
 
+fn clone_with_capacity<T: Clone>(v: &Vec<T>) -> Vec<T>
+{
+    let mut new_v = Vec::with_capacity(v.capacity());
+
+    new_v.extend(v.iter().cloned());
+
+    new_v
+}
+
 struct MemoryBlock
 {
     general: Vec<ValueRaw>,
     cars: Vec<LispValue>,
     cdrs: Vec<LispValue>
+}
+
+impl Clone for MemoryBlock
+{
+    fn clone(&self) -> Self
+    {
+        Self{
+            general: clone_with_capacity(&self.general),
+            cars: clone_with_capacity(&self.cars),
+            cdrs: clone_with_capacity(&self.cdrs)
+        }
+    }
 }
 
 impl Debug for MemoryBlock
@@ -839,6 +862,7 @@ impl MemoryBlock
     }
 }
 
+#[derive(Clone)]
 pub struct LispMemory
 {
     stack_size: usize,
@@ -893,6 +917,7 @@ impl LispMemory
     pub fn clear(&mut self)
     {
         self.memory.clear();
+        self.lambdas.clear();
     }
 
     fn transfer_to_swap_value(
@@ -979,7 +1004,7 @@ impl LispMemory
         });
     }
 
-    fn gc(&mut self, env: &Environment)
+    pub fn gc(&mut self, env: &Environment)
     {
         self.swap_memory.clear();
 
@@ -1121,6 +1146,12 @@ impl LispMemory
         self.memory.get_car(id)
     }
 
+    fn out_of_memory(&mut self) -> !
+    {
+        write_log(format!("{:#?}\n", &self.memory));
+        panic!("out of memory, memory dump saved to log");
+    }
+
     fn need_list_memory(&mut self, env: &Environment, amount: usize)
     {
         if self.memory.list_remaining() < amount
@@ -1129,7 +1160,7 @@ impl LispMemory
 
             if self.memory.list_remaining() < amount
             {
-                panic!("out of memory");
+                self.out_of_memory()
             }
         }
     }
@@ -1142,7 +1173,7 @@ impl LispMemory
 
             if self.memory.remaining() < amount
             {
-                panic!("out of memory");
+                self.out_of_memory()
             }
         }
     }
@@ -1383,7 +1414,6 @@ impl<'a> OutputWrapper<'a>
 pub struct LispConfig
 {
     pub environment: Option<Rc<Environment>>,
-    pub lambdas: Option<Lambdas>,
     pub primitives: Rc<Primitives>
 }
 
@@ -1405,13 +1435,11 @@ impl Lisp
         })
     }
 
-    pub fn new_env_lambdas(code: &str) -> Result<(Environment, Lambdas), ErrorPos>
+    pub fn new_env(code: &str) -> Result<Rc<Environment>, ErrorPos>
     {
         let mut lisp = Lisp::new(code)?;
 
-        let env = lisp.run_environment()?;
-
-        Ok((env, lisp.lambdas().clone()))
+        Ok(lisp.run_environment()?)
     }
 
     pub fn empty_memory() -> LispMemory
@@ -1429,7 +1457,7 @@ impl Lisp
         self.lisp.run_with_memory(&mut self.memory)
     }
 
-    pub fn run_environment(&mut self) -> Result<Environment, ErrorPos>
+    pub fn run_environment(&mut self) -> Result<Rc<Environment>, ErrorPos>
     {
         let result = self.lisp.run_environment(&mut self.memory);
 
@@ -1492,7 +1520,6 @@ impl LispRef
         let program = Program::parse(
             environment,
             config.primitives,
-            config.lambdas,
             code
         )?;
 
@@ -1503,7 +1530,6 @@ impl LispRef
     {
         let config = LispConfig{
             environment: None,
-            lambdas: None,
             primitives: Rc::new(Primitives::new())
         };
 
@@ -1518,25 +1544,20 @@ impl LispRef
         self.run_with_memory_environment(memory).map(|(_env, value)| value)
     }
 
-    pub fn lambdas(&self) -> &Lambdas
-    {
-        self.program.lambdas()
-    }
-
-    pub fn run_env_lambdas(
+    pub fn run_env(
         &mut self,
         memory: &mut LispMemory
-    ) -> Result<(Environment, Lambdas), ErrorPos>
+    ) -> Result<Rc<Environment>, ErrorPos>
     {
         let env = self.run_environment(memory)?;
 
-        Ok((env, self.lambdas().clone()))
+        Ok(env)
     }
 
     pub fn run_environment(
         &mut self,
         memory: &mut LispMemory
-    ) -> Result<Environment, ErrorPos>
+    ) -> Result<Rc<Environment>, ErrorPos>
     {
         self.run_with_memory_environment(memory).map(|(env, _value)| env)
     }
@@ -1544,14 +1565,11 @@ impl LispRef
     pub fn run_with_memory_environment<'a>(
         &mut self,
         memory: &'a mut LispMemory
-    ) -> Result<(Environment, OutputWrapper<'a>), ErrorPos>
+    ) -> Result<(Rc<Environment>, OutputWrapper<'a>), ErrorPos>
     {
-        memory.clear();
         let (env, value) = self.program.apply(memory)?;
 
         let value = OutputWrapper{memory, value};
-
-        let env = Rc::into_inner(env).expect("all env refs must be dropped");
 
         Ok((env, value))
     }
@@ -1993,7 +2011,8 @@ mod tests
     #[test]
     fn gc_vector()
     {
-        let code = "
+        let amount = 100;
+        let code = format!("
             (define x (make-vector 5 999))
 
             (define make-pair cons)
@@ -2029,23 +2048,24 @@ mod tests
                         (loop
                             (lambda (i) (inc-by-1! x (make-pair 3 (- i 3))))
                             5)))
-                1000)
+                {amount}) ; this should be 1000 but rust doesnt guarantee tail call optimization
+            ; so it overflows the stack
 
             (inc-by-1! x (make-pair 3 1))
 
             x
-        ";
+        ");
 
         let memory_size = 50;
         let mut memory = LispMemory::new(256, memory_size);
 
-        let mut lisp = LispRef::new(code).unwrap();
+        let mut lisp = LispRef::new(&code).unwrap();
 
         let output = lisp.run_with_memory(&mut memory).unwrap();
 
         let value = output.as_vector().unwrap().as_vec_integer().unwrap();
 
-        assert_eq!(value, vec![1000, 1000, 1000, 1000, 1001]);
+        assert_eq!(value, vec![amount, amount, amount, amount, amount + 1]);
     }
 
     #[test]

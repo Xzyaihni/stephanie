@@ -151,13 +151,13 @@ impl WorldChunkTag
         value: &Program
     ) -> i32
     {
-        /*value.apply(memory).unwrap_or_else(|err|
+        value.apply(memory).unwrap_or_else(|err|
         {
             panic!("lisp error {err}")
         }).1.as_integer().unwrap_or_else(|err|
         {
             panic!("{err}")
-        })*/todo!()
+        })
     }
 
     fn generate(
@@ -318,7 +318,7 @@ impl ChunkRuleTag
         raw_tag: ChunkRuleRawTag
     ) -> Self
     {
-        let content = Program::parse(env, primitives, None, &raw_tag.content)
+        let content = Program::parse(env, primitives, &raw_tag.content)
             .unwrap_or_else(|err|
             {
                 panic!("error evaluating program: {err}")

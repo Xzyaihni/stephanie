@@ -4,7 +4,6 @@ use std::{
     fmt,
     str::FromStr,
     rc::Rc,
-    cell::RefCell,
     ops::{Index, IndexMut},
     cmp::Ordering,
     collections::{HashMap, HashSet},
@@ -17,11 +16,9 @@ use crate::common::{
     WeightedPicker,
     lisp::{
         self,
-        Lisp,
         LispRef,
         LispConfig,
         LispMemory,
-        Lambdas,
         Environment,
         ValueTag,
         ArgsCount,
@@ -164,9 +161,8 @@ pub struct ChunkGenerator
 {
     rules: Rc<ChunkRulesGroup>,
     environment: Rc<Environment>,
-    lambdas: Lambdas,
     primitives: Rc<Primitives>,
-    memory: Rc<RefCell<LispMemory>>,
+    memory: Rc<LispMemory>,
     chunks: HashMap<String, LispRef>,
     tilemap: Rc<TileMap>
 }
@@ -184,20 +180,16 @@ impl ChunkGenerator
 
         let primitives = Rc::new(Self::default_primitives(&tilemap));
 
-        let (environment, lambdas) = Self::default_environment(
+        let (environment, memory) = Self::default_environment(
             primitives.clone(),
             &parent_directory
         );
 
-        let environment = Rc::new(environment);
-        let memory = Rc::new(RefCell::new(LispMemory::new(256, 1024)));
-
         let mut this = Self{
             rules: rules.clone(),
             environment,
-            lambdas,
             primitives,
-            memory,
+            memory: Rc::new(memory),
             chunks,
             tilemap
         };
@@ -260,7 +252,7 @@ impl ChunkGenerator
     fn default_environment(
         primitives: Rc<Primitives>,
         path: &Path
-    ) -> (Environment, Lambdas)
+    ) -> (Rc<Environment>, LispMemory)
     {
         fn load(name: impl AsRef<Path>) -> String
         {
@@ -270,18 +262,21 @@ impl ChunkGenerator
 
         let default_code = load("lisp/standard.scm") + &load(path.join("default.scm"));
 
-        let mut memory = Lisp::default_memory();
+        let mut memory = LispMemory::new(256, 1 << 13);
         let config = LispConfig{
             environment: None,
-            lambdas: None,
             primitives
         };
 
-        unsafe{ LispRef::new_with_config(config, &default_code) }
+        let env = unsafe{ LispRef::new_with_config(config, &default_code) }
             .and_then(|mut x|
             {
-                x.run_env_lambdas(&mut memory)
-            }).unwrap_or_else(|err| panic!("stdlib has an error ({err})"))
+                x.run_env(&mut memory)
+            }).unwrap_or_else(|err| panic!("stdlib has an error ({err})"));
+
+        memory.gc(&env);
+
+        (env, memory)
     }
 
     fn parse_function(
@@ -298,7 +293,6 @@ impl ChunkGenerator
 
         let config = LispConfig{
             environment: Some(self.environment.clone()),
-            lambdas: Some(self.lambdas.clone()),
             primitives: self.primitives.clone()
         };
 
@@ -323,7 +317,8 @@ impl ChunkGenerator
             return ChunksContainer::new_with(WORLD_CHUNK_SIZE, |_| Tile::none());
         }
 
-        let memory = &mut self.memory.borrow_mut();
+        let mut memory = LispMemory::clone(&self.memory);
+        let memory = &mut memory;
 
         let tiles = {
             let chunk_name = group.this;

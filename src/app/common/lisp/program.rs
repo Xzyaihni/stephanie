@@ -995,7 +995,6 @@ pub struct State
 pub struct Program
 {
     env: Rc<Environment>,
-    default_lambdas: Option<Lambdas>,
     state: State,
     expression: ExpressionPos
 }
@@ -1005,7 +1004,6 @@ impl Program
     pub fn parse(
         env: Rc<Environment>,
         primitives: Rc<Primitives>,
-        lambdas: Option<Lambdas>,
         code: &str
     ) -> Result<Self, ErrorPos>
     {
@@ -1019,12 +1017,7 @@ impl Program
 
         let expression = ExpressionPos::eval_sequence(&mut state, &env, ast)?;
 
-        Ok(Self{env, default_lambdas: lambdas, state, expression})
-    }
-
-    pub fn lambdas(&self) -> &Lambdas
-    {
-        todo!()
+        Ok(Self{env, state, expression})
     }
 
     pub fn apply(
@@ -1039,7 +1032,6 @@ impl Program
         };
 
         self.expression.apply(&self.state, memory, &env, Action::Return)?;
-        memory.lambdas_mut().clear();
 
         Ok((env, memory.pop_return()))
     }

@@ -123,19 +123,18 @@ impl Game
 
             let config = LispConfig{
                 environment: None,
-                lambdas: None,
                 primitives: primitives.clone()
             };
 
             let lisp = unsafe{ LispRef::new_with_config(config, &standard_code) };
 
             let mut memory = Lisp::default_memory();
-            let (environment, lambdas) = lisp.and_then(|mut x|
+            let environment = lisp.and_then(|mut x|
             {
-                x.run_env_lambdas(&mut memory)
+                x.run_env(&mut memory)
             }).unwrap_or_else(|err| panic!("error in stdlib: {err}"));
 
-            (Rc::new(environment), lambdas, primitives)
+            (environment, primitives)
         };
 
         this.info.borrow_mut().console_infos = Some(console_infos);
@@ -632,8 +631,7 @@ impl Game
 
             LispConfig{
                 environment: Some(infos.0.clone()),
-                lambdas: Some(infos.1.clone()),
-                primitives: infos.2.clone()
+                primitives: infos.1.clone()
             }
         };
 
@@ -658,7 +656,7 @@ impl Game
             }
         };
 
-        self.info.borrow_mut().update_environment(new_env, lisp.lambdas().clone());
+        self.info.borrow_mut().update_environment(new_env);
 
         eprintln!("ran command {command}, result: {result}");
     }
@@ -690,7 +688,7 @@ struct PlayerInfo
     other_entity: Option<Entity>,
     console_entity: Entity,
     console_contents: Option<String>,
-    console_infos: Option<(Rc<Environment>, Lambdas, Rc<Primitives>)>,
+    console_infos: Option<(Rc<Environment>, Rc<Primitives>)>,
     previous_stamina: Option<f32>,
     previous_cooldown: (f32, f32),
     interacted: bool,
@@ -718,12 +716,11 @@ impl PlayerInfo
         }
     }
 
-    pub fn update_environment(&mut self, new_env: Environment, lambdas: Lambdas)
+    pub fn update_environment(&mut self, new_env: Rc<Environment>)
     {
         if let Some(x) = self.console_infos.as_mut()
         {
-            x.0 = Rc::new(new_env);
-            x.1 = lambdas;
+            x.0 = new_env;
         }
     }
 }
