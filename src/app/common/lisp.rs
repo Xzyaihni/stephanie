@@ -843,6 +843,7 @@ pub struct LispMemory
 {
     stack_size: usize,
     symbols: Vec<String>,
+    lambdas: Lambdas,
     memory: MemoryBlock,
     swap_memory: MemoryBlock,
     returns: Vec<LispValue>
@@ -867,10 +868,21 @@ impl LispMemory
         Self{
             stack_size,
             symbols,
+            lambdas: Lambdas::new(),
             memory,
             swap_memory,
             returns: Vec::with_capacity(stack_size)
         }
+    }
+
+    pub fn lambdas(&self) -> &Lambdas
+    {
+        &self.lambdas
+    }
+
+    pub fn lambdas_mut(&mut self) -> &mut Lambdas
+    {
+        &mut self.lambdas
     }
 
     pub fn no_memory() -> Self
@@ -1206,7 +1218,6 @@ impl LispMemory
             Expression::Integer(x) => LispValue::new_integer(*x),
             Expression::Bool(x) => LispValue::new_bool(*x),
             Expression::EmptyList => LispValue::new_empty_list(),
-            Expression::Lambda(x) => LispValue::new_procedure(*x),
             Expression::List{car, cdr} =>
             {
                 let car = self.allocate_expression(env, &car.expression);
@@ -1226,6 +1237,7 @@ impl LispMemory
             {
                 self.new_symbol(x)
             },
+            Expression::Lambda{..} => unreachable!(),
             Expression::Application{..} => unreachable!(),
             Expression::Sequence{..} => unreachable!()
         }
@@ -1256,30 +1268,17 @@ impl Mappings
 unsafe impl Send for Mappings {}
 
 #[derive(Debug, Clone)]
-pub enum Environment<'a>
+pub enum Environment
 {
     TopLevel(Mappings),
-    Child(&'a Environment<'a>, Mappings)
+    Child(Rc<Environment>, Mappings)
 }
 
-impl<'a> Environment<'a>
+impl Environment
 {
     pub fn new() -> Self
     {
         Self::TopLevel(Mappings::new())
-    }
-
-    pub fn with_default_primitives() -> Self
-    {
-        Self::with_primitives(Rc::new(Primitives::new()))
-    }
-
-    pub fn with_primitives(primitives: Rc<Primitives>) -> Self
-    {
-        let mut env = Mappings::new();
-        primitives.add_to_env(&mut env);
-
-        Self::TopLevel(env)
     }
 
     pub fn top_level(mappings: Mappings) -> Self
@@ -1287,7 +1286,7 @@ impl<'a> Environment<'a>
         Self::TopLevel(mappings)
     }
 
-    pub fn child(parent: &'a Environment<'a>) -> Self
+    pub fn child(parent: Rc<Environment>) -> Self
     {
         Self::Child(parent, Mappings::new())
     }
@@ -1370,6 +1369,11 @@ impl<'a> OutputWrapper<'a>
         self.value.as_list(self.memory)
     }
 
+    pub fn as_float(self) -> Result<f32, Error>
+    {
+        self.value.as_float()
+    }
+
     pub fn as_integer(self) -> Result<i32, Error>
     {
         self.value.as_integer()
@@ -1378,7 +1382,7 @@ impl<'a> OutputWrapper<'a>
 
 pub struct LispConfig
 {
-    pub environment: Option<Rc<Mappings>>,
+    pub environment: Option<Rc<Environment>>,
     pub lambdas: Option<Lambdas>,
     pub primitives: Rc<Primitives>
 }
@@ -1401,7 +1405,7 @@ impl Lisp
         })
     }
 
-    pub fn new_mappings_lambdas(code: &str) -> Result<(Mappings, Lambdas), ErrorPos>
+    pub fn new_env_lambdas(code: &str) -> Result<(Environment, Lambdas), ErrorPos>
     {
         let mut lisp = Lisp::new(code)?;
 
@@ -1425,7 +1429,7 @@ impl Lisp
         self.lisp.run_with_memory(&mut self.memory)
     }
 
-    pub fn run_environment(&mut self) -> Result<Mappings, ErrorPos>
+    pub fn run_environment(&mut self) -> Result<Environment, ErrorPos>
     {
         let result = self.lisp.run_environment(&mut self.memory);
 
@@ -1471,7 +1475,6 @@ impl DerefMut for Lisp
 #[derive(Debug)]
 pub struct LispRef
 {
-    environment: Rc<Mappings>,
     program: Program
 }
 
@@ -1483,15 +1486,17 @@ impl LispRef
     {
         let environment = config.environment.unwrap_or_else(||
         {
-            let mut env = Mappings::new();
-            config.primitives.add_to_env(&mut env);
-
-            Rc::new(env)
+            Rc::new(Environment::new())
         });
 
-        let program = Program::parse(config.primitives, config.lambdas, code)?;
+        let program = Program::parse(
+            environment,
+            config.primitives,
+            config.lambdas,
+            code
+        )?;
 
-        Ok(Self{program, environment})
+        Ok(Self{program})
     }
 
     pub fn new(code: &str) -> Result<Self, ErrorPos>
@@ -1518,50 +1523,37 @@ impl LispRef
         self.program.lambdas()
     }
 
-    pub fn run_mappings_lambdas(
+    pub fn run_env_lambdas(
         &mut self,
         memory: &mut LispMemory
-    ) -> Result<(Mappings, Lambdas), ErrorPos>
+    ) -> Result<(Environment, Lambdas), ErrorPos>
     {
-        let mappings = self.run_environment(memory)?;
+        let env = self.run_environment(memory)?;
 
-        Ok((mappings, self.lambdas().clone()))
+        Ok((env, self.lambdas().clone()))
     }
 
     pub fn run_environment(
         &mut self,
         memory: &mut LispMemory
-    ) -> Result<Mappings, ErrorPos>
+    ) -> Result<Environment, ErrorPos>
     {
         self.run_with_memory_environment(memory).map(|(env, _value)| env)
-    }
-
-    fn new_environment(&self) -> Mappings
-    {
-        let env: &Mappings = &self.environment;
-
-        Mappings::clone(env)
     }
 
     pub fn run_with_memory_environment<'a>(
         &mut self,
         memory: &'a mut LispMemory
-    ) -> Result<(Mappings, OutputWrapper<'a>), ErrorPos>
+    ) -> Result<(Environment, OutputWrapper<'a>), ErrorPos>
     {
-        let env = Environment::TopLevel(self.new_environment());
-
         memory.clear();
-        let value = self.program.apply(memory, &env)?;
+        let (env, value) = self.program.apply(memory)?;
 
         let value = OutputWrapper{memory, value};
 
-        let mappings = match env
-        {
-            Environment::TopLevel(x) => x,
-            Environment::Child(_, x) => x
-        };
+        let env = Rc::into_inner(env).expect("all env refs must be dropped");
 
-        Ok((mappings, value))
+        Ok((env, value))
     }
 }
 
@@ -1698,6 +1690,31 @@ mod tests
         let value = lisp.run().unwrap().as_integer().unwrap();
 
         assert_eq!(value, 8);
+    }
+
+    #[test]
+    fn derivative()
+    {
+        let code = "
+            (define (derivative f)
+                (define epsilon 0.0001)
+                (lambda (x)
+                    (let ((low (f (- x epsilon))) (high (f (+ x epsilon))))
+                        (/ (- high low) (+ epsilon epsilon)))))
+
+            (define (square x) (* x x))
+
+            ((derivative square) 0.5)
+        ";
+
+        let mut lisp = Lisp::new(code).unwrap();
+
+        let value = lisp.run()
+            .unwrap()
+            .as_float()
+            .unwrap();
+
+        assert!(value > 0.9999 && value <= 1.0, "{value}");
     }
 
     #[test]

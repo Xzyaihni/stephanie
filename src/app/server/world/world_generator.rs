@@ -21,8 +21,8 @@ use crate::common::{
         LispRef,
         LispConfig,
         LispMemory,
-        Mappings,
         Lambdas,
+        Environment,
         ValueTag,
         ArgsCount,
         Primitives,
@@ -163,7 +163,7 @@ impl From<lisp::Error> for ParseError
 pub struct ChunkGenerator
 {
     rules: Rc<ChunkRulesGroup>,
-    environment: Rc<Mappings>,
+    environment: Rc<Environment>,
     lambdas: Lambdas,
     primitives: Rc<Primitives>,
     memory: Rc<RefCell<LispMemory>>,
@@ -260,7 +260,7 @@ impl ChunkGenerator
     fn default_environment(
         primitives: Rc<Primitives>,
         path: &Path
-    ) -> (Mappings, Lambdas)
+    ) -> (Environment, Lambdas)
     {
         fn load(name: impl AsRef<Path>) -> String
         {
@@ -280,7 +280,7 @@ impl ChunkGenerator
         unsafe{ LispRef::new_with_config(config, &default_code) }
             .and_then(|mut x|
             {
-                x.run_mappings_lambdas(&mut memory)
+                x.run_env_lambdas(&mut memory)
             }).unwrap_or_else(|err| panic!("stdlib has an error ({err})"))
     }
 

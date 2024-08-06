@@ -2,6 +2,7 @@ use std::{
     vec,
     iter,
     rc::Rc,
+    cell::RefCell,
     fmt::{self, Debug},
     collections::HashMap,
     ops::{RangeInclusive, Add, Sub, Mul, Div, Rem, Deref}
@@ -11,7 +12,6 @@ pub use super::{
     Error,
     ErrorPos,
     Environment,
-    Mappings,
     LispValue,
     LispMemory,
     ValueTag,
@@ -30,17 +30,64 @@ pub type OnApply = Rc<
     dyn Fn(
         &State,
         &mut LispMemory,
-        &Environment,
+        &Rc<Environment>,
         &ExpressionPos,
         Action
     ) -> Result<(), ErrorPos>>;
 
 pub type OnEval = Rc<
     dyn Fn(
-        Option<OnApply>,
+        ExpressionPos,
         &mut State,
+        &Rc<Environment>,
         AstPos
     ) -> Result<ExpressionPos, ErrorPos>>;
+
+pub fn simple_apply<const EFFECT: bool>(f: impl Fn(
+    &State,
+    &mut LispMemory,
+    &Rc<Environment>,
+    ArgsWrapper
+) -> Result<LispValue, Error> + 'static) -> OnApply
+{
+    Rc::new(move |
+        state: &State,
+        memory: &mut LispMemory,
+        env: &Rc<Environment>,
+        args: &ExpressionPos,
+        action: Action
+    |
+    {
+        let value = {
+            let position = args.position;
+
+            let action = if EFFECT { Action::Return } else { action };
+            let args = args.apply_args(state, memory, env, action)?;
+
+            if !EFFECT
+            {
+                match action
+                {
+                    Action::Return => (),
+                    Action::None => return Ok(())
+                }
+            }
+
+            f(state, memory, env, args).with_position(position)
+        }?;
+
+        match action
+        {
+            Action::Return =>
+            {
+                memory.push_return(value);
+            },
+            Action::None => ()
+        }
+
+        Ok(())
+    })
+}
 
 pub struct ArgsWrapper
 {
@@ -177,18 +224,10 @@ impl<T> WithPosition for Result<T, Error>
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum PrimitiveProcedureType
-{
-    Simple,
-    Deferred
-}
-
 #[derive(Clone)]
 pub struct PrimitiveProcedureInfo
 {
     args_count: ArgsCount,
-    kind: PrimitiveProcedureType,
     on_eval: Option<OnEval>,
     on_apply: Option<OnApply>
 }
@@ -202,7 +241,6 @@ impl PrimitiveProcedureInfo
     {
         Self{
             args_count: args_count.into(),
-            kind: PrimitiveProcedureType::Deferred,
             on_eval: Some(on_eval),
             on_apply: None
         }
@@ -216,7 +254,6 @@ impl PrimitiveProcedureInfo
     {
         Self{
             args_count: args_count.into(),
-            kind: PrimitiveProcedureType::Deferred,
             on_eval: Some(on_eval),
             on_apply: Some(on_apply)
         }
@@ -226,7 +263,6 @@ impl PrimitiveProcedureInfo
     {
         Self{
             args_count: args_count.into(),
-            kind: PrimitiveProcedureType::Deferred,
             on_eval: None,
             on_apply: Some(on_apply)
         }
@@ -240,7 +276,7 @@ impl PrimitiveProcedureInfo
         F: Fn(
             &State,
             &mut LispMemory,
-            &Environment,
+            &Rc<Environment>,
             ArgsWrapper
         ) -> Result<LispValue, Error> + 'static
     {
@@ -255,7 +291,7 @@ impl PrimitiveProcedureInfo
         F: Fn(
             &State,
             &mut LispMemory,
-            &Environment,
+            &Rc<Environment>,
             ArgsWrapper
         ) -> Result<LispValue, Error> + 'static
     {
@@ -270,57 +306,14 @@ impl PrimitiveProcedureInfo
         F: Fn(
             &State,
             &mut LispMemory,
-            &Environment,
+            &Rc<Environment>,
             ArgsWrapper
         ) -> Result<LispValue, Error> + 'static
     {
-        let on_apply = Rc::new(move |
-            state: &State,
-            memory: &mut LispMemory,
-            env: &Environment,
-            args: &ExpressionPos,
-            action: Action
-        |
-        {
-            let value = {
-                let position = args.position;
-
-                let action = if EFFECT { Action::Return } else { action };
-                let args = args.apply_args(state, memory, env, action)?;
-
-                if !EFFECT
-                {
-                    match action
-                    {
-                        Action::Return => (),
-                        Action::None => return Ok(())
-                    }
-                }
-
-                on_apply(state, memory, env, args).with_position(position)
-            }?;
-
-            match action
-            {
-                Action::Return =>
-                {
-                    memory.push_return(value);
-                },
-                Action::None => ()
-            }
-
-            Ok(())
-        });
+        let on_apply = simple_apply::<EFFECT>(on_apply);
 
         Self{
             args_count: args_count.into(),
-            kind: if EFFECT
-            {
-                PrimitiveProcedureType::Deferred
-            } else
-            { 
-                PrimitiveProcedureType::Simple
-            },
             on_eval: None,
             on_apply: Some(on_apply)
         }
@@ -355,92 +348,6 @@ impl Debug for PrimitiveProcedure
 }
 
 #[derive(Debug, Clone)]
-pub enum CompoundProcedure
-{
-    Identifier(String),
-    Lambda(usize)
-}
-
-#[derive(Debug, Clone)]
-pub enum Procedure
-{
-    Compound(CompoundProcedure),
-    Primitive(PrimitiveProcedure)
-}
-
-impl Procedure
-{
-    pub fn parse(
-        state: &mut State,
-        ast: AstPos,
-        position: CodePosition,
-        s: String
-    ) -> Result<ExpressionPos, ErrorPos>
-    {
-        if let Some(primitive) = state.primitives.get_by_name(&s).cloned()
-        {
-            let got = Expression::arg_count_ast(&ast);
-            let (expected, correct) = match primitive.args_count
-            {
-                ArgsCount::Some(count) => (count, got == count),
-                ArgsCount::Between{start, end_inclusive} =>
-                {
-                    (start, (start..=end_inclusive).contains(&got))
-                },
-                ArgsCount::Min(expected) =>
-                {
-                    (expected, got >= expected)
-                },
-                ArgsCount::None => (0, got == 0)
-            };
-
-            if !correct
-            {
-                let error = Error::WrongArgumentsCount{
-                    proc: s.clone(),
-                    this_invoked: true,
-                    expected,
-                    got
-                };
-
-                return Err(ErrorPos{
-                    position: ast.position,
-                    error
-                });
-            }
-
-            if let Some(on_eval) = primitive.on_eval.as_ref()
-            {
-                on_eval(primitive.on_apply, state, ast)
-            } else
-            {
-                let args = ExpressionPos::eval_args(state, ast)?;
-                let p = PrimitiveProcedure(primitive.on_apply.expect("apply must be provided"));
-
-                Ok(ExpressionPos{
-                    position,
-                    expression: Expression::Application{
-                        op: Self::Primitive(p),
-                        args: Box::new(args)
-                    }
-                })
-            }
-        } else
-        {
-            let op = Self::Compound(CompoundProcedure::Identifier(s));
-
-            Ok(ExpressionPos{
-                position,
-                expression: Expression::Application{
-                    op,
-                    args: Box::new(ExpressionPos::eval_args(state, ast)?)
-                }
-            })
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
 pub enum Either<A, B>
 {
     Left(A),
@@ -452,13 +359,18 @@ pub enum Either<A, B>
 #[derive(Debug, Clone)]
 pub struct StoredLambda
 {
+    env: Rc<Environment>,
     params: Either<String, ArgValues<String>>,
     body: ExpressionPos
 }
 
 impl StoredLambda
 {
-    pub fn new(params: ExpressionPos, body: ExpressionPos) -> Result<Self, ErrorPos>
+    pub fn new(
+        env: Rc<Environment>,
+        params: ExpressionPos,
+        body: ExpressionPos
+    ) -> Result<Self, ErrorPos>
     {
         let params = match params.as_value()
         {
@@ -469,19 +381,18 @@ impl StoredLambda
             })?)
         };
 
-        Ok(Self{params, body})
+        Ok(Self{env, params, body})
     }
 
     pub fn apply(
         &self,
         state: &State,
         memory: &mut LispMemory,
-        env: &Environment,
         mut args: ArgsWrapper,
         action: Action
     ) -> Result<(), ErrorPos>
     {
-        let new_env = Environment::child(env);
+        let new_env = Rc::new(Environment::child(self.env.clone()));
 
         match &self.params
         {
@@ -509,7 +420,7 @@ impl StoredLambda
             },
             Either::Left(name) =>
             {
-                let lst = args.as_list(env, memory);
+                let lst = args.as_list(&self.env, memory);
 
                 new_env.define(name, lst);
             }
@@ -522,7 +433,7 @@ impl StoredLambda
 #[derive(Debug, Clone)]
 pub struct Lambdas
 {
-    lambdas: Vec<StoredLambda>
+    lambdas: Vec<Rc<RefCell<StoredLambda>>>
 }
 
 impl Lambdas
@@ -536,14 +447,19 @@ impl Lambdas
     {
         let id = self.lambdas.len();
 
-        self.lambdas.push(lambda);
+        self.lambdas.push(Rc::new(RefCell::new(lambda)));
 
         id
     }
 
-    pub fn get(&self, index: usize) -> &StoredLambda
+    pub fn get(&self, index: usize) -> Rc<RefCell<StoredLambda>>
     {
-        &self.lambdas[index]
+        self.lambdas[index].clone()
+    }
+    
+    pub fn clear(&mut self)
+    {
+        self.lambdas.clear();
     }
 }
 
@@ -752,7 +668,7 @@ impl Primitives
                         }
                     }))),
             ("let",
-                PrimitiveProcedureInfo::new_eval(2, Rc::new(|_on_apply, state, args|
+                PrimitiveProcedureInfo::new_eval(2, Rc::new(|_op, state, env, args|
                 {
                     let bindings = args.car();
                     let body = args.cdr().car();
@@ -760,6 +676,7 @@ impl Primitives
                     let params = bindings.map_list(|x| x.car());
                     let apply_args = ExpressionPos::eval_args(
                         state,
+                        env,
                         bindings.map_list(|x| x.cdr().car())
                     )?;
 
@@ -770,31 +687,28 @@ impl Primitives
                                 body,
                                 Ast::EmptyList.with_position(args.position)));
 
-                    let lambda = ExpressionPos::eval_lambda(state, lambda_args)?;
+                    let lambda = ExpressionPos::eval_lambda(state, env, lambda_args)?;
 
                     Ok(ExpressionPos{
                         position: args.position,
                         expression: Expression::Application{
-                            op: Procedure::Compound(CompoundProcedure::Lambda(lambda)),
+                            op: Box::new(lambda),
                             args: Box::new(apply_args)
                         }
                     })
                 }))),
             ("begin",
-                PrimitiveProcedureInfo::new_eval(ArgsCount::Min(1), Rc::new(|_on_apply, state, args|
+                PrimitiveProcedureInfo::new_eval(ArgsCount::Min(1), Rc::new(|_op, state, env, args|
                 {
-                    ExpressionPos::eval_sequence(state, args)
+                    ExpressionPos::eval_sequence(state, env, args)
                 }))),
             ("lambda",
-                PrimitiveProcedureInfo::new_eval(2, Rc::new(|_on_apply, state, args|
+                PrimitiveProcedureInfo::new_eval(2, Rc::new(|_op, state, env, args|
                 {
-                    Ok(ExpressionPos{
-                        position: args.position,
-                        expression: Expression::Lambda(ExpressionPos::eval_lambda(state, args)?)
-                    })
+                    ExpressionPos::eval_lambda(state, env, args)
                 }))),
             ("define",
-                PrimitiveProcedureInfo::new(ArgsCount::Min(2), Rc::new(|on_apply, state, mut args|
+                PrimitiveProcedureInfo::new(ArgsCount::Min(2), Rc::new(|op, state, env, mut args|
                 {
                     let first = args.car();
 
@@ -845,19 +759,25 @@ impl Primitives
                                     body,
                                     Ast::EmptyList.with_position(position)));
 
-                        let lambda = ExpressionPos::eval_lambda(state, lambda_args)?;
+                        let lambda = ExpressionPos::eval_lambda(state, env, lambda_args)?;
 
                         ExpressionPos::cons(
                             name,
                             ExpressionPos::cons(
-                                Expression::Lambda(lambda).with_position(position),
+                                lambda,
                                 Expression::EmptyList.with_position(position)))
                     } else
                     {
-                        ExpressionPos::eval_args(state, args)?
+                        ExpressionPos::eval_args(state, env, args)?
                     };
 
-                    Ok(ExpressionPos::new_application(on_apply, args))
+                    Ok(ExpressionPos{
+                        position: args.position,
+                        expression: Expression::Application{
+                            op: Box::new(op),
+                            args: Box::new(args)
+                        }
+                    })
                 }), Rc::new(|state, memory, env, args, action|
                 {
                     let first = args.car();
@@ -879,11 +799,17 @@ impl Primitives
                     Ok(())
                 }))),
             ("quote",
-                PrimitiveProcedureInfo::new(1, Rc::new(|on_apply, _state, args|
+                PrimitiveProcedureInfo::new(1, Rc::new(|op, _state, _env, args|
                 {
                     let arg = Expression::ast_to_expression(args.car())?;
 
-                    Ok(ExpressionPos::new_application(on_apply, arg))
+                    Ok(ExpressionPos{
+                        position: args.position,
+                        expression: Expression::Application{
+                            op: Box::new(op),
+                            args: Box::new(arg)
+                        }
+                    })
                 }), Rc::new(|_state, memory, env, args, action|
                 {
                     match action
@@ -952,10 +878,9 @@ impl Primitives
         &self.primitives[id]
     }
 
-    pub fn add_to_env(&self, env: &mut Mappings)
+    pub fn add_to_env(&self, env: &Rc<Environment>)
     {
         self.indices.iter()
-            .filter(|(_, value)| self.primitives[**value].kind == PrimitiveProcedureType::Simple)
             .for_each(|(key, value)|
             {
                 let value = LispValue::new_primitive_procedure(*value);
@@ -1063,13 +988,14 @@ impl Primitives
 #[derive(Debug, Clone)]
 pub struct State
 {
-    pub lambdas: Lambdas,
     pub primitives: Rc<Primitives>
 }
 
 #[derive(Debug, Clone)]
 pub struct Program
 {
+    env: Rc<Environment>,
+    default_lambdas: Option<Lambdas>,
     state: State,
     expression: ExpressionPos
 }
@@ -1077,37 +1003,45 @@ pub struct Program
 impl Program
 {
     pub fn parse(
+        env: Rc<Environment>,
         primitives: Rc<Primitives>,
         lambdas: Option<Lambdas>,
         code: &str
     ) -> Result<Self, ErrorPos>
     {
+        primitives.add_to_env(&env);
+
         let ast = Parser::parse(code)?;
 
         let mut state = State{
-            lambdas: lambdas.unwrap_or_else(Lambdas::new),
             primitives
         };
 
-        let expression = ExpressionPos::eval_sequence(&mut state, ast)?;
+        let expression = ExpressionPos::eval_sequence(&mut state, &env, ast)?;
 
-        Ok(Self{state, expression})
+        Ok(Self{env, default_lambdas: lambdas, state, expression})
     }
 
     pub fn lambdas(&self) -> &Lambdas
     {
-        &self.state.lambdas
+        todo!()
     }
 
     pub fn apply(
         &self,
-        memory: &mut LispMemory,
-        env: &Environment
-    ) -> Result<LispValue, ErrorPos>
+        memory: &mut LispMemory
+    ) -> Result<(Rc<Environment>, LispValue), ErrorPos>
     {
-        self.expression.apply(&self.state, memory, env, Action::Return)?;
+        let env = {
+            let env: &Environment = &self.env;
 
-        Ok(memory.pop_return())
+            Rc::new(env.clone())
+        };
+
+        self.expression.apply(&self.state, memory, &env, Action::Return)?;
+        memory.lambdas_mut().clear();
+
+        Ok((env, memory.pop_return()))
     }
 }
 
@@ -1220,7 +1154,7 @@ impl ExpressionPos
         &self,
         state: &State, 
         memory: &mut LispMemory,
-        env: &Environment,
+        env: &Rc<Environment>,
         action: Action
     ) -> Result<(), ErrorPos>
     {
@@ -1242,17 +1176,17 @@ impl ExpressionPos
             {
                 env.lookup(s).map_err(|error| ErrorPos{position: self.position, error})?
             },
-            Expression::Lambda(id) =>
+            Expression::Lambda{body, params} =>
             {
-                LispValue::new_procedure(*id)
+                let lambda = StoredLambda::new(env.clone(), (**params).clone(), (**body).clone())?;
+
+                let id = memory.lambdas_mut().add(lambda);
+
+                LispValue::new_procedure(id)
             },
             Expression::Application{op, args} =>
             {
-                return match op
-                {
-                    Procedure::Compound(p) => args.apply_compound(state, memory, env, p, action),
-                    Procedure::Primitive(p) => p.0(state, memory, env, args, action)
-                };
+                return op.apply_application(state, memory, env, args, action);
             },
             Expression::Sequence{first, after} =>
             {
@@ -1275,65 +1209,55 @@ impl ExpressionPos
         }
     }
 
-    pub fn apply_compound(
+    pub fn apply_application(
         &self,
-        state: &State, 
+        state: &State,
         memory: &mut LispMemory,
-        env: &Environment,
-        proc: &CompoundProcedure,
+        env: &Rc<Environment>,
+        args: &Box<Self>,
         action: Action
     ) -> Result<(), ErrorPos>
     {
-        let id = match proc
+        self.apply(state, memory, env, Action::Return)?;
+        let op = memory.pop_return();
+
+        if let Ok(op) = op.as_primitive_procedure()
         {
-            CompoundProcedure::Identifier(name) =>
-            {
-                let proc = env.lookup(name)
-                    .map_err(|error| ErrorPos{position: self.position, error})?;
-
-                if let ValueTag::Procedure = proc.tag
-                {
-                    proc.as_procedure().with_position(self.position)?
-                } else
-                {
-                    let id = proc.as_primitive_procedure().with_position(self.position)?;
-
-                    let proc = state.primitives.get(id);
-
-                    return (proc.on_apply.as_ref().expect("must have apply"))(
-                        state,
-                        memory,
-                        env,
-                        self,
-                        action
-                    );
-                }
-            },
-            CompoundProcedure::Lambda(id) => *id
-        };
-
-        let proc = state.lambdas.get(id);
-
-        let args = self.apply_args(state, memory, env, Action::Return)?;
-        proc.apply(state, memory, env, args, action).map_err(|mut err|
+            (state.primitives.get(op).on_apply.as_ref().expect("must have apply"))(
+                state,
+                memory,
+                env,
+                args,
+                action
+            )
+        } else
         {
-            #[allow(clippy::single_match)]
-            match &mut err.error
+            let op = op.as_procedure().with_position(self.position)?;
+            let args = args.apply_args(state, memory, env, Action::Return)?;
+
+            let proc = memory.lambdas().get(op);
+            let proc = proc.borrow();
+
+            proc.apply(state, memory, args, action).map_err(|mut err|
             {
-                Error::WrongArgumentsCount{this_invoked, ..} =>
+                #[allow(clippy::single_match)]
+                match &mut err.error
                 {
-                    if *this_invoked
+                    Error::WrongArgumentsCount{this_invoked, ..} =>
                     {
-                        err.position = self.position;
+                        if *this_invoked
+                        {
+                            err.position = self.position;
 
-                        *this_invoked = false;
-                    }
-                },
-                _ => ()
-            }
+                            *this_invoked = false;
+                        }
+                    },
+                    _ => ()
+                }
 
-            err
-        })
+                err
+            })
+        }
     }
 
     pub fn map_list<T, F>(&self, mut f: F) -> Result<ArgValues<T>, ErrorPos>
@@ -1361,7 +1285,7 @@ impl ExpressionPos
         &self,
         state: &State, 
         memory: &mut LispMemory,
-        env: &Environment,
+        env: &Rc<Environment>,
         action: Action
     ) -> Result<ArgsWrapper, ErrorPos>
     {
@@ -1381,54 +1305,75 @@ impl ExpressionPos
         }
     }
 
-    pub fn eval(state: &mut State, ast: AstPos) -> Result<Self, ErrorPos>
+    pub fn eval(state: &mut State, env: &Rc<Environment>, ast: AstPos) -> Result<Self, ErrorPos>
     {
         if ast.is_list()
         {
-            let op = Self::eval(state, ast.car())?;
+            let op = Self::eval(state, env, ast.car())?;
 
             let args = ast.cdr();
-            Self::eval_op(state, op, args)
+            Self::eval_op(state, env, op, args)
         } else
         {
             Self::eval_atom(ast)
         }
     }
 
-    pub fn eval_op(state: &mut State, op: Self, ast: AstPos) -> Result<Self, ErrorPos>
+    pub fn eval_op(
+        state: &mut State,
+        env: &Rc<Environment>,
+        op: Self,
+        ast: AstPos
+    ) -> Result<Self, ErrorPos>
     {
-        match op.expression
+        let normal_eval = |op: Self, state, env, ast|
         {
-            Expression::Value(name) => Procedure::parse(state, ast, op.position, name),
-            Expression::Lambda(id) =>
+            Ok(Self{
+                position: op.position,
+                expression: Expression::Application{
+                    op: Box::new(op),
+                    args: Box::new(Self::eval_args(state, env, ast)?)
+                }
+            })
+        };
+
+        if let Expression::Value(ref name) = op.expression
+        {
+            if let Some(on_eval) = state.primitives.get_by_name(name).as_ref().and_then(|primitive|
             {
-                Ok(Self{
-                    position: op.position,
-                    expression: Expression::Application{
-                        op: Procedure::Compound(CompoundProcedure::Lambda(id)),
-                        args: Box::new(Self::eval_args(state, ast)?)
-                    }
-                })
-            },
-            _ => Err(ErrorPos{position: op.position, error: Error::ExpectedOp})
+                primitive.on_eval.as_ref().map(|x| x.clone())
+            })
+            {
+                on_eval(op, state, env, ast)
+            } else
+            {
+                normal_eval(op, state, env, ast)
+            }
+        } else
+        {
+            normal_eval(op, state, env, ast)
         }
     }
 
-    pub fn eval_lambda(state: &mut State, args: AstPos) -> Result<usize, ErrorPos>
+    pub fn eval_lambda(
+        state: &mut State,
+        env: &Rc<Environment>,
+        args: AstPos
+    ) -> Result<Self, ErrorPos>
     {
         Expression::argument_count_ast("lambda".to_owned(), 2, &args)?;
 
-        let params = Expression::ast_to_expression(args.car())?;
-        let body = Self::eval(state, args.cdr().car())?;
+        let params = Box::new(Expression::ast_to_expression(args.car())?);
+        let body = Box::new(Self::eval(state, env, args.cdr().car())?);
 
-        let lambda = StoredLambda::new(params, body)?;
-
-        let id = state.lambdas.add(lambda);
-
-        Ok(id)
+        Ok(Self{position: args.position, expression: Expression::Lambda{body, params}})
     }
 
-    pub fn eval_args(state: &mut State, args: AstPos) -> Result<Self, ErrorPos>
+    pub fn eval_args(
+        state: &mut State,
+        env: &Rc<Environment>,
+        args: AstPos
+    ) -> Result<Self, ErrorPos>
     {
         if args.is_null()
         {
@@ -1436,8 +1381,8 @@ impl ExpressionPos
         }
 
         let out = Expression::List{
-            car: Box::new(Self::eval(state, args.car())?),
-            cdr: Box::new(Self::eval_args(state, args.cdr())?)
+            car: Box::new(Self::eval(state, env, args.car())?),
+            cdr: Box::new(Self::eval_args(state, env, args.cdr())?)
         };
 
         Ok(Self{position: args.position, expression: out})
@@ -1451,14 +1396,18 @@ impl ExpressionPos
         })
     }
 
-    pub fn eval_sequence(state: &mut State, ast: AstPos) -> Result<Self, ErrorPos>
+    pub fn eval_sequence(
+        state: &mut State,
+        env: &Rc<Environment>,
+        ast: AstPos
+    ) -> Result<Self, ErrorPos>
     {
         if ast.is_null()
         {
             return Err(ErrorPos{position: ast.position, error: Error::EmptySequence});
         }
 
-        let car = Self::eval(state, ast.car())?;
+        let car = Self::eval(state, env, ast.car())?;
         let cdr = ast.cdr();
 
         Ok(if cdr.is_null()
@@ -1470,24 +1419,10 @@ impl ExpressionPos
                 position: ast.position,
                 expression: Expression::Sequence{
                     first: Box::new(car),
-                    after: Box::new(Self::eval_sequence(state, cdr)?)
+                    after: Box::new(Self::eval_sequence(state, env, cdr)?)
                 }
             }
         })
-    }
-
-    pub fn new_application(on_apply: Option<OnApply>, expr: Self) -> Self
-    {
-        let op =
-            Procedure::Primitive(PrimitiveProcedure(on_apply.expect("apply must be provided")));
-
-        Self{
-            position: expr.position,
-            expression: Expression::Application{
-                op,
-                args: Box::new(expr)
-            }
-        }
     }
 
     pub fn argument_count(name: String, count: usize, args: &Self) -> Result<(), ErrorPos>
@@ -1514,9 +1449,9 @@ pub enum Expression
     Integer(i32),
     Bool(bool),
     EmptyList,
-    Lambda(usize),
+    Lambda{body: Box<ExpressionPos>, params: Box<ExpressionPos>},
     List{car: Box<ExpressionPos>, cdr: Box<ExpressionPos>},
-    Application{op: Procedure, args: Box<ExpressionPos>},
+    Application{op: Box<ExpressionPos>, args: Box<ExpressionPos>},
     Sequence{first: Box<ExpressionPos>, after: Box<ExpressionPos>}
 }
 

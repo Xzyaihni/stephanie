@@ -132,7 +132,7 @@ impl Game
             let mut memory = Lisp::default_memory();
             let (environment, lambdas) = lisp.and_then(|mut x|
             {
-                x.run_mappings_lambdas(&mut memory)
+                x.run_env_lambdas(&mut memory)
             }).unwrap_or_else(|err| panic!("error in stdlib: {err}"));
 
             (Rc::new(environment), lambdas, primitives)
@@ -690,7 +690,7 @@ struct PlayerInfo
     other_entity: Option<Entity>,
     console_entity: Entity,
     console_contents: Option<String>,
-    console_infos: Option<(Rc<Mappings>, Lambdas, Rc<Primitives>)>,
+    console_infos: Option<(Rc<Environment>, Lambdas, Rc<Primitives>)>,
     previous_stamina: Option<f32>,
     previous_cooldown: (f32, f32),
     interacted: bool,
@@ -718,7 +718,7 @@ impl PlayerInfo
         }
     }
 
-    pub fn update_environment(&mut self, new_env: Mappings, lambdas: Lambdas)
+    pub fn update_environment(&mut self, new_env: Environment, lambdas: Lambdas)
     {
         if let Some(x) = self.console_infos.as_mut()
         {
