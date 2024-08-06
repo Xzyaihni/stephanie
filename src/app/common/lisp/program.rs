@@ -3,7 +3,7 @@ use std::{
     iter,
     rc::Rc,
     cell::RefCell,
-    fmt::{self, Debug},
+    fmt::{self, Debug, Display},
     collections::HashMap,
     ops::{RangeInclusive, Add, Sub, Mul, Div, Rem, Deref}
 };
@@ -169,8 +169,20 @@ pub enum ArgsCount
 {
     Min(usize),
     Between{start: usize, end_inclusive: usize},
-    Some(usize),
-    None
+    Some(usize)
+}
+
+impl Display for ArgsCount
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
+    {
+        write!(f, "{}", match self
+        {
+            ArgsCount::Some(x) => x.to_string(),
+            ArgsCount::Between{start, end_inclusive} => format!("between {start} and {end_inclusive}"),
+            ArgsCount::Min(x) => format!("at least {x}")
+        })
+    }
 }
 
 impl From<RangeInclusive<usize>> for ArgsCount
@@ -186,18 +198,6 @@ impl From<usize> for ArgsCount
     fn from(value: usize) -> Self
     {
         Self::Some(value)
-    }
-}
-
-impl From<Option<usize>> for ArgsCount
-{
-    fn from(value: Option<usize>) -> Self
-    {
-        match value
-        {
-            Some(x) => Self::Some(x),
-            None => Self::None
-        }
     }
 }
 
@@ -324,15 +324,7 @@ impl Debug for PrimitiveProcedureInfo
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
     {
-        let args_count = match self.args_count
-        {
-            ArgsCount::Some(x) => x.to_string(),
-            ArgsCount::None => "no".to_owned(),
-            ArgsCount::Between{start, end_inclusive} => format!("between {start} and {end_inclusive}"),
-            ArgsCount::Min(x) => format!("at least {x}")
-        };
-
-        write!(f, "<procedure with {args_count} args>")
+        write!(f, "<procedure with {} args>", &self.args_count)
     }
 }
 
@@ -405,7 +397,7 @@ impl StoredLambda
                         error: Error::WrongArgumentsCount{
                             proc: format!("<compound procedure {:?}>", self.params),
                             this_invoked: true,
-                            expected: params.len(),
+                            expected: params.len().to_string(),
                             got: args.len()
                         }
                     });
@@ -480,12 +472,29 @@ impl Primitives
             {
                 |_state, memory, _env, args|
                 {
-                    Self::do_cond(memory, args, $f, $f)
+                    Self::do_cond(memory, args, |a, b| Some($f(a, b)), |a, b| Some($f(a, b)))
                 }
             }
         }
 
         macro_rules! do_op
+        {
+            ($float_op:ident, $int_op:ident) =>
+            {
+                |_state, memory, _env, args|
+                {
+                    Self::do_op(memory, args, |a, b|
+                    {
+                        Some(LispValue::new_integer(a.$int_op(b)?))
+                    }, |a, b|
+                    {
+                        Some(LispValue::new_float(a.$float_op(b)))
+                    })
+                }
+            }
+        }
+
+        macro_rules! do_op_simple
         {
             ($op:ident) =>
             {
@@ -493,10 +502,10 @@ impl Primitives
                 {
                     Self::do_op(memory, args, |a, b|
                     {
-                        LispValue::new_integer(a.$op(b))
+                        Some(LispValue::new_integer(a.$op(b)))
                     }, |a, b|
                     {
-                        LispValue::new_float(a.$op(b))
+                        Some(LispValue::new_float(a.$op(b)))
                     })
                 }
             }
@@ -617,11 +626,41 @@ impl Primitives
 
                     Ok(LispValue::new_bool(is_bool))
                 })),
-            ("+", PrimitiveProcedureInfo::new_simple(ArgsCount::Min(2), do_op!(add))),
-            ("-", PrimitiveProcedureInfo::new_simple(ArgsCount::Min(2), do_op!(sub))),
-            ("*", PrimitiveProcedureInfo::new_simple(ArgsCount::Min(2), do_op!(mul))),
-            ("/", PrimitiveProcedureInfo::new_simple(ArgsCount::Min(2), do_op!(div))),
-            ("remainder", PrimitiveProcedureInfo::new_simple(2, do_op!(rem))),
+            ("exact->inexact",
+                PrimitiveProcedureInfo::new_simple(1, |_state, memory, _env, mut args|
+                {
+                    let arg = args.pop(memory);
+
+                    if arg.tag == ValueTag::Float
+                    {
+                        Ok(arg)
+                    } else
+                    {
+                        let number = arg.as_integer()?;
+
+                        Ok(LispValue::new_float(number as f32))
+                    }
+                })),
+            ("inexact->exact",
+                PrimitiveProcedureInfo::new_simple(1, |_state, memory, _env, mut args|
+                {
+                    let arg = args.pop(memory);
+
+                    if arg.tag == ValueTag::Integer
+                    {
+                        Ok(arg)
+                    } else
+                    {
+                        let number = arg.as_float()?;
+
+                        Ok(LispValue::new_integer(number.round() as i32))
+                    }
+                })),
+            ("+", PrimitiveProcedureInfo::new_simple(ArgsCount::Min(2), do_op!(add, checked_add))),
+            ("-", PrimitiveProcedureInfo::new_simple(ArgsCount::Min(2), do_op!(sub, checked_sub))),
+            ("*", PrimitiveProcedureInfo::new_simple(ArgsCount::Min(2), do_op!(mul, checked_mul))),
+            ("/", PrimitiveProcedureInfo::new_simple(ArgsCount::Min(2), do_op!(div, checked_div))),
+            ("remainder", PrimitiveProcedureInfo::new_simple(2, do_op_simple!(rem))),
             ("=",
                 PrimitiveProcedureInfo::new_simple(
                     ArgsCount::Min(2),
@@ -799,7 +838,7 @@ impl Primitives
                     Ok(())
                 }))),
             ("quote",
-                PrimitiveProcedureInfo::new(1, Rc::new(|op, _state, _env, args|
+                PrimitiveProcedureInfo::new(ArgsCount::Min(0), Rc::new(|op, _state, _env, args|
                 {
                     let arg = Expression::ast_to_expression(args.car())?;
 
@@ -868,6 +907,14 @@ impl Primitives
         self.indices.insert(name, id);
     }
 
+    pub fn name_by_index(&self, index: usize) -> &str
+    {
+        self.indices.iter().find(|(_key, value)|
+        {
+            **value == index
+        }).expect("index must exist").0
+    }
+
     pub fn get_by_name(&self, name: &str) -> Option<&PrimitiveProcedureInfo>
     {
         self.indices.get(name).map(|index| self.get(*index))
@@ -896,25 +943,57 @@ impl Primitives
         op_float: FF
     ) -> Result<LispValue, Error>
     where
-        FI: Fn(i32, i32) -> LispValue,
-        FF: Fn(f32, f32) -> LispValue
+        FI: Fn(i32, i32) -> Option<LispValue>,
+        FF: Fn(f32, f32) -> Option<LispValue>
     {
-        // i cant be bothered with implicit type coercions im just gonna panic
+        // i cant be bothered with implicit type coercions im just gonna error
 
-        let output = match (a.tag(), b.tag())
+        macro_rules! number_error
+        {
+            ($a:expr, $b:expr) =>
+            {
+                Error::OperationError{a: $a.to_string(), b: $b.to_string()}
+            }
+        }
+
+        match (a.tag(), b.tag())
         {
             (ValueTag::Integer, ValueTag::Integer) =>
             {
-                op_integer(a.as_integer()?, b.as_integer()?)
+                let (a, b) = (a.as_integer().unwrap(), b.as_integer().unwrap());
+
+                op_integer(a, b).ok_or_else(||
+                {
+                    number_error!(a, b)
+                })
             },
             (ValueTag::Float, ValueTag::Float) =>
             {
-                op_float(a.as_float()?, b.as_float()?)
-            },
-            _ => return Err(Error::ExpectedSameNumberType)
-        };
+                let (a, b) = (a.as_float().unwrap(), b.as_float().unwrap());
 
-        Ok(output)
+                op_float(a, b).ok_or_else(||
+                {
+                    number_error!(a, b)
+                })
+            },
+            (ValueTag::Float, ValueTag::Integer)
+            | (ValueTag::Integer, ValueTag::Float) =>
+            {
+                let (a, b) = if a.tag() == ValueTag::Float
+                {
+                    (a.as_float().unwrap(), b.as_integer().unwrap() as f32)
+                } else
+                {
+                    (a.as_integer().unwrap() as f32, b.as_float().unwrap())
+                };
+
+                op_float(a, b).ok_or_else(||
+                {
+                    number_error!(a, b)
+                })
+            },
+            (a, b) => Err(Error::ExpectedNumerical{a, b})
+        }
     }
 
     fn do_cond<FI, FF>(
@@ -924,8 +1003,8 @@ impl Primitives
         op_float: FF
     ) -> Result<LispValue, Error>
     where
-        FI: Fn(i32, i32) -> LispValue,
-        FF: Fn(f32, f32) -> LispValue
+        FI: Fn(i32, i32) -> Option<LispValue>,
+        FF: Fn(f32, f32) -> Option<LispValue>
     {
         let first = args.pop(memory);
         let second = args.pop(memory);
@@ -954,8 +1033,8 @@ impl Primitives
         op_float: FF
     ) -> Result<LispValue, Error>
     where
-        FI: Fn(i32, i32) -> LispValue,
-        FF: Fn(f32, f32) -> LispValue
+        FI: Fn(i32, i32) -> Option<LispValue>,
+        FF: Fn(f32, f32) -> Option<LispValue>
     {
         let first = args.pop(memory);
         let second = args.pop(memory);
@@ -1215,7 +1294,38 @@ impl ExpressionPos
 
         if let Ok(op) = op.as_primitive_procedure()
         {
-            (state.primitives.get(op).on_apply.as_ref().expect("must have apply"))(
+            let primitive = state.primitives.get(op);
+
+            let got = Expression::arg_count(args);
+            let correct = match primitive.args_count
+            {
+                ArgsCount::Some(count) => got == count,
+                ArgsCount::Between{start, end_inclusive} =>
+                {
+                    (start..=end_inclusive).contains(&got)
+                },
+                ArgsCount::Min(expected) =>
+                {
+                    got >= expected
+                }
+            };
+
+            if !correct
+            {
+                let error = Error::WrongArgumentsCount{
+                    proc: state.primitives.name_by_index(op).to_owned(),
+                    this_invoked: true,
+                    expected: primitive.args_count.to_string(),
+                    got
+                };
+
+                return Err(ErrorPos{
+                    position: args.position,
+                    error
+                });
+            }
+
+            (primitive.on_apply.as_ref().expect("must have apply"))(
                 state,
                 memory,
                 env,
@@ -1536,14 +1646,22 @@ impl Expression
         {
             Err(ErrorPos{
                 position,
-                error: Error::WrongArgumentsCount{proc: name, this_invoked: true, expected, got}
+                error: Error::WrongArgumentsCount{
+                    proc: name,
+                    this_invoked: true,
+                    expected: expected.to_string(),
+                    got
+                }
             })
         }
     }
 
     fn arg_count(args: &Self) -> usize
     {
-        if args.is_null() || !args.is_list()
+        if !args.is_list()
+        {
+            1
+        } else if args.is_null()
         {
             0
         } else

@@ -612,12 +612,13 @@ pub enum Error
     SpecialParse(String),
     UndefinedVariable(String),
     ApplyNonApplication,
-    WrongArgumentsCount{proc: String, this_invoked: bool, expected: usize, got: usize},
+    WrongArgumentsCount{proc: String, this_invoked: bool, expected: String, got: usize},
     IndexOutOfRange(i32),
     CharOutOfRange,
     EmptySequence,
     VectorWrongType{expected: ValueTag, got: ValueTag},
-    ExpectedSameNumberType,
+    OperationError{a: String, b: String},
+    ExpectedNumerical{a: ValueTag, b: ValueTag},
     ExpectedArg,
     ExpectedOp,
     ExpectedClose,
@@ -638,7 +639,7 @@ impl Display for Error
             Self::SpecialParse(s) => format!("cant parse `{s}` as a special"),
             Self::UndefinedVariable(s) => format!("variable `{s}` is undefined"),
             Self::ApplyNonApplication => "apply was called on a non application".to_owned(),
-            Self::ExpectedSameNumberType => "primitive operation expected 2 numbers of same type".to_owned(),
+            Self::ExpectedNumerical{a, b} => format!("primitive operation expected 2 numbers, got {a:?} and {b:?}"),
             Self::WrongArgumentsCount{proc, this_invoked: _, expected, got} =>
                 format!("wrong amount of arguments (got {got}) passed to {proc} (expected {expected})"),
             Self::IndexOutOfRange(i) => format!("index {i} out of range"),
@@ -646,6 +647,8 @@ impl Display for Error
             Self::EmptySequence => "empty sequence".to_owned(),
             Self::VectorWrongType{expected, got} =>
                 format!("vector expected `{expected:?}` got `{got:?}`"),
+            Self::OperationError{a, b} =>
+                format!("numeric error with {a} and {b} operands"),
             Self::ExpectedArg => "expected an argument".to_owned(),
             Self::ExpectedOp => "expected an operator".to_owned(),
             Self::ExpectedClose => "expected a closing parenthesis".to_owned(),

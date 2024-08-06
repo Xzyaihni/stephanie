@@ -128,13 +128,13 @@ impl Game
 
             let lisp = unsafe{ LispRef::new_with_config(config, &standard_code) };
 
-            let mut memory = Lisp::default_memory();
+            let mut memory = LispMemory::new(2048, 1 << 12);
             let environment = lisp.and_then(|mut x|
             {
                 x.run_env(&mut memory)
             }).unwrap_or_else(|err| panic!("error in stdlib: {err}"));
 
-            (environment, primitives)
+            (environment, memory, primitives)
         };
 
         this.info.borrow_mut().console_infos = Some(console_infos);
@@ -625,14 +625,16 @@ impl Game
 
     fn console_command(&mut self, command: String)
     {
-        let config = {
+        let (mut memory, config) = {
             let infos = self.info.borrow();
             let infos = infos.console_infos.as_ref().expect("always initialized");
 
-            LispConfig{
+            let memory = infos.1.clone();
+
+            (memory, LispConfig{
                 environment: Some(infos.0.clone()),
-                primitives: infos.1.clone()
-            }
+                primitives: infos.2.clone()
+            })
         };
 
         let mut lisp = match unsafe{ LispRef::new_with_config(config, &command) }
@@ -645,7 +647,6 @@ impl Game
             }
         };
 
-        let mut memory = LispMemory::new(2048, 1 << 12);
         let (new_env, result) = match lisp.run_with_memory_environment(&mut memory)
         {
             Ok(x) => x,
@@ -656,9 +657,9 @@ impl Game
             }
         };
 
-        self.info.borrow_mut().update_environment(new_env);
-
         eprintln!("ran command {command}, result: {result}");
+
+        self.info.borrow_mut().update_environment(new_env, memory);
     }
 
     pub fn player_exists(&mut self) -> bool
@@ -688,7 +689,7 @@ struct PlayerInfo
     other_entity: Option<Entity>,
     console_entity: Entity,
     console_contents: Option<String>,
-    console_infos: Option<(Rc<Environment>, Rc<Primitives>)>,
+    console_infos: Option<(Rc<Environment>, LispMemory, Rc<Primitives>)>,
     previous_stamina: Option<f32>,
     previous_cooldown: (f32, f32),
     interacted: bool,
@@ -716,11 +717,12 @@ impl PlayerInfo
         }
     }
 
-    pub fn update_environment(&mut self, new_env: Rc<Environment>)
+    pub fn update_environment(&mut self, new_env: Rc<Environment>, memory: LispMemory)
     {
         if let Some(x) = self.console_infos.as_mut()
         {
             x.0 = new_env;
+            x.1 = memory;
         }
     }
 }

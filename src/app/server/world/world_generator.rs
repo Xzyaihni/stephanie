@@ -162,7 +162,7 @@ pub struct ChunkGenerator
     rules: Rc<ChunkRulesGroup>,
     environment: Rc<Environment>,
     primitives: Rc<Primitives>,
-    memory: Rc<LispMemory>,
+    memory: LispMemory,
     chunks: HashMap<String, LispRef>,
     tilemap: Rc<TileMap>
 }
@@ -189,7 +189,7 @@ impl ChunkGenerator
             rules: rules.clone(),
             environment,
             primitives,
-            memory: Rc::new(memory),
+            memory,
             chunks,
             tilemap
         };
@@ -274,8 +274,6 @@ impl ChunkGenerator
                 x.run_env(&mut memory)
             }).unwrap_or_else(|err| panic!("stdlib has an error ({err})"));
 
-        memory.gc(&env);
-
         (env, memory)
     }
 
@@ -317,7 +315,7 @@ impl ChunkGenerator
             return ChunksContainer::new_with(WORLD_CHUNK_SIZE, |_| Tile::none());
         }
 
-        let mut memory = LispMemory::clone(&self.memory);
+        let mut memory = self.memory.clone();
         let memory = &mut memory;
 
         let tiles = {
