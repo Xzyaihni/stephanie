@@ -1622,7 +1622,7 @@ impl LispRef
         memory: &'a mut LispMemory
     ) -> Result<(Rc<Environment>, OutputWrapper<'a>), ErrorPos>
     {
-        let (env, value) = self.program.apply(memory)?;
+        let (env, value) = self.program.eval(memory)?;
 
         let value = OutputWrapper{memory, value};
 

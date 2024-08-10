@@ -102,7 +102,7 @@ pub fn simple_apply<const EFFECT: bool>(f: impl Fn(
     {
         let position = args.position;
 
-        let args = args.apply_args(state, memory, env, if EFFECT {
+        let args = args.eval_args(state, memory, env, if EFFECT {
             Action::Return
         } else
         {
@@ -450,7 +450,7 @@ impl StoredLambda
             }
         }
 
-        self.body.apply(state, memory, &new_env, action)
+        self.body.eval(state, memory, &new_env, action)
     }
 }
 
@@ -744,7 +744,7 @@ impl Primitives
                     2..=3,
                     Rc::new(|state, memory, env, args, action|
                     {
-                        args.car().apply(state, memory, env, Action::Return)?;
+                        args.car().eval(state, memory, env, Action::Return)?;
                         let predicate = memory.pop_return();
 
                         let on_true = args.cdr().car();
@@ -752,7 +752,7 @@ impl Primitives
 
                         if predicate.is_true()
                         {
-                            on_true.apply(state, memory, env, action)
+                            on_true.eval(state, memory, env, action)
                         } else
                         {
                             // this is more readable come on omg
@@ -768,7 +768,7 @@ impl Primitives
                                 Ok(())
                             } else
                             {
-                                on_false.car().apply(state, memory, env, action)
+                                on_false.car().eval(state, memory, env, action)
                             }
                         }
                     }))),
@@ -779,7 +779,7 @@ impl Primitives
                     let body = args.cdr().car();
 
                     let params = bindings.map_list(|x| x.car());
-                    let apply_args = ExpressionPos::eval_args(
+                    let apply_args = ExpressionPos::analyze_args(
                         state,
                         env,
                         bindings.map_list(|x| x.cdr().car())
@@ -792,7 +792,7 @@ impl Primitives
                                 body,
                                 Ast::EmptyList.with_position(args.position)));
 
-                    let lambda = ExpressionPos::eval_lambda(state, env, lambda_args)?;
+                    let lambda = ExpressionPos::analyze_lambda(state, env, lambda_args)?;
 
                     Ok(ExpressionPos{
                         position: args.position,
@@ -805,12 +805,12 @@ impl Primitives
             ("begin",
                 PrimitiveProcedureInfo::new_eval(ArgsCount::Min(1), Rc::new(|_op, state, env, args|
                 {
-                    ExpressionPos::eval_sequence(state, env, args)
+                    ExpressionPos::analyze_sequence(state, env, args)
                 }))),
             ("lambda",
                 PrimitiveProcedureInfo::new_eval(2, Rc::new(|_op, state, env, args|
                 {
-                    ExpressionPos::eval_lambda(state, env, args)
+                    ExpressionPos::analyze_lambda(state, env, args)
                 }))),
             ("define",
                 PrimitiveProcedureInfo::new(ArgsCount::Min(2), Rc::new(|op, state, env, mut args|
@@ -864,7 +864,7 @@ impl Primitives
                                     body,
                                     Ast::EmptyList.with_position(position)));
 
-                        let lambda = ExpressionPos::eval_lambda(state, env, lambda_args)?;
+                        let lambda = ExpressionPos::analyze_lambda(state, env, lambda_args)?;
 
                         ExpressionPos::cons(
                             name,
@@ -873,7 +873,7 @@ impl Primitives
                                 Expression::EmptyList.with_position(position)))
                     } else
                     {
-                        ExpressionPos::eval_args(state, env, args)?
+                        ExpressionPos::analyze_args(state, env, args)?
                     };
 
                     Ok(ExpressionPos{
@@ -890,7 +890,7 @@ impl Primitives
 
                     let key = first.as_value()?;
 
-                    second.apply(state, memory, env, Action::Return)?;
+                    second.eval(state, memory, env, Action::Return)?;
                     let value = memory.pop_return();
 
                     env.define(key, value);
@@ -1155,12 +1155,12 @@ impl Program
             primitives
         };
 
-        let expression = ExpressionPos::eval_sequence(&mut state, &env, ast)?;
+        let expression = ExpressionPos::analyze_sequence(&mut state, &env, ast)?;
 
         Ok(Self{env, state, expression})
     }
 
-    pub fn apply(
+    pub fn eval(
         &self,
         memory: &mut LispMemory
     ) -> Result<(Rc<Environment>, LispValue), ErrorPos>
@@ -1171,7 +1171,7 @@ impl Program
             Rc::new(env.clone())
         };
 
-        self.expression.apply(&self.state, memory, &env, Action::Return)?;
+        self.expression.eval(&self.state, memory, &env, Action::Return)?;
 
         Ok((env, memory.pop_return()))
     }
@@ -1282,7 +1282,7 @@ impl ExpressionPos
         }
     }
 
-    pub fn apply(
+    pub fn eval(
         &self,
         state: &State, 
         memory: &mut LispMemory,
@@ -1318,13 +1318,13 @@ impl ExpressionPos
             },
             Expression::Application{op, args} =>
             {
-                return op.apply_application(state, memory, env, args, action);
+                return op.apply(state, memory, env, args, action);
             },
             Expression::Sequence{first, after} =>
             {
-                first.apply(state, memory, env, Action::None)?;
+                first.eval(state, memory, env, Action::None)?;
 
-                return after.apply(state, memory, env, action);
+                return after.eval(state, memory, env, action);
             },
             _ => return Err(ErrorPos{position: self.position, error: Error::ApplyNonApplication})
         };
@@ -1341,7 +1341,7 @@ impl ExpressionPos
         }
     }
 
-    pub fn apply_application(
+    pub fn apply(
         &self,
         state: &State,
         memory: &mut LispMemory,
@@ -1350,7 +1350,7 @@ impl ExpressionPos
         action: Action
     ) -> Result<(), ErrorPos>
     {
-        self.apply(state, memory, env, Action::Return)?;
+        self.eval(state, memory, env, Action::Return)?;
         let op = memory.pop_return();
 
         if let Ok(op) = op.as_primitive_procedure()
@@ -1405,7 +1405,7 @@ impl ExpressionPos
         } else
         {
             let op = op.as_procedure().with_position(self.position)?;
-            let args = args.apply_args(state, memory, env, Action::Return)?;
+            let args = args.eval_args(state, memory, env, Action::Return)?;
 
             let proc = memory.lambdas().get(op);
             let proc = proc.borrow();
@@ -1453,7 +1453,7 @@ impl ExpressionPos
         }
     }
 
-    pub fn apply_args(
+    pub fn eval_args(
         &self,
         state: &State, 
         memory: &mut LispMemory,
@@ -1469,42 +1469,42 @@ impl ExpressionPos
             let car = self.car();
             let cdr = self.cdr();
 
-            let args = cdr.apply_args(state, memory, env, action)?;
+            let args = cdr.eval_args(state, memory, env, action)?;
 
-            car.apply(state, memory, env, action)?;
+            car.eval(state, memory, env, action)?;
 
             Ok(args.increment())
         }
     }
 
-    pub fn eval(state: &mut State, env: &Rc<Environment>, ast: AstPos) -> Result<Self, ErrorPos>
+    pub fn analyze(state: &mut State, env: &Rc<Environment>, ast: AstPos) -> Result<Self, ErrorPos>
     {
         if ast.is_list()
         {
-            let op = Self::eval(state, env, ast.car())?;
+            let op = Self::analyze(state, env, ast.car())?;
 
             let args = ast.cdr();
-            Self::eval_op(state, env, op, args)
+            Self::analyze_op(state, env, op, args)
         } else
         {
-            Self::eval_atom(ast)
+            Self::analyze_atom(ast)
         }
     }
 
-    pub fn eval_op(
+    pub fn analyze_op(
         state: &mut State,
         env: &Rc<Environment>,
         op: Self,
         ast: AstPos
     ) -> Result<Self, ErrorPos>
     {
-        let normal_eval = |op: Self, state, env, ast|
+        let normal_analyze = |op: Self, state, env, ast|
         {
             Ok(Self{
                 position: op.position,
                 expression: Expression::Application{
                     op: Box::new(op),
-                    args: Box::new(Self::eval_args(state, env, ast)?)
+                    args: Box::new(Self::analyze_args(state, env, ast)?)
                 }
             })
         };
@@ -1519,15 +1519,15 @@ impl ExpressionPos
                 on_eval(op, state, env, ast)
             } else
             {
-                normal_eval(op, state, env, ast)
+                normal_analyze(op, state, env, ast)
             }
         } else
         {
-            normal_eval(op, state, env, ast)
+            normal_analyze(op, state, env, ast)
         }
     }
 
-    pub fn eval_lambda(
+    pub fn analyze_lambda(
         state: &mut State,
         env: &Rc<Environment>,
         args: AstPos
@@ -1536,12 +1536,12 @@ impl ExpressionPos
         Expression::argument_count_ast("lambda".to_owned(), 2, &args)?;
 
         let params = Box::new(Expression::ast_to_expression(args.car())?);
-        let body = Box::new(Self::eval(state, env, args.cdr().car())?);
+        let body = Box::new(Self::analyze(state, env, args.cdr().car())?);
 
         Ok(Self{position: args.position, expression: Expression::Lambda{body, params}})
     }
 
-    pub fn eval_args(
+    pub fn analyze_args(
         state: &mut State,
         env: &Rc<Environment>,
         args: AstPos
@@ -1553,22 +1553,22 @@ impl ExpressionPos
         }
 
         let out = Expression::List{
-            car: Box::new(Self::eval(state, env, args.car())?),
-            cdr: Box::new(Self::eval_args(state, env, args.cdr())?)
+            car: Box::new(Self::analyze(state, env, args.car())?),
+            cdr: Box::new(Self::analyze_args(state, env, args.cdr())?)
         };
 
         Ok(Self{position: args.position, expression: out})
     }
 
-    pub fn eval_atom(ast: AstPos) -> Result<Self, ErrorPos>
+    pub fn analyze_atom(ast: AstPos) -> Result<Self, ErrorPos>
     {
         Ok(Self{
             position: ast.position,
-            expression: Expression::eval_primitive_ast(ast.as_value()?)
+            expression: Expression::analyze_primitive_ast(ast.as_value()?)
         })
     }
 
-    pub fn eval_sequence(
+    pub fn analyze_sequence(
         state: &mut State,
         env: &Rc<Environment>,
         ast: AstPos
@@ -1579,7 +1579,7 @@ impl ExpressionPos
             return Err(ErrorPos{position: ast.position, error: Error::EmptySequence});
         }
 
-        let car = Self::eval(state, env, ast.car())?;
+        let car = Self::analyze(state, env, ast.car())?;
         let cdr = ast.cdr();
 
         Ok(if cdr.is_null()
@@ -1591,7 +1591,7 @@ impl ExpressionPos
                 position: ast.position,
                 expression: Expression::Sequence{
                     first: Box::new(car),
-                    after: Box::new(Self::eval_sequence(state, env, cdr)?)
+                    after: Box::new(Self::analyze_sequence(state, env, cdr)?)
                 }
             }
         })
@@ -1674,7 +1674,7 @@ impl Expression
                 let primitive = Ast::parse_primitive(&s)
                     .map_err(|error| ErrorPos{position: ast.position, error})?;
 
-                Self::eval_primitive_ast(primitive)
+                Self::analyze_primitive_ast(primitive)
             },
             Ast::EmptyList => Self::EmptyList,
             Ast::List{car, cdr} => Self::List{
@@ -1686,7 +1686,7 @@ impl Expression
         Ok(ExpressionPos{position: ast.position, expression: out})
     }
 
-    pub fn eval_primitive_ast(primitive: PrimitiveType) -> Self
+    pub fn analyze_primitive_ast(primitive: PrimitiveType) -> Self
     {
         match primitive
         {

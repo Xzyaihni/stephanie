@@ -151,7 +151,7 @@ impl WorldChunkTag
         value: &Program
     ) -> i32
     {
-        value.apply(memory).unwrap_or_else(|err|
+        value.eval(memory).unwrap_or_else(|err|
         {
             panic!("lisp error {err}")
         }).1.as_integer().unwrap_or_else(|err|
