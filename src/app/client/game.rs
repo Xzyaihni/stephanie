@@ -295,11 +295,11 @@ impl Game
         }
     }
 
-    fn pop_entity(args: &mut ArgsWrapper, memory: &mut LispMemory) -> Result<Entity, lisp::Error>
+    fn pop_entity(args: &mut ArgsWrapper, memory: &mut impl Memoriable) -> Result<Entity, lisp::Error>
     {
-        let lst = args.pop(memory).as_list(memory)?;
+        let lst = args.pop(memory).as_list()?;
 
-        let tag = lst.car().as_symbol(memory)?;
+        let tag = lst.car().as_symbol()?;
         if tag != "entity"
         {
             let s = format!("(expected tag `entity` got `{tag}`)");
@@ -307,28 +307,28 @@ impl Game
             return Err(lisp::Error::Custom(s));
         }
 
-        let tail = lst.cdr().as_list(memory)?;
+        let tail = lst.cdr().as_list()?;
 
         let local = tail.car().as_bool()?;
-        let id = tail.cdr().as_list(memory)?.car().as_integer()?;
+        let id = tail.cdr().as_list()?.car().as_integer()?;
 
         let entity = Entity::from_raw(local, id as usize);
 
         Ok(entity)
     }
 
-    fn push_entity(env: &Environment, memory: &mut LispMemory, entity: Entity) -> LispValue
+    fn push_entity(env: &Environment, memory: &mut LispMemory, entity: Entity)
     {
         let tag = memory.new_symbol("entity");
         let local = LispValue::new_bool(entity.local());
         let id = LispValue::new_integer(entity.id() as i32);
 
-        memory.cons_list(env, [tag, local, id])
+        memory.cons_list(env, [tag, local, id]);
     }
 
     fn add_simple_setter<F>(&self, primitives: &mut Primitives, name: &str, f: F)
     where
-        F: Fn(&mut ClientEntities, Entity, &mut LispMemory, ArgsWrapper) -> Result<(), lisp::Error> + 'static
+        F: Fn(&mut ClientEntities, Entity, &mut MemoryWrapper, ArgsWrapper) -> Result<(), lisp::Error> + 'static
     {
         let game_state = self.game_state.clone();
 
@@ -343,7 +343,9 @@ impl Game
                 let entity = Self::pop_entity(&mut args, memory)?;
                 f(entities, entity, memory, args)?;
 
-                Ok(LispValue::new_empty_list())
+                memory.push_return(());
+
+                Ok(())
             }));
     }
 
@@ -382,10 +384,15 @@ impl Game
                         .map(|x| x.collided().to_vec()).into_iter().flatten()
                         .next();
 
-                    let entity = collided.map(|collided| Self::push_entity(env, memory, collided))
-                        .unwrap_or_else(LispValue::new_empty_list);
+                    if let Some(collided) = collided
+                    {
+                        Self::push_entity(env, memory, collided)
+                    } else
+                    {
+                        memory.push_return(());
+                    }
 
-                    Ok(entity)
+                    Ok(())
                 }));
         }
 
@@ -406,7 +413,9 @@ impl Game
                         entities_list.push(Self::push_entity(env, memory, entity));
                     });
 
-                    Ok(memory.cons_list(env, entities_list))
+                    memory.cons_list(env, entities_list);
+
+                    Ok(())
                 }));
         }
 
@@ -430,7 +439,9 @@ impl Game
                         game_state.world.debug_chunk(position.into(), visual)
                     );
 
-                    Ok(LispValue::new_empty_list())
+                    memory.push_return(());
+
+                    Ok(())
                 }));
         }
 
@@ -463,14 +474,14 @@ impl Game
 
         self.add_simple_setter(&mut primitives, "set-position", |entities, entity, memory, mut args|
         {
-            let mut list = args.pop(memory).as_list(memory);
+            let mut list = args.pop(memory).as_list();
 
             let mut next_float = ||
             {
                 let current = list.clone()?;
                 let value = current.car().as_float();
 
-                list = current.cdr().as_list(memory);
+                list = current.cdr().as_list();
 
                 value
             };
@@ -491,7 +502,7 @@ impl Game
 
         self.add_simple_setter(&mut primitives, "set-faction", |entities, entity, memory, mut args|
         {
-            let faction = args.pop(memory).as_symbol(memory)?;
+            let faction = args.pop(memory).as_symbol()?;
             let faction: String = faction.to_lowercase().chars().enumerate().map(|(i, c)|
             {
                 if i == 0
@@ -526,7 +537,7 @@ impl Game
                     let entities = game_state.entities();
 
                     let entity = Self::pop_entity(&mut args, memory)?;
-                    let name = args.pop(memory).as_symbol(memory)?.replace('_', " ");
+                    let name = args.pop(memory).as_symbol()?.replace('_', " ");
 
                     let mut inventory = entities.inventory_mut(entity).unwrap();
 
@@ -537,7 +548,9 @@ impl Game
 
                     inventory.push(Item{id});
 
-                    Ok(LispValue::new_empty_list())
+                    memory.push_return(());
+
+                    Ok(())
                 }));
         }
 
@@ -548,7 +561,22 @@ impl Game
                 "player-entity",
                 PrimitiveProcedureInfo::new_simple(0, move |_state, memory, env, _args|
                 {
-                    Ok(Self::push_entity(env, memory, player_entity))
+                    Self::push_entity(env, memory, player_entity);
+
+                    Ok(())
+                }));
+        }
+
+        {
+            let mouse_entity = self.info.borrow().mouse_entity;
+
+            primitives.add(
+                "mouse-entity",
+                PrimitiveProcedureInfo::new_simple(0, move |_state, memory, env, _args|
+                {
+                    Self::push_entity(env, memory, mouse_entity);
+
+                    Ok(())
                 }));
         }
 
@@ -567,7 +595,9 @@ impl Game
 
                     let position = entities.transform(entity).unwrap().position;
 
-                    Ok(memory.cons_list(env, [position.x, position.y, position.z]))
+                    memory.cons_list(env, [position.x, position.y, position.z]);
+
+                    Ok(())
                 }));
         }
 
@@ -583,7 +613,7 @@ impl Game
                     let entities = game_state.entities();
 
                     let entity = Self::pop_entity(&mut args, memory)?;
-                    let component = args.pop(memory).as_symbol(memory)?;
+                    let component = args.pop(memory).as_symbol()?;
 
                     let status = if let Some(info) = entities.component_info(entity, &component)
                     {
@@ -597,7 +627,10 @@ impl Game
                         "err"
                     };
 
-                    Ok(memory.new_symbol(status))
+                    let symbol = memory.as_memory_mut().new_symbol(status);
+                    memory.push_return(symbol);
+
+                    Ok(())
                 }));
         }
 
@@ -616,7 +649,9 @@ impl Game
 
                     eprintln!("entity info: {}", entities.info_ref(entity));
 
-                    Ok(LispValue::new_empty_list())
+                    memory.push_return(());
+
+                    Ok(())
                 }));
         }
 

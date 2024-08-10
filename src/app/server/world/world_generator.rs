@@ -222,7 +222,7 @@ impl ChunkGenerator
             "tile",
             PrimitiveProcedureInfo::new_simple(ArgsCount::Min(1), move |_state, memory, env, mut args|
             {
-                let name = args.pop(memory).as_symbol(memory)?;
+                let name = args.pop(memory).as_symbol()?;
                 let rotation = args.try_pop(memory);
 
                 let mut tile = *names_map.get(&name).unwrap_or_else(||
@@ -234,7 +234,7 @@ impl ChunkGenerator
 
                 if let Some(rotation) = rotation
                 {
-                    let name = rotation.as_symbol(memory)?;
+                    let name = rotation.as_symbol()?;
 
                     match TileRotation::from_str(&name)
                     {

@@ -81,6 +81,8 @@ mod ui_fragment
 
 pub const LOG_PATH: &str = "log.txt";
 
+pub const DEBUG_LISP: bool = false;
+
 fn main()
 {
     let mut shaders = ShadersContainer::new();

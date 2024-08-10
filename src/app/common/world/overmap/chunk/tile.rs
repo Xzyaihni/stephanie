@@ -2,7 +2,7 @@ use serde::{Serialize, Deserialize};
 
 use strum::{FromRepr, EnumString};
 
-use crate::common::lisp::{self, Environment, LispMemory, LispValue, ValueRaw};
+use crate::common::lisp::{self, Environment, LispMemory, ValueRaw};
 
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, FromRepr, EnumString, Serialize, Deserialize)]
@@ -55,12 +55,12 @@ impl Tile
         format!("{}{}", self.id, self.rotation.to_arrow_str())
     }
 
-    pub fn as_lisp_value(&self, env: &Environment, memory: &mut LispMemory) -> LispValue
+    pub fn as_lisp_value(&self, env: &Environment, memory: &mut LispMemory)
     {
-        let id: LispValue = (self.id as i32).into();
-        let rotation: LispValue = (self.rotation as i32).into();
+        memory.push_return(self.id as i32);
+        memory.push_return(self.rotation as i32);
 
-        memory.cons(env, id, rotation)
+        memory.cons(env);
     }
 
     /// # Safety
