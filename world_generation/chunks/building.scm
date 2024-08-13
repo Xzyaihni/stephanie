@@ -40,7 +40,7 @@
     (define (residential-building)
         (define this-chunk (filled-chunk (tile 'air)))
 
-        (define (this-tile point tile) (put-tile this-chunk point tile))
+        (define (this-tile point tle) (put-tile this-chunk point tle))
 
         (define wall-material (tile 'concrete))
 

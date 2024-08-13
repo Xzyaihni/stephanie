@@ -1,8 +1,8 @@
 (define size-x 16)
 (define size-y 16)
 
-(define (filled-chunk tile)
-    (make-vector (* size-x size-y) tile))
+(define (filled-chunk this-tile)
+    (make-vector (* size-x size-y) this-tile))
 
 (define (index-of point)
     (+ (* size-x (point-y point)) (point-x point))) 
@@ -31,11 +31,11 @@
 ; advanced rng, why do i even have this?
 (define random-side side-up)
 
-(define (put-tile chunk pos tile)
+(define (put-tile chunk pos this-tile)
     (vector-set!
         chunk
         (index-of pos)
-        tile)
+        this-tile)
     chunk)
 
 (define (get-tile chunk pos)
@@ -58,31 +58,31 @@
                 f
                 (make-area pos (make-point (- (point-x size) 1) (point-y size)))))))
 
-(define (vertical-line-length chunk pos len tile)
+(define (vertical-line-length chunk pos len this-tile)
     (for-each-tile
-        (lambda (pos) (put-tile chunk pos tile))
+        (lambda (pos) (put-tile chunk pos this-tile))
         (make-area
             pos
             (make-point 1 len)))
     chunk)
 
-(define (vertical-line chunk x tile)
-    (vertical-line-length chunk (make-point x 0) size-y tile))
+(define (vertical-line chunk x this-tile)
+    (vertical-line-length chunk (make-point x 0) size-y this-tile))
 
-(define (horizontal-line-length chunk pos len tile)
+(define (horizontal-line-length chunk pos len this-tile)
     (for-each-tile
-        (lambda (pos) (put-tile chunk pos tile))
+        (lambda (pos) (put-tile chunk pos this-tile))
         (make-area
             pos
             (make-point len 1)))
     chunk)
 
-(define (horizontal-line chunk y tile)
-    (horizontal-line-length chunk (make-point 0 y) size-x tile))
+(define (horizontal-line chunk y this-tile)
+    (horizontal-line-length chunk (make-point 0 y) size-x this-tile))
 
-(define (fill-area chunk area tile)
+(define (fill-area chunk area this-tile)
     (for-each-tile
-        (lambda (pos) (put-tile chunk pos tile))
+        (lambda (pos) (put-tile chunk pos this-tile))
         area)
     chunk)
 
@@ -127,8 +127,8 @@
         (point-x size)
         down))
 
-(define (rectangle-outline chunk area tile)
-    (rectangle-outline-different chunk area tile tile tile tile))
+(define (rectangle-outline chunk area this-tile)
+    (rectangle-outline-different chunk area this-tile this-tile this-tile this-tile))
 
 (define (rectangle-fence chunk area wall corner)
     (rectangle-outline-different

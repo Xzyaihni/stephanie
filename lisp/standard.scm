@@ -64,7 +64,7 @@
 
 (define (abs x)
     (if (< x 0.0)
-        (* x -1)
+        (- 0 x)
         x))
 
 (define (square x) (* x x))

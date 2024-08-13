@@ -15,7 +15,7 @@ use serde::{Serialize, Deserialize};
 use super::{PossibleStates, ParseError};
 
 use crate::common::{
-    lisp::{Lisp, Program, Primitives, LispMemory, Environment},
+    lisp::{Program, Primitives, LispMemory},
     world::{
         CHUNK_SIZE,
         GlobalPos,
@@ -154,7 +154,7 @@ impl WorldChunkTag
         value.eval(memory).unwrap_or_else(|err|
         {
             panic!("lisp error {err}")
-        }).1.as_integer().unwrap_or_else(|err|
+        }).as_integer().unwrap_or_else(|err|
         {
             panic!("{err}")
         })
@@ -170,16 +170,16 @@ impl WorldChunkTag
             content: Self::generate_content(memory, &tag.content)
         }
     }
-
+    
     pub fn define(
         &self,
         mappings: &NameMappings,
-        environment: &Environment
+        memory: &mut LispMemory
     )
     {
         let name = mappings.text.get_name(self.name);
 
-        environment.define(name, self.content.into());
+        memory.define(name, self.content.into());
     }
 }
 
@@ -313,12 +313,11 @@ impl ChunkRuleTag
 {
     fn from_raw(
         text_mapping: &mut TextMapping,
-        env: Rc<Environment>,
         primitives: Rc<Primitives>,
         raw_tag: ChunkRuleRawTag
     ) -> Self
     {
-        let content = Program::parse(env, primitives, &raw_tag.content)
+        let content = Program::parse(primitives, &raw_tag.content)
             .unwrap_or_else(|err|
             {
                 panic!("error evaluating program: {err}")
@@ -348,11 +347,8 @@ impl ChunkRule
             name: rule.name,
             tags: rule.tags.into_iter().map(|tag|
             {
-                let environment = Rc::new(Environment::new());
-
                 ChunkRuleTag::from_raw(
                     &mut name_mappings.text,
-                    environment,
                     Self::default_primitives(),
                     tag
                 )
@@ -829,7 +825,7 @@ impl ChunkRules
 
         WorldChunk::new(id, rule.tags.iter().map(|tag|
         {
-            let mut memory = Lisp::empty_memory();
+            let mut memory = LispMemory::new(64, 64);
 
             WorldChunkTag::generate(&mut memory, tag)
         }).collect())

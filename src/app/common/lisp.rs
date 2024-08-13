@@ -1,7 +1,6 @@
 use std::{
     mem,
     rc::Rc,
-    cell::RefCell,
     ops::Range,
     fmt::{self, Display, Debug},
     ops::{Deref, DerefMut},
@@ -17,6 +16,7 @@ pub use program::{
     PrimitiveProcedureInfo,
     Primitives,
     Lambdas,
+    StoredLambda,
     WithPosition,
     ArgsCount,
     ArgsWrapper
@@ -166,12 +166,12 @@ impl ValueTag
             ValueTag::Integer
                 | ValueTag::Float
                 | ValueTag::Char
-                | ValueTag::Procedure
                 | ValueTag::PrimitiveProcedure
                 | ValueTag::Symbol
                 | ValueTag::VectorMoved
                 | ValueTag::Special => false,
             ValueTag::String
+                | ValueTag::Procedure
                 | ValueTag::List
                 | ValueTag::Vector => true
         }
@@ -409,22 +409,32 @@ impl LispValue
         }
     }
 
-    pub fn as_symbol(self, memory: &LispMemory) -> Result<String, Error>
+    pub fn as_symbol_id(self) -> Result<u32, Error>
     {
         match self.tag
         {
-            ValueTag::Symbol => Ok(memory.get_symbol(unsafe{ self.value.symbol })),
+            ValueTag::Symbol => Ok(unsafe{ self.value.symbol }),
             x => Err(Error::WrongType{expected: ValueTag::Symbol, got: x})
+        }
+    }
+
+    pub fn as_symbol(self, memory: &LispMemory) -> Result<String, Error>
+    {
+        self.as_symbol_id().map(|id| memory.get_symbol(id))
+    }
+
+    pub fn as_list_id(self) -> Result<u32, Error>
+    {
+        match self.tag
+        {
+            ValueTag::List => Ok(unsafe{ self.value.list }),
+            x => Err(Error::WrongType{expected: ValueTag::List, got: x})
         }
     }
 
     pub fn as_list(self, memory: &LispMemory) -> Result<LispList, Error>
     {
-        match self.tag
-        {
-            ValueTag::List => Ok(memory.get_list(unsafe{ self.value.list })),
-            x => Err(Error::WrongType{expected: ValueTag::List, got: x})
-        }
+        self.as_list_id().map(|id| memory.get_list(id))
     }
 
     pub fn as_vector_ref(self, memory: &LispMemory) -> Result<LispVectorRef, Error>
@@ -512,6 +522,7 @@ impl LispValue
         )
     }
 
+    #[allow(dead_code)]
     fn to_string_block(&self, memory: &MemoryBlock) -> String
     {
         self.maybe_to_string(None, Some(memory))
@@ -608,6 +619,7 @@ pub enum Error
     NumberParse(String),
     SpecialParse(String),
     UndefinedVariable(String),
+    AttemptedShadowing(String),
     ApplyNonApplication,
     WrongArgumentsCount{proc: String, this_invoked: bool, expected: String, got: usize},
     IndexOutOfRange(i32),
@@ -616,6 +628,7 @@ pub enum Error
     VectorWrongType{expected: ValueTag, got: ValueTag},
     OperationError{a: String, b: String},
     ExpectedNumerical{a: ValueTag, b: ValueTag},
+    ExpectedParam,
     ExpectedArg,
     ExpectedOp,
     ExpectedClose,
@@ -635,6 +648,7 @@ impl Display for Error
             Self::NumberParse(s) => format!("cant parse `{s}` as number"),
             Self::SpecialParse(s) => format!("cant parse `{s}` as a special"),
             Self::UndefinedVariable(s) => format!("variable `{s}` is undefined"),
+            Self::AttemptedShadowing(s) => format!("attempted to shadow `{s}` which is a primitive"),
             Self::ApplyNonApplication => "apply was called on a non application".to_owned(),
             Self::ExpectedNumerical{a, b} => format!("primitive operation expected 2 numbers, got {a:?} and {b:?}"),
             Self::WrongArgumentsCount{proc, this_invoked: _, expected, got} =>
@@ -646,6 +660,7 @@ impl Display for Error
                 format!("vector expected `{expected:?}` got `{got:?}`"),
             Self::OperationError{a, b} =>
                 format!("numeric error with {a} and {b} operands"),
+            Self::ExpectedParam => "expected a parameter".to_owned(),
             Self::ExpectedArg => "expected an argument".to_owned(),
             Self::ExpectedOp => "expected an operator".to_owned(),
             Self::ExpectedClose => "expected a closing parenthesis".to_owned(),
@@ -657,7 +672,7 @@ impl Display for Error
     }
 }
 
-fn clone_with_capacity<T: Clone>(v: &Vec<T>) -> Vec<T>
+pub fn clone_with_capacity<T: Clone>(v: &Vec<T>) -> Vec<T>
 {
     let mut new_v = Vec::with_capacity(v.capacity());
 
@@ -666,8 +681,38 @@ fn clone_with_capacity<T: Clone>(v: &Vec<T>) -> Vec<T>
     new_v
 }
 
+struct MemoryBlockWith<'a>
+{
+    memory: Option<&'a LispMemory>,
+    block: &'a MemoryBlock
+}
+
+impl<'a> Debug for MemoryBlockWith<'a>
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
+    {
+        // all fields r 32 bits long and u32 has no invalid states
+        let general = self.block.general.iter().map(|raw| unsafe{ raw.unsigned }).collect::<Vec<u32>>();
+
+        let pv = |v: &LispValue|
+        {
+            v.maybe_to_string(self.memory, Some(self.block))
+        };
+
+        let cars = self.block.cars.iter().map(pv).collect::<Vec<_>>();
+        let cdrs = self.block.cdrs.iter().map(pv).collect::<Vec<_>>();
+
+        f.debug_struct("MemoryBlock")
+            .field("cars", &cars)
+            .field("cdrs", &cdrs)
+            .field("general", &general)
+            .finish()
+    }
+}
+
 struct MemoryBlock
 {
+    lambdas: Lambdas,
     general: Vec<ValueRaw>,
     cars: Vec<LispValue>,
     cdrs: Vec<LispValue>
@@ -678,6 +723,7 @@ impl Clone for MemoryBlock
     fn clone(&self) -> Self
     {
         Self{
+            lambdas: self.lambdas.clone(),
             general: clone_with_capacity(&self.general),
             cars: clone_with_capacity(&self.cars),
             cdrs: clone_with_capacity(&self.cdrs)
@@ -689,22 +735,7 @@ impl Debug for MemoryBlock
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
     {
-        // all fields r 32 bits long and u32 has no invalid states
-        let general = self.general.iter().map(|raw| unsafe{ raw.unsigned }).collect::<Vec<u32>>();
-
-        let pv = |v: &LispValue|
-        {
-            v.to_string_block(self)
-        };
-
-        let cars = self.cars.iter().map(pv).collect::<Vec<_>>();
-        let cdrs = self.cdrs.iter().map(pv).collect::<Vec<_>>();
-
-        f.debug_struct("MemoryBlock")
-            .field("cars", &cars)
-            .field("cdrs", &cdrs)
-            .field("general", &general)
-            .finish()
+        MemoryBlockWith{memory: None, block: self}.fmt(f)
     }
 }
 
@@ -716,12 +747,15 @@ impl MemoryBlock
 
         let general = Vec::with_capacity(half_memory);
 
-        let half_half = half_memory / 2;
+        let third_half = half_memory / 3;
 
-        let cars = Vec::with_capacity(half_half);
-        let cdrs = Vec::with_capacity(half_half);
+        let cars = Vec::with_capacity(third_half);
+        let cdrs = Vec::with_capacity(third_half);
 
-        Self{general, cars, cdrs}
+        let rest = half_memory - third_half * 2;
+        let lambdas = Lambdas::new(rest);
+
+        Self{lambdas, general, cars, cdrs}
     }
 
     fn vector_raw_info(&self, id: u32) -> (ValueTag, usize)
@@ -858,21 +892,65 @@ impl MemoryBlock
 
     pub fn clear(&mut self)
     {
+        self.lambdas.clear();
         self.general.clear();
         self.cars.clear();
         self.cdrs.clear();
     }
 }
 
-#[derive(Clone, Debug)]
 pub struct LispMemory
 {
-    stack_size: usize,
+    env: LispValue,
     symbols: Vec<String>,
-    lambdas: Lambdas,
+    remapped_lambdas: HashMap<u32, u32>,
     memory: MemoryBlock,
     swap_memory: MemoryBlock,
-    returns: Vec<LispValue>
+    returns: Vec<LispValue>,
+    ops: Vec<LispValue>,
+    envs: Vec<LispValue>
+}
+
+impl Debug for LispMemory
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
+    {
+        let pv = |v: &LispValue|
+        {
+            v.to_string(self)
+        };
+
+        let returns = self.returns.iter().map(pv).collect::<Vec<_>>();
+        let ops = self.ops.iter().map(pv).collect::<Vec<_>>();
+        let envs = self.envs.iter().map(pv).collect::<Vec<_>>();
+
+        let block = MemoryBlockWith{memory: Some(self), block: &self.memory};
+        f.debug_struct("MemoryBlock")
+            .field("env", &self.env.to_string(self))
+            .field("symbols", &self.symbols)
+            .field("memory", &block)
+            .field("returns", &returns)
+            .field("ops", &ops)
+            .field("envs", &envs)
+            .finish()
+    }
+}
+
+impl Clone for LispMemory
+{
+    fn clone(&self) -> Self
+    {
+        Self{
+            env: self.env,
+            symbols: self.symbols.clone(),
+            remapped_lambdas: self.remapped_lambdas.clone(),
+            memory: self.memory.clone(),
+            swap_memory: self.swap_memory.clone(),
+            returns: clone_with_capacity(&self.returns),
+            ops: clone_with_capacity(&self.ops),
+            envs: clone_with_capacity(&self.envs)
+        }
+    }
 }
 
 impl Default for LispMemory
@@ -891,24 +969,45 @@ impl LispMemory
         let memory = MemoryBlock::new(memory_size);
         let swap_memory = MemoryBlock::new(memory_size);
 
-        Self{
-            stack_size,
+        let mut this = Self{
+            env: LispValue::new_empty_list(),
             symbols,
-            lambdas: Lambdas::new(),
+            remapped_lambdas: HashMap::new(),
             memory,
             swap_memory,
-            returns: Vec::with_capacity(stack_size)
-        }
+            returns: Vec::with_capacity(stack_size),
+            ops: Vec::with_capacity(stack_size),
+            envs: Vec::with_capacity(stack_size)
+        };
+
+        this.env = this.create_env("global-env", ());
+
+        this
+    }
+
+    pub fn create_env(&mut self, name: &str, parent: impl Into<LispValue>) -> LispValue
+    {
+        let symbol = self.new_symbol(name);
+        self.push_return(symbol);
+
+        self.push_return(());
+        self.push_return(parent.into());
+
+        self.cons();
+
+        self.cons();
+
+        self.pop_return()
     }
 
     pub fn lambdas(&self) -> &Lambdas
     {
-        &self.lambdas
+        &self.memory.lambdas
     }
 
     pub fn lambdas_mut(&mut self) -> &mut Lambdas
     {
-        &mut self.lambdas
+        &mut self.memory.lambdas
     }
 
     pub fn no_memory() -> Self
@@ -919,10 +1018,84 @@ impl LispMemory
     pub fn clear(&mut self)
     {
         self.memory.clear();
-        self.lambdas.clear();
+    }
+
+    pub fn define(&mut self, key: impl Into<String>, value: LispValue)
+    {
+        let symbol = self.new_symbol(key.into());
+
+        let mappings_id = |this: &Self|
+        {
+            let pair = this.env.as_list(this).expect("env must be a list").cdr;
+            pair.as_list_id().expect("env cdr must be list")
+        };
+
+        self.push_return(symbol);
+        self.push_return(value);
+        self.cons();
+
+        let id = mappings_id(self);
+
+        let tail = self.get_car(id);
+
+        self.push_return(tail);
+
+        self.cons();
+
+        let new_env = self.pop_return();
+
+        self.set_car(mappings_id(self), new_env);
+    }
+
+    pub fn lookup(&self, name: &str) -> Option<LispValue>
+    {
+        self.lookup_in_env(self.env, name)
+    }
+
+    fn lookup_in_env(&self, env: LispValue, name: &str) -> Option<LispValue>
+    {
+        if env.is_null()
+        {
+            return None;
+        }
+
+        let pair = env.as_list(self).expect("env must be a list").cdr
+            .as_list(self).expect("env cdr must be a list");
+
+        let parent = pair.cdr;
+        let mut maybe_mappings = pair.car;
+
+        let value = loop
+        {
+            if maybe_mappings.is_null()
+            {
+                return self.lookup_in_env(parent, name);
+            }
+
+            let mappings = maybe_mappings.as_list(self).expect("env must be a list");
+
+            if let Some(x) = self.lookup_pair(*mappings.car(), name)
+            {
+                break x;
+            }
+
+            maybe_mappings = *mappings.cdr();
+        };
+
+        Some(value)
+    }
+
+    fn lookup_pair(&self, pair: LispValue, name: &str) -> Option<LispValue>
+    {
+        let pair = pair.as_list(self).expect("must be a list");
+
+        let symbol_id = pair.car.as_symbol_id().expect("must be symbol");
+
+        (self.symbols[symbol_id as usize] == name).then_some(pair.cdr)
     }
 
     fn transfer_to_swap_value(
+        remapped_lambdas: &mut HashMap<u32, u32>,
         memory: &mut MemoryBlock,
         swap_memory: &mut MemoryBlock,
         value: LispValue
@@ -930,6 +1103,22 @@ impl LispMemory
     {
         match value.tag
         {
+            ValueTag::Procedure =>
+            {
+                let id = unsafe{ value.value.procedure };
+
+                if let Some(new_id) = remapped_lambdas.get(&id)
+                {
+                    return LispValue::new_procedure(*new_id);
+                }
+
+                let lambda = memory.lambdas.get(id);
+
+                let new_id = swap_memory.lambdas.add_shared(lambda.clone());
+                remapped_lambdas.insert(id, new_id);
+
+                LispValue::new_procedure(new_id)
+            },
             ValueTag::List =>
             {
                 let id = unsafe{ value.value.list };
@@ -985,111 +1174,184 @@ impl LispMemory
         }
     }
 
-    fn transfer_env(&mut self, env: &Environment)
+    fn transfer_stacks(&mut self)
     {
-        if let Environment::Child(parent, _) = env
+        macro_rules! transfer_stack
         {
-            self.transfer_env(parent);
-        }
-
-        env.mappings().0.borrow_mut().iter_mut().map(|(_key, value)| value).for_each(|value|
-        {
-            *value = Self::transfer_to_swap_value(&mut self.memory, &mut self.swap_memory, *value);
-        });
-    }
-
-    fn transfer_returns(&mut self)
-    {
-        self.returns.iter_mut().for_each(|value|
-        {
-            *value = Self::transfer_to_swap_value(&mut self.memory, &mut self.swap_memory, *value);
-        });
-    }
-
-    pub fn gc(&mut self, env: &Environment)
-    {
-        self.transfer_env(env);
-        self.transfer_returns();
-
-        macro_rules! transfer_pair
-        {
-            ($part:ident, $scan:expr) =>
+            ($name:ident) =>
             {
-                while $scan < self.swap_memory.$part.len()
+                self.$name.iter_mut().for_each(|value|
                 {
-                    let value = self.swap_memory.$part[$scan];
-                    self.swap_memory.$part[$scan] = Self::transfer_to_swap_value(
+                    *value = Self::transfer_to_swap_value(
+                        &mut self.remapped_lambdas,
                         &mut self.memory,
                         &mut self.swap_memory,
-                        value
+                        *value
                     );
-
-                    $scan += 1;
-                }
+                });
             }
         }
 
-        let mut cars_scan = 0;
-        let mut cdrs_scan = 0;
+        transfer_stack!(returns);
+        transfer_stack!(ops);
+        transfer_stack!(envs);
+    }
 
-        let mut general_tag = ValueTag::Integer;
-        let mut general_scan = 0;
-        let mut general_remaining = 0;
+    pub fn gc(&mut self)
+    {
+        self.env = Self::transfer_to_swap_value(
+            &mut self.remapped_lambdas,
+            &mut self.memory,
+            &mut self.swap_memory,
+            self.env
+        );
 
-        while cars_scan < self.swap_memory.cars.len()
-            || cdrs_scan < self.swap_memory.cdrs.len()
-            || general_scan < self.swap_memory.general.len()
+        self.transfer_stacks();
+
+        let transfer_swap = |
+            this: &mut Self,
+            lambdas_scan: &mut usize,
+            general_scan: &mut usize,
+            cars_scan: &mut usize,
+            cdrs_scan: &mut usize
+        |
         {
-            transfer_pair!(cars, cars_scan);
-            transfer_pair!(cdrs, cdrs_scan);
-
-            while general_scan < self.swap_memory.general.len()
+            macro_rules! transfer_memory
             {
-                if general_remaining == 0
+                ($part:ident, $scan:expr) =>
                 {
-                    (general_tag, general_remaining) = self.swap_memory
-                        .vector_raw_info(general_scan as u32);
-
-                    general_scan += 2;
-                }
-
-                if general_remaining > 0
-                {
-                    if general_tag.is_boxed()
+                    while *$scan < this.swap_memory.$part.len()
                     {
-                        let value = self.swap_memory.general[general_scan];
-                        self.swap_memory.general[general_scan] = Self::transfer_to_swap_value(
-                            &mut self.memory,
-                            &mut self.swap_memory,
-                            LispValue{tag: general_tag, value}
-                        ).value;
+                        let value = this.swap_memory.$part[*$scan];
+                        this.swap_memory.$part[*$scan] = Self::transfer_to_swap_value(
+                            &mut this.remapped_lambdas,
+                            &mut this.memory,
+                            &mut this.swap_memory,
+                            value
+                        );
 
-                        general_remaining -= 1;
-                        general_scan += 1;
-                    } else
-                    {
-                        general_scan += general_remaining;
-                        general_remaining = 0;
+                        *$scan += 1;
                     }
                 }
             }
-        }
 
-        debug_assert!(general_remaining == 0);
+            let mut general_tag = ValueTag::Integer;
+            let mut general_remaining = 0;
+
+            while *cars_scan < this.swap_memory.cars.len()
+                || *cdrs_scan < this.swap_memory.cdrs.len()
+                || *general_scan < this.swap_memory.general.len()
+                || *lambdas_scan < this.swap_memory.lambdas.len()
+            {
+                transfer_memory!(cars, cars_scan);
+                transfer_memory!(cdrs, cdrs_scan);
+
+                while *general_scan < this.swap_memory.general.len()
+                {
+                    if general_remaining == 0
+                    {
+                        (general_tag, general_remaining) = this.swap_memory
+                            .vector_raw_info(*general_scan as u32);
+
+                        *general_scan += 2;
+                    }
+
+                    if general_remaining > 0
+                    {
+                        if general_tag.is_boxed()
+                        {
+                            let value = this.swap_memory.general[*general_scan];
+                            this.swap_memory.general[*general_scan] = Self::transfer_to_swap_value(
+                                &mut this.remapped_lambdas,
+                                &mut this.memory,
+                                &mut this.swap_memory,
+                                LispValue{tag: general_tag, value}
+                            ).value;
+
+                            general_remaining -= 1;
+                            *general_scan += 1;
+                        } else
+                        {
+                            *general_scan += general_remaining;
+                            general_remaining = 0;
+                        }
+                    }
+                }
+
+                while *lambdas_scan < this.swap_memory.lambdas.len()
+                {
+                    let new_value = {
+                        let value = *this.swap_memory.lambdas[*lambdas_scan].parent_env.borrow();
+
+                        Self::transfer_to_swap_value(
+                            &mut this.remapped_lambdas,
+                            &mut this.memory,
+                            &mut this.swap_memory,
+                            value
+                        )
+                    };
+
+                    *this.swap_memory.lambdas[*lambdas_scan].parent_env.borrow_mut() = new_value;
+
+                    *lambdas_scan += 1;
+                }
+            }
+
+            debug_assert!(general_remaining == 0);
+        };
+
+        let mut lambdas_scan = 0;
+        let mut general_scan = 0;
+        let mut cars_scan = 0;
+        let mut cdrs_scan = 0;
+
+        transfer_swap(
+            self,
+            &mut lambdas_scan,
+            &mut general_scan,
+            &mut cars_scan,
+            &mut cdrs_scan
+        );
 
         mem::swap(&mut self.memory, &mut self.swap_memory);
 
         self.swap_memory.clear();
+        self.remapped_lambdas.clear();
     }
 
-    pub fn push_return(&mut self, value: impl Into<LispValue>)
+    fn stack_push(stack: &mut Vec<LispValue>, value: LispValue)
     {
-        if self.returns.len() >= self.stack_size
+        if stack.len() == stack.capacity()
         {
             panic!("stack overflow!!!! ahhhh!!");
         }
 
-        self.returns.push(value.into());
+        stack.push(value.into());
+    }
+
+    pub fn save_env(&mut self)
+    {
+        Self::stack_push(&mut self.envs, self.env)
+    }
+
+    pub fn restore_env(&mut self)
+    {
+        self.env = self.envs.pop().expect("cant pop from empty envs stack");
+    }
+
+    pub fn push_op(&mut self, op: LispValue)
+    {
+        Self::stack_push(&mut self.ops, op)
+    }
+
+    pub fn pop_op(&mut self) -> LispValue
+    {
+        self.ops.pop().expect("cant pop from empty ops stack")
+    }
+
+    pub fn push_return(&mut self, value: impl Into<LispValue>)
+    {
+        Self::stack_push(&mut self.returns, value.into())
     }
 
     pub fn pop_return(&mut self) -> LispValue
@@ -1100,6 +1362,15 @@ impl LispMemory
     pub fn try_pop_return(&mut self) -> Option<LispValue>
     {
         self.returns.pop()
+    }
+
+    pub fn pop_return_prelast(&mut self) -> LispValue
+    {
+        let value = self.pop_return();
+        let returned = self.pop_return();
+        self.push_return(value);
+
+        returned
     }
 
     pub fn returns_len(&self) -> usize
@@ -1146,7 +1417,17 @@ impl LispMemory
     #[allow(dead_code)]
     pub fn get_cdr(&self, id: u32) -> LispValue
     {
-        self.memory.get_car(id)
+        self.memory.get_cdr(id)
+    }
+
+    pub fn set_car(&mut self, id: u32, value: LispValue)
+    {
+        self.memory.set_car(id, value)
+    }
+
+    pub fn set_cdr(&mut self, id: u32, value: LispValue)
+    {
+        self.memory.set_cdr(id, value)
     }
 
     fn out_of_memory(&mut self) -> !
@@ -1155,11 +1436,11 @@ impl LispMemory
         panic!("out of memory, memory dump saved to log");
     }
 
-    fn need_list_memory(&mut self, env: &Environment, amount: usize)
+    fn need_list_memory(&mut self, amount: usize)
     {
         if self.memory.list_remaining() < amount
         {
-            self.gc(env);
+            self.gc();
 
             if self.memory.list_remaining() < amount
             {
@@ -1168,11 +1449,11 @@ impl LispMemory
         }
     }
 
-    fn need_memory(&mut self, env: &Environment, amount: usize)
+    fn need_memory(&mut self, amount: usize)
     {
         if self.memory.remaining() < amount
         {
-            self.gc(env);
+            self.gc();
 
             if self.memory.remaining() < amount
             {
@@ -1181,12 +1462,9 @@ impl LispMemory
         }
     }
 
-    pub fn cons(
-        &mut self,
-        env: &Environment
-    )
+    pub fn cons(&mut self)
     {
-        self.cons_inner(env, |this|
+        self.cons_inner(|this|
         {
             let cdr = this.pop_return();
             let car = this.pop_return();
@@ -1195,12 +1473,9 @@ impl LispMemory
         })
     }
 
-    pub fn rcons(
-        &mut self,
-        env: &Environment
-    )
+    pub fn rcons(&mut self)
     {
-        self.cons_inner(env, |this|
+        self.cons_inner(|this|
         {
             let car = this.pop_return();
             let cdr = this.pop_return();
@@ -1211,11 +1486,10 @@ impl LispMemory
 
     fn cons_inner(
         &mut self,
-        env: &Environment,
         f: impl FnOnce(&mut Self) -> (LispValue, LispValue)
     )
     {
-        self.need_list_memory(env, 1);
+        self.need_list_memory(1);
 
         let (car, cdr) = f(self);
 
@@ -1226,7 +1500,6 @@ impl LispMemory
 
     pub fn cons_list<I, V>(
         &mut self,
-        env: &Environment,
         values: I
     )
     where
@@ -1241,7 +1514,7 @@ impl LispMemory
 
         self.push_return(());
 
-        (0..len).for_each(|_| self.cons(env));
+        (0..len).for_each(|_| self.cons());
     }
 
     pub fn new_symbol(
@@ -1264,14 +1537,13 @@ impl LispMemory
 
     pub fn allocate_vector(
         &mut self,
-        env: &Environment,
         vec: LispVectorInner<&[ValueRaw]>
     )
     {
         let len = vec.values.len();
 
         // +2 for the length and for the type tag
-        self.need_memory(env, len + 2);
+        self.need_memory(len + 2);
 
         let id = self.memory.allocate_iter(vec.tag, vec.values.iter());
 
@@ -1280,7 +1552,6 @@ impl LispMemory
 
     pub fn allocate_expression(
         &mut self,
-        env: &Environment,
         expression: &Expression
     )
     {
@@ -1289,14 +1560,15 @@ impl LispMemory
             Expression::Float(x) => LispValue::new_float(*x),
             Expression::Integer(x) => LispValue::new_integer(*x),
             Expression::Bool(x) => LispValue::new_bool(*x),
+            Expression::PrimitiveProcedure(id) => LispValue::new_primitive_procedure(*id),
             Expression::EmptyList => LispValue::new_empty_list(),
             Expression::Value(x) => self.new_symbol(x),
             Expression::List{car, cdr} =>
             {
-                self.allocate_expression(env, &car.expression);
-                self.allocate_expression(env, &cdr.expression);
+                self.allocate_expression(&car.expression);
+                self.allocate_expression(&cdr.expression);
 
-                self.cons(env);
+                self.cons();
 
                 return;
             },
@@ -1306,90 +1578,6 @@ impl LispMemory
         };
 
         self.push_return(value);
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct Mappings(pub RefCell<HashMap<String, LispValue>>);
-
-impl Mappings
-{
-    pub fn new() -> Self
-    {
-        Self(RefCell::new(HashMap::new()))
-    }
-
-    pub fn define(&self, key: impl Into<String>, value: LispValue)
-    {
-        self.0.borrow_mut().insert(key.into(), value);
-    }
-
-    pub fn try_lookup(&self, key: &str) -> Option<LispValue>
-    {
-        self.0.borrow().get(key).copied()
-    }
-}
-
-unsafe impl Send for Mappings {}
-
-#[derive(Debug, Clone)]
-pub enum Environment
-{
-    TopLevel(Mappings),
-    Child(Rc<Environment>, Mappings)
-}
-
-impl Environment
-{
-    pub fn new() -> Self
-    {
-        Self::TopLevel(Mappings::new())
-    }
-
-    pub fn top_level(mappings: Mappings) -> Self
-    {
-        Self::TopLevel(mappings)
-    }
-
-    pub fn child(parent: Rc<Environment>) -> Self
-    {
-        Self::Child(parent, Mappings::new())
-    }
-
-    pub fn mappings(&self) -> &Mappings
-    {
-        match self
-        {
-            Self::TopLevel(x) => x,
-            Self::Child(_, x) => x
-        }
-    }
-
-    pub fn define(&self, key: impl Into<String>, value: LispValue)
-    {
-        self.mappings().define(key, value);
-    }
-
-    pub fn try_lookup(&self, key: &str) -> Option<LispValue>
-    {
-        let this_lookup = self.mappings().try_lookup(key);
-
-        match self
-        {
-            Self::TopLevel(_) => this_lookup,
-            Self::Child(parent, _) => 
-            {
-                this_lookup.or_else(||
-                {
-                    parent.try_lookup(key)
-                })
-            }
-        }
-    }
-
-    pub fn lookup(&self, key: &str) -> Result<LispValue, Error>
-    {
-        self.try_lookup(key).ok_or_else(|| Error::UndefinedVariable(key.to_owned()))
     }
 }
 
@@ -1468,7 +1656,6 @@ impl<'a> OutputWrapper<'a>
 
 pub struct LispConfig
 {
-    pub environment: Option<Rc<Environment>>,
     pub primitives: Rc<Primitives>
 }
 
@@ -1490,13 +1677,6 @@ impl Lisp
         })
     }
 
-    pub fn new_env(code: &str) -> Result<Rc<Environment>, ErrorPos>
-    {
-        let mut lisp = Lisp::new(code)?;
-
-        Ok(lisp.run_environment()?)
-    }
-
     pub fn empty_memory() -> LispMemory
     {
         LispMemory::no_memory()
@@ -1510,15 +1690,6 @@ impl Lisp
     pub fn run(&mut self) -> Result<OutputWrapper, ErrorPos>
     {
         self.lisp.run_with_memory(&mut self.memory)
-    }
-
-    pub fn run_environment(&mut self) -> Result<Rc<Environment>, ErrorPos>
-    {
-        let result = self.lisp.run_environment(&mut self.memory);
-
-        debug_assert!(self.memory.returns_len() == 0);
-
-        result
     }
 
     pub fn get_symbol(&self, value: LispValue) -> Result<String, Error>
@@ -1567,13 +1738,7 @@ impl LispRef
     /// if an env has some invalid data it will cause ub
     pub unsafe fn new_with_config(config: LispConfig, code: &str) -> Result<Self, ErrorPos>
     {
-        let environment = config.environment.unwrap_or_else(||
-        {
-            Rc::new(Environment::new())
-        });
-
         let program = Program::parse(
-            environment,
             config.primitives,
             code
         )?;
@@ -1584,7 +1749,6 @@ impl LispRef
     pub fn new(code: &str) -> Result<Self, ErrorPos>
     {
         let config = LispConfig{
-            environment: None,
             primitives: Rc::new(Primitives::new())
         };
 
@@ -1596,37 +1760,9 @@ impl LispRef
         memory: &'a mut LispMemory
     ) -> Result<OutputWrapper<'a>, ErrorPos>
     {
-        self.run_with_memory_environment(memory).map(|(_env, value)| value)
-    }
+        let value = self.program.eval(memory)?;
 
-    pub fn run_env(
-        &mut self,
-        memory: &mut LispMemory
-    ) -> Result<Rc<Environment>, ErrorPos>
-    {
-        let env = self.run_environment(memory)?;
-
-        Ok(env)
-    }
-
-    pub fn run_environment(
-        &mut self,
-        memory: &mut LispMemory
-    ) -> Result<Rc<Environment>, ErrorPos>
-    {
-        self.run_with_memory_environment(memory).map(|(env, _value)| env)
-    }
-
-    pub fn run_with_memory_environment<'a>(
-        &mut self,
-        memory: &'a mut LispMemory
-    ) -> Result<(Rc<Environment>, OutputWrapper<'a>), ErrorPos>
-    {
-        let (env, value) = self.program.eval(memory)?;
-
-        let value = OutputWrapper{memory, value};
-
-        Ok((env, value))
+        Ok(OutputWrapper{memory, value})
     }
 }
 
@@ -1730,14 +1866,14 @@ mod tests
     #[test]
     fn define_many()
     {
-        let code = "
-            (define v (make-vector 2 0))
-            (define (thingy x)
-                (vector-set! v 0 x)
-                x)
+        let code = " ; 1
+            (define v (make-vector 2 0)) ; 2
+            (define (thingy x) ; 3
+                (vector-set! v 0 x) ; 4
+                x) ; 5
 
-            (define x (thingy 4))
-            (+ x (vector-ref v 0))
+            (define x (thingy 4)) ; 7
+            (+ x (vector-ref v 0)) ; 8
         ";
 
         let mut lisp = Lisp::new(code).unwrap();
@@ -1840,8 +1976,8 @@ mod tests
             (car (cdr old-list))
         ";
 
-        let memory_size = 24;
-        let mut memory = LispMemory::new(5, memory_size);
+        let memory_size = 92;
+        let mut memory = LispMemory::new(10, memory_size);
 
         let mut lisp = LispRef::new(code).unwrap();
 
@@ -1878,12 +2014,19 @@ mod tests
 
             (define b (car (cdr old-list)))
 
+            (define (nothing)
+                (+ (silly 7) (silly 5) (silly 6) (silly 11) (silly 4)))
+
+            (nothing)
+            (nothing)
+            (nothing)
+
             (display b)
 
             (+ a b)
         ";
 
-        let memory_size = 64;
+        let memory_size = 430;
         let mut memory = LispMemory::new(32, memory_size);
 
         let mut lisp = LispRef::new(code).unwrap();
@@ -2111,7 +2254,7 @@ mod tests
             x
         ");
 
-        let memory_size = 50;
+        let memory_size = 300;
         let mut memory = LispMemory::new(256, memory_size);
 
         let mut lisp = LispRef::new(&code).unwrap();

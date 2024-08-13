@@ -19,7 +19,6 @@ use crate::common::{
         LispRef,
         LispConfig,
         LispMemory,
-        Environment,
         ValueTag,
         ArgsCount,
         Primitives,
@@ -160,7 +159,6 @@ impl From<lisp::Error> for ParseError
 pub struct ChunkGenerator
 {
     rules: Rc<ChunkRulesGroup>,
-    environment: Rc<Environment>,
     primitives: Rc<Primitives>,
     memory: LispMemory,
     chunks: HashMap<String, LispRef>,
@@ -180,14 +178,13 @@ impl ChunkGenerator
 
         let primitives = Rc::new(Self::default_primitives(&tilemap));
 
-        let (environment, memory) = Self::default_environment(
+        let memory = Self::default_memory(
             primitives.clone(),
             &parent_directory
         );
 
         let mut this = Self{
             rules: rules.clone(),
-            environment,
             primitives,
             memory,
             chunks,
@@ -220,7 +217,7 @@ impl ChunkGenerator
 
         primitives.add(
             "tile",
-            PrimitiveProcedureInfo::new_simple(ArgsCount::Min(1), move |_state, memory, env, mut args|
+            PrimitiveProcedureInfo::new_simple(ArgsCount::Min(1), move |_state, memory, mut args|
             {
                 let name = args.pop(memory).as_symbol()?;
                 let rotation = args.try_pop(memory);
@@ -243,38 +240,44 @@ impl ChunkGenerator
                     }
                 }
 
-                Ok(tile.as_lisp_value(env, memory))
+                Ok(tile.as_lisp_value(memory))
             }));
 
         primitives
     }
 
-    fn default_environment(
+    fn default_memory(
         primitives: Rc<Primitives>,
         path: &Path
-    ) -> (Rc<Environment>, LispMemory)
+    ) -> LispMemory
     {
-        fn load(name: impl AsRef<Path>) -> String
+        let mut memory = LispMemory::new(256, 1 << 13);
+
+        fn load(name: &Path) -> String
         {
-            fs::read_to_string(name.as_ref())
-                .unwrap_or_else(|err| panic!("{} must exist >_< ({err})", name.as_ref().display()))
+            fs::read_to_string(name)
+                .unwrap_or_else(|err| panic!("{} must exist >_< ({err})", name.display()))
         }
 
-        let default_code = load("lisp/standard.scm") + &load(path.join("default.scm"));
+        let mut run_default = |path: PathBuf|
+        {
+            let default_code = load(&path);
 
-        let mut memory = LispMemory::new(256, 1 << 13);
-        let config = LispConfig{
-            environment: None,
-            primitives
+            let config = LispConfig{
+                primitives: primitives.clone()
+            };
+
+            unsafe{ LispRef::new_with_config(config, &default_code) }
+                .and_then(|mut x|
+                {
+                    x.run_with_memory(&mut memory)
+                }).unwrap_or_else(|err| panic!("{} has an error ({err})", path.display()));
         };
 
-        let env = unsafe{ LispRef::new_with_config(config, &default_code) }
-            .and_then(|mut x|
-            {
-                x.run_env(&mut memory)
-            }).unwrap_or_else(|err| panic!("stdlib has an error ({err})"));
+        run_default("lisp/standard.scm".into());
+        run_default(path.join("default.scm"));
 
-        (env, memory)
+        memory
     }
 
     fn parse_function(
@@ -290,7 +293,6 @@ impl ChunkGenerator
         })?;
 
         let config = LispConfig{
-            environment: Some(self.environment.clone()),
             primitives: self.primitives.clone()
         };
 
@@ -326,11 +328,11 @@ impl ChunkGenerator
                     panic!("worldchunk named `{}` doesnt exist", group.this)
                 });
 
-            self.environment.define("height", info.height.into());
+            memory.define("height", info.height.into());
 
             info.tags.iter().for_each(|tag|
             {
-                tag.define(self.rules.name_mappings(), &self.environment);
+                tag.define(self.rules.name_mappings(), memory);
             });
 
             let output_wrapped = this_chunk.run_with_memory(memory)

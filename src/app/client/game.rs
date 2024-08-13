@@ -122,19 +122,18 @@ impl Game
             let primitives = this.console_primitives();
 
             let config = LispConfig{
-                environment: None,
                 primitives: primitives.clone()
             };
 
             let lisp = unsafe{ LispRef::new_with_config(config, &standard_code) };
 
             let mut memory = LispMemory::new(2048, 1 << 12);
-            let environment = lisp.and_then(|mut x|
+            lisp.and_then(|mut x|
             {
-                x.run_env(&mut memory)
+                x.run_with_memory(&mut memory)
             }).unwrap_or_else(|err| panic!("error in stdlib: {err}"));
 
-            (environment, memory, primitives)
+            (memory, primitives)
         };
 
         this.info.borrow_mut().console_infos = Some(console_infos);
@@ -317,13 +316,13 @@ impl Game
         Ok(entity)
     }
 
-    fn push_entity(env: &Environment, memory: &mut LispMemory, entity: Entity)
+    fn push_entity(memory: &mut LispMemory, entity: Entity)
     {
         let tag = memory.new_symbol("entity");
         let local = LispValue::new_bool(entity.local());
         let id = LispValue::new_integer(entity.id() as i32);
 
-        memory.cons_list(env, [tag, local, id]);
+        memory.cons_list([tag, local, id]);
     }
 
     fn add_simple_setter<F>(&self, primitives: &mut Primitives, name: &str, f: F)
@@ -334,7 +333,7 @@ impl Game
 
         primitives.add(
             name,
-            PrimitiveProcedureInfo::new_simple_effect(2, move |_state, memory, _env, mut args|
+            PrimitiveProcedureInfo::new_simple_effect(2, move |_state, memory, mut args|
             {
                 let game_state = game_state.upgrade().unwrap();
                 let mut game_state = game_state.borrow_mut();
@@ -374,7 +373,7 @@ impl Game
 
             primitives.add(
                 "mouse-collided",
-                PrimitiveProcedureInfo::new_simple(0, move |_state, memory, env, _args|
+                PrimitiveProcedureInfo::new_simple(0, move |_state, memory, _args|
                 {
                     let game_state = game_state.upgrade().unwrap();
                     let game_state = game_state.borrow();
@@ -386,7 +385,7 @@ impl Game
 
                     if let Some(collided) = collided
                     {
-                        Self::push_entity(env, memory, collided)
+                        Self::push_entity(memory, collided)
                     } else
                     {
                         memory.push_return(());
@@ -401,7 +400,7 @@ impl Game
 
             primitives.add(
                 "all-entities",
-                PrimitiveProcedureInfo::new_simple(0, move |_state, memory, env, _args|
+                PrimitiveProcedureInfo::new_simple(0, move |_state, memory, _args|
                 {
                     let game_state = game_state.upgrade().unwrap();
                     let game_state = game_state.borrow();
@@ -410,10 +409,10 @@ impl Game
                     let mut entities_list = Vec::new();
                     entities.for_each_entity(|entity|
                     {
-                        entities_list.push(Self::push_entity(env, memory, entity));
+                        entities_list.push(Self::push_entity(memory, entity));
                     });
 
-                    memory.cons_list(env, entities_list);
+                    memory.cons_list(entities_list);
 
                     Ok(())
                 }));
@@ -424,7 +423,7 @@ impl Game
 
             primitives.add(
                 "print-chunk-of",
-                PrimitiveProcedureInfo::new_simple_effect(1..=2, move |_state, memory, _env, mut args|
+                PrimitiveProcedureInfo::new_simple_effect(1..=2, move |_state, memory, mut args|
                 {
                     let game_state = game_state.upgrade().unwrap();
                     let game_state = game_state.borrow();
@@ -530,7 +529,7 @@ impl Game
 
             primitives.add(
                 "add-item",
-                PrimitiveProcedureInfo::new_simple_effect(2, move |_state, memory, _env, mut args|
+                PrimitiveProcedureInfo::new_simple_effect(2, move |_state, memory, mut args|
                 {
                     let game_state = game_state.upgrade().unwrap();
                     let game_state = game_state.borrow_mut();
@@ -559,9 +558,9 @@ impl Game
 
             primitives.add(
                 "player-entity",
-                PrimitiveProcedureInfo::new_simple(0, move |_state, memory, env, _args|
+                PrimitiveProcedureInfo::new_simple(0, move |_state, memory, _args|
                 {
-                    Self::push_entity(env, memory, player_entity);
+                    Self::push_entity(memory, player_entity);
 
                     Ok(())
                 }));
@@ -572,9 +571,9 @@ impl Game
 
             primitives.add(
                 "mouse-entity",
-                PrimitiveProcedureInfo::new_simple(0, move |_state, memory, env, _args|
+                PrimitiveProcedureInfo::new_simple(0, move |_state, memory, _args|
                 {
-                    Self::push_entity(env, memory, mouse_entity);
+                    Self::push_entity(memory, mouse_entity);
 
                     Ok(())
                 }));
@@ -585,7 +584,7 @@ impl Game
 
             primitives.add(
                 "position-entity",
-                PrimitiveProcedureInfo::new_simple(1, move |_state, memory, env, mut args|
+                PrimitiveProcedureInfo::new_simple(1, move |_state, memory, mut args|
                 {
                     let game_state = game_state.upgrade().unwrap();
                     let game_state = game_state.borrow();
@@ -595,7 +594,7 @@ impl Game
 
                     let position = entities.transform(entity).unwrap().position;
 
-                    memory.cons_list(env, [position.x, position.y, position.z]);
+                    memory.cons_list([position.x, position.y, position.z]);
 
                     Ok(())
                 }));
@@ -606,7 +605,7 @@ impl Game
 
             primitives.add(
                 "print-component",
-                PrimitiveProcedureInfo::new_simple_effect(2, move |_state, memory, _env, mut args|
+                PrimitiveProcedureInfo::new_simple_effect(2, move |_state, memory, mut args|
                 {
                     let game_state = game_state.upgrade().unwrap();
                     let game_state = game_state.borrow();
@@ -639,7 +638,7 @@ impl Game
 
             primitives.add(
                 "print-entity-info",
-                PrimitiveProcedureInfo::new_simple_effect(1, move |_state, memory, _env, mut args|
+                PrimitiveProcedureInfo::new_simple_effect(1, move |_state, memory, mut args|
                 {
                     let game_state = game_state.upgrade().unwrap();
                     let game_state = game_state.borrow();
@@ -664,11 +663,10 @@ impl Game
             let infos = self.info.borrow();
             let infos = infos.console_infos.as_ref().expect("always initialized");
 
-            let memory = infos.1.clone();
+            let memory = infos.0.clone();
 
             (memory, LispConfig{
-                environment: Some(infos.0.clone()),
-                primitives: infos.2.clone()
+                primitives: infos.1.clone()
             })
         };
 
@@ -682,7 +680,7 @@ impl Game
             }
         };
 
-        let (new_env, result) = match lisp.run_with_memory_environment(&mut memory)
+        let result = match lisp.run_with_memory(&mut memory)
         {
             Ok(x) => x,
             Err(err) =>
@@ -694,7 +692,7 @@ impl Game
 
         eprintln!("ran command {command}, result: {result}");
 
-        self.info.borrow_mut().update_environment(new_env, memory);
+        self.info.borrow_mut().update_memory(memory);
     }
 
     pub fn player_exists(&mut self) -> bool
@@ -724,7 +722,7 @@ struct PlayerInfo
     other_entity: Option<Entity>,
     console_entity: Entity,
     console_contents: Option<String>,
-    console_infos: Option<(Rc<Environment>, LispMemory, Rc<Primitives>)>,
+    console_infos: Option<(LispMemory, Rc<Primitives>)>,
     previous_stamina: Option<f32>,
     previous_cooldown: (f32, f32),
     interacted: bool,
@@ -752,12 +750,11 @@ impl PlayerInfo
         }
     }
 
-    pub fn update_environment(&mut self, new_env: Rc<Environment>, memory: LispMemory)
+    pub fn update_memory(&mut self, memory: LispMemory)
     {
         if let Some(x) = self.console_infos.as_mut()
         {
-            x.0 = new_env;
-            x.1 = memory;
+            x.0 = memory;
         }
     }
 }
