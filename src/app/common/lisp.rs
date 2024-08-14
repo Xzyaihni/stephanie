@@ -3,7 +3,7 @@ use std::{
     rc::Rc,
     ops::Range,
     fmt::{self, Display, Debug},
-    ops::{Deref, DerefMut},
+    ops::Deref,
     collections::HashMap
 };
 
@@ -11,6 +11,7 @@ use crate::common::write_log;
 
 pub use program::{
     Memoriable,
+    MemoriableRef,
     MemoryWrapper,
     Program,
     PrimitiveProcedureInfo,
@@ -1093,6 +1094,15 @@ impl LispMemory
 
     pub fn define_symbol(&mut self, key: LispValue, value: LispValue)
     {
+        if let Some(id) = self.lookup_in_env_id::<false>(
+            self.env,
+            key.as_symbol_id().expect("key must be a symbol")
+        )
+        {
+            self.set_cdr(id, value);
+            return;
+        }
+
         let mappings_id = |this: &Self|
         {
             let pair = this.env.as_list(this).expect("env must be a list").cdr;
@@ -1117,10 +1127,30 @@ impl LispMemory
     pub fn lookup(&self, name: &str) -> Option<LispValue>
     {
         let symbol = self.symbols.get_by_name(name)?;
-        self.lookup_in_env(self.env, symbol)
+        self.lookup_symbol(symbol)
     }
 
-    fn lookup_in_env(&self, env: LispValue, symbol: SymbolId) -> Option<LispValue>
+    pub fn lookup_symbol(&self, symbol: SymbolId) -> Option<LispValue>
+    {
+        self.lookup_in_env::<true>(self.env, symbol)
+    }
+
+    fn lookup_in_env<const CHECK_PARENT: bool>(
+        &self,
+        env: LispValue,
+        symbol: SymbolId
+    ) -> Option<LispValue>
+    {
+        let id = self.lookup_in_env_id::<CHECK_PARENT>(env, symbol);
+
+        id.map(|id| self.get_cdr(id))
+    }
+
+    fn lookup_in_env_id<const CHECK_PARENT: bool>(
+        &self,
+        env: LispValue,
+        symbol: SymbolId
+    ) -> Option<u32>
     {
         if env.is_null()
         {
@@ -1133,11 +1163,14 @@ impl LispMemory
         let parent = pair.cdr;
         let mut maybe_mappings = pair.car;
 
-        let value = loop
+        let id = loop
         {
             if maybe_mappings.is_null()
             {
-                return self.lookup_in_env(parent, symbol);
+                return CHECK_PARENT.then(||
+                {
+                    self.lookup_in_env_id::<CHECK_PARENT>(parent, symbol)
+                }).flatten();
             }
 
             let mappings = maybe_mappings.as_list(self).expect("env must be a list");
@@ -1150,16 +1183,16 @@ impl LispMemory
             maybe_mappings = *mappings.cdr();
         };
 
-        Some(value)
+        Some(id)
     }
 
-    fn lookup_pair(&self, pair: LispValue, symbol: SymbolId) -> Option<LispValue>
+    fn lookup_pair(&self, pair: LispValue, symbol: SymbolId) -> Option<u32>
     {
-        let pair = pair.as_list(self).expect("must be a list");
+        let id = pair.as_list_id().expect("must be a list");
 
-        let symbol_id = pair.car.as_symbol_id().expect("must be symbol");
+        let symbol_id = self.get_car(id).as_symbol_id().expect("must be symbol");
 
-        (symbol_id == symbol).then_some(pair.cdr)
+        (symbol_id == symbol).then_some(id)
     }
 
     fn transfer_to_swap_value(
@@ -1500,7 +1533,7 @@ impl LispMemory
 
     fn out_of_memory(&mut self) -> !
     {
-        write_log(format!("{:#?}\n", &self.memory));
+        write_log(format!("{:#?}\n", &self));
         panic!("out of memory, memory dump saved to log");
     }
 
@@ -1619,12 +1652,12 @@ impl LispMemory
     {
         let value = match expression
         {
-            Expression::Float(x) => LispValue::new_float(*x),
-            Expression::Integer(x) => LispValue::new_integer(*x),
-            Expression::Bool(x) => LispValue::new_bool(*x),
-            Expression::PrimitiveProcedure(id) => LispValue::new_primitive_procedure(*id),
+            Expression::Float(x)
+            | Expression::Integer(x)
+            | Expression::Bool(x)
+            | Expression::PrimitiveProcedure(x)
+            | Expression::Value(x) => *x,
             Expression::EmptyList => LispValue::new_empty_list(),
-            Expression::Value(x) => self.new_symbol(x),
             Expression::List{car, cdr} =>
             {
                 self.allocate_expression(&car.expression);
@@ -1643,22 +1676,61 @@ impl LispMemory
     }
 }
 
-#[derive(Clone)]
-pub struct OutputWrapper<'a>
+pub struct GenericOutputWrapper<M>
 {
-    pub memory: &'a LispMemory,
+    pub memory: M,
     pub value: LispValue
 }
 
-impl<'a> Display for OutputWrapper<'a>
+pub type OutputWrapperRef<'a> = GenericOutputWrapper<&'a LispMemory>;
+pub type OutputWrapper = GenericOutputWrapper<LispMemory>;
+
+impl OutputWrapper
 {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
+    pub fn as_list(&self) -> Result<LispList<OutputWrapperRef>, Error>
     {
-        write!(f, "{}", self.value.to_string(self.memory))
+        let lst = self.value.as_list(&self.memory)?;
+
+        Ok(lst.map_ref(|value|
+        {
+            OutputWrapperRef{memory: &self.memory, value: *value}
+        }))
     }
 }
 
-impl<'a> Deref for OutputWrapper<'a>
+impl<'a> Clone for OutputWrapperRef<'a>
+{
+    fn clone(&self) -> Self
+    {
+        Self{
+            memory: self.memory,
+            value: self.value
+        }
+    }
+}
+
+impl<'a> OutputWrapperRef<'a>
+{
+    pub fn as_list(&self) -> Result<LispList<OutputWrapperRef<'a>>, Error>
+    {
+        let lst = self.value.as_list(self.memory)?;
+
+        Ok(lst.map_ref(|value|
+        {
+            OutputWrapperRef{memory: self.memory, value: *value}
+        }))
+    }
+}
+
+impl<M: MemoriableRef> Display for GenericOutputWrapper<M>
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
+    {
+        write!(f, "{}", self.value.to_string(self.memory.as_memory()))
+    }
+}
+
+impl<M> Deref for GenericOutputWrapper<M>
 {
     type Target = LispValue;
 
@@ -1668,51 +1740,29 @@ impl<'a> Deref for OutputWrapper<'a>
     }
 }
 
-impl<'a> OutputWrapper<'a>
+impl<M> GenericOutputWrapper<M>
 {
     pub fn into_value(self) -> LispValue
     {
         self.value
     }
+}
 
-    pub fn as_vector_ref(&self) -> Result<LispVectorRef<'a>, Error>
+impl<M: MemoriableRef> GenericOutputWrapper<M>
+{
+    pub fn as_vector_ref(&self) -> Result<LispVectorRef, Error>
     {
-        self.value.as_vector_ref(self.memory)
+        self.value.as_vector_ref(self.memory.as_memory())
     }
 
     pub fn as_vector(&self) -> Result<LispVector, Error>
     {
-        self.value.as_vector(self.memory)
+        self.value.as_vector(self.memory.as_memory())
     }
 
     pub fn as_symbol(&self) -> Result<String, Error>
     {
-        self.value.as_symbol(self.memory)
-    }
-
-    pub fn as_list(&self) -> Result<LispList<OutputWrapper<'a>>, Error>
-    {
-        let lst = self.value.as_list(self.memory)?;
-
-        Ok(lst.map_ref(|value|
-        {
-            OutputWrapper{memory: self.memory, value: *value}
-        }))
-    }
-
-    pub fn as_float(&self) -> Result<f32, Error>
-    {
-        self.value.as_float()
-    }
-
-    pub fn as_integer(&self) -> Result<i32, Error>
-    {
-        self.value.as_integer()
-    }
-
-    pub fn as_bool(&self) -> Result<bool, Error>
-    {
-        self.value.as_bool()
+        self.value.as_symbol(self.memory.as_memory())
     }
 }
 
@@ -1721,22 +1771,49 @@ pub struct LispConfig
     pub primitives: Rc<Primitives>
 }
 
+#[derive(Debug)]
 pub struct Lisp
 {
-    memory: LispMemory,
-    lisp: LispRef
+    program: Program
 }
 
 impl Lisp
 {
+    pub fn new_with_config(
+        config: LispConfig,
+        memory: LispMemory,
+        code: &str
+    ) -> Result<Self, ErrorPos>
+    {
+        let program = Program::parse(
+            config.primitives,
+            memory,
+            code
+        )?;
+
+        Ok(Self{program})
+    }
+
+    pub fn new_with_memory(
+        memory: LispMemory,
+        code: &str
+    ) -> Result<Self, ErrorPos>
+    {
+        let config = LispConfig{
+            primitives: Rc::new(Primitives::new())
+        };
+
+        Self::new_with_config(config, memory, code)
+    }
+
     pub fn new(code: &str) -> Result<Self, ErrorPos>
     {
-        let memory = Self::default_memory();
+        Self::new_with_memory(Self::default_memory(), code)
+    }
 
-        Ok(Self{
-            memory,
-            lisp: LispRef::new(code)?
-        })
+    pub fn memory_mut(&mut self) -> &mut LispMemory
+    {
+        self.program.memory_mut()
     }
 
     pub fn empty_memory() -> LispMemory
@@ -1751,80 +1828,7 @@ impl Lisp
 
     pub fn run(&mut self) -> Result<OutputWrapper, ErrorPos>
     {
-        self.lisp.run_with_memory(&mut self.memory)
-    }
-
-    pub fn get_symbol(&self, value: LispValue) -> Result<String, Error>
-    {
-        value.as_symbol(&self.memory)
-    }
-
-    pub fn get_vector(&self, value: LispValue) -> Result<LispVector, Error>
-    {
-        value.as_vector(&self.memory)
-    }
-
-    pub fn get_list(&self, value: LispValue) -> Result<LispList, Error>
-    {
-        value.as_list(&self.memory)
-    }
-}
-
-impl Deref for Lisp
-{
-    type Target = LispRef;
-
-    fn deref(&self) -> &Self::Target
-    {
-        &self.lisp
-    }
-}
-
-impl DerefMut for Lisp
-{
-    fn deref_mut(&mut self) -> &mut Self::Target
-    {
-        &mut self.lisp
-    }
-}
-
-#[derive(Debug)]
-pub struct LispRef
-{
-    program: Program
-}
-
-impl LispRef
-{
-    /// # Safety
-    /// if an env has some invalid data it will cause ub
-    pub unsafe fn new_with_config(config: LispConfig, code: &str) -> Result<Self, ErrorPos>
-    {
-        let program = Program::parse(
-            config.primitives,
-            code
-        )?;
-
-        Ok(Self{program})
-    }
-
-    pub fn new(code: &str) -> Result<Self, ErrorPos>
-    {
-        let config = LispConfig{
-            primitives: Rc::new(Primitives::new())
-        };
-
-        unsafe{ Self::new_with_config(config, code) }
-    }
-
-    pub fn run_with_memory<'a>(
-        &mut self,
-        memory: &'a mut LispMemory
-    ) -> Result<OutputWrapper<'a>, ErrorPos>
-    {
-        let value = self.program.eval(memory)?;
-
-        Ok(OutputWrapper{memory, value})
+        self.program.eval()
     }
 }
 
@@ -2039,11 +2043,11 @@ mod tests
         ";
 
         let memory_size = 92;
-        let mut memory = LispMemory::new(10, memory_size);
+        let memory = LispMemory::new(10, memory_size);
 
-        let mut lisp = LispRef::new(code).unwrap();
+        let mut lisp = Lisp::new_with_memory(memory, code).unwrap();
 
-        let value = lisp.run_with_memory(&mut memory)
+        let value = lisp.run()
             .unwrap()
             .as_integer()
             .unwrap();
@@ -2089,11 +2093,11 @@ mod tests
         ";
 
         let memory_size = 430;
-        let mut memory = LispMemory::new(32, memory_size);
+        let memory = LispMemory::new(32, memory_size);
 
-        let mut lisp = LispRef::new(code).unwrap();
+        let mut lisp = Lisp::new_with_memory(memory, code).unwrap();
 
-        let value = lisp.run_with_memory(&mut memory)
+        let value = lisp.run()
             .unwrap()
             .as_integer()
             .unwrap();
@@ -2317,11 +2321,11 @@ mod tests
         ");
 
         let memory_size = 300;
-        let mut memory = LispMemory::new(256, memory_size);
+        let memory = LispMemory::new(256, memory_size);
 
-        let mut lisp = LispRef::new(&code).unwrap();
+        let mut lisp = Lisp::new_with_memory(memory, &code).unwrap();
 
-        let output = lisp.run_with_memory(&mut memory).unwrap();
+        let output = lisp.run().unwrap();
 
         let value = output.as_vector().unwrap().as_vec_integer().unwrap();
 

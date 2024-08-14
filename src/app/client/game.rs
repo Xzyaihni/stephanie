@@ -118,20 +118,24 @@ impl Game
             load("lisp/standard.scm") + &load("lisp/console.scm")
         };
 
-        let console_infos = {
+        let console_infos: (LispMemory, Rc<Primitives>) = {
             let primitives = this.console_primitives();
 
             let config = LispConfig{
                 primitives: primitives.clone()
             };
 
-            let lisp = unsafe{ LispRef::new_with_config(config, &standard_code) };
+            let lisp = Lisp::new_with_config(
+                config,
+                LispMemory::new(2048, 1 << 12),
+                &standard_code
+            );
 
-            let mut memory = LispMemory::new(2048, 1 << 12);
-            lisp.and_then(|mut x|
+            let memory = lisp.and_then(|mut x|
             {
-                x.run_with_memory(&mut memory)
-            }).unwrap_or_else(|err| panic!("error in stdlib: {err}"));
+                x.run()
+            }).unwrap_or_else(|err| panic!("error in stdlib: {err}"))
+                .memory;
 
             (memory, primitives)
         };
@@ -659,7 +663,7 @@ impl Game
 
     fn console_command(&mut self, command: String)
     {
-        let (mut memory, config) = {
+        let (memory, config) = {
             let infos = self.info.borrow();
             let infos = infos.console_infos.as_ref().expect("always initialized");
 
@@ -670,7 +674,7 @@ impl Game
             })
         };
 
-        let mut lisp = match unsafe{ LispRef::new_with_config(config, &command) }
+        let mut lisp = match Lisp::new_with_config(config, memory, &command)
         {
             Ok(x) => x,
             Err(err) =>
@@ -680,7 +684,7 @@ impl Game
             }
         };
 
-        let result = match lisp.run_with_memory(&mut memory)
+        let result = match lisp.run()
         {
             Ok(x) => x,
             Err(err) =>
@@ -692,7 +696,7 @@ impl Game
 
         eprintln!("ran command {command}, result: {result}");
 
-        self.info.borrow_mut().update_memory(memory);
+        self.info.borrow_mut().update_memory(result.memory);
     }
 
     pub fn player_exists(&mut self) -> bool

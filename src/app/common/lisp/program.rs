@@ -16,7 +16,8 @@ pub use super::{
     LispMemory,
     ValueTag,
     LispVectorRef,
-    OutputWrapper
+    OutputWrapper,
+    OutputWrapperRef
 };
 
 pub use parser::{CodePosition, WithPosition};
@@ -39,8 +40,30 @@ pub type OnEval = Rc<
     dyn Fn(
         ExpressionPos,
         &mut State,
+        &mut LispMemory,
         AstPos
     ) -> Result<ExpressionPos, ErrorPos>>;
+
+pub trait MemoriableRef
+{
+    fn as_memory(&self) -> &LispMemory;
+}
+
+impl MemoriableRef for LispMemory
+{
+    fn as_memory(&self) -> &LispMemory
+    {
+        self
+    }
+}
+
+impl<'a> MemoriableRef for &'a LispMemory
+{
+    fn as_memory(&self) -> &'a LispMemory
+    {
+        self
+    }
+}
 
 pub trait Memoriable
 {
@@ -128,12 +151,12 @@ impl ArgsWrapper
         Self{count: 0}
     }
 
-    pub fn pop<'a>(&mut self, memory: &'a mut impl Memoriable) -> OutputWrapper<'a>
+    pub fn pop<'a>(&mut self, memory: &'a mut impl Memoriable) -> OutputWrapperRef<'a>
     {
         self.try_pop(memory).expect("pop must be called on argcount > 0")
     }
 
-    pub fn try_pop<'a>(&mut self, memory: &'a mut impl Memoriable) -> Option<OutputWrapper<'a>>
+    pub fn try_pop<'a>(&mut self, memory: &'a mut impl Memoriable) -> Option<OutputWrapperRef<'a>>
     {
         if self.count == 0
         {
@@ -145,7 +168,7 @@ impl ArgsWrapper
         let memory = memory.as_memory_mut();
         let value = memory.pop_return();
 
-        Some(OutputWrapper{memory, value})
+        Some(OutputWrapperRef{memory, value})
     }
 
     pub fn push(&mut self, memory: &mut LispMemory, value: LispValue)
@@ -380,27 +403,21 @@ impl StoredLambda
         body: ExpressionPos
     ) -> Result<Self, ErrorPos>
     {
-        let params = Self::new_params(memory, params)?;
+        let params = Self::new_params(params)?;
 
         Ok(Self{parent_env: RefCell::new(memory.env), params, body})
     }
 
     fn new_params(
-        memory: &mut LispMemory,
         params: ExpressionPos
     ) -> Result<Either<LispValue, ArgValues<LispValue>>, ErrorPos>
     {
-        let mut as_symbol_id = |name: String| -> LispValue
-        {
-            memory.new_symbol(name)
-        };
-
         Ok(match params.as_value()
         {
-            Ok(x) => Either::Left(as_symbol_id(x)),
+            Ok(x) => Either::Left(x),
             Err(_) => Either::Right(params.map_list(|arg|
             {
-                Ok(as_symbol_id(arg.as_value()?))
+                Ok(arg.as_value()?)
             })?)
         })
     }
@@ -823,7 +840,7 @@ impl Primitives
                         }
                     }))),
             ("let",
-                PrimitiveProcedureInfo::new_eval(2, Rc::new(|_op, state, args|
+                PrimitiveProcedureInfo::new_eval(2, Rc::new(|_op, state, memory, args|
                 {
                     let bindings = args.car();
                     let body = args.cdr().car();
@@ -831,6 +848,7 @@ impl Primitives
                     let params = bindings.map_list(|x| x.car());
                     let apply_args = ExpressionPos::analyze_args(
                         state,
+                        memory,
                         bindings.map_list(|x| x.cdr().car())
                     )?;
 
@@ -841,7 +859,7 @@ impl Primitives
                                 body,
                                 Ast::EmptyList.with_position(args.position)));
 
-                    let lambda = ExpressionPos::analyze_lambda(state, lambda_args)?;
+                    let lambda = ExpressionPos::analyze_lambda(state, memory, lambda_args)?;
 
                     Ok(ExpressionPos{
                         position: args.position,
@@ -852,17 +870,17 @@ impl Primitives
                     })
                 }))),
             ("begin",
-                PrimitiveProcedureInfo::new_eval(ArgsCount::Min(1), Rc::new(|_op, state, args|
+                PrimitiveProcedureInfo::new_eval(ArgsCount::Min(1), Rc::new(|_op, state, memory, args|
                 {
-                    ExpressionPos::analyze_sequence(state, args)
+                    ExpressionPos::analyze_sequence(state, memory, args)
                 }))),
             ("lambda",
-                PrimitiveProcedureInfo::new_eval(2, Rc::new(|_op, state, args|
+                PrimitiveProcedureInfo::new_eval(2, Rc::new(|_op, state, memory, args|
                 {
-                    ExpressionPos::analyze_lambda(state, args)
+                    ExpressionPos::analyze_lambda(state, memory, args)
                 }))),
             ("define",
-                PrimitiveProcedureInfo::new(ArgsCount::Min(2), Rc::new(|op, state, mut args|
+                PrimitiveProcedureInfo::new(ArgsCount::Min(2), Rc::new(|op, state, memory, mut args|
                 {
                     let first = args.car();
 
@@ -901,7 +919,7 @@ impl Primitives
                             body.into_iter().next().unwrap()
                         };
 
-                        let name = ExpressionPos::analyze(state, first.car())?;
+                        let name = ExpressionPos::analyze(state, memory, first.car())?;
                         let name = Expression::Value(name.as_value()?).with_position(position);
 
                         let params = first.cdr();
@@ -913,7 +931,7 @@ impl Primitives
                                     body,
                                     Ast::EmptyList.with_position(position)));
 
-                        let lambda = ExpressionPos::analyze_lambda(state, lambda_args)?;
+                        let lambda = ExpressionPos::analyze_lambda(state, memory, lambda_args)?;
 
                         ExpressionPos::cons(
                             name,
@@ -922,7 +940,7 @@ impl Primitives
                                 Expression::EmptyList.with_position(position)))
                     } else
                     {
-                        ExpressionPos::analyze_args(state, args)?
+                        ExpressionPos::analyze_args(state, memory, args)?
                     };
 
                     Ok(ExpressionPos{
@@ -945,7 +963,7 @@ impl Primitives
 
                     let value = memory.pop_return();
 
-                    memory.define(key, value);
+                    memory.define_symbol(key, value);
 
                     if action == Action::Return
                     {
@@ -955,9 +973,9 @@ impl Primitives
                     Ok(())
                 }))),
             ("quote",
-                PrimitiveProcedureInfo::new(ArgsCount::Min(0), Rc::new(|op, state, args|
+                PrimitiveProcedureInfo::new(ArgsCount::Min(0), Rc::new(|op, state, memory, args|
                 {
-                    let arg = ExpressionPos::quote(state, args.car())?;
+                    let arg = ExpressionPos::quote(state, memory, args.car())?;
 
                     Ok(ExpressionPos{
                         position: args.position,
@@ -1208,13 +1226,15 @@ pub struct State
 pub struct Program
 {
     state: State,
-    expression: ExpressionPos
+    expression: ExpressionPos,
+    memory: LispMemory
 }
 
 impl Program
 {
     pub fn parse(
         primitives: Rc<Primitives>,
+        mut memory: LispMemory,
         code: &str
     ) -> Result<Self, ErrorPos>
     {
@@ -1224,19 +1244,23 @@ impl Program
             primitives
         };
 
-        let expression = ExpressionPos::analyze_sequence(&mut state, ast)?;
+        let expression = ExpressionPos::analyze_sequence(&mut state, &mut memory, ast)?;
 
-        Ok(Self{state, expression})
+        Ok(Self{state, expression, memory})
     }
 
-    pub fn eval(
-        &self,
-        memory: &mut LispMemory
-    ) -> Result<LispValue, ErrorPos>
+    pub fn eval(&self) -> Result<OutputWrapper, ErrorPos>
     {
-        self.expression.eval(&self.state, memory, Action::Return)?;
+        let mut memory = self.memory.clone();
+        self.expression.eval(&self.state, &mut memory, Action::Return)?;
 
-        Ok(memory.pop_return())
+        let value = memory.pop_return();
+        Ok(OutputWrapper{memory, value})
+    }
+
+    pub fn memory_mut(&mut self) -> &mut LispMemory
+    {
+        &mut self.memory
     }
 }
 
@@ -1336,11 +1360,11 @@ impl ExpressionPos
         }
     }
 
-    pub fn as_value(&self) -> Result<String, ErrorPos>
+    pub fn as_value(&self) -> Result<LispValue, ErrorPos>
     {
         match &self.expression
         {
-            Expression::Value(x) => Ok(x.clone()),
+            Expression::Value(x) => Ok(*x),
             _ => Err(ErrorPos{position: self.position, error: Error::ExpectedOp})
         }
     }
@@ -1354,26 +1378,17 @@ impl ExpressionPos
     {
         let value = match &self.expression
         {
-            Expression::Integer(x) =>
-            {
-                LispValue::new_integer(*x)
-            },
-            Expression::Float(x) =>
-            {
-                LispValue::new_float(*x)
-            },
-            Expression::Bool(x) =>
-            {
-                LispValue::new_bool(*x)
-            },
-            Expression::PrimitiveProcedure(id) =>
-            {
-                LispValue::new_primitive_procedure(*id)
-            },
+            Expression::Integer(x)
+            | Expression::Float(x)
+            | Expression::Bool(x)
+            | Expression::PrimitiveProcedure(x) => *x,
             Expression::Value(s) =>
             {
-                memory.lookup(s)
-                    .ok_or_else(|| Error::UndefinedVariable(s.to_owned()))
+                memory.lookup_symbol(s.as_symbol_id().expect("value must be a symbol"))
+                    .ok_or_else(||
+                    {
+                        Error::UndefinedVariable(s.as_symbol(memory).expect("value must be a symbol"))
+                    })
                     .with_position(self.position)?
             },
             Expression::Lambda{body, params} =>
@@ -1588,7 +1603,11 @@ impl ExpressionPos
         }
     }
 
-    pub fn quote(state: &mut State, ast: AstPos) -> Result<Self, ErrorPos>
+    pub fn quote(
+        state: &mut State,
+        memory: &mut LispMemory,
+        ast: AstPos
+    ) -> Result<Self, ErrorPos>
     {
         let expression = if ast.is_list()
         {
@@ -1597,8 +1616,8 @@ impl ExpressionPos
                 Expression::EmptyList
             } else
             {
-                let car = Self::quote(state, ast.car())?;
-                let cdr = Self::quote(state, ast.cdr())?;
+                let car = Self::quote(state, memory, ast.car())?;
+                let cdr = Self::quote(state, memory, ast.cdr())?;
 
                 Expression::List{
                     car: Box::new(car),
@@ -1607,37 +1626,45 @@ impl ExpressionPos
             }
         } else
         {
-            Expression::analyze_primitive_ast(ast.as_value()?)
+            Expression::analyze_primitive_ast(memory, ast.as_value()?)
         };
 
         Ok(Self{position: ast.position, expression})
     }
 
-    pub fn analyze(state: &mut State, ast: AstPos) -> Result<Self, ErrorPos>
+    pub fn analyze(
+        state: &mut State,
+        memory: &mut LispMemory,
+        ast: AstPos
+    ) -> Result<Self, ErrorPos>
     {
         if ast.is_list()
         {
-            let op = Self::analyze(state, ast.car())?;
+            let op = Self::analyze(state, memory, ast.car())?;
 
             let args = ast.cdr();
-            Self::analyze_op(state, op, args)
+            Self::analyze_op(state, memory, op, args)
         } else
         {
-            Self::analyze_atom(state, ast)
+            Self::analyze_atom(state, memory, ast)
         }
     }
 
     pub fn analyze_op(
         state: &mut State,
+        memory: &mut LispMemory,
         op: Self,
         ast: AstPos
     ) -> Result<Self, ErrorPos>
     {
         if let Expression::PrimitiveProcedure(id) = op.expression
         {
-            if let Some(on_eval) = state.primitives.get(id).on_eval.as_ref().map(|x| x.clone())
+            let id = id.as_primitive_procedure().expect("primitive must be a primitive");
+            if let Some(on_eval) = state.primitives.get(id).on_eval
+                .as_ref()
+                .map(|x| x.clone())
             {
-                return on_eval(op, state, ast);
+                return on_eval(op, state, memory, ast);
             }
         }
 
@@ -1645,26 +1672,28 @@ impl ExpressionPos
             position: op.position,
             expression: Expression::Application{
                 op: Box::new(op),
-                args: Box::new(Self::analyze_args(state, ast)?)
+                args: Box::new(Self::analyze_args(state, memory, ast)?)
             }
         })
     }
 
     pub fn analyze_lambda(
         state: &mut State,
+        memory: &mut LispMemory,
         args: AstPos
     ) -> Result<Self, ErrorPos>
     {
         Expression::argument_count_ast("lambda".to_owned(), 2, &args)?;
 
-        let params = Box::new(ExpressionPos::analyze_params(state, args.car())?);
-        let body = Box::new(Self::analyze(state, args.cdr().car())?);
+        let params = Box::new(ExpressionPos::analyze_params(state, memory, args.car())?);
+        let body = Box::new(Self::analyze(state, memory, args.cdr().car())?);
 
         Ok(Self{position: args.position, expression: Expression::Lambda{body, params}})
     }
 
     pub fn analyze_params(
         state: &mut State,
+        memory: &mut LispMemory,
         params: AstPos
     ) -> Result<Self, ErrorPos>
     {
@@ -1676,19 +1705,20 @@ impl ExpressionPos
             }
 
             let out = Expression::List{
-                car: Box::new(Self::analyze_param(state, params.car())?),
-                cdr: Box::new(Self::analyze_params(state, params.cdr())?)
+                car: Box::new(Self::analyze_param(state, memory, params.car())?),
+                cdr: Box::new(Self::analyze_params(state, memory, params.cdr())?)
             };
 
             Ok(Self{position: params.position, expression: out})
         } else
         {
-            Self::analyze_param(state, params)
+            Self::analyze_param(state, memory, params)
         }
     }
 
     pub fn analyze_param(
         state: &mut State,
+        memory: &mut LispMemory,
         param: AstPos
     ) -> Result<Self, ErrorPos>
     {
@@ -1698,7 +1728,7 @@ impl ExpressionPos
             {
                 Self::check_shadowing(state, &x).with_position(param.position)?;
 
-                Expression::Value(x)
+                Expression::Value(memory.new_symbol(x))
             },
             _ => return Err(ErrorPos{position: param.position, error: Error::ExpectedParam})
         };
@@ -1721,6 +1751,7 @@ impl ExpressionPos
 
     pub fn analyze_args(
         state: &mut State,
+        memory: &mut LispMemory,
         args: AstPos
     ) -> Result<Self, ErrorPos>
     {
@@ -1730,8 +1761,8 @@ impl ExpressionPos
         }
 
         let out = Expression::List{
-            car: Box::new(Self::analyze(state, args.car())?),
-            cdr: Box::new(Self::analyze_args(state, args.cdr())?)
+            car: Box::new(Self::analyze(state, memory, args.car())?),
+            cdr: Box::new(Self::analyze_args(state, memory, args.cdr())?)
         };
 
         Ok(Self{position: args.position, expression: out})
@@ -1739,10 +1770,11 @@ impl ExpressionPos
 
     pub fn analyze_atom(
         state: &mut State,
+        memory: &mut LispMemory,
         ast: AstPos
     ) -> Result<Self, ErrorPos>
     {
-        let expression = Expression::analyze_primitive_ast(ast.as_value()?);
+        let expression = Expression::analyze_primitive_ast(memory, ast.as_value()?);
 
         Ok(Self{
             position: ast.position,
@@ -1750,9 +1782,10 @@ impl ExpressionPos
             {
                 Expression::Value(ref x) =>
                 {
-                    if let Some(id) = state.primitives.index_by_name(x)
+                    let name = x.as_symbol(memory).expect("value must be a symbol");
+                    if let Some(id) = state.primitives.index_by_name(&name)
                     {
-                        Expression::PrimitiveProcedure(id)
+                        Expression::PrimitiveProcedure(LispValue::new_primitive_procedure(id))
                     } else
                     {
                         expression
@@ -1765,6 +1798,7 @@ impl ExpressionPos
 
     pub fn analyze_sequence(
         state: &mut State,
+        memory: &mut LispMemory,
         ast: AstPos
     ) -> Result<Self, ErrorPos>
     {
@@ -1773,7 +1807,7 @@ impl ExpressionPos
             return Err(ErrorPos{position: ast.position, error: Error::EmptySequence});
         }
 
-        let car = Self::analyze(state, ast.car())?;
+        let car = Self::analyze(state, memory, ast.car())?;
         let cdr = ast.cdr();
 
         Ok(if cdr.is_null()
@@ -1785,7 +1819,7 @@ impl ExpressionPos
                 position: car.position,
                 expression: Expression::Sequence{
                     first: Box::new(car),
-                    after: Box::new(Self::analyze_sequence(state, cdr)?)
+                    after: Box::new(Self::analyze_sequence(state, memory, cdr)?)
                 }
             }
         })
@@ -1810,11 +1844,12 @@ impl Deref for ExpressionPos
 #[derive(Debug, Clone)]
 pub enum Expression
 {
-    Value(String),
-    PrimitiveProcedure(u32),
-    Float(f32),
-    Integer(i32),
-    Bool(bool),
+    // none of the LispValue r boxed so its fine to store them
+    Value(LispValue),
+    PrimitiveProcedure(LispValue),
+    Float(LispValue),
+    Integer(LispValue),
+    Bool(LispValue),
     EmptyList,
     Lambda{body: Box<ExpressionPos>, params: Box<ExpressionPos>},
     List{car: Box<ExpressionPos>, cdr: Box<ExpressionPos>},
@@ -1861,15 +1896,16 @@ impl Expression
     }
 
     pub fn analyze_primitive_ast(
+        memory: &mut LispMemory,
         primitive: PrimitiveType
     ) -> Self
     {
         match primitive
         {
-            PrimitiveType::Value(x) => Self::Value(x),
-            PrimitiveType::Float(x) => Self::Float(x),
-            PrimitiveType::Integer(x) => Self::Integer(x),
-            PrimitiveType::Bool(x) => Self::Bool(x)
+            PrimitiveType::Value(x) => Self::Value(memory.new_symbol(x)),
+            PrimitiveType::Float(x) => Self::Float(LispValue::new_float(x)),
+            PrimitiveType::Integer(x) => Self::Integer(LispValue::new_integer(x)),
+            PrimitiveType::Bool(x) => Self::Bool(LispValue::new_bool(x))
         }
     }
 

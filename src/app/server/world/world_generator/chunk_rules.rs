@@ -146,12 +146,9 @@ pub struct WorldChunkTag
 
 impl WorldChunkTag
 {
-    fn generate_content(
-        memory: &mut LispMemory,
-        value: &Program
-    ) -> i32
+    fn generate_content(value: &Program) -> i32
     {
-        value.eval(memory).unwrap_or_else(|err|
+        value.eval().unwrap_or_else(|err|
         {
             panic!("lisp error {err}")
         }).as_integer().unwrap_or_else(|err|
@@ -160,14 +157,11 @@ impl WorldChunkTag
         })
     }
 
-    fn generate(
-        memory: &mut LispMemory,
-        tag: &ChunkRuleTag
-    ) -> Self
+    fn generate(tag: &ChunkRuleTag) -> Self
     {
         Self{
             name: tag.name,
-            content: Self::generate_content(memory, &tag.content)
+            content: Self::generate_content(&tag.content)
         }
     }
     
@@ -317,7 +311,7 @@ impl ChunkRuleTag
         raw_tag: ChunkRuleRawTag
     ) -> Self
     {
-        let content = Program::parse(primitives, &raw_tag.content)
+        let content = Program::parse(primitives, LispMemory::new(64, 64), &raw_tag.content)
             .unwrap_or_else(|err|
             {
                 panic!("error evaluating program: {err}")
@@ -825,9 +819,7 @@ impl ChunkRules
 
         WorldChunk::new(id, rule.tags.iter().map(|tag|
         {
-            let mut memory = LispMemory::new(64, 64);
-
-            WorldChunkTag::generate(&mut memory, tag)
+            WorldChunkTag::generate(tag)
         }).collect())
     }
 

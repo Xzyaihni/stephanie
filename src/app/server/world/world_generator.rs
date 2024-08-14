@@ -16,11 +16,12 @@ use crate::common::{
     WeightedPicker,
     lisp::{
         self,
-        LispRef,
+        Lisp,
         LispConfig,
         LispMemory,
         ValueTag,
         ArgsCount,
+        OutputWrapper,
         Primitives,
         PrimitiveProcedureInfo
     },
@@ -161,7 +162,7 @@ pub struct ChunkGenerator
     rules: Rc<ChunkRulesGroup>,
     primitives: Rc<Primitives>,
     memory: LispMemory,
-    chunks: HashMap<String, LispRef>,
+    chunks: HashMap<String, Lisp>,
     tilemap: Rc<TileMap>
 }
 
@@ -251,15 +252,13 @@ impl ChunkGenerator
         path: &Path
     ) -> LispMemory
     {
-        let mut memory = LispMemory::new(256, 1 << 13);
-
         fn load(name: &Path) -> String
         {
             fs::read_to_string(name)
                 .unwrap_or_else(|err| panic!("{} must exist >_< ({err})", name.display()))
         }
 
-        let mut run_default = |path: PathBuf|
+        let run_default = |memory: LispMemory, path: PathBuf| -> LispMemory
         {
             let default_code = load(&path);
 
@@ -267,17 +266,17 @@ impl ChunkGenerator
                 primitives: primitives.clone()
             };
 
-            unsafe{ LispRef::new_with_config(config, &default_code) }
+            Lisp::new_with_config(config, memory, &default_code)
                 .and_then(|mut x|
                 {
-                    x.run_with_memory(&mut memory)
-                }).unwrap_or_else(|err| panic!("{} has an error ({err})", path.display()));
+                    x.run()
+                }).unwrap_or_else(|err| panic!("{} has an error ({err})", path.display()))
+                .memory
         };
 
-        run_default("lisp/standard.scm".into());
-        run_default(path.join("default.scm"));
+        let memory = run_default(LispMemory::new(256, 1 << 13), "lisp/standard.scm".into());
 
-        memory
+        run_default(memory, path.join("default.scm"))
     }
 
     fn parse_function(
@@ -296,7 +295,7 @@ impl ChunkGenerator
             primitives: self.primitives.clone()
         };
 
-        let lisp = unsafe{ LispRef::new_with_config(config, &code) }.unwrap_or_else(|err|
+        let lisp = Lisp::new_with_config(config, self.memory.clone(), &code).unwrap_or_else(|err|
         {
             panic!("error parsing {name}: {err}")
         });
@@ -317,9 +316,6 @@ impl ChunkGenerator
             return ChunksContainer::new_with(WORLD_CHUNK_SIZE, |_| Tile::none());
         }
 
-        let mut memory = self.memory.clone();
-        let memory = &mut memory;
-
         let tiles = {
             let chunk_name = group.this;
             let this_chunk = self.chunks.get_mut(chunk_name)
@@ -328,20 +324,20 @@ impl ChunkGenerator
                     panic!("worldchunk named `{}` doesnt exist", group.this)
                 });
 
-            memory.define("height", info.height.into());
+            this_chunk.memory_mut().define("height", info.height.into());
 
             info.tags.iter().for_each(|tag|
             {
-                tag.define(self.rules.name_mappings(), memory);
+                tag.define(self.rules.name_mappings(), this_chunk.memory_mut());
             });
 
-            let output_wrapped = this_chunk.run_with_memory(memory)
+            let OutputWrapper{memory, value} = this_chunk.run()
                 .unwrap_or_else(|err|
                 {
                     panic!("runtime lisp error: {err} (in {chunk_name})")
                 });
 
-            let output = output_wrapped.into_value().as_vector_ref(memory)
+            let output = value.as_vector_ref(&memory)
                 .unwrap_or_else(|err|
                 {
                     panic!("expected vector: {err} (in {chunk_name})")
@@ -354,14 +350,12 @@ impl ChunkGenerator
 
             output.values.iter().map(|x|
             {
-                unsafe{ Tile::from_lisp_value(memory, *x) }
+                unsafe{ Tile::from_lisp_value(&memory, *x) }
             }).collect::<Result<Box<[Tile]>, _>>().unwrap_or_else(|err|
             {
                 panic!("error getting tile: {err}")
             })
         };
-
-        debug_assert!(memory.returns_len() == 0);
 
         ChunksContainer::from_raw(WORLD_CHUNK_SIZE, tiles)
     }
