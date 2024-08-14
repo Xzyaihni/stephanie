@@ -904,10 +904,53 @@ impl MemoryBlock
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct Symbols
+{
+    mappings: HashMap<String, u32>,
+    current_id: u32
+}
+
+impl Symbols
+{
+    pub fn new() -> Self
+    {
+        Self{mappings: HashMap::new(), current_id: 0}
+    }
+
+    pub fn get_by_name(&self, value: &str) -> Option<u32>
+    {
+        self.mappings.get(value).copied()
+    }
+
+    pub fn get_by_id(&self, id: u32) -> &str
+    {
+        self.mappings.iter().find_map(|(key, value)|
+        {
+            (*value == id).then(|| key)
+        }).expect("all ids must be valid")
+    }
+
+    pub fn push(&mut self, value: String) -> u32
+    {
+        if let Some(&id) = self.mappings.get(&value)
+        {
+            return id;
+        }
+
+        let id = self.current_id;
+        self.current_id += 1;
+
+        self.mappings.insert(value, id);
+
+        id
+    }
+}
+
 pub struct LispMemory
 {
     env: LispValue,
-    symbols: Vec<String>,
+    symbols: Symbols,
     remapped_lambdas: HashMap<u32, u32>,
     memory: MemoryBlock,
     swap_memory: MemoryBlock,
@@ -970,13 +1013,12 @@ impl LispMemory
 {
     pub fn new(stack_size: usize, memory_size: usize) -> Self
     {
-        let symbols = Vec::new();
         let memory = MemoryBlock::new(memory_size);
         let swap_memory = MemoryBlock::new(memory_size);
 
         let mut this = Self{
             env: LispValue::new_empty_list(),
-            symbols,
+            symbols: Symbols::new(),
             remapped_lambdas: HashMap::new(),
             memory,
             swap_memory,
@@ -1052,10 +1094,11 @@ impl LispMemory
 
     pub fn lookup(&self, name: &str) -> Option<LispValue>
     {
-        self.lookup_in_env(self.env, name)
+        let symbol = self.symbols.get_by_name(name)?;
+        self.lookup_in_env(self.env, symbol)
     }
 
-    fn lookup_in_env(&self, env: LispValue, name: &str) -> Option<LispValue>
+    fn lookup_in_env(&self, env: LispValue, symbol: u32) -> Option<LispValue>
     {
         if env.is_null()
         {
@@ -1072,12 +1115,12 @@ impl LispMemory
         {
             if maybe_mappings.is_null()
             {
-                return self.lookup_in_env(parent, name);
+                return self.lookup_in_env(parent, symbol);
             }
 
             let mappings = maybe_mappings.as_list(self).expect("env must be a list");
 
-            if let Some(x) = self.lookup_pair(*mappings.car(), name)
+            if let Some(x) = self.lookup_pair(*mappings.car(), symbol)
             {
                 break x;
             }
@@ -1088,13 +1131,13 @@ impl LispMemory
         Some(value)
     }
 
-    fn lookup_pair(&self, pair: LispValue, name: &str) -> Option<LispValue>
+    fn lookup_pair(&self, pair: LispValue, symbol: u32) -> Option<LispValue>
     {
         let pair = pair.as_list(self).expect("must be a list");
 
         let symbol_id = pair.car.as_symbol_id().expect("must be symbol");
 
-        (self.symbols[symbol_id as usize] == name).then_some(pair.cdr)
+        (symbol_id == symbol).then_some(pair.cdr)
     }
 
     fn transfer_to_swap_value(
@@ -1398,7 +1441,7 @@ impl LispMemory
 
     pub fn get_symbol(&self, id: u32) -> String
     {
-        self.symbols[id as usize].clone()
+        self.symbols.get_by_id(id).to_owned()
     }
 
     pub fn get_string(&self, id: u32) -> Result<String, Error>
@@ -1527,13 +1570,7 @@ impl LispMemory
     {
         let x = x.into();
 
-        let id = self.symbols.iter().position(|symbol| symbol == &x).unwrap_or_else(||
-        {
-            let id = self.symbols.len();
-            self.symbols.push(x);
-
-            id
-        });
+        let id = self.symbols.push(x);
 
         LispValue::new_symbol(id as u32)
     }

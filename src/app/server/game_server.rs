@@ -432,7 +432,7 @@ impl GameServer
             position.into()
         );
 
-        self.world.send_all(&mut self.entities, connection_id);
+        crate::time_this!{"world-gen", { self.world.send_all(&mut self.entities, connection_id) }};
 
         let mut writer = self.connection_handler.write();
         writer.flush()?;
