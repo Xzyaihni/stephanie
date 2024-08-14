@@ -127,7 +127,7 @@ pub union ValueRaw
     tag: ValueTag,
     pub special: Special,
     pub list: u32,
-    symbol: u32,
+    symbol: SymbolId,
     string: u32,
     vector: u32
 }
@@ -323,7 +323,7 @@ impl LispValue
         }
     }
 
-    pub fn new_symbol(symbol: u32) -> Self
+    pub fn new_symbol(symbol: SymbolId) -> Self
     {
         unsafe{
             Self::new(ValueTag::Symbol, ValueRaw{symbol})
@@ -409,7 +409,7 @@ impl LispValue
         }
     }
 
-    pub fn as_symbol_id(self) -> Result<u32, Error>
+    pub fn as_symbol_id(self) -> Result<SymbolId, Error>
     {
         match self.tag
         {
@@ -904,10 +904,22 @@ impl MemoryBlock
     }
 }
 
+#[repr(transparent)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SymbolId(u32);
+
+impl Display for SymbolId
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
+    {
+        write!(f, "{}", self.0)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Symbols
 {
-    mappings: HashMap<String, u32>,
+    mappings: HashMap<String, SymbolId>,
     current_id: u32
 }
 
@@ -918,12 +930,12 @@ impl Symbols
         Self{mappings: HashMap::new(), current_id: 0}
     }
 
-    pub fn get_by_name(&self, value: &str) -> Option<u32>
+    pub fn get_by_name(&self, value: &str) -> Option<SymbolId>
     {
         self.mappings.get(value).copied()
     }
 
-    pub fn get_by_id(&self, id: u32) -> &str
+    pub fn get_by_id(&self, id: SymbolId) -> &str
     {
         self.mappings.iter().find_map(|(key, value)|
         {
@@ -931,14 +943,14 @@ impl Symbols
         }).expect("all ids must be valid")
     }
 
-    pub fn push(&mut self, value: String) -> u32
+    pub fn push(&mut self, value: String) -> SymbolId
     {
         if let Some(&id) = self.mappings.get(&value)
         {
             return id;
         }
 
-        let id = self.current_id;
+        let id = SymbolId(self.current_id);
         self.current_id += 1;
 
         self.mappings.insert(value, id);
@@ -1067,17 +1079,27 @@ impl LispMemory
         self.memory.clear();
     }
 
+    pub fn get_symbol_by_name(&self, name: &str) -> Option<SymbolId>
+    {
+        self.symbols.get_by_name(name)
+    }
+
     pub fn define(&mut self, key: impl Into<String>, value: LispValue)
     {
         let symbol = self.new_symbol(key.into());
 
+        self.define_symbol(symbol, value)
+    }
+
+    pub fn define_symbol(&mut self, key: LispValue, value: LispValue)
+    {
         let mappings_id = |this: &Self|
         {
             let pair = this.env.as_list(this).expect("env must be a list").cdr;
             pair.as_list_id().expect("env cdr must be list")
         };
 
-        self.push_return(symbol);
+        self.push_return(key);
         self.push_return(value);
         self.cons();
 
@@ -1098,7 +1120,7 @@ impl LispMemory
         self.lookup_in_env(self.env, symbol)
     }
 
-    fn lookup_in_env(&self, env: LispValue, symbol: u32) -> Option<LispValue>
+    fn lookup_in_env(&self, env: LispValue, symbol: SymbolId) -> Option<LispValue>
     {
         if env.is_null()
         {
@@ -1131,7 +1153,7 @@ impl LispMemory
         Some(value)
     }
 
-    fn lookup_pair(&self, pair: LispValue, symbol: u32) -> Option<LispValue>
+    fn lookup_pair(&self, pair: LispValue, symbol: SymbolId) -> Option<LispValue>
     {
         let pair = pair.as_list(self).expect("must be a list");
 
@@ -1439,7 +1461,7 @@ impl LispMemory
         self.memory.get_vector(id)
     }
 
-    pub fn get_symbol(&self, id: u32) -> String
+    pub fn get_symbol(&self, id: SymbolId) -> String
     {
         self.symbols.get_by_id(id).to_owned()
     }
@@ -1572,7 +1594,7 @@ impl LispMemory
 
         let id = self.symbols.push(x);
 
-        LispValue::new_symbol(id as u32)
+        LispValue::new_symbol(id)
     }
 
     pub fn allocate_vector(

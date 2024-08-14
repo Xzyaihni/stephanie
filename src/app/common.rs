@@ -143,14 +143,14 @@ pub type MessageDeError = MessageError;
 #[macro_export]
 macro_rules! time_this
 {
-    ($name:expr, $($tt:tt),*) =>
+    ($name:expr, $($tt:tt)*) =>
     {
         {
             use std::time::Instant;
 
             let start_time = Instant::now();
 
-            $($tt)*
+            $($tt)*;
 
             eprintln!("{} took {} ms", $name, start_time.elapsed().as_millis());
         }

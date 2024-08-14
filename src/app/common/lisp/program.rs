@@ -367,7 +367,8 @@ pub enum Either<A, B>
 pub struct StoredLambda
 {
     pub parent_env: RefCell<LispValue>,
-    params: Either<String, ArgValues<String>>,
+    // params r just symbols so theyre not boxed
+    params: Either<LispValue, ArgValues<LispValue>>,
     body: ExpressionPos
 }
 
@@ -379,16 +380,29 @@ impl StoredLambda
         body: ExpressionPos
     ) -> Result<Self, ErrorPos>
     {
-        let params = match params.as_value()
-        {
-            Ok(x) => Either::Left(x),
-            Err(_) => Either::Right(params.map_list(|arg|
-            {
-                arg.as_value()
-            })?)
-        };
+        let params = Self::new_params(memory, params)?;
 
         Ok(Self{parent_env: RefCell::new(memory.env), params, body})
+    }
+
+    fn new_params(
+        memory: &mut LispMemory,
+        params: ExpressionPos
+    ) -> Result<Either<LispValue, ArgValues<LispValue>>, ErrorPos>
+    {
+        let mut as_symbol_id = |name: String| -> LispValue
+        {
+            memory.new_symbol(name)
+        };
+
+        Ok(match params.as_value()
+        {
+            Ok(x) => Either::Left(as_symbol_id(x)),
+            Err(_) => Either::Right(params.map_list(|arg|
+            {
+                Ok(as_symbol_id(arg.as_value()?))
+            })?)
+        })
     }
 
     pub fn apply(
@@ -423,14 +437,14 @@ impl StoredLambda
                 {
                     let value = *args.pop(memory);
 
-                    memory.define(key, value);
+                    memory.define_symbol(*key, value);
                 });
             },
             Either::Left(name) =>
             {
                 let lst = args.as_list(memory);
 
-                memory.define(name, lst);
+                memory.define_symbol(*name, lst);
             }
         }
 
@@ -1509,9 +1523,9 @@ impl ExpressionPos
         }
     }
 
-    pub fn map_list<T, F>(&self, mut f: F) -> Result<ArgValues<T>, ErrorPos>
+    pub fn map_list<T, F, E>(&self, mut f: F) -> Result<ArgValues<T>, E>
     where
-        F: FnMut(&Self) -> Result<T, ErrorPos>
+        F: FnMut(&Self) -> Result<T, E>
     {
         if self.is_null()
         {
