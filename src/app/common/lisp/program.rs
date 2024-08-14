@@ -1494,13 +1494,17 @@ impl ExpressionPos
             {
                 debug_assert!(
                     (returns_len + 1) == memory.returns_len(),
-                    "primitive procedure must return 1 value (action return)"
+                    "primitive procedure `{}` must return 1 value, returned {} (action return)",
+                    state.primitives.name_by_index(op),
+                    memory.returns_len() - returns_len
                 );
             } else
             {
                 debug_assert!(
                     returns_len == memory.returns_len(),
-                    "primitive procedure must return no value (action none)"
+                    "primitive procedure `{}` must return no value, returned {} (action none)",
+                    state.primitives.name_by_index(op),
+                    memory.returns_len() - returns_len
                 );
             }
 

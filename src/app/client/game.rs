@@ -127,7 +127,7 @@ impl Game
 
             let lisp = Lisp::new_with_config(
                 config,
-                LispMemory::new(2048, 1 << 12),
+                LispMemory::new(2048, 1 << 14),
                 &standard_code
             );
 
@@ -410,13 +410,16 @@ impl Game
                     let game_state = game_state.borrow();
                     let entities = game_state.entities();
 
-                    let mut entities_list = Vec::new();
+                    let mut total = 0;
                     entities.for_each_entity(|entity|
                     {
-                        entities_list.push(Self::push_entity(memory, entity));
+                        Self::push_entity(memory, entity);
+                        total += 1;
                     });
 
-                    memory.cons_list(entities_list);
+                    memory.push_return(());
+
+                    (0..total).for_each(|_| memory.cons());
 
                     Ok(())
                 }));

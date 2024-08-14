@@ -20,6 +20,11 @@
                     (lambda (x) (- (car x) (cdr x)))
                     (zip (entity->position a) (entity->position b)))))))
 
+(define (entities-near entity near-distance)
+    (filter
+        (lambda (x) (< (distance entity x) near-distance))
+        (all-entities)))
+
 (define (zob) (set-faction (player-entity) 'zob))
 
 (define (noclip state)
