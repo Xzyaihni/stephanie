@@ -674,9 +674,14 @@ impl Display for Error
 
 pub fn clone_with_capacity<T: Clone>(v: &Vec<T>) -> Vec<T>
 {
+    transfer_with_capacity(v, |x| x.clone())
+}
+
+pub fn transfer_with_capacity<T>(v: &Vec<T>, f: impl Fn(&T) -> T) -> Vec<T>
+{
     let mut new_v = Vec::with_capacity(v.capacity());
 
-    new_v.extend(v.iter().cloned());
+    new_v.extend(v.iter().map(f));
 
     new_v
 }
@@ -1034,9 +1039,7 @@ impl LispMemory
         self.push_return(value);
         self.cons();
 
-        let id = mappings_id(self);
-
-        let tail = self.get_car(id);
+        let tail = self.get_car(mappings_id(self));
 
         self.push_return(tail);
 

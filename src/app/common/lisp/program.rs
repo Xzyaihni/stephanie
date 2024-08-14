@@ -9,7 +9,7 @@ use std::{
 };
 
 pub use super::{
-    clone_with_capacity,
+    transfer_with_capacity,
     Error,
     ErrorPos,
     LispValue,
@@ -466,8 +466,14 @@ impl Clone for Lambdas
 {
     fn clone(&self) -> Self
     {
+        // deep copy the lambdas
         Self{
-            lambdas: clone_with_capacity(&self.lambdas)
+            lambdas: transfer_with_capacity(&self.lambdas, |x|
+            {
+                let x: &StoredLambda = &x;
+
+                Rc::new(x.clone())
+            })
         }
     }
 }

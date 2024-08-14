@@ -8,8 +8,8 @@ use std::{
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CodePosition
 {
-    line: usize,
-    char: usize
+    pub line: usize,
+    pub char: usize
 }
 
 impl CodePosition
