@@ -39,7 +39,7 @@ pub type OnApply = Rc<
 pub type OnEval = Rc<
     dyn Fn(
         ExpressionPos,
-        &mut State,
+        &mut AnalyzeState,
         &mut LispMemory,
         AstPos
     ) -> Result<ExpressionPos, ErrorPos>>;
@@ -1217,15 +1217,21 @@ impl Primitives
 }
 
 #[derive(Debug, Clone)]
-pub struct State
+pub struct AnalyzeState
 {
     pub primitives: Rc<Primitives>
 }
 
 #[derive(Debug, Clone)]
+pub struct State<'a>
+{
+    pub primitives: &'a Primitives
+}
+
+#[derive(Debug, Clone)]
 pub struct Program
 {
-    state: State,
+    primitives: Rc<Primitives>,
     expression: ExpressionPos,
     memory: LispMemory
 }
@@ -1240,19 +1246,24 @@ impl Program
     {
         let ast = Parser::parse(code)?;
 
-        let mut state = State{
+        let mut state = AnalyzeState{
             primitives
         };
 
         let expression = ExpressionPos::analyze_sequence(&mut state, &mut memory, ast)?;
 
-        Ok(Self{state, expression, memory})
+        Ok(Self{primitives: state.primitives, expression, memory})
     }
 
     pub fn eval(&self) -> Result<OutputWrapper, ErrorPos>
     {
         let mut memory = self.memory.clone();
-        self.expression.eval(&self.state, &mut memory, Action::Return)?;
+
+        let mut state = State{
+            primitives: &self.primitives
+        };
+
+        self.expression.eval(&mut state, &mut memory, Action::Return)?;
 
         let value = memory.pop_return();
         Ok(OutputWrapper{memory, value})
@@ -1608,7 +1619,7 @@ impl ExpressionPos
     }
 
     pub fn quote(
-        state: &mut State,
+        state: &mut AnalyzeState,
         memory: &mut LispMemory,
         ast: AstPos
     ) -> Result<Self, ErrorPos>
@@ -1637,7 +1648,7 @@ impl ExpressionPos
     }
 
     pub fn analyze(
-        state: &mut State,
+        state: &mut AnalyzeState,
         memory: &mut LispMemory,
         ast: AstPos
     ) -> Result<Self, ErrorPos>
@@ -1655,7 +1666,7 @@ impl ExpressionPos
     }
 
     pub fn analyze_op(
-        state: &mut State,
+        state: &mut AnalyzeState,
         memory: &mut LispMemory,
         op: Self,
         ast: AstPos
@@ -1682,7 +1693,7 @@ impl ExpressionPos
     }
 
     pub fn analyze_lambda(
-        state: &mut State,
+        state: &mut AnalyzeState,
         memory: &mut LispMemory,
         args: AstPos
     ) -> Result<Self, ErrorPos>
@@ -1696,7 +1707,7 @@ impl ExpressionPos
     }
 
     pub fn analyze_params(
-        state: &mut State,
+        state: &mut AnalyzeState,
         memory: &mut LispMemory,
         params: AstPos
     ) -> Result<Self, ErrorPos>
@@ -1721,7 +1732,7 @@ impl ExpressionPos
     }
 
     pub fn analyze_param(
-        state: &mut State,
+        state: &mut AnalyzeState,
         memory: &mut LispMemory,
         param: AstPos
     ) -> Result<Self, ErrorPos>
@@ -1741,7 +1752,7 @@ impl ExpressionPos
     }
 
     fn check_shadowing(
-        state: &mut State,
+        state: &mut AnalyzeState,
         name: &str
     ) -> Result<(), Error>
     {
@@ -1754,7 +1765,7 @@ impl ExpressionPos
     }
 
     pub fn analyze_args(
-        state: &mut State,
+        state: &mut AnalyzeState,
         memory: &mut LispMemory,
         args: AstPos
     ) -> Result<Self, ErrorPos>
@@ -1773,7 +1784,7 @@ impl ExpressionPos
     }
 
     pub fn analyze_atom(
-        state: &mut State,
+        state: &mut AnalyzeState,
         memory: &mut LispMemory,
         ast: AstPos
     ) -> Result<Self, ErrorPos>
@@ -1801,7 +1812,7 @@ impl ExpressionPos
     }
 
     pub fn analyze_sequence(
-        state: &mut State,
+        state: &mut AnalyzeState,
         memory: &mut LispMemory,
         ast: AstPos
     ) -> Result<Self, ErrorPos>
