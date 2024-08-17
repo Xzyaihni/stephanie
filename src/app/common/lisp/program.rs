@@ -756,16 +756,14 @@ impl Primitives
                     if arg.tag == ValueTag::Float
                     {
                         memory.push_return(arg);
-
-                        Ok(())
                     } else
                     {
                         let number = arg.as_integer()?;
 
                         memory.push_return(number as f32);
-
-                        Ok(())
                     }
+
+                    Ok(())
                 })),
             ("inexact->exact",
                 PrimitiveProcedureInfo::new_simple(1, |_state, memory, mut args|
@@ -775,16 +773,14 @@ impl Primitives
                     if arg.tag == ValueTag::Integer
                     {
                         memory.push_return(arg);
-
-                        Ok(())
                     } else
                     {
                         let number = arg.as_float()?;
 
                         memory.push_return(number.round() as i32);
-
-                        Ok(())
                     }
+
+                    Ok(())
                 })),
             ("+", PrimitiveProcedureInfo::new_simple(ArgsCount::Min(2), do_op!(add, checked_add))),
             ("-", PrimitiveProcedureInfo::new_simple(ArgsCount::Min(2), do_op!(sub, checked_sub))),
@@ -826,10 +822,9 @@ impl Primitives
                             #[allow(clippy::collapsible_else_if)]
                             if on_false.is_null()
                             {
-                                match action
+                                if action == Action::Return
                                 {
-                                    Action::Return => memory.push_return(()),
-                                    Action::None => ()
+                                    memory.push_return(());
                                 }
 
                                 Ok(())
@@ -986,12 +981,10 @@ impl Primitives
                     })
                 }), Rc::new(|_state, memory, args, action|
                 {
-                    if let Action::None = action
+                    if action == Action::Return
                     {
-                        return Ok(());
+                        memory.allocate_expression(args);
                     }
-
-                    memory.allocate_expression(args);
 
                     Ok(())
                 }))),
