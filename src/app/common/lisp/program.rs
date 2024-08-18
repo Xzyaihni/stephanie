@@ -29,10 +29,11 @@ mod parser;
 
 // unreadable, great
 pub type OnApply = Rc<
-    dyn Fn(
+    dyn for<'a> Fn(
+        &mut EvalQueue<'a>,
         &State,
         &mut LispMemory,
-        &ExpressionPos,
+        &'a ApplicationArgs,
         Action
     ) -> Result<(), ErrorPos>>;
 
@@ -110,38 +111,60 @@ pub fn simple_apply<const EFFECT: bool>(f: impl Fn(
     &State,
     &mut MemoryWrapper,
     ArgsWrapper
-) -> Result<(), Error> + 'static) -> OnApply
+) -> Result<(), Error> + 'static + Clone) -> OnApply
 {
     Rc::new(move |
+        eval_queue: &mut EvalQueue,
         state: &State,
         memory: &mut LispMemory,
-        args: &ExpressionPos,
+        args: &ApplicationArgs,
         action: Action
     |
     {
-        let position = args.position;
+        let position = args.0.position;
 
-        let args = args.eval_args(state, memory, if EFFECT {
+        let skip_apply = !EFFECT && action == Action::None;
+
+        let (args, args_wrapper) = args;
+
+        if !skip_apply
+        {
+            let f = f.clone();
+            eval_queue.push(Evaluated{
+                args: EvaluatedArgs{
+                    expr: None,
+                    args: None
+                },
+                run: Box::new(move |EvaluatedArgs{..}, _eval_queue, state, memory|
+                {
+                    let mut memory = MemoryWrapper{memory, ignore_return: action == Action::None};
+
+                    f(state, &mut memory, *args_wrapper).with_position(position)
+                })
+            });
+        }
+
+        args.eval_args(eval_queue, state, memory, if EFFECT {
             Action::Return
         } else
         {
             action 
-        })?;
-
-        if !EFFECT && action == Action::None
-        {
-            return Ok(());
-        }
-
-        let mut memory = MemoryWrapper{memory, ignore_return: action == Action::None};
-
-        f(state, &mut memory, args).with_position(position)
+        })
     })
 }
 
+#[derive(Debug, Clone, Copy)]
 pub struct ArgsWrapper
 {
     count: usize
+}
+
+impl From<usize> for ArgsWrapper
+{
+    fn from(count: usize) -> Self
+    {
+        Self{count}
+    }
 }
 
 impl ArgsWrapper
@@ -334,7 +357,7 @@ impl PrimitiveProcedureInfo
             &State,
             &mut MemoryWrapper,
             ArgsWrapper
-        ) -> Result<(), Error> + 'static
+        ) -> Result<(), Error> + 'static + Clone
     {
         let on_apply = simple_apply::<true>(on_apply);
 
@@ -354,7 +377,7 @@ impl PrimitiveProcedureInfo
             &State,
             &mut LispMemory,
             ArgsWrapper
-        ) -> Result<(), Error> + 'static
+        ) -> Result<(), Error> + 'static + Clone
     {
         let on_apply = simple_apply::<false>(move |state, memory, args|
         {
@@ -384,6 +407,9 @@ pub enum Either<A, B>
     Right(B)
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ExprId(usize);
+
 // i dont wanna store the body over and over in the virtual memory
 // but this seems silly, so i dunno >~<
 #[derive(Debug, Clone)]
@@ -392,15 +418,15 @@ pub struct StoredLambda
     pub parent_env: RefCell<LispValue>,
     // params r just symbols so theyre not boxed
     params: Either<LispValue, ArgValues<LispValue>>,
-    body: ExpressionPos
+    body: ExprId
 }
 
 impl StoredLambda
 {
     pub fn new(
         memory: &mut LispMemory,
-        params: ExpressionPos,
-        body: ExpressionPos
+        params: &ExpressionPos,
+        body: ExprId
     ) -> Result<Self, ErrorPos>
     {
         let params = Self::new_params(params)?;
@@ -409,7 +435,7 @@ impl StoredLambda
     }
 
     fn new_params(
-        params: ExpressionPos
+        params: &ExpressionPos
     ) -> Result<Either<LispValue, ArgValues<LispValue>>, ErrorPos>
     {
         Ok(match params.as_value()
@@ -422,27 +448,34 @@ impl StoredLambda
         })
     }
 
-    pub fn apply(
-        &self,
-        state: &State,
+    pub fn apply<'a>(
+        this: Rc<StoredLambda>,
+        eval_queue: &mut EvalQueue<'a>,
+        state: &'a State,
         memory: &mut LispMemory,
         mut args: ArgsWrapper,
         action: Action
     ) -> Result<(), ErrorPos>
     {
-        let parent_env = *self.parent_env.borrow();
+        let params = this.params.clone();
+        let body = this.body;
+
+        let parent_env = *this.parent_env.borrow();
+
+        drop(this);
+
         memory.env = memory.create_env("env", parent_env);
 
-        match &self.params
+        match params
         {
             Either::Right(params) =>
             {
                 if params.len() != args.len()
                 {
                     return Err(ErrorPos{
-                        position: self.body.position,
+                        position: state.get_expr(body).position,
                         error: Error::WrongArgumentsCount{
-                            proc: format!("<compound procedure {:?}>", self.params),
+                            proc: format!("<compound procedure {:?}>", params),
                             this_invoked: true,
                             expected: params.len().to_string(),
                             got: args.len()
@@ -461,11 +494,11 @@ impl StoredLambda
             {
                 let lst = args.as_list(memory);
 
-                memory.define_symbol(*name, lst);
+                memory.define_symbol(name, lst);
             }
         }
 
-        self.body.eval(state, memory, action)
+        state.get_expr(body).eval(eval_queue, memory, action)
     }
 }
 
@@ -802,37 +835,65 @@ impl Primitives
             ("if",
                 PrimitiveProcedureInfo::new_simple_lazy(
                     2..=3,
-                    Rc::new(|state, memory, args, action|
+                    Rc::new(|eval_queue, _state, _memory, args, action|
                     {
-                        memory.save_env();
-                        args.car().eval(state, memory, Action::Return)?;
-                        memory.restore_env();
+                        let has_else = args.1.len() == 3;
+                        let args = &args.0;
 
-                        let predicate = memory.pop_return();
-
-                        let on_true = args.cdr().car();
-                        let on_false = args.cdr().cdr();
-
-                        if predicate.is_true()
-                        {
-                            on_true.eval(state, memory, action)
-                        } else
-                        {
-                            // this is more readable come on omg
-                            #[allow(clippy::collapsible_else_if)]
-                            if on_false.is_null()
+                        eval_queue.push(Evaluated{
+                            args: EvaluatedArgs{
+                                expr: Some(args.cdr()),
+                                args: None
+                            },
+                            run: Box::new(move |EvaluatedArgs{expr, ..}, eval_queue, _state, memory|
                             {
-                                if action == Action::Return
+                                let args = expr.unwrap();
+
+                                memory.restore_env();
+
+                                let predicate = memory.pop_return();
+
+                                let on_true = args.car();
+
+                                let predicate = predicate.is_true();
+
+                                if predicate
                                 {
-                                    memory.push_return(());
-                                }
+                                    on_true.eval(eval_queue, memory, action)
+                                } else
+                                {
+                                    if has_else
+                                    {
+                                        let on_false = args.cdr().car();
 
-                                Ok(())
-                            } else
+                                        on_false.eval(eval_queue, memory, action)
+                                    } else
+                                    {
+                                        if action == Action::Return
+                                        {
+                                            memory.push_return(());
+                                        }
+
+                                        Ok(())
+                                    }
+                                }
+                            })
+                        });
+
+                        eval_queue.push(Evaluated{
+                            args: EvaluatedArgs{
+                                expr: Some(args.car()),
+                                args: None
+                            },
+                            run: Box::new(move |EvaluatedArgs{expr, ..}, eval_queue, _state, memory|
                             {
-                                on_false.car().eval(state, memory, action)
-                            }
-                        }
+                                memory.save_env();
+
+                                expr.unwrap().eval(eval_queue, memory, Action::Return)
+                            })
+                        });
+
+                        Ok(())
                     }))),
             ("let",
                 PrimitiveProcedureInfo::new_eval(2, Rc::new(|_op, state, memory, args|
@@ -860,7 +921,7 @@ impl Primitives
                         position: args.position,
                         expression: Expression::Application{
                             op: Box::new(lambda),
-                            args: Box::new(apply_args)
+                            args: apply_args
                         }
                     })
                 }))),
@@ -928,42 +989,66 @@ impl Primitives
 
                         let lambda = ExpressionPos::analyze_lambda(state, memory, lambda_args)?;
 
-                        ExpressionPos::cons(
+                        let args = ExpressionPos::cons(
                             name,
                             ExpressionPos::cons(
                                 lambda,
-                                Expression::EmptyList.with_position(position)))
+                                Expression::EmptyList.with_position(position)));
+
+                        (Box::new(args), ArgsWrapper::from(2))
                     } else
                     {
                         ExpressionPos::analyze_args(state, memory, args)?
                     };
 
                     Ok(ExpressionPos{
-                        position: args.position,
+                        position: args.0.position,
                         expression: Expression::Application{
                             op: Box::new(op),
-                            args: Box::new(args)
+                            args
                         }
                     })
-                }), Rc::new(|state, memory, args, action|
+                }), Rc::new(|eval_queue, _state, _memory, args, action|
                 {
-                    let first = args.car();
-                    let second = args.cdr().car();
+                    let first = args.0.car();
+                    let second = args.0.cdr().car();
 
                     let key = first.as_value()?;
 
-                    memory.save_env();
-                    second.eval(state, memory, Action::Return)?;
-                    memory.restore_env();
+                    eval_queue.push(Evaluated{
+                        args: EvaluatedArgs{
+                            expr: None,
+                            args: None
+                        },
+                        run: Box::new(move |EvaluatedArgs{..}, _eval_queue, _state, memory|
+                        {
+                            memory.restore_env();
 
-                    let value = memory.pop_return();
+                            let value = memory.pop_return();
 
-                    memory.define_symbol(key, value);
+                            memory.define_symbol(key, value);
 
-                    if action == Action::Return
-                    {
-                        memory.push_return(());
-                    }
+                            if action == Action::Return
+                            {
+                                memory.push_return(());
+                            }
+
+                            Ok(())
+                        })
+                    });
+
+                    eval_queue.push(Evaluated{
+                        args: EvaluatedArgs{
+                            expr: Some(second),
+                            args: None
+                        },
+                        run: Box::new(move |EvaluatedArgs{expr: second, ..}, eval_queue, _state, memory|
+                        {
+                            memory.save_env();
+
+                            second.unwrap().eval(eval_queue, memory, Action::Return)
+                        })
+                    });
 
                     Ok(())
                 }))),
@@ -976,14 +1061,14 @@ impl Primitives
                         position: args.position,
                         expression: Expression::Application{
                             op: Box::new(op),
-                            args: Box::new(arg)
+                            args: (Box::new(arg), ArgsWrapper::from(1))
                         }
                     })
-                }), Rc::new(|_state, memory, args, action|
+                }), Rc::new(|_eval_queue, _state, memory, args, action|
                 {
                     if action == Action::Return
                     {
-                        memory.allocate_expression(args);
+                        memory.allocate_expression(&args.0);
                     }
 
                     Ok(())
@@ -1209,22 +1294,96 @@ impl Primitives
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct AnalyzeState
+pub type EvaluatedFunc<'a> = Box<dyn for<'b> FnOnce(
+    EvaluatedArgs<'b>,
+    &mut EvalQueue<'b>,
+    &'b State,
+    &mut LispMemory
+) -> Result<(), ErrorPos> + 'a>;
+
+#[derive(Debug)]
+pub struct EvaluatedArgs<'a>
 {
-    pub primitives: Rc<Primitives>
+    pub expr: Option<&'a ExpressionPos>,
+    pub args: Option<&'a ApplicationArgs>
+}
+
+// trying to do this with a do_next (monad?) and functional style cost me like 5 days or something :S
+pub struct Evaluated<'a>
+{
+    args: EvaluatedArgs<'a>,
+    run: EvaluatedFunc<'a>
+}
+
+impl<'a> Debug for Evaluated<'a>
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
+    {
+        f.debug_struct("Evaluated")
+            .field("args", &self.args)
+            .finish()
+    }
+}
+
+#[derive(Debug)]
+pub struct EvalQueue<'a>(Vec<Evaluated<'a>>);
+
+impl<'a> EvalQueue<'a>
+{
+    pub fn push(&mut self, value: Evaluated<'a>)
+    {
+        self.0.push(value);
+    }
 }
 
 #[derive(Debug, Clone)]
-pub struct State<'a>
+pub struct AnalyzeState
 {
-    pub primitives: &'a Primitives
+    pub primitives: Rc<Primitives>,
+    pub exprs: Vec<ExpressionPos>
+}
+
+impl AnalyzeState
+{
+    pub fn push_expr(&mut self, expr: ExpressionPos) -> ExprId
+    {
+        let id = self.exprs.len();
+        self.exprs.push(expr);
+
+        ExprId(id)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct State
+{
+    pub primitives: Rc<Primitives>,
+    pub exprs: Rc<Vec<ExpressionPos>>
+}
+
+impl From<AnalyzeState> for State
+{
+    fn from(state: AnalyzeState) -> Self
+    {
+        Self{
+            primitives: state.primitives,
+            exprs: Rc::new(state.exprs)
+        }
+    }
+}
+
+impl State
+{
+    pub fn get_expr(&self, id: ExprId) -> &ExpressionPos
+    {
+        &self.exprs[id.0]
+    }
 }
 
 #[derive(Debug, Clone)]
 pub struct Program
 {
-    primitives: Rc<Primitives>,
+    state: State,
     expression: ExpressionPos,
     memory: LispMemory
 }
@@ -1240,23 +1399,32 @@ impl Program
         let ast = Parser::parse(code)?;
 
         let mut state = AnalyzeState{
-            primitives
+            primitives,
+            exprs: Vec::new()
         };
 
         let expression = ExpressionPos::analyze_sequence(&mut state, &mut memory, ast)?;
 
-        Ok(Self{primitives: state.primitives, expression, memory})
+        Ok(Self{state: state.into(), expression, memory})
     }
 
     pub fn eval(&self) -> Result<OutputWrapper, ErrorPos>
     {
         let mut memory = self.memory.clone();
 
-        let mut state = State{
-            primitives: &self.primitives
-        };
+        {
+            let mut eval_queue = EvalQueue(Vec::new());
+            self.expression.eval(
+                &mut eval_queue,
+                &mut memory,
+                Action::Return
+            )?;
 
-        self.expression.eval(&mut state, &mut memory, Action::Return)?;
+            while let Some(Evaluated{args, run}) = eval_queue.0.pop()
+            {
+                run(args, &mut eval_queue, &self.state, &mut memory)?;
+            }
+        }
 
         let value = memory.pop_return();
         Ok(OutputWrapper{memory, value})
@@ -1373,9 +1541,9 @@ impl ExpressionPos
         }
     }
 
-    pub fn eval(
-        &self,
-        state: &State, 
+    pub fn eval<'a>(
+        &'a self,
+        eval_queue: &mut EvalQueue<'a>,
         memory: &mut LispMemory,
         action: Action
     ) -> Result<(), ErrorPos>
@@ -1397,7 +1565,7 @@ impl ExpressionPos
             },
             Expression::Lambda{body, params} =>
             {
-                let lambda = StoredLambda::new(memory, (**params).clone(), (**body).clone())?;
+                let lambda = StoredLambda::new(memory, params, *body)?;
 
                 let id = memory.lambdas_mut().add(lambda);
 
@@ -1405,145 +1573,195 @@ impl ExpressionPos
             },
             Expression::Application{op, args} =>
             {
-                return op.apply(state, memory, args, action);
+                return op.apply(eval_queue, args, action);
             },
             Expression::Sequence{first, after} =>
             {
-                memory.save_env();
-                first.eval(state, memory, Action::None)?;
-                memory.restore_env();
+                eval_queue.push(Evaluated{
+                    args: EvaluatedArgs{
+                        expr: Some(after),
+                        args: None
+                    },
+                    run: Box::new(move |EvaluatedArgs{expr: after, ..}, eval_queue, _state, memory|
+                    {
+                        memory.restore_env();
 
-                return after.eval(state, memory, action);
+                        after.unwrap().eval(eval_queue, memory, action)
+                    })
+                });
+
+                eval_queue.push(Evaluated{
+                    args: EvaluatedArgs{
+                        expr: Some(first),
+                        args: None
+                    },
+                    run: Box::new(move |EvaluatedArgs{expr: first, ..}, eval_queue, _state, memory|
+                    {
+                        memory.save_env();
+
+                        first.unwrap().eval(eval_queue, memory, Action::None)
+                    })
+                });
+
+                return Ok(());
             },
             _ => return Err(ErrorPos{position: self.position, error: Error::ApplyNonApplication})
         };
 
-        match action
+        if action == Action::Return
         {
-            Action::Return =>
-            {
-                memory.push_return(value);
-
-                Ok(())
-            },
-            Action::None => Ok(())
+            memory.push_return(value);
         }
+
+        Ok(())
     }
 
-    pub fn apply(
-        &self,
-        state: &State,
-        memory: &mut LispMemory,
-        args: &Self,
+    pub fn apply<'a>(
+        &'a self,
+        eval_queue: &mut EvalQueue<'a>,
+        args: &'a ApplicationArgs,
         action: Action
     ) -> Result<(), ErrorPos>
     {
-        memory.save_env();
-        self.eval(state, memory, Action::Return)?;
-        memory.restore_env();
+        let position = self.position;
 
-        let op = memory.pop_return();
-
-        if let Ok(op) = op.as_primitive_procedure()
-        {
-            let primitive = state.primitives.get(op);
-
-            let got = Expression::arg_count(args);
-            let correct = match primitive.args_count
+        eval_queue.push(Evaluated{
+            args: EvaluatedArgs{
+                expr: None,
+                args: Some(args)
+            },
+            run: Box::new(move |EvaluatedArgs{args, ..}, eval_queue, state, memory|
             {
-                ArgsCount::Some(count) => got == count,
-                ArgsCount::Between{start, end_inclusive} =>
+                let args = args.unwrap();
+                memory.restore_env();
+
+                let op = memory.pop_return();
+
+                if let Ok(op) = op.as_primitive_procedure()
                 {
-                    (start..=end_inclusive).contains(&got)
-                },
-                ArgsCount::Min(expected) =>
-                {
-                    got >= expected
-                }
-            };
+                    let primitive = state.primitives.get(op);
 
-            if !correct
-            {
-                let error = Error::WrongArgumentsCount{
-                    proc: state.primitives.name_by_index(op).to_owned(),
-                    this_invoked: true,
-                    expected: primitive.args_count.to_string(),
-                    got
-                };
-
-                return Err(ErrorPos{
-                    position: args.position,
-                    error
-                });
-            }
-
-            if crate::DEBUG_LISP
-            {
-                eprintln!(
-                    "({}) called primitive: {}",
-                    self.position,
-                    state.primitives.name_by_index(op)
-                );
-            }
-
-            let returns_len = memory.returns_len();
-            (primitive.on_apply.as_ref().expect("must have apply"))(
-                state,
-                memory,
-                args,
-                action
-            )?;
-
-            if action == Action::Return
-            {
-                debug_assert!(
-                    (returns_len + 1) == memory.returns_len(),
-                    "primitive procedure `{}` must return 1 value, returned {} (action return)",
-                    state.primitives.name_by_index(op),
-                    memory.returns_len() - returns_len
-                );
-            } else
-            {
-                debug_assert!(
-                    returns_len == memory.returns_len(),
-                    "primitive procedure `{}` must return no value, returned {} (action none)",
-                    state.primitives.name_by_index(op),
-                    memory.returns_len() - returns_len
-                );
-            }
-
-            Ok(())
-        } else
-        {
-            memory.push_op(op);
-
-            let args = args.eval_args(state, memory, Action::Return)?;
-
-            let op = memory.pop_op();
-            let op = op.as_procedure().with_position(self.position)?;
-
-            let proc = memory.lambdas().get(op);
-
-            proc.apply(state, memory, args, action).map_err(|mut err|
-            {
-                #[allow(clippy::single_match)]
-                match &mut err.error
-                {
-                    Error::WrongArgumentsCount{this_invoked, ..} =>
+                    let got = args.1.len();
+                    let correct = match primitive.args_count
                     {
-                        if *this_invoked
+                        ArgsCount::Some(count) => got == count,
+                        ArgsCount::Between{start, end_inclusive} =>
                         {
-                            err.position = self.position;
-
-                            *this_invoked = false;
+                            (start..=end_inclusive).contains(&got)
+                        },
+                        ArgsCount::Min(expected) =>
+                        {
+                            got >= expected
                         }
-                    },
-                    _ => ()
-                }
+                    };
 
-                err
+                    if !correct
+                    {
+                        let error = Error::WrongArgumentsCount{
+                            proc: state.primitives.name_by_index(op).to_owned(),
+                            this_invoked: true,
+                            expected: primitive.args_count.to_string(),
+                            got
+                        };
+
+                        return Err(ErrorPos{
+                            position: args.0.position,
+                            error
+                        });
+                    }
+
+                    if crate::DEBUG_LISP
+                    {
+                        eprintln!(
+                            "({}) called primitive: {}",
+                            position,
+                            state.primitives.name_by_index(op)
+                        );
+                    }
+
+                    (primitive.on_apply.as_ref().expect("must have apply"))(
+                        eval_queue,
+                        state,
+                        memory,
+                        args,
+                        action
+                    )
+                } else
+                {
+                    let args_wrapper = args.1;
+                    eval_queue.push(Evaluated{
+                        args: EvaluatedArgs{
+                            expr: None,
+                            args: None
+                        },
+                        run: Box::new(move |EvaluatedArgs{..}, eval_queue, state, memory|
+                        {
+                            let op = memory.pop_op();
+                            let op = op.as_procedure().with_position(position)?;
+
+                            let lambda = memory.lambdas().get(op);
+                            StoredLambda::apply(
+                                lambda,
+                                eval_queue,
+                                state,
+                                memory,
+                                args_wrapper,
+                                action
+                            ).map_err(move |mut err|
+                            {
+                                #[allow(clippy::single_match)]
+                                match &mut err.error
+                                {
+                                    Error::WrongArgumentsCount{this_invoked, ..} =>
+                                    {
+                                        if *this_invoked
+                                        {
+                                            err.position = position;
+
+                                            *this_invoked = false;
+                                        }
+                                    },
+                                    _ => ()
+                                }
+
+                                err
+                            })
+                        })
+                    });
+
+                    eval_queue.push(Evaluated{
+                        args: EvaluatedArgs{
+                            expr: None,
+                            args: Some(args)
+                        },
+                        run: Box::new(move |EvaluatedArgs{args, ..}, eval_queue, state, memory|
+                        {
+                            memory.push_op(op);
+
+                            args.unwrap().0.eval_args(eval_queue, state, memory, Action::Return)
+                        })
+                    });
+
+                    Ok(())
+                }
             })
-        }
+        });
+
+        eval_queue.push(Evaluated{
+            args: EvaluatedArgs{
+                expr: Some(self),
+                args: None
+            },
+            run: Box::new(move |EvaluatedArgs{expr, ..}, eval_queue, _state, memory|
+            {
+                memory.save_env();
+
+                expr.unwrap().eval(eval_queue, memory, Action::Return)
+            })
+        });
+
+
+        Ok(())
     }
 
     pub fn map_list<T, F, E>(&self, mut f: F) -> Result<ArgValues<T>, E>
@@ -1567,47 +1785,67 @@ impl ExpressionPos
         }
     }
 
-    pub fn eval_args(
-        &self,
+    pub fn eval_args<'a>(
+        &'a self,
+        eval_queue: &mut EvalQueue<'a>,
         state: &State, 
         memory: &mut LispMemory,
         action: Action
-    ) -> Result<ArgsWrapper, ErrorPos>
+    ) -> Result<(), ErrorPos>
     {
-        self.eval_args_inner(state, memory, action, false)
+        self.eval_args_inner(eval_queue, state, memory, action, false)
     }
 
-    fn eval_args_inner(
-        &self,
+    fn eval_args_inner<'a>(
+        &'a self,
+        eval_queue: &mut EvalQueue<'a>,
         state: &State, 
         memory: &mut LispMemory,
         action: Action,
         save_env: bool
-    ) -> Result<ArgsWrapper, ErrorPos>
+    ) -> Result<(), ErrorPos>
     {
         if self.is_null()
         {
-            Ok(ArgsWrapper::new())
+            Ok(())
         } else
         {
             let car = self.car();
             let cdr = self.cdr();
 
-            let args = cdr.eval_args_inner(state, memory, action, true)?;
-
             if save_env
             {
-                memory.save_env();
+                eval_queue.push(Evaluated{
+                    args: EvaluatedArgs{
+                        expr: None,
+                        args: None
+                    },
+                    run: Box::new(move |EvaluatedArgs{..}, _eval_queue, _state, memory|
+                    {
+                        memory.restore_env();
+
+                        Ok(())
+                    })
+                });
             }
 
-            car.eval(state, memory, action)?;
+            eval_queue.push(Evaluated{
+                args: EvaluatedArgs{
+                    expr: Some(car),
+                    args: None
+                },
+                run: Box::new(move |EvaluatedArgs{expr: car, ..}, eval_queue, _state, memory|
+                {
+                    if save_env
+                    {
+                        memory.save_env();
+                    }
 
-            if save_env
-            {
-                memory.restore_env();
-            }
+                    car.unwrap().eval(eval_queue, memory, action)
+                })
+            });
 
-            Ok(args.increment())
+            cdr.eval_args_inner(eval_queue, state, memory, action, true)
         }
     }
 
@@ -1676,11 +1914,13 @@ impl ExpressionPos
             }
         }
 
+        let args = Self::analyze_args(state, memory, ast)?;
+
         Ok(Self{
             position: op.position,
             expression: Expression::Application{
                 op: Box::new(op),
-                args: Box::new(Self::analyze_args(state, memory, ast)?)
+                args
             }
         })
     }
@@ -1694,7 +1934,9 @@ impl ExpressionPos
         Expression::argument_count_ast("lambda".to_owned(), 2, &args)?;
 
         let params = Box::new(ExpressionPos::analyze_params(state, memory, args.car())?);
-        let body = Box::new(Self::analyze(state, memory, args.cdr().car())?);
+        let body = Self::analyze(state, memory, args.cdr().car())?;
+
+        let body = state.push_expr(body);
 
         Ok(Self{position: args.position, expression: Expression::Lambda{body, params}})
     }
@@ -1761,19 +2003,24 @@ impl ExpressionPos
         state: &mut AnalyzeState,
         memory: &mut LispMemory,
         args: AstPos
-    ) -> Result<Self, ErrorPos>
+    ) -> Result<ApplicationArgs, ErrorPos>
     {
         if args.is_null()
         {
-            return Ok(Self{position: args.position, expression: Expression::EmptyList});
+            return Ok((
+                Box::new(Self{position: args.position, expression: Expression::EmptyList}),
+                ArgsWrapper::new()
+            ));
         }
+
+        let (rest, count) = Self::analyze_args(state, memory, args.cdr())?;
 
         let out = Expression::List{
             car: Box::new(Self::analyze(state, memory, args.car())?),
-            cdr: Box::new(Self::analyze_args(state, memory, args.cdr())?)
+            cdr: rest
         };
 
-        Ok(Self{position: args.position, expression: out})
+        Ok((Box::new(Self{position: args.position, expression: out}), count.increment()))
     }
 
     pub fn analyze_atom(
@@ -1849,6 +2096,8 @@ impl Deref for ExpressionPos
     }
 }
 
+pub type ApplicationArgs = (Box<ExpressionPos>, ArgsWrapper);
+
 #[derive(Debug, Clone)]
 pub enum Expression
 {
@@ -1859,9 +2108,9 @@ pub enum Expression
     Integer(LispValue),
     Bool(LispValue),
     EmptyList,
-    Lambda{body: Box<ExpressionPos>, params: Box<ExpressionPos>},
+    Lambda{body: ExprId, params: Box<ExpressionPos>},
     List{car: Box<ExpressionPos>, cdr: Box<ExpressionPos>},
-    Application{op: Box<ExpressionPos>, args: Box<ExpressionPos>},
+    Application{op: Box<ExpressionPos>, args: ApplicationArgs},
     Sequence{first: Box<ExpressionPos>, after: Box<ExpressionPos>}
 }
 

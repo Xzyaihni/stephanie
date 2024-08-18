@@ -331,7 +331,12 @@ impl Game
 
     fn add_simple_setter<F>(&self, primitives: &mut Primitives, name: &str, f: F)
     where
-        F: Fn(&mut ClientEntities, Entity, &mut MemoryWrapper, ArgsWrapper) -> Result<(), lisp::Error> + 'static
+        F: Fn(
+            &mut ClientEntities,
+            Entity,
+            &mut MemoryWrapper,
+            ArgsWrapper
+        ) -> Result<(), lisp::Error> + 'static + Clone
     {
         let game_state = self.game_state.clone();
 

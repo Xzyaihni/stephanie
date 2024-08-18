@@ -1837,6 +1837,23 @@ mod tests
 {
     use super::*;
 
+    fn simple_integer_test(code: &str, result: i32)
+    {
+        let mut lisp = Lisp::new(code).unwrap();
+
+        let value = lisp.run().unwrap_or_else(|err|
+        {
+            panic!("{err}")
+        });
+
+        let value = value.as_integer().unwrap_or_else(|err|
+        {
+            panic!("{err} ({value})")
+        });
+
+        assert_eq!(value, result);
+    }
+
     #[test]
     fn ycomb_factorial()
     {
@@ -1850,11 +1867,7 @@ mod tests
                 7)
         ";
 
-        let mut lisp = Lisp::new(code).unwrap();
-
-        let value = lisp.run().unwrap().as_integer().unwrap();
-
-        assert_eq!(value, 5040_i32);
+        simple_integer_test(code, 5040);
     }
 
     #[test]
@@ -1869,11 +1882,7 @@ mod tests
             (+ (test 1 2 3) (test 7 2 1) (test 3 2 2) (test 3 3 3))
         ";
 
-        let mut lisp = Lisp::new(code).unwrap();
-
-        let value = lisp.run().unwrap().as_integer().unwrap();
-
-        assert_eq!(value, 10_i32);
+        simple_integer_test(code, 10);
     }
 
     #[test]
@@ -1888,11 +1897,7 @@ mod tests
             (factorial 7)
         ";
 
-        let mut lisp = Lisp::new(code).unwrap();
-
-        let value = lisp.run().unwrap().as_integer().unwrap();
-
-        assert_eq!(value, 5040_i32);
+        simple_integer_test(code, 5040);
     }
 
     #[test]
@@ -2205,11 +2210,7 @@ mod tests
             (car (cdr (cdr x)))
         ";
 
-        let mut lisp = Lisp::new(code).unwrap();
-
-        let value = lisp.run().unwrap().as_integer().unwrap();
-
-        assert_eq!(value, 5_i32);
+        simple_integer_test(code, 5);
     }
 
     #[test]
@@ -2347,11 +2348,7 @@ mod tests
             (+ (f 1 2 3) (f 5) (f))
         ";
 
-        let mut lisp = Lisp::new(code).unwrap();
-
-        let value = lisp.run().unwrap().as_integer().unwrap();
-
-        assert_eq!(value, 11_i32);
+        simple_integer_test(code, 11);
     }
 
     #[test]
@@ -2440,11 +2437,7 @@ mod tests
             (if #t 2 3)
         ";
 
-        let mut lisp = Lisp::new(code).unwrap();
-
-        let value = lisp.run().unwrap().as_integer().unwrap();
-
-        assert_eq!(value, 2_i32);
+        simple_integer_test(code, 2);
     }
 
     #[test]
@@ -2474,11 +2467,7 @@ mod tests
             (+ (x 1) (x 5))
         ";
 
-        let mut lisp = Lisp::new(code).unwrap();
-
-        let value = lisp.run().unwrap().as_integer().unwrap();
-
-        assert_eq!(value, 10_i32);
+        simple_integer_test(code, 10);
     }
 
     #[test]
@@ -2489,11 +2478,7 @@ mod tests
                 1)
         ";
 
-        let mut lisp = Lisp::new(code).unwrap();
-
-        let value = lisp.run().unwrap().as_integer().unwrap();
-
-        assert_eq!(value, 1_i32);
+        simple_integer_test(code, 1);
     }
 
     #[test]
@@ -2511,11 +2496,7 @@ mod tests
                 (x (number? (quote abcdefg))))
         ";
 
-        let mut lisp = Lisp::new(code).unwrap();
-
-        let value = lisp.run().unwrap().as_integer().unwrap();
-
-        assert_eq!(value, 2_i32);
+        simple_integer_test(code, 2);
     }
 
     #[test]
@@ -2527,11 +2508,7 @@ mod tests
             x
         ";
 
-        let mut lisp = Lisp::new(code).unwrap();
-
-        let value = lisp.run().unwrap().as_integer().unwrap();
-
-        assert_eq!(value, 5_i32);
+        simple_integer_test(code, 5);
     }
 
     #[test]
@@ -2557,11 +2534,17 @@ mod tests
             (+ 3 6)
         ";
 
-        let mut lisp = Lisp::new(code).unwrap();
+        simple_integer_test(code, 9);
+    }
 
-        let value = lisp.run().unwrap().as_integer().unwrap();
+    #[test]
+    fn subtraction()
+    {
+        let code = "
+            (- 7 6)
+        ";
 
-        assert_eq!(value, 9_i32);
+        simple_integer_test(code, 1);
     }
 
     #[test]
@@ -2571,11 +2554,7 @@ mod tests
             (+ 1 2 3)
         ";
 
-        let mut lisp = Lisp::new(code).unwrap();
-
-        let value = lisp.run().unwrap().as_integer().unwrap();
-
-        assert_eq!(value, 6_i32);
+        simple_integer_test(code, 6);
     }
 
     #[test]
@@ -2588,10 +2567,6 @@ mod tests
               )
         ";
 
-        let mut lisp = Lisp::new(code).unwrap();
-
-        let value = lisp.run().unwrap().as_integer().unwrap();
-
-        assert_eq!(value, 6_i32);
+        simple_integer_test(code, 6);
     }
 }
