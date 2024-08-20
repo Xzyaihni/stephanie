@@ -665,7 +665,16 @@ impl Primitives
                 {
                     let arg = args.pop(memory);
 
-                    println!("{}", arg.to_string());
+                    print!("{}", arg.to_string());
+
+                    memory.push_return(());
+
+                    Ok(())
+                })),
+            ("newline",
+                PrimitiveProcedureInfo::new_simple_effect(0, move |_state, memory, _args|
+                {
+                    println!();
 
                     memory.push_return(());
 
@@ -1560,6 +1569,7 @@ impl ExpressionPos
             | Expression::Float(x)
             | Expression::Bool(x)
             | Expression::PrimitiveProcedure(x) => *x,
+            | Expression::Char(x) => *x,
             Expression::Value(s) =>
             {
                 memory.lookup_symbol(s.as_symbol_id().expect("value must be a symbol"))
@@ -1978,9 +1988,9 @@ impl ExpressionPos
         param: AstPos
     ) -> Result<Self, ErrorPos>
     {
-        let expression = match param.ast
+        let expression = match param.as_value()?
         {
-            Ast::Value(x) =>
+            PrimitiveType::Value(x) =>
             {
                 Self::check_shadowing(state, &x).with_position(param.position)?;
 
@@ -2109,6 +2119,7 @@ pub enum Expression
 {
     // none of the LispValue r boxed so its fine to store them
     Value(LispValue),
+    Char(LispValue),
     PrimitiveProcedure(LispValue),
     Float(LispValue),
     Integer(LispValue),
@@ -2166,6 +2177,7 @@ impl Expression
         match primitive
         {
             PrimitiveType::Value(x) => Self::Value(memory.new_symbol(x)),
+            PrimitiveType::Char(x) => Self::Char(LispValue::new_char(x)),
             PrimitiveType::Float(x) => Self::Float(LispValue::new_float(x)),
             PrimitiveType::Integer(x) => Self::Integer(LispValue::new_integer(x)),
             PrimitiveType::Bool(x) => Self::Bool(LispValue::new_bool(x))

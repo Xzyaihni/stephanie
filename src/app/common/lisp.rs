@@ -345,6 +345,13 @@ impl LispValue
         }
     }
 
+    pub fn new_char(c: char) -> Self
+    {
+        unsafe{
+            Self::new(ValueTag::Char, ValueRaw{char: c})
+        }
+    }
+
     pub fn new_bool(value: bool) -> Self
     {
         Self::new_special(Special::new_bool(value))
@@ -462,6 +469,15 @@ impl LispValue
         {
             ValueTag::Vector => Ok(memory.get_vector(unsafe{ self.value.vector })),
             x => Err(Error::WrongType{expected: ValueTag::Vector, got: x})
+        }
+    }
+
+    pub fn as_char(self) -> Result<char, Error>
+    {
+        match self.tag
+        {
+            ValueTag::Char => Ok(unsafe{ self.value.char }),
+            x => Err(Error::WrongType{expected: ValueTag::Integer, got: x})
         }
     }
 
@@ -619,6 +635,7 @@ pub enum Error
     Custom(String),
     NumberParse(String),
     SpecialParse(String),
+    CharTooLong(String),
     UndefinedVariable(String),
     AttemptedShadowing(String),
     ApplyNonApplication,
@@ -648,6 +665,7 @@ impl Display for Error
             Self::Custom(s) => s.clone(),
             Self::NumberParse(s) => format!("cant parse `{s}` as number"),
             Self::SpecialParse(s) => format!("cant parse `{s}` as a special"),
+            Self::CharTooLong(s) => format!("cant parse `{s}` as char"),
             Self::UndefinedVariable(s) => format!("variable `{s}` is undefined"),
             Self::AttemptedShadowing(s) => format!("attempted to shadow `{s}` which is a primitive"),
             Self::ApplyNonApplication => "apply was called on a non application".to_owned(),
@@ -1656,6 +1674,7 @@ impl LispMemory
             | Expression::Integer(x)
             | Expression::Bool(x)
             | Expression::PrimitiveProcedure(x)
+            | Expression::Char(x)
             | Expression::Value(x) => *x,
             Expression::EmptyList => LispValue::new_empty_list(),
             Expression::List{car, cdr} =>
@@ -1971,12 +1990,8 @@ mod tests
                     (+ z y x)))
         ";
 
-        let mut lisp = Lisp::new(code).unwrap();
-
-        let value = lisp.run().unwrap().as_integer().unwrap();
-
         // simple math too hard for me sry
-        assert_eq!(value, (34_i32 + 28));
+        simple_integer_test(code, 34_i32 + 28);
     }
 
     #[test]
@@ -1989,11 +2004,7 @@ mod tests
             (+ (two 4) (one 5))
         ";
 
-        let mut lisp = Lisp::new(code).unwrap();
-
-        let value = lisp.run().unwrap().as_integer().unwrap();
-
-        assert_eq!(value, 19);
+        simple_integer_test(code, 19);
     }
 
     #[test]
@@ -2009,11 +2020,7 @@ mod tests
             (+ x (vector-ref v 0)) ; 8
         ";
 
-        let mut lisp = Lisp::new(code).unwrap();
-
-        let value = lisp.run().unwrap().as_integer().unwrap();
-
-        assert_eq!(value, 8);
+        simple_integer_test(code, 8);
     }
 
     #[test]
@@ -2027,11 +2034,7 @@ mod tests
             (+ (car l) (cdr l))
         ";
 
-        let mut lisp = Lisp::new(code).unwrap();
-
-        let value = lisp.run().unwrap().as_integer().unwrap();
-
-        assert_eq!(value, 8);
+        simple_integer_test(code, 8);
     }
 
     #[test]
@@ -2411,11 +2414,7 @@ mod tests
             ; yea
         ";
 
-        let mut lisp = Lisp::new(code).unwrap();
-
-        let value = lisp.run().unwrap().as_integer().unwrap();
-
-        assert_eq!(value, 6);
+        simple_integer_test(code, 6);
     }
 
     #[test]
@@ -2427,11 +2426,7 @@ mod tests
             0
         ";
 
-        let mut lisp = Lisp::new(code).unwrap();
-
-        let value = lisp.run().unwrap().as_integer().unwrap();
-
-        assert_eq!(value, 0);
+        simple_integer_test(code, 0);
     }
 
     #[test]
@@ -2445,11 +2440,7 @@ mod tests
             0
         ";
 
-        let mut lisp = Lisp::new(code).unwrap();
-
-        let value = lisp.run().unwrap().as_integer().unwrap();
-
-        assert_eq!(value, 0);
+        simple_integer_test(code, 0);
     }
 
     #[test]
@@ -2473,11 +2464,7 @@ mod tests
             0
         ";
 
-        let mut lisp = Lisp::new(code).unwrap();
-
-        let value = lisp.run().unwrap().as_integer().unwrap();
-
-        assert_eq!(value, 0);
+        simple_integer_test(code, 0);
     }
 
     #[test]
@@ -2488,6 +2475,31 @@ mod tests
         ";
 
         simple_integer_test(code, 2);
+    }
+
+    #[test]
+    fn self_eval()
+    {
+        let code = "
+            12345
+        ";
+
+        simple_integer_test(code, 12345);
+    }
+
+    #[test]
+    fn char()
+    {
+        let code = "
+            #\\x
+        ";
+
+        let mut lisp = Lisp::new(code).unwrap();
+        dbg!(&lisp);
+
+        let value = lisp.run().unwrap().as_char().unwrap();
+
+        assert_eq!(value, 'x');
     }
 
     #[test]

@@ -105,9 +105,10 @@
                         (+ index 1))))))
     (newtons-method-inner initial 0))
 
-(define exp-iterations 30)
+(define exp-iterations 10)
 
 (define (expm1 x)
+    (define x (exact->inexact x))
     (fold
         +
         0.0

@@ -13,6 +13,7 @@ mod lexer;
 pub enum PrimitiveType
 {
     Value(String),
+    Char(char),
     Float(f32),
     Integer(i32),
     Bool(bool)
@@ -85,6 +86,32 @@ impl Deref for AstPos
     }
 }
 
+// the most inefficient implementation of this ever!
+fn parse_char_inner(chars: &mut impl ExactSizeIterator<Item=char>) -> String
+{
+    if chars.len() <= 1
+    {
+        chars.next().into_iter().collect()
+    } else
+    {
+        if chars.by_ref().next().unwrap().is_whitespace()
+        {
+            parse_char_inner(chars)
+        } else
+        {
+            return chars.collect();
+        }
+    }
+}
+
+fn parse_char(s: &str) -> String
+{
+    let chars: Vec<char> = s.chars().rev().collect();
+    let mut chars = chars.into_iter();
+
+    parse_char_inner(&mut chars).chars().rev().collect()
+}
+
 #[derive(Debug, Clone)]
 pub enum Ast
 {
@@ -95,6 +122,20 @@ pub enum Ast
 
 impl Ast
 {
+    pub fn to_string_pretty(&self) -> String
+    {
+        match self
+        {
+            Self::EmptyList => "()".to_owned(),
+            Self::Value(x) => x.clone(),
+            Self::List{car, cdr} => format!(
+                "({} {})",
+                car.to_string_pretty(),
+                cdr.to_string_pretty()
+            )
+        }
+    }
+
     pub fn car(&self) -> AstPos
     {
         match self
@@ -117,7 +158,20 @@ impl Ast
     {
         if let Some(special) = x.strip_prefix('#')
         {
-            let x = match special
+            if let Some(c) = special.strip_prefix('\\')
+            {
+                let parsed = parse_char(c);
+
+                return if parsed.len() == 1
+                {
+                    Ok(PrimitiveType::Char(parsed.chars().next().unwrap()))
+                } else
+                {
+                    Err(Error::CharTooLong(parsed.to_owned()))
+                };
+            }
+
+            let x = match special.trim()
             {
                 "t" => true,
                 "f" => false,
@@ -127,7 +181,7 @@ impl Ast
             return Ok(PrimitiveType::Bool(x));
         }
 
-        let mut x = x;
+        let mut x = x.trim();
 
         let stripped = x.strip_prefix('-');
 
