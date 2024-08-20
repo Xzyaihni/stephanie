@@ -23,7 +23,7 @@ pub use program::{
     ArgsWrapper
 };
 
-use program::{Expression, CodePosition};
+use program::{Expression, ExpressionPos, CodePosition};
 
 mod program;
 
@@ -1678,7 +1678,7 @@ impl LispMemory
 
 pub struct GenericOutputWrapper<M>
 {
-    pub memory: M,
+    memory: M,
     pub value: LispValue
 }
 
@@ -1766,9 +1766,71 @@ impl<M: MemoriableRef> GenericOutputWrapper<M>
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct LispState
+{
+    exprs: Vec<ExpressionPos>,
+    memory: LispMemory
+}
+
+impl From<LispMemory> for LispState
+{
+    fn from(memory: LispMemory) -> Self
+    {
+        Self{exprs: Vec::new(), memory}
+    }
+}
+
+impl LispState
+{
+    pub fn into_memory(self) -> LispMemory
+    {
+        self.memory
+    }
+}
+
+pub struct StateOutputWrapper
+{
+    exprs: Vec<ExpressionPos>,
+    value: OutputWrapper
+}
+
+impl Display for StateOutputWrapper
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
+    {
+        write!(f, "{}", self.value)
+    }
+}
+
+impl Deref for StateOutputWrapper
+{
+    type Target = OutputWrapper;
+
+    fn deref(&self) -> &Self::Target
+    {
+        &self.value
+    }
+}
+
+impl StateOutputWrapper
+{
+    pub fn into_state(self) -> LispState
+    {
+        LispState{exprs: self.exprs, memory: self.value.memory}
+    }
+
+    pub fn destructure(self) -> (LispState, LispValue)
+    {
+        let value = self.value.value;
+        (self.into_state(), value)
+    }
+}
+
 pub struct LispConfig
 {
-    pub primitives: Rc<Primitives>
+    pub primitives: Rc<Primitives>,
+    pub state: LispState
 }
 
 #[derive(Debug)]
@@ -1781,13 +1843,12 @@ impl Lisp
 {
     pub fn new_with_config(
         config: LispConfig,
-        memory: LispMemory,
         code: &str
     ) -> Result<Self, ErrorPos>
     {
         let program = Program::parse(
             config.primitives,
-            memory,
+            config.state,
             code
         )?;
 
@@ -1800,10 +1861,11 @@ impl Lisp
     ) -> Result<Self, ErrorPos>
     {
         let config = LispConfig{
-            primitives: Rc::new(Primitives::new())
+            primitives: Rc::new(Primitives::new()),
+            state: memory.into()
         };
 
-        Self::new_with_config(config, memory, code)
+        Self::new_with_config(config, code)
     }
 
     pub fn new(code: &str) -> Result<Self, ErrorPos>
@@ -1826,7 +1888,7 @@ impl Lisp
         LispMemory::default()
     }
 
-    pub fn run(&mut self) -> Result<OutputWrapper, ErrorPos>
+    pub fn run(&mut self) -> Result<StateOutputWrapper, ErrorPos>
     {
         self.program.eval()
     }
@@ -2110,7 +2172,7 @@ mod tests
         assert_eq!(value, 39_922_707_i32);
     }
 
-    fn list_equals(memory: &LispMemory, list: LispList, check: &[i32])
+    fn list_equals(list: LispList<OutputWrapperRef>, check: &[i32])
     {
         let car = list.car().as_integer().unwrap();
 
@@ -2122,7 +2184,7 @@ mod tests
             return;
         }
 
-        list_equals(memory, list.cdr().as_list(memory).unwrap(), check)
+        list_equals(list.cdr().as_list().unwrap(), check)
     }
 
     #[test]
@@ -2134,14 +2196,11 @@ mod tests
 
         let mut lisp = Lisp::new(code).unwrap();
 
-        let OutputWrapper{
-            ref memory,
-            value: ref output
-        } = lisp.run().unwrap();
+        let output = lisp.run().unwrap();
 
-        let value = output.as_list(memory).unwrap();
+        let value = output.as_list().unwrap();
 
-        list_equals(memory, value, &[1, 2, 3, 4, 5]);
+        list_equals(value, &[1, 2, 3, 4, 5]);
     }
 
     #[test]
@@ -2153,14 +2212,11 @@ mod tests
 
         let mut lisp = Lisp::new(code).unwrap();
 
-        let OutputWrapper{
-            ref memory,
-            value: ref output
-        } = lisp.run().unwrap();
+        let output = lisp.run().unwrap();
 
-        let value = output.as_list(memory).unwrap();
+        let value = output.as_list().unwrap();
 
-        list_equals(memory, value, &[1, 2, 3, 4, 5]);
+        list_equals(value, &[1, 2, 3, 4, 5]);
     }
 
     #[test]
@@ -2172,12 +2228,9 @@ mod tests
 
         let mut lisp = Lisp::new(code).unwrap();
 
-        let OutputWrapper{
-            ref memory,
-            value: ref output
-        } = lisp.run().unwrap();
+        let output = lisp.run().unwrap();
 
-        let value = output.as_symbol(memory).unwrap();
+        let value = output.as_symbol().unwrap();
 
         assert_eq!(value, "heyyy".to_owned());
     }
@@ -2191,14 +2244,11 @@ mod tests
 
         let mut lisp = Lisp::new(code).unwrap();
 
-        let OutputWrapper{
-            ref memory,
-            value: ref output
-        } = lisp.run().unwrap();
+        let output = lisp.run().unwrap();
 
-        let value = output.as_list(memory).unwrap();
+        let value = output.as_list().unwrap();
 
-        list_equals(memory, value, &[3, 4, 5]);
+        list_equals(value, &[3, 4, 5]);
     }
 
     #[test]

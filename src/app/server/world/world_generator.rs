@@ -14,17 +14,7 @@ use crate::common::{
     TileMap,
     SaveLoad,
     WeightedPicker,
-    lisp::{
-        self,
-        Lisp,
-        LispConfig,
-        LispMemory,
-        ValueTag,
-        ArgsCount,
-        OutputWrapper,
-        Primitives,
-        PrimitiveProcedureInfo
-    },
+    lisp::{self, *},
     world::{
         Pos3,
         LocalPos,
@@ -161,7 +151,6 @@ pub struct ChunkGenerator
 {
     rules: Rc<ChunkRulesGroup>,
     primitives: Rc<Primitives>,
-    memory: LispMemory,
     chunks: HashMap<String, Lisp>,
     tilemap: Rc<TileMap>
 }
@@ -179,7 +168,7 @@ impl ChunkGenerator
 
         let primitives = Rc::new(Self::default_primitives(&tilemap));
 
-        let memory = Self::default_memory(
+        let state = Self::default_state(
             primitives.clone(),
             &parent_directory
         );
@@ -187,7 +176,6 @@ impl ChunkGenerator
         let mut this = Self{
             rules: rules.clone(),
             primitives,
-            memory,
             chunks,
             tilemap
         };
@@ -203,7 +191,7 @@ impl ChunkGenerator
         {
             let filename = parent_directory.join(format!("{name}.scm"));
 
-            this.parse_function(filename, name)
+            this.parse_function(state.clone(), filename, name)
         })?;
 
         Ok(this)
@@ -247,10 +235,10 @@ impl ChunkGenerator
         primitives
     }
 
-    fn default_memory(
+    fn default_state(
         primitives: Rc<Primitives>,
         path: &Path
-    ) -> LispMemory
+    ) -> LispState
     {
         fn load(name: &Path) -> String
         {
@@ -258,29 +246,32 @@ impl ChunkGenerator
                 .unwrap_or_else(|err| panic!("{} must exist >_< ({err})", name.display()))
         }
 
-        let run_default = |memory: LispMemory, path: PathBuf| -> LispMemory
+        let run_default = |state: LispState, path: PathBuf| -> LispState
         {
             let default_code = load(&path);
 
             let config = LispConfig{
-                primitives: primitives.clone()
+                primitives: primitives.clone(),
+                state
             };
 
-            Lisp::new_with_config(config, memory, &default_code)
+            Lisp::new_with_config(config, &default_code)
                 .and_then(|mut x|
                 {
                     x.run()
                 }).unwrap_or_else(|err| panic!("{} has an error ({err})", path.display()))
-                .memory
+                .into_state()
         };
 
-        let memory = run_default(LispMemory::new(256, 1 << 13), "lisp/standard.scm".into());
+        let state: LispState = LispMemory::new(256, 1 << 13).into();
+        let state = run_default(state, "lisp/standard.scm".into());
 
-        run_default(memory, path.join("default.scm"))
+        run_default(state, path.join("default.scm"))
     }
 
     fn parse_function(
         &mut self,
+        state: LispState,
         filepath: PathBuf,
         name: &str
     ) -> Result<(), ParseError>
@@ -292,10 +283,11 @@ impl ChunkGenerator
         })?;
 
         let config = LispConfig{
-            primitives: self.primitives.clone()
+            primitives: self.primitives.clone(),
+            state
         };
 
-        let lisp = Lisp::new_with_config(config, self.memory.clone(), &code).unwrap_or_else(|err|
+        let lisp = Lisp::new_with_config(config, &code).unwrap_or_else(|err|
         {
             panic!("error parsing {name}: {err}")
         });
@@ -331,11 +323,14 @@ impl ChunkGenerator
                 tag.define(self.rules.name_mappings(), this_chunk.memory_mut());
             });
 
-            let OutputWrapper{memory, value} = this_chunk.run()
+            let (state, value): (LispState, LispValue) = this_chunk.run()
                 .unwrap_or_else(|err|
                 {
                     panic!("runtime lisp error: {err} (in {chunk_name})")
-                });
+                })
+                .destructure();
+
+            let memory = state.into_memory();
 
             let output = value.as_vector_ref(&memory)
                 .unwrap_or_else(|err|

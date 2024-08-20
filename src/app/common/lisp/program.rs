@@ -14,8 +14,10 @@ pub use super::{
     ErrorPos,
     LispValue,
     LispMemory,
+    LispState,
     ValueTag,
     LispVectorRef,
+    StateOutputWrapper,
     OutputWrapper,
     OutputWrapperRef
 };
@@ -1392,15 +1394,17 @@ impl Program
 {
     pub fn parse(
         primitives: Rc<Primitives>,
-        mut memory: LispMemory,
+        state: LispState,
         code: &str
     ) -> Result<Self, ErrorPos>
     {
         let ast = Parser::parse(code)?;
 
+        let LispState{exprs, mut memory} = state;
+
         let mut state = AnalyzeState{
             primitives,
-            exprs: Vec::new()
+            exprs
         };
 
         let expression = ExpressionPos::analyze_sequence(&mut state, &mut memory, ast)?;
@@ -1408,7 +1412,7 @@ impl Program
         Ok(Self{state: state.into(), expression, memory})
     }
 
-    pub fn eval(&self) -> Result<OutputWrapper, ErrorPos>
+    pub fn eval(&self) -> Result<StateOutputWrapper, ErrorPos>
     {
         let mut memory = self.memory.clone();
 
@@ -1427,7 +1431,9 @@ impl Program
         }
 
         let value = memory.pop_return();
-        Ok(OutputWrapper{memory, value})
+
+        let exprs: &Vec<ExpressionPos> = &self.state.exprs;
+        Ok(StateOutputWrapper{exprs: exprs.clone(), value: OutputWrapper{memory, value}})
     }
 
     pub fn memory_mut(&mut self) -> &mut LispMemory

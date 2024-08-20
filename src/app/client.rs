@@ -220,13 +220,13 @@ impl Client
     {
         if let yanyaengine::Control::Keyboard{
             logical,
-            state: ElementState::Pressed,
+            state,
             ..
         } = control.clone()
         {
             if let Some(KeyMapping::Keyboard(key)) = KeyMapping::from_control(control.clone())
             {
-                if self.game.on_key(logical, key)
+                if self.game.on_key_state(logical, key, state == ElementState::Pressed)
                 {
                     return;
                 }

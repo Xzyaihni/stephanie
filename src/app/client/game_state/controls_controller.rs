@@ -1,11 +1,14 @@
 use std::{
     mem,
+    error,
     fmt::{self, Display}
 };
 
 use yanyaengine::{ElementState, PhysicalKey, KeyCode, KeyCodeNamed, MouseButton};
 
 use strum::EnumCount;
+
+use clipboard::{ClipboardProvider, ClipboardContext};
 
 use crate::common::BiMap;
 
@@ -124,6 +127,7 @@ impl KeyMapping
 
 pub struct ControlsController
 {
+    clipboard: Option<ClipboardContext>,
     key_mapping: BiMap<KeyMapping, Control>,
     keys: [ControlState; Control::COUNT],
     changed: Vec<(ControlState, Control)>
@@ -156,11 +160,31 @@ impl ControlsController
             (KeyMapping::Keyboard(KeyCode::Backquote), Control::DebugConsole)
         ].into_iter().collect();
 
+        let clipboard = match ClipboardProvider::new()
+        {
+            Ok(x) => Some(x),
+            Err(err) =>
+            {
+                eprintln!("error getting clipboard: {err}");
+
+                None
+            }
+        };
+
         Self{
+            clipboard,
             key_mapping,
             keys: [ControlState::Released; Control::COUNT],
             changed: Vec::new()
         }
+    }
+
+    pub fn get_clipboard(&mut self) -> Result<String, Box<dyn error::Error>>
+    {
+        self.clipboard.as_mut().ok_or_else(||
+        {
+            "clipboard not initialized".into()
+        }).and_then(|clipboard| clipboard.get_contents())
     }
 
     pub fn is_down(&self, control: Control) -> bool

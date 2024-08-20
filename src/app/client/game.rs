@@ -7,7 +7,7 @@ use std::{
 
 use nalgebra::{Unit, Vector3, Vector2};
 
-use yanyaengine::{TextureId, Transform, Key, KeyCode};
+use yanyaengine::{TextureId, Transform, Key, KeyCode, NamedKey};
 
 use crate::{
     client::{Ui, UiEvent},
@@ -118,26 +118,26 @@ impl Game
             load("lisp/standard.scm") + &load("lisp/console.scm")
         };
 
-        let console_infos: (LispMemory, Rc<Primitives>) = {
+        let console_infos: (LispState, Rc<Primitives>) = {
             let primitives = this.console_primitives();
 
             let config = LispConfig{
-                primitives: primitives.clone()
+                primitives: primitives.clone(),
+                state: LispMemory::new(2048, 1 << 14).into()
             };
 
             let lisp = Lisp::new_with_config(
                 config,
-                LispMemory::new(2048, 1 << 14),
                 &standard_code
             );
 
-            let memory = lisp.and_then(|mut x|
+            let state = lisp.and_then(|mut x|
             {
                 x.run()
             }).unwrap_or_else(|err| panic!("error in stdlib: {err}"))
-                .memory;
+                .into_state();
 
-            (memory, primitives)
+            (state, primitives)
         };
 
         this.info.borrow_mut().console_infos = Some(console_infos);
@@ -234,12 +234,56 @@ impl Game
         self.player_container(|mut x| x.on_control(state, control));
     }
 
-    pub fn on_key(&mut self, logical: Key, key: KeyCode) -> bool
+    pub fn on_key_state(&mut self, logical: Key, key: KeyCode, pressed: bool) -> bool
+    {
+        if logical == Key::Named(NamedKey::Control)
+        {
+            self.info.borrow_mut().ctrl_held = pressed;
+        }
+
+        if pressed
+        {
+            self.on_key(logical, key)
+        } else
+        {
+            false
+        }
+    }
+
+    fn on_key(&mut self, logical: Key, key: KeyCode) -> bool
     {
         if self.info.borrow().console_contents.is_some()
         {
             match key
             {
+                KeyCode::KeyV =>
+                {
+                    let mut info = self.info.borrow_mut();
+                    if info.ctrl_held
+                    {
+                        let contents = info.console_contents.as_mut().unwrap();
+
+                        match self.game_state.upgrade().unwrap().borrow_mut()
+                            .controls
+                            .get_clipboard()
+                        {
+                            Ok(x) =>
+                            {
+                                *contents += &x;
+                            },
+                            Err(err) =>
+                            {
+                                eprintln!("error pasting from clipboard: {err}");
+                            }
+                        }
+
+                        drop(info);
+
+                        self.player_container(|mut x| x.update_console());
+
+                        return true;
+                    }
+                },
                 KeyCode::Enter =>
                 {
                     let contents = {
@@ -671,18 +715,17 @@ impl Game
 
     fn console_command(&mut self, command: String)
     {
-        let (memory, config) = {
+        let config = {
             let infos = self.info.borrow();
             let infos = infos.console_infos.as_ref().expect("always initialized");
 
-            let memory = infos.0.clone();
-
-            (memory, LispConfig{
-                primitives: infos.1.clone()
-            })
+            LispConfig{
+                primitives: infos.1.clone(),
+                state: infos.0.clone()
+            }
         };
 
-        let mut lisp = match Lisp::new_with_config(config, memory, &command)
+        let mut lisp = match Lisp::new_with_config(config, &command)
         {
             Ok(x) => x,
             Err(err) =>
@@ -704,7 +747,7 @@ impl Game
 
         eprintln!("ran command {command}, result: {result}");
 
-        self.info.borrow_mut().update_memory(result.memory);
+        self.info.borrow_mut().update_memory(result.into_state());
     }
 
     pub fn player_exists(&mut self) -> bool
@@ -734,9 +777,10 @@ struct PlayerInfo
     other_entity: Option<Entity>,
     console_entity: Entity,
     console_contents: Option<String>,
-    console_infos: Option<(LispMemory, Rc<Primitives>)>,
+    console_infos: Option<(LispState, Rc<Primitives>)>,
     previous_stamina: Option<f32>,
     previous_cooldown: (f32, f32),
+    ctrl_held: bool,
     interacted: bool,
     inventory_open: bool,
     other_inventory_open: bool
@@ -756,17 +800,18 @@ impl PlayerInfo
             console_infos: None,
             previous_stamina: None,
             previous_cooldown: (0.0, 0.0),
+            ctrl_held: false,
             interacted: false,
             inventory_open: false,
             other_inventory_open: false
         }
     }
 
-    pub fn update_memory(&mut self, memory: LispMemory)
+    pub fn update_memory(&mut self, state: LispState)
     {
         if let Some(x) = self.console_infos.as_mut()
         {
-            x.0 = memory;
+            x.0 = state;
         }
     }
 }

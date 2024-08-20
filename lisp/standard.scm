@@ -24,9 +24,7 @@
         '()
         (cons (cons (car as) (car bs)) (zip (cdr as) (cdr bs)))))
 
-(define (for-each f lst)
-    (map f lst)
-    '())
+(define (for-each f lst) (fold (lambda (x _) (f x)) '() lst))
 
 (define (filter p lst)
     (fold
@@ -41,6 +39,14 @@
     (if (or (= n 0) (null? lst))
         lst
         (skip (- n 1) (cdr lst))))
+
+(define (replicate n x)
+    (if (= n 0)
+        '()
+        (cons x (replicate (- n 1) x))))
+
+(define (length xs)
+    (fold (lambda (_ acc) (+ acc 1)) 0 xs))
 
 (define (not x) (if x #f #t))
 
