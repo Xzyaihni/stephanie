@@ -94,11 +94,12 @@
             (/ (- high low) (+ epsilon epsilon)))))
 
 (define (newtons-method initial f)
+    (define df (derivative f))
     (define (newtons-method-inner x index)
-        (let ((df (derivative f)) (current (f x)))
+        (let ((current (f x)))
             (if (> index 10000)
                 x
-                (if (< (abs current) 0.0001)
+                (if (< (abs current) 0.00001)
                     x
                     (newtons-method-inner
                         (- x (/ current (df x)))
@@ -108,13 +109,15 @@
 (define exp-iterations 10)
 
 (define (expm1 x)
-    (define x (exact->inexact x))
-    (fold
-        +
+    (define (expm1-inner i sum)
+        (if (> i exp-iterations)
+            sum
+            (expm1-inner
+                (+ i 1.0)
+                (+ (/ (expi x i) (factorial i)) sum))))
+    (if (= x 0)
         0.0
-        (map
-            (lambda (i) (/ (exact->inexact (expi x i)) (factorial (exact->inexact i))))
-            (skip 1 (counter exp-iterations)))))
+        (expm1-inner 2.0 (exact->inexact x))))
 
 (define (exp x)
     (+ (expm1 x) 1))
@@ -125,4 +128,5 @@
 (define (expt b x)
     (exp (* x (ln b))))
 
-(define (sqrt x) (expt x 0.5))
+(define (sqrt x)
+    (newtons-method 1.0 (lambda (y) (- (* y y) x))))
