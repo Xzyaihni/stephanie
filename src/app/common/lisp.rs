@@ -534,11 +534,13 @@ impl LispValue
     pub fn to_string(&self, memory: &LispMemory) -> String
     {
         self.maybe_to_string(
-            Some(&memory),
+            Some(memory),
             Some(&memory.memory)
         )
     }
 
+    // cope, clippy
+    #[allow(clippy::wrong_self_convention)]
     #[allow(dead_code)]
     fn to_string_block(&self, memory: &MemoryBlock) -> String
     {
@@ -958,7 +960,7 @@ impl Symbols
     {
         self.mappings.iter().find_map(|(key, value)|
         {
-            (*value == id).then(|| key)
+            (*value == id).then_some(key)
         }).expect("all ids must be valid")
     }
 
@@ -1022,7 +1024,7 @@ impl Clone for LispMemory
         Self{
             env: self.env,
             symbols: self.symbols.clone(),
-            remapped_lambdas: self.remapped_lambdas.clone(),
+            remapped_lambdas: HashMap::new(),
             memory: self.memory.clone(),
             swap_memory: self.swap_memory.clone(),
             returns: clone_with_capacity(&self.returns),
@@ -1287,7 +1289,7 @@ impl LispMemory
                 memory.general[id] = ValueRaw{vector: new_id};
                 memory.general[id + 1] = ValueRaw{tag: ValueTag::VectorMoved};
 
-                create_id(new_id as u32)
+                create_id(new_id)
             },
             _ => value
         }
@@ -1445,7 +1447,7 @@ impl LispMemory
             panic!("stack overflow!!!! ahhhh!!");
         }
 
-        stack.push(value.into());
+        stack.push(value);
     }
 
     pub fn save_env(&mut self)

@@ -80,6 +80,31 @@ impl Game
                 ..Default::default()
             });
 
+            entities.push(true, EntityInfo{
+                lazy_transform: Some(LazyTransformInfo{
+                    transform: Transform{
+                        position: Vector3::new(0.0, 0.0, -0.5),
+                        scale: Vector3::repeat(0.1),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                }.into()),
+                collider: Some(ColliderInfo{
+                    kind: ColliderType::Rectangle,
+                    layer: ColliderLayer::Normal,
+                    ..Default::default()
+                }.into()),
+                render: Some(RenderInfo{
+                    object: Some(RenderObjectKind::Texture{
+                        name: "placeholder.png".to_owned()
+                    }.into()),
+                    z_level: ZLevel::UiHigh,
+                    ..Default::default()
+                }),
+                parent: Some(Parent::new(mouse_entity, true)),
+                ..Default::default()
+            });
+
             let console_entity = entities.push_eager(true, EntityInfo{
                 lazy_transform: Some(LazyTransformInfo{
                     scaling: Scaling::Ignore,
@@ -401,6 +426,40 @@ impl Game
             }));
     }
 
+    fn maybe_print_component(
+        game_state: &Weak<RefCell<GameState>>,
+        memory: &mut MemoryWrapper,
+        mut args: ArgsWrapper,
+        print: bool
+    ) -> Result<(), lisp::Error>
+    {
+        let game_state = game_state.upgrade().unwrap();
+        let game_state = game_state.borrow();
+        let entities = game_state.entities();
+
+        let entity = Self::pop_entity(&mut args, memory)?;
+        let component = args.pop(memory).as_symbol()?;
+
+        let maybe_info = entities.component_info(entity, &component);
+
+        let found = maybe_info.is_some();
+
+        if print
+        {
+            if let Some(info) = maybe_info
+            {
+                eprintln!("{component}: {info}");
+            } else
+            {
+                eprintln!("{component} doesnt exist");
+            }
+        }
+
+        memory.push_return(found);
+
+        Ok(())
+    }
+
     fn console_primitives(&mut self) -> Rc<Primitives>
     {
         macro_rules! get_component_mut
@@ -422,17 +481,17 @@ impl Game
 
         {
             let game_state = self.game_state.clone();
-            let mouse_entity = self.info.borrow().mouse_entity;
 
             primitives.add(
-                "mouse-collided",
-                PrimitiveProcedureInfo::new_simple(0, move |_state, memory, _args|
+                "entity-collided",
+                PrimitiveProcedureInfo::new_simple(1, move |_state, memory, mut args|
                 {
                     let game_state = game_state.upgrade().unwrap();
                     let game_state = game_state.borrow();
                     let entities = game_state.entities();
 
-                    let collided = entities.collider(mouse_entity)
+                    let entity = Self::pop_entity(&mut args, memory)?;
+                    let collided = entities.collider(entity)
                         .map(|x| x.collided().to_vec()).into_iter().flatten()
                         .next();
 
@@ -639,6 +698,30 @@ impl Game
             let game_state = self.game_state.clone();
 
             primitives.add(
+                "children-of",
+                PrimitiveProcedureInfo::new_simple(1, move |_state, memory, mut args|
+                {
+                    let game_state = game_state.upgrade().unwrap();
+                    let game_state = game_state.borrow();
+                    let entities = game_state.entities();
+
+                    let entity = Self::pop_entity(&mut args, memory)?;
+
+                    memory.push_return(());
+                    entities.children_of(entity).for_each(|x|
+                    {
+                        Self::push_entity(memory, x);
+                        memory.rcons();
+                    });
+
+                    Ok(())
+                }));
+        }
+
+        {
+            let game_state = self.game_state.clone();
+
+            primitives.add(
                 "position-entity",
                 PrimitiveProcedureInfo::new_simple(1, move |_state, memory, mut args|
                 {
@@ -661,31 +744,20 @@ impl Game
 
             primitives.add(
                 "print-component",
-                PrimitiveProcedureInfo::new_simple_effect(2, move |_state, memory, mut args|
+                PrimitiveProcedureInfo::new_simple_effect(2, move |_state, memory, args|
                 {
-                    let game_state = game_state.upgrade().unwrap();
-                    let game_state = game_state.borrow();
-                    let entities = game_state.entities();
+                    Self::maybe_print_component(&game_state, memory, args, true)
+                }));
+        }
 
-                    let entity = Self::pop_entity(&mut args, memory)?;
-                    let component = args.pop(memory).as_symbol()?;
+        {
+            let game_state = self.game_state.clone();
 
-                    let status = if let Some(info) = entities.component_info(entity, &component)
-                    {
-                        eprintln!("{component}: {info}");
-
-                        "ok"
-                    } else
-                    {
-                        eprintln!("{component} doesnt exist");
-
-                        "err"
-                    };
-
-                    let symbol = memory.as_memory_mut().new_symbol(status);
-                    memory.push_return(symbol);
-
-                    Ok(())
+            primitives.add(
+                "has-component",
+                PrimitiveProcedureInfo::new_simple_effect(2, move |_state, memory, args|
+                {
+                    Self::maybe_print_component(&game_state, memory, args, false)
                 }));
         }
 
@@ -959,8 +1031,8 @@ impl<'a> PlayerContainer<'a>
             },
             Control::Shoot =>
             {
-                let mut target = self.mouse_position();
-                target.z = self.player_position().z;
+                let mut target = some_or_return!(self.mouse_position());
+                target.z = some_or_return!(self.player_position()).z;
 
                 self.character_action(CharacterAction::Ranged(target));
             },
@@ -1192,6 +1264,28 @@ impl<'a> PlayerContainer<'a>
         if !self.exists()
         {
             return;
+        }
+
+        {
+            let entities = self.game_state.entities();
+            if let Some(child) = entities.children_of(self.info.mouse_entity).into_iter().next()
+            {
+                if let Some(collider) = entities.collider(child)
+                {
+                    if let Some(mut target) = entities.mix_color_target(child)
+                    {
+                        let color = if collider.collided().is_empty()
+                        {
+                            [0.1, 0.1, 1.0]
+                        } else
+                        {
+                            [0.1, 1.0, 0.1]
+                        };
+
+                        *target = Some(MixColor{color, amount: 0.5});
+                    }
+                }
+            }
         }
 
         self.update_user_events();
@@ -1498,19 +1592,17 @@ impl<'a> PlayerContainer<'a>
         character.rotation = rotation;
     }
 
-    fn player_position(&self) -> Vector3<f32>
+    fn player_position(&self) -> Option<Vector3<f32>>
     {
         self.game_state.entities()
             .transform(self.info.entity)
-            .expect("player must have a position")
-            .position
+            .map(|x| x.position)
     }
 
-    fn mouse_position(&self) -> Vector3<f32>
+    fn mouse_position(&self) -> Option<Vector3<f32>>
     {
         self.game_state.entities()
             .transform(self.info.mouse_entity)
-            .expect("mouse must have a position")
-            .position
+            .map(|x| x.position)
     }
 }

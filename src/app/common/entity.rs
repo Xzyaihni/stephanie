@@ -1494,9 +1494,12 @@ macro_rules! define_entities_both
                 self.remove_children(entity);
             }
 
-            pub fn remove_children(&mut self, parent_entity: Entity)
+            pub fn children_of(&self, parent_entity: Entity) -> impl Iterator<Item=Entity> + '_
             {
-                let remove_list: Vec<_> = iterate_components_with!(self, parent, filter_map, |entity, parent: &RefCell<ParentType>|
+                self.parent.iter().filter_map(move |(_, &ComponentWrapper{
+                    entity,
+                    component: ref parent
+                })|
                 {
                     let parent = parent.borrow();
 
@@ -1504,7 +1507,12 @@ macro_rules! define_entities_both
                     {
                         entity
                     })
-                }).collect();
+                })
+            }
+
+            pub fn remove_children(&mut self, parent_entity: Entity)
+            {
+                let remove_list: Vec<_> = self.children_of(parent_entity).collect();
 
                 remove_list.into_iter().for_each(|entity|
                 {

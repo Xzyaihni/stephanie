@@ -117,8 +117,8 @@ pub fn simple_apply<const EFFECT: bool>(f: impl Fn(
 {
     Rc::new(move |
         eval_queue: &mut EvalQueue,
-        state: &State,
-        memory: &mut LispMemory,
+        _state: &State,
+        _memory: &mut LispMemory,
         args: &ApplicationArgs,
         action: Action
     |
@@ -146,7 +146,7 @@ pub fn simple_apply<const EFFECT: bool>(f: impl Fn(
             });
         }
 
-        args.eval_args(eval_queue, state, memory, if EFFECT {
+        args.eval_args(eval_queue, if EFFECT {
             Action::Return
         } else
         {
@@ -445,7 +445,7 @@ impl StoredLambda
             Ok(x) => Either::Left(x),
             Err(_) => Either::Right(params.map_list(|arg|
             {
-                Ok(arg.as_value()?)
+                arg.as_value()
             })?)
         })
     }
@@ -536,7 +536,7 @@ impl Clone for Lambdas
         Self{
             lambdas: transfer_with_capacity(&self.lambdas, |x|
             {
-                let x: &StoredLambda = &x;
+                let x: &StoredLambda = x;
 
                 Rc::new(x.clone())
             })
@@ -665,7 +665,7 @@ impl Primitives
                 {
                     let arg = args.pop(memory);
 
-                    print!("{}", arg.to_string());
+                    print!("{arg}");
 
                     memory.push_return(());
 
@@ -725,7 +725,7 @@ impl Primitives
                         }
 
                         *vec.values.get_mut(index as usize)
-                            .ok_or_else(|| Error::IndexOutOfRange(index))? = value.value;
+                            .ok_or(Error::IndexOutOfRange(index))? = value.value;
 
                         memory.push_return(());
 
@@ -741,7 +741,7 @@ impl Primitives
                     let index = index.as_integer()?;
 
                     let value = *vec.values.get(index as usize)
-                        .ok_or_else(|| Error::IndexOutOfRange(index))?;
+                        .ok_or(Error::IndexOutOfRange(index))?;
 
                     let tag = vec.tag;
                     memory.push_return(unsafe{ LispValue::new(tag, value) });
@@ -873,6 +873,7 @@ impl Primitives
                                     on_true.eval(eval_queue, memory, action)
                                 } else
                                 {
+                                    #[allow(clippy::collapsible_else_if)]
                                     if has_else
                                     {
                                         let on_false = args.cdr().car();
@@ -1064,9 +1065,9 @@ impl Primitives
                     Ok(())
                 }))),
             ("quote",
-                PrimitiveProcedureInfo::new(ArgsCount::Min(0), Rc::new(|op, state, memory, args|
+                PrimitiveProcedureInfo::new(ArgsCount::Min(0), Rc::new(|op, _state, memory, args|
                 {
-                    let arg = ExpressionPos::quote(state, memory, args.car())?;
+                    let arg = ExpressionPos::quote(memory, args.car())?;
 
                     Ok(ExpressionPos{
                         position: args.position,
@@ -1750,11 +1751,11 @@ impl ExpressionPos
                             expr: None,
                             args: Some(args)
                         },
-                        run: Box::new(move |EvaluatedArgs{args, ..}, eval_queue, state, memory|
+                        run: Box::new(move |EvaluatedArgs{args, ..}, eval_queue, _state, memory|
                         {
                             memory.push_op(op);
 
-                            args.unwrap().0.eval_args(eval_queue, state, memory, Action::Return)
+                            args.unwrap().0.eval_args(eval_queue, Action::Return)
                         })
                     });
 
@@ -1804,19 +1805,15 @@ impl ExpressionPos
     pub fn eval_args<'a>(
         &'a self,
         eval_queue: &mut EvalQueue<'a>,
-        state: &State, 
-        memory: &mut LispMemory,
         action: Action
     ) -> Result<(), ErrorPos>
     {
-        self.eval_args_inner(eval_queue, state, memory, action, false)
+        self.eval_args_inner(eval_queue, action, false)
     }
 
     fn eval_args_inner<'a>(
         &'a self,
         eval_queue: &mut EvalQueue<'a>,
-        state: &State, 
-        memory: &mut LispMemory,
         action: Action,
         save_env: bool
     ) -> Result<(), ErrorPos>
@@ -1861,12 +1858,11 @@ impl ExpressionPos
                 })
             });
 
-            cdr.eval_args_inner(eval_queue, state, memory, action, true)
+            cdr.eval_args_inner(eval_queue, action, true)
         }
     }
 
     pub fn quote(
-        state: &mut AnalyzeState,
         memory: &mut LispMemory,
         ast: AstPos
     ) -> Result<Self, ErrorPos>
@@ -1878,8 +1874,8 @@ impl ExpressionPos
                 Expression::EmptyList
             } else
             {
-                let car = Self::quote(state, memory, ast.car())?;
-                let cdr = Self::quote(state, memory, ast.cdr())?;
+                let car = Self::quote(memory, ast.car())?;
+                let cdr = Self::quote(memory, ast.cdr())?;
 
                 Expression::List{
                     car: Box::new(car),
@@ -1922,9 +1918,7 @@ impl ExpressionPos
         if let Expression::PrimitiveProcedure(id) = op.expression
         {
             let id = id.as_primitive_procedure().expect("primitive must be a primitive");
-            if let Some(on_eval) = state.primitives.get(id).on_eval
-                .as_ref()
-                .map(|x| x.clone())
+            if let Some(on_eval) = state.primitives.get(id).on_eval.clone()
             {
                 return on_eval(op, state, memory, ast);
             }

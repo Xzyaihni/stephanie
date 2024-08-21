@@ -36,7 +36,7 @@ pub fn update(
                 $result_variable = CollidingInfo{
                     entity: Some($entity),
                     physical: $physical.as_deref_mut(),
-                    target: |mut offset: Vector3<f32>|
+                    target: |mut offset: Vector3<f32>, rotation: Option<f32>|
                     {
                         let mut target = if target_non_lazy
                         {
@@ -58,6 +58,11 @@ pub fn update(
                         };
 
                         target.position += offset;
+
+                        if let Some(rotation) = rotation
+                        {
+                            target.rotation += rotation;
+                        }
 
                         target.position
                     },

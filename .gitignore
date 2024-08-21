@@ -18,4 +18,4 @@ massif*
 **/*.rs.bk
 
 *.svg
-perf.data
+/perf.data*

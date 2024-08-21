@@ -1,14 +1,16 @@
-use std::convert;
+use std::cmp::Ordering;
 
 use serde::{Serialize, Deserialize};
 
-use nalgebra::Vector3;
+use nalgebra::{Vector2, Vector3};
 
 use yanyaengine::Transform;
 
 use crate::common::{
     define_layers,
     define_layers_enum,
+    point_line_side,
+    rotate_point,
     Entity,
     Physical,
     world::{
@@ -176,6 +178,7 @@ pub struct CircleCollisionResult
     offset: Vector3<f32>
 }
 
+#[derive(Debug)]
 pub struct BasicCollidingInfo<'a>
 {
     pub transform: Transform,
@@ -224,7 +227,67 @@ impl<'a> BasicCollidingInfo<'a>
         other: &Self
     ) -> Option<RectangleCollisionResult>
     {
-        None
+        let corner = |
+            pos: Vector3<f32>,
+            size: Vector3<f32>,
+            rotation: f32
+        | -> [Vector2<f32>; 4]
+        {
+            let x_shift = Vector2::new(size.x / 2.0, 0.0);
+            let y_shift = Vector2::new(0.0, size.y / 2.0);
+
+            let pos = pos.xy();
+
+            let left_middle = pos - x_shift;
+            let right_middle = pos + x_shift;
+
+            [
+                left_middle - y_shift,
+                right_middle - y_shift,
+                right_middle + y_shift,
+                left_middle + y_shift
+            ].map(|x|
+            {
+                rotate_point(x - pos, -rotation) + pos
+            })
+        };
+        
+        let points_outside = |points: [Vector2<f32>; 4], (a, b)| -> bool
+        {
+            let mapped = points.map(|point| point_line_side(point, a, b));
+
+            mapped == [Ordering::Less; 4]
+                || mapped == [Ordering::Greater; 4]
+        };
+
+        let other_points@[
+            other_a,
+            other_b,
+            _other_c,
+            other_d
+        ] = corner(
+            other.transform.position,
+            other.transform.scale,
+            other.transform.rotation
+        );
+
+        let this_points@[
+            this_a,
+            this_b,
+            _this_c,
+            this_d
+        ] = corner(
+            self.transform.position,
+            self.transform.scale,
+            self.transform.rotation
+        );
+
+        let colliding = !points_outside(other_points, (this_a, this_b))
+            && !points_outside(other_points, (this_a, this_d))
+            && !points_outside(this_points, (other_a, other_b))
+            && !points_outside(this_points, (other_a, other_d));
+
+        colliding.then_some(RectangleCollisionResult{})
     }
 
     pub fn scale(&self) -> Vector3<f32>
@@ -262,8 +325,8 @@ impl<'a> BasicCollidingInfo<'a>
             Option<Axis>
         ) -> (Option<Vector3<f32>>, Option<Vector3<f32>>)>
     where
-        ThisF: FnMut(Vector3<f32>) -> Vector3<f32>,
-        OtherF: FnMut(Vector3<f32>) -> Vector3<f32>
+        ThisF: FnMut(Vector3<f32>, Option<f32>) -> Vector3<f32>,
+        OtherF: FnMut(Vector3<f32>, Option<f32>) -> Vector3<f32>
     {
         enum CollisionWhich
         {
@@ -303,6 +366,17 @@ impl<'a> BasicCollidingInfo<'a>
                     },
                     CollisionWhich::Rectangle(_) =>
                     {
+                        fn h<F: FnMut(Vector3<f32>, Option<f32>) -> Vector3<f32>>(this: &mut CollidingInfo<F>)
+                        {
+                            if this.basic.collider.kind == ColliderType::Rectangle
+                            {
+                                (this.target)(Default::default(), Some(0.01));
+                            }
+                        }
+
+                        h(this);
+                        h(other);
+
                         let a = "reminder";
 
                         (None, None)
@@ -343,10 +417,11 @@ impl<'a> BasicCollidingInfo<'a>
 
     pub fn is_colliding(&self, other: &Self) -> bool
     {
-        self.collision::<fn(_) -> _, fn(_) -> _>(other).is_some()
+        self.collision::<fn(_, _) -> _, fn(_, _) -> _>(other).is_some()
     }
 }
 
+#[derive(Debug)]
 pub struct CollidingInfo<'a, F>
 {
     pub entity: Option<Entity>,
@@ -357,7 +432,7 @@ pub struct CollidingInfo<'a, F>
 
 impl<'a, ThisF> CollidingInfo<'a, ThisF>
 where
-    ThisF: FnMut(Vector3<f32>) -> Vector3<f32>
+    ThisF: FnMut(Vector3<f32>, Option<f32>) -> Vector3<f32>
 {
     fn resolve_with<OtherF>(
         &mut self,
@@ -365,11 +440,11 @@ where
         offset: Vector3<f32>
     ) -> (Option<Vector3<f32>>, Option<Vector3<f32>>)
     where
-        OtherF: FnMut(Vector3<f32>) -> Vector3<f32>
+        OtherF: FnMut(Vector3<f32>, Option<f32>) -> Vector3<f32>
     {
         fn transform_target(
             move_z: bool,
-            target: impl FnOnce(Vector3<f32>) -> Vector3<f32>
+            target: impl FnOnce(Vector3<f32>, Option<f32>) -> Vector3<f32>
         ) -> impl FnOnce(Vector3<f32>) -> Vector3<f32>
         {
             let handle_z = move |mut values: Vector3<f32>|
@@ -389,7 +464,7 @@ where
                 values.map(|x| if x == 0.0 { x } else { x + x.signum() * EPSILON })
             };
 
-            move |offset: Vector3<f32>| target(add_epsilon(handle_z(offset)))
+            move |offset: Vector3<f32>| target(add_epsilon(handle_z(offset)), None)
         }
 
         if self.basic.collider.is_static && other.basic.collider.is_static
@@ -516,7 +591,7 @@ where
         axis: Option<Axis>
     ) -> (Option<Vector3<f32>>, Option<Vector3<f32>>)
     where
-        OtherF: FnMut(Vector3<f32>) -> Vector3<f32>
+        OtherF: FnMut(Vector3<f32>, Option<f32>) -> Vector3<f32>
     {
         let offset = max_distance.zip_map(&offset, |max_distance, offset|
         {
@@ -565,7 +640,7 @@ where
         mut other: CollidingInfo<OtherF>
     ) -> bool
     where
-        OtherF: FnMut(Vector3<f32>) -> Vector3<f32>
+        OtherF: FnMut(Vector3<f32>, Option<f32>) -> Vector3<f32>
     {
         let result = self.basic.collision(&other.basic);
         let collided = result.is_some();
@@ -725,7 +800,7 @@ where
             let mut other = CollidingInfo{
                 entity: None,
                 physical: None,
-                target: convert::identity,
+                target: |x, _| x,
                 basic: BasicCollidingInfo{
                     transform: Transform{
                         position: collision_point,

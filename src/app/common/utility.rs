@@ -1,5 +1,6 @@
 use std::{
     f32,
+    cmp::Ordering,
     hash::Hash,
     io::Write,
     fmt::Debug,
@@ -11,7 +12,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use nalgebra::Vector3;
+use nalgebra::{Vector2, Vector3};
 
 pub use crate::{
     LOG_PATH,
@@ -43,7 +44,7 @@ macro_rules! define_layers
 {
     ($left:expr, $right:expr, $(($first:ident, $second:ident, $result:expr)),+) =>
     {
-        crate::define_layers_enum!($left, $right, Self, $(($first, $second, $result),)+)
+        $crate::define_layers_enum!($left, $right, Self, $(($first, $second, $result),)+)
     }
 }
 
@@ -376,6 +377,40 @@ pub fn get_two_mut<T>(s: &mut [T], one: usize, two: usize) -> (&mut T, &mut T)
 
         (&mut left[one], &mut right[0])
     }
+}
+
+pub fn point_line_side(p: Vector2<f32>, a: Vector2<f32>, b: Vector2<f32>) -> Ordering
+{
+    let x = project_onto_line(p, a, b);
+    if x < 0.0
+    {
+        Ordering::Less
+    } else if x > 1.0
+    {
+        Ordering::Greater
+    } else
+    {
+        Ordering::Equal
+    }
+}
+
+pub fn project_onto_line(p: Vector2<f32>, a: Vector2<f32>, b: Vector2<f32>) -> f32
+{
+    let ad = b.metric_distance(&p);
+    let cd = a.metric_distance(&b);
+    let bd = a.metric_distance(&p);
+
+    let cosa = (ad.powi(2) - bd.powi(2) - cd.powi(2)) / (-2.0 * bd * cd);
+
+    cosa * bd / cd
+}
+
+pub fn rotate_point(p: Vector2<f32>, angle: f32) -> Vector2<f32>
+{
+    let acos = angle.cos();
+    let asin = angle.sin();
+
+    Vector2::new(acos * p.x + asin * p.y, -asin * p.x + acos * p.y)
 }
 
 pub fn write_log(text: impl Into<String>)

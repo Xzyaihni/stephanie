@@ -94,12 +94,13 @@ fn parse_char_inner(chars: &mut impl ExactSizeIterator<Item=char>) -> String
         chars.next().into_iter().collect()
     } else
     {
+        #[allow(clippy::collapsible_else_if)]
         if chars.by_ref().next().unwrap().is_whitespace()
         {
             parse_char_inner(chars)
         } else
         {
-            return chars.collect();
+            chars.collect()
         }
     }
 }

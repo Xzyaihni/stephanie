@@ -24,7 +24,12 @@
         '()
         (cons (cons (car as) (car bs)) (zip (cdr as) (cdr bs)))))
 
-(define (for-each f lst) (fold (lambda (x _) (f x)) '() lst))
+(define (for-each f xs)
+    (if (null? xs)
+        '()
+        (begin
+            (f (car xs))
+            (for-each f (cdr xs)))))
 
 (define (filter p lst)
     (fold

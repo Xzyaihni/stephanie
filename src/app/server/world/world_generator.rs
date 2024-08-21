@@ -229,7 +229,9 @@ impl ChunkGenerator
                     }
                 }
 
-                Ok(tile.as_lisp_value(memory))
+                tile.as_lisp_value(memory);
+
+                Ok(())
             }));
 
         primitives

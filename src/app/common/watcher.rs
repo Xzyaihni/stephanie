@@ -236,6 +236,18 @@ impl Default for Watcher
     }
 }
 
+impl Watcher
+{
+    pub fn simple_disappearing(lifetime: f32) -> Self
+    {
+        Self{
+            kind: WatcherType::Lifetime(lifetime.into()),
+            action: WatcherAction::Remove,
+            ..Default::default()
+        }
+    }
+}
+
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct Watchers(Vec<Watcher>);
 
@@ -244,6 +256,11 @@ impl Watchers
     pub fn new(watchers: Vec<Watcher>) -> Self
     {
         Self(watchers)
+    }
+
+    pub fn simple_disappearing(lifetime: f32) -> Self
+    {
+        Self::new(vec![Watcher::simple_disappearing(lifetime)])
     }
 
     pub fn execute<E: AnyEntities>(
