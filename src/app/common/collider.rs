@@ -10,7 +10,8 @@ use crate::common::{
     define_layers,
     define_layers_enum,
     point_line_side,
-    rotate_point,
+    point_line_distance,
+    rectangle_points,
     Entity,
     Physical,
     world::{
@@ -227,31 +228,6 @@ impl<'a> BasicCollidingInfo<'a>
         other: &Self
     ) -> Option<RectangleCollisionResult>
     {
-        let corner = |
-            pos: Vector3<f32>,
-            size: Vector3<f32>,
-            rotation: f32
-        | -> [Vector2<f32>; 4]
-        {
-            let x_shift = Vector2::new(size.x / 2.0, 0.0);
-            let y_shift = Vector2::new(0.0, size.y / 2.0);
-
-            let pos = pos.xy();
-
-            let left_middle = pos - x_shift;
-            let right_middle = pos + x_shift;
-
-            [
-                left_middle - y_shift,
-                right_middle - y_shift,
-                right_middle + y_shift,
-                left_middle + y_shift
-            ].map(|x|
-            {
-                rotate_point(x - pos, -rotation) + pos
-            })
-        };
-        
         let points_outside = |points: [Vector2<f32>; 4], (a, b)| -> bool
         {
             let mapped = points.map(|point| point_line_side(point, a, b));
@@ -265,22 +241,14 @@ impl<'a> BasicCollidingInfo<'a>
             other_b,
             _other_c,
             other_d
-        ] = corner(
-            other.transform.position,
-            other.transform.scale,
-            other.transform.rotation
-        );
+        ] = rectangle_points(&other.transform);
 
         let this_points@[
             this_a,
             this_b,
             _this_c,
             this_d
-        ] = corner(
-            self.transform.position,
-            self.transform.scale,
-            self.transform.rotation
-        );
+        ] = rectangle_points(&self.transform);
 
         let colliding = !points_outside(other_points, (this_a, this_b))
             && !points_outside(other_points, (this_a, this_d))
@@ -288,6 +256,50 @@ impl<'a> BasicCollidingInfo<'a>
             && !points_outside(this_points, (other_a, other_d));
 
         colliding.then_some(RectangleCollisionResult{})
+    }
+
+    fn inside_rectangle(p: Vector2<f32>, a: Vector2<f32>, b: Vector2<f32>, d: Vector2<f32>) -> bool
+    {
+        let inside = move |a, b|
+        {
+            point_line_side(p, a, b) == Ordering::Equal
+        };
+
+        inside(a, b) && inside(a, d)
+    }
+
+    fn rectangle_point(
+        &self,
+        other: &Self
+    ) -> Option<RectangleCollisionResult>
+    {
+        let [a, b, _c, d] = rectangle_points(&self.transform);
+
+        let p = other.transform.position.xy();
+        (Self::inside_rectangle(p, a, b, d)).then_some(RectangleCollisionResult{})
+    }
+
+    fn rectangle_circle(
+        &self,
+        other: &Self
+    ) -> Option<RectangleCollisionResult>
+    {
+        let [a, b, c, d] = rectangle_points(&self.transform);
+
+        let circle_scale = other.transform.max_scale() / 2.0;
+
+        let p = other.transform.position.xy();
+
+        let inside_circle = |a, b| -> bool
+        {
+            point_line_distance(p, a, b) <= circle_scale
+        };
+
+        (Self::inside_rectangle(p, a, b, d)
+            || inside_circle(a, b)
+            || inside_circle(b, c)
+            || inside_circle(c, d)
+            || inside_circle(d, a)).then_some(RectangleCollisionResult{})
     }
 
     pub fn scale(&self) -> Vector3<f32>
@@ -409,9 +421,11 @@ impl<'a> BasicCollidingInfo<'a>
             (Aabb, Circle, normal_collision()),
 
             (Rectangle, Rectangle, rectangle_collision()),
-            (Rectangle, Point, None),
-            (Rectangle, Circle, None),
             (Rectangle, Aabb, rectangle_collision())
+            (order_dependent, Rectangle, Point, self.rectangle_point(other).map(CollisionWhich::Rectangle).map(handle)),
+            (order_dependent, Point, Rectangle, other.rectangle_point(self).map(CollisionWhich::Rectangle).map(handle)),
+            (order_dependent, Rectangle, Circle, self.rectangle_circle(other).map(CollisionWhich::Rectangle).map(handle)),
+            (order_dependent, Circle, Rectangle, other.rectangle_circle(self).map(CollisionWhich::Rectangle).map(handle))
         }
     }
 

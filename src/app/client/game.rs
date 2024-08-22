@@ -92,6 +92,7 @@ impl Game
                 collider: Some(ColliderInfo{
                     kind: ColliderType::Rectangle,
                     layer: ColliderLayer::Normal,
+                    is_static: true,
                     ..Default::default()
                 }.into()),
                 render: Some(RenderInfo{

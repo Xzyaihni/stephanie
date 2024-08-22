@@ -14,6 +14,8 @@ use serde::{Deserialize, Serialize};
 
 use nalgebra::{Vector2, Vector3};
 
+use yanyaengine::Transform;
+
 pub use crate::{
     LOG_PATH,
     define_layers,
@@ -26,15 +28,23 @@ pub use crate::{
 #[macro_export]
 macro_rules! define_layers_enum
 {
-    ($left:expr, $right:expr, $base:ident, $(($first:ident, $second:ident, $result:expr)),+ $(,)?) =>
+    (
+        $left:expr,
+        $right:expr,
+        $base:ident,
+        $(($first:ident, $second:ident, $result:expr)),+
+        $((order_dependent, $first_order:ident, $second_order:ident, $result_order:expr)),*) =>
     {
         #[allow(unreachable_patterns)]
         match ($left, $right)
         {
             $(
                 ($base::$first, $base::$second) => $result,
-                ($base::$second, $base::$first) => $result
-            ),+
+                ($base::$second, $base::$first) => $result,
+            )+
+            $(
+                ($base::$first_order, $base::$second_order) => $result_order
+            ),*
         }
     }
 }
@@ -44,7 +54,14 @@ macro_rules! define_layers
 {
     ($left:expr, $right:expr, $(($first:ident, $second:ident, $result:expr)),+) =>
     {
-        $crate::define_layers_enum!($left, $right, Self, $(($first, $second, $result),)+)
+        #[allow(unreachable_patterns)]
+        match ($left, $right)
+        {
+            $(
+                (Self::$first, Self::$second) => $result,
+                (Self::$second, Self::$first) => $result
+            ),+
+        }
     }
 }
 
@@ -405,12 +422,59 @@ pub fn project_onto_line(p: Vector2<f32>, a: Vector2<f32>, b: Vector2<f32>) -> f
     cosa * bd / cd
 }
 
+pub fn point_line_distance(p: Vector2<f32>, a: Vector2<f32>, b: Vector2<f32>) -> f32
+{
+    let check = match point_line_side(p, a, b)
+    {
+        Ordering::Equal =>
+        {
+            let diff = b - a;
+
+            return cross_2d(diff, a - p).abs() / diff.magnitude();
+        },
+        Ordering::Less => a,
+        Ordering::Greater => b
+    };
+
+    p.metric_distance(&check)
+}
+
+pub fn cross_2d(a: Vector2<f32>, b: Vector2<f32>) -> f32
+{
+    a.x * b.y - b.x * a.y
+}
+
 pub fn rotate_point(p: Vector2<f32>, angle: f32) -> Vector2<f32>
 {
     let acos = angle.cos();
     let asin = angle.sin();
 
     Vector2::new(acos * p.x + asin * p.y, -asin * p.x + acos * p.y)
+}
+
+pub fn rectangle_points(transform: &Transform) -> [Vector2<f32>; 4]
+{
+    let size = transform.scale;
+    let pos = transform.position;
+    let rotation = transform.rotation;
+
+    let x_shift = Vector2::new(size.x / 2.0, 0.0);
+    let y_shift = Vector2::new(0.0, size.y / 2.0);
+
+    let pos = pos.xy();
+
+    let left_middle = pos - x_shift;
+    let right_middle = pos + x_shift;
+
+    [
+        left_middle - y_shift,
+        right_middle - y_shift,
+        right_middle + y_shift,
+        left_middle + y_shift
+    ].map(|x|
+    {
+        rotate_point(x - pos, -rotation) + pos
+    })
 }
 
 pub fn write_log(text: impl Into<String>)
