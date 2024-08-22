@@ -83,7 +83,7 @@ impl Game
             entities.push(true, EntityInfo{
                 lazy_transform: Some(LazyTransformInfo{
                     transform: Transform{
-                        position: Vector3::new(0.0, 0.0, -0.5),
+                        position: Vector3::new(0.0, 0.0, -0.20),
                         scale: Vector3::repeat(0.1),
                         ..Default::default()
                     },

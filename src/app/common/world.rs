@@ -138,7 +138,14 @@ impl World
         predicate: impl Fn(Option<&'a Tile>) -> bool + 'a
     ) -> impl Iterator<Item=TilePos> + 'a
     {
-        let half_scale = collider.scale();
+        let scale = collider.scale();
+        let half_scale = if collider.collider.kind == ColliderType::Rectangle
+        {
+            Vector3::repeat((scale.x.powi(2) + scale.y.powi(2)).sqrt())
+        } else
+        {
+            scale
+        };
 
         let top_left = self.tile_of((collider.transform.position - half_scale).into());
         let bottom_right = self.tile_of((collider.transform.position + half_scale).into());

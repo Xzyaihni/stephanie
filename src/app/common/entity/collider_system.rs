@@ -28,15 +28,18 @@ pub fn update(
             let target_non_lazy = collider.target_non_lazy;
             {
                 let mut transform = entities.transform($entity).unwrap().clone();
-                if collider.kind == ColliderType::Aabb
+
+                let kind = collider.kind;
+                if kind == ColliderType::Aabb
                 {
                     transform.rotation = 0.0;
                 }
 
+                let entities = &entities;
                 $result_variable = CollidingInfo{
                     entity: Some($entity),
                     physical: $physical.as_deref_mut(),
-                    target: |mut offset: Vector3<f32>, rotation: Option<f32>|
+                    target: move |mut offset: Vector3<f32>, rotation: Option<f32>|
                     {
                         let mut target = if target_non_lazy
                         {
@@ -59,9 +62,12 @@ pub fn update(
 
                         target.position += offset;
 
-                        if let Some(rotation) = rotation
+                        if kind != ColliderType::Aabb
                         {
-                            target.rotation += rotation;
+                            if let Some(rotation) = rotation
+                            {
+                                target.rotation += rotation;
+                            }
                         }
 
                         target.position
