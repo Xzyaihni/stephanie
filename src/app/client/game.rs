@@ -41,8 +41,6 @@ use super::game_state::{
     Control
 };
 
-mod object_transform;
-
 
 pub trait DrawableEntity
 {

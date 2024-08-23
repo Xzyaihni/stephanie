@@ -446,8 +446,7 @@ pub fn cross_2d(a: Vector2<f32>, b: Vector2<f32>) -> f32
 
 pub fn rotate_point(p: Vector2<f32>, angle: f32) -> Vector2<f32>
 {
-    let acos = angle.cos();
-    let asin = angle.sin();
+    let (asin, acos) = angle.sin_cos();
 
     Vector2::new(acos * p.x + asin * p.y, -asin * p.x + acos * p.y)
 }
