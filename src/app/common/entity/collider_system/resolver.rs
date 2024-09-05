@@ -326,7 +326,7 @@ impl AnalyzedContact
             total_inverse_mass += entities.physical(b).unwrap().inverse_mass;
         }
 
-        let dims = 2;
+        let dims = 3;
         (0..dims).for_each(|i|
         {
             *velocity_change.index_mut((i, i)) += total_inverse_mass;

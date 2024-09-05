@@ -134,7 +134,8 @@ impl World
 
     pub fn tiles_inside<'a>(
         &'a self,
-        collider: &'a BasicCollidingInfo<'a>,
+        collider: &'a CollidingInfo<'a>,
+        mut contacts: Option<&'a mut Vec<Contact>>,
         predicate: impl Fn(Option<&'a Tile>) -> bool + 'a
     ) -> impl Iterator<Item=TilePos> + 'a
     {
@@ -148,25 +149,33 @@ impl World
             predicate(self.tile(*pos))
         }).filter(move |pos|
         {
-            true
-            /*let mut world_collider = ColliderInfo{
+            let mut world_collider = ColliderInfo{
                 kind: ColliderType::Aabb,
                 layer: ColliderLayer::World,
-                ghost: false,
+                ghost: contacts.is_none(),
                 scale: None,
                 move_z: false,
-                target_non_lazy: false,
-                is_static: true
+                target_non_lazy: false
             }.into();
 
-            collider.is_colliding(&BasicCollidingInfo{
+            // what the fuck is this?
+            let contacts = if let Some(ref mut contacts) = contacts
+            {
+                Some(&mut **contacts)
+            } else
+            {
+                None
+            };
+
+            collider.collide_immutable(&CollidingInfo{
+                entity: None,
                 transform: Transform{
                     position: pos.entity_position(),
                     scale: Vector3::repeat(TILE_SIZE),
                     ..Default::default()
                 },
                 collider: &mut world_collider
-            })*/
+            }, contacts)
         })
     }
 

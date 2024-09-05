@@ -1,14 +1,14 @@
-use std::cmp::Ordering;
+use std::ops::ControlFlow;
 
 use serde::{Serialize, Deserialize};
 
-use nalgebra::{Vector2, Vector3};
+use nalgebra::{Matrix3, MatrixView3x1, Vector2, Vector3};
 
 use yanyaengine::Transform;
 
 use crate::common::{
+    some_or_return,
     define_layers,
-    define_layers_enum,
     rotate_point,
     point_line_side,
     point_line_distance,
@@ -23,14 +23,50 @@ use crate::common::{
 };
 
 
-#[derive(Debug, Clone)]
-pub struct Contact
+pub fn rotate_point_z_3d(p: Vector3<f32>, angle: f32) -> Vector3<f32>
 {
-    pub a: Entity,
+    let (asin, acos) = angle.sin_cos();
+
+    Vector3::new(acos * p.x + asin * p.y, -asin * p.x + acos * p.y, p.z)
+}
+
+#[derive(Debug, Clone)]
+pub struct ContactGeneral<T>
+{
+    pub a: T,
     pub b: Option<Entity>,
     pub point: Vector3<f32>,
     pub normal: Vector3<f32>,
     pub penetration: f32
+}
+
+pub type ContactRaw = ContactGeneral<Option<Entity>>;
+pub type Contact = ContactGeneral<Entity>;
+
+impl From<ContactRaw> for Contact
+{
+    fn from(v: ContactRaw) -> Contact
+    {
+        if let Some(a) = v.a
+        {
+            Contact{
+                a,
+                b: v.b,
+                point: v.point,
+                normal: v.normal,
+                penetration: v.penetration
+            }
+        } else
+        {
+            Contact{
+                a: v.b.expect("at least 1 object in contact must have an entity"),
+                b: v.a,
+                point: v.point,
+                normal: -v.normal,
+                penetration: v.penetration
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -124,8 +160,7 @@ pub struct ColliderInfo
     pub ghost: bool,
     pub scale: Option<Vector3<f32>>,
     pub move_z: bool,
-    pub target_non_lazy: bool,
-    pub is_static: bool
+    pub target_non_lazy: bool
 }
 
 impl Default for ColliderInfo
@@ -138,8 +173,7 @@ impl Default for ColliderInfo
             ghost: false,
             scale: None,
             move_z: true,
-            target_non_lazy: false,
-            is_static: false
+            target_non_lazy: false
         }
     }
 }
@@ -153,9 +187,7 @@ pub struct Collider
     pub scale: Option<Vector3<f32>>,
     pub move_z: bool,
     pub target_non_lazy: bool,
-    pub is_static: bool,
-    collided: Vec<Entity>,
-    previous_position: Option<Vector3<f32>>
+    collided: Vec<Entity>
 }
 
 impl From<ColliderInfo> for Collider
@@ -169,9 +201,7 @@ impl From<ColliderInfo> for Collider
             scale: info.scale,
             move_z: info.move_z,
             target_non_lazy: info.target_non_lazy,
-            is_static: info.is_static,
-            collided: Vec::new(),
-            previous_position: None
+            collided: Vec::new()
         }
     }
 }
@@ -185,11 +215,6 @@ impl Collider
     ) -> f32
     {
         self.kind.inertia(physical, transform)
-    }
-
-    pub fn save_previous(&mut self, position: Vector3<f32>)
-    {
-        self.previous_position = Some(position);
     }
 
     pub fn collided(&self) -> &[Entity]
@@ -209,13 +234,163 @@ impl Collider
 }
 
 #[derive(Debug)]
-pub struct BasicCollidingInfo<'a>
+struct TransformMatrix<'a>
 {
+    pub transform: &'a Transform,
+    pub entity: Option<Entity>,
+    pub rotation_matrix: Matrix3<f32>
+}
+
+impl<'b> TransformMatrix<'b>
+{
+    pub fn from_transform(
+        transform: &'b Transform,
+        entity: Option<Entity>
+    ) -> TransformMatrix<'b>
+    {
+        let rotation = -transform.rotation;
+
+        Self{
+            transform,
+            entity,
+            rotation_matrix: Matrix3::new(
+                rotation.cos(), rotation.sin(), 0.0,
+                -rotation.sin(), rotation.cos(), 0.0,
+                0.0, 0.0, 1.0
+            )
+        }
+    }
+
+    fn rectangle_on_axis(&self, axis: &Vector3<f32>) -> f32
+    {
+        self.transform.scale.iter().zip(self.rotation_matrix.column_iter()).map(|(scale, column)|
+        {
+            (scale / 2.0) * axis.dot(&column).abs()
+        }).sum()
+    }
+
+    pub fn penetration_axis(&self, other: &Self, axis: &Vector3<f32>) -> f32
+    {
+        let this_projected = self.rectangle_on_axis(axis);
+        let other_projected = other.rectangle_on_axis(axis);
+
+        let diff = other.transform.position - self.transform.position;
+
+        let axis_distance = diff.dot(axis).abs();
+
+        this_projected + other_projected - axis_distance
+    }
+
+    pub fn rectangle_rectangle_contact<'a>(
+        &'a self,
+        other: &'a Self
+    ) -> Option<ContactRaw>
+    {
+        let dims = 3;
+
+        let handle_penetration = move |
+            this: &'a Self,
+            other: &'a Self,
+            axis: Vector3<f32>,
+            penetration: f32
+        |
+        {
+            move ||
+            {
+                let diff = other.transform.position - this.transform.position;
+
+                let normal = if axis.dot(&diff) > 0.0
+                {
+                    -axis
+                } else
+                {
+                    axis
+                };
+
+                let mut local_point = other.transform.scale / 2.0;
+
+                (0..dims).for_each(|i|
+                {
+                    if other.rotation_matrix.column(i).dot(&normal) < 0.0
+                    {
+                        let value = -local_point.index(i);
+                        *local_point.index_mut(i) = value;
+                    }
+                });
+
+                let point = other.rotation_matrix * local_point + other.transform.position;
+
+                ContactRaw{
+                    a: this.entity,
+                    b: other.entity,
+                    point,
+                    penetration,
+                    normal
+                }
+            }
+        };
+
+        // good NAME
+        let try_penetrate = |axis: MatrixView3x1<f32>| -> _
+        {
+            let axis: Vector3<f32> = axis.into();
+            let penetration = self.penetration_axis(other, &axis);
+
+            move |this: &'a Self, other: &'a Self| -> (f32, _)
+            {
+                (penetration, handle_penetration(this, other, axis, penetration))
+            }
+        };
+
+        let mut penetrations = (0..dims).map(|i|
+        {
+            try_penetrate(self.rotation_matrix.column(i))(self, other)
+        }).chain((0..dims).map(|i|
+        {
+            try_penetrate(other.rotation_matrix.column(i))(other, self)
+        }));
+
+        let first = penetrations.next()?;
+        let least_penetrating = penetrations.try_fold(first, |b, a|
+        {
+            let next = if a.0 < b.0
+            {
+                a
+            } else
+            {
+                b
+            };
+
+            if next.0 <= 0.0
+            {
+                ControlFlow::Break(())
+            } else
+            {
+                ControlFlow::Continue(next)
+            }
+        });
+
+        let (_penetration, handler) = if let ControlFlow::Continue(x) = least_penetrating
+        {
+            x
+        } else
+        {
+            return None;
+        };
+
+        Some(handler())
+    }
+}
+
+#[derive(Debug)]
+pub struct CollidingInfo<'a>
+{
+    pub entity: Option<Entity>,
     pub transform: Transform,
     pub collider: &'a mut Collider
 }
 
-impl<'a> BasicCollidingInfo<'a>
+impl<'a> CollidingInfo<'a>
 {
     pub fn bounds(&self) -> Vector3<f32>
     {
@@ -256,60 +431,128 @@ impl<'a> BasicCollidingInfo<'a>
         }
     }
 
-    fn inside_rectangle(p: Vector2<f32>, a: Vector2<f32>, b: Vector2<f32>, d: Vector2<f32>) -> bool
-    {
-        let inside = move |a, b|
-        {
-            point_line_side(p, a, b) == Ordering::Equal
-        };
-
-        inside(a, b) && inside(a, d)
-    }
-
     fn circle_circle(
         &self,
         other: &Self,
-        contacts: &mut Vec<Contact>
+        mut add_contact: impl FnMut(ContactRaw)
     ) -> bool
     {
-        todo!()
+        let this_radius = self.transform.scale.max() / 2.0;
+        let other_radius = other.transform.scale.max() / 2.0;
+
+        let diff = other.transform.position - self.transform.position;
+        let distance = diff.magnitude();
+
+        if (distance - this_radius - other_radius) >= 0.0
+        {
+            return false;
+        }
+
+        let normal = diff / distance;
+
+        add_contact(ContactRaw{
+            a: self.entity,
+            b: other.entity,
+            point: self.transform.position + normal * this_radius,
+            penetration: this_radius + other_radius - distance,
+            normal: -normal
+        });
+
+        true
     }
 
     fn rectangle_rectangle(
         &self,
         other: &Self,
-        contacts: &mut Vec<Contact>
+        mut add_contact: impl FnMut(ContactRaw)
     ) -> bool
     {
-        todo!()
+        let this = TransformMatrix::from_transform(&self.transform, self.entity);
+        let other = TransformMatrix::from_transform(&other.transform, other.entity);
+
+        let contact = this.rectangle_rectangle_contact(&other);
+        let collided = contact.is_some();
+
+        if let Some(contact) = contact
+        {
+            add_contact(contact);
+        }
+
+        collided
     }
 
-    fn rectangle_point(
+    fn point_circle(
         &self,
         other: &Self,
-        contacts: &mut Vec<Contact>
+        mut add_contact: impl FnMut(ContactRaw)
     ) -> bool
     {
-        todo!()
-        /*let [a, b, _c, d] = rectangle_points(&self.transform);
+        false
+    }
 
-        let p = other.transform.position.xy();
-        (Self::inside_rectangle(p, a, b, d)).then_some(RectangleCollisionResult{})*/
+    fn point_rectangle(
+        &self,
+        other: &Self,
+        mut add_contact: impl FnMut(ContactRaw)
+    ) -> bool
+    {
+        false
     }
 
     fn rectangle_circle(
         &self,
         other: &Self,
-        contacts: &mut Vec<Contact>
+        mut add_contact: impl FnMut(ContactRaw)
     ) -> bool
     {
-        todo!()
+        let circle_projected = rotate_point_z_3d(
+            other.transform.position - self.transform.position,
+            self.transform.rotation
+        );
+
+        let closest_point_local = (self.transform.scale / 2.0).zip_map(&circle_projected, |a, b|
+        {
+            b.clamp(-a, a)
+        });
+
+        let diff = circle_projected - closest_point_local;
+        let squared_distance = diff.x.powi(2) + diff.y.powi(2);
+
+        let radius = other.transform.scale.max() / 2.0;
+        if squared_distance > radius.powi(2)
+        {
+            return false;
+        }
+
+        let closest_point =  rotate_point_z_3d(
+            closest_point_local,
+            -self.transform.rotation
+        ) + self.transform.position;
+
+        let normal = -(other.transform.position - closest_point).try_normalize(0.0001)
+            .unwrap_or_else(||
+            {
+                -(self.transform.position - closest_point).try_normalize(0.0001).unwrap_or_else(||
+                {
+                    Vector3::new(1.0, 0.0, 0.0)
+                })
+            });
+
+        add_contact(ContactRaw{
+            a: self.entity,
+            b: other.entity,
+            point: closest_point,
+            penetration: radius - squared_distance.sqrt(),
+            normal
+        });
+
+        true
     }
 
-    fn collide(
+    pub fn collide_immutable(
         &self,
         other: &Self,
-        contacts: &mut Vec<Contact>
+        mut contacts: Option<&mut Vec<Contact>>
     ) -> bool
     {
         if !self.collider.layer.collides(&other.collider.layer)
@@ -317,427 +560,99 @@ impl<'a> BasicCollidingInfo<'a>
             return false;
         }
 
-        /*define_layers_enum!{
-            self.collider.kind, other.collider.kind,
-            ColliderType,
+        let ignore_contacts = contacts.is_none() || self.collider.ghost || other.collider.ghost;
 
-            (Point, Point, None),
-
-            (Circle, Circle, self.circle_circle(other).map(CollisionWhich::Circle).map(handle)),
-            (Circle, Point, normal_collision()),
-
-            (Aabb, Aabb, normal_collision()),
-            (Aabb, Point, normal_collision()),
-            (Aabb, Circle, normal_collision()),
-
-            (Rectangle, Rectangle, rectangle_collision()),
-            (Rectangle, Aabb, rectangle_collision())
-            (order_dependent, Rectangle, Point, self.rectangle_point(other).map(CollisionWhich::Rectangle).map(handle)),
-            (order_dependent, Point, Rectangle, other.rectangle_point(self).map(CollisionWhich::Rectangle).map(handle)),
-            (order_dependent, Rectangle, Circle, self.rectangle_circle(other).map(CollisionWhich::Rectangle).map(handle)),
-            (order_dependent, Circle, Rectangle, other.rectangle_circle(self).map(CollisionWhich::Rectangle).map(handle))
-        }*/
-        todo!()
-    }
-}
-
-#[derive(Debug)]
-pub struct CollidingInfo<'a, F>
-{
-    pub entity: Option<Entity>,
-    pub physical: Option<&'a mut Physical>,
-    pub target: F,
-    pub basic: BasicCollidingInfo<'a>
-}
-
-impl<'a, ThisF> CollidingInfo<'a, ThisF>
-where
-    ThisF: FnMut(Vector3<f32>, Option<f32>) -> Vector3<f32>
-{
-    fn resolve_with<OtherF>(
-        &mut self,
-        other: &mut CollidingInfo<OtherF>,
-        offset: Vector3<f32>
-    ) -> (Option<Vector3<f32>>, Option<Vector3<f32>>)
-    where
-        OtherF: FnMut(Vector3<f32>, Option<f32>) -> Vector3<f32>
-    {
-        fn transform_target(
-            move_z: bool,
-            target: impl FnOnce(Vector3<f32>, Option<f32>) -> Vector3<f32>
-        ) -> impl FnOnce(Vector3<f32>) -> Vector3<f32>
+        let add_contact = |contact: ContactRaw|
         {
-            let handle_z = move |mut values: Vector3<f32>|
+            if !ignore_contacts
             {
-                if !move_z
+                if let Some(ref mut contacts) = contacts
                 {
-                    values.z = 0.0;
-                }
-
-                values
-            };
-
-            let add_epsilon = |values: Vector3<f32>|
-            {
-                const EPSILON: f32 = 0.0002;
-
-                values.map(|x| if x == 0.0 { x } else { x + x.signum() * EPSILON })
-            };
-
-            move |offset: Vector3<f32>| target(add_epsilon(handle_z(offset)), None)
-        }
-
-        if self.basic.collider.is_static && other.basic.collider.is_static
-        {
-            return (None, None);
-        }
-
-        if self.basic.collider.ghost || other.basic.collider.ghost
-        {
-            return (None, None);
-        }
-
-        let add_real_collision_detection = ();
-        (None, None)
-        /*let this_target = transform_target(self.basic.collider.move_z, &mut self.target);
-        let other_target = transform_target(other.basic.collider.move_z, &mut other.target);
-
-        let elasticity = 0.5;
-
-        let invert_some = |physical: &mut Physical|
-        {
-            let moved = offset.map(|x| x != 0.0);
-
-            let new_velocity = -physical.velocity * elasticity;
-
-            if moved.x { physical.velocity.x = new_velocity.x }
-            if moved.y { physical.velocity.y = new_velocity.y }
-            if moved.z { physical.velocity.z = new_velocity.z }
-        };
-
-        if self.basic.collider.is_static
-        {
-            let other_position = other_target(offset);
-            if let Some(physical) = &mut other.physical
-            {
-                invert_some(physical);
-            }
-
-            (None, Some(other_position))
-        } else if other.basic.collider.is_static
-        {
-            let this = this_target(-offset);
-            if let Some(physical) = &mut self.physical
-            {
-                invert_some(physical);
-            }
-
-            (Some(this), None)
-        } else
-        {
-            match (&mut self.physical, &mut other.physical)
-            {
-                (Some(this_physical), Some(other_physical)) =>
-                {
-                    let total_mass = this_physical.mass + other_physical.mass;
-
-                    let left = {
-                        let top = this_physical.mass - other_physical.mass;
-
-                        top / total_mass * this_physical.velocity
-                    };
-
-                    let right = {
-                        let top = other_physical.mass * 2.0;
-
-                        top / total_mass * other_physical.velocity
-                    };
-                    
-                    let previous_velocity = this_physical.velocity;
-
-                    this_physical.velocity = (left + right) * elasticity;
-
-                    let top = {
-                        let left = this_physical.mass * (previous_velocity - this_physical.velocity);
-                        
-                        left + other_physical.mass * other_physical.velocity
-                    };
-
-                    other_physical.velocity = (top / other_physical.mass) * elasticity;
-
-                    let mass_ratio = this_physical.mass / other_physical.mass;
-
-                    let (this_scale, other_scale) = if mass_ratio >= 1.0
-                    {
-                        let mass_ratio = other_physical.mass / this_physical.mass;
-
-                        (1.0 - mass_ratio, mass_ratio)
-                    } else
-                    {
-                        (mass_ratio, 1.0 - mass_ratio)
-                    };
-
-                    (
-                        Some(this_target(-offset * this_scale)),
-                        Some(other_target(offset * other_scale))
-                    )
-                },
-                (Some(this_physical), None) =>
-                {
-                    let this = this_target(-offset);
-                    invert_some(this_physical);
-
-                    (Some(this), None)
-                },
-                (None, Some(other_physical)) =>
-                {
-                    let other = other_target(offset);
-                    invert_some(other_physical);
-
-                    (None, Some(other))
-                },
-                (None, None) =>
-                {
-                    let half_offset = offset / 2.0;
-                    (Some(this_target(-half_offset)), Some(other_target(half_offset)))
+                    contacts.push(contact.into());
                 }
             }
-        }*/
-    }
-
-    fn resolve_with_offset<OtherF>(
-        &mut self,
-        other: &mut CollidingInfo<OtherF>,
-        max_distance: Vector3<f32>,
-        offset: Vector3<f32>,
-        axis: Option<Axis>
-    ) -> (Option<Vector3<f32>>, Option<Vector3<f32>>)
-    where
-        OtherF: FnMut(Vector3<f32>, Option<f32>) -> Vector3<f32>
-    {
-        let offset = max_distance.zip_map(&offset, |max_distance, offset|
-        {
-            if offset < 0.0
-            {
-                -max_distance - offset
-            } else
-            {
-                max_distance - offset
-            }
-        });
-
-        let abs_offset = offset.map(|x| x.abs());
-
-        let offset = if (abs_offset.z <= abs_offset.x) && (abs_offset.z <= abs_offset.y)
-        {
-            if axis.is_some() && axis != Some(Axis::Z)
-            {
-                return (None, None);
-            }
-
-            Vector3::new(0.0, 0.0, offset.z)
-        } else if (abs_offset.y <= abs_offset.x) && (abs_offset.y <= abs_offset.z)
-        {
-            if axis.is_some() && axis != Some(Axis::Y)
-            {
-                return (None, None);
-            }
-
-            Vector3::new(0.0, offset.y, 0.0)
-        } else
-        {
-            if axis.is_some() && axis != Some(Axis::X)
-            {
-                return (None, None);
-            }
-
-            Vector3::new(offset.x, 0.0, 0.0)
         };
 
-        self.resolve_with(other, offset)
+        macro_rules! define_collisions
+        {
+            (
+                $((special, $a_special:ident, $b_special:ident, $special:expr)),+,
+                $(($a:ident, $b:ident, $name:ident)),+
+            ) =>
+            {
+                #[allow(unreachable_patterns)]
+                match (self.collider.kind, other.collider.kind)
+                {
+                    $((ColliderType::$a_special, ColliderType::$b_special) => $special,)+
+                    $(
+                        (ColliderType::$a, ColliderType::$b) =>
+                        {
+                            self.$name(other, add_contact)
+                        },
+                        (ColliderType::$b, ColliderType::$a) =>
+                        {
+                            other.$name(self, add_contact)
+                        },
+                    )+
+                }
+            }
+        }
+
+        define_collisions!{
+            (special, Point, Point, false),
+
+            (Point, Circle, point_circle),
+            (Point, Aabb, point_rectangle),
+            (Point, Rectangle, point_rectangle),
+
+            (Circle, Circle, circle_circle),
+
+            (Aabb, Aabb, rectangle_rectangle),
+            (Aabb, Circle, rectangle_circle),
+
+            (Rectangle, Circle, rectangle_circle),
+            (Rectangle, Aabb, rectangle_rectangle),
+            (Rectangle, Rectangle, rectangle_rectangle)
+        }
     }
 
-    pub fn resolve<OtherF>(
+    pub fn collide(
         &mut self,
-        mut other: CollidingInfo<OtherF>,
-        contacts: &mut Vec<Contact>
+        other: CollidingInfo,
+        contacts: Option<&mut Vec<Contact>>
     ) -> bool
-    where
-        OtherF: FnMut(Vector3<f32>, Option<f32>) -> Vector3<f32>
     {
-        let collided = self.basic.collide(&other.basic, contacts);
+        let collided = self.collide_immutable(&other, contacts);
 
         if collided
         {
             if let Some(other) = other.entity
             {
-                self.basic.collider.push_collided(other);
+                self.collider.push_collided(other);
             }
 
             if let Some(entity) = self.entity
             {
-                other.basic.collider.push_collided(entity);
+                other.collider.push_collided(entity);
             }
         }
 
         collided
     }
 
-    pub fn resolve_with_world(
-        &mut self,
-        world: &World
-    ) -> bool
-    {
-        /*if let Some(old_position) = self.basic.collider.previous_position
-        {
-            let new_position = self.basic.transform.position;
-
-            self.basic.transform.position = old_position;
-
-            let mut collided = false;
-
-            macro_rules! handle_axis
-            {
-                ($c:ident, $C:ident) =>
-                {
-                    self.basic.transform.position.$c = new_position.$c;
-                    let (this_collided, resolved) = self.resolve_with_world_inner(
-                        world,
-                        Some(Axis::$C)
-                    );
-
-                    if let Some(resolved) = resolved
-                    {
-                        self.basic.transform.position = resolved;
-                    }
-
-                    collided |= this_collided;
-                }
-            }
-
-            handle_axis!(x, X);
-            handle_axis!(y, Y);
-            handle_axis!(z, Z);
-
-            collided
-        } else
-        {
-            self.resolve_with_world_inner(world, None).0
-        }*/
-        todo!()
-    }
-
-    fn resolve_with_world_inner(
+    pub fn collide_with_world(
         &mut self,
         world: &World,
-        axis: Option<Axis>
-    ) -> (bool, Option<Vector3<f32>>)
+        contacts: &mut Vec<Contact>
+    ) -> bool
     {
-        /*let collisions = world.tiles_inside(&self.basic, |tile|
+        let collided = world.tiles_inside(self, Some(contacts), |tile|
         {
             let colliding_tile = tile.map(|x| world.tile_info(*x).colliding);
 
             colliding_tile.unwrap_or(false)
-        }).map(|pos| pos.entity_position());
+        }).count();
 
-        let mut collider = ColliderInfo{
-            kind: ColliderType::Aabb,
-            layer: ColliderLayer::World,
-            ghost: false,
-            scale: None,
-            move_z: false,
-            target_non_lazy: false,
-            is_static: true
-        }.into();
-
-        let mut planes = Vec::new();
-
-        macro_rules! cmp_axis
-        {
-            ($a:expr, $b:expr, $c:ident) =>
-            {
-                $a.$c == $b.$c
-            }
-        }
-
-        macro_rules! axis_check
-        {
-            ($a:expr, $b:expr, $axis:expr) =>
-            {
-                match $axis
-                {
-                    Axis::X => cmp_axis!($a, $b, x),
-                    Axis::Y => cmp_axis!($a, $b, y),
-                    Axis::Z => cmp_axis!($a, $b, z)
-                }
-            }
-        }
-
-        if let Some(axis) = axis
-        {
-            collisions.for_each(|position|
-            {
-                if !planes.iter_mut().any(|plane: &mut Vec<Vector3<f32>>|
-                {
-                    let fits = axis_check!(plane[0], position, axis);
-                    if fits
-                    {
-                        plane.push(position);
-                    }
-
-                    fits
-                })
-                {
-                    planes.push(vec![position]);
-                }
-            });
-
-            if planes.is_empty()
-            {
-                return (false, None);
-            }
-        } else
-        {
-            let collisions = collisions.collect::<Vec<_>>();
-
-            if collisions.is_empty()
-            {
-                return (false, None);
-            }
-
-            planes = vec![collisions];
-        }
-
-        for plane in planes.into_iter()
-        {
-            let amount = plane.len();
-            let total_position = plane.into_iter().reduce(|acc, x| acc + x).unwrap();
-
-            let collision_point = total_position / amount as f32;
-
-            let mut other = CollidingInfo{
-                entity: None,
-                physical: None,
-                target: |x, _| x,
-                basic: BasicCollidingInfo{
-                    transform: Transform{
-                        position: collision_point,
-                        scale: Vector3::repeat(TILE_SIZE),
-                        ..Default::default()
-                    },
-                    collider: &mut collider
-                }
-            };
-
-            let result = self.basic.collision(&other.basic);
-
-            if let Some(resolve) = result
-            {
-                return (true, resolve(self, &mut other, axis).0);
-            }
-        }
-
-        (true, None)*/
-        todo!()
+        collided > 0
     }
 }

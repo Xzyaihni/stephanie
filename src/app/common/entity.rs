@@ -2031,19 +2031,6 @@ macro_rules! define_entities_both
             )
             {
                 collider_system::update(self, world, dt);
-
-                self.update_colliders_previous();
-            }
-
-            fn update_colliders_previous(&mut self)
-            {
-                for_each_component!(self, collider, |entity, collider: &RefCell<Collider>|
-                {
-                    if let Some(transform) = self.transform(entity)
-                    {
-                        collider.borrow_mut().save_previous(transform.position);
-                    }
-                });
             }
 
             pub fn sync_physical_positions(

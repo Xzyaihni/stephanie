@@ -78,6 +78,7 @@ impl Game
                 ..Default::default()
             });
 
+            use crate::common::PhysicalProperties;
             entities.push(true, EntityInfo{
                 lazy_transform: Some(LazyTransformInfo{
                     transform: Transform{
@@ -90,7 +91,6 @@ impl Game
                 collider: Some(ColliderInfo{
                     kind: ColliderType::Rectangle,
                     layer: ColliderLayer::Normal,
-                    is_static: true,
                     ..Default::default()
                 }.into()),
                 render: Some(RenderInfo{
@@ -100,6 +100,11 @@ impl Game
                     z_level: ZLevel::UiHigh,
                     ..Default::default()
                 }),
+                physical: Some(PhysicalProperties{
+                    inverse_mass: 0.0,
+                    can_sleep: false,
+                    ..Default::default()
+                }.into()),
                 parent: Some(Parent::new(mouse_entity, true)),
                 ..Default::default()
             });
@@ -1367,11 +1372,11 @@ impl<'a> PlayerContainer<'a>
             self.look_at_mouse();
         }
 
-        self.basic_colliding_info(|mut colliding|
+        self.colliding_info(|mut colliding|
         {
             let world = &self.game_state.world;
 
-            let stairs = world.tiles_inside(&colliding, |tile|
+            let stairs = world.tiles_inside(&colliding, None, |tile|
             {
                 tile.map(|tile|
                 {
@@ -1418,7 +1423,7 @@ impl<'a> PlayerContainer<'a>
 
             colliding.transform.position.z -= TILE_SIZE;
 
-            let stairs = world.tiles_inside(&colliding, |tile|
+            let stairs = world.tiles_inside(&colliding, None, |tile: Option<&_>|
             {
                 tile.map(|tile|
                 {
@@ -1460,14 +1465,15 @@ impl<'a> PlayerContainer<'a>
         self.game_state.activate_notification(id, 0.1);
     }
 
-    fn basic_colliding_info(&self, f: impl FnOnce(BasicCollidingInfo))
+    fn colliding_info(&self, f: impl FnOnce(CollidingInfo))
     {
         let entities = self.game_state.entities();
 
         let transform = some_or_return!(entities.transform(self.info.entity)).clone();
         let mut collider = some_or_return!(entities.collider_mut(self.info.entity));
 
-        f(BasicCollidingInfo{
+        f(CollidingInfo{
+            entity: Some(self.info.entity),
             transform,
             collider: &mut collider
         });

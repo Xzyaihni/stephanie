@@ -1,10 +1,7 @@
 use std::cell::{RefCell, RefMut};
 
-use nalgebra::Vector3;
-
 use crate::common::{
     collider::*,
-    AnyEntities,
     world::World,
     entity::{
         for_each_component,
@@ -27,10 +24,9 @@ pub fn update(
 {
     macro_rules! colliding_info
     {
-        ($result_variable:expr, $physical:expr, $collider:expr, $entity:expr) =>
+        ($result_variable:expr, $collider:expr, $entity:expr) =>
         {
             let mut collider: RefMut<Collider> = $collider.borrow_mut();
-            let target_non_lazy = collider.target_non_lazy;
             {
                 let mut transform = entities.transform($entity).unwrap().clone();
 
@@ -40,47 +36,10 @@ pub fn update(
                     transform.rotation = 0.0;
                 }
 
-                let entities = &entities;
                 $result_variable = CollidingInfo{
                     entity: Some($entity),
-                    physical: $physical.as_deref_mut(),
-                    target: move |mut offset: Vector3<f32>, rotation: Option<f32>|
-                    {
-                        let mut target = if target_non_lazy
-                        {
-                            entities.transform_mut($entity).unwrap()
-                        } else
-                        {
-                            let target = entities.target($entity).unwrap();
-
-                            if let Some(parent) = entities.parent($entity)
-                            {
-                                let parent_scale = entities.transform(parent.entity)
-                                    .unwrap()
-                                    .scale;
-
-                                offset = offset.component_div(&parent_scale);
-                            }
-
-                            target
-                        };
-
-                        target.position += offset;
-
-                        if kind != ColliderType::Aabb
-                        {
-                            if let Some(rotation) = rotation
-                            {
-                                target.rotation += rotation;
-                            }
-                        }
-
-                        target.position
-                    },
-                    basic: BasicCollidingInfo{
-                        transform,
-                        collider: &mut collider
-                    }
+                    transform,
+                    collider: &mut collider
                 };
             }
         }
@@ -101,15 +60,13 @@ pub fn update(
         component: ref other_collider
     }|
     {
-        let mut physical = entities.physical_mut(entity);
         let mut this;
-        colliding_info!{this, physical, collider, entity};
+        colliding_info!{this, collider, entity};
 
-        let mut other_physical = entities.physical_mut(other_entity);
         let other;
-        colliding_info!{other, other_physical, other_collider, other_entity};
+        colliding_info!{other, other_collider, other_entity};
 
-        this.resolve(other, &mut contacts);
+        this.collide(other, Some(&mut contacts));
     };
 
     {
@@ -123,14 +80,13 @@ pub fn update(
         });
     }
 
-    ContactResolver::resolve(entities, contacts, dt);
-
     for_each_component!(entities, collider, |entity, collider: &RefCell<_>|
     {
-        let mut physical = entities.physical_mut(entity);
         let mut this;
-        colliding_info!{this, physical, collider, entity};
+        colliding_info!{this, collider, entity};
 
-        this.resolve_with_world(world);
+        this.collide_with_world(world, &mut contacts);
     });
+
+    ContactResolver::resolve(entities, contacts, dt);
 }
