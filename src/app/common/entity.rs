@@ -2026,10 +2026,11 @@ macro_rules! define_entities_both
 
             pub fn update_colliders(
                 &mut self,
-                world: &World
+                world: &World,
+                dt: f32
             )
             {
-                collider_system::update(self, world);
+                collider_system::update(self, world, dt);
 
                 self.update_colliders_previous();
             }

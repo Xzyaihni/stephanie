@@ -14,10 +14,15 @@ use crate::common::{
     }
 };
 
+use resolver::ContactResolver;
+
+mod resolver;
+
 
 pub fn update(
     entities: &mut ClientEntities,
-    world: &World
+    world: &World,
+    dt: f32
 )
 {
     macro_rules! colliding_info
@@ -86,7 +91,9 @@ pub fn update(
         collider.borrow_mut().reset_frame();
     });
 
-    let pairs_fn = |&ComponentWrapper{
+    let mut contacts = Vec::new();
+
+    let mut pairs_fn = |&ComponentWrapper{
         entity,
         component: ref collider
     }, &ComponentWrapper{
@@ -102,7 +109,7 @@ pub fn update(
         let other;
         colliding_info!{other, other_physical, other_collider, other_entity};
 
-        this.resolve(other);
+        this.resolve(other, &mut contacts);
     };
 
     {
@@ -115,6 +122,8 @@ pub fn update(
             colliders.clone().for_each(|b| pairs_fn(a, b));
         });
     }
+
+    ContactResolver::resolve(entities, contacts, dt);
 
     for_each_component!(entities, collider, |entity, collider: &RefCell<_>|
     {

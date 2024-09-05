@@ -138,14 +138,7 @@ impl World
         predicate: impl Fn(Option<&'a Tile>) -> bool + 'a
     ) -> impl Iterator<Item=TilePos> + 'a
     {
-        let scale = collider.scale();
-        let half_scale = if collider.collider.kind == ColliderType::Rectangle
-        {
-            Vector3::repeat((scale.x.powi(2) + scale.y.powi(2)).sqrt())
-        } else
-        {
-            scale
-        };
+        let half_scale = collider.bounds();
 
         let top_left = self.tile_of((collider.transform.position - half_scale).into());
         let bottom_right = self.tile_of((collider.transform.position + half_scale).into());
@@ -155,7 +148,8 @@ impl World
             predicate(self.tile(*pos))
         }).filter(move |pos|
         {
-            let mut world_collider = ColliderInfo{
+            true
+            /*let mut world_collider = ColliderInfo{
                 kind: ColliderType::Aabb,
                 layer: ColliderLayer::World,
                 ghost: false,
@@ -172,7 +166,7 @@ impl World
                     ..Default::default()
                 },
                 collider: &mut world_collider
-            })
+            })*/
         })
     }
 

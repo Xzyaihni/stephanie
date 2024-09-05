@@ -182,7 +182,7 @@ impl ClientEntitiesContainer
 
         self.entities.update_outlineable(dt);
 
-        self.entities.update_colliders(world);
+        self.entities.update_colliders(world, dt);
 
         if is_trusted
         {

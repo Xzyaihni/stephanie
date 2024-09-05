@@ -218,6 +218,16 @@ impl Physical
         }
     }
 
+    pub fn last_acceleration(&self) -> &Vector3<f32>
+    {
+        &self.last_acceleration
+    }
+
+    pub fn sleeping(&self) -> bool
+    {
+        self.sleeping
+    }
+
     pub fn set_acceleration(&mut self, acceleration: Vector3<f32>)
     {
         self.acceleration = acceleration;
@@ -226,6 +236,11 @@ impl Physical
     pub fn velocity(&self) -> &Vector3<f32>
     {
         &self.velocity
+    }
+
+    pub fn angular_velocity(&self) -> f32
+    {
+        self.angular_velocity
     }
 
     pub fn set_velocity_raw(&mut self, velocity: Vector3<f32>)
@@ -241,6 +256,16 @@ impl Physical
     pub fn add_velocity(&mut self, velocity: Vector3<f32>, dt: f32)
     {
         self.add_force(self.velocity_as_force(velocity, dt));
+    }
+
+    pub fn add_velocity_raw(&mut self, velocity: Vector3<f32>)
+    {
+        self.velocity += velocity;
+    }
+
+    pub fn add_angular_velocity_raw(&mut self, velocity: f32)
+    {
+        self.angular_velocity += velocity;
     }
 
     pub fn add_force(&mut self, force: Vector3<f32>)
