@@ -69,7 +69,7 @@ impl CollisionInfo
 
         let relative_velocity = other_physical.zip(this_physical).map(|(other, this)|
         {
-            other.velocity - this.velocity
+            other.velocity() - this.velocity()
         });
 
         Self{

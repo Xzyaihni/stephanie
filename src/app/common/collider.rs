@@ -31,6 +31,33 @@ pub enum ColliderType
     Rectangle
 }
 
+impl ColliderType
+{
+    pub fn inertia(
+        &self,
+        physical: &Physical,
+        transform: &Transform
+    ) -> f32
+    {
+        match self
+        {
+            Self::Point => 0.0,
+            Self::Circle =>
+            {
+                (2.0/5.0) * physical.inverse_mass.recip() * transform.scale.max().powi(2)
+            },
+            Self::Aabb => Self::Rectangle.inertia(physical, transform),
+            Self::Rectangle =>
+            {
+                let w = transform.scale.x;
+                let h = transform.scale.y;
+
+                (1.0/12.0) * physical.inverse_mass.recip() * (w.powi(2) + h.powi(2))
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum ColliderLayer
 {
@@ -140,6 +167,15 @@ impl From<ColliderInfo> for Collider
 
 impl Collider
 {
+    pub fn inertia(
+        &self,
+        physical: &Physical,
+        transform: &Transform
+    ) -> f32
+    {
+        self.kind.inertia(physical, transform)
+    }
+
     pub fn save_previous(&mut self, position: Vector3<f32>)
     {
         self.previous_position = Some(position);
@@ -491,7 +527,9 @@ where
             return (None, None);
         }
 
-        let this_target = transform_target(self.basic.collider.move_z, &mut self.target);
+        let add_real_collision_detection = ();
+        (None, None)
+        /*let this_target = transform_target(self.basic.collider.move_z, &mut self.target);
         let other_target = transform_target(other.basic.collider.move_z, &mut other.target);
 
         let elasticity = 0.5;
@@ -594,7 +632,7 @@ where
                     (Some(this_target(-half_offset)), Some(other_target(half_offset)))
                 }
             }
-        }
+        }*/
     }
 
     fn resolve_with_offset<OtherF>(

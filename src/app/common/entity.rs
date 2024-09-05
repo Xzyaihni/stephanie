@@ -618,7 +618,16 @@ macro_rules! impl_common_systems
                         return;
                     }
 
-                    physical.borrow_mut().physics_update(&mut target, dt);
+                    physical.borrow_mut().update(
+                        &mut target,
+                        |physical, transform|
+                        {
+                            self.collider(entity)
+                                .map(|collider| collider.inertia(physical, transform))
+                                .unwrap_or_default()
+                        },
+                        dt
+                    );
                 }
             });
         }
@@ -1635,8 +1644,7 @@ macro_rules! define_entities_both
                             },
                             prototype: EntityInfo{
                                 physical: Some(PhysicalProperties{
-                                    mass: 0.05,
-                                    friction: 0.05,
+                                    inverse_mass: 0.05_f32.recip(),
                                     floating: true,
                                     ..Default::default()
                                 }.into()),

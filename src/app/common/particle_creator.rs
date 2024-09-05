@@ -156,7 +156,7 @@ impl ParticleCreator
             scale = transform.scale;
         }
 
-        let parent_velocity = entities.physical(entity).map(|x| x.velocity);
+        let parent_velocity = entities.physical(entity).map(|x| *x.velocity());
 
         let amount = fastrand::usize(info.amount);
         (0..amount).for_each(|_|
@@ -202,9 +202,10 @@ impl ParticleCreator
             if let Some(physical) = prototype.physical.as_mut()
             {
                 let velocity = info.speed.velocity();
+                let mut velocity = parent_velocity.unwrap_or_default() + velocity;
+                velocity.z = 0.0;
 
-                physical.velocity = parent_velocity.unwrap_or_default() + velocity;
-                physical.velocity.z = 0.0;
+                physical.set_velocity_raw(velocity);
             }
         
             // for now particles r local (i might change that?)

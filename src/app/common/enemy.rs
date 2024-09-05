@@ -4,6 +4,7 @@ use nalgebra::{Unit, Vector3};
 
 use crate::common::{
     some_or_value,
+    some_or_return,
     character::*,
     SeededRandom,
     AnyEntities,
@@ -131,7 +132,8 @@ impl Enemy
     fn do_behavior(
         &mut self,
         entities: &impl AnyEntities,
-        entity: Entity
+        entity: Entity,
+        dt: f32
     )
     {
         let anatomy = entities.anatomy(entity).unwrap();
@@ -153,7 +155,8 @@ impl Enemy
                     &mut physical,
                     &mut character,
                     &anatomy,
-                    direction.into_inner()
+                    *direction,
+                    dt
                 );
             },
             BehaviorState::Attack(other_entity) =>
@@ -182,7 +185,8 @@ impl Enemy
                             &mut physical,
                             &mut character,
                             &anatomy,
-                            direction
+                            some_or_return!(Unit::try_new(direction, 0.01)),
+                            dt
                         );
 
                         if character.bash_reachable(&transform, &other_transform.position)
@@ -206,23 +210,20 @@ impl Enemy
         physical: &mut Physical,
         character: &mut Character,
         anatomy: &Anatomy,
-        direction: Vector3<f32>
+        direction: Unit<Vector3<f32>>,
+        dt: f32
     )
     {
         Self::look_direction(character, direction);
 
-        character.walk(anatomy, physical, direction);
+        character.walk(anatomy, physical, direction, dt);
     }
 
     fn look_direction(
         character: &mut Character,
-        mut direction: Vector3<f32>
+        direction: Unit<Vector3<f32>>
     )
     {
-        direction.z = 0.0;
-
-        let direction = Unit::new_normalize(direction);
-
         let angle = direction.y.atan2(direction.x);
 
         character.rotation = angle;
@@ -274,7 +275,7 @@ impl Enemy
             self.set_next_state();
         }
 
-        self.do_behavior(entities, entity);
+        self.do_behavior(entities, entity, dt);
 
         changed
     }

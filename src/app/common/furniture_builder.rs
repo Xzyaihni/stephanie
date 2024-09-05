@@ -38,7 +38,6 @@ impl<'a> FurnitureBuilder<'a>
         let mut loot = Loot::new(self.items_info, vec!["trash", "utility"], 1.0);
         loot.create_random(&mut inventory, 1..4);
 
-        let uncomment_kind_below = ();
         EntityInfo{
             lazy_transform: Some(LazyTransformInfo{
                 transform: Transform{
@@ -58,11 +57,11 @@ impl<'a> FurnitureBuilder<'a>
                 ..Default::default()
             }),
             collider: Some(ColliderInfo{
-                // kind: ColliderType::Rectangle,
+                kind: ColliderType::Rectangle,
                 ..Default::default()
             }.into()),
             physical: Some(PhysicalProperties{
-                mass: 200.0,
+                inverse_mass: 200.0_f32.recip(),
                 ..Default::default()
             }.into()),
             inventory: Some(inventory),

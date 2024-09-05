@@ -108,7 +108,7 @@ pub fn update(
     {
         let mut colliders = entities.collider.iter().map(|(_, x)| x);
 
-        // calls the function for each unique combination (excluding (entities, entities) pairs)
+        // calls the function for each unique combination (excluding (self, self) pairs)
         colliders.clone().for_each(|a|
         {
             colliders.by_ref().next();

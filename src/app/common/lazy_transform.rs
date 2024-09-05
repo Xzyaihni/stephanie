@@ -12,6 +12,7 @@ use crate::common::{
     EaseOut,
     Entity,
     Physical,
+    ColliderType,
     watcher::Lifetime
 };
 
@@ -213,9 +214,12 @@ impl Connection
 
                 let spring_force = distance * connection.strength;
 
-                connection.physical.force += spring_force;
-                connection.physical.damp_velocity(connection.damping, dt);
-                connection.physical.physics_update(current, dt);
+                connection.physical.add_force(spring_force);
+                connection.physical.update(
+                    current,
+                    |physical, transform| ColliderType::Circle.inertia(physical, transform),
+                    dt
+                );
 
                 current.position = LazyTransform::clamp_distance(
                     target,
@@ -571,10 +575,10 @@ impl LazyTransform
             Deformation::Rigid => (),
             Deformation::Stretch(deformation) =>
             {
-                let local_velocity = self.physical().map(|x| x.velocity)
+                let local_velocity = self.physical().map(|x| *x.velocity())
                     .unwrap_or_default();
 
-                let global_velocity = physical.map(|x| x.velocity)
+                let global_velocity = physical.map(|x| *x.velocity())
                     .unwrap_or_default();
 
                 let velocity = global_velocity + local_velocity;

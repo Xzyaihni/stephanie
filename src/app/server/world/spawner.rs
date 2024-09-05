@@ -75,10 +75,11 @@ pub fn create_spawner(
                     ..Default::default()
                 }.into()),
                 physical: Some(PhysicalProperties{
-                    mass: 40.0 * *width as f32,
+                    inverse_mass: (40.0 * *width as f32).recip(),
                     floating: true,
                     fixed: PhysicalFixed{
-                        position: true
+                        position: true,
+                        ..Default::default()
                     },
                     ..Default::default()
                 }.into()),

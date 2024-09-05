@@ -37,6 +37,7 @@ use crate::{
         Side1d,
         Physical,
         PhysicalProperties,
+        PhysicalFixed,
         AnyEntities,
         Entity,
         EntityInfo,
@@ -193,6 +194,14 @@ pub struct CombinedInfo<'a>
     pub characters_info: &'a CharactersInfo
 }
 
+impl CombinedInfo<'_>
+{
+    pub fn is_player(&self, entity: Entity) -> bool
+    {
+        self.entities.player(entity).is_some()
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AfterInfo
 {
@@ -261,8 +270,7 @@ impl Character
     {
         Connection::Spring(SpringConnection{
             physical: PhysicalProperties{
-                mass: 0.5,
-                friction: 0.4,
+                inverse_mass: 0.5_f32.recip(),
                 floating: true,
                 ..Default::default()
             }.into(),
@@ -333,8 +341,7 @@ impl Character
                     connection: Connection::Spring(
                         SpringConnection{
                             physical: PhysicalProperties{
-                                mass: 0.01,
-                                friction: 0.8,
+                                inverse_mass: 0.01_f32.recip(),
                                 floating: true,
                                 ..Default::default()
                             }.into(),
@@ -634,16 +641,16 @@ impl Character
                 };
 
                 let mut physical: Physical = PhysicalProperties{
-                    mass: item_info.mass,
-                    friction: 0.7,
+                    inverse_mass: item_info.mass.recip(),
                     ..Default::default()
                 }.into();
 
-                let mass = physical.mass;
+                let mass = physical.inverse_mass.recip();
 
                 let throw_limit = 0.1 * strength;
-                let throw_amount = (strength / mass).min(throw_limit);
-                physical.velocity = direction * throw_amount;
+                let throw_amount = strength.min(throw_limit);
+
+                physical.add_force(direction * throw_amount);
 
                 EntityInfo{
                     physical: Some(physical),
@@ -697,8 +704,7 @@ impl Character
                                 },
                                 prototype: EntityInfo{
                                     physical: Some(PhysicalProperties{
-                                        mass: 0.01,
-                                        friction: 0.1,
+                                        inverse_mass: 0.01_f32.recip(),
                                         floating: true,
                                         ..Default::default()
                                     }.into()),
@@ -1255,7 +1261,7 @@ impl Character
         Self::decrease_timer(&mut self.oversprint_cooldown, dt);
     }
 
-    fn this_physical(&self, combined_info: CombinedInfo) -> PhysicalProperties
+    fn this_physical(&self, combined_info: CombinedInfo, entity: Entity) -> PhysicalProperties
     {
         combined_info.entities.physical(self.info.as_ref().unwrap().this).map(|x|
         {
@@ -1263,8 +1269,11 @@ impl Character
         }).unwrap_or_else(||
         {
             PhysicalProperties{
-                mass: 50.0,
-                friction: 0.999,
+                inverse_mass: 50.0_f32.recip(),
+                static_friction: 0.9,
+                dynamic_friction: 0.8,
+                fixed: PhysicalFixed{rotation: true, ..Default::default()},
+                can_sleep: !combined_info.is_player(entity),
                 ..Default::default()
             }
         })
@@ -1355,7 +1364,7 @@ impl Character
                         ghost: false,
                         ..Default::default()
                     }.into()),
-                    Some(self.this_physical(combined_info).into()),
+                    Some(self.this_physical(combined_info, entity).into()),
                     ZLevel::Head,
                     true,
                     true,
@@ -1371,7 +1380,7 @@ impl Character
                         scale: Some(Vector3::repeat(0.4)),
                         ..Default::default()
                     }.into()),
-                    Some(self.this_physical(combined_info).into()),
+                    Some(self.this_physical(combined_info, entity).into()),
                     ZLevel::Feet,
                     false,
                     true,
@@ -1462,7 +1471,7 @@ impl Character
     {
         let info = some_or_return!(self.info.as_ref());
         let physical = some_or_return!(combined_info.entities.physical(info.this));
-        let speed = physical.velocity.magnitude() * 50.0;
+        let speed = physical.velocity().xy().magnitude() * 50.0;
 
         self.jiggle = (self.jiggle + dt * speed) % (2.0 * f32::consts::PI);
 
@@ -1505,42 +1514,31 @@ impl Character
         &self,
         anatomy: &Anatomy,
         physical: &mut Physical,
-        mut direction: Vector3<f32>
+        direction: Unit<Vector3<f32>>,
+        dt: f32
     )
     {
-        let z = direction.z;
+        let speed = some_or_return!(anatomy.speed());
 
-        direction.z = 0.0;
-        let direction = Unit::try_new(direction, 0.01);
-
-        if let Some((speed, direction)) = anatomy.speed()
-            .and_then(|speed| direction.map(|direction| (speed, direction)))
+        let speed = if self.is_sprinting()
         {
-            let speed = if self.is_sprinting()
-            {
-                speed * 1.8
-            } else
-            {
-                speed
-            };
+            speed * 1.8
+        } else
+        {
+            speed
+        };
 
-            let velocity = *direction * (speed / physical.mass);
+        let velocity = *direction * (speed * physical.inverse_mass);
 
-            let new_velocity = (physical.velocity + velocity).zip_map(&velocity, |value, limit|
-            {
-                let limit = limit.abs();
+        let current_velocity = physical.velocity();
+        let new_velocity = (current_velocity + velocity).zip_map(&velocity, |value, limit|
+        {
+            let limit = limit.abs();
 
-                value.min(limit).max(-limit)
-            });
+            value.min(limit).max(-limit)
+        });
 
-            physical.velocity.x = new_velocity.x;
-            physical.velocity.y = new_velocity.y;
-
-            if physical.floating
-            {
-                physical.velocity.z = z;
-            }
-        }
+        physical.add_force(physical.velocity_as_force(new_velocity - current_velocity, dt));
     }
 
     pub fn aggressive(&self, other: &Self) -> bool

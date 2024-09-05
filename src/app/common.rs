@@ -76,7 +76,7 @@ pub use anatomy::{Anatomy, HumanAnatomy, HumanAnatomyInfo};
 pub use damage::{Damageable, Damage, DamageType, DamageDirection, DamageHeight, DamagePartial};
 
 pub use collider::{ColliderType, Collider, CollidingInfo};
-pub use physics::{Physical, PhysicalProperties};
+pub use physics::{Physical, PhysicalProperties, PhysicalFixed};
 
 pub mod utility;
 

@@ -4,15 +4,23 @@ use serde::{Serialize, Deserialize};
 
 use yanyaengine::Transform;
 
-use crate::common::ENTITY_SCALE;
+use crate::common::{
+    cross_2d,
+    ENTITY_SCALE
+};
 
 
 pub const GRAVITY: f32 = -9.81 * ENTITY_SCALE;
+const SLEEP_THRESHOLD: f32 = 0.3;
+const MOVEMENT_BIAS: f32 = 0.8;
+
+const SLEEP_MOVEMENT_MAX: f32 = SLEEP_THRESHOLD * 16.0;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct PhysicalFixed
 {
-    pub position: bool
+    pub position: bool,
+    pub rotation: bool
 }
 
 impl Default for PhysicalFixed
@@ -20,7 +28,8 @@ impl Default for PhysicalFixed
     fn default() -> Self
     {
         Self{
-            position: false
+            position: false,
+            rotation: false
         }
     }
 }
@@ -28,8 +37,13 @@ impl Default for PhysicalFixed
 #[derive(Clone)]
 pub struct PhysicalProperties
 {
-    pub mass: f32,
-    pub friction: f32,
+    pub inverse_mass: f32,
+    pub restitution: f32,
+    pub damping: f32,
+    pub angular_damping: f32,
+    pub static_friction: f32,
+    pub dynamic_friction: f32,
+    pub can_sleep: bool,
     pub floating: bool,
     pub fixed: PhysicalFixed
 }
@@ -39,8 +53,13 @@ impl Default for PhysicalProperties
     fn default() -> Self
     {
         Self{
-            mass: 1.0,
-            friction: 0.5,
+            inverse_mass: 1.0,
+            restitution: 0.3,
+            static_friction: 0.5,
+            dynamic_friction: 0.4,
+            damping: 0.9,
+            angular_damping: 0.9,
+            can_sleep: true,
             floating: false,
             fixed: PhysicalFixed::default()
         }
@@ -50,27 +69,49 @@ impl Default for PhysicalProperties
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Physical
 {
-    pub mass: f32,
-    pub friction: f32,
+    pub inverse_mass: f32,
+    pub restitution: f32,
+    pub static_friction: f32,
+    pub dynamic_friction: f32,
     pub floating: bool,
     pub fixed: PhysicalFixed,
-    pub grounded: bool,
-    pub velocity: Vector3<f32>,
-    pub force: Vector3<f32>
+    can_sleep: bool,
+    sleeping: bool,
+    sleep_movement: f32,
+    angular_damping: f32,
+    torgue: f32,
+    angular_velocity: f32,
+    angular_acceleration: f32,
+    damping: f32,
+    force: Vector3<f32>,
+    velocity: Vector3<f32>,
+    acceleration: Vector3<f32>,
+    last_acceleration: Vector3<f32>
 }
 
 impl From<PhysicalProperties> for Physical
 {
-    fn from(value: PhysicalProperties) -> Self
+    fn from(props: PhysicalProperties) -> Self
     {
         Self{
-            mass: value.mass,
-            friction: value.friction,
-            floating: value.floating,
-            fixed: value.fixed,
-            grounded: false,
+            inverse_mass: props.inverse_mass,
+            restitution: props.restitution,
+            static_friction: props.static_friction,
+            dynamic_friction: props.dynamic_friction,
+            floating: props.floating,
+            fixed: props.fixed,
+            can_sleep: props.can_sleep,
+            sleeping: false,
+            sleep_movement: SLEEP_MOVEMENT_MAX,
+            angular_damping: props.angular_damping,
+            torgue: 0.0,
+            angular_velocity: 0.0,
+            angular_acceleration: 0.0,
+            damping: props.damping,
+            force: Vector3::zeros(),
             velocity: Vector3::zeros(),
-            force: Vector3::zeros()
+            acceleration: Vector3::zeros(),
+            last_acceleration: Vector3::zeros()
         }
     }
 }
@@ -80,32 +121,34 @@ impl Physical
     pub fn as_properties(&self) -> PhysicalProperties
     {
         PhysicalProperties{
-            mass: self.mass,
-            friction: self.friction,
+            inverse_mass: self.inverse_mass,
+            restitution: self.restitution,
+            damping: self.damping,
+            angular_damping: self.angular_damping,
+            static_friction: self.static_friction,
+            dynamic_friction: self.dynamic_friction,
+            can_sleep: self.can_sleep,
             floating: self.floating,
             fixed: self.fixed
         }
     }
 
-    pub fn physics_update(
+    pub fn update(
         &mut self,
         transform: &mut Transform,
+        inertia: impl Fn(&Physical, &Transform) -> f32,
         dt: f32
     )
     {
-        if !self.floating
+        if self.sleeping
         {
-            self.force.z += self.mass * GRAVITY;
-            self.grounded = true;
+            return;
         }
 
-        self.velocity += (self.force * dt) / self.mass;
-
-        if self.grounded
+        if !self.floating
         {
-            let normal_impulse = (-self.force.z * dt).max(0.0);
-
-            self.apply_friction(normal_impulse);
+            let turn_on_gravity_afterwards = ();
+            // self.acceleration = GRAVITY;
         }
 
         if !self.fixed.position
@@ -113,61 +156,104 @@ impl Physical
             transform.position += self.velocity * dt;
         }
 
+        if !self.fixed.rotation
+        {
+            transform.rotation += self.angular_velocity * dt;
+        }
+
+        self.last_acceleration = self.acceleration + self.force * self.inverse_mass;
+
+        self.velocity += self.last_acceleration * dt;
+        self.velocity *= self.damping.powf(dt);
+
         self.force = Vector3::zeros();
-    }
 
-    fn impulse_to_velocity(&self, impulse: Vector3<f32>) -> Vector3<f32>
-    {
-        impulse / self.mass
-    }
-
-    fn sub_impulse(&mut self, impulse: Vector3<f32>)
-    {
-        self.velocity -= self.impulse_to_velocity(impulse);
-    }
-
-    #[allow(dead_code)]
-    fn add_impulse(&mut self, impulse: Vector3<f32>)
-    {
-        self.velocity += self.impulse_to_velocity(impulse);
-    }
-
-    pub fn invert_velocity(&mut self)
-    {
-        self.velocity = -self.velocity;
-    }
-
-    // i have no clue if normal impulse is a real thing lmao
-    fn apply_friction(&mut self, normal_impulse: f32)
-    {
-        let mut movement_velocity = self.velocity;
-        movement_velocity.z = 0.0;
-
-        if let Some(movement_direction) = movement_velocity.try_normalize(f32::EPSILON * 2.0)
+        if self.inverse_mass != 0.0
         {
-            let static_friction = self.friction * 1.25;
-            let static_friction_impulse = normal_impulse * static_friction;
+            let inertia = inertia(self, transform);
+            let angular_acceleration = self.angular_acceleration + self.torgue / inertia;
 
-            let tangent_force = movement_velocity.magnitude() * self.mass;
+            self.angular_velocity += angular_acceleration * dt;
+            self.angular_velocity *= self.angular_damping.powf(dt);
 
-            if tangent_force < static_friction_impulse
-            {
-                self.sub_impulse(movement_direction * tangent_force);
-            } else
-            {
-                let kinetic_friction_impulse = normal_impulse * self.friction;
+            self.torgue = 0.0;
+        }
 
-                self.sub_impulse(movement_direction * kinetic_friction_impulse);
-            }
-        } else
+        if self.can_sleep
         {
-            self.velocity.x = 0.0;
-            self.velocity.y = 0.0;
+            self.update_sleep_movement(dt);
         }
     }
 
-    pub fn damp_velocity(&mut self, damping: f32, dt: f32)
+    pub fn update_sleep_movement(&mut self, dt: f32)
     {
-        self.velocity *= damping.powf(dt);
+        let new_movement = (self.velocity.map(|x| x.powi(2)).sum() + self.angular_velocity).abs();
+
+        let bias = MOVEMENT_BIAS.powf(dt);
+        self.sleep_movement = bias * self.sleep_movement + (1.0 - bias) * new_movement;
+
+        self.sleep_movement = self.sleep_movement.min(SLEEP_MOVEMENT_MAX);
+
+        if self.sleep_movement < SLEEP_THRESHOLD
+        {
+            self.set_sleeping(true);
+        }
+    }
+
+    pub fn set_sleeping(&mut self, state: bool)
+    {
+        if self.sleeping == state
+        {
+            return;
+        }
+
+        self.sleeping = state;
+        if state
+        {
+            self.velocity = Vector3::zeros();
+            self.angular_velocity = 0.0;
+        } else
+        {
+            self.sleep_movement = SLEEP_THRESHOLD * 2.0;
+        }
+    }
+
+    pub fn set_acceleration(&mut self, acceleration: Vector3<f32>)
+    {
+        self.acceleration = acceleration;
+    }
+
+    pub fn velocity(&self) -> &Vector3<f32>
+    {
+        &self.velocity
+    }
+
+    pub fn set_velocity_raw(&mut self, velocity: Vector3<f32>)
+    {
+        self.velocity = velocity;
+    }
+
+    pub fn velocity_as_force(&self, velocity: Vector3<f32>, dt: f32) -> Vector3<f32>
+    {
+        velocity / dt / self.inverse_mass
+    }
+
+    pub fn add_velocity(&mut self, velocity: Vector3<f32>, dt: f32)
+    {
+        self.add_force(self.velocity_as_force(velocity, dt));
+    }
+
+    pub fn add_force(&mut self, force: Vector3<f32>)
+    {
+        self.force += force;
+
+        self.set_sleeping(false);
+    }
+
+    pub fn add_force_at_point(&mut self, force: Vector3<f32>, point: Vector3<f32>)
+    {
+        self.add_force(force);
+
+        self.torgue += cross_2d(point.xy(), force.xy());
     }
 }
