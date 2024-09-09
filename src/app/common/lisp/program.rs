@@ -1896,6 +1896,11 @@ impl ExpressionPos
         ast: AstPos
     ) -> Result<Self, ErrorPos>
     {
+        if ast.is_null()
+        {
+            return Ok(Self{position: ast.position, expression: Expression::EmptyList});
+        }
+
         if ast.is_list()
         {
             let op = Self::analyze(state, memory, ast.car())?;

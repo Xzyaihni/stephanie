@@ -1,4 +1,8 @@
-use std::ops::ControlFlow;
+use std::{
+    convert,
+    num::FpCategory,
+    ops::ControlFlow
+};
 
 use serde::{Serialize, Deserialize};
 
@@ -8,16 +12,18 @@ use yanyaengine::Transform;
 
 use crate::common::{
     some_or_return,
+    some_or_value,
     define_layers,
     rotate_point,
     point_line_side,
     point_line_distance,
     rectangle_points,
+    Axis,
     Entity,
     Physical,
     world::{
         TILE_SIZE,
-        Axis,
+        Directions3dGroup,
         World
     }
 };
@@ -29,6 +35,8 @@ pub fn rotate_point_z_3d(p: Vector3<f32>, angle: f32) -> Vector3<f32>
 
     Vector3::new(acos * p.x + asin * p.y, -asin * p.x + acos * p.y, p.z)
 }
+
+pub type WorldTileInfo = Directions3dGroup<bool>;
 
 #[derive(Debug, Clone)]
 pub struct ContactGeneral<T>
@@ -73,6 +81,7 @@ impl From<ContactRaw> for Contact
 pub enum ColliderType
 {
     Point,
+    Tile(WorldTileInfo),
     Circle,
     Aabb,
     Rectangle
@@ -86,14 +95,21 @@ impl ColliderType
         transform: &Transform
     ) -> f32
     {
+        // to prevent div by zero cuz floating points suck and i hate them
+        if physical.inverse_mass.classify() == FpCategory::Zero
+        {
+            return f32::INFINITY;
+        }
+
         match self
         {
             Self::Point => 0.0,
+            Self::Tile(_) => 0.0,
             Self::Circle =>
             {
                 (2.0/5.0) * physical.inverse_mass.recip() * transform.scale.max().powi(2)
             },
-            Self::Aabb => Self::Rectangle.inertia(physical, transform),
+            Self::Aabb => 0.0,
             Self::Rectangle =>
             {
                 let w = transform.scale.x;
@@ -281,9 +297,10 @@ impl<'b> TransformMatrix<'b>
         this_projected + other_projected - axis_distance
     }
 
-    pub fn rectangle_rectangle_contact<'a>(
+    fn rectangle_rectangle_contact<'a>(
         &'a self,
-        other: &'a Self
+        other: &'a Self,
+        world: Option<&WorldTileInfo>
     ) -> Option<ContactRaw>
     {
         let dims = 3;
@@ -330,29 +347,57 @@ impl<'b> TransformMatrix<'b>
             }
         };
 
-        // good NAME
-        let try_penetrate = |axis: MatrixView3x1<f32>| -> _
+        // funy
+        let try_penetrate = |axis: Vector3<f32>| -> _
         {
-            let axis: Vector3<f32> = axis.into();
             let penetration = self.penetration_axis(other, &axis);
 
-            move |this: &'a Self, other: &'a Self| -> (f32, _)
+            move |this: &'a Self, other: &'a Self, ignore: bool| -> Option<(f32, _)>
             {
-                (penetration, handle_penetration(this, other, axis, penetration))
+                if ignore
+                {
+                    return None;
+                }
+
+                Some((penetration, handle_penetration(this, other, axis, penetration)))
             }
         };
 
         let mut penetrations = (0..dims).map(|i|
         {
-            try_penetrate(self.rotation_matrix.column(i))(self, other)
+            try_penetrate(self.rotation_matrix.column(i).into())(self, other, false)
         }).chain((0..dims).map(|i|
         {
-            try_penetrate(other.rotation_matrix.column(i))(other, self)
+            let axis: Vector3<f32> = other.rotation_matrix.column(i).into();
+
+            let ignore = if let Some(world) = world
+            {
+                let (low, high) = world.get_axis_index(i);
+
+                let diff = self.transform.position - other.transform.position;
+
+                let has_tile = if axis.dot(&diff) > 0.0
+                {
+                    high
+                } else
+                {
+                    low
+                };
+
+                *has_tile
+            } else
+            {
+                false
+            };
+
+            try_penetrate(axis)(other, self, ignore)
         }));
 
-        let first = penetrations.next()?;
+        let first = penetrations.find_map(convert::identity)?;
         let least_penetrating = penetrations.try_fold(first, |b, a|
         {
+            let a = some_or_value!(a, ControlFlow::Continue(b));
+
             let next = if a.0 < b.0
             {
                 a
@@ -425,6 +470,10 @@ impl<'a> CollidingInfo<'a>
 
                 scale
             },
+            ColliderType::Tile(_) =>
+            {
+                unreachable!()
+            },
             ColliderType::Circle
             | ColliderType::Aabb
             | ColliderType::Rectangle => self.transform.scale / 2.0
@@ -461,16 +510,17 @@ impl<'a> CollidingInfo<'a>
         true
     }
 
-    fn rectangle_rectangle(
+    fn rectangle_rectangle_inner(
         &self,
         other: &Self,
+        world: Option<&WorldTileInfo>,
         mut add_contact: impl FnMut(ContactRaw)
     ) -> bool
     {
         let this = TransformMatrix::from_transform(&self.transform, self.entity);
         let other = TransformMatrix::from_transform(&other.transform, other.entity);
 
-        let contact = this.rectangle_rectangle_contact(&other);
+        let contact = this.rectangle_rectangle_contact(&other, world);
         let collided = contact.is_some();
 
         if let Some(contact) = contact
@@ -479,6 +529,46 @@ impl<'a> CollidingInfo<'a>
         }
 
         collided
+    }
+
+    fn rectangle_rectangle(
+        &self,
+        other: &Self,
+        add_contact: impl FnMut(ContactRaw)
+    ) -> bool
+    {
+        self.rectangle_rectangle_inner(other, None, add_contact)
+    }
+
+    fn tile_point(
+        &self,
+        other: &Self,
+        _world: &WorldTileInfo,
+        add_contact: impl FnMut(ContactRaw)
+    ) -> bool
+    {
+        // if i want proper contacts with point vs world then i have to rewrite this
+        other.point_rectangle(self, add_contact)
+    }
+
+    fn tile_circle(
+        &self,
+        other: &Self,
+        world: &WorldTileInfo,
+        mut add_contact: impl FnMut(ContactRaw)
+    ) -> bool
+    {
+        false
+    }
+
+    fn tile_rectangle(
+        &self,
+        other: &Self,
+        world: &WorldTileInfo,
+        add_contact: impl FnMut(ContactRaw)
+    ) -> bool
+    {
+        self.rectangle_rectangle_inner(other, Some(world), add_contact)
     }
 
     fn point_circle(
@@ -568,7 +658,16 @@ impl<'a> CollidingInfo<'a>
             {
                 if let Some(ref mut contacts) = contacts
                 {
-                    contacts.push(contact.into());
+                    let contact: Contact = contact.into();
+                    debug_assert!(!contact.penetration.is_nan());
+
+                    if contact.point.magnitude() > 1000.0
+                    {
+                        let remove_me = ();
+                        panic!("{self:?} {other:?} {contact:?}");
+                    }
+
+                    contacts.push(contact);
                 }
             }
         };
@@ -576,14 +675,22 @@ impl<'a> CollidingInfo<'a>
         macro_rules! define_collisions
         {
             (
-                $((special, $a_special:ident, $b_special:ident, $special:expr)),+,
+                $(ignored($a_ignored:pat, $b_ignored:pat)),+,
+                $(with_world($b_world:ident, $world_name:ident)),+,
                 $(($a:ident, $b:ident, $name:ident)),+
             ) =>
             {
                 #[allow(unreachable_patterns)]
                 match (self.collider.kind, other.collider.kind)
                 {
-                    $((ColliderType::$a_special, ColliderType::$b_special) => $special,)+
+                    $(
+                        ($a_ignored, $b_ignored) => false,
+                        ($b_ignored, $a_ignored) => false,
+                    )+
+                    $(
+                        (ColliderType::Tile(_), ColliderType::$b_world) => unreachable!(),
+                        (ColliderType::$b_world, ColliderType::Tile(ref info)) => self.$world_name(other, info, add_contact),
+                    )+
                     $(
                         (ColliderType::$a, ColliderType::$b) =>
                         {
@@ -599,16 +706,22 @@ impl<'a> CollidingInfo<'a>
         }
 
         define_collisions!{
-            (special, Point, Point, false),
+            ignored(ColliderType::Point, ColliderType::Point),
+            ignored(ColliderType::Tile(_), ColliderType::Tile(_)),
+
+            with_world(Point, tile_point),
+            with_world(Circle, tile_circle),
+            with_world(Aabb, tile_rectangle),
+            with_world(Rectangle, tile_rectangle),
 
             (Point, Circle, point_circle),
             (Point, Aabb, point_rectangle),
             (Point, Rectangle, point_rectangle),
 
-            (Circle, Circle, circle_circle),
-
             (Aabb, Aabb, rectangle_rectangle),
             (Aabb, Circle, rectangle_circle),
+
+            (Circle, Circle, circle_circle),
 
             (Rectangle, Circle, rectangle_circle),
             (Rectangle, Aabb, rectangle_rectangle),
@@ -643,14 +756,76 @@ impl<'a> CollidingInfo<'a>
     pub fn collide_with_world(
         &mut self,
         world: &World,
-        contacts: &mut Vec<Contact>
+        contacts: &mut Vec<Contact>,
+        entities: &crate::common::entity::ClientEntities
     ) -> bool
     {
+        if !self.collider.layer.collides(&ColliderLayer::World)
+        {
+            return false;
+        }
+
         let collided = world.tiles_inside(self, Some(contacts), |tile|
         {
             let colliding_tile = tile.map(|x| world.tile_info(*x).colliding);
 
             colliding_tile.unwrap_or(false)
+        }, |(dirs, pos)|
+        {
+            dirs.for_each(|dir, x|
+            {
+                if !x
+                {
+                    let tilepos = Vector3::from(pos) + Vector3::repeat(TILE_SIZE / 2.0);
+                    let dirv: Vector3<i32> = Pos3::from(dir).into();
+
+                    let mut scale = Vector3::repeat(TILE_SIZE).component_mul(&dirv.abs().cast());
+                    let mut position = tilepos + Vector3::repeat(TILE_SIZE / 2.0).component_mul(&dirv.cast());
+                    position.z = tilepos.z;
+
+                    let color: [i32; 3] = Pos3::from(dir).into();
+                    let mut color = color.map(|x| x.abs() as f32);
+
+                    use crate::common::PosDirection;
+                    if dir == PosDirection::Back
+                    {
+                        scale.x = TILE_SIZE;
+                        scale.y = TILE_SIZE;
+
+                        color[2] = 0.5;
+                    } else if dir == PosDirection::Forward
+                    {
+                        scale.x = TILE_SIZE / 2.0;
+                        scale.y = TILE_SIZE / 2.0;
+                    }
+
+                    let z_level = match dir
+                    {
+                        PosDirection::Back => ZLevel::UiHigher,
+                        PosDirection::Forward => ZLevel::UiMiddle,
+                        _ => ZLevel::UiHigh
+                    };
+
+                    use crate::common::{Pos3, EntityInfo, render_info::*, watcher::*, AnyEntities};
+                    entities.push(true, EntityInfo{
+                        transform: Some(Transform{
+                            position,
+                            scale: scale.yxz() + Vector3::repeat(TILE_SIZE / 7.0),
+                            ..Default::default()
+                        }),
+                        render: Some(RenderInfo{
+                            object: Some(RenderObjectKind::Texture{
+                                name: "placeholder.png".to_owned()
+                            }.into()),
+                            z_level,
+                            mix: Some(MixColor{color, amount: 0.9}),
+                            ..Default::default()
+                        }),
+                        watchers: Some(Watchers::simple_one_frame()),
+                        ..Default::default()
+                    });
+                }
+            });
         }).count();
 
         collided > 0

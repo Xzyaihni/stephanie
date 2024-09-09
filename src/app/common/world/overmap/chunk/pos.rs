@@ -129,6 +129,22 @@ impl Pos3<usize>
     }
 }
 
+impl From<PosDirection> for Pos3<i32>
+{
+    fn from(value: PosDirection) -> Self
+    {
+        match value
+        {
+            PosDirection::Left => Self::new(-1, 0, 0),
+            PosDirection::Right => Self::new(1, 0, 0),
+            PosDirection::Down => Self::new(0, -1, 0),
+            PosDirection::Up => Self::new(0, 1, 0),
+            PosDirection::Back => Self::new(0, 0, -1),
+            PosDirection::Forward => Self::new(0, 0, 1)
+        }
+    }
+}
+
 impl<T: Copy> Pos3<T>
 {
     pub fn repeat(v: T) -> Self
@@ -409,7 +425,15 @@ impl From<Pos3<usize>> for GlobalPos
     }
 }
 
-#[derive(Debug, Clone, Copy, FromRepr, EnumCount)]
+impl<T> From<Pos3<T>> for [T; 3]
+{
+    fn from(value: Pos3<T>) -> Self
+    {
+        [value.x, value.y, value.z]
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, FromRepr, EnumCount)]
 pub enum PosDirection
 {
     Right,
@@ -455,43 +479,76 @@ impl PosDirection
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DirectionsGroup<T>
+macro_rules! define_group
 {
-    pub right: T,
-    pub left: T,
-    pub up: T,
-    pub down: T
-}
-
-impl<T> DirectionsGroup<T>
-{
-    pub fn map<D, F>(self, mut direction_map: F) -> DirectionsGroup<D>
-    where
-        F: FnMut(PosDirection, T) -> D
+    ($name:ident, ($(($lowercase:ident, $uppercase:ident)),+)) =>
     {
-        DirectionsGroup{
-            right: direction_map(PosDirection::Right, self.right),
-            left: direction_map(PosDirection::Left, self.left),
-            up: direction_map(PosDirection::Up, self.up),
-            down: direction_map(PosDirection::Down, self.down)
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+        pub struct $name<T>
+        {
+            $(
+                pub $lowercase: T,
+            )+
+        }
+
+        impl<T> $name<T>
+        {
+            pub fn map<D, F>(self, mut direction_map: F) -> $name<D>
+            where
+                F: FnMut(PosDirection, T) -> D
+            {
+                $name{
+                    $(
+                        $lowercase: direction_map(PosDirection::$uppercase, self.$lowercase),
+                    )+
+                }
+            }
+
+            pub fn for_each(self, f: impl FnMut(PosDirection, T))
+            {
+                self.map(f);
+            }
+        }
+
+        impl<T> Index<PosDirection> for $name<T>
+        {
+            type Output = T;
+
+            fn index(&self, index: PosDirection) -> &Self::Output
+            {
+                #[allow(unreachable_patterns)]
+                match index
+                {
+                    $(
+                        PosDirection::$uppercase => &self.$lowercase,
+                    )+
+                    _ => unreachable!()
+                }
+            }
         }
     }
 }
 
-impl<T> Index<PosDirection> for DirectionsGroup<T>
-{
-    type Output = T;
+define_group!{
+    DirectionsGroup,
+    ((right, Right), (left, Left), (up, Up), (down, Down))
+}
 
-    fn index(&self, index: PosDirection) -> &Self::Output
+define_group!{
+    Directions3dGroup,
+    ((right, Right), (left, Left), (up, Up), (down, Down), (forward, Forward), (back, Back))
+}
+
+impl<T> Directions3dGroup<T>
+{
+    pub fn get_axis_index(&self, index: usize) -> (&T, &T)
     {
         match index
         {
-            PosDirection::Right => &self.right,
-            PosDirection::Left => &self.left,
-            PosDirection::Up => &self.up,
-            PosDirection::Down => &self.down,
-            PosDirection::Forward | PosDirection::Back => unreachable!()
+            0 => (&self.left, &self.right),
+            1 => (&self.down, &self.up),
+            2 => (&self.back, &self.forward),
+            x => panic!("{x} isnt a valid axis index")
         }
     }
 }
@@ -571,43 +628,67 @@ impl<T> Index<PosDirection> for AlwaysGroup<T>
 }
 
 #[macro_export]
+macro_rules! impl_group
+{
+    (
+        $maybe_fn:ident,
+        $always_fn:ident,
+        $group_name:ident,
+        ($($direction_name:ident),+)
+    ) =>
+    {
+        #[allow(dead_code)]
+        pub fn $maybe_fn(self) -> $group_name<Option<Self>>
+        {
+            $group_name{
+                $(
+                    $direction_name: self.$direction_name(),
+                )+
+            }
+        }
+
+        pub fn $always_fn(self) -> Option<$group_name<Self>>
+        {
+            let directions = self.$maybe_fn();
+
+            let any_none = false
+                $(
+                    || directions.$direction_name.is_none()
+                )+;
+
+            if any_none
+            {
+                return None;
+            }
+
+            // u cant reach this part if any of the directions r none
+            Some(directions.map(|_direction, value|
+            {
+                unsafe{ value.unwrap_unchecked() }
+            }))
+        }
+    }
+}
+
+#[macro_export]
 macro_rules! impl_directionals
 {
     ($name:ident) =>
     {
         impl $name
         {
-            #[allow(dead_code)]
-            pub fn directions_group(self) -> DirectionsGroup<Option<Self>>
-            {
-                DirectionsGroup{
-                    right: self.right(),
-                    left: self.left(),
-                    up: self.up(),
-                    down: self.down()
-                }
+            $crate::impl_group!{
+                directions_group,
+                directions_always_group,
+                DirectionsGroup,
+                (right, left, up, down)
             }
 
-            pub fn directions_always_group(self) -> Option<DirectionsGroup<Self>>
-            {
-                let directions = self.directions_group();
-
-                let any_none =
-                    directions.right.is_none()
-                    || directions.left.is_none()
-                    || directions.up.is_none()
-                    || directions.down.is_none();
-
-                if any_none
-                {
-                    return None;
-                }
-
-                // u cant reach this part if any of the directions r none
-                Some(directions.map(|_direction, value|
-                {
-                    unsafe{ value.unwrap_unchecked() }
-                }))
+            $crate::impl_group!{
+                directions_3d_group,
+                directions_3d_always_group,
+                Directions3dGroup,
+                (right, left, up, down, forward, back)
             }
 
             pub fn maybe_group(self) -> MaybeGroup<Self>

@@ -7,21 +7,13 @@ use nalgebra::{Matrix3, Vector3};
 
 use crate::common::{
     cross_2d,
+    cross_3d,
     Physical,
     Entity,
     entity::ClientEntities,
     collider::Contact
 };
 
-
-fn cross_3d(a: Vector3<f32>, b: Vector3<f32>) -> Vector3<f32>
-{
-    Vector3::new(
-        cross_2d(a.yz(), b.yz()),
-        cross_2d(a.zx(), b.zx()),
-        cross_2d(a.xy(), b.xy())
-    )
-}
 
 fn skew_symmetric(v: Vector3<f32>) -> Matrix3<f32>
 {
@@ -38,7 +30,7 @@ struct IterativeEpsilon
     pub general: f32
 }
 
-const ANGULAR_LIMIT: f32 = 2.0;
+const ANGULAR_LIMIT: f32 = 0.2;
 const VELOCITY_LOW: f32 = 0.02;
 
 const PENETRATION_EPSILON: IterativeEpsilon = IterativeEpsilon{sleep: 0.02, general: 0.001};
@@ -167,9 +159,12 @@ impl AnalyzedContact
             self.contact.normal
         );
 
+        let physical = entities.physical(self.get_entity(which)).unwrap();
+        let fixed = physical.fixed;
+
         Inertias{
-            linear: entities.physical(self.get_entity(which)).unwrap().inverse_mass,
-            angular: angular_inertia_world.dot(&self.contact.normal)
+            linear: if !fixed.position { physical.inverse_mass } else { 0.0 },
+            angular: if !fixed.rotation { angular_inertia_world.dot(&self.contact.normal) } else { 0.0 }
         }
     }
 
@@ -191,7 +186,8 @@ impl AnalyzedContact
         let mut velocity_amount = penetration * inertias.linear;
 
         let contact_relative = self.get_relative(which);
-        let mut transform = entities.transform_mut(self.get_entity(which)).unwrap();
+        let entity = self.get_entity(which);
+        let mut transform = entities.transform_mut(entity).unwrap();
 
         let angular_projection = contact_relative
             + self.contact.normal * (-contact_relative).dot(&self.contact.normal);
@@ -207,10 +203,20 @@ impl AnalyzedContact
             velocity_amount += pre_limit - angular_amount;
         }
 
-        let velocity_change = velocity_amount * self.contact.normal;
-        transform.position += velocity_change;
+        let fixed = entities.physical(entity).unwrap().fixed;
+        let velocity_change = if !fixed.position
+        {
+            let velocity_change = velocity_amount * self.contact.normal;
 
-        let angular_change = if inertias.angular.classify() != FpCategory::Zero
+            transform.position += velocity_change;
+
+            velocity_change
+        } else
+        {
+            Vector3::zeros()
+        };
+
+        let angular_change = if !fixed.rotation && (inertias.angular.classify() != FpCategory::Zero)
         {
             let impulse_torque = cross_2d(
                 contact_relative.xy(),
@@ -236,7 +242,7 @@ impl AnalyzedContact
     fn resolve_penetration(
         &self,
         entities: &ClientEntities
-    ) -> (PenetrationMoves, Option<PenetrationMoves>)
+    ) -> Option<(PenetrationMoves, Option<PenetrationMoves>)>
     {
         let inertias = self.inertias(entities, WhichObject::A);
         let mut total_inertia = inertias.added();
@@ -249,6 +255,11 @@ impl AnalyzedContact
         if let Some(ref b_inertias) = b_inertias
         {
             total_inertia += b_inertias.added();
+        }
+
+        if total_inertia.classify() == FpCategory::Zero
+        {
+            return None;
         }
 
         let inverse_inertia = total_inertia.recip();
@@ -265,12 +276,11 @@ impl AnalyzedContact
             )
         });
 
-        (a_moves, b_moves)
+        Some((a_moves, b_moves))
     }
 
     fn velocity_change(
         &self,
-        entities: &ClientEntities,
         which: WhichObject
     ) -> Matrix3<f32>
     {
@@ -307,13 +317,13 @@ impl AnalyzedContact
     fn resolve_velocity(
         &self,
         entities: &ClientEntities
-    ) -> (VelocityMoves, Option<VelocityMoves>)
+    ) -> Option<(VelocityMoves, Option<VelocityMoves>)>
     {
-        let mut velocity_change = self.velocity_change(entities, WhichObject::A);
+        let mut velocity_change = self.velocity_change(WhichObject::A);
 
         if let Some(_) = self.contact.b
         {
-            let b_velocity_change = self.velocity_change(entities, WhichObject::B);
+            let b_velocity_change = self.velocity_change(WhichObject::B);
 
             velocity_change += b_velocity_change;
         }
@@ -332,7 +342,7 @@ impl AnalyzedContact
             *velocity_change.index_mut((i, i)) += total_inverse_mass;
         });
 
-        let impulse_local_matrix = velocity_change.try_inverse().unwrap();
+        let impulse_local_matrix = velocity_change.try_inverse()?;
 
         let desired_change = Vector3::new(
             self.desired_change,
@@ -377,7 +387,7 @@ impl AnalyzedContact
             self.apply_impulse(entities, -impulse, WhichObject::B)
         });
 
-        (a_moves, b_moves)
+        Some((a_moves, b_moves))
     }
 }
 
@@ -514,6 +524,12 @@ impl Contact
 
     fn analyze(self, entities: &ClientEntities, dt: f32) -> AnalyzedContact
     {
+        if self.point.magnitude() > 1000.0
+        {
+            let remove_me = ();
+            panic!("{self:?}");
+        }
+
         let to_world = self.to_world_matrix();
 
         let a_relative = self.point - entities.transform(self.a).unwrap().position;
@@ -524,6 +540,12 @@ impl Contact
             &to_world,
             a_relative
         );
+
+        if velocity.magnitude() > 1000.0
+        {
+            let remove_me = ();
+            panic!("{self:?} {velocity:?}");
+        }
 
         let a_inertia = Self::inertia_of(entities, self.a);
 
@@ -541,6 +563,7 @@ impl Contact
         });
 
         let desired_change = self.calculate_desired_change(entities, &velocity, dt);
+        debug_assert!(!desired_change.is_nan());
 
         AnalyzedContact{
             to_world,
@@ -572,9 +595,27 @@ impl ContactResolver
 
         contacts.iter_mut().for_each(|x|
         {
+            if x.contact.point.magnitude() > 1000.0
+            {
+                let remove_me = ();
+                panic!("{x:?}");
+            }
+
+            let temp = x.clone();
+
             let point = x.contact.point;
             let relative = |entity: Entity|
             {
+                if (point - entities.transform(entity).unwrap().position).magnitude() > 1000.0
+                {
+                    let remove_me = ();
+                    panic!(
+                        "{:?} {:?} point: {point:?}, position: {}",
+                        entities.collider(temp.contact.a).unwrap(),
+                        temp.contact.b.map(|b| entities.collider(b).unwrap()),
+                        entities.transform(entity).unwrap().position
+                    );
+                }
                 point - entities.transform(entity).unwrap().position
             };
 
@@ -614,7 +655,7 @@ impl ContactResolver
         iterations: usize,
         epsilon: IterativeEpsilon,
         compare: impl Fn(&AnalyzedContact) -> f32,
-        mut resolver: impl FnMut(&ClientEntities, &mut AnalyzedContact) -> (Moves, Option<Moves>),
+        mut resolver: impl FnMut(&ClientEntities, &mut AnalyzedContact) -> Option<(Moves, Option<Moves>)>,
         mut updater: impl FnMut(&ClientEntities, &mut AnalyzedContact, Moves, Vector3<f32>)
     )
     {
@@ -636,18 +677,20 @@ impl ContactResolver
                     contact.contact.awaken(entities);
                 }
 
-                let moves = resolver(entities, contact);
-                let bodies = (contact.contact.a, contact.contact.b);
+                if let Some(moves) = resolver(entities, contact)
+                {
+                    let bodies = (contact.contact.a, contact.contact.b);
 
-                debug_assert!(moves.1.is_some() == contact.contact.b.is_some());
+                    debug_assert!(moves.1.is_some() == contact.contact.b.is_some());
 
-                Self::update_iterated::<Moves>(
-                    entities,
-                    contacts,
-                    moves,
-                    bodies,
-                    &mut updater
-                );
+                    Self::update_iterated::<Moves>(
+                        entities,
+                        contacts,
+                        moves,
+                        bodies,
+                        &mut updater
+                    );
+                }
             } else
             {
                 break;
@@ -683,6 +726,7 @@ impl ContactResolver
 
                 let change = contact_change.dot(&contact.contact.normal);
 
+                debug_assert!(!change.is_nan());
                 if move_info.inverted
                 {
                     contact.contact.penetration += change;
@@ -708,6 +752,14 @@ impl ContactResolver
                 ) + move_info.velocity_change;
 
                 let change = contact.to_world.transpose() * contact_change;
+
+                if change.magnitude() > 1000.0
+                {
+                    let remove_me = ();
+                    let a = entities.info_ref(contact.contact.a);
+                    let b = contact.contact.b.map(|b| entities.collider(b).unwrap());
+                    panic!("{a} {b:?} change: {change:?} move_info: {move_info:?} contact_change: {contact_change:?} contact_relative: {contact_relative:?}");
+                }
 
                 if move_info.inverted
                 {

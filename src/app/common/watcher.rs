@@ -46,11 +46,27 @@ impl Lifetime
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Frames
+{
+    current: u32,
+    max: u32
+}
+
+impl From<u32> for Frames
+{
+    fn from(value: u32) -> Self
+    {
+        Self{current: value, max: value}
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum WatcherType
 {
     Instant,
     Collision,
     Lifetime(Lifetime),
+    Frames(Frames),
     ScaleDistance{from: Vector3<f32>, near: f32}
 }
 
@@ -89,6 +105,19 @@ impl WatcherType
                 if meets
                 {
                     lifetime.reset();
+                }
+
+                meets
+            },
+            Self::Frames(left) =>
+            {
+                left.current -= 1;
+
+                let meets = left.current <= 0;
+
+                if meets
+                {
+                    left.current = left.max;
                 }
 
                 meets
@@ -246,6 +275,15 @@ impl Watcher
             ..Default::default()
         }
     }
+
+    pub fn simple_one_frame() -> Self
+    {
+        Self{
+            kind: WatcherType::Frames(2.into()),
+            action: WatcherAction::Remove,
+            ..Default::default()
+        }
+    }
 }
 
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
@@ -261,6 +299,11 @@ impl Watchers
     pub fn simple_disappearing(lifetime: f32) -> Self
     {
         Self::new(vec![Watcher::simple_disappearing(lifetime)])
+    }
+
+    pub fn simple_one_frame() -> Self
+    {
+        Self::new(vec![Watcher::simple_one_frame()])
     }
 
     pub fn execute<E: AnyEntities>(

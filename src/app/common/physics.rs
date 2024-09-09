@@ -5,12 +5,13 @@ use serde::{Serialize, Deserialize};
 use yanyaengine::Transform;
 
 use crate::common::{
-    cross_2d,
+    cross_3d,
     ENTITY_SCALE
 };
 
 
-pub const GRAVITY: f32 = -9.81 * ENTITY_SCALE;
+pub const GRAVITY: Vector3<f32> = Vector3::new(0.0, 0.0, -9.81 * ENTITY_SCALE);
+pub const MAX_VELOCITY: f32 = 10.0;
 const SLEEP_THRESHOLD: f32 = 0.3;
 const MOVEMENT_BIAS: f32 = 0.8;
 
@@ -79,7 +80,7 @@ pub struct Physical
     sleeping: bool,
     sleep_movement: f32,
     angular_damping: f32,
-    torgue: f32,
+    torque: f32,
     angular_velocity: f32,
     angular_acceleration: f32,
     damping: f32,
@@ -104,7 +105,7 @@ impl From<PhysicalProperties> for Physical
             sleeping: false,
             sleep_movement: SLEEP_MOVEMENT_MAX,
             angular_damping: props.angular_damping,
-            torgue: 0.0,
+            torque: 0.0,
             angular_velocity: 0.0,
             angular_acceleration: 0.0,
             damping: props.damping,
@@ -147,7 +148,7 @@ impl Physical
 
         if !self.floating
         {
-            let turn_on_gravity_afterwards = ();
+            let enable_gravity = ();
             // self.acceleration = GRAVITY;
         }
 
@@ -166,17 +167,22 @@ impl Physical
         self.velocity += self.last_acceleration * dt;
         self.velocity *= self.damping.powf(dt);
 
+        if self.velocity.magnitude() > MAX_VELOCITY
+        {
+            self.velocity.set_magnitude(MAX_VELOCITY);
+        }
+
         self.force = Vector3::zeros();
 
         if self.inverse_mass != 0.0
         {
             let inertia = inertia(self, transform);
-            let angular_acceleration = self.angular_acceleration + self.torgue / inertia;
+            let angular_acceleration = self.angular_acceleration + self.torque / inertia;
 
             self.angular_velocity += angular_acceleration * dt;
             self.angular_velocity *= self.angular_damping.powf(dt);
 
-            self.torgue = 0.0;
+            self.torque = 0.0;
         }
 
         if self.can_sleep
@@ -279,6 +285,6 @@ impl Physical
     {
         self.add_force(force);
 
-        self.torgue += cross_2d(point.xy(), force.xy());
+        self.torque += cross_3d(point, force).z;
     }
 }

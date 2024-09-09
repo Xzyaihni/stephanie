@@ -78,6 +78,8 @@ pub use damage::{Damageable, Damage, DamageType, DamageDirection, DamageHeight, 
 pub use collider::{ColliderType, Collider, CollidingInfo};
 pub use physics::{Physical, PhysicalProperties, PhysicalFixed};
 
+pub use world::{PosDirection, Pos3, Axis};
+
 pub mod utility;
 
 pub mod sides;

@@ -444,6 +444,15 @@ pub fn cross_2d(a: Vector2<f32>, b: Vector2<f32>) -> f32
     a.x * b.y - b.x * a.y
 }
 
+pub fn cross_3d(a: Vector3<f32>, b: Vector3<f32>) -> Vector3<f32>
+{
+    Vector3::new(
+        cross_2d(a.yz(), b.yz()),
+        cross_2d(a.zx(), b.zx()),
+        cross_2d(a.xy(), b.xy())
+    )
+}
+
 pub fn rotate_point(p: Vector2<f32>, angle: f32) -> Vector2<f32>
 {
     let (asin, acos) = angle.sin_cos();

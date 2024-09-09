@@ -78,11 +78,12 @@ impl Game
                 ..Default::default()
             });
 
-            use crate::common::PhysicalProperties;
+            let remove_this = ();
+            /*use crate::common::PhysicalProperties;
             entities.push(true, EntityInfo{
                 lazy_transform: Some(LazyTransformInfo{
                     transform: Transform{
-                        position: Vector3::new(0.0, 0.0, -0.20),
+                        position: Vector3::new(0.0, 0.0, -0.2),
                         scale: Vector3::repeat(0.1),
                         ..Default::default()
                     },
@@ -91,6 +92,7 @@ impl Game
                 collider: Some(ColliderInfo{
                     kind: ColliderType::Rectangle,
                     layer: ColliderLayer::Normal,
+                    target_non_lazy: true,
                     ..Default::default()
                 }.into()),
                 render: Some(RenderInfo{
@@ -103,11 +105,12 @@ impl Game
                 physical: Some(PhysicalProperties{
                     inverse_mass: 0.0,
                     can_sleep: false,
+                    floating: true,
                     ..Default::default()
                 }.into()),
                 parent: Some(Parent::new(mouse_entity, true)),
                 ..Default::default()
-            });
+            });*/
 
             let console_entity = entities.push_eager(true, EntityInfo{
                 lazy_transform: Some(LazyTransformInfo{
@@ -1382,7 +1385,7 @@ impl<'a> PlayerContainer<'a>
                 {
                     world.tile_info(*tile).special == Some(SpecialTile::StairsUp)
                 }).unwrap_or(false)
-            }).next();
+            }, |_| {}).next();
 
             let interact_button = ||
             {
@@ -1429,7 +1432,7 @@ impl<'a> PlayerContainer<'a>
                 {
                     world.tile_info(*tile).special == Some(SpecialTile::StairsDown)
                 }).unwrap_or(false)
-            }).next();
+            }, |_| {}).next();
 
             if stairs.and_then(|stairs|
             {

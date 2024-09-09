@@ -115,47 +115,87 @@ impl TilePos
         self.order_componentwise(other, false)
     }
 
+    pub fn between(&self, a: Self, b: Self) -> Pos3<bool>
+    {
+        self.less_or_equal_axis(b).zip(a.less_or_equal_axis(*self)).map(|(a, b)| a && b)
+    }
+
+    pub fn less_axis(&self, other: Self) -> Pos3<bool>
+    {
+        self.compare_componentwise(other, |ordering, _this, _other|
+        {
+            ordering.is_lt()
+        })
+    }
+
+    pub fn less_or_equal_axis(&self, other: Self) -> Pos3<bool>
+    {
+        self.compare_componentwise(other, |ordering, _this, _other|
+        {
+            ordering.is_le()
+        })
+    }
+
     fn order_componentwise(&self, other: Self, min: bool) -> Self
     {
-        let ordered = |this_chunk: i32, this_local, other_chunk: i32, other_local|
+        let output = self.compare_componentwise(other, |ordering, this, other|
         {
-            let this_smaller = match this_chunk.cmp(&other_chunk)
-            {
-                Ordering::Less => true,
-                Ordering::Equal =>
-                {
-                    this_local < other_local
-                },
-                Ordering::Greater => false
-            };
+            let smaller = ordering.is_lt();
 
-            let this_order = !(this_smaller ^ min);
+            let this_order = !(smaller ^ min);
 
             if this_order
             {
-                (this_chunk, this_local)
+                this
             } else
             {
-                (other_chunk, other_local)
+                other
             }
+        });
+
+        let chunk = output.map(|(chunk, _)| chunk).into();
+        let local = output.map(|(_, local)| local).into();
+
+        Self{
+            chunk,
+            local
+        }
+    }
+
+    fn compare_componentwise<T, F>(&self, other: Self, f: F) -> Pos3<T>
+    where
+        F: Fn(Ordering, (i32, usize), (i32, usize)) -> T
+    {
+        let ordered = |
+            this_inner@(this_chunk, this_local): (i32, usize),
+            other_inner@(other_chunk, other_local): (i32, usize)
+        |
+        {
+            let this_cmp = match this_chunk.cmp(&other_chunk)
+            {
+                Ordering::Equal =>
+                {
+                    this_local.cmp(&other_local)
+                },
+                x => x
+            };
+
+            f(this_cmp, this_inner, other_inner)
         };
 
-        macro_rules! ordered_by
+        macro_rules! compared_by
         {
             ($c:ident) =>
             {
-                ordered(self.chunk.0.$c, self.local.pos().$c, other.chunk.0.$c, other.local.pos().$c)
+                ordered((self.chunk.0.$c, self.local.pos().$c), (other.chunk.0.$c, other.local.pos().$c))
             }
         }
 
-        let x = ordered_by!(x);
-        let y = ordered_by!(y);
-        let z = ordered_by!(z);
+        let x = compared_by!(x);
+        let y = compared_by!(y);
+        let z = compared_by!(z);
 
-        Self{
-            chunk: GlobalPos::new(x.0, y.0, z.0),
-            local: ChunkLocal::new(x.1, y.1, z.1),
-        }
+        Pos3{x, y, z}
     }
 
     pub fn distance(&self, other: Self) -> Pos3<i32>

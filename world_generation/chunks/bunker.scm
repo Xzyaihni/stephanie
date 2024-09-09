@@ -9,9 +9,14 @@
 (define (generate-floor) (filled-chunk (tile 'concrete)))
 
 (define (generate-ground)
-    (define this-chunk (filled-chunk (tile 'concrete)))
+    (define this-chunk (filled-chunk (tile 'air)))
     (put-tile
-        this-chunk
+        (fill-area
+            this-chunk
+            (make-area
+                (make-point (/ size-x 2) 0)
+                (make-point 1 size-y))
+            (tile 'grassie))
         (make-point (/ size-x 2) (- size-y 4))
         (tile 'stairs-down 'Down)))
 

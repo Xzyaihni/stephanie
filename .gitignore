@@ -2,8 +2,7 @@
 
 /worlds
 
-/enum_amount/Cargo.lock
-/enum_amount/target
+/libfloathelper.so
 
 Cargo.lock
 

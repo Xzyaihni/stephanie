@@ -23,8 +23,10 @@ use crate::{
 pub use overmap::{
     Overmap,
     ChunksContainer,
-    Axis,
-    chunks_container::debug_3d_slices,
+    chunks_container::{
+        debug_3d_slices,
+        Axis
+    },
     chunk::{
         self,
         CHUNK_SIZE,
@@ -37,6 +39,7 @@ pub use overmap::{
         LocalPos,
         PosDirection,
         DirectionsGroup,
+        Directions3dGroup,
         MaybeGroup,
         AlwaysGroup,
         tile::{Tile, TileRotation}
@@ -136,7 +139,8 @@ impl World
         &'a self,
         collider: &'a CollidingInfo<'a>,
         mut contacts: Option<&'a mut Vec<Contact>>,
-        predicate: impl Fn(Option<&'a Tile>) -> bool + 'a
+        predicate: impl Fn(Option<&'a Tile>) -> bool + 'a,
+        debug_thingy: impl Fn((Directions3dGroup<bool>, Pos3<f32>)) + 'a
     ) -> impl Iterator<Item=TilePos> + 'a
     {
         let half_scale = collider.bounds();
@@ -149,8 +153,24 @@ impl World
             predicate(self.tile(*pos))
         }).filter(move |pos|
         {
+            let check_tile = |pos|
+            {
+                self.tile(pos).map(|x| self.tilemap.info(*x).colliding).unwrap_or(true)
+            };
+
+            let world = Directions3dGroup{
+                left: check_tile(pos.offset(Pos3::new(-1, 0, 0))),
+                right: check_tile(pos.offset(Pos3::new(1, 0, 0))),
+                down: check_tile(pos.offset(Pos3::new(0, -1, 0))),
+                up: check_tile(pos.offset(Pos3::new(0, 1, 0))),
+                back: check_tile(pos.offset(Pos3::new(0, 0, -1))),
+                forward: check_tile(pos.offset(Pos3::new(0, 0, 1)))
+            };
+
+            debug_thingy((world.clone(), pos.position()));
+
             let mut world_collider = ColliderInfo{
-                kind: ColliderType::Aabb,
+                kind: ColliderType::Tile(world),
                 layer: ColliderLayer::World,
                 ghost: contacts.is_none(),
                 scale: None,

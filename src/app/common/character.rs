@@ -1360,7 +1360,7 @@ impl Character
             {
                 (
                     Some(ColliderInfo{
-                        kind: ColliderType::Circle,
+                        kind: ColliderType::Rectangle,
                         ghost: false,
                         ..Default::default()
                     }.into()),
@@ -1538,7 +1538,14 @@ impl Character
             value.min(limit).max(-limit)
         });
 
-        physical.add_force(physical.velocity_as_force(new_velocity - current_velocity, dt));
+        let mut change_velocity = physical.velocity_as_force(new_velocity - current_velocity, dt);
+
+        if !physical.floating
+        {
+            change_velocity.z = 0.0;
+        }
+
+        physical.add_force(change_velocity);
     }
 
     pub fn aggressive(&self, other: &Self) -> bool

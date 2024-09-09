@@ -1,13 +1,24 @@
 use std::cell::{RefCell, RefMut};
 
-use crate::common::{
-    collider::*,
-    world::World,
-    entity::{
-        for_each_component,
-        iterate_components_with,
-        ComponentWrapper,
-        ClientEntities
+use nalgebra::{Unit, Vector3};
+
+use yanyaengine::Transform;
+
+use crate::{
+    DEBUG_CONTACTS,
+    common::{
+        collider::*,
+        render_info::*,
+        watcher::*,
+        EntityInfo,
+        AnyEntities,
+        world::World,
+        entity::{
+            for_each_component,
+            iterate_components_with,
+            ComponentWrapper,
+            ClientEntities
+        }
     }
 };
 
@@ -85,8 +96,69 @@ pub fn update(
         let mut this;
         colliding_info!{this, collider, entity};
 
-        this.collide_with_world(world, &mut contacts);
+        this.collide_with_world(world, &mut contacts, entities);
     });
+
+    if DEBUG_CONTACTS
+    {
+        contacts.iter().for_each(|contact|
+        {
+            let watchers = Some(Watchers::simple_one_frame());
+
+            let color = if contact.b.is_some()
+            {
+                [0.0, 1.0, 0.0]
+            } else
+            {
+                [1.0, 0.0, 0.0]
+            };
+
+            entities.push_eager(true, EntityInfo{
+                transform: Some(Transform{
+                    position: contact.point,
+                    scale: Vector3::repeat(0.01),
+                    ..Default::default()
+                }),
+                render: Some(RenderInfo{
+                    object: Some(RenderObjectKind::Texture{
+                        name: "circle.png".to_owned()
+                    }.into()),
+                    z_level: ZLevel::Hat,
+                    mix: Some(MixColor{color, amount: 1.0}),
+                    ..Default::default()
+                }),
+                watchers: watchers.clone(),
+                ..Default::default()
+            });
+
+            if let Some(normal_2d) = Unit::try_new(contact.normal.xy(), 0.01)
+            {
+                let angle = normal_2d.y.atan2(normal_2d.x);
+
+                let arrow_scale = 0.05;
+
+                entities.push_eager(true, EntityInfo{
+                    transform: Some(Transform{
+                        position: contact.point + contact.normal * arrow_scale / 2.0,
+                        scale: Vector3::repeat(arrow_scale),
+                        rotation: angle,
+                        ..Default::default()
+                    }),
+                    render: Some(RenderInfo{
+                        object: Some(RenderObjectKind::Texture{
+                            name: "arrow.png".to_owned()
+                        }.into()),
+                        z_level: ZLevel::Door,
+                        mix: Some(MixColor{color, amount: 1.0}),
+                        aspect: Aspect::KeepMax,
+                        ..Default::default()
+                    }),
+                    watchers: watchers.clone(),
+                    ..Default::default()
+                });
+            }
+        });
+    }
 
     ContactResolver::resolve(entities, contacts, dt);
 }

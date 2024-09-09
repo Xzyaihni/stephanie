@@ -6,7 +6,6 @@ use chunk::{
 
 pub use chunks_container::{
     CommonIndexing,
-    Axis,
     ChunksContainer,
     FlatChunksContainer
 };
