@@ -305,27 +305,18 @@ impl<'b> TransformMatrix<'b>
     {
         let dims = 3;
 
+        let diff = other.transform.position - self.transform.position;
+
         let remove_ignored_arg = ();
         let handle_penetration = move |
             this: &'a Self,
             other: &'a Self,
             axis: Vector3<f32>,
-            penetration: f32,
-            ignored: bool
+            penetration: f32
         |
         {
             move ||
             {
-                if ignored
-                {
-                    panic!("{this:?}\n{other:?}\n{axis:?} {penetration}");
-                }
-
-                if axis.abs().max() != 1.0
-                {
-                    panic!("{this:?}\n{other:?}\n{axis:?}");
-                }
-
                 let diff = other.transform.position - this.transform.position;
 
                 let normal = if axis.dot(&diff) > 0.0
@@ -371,21 +362,38 @@ impl<'b> TransformMatrix<'b>
                     return None;
                 }
 
-                if !ignore
-                {
-                    if axis.max() != 1.0
-                    {
-                        panic!("{self:?}\n{other:?}\nnot ignoring: {axis:?} ({penetration})");
-                    }
-                }
-
-                Some((penetration, handle_penetration(this, other, axis, penetration, ignore)))
+                Some((penetration, handle_penetration(this, other, axis, penetration)))
             }
         };
 
         let mut penetrations = (0..dims).map(|i|
         {
-            try_penetrate(self.rotation_matrix.column(i).into())(self, other, world.is_some())
+            let axis: Vector3<f32> = self.rotation_matrix.column(i).into();
+
+            let ignore = if let Some(world) = world
+            {
+                (0..2).any(|axis_i|
+                {
+                    let (low, high) = world.get_axis_index(axis_i);
+
+                    let amount = -diff.index(axis_i);
+
+                    let is_blocked = if amount < 0.0
+                    {
+                        low
+                    } else
+                    {
+                        high
+                    };
+
+                    *is_blocked
+                })
+            } else
+            {
+                false
+            };
+
+            try_penetrate(axis)(self, other, ignore)
         }).chain((0..dims).map(|i|
         {
             let axis: Vector3<f32> = other.rotation_matrix.column(i).into();
@@ -394,7 +402,7 @@ impl<'b> TransformMatrix<'b>
             {
                 let (low, high) = world.get_axis_index(i);
 
-                let diff = self.transform.position - other.transform.position;
+                let diff = -diff;
 
                 let has_tile = if axis.dot(&diff) > 0.0
                 {
@@ -600,19 +608,9 @@ impl<'a> CollidingInfo<'a>
         &self,
         other: &Self,
         world: &WorldTileInfo,
-        mut add_contact: impl FnMut(ContactRaw)
+        add_contact: impl FnMut(ContactRaw)
     ) -> bool
     {
-        let add_contact = |contact: ContactRaw|
-        {
-            if contact.normal.abs().max() != 1.0
-            {
-                panic!("{self:?}\n{other:?}\n{contact:?}");
-            }
-
-            add_contact(contact)
-        };
-
         other.rectangle_rectangle_inner(self, Some(world), add_contact)
     }
 
@@ -817,6 +815,7 @@ impl<'a> CollidingInfo<'a>
             colliding_tile.unwrap_or(true)
         }, |(dirs, pos)|
         {
+            return;
             dirs.for_each(|dir, x|
             {
                 if !x
