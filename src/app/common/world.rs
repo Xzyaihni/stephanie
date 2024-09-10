@@ -138,6 +138,7 @@ impl World
     pub fn tiles_inside<'a>(
         &'a self,
         collider: &'a CollidingInfo<'a>,
+        allow_non_colliding: bool,
         mut contacts: Option<&'a mut Vec<Contact>>,
         predicate: impl Fn(Option<&'a Tile>) -> bool + 'a,
         debug_thingy: impl Fn((Directions3dGroup<bool>, Pos3<f32>)) + 'a
@@ -155,7 +156,16 @@ impl World
         {
             let check_tile = |pos|
             {
-                self.tile(pos).map(|x| self.tilemap.info(*x).colliding).unwrap_or(true)
+                self.tile(pos).map(|x|
+                {
+                    if allow_non_colliding
+                    {
+                        x.is_none()
+                    } else
+                    {
+                        self.tilemap.info(*x).colliding
+                    }
+                }).unwrap_or(true)
             };
 
             let world = Directions3dGroup{
@@ -172,7 +182,7 @@ impl World
             let mut world_collider = ColliderInfo{
                 kind: ColliderType::Tile(world),
                 layer: ColliderLayer::World,
-                ghost: contacts.is_none(),
+                ghost: false,
                 scale: None,
                 move_z: false,
                 target_non_lazy: false
@@ -187,7 +197,7 @@ impl World
                 None
             };
 
-            collider.collide_immutable(&CollidingInfo{
+            let info = CollidingInfo{
                 entity: None,
                 transform: Transform{
                     position: pos.entity_position(),
@@ -195,7 +205,9 @@ impl World
                     ..Default::default()
                 },
                 collider: &mut world_collider
-            }, contacts)
+            };
+
+            collider.collide_immutable(&info, contacts)
         })
     }
 

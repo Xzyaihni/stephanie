@@ -27,7 +27,7 @@ use crate::{
         EntityInfo,
         entity::ClientEntities,
         lisp::{self, *},
-        world::{CHUNK_VISUAL_SIZE, TILE_SIZE, Pos3}
+        world::{CHUNK_VISUAL_SIZE, TILE_SIZE, Pos3, TilePos}
     }
 };
 
@@ -1379,13 +1379,13 @@ impl<'a> PlayerContainer<'a>
         {
             let world = &self.game_state.world;
 
-            let stairs = world.tiles_inside(&colliding, None, |tile|
+            let stairs: Option<TilePos> = world.tiles_inside(&colliding, true, None, |tile|
             {
                 tile.map(|tile|
                 {
                     world.tile_info(*tile).special == Some(SpecialTile::StairsUp)
                 }).unwrap_or(false)
-            }, |_| {}).next();
+            }, |(_, pos)| {}).next();
 
             let interact_button = ||
             {
@@ -1426,7 +1426,7 @@ impl<'a> PlayerContainer<'a>
 
             colliding.transform.position.z -= TILE_SIZE;
 
-            let stairs = world.tiles_inside(&colliding, None, |tile: Option<&_>|
+            let stairs = world.tiles_inside(&colliding, true, None, |tile: Option<&_>|
             {
                 tile.map(|tile|
                 {
@@ -1434,7 +1434,7 @@ impl<'a> PlayerContainer<'a>
                 }).unwrap_or(false)
             }, |_| {}).next();
 
-            if stairs.and_then(|stairs|
+            if stairs.and_then(|stairs: TilePos|
             {
                 world.tile(stairs.offset(Pos3::new(0, 0, -1))).map(|tile|
                 {

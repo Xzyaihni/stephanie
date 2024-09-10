@@ -5,6 +5,7 @@ use nalgebra::{Unit, Vector3};
 use yanyaengine::Transform;
 
 use crate::{
+    DEBUG_COLLISION_BOUNDS,
     DEBUG_CONTACTS,
     common::{
         collider::*,
@@ -95,6 +96,26 @@ pub fn update(
     {
         let mut this;
         colliding_info!{this, collider, entity};
+
+        if DEBUG_COLLISION_BOUNDS
+        {
+            entities.push(true, EntityInfo{
+                transform: Some(Transform{
+                    position: this.transform.position,
+                    scale: this.bounds(),
+                    ..Default::default()
+                }),
+                render: Some(RenderInfo{
+                    object: Some(RenderObjectKind::Texture{
+                        name: "placeholder.png".to_owned()
+                    }.into()),
+                    z_level: ZLevel::UiMiddle,
+                    ..Default::default()
+                }),
+                watchers: Some(Watchers::simple_one_frame()),
+                ..Default::default()
+            });
+        }
 
         this.collide_with_world(world, &mut contacts, entities);
     });

@@ -305,15 +305,27 @@ impl<'b> TransformMatrix<'b>
     {
         let dims = 3;
 
+        let remove_ignored_arg = ();
         let handle_penetration = move |
             this: &'a Self,
             other: &'a Self,
             axis: Vector3<f32>,
-            penetration: f32
+            penetration: f32,
+            ignored: bool
         |
         {
             move ||
             {
+                if ignored
+                {
+                    panic!("{this:?}\n{other:?}\n{axis:?} {penetration}");
+                }
+
+                if axis.abs().max() != 1.0
+                {
+                    panic!("{this:?}\n{other:?}\n{axis:?}");
+                }
+
                 let diff = other.transform.position - this.transform.position;
 
                 let normal = if axis.dot(&diff) > 0.0
@@ -354,18 +366,26 @@ impl<'b> TransformMatrix<'b>
 
             move |this: &'a Self, other: &'a Self, ignore: bool| -> Option<(f32, _)>
             {
-                if ignore
+                if ignore && penetration > 0.0
                 {
                     return None;
                 }
 
-                Some((penetration, handle_penetration(this, other, axis, penetration)))
+                if !ignore
+                {
+                    if axis.max() != 1.0
+                    {
+                        panic!("{self:?}\n{other:?}\nnot ignoring: {axis:?} ({penetration})");
+                    }
+                }
+
+                Some((penetration, handle_penetration(this, other, axis, penetration, ignore)))
             }
         };
 
         let mut penetrations = (0..dims).map(|i|
         {
-            try_penetrate(self.rotation_matrix.column(i).into())(self, other, false)
+            try_penetrate(self.rotation_matrix.column(i).into())(self, other, world.is_some())
         }).chain((0..dims).map(|i|
         {
             let axis: Vector3<f32> = other.rotation_matrix.column(i).into();
@@ -415,13 +435,18 @@ impl<'b> TransformMatrix<'b>
             }
         });
 
-        let (_penetration, handler) = if let ControlFlow::Continue(x) = least_penetrating
+        let (penetration, handler) = if let ControlFlow::Continue(x) = least_penetrating
         {
             x
         } else
         {
             return None;
         };
+
+        if penetration <= 0.0
+        {
+            return None;
+        }
 
         Some(handler())
     }
@@ -443,15 +468,24 @@ impl<'a> CollidingInfo<'a>
 
         if self.collider.kind == ColliderType::Rectangle
         {
-            let bl = rotate_point(-scale.xy(), self.transform.rotation);
-            let tr = rotate_point(scale.xy(), self.transform.rotation);
+            let points = rectangle_points(&self.transform);
 
-            let size = tr - bl;
+            let size_axis = |i|
+            {
+                let points = points.iter().map(|x: &Vector2<f32>| -> f32
+                {
+                    let v: &f32 = x.index(i);
+                    *v
+                });
+
+                points.clone().max_by(|a, b| a.partial_cmp(b).unwrap()).unwrap()
+                    - points.min_by(|a, b| a.partial_cmp(b).unwrap()).unwrap()
+            };
 
             Vector3::new(
-                size.x,
-                size.y,
-                scale.z
+                size_axis(0),
+                size_axis(1),
+                self.transform.scale.z
             )
         } else
         {
@@ -537,7 +571,8 @@ impl<'a> CollidingInfo<'a>
         add_contact: impl FnMut(ContactRaw)
     ) -> bool
     {
-        self.rectangle_rectangle_inner(other, None, add_contact)
+        false
+        // self.rectangle_rectangle_inner(other, None, add_contact)
     }
 
     fn tile_point(
@@ -565,10 +600,20 @@ impl<'a> CollidingInfo<'a>
         &self,
         other: &Self,
         world: &WorldTileInfo,
-        add_contact: impl FnMut(ContactRaw)
+        mut add_contact: impl FnMut(ContactRaw)
     ) -> bool
     {
-        self.rectangle_rectangle_inner(other, Some(world), add_contact)
+        let add_contact = |contact: ContactRaw|
+        {
+            if contact.normal.abs().max() != 1.0
+            {
+                panic!("{self:?}\n{other:?}\n{contact:?}");
+            }
+
+            add_contact(contact)
+        };
+
+        other.rectangle_rectangle_inner(self, Some(world), add_contact)
     }
 
     fn point_circle(
@@ -689,7 +734,7 @@ impl<'a> CollidingInfo<'a>
                     )+
                     $(
                         (ColliderType::Tile(_), ColliderType::$b_world) => unreachable!(),
-                        (ColliderType::$b_world, ColliderType::Tile(ref info)) => self.$world_name(other, info, add_contact),
+                        (ColliderType::$b_world, ColliderType::Tile(ref info)) => other.$world_name(self, info, add_contact),
                     )+
                     $(
                         (ColliderType::$a, ColliderType::$b) =>
@@ -765,13 +810,14 @@ impl<'a> CollidingInfo<'a>
             return false;
         }
 
-        let collided = world.tiles_inside(self, Some(contacts), |tile|
+        let collided = world.tiles_inside(self, false, Some(contacts), |tile|
         {
             let colliding_tile = tile.map(|x| world.tile_info(*x).colliding);
 
-            colliding_tile.unwrap_or(false)
+            colliding_tile.unwrap_or(true)
         }, |(dirs, pos)|
         {
+            return;
             dirs.for_each(|dir, x|
             {
                 if !x

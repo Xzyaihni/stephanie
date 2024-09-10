@@ -402,7 +402,7 @@ macro_rules! impl_common_systems
 {
     ($this_entity_info:ident, $(($name:ident, $set_func:ident)),+,) =>
     {
-        fn push(
+        fn push_inner(
             &mut self,
             local: bool,
             mut info: $this_entity_info
@@ -1561,7 +1561,7 @@ macro_rules! define_entities_both
                 info: ClientEntityInfo
             ) -> Entity
             {
-                self.push(local, info)
+                self.push_inner(local, info)
             }
 
             impl_common_systems!{ClientEntityInfo, $(($name, $set_func),)+}
@@ -2319,7 +2319,7 @@ macro_rules! define_entities_both
 
             pub fn push_message(&mut self, info: EntityInfo) -> Message
             {
-                let entity = self.push(false, info);
+                let entity = self.push_inner(false, info);
 
                 Message::EntitySet{entity, info: self.info(entity)}
             }
@@ -2396,7 +2396,7 @@ macro_rules! define_entities
                 // clients cant create global entities
                 assert!(local);
 
-                let entity = self.push(local, info.shared());
+                let entity = self.push_inner(local, info.shared());
 
                 info.setup_components(self, entity);
 
@@ -2424,7 +2424,7 @@ macro_rules! define_entities
 
             fn push_eager(&mut self, local: bool, info: EntityInfo) -> Entity
             {
-                Self::push(self, local, info)
+                Self::push_inner(self, local, info)
             }
 
             fn push(&self, local: bool, info: EntityInfo) -> Entity
