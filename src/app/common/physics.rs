@@ -10,9 +10,9 @@ use crate::common::{
 };
 
 
-pub const GRAVITY: Vector3<f32> = Vector3::new(0.0, 0.0, -9.81 * ENTITY_SCALE);
+pub const GRAVITY: Vector3<f32> = Vector3::new(0.0, 0.0, -9.81 * ENTITY_SCALE * 0.2);
 pub const MAX_VELOCITY: f32 = 10.0;
-const SLEEP_THRESHOLD: f32 = 0.3;
+const SLEEP_THRESHOLD: f32 = 0.03;
 const MOVEMENT_BIAS: f32 = 0.8;
 
 const SLEEP_MOVEMENT_MAX: f32 = SLEEP_THRESHOLD * 16.0;
@@ -137,7 +137,7 @@ impl Physical
     pub fn update(
         &mut self,
         transform: &mut Transform,
-        inertia: impl Fn(&Physical, &Transform) -> f32,
+        inverse_inertia: impl Fn(&Physical, &Transform) -> f32,
         dt: f32
     )
     {
@@ -176,8 +176,8 @@ impl Physical
 
         if self.inverse_mass != 0.0
         {
-            let inertia = inertia(self, transform);
-            let angular_acceleration = self.angular_acceleration + self.torque / inertia;
+            let inverse_inertia = inverse_inertia(self, transform);
+            let angular_acceleration = self.angular_acceleration + self.torque * inverse_inertia;
 
             self.angular_velocity += angular_acceleration * dt;
             self.angular_velocity *= self.angular_damping.powf(dt);

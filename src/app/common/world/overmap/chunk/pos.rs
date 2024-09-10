@@ -508,6 +508,18 @@ macro_rules! define_group
             {
                 self.map(f);
             }
+
+            pub fn fold<U, F>(self, state: U, mut f: F) -> U
+            where
+                F: FnMut(U, (PosDirection, T)) -> U
+            {
+                let mut state: Option<U> = Some(state);
+                $(
+                    state = Some(f(state.take().unwrap(), (PosDirection::$uppercase, self.$lowercase)));
+                )+
+
+                state.unwrap()
+            }
         }
 
         impl<T> Index<PosDirection> for $name<T>

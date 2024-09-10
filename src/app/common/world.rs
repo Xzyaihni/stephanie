@@ -177,6 +177,11 @@ impl World
                 forward: check_tile(pos.offset(Pos3::new(0, 0, 1)))
             };
 
+            if world.fold(true, |acc, (_, b)| acc && b)
+            {
+                return false;
+            }
+
             debug_thingy((world.clone(), pos.position()));
 
             let mut world_collider = ColliderInfo{

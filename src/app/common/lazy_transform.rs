@@ -217,7 +217,7 @@ impl Connection
                 connection.physical.add_force(spring_force);
                 connection.physical.update(
                     current,
-                    |physical, transform| ColliderType::Circle.inertia(physical, transform),
+                    |physical, transform| ColliderType::Circle.inverse_inertia(physical, transform),
                     dt
                 );
 

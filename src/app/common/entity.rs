@@ -623,7 +623,7 @@ macro_rules! impl_common_systems
                         |physical, transform|
                         {
                             self.collider(entity)
-                                .map(|collider| collider.inertia(physical, transform))
+                                .map(|collider| collider.inverse_inertia(physical, transform))
                                 .unwrap_or_default()
                         },
                         dt

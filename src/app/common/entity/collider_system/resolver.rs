@@ -31,10 +31,10 @@ struct IterativeEpsilon
 }
 
 const ANGULAR_LIMIT: f32 = 0.2;
-const VELOCITY_LOW: f32 = 0.02;
+const VELOCITY_LOW: f32 = 0.002;
 
-const PENETRATION_EPSILON: IterativeEpsilon = IterativeEpsilon{sleep: 0.02, general: 0.001};
-const VELOCITY_EPSILON: IterativeEpsilon = IterativeEpsilon{sleep: 0.02, general: 0.001};
+const PENETRATION_EPSILON: IterativeEpsilon = IterativeEpsilon{sleep: 0.005, general: 0.0005};
+const VELOCITY_EPSILON: IterativeEpsilon = IterativeEpsilon{sleep: 0.005, general: 0.0005};
 
 struct Inertias
 {
@@ -107,8 +107,8 @@ struct AnalyzedContact
     pub to_world: Matrix3<f32>,
     pub velocity: Vector3<f32>,
     pub desired_change: f32,
-    pub a_inertia: f32,
-    pub b_inertia: Option<f32>,
+    pub a_inverse_inertia: f32,
+    pub b_inverse_inertia: Option<f32>,
     pub a_relative: Vector3<f32>,
     pub b_relative: Option<Vector3<f32>>
 }
@@ -124,12 +124,12 @@ impl AnalyzedContact
         self.desired_change = self.contact.calculate_desired_change(entities, &self.velocity, dt);
     }
 
-    fn get_inertia(&self, which: WhichObject) -> f32
+    fn get_inverse_inertia(&self, which: WhichObject) -> f32
     {
         match which
         {
-            WhichObject::A => self.a_inertia,
-            WhichObject::B => self.b_inertia.unwrap()
+            WhichObject::A => self.a_inverse_inertia,
+            WhichObject::B => self.b_inverse_inertia.unwrap()
         }
     }
 
@@ -154,7 +154,7 @@ impl AnalyzedContact
     fn inertias(&self, entities: &ClientEntities, which: WhichObject) -> Inertias
     {
         let angular_inertia_world = Contact::direction_apply_inertia(
-            self.get_inertia(which),
+            self.get_inverse_inertia(which),
             self.get_relative(which),
             self.contact.normal
         );
@@ -164,7 +164,7 @@ impl AnalyzedContact
 
         Inertias{
             linear: if !fixed.position { physical.inverse_mass } else { 0.0 },
-            angular: if !fixed.rotation { angular_inertia_world.dot(&self.contact.normal) } else { 0.0 }
+            angular: angular_inertia_world.dot(&self.contact.normal)
         }
     }
 
@@ -221,7 +221,7 @@ impl AnalyzedContact
             let impulse_torque = cross_2d(
                 contact_relative.xy(),
                 self.contact.normal.xy()
-            ) / self.get_inertia(which);
+            ) * self.get_inverse_inertia(which);
 
             let angular_change = impulse_torque * (angular_amount / inertias.angular);
             transform.rotation += angular_change;
@@ -285,7 +285,7 @@ impl AnalyzedContact
     ) -> Matrix3<f32>
     {
         let impulse_to_torque = skew_symmetric(self.get_relative(which));
-        -((impulse_to_torque / self.get_inertia(which)) * impulse_to_torque)
+        -((impulse_to_torque * self.get_inverse_inertia(which)) * impulse_to_torque)
     }
 
     fn apply_impulse(
@@ -301,8 +301,14 @@ impl AnalyzedContact
 
         let mut physical = entities.physical_mut(self.get_entity(which)).unwrap();
 
-        let angular_change = impulse_torque / self.get_inertia(which);
+        let angular_change = impulse_torque * self.get_inverse_inertia(which);
         let velocity_change = impulse * physical.inverse_mass;
+
+        let remove_this = ();
+        if angular_change != 0.0 && physical.fixed.rotation
+        {
+            panic!("angular_change: {angular_change}, impulse_torque: {impulse_torque}");
+        }
 
         physical.add_velocity_raw(velocity_change);
         physical.add_angular_velocity_raw(angular_change);
@@ -406,7 +412,7 @@ impl Contact
     }
 
     fn direction_apply_inertia(
-        inertia: f32,
+        inverse_inertia: f32,
         direction: Vector3<f32>,
         normal: Vector3<f32>
     ) -> Vector3<f32>
@@ -414,7 +420,7 @@ impl Contact
         let angular_inertia = cross_3d(
             direction,
             normal
-        ) / inertia;
+        ) * inverse_inertia;
 
         cross_3d(
             angular_inertia,
@@ -514,9 +520,9 @@ impl Contact
         }
     }
 
-    fn inertia_of(entities: &ClientEntities, entity: Entity) -> f32
+    fn inverse_inertia_of(entities: &ClientEntities, entity: Entity) -> f32
     {
-        entities.collider(entity).unwrap().inertia(
+        entities.collider(entity).unwrap().inverse_inertia(
             &entities.physical(entity).unwrap(),
             &entities.transform(entity).unwrap()
         )
@@ -547,9 +553,9 @@ impl Contact
             panic!("{self:?} {velocity:?}");
         }
 
-        let a_inertia = Self::inertia_of(entities, self.a);
+        let a_inverse_inertia = Self::inverse_inertia_of(entities, self.a);
 
-        let b_inertia = self.b.map(|b|
+        let b_inverse_inertia = self.b.map(|b|
         {
             let b_velocity = Self::velocity_closing(
                 &entities.physical(b).unwrap(),
@@ -559,7 +565,7 @@ impl Contact
 
             velocity -= b_velocity;
 
-            Self::inertia_of(entities, b)
+            Self::inverse_inertia_of(entities, b)
         });
 
         let desired_change = self.calculate_desired_change(entities, &velocity, dt);
@@ -569,8 +575,8 @@ impl Contact
             to_world,
             velocity,
             desired_change,
-            a_inertia,
-            b_inertia,
+            a_inverse_inertia,
+            b_inverse_inertia,
             a_relative,
             b_relative,
             contact: self

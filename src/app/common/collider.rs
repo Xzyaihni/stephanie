@@ -89,16 +89,16 @@ pub enum ColliderType
 
 impl ColliderType
 {
-    pub fn inertia(
+    pub fn inverse_inertia(
         &self,
         physical: &Physical,
         transform: &Transform
     ) -> f32
     {
         // to prevent div by zero cuz floating points suck and i hate them
-        if physical.inverse_mass.classify() == FpCategory::Zero
+        if (physical.inverse_mass.classify() == FpCategory::Zero) || physical.fixed.rotation
         {
-            return f32::INFINITY;
+            return 0.0;
         }
 
         match self
@@ -224,13 +224,13 @@ impl From<ColliderInfo> for Collider
 
 impl Collider
 {
-    pub fn inertia(
+    pub fn inverse_inertia(
         &self,
         physical: &Physical,
         transform: &Transform
     ) -> f32
     {
-        self.kind.inertia(physical, transform)
+        self.kind.inverse_inertia(physical, transform)
     }
 
     pub fn collided(&self) -> &[Entity]
@@ -817,7 +817,6 @@ impl<'a> CollidingInfo<'a>
             colliding_tile.unwrap_or(true)
         }, |(dirs, pos)|
         {
-            return;
             dirs.for_each(|dir, x|
             {
                 if !x
@@ -838,8 +837,10 @@ impl<'a> CollidingInfo<'a>
                         scale.x = TILE_SIZE;
                         scale.y = TILE_SIZE;
 
-                        color[2] = 0.5;
-                    } else if dir == PosDirection::Forward
+                        color[2] = 0.2;
+                    }
+
+                    if dir == PosDirection::Forward
                     {
                         scale.x = TILE_SIZE / 2.0;
                         scale.y = TILE_SIZE / 2.0;
@@ -847,8 +848,8 @@ impl<'a> CollidingInfo<'a>
 
                     let z_level = match dir
                     {
-                        PosDirection::Back => ZLevel::UiHigher,
-                        PosDirection::Forward => ZLevel::UiMiddle,
+                        PosDirection::Back => ZLevel::UiMiddle,
+                        PosDirection::Forward => ZLevel::UiHigher,
                         _ => ZLevel::UiHigh
                     };
 
