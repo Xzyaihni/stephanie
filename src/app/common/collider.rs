@@ -335,7 +335,7 @@ impl<'b> TransformMatrix<'b>
                     // if almost parallel pick vertex closest to this
                     let check = if dist.abs() < 0.001
                     {
-                        -diff.index(i)
+                        -(other.rotation_matrix.transpose() * diff).index(i)
                     } else
                     {
                         dist
@@ -621,8 +621,7 @@ impl<'a> CollidingInfo<'a>
         add_contact: impl FnMut(ContactRaw)
     ) -> bool
     {
-        let put_some_back = ();
-        other.rectangle_rectangle_inner(self, None /*Some(world)*/, add_contact)
+        other.rectangle_rectangle_inner(self, Some(world), add_contact)
     }
 
     fn point_circle(
