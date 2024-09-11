@@ -307,7 +307,6 @@ impl<'b> TransformMatrix<'b>
 
         let diff = other.transform.position - self.transform.position;
 
-        let remove_ignored_arg = ();
         let handle_penetration = move |
             this: &'a Self,
             other: &'a Self,
@@ -331,7 +330,18 @@ impl<'b> TransformMatrix<'b>
 
                 (0..dims).for_each(|i|
                 {
-                    if other.rotation_matrix.column(i).dot(&normal) < 0.0
+                    let dist = other.rotation_matrix.column(i).dot(&normal);
+
+                    // if almost parallel pick vertex closest to this
+                    let check = if dist.abs() < 0.001
+                    {
+                        -diff.index(i)
+                    } else
+                    {
+                        dist
+                    };
+
+                    if check < 0.0
                     {
                         let value = -local_point.index(i);
                         *local_point.index_mut(i) = value;
@@ -611,7 +621,8 @@ impl<'a> CollidingInfo<'a>
         add_contact: impl FnMut(ContactRaw)
     ) -> bool
     {
-        other.rectangle_rectangle_inner(self, Some(world), add_contact)
+        let put_some_back = ();
+        other.rectangle_rectangle_inner(self, None /*Some(world)*/, add_contact)
     }
 
     fn point_circle(
