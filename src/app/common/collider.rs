@@ -305,8 +305,6 @@ impl<'b> TransformMatrix<'b>
     {
         let dims = 3;
 
-        let diff = other.transform.position - self.transform.position;
-
         let handle_penetration = move |
             this: &'a Self,
             other: &'a Self,
@@ -328,20 +326,61 @@ impl<'b> TransformMatrix<'b>
                     axis
                 };
 
-                let mut local_point = other.transform.scale / 2.0;
+                let half_scale = this.transform.scale / 2.0;
 
-                (0..dims).for_each(|i|
+                let normal_square_mag = normal.dot(&normal);
+
+                let d = half_scale.dot(&normal);
+
+                let project_to_plane = |p: Vector3<f32>|
                 {
-                    let check = -unrotated_diff.index(i);
+                    p - normal * ((p.dot(&normal) - d) / normal_square_mag)
+                };
 
-                    if check < 0.0
+                let other_half_scale = other.transform.scale / 2.0;
+                let (_distance, point) = (0..2_usize.pow(dims as u32)).map(|i|
+                {
+                    let mut local_point = other_half_scale;
+
+                    // wow its binary!
+                    (0..dims).for_each(|axis_i|
                     {
-                        let value = -local_point.index(i);
-                        *local_point.index_mut(i) = value;
-                    }
-                });
+                        if ((i >> axis_i) & 1) == 1
+                        {
+                            *local_point.index_mut(axis_i) = -local_point.index(axis_i);
+                        }
+                    });
 
-                let point = other.rotation_matrix * local_point + other.transform.position;
+                    local_point
+                }).map(|x|
+                {
+                    let point = other.transform.position + other.rotation_matrix * x;
+
+                    let point_local = point - this.transform.position;
+
+                    let projected = project_to_plane(point_local);
+
+                    let plane_center = d * normal;
+                    let plane_distance = (plane_center - projected).abs();
+
+                    let inside_plane = plane_distance.iter().zip(half_scale.iter()).all(|(x, limit)|
+                    {
+                        x <= limit
+                    });
+
+                    let distance = if inside_plane
+                    {
+                        projected.metric_distance(&point_local)
+                    } else
+                    {
+                        f32::INFINITY
+                    };
+
+                    (distance, point)
+                }).min_by(|a, b|
+                {
+                    a.0.partial_cmp(&b.0).unwrap()
+                }).unwrap();
 
                 ContactRaw{
                     a: this.entity,
@@ -352,6 +391,8 @@ impl<'b> TransformMatrix<'b>
                 }
             }
         };
+
+        let diff = other.transform.position - self.transform.position;
 
         // funy
         let try_penetrate = |axis: Vector3<f32>| -> _
