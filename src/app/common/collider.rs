@@ -318,6 +318,8 @@ impl<'b> TransformMatrix<'b>
             {
                 let diff = other.transform.position - this.transform.position;
 
+                let unrotated_diff = other.rotation_matrix.transpose() * diff;
+
                 let normal = if axis.dot(&diff) > 0.0
                 {
                     -axis
@@ -330,16 +332,7 @@ impl<'b> TransformMatrix<'b>
 
                 (0..dims).for_each(|i|
                 {
-                    let dist = other.rotation_matrix.column(i).dot(&normal);
-
-                    // if almost parallel pick vertex closest to this
-                    let check = if dist.abs() < 0.001
-                    {
-                        -(other.rotation_matrix.transpose() * diff).index(i)
-                    } else
-                    {
-                        dist
-                    };
+                    let check = -unrotated_diff.index(i);
 
                     if check < 0.0
                     {
