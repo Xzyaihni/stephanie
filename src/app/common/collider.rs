@@ -297,11 +297,14 @@ impl<'b> TransformMatrix<'b>
         this_projected + other_projected - axis_distance
     }
 
-    fn rectangle_rectangle_contact<'a>(
+    fn rectangle_rectangle_contact<'a, F>(
         &'a self,
         other: &'a Self,
-        world: Option<&WorldTileInfo>
-    ) -> Option<ContactRaw>
+        world: Option<&WorldTileInfo>,
+        add_contact: F
+    ) -> bool
+    where
+        F: FnMut(ContactRaw)
     {
         let dims = 3;
 
@@ -312,11 +315,9 @@ impl<'b> TransformMatrix<'b>
             penetration: f32
         |
         {
-            move ||
+            move |mut add_contact: F|
             {
                 let diff = other.transform.position - this.transform.position;
-
-                let unrotated_diff = other.rotation_matrix.transpose() * diff;
 
                 let normal = if axis.dot(&diff) > 0.0
                 {
@@ -330,7 +331,7 @@ impl<'b> TransformMatrix<'b>
 
                 let normal_square_mag = normal.dot(&normal);
 
-                let d = half_scale.dot(&normal);
+                let d = (this.rotation_matrix * half_scale).dot(&normal);
 
                 let project_to_plane = |p: Vector3<f32>|
                 {
@@ -360,7 +361,7 @@ impl<'b> TransformMatrix<'b>
 
                     let projected = project_to_plane(point_local);
 
-                    let plane_center = d * normal;
+                    let plane_center = this.transform.position + d * normal;
                     let plane_distance = (plane_center - projected).abs();
 
                     let inside_plane = plane_distance.iter().zip(half_scale.iter()).all(|(x, limit)|
@@ -382,13 +383,13 @@ impl<'b> TransformMatrix<'b>
                     a.0.partial_cmp(&b.0).unwrap()
                 }).unwrap();
 
-                ContactRaw{
+                add_contact(ContactRaw{
                     a: this.entity,
                     b: other.entity,
                     point,
                     penetration,
                     normal
-                }
+                });
             }
         };
 
@@ -465,7 +466,7 @@ impl<'b> TransformMatrix<'b>
             try_penetrate(axis)(other, self, ignore)
         }));
 
-        let first = penetrations.find_map(convert::identity)?;
+        let first = some_or_value!(penetrations.find_map(convert::identity), false);
         let least_penetrating = penetrations.try_fold(first, |b, a|
         {
             let a = some_or_value!(a, ControlFlow::Continue(b));
@@ -487,20 +488,22 @@ impl<'b> TransformMatrix<'b>
             }
         });
 
-        let (penetration, handler) = if let ControlFlow::Continue(x) = least_penetrating
+        let (penetration, mut handler) = if let ControlFlow::Continue(x) = least_penetrating
         {
             x
         } else
         {
-            return None;
+            return false;
         };
 
         if penetration <= 0.0
         {
-            return None;
+            return false;
         }
 
-        Some(handler())
+        handler(add_contact);
+
+        true
     }
 }
 
@@ -600,21 +603,13 @@ impl<'a> CollidingInfo<'a>
         &self,
         other: &Self,
         world: Option<&WorldTileInfo>,
-        mut add_contact: impl FnMut(ContactRaw)
+        add_contact: impl FnMut(ContactRaw)
     ) -> bool
     {
         let this = TransformMatrix::from_transform(&self.transform, self.entity);
         let other = TransformMatrix::from_transform(&other.transform, other.entity);
 
-        let contact = this.rectangle_rectangle_contact(&other, world);
-        let collided = contact.is_some();
-
-        if let Some(contact) = contact
-        {
-            add_contact(contact);
-        }
-
-        collided
+        this.rectangle_rectangle_contact(&other, world, add_contact)
     }
 
     fn rectangle_rectangle(
