@@ -85,15 +85,15 @@ pub const DEBUG_LISP: bool = false;
 pub const DEBUG_COLLISION_BOUNDS: bool = false;
 pub const DEBUG_CONTACTS: bool = true;
 
-#[link(name = "floathelper")]
+/*#[link(name = "floathelper")]
 extern "C"
 {
     fn float_excepts();
-}
+}*/
 
 fn main()
 {
-    unsafe{ float_excepts() };
+    // unsafe{ float_excepts() };
 
     let mut shaders = ShadersContainer::new();
 
