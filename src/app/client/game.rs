@@ -1382,7 +1382,7 @@ impl<'a> PlayerContainer<'a>
         {
             let world = &self.game_state.world;
 
-            let stairs: Option<TilePos> = world.tiles_inside(&colliding, true, None, |tile|
+            let stairs: Option<TilePos> = world.tiles_inside(&colliding, None, |tile|
             {
                 tile.map(|tile|
                 {
@@ -1429,7 +1429,7 @@ impl<'a> PlayerContainer<'a>
 
             colliding.transform.position.z -= TILE_SIZE;
 
-            let stairs = world.tiles_inside(&colliding, true, None, |tile: Option<&_>|
+            let stairs = world.tiles_inside(&colliding, None, |tile: Option<&_>|
             {
                 tile.map(|tile|
                 {

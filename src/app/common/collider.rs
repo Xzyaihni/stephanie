@@ -526,14 +526,16 @@ impl<'a> CollidingInfo<'a>
                     *v
                 });
 
-                points.clone().max_by(|a, b| a.partial_cmp(b).unwrap()).unwrap()
-                    - points.min_by(|a, b| a.partial_cmp(b).unwrap()).unwrap()
+                let size = points.clone().max_by(|a, b| a.partial_cmp(b).unwrap()).unwrap()
+                    - points.min_by(|a, b| a.partial_cmp(b).unwrap()).unwrap();
+
+                size / 2.0
             };
 
             Vector3::new(
                 size_axis(0),
                 size_axis(1),
-                self.transform.scale.z
+                scale.z
             )
         } else
         {
@@ -660,7 +662,7 @@ impl<'a> CollidingInfo<'a>
         &self,
         other: &Self,
         world: &WorldTileInfo,
-        mut add_contact: impl FnMut(Contact)
+        add_contact: impl FnMut(Contact)
     ) -> bool
     {
         let diff = other.transform.position - self.transform.position;
@@ -900,14 +902,13 @@ impl<'a> CollidingInfo<'a>
             return false;
         }
 
-        let collided = world.tiles_inside(self, false, Some(contacts), |tile|
+        let collided = world.tiles_inside(self, Some(contacts), |tile|
         {
             let colliding_tile = tile.map(|x| world.tile_info(*x).colliding);
 
             colliding_tile.unwrap_or(true)
         }, |(dirs, pos)|
         {
-            return;
             dirs.for_each(|dir, x|
             {
                 if !x

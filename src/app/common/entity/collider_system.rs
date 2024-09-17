@@ -102,7 +102,7 @@ pub fn update(
             entities.push(true, EntityInfo{
                 transform: Some(Transform{
                     position: this.transform.position,
-                    scale: this.bounds(),
+                    scale: this.bounds() * 2.0,
                     ..Default::default()
                 }),
                 render: Some(RenderInfo{

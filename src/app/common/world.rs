@@ -138,9 +138,8 @@ impl World
     pub fn tiles_inside<'a>(
         &'a self,
         collider: &'a CollidingInfo<'a>,
-        allow_non_colliding: bool,
         mut contacts: Option<&'a mut Vec<Contact>>,
-        predicate: impl Fn(Option<&'a Tile>) -> bool + 'a,
+        predicate: impl Fn(Option<&'a Tile>) -> bool + 'a + Copy,
         debug_thingy: impl Fn((Directions3dGroup<bool>, Pos3<f32>)) + 'a
     ) -> impl Iterator<Item=TilePos> + 'a
     {
@@ -156,16 +155,7 @@ impl World
         {
             let check_tile = |pos|
             {
-                self.tile(pos).map(|x|
-                {
-                    if allow_non_colliding
-                    {
-                        x.is_none()
-                    } else
-                    {
-                        self.tilemap.info(*x).colliding
-                    }
-                }).unwrap_or(true)
+                predicate(self.tile(pos))
             };
 
             let world = Directions3dGroup{
