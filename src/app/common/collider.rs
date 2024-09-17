@@ -319,7 +319,7 @@ impl<'b> TransformMatrix<'b>
         })
     }
 
-    fn distance_to_oob(&self) -> impl Fn(Vector3<f32>) -> (f32, Vector3<f32>) + '_
+    fn distance_to_obb(&self) -> impl Fn(Vector3<f32>) -> (f32, Vector3<f32>) + '_
     {
         |point|
         {
@@ -374,20 +374,8 @@ impl<'b> TransformMatrix<'b>
                 p - normal * (p.dot(&normal) - d)
             };
 
-            let (_distance, point) = other.cuboid_points().map(self.distance_to_oob())
-                .chain(self.cuboid_points().map(other.distance_to_oob())).map(|(distance, point)|
-                {
-                    let remove_this = ();
-                    /*add_contact(ContactRaw{
-                        a: self.entity,
-                        b: other.entity,
-                        point,
-                        penetration: -1.0,
-                        normal: -normal
-                    }.into());*/
-
-                    (distance, point)
-                }).min_by(|a, b|
+            let (_distance, point) = other.cuboid_points().map(self.distance_to_obb())
+                .chain(self.cuboid_points().map(other.distance_to_obb())).min_by(|a, b|
                 {
                     a.0.partial_cmp(&b.0).unwrap()
                 }).unwrap();
@@ -423,6 +411,24 @@ impl<'b> TransformMatrix<'b>
             })
         };
 
+        enum PenetrationInfo<F>
+        {
+            ThisAxis((f32, F)),
+            OtherAxis((Vector3<f32>, f32, usize), F)
+        }
+
+        impl<F> PenetrationInfo<F>
+        {
+            fn penetration(&self) -> f32
+            {
+                match self
+                {
+                    Self::ThisAxis((p, _)) => *p,
+                    Self::OtherAxis((_, p, _), _) => *p
+                }
+            }
+        }
+
         let mut penetrations = (0..DIMS).filter_map(|i|
         {
             let axis: Vector3<f32> = self.rotation_matrix.column(i).into();
@@ -430,23 +436,21 @@ impl<'b> TransformMatrix<'b>
 
             this_axis((axis, penetration, i)).then(||
             {
-                handler(self, other)
+                PenetrationInfo::ThisAxis(handler(self, other))
             })
-        }).chain((0..DIMS).filter_map(|i|
+        }).chain((0..DIMS).map(|i|
         {
             let axis: Vector3<f32> = other.rotation_matrix.column(i).into();
-            let (penetration, handler) = try_penetrate(axis);
+            let (_penetration, handler) = try_penetrate(axis);
 
-            other_axis((axis, penetration, i)).then(||
-            {
-                handler(other, self)
-            })
+            let (penetration, handle) = handler(other, self);
+            PenetrationInfo::OtherAxis((axis, penetration, i), handle)
         }));
 
         let first = some_or_value!(penetrations.next(), false);
         let least_penetrating = penetrations.try_fold(first, |b, a|
         {
-            let next = if a.0 < b.0
+            let next = if a.penetration() < b.penetration()
             {
                 a
             } else
@@ -454,7 +458,7 @@ impl<'b> TransformMatrix<'b>
                 b
             };
 
-            if next.0 <= 0.0
+            if next.penetration() <= 0.0
             {
                 ControlFlow::Break(())
             } else
@@ -463,7 +467,7 @@ impl<'b> TransformMatrix<'b>
             }
         });
 
-        let (penetration, handler) = if let ControlFlow::Continue(x) = least_penetrating
+        let info = if let ControlFlow::Continue(x) = least_penetrating
         {
             x
         } else
@@ -471,10 +475,24 @@ impl<'b> TransformMatrix<'b>
             return false;
         };
 
-        if penetration <= 0.0
+        if info.penetration() <= 0.0
         {
             return false;
         }
+
+        let handler = match info
+        {
+            PenetrationInfo::ThisAxis((_, handler)) => handler,
+            PenetrationInfo::OtherAxis(info, handler) =>
+            {
+                if !other_axis(info)
+                {
+                    return false;
+                }
+
+                handler
+            }
+        };
 
         handler(&mut add_contact);
 
@@ -642,13 +660,16 @@ impl<'a> CollidingInfo<'a>
         &self,
         other: &Self,
         world: &WorldTileInfo,
-        add_contact: impl FnMut(Contact)
+        mut add_contact: impl FnMut(Contact)
     ) -> bool
     {
         let diff = other.transform.position - self.transform.position;
 
-        other.transform_matrix().rectangle_rectangle_contact_special(
-            &self.transform_matrix(),
+        let this = self.transform_matrix();
+        let other = other.transform_matrix();
+
+        other.rectangle_rectangle_contact_special(
+            &this,
             add_contact,
             Self::world_handler(|_axis, _i|
             {
