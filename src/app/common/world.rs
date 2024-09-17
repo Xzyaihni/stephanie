@@ -139,8 +139,7 @@ impl World
         &'a self,
         collider: &'a CollidingInfo<'a>,
         mut contacts: Option<&'a mut Vec<Contact>>,
-        predicate: impl Fn(Option<&'a Tile>) -> bool + 'a + Copy,
-        debug_thingy: impl Fn((Directions3dGroup<bool>, Pos3<f32>)) + 'a
+        predicate: impl Fn(Option<&'a Tile>) -> bool + 'a + Copy
     ) -> impl Iterator<Item=TilePos> + 'a
     {
         let half_scale = collider.bounds();
@@ -171,8 +170,6 @@ impl World
             {
                 return false;
             }
-
-            debug_thingy((world.clone(), pos.position()));
 
             let mut world_collider = ColliderInfo{
                 kind: ColliderType::Tile(world),

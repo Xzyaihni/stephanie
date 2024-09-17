@@ -365,15 +365,6 @@ impl<'b> TransformMatrix<'b>
                 -axis
             };
 
-            let half_scale = self.transform.scale / 2.0;
-
-            let d = (self.rotation_matrix * half_scale).dot(&normal).abs();
-
-            let project_to_plane = |p: Vector3<f32>|
-            {
-                p - normal * (p.dot(&normal) - d)
-            };
-
             let (_distance, point) = other.cuboid_points().map(self.distance_to_obb())
                 .chain(self.cuboid_points().map(other.distance_to_obb())).min_by(|a, b|
                 {
@@ -619,8 +610,7 @@ impl<'a> CollidingInfo<'a>
         add_contact: impl FnMut(Contact)
     ) -> bool
     {
-        false
-        // self.rectangle_rectangle_inner(other, add_contact)
+        self.rectangle_rectangle_inner(other, add_contact)
     }
 
     fn tile_point(
@@ -893,8 +883,7 @@ impl<'a> CollidingInfo<'a>
     pub fn collide_with_world(
         &mut self,
         world: &World,
-        contacts: &mut Vec<Contact>,
-        entities: &crate::common::entity::ClientEntities
+        contacts: &mut Vec<Contact>
     ) -> bool
     {
         if !self.collider.layer.collides(&ColliderLayer::World)
@@ -907,64 +896,6 @@ impl<'a> CollidingInfo<'a>
             let colliding_tile = tile.map(|x| world.tile_info(*x).colliding);
 
             colliding_tile.unwrap_or(true)
-        }, |(dirs, pos)|
-        {
-            dirs.for_each(|dir, x|
-            {
-                if !x
-                {
-                    let tilepos = Vector3::from(pos) + Vector3::repeat(TILE_SIZE / 2.0);
-                    let dirv: Vector3<i32> = Pos3::from(dir).into();
-
-                    let mut scale = Vector3::repeat(TILE_SIZE).component_mul(&dirv.abs().cast());
-                    let mut position = tilepos + Vector3::repeat(TILE_SIZE / 2.0).component_mul(&dirv.cast());
-                    position.z = tilepos.z;
-
-                    let color: [i32; 3] = Pos3::from(dir).into();
-                    let mut color = color.map(|x| x.abs() as f32);
-
-                    use crate::common::PosDirection;
-                    if dir == PosDirection::Back
-                    {
-                        scale.x = TILE_SIZE;
-                        scale.y = TILE_SIZE;
-
-                        color[2] = 0.2;
-                    }
-
-                    if dir == PosDirection::Forward
-                    {
-                        scale.x = TILE_SIZE / 2.0;
-                        scale.y = TILE_SIZE / 2.0;
-                    }
-
-                    let z_level = match dir
-                    {
-                        PosDirection::Back => ZLevel::UiMiddle,
-                        PosDirection::Forward => ZLevel::UiHigher,
-                        _ => ZLevel::UiHigh
-                    };
-
-                    use crate::common::{Pos3, EntityInfo, render_info::*, watcher::*, AnyEntities};
-                    entities.push(true, EntityInfo{
-                        transform: Some(Transform{
-                            position,
-                            scale: scale.yxz() + Vector3::repeat(TILE_SIZE / 7.0),
-                            ..Default::default()
-                        }),
-                        render: Some(RenderInfo{
-                            object: Some(RenderObjectKind::Texture{
-                                name: "placeholder.png".to_owned()
-                            }.into()),
-                            z_level,
-                            mix: Some(MixColor{color, amount: 0.9}),
-                            ..Default::default()
-                        }),
-                        watchers: Some(Watchers::simple_one_frame()),
-                        ..Default::default()
-                    });
-                }
-            });
         }).count();
 
         collided > 0

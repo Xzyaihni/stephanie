@@ -117,7 +117,7 @@ pub fn update(
             });
         }
 
-        this.collide_with_world(world, &mut contacts, entities);
+        this.collide_with_world(world, &mut contacts);
     });
 
     if DEBUG_CONTACTS

@@ -1388,7 +1388,7 @@ impl<'a> PlayerContainer<'a>
                 {
                     world.tile_info(*tile).special == Some(SpecialTile::StairsUp)
                 }).unwrap_or(false)
-            }, |(_, pos)| {}).next();
+            }).next();
 
             let interact_button = ||
             {
@@ -1435,7 +1435,7 @@ impl<'a> PlayerContainer<'a>
                 {
                     world.tile_info(*tile).special == Some(SpecialTile::StairsDown)
                 }).unwrap_or(false)
-            }, |_| {}).next();
+            }).next();
 
             if stairs.and_then(|stairs: TilePos|
             {
