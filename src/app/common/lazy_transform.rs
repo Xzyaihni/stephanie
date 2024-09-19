@@ -484,6 +484,7 @@ pub struct LazyTransformInfo
     pub origin_rotation: f32,
     pub origin: Vector3<f32>,
     pub inherit_scale: bool,
+    pub inherit_rotation: bool,
     pub transform: Transform
 }
 
@@ -499,6 +500,7 @@ impl Default for LazyTransformInfo
             origin_rotation: 0.0,
             origin: Vector3::zeros(),
             inherit_scale: true,
+            inherit_rotation: true,
             transform: Transform::default()
         }
     }
@@ -511,6 +513,7 @@ pub struct LazyTransform
     origin_rotation: f32,
     origin: Vector3<f32>,
     inherit_scale: bool,
+    inherit_rotation: bool,
     pub connection: Connection,
     pub rotation: Rotation,
     pub scaling: Scaling,
@@ -539,6 +542,7 @@ impl From<LazyTransformInfo> for LazyTransform
             origin_rotation: info.origin_rotation,
             origin: info.origin,
             inherit_scale: info.inherit_scale,
+            inherit_rotation: info.inherit_rotation,
             connection: info.connection,
             rotation: info.rotation,
             scaling: info.scaling,
@@ -667,6 +671,11 @@ impl LazyTransform
             &Unit::new_normalize(Vector3::z()),
             current.rotation + self.origin_rotation
         );
+
+        if !self.inherit_rotation
+        {
+            return;
+        }
 
         if let Some(parent) = parent_transform
         {

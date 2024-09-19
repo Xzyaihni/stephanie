@@ -1,4 +1,4 @@
 #!/bin/sh
 set -e
 cargo b
-gdb --args ./target/debug/stephanie --debug
+RUST_BACKTRACE=1 gdb --args ./target/debug/stephanie --debug

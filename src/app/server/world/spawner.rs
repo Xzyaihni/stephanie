@@ -58,6 +58,7 @@ pub fn create_spawner(
                         scale: Vector2::new(1.0, 0.3).xyy(),
                         ..Default::default()
                     },
+                    inherit_rotation: false,
                     ..Default::default()
                 }.into()),
                 render: Some(RenderInfo{
@@ -77,10 +78,6 @@ pub fn create_spawner(
                 physical: Some(PhysicalProperties{
                     inverse_mass: (40.0 * *width as f32).recip(),
                     floating: true,
-                    fixed: PhysicalFixed{
-                        position: true,
-                        ..Default::default()
-                    },
                     ..Default::default()
                 }.into()),
                 parent: Some(Parent::new(hinge, true)),

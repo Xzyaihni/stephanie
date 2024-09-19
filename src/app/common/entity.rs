@@ -32,6 +32,7 @@ use crate::{
         damaging::*,
         particle_creator::*,
         raycast::*,
+        Joint,
         Outlineable,
         LazyMix,
         DataInfos,
@@ -257,6 +258,7 @@ no_on_set!{
     Player,
     Collider,
     Physical,
+    Joint,
     Damaging,
     Watchers,
     OccludingPlane,
@@ -2659,5 +2661,6 @@ define_entities!{
     (collider, collider_mut, set_collider, on_collider, resort_collider, collider_exists, SetCollider, ColliderType, Collider),
     (physical, physical_mut, set_physical, on_physical, resort_physical, physical_exists, SetPhysical, PhysicalType, Physical),
     (anatomy, anatomy_mut, set_anatomy, on_anatomy, resort_anatomy, anatomy_exists, SetAnatomy, AnatomyType, Anatomy),
+    (joint, joint_mut, set_joint, on_joint, resort_joint, joint_exists, SetJoint, JointType, Joint),
     (saveable, saveable_mut, set_saveable, on_saveable, resort_saveable, saveable_exists, SetNone, SaveableType, Saveable)
 }

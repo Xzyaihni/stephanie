@@ -11,6 +11,7 @@ use crate::{
         collider::*,
         render_info::*,
         watcher::*,
+        Joint,
         EntityInfo,
         AnyEntities,
         world::World,
@@ -118,6 +119,11 @@ pub fn update(
         }
 
         this.collide_with_world(world, &mut contacts);
+    });
+
+    for_each_component!(entities, joint, |_entity, joint: &RefCell<Joint>|
+    {
+        joint.borrow().add_contacts(&mut contacts);
     });
 
     if DEBUG_CONTACTS

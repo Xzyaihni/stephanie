@@ -80,6 +80,8 @@ pub use physics::{Physical, PhysicalProperties, PhysicalFixed};
 
 pub use world::{PosDirection, Pos3, Axis};
 
+pub use joint::Joint;
+
 pub mod utility;
 
 pub mod sides;
@@ -136,6 +138,8 @@ pub mod world;
 
 pub mod collider;
 pub mod physics;
+
+pub mod joint;
 
 
 pub type MessageError = bincode::Error;

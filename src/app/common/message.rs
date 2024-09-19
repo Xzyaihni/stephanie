@@ -10,6 +10,7 @@ use crate::common::{
     watcher::*,
     lazy_transform::*,
     damaging::*,
+    Joint,
     LazyMix,
     Outlineable,
     Transform,
@@ -45,6 +46,7 @@ pub enum Message
     SetRender{entity: Entity, component: RenderInfo},
     SetCollider{entity: Entity, component: Collider},
     SetPhysical{entity: Entity, component: Physical},
+    SetJoint{entity: Entity, component: Joint},
     SetWatchers{entity: Entity, component: Watchers},
     SetDamaging{entity: Entity, component: Damaging},
     SetAnatomy{entity: Entity, component: Anatomy},
@@ -102,6 +104,7 @@ impl Message
             | Message::SetRender{entity, ..}
             | Message::SetCollider{entity, ..}
             | Message::SetPhysical{entity, ..}
+            | Message::SetJoint{entity, ..}
             | Message::SetWatchers{entity, ..}
             | Message::SetDamaging{entity, ..}
             | Message::SetAnatomy{entity, ..}

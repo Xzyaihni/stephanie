@@ -160,10 +160,9 @@ impl AnalyzedContact
         );
 
         let physical = entities.physical(self.get_entity(which)).unwrap();
-        let fixed = physical.fixed;
 
         Inertias{
-            linear: if !fixed.position { physical.inverse_mass } else { 0.0 },
+            linear: physical.inverse_mass,
             angular: angular_inertia_world.dot(&self.contact.normal)
         }
     }
@@ -204,17 +203,10 @@ impl AnalyzedContact
         }
 
         let fixed = entities.physical(entity).unwrap().fixed;
-        let velocity_change = if !fixed.position
-        {
-            let velocity_change = velocity_amount * self.contact.normal;
 
-            transform.position += velocity_change;
+        let velocity_change = velocity_amount * self.contact.normal;
 
-            velocity_change
-        } else
-        {
-            Vector3::zeros()
-        };
+        transform.position += velocity_change;
 
         let angular_change = if !fixed.rotation && (inertias.angular.classify() != FpCategory::Zero)
         {

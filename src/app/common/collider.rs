@@ -325,7 +325,7 @@ impl<'b> TransformMatrix<'b>
         {
             let local_point = self.rotation_matrix.transpose() * (point - self.transform.position);
 
-            let projected = local_point.zip_map(&(self.transform.scale / 2.0), |mut x, limit|
+            let limited = local_point.zip_map(&(self.transform.scale / 2.0), |mut x, limit|
             {
                 if x > limit
                 {
@@ -340,7 +340,9 @@ impl<'b> TransformMatrix<'b>
                 x
             });
 
-            (local_point.metric_distance(&projected), point)
+            let projected = (self.rotation_matrix * limited) + self.transform.position;
+
+            (point.metric_distance(&projected), point)
         }
     }
 
@@ -381,6 +383,8 @@ impl<'b> TransformMatrix<'b>
         }
     }
 
+    // this will generate wrong contacts if its an edge/edge collision
+    // im not handling edge/edge collisions cuz i dont wanna (the contact will be close enough)
     fn rectangle_rectangle_contact_special<'a, F>(
         &'a self,
         other: &'a Self,

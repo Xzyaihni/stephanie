@@ -20,7 +20,6 @@ const SLEEP_MOVEMENT_MAX: f32 = SLEEP_THRESHOLD * 16.0;
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct PhysicalFixed
 {
-    pub position: bool,
     pub rotation: bool
 }
 
@@ -29,7 +28,6 @@ impl Default for PhysicalFixed
     fn default() -> Self
     {
         Self{
-            position: false,
             rotation: false
         }
     }
@@ -152,10 +150,7 @@ impl Physical
             // self.acceleration = GRAVITY;
         }
 
-        if !self.fixed.position
-        {
-            transform.position += self.velocity * dt;
-        }
+        transform.position += self.velocity * dt;
 
         if !self.fixed.rotation
         {
