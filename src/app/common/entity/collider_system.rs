@@ -79,7 +79,7 @@ pub fn update(
         let other;
         colliding_info!{other, other_collider, other_entity};
 
-        this.collide(other, Some(&mut contacts));
+        this.collide(other, |contact| contacts.push(contact));
     };
 
     {

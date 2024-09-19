@@ -55,7 +55,7 @@ pub fn create_spawner(
                     scaling: Scaling::Ignore,
                     transform: Transform{
                         position: Vector3::new(0.5, 0.0, 0.0),
-                        scale: Vector2::new(1.0, 0.3).xyy(),
+                        scale: Vector2::new(1.0, 0.3).xyx(),
                         ..Default::default()
                     },
                     inherit_rotation: false,

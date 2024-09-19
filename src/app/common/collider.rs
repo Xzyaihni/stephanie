@@ -774,7 +774,7 @@ impl<'a> CollidingInfo<'a>
     pub fn collide_immutable(
         &self,
         other: &Self,
-        mut contacts: Option<&mut Vec<Contact>>
+        mut add_contact: impl FnMut(Contact)
     ) -> bool
     {
         if !self.collider.layer.collides(&other.collider.layer)
@@ -782,24 +782,21 @@ impl<'a> CollidingInfo<'a>
             return false;
         }
 
-        let ignore_contacts = contacts.is_none() || self.collider.ghost || other.collider.ghost;
+        let ignore_contacts = self.collider.ghost || other.collider.ghost;
 
         let add_contact = |contact: Contact|
         {
             if !ignore_contacts
             {
-                if let Some(ref mut contacts) = contacts
+                debug_assert!(!contact.penetration.is_nan());
+
+                if contact.point.magnitude() > 1000.0
                 {
-                    debug_assert!(!contact.penetration.is_nan());
-
-                    if contact.point.magnitude() > 1000.0
-                    {
-                        let remove_me = ();
-                        panic!("{self:?} {other:?} {contact:?}");
-                    }
-
-                    contacts.push(contact);
+                    let remove_me = ();
+                    panic!("{self:?} {other:?} {contact:?}");
                 }
+
+                add_contact(contact);
             }
         };
 
@@ -863,10 +860,10 @@ impl<'a> CollidingInfo<'a>
     pub fn collide(
         &mut self,
         other: CollidingInfo,
-        contacts: Option<&mut Vec<Contact>>
+        add_contact: impl FnMut(Contact)
     ) -> bool
     {
-        let collided = self.collide_immutable(&other, contacts);
+        let collided = self.collide_immutable(&other, add_contact);
 
         if collided
         {
@@ -895,7 +892,7 @@ impl<'a> CollidingInfo<'a>
             return false;
         }
 
-        let collided = world.tiles_inside(self, Some(contacts), |tile|
+        let collided = world.tiles_inside(self, |contact| contacts.push(contact), |tile|
         {
             let colliding_tile = tile.map(|x| world.tile_info(*x).colliding);
 

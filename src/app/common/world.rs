@@ -138,7 +138,7 @@ impl World
     pub fn tiles_inside<'a>(
         &'a self,
         collider: &'a CollidingInfo<'a>,
-        mut contacts: Option<&'a mut Vec<Contact>>,
+        mut add_contact: impl FnMut(Contact) + 'a,
         predicate: impl Fn(Option<&'a Tile>) -> bool + 'a + Copy
     ) -> impl Iterator<Item=TilePos> + 'a
     {
@@ -180,15 +180,6 @@ impl World
                 target_non_lazy: false
             }.into();
 
-            // what the fuck is this?
-            let contacts = if let Some(ref mut contacts) = contacts
-            {
-                Some(&mut **contacts)
-            } else
-            {
-                None
-            };
-
             let info = CollidingInfo{
                 entity: None,
                 transform: Transform{
@@ -199,7 +190,7 @@ impl World
                 collider: &mut world_collider
             };
 
-            collider.collide_immutable(&info, contacts)
+            collider.collide_immutable(&info, &mut add_contact)
         })
     }
 
