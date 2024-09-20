@@ -122,9 +122,7 @@
             (put-tile
                 this-chunk
                 (make-point 7 0)
-                ; (tile 'metal-door-wide)
-                (tile 'air)
-                ))
+                (tile 'metal-door-wide)))
         this-chunk))
 
 (define (generate-roof level)
