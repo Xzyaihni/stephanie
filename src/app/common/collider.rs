@@ -15,6 +15,7 @@ use crate::common::{
     some_or_value,
     define_layers,
     rotate_point,
+    rotate_point_z_3d,
     point_line_side,
     point_line_distance,
     rectangle_points,
@@ -30,13 +31,6 @@ use crate::common::{
 
 
 const DIMS: usize = 3;
-
-pub fn rotate_point_z_3d(p: Vector3<f32>, angle: f32) -> Vector3<f32>
-{
-    let (asin, acos) = angle.sin_cos();
-
-    Vector3::new(acos * p.x + asin * p.y, -asin * p.x + acos * p.y, p.z)
-}
 
 pub type WorldTileInfo = Directions3dGroup<bool>;
 
@@ -729,7 +723,7 @@ impl<'a> CollidingInfo<'a>
     {
         let circle_projected = rotate_point_z_3d(
             other.transform.position - self.transform.position,
-            self.transform.rotation
+            -self.transform.rotation
         );
 
         let closest_point_local = (self.transform.scale / 2.0).zip_map(&circle_projected, |a, b|
@@ -748,7 +742,7 @@ impl<'a> CollidingInfo<'a>
 
         let closest_point =  rotate_point_z_3d(
             closest_point_local,
-            -self.transform.rotation
+            self.transform.rotation
         ) + self.transform.position;
 
         let normal = -(other.transform.position - closest_point).try_normalize(0.0001)
@@ -900,5 +894,33 @@ impl<'a> CollidingInfo<'a>
         }).count();
 
         collided > 0
+    }
+}
+
+#[cfg(test)]
+mod tests
+{
+    use super::*;
+
+
+    #[test]
+    fn rotation_matrix()
+    {
+        for _ in 0..50
+        {
+            let p = Vector3::new(fastrand::f32(), fastrand::f32(), fastrand::f32());
+            let r = fastrand::f32() * 6.3;
+
+            let transform = Transform{
+                position: p,
+                rotation: r,
+                ..Default::default()
+            };
+
+            let m = TransformMatrix::from_transform(&transform, None);
+
+            println!("rotating {p:?} by {r}");
+            assert_eq!(m.rotation_matrix * p, rotate_point_z_3d(p, r));
+        }
     }
 }

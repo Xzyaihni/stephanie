@@ -7,6 +7,7 @@ use crate::common::{
     render_info::*,
     physics::*,
     lazy_transform::*,
+    Joint,
     EntityInfo,
     Parent,
     SpawnerTile,
@@ -35,14 +36,6 @@ pub fn create_spawner(
                 transform: Some(Transform{
                     position,
                     scale: Vector2::new(*width as f32 * TILE_SIZE, TILE_SIZE).xyy(),
-                    ..Default::default()
-                }),
-                render: Some(RenderInfo{
-                    object: Some(RenderObjectKind::Texture{
-                        name: "placeholder.png".to_owned()
-                    }.into()),
-                    shape: Some(BoundingShape::Circle),
-                    z_level: ZLevel::Door,
                     ..Default::default()
                 }),
                 saveable: Some(()),
@@ -82,6 +75,7 @@ pub fn create_spawner(
                 }.into()),
                 parent: Some(Parent::new(hinge, true)),
                 saveable: Some(()),
+                joint: Some(Joint::Hinge{origin: Vector3::new(-0.5, 0.0, 0.0)}),
                 ..Default::default()
             });
         }

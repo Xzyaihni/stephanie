@@ -455,9 +455,15 @@ pub fn cross_3d(a: Vector3<f32>, b: Vector3<f32>) -> Vector3<f32>
 
 pub fn rotate_point(p: Vector2<f32>, angle: f32) -> Vector2<f32>
 {
-    let (asin, acos) = angle.sin_cos();
+    let (asin, acos) = (-angle).sin_cos();
 
     Vector2::new(acos * p.x + asin * p.y, -asin * p.x + acos * p.y)
+}
+
+pub fn rotate_point_z_3d(p: Vector3<f32>, angle: f32) -> Vector3<f32>
+{
+    let r = rotate_point(p.xy(), angle);
+    Vector3::new(r.x, r.y, p.z)
 }
 
 pub fn rectangle_points(transform: &Transform) -> [Vector2<f32>; 4]
@@ -481,7 +487,7 @@ pub fn rectangle_points(transform: &Transform) -> [Vector2<f32>; 4]
         left_middle + y_shift
     ].map(|x|
     {
-        rotate_point(x - pos, -rotation) + pos
+        rotate_point(x - pos, rotation) + pos
     })
 }
 

@@ -61,6 +61,8 @@ use crate::{
 
 pub use crate::{iterate_components_with, for_each_component};
 
+pub use collider_system::PENETRATION_EPSILON;
+
 mod damaging_system;
 mod ui_system;
 mod collider_system;

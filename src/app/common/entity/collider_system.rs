@@ -25,6 +25,7 @@ use crate::{
 };
 
 use resolver::ContactResolver;
+pub use resolver::PENETRATION_EPSILON;
 
 mod resolver;
 
@@ -121,9 +122,14 @@ pub fn update(
         this.collide_with_world(world, &mut contacts);
     });
 
-    for_each_component!(entities, joint, |_entity, joint: &RefCell<Joint>|
+    for_each_component!(entities, joint, |entity, joint: &RefCell<Joint>|
     {
-        joint.borrow().add_contacts(&mut contacts);
+        let parent = entities.parent(entity).unwrap();
+        let transform = entities.transform(entity).unwrap();
+
+        let parent_position = entities.transform(parent.entity()).unwrap().position;
+
+        joint.borrow().add_contacts(&transform, entity, parent_position, &mut contacts);
     });
 
     if DEBUG_CONTACTS

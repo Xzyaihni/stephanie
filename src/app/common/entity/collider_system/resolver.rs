@@ -24,7 +24,7 @@ fn skew_symmetric(v: Vector3<f32>) -> Matrix3<f32>
     )
 }
 
-struct IterativeEpsilon
+pub struct IterativeEpsilon
 {
     pub sleep: f32,
     pub general: f32
@@ -33,7 +33,7 @@ struct IterativeEpsilon
 const ANGULAR_LIMIT: f32 = 0.2;
 const VELOCITY_LOW: f32 = 0.002;
 
-const PENETRATION_EPSILON: IterativeEpsilon = IterativeEpsilon{sleep: 0.005, general: 0.0005};
+pub const PENETRATION_EPSILON: IterativeEpsilon = IterativeEpsilon{sleep: 0.005, general: 0.0005};
 const VELOCITY_EPSILON: IterativeEpsilon = IterativeEpsilon{sleep: 0.005, general: 0.0005};
 
 struct Inertias
