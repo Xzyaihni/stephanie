@@ -203,7 +203,7 @@ impl YanyaApp for App
 
     fn update(&mut self, dt: f32)
     {
-        self.client.update(dt.min(0.1));
+        self.client.update(dt.min(1.0 / 20.0));
     }
 
     fn update_buffers(&mut self, partial_info: UpdateBuffersPartialInfo)

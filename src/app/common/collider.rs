@@ -730,6 +730,7 @@ impl<'a> CollidingInfo<'a>
             }
 
             let penetration = -distance;
+
             let mut point = self.transform.position;
             point.z -= half_height;
 
@@ -968,14 +969,15 @@ impl<'a> CollidingInfo<'a>
             return false;
         }
 
+        // !!!!!!!!!!!DONT REMOVE COUNT, IT NEEDS TO CONSUME THE WHOLE THING!!!!!!!!!!!
         let collided = world.tiles_inside(self, |contact| contacts.push(contact), |tile|
         {
             let colliding_tile = tile.map(|x| world.tile_info(*x).colliding);
 
             colliding_tile.unwrap_or(true)
-        }).count();
+        }).count() > 0;
 
-        collided > 0
+        collided
     }
 }
 
