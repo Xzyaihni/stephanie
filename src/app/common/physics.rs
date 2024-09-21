@@ -146,8 +146,7 @@ impl Physical
 
         if !self.floating
         {
-            let enable_gravity = ();
-            // self.acceleration = GRAVITY;
+            self.acceleration = GRAVITY;
         }
 
         transform.position += self.velocity * dt;

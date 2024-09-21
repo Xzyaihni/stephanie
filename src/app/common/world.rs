@@ -166,11 +166,6 @@ impl World
                 forward: check_tile(pos.offset(Pos3::new(0, 0, 1)))
             };
 
-            if world.fold(true, |acc, (_, b)| acc && b)
-            {
-                return false;
-            }
-
             let mut world_collider = ColliderInfo{
                 kind: ColliderType::Tile(world),
                 layer: ColliderLayer::World,

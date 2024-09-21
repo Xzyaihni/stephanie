@@ -1313,9 +1313,6 @@ impl<'a> PlayerContainer<'a>
             self.info.mouse_entity
         );
 
-        let remove_this = ();
-        // eprintln!("{:#?}", &self.game_state.entities().physical(self.info.entity).unwrap());
-
         if let Some(character) = self.game_state.entities().character(self.info.entity)
         {
             let delay = 0.7;
