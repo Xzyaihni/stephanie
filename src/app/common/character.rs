@@ -1360,7 +1360,7 @@ impl Character
             {
                 (
                     Some(ColliderInfo{
-                        kind: ColliderType::Rectangle,
+                        kind: ColliderType::Circle,
                         ghost: false,
                         ..Default::default()
                     }.into()),

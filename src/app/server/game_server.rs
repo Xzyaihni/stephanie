@@ -325,11 +325,8 @@ impl GameServer
     {
         let player_index = self.entities.player.len() + 1;
 
-        let half_tile = TILE_SIZE / 2.0;
-
         let transform = Transform{
             scale: Vector3::repeat(ENTITY_SCALE),
-            position: Vector3::new(0.0, 0.0, TILE_SIZE) + Vector3::repeat(half_tile),
             ..Default::default()
         };
 

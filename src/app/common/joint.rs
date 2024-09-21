@@ -63,20 +63,6 @@ impl Joint
             Self::Hinge{origin} => hinge_contact(transform, entity, base, origin)
         };
 
-        if let Self::Hinge{origin} = self
-        {
-            let origin_local = transform.scale.component_mul(origin);
-            let pos = rotate_point_z_3d(origin_local, transform.rotation) + transform.position;
-
-            contacts.push(Contact{
-                a: entity,
-                b: None,
-                point: pos,
-                penetration: -1.0,
-                normal: Vector3::y()
-            });
-        }
-
         contacts.extend(maybe_contact);
     }
 }

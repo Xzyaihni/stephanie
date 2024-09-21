@@ -1,5 +1,6 @@
 use std::{
     convert,
+    cmp::Ordering,
     num::FpCategory,
     ops::ControlFlow
 };
@@ -245,6 +246,14 @@ impl Collider
     }
 }
 
+fn limit_obb_local(scale: Vector3<f32>, local_point: Vector3<f32>) -> Vector3<f32>
+{
+    local_point.zip_map(&(scale / 2.0), |x, limit|
+    {
+        x.clamp(-limit, limit)
+    })
+}
+
 #[derive(Debug)]
 struct TransformMatrix<'a>
 {
@@ -313,28 +322,30 @@ impl<'b> TransformMatrix<'b>
         })
     }
 
+    fn into_obb_local(&self, point: Vector3<f32>) -> Vector3<f32>
+    {
+        self.rotation_matrix.transpose() * (point - self.transform.position)
+    }
+
+    fn from_obb_local(&self, point: Vector3<f32>) -> Vector3<f32>
+    {
+        (self.rotation_matrix * point) + self.transform.position
+    }
+
+    fn project_onto_obb(&self, point: Vector3<f32>) -> Vector3<f32>
+    {
+        let local_point = self.into_obb_local(point);
+
+        let limited = limit_obb_local(self.transform.scale, local_point);
+
+        self.from_obb_local(limited)
+    }
+
     fn distance_to_obb(&self) -> impl Fn(Vector3<f32>) -> (f32, Vector3<f32>) + '_
     {
         |point|
         {
-            let local_point = self.rotation_matrix.transpose() * (point - self.transform.position);
-
-            let limited = local_point.zip_map(&(self.transform.scale / 2.0), |mut x, limit|
-            {
-                if x > limit
-                {
-                    x = limit;
-                }
-
-                if x < -limit
-                {
-                    x = -limit;
-                }
-
-                x
-            });
-
-            let projected = (self.rotation_matrix * limited) + self.transform.position;
+            let projected = self.project_onto_obb(point);
 
             (point.metric_distance(&projected), point)
         }
@@ -602,6 +613,57 @@ impl<'a> CollidingInfo<'a>
         )
     }
 
+    fn rectangle_circle_inner(
+        &self,
+        other: &Self,
+        mut add_contact: impl FnMut(Contact),
+        axis_check: impl FnOnce(Vector3<f32>) -> bool
+    ) -> bool
+    {
+        let circle_pos = other.transform.position;
+        let radius = other.transform.scale.max() / 2.0;
+
+        let this = self.transform_matrix();
+        let local_point = this.into_obb_local(circle_pos);
+
+        let limited = limit_obb_local(self.transform.scale, local_point);
+
+        let diff = local_point - limited;
+        let distance = diff.magnitude();
+
+        if distance >= radius
+        {
+            return false;
+        }
+
+        let projected = this.from_obb_local(limited);
+
+        let normal = (projected - circle_pos).try_normalize(0.0001)
+            .unwrap_or_else(||
+            {
+                let axis_i = limited.abs().imax();
+                let mut normal = Vector3::zeros();
+                *normal.index_mut(axis_i) = limited.index(axis_i).signum();
+
+                this.rotation_matrix * normal
+            });
+
+        if !axis_check(normal)
+        {
+            return false;
+        }
+
+        add_contact(ContactRaw{
+            a: self.entity,
+            b: other.entity,
+            point: projected,
+            penetration: radius - distance,
+            normal
+        }.into());
+
+        true
+    }
+
     fn rectangle_rectangle(
         &self,
         other: &Self,
@@ -622,14 +684,40 @@ impl<'a> CollidingInfo<'a>
         other.point_rectangle(self, add_contact)
     }
 
+    fn allowed_axis(world: &WorldTileInfo, axis: Vector3<f32>) -> bool
+    {
+        (0..2).all(|axis_i|
+        {
+            let (low, high) = world.get_axis_index(axis_i);
+
+            let amount = *axis.index(axis_i);
+
+            let is_blocked = if amount.classify() == FpCategory::Zero
+            {
+                false
+            } else if amount < 0.0
+            {
+                *low
+            } else
+            {
+                *high
+            };
+
+            !is_blocked
+        })
+    }
+
     fn tile_circle(
         &self,
         other: &Self,
         world: &WorldTileInfo,
-        mut add_contact: impl FnMut(Contact)
+        add_contact: impl FnMut(Contact)
     ) -> bool
     {
-        false
+        self.rectangle_circle_inner(other, add_contact, |axis|
+        {
+            Self::allowed_axis(world, -axis)
+        })
     }
 
     fn world_handler(
@@ -663,22 +751,7 @@ impl<'a> CollidingInfo<'a>
             add_contact,
             Self::world_handler(|_axis, _i|
             {
-                (0..2).any(|axis_i|
-                {
-                    let (low, high) = world.get_axis_index(axis_i);
-
-                    let amount = *diff.index(axis_i);
-
-                    let is_blocked = if amount < 0.0
-                    {
-                        low
-                    } else
-                    {
-                        high
-                    };
-
-                    *is_blocked
-                })
+                !Self::allowed_axis(world, diff)
             }),
             Self::world_handler(|axis, i|
             {
@@ -718,51 +791,10 @@ impl<'a> CollidingInfo<'a>
     fn rectangle_circle(
         &self,
         other: &Self,
-        mut add_contact: impl FnMut(Contact)
+        add_contact: impl FnMut(Contact)
     ) -> bool
     {
-        let circle_projected = rotate_point_z_3d(
-            other.transform.position - self.transform.position,
-            -self.transform.rotation
-        );
-
-        let closest_point_local = (self.transform.scale / 2.0).zip_map(&circle_projected, |a, b|
-        {
-            b.clamp(-a, a)
-        });
-
-        let diff = circle_projected - closest_point_local;
-        let squared_distance = diff.x.powi(2) + diff.y.powi(2);
-
-        let radius = other.transform.scale.max() / 2.0;
-        if squared_distance > radius.powi(2)
-        {
-            return false;
-        }
-
-        let closest_point =  rotate_point_z_3d(
-            closest_point_local,
-            self.transform.rotation
-        ) + self.transform.position;
-
-        let normal = -(other.transform.position - closest_point).try_normalize(0.0001)
-            .unwrap_or_else(||
-            {
-                -(self.transform.position - closest_point).try_normalize(0.0001).unwrap_or_else(||
-                {
-                    Vector3::new(1.0, 0.0, 0.0)
-                })
-            });
-
-        add_contact(Contact{
-            a: self.entity.unwrap(),
-            b: other.entity,
-            point: closest_point,
-            penetration: radius - squared_distance.sqrt(),
-            normal
-        });
-
-        true
+        self.rectangle_circle_inner(other, add_contact, |_| true)
     }
 
     pub fn collide_immutable(

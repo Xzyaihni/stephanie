@@ -915,10 +915,12 @@ impl<'a> PlayerContainer<'a>
 
     pub fn on_player_connected(&mut self)
     {
+        let mut player_transform = self.game_state.entities().transform_mut(self.info.entity).unwrap();
         let mut position = Vector3::repeat(CHUNK_VISUAL_SIZE / 2.0);
-        position.z = -TILE_SIZE;
+        position.z = -TILE_SIZE + (player_transform.scale.z / 2.0);
 
-        self.game_state.entities().transform_mut(self.info.entity).unwrap().position = position;
+        player_transform.position = position;
+        drop(player_transform);
 
         let current_tile = self.game_state.tile_of(position.into());
 
