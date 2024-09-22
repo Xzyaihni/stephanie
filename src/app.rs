@@ -203,7 +203,9 @@ impl YanyaApp for App
 
     fn update(&mut self, dt: f32)
     {
-        self.client.update(dt.min(1.0 / 20.0));
+        let max_dt = 1.0 / 20.0;
+
+        self.client.update(dt.min(max_dt));
     }
 
     fn update_buffers(&mut self, partial_info: UpdateBuffersPartialInfo)

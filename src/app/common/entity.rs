@@ -1156,10 +1156,7 @@ macro_rules! define_entities_both
                             .map(|component|
                             {
                                 format!("{component:#?}")
-                            }).unwrap_or_else(||
-                            {
-                                format!("entity doesnt have {name} component")
-                            });
+                            })?;
 
                         Some(info)
                     },)+

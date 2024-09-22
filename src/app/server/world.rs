@@ -399,8 +399,8 @@ impl World
     {
         self.create_spawners(container, chunk_pos, chunk);
 
-        let spawns = 0; let uncomment = (); //fastrand::usize(0..3);
-        let crates = 0; let uncomment = (); //fastrand::usize(0..2);
+        let spawns = 0; let remove_me = ();// fastrand::usize(0..3);
+        let crates = fastrand::usize(0..2);
 
         let entities = Self::add_on_ground(chunk_pos, chunk, spawns, |pos|
         {

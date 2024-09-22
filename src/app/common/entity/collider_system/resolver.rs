@@ -657,31 +657,74 @@ impl ContactResolver
         mut updater: impl FnMut(&ClientEntities, &mut AnalyzedContact, Moves, Vector3<f32>)
     )
     {
+        fn contact_selector<'a, 'b>(
+            compare: &'b impl Fn(&AnalyzedContact) -> f32,
+            epsilon: &'b IterativeEpsilon
+        ) -> impl FnMut(&'a mut AnalyzedContact) -> Option<(f32, &'a mut AnalyzedContact)> + 'b
+        {
+            move |contact|
+            {
+                let change = compare(contact);
+
+                (change > epsilon.general).then(move ||
+                {
+                    (change, contact)
+                })
+            }
+        }
+
+        fn contact_handler<Moves: IteratedMoves + Copy>(
+            entities: &ClientEntities,
+            epsilon: &IterativeEpsilon,
+            mut resolver: impl FnMut(&ClientEntities, &mut AnalyzedContact) -> Option<(Moves, Option<Moves>)>,
+            info: (f32, &mut AnalyzedContact)
+        ) -> Option<((Moves, Option<Moves>), (Entity, Option<Entity>))>
+        {
+            let (change, contact) = info;
+            if change > epsilon.sleep
+            {
+                contact.contact.awaken(entities);
+            }
+
+            resolver(entities, contact).map(|moves|
+            {
+                let bodies = (contact.contact.a, contact.contact.b);
+
+                debug_assert!(moves.1.is_some() == contact.contact.b.is_some());
+
+                (moves, bodies)
+            })
+        }
+
+        for i in 0..contacts.len()
+        {
+            if let Some(info) = contact_selector(&compare, &epsilon)(&mut contacts[i])
+            {
+                if let Some((moves, bodies)) = contact_handler(entities, &epsilon, &mut resolver, info)
+                {
+                    ContactResolver::update_iterated::<Moves>(
+                        entities,
+                        contacts,
+                        moves,
+                        bodies,
+                        &mut updater
+                    );
+                }
+            }
+        }
+
         for _ in 0..iterations
         {
-            if let Some((change, contact)) = contacts.iter_mut().map(|contact|
-            {
-                (compare(contact), contact)
-            }).max_by(|(a, _), (b, _)|
-            {
-                a.partial_cmp(b).unwrap_or(Ordering::Less)
-            }).filter(|(change, _contact)|
-            {
-                *change > epsilon.general
-            })
-            {
-                if change > epsilon.sleep
+            if let Some(info) = contacts.iter_mut()
+                .filter_map(contact_selector(&compare, &epsilon))
+                .max_by(|(a, _), (b, _)|
                 {
-                    contact.contact.awaken(entities);
-                }
-
-                if let Some(moves) = resolver(entities, contact)
+                    a.partial_cmp(b).unwrap_or(Ordering::Less)
+                })
+            {
+                if let Some((moves, bodies)) = contact_handler(entities, &epsilon, &mut resolver, info)
                 {
-                    let bodies = (contact.contact.a, contact.contact.b);
-
-                    debug_assert!(moves.1.is_some() == contact.contact.b.is_some());
-
-                    Self::update_iterated::<Moves>(
+                    ContactResolver::update_iterated::<Moves>(
                         entities,
                         contacts,
                         moves,
@@ -707,7 +750,7 @@ impl ContactResolver
             contact.analyze(entities, dt)
         }).collect();
 
-        let iterations = analyzed_contacts.len() * 2;
+        let iterations = analyzed_contacts.len();
         Self::resolve_iterative(
             entities,
             &mut analyzed_contacts,
