@@ -78,40 +78,6 @@ impl Game
                 ..Default::default()
             });
 
-            let remove_this = ();
-            /*use crate::common::PhysicalProperties;
-            entities.push(true, EntityInfo{
-                lazy_transform: Some(LazyTransformInfo{
-                    transform: Transform{
-                        position: Vector3::new(0.0, 0.0, -0.2),
-                        scale: Vector3::repeat(0.1),
-                        ..Default::default()
-                    },
-                    ..Default::default()
-                }.into()),
-                collider: Some(ColliderInfo{
-                    kind: ColliderType::Rectangle,
-                    layer: ColliderLayer::Normal,
-                    target_non_lazy: true,
-                    ..Default::default()
-                }.into()),
-                render: Some(RenderInfo{
-                    object: Some(RenderObjectKind::Texture{
-                        name: "placeholder.png".to_owned()
-                    }.into()),
-                    z_level: ZLevel::UiHigh,
-                    ..Default::default()
-                }),
-                physical: Some(PhysicalProperties{
-                    inverse_mass: 0.0,
-                    can_sleep: false,
-                    floating: true,
-                    ..Default::default()
-                }.into()),
-                parent: Some(Parent::new(mouse_entity, true)),
-                ..Default::default()
-            });*/
-
             let console_entity = entities.push_eager(true, EntityInfo{
                 lazy_transform: Some(LazyTransformInfo{
                     scaling: Scaling::Ignore,

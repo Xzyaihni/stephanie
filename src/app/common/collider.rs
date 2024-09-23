@@ -824,7 +824,7 @@ impl<'a> CollidingInfo<'a>
     fn point_circle(
         &self,
         other: &Self,
-        mut add_contact: impl FnMut(Contact)
+        _add_contact: impl FnMut(Contact)
     ) -> bool
     {
         false
@@ -833,7 +833,7 @@ impl<'a> CollidingInfo<'a>
     fn point_rectangle(
         &self,
         other: &Self,
-        mut add_contact: impl FnMut(Contact)
+        _add_contact: impl FnMut(Contact)
     ) -> bool
     {
         false
