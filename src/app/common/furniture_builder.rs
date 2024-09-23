@@ -61,7 +61,7 @@ impl<'a> FurnitureBuilder<'a>
                 ..Default::default()
             }.into()),
             physical: Some(PhysicalProperties{
-                inverse_mass: 200.0_f32.recip(),
+                inverse_mass: 100.0_f32.recip(),
                 ..Default::default()
             }.into()),
             inventory: Some(inventory),

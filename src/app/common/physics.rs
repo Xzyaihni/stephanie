@@ -10,7 +10,7 @@ use crate::common::{
 };
 
 
-pub const GRAVITY: Vector3<f32> = Vector3::new(0.0, 0.0, -9.81 * ENTITY_SCALE * 0.05);
+pub const GRAVITY: Vector3<f32> = Vector3::new(0.0, 0.0, -9.81 * ENTITY_SCALE * 0.2);
 pub const MAX_VELOCITY: f32 = 10.0;
 const SLEEP_THRESHOLD: f32 = 0.03;
 const MOVEMENT_BIAS: f32 = 0.8;

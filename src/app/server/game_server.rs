@@ -354,12 +354,7 @@ impl GameServer
                 aspect: Aspect::KeepMax,
                 ..Default::default()
             }),
-            collider: Some(ColliderInfo{
-                kind: ColliderType::Circle,
-                ..Default::default()
-            }.into()),
             inventory: Some(Inventory::new()),
-            physical: None,
             character: Some(Character::new(self.player_character, Faction::Player)),
             anatomy: Some(anatomy),
             ..Default::default()

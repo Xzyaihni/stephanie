@@ -866,12 +866,7 @@ impl<'a> CollidingInfo<'a>
             if !ignore_contacts
             {
                 debug_assert!(!contact.penetration.is_nan());
-
-                if contact.point.magnitude() > 1000.0
-                {
-                    let remove_me = ();
-                    panic!("{self:?} {other:?} {contact:?}");
-                }
+                debug_assert!(!contact.normal.x.is_nan());
 
                 add_contact(contact);
             }

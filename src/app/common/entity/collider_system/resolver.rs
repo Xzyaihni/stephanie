@@ -24,6 +24,23 @@ fn skew_symmetric(v: Vector3<f32>) -> Matrix3<f32>
     )
 }
 
+fn basis_from(a: Vector3<f32>, mut b: Vector3<f32>) -> Matrix3<f32>
+{
+    let c = cross_3d(a, b);
+    let c_magnitude = c.magnitude();
+
+    debug_assert!(c_magnitude > 0.0, "a and b must not be parallel, a: {a:?}, b: {b:?}");
+
+    let c = c / c_magnitude;
+    b = cross_3d(c, a).normalize();
+
+    Matrix3::new(
+        a.x, b.x, c.x,
+        a.y, b.y, c.y,
+        a.z, b.z, c.z
+    )
+}
+
 pub struct IterativeEpsilon
 {
     pub sleep: f32,
@@ -296,10 +313,12 @@ impl AnalyzedContact
         let angular_change = impulse_torque * self.get_inverse_inertia(which);
         let velocity_change = impulse * physical.inverse_mass;
 
-        let remove_this = ();
-        if angular_change != 0.0 && physical.fixed.rotation
+        if physical.fixed.rotation
         {
-            panic!("angular_change: {angular_change}, impulse_torque: {impulse_torque}");
+            debug_assert!(
+                angular_change == 0.0,
+                "angular_change: {angular_change}, impulse_torque: {impulse_torque}"
+            );
         }
 
         physical.add_velocity_raw(velocity_change);
@@ -393,14 +412,13 @@ impl Contact
 {
     pub fn to_world_matrix(&self) -> Matrix3<f32>
     {
-        let cosa = self.normal.x;
-        let msina = self.normal.y;
-
-        Matrix3::new(
-            cosa, -msina, 0.0,
-            msina, cosa, 0.0,
-            0.0, 0.0, 1.0
-        )
+        if self.normal.x.abs() > self.normal.y.abs()
+        {
+            basis_from(self.normal, Vector3::new(0.0, 1.0, 0.0))
+        } else
+        {
+            basis_from(self.normal, Vector3::new(1.0, 0.0, 0.0))
+        }
     }
 
     fn direction_apply_inertia(
