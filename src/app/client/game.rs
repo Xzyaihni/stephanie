@@ -57,7 +57,6 @@ impl Game
             let mut game_state = game_state.borrow_mut();
             let player = game_state.player();
 
-            let replace_kind_with_rayz = ();
             let entities = game_state.entities_mut();
             let mouse_entity = entities.push_eager(true, EntityInfo{
                 transform: Some(Transform{
@@ -65,29 +64,11 @@ impl Game
                     ..Default::default()
                 }),
                 collider: Some(ColliderInfo{
-                    kind: ColliderType::Circle,
+                    kind: ColliderType::RayZ,
                     layer: ColliderLayer::Mouse,
                     ghost: true,
                     ..Default::default()
                 }.into()),
-                ..Default::default()
-            });
-
-            let remove_me = ();
-            let test_entity = entities.push_eager(true, EntityInfo{
-                transform: Some(Transform{
-                    scale: Vector3::new(TILE_SIZE * fastrand::f32(), TILE_SIZE * fastrand::f32(), TILE_SIZE),
-                    position: Vector3::new(-TILE_SIZE * 5.0, 0.0, TILE_SIZE + ((TILE_SIZE * 1.5) / 2.0)),
-                    ..Default::default()
-                }),
-                render: Some(RenderInfo{
-                    object: Some(RenderObjectKind::Texture{
-                        name: "placeholder.png".to_owned()
-                    }.into()),
-                    shape: Some(BoundingShape::Circle),
-                    z_level: ZLevel::Hips,
-                    ..Default::default()
-                }),
                 ..Default::default()
             });
 
@@ -113,8 +94,7 @@ impl Game
                 camera: game_state.entities.camera_entity,
                 entity: player,
                 mouse_entity,
-                console_entity,
-                test_entity
+                console_entity
             })
         };
 
@@ -825,15 +805,13 @@ struct PlayerCreateInfo
     pub camera: Entity,
     pub entity: Entity,
     pub mouse_entity: Entity,
-    pub console_entity: Entity,
-    pub test_entity: Entity
+    pub console_entity: Entity
 }
 
 struct PlayerInfo
 {
     camera: Entity,
     entity: Entity,
-    test_entity: Entity,
     mouse_entity: Entity,
     other_entity: Option<Entity>,
     console_entity: Entity,
@@ -854,7 +832,6 @@ impl PlayerInfo
         Self{
             camera: info.camera,
             entity: info.entity,
-            test_entity: info.test_entity,
             mouse_entity: info.mouse_entity,
             other_entity: None,
             console_entity: info.console_entity,
@@ -1019,55 +996,12 @@ impl<'a> PlayerContainer<'a>
             },
             Control::Poke =>
             {
-                let mut t = self.game_state.entities().transform_mut(self.info.test_entity).unwrap();
-                t.rotation += 0.1;
-
                 self.character_action(CharacterAction::Poke);
             },
             Control::Shoot =>
             {
                 let mut target = some_or_return!(self.mouse_position());
                 target.z = some_or_return!(self.player_position()).z;
-
-                let t = self.game_state.entities().transform(self.info.test_entity).unwrap();
-                let direction = Unit::new_normalize(target - self.player_position().unwrap());
-                if let Some(result) = crate::common::raycast::raycast_rectangle(
-                    &self.player_position().unwrap(),
-                    &direction,
-                    &t
-                )
-                {
-                    eprintln!("got a hit: {result:?}");
-
-                    let (first, second) = result.hit_points(self.player_position().unwrap(), direction);
-
-                    let spawn_point = |position|
-                    {
-                        use crate::common::{EntityInfo, render_info::*, watcher::*, AnyEntities};
-                        self.game_state.entities().push(true, EntityInfo{
-                            transform: Some(Transform{
-                                position,
-                                scale: Vector3::repeat(0.02),
-                                ..Default::default()
-                            }),
-                            render: Some(RenderInfo{
-                                object: Some(RenderObjectKind::Texture{
-                                    name: "circle.png".to_owned()
-                                }.into()),
-                                z_level: ZLevel::UiHigh,
-                                ..Default::default()
-                            }),
-                            watchers: Some(Watchers::simple_disappearing(1.0)),
-                            ..Default::default()
-                        });
-                    };
-
-                    spawn_point(first);
-                    if let Some(second) = second
-                    {
-                        spawn_point(second);
-                    }
-                }
 
                 self.character_action(CharacterAction::Ranged(target));
             },
