@@ -5,7 +5,7 @@ use std::{
 
 use serde::{Serialize, Deserialize};
 
-use nalgebra::{Matrix3, Vector2, Vector3};
+use nalgebra::{Unit, Matrix3, Vector2, Vector3};
 
 use yanyaengine::Transform;
 
@@ -15,6 +15,7 @@ use crate::common::{
     rectangle_points,
     Entity,
     Physical,
+    raycast::raycast_circle,
     world::{
         Directions3dGroup,
         World
@@ -68,7 +69,7 @@ impl From<ContactRaw> for Contact
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ColliderType
 {
-    Point,
+    RayZ,
     Tile(WorldTileInfo),
     Circle,
     Aabb,
@@ -91,13 +92,13 @@ impl ColliderType
 
         match self
         {
-            Self::Point => 0.0,
-            Self::Tile(_) => 0.0,
+            Self::RayZ
+            | Self::Aabb
+            | Self::Tile(_) => 0.0,
             Self::Circle =>
             {
                 (2.0/5.0) * physical.inverse_mass.recip() * transform.scale.max().powi(2)
             },
-            Self::Aabb => 0.0,
             Self::Rectangle =>
             {
                 let w = transform.scale.x;
@@ -530,7 +531,7 @@ impl<'a> CollidingInfo<'a>
     {
         match self.collider.kind
         {
-            ColliderType::Point =>
+            ColliderType::RayZ =>
             {
                 let mut scale = Vector3::zeros();
                 scale.z = self.transform.scale.z / 2.0;
@@ -662,15 +663,15 @@ impl<'a> CollidingInfo<'a>
         self.rectangle_rectangle_inner(other, add_contact)
     }
 
-    fn tile_point(
+    fn tile_rayz(
         &self,
         other: &Self,
         _world: &WorldTileInfo,
         add_contact: impl FnMut(Contact)
     ) -> bool
     {
-        // if i want proper contacts with point vs world then i have to rewrite this
-        other.point_rectangle(self, add_contact)
+        // if i want proper contacts with ray vs world then i have to rewrite this
+        other.rayz_rectangle(self, add_contact)
     }
 
     fn allowed_axis(world: &WorldTileInfo, axis: Vector3<f32>) -> bool
@@ -810,16 +811,28 @@ impl<'a> CollidingInfo<'a>
         )
     }
 
-    fn point_circle(
+    fn rayz_circle(
         &self,
         other: &Self,
         _add_contact: impl FnMut(Contact)
     ) -> bool
     {
-        false
+        let half_z = self.transform.scale.z / 2.0;
+        let mut start = self.transform.position;
+        start.z -= half_z;
+
+        let direction = Unit::new_unchecked(Vector3::z());
+
+        if let Some(result) = raycast_circle(&start, &direction, &other.transform)
+        {
+            result.distance <= half_z
+        } else
+        {
+            false
+        }
     }
 
-    fn point_rectangle(
+    fn rayz_rectangle(
         &self,
         other: &Self,
         _add_contact: impl FnMut(Contact)
@@ -895,17 +908,17 @@ impl<'a> CollidingInfo<'a>
         }
 
         define_collisions!{
-            ignored(ColliderType::Point, ColliderType::Point),
+            ignored(ColliderType::RayZ, ColliderType::RayZ),
             ignored(ColliderType::Tile(_), ColliderType::Tile(_)),
 
-            with_world(Point, tile_point),
+            with_world(RayZ, tile_rayz),
             with_world(Circle, tile_circle),
             with_world(Aabb, tile_rectangle),
             with_world(Rectangle, tile_rectangle),
 
-            (Point, Circle, point_circle),
-            (Point, Aabb, point_rectangle),
-            (Point, Rectangle, point_rectangle),
+            (RayZ, Circle, rayz_circle),
+            (RayZ, Aabb, rayz_rectangle),
+            (RayZ, Rectangle, rayz_rectangle),
 
             (Aabb, Aabb, rectangle_rectangle),
             (Aabb, Circle, rectangle_circle),

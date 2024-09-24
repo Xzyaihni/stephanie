@@ -5,8 +5,6 @@ use std::{
 
 use nalgebra::{Unit, Vector3};
 
-use yanyaengine::Transform;
-
 use crate::common::{
     collider::*,
     raycast::*,
@@ -16,44 +14,6 @@ use crate::common::{
     }
 };
 
-
-fn raycast_entity(
-    start: &Vector3<f32>,
-    direction: &Unit<Vector3<f32>>,
-    transform: &Transform
-) -> Option<RaycastResult>
-{
-    let radius = transform.max_scale() / 2.0;
-
-    let position = transform.position;
-
-    let offset = start - position;
-
-    let left = direction.dot(&offset).powi(2);
-    let right = offset.magnitude_squared() - radius.powi(2);
-
-    // math ppl keep making fake letters
-    let nabla = left - right;
-
-    if nabla < 0.0
-    {
-        None
-    } else
-    {
-        let sqrt_nabla = nabla.sqrt();
-        let left = -(direction.dot(&offset));
-
-        let first = left - sqrt_nabla;
-        let second = left + sqrt_nabla;
-
-        let close = first.min(second);
-        let far = first.max(second);
-
-        let pierce = far - close;
-
-        Some(RaycastResult{distance: close, pierce})
-    }
-}
 
 pub fn raycast(
     entities: &ClientEntities,
@@ -94,7 +54,7 @@ pub fn raycast(
         })
         .filter_map(|(entity, transform)|
         {
-            raycast_entity(start, &direction, &transform).and_then(|hit|
+            raycast_circle(start, &direction, &transform).and_then(|hit|
             {
                 let backwards = (hit.distance + hit.pierce) < 0.0;
                 let past_end = (hit.distance > max_distance) && !info.ignore_end;

@@ -70,7 +70,7 @@ impl Game
                     ..Default::default()
                 }),
                 collider: Some(ColliderInfo{
-                    kind: ColliderType::Point,
+                    kind: ColliderType::RayZ,
                     layer: ColliderLayer::Mouse,
                     ghost: true,
                     ..Default::default()
