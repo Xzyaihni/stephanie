@@ -627,7 +627,7 @@ macro_rules! impl_common_systems
                         |physical, transform|
                         {
                             self.collider(entity)
-                                .map(|collider| collider.inverse_inertia(physical, transform))
+                                .map(|collider| collider.inverse_inertia(physical, transform.clone()))
                                 .unwrap_or_default()
                         },
                         dt

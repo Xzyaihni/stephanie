@@ -50,6 +50,11 @@ pub fn update(
                     transform.rotation = 0.0;
                 }
 
+                if let Some(scale) = collider.scale
+                {
+                    transform.scale = scale;
+                }
+
                 $result_variable = CollidingInfo{
                     entity: Some($entity),
                     transform,

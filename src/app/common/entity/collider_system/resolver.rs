@@ -562,7 +562,7 @@ impl Contact
     {
         entities.collider(entity).unwrap().inverse_inertia(
             &entities.physical(entity).unwrap(),
-            &entities.transform(entity).unwrap()
+            entities.transform(entity).unwrap().clone()
         )
     }
 

@@ -208,10 +208,15 @@ impl Collider
     pub fn inverse_inertia(
         &self,
         physical: &Physical,
-        transform: &Transform
+        mut transform: Transform
     ) -> f32
     {
-        self.kind.inverse_inertia(physical, transform)
+        if let Some(scale) = self.scale
+        {
+            transform.scale = scale;
+        }
+
+        self.kind.inverse_inertia(physical, &transform)
     }
 
     pub fn collided(&self) -> &[Entity]
@@ -531,14 +536,8 @@ impl<'a> CollidingInfo<'a>
     {
         match self.collider.kind
         {
-            ColliderType::RayZ =>
-            {
-                let mut scale = Vector3::zeros();
-                scale.z = self.transform.scale.z / 2.0;
-
-                scale
-            },
-            ColliderType::Tile(_) =>
+            ColliderType::RayZ
+            | ColliderType::Tile(_) =>
             {
                 unreachable!()
             },

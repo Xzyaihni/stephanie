@@ -1373,11 +1373,13 @@ impl Character
             },
             SpriteState::Crawling =>
             {
+                let this_scale = target.scale;
+
                 (
                     Some(ColliderInfo{
                         kind: ColliderType::Circle,
                         ghost: false,
-                        scale: Some(Vector3::repeat(0.4)),
+                        scale: Some(this_scale * 0.4),
                         ..Default::default()
                     }.into()),
                     Some(self.this_physical(combined_info, entity).into()),
