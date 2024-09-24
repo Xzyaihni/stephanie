@@ -1,30 +1,21 @@
 use std::{
-    convert,
-    cmp::Ordering,
     num::FpCategory,
     ops::ControlFlow
 };
 
 use serde::{Serialize, Deserialize};
 
-use nalgebra::{Matrix3, MatrixView3x1, Vector2, Vector3};
+use nalgebra::{Matrix3, Vector2, Vector3};
 
 use yanyaengine::Transform;
 
 use crate::common::{
-    some_or_return,
     some_or_value,
     define_layers,
-    rotate_point,
-    rotate_point_z_3d,
-    point_line_side,
-    point_line_distance,
     rectangle_points,
-    Axis,
     Entity,
     Physical,
     world::{
-        TILE_SIZE,
         Directions3dGroup,
         World
     }
@@ -171,9 +162,7 @@ pub struct ColliderInfo
     pub kind: ColliderType,
     pub layer: ColliderLayer,
     pub ghost: bool,
-    pub scale: Option<Vector3<f32>>,
-    pub move_z: bool,
-    pub target_non_lazy: bool
+    pub scale: Option<Vector3<f32>>
 }
 
 impl Default for ColliderInfo
@@ -184,9 +173,7 @@ impl Default for ColliderInfo
             kind: ColliderType::Circle,
             layer: ColliderLayer::Normal,
             ghost: false,
-            scale: None,
-            move_z: true,
-            target_non_lazy: false
+            scale: None
         }
     }
 }
@@ -198,8 +185,6 @@ pub struct Collider
     pub layer: ColliderLayer,
     pub ghost: bool,
     pub scale: Option<Vector3<f32>>,
-    pub move_z: bool,
-    pub target_non_lazy: bool,
     collided: Vec<Entity>
 }
 
@@ -212,8 +197,6 @@ impl From<ColliderInfo> for Collider
             layer: info.layer,
             ghost: info.ghost,
             scale: info.scale,
-            move_z: info.move_z,
-            target_non_lazy: info.target_non_lazy,
             collided: Vec::new()
         }
     }
@@ -581,7 +564,13 @@ impl<'a> CollidingInfo<'a>
             return false;
         }
 
-        let normal = diff / distance;
+        let normal = if distance.classify() == FpCategory::Zero
+        {
+            Vector3::x()
+        } else
+        {
+            diff / distance
+        };
 
         add_contact(Contact{
             a: self.entity.unwrap(),

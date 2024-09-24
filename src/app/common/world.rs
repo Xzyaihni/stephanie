@@ -170,9 +170,7 @@ impl World
                 kind: ColliderType::Tile(world),
                 layer: ColliderLayer::World,
                 ghost: false,
-                scale: None,
-                move_z: false,
-                target_non_lazy: false
+                scale: None
             }.into();
 
             let info = CollidingInfo{

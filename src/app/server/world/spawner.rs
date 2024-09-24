@@ -65,12 +65,12 @@ pub fn create_spawner(
                 collider: Some(ColliderInfo{
                     kind: ColliderType::Rectangle,
                     layer: ColliderLayer::Door,
-                    target_non_lazy: true,
                     ..Default::default()
                 }.into()),
                 physical: Some(PhysicalProperties{
                     inverse_mass: (40.0 * *width as f32).recip(),
                     floating: true,
+                    target_non_lazy: true,
                     ..Default::default()
                 }.into()),
                 parent: Some(Parent::new(hinge, true)),

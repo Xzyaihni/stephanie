@@ -20,6 +20,7 @@ use crate::{
         lazy_transform::*,
         watcher::*,
         collider::*,
+        physics::*,
         EaseOut,
         LazyMix,
         AnyEntities,
@@ -522,6 +523,15 @@ impl UiWindow
                     kind: UiElementType::Panel,
                     ..Default::default()
                 }),
+                physical: Some(PhysicalProperties{
+                    floating: true,
+                    fixed: PhysicalFixed{
+                        rotation: true
+                    },
+                    move_z: false,
+                    target_non_lazy: true,
+                    ..Default::default()
+                }.into()),
                 parent: Some(Parent::new(anchor, false)),
                 watchers: Some(Default::default()),
                 ..Default::default()
@@ -673,8 +683,6 @@ impl UiWindow
         entities.set_collider(inventory, Some(ColliderInfo{
             kind: ColliderType::Aabb,
             layer: ColliderLayer::Ui,
-            move_z: false,
-            target_non_lazy: true,
             ..Default::default()
         }.into()));
 

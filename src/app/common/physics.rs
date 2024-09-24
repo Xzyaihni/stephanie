@@ -44,7 +44,9 @@ pub struct PhysicalProperties
     pub dynamic_friction: f32,
     pub can_sleep: bool,
     pub floating: bool,
-    pub fixed: PhysicalFixed
+    pub fixed: PhysicalFixed,
+    pub target_non_lazy: bool,
+    pub move_z: bool
 }
 
 impl Default for PhysicalProperties
@@ -60,7 +62,9 @@ impl Default for PhysicalProperties
             angular_damping: 0.9,
             can_sleep: true,
             floating: false,
-            fixed: PhysicalFixed::default()
+            fixed: PhysicalFixed::default(),
+            target_non_lazy: false,
+            move_z: true
         }
     }
 }
@@ -74,6 +78,8 @@ pub struct Physical
     pub dynamic_friction: f32,
     pub floating: bool,
     pub fixed: PhysicalFixed,
+    pub target_non_lazy: bool,
+    pub move_z: bool,
     can_sleep: bool,
     sleeping: bool,
     sleep_movement: f32,
@@ -99,6 +105,8 @@ impl From<PhysicalProperties> for Physical
             dynamic_friction: props.dynamic_friction,
             floating: props.floating,
             fixed: props.fixed,
+            target_non_lazy: props.target_non_lazy,
+            move_z: props.move_z,
             can_sleep: props.can_sleep,
             sleeping: false,
             sleep_movement: SLEEP_MOVEMENT_MAX,
@@ -128,7 +136,9 @@ impl Physical
             dynamic_friction: self.dynamic_friction,
             can_sleep: self.can_sleep,
             floating: self.floating,
-            fixed: self.fixed
+            fixed: self.fixed,
+            target_non_lazy: self.target_non_lazy,
+            move_z: self.move_z
         }
     }
 

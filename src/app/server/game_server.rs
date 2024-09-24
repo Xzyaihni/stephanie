@@ -31,7 +31,6 @@ use crate::common::{
     receiver_loop,
     ENTITY_SCALE,
     render_info::*,
-    collider::*,
     MessageSerError,
     MessageDeError,
     AnyEntities,
@@ -53,7 +52,6 @@ use crate::common::{
     EntitiesController,
     MessagePasser,
     ConnectionId,
-    world::chunk::TILE_SIZE,
     message::{
         Message,
         MessageBuffer

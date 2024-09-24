@@ -9,6 +9,7 @@ use crate::common::{
     cross_2d,
     cross_3d,
     Physical,
+    AnyEntities,
     Entity,
     entity::ClientEntities,
     collider::Contact
@@ -203,7 +204,15 @@ impl AnalyzedContact
 
         let contact_relative = self.get_relative(which);
         let entity = self.get_entity(which);
-        let mut transform = entities.transform_mut(entity).unwrap();
+        let physical = entities.physical(entity).unwrap();
+
+        let mut transform = if physical.target_non_lazy
+        {
+            entities.transform_mut(entity).unwrap()
+        } else
+        {
+            entities.target(entity).unwrap()
+        };
 
         let angular_projection = contact_relative
             + self.contact.normal * (-contact_relative).dot(&self.contact.normal);
@@ -219,11 +228,30 @@ impl AnalyzedContact
             velocity_amount += pre_limit - angular_amount;
         }
 
-        let fixed = entities.physical(entity).unwrap().fixed;
+        let fixed = physical.fixed;
 
         let velocity_change = velocity_amount * self.contact.normal;
 
-        transform.position += velocity_change;
+        let mut position_change = velocity_change;
+        if !physical.move_z
+        {
+            position_change.z = 0.0;
+        }
+
+        if physical.target_non_lazy
+        {
+            transform.position += position_change;
+        } else
+        {
+            if let Some(parent) = entities.parent(entity)
+            {
+                let parent_scale = &entities.transform(parent.entity()).unwrap().scale;
+                transform.position += position_change.component_div(parent_scale);
+            } else
+            {
+                transform.position += position_change;
+            }
+        }
 
         let angular_change = if !fixed.rotation && (inertias.angular.classify() != FpCategory::Zero)
         {
@@ -540,12 +568,6 @@ impl Contact
 
     fn analyze(self, entities: &ClientEntities, dt: f32) -> AnalyzedContact
     {
-        if self.point.magnitude() > 1000.0
-        {
-            let remove_me = ();
-            panic!("{self:?}");
-        }
-
         let to_world = self.to_world_matrix();
 
         let a_relative = self.point - entities.transform(self.a).unwrap().position;
@@ -556,12 +578,6 @@ impl Contact
             &to_world,
             a_relative
         );
-
-        if velocity.magnitude() > 1000.0
-        {
-            let remove_me = ();
-            panic!("{self:?} {velocity:?}");
-        }
 
         let a_inverse_inertia = Self::inverse_inertia_of(entities, self.a);
 
@@ -611,27 +627,9 @@ impl ContactResolver
 
         contacts.iter_mut().for_each(|x|
         {
-            if x.contact.point.magnitude() > 1000.0
-            {
-                let remove_me = ();
-                panic!("{x:?}");
-            }
-
-            let temp = x.clone();
-
             let point = x.contact.point;
             let relative = |entity: Entity|
             {
-                if (point - entities.transform(entity).unwrap().position).magnitude() > 1000.0
-                {
-                    let remove_me = ();
-                    panic!(
-                        "{:?} {:?} point: {point:?}, position: {}",
-                        entities.collider(temp.contact.a).unwrap(),
-                        temp.contact.b.map(|b| entities.collider(b).unwrap()),
-                        entities.transform(entity).unwrap().position
-                    );
-                }
                 point - entities.transform(entity).unwrap().position
             };
 
@@ -811,14 +809,6 @@ impl ContactResolver
                 ) + move_info.velocity_change;
 
                 let change = contact.to_world.transpose() * contact_change;
-
-                if change.magnitude() > 1000.0
-                {
-                    let remove_me = ();
-                    let a = entities.info_ref(contact.contact.a);
-                    let b = contact.contact.b.map(|b| entities.collider(b).unwrap());
-                    panic!("{a} {b:?} change: {change:?} move_info: {move_info:?} contact_change: {contact_change:?} contact_relative: {contact_relative:?}");
-                }
 
                 if move_info.inverted
                 {
