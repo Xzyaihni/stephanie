@@ -45,7 +45,6 @@ pub struct SpringConnection
 {
     pub physical: Physical,
     pub limit: f32,
-    pub damping: f32,
     pub strength: f32
 }
 
@@ -106,7 +105,7 @@ impl StretchDeformation
 {
     pub fn stretch(&self, rotation: f32, velocity: Vector3<f32>) -> (f32, Vector2<f32>)
     {
-        let amount = self.animation.apply(velocity.magnitude() * self.onset);
+        let amount = self.animation.apply(velocity.xy().magnitude() * self.onset);
         let stretch = (1.0 + amount * self.strength).min(self.limit);
 
         let angle = velocity.y.atan2(-velocity.x) + rotation;

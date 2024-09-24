@@ -275,7 +275,6 @@ impl Character
                 ..Default::default()
             }.into(),
             limit: 0.004,
-            damping: 0.02,
             strength: 6.0
         })
     }
@@ -343,10 +342,10 @@ impl Character
                             physical: PhysicalProperties{
                                 inverse_mass: 0.01_f32.recip(),
                                 floating: true,
+                                damping: 0.02,
                                 ..Default::default()
                             }.into(),
-                            limit: 0.004,
-                            damping: 0.02,
+                            limit: 0.005,
                             strength: 0.9
                         }
                     ),
@@ -359,9 +358,9 @@ impl Character
                     ),
                     deformation: Deformation::Stretch(
                         StretchDeformation{
-                            animation: ValueAnimation::EaseOut(2.0),
+                            animation: ValueAnimation::EaseOut(1.1),
                             limit: 1.3,
-                            onset: 0.3,
+                            onset: 0.5,
                             strength: 0.5
                         }
                     ),
@@ -647,8 +646,8 @@ impl Character
 
                 let mass = physical.inverse_mass.recip();
 
-                let throw_limit = 0.1 * strength;
-                let throw_amount = strength.min(throw_limit);
+                let throw_limit = 50.0 * mass;
+                let throw_amount = (strength * 2.0).min(throw_limit);
 
                 physical.add_force(direction * throw_amount);
 

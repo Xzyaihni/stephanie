@@ -1069,7 +1069,10 @@ fn create_notification_body(creator: &mut EntityCreator, anchor: Entity) -> Enti
                 visible: false,
                 ..Default::default()
             }),
-            follow_position: Some(FollowPosition::new(anchor, Connection::Rigid)),
+            follow_position: Some(FollowPosition::new(
+                anchor,
+                Connection::EaseOut{decay: 16.0, limit: None}
+            )),
             lazy_transform: Some(LazyTransformInfo{
                 scaling: Scaling::EaseOut{decay: 20.0},
                 transform: Transform{
