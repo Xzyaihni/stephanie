@@ -33,11 +33,12 @@ pub fn raycast(
         filter_map,
         |entity, collider: &RefCell<Collider>|
         {
-            let collides = collider.borrow().layer.collides(&info.layer);
+            let collider = collider.borrow();
+            let collides = collider.layer.collides(&info.layer);
 
-            (collides && !collider.borrow().ghost).then_some(entity)
+            (collides && !collider.ghost).then(|| (entity, collider.kind))
         })
-        .filter_map(|entity|
+        .filter_map(|(entity, kind)|
         {
             let transform = entities.transform(entity);
 
@@ -45,18 +46,18 @@ pub fn raycast(
             {
                 if let Some(ignore_entity) = info.ignore_entity
                 {
-                    (entity != ignore_entity).then_some((entity, transform))
+                    (entity != ignore_entity).then_some((entity, kind, transform))
                 } else
                 {
-                    Some((entity, transform))
+                    Some((entity, kind, transform))
                 }
             })
         })
-        .filter_map(|(entity, transform)|
+        .filter_map(|(entity, kind, transform)|
         {
-            raycast_circle(start, &direction, &transform).and_then(|hit|
+            raycast_this(start, &direction, kind, &transform).and_then(|hit|
             {
-                let backwards = (hit.distance + hit.pierce) < 0.0;
+                let backwards = hit.is_behind();
                 let past_end = (hit.distance > max_distance) && !info.ignore_end;
 
                 if backwards || past_end
@@ -65,7 +66,7 @@ pub fn raycast(
                 } else
                 {
                     let id = RaycastHitId::Entity(entity);
-                    Some(RaycastHit{id, distance: hit.distance, width: hit.pierce})
+                    Some(RaycastHit{id, result: hit})
                 }
             })
         })
@@ -73,7 +74,7 @@ pub fn raycast(
 
     hits.sort_unstable_by(|a, b|
     {
-        a.distance.partial_cmp(&b.distance).unwrap_or(Ordering::Equal)
+        a.result.distance.partial_cmp(&b.result.distance).unwrap_or(Ordering::Equal)
     });
 
     let hits = if let Some(mut pierce) = info.pierce
@@ -82,7 +83,7 @@ pub fn raycast(
         {
             if pierce > 0.0
             {
-                pierce -= x.width;
+                pierce -= x.result.pierce;
 
                 true
             } else

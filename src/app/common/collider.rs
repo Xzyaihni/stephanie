@@ -15,7 +15,7 @@ use crate::common::{
     rectangle_points,
     Entity,
     Physical,
-    raycast::raycast_circle,
+    raycast::raycast_this,
     world::{
         Directions3dGroup,
         World
@@ -811,11 +811,7 @@ impl<'a> CollidingInfo<'a>
         )
     }
 
-    fn rayz_circle(
-        &self,
-        other: &Self,
-        _add_contact: impl FnMut(Contact)
-    ) -> bool
+    fn rayz_this(&self, other: &Self) -> bool
     {
         let half_z = self.transform.scale.z / 2.0;
         let mut start = self.transform.position;
@@ -823,7 +819,12 @@ impl<'a> CollidingInfo<'a>
 
         let direction = Unit::new_unchecked(Vector3::z());
 
-        if let Some(result) = raycast_circle(&start, &direction, &other.transform)
+        if let Some(result) = raycast_this(
+            &start,
+            &direction,
+            other.collider.kind,
+            &other.transform
+        )
         {
             result.distance <= half_z
         } else
@@ -832,13 +833,22 @@ impl<'a> CollidingInfo<'a>
         }
     }
 
+    fn rayz_circle(
+        &self,
+        other: &Self,
+        _add_contact: impl FnMut(Contact)
+    ) -> bool
+    {
+        self.rayz_this(other)
+    }
+
     fn rayz_rectangle(
         &self,
         other: &Self,
         _add_contact: impl FnMut(Contact)
     ) -> bool
     {
-        false
+        self.rayz_this(other)
     }
 
     fn rectangle_circle(
@@ -982,6 +992,8 @@ impl<'a> CollidingInfo<'a>
 mod tests
 {
     use super::*;
+
+    use crate::common::rotate_point_z_3d;
 
 
     #[test]
