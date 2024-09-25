@@ -1,4 +1,4 @@
-use std::cell::{RefCell, RefMut};
+use std::cell::RefCell;
 
 use nalgebra::{Unit, Vector3};
 
@@ -8,9 +8,12 @@ use crate::{
     DEBUG_COLLISION_BOUNDS,
     DEBUG_CONTACTS,
     common::{
+        unique_pairs_no_self,
         collider::*,
         render_info::*,
         watcher::*,
+        Entity,
+        SpatialGrid,
         Joint,
         EntityInfo,
         AnyEntities,
@@ -18,7 +21,6 @@ use crate::{
         entity::{
             for_each_component,
             iterate_components_with,
-            ComponentWrapper,
             ClientEntities
         }
     }
@@ -33,14 +35,15 @@ mod resolver;
 pub fn update(
     entities: &mut ClientEntities,
     world: &World,
+    space: &SpatialGrid,
     dt: f32
 )
 {
     macro_rules! colliding_info
     {
-        ($result_variable:expr, $collider:expr, $entity:expr) =>
+        ($result_variable:expr, $entity:expr) =>
         {
-            let mut collider: RefMut<Collider> = $collider.borrow_mut();
+            let mut collider = entities.collider_mut($entity).unwrap();
             {
                 let mut transform = entities.transform($entity).unwrap().clone();
 
@@ -71,38 +74,26 @@ pub fn update(
 
     let mut contacts = Vec::new();
 
-    let mut pairs_fn = |&ComponentWrapper{
-        entity,
-        component: ref collider
-    }, &ComponentWrapper{
-        entity: other_entity,
-        component: ref other_collider
-    }|
+    space.possible_pairs(|possible|
     {
-        let mut this;
-        colliding_info!{this, collider, entity};
-
-        let other;
-        colliding_info!{other, other_collider, other_entity};
-
-        this.collide(other, |contact| contacts.push(contact));
-    };
-
-    {
-        let mut colliders = entities.collider.iter().map(|(_, x)| x);
-
-        // calls the function for each unique combination (excluding (self, self) pairs)
-        colliders.clone().for_each(|a|
+        let pairs_fn = |entity: Entity, other_entity: Entity|
         {
-            colliders.by_ref().next();
-            colliders.clone().for_each(|b| pairs_fn(a, b));
-        });
-    }
+            let mut this;
+            colliding_info!{this, entity};
 
-    for_each_component!(entities, collider, |entity, collider: &RefCell<_>|
+            let other;
+            colliding_info!{other, other_entity};
+
+            this.collide(other, |contact| contacts.push(contact));
+        };
+
+        unique_pairs_no_self(possible.iter().copied(), pairs_fn);
+    });
+
+    for_each_component!(entities, collider, |entity, _collider|
     {
         let mut this;
-        colliding_info!{this, collider, entity};
+        colliding_info!{this, entity};
 
         if DEBUG_COLLISION_BOUNDS
         {

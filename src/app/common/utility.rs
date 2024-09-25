@@ -491,6 +491,19 @@ pub fn rectangle_points(transform: &Transform) -> [Vector2<f32>; 4]
     })
 }
 
+// calls the function for each unique combination (excluding (self, self) pairs)
+pub fn unique_pairs_no_self<I, T>(mut iter: I, mut f: impl FnMut(T, T))
+where
+    T: Clone,
+    I: Iterator<Item=T> + Clone
+{
+    iter.clone().for_each(|a|
+    {
+        iter.by_ref().next();
+        iter.clone().for_each(|b| f(a.clone(), b));
+    });
+}
+
 pub fn write_log(text: impl Into<String>)
 {
     match File::options().append(true).create(true).open(LOG_PATH)

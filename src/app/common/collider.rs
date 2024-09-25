@@ -536,8 +536,11 @@ impl<'a> CollidingInfo<'a>
     {
         match self.collider.kind
         {
-            ColliderType::RayZ
-            | ColliderType::Tile(_) =>
+            ColliderType::RayZ =>
+            {
+                Vector3::new(0.0, 0.0, self.transform.scale.z)
+            },
+            ColliderType::Tile(_) =>
             {
                 unreachable!()
             },

@@ -40,6 +40,7 @@ use crate::{
         receiver_loop,
         render_info::*,
         lazy_transform::*,
+        SpatialGrid,
         TileMap,
         DataInfos,
         Item,
@@ -171,6 +172,9 @@ impl ClientEntitiesContainer
         dt: f32
     )
     {
+        let mut space = SpatialGrid::new();
+        self.entities.build_space(&mut space);
+
         self.entities.update_physical(world, dt);
         self.entities.update_lazy(dt);
         self.entities.update_enemy(passer, dt);
@@ -182,7 +186,7 @@ impl ClientEntitiesContainer
 
         self.entities.update_outlineable(dt);
 
-        self.entities.update_colliders(world, dt);
+        self.entities.update_colliders(world, &space, dt);
 
         if is_trusted
         {

@@ -31,6 +31,8 @@ use crate::{
         damaging::*,
         particle_creator::*,
         raycast::*,
+        SpatialGrid,
+        SpatialInfo,
         Joint,
         Outlineable,
         LazyMix,
@@ -1565,6 +1567,35 @@ macro_rules! define_entities_both
                 self.push_inner(local, info)
             }
 
+            pub fn build_space(&self, space: &mut SpatialGrid)
+            {
+                let infos = iterate_components_with!(self, collider, map, |entity, collider: &RefCell<Collider>|
+                {
+                    let mut collider = collider.borrow_mut();
+
+                    let mut transform = self.transform(entity).unwrap().clone();
+                    if let Some(scale) = collider.scale
+                    {
+                        transform.scale = scale;
+                    }
+
+                    let position = transform.position;
+                    let collider = CollidingInfo{
+                        entity: None,
+                        transform,
+                        collider: &mut collider
+                    };
+
+                    SpatialInfo{
+                        entity,
+                        scale: collider.bounds(),
+                        position
+                    }
+                });
+
+                space.build(infos);
+            }
+
             impl_common_systems!{ClientEntityInfo, $(($name, $set_func),)+}
 
             $(
@@ -1915,10 +1946,11 @@ macro_rules! define_entities_both
             pub fn update_colliders(
                 &mut self,
                 world: &World,
+                space: &SpatialGrid,
                 dt: f32
             )
             {
-                collider_system::update(self, world, dt);
+                collider_system::update(self, world, space, dt);
             }
 
             pub fn sync_physical_positions(

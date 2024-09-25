@@ -76,6 +76,7 @@ pub use saveable::Saveable;
 pub use anatomy::{Anatomy, HumanAnatomy, HumanAnatomyInfo};
 pub use damage::{Damageable, Damage, DamageType, DamageDirection, DamageHeight, DamagePartial};
 
+pub use spatial::{SpatialInfo, SpatialGrid};
 pub use collider::{ColliderType, Collider, CollidingInfo};
 pub use physics::{Physical, PhysicalProperties, PhysicalFixed};
 
@@ -137,6 +138,7 @@ pub mod tilemap;
 pub mod chunk_saver;
 pub mod world;
 
+pub mod spatial;
 pub mod collider;
 pub mod physics;
 
