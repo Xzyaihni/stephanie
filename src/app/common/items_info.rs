@@ -14,6 +14,7 @@ use crate::common::{
     lerp,
     generic_info::*,
     character::HAND_SCALE,
+    Drug,
     DamageType,
     Item
 };
@@ -72,6 +73,7 @@ pub struct ItemInfoRaw
 {
     name: String,
     ranged: Option<Ranged>,
+    drug: Option<Drug>,
     comfort: Option<f32>,
     sharpness: Option<f32>,
     side_sharpness: Option<f32>,
@@ -89,6 +91,7 @@ pub struct ItemInfo
 {
     pub name: String,
     pub ranged: Option<Ranged>,
+    pub drug: Option<Drug>,
     pub comfort: f32,
     pub sharpness: f32,
     pub side_sharpness: f32,
@@ -143,6 +146,7 @@ impl ItemInfo
         Self{
             name: raw.name,
             ranged: raw.ranged,
+            drug: raw.drug,
             comfort: raw.comfort.unwrap_or(1.0),
             sharpness: raw.sharpness.unwrap_or(0.0),
             side_sharpness: raw.side_sharpness.unwrap_or(0.0),
@@ -160,6 +164,7 @@ impl ItemInfo
         Self{
             name: "hand".to_owned(),
             ranged: None,
+            drug: None,
             comfort: 2.0,
             sharpness: 0.0,
             side_sharpness: 0.0,

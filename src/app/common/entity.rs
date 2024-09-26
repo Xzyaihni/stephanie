@@ -2092,14 +2092,15 @@ macro_rules! define_entities_both
                 aspect: f32
             )
             {
-                iterate_components_with!(self, ui_element, filter_map, |entity, ui_element|
-                {
-                    self.is_visible(entity).then(|| (entity, ui_element))
-                }).rev().for_each(|(entity, ui_element): (_, &RefCell<UiElement>)|
+                for_each_component!(self, ui_element, |entity, ui_element: &RefCell<UiElement>|
                 {
                     let mut target = self.target(entity).unwrap();
-                    let mut render = self.render_mut(entity).unwrap();
-                    ui_element.borrow_mut().update_aspect(&mut target, &mut render, aspect);
+                    let mut render = self.render_mut(entity);
+                    ui_element.borrow_mut().update_aspect(
+                        &mut target,
+                        render.as_deref_mut(),
+                        aspect
+                    );
                 });
             }
 

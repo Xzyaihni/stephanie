@@ -400,10 +400,15 @@ impl UiElement
         capture_this
     }
 
+    pub fn needs_aspect(&self) -> bool
+    {
+        self.keep_aspect.is_some()
+    }
+
     pub fn update_aspect(
         &mut self,
         transform: &mut Transform,
-        render: &mut ClientRenderInfo,
+        render: Option<&mut ClientRenderInfo>,
         aspect: f32
     )
     {
@@ -428,7 +433,10 @@ impl UiElement
                 keep_aspect.position.xyy()
             );
 
-            render.set_transform(transform.clone());
+            if let Some(render) = render
+            {
+                render.set_transform(transform.clone());
+            }
         }
     }
 

@@ -147,6 +147,19 @@
         "groups": ["weapons"]
     },
     {
+        "name": "heal pills",
+        "drug": {
+            "Heal": {
+                "amount": 50.0
+            }
+        },
+        "comfort": 0.5,
+        "scale": 0.1,
+        "mass": 0.05,
+        "commonness": 0.1,
+        "groups": ["drugs"]
+    },
+    {
         "name": "snel",
         "scale": 0.03,
         "mass": 0.1,

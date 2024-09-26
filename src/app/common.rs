@@ -50,6 +50,7 @@ pub use utility::*;
 
 pub use sides::{Side1d, Side2d, Side3d};
 
+pub use drug::Drug;
 pub use loot::Loot;
 pub use item::Item;
 pub use items_info::{ItemInfo, ItemsInfo, Ranged};
@@ -113,6 +114,7 @@ pub mod entity;
 
 pub mod generic_info;
 
+pub mod drug;
 pub mod loot;
 pub mod item;
 pub mod items_info;
