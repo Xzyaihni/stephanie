@@ -23,7 +23,6 @@ use crate::{
 };
 
 use resolver::ContactResolver;
-pub use resolver::PENETRATION_EPSILON;
 
 mod resolver;
 

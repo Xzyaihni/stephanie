@@ -5,12 +5,13 @@ use nalgebra::Vector3;
 use yanyaengine::Transform;
 
 use crate::common::{
-    PENETRATION_EPSILON,
     rotate_point_z_3d,
     collider::*,
     Entity
 };
 
+
+const HINGE_EPSILON: f32 = 0.002;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Joint
@@ -32,8 +33,7 @@ fn hinge_contact(
 
     let magnitude = diff.magnitude();
 
-    let epsilon = PENETRATION_EPSILON.general;
-    if magnitude < epsilon
+    if magnitude < HINGE_EPSILON
     {
         return None;
     }
@@ -43,8 +43,8 @@ fn hinge_contact(
     Some(Contact{
         a: entity,
         b: None,
-        point: (base + pos) / 2.0,
-        penetration: magnitude - epsilon,
+        point: base,
+        penetration: magnitude - HINGE_EPSILON,
         normal
     })
 }

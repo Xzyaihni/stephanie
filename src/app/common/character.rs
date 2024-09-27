@@ -651,7 +651,6 @@ impl Character
 
                 physical.add_force(direction * throw_amount);
 
-                let set_keep_to_false = ();
                 EntityInfo{
                     physical: Some(physical),
                     lazy_transform: Some(LazyTransformInfo{
@@ -689,7 +688,7 @@ impl Character
                         Watcher{
                             kind: WatcherType::Lifetime(2.5.into()),
                             action: WatcherAction::Explode(Box::new(ExplodeInfo{
-                                keep: true,
+                                keep: false,
                                 info: ParticlesInfo{
                                     amount: 3..5,
                                     speed: ParticleSpeed::Random(0.1),

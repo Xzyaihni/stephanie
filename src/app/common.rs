@@ -34,7 +34,6 @@ pub use lazy_transform::{
 };
 
 pub use entity::{
-    PENETRATION_EPSILON,
     AnyEntities,
     ServerToClient,
     Component,

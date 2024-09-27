@@ -78,37 +78,54 @@ pub enum ColliderType
 
 impl ColliderType
 {
+    pub fn inverse_inertia_tensor(
+        &self,
+        physical: &Physical,
+        transform: &Transform
+    ) -> Matrix3<f32>
+    {
+        // to prevent div by zero cuz floating points suck and i hate them
+        if (physical.inverse_mass.classify() == FpCategory::Zero) || physical.fixed.rotation
+        {
+            return Matrix3::zeros();
+        }
+
+        let m = physical.inverse_mass.recip();
+
+        let inertia = match self
+        {
+            Self::RayZ
+            | Self::Aabb
+            | Self::Tile(_) => return Matrix3::zeros(),
+            Self::Circle =>
+            {
+                Matrix3::from_diagonal_element((2.0/5.0) * m * transform.scale.max().powi(2))
+            },
+            Self::Rectangle =>
+            {
+                let w = transform.scale.x;
+                let h = transform.scale.y;
+                let d = transform.scale.z;
+
+                let at_axis = |a: f32, b: f32|
+                {
+                    (1.0/12.0) * m * (a.powi(2) + b.powi(2))
+                };
+
+                Matrix3::from_partial_diagonal(&[at_axis(h, d), at_axis(w, d), at_axis(w, h)])
+            }
+        };
+
+        inertia.try_inverse().expect("must have inverse")
+    }
+
     pub fn inverse_inertia(
         &self,
         physical: &Physical,
         transform: &Transform
     ) -> f32
     {
-        // to prevent div by zero cuz floating points suck and i hate them
-        if (physical.inverse_mass.classify() == FpCategory::Zero) || physical.fixed.rotation
-        {
-            return 0.0;
-        }
-
-        let inertia = match self
-        {
-            Self::RayZ
-            | Self::Aabb
-            | Self::Tile(_) => return 0.0,
-            Self::Circle =>
-            {
-                (2.0/5.0) * physical.inverse_mass.recip() * transform.scale.max().powi(2)
-            },
-            Self::Rectangle =>
-            {
-                let w = transform.scale.x;
-                let h = transform.scale.y;
-
-                (1.0/12.0) * physical.inverse_mass.recip() * (w.powi(2) + h.powi(2))
-            }
-        };
-
-        inertia.recip()
+        self.inverse_inertia_tensor(physical, transform).m33
     }
 }
 
@@ -207,18 +224,27 @@ impl From<ColliderInfo> for Collider
 
 impl Collider
 {
-    pub fn inverse_inertia(
+    pub fn inverse_inertia_tensor(
         &self,
         physical: &Physical,
         mut transform: Transform
-    ) -> f32
+    ) -> Matrix3<f32>
     {
         if let Some(scale) = self.scale
         {
             transform.scale = scale;
         }
 
-        self.kind.inverse_inertia(physical, &transform)
+        self.kind.inverse_inertia_tensor(physical, &transform)
+    }
+
+    pub fn inverse_inertia(
+        &self,
+        physical: &Physical,
+        transform: Transform
+    ) -> f32
+    {
+        self.inverse_inertia_tensor(physical, transform).m33
     }
 
     pub fn collided(&self) -> &[Entity]

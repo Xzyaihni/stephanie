@@ -44,7 +44,6 @@ pub fn create_spawner(
 
             entities.push(false, EntityInfo{
                 lazy_transform: Some(LazyTransformInfo{
-                    rotation: Rotation::Ignore,
                     scaling: Scaling::Ignore,
                     transform: Transform{
                         position: Vector3::new(0.5, 0.0, 0.0),
@@ -72,7 +71,6 @@ pub fn create_spawner(
                     restitution: 0.0,
                     floating: true,
                     move_z: false,
-                    target_non_lazy: true,
                     ..Default::default()
                 }.into()),
                 parent: Some(Parent::new(hinge, true)),

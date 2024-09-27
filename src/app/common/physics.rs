@@ -59,7 +59,7 @@ impl Default for PhysicalProperties
             static_friction: 0.5,
             dynamic_friction: 0.4,
             damping: 0.9,
-            angular_damping: 0.9,
+            angular_damping: 0.4,
             can_sleep: true,
             floating: false,
             fixed: PhysicalFixed::default(),
