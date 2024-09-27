@@ -343,11 +343,11 @@ impl AnalyzedContact
     {
         let contact_relative = self.get_relative(which);
 
-        let impulse_torque = cross_2d(contact_relative.xy(), impulse.xy());
+        let impulse_torque = cross_3d(contact_relative, impulse);
 
         let mut physical = entities.physical_mut(self.get_entity(which)).unwrap();
 
-        let angular_change = impulse_torque * self.get_inverse_inertia(which);
+        let angular_change = impulse_torque.z * self.get_inverse_inertia(which);
         let velocity_change = impulse * physical.inverse_mass;
 
         if physical.fixed.rotation
