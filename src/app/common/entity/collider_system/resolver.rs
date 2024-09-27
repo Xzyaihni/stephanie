@@ -5,16 +5,37 @@ use std::{
 
 use nalgebra::{Matrix3, Vector3};
 
-use crate::common::{
-    cross_2d,
-    cross_3d,
-    Physical,
-    AnyEntities,
-    Entity,
-    entity::ClientEntities,
-    collider::Contact
+use yanyaengine::Transform;
+
+use crate::{
+    DEBUG_CONTACTS,
+    common::{
+        cross_2d,
+        cross_3d,
+        direction_arrow_info,
+        watcher::*,
+        render_info::*,
+        Physical,
+        AnyEntities,
+        EntityInfo,
+        Entity,
+        entity::ClientEntities,
+        collider::Contact
+    }
 };
 
+
+pub struct IterativeEpsilon
+{
+    pub sleep: f32,
+    pub general: f32
+}
+
+const ANGULAR_LIMIT: f32 = 0.2;
+const VELOCITY_LOW: f32 = 0.002;
+
+pub const PENETRATION_EPSILON: IterativeEpsilon = IterativeEpsilon{sleep: 0.005, general: 0.0005};
+const VELOCITY_EPSILON: IterativeEpsilon = IterativeEpsilon{sleep: 0.005, general: 0.0005};
 
 fn skew_symmetric(v: Vector3<f32>) -> Matrix3<f32>
 {
@@ -41,18 +62,6 @@ fn basis_from(a: Vector3<f32>, mut b: Vector3<f32>) -> Matrix3<f32>
         a.z, b.z, c.z
     )
 }
-
-pub struct IterativeEpsilon
-{
-    pub sleep: f32,
-    pub general: f32
-}
-
-const ANGULAR_LIMIT: f32 = 0.2;
-const VELOCITY_LOW: f32 = 0.002;
-
-pub const PENETRATION_EPSILON: IterativeEpsilon = IterativeEpsilon{sleep: 0.005, general: 0.0005};
-const VELOCITY_EPSILON: IterativeEpsilon = IterativeEpsilon{sleep: 0.005, general: 0.0005};
 
 struct Inertias
 {
@@ -755,12 +764,51 @@ impl ContactResolver
         }
     }
 
+    fn display_contact(entities: &ClientEntities, contact: &Contact)
+    {
+        let color = if contact.b.is_some()
+        {
+            [0.0, 1.0, 0.0]
+        } else
+        {
+            [1.0, 0.0, 0.0]
+        };
+
+        entities.push(true, EntityInfo{
+            transform: Some(Transform{
+                position: contact.point,
+                scale: Vector3::repeat(0.01),
+                ..Default::default()
+            }),
+            render: Some(RenderInfo{
+                object: Some(RenderObjectKind::Texture{
+                    name: "circle.png".to_owned()
+                }.into()),
+                z_level: ZLevel::Hat,
+                mix: Some(MixColor{color, amount: 1.0}),
+                ..Default::default()
+            }),
+            watchers: Some(Watchers::simple_one_frame()),
+            ..Default::default()
+        });
+
+        if let Some(info) = direction_arrow_info(contact.point, contact.normal, 0.05, color)
+        {
+            entities.push(true, info);
+        }
+    }
+
     pub fn resolve(
         entities: &ClientEntities,
         contacts: Vec<Contact>,
         dt: f32
     )
     {
+        if DEBUG_CONTACTS
+        {
+            contacts.iter().for_each(|contact| Self::display_contact(entities, contact));
+        }
+
         let mut analyzed_contacts: Vec<_> = contacts.into_iter().map(|contact|
         {
             contact.analyze(entities, dt)

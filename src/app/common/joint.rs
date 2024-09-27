@@ -32,7 +32,8 @@ fn hinge_contact(
 
     let magnitude = diff.magnitude();
 
-    if magnitude < PENETRATION_EPSILON.general
+    let epsilon = PENETRATION_EPSILON.general;
+    if magnitude < epsilon
     {
         return None;
     }
@@ -42,8 +43,8 @@ fn hinge_contact(
     Some(Contact{
         a: entity,
         b: None,
-        point: base,
-        penetration: magnitude,
+        point: (base + pos) / 2.0,
+        penetration: magnitude - epsilon,
         normal
     })
 }

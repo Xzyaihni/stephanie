@@ -13,6 +13,7 @@ use nalgebra::{Vector2, Vector3, Unit};
 use yanyaengine::{TextureId, Transform};
 
 use crate::{
+    DEBUG_SLEEPING,
     server,
     client::{
         RenderCreateInfo,
@@ -66,6 +67,7 @@ pub use collider_system::PENETRATION_EPSILON;
 
 mod damaging_system;
 mod ui_system;
+mod physical_system;
 mod collider_system;
 mod raycast_system;
 
@@ -174,7 +176,7 @@ macro_rules! for_each_component
 {
     ($this:expr, $component:ident, $handler:expr) => 
     {
-        iterate_components_with!($this, $component, for_each, $handler);
+        $crate::iterate_components_with!($this, $component, for_each, $handler);
     }
 }
 
@@ -607,35 +609,6 @@ macro_rules! impl_common_systems
                     f(transform, end);
                 }
             }
-        }
-
-        pub fn update_physical(
-            &mut self,
-            world: &World,
-            dt: f32
-        )
-        {
-            for_each_component!(self, physical, |entity, physical: &RefCell<Physical>|
-            {
-                if let Some(mut target) = self.target(entity)
-                {
-                    if !world.inside_chunk(target.position.into())
-                    {
-                        return;
-                    }
-
-                    physical.borrow_mut().update(
-                        &mut target,
-                        |physical, transform|
-                        {
-                            self.collider(entity)
-                                .map(|collider| collider.inverse_inertia(physical, transform.clone()))
-                                .unwrap_or_default()
-                        },
-                        dt
-                    );
-                }
-            });
         }
     }
 }
@@ -1824,6 +1797,23 @@ macro_rules! define_entities_both
             {
                 self.resort_by_z(false);
 
+                if DEBUG_SLEEPING
+                {
+                    for_each_component!(self, physical, |entity, physical: &RefCell<Physical>|
+                    {
+                        if let Some(mut render) = self.render_mut(entity)
+                        {
+                            render.mix = Some(if physical.borrow().sleeping()
+                            {
+                                MixColor{color: [0.2, 0.2, 1.0], amount: 0.7}
+                            } else
+                            {
+                                MixColor{color: [0.2, 1.0, 0.2], amount: 0.7}
+                            });
+                        }
+                    });
+                }
+
                 for_each_component!(self, render, |entity, render: &RefCell<ClientRenderInfo>|
                 {
                     let transform = self.transform(entity).unwrap();
@@ -1837,6 +1827,15 @@ macro_rules! define_entities_both
 
                     occluding_plane.borrow_mut().set_transform(transform.clone());
                 });
+            }
+
+            pub fn update_physical(
+                &mut self,
+                world: &World,
+                dt: f32
+            )
+            {
+                physical_system::update(self, world, dt)
             }
 
             pub fn is_lootable(&self, entity: Entity) -> bool

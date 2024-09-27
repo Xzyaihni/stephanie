@@ -90,11 +90,11 @@ impl ColliderType
             return 0.0;
         }
 
-        match self
+        let inertia = match self
         {
             Self::RayZ
             | Self::Aabb
-            | Self::Tile(_) => 0.0,
+            | Self::Tile(_) => return 0.0,
             Self::Circle =>
             {
                 (2.0/5.0) * physical.inverse_mass.recip() * transform.scale.max().powi(2)
@@ -106,7 +106,9 @@ impl ColliderType
 
                 (1.0/12.0) * physical.inverse_mass.recip() * (w.powi(2) + h.powi(2))
             }
-        }
+        };
+
+        inertia.recip()
     }
 }
 
@@ -544,8 +546,8 @@ impl<'a> CollidingInfo<'a>
             {
                 unreachable!()
             },
-            ColliderType::Circle
-            | ColliderType::Aabb
+            ColliderType::Circle => Vector3::repeat(self.transform.scale.max() / 2.0),
+            ColliderType::Aabb
             | ColliderType::Rectangle => self.transform.scale / 2.0
         }
     }

@@ -68,8 +68,10 @@ pub fn create_spawner(
                     ..Default::default()
                 }.into()),
                 physical: Some(PhysicalProperties{
-                    inverse_mass: (40.0 * *width as f32).recip(),
+                    inverse_mass: (10.0 * *width as f32).recip(),
+                    restitution: 0.0,
                     floating: true,
+                    move_z: false,
                     target_non_lazy: true,
                     ..Default::default()
                 }.into()),

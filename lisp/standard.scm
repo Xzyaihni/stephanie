@@ -40,15 +40,25 @@
         '()
         lst))
 
-(define (skip n lst)
+(define (drop lst n)
     (if (or (= n 0) (null? lst))
         lst
-        (skip (- n 1) (cdr lst))))
+        (drop (cdr lst) (- n 1))))
+
+(define (take lst n)
+    (if (or (= n 0) (null? lst))
+        '()
+        (cons (car lst) (take (cdr lst) (- n 1)))))
 
 (define (replicate n x)
     (if (= n 0)
         '()
         (cons x (replicate (- n 1) x))))
+
+(define (repeat f n)
+    (if (= n 0)
+        '()
+        (begin (f) (repeat f (- n 1)))))
 
 (define (length xs)
     (fold (lambda (_ acc) (+ acc 1)) 0 xs))

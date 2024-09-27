@@ -82,8 +82,10 @@ mod ui_fragment
 pub const LOG_PATH: &str = "log.txt";
 
 pub const DEBUG_LISP: bool = false;
-pub const DEBUG_COLLISION_BOUNDS: bool = false;
-pub const DEBUG_CONTACTS: bool = false;
+pub const DEBUG_COLLISION_BOUNDS: bool = true;
+pub const DEBUG_CONTACTS: bool = true;
+pub const DEBUG_SLEEPING: bool = true;
+pub const DEBUG_VELOCITY: bool = true;
 
 /*#[link(name = "floathelper")]
 extern "C"

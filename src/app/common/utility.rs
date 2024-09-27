@@ -12,7 +12,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use nalgebra::{Vector2, Vector3};
+use nalgebra::{Unit, Vector2, Vector3};
 
 use yanyaengine::Transform;
 
@@ -21,7 +21,12 @@ pub use crate::{
     define_layers,
     define_layers_enum,
     some_or_value,
-    some_or_return
+    some_or_return,
+    common::{
+        watcher::*,
+        render_info::*,
+        EntityInfo
+    }
 };
 
 
@@ -502,6 +507,41 @@ where
         iter.by_ref().next();
         iter.clone().for_each(|b| f(a.clone(), b));
     });
+}
+
+pub fn direction_arrow_info(
+    point: Vector3<f32>,
+    direction: Vector3<f32>,
+    arrow_scale: f32,
+    color: [f32; 3]
+) -> Option<EntityInfo>
+{
+    Unit::try_new(direction.xy(), 0.01).map(|normal_direction|
+    {
+        let angle = normal_direction.y.atan2(normal_direction.x);
+        let shift_amount = Vector3::new(normal_direction.x, normal_direction.y, 0.0)
+            * (arrow_scale / 2.0);
+
+        EntityInfo{
+            transform: Some(Transform{
+                position: point + shift_amount,
+                scale: Vector3::repeat(arrow_scale),
+                rotation: angle,
+                ..Default::default()
+            }),
+            render: Some(RenderInfo{
+                object: Some(RenderObjectKind::Texture{
+                    name: "arrow.png".to_owned()
+                }.into()),
+                z_level: ZLevel::Door,
+                mix: Some(MixColor{color, amount: 1.0}),
+                aspect: Aspect::KeepMax,
+                ..Default::default()
+            }),
+            watchers: Some(Watchers::simple_one_frame()),
+            ..Default::default()
+        }
+    })
 }
 
 pub fn write_log(text: impl Into<String>)
