@@ -285,10 +285,15 @@ impl Physical
         self.set_sleeping(false);
     }
 
+    pub fn add_torque(&mut self, torque: f32)
+    {
+        self.torque += torque;
+    }
+
     pub fn add_force_at_point(&mut self, force: Vector3<f32>, point: Vector3<f32>)
     {
         self.add_force(force);
 
-        self.torque += cross_3d(point, force).z;
+        self.add_torque(cross_3d(point, force).z);
     }
 }

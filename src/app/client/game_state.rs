@@ -947,7 +947,9 @@ impl GameState
 
         self.process_messages(&mut create_info);
 
+        let assets = create_info.object_info.partial.assets.clone();
         let partial = PartialCombinedInfo{
+            assets: &assets,
             passer: &self.connections_handler,
             common_textures: &self.common_textures,
             characters_info: &self.characters_info,

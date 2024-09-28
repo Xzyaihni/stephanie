@@ -747,6 +747,11 @@ macro_rules! common_trait_impl
             })
         }
 
+        fn lazy_target_end(&self, entity: Entity) -> Option<Transform>
+        {
+            self.lazy_target_end(entity)
+        }
+
         fn z_level(&self, entity: Entity) -> Option<ZLevel>
         {
             self.render(entity).map(|x| x.z_level())
@@ -2117,37 +2122,21 @@ macro_rules! define_entities_both
                 dt: f32
             )
             {
-                let assets = create_info.object_info.partial.assets.clone();
                 for_each_component!(self, character, |entity, character: &RefCell<Character>|
                 {
-                    let changed = {
-                        let combined_info = partial.to_full(
-                            self,
-                            &assets
-                        );
+                    let combined_info = partial.to_full(self);
 
-                        character.borrow_mut().update(
-                            combined_info,
-                            dt,
-                            |texture|
-                            {
-                                let mut render = self.render_mut(entity).unwrap();
-                                let transform = self.target_ref(entity).unwrap();
-
-                                render.set_sprite(create_info, Some(&transform), texture);
-                            }
-                        )
-                    };
-
-                    if changed
-                    {
-                        if let Some(end) = self.lazy_target_end(entity)
+                    character.borrow_mut().update(
+                        combined_info,
+                        dt,
+                        |texture|
                         {
-                            let mut transform = self.transform_mut(entity).unwrap();
+                            let mut render = self.render_mut(entity).unwrap();
+                            let transform = self.target_ref(entity).unwrap();
 
-                            transform.scale = end.scale;
+                            render.set_sprite(create_info, Some(&transform), texture);
                         }
-                    }
+                    )
                 });
             }
 
@@ -2196,25 +2185,9 @@ macro_rules! define_entities_both
                 characters_info: &CharactersInfo
             )
             {
-                for_each_component!(self, character, |entity, character: &RefCell<Character>|
+                for_each_component!(self, character, |_entity, character: &RefCell<Character>|
                 {
-                    let mut target = self.target(entity).unwrap();
-
-                    let changed = character.borrow_mut()
-                        .update_common(characters_info, &mut target);
-
-                    if !changed
-                    {
-                        return;
-                    }
-
-                    drop(target);
-                    if let Some(end) = self.lazy_target_end(entity)
-                    {
-                        let mut transform = self.transform_mut(entity).unwrap();
-
-                        transform.scale = end.scale;
-                    }
+                    character.borrow_mut().update_common(characters_info, self);
                 });
             }
 
@@ -2366,6 +2339,7 @@ macro_rules! define_entities
 
             fn lazy_target_ref(&self, entity: Entity) -> Option<Ref<Transform>>;
             fn lazy_target(&self, entity: Entity) -> Option<RefMut<Transform>>;
+            fn lazy_target_end(&self, entity: Entity) -> Option<Transform>;
 
             fn z_level(&self, entity: Entity) -> Option<ZLevel>;
             fn set_z_level(&self, entity: Entity, z_level: ZLevel);

@@ -159,6 +159,7 @@ const HANDS_UNSTANCE: f32 = 0.7;
 pub struct PartialCombinedInfo<'a>
 {
     pub passer: &'a Arc<RwLock<ConnectionsHandler>>,
+    pub assets: &'a Arc<Mutex<Assets>>,
     pub common_textures: &'a CommonTextures,
     pub items_info: &'a ItemsInfo,
     pub characters_info: &'a CharactersInfo
@@ -168,13 +169,12 @@ impl<'a> PartialCombinedInfo<'a>
 {
     pub fn to_full(
         self,
-        entities: &'a ClientEntities,
-        assets: &'a Arc<Mutex<Assets>>
+        entities: &'a ClientEntities
     ) -> CombinedInfo<'a>
     {
         CombinedInfo{
             entities,
-            assets,
+            assets: self.assets,
             passer: self.passer,
             common_textures: self.common_textures,
             items_info: self.items_info,
@@ -1281,7 +1281,7 @@ impl Character
     pub fn update_common(
         &mut self,
         characters_info: &CharactersInfo,
-        transform: &mut Transform
+        entities: &impl AnyEntities
     ) -> bool
     {
         if !self.sprite_state.changed()
@@ -1289,16 +1289,31 @@ impl Character
             return false;
         }
 
+        let set_scale = |scale: Vector3<f32>|
+        {
+            let info = some_or_return!(&self.info);
+
+            entities.target(info.this).unwrap().scale = scale;
+
+            if let Some(end) = entities.lazy_target_end(info.this)
+            {
+                let mut transform = entities.transform_mut(info.this)
+                    .unwrap();
+
+                transform.scale = end.scale;
+            }
+        };
+
         let info = characters_info.get(self.id);
         match self.sprite_state.value()
         {
             SpriteState::Normal =>
             {
-                transform.scale = Vector3::repeat(info.scale);
+                set_scale(Vector3::repeat(info.scale));
             },
             SpriteState::Crawling | SpriteState::Lying =>
             {
-                transform.scale = Vector3::repeat(info.scale * 1.5);
+                set_scale(Vector3::repeat(info.scale * 1.5));
             }
         }
 
@@ -1310,9 +1325,9 @@ impl Character
         combined_info: CombinedInfo,
         dt: f32,
         set_sprite: impl FnOnce(TextureId)
-    ) -> bool
+    )
     {
-        let entity = some_or_value!(self.info.as_ref(), false).this;
+        let entity = some_or_return!(self.info.as_ref()).this;
         let entities = &combined_info.entities;
 
         self.handle_actions(combined_info);
@@ -1326,11 +1341,9 @@ impl Character
         self.update_sprint(combined_info, dt);
         self.update_attacks(combined_info, dt);
 
-        let mut target = entities.target(entity).unwrap();
-
-        if !self.update_common(combined_info.characters_info, &mut target)
+        if !self.update_common(combined_info.characters_info, combined_info.entities)
         {
-            return false;
+            return;
         }
 
         let character_info = combined_info.characters_info.get(self.id);
@@ -1372,7 +1385,7 @@ impl Character
             },
             SpriteState::Crawling =>
             {
-                let this_scale = target.scale;
+                let this_scale = some_or_return!(combined_info.entities.target_ref(entity)).scale;
 
                 (
                     Some(ColliderInfo{
@@ -1427,13 +1440,9 @@ impl Character
             info.hair.iter().copied().for_each(set_visible);
         }
 
-        drop(target);
-
         self.update_held(combined_info);
 
         set_sprite(texture);
-
-        true
     }
 
     pub fn anatomy_changed(&mut self, anatomy: &Anatomy)
