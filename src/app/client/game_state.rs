@@ -106,6 +106,7 @@ pub struct ClientEntitiesContainer
 {
     pub entities: ClientEntities,
     pub camera_entity: Entity,
+    pub follow_entity: Entity,
     player_entity: Entity,
     positions_sync: f32,
     animation: f32
@@ -117,10 +118,15 @@ impl ClientEntitiesContainer
     {
         let mut entities = Entities::new(infos);
 
+        let follow_entity = entities.push_eager(true, EntityInfo{
+            transform: Some(Transform::default()),
+            ..Default::default()
+        });
+
         let camera_entity = entities.push_eager(true, EntityInfo{
             transform: Some(Transform::default()),
             follow_position: Some(FollowPosition::new(
-                player_entity,
+                follow_entity,
                 Connection::EaseOut{decay: 5.0, limit: None}
             )),
             ..Default::default()
@@ -129,6 +135,7 @@ impl ClientEntitiesContainer
         Self{
             entities,
             camera_entity,
+            follow_entity,
             player_entity,
             positions_sync: 0.0,
             animation: 0.0

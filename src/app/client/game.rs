@@ -100,6 +100,7 @@ impl Game
 
             PlayerInfo::new(PlayerCreateInfo{
                 camera: game_state.entities.camera_entity,
+                follow: game_state.entities.follow_entity,
                 entity: player,
                 mouse_entity,
                 console_entity
@@ -818,6 +819,7 @@ impl Game
 struct PlayerCreateInfo
 {
     pub camera: Entity,
+    pub follow: Entity,
     pub entity: Entity,
     pub mouse_entity: Entity,
     pub console_entity: Entity
@@ -826,6 +828,7 @@ struct PlayerCreateInfo
 struct PlayerInfo
 {
     camera: Entity,
+    follow: Entity,
     entity: Entity,
     mouse_entity: Entity,
     other_entity: Option<Entity>,
@@ -846,6 +849,7 @@ impl PlayerInfo
     {
         Self{
             camera: info.camera,
+            follow: info.follow,
             entity: info.entity,
             mouse_entity: info.mouse_entity,
             other_entity: None,
@@ -937,10 +941,7 @@ impl<'a> PlayerContainer<'a>
 
         if let Some(mut transform) = entities.transform_mut(self.info.camera)
         {
-            if let Some(parent_transform) = entities.parent_transform(self.info.camera)
-            {
-                transform.position = parent_transform.position;
-            }
+            transform.position = entities.transform(self.info.follow).unwrap().position;
         }
 
         self.camera_sync();
@@ -1278,15 +1279,22 @@ impl<'a> PlayerContainer<'a>
         let mouse_position = Vector3::new(mouse_position.x, mouse_position.y, 0.0);
         let camera_position = self.game_state.camera.read().position().coords;
 
-        self.game_state.entities()
-            .transform_mut(self.info.mouse_entity)
-            .unwrap()
-            .position = camera_position + mouse_position;
+        {
+            let entities = self.game_state.entities_mut();
 
-        self.game_state.entities_mut().update_mouse_highlight(
-            self.info.entity,
-            self.info.mouse_entity
-        );
+            entities.transform_mut(self.info.mouse_entity).unwrap()
+                .position = camera_position + mouse_position;
+
+            entities.update_mouse_highlight(
+                self.info.entity,
+                self.info.mouse_entity
+            );
+
+            let player_position = entities.transform(self.info.entity).unwrap().position;
+            let follow_position = player_position + mouse_position / 5.0;
+
+            entities.transform_mut(self.info.follow).unwrap().position = follow_position;
+        }
 
         if let Some(character) = self.game_state.entities().character(self.info.entity)
         {
