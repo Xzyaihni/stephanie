@@ -357,7 +357,7 @@ impl TilesFactory
         let mut make_tilemap = |textures: &[_]|
         {
             let tilemap = tilemap.generate_tilemap(
-                init_info.object_info.partial.builder_wrapper.resource_uploader(),
+                init_info.partial.builder_wrapper.resource_uploader(),
                 shader,
                 textures
             );
@@ -378,7 +378,7 @@ impl TilesFactory
         let tilemap = Arc::new(tilemap);
 
         Ok(Self{
-            object_factory: init_info.object_info.partial.object_factory.clone(),
+            object_factory: init_info.partial.object_factory.clone(),
             tilemap,
             textures
         })

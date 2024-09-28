@@ -10,7 +10,9 @@
 use yanyaengine::{App, ShadersContainer, ShadersInfo};
 
 pub use app::{common, server, client, ProgramShaders};
-use app::AppInfo;
+
+#[allow(unused_imports)]
+use app::{SlowModeTrue, SlowModeFalse, AppInfo};
 use common::world::TILE_SIZE;
 
 mod app;
@@ -86,6 +88,7 @@ pub const DEBUG_COLLISION_BOUNDS: bool = false;
 pub const DEBUG_CONTACTS: bool = false;
 pub const DEBUG_SLEEPING: bool = false;
 pub const DEBUG_VELOCITY: bool = false;
+pub type SlowMode = SlowModeFalse;
 
 /*#[link(name = "floathelper")]
 extern "C"

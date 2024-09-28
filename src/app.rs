@@ -9,8 +9,13 @@ use yanyaengine::{
     YanyaApp,
     Control,
     ShaderId,
+    PhysicalKey,
+    KeyCode,
+    ElementState,
     game_object::*
 };
+
+use crate::SlowMode;
 
 use common::{
     TileMap,
@@ -49,10 +54,93 @@ pub struct AppInfo
     pub shaders: ProgramShaders
 }
 
+trait SlowModeStateTrait
+{
+    fn input(&mut self, control: &Control);
+    fn run_frame(&mut self) -> bool;
+}
+
+trait SlowModeTrait
+{
+    type State: SlowModeStateTrait + Default;
+
+    fn as_bool() -> bool;
+}
+
+pub struct SlowModeTrue;
+pub struct SlowModeFalse;
+
+struct SlowModeState
+{
+    running: bool,
+    step_now: bool
+}
+
+impl SlowModeStateTrait for SlowModeState
+{
+    fn input(&mut self, control: &Control)
+    {
+        match control
+        {
+            Control::Keyboard{keycode: PhysicalKey::Code(code), state: ElementState::Pressed, ..} =>
+            {
+                match code
+                {
+                    KeyCode::KeyM => self.running = !self.running,
+                    KeyCode::KeyN => self.step_now = true,
+                    _ => ()
+                }
+            },
+            _ => ()
+        }
+    }
+
+    fn run_frame(&mut self) -> bool
+    {
+        let run_this = self.running || self.step_now;
+
+        self.step_now = false;
+
+        run_this
+    }
+}
+
+impl SlowModeStateTrait for ()
+{
+    fn input(&mut self, _control: &Control) {}
+    fn run_frame(&mut self) -> bool { false }
+}
+
+impl Default for SlowModeState
+{
+    fn default() -> Self
+    {
+        Self{
+            running: true,
+            step_now: false
+        }
+    }
+}
+
+impl SlowModeTrait for SlowModeTrue
+{
+    type State = SlowModeState;
+
+    fn as_bool() -> bool { true }
+}
+
+impl SlowModeTrait for SlowModeFalse
+{
+    type State = ();
+
+    fn as_bool() -> bool { false }
+}
+
 pub struct App
 {
     client: Client,
-    server_handle: Option<JoinHandle<()>>
+    server_handle: Option<JoinHandle<()>>,
+    slow_mode: <SlowMode as SlowModeTrait>::State
 }
 
 impl Drop for App
@@ -197,24 +285,37 @@ impl YanyaApp for App
 
         Self{
             client: Client::new(partial_info, client_init_info).unwrap(),
-            server_handle
+            server_handle,
+            slow_mode: Default::default()
         }
     }
 
-    fn update(&mut self, dt: f32)
+    fn update(&mut self, partial_info: UpdateBuffersPartialInfo, dt: f32)
     {
-        let max_dt = 1.0 / 20.0;
+        let mut info = partial_info.to_full(&self.client.camera.read());
 
-        self.client.update(dt.min(max_dt));
-    }
+        if SlowMode::as_bool()
+        {
+            if self.slow_mode.run_frame()
+            {
+                self.client.update(&mut info, 1.0 / 60.0);
+            }
+        } else
+        {
+            let max_dt = 1.0 / 20.0;
 
-    fn update_buffers(&mut self, partial_info: UpdateBuffersPartialInfo)
-    {
-        self.client.update_buffers(partial_info);
+            self.client.update(&mut info, dt.min(max_dt));
+        }
+
+        info.update_camera(&self.client.camera.read());
+
+        self.client.update_buffers(&mut info);
     }
 
     fn input(&mut self, control: Control)
     {
+        self.slow_mode.input(&control);
+
         self.client.input(control);
     }
 

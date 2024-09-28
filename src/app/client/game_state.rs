@@ -153,14 +153,11 @@ impl ClientEntitiesContainer
 
     pub fn update_objects(
         &mut self,
-        create_info: &mut RenderCreateInfo,
-        dt: f32
+        create_info: &mut RenderCreateInfo
     )
     {
         self.entities.create_queued(create_info);
         self.entities.create_render_queued(create_info);
-
-        self.entities.update_watchers(dt);
     }
 
     pub fn update(
@@ -422,7 +419,6 @@ pub struct GameState
     host: bool,
     is_trusted: bool,
     camera_scale: f32,
-    dt: f32,
     rare_timer: f32,
     connections_handler: Arc<RwLock<ConnectionsHandler>>,
     receiver_handle: Option<JoinHandle<()>>,
@@ -566,7 +562,6 @@ impl GameState
             debug_mode: info.client_info.debug_mode,
             tilemap,
             camera_scale: 1.0,
-            dt: 0.0,
             rare_timer: 0.0,
             ui,
             common_textures,
@@ -848,12 +843,9 @@ impl GameState
     pub fn update_buffers(
         &mut self,
         squares: &HashMap<Uvs, ModelId>,
-        partial_info: UpdateBuffersPartialInfo
+        info: &mut UpdateBuffersInfo
     )
     {
-        let mut info = UpdateBuffersInfo::new(partial_info, &self.camera.read());
-        let info = &mut info;
-
         let caster = self.entities.player_transform().map(|x| x.position)
             .unwrap_or_default();
 
@@ -867,28 +859,10 @@ impl GameState
             location: UniformLocation{set: 0, binding: 0},
             shader: self.shaders.default,
             squares,
-            object_info: &mut info.object_info
+            object_info: info
         };
 
-        self.process_messages(&mut create_info);
-
-        let partial = PartialCombinedInfo{
-            passer: &self.connections_handler,
-            common_textures: &self.common_textures,
-            characters_info: &self.characters_info,
-            items_info: &self.items_info
-        };
-
-        self.entities.entities.update_characters(
-            partial,
-            &mut create_info,
-            self.dt
-        );
-
-        self.entities.update_objects(
-            &mut create_info,
-            self.dt
-        );
+        self.entities.update_objects(&mut create_info);
 
         self.entities.update_buffers(&visibility, info, &caster);
 
@@ -950,7 +924,12 @@ impl GameState
         }
     }
 
-    pub fn update(&mut self, dt: f32)
+    pub fn update(
+        &mut self,
+        squares: &HashMap<Uvs, ModelId>,
+        object_info: &mut UpdateBuffersInfo,
+        dt: f32
+    )
     {
         self.entities.entities.update_ui(
             self.camera.read().position().coords.xy(),
@@ -959,7 +938,29 @@ impl GameState
 
         self.ui.borrow_mut().update_after(&mut self.entities.entity_creator(), &self.camera.read());
 
-        self.dt = dt;
+        let mut create_info = RenderCreateInfo{
+            location: UniformLocation{set: 0, binding: 0},
+            shader: self.shaders.default,
+            squares,
+            object_info
+        };
+
+        self.process_messages(&mut create_info);
+
+        let partial = PartialCombinedInfo{
+            passer: &self.connections_handler,
+            common_textures: &self.common_textures,
+            characters_info: &self.characters_info,
+            items_info: &self.items_info
+        };
+
+        self.entities.entities.update_characters(
+            partial,
+            &mut create_info,
+            dt
+        );
+
+        self.entities.entities.update_watchers(dt);
 
         if self.rare_timer <= 0.0
         {

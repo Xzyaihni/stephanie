@@ -96,6 +96,7 @@ pub struct ClientInfo
 
 pub struct Client
 {
+    pub camera: Arc<RwLock<Camera>>,
     game_state: Option<Rc<RefCell<GameState>>>,
     game: Game,
     squares: HashMap<Uvs, ModelId>
@@ -119,7 +120,7 @@ impl Client
         }
 
         let camera = Camera::new(info.aspect(), -1.0..1.0);
-        let mut info = InitInfo::new(info, &camera);
+        let mut info = info.to_full(&camera);
 
         let camera = Arc::new(RwLock::new(camera));
 
@@ -134,11 +135,11 @@ impl Client
 
         let message_passer = MessagePasser::new(stream);
 
-        let assets = info.object_info.partial.assets.clone();
+        let assets = info.partial.assets.clone();
         let info = GameStateInfo{
             shaders: client_init_info.app_info.shaders,
-            camera,
-            object_info: info.object_info,
+            camera: camera.clone(),
+            object_info: info,
             data_infos: client_init_info.data_infos,
             tiles_factory,
             message_passer,
@@ -166,6 +167,7 @@ impl Client
 
         Ok(Self{
             game_state: Some(game_state),
+            camera,
             game,
             squares
         })
@@ -181,11 +183,15 @@ impl Client
         some_or_return!(&self.game_state).borrow_mut().resize(aspect);
     }
 
-    pub fn update(&mut self, dt: f32)
+    pub fn update(
+        &mut self,
+        info: &mut UpdateBuffersInfo,
+        dt: f32
+    )
     {
         let game_state = some_or_return!(&self.game_state);
 
-        self.game.update(dt);
+        self.game.update(&self.squares, info, dt);
 
         if self.game.player_exists()
         {
@@ -195,8 +201,6 @@ impl Client
 
                 game_state.borrow_mut().on_player_connected();
             }
-
-            self.game.camera_sync();
         }
 
         if !game_state.borrow().running
@@ -205,9 +209,9 @@ impl Client
         }
     }
 
-    pub fn update_buffers(&mut self, partial_info: UpdateBuffersPartialInfo)
+    pub fn update_buffers(&mut self, info: &mut UpdateBuffersInfo)
     {
-        some_or_return!(&self.game_state).borrow_mut().update_buffers(&self.squares, partial_info);
+        some_or_return!(&self.game_state).borrow_mut().update_buffers(&self.squares, info);
     }
 
     pub fn draw(&mut self, mut info: DrawInfo)

@@ -401,6 +401,11 @@ pub fn get_two_mut<T>(s: &mut [T], one: usize, two: usize) -> (&mut T, &mut T)
     }
 }
 
+pub fn project_onto_plane(normal: Unit<Vector3<f32>>, d: f32, p: Vector3<f32>) -> Vector3<f32>
+{
+    p - *normal * (p.dot(&normal) - d)
+}
+
 pub fn point_line_side(p: Vector2<f32>, a: Vector2<f32>, b: Vector2<f32>) -> Ordering
 {
     let x = project_onto_line(p, a, b);
@@ -469,6 +474,12 @@ pub fn rotate_point_z_3d(p: Vector3<f32>, angle: f32) -> Vector3<f32>
 {
     let r = rotate_point(p.xy(), angle);
     Vector3::new(r.x, r.y, p.z)
+}
+
+pub fn project_onto(transform: &Transform, p: &Vector3<f32>) -> Vector3<f32>
+{
+    let scaled = transform.scale.component_mul(p);
+    rotate_point_z_3d(scaled, transform.rotation) + transform.position
 }
 
 pub fn rectangle_points(transform: &Transform) -> [Vector2<f32>; 4]

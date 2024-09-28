@@ -1,3 +1,5 @@
+use std::f32;
+
 use nalgebra::{Vector2, Vector3};
 
 use yanyaengine::Transform;
@@ -7,7 +9,7 @@ use crate::common::{
     render_info::*,
     physics::*,
     lazy_transform::*,
-    Joint,
+    joint::*,
     EntityInfo,
     Parent,
     SpawnerTile,
@@ -75,7 +77,10 @@ pub fn create_spawner(
                 }.into()),
                 parent: Some(Parent::new(hinge, true)),
                 saveable: Some(()),
-                joint: Some(Joint::Hinge{origin: Vector3::new(-0.5, 0.0, 0.0)}),
+                joint: Some(Joint::Hinge(HingeJoint{
+                    origin: Vector3::new(-0.5, 0.0, 0.0),
+                    angle_limit: Some(f32::consts::FRAC_PI_2 * 0.9)
+                })),
                 ..Default::default()
             });
         }

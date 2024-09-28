@@ -2,12 +2,20 @@ use std::{
     fs,
     f32,
     rc::{Rc, Weak},
-    cell::{RefMut, RefCell}
+    cell::{RefMut, RefCell},
+    collections::HashMap
 };
 
 use nalgebra::{Unit, Vector3, Vector2};
 
-use yanyaengine::{Transform, Key, KeyCode, NamedKey};
+use yanyaengine::{
+    Transform,
+    Key,
+    KeyCode,
+    NamedKey,
+    ModelId,
+    game_object::*
+};
 
 use crate::{
     client::{Ui, UiEvent},
@@ -186,7 +194,12 @@ impl Game
         self.player_container(|mut x| x.on_player_connected());
     }
 
-    pub fn update(&mut self, dt: f32)
+    pub fn update(
+        &mut self,
+        squares: &HashMap<Uvs, ModelId>,
+        info: &mut UpdateBuffersInfo,
+        dt: f32
+    )
     {
         let game_state = self.game_state.upgrade().unwrap();
         game_state.borrow_mut().update_pre(dt);
@@ -218,7 +231,9 @@ impl Game
             self.on_control(state, control);
         }
 
-        game_state.borrow_mut().update(dt);
+        game_state.borrow_mut().update(squares, info, dt);
+
+        self.camera_sync();
     }
 
     pub fn on_control(&mut self, state: ControlState, control: Control)

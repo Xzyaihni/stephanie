@@ -143,9 +143,9 @@ impl Enemy
             return;
         }
 
-        let transform = entities.target_ref(entity).unwrap();
-        let mut physical = entities.physical_mut(entity).unwrap();
-        let mut character = entities.character_mut(entity).unwrap();
+        let transform = some_or_return!(entities.target_ref(entity));
+        let mut physical = some_or_return!(entities.physical_mut(entity));
+        let mut character = some_or_return!(entities.character_mut(entity));
 
         match &self.behavior_state
         {
