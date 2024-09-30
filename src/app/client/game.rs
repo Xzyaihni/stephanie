@@ -372,13 +372,13 @@ impl Game
         Ok(entity)
     }
 
-    fn push_entity(memory: &mut LispMemory, entity: Entity)
+    fn push_entity(memory: &mut LispMemory, entity: Entity) -> Result<(), lisp::Error>
     {
         let tag = memory.new_symbol("entity");
         let local = LispValue::new_bool(entity.local());
         let id = LispValue::new_integer(entity.id() as i32);
 
-        memory.cons_list([tag, local, id]);
+        memory.cons_list([tag, local, id])
     }
 
     fn add_simple_setter<F>(&self, primitives: &mut Primitives, name: &str, f: F)
@@ -480,7 +480,7 @@ impl Game
 
                     if let Some(collided) = collided
                     {
-                        Self::push_entity(memory, collided)
+                        Self::push_entity(memory, collided)?;
                     } else
                     {
                         memory.push_return(());
@@ -494,27 +494,86 @@ impl Game
             let game_state = self.game_state.clone();
 
             primitives.add(
-                "all-entities",
+                "all-entities-query",
                 PrimitiveProcedureInfo::new_simple(0, move |_state, memory, _args|
                 {
                     let game_state = game_state.upgrade().unwrap();
                     let game_state = game_state.borrow();
                     let entities = game_state.entities();
 
+                    let mut normal_entities = Vec::new();
+                    let mut local_entities = Vec::new();
+
                     let mut total = 0;
                     entities.for_each_entity(|entity|
                     {
-                        Self::push_entity(memory, entity);
                         total += 1;
+                        let id = entity.id() as i32;
+
+                        if entity.local()
+                        {
+                            local_entities.push(id);
+                        } else
+                        {
+                            normal_entities.push(id);
+                        }
                     });
 
-                    memory.push_return(());
+                    memory.push_return(total - 1);
 
-                    (0..total).for_each(|_| memory.cons());
+                    let mut allocate_lisp_vector = |v: Vec<i32>| -> Result<(), lisp::Error>
+                    {
+                        let v: LispVector = v.into();
+                        memory.allocate_vector(v.as_ref_vector())
+                    };
 
-                    Ok(())
+                    allocate_lisp_vector(normal_entities)?;
+                    allocate_lisp_vector(local_entities)?;
+
+                    memory.cons()?;
+
+                    memory.cons()
                 }));
         }
+
+
+        primitives.add(
+            "query-entity-next",
+            PrimitiveProcedureInfo::new_simple(1, move |_state, memory, mut args|
+            {
+                let query_arg = args.pop(memory);
+                let query = query_arg.as_list()?;
+                let query_id = query_arg.as_list_id()?;
+
+                let index = query.car().as_integer()?;
+                let entities = query.cdr().as_list()?;
+
+                let normal_entities = entities.car().as_vector_ref()?;
+                let local_entities = entities.cdr().as_vector_ref()?;
+
+                if index < 0
+                {
+                    memory.push_return(());
+                    return Ok(());
+                }
+
+                let index = index as usize;
+
+                let entity = if index >= normal_entities.len()
+                {
+                    let index = index - normal_entities.len();
+
+                    Entity::from_raw(true, local_entities.get(index).as_integer()? as usize)
+                } else
+                {
+                    Entity::from_raw(false, normal_entities.get(index).as_integer()? as usize)
+                };
+
+                // set to next index
+                memory.set_car(query_id, (index as i32 - 1).into());
+
+                Self::push_entity(memory, entity)
+            }));
 
         {
             let game_state = self.game_state.clone();
@@ -658,9 +717,7 @@ impl Game
                 "player-entity",
                 PrimitiveProcedureInfo::new_simple(0, move |_state, memory, _args|
                 {
-                    Self::push_entity(memory, player_entity);
-
-                    Ok(())
+                    Self::push_entity(memory, player_entity)
                 }));
         }
 
@@ -671,9 +728,7 @@ impl Game
                 "mouse-entity",
                 PrimitiveProcedureInfo::new_simple(0, move |_state, memory, _args|
                 {
-                    Self::push_entity(memory, mouse_entity);
-
-                    Ok(())
+                    Self::push_entity(memory, mouse_entity)
                 }));
         }
 
@@ -691,11 +746,11 @@ impl Game
                     let entity = Self::pop_entity(&mut args, memory)?;
 
                     memory.push_return(());
-                    entities.children_of(entity).for_each(|x|
+                    entities.children_of(entity).try_for_each(|x|
                     {
-                        Self::push_entity(memory, x);
-                        memory.rcons();
-                    });
+                        Self::push_entity(memory, x)?;
+                        memory.rcons()
+                    })?;
 
                     Ok(())
                 }));
@@ -716,9 +771,7 @@ impl Game
 
                     let position = entities.transform(entity).unwrap().position;
 
-                    memory.cons_list([position.x, position.y, position.z]);
-
-                    Ok(())
+                    memory.cons_list([position.x, position.y, position.z])
                 }));
         }
 

@@ -29,10 +29,19 @@
                     (lambda (x) (- (car x) (cdr x)))
                     (zip (entity->position a) (entity->position b)))))))
 
+(define (filtered-entities f)
+    (define query (all-entities-query))
+    (define (rest-entities)
+        (let ((next (query-entity-next query)))
+            (if (null? next)
+                '()
+                (if (f next)
+                    (cons next (rest-entities))
+                    (rest-entities)))))
+    (rest-entities))
+
 (define (entities-near entity near-distance)
-    (filter
-        (lambda (x) (< (distance entity x) near-distance))
-        (all-entities)))
+    (filtered-entities (lambda (x) (< (distance entity x) near-distance))))
 
 (define (zob) (set-faction (player-entity) 'zob))
 

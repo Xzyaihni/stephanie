@@ -68,12 +68,12 @@ impl Tile
         format!("{}{}", self.id, self.rotation.to_arrow_str())
     }
 
-    pub fn as_lisp_value(&self, memory: &mut LispMemory)
+    pub fn as_lisp_value(&self, memory: &mut LispMemory) -> Result<(), lisp::Error>
     {
         memory.push_return(self.id as i32);
         memory.push_return(self.rotation as i32);
 
-        memory.cons();
+        memory.cons()
     }
 
     /// # Safety

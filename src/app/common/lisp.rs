@@ -7,8 +7,6 @@ use std::{
     collections::HashMap
 };
 
-use crate::common::write_log;
-
 pub use program::{
     Memoriable,
     MemoriableRef,
@@ -189,6 +187,56 @@ pub type LispVector = LispVectorInner<Vec<ValueRaw>>;
 pub type LispVectorRef<'a> = LispVectorInner<&'a [ValueRaw]>;
 pub type LispVectorMut<'a> = LispVectorInner<&'a mut [ValueRaw]>;
 
+impl LispVector
+{
+    pub fn as_ref_vector(&self) -> LispVectorInner<&[ValueRaw]>
+    {
+        LispVectorInner{
+            tag: self.tag,
+            values: &self.values
+        }
+    }
+}
+
+impl<T: Deref<Target=[ValueRaw]>> LispVectorInner<T>
+{
+    /// # Safety
+    /// all vectors must be valid therefore the tag and values r in sync
+    pub fn try_get(&self, index: usize) -> Option<LispValue>
+    {
+        self.values.get(index).map(|value| unsafe{ LispValue::new(self.tag, *value) })
+    }
+
+    pub fn get(&self, index: usize) -> LispValue
+    {
+        self.try_get(index).unwrap_or_else(||
+        {
+            panic!("index {index} out of bounds")
+        })
+    }
+
+    pub fn len(&self) -> usize
+    {
+        self.values.len()
+    }
+}
+
+impl<T: LispValuable> From<Vec<T>> for LispVector
+{
+    fn from(v: Vec<T>) -> Self
+    {
+        Self{
+            tag: <T as LispValuable>::tag(),
+            values: v.into_iter().map(|x|
+            {
+                let value: LispValue = x.into();
+
+                value.value
+            }).collect()
+        }
+    }
+}
+
 impl<T: IntoIterator<Item=ValueRaw>> LispVectorInner<T>
 {
     // eh
@@ -245,12 +293,22 @@ impl<T> LispList<T>
     }
 }
 
+pub trait LispValuable: Into<LispValue>
+{
+    fn tag() -> ValueTag;
+}
+
 impl From<f32> for LispValue
 {
     fn from(x: f32) -> Self
     {
         LispValue::new_float(x)
     }
+}
+
+impl LispValuable for f32
+{
+    fn tag() -> ValueTag { ValueTag::Float }
 }
 
 impl From<i32> for LispValue
@@ -261,6 +319,11 @@ impl From<i32> for LispValue
     }
 }
 
+impl LispValuable for i32
+{
+    fn tag() -> ValueTag { ValueTag::Integer }
+}
+
 impl From<bool> for LispValue
 {
     fn from(x: bool) -> Self
@@ -269,12 +332,22 @@ impl From<bool> for LispValue
     }
 }
 
+impl LispValuable for bool
+{
+    fn tag() -> ValueTag { ValueTag::Special }
+}
+
 impl From<()> for LispValue
 {
     fn from(_x: ()) -> Self
     {
         LispValue::new_empty_list()
     }
+}
+
+impl LispValuable for ()
+{
+    fn tag() -> ValueTag { ValueTag::Special }
 }
 
 #[derive(Clone, Copy)]
@@ -594,15 +667,21 @@ impl LispValue
             {
                 let vec = block.get_vector_ref(unsafe{ self.value.vector });
 
+                let mut leftover_space = false;
                 let mut s = vec.values.iter().map(|raw| unsafe{ LispValue::new(vec.tag, *raw) })
                     .fold("#(".to_owned(), |acc, value|
                     {
+                        leftover_space = true;
                         let value = value.maybe_to_string(memory, Some(block));
 
                         acc + &value + " "
                     });
 
-                s.pop();
+                if leftover_space
+                {
+                    s.pop();
+                }
+
                 s.push(')');
 
                 s
@@ -632,6 +711,7 @@ impl Display for ErrorPos
 #[derive(Debug, Clone)]
 pub enum Error
 {
+    OutOfMemory,
     WrongType{expected: ValueTag, got: ValueTag},
     WrongSpecial{expected: &'static str},
     Custom(String),
@@ -662,6 +742,7 @@ impl Display for Error
     {
         let s = match self
         {
+            Self::OutOfMemory => format!("out of memory"),
             Self::WrongType{expected, got} => format!("expected type `{expected:?}` got `{got:?}`"),
             Self::WrongSpecial{expected} => format!("wrong special, expected `{expected:?}`"),
             Self::Custom(s) => s.clone(),
@@ -1060,12 +1141,12 @@ impl LispMemory
             envs: Vec::with_capacity(stack_size)
         };
 
-        this.env = this.create_env("global-env", ());
+        this.env = this.create_env("global-env", ()).expect("must have enough memory for default env");
 
         this
     }
 
-    pub fn create_env(&mut self, name: &str, parent: impl Into<LispValue>) -> LispValue
+    pub fn create_env(&mut self, name: &str, parent: impl Into<LispValue>) -> Result<LispValue, Error>
     {
         let symbol = self.new_symbol(name);
         self.push_return(symbol);
@@ -1073,11 +1154,11 @@ impl LispMemory
         self.push_return(());
         self.push_return(parent.into());
 
-        self.cons();
+        self.cons()?;
 
-        self.cons();
+        self.cons()?;
 
-        self.pop_return()
+        Ok(self.pop_return())
     }
 
     pub fn lambdas(&self) -> &Lambdas
@@ -1105,14 +1186,14 @@ impl LispMemory
         self.symbols.get_by_name(name)
     }
 
-    pub fn define(&mut self, key: impl Into<String>, value: LispValue)
+    pub fn define(&mut self, key: impl Into<String>, value: LispValue) -> Result<(), Error>
     {
         let symbol = self.new_symbol(key.into());
 
         self.define_symbol(symbol, value)
     }
 
-    pub fn define_symbol(&mut self, key: LispValue, value: LispValue)
+    pub fn define_symbol(&mut self, key: LispValue, value: LispValue) -> Result<(), Error>
     {
         if let Some(id) = self.lookup_in_env_id::<false>(
             self.env,
@@ -1120,7 +1201,7 @@ impl LispMemory
         )
         {
             self.set_cdr(id, value);
-            return;
+            return Ok(());
         }
 
         let mappings_id = |this: &Self|
@@ -1131,17 +1212,19 @@ impl LispMemory
 
         self.push_return(key);
         self.push_return(value);
-        self.cons();
+        self.cons()?;
 
         let tail = self.get_car(mappings_id(self));
 
         self.push_return(tail);
 
-        self.cons();
+        self.cons()?;
 
         let new_env = self.pop_return();
 
         self.set_car(mappings_id(self), new_env);
+
+        Ok(())
     }
 
     pub fn lookup(&self, name: &str) -> Option<LispValue>
@@ -1551,13 +1634,7 @@ impl LispMemory
         self.memory.set_cdr(id, value)
     }
 
-    fn out_of_memory(&mut self) -> !
-    {
-        write_log(format!("{:#?}\n", &self));
-        panic!("out of memory, memory dump saved to log");
-    }
-
-    fn need_list_memory(&mut self, amount: usize)
+    fn need_list_memory(&mut self, amount: usize) -> Result<(), Error>
     {
         if self.memory.list_remaining() < amount
         {
@@ -1565,12 +1642,14 @@ impl LispMemory
 
             if self.memory.list_remaining() < amount
             {
-                self.out_of_memory()
+                return Err(Error::OutOfMemory);
             }
         }
+
+        Ok(())
     }
 
-    fn need_memory(&mut self, amount: usize)
+    fn need_memory(&mut self, amount: usize) -> Result<(), Error>
     {
         if self.memory.remaining() < amount
         {
@@ -1578,12 +1657,14 @@ impl LispMemory
 
             if self.memory.remaining() < amount
             {
-                self.out_of_memory()
+                return Err(Error::OutOfMemory);
             }
         }
+
+        Ok(())
     }
 
-    pub fn cons(&mut self)
+    pub fn cons(&mut self) -> Result<(), Error>
     {
         self.cons_inner(|this|
         {
@@ -1594,7 +1675,7 @@ impl LispMemory
         })
     }
 
-    pub fn rcons(&mut self)
+    pub fn rcons(&mut self) -> Result<(), Error>
     {
         self.cons_inner(|this|
         {
@@ -1608,21 +1689,23 @@ impl LispMemory
     fn cons_inner(
         &mut self,
         f: impl FnOnce(&mut Self) -> (LispValue, LispValue)
-    )
+    ) -> Result<(), Error>
     {
-        self.need_list_memory(1);
+        self.need_list_memory(1)?;
 
         let (car, cdr) = f(self);
 
         let pair = self.memory.cons(car, cdr);
 
         self.push_return(pair);
+
+        Ok(())
     }
 
     pub fn cons_list<I, V>(
         &mut self,
         values: I
-    )
+    ) -> Result<(), Error>
     where
         V: Into<LispValue>,
         I: IntoIterator<Item=V>,
@@ -1635,7 +1718,7 @@ impl LispMemory
 
         self.push_return(());
 
-        (0..len).for_each(|_| self.cons());
+        (0..len).try_for_each(|_| self.cons())
     }
 
     pub fn new_symbol(
@@ -1653,22 +1736,24 @@ impl LispMemory
     pub fn allocate_vector(
         &mut self,
         vec: LispVectorInner<&[ValueRaw]>
-    )
+    ) -> Result<(), Error>
     {
         let len = vec.values.len();
 
         // +2 for the length and for the type tag
-        self.need_memory(len + 2);
+        self.need_memory(len + 2)?;
 
         let id = self.memory.allocate_iter(vec.tag, vec.values.iter());
 
         self.push_return(LispValue::new_vector(id));
+
+        Ok(())
     }
 
     pub fn allocate_expression(
         &mut self,
         expression: &Expression
-    )
+    ) -> Result<(), Error>
     {
         let value = match expression
         {
@@ -1681,12 +1766,10 @@ impl LispMemory
             Expression::EmptyList => LispValue::new_empty_list(),
             Expression::List{car, cdr} =>
             {
-                self.allocate_expression(&car.expression);
-                self.allocate_expression(&cdr.expression);
+                self.allocate_expression(&car.expression)?;
+                self.allocate_expression(&cdr.expression)?;
 
-                self.cons();
-
-                return;
+                return self.cons();
             },
             Expression::Lambda{..} => unreachable!(),
             Expression::Application{..} => unreachable!(),
@@ -1694,6 +1777,8 @@ impl LispMemory
         };
 
         self.push_return(value);
+
+        Ok(())
     }
 }
 

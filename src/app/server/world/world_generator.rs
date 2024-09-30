@@ -229,9 +229,7 @@ impl ChunkGenerator
                     }
                 }
 
-                tile.as_lisp_value(memory);
-
-                Ok(())
+                tile.as_lisp_value(memory)
             }));
 
         primitives
@@ -318,11 +316,17 @@ impl ChunkGenerator
                     panic!("worldchunk named `{}` doesnt exist", group.this)
                 });
 
-            this_chunk.memory_mut().define("height", info.height.into());
-
-            info.tags.iter().for_each(|tag|
+            this_chunk.memory_mut().define("height", info.height.into()).unwrap_or_else(|err|
             {
-                tag.define(self.rules.name_mappings(), this_chunk.memory_mut());
+                panic!("error allocating height symbol: {err}")
+            });
+
+            info.tags.iter().try_for_each(|tag|
+            {
+                tag.define(self.rules.name_mappings(), this_chunk.memory_mut())
+            }).unwrap_or_else(|err|
+            {
+                panic!("error allocating tag symbol: {err}")
             });
 
             let (state, value): (LispState, LispValue) = this_chunk.run()

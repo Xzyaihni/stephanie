@@ -3,6 +3,7 @@ use std::{
     iter,
     rc::Rc,
     cell::RefCell,
+    io::{self, Write},
     fmt::{self, Debug, Display},
     collections::HashMap,
     ops::{RangeInclusive, Add, Sub, Mul, Div, Rem, Deref, Index, IndexMut}
@@ -203,7 +204,7 @@ impl ArgsWrapper
         memory.push_return(value);
     }
 
-    pub fn as_list(&mut self, memory: &mut LispMemory) -> LispValue
+    pub fn as_list(&mut self, memory: &mut LispMemory) -> Result<LispValue, Error>
     {
         let args: Vec<_> = (0..self.count).map(|_| memory.pop_return()).collect();
 
@@ -213,11 +214,11 @@ impl ArgsWrapper
         });
 
         memory.push_return(());
-        (0..self.count).for_each(|_| memory.cons());
+        (0..self.count).try_for_each(|_| memory.cons())?;
 
         self.count = 0;
 
-        memory.pop_return()
+        Ok(memory.pop_return())
     }
 
     pub fn clear(&mut self, memory: &mut LispMemory)
@@ -450,23 +451,19 @@ impl StoredLambda
         })
     }
 
-    pub fn apply<'a>(
+    fn apply_inner<'a>(
         this: Rc<StoredLambda>,
-        eval_queue: &mut EvalQueue<'a>,
-        state: &'a State,
         memory: &mut LispMemory,
-        mut args: ArgsWrapper,
-        action: Action
-    ) -> Result<(), ErrorPos>
+        mut args: ArgsWrapper
+    ) -> Result<(), Error>
     {
         let params = this.params.clone();
-        let body = this.body;
 
         let parent_env = *this.parent_env.borrow();
 
         drop(this);
 
-        memory.env = memory.create_env("env", parent_env);
+        memory.env = memory.create_env("env", parent_env)?;
 
         match params
         {
@@ -474,30 +471,44 @@ impl StoredLambda
             {
                 if params.len() != args.len()
                 {
-                    return Err(ErrorPos{
-                        position: state.get_expr(body).position,
-                        error: Error::WrongArgumentsCount{
-                            proc: format!("<compound procedure {:?}>", params),
-                            this_invoked: true,
-                            expected: params.len().to_string(),
-                            got: args.len()
-                        }
+                    return Err(Error::WrongArgumentsCount{
+                        proc: format!("<compound procedure {:?}>", params),
+                        this_invoked: true,
+                        expected: params.len().to_string(),
+                        got: args.len()
                     });
                 }
 
-                params.iter().for_each(|key|
+                params.iter().try_for_each(|key|
                 {
                     let value = *args.pop(memory);
 
-                    memory.define_symbol(*key, value);
-                });
+                    memory.define_symbol(*key, value)
+                })
             },
             Either::Left(name) =>
             {
-                let lst = args.as_list(memory);
+                let lst = args.as_list(memory)?;
 
-                memory.define_symbol(name, lst);
+                memory.define_symbol(name, lst)
             }
+        }
+    }
+
+    pub fn apply<'a>(
+        this: Rc<StoredLambda>,
+        eval_queue: &mut EvalQueue<'a>,
+        state: &'a State,
+        memory: &mut LispMemory,
+        args: ArgsWrapper,
+        action: Action
+    ) -> Result<(), ErrorPos>
+    {
+        let body = this.body;
+
+        if let Err(error) = Self::apply_inner(this, memory, args)
+        {
+            return Err(ErrorPos{position: state.get_expr(body).position, error});
         }
 
         state.get_expr(body).eval(eval_queue, memory, action)
@@ -666,6 +677,7 @@ impl Primitives
                     let arg = args.pop(memory);
 
                     print!("{arg}");
+                    io::stdout().flush().unwrap();
 
                     memory.push_return(());
 
@@ -700,9 +712,7 @@ impl Primitives
                         values: &vec![(*fill).value; len]
                     };
 
-                    memory.allocate_vector(vec);
-
-                    Ok(())
+                    memory.allocate_vector(vec)
                 })),
             ("vector-set!",
                 PrimitiveProcedureInfo::new_simple_effect(
@@ -740,11 +750,8 @@ impl Primitives
                     let vec = vec.as_vector_ref(memory.as_memory_mut())?;
                     let index = index.as_integer()?;
 
-                    let value = *vec.values.get(index as usize)
-                        .ok_or(Error::IndexOutOfRange(index))?;
-
-                    let tag = vec.tag;
-                    memory.push_return(unsafe{ LispValue::new(tag, value) });
+                    let value = vec.try_get(index as usize).ok_or(Error::IndexOutOfRange(index))?;
+                    memory.push_return(value);
 
                     Ok(())
                 })),
@@ -1025,6 +1032,8 @@ impl Primitives
                     let first = args.0.car();
                     let second = args.0.cdr().car();
 
+                    let pos = first.position;
+
                     let key = first.as_value()?;
 
                     eval_queue.push(Evaluated{
@@ -1038,7 +1047,7 @@ impl Primitives
 
                             let value = memory.pop_return();
 
-                            memory.define_symbol(key, value);
+                            memory.define_symbol(key, value).with_position(pos)?;
 
                             if action == Action::Return
                             {
@@ -1080,7 +1089,7 @@ impl Primitives
                 {
                     if action == Action::Return
                     {
-                        memory.allocate_expression(&args.0);
+                        memory.allocate_expression(&args.0).with_position(args.0.position)?;
                     }
 
                     Ok(())
@@ -1089,9 +1098,7 @@ impl Primitives
                 PrimitiveProcedureInfo::new_simple(2, |_state, memory, _args|
                 {
                     // yea yea its the reverse version, i just push the args from back to front
-                    memory.rcons();
-
-                    Ok(())
+                    memory.rcons()
                 })),
             ("car",
                 PrimitiveProcedureInfo::new_simple(1, |_state, memory, mut args|

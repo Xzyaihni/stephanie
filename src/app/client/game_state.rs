@@ -890,7 +890,7 @@ impl GameState
         let camera = self.camera.read();
 
         VisibilityChecker{
-            size: camera.size(),
+            size: camera.size3d(),
             position: camera.position().coords
         }
     }

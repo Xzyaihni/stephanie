@@ -15,7 +15,7 @@ use serde::{Serialize, Deserialize};
 use super::{PossibleStates, ParseError};
 
 use crate::common::{
-    lisp::{Program, Primitives, LispMemory},
+    lisp::{self, Program, Primitives, LispMemory},
     world::{
         CHUNK_SIZE,
         GlobalPos,
@@ -169,11 +169,11 @@ impl WorldChunkTag
         &self,
         mappings: &NameMappings,
         memory: &mut LispMemory
-    )
+    ) -> Result<(), lisp::Error>
     {
         let name = mappings.text.get_name(self.name);
 
-        memory.define(name, self.content.into());
+        memory.define(name, self.content.into())
     }
 }
 

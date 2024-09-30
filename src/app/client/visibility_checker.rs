@@ -1,6 +1,4 @@
-use std::ops::Range;
-
-use nalgebra::{Unit, Vector2, Vector3};
+use nalgebra::{Unit, Vector3};
 
 use yanyaengine::Transform;
 
@@ -13,7 +11,7 @@ use crate::common::{
 
 pub struct VisibilityChecker
 {
-    pub size: Vector2<f32>,
+    pub size: Vector3<f32>,
     pub position: Vector3<f32>
 }
 
@@ -23,7 +21,7 @@ impl VisibilityChecker
     {
         let offset = position - self.position;
 
-        let half_size = Vector3::new(self.size.x, self.size.y, Self::z_size()) / 2.0;
+        let half_size = self.size / 2.0;
 
         let lower = -half_size - Vector3::repeat(radius);
         let upper = half_size + Vector3::repeat(radius);
@@ -47,18 +45,6 @@ impl VisibilityChecker
         self.visible_sphere_radius(transform.position, radius)
     }
 
-    fn z_height() -> Range<f32>
-    {
-        -1.0..1.0
-    }
-
-    fn z_size() -> f32
-    {
-        let z_height = Self::z_height();
-
-        z_height.end - z_height.start
-    }
-
     pub fn visible_occluding_plane(&self, transform: &Transform) -> bool
     {
         let start = project_onto(transform, &Vector3::new(-0.5, 0.0, 0.0));
@@ -71,7 +57,7 @@ impl VisibilityChecker
 
         let rectangle = Transform{
             position: self.position,
-            scale: Vector3::new(self.size.x, self.size.y, Self::z_size()),
+            scale: self.size,
             ..Default::default()
         };
 
