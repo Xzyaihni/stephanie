@@ -42,7 +42,7 @@ impl ParticleSpeed
             Self::DirectionSpread{direction, speed, spread} =>
             {
                 let angle = random_f32(-spread..=*spread);
-                let spread = NRotation::from_axis_angle(&Unit::new_normalize(Vector3::z()), angle);
+                let spread = NRotation::from_axis_angle(&Vector3::z_axis(), angle);
 
                 spread * direction.into_inner() * random_f32(speed.clone())
             }

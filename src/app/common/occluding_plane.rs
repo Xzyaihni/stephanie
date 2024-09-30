@@ -54,37 +54,25 @@ impl OccludingPlane
         self.0.set_transform(transform);
     }
 
-    fn visible(&self, _visibility: &VisibilityChecker) -> bool
+    pub fn visible(&self, visibility: &VisibilityChecker) -> bool
     {
-        true
+        visibility.visible_occluding_plane(self.0.transform_ref())
     }
 
     pub fn update_buffers(
         &mut self,
-        visibility: &VisibilityChecker,
         info: &mut UpdateBuffersInfo,
         caster: &OccludingCaster
     )
     {
-        if !self.visible(visibility)
-        {
-            return;
-        }
-
         self.0.update_buffers(caster.0, info);
     }
 
     pub fn draw(
         &self,
-        visibility: &VisibilityChecker,
         info: &mut DrawInfo
     )
     {
-        if !self.visible(visibility)
-        {
-            return;
-        }
-
         self.0.draw(info);
     }
 }

@@ -279,7 +279,7 @@ impl Watcher
     pub fn simple_one_frame() -> Self
     {
         Self{
-            kind: WatcherType::Frames(2.into()),
+            kind: WatcherType::Frames(1.into()),
             action: WatcherAction::Remove,
             ..Default::default()
         }

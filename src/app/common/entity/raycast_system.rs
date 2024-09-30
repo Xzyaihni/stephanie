@@ -25,7 +25,7 @@ pub fn raycast(
     let direction = end - start;
 
     let max_distance = direction.magnitude();
-    let direction = Unit::new_normalize(direction);
+    let direction = Unit::new_unchecked(direction / max_distance);
 
     let mut hits: Vec<_> = iterate_components_with!(
         entities,

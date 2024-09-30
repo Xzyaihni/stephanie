@@ -24,6 +24,11 @@ impl RaycastResult
         (self.distance + self.pierce) < 0.0
     }
 
+    pub fn within_limits(&self, magnitude: f32) -> bool
+    {
+        self.distance <= magnitude && !self.is_behind()
+    }
+
     pub fn hit_points(
         &self,
         start: Vector3<f32>,

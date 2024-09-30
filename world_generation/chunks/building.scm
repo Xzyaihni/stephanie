@@ -85,7 +85,7 @@
         (define (door x)
             (this-tile
                 (make-point x 12)
-                (tile 'air)))
+                (tile 'metal-door 'Right)))
 
         (door 6)
         (door 9)

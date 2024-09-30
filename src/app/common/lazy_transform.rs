@@ -2,7 +2,7 @@ use std::f32;
 
 use serde::{Serialize, Deserialize};
 
-use nalgebra::{Unit, Vector2, Vector3, Rotation as NRotation};
+use nalgebra::{Vector2, Vector3, Rotation as NRotation};
 
 use yanyaengine::Transform;
 
@@ -667,7 +667,7 @@ impl LazyTransform
     )
     {
         let rotation = NRotation::from_axis_angle(
-            &Unit::new_normalize(Vector3::z()),
+            &Vector3::z_axis(),
             current.rotation + self.origin_rotation
         );
 

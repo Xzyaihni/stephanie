@@ -16,11 +16,18 @@ use crate::common::{
 const HINGE_EPSILON: f32 = 0.002;
 const LIMIT_MAX: f32 = 0.01;
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct HingeAngleLimit
+{
+    pub base: f32,
+    pub distance: f32
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HingeJoint
 {
     pub origin: Vector3<f32>,
-    pub angle_limit: Option<f32>
+    pub angle_limit: Option<HingeAngleLimit>
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -58,13 +65,15 @@ fn hinge_contact(
 
     if let Some(angle_limit) = joint.angle_limit
     {
-        let angle = short_rotation(this.rotation);
-        if angle.abs() > angle_limit
+        let angle_local = short_rotation(this.rotation - angle_limit.base);
+        if angle_local.abs() > angle_limit.distance
         {
             let point = project_onto(this, &-joint.origin);
 
             // perpendicular to the angle normal
-            let angle = angle.clamp(-angle_limit, angle_limit);
+            let angle_local = angle_local.clamp(-angle_limit.distance, angle_limit.distance);
+
+            let angle = angle_local + angle_limit.base;
             let plane_normal = Unit::new_unchecked(Vector3::new(-angle.sin(), angle.cos(), 0.0));
 
             let projected = project_onto_plane(plane_normal, 0.0, point - this.position);
@@ -77,7 +86,7 @@ fn hinge_contact(
                 return;
             }
 
-            let normal = diff / magnitude;
+            let normal = diff / penetration;
 
             contacts.push(Contact{
                 a: entity,

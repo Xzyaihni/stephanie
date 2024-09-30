@@ -526,7 +526,13 @@ impl VisualChunk
                 .for_each(|object| object.update_buffers(info));
         });
 
-        self.occluders[height].iter_mut().for_each(|x| x.update_buffers(visibility, info, caster));
+        self.occluders[height].iter_mut().for_each(|x|
+        {
+            if x.visible(visibility)
+            {
+                x.update_buffers(info, caster)
+            }
+        });
     }
 
     pub fn draw_tiles(
@@ -564,6 +570,12 @@ impl VisualChunk
         height: usize
     )
     {
-        self.occluders[height].iter().for_each(|x| x.draw(visibility, info));
+        self.occluders[height].iter().for_each(|x|
+        {
+            if x.visible(visibility)
+            {
+                x.draw(info)
+            }
+        });
     }
 }

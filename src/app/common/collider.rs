@@ -166,7 +166,7 @@ impl ColliderLayer
             (Mouse, Ui, true),
             (Mouse, World, false),
 
-            (Door, Door, true),
+            (Door, Door, false),
             (Door, Normal, true),
             (Door, Damage, true),
             (Door, Ui, false),

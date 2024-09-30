@@ -54,9 +54,9 @@ use crate::{
         EntityPasser,
         EntitiesController,
         OccludingCaster,
-        entity::ClientEntities,
         message::Message,
         character::PartialCombinedInfo,
+        entity::{render_system, ClientEntities},
         world::{
             World,
             Pos3,
@@ -241,17 +241,12 @@ impl ClientEntitiesContainer
         casters: &OccludingCaster
     )
     {
-        self.entities.update_render();
-
-        self.entities.render.iter_mut().for_each(|(_, render)|
-        {
-            render.get_mut().update_buffers(visibility, info);
-        });
-
-        self.entities.occluding_plane.iter_mut().for_each(|(_, plane)|
-        {
-            plane.get_mut().update_buffers(visibility, info, casters);
-        });
+        render_system::update_buffers(
+            &self.entities,
+            self.entities.visible_renderables(visibility),
+            info,
+            casters
+        );
     }
 
     pub fn draw(
@@ -266,25 +261,24 @@ impl ClientEntitiesContainer
             return;
         }
 
-        let ui_end = some_or_return!(self.entities.render.iter().rev().find_map(|(id, render)|
-        {
-            (render.get().z_level() < ZLevel::UiLow).then_some(id)
-        }));
-
-        let (normal, ui) = self.entities.render.split_at(ui_end + 1);
-
         let animation = self.animation.sin();
 
-        normal.iter().filter_map(|x| x.as_ref()).for_each(|render|
+        let mut rendering_ui = false;
+        self.entities.render.iter().for_each(|(_, render)|
         {
-            render.get().draw(visibility, info, animation);
-        });
+            let render = render.get();
+            if !rendering_ui
+            {
+                if render.z_level() >= ZLevel::UiLow
+                {
+                    rendering_ui = true;
 
-        info.bind_pipeline(shaders.ui);
-        info.set_depth_test(false);
-        ui.iter().filter_map(|x| x.as_ref()).for_each(|render|
-        {
-            render.get().draw(visibility, info, animation);
+                    info.bind_pipeline(shaders.ui);
+                    info.set_depth_test(false);
+                }
+            }
+
+            render.draw(visibility, info, animation);
         });
 
         info.set_depth_test(true);
@@ -292,7 +286,7 @@ impl ClientEntitiesContainer
         info.bind_pipeline(shaders.shadow);
         self.entities.occluding_plane.iter().for_each(|(_, x)|
         {
-            x.get().draw(visibility, info);
+            x.get().draw(info);
         });
     }
 }

@@ -383,7 +383,7 @@ impl World
             {
                 let pos = chunk_pos + pos.pos().map(|x| x as f32 * TILE_SIZE);
 
-                spawner::create_spawner(container, pos, spawner);
+                spawner::create_spawner(container, pos, tile.rotation, spawner);
 
                 *tile = Tile::none();
             }

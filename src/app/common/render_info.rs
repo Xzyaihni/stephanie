@@ -554,10 +554,9 @@ impl ClientRenderInfo
         }
     }
 
-    fn visible(
+    pub fn visible(
         &self,
-        visibility: &VisibilityChecker,
-        transform: &Transform
+        visibility: &VisibilityChecker
     ) -> bool
     {
         if !self.visible
@@ -573,26 +572,23 @@ impl ClientRenderInfo
             return true;
         };
 
-        visibility.visible(shape, transform)
+        if let Some(transform) = self.object.as_ref().and_then(|x| x.transform())
+        {
+            visibility.visible(shape, transform)
+        } else
+        {
+            return false;
+        }
     }
 
     pub fn update_buffers(
         &mut self,
-        visibility: &VisibilityChecker,
         info: &mut UpdateBuffersInfo
     )
     {
         if !self.visible
         {
             return;
-        }
-
-        if let Some(transform) = self.object.as_ref().and_then(|x| x.transform())
-        {
-            if !self.visible(visibility, transform)
-            {
-                return;
-            }
         }
 
         if let Some(object) = self.object.as_mut()
@@ -615,12 +611,9 @@ impl ClientRenderInfo
                 return;
             }
 
-            if let Some(transform) = object.transform()
+            if !self.visible(visibility)
             {
-                if !self.visible(visibility, transform)
-                {
-                    return;
-                }
+                return;
             }
 
             if let Some(scissor) = self.scissor

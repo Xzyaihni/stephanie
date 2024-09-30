@@ -13,9 +13,9 @@ use nalgebra::{Vector2, Vector3, Unit};
 use yanyaengine::{TextureId, Transform};
 
 use crate::{
-    DEBUG_SLEEPING,
     server,
     client::{
+        VisibilityChecker,
         RenderCreateInfo,
         UiElement,
         UiEvent
@@ -63,6 +63,7 @@ use crate::{
 
 pub use crate::{iterate_components_with, for_each_component};
 
+pub mod render_system;
 mod damaging_system;
 mod ui_system;
 mod physical_system;
@@ -1572,6 +1573,26 @@ macro_rules! define_entities_both
                 space.build(infos);
             }
 
+            pub fn visible_renderables<'a>(
+                &'a self,
+                visibility: &'a VisibilityChecker
+            ) -> impl Iterator<Item=Entity> + 'a
+            {
+                iterate_components_with!(self, transform, filter_map, |entity, _transform: &RefCell<Transform>|
+                {
+                    if let Some(render) = self.render(entity)
+                    {
+                        render.visible(visibility).then_some(entity)
+                    } else if let Some(occluding_plane) = self.occluding_plane(entity)
+                    {
+                        occluding_plane.visible(visibility).then_some(entity)
+                    } else
+                    {
+                        None
+                    }
+                })
+            }
+
             impl_common_systems!{ClientEntityInfo, $(($name, $set_func),)+}
 
             $(
@@ -1624,7 +1645,7 @@ macro_rules! define_entities_both
 
                 if damaged
                 {
-                    let direction = Unit::new_normalize(
+                    let direction = Unit::new_unchecked(
                         Vector3::new(-angle.cos(), angle.sin(), 0.0)
                     );
 
@@ -1793,42 +1814,6 @@ macro_rules! define_entities_both
 
                         render.visible = parent.visible && parent_visible;
                     }
-                });
-            }
-
-            pub fn update_render(&mut self)
-            {
-                self.resort_by_z(false);
-
-                if DEBUG_SLEEPING
-                {
-                    for_each_component!(self, physical, |entity, physical: &RefCell<Physical>|
-                    {
-                        if let Some(mut render) = self.render_mut(entity)
-                        {
-                            render.mix = Some(if physical.borrow().sleeping()
-                            {
-                                MixColor{color: [0.2, 0.2, 1.0], amount: 0.7}
-                            } else
-                            {
-                                MixColor{color: [0.2, 1.0, 0.2], amount: 0.7}
-                            });
-                        }
-                    });
-                }
-
-                for_each_component!(self, render, |entity, render: &RefCell<ClientRenderInfo>|
-                {
-                    let transform = self.transform(entity).unwrap();
-
-                    render.borrow_mut().set_transform(transform.clone());
-                });
-
-                for_each_component!(self, occluding_plane, |entity, occluding_plane: &RefCell<OccludingPlane>|
-                {
-                    let transform = self.transform(entity).unwrap();
-
-                    occluding_plane.borrow_mut().set_transform(transform.clone());
                 });
             }
 
