@@ -957,6 +957,11 @@ impl Primitives
             ("define",
                 PrimitiveProcedureInfo::new(ArgsCount::Min(2), Rc::new(|op, state, memory, mut args|
                 {
+                    if args.is_null()
+                    {
+                        return Err(ErrorPos{position: args.position, error: Error::ExpectedArg});
+                    }
+
                     let first = args.car();
 
                     let is_procedure = first.is_list();
