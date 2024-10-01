@@ -687,7 +687,7 @@ impl GameState
             running: true,
             shaders: info.shaders,
             world,
-            debug_mode: info.client_info.debug_mode,
+            debug_mode: info.client_info.debug,
             tilemap,
             camera_scale: 1.0,
             rare_timer: 0.0,

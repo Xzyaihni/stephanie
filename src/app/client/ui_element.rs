@@ -5,7 +5,7 @@ use std::{
 
 use strum::AsRefStr;
 
-use nalgebra::Vector2;
+use nalgebra::{Vector2, Vector3};
 
 use yanyaengine::Transform;
 
@@ -170,10 +170,17 @@ pub enum AspectMode
 }
 
 #[derive(Debug)]
+pub enum AspectPosition
+{
+    UiScaled(Vector2<f32>),
+    Absolute(Vector2<f32>)
+}
+
+#[derive(Debug)]
 pub struct KeepAspect
 {
     pub scale: Vector2<f32>,
-    pub position: Vector2<f32>,
+    pub position: AspectPosition,
     pub mode: AspectMode,
 }
 
@@ -183,7 +190,7 @@ impl Default for KeepAspect
     {
         Self{
             scale: Vector2::repeat(1.0),
-            position: Vector2::zeros(),
+            position: AspectPosition::UiScaled(Vector2::zeros()),
             mode: AspectMode::ShrinkX,
         }
     }
@@ -428,10 +435,20 @@ impl UiElement
 
             transform.scale.y = keep_aspect.scale.y;
 
-            transform.position = Ui::ui_position(
-                transform.scale,
-                keep_aspect.position.xyy()
-            );
+            transform.position = match keep_aspect.position
+            {
+                AspectPosition::UiScaled(position) =>
+                {
+                    Ui::ui_position(
+                        transform.scale,
+                        Vector3::new(position.x, position.y, 0.0)
+                    )
+                },
+                AspectPosition::Absolute(position) =>
+                {
+                    Vector3::new(position.x, position.y, 0.0)
+                }
+            };
 
             if let Some(render) = render
             {

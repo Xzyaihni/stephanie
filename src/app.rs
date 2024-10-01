@@ -1,9 +1,8 @@
 use std::{
+    env,
     thread::{self, JoinHandle},
     sync::{mpsc, Arc}
 };
-
-use argparse::{ArgumentParser, StoreOption, StoreTrue, Store};
 
 use yanyaengine::{
     YanyaApp,
@@ -34,6 +33,10 @@ use client::{
     ClientInitInfo,
     ClientInfo
 };
+
+use config::Config;
+
+mod config;
 
 pub mod common;
 
@@ -171,30 +174,7 @@ impl YanyaApp for App
         let deferred_parse = || TileMap::parse("tiles/tiles.json", "textures/tiles/");
         let app_info = app_info.unwrap();
 
-        let mut name = "player_name".to_owned();
-
-        let mut address = None;
-        let mut port = None;
-
-        let mut debug_mode = false;
-
-        {
-            let mut parser = ArgumentParser::new();
-
-            parser.refer(&mut name)
-                .add_option(&["-n", "--name"], Store, "player name");
-
-            parser.refer(&mut address)
-                .add_option(&["-a", "--address"], StoreOption, "connection address");
-
-            parser.refer(&mut port)
-                .add_option(&["-p", "--port"], StoreOption, "hosting port");
-
-            parser.refer(&mut debug_mode)
-                .add_option(&["-d", "--debug"], StoreTrue, "enable debug mode");
-
-            parser.parse_args_or_exit();
-        }
+        let Config{name, address, port, debug} = Config::parse(env::args().skip(1));
         
         let items_info = ItemsInfo::parse(
             &partial_info.assets.lock(),
@@ -279,7 +259,7 @@ impl YanyaApp for App
             client_info: ClientInfo{
                 address: client_address,
                 name,
-                debug_mode
+                debug
             },
             app_info,
             tilemap: deferred_parse().unwrap(),

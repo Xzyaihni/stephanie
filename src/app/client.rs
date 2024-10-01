@@ -91,7 +91,7 @@ pub struct ClientInfo
 {
     pub address: String,
     pub name: String,
-    pub debug_mode: bool
+    pub debug: bool
 }
 
 pub struct Client

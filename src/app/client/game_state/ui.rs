@@ -70,7 +70,7 @@ impl UiScroll
                 },
                 keep_aspect: Some(KeepAspect{
                     scale,
-                    position: Vector2::x(),
+                    position: AspectPosition::UiScaled(Vector2::x()),
                     ..Default::default()
                 }),
                 ..Default::default()
@@ -197,7 +197,7 @@ impl UiList
                     kind: UiElementType::Panel,
                     keep_aspect: Some(KeepAspect{
                         scale: Vector2::new(1.0 - width, 1.0),
-                        position: Vector2::zeros(),
+                        position: AspectPosition::UiScaled(Vector2::zeros()),
                         mode: AspectMode::FillRestX,
                         ..Default::default()
                     }),
@@ -487,12 +487,17 @@ impl UiList
     }
 }
 
+struct CustomButton
+{
+    texture: &'static str
+}
+
 struct UiWindow
 {
     body: Entity,
     name: Entity,
     panel: Entity,
-    close_button_x: f32,
+    button_x: f32,
     is_open: bool,
     resized_update: bool
 }
@@ -503,6 +508,7 @@ impl UiWindow
         creator: &mut EntityCreator,
         anchor: Entity,
         name: String,
+        custom_buttons: Vec<CustomButton>,
         mut on_close: Close
     ) -> Self
     where
@@ -589,23 +595,21 @@ impl UiWindow
             }
         );
 
-        let close_button_x = panel_size;
-        let scale = Vector3::new(1.0 - close_button_x, 1.0, 1.0);
+        let button_x = panel_size;
+
+        let scale = Vector3::new(button_x * (1 + custom_buttons.len()) as f32, 1.0, 1.0);
         let name = creator.push(
             EntityInfo{
-                lazy_transform: Some(LazyTransformInfo{
-                    transform: Transform{
-                        scale,
-                        ..Default::default()
-                    },
-                    ..Default::default()
-                }.into()),
+                lazy_transform: Some(LazyTransformInfo::default().into()),
                 parent: Some(Parent::new(top_panel, true)),
                 ui_element: Some(UiElement{
                     kind: UiElementType::Panel,
                     keep_aspect: Some(KeepAspect{
-                        scale: Vector2::new(close_button_x, 1.0),
-                        position: Vector2::zeros(),
+                        scale: scale.xy(),
+                        position: AspectPosition::Absolute(Vector2::new(
+                            button_x * (custom_buttons.len() as f32 - 1.0),
+                            0.0
+                        )),
                         mode: AspectMode::FillRestX,
                         ..Default::default()
                     }),
@@ -625,16 +629,42 @@ impl UiWindow
             }
         );
 
-        let scale = Vector3::new(close_button_x, 1.0, 1.0);
+        let scale = Vector3::new(button_x, 1.0, 1.0);
+
+        custom_buttons.into_iter().for_each(|custom_button|
+        {
+            creator.push(
+                EntityInfo{
+                    lazy_transform: Some(LazyTransformInfo::default().into()),
+                    parent: Some(Parent::new(top_panel, true)),
+                    ui_element: Some(UiElement{
+                        kind: UiElementType::Button{
+                            on_click: Box::new(move ||
+                            {
+                                eprintln!("COME ON DO SOMETHING");
+                            })
+                        },
+                        keep_aspect: Some(KeepAspect{
+                            scale: scale.xy(),
+                            position: AspectPosition::UiScaled(Vector2::zeros()),
+                            ..Default::default()
+                        }),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+                RenderInfo{
+                    object: Some(RenderObjectKind::Texture{
+                        name: custom_button.texture.to_owned()
+                    }.into()),
+                    z_level: ZLevel::UiHigh,
+                    ..Default::default()
+                });
+        });
+
         creator.push(
             EntityInfo{
-                lazy_transform: Some(LazyTransformInfo{
-                    transform: Transform{
-                        scale,
-                        ..Default::default()
-                    },
-                    ..Default::default()
-                }.into()),
+                lazy_transform: Some(LazyTransformInfo::default().into()),
                 parent: Some(Parent::new(top_panel, true)),
                 ui_element: Some(UiElement{
                     kind: UiElementType::Button{
@@ -645,7 +675,7 @@ impl UiWindow
                     },
                     keep_aspect: Some(KeepAspect{
                         scale: scale.xy(),
-                        position: Vector2::x(),
+                        position: AspectPosition::UiScaled(Vector2::x()),
                         ..Default::default()
                     }),
                     ..Default::default()
@@ -663,7 +693,7 @@ impl UiWindow
             body,
             name,
             panel,
-            close_button_x,
+            button_x,
             is_open: false,
             resized_update: true
         }
@@ -771,7 +801,11 @@ impl UiInventory
             mut on_change
         } = actions;
 
-        let window = UiWindow::new(creator, anchor, String::new(), on_close);
+        let custom_buttons = vec![CustomButton{
+            texture: "ui/anatomy_button.png"
+        }];
+
+        let window = UiWindow::new(creator, anchor, String::new(), custom_buttons, on_close);
 
         let items = Rc::new(RefCell::new(Vec::new()));
 
@@ -790,7 +824,7 @@ impl UiInventory
             items_info,
             items,
             inventory: window.body,
-            list: UiList::new(creator, window.panel, 1.0 - window.close_button_x, on_change),
+            list: UiList::new(creator, window.panel, 1.0 - window.button_x, on_change),
             window
         }
     }
@@ -908,7 +942,7 @@ impl UiItemInfo
     where
         Close: FnMut() + 'static,
     {
-        let window = UiWindow::new(creator, anchor, String::new(), on_close);
+        let window = UiWindow::new(creator, anchor, String::new(), Vec::new(), on_close);
 
         let padding = 0.05;
 

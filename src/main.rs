@@ -7,6 +7,8 @@
 // this is so stupid
 #![allow(clippy::len_without_is_empty)]
 
+use std::{process, fmt::Display};
+
 use yanyaengine::{App, ShadersContainer, ShadersInfo};
 
 pub use app::{common, server, client, ProgramShaders};
@@ -97,6 +99,13 @@ pub const DEBUG_SLEEPING: bool = false;
 pub const DEBUG_VELOCITY: bool = false;
 pub type SlowMode = SlowModeFalse;
 pub type DebugVisibility = DebugVisibilityFalse;
+
+pub fn complain(message: impl Display) -> !
+{
+    eprintln!("{message}");
+
+    process::exit(1)
+}
 
 /*#[link(name = "floathelper")]
 extern "C"
