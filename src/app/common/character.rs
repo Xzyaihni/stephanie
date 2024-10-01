@@ -310,7 +310,6 @@ impl Character
                         },
                         flip: if flip { Uvs::FlipHorizontal } else { Uvs::Normal }
                     }),
-                    shape: Some(BoundingShape::Circle),
                     z_level: ZLevel::Arms,
                     ..Default::default()
                 }),
@@ -376,7 +375,6 @@ impl Character
                     object: Some(RenderObjectKind::TextureId{
                         id: texture
                     }.into()),
-                    shape: Some(BoundingShape::Circle),
                     z_level: ZLevel::Hair,
                     ..Default::default()
                 }),
@@ -1550,7 +1548,7 @@ impl Character
 
         let mut change_velocity = physical.velocity_as_force(new_velocity - current_velocity, dt);
 
-        if !physical.floating
+        if !physical.floating()
         {
             change_velocity.z = 0.0;
         }

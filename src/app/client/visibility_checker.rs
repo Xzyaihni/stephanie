@@ -4,11 +4,11 @@ use yanyaengine::Transform;
 
 use crate::common::{
     project_onto,
-    raycast::*,
-    render_info::BoundingShape
+    raycast::*
 };
 
 
+#[derive(Debug, Clone)]
 pub struct VisibilityChecker
 {
     pub size: Vector3<f32>,
@@ -38,7 +38,7 @@ impl VisibilityChecker
         self.visible_sphere_radius(point, 0.0)
     }
 
-    fn visible_sphere(&self, transform: &Transform) -> bool
+    pub fn visible_sphere(&self, transform: &Transform) -> bool
     {
         let radius = transform.max_scale() / 2.0;
 
@@ -67,21 +67,6 @@ impl VisibilityChecker
         } else
         {
             false
-        }
-    }
-
-    pub fn visible(
-        &self,
-        shape: BoundingShape,
-        transform: &Transform
-    ) -> bool
-    {
-        match shape
-        {
-            BoundingShape::Circle =>
-            {
-                self.visible_sphere(transform)
-            }
         }
     }
 }

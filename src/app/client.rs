@@ -119,7 +119,7 @@ impl Client
             }
         }
 
-        let camera = Camera::new(info.aspect(), 1.0);
+        let camera = Camera::new(info.aspect(), -1.0..1.0);
         let mut info = info.to_full(&camera);
 
         let camera = Arc::new(RwLock::new(camera));

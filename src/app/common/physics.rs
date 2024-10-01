@@ -76,10 +76,10 @@ pub struct Physical
     pub restitution: f32,
     pub static_friction: f32,
     pub dynamic_friction: f32,
-    pub floating: bool,
     pub fixed: PhysicalFixed,
     pub target_non_lazy: bool,
     pub move_z: bool,
+    floating: bool,
     can_sleep: bool,
     sleeping: bool,
     sleep_movement: f32,
@@ -192,6 +192,21 @@ impl Physical
         if self.can_sleep
         {
             self.update_sleep_movement(dt);
+        }
+    }
+
+    pub fn floating(&self) -> bool
+    {
+        self.floating
+    }
+
+    pub fn set_floating(&mut self, state: bool)
+    {
+        self.floating = state;
+
+        if state
+        {
+            self.acceleration = Vector3::zeros();
         }
     }
 

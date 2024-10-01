@@ -605,7 +605,7 @@ impl Game
         {
             let state = args.pop(memory).as_bool()?;
 
-            get_component_mut!(physical_mut, entities, entity).floating = state;
+            get_component_mut!(physical_mut, entities, entity).set_floating(state);
 
             Ok(())
         });
@@ -1004,7 +1004,9 @@ impl<'a> PlayerContainer<'a>
     {
         let camera_z = self.game_state.entities().transform(self.info.camera).unwrap().position.z;
 
-        let z = (camera_z / TILE_SIZE).ceil() * TILE_SIZE;
+        // slighly shift the camera down so its not right at the tile height
+        let shift = 0.001;
+        let z = (camera_z / TILE_SIZE).ceil() * TILE_SIZE - shift;
 
         let mut camera = self.game_state.camera.write();
         camera.set_position_z(z);
@@ -1015,7 +1017,7 @@ impl<'a> PlayerContainer<'a>
     {
         let is_floating = self.game_state.entities().physical(self.info.entity).map(|x|
         {
-            x.floating
+            x.floating()
         }).unwrap_or(false);
 
         if control == Control::Crawl && !is_floating 
@@ -1557,7 +1559,7 @@ impl<'a> PlayerContainer<'a>
 
         let is_flying = self.game_state.entities().physical(self.info.entity).map(|x|
         {
-            x.floating
+            x.floating()
         }).unwrap_or(false);
 
         let add_flight = |direction: Option<Vector3<f32>>|

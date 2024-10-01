@@ -15,7 +15,7 @@ use std::{
 
 use parking_lot::{RwLock, Mutex};
 
-use nalgebra::Vector2;
+use nalgebra::{Vector2, Vector3};
 
 use serde::{Serialize, Deserialize};
 
@@ -32,6 +32,7 @@ use yanyaengine::{
 };
 
 use crate::{
+    DebugVisibility,
     ProgramShaders,
     client::{ui_element::*, RenderCreateInfo},
     common::{
@@ -54,9 +55,10 @@ use crate::{
         EntityPasser,
         EntitiesController,
         OccludingCaster,
+        OccludingPlane,
         message::Message,
         character::PartialCombinedInfo,
-        entity::{render_system, ClientEntities},
+        entity::{iterate_components_with, render_system, ClientEntities},
         world::{
             World,
             Pos3,
@@ -107,6 +109,8 @@ pub struct ClientEntitiesContainer
     pub entities: ClientEntities,
     pub camera_entity: Entity,
     pub follow_entity: Entity,
+    visible_renders: Vec<Entity>,
+    visible_occluders: Vec<Entity>,
     player_entity: Entity,
     positions_sync: f32,
     animation: f32
@@ -137,6 +141,8 @@ impl ClientEntitiesContainer
             camera_entity,
             follow_entity,
             player_entity,
+            visible_renders: Vec::new(),
+            visible_occluders: Vec::new(),
             positions_sync: 0.0,
             animation: 0.0
         }
@@ -241,9 +247,27 @@ impl ClientEntitiesContainer
         casters: &OccludingCaster
     )
     {
+        self.visible_renders = iterate_components_with!(self.entities, render, filter_map,
+            |entity, render: &RefCell<ClientRenderInfo>|
+            {
+                self.entities.transform(entity).and_then(|transform|
+                {
+                    render.borrow().visible_with(visibility, &transform).then_some(entity)
+                })
+            }).collect();
+
+        self.visible_occluders = iterate_components_with!(self.entities, occluding_plane, filter_map,
+            |entity, occluding_plane: &RefCell<OccludingPlane>|
+            {
+                self.entities.transform(entity).and_then(|transform|
+                {
+                    occluding_plane.borrow().visible_with(visibility, &transform).then_some(entity)
+                })
+            }).collect();
+
         render_system::update_buffers(
             &self.entities,
-            self.entities.visible_renderables(visibility),
+            self.visible_renders.iter().chain(self.visible_occluders.iter()).copied(),
             info,
             casters
         );
@@ -264,9 +288,9 @@ impl ClientEntitiesContainer
         let animation = self.animation.sin();
 
         let mut rendering_ui = false;
-        self.entities.render.iter().for_each(|(_, render)|
+        self.visible_renders.iter().for_each(|entity|
         {
-            let render = render.get();
+            let render = self.entities.render(*entity).unwrap();
             if !rendering_ui
             {
                 if render.z_level() >= ZLevel::UiLow
@@ -284,9 +308,9 @@ impl ClientEntitiesContainer
         info.set_depth_test(true);
 
         info.bind_pipeline(shaders.shadow);
-        self.entities.occluding_plane.iter().for_each(|(_, x)|
+        self.visible_occluders.iter().for_each(|entity|
         {
-            x.get().draw(info);
+            self.entities.occluding_plane(*entity).unwrap().draw(info);
         });
     }
 }
@@ -396,6 +420,104 @@ pub struct UiNotifications
     pub tile_tooltip: NotificationId
 }
 
+struct DebugVisibilityState
+{
+    detached: bool,
+    visibility_camera: Camera
+}
+
+trait DebugVisibilityStateTrait
+{
+    fn new(camera: &Camera) -> Self;
+
+    fn is_detached(&self) -> bool;
+
+    fn input(&mut self, control: &yanyaengine::Control);
+    fn update(&mut self, camera: &Camera);
+
+    fn camera(&self) -> &Camera;
+}
+
+impl DebugVisibilityStateTrait for DebugVisibilityState
+{
+    fn new(camera: &Camera) -> Self
+    {
+        Self{
+            detached: false,
+            visibility_camera: camera.clone()
+        }
+    }
+
+    fn is_detached(&self) -> bool
+    {
+        self.detached
+    }
+
+    fn input(&mut self, control: &yanyaengine::Control)
+    {
+        use yanyaengine::{PhysicalKey, KeyCode, ElementState};
+
+        if let yanyaengine::Control::Keyboard{
+            keycode: PhysicalKey::Code(KeyCode::KeyK),
+            state: ElementState::Pressed,
+            ..
+        } = control
+        {
+            self.detached = !self.detached;
+            eprintln!("camera detached state: {}", self.detached);
+        }
+    }
+
+    fn update(&mut self, camera: &Camera)
+    {
+        if !self.detached
+        {
+            self.visibility_camera = camera.clone();
+        }
+    }
+
+    fn camera(&self) -> &Camera
+    {
+        &self.visibility_camera
+    }
+}
+
+impl DebugVisibilityStateTrait for ()
+{
+    fn new(_camera: &Camera) -> Self { () }
+
+    fn is_detached(&self) -> bool { false }
+
+    fn input(&mut self, _control: &yanyaengine::Control) {}
+    fn update(&mut self, _camera: &Camera) {}
+
+    fn camera(&self) -> &Camera { unreachable!() }
+}
+
+trait DebugVisibilityTrait
+{
+    type State: DebugVisibilityStateTrait;
+
+    fn as_bool() -> bool;
+}
+
+pub struct DebugVisibilityTrue;
+pub struct DebugVisibilityFalse;
+
+impl DebugVisibilityTrait for DebugVisibilityTrue
+{
+    type State = DebugVisibilityState;
+
+    fn as_bool() -> bool { true }
+}
+
+impl DebugVisibilityTrait for DebugVisibilityFalse
+{
+    type State = ();
+
+    fn as_bool() -> bool { false }
+}
+
 pub struct GameState
 {
     pub mouse_position: Vector2<f32>,
@@ -421,6 +543,7 @@ pub struct GameState
     is_trusted: bool,
     camera_scale: f32,
     rare_timer: f32,
+    debug_visibility: <DebugVisibility as DebugVisibilityTrait>::State,
     connections_handler: Arc<RwLock<ConnectionsHandler>>,
     receiver_handle: Option<JoinHandle<()>>,
     receiver: Receiver<Message>
@@ -546,6 +669,10 @@ impl GameState
         let assets = info.object_info.partial.assets;
         let common_textures = CommonTextures::new(&mut assets.lock());
 
+        let debug_visibility = <DebugVisibility as DebugVisibilityTrait>::State::new(
+            &info.camera.read()
+        );
+
         let mut this = Self{
             mouse_position,
             camera: info.camera,
@@ -570,6 +697,7 @@ impl GameState
             host: info.host,
             is_trusted: false,
             user_receiver,
+            debug_visibility,
             connections_handler,
             receiver_handle,
             receiver
@@ -734,7 +862,11 @@ impl GameState
     fn camera_resized(&mut self)
     {
         let size = self.camera.read().size();
-        self.world.rescale(size);
+
+        if !self.debug_visibility.is_detached()
+        {
+            self.world.rescale(size);
+        }
 
         self.ui.borrow().update_resize(&self.entities.entities, size);
         self.entities.update_resize(size);
@@ -847,6 +979,8 @@ impl GameState
         info: &mut UpdateBuffersInfo
     )
     {
+        self.debug_visibility.update(&self.camera.read());
+
         let caster = self.entities.player_transform().map(|x| x.position)
             .unwrap_or_default();
 
@@ -888,10 +1022,29 @@ impl GameState
     fn visibility_checker(&self) -> VisibilityChecker
     {
         let camera = self.camera.read();
+        let camera = if <DebugVisibility as DebugVisibilityTrait>::as_bool()
+        {
+            self.debug_visibility.camera()
+        } else
+        {
+            &camera
+        };
+
+        let size2d = camera.size();
+
+        let z_low = -1.0;
+        let z_high = 0.0;
+
+        let size = Vector3::new(size2d.x, size2d.y, z_high - z_low);
+
+        let z_middle = (z_low + z_high) / 2.0;
+
+        let mut position = camera.position().coords;
+        position.z += z_middle;
 
         VisibilityChecker{
-            size: camera.size3d(),
-            position: camera.position().coords
+            size,
+            position
         }
     }
 
@@ -988,6 +1141,8 @@ impl GameState
 
     pub fn input(&mut self, control: yanyaengine::Control)
     {
+        self.debug_visibility.input(&control);
+
         self.controls.handle_input(control);
     }
 
@@ -1010,7 +1165,10 @@ impl GameState
 
     pub fn camera_moved(&mut self, position: Pos3<f32>)
     {
-        self.world.camera_moved(position);
+        if !self.debug_visibility.is_detached()
+        {
+            self.world.camera_moved(position);
+        }
     }
 
     pub fn resize(&mut self, aspect: f32)
@@ -1021,7 +1179,10 @@ impl GameState
         let size = camera.size();
         drop(camera);
 
-        self.world.rescale(size);
+        if !self.debug_visibility.is_detached()
+        {
+            self.world.rescale(size);
+        }
 
         self.ui.borrow().update_resize(&self.entities.entities, size);
 

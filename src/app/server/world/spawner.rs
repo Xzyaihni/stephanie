@@ -77,7 +77,6 @@ pub fn create_spawner(
                     object: Some(RenderObjectKind::Texture{
                         name: texture.to_owned()
                     }.into()),
-                    shape: Some(BoundingShape::Circle),
                     z_level: ZLevel::Door,
                     ..Default::default()
                 }),

@@ -183,12 +183,6 @@ impl From<RenderObjectKind> for RenderObject
     }
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub enum BoundingShape
-{
-    Circle
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Scissor
 {
@@ -252,7 +246,7 @@ pub struct RenderInfo
     pub visible: bool,
     pub scissor: Option<Scissor>,
     pub object: Option<RenderObject>,
-    pub shape: Option<BoundingShape>,
+    pub visibility_check: bool,
     pub mix: Option<MixColor>,
     pub aspect: Aspect,
     pub z_level: ZLevel
@@ -266,7 +260,7 @@ impl Default for RenderInfo
             visible: true,
             scissor: None,
             object: None,
-            shape: Some(BoundingShape::Circle),
+            visibility_check: true,
             mix: None,
             aspect: Aspect::Fill,
             z_level: ZLevel::Shoulders
@@ -380,7 +374,7 @@ pub struct ClientRenderInfo
     pub visible: bool,
     pub scissor: Option<VulkanoScissor>,
     pub object: Option<ClientRenderObject>,
-    pub shape: Option<BoundingShape>,
+    pub visibility_check: bool,
     pub mix: Option<MixColor>,
     pub aspect: Aspect,
     z_level: ZLevel
@@ -409,7 +403,7 @@ impl ServerToClient<ClientRenderInfo> for RenderInfo
             visible: self.visible,
             scissor,
             object,
-            shape: self.shape,
+            visibility_check: self.visibility_check,
             mix: self.mix,
             aspect: self.aspect,
             z_level: self.z_level
@@ -559,25 +553,29 @@ impl ClientRenderInfo
         visibility: &VisibilityChecker
     ) -> bool
     {
+        self.object.as_ref().and_then(|x| x.transform()).map(|transform|
+        {
+            self.visible_with(visibility, transform)
+        }).unwrap_or(false)
+    }
+
+    pub fn visible_with(
+        &self,
+        visibility: &VisibilityChecker,
+        transform: &Transform
+    ) -> bool
+    {
         if !self.visible
         {
             return false;
         }
 
-        let shape = if let Some(x) = self.shape
+        if self.visibility_check
         {
-            x
+            visibility.visible_sphere(transform)
         } else
         {
             return true;
-        };
-
-        if let Some(transform) = self.object.as_ref().and_then(|x| x.transform())
-        {
-            visibility.visible(shape, transform)
-        } else
-        {
-            return false;
         }
     }
 

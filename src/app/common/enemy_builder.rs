@@ -81,7 +81,6 @@ impl<'a> EnemyBuilder<'a>
                 ..Default::default()
             }.into()),
             render: Some(RenderInfo{
-                shape: Some(BoundingShape::Circle),
                 z_level: ZLevel::Head,
                 aspect: Aspect::KeepMax,
                 ..Default::default()

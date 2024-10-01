@@ -56,7 +56,12 @@ impl OccludingPlane
 
     pub fn visible(&self, visibility: &VisibilityChecker) -> bool
     {
-        visibility.visible_occluding_plane(self.0.transform_ref())
+        self.visible_with(visibility, self.0.transform_ref())
+    }
+
+    pub fn visible_with(&self, visibility: &VisibilityChecker, transform: &Transform) -> bool
+    {
+        visibility.visible_occluding_plane(transform)
     }
 
     pub fn update_buffers(

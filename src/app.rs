@@ -86,7 +86,11 @@ impl SlowModeStateTrait for SlowModeState
             {
                 match code
                 {
-                    KeyCode::KeyM => self.running = !self.running,
+                    KeyCode::KeyM =>
+                    {
+                        self.running = !self.running;
+                        eprintln!("slow mode running state: {}", self.running);
+                    },
                     KeyCode::KeyN => self.step_now = true,
                     _ => ()
                 }

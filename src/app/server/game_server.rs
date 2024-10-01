@@ -347,7 +347,6 @@ impl GameServer
                 object: Some(RenderObjectKind::Texture{
                     name: "player/hair.png".to_owned()
                 }.into()),
-                shape: Some(BoundingShape::Circle),
                 z_level: ZLevel::Head,
                 aspect: Aspect::KeepMax,
                 ..Default::default()

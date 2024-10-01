@@ -15,7 +15,6 @@ use yanyaengine::{TextureId, Transform};
 use crate::{
     server,
     client::{
-        VisibilityChecker,
         RenderCreateInfo,
         UiElement,
         UiEvent
@@ -1571,26 +1570,6 @@ macro_rules! define_entities_both
                 });
 
                 space.build(infos);
-            }
-
-            pub fn visible_renderables<'a>(
-                &'a self,
-                visibility: &'a VisibilityChecker
-            ) -> impl Iterator<Item=Entity> + 'a
-            {
-                iterate_components_with!(self, transform, filter_map, |entity, _transform: &RefCell<Transform>|
-                {
-                    if let Some(render) = self.render(entity)
-                    {
-                        render.visible(visibility).then_some(entity)
-                    } else if let Some(occluding_plane) = self.occluding_plane(entity)
-                    {
-                        occluding_plane.visible(visibility).then_some(entity)
-                    } else
-                    {
-                        None
-                    }
-                })
             }
 
             impl_common_systems!{ClientEntityInfo, $(($name, $set_func),)+}
