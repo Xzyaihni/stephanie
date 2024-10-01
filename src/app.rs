@@ -15,7 +15,7 @@ use yanyaengine::{
     game_object::*
 };
 
-use crate::SlowMode;
+use crate::{SUPER_SPEED, SlowMode};
 
 use common::{
     TileMap,
@@ -297,6 +297,14 @@ impl YanyaApp for App
     fn update(&mut self, partial_info: UpdateBuffersPartialInfo, dt: f32)
     {
         let mut info = partial_info.to_full(&self.client.camera.read());
+
+        if let Some(super_speed) = SUPER_SPEED
+        {
+            for _ in 0..super_speed
+            {
+                self.client.update(&mut info, 1.0 / 60.0);
+            }
+        }
 
         if SlowMode::as_bool()
         {
