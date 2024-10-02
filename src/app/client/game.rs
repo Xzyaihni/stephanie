@@ -18,7 +18,7 @@ use yanyaengine::{
 };
 
 use crate::{
-    client::{Ui, UiEvent},
+    client::UiEvent,
     common::{
         some_or_value,
         some_or_return,
@@ -41,8 +41,9 @@ use crate::{
 
 use super::game_state::{
     GameState,
+    UiSpecializedWindow,
+    WindowCreateInfo,
     EntityCreator,
-    WindowWhich,
     InventoryWhich,
     UserEvent,
     ControlState,
@@ -141,7 +142,7 @@ impl Game
             (state, primitives)
         };
 
-        this.info.borrow_mut().console_infos = Some(console_infos);
+        this.info.borrow_mut().console.infos = Some(console_infos);
 
         this
     }
@@ -160,12 +161,11 @@ impl Game
         {
             let game_state = self.game_state.upgrade().unwrap();
             let mut game_state = game_state.borrow_mut();
-            let ui = game_state.ui.clone();
             let info = self.info.clone();
 
             game_state.entities_mut().on_inventory(Box::new(move |entities, entity|
             {
-                let info = info.borrow();
+                let mut info = info.borrow_mut();
 
                 let which = if entity == info.entity
                 {
@@ -180,12 +180,9 @@ impl Game
 
                 if let Some(which) = which
                 {
-                    let mut ui = ui.borrow_mut();
-
                     PlayerContainer::update_inventory_inner(
                         entities,
-                        &mut ui,
-                        &info,
+                        &mut info,
                         which
                     );
                 }
@@ -260,7 +257,7 @@ impl Game
 
     fn on_key(&mut self, logical: Key, key: KeyCode) -> bool
     {
-        if self.info.borrow().console_contents.is_some()
+        if self.info.borrow().console.contents.is_some()
         {
             match key
             {
@@ -269,7 +266,7 @@ impl Game
                     let mut info = self.info.borrow_mut();
                     if info.ctrl_held
                     {
-                        let contents = info.console_contents.as_mut().unwrap();
+                        let contents = info.console.contents.as_mut().unwrap();
 
                         match self.game_state.upgrade().unwrap().borrow_mut()
                             .controls
@@ -297,7 +294,7 @@ impl Game
                     let contents = {
                         let mut info = self.info.borrow_mut();
 
-                        info.console_contents.take().unwrap()
+                        info.console.contents.take().unwrap()
                     };
 
                     self.console_command(contents);
@@ -308,7 +305,7 @@ impl Game
                 },
                 KeyCode::Escape =>
                 {
-                    self.info.borrow_mut().console_contents.take();
+                    self.info.borrow_mut().console.contents.take();
 
                     self.player_container(|mut x| x.update_console());
 
@@ -319,7 +316,7 @@ impl Game
                     {
                         let mut info = self.info.borrow_mut();
 
-                        let contents = info.console_contents.as_mut().unwrap();
+                        let contents = info.console.contents.as_mut().unwrap();
                         contents.pop();
                     }
 
@@ -333,7 +330,7 @@ impl Game
             {
                 let mut info = self.info.borrow_mut();
 
-                let contents = info.console_contents.as_mut().unwrap();
+                let contents = info.console.contents.as_mut().unwrap();
 
                 if let Some(text) = logical.to_text()
                 {
@@ -825,7 +822,7 @@ impl Game
     {
         let config = {
             let infos = self.info.borrow();
-            let infos = infos.console_infos.as_ref().expect("always initialized");
+            let infos = infos.console.infos.as_ref().expect("always initialized");
 
             LispConfig{
                 primitives: infos.1.clone(),
@@ -878,6 +875,42 @@ struct PlayerCreateInfo
     pub console_entity: Entity
 }
 
+struct ConsoleInfo
+{
+    entity: Entity,
+    contents: Option<String>,
+    infos: Option<(LispState, Rc<Primitives>)>,
+}
+
+impl ConsoleInfo
+{
+    pub fn new(info: &PlayerCreateInfo) -> Self
+    {
+        Self{
+            entity: info.console_entity,
+            contents: None,
+            infos: None
+        }
+    }
+}
+
+struct InventoriesInfo
+{
+    player: Option<Weak<RefCell<UiSpecializedWindow>>>,
+    other: Option<Weak<RefCell<UiSpecializedWindow>>>
+}
+
+impl InventoriesInfo
+{
+    pub fn new() -> Self
+    {
+        Self{
+            player: None,
+            other: None
+        }
+    }
+}
+
 struct PlayerInfo
 {
     camera: Entity,
@@ -885,42 +918,38 @@ struct PlayerInfo
     entity: Entity,
     mouse_entity: Entity,
     other_entity: Option<Entity>,
-    console_entity: Entity,
-    console_contents: Option<String>,
-    console_infos: Option<(LispState, Rc<Primitives>)>,
+    inventories: InventoriesInfo,
+    console: ConsoleInfo,
     previous_stamina: Option<f32>,
     previous_cooldown: (f32, f32),
     ctrl_held: bool,
-    interacted: bool,
-    inventory_open: bool,
-    other_inventory_open: bool
+    interacted: bool
 }
 
 impl PlayerInfo
 {
     pub fn new(info: PlayerCreateInfo) -> Self
     {
+        let console = ConsoleInfo::new(&info);
+
         Self{
             camera: info.camera,
             follow: info.follow,
             entity: info.entity,
             mouse_entity: info.mouse_entity,
             other_entity: None,
-            console_entity: info.console_entity,
-            console_contents: None,
-            console_infos: None,
+            inventories: InventoriesInfo::new(),
+            console,
             previous_stamina: None,
             previous_cooldown: (0.0, 0.0),
             ctrl_held: false,
-            interacted: false,
-            inventory_open: false,
-            other_inventory_open: false
+            interacted: false
         }
     }
 
     pub fn update_memory(&mut self, state: LispState)
     {
-        if let Some(x) = self.console_infos.as_mut()
+        if let Some(x) = self.console.infos.as_mut()
         {
             x.0 = state;
         }
@@ -969,8 +998,6 @@ impl<'a> PlayerContainer<'a>
         }
 
         self.camera_sync_instant();
-        self.update_inventory(InventoryWhich::Player);
-        self.update_inventory(InventoryWhich::Other);
     }
 
     pub fn camera_sync(&mut self)
@@ -1056,8 +1083,21 @@ impl<'a> PlayerContainer<'a>
                     {
                         self.info.other_entity = Some(mouse_touched);
 
-                        self.info.other_inventory_open = true;
-                        self.update_inventory(InventoryWhich::Other);
+                        let id = self.game_state.add_window(WindowCreateInfo::Inventory{
+                            entity: mouse_touched,
+                            on_click: Box::new(|anchor, item|
+                            {
+                                UserEvent::Popup{
+                                    anchor,
+                                    responses: vec![
+                                        UserEvent::Take(item),
+                                        UserEvent::Info{which: InventoryWhich::Other, item}
+                                    ]
+                                }
+                            })
+                        });
+
+                        self.info.inventories.other = Some(id);
 
                         return;
                     }
@@ -1090,7 +1130,7 @@ impl<'a> PlayerContainer<'a>
             },
             Control::DebugConsole if self.game_state.debug_mode =>
             {
-                self.info.console_contents = if self.info.console_contents.is_some()
+                self.info.console.contents = if self.info.console.contents.is_some()
                 {
                     None
                 } else
@@ -1100,7 +1140,7 @@ impl<'a> PlayerContainer<'a>
 
                 self.update_console();
 
-                let state = if self.info.console_contents.is_some() { "opened" } else { "closed" };
+                let state = if self.info.console.contents.is_some() { "opened" } else { "closed" };
                 eprintln!("debug console {state}");
             },
             _ => ()
@@ -1118,11 +1158,11 @@ impl<'a> PlayerContainer<'a>
     fn update_console(&mut self)
     {
         self.game_state.entities()
-            .parent_mut(self.info.console_entity)
+            .parent_mut(self.info.console.entity)
             .unwrap()
-            .visible = self.info.console_contents.is_some();
+            .visible = self.info.console.contents.is_some();
 
-        let text = self.info.console_contents.clone().unwrap_or_default();
+        let text = self.info.console.contents.clone().unwrap_or_default();
 
         let object = RenderObjectKind::Text{
             text,
@@ -1131,7 +1171,7 @@ impl<'a> PlayerContainer<'a>
             align: TextAlign::centered()
         }.into();
 
-        self.game_state.entities().set_deferred_render_object(self.info.console_entity, object);
+        self.game_state.entities().set_deferred_render_object(self.info.console.entity, object);
     }
 
     fn handle_user_event(&mut self, event: UserEvent)
@@ -1150,7 +1190,7 @@ impl<'a> PlayerContainer<'a>
                 if let Some(item) = self.get_inventory(which)
                     .and_then(|inventory| inventory.get(item).cloned())
                 {
-                    self.game_state.create_info_window(item);
+                    self.game_state.add_window(WindowCreateInfo::ItemInfo{item});
                 } else
                 {
                     eprintln!("tried to show info for an item that doesnt exist");
@@ -1170,32 +1210,6 @@ impl<'a> PlayerContainer<'a>
                 } else
                 {
                     eprintln!("tried to drop item that doesnt exist");
-                }
-            },
-            UserEvent::Close(which) =>
-            {
-                match which
-                {
-                    WindowWhich::ItemInfo =>
-                    {
-                        self.game_state.close_info_window();
-                    },
-                    WindowWhich::Inventory(which) =>
-                    {
-                        match which
-                        {
-                            InventoryWhich::Player =>
-                            {
-                                self.info.inventory_open = false;
-                            },
-                            InventoryWhich::Other =>
-                            {
-                                self.info.other_inventory_open = false;
-                            }
-                        }
-
-                        self.update_inventory(which);
-                    }
                 }
             },
             UserEvent::Wield(item) =>
@@ -1246,57 +1260,55 @@ impl<'a> PlayerContainer<'a>
 
     fn toggle_inventory(&mut self)
     {
-        self.info.inventory_open = !self.info.inventory_open;
+        if self.info.inventories.player.take().and_then(|window|
+        {
+            window.upgrade().map(|window| self.game_state.remove_window(window).is_ok())
+        }).is_none()
+        {
+            let window = self.game_state.add_window(WindowCreateInfo::Inventory{
+                entity: self.info.entity,
+                on_click: Box::new(|anchor, item|
+                {
+                    UserEvent::Popup{
+                        anchor,
+                        responses: vec![
+                            UserEvent::Wield(item),
+                            UserEvent::Drop{which: InventoryWhich::Player, item},
+                            UserEvent::Info{which: InventoryWhich::Player, item}
+                        ]
+                    }
+                })
+            });
 
-        self.update_inventory(InventoryWhich::Player);
-    }
-
-    fn update_inventory(&mut self, which: InventoryWhich)
-    {
-        let entities = &mut self.game_state.entities.entities;
-        let mut ui = self.game_state.ui.borrow_mut();
-
-        Self::update_inventory_inner(
-            entities,
-            &mut ui,
-            self.info,
-            which
-        );
+            self.info.inventories.player = Some(window);
+        }
     }
 
     fn update_inventory_inner(
         entities: &mut ClientEntities,
-        ui: &mut Ui,
-        info: &PlayerInfo,
+        info: &mut PlayerInfo,
         which: InventoryWhich
     )
     {
-        let is_open = match which
+        let entity = match which
         {
-            InventoryWhich::Player => info.inventory_open,
-            InventoryWhich::Other => info.other_inventory_open
+            InventoryWhich::Other => info.other_entity.unwrap(),
+            InventoryWhich::Player => info.entity
         };
-        
-        if is_open
+
+        let mut entity_creator = EntityCreator{entities};
+
+        if let Some(window) = match which
         {
-            let entity = match which
-            {
-                InventoryWhich::Other => info.other_entity.unwrap(),
-                InventoryWhich::Player => info.entity
-            };
-
-            let mut entity_creator = EntityCreator{entities};
-
-            let inventory = match which
-            {
-                InventoryWhich::Player => &mut ui.player_inventory,
-                InventoryWhich::Other => &mut ui.other_inventory
-            };
+            InventoryWhich::Player => &info.inventories.player,
+            InventoryWhich::Other => &info.inventories.other
+        }.as_ref().and_then(|window| window.upgrade())
+        {
+            let mut window = window.borrow_mut();
+            let inventory = window.as_inventory_mut().unwrap();
 
             inventory.full_update(&mut entity_creator, entity);
         }
-
-        ui.set_inventory_state(entities, which, is_open);
     }
 
     pub fn this_update(&mut self, dt: f32)

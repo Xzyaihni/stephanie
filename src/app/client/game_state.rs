@@ -4,7 +4,7 @@ use std::{
     env,
     thread::JoinHandle,
     cell::{Ref, RefCell},
-    rc::Rc,
+    rc::{Weak, Rc},
     ops::ControlFlow,
     sync::{
         Arc,
@@ -44,7 +44,6 @@ use crate::{
         SpatialGrid,
         TileMap,
         DataInfos,
-        Item,
         ItemsInfo,
         InventoryItem,
         AnyEntities,
@@ -85,7 +84,7 @@ use controls_controller::ControlsController;
 
 use notifications::{Notifications, Notification};
 
-pub use ui::{close_ui, Ui};
+pub use ui::{close_ui, Ui, UiSpecializedWindow, WindowCreateInfo, WindowError};
 use ui::{BarNotification, TextNotification, NotificationId};
 
 mod controls_controller;
@@ -334,20 +333,12 @@ pub enum InventoryWhich
     Other
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum WindowWhich
-{
-    ItemInfo,
-    Inventory(InventoryWhich)
-}
-
 #[derive(Debug, Clone)]
 pub enum UserEvent
 {
     Popup{anchor: Entity, responses: Vec<UserEvent>},
     Info{which: InventoryWhich, item: InventoryItem},
     Drop{which: InventoryWhich, item: InventoryItem},
-    Close(WindowWhich),
     Wield(InventoryItem),
     Take(InventoryItem)
 }
@@ -361,7 +352,6 @@ impl UserEvent
             Self::Popup{..} => "popup",
             Self::Info{..} => "info",
             Self::Drop{..} => "drop",
-            Self::Close(..) => "close",
             Self::Wield(..) => "wield",
             Self::Take(..) => "take"
         }
@@ -639,7 +629,6 @@ impl GameState
             let camera_entity = entities.camera_entity;
 
             Ui::new(
-                &mut entities.entity_creator(),
                 info.data_infos.items_info.clone(),
                 camera_entity,
                 user_receiver.clone()
@@ -924,18 +913,21 @@ impl GameState
         self.ui.borrow_mut().close_popup(&mut self.entities.entities);
     }
 
-    pub fn create_info_window(&mut self, item: Item)
+    pub fn add_window(&mut self, info: WindowCreateInfo) -> Weak<RefCell<UiSpecializedWindow>>
     {
         let mut creator = EntityCreator{
             entities: &mut self.entities.entities
         };
 
-        self.ui.borrow_mut().create_info_window(&mut creator, item);
+        Ui::add_window(self.ui.clone(), &mut creator, info)
     }
 
-    pub fn close_info_window(&mut self)
+    pub fn remove_window(
+        &mut self,
+        window: Rc<RefCell<UiSpecializedWindow>>
+    ) -> Result<(), WindowError>
     {
-        self.ui.borrow_mut().close_info_window(&mut self.entities.entities);
+        self.ui.borrow_mut().remove_window(&self.entities.entities, window)
     }
 
     pub fn set_bar(&self, id: NotificationId, amount: f32)

@@ -11,7 +11,7 @@ use yanyaengine::Transform;
 
 use crate::{
     client::{Control, ControlState, RenderCreateInfo, game_state::{close_ui, Ui}},
-    common::{render_info::*, Entity, ServerToClient, entity::ClientEntities}
+    common::{render_info::*, AnyEntities, Entity, ServerToClient, entity::ClientEntities}
 };
 
 
@@ -88,8 +88,8 @@ pub enum UiElementType
     Panel,
     Tooltip,
     ActiveTooltip,
-    Button{on_click: Box<dyn FnMut()>},
-    Drag{state: DragState, on_change: Box<dyn FnMut(Vector2<f32>)>}
+    Button{on_click: Box<dyn FnMut(&ClientEntities)>},
+    Drag{state: DragState, on_change: Box<dyn FnMut(&ClientEntities, Vector2<f32>)>}
 }
 
 impl Debug for UiElementType
@@ -348,7 +348,7 @@ impl UiElement
                             return false;
                         }
 
-                        on_click();
+                        on_click(entities);
                     }
                 }
             },
@@ -377,7 +377,7 @@ impl UiElement
                                             return false;
                                         }
 
-                                        on_change(inner_position(event.position));
+                                        on_change(entities, inner_position(event.position));
 
                                         state.held = true;
                                     }
@@ -396,7 +396,7 @@ impl UiElement
                     {
                         if state.held
                         {
-                            on_change(inner_position(*position));
+                            on_change(entities, inner_position(*position));
                         }
                     },
                     _ => ()
@@ -413,6 +413,19 @@ impl UiElement
     }
 
     pub fn update_aspect(
+        &mut self,
+        entities: &ClientEntities,
+        entity: Entity,
+        aspect: f32
+    )
+    {
+        let mut transform = entities.target(entity).unwrap();
+        let mut render = entities.render_mut(entity);
+
+        self.update_aspect_full(&mut transform, render.as_deref_mut(), aspect)
+    }
+
+    pub fn update_aspect_full(
         &mut self,
         transform: &mut Transform,
         render: Option<&mut ClientRenderInfo>,

@@ -1,5 +1,5 @@
 use std::{
-    rc::Rc,
+    rc::{Weak, Rc},
     cell::RefCell,
     sync::Arc
 };
@@ -11,7 +11,7 @@ use yanyaengine::{Transform, camera::Camera};
 use crate::{
     client::{
         ui_element::*,
-        game_state::{EntityCreator, WindowWhich, InventoryWhich, UserEvent, UiReceiver}
+        game_state::{EntityCreator, UserEvent, UiReceiver}
     },
     common::{
         lerp,
@@ -21,6 +21,7 @@ use crate::{
         watcher::*,
         collider::*,
         physics::*,
+        ObjectsStore,
         EaseOut,
         LazyMix,
         AnyEntities,
@@ -35,6 +36,14 @@ use crate::{
     }
 };
 
+
+const MAX_WINDOWS: usize = 5;
+
+#[derive(Debug, Clone)]
+pub enum WindowError
+{
+    RemoveNonExistent
+}
 
 pub struct UiScroll
 {
@@ -63,7 +72,7 @@ impl UiScroll
             UiElement{
                 kind: UiElementType::Drag{
                     state: Default::default(),
-                    on_change: Box::new(move |pos|
+                    on_change: Box::new(move |_, pos|
                     {
                         global_scroll.replace(1.0 - (pos.y + 0.5));
                     })
@@ -305,7 +314,7 @@ impl UiList
 
             creator.entities.set_ui_element(id, Some(UiElement{
                 kind: UiElementType::Button{
-                    on_click: Box::new(move ||
+                    on_click: Box::new(move |_|
                     {
                         let index = index + *current_start.borrow();
                         (on_change.borrow_mut())(id, index);
@@ -492,35 +501,39 @@ struct CustomButton
     texture: &'static str
 }
 
+// a mut ref to a mut ref to a mut ref to a
+struct CommonWindowInfo<'a>
+{
+    creator: &'a mut EntityCreator<'a>,
+    anchor: Entity,
+    ui: Rc<RefCell<Ui>>,
+    id: UiWindowId
+}
+
 struct UiWindow
 {
     body: Entity,
     name: Entity,
     panel: Entity,
     button_x: f32,
-    is_open: bool,
     resized_update: bool
 }
 
 impl UiWindow
 {
-    pub fn new<Close>(
-        creator: &mut EntityCreator,
-        anchor: Entity,
+    pub fn new(
+        info: &mut CommonWindowInfo,
         name: String,
-        custom_buttons: Vec<CustomButton>,
-        mut on_close: Close
+        custom_buttons: Vec<CustomButton>
     ) -> Self
-    where
-        Close: FnMut() + 'static
     {
-        let body = creator.push(
+        let body = info.creator.push(
             EntityInfo{
                 lazy_transform: Some(LazyTransformInfo{
                     scaling: Scaling::EaseOut{decay: 15.0},
                     connection: Connection::Limit{limit: 1.0},
                     transform: Transform{
-                        scale: Vector3::zeros(),
+                        scale: Vector3::repeat(0.2),
                         ..Default::default()
                     },
                     ..Default::default()
@@ -538,7 +551,12 @@ impl UiWindow
                     target_non_lazy: true,
                     ..Default::default()
                 }.into()),
-                parent: Some(Parent::new(anchor, false)),
+                collider: Some(ColliderInfo{
+                    kind: ColliderType::Aabb,
+                    layer: ColliderLayer::Ui,
+                    ..Default::default()
+                }.into()),
+                parent: Some(Parent::new(info.anchor, true)),
                 watchers: Some(Default::default()),
                 ..Default::default()
             },
@@ -550,10 +568,15 @@ impl UiWindow
             }
         );
 
+        info.creator.entities.set_transform(body, Some(Transform{
+            scale: Vector3::new(4.0, 0.1, 1.0),
+            ..Default::default()
+        }));
+
         let panel_size = 0.15;
         let scale = Vector3::new(1.0, panel_size, 1.0);
 
-        let top_panel = creator.push(
+        let top_panel = info.creator.push(
             EntityInfo{
                 lazy_transform: Some(LazyTransformInfo{
                     transform: Transform{
@@ -575,7 +598,7 @@ impl UiWindow
 
         let scale = Vector3::new(1.0, 1.0 - panel_size, 1.0);
 
-        let panel = creator.push(
+        let panel = info.creator.push(
             EntityInfo{
                 lazy_transform: Some(LazyTransformInfo{
                     transform: Transform{
@@ -598,7 +621,7 @@ impl UiWindow
         let button_x = panel_size;
 
         let scale = Vector3::new(button_x * (1 + custom_buttons.len()) as f32, 1.0, 1.0);
-        let name = creator.push(
+        let name = info.creator.push(
             EntityInfo{
                 lazy_transform: Some(LazyTransformInfo::default().into()),
                 parent: Some(Parent::new(top_panel, true)),
@@ -633,13 +656,13 @@ impl UiWindow
 
         custom_buttons.into_iter().for_each(|custom_button|
         {
-            creator.push(
+            info.creator.push(
                 EntityInfo{
                     lazy_transform: Some(LazyTransformInfo::default().into()),
                     parent: Some(Parent::new(top_panel, true)),
                     ui_element: Some(UiElement{
                         kind: UiElementType::Button{
-                            on_click: Box::new(move ||
+                            on_click: Box::new(move |entities|
                             {
                                 eprintln!("COME ON DO SOMETHING");
                             })
@@ -662,15 +685,18 @@ impl UiWindow
                 });
         });
 
-        creator.push(
+        let ui = info.ui.clone();
+        let id = info.id;
+
+        info.creator.push(
             EntityInfo{
                 lazy_transform: Some(LazyTransformInfo::default().into()),
                 parent: Some(Parent::new(top_panel, true)),
                 ui_element: Some(UiElement{
                     kind: UiElementType::Button{
-                        on_click: Box::new(move ||
+                        on_click: Box::new(move |entities|
                         {
-                            on_close();
+                            let _ = ui.borrow_mut().remove_window_id(entities, id);
                         })
                     },
                     keep_aspect: Some(KeepAspect{
@@ -694,47 +720,8 @@ impl UiWindow
             name,
             panel,
             button_x,
-            is_open: false,
             resized_update: true
         }
-    }
-
-    pub fn open(&mut self, entities: &mut ClientEntities)
-    {
-        if self.is_open
-        {
-            return;
-        }
-
-        self.is_open = true;
-
-        let inventory = self.body;
-
-        entities.set_collider(inventory, Some(ColliderInfo{
-            kind: ColliderType::Aabb,
-            layer: ColliderLayer::Ui,
-            ..Default::default()
-        }.into()));
-
-        open_ui(entities, inventory, Vector3::repeat(0.2));
-
-        self.resized_update = true;
-    }
-
-    pub fn close(&mut self, entities: &mut ClientEntities)
-    {
-        if !self.is_open
-        {
-            return;
-        }
-
-        self.is_open = false;
-
-        let inventory = self.body;
-
-        entities.set_collider(inventory, None);
-
-        close_ui(entities, inventory);
     }
 
     pub fn update_name(
@@ -764,14 +751,32 @@ impl UiWindow
             self.resized_update = false;
 
             update_resize_ui(creator.entities, camera.size(), self.body);
+
+            let mut f = |entity|
+            {
+                if let Some(mut ui_element) = creator.entities.ui_element_mut(entity)
+                {
+                    ui_element.update_aspect(
+                        creator.entities,
+                        entity,
+                        camera.aspect()
+                    );
+                }
+            };
+
+            fn for_every_child(
+                entities: &ClientEntities,
+                entity: Entity,
+                f: &mut impl FnMut(Entity)
+            )
+            {
+                f(entity);
+                entities.children_of(entity).for_each(|entity| for_every_child(entities, entity, f));
+            }
+
+            for_every_child(creator.entities, self.body, &mut f);
         }
     }
-}
-
-pub struct InventoryActions<Close, Change>
-{
-    pub on_close: Close,
-    pub on_change: Change
 }
 
 pub struct UiInventory
@@ -786,26 +791,19 @@ pub struct UiInventory
 
 impl UiInventory
 {
-    pub fn new<Close, Change>(
-        creator: &mut EntityCreator,
-        items_info: Arc<ItemsInfo>,
-        anchor: Entity,
-        actions: InventoryActions<Close, Change>
+    fn new(
+        info: &mut CommonWindowInfo,
+        owner: Entity,
+        mut on_click: Box<dyn FnMut(Entity, InventoryItem)>
     ) -> Self
-    where
-        Close: FnMut() + 'static,
-        Change: FnMut(Entity, InventoryItem) + 'static
     {
-        let InventoryActions{
-            on_close,
-            mut on_change
-        } = actions;
+        let items_info = info.ui.borrow().items_info.clone();
 
         let custom_buttons = vec![CustomButton{
             texture: "ui/anatomy_button.png"
         }];
 
-        let window = UiWindow::new(creator, anchor, String::new(), custom_buttons, on_close);
+        let window = UiWindow::new(info, String::new(), custom_buttons);
 
         let items = Rc::new(RefCell::new(Vec::new()));
 
@@ -815,28 +813,22 @@ impl UiInventory
             {
                 let item = items.borrow()[index];
 
-                on_change(entity, item);
+                on_click(entity, item);
             }))
         };
 
-        Self{
+        let mut this = Self{
             sorter: InventorySorter::default(),
             items_info,
             items,
             inventory: window.body,
-            list: UiList::new(creator, window.panel, 1.0 - window.button_x, on_change),
+            list: UiList::new(&mut info.creator, window.panel, 1.0 - window.button_x, on_change),
             window
-        }
-    }
+        };
 
-    pub fn open_inventory(&mut self, entities: &mut ClientEntities)
-    {
-        self.window.open(entities);
-    }
+        this.full_update(&mut info.creator, owner);
 
-    pub fn close_inventory(&mut self, entities: &mut ClientEntities)
-    {
-        self.window.close(entities);
+        this
     }
 
     pub fn body(&self) -> Entity
@@ -924,29 +916,35 @@ impl UiInventory
     }
 }
 
-struct UiItemInfo
+pub struct UiItemInfo
 {
-    items_info: Arc<ItemsInfo>,
-    window: UiWindow,
-    text_panel: Entity
+    window: UiWindow
 }
 
 impl UiItemInfo
 {
-    pub fn new<Close>(
-        creator: &mut EntityCreator,
-        items_info: Arc<ItemsInfo>,
-        anchor: Entity,
-        on_close: Close
+    fn new(
+        window_info: &mut CommonWindowInfo,
+        item: Item
     ) -> Self
-    where
-        Close: FnMut() + 'static,
     {
-        let window = UiWindow::new(creator, anchor, String::new(), Vec::new(), on_close);
+        let items_info = window_info.ui.borrow().items_info.clone();
+        let info = items_info.get(item.id);
+
+        let title = format!("info about - {}", info.name);
+
+        let window = UiWindow::new(window_info, title, Vec::new());
 
         let padding = 0.05;
 
-        let text_panel = creator.push(
+        let description = format!(
+            "{} weighs around {} kg\nand is about {} meters in size!\nbla bla bla",
+            info.name,
+            info.mass,
+            info.scale
+        );
+
+        window_info.creator.push(
             EntityInfo{
                 lazy_transform: Some(LazyTransformInfo{
                     transform: Transform{
@@ -959,56 +957,25 @@ impl UiItemInfo
                 ..Default::default()
             },
             RenderInfo{
-                object: None,
+                object: Some(RenderObjectKind::Text{
+                    text: description,
+                    font_size: 40,
+                    font: FontStyle::Bold,
+                    align: TextAlign::default()
+                }.into()),
                 z_level: ZLevel::UiHigh,
                 ..Default::default()
             }
         );
 
         Self{
-            items_info,
-            window,
-            text_panel
+            window
         }
     }
 
     pub fn body(&self) -> Entity
     {
         self.window.body
-    }
-
-    pub fn set_item(&mut self, creator: &mut EntityCreator, item: Item)
-    {
-        let info = self.items_info.get(item.id);
-
-        let title = format!("info about - {}", info.name);
-
-        self.window.update_name(creator, title);
-
-        let description = format!(
-            "{} weighs around {} kg\nand is about {} meters in size!\nbla bla bla",
-            info.name,
-            info.mass,
-            info.scale
-        );
-
-        creator.entities.set_deferred_render_object(self.text_panel, RenderObjectKind::Text{
-            text: description,
-            font_size: 40,
-            font: FontStyle::Bold,
-            align: TextAlign::default()
-        }.into());
-    }
-
-    pub fn open(&mut self, entities: &mut ClientEntities)
-    {
-        self.window.open(entities);
-    }
-
-    #[allow(dead_code)]
-    pub fn close(&mut self, entities: &mut ClientEntities)
-    {
-        self.window.close(entities);
     }
 
     pub fn update_after(
@@ -1041,18 +1008,7 @@ fn update_resize_ui(entities: &ClientEntities, size: Vector2<f32>, entity: Entit
 
 fn open_ui(entities: &ClientEntities, entity: Entity, scale: Vector3<f32>)
 {
-    entities.target(entity).unwrap().scale = scale
-        .component_mul(&Vector3::new(4.0, 0.1, 1.0));
-
-    entities.end_sync(entity, |mut current, end|
-    {
-        current.scale = end.scale;
-    });
-
-    *entities.visible_target(entity).unwrap() = true;
-
-    let mut lazy = entities.lazy_transform_mut(entity).unwrap();
-    lazy.target().scale = scale;
+    dbg!("remove this later");
 }
 
 pub fn close_ui(entities: &ClientEntities, entity: Entity)
@@ -1071,24 +1027,11 @@ pub fn close_ui(entities: &ClientEntities, entity: Entity)
 
         let watcher = Watcher{
             kind: WatcherType::ScaleDistance{from: Vector3::zeros(), near},
-            action: WatcherAction::SetVisible(false),
+            action: WatcherAction::Remove,
             ..Default::default()
         };
 
         watchers.push(watcher);
-    }
-}
-
-fn on_close(
-    user_receiver: &Rc<RefCell<UiReceiver>>,
-    which: WindowWhich
-) -> impl FnMut()
-{
-    let receiver = user_receiver.clone();
-
-    move ||
-    {
-        receiver.borrow_mut().push(UserEvent::Close(which));
     }
 }
 
@@ -1316,110 +1259,206 @@ pub struct ActiveNotification
     lifetime: f32
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct UiWindowId(usize);
+
+pub enum WindowCreateInfo
+{
+    ItemInfo{item: Item},
+    Inventory{
+        entity: Entity,
+        on_click: Box<dyn FnMut(Entity, InventoryItem) -> UserEvent>
+    }
+}
+
+pub enum UiSpecializedWindow
+{
+    ItemInfo(UiItemInfo),
+    Inventory(UiInventory)
+}
+
+impl UiSpecializedWindow
+{
+    pub fn as_inventory_mut(&mut self) -> Option<&mut UiInventory>
+    {
+        if let Self::Inventory(x) = self { Some(x) } else { None }
+    }
+
+    fn body(&self) -> Entity
+    {
+        match self
+        {
+            Self::ItemInfo(x) => x.body(),
+            Self::Inventory(x) => x.body()
+        }
+    }
+
+    fn update_after(
+        &mut self,
+        creator: &mut EntityCreator,
+        camera: &Camera
+    )
+    {
+        match self
+        {
+            Self::ItemInfo(x) => x.update_after(creator, camera),
+            Self::Inventory(x) => x.update_after(creator, camera)
+        }
+    }
+
+    fn update(
+        &mut self,
+        creator: &mut EntityCreator,
+        camera: &Camera,
+        dt: f32
+    )
+    {
+        match self
+        {
+            Self::ItemInfo(_x) => (),
+            Self::Inventory(x) => x.update(creator, camera, dt)
+        }
+    }
+}
+
 pub struct Ui
 {
+    anchor: Entity,
+    items_info: Arc<ItemsInfo>,
+    user_receiver: Rc<RefCell<UiReceiver>>,
     notifications: Vec<Notification>,
     active_notifications: Vec<ActiveNotification>,
     active_popup: Option<Entity>,
-    item_info: UiItemInfo,
-    pub player_inventory: UiInventory,
-    pub other_inventory: UiInventory
+    windows: ObjectsStore<Rc<RefCell<UiSpecializedWindow>>>
 }
 
 impl Ui
 {
     pub fn new(
-        creator: &mut EntityCreator,
         items_info: Arc<ItemsInfo>,
         anchor: Entity,
         user_receiver: Rc<RefCell<UiReceiver>>
     ) -> Self
     {
-        let urx = user_receiver.clone();
-
-        let player_inventory = UiInventory::new(
-            creator,
-            items_info.clone(),
-            anchor,
-            InventoryActions{
-                on_close: on_close(&user_receiver, WindowWhich::Inventory(InventoryWhich::Player)),
-                on_change: move |anchor, item|
-                {
-                    urx.borrow_mut().push(UserEvent::Popup{
-                        anchor,
-                        responses: vec![
-                            UserEvent::Wield(item),
-                            UserEvent::Drop{which: InventoryWhich::Player, item},
-                            UserEvent::Info{which: InventoryWhich::Player, item}
-                        ]
-                    });
-                }
-            }
-        ); 
-
-        let urx = user_receiver.clone();
-
-        let other_inventory = UiInventory::new(
-            creator,
-            items_info.clone(),
-            anchor,
-            InventoryActions{
-                on_close: on_close(&user_receiver, WindowWhich::Inventory(InventoryWhich::Other)),
-                on_change: move |anchor, item|
-                {
-                    urx.borrow_mut().push(UserEvent::Popup{
-                        anchor,
-                        responses: vec![
-                            UserEvent::Take(item),
-                            UserEvent::Info{which: InventoryWhich::Other, item}
-                        ]
-                    });
-                }
-            }
-        );
-
-        let item_info = UiItemInfo::new(
-            creator,
-            items_info,
-            anchor,
-            on_close(&user_receiver, WindowWhich::ItemInfo)
-        );
-
         Self{
+            anchor,
+            items_info,
+            user_receiver,
             notifications: Vec::new(),
             active_notifications: Vec::new(),
             active_popup: None,
-            item_info,
-            player_inventory,
-            other_inventory
+            windows: ObjectsStore::new()
         }
     }
 
-    pub fn set_inventory_state(
-        &mut self,
-        entities: &mut ClientEntities,
-        which: InventoryWhich,
-        state: bool
-    )
+    pub fn add_window<'a>(
+        this: Rc<RefCell<Self>>,
+        creator: &'a mut EntityCreator<'a>,
+        window: WindowCreateInfo
+    ) -> Weak<RefCell<UiSpecializedWindow>>
     {
-        if !state
-        {
-            self.close_popup(entities);
-        }
+        let this_cloned = this.clone();
 
-        let inventory_ui = match which
-        {
-            InventoryWhich::Player => &mut self.player_inventory,
-            InventoryWhich::Other => &mut self.other_inventory
+        let id = {
+            let mut this = this.borrow_mut();
+
+            if this.windows.len() == MAX_WINDOWS
+            {
+                let oldest_window = UiWindowId(this.windows.iter().next().unwrap().0);
+                this.remove_window_id(creator.entities, oldest_window).unwrap();
+            }
+
+            debug_assert!(this.windows.len() <= MAX_WINDOWS);
+
+            UiWindowId(this.windows.vacant_key())
         };
 
-        if state
+        let window = Self::create_window(this_cloned, creator, window, id);
+        let weak = Rc::downgrade(&window);
+
+        this.borrow_mut().windows.push(window);
+
+        weak
+    }
+
+    pub fn remove_window(
+        &mut self,
+        entities: &ClientEntities,
+        window: Rc<RefCell<UiSpecializedWindow>>
+    ) -> Result<(), WindowError>
+    {
+        // why do i have to do this? i dont get it
+        let found = self.windows.iter().find(|(_, x)| Rc::ptr_eq(x, &window));
+        if let Some((id, _)) = found
         {
-            inventory_ui.open_inventory(entities);
+            let id = UiWindowId(id);
+            self.remove_window_id(entities, id)
         } else
         {
-            inventory_ui.close_inventory(entities);
+            Err(WindowError::RemoveNonExistent)
         }
+    }
+
+    fn remove_window_id(
+        &mut self,
+        entities: &ClientEntities,
+        id: UiWindowId
+    ) -> Result<(), WindowError>
+    {
+        if let Some(window) = self.windows.remove(id.0).map(|window|
+        {
+            window.borrow().body()
+        })
+        {
+            close_ui(entities, window);
+
+            Ok(())
+        } else
+        {
+            Err(WindowError::RemoveNonExistent)
+        }
+    }
+
+    fn create_window<'a>(
+        this: Rc<RefCell<Self>>,
+        creator: &'a mut EntityCreator<'a>,
+        window: WindowCreateInfo,
+        id: UiWindowId
+    ) -> Rc<RefCell<UiSpecializedWindow>>
+    {
+        let urx = this.borrow().user_receiver.clone();
+        let anchor = this.borrow().anchor;
+
+        let mut window_info = CommonWindowInfo{
+            creator,
+            anchor,
+            ui: this,
+            id
+        };
+
+        let window = match window
+        {
+            WindowCreateInfo::ItemInfo{item} =>
+            {
+                UiSpecializedWindow::ItemInfo(UiItemInfo::new(
+                    &mut window_info,
+                    item
+                ))
+            },
+            WindowCreateInfo::Inventory{entity, mut on_click} =>
+            {
+                UiSpecializedWindow::Inventory(UiInventory::new(
+                    &mut window_info,
+                    entity,
+                    Box::new(move |anchor, item|
+                    {
+                        urx.borrow_mut().push(on_click(anchor, item));
+                    })
+                ))
+            }
+        };
+
+        Rc::new(RefCell::new(window))
     }
 
     pub fn create_popup(
@@ -1501,7 +1540,7 @@ impl Ui
                     parent: Some(Parent::new(body, true)),
                     ui_element: Some(UiElement{
                         kind: UiElementType::Button{
-                            on_click: Box::new(move ||
+                            on_click: Box::new(move |_|
                             {
                                 urx.borrow_mut().push(response.clone());
                             })
@@ -1549,21 +1588,6 @@ impl Ui
         {
             close_ui(entities, previous);
         }
-    }
-
-    pub fn create_info_window(
-        &mut self,
-        creator: &mut EntityCreator,
-        item: Item
-    )
-    {
-        self.item_info.set_item(creator, item);
-        self.item_info.open(creator.entities);
-    }
-
-    pub fn close_info_window(&mut self, entities: &mut ClientEntities)
-    {
-        self.item_info.close(entities);
     }
 
     pub fn push_notification(&mut self, notification: Notification) -> NotificationId
@@ -1622,12 +1646,10 @@ impl Ui
         camera: &Camera
     )
     {
-        self.inventories_mut().for_each(|inventory|
+        self.windows.iter_mut().for_each(|(_, window)|
         {
-            inventory.update_after(creator, camera);
+            window.borrow_mut().update_after(creator, camera);
         });
-
-        self.item_info.update_after(creator, camera);
     }
 
     pub fn update_resize(
@@ -1636,12 +1658,10 @@ impl Ui
         size: Vector2<f32>
     )
     {
-        self.inventories().for_each(|inventory|
+        self.windows.iter().for_each(|(_, window)|
         {
-            update_resize_ui(entities, size, inventory.body());
+            update_resize_ui(entities, size, window.borrow().body());
         });
-
-        update_resize_ui(entities, size, self.item_info.body());
 
         if let Some(popup) = self.active_popup
         {
@@ -1680,20 +1700,10 @@ impl Ui
             self.notifications[id.0].set_position(creator.entities, position);
         });
 
-        self.inventories_mut().for_each(|inventory|
+        self.windows.iter_mut().for_each(|(_, window)|
         {
-            inventory.update(creator, camera, dt);
+            window.borrow_mut().update(creator, camera, dt);
         });
-    }
-
-    fn inventories(&self) -> impl Iterator<Item=&UiInventory>
-    {
-        [&self.player_inventory, &self.other_inventory].into_iter()
-    }
-
-    fn inventories_mut(&mut self) -> impl Iterator<Item=&mut UiInventory>
-    {
-        [&mut self.player_inventory, &mut self.other_inventory].into_iter()
     }
 
     pub fn ui_position(scale: Vector3<f32>, position: Vector3<f32>) -> Vector3<f32>

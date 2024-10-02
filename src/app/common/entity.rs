@@ -2060,11 +2060,9 @@ macro_rules! define_entities_both
             {
                 for_each_component!(self, ui_element, |entity, ui_element: &RefCell<UiElement>|
                 {
-                    let mut target = self.target(entity).unwrap();
-                    let mut render = self.render_mut(entity);
                     ui_element.borrow_mut().update_aspect(
-                        &mut target,
-                        render.as_deref_mut(),
+                        self,
+                        entity,
                         aspect
                     );
                 });
