@@ -41,6 +41,7 @@ use crate::{
 
 const MAX_WINDOWS: usize = 5;
 const NOTIFICATION_HEIGHT: f32 = 0.0375;
+const ANIMATION_SCALE: Vector3<f32> = Vector3::new(4.0, 0.0, 1.0);
 
 pub type WindowType = Weak<RefCell<UiSpecializedWindow>>;
 
@@ -533,13 +534,14 @@ impl UiWindow
         custom_buttons: Vec<CustomButton>
     ) -> Self
     {
+        let body_scale = Vector3::repeat(0.2);
         let body = info.creator.push(
             EntityInfo{
                 lazy_transform: Some(LazyTransformInfo{
                     scaling: Scaling::EaseOut{decay: 15.0},
                     connection: Connection::Limit{limit: 1.0},
                     transform: Transform{
-                        scale: Vector3::repeat(0.2),
+                        scale: body_scale,
                         ..Default::default()
                     },
                     ..Default::default()
@@ -575,7 +577,7 @@ impl UiWindow
         );
 
         info.creator.entities.set_transform(body, Some(Transform{
-            scale: Vector3::new(4.0, 0.1, 1.0),
+            scale: body_scale.component_mul(&ANIMATION_SCALE),
             ..Default::default()
         }));
 
@@ -1041,7 +1043,10 @@ fn create_notification_body(
     entity: Entity
 ) -> Entity
 {
-    info.creator.entities.push(
+    let position = info.creator.entities.transform(entity).map(|x| x.position).unwrap_or_default();
+    let scale = Vector3::new(NOTIFICATION_HEIGHT * 4.0, NOTIFICATION_HEIGHT, 1.0);
+
+    let entity = info.creator.entities.push_eager(
         true,
         EntityInfo{
             render: Some(RenderInfo{
@@ -1054,9 +1059,10 @@ fn create_notification_body(
                 Connection::EaseOut{decay: 14.0, limit: None}
             )),
             lazy_transform: Some(LazyTransformInfo{
-                scaling: Scaling::EaseOut{decay: 20.0},
+                scaling: Scaling::EaseOut{decay: 16.0},
                 transform: Transform{
-                    scale: Vector3::new(NOTIFICATION_HEIGHT * 4.0, NOTIFICATION_HEIGHT, 1.0),
+                    position,
+                    scale,
                     ..Default::default()
                 },
                 ..Default::default()
@@ -1064,7 +1070,15 @@ fn create_notification_body(
             watchers: Some(Default::default()),
             ..Default::default()
         }
-    )
+    );
+
+    info.creator.entities.set_transform(entity, Some(Transform{
+        position,
+        scale: scale.component_mul(&ANIMATION_SCALE),
+        ..Default::default()
+    }));
+
+    entity
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
