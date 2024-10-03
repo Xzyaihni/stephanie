@@ -4,7 +4,7 @@ use std::{
     env,
     thread::JoinHandle,
     cell::{Ref, RefCell},
-    rc::{Weak, Rc},
+    rc::Rc,
     ops::ControlFlow,
     sync::{
         Arc,
@@ -84,8 +84,16 @@ use controls_controller::ControlsController;
 
 use notifications::{Notifications, Notification};
 
-pub use ui::{close_ui, Ui, UiSpecializedWindow, WindowCreateInfo, WindowError};
-use ui::{BarNotification, TextNotification, NotificationId};
+pub use ui::{
+    close_ui,
+    Ui,
+    UiSpecializedWindow,
+    WindowCreateInfo,
+    WindowError,
+    WindowType
+};
+
+use ui::{NotificationCreateInfo, NotificationKind};
 
 mod controls_controller;
 
@@ -161,15 +169,6 @@ impl ClientEntitiesContainer
         EntityCreator{
             entities: &mut self.entities
         }
-    }
-
-    pub fn update_objects(
-        &mut self,
-        create_info: &mut RenderCreateInfo
-    )
-    {
-        self.entities.create_queued(create_info);
-        self.entities.create_render_queued(create_info);
     }
 
     pub fn update(
@@ -405,9 +404,114 @@ impl CommonTextures
 
 pub struct UiNotifications
 {
-    pub stamina: NotificationId,
-    pub weapon_cooldown: NotificationId,
-    pub tile_tooltip: NotificationId
+    ui: Rc<RefCell<Ui>>,
+    pub stamina: Option<WindowType>,
+    pub weapon_cooldown: Option<WindowType>,
+    pub tile_tooltip: Option<WindowType>
+}
+
+impl UiNotifications
+{
+    fn set_notification(
+        notification: &mut Option<WindowType>,
+        entities: &mut ClientEntities,
+        ui: &Rc<RefCell<Ui>>,
+        owner: Entity,
+        lifetime: f32,
+        update: impl FnOnce(&mut ClientEntities, &mut NotificationKind),
+        create: impl FnOnce() -> NotificationCreateInfo
+    )
+    {
+        if let Some(notification) = notification.as_ref().and_then(|x| x.upgrade())
+        {
+            let mut notification = notification.borrow_mut();
+            let notification = notification.as_notification_mut().unwrap();
+
+            notification.lifetime = lifetime;
+            update(entities, &mut notification.kind);
+        } else
+        {
+            let window = WindowCreateInfo::Notification{owner, lifetime, info: create()};
+
+            let mut creator = EntityCreator{entities};
+            let window = Ui::add_window(ui.clone(), &mut creator, window);
+            *notification = Some(window);
+        }
+    }
+
+    fn set_bar(
+        id: &mut Option<WindowType>,
+        entities: &mut ClientEntities,
+        ui: &Rc<RefCell<Ui>>,
+        owner: Entity,
+        lifetime: f32,
+        amount: f32,
+        f: impl FnOnce() -> NotificationCreateInfo
+    )
+    {
+        Self::set_notification(id, entities, ui, owner, lifetime, move |entities, kind|
+        {
+            kind.as_bar_mut().unwrap().set_amount(entities, amount);
+        }, f)
+    }
+
+    fn set_text(
+        id: &mut Option<WindowType>,
+        entities: &mut ClientEntities,
+        ui: &Rc<RefCell<Ui>>,
+        owner: Entity,
+        lifetime: f32,
+        text: String,
+        f: impl FnOnce() -> NotificationCreateInfo
+    )
+    {
+        Self::set_notification(id, entities, ui, owner, lifetime, move |entities, kind|
+        {
+            kind.as_text_mut().unwrap().set_text(entities, text);
+        }, f)
+    }
+
+    pub fn set_stamina_bar(
+        &mut self,
+        entities: &mut ClientEntities,
+        owner: Entity,
+        lifetime: f32,
+        amount: f32
+    )
+    {
+        Self::set_bar(&mut self.stamina, entities, &self.ui, owner, lifetime, amount, ||
+        {
+            NotificationCreateInfo::Bar{name: "STAMINA".to_owned(), amount}
+        })
+    }
+
+    pub fn set_weapon_cooldown_bar(
+        &mut self,
+        entities: &mut ClientEntities,
+        owner: Entity,
+        lifetime: f32,
+        amount: f32
+    )
+    {
+        Self::set_bar(&mut self.weapon_cooldown, entities, &self.ui, owner, lifetime, amount, ||
+        {
+            NotificationCreateInfo::Bar{name: "WEAPON".to_owned(), amount}
+        })
+    }
+
+    pub fn set_tile_tooltip_text(
+        &mut self,
+        entities: &mut ClientEntities,
+        owner: Entity,
+        lifetime: f32,
+        text: String
+    )
+    {
+        Self::set_text(&mut self.tile_tooltip, entities, &self.ui, owner, lifetime, text.clone(), ||
+        {
+            NotificationCreateInfo::Text{text}
+        })
+    }
 }
 
 struct DebugVisibilityState
@@ -422,7 +526,7 @@ trait DebugVisibilityStateTrait
 
     fn is_detached(&self) -> bool;
 
-    fn input(&mut self, control: &yanyaengine::Control);
+    fn input(&mut self, control: &yanyaengine::Control) -> bool;
     fn update(&mut self, camera: &Camera);
 
     fn camera(&self) -> &Camera;
@@ -443,7 +547,7 @@ impl DebugVisibilityStateTrait for DebugVisibilityState
         self.detached
     }
 
-    fn input(&mut self, control: &yanyaengine::Control)
+    fn input(&mut self, control: &yanyaengine::Control) -> bool
     {
         use yanyaengine::{PhysicalKey, KeyCode, ElementState};
 
@@ -455,7 +559,11 @@ impl DebugVisibilityStateTrait for DebugVisibilityState
         {
             self.detached = !self.detached;
             eprintln!("camera detached state: {}", self.detached);
+
+            return true;
         }
+
+        false
     }
 
     fn update(&mut self, camera: &Camera)
@@ -478,7 +586,7 @@ impl DebugVisibilityStateTrait for ()
 
     fn is_detached(&self) -> bool { false }
 
-    fn input(&mut self, _control: &yanyaengine::Control) {}
+    fn input(&mut self, _control: &yanyaengine::Control) -> bool { false }
     fn update(&mut self, _camera: &Camera) {}
 
     fn camera(&self) -> &Camera { unreachable!() }
@@ -591,7 +699,7 @@ impl GameState
             &info.client_info.name
         );
 
-        let mut entities = ClientEntitiesContainer::new(
+        let entities = ClientEntitiesContainer::new(
             info.data_infos.clone(),
             player_entity
         );
@@ -625,7 +733,7 @@ impl GameState
 
         let user_receiver = UiReceiver::new();
 
-        let mut ui = {
+        let ui = {
             let camera_entity = entities.camera_entity;
 
             Ui::new(
@@ -633,24 +741,6 @@ impl GameState
                 camera_entity,
                 user_receiver.clone()
             )
-        };
-
-        let ui_notifications = {
-            let mut creator = entities.entity_creator();
-
-            let mut create_bar = |name: &str| -> ui::Notification
-            {
-                BarNotification::new(&mut creator, player_entity, name.to_owned()).into()
-            };
-
-            UiNotifications{
-                stamina: ui.push_notification(create_bar("STAMINA")),
-                weapon_cooldown: ui.push_notification(create_bar("WEAPON")),
-                tile_tooltip: ui.push_notification(
-                    TextNotification::new(&mut creator, player_entity, "undefined".to_owned())
-                        .into()
-                )
-            }
         };
 
         let ui = Rc::new(RefCell::new(ui));
@@ -661,6 +751,13 @@ impl GameState
         let debug_visibility = <DebugVisibility as DebugVisibilityTrait>::State::new(
             &info.camera.read()
         );
+
+        let ui_notifications = UiNotifications{
+            ui: ui.clone(),
+            stamina: None,
+            weapon_cooldown: None,
+            tile_tooltip: None
+        };
 
         let mut this = Self{
             mouse_position,
@@ -913,7 +1010,7 @@ impl GameState
         self.ui.borrow_mut().close_popup(&mut self.entities.entities);
     }
 
-    pub fn add_window(&mut self, info: WindowCreateInfo) -> Weak<RefCell<UiSpecializedWindow>>
+    pub fn add_window(&mut self, info: WindowCreateInfo) -> WindowType
     {
         let mut creator = EntityCreator{
             entities: &mut self.entities.entities
@@ -928,21 +1025,6 @@ impl GameState
     ) -> Result<(), WindowError>
     {
         self.ui.borrow_mut().remove_window(&self.entities.entities, window)
-    }
-
-    pub fn set_bar(&self, id: NotificationId, amount: f32)
-    {
-        self.ui.borrow_mut().set_bar(&self.entities.entities, id, amount);
-    }
-
-    pub fn set_notification_text(&self, id: NotificationId, text: String)
-    {
-        self.ui.borrow_mut().set_notification_text(&self.entities.entities, id, text);
-    }
-
-    pub fn activate_notification(&self, id: NotificationId, delay: f32)
-    {
-        self.ui.borrow_mut().activate_notification(&self.entities.entities, id, delay);
     }
 
     pub fn tile(&self, index: TilePos) -> Option<&Tile>
@@ -989,11 +1071,20 @@ impl GameState
             object_info: info
         };
 
-        self.entities.update_objects(&mut create_info);
+        self.entities.entities.create_render_queued(&mut create_info);
 
         self.entities.update_buffers(&visibility, info, &caster);
 
         self.entities.entities.handle_on_change();
+
+        let mut create_info = RenderCreateInfo{
+            location: UniformLocation{set: 0, binding: 0},
+            shader: self.shaders.default,
+            squares,
+            object_info: info
+        };
+
+        self.entities.entities.create_queued(&mut create_info);
     }
 
     pub fn draw(&self, info: &mut DrawInfo)
@@ -1131,11 +1222,11 @@ impl GameState
         }
     }
 
-    pub fn input(&mut self, control: yanyaengine::Control)
+    pub fn input(&mut self, control: yanyaengine::Control) -> bool
     {
-        self.debug_visibility.input(&control);
+        if self.debug_visibility.input(&control) { return true; };
 
-        self.controls.handle_input(control);
+        self.controls.handle_input(control).is_some()
     }
 
     pub fn pressed(&self, control: Control) -> bool

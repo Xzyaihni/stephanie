@@ -59,7 +59,7 @@ pub struct AppInfo
 
 trait SlowModeStateTrait
 {
-    fn input(&mut self, control: &Control);
+    fn input(&mut self, control: Control);
     fn run_frame(&mut self) -> bool;
 }
 
@@ -81,7 +81,7 @@ struct SlowModeState
 
 impl SlowModeStateTrait for SlowModeState
 {
-    fn input(&mut self, control: &Control)
+    fn input(&mut self, control: Control)
     {
         match control
         {
@@ -114,7 +114,7 @@ impl SlowModeStateTrait for SlowModeState
 
 impl SlowModeStateTrait for ()
 {
-    fn input(&mut self, _control: &Control) {}
+    fn input(&mut self, _control: Control) {}
     fn run_frame(&mut self) -> bool { false }
 }
 
@@ -306,9 +306,9 @@ impl YanyaApp for App
 
     fn input(&mut self, control: Control)
     {
-        self.slow_mode.input(&control);
+        if self.client.input(control.clone()) { return };
 
-        self.client.input(control);
+        self.slow_mode.input(control);
     }
 
     fn mouse_move(&mut self, position: (f64, f64))

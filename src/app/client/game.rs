@@ -41,7 +41,7 @@ use crate::{
 
 use super::game_state::{
     GameState,
-    UiSpecializedWindow,
+    WindowType,
     WindowCreateInfo,
     EntityCreator,
     InventoryWhich,
@@ -343,7 +343,35 @@ impl Game
             true
         } else
         {
-            false
+            let is_debug = || -> bool
+            {
+                self.game_state.upgrade().map(|game_state| game_state.borrow().debug_mode)
+                    .unwrap_or(false)
+            };
+
+            if key == KeyCode::Backquote && is_debug()
+            {
+                {
+                    let mut info = self.info.borrow_mut();
+                    info.console.contents = if info.console.contents.is_some()
+                    {
+                        None
+                    } else
+                    {
+                        Some(String::new())
+                    };
+                }
+
+                self.player_container(|mut x| x.update_console());
+
+                let state = if self.info.borrow().console.contents.is_some() { "opened" } else { "closed" };
+                eprintln!("debug console {state}");
+
+                true
+            } else
+            {
+                false
+            }
         }
     }
 
@@ -896,8 +924,8 @@ impl ConsoleInfo
 
 struct InventoriesInfo
 {
-    player: Option<Weak<RefCell<UiSpecializedWindow>>>,
-    other: Option<Weak<RefCell<UiSpecializedWindow>>>
+    player: Option<WindowType>,
+    other: Option<WindowType>
 }
 
 impl InventoriesInfo
@@ -1128,21 +1156,6 @@ impl<'a> PlayerContainer<'a>
             {
                 self.toggle_inventory();
             },
-            Control::DebugConsole if self.game_state.debug_mode =>
-            {
-                self.info.console.contents = if self.info.console.contents.is_some()
-                {
-                    None
-                } else
-                {
-                    Some(String::new())
-                };
-
-                self.update_console();
-
-                let state = if self.info.console.contents.is_some() { "opened" } else { "closed" };
-                eprintln!("debug console {state}");
-            },
             _ => ()
         }
     }
@@ -1363,22 +1376,30 @@ impl<'a> PlayerContainer<'a>
             entities.transform_mut(self.info.follow).unwrap().position = follow_position;
         }
 
-        if let Some(character) = self.game_state.entities().character(self.info.entity)
+        let entities = &mut self.game_state.entities.entities;
+        if let Some((current_stamina, current_cooldown)) = entities.character(self.info.entity).map(|x|
+        {
+            (x.stamina_fraction(entities), x.attack_cooldown())
+        })
         {
             let delay = 0.7;
-            let current_stamina = character.stamina_fraction(self.game_state.entities());
 
             if self.info.previous_stamina != current_stamina
             {
+                let was_none = self.info.previous_stamina.is_none();
                 self.info.previous_stamina = current_stamina;
 
-                let id = self.game_state.ui_notifications.stamina;
-
-                self.game_state.set_bar(id, current_stamina.unwrap_or(0.0));
-                self.game_state.activate_notification(id, delay);
+                if !was_none
+                {
+                    self.game_state.ui_notifications.set_stamina_bar(
+                        entities,
+                        self.info.entity,
+                        delay,
+                        current_stamina.unwrap_or(0.0)
+                    );
+                }
             }
 
-            let current_cooldown = character.attack_cooldown();
             if self.info.previous_cooldown.1 != current_cooldown
             {
                 self.info.previous_cooldown.1 = current_cooldown;
@@ -1391,8 +1412,6 @@ impl<'a> PlayerContainer<'a>
                     self.info.previous_cooldown.0.max(current_cooldown)
                 };
 
-                let id = self.game_state.ui_notifications.weapon_cooldown;
-
                 let fraction = if self.info.previous_cooldown.0 > 0.0
                 {
                     current_cooldown / self.info.previous_cooldown.0
@@ -1401,8 +1420,12 @@ impl<'a> PlayerContainer<'a>
                     0.0
                 };
                 
-                self.game_state.set_bar(id, fraction);
-                self.game_state.activate_notification(id, delay);
+                self.game_state.ui_notifications.set_weapon_cooldown_bar(
+                    entities,
+                    self.info.entity,
+                    delay,
+                    fraction
+                );
             }
         }
 
@@ -1427,6 +1450,7 @@ impl<'a> PlayerContainer<'a>
             self.look_at_mouse();
         }
 
+        let mut tile_info = None;
         self.colliding_info(|mut colliding|
         {
             let world = &self.game_state.world;
@@ -1463,7 +1487,7 @@ impl<'a> PlayerContainer<'a>
                     }
                 }).unwrap_or(false)
                 {
-                    self.show_tile_tooltip(format!("press {} to go up", interact_button()));
+                    tile_info = Some(format!("press {} to go up", interact_button()));
 
                     if self.info.interacted
                     {
@@ -1494,7 +1518,7 @@ impl<'a> PlayerContainer<'a>
                 })
             }).unwrap_or(false)
             {
-                self.show_tile_tooltip(format!("press {} to go down", interact_button()));
+                tile_info = Some(format!("press {} to go down", interact_button()));
 
                 if self.info.interacted
                 {
@@ -1507,17 +1531,24 @@ impl<'a> PlayerContainer<'a>
             }
         });
 
+        if let Some(text) = tile_info
+        {
+            self.show_tile_tooltip(text);
+        }
+
         self.game_state.sync_transform(self.info.entity);
 
         self.info.interacted = false;
     }
 
-    fn show_tile_tooltip(&self, text: String)
+    fn show_tile_tooltip(&mut self, text: String)
     {
-        let id = self.game_state.ui_notifications.tile_tooltip;
-
-        self.game_state.set_notification_text(id, text);
-        self.game_state.activate_notification(id, 0.1);
+        self.game_state.ui_notifications.set_tile_tooltip_text(
+            &mut self.game_state.entities.entities,
+            self.info.entity,
+            0.1,
+            text
+        );
     }
 
     fn colliding_info(&self, f: impl FnOnce(CollidingInfo))

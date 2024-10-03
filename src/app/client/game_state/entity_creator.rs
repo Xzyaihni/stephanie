@@ -19,7 +19,7 @@ impl EntityCreator<'_>
         render: RenderInfo
     ) -> Entity
     {
-        let entity = self.entities.push_client(true, info);
+        let entity = self.entities.push_client_eager(info);
 
         self.entities.set_deferred_render(entity, render);
 

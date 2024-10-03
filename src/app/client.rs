@@ -35,6 +35,7 @@ use crate::{
     LOG_PATH,
     app::AppInfo,
     common::{
+        some_or_value,
         some_or_return,
         DataInfos,
         MessagePasser,
@@ -219,7 +220,7 @@ impl Client
         some_or_return!(&self.game_state).borrow().draw(&mut info);
     }
 
-    pub fn input(&mut self, control: yanyaengine::Control)
+    pub fn input(&mut self, control: yanyaengine::Control) -> bool
     {
         if let yanyaengine::Control::Keyboard{
             logical,
@@ -231,12 +232,12 @@ impl Client
             {
                 if self.game.on_key_state(logical, key, state == ElementState::Pressed)
                 {
-                    return;
+                    return true;
                 }
             }
         }
 
-        some_or_return!(&self.game_state).borrow_mut().input(control);
+        some_or_value!(&self.game_state, false).borrow_mut().input(control)
     }
 
     pub fn mouse_move(&mut self, position: (f64, f64))

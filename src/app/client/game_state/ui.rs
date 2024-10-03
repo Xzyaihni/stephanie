@@ -6,6 +6,8 @@ use std::{
 
 use nalgebra::{Vector2, Vector3};
 
+use strum::EnumIs;
+
 use yanyaengine::{Transform, camera::Camera};
 
 use crate::{
@@ -38,6 +40,9 @@ use crate::{
 
 
 const MAX_WINDOWS: usize = 5;
+const NOTIFICATION_HEIGHT: f32 = 0.0375;
+
+pub type WindowType = Weak<RefCell<UiSpecializedWindow>>;
 
 #[derive(Debug, Clone)]
 pub enum WindowError
@@ -67,8 +72,6 @@ impl UiScroll
         let drag = {
             let global_scroll = global_scroll.clone();
 
-            let scale = creator.entities.target_ref(background).unwrap().scale.xy();
-
             UiElement{
                 kind: UiElementType::Drag{
                     state: Default::default(),
@@ -78,7 +81,7 @@ impl UiScroll
                     })
                 },
                 keep_aspect: Some(KeepAspect{
-                    scale,
+                    scale: creator.entities.target_ref(background).unwrap().scale.xy(),
                     position: AspectPosition::UiScaled(Vector2::x()),
                     ..Default::default()
                 }),
@@ -111,7 +114,7 @@ impl UiScroll
         }
     }
 
-    pub fn update(&mut self, entities: &mut ClientEntities, dt: f32)
+    pub fn update(&mut self, entities: &ClientEntities, dt: f32)
     {
         let half_size = self.size / 2.0;
 
@@ -137,7 +140,7 @@ impl UiScroll
         self.update_position(entities);
     }
 
-    pub fn update_size(&mut self, entities: &mut ClientEntities, size: f32)
+    pub fn update_size(&mut self, entities: &ClientEntities, size: f32)
     {
         if let Some(mut lazy) = entities.lazy_transform_mut(self.bar)
         {
@@ -148,7 +151,7 @@ impl UiScroll
         self.update_position(entities);
     }
 
-    fn update_position(&mut self, entities: &mut ClientEntities)
+    fn update_position(&mut self, entities: &ClientEntities)
     {
         if let Some(mut lazy) = entities.lazy_transform_mut(self.bar)
         {
@@ -342,7 +345,7 @@ impl UiList
 
     pub fn set_items(
         &mut self,
-        creator: &mut EntityCreator,
+        creator: &EntityCreator,
         items: Vec<String>
     )
     {
@@ -352,7 +355,7 @@ impl UiList
         self.update_amount(creator);
     }
 
-    fn update_amount(&mut self, creator: &mut EntityCreator)
+    fn update_amount(&mut self, creator: &EntityCreator)
     {
         self.amount_changed = true;
 
@@ -384,7 +387,7 @@ impl UiList
 
     fn update_items(
         &mut self,
-        creator: &mut EntityCreator
+        creator: &EntityCreator
     )
     {
         let start_item = self.start_item() as usize;
@@ -432,19 +435,22 @@ impl UiList
 
         self.frames.iter().enumerate().for_each(|(index, item)|
         {
-            let mut transform = entities.lazy_transform_mut(item.frame).unwrap();
-            let transform = transform.target();
+            let set_position = |target: &mut Transform|
+            {
+                target.position.y = Ui::ui_position(
+                    target.scale,
+                    Vector3::new(0.0, y_modulo + index as f32 * over_height, 0.0)
+                ).y;
+            };
 
-            transform.position.y = Ui::ui_position(
-                transform.scale,
-                Vector3::new(0.0, y_modulo + index as f32 * over_height, 0.0)
-            ).y;
+            let mut transform = entities.lazy_transform_mut(item.frame).unwrap();
+            set_position(transform.target());
         });
     }
 
     pub fn update_scissors(
         &mut self,
-        creator: &mut EntityCreator,
+        creator: &EntityCreator,
         camera: &Camera
     )
     {
@@ -466,7 +472,7 @@ impl UiList
         self.update_frame_scissors(creator);
     }
 
-    fn update_frame_scissors(&mut self, creator: &mut EntityCreator)
+    fn update_frame_scissors(&mut self, creator: &EntityCreator)
     {
         self.frames.iter().for_each(|item|
         {
@@ -477,7 +483,7 @@ impl UiList
 
     pub fn update_after(
         &mut self,
-        _creator: &mut EntityCreator,
+        _creator: &EntityCreator,
         _camera: &Camera
     )
     {
@@ -485,7 +491,7 @@ impl UiList
 
     pub fn update(
         &mut self,
-        creator: &mut EntityCreator,
+        creator: &EntityCreator,
         camera: &Camera,
         dt: f32
     )
@@ -726,7 +732,7 @@ impl UiWindow
 
     pub fn update_name(
         &mut self,
-        creator: &mut EntityCreator,
+        creator: &EntityCreator,
         name: String
     )
     {
@@ -742,7 +748,7 @@ impl UiWindow
 
     pub fn update_after(
         &mut self,
-        creator: &mut EntityCreator,
+        creator: &EntityCreator,
         camera: &Camera
     )
     {
@@ -838,7 +844,7 @@ impl UiInventory
 
     pub fn update_name(
         &mut self,
-        creator: &mut EntityCreator,
+        creator: &EntityCreator,
         name: String
     )
     {
@@ -847,7 +853,7 @@ impl UiInventory
 
     pub fn update_inventory(
         &mut self,
-        creator: &mut EntityCreator,
+        creator: &EntityCreator,
         entity: Entity
     )
     {
@@ -873,7 +879,7 @@ impl UiInventory
 
     pub fn full_update(
         &mut self,
-        creator: &mut EntityCreator,
+        creator: &EntityCreator,
         entity: Entity
     )
     {
@@ -888,7 +894,7 @@ impl UiInventory
 
     pub fn update_after(
         &mut self,
-        creator: &mut EntityCreator,
+        creator: &EntityCreator,
         camera: &Camera
     )
     {
@@ -899,7 +905,7 @@ impl UiInventory
 
     pub fn update(
         &mut self,
-        creator: &mut EntityCreator,
+        creator: &EntityCreator,
         camera: &Camera,
         dt: f32
     )
@@ -980,7 +986,7 @@ impl UiItemInfo
 
     pub fn update_after(
         &mut self,
-        creator: &mut EntityCreator,
+        creator: &EntityCreator,
         camera: &Camera
     )
     {
@@ -1004,11 +1010,6 @@ fn update_resize_ui(entities: &ClientEntities, size: Vector2<f32>, entity: Entit
 
         lazy.set_connection_limit(min_size * scale);
     }
-}
-
-fn open_ui(entities: &ClientEntities, entity: Entity, scale: Vector3<f32>)
-{
-    dbg!("remove this later");
 }
 
 pub fn close_ui(entities: &ClientEntities, entity: Entity)
@@ -1035,25 +1036,27 @@ pub fn close_ui(entities: &ClientEntities, entity: Entity)
     }
 }
 
-fn create_notification_body(creator: &mut EntityCreator, anchor: Entity) -> Entity
+fn create_notification_body(
+    info: &mut CommonWindowInfo,
+    entity: Entity
+) -> Entity
 {
-    creator.entities.push(
+    info.creator.entities.push(
         true,
         EntityInfo{
             render: Some(RenderInfo{
                 object: Some(RenderObjectKind::Texture{name: "ui/background.png".to_owned()}.into()),
                 z_level: ZLevel::UiLow,
-                visible: false,
                 ..Default::default()
             }),
             follow_position: Some(FollowPosition::new(
-                anchor,
-                Connection::EaseOut{decay: 16.0, limit: None}
+                entity,
+                Connection::EaseOut{decay: 14.0, limit: None}
             )),
             lazy_transform: Some(LazyTransformInfo{
                 scaling: Scaling::EaseOut{decay: 20.0},
                 transform: Transform{
-                    scale: Vector3::zeros(),
+                    scale: Vector3::new(NOTIFICATION_HEIGHT * 4.0, NOTIFICATION_HEIGHT, 1.0),
                     ..Default::default()
                 },
                 ..Default::default()
@@ -1075,15 +1078,16 @@ pub struct BarNotification
 
 impl BarNotification
 {
-    pub fn new(
-        creator: &mut EntityCreator,
-        anchor: Entity,
-        name: String
+    fn new(
+        info: &mut CommonWindowInfo,
+        owner: Entity,
+        name: String,
+        amount: f32
     ) -> Self
     {
-        let body = create_notification_body(creator, anchor);
+        let body = create_notification_body(info, owner);
 
-        let bar = creator.entities.push(
+        let bar = info.creator.entities.push(
             true,
             EntityInfo{
                 render: Some(RenderInfo{
@@ -1097,7 +1101,7 @@ impl BarNotification
             }
         );
 
-        creator.entities.push(
+        info.creator.entities.push(
             true,
             EntityInfo{
                 lazy_transform: Some(LazyTransformInfo::default().into()),
@@ -1116,10 +1120,14 @@ impl BarNotification
             }
         );
 
-        Self{
+        let mut this = Self{
             body,
             bar
-        }
+        };
+
+        this.set_amount(info.creator.entities, amount);
+
+        this
     }
 
     pub fn set_amount(
@@ -1145,15 +1153,15 @@ pub struct TextNotification
 
 impl TextNotification
 {
-    pub fn new(
-        creator: &mut EntityCreator,
-        anchor: Entity,
+    fn new(
+        info: &mut CommonWindowInfo,
+        owner: Entity,
         text: String
     ) -> Self
     {
-        let body = create_notification_body(creator, anchor);
+        let body = create_notification_body(info, owner);
 
-        let text = creator.entities.push(
+        let text = info.creator.entities.push(
             true,
             EntityInfo{
                 lazy_transform: Some(LazyTransformInfo::default().into()),
@@ -1195,13 +1203,31 @@ impl TextNotification
     }
 }
 
-pub enum Notification
+macro_rules! quick_casts
+{
+    ($ref_fn:ident, $mut_fn:ident, $variant:ident, $result:ident) =>
+    {
+        #[allow(dead_code)]
+        pub fn $ref_fn(&self) -> Option<&$result>
+        {
+            if let Self::$variant(x) = self { Some(x) } else { None }
+        }
+
+        #[allow(dead_code)]
+        pub fn $mut_fn(&mut self) -> Option<&mut $result>
+        {
+            if let Self::$variant(x) = self { Some(x) } else { None }
+        }
+    }
+}
+
+pub enum NotificationKind
 {
     Bar(BarNotification),
     Text(TextNotification)
 }
 
-impl From<BarNotification> for Notification
+impl From<BarNotification> for NotificationKind
 {
     fn from(x: BarNotification) -> Self
     {
@@ -1209,7 +1235,7 @@ impl From<BarNotification> for Notification
     }
 }
 
-impl From<TextNotification> for Notification
+impl From<TextNotification> for NotificationKind
 {
     fn from(x: TextNotification) -> Self
     {
@@ -1217,23 +1243,10 @@ impl From<TextNotification> for Notification
     }
 }
 
-impl Notification
+impl NotificationKind
 {
-    pub fn set_visibility(&self, entities: &ClientEntities, state: bool)
-    {
-        let entity = self.body();
-
-        if state
-        {
-            let width = 0.15;
-            let height = width * 0.25;
-
-            open_ui(entities, entity, Vector3::new(width, height, height));
-        } else
-        {
-            close_ui(entities, entity);
-        }
-    }
+    quick_casts!{as_bar_ref, as_bar_mut, Bar, BarNotification}
+    quick_casts!{as_text_ref, as_text_mut, Text, TextNotification}
 
     pub fn set_position(&self, entities: &ClientEntities, position: f32)
     {
@@ -1253,17 +1266,25 @@ impl Notification
     }
 }
 
-pub struct ActiveNotification
+pub struct Notification
 {
-    id: NotificationId,
-    lifetime: f32
+    pub lifetime: f32,
+    pub kind: NotificationKind
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 struct UiWindowId(usize);
 
+pub enum NotificationCreateInfo
+{
+    Bar{name: String, amount: f32},
+    Text{text: String}
+}
+
+#[derive(EnumIs)]
 pub enum WindowCreateInfo
 {
+    Notification{owner: Entity, lifetime: f32, info: NotificationCreateInfo},
     ItemInfo{item: Item},
     Inventory{
         entity: Entity,
@@ -1273,21 +1294,22 @@ pub enum WindowCreateInfo
 
 pub enum UiSpecializedWindow
 {
+    Notification(Notification),
     ItemInfo(UiItemInfo),
     Inventory(UiInventory)
 }
 
 impl UiSpecializedWindow
 {
-    pub fn as_inventory_mut(&mut self) -> Option<&mut UiInventory>
-    {
-        if let Self::Inventory(x) = self { Some(x) } else { None }
-    }
+    quick_casts!{as_notification_ref, as_notification_mut, Notification, Notification}
+    quick_casts!{as_item_info_ref, as_item_info_mut, ItemInfo, UiItemInfo}
+    quick_casts!{as_inventory_ref, as_inventory_mut, Inventory, UiInventory}
 
     fn body(&self) -> Entity
     {
         match self
         {
+            Self::Notification(x) => x.kind.body(),
             Self::ItemInfo(x) => x.body(),
             Self::Inventory(x) => x.body()
         }
@@ -1295,12 +1317,13 @@ impl UiSpecializedWindow
 
     fn update_after(
         &mut self,
-        creator: &mut EntityCreator,
+        creator: &EntityCreator,
         camera: &Camera
     )
     {
         match self
         {
+            Self::Notification(_) => (),
             Self::ItemInfo(x) => x.update_after(creator, camera),
             Self::Inventory(x) => x.update_after(creator, camera)
         }
@@ -1315,7 +1338,8 @@ impl UiSpecializedWindow
     {
         match self
         {
-            Self::ItemInfo(_x) => (),
+            Self::Notification(_) => (),
+            Self::ItemInfo(_) => (),
             Self::Inventory(x) => x.update(creator, camera, dt)
         }
     }
@@ -1326,8 +1350,7 @@ pub struct Ui
     anchor: Entity,
     items_info: Arc<ItemsInfo>,
     user_receiver: Rc<RefCell<UiReceiver>>,
-    notifications: Vec<Notification>,
-    active_notifications: Vec<ActiveNotification>,
+    notifications: Vec<usize>,
     active_popup: Option<Entity>,
     windows: ObjectsStore<Rc<RefCell<UiSpecializedWindow>>>
 }
@@ -1345,7 +1368,6 @@ impl Ui
             items_info,
             user_receiver,
             notifications: Vec::new(),
-            active_notifications: Vec::new(),
             active_popup: None,
             windows: ObjectsStore::new()
         }
@@ -1355,7 +1377,7 @@ impl Ui
         this: Rc<RefCell<Self>>,
         creator: &'a mut EntityCreator<'a>,
         window: WindowCreateInfo
-    ) -> Weak<RefCell<UiSpecializedWindow>>
+    ) -> WindowType
     {
         let this_cloned = this.clone();
 
@@ -1373,10 +1395,17 @@ impl Ui
             UiWindowId(this.windows.vacant_key())
         };
 
+        let is_notification = window.is_notification();
+
         let window = Self::create_window(this_cloned, creator, window, id);
         let weak = Rc::downgrade(&window);
 
         this.borrow_mut().windows.push(window);
+
+        if is_notification
+        {
+            this.borrow_mut().notifications.push(id.0);
+        }
 
         weak
     }
@@ -1438,6 +1467,27 @@ impl Ui
 
         let window = match window
         {
+            WindowCreateInfo::Notification{owner, lifetime, info} =>
+            {
+                let kind: NotificationKind = match info
+                {
+                    NotificationCreateInfo::Bar{name, amount} =>
+                    {
+                        BarNotification::new(&mut window_info, owner, name, amount).into()
+                    },
+                    NotificationCreateInfo::Text{text} =>
+                    {
+                        TextNotification::new(&mut window_info, owner, text).into()
+                    }
+                };
+
+                let notification = Notification{
+                    lifetime,
+                    kind
+                };
+
+                UiSpecializedWindow::Notification(notification)
+            },
             WindowCreateInfo::ItemInfo{item} =>
             {
                 UiSpecializedWindow::ItemInfo(UiItemInfo::new(
@@ -1582,7 +1632,7 @@ impl Ui
         self.active_popup = Some(body);
     }
 
-    pub fn close_popup(&mut self, entities: &mut ClientEntities)
+    pub fn close_popup(&mut self, entities: &ClientEntities)
     {
         if let Some(previous) = self.active_popup.take()
         {
@@ -1590,59 +1640,9 @@ impl Ui
         }
     }
 
-    pub fn push_notification(&mut self, notification: Notification) -> NotificationId
-    {
-        let id = self.notifications.len();
-
-        self.notifications.push(notification);
-
-        NotificationId(id)
-    }
-
-    pub fn set_bar(&mut self, entities: &ClientEntities, id: NotificationId, amount: f32)
-    {
-        if let Notification::Bar(x) = &mut self.notifications[id.0]
-        {
-            x.set_amount(entities, amount);
-        }
-    }
-
-    pub fn set_notification_text(
-        &mut self,
-        entities: &ClientEntities,
-        id: NotificationId,
-        text: String
-    )
-    {
-        if let Notification::Text(x) = &mut self.notifications[id.0]
-        {
-            x.set_text(entities, text);
-        }
-    }
-
-    pub fn activate_notification(
-        &mut self,
-        entities: &ClientEntities,
-        id: NotificationId,
-        lifetime: f32
-    )
-    {
-        if let Some(notification) = self.active_notifications.iter_mut().find(|x| x.id == id)
-        {
-            notification.lifetime = lifetime;
-        } else
-        {
-            let notification = ActiveNotification{id, lifetime};
-
-            self.notifications[id.0].set_visibility(entities, true);
-
-            self.active_notifications.push(notification);
-        }
-    }
-
     pub fn update_after(
         &mut self,
-        creator: &mut EntityCreator,
+        creator: &EntityCreator,
         camera: &Camera
     )
     {
@@ -1676,28 +1676,33 @@ impl Ui
         dt: f32
     )
     {
-        self.active_notifications.retain_mut(|ActiveNotification{id, lifetime}|
-        {
-            *lifetime -= dt;
-
-            let keep = *lifetime > 0.0;
-
-            if !keep
-            {
-                self.notifications[id.0].set_visibility(creator.entities, false);
-            }
-
-            keep
-        });
-
         let distance = 0.04;
         let start = 0.08;
 
-        self.active_notifications.iter().enumerate().for_each(|(index, ActiveNotification{id, ..})|
+        let to_remove: Vec<_> = self.notifications.iter_mut().enumerate().filter_map(|(index, id)|
         {
             let position = start + index as f32 * distance;
 
-            self.notifications[id.0].set_position(creator.entities, position);
+            let mut window = self.windows[*id].borrow_mut();
+
+            let notification = window.as_notification_mut().unwrap();
+            
+            notification.kind.set_position(creator.entities, position);
+
+            notification.lifetime -= dt;
+
+            if notification.lifetime <= 0.0
+            {
+                return Some((index, *id));
+            }
+
+            None
+        }).collect();
+
+        to_remove.into_iter().for_each(|(index, id)|
+        {
+            self.notifications.swap_remove(index);
+            self.remove_window_id(creator.entities, UiWindowId(id)).unwrap();
         });
 
         self.windows.iter_mut().for_each(|(_, window)|

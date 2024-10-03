@@ -32,8 +32,7 @@ pub enum Control
     Inventory,
     ZoomIn,
     ZoomOut,
-    ZoomReset,
-    DebugConsole
+    ZoomReset
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -156,8 +155,7 @@ impl ControlsController
             (KeyMapping::Keyboard(KeyCode::KeyT), Control::Throw),
             (KeyMapping::Keyboard(KeyCode::Equal), Control::ZoomIn),
             (KeyMapping::Keyboard(KeyCode::Minus), Control::ZoomOut),
-            (KeyMapping::Keyboard(KeyCode::Digit0), Control::ZoomReset),
-            (KeyMapping::Keyboard(KeyCode::Backquote), Control::DebugConsole)
+            (KeyMapping::Keyboard(KeyCode::Digit0), Control::ZoomReset)
         ].into_iter().collect();
 
         let clipboard = match ClipboardProvider::new()

@@ -384,6 +384,8 @@ impl EntityInfo
     }
 }
 
+pub struct InFlightGetter<T>(T);
+
 #[derive(Debug, Clone)]
 pub struct ComponentWrapper<T>
 {
@@ -406,7 +408,7 @@ impl<T> ComponentWrapper<T>
 
 macro_rules! impl_common_systems
 {
-    ($this_entity_info:ident, $(($name:ident, $set_func:ident)),+,) =>
+    ($this_entity_info:ident, $(($name:ident, $set_func:ident, $component_type:ident)),+,) =>
     {
         fn push_inner(
             &mut self,
@@ -615,10 +617,9 @@ macro_rules! entity_info_common
 {
     () =>
     {
-        pub fn setup_components(
+        pub fn setup_components_ref(
             &mut self,
-            entities: &mut impl AnyEntities,
-            entity: Entity
+            entities: &impl AnyEntities
         )
         {
             if let Some(lazy) = self.lazy_transform.as_ref()
@@ -700,6 +701,15 @@ macro_rules! entity_info_common
             {
                 self.watchers = Some(Watchers::default());
             }
+        }
+
+        pub fn setup_components(
+            &mut self,
+            entities: &mut impl AnyEntities,
+            entity: Entity
+        )
+        {
+            self.setup_components_ref(entities);
 
             if let Some(character) = self.character.as_mut()
             {
@@ -1055,6 +1065,18 @@ macro_rules! define_entities_both
             }
         }
 
+        impl<$($component_type,)+> InFlightGetter<RefMut<'_, SetterQueue<$($component_type,)+>>>
+        {
+            $(
+                pub fn $mut_func(&mut self, entity: Entity) -> Option<&mut $component_type>
+                {
+                    self.0.$name.iter_mut().find(|(e, _c)| *e == entity)
+                        .and_then(|(_entity, component)| component.as_mut())
+                }
+            )+
+        }
+
+
         pub struct Entities<$($component_type=$default_type,)+>
         {
             pub local_components: RefCell<ObjectsStore<ComponentsIndices>>,
@@ -1161,6 +1183,11 @@ macro_rules! define_entities_both
                 )+};
 
                 format!("{info:#?}")
+            }
+
+            pub fn in_flight(&self) -> InFlightGetter<RefMut<SetterQueue<$($component_type,)+>>>
+            {
+                InFlightGetter(self.lazy_setter.borrow_mut())
             }
 
             fn set_each(&mut self, entity: Entity, info: EntityInfo<$($component_type,)+>)
@@ -1535,12 +1562,32 @@ macro_rules! define_entities_both
             }
 
             pub fn push_client(
+                &self,
+                mut info: ClientEntityInfo
+            ) -> Entity
+            {
+                let entity = self.push_empty(true, info.parent.as_ref().map(|x| x.entity));
+
+                info.setup_components_ref(self);
+
+                let mut lazy_setter = self.lazy_setter.borrow_mut();
+                $(
+                    if let Some(component) = info.$name
+                    {
+                        lazy_setter.$set_func(entity, Some(component));
+                    }
+                )+
+
+                entity
+            }
+
+            #[allow(dead_code)]
+            pub fn push_client_eager(
                 &mut self,
-                local: bool,
                 info: ClientEntityInfo
             ) -> Entity
             {
-                self.push_inner(local, info)
+                self.push_inner(true, info)
             }
 
             pub fn build_space(&self, space: &mut SpatialGrid)
@@ -1572,7 +1619,7 @@ macro_rules! define_entities_both
                 space.build(infos);
             }
 
-            impl_common_systems!{ClientEntityInfo, $(($name, $set_func),)+}
+            impl_common_systems!{ClientEntityInfo, $(($name, $set_func, $component_type),)+}
 
             $(
                 pub fn $on_name(&self, f: OnComponentChange)
@@ -1684,68 +1731,94 @@ macro_rules! define_entities_both
             pub fn create_render_queued(&mut self, create_info: &mut RenderCreateInfo)
             {
                 let render_queue = {
-                    let mut render_queue = self.create_render_queue.borrow_mut();
+                    let mut queue = self.create_render_queue.borrow_mut();
 
-                    mem::take(&mut *render_queue)
+                    mem::take(&mut *queue)
                 };
 
-                let needs_resort = render_queue.into_iter().map(|(entity, render)|
-                {
-                    if self.exists(entity)
-                    {
-                        let transform = ||
-                        {
-                            self.transform_clone(entity).unwrap_or_else(||
-                            {
-                                panic!("deferred render expected transform, got none")
-                            })
-                        };
+                let mut needs_resort = false;
 
+                fn constrain<F>(f: F) -> F
+                where
+                    F: FnMut(&mut ClientEntities, (Entity, RenderComponent)) -> (&mut ClientEntities, Option<(Entity, RenderComponent)>)
+                {
+                    f
+                }
+
+                let mut try_create = constrain(|
+                    this,
+                    (entity, render)
+                |
+                {
+                    if this.exists(entity)
+                    {
                         match render
                         {
-                            RenderComponent::Full(render) =>
+                            RenderComponent::Full(_) =>
                             {
-                                let render = render.server_to_client(
-                                    transform,
-                                    create_info
-                                );
+                                let transform = if let Some(x) = this.transform_clone(entity)
+                                {
+                                    x
+                                } else
+                                {
+                                    return (this, Some((entity, render)));
+                                };
 
-                                self.set_render(entity, Some(render));
+                                if let RenderComponent::Full(render) = render
+                                {
+                                    let render = render.server_to_client(
+                                        move ||
+                                        {
+                                            transform
+                                        },
+                                        create_info
+                                    );
 
-                                false
+                                    this.set_render(entity, Some(render));
+                                } else
+                                {
+                                    unreachable!()
+                                }
                             },
                             RenderComponent::Object(object) =>
                             {
-                                if let Some(mut render) = self.render_mut(entity)
+                                if let Some((transform, mut render)) = this.render_mut(entity).and_then(|render|
                                 {
-                                    let object = object.into_client(transform(), create_info);
+                                    this.transform_clone(entity).map(|transform| (transform, render))
+                                })
+                                {
+                                    let object = object.into_client(transform.clone(), create_info);
 
                                     render.object = object;
 
-                                    true
-                                } else
-                                {
-                                    false
+                                    needs_resort = true;
                                 }
                             },
                             RenderComponent::Scissor(scissor) =>
                             {
-                                if let Some(mut render) = self.render_mut(entity)
+                                if let Some(mut render) = this.render_mut(entity)
                                 {
                                     let size = create_info.object_info.partial.size;
                                     let scissor = scissor.into_global(size);
 
                                     render.scissor = Some(scissor);
                                 }
-
-                                false
                             }
                         }
-                    } else
-                    {
-                        false
+
+                        return (this, None);
                     }
-                }).reduce(|x, y| x || y).unwrap_or(false);
+
+                    (this, Some((entity, render)))
+                });
+
+                render_queue.into_iter().for_each(|x|
+                {
+                    if let (this, Some(ignored)) = try_create(self, x)
+                    {
+                        this.create_render_queue.borrow_mut().push(ignored);
+                    }
+                });
 
                 if needs_resort
                 {
@@ -2127,7 +2200,7 @@ macro_rules! define_entities_both
                 )+}
             }
 
-            impl_common_systems!{EntityInfo, $(($name, $set_func),)+}
+            impl_common_systems!{EntityInfo, $(($name, $set_func, $component_type),)+}
 
             pub fn update_lazy(&mut self)
             {
