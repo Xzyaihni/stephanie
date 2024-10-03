@@ -103,6 +103,8 @@ mod entity_creator;
 mod ui;
 
 
+const DEFAULT_ZOOM: f32 = 1.6;
+
 #[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct GlobalEntityId
@@ -792,7 +794,7 @@ impl GameState
         {
             let aspect = this.camera.read().aspect();
 
-            this.set_camera_scale(1.6);
+            this.set_camera_scale(DEFAULT_ZOOM);
 
             this.resize(aspect);
             this.camera_resized();
@@ -916,7 +918,7 @@ impl GameState
             self.resize_camera(1.0 + dt * ZOOM_SPEED);
         } else if self.pressed(Control::ZoomReset)
         {
-            self.set_camera_scale(1.0);
+            self.set_camera_scale(DEFAULT_ZOOM);
         }
     }
 
