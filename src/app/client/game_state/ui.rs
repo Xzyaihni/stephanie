@@ -540,7 +540,7 @@ impl UiWindow
             EntityInfo{
                 lazy_transform: Some(LazyTransformInfo{
                     scaling: Scaling::EaseOut{decay: 15.0},
-                    connection: Connection::Limit{limit: 1.0},
+                    connection: Connection::Limit{mode: LimitMode::Manhattan(Vector3::repeat(1.0))},
                     transform: Transform{
                         scale: body_scale,
                         ..Default::default()
@@ -993,19 +993,16 @@ impl UiItemInfo
 
 fn update_resize_ui(entities: &ClientEntities, size: Vector2<f32>, entity: Entity)
 {
-    let width_smaller = size.x < size.y;
-
-    let min_size = if width_smaller { size.x } else { size.y };
-
     if let Some(mut lazy) = entities.lazy_transform_mut(entity)
     {
         let scale = {
-            let scale = lazy.target().scale;
+            let scale = lazy.target().scale.xy();
 
-            0.5 - if width_smaller { scale.x } else { scale.y } / 2.0
+            Vector2::repeat(0.5) - scale / 2.0
         };
 
-        lazy.set_connection_limit(min_size * scale);
+        let limit = size.component_mul(&scale);
+        lazy.set_connection_limit(LimitMode::Manhattan(Vector3::new(limit.x, limit.y, 0.0)));
     }
 }
 

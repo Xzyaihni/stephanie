@@ -274,7 +274,7 @@ impl Character
                 floating: true,
                 ..Default::default()
             }.into(),
-            limit: 0.004,
+            limit: LimitMode::Normal(0.004),
             strength: 6.0
         })
     }
@@ -344,7 +344,7 @@ impl Character
                                 damping: 0.02,
                                 ..Default::default()
                             }.into(),
-                            limit: 0.005,
+                            limit: LimitMode::Normal(0.005),
                             strength: 0.9
                         }
                     ),

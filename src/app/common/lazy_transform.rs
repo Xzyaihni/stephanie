@@ -44,7 +44,7 @@ impl ValueAnimation
 pub struct SpringConnection
 {
     pub physical: Physical,
-    pub limit: f32,
+    pub limit: LimitMode,
     pub strength: f32
 }
 
@@ -129,15 +129,22 @@ impl From<Lifetime> for TimedConnection
     }
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub enum LimitMode
+{
+    Normal(f32),
+    Manhattan(Vector3<f32>)
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Connection
 {
     Ignore,
     Rigid,
-    Limit{limit: f32},
+    Limit{mode: LimitMode},
     Timed(TimedConnection),
     Constant{speed: f32},
-    EaseOut{decay: f32, limit: Option<f32>},
+    EaseOut{decay: f32, limit: Option<LimitMode>},
     Spring(SpringConnection)
 }
 
@@ -186,12 +193,12 @@ impl Connection
 
                 current.position += move_amount;
             },
-            Connection::Limit{limit} =>
+            Connection::Limit{mode} =>
             {
                 current.position = LazyTransform::clamp_distance(
+                    *mode,
                     target,
-                    current.position,
-                    *limit
+                    current.position
                 );
             },
             Connection::EaseOut{decay, limit} =>
@@ -201,9 +208,9 @@ impl Connection
                 if let Some(limit) = limit
                 {
                     current.position = LazyTransform::clamp_distance(
+                        *limit,
                         target,
-                        current.position,
-                        *limit
+                        current.position
                     );
                 }
             },
@@ -221,9 +228,9 @@ impl Connection
                 );
 
                 current.position = LazyTransform::clamp_distance(
+                    connection.limit,
                     target,
-                    current.position,
-                    connection.limit
+                    current.position
                 );
             }
         }
@@ -593,7 +600,7 @@ impl LazyTransform
         current
     }
 
-    pub fn set_connection_limit(&mut self, new_limit: f32)
+    pub fn set_connection_limit(&mut self, new_limit: LimitMode)
     {
         match &mut self.connection
         {
@@ -601,9 +608,9 @@ impl LazyTransform
             | Connection::Rigid
             | Connection::Constant{..}
             | Connection::Timed{..} => (),
-            Connection::Limit{limit} =>
+            Connection::Limit{mode} =>
             {
-                *limit = new_limit;
+                *mode = new_limit;
             },
             Connection::EaseOut{limit, ..} =>
             {
@@ -705,18 +712,31 @@ impl LazyTransform
         self.origin_rotation
     }
 
-    fn clamp_distance(target: Vector3<f32>, current: Vector3<f32>, limit: f32) -> Vector3<f32>
+    fn clamp_distance(
+        mode: LimitMode,
+        target: Vector3<f32>,
+        current: Vector3<f32>
+    ) -> Vector3<f32>
     {
         let distance = target - current;
 
-        // checking again cuz this is after the physics update
-        if distance.magnitude() < limit
+        match mode
         {
-            return current;
+            LimitMode::Normal(limit) =>
+            {
+                if distance.magnitude() < limit
+                {
+                    return current;
+                }
+
+                let limited_position = distance.normalize() * limit;
+
+                target - limited_position
+            },
+            LimitMode::Manhattan(limit) =>
+            {
+                target - distance.zip_map(&limit, |x, limit: f32| x.clamp(-limit, limit))
+            }
         }
-
-        let limited_position = distance.normalize() * limit;
-
-        target - limited_position
     }
 }
