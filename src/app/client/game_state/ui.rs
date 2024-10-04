@@ -509,9 +509,9 @@ struct CustomButton
 }
 
 // a mut ref to a mut ref to a mut ref to a
-struct CommonWindowInfo<'a>
+struct CommonWindowInfo<'a, 'b>
 {
-    creator: &'a mut EntityCreator<'a>,
+    creator: &'a mut EntityCreator<'b>,
     anchor: Entity,
     ui: Rc<RefCell<Ui>>,
     id: UiWindowId
@@ -760,7 +760,7 @@ impl UiWindow
 
             update_resize_ui(creator.entities, camera.size(), self.body);
 
-            let mut f = |entity|
+            let f = |entity|
             {
                 if let Some(mut ui_element) = creator.entities.ui_element_mut(entity)
                 {
@@ -772,17 +772,8 @@ impl UiWindow
                 }
             };
 
-            fn for_every_child(
-                entities: &ClientEntities,
-                entity: Entity,
-                f: &mut impl FnMut(Entity)
-            )
-            {
-                f(entity);
-                entities.children_of(entity).for_each(|entity| for_every_child(entities, entity, f));
-            }
-
-            for_every_child(creator.entities, self.body, &mut f);
+            f(self.body);
+            creator.entities.for_every_child(self.body, f);
         }
     }
 }
@@ -1286,6 +1277,138 @@ pub struct Notification
     pub kind: NotificationKind
 }
 
+pub struct ActionsList
+{
+    body: Entity
+}
+
+impl ActionsList
+{
+    fn new(
+        info: &mut CommonWindowInfo,
+        anchor: Entity,
+        mut popup_position: Vector2<f32>,
+        responses: Vec<UserEvent>
+    ) -> Self
+    {
+        let button_size = Vector2::new(0.5, 1.0);
+        let padding = button_size.y * 0.2;
+
+        let mut scale = Vector2::new(button_size.x, padding * 2.0);
+        scale.y += button_size.y * responses.len() as f32;
+        scale.y += padding * responses.len().saturating_sub(1) as f32;
+
+        popup_position += scale / 2.0;
+
+        let scale = Vector3::new(scale.x, scale.y, 0.0);
+
+        let body = info.creator.push(
+            EntityInfo{
+                lazy_transform: Some(LazyTransformInfo{
+                    scaling: Scaling::EaseOut{decay: 20.0},
+                    transform: Transform{
+                        position: Vector3::new(popup_position.x, popup_position.y, 0.0),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                }.into()),
+                ui_element: Some(UiElement{
+                    kind: UiElementType::ActiveTooltip,
+                    ..Default::default()
+                }),
+                parent: Some(Parent::new(anchor, true)),
+                watchers: Some(Default::default()),
+                ..Default::default()
+            },
+            RenderInfo{
+                object: Some(RenderObjectKind::Texture{name: "ui/background.png".to_owned()}.into()),
+                z_level: ZLevel::UiPopupLow,
+                ..Default::default()
+            }
+        );
+
+        info.creator.entities.target(body).unwrap().scale = scale;
+
+        let total = responses.len();
+        responses.into_iter().enumerate().for_each(|(index, response)|
+        {
+            let i = index as f32 / (total - 1) as f32;
+
+            let fraction_scale = button_size.y / scale.y;
+
+            let depth = {
+                let padding = padding / scale.y;
+                let half_scale = fraction_scale / 2.0;
+
+                lerp(-0.5 + half_scale + padding, 0.5 - half_scale - padding, i)
+            };
+
+            let position = Vector3::new(0.0, depth, 0.0);
+
+            let name = response.name().to_owned();
+
+            let urx = info.ui.borrow().user_receiver.clone();
+            let button = info.creator.push(
+                EntityInfo{
+                    lazy_transform: Some(LazyTransformInfo{
+                        transform: Transform{
+                            position,
+                            scale: Vector3::new(1.0, fraction_scale, 1.0),
+                            ..Default::default()
+                        },
+                        ..Default::default()
+                    }.into()),
+                    parent: Some(Parent::new(body, true)),
+                    ui_element: Some(UiElement{
+                        kind: UiElementType::Button{
+                            on_click: Box::new(move |_|
+                            {
+                                urx.borrow_mut().push(response.clone());
+                            })
+                        },
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+                RenderInfo{
+                    object: Some(RenderObjectKind::Texture{
+                        name: "ui/lighter.png".to_owned()
+                    }.into()),
+                    z_level: ZLevel::UiPopupMiddle,
+                    ..Default::default()
+                }
+            );
+
+            info.creator.push(
+                EntityInfo{
+                    lazy_transform: Some(LazyTransformInfo::default().into()),
+                    parent: Some(Parent::new(button, true)),
+                    ..Default::default()
+                },
+                RenderInfo{
+                    object: Some(RenderObjectKind::Text{
+                        text: name,
+                        font_size: 80,
+                        font: FontStyle::Bold,
+                        align: TextAlign::centered()
+                    }.into()),
+                    z_level: ZLevel::UiPopupHigh,
+                    ..Default::default()
+                }
+            );
+        });
+
+        Self{
+            body
+        }
+    }
+
+    pub fn body(&self) -> Entity
+    {
+        self.body
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 struct UiWindowId(usize);
 
@@ -1298,6 +1421,7 @@ pub enum NotificationCreateInfo
 #[derive(EnumIs)]
 pub enum WindowCreateInfo
 {
+    ActionsList{anchor: Entity, popup_position: Vector2<f32>, responses: Vec<UserEvent>},
     Notification{owner: Entity, lifetime: f32, info: NotificationCreateInfo},
     ItemInfo{item: Item},
     Inventory{
@@ -1308,6 +1432,7 @@ pub enum WindowCreateInfo
 
 pub enum UiSpecializedWindow
 {
+    ActionsList(ActionsList),
     Notification(Notification),
     ItemInfo(UiItemInfo),
     Inventory(UiInventory)
@@ -1315,6 +1440,7 @@ pub enum UiSpecializedWindow
 
 impl UiSpecializedWindow
 {
+    quick_casts!{as_actions_list_ref, as_actions_list_mut, ActionsList, ActionsList}
     quick_casts!{as_notification_ref, as_notification_mut, Notification, Notification}
     quick_casts!{as_item_info_ref, as_item_info_mut, ItemInfo, UiItemInfo}
     quick_casts!{as_inventory_ref, as_inventory_mut, Inventory, UiInventory}
@@ -1323,6 +1449,7 @@ impl UiSpecializedWindow
     {
         match self
         {
+            Self::ActionsList(x) => x.body(),
             Self::Notification(x) => x.kind.body(),
             Self::ItemInfo(x) => x.body(),
             Self::Inventory(x) => x.body()
@@ -1337,6 +1464,7 @@ impl UiSpecializedWindow
     {
         match self
         {
+            Self::ActionsList(_) => (),
             Self::Notification(_) => (),
             Self::ItemInfo(x) => x.update_after(creator, camera),
             Self::Inventory(x) => x.update_after(creator, camera)
@@ -1352,6 +1480,7 @@ impl UiSpecializedWindow
     {
         match self
         {
+            Self::ActionsList(_) => (),
             Self::Notification(_) => (),
             Self::ItemInfo(_) => (),
             Self::Inventory(x) => x.update(creator, camera, dt)
@@ -1364,8 +1493,8 @@ pub struct Ui
     anchor: Entity,
     items_info: Arc<ItemsInfo>,
     user_receiver: Rc<RefCell<UiReceiver>>,
-    notifications: Vec<usize>,
-    active_popup: Option<Entity>,
+    notifications: Vec<UiWindowId>,
+    active_popup: Option<UiWindowId>,
     windows: ObjectsStore<Rc<RefCell<UiSpecializedWindow>>>
 }
 
@@ -1387,9 +1516,9 @@ impl Ui
         }
     }
 
-    pub fn add_window<'a>(
+    pub fn add_window<'a, 'b>(
         this: Rc<RefCell<Self>>,
-        creator: &'a mut EntityCreator<'a>,
+        creator: &'a mut EntityCreator<'b>,
         window: WindowCreateInfo
     ) -> WindowType
     {
@@ -1410,15 +1539,24 @@ impl Ui
         };
 
         let is_notification = window.is_notification();
+        let is_actions_list = window.is_actions_list();
 
-        let window = Self::create_window(this_cloned, creator, window, id);
+        let test: &mut EntityCreator<'b> = &mut *creator;
+        let window = Self::create_window(this_cloned, test, window, id);
         let weak = Rc::downgrade(&window);
 
         this.borrow_mut().windows.push(window);
 
         if is_notification
         {
-            this.borrow_mut().notifications.push(id.0);
+            this.borrow_mut().notifications.push(id);
+        } else if is_actions_list
+        {
+            let mut this = this.borrow_mut();
+
+            this.close_popup(creator.entities);
+
+            this.active_popup = Some(id);
         }
 
         weak
@@ -1462,9 +1600,9 @@ impl Ui
         }
     }
 
-    fn create_window<'a>(
+    fn create_window<'a, 'b>(
         this: Rc<RefCell<Self>>,
-        creator: &'a mut EntityCreator<'a>,
+        creator: &'a mut EntityCreator<'b>,
         window: WindowCreateInfo,
         id: UiWindowId
     ) -> Rc<RefCell<UiSpecializedWindow>>
@@ -1481,6 +1619,15 @@ impl Ui
 
         let window = match window
         {
+            WindowCreateInfo::ActionsList{anchor, popup_position, responses} =>
+            {
+                UiSpecializedWindow::ActionsList(ActionsList::new(
+                    &mut window_info,
+                    anchor,
+                    popup_position,
+                    responses
+                ))
+            },
             WindowCreateInfo::Notification{owner, lifetime, info} =>
             {
                 let kind: NotificationKind = match info
@@ -1525,132 +1672,11 @@ impl Ui
         Rc::new(RefCell::new(window))
     }
 
-    pub fn create_popup(
-        &mut self,
-        mut popup_position: Vector2<f32>,
-        creator: &mut EntityCreator,
-        user_receiver: Rc<RefCell<UiReceiver>>,
-        anchor: Entity,
-        responses: Vec<UserEvent>
-    )
-    {
-        let button_size = Vector2::new(0.5, 1.0);
-        let padding = button_size.y * 0.2;
-
-        let mut scale = Vector2::new(button_size.x, padding * 2.0);
-        scale.y += button_size.y * responses.len() as f32;
-        scale.y += padding * responses.len().saturating_sub(1) as f32;
-
-        popup_position += scale / 2.0;
-
-        let scale = Vector3::new(scale.x, scale.y, 0.0);
-
-        let body = creator.push(
-            EntityInfo{
-                lazy_transform: Some(LazyTransformInfo{
-                    scaling: Scaling::EaseOut{decay: 20.0},
-                    transform: Transform{
-                        position: Vector3::new(popup_position.x, popup_position.y, 0.0),
-                        ..Default::default()
-                    },
-                    ..Default::default()
-                }.into()),
-                ui_element: Some(UiElement{
-                    kind: UiElementType::ActiveTooltip,
-                    ..Default::default()
-                }),
-                parent: Some(Parent::new(anchor, true)),
-                watchers: Some(Default::default()),
-                ..Default::default()
-            },
-            RenderInfo{
-                object: Some(RenderObjectKind::Texture{name: "ui/background.png".to_owned()}.into()),
-                z_level: ZLevel::UiPopupLow,
-                ..Default::default()
-            }
-        );
-
-        creator.entities.target(body).unwrap().scale = scale;
-
-        let total = responses.len();
-        responses.into_iter().enumerate().for_each(|(index, response)|
-        {
-            let i = index as f32 / (total - 1) as f32;
-
-            let fraction_scale = button_size.y / scale.y;
-
-            let depth = {
-                let padding = padding / scale.y;
-                let half_scale = fraction_scale / 2.0;
-
-                lerp(-0.5 + half_scale + padding, 0.5 - half_scale - padding, i)
-            };
-
-            let position = Vector3::new(0.0, depth, 0.0);
-
-            let name = response.name().to_owned();
-
-            let urx = user_receiver.clone();
-            let button = creator.push(
-                EntityInfo{
-                    lazy_transform: Some(LazyTransformInfo{
-                        transform: Transform{
-                            position,
-                            scale: Vector3::new(1.0, fraction_scale, 1.0),
-                            ..Default::default()
-                        },
-                        ..Default::default()
-                    }.into()),
-                    parent: Some(Parent::new(body, true)),
-                    ui_element: Some(UiElement{
-                        kind: UiElementType::Button{
-                            on_click: Box::new(move |_|
-                            {
-                                urx.borrow_mut().push(response.clone());
-                            })
-                        },
-                        ..Default::default()
-                    }),
-                    ..Default::default()
-                },
-                RenderInfo{
-                    object: Some(RenderObjectKind::Texture{
-                        name: "ui/lighter.png".to_owned()
-                    }.into()),
-                    z_level: ZLevel::UiPopupMiddle,
-                    ..Default::default()
-                }
-            );
-
-            creator.push(
-                EntityInfo{
-                    lazy_transform: Some(LazyTransformInfo::default().into()),
-                    parent: Some(Parent::new(button, true)),
-                    ..Default::default()
-                },
-                RenderInfo{
-                    object: Some(RenderObjectKind::Text{
-                        text: name,
-                        font_size: 80,
-                        font: FontStyle::Bold,
-                        align: TextAlign::centered()
-                    }.into()),
-                    z_level: ZLevel::UiPopupHigh,
-                    ..Default::default()
-                }
-            );
-        });
-
-        self.close_popup(creator.entities);
-
-        self.active_popup = Some(body);
-    }
-
     pub fn close_popup(&mut self, entities: &ClientEntities)
     {
         if let Some(previous) = self.active_popup.take()
         {
-            close_ui(entities, previous);
+            let _ = self.remove_window_id(entities, previous);
         }
     }
 
@@ -1676,11 +1702,6 @@ impl Ui
         {
             update_resize_ui(entities, size, window.borrow().body());
         });
-
-        if let Some(popup) = self.active_popup
-        {
-            update_resize_ui(entities, size, popup);
-        }
     }
 
     pub fn update(
@@ -1697,7 +1718,7 @@ impl Ui
         {
             let position = start + index as f32 * distance;
 
-            let mut window = self.windows[*id].borrow_mut();
+            let mut window = self.windows[id.0].borrow_mut();
 
             let notification = window.as_notification_mut().unwrap();
             
@@ -1716,7 +1737,7 @@ impl Ui
         to_remove.into_iter().for_each(|(index, id)|
         {
             self.notifications.swap_remove(index);
-            self.remove_window_id(creator.entities, UiWindowId(id)).unwrap();
+            self.remove_window_id(creator.entities, id).unwrap();
         });
 
         self.windows.iter_mut().for_each(|(_, window)|

@@ -998,12 +998,10 @@ impl GameState
             entities: &mut self.entities.entities
         };
 
-        self.ui.borrow_mut().create_popup(
-            distance,
+        Ui::add_window(
+            self.ui.clone(),
             &mut creator,
-            self.user_receiver.clone(),
-            anchor,
-            responses
+            WindowCreateInfo::ActionsList{anchor, popup_position: distance, responses}
         );
     }
 

@@ -378,6 +378,7 @@ impl Character
                     z_level: ZLevel::Hair,
                     ..Default::default()
                 }),
+                watchers: Some(Default::default()),
                 ..Default::default()
             }
         };

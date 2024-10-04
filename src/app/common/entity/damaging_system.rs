@@ -9,6 +9,9 @@ use crate::common::{
     damage::*,
     damaging::*,
     character::*,
+    render_info::*,
+    watcher::*,
+    AnyEntities,
     Entity,
     EntityPasser,
     entity::{iterate_components_with, ClientEntities}
@@ -106,4 +109,34 @@ pub fn update(
     {
         entities.damage_entity(passer, blood_texture, angle, collided, faction, damage);
     });
+}
+
+pub fn damage(entities: &impl AnyEntities, entity: Entity, damage: Damage)
+{
+    let flash_white = |entity: Entity|
+    {
+        if let Some(mut mix_color) = entities.mix_color_target(entity)
+        {
+            *mix_color = Some(MixColor{color: [1.0; 3], amount: 0.8});
+        }
+
+        if let Some(mut watchers) = entities.watchers_mut(entity)
+        {
+            watchers.push(
+                Watcher{
+                    kind: WatcherType::Lifetime(0.2.into()),
+                    action: WatcherAction::SetMixColor(None),
+                    ..Default::default()
+                }
+            );
+        }
+    };
+
+    flash_white(entity);
+    entities.for_every_child(entity, flash_white);
+
+    if let Some(mut anatomy) = entities.anatomy_mut(entity)
+    {
+        anatomy.damage(damage);
+    }
 }

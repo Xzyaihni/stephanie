@@ -479,8 +479,6 @@ macro_rules! impl_common_systems
             damage: Damage
         ) -> bool
         {
-            use crate::common::Damageable;
-
             if let Some(other) = self.faction(entity)
             {
                 if !faction.aggressive(&other)
@@ -494,23 +492,7 @@ macro_rules! impl_common_systems
 
             if self.anatomy(entity).is_some()
             {
-                if let Some(mut mix_color) = self.mix_color_target(entity)
-                {
-                    *mix_color = Some(MixColor{color: [1.0; 3], amount: 0.8});
-                }
-
-                self.watchers_mut(entity).unwrap().push(
-                    Watcher{
-                        kind: WatcherType::Lifetime(0.2.into()),
-                        action: WatcherAction::SetMixColor(None),
-                        ..Default::default()
-                    }
-                );
-
-                if let Some(mut anatomy) = self.anatomy_mut(entity)
-                {
-                    anatomy.damage(damage);
-                }
+                damaging_system::damage(self, entity, damage);
 
                 Anatomy::on_set(None, self, entity);
 
@@ -545,6 +527,16 @@ macro_rules! impl_common_systems
                     });
                 }
             });
+        }
+
+        fn for_every_child_inner(
+            &self,
+            entity: Entity,
+            f: &mut impl FnMut(Entity)
+        )
+        {
+            f(entity);
+            self.children_of(entity).for_each(move |entity| self.for_every_child_inner(entity, f));
         }
 
         fn create_queued_common(
@@ -760,6 +752,15 @@ macro_rules! common_trait_impl
         fn lazy_target_end(&self, entity: Entity) -> Option<Transform>
         {
             self.lazy_target_end(entity)
+        }
+
+        fn for_every_child(
+            &self,
+            entity: Entity,
+            mut f: impl FnMut(Entity)
+        )
+        {
+            self.for_every_child_inner(entity, &mut f);
         }
 
         fn z_level(&self, entity: Entity) -> Option<ZLevel>
@@ -2375,6 +2376,8 @@ macro_rules! define_entities
             fn lazy_target_ref(&self, entity: Entity) -> Option<Ref<Transform>>;
             fn lazy_target(&self, entity: Entity) -> Option<RefMut<Transform>>;
             fn lazy_target_end(&self, entity: Entity) -> Option<Transform>;
+
+            fn for_every_child(&self, entity: Entity, f: impl FnMut(Entity));
 
             fn z_level(&self, entity: Entity) -> Option<ZLevel>;
             fn set_z_level(&self, entity: Entity, z_level: ZLevel);
