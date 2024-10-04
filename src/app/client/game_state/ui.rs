@@ -578,6 +578,9 @@ impl UiWindow
         );
 
         info.creator.entities.set_transform(body, Some(Transform{
+            position: info.creator.entities.transform(info.anchor)
+                .map(|x| x.position - Vector3::new(body_scale.x / 2.0, 0.0, 0.0))
+                .unwrap_or_default(),
             scale: body_scale.component_mul(&ANIMATION_SCALE),
             ..Default::default()
         }));
