@@ -631,7 +631,6 @@ impl UiWindow
 
         let scale = Vector3::new(button_x * (1 + custom_buttons.len()) as f32, 1.0, 1.0);
 
-        let remove_placeholder = ();
         let low = button_x * custom_buttons.len() as f32;
         let high = 1.0 - button_x;
         let name = info.creator.push(
@@ -743,7 +742,6 @@ impl UiWindow
         name: String
     )
     {
-        let remove_placeholder = ();
         let object = RenderObjectKind::Text{
             text: name,
             font_size: 80,
