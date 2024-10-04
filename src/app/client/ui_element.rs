@@ -459,7 +459,7 @@ impl UiElement
                 },
                 AspectPosition::Absolute(position) =>
                 {
-                    Vector3::new(position.x, position.y, 0.0)
+                    Vector3::new(position.x, position.y, 0.0) / aspect
                 }
             };
 

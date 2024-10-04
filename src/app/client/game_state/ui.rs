@@ -631,8 +631,9 @@ impl UiWindow
 
         let scale = Vector3::new(button_x * (1 + custom_buttons.len()) as f32, 1.0, 1.0);
 
-        let low = button_x * custom_buttons.len() as f32 - 0.5;
-        let high = 1.0 - button_x - 0.5;
+        let remove_placeholder = ();
+        let low = button_x * custom_buttons.len() as f32;
+        let high = 1.0 - button_x;
         let name = info.creator.push(
             EntityInfo{
                 lazy_transform: Some(LazyTransformInfo::default().into()),
@@ -642,7 +643,7 @@ impl UiWindow
                     keep_aspect: Some(KeepAspect{
                         scale: scale.xy(),
                         position: AspectPosition::Absolute(Vector2::new(
-                            low + (high - low) / 2.0,
+                            (low + high) / 2.0 - 0.5,
                             0.0
                         )),
                         mode: AspectMode::FillRestX,
@@ -742,6 +743,7 @@ impl UiWindow
         name: String
     )
     {
+        let remove_placeholder = ();
         let object = RenderObjectKind::Text{
             text: name,
             font_size: 80,
