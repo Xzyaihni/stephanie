@@ -1,7 +1,8 @@
 use std::{
     rc::{Weak, Rc},
     cell::RefCell,
-    sync::Arc
+    sync::Arc,
+    collections::VecDeque
 };
 
 use nalgebra::{Vector2, Vector3};
@@ -629,6 +630,9 @@ impl UiWindow
         let button_x = panel_size;
 
         let scale = Vector3::new(button_x * (1 + custom_buttons.len()) as f32, 1.0, 1.0);
+
+        let low = button_x * custom_buttons.len() as f32 - 0.5;
+        let high = 1.0 - button_x - 0.5;
         let name = info.creator.push(
             EntityInfo{
                 lazy_transform: Some(LazyTransformInfo::default().into()),
@@ -638,7 +642,7 @@ impl UiWindow
                     keep_aspect: Some(KeepAspect{
                         scale: scale.xy(),
                         position: AspectPosition::Absolute(Vector2::new(
-                            button_x * (custom_buttons.len() as f32 - 1.0),
+                            low + (high - low) / 2.0,
                             0.0
                         )),
                         mode: AspectMode::FillRestX,
@@ -1495,6 +1499,7 @@ pub struct Ui
     user_receiver: Rc<RefCell<UiReceiver>>,
     notifications: Vec<UiWindowId>,
     active_popup: Option<UiWindowId>,
+    windows_order: VecDeque<UiWindowId>,
     windows: ObjectsStore<Rc<RefCell<UiSpecializedWindow>>>
 }
 
@@ -1512,6 +1517,7 @@ impl Ui
             user_receiver,
             notifications: Vec::new(),
             active_popup: None,
+            windows_order: VecDeque::new(),
             windows: ObjectsStore::new()
         }
     }
@@ -1529,7 +1535,7 @@ impl Ui
 
             if this.windows.len() == MAX_WINDOWS
             {
-                let oldest_window = UiWindowId(this.windows.iter().next().unwrap().0);
+                let oldest_window = this.windows_order.pop_front().unwrap();
                 this.remove_window_id(creator.entities, oldest_window).unwrap();
             }
 
@@ -1545,6 +1551,7 @@ impl Ui
         let window = Self::create_window(this_cloned, test, window, id);
         let weak = Rc::downgrade(&window);
 
+        this.borrow_mut().windows_order.push_back(id);
         this.borrow_mut().windows.push(window);
 
         if is_notification
@@ -1591,6 +1598,11 @@ impl Ui
             window.borrow().body()
         })
         {
+            if let Some(index) = self.windows_order.iter().position(|x| *x == id)
+            {
+                self.windows_order.remove(index);
+            }
+
             close_ui(entities, window);
 
             Ok(())
