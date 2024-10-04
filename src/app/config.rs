@@ -633,7 +633,7 @@ impl Config
 
         let mut parser = ArgParser::new();
 
-        parser.push_required(&mut name, 'n', "name", "player name");
+        parser.push(&mut name, 'n', "name", "player name");
         parser.push(&mut address, 'a', "address", "connection address");
         parser.push(&mut port, 'p', "port", "hosting port");
         parser.push_flag(&mut debug, 'd', "debug", "enable debug mode", true);
