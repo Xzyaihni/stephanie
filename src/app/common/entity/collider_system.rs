@@ -3,7 +3,7 @@ use std::cell::RefCell;
 use yanyaengine::Transform;
 
 use crate::{
-    DEBUG_COLLISION_BOUNDS,
+    debug_config::*,
     common::{
         unique_pairs_no_self,
         collider::*,
@@ -90,7 +90,7 @@ pub fn update(
         let mut this;
         colliding_info!{this, entity};
 
-        if DEBUG_COLLISION_BOUNDS
+        if DebugConfig::is_enabled(DebugTool::CollisionBounds)
         {
             entities.push(true, EntityInfo{
                 transform: Some(Transform{

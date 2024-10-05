@@ -1,7 +1,7 @@
 use std::cell::RefCell;
 
 use crate::{
-    DEBUG_VELOCITY,
+    debug_config::*,
     common::{
         direction_arrow_info,
         physics::*,
@@ -37,7 +37,7 @@ pub fn update(entities: &mut ClientEntities, world: &World, dt: f32)
                 dt
             );
 
-            if DEBUG_VELOCITY
+            if DebugConfig::is_enabled(DebugTool::Velocity)
             {
                 drop(target);
 

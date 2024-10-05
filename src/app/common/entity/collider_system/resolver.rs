@@ -8,7 +8,7 @@ use nalgebra::{Matrix3, Vector3};
 use yanyaengine::Transform;
 
 use crate::{
-    DEBUG_CONTACTS,
+    debug_config::*,
     common::{
         cross_2d,
         cross_3d,
@@ -809,7 +809,7 @@ impl ContactResolver
         dt: f32
     )
     {
-        if DEBUG_CONTACTS
+        if DebugConfig::is_enabled(DebugTool::Contacts)
         {
             contacts.iter().for_each(|contact| Self::display_contact(entities, contact));
         }

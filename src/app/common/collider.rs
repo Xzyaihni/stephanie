@@ -727,59 +727,13 @@ impl<'a> CollidingInfo<'a>
         })
     }
 
-    fn ground_case(
-        &self,
-        tile: &Self,
-        world: &WorldTileInfo,
-        mut add_contact: impl FnMut(Contact)
-    ) -> Option<bool>
-    {
-        // if all but (or including) forward plane is blocked
-        if world.left && world.right
-            && world.down && world.up
-            && world.back
-        {
-            let half_height = self.transform.scale.z / 2.0;
-
-            let diff = self.transform.position.z - tile.transform.position.z;
-            let distance = diff - (tile.transform.scale.z / 2.0) - half_height;
-
-            if distance >= 0.0
-            {
-                return Some(false);
-            }
-
-            let penetration = -distance;
-
-            let mut point = self.transform.position;
-            point.z -= half_height;
-
-            add_contact(Contact{
-                a: self.entity.unwrap(),
-                b: None,
-                point,
-                penetration,
-                normal: Vector3::z()
-            });
-
-            return Some(true);
-        }
-
-        None
-    }
-
     fn tile_circle(
         &self,
         other: &Self,
         world: &WorldTileInfo,
-        mut add_contact: impl FnMut(Contact)
+        add_contact: impl FnMut(Contact)
     ) -> bool
     {
-        if let Some(collided) = other.ground_case(self, world, &mut add_contact)
-        {
-            return collided;
-        }
-
         self.rectangle_circle_inner(other, add_contact, |axis|
         {
             Self::allowed_axis(world, -axis)
@@ -804,14 +758,9 @@ impl<'a> CollidingInfo<'a>
         &self,
         other: &Self,
         world: &WorldTileInfo,
-        mut add_contact: impl FnMut(Contact)
+        add_contact: impl FnMut(Contact)
     ) -> bool
     {
-        if let Some(collided) = other.ground_case(self, world, &mut add_contact)
-        {
-            return collided;
-        }
-
         let diff = other.transform.position - self.transform.position;
 
         let this = self.transform_matrix();

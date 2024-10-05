@@ -14,7 +14,7 @@ use yanyaengine::{
     game_object::*
 };
 
-use crate::{SUPER_SPEED, SlowMode};
+use crate::debug_config::*;
 
 use common::{
     TileMap,
@@ -57,13 +57,15 @@ pub struct AppInfo
     pub shaders: ProgramShaders
 }
 
-trait SlowModeStateTrait
+type SlowMode = <DebugConfig as DebugConfigTrait>::SlowMode;
+
+pub trait SlowModeStateTrait
 {
     fn input(&mut self, control: Control);
     fn run_frame(&mut self) -> bool;
 }
 
-trait SlowModeTrait
+pub trait SlowModeTrait
 {
     type State: SlowModeStateTrait + Default;
 
@@ -73,7 +75,7 @@ trait SlowModeTrait
 pub struct SlowModeTrue;
 pub struct SlowModeFalse;
 
-struct SlowModeState
+pub struct SlowModeState
 {
     running: bool,
     step_now: bool
@@ -267,6 +269,8 @@ impl YanyaApp for App
             host
         };
 
+        DebugConfig::on_start();
+
         Self{
             client: Client::new(partial_info, client_init_info).unwrap(),
             server_handle,
@@ -278,9 +282,9 @@ impl YanyaApp for App
     {
         let mut info = partial_info.to_full(&self.client.camera.read());
 
-        if let Some(super_speed) = SUPER_SPEED
+        if DebugConfig::is_enabled(DebugTool::SuperSpeed)
         {
-            for _ in 0..super_speed
+            for _ in 0..10
             {
                 self.client.update(&mut info, 1.0 / 60.0);
             }

@@ -23,12 +23,11 @@ impl VisibilityChecker
 
         let half_size = self.size / 2.0;
 
-        let lower = -half_size - Vector3::repeat(radius);
-        let upper = half_size + Vector3::repeat(radius);
+        let limit = half_size + Vector3::repeat(radius);
 
         (0..3).all(|i|
         {
-            (*lower.index(i)..=*upper.index(i)).contains(offset.index(i))
+            offset.index(i).abs() <= *limit.index(i)
         })
     }
 

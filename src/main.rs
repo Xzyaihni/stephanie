@@ -13,15 +13,11 @@ use yanyaengine::{App, ShadersContainer, ShadersInfo};
 
 pub use app::{common, server, client, ProgramShaders};
 
-#[allow(unused_imports)]
-use app::{
-    SlowModeTrue,
-    SlowModeFalse,
-    client::game_state::{DebugVisibilityTrue, DebugVisibilityFalse},
-    AppInfo
-};
+use app::AppInfo;
 
 use common::world::TILE_SIZE;
+pub use common::{debug_env, is_debug_env};
+pub mod debug_config;
 
 mod app;
 
@@ -90,15 +86,6 @@ mod ui_fragment
 }
 
 pub const LOG_PATH: &str = "log.txt";
-
-pub const SUPER_SPEED: Option<usize> = None;
-pub const DEBUG_LISP: bool = false;
-pub const DEBUG_COLLISION_BOUNDS: bool = false;
-pub const DEBUG_CONTACTS: bool = false;
-pub const DEBUG_SLEEPING: bool = false;
-pub const DEBUG_VELOCITY: bool = false;
-pub type SlowMode = SlowModeFalse;
-pub type DebugVisibility = DebugVisibilityFalse;
 
 pub fn complain(message: impl Display) -> !
 {

@@ -1,7 +1,7 @@
 use yanyaengine::game_object::*;
 
 use crate::{
-    DEBUG_SLEEPING,
+    debug_config::*,
     common::{
         Entity,
         MixColor,
@@ -22,7 +22,7 @@ pub fn update_buffers(
     {
         let transform = entities.transform(entity).unwrap().clone();
 
-        if DEBUG_SLEEPING
+        if DebugConfig::is_enabled(DebugTool::Sleeping)
         {
             if let Some(physical) = entities.physical(entity)
             {

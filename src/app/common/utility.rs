@@ -1,5 +1,6 @@
 use std::{
     f32,
+    env,
     cmp::Ordering,
     hash::Hash,
     io::Write,
@@ -553,6 +554,18 @@ pub fn direction_arrow_info(
             ..Default::default()
         }
     })
+}
+
+pub fn debug_env() -> Option<String>
+{
+    env::var("STEPHANIE_DEBUG").ok()
+}
+
+pub fn is_debug_env(s: impl AsRef<str>) -> bool
+{
+    let ds = some_or_value!(debug_env(), false);
+    let ds: &str = ds.as_ref();
+    ds == s.as_ref()
 }
 
 pub fn write_log(text: impl Into<String>)

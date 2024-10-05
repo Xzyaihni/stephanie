@@ -32,7 +32,7 @@ use yanyaengine::{
 };
 
 use crate::{
-    DebugVisibility,
+    debug_config::*,
     ProgramShaders,
     client::{ui_element::*, RenderCreateInfo},
     common::{
@@ -516,13 +516,15 @@ impl UiNotifications
     }
 }
 
-struct DebugVisibilityState
+type DebugVisibility = <DebugConfig as DebugConfigTrait>::DebugVisibility;
+
+pub struct DebugVisibilityState
 {
     detached: bool,
     visibility_camera: Camera
 }
 
-trait DebugVisibilityStateTrait
+pub trait DebugVisibilityStateTrait
 {
     fn new(camera: &Camera) -> Self;
 
@@ -594,7 +596,7 @@ impl DebugVisibilityStateTrait for ()
     fn camera(&self) -> &Camera { unreachable!() }
 }
 
-trait DebugVisibilityTrait
+pub trait DebugVisibilityTrait
 {
     type State: DebugVisibilityStateTrait;
 
@@ -1076,15 +1078,6 @@ impl GameState
         self.entities.update_buffers(&visibility, info, &caster);
 
         self.entities.entities.handle_on_change();
-
-        let mut create_info = RenderCreateInfo{
-            location: UniformLocation{set: 0, binding: 0},
-            shader: self.shaders.default,
-            squares,
-            object_info: info
-        };
-
-        self.entities.entities.create_queued(&mut create_info);
     }
 
     pub fn draw(&self, info: &mut DrawInfo)
@@ -1201,6 +1194,8 @@ impl GameState
 
         self.entities.entities.update_watchers(dt);
 
+        self.entities.entities.create_queued(&mut create_info);
+
         if self.rare_timer <= 0.0
         {
             self.rare();
@@ -1216,7 +1211,7 @@ impl GameState
 
     fn rare(&mut self)
     {
-        if cfg!(debug_assertions)
+        if DebugConfig::is_debug()
         {
             self.entities.entities.check_guarantees();
         }

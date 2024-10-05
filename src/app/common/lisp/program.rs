@@ -9,6 +9,8 @@ use std::{
     ops::{RangeInclusive, Add, Sub, Mul, Div, Rem, Deref, Index, IndexMut}
 };
 
+use crate::debug_config::*;
+
 pub use super::{
     transfer_with_capacity,
     Error,
@@ -1699,7 +1701,7 @@ impl ExpressionPos
                         });
                     }
 
-                    if crate::DEBUG_LISP
+                    if DebugConfig::is_enabled(DebugTool::Lisp)
                     {
                         eprintln!(
                             "({}) called primitive: {}",

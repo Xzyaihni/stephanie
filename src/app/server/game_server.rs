@@ -25,36 +25,39 @@ use super::{
 
 pub use super::world::ParseError;
 
-use crate::common::{
-    some_or_return,
-    sender_loop,
-    receiver_loop,
-    ENTITY_SCALE,
-    render_info::*,
-    MessageSerError,
-    MessageDeError,
-    AnyEntities,
-    TileMap,
-    DataInfos,
-    Inventory,
-    Entity,
-    EntityInfo,
-    Faction,
-    CharactersInfo,
-    CharacterId,
-    Character,
-    Player,
-    Entities,
-    Anatomy,
-    HumanAnatomy,
-    HumanAnatomyInfo,
-    EntityPasser,
-    EntitiesController,
-    MessagePasser,
-    ConnectionId,
-    message::{
-        Message,
-        MessageBuffer
+use crate::{
+    debug_config::*,
+    common::{
+        some_or_return,
+        sender_loop,
+        receiver_loop,
+        ENTITY_SCALE,
+        render_info::*,
+        MessageSerError,
+        MessageDeError,
+        AnyEntities,
+        TileMap,
+        DataInfos,
+        Inventory,
+        Entity,
+        EntityInfo,
+        Faction,
+        CharactersInfo,
+        CharacterId,
+        Character,
+        Player,
+        Entities,
+        Anatomy,
+        HumanAnatomy,
+        HumanAnatomyInfo,
+        EntityPasser,
+        EntitiesController,
+        MessagePasser,
+        ConnectionId,
+        message::{
+            Message,
+            MessageBuffer
+        }
     }
 };
 
@@ -205,7 +208,7 @@ impl GameServer
 
     fn rare(&mut self)
     {
-        if cfg!(debug_assertions)
+        if DebugConfig::is_debug()
         {
             self.entities.check_guarantees();
         }
