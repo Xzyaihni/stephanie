@@ -62,6 +62,8 @@ type SlowMode = <DebugConfig as DebugConfigTrait>::SlowMode;
 pub trait SlowModeStateTrait
 {
     fn input(&mut self, control: Control);
+
+    fn running(&self) -> bool;
     fn run_frame(&mut self) -> bool;
 }
 
@@ -104,6 +106,11 @@ impl SlowModeStateTrait for SlowModeState
         }
     }
 
+    fn running(&self) -> bool
+    {
+        self.running
+    }
+
     fn run_frame(&mut self) -> bool
     {
         let run_this = self.running || self.step_now;
@@ -117,6 +124,7 @@ impl SlowModeStateTrait for SlowModeState
 impl SlowModeStateTrait for ()
 {
     fn input(&mut self, _control: Control) {}
+    fn running(&self) -> bool { false }
     fn run_frame(&mut self) -> bool { false }
 }
 
@@ -290,17 +298,22 @@ impl YanyaApp for App
             }
         }
 
+        let max_dt = 1.0 / 20.0;
+
+        let dt = dt.min(max_dt);
+
         if SlowMode::as_bool()
         {
-            if self.slow_mode.run_frame()
+            if self.slow_mode.running()
+            {
+                self.client.update(&mut info, dt);
+            } else if self.slow_mode.run_frame()
             {
                 self.client.update(&mut info, 1.0 / 60.0);
             }
         } else
         {
-            let max_dt = 1.0 / 20.0;
-
-            self.client.update(&mut info, dt.min(max_dt));
+            self.client.update(&mut info, dt);
         }
 
         info.update_camera(&self.client.camera.read());
