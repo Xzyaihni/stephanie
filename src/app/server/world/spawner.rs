@@ -64,7 +64,7 @@ pub fn create_spawner(
                     scaling: Scaling::Ignore,
                     transform: Transform{
                         position: rotate_point_z_3d(
-                            Vector3::new(1.0 + offset_inside / 2.0, 0.0, 0.0),
+                            Vector3::new((0.5 * *width as f32) + offset_inside / 2.0, 0.0, 0.0),
                             rotation
                         ),
                         scale: Vector2::new(1.0 * *width as f32 + offset_inside, 0.3).xyx(),
