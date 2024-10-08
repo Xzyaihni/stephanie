@@ -1,4 +1,5 @@
 use std::{
+    convert,
     num::FpCategory,
     ops::ControlFlow
 };
@@ -17,6 +18,7 @@ use crate::common::{
     Physical,
     raycast::raycast_this,
     world::{
+        TILE_SIZE,
         Directions3dGroup,
         World
     }
@@ -299,6 +301,18 @@ impl<'b> TransformMatrix<'b>
         }
     }
 
+    pub fn new_identity(
+        transform: &'b Transform,
+        entity: Option<Entity>
+    ) -> TransformMatrix<'b>
+    {
+        Self{
+            transform,
+            entity,
+            rotation_matrix: Matrix3::identity()
+        }
+    }
+
     fn rectangle_on_axis(&self, axis: &Vector3<f32>) -> f32
     {
         self.transform.scale.iter().zip(self.rotation_matrix.column_iter()).map(|(scale, column)|
@@ -531,6 +545,32 @@ impl<'b> TransformMatrix<'b>
 
         true
     }
+
+    fn rectangle_circle_inner(
+        &self,
+        other: &CollidingInfo,
+        mut add_contact: impl FnMut(Vector3<f32>, Vector3<f32>, f32, Option<Unit<Vector3<f32>>>) -> bool
+    ) -> bool
+    {
+        let circle_pos = other.transform.position;
+        let radius = other.transform.scale.max() / 2.0;
+
+        let (projected, projected_inside) = self.project_onto_obb_edge(circle_pos);
+
+        let diff = projected - circle_pos;
+        let magnitude = diff.magnitude();
+
+        let penetration = radius - magnitude;
+
+        if penetration <= 0.0
+        {
+            return false;
+        }
+
+        let normal = Unit::try_new(projected_inside - circle_pos, 0.0001);
+
+        add_contact(projected, projected_inside, penetration, normal)
+    }
 }
 
 #[derive(Debug)]
@@ -649,42 +689,6 @@ impl<'a> CollidingInfo<'a>
         )
     }
 
-    fn rectangle_circle_inner(
-        &self,
-        other: &Self,
-        mut add_contact: impl FnMut(Vector3<f32>, f32, Unit<Vector3<f32>>) -> bool
-    ) -> bool
-    {
-        let circle_pos = other.transform.position;
-        let radius = other.transform.scale.max() / 2.0;
-
-        let this = self.transform_matrix();
-
-        let (projected, projected_inside) = this.project_onto_obb_edge(circle_pos);
-
-        let diff = projected - circle_pos;
-        let magnitude = diff.magnitude();
-
-        let penetration = radius - magnitude;
-
-        if penetration <= 0.0
-        {
-            return false;
-        }
-
-        let normal = if let Some(normal) = Unit::try_new(projected_inside - circle_pos, 0.0001)
-        {
-            normal
-        } else
-        {
-            let pos_diff = self.transform.position - circle_pos;
-
-            Unit::try_new(pos_diff, 0.0001).unwrap_or_else(Vector3::x_axis)
-        };
-
-        add_contact(projected, penetration, normal)
-    }
-
     fn rectangle_rectangle(
         &self,
         other: &Self,
@@ -735,8 +739,81 @@ impl<'a> CollidingInfo<'a>
         mut add_contact: impl FnMut(Contact)
     ) -> bool
     {
-        let add_contact = |projected, penetration: f32, normal: Unit<Vector3<f32>>|
+        let this = TransformMatrix::new_identity(&self.transform, self.entity);
+
+        this.rectangle_circle_inner(other, |projected, projected_inside, penetration, normal|
         {
+            let (point, normal) = if let Some(normal) = normal
+            {
+                (projected, normal)
+            } else
+            {
+                let limited = this.into_obb_local(projected_inside);
+
+                let d = limited.abs();
+
+                let yz = d.y < d.z;
+                let xz = d.x < d.z;
+
+                let sorted = if d.x < d.y
+                {
+                    if yz
+                    {
+                        [0, 1, 2]
+                    } else
+                    {
+                        if xz { [0, 2, 1] } else { [2, 0, 1] }
+                    }
+                } else
+                {
+                    if yz
+                    {
+                        if xz { [1, 0, 2] } else { [1, 2, 0] }
+                    } else
+                    {
+                        [2, 1, 0]
+                    }
+                };
+
+                fn with_limited(limited: Vector3<f32>, f: impl Fn(f32) -> f32) -> impl Fn(usize) -> (usize, f32)
+                {
+                    move |axis_i|
+                    {
+                        (axis_i, f(limited.index(axis_i).signum()))
+                    }
+                }
+
+                let mut point = projected;
+                let data = sorted.into_iter().rev().map(with_limited(limited, |x| -x))
+                    .chain(sorted.into_iter().map(with_limited(limited, convert::identity)))
+                    .find_map(|(axis_i, amount)|
+                    {
+                        let (low, high) = world.get_axis_index(axis_i);
+
+                        let available = if amount < 0.0
+                        {
+                            !high
+                        } else
+                        {
+                            !low
+                        };
+
+                        available.then(||
+                        {
+                            let mut normal = Vector3::zeros();
+                            *normal.index_mut(axis_i) = amount;
+
+                            (axis_i, (TILE_SIZE / 2.0) * amount, Unit::new_unchecked(normal))
+                        })
+                    });
+
+                let (axis_i, amount, normal) = some_or_value!(data, false);
+
+                *point.index_mut(axis_i) = this.transform.position.index(axis_i) - amount;
+
+                (point, normal)
+            };
+
             let mut axis: Vector3<f32> = *normal * penetration;
 
             (0..3).for_each(|axis_i|
@@ -768,7 +845,7 @@ impl<'a> CollidingInfo<'a>
                 add_contact(ContactRaw{
                     a: self.entity,
                     b: other.entity,
-                    point: projected,
+                    point,
                     penetration,
                     normal: axis / penetration
                 }.into());
@@ -778,9 +855,7 @@ impl<'a> CollidingInfo<'a>
             {
                 false
             }
-        };
-
-        self.rectangle_circle_inner(other, add_contact)
+        })
     }
 
     fn world_handler(
@@ -879,8 +954,21 @@ impl<'a> CollidingInfo<'a>
         mut add_contact: impl FnMut(Contact)
     ) -> bool
     {
-        let add_contact = |projected, penetration, normal: Unit<Vector3<f32>>|
+        let this = self.transform_matrix();
+
+        this.rectangle_circle_inner(other, |projected, projected_inside, penetration, normal|
         {
+            let normal = normal.unwrap_or_else(||
+            {
+                let limited = this.into_obb_local(projected_inside);
+
+                let axis_i = limited.abs().imax();
+                let mut normal = Vector3::zeros();
+                *normal.index_mut(axis_i) = -limited.index(axis_i).signum();
+
+                Unit::new_unchecked(this.rotation_matrix * normal)
+            });
+
             add_contact(ContactRaw{
                 a: self.entity,
                 b: other.entity,
@@ -890,9 +978,7 @@ impl<'a> CollidingInfo<'a>
             }.into());
 
             true
-        };
-
-        self.rectangle_circle_inner(other, add_contact)
+        })
     }
 
     pub fn collide_immutable(
@@ -936,7 +1022,17 @@ impl<'a> CollidingInfo<'a>
                     )+
                     $(
                         (ColliderType::Tile(_), ColliderType::$b_world) => unreachable!(),
-                        (ColliderType::$b_world, ColliderType::Tile(ref info)) => other.$world_name(self, info, add_contact),
+                        (ColliderType::$b_world, ColliderType::Tile(ref info)) =>
+                        {
+                            if info.fold(true, |acc, (_, x)| acc && x)
+                            {
+                                // early exit if all directions r blocked
+                                false
+                            } else
+                            {
+                                other.$world_name(self, info, add_contact)
+                            }
+                        },
                     )+
                     $(
                         (ColliderType::$a, ColliderType::$b) =>
@@ -1012,7 +1108,7 @@ impl<'a> CollidingInfo<'a>
         }
 
         // !!!!!!!!!!!DONT REMOVE COUNT, IT NEEDS TO CONSUME THE WHOLE THING!!!!!!!!!!!
-        let collided = world.tiles_inside(self, |contact| contacts.push(contact), |tile|
+        let collided = world.tiles_contacts(self, |contact| contacts.push(contact), |tile|
         {
             let colliding_tile = tile.map(|x| world.tile_info(*x).colliding);
 

@@ -8,6 +8,7 @@ use yanyaengine::{
 };
 
 use crate::{
+    debug_config::*,
     client::{VisibilityChecker, RenderCreateInfo},
     common::ServerToClient
 };
@@ -78,6 +79,11 @@ impl OccludingPlane
         info: &mut DrawInfo
     )
     {
+        if DebugConfig::is_enabled(DebugTool::NoOcclusion)
+        {
+            return;
+        }
+
         self.0.draw(info);
     }
 }

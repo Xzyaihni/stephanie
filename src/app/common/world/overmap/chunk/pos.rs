@@ -493,6 +493,17 @@ macro_rules! define_group
 
         impl<T> $name<T>
         {
+            pub fn repeat(value: T) -> Self
+            where
+                T: Clone
+            {
+                Self{
+                    $(
+                        $lowercase: value.clone(),
+                    )+
+                }
+            }
+
             pub fn map<D, F>(self, mut direction_map: F) -> $name<D>
             where
                 F: FnMut(PosDirection, T) -> D

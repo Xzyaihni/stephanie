@@ -138,7 +138,26 @@ impl World
     pub fn tiles_inside<'a>(
         &'a self,
         collider: &'a CollidingInfo<'a>,
-        mut add_contact: impl FnMut(Contact) + 'a,
+        predicate: impl Fn(Option<&'a Tile>) -> bool + 'a + Copy
+    ) -> impl Iterator<Item=TilePos> + 'a
+    {
+        self.tiles_inside_inner::<fn(_)>(collider, None, predicate)
+    }
+
+    pub fn tiles_contacts<'a, ContactAdder: FnMut(Contact) + 'a>(
+        &'a self,
+        collider: &'a CollidingInfo<'a>,
+        add_contact: ContactAdder,
+        predicate: impl Fn(Option<&'a Tile>) -> bool + 'a + Copy
+    ) -> impl Iterator<Item=TilePos> + 'a
+    {
+        self.tiles_inside_inner(collider, Some(add_contact), predicate)
+    }
+
+    fn tiles_inside_inner<'a, ContactAdder: FnMut(Contact) + 'a>(
+        &'a self,
+        collider: &'a CollidingInfo<'a>,
+        mut add_contact: Option<ContactAdder>,
         predicate: impl Fn(Option<&'a Tile>) -> bool + 'a + Copy
     ) -> impl Iterator<Item=TilePos> + 'a
     {
@@ -157,13 +176,19 @@ impl World
                 predicate(self.tile(pos))
             };
 
-            let world = Directions3dGroup{
-                left: check_tile(pos.offset(Pos3::new(-1, 0, 0))),
-                right: check_tile(pos.offset(Pos3::new(1, 0, 0))),
-                down: check_tile(pos.offset(Pos3::new(0, -1, 0))),
-                up: check_tile(pos.offset(Pos3::new(0, 1, 0))),
-                back: check_tile(pos.offset(Pos3::new(0, 0, -1))),
-                forward: check_tile(pos.offset(Pos3::new(0, 0, 1)))
+            let world = if add_contact.is_some()
+            {
+                Directions3dGroup{
+                    left: check_tile(pos.offset(Pos3::new(-1, 0, 0))),
+                    right: check_tile(pos.offset(Pos3::new(1, 0, 0))),
+                    down: check_tile(pos.offset(Pos3::new(0, -1, 0))),
+                    up: check_tile(pos.offset(Pos3::new(0, 1, 0))),
+                    back: check_tile(pos.offset(Pos3::new(0, 0, -1))),
+                    forward: check_tile(pos.offset(Pos3::new(0, 0, 1)))
+                }
+            } else
+            {
+                Directions3dGroup::repeat(false)
             };
 
             let mut world_collider = ColliderInfo{
@@ -183,7 +208,13 @@ impl World
                 collider: &mut world_collider
             };
 
-            collider.collide_immutable(&info, &mut add_contact)
+            if let Some(add_contact) = add_contact.as_mut()
+            {
+                collider.collide_immutable(&info, add_contact)
+            } else
+            {
+                collider.collide_immutable(&info, |_| {})
+            }
         })
     }
 

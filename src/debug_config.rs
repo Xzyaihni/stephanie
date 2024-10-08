@@ -1,4 +1,4 @@
-use std::env;
+use std::{env, sync::LazyLock};
 
 #[allow(unused_imports)]
 use crate::app::{
@@ -12,10 +12,10 @@ use crate::app::{
     }
 };
 
-use strum::{IntoEnumIterator, EnumIter, IntoStaticStr};
+use strum::{IntoEnumIterator, EnumIter, EnumCount, IntoStaticStr};
 
 
-#[derive(EnumIter, IntoStaticStr)]
+#[derive(Clone, Copy, EnumIter, EnumCount, IntoStaticStr)]
 pub enum DebugTool
 {
     Lisp,
@@ -24,7 +24,9 @@ pub enum DebugTool
     Sleeping,
     Velocity,
     SuperSpeed,
-    NoGravity
+    NoOcclusion,
+    NoGravity,
+    NoResolve
 }
 
 pub trait DebugConfigTrait
@@ -70,21 +72,29 @@ impl DebugConfigTrait for DebugConfigTrue
 
     fn is_enabled(tool: DebugTool) -> bool
     {
-        let s: &str = tool.into();
-        env::var(format!("STEPHANIE_{}", s.to_uppercase())).map(|x|
+        static STATES: LazyLock<[bool; DebugTool::COUNT]> = LazyLock::new(||
         {
-            match x.to_lowercase().as_ref()
+            DebugTool::iter().map(|tool|
             {
-                "0" | "false" => false,
-                "1" | "true" => true,
-                x =>
+                let s: &str = tool.into();
+                env::var(format!("STEPHANIE_{}", s.to_uppercase())).map(|x|
                 {
-                    eprintln!("{s} is set to `{x}` which isnt a valid boolean");
+                    match x.to_lowercase().as_ref()
+                    {
+                        "0" | "false" => false,
+                        "1" | "true" => true,
+                        x =>
+                        {
+                            eprintln!("{s} is set to `{x}` which isnt a valid boolean");
 
-                    false
-                }
-            }
-        }).unwrap_or(false)
+                            false
+                        }
+                    }
+                }).unwrap_or(false)
+            }).collect::<Vec<_>>().try_into().unwrap()
+        });
+
+        STATES[tool as usize]
     }
 }
 

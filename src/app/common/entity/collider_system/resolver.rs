@@ -814,6 +814,11 @@ impl ContactResolver
             contacts.iter().for_each(|contact| Self::display_contact(entities, contact));
         }
 
+        if DebugConfig::is_enabled(DebugTool::NoResolve)
+        {
+            return;
+        }
+
         let mut analyzed_contacts: Vec<_> = contacts.into_iter().map(|contact|
         {
             contact.analyze(entities, dt)
