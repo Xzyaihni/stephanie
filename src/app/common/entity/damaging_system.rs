@@ -115,20 +115,20 @@ pub fn damage(entities: &impl AnyEntities, entity: Entity, damage: Damage)
 {
     let flash_white = |entity: Entity|
     {
-        if let Some(mut mix_color) = entities.mix_color_target(entity)
-        {
-            *mix_color = Some(MixColor{color: [1.0; 3], amount: 0.8});
-        }
-
         if let Some(mut watchers) = entities.watchers_mut(entity)
         {
-            watchers.push(
-                Watcher{
-                    kind: WatcherType::Lifetime(0.2.into()),
-                    action: WatcherAction::SetMixColor(None),
-                    ..Default::default()
-                }
-            );
+            if let Some(mut mix_color) = entities.mix_color_target(entity)
+            {
+                *mix_color = Some(MixColor{color: [1.0; 3], amount: 0.8});
+
+                watchers.push(
+                    Watcher{
+                        kind: WatcherType::Lifetime(0.2.into()),
+                        action: WatcherAction::SetMixColor(None),
+                        ..Default::default()
+                    }
+                );
+            }
         }
     };
 
