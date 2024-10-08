@@ -3,7 +3,7 @@ use std::{
     num::FpCategory
 };
 
-use nalgebra::{Matrix3, Vector3};
+use nalgebra::{Unit, Matrix3, Vector3};
 
 use yanyaengine::Transform;
 
@@ -46,15 +46,15 @@ fn skew_symmetric(v: Vector3<f32>) -> Matrix3<f32>
     )
 }
 
-fn basis_from(a: Vector3<f32>, mut b: Vector3<f32>) -> Matrix3<f32>
+fn basis_from(a: Unit<Vector3<f32>>, mut b: Unit<Vector3<f32>>) -> Matrix3<f32>
 {
-    let c = cross_3d(a, b);
+    let c = cross_3d(*a, *b);
     let c_magnitude = c.magnitude();
 
     debug_assert!(c_magnitude > 0.0, "a and b must not be parallel, a: {a:?}, b: {b:?}");
 
     let c = c / c_magnitude;
-    b = cross_3d(c, a).normalize();
+    b = Unit::new_normalize(cross_3d(c, *a));
 
     Matrix3::new(
         a.x, b.x, c.x,
@@ -188,7 +188,7 @@ impl AnalyzedContact
         let angular_inertia_world = Contact::direction_apply_inertia(
             self.get_inverse_inertia(which),
             self.get_relative(which),
-            self.contact.normal
+            *self.contact.normal
         );
 
         let physical = entities.physical(self.get_entity(which)).unwrap();
@@ -229,7 +229,7 @@ impl AnalyzedContact
         };
 
         let angular_projection = contact_relative
-            + self.contact.normal * (-contact_relative).dot(&self.contact.normal);
+            + *self.contact.normal * (-contact_relative).dot(&self.contact.normal);
 
         let angular_limit = ANGULAR_LIMIT * angular_projection.magnitude();
 
@@ -244,7 +244,7 @@ impl AnalyzedContact
 
         let fixed = physical.fixed;
 
-        let velocity_change = velocity_amount * self.contact.normal;
+        let velocity_change = velocity_amount * *self.contact.normal;
 
         let mut position_change = velocity_change;
         if !physical.move_z
@@ -456,10 +456,10 @@ impl Contact
     {
         if self.normal.x.abs() > self.normal.y.abs()
         {
-            basis_from(self.normal, Vector3::new(0.0, 1.0, 0.0))
+            basis_from(self.normal, Vector3::y_axis())
         } else
         {
-            basis_from(self.normal, Vector3::new(1.0, 0.0, 0.0))
+            basis_from(self.normal, Vector3::x_axis())
         }
     }
 
@@ -797,7 +797,7 @@ impl ContactResolver
             ..Default::default()
         });
 
-        if let Some(info) = direction_arrow_info(contact.point, contact.normal, 0.05, color)
+        if let Some(info) = direction_arrow_info(contact.point, *contact.normal, 0.05, color)
         {
             entities.push(true, info);
         }

@@ -35,7 +35,7 @@ pub struct ContactGeneral<T>
     pub a: T,
     pub b: Option<Entity>,
     pub point: Vector3<f32>,
-    pub normal: Vector3<f32>,
+    pub normal: Unit<Vector3<f32>>,
     pub penetration: f32
 }
 
@@ -401,7 +401,7 @@ impl<'b> TransformMatrix<'b>
     fn handle_penetration<'a, F>(
         &'a self,
         other: &'a Self,
-        axis: Vector3<f32>,
+        axis: Unit<Vector3<f32>>,
         penetration: f32
     ) -> impl FnOnce(F) + 'a
     where
@@ -441,14 +441,14 @@ impl<'b> TransformMatrix<'b>
         &'a self,
         other: &'a Self,
         mut add_contact: F,
-        this_axis: impl Fn((Vector3<f32>, f32, usize)) -> bool,
-        other_axis: impl Fn((Vector3<f32>, f32, usize)) -> bool
+        this_axis: impl Fn((Unit<Vector3<f32>>, f32, usize)) -> bool,
+        other_axis: impl Fn((Unit<Vector3<f32>>, f32, usize)) -> bool
     ) -> bool
     where
         F: FnMut(Contact)
     {
         // funy
-        let try_penetrate = |axis: Vector3<f32>| -> (f32, _)
+        let try_penetrate = |axis: Unit<Vector3<f32>>| -> (f32, _)
         {
             let penetration = self.penetration_axis(other, &axis);
 
@@ -461,7 +461,7 @@ impl<'b> TransformMatrix<'b>
         enum PenetrationInfo<F>
         {
             ThisAxis((f32, F)),
-            OtherAxis((Vector3<f32>, f32, usize), F)
+            OtherAxis((Unit<Vector3<f32>>, f32, usize), F)
         }
 
         impl<F> PenetrationInfo<F>
@@ -479,6 +479,8 @@ impl<'b> TransformMatrix<'b>
         let mut penetrations = (0..DIMS).filter_map(|i|
         {
             let axis: Vector3<f32> = self.rotation_matrix.column(i).into();
+            let axis = Unit::new_unchecked(axis);
+
             let (penetration, handler) = try_penetrate(axis);
 
             this_axis((axis, penetration, i)).then(||
@@ -488,6 +490,8 @@ impl<'b> TransformMatrix<'b>
         }).chain((0..DIMS).map(|i|
         {
             let axis: Vector3<f32> = other.rotation_matrix.column(i).into();
+            let axis = Unit::new_unchecked(axis);
+
             let (_penetration, handler) = try_penetrate(axis);
 
             let (penetration, handle) = handler(other, self);
@@ -653,16 +657,16 @@ impl<'a> CollidingInfo<'a>
 
         let normal = if distance.classify() == FpCategory::Zero
         {
-            Vector3::x()
+            Vector3::x_axis()
         } else
         {
-            diff / distance
+            Unit::new_unchecked(diff / distance)
         };
 
         add_contact(Contact{
             a: self.entity.unwrap(),
             b: other.entity,
-            point: self.transform.position + normal * this_radius,
+            point: self.transform.position + *normal * this_radius,
             penetration: this_radius + other_radius - distance,
             normal: -normal
         });
@@ -847,7 +851,7 @@ impl<'a> CollidingInfo<'a>
                     b: other.entity,
                     point,
                     penetration: magnitude * penetration,
-                    normal: axis / magnitude
+                    normal: Unit::new_unchecked(axis / magnitude)
                 }.into());
 
                 true
@@ -859,8 +863,8 @@ impl<'a> CollidingInfo<'a>
     }
 
     fn world_handler(
-        check: impl Fn(Vector3<f32>, usize) -> bool
-    ) -> impl Fn((Vector3<f32>, f32, usize)) -> bool
+        check: impl Fn(Unit<Vector3<f32>>, usize) -> bool
+    ) -> impl Fn((Unit<Vector3<f32>>, f32, usize)) -> bool
     {
         move |(axis, penetration, i)|
         {
@@ -974,7 +978,7 @@ impl<'a> CollidingInfo<'a>
                 b: other.entity,
                 point: projected,
                 penetration,
-                normal: *normal
+                normal
             }.into());
 
             true

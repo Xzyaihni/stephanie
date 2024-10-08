@@ -52,7 +52,7 @@ fn hinge_contact(
 
     if magnitude > HINGE_EPSILON
     {
-        let normal = -(diff / magnitude);
+        let normal = -Unit::new_unchecked(diff / magnitude);
 
         contacts.push(Contact{
             a: entity,
@@ -86,7 +86,7 @@ fn hinge_contact(
                 return;
             }
 
-            let normal = diff / penetration;
+            let normal = Unit::new_unchecked(diff / penetration);
 
             contacts.push(Contact{
                 a: entity,
