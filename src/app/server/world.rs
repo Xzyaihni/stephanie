@@ -11,6 +11,7 @@ use parking_lot::RwLock;
 use nalgebra::Vector3;
 
 use crate::{
+    debug_config::*,
     server::ConnectionsHandler,
     common::{
         self,
@@ -397,6 +398,11 @@ impl World
         chunk: &mut Chunk
     )
     {
+        if DebugConfig::is_enabled(DebugTool::NoSpawns)
+        {
+            return;
+        }
+
         self.create_spawners(container, chunk_pos, chunk);
 
         let spawns = fastrand::usize(0..3);

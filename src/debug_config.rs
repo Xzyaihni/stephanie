@@ -26,7 +26,8 @@ pub enum DebugTool
     SuperSpeed,
     NoOcclusion,
     NoGravity,
-    NoResolve
+    NoResolve,
+    NoSpawns
 }
 
 pub trait DebugConfigTrait
