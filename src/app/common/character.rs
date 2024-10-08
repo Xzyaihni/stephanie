@@ -198,7 +198,7 @@ impl CombinedInfo<'_>
 {
     pub fn is_player(&self, entity: Entity) -> bool
     {
-        self.entities.player(entity).is_some()
+        self.entities.player_exists(entity)
     }
 }
 

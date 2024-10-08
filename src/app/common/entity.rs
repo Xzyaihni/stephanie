@@ -444,20 +444,21 @@ macro_rules! impl_common_systems
 
                     None
                 },
-                Message::SetTargetPosition{entity, position} =>
+                Message::SyncPosition{entity, position} =>
                 {
-                    if let Some(mut x) = self.target(entity)
+                    if let Some(mut transform) = self.target(entity)
                     {
-                        x.position = position;
+                        transform.position = position;
                     }
 
                     None
                 },
-                Message::SyncPosition{entity, position} =>
+                Message::SyncPositionRotation{entity, position, rotation} =>
                 {
-                    if let Some(mut transform) = self.transform_mut(entity)
+                    if let Some(mut transform) = self.target(entity)
                     {
                         transform.position = position;
+                        transform.rotation = rotation;
                     }
 
                     None
@@ -490,7 +491,7 @@ macro_rules! impl_common_systems
                 return false;
             }
 
-            if self.anatomy(entity).is_some()
+            if self.anatomy_exists(entity)
             {
                 damaging_system::damage(self, entity, damage);
 
@@ -1881,7 +1882,7 @@ macro_rules! define_entities_both
 
             pub fn is_lootable(&self, entity: Entity) -> bool
             {
-                let is_player = self.player(entity).is_some();
+                let is_player = self.player_exists(entity);
                 let has_inventory = self.inventory(entity).map(|inventory|
                 {
                     !inventory.is_empty()
@@ -1998,7 +1999,7 @@ macro_rules! define_entities_both
                 passer: &mut impl EntityPasser
             )
             {
-                for_each_component!(self, transform, |entity: Entity, transform: &RefCell<Transform>|
+                for_each_component!(self, transform, |entity: Entity, _transform|
                 {
                     if entity.local()
                     {
@@ -2011,9 +2012,11 @@ macro_rules! define_entities_both
                         return;
                     }
 
-                    passer.send_message(Message::SyncPosition{
+                    let target = self.target_ref(entity).unwrap();
+                    passer.send_message(Message::SyncPositionRotation{
                         entity,
-                        position: transform.borrow().position
+                        position: target.position,
+                        rotation: target.rotation
                     });
                 });
             }

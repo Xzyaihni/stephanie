@@ -586,8 +586,8 @@ impl World
                 {
                     Some(target.position)
                 },
-                Message::SetTargetPosition{position, ..}
-                | Message::SyncPosition{position, ..} =>
+                Message::SyncPosition{position, ..}
+                | Message::SyncPositionRotation{position, ..} =>
                 {
                     Some(*position)
                 }
