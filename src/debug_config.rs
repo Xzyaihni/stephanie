@@ -23,7 +23,8 @@ pub enum DebugTool
     Contacts,
     Sleeping,
     Velocity,
-    SuperSpeed
+    SuperSpeed,
+    NoGravity
 }
 
 pub trait DebugConfigTrait
@@ -36,6 +37,10 @@ pub trait DebugConfigTrait
     fn is_debug() -> bool;
 
     fn is_enabled(tool: DebugTool) -> bool;
+    fn is_disabled(tool: DebugTool) -> bool
+    {
+        !Self::is_enabled(tool)
+    }
 }
 
 pub struct DebugConfigTrue;

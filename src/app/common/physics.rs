@@ -4,9 +4,12 @@ use serde::{Serialize, Deserialize};
 
 use yanyaengine::Transform;
 
-use crate::common::{
-    cross_3d,
-    ENTITY_SCALE
+use crate::{
+    debug_config::*,
+    common::{
+        cross_3d,
+        ENTITY_SCALE
+    }
 };
 
 
@@ -154,7 +157,7 @@ impl Physical
             return;
         }
 
-        if !self.floating
+        if !self.floating && DebugConfig::is_disabled(DebugTool::NoGravity)
         {
             self.acceleration = GRAVITY;
         }

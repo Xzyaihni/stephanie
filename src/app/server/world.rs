@@ -397,6 +397,7 @@ impl World
         chunk: &mut Chunk
     )
     {
+        return;
         self.create_spawners(container, chunk_pos, chunk);
 
         let spawns = fastrand::usize(0..3);

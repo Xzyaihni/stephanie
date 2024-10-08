@@ -99,10 +99,27 @@ impl Game
                 ..Default::default()
             });
 
+            let test_entity = entities.push_eager(true, EntityInfo{
+                transform: Some(Transform{
+                    position: Vector3::new(0.1125358, -0.08865229, 0.14477438),
+                    scale: Vector3::new(1.0, 0.2, 1.0),
+                    ..Default::default()
+                }),
+                render: Some(RenderInfo{
+                    object: Some(RenderObjectKind::Texture{
+                        name: "placeholder.png".to_owned()
+                    }.into()),
+                    z_level: ZLevel::UiMiddle,
+                    ..Default::default()
+                }),
+                ..Default::default()
+            });
+
             PlayerInfo::new(PlayerCreateInfo{
                 camera: game_state.entities.camera_entity,
                 follow: game_state.entities.follow_entity,
                 entity: player,
+                test_entity,
                 mouse_entity,
                 console_entity
             })
@@ -899,6 +916,7 @@ struct PlayerCreateInfo
     pub camera: Entity,
     pub follow: Entity,
     pub entity: Entity,
+    pub test_entity: Entity,
     pub mouse_entity: Entity,
     pub console_entity: Entity
 }
@@ -944,6 +962,7 @@ struct PlayerInfo
     camera: Entity,
     follow: Entity,
     entity: Entity,
+    test_entity: Entity,
     mouse_entity: Entity,
     other_entity: Option<Entity>,
     inventories: InventoriesInfo,
@@ -964,6 +983,7 @@ impl PlayerInfo
             camera: info.camera,
             follow: info.follow,
             entity: info.entity,
+            test_entity: info.test_entity,
             mouse_entity: info.mouse_entity,
             other_entity: None,
             inventories: InventoriesInfo::new(),
@@ -1537,6 +1557,53 @@ impl<'a> PlayerContainer<'a>
         }
 
         self.game_state.sync_transform(self.info.entity);
+
+        let entities = self.game_state.entities();
+        let mut x = entities.transform_mut(self.info.test_entity).unwrap();
+        x.rotation += dt * 0.1;
+
+        let x = TransformMatrix::from_transform(&*x, None);
+
+        if let Some(pos) = self.player_position()
+        {
+            let (projected, projected_inner) = x.project_onto_obb_edge(pos);
+
+            entities.push(true, EntityInfo{
+                transform: Some(Transform{
+                    position: projected_inner,
+                    scale: Vector3::repeat(0.03),
+                    ..Default::default()
+                }),
+                render: Some(RenderInfo{
+                    object: Some(RenderObjectKind::Texture{
+                        name: "placeholder.png".to_owned()
+                    }.into()),
+                    mix: Some(MixColor{color: [0.0, 1.0, 0.0], amount: 0.5}),
+                    z_level: ZLevel::UiHigh,
+                    ..Default::default()
+                }),
+                watchers: Some(crate::common::watcher::Watchers::simple_one_frame()),
+                ..Default::default()
+            });
+
+            entities.push(true, EntityInfo{
+                transform: Some(Transform{
+                    position: projected,
+                    scale: Vector3::repeat(0.03),
+                    ..Default::default()
+                }),
+                render: Some(RenderInfo{
+                    object: Some(RenderObjectKind::Texture{
+                        name: "placeholder.png".to_owned()
+                    }.into()),
+                    mix: Some(MixColor{color: [0.0, 0.0, 1.0], amount: 0.5}),
+                    z_level: ZLevel::UiHigh,
+                    ..Default::default()
+                }),
+                watchers: Some(crate::common::watcher::Watchers::simple_one_frame()),
+                ..Default::default()
+            });
+        }
 
         self.info.interacted = false;
     }
