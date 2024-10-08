@@ -21,6 +21,7 @@ use crate::common::{
     Entity,
     EntityInfo,
     Character,
+    CharacterSyncInfo,
     Player,
     Parent,
     Enemy,
@@ -58,6 +59,7 @@ pub enum Message
     SetTarget{entity: Entity, target: Transform},
     SyncPosition{entity: Entity, position: Vector3<f32>},
     SyncPositionRotation{entity: Entity, position: Vector3<f32>, rotation: f32},
+    SyncCharacter{entity: Entity, info: CharacterSyncInfo},
     EntityDestroy{entity: Entity},
     EntityDamage{entity: Entity, faction: Faction, damage: Damage},
     PlayerConnect{name: String},
@@ -116,6 +118,7 @@ impl Message
             | Message::SetTarget{entity, ..}
             | Message::SyncPosition{entity, ..}
             | Message::SyncPositionRotation{entity, ..}
+            | Message::SyncCharacter{entity, ..}
             | Message::EntityDestroy{entity, ..}
             | Message::EntityDamage{entity, ..} => Some(*entity),
             Message::PlayerConnect{..}

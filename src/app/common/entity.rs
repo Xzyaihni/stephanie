@@ -463,6 +463,15 @@ macro_rules! impl_common_systems
 
                     None
                 },
+                Message::SyncCharacter{entity, info} =>
+                {
+                    if let Some(mut character) = self.character_mut(entity)
+                    {
+                        character.sync_info(info);
+                    }
+
+                    None
+                },
                 Message::EntityDestroy{entity} =>
                 {
                     self.remove(entity);

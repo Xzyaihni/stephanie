@@ -203,6 +203,12 @@ impl CombinedInfo<'_>
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CharacterSyncInfo
+{
+    pub rotation: f32
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AfterInfo
 {
     this: Entity,
@@ -264,6 +270,18 @@ impl Character
             actions: Vec::new(),
             sprite_state: SpriteState::Normal.into()
         }
+    }
+
+    pub fn get_sync_info(&self) -> CharacterSyncInfo
+    {
+        CharacterSyncInfo{
+            rotation: self.rotation
+        }
+    }
+
+    pub fn sync_info(&mut self, info: CharacterSyncInfo)
+    {
+        self.rotation = info.rotation;
     }
 
     fn default_connection() -> Connection
@@ -1358,6 +1376,14 @@ impl Character
             }
         };
 
+        let layer = if combined_info.is_player(entity)
+        {
+            ColliderLayer::Player
+        } else
+        {
+            ColliderLayer::Normal
+        };
+
         let (
             collider,
             physical,
@@ -1372,6 +1398,7 @@ impl Character
                 (
                     Some(ColliderInfo{
                         kind: ColliderType::Circle,
+                        layer,
                         ghost: false,
                         ..Default::default()
                     }.into()),
@@ -1389,6 +1416,7 @@ impl Character
                 (
                     Some(ColliderInfo{
                         kind: ColliderType::Circle,
+                        layer,
                         ghost: false,
                         scale: Some(this_scale * 0.4),
                         ..Default::default()
@@ -1405,6 +1433,7 @@ impl Character
                 (
                     Some(ColliderInfo{
                         kind: ColliderType::Circle,
+                        layer,
                         ghost: true,
                         ..Default::default()
                     }.into()),

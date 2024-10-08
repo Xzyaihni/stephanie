@@ -805,11 +805,18 @@ impl GameState
         Rc::new(RefCell::new(this))
     }
 
-    pub fn sync_transform(&mut self, entity: Entity)
+    pub fn sync_character(&mut self, entity: Entity)
     {
-        let transform = self.entities().transform(entity).unwrap().clone();
+        let entities = self.entities();
+        if let Some(target) = entities.target_ref(entity)
+        {
+            self.send_message(Message::SetTarget{entity, target: target.clone()});
+        }
 
-        self.send_message(Message::SetTransform{entity, component: transform});
+        if let Some(character) = entities.character(entity)
+        {
+            self.send_message(Message::SyncCharacter{entity, info: character.get_sync_info()});
+        }
     }
 
     fn connect_to_server(

@@ -1536,7 +1536,7 @@ impl<'a> PlayerContainer<'a>
             self.show_tile_tooltip(text);
         }
 
-        self.game_state.sync_transform(self.info.entity);
+        self.game_state.sync_character(self.info.entity);
 
         self.info.interacted = false;
     }
