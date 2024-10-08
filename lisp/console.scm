@@ -29,6 +29,24 @@
                     (lambda (x) (- (car x) (cdr x)))
                     (zip (entity->position a) (entity->position b)))))))
 
+(define (fold-entities start f)
+    (define query (all-entities-query))
+    (define (rest-entities state)
+        (let ((next (query-entity-next query)))
+            (if (null? next)
+                state
+                (rest-entities (f next state)))))
+    (rest-entities start))
+
+(define (for-each-entity f)
+    (define query (all-entities-query))
+    (define (rest-entities)
+        (let ((next (query-entity-next query)))
+            (if (null? next)
+                '()
+                (begin (f next) (rest-entities)))))
+    (rest-entities))
+
 (define (filtered-entities f)
     (define query (all-entities-query))
     (define (rest-entities)

@@ -7,6 +7,7 @@ use yanyaengine::Transform;
 use crate::common::{
     random_rotation,
     render_info::*,
+    ENTITY_SCALE,
     ItemsInfo,
     Loot,
     Inventory,
@@ -74,7 +75,7 @@ impl<'a> EnemyBuilder<'a>
                 ),
                 transform: Transform{
                     position: self.pos,
-                    scale: Vector3::repeat(info.scale),
+                    scale: Vector3::new(info.scale, info.scale, ENTITY_SCALE),
                     rotation: random_rotation(),
                     ..Default::default()
                 },
