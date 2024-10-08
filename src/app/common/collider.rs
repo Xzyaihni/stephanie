@@ -814,7 +814,7 @@ impl<'a> CollidingInfo<'a>
                 (point, normal)
             };
 
-            let mut axis: Vector3<f32> = *normal * penetration;
+            let mut axis: Vector3<f32> = *normal;
 
             (0..3).for_each(|axis_i|
             {
@@ -838,16 +838,16 @@ impl<'a> CollidingInfo<'a>
                 };
             });
 
-            let penetration = axis.magnitude();
+            let magnitude = axis.magnitude();
 
-            if penetration > 0.0001
+            if magnitude > 0.0001
             {
                 add_contact(ContactRaw{
                     a: self.entity,
                     b: other.entity,
                     point,
-                    penetration,
-                    normal: axis / penetration
+                    penetration: magnitude * penetration,
+                    normal: axis / magnitude
                 }.into());
 
                 true
