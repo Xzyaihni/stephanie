@@ -1140,6 +1140,12 @@ impl<'a> PlayerContainer<'a>
                     if entities.within_interactable_distance(self.info.entity, mouse_touched)
                         && entities.is_lootable(mouse_touched)
                     {
+                        if let Some(previous) = self.info.inventories.other.take()
+                            .and_then(|x| x.upgrade())
+                        {
+                            let _ = self.game_state.remove_window(previous);
+                        }
+
                         self.info.other_entity = Some(mouse_touched);
 
                         let id = self.game_state.add_window(WindowCreateInfo::Inventory{
@@ -1477,6 +1483,17 @@ impl<'a> PlayerContainer<'a>
         if able_to_move
         {
             self.look_at_mouse();
+        }
+
+        if let Some(other_entity) = self.info.other_entity
+        {
+            if !self.game_state.entities().within_interactable_distance(self.info.entity, other_entity)
+            {
+                if let Some(window) = self.info.inventories.other.take().and_then(|x| x.upgrade())
+                {
+                    let _ = self.game_state.remove_window(window);
+                }
+            }
         }
 
         let mut tile_info = None;
