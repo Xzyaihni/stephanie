@@ -528,6 +528,7 @@ impl UiWindow
     pub fn new(
         info: &mut CommonWindowInfo,
         name: String,
+        spawn_position: Vector2<f32>,
         custom_buttons: Vec<CustomButton>
     ) -> Self
     {
@@ -567,7 +568,7 @@ impl UiWindow
         );
 
         info.creator.entities.set_transform(body, Some(Transform{
-            position: Vector3::new(WINDOW_SIZE.x / 2.0, 0.0, 0.0),
+            position: Vector3::new(spawn_position.x, spawn_position.y, 0.0),
             scale: WINDOW_SIZE.component_mul(&ANIMATION_SCALE),
             ..Default::default()
         }));
@@ -790,6 +791,7 @@ impl UiInventory
     fn new(
         info: &mut CommonWindowInfo,
         owner: Entity,
+        spawn_position: Vector2<f32>,
         mut on_click: Box<dyn FnMut(Entity, InventoryItem)>
     ) -> Self
     {
@@ -799,7 +801,7 @@ impl UiInventory
             texture: "ui/anatomy_button.png"
         }];
 
-        let window = UiWindow::new(info, String::new(), custom_buttons);
+        let window = UiWindow::new(info, String::new(), spawn_position, custom_buttons);
 
         let items = Rc::new(RefCell::new(Vec::new()));
 
@@ -913,6 +915,7 @@ impl UiItemInfo
 {
     fn new(
         window_info: &mut CommonWindowInfo,
+        spawn_position: Vector2<f32>,
         item: Item
     ) -> Self
     {
@@ -921,7 +924,7 @@ impl UiItemInfo
 
         let title = format!("info about - {}", info.name);
 
-        let window = UiWindow::new(window_info, title, Vec::new());
+        let window = UiWindow::new(window_info, title, spawn_position, Vec::new());
 
         let padding = 0.05;
 
@@ -1411,8 +1414,9 @@ pub enum WindowCreateInfo
 {
     ActionsList{popup_position: Vector2<f32>, responses: Vec<UserEvent>},
     Notification{owner: Entity, lifetime: f32, info: NotificationCreateInfo},
-    ItemInfo{item: Item},
+    ItemInfo{spawn_position: Vector2<f32>, item: Item},
     Inventory{
+        spawn_position: Vector2<f32>,
         entity: Entity,
         on_click: Box<dyn FnMut(Entity, InventoryItem) -> UserEvent>
     }
@@ -1643,18 +1647,20 @@ impl Ui
 
                 UiSpecializedWindow::Notification(notification)
             },
-            WindowCreateInfo::ItemInfo{item} =>
+            WindowCreateInfo::ItemInfo{spawn_position, item} =>
             {
                 UiSpecializedWindow::ItemInfo(UiItemInfo::new(
                     &mut window_info,
+                    spawn_position,
                     item
                 ))
             },
-            WindowCreateInfo::Inventory{entity, mut on_click} =>
+            WindowCreateInfo::Inventory{spawn_position, entity, mut on_click} =>
             {
                 UiSpecializedWindow::Inventory(UiInventory::new(
                     &mut window_info,
                     entity,
+                    spawn_position,
                     Box::new(move |anchor, item|
                     {
                         urx.borrow_mut().push(on_click(anchor, item));

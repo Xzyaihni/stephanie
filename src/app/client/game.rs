@@ -1149,6 +1149,7 @@ impl<'a> PlayerContainer<'a>
                         self.info.other_entity = Some(mouse_touched);
 
                         let id = self.game_state.add_window(WindowCreateInfo::Inventory{
+                            spawn_position: self.game_state.ui_mouse_position(),
                             entity: mouse_touched,
                             on_click: Box::new(|_anchor, item|
                             {
@@ -1239,7 +1240,10 @@ impl<'a> PlayerContainer<'a>
                 if let Some(item) = self.get_inventory(which)
                     .and_then(|inventory| inventory.get(item).cloned())
                 {
-                    self.game_state.add_window(WindowCreateInfo::ItemInfo{item});
+                    self.game_state.add_window(WindowCreateInfo::ItemInfo{
+                        spawn_position: self.game_state.ui_mouse_position(),
+                        item
+                    });
                 } else
                 {
                     eprintln!("tried to show info for an item that doesnt exist");
@@ -1315,6 +1319,7 @@ impl<'a> PlayerContainer<'a>
         }).is_none()
         {
             let window = self.game_state.add_window(WindowCreateInfo::Inventory{
+                spawn_position: self.game_state.ui_mouse_position(),
                 entity: self.info.entity,
                 on_click: Box::new(|_anchor, item|
                 {
