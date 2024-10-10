@@ -30,7 +30,6 @@ use crate::{
         AnyEntities,
         Item,
         Inventory,
-        Parent,
         Entity,
         EntityInfo,
         entity::ClientEntities,
@@ -93,9 +92,9 @@ impl Game
                 }.into()),
                 render: Some(RenderInfo{
                     z_level: ZLevel::UiHigh,
+                    visibility_check: false,
                     ..Default::default()
                 }),
-                parent: Some(Parent::new(player, false)),
                 ..Default::default()
             });
 
@@ -206,7 +205,7 @@ impl Game
 
         let mut game_state_mut = game_state.borrow_mut();
         let changed_this_frame = game_state_mut.controls.changed_this_frame();
-        let mouse_position = game_state_mut.world_mouse_position();
+        let mouse_position = game_state_mut.ui_mouse_position();
 
         drop(game_state_mut);
 
@@ -564,7 +563,7 @@ impl Game
 
         primitives.add(
             "query-entity-next",
-            PrimitiveProcedureInfo::new_simple(1, move |_state, memory, mut args|
+            PrimitiveProcedureInfo::new_simple_effect(1, move |_state, memory, mut args|
             {
                 let query_arg = args.pop(memory);
                 let query = query_arg.as_list()?;
@@ -595,9 +594,15 @@ impl Game
                 };
 
                 // set to next index
-                memory.set_car(query_id, (index as i32 - 1).into());
+                memory.as_memory_mut().set_car(query_id, (index as i32 - 1).into());
 
-                Self::push_entity(memory, entity)
+                if memory.can_return()
+                {
+                    Self::push_entity(memory.as_memory_mut(), entity)
+                } else
+                {
+                    Ok(())
+                }
             }));
 
         {
@@ -836,6 +841,32 @@ impl Game
                     let entity = Self::pop_entity(&mut args, memory)?;
 
                     eprintln!("entity info: {}", entities.info_ref(entity));
+
+                    memory.push_return(());
+
+                    Ok(())
+                }));
+        }
+
+        {
+            let info = self.info.clone();
+
+            primitives.add(
+                "help",
+                PrimitiveProcedureInfo::new_simple_effect(0, move |_state, memory, _args|
+                {
+                    let info = info.borrow();
+
+                    let primitives = &info.console.infos.as_ref().unwrap().1;
+
+                    let mut infos: Vec<(_, _)> = primitives.iter_infos().collect();
+
+                    infos.sort_unstable_by_key(|x| x.0);
+
+                    infos.into_iter().for_each(|(name, args)|
+                    {
+                        println!("{name} with {args} arguments");
+                    });
 
                     memory.push_return(());
 
@@ -1113,10 +1144,9 @@ impl<'a> PlayerContainer<'a>
 
                         let id = self.game_state.add_window(WindowCreateInfo::Inventory{
                             entity: mouse_touched,
-                            on_click: Box::new(|anchor, item|
+                            on_click: Box::new(|_anchor, item|
                             {
                                 UserEvent::Popup{
-                                    anchor,
                                     responses: vec![
                                         UserEvent::Take(item),
                                         UserEvent::Info{which: InventoryWhich::Other, item}
@@ -1171,7 +1201,7 @@ impl<'a> PlayerContainer<'a>
     fn update_console(&mut self)
     {
         self.game_state.entities()
-            .parent_mut(self.info.console.entity)
+            .render_mut(self.info.console.entity)
             .unwrap()
             .visible = self.info.console.contents.is_some();
 
@@ -1194,9 +1224,9 @@ impl<'a> PlayerContainer<'a>
         self.game_state.close_popup();
         match event
         {
-            UserEvent::Popup{anchor, responses} =>
+            UserEvent::Popup{responses} =>
             {
-                self.game_state.create_popup(anchor, responses);
+                self.game_state.create_popup(responses);
             },
             UserEvent::Info{which, item} =>
             {
@@ -1280,10 +1310,9 @@ impl<'a> PlayerContainer<'a>
         {
             let window = self.game_state.add_window(WindowCreateInfo::Inventory{
                 entity: self.info.entity,
-                on_click: Box::new(|anchor, item|
+                on_click: Box::new(|_anchor, item|
                 {
                     UserEvent::Popup{
-                        anchor,
                         responses: vec![
                             UserEvent::Wield(item),
                             UserEvent::Drop{which: InventoryWhich::Player, item},

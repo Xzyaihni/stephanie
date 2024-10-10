@@ -489,6 +489,8 @@ pub struct LazyTransformInfo
     pub deformation: Deformation,
     pub origin_rotation: f32,
     pub origin: Vector3<f32>,
+    pub unscaled_position: bool,
+    pub inherit_position: bool,
     pub inherit_scale: bool,
     pub inherit_rotation: bool,
     pub transform: Transform
@@ -505,6 +507,8 @@ impl Default for LazyTransformInfo
             deformation: Deformation::Rigid,
             origin_rotation: 0.0,
             origin: Vector3::zeros(),
+            unscaled_position: false,
+            inherit_position: true,
             inherit_scale: true,
             inherit_rotation: true,
             transform: Transform::default()
@@ -518,6 +522,8 @@ pub struct LazyTransform
     pub target_local: Transform,
     origin_rotation: f32,
     origin: Vector3<f32>,
+    unscaled_position: bool,
+    inherit_position: bool,
     inherit_scale: bool,
     inherit_rotation: bool,
     pub connection: Connection,
@@ -547,6 +553,8 @@ impl From<LazyTransformInfo> for LazyTransform
             target_local: info.transform,
             origin_rotation: info.origin_rotation,
             origin: info.origin,
+            unscaled_position: info.unscaled_position,
+            inherit_position: info.inherit_position,
             inherit_scale: info.inherit_scale,
             inherit_rotation: info.inherit_rotation,
             connection: info.connection,
@@ -623,11 +631,28 @@ impl LazyTransform
         }
     }
 
+    fn scaled_position(&self, parent_scale: &Vector3<f32>) -> Vector3<f32>
+    {
+        if self.unscaled_position
+        {
+            self.target_local.position
+        } else
+        {
+            self.target_local.position.component_mul(parent_scale)
+        }
+    }
+
     pub fn combine(&self, parent: &Transform) -> Transform
     {
         let mut transform = self.target_local.clone();
 
-        transform.position = transform.position.component_mul(&parent.scale) + parent.position;
+        transform.position = self.scaled_position(&parent.scale);
+
+        if self.inherit_position
+        {
+            transform.position += parent.position;
+        }
+
         transform.rotation += parent.rotation;
         transform.rotation %= f32::consts::PI * 2.0;
 
@@ -673,11 +698,6 @@ impl LazyTransform
         parent_transform: Option<&Transform>
     )
     {
-        let rotation = NRotation::from_axis_angle(
-            &Vector3::z_axis(),
-            current.rotation + self.origin_rotation
-        );
-
         if !self.inherit_rotation
         {
             return;
@@ -685,11 +705,22 @@ impl LazyTransform
 
         if let Some(parent) = parent_transform
         {
-            let scaled_origin = self.origin.component_mul(&parent.scale);
-            let offset_position =
-                self.target_local.position.component_mul(&parent.scale) - scaled_origin;
+            let rotation = NRotation::from_axis_angle(
+                &Vector3::z_axis(),
+                current.rotation + self.origin_rotation
+            );
 
-            target.position = rotation * offset_position + parent.position + scaled_origin;
+            let scaled_origin = self.origin.component_mul(&parent.scale);
+
+            let scaled_position = self.scaled_position(&parent.scale);
+            let offset_position = scaled_position - scaled_origin;
+
+            target.position = rotation * offset_position + scaled_origin;
+
+            if self.inherit_position
+            {
+                target.position += parent.position;
+            }
         }
     }
 

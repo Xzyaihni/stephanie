@@ -1150,6 +1150,7 @@ macro_rules! define_entities_both
             {
                 self.components.borrow().iter()
                     .map(|(id, _)| Entity{local: false, id})
+                    .chain(self.local_components.borrow().iter().map(|(id, _)| Entity{local: true, id}))
                     .try_for_each(|entity|
                     {
                         f(entity)

@@ -101,6 +101,11 @@ impl<'a> Memoriable for MemoryWrapper<'a>
 
 impl MemoryWrapper<'_>
 {
+    pub fn can_return(&self) -> bool
+    {
+        !self.ignore_return
+    }
+
     pub fn push_return(&mut self, value: impl Into<LispValue>)
     {
         if self.ignore_return
@@ -1164,6 +1169,14 @@ impl Primitives
             indices,
             primitives
         }
+    }
+
+    pub fn iter_infos(&self) -> impl Iterator<Item=(&str, ArgsCount)>
+    {
+        self.indices.iter().map(|(name, index)|
+        {
+            (name.as_ref(), self.primitives[*index as usize].args_count)
+        })
     }
 
     pub fn add(&mut self, name: impl Into<String>, procedure: PrimitiveProcedureInfo)

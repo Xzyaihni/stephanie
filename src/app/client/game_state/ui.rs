@@ -41,6 +41,12 @@ use crate::{
 
 
 const MAX_WINDOWS: usize = 5;
+
+const WINDOW_HEIGHT: f32 = 0.1;
+const WINDOW_WIDTH: f32 = WINDOW_HEIGHT * 1.5;
+const WINDOW_SIZE: Vector3<f32> = Vector3::new(WINDOW_WIDTH, WINDOW_HEIGHT, WINDOW_HEIGHT);
+const WINDOW_ASPECT: f32 = WINDOW_WIDTH / WINDOW_HEIGHT;
+
 const NOTIFICATION_HEIGHT: f32 = 0.0375;
 const ANIMATION_SCALE: Vector3<f32> = Vector3::new(4.0, 0.0, 1.0);
 
@@ -82,11 +88,6 @@ impl UiScroll
                         global_scroll.replace(1.0 - (pos.y + 0.5));
                     })
                 },
-                keep_aspect: Some(KeepAspect{
-                    scale: creator.entities.target_ref(background).unwrap().scale.xy(),
-                    position: AspectPosition::UiScaled(Vector2::x()),
-                    ..Default::default()
-                }),
                 ..Default::default()
             }
         };
@@ -204,26 +205,21 @@ impl UiList
         on_change: Rc<RefCell<dyn FnMut(Entity, usize)>>
     ) -> Self
     {
+        let scale = Vector3::new(width, 1.0, 1.0);
         let panel = creator.push(
             EntityInfo{
-                lazy_transform: Some(LazyTransformInfo::default().into()),
-                ui_element: Some(UiElement{
-                    kind: UiElementType::Panel,
-                    keep_aspect: Some(KeepAspect{
-                        scale: Vector2::new(1.0 - width, 1.0),
-                        position: AspectPosition::UiScaled(Vector2::zeros()),
-                        mode: AspectMode::FillRestX,
+                lazy_transform: Some(LazyTransformInfo{
+                    transform: Transform{
+                        position: Ui::ui_position(scale, Vector3::zeros()),
+                        scale,
                         ..Default::default()
-                    }),
+                    },
                     ..Default::default()
-                }),
+                }.into()),
                 parent: Some(Parent::new(background, true)),
                 ..Default::default()
             },
-            RenderInfo{
-                z_level: ZLevel::UiLow,
-                ..Default::default()
-            }
+            None
         );
 
         let scroll = {
@@ -233,6 +229,7 @@ impl UiList
                 EntityInfo{
                     lazy_transform: Some(LazyTransformInfo{
                         transform: Transform{
+                            position: Ui::ui_position(scale, Vector3::x()),
                             scale,
                             ..Default::default()
                         },
@@ -513,7 +510,6 @@ struct CustomButton
 struct CommonWindowInfo<'a, 'b>
 {
     creator: &'a mut EntityCreator<'b>,
-    anchor: Entity,
     ui: Rc<RefCell<Ui>>,
     id: UiWindowId
 }
@@ -535,22 +531,17 @@ impl UiWindow
         custom_buttons: Vec<CustomButton>
     ) -> Self
     {
-        let body_scale = Vector3::repeat(0.2);
         let body = info.creator.push(
             EntityInfo{
                 lazy_transform: Some(LazyTransformInfo{
                     scaling: Scaling::EaseOut{decay: 15.0},
                     connection: Connection::Limit{mode: LimitMode::Manhattan(Vector3::repeat(1.0))},
                     transform: Transform{
-                        scale: body_scale,
+                        scale: WINDOW_SIZE,
                         ..Default::default()
                     },
                     ..Default::default()
                 }.into()),
-                ui_element: Some(UiElement{
-                    kind: UiElementType::Panel,
-                    ..Default::default()
-                }),
                 physical: Some(PhysicalProperties{
                     floating: true,
                     fixed: PhysicalFixed{
@@ -565,23 +556,19 @@ impl UiWindow
                     layer: ColliderLayer::Ui,
                     ..Default::default()
                 }.into()),
-                parent: Some(Parent::new(info.anchor, true)),
                 watchers: Some(Default::default()),
                 ..Default::default()
             },
             RenderInfo{
                 object: Some(RenderObjectKind::Texture{name: "ui/background.png".to_owned()}.into()),
                 z_level: ZLevel::UiLow,
-                visible: false,
                 ..Default::default()
             }
         );
 
         info.creator.entities.set_transform(body, Some(Transform{
-            position: info.creator.entities.transform(info.anchor)
-                .map(|x| x.position - Vector3::new(body_scale.x / 2.0, 0.0, 0.0))
-                .unwrap_or_default(),
-            scale: body_scale.component_mul(&ANIMATION_SCALE),
+            position: Vector3::new(WINDOW_SIZE.x / 2.0, 0.0, 0.0),
+            scale: WINDOW_SIZE.component_mul(&ANIMATION_SCALE),
             ..Default::default()
         }));
 
@@ -630,29 +617,27 @@ impl UiWindow
             }
         );
 
-        let button_x = panel_size;
+        let button_x = panel_size / WINDOW_ASPECT;
 
-        let scale = Vector3::new(button_x * (1 + custom_buttons.len()) as f32, 1.0, 1.0);
+        let scale = Vector3::new(1.0 - button_x * (1 + custom_buttons.len()) as f32, 1.0, 1.0);
 
         let low = button_x * custom_buttons.len() as f32;
         let high = 1.0 - button_x;
         let name = info.creator.push(
             EntityInfo{
-                lazy_transform: Some(LazyTransformInfo::default().into()),
-                parent: Some(Parent::new(top_panel, true)),
-                ui_element: Some(UiElement{
-                    kind: UiElementType::Panel,
-                    keep_aspect: Some(KeepAspect{
-                        scale: scale.xy(),
-                        position: AspectPosition::Absolute(Vector2::new(
+                lazy_transform: Some(LazyTransformInfo{
+                    transform: Transform{
+                        scale,
+                        position: Vector3::new(
                             (low + high) / 2.0 - 0.5,
+                            0.0,
                             0.0
-                        )),
-                        mode: AspectMode::FillRestX,
+                        ),
                         ..Default::default()
-                    }),
+                    },
                     ..Default::default()
-                }),
+                }.into()),
+                parent: Some(Parent::new(top_panel, true)),
                 ..Default::default()
             },
             RenderInfo{
@@ -673,7 +658,14 @@ impl UiWindow
         {
             info.creator.push(
                 EntityInfo{
-                    lazy_transform: Some(LazyTransformInfo::default().into()),
+                    lazy_transform: Some(LazyTransformInfo{
+                        transform: Transform{
+                            scale,
+                            position: Ui::ui_position(scale, Vector3::zeros()),
+                            ..Default::default()
+                        },
+                        ..Default::default()
+                    }.into()),
                     parent: Some(Parent::new(top_panel, true)),
                     ui_element: Some(UiElement{
                         kind: UiElementType::Button{
@@ -682,11 +674,6 @@ impl UiWindow
                                 eprintln!("COME ON DO SOMETHING");
                             })
                         },
-                        keep_aspect: Some(KeepAspect{
-                            scale: scale.xy(),
-                            position: AspectPosition::UiScaled(Vector2::zeros()),
-                            ..Default::default()
-                        }),
                         ..Default::default()
                     }),
                     ..Default::default()
@@ -697,7 +684,8 @@ impl UiWindow
                     }.into()),
                     z_level: ZLevel::UiHigh,
                     ..Default::default()
-                });
+                }
+            );
         });
 
         let ui = info.ui.clone();
@@ -705,7 +693,14 @@ impl UiWindow
 
         info.creator.push(
             EntityInfo{
-                lazy_transform: Some(LazyTransformInfo::default().into()),
+                lazy_transform: Some(LazyTransformInfo{
+                    transform: Transform{
+                        scale,
+                        position: Ui::ui_position(scale, Vector3::x()),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                }.into()),
                 parent: Some(Parent::new(top_panel, true)),
                 ui_element: Some(UiElement{
                     kind: UiElementType::Button{
@@ -714,11 +709,6 @@ impl UiWindow
                             let _ = ui.borrow_mut().remove_window_id(entities, id);
                         })
                     },
-                    keep_aspect: Some(KeepAspect{
-                        scale: scale.xy(),
-                        position: AspectPosition::UiScaled(Vector2::x()),
-                        ..Default::default()
-                    }),
                     ..Default::default()
                 }),
                 ..Default::default()
@@ -910,14 +900,6 @@ impl UiInventory
         dt: f32
     )
     {
-        if let Some(render) = creator.entities.render(self.inventory)
-        {
-            if !render.visible
-            {
-                return;
-            }
-        }
-
         self.list.update(creator, camera, dt);
     }
 }
@@ -1041,14 +1023,8 @@ fn create_notification_body(
     let position = info.creator.entities.transform(entity).map(|x| x.position).unwrap_or_default();
     let scale = Vector3::new(NOTIFICATION_HEIGHT * 4.0, NOTIFICATION_HEIGHT, 1.0);
 
-    let entity = info.creator.entities.push_eager(
-        true,
+    let entity = info.creator.push(
         EntityInfo{
-            render: Some(RenderInfo{
-                object: Some(RenderObjectKind::Texture{name: "ui/background.png".to_owned()}.into()),
-                z_level: ZLevel::UiLow,
-                ..Default::default()
-            }),
             follow_position: Some(FollowPosition::new(
                 entity,
                 Connection::EaseOut{decay: 14.0, limit: None}
@@ -1062,7 +1038,16 @@ fn create_notification_body(
                 },
                 ..Default::default()
             }.into()),
+            ui_element: Some(UiElement{
+                world_position: true,
+                ..Default::default()
+            }),
             watchers: Some(Default::default()),
+            ..Default::default()
+        },
+        RenderInfo{
+            object: Some(RenderObjectKind::Texture{name: "ui/background.png".to_owned()}.into()),
+            z_level: ZLevel::UiLow,
             ..Default::default()
         }
     );
@@ -1096,35 +1081,33 @@ impl BarNotification
     {
         let body = create_notification_body(info, owner);
 
-        let bar = info.creator.entities.push(
-            true,
+        let bar = info.creator.push(
             EntityInfo{
-                render: Some(RenderInfo{
-                    object: Some(RenderObjectKind::Texture{name: "ui/background.png".to_owned()}.into()),
-                    z_level: ZLevel::UiMiddle,
-                    ..Default::default()
-                }),
                 lazy_transform: Some(LazyTransformInfo::default().into()),
                 parent: Some(Parent::new(body, true)),
+                ..Default::default()
+            },
+            RenderInfo{
+                object: Some(RenderObjectKind::Texture{name: "ui/background.png".to_owned()}.into()),
+                z_level: ZLevel::UiMiddle,
                 ..Default::default()
             }
         );
 
-        info.creator.entities.push(
-            true,
+        info.creator.push(
             EntityInfo{
                 lazy_transform: Some(LazyTransformInfo::default().into()),
-                render: Some(RenderInfo{
-                    object: Some(RenderObjectKind::Text{
-                        text: name,
-                        font_size: 30,
-                        font: FontStyle::Bold,
-                        align: TextAlign::centered()
-                    }.into()),
-                    z_level: ZLevel::UiHigh,
-                    ..Default::default()
-                }),
                 parent: Some(Parent::new(body, true)),
+                ..Default::default()
+            },
+            RenderInfo{
+                object: Some(RenderObjectKind::Text{
+                    text: name,
+                    font_size: 30,
+                    font: FontStyle::Bold,
+                    align: TextAlign::centered()
+                }.into()),
+                z_level: ZLevel::UiHigh,
                 ..Default::default()
             }
         );
@@ -1170,21 +1153,20 @@ impl TextNotification
     {
         let body = create_notification_body(info, owner);
 
-        let text = info.creator.entities.push(
-            true,
+        let text = info.creator.push(
             EntityInfo{
                 lazy_transform: Some(LazyTransformInfo::default().into()),
-                render: Some(RenderInfo{
-                    object: Some(RenderObjectKind::Text{
-                        text,
-                        font_size: 30,
-                        font: FontStyle::Bold,
-                        align: TextAlign::centered()
-                    }.into()),
-                    z_level: ZLevel::UiHigh,
-                    ..Default::default()
-                }),
                 parent: Some(Parent::new(body, true)),
+                ..Default::default()
+            },
+            RenderInfo{
+                object: Some(RenderObjectKind::Text{
+                    text,
+                    font_size: 30,
+                    font: FontStyle::Bold,
+                    align: TextAlign::centered()
+                }.into()),
+                z_level: ZLevel::UiHigh,
                 ..Default::default()
             }
         );
@@ -1290,12 +1272,12 @@ impl ActionsList
 {
     fn new(
         info: &mut CommonWindowInfo,
-        anchor: Entity,
         mut popup_position: Vector2<f32>,
         responses: Vec<UserEvent>
     ) -> Self
     {
-        let button_size = Vector2::new(0.5, 1.0);
+        let button_size = WINDOW_SIZE.xy().component_mul(&Vector2::new(0.3, 0.1));
+
         let padding = button_size.y * 0.2;
 
         let mut scale = Vector2::new(button_size.x, padding * 2.0);
@@ -1311,16 +1293,18 @@ impl ActionsList
                 lazy_transform: Some(LazyTransformInfo{
                     scaling: Scaling::EaseOut{decay: 20.0},
                     transform: Transform{
+                        scale: scale.component_mul(&ANIMATION_SCALE),
                         position: Vector3::new(popup_position.x, popup_position.y, 0.0),
                         ..Default::default()
                     },
+                    unscaled_position: true,
+                    inherit_position: false,
                     ..Default::default()
                 }.into()),
                 ui_element: Some(UiElement{
                     kind: UiElementType::ActiveTooltip,
                     ..Default::default()
                 }),
-                parent: Some(Parent::new(anchor, true)),
                 watchers: Some(Default::default()),
                 ..Default::default()
             },
@@ -1425,7 +1409,7 @@ pub enum NotificationCreateInfo
 #[derive(EnumIs)]
 pub enum WindowCreateInfo
 {
-    ActionsList{anchor: Entity, popup_position: Vector2<f32>, responses: Vec<UserEvent>},
+    ActionsList{popup_position: Vector2<f32>, responses: Vec<UserEvent>},
     Notification{owner: Entity, lifetime: f32, info: NotificationCreateInfo},
     ItemInfo{item: Item},
     Inventory{
@@ -1444,10 +1428,10 @@ pub enum UiSpecializedWindow
 
 impl UiSpecializedWindow
 {
-    quick_casts!{as_actions_list_ref, as_actions_list_mut, ActionsList, ActionsList}
-    quick_casts!{as_notification_ref, as_notification_mut, Notification, Notification}
-    quick_casts!{as_item_info_ref, as_item_info_mut, ItemInfo, UiItemInfo}
-    quick_casts!{as_inventory_ref, as_inventory_mut, Inventory, UiInventory}
+    quick_casts!{as_actions_list, as_actions_list_mut, ActionsList, ActionsList}
+    quick_casts!{as_notification, as_notification_mut, Notification, Notification}
+    quick_casts!{as_item_info, as_item_info_mut, ItemInfo, UiItemInfo}
+    quick_casts!{as_inventory, as_inventory_mut, Inventory, UiInventory}
 
     fn body(&self) -> Entity
     {
@@ -1494,7 +1478,6 @@ impl UiSpecializedWindow
 
 pub struct Ui
 {
-    anchor: Entity,
     items_info: Arc<ItemsInfo>,
     user_receiver: Rc<RefCell<UiReceiver>>,
     notifications: Vec<UiWindowId>,
@@ -1507,12 +1490,10 @@ impl Ui
 {
     pub fn new(
         items_info: Arc<ItemsInfo>,
-        anchor: Entity,
         user_receiver: Rc<RefCell<UiReceiver>>
     ) -> Self
     {
         Self{
-            anchor,
             items_info,
             user_receiver,
             notifications: Vec::new(),
@@ -1593,17 +1574,21 @@ impl Ui
         id: UiWindowId
     ) -> Result<(), WindowError>
     {
-        if let Some(window) = self.windows.remove(id.0).map(|window|
+        if let Some(window) = self.windows.remove(id.0)
         {
-            window.borrow().body()
-        })
-        {
+            let window = window.borrow();
+            if window.as_notification().is_some()
+            {
+                self.notifications.retain(|x| *x != id);
+            }
+
+            let body = window.body();
             if let Some(index) = self.windows_order.iter().position(|x| *x == id)
             {
                 self.windows_order.remove(index);
             }
 
-            close_ui(entities, window);
+            close_ui(entities, body);
 
             Ok(())
         } else
@@ -1620,22 +1605,19 @@ impl Ui
     ) -> Rc<RefCell<UiSpecializedWindow>>
     {
         let urx = this.borrow().user_receiver.clone();
-        let anchor = this.borrow().anchor;
 
         let mut window_info = CommonWindowInfo{
             creator,
-            anchor,
             ui: this,
             id
         };
 
         let window = match window
         {
-            WindowCreateInfo::ActionsList{anchor, popup_position, responses} =>
+            WindowCreateInfo::ActionsList{popup_position, responses} =>
             {
                 UiSpecializedWindow::ActionsList(ActionsList::new(
                     &mut window_info,
-                    anchor,
                     popup_position,
                     responses
                 ))

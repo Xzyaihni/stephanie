@@ -201,6 +201,8 @@ pub struct UiElement
 {
     pub kind: UiElementType,
     pub predicate: UiElementPredicate,
+    pub world_position: bool,
+    pub capture_events: bool,
     pub keep_aspect: Option<KeepAspect>
 }
 
@@ -211,6 +213,8 @@ impl Default for UiElement
         Self{
             kind: UiElementType::Panel,
             predicate: UiElementPredicate::None,
+            world_position: false,
+            capture_events: true,
             keep_aspect: None
         }
     }
@@ -239,8 +243,21 @@ impl UiElement
         captured: bool
     ) -> bool
     {
+        if !self.capture_events
+        {
+            return captured;
+        }
+
         let query = ||
         {
+            let camera_position = if self.world_position
+            {
+                camera_position
+            } else
+            {
+                Vector2::zeros()
+            };
+
             UiQuery{transform: entities.transform(entity).unwrap(), camera_position}
         };
 
