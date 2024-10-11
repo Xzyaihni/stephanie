@@ -37,8 +37,8 @@ use crate::{
         Outlineable,
         LazyMix,
         DataInfos,
-        OccludingPlane,
-        OccludingPlaneServer,
+        Occluder,
+        ClientOccluder,
         Side2d,
         PhysicalProperties,
         Faction,
@@ -265,7 +265,8 @@ no_on_set!{
     Joint,
     Damaging,
     Watchers,
-    OccludingPlane,
+    Occluder,
+    ClientOccluder,
     UiElement,
     UiElementServer
 }
@@ -2583,7 +2584,7 @@ macro_rules! define_entities
 define_entities!{
     (side_specific
         (render, render_mut, set_render, on_render, resort_render, render_exists, SetRender, RenderType, RenderInfo, ClientRenderInfo),
-        (occluding_plane, occluding_plane_mut, set_occluding_plane, on_plane_mut, resort_occluding_plane, occluding_plane_exists, SetNone, OccludingPlaneType, OccludingPlaneServer, OccludingPlane),
+        (occluder, occluder_mut, set_occluder, on_occluder_mut, resort_occluder, occluder_exists, SetOccluder, OccluderType, Occluder, ClientOccluder),
         (ui_element, ui_element_mut, set_ui_element, on_ui_element, resort_ui_element, ui_element_exists, SetNone, UiElementType, UiElementServer, UiElement)),
     (parent, parent_mut, set_parent, on_parent, resort_parent, parent_exists, SetParent, ParentType, Parent),
     (lazy_mix, lazy_mix_mut, set_lazy_mix, on_lazy_mix, resort_lazy_mix, lazy_mix_exists, SetLazyMix, LazyMixType, LazyMix),

@@ -54,10 +54,9 @@ use crate::{
         EntityPasser,
         EntitiesController,
         OccludingCaster,
-        OccludingPlane,
         message::Message,
         character::PartialCombinedInfo,
-        entity::{for_each_component, iterate_components_with, render_system, ClientEntities},
+        entity::{for_each_component, render_system, ClientEntities},
         world::{
             World,
             Pos3,
@@ -103,7 +102,7 @@ mod entity_creator;
 mod ui;
 
 
-const DEFAULT_ZOOM: f32 = 2.0;
+const DEFAULT_ZOOM: f32 = 2.3;
 
 #[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -120,7 +119,6 @@ pub struct ClientEntitiesContainer
     pub follow_entity: Entity,
     visible_renders: Vec<Entity>,
     ui_renders: Vec<(Entity, bool)>,
-    visible_occluders: Vec<Entity>,
     player_entity: Entity,
     positions_sync: f32,
     animation: f32
@@ -153,7 +151,6 @@ impl ClientEntitiesContainer
             player_entity,
             visible_renders: Vec::new(),
             ui_renders: Vec::new(),
-            visible_occluders: Vec::new(),
             positions_sync: 0.0,
             animation: 0.0
         }
@@ -247,7 +244,7 @@ impl ClientEntitiesContainer
         visibility: &VisibilityChecker,
         info: &mut UpdateBuffersInfo,
         ui_camera: &Camera,
-        casters: &OccludingCaster
+        caster: &OccludingCaster
     )
     {
         self.visible_renders.clear();
@@ -281,22 +278,11 @@ impl ClientEntitiesContainer
             }
         });
 
-        self.visible_occluders = iterate_components_with!(self.entities, occluding_plane, filter_map,
-            |entity, occluding_plane: &RefCell<OccludingPlane>|
-            {
-                self.entities.transform(entity).and_then(|transform|
-                {
-                    occluding_plane.borrow().visible_with(visibility, &transform).then_some(entity)
-                })
-            }).collect();
-
         render_system::update_buffers(
             &self.entities,
-            self.visible_renders.iter()
-                .chain(self.visible_occluders.iter()).copied()
-                .chain(world_ui),
+            self.visible_renders.iter().copied().chain(world_ui),
             info,
-            casters
+            caster
         );
 
         info.update_camera(ui_camera);
@@ -335,8 +321,18 @@ impl ClientEntitiesContainer
             self.entities.render(entity).unwrap().draw(visibility, info, animation);
         });
 
-        info.bind_pipeline(shaders.ui);
         info.set_depth_test(false);
+
+        info.bind_pipeline(shaders.shadow);
+        self.visible_renders.iter().filter_map(|entity|
+        {
+            self.entities.occluder(*entity)
+        }).for_each(|occluder|
+        {
+            occluder.draw(info);
+        });
+
+        info.bind_pipeline(shaders.ui);
 
         self.ui_renders.iter().for_each(|&(entity, _)|
         {
@@ -344,12 +340,6 @@ impl ClientEntitiesContainer
         });
 
         info.set_depth_test(true);
-
-        info.bind_pipeline(shaders.shadow);
-        self.visible_occluders.iter().for_each(|entity|
-        {
-            self.entities.occluding_plane(*entity).unwrap().draw(info);
-        });
     }
 }
 

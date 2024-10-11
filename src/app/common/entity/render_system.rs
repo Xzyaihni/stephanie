@@ -15,13 +15,11 @@ pub fn update_buffers(
     entities: &ClientEntities,
     renderables: impl Iterator<Item=Entity>,
     info: &mut UpdateBuffersInfo,
-    casters: &OccludingCaster
+    caster: &OccludingCaster
 )
 {
     renderables.for_each(|entity|
     {
-        let transform = entities.transform(entity).unwrap().clone();
-
         if DebugConfig::is_enabled(DebugTool::Sleeping)
         {
             if let Some(physical) = entities.physical(entity)
@@ -39,17 +37,16 @@ pub fn update_buffers(
             }
         }
 
-        if let Some(mut render) = entities.render_mut(entity)
+        let transform = entities.transform(entity).unwrap();
+
+        let mut render = entities.render_mut(entity).unwrap();
+        render.set_transform(transform.clone());
+        render.update_buffers(info);
+
+        if let Some(mut occluder) = entities.occluder_mut(entity)
         {
-            render.set_transform(transform);
-            render.update_buffers(info);
-        } else if let Some(mut occluding_plane) = entities.occluding_plane_mut(entity)
-        {
-            occluding_plane.set_transform(transform);
-            occluding_plane.update_buffers(info, casters);
-        } else
-        {
-            unreachable!();
+            occluder.set_transform(transform.clone());
+            occluder.update_buffers(info, caster);
         }
     });
 }

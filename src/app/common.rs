@@ -68,7 +68,13 @@ pub use enemies_info::{EnemyId, EnemyInfo, EnemiesInfo};
 
 pub use chunk_saver::{SaveLoad, WorldChunkSaver, ChunkSaver, EntitiesSaver};
 
-pub use occluding_plane::{OccludingPlane, OccludingPlaneServer, OccludingCaster};
+pub use occluding_plane::{
+    Occluder,
+    ClientOccluder,
+    OccludingPlane,
+    OccludingCaster
+};
+
 pub use render_info::RenderInfo;
 
 pub use saveable::Saveable;

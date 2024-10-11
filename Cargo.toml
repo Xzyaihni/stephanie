@@ -23,9 +23,6 @@ clipboard = "0.5.0"
 [profile.dev]
 opt-level = 1
 
-[profile.release]
-panic = "abort"
-
 [profile.release-debug]
 inherits = "release"
 debug = true

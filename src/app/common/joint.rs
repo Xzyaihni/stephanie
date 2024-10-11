@@ -4,12 +4,15 @@ use nalgebra::{Unit, Vector3};
 
 use yanyaengine::Transform;
 
-use crate::common::{
-    project_onto,
-    project_onto_plane,
-    short_rotation,
-    collider::*,
-    Entity
+use crate::{
+    debug_config::*,
+    common::{
+        project_onto,
+        project_onto_plane,
+        short_rotation,
+        collider::*,
+        Entity
+    }
 };
 
 
@@ -109,6 +112,11 @@ impl Joint
         contacts: &mut Vec<Contact>
     )
     {
+        if DebugConfig::is_enabled(DebugTool::NoJoints)
+        {
+            return;
+        }
+
         match self
         {
             Self::Hinge(joint) => hinge_contact(transform, entity, base, joint, contacts)

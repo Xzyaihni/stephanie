@@ -10,6 +10,7 @@ use crate::common::{
     watcher::*,
     lazy_transform::*,
     damaging::*,
+    Occluder,
     Joint,
     LazyMix,
     Outlineable,
@@ -55,6 +56,7 @@ pub enum Message
     SetPlayer{entity: Entity, component: Player},
     SetEnemy{entity: Entity, component: Enemy},
     SetNamed{entity: Entity, component: String},
+    SetOccluder{entity: Entity, component: Occluder},
     SetNone{entity: Entity, component: ()},
     SetTarget{entity: Entity, target: Transform},
     SyncPosition{entity: Entity, position: Vector3<f32>},
@@ -114,6 +116,7 @@ impl Message
             | Message::SetPlayer{entity, ..}
             | Message::SetEnemy{entity, ..}
             | Message::SetNamed{entity, ..}
+            | Message::SetOccluder{entity, ..}
             | Message::SetNone{entity, ..}
             | Message::SetTarget{entity, ..}
             | Message::SyncPosition{entity, ..}

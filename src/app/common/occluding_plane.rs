@@ -1,4 +1,8 @@
+use std::f32;
+
 use nalgebra::Vector3;
+
+use serde::{Serialize, Deserialize};
 
 use yanyaengine::{
     Transform,
@@ -10,11 +14,125 @@ use yanyaengine::{
 use crate::{
     debug_config::*,
     client::{VisibilityChecker, RenderCreateInfo},
-    common::ServerToClient
+    common::{rotate_point_z_3d, ServerToClient}
 };
 
 
-pub type OccludingPlaneServer = ();
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum Occluder
+{
+    Door
+}
+
+#[derive(Debug)]
+pub enum ClientOccluder
+{
+    Door([OccludingPlane; 3])
+}
+
+impl ClientOccluder
+{
+    fn door_transforms(transform: Transform) -> [Transform; 3]
+    {
+        let scale = transform.scale;
+        let rotation = transform.rotation;
+        let world_offset = |x: Vector3<f32>|
+        {
+            rotate_point_z_3d(x.component_mul(&scale), rotation)
+        };
+
+        let top = Transform{
+            position: transform.position + world_offset(Vector3::y() * 0.5),
+            ..transform
+        };
+
+        let bottom = Transform{
+            position: transform.position + world_offset(-Vector3::y() * 0.5),
+            ..transform
+        };
+
+        let right = Transform{
+            position: transform.position + world_offset(Vector3::x() * 0.5),
+            rotation: transform.rotation + f32::consts::FRAC_PI_2,
+            scale: scale.yxz(),
+            ..transform
+        };
+
+        [top, bottom, right]
+    }
+
+    pub fn set_transform(&mut self, transform: Transform)
+    {
+        match self
+        {
+            Self::Door(planes) =>
+            {
+                planes.iter_mut().zip(Self::door_transforms(transform)).for_each(|(x, target)|
+                {
+                    x.set_transform(target);
+                });
+            }
+        }
+    }
+
+    pub fn visible_with(&self, visibility: &VisibilityChecker, transform: &Transform) -> bool
+    {
+        match self
+        {
+            Self::Door(planes) => planes.iter().any(|x| x.visible_with(visibility, transform))
+        }
+    }
+
+    pub fn update_buffers(
+        &mut self,
+        info: &mut UpdateBuffersInfo,
+        caster: &OccludingCaster
+    )
+    {
+        match self
+        {
+            Self::Door(planes) => planes.iter_mut().for_each(|x| x.update_buffers(info, caster))
+        }
+    }
+
+    pub fn draw(
+        &self,
+        info: &mut DrawInfo
+    )
+    {
+        match self
+        {
+            Self::Door(planes) => planes.iter().for_each(|x| x.draw(info))
+        }
+    }
+}
+
+impl ServerToClient<ClientOccluder> for Occluder
+{
+    fn server_to_client(
+        self,
+        transform: impl FnOnce() -> Transform,
+        create_info: &mut RenderCreateInfo
+    ) -> ClientOccluder
+    {
+        let create_plane = |transform|
+        {
+            let inner = create_info.object_info.partial.object_factory.create_occluding(transform);
+
+            OccludingPlane(inner)
+        };
+
+        match self
+        {
+            Self::Door =>
+            {
+                let transforms = ClientOccluder::door_transforms(transform());
+
+                ClientOccluder::Door(transforms.map(create_plane))
+            }
+        }
+    }
+}
 
 pub struct OccludingCaster(Vector3<f32>);
 
@@ -28,20 +146,6 @@ impl From<Vector3<f32>> for OccludingCaster
 
 #[derive(Debug)]
 pub struct OccludingPlane(OccludingPlaneInner);
-
-impl ServerToClient<OccludingPlane> for OccludingPlaneServer
-{
-    fn server_to_client(
-        self,
-        transform: impl FnOnce() -> Transform,
-        create_info: &mut RenderCreateInfo
-    ) -> OccludingPlane
-    {
-        let inner = create_info.object_info.partial.object_factory.create_occluding(transform());
-
-        OccludingPlane::new(inner)
-    }
-}
 
 impl OccludingPlane
 {

@@ -27,6 +27,7 @@ pub enum DebugTool
     NoOcclusion,
     NoGravity,
     NoResolve,
+    NoJoints,
     NoSpawns
 }
 

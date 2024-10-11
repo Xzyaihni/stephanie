@@ -11,6 +11,7 @@ use crate::common::{
     physics::*,
     lazy_transform::*,
     joint::*,
+    Occluder,
     EntityInfo,
     Parent,
     SpawnerTile,
@@ -94,6 +95,7 @@ pub fn create_spawner(
                 }.into()),
                 parent: Some(Parent::new(hinge, true)),
                 saveable: Some(()),
+                occluder: Some(Occluder::Door),
                 joint: Some(Joint::Hinge(HingeJoint{
                     origin: Vector3::new(-0.5, 0.0, 0.0),
                     angle_limit: Some(HingeAngleLimit{
