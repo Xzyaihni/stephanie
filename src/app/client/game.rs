@@ -1413,7 +1413,14 @@ impl<'a> PlayerContainer<'a>
             );
 
             let player_position = entities.transform(self.info.entity).unwrap().position;
-            let follow_position = player_position + mouse_position / 5.0;
+
+            let follow_position = if mouse_position.magnitude() > CHUNK_VISUAL_SIZE * 2.0
+            {
+                player_position
+            } else
+            {
+                player_position + mouse_position / 5.0
+            };
 
             entities.transform_mut(self.info.follow).unwrap().position = follow_position;
         }
