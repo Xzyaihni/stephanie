@@ -96,7 +96,6 @@ impl RenderObjectKind
 {
     pub fn into_client(
         self,
-        uvs: Uvs,
         transform: Transform,
         create_info: &mut RenderCreateInfo
     ) -> Option<ClientRenderObject>
@@ -108,7 +107,7 @@ impl RenderObjectKind
             Self::TextureId{id} =>
             {
                 let info = ObjectInfo{
-                    model: assets.model(create_info.squares[&uvs]).clone(),
+                    model: assets.model(create_info.square).clone(),
                     texture: assets.texture(id).clone(),
                     transform
                 };
@@ -125,7 +124,7 @@ impl RenderObjectKind
                 let id = assets.texture_id(&name);
                 drop(assets);
 
-                Self::TextureId{id}.into_client(uvs, transform, create_info)
+                Self::TextureId{id}.into_client(transform, create_info)
             },
             Self::Text{ref text, font_size, font, align} =>
             {
@@ -164,22 +163,21 @@ impl RenderObject
         create_info: &mut RenderCreateInfo
     ) -> Option<ClientRenderObject>
     {
-        self.kind.into_client(self.flip, transform, create_info)
+        self.kind.into_client(transform, create_info)
     }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RenderObject
 {
-    pub kind: RenderObjectKind,
-    pub flip: Uvs
+    pub kind: RenderObjectKind
 }
 
 impl From<RenderObjectKind> for RenderObject
 {
     fn from(kind: RenderObjectKind) -> Self
     {
-        Self{kind, flip: Uvs::default()}
+        Self{kind}
     }
 }
 

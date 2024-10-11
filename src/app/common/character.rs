@@ -318,15 +318,14 @@ impl Character
     {
         let character_info = characters_info.get(self.id);
 
-        let held_item = |flip|
+        let held_item = ||
         {
             EntityInfo{
                 render: Some(RenderInfo{
                     object: Some(RenderObject{
                         kind: RenderObjectKind::Texture{
                             name: "placeholder.png".to_owned()
-                        },
-                        flip: if flip { Uvs::FlipHorizontal } else { Uvs::Normal }
+                        }
                     }),
                     z_level: ZLevel::Arms,
                     ..Default::default()
@@ -413,8 +412,8 @@ impl Character
 
         let info = AfterInfo{
             this: entity,
-            holding: inserter(held_item(true)),
-            holding_right: inserter(held_item(false)),
+            holding: inserter(held_item()),
+            holding_right: inserter(held_item()),
             hair
         };
 
@@ -594,6 +593,11 @@ impl Character
                 let target = lazy.target();
 
                 target.scale = Vector3::repeat(HAND_SCALE) * self.held_scale();
+
+                if y < 0.0
+                {
+                    target.scale.x = -target.scale.x;
+                }
 
                 target.position = self.item_position(target.scale);
                 target.position.y = y;

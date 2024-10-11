@@ -2,8 +2,7 @@ use std::{
     fs,
     f32,
     rc::{Rc, Weak},
-    cell::{RefMut, RefCell},
-    collections::HashMap
+    cell::{RefMut, RefCell}
 };
 
 use nalgebra::{Unit, Vector3, Vector2};
@@ -193,7 +192,7 @@ impl Game
 
     pub fn update(
         &mut self,
-        squares: &HashMap<Uvs, ModelId>,
+        squares: ModelId,
         info: &mut UpdateBuffersInfo,
         dt: f32
     )

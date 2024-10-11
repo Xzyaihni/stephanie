@@ -4,8 +4,7 @@ use std::{
     sync::Arc,
     rc::Rc,
     cell::RefCell,
-    net::TcpStream,
-    collections::HashMap
+    net::TcpStream
 };
 
 use nalgebra::Vector2;
@@ -14,8 +13,6 @@ use parking_lot::RwLock;
 
 use image::error::ImageError;
 
-use strum::IntoEnumIterator;
-
 use yanyaengine::{
     ElementState,
     UniformLocation,
@@ -23,7 +20,6 @@ use yanyaengine::{
     ShaderId,
     ModelId,
     camera::Camera,
-    object::{Model, model::Uvs},
     game_object::*
 };
 
@@ -75,7 +71,7 @@ pub struct RenderCreateInfo<'a, 'b>
 {
     pub location: UniformLocation,
     pub shader: ShaderId,
-    pub squares: &'a HashMap<Uvs, ModelId>,
+    pub square: ModelId,
     pub object_info: &'a mut ObjectCreateInfo<'b>
 }
 
@@ -100,7 +96,7 @@ pub struct Client
     pub camera: Arc<RwLock<Camera>>,
     game_state: Option<Rc<RefCell<GameState>>>,
     game: Game,
-    squares: HashMap<Uvs, ModelId>
+    square: ModelId
 }
 
 impl Client
@@ -152,25 +148,13 @@ impl Client
 
         let game = Game::new(Rc::downgrade(&game_state));
 
-        let mut assets = assets.lock();
-        let squares = Uvs::iter().map(|uvs|
-        {
-            let square = if uvs == Uvs::Normal
-            {
-                assets.default_model(DefaultModel::Square)
-            } else
-            {
-                assets.push_model(Model::square_with_uvs(uvs, 1.0))
-            };
-
-            (uvs, square)
-        }).collect();
+        let assets = assets.lock();
 
         Ok(Self{
             game_state: Some(game_state),
             camera,
             game,
-            squares
+            square: assets.default_model(DefaultModel::Square)
         })
     }
 
@@ -192,7 +176,7 @@ impl Client
     {
         let game_state = some_or_return!(&self.game_state);
 
-        self.game.update(&self.squares, info, dt);
+        self.game.update(self.square, info, dt);
 
         if self.game.player_exists()
         {
@@ -212,7 +196,7 @@ impl Client
 
     pub fn update_buffers(&mut self, info: &mut UpdateBuffersInfo)
     {
-        some_or_return!(&self.game_state).borrow_mut().update_buffers(&self.squares, info);
+        some_or_return!(&self.game_state).borrow_mut().update_buffers(self.square, info);
     }
 
     pub fn draw(&mut self, mut info: DrawInfo)

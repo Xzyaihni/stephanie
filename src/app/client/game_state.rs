@@ -9,8 +9,7 @@ use std::{
     sync::{
         Arc,
         mpsc::{self, TryRecvError, Receiver}
-    },
-    collections::HashMap
+    }
 };
 
 use parking_lot::{RwLock, Mutex};
@@ -27,7 +26,6 @@ use yanyaengine::{
     ModelId,
     UniformLocation,
     camera::Camera,
-    object::model::Uvs,
     game_object::*
 };
 
@@ -1070,7 +1068,7 @@ impl GameState
 
     pub fn update_buffers(
         &mut self,
-        squares: &HashMap<Uvs, ModelId>,
+        square: ModelId,
         info: &mut UpdateBuffersInfo
     )
     {
@@ -1088,7 +1086,7 @@ impl GameState
         let mut create_info = RenderCreateInfo{
             location: UniformLocation{set: 0, binding: 0},
             shader: self.shaders.default,
-            squares,
+            square,
             object_info: info
         };
 
@@ -1175,7 +1173,7 @@ impl GameState
 
     pub fn update(
         &mut self,
-        squares: &HashMap<Uvs, ModelId>,
+        square: ModelId,
         object_info: &mut UpdateBuffersInfo,
         dt: f32
     )
@@ -1190,7 +1188,7 @@ impl GameState
         let mut create_info = RenderCreateInfo{
             location: UniformLocation{set: 0, binding: 0},
             shader: self.shaders.default,
-            squares,
+            square,
             object_info
         };
 

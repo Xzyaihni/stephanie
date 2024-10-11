@@ -24,7 +24,6 @@ use crate::{
         watcher::*,
         collider::*,
         physics::*,
-        Anatomy,
         ObjectsStore,
         EaseOut,
         LazyMix,
