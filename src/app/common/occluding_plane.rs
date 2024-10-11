@@ -14,7 +14,7 @@ use yanyaengine::{
 use crate::{
     debug_config::*,
     client::{VisibilityChecker, RenderCreateInfo},
-    common::{rotate_point_z_3d, ServerToClient}
+    common::{rotate_point_z_3d, ServerToClient, world::TILE_SIZE}
 };
 
 
@@ -75,11 +75,27 @@ impl ClientOccluder
         }
     }
 
-    pub fn visible_with(&self, visibility: &VisibilityChecker, transform: &Transform) -> bool
+    pub fn visible(&self, visibility: &VisibilityChecker) -> bool
+    {
+        if !self.visible_height(visibility)
+        {
+            return false;
+        }
+
+        match self
+        {
+            Self::Door(planes) => planes.iter().any(|x| x.visible(visibility))
+        }
+    }
+
+    pub fn visible_height(&self, visibility: &VisibilityChecker) -> bool
     {
         match self
         {
-            Self::Door(planes) => planes.iter().any(|x| x.visible_with(visibility, transform))
+            Self::Door(planes) =>
+            {
+                planes[0].visible_height(visibility)
+            }
         }
     }
 
@@ -161,10 +177,16 @@ impl OccludingPlane
 
     pub fn visible(&self, visibility: &VisibilityChecker) -> bool
     {
-        self.visible_with(visibility, self.0.transform_ref())
+        Self::visible_with(visibility, self.0.transform_ref())
     }
 
-    pub fn visible_with(&self, visibility: &VisibilityChecker, transform: &Transform) -> bool
+    pub fn visible_height(&self, visibility: &VisibilityChecker) -> bool
+    {
+        let top = visibility.position.z + visibility.size.z / 2.0;
+        (0.0..TILE_SIZE).contains(&(top - self.0.transform_ref().position.z))
+    }
+
+    pub fn visible_with(visibility: &VisibilityChecker, transform: &Transform) -> bool
     {
         visibility.visible_occluding_plane(transform)
     }

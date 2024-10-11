@@ -329,6 +329,11 @@ impl ClientEntitiesContainer
             self.entities.occluder(*entity)
         }).for_each(|occluder|
         {
+            if !occluder.visible(visibility)
+            {
+                return;
+            }
+
             occluder.draw(info);
         });
 
