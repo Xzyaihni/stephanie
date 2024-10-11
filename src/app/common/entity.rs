@@ -1912,7 +1912,7 @@ macro_rules! define_entities_both
 
             pub fn within_interactable_distance(&self, a: Entity, b: Entity) -> bool
             {
-                let interactable_distance = 0.5;
+                let interactable_distance = 0.3;
 
                 let a = if let Some(x) = self.transform(a)
                 {

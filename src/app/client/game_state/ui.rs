@@ -14,7 +14,7 @@ use yanyaengine::{Transform, camera::Camera};
 use crate::{
     client::{
         ui_element::*,
-        game_state::{EntityCreator, UserEvent, UiReceiver}
+        game_state::{GameState, EntityCreator, UserEvent, UiReceiver}
     },
     common::{
         lerp,
@@ -24,6 +24,7 @@ use crate::{
         watcher::*,
         collider::*,
         physics::*,
+        Anatomy,
         ObjectsStore,
         EaseOut,
         LazyMix,
@@ -503,13 +504,15 @@ impl UiList
 
 struct CustomButton
 {
-    texture: &'static str
+    texture: &'static str,
+    on_click: Rc<dyn Fn(&mut GameState)>
 }
 
 // a mut ref to a mut ref to a mut ref to a
 struct CommonWindowInfo<'a, 'b>
 {
     creator: &'a mut EntityCreator<'b>,
+    user_receiver: Rc<RefCell<UiReceiver>>,
     ui: Rc<RefCell<Ui>>,
     id: UiWindowId
 }
@@ -655,14 +658,18 @@ impl UiWindow
 
         let scale = Vector3::new(button_x, 1.0, 1.0);
 
-        custom_buttons.into_iter().for_each(|custom_button|
+        custom_buttons.into_iter().enumerate().for_each(|(index, custom_button)|
         {
+            let urx = info.user_receiver.clone();
+            let CustomButton{texture, on_click} = custom_button;
+
+            let x = -0.5 + scale.x / 2.0 + scale.x * index as f32;
             info.creator.push(
                 EntityInfo{
                     lazy_transform: Some(LazyTransformInfo{
                         transform: Transform{
                             scale,
-                            position: Ui::ui_position(scale, Vector3::zeros()),
+                            position: Vector3::new(x, 0.0, 0.0),
                             ..Default::default()
                         },
                         ..Default::default()
@@ -670,9 +677,9 @@ impl UiWindow
                     parent: Some(Parent::new(top_panel, true)),
                     ui_element: Some(UiElement{
                         kind: UiElementType::Button{
-                            on_click: Box::new(move |entities|
+                            on_click: Box::new(move |_|
                             {
-                                eprintln!("COME ON DO SOMETHING");
+                                urx.borrow_mut().push(UserEvent::UiAction(on_click.clone()));
                             })
                         },
                         ..Default::default()
@@ -681,7 +688,7 @@ impl UiWindow
                 },
                 RenderInfo{
                     object: Some(RenderObjectKind::Texture{
-                        name: custom_button.texture.to_owned()
+                        name: texture.to_owned()
                     }.into()),
                     z_level: ZLevel::UiHigh,
                     ..Default::default()
@@ -797,9 +804,35 @@ impl UiInventory
     {
         let items_info = info.ui.borrow().items_info.clone();
 
-        let custom_buttons = vec![CustomButton{
-            texture: "ui/anatomy_button.png"
-        }];
+        let mut custom_buttons = Vec::new();
+
+        if info.creator.entities.anatomy_exists(owner)
+        {
+            custom_buttons.push(CustomButton{
+                texture: "ui/anatomy_button.png",
+                on_click: Rc::new(move |game_state|
+                {
+                    game_state.add_window(WindowCreateInfo::Anatomy{
+                        spawn_position: game_state.ui_mouse_position(),
+                        entity: owner
+                    });
+                })
+            });
+        }
+
+        if info.creator.entities.player_exists(owner)
+        {
+            custom_buttons.push(CustomButton{
+                texture: "ui/stats_button.png",
+                on_click: Rc::new(move |game_state|
+                {
+                    game_state.add_window(WindowCreateInfo::Stats{
+                        spawn_position: game_state.ui_mouse_position(),
+                        entity: owner
+                    });
+                })
+            });
+        }
 
         let window = UiWindow::new(info, String::new(), spawn_position, custom_buttons);
 
@@ -906,6 +939,132 @@ impl UiInventory
     }
 }
 
+pub struct UiAnatomy
+{
+    window: UiWindow
+}
+
+impl UiAnatomy
+{
+    fn new(
+        window_info: &mut CommonWindowInfo,
+        spawn_position: Vector2<f32>,
+        entity: Entity
+    ) -> Self
+    {
+        let window = UiWindow::new(window_info, "anatomy".to_owned(), spawn_position, Vec::new());
+
+        let padding = 0.05;
+
+        let description = format!("this will have anatomy later :)");
+
+        window_info.creator.push(
+            EntityInfo{
+                lazy_transform: Some(LazyTransformInfo{
+                    transform: Transform{
+                        scale: Vector3::new(1.0 - padding, 1.0, 1.0),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                }.into()),
+                parent: Some(Parent::new(window.panel, true)),
+                ..Default::default()
+            },
+            RenderInfo{
+                object: Some(RenderObjectKind::Text{
+                    text: description,
+                    font_size: 40,
+                    font: FontStyle::Bold,
+                    align: TextAlign::default()
+                }.into()),
+                z_level: ZLevel::UiHigh,
+                ..Default::default()
+            }
+        );
+
+        Self{
+            window
+        }
+    }
+
+    pub fn body(&self) -> Entity
+    {
+        self.window.body
+    }
+
+    pub fn update_after(
+        &mut self,
+        creator: &EntityCreator,
+        camera: &Camera
+    )
+    {
+        self.window.update_after(creator, camera);
+    }
+}
+
+pub struct UiStats
+{
+    window: UiWindow
+}
+
+impl UiStats
+{
+    fn new(
+        window_info: &mut CommonWindowInfo,
+        spawn_position: Vector2<f32>,
+        entity: Entity
+    ) -> Self
+    {
+        let window = UiWindow::new(window_info, "stats".to_owned(), spawn_position, Vec::new());
+
+        let padding = 0.05;
+
+        let description = format!("this will have stats later :)");
+
+        window_info.creator.push(
+            EntityInfo{
+                lazy_transform: Some(LazyTransformInfo{
+                    transform: Transform{
+                        scale: Vector3::new(1.0 - padding, 1.0, 1.0),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                }.into()),
+                parent: Some(Parent::new(window.panel, true)),
+                ..Default::default()
+            },
+            RenderInfo{
+                object: Some(RenderObjectKind::Text{
+                    text: description,
+                    font_size: 40,
+                    font: FontStyle::Bold,
+                    align: TextAlign::default()
+                }.into()),
+                z_level: ZLevel::UiHigh,
+                ..Default::default()
+            }
+        );
+
+        Self{
+            window
+        }
+    }
+
+    pub fn body(&self) -> Entity
+    {
+        self.window.body
+    }
+
+    pub fn update_after(
+        &mut self,
+        creator: &EntityCreator,
+        camera: &Camera
+    )
+    {
+        self.window.update_after(creator, camera);
+    }
+}
+
 pub struct UiItemInfo
 {
     window: UiWindow
@@ -983,13 +1142,7 @@ fn update_resize_ui(entities: &ClientEntities, size: Vector2<f32>, entity: Entit
 {
     if let Some(mut lazy) = entities.lazy_transform_mut(entity)
     {
-        let scale = {
-            let scale = lazy.target().scale.xy();
-
-            Vector2::repeat(0.5) - scale / 2.0
-        };
-
-        let limit = size.component_mul(&scale);
+        let limit = (size - lazy.target().scale.xy()) / 2.0;
         lazy.set_connection_limit(LimitMode::Manhattan(Vector3::new(limit.x, limit.y, 0.0)));
     }
 }
@@ -1414,6 +1567,8 @@ pub enum WindowCreateInfo
 {
     ActionsList{popup_position: Vector2<f32>, responses: Vec<UserEvent>},
     Notification{owner: Entity, lifetime: f32, info: NotificationCreateInfo},
+    Anatomy{spawn_position: Vector2<f32>, entity: Entity},
+    Stats{spawn_position: Vector2<f32>, entity: Entity},
     ItemInfo{spawn_position: Vector2<f32>, item: Item},
     Inventory{
         spawn_position: Vector2<f32>,
@@ -1426,6 +1581,8 @@ pub enum UiSpecializedWindow
 {
     ActionsList(ActionsList),
     Notification(Notification),
+    Anatomy(UiAnatomy),
+    Stats(UiStats),
     ItemInfo(UiItemInfo),
     Inventory(UiInventory)
 }
@@ -1443,6 +1600,8 @@ impl UiSpecializedWindow
         {
             Self::ActionsList(x) => x.body(),
             Self::Notification(x) => x.kind.body(),
+            Self::Anatomy(x) => x.body(),
+            Self::Stats(x) => x.body(),
             Self::ItemInfo(x) => x.body(),
             Self::Inventory(x) => x.body()
         }
@@ -1458,6 +1617,8 @@ impl UiSpecializedWindow
         {
             Self::ActionsList(_) => (),
             Self::Notification(_) => (),
+            Self::Anatomy(x) => x.update_after(creator, camera),
+            Self::Stats(x) => x.update_after(creator, camera),
             Self::ItemInfo(x) => x.update_after(creator, camera),
             Self::Inventory(x) => x.update_after(creator, camera)
         }
@@ -1474,6 +1635,8 @@ impl UiSpecializedWindow
         {
             Self::ActionsList(_) => (),
             Self::Notification(_) => (),
+            Self::Anatomy(_) => (),
+            Self::Stats(_) => (),
             Self::ItemInfo(_) => (),
             Self::Inventory(x) => x.update(creator, camera, dt)
         }
@@ -1515,28 +1678,37 @@ impl Ui
     {
         let this_cloned = this.clone();
 
+        let is_notification = window.is_notification();
+        let is_actions_list = window.is_actions_list();
+
+        let is_normal = !is_notification && !is_actions_list;
+
         let id = {
             let mut this = this.borrow_mut();
 
-            if this.windows.len() == MAX_WINDOWS
+            if is_normal
             {
-                let oldest_window = this.windows_order.pop_front().unwrap();
-                this.remove_window_id(creator.entities, oldest_window).unwrap();
+                let windows_amount = this.windows_order.len();
+                debug_assert!(!(windows_amount > MAX_WINDOWS));
+                if windows_amount == MAX_WINDOWS
+                {
+                    let oldest_window = this.windows_order.pop_front().unwrap();
+                    this.remove_window_id(creator.entities, oldest_window).unwrap();
+                }
             }
-
-            debug_assert!(this.windows.len() <= MAX_WINDOWS);
 
             UiWindowId(this.windows.vacant_key())
         };
-
-        let is_notification = window.is_notification();
-        let is_actions_list = window.is_actions_list();
 
         let test: &mut EntityCreator<'b> = &mut *creator;
         let window = Self::create_window(this_cloned, test, window, id);
         let weak = Rc::downgrade(&window);
 
-        this.borrow_mut().windows_order.push_back(id);
+        if is_normal
+        {
+            this.borrow_mut().windows_order.push_back(id);
+        }
+
         this.borrow_mut().windows.push(window);
 
         if is_notification
@@ -1608,10 +1780,11 @@ impl Ui
         id: UiWindowId
     ) -> Rc<RefCell<UiSpecializedWindow>>
     {
-        let urx = this.borrow().user_receiver.clone();
+        let user_receiver = this.borrow().user_receiver.clone();
 
         let mut window_info = CommonWindowInfo{
             creator,
+            user_receiver,
             ui: this,
             id
         };
@@ -1647,6 +1820,22 @@ impl Ui
 
                 UiSpecializedWindow::Notification(notification)
             },
+            WindowCreateInfo::Anatomy{spawn_position, entity} =>
+            {
+                UiSpecializedWindow::Anatomy(UiAnatomy::new(
+                    &mut window_info,
+                    spawn_position,
+                    entity
+                ))
+            },
+            WindowCreateInfo::Stats{spawn_position, entity} =>
+            {
+                UiSpecializedWindow::Stats(UiStats::new(
+                    &mut window_info,
+                    spawn_position,
+                    entity
+                ))
+            },
             WindowCreateInfo::ItemInfo{spawn_position, item} =>
             {
                 UiSpecializedWindow::ItemInfo(UiItemInfo::new(
@@ -1657,6 +1846,7 @@ impl Ui
             },
             WindowCreateInfo::Inventory{spawn_position, entity, mut on_click} =>
             {
+                let urx = window_info.user_receiver.clone();
                 UiSpecializedWindow::Inventory(UiInventory::new(
                     &mut window_info,
                     entity,

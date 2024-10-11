@@ -1153,12 +1153,13 @@ impl<'a> PlayerContainer<'a>
                             entity: mouse_touched,
                             on_click: Box::new(|_anchor, item|
                             {
-                                UserEvent::Popup{
-                                    responses: vec![
+                                UserEvent::UiAction(Rc::new(move |game_state|
+                                {
+                                    game_state.create_popup(vec![
                                         UserEvent::Take(item),
                                         UserEvent::Info{which: InventoryWhich::Other, item}
-                                    ]
-                                }
+                                    ]);
+                                }))
                             })
                         });
 
@@ -1231,9 +1232,9 @@ impl<'a> PlayerContainer<'a>
         self.game_state.close_popup();
         match event
         {
-            UserEvent::Popup{responses} =>
+            UserEvent::UiAction(action) =>
             {
-                self.game_state.create_popup(responses);
+                action(&mut self.game_state);
             },
             UserEvent::Info{which, item} =>
             {
@@ -1323,13 +1324,14 @@ impl<'a> PlayerContainer<'a>
                 entity: self.info.entity,
                 on_click: Box::new(|_anchor, item|
                 {
-                    UserEvent::Popup{
-                        responses: vec![
+                    UserEvent::UiAction(Rc::new(move |game_state|
+                    {
+                        game_state.create_popup(vec![
                             UserEvent::Wield(item),
                             UserEvent::Drop{which: InventoryWhich::Player, item},
                             UserEvent::Info{which: InventoryWhich::Player, item}
-                        ]
-                    }
+                        ]);
+                    }))
                 })
             });
 

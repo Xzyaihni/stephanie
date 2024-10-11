@@ -367,10 +367,10 @@ pub enum InventoryWhich
     Other
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub enum UserEvent
 {
-    Popup{responses: Vec<UserEvent>},
+    UiAction(Rc<dyn Fn(&mut GameState)>),
     Info{which: InventoryWhich, item: InventoryItem},
     Drop{which: InventoryWhich, item: InventoryItem},
     Wield(InventoryItem),
@@ -383,7 +383,7 @@ impl UserEvent
     {
         match self
         {
-            Self::Popup{..} => "popup",
+            Self::UiAction{..} => unreachable!(),
             Self::Info{..} => "info",
             Self::Drop{..} => "drop",
             Self::Wield(..) => "wield",
@@ -392,7 +392,6 @@ impl UserEvent
     }
 }
 
-#[derive(Debug)]
 pub struct UiReceiver
 {
     events: Vec<UserEvent>
@@ -997,7 +996,6 @@ impl GameState
             self.world.rescale(size);
         }
 
-        self.ui.borrow().update_resize(&self.entities.entities, size);
         self.entities.update_resize(size);
     }
 
@@ -1187,7 +1185,7 @@ impl GameState
             UiEvent::MouseMove(self.ui_mouse_position())
         );
 
-        self.ui.borrow_mut().update_after(&mut self.entities.entity_creator(), &self.camera.read());
+        self.ui.borrow_mut().update_after(&mut self.entities.entity_creator(), &self.ui_camera);
 
         let mut create_info = RenderCreateInfo{
             location: UniformLocation{set: 0, binding: 0},
@@ -1292,7 +1290,7 @@ impl GameState
             self.world.rescale(size);
         }
 
-        self.ui.borrow().update_resize(&self.entities.entities, size);
+        self.ui.borrow().update_resize(&self.entities.entities, self.ui_camera.size());
 
         self.entities.update_aspect(size, aspect);
     }

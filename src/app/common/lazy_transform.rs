@@ -766,6 +766,11 @@ impl LazyTransform
             },
             LimitMode::Manhattan(limit) =>
             {
+                if limit.iter().any(|x| *x < 0.0)
+                {
+                    return current;
+                }
+
                 target - distance.zip_map(&limit, |x, limit: f32| x.clamp(-limit, limit))
             }
         }
