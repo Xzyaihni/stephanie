@@ -1,5 +1,7 @@
 use std::{env, sync::LazyLock};
 
+use serde::{Serialize, Deserialize};
+
 #[allow(unused_imports)]
 use crate::app::{
     SlowModeTrue,
@@ -24,6 +26,7 @@ pub enum DebugTool
     Sleeping,
     Velocity,
     SuperSpeed,
+    PrintDamage,
     NoOcclusion,
     NoGravity,
     NoResolve,
@@ -31,8 +34,36 @@ pub enum DebugTool
     NoSpawns
 }
 
+pub trait DebugNameTrait
+{
+    fn new<I: Into<String>>(s: I) -> Self;
+
+    fn name(&self) -> &str;
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DebugNameTrue(String);
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DebugNameFalse;
+
+impl DebugNameTrait for DebugNameTrue
+{
+    fn new<I: Into<String>>(s: I) -> Self { Self(s.into()) }
+
+    fn name(&self) -> &str { &self.0 }
+}
+
+impl DebugNameTrait for DebugNameFalse
+{
+    fn new<I: Into<String>>(_s: I) -> Self { Self }
+
+    fn name(&self) -> &str { "undefined" }
+}
+
 pub trait DebugConfigTrait
 {
+    type DebugName: DebugNameTrait;
     type SlowMode: SlowModeTrait;
     type DebugVisibility: DebugVisibilityTrait;
 
@@ -52,6 +83,7 @@ pub struct DebugConfigFalse;
 
 impl DebugConfigTrait for DebugConfigTrue
 {
+    type DebugName = DebugNameTrue;
     type SlowMode = SlowModeTrue;
     type DebugVisibility = DebugVisibilityTrue;
 
@@ -102,6 +134,7 @@ impl DebugConfigTrait for DebugConfigTrue
 
 impl DebugConfigTrait for DebugConfigFalse
 {
+    type DebugName = DebugNameFalse;
     type SlowMode = SlowModeFalse;
     type DebugVisibility = DebugVisibilityFalse;
 

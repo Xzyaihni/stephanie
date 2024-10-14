@@ -1,4 +1,4 @@
-use std::f32;
+use std::{f32, fmt::{self, Debug}};
 
 use serde::{Serialize, Deserialize};
 
@@ -25,12 +25,23 @@ impl DamagePartial
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Damage
 {
     pub rng: SeededRandom,
     pub data: DamageType,
     pub direction: DamageDirection
+}
+
+impl Debug for Damage
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
+    {
+        f.debug_struct("Damage")
+            .field("data", &self.data)
+            .field("direction", &self.direction)
+            .finish()
+    }
 }
 
 impl Damage
@@ -105,6 +116,8 @@ impl DamageHeight
 
     pub fn from_z(z: f32) -> Self
     {
+        debug_assert!(z <= 1.0);
+
         if (0.0..0.33).contains(&z)
         {
             Self::Bottom
@@ -113,7 +126,6 @@ impl DamageHeight
             Self::Middle
         } else
         {
-            // z bigger than 1? good luck bozo :)
             Self::Top
         }
     }
@@ -128,5 +140,5 @@ pub struct DamageDirection
 
 pub trait Damageable
 {
-    fn damage(&mut self, damage: Damage) -> Option<DamageType>;
+    fn damage(&mut self, damage: Damage) -> Option<Damage>;
 }

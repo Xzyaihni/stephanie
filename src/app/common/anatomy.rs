@@ -1,5 +1,7 @@
 use std::{
-    iter,
+    convert,
+    rc::Rc,
+    fmt::{self, Debug, Display},
     ops::{Index, IndexMut, ControlFlow}
 };
 
@@ -9,21 +11,24 @@ use strum::{EnumCount, FromRepr};
 
 use nalgebra::Vector3;
 
-use crate::common::{
-    some_or_value,
-    SeededRandom,
-    WeightedPicker,
-    Damage,
-    DamageDirection,
-    DamageHeight,
-    DamageType,
-    Side1d,
-    Side2d,
-    Side3d,
-    Damageable,
-    world::TILE_SIZE
+use crate::{
+    debug_config::*,
+    common::{
+        some_or_value,
+        SeededRandom,
+        WeightedPicker,
+        Damage,
+        DamageHeight,
+        DamageType,
+        Side1d,
+        Side2d,
+        Damageable,
+        world::TILE_SIZE
+    }
 };
 
+
+type DebugName = <DebugConfig as DebugConfigTrait>::DebugName;
 
 macro_rules! simple_getter
 {
@@ -87,7 +92,7 @@ impl Anatomy
 
 impl Damageable for Anatomy
 {
-    fn damage(&mut self, damage: Damage) -> Option<DamageType>
+    fn damage(&mut self, damage: Damage) -> Option<Damage>
     {
         match self
         {
@@ -107,153 +112,18 @@ trait DamageReceiver
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum PartId
-{
-    This,
-    Next{id: Side3d, next: Box<PartId>}
-}
-
-impl PartId
-{
-    pub fn replace_tail(&self, id: Side3d) -> Self
-    {
-        match self
-        {
-            Self::This => Self::Next{id, next: Box::new(Self::This)},
-            Self::Next{id: this_id, next} =>
-            {
-                Self::Next{id: *this_id, next: Box::new(next.replace_tail(id))}
-            }
-        }
-    }
-
-    pub fn with_parent(self, parent: Side3d) -> Self
-    {
-        Self::Next{id: parent, next: Box::new(self)}
-    }
-
-    pub fn is_child_of(&self, other: &Self) -> bool
-    {
-        match (self, other)
-        {
-            (_, Self::This) => true,
-            (Self::This, Self::Next{..}) => false,
-            (Self::Next{id, next}, Self::Next{id: other_id, next: other_next}) =>
-            {
-                if *id != *other_id
-                {
-                    false
-                } else
-                {
-                    next.is_child_of(other_next)
-                }
-            }
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct BoneChildren<T>([Option<T>; Side3d::COUNT]);
-
-impl<T: Clone> From<Vec<(Side3d, T)>> for BoneChildren<T>
-{
-    fn from(values: Vec<(Side3d, T)>) -> Self
-    {
-        let mut output = Self::empty();
-
-        for (key, value) in values
-        {
-            let spot = output.get_mut(key);
-
-            if spot.is_some()
-            {
-                panic!("duplicate definition of {key:?}");
-            }
-
-            *spot = Some(value);
-        }
-
-        output
-    }
-}
-
-impl<T> BoneChildren<T>
-{
-    pub fn empty() -> Self
-    where
-        T: Clone
-    {
-        let values = iter::repeat(None)
-            .take(Side3d::COUNT)
-            .collect::<Vec<_>>()
-            .try_into()
-            .unwrap_or_else(|_| unreachable!());
-
-        Self(values)
-    }
-
-    pub fn is_empty(&self) -> bool
-    {
-        self.0.iter().all(|x| x.is_none())
-    }
-
-    pub fn clear(&mut self)
-    {
-        self.0.iter_mut().for_each(|x| *x = None);
-    }
-
-    pub fn get(&self, index: Side3d) -> &Option<T>
-    {
-        self.0.get(index as usize).unwrap()
-    }
-
-    pub fn get_mut(&mut self, index: Side3d) -> &mut Option<T>
-    {
-        self.0.get_mut(index as usize).unwrap()
-    }
-
-    pub fn iter(&self) -> impl Iterator<Item=(Side3d, &T)>
-    {
-        self.0.iter().enumerate().filter_map(|(index, value)|
-        {
-            value.as_ref().map(|value| (Side3d::from_repr(index).unwrap(), value))
-        })
-    }
-
-    pub fn iter_mut(&mut self) -> impl Iterator<Item=(Side3d, &mut T)>
-    {
-        self.0.iter_mut().enumerate().filter_map(|(index, value)|
-        {
-            value.as_mut().map(|value| (Side3d::from_repr(index).unwrap(), value))
-        })
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Bone<Data>
-{
-    data: Data,
-    children: Box<BoneChildren<BodyPart<Bone<Data>>>>
-}
-
-impl<Data: Clone> Bone<Data>
-{
-    pub fn new(data: Data, children: BoneChildren<BodyPart<Bone<Data>>>) -> Self
-    {
-        Self{data, children: Box::new(children)}
-    }
-
-    pub fn leaf(data: Data) -> Self
-    {
-        Self::new(data, BoneChildren::empty())
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SimpleHealth
 {
     max: f32,
     current: f32
+}
+
+impl Display for SimpleHealth
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
+    {
+        write!(f, "{:.3}/{:.3}", self.current, self.max)
+    }
 }
 
 impl From<f32> for SimpleHealth
@@ -292,11 +162,19 @@ impl SimpleHealth
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Health
 {
     max_block: f32,
     health: SimpleHealth
+}
+
+impl Debug for Health
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
+    {
+        write!(f, "Health {{ ({:.3}) {} }}", self.max_block, self.health)
+    }
 }
 
 impl Health
@@ -408,65 +286,68 @@ impl From<HumanAnatomyInfo> for BodyPartInfo
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BodyPart<Data>
 {
-    this: Health,
+    name: DebugName,
+    bone: Health,
     skin: Option<Health>,
     muscle: Option<Health>,
     size: f64,
-    part: Data
+    contents: Vec<Data>
 }
 
 impl<Data> BodyPart<Data>
 {
-    pub fn new(info: BodyPartInfo, this: f32, size: f64, part: Data) -> Self
+    pub fn new(
+        name: DebugName,
+        info: BodyPartInfo,
+        bone: f32,
+        size: f64,
+        contents: Vec<Data>
+    ) -> Self
     {
         Self::new_full(
-            Health::new(this * 0.05, this),
+            name,
+            Health::new(bone * 0.05, bone),
             Some(Health::new(info.skin_toughness * 5.0, info.skin_toughness * 100.0)),
             Some(Health::new(info.muscle_toughness * 20.0, info.muscle_toughness * 500.0)),
             size,
-            part
+            contents
         )
     }
 
     pub fn new_full(
-        this: Health,
+        name: DebugName,
+        bone: Health,
         skin: Option<Health>,
         muscle: Option<Health>,
         size: f64,
-        part: Data
+        contents: Vec<Data>
     ) -> Self
     {
-        Self{this, skin, muscle, size, part}
+        Self{name, bone, skin, muscle, size, contents}
     }
 }
 
-impl<Data> BodyPart<Bone<Data>>
+impl<Data> BodyPart<Data>
 {
-    pub fn get<'a>(&'a self, index: &PartId) -> Option<&'a Self>
+    fn damage(&mut self, damage: Damage) -> Option<Damage>
+    where
+        Data: DamageReceiver + Debug
     {
-        match index
+        if DebugConfig::is_enabled(DebugTool::PrintDamage)
         {
-            PartId::This => Some(self),
-            PartId::Next{id, next} =>
-            {
-                self.part.children.get(*id).as_ref()?.get(next)
-            }
+            eprintln!("damaging {} for {damage:?}", self.name.name());
         }
+
+        let mut rng = damage.rng;
+        let direction = damage.direction;
+
+        self.damage_inner(&mut rng, direction.side, damage.data).map(|damage|
+        {
+            Damage{rng, direction, data: damage}
+        })
     }
 
-    pub fn get_mut<'a>(&'a mut self, index: &PartId) -> Option<&'a mut Self>
-    {
-        match index
-        {
-            PartId::This => Some(self),
-            PartId::Next{id, next} =>
-            {
-                self.part.children.get_mut(*id).as_mut()?.get_mut(next)
-            }
-        }
-    }
-
-    fn damage(
+    fn damage_inner(
         &mut self,
         rng: &mut SeededRandom,
         side: Side2d,
@@ -482,59 +363,66 @@ impl<Data> BodyPart<Bone<Data>>
             if let Some(pierce) = self.muscle.as_mut().map(|x| x.damage_pierce(damage))
                 .unwrap_or(Some(pierce))
             {
-                if let Some(pierce) = self.this.damage_pierce(pierce)
+                if let Some(pierce) = self.bone.damage_pierce(pierce)
                 {
-                    if self.this.is_zero()
+                    if self.bone.is_zero()
                     {
-                        self.part.children.clear();
+                        self.contents.clear();
                     }
 
-                    return self.part.data.damage(rng, side, pierce);
+                    if self.contents.is_empty()
+                    {
+                        return Some(pierce);
+                    }
+
+                    let id = rng.next_usize_between(0..self.contents.len());
+
+                    return self.contents[id].damage(rng, side, pierce);
                 }
             }
         }
 
         None
     }
-
-    pub fn enumerate(&self, mut f: impl FnMut(&PartId))
-    {
-        self.enumerate_inner(PartId::This, &mut f)
-    }
-
-    pub fn enumerate_with(&self, start: PartId, mut f: impl FnMut(&PartId))
-    {
-        self.enumerate_inner(start, &mut f)
-    }
-
-    fn enumerate_inner(&self, part_id: PartId, f: &mut impl FnMut(&PartId))
-    {
-        f(&part_id);
-
-        self.part.children.iter().for_each(|(id, child)|
-        {
-            child.enumerate_inner(part_id.replace_tail(id), f)
-        });
-    }
-
-    pub fn for_each(&self, mut f: impl FnMut(&Self))
-    {
-        self.for_each_inner(&mut f);
-    }
-
-    fn for_each_inner(&self, f: &mut impl FnMut(&Self))
-    {
-        f(self);
-
-        self.part.children.iter().for_each(|(_, child)| child.for_each_inner(f));
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Halves<T>
 {
-    left: T,
-    right: T
+    pub left: T,
+    pub right: T
+}
+
+impl<T> Halves<T>
+{
+    pub fn as_ref(&self) -> Halves<&T>
+    {
+        Halves{
+            left: &self.left,
+            right: &self.right
+        }
+    }
+
+    pub fn zip<U>(self, other: Halves<U>) -> Halves<(T, U)>
+    {
+        Halves{
+            left: (self.left, other.left),
+            right: (self.right, other.right)
+        }
+    }
+
+    pub fn map<U>(self, mut f: impl FnMut(T) -> U) -> Halves<U>
+    {
+        Halves{
+            left: f(self.left),
+            right: f(self.right)
+        }
+    }
+
+    pub fn combine<U>(self, mut f: impl FnMut(T, T) -> U) -> U
+    {
+        f(self.left, self.right)
+    }
 }
 
 impl<T> Index<Side1d> for Halves<T>
@@ -559,25 +447,6 @@ impl<T> IndexMut<Side1d> for Halves<T>
         {
             Side1d::Left => &mut self.left,
             Side1d::Right => &mut self.right
-        }
-    }
-}
-
-impl<T> Halves<T>
-{
-    pub fn map<U, F: FnMut(T) -> U>(self, mut f: F) -> Halves<U>
-    {
-        Halves{
-            left: f(self.left),
-            right: f(self.right)
-        }
-    }
-
-    pub fn map_ref<U, F: FnMut(&T) -> U>(&self, mut f: F) -> Halves<U>
-    {
-        Halves{
-            left: f(&self.left),
-            right: f(&self.right)
         }
     }
 }
@@ -822,6 +691,11 @@ impl DamageReceiver for HumanOrgan
         damage: DamageType
     ) -> Option<DamageType>
     {
+        if DebugConfig::is_enabled(DebugTool::PrintDamage)
+        {
+            eprintln!("damaging {self:?} at {side:?} for {damage:?}");
+        }
+
         match self
         {
             Self::Brain(brain) =>
@@ -864,105 +738,29 @@ impl DamageReceiver for HumanOrgan
     }
 }
 
-macro_rules! impl_contents
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum HumanPartId
 {
-    ($self:ident) =>
-    {
-        match $self
-        {
-            Self::Skull{contents} => Some(contents),
-            Self::Ribcage{contents} => Some(contents),
-            _ => None
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum HumanBoneSingle
-{
-    Skull{contents: Vec<HumanOrgan>},
-    Ribcage{contents: Vec<HumanOrgan>},
-    // the eye bone lol
-    Eye,
+    Head,
+    Torso,
     Spine,
     Pelvis,
-    Femur,
-    Tibia,
-    Humerus,
-    Radius,
-    Hand,
-    Foot
+    Eye(Side1d),
+    UpperLeg(Side1d),
+    LowerLeg(Side1d),
+    UpperArm(Side1d),
+    LowerArm(Side1d),
+    Hand(Side1d),
+    Foot(Side1d)
 }
 
-impl HumanBoneSingle
-{
-    pub fn contents(&self) -> Option<&[HumanOrgan]>
-    {
-        impl_contents!(self)
-    }
-
-    pub fn contents_mut(&mut self) -> Option<&mut [HumanOrgan]>
-    {
-        impl_contents!(self)
-    }
-}
-
-impl DamageReceiver for HumanBoneSingle
-{
-    fn damage(
-        &mut self,
-        rng: &mut SeededRandom,
-        side: Side2d,
-        damage: DamageType
-    ) -> Option<DamageType>
-    {
-        if let Some(contents) = self.contents_mut()
-        {
-            contents.iter_mut().for_each(|organ|
-            {
-                organ.damage(rng, side, damage);
-            });
-        }
-
-        None
-    }
-}
-
-pub type HumanBone = Bone<HumanBoneSingle>;
-pub type HumanPart = BodyPart<HumanBone>;
-
-#[derive(Debug, Clone)]
-struct LimbSpeed(f32);
-
-impl LimbSpeed
-{
-    fn new(speed: f32) -> Self
-    {
-        Self(speed)
-    }
-
-    fn resolve(self, health_mult: f32, motor: Option<f32>, children: f32) -> f32
-    {
-        let motor = motor.unwrap_or(1.0);
-
-        children + self.0 * health_mult * motor
-    }
-}
+pub type HumanPart = BodyPart<HumanOrgan>;
 
 #[derive(Debug, Clone)]
 struct Speeds
 {
     arms: f32,
     legs: f32
-}
-
-#[derive(Debug, Clone)]
-struct SpeedsState
-{
-    conseq_leg: u32,
-    conseq_arm: u32,
-    side: Option<Side1d>,
-    halves: Halves<Speeds>
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
@@ -1002,13 +800,177 @@ impl Default for HumanAnatomyInfo
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HumanBodySided
+{
+    pub eye: Option<HumanPart>,
+    pub upper_leg: Option<HumanPart>,
+    pub lower_leg: Option<HumanPart>,
+    pub upper_arm: Option<HumanPart>,
+    pub lower_arm: Option<HumanPart>,
+    pub hand: Option<HumanPart>,
+    pub foot: Option<HumanPart>
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HumanBody
+{
+    pub sided: Halves<HumanBodySided>,
+    pub head: HumanPart,
+    pub torso: HumanPart,
+    pub pelvis: HumanPart,
+    pub spine: HumanPart
+}
+
+macro_rules! impl_get
+{
+    ($fn_name:ident, $option_fn:ident, $($b:tt)+) =>
+    {
+        pub fn $fn_name($($b)+ self, id: HumanPartId) -> Option<$($b)+ HumanPart>
+        {
+            match id
+            {
+                HumanPartId::Head => Some($($b)+ self.head),
+                HumanPartId::Torso => Some($($b)+ self.torso),
+                HumanPartId::Pelvis => Some($($b)+ self.pelvis),
+                HumanPartId::Spine => Some($($b)+ self.spine),
+                HumanPartId::Eye(side) => self.sided[side].eye.$option_fn(),
+                HumanPartId::UpperLeg(side) => self.sided[side].upper_leg.$option_fn(),
+                HumanPartId::LowerLeg(side) => self.sided[side].lower_leg.$option_fn(),
+                HumanPartId::Foot(side) => self.sided[side].foot.$option_fn(),
+                HumanPartId::UpperArm(side) => self.sided[side].upper_arm.$option_fn(),
+                HumanPartId::LowerArm(side) => self.sided[side].lower_arm.$option_fn(),
+                HumanPartId::Hand(side) => self.sided[side].hand.$option_fn()
+            }
+        }
+    }
+}
+
+impl HumanBody
+{
+    impl_get!{get, as_ref, &}
+    impl_get!{get_mut, as_mut, &mut}
+}
+
+struct PierceType
+{
+    possible: Vec<HumanPartId>,
+    action: Rc<dyn Fn(&mut HumanAnatomy, Damage) -> Option<Damage>>
+}
+
+impl PierceType
+{
+    fn empty() -> Self
+    {
+        Self{possible: Vec::new(), action: Rc::new(|_, damage| { Some(damage) })}
+    }
+
+    fn head_back() -> Self
+    {
+        let possible = vec![HumanPartId::Eye(Side1d::Left), HumanPartId::Eye(Side1d::Right)];
+
+        Self::possible_pierce(possible, 1, convert::identity)
+    }
+
+    fn possible_pierce<F>(possible: Vec<HumanPartId>, misses: usize, f: F) -> Self
+    where
+        F: Fn(Option<Damage>) -> Option<Damage> + 'static
+    {
+        let possible_cloned = possible.clone();
+
+        Self{
+            possible,
+            action: Rc::new(move |this: &mut HumanAnatomy, mut damage|
+            {
+                let mut possible_actions = possible_cloned.clone();
+                possible_actions.retain(|x| this.body.get(*x).is_some());
+
+                if possible_actions.is_empty()
+                {
+                    return f(None);
+                }
+
+                let miss_check = damage.rng.next_usize_between(0..possible_actions.len() + misses);
+                if miss_check >= possible_actions.len()
+                {
+                    return f(None);
+                }
+
+                let target = damage.rng.choice(possible_actions);
+
+                f(this.body.get_mut(target).unwrap().damage(damage))
+            })
+        }
+    }
+
+    fn middle_pierce(side: Side1d) -> PierceType
+    {
+        let opposite = side.opposite();
+
+        let possible = vec![
+            HumanPartId::UpperArm(opposite),
+            HumanPartId::LowerArm(opposite),
+            HumanPartId::Hand(opposite)
+        ];
+
+        Self::possible_pierce(possible, 1, convert::identity)
+    }
+
+    fn arm_pierce(side: Side1d) -> PierceType
+    {
+        Self{
+            possible: vec![HumanPartId::Spine, HumanPartId::Torso],
+            action: Rc::new(move |this: &mut HumanAnatomy, mut damage|
+            {
+                let target = if damage.rng.next_bool()
+                {
+                    HumanPartId::Spine
+                } else
+                {
+                    HumanPartId::Torso
+                };
+
+                let pierce = some_or_value!(
+                    this.body.get_mut(target).unwrap().damage(damage),
+                    None
+                );
+
+                (Self::middle_pierce(side).action)(this, pierce)
+            })
+        }
+    }
+
+    fn leg_pierce(side: Side1d) -> PierceType
+    {
+        let opposite = side.opposite();
+
+        let possible = vec![
+            HumanPartId::UpperLeg(opposite),
+            HumanPartId::LowerLeg(opposite),
+            HumanPartId::Foot(opposite)
+        ];
+
+        Self::possible_pierce(possible, 0, convert::identity)
+    }
+
+    fn any_exists(&self, anatomy: &HumanAnatomy) -> bool
+    {
+        self.possible.iter().any(|x| anatomy.body.get(*x).is_some())
+    }
+
+    fn combined_scale(&self, anatomy: &HumanAnatomy) -> f64
+    {
+        self.possible.iter().filter_map(|x| anatomy.body.get(*x).map(|x| x.size)).sum()
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HumanAnatomy
 {
     base_speed: f32,
     base_strength: f32,
     override_crawling: bool,
     blood: SimpleHealth,
-    body: HumanPart,
+    body: HumanBody,
     cached: CachedProps
 }
 
@@ -1033,122 +995,90 @@ impl HumanAnatomy
         let base_strength = info.base_strength;
         let part = BodyPartInfo::from(info);
 
-        let new_part = |health, size, other|
+        let new_part_with_contents = |name, health, size, contents|
         {
             HumanPart::new(
+                name,
                 part.clone(),
                 bone_toughness * health,
                 size,
-                other
+                contents
             )
+        };
+
+        let new_part = |name, health, size|
+        {
+            new_part_with_contents(name, health, size, Vec::new())
         };
 
         // max hp is amount of newtons i found on the interner needed to break a bone
         // like half of them i just made up
-        let leg = new_part(
-            4000.0,
-            0.6,
-            HumanBone::new(
-                HumanBoneSingle::Femur,
-                vec![
-                    (Side3d::Bottom, new_part(
-                        3500.0,
-                        0.44,
-                        HumanBone::new(
-                            HumanBoneSingle::Tibia,
-                            vec![
-                                (Side3d::Bottom, new_part(
-                                    5000.0,
-                                    0.17,
-                                    HumanBone::leaf(HumanBoneSingle::Foot)
-                                ))
-                            ].into()
-                        )
-                    ))
-                ].into()
-            )
-        );
 
-        let arm = new_part(
-            2500.0,
-            0.2,
-            HumanBone::new(
-                HumanBoneSingle::Humerus,
-                vec![
-                    (Side3d::Bottom, new_part(
-                        2000.0,
-                        0.17,
-                        HumanBone::new(
-                            HumanBoneSingle::Radius,
-                            vec![
-                                (Side3d::Bottom, new_part(
-                                    4000.0,
-                                    0.07,
-                                    HumanBone::leaf(HumanBoneSingle::Hand)
-                                ))
-                            ].into()
-                        )
-                    ))
-                ].into()
-            )
-        );
+        let make_side = |side_name|
+        {
+            let with_name = |name|
+            {
+                format!("{side_name} {name}")
+            };
 
-        let eye = HumanPart::new_full(
-            Health::new(50.0, 100.0),
-            None,
-            None,
-            0.01,
-            HumanBone::leaf(HumanBoneSingle::Eye)
-        );
+            let upper_leg = Some(new_part(DebugName::new(with_name("upper leg")), 4000.0, 0.6));
+            let lower_leg = Some(new_part(DebugName::new(with_name("lower leg")), 3500.0, 0.44));
+            let foot = Some(new_part(DebugName::new(with_name("foot")), 5000.0, 0.17));
+
+            let upper_arm = Some(new_part(DebugName::new(with_name("upper arm")), 2500.0, 0.2));
+            let lower_arm = Some(new_part(DebugName::new(with_name("lower arm")), 2000.0, 0.17));
+            let hand = Some(new_part(DebugName::new(with_name("hand")), 4000.0, 0.07));
+
+            let eye = Some(HumanPart::new_full(
+                DebugName::new(with_name("eye")),
+                Health::new(50.0, 100.0),
+                None,
+                None,
+                0.01,
+                Vec::new()
+            ));
+
+            HumanBodySided{
+                eye,
+                upper_leg,
+                lower_leg,
+                upper_arm,
+                lower_arm,
+                hand,
+                foot
+            }
+        };
+
+        let sided = Halves{left: make_side("left"), right: make_side("right")};
 
         // the spine is very complex sizing wise so im just gonna pick a low-ish number
-        let body = new_part(
-            3400.0,
-            0.25,
-            HumanBone::new(
-                HumanBoneSingle::Spine,
-                vec![
-                    (Side3d::Top, new_part(
-                        5000.0,
-                        0.39,
-                        HumanBone::new(
-                            HumanBoneSingle::Skull{contents: vec![
-                                HumanOrgan::Brain(Brain::default())
-                            ]},
-                            vec![
-                                (Side3d::Left, eye.clone()),
-                                (Side3d::Right, eye)
-                            ].into()
-                        )
-                    )),
-                    (Side3d::Bottom, new_part(
-                        6000.0,
-                        0.37,
-                        HumanBone::new(
-                            HumanBoneSingle::Pelvis,
-                            vec![
-                                (Side3d::Left, leg.clone()),
-                                (Side3d::Right, leg)
-                            ].into()
-                        )
-                    )),
-                    (Side3d::Front, new_part(
-                        3300.0,
-                        0.82,
-                        HumanBone::new(
-                            HumanBoneSingle::Ribcage{contents: vec![
-                                HumanOrgan::Lung(Lung::left()),
-                                HumanOrgan::Lung(Lung::right())
-                            ]},
-                            vec![
-                                (Side3d::Left, arm.clone()),
-                                (Side3d::Right, arm)
-                            ].into()
-                        )
-                    ))
-                ].into()
-            )
+        let spine = new_part(DebugName::new("spine"), 3400.0, 0.25);
+
+        let head = new_part_with_contents(
+            DebugName::new("head"), 
+            5000.0,
+            0.39,
+            vec![HumanOrgan::Brain(Brain::default())]
         );
+
+        let pelvis = new_part(DebugName::new("pelvis"), 6000.0, 0.37);
+        let torso = new_part_with_contents(
+            DebugName::new("torso"),
+            3300.0,
+            0.82,
+            vec![
+                HumanOrgan::Lung(Lung::left()),
+                HumanOrgan::Lung(Lung::right())
+            ]
+        );
+
+        let body = HumanBody{
+            sided,
+            head,
+            torso,
+            pelvis,
+            spine
+        };
 
         let mut this = Self{
             base_speed: base_speed * 12.0,
@@ -1201,288 +1131,183 @@ impl HumanAnatomy
         self.update_cache();
     }
 
-    fn select_random_part(
+    fn damage_random_part(
         &mut self,
-        rng: &mut SeededRandom,
-        direction: DamageDirection
-    ) -> Option<&mut HumanPart>
+        mut damage: Damage
+    ) -> Option<Damage>
     {
-        let child_side = match direction.height
+        if DebugConfig::is_enabled(DebugTool::PrintDamage)
         {
-            DamageHeight::Top => Side3d::Top,
-            DamageHeight::Bottom => Side3d::Bottom,
-            DamageHeight::Middle => Side3d::Front
-        };
+            eprintln!("start damage {damage:?}");
+        }
 
-        let mut occluded_parts = match direction.side
+        let no_pierce = PierceType::empty;
+
+        let mut ids = match damage.direction.height
         {
-            Side2d::Front | Side2d::Back => Vec::new(),
-            Side2d::Left | Side2d::Right =>
+            DamageHeight::Top =>
             {
-                match child_side
+                match damage.direction.side
                 {
-                    Side3d::Top => Vec::new(),
-                    Side3d::Front | Side3d::Bottom =>
-                    {
-                        vec![
-                            PartId::This
-                                .with_parent(direction.side.opposite().into())
-                                .with_parent(child_side)
-                        ]
-                    },
-                    _ => unreachable!()
+                    Side2d::Back => vec![
+                        (HumanPartId::Spine, no_pierce()),
+                        (HumanPartId::Head, PierceType::head_back())
+                    ],
+                    Side2d::Front => vec![
+                        (HumanPartId::Spine, no_pierce()),
+                        (HumanPartId::Head, no_pierce()),
+                        (HumanPartId::Eye(Side1d::Left), no_pierce()),
+                        (HumanPartId::Eye(Side1d::Right), no_pierce())
+                    ],
+                    Side2d::Left | Side2d::Right => vec![
+                        (HumanPartId::Spine, no_pierce()),
+                        (HumanPartId::Head, no_pierce())
+                    ]
+                }
+            },
+            DamageHeight::Middle =>
+            {
+                match damage.direction.side
+                {
+                    Side2d::Back | Side2d::Front => vec![
+                        (HumanPartId::Spine, no_pierce()),
+                        (HumanPartId::Torso, no_pierce()),
+                        (HumanPartId::UpperArm(Side1d::Left), no_pierce()),
+                        (HumanPartId::LowerArm(Side1d::Left), no_pierce()),
+                        (HumanPartId::Hand(Side1d::Left), no_pierce()),
+                        (HumanPartId::UpperArm(Side1d::Right), no_pierce()),
+                        (HumanPartId::LowerArm(Side1d::Right), no_pierce()),
+                        (HumanPartId::Hand(Side1d::Right), no_pierce())
+                    ],
+                    Side2d::Left => vec![
+                        (HumanPartId::Spine, PierceType::middle_pierce(Side1d::Left)),
+                        (HumanPartId::Torso, PierceType::middle_pierce(Side1d::Left)),
+                        (HumanPartId::UpperArm(Side1d::Left), PierceType::arm_pierce(Side1d::Left)),
+                        (HumanPartId::LowerArm(Side1d::Left), PierceType::arm_pierce(Side1d::Left)),
+                        (HumanPartId::Hand(Side1d::Left), PierceType::arm_pierce(Side1d::Left))
+                    ],
+                    Side2d::Right => vec![
+                        (HumanPartId::Spine, PierceType::middle_pierce(Side1d::Right)),
+                        (HumanPartId::Torso, PierceType::middle_pierce(Side1d::Right)),
+                        (HumanPartId::UpperArm(Side1d::Right), PierceType::arm_pierce(Side1d::Right)),
+                        (HumanPartId::LowerArm(Side1d::Right), PierceType::arm_pierce(Side1d::Right)),
+                        (HumanPartId::Hand(Side1d::Right), PierceType::arm_pierce(Side1d::Right))
+                    ]
+                }
+            },
+            DamageHeight::Bottom =>
+            {
+                match damage.direction.side
+                {
+                    Side2d::Back | Side2d::Front => vec![
+                        (HumanPartId::UpperLeg(Side1d::Left), no_pierce()),
+                        (HumanPartId::LowerLeg(Side1d::Left), no_pierce()),
+                        (HumanPartId::Foot(Side1d::Left), no_pierce()),
+                        (HumanPartId::UpperLeg(Side1d::Right), no_pierce()),
+                        (HumanPartId::LowerLeg(Side1d::Right), no_pierce()),
+                        (HumanPartId::Foot(Side1d::Right), no_pierce())
+                    ],
+                    Side2d::Left => vec![
+                        (HumanPartId::UpperLeg(Side1d::Left), PierceType::leg_pierce(Side1d::Left)),
+                        (HumanPartId::LowerLeg(Side1d::Left), PierceType::leg_pierce(Side1d::Left)),
+                        (HumanPartId::Foot(Side1d::Left), PierceType::leg_pierce(Side1d::Left))
+                    ],
+                    Side2d::Right => vec![
+                        (HumanPartId::UpperLeg(Side1d::Right), PierceType::leg_pierce(Side1d::Right)),
+                        (HumanPartId::LowerLeg(Side1d::Right), PierceType::leg_pierce(Side1d::Right)),
+                        (HumanPartId::Foot(Side1d::Right), PierceType::leg_pierce(Side1d::Right))
+                    ]
                 }
             }
         };
 
-        #[allow(clippy::single_match)]
-        match child_side
+        ids.retain(|(id, pierce)|
         {
-            Side3d::Top =>
-            {
-                match direction.side
-                {
-                    Side2d::Front => (),
-                    _ =>
-                    {
-                        let left_eye = PartId::This
-                            .with_parent(Side3d::Left)
-                            .with_parent(child_side);
-
-                        let right_eye = PartId::This
-                            .with_parent(Side3d::Right)
-                            .with_parent(child_side);
-
-                        occluded_parts.extend([left_eye, right_eye]);
-                    }
-                }
-            },
-            _ => ()
-        }
-
-        let mut ids = Vec::new();
-
-        if let Some(child) = self.body.part.children.get(child_side)
-        {
-            let start = PartId::Next{id: child_side, next: Box::new(PartId::This)};
-            child.enumerate_with(start, |id|
-            {
-                let skip = occluded_parts.iter().any(|skip_part|
-                {
-                    id.is_child_of(skip_part)
-                });
-
-                if !skip
-                {
-                    ids.push(id.clone());
-                }
-            });
-        }
-
-        // u can hit the spine at any height
-        ids.push(PartId::This);
+            self.body.get(*id).is_some() || pierce.any_exists(self)
+        });
 
         let ids: &Vec<_> = &ids;
 
         let picked = WeightedPicker::pick_from(
-            rng.next_f64(),
+            damage.rng.next_f64(),
             ids,
-            |id| self.body.get(id).expect("must be inbounds").size
+            |(id, pierce)|
+            {
+                self.body.get(*id).map(|x| x.size).unwrap_or_else(|| pierce.combined_scale(self))
+            }
         );
 
-        // borrow checker silliness
-        if let Some(picked) = picked
+        let pierce = picked.and_then(|(picked, on_pierce)|
         {
-            Some(self.body.get_mut(picked).expect("must be inbounds"))
-        } else
-        {
-            #[allow(clippy::manual_find_map)]
-            occluded_parts.iter().rev()
-                .find(|id| self.body.get_mut(id).is_some())
-                .map(|id| self.body.get_mut(id).expect("must be inbounds"))
-        }
-    }
-
-    fn leg_speed(
-        conseq: &mut u32,
-        bone: &HumanBone
-    ) -> f32
-    {
-        match bone.data
-        {
-            HumanBoneSingle::Femur =>
+            if let Some(main_pick) = self.body.get_mut(*picked)
             {
-                *conseq = 1;
-                0.4
-            },
-            HumanBoneSingle::Tibia =>
+                main_pick.damage(damage).and_then(|pierce|
+                {
+                    (on_pierce.action)(self, pierce)
+                })
+            } else
             {
-                if *conseq == 1
-                {
-                    *conseq = 2;
-                    0.12
-                } else
-                {
-                    *conseq = 0;
-                    0.05
-                }
-            },
-            HumanBoneSingle::Foot =>
-            {
-                let value = if bone.children.is_empty() && *conseq == 2
-                {
-                    0.07
-                } else
-                {
-                    0.01
-                };
-
-                *conseq = 0;
-
-                value
-            },
-            _ =>
-            {
-                *conseq = 0;
-                0.0
+                (on_pierce.action)(self, damage)
             }
-        }
+        });
+
+        self.update_cache();
+
+        pierce
     }
 
-    fn arm_speed(
-        conseq: &mut u32,
-        bone: &HumanBone
-    ) -> f32
-    {
-        match bone.data
-        {
-            HumanBoneSingle::Humerus =>
-            {
-                *conseq = 1;
-                0.2
-            },
-            HumanBoneSingle::Radius =>
-            {
-                if *conseq == 1
-                {
-                    *conseq = 2;
-                    0.1
-                } else
-                {
-                    *conseq = 0;
-                    0.05
-                }
-            },
-            HumanBoneSingle::Hand =>
-            {
-                let value = if bone.children.is_empty() && *conseq == 2
-                {
-                    0.05
-                } else
-                {
-                    0.01
-                };
-
-                *conseq = 0;
-
-                value
-            },
-            _ =>
-            {
-                *conseq = 0;
-
-                0.0
-            }
-        }
-    }
-
-    fn speed_scale(
-        state: &mut SpeedsState,
-        part: &HumanPart
-    ) -> Speeds
+    fn speed_multiply(part: &HumanPart, base: f32) -> f32
     {
         let muscle_health = part.muscle.as_ref().map(|x| x.fraction()).unwrap_or(0.0);
-        let health_mult = (part.this.fraction() * 0.9 + 0.1) * muscle_health;
+        let health_mult = (part.bone.fraction() * 0.9 + 0.1) * muscle_health;
 
-        let motor = state.side.as_ref().map(|side| &state.halves[*side]);
-
-        let bone = &part.part;
-
-        let leg_speed = Self::leg_speed(&mut state.conseq_leg, bone);
-        let arm_speed = Self::arm_speed(&mut state.conseq_arm, bone);
-
-        let children_speed: Speeds = bone.children.iter().map(|(side, child)|
-        {
-            let mut state = state.clone();
-
-            if let Ok(side) = side.try_into()
-            {
-                // :/
-                let side: Side1d = side;
-
-                state.side = Some(side.opposite());
-            }
-
-            Self::speed_scale(&mut state, child)
-        }).reduce(|acc, x| Speeds{arms: acc.arms + x.arms, legs: acc.legs + x.legs})
-            .unwrap_or(Speeds{arms: 0.0, legs: 0.0});
-
-        Speeds{
-            arms: LimbSpeed::new(arm_speed)
-                .resolve(health_mult, motor.map(|x| x.arms), children_speed.arms),
-            legs: LimbSpeed::new(leg_speed)
-                .resolve(health_mult, motor.map(|x| x.legs), children_speed.legs)
-        }
+        base * health_mult
     }
 
-    fn brain_search(bone: &HumanBone) -> Option<&Brain>
+    fn leg_speed(body: &HumanBodySided) -> f32
     {
-        if let Some(organs) = bone.data.contents()
+        body.upper_leg.as_ref().map(|x| Self::speed_multiply(x, 0.4)).unwrap_or_default()
+            + body.lower_leg.as_ref().map(|x| Self::speed_multiply(x, 0.12)).unwrap_or_default()
+            + body.foot.as_ref().map(|x| Self::speed_multiply(x, 0.07)).unwrap_or_default()
+    }
+
+    fn arm_speed(body: &HumanBodySided) -> f32
+    {
+        body.upper_arm.as_ref().map(|x| Self::speed_multiply(x, 0.2)).unwrap_or_default()
+            + body.lower_arm.as_ref().map(|x| Self::speed_multiply(x, 0.1)).unwrap_or_default()
+            + body.hand.as_ref().map(|x| Self::speed_multiply(x, 0.05)).unwrap_or_default()
+    }
+
+    fn speed_scale(body: &HumanBody, motor: Halves<Speeds>) -> Speeds
+    {
+        body.sided.as_ref().zip(motor).map(|(body, motor)|
         {
-            let found = organs.iter().find_map(|organ|
-            {
-                match organ
-                {
-                    HumanOrgan::Brain(brain) => Some(brain),
-                    _ => None
-                }
-            });
-
-            if found.is_some()
-            {
-                return found;
+            Speeds{
+                legs: Self::leg_speed(body) * motor.legs,
+                arms: Self::arm_speed(body) * motor.arms
             }
-        }
-
-        bone.children.iter().find_map(|(_, part)| Self::brain_search(&part.part))
+        }).combine(|a, b| Speeds{legs: a.legs + b.legs, arms: a.arms + b.arms})
     }
 
     fn brain(&self) -> Option<&Brain>
     {
-        Self::brain_search(&self.body.part)
+        self.body.head.contents.iter()
+            .find_map(|x| if let HumanOrgan::Brain(x) = x { Some(x) } else { None })
     }
 
     fn updated_speed(&mut self) -> (bool, Option<f32>)
     {
         let brain = some_or_value!(self.brain(), (false, None));
 
-        let mut state = SpeedsState{
-            conseq_leg: 0,
-            conseq_arm: 0,
-            side: None,
-            halves: brain.map_ref(|hemisphere|
-            {
-                Speeds{
-                    arms: hemisphere.frontal.motor.arms.fraction(),
-                    legs: hemisphere.frontal.motor.legs.fraction()
-                }
-            })
-        };
+        let speeds = brain.as_ref().map(|hemisphere|
+        {
+            Speeds{
+                arms: hemisphere.frontal.motor.arms.fraction(),
+                legs: hemisphere.frontal.motor.legs.fraction()
+            }
+        });
 
-        let Speeds{arms, legs} = Self::speed_scale(&mut state, &self.body);
-
-        let legs = legs * state.halves.left.legs;
-        let arms = arms * state.halves.left.arms;
+        let Speeds{arms, legs} = Self::speed_scale(&self.body, speeds);
 
         let crawl_speed = arms;
         let crawling = self.override_crawling || (legs < crawl_speed);
@@ -1544,23 +1369,13 @@ impl HumanAnatomy
 
 impl Damageable for HumanAnatomy
 {
-    fn damage(&mut self, mut damage: Damage) -> Option<DamageType>
+    fn damage(&mut self, mut damage: Damage) -> Option<Damage>
     {
         if self.is_crawling()
         {
             damage = damage.scale(2.0);
         }
 
-        if let Some(part) = self.select_random_part(&mut damage.rng, damage.direction)
-        {
-            let pierce = part.damage(&mut damage.rng, damage.direction.side, damage.data);
-
-            self.update_cache();
-
-            pierce
-        } else
-        {
-            None
-        }
+        self.damage_random_part(damage)
     }
 }

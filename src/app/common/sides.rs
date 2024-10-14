@@ -9,7 +9,7 @@ use nalgebra::Vector3;
 use crate::common::short_rotation;
 
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Side1d
 {
     Left,

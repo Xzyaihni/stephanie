@@ -262,6 +262,17 @@ impl SeededRandom
         x ^ (x >> 31)
     }
 
+    pub fn choice<T, I, V>(&mut self, values: V) -> T
+    where
+        I: ExactSizeIterator<Item=T>,
+        V: IntoIterator<Item=T, IntoIter=I>
+    {
+        let values = values.into_iter();
+        let id = self.next_usize_between(0..values.len());
+
+        values.skip(id).next().unwrap()
+    }
+
     pub fn next_u64_between(&mut self, range: Range<u64>) -> u64
     {
         let difference = range.end - range.start;
