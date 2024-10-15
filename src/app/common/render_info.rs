@@ -42,14 +42,45 @@ pub struct OutlinedInfo
     other_color: [f32; 3],
     other_mix: f32,
     animation: f32,
-    outlined: f32
+    outlined: f32,
+    keep_transparency: u32
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct MixColor
 {
     pub color: [f32; 3],
-    pub amount: f32
+    pub amount: f32,
+    pub keep_transparency: bool
+}
+
+struct RawMixColor
+{
+    other_color: [f32; 3],
+    other_mix: f32,
+    keep_transparency: u32
+}
+
+impl From<Option<MixColor>> for RawMixColor
+{
+    fn from(color: Option<MixColor>) -> Self
+    {
+        if let Some(color) = color
+        {
+            Self{
+                other_color: color.color,
+                other_mix: color.amount,
+                keep_transparency: color.keep_transparency as u32
+            }
+        } else
+        {
+            Self{
+                other_color: [0.0; 3],
+                other_mix: 0.0,
+                keep_transparency: 1
+            }
+        }
+    }
 }
 
 impl OutlinedInfo
@@ -60,11 +91,39 @@ impl OutlinedInfo
         animation: f32
     ) -> Self
     {
+        let other_color = RawMixColor::from(other_color);
+
         Self{
-            other_color: other_color.map(|x| x.color).unwrap_or_default(),
-            other_mix: other_color.map(|x| x.amount).unwrap_or_default(),
+            other_color: other_color.other_color,
+            other_mix: other_color.other_mix,
             animation,
-            outlined
+            outlined,
+            keep_transparency: other_color.keep_transparency
+        }
+    }
+}
+
+#[repr(C)]
+#[derive(BufferContents)]
+pub struct UiOutlinedInfo
+{
+    other_color: [f32; 3],
+    other_mix: f32,
+    keep_transparency: u32
+}
+
+impl UiOutlinedInfo
+{
+    pub fn new(
+        other_color: Option<MixColor>
+    ) -> Self
+    {
+        let other_color = RawMixColor::from(other_color);
+
+        Self{
+            other_color: other_color.other_color,
+            other_mix: other_color.other_mix,
+            keep_transparency: other_color.keep_transparency
         }
     }
 }
@@ -115,8 +174,7 @@ impl RenderObjectKind
                 let object = create_info.object_info.partial.object_factory.create(info);
 
                 Some(ClientRenderObject{
-                    kind: ClientObjectType::Normal(object),
-                    outlined: None
+                    kind: ClientObjectType::Normal(object)
                 })
             },
             Self::Texture{name} =>
@@ -146,8 +204,7 @@ impl RenderObjectKind
                 } else
                 {
                     Some(ClientRenderObject{
-                        kind: ClientObjectType::Text(object),
-                        outlined: None
+                        kind: ClientObjectType::Text(object)
                     })
                 }
             }
@@ -233,6 +290,8 @@ pub enum ZLevel
     UiMiddle,
     UiHigh,
     UiHigher,
+    UiAnatomy,
+    UiAnatomyEye,
     UiPopupLow,
     UiPopupMiddle,
     UiPopupHigh
@@ -297,8 +356,7 @@ impl Debug for ClientObjectType
 #[derive(Debug)]
 pub struct ClientRenderObject
 {
-    kind: ClientObjectType,
-    outlined: Option<f32>
+    kind: ClientObjectType
 }
 
 impl ClientRenderObject
@@ -325,11 +383,6 @@ impl ClientRenderObject
         }
     }
 
-    pub fn set_outlined(&mut self, outlined: Option<f32>)
-    {
-        self.outlined = outlined;
-    }
-
     fn transform(&self) -> Option<&Transform>
     {
         match &self.kind
@@ -348,16 +401,8 @@ impl ClientRenderObject
         }
     }
 
-    fn draw(&self, info: &mut DrawInfo, mix: Option<MixColor>, animation: f32)
+    fn draw(&self, info: &mut DrawInfo)
     {
-        let outline = OutlinedInfo::new(
-            mix,
-            self.outlined.unwrap_or(0.0),
-            animation
-        );
-
-        info.push_constants(outline);
-
         match &self.kind
         {
             ClientObjectType::Normal(x) => x.draw(info),
@@ -457,14 +502,6 @@ impl ClientRenderInfo
         }
     }
 
-    pub fn set_outlined(&mut self, outlined: Option<f32>)
-    {
-        if let Some(object) = self.object.as_mut()
-        {
-            object.set_outlined(outlined);
-        }
-    }
-
     pub fn set_sprite(
         &mut self,
         create_info: &mut RenderCreateInfo,
@@ -497,8 +534,7 @@ impl ClientRenderInfo
             let object = ClientRenderObject{
                 kind: ClientObjectType::Normal(
                     object_info.object_factory.create(info)
-                ),
-                outlined: None
+                )
             };
 
             self.object = Some(object);
@@ -593,11 +629,10 @@ impl ClientRenderInfo
         }
     }
 
-    pub fn draw(
+    pub fn draw<T: BufferContents>(
         &self,
-        visibility: &VisibilityChecker,
         info: &mut DrawInfo,
-        animation: f32
+        shader_value: T
     )
     {
         if let Some(object) = self.object.as_ref()
@@ -607,17 +642,14 @@ impl ClientRenderInfo
                 return;
             }
 
-            if !self.visible(visibility)
-            {
-                return;
-            }
-
             if let Some(scissor) = self.scissor
             {
                 info.set_scissor(scissor);
             }
 
-            object.draw(info, self.mix, animation);
+            info.push_constants(shader_value);
+
+            object.draw(info);
 
             if self.scissor.is_some()
             {

@@ -349,7 +349,7 @@ impl TileMap
             )
         };
 
-        SimpleImage::try_from(image).map_err(|error| TileMapError::Image{error, path: None})
+        Ok(SimpleImage::from(image))
     }
 
     pub fn apply_texture_mask<'a, I>(mask_type: GradientMask, mask: &SimpleImage, textures: I)

@@ -11,7 +11,13 @@ use yanyaengine::Transform;
 
 use crate::{
     client::{Control, ControlState, RenderCreateInfo, game_state::{close_ui, Ui}},
-    common::{render_info::*, AnyEntities, Entity, ServerToClient, entity::ClientEntities}
+    common::{
+        render_info::*,
+        AnyEntities,
+        Entity,
+        ServerToClient,
+        entity::ClientEntities
+    }
 };
 
 
@@ -82,13 +88,30 @@ pub struct DragState
     held: bool
 }
 
+pub struct ButtonEvents
+{
+    pub on_hover: Box<dyn FnMut(&ClientEntities, Vector2<f32>)>,
+    pub on_click: Box<dyn FnMut(&ClientEntities)>
+}
+
+impl Default for ButtonEvents
+{
+    fn default() -> Self
+    {
+        Self{
+            on_hover: Box::new(|_, _| {}),
+            on_click: Box::new(|_| {})
+        }
+    }
+}
+
 #[derive(AsRefStr)]
 pub enum UiElementType
 {
     Panel,
     Tooltip,
     ActiveTooltip,
-    Button{on_click: Box<dyn FnMut(&ClientEntities)>},
+    Button(ButtonEvents),
     Drag{state: DragState, on_change: Box<dyn FnMut(&ClientEntities, Vector2<f32>)>}
 }
 
@@ -132,6 +155,7 @@ impl UiElementPredicate
 #[derive(Debug)]
 pub struct UiQuery<'a>
 {
+    pub shape: &'a UiElementShape,
     pub transform: Ref<'a, Transform>,
     pub camera_position: Vector2<f32>
 }
@@ -158,7 +182,10 @@ impl<'a> UiQuery<'a>
 
     pub fn is_inside(&self, position: Vector2<f32>) -> bool
     {
-        UiElement::is_inside(self.transform.scale.xy(), self.relative_position() - position)
+        self.shape.is_inside(
+            self.transform.scale.xy(),
+            position - self.relative_position()
+        )
     }
 }
 
@@ -196,6 +223,85 @@ impl Default for KeepAspect
     }
 }
 
+// i wanted to do this with FlatChunksContainer but i dont like how i made that one
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UiElementShapeMask
+{
+    size: Vector2<usize>,
+    values: Box<[bool]>
+}
+
+impl UiElementShapeMask
+{
+    pub fn new_empty(size: Vector2<usize>) -> Self
+    {
+        Self{size, values: vec![false; size.product()].into_boxed_slice()}
+    }
+
+    pub fn is_inside(&self, pos: Vector2<f32>) -> bool
+    {
+        let point = (pos.component_mul(&self.size.cast())).map(|x| x as i32);
+
+        let size = self.size.map(|x| x as i32);
+        if !((0..size.x).contains(&point.x) && (0..size.y).contains(&point.y))
+        {
+            return false;
+        }
+
+        let clamped = point.map(|x| x as usize);
+
+        self.get(clamped).unwrap_or(false)
+    }
+
+    fn to_index(&self, pos: Vector2<usize>) -> Option<usize>
+    {
+        ((0..self.size.x).contains(&pos.x) && (0..self.size.y).contains(&pos.y)).then(||
+        {
+            pos.y * self.size.x + pos.x
+        })
+    }
+
+    pub fn get(&self, pos: Vector2<usize>) -> Option<bool>
+    {
+        self.to_index(pos).map(|index| self.values[index])
+    }
+
+    pub fn get_mut(&mut self, pos: Vector2<usize>) -> Option<&mut bool>
+    {
+        self.to_index(pos).map(|index| &mut self.values[index])
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum UiElementShape
+{
+    Rectangle,
+    Mask(UiElementShapeMask)
+}
+
+impl UiElementShape
+{
+    pub fn is_inside(&self, scale: Vector2<f32>, position: Vector2<f32>) -> bool
+    {
+        match self
+        {
+            Self::Rectangle =>
+            {
+                let inbounds = |half_size: f32, pos: f32| -> bool
+                {
+                    (-half_size..=half_size).contains(&pos)
+                };
+
+                let half_scale = scale / 2.0;
+
+                inbounds(half_scale.x, position.x)
+                    && inbounds(half_scale.y, position.y)
+            },
+            Self::Mask(x) => x.is_inside(position.component_div(&scale) + Vector2::repeat(0.5))
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct UiElement
 {
@@ -203,7 +309,8 @@ pub struct UiElement
     pub predicate: UiElementPredicate,
     pub world_position: bool,
     pub capture_events: bool,
-    pub keep_aspect: Option<KeepAspect>
+    pub keep_aspect: Option<KeepAspect>,
+    pub shape: UiElementShape
 }
 
 impl Default for UiElement
@@ -215,7 +322,8 @@ impl Default for UiElement
             predicate: UiElementPredicate::None,
             world_position: false,
             capture_events: true,
-            keep_aspect: None
+            keep_aspect: None,
+            shape: UiElementShape::Rectangle
         }
     }
 }
@@ -258,7 +366,11 @@ impl UiElement
                 Vector2::zeros()
             };
 
-            UiQuery{transform: entities.transform(entity).unwrap(), camera_position}
+            UiQuery{
+                shape: &self.shape,
+                transform: entities.transform(entity).unwrap(),
+                camera_position
+            }
         };
 
         let highlight = |state: bool|
@@ -347,26 +459,39 @@ impl UiElement
                     }
                 }
             },
-            UiElementType::Button{on_click} =>
+            UiElementType::Button(ButtonEvents{on_hover, on_click}) =>
             {
                 if captured
                 {
                     return true;
                 }
 
-                if let Some(event) = event.as_mouse()
+                let query = query();
+                match event
                 {
-                    let clicked = event.main_button && event.state == ControlState::Pressed;
-
-                    if clicked && query().is_inside(event.position)
+                    UiEvent::Mouse(event) =>
                     {
-                        if !predicate
-                        {
-                            return false;
-                        }
+                        let clicked = event.main_button && event.state == ControlState::Pressed;
 
-                        on_click(entities);
-                    }
+                        if query.is_inside(event.position) && clicked
+                        {
+                            if !predicate
+                            {
+                                return false;
+                            }
+
+                            on_click(entities);
+                        }
+                    },
+                    UiEvent::MouseMove(event) =>
+                    {
+                        let position = Vector2::new(event.x, event.y);
+                        if query.is_inside(position)
+                        {
+                            on_hover(entities, position);
+                        }
+                    },
+                    _ => ()
                 }
             },
             UiElementType::Drag{state, on_change} =>
@@ -485,18 +610,5 @@ impl UiElement
                 render.set_transform(transform.clone());
             }
         }
-    }
-
-    pub fn is_inside(scale: Vector2<f32>, position: Vector2<f32>) -> bool
-    {
-        let inbounds = |half_size: f32, pos: f32| -> bool
-        {
-            (-half_size..=half_size).contains(&pos)
-        };
-
-        let half_scale = scale / 2.0;
-
-        inbounds(half_scale.x, position.x)
-            && inbounds(half_scale.y, position.y)
     }
 }

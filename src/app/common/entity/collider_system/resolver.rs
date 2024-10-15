@@ -790,7 +790,7 @@ impl ContactResolver
                     name: "circle.png".to_owned()
                 }.into()),
                 z_level: ZLevel::Hat,
-                mix: Some(MixColor{color, amount: 1.0}),
+                mix: Some(MixColor{color, amount: 1.0, keep_transparency: true}),
                 ..Default::default()
             }),
             watchers: Some(Watchers::simple_one_frame()),

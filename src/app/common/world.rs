@@ -22,6 +22,7 @@ use crate::{
 
 pub use overmap::{
     Overmap,
+    FlatChunksContainer,
     ChunksContainer,
     chunks_container::{
         debug_3d_slices,

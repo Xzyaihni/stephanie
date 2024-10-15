@@ -18,13 +18,18 @@ use nalgebra::{Vector2, Vector3};
 
 use serde::{Serialize, Deserialize};
 
+use image::RgbaImage;
+
 use yanyaengine::{
+    ResourceUploader,
     Assets,
     ObjectFactory,
     Transform,
+    ShaderId,
     TextureId,
     ModelId,
     UniformLocation,
+    object::{texture::SimpleImage, Texture},
     camera::Camera,
     game_object::*
 };
@@ -81,6 +86,7 @@ use controls_controller::ControlsController;
 
 use notifications::{Notifications, Notification};
 
+pub use anatomy_locations::UiAnatomyLocations;
 pub use ui::{
     close_ui,
     Ui,
@@ -97,6 +103,7 @@ mod controls_controller;
 mod notifications;
 
 mod entity_creator;
+mod anatomy_locations;
 mod ui;
 
 
@@ -314,35 +321,19 @@ impl ClientEntitiesContainer
 
         let animation = self.animation.sin();
 
-        self.visible_renders.iter().for_each(|&entity|
-        {
-            self.entities.render(entity).unwrap().draw(visibility, info, animation);
-        });
+        let draw_entities = render_system::DrawEntities{
+            renders: &self.visible_renders,
+            ui_renders: self.ui_renders.iter().map(|(entity, _)| *entity)
+        };
 
-        info.set_depth_test(false);
-
-        info.bind_pipeline(shaders.shadow);
-        self.visible_renders.iter().filter_map(|entity|
-        {
-            self.entities.occluder(*entity)
-        }).for_each(|occluder|
-        {
-            if !occluder.visible(visibility)
-            {
-                return;
-            }
-
-            occluder.draw(info);
-        });
-
-        info.bind_pipeline(shaders.ui);
-
-        self.ui_renders.iter().for_each(|&(entity, _)|
-        {
-            self.entities.render(entity).unwrap().draw(visibility, info, animation);
-        });
-
-        info.set_depth_test(true);
+        render_system::draw(
+            &self.entities,
+            shaders,
+            draw_entities,
+            visibility,
+            info,
+            animation
+        );
     }
 }
 
@@ -356,6 +347,28 @@ pub struct GameStateInfo<'a>
     pub message_passer: MessagePasser,
     pub client_info: &'a ClientInfo,
     pub host: bool
+}
+
+pub struct PartCreator<'a, 'b>
+{
+    resource_uploader: &'a mut ResourceUploader<'b>,
+    assets: &'a mut Assets,
+    shader: ShaderId
+}
+
+impl PartCreator<'_, '_>
+{
+    pub fn create(&mut self, image: RgbaImage) -> TextureId
+    {
+        let texture = Texture::new(
+            self.resource_uploader,
+            SimpleImage::from(image).into(),
+            UniformLocation{set: 0, binding: 0},
+            self.shader
+        );
+
+        self.assets.push_texture(texture)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -709,7 +722,7 @@ impl Drop for GameState
 
 impl GameState
 {
-    pub fn new(info: GameStateInfo) -> Rc<RefCell<Self>>
+    pub fn new(mut info: GameStateInfo) -> Rc<RefCell<Self>>
     {
         let mouse_position = Vector2::zeros();
 
@@ -768,14 +781,31 @@ impl GameState
 
         let user_receiver = UiReceiver::new();
 
+        let assets = info.object_info.partial.assets;
+
+        let anatomy_locations = {
+            let base_image = image::open("textures/special/anatomy_areas.png")
+                .expect("anatomy_areas.png must exist");
+
+            let mut assets = assets.lock();
+
+            let part_creator = PartCreator{
+                assets: &mut assets,
+                resource_uploader: info.object_info.partial.builder_wrapper.resource_uploader(),
+                shader: info.shaders.ui
+            };
+
+            UiAnatomyLocations::new(part_creator, base_image)
+        };
+
         let ui = Ui::new(
             info.data_infos.items_info.clone(),
+            anatomy_locations,
             user_receiver.clone()
         );
 
         let ui = Rc::new(RefCell::new(ui));
 
-        let assets = info.object_info.partial.assets;
         let common_textures = CommonTextures::new(&mut assets.lock());
 
         let debug_visibility = <DebugVisibility as DebugVisibilityTrait>::State::new(

@@ -754,6 +754,33 @@ pub enum HumanPartId
     Foot(Side1d)
 }
 
+impl HumanPartId
+{
+    pub fn iter() -> impl Iterator<Item=Self>
+    {
+        [
+            Self::Head,
+            Self::Torso,
+            Self::Spine,
+            Self::Pelvis,
+            Self::Eye(Side1d::Left),
+            Self::Eye(Side1d::Right),
+            Self::UpperLeg(Side1d::Left),
+            Self::UpperLeg(Side1d::Right),
+            Self::LowerLeg(Side1d::Left),
+            Self::LowerLeg(Side1d::Right),
+            Self::UpperArm(Side1d::Left),
+            Self::UpperArm(Side1d::Right),
+            Self::LowerArm(Side1d::Left),
+            Self::LowerArm(Side1d::Right),
+            Self::Hand(Side1d::Left),
+            Self::Hand(Side1d::Right),
+            Self::Foot(Side1d::Left),
+            Self::Foot(Side1d::Right)
+        ].into_iter()
+    }
+}
+
 pub type HumanPart = BodyPart<HumanOrgan>;
 
 #[derive(Debug, Clone)]

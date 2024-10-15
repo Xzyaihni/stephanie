@@ -12,15 +12,27 @@ layout(push_constant) uniform OutlineInfo{
     float other_mix;
     float animation;
     float outlined;
+    bool keep_transparency;
 } outline;
 
 const vec3 background_color = vec3(0.831, 0.941, 0.988);
+
+vec4 with_mix(vec4 color)
+{
+    float a = color.a;
+    if (!outline.keep_transparency)
+    {
+        a = 1.0;
+    }
+
+    return mix(color, vec4(outline.other_color, a), outline.other_mix);
+}
 
 void main()
 {
     vec4 color = texture(tex, tex_coords);
 
-    color = mix(color, vec4(outline.other_color, color.w), outline.other_mix);
+    color = with_mix(color);
 
     vec3 animation_color = sin(vec3(3.0, 4.0, 2.0) * outline.animation) * vec3(0.5, 0.1, 0.3);
     vec3 outline_color = tex_coords.xyx + animation_color + vec3(0.3, 0.4, 0.2);

@@ -268,7 +268,7 @@ macro_rules! impl_iter
 impl_iter!{Iter, SliceIter}
 impl_iter!{IterMut, SliceIterMut}
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Indexer
 {
     size: Pos3<usize>
@@ -290,7 +290,7 @@ impl CommonIndexing for Indexer
     }
 }
 
-#[derive(Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ChunksContainer<T>
 {
     chunks: Box<[T]>,
@@ -395,7 +395,7 @@ impl<T> ChunksContainer<T>
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FlatIndexer
 {
     size: Pos3<usize>,
@@ -453,7 +453,7 @@ impl CommonIndexing for FlatIndexer
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FlatChunksContainer<T>
 {
     chunks: Box<[T]>,

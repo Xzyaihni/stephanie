@@ -17,9 +17,14 @@ impl LazyMix
 {
     pub fn ui() -> Self
     {
+        Self::ui_color([1.0; 3])
+    }
+
+    pub fn ui_color(color: [f32; 3]) -> Self
+    {
         Self{
             decay: 16.0,
-            target: MixColor{color: [1.0; 3], amount: 0.0}
+            target: MixColor{color, amount: 0.0, keep_transparency: false}
         }
     }
 
@@ -33,7 +38,8 @@ impl LazyMix
 
         MixColor{
             color,
-            amount: current.amount.ease_out(self.target.amount, self.decay, dt)
+            amount: current.amount.ease_out(self.target.amount, self.decay, dt),
+            keep_transparency: current.keep_transparency
         }
     }
 }

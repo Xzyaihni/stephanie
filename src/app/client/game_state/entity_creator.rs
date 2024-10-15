@@ -51,6 +51,11 @@ impl EntityCreator<'_>
             info.ui_element = Some(default_ui());
         }
 
+        if info.watchers.is_none()
+        {
+            info.watchers = Some(Default::default());
+        }
+
         let entity = self.entities.push_client_eager(info);
 
         if let Some(mut render) = render

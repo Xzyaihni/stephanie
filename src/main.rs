@@ -9,7 +9,7 @@
 
 use std::{process, fmt::Display};
 
-use yanyaengine::{App, ShadersContainer, ShadersInfo};
+use yanyaengine::{App, ShadersContainer, ShadersInfo, ShadersQuery};
 
 pub use app::{common, server, client, ProgramShaders};
 
@@ -142,11 +142,22 @@ fn main()
         }
     };
 
+    let query: ShadersQuery = Box::new(move |path|
+    {
+        if path.starts_with("ui")
+        {
+            ui_shader
+        } else
+        {
+            default_shader
+        }
+    });
+
     App::<app::App>::new()
         .with_title("stey funy")
         .with_textures_path("textures/normal")
         .with_icon("icon.png")
-        .with_shaders(shaders, default_shader)
+        .with_shaders(shaders, query)
         .with_app_init(Some(init))
         .without_multisampling()
         .with_clear_color([0.831, 0.941, 0.988])

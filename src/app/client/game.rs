@@ -1372,28 +1372,6 @@ impl<'a> PlayerContainer<'a>
             return;
         }
 
-        {
-            let entities = self.game_state.entities();
-            if let Some(child) = entities.children_of(self.info.mouse_entity).into_iter().next()
-            {
-                if let Some(collider) = entities.collider(child)
-                {
-                    if let Some(mut target) = entities.mix_color_target(child)
-                    {
-                        let color = if collider.collided().is_empty()
-                        {
-                            [0.1, 0.1, 1.0]
-                        } else
-                        {
-                            [0.1, 1.0, 0.1]
-                        };
-
-                        *target = Some(MixColor{color, amount: 0.5});
-                    }
-                }
-            }
-        }
-
         self.update_user_events();
 
         let mouse_position = self.game_state.world_mouse_position();

@@ -86,7 +86,7 @@ pub use spatial::{SpatialInfo, SpatialGrid};
 pub use collider::{ColliderType, Collider, CollidingInfo};
 pub use physics::{Physical, PhysicalProperties, PhysicalFixed};
 
-pub use world::{PosDirection, Pos3, Axis};
+pub use world::{PosDirection, Pos3, Axis, FlatChunksContainer, ChunksContainer};
 
 pub use joint::Joint;
 

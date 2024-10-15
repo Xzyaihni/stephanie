@@ -119,7 +119,7 @@ pub fn damage(entities: &impl AnyEntities, entity: Entity, damage: Damage)
         {
             if let Some(mut mix_color) = entities.mix_color_target(entity)
             {
-                *mix_color = Some(MixColor{color: [1.0; 3], amount: 0.8});
+                *mix_color = Some(MixColor{color: [1.0; 3], amount: 0.8, keep_transparency: true});
 
                 watchers.push(
                     Watcher{

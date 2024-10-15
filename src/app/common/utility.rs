@@ -557,7 +557,7 @@ pub fn direction_arrow_info(
                     name: "arrow.png".to_owned()
                 }.into()),
                 z_level: ZLevel::Door,
-                mix: Some(MixColor{color, amount: 1.0}),
+                mix: Some(MixColor{color, amount: 1.0, keep_transparency: true}),
                 aspect: Aspect::KeepMax,
                 ..Default::default()
             }),

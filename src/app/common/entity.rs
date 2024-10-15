@@ -1986,12 +1986,9 @@ macro_rules! define_entities_both
 
             pub fn update_outlineable(&mut self, dt: f32)
             {
-                for_each_component!(self, outlineable, |entity, outlineable: &RefCell<Outlineable>|
+                for_each_component!(self, outlineable, |_entity, outlineable: &RefCell<Outlineable>|
                 {
-                    if let Some(mut render) = self.render_mut(entity)
-                    {
-                        render.set_outlined(outlineable.borrow_mut().next(dt));
-                    }
+                    outlineable.borrow_mut().update(dt);
                 });
             }
 

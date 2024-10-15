@@ -30,10 +30,13 @@ impl Outlineable
         self.target = 0.0;
     }
 
-    pub fn next(&mut self, dt: f32) -> Option<f32>
+    pub fn current(&self) -> Option<f32>
+    {
+        (self.current > 0.0).then_some(self.current)
+    }
+
+    pub fn update(&mut self, dt: f32)
     {
         self.current = self.current.ease_out(self.target, 10.0, dt);
-
-        (self.current > 0.0).then_some(self.current)
     }
 }
