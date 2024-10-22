@@ -471,7 +471,12 @@ impl FollowPosition
         dt: f32
     )
     {
-        self.connection.next(current, parent_position + self.offset, dt);
+        self.connection.next(current, self.target_end(parent_position), dt);
+    }
+
+    pub fn target_end(&self, parent_position: Vector3<f32>) -> Vector3<f32>
+    {
+        self.offset + parent_position
     }
 }
 

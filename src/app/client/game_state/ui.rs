@@ -1517,6 +1517,7 @@ impl AnatomyTooltip
     fn new(
         info: &mut CommonWindowInfo,
         size: Vector2<f32>,
+        previous_size: Option<Vector2<f32>>,
         mouse: Entity,
         entity: Entity,
         id: HumanPartId
@@ -1584,8 +1585,20 @@ impl AnatomyTooltip
             }
         );
 
+        let animation_strength = if let Some(size) = previous_size
+        {
+            Vector3::new(size.x * 0.9, size.y * 0.8, 1.0)
+        } else
+        {
+            ANIMATION_SCALE
+        };
+
+        let mouse_position = info.creator.entities.transform(mouse).unwrap().position;
+        let position = info.creator.entities.follow_position(body).unwrap().target_end(mouse_position);
+
         info.creator.entities.set_transform(body, Some(Transform{
-            scale: size3.component_mul(&ANIMATION_SCALE),
+            scale: size3.component_mul(&animation_strength),
+            position,
             ..Default::default()
         }));
 
@@ -1779,6 +1792,7 @@ impl Tooltip
     fn new(
         common_info: &mut CommonWindowInfo,
         mouse: Entity,
+        previous_size: Option<Vector2<f32>>,
         info: TooltipCreateInfo
     ) -> Self
     {
@@ -1788,7 +1802,7 @@ impl Tooltip
         {
             TooltipCreateInfo::Anatomy{entity, id} =>
             {
-                TooltipKind::Anatomy(AnatomyTooltip::new(common_info, size, mouse, entity, id))
+                TooltipKind::Anatomy(AnatomyTooltip::new(common_info, size, previous_size, mouse, entity, id))
             }
         };
 
@@ -1796,6 +1810,11 @@ impl Tooltip
             lifetime: TOOLTIP_LIFETIME,
             kind
         }
+    }
+
+    pub fn size(&self, entities: &ClientEntities) -> Vector2<f32>
+    {
+        entities.transform(self.body()).unwrap().scale.xy()
     }
 
     pub fn matching_tooltip(&self, tooltip: &TooltipCreateInfo) -> bool
@@ -2007,7 +2026,7 @@ pub enum WindowCreateInfo
 {
     ActionsList{popup_position: Vector2<f32>, responses: Vec<UserEvent>},
     Notification{owner: Entity, lifetime: f32, info: NotificationCreateInfo},
-    Tooltip{closing_animation: bool, info: TooltipCreateInfo},
+    Tooltip{closing_animation: bool, previous_size: Option<Vector2<f32>>, info: TooltipCreateInfo},
     Anatomy{spawn_position: Vector2<f32>, entity: Entity},
     Stats{spawn_position: Vector2<f32>, entity: Entity},
     ItemInfo{spawn_position: Vector2<f32>, item: Item},
@@ -2307,9 +2326,9 @@ impl Ui
 
                 UiSpecializedWindow::Notification(notification)
             },
-            WindowCreateInfo::Tooltip{closing_animation: _, info} =>
+            WindowCreateInfo::Tooltip{closing_animation: _, previous_size, info} =>
             {
-                UiSpecializedWindow::Tooltip(Tooltip::new(&mut window_info, mouse, info))
+                UiSpecializedWindow::Tooltip(Tooltip::new(&mut window_info, mouse, previous_size, info))
             },
             WindowCreateInfo::Anatomy{spawn_position, entity} =>
             {
@@ -2367,7 +2386,7 @@ impl Ui
         tooltip: TooltipCreateInfo
     )
     {
-        let closing_animation = if let Some(window_id) = self.active_tooltip.as_mut()
+        let previous_size = if let Some(window_id) = self.active_tooltip.as_mut()
         {
             let mut tooltip_window = self.windows[window_id.0].borrow_mut();
             let tooltip_window = tooltip_window.as_tooltip_mut().unwrap();
@@ -2379,16 +2398,22 @@ impl Ui
                 return;
             } else
             {
-                false
+                Some(tooltip_window.size(entities))
             }
         } else
         {
-            true
+            None
         };
 
         let create = Rc::new(move |game_state: &mut GameState|
         {
-            game_state.add_window(WindowCreateInfo::Tooltip{closing_animation, info: tooltip.clone()});
+            let tooltip = WindowCreateInfo::Tooltip{
+                closing_animation: previous_size.is_none(),
+                previous_size,
+                info: tooltip.clone()
+            };
+
+            game_state.add_window(tooltip);
         });
 
         self.user_receiver.borrow_mut().push(UserEvent::UiAction(create));
