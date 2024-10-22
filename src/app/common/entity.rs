@@ -157,7 +157,7 @@ macro_rules! remove_component
 #[macro_export]
 macro_rules! iterate_components_with
 {
-    ($this:expr, $component:ident, $iter_func:ident, $handler:expr) => 
+    ($this:expr, $component:ident, $iter_func:ident, $handler:expr) =>
     {
         $this.$component.iter().$iter_func(|(_, &$crate::common::entity::ComponentWrapper{
             entity,
@@ -172,7 +172,7 @@ macro_rules! iterate_components_with
 #[macro_export]
 macro_rules! for_each_component
 {
-    ($this:expr, $component:ident, $handler:expr) => 
+    ($this:expr, $component:ident, $handler:expr) =>
     {
         $crate::iterate_components_with!($this, $component, for_each, $handler);
     }
@@ -677,22 +677,17 @@ macro_rules! entity_info_common
                 self.lazy_transform.as_mut().unwrap().connection = Connection::Ignore;
             }
 
-            if self.anatomy.is_some() && self.watchers.is_none()
-            {
-                self.watchers = Some(Default::default());
-            }
-
-            if self.ui_element.is_some() && self.lazy_mix.is_none()
-            {
-                self.lazy_mix = Some(LazyMix::ui());
-            }
-
             if let Some(lazy_mix) = self.lazy_mix.as_ref()
             {
                 if let Some(render) = self.render.as_mut()
                 {
                     render.mix = Some(lazy_mix.target);
                 }
+            }
+
+            if self.anatomy.is_some() && self.watchers.is_none()
+            {
+                self.watchers = Some(Default::default());
             }
 
             if self.player.is_none() && self.inventory.is_some() && self.outlineable.is_none()
@@ -782,7 +777,7 @@ macro_rules! common_trait_impl
         fn set_z_level(&self, entity: Entity, z_level: ZLevel)
         {
             self.render_mut(entity).map(|mut x| x.set_z_level(z_level));
-            
+
             *self.z_changed.borrow_mut() = true;
         }
 
@@ -1337,7 +1332,7 @@ macro_rules! define_entities_both
                                 {
                                     self.$name.push(component)
                                 };
-                                
+
                                 *slot = Some(id);
 
                                 drop(components);

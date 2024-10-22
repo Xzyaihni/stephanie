@@ -2,14 +2,14 @@ use std::f32;
 
 use serde::{Serialize, Deserialize};
 
-use strum::{EnumCount, FromRepr};
+use strum::{EnumCount, FromRepr, IntoStaticStr};
 
 use nalgebra::Vector3;
 
 use crate::common::short_rotation;
 
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, IntoStaticStr, Serialize, Deserialize)]
 pub enum Side1d
 {
     Left,

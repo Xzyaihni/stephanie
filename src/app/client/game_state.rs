@@ -122,6 +122,7 @@ pub struct ClientEntitiesContainer
     pub entities: ClientEntities,
     pub camera_entity: Entity,
     pub follow_entity: Entity,
+    pub ui_mouse_entity: Entity,
     visible_renders: Vec<Entity>,
     ui_renders: Vec<(Entity, bool)>,
     player_entity: Entity,
@@ -149,10 +150,16 @@ impl ClientEntitiesContainer
             ..Default::default()
         });
 
+        let ui_mouse_entity = entities.push_eager(true, EntityInfo{
+            transform: Some(Transform::default()),
+            ..Default::default()
+        });
+
         Self{
             entities,
             camera_entity,
             follow_entity,
+            ui_mouse_entity,
             player_entity,
             visible_renders: Vec::new(),
             ui_renders: Vec::new(),
@@ -160,7 +167,7 @@ impl ClientEntitiesContainer
             animation: 0.0
         }
     }
-    
+
     pub fn handle_message(
         &mut self,
         create_info: &mut RenderCreateInfo,
@@ -215,6 +222,12 @@ impl ClientEntitiesContainer
         }
 
         self.animation = (self.animation + dt) % (f32::consts::PI * 2.0);
+    }
+
+    pub fn update_mouse(&self, ui_mouse_position: Vector2<f32>)
+    {
+        let pos = Vector3::new(ui_mouse_position.x, ui_mouse_position.y, 0.0);
+        self.entities.transform_mut(self.ui_mouse_entity).unwrap().position = pos;
     }
 
     pub fn update_resize(&mut self, size: Vector2<f32>)
@@ -800,6 +813,7 @@ impl GameState
 
         let ui = Ui::new(
             info.data_infos.items_info.clone(),
+            entities.ui_mouse_entity,
             anatomy_locations,
             user_receiver.clone()
         );
@@ -1180,6 +1194,8 @@ impl GameState
     {
         self.check_resize_camera(dt);
 
+        self.entities.update_mouse(self.ui_mouse_position());
+
         self.world.update(dt);
 
         self.ui.borrow_mut().update(
@@ -1213,8 +1229,6 @@ impl GameState
             UiEvent::MouseMove(self.ui_mouse_position())
         );
 
-        self.ui.borrow_mut().update_after(&mut self.entities.entity_creator(), &self.ui_camera);
-
         let mut create_info = RenderCreateInfo{
             location: UniformLocation{set: 0, binding: 0},
             shader: self.shaders.default,
@@ -1246,7 +1260,7 @@ impl GameState
         if self.rare_timer <= 0.0
         {
             self.rare();
-            
+
             self.rare_timer = env::var("STEPHANIE_RARE_TIMER")
                 .map(|x| x.parse().unwrap())
                 .unwrap_or(5.0);

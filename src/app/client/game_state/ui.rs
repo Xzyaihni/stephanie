@@ -1,4 +1,5 @@
 use std::{
+    iter,
     rc::{Weak, Rc},
     cell::RefCell,
     sync::Arc,
@@ -6,8 +7,6 @@ use std::{
 };
 
 use nalgebra::{Vector2, Vector3};
-
-use strum::EnumIs;
 
 use yanyaengine::{Transform, camera::Camera};
 
@@ -46,6 +45,8 @@ const MAX_WINDOWS: usize = 5;
 const WINDOW_HEIGHT: f32 = 0.1;
 const WINDOW_WIDTH: f32 = WINDOW_HEIGHT * 1.5;
 const WINDOW_SIZE: Vector3<f32> = Vector3::new(WINDOW_WIDTH, WINDOW_HEIGHT, WINDOW_HEIGHT);
+
+const PANEL_SIZE: f32 = 0.15;
 
 const NOTIFICATION_HEIGHT: f32 = 0.0375;
 const ANIMATION_SCALE: Vector3<f32> = Vector3::new(4.0, 0.0, 1.0);
@@ -483,14 +484,6 @@ impl UiList
         });
     }
 
-    pub fn update_after(
-        &mut self,
-        _creator: &EntityCreator,
-        _camera: &Camera
-    )
-    {
-    }
-
     pub fn update(
         &mut self,
         creator: &EntityCreator,
@@ -545,8 +538,7 @@ struct UiWindow
     body: Entity,
     name: Entity,
     panel: Entity,
-    button_x: f32,
-    resized_update: bool
+    button_x: f32
 }
 
 impl UiWindow
@@ -599,7 +591,7 @@ impl UiWindow
             ..Default::default()
         }));
 
-        let panel_size = 0.15 * (WINDOW_SIZE.y / size.y);
+        let panel_size = PANEL_SIZE * (WINDOW_SIZE.y / size.y);
         let scale = Vector3::new(1.0, panel_size, 1.0);
 
         let top_panel = info.creator.push(
@@ -758,8 +750,7 @@ impl UiWindow
             body,
             name,
             panel,
-            button_x,
-            resized_update: true
+            button_x
         }
     }
 
@@ -777,35 +768,6 @@ impl UiWindow
         }.into();
 
         creator.entities.set_deferred_render_object(self.name, object);
-    }
-
-    pub fn update_after(
-        &mut self,
-        creator: &EntityCreator,
-        camera: &Camera
-    )
-    {
-        if self.resized_update
-        {
-            self.resized_update = false;
-
-            update_resize_ui(creator.entities, camera.size(), self.body);
-
-            let f = |entity|
-            {
-                if let Some(mut ui_element) = creator.entities.ui_element_mut(entity)
-                {
-                    ui_element.update_aspect(
-                        creator.entities,
-                        entity,
-                        camera.aspect()
-                    );
-                }
-            };
-
-            f(self.body);
-            creator.entities.for_every_child(self.body, f);
-        }
     }
 }
 
@@ -949,17 +911,6 @@ impl UiInventory
         self.update_inventory(creator, entity);
     }
 
-    pub fn update_after(
-        &mut self,
-        creator: &EntityCreator,
-        camera: &Camera
-    )
-    {
-        self.list.update_after(creator, camera);
-
-        self.window.update_after(creator, camera);
-    }
-
     pub fn update(
         &mut self,
         creator: &EntityCreator,
@@ -1020,11 +971,10 @@ impl UiAnatomy
                     lazy_mix: Some(lazy_mix),
                     ui_element: Some(UiElement{
                         kind: UiElementType::Button(ButtonEvents{
-                            on_hover: Box::new(move |entities, position|
+                            on_hover: Box::new(move |entities, _position|
                             {
                                 ui.borrow_mut().update_tooltip(
                                     entities,
-                                    position,
                                     TooltipCreateInfo::Anatomy{entity, id}
                                 );
                             }),
@@ -1052,15 +1002,6 @@ impl UiAnatomy
     pub fn body(&self) -> Entity
     {
         self.window.body
-    }
-
-    pub fn update_after(
-        &mut self,
-        creator: &EntityCreator,
-        camera: &Camera
-    )
-    {
-        self.window.update_after(creator, camera);
     }
 }
 
@@ -1121,15 +1062,6 @@ impl UiStats
     pub fn body(&self) -> Entity
     {
         self.window.body
-    }
-
-    pub fn update_after(
-        &mut self,
-        creator: &EntityCreator,
-        camera: &Camera
-    )
-    {
-        self.window.update_after(creator, camera);
     }
 }
 
@@ -1200,15 +1132,6 @@ impl UiItemInfo
     pub fn body(&self) -> Entity
     {
         self.window.body
-    }
-
-    pub fn update_after(
-        &mut self,
-        creator: &EntityCreator,
-        camera: &Camera
-    )
-    {
-        self.window.update_after(creator, camera);
     }
 }
 
@@ -1291,13 +1214,123 @@ fn create_notification_body(
     entity
 }
 
+#[derive(Debug, Clone)]
+struct UiBar
+{
+    bar: Entity,
+    smoothing: bool
+}
+
+impl UiBar
+{
+    pub fn with_body(
+        creator: &mut EntityCreator,
+        body: Entity,
+        name: String,
+        smoothing: bool
+    ) -> Self
+    {
+        let bar_z_level = creator.entities.z_level(body).unwrap_or(ZLevel::UiPopupHigh);
+
+        let bar = creator.push(
+            EntityInfo{
+                lazy_transform: Some(LazyTransformInfo{
+                    scaling: if smoothing
+                    {
+                        Scaling::EaseOut{decay: 16.0}
+                    } else
+                    {
+                        Scaling::Instant
+                    },
+                    ..Default::default()
+                }.into()),
+                parent: Some(Parent::new(body, true)),
+                ..Default::default()
+            },
+            RenderInfo{
+                object: Some(RenderObjectKind::Texture{name: "ui/background.png".to_owned()}.into()),
+                z_level: bar_z_level,
+                ..Default::default()
+            }
+        );
+
+        creator.push(
+            EntityInfo{
+                lazy_transform: Some(LazyTransformInfo::default().into()),
+                parent: Some(Parent::new(body, true)),
+                ..Default::default()
+            },
+            RenderInfo{
+                object: Some(RenderObjectKind::Text{
+                    text: name,
+                    font_size: 60,
+                    font: FontStyle::Bold,
+                    align: TextAlign::centered()
+                }.into()),
+                z_level: bar_z_level.next(),
+                ..Default::default()
+            }
+        );
+
+        Self{
+            bar,
+            smoothing
+        }
+    }
+
+    pub fn set_amount(
+        &self,
+        entities: &ClientEntities,
+        amount: f32
+    )
+    {
+        let amount = amount.clamp(0.0, 1.0);
+
+        some_or_return!(entities.target(self.bar)).scale.x = amount;
+
+        self.update_scale(entities, amount);
+    }
+
+    fn update_scale(&self, entities: &ClientEntities, current: f32)
+    {
+        let mut target = some_or_return!(entities.target(self.bar));
+
+        target.position.x = -0.5 + current / 2.0;
+    }
+
+    pub fn update(&self, entities: &ClientEntities)
+    {
+        if self.smoothing
+        {
+
+            let amount = {
+                let global_scale = &mut some_or_return!(entities.transform_mut(self.bar)).scale.x;
+
+                let parent_transform = some_or_return!(entities.parent_transform(self.bar));
+
+                if *global_scale > parent_transform.scale.x
+                {
+                    *global_scale = parent_transform.scale.x;
+                }
+
+                let lazy = some_or_return!(entities.lazy_transform(self.bar));
+                let global_scale_target = lazy.target_global(Some(&parent_transform)).scale.x;
+
+                *global_scale * lazy.target_local.scale.x / global_scale_target
+            };
+
+            self.update_scale(entities, amount);
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct NotificationId(usize);
 
 pub struct BarNotification
 {
     body: Entity,
-    bar: Entity
+    bar: UiBar
 }
 
 impl BarNotification
@@ -1311,36 +1344,7 @@ impl BarNotification
     {
         let body = create_notification_body(info, owner);
 
-        let bar = info.creator.push(
-            EntityInfo{
-                lazy_transform: Some(LazyTransformInfo::default().into()),
-                parent: Some(Parent::new(body, true)),
-                ..Default::default()
-            },
-            RenderInfo{
-                object: Some(RenderObjectKind::Texture{name: "ui/background.png".to_owned()}.into()),
-                z_level: ZLevel::UiMiddle,
-                ..Default::default()
-            }
-        );
-
-        info.creator.push(
-            EntityInfo{
-                lazy_transform: Some(LazyTransformInfo::default().into()),
-                parent: Some(Parent::new(body, true)),
-                ..Default::default()
-            },
-            RenderInfo{
-                object: Some(RenderObjectKind::Text{
-                    text: name,
-                    font_size: 30,
-                    font: FontStyle::Bold,
-                    align: TextAlign::centered()
-                }.into()),
-                z_level: ZLevel::UiHigh,
-                ..Default::default()
-            }
-        );
+        let bar = UiBar::with_body(info.creator, body, name, false);
 
         let mut this = Self{
             body,
@@ -1358,12 +1362,12 @@ impl BarNotification
         amount: f32
     )
     {
-        let amount = amount.clamp(0.0, 1.0);
+        self.bar.set_amount(entities, amount);
+    }
 
-        let mut target = some_or_return!(entities.target(self.bar));
-
-        target.position.x = -0.5 + amount / 2.0;
-        target.scale.x = amount;
+    pub fn update(&self, entities: &ClientEntities)
+    {
+        self.bar.update(entities);
     }
 }
 
@@ -1485,6 +1489,14 @@ impl NotificationKind
             Self::Text(x) => x.body
         }
     }
+
+    pub fn update(&self, entities: &ClientEntities)
+    {
+        if let Self::Bar(x) = self
+        {
+            x.update(entities);
+        }
+    }
 }
 
 pub struct Notification
@@ -1495,28 +1507,69 @@ pub struct Notification
 
 pub struct AnatomyTooltip
 {
-    body: Entity
+    current: HumanPartId,
+    body: Entity,
+    bars: Vec<UiBar>
 }
-
 
 impl AnatomyTooltip
 {
     fn new(
         info: &mut CommonWindowInfo,
         size: Vector2<f32>,
-        position: Vector2<f32>,
+        mouse: Entity,
         entity: Entity,
         id: HumanPartId
     ) -> Self
     {
+        let padding = 0.2;
+
+        let fit = 3;
+
+        let bars = if let HumanPartId::Eye(_) = id
+        {
+            vec!["eye"]
+        } else
+        {
+            vec!["skin", "muscle", "bone"]
+        };
+
+        /*
+            w is WINDOW_SIZE.y
+            a is PANEL_SIZE
+            p is size.y
+            b is bar_size in world size
+            f is fit
+            d is padding
+
+            p = bf + bd(f - 1) + wa
+        */
+
+        let panel_size = WINDOW_SIZE.y * PANEL_SIZE; // wa
+        let diff = size.y - panel_size; // p - wa
+
+        let bottom = |f: f32| f * (1.0 + padding) - padding;
+
+        let bar_size = diff / bottom(fit as f32);
+
+        let new_height = bar_size * bottom(bars.len() as f32) + panel_size;
+
+        let bar_size = bar_size / new_height;
+
+        let size = Vector2::new(size.x, new_height);
+
         let size3 = Vector3::new(size.x, size.y, 1.0);
         let body = info.creator.push(
             EntityInfo{
+                follow_position: Some(FollowPosition{
+                    parent: mouse,
+                    connection: Connection::Rigid,
+                    offset: Tooltip::position_offset(size),
+                }),
                 lazy_transform: Some(LazyTransformInfo{
                     scaling: Scaling::EaseOut{decay: 15.0},
                     transform: Transform{
                         scale: size3,
-                        position: Tooltip::calculate_position(size.xy(), position),
                         ..Default::default()
                     },
                     ..Default::default()
@@ -1524,7 +1577,8 @@ impl AnatomyTooltip
                 ..Default::default()
             },
             RenderInfo{
-                object: Some(RenderObjectKind::Texture{name: "ui/background.png".to_owned()}.into()),
+                object: Some(RenderObjectKind::Texture{name: "ui/solid.png".to_owned()}.into()),
+                mix: Some(MixColor{color: [0.2, 0.2, 0.3], amount: 1.0, keep_transparency: false}),
                 z_level: ZLevel::UiPopupLow,
                 ..Default::default()
             }
@@ -1535,18 +1589,172 @@ impl AnatomyTooltip
             ..Default::default()
         }));
 
-        Self{
-            body
-        }
+        let scale = Vector3::new(1.0, PANEL_SIZE * (WINDOW_SIZE.y / size.y), 1.0);
+        let top_panel = info.creator.push(
+            EntityInfo{
+                lazy_transform: Some(LazyTransformInfo{
+                    transform: Transform{
+                        scale,
+                        position: Ui::ui_position(scale, Vector3::zeros()),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                }.into()),
+                parent: Some(Parent::new(body, true)),
+                ..Default::default()
+            },
+            RenderInfo{
+                object: Some(RenderObjectKind::Texture{name: "ui/background.png".to_owned()}.into()),
+                z_level: ZLevel::UiPopupMiddle,
+                ..Default::default()
+            }
+        );
+
+        let scale = Vector3::new(1.0, 1.0 - scale.y, 1.0);
+        let bars_panel = info.creator.push(
+            EntityInfo{
+                lazy_transform: Some(LazyTransformInfo{
+                    transform: Transform{
+                        scale,
+                        position: Ui::ui_position(scale, Vector3::y()),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                }.into()),
+                parent: Some(Parent::new(body, true)),
+                ..Default::default()
+            },
+            None
+        );
+
+        let bar_size = bar_size / scale.y;
+
+        info.creator.push(
+            EntityInfo{
+                lazy_transform: Some(LazyTransformInfo::default().into()),
+                parent: Some(Parent::new(top_panel, true)),
+                ..Default::default()
+            },
+            RenderInfo{
+                object: Some(RenderObjectKind::Text{
+                    text: Self::body_part_name(id),
+                    font_size: 80,
+                    font: FontStyle::Bold,
+                    align: TextAlign::centered()
+                }.into()),
+                z_level: ZLevel::UiPopupHigh,
+                ..Default::default()
+            }
+        );
+
+        let bars = bars.iter().enumerate().map(|(index, name)|
+        {
+            let offset = (bar_size + padding * bar_size) * index as f32;
+
+            let scale = Vector3::new(1.0, bar_size, 1.0);
+            let body = info.creator.push(
+                EntityInfo{
+                    lazy_transform: Some(LazyTransformInfo{
+                        transform: Transform{
+                            scale,
+                            position: Vector3::new(0.0, -0.5 + (bar_size / 2.0) + offset, 0.0),
+                            ..Default::default()
+                        },
+                        ..Default::default()
+                    }.into()),
+                    parent: Some(Parent::new(bars_panel, true)),
+                    ..Default::default()
+                },
+                RenderInfo{
+                    object: Some(RenderObjectKind::Texture{name: "ui/lighter.png".to_owned()}.into()),
+                    z_level: ZLevel::UiPopupHigh,
+                    ..Default::default()
+                }
+            );
+
+            UiBar::with_body(info.creator, body, (*name).to_owned(), true)
+        }).rev().collect::<Vec<_>>();
+
+        let this = Self{
+            current: id,
+            body,
+            bars
+        };
+
+        this.update_tooltip(info.creator.entities, entity, id);
+
+        this
+    }
+
+    fn body_part_name(id: HumanPartId) -> String
+    {
+        let maybe_side: String = id.side().map(|x|
+        {
+            let s: &str = x.into();
+
+            format!("{} ", s.to_lowercase())
+        }).unwrap_or_default();
+
+        let s: &str = id.into();
+
+        let mut previous_uppercase = true;
+        let name: String = s.chars().flat_map(|c|
+        {
+            let is_uppercase = c.is_uppercase();
+            let c = c.to_lowercase();
+
+            if is_uppercase && !previous_uppercase
+            {
+                return iter::once(' ').chain(c).collect::<Vec<_>>();
+            }
+
+            previous_uppercase = is_uppercase;
+
+            c.collect::<Vec<_>>()
+        }).collect();
+
+        format!("{maybe_side}{name}")
     }
 
     pub fn update_tooltip(
-        &mut self,
+        &self,
         entities: &ClientEntities,
         entity: Entity,
         id: HumanPartId
     )
     {
+        let anatomy = entities.anatomy(entity);
+        let part = anatomy.as_ref().and_then(|x| x.get_human(id).unwrap());
+
+        let hp_of = |part: Option<Health>| -> f32
+        {
+            part.map(|x| x.fraction()).unwrap_or_default()
+        };
+
+        self.bars.iter().enumerate().for_each(|(index, bar)|
+        {
+            let part = match index
+            {
+                0 => part.map(|x| x.bone),
+                1 => part.and_then(|x| x.muscle),
+                2 => part.and_then(|x| x.skin),
+                _ => unreachable!()
+            };
+
+            let hp = hp_of(part);
+
+            bar.set_amount(entities, hp);
+        });
+    }
+
+    pub fn update(&self, entities: &ClientEntities)
+    {
+        self.bars.iter().for_each(|bar| bar.update(entities));
+    }
+
+    pub fn current(&self) -> HumanPartId
+    {
+        self.current
     }
 
     pub fn body(&self) -> Entity
@@ -1562,7 +1770,6 @@ pub enum TooltipKind
 
 pub struct Tooltip
 {
-    size: Vector2<f32>,
     lifetime: f32,
     kind: TooltipKind
 }
@@ -1571,7 +1778,7 @@ impl Tooltip
 {
     fn new(
         common_info: &mut CommonWindowInfo,
-        position: Vector2<f32>,
+        mouse: Entity,
         info: TooltipCreateInfo
     ) -> Self
     {
@@ -1581,12 +1788,11 @@ impl Tooltip
         {
             TooltipCreateInfo::Anatomy{entity, id} =>
             {
-                TooltipKind::Anatomy(AnatomyTooltip::new(common_info, size, position, entity, id))
+                TooltipKind::Anatomy(AnatomyTooltip::new(common_info, size, mouse, entity, id))
             }
         };
 
         Self{
-            size,
             lifetime: TOOLTIP_LIFETIME,
             kind
         }
@@ -1597,7 +1803,7 @@ impl Tooltip
         #[allow(unreachable_patterns)]
         match (&self.kind, tooltip)
         {
-            (TooltipKind::Anatomy(_), TooltipCreateInfo::Anatomy{..}) => true,
+            (TooltipKind::Anatomy(x), TooltipCreateInfo::Anatomy{id, ..}) => x.current() == *id,
             _ => false
         }
     }
@@ -1605,19 +1811,12 @@ impl Tooltip
     pub fn update_tooltip(
         &mut self,
         entities: &ClientEntities,
-        position: Vector2<f32>,
         tooltip: TooltipCreateInfo
     )
     {
         debug_assert!(self.matching_tooltip(&tooltip));
 
-        let body = self.body();
-
         self.lifetime = TOOLTIP_LIFETIME;
-        entities.target(body).unwrap().position = Self::calculate_position(
-            self.size,
-            position
-        );
 
         #[allow(unreachable_patterns)]
         match (&mut self.kind, tooltip)
@@ -1630,12 +1829,10 @@ impl Tooltip
         }
     }
 
-    fn calculate_position(size: Vector2<f32>, position: Vector2<f32>) -> Vector3<f32>
+    fn position_offset(size: Vector2<f32>) -> Vector3<f32>
     {
         let half_size = size / 2.0;
-        let position = position + Vector2::new(half_size.x, -half_size.y);
-
-        Vector3::new(position.x, position.y, 0.0)
+        Vector3::new(half_size.x, -half_size.y, 0.0)
     }
 
     pub fn update_lifetime(&mut self, dt: f32) -> bool
@@ -1651,6 +1848,14 @@ impl Tooltip
         match &self.kind
         {
             TooltipKind::Anatomy(x) => x.body()
+        }
+    }
+
+    pub fn update(&self, entities: &ClientEntities)
+    {
+        match &self.kind
+        {
+            TooltipKind::Anatomy(x) => x.update(entities)
         }
     }
 }
@@ -1798,12 +2003,11 @@ pub enum NotificationCreateInfo
     Text{text: String}
 }
 
-#[derive(EnumIs)]
 pub enum WindowCreateInfo
 {
     ActionsList{popup_position: Vector2<f32>, responses: Vec<UserEvent>},
     Notification{owner: Entity, lifetime: f32, info: NotificationCreateInfo},
-    Tooltip{position: Vector2<f32>, info: TooltipCreateInfo},
+    Tooltip{closing_animation: bool, info: TooltipCreateInfo},
     Anatomy{spawn_position: Vector2<f32>, entity: Entity},
     Stats{spawn_position: Vector2<f32>, entity: Entity},
     ItemInfo{spawn_position: Vector2<f32>, item: Item},
@@ -1853,24 +2057,6 @@ impl UiSpecializedWindow
         }
     }
 
-    fn update_after(
-        &mut self,
-        creator: &EntityCreator,
-        camera: &Camera
-    )
-    {
-        match self
-        {
-            Self::ActionsList(_) => (),
-            Self::Notification(_) => (),
-            Self::Tooltip(_) => (),
-            Self::Anatomy(x) => x.update_after(creator, camera),
-            Self::Stats(x) => x.update_after(creator, camera),
-            Self::ItemInfo(x) => x.update_after(creator, camera),
-            Self::Inventory(x) => x.update_after(creator, camera)
-        }
-    }
-
     fn update(
         &mut self,
         creator: &mut EntityCreator,
@@ -1882,7 +2068,7 @@ impl UiSpecializedWindow
         {
             Self::ActionsList(_) => (),
             Self::Notification(_) => (),
-            Self::Tooltip(_) => (),
+            Self::Tooltip(x) => x.update(creator.entities),
             Self::Anatomy(_) => (),
             Self::Stats(_) => (),
             Self::ItemInfo(_) => (),
@@ -1894,6 +2080,7 @@ impl UiSpecializedWindow
 pub struct Ui
 {
     items_info: Arc<ItemsInfo>,
+    mouse: Entity,
     anatomy_locations: UiAnatomyLocations,
     user_receiver: Rc<RefCell<UiReceiver>>,
     notifications: Vec<UiWindowId>,
@@ -1907,12 +2094,14 @@ impl Ui
 {
     pub fn new(
         items_info: Arc<ItemsInfo>,
+        mouse: Entity,
         anatomy_locations: UiAnatomyLocations,
         user_receiver: Rc<RefCell<UiReceiver>>
     ) -> Self
     {
         Self{
             items_info,
+            mouse,
             anatomy_locations,
             user_receiver,
             notifications: Vec::new(),
@@ -1931,11 +2120,45 @@ impl Ui
     {
         let this_cloned = this.clone();
 
-        let is_notification = window.is_notification();
-        let is_tooltip = window.is_tooltip();
-        let is_actions_list = window.is_actions_list();
+        let is_normal = match window
+        {
+            WindowCreateInfo::Notification{..}
+            | WindowCreateInfo::Tooltip{..}
+            | WindowCreateInfo::ActionsList{..} => false,
+            _ => true
+        };
 
-        let is_normal = !is_notification && !is_tooltip && !is_actions_list;
+        let post_action: Box<dyn Fn(&mut Self, &mut EntityCreator, _)> = match window
+        {
+            WindowCreateInfo::Notification{..} => Box::new(|this, _creator, id|
+            {
+                this.notifications.push(id)
+            }),
+            WindowCreateInfo::ActionsList{..} => Box::new(|this, creator, id|
+            {
+                this.close_popup(creator.entities);
+
+                this.active_popup = Some(id);
+            }),
+            WindowCreateInfo::Tooltip{closing_animation, ..} => Box::new(move |this, creator, id|
+            {
+                if let Some(previous) = this.active_tooltip
+                {
+                    let remover = if closing_animation
+                    {
+                        Self::remove_window_id
+                    } else
+                    {
+                        Self::remove_window_id_instant
+                    };
+
+                    let _ = remover(this, creator.entities, previous);
+                }
+
+                this.active_tooltip = Some(id);
+            }),
+            _ => Box::new(|_, _, _| {})
+        };
 
         let id = {
             let mut this = this.borrow_mut();
@@ -1966,24 +2189,7 @@ impl Ui
         this.borrow_mut().windows.push(window);
 
         let mut this = this.borrow_mut();
-
-        if is_notification
-        {
-            this.notifications.push(id);
-        } else if is_actions_list
-        {
-            this.close_popup(creator.entities);
-
-            this.active_popup = Some(id);
-        } else if is_tooltip
-        { 
-            if let Some(previous) = this.active_tooltip
-            {
-                let _ = this.remove_window_id(creator.entities, previous);
-            }
-
-            this.active_tooltip = Some(id);
-        }
+        post_action(&mut this, creator, id);
 
         weak
     }
@@ -2006,10 +2212,28 @@ impl Ui
         }
     }
 
+    fn remove_window_id_instant(
+        &mut self,
+        entities: &ClientEntities,
+        id: UiWindowId
+    ) -> Result<(), WindowError>
+    {
+        self.remove_window_id_with(id, |body| entities.remove_deferred(body))
+    }
+
     fn remove_window_id(
         &mut self,
         entities: &ClientEntities,
         id: UiWindowId
+    ) -> Result<(), WindowError>
+    {
+        self.remove_window_id_with(id, |body| close_ui(entities, body))
+    }
+
+    fn remove_window_id_with(
+        &mut self,
+        id: UiWindowId,
+        remover: impl FnOnce(Entity)
     ) -> Result<(), WindowError>
     {
         if let Some(window) = self.windows.remove(id.0)
@@ -2026,7 +2250,7 @@ impl Ui
                 self.windows_order.remove(index);
             }
 
-            close_ui(entities, body);
+            remover(body);
 
             Ok(())
         } else
@@ -2044,6 +2268,7 @@ impl Ui
     {
         let user_receiver = this.borrow().user_receiver.clone();
 
+        let mouse = this.borrow().mouse;
         let mut window_info = CommonWindowInfo{
             creator,
             user_receiver,
@@ -2082,9 +2307,9 @@ impl Ui
 
                 UiSpecializedWindow::Notification(notification)
             },
-            WindowCreateInfo::Tooltip{position, info} =>
+            WindowCreateInfo::Tooltip{closing_animation: _, info} =>
             {
-                UiSpecializedWindow::Tooltip(Tooltip::new(&mut window_info, position, info))
+                UiSpecializedWindow::Tooltip(Tooltip::new(&mut window_info, mouse, info))
             },
             WindowCreateInfo::Anatomy{spawn_position, entity} =>
             {
@@ -2139,42 +2364,34 @@ impl Ui
     pub fn update_tooltip(
         &mut self,
         entities: &ClientEntities,
-        position: Vector2<f32>,
         tooltip: TooltipCreateInfo
     )
     {
-        if let Some(window_id) = self.active_tooltip.as_mut()
+        let closing_animation = if let Some(window_id) = self.active_tooltip.as_mut()
         {
             let mut tooltip_window = self.windows[window_id.0].borrow_mut();
             let tooltip_window = tooltip_window.as_tooltip_mut().unwrap();
 
             if tooltip_window.matching_tooltip(&tooltip)
             {
-                tooltip_window.update_tooltip(entities, position, tooltip);
+                tooltip_window.update_tooltip(entities, tooltip);
 
                 return;
+            } else
+            {
+                false
             }
-        }
+        } else
+        {
+            true
+        };
 
         let create = Rc::new(move |game_state: &mut GameState|
         {
-            let position = game_state.ui_mouse_position();
-            game_state.add_window(WindowCreateInfo::Tooltip{position, info: tooltip.clone()});
+            game_state.add_window(WindowCreateInfo::Tooltip{closing_animation, info: tooltip.clone()});
         });
 
         self.user_receiver.borrow_mut().push(UserEvent::UiAction(create));
-    }
-
-    pub fn update_after(
-        &mut self,
-        creator: &EntityCreator,
-        camera: &Camera
-    )
-    {
-        self.windows.iter_mut().for_each(|(_, window)|
-        {
-            window.borrow_mut().update_after(creator, camera);
-        });
     }
 
     pub fn update_resize(
@@ -2206,7 +2423,7 @@ impl Ui
             let mut window = self.windows[id.0].borrow_mut();
 
             let notification = window.as_notification_mut().unwrap();
-            
+
             notification.kind.set_position(creator.entities, position);
 
             notification.lifetime -= dt;

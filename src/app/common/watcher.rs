@@ -134,7 +134,6 @@ pub struct ExplodeInfo
     pub prototype: EntityInfo
 }
 
-// i can just add a closure variant that doesnt get serialized but meh
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum WatcherAction
 {

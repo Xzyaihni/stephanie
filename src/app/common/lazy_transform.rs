@@ -443,7 +443,7 @@ impl FollowRotation
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FollowPosition
 {
-    parent: Entity,
+    pub parent: Entity,
     pub connection: Connection,
     pub offset: Vector3<f32>
 }

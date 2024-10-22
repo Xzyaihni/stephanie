@@ -2,6 +2,7 @@ use crate::{
     client::UiElement,
     common::{
         render_info::*,
+        LazyMix,
         Entity,
         ClientEntityInfo,
         entity::ClientEntities
@@ -54,6 +55,13 @@ impl EntityCreator<'_>
         if info.watchers.is_none()
         {
             info.watchers = Some(Default::default());
+        }
+
+        if info.ui_element.is_some()
+            && info.lazy_mix.is_none()
+            && render.as_ref().map(|x| x.mix.is_none()).unwrap_or(false)
+        {
+            info.lazy_mix = Some(LazyMix::ui());
         }
 
         let entity = self.entities.push_client_eager(info);

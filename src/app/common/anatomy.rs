@@ -7,7 +7,7 @@ use std::{
 
 use serde::{Serialize, Deserialize};
 
-use strum::{EnumCount, FromRepr};
+use strum::{EnumCount, FromRepr, IntoStaticStr};
 
 use nalgebra::Vector3;
 
@@ -57,6 +57,18 @@ impl Anatomy
     simple_getter!(stamina);
     simple_getter!(max_stamina);
     simple_getter!(vision);
+
+    pub fn get_human(&self, id: HumanPartId) -> Option<Option<&HumanPart>>
+    {
+        #[allow(irrefutable_let_patterns)]
+        if let Self::Human(x) = self
+        {
+            Some(x.body.get(id))
+        } else
+        {
+            None
+        }
+    }
 
     pub fn override_crawling(&mut self, state: bool)
     {
@@ -111,7 +123,7 @@ trait DamageReceiver
     ) -> Option<DamageType>;
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct SimpleHealth
 {
     max: f32,
@@ -162,7 +174,7 @@ impl SimpleHealth
     }
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Copy, Serialize, Deserialize)]
 pub struct Health
 {
     max_block: f32,
@@ -287,9 +299,9 @@ impl From<HumanAnatomyInfo> for BodyPartInfo
 pub struct BodyPart<Data>
 {
     name: DebugName,
-    bone: Health,
-    skin: Option<Health>,
-    muscle: Option<Health>,
+    pub bone: Health,
+    pub skin: Option<Health>,
+    pub muscle: Option<Health>,
     size: f64,
     contents: Vec<Data>
 }
@@ -738,7 +750,7 @@ impl DamageReceiver for HumanOrgan
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, IntoStaticStr, Serialize, Deserialize)]
 pub enum HumanPartId
 {
     Head,
@@ -756,6 +768,21 @@ pub enum HumanPartId
 
 impl HumanPartId
 {
+    pub fn side(&self) -> Option<Side1d>
+    {
+        match self
+        {
+            Self::Eye(x)
+            | Self::UpperLeg(x)
+            | Self::LowerLeg(x)
+            | Self::UpperArm(x)
+            | Self::LowerArm(x)
+            | Self::Hand(x)
+            | Self::Foot(x) => Some(*x),
+            _ => None
+        }
+    }
+
     pub fn iter() -> impl Iterator<Item=Self>
     {
         [
@@ -1082,7 +1109,7 @@ impl HumanAnatomy
         let spine = new_part(DebugName::new("spine"), 3400.0, 0.25);
 
         let head = new_part_with_contents(
-            DebugName::new("head"), 
+            DebugName::new("head"),
             5000.0,
             0.39,
             vec![HumanOrgan::Brain(Brain::default())]

@@ -3,7 +3,7 @@ use std::{
     sync::Arc
 };
 
-use strum::AsRefStr;
+use strum::{FromRepr, AsRefStr};
 
 use parking_lot::RwLock;
 
@@ -271,7 +271,7 @@ impl Scissor
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, FromRepr, Serialize, Deserialize)]
 pub enum ZLevel
 {
     BelowFeet = 0,
@@ -294,7 +294,17 @@ pub enum ZLevel
     UiAnatomyEye,
     UiPopupLow,
     UiPopupMiddle,
-    UiPopupHigh
+    UiPopupHigh,
+    UiPopupHigher,
+    UiPopupHighest
+}
+
+impl ZLevel
+{
+    pub fn next(self) -> Self
+    {
+        Self::from_repr(self as usize + 1).unwrap()
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
