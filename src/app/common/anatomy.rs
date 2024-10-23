@@ -1,8 +1,9 @@
 use std::{
+    iter,
     convert,
     rc::Rc,
     fmt::{self, Debug, Display},
-    ops::{Index, IndexMut, ControlFlow}
+    ops::{Index, IndexMut, ControlFlow, Deref, DerefMut}
 };
 
 use serde::{Serialize, Deserialize};
@@ -100,6 +101,14 @@ impl Anatomy
             Self::Human(x) => x.set_speed(speed)
         }
     }
+
+    pub fn for_broken_parts(&mut self, f: impl FnMut(BrokenPart))
+    {
+        match self
+        {
+            Self::Human(x) => x.for_broken_parts(f)
+        }
+    }
 }
 
 impl Damageable for Anatomy
@@ -121,6 +130,50 @@ trait DamageReceiver
         side: Side2d,
         damage: DamageType
     ) -> Option<DamageType>;
+}
+
+pub enum BrokenKind
+{
+    Bone,
+    Muscle,
+    Skin
+}
+
+pub struct BrokenPart
+{
+    id: HumanPartId,
+    kind: BrokenKind
+}
+
+impl Display for BrokenPart
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
+    {
+        let s = match self.kind
+        {
+            BrokenKind::Bone =>
+            {
+                let side = self.id.side_name();
+                if let HumanPartId::Eye(_) = self.id
+                {
+                    format!("{side}eye raptured")
+                } else
+                {
+                    format!("{side}{} fractured", self.id.bone_name())
+                }
+            },
+            BrokenKind::Muscle =>
+            {
+                format!("{} muscles torn", self.id)
+            },
+            BrokenKind::Skin =>
+            {
+                format!("{} skin ripped", self.id)
+            }
+        };
+
+        write!(f, "{s}")
+    }
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -295,13 +348,84 @@ impl From<HumanAnatomyInfo> for BodyPartInfo
     }
 }
 
+pub trait BreakTrackable
+{
+    fn is_broken(&self) -> bool;
+}
+
+impl BreakTrackable for Health
+{
+    fn is_broken(&self) -> bool
+    {
+        self.is_zero()
+    }
+}
+
+impl BreakTrackable for Option<Health>
+{
+    fn is_broken(&self) -> bool
+    {
+        self.map(|x| x.is_zero()).unwrap_or(true)
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BreakTracking<T>
+{
+    previous_broken: bool,
+    value: T
+}
+
+impl<T> Deref for BreakTracking<T>
+{
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target
+    {
+        &self.value
+    }
+}
+
+impl<T> DerefMut for BreakTracking<T>
+{
+    fn deref_mut(&mut self) -> &mut Self::Target
+    {
+        &mut self.value
+    }
+}
+
+impl<T: BreakTrackable> From<T> for BreakTracking<T>
+{
+    fn from(value: T) -> Self
+    {
+        Self{previous_broken: value.is_broken(), value}
+    }
+}
+
+impl<T: BreakTrackable> BreakTracking<T>
+{
+    fn update(&mut self)
+    {
+        self.previous_broken = self.value.is_broken();
+    }
+
+    fn consume_broken(&mut self) -> bool
+    {
+        let broken = !self.previous_broken && self.value.is_broken();
+
+        self.update();
+
+        broken
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BodyPart<Data>
 {
     name: DebugName,
-    pub bone: Health,
-    pub skin: Option<Health>,
-    pub muscle: Option<Health>,
+    pub bone: BreakTracking<Health>,
+    pub skin: BreakTracking<Option<Health>>,
+    pub muscle: BreakTracking<Option<Health>>,
     size: f64,
     contents: Vec<Data>
 }
@@ -335,12 +459,16 @@ impl<Data> BodyPart<Data>
         contents: Vec<Data>
     ) -> Self
     {
-        Self{name, bone, skin, muscle, size, contents}
+        Self{
+            name,
+            bone: bone.into(),
+            skin: skin.into(),
+            muscle: muscle.into(),
+            size,
+            contents
+        }
     }
-}
 
-impl<Data> BodyPart<Data>
-{
     fn damage(&mut self, damage: Damage) -> Option<Damage>
     where
         Data: DamageReceiver + Debug
@@ -395,6 +523,13 @@ impl<Data> BodyPart<Data>
         }
 
         None
+    }
+
+    fn consume_broken(&mut self) -> impl Iterator<Item=BrokenKind>
+    {
+        self.bone.consume_broken().then_some(BrokenKind::Bone).into_iter()
+            .chain(self.muscle.consume_broken().then_some(BrokenKind::Muscle))
+            .chain(self.skin.consume_broken().then_some(BrokenKind::Skin))
     }
 }
 
@@ -766,6 +901,34 @@ pub enum HumanPartId
     Foot(Side1d)
 }
 
+impl Display for HumanPartId
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
+    {
+        let maybe_side: String = self.side_name();
+
+        let s: &str = self.into();
+
+        let mut previous_uppercase = true;
+        let name: String = s.chars().flat_map(|c|
+        {
+            let is_uppercase = c.is_uppercase();
+            let c = c.to_lowercase();
+
+            if is_uppercase && !previous_uppercase
+            {
+                return iter::once(' ').chain(c).collect::<Vec<_>>();
+            }
+
+            previous_uppercase = is_uppercase;
+
+            c.collect::<Vec<_>>()
+        }).collect();
+
+        write!(f, "{maybe_side}{name}")
+    }
+}
+
 impl HumanPartId
 {
     pub fn side(&self) -> Option<Side1d>
@@ -805,6 +968,34 @@ impl HumanPartId
             Self::Foot(Side1d::Left),
             Self::Foot(Side1d::Right)
         ].into_iter()
+    }
+
+    pub fn side_name(&self) -> String
+    {
+        self.side().map(|x|
+        {
+            let s: &str = x.into();
+
+            format!("{} ", s.to_lowercase())
+        }).unwrap_or_default()
+    }
+
+    pub fn bone_name(&self) -> &str
+    {
+        match self
+        {
+            Self::Head => "skull",
+            Self::Torso => "ribcage",
+            Self::Pelvis => "pelvis",
+            Self::Spine => "spine",
+            Self::UpperLeg(_) => "femur",
+            Self::LowerLeg(_) => "tibia",
+            Self::UpperArm(_) => "humerus",
+            Self::LowerArm(_) => "radius",
+            Self::Hand(_) => "hand", // lmao i cant rly pick any of the bones
+            Self::Foot(_) => "foot", // same with this one
+            Self::Eye(_) => "eye" // the eye bone
+        }
     }
 }
 
@@ -1183,6 +1374,20 @@ impl HumanAnatomy
         self.base_speed = speed;
 
         self.update_cache();
+    }
+
+    pub fn for_broken_parts(&mut self, mut f: impl FnMut(BrokenPart))
+    {
+        HumanPartId::iter().filter_map(|id|
+        {
+            self.body.get_mut(id).map(move |x|
+            {
+                x.consume_broken().map(move |kind| BrokenPart{id, kind})
+            })
+        }).for_each(|part|
+        {
+            part.for_each(&mut f);
+        });
     }
 
     fn damage_random_part(

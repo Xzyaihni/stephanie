@@ -1,9 +1,8 @@
 use std::{
-    iter,
     rc::{Weak, Rc},
     cell::RefCell,
     sync::Arc,
-    collections::VecDeque
+    collections::{HashMap, VecDeque}
 };
 
 use nalgebra::{Vector2, Vector3};
@@ -1650,7 +1649,7 @@ impl AnatomyTooltip
             },
             RenderInfo{
                 object: Some(RenderObjectKind::Text{
-                    text: Self::body_part_name(id),
+                    text: id.to_string(),
                     font_size: 80,
                     font: FontStyle::Bold,
                     align: TextAlign::centered()
@@ -1699,36 +1698,6 @@ impl AnatomyTooltip
         this
     }
 
-    fn body_part_name(id: HumanPartId) -> String
-    {
-        let maybe_side: String = id.side().map(|x|
-        {
-            let s: &str = x.into();
-
-            format!("{} ", s.to_lowercase())
-        }).unwrap_or_default();
-
-        let s: &str = id.into();
-
-        let mut previous_uppercase = true;
-        let name: String = s.chars().flat_map(|c|
-        {
-            let is_uppercase = c.is_uppercase();
-            let c = c.to_lowercase();
-
-            if is_uppercase && !previous_uppercase
-            {
-                return iter::once(' ').chain(c).collect::<Vec<_>>();
-            }
-
-            previous_uppercase = is_uppercase;
-
-            c.collect::<Vec<_>>()
-        }).collect();
-
-        format!("{maybe_side}{name}")
-    }
-
     pub fn update_tooltip(
         &self,
         entities: &ClientEntities,
@@ -1748,9 +1717,9 @@ impl AnatomyTooltip
         {
             let part = match index
             {
-                0 => part.map(|x| x.bone),
-                1 => part.and_then(|x| x.muscle),
-                2 => part.and_then(|x| x.skin),
+                0 => part.map(|x| *x.bone),
+                1 => part.and_then(|x| *x.muscle),
+                2 => part.and_then(|x| *x.skin),
                 _ => unreachable!()
             };
 
@@ -2102,7 +2071,7 @@ pub struct Ui
     mouse: Entity,
     anatomy_locations: UiAnatomyLocations,
     user_receiver: Rc<RefCell<UiReceiver>>,
-    notifications: Vec<UiWindowId>,
+    notifications: HashMap<Entity, Vec<UiWindowId>>,
     active_popup: Option<UiWindowId>,
     active_tooltip: Option<UiWindowId>,
     windows_order: VecDeque<UiWindowId>,
@@ -2113,22 +2082,46 @@ impl Ui
 {
     pub fn new(
         items_info: Arc<ItemsInfo>,
+        entities: &mut ClientEntities,
         mouse: Entity,
         anatomy_locations: UiAnatomyLocations,
         user_receiver: Rc<RefCell<UiReceiver>>
-    ) -> Self
+    ) -> Rc<RefCell<Self>>
     {
-        Self{
+        let this = Self{
             items_info,
             mouse,
             anatomy_locations,
             user_receiver,
-            notifications: Vec::new(),
+            notifications: HashMap::new(),
             active_popup: None,
             active_tooltip: None,
             windows_order: VecDeque::new(),
             windows: ObjectsStore::new()
-        }
+        };
+
+        let this = Rc::new(RefCell::new(this));
+
+        let ui = this.clone();
+        entities.on_anatomy(Box::new(move |entities, entity|
+        {
+            let mut broken = Vec::new();
+            some_or_return!(entities.anatomy_mut(entity)).for_broken_parts(|part|
+            {
+                broken.push(part);
+            });
+
+            broken.into_iter().for_each(|part|
+            {
+                let info = NotificationCreateInfo::Text{text: part.to_string()};
+                let window = WindowCreateInfo::Notification{owner: entity, lifetime: 1.0, info};
+
+                let mut creator = EntityCreator{entities};
+                Ui::add_window(ui.clone(), &mut creator, window);
+            });
+        }));
+
+        this
     }
 
     pub fn add_window<'a, 'b>(
@@ -2149,9 +2142,10 @@ impl Ui
 
         let post_action: Box<dyn Fn(&mut Self, &mut EntityCreator, _)> = match window
         {
-            WindowCreateInfo::Notification{..} => Box::new(|this, _creator, id|
+            WindowCreateInfo::Notification{owner, ..} => Box::new(move |this, _creator, id|
             {
-                this.notifications.push(id)
+                this.notifications.entry(owner).or_insert(Vec::new());
+                this.notifications.get_mut(&owner).unwrap().push(id);
             }),
             WindowCreateInfo::ActionsList{..} => Box::new(|this, creator, id|
             {
@@ -2260,7 +2254,12 @@ impl Ui
             let window = window.borrow();
             if window.as_notification().is_some()
             {
-                self.notifications.retain(|x| *x != id);
+                self.notifications.retain(|_entity, notifications|
+                {
+                    notifications.retain(|x| *x != id);
+
+                    !notifications.is_empty()
+                });
             }
 
             let body = window.body();
@@ -2441,29 +2440,30 @@ impl Ui
         let distance = 0.04;
         let start = 0.08;
 
-        let to_remove: Vec<_> = self.notifications.iter_mut().enumerate().filter_map(|(index, id)|
+        let mut to_remove = Vec::new();
+        self.notifications.iter().for_each(|(_entity, notifications)|
         {
-            let position = start + index as f32 * distance;
-
-            let mut window = self.windows[id.0].borrow_mut();
-
-            let notification = window.as_notification_mut().unwrap();
-
-            notification.kind.set_position(creator.entities, position);
-
-            notification.lifetime -= dt;
-
-            if notification.lifetime <= 0.0
+            notifications.iter().enumerate().for_each(|(index, id)|
             {
-                return Some((index, *id));
-            }
+                let position = start + index as f32 * distance;
 
-            None
-        }).collect();
+                let mut window = self.windows[id.0].borrow_mut();
 
-        to_remove.into_iter().for_each(|(index, id)|
+                let notification = window.as_notification_mut().unwrap();
+
+                notification.kind.set_position(creator.entities, position);
+
+                notification.lifetime -= dt;
+
+                if notification.lifetime <= 0.0
+                {
+                    to_remove.push(*id);
+                }
+            });
+        });
+
+        to_remove.into_iter().for_each(|id|
         {
-            self.notifications.swap_remove(index);
             self.remove_window_id(creator.entities, id).unwrap();
         });
 

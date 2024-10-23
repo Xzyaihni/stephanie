@@ -760,7 +760,7 @@ impl GameState
             &info.client_info.name
         );
 
-        let entities = ClientEntitiesContainer::new(
+        let mut entities = ClientEntitiesContainer::new(
             info.data_infos.clone(),
             player_entity
         );
@@ -811,14 +811,14 @@ impl GameState
             UiAnatomyLocations::new(part_creator, base_image)
         };
 
+        let ui_mouse_entity = entities.ui_mouse_entity;
         let ui = Ui::new(
             info.data_infos.items_info.clone(),
-            entities.ui_mouse_entity,
+            &mut entities.entities,
+            ui_mouse_entity,
             anatomy_locations,
             user_receiver.clone()
         );
-
-        let ui = Rc::new(RefCell::new(ui));
 
         let common_textures = CommonTextures::new(&mut assets.lock());
 
