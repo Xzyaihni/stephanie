@@ -48,6 +48,8 @@ const WINDOW_SIZE: Vector3<f32> = Vector3::new(WINDOW_WIDTH, WINDOW_HEIGHT, WIND
 const PANEL_SIZE: f32 = 0.15;
 
 const NOTIFICATION_HEIGHT: f32 = 0.0375;
+const NOTIFICATION_WIDTH: f32 = NOTIFICATION_HEIGHT * 4.0;
+
 const ANIMATION_SCALE: Vector3<f32> = Vector3::new(4.0, 0.0, 1.0);
 
 const TOOLTIP_LIFETIME: f32 = 0.1;
@@ -408,7 +410,7 @@ impl UiList
                 {
                     let object = RenderObjectKind::Text{
                         text: text.clone(),
-                        font_size: 60,
+                        font_size: 20,
                         font: FontStyle::Sans,
                         align: TextAlign{
                             horizontal: HorizontalAlign::Left,
@@ -662,7 +664,7 @@ impl UiWindow
             RenderInfo{
                 object: Some(RenderObjectKind::Text{
                     text: name,
-                    font_size: 80,
+                    font_size: 30,
                     font: FontStyle::Bold,
                     align: TextAlign::centered()
                 }.into()),
@@ -761,7 +763,7 @@ impl UiWindow
     {
         let object = RenderObjectKind::Text{
             text: name,
-            font_size: 80,
+            font_size: 30,
             font: FontStyle::Bold,
             align: TextAlign::centered()
         }.into();
@@ -1044,7 +1046,7 @@ impl UiStats
             RenderInfo{
                 object: Some(RenderObjectKind::Text{
                     text: description,
-                    font_size: 40,
+                    font_size: 15,
                     font: FontStyle::Bold,
                     align: TextAlign::default()
                 }.into()),
@@ -1114,7 +1116,7 @@ impl UiItemInfo
             RenderInfo{
                 object: Some(RenderObjectKind::Text{
                     text: description,
-                    font_size: 40,
+                    font_size: 15,
                     font: FontStyle::Bold,
                     align: TextAlign::default()
                 }.into()),
@@ -1147,10 +1149,19 @@ pub fn close_ui(entities: &ClientEntities, entity: Entity)
 {
     let current_scale;
     {
+        current_scale = some_or_return!(entities.transform(entity)).scale;
+
         let mut lazy = some_or_return!(entities.lazy_transform_mut(entity));
-        current_scale = lazy.target_ref().scale;
         lazy.target().scale = Vector3::zeros();
     }
+
+    entities.for_every_child(entity, |entity|
+    {
+        if let Some(mut render) = entities.render_mut(entity)
+        {
+            let _ = render.set_text_dynamic_scale(Some(current_scale.xy()));
+        }
+    });
 
     let watchers = entities.watchers_mut(entity);
     if let Some(mut watchers) = watchers
@@ -1173,7 +1184,7 @@ fn create_notification_body(
 ) -> Entity
 {
     let position = info.creator.entities.transform(entity).map(|x| x.position).unwrap_or_default();
-    let scale = Vector3::new(NOTIFICATION_HEIGHT * 4.0, NOTIFICATION_HEIGHT, 1.0);
+    let scale = Vector3::new(NOTIFICATION_WIDTH, NOTIFICATION_HEIGHT, 1.0);
 
     let entity = info.creator.push(
         EntityInfo{
@@ -1226,6 +1237,7 @@ impl UiBar
         creator: &mut EntityCreator,
         body: Entity,
         name: String,
+        font_size: u32,
         smoothing: bool
     ) -> Self
     {
@@ -1262,7 +1274,7 @@ impl UiBar
             RenderInfo{
                 object: Some(RenderObjectKind::Text{
                     text: name,
-                    font_size: 60,
+                    font_size,
                     font: FontStyle::Bold,
                     align: TextAlign::centered()
                 }.into()),
@@ -1343,7 +1355,7 @@ impl BarNotification
     {
         let body = create_notification_body(info, owner);
 
-        let bar = UiBar::with_body(info.creator, body, name, false);
+        let bar = UiBar::with_body(info.creator, body, name, 50, false);
 
         let mut this = Self{
             body,
@@ -1373,7 +1385,8 @@ impl BarNotification
 pub struct TextNotification
 {
     body: Entity,
-    text: Entity
+    text: Entity,
+    updated: bool
 }
 
 impl TextNotification
@@ -1395,7 +1408,7 @@ impl TextNotification
             RenderInfo{
                 object: Some(RenderObjectKind::Text{
                     text,
-                    font_size: 30,
+                    font_size: 35,
                     font: FontStyle::Bold,
                     align: TextAlign::centered()
                 }.into()),
@@ -1406,7 +1419,8 @@ impl TextNotification
 
         Self{
             body,
-            text
+            text,
+            updated: false
         }
     }
 
@@ -1418,12 +1432,32 @@ impl TextNotification
     {
         let object = RenderObjectKind::Text{
             text,
-            font_size: 80,
+            font_size: 35,
             font: FontStyle::Bold,
             align: TextAlign::centered()
         }.into();
 
         entities.set_deferred_render_object(self.text, object);
+
+        self.updated = false;
+    }
+
+    pub fn update(&mut self, entities: &ClientEntities)
+    {
+        if self.updated
+        {
+            return;
+        }
+
+        if let Some(render) = entities.render(self.text)
+        {
+            let size = render.as_text().unwrap().text_size();
+
+            let width = size.x + NOTIFICATION_WIDTH * 0.1;
+            some_or_return!(entities.lazy_transform_mut(self.body)).target_local.scale.x = width;
+
+            self.updated = true;
+        }
     }
 }
 
@@ -1489,11 +1523,12 @@ impl NotificationKind
         }
     }
 
-    pub fn update(&self, entities: &ClientEntities)
+    pub fn update(&mut self, entities: &ClientEntities)
     {
-        if let Self::Bar(x) = self
+        match self
         {
-            x.update(entities);
+            Self::Text(x) => x.update(entities),
+            Self::Bar(x) => x.update(entities)
         }
     }
 }
@@ -1650,7 +1685,7 @@ impl AnatomyTooltip
             RenderInfo{
                 object: Some(RenderObjectKind::Text{
                     text: id.to_string(),
-                    font_size: 80,
+                    font_size: 20,
                     font: FontStyle::Bold,
                     align: TextAlign::centered()
                 }.into()),
@@ -1684,7 +1719,7 @@ impl AnatomyTooltip
                 }
             );
 
-            UiBar::with_body(info.creator, body, (*name).to_owned(), true)
+            UiBar::with_body(info.creator, body, (*name).to_owned(), 20, true)
         }).rev().collect::<Vec<_>>();
 
         let this = Self{
@@ -1765,7 +1800,7 @@ impl Tooltip
         info: TooltipCreateInfo
     ) -> Self
     {
-        let size = WINDOW_SIZE.xy() * 0.5;
+        let size = WINDOW_SIZE.xy().component_mul(&Vector2::new(0.6, 0.5));
 
         let kind = match info
         {
@@ -1961,7 +1996,7 @@ impl ActionsList
                 RenderInfo{
                     object: Some(RenderObjectKind::Text{
                         text: name,
-                        font_size: 80,
+                        font_size: 30,
                         font: FontStyle::Bold,
                         align: TextAlign::centered()
                     }.into()),
@@ -2055,7 +2090,7 @@ impl UiSpecializedWindow
         match self
         {
             Self::ActionsList(_) => (),
-            Self::Notification(_) => (),
+            Self::Notification(x) => x.kind.update(creator.entities),
             Self::Tooltip(x) => x.update(creator.entities),
             Self::Anatomy(_) => (),
             Self::Stats(_) => (),

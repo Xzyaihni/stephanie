@@ -14,6 +14,8 @@ use vulkano::{
     pipeline::graphics::viewport::Scissor as VulkanoScissor
 };
 
+use nalgebra::Vector2;
+
 use yanyaengine::{
     Object,
     ObjectInfo,
@@ -192,6 +194,7 @@ impl RenderObjectKind
                         font_size,
                         font,
                         align,
+                        dynamic_scale: None,
                         text
                     },
                     create_info.location,
@@ -490,6 +493,39 @@ impl ClientRenderInfo
         }) = self.object.as_mut()
         {
             x.set_inplace_texture(texture);
+        }
+    }
+
+    pub fn set_text_dynamic_scale(&mut self, dynamic_scale: Option<Vector2<f32>>) -> Result<(), &'static str>
+    {
+        if let Some(object) = self.object.as_mut()
+        {
+            if let ClientRenderObject{
+                kind: ClientObjectType::Text(x),
+                ..
+            } = object
+            {
+                x.set_dynamic_scale(dynamic_scale);
+            } else
+            {
+                return Err("tried to set dynamic scale of non text object");
+            }
+        }
+
+        Ok(())
+    }
+
+    pub fn as_text(&self) -> Option<&TextObject>
+    {
+        if let Some(ClientRenderObject{
+            kind: ClientObjectType::Text(text),
+            ..
+        }) = self.object.as_ref()
+        {
+            Some(text)
+        } else
+        {
+            None
         }
     }
 

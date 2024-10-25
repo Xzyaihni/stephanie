@@ -893,10 +893,10 @@ pub enum HumanPartId
     Spine,
     Pelvis,
     Eye(Side1d),
-    UpperLeg(Side1d),
-    LowerLeg(Side1d),
-    UpperArm(Side1d),
-    LowerArm(Side1d),
+    Thigh(Side1d),
+    Calf(Side1d),
+    Arm(Side1d),
+    Forearm(Side1d),
     Hand(Side1d),
     Foot(Side1d)
 }
@@ -936,10 +936,10 @@ impl HumanPartId
         match self
         {
             Self::Eye(x)
-            | Self::UpperLeg(x)
-            | Self::LowerLeg(x)
-            | Self::UpperArm(x)
-            | Self::LowerArm(x)
+            | Self::Thigh(x)
+            | Self::Calf(x)
+            | Self::Arm(x)
+            | Self::Forearm(x)
             | Self::Hand(x)
             | Self::Foot(x) => Some(*x),
             _ => None
@@ -955,14 +955,14 @@ impl HumanPartId
             Self::Pelvis,
             Self::Eye(Side1d::Left),
             Self::Eye(Side1d::Right),
-            Self::UpperLeg(Side1d::Left),
-            Self::UpperLeg(Side1d::Right),
-            Self::LowerLeg(Side1d::Left),
-            Self::LowerLeg(Side1d::Right),
-            Self::UpperArm(Side1d::Left),
-            Self::UpperArm(Side1d::Right),
-            Self::LowerArm(Side1d::Left),
-            Self::LowerArm(Side1d::Right),
+            Self::Thigh(Side1d::Left),
+            Self::Thigh(Side1d::Right),
+            Self::Calf(Side1d::Left),
+            Self::Calf(Side1d::Right),
+            Self::Arm(Side1d::Left),
+            Self::Arm(Side1d::Right),
+            Self::Forearm(Side1d::Left),
+            Self::Forearm(Side1d::Right),
             Self::Hand(Side1d::Left),
             Self::Hand(Side1d::Right),
             Self::Foot(Side1d::Left),
@@ -988,10 +988,10 @@ impl HumanPartId
             Self::Torso => "ribcage",
             Self::Pelvis => "pelvis",
             Self::Spine => "spine",
-            Self::UpperLeg(_) => "femur",
-            Self::LowerLeg(_) => "tibia",
-            Self::UpperArm(_) => "humerus",
-            Self::LowerArm(_) => "radius",
+            Self::Thigh(_) => "femur",
+            Self::Calf(_) => "tibia",
+            Self::Arm(_) => "humerus",
+            Self::Forearm(_) => "radius",
             Self::Hand(_) => "hand", // lmao i cant rly pick any of the bones
             Self::Foot(_) => "foot", // same with this one
             Self::Eye(_) => "eye" // the eye bone
@@ -1079,11 +1079,11 @@ macro_rules! impl_get
                 HumanPartId::Pelvis => Some($($b)+ self.pelvis),
                 HumanPartId::Spine => Some($($b)+ self.spine),
                 HumanPartId::Eye(side) => self.sided[side].eye.$option_fn(),
-                HumanPartId::UpperLeg(side) => self.sided[side].upper_leg.$option_fn(),
-                HumanPartId::LowerLeg(side) => self.sided[side].lower_leg.$option_fn(),
+                HumanPartId::Thigh(side) => self.sided[side].upper_leg.$option_fn(),
+                HumanPartId::Calf(side) => self.sided[side].lower_leg.$option_fn(),
                 HumanPartId::Foot(side) => self.sided[side].foot.$option_fn(),
-                HumanPartId::UpperArm(side) => self.sided[side].upper_arm.$option_fn(),
-                HumanPartId::LowerArm(side) => self.sided[side].lower_arm.$option_fn(),
+                HumanPartId::Arm(side) => self.sided[side].upper_arm.$option_fn(),
+                HumanPartId::Forearm(side) => self.sided[side].lower_arm.$option_fn(),
                 HumanPartId::Hand(side) => self.sided[side].hand.$option_fn()
             }
         }
@@ -1152,8 +1152,8 @@ impl PierceType
         let opposite = side.opposite();
 
         let possible = vec![
-            HumanPartId::UpperArm(opposite),
-            HumanPartId::LowerArm(opposite),
+            HumanPartId::Arm(opposite),
+            HumanPartId::Forearm(opposite),
             HumanPartId::Hand(opposite)
         ];
 
@@ -1189,8 +1189,8 @@ impl PierceType
         let opposite = side.opposite();
 
         let possible = vec![
-            HumanPartId::UpperLeg(opposite),
-            HumanPartId::LowerLeg(opposite),
+            HumanPartId::Thigh(opposite),
+            HumanPartId::Calf(opposite),
             HumanPartId::Foot(opposite)
         ];
 
@@ -1431,25 +1431,25 @@ impl HumanAnatomy
                     Side2d::Back | Side2d::Front => vec![
                         (HumanPartId::Spine, no_pierce()),
                         (HumanPartId::Torso, no_pierce()),
-                        (HumanPartId::UpperArm(Side1d::Left), no_pierce()),
-                        (HumanPartId::LowerArm(Side1d::Left), no_pierce()),
+                        (HumanPartId::Arm(Side1d::Left), no_pierce()),
+                        (HumanPartId::Forearm(Side1d::Left), no_pierce()),
                         (HumanPartId::Hand(Side1d::Left), no_pierce()),
-                        (HumanPartId::UpperArm(Side1d::Right), no_pierce()),
-                        (HumanPartId::LowerArm(Side1d::Right), no_pierce()),
+                        (HumanPartId::Arm(Side1d::Right), no_pierce()),
+                        (HumanPartId::Forearm(Side1d::Right), no_pierce()),
                         (HumanPartId::Hand(Side1d::Right), no_pierce())
                     ],
                     Side2d::Left => vec![
                         (HumanPartId::Spine, PierceType::middle_pierce(Side1d::Left)),
                         (HumanPartId::Torso, PierceType::middle_pierce(Side1d::Left)),
-                        (HumanPartId::UpperArm(Side1d::Left), PierceType::arm_pierce(Side1d::Left)),
-                        (HumanPartId::LowerArm(Side1d::Left), PierceType::arm_pierce(Side1d::Left)),
+                        (HumanPartId::Arm(Side1d::Left), PierceType::arm_pierce(Side1d::Left)),
+                        (HumanPartId::Forearm(Side1d::Left), PierceType::arm_pierce(Side1d::Left)),
                         (HumanPartId::Hand(Side1d::Left), PierceType::arm_pierce(Side1d::Left))
                     ],
                     Side2d::Right => vec![
                         (HumanPartId::Spine, PierceType::middle_pierce(Side1d::Right)),
                         (HumanPartId::Torso, PierceType::middle_pierce(Side1d::Right)),
-                        (HumanPartId::UpperArm(Side1d::Right), PierceType::arm_pierce(Side1d::Right)),
-                        (HumanPartId::LowerArm(Side1d::Right), PierceType::arm_pierce(Side1d::Right)),
+                        (HumanPartId::Arm(Side1d::Right), PierceType::arm_pierce(Side1d::Right)),
+                        (HumanPartId::Forearm(Side1d::Right), PierceType::arm_pierce(Side1d::Right)),
                         (HumanPartId::Hand(Side1d::Right), PierceType::arm_pierce(Side1d::Right))
                     ]
                 }
@@ -1459,21 +1459,21 @@ impl HumanAnatomy
                 match damage.direction.side
                 {
                     Side2d::Back | Side2d::Front => vec![
-                        (HumanPartId::UpperLeg(Side1d::Left), no_pierce()),
-                        (HumanPartId::LowerLeg(Side1d::Left), no_pierce()),
+                        (HumanPartId::Thigh(Side1d::Left), no_pierce()),
+                        (HumanPartId::Calf(Side1d::Left), no_pierce()),
                         (HumanPartId::Foot(Side1d::Left), no_pierce()),
-                        (HumanPartId::UpperLeg(Side1d::Right), no_pierce()),
-                        (HumanPartId::LowerLeg(Side1d::Right), no_pierce()),
+                        (HumanPartId::Thigh(Side1d::Right), no_pierce()),
+                        (HumanPartId::Calf(Side1d::Right), no_pierce()),
                         (HumanPartId::Foot(Side1d::Right), no_pierce())
                     ],
                     Side2d::Left => vec![
-                        (HumanPartId::UpperLeg(Side1d::Left), PierceType::leg_pierce(Side1d::Left)),
-                        (HumanPartId::LowerLeg(Side1d::Left), PierceType::leg_pierce(Side1d::Left)),
+                        (HumanPartId::Thigh(Side1d::Left), PierceType::leg_pierce(Side1d::Left)),
+                        (HumanPartId::Calf(Side1d::Left), PierceType::leg_pierce(Side1d::Left)),
                         (HumanPartId::Foot(Side1d::Left), PierceType::leg_pierce(Side1d::Left))
                     ],
                     Side2d::Right => vec![
-                        (HumanPartId::UpperLeg(Side1d::Right), PierceType::leg_pierce(Side1d::Right)),
-                        (HumanPartId::LowerLeg(Side1d::Right), PierceType::leg_pierce(Side1d::Right)),
+                        (HumanPartId::Thigh(Side1d::Right), PierceType::leg_pierce(Side1d::Right)),
+                        (HumanPartId::Calf(Side1d::Right), PierceType::leg_pierce(Side1d::Right)),
                         (HumanPartId::Foot(Side1d::Right), PierceType::leg_pierce(Side1d::Right))
                     ]
                 }
