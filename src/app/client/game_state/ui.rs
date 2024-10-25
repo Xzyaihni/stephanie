@@ -54,6 +54,8 @@ const ANIMATION_SCALE: Vector3<f32> = Vector3::new(4.0, 0.0, 1.0);
 
 const TOOLTIP_LIFETIME: f32 = 0.1;
 
+const DEFAULT_COLOR: [f32; 3] = [0.165, 0.161, 0.192];
+
 pub type WindowType = Weak<RefCell<UiSpecializedWindow>>;
 
 #[derive(Debug, Clone)]
@@ -1180,7 +1182,8 @@ pub fn close_ui(entities: &ClientEntities, entity: Entity)
 
 fn create_notification_body(
     info: &mut CommonWindowInfo,
-    entity: Entity
+    entity: Entity,
+    color: [f32; 3]
 ) -> Entity
 {
     let position = info.creator.entities.transform(entity).map(|x| x.position).unwrap_or_default();
@@ -1210,6 +1213,7 @@ fn create_notification_body(
         },
         RenderInfo{
             object: Some(RenderObjectKind::Texture{name: "ui/background.png".to_owned()}.into()),
+            mix: Some(MixColor{color, amount: 1.0, keep_transparency: true}),
             z_level: ZLevel::UiLow,
             ..Default::default()
         }
@@ -1222,6 +1226,25 @@ fn create_notification_body(
     }));
 
     entity
+}
+
+struct UiBarInfo
+{
+    pub color: [f32; 3],
+    pub font_size: u32,
+    pub smoothing: bool
+}
+
+impl Default for UiBarInfo
+{
+    fn default() -> Self
+    {
+        Self{
+            color: DEFAULT_COLOR,
+            font_size: 50,
+            smoothing: false
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -1237,8 +1260,7 @@ impl UiBar
         creator: &mut EntityCreator,
         body: Entity,
         name: String,
-        font_size: u32,
-        smoothing: bool
+        info: UiBarInfo
     ) -> Self
     {
         let bar_z_level = creator.entities.z_level(body).unwrap_or(ZLevel::UiPopupHigh);
@@ -1246,7 +1268,7 @@ impl UiBar
         let bar = creator.push(
             EntityInfo{
                 lazy_transform: Some(LazyTransformInfo{
-                    scaling: if smoothing
+                    scaling: if info.smoothing
                     {
                         Scaling::EaseOut{decay: 16.0}
                     } else
@@ -1260,6 +1282,7 @@ impl UiBar
             },
             RenderInfo{
                 object: Some(RenderObjectKind::Texture{name: "ui/background.png".to_owned()}.into()),
+                mix: Some(MixColor{color: info.color, amount: 1.0, keep_transparency: true}),
                 z_level: bar_z_level,
                 ..Default::default()
             }
@@ -1274,7 +1297,7 @@ impl UiBar
             RenderInfo{
                 object: Some(RenderObjectKind::Text{
                     text: name,
-                    font_size,
+                    font_size: info.font_size,
                     font: FontStyle::Bold,
                     align: TextAlign::centered()
                 }.into()),
@@ -1285,7 +1308,7 @@ impl UiBar
 
         Self{
             bar,
-            smoothing
+            smoothing: info.smoothing
         }
     }
 
@@ -1313,7 +1336,6 @@ impl UiBar
     {
         if self.smoothing
         {
-
             let amount = {
                 let global_scale = &mut some_or_return!(entities.transform_mut(self.bar)).scale.x;
 
@@ -1336,6 +1358,25 @@ impl UiBar
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NotificationSeverity
+{
+    Normal,
+    Damage
+}
+
+impl NotificationSeverity
+{
+    pub fn color(self) -> [f32; 3]
+    {
+        match self
+        {
+            Self::Normal => DEFAULT_COLOR,
+            Self::Damage => [0.995, 0.367, 0.367]
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct NotificationId(usize);
 
 pub struct BarNotification
@@ -1350,12 +1391,18 @@ impl BarNotification
         info: &mut CommonWindowInfo,
         owner: Entity,
         name: String,
+        color: [f32; 3],
         amount: f32
     ) -> Self
     {
-        let body = create_notification_body(info, owner);
+        let body = create_notification_body(info, owner, color);
 
-        let bar = UiBar::with_body(info.creator, body, name, 50, false);
+        let bar = UiBar::with_body(
+            info.creator,
+            body,
+            name,
+            UiBarInfo{color, ..Default::default()}
+        );
 
         let mut this = Self{
             body,
@@ -1385,7 +1432,8 @@ impl BarNotification
 pub struct TextNotification
 {
     body: Entity,
-    text: Entity,
+    text_entity: Entity,
+    text: String,
     updated: bool
 }
 
@@ -1394,12 +1442,13 @@ impl TextNotification
     fn new(
         info: &mut CommonWindowInfo,
         owner: Entity,
+        severity: NotificationSeverity,
         text: String
     ) -> Self
     {
-        let body = create_notification_body(info, owner);
+        let body = create_notification_body(info, owner, severity.color());
 
-        let text = info.creator.push(
+        let text_entity = info.creator.push(
             EntityInfo{
                 lazy_transform: Some(LazyTransformInfo::default().into()),
                 parent: Some(Parent::new(body, true)),
@@ -1407,7 +1456,7 @@ impl TextNotification
             },
             RenderInfo{
                 object: Some(RenderObjectKind::Text{
-                    text,
+                    text: text.clone(),
                     font_size: 35,
                     font: FontStyle::Bold,
                     align: TextAlign::centered()
@@ -1419,27 +1468,15 @@ impl TextNotification
 
         Self{
             body,
+            text_entity,
             text,
             updated: false
         }
     }
 
-    pub fn set_text(
-        &mut self,
-        entities: &ClientEntities,
-        text: String
-    )
+    pub fn text(&self) -> &str
     {
-        let object = RenderObjectKind::Text{
-            text,
-            font_size: 35,
-            font: FontStyle::Bold,
-            align: TextAlign::centered()
-        }.into();
-
-        entities.set_deferred_render_object(self.text, object);
-
-        self.updated = false;
+        &self.text
     }
 
     pub fn update(&mut self, entities: &ClientEntities)
@@ -1449,7 +1486,7 @@ impl TextNotification
             return;
         }
 
-        if let Some(render) = entities.render(self.text)
+        if let Some(render) = entities.render(self.text_entity)
         {
             let size = render.as_text().unwrap().text_size();
 
@@ -1719,7 +1756,12 @@ impl AnatomyTooltip
                 }
             );
 
-            UiBar::with_body(info.creator, body, (*name).to_owned(), 20, true)
+            UiBar::with_body(
+                info.creator,
+                body,
+                (*name).to_owned(),
+                UiBarInfo{font_size: 20, smoothing: true, ..Default::default()}
+            )
         }).rev().collect::<Vec<_>>();
 
         let this = Self{
@@ -2022,8 +2064,8 @@ struct UiWindowId(usize);
 
 pub enum NotificationCreateInfo
 {
-    Bar{name: String, amount: f32},
-    Text{text: String}
+    Bar{name: String, color: [f32; 3], amount: f32},
+    Text{severity: NotificationSeverity, text: String}
 }
 
 pub enum WindowCreateInfo
@@ -2148,7 +2190,11 @@ impl Ui
 
             broken.into_iter().for_each(|part|
             {
-                let info = NotificationCreateInfo::Text{text: part.to_string()};
+                let info = NotificationCreateInfo::Text{
+                    severity: NotificationSeverity::Damage,
+                    text: part.to_string()
+                };
+
                 let window = WindowCreateInfo::Notification{owner: entity, lifetime: 1.0, info};
 
                 let mut creator = EntityCreator{entities};
@@ -2248,12 +2294,31 @@ impl Ui
         window: Rc<RefCell<UiSpecializedWindow>>
     ) -> Result<(), WindowError>
     {
+        self.remove_window_with(entities, window, Self::remove_window_id)
+    }
+
+    pub fn remove_window_instant(
+        &mut self,
+        entities: &ClientEntities,
+        window: Rc<RefCell<UiSpecializedWindow>>
+    ) -> Result<(), WindowError>
+    {
+        self.remove_window_with(entities, window, Self::remove_window_id_instant)
+    }
+
+    fn remove_window_with(
+        &mut self,
+        entities: &ClientEntities,
+        window: Rc<RefCell<UiSpecializedWindow>>,
+        remover: fn(&mut Self, &ClientEntities, UiWindowId) -> Result<(), WindowError>
+    ) -> Result<(), WindowError>
+    {
         // why do i have to do this? i dont get it
         let found = self.windows.iter().find(|(_, x)| Rc::ptr_eq(x, &window));
         if let Some((id, _)) = found
         {
             let id = UiWindowId(id);
-            self.remove_window_id(entities, id)
+            remover(self, entities, id)
         } else
         {
             Err(WindowError::RemoveNonExistent)
@@ -2343,13 +2408,13 @@ impl Ui
             {
                 let kind: NotificationKind = match info
                 {
-                    NotificationCreateInfo::Bar{name, amount} =>
+                    NotificationCreateInfo::Bar{name, color, amount} =>
                     {
-                        BarNotification::new(&mut window_info, owner, name, amount).into()
+                        BarNotification::new(&mut window_info, owner, name, color, amount).into()
                     },
-                    NotificationCreateInfo::Text{text} =>
+                    NotificationCreateInfo::Text{severity, text} =>
                     {
-                        TextNotification::new(&mut window_info, owner, text).into()
+                        TextNotification::new(&mut window_info, owner, severity, text).into()
                     }
                 };
 

@@ -96,7 +96,7 @@ pub use ui::{
     WindowType
 };
 
-use ui::{NotificationCreateInfo, NotificationKind};
+use ui::{NotificationCreateInfo, NotificationSeverity, NotificationKind};
 
 mod controls_controller;
 
@@ -520,13 +520,34 @@ impl UiNotifications
         owner: Entity,
         lifetime: f32,
         text: String,
-        f: impl FnOnce() -> NotificationCreateInfo
+        f: impl FnOnce(String) -> NotificationCreateInfo
     )
     {
-        Self::set_notification(id, entities, ui, owner, lifetime, move |entities, kind|
+        if let Some(window) = id.as_ref().and_then(|x| x.upgrade())
         {
-            kind.as_text_mut().unwrap().set_text(entities, text);
-        }, f)
+            {
+                let mut notification = window.borrow_mut();
+                let notification = notification.as_notification_mut().unwrap();
+
+                if let NotificationKind::Text(x) = &mut notification.kind
+                {
+                    if x.text() == text
+                    {
+                        notification.lifetime = lifetime;
+                        return;
+                    }
+                }
+            }
+
+            let _ = ui.borrow_mut().remove_window_instant(entities, window);
+        } else
+        {
+            let window = WindowCreateInfo::Notification{owner, lifetime, info: f(text)};
+
+            let mut creator = EntityCreator{entities};
+            let window = Ui::add_window(ui.clone(), &mut creator, window);
+            *id = Some(window);
+        }
     }
 
     pub fn set_stamina_bar(
@@ -539,7 +560,7 @@ impl UiNotifications
     {
         Self::set_bar(&mut self.stamina, entities, &self.ui, owner, lifetime, amount, ||
         {
-            NotificationCreateInfo::Bar{name: "STAMINA".to_owned(), amount}
+            NotificationCreateInfo::Bar{name: "STAMINA".to_owned(), color: [0.367, 0.639, 0.995], amount}
         })
     }
 
@@ -553,7 +574,7 @@ impl UiNotifications
     {
         Self::set_bar(&mut self.weapon_cooldown, entities, &self.ui, owner, lifetime, amount, ||
         {
-            NotificationCreateInfo::Bar{name: "WEAPON".to_owned(), amount}
+            NotificationCreateInfo::Bar{name: "WEAPON".to_owned(), color: [0.995, 0.784, 0.367], amount}
         })
     }
 
@@ -565,9 +586,9 @@ impl UiNotifications
         text: String
     )
     {
-        Self::set_text(&mut self.tile_tooltip, entities, &self.ui, owner, lifetime, text.clone(), ||
+        Self::set_text(&mut self.tile_tooltip, entities, &self.ui, owner, lifetime, text, |text|
         {
-            NotificationCreateInfo::Text{text}
+            NotificationCreateInfo::Text{severity: NotificationSeverity::Normal, text}
         })
     }
 }
