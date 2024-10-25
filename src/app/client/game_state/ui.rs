@@ -1214,7 +1214,7 @@ fn create_notification_body(
         RenderInfo{
             object: Some(RenderObjectKind::Texture{name: "ui/background.png".to_owned()}.into()),
             mix: Some(MixColor{color, amount: 1.0, keep_transparency: true}),
-            z_level: ZLevel::UiLow,
+            z_level: ZLevel::UiNotificationLow,
             ..Default::default()
         }
     );
@@ -1232,7 +1232,8 @@ struct UiBarInfo
 {
     pub color: [f32; 3],
     pub font_size: u32,
-    pub smoothing: bool
+    pub smoothing: bool,
+    pub z_level: ZLevel
 }
 
 impl Default for UiBarInfo
@@ -1242,7 +1243,8 @@ impl Default for UiBarInfo
         Self{
             color: DEFAULT_COLOR,
             font_size: 50,
-            smoothing: false
+            smoothing: false,
+            z_level: ZLevel::UiPopupHigh
         }
     }
 }
@@ -1263,8 +1265,7 @@ impl UiBar
         info: UiBarInfo
     ) -> Self
     {
-        let bar_z_level = creator.entities.z_level(body).unwrap_or(ZLevel::UiPopupHigh);
-
+        let bar_z_level = info.z_level;
         let bar = creator.push(
             EntityInfo{
                 lazy_transform: Some(LazyTransformInfo{
@@ -1361,7 +1362,9 @@ impl UiBar
 pub enum NotificationSeverity
 {
     Normal,
-    Damage
+    DamageMinor,
+    Damage,
+    DamageMajor
 }
 
 impl NotificationSeverity
@@ -1371,7 +1374,9 @@ impl NotificationSeverity
         match self
         {
             Self::Normal => DEFAULT_COLOR,
-            Self::Damage => [0.995, 0.367, 0.367]
+            Self::DamageMinor => [1.0, 0.727, 0.349], // wysi
+            Self::Damage => [0.995, 0.367, 0.367],
+            Self::DamageMajor => [0.765, 0.0, 0.423]
         }
     }
 }
@@ -1401,7 +1406,7 @@ impl BarNotification
             info.creator,
             body,
             name,
-            UiBarInfo{color, ..Default::default()}
+            UiBarInfo{color, z_level: ZLevel::UiNotificationMiddle, ..Default::default()}
         );
 
         let mut this = Self{
@@ -1461,7 +1466,7 @@ impl TextNotification
                     font: FontStyle::Bold,
                     align: TextAlign::centered()
                 }.into()),
-                z_level: ZLevel::UiHigh,
+                z_level: ZLevel::UiNotificationHigh,
                 ..Default::default()
             }
         );
@@ -1760,7 +1765,13 @@ impl AnatomyTooltip
                 info.creator,
                 body,
                 (*name).to_owned(),
-                UiBarInfo{font_size: 20, smoothing: true, ..Default::default()}
+                UiBarInfo{
+                    color: [0.03, 0.05, 0.1],
+                    font_size: 20,
+                    smoothing: true,
+                    z_level: ZLevel::UiPopupHigher,
+                    ..Default::default()
+                }
             )
         }).rev().collect::<Vec<_>>();
 
@@ -2190,8 +2201,15 @@ impl Ui
 
             broken.into_iter().for_each(|part|
             {
+                let severity = match part.kind
+                {
+                    BrokenKind::Skin => NotificationSeverity::DamageMinor,
+                    BrokenKind::Muscle => NotificationSeverity::Damage,
+                    BrokenKind::Bone => NotificationSeverity::DamageMajor
+                };
+
                 let info = NotificationCreateInfo::Text{
-                    severity: NotificationSeverity::Damage,
+                    severity,
                     text: part.to_string()
                 };
 

@@ -279,7 +279,7 @@ impl ClientEntitiesContainer
                 return;
             }
 
-            if render.z_level() >= ZLevel::UiLow
+            if render.z_level() >= ZLevel::lowest_ui()
             {
                 let is_world = self.entities.ui_element(entity).map(|x| x.world_position)
                     .unwrap_or(false);

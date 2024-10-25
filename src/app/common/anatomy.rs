@@ -141,8 +141,8 @@ pub enum BrokenKind
 
 pub struct BrokenPart
 {
-    id: HumanPartId,
-    kind: BrokenKind
+    pub id: HumanPartId,
+    pub kind: BrokenKind
 }
 
 impl Display for BrokenPart
@@ -497,8 +497,19 @@ impl<Data> BodyPart<Data>
         Data: DamageReceiver
     {
         // huh
-        if let Some(pierce) = self.skin.as_mut().map(|x| x.damage_pierce(damage))
-            .unwrap_or(Some(damage))
+        if let Some(pierce) = self.skin.as_mut().map(|x|
+        {
+            let base_mult = 0.1;
+            match damage
+            {
+                DamageType::Blunt(_) => x.damage_pierce(damage.scale(base_mult)),
+                DamageType::Sharp{sharpness, ..} =>
+                {
+                    x.damage_pierce(damage.scale((base_mult + sharpness).clamp(0.0, 1.0)))
+                },
+                DamageType::Bullet(_) => x.damage_pierce(damage)
+            }
+        }).unwrap_or(Some(damage))
         {
             if let Some(pierce) = self.muscle.as_mut().map(|x| x.damage_pierce(damage))
                 .unwrap_or(Some(pierce))

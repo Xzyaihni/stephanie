@@ -289,6 +289,9 @@ pub enum ZLevel
     Hair,
     Hat,
     Door,
+    UiNotificationLow,
+    UiNotificationMiddle,
+    UiNotificationHigh,
     UiLow,
     UiMiddle,
     UiHigh,
@@ -304,6 +307,11 @@ pub enum ZLevel
 
 impl ZLevel
 {
+    pub fn lowest_ui() -> Self
+    {
+        Self::UiNotificationLow
+    }
+
     pub fn next(self) -> Self
     {
         Self::from_repr(self as usize + 1).unwrap()
