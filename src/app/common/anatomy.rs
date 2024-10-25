@@ -1116,6 +1116,11 @@ impl PierceType
         Self::possible_pierce(possible, 1, convert::identity)
     }
 
+    fn torso_front() -> Self
+    {
+        Self::possible_pierce(vec![HumanPartId::Spine], 2, convert::identity)
+    }
+
     fn possible_pierce<F>(possible: Vec<HumanPartId>, misses: usize, f: F) -> Self
     where
         F: Fn(Option<Damage>) -> Option<Damage> + 'static
@@ -1268,11 +1273,11 @@ impl HumanAnatomy
 
             let upper_leg = Some(new_part(DebugName::new(with_name("upper leg")), 4000.0, 0.6));
             let lower_leg = Some(new_part(DebugName::new(with_name("lower leg")), 3500.0, 0.44));
-            let foot = Some(new_part(DebugName::new(with_name("foot")), 5000.0, 0.17));
+            let foot = Some(new_part(DebugName::new(with_name("foot")), 2000.0, 0.17));
 
             let upper_arm = Some(new_part(DebugName::new(with_name("upper arm")), 2500.0, 0.2));
             let lower_arm = Some(new_part(DebugName::new(with_name("lower arm")), 2000.0, 0.17));
-            let hand = Some(new_part(DebugName::new(with_name("hand")), 4000.0, 0.07));
+            let hand = Some(new_part(DebugName::new(with_name("hand")), 2000.0, 0.07));
 
             let eye = Some(HumanPart::new_full(
                 DebugName::new(with_name("eye")),
@@ -1428,9 +1433,18 @@ impl HumanAnatomy
             {
                 match damage.direction.side
                 {
-                    Side2d::Back | Side2d::Front => vec![
+                    Side2d::Back => vec![
                         (HumanPartId::Spine, no_pierce()),
                         (HumanPartId::Torso, no_pierce()),
+                        (HumanPartId::Arm(Side1d::Left), no_pierce()),
+                        (HumanPartId::Forearm(Side1d::Left), no_pierce()),
+                        (HumanPartId::Hand(Side1d::Left), no_pierce()),
+                        (HumanPartId::Arm(Side1d::Right), no_pierce()),
+                        (HumanPartId::Forearm(Side1d::Right), no_pierce()),
+                        (HumanPartId::Hand(Side1d::Right), no_pierce())
+                    ],
+                    Side2d::Front => vec![
+                        (HumanPartId::Torso, PierceType::torso_front()),
                         (HumanPartId::Arm(Side1d::Left), no_pierce()),
                         (HumanPartId::Forearm(Side1d::Left), no_pierce()),
                         (HumanPartId::Hand(Side1d::Left), no_pierce()),
@@ -1459,6 +1473,7 @@ impl HumanAnatomy
                 match damage.direction.side
                 {
                     Side2d::Back | Side2d::Front => vec![
+                        (HumanPartId::Pelvis, no_pierce()),
                         (HumanPartId::Thigh(Side1d::Left), no_pierce()),
                         (HumanPartId::Calf(Side1d::Left), no_pierce()),
                         (HumanPartId::Foot(Side1d::Left), no_pierce()),
@@ -1467,11 +1482,13 @@ impl HumanAnatomy
                         (HumanPartId::Foot(Side1d::Right), no_pierce())
                     ],
                     Side2d::Left => vec![
+                        (HumanPartId::Pelvis, no_pierce()),
                         (HumanPartId::Thigh(Side1d::Left), PierceType::leg_pierce(Side1d::Left)),
                         (HumanPartId::Calf(Side1d::Left), PierceType::leg_pierce(Side1d::Left)),
                         (HumanPartId::Foot(Side1d::Left), PierceType::leg_pierce(Side1d::Left))
                     ],
                     Side2d::Right => vec![
+                        (HumanPartId::Pelvis, no_pierce()),
                         (HumanPartId::Thigh(Side1d::Right), PierceType::leg_pierce(Side1d::Right)),
                         (HumanPartId::Calf(Side1d::Right), PierceType::leg_pierce(Side1d::Right)),
                         (HumanPartId::Foot(Side1d::Right), PierceType::leg_pierce(Side1d::Right))

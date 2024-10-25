@@ -2038,7 +2038,7 @@ impl ActionsList
                 RenderInfo{
                     object: Some(RenderObjectKind::Text{
                         text: name,
-                        font_size: 30,
+                        font_size: 20,
                         font: FontStyle::Bold,
                         align: TextAlign::centered()
                     }.into()),
