@@ -7,7 +7,7 @@ use std::{
 
 use nalgebra::{Vector2, Vector3};
 
-use yanyaengine::{Transform, camera::Camera};
+use yanyaengine::{Transform, FontsContainer, TextInfo, camera::Camera};
 
 use crate::{
     client::{
@@ -20,7 +20,6 @@ use crate::{
         render_info::*,
         lazy_transform::*,
         watcher::*,
-        collider::*,
         physics::*,
         anatomy::*,
         ObjectsStore,
@@ -44,6 +43,7 @@ const MAX_WINDOWS: usize = 5;
 const WINDOW_HEIGHT: f32 = 0.1;
 const WINDOW_WIDTH: f32 = WINDOW_HEIGHT * 1.5;
 const WINDOW_SIZE: Vector3<f32> = Vector3::new(WINDOW_WIDTH, WINDOW_HEIGHT, WINDOW_HEIGHT);
+const TITLE_PADDING: f32 = WINDOW_HEIGHT * 0.1;
 
 const PANEL_SIZE: f32 = 0.15;
 
@@ -539,9 +539,8 @@ impl Default for UiWindowInfo
 struct UiWindow
 {
     body: Entity,
-    name: Entity,
     panel: Entity,
-    button_x: f32
+    button_width: f32
 }
 
 impl UiWindow
@@ -552,7 +551,30 @@ impl UiWindow
     ) -> Self
     {
         let UiWindowInfo{name, spawn_position, custom_buttons, size} = window_info;
-        let size = Vector3::new(size.x, size.y, 1.0);
+        let mut size = Vector3::new(size.x, size.y, 1.0);
+
+        let font_size = 30;
+        let align = TextAlign::centered();
+        let style = FontStyle::Bold;
+
+        let text_width = info.ui.borrow().fonts.calculate_bounds(TextInfo{
+            text: &name,
+            font: style,
+            align,
+            font_size
+        }).x;
+
+        let minimum_width = {
+            let panel_size = PANEL_SIZE * size.y;
+
+            text_width + TITLE_PADDING + (custom_buttons.len() + 1) as f32 * panel_size
+        };
+        if minimum_width > size.x
+        {
+            size.x = minimum_width;
+        }
+
+        let panel_size = Self::panel_size(size.y);
 
         let body = info.creator.push(
             EntityInfo{
@@ -574,11 +596,6 @@ impl UiWindow
                     target_non_lazy: true,
                     ..Default::default()
                 }.into()),
-                collider: Some(ColliderInfo{
-                    kind: ColliderType::Aabb,
-                    layer: ColliderLayer::Ui,
-                    ..Default::default()
-                }.into()),
                 ..Default::default()
             },
             RenderInfo{
@@ -594,7 +611,6 @@ impl UiWindow
             ..Default::default()
         }));
 
-        let panel_size = PANEL_SIZE * (WINDOW_SIZE.y / size.y);
         let scale = Vector3::new(1.0, panel_size, 1.0);
 
         let top_panel = info.creator.push(
@@ -639,14 +655,13 @@ impl UiWindow
             }
         );
 
-        let aspect = size.x / size.y;
-        let button_x = panel_size / aspect;
+        let button_width = Self::button_width(size.xy());
 
-        let scale = Vector3::new(1.0 - button_x * (1 + custom_buttons.len()) as f32, 1.0, 1.0);
+        let scale = Vector3::new(1.0 - button_width * (1 + custom_buttons.len()) as f32, 1.0, 1.0);
 
-        let low = button_x * custom_buttons.len() as f32;
-        let high = 1.0 - button_x;
-        let name = info.creator.push(
+        let low = button_width * custom_buttons.len() as f32;
+        let high = 1.0 - button_width;
+        info.creator.push(
             EntityInfo{
                 lazy_transform: Some(LazyTransformInfo{
                     transform: Transform{
@@ -666,18 +681,18 @@ impl UiWindow
             RenderInfo{
                 object: Some(RenderObjectKind::Text{
                     text: name,
-                    font_size: 30,
-                    font: FontStyle::Bold,
-                    align: TextAlign::centered()
+                    font_size,
+                    font: style,
+                    align
                 }.into()),
                 z_level: ZLevel::UiHigh,
                 ..Default::default()
             }
         );
 
-        let scale = Vector3::new(button_x, 1.0, 1.0);
+        let scale = Vector3::new(button_width, 1.0, 1.0);
 
-        custom_buttons.into_iter().enumerate().for_each(|(index, custom_button)|
+        let mut custom_buttons = custom_buttons.into_iter().enumerate().map(|(index, custom_button)|
         {
             let urx = info.user_receiver.clone();
             let CustomButton{texture, on_click} = custom_button;
@@ -713,13 +728,13 @@ impl UiWindow
                     z_level: ZLevel::UiHigh,
                     ..Default::default()
                 }
-            );
-        });
+            )
+        }).collect::<Vec<_>>();
 
         let ui = info.ui.clone();
         let id = info.id;
 
-        info.creator.push(
+        let close_button = info.creator.push(
             EntityInfo{
                 lazy_transform: Some(LazyTransformInfo{
                     transform: Transform{
@@ -749,28 +764,25 @@ impl UiWindow
             }
         );
 
+        custom_buttons.push(close_button);
+
         Self{
             body,
-            name,
             panel,
-            button_x
+            button_width
         }
     }
 
-    pub fn update_name(
-        &mut self,
-        creator: &EntityCreator,
-        name: String
-    )
+    fn panel_size(height: f32) -> f32
     {
-        let object = RenderObjectKind::Text{
-            text: name,
-            font_size: 30,
-            font: FontStyle::Bold,
-            align: TextAlign::centered()
-        }.into();
+        PANEL_SIZE * (WINDOW_SIZE.y / height)
+    }
 
-        creator.entities.set_deferred_render_object(self.name, object);
+    fn button_width(size: Vector2<f32>) -> f32
+    {
+        let aspect = size.x / size.y;
+
+        Self::panel_size(size.y) / aspect
     }
 }
 
@@ -780,7 +792,6 @@ pub struct UiInventory
     items_info: Arc<ItemsInfo>,
     items: Rc<RefCell<Vec<InventoryItem>>>,
     inventory: Entity,
-    window: UiWindow,
     list: UiList
 }
 
@@ -825,9 +836,15 @@ impl UiInventory
             });
         }
 
+        let name = info.creator.entities.named(owner).map(|x| x.clone()).unwrap_or_else(||
+        {
+            "unnamed".to_owned()
+        });
+
         let window_info = UiWindowInfo{
             spawn_position,
             custom_buttons,
+            name,
             ..Default::default()
         };
 
@@ -850,8 +867,7 @@ impl UiInventory
             items_info,
             items,
             inventory: window.body,
-            list: UiList::new(&mut info.creator, window.panel, 1.0 - window.button_x, on_change),
-            window
+            list: UiList::new(&mut info.creator, window.panel, 1.0 - window.button_width, on_change)
         };
 
         this.full_update(&mut info.creator, owner);
@@ -862,15 +878,6 @@ impl UiInventory
     pub fn body(&self) -> Entity
     {
         self.inventory
-    }
-
-    pub fn update_name(
-        &mut self,
-        creator: &EntityCreator,
-        name: String
-    )
-    {
-        self.window.update_name(creator, name);
     }
 
     pub fn update_inventory(
@@ -905,12 +912,6 @@ impl UiInventory
         entity: Entity
     )
     {
-        let name = creator.entities.named(entity).map(|x| x.clone()).unwrap_or_else(||
-        {
-            "unnamed".to_owned()
-        });
-
-        self.update_name(creator, name);
         self.update_inventory(creator, entity);
     }
 
@@ -1437,9 +1438,7 @@ impl BarNotification
 pub struct TextNotification
 {
     body: Entity,
-    text_entity: Entity,
-    text: String,
-    updated: bool
+    text: String
 }
 
 impl TextNotification
@@ -1453,7 +1452,22 @@ impl TextNotification
     {
         let body = create_notification_body(info, owner, severity.color());
 
-        let text_entity = info.creator.push(
+        let font_size = 35;
+        let style = FontStyle::Bold;
+        let align = TextAlign::centered();
+
+        let fonts = &*info.ui.borrow().fonts;
+        let size = fonts.calculate_bounds(TextInfo{
+            text: &text,
+            font: style,
+            align,
+            font_size
+        });
+
+        let width = size.x + NOTIFICATION_WIDTH * 0.1;
+        info.creator.entities.target(body).unwrap().scale.x = width;
+
+        info.creator.push(
             EntityInfo{
                 lazy_transform: Some(LazyTransformInfo::default().into()),
                 parent: Some(Parent::new(body, true)),
@@ -1462,9 +1476,9 @@ impl TextNotification
             RenderInfo{
                 object: Some(RenderObjectKind::Text{
                     text: text.clone(),
-                    font_size: 35,
-                    font: FontStyle::Bold,
-                    align: TextAlign::centered()
+                    font_size,
+                    font: style,
+                    align
                 }.into()),
                 z_level: ZLevel::UiNotificationHigh,
                 ..Default::default()
@@ -1473,33 +1487,13 @@ impl TextNotification
 
         Self{
             body,
-            text_entity,
-            text,
-            updated: false
+            text
         }
     }
 
     pub fn text(&self) -> &str
     {
         &self.text
-    }
-
-    pub fn update(&mut self, entities: &ClientEntities)
-    {
-        if self.updated
-        {
-            return;
-        }
-
-        if let Some(render) = entities.render(self.text_entity)
-        {
-            let size = render.as_text().unwrap().text_size();
-
-            let width = size.x + NOTIFICATION_WIDTH * 0.1;
-            some_or_return!(entities.lazy_transform_mut(self.body)).target_local.scale.x = width;
-
-            self.updated = true;
-        }
     }
 }
 
@@ -1569,7 +1563,7 @@ impl NotificationKind
     {
         match self
         {
-            Self::Text(x) => x.update(entities),
+            Self::Text(_) => (),
             Self::Bar(x) => x.update(entities)
         }
     }
@@ -1670,7 +1664,7 @@ impl AnatomyTooltip
         };
 
         let mouse_position = info.creator.entities.transform(mouse).unwrap().position;
-        let position = info.creator.entities.follow_position(body).unwrap().target_end(mouse_position);
+        let position = info.creator.entities.follow_position(body).unwrap().target_end(0.0, mouse_position);
 
         info.creator.entities.set_transform(body, Some(Transform{
             scale: size3.component_mul(&animation_strength),
@@ -2156,6 +2150,7 @@ impl UiSpecializedWindow
 pub struct Ui
 {
     items_info: Arc<ItemsInfo>,
+    fonts: Rc<FontsContainer>,
     mouse: Entity,
     anatomy_locations: UiAnatomyLocations,
     user_receiver: Rc<RefCell<UiReceiver>>,
@@ -2170,6 +2165,7 @@ impl Ui
 {
     pub fn new(
         items_info: Arc<ItemsInfo>,
+        fonts: Rc<FontsContainer>,
         entities: &mut ClientEntities,
         mouse: Entity,
         anatomy_locations: UiAnatomyLocations,
@@ -2178,6 +2174,7 @@ impl Ui
     {
         let this = Self{
             items_info,
+            fonts,
             mouse,
             anatomy_locations,
             user_receiver,

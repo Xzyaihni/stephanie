@@ -33,6 +33,7 @@ use crate::{
         receiver_loop,
         ENTITY_SCALE,
         render_info::*,
+        lazy_transform::*,
         MessageSerError,
         MessageDeError,
         AnyEntities,
@@ -196,7 +197,7 @@ impl GameServer
         if self.rare_timer <= 0.0
         {
             self.rare();
-            
+
             self.rare_timer = 5.0;
         } else
         {
@@ -345,7 +346,10 @@ impl GameServer
         let info = EntityInfo{
             player: Some(Player),
             named: Some(format!("stephanie #{player_index}")),
-            transform: Some(transform.clone()),
+            lazy_transform: Some(LazyTransformInfo{
+                transform: transform.clone(),
+                ..Default::default()
+            }.into()),
             render: Some(RenderInfo{
                 object: Some(RenderObjectKind::Texture{
                     name: "player/hair.png".to_owned()

@@ -58,6 +58,12 @@
                     (rest-entities)))))
     (rest-entities))
 
+(define (included-with component lst)
+    (filter (lambda (x) (has-component x component)) lst))
+
+(define (excluded-with component lst)
+    (filter (lambda (x) (not (has-component x component))) lst))
+
 (define (entities-near entity near-distance)
     (filtered-entities (lambda (x) (< (distance entity x) near-distance))))
 

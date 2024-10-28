@@ -502,10 +502,10 @@ impl<Data> BodyPart<Data>
             let base_mult = 0.1;
             match damage
             {
-                DamageType::Blunt(_) => x.damage_pierce(damage.scale(base_mult)),
+                DamageType::Blunt(_) => x.damage_pierce(damage * base_mult),
                 DamageType::Sharp{sharpness, ..} =>
                 {
-                    x.damage_pierce(damage.scale((base_mult + sharpness).clamp(0.0, 1.0)))
+                    x.damage_pierce(damage * (base_mult + sharpness).clamp(0.0, 1.0))
                 },
                 DamageType::Bullet(_) => x.damage_pierce(damage)
             }
@@ -1660,7 +1660,7 @@ impl Damageable for HumanAnatomy
     {
         if self.is_crawling()
         {
-            damage = damage.scale(2.0);
+            damage = damage * 2.0;
         }
 
         self.damage_random_part(damage)

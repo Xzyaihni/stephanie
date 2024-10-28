@@ -74,6 +74,8 @@ impl<'a> MemoriableRef for &'a LispMemory
 pub trait Memoriable
 {
     fn as_memory_mut(&mut self) -> &mut LispMemory;
+
+    fn push_return(&mut self, value: impl Into<LispValue>);
 }
 
 impl Memoriable for LispMemory
@@ -81,6 +83,11 @@ impl Memoriable for LispMemory
     fn as_memory_mut(&mut self) -> &mut LispMemory
     {
         self
+    }
+
+    fn push_return(&mut self, value: impl Into<LispValue>)
+    {
+        self.push_return(value);
     }
 }
 
@@ -97,16 +104,9 @@ impl<'a> Memoriable for MemoryWrapper<'a>
     {
         self.memory
     }
-}
 
-impl MemoryWrapper<'_>
-{
-    pub fn can_return(&self) -> bool
-    {
-        !self.ignore_return
-    }
 
-    pub fn push_return(&mut self, value: impl Into<LispValue>)
+    fn push_return(&mut self, value: impl Into<LispValue>)
     {
         if self.ignore_return
         {
@@ -114,6 +114,14 @@ impl MemoryWrapper<'_>
         }
 
         self.memory.push_return(value.into());
+    }
+}
+
+impl MemoryWrapper<'_>
+{
+    pub fn can_return(&self) -> bool
+    {
+        !self.ignore_return
     }
 }
 
@@ -158,7 +166,7 @@ pub fn simple_apply<const EFFECT: bool>(f: impl Fn(
             Action::Return
         } else
         {
-            action 
+            action
         })
     })
 }
@@ -597,7 +605,7 @@ impl Lambdas
     {
         self.lambdas[index as usize].clone()
     }
-    
+
     pub fn clear(&mut self)
     {
         self.lambdas.clear();

@@ -8,6 +8,7 @@ use yanyaengine::Transform;
 
 use crate::common::{
     short_rotation,
+    rotate_point_z_3d,
     lerp,
     EaseOut,
     Entity,
@@ -410,7 +411,7 @@ pub enum Deformation
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FollowRotation
 {
-    parent: Entity,
+    pub parent: Entity,
     pub rotation: Rotation
 }
 
@@ -471,12 +472,16 @@ impl FollowPosition
         dt: f32
     )
     {
-        self.connection.next(current, self.target_end(parent_position), dt);
+        self.connection.next(current, self.target_end(current.rotation, parent_position), dt);
     }
 
-    pub fn target_end(&self, parent_position: Vector3<f32>) -> Vector3<f32>
+    pub fn target_end(
+        &self,
+        rotation: f32,
+        parent_position: Vector3<f32>
+    ) -> Vector3<f32>
     {
-        self.offset + parent_position
+        rotate_point_z_3d(self.offset, rotation) + parent_position
     }
 }
 
@@ -574,7 +579,6 @@ impl LazyTransform
 {
     pub fn next(
         &mut self,
-        physical: Option<&Physical>,
         mut current: Transform,
         parent_transform: Option<Transform>,
         dt: f32
@@ -591,6 +595,7 @@ impl LazyTransform
 
         self.apply_rotation(&mut target_global, &current, parent_transform.as_ref());
 
+        let previous_position = current.position;
         self.connection.next(&mut current, target_global.position, dt);
 
         match &self.deformation
@@ -598,13 +603,7 @@ impl LazyTransform
             Deformation::Rigid => (),
             Deformation::Stretch(deformation) =>
             {
-                let local_velocity = self.physical().map(|x| *x.velocity())
-                    .unwrap_or_default();
-
-                let global_velocity = physical.map(|x| *x.velocity())
-                    .unwrap_or_default();
-
-                let velocity = global_velocity + local_velocity;
+                let velocity = (current.position - previous_position) / dt;
 
                 current.stretch = deformation.stretch(current.rotation, velocity);
             }
@@ -726,15 +725,6 @@ impl LazyTransform
             {
                 target.position += parent.position;
             }
-        }
-    }
-
-    fn physical(&self) -> Option<&Physical>
-    {
-        match &self.connection
-        {
-            Connection::Spring(x) => Some(&x.physical),
-            _ => None
         }
     }
 

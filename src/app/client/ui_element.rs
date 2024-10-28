@@ -405,8 +405,10 @@ impl UiElement
             UiElementType::Panel | UiElementType::Tooltip | UiElementType::ActiveTooltip => ()
         }
 
-        let remove_this = ||
+        let remove_this = |this: &mut Self|
         {
+            this.capture_events = false;
+
             close_ui(entities, entity);
         };
 
@@ -425,7 +427,7 @@ impl UiElement
                 {
                     if !is_inside
                     {
-                        remove_this();
+                        remove_this(self);
                     }
                 }
 
@@ -448,13 +450,13 @@ impl UiElement
                     {
                         if !capture_this && event.state == ControlState::Pressed
                         {
-                            remove_this();
+                            remove_this(self);
                         }
                     }, UiEvent::Keyboard(..) =>
                     {
                         if !capture_this
                         {
-                            remove_this();
+                            remove_this(self);
                         }
                     }
                 }

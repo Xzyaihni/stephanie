@@ -143,6 +143,7 @@ pub enum WatcherAction
     SetMixColor(Option<MixColor>),
     SetTargetPosition(Vector3<f32>),
     SetTargetScale(Vector3<f32>),
+    SetTargetRotation(f32),
     SetLazyRotation(Rotation),
     SetLazyConnection(Connection),
     Remove,
@@ -202,6 +203,13 @@ impl WatcherAction
                 if let Some(mut target) = entities.target(entity)
                 {
                     target.scale = scale;
+                }
+            },
+            Self::SetTargetRotation(rotation) =>
+            {
+                if let Some(mut target) = entities.target(entity)
+                {
+                    target.rotation = rotation;
                 }
             },
             Self::SetLazyRotation(rotation) =>

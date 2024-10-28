@@ -176,6 +176,13 @@ impl ItemInfo
         }
     }
 
+    pub fn with_changed(mut self, mut f: impl FnMut(&mut Self)) -> Self
+    {
+        f(&mut self);
+
+        self
+    }
+
     pub fn bash_damage(&self) -> DamageType
     {
         if self.side_sharpness == 0.0

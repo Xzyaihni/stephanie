@@ -1,4 +1,8 @@
-use std::{f32, fmt::{self, Debug}};
+use std::{
+    f32,
+    ops::Mul,
+    fmt::{self, Debug}
+};
 
 use serde::{Serialize, Deserialize};
 
@@ -44,19 +48,24 @@ impl Debug for Damage
     }
 }
 
+impl Mul<f32> for Damage
+{
+    type Output = Self;
+
+    fn mul(self, scale: f32) -> Self
+    {
+        Self{
+            data: self.data * scale,
+            ..self
+        }
+    }
+}
+
 impl Damage
 {
     pub fn new(direction: DamageDirection, data: DamageType) -> Self
     {
         Self{rng: SeededRandom::new(), data, direction}
-    }
-
-    pub fn scale(self, scale: f32) -> Self
-    {
-        Self{
-            data: self.data.scale(scale),
-            ..self
-        }
     }
 }
 
@@ -66,6 +75,23 @@ pub enum DamageType
     Blunt(f32),
     Sharp{sharpness: f32, damage: f32},
     Bullet(f32)
+}
+
+impl Mul<f32> for DamageType
+{
+    type Output = Self;
+
+    fn mul(mut self, scale: f32) -> Self
+    {
+        match &mut self
+        {
+            Self::Blunt(x) => *x *= scale,
+            Self::Sharp{damage, ..} => *damage *= scale,
+            Self::Bullet(x) => *x *= scale
+        }
+
+        self
+    }
 }
 
 impl DamageType
@@ -78,18 +104,6 @@ impl DamageType
             Self::Sharp{damage, ..} => damage,
             Self::Bullet(x) => x
         }
-    }
-
-    pub fn scale(mut self, scale: f32) -> Self
-    {
-        match &mut self
-        {
-            Self::Blunt(x) => *x *= scale,
-            Self::Sharp{damage, ..} => *damage *= scale,
-            Self::Bullet(x) => *x *= scale
-        }
-
-        self
     }
 }
 

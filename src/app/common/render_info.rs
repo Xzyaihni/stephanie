@@ -29,7 +29,7 @@ use yanyaengine::{
     game_object::*
 };
 
-pub use yanyaengine::{FontStyle, TextAlign, HorizontalAlign, VerticalAlign, object::model::Uvs};
+pub use yanyaengine::{TextCreateInfo, FontStyle, TextAlign, HorizontalAlign, VerticalAlign, object::model::Uvs};
 
 use crate::{
     client::{RenderCreateInfo, VisibilityChecker},
@@ -189,13 +189,15 @@ impl RenderObjectKind
             Self::Text{ref text, font_size, font, align} =>
             {
                 let object = create_info.object_info.partial.builder_wrapper.create_text(
-                    TextInfo{
+                    TextCreateInfo{
                         transform,
-                        font_size,
-                        font,
-                        align,
                         dynamic_scale: None,
-                        text
+                        inner: TextInfo{
+                            font_size,
+                            font,
+                            align,
+                            text
+                        }
                     },
                     create_info.location,
                     create_info.shader
@@ -282,7 +284,9 @@ pub enum ZLevel
     Knee,
     Hips,
     Waist,
-    Arms,
+    HandLow,
+    Held,
+    HandHigh,
     Elbow,
     Shoulders,
     Head,

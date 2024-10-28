@@ -817,6 +817,7 @@ impl GameState
 
         let assets = info.object_info.partial.assets;
 
+        let builder_wrapper = &mut info.object_info.partial.builder_wrapper;
         let anatomy_locations = {
             let base_image = image::open("textures/special/anatomy_areas.png")
                 .expect("anatomy_areas.png must exist");
@@ -825,7 +826,7 @@ impl GameState
 
             let part_creator = PartCreator{
                 assets: &mut assets,
-                resource_uploader: info.object_info.partial.builder_wrapper.resource_uploader(),
+                resource_uploader: builder_wrapper.resource_uploader(),
                 shader: info.shaders.ui
             };
 
@@ -835,6 +836,7 @@ impl GameState
         let ui_mouse_entity = entities.ui_mouse_entity;
         let ui = Ui::new(
             info.data_infos.items_info.clone(),
+            builder_wrapper.fonts().clone(),
             &mut entities.entities,
             ui_mouse_entity,
             anatomy_locations,

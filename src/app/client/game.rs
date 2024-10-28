@@ -434,7 +434,7 @@ impl Game
 
     fn maybe_print_component(
         game_state: &Weak<RefCell<GameState>>,
-        memory: &mut MemoryWrapper,
+        memory: &mut impl Memoriable,
         mut args: ArgsWrapper,
         print: bool
     ) -> Result<(), lisp::Error>
@@ -820,7 +820,7 @@ impl Game
 
             primitives.add(
                 "has-component",
-                PrimitiveProcedureInfo::new_simple_effect(2, move |_state, memory, args|
+                PrimitiveProcedureInfo::new_simple(2, move |_state, memory, args|
                 {
                     Self::maybe_print_component(&game_state, memory, args, false)
                 }));
@@ -1034,7 +1034,7 @@ impl<'a> PlayerContainer<'a>
 
     pub fn on_player_connected(&mut self)
     {
-        let mut player_transform = self.game_state.entities().transform_mut(self.info.entity).unwrap();
+        let mut player_transform = self.game_state.entities().target(self.info.entity).unwrap();
         let mut position = Vector3::repeat(CHUNK_VISUAL_SIZE / 2.0);
         position.z = -TILE_SIZE + (player_transform.scale.z / 2.0);
 
@@ -1105,7 +1105,7 @@ impl<'a> PlayerContainer<'a>
             x.floating()
         }).unwrap_or(false);
 
-        if control == Control::Crawl && !is_floating 
+        if control == Control::Crawl && !is_floating
         {
             let entities = self.game_state.entities();
             if let Some(mut anatomy) = entities.anatomy_mut(self.info.entity)
@@ -1445,7 +1445,7 @@ impl<'a> PlayerContainer<'a>
                 {
                     0.0
                 };
-                
+
                 self.game_state.ui_notifications.set_weapon_cooldown_bar(
                     entities,
                     self.info.entity,
@@ -1529,7 +1529,7 @@ impl<'a> PlayerContainer<'a>
                     if self.info.interacted
                     {
                         let mut transform = self.game_state.entities()
-                            .transform_mut(self.info.entity)
+                            .target(self.info.entity)
                             .unwrap();
 
                         transform.position.z += TILE_SIZE * 2.0;
@@ -1560,7 +1560,7 @@ impl<'a> PlayerContainer<'a>
                 if self.info.interacted
                 {
                     let mut transform = self.game_state.entities()
-                        .transform_mut(self.info.entity)
+                        .target(self.info.entity)
                         .unwrap();
 
                     transform.position.z -= TILE_SIZE * 2.0;

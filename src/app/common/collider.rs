@@ -136,7 +136,6 @@ pub enum ColliderLayer
 {
     Normal,
     Damage,
-    Ui,
     World,
     Door,
     Mouse,
@@ -149,37 +148,30 @@ impl ColliderLayer
     {
         define_layers!{
             self, other,
-            (Ui, Ui, true),
 
             (Normal, Normal, true),
-            (Normal, Ui, false),
 
             (Damage, Damage, false),
             (Damage, Normal, true),
-            (Damage, Ui, false),
 
             (World, World, false),
             (World, Normal, true),
             (World, Damage, true),
-            (World, Ui, false),
 
             (Mouse, Mouse, false),
             (Mouse, Normal, true),
             (Mouse, Damage, false),
-            (Mouse, Ui, true),
             (Mouse, World, false),
 
             (Door, Door, false),
             (Door, Normal, true),
             (Door, Damage, true),
-            (Door, Ui, false),
             (Door, World, false),
             (Door, Mouse, false),
 
             (Player, Player, false),
             (Player, Normal, true),
             (Player, Damage, true),
-            (Player, Ui, false),
             (Player, World, true),
             (Player, Mouse, true),
             (Player, Door, true)

@@ -613,6 +613,11 @@ macro_rules! impl_common_systems
                 }
             }
         }
+
+        pub fn end_sync_full(&self, entity: Entity)
+        {
+            self.end_sync(entity, |mut current, target| *current = target);
+        }
     }
 }
 
@@ -711,8 +716,17 @@ macro_rules! entity_info_common
 
             if let Some(character) = self.character.as_mut()
             {
+                self.lazy_transform.as_mut().unwrap().deformation = Deformation::Stretch(
+                    StretchDeformation{
+                        animation: ValueAnimation::EaseOut(1.1),
+                        limit: 1.3,
+                        onset: 0.5,
+                        strength: 0.2
+                    }
+                );
+
                 let rotation = self.transform.as_ref().map(|x| x.rotation).unwrap_or_default();
-                character.initialize(&entities.infos().characters_info, entity, rotation, |info|
+                character.initialize(entities, entity, rotation, |info|
                 {
                     entities.push(entity.local(), info)
                 });
@@ -1160,13 +1174,10 @@ macro_rules! define_entities_both
                 {
                     $(stringify!($name) =>
                     {
-                        let info = self.$name(entity)
-                            .map(|component|
-                            {
-                                format!("{component:#?}")
-                            })?;
-
-                        Some(info)
+                        self.$name(entity).map(|component|
+                        {
+                            format!("{component:#?}")
+                        })
                     },)+
                     _ => None
                 }
@@ -2036,7 +2047,6 @@ macro_rules! define_entities_both
                     let target_global = self.parent_transform(entity);
 
                     *transform = lazy.next(
-                        self.physical(entity).as_deref(),
                         transform.clone(),
                         target_global,
                         dt
@@ -2046,16 +2056,18 @@ macro_rules! define_entities_both
                     {
                         let current = &mut transform.rotation;
 
-                        let target = self.transform(follow.parent()).unwrap().rotation;
-
-                        follow.next(current, target, dt);
+                        if let Some(target) = self.transform(follow.parent()).map(|x| x.rotation)
+                        {
+                            follow.next(current, target, dt);
+                        }
                     }
 
                     if let Some(mut follow) = self.follow_position_mut(entity)
                     {
-                        let target = self.transform(follow.parent()).unwrap().position;
-
-                        follow.next(&mut transform, target, dt);
+                        if let Some(target) = self.transform(follow.parent()).map(|x| x.position)
+                        {
+                            follow.next(&mut transform, target, dt);
+                        }
                     }
                 }
             }
