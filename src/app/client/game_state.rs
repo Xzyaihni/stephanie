@@ -107,7 +107,7 @@ mod anatomy_locations;
 mod ui;
 
 
-const DEFAULT_ZOOM: f32 = 2.3;
+const DEFAULT_ZOOM: f32 = 3.0;
 
 #[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]

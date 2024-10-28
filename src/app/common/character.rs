@@ -22,6 +22,7 @@ use crate::{
     common::{
         some_or_return,
         some_or_value,
+        some_or_false,
         define_layers,
         angle_between,
         ENTITY_SCALE,
@@ -143,9 +144,9 @@ impl Faction
 pub enum CharacterAction
 {
     Throw(Vector3<f32>),
-    Poke,
+    Poke{state: bool},
     Bash,
-    Ranged(Vector3<f32>)
+    Ranged{state: bool, target: Vector3<f32>}
 }
 
 pub const DEFAULT_HELD_DISTANCE: f32 = 0.1;
@@ -224,6 +225,14 @@ struct CachedInfo
     pub bash_distance_parentless: Option<f32>
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+enum AttackState
+{
+    None,
+    Poke,
+    Aim
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Character
 {
@@ -238,6 +247,7 @@ pub struct Character
     hands_infront: bool,
     #[serde(skip, default)]
     cached: CachedInfo,
+    attack_state: AttackState,
     info: Option<AfterInfo>,
     held_update: bool,
     attack_cooldown: f32,
@@ -265,6 +275,7 @@ impl Character
             holding: None,
             hands_infront: false,
             cached: CachedInfo::default(),
+            attack_state: AttackState::None,
             held_update: true,
             attack_cooldown: 0.0,
             bash_side: Side1d::Left,
@@ -302,6 +313,15 @@ impl Character
                 momentum: 0.5
             }.into()
         )
+    }
+
+    fn fast_lazy_rotation() -> Rotation
+    {
+        Rotation::EaseOut(EaseOutRotation{
+            decay: 15.0,
+            speed_significant: 10.0,
+            momentum: 0.5
+        }.into())
     }
 
     pub fn initialize(
@@ -636,7 +656,7 @@ impl Character
             target.scale = Vector3::repeat(HAND_SCALE) * self.held_scale();
             target.scale.x *= x_sign;
 
-            target.position = self.item_position(target.scale);
+            target.position = self.held_position(target.scale);
             target.position.y = y;
         };
 
@@ -820,16 +840,24 @@ impl Character
         self.stamina -= some_or_return!(self.attack_stamina_cost(combined_info));
     }
 
-    pub fn can_attack(&self, combined_info: CombinedInfo) -> bool
+    fn attackable_state(&self) -> bool
     {
         let state = *self.sprite_state.value();
 
-        let attackable_state = state == SpriteState::Normal || state == SpriteState::Crawling;
+        state == SpriteState::Normal || state == SpriteState::Crawling
+    }
 
+    pub fn can_ranged(&self) -> bool
+    {
+        self.attackable_state()
+    }
+
+    pub fn can_attack(&self, combined_info: CombinedInfo) -> bool
+    {
         let cost = some_or_value!(self.attack_stamina_cost(combined_info), false);
         let attackable_item = cost <= self.stamina;
 
-        attackable_state && attackable_item
+        self.attackable_state() && attackable_item
     }
 
     fn anatomy<'a>(&'a self, entities: &'a ClientEntities) -> Option<Ref<'a, Anatomy>>
@@ -962,31 +990,92 @@ impl Character
         f(info.hand_right);
     }
 
-    fn poke_attack(&mut self, combined_info: CombinedInfo)
+    fn clear_attack_state(&mut self, combined_info: CombinedInfo, successful: bool)
     {
-        if !self.can_attack(combined_info)
+        self.attack_state = AttackState::None;
+
+        if !successful
+        {
+            self.update_hands_rotation(combined_info);
+        }
+    }
+
+    fn aim_start(&mut self, combined_info: CombinedInfo)
+    {
+        if !self.can_ranged()
         {
             return;
         }
-
-        let item = some_or_return!(self.held_item(combined_info));
 
         if self.attack_cooldown > 0.0
         {
             return;
         }
 
-        self.attack_cooldown = some_or_return!(self.held_attack_cooldown(combined_info));
+        let hand_left = some_or_return!(self.info.as_ref()).hand_left;
+
+        let entities = combined_info.entities;
+
+        some_or_return!(entities.lazy_transform_mut(hand_left)).rotation = Self::fast_lazy_rotation();
+
+        self.forward_point(combined_info);
+
+        self.attack_state = AttackState::Aim;
+    }
+
+    fn poke_attack_start(&mut self, combined_info: CombinedInfo)
+    {
+        if !self.can_attack(combined_info)
+        {
+            return;
+        }
+
+        if self.attack_cooldown > 0.0
+        {
+            return;
+        }
+
+        let hand_left = some_or_return!(self.info.as_ref()).hand_left;
+
+        let entities = combined_info.entities;
+
+        some_or_return!(entities.lazy_transform_mut(hand_left)).rotation = Self::fast_lazy_rotation();
+
+        self.forward_point(combined_info);
+
+        self.attack_state = AttackState::Poke;
+    }
+
+    fn poke_attack(&mut self, combined_info: CombinedInfo) -> bool
+    {
+        if self.attack_state != AttackState::Poke
+        {
+            return false;
+        }
+
+        if !self.can_attack(combined_info)
+        {
+            return false;
+        }
+
+        if self.attack_cooldown > 0.0
+        {
+            return false;
+        }
+
+        let item = some_or_false!(self.held_item(combined_info));
+
+        self.attack_cooldown = some_or_false!(self.held_attack_cooldown(combined_info));
 
         self.consume_attack_stamina(combined_info);
 
         self.poke_projectile(combined_info, item);
 
-        let info = some_or_return!(self.info.as_ref());
+        let info = some_or_false!(self.info.as_ref());
 
         let entities = &combined_info.entities;
 
-        let mut lazy = some_or_return!(entities.lazy_transform_mut(info.hand_left));
+        let mut lazy = some_or_false!(entities.lazy_transform_mut(info.hand_left));
 
         let lifetime = self.attack_cooldown.min(0.5);
         let extend_time = lifetime * 0.2;
@@ -999,25 +1088,16 @@ impl Character
             }.into()
         );
 
-        let start_rotation = some_or_return!(self.default_held_rotation(combined_info));
+        let start_rotation = some_or_false!(self.default_held_rotation(combined_info));
         let current_hand_rotation = self.current_hand_rotation();
 
         let target = lazy.target();
 
-        let item_position = self.item_position(target.scale);
+        let item_position = self.held_position(target.scale);
         let held_position = Vector3::new(item_position.x, target.position.y, 0.0);
 
-        let overrotate = 0.6;
-
         target.position.x = item_position.x + POKE_DISTANCE;
-
-        target.rotation = f32::consts::FRAC_PI_2 + if let Side1d::Right = self.bash_side
-        {
-            -overrotate
-        } else
-        {
-            overrotate
-        };
+        target.rotation = start_rotation;
 
         let rotation = start_rotation - current_hand_rotation;
 
@@ -1043,32 +1123,39 @@ impl Character
             action: WatcherAction::SetTargetPosition(held_position),
             ..Default::default()
         });
+
+        true
     }
 
     fn ranged_attack(
         &mut self,
         combined_info: CombinedInfo,
         target: Vector3<f32>
-    )
+    ) -> bool
     {
-        if !self.can_move(combined_info)
+        if self.attack_state != AttackState::Aim
         {
-            return;
+            return false;
         }
 
-        let item = some_or_return!(self.held_item(combined_info));
-
-        let items_info = combined_info.items_info;
-        let ranged = some_or_return!(&items_info.get(item.id).ranged);
+        if !self.can_ranged()
+        {
+            return false;
+        }
 
         if self.attack_cooldown > 0.0
         {
-            return;
+            return false;
         }
+
+        let item = some_or_false!(self.held_item(combined_info));
+
+        let items_info = combined_info.items_info;
+        let ranged = some_or_false!(&items_info.get(item.id).ranged);
 
         self.attack_cooldown = ranged.cooldown();
 
-        let info = some_or_return!(self.info.as_ref());
+        let info = some_or_false!(self.info.as_ref());
 
         let start = &combined_info.entities.transform(info.this).unwrap().position;
 
@@ -1119,6 +1206,8 @@ impl Character
                 _ => ()
             }
         }
+
+        true
     }
 
     fn bash_projectile(&mut self, combined_info: CombinedInfo)
@@ -1248,12 +1337,25 @@ impl Character
 
         mem::take(&mut self.actions).into_iter().for_each(|action|
         {
+            macro_rules! with_clear
+            {
+                ($state:expr) =>
+                {
+                    {
+                        let state = $state;
+                        self.clear_attack_state(combined_info, state);
+                    }
+                }
+            }
+
             match action
             {
                 CharacterAction::Throw(target) => self.throw_held(combined_info, target),
-                CharacterAction::Poke => self.poke_attack(combined_info),
-                CharacterAction::Bash => self.bash_attack(combined_info),
-                CharacterAction::Ranged(target) => self.ranged_attack(combined_info, target)
+                CharacterAction::Poke{state: false} => self.poke_attack_start(combined_info),
+                CharacterAction::Poke{state: true} => with_clear!(self.poke_attack(combined_info)),
+                CharacterAction::Ranged{state: false, ..} => self.aim_start(combined_info),
+                CharacterAction::Ranged{state: true, target} => with_clear!(self.ranged_attack(combined_info, target)),
+                CharacterAction::Bash => self.bash_attack(combined_info)
             }
         });
     }
@@ -1302,7 +1404,7 @@ impl Character
         }
     }
 
-    fn item_position(&self, scale: Vector3<f32>) -> Vector3<f32>
+    fn held_position(&self, scale: Vector3<f32>) -> Vector3<f32>
     {
         let offset = scale.y / 2.0 + 0.5 + self.held_distance();
 

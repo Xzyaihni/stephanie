@@ -1105,21 +1105,35 @@ impl<'a> PlayerContainer<'a>
             x.floating()
         }).unwrap_or(false);
 
-        if control == Control::Crawl && !is_floating
+        match control
         {
-            let entities = self.game_state.entities();
-            if let Some(mut anatomy) = entities.anatomy_mut(self.info.entity)
+            Control::Crawl if !is_floating =>
             {
-                anatomy.override_crawling(state.to_bool());
+                let entities = self.game_state.entities();
+                if let Some(mut anatomy) = entities.anatomy_mut(self.info.entity)
+                {
+                    anatomy.override_crawling(state.to_bool());
 
-                drop(anatomy);
-                entities.anatomy_changed(self.info.entity);
-            }
-        }
+                    drop(anatomy);
+                    entities.anatomy_changed(self.info.entity);
+                }
+            },
+            Control::Poke =>
+            {
+                self.character_action(CharacterAction::Poke{state: !state.to_bool()});
+            },
+            Control::Shoot =>
+            {
+                let mut target = some_or_return!(self.mouse_position());
+                target.z = some_or_return!(self.player_position()).z;
 
-        if control == Control::Interact
-        {
-            self.info.interacted = state == ControlState::Pressed;
+                self.character_action(CharacterAction::Ranged{state: !state.to_bool(), target});
+            },
+            Control::Interact =>
+            {
+                self.info.interacted = state == ControlState::Pressed;
+            },
+            _ => ()
         }
 
         if state != ControlState::Pressed
@@ -1169,17 +1183,6 @@ impl<'a> PlayerContainer<'a>
                 }
 
                 self.character_action(CharacterAction::Bash);
-            },
-            Control::Poke =>
-            {
-                self.character_action(CharacterAction::Poke);
-            },
-            Control::Shoot =>
-            {
-                let mut target = some_or_return!(self.mouse_position());
-                target.z = some_or_return!(self.player_position()).z;
-
-                self.character_action(CharacterAction::Ranged(target));
             },
             Control::Throw =>
             {

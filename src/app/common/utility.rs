@@ -22,6 +22,7 @@ pub use crate::{
     define_layers,
     define_layers_enum,
     some_or_value,
+    some_or_false,
     some_or_return,
     common::{
         watcher::*,
@@ -85,6 +86,15 @@ macro_rules! some_or_value
 }
 
 #[macro_export]
+macro_rules! some_or_false
+{
+    ($value:expr) =>
+    {
+        $crate::some_or_value!{$value, false}
+    }
+}
+
+#[macro_export]
 macro_rules! some_or_return
 {
     ($value:expr) =>
@@ -107,7 +117,7 @@ impl<K: Hash + Eq + Clone, V: Hash + Eq + Clone> FromIterator<(K, V)> for BiMap<
     {
         let normal: HashMap<K, V> = iter.into_iter().collect();
         let back = normal.iter().map(|(k, v)| (v.clone(), k.clone())).collect();
-        
+
         Self{
             normal,
             back
