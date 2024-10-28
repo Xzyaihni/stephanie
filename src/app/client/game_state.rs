@@ -1029,12 +1029,12 @@ impl GameState
 
     fn resize_camera(&mut self, factor: f32)
     {
-        let (min_scale, max_scale) = World::zoom_limits();
+        let _max_scale = World::zoom_limit(); // maybe i would wanna use this??
 
         self.camera_scale *= factor;
         if !self.debug_mode
         {
-            self.camera_scale = self.camera_scale.clamp(min_scale, max_scale);
+            self.camera_scale = self.camera_scale.clamp(0.2, DEFAULT_ZOOM);
         }
 
         self.set_camera_scale(self.camera_scale);

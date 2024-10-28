@@ -108,7 +108,7 @@ impl World
         Pos3::new(CLIENT_OVERMAP_SIZE, CLIENT_OVERMAP_SIZE, CLIENT_OVERMAP_SIZE_Z)
     }
 
-    pub fn zoom_limits() -> (f32, f32)
+    pub fn zoom_limit() -> f32
     {
         //make the camera smaller by 3 tiles so theres time for the missing chunks to load
         let padding = 3;
@@ -116,9 +116,8 @@ impl World
         let padding = TILE_SIZE * padding as f32;
 
         let max_scale = (CLIENT_OVERMAP_SIZE - 1) as f32 * CHUNK_VISUAL_SIZE - padding;
-        let min_scale = 0.2;
 
-        (min_scale, max_scale)
+        max_scale
     }
 
     fn chunk_of(&self, pos: Pos3<f32>) -> GlobalPos
