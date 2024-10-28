@@ -58,7 +58,7 @@ pub fn update_buffers(
 
 pub struct DrawEntities<'a, I>
 {
-    pub renders: &'a [Entity],
+    pub renders: &'a [Vec<Entity>],
     pub ui_renders: I
 }
 
@@ -71,7 +71,7 @@ pub fn draw<I: Iterator<Item=Entity>>(
     animation: f32
 )
 {
-    renderables.renders.iter().for_each(|&entity|
+    renderables.renders.iter().flatten().for_each(|&entity|
     {
         let outline = entities.outlineable(entity).and_then(|outline|
         {
@@ -92,7 +92,7 @@ pub fn draw<I: Iterator<Item=Entity>>(
     info.set_depth_test(false);
 
     info.bind_pipeline(shaders.shadow);
-    renderables.renders.iter().filter_map(|entity|
+    renderables.renders.iter().flatten().filter_map(|entity|
     {
         entities.occluder(*entity)
     }).for_each(|occluder|

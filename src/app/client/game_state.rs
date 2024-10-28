@@ -6,6 +6,7 @@ use std::{
     cell::{Ref, RefCell},
     rc::Rc,
     ops::ControlFlow,
+    collections::{BTreeMap, btree_map::Entry},
     sync::{
         Arc,
         mpsc::{self, TryRecvError, Receiver}
@@ -61,6 +62,7 @@ use crate::{
         character::PartialCombinedInfo,
         entity::{for_each_component, render_system, ClientEntities},
         world::{
+            TILE_SIZE,
             World,
             Pos3,
             Tile,
@@ -123,7 +125,7 @@ pub struct ClientEntitiesContainer
     pub camera_entity: Entity,
     pub follow_entity: Entity,
     pub ui_mouse_entity: Entity,
-    visible_renders: Vec<Entity>,
+    visible_renders: Vec<Vec<Entity>>,
     ui_renders: Vec<(Entity, bool)>,
     player_entity: Entity,
     positions_sync: f32,
@@ -265,8 +267,9 @@ impl ClientEntitiesContainer
         caster: &OccludingCaster
     )
     {
-        self.visible_renders.clear();
         self.ui_renders.clear();
+
+        let mut visible_renders = BTreeMap::new();
 
         let mut world_ui = Vec::new();
         for_each_component!(self.entities, render, |entity, render: &RefCell<ClientRenderInfo>|
@@ -292,13 +295,20 @@ impl ClientEntitiesContainer
                 self.ui_renders.push((entity, is_world));
             } else
             {
-                self.visible_renders.push(entity);
+                let real_z = (transform.position.z / TILE_SIZE).floor() as i32;
+                match visible_renders.entry(real_z)
+                {
+                    Entry::Vacant(entry) => { entry.insert(vec![entity]); },
+                    Entry::Occupied(mut entry) => entry.get_mut().push(entity)
+                }
             }
         });
 
+        self.visible_renders = visible_renders.into_values().collect();
+
         render_system::update_buffers(
             &self.entities,
-            self.visible_renders.iter().copied().chain(world_ui),
+            self.visible_renders.iter().flatten().copied().chain(world_ui),
             info,
             caster
         );
