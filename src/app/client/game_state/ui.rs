@@ -10,6 +10,7 @@ use nalgebra::{Vector2, Vector3};
 use yanyaengine::{Transform, FontsContainer, TextInfo, camera::Camera};
 
 use crate::{
+    LONGEST_FRAME,
     client::{
         ui_element::*,
         game_state::{UiAnatomyLocations, GameState, EntityCreator, UserEvent, UiReceiver}
@@ -53,6 +54,7 @@ const NOTIFICATION_WIDTH: f32 = NOTIFICATION_HEIGHT * 4.0;
 const ANIMATION_SCALE: Vector3<f32> = Vector3::new(4.0, 0.0, 1.0);
 
 const TOOLTIP_LIFETIME: f32 = 0.1;
+const CLOSED_LIFETIME: f32 = 1.0;
 
 const DEFAULT_COLOR: [f32; 3] = [0.165, 0.161, 0.192];
 
@@ -66,6 +68,7 @@ pub enum WindowError
 
 pub struct UiScroll
 {
+    background: Entity,
     bar: Entity,
     size: f32,
     global_scroll: Rc<RefCell<f32>>,
@@ -109,18 +112,25 @@ impl UiScroll
             },
             RenderInfo{
                 object: Some(RenderObjectKind::Texture{name: "ui/light.png".to_owned()}.into()),
-                z_level: ZLevel::UiHigh,
+                z_level: ZLevel::Ui,
                 ..Default::default()
             }
         );
 
         Self{
+            background,
             bar,
             size: 1.0,
             global_scroll,
             target_scroll,
             scroll: target_scroll
         }
+    }
+
+    fn in_render_order(&self, mut f: impl FnMut(Entity))
+    {
+        f(self.background);
+        f(self.bar);
     }
 
     pub fn update(&mut self, entities: &ClientEntities, dt: f32)
@@ -189,6 +199,15 @@ pub struct ListItem
     item: Entity
 }
 
+impl ListItem
+{
+    fn in_render_order(&self, mut f: impl FnMut(Entity))
+    {
+        f(self.frame);
+        f(self.item);
+    }
+}
+
 pub struct UiList
 {
     panel: Entity,
@@ -246,7 +265,7 @@ impl UiList
                 },
                 RenderInfo{
                     object: Some(RenderObjectKind::Texture{name: "ui/light.png".to_owned()}.into()),
-                    z_level: ZLevel::UiMiddle,
+                    z_level: ZLevel::Ui,
                     ..Default::default()
                 }
             )
@@ -284,6 +303,12 @@ impl UiList
         this
     }
 
+    fn in_render_order(&self, mut f: impl FnMut(Entity))
+    {
+        self.scroll.in_render_order(&mut f);
+        self.frames.iter().for_each(|x| x.in_render_order(&mut f));
+    }
+
     fn create_items(
         creator: &mut EntityCreator,
         on_change: Rc<RefCell<dyn FnMut(Entity, usize)>>,
@@ -315,7 +340,7 @@ impl UiList
                     object: Some(RenderObjectKind::Texture{
                         name: "ui/lighter.png".to_owned()
                     }.into()),
-                    z_level: ZLevel::UiHigh,
+                    z_level: ZLevel::Ui,
                     ..Default::default()
                 }
             );
@@ -340,7 +365,7 @@ impl UiList
                     ..Default::default()
                 },
                 RenderInfo{
-                    z_level: ZLevel::UiHigher,
+                    z_level: ZLevel::Ui,
                     ..Default::default()
                 }
             );
@@ -539,7 +564,10 @@ impl Default for UiWindowInfo
 struct UiWindow
 {
     body: Entity,
+    top_panel: Entity,
     panel: Entity,
+    name_entity: Entity,
+    buttons: Vec<Entity>,
     button_width: f32
 }
 
@@ -600,7 +628,7 @@ impl UiWindow
             },
             RenderInfo{
                 object: Some(RenderObjectKind::Texture{name: "ui/background.png".to_owned()}.into()),
-                z_level: ZLevel::UiLow,
+                z_level: ZLevel::Ui,
                 ..Default::default()
             }
         );
@@ -628,7 +656,7 @@ impl UiWindow
             },
             RenderInfo{
                 object: Some(RenderObjectKind::Texture{name: "ui/background.png".to_owned()}.into()),
-                z_level: ZLevel::UiMiddle,
+                z_level: ZLevel::Ui,
                 ..Default::default()
             }
         );
@@ -650,7 +678,7 @@ impl UiWindow
             },
             RenderInfo{
                 object: None,
-                z_level: ZLevel::UiMiddle,
+                z_level: ZLevel::Ui,
                 ..Default::default()
             }
         );
@@ -661,7 +689,7 @@ impl UiWindow
 
         let low = button_width * custom_buttons.len() as f32;
         let high = 1.0 - button_width;
-        info.creator.push(
+        let name_entity = info.creator.push(
             EntityInfo{
                 lazy_transform: Some(LazyTransformInfo{
                     transform: Transform{
@@ -685,14 +713,14 @@ impl UiWindow
                     font: style,
                     align
                 }.into()),
-                z_level: ZLevel::UiHigh,
+                z_level: ZLevel::Ui,
                 ..Default::default()
             }
         );
 
         let scale = Vector3::new(button_width, 1.0, 1.0);
 
-        let mut custom_buttons = custom_buttons.into_iter().enumerate().map(|(index, custom_button)|
+        let mut buttons = custom_buttons.into_iter().enumerate().map(|(index, custom_button)|
         {
             let urx = info.user_receiver.clone();
             let CustomButton{texture, on_click} = custom_button;
@@ -725,7 +753,7 @@ impl UiWindow
                     object: Some(RenderObjectKind::Texture{
                         name: texture.to_owned()
                     }.into()),
-                    z_level: ZLevel::UiHigh,
+                    z_level: ZLevel::Ui,
                     ..Default::default()
                 }
             )
@@ -759,18 +787,29 @@ impl UiWindow
             },
             RenderInfo{
                 object: Some(RenderObjectKind::Texture{name: "ui/close_button.png".to_owned()}.into()),
-                z_level: ZLevel::UiHigh,
+                z_level: ZLevel::Ui,
                 ..Default::default()
             }
         );
 
-        custom_buttons.push(close_button);
+        buttons.push(close_button);
 
         Self{
             body,
+            top_panel,
             panel,
+            name_entity,
+            buttons,
             button_width
         }
+    }
+
+    fn in_render_order(&self, mut f: impl FnMut(Entity))
+    {
+        f(self.body);
+        f(self.top_panel);
+        f(self.name_entity);
+        self.buttons.iter().copied().for_each(f);
     }
 
     fn panel_size(height: f32) -> f32
@@ -792,7 +831,8 @@ pub struct UiInventory
     items_info: Arc<ItemsInfo>,
     items: Rc<RefCell<Vec<InventoryItem>>>,
     inventory: Entity,
-    list: UiList
+    list: UiList,
+    window: UiWindow
 }
 
 impl UiInventory
@@ -867,7 +907,8 @@ impl UiInventory
             items_info,
             items,
             inventory: window.body,
-            list: UiList::new(&mut info.creator, window.panel, 1.0 - window.button_width, on_change)
+            list: UiList::new(&mut info.creator, window.panel, 1.0 - window.button_width, on_change),
+            window
         };
 
         this.full_update(&mut info.creator, owner);
@@ -878,6 +919,12 @@ impl UiInventory
     pub fn body(&self) -> Entity
     {
         self.inventory
+    }
+
+    fn in_render_order(&self, mut f: impl FnMut(Entity))
+    {
+        self.window.in_render_order(&mut f);
+        self.list.in_render_order(f);
     }
 
     pub fn update_inventory(
@@ -928,7 +975,8 @@ impl UiInventory
 
 pub struct UiAnatomy
 {
-    window: UiWindow
+    window: UiWindow,
+    anatomy_entities: Vec<Entity>
 }
 
 impl UiAnatomy
@@ -957,7 +1005,10 @@ impl UiAnatomy
         let ui_ref = ui.borrow();
         let anatomy_locations = &ui_ref.anatomy_locations;
 
-        anatomy_locations.locations.iter().for_each(|(&id, location)|
+        let anatomy_entities = HumanPartId::iter().map(|id|
+        {
+            (id, &anatomy_locations.locations[&id])
+        }).map(|(id, location)|
         {
             let ui = ui.clone();
             let mut lazy_mix = LazyMix::ui_color([0.4; 3]);
@@ -992,15 +1043,22 @@ impl UiAnatomy
                 },
                 RenderInfo{
                     object: Some(RenderObjectKind::TextureId{id: location.id}.into()),
-                    z_level: location.z_level,
+                    z_level: ZLevel::Ui,
                     ..Default::default()
                 }
-            );
-        });
+            )
+        }).collect::<Vec<_>>();
 
         Self{
-            window
+            window,
+            anatomy_entities
         }
+    }
+
+    fn in_render_order(&self, mut f: impl FnMut(Entity))
+    {
+        self.window.in_render_order(&mut f);
+        self.anatomy_entities.iter().copied().for_each(f);
     }
 
     pub fn body(&self) -> Entity
@@ -1011,7 +1069,8 @@ impl UiAnatomy
 
 pub struct UiStats
 {
-    window: UiWindow
+    window: UiWindow,
+    temp: Entity
 }
 
 impl UiStats
@@ -1034,7 +1093,7 @@ impl UiStats
 
         let description = format!("this will have stats later :)");
 
-        common_info.creator.push(
+        let temp = common_info.creator.push(
             EntityInfo{
                 lazy_transform: Some(LazyTransformInfo{
                     transform: Transform{
@@ -1053,14 +1112,21 @@ impl UiStats
                     font: FontStyle::Bold,
                     align: TextAlign::default()
                 }.into()),
-                z_level: ZLevel::UiHigh,
+                z_level: ZLevel::Ui,
                 ..Default::default()
             }
         );
 
         Self{
-            window
+            window,
+            temp
         }
+    }
+
+    fn in_render_order(&self, mut f: impl FnMut(Entity))
+    {
+        self.window.in_render_order(&mut f);
+        f(self.temp);
     }
 
     pub fn body(&self) -> Entity
@@ -1071,7 +1137,8 @@ impl UiStats
 
 pub struct UiItemInfo
 {
-    window: UiWindow
+    window: UiWindow,
+    description_entity: Entity
 }
 
 impl UiItemInfo
@@ -1104,7 +1171,7 @@ impl UiItemInfo
             info.scale
         );
 
-        common_info.creator.push(
+        let description_entity = common_info.creator.push(
             EntityInfo{
                 lazy_transform: Some(LazyTransformInfo{
                     transform: Transform{
@@ -1123,14 +1190,21 @@ impl UiItemInfo
                     font: FontStyle::Bold,
                     align: TextAlign::default()
                 }.into()),
-                z_level: ZLevel::UiHigh,
+                z_level: ZLevel::Ui,
                 ..Default::default()
             }
         );
 
         Self{
-            window
+            window,
+            description_entity
         }
+    }
+
+    fn in_render_order(&self, mut f: impl FnMut(Entity))
+    {
+        self.window.in_render_order(&mut f);
+        f(self.description_entity);
     }
 
     pub fn body(&self) -> Entity
@@ -1148,7 +1222,7 @@ fn update_resize_ui(entities: &ClientEntities, size: Vector2<f32>, entity: Entit
     }
 }
 
-pub fn close_ui(entities: &ClientEntities, entity: Entity)
+fn close_ui(entities: &ClientEntities, entity: Entity)
 {
     let current_scale;
     {
@@ -1169,10 +1243,8 @@ pub fn close_ui(entities: &ClientEntities, entity: Entity)
     let watchers = entities.watchers_mut(entity);
     if let Some(mut watchers) = watchers
     {
-        let near = 0.2 * current_scale.min();
-
         let watcher = Watcher{
-            kind: WatcherType::ScaleDistance{from: Vector3::zeros(), near},
+            kind: WatcherType::Lifetime(CLOSED_LIFETIME.into()),
             action: WatcherAction::Remove,
             ..Default::default()
         };
@@ -1215,7 +1287,7 @@ fn create_notification_body(
         RenderInfo{
             object: Some(RenderObjectKind::Texture{name: "ui/background.png".to_owned()}.into()),
             mix: Some(MixColor{color, amount: 1.0, keep_transparency: true}),
-            z_level: ZLevel::UiNotificationLow,
+            z_level: ZLevel::Ui,
             ..Default::default()
         }
     );
@@ -1245,7 +1317,7 @@ impl Default for UiBarInfo
             color: DEFAULT_COLOR,
             font_size: 50,
             smoothing: false,
-            z_level: ZLevel::UiPopupHigh
+            z_level: ZLevel::Ui
         }
     }
 }
@@ -1253,7 +1325,9 @@ impl Default for UiBarInfo
 #[derive(Debug, Clone)]
 struct UiBar
 {
+    body: Entity,
     bar: Entity,
+    text_entity: Entity,
     smoothing: bool
 }
 
@@ -1290,7 +1364,7 @@ impl UiBar
             }
         );
 
-        creator.push(
+        let text_entity = creator.push(
             EntityInfo{
                 lazy_transform: Some(LazyTransformInfo::default().into()),
                 parent: Some(Parent::new(body, true)),
@@ -1303,15 +1377,24 @@ impl UiBar
                     font: FontStyle::Bold,
                     align: TextAlign::centered()
                 }.into()),
-                z_level: bar_z_level.next(),
+                z_level: ZLevel::Ui,
                 ..Default::default()
             }
         );
 
         Self{
+            body,
             bar,
+            text_entity,
             smoothing: info.smoothing
         }
+    }
+
+    fn in_render_order(&self, mut f: impl FnMut(Entity))
+    {
+        f(self.body);
+        f(self.bar);
+        f(self.text_entity);
     }
 
     pub fn set_amount(
@@ -1407,7 +1490,7 @@ impl BarNotification
             info.creator,
             body,
             name,
-            UiBarInfo{color, z_level: ZLevel::UiNotificationMiddle, ..Default::default()}
+            UiBarInfo{color, z_level: ZLevel::Ui, ..Default::default()}
         );
 
         let mut this = Self{
@@ -1429,6 +1512,11 @@ impl BarNotification
         self.bar.set_amount(entities, amount);
     }
 
+    fn in_render_order(&self, f: impl FnMut(Entity))
+    {
+        self.bar.in_render_order(f);
+    }
+
     pub fn update(&self, entities: &ClientEntities)
     {
         self.bar.update(entities);
@@ -1438,6 +1526,7 @@ impl BarNotification
 pub struct TextNotification
 {
     body: Entity,
+    text_entity: Entity,
     text: String
 }
 
@@ -1467,7 +1556,7 @@ impl TextNotification
         let width = size.x + NOTIFICATION_WIDTH * 0.1;
         info.creator.entities.target(body).unwrap().scale.x = width;
 
-        info.creator.push(
+        let text_entity =info.creator.push(
             EntityInfo{
                 lazy_transform: Some(LazyTransformInfo::default().into()),
                 parent: Some(Parent::new(body, true)),
@@ -1480,15 +1569,22 @@ impl TextNotification
                     font: style,
                     align
                 }.into()),
-                z_level: ZLevel::UiNotificationHigh,
+                z_level: ZLevel::Ui,
                 ..Default::default()
             }
         );
 
         Self{
             body,
+            text_entity,
             text
         }
+    }
+
+    fn in_render_order(&self, mut f: impl FnMut(Entity))
+    {
+        f(self.body);
+        f(self.text_entity);
     }
 
     pub fn text(&self) -> &str
@@ -1559,6 +1655,15 @@ impl NotificationKind
         }
     }
 
+    fn in_render_order(&self, f: impl FnMut(Entity))
+    {
+        match self
+        {
+            Self::Bar(x) => x.in_render_order(f),
+            Self::Text(x) => x.in_render_order(f)
+        }
+    }
+
     pub fn update(&mut self, entities: &ClientEntities)
     {
         match self
@@ -1575,10 +1680,20 @@ pub struct Notification
     pub kind: NotificationKind
 }
 
+impl Notification
+{
+    fn in_render_order(&self, f: impl FnMut(Entity))
+    {
+        self.kind.in_render_order(f);
+    }
+}
+
 pub struct AnatomyTooltip
 {
     current: HumanPartId,
     body: Entity,
+    top_panel: Entity,
+    name_entity: Entity,
     bars: Vec<UiBar>
 }
 
@@ -1650,7 +1765,7 @@ impl AnatomyTooltip
             RenderInfo{
                 object: Some(RenderObjectKind::Texture{name: "ui/solid.png".to_owned()}.into()),
                 mix: Some(MixColor{color: [0.2, 0.2, 0.3], amount: 1.0, keep_transparency: false}),
-                z_level: ZLevel::UiPopupLow,
+                z_level: ZLevel::Ui,
                 ..Default::default()
             }
         );
@@ -1688,7 +1803,7 @@ impl AnatomyTooltip
             },
             RenderInfo{
                 object: Some(RenderObjectKind::Texture{name: "ui/background.png".to_owned()}.into()),
-                z_level: ZLevel::UiPopupMiddle,
+                z_level: ZLevel::Ui,
                 ..Default::default()
             }
         );
@@ -1712,7 +1827,7 @@ impl AnatomyTooltip
 
         let bar_size = bar_size / scale.y;
 
-        info.creator.push(
+        let name_entity = info.creator.push(
             EntityInfo{
                 lazy_transform: Some(LazyTransformInfo::default().into()),
                 parent: Some(Parent::new(top_panel, true)),
@@ -1725,7 +1840,7 @@ impl AnatomyTooltip
                     font: FontStyle::Bold,
                     align: TextAlign::centered()
                 }.into()),
-                z_level: ZLevel::UiPopupHigh,
+                z_level: ZLevel::Ui,
                 ..Default::default()
             }
         );
@@ -1750,7 +1865,7 @@ impl AnatomyTooltip
                 },
                 RenderInfo{
                     object: Some(RenderObjectKind::Texture{name: "ui/lighter.png".to_owned()}.into()),
-                    z_level: ZLevel::UiPopupHigh,
+                    z_level: ZLevel::Ui,
                     ..Default::default()
                 }
             );
@@ -1763,7 +1878,7 @@ impl AnatomyTooltip
                     color: [0.03, 0.05, 0.1],
                     font_size: 20,
                     smoothing: true,
-                    z_level: ZLevel::UiPopupHigher,
+                    z_level: ZLevel::Ui,
                     ..Default::default()
                 }
             )
@@ -1772,12 +1887,22 @@ impl AnatomyTooltip
         let this = Self{
             current: id,
             body,
+            top_panel,
+            name_entity,
             bars
         };
 
         this.update_tooltip(info.creator.entities, entity, id);
 
         this
+    }
+
+    fn in_render_order(&self, mut f: impl FnMut(Entity))
+    {
+        f(self.body);
+        f(self.top_panel);
+        f(self.name_entity);
+        self.bars.iter().for_each(|x| x.in_render_order(&mut f));
     }
 
     pub fn update_tooltip(
@@ -1863,6 +1988,14 @@ impl Tooltip
         }
     }
 
+    fn in_render_order(&self, f: impl FnMut(Entity))
+    {
+        match &self.kind
+        {
+            TooltipKind::Anatomy(x) => x.in_render_order(f)
+        }
+    }
+
     pub fn size(&self, entities: &ClientEntities) -> Vector2<f32>
     {
         entities.transform(self.body()).unwrap().scale.xy()
@@ -1930,9 +2063,25 @@ impl Tooltip
     }
 }
 
+struct ActionResponse
+{
+    button: Entity,
+    text: Entity
+}
+
+impl ActionResponse
+{
+    fn in_render_order(&self, mut f: impl FnMut(Entity))
+    {
+        f(self.button);
+        f(self.text);
+    }
+}
+
 pub struct ActionsList
 {
-    body: Entity
+    body: Entity,
+    responses: Vec<ActionResponse>
 }
 
 impl ActionsList
@@ -1976,7 +2125,7 @@ impl ActionsList
             },
             RenderInfo{
                 object: Some(RenderObjectKind::Texture{name: "ui/background.png".to_owned()}.into()),
-                z_level: ZLevel::UiPopupLow,
+                z_level: ZLevel::Ui,
                 ..Default::default()
             }
         );
@@ -1984,7 +2133,7 @@ impl ActionsList
         info.creator.entities.target(body).unwrap().scale = scale;
 
         let total = responses.len();
-        responses.into_iter().enumerate().for_each(|(index, response)|
+        let responses = responses.into_iter().enumerate().map(|(index, response)|
         {
             let i = index as f32 / (total - 1) as f32;
 
@@ -2029,12 +2178,12 @@ impl ActionsList
                     object: Some(RenderObjectKind::Texture{
                         name: "ui/lighter.png".to_owned()
                     }.into()),
-                    z_level: ZLevel::UiPopupMiddle,
+                    z_level: ZLevel::Ui,
                     ..Default::default()
                 }
             );
 
-            info.creator.push(
+            let text = info.creator.push(
                 EntityInfo{
                     lazy_transform: Some(LazyTransformInfo::default().into()),
                     parent: Some(Parent::new(button, true)),
@@ -2047,15 +2196,24 @@ impl ActionsList
                         font: FontStyle::Bold,
                         align: TextAlign::centered()
                     }.into()),
-                    z_level: ZLevel::UiPopupHigh,
+                    z_level: ZLevel::Ui,
                     ..Default::default()
                 }
             );
-        });
+
+            ActionResponse{button, text}
+        }).collect::<Vec<_>>();
 
         Self{
-            body
+            body,
+            responses
         }
+    }
+
+    fn in_render_order(&self, mut f: impl FnMut(Entity))
+    {
+        f(self.body);
+        self.responses.iter().for_each(|x| x.in_render_order(&mut f));
     }
 
     pub fn body(&self) -> Entity
@@ -2127,6 +2285,20 @@ impl UiSpecializedWindow
         }
     }
 
+    fn in_render_order(&self, f: impl FnMut(Entity))
+    {
+        match self
+        {
+            Self::ActionsList(x) => x.in_render_order(f),
+            Self::Notification(x) => x.in_render_order(f),
+            Self::Tooltip(x) => x.in_render_order(f),
+            Self::Anatomy(x) => x.in_render_order(f),
+            Self::Stats(x) => x.in_render_order(f),
+            Self::ItemInfo(x) => x.in_render_order(f),
+            Self::Inventory(x) => x.in_render_order(f)
+        }
+    }
+
     fn update(
         &mut self,
         creator: &mut EntityCreator,
@@ -2147,17 +2319,25 @@ impl UiSpecializedWindow
     }
 }
 
+struct ClosingWindow
+{
+    window: Rc<RefCell<UiSpecializedWindow>>,
+    lifetime: f32
+}
+
 pub struct Ui
 {
     items_info: Arc<ItemsInfo>,
     fonts: Rc<FontsContainer>,
     mouse: Entity,
+    console: Entity,
     anatomy_locations: UiAnatomyLocations,
     user_receiver: Rc<RefCell<UiReceiver>>,
     notifications: HashMap<Entity, Vec<UiWindowId>>,
     active_popup: Option<UiWindowId>,
     active_tooltip: Option<UiWindowId>,
     windows_order: VecDeque<UiWindowId>,
+    closing_list: Vec<ClosingWindow>,
     windows: ObjectsStore<Rc<RefCell<UiSpecializedWindow>>>
 }
 
@@ -2172,16 +2352,37 @@ impl Ui
         user_receiver: Rc<RefCell<UiReceiver>>
     ) -> Rc<RefCell<Self>>
     {
+        let console = entities.push_eager(true, EntityInfo{
+            lazy_transform: Some(LazyTransformInfo{
+                scaling: Scaling::Ignore,
+                rotation: Rotation::Ignore,
+                transform: Transform{
+                    scale: Vector3::new(1.0, 0.2, 1.0),
+                    ..Default::default()
+                },
+                ..Default::default()
+            }.into()),
+            render: Some(RenderInfo{
+                z_level: ZLevel::Ui,
+                visibility_check: false,
+                visible: false,
+                ..Default::default()
+            }),
+            ..Default::default()
+        });
+
         let this = Self{
             items_info,
             fonts,
             mouse,
+            console,
             anatomy_locations,
             user_receiver,
             notifications: HashMap::new(),
             active_popup: None,
             active_tooltip: None,
             windows_order: VecDeque::new(),
+            closing_list: Vec::new(),
             windows: ObjectsStore::new()
         };
 
@@ -2218,6 +2419,11 @@ impl Ui
         }));
 
         this
+    }
+
+    pub fn console(&self) -> Entity
+    {
+        self.console
     }
 
     pub fn add_window<'a, 'b>(
@@ -2303,6 +2509,14 @@ impl Ui
         weak
     }
 
+    pub fn find_window_with_body(&self, needle: Entity) -> Option<Weak<RefCell<UiSpecializedWindow>>>
+    {
+        self.windows.iter().find_map(|(_, window)|
+        {
+            (window.borrow().body() == needle).then(|| Rc::downgrade(window))
+        })
+    }
+
     pub fn remove_window(
         &mut self,
         entities: &ClientEntities,
@@ -2346,7 +2560,9 @@ impl Ui
         id: UiWindowId
     ) -> Result<(), WindowError>
     {
-        self.remove_window_id_with(id, |body| entities.remove_deferred(body))
+        self.remove_window_id_with(id, |body| entities.remove_deferred(body))?;
+
+        Ok(())
     }
 
     fn remove_window_id(
@@ -2355,37 +2571,59 @@ impl Ui
         id: UiWindowId
     ) -> Result<(), WindowError>
     {
-        self.remove_window_id_with(id, |body| close_ui(entities, body))
+        let window = self.remove_window_id_with(id, |body| close_ui(entities, body))?;
+
+        self.closing_list.push(ClosingWindow{window, lifetime: CLOSED_LIFETIME - LONGEST_FRAME as f32});
+
+        Ok(())
     }
 
     fn remove_window_id_with(
         &mut self,
         id: UiWindowId,
         remover: impl FnOnce(Entity)
-    ) -> Result<(), WindowError>
+    ) -> Result<Rc<RefCell<UiSpecializedWindow>>, WindowError>
     {
         if let Some(window) = self.windows.remove(id.0)
         {
-            let window = window.borrow();
-            if window.as_notification().is_some()
             {
-                self.notifications.retain(|_entity, notifications|
+                let window = window.borrow();
+
+                match &*window
                 {
-                    notifications.retain(|x| *x != id);
+                    UiSpecializedWindow::Notification(_) =>
+                    {
+                        self.notifications.retain(|_entity, notifications|
+                        {
+                            notifications.retain(|x| *x != id);
 
-                    !notifications.is_empty()
-                });
+                            !notifications.is_empty()
+                        });
+                    },
+                    UiSpecializedWindow::ActionsList(_) =>
+                    {
+                        assert_eq!(self.active_popup.take(), Some(id));
+                    },
+                    UiSpecializedWindow::Tooltip(_) =>
+                    {
+                        assert_eq!(self.active_tooltip.take(), Some(id));
+                    },
+                    UiSpecializedWindow::Anatomy(_) => (),
+                    UiSpecializedWindow::Stats(_) => (),
+                    UiSpecializedWindow::ItemInfo(_) => (),
+                    UiSpecializedWindow::Inventory(_) => ()
+                }
+
+                let body = window.body();
+                if let Some(index) = self.windows_order.iter().position(|x| *x == id)
+                {
+                    self.windows_order.remove(index);
+                }
+
+                remover(body);
             }
 
-            let body = window.body();
-            if let Some(index) = self.windows_order.iter().position(|x| *x == id)
-            {
-                self.windows_order.remove(index);
-            }
-
-            remover(body);
-
-            Ok(())
+            Ok(window)
         } else
         {
             Err(WindowError::RemoveNonExistent)
@@ -2488,7 +2726,7 @@ impl Ui
 
     pub fn close_popup(&mut self, entities: &ClientEntities)
     {
-        if let Some(previous) = self.active_popup.take()
+        if let Some(previous) = self.active_popup
         {
             let _ = self.remove_window_id(entities, previous);
         }
@@ -2545,6 +2783,23 @@ impl Ui
         });
     }
 
+    pub fn in_render_order(&self, mut f: impl FnMut(Entity))
+    {
+        self.closing_list.iter().for_each(|window| window.window.borrow().in_render_order(&mut f));
+
+        let mut for_id = |id: &UiWindowId|
+        {
+            self.windows[id.0].borrow().in_render_order(&mut f);
+        };
+
+        self.notifications.iter().flat_map(|(_entity, notifications)| notifications).for_each(&mut for_id);
+        self.windows_order.iter().for_each(&mut for_id);
+        self.active_popup.iter().for_each(&mut for_id);
+        self.active_tooltip.iter().for_each(&mut for_id);
+
+        f(self.console);
+    }
+
     pub fn update(
         &mut self,
         creator: &mut EntityCreator,
@@ -2590,8 +2845,6 @@ impl Ui
 
             if needs_deletion
             {
-                self.active_tooltip = None;
-
                 let _ = self.remove_window_id(creator.entities, id);
             }
         }
@@ -2599,6 +2852,18 @@ impl Ui
         self.windows.iter_mut().for_each(|(_, window)|
         {
             window.borrow_mut().update(creator, camera, dt);
+        });
+
+        self.closing_list.retain_mut(|window|
+        {
+            window.lifetime -= dt;
+
+            if window.lifetime <= 0.0
+            {
+                return false;
+            }
+
+            true
         });
     }
 

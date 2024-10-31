@@ -56,16 +56,15 @@ pub fn update_buffers(
     });
 }
 
-pub struct DrawEntities<'a, I>
+pub struct DrawEntities<'a>
 {
-    pub renders: &'a [Vec<Entity>],
-    pub ui_renders: I
+    pub renders: &'a [Vec<Entity>]
 }
 
-pub fn draw<I: Iterator<Item=Entity>>(
+pub fn draw(
     entities: &ClientEntities,
     shaders: &ProgramShaders,
-    renderables: DrawEntities<I>,
+    renderables: DrawEntities,
     visibility: &VisibilityChecker,
     info: &mut DrawInfo,
     animation: f32
@@ -104,17 +103,4 @@ pub fn draw<I: Iterator<Item=Entity>>(
 
         occluder.draw(info);
     });
-
-    info.bind_pipeline(shaders.ui);
-
-    renderables.ui_renders.for_each(|entity|
-    {
-        let render = entities.render(entity).unwrap();
-
-        let outline = UiOutlinedInfo::new(render.mix);
-
-        render.draw(info, outline);
-    });
-
-    info.set_depth_test(true);
 }

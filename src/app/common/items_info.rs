@@ -121,7 +121,7 @@ impl ItemInfo
         let get_texture = |name|
         {
             let path = textures_root.join(name);
-            let name = path.to_string_lossy();
+            let name = path.to_string_lossy().replace('\\', "/");
 
             assets.texture_id(&name)
         };

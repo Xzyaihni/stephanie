@@ -1,7 +1,4 @@
-use std::{
-    fmt::{self, Debug},
-    cell::Ref
-};
+use std::fmt::{self, Debug};
 
 use strum::AsRefStr;
 
@@ -10,7 +7,7 @@ use nalgebra::{Vector2, Vector3};
 use yanyaengine::Transform;
 
 use crate::{
-    client::{Control, ControlState, RenderCreateInfo, game_state::{close_ui, Ui}},
+    client::{Control, ControlState, RenderCreateInfo, game_state::Ui},
     common::{
         render_info::*,
         AnyEntities,
@@ -146,7 +143,7 @@ impl UiElementPredicate
             {
                 let transform = entities.transform(*entity).unwrap();
 
-                query.with_transform(transform).is_inside(position)
+                query.with_transform(&transform).is_inside(position)
             }
         }
     }
@@ -156,13 +153,12 @@ impl UiElementPredicate
 pub struct UiQuery<'a>
 {
     pub shape: &'a UiElementShape,
-    pub transform: Ref<'a, Transform>,
-    pub camera_position: Vector2<f32>
+    pub transform: &'a Transform
 }
 
 impl<'a> UiQuery<'a>
 {
-    pub fn with_transform(self, transform: Ref<'a, Transform>) -> Self
+    pub fn with_transform(self, transform: &'a Transform) -> Self
     {
         Self{
             transform,
@@ -172,7 +168,7 @@ impl<'a> UiQuery<'a>
 
     pub fn relative_position(&self) -> Vector2<f32>
     {
-        self.transform.position.xy() - self.camera_position
+        self.transform.position.xy()
     }
 
     pub fn distance(&self, position: Vector2<f32>) -> Vector2<f32>
@@ -302,6 +298,52 @@ impl UiElementShape
     }
 }
 
+pub enum UiActionKind
+{
+    Close
+}
+
+pub struct UiElementAction
+{
+    pub action: Option<UiActionKind>,
+    pub set_highlight: Option<bool>,
+    pub captured: bool
+}
+
+impl Default for UiElementAction
+{
+    fn default() -> Self
+    {
+        Self{
+            action: None,
+            set_highlight: None,
+            captured: false
+        }
+    }
+}
+
+impl UiElementAction
+{
+    fn with_captured(mut self, state: bool) -> Self
+    {
+        self.captured = state;
+
+        self
+    }
+
+    fn set_closed(&mut self)
+    {
+        assert!(self.action.is_none());
+
+        self.action = Some(UiActionKind::Close);
+    }
+
+    fn set_highlight(&mut self, state: bool)
+    {
+        self.set_highlight = Some(state);
+    }
+}
+
 #[derive(Debug)]
 pub struct UiElement
 {
@@ -342,44 +384,28 @@ impl ServerToClient<UiElement> for ()
 
 impl UiElement
 {
-    pub fn update(
+    pub fn on_input(
         &mut self,
         entities: &ClientEntities,
-        entity: Entity,
-        camera_position: Vector2<f32>,
+        transform: &Transform,
         event: &UiEvent,
         captured: bool
-    ) -> bool
+    ) -> UiElementAction
     {
         if !self.capture_events
         {
-            return captured;
+            return UiElementAction::default().with_captured(captured);
         }
 
         let query = ||
         {
-            let camera_position = if self.world_position
-            {
-                camera_position
-            } else
-            {
-                Vector2::zeros()
-            };
-
             UiQuery{
                 shape: &self.shape,
-                transform: entities.transform(entity).unwrap(),
-                camera_position
+                transform
             }
         };
 
-        let highlight = |state: bool|
-        {
-            if let Some(mut lazy_mix) = entities.lazy_mix_mut(entity)
-            {
-                lazy_mix.target.amount = if state { 0.4 } else { 0.0 };
-            }
-        };
+        let mut action = UiElementAction::default().with_captured(captured);
 
         let position = match event
         {
@@ -400,16 +426,16 @@ impl UiElement
         {
             UiElementType::Button{..} | UiElementType::Drag{..} =>
             {
-                highlight(capture_this && !captured && predicate);
+                action.set_highlight(capture_this && !captured && predicate);
             },
             UiElementType::Panel | UiElementType::Tooltip | UiElementType::ActiveTooltip => ()
         }
 
-        let remove_this = |this: &mut Self|
+        let remove_this = |this: &mut Self, action: &mut UiElementAction|
         {
             this.capture_events = false;
 
-            close_ui(entities, entity);
+            action.set_closed();
         };
 
         match &mut self.kind
@@ -418,7 +444,7 @@ impl UiElement
             {
                 if captured
                 {
-                    return true;
+                    return action;
                 }
             },
             UiElementType::Tooltip =>
@@ -427,20 +453,15 @@ impl UiElement
                 {
                     if !is_inside
                     {
-                        remove_this(self);
+                        remove_this(self, &mut action);
                     }
-                }
-
-                if captured
-                {
-                    return true;
                 }
             },
             UiElementType::ActiveTooltip =>
             {
                 if captured
                 {
-                    return true;
+                    return action;
                 }
 
                 match event
@@ -450,13 +471,13 @@ impl UiElement
                     {
                         if !capture_this && event.state == ControlState::Pressed
                         {
-                            remove_this(self);
+                            remove_this(self, &mut action);
                         }
                     }, UiEvent::Keyboard(..) =>
                     {
                         if !capture_this
                         {
-                            remove_this(self);
+                            remove_this(self, &mut action);
                         }
                     }
                 }
@@ -465,7 +486,7 @@ impl UiElement
             {
                 if captured
                 {
-                    return true;
+                    return action;
                 }
 
                 let query = query();
@@ -479,7 +500,7 @@ impl UiElement
                         {
                             if !predicate
                             {
-                                return false;
+                                return action;
                             }
 
                             on_click(entities);
@@ -518,7 +539,7 @@ impl UiElement
                                     {
                                         if !predicate
                                         {
-                                            return false;
+                                            return action;
                                         }
 
                                         on_change(entities, inner_position(event.position));
@@ -548,7 +569,8 @@ impl UiElement
             }
         }
 
-        capture_this
+        let captured = capture_this || action.captured;
+        action.with_captured(captured)
     }
 
     pub fn needs_aspect(&self) -> bool

@@ -8,7 +8,7 @@ use std::{
 
 use serde::{Serialize, Deserialize};
 
-use nalgebra::{Vector2, Vector3, Unit};
+use nalgebra::{Vector3, Unit};
 
 use yanyaengine::{TextureId, Transform};
 
@@ -16,8 +16,7 @@ use crate::{
     server,
     client::{
         RenderCreateInfo,
-        UiElement,
-        UiEvent
+        UiElement
     },
     common::{
         some_or_return,
@@ -64,7 +63,6 @@ pub use crate::{iterate_components_with, for_each_component};
 
 pub mod render_system;
 mod damaging_system;
-mod ui_system;
 mod physical_system;
 mod collider_system;
 mod raycast_system;
@@ -2008,33 +2006,6 @@ macro_rules! define_entities_both
                 collider_system::update(self, world, space, dt);
             }
 
-            pub fn sync_physical_positions(
-                &self,
-                passer: &mut impl EntityPasser
-            )
-            {
-                for_each_component!(self, transform, |entity: Entity, _transform|
-                {
-                    if entity.local()
-                    {
-                        return;
-                    }
-
-                    if !self.physical_exists(entity)
-                        && !self.collider_exists(entity)
-                    {
-                        return;
-                    }
-
-                    let target = self.target_ref(entity).unwrap();
-                    passer.send_message(Message::SyncPositionRotation{
-                        entity,
-                        position: target.position,
-                        rotation: target.rotation
-                    });
-                });
-            }
-
             pub fn update_lazy_one(
                 &self,
                 entity: Entity,
@@ -2158,15 +2129,6 @@ macro_rules! define_entities_both
                         aspect
                     );
                 });
-            }
-
-            pub fn update_ui(
-                &mut self,
-                camera_position: Vector2<f32>,
-                event: UiEvent
-            ) -> bool
-            {
-                ui_system::update(self, camera_position, event)
             }
 
             pub fn update_characters(

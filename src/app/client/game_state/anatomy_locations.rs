@@ -9,14 +9,13 @@ use yanyaengine::TextureId;
 use super::PartCreator;
 use crate::{
     client::ui_element::*,
-    common::{anatomy::HumanPartId, render_info::ZLevel, Side1d}
+    common::{anatomy::HumanPartId, Side1d}
 };
 
 
 pub struct UiAnatomyLocation
 {
     pub id: TextureId,
-    pub z_level: ZLevel,
     pub mask: UiElementShapeMask
 }
 
@@ -25,16 +24,9 @@ impl UiAnatomyLocation
     fn from_color(
         part_creator: &mut PartCreator,
         base_image: &RgbaImage,
-        id: HumanPartId,
         color: Rgba<u8>
     ) -> Self
     {
-        let z_level = match id
-        {
-            HumanPartId::Eye(_) => ZLevel::UiAnatomyEye,
-            _ => ZLevel::UiAnatomy
-        };
-
         let size = Vector2::new(base_image.width() as usize, base_image.height() as usize);
         let mut mask = UiElementShapeMask::new_empty(size);
 
@@ -58,7 +50,6 @@ impl UiAnatomyLocation
 
         Self{
             id,
-            z_level,
             mask
         }
     }
@@ -115,7 +106,6 @@ impl UiAnatomyLocations
             let location = UiAnatomyLocation::from_color(
                 &mut part_creator,
                 &base_image,
-                id,
                 color_pairs[&id]
             );
 

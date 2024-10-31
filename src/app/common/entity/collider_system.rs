@@ -102,7 +102,7 @@ pub fn update(
                     object: Some(RenderObjectKind::Texture{
                         name: "ui/background.png".to_owned()
                     }.into()),
-                    z_level: ZLevel::UiMiddle,
+                    z_level: ZLevel::highest_non_ui(),
                     ..Default::default()
                 }),
                 watchers: Some(Watchers::simple_one_frame()),

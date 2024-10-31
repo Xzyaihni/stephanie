@@ -22,7 +22,6 @@ use crate::{
         some_or_value,
         some_or_return,
         render_info::*,
-        lazy_transform::*,
         collider::*,
         character::*,
         SpecialTile,
@@ -64,6 +63,8 @@ impl Game
             let mut game_state = game_state.borrow_mut();
             let player = game_state.player();
 
+            let console_entity = game_state.ui.borrow().console();
+
             let entities = game_state.entities_mut();
             let mouse_entity = entities.push_eager(true, EntityInfo{
                 transform: Some(Transform{
@@ -76,24 +77,6 @@ impl Game
                     ghost: true,
                     ..Default::default()
                 }.into()),
-                ..Default::default()
-            });
-
-            let console_entity = entities.push_eager(true, EntityInfo{
-                lazy_transform: Some(LazyTransformInfo{
-                    scaling: Scaling::Ignore,
-                    rotation: Rotation::Ignore,
-                    transform: Transform{
-                        scale: Vector3::new(1.0, 0.2, 1.0),
-                        ..Default::default()
-                    },
-                    ..Default::default()
-                }.into()),
-                render: Some(RenderInfo{
-                    z_level: ZLevel::UiHigh,
-                    visibility_check: false,
-                    ..Default::default()
-                }),
                 ..Default::default()
             });
 
@@ -214,9 +197,8 @@ impl Game
             if let Some(event) = event
             {
                 let mut game_state = game_state.borrow_mut();
-                let camera_position = game_state.camera.read().position().coords.xy();
 
-                let captured = game_state.entities.entities.update_ui(camera_position, event);
+                let captured = game_state.ui_input(event);
 
                 if captured
                 {

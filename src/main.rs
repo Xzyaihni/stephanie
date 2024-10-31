@@ -86,6 +86,7 @@ mod ui_fragment
 }
 
 pub const LOG_PATH: &str = "log.txt";
+pub const LONGEST_FRAME: f64 = 1.0 / 20.0;
 
 pub fn complain(message: impl Display) -> !
 {

@@ -41,6 +41,7 @@ use crate::{
     client::RenderCreateInfo,
     common::{
         some_or_return,
+        some_or_value,
         sender_loop,
         receiver_loop,
         render_info::*,
@@ -78,6 +79,7 @@ use super::{
     ConnectionsHandler,
     TilesFactory,
     VisibilityChecker,
+    ui_element::UiActionKind,
     world_receiver::WorldReceiver
 };
 
@@ -90,7 +92,6 @@ use notifications::{Notifications, Notification};
 
 pub use anatomy_locations::UiAnatomyLocations;
 pub use ui::{
-    close_ui,
     Ui,
     UiSpecializedWindow,
     WindowCreateInfo,
@@ -126,9 +127,7 @@ pub struct ClientEntitiesContainer
     pub follow_entity: Entity,
     pub ui_mouse_entity: Entity,
     visible_renders: Vec<Vec<Entity>>,
-    ui_renders: Vec<(Entity, bool)>,
     player_entity: Entity,
-    positions_sync: f32,
     animation: f32
 }
 
@@ -164,8 +163,6 @@ impl ClientEntitiesContainer
             ui_mouse_entity,
             player_entity,
             visible_renders: Vec::new(),
-            ui_renders: Vec::new(),
-            positions_sync: 0.0,
             animation: 0.0
         }
     }
@@ -191,7 +188,7 @@ impl ClientEntitiesContainer
         world: &World,
         passer: &mut impl EntityPasser,
         damage_info: TextureId,
-        is_trusted: bool,
+        _is_trusted: bool,
         dt: f32
     )
     {
@@ -210,18 +207,6 @@ impl ClientEntitiesContainer
         self.entities.update_outlineable(dt);
 
         self.entities.update_colliders(world, &space, dt);
-
-        if is_trusted
-        {
-            if self.positions_sync <= 0.0
-            {
-                self.entities.sync_physical_positions(passer);
-
-                self.positions_sync = 1.0;
-            }
-
-            self.positions_sync -= dt;
-        }
 
         self.animation = (self.animation + dt) % (f32::consts::PI * 2.0);
     }
@@ -263,15 +248,10 @@ impl ClientEntitiesContainer
         &mut self,
         visibility: &VisibilityChecker,
         info: &mut UpdateBuffersInfo,
-        ui_camera: &Camera,
         caster: &OccludingCaster
     )
     {
-        self.ui_renders.clear();
-
         let mut visible_renders = BTreeMap::new();
-
-        let mut world_ui = Vec::new();
         for_each_component!(self.entities, render, |entity, render: &RefCell<ClientRenderInfo>|
         {
             let transform = some_or_return!(self.entities.transform(entity));
@@ -284,23 +264,14 @@ impl ClientEntitiesContainer
 
             if render.z_level() >= ZLevel::lowest_ui()
             {
-                let is_world = self.entities.ui_element(entity).map(|x| x.world_position)
-                    .unwrap_or(false);
+                return;
+            }
 
-                if is_world
-                {
-                    world_ui.push(entity);
-                }
-
-                self.ui_renders.push((entity, is_world));
-            } else
+            let real_z = (transform.position.z / TILE_SIZE).floor() as i32;
+            match visible_renders.entry(real_z)
             {
-                let real_z = (transform.position.z / TILE_SIZE).floor() as i32;
-                match visible_renders.entry(real_z)
-                {
-                    Entry::Vacant(entry) => { entry.insert(vec![entity]); },
-                    Entry::Occupied(mut entry) => entry.get_mut().push(entity)
-                }
+                Entry::Vacant(entry) => { entry.insert(vec![entity]); },
+                Entry::Occupied(mut entry) => entry.get_mut().push(entity)
             }
         });
 
@@ -308,26 +279,10 @@ impl ClientEntitiesContainer
 
         render_system::update_buffers(
             &self.entities,
-            self.visible_renders.iter().flatten().copied().chain(world_ui),
+            self.visible_renders.iter().flatten().copied(),
             info,
             caster
         );
-
-        info.update_camera(ui_camera);
-
-        self.ui_renders.iter().for_each(|&(entity, is_world)|
-        {
-            if is_world
-            {
-                return;
-            }
-
-            let transform = self.entities.transform(entity).unwrap().clone();
-            let mut render = self.entities.render_mut(entity).unwrap();
-
-            render.set_transform(transform);
-            render.update_buffers(info);
-        });
     }
 
     pub fn draw(
@@ -345,8 +300,7 @@ impl ClientEntitiesContainer
         let animation = self.animation.sin();
 
         let draw_entities = render_system::DrawEntities{
-            renders: &self.visible_renders,
-            ui_renders: self.ui_renders.iter().map(|(entity, _)| *entity)
+            renders: &self.visible_renders
         };
 
         render_system::draw(
@@ -1169,7 +1123,31 @@ impl GameState
 
         self.entities.entities.create_render_queued(&mut create_info);
 
-        self.entities.update_buffers(&visibility, info, &self.ui_camera, &caster);
+        self.entities.update_buffers(&visibility, info, &caster);
+
+        info.update_camera(&self.ui_camera);
+        let normal_camera = self.camera.read();
+
+        let entities = &self.entities.entities;
+        self.ui.borrow().in_render_order(|entity|
+        {
+            let is_world = entities.ui_element(entity).map(|x| x.world_position).unwrap_or(false);
+            if is_world
+            {
+                info.update_camera(&normal_camera);
+            }
+
+            let transform = some_or_return!(entities.transform(entity));
+            let mut render = some_or_return!(entities.render_mut(entity));
+
+            render.set_transform(transform.clone());
+            render.update_buffers(info);
+
+            if is_world
+            {
+                info.update_camera(&self.ui_camera);
+            }
+        });
 
         self.entities.entities.handle_on_change();
     }
@@ -1185,6 +1163,18 @@ impl GameState
         info.bind_pipeline(self.shaders.default);
 
         self.entities.draw(&visibility, info, &self.shaders);
+
+        info.bind_pipeline(self.shaders.ui);
+
+        let entities = &self.entities.entities;
+        self.ui.borrow().in_render_order(|entity|
+        {
+            let render = some_or_return!(entities.render(entity));
+
+            let outline = UiOutlinedInfo::new(render.mix);
+
+            render.draw(info, outline);
+        });
 
         info.set_depth_write(true);
     }
@@ -1250,6 +1240,55 @@ impl GameState
         }
     }
 
+    pub fn ui_input(&mut self, event: UiEvent) -> bool
+    {
+        let entities = &self.entities.entities;
+
+        let mut elements = Vec::new();
+        self.ui.borrow().in_render_order(|entity| elements.push(entity));
+
+        elements.into_iter().rev().fold(false, |captured, entity|
+        {
+            if !entities.is_visible(entity)
+            {
+                return captured;
+            }
+
+            let transform = some_or_value!(entities.transform(entity), captured);
+            let action = some_or_value!(entities.ui_element_mut(entity), captured).on_input(
+                entities,
+                &transform,
+                &event,
+                captured
+            );
+
+            if let Some(state) = action.set_highlight
+            {
+                if let Some(mut lazy_mix) = entities.lazy_mix_mut(entity)
+                {
+                    lazy_mix.target.amount = if state { 0.4 } else { 0.0 };
+                }
+            }
+
+            if let Some(kind) = action.action
+            {
+                match kind
+                {
+                    UiActionKind::Close =>
+                    {
+                        let mut ui = self.ui.borrow_mut();
+                        if let Some(window) = ui.find_window_with_body(entity).and_then(|x| x.upgrade())
+                        {
+                            let _ = ui.remove_window(entities, window);
+                        }
+                    }
+                }
+            }
+
+            action.captured
+        })
+    }
+
     pub fn update(
         &mut self,
         square: ModelId,
@@ -1257,10 +1296,7 @@ impl GameState
         dt: f32
     )
     {
-        self.entities.entities.update_ui(
-            self.camera.read().position().coords.xy(),
-            UiEvent::MouseMove(self.ui_mouse_position())
-        );
+        self.ui_input(UiEvent::MouseMove(self.ui_mouse_position()));
 
         let mut create_info = RenderCreateInfo{
             location: UniformLocation{set: 0, binding: 0},

@@ -14,7 +14,10 @@ use yanyaengine::{
     game_object::*
 };
 
-use crate::debug_config::*;
+use crate::{
+    LONGEST_FRAME,
+    debug_config::*
+};
 
 use common::{
     TileMap,
@@ -185,13 +188,13 @@ impl YanyaApp for App
         let app_info = app_info.unwrap();
 
         let Config{name, address, port, debug} = Config::parse(env::args().skip(1));
-        
+
         let items_info = ItemsInfo::parse(
             &partial_info.assets.lock(),
             "items",
             "items/items.json"
         );
-        
+
         let mut characters_info = CharactersInfo::new();
 
         let player_character = characters_info.push(CharacterInfo::player(
@@ -298,9 +301,7 @@ impl YanyaApp for App
             }
         }
 
-        let max_dt = 1.0 / 20.0;
-
-        let dt = dt.min(max_dt);
+        let dt = dt.min(LONGEST_FRAME as f32);
 
         if SlowMode::as_bool()
         {

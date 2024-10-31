@@ -293,32 +293,29 @@ pub enum ZLevel
     Hair,
     Hat,
     Door,
-    UiNotificationLow,
-    UiNotificationMiddle,
-    UiNotificationHigh,
-    UiLow,
-    UiMiddle,
-    UiHigh,
-    UiHigher,
-    UiAnatomy,
-    UiAnatomyEye,
-    UiPopupLow,
-    UiPopupMiddle,
-    UiPopupHigh,
-    UiPopupHigher,
-    UiPopupHighest
+    Ui
 }
 
 impl ZLevel
 {
-    pub fn lowest_ui() -> Self
+    pub fn highest_non_ui() -> Self
     {
-        Self::UiNotificationLow
+        Self::lowest_ui().prev().unwrap()
     }
 
-    pub fn next(self) -> Self
+    pub fn lowest_ui() -> Self
     {
-        Self::from_repr(self as usize + 1).unwrap()
+        Self::Ui
+    }
+
+    pub fn prev(self) -> Option<Self>
+    {
+        (self as usize).checked_sub(1).and_then(|id| Self::from_repr(id))
+    }
+
+    pub fn next(self) -> Option<Self>
+    {
+        Self::from_repr(self as usize + 1)
     }
 }
 

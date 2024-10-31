@@ -964,8 +964,6 @@ impl HumanPartId
             Self::Torso,
             Self::Spine,
             Self::Pelvis,
-            Self::Eye(Side1d::Left),
-            Self::Eye(Side1d::Right),
             Self::Thigh(Side1d::Left),
             Self::Thigh(Side1d::Right),
             Self::Calf(Side1d::Left),
@@ -977,7 +975,9 @@ impl HumanPartId
             Self::Hand(Side1d::Left),
             Self::Hand(Side1d::Right),
             Self::Foot(Side1d::Left),
-            Self::Foot(Side1d::Right)
+            Self::Foot(Side1d::Right),
+            Self::Eye(Side1d::Left),
+            Self::Eye(Side1d::Right)
         ].into_iter()
     }
 
