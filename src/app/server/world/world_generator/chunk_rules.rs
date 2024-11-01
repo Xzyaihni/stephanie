@@ -164,7 +164,7 @@ impl WorldChunkTag
             content: Self::generate_content(&tag.content)
         }
     }
-    
+
     pub fn define(
         &self,
         mappings: &NameMappings,

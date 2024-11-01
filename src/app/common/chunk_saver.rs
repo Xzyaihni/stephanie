@@ -37,7 +37,7 @@ use crate::{
 const LZMA_PRESET: u32 = 1;
 const SAVE_MODULO: u32 = 20;
 
-pub trait Saveable: Debug + Send + 'static {}
+pub trait Saveable: Debug + Clone + Send + 'static {}
 pub trait AutoSaveable: Saveable {}
 
 impl Saveable for Chunk {}
@@ -68,7 +68,7 @@ pub trait FileSave
 }
 
 // again, shouldnt be public
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct SaveValueGroup
 {
     value: WorldChunk,
@@ -127,6 +127,7 @@ impl LoadValueGroup
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct ValuePair<T>
 {
     pub key: GlobalPos,
@@ -453,9 +454,14 @@ impl<SaveT: Saveable, LoadT> FileSaver<SaveT, LoadT>
             Err(err) => panic!("{err}")
         }
 
-        let file = File::create(Self::chunk_path(parent_path, pos)).unwrap();
+        let chunk_path = Self::chunk_path(parent_path, pos);
+        let temp_path = chunk_path.with_extension("tmp");
+
+        let file = File::create(&temp_path).unwrap();
 
         bincode::serialize_into(file, tags).unwrap();
+
+        fs::rename(temp_path, chunk_path).unwrap();
     }
 }
 
@@ -470,13 +476,18 @@ where
     {
         Self::new_with_saver(parent_path, |path, pair|
         {
-            let file = File::create(Self::chunk_path(path, pair.key)).unwrap();
+            let chunk_path = Self::chunk_path(path, pair.key);
+            let temp_path = chunk_path.with_extension("tmp");
+
+            let file = File::create(&temp_path).unwrap();
 
             let mut lzma_writer = LzmaWriter::new_compressor(file, LZMA_PRESET).unwrap();
 
             bincode::serialize_into(&mut lzma_writer, &pair.value).unwrap();
 
             lzma_writer.finish().unwrap();
+
+            fs::rename(temp_path, chunk_path).unwrap();
         })
     }
 
@@ -511,21 +522,23 @@ impl FileSave for FileSaver<SaveValueGroup, LoadValueGroup>
         Self::new_with_saver(parent_path, |path, pair|
         {
             let chunk_path = Self::chunk_path(path.clone(), pair.key);
-            let file = match OpenOptions::new().write(true).open(&chunk_path)
+            let temp_path = chunk_path.with_extension("tmp");
+
+            let file = if chunk_path.exists()
             {
-                Ok(file) => file,
-                Err(ref err) if err.kind() == io::ErrorKind::NotFound =>
+                fs::rename(&chunk_path, &temp_path).unwrap();
+
+                OpenOptions::new().write(true).open(&temp_path).unwrap()
+            } else
+            {
+                let mut file = File::create(&temp_path).unwrap();
+
+                (0..CHUNK_RATIO.product()).for_each(|_|
                 {
-                    let mut file = File::create(chunk_path).unwrap();
+                    MaybeWorldChunk::default().write_into(&mut file);
+                });
 
-                    (0..CHUNK_RATIO.product()).for_each(|_|
-                    {
-                        MaybeWorldChunk::default().write_into(&mut file);
-                    });
-
-                    file
-                },
-                Err(err) => panic!("error loading worldchunk from file: {err}")
+                file
             };
 
             let mut value = pair.value;
@@ -534,6 +547,8 @@ impl FileSave for FileSaver<SaveValueGroup, LoadValueGroup>
             Self::save_tags(path, pair.key, &tags);
 
             value.write_into(file);
+
+            fs::rename(temp_path, chunk_path).unwrap();
         })
     }
 
@@ -586,21 +601,6 @@ where
     file_saver: Arc<Mutex<S>>
 }
 
-impl<S, SaveT: Saveable, LoadT> Drop for Saver<S, SaveT, LoadT>
-where
-    S: FileSave<SaveItem=SaveT, LoadItem=LoadT>
-{
-    fn drop(&mut self)
-    {
-        let mut file_saver = self.file_saver.lock();
-
-        while let Some(value) = self.cache.pop()
-        {
-            file_saver.save(value.into());
-        }
-    }
-}
-
 impl<S, SaveT: Saveable, LoadT> Saver<S, SaveT, LoadT>
 where
     S: FileSave<SaveItem=SaveT, LoadItem=LoadT>
@@ -627,15 +627,16 @@ where
 
         while self.cache.len() > until_len
         {
-            let value = self.cache.pop().unwrap();
-
-            self.file_saver.lock().save(value.into());
+            self.cache.pop().unwrap();
         }
     }
 
     fn inner_save(&mut self, pair: ValuePair<SaveT>)
     {
+        self.file_saver.lock().save(pair.clone());
+
         let key = CachedKey::new(self.start, pair.key);
+        let value = CachedValue{key, value: pair.value};
 
         if self.cache.iter().any(|CachedValue{key, ..}| key.pos == pair.key)
         {
@@ -645,7 +646,7 @@ where
             self.free_cache(1);
         }
 
-        self.cache.push(CachedValue{key, value: pair.value});
+        self.cache.push(value);
     }
 }
 
@@ -678,6 +679,8 @@ impl SaveLoad<WorldChunk> for WorldChunkSaver
 
         let value = SaveValueGroup{value: chunk, index};
         let pos = WorldChunk::belongs_to(pos);
+
+        self.file_saver.lock().save(ValuePair{key: pos, value: value.clone()});
 
         let key = CachedKey::new(self.start, pos);
 
