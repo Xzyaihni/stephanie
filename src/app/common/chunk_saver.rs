@@ -1,12 +1,11 @@
 use std::{
     thread,
     fmt::Debug,
-    marker::PhantomData,
     cmp::Ordering,
-    io::{self, Write, Read, Seek, SeekFrom},
+    io,
     time::{Instant, Duration},
     path::{Path, PathBuf},
-    fs::{self, OpenOptions, File},
+    fs::{self, File},
     collections::{HashMap, BinaryHeap},
     sync::{
         Arc,
@@ -21,7 +20,7 @@ use lzma::{LzmaWriter, LzmaReader};
 use serde::{Serialize, Deserialize};
 
 use crate::{
-    server::world::world_generator::{CHUNK_RATIO, MaybeWorldChunk, WorldChunk, WorldChunkTag},
+    server::world::world_generator::{CHUNK_RATIO, WorldChunk},
     common::{
         FullEntityInfo,
         world::{
@@ -40,12 +39,15 @@ const SAVE_MODULO: u32 = 20;
 pub trait Saveable: Debug + Clone + Send + 'static {}
 pub trait AutoSaveable: Saveable {}
 
+pub type WorldChunksBlock = [WorldChunk; CHUNK_RATIO.z];
+
 impl Saveable for Chunk {}
 impl Saveable for SaveEntities {}
-impl Saveable for SaveValueGroup {}
+impl Saveable for WorldChunksBlock {}
 
 impl AutoSaveable for Chunk {}
 impl AutoSaveable for SaveEntities {}
+impl AutoSaveable for WorldChunksBlock {}
 
 pub trait SaveLoad<T>
 {
@@ -57,74 +59,13 @@ pub trait SaveLoad<T>
 pub trait FileSave
 {
     type SaveItem;
-    type LoadItem;
 
     fn new(parent_path: PathBuf) -> Self;
 
     fn save(&mut self, pair: ValuePair<Self::SaveItem>);
-    fn load(&mut self, pos: GlobalPos) -> Option<Self::LoadItem>;
+    fn load(&mut self, pos: GlobalPos) -> Option<Self::SaveItem>;
 
     fn flush(&mut self);
-}
-
-// again, shouldnt be public
-#[derive(Debug, Clone)]
-pub struct SaveValueGroup
-{
-    value: WorldChunk,
-    index: usize
-}
-
-impl SaveValueGroup
-{
-    pub fn write_into<W>(self, mut writer: W)
-    where
-        W: Write + Seek
-    {
-        let start = MaybeWorldChunk::index_of(self.index);
-
-        writer.seek(SeekFrom::Start(start as u64)).unwrap();
-
-        MaybeWorldChunk::from(self.value).write_into(writer)
-    }
-}
-
-// again, shouldnt be public
-#[derive(Debug)]
-pub struct LoadValueGroup
-{
-    file: File,
-    tags_file: Option<File>
-}
-
-impl LoadValueGroup
-{
-    pub fn get(&mut self, index: usize) -> Option<WorldChunk>
-    {
-        let size = MaybeWorldChunk::size_of();
-
-        let start = MaybeWorldChunk::index_of(index);
-
-        self.file.seek(SeekFrom::Start(start as u64)).unwrap();
-
-        let mut bytes = Vec::with_capacity(size);
-        <File as Read>::by_ref(&mut self.file)
-            .take(size as u64)
-            .read_to_end(&mut bytes)
-            .unwrap();
-
-        let world_chunk: Option<_> = MaybeWorldChunk::from_bytes(&bytes).into();
-
-        world_chunk.map(|world_chunk: WorldChunk|
-        {
-            let tags = self.tags_file.as_mut().map(|file|
-            {
-                bincode::deserialize_from(file).unwrap()
-            }).unwrap_or_default();
-
-            world_chunk.with_tags(tags)
-        })
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -288,17 +229,16 @@ impl<T> BlockingSaver<T>
 
 // again, shouldnt be public
 #[derive(Debug)]
-pub struct FileSaver<SaveT: Saveable, LoadT=SaveT>
+pub struct FileSaver<SaveT: Saveable>
 {
     parent_path: PathBuf,
     // i need the usize field just to count the saves called for the same chunk
     unsaved_chunks: HashMap<GlobalPos, usize>,
     save_tx: Sender<ValuePair<SaveT>>,
-    finish_rx: Receiver<GlobalPos>,
-    phantom: PhantomData<(SaveT, LoadT)>
+    finish_rx: Receiver<GlobalPos>
 }
 
-impl<SaveT: Saveable, LoadT> Drop for FileSaver<SaveT, LoadT>
+impl<SaveT: Saveable> Drop for FileSaver<SaveT>
 {
     fn drop(&mut self)
     {
@@ -306,7 +246,7 @@ impl<SaveT: Saveable, LoadT> Drop for FileSaver<SaveT, LoadT>
     }
 }
 
-impl<SaveT: Saveable, LoadT> FileSaver<SaveT, LoadT>
+impl<SaveT: Saveable> FileSaver<SaveT>
 {
     fn new_with_saver<F>(parent_path: PathBuf, save_fn: F) -> Self
     where
@@ -334,8 +274,7 @@ impl<SaveT: Saveable, LoadT> FileSaver<SaveT, LoadT>
             parent_path,
             unsaved_chunks: HashMap::new(),
             save_tx,
-            finish_rx,
-            phantom: PhantomData
+            finish_rx
         }
     }
 
@@ -384,9 +323,9 @@ impl<SaveT: Saveable, LoadT> FileSaver<SaveT, LoadT>
         self.unsaved_chunks.contains_key(&pos)
     }
 
-    fn load_with<F>(&mut self, pos: GlobalPos, load_fn: F) -> Option<LoadT>
+    fn load_with<F>(&mut self, pos: GlobalPos, load_fn: F) -> Option<SaveT>
     where
-        F: FnOnce(PathBuf, File) -> LoadT
+        F: FnOnce(PathBuf, File) -> SaveT
     {
         if self.is_unsaved(pos)
         {
@@ -431,38 +370,6 @@ impl<SaveT: Saveable, LoadT> FileSaver<SaveT, LoadT>
     {
         parent_path.join(Self::encode_position(pos))
     }
-
-    // i keep making these functions, i feel silly
-    fn tags_parent_path(parent_path: PathBuf) -> PathBuf
-    {
-        parent_path.join("tags")
-    }
-
-    fn save_tags(parent_path: PathBuf, pos: GlobalPos, tags: &[WorldChunkTag])
-    {
-        if tags.is_empty()
-        {
-            return;
-        }
-
-        let parent_path = Self::tags_parent_path(parent_path);
-
-        match fs::create_dir(&parent_path)
-        {
-            Ok(_) => (),
-            Err(err) if err.kind() == io::ErrorKind::AlreadyExists => (),
-            Err(err) => panic!("{err}")
-        }
-
-        let chunk_path = Self::chunk_path(parent_path, pos);
-        let temp_path = chunk_path.with_extension("tmp");
-
-        let file = File::create(&temp_path).unwrap();
-
-        bincode::serialize_into(file, tags).unwrap();
-
-        fs::rename(temp_path, chunk_path).unwrap();
-    }
 }
 
 impl<T> FileSave for FileSaver<T>
@@ -470,7 +377,6 @@ where
     for<'a> T: Saveable + Deserialize<'a> + Serialize
 {
     type SaveItem = T;
-    type LoadItem = T;
 
     fn new(parent_path: PathBuf) -> Self
     {
@@ -496,7 +402,7 @@ where
         self.save_inner(pair);
     }
 
-    fn load(&mut self, pos: GlobalPos) -> Option<Self::LoadItem>
+    fn load(&mut self, pos: GlobalPos) -> Option<Self::SaveItem>
     {
         self.load_with(pos, |_parent_path, file|
         {
@@ -512,88 +418,17 @@ where
     }
 }
 
-impl FileSave for FileSaver<SaveValueGroup, LoadValueGroup>
-{
-    type SaveItem = SaveValueGroup;
-    type LoadItem = LoadValueGroup;
-
-    fn new(parent_path: PathBuf) -> Self
-    {
-        Self::new_with_saver(parent_path, |path, pair|
-        {
-            let chunk_path = Self::chunk_path(path.clone(), pair.key);
-            let temp_path = chunk_path.with_extension("tmp");
-
-            let file = if chunk_path.exists()
-            {
-                fs::rename(&chunk_path, &temp_path).unwrap();
-
-                OpenOptions::new().write(true).open(&temp_path).unwrap()
-            } else
-            {
-                let mut file = File::create(&temp_path).unwrap();
-
-                (0..CHUNK_RATIO.product()).for_each(|_|
-                {
-                    MaybeWorldChunk::default().write_into(&mut file);
-                });
-
-                file
-            };
-
-            let mut value = pair.value;
-            let tags = value.value.take_tags();
-
-            Self::save_tags(path, pair.key, &tags);
-
-            value.write_into(file);
-
-            fs::rename(temp_path, chunk_path).unwrap();
-        })
-    }
-
-    fn save(&mut self, pair: ValuePair<Self::SaveItem>)
-    {
-        self.save_inner(pair);
-    }
-
-    fn load(&mut self, pos: GlobalPos) -> Option<Self::LoadItem>
-    {
-        self.load_with(pos, |parent_path, file|
-        {
-            let chunk_path = Self::chunk_path(Self::tags_parent_path(parent_path), pos);
-
-            let tags_file = match File::open(chunk_path)
-            {
-                Ok(file) => Some(file),
-                Err(ref err) if err.kind() == io::ErrorKind::NotFound =>
-                {
-                    None
-                },
-                Err(err) => panic!("error loading tags from file: {err}")
-            };
-
-            LoadValueGroup{file, tags_file}
-        })
-    }
-
-    fn flush(&mut self)
-    {
-        self.flush();
-    }
-}
-
 pub type SaveEntities = Vec<FullEntityInfo>;
 
 pub type ChunkSaver = Saver<FileSaver<Chunk>, Chunk>;
 pub type EntitiesSaver = Saver<FileSaver<SaveEntities>, SaveEntities>;
-pub type WorldChunkSaver = Saver<FileSaver<SaveValueGroup, LoadValueGroup>, SaveValueGroup, LoadValueGroup>;
+pub type WorldChunkSaver = Saver<FileSaver<WorldChunksBlock>, WorldChunksBlock>;
 
 // again, shouldnt be public
 #[derive(Debug)]
-pub struct Saver<S, SaveT: Saveable, LoadT=SaveT>
+pub struct Saver<S, SaveT: Saveable>
 where
-    S: FileSave<SaveItem=SaveT, LoadItem=LoadT>
+    S: FileSave<SaveItem=SaveT>
 {
     start: Instant,
     cache_amount: usize,
@@ -601,9 +436,9 @@ where
     file_saver: Arc<Mutex<S>>
 }
 
-impl<S, SaveT: Saveable, LoadT> Saver<S, SaveT, LoadT>
+impl<S, SaveT: Saveable> Saver<S, SaveT>
 where
-    S: FileSave<SaveItem=SaveT, LoadItem=LoadT>
+    S: FileSave<SaveItem=SaveT>
 {
     pub fn new(parent_path: impl Into<PathBuf>, cache_amount: usize) -> Self
     {
@@ -631,6 +466,22 @@ where
         }
     }
 
+    fn inner_load(&mut self, pos: GlobalPos) -> Option<SaveT>
+    {
+        if let Some(CachedValue{
+            value: found,
+            ..
+        }) = self.cache.iter().find(|CachedValue{key, ..}|
+        {
+            key.pos == pos
+        })
+        {
+            return Some(found.clone());
+        }
+
+        self.file_saver.lock().load(pos)
+    }
+
     fn inner_save(&mut self, pair: ValuePair<SaveT>)
     {
         self.file_saver.lock().save(pair.clone());
@@ -650,77 +501,14 @@ where
     }
 }
 
-impl SaveLoad<WorldChunk> for WorldChunkSaver
-{
-    fn load(&mut self, pos: GlobalPos) -> Option<WorldChunk>
-    {
-        let index = WorldChunk::global_to_index(pos);
-
-        let rounded_pos = WorldChunk::belongs_to(pos);
-
-        if let Some(CachedValue{
-            value: found,
-            ..
-        }) = self.cache.iter().find(|CachedValue{key, value}|
-        {
-            (key.pos == rounded_pos) && (value.index == index)
-        })
-        {
-            return Some(found.value.clone());
-        }
-
-        self.file_saver.lock().load(rounded_pos)
-            .and_then(|mut load_chunk| load_chunk.get(index))
-    }
-
-    fn save(&mut self, pos: GlobalPos, chunk: WorldChunk)
-    {
-        let index = WorldChunk::global_to_index(pos);
-
-        let value = SaveValueGroup{value: chunk, index};
-        let pos = WorldChunk::belongs_to(pos);
-
-        self.file_saver.lock().save(ValuePair{key: pos, value: value.clone()});
-
-        let key = CachedKey::new(self.start, pos);
-
-        if self.cache.iter().any(|CachedValue{key, value}|
-        {
-            (key.pos == pos) && (value.index == index)
-        })
-        {
-            self.cache.retain(|CachedValue{key, value}|
-            {
-                !((key.pos == pos) && (value.index == index))
-            });
-        } else
-        {
-            self.free_cache(1);
-        }
-
-        self.cache.push(CachedValue{key, value});
-    }
-}
-
 impl<T> SaveLoad<T> for Saver<FileSaver<T>, T>
 where
     T: AutoSaveable + Clone,
-    FileSaver<T>: FileSave<LoadItem=T, SaveItem=T>
+    FileSaver<T>: FileSave<SaveItem=T>
 {
     fn load(&mut self, pos: GlobalPos) -> Option<T>
     {
-        if let Some(CachedValue{
-            value: found,
-            ..
-        }) = self.cache.iter().find(|CachedValue{key, ..}|
-        {
-            key.pos == pos
-        })
-        {
-            return Some(found.clone());
-        }
-
-        self.file_saver.lock().load(pos)
+        self.inner_load(pos)
     }
 
     fn save(&mut self, pos: GlobalPos, value: T)
@@ -769,17 +557,20 @@ mod tests
         let size = Pos3::new(
             fastrand::usize(4..7),
             fastrand::usize(4..7),
-            fastrand::usize(40..70)
+            fastrand::usize(4..7)
         );
 
-        let random_worldchunk = ||
+        let random_worldchunks = || -> [WorldChunk; CHUNK_RATIO.z]
         {
-            WorldChunk::new(WorldChunkId::from_raw(fastrand::usize(0..100)), Vec::new())
+            (0..CHUNK_RATIO.z).map(|_|
+            {
+                WorldChunk::new(WorldChunkId::from_raw(fastrand::usize(0..100)), Vec::new())
+            }).collect::<Vec<_>>().try_into().unwrap()
         };
 
         let mut chunks: Vec<_> = iter::repeat_with(||
             {
-                random_worldchunk()
+                random_worldchunks()
             }).zip((0..).map(|index|
             {
                 GlobalPos::from(Pos3::from_rectangle(size, index))
@@ -795,7 +586,7 @@ mod tests
 
         for i in 1..10
         {
-            saver.save(GlobalPos::from(size + i), random_worldchunk());
+            saver.save(GlobalPos::from(size + i), random_worldchunks());
         }
 
         let mut shuffled_chunks = Vec::with_capacity(chunks.len());
@@ -826,17 +617,20 @@ mod tests
         let size = Pos3::new(
             fastrand::usize(4..7),
             fastrand::usize(4..7),
-            fastrand::usize(40..70)
+            fastrand::usize(4..7)
         );
 
-        let random_worldchunk = ||
+        let random_worldchunks = || -> [WorldChunk; CHUNK_RATIO.z]
         {
-            WorldChunk::new(WorldChunkId::from_raw(fastrand::usize(0..100)), Vec::new())
+            (0..CHUNK_RATIO.z).map(|_|
+            {
+                WorldChunk::new(WorldChunkId::from_raw(fastrand::usize(0..100)), Vec::new())
+            }).collect::<Vec<_>>().try_into().unwrap()
         };
 
         let chunks: Vec<_> = iter::repeat_with(||
             {
-                random_worldchunk()
+                random_worldchunks()
             }).zip((0..).map(|index|
             {
                 GlobalPos::from(Pos3::from_rectangle(size, index))

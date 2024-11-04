@@ -461,7 +461,7 @@ impl Overmap<Arc<Chunk>> for ClientOvermap
         self.visual_overmap.mark_ungenerated(pos);
     }
 
-    fn generate_missing(&mut self)
+    fn generate_missing(&mut self, _shift: Option<Pos3<i32>>)
     {
         self.chunk_ordering
             .iter()

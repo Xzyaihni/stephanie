@@ -6,6 +6,8 @@ use chunk::{
 
 pub use chunks_container::{
     CommonIndexing,
+    Indexer,
+    FlatIndexer,
     ChunksContainer,
     FlatChunksContainer
 };
@@ -36,7 +38,7 @@ pub trait Overmap<T>: OvermapIndexing
         self.get(pos).is_some()
     }
 
-    fn generate_missing(&mut self);
+    fn generate_missing(&mut self, offset: Option<Pos3<i32>>);
 
     fn force_regenerate(&mut self)
     {
@@ -53,13 +55,13 @@ pub trait Overmap<T>: OvermapIndexing
             }
         }
 
-        self.generate_missing();
+        self.generate_missing(None);
     }
 
     fn position_offset(&mut self, offset: Pos3<i32>)
     {
         self.shift_chunks(offset);
-        self.generate_missing();
+        self.generate_missing(Some(offset));
     }
 
     fn shift_chunks(&mut self, offset: Pos3<i32>)

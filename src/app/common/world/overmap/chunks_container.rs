@@ -1,5 +1,6 @@
 use std::{
     fmt::{self, Display, Debug},
+    vec::IntoIter as VecIntoIter,
     slice::{
         IterMut as SliceIterMut,
         Iter as SliceIter
@@ -39,17 +40,33 @@ macro_rules! implement_common
             }
         }
 
+        impl<T> IntoIterator for $name<T>
+        {
+            type Item = (LocalPos, T);
+            type IntoIter = IntoIter<$indexer_name, T>;
+
+            fn into_iter(self) -> Self::IntoIter
+            {
+                IntoIter::new(IntoIterator::into_iter(self.chunks), self.indexer.clone())
+            }
+        }
+
         impl<T> $name<T>
         {
             pub fn from_raw(size: Pos3<usize>, chunks: Box<[T]>) -> Self
             {
+                let indexer = $indexer_name::new(size);
+
+                Self::from_raw_indexer(chunks, indexer)
+            }
+
+            fn from_raw_indexer(chunks: Box<[T]>, indexer: $indexer_name) -> Self
+            {
                 debug_assert!(
-                    size.product() == chunks.len(),
-                    "size: {size:?}, len: {}",
+                    indexer.size.product() == chunks.len(),
+                    "indexer: {indexer:?}, len: {}",
                     chunks.len()
                 );
-
-                let indexer = $indexer_name::new(size);
 
                 Self{chunks, indexer}
             }
@@ -66,7 +83,7 @@ macro_rules! implement_common
                 mut default_function: F
             ) -> Self
             {
-                let data = (0..size.product()).map(|index|
+                let data = (0..$indexer_name::new(size).size.product()).map(|index|
                 {
                     default_function(index)
                 }).collect::<Box<[_]>>();
@@ -78,10 +95,10 @@ macro_rules! implement_common
             where
                 F: FnMut(&T) -> U
             {
-                $name{
-                    chunks: self.chunks.iter().map(f).collect(),
-                    indexer: self.indexer.clone()
-                }
+                $name::from_raw_indexer(
+                    self.chunks.iter().map(f).collect(),
+                    self.indexer.clone()
+                )
             }
 
             pub fn clear(&mut self)
@@ -225,27 +242,27 @@ pub type ValuePair<T> = (LocalPos, T);
 
 macro_rules! impl_iter
 {
-    ($name:ident, $other_iter:ident) =>
+    ($name:ident, $other_iter:ident $(, $l:lifetime)?) =>
     {
-        pub struct $name<'a, I, T>
+        pub struct $name<$($l, )?I, T>
         {
-            data: Enumerate<$other_iter<'a, T>>,
+            data: Enumerate<$other_iter<$($l, )?T>>,
             indexer: I
         }
 
-        impl<'a, I, T> $name<'a, I, T>
+        impl<$($l, )?I, T> $name<$($l, )?I, T>
         {
-            pub fn new(data: $other_iter<'a, T>, indexer: I) -> Self
+            pub fn new(data: $other_iter<$($l, )?T>, indexer: I) -> Self
             {
                 Self{data: data.enumerate(), indexer}
             }
         }
 
-        impl<'a, I, T> Iterator for $name<'a, I, T>
+        impl<$($l, )?I, T> Iterator for $name<$($l, )?I, T>
         where
             I: CommonIndexing
         {
-            type Item = ValuePair<<$other_iter<'a, T> as Iterator>::Item>;
+            type Item = ValuePair<<$other_iter<$($l, )?T> as Iterator>::Item>;
 
             fn next(&mut self) -> Option<Self::Item>
             {
@@ -253,7 +270,7 @@ macro_rules! impl_iter
             }
         }
 
-        impl<'a, I, T> DoubleEndedIterator for $name<'a, I, T>
+        impl<$($l, )?I, T> DoubleEndedIterator for $name<$($l, )?I, T>
         where
             I: CommonIndexing
         {
@@ -265,8 +282,9 @@ macro_rules! impl_iter
     }
 }
 
-impl_iter!{Iter, SliceIter}
-impl_iter!{IterMut, SliceIterMut}
+impl_iter!{Iter, SliceIter, 'a}
+impl_iter!{IterMut, SliceIterMut, 'a}
+impl_iter!{IntoIter, VecIntoIter}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Indexer
@@ -305,10 +323,10 @@ impl<T> ChunksContainer<T>
     where
         F: FnMut(&T) -> U
     {
-        ChunksContainer{
-            chunks: self.chunks.iter().map(f).collect(),
-            indexer: self.indexer.clone()
-        }
+        ChunksContainer::from_raw_indexer(
+            self.chunks.iter().map(f).collect(),
+            self.indexer.clone()
+        )
     }
 
     pub fn iter_axis(&self, axis: Axis, fixed: usize) -> impl Iterator<Item=&T>
@@ -381,10 +399,10 @@ impl<T> ChunksContainer<T>
     where
         F: FnMut((LocalPos, &T)) -> U
     {
-        FlatChunksContainer{
-            chunks: self.flat_slice_iter(z).map(f).collect(),
-            indexer: self.indexer.clone().into()
-        }
+        FlatChunksContainer::from_raw_indexer(
+            self.flat_slice_iter(z).map(f).collect(),
+            self.indexer.clone().into()
+        )
     }
 
     pub fn display(self) -> DisplayChunksContainer<T>
@@ -428,7 +446,7 @@ impl From<Indexer> for FlatIndexer
 {
     fn from(value: Indexer) -> Self
     {
-        Self{size: value.size, z: 0}
+        Self::new(value.size)
     }
 }
 
@@ -544,7 +562,8 @@ mod tests
 
         flat_slice_iter.zip(manual_flat_slice).for_each(|(a, b)|
         {
-            assert_eq!(a, b);
+            assert_eq!(a.0.pos, b.0.pos);
+            assert_eq!(a.1, b.1);
         });
     }
 }

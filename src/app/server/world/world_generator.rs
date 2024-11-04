@@ -1,7 +1,7 @@
 use std::{
     fs,
     io,
-    fmt,
+    fmt::{self, Debug},
     str::FromStr,
     rc::Rc,
     ops::{Index, IndexMut},
@@ -14,13 +14,20 @@ use crate::common::{
     TileMap,
     SaveLoad,
     WeightedPicker,
+    WorldChunksBlock,
     lisp::{self, *},
     world::{
         Pos3,
         LocalPos,
         GlobalPos,
         AlwaysGroup,
-        overmap::{Overmap, OvermapIndexing, FlatChunksContainer, ChunksContainer},
+        overmap::{
+            CommonIndexing,
+            OvermapIndexing,
+            FlatIndexer,
+            FlatChunksContainer,
+            ChunksContainer
+        },
         chunk::{
             PosDirection,
             tile::{Tile, TileRotation}
@@ -28,7 +35,10 @@ use crate::common::{
     }
 };
 
-use super::server_overmap::WorldPlane;
+use super::{
+    SERVER_OVERMAP_SIZE_Z,
+    server_overmap::WorldPlane
+};
 
 use chunk_rules::{ChunkRulesGroup, ChunkRules};
 
@@ -36,7 +46,6 @@ pub use chunk_rules::{
     WORLD_CHUNK_SIZE,
     CHUNK_RATIO,
     ConditionalInfo,
-    MaybeWorldChunk,
     WorldChunk,
     WorldChunkId,
     WorldChunkTag
@@ -75,7 +84,7 @@ impl From<io::Error> for ParseErrorKind
         ParseErrorKind::Io(value)
     }
 }
-    
+
 impl From<serde_json::Error> for ParseErrorKind
 {
     fn from(value: serde_json::Error) -> Self
@@ -293,7 +302,7 @@ impl ChunkGenerator
         });
 
         self.chunks.insert(name.to_owned(), lisp);
-        
+
         Ok(())
     }
 
@@ -303,11 +312,6 @@ impl ChunkGenerator
         group: AlwaysGroup<&str>
     ) -> ChunksContainer<Tile>
     {
-        if group.this == "none"
-        {
-            return ChunksContainer::new_with(WORLD_CHUNK_SIZE, |_| Tile::none());
-        }
-
         let tiles = {
             let chunk_name = group.this;
             let this_chunk = self.chunks.get_mut(chunk_name)
@@ -380,7 +384,7 @@ pub struct WorldGenerator<S>
     rules: Rc<ChunkRulesGroup>
 }
 
-impl<S: SaveLoad<WorldChunk>> WorldGenerator<S>
+impl<S: SaveLoad<WorldChunksBlock>> WorldGenerator<S>
 {
     pub fn new(
         saver: S,
@@ -395,124 +399,142 @@ impl<S: SaveLoad<WorldChunk>> WorldGenerator<S>
         Ok(Self{generator, saver, rules})
     }
 
-    pub fn generate_surface(
+    pub fn generate_surface<M: OvermapIndexing + Debug>(
         &mut self,
-        world_chunks: &mut FlatChunksContainer<Option<WorldChunk>>,
-        global_mapper: &impl OvermapIndexing
+        world_chunks: &mut FlatChunksContainer<Option<WorldChunksBlock>>,
+        plane: &mut WorldPlane,
+        global_mapper: &M
     )
     {
+        debug_assert!(
+            world_chunks.iter().all(|(pos, _)| global_mapper.to_global(pos).0.z == 0),
+            "z must be 0, {global_mapper:#?} {:?}",
+            world_chunks.iter().map(|(pos, _)| (pos, global_mapper.to_global(pos).0)).next().unwrap()
+        );
+
         self.load_missing(world_chunks.iter_mut(), global_mapper);
 
-        let mut wave_collapser = WaveCollapser::new(&self.rules.surface, world_chunks);
-
-        let mut on_chunk = |local_pos: LocalPos, chunk: &WorldChunk|
+        plane.0.iter_mut().zip(world_chunks.iter()).for_each(|((_, plane), (_, world))|
         {
-            self.saver.save(global_mapper.to_global(local_pos), chunk.clone());
-        };
+            *plane = world.as_ref().map(|chunk| chunk[0].clone());
+        });
+
+        let mut wave_collapser = WaveCollapser::new(&self.rules.surface, &mut plane.0);
 
         if let Some(local) = global_mapper.to_local(GlobalPos::new(0, 0, 0))
         {
             wave_collapser.generate_single_maybe(
-                local,
+                local.moved(local.pos.x, local.pos.y, 0),
                 ||
                 {
                     let id = self.rules.name_mappings().world_chunk["bunker"];
 
                     WorldChunk::new(id, Vec::new())
-                },
-                &mut on_chunk
+                }
             );
         }
 
-        wave_collapser.generate(on_chunk);
+        wave_collapser.generate();
     }
 
     pub fn generate_missing(
         &mut self,
-        world_chunks: &mut ChunksContainer<Option<WorldChunk>>,
-        world_plane: &WorldPlane<S>,
+        world_chunks: &mut ChunksContainer<Option<WorldChunksBlock>>,
+        world_plane: &WorldPlane,
         global_mapper: &impl OvermapIndexing
     )
     {
         debug_assert!(world_plane.all_exist());
-        if let Some(z) = global_mapper.to_local_z(0)
-        {
-            world_chunks.flat_slice_iter_mut(z).filter(|(_pos, chunk)|
-            {
-                chunk.is_none()
-            }).for_each(|(pos, chunk)|
-            {
-                chunk.clone_from(world_plane.get_local(pos));
-            });
-        }
+        debug_assert!(world_chunks.size().z == SERVER_OVERMAP_SIZE_Z);
 
         self.load_missing(world_chunks.iter_mut(), global_mapper);
 
-        for z in (0..world_chunks.size().z).rev()
+        let indexer = FlatIndexer::new(world_chunks.size());
+        (0..indexer.size().product()).for_each(|index|
         {
-            let global_z = global_mapper.to_global_z(z);
+            let flat_local = indexer.index_to_pos(index);
 
-            let this_slice = world_chunks.flat_slice_iter_mut(z).filter(|(_pos, chunk)|
+            (0..SERVER_OVERMAP_SIZE_Z).rev().for_each(|z|
             {
-                chunk.is_none()
-            });
+                let size = world_chunks.size();
 
-            let mut applier = |pair: (LocalPos, &mut Option<WorldChunk>), chunk: WorldChunk|
-            {
-                self.saver.save(global_mapper.to_global(pair.0), chunk.clone());
+                let local_pos = LocalPos::new(Pos3{z, ..flat_local.pos}, size);
 
-                *pair.1 = Some(chunk);
-            };
-
-            match global_z.cmp(&0)
-            {
-                Ordering::Equal => (),
-                Ordering::Greater =>
+                let this_world_chunk = &mut world_chunks[local_pos];
+                if this_world_chunk.is_some()
                 {
-                    // above ground
-                    
-                    this_slice.for_each(|pair@(pos, _)|
-                    {
-                        let this_surface = world_plane.world_chunk(pos);
-
-                        let info = ConditionalInfo{
-                            height: global_z,
-                            tags: this_surface.tags()
-                        };
-
-                        let chunk = self.rules.city.generate(info, this_surface.id());
-
-                        applier(pair, chunk);
-                    });
-                },
-                Ordering::Less =>
-                {
-                    // underground
-
-                    this_slice.for_each(|pair@(pos, _)|
-                    {
-                        let this_surface = world_plane.world_chunk(pos);
-
-                        let info = ConditionalInfo{
-                            height: global_z,
-                            tags: this_surface.tags()
-                        };
-
-                        let underground_city = self.rules.city.generate_underground(
-                            info,
-                            this_surface.id()
-                        );
-
-                        let chunk = underground_city.unwrap_or_else(||
-                        {
-                            WorldChunk::new(self.rules.underground.fallback(), Vec::new())
-                        });
-
-                        applier(pair, chunk);
-                    });
+                    return;
                 }
-            }
-        }
+
+                let global_pos = global_mapper.to_global(local_pos);
+
+                let block: WorldChunksBlock = (0..CHUNK_RATIO.z).map(|index|
+                {
+                    let mut global_pos = global_pos.clone();
+                    global_pos.0.z = global_pos.0.z * CHUNK_RATIO.z as i32 + index as i32;
+
+                    let global_z = global_pos.0.z;
+
+                    let this_surface = world_plane.world_chunk(local_pos);
+
+                    match global_z.cmp(&0)
+                    {
+                        Ordering::Equal => this_surface.clone(),
+                        Ordering::Greater =>
+                        {
+                            // above ground
+                            let info = ConditionalInfo{
+                                height: global_z,
+                                tags: this_surface.tags()
+                            };
+
+                            self.rules.city.generate(info, this_surface.id())
+                        },
+                        Ordering::Less =>
+                        {
+                            // underground
+                            let info = ConditionalInfo{
+                                height: global_z,
+                                tags: this_surface.tags()
+                            };
+
+                            let underground_city = self.rules.city.generate_underground(
+                                info,
+                                this_surface.id()
+                            );
+
+                            underground_city.unwrap_or_else(||
+                            {
+                                WorldChunk::new(self.rules.underground.fallback(), Vec::new())
+                            })
+                        }
+                    }
+                }).collect::<Vec<_>>().try_into().unwrap();
+
+                if global_pos.0.z == 0
+                {
+                    debug_assert!(block[0].id() != WorldChunkId::none());
+                }
+
+                self.saver.save(global_pos, block.clone());
+                *this_world_chunk = Some(block);
+            });
+        });
+
+        debug_assert!(
+            world_chunks.iter().all(|(_, x)| x.is_some()),
+            "{:?}, empty count: {}, by z: {:#?}",
+            world_chunks.size(), world_chunks.iter().filter(|(_, x)| x.is_none()).count(),
+            world_chunks.iter().fold(vec![0; world_chunks.size().z], |mut acc, (pos, x)|
+            {
+                if x.is_none()
+                {
+                    acc[pos.pos.z] += 1;
+                }
+
+                acc
+            })
+        );
     }
 
     pub fn rules(&self) -> &ChunkRulesGroup
@@ -522,14 +544,15 @@ impl<S: SaveLoad<WorldChunk>> WorldGenerator<S>
 
     fn load_missing<'a>(
         &mut self,
-        world_chunks: impl Iterator<Item=(LocalPos, &'a mut Option<WorldChunk>)>,
+        world_chunks: impl Iterator<Item=(LocalPos, &'a mut Option<WorldChunksBlock>)>,
         global_mapper: &impl OvermapIndexing
     )
     {
         world_chunks.filter(|(_pos, chunk)| chunk.is_none())
             .for_each(|(pos, chunk)|
             {
-                let loaded_chunk = self.saver.load(global_mapper.to_global(pos));
+                let global_pos = global_mapper.to_global(pos);
+                let loaded_chunk = self.saver.load(global_pos);
 
                 if loaded_chunk.is_some()
                 {
@@ -544,6 +567,11 @@ impl<S: SaveLoad<WorldChunk>> WorldGenerator<S>
         group: AlwaysGroup<WorldChunk>
     ) -> ChunksContainer<Tile>
     {
+        if group.this.id() == WorldChunkId::none()
+        {
+            return ChunksContainer::new_with(WORLD_CHUNK_SIZE, |_| Tile::none());
+        }
+
         self.generator.generate_chunk(info, group.map(|world_chunk|
         {
             self.rules.name(world_chunk.id())
@@ -551,6 +579,7 @@ impl<S: SaveLoad<WorldChunk>> WorldGenerator<S>
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
 struct PossibleStates
 {
     states: Vec<WorldChunkId>,
@@ -564,11 +593,11 @@ impl PossibleStates
 {
     pub fn new(rules: &ChunkRules) -> Self
     {
-        let states = rules.ids().copied().collect();
+        let states: Vec<_> = rules.ids().copied().collect();
 
         Self{
             states,
-            total: rules.total_weight(),
+            total: 1.0,
             entropy: rules.entropy(),
             collapsed: false,
             is_all: true
@@ -577,6 +606,8 @@ impl PossibleStates
 
     pub fn new_collapsed(chunk: &WorldChunk) -> Self
     {
+        debug_assert!(chunk.id() != WorldChunkId::none());
+
         Self{
             states: vec![chunk.id()],
             total: 1.0,
@@ -856,53 +887,43 @@ impl<'a> WaveCollapser<'a>
         }
     }
 
-    pub fn generate_single_maybe<C, F>(
+    pub fn generate_single_maybe<C>(
         &mut self,
         local: LocalPos,
-        chunk: C,
-        on_chunk: F
+        chunk: C
     )
     where
-        C: FnOnce() -> WorldChunk,
-        F: FnMut(LocalPos, &WorldChunk)
+        C: FnOnce() -> WorldChunk
     {
         if self.world_chunks[local].is_none()
         {
-            self.generate_single(local, chunk(), on_chunk);
+            self.generate_single(local, chunk());
         }
     }
 
-    pub fn generate_single<F>(
+    pub fn generate_single(
         &mut self,
         local: LocalPos,
-        chunk: WorldChunk,
-        mut on_chunk: F
+        chunk: WorldChunk
     )
-    where
-        F: FnMut(LocalPos, &WorldChunk)
     {
-        on_chunk(local, &chunk);
+        debug_assert!(local.pos.z == 0, "{local:#?}");
 
         self.world_chunks[local] = Some(chunk);
 
-        if local.pos.z == 0
-        {
-            self.entropies[local].collapse(self.rules);
+        self.entropies[local].collapse(self.rules);
 
-            let mut visited = VisitedTracker::new();
-            self.constrain(&mut visited, local);
-        }
+        let mut visited = VisitedTracker::new();
+        self.constrain(&mut visited, local);
     }
 
-    pub fn generate<F>(&mut self, mut on_chunk: F)
-    where
-        F: FnMut(LocalPos, &WorldChunk)
+    pub fn generate(&mut self)
     {
         while let Some((local_pos, state)) = self.entropies.lowest_entropy()
         {
             let generated_chunk = self.rules.generate(state.collapse(self.rules));
 
-            self.generate_single(local_pos, generated_chunk, &mut on_chunk);
+            self.generate_single(local_pos, generated_chunk);
         }
     }
 }
@@ -930,7 +951,11 @@ mod tests
         let c = get_tile("glass");
         let d = get_tile("concrete");
 
-        let rules = Rc::new(ChunkRulesGroup::load(PathBuf::from("world_generation")).unwrap());
+        let mut rules = ChunkRulesGroup::load(PathBuf::from("world_generation")).unwrap();
+        rules.insert_chunk("test_chunk".to_owned());
+
+        let rules = Rc::new(rules);
+
         let mut generator = ChunkGenerator::new(Rc::new(tilemap), rules).unwrap();
 
         let empty = [];

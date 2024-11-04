@@ -34,12 +34,28 @@
         },
         {
             "name": "bunker",
-            "weight": 1,
+            "weight": 0.0001,
             "neighbors": {
-                "up": [],
-                "down": [],
-                "right": [],
-                "left": []
+                "up": [
+                    "park",
+                    "building",
+                    "road_horizontal"
+                ],
+                "down": [
+                    "park",
+                    "building",
+                    "road_horizontal"
+                ],
+                "right": [
+                    "park",
+                    "building",
+                    "road_vertical"
+                ],
+                "left": [
+                    "park",
+                    "building",
+                    "road_vertical"
+                ]
             }
         },
         {

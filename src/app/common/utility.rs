@@ -1,6 +1,7 @@
 use std::{
     f32,
     env,
+    borrow::Borrow,
     cmp::Ordering,
     hash::Hash,
     io::Write,
@@ -8,7 +9,7 @@ use std::{
     fs::File,
     collections::HashMap,
     path::{Path, Component},
-    ops::{Range, RangeInclusive}
+    ops::{Index, Range, RangeInclusive}
 };
 
 use serde::{Deserialize, Serialize};
@@ -103,6 +104,7 @@ macro_rules! some_or_return
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct BiMap<K, V>
 {
     normal: HashMap<K, V>,
@@ -125,9 +127,44 @@ impl<K: Hash + Eq + Clone, V: Hash + Eq + Clone> FromIterator<(K, V)> for BiMap<
     }
 }
 
-impl<K: Hash + Eq + Clone, V: Hash + Eq + Clone> BiMap<K, V>
+impl<Q: Eq + Hash + Debug + ?Sized, K: Hash + Eq + Borrow<Q>, V: Hash + Eq> Index<&Q> for BiMap<K, V>
 {
-    pub fn get(&self, key: &K) -> Option<&V>
+    type Output = V;
+
+    fn index(&self, index: &Q) -> &Self::Output
+    {
+        self.get(index).unwrap_or_else(||
+        {
+            panic!("`{index:?}` doesnt exist")
+        })
+    }
+}
+
+impl<K: Hash + Eq, V: Hash + Eq> BiMap<K, V>
+{
+    pub fn new() -> Self
+    {
+        Self{normal: HashMap::new(), back: HashMap::new()}
+    }
+
+    pub fn contains_key(&self, k: &K) -> bool
+    {
+        self.normal.contains_key(k)
+    }
+
+    pub fn insert(&mut self, key: K, value: V)
+    where
+        K: Clone,
+        V: Clone
+    {
+        self.normal.insert(key.clone(), value.clone());
+        self.back.insert(value, key);
+    }
+
+    pub fn get<Q>(&self, key: &Q) -> Option<&V>
+    where
+        Q: Eq + Hash + ?Sized,
+        K: Borrow<Q>
     {
         self.normal.get(key)
     }
@@ -135,6 +172,16 @@ impl<K: Hash + Eq + Clone, V: Hash + Eq + Clone> BiMap<K, V>
     pub fn get_back(&self, key: &V) -> Option<&K>
     {
         self.back.get(key)
+    }
+
+    pub fn iter_front(&self) -> impl Iterator<Item=&K>
+    {
+        self.normal.keys()
+    }
+
+    pub fn iter_back(&self) -> impl Iterator<Item=&V>
+    {
+        self.back.keys()
     }
 }
 

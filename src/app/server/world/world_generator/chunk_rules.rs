@@ -1,11 +1,10 @@
 use std::{
-    iter,
     mem,
     rc::Rc,
     io::Write,
     fs::File,
     fmt::{self, Debug},
-    path::{Path, PathBuf},
+    path::PathBuf,
     collections::HashMap,
     ops::{Range, Index}
 };
@@ -15,6 +14,7 @@ use serde::{Serialize, Deserialize};
 use super::{PossibleStates, ParseError};
 
 use crate::common::{
+    BiMap,
     lisp::{self, Program, Primitives, LispMemory},
     world::{
         CHUNK_SIZE,
@@ -33,85 +33,6 @@ pub const CHUNK_RATIO: Pos3<usize> = Pos3{
     z: CHUNK_SIZE / WORLD_CHUNK_SIZE.z
 };
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MaybeWorldChunk(pub Option<WorldChunk>);
-
-impl From<WorldChunk> for MaybeWorldChunk
-{
-    fn from(value: WorldChunk) -> Self
-    {
-        Self(Some(value))
-    }
-}
-
-impl From<MaybeWorldChunk> for Option<WorldChunk>
-{
-    fn from(value: MaybeWorldChunk) -> Self
-    {
-        value.0
-    }
-}
-
-impl Default for MaybeWorldChunk
-{
-    fn default() -> Self
-    {
-        Self::none()
-    }
-}
-
-impl MaybeWorldChunk
-{
-    pub fn none() -> Self
-    {
-        Self(None)
-    }
-
-    pub fn take_tags(&mut self) -> Vec<WorldChunkTag>
-    {
-        self.0.as_mut().map(WorldChunk::take_tags).unwrap_or_default()
-    }
-
-    pub const fn size_of() -> usize
-    {
-        // is option? (u8) + id (u32)
-        1 + (u32::BITS / 8) as usize
-    }
-
-    pub fn index_of(index: usize) -> usize
-    {
-        index * Self::size_of()
-    }
-
-    pub fn write_into(self, mut writer: impl Write)
-    {
-        let bytes = self.0.map(|world_chunk|
-        {
-            let [a, b, c, d] = (world_chunk.id.0 as u32).to_le_bytes();
-
-            [1, a, b, c, d]
-        }).unwrap_or([0; Self::size_of()]);
-
-        assert_eq!(bytes.len(), Self::size_of());
-
-        writer.write_all(&bytes).unwrap();
-    }
-
-    pub fn from_bytes(bytes: &[u8]) -> Self
-    {
-        assert_eq!(bytes.len(), Self::size_of());
-
-        let maybe_world_chunk = (bytes[0] != 0).then(||
-        {
-            let b = [bytes[1], bytes[2], bytes[3], bytes[4]];
-
-            WorldChunk::new(WorldChunkId(u32::from_le_bytes(b) as usize), Vec::new())
-        });
-
-        Self(maybe_world_chunk)
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct WorldChunkId(usize);
@@ -126,6 +47,11 @@ impl fmt::Display for WorldChunkId
 
 impl WorldChunkId
 {
+    pub fn none() -> Self
+    {
+        Self(0)
+    }
+
     #[cfg(test)]
     pub fn from_raw(id: usize) -> Self
     {
@@ -178,11 +104,9 @@ impl WorldChunkTag
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(transparent)]
 pub struct WorldChunk
 {
     id: WorldChunkId,
-    #[serde(skip)]
     tags: Vec<WorldChunkTag>
 }
 
@@ -233,6 +157,29 @@ impl WorldChunk
             tags,
             ..self
         }
+    }
+
+    pub const fn size_of() -> usize
+    {
+        // id (u32)
+        (u32::BITS / 8) as usize
+    }
+
+    pub fn index_of(index: usize) -> usize
+    {
+        index * Self::size_of()
+    }
+
+    pub fn write_into(self, mut writer: impl Write)
+    {
+        let bytes: [_; Self::size_of()] = (self.id.0 as u32).to_le_bytes();
+
+        writer.write_all(&bytes).unwrap();
+    }
+
+    pub fn from_bytes(bytes: [u8; Self::size_of()]) -> Self
+    {
+        WorldChunk::new(WorldChunkId(u32::from_le_bytes(bytes) as usize), Vec::new())
     }
 
     pub fn belongs_to(pos: GlobalPos) -> GlobalPos
@@ -379,21 +326,16 @@ impl ChunkRule
     }
 }
 
+trait ParsableRules: Sized
+{
+    fn parse(name_mappings: &mut NameMappings, file: File) -> Result<Self, serde_json::Error>;
+}
+
 #[derive(Debug)]
 pub struct UndergroundRules(ChunkRules);
 
 impl UndergroundRules
 {
-    fn load(
-        name_mappings: &mut NameMappings,
-        file: File
-    ) -> Result<Self, serde_json::Error>
-    {
-        let rules = serde_json::from_reader::<_, ChunkRulesRaw>(file)?;
-
-        Ok(Self::from_raw(name_mappings, rules))
-    }
-
     fn from_raw(
         name_mappings: &mut NameMappings,
         rules: ChunkRulesRaw
@@ -405,6 +347,19 @@ impl UndergroundRules
     pub fn fallback(&self) -> WorldChunkId
     {
         self.0.fallback
+    }
+}
+
+impl ParsableRules for UndergroundRules
+{
+    fn parse(
+        name_mappings: &mut NameMappings,
+        file: File
+    ) -> Result<Self, serde_json::Error>
+    {
+        let rules = serde_json::from_reader::<_, ChunkRulesRaw>(file)?;
+
+        Ok(Self::from_raw(name_mappings, rules))
     }
 }
 
@@ -461,7 +416,10 @@ impl RangeNumber
         match self
         {
             Self::Number(x) => *x,
-            Self::Tag(tag) => info.get_tag(*tag).expect("tag must exist")
+            Self::Tag(tag) => info.get_tag(*tag).unwrap_or_else(||
+            {
+                panic!("tag `{tag:?}` doesnt exist in {info:#?}")
+            })
         }
     }
 }
@@ -538,19 +496,10 @@ pub struct CityRules
 
 impl CityRules
 {
-    fn load(
-        name_mappings: &NameMappings,
-        file: File
-    ) -> Result<Self, serde_json::Error>
+    fn from_raw(name_mappings: &mut NameMappings, rules: CityRulesRaw) -> Self
     {
-        let rules = serde_json::from_reader::<_, CityRulesRaw>(file)?;
+        rules.rules.iter().for_each(|rule| name_mappings.insert(rule.name.clone()));
 
-        Ok(Self::from_raw(name_mappings, rules))
-    }
-
-    fn from_raw(name_mappings: &NameMappings, rules: CityRulesRaw) -> Self
-    {
-        // rules rules rules!!!!!!
         Self{
             rules: rules.rules.into_iter().map(|rule|
             {
@@ -578,6 +527,19 @@ impl CityRules
         {
             WorldChunk::new(rule.name, Vec::new())
         })
+    }
+}
+
+impl ParsableRules for CityRules
+{
+    fn parse(
+        name_mappings: &mut NameMappings,
+        file: File
+    ) -> Result<Self, serde_json::Error>
+    {
+        let rules = serde_json::from_reader::<_, CityRulesRaw>(file)?;
+
+        Ok(Self::from_raw(name_mappings, rules))
     }
 }
 
@@ -665,14 +627,30 @@ impl Index<&str> for TextMapping
 #[derive(Debug)]
 pub struct NameMappings
 {
-    pub world_chunk: NameIndexer<WorldChunkId>,
-    pub text: TextMapping
+    pub world_chunk: BiMap<String, WorldChunkId>,
+    pub text: TextMapping,
+    current_index: usize
+}
+
+impl NameMappings
+{
+    fn insert(&mut self, name: String)
+    {
+        if self.world_chunk.contains_key(&name)
+        {
+            return;
+        }
+
+        let id = WorldChunkId(self.current_index);
+        self.current_index += 1;
+
+        self.world_chunk.insert(name, id);
+    }
 }
 
 #[derive(Debug)]
 pub struct ChunkRulesGroup
 {
-    world_chunks: Box<[String]>,
     name_mappings: NameMappings,
     pub surface: ChunkRules,
     pub underground: UndergroundRules,
@@ -683,76 +661,45 @@ impl ChunkRulesGroup
 {
     pub fn load(path: PathBuf) -> Result<Self, ParseError>
     {
-        // holy iterator
-        let world_chunks = iter::once(Ok("none".to_owned())).chain(path.join("chunks")
-            .read_dir()?
-            .filter(|entry|
-            {
-                entry.as_ref().ok().and_then(|entry|
-                {
-                    entry.file_type().ok()
-                }).map(|filetype| filetype.is_file())
-                .unwrap_or(true)
-            })
-            .map(|entry|
-            {
-                entry.map(|entry|
-                {
-                    let filename = entry.file_name();
-                    let path: &Path = filename.as_ref();
-
-                    path.file_stem()
-                        .unwrap_or_default()
-                        .to_string_lossy()
-                        .into_owned()
-                })
-            }))
-            .collect::<Result<Box<[String]>, _>>()?;
-
-        let mut name_mappings = {
-            let world_chunk = world_chunks.iter().enumerate().map(|(index, name)|
-            {
-                (name.clone(), WorldChunkId(index))
-            }).collect::<NameIndexer<WorldChunkId>>();
-
-            NameMappings{
-                world_chunk,
-                text: TextMapping::new()
-            }
+        let mut name_mappings = NameMappings{
+            world_chunk: BiMap::new(),
+            text: TextMapping::new(),
+            current_index: 0
         };
 
+        name_mappings.insert("none".to_owned());
+        assert_eq!(name_mappings.world_chunk["none"], WorldChunkId(0));
 
         Ok(Self{
-            world_chunks,
-            surface: Self::load_rules(path.join("surface.json"), |file|
-            {
-                ChunkRules::load(&mut name_mappings, file)
-            })?,
-            underground: Self::load_rules(path.join("underground.json"), |file|
-            {
-                UndergroundRules::load(&mut name_mappings, file)
-            })?,
-            city: Self::load_rules(path.join("city.json"), |file|
-            {
-                CityRules::load(&name_mappings, file)
-            })?,
+            surface: Self::load_rules(&mut name_mappings, path.join("surface.json"))?,
+            underground: Self::load_rules(&mut name_mappings, path.join("underground.json"))?,
+            city: Self::load_rules(&mut name_mappings, path.join("city.json"))?,
             name_mappings
         })
     }
 
-    fn load_rules<F, T>(path: PathBuf, f: F) -> Result<T, ParseError>
-    where
-        F: FnOnce(File) -> Result<T, serde_json::Error>
+    #[cfg(test)]
+    pub fn insert_chunk(&mut self, name: String)
+    {
+        self.name_mappings.insert(name);
+    }
+
+    fn load_rules<T: ParsableRules>(
+        name_mappings: &mut NameMappings,
+        path: PathBuf
+    ) -> Result<T, ParseError>
     {
         let file = File::open(&path).map_err(|err|
         {
             ParseError::new_named(path.to_owned(), err)
         })?;
 
-        f(file).map_err(|err|
+        let rules = T::parse(name_mappings, file).map_err(|err|
         {
             ParseError::new_named(path.to_owned(), err)
-        })
+        })?;
+
+        Ok(rules)
     }
 
     pub fn name_mappings(&self) -> &NameMappings
@@ -762,12 +709,15 @@ impl ChunkRulesGroup
 
     pub fn name(&self, id: WorldChunkId) -> &str
     {
-        &self.world_chunks[id.0]
+        self.name_mappings.world_chunk.get_back(&id).unwrap_or_else(||
+        {
+            panic!("id {id} doesnt exist")
+        })
     }
 
     pub fn iter_names(&self) -> impl Iterator<Item=&String>
     {
-        self.world_chunks.iter()
+        self.name_mappings.world_chunk.iter_front()
     }
 }
 
@@ -776,22 +726,11 @@ pub struct ChunkRules
 {
     rules: HashMap<WorldChunkId, ChunkRule>,
     fallback: WorldChunkId,
-    total_weight: f64,
     entropy: f64
 }
 
 impl ChunkRules
 {
-    fn load(
-        name_mappings: &mut NameMappings,
-        file: File
-    ) -> Result<Self, serde_json::Error>
-    {
-        let rules = serde_json::from_reader::<_, ChunkRulesRaw>(file)?;
-
-        Ok(Self::from_raw(name_mappings, rules))
-    }
-
     fn from_raw(name_mappings: &mut NameMappings, rules: ChunkRulesRaw) -> Self
     {
         let weights = rules.rules.iter().map(|rule| rule.weight);
@@ -799,17 +738,18 @@ impl ChunkRules
         let total_weight: f64 = weights.clone().sum();
         let entropy = PossibleStates::calculate_entropy(weights);
 
+        rules.rules.iter().for_each(|rule| name_mappings.insert(rule.name.clone()));
+
         Self{
-            total_weight: 1.0,
             entropy,
-            fallback: name_mappings.world_chunk[&rules.fallback],
             rules: rules.rules.into_iter().map(|rule|
             {
                 let rule = ChunkRule::from_raw(name_mappings, rule, total_weight);
                 let id = name_mappings.world_chunk[&rule.name];
 
                 (id, rule)
-            }).collect::<HashMap<WorldChunkId, ChunkRule>>()
+            }).collect::<HashMap<WorldChunkId, ChunkRule>>(),
+            fallback: name_mappings.world_chunk[&rules.fallback]
         }
     }
 
@@ -831,11 +771,6 @@ impl ChunkRules
     pub fn name(&self, id: WorldChunkId) -> &str
     {
         &self.rules.get(&id).unwrap_or_else(|| panic!("{id} out of range")).name
-    }
-
-    pub fn total_weight(&self) -> f64
-    {
-        self.total_weight
     }
 
     pub fn entropy(&self) -> f64
@@ -866,5 +801,18 @@ impl ChunkRules
     pub fn iter(&self) -> impl Iterator<Item=&ChunkRule> + '_
     {
         self.rules.values()
+    }
+}
+
+impl ParsableRules for ChunkRules
+{
+    fn parse(
+        name_mappings: &mut NameMappings,
+        file: File
+    ) -> Result<Self, serde_json::Error>
+    {
+        let rules = serde_json::from_reader::<_, ChunkRulesRaw>(file)?;
+
+        Ok(Self::from_raw(name_mappings, rules))
     }
 }

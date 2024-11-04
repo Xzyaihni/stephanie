@@ -468,7 +468,7 @@ impl World
                 .generate_chunk(pos);
 
             self.add_entities(container, pos.into(), &mut chunk);
-                
+
             self.chunk_saver.save(pos, chunk.clone());
 
             chunk
