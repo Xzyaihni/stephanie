@@ -39,7 +39,7 @@ impl Order
     }
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct InventorySorter
 {
     order: Order

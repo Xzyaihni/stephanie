@@ -66,6 +66,7 @@ pub enum WindowError
     RemoveNonExistent
 }
 
+#[derive(Clone)]
 pub struct UiScroll
 {
     background: Entity,
@@ -193,6 +194,7 @@ impl UiScroll
     }
 }
 
+#[derive(Clone)]
 pub struct ListItem
 {
     frame: Entity,
@@ -208,6 +210,7 @@ impl ListItem
     }
 }
 
+#[derive(Clone)]
 pub struct UiList
 {
     panel: Entity,
@@ -561,6 +564,7 @@ impl Default for UiWindowInfo
     }
 }
 
+#[derive(Clone)]
 struct UiWindow
 {
     body: Entity,
@@ -825,6 +829,7 @@ impl UiWindow
     }
 }
 
+#[derive(Clone)]
 pub struct UiInventory
 {
     sorter: InventorySorter,
@@ -973,6 +978,7 @@ impl UiInventory
     }
 }
 
+#[derive(Clone)]
 pub struct UiAnatomy
 {
     window: UiWindow,
@@ -1067,6 +1073,7 @@ impl UiAnatomy
     }
 }
 
+#[derive(Clone)]
 pub struct UiStats
 {
     window: UiWindow,
@@ -1135,6 +1142,7 @@ impl UiStats
     }
 }
 
+#[derive(Clone)]
 pub struct UiItemInfo
 {
     window: UiWindow,
@@ -1468,6 +1476,7 @@ impl NotificationSeverity
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct NotificationId(usize);
 
+#[derive(Clone)]
 pub struct BarNotification
 {
     body: Entity,
@@ -1523,6 +1532,7 @@ impl BarNotification
     }
 }
 
+#[derive(Clone)]
 pub struct TextNotification
 {
     body: Entity,
@@ -1611,6 +1621,7 @@ macro_rules! quick_casts
     }
 }
 
+#[derive(Clone)]
 pub enum NotificationKind
 {
     Bar(BarNotification),
@@ -1674,6 +1685,7 @@ impl NotificationKind
     }
 }
 
+#[derive(Clone)]
 pub struct Notification
 {
     pub lifetime: f32,
@@ -1688,6 +1700,7 @@ impl Notification
     }
 }
 
+#[derive(Clone)]
 pub struct AnatomyTooltip
 {
     current: HumanPartId,
@@ -1952,11 +1965,13 @@ impl AnatomyTooltip
     }
 }
 
+#[derive(Clone)]
 pub enum TooltipKind
 {
     Anatomy(AnatomyTooltip)
 }
 
+#[derive(Clone)]
 pub struct Tooltip
 {
     lifetime: f32,
@@ -2063,6 +2078,7 @@ impl Tooltip
     }
 }
 
+#[derive(Clone)]
 struct ActionResponse
 {
     button: Entity,
@@ -2078,6 +2094,7 @@ impl ActionResponse
     }
 }
 
+#[derive(Clone)]
 pub struct ActionsList
 {
     body: Entity,
@@ -2252,6 +2269,7 @@ pub enum TooltipCreateInfo
     Anatomy{entity: Entity, id: HumanPartId}
 }
 
+#[derive(Clone)]
 pub enum UiSpecializedWindow
 {
     ActionsList(ActionsList),
@@ -2572,6 +2590,9 @@ impl Ui
     ) -> Result<(), WindowError>
     {
         let window = self.remove_window_id_with(id, |body| close_ui(entities, body))?;
+        let window: &UiSpecializedWindow = &*window.borrow();
+        let window: UiSpecializedWindow = (*window).clone();
+        let window = Rc::new(RefCell::new(window));
 
         self.closing_list.push(ClosingWindow{window, lifetime: CLOSED_LIFETIME - LONGEST_FRAME as f32});
 
