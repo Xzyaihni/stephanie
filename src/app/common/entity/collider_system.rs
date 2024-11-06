@@ -2,6 +2,8 @@ use std::cell::RefCell;
 
 use yanyaengine::Transform;
 
+use nalgebra::Vector3;
+
 use crate::{
     debug_config::*,
     common::{
@@ -9,6 +11,7 @@ use crate::{
         collider::*,
         render_info::*,
         watcher::*,
+        ENTITY_SCALE,
         Entity,
         SpatialGrid,
         Joint,
@@ -62,8 +65,41 @@ pub fn update(
         }
     }
 
-    for_each_component!(entities, collider, |_, collider: &RefCell<Collider>|
+    for_each_component!(entities, collider, |entity, collider: &RefCell<Collider>|
     {
+        if DebugConfig::is_enabled(DebugTool::CollisionBounds)
+        {
+            if let Some(transform) = entities.transform(entity)
+            {
+                let collider = collider.borrow_mut();
+                let (bounds, sprite) = match &collider.kind
+                {
+                    ColliderType::RayZ => (Some(Vector3::repeat(ENTITY_SCALE * 0.06)), "ui/solid.png"),
+                    ColliderType::Tile(_)
+                    | ColliderType::Aabb
+                    | ColliderType::Rectangle => (None, "ui/background.png"),
+                    ColliderType::Circle => (None, "circle_transparent.png")
+                };
+
+                let scale = bounds.unwrap_or_else(|| collider.scale.unwrap_or(transform.scale));
+                entities.push(true, EntityInfo{
+                    transform: Some(Transform{
+                        scale,
+                        ..*transform
+                    }),
+                    render: Some(RenderInfo{
+                        object: Some(RenderObjectKind::Texture{
+                            name: sprite.to_owned()
+                        }.into()),
+                        z_level: ZLevel::highest_non_ui(),
+                        ..Default::default()
+                    }),
+                    watchers: Some(Watchers::simple_one_frame()),
+                    ..Default::default()
+                });
+            }
+        }
+
         collider.borrow_mut().reset_frame();
     });
 
@@ -90,7 +126,7 @@ pub fn update(
         let mut this;
         colliding_info!{this, entity};
 
-        if DebugConfig::is_enabled(DebugTool::CollisionBounds)
+        if DebugConfig::is_enabled(DebugTool::CollisionWorldBounds)
         {
             entities.push(true, EntityInfo{
                 transform: Some(Transform{

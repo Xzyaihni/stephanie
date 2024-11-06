@@ -21,6 +21,7 @@ use strum::{IntoEnumIterator, EnumIter, EnumCount, IntoStaticStr};
 pub enum DebugTool
 {
     Lisp,
+    CollisionWorldBounds,
     CollisionBounds,
     Contacts,
     Sleeping,
