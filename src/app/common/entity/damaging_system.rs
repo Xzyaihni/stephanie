@@ -3,6 +3,8 @@ use std::{
     cell::RefCell
 };
 
+use nalgebra::{Unit, Vector3};
+
 use crate::common::{
     angle_between,
     short_rotation,
@@ -11,6 +13,12 @@ use crate::common::{
     character::*,
     render_info::*,
     watcher::*,
+    particle_creator::*,
+    ENTITY_SCALE,
+    EntityInfo,
+    PhysicalProperties,
+    Message,
+    Side2d,
     AnyEntities,
     Entity,
     EntityPasser,
@@ -19,6 +27,77 @@ use crate::common::{
 
 use yanyaengine::TextureId;
 
+
+pub fn entity_damager<'a>(
+    entities: &'a ClientEntities,
+    passer: &'a mut impl EntityPasser,
+    blood_texture: TextureId
+) -> impl FnMut(Entity, f32, Faction, DamagePartial) + 'a
+{
+    move |entity, angle, faction, damage|
+    {
+        let entity_rotation = if let Some(transform) = entities.transform(entity)
+        {
+            transform.rotation
+        } else
+        {
+            return;
+        };
+
+        let relative_rotation = angle - (-entity_rotation);
+        let damage = damage.with_direction(Side2d::from_angle(relative_rotation));
+
+        let damaged = entities.damage_entity_common(entity, faction, damage.clone());
+
+        if damaged
+        {
+            let direction = Unit::new_unchecked(
+                Vector3::new(-angle.cos(), angle.sin(), 0.0)
+            );
+
+            passer.send_message(Message::EntityDamage{entity, faction, damage});
+
+            let scale = Vector3::repeat(ENTITY_SCALE * 0.1)
+                .component_mul(&Vector3::new(4.0, 1.0, 1.0));
+
+            entities.watchers_mut(entity).unwrap().push(Watcher{
+                kind: WatcherType::Instant,
+                action: WatcherAction::Explode(Box::new(ExplodeInfo{
+                    keep: true,
+                    info: ParticlesInfo{
+                        amount: 2..4,
+                        speed: ParticleSpeed::DirectionSpread{
+                            direction,
+                            speed: 1.7..=2.0,
+                            spread: 0.2
+                        },
+                        decay: ParticleDecay::Random(7.0..=10.0),
+                        position: ParticlePosition::Spread(0.1),
+                        rotation: ParticleRotation::Exact(f32::consts::PI - angle),
+                        scale: ParticleScale::Spread{scale, variation: 0.1},
+                        min_scale: ENTITY_SCALE * 0.15
+                    },
+                    prototype: EntityInfo{
+                        physical: Some(PhysicalProperties{
+                            inverse_mass: 0.05_f32.recip(),
+                            floating: true,
+                            ..Default::default()
+                        }.into()),
+                        render: Some(RenderInfo{
+                            object: Some(RenderObjectKind::TextureId{
+                                id: blood_texture
+                            }.into()),
+                            z_level: ZLevel::Knee,
+                            ..Default::default()
+                        }),
+                        ..Default::default()
+                    }
+                })),
+                ..Default::default()
+            });
+        }
+    }
+}
 
 pub fn update(
     entities: &mut ClientEntities,
@@ -100,6 +179,7 @@ pub fn update(
         }).collect::<Vec<_>>()
     }).collect::<Vec<_>>();
 
+    let mut damager = entity_damager(entities, passer, blood_texture);
     damage_entities.into_iter().for_each(|DamagingResult{
         collided,
         angle,
@@ -107,7 +187,7 @@ pub fn update(
         damage
     }|
     {
-        entities.damage_entity(passer, blood_texture, angle, collided, faction, damage);
+        damager(collided, angle, faction, damage)
     });
 }
 

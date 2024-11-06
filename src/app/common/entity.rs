@@ -8,7 +8,7 @@ use std::{
 
 use serde::{Serialize, Deserialize};
 
-use nalgebra::{Vector3, Unit};
+use nalgebra::Vector3;
 
 use yanyaengine::{TextureId, Transform};
 
@@ -22,13 +22,11 @@ use crate::{
         some_or_return,
         write_log,
         insertion_sort_with,
-        ENTITY_SCALE,
         render_info::*,
         collider::*,
         watcher::*,
         lazy_transform::*,
         damaging::*,
-        particle_creator::*,
         raycast::*,
         SpatialGrid,
         SpatialInfo,
@@ -38,10 +36,7 @@ use crate::{
         DataInfos,
         Occluder,
         ClientOccluder,
-        Side2d,
-        PhysicalProperties,
         Faction,
-        DamagePartial,
         Damage,
         EntityPasser,
         Inventory,
@@ -62,7 +57,7 @@ use crate::{
 pub use crate::{iterate_components_with, for_each_component};
 
 pub mod render_system;
-mod damaging_system;
+pub mod damaging_system;
 mod physical_system;
 mod collider_system;
 mod raycast_system;
@@ -1661,78 +1656,6 @@ macro_rules! define_entities_both
                         });
                     });
                 )+
-            }
-
-            pub fn damage_entity(
-                &self,
-                passer: &mut impl EntityPasser,
-                blood_texture: TextureId,
-                angle: f32,
-                entity: Entity,
-                faction: Faction,
-                damage: DamagePartial
-            )
-            {
-                let entity_rotation = if let Some(transform) = self.transform(entity)
-                {
-                    transform.rotation
-                } else
-                {
-                    return;
-                };
-
-                let relative_rotation = angle - (-entity_rotation);
-                let damage = damage.with_direction(Side2d::from_angle(relative_rotation));
-
-                let damaged = self.damage_entity_common(entity, faction, damage.clone());
-
-                if damaged
-                {
-                    let direction = Unit::new_unchecked(
-                        Vector3::new(-angle.cos(), angle.sin(), 0.0)
-                    );
-
-                    passer.send_message(Message::EntityDamage{entity, faction, damage});
-
-                    let scale = Vector3::repeat(ENTITY_SCALE * 0.1)
-                        .component_mul(&Vector3::new(4.0, 1.0, 1.0));
-
-                    self.watchers_mut(entity).unwrap().push(Watcher{
-                        kind: WatcherType::Instant,
-                        action: WatcherAction::Explode(Box::new(ExplodeInfo{
-                            keep: true,
-                            info: ParticlesInfo{
-                                amount: 2..4,
-                                speed: ParticleSpeed::DirectionSpread{
-                                    direction,
-                                    speed: 1.7..=2.0,
-                                    spread: 0.2
-                                },
-                                decay: ParticleDecay::Random(7.0..=10.0),
-                                position: ParticlePosition::Spread(0.1),
-                                rotation: ParticleRotation::Exact(f32::consts::PI - angle),
-                                scale: ParticleScale::Spread{scale, variation: 0.1},
-                                min_scale: ENTITY_SCALE * 0.15
-                            },
-                            prototype: EntityInfo{
-                                physical: Some(PhysicalProperties{
-                                    inverse_mass: 0.05_f32.recip(),
-                                    floating: true,
-                                    ..Default::default()
-                                }.into()),
-                                render: Some(RenderInfo{
-                                    object: Some(RenderObjectKind::TextureId{
-                                        id: blood_texture
-                                    }.into()),
-                                    z_level: ZLevel::Knee,
-                                    ..Default::default()
-                                }),
-                                ..Default::default()
-                            }
-                        })),
-                        ..Default::default()
-                    });
-                }
             }
 
             pub fn raycast(

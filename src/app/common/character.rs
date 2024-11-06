@@ -50,7 +50,7 @@ use crate::{
         ItemInfo,
         Parent,
         Anatomy,
-        entity::ClientEntities
+        entity::{damaging_system, ClientEntities}
     }
 };
 
@@ -154,7 +154,6 @@ pub const POKE_DISTANCE: f32 = 0.75;
 
 // hands r actually 0.1 meters in size but they look too small that way
 pub const HAND_SCALE: f32 = 0.3;
-const HANDS_UNSTANCE: f32 = 0.7;
 
 #[derive(Clone, Copy)]
 pub struct PartialCombinedInfo<'a>
@@ -299,7 +298,7 @@ impl Character
     fn default_connection() -> Connection
     {
         Connection::EaseOut{
-            decay: 15.0,
+            decay: 30.0,
             limit: Some(LimitMode::Normal(ENTITY_SCALE * 0.5))
         }
     }
@@ -529,6 +528,11 @@ impl Character
         let heaviness = item_info.mass / (self.newtons(combined_info)? * 0.01);
 
         Some(item_info.comfort.recip() * heaviness.clamp(0.5, 2.0))
+    }
+
+    fn bash_attack_cooldown(&self, combined_info: CombinedInfo) -> Option<f32>
+    {
+        self.held_attack_cooldown(combined_info).map(|x| x * 0.8)
     }
 
     pub fn bash_reachable(
@@ -909,12 +913,13 @@ impl Character
         };
 
         let mut lazy = some_or_return!(combined_info.entities.lazy_transform_mut(holding));
+        let swing_time = some_or_return!(self.bash_attack_cooldown(combined_info));
 
         let new_rotation = self.current_hand_rotation();
 
         if let Rotation::EaseOut(x) = &mut lazy.rotation
         {
-            x.set_decay(30.0);
+            x.set_decay(70.0);
         }
 
         lazy.target().rotation = start_rotation - new_rotation;
@@ -935,6 +940,13 @@ impl Character
                 Side1d::Left => target.scale.x.abs(),
                 Side1d::Right => -target.scale.x.abs()
             };
+        } else
+        {
+            watchers.push(Watcher{
+                kind: WatcherType::Lifetime((swing_time * 0.8).into()),
+                action: WatcherAction::SetTargetRotation(start_rotation),
+                ..Default::default()
+            });
         }
 
         self.hands_infront = false;
@@ -952,7 +964,7 @@ impl Character
             return;
         }
 
-        self.attack_cooldown = some_or_return!(self.held_attack_cooldown(combined_info)) * 0.8;
+        self.attack_cooldown = some_or_return!(self.bash_attack_cooldown(combined_info));
 
         self.bash_side = self.bash_side.opposite();
 
@@ -1194,14 +1206,12 @@ impl Character
                     drop(transform);
 
                     let mut passer = combined_info.passer.write();
-                    combined_info.entities.damage_entity(
+
+                    damaging_system::entity_damager(
+                        combined_info.entities,
                         &mut *passer,
-                        combined_info.common_textures.blood,
-                        angle,
-                        id,
-                        self.faction,
-                        damage
-                    );
+                        combined_info.common_textures.blood
+                    )(id, angle, self.faction, damage);
                 },
                 _ => ()
             }
@@ -1302,7 +1312,7 @@ impl Character
                 }.into()),
                 parent: Some(Parent::new(info.holding, true)),
                 collider: Some(ColliderInfo{
-                    kind: ColliderType::Circle,
+                    kind: ColliderType::Rectangle,
                     layer: ColliderLayer::Damage,
                     ghost: true,
                     ..Default::default()
@@ -1428,38 +1438,10 @@ impl Character
 
     fn update_attacks(
         &mut self,
-        combined_info: CombinedInfo,
         dt: f32
     )
     {
-        let unstance_hands = |this: &mut Self|
-        {
-            if this.hands_infront
-            {
-                return;
-            }
-
-            this.hands_infront = true;
-
-            if this.holding.is_none()
-            {
-                this.forward_point(combined_info);
-            }
-        };
-
-        if Self::decrease_timer(&mut self.attack_cooldown, dt)
-        {
-            unstance_hands(self);
-        }
-
-        if let Some(attack_cooldown) = self.held_attack_cooldown(combined_info)
-        {
-            if self.attack_cooldown < (attack_cooldown * HANDS_UNSTANCE)
-            {
-                unstance_hands(self);
-            }
-        }
-
+        Self::decrease_timer(&mut self.attack_cooldown, dt);
         Self::decrease_timer(&mut self.oversprint_cooldown, dt);
     }
 
@@ -1542,7 +1524,7 @@ impl Character
 
         self.update_jiggle(combined_info, dt);
         self.update_sprint(combined_info, dt);
-        self.update_attacks(combined_info, dt);
+        self.update_attacks(dt);
 
         if !self.update_common(combined_info.characters_info, combined_info.entities)
         {

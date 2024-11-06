@@ -85,7 +85,9 @@ pub fn update(
                 entities.push(true, EntityInfo{
                     transform: Some(Transform{
                         scale,
-                        ..*transform
+                        position: transform.position,
+                        rotation: transform.rotation,
+                        ..Default::default()
                     }),
                     render: Some(RenderInfo{
                         object: Some(RenderObjectKind::Texture{

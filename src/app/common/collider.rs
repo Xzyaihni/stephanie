@@ -268,7 +268,7 @@ impl Collider
 
 fn limit_obb_local(scale: Vector3<f32>, local_point: Vector3<f32>) -> Vector3<f32>
 {
-    local_point.zip_map(&(scale / 2.0), |x, limit|
+    local_point.zip_map(&(scale.abs() / 2.0), |x, limit|
     {
         x.clamp(-limit, limit)
     })
