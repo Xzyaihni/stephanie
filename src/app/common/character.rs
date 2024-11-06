@@ -557,9 +557,12 @@ impl Character
         self.held_distance() + item_scale
     }
 
-    fn bash_distance(&self, combined_info: CombinedInfo) -> f32
+    fn bash_distance(&self, combined_info: CombinedInfo) -> Option<f32>
     {
-        1.0 + self.bash_distance_parentless(combined_info) * 2.0
+        self.scale_ratio(combined_info).map(|scale|
+        {
+            scale + self.bash_distance_parentless(combined_info) * 2.0
+        })
     }
 
     fn update_cached(&mut self, combined_info: CombinedInfo)
@@ -1224,7 +1227,7 @@ impl Character
     {
         let info = some_or_return!(self.info.as_ref());
 
-        let scale = self.bash_distance(combined_info);
+        let scale = some_or_return!(self.bash_distance(combined_info));
 
         let hand_mass = ItemInfo::hand().mass;
         let item_info = self.held_info(combined_info);
@@ -1460,6 +1463,18 @@ impl Character
                 can_sleep: !combined_info.is_player(entity),
                 ..Default::default()
             }
+        })
+    }
+
+    pub fn scale_ratio(&self, combined_info: CombinedInfo) -> Option<f32>
+    {
+        let info = combined_info.characters_info.get(self.id);
+        self.info.as_ref().and_then(|this_info|
+        {
+            combined_info.entities.transform(this_info.this).map(|transform|
+            {
+                info.scale / transform.scale.x
+            })
         })
     }
 
