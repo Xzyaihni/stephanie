@@ -34,7 +34,7 @@ use crate::{
         damaging::*,
         particle_creator::*,
         raycast::*,
-        physical::*,
+        physics::*,
         Hairstyle,
         Side1d,
         AnyEntities,
@@ -219,7 +219,7 @@ pub struct AfterInfo
 #[derive(Default, Debug, Clone)]
 struct CachedInfo
 {
-    pub bash_distance_parentless: Option<f32>
+    pub bash_distance: Option<f32>
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -539,7 +539,7 @@ impl Character
         other: &Vector3<f32>
     ) -> bool
     {
-        let bash_distance = some_or_value!(self.cached.bash_distance_parentless, false);
+        let bash_distance = some_or_value!(self.cached.bash_distance, false);
         let bash_distance = bash_distance * this.scale.x;
 
         let distance = this.position.metric_distance(other);
@@ -565,9 +565,10 @@ impl Character
 
     fn update_cached(&mut self, combined_info: CombinedInfo)
     {
-        self.cached.bash_distance_parentless = Some(
-            1.0 + self.bash_distance_parentless(combined_info)
-        );
+        self.cached.bash_distance = self.scale_ratio(combined_info).map(|scale|
+        {
+            scale + self.bash_distance_parentless(combined_info)
+        });
     }
 
     fn held_scale(&self) -> f32
