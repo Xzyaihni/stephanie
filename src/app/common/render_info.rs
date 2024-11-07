@@ -310,7 +310,7 @@ impl ZLevel
 
     pub fn prev(self) -> Option<Self>
     {
-        (self as usize).checked_sub(1).and_then(|id| Self::from_repr(id))
+        (self as usize).checked_sub(1).and_then(Self::from_repr)
     }
 
     pub fn next(self) -> Option<Self>
@@ -664,7 +664,7 @@ impl ClientRenderInfo
             visibility.visible_sphere(transform)
         } else
         {
-            return true;
+            true
         }
     }
 

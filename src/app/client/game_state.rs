@@ -627,7 +627,7 @@ impl DebugVisibilityStateTrait for DebugVisibilityState
 
 impl DebugVisibilityStateTrait for ()
 {
-    fn new(_camera: &Camera) -> Self { () }
+    fn new(_camera: &Camera) -> Self {}
 
     fn is_detached(&self) -> bool { false }
 
@@ -1057,7 +1057,7 @@ impl GameState
 
     pub fn close_popup(&mut self)
     {
-        self.ui.borrow_mut().close_popup(&mut self.entities.entities);
+        self.ui.borrow_mut().close_popup(&self.entities.entities);
     }
 
     pub fn add_window(&mut self, info: WindowCreateInfo) -> WindowType

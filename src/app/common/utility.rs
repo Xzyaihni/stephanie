@@ -324,10 +324,10 @@ impl SeededRandom
         I: ExactSizeIterator<Item=T>,
         V: IntoIterator<Item=T, IntoIter=I>
     {
-        let values = values.into_iter();
+        let mut values = values.into_iter();
         let id = self.next_usize_between(0..values.len());
 
-        values.skip(id).next().unwrap()
+        values.nth(id).unwrap()
     }
 
     pub fn next_u64_between(&mut self, range: Range<u64>) -> u64

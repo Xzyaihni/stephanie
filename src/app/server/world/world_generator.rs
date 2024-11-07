@@ -470,7 +470,7 @@ impl<S: SaveLoad<WorldChunksBlock>> WorldGenerator<S>
 
                 let block: WorldChunksBlock = (0..CHUNK_RATIO.z).map(|index|
                 {
-                    let mut global_pos = global_pos.clone();
+                    let mut global_pos = global_pos;
                     global_pos.0.z = global_pos.0.z * CHUNK_RATIO.z as i32 + index as i32;
 
                     let global_z = global_pos.0.z;

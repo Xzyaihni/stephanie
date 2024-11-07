@@ -1983,7 +1983,7 @@ macro_rules! define_entities_both
 
                     passer.send_message(Message::SetEnemy{
                         entity,
-                        component: enemy
+                        component: enemy.into()
                     });
 
                     passer.send_message(Message::SetTarget{
@@ -2171,7 +2171,7 @@ macro_rules! define_entities_both
                     $(Message::$message_name{entity, component} =>
                     {
                         debug_assert!(!entity.local);
-                        self.$set_func(entity, Some(component));
+                        self.$set_func(entity, Some(*component));
 
                         None
                     },)+
@@ -2456,7 +2456,7 @@ macro_rules! define_entities
                     $(Message::$message_name{entity, component} =>
                     {
                         debug_assert!(!entity.local);
-                        self.$set_func(entity, Some(component));
+                        self.$set_func(entity, Some(*component));
 
                         None
                     },)+

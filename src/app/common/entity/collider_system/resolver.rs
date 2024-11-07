@@ -321,7 +321,7 @@ impl AnalyzedContact
         {
             self.apply_moves(
                 entities,
-                b_inertias, 
+                b_inertias,
                 inverse_inertia,
                 WhichObject::B
             )
@@ -380,7 +380,7 @@ impl AnalyzedContact
     {
         let mut velocity_change_world = self.velocity_change(WhichObject::A);
 
-        if let Some(_) = self.contact.b
+        if self.contact.b.is_some()
         {
             let b_velocity_change_world = self.velocity_change(WhichObject::B);
 
@@ -670,6 +670,7 @@ impl ContactResolver
                 handle(a_move.inverted(), relative(this_contact_b.unwrap()));
             }
 
+            #[allow(clippy::unnecessary_unwrap)]
             if this_contact_b.is_some() && this_contact_b == b_id
             {
                 handle(b_move.unwrap().inverted(), relative(this_contact_b.unwrap()));
@@ -696,10 +697,7 @@ impl ContactResolver
             {
                 let change = compare(contact);
 
-                (change > epsilon.general).then(move ||
-                {
-                    (change, contact)
-                })
+                (change > epsilon.general).then_some((change, contact))
             }
         }
 

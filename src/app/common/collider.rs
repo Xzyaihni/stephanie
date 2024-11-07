@@ -363,11 +363,13 @@ impl<'b> TransformMatrix<'b>
         })
     }
 
+    #[allow(clippy::wrong_self_convention)]
     fn into_obb_local(&self, point: Vector3<f32>) -> Vector3<f32>
     {
         self.rotation_matrix.transpose() * (point - self.transform.position)
     }
 
+    #[allow(clippy::wrong_self_convention)]
     fn from_obb_local(&self, point: Vector3<f32>) -> Vector3<f32>
     {
         (self.rotation_matrix * point) + self.transform.position

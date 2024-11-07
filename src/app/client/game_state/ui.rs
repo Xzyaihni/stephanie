@@ -912,11 +912,11 @@ impl UiInventory
             items_info,
             items,
             inventory: window.body,
-            list: UiList::new(&mut info.creator, window.panel, 1.0 - window.button_width, on_change),
+            list: UiList::new(info.creator, window.panel, 1.0 - window.button_width, on_change),
             window
         };
 
-        this.full_update(&mut info.creator, owner);
+        this.full_update(info.creator, owner);
 
         this
     }
@@ -1098,8 +1098,6 @@ impl UiStats
 
         let padding = 0.05;
 
-        let description = format!("this will have stats later :)");
-
         let temp = common_info.creator.push(
             EntityInfo{
                 lazy_transform: Some(LazyTransformInfo{
@@ -1114,7 +1112,7 @@ impl UiStats
             },
             RenderInfo{
                 object: Some(RenderObjectKind::Text{
-                    text: description,
+                    text: "this will have stats later!!!!!!!".to_owned(),
                     font_size: 15,
                     font: FontStyle::Bold,
                     align: TextAlign::default()
@@ -2464,7 +2462,7 @@ impl Ui
         {
             WindowCreateInfo::Notification{owner, ..} => Box::new(move |this, _creator, id|
             {
-                this.notifications.entry(owner).or_insert(Vec::new());
+                this.notifications.entry(owner).or_default();
                 this.notifications.get_mut(&owner).unwrap().push(id);
             }),
             WindowCreateInfo::ActionsList{..} => Box::new(|this, creator, id|
@@ -2499,7 +2497,7 @@ impl Ui
             if is_normal
             {
                 let windows_amount = this.windows_order.len();
-                debug_assert!(!(windows_amount > MAX_WINDOWS));
+                debug_assert!(windows_amount <= MAX_WINDOWS);
                 if windows_amount == MAX_WINDOWS
                 {
                     let oldest_window = this.windows_order.pop_front().unwrap();
@@ -2590,6 +2588,7 @@ impl Ui
     ) -> Result<(), WindowError>
     {
         let window = self.remove_window_id_with(id, |body| close_ui(entities, body))?;
+        #[allow(clippy::explicit_auto_deref)] // ??? no it cant be
         let window: &UiSpecializedWindow = &*window.borrow();
         let window: UiSpecializedWindow = (*window).clone();
         let window = Rc::new(RefCell::new(window));

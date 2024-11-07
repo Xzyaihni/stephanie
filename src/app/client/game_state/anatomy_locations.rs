@@ -92,7 +92,7 @@ impl UiAnatomyLocations
             (HumanPartId::Foot(Side1d::Left), 0xf0e68c)
         ].into_iter().map(|(key, value): (_, u32)|
         {
-            let r = (value >> 8 * 2) & 0xff;
+            let r = (value >> (8 * 2)) & 0xff;
             let g = (value >> 8) & 0xff;
             let b = value & 0xff;
 

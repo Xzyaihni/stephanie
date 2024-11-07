@@ -113,7 +113,7 @@ impl WatcherType
             {
                 left.current -= 1;
 
-                let meets = left.current <= 0;
+                let meets = left.current == 0;
 
                 if meets
                 {

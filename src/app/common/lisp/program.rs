@@ -466,7 +466,7 @@ impl StoredLambda
         })
     }
 
-    fn apply_inner<'a>(
+    fn apply_inner(
         this: Rc<StoredLambda>,
         memory: &mut LispMemory,
         mut args: ArgsWrapper

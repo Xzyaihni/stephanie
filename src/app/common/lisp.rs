@@ -244,7 +244,7 @@ impl<T: IntoIterator<Item=ValueRaw>> LispVectorInner<T>
     {
         match self.tag
         {
-            ValueTag::Integer => Ok(self.values.into_iter().map(|x| 
+            ValueTag::Integer => Ok(self.values.into_iter().map(|x|
             {
                 unsafe{ x.integer as usize }
             }).collect()),
@@ -256,7 +256,7 @@ impl<T: IntoIterator<Item=ValueRaw>> LispVectorInner<T>
     {
         match self.tag
         {
-            ValueTag::Integer => Ok(self.values.into_iter().map(|x| 
+            ValueTag::Integer => Ok(self.values.into_iter().map(|x|
             {
                 unsafe{ x.integer }
             }).collect()),
@@ -742,7 +742,7 @@ impl Display for Error
     {
         let s = match self
         {
-            Self::OutOfMemory => format!("out of memory"),
+            Self::OutOfMemory => "out of memory".to_owned(),
             Self::WrongType{expected, got} => format!("expected type `{expected:?}` got `{got:?}`"),
             Self::WrongSpecial{expected} => format!("wrong special, expected `{expected:?}`"),
             Self::Custom(s) => s.clone(),
@@ -2481,7 +2481,7 @@ mod tests
                 (if (null? xs)
                     start
                     (fold f (f (car xs) start) (cdr xs))))
-                    
+
             (define f (lambda xs
                 (fold + 0 xs)))
 
@@ -2545,7 +2545,7 @@ mod tests
                     (begin
                         (f)
                         (loop f (- i 1)))))
-            
+
             (loop print-garbage 50)
 
             0

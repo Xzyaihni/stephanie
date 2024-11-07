@@ -1218,7 +1218,7 @@ impl<'a> PlayerContainer<'a>
         {
             UserEvent::UiAction(action) =>
             {
-                action(&mut self.game_state);
+                action(self.game_state);
             },
             UserEvent::Info{which, item} =>
             {
@@ -1335,7 +1335,7 @@ impl<'a> PlayerContainer<'a>
             InventoryWhich::Player => info.entity
         };
 
-        let mut entity_creator = EntityCreator{entities};
+        let entity_creator = EntityCreator{entities};
 
         if let Some(window) = match which
         {
@@ -1346,7 +1346,7 @@ impl<'a> PlayerContainer<'a>
             let mut window = window.borrow_mut();
             let inventory = window.as_inventory_mut().unwrap();
 
-            inventory.full_update(&mut entity_creator, entity);
+            inventory.full_update(&entity_creator, entity);
         }
     }
 

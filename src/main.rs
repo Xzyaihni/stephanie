@@ -6,6 +6,15 @@
 #![allow(clippy::derivable_impls)]
 // this is so stupid
 #![allow(clippy::len_without_is_empty)]
+// collapsed ones r way less readable in most cases :/
+#![allow(clippy::collapsible_if)]
+#![allow(clippy::collapsible_else_if)]
+#![allow(clippy::single_match)]
+#![allow(clippy::needless_lifetimes)]
+// skill issue
+#![allow(clippy::type_complexity)]
+// ITS MORE DESCRIPTIVE OF WUT IT IS
+#![allow(clippy::let_and_return)]
 
 use std::{process, fmt::Display};
 
@@ -20,6 +29,7 @@ pub use common::{debug_env, is_debug_env};
 pub mod debug_config;
 
 mod app;
+mod rendering;
 
 
 mod default_vertex
@@ -154,13 +164,14 @@ fn main()
         }
     });
 
+    let rendering = rendering::create();
+
     App::<app::App>::new()
         .with_title("stey funy")
         .with_textures_path("textures/normal")
         .with_icon("icon.png")
         .with_shaders(shaders, query)
         .with_app_init(Some(init))
-        .without_multisampling()
-        .with_clear_color([0.831, 0.941, 0.988])
+        .with_rendering(rendering)
         .run();
 }
