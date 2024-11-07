@@ -34,6 +34,7 @@ use crate::{
         ENTITY_SCALE,
         render_info::*,
         lazy_transform::*,
+        physics::*,
         MessageSerError,
         MessageDeError,
         AnyEntities,
@@ -358,6 +359,14 @@ impl GameServer
                 aspect: Aspect::KeepMax,
                 ..Default::default()
             }),
+            physical: Some(PhysicalProperties{
+                inverse_mass: 50.0_f32.recip(),
+                static_friction: 0.9,
+                dynamic_friction: 0.8,
+                fixed: PhysicalFixed{rotation: true, ..Default::default()},
+                can_sleep: false,
+                ..Default::default()
+            }.into()),
             inventory: Some(Inventory::new()),
             character: Some(Character::new(self.player_character, Faction::Player)),
             anatomy: Some(anatomy),

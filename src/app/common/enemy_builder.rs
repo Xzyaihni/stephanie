@@ -7,6 +7,8 @@ use yanyaengine::Transform;
 use crate::common::{
     random_rotation,
     render_info::*,
+    physics::*,
+    ENTITY_SCALE,
     ItemsInfo,
     Loot,
     Inventory,
@@ -85,6 +87,13 @@ impl<'a> EnemyBuilder<'a>
                 aspect: Aspect::KeepMax,
                 ..Default::default()
             }),
+            physical: Some(PhysicalProperties{
+                inverse_mass: (info.scale / ENTITY_SCALE) * 50.0_f32.recip(),
+                static_friction: 0.9,
+                dynamic_friction: 0.8,
+                fixed: PhysicalFixed{rotation: true, ..Default::default()},
+                ..Default::default()
+            }.into()),
             inventory: Some(inventory),
             anatomy: Some(Anatomy::Human(HumanAnatomy::new(info.anatomy.clone()))),
             character: Some(character),

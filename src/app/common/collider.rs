@@ -139,7 +139,8 @@ pub enum ColliderLayer
     World,
     Door,
     Mouse,
-    Player
+    Player,
+    Lying
 }
 
 impl ColliderLayer
@@ -174,7 +175,15 @@ impl ColliderLayer
             (Player, Damage, true),
             (Player, World, true),
             (Player, Mouse, true),
-            (Player, Door, true)
+            (Player, Door, true),
+
+            (Lying, Lying, true),
+            (Lying, Player, false),
+            (Lying, Normal, false),
+            (Lying, Damage, true),
+            (Lying, World, true),
+            (Lying, Mouse, true),
+            (Lying, Door, true)
         }
     }
 }

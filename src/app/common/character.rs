@@ -34,11 +34,9 @@ use crate::{
         damaging::*,
         particle_creator::*,
         raycast::*,
+        physical::*,
         Hairstyle,
         Side1d,
-        Physical,
-        PhysicalProperties,
-        PhysicalFixed,
         AnyEntities,
         Entity,
         EntityInfo,
@@ -1448,24 +1446,6 @@ impl Character
         Self::decrease_timer(&mut self.oversprint_cooldown, dt);
     }
 
-    fn this_physical(&self, combined_info: CombinedInfo, entity: Entity) -> PhysicalProperties
-    {
-        combined_info.entities.physical(self.info.as_ref().unwrap().this).map(|x|
-        {
-            x.as_properties()
-        }).unwrap_or_else(||
-        {
-            PhysicalProperties{
-                inverse_mass: 50.0_f32.recip(),
-                static_friction: 0.9,
-                dynamic_friction: 0.8,
-                fixed: PhysicalFixed{rotation: true, ..Default::default()},
-                can_sleep: !combined_info.is_player(entity),
-                ..Default::default()
-            }
-        })
-    }
-
     pub fn scale_ratio(&self, combined_info: CombinedInfo) -> Option<f32>
     {
         let info = combined_info.characters_info.get(self.id);
@@ -1564,76 +1544,56 @@ impl Character
             ColliderLayer::Player
         } else
         {
-            ColliderLayer::Normal
-        };
-
-        let (
-            collider,
-            physical,
-            z_level,
-            hair_visibility,
-            held_visibility,
-            texture
-        ) = match self.sprite_state.value()
-        {
-            SpriteState::Normal =>
+            match self.sprite_state.value()
             {
-                (
-                    Some(ColliderInfo{
-                        kind: ColliderType::Circle,
-                        layer,
-                        ghost: false,
-                        ..Default::default()
-                    }.into()),
-                    Some(self.this_physical(combined_info, entity).into()),
-                    ZLevel::Head,
-                    true,
-                    true,
-                    character_info.normal
-                )
-            },
-            SpriteState::Crawling =>
-            {
-                let this_scale = some_or_return!(combined_info.entities.target_ref(entity)).scale;
-
-                (
-                    Some(ColliderInfo{
-                        kind: ColliderType::Circle,
-                        layer,
-                        ghost: false,
-                        scale: Some(this_scale * 0.4),
-                        ..Default::default()
-                    }.into()),
-                    Some(self.this_physical(combined_info, entity).into()),
-                    ZLevel::Feet,
-                    false,
-                    true,
-                    character_info.crawling
-                )
-            },
-            SpriteState::Lying =>
-            {
-                (
-                    Some(ColliderInfo{
-                        kind: ColliderType::Circle,
-                        layer,
-                        ghost: true,
-                        ..Default::default()
-                    }.into()),
-                    None,
-                    ZLevel::Feet,
-                    false,
-                    false,
-                    character_info.lying
-                )
+                SpriteState::Normal => ColliderLayer::Normal,
+                SpriteState::Crawling
+                | SpriteState::Lying => ColliderLayer::Lying
             }
         };
 
+        let z_level = match self.sprite_state.value()
         {
-            let mut setter = entities.lazy_setter.borrow_mut();
-            setter.set_collider(entity, collider);
-            setter.set_physical(entity, physical);
-        }
+            SpriteState::Normal => ZLevel::Head,
+            SpriteState::Crawling
+            | SpriteState::Lying => ZLevel::Feet
+        };
+
+        let hair_visibility = match self.sprite_state.value()
+        {
+            SpriteState::Normal => true,
+            SpriteState::Crawling
+            | SpriteState::Lying => false
+        };
+
+        let held_visibility = match self.sprite_state.value()
+        {
+            SpriteState::Normal
+            | SpriteState::Crawling => true,
+            SpriteState::Lying => false
+        };
+
+        let texture = match self.sprite_state.value()
+        {
+            SpriteState::Normal =>
+            {
+                character_info.normal
+            },
+            SpriteState::Crawling =>
+            {
+                character_info.crawling
+            },
+            SpriteState::Lying =>
+            {
+                character_info.lying
+            }
+        };
+
+        entities.lazy_setter.borrow_mut().set_collider(entity, Some(ColliderInfo{
+            kind: ColliderType::Circle,
+            layer,
+            ..Default::default()
+        }.into()));
 
         entities.set_z_level(entity, z_level);
 
