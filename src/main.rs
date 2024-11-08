@@ -18,7 +18,16 @@
 
 use std::{process, fmt::Display};
 
-use yanyaengine::{App, ShadersContainer, ShadersInfo, ShadersQuery};
+use vulkano::pipeline::graphics::depth_stencil::{
+    DepthState,
+    StencilState,
+    StencilOpState,
+    StencilOps,
+    StencilOp,
+    CompareOp
+};
+
+use yanyaengine::{App, ShadersContainer, Shader, ShadersGroup, ShadersQuery};
 
 pub use app::{common, server, client, ProgramShaders};
 
@@ -124,30 +133,95 @@ fn main()
         )
     };
 
-    let default_shader = shaders.push(ShadersInfo::new(
-        default_vertex,
-        default_fragment::load
-    ));
+    let world_fragment = |blend: f32|
+    {
+        move |device|
+        {
+            world_fragment::load(device).unwrap().specialize(
+                [(0, blend.into())].into_iter().collect()
+            )
+        }
+    };
 
-    let world_shader = shaders.push(ShadersInfo::new(
-        default_vertex,
-        world_fragment::load
-    ));
+    let create_stencil = |stencil| StencilState{front: stencil, back: stencil};
+    let default_stencil = create_stencil(StencilOpState{
+        ops: StencilOps{
+            compare_op: CompareOp::Equal,
+            ..Default::default()
+        },
+        reference: 1,
+        ..Default::default()
+    });
 
-    let shadow_shader = shaders.push(ShadersInfo::new(
-        shadow_vertex::load,
-        shadow_fragment::load
-    ));
+    let default_shader = shaders.push(Shader{
+        shader: ShadersGroup::new(
+            default_vertex,
+            default_fragment::load
+        ),
+        stencil: Some(default_stencil.clone()),
+        depth: Some(DepthState{
+            write_enable: false,
+            compare_op: CompareOp::Less
+        }),
+        ..Default::default()
+    });
 
-    let ui_shader = shaders.push(ShadersInfo::new(
-        ui_vertex::load,
-        ui_fragment::load
-    ));
+    let world_shader = shaders.push(Shader{
+        shader: ShadersGroup::new(
+            default_vertex,
+            world_fragment(0.0)
+        ),
+        stencil: Some(default_stencil),
+        depth: Some(DepthState::simple()),
+        ..Default::default()
+    });
+
+    let world_shaded_shader = shaders.push(Shader{
+        shader: ShadersGroup::new(
+            default_vertex,
+            world_fragment(0.95)
+        ),
+        stencil: Some(create_stencil(StencilOpState{
+            ops: StencilOps{
+                compare_op: CompareOp::Equal,
+                ..Default::default()
+            },
+            reference: 0,
+            ..Default::default()
+        })),
+        depth: Some(DepthState::simple()),
+        ..Default::default()
+    });
+
+    let shadow_shader = shaders.push(Shader{
+        shader: ShadersGroup::new(
+            shadow_vertex::load,
+            shadow_fragment::load
+        ),
+        stencil: Some(create_stencil(StencilOpState{
+            ops: StencilOps{
+                pass_op: StencilOp::Zero,
+                compare_op: CompareOp::Always,
+                ..Default::default()
+            },
+            ..Default::default()
+        })),
+        ..Default::default()
+    });
+
+    let ui_shader = shaders.push(Shader{
+        shader: ShadersGroup::new(
+            ui_vertex::load,
+            ui_fragment::load
+        ),
+        ..Default::default()
+    });
 
     let init = AppInfo{
         shaders: ProgramShaders{
             default: default_shader,
             world: world_shader,
+            world_shaded: world_shaded_shader,
             shadow: shadow_shader,
             ui: ui_shader
         }

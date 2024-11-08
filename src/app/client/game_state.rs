@@ -284,34 +284,6 @@ impl ClientEntitiesContainer
             caster
         );
     }
-
-    pub fn draw(
-        &self,
-        visibility: &VisibilityChecker,
-        info: &mut DrawInfo,
-        shaders: &ProgramShaders
-    )
-    {
-        if !self.player_exists()
-        {
-            return;
-        }
-
-        let animation = self.animation.sin();
-
-        let draw_entities = render_system::DrawEntities{
-            renders: &self.visible_renders
-        };
-
-        render_system::draw(
-            &self.entities,
-            shaders,
-            draw_entities,
-            visibility,
-            info,
-            animation
-        );
-    }
 }
 
 pub struct GameStateInfo<'a>
@@ -1154,15 +1126,28 @@ impl GameState
 
     pub fn draw(&self, info: &mut DrawInfo)
     {
-        info.bind_pipeline(self.shaders.world);
+        if !self.entities.player_exists()
+        {
+            return;
+        }
 
         let visibility = self.visibility_checker();
 
-        self.world.draw(info, &visibility, self.shaders.shadow);
+        let animation = self.entities.animation.sin();
 
-        info.bind_pipeline(self.shaders.default);
+        let draw_entities = render_system::DrawEntities{
+            renders: &self.entities.visible_renders,
+            world: &self.world
+        };
 
-        self.entities.draw(&visibility, info, &self.shaders);
+        render_system::draw(
+            &self.entities.entities,
+            &self.shaders,
+            draw_entities,
+            &visibility,
+            info,
+            animation
+        );
 
         info.bind_pipeline(self.shaders.ui);
 
@@ -1175,8 +1160,6 @@ impl GameState
 
             render.draw(info, outline);
         });
-
-        info.set_depth_write(true);
     }
 
     fn visibility_checker(&self) -> VisibilityChecker

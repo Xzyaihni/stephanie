@@ -51,6 +51,7 @@ pub struct ProgramShaders
 {
     pub default: ShaderId,
     pub world: ShaderId,
+    pub world_shaded: ShaderId,
     pub shadow: ShaderId,
     pub ui: ShaderId
 }

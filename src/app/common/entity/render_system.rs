@@ -9,6 +9,7 @@ use crate::{
         Entity,
         MixColor,
         OccludingCaster,
+        world::World,
         entity::ClientEntities
     }
 };
@@ -58,7 +59,8 @@ pub fn update_buffers(
 
 pub struct DrawEntities<'a>
 {
-    pub renders: &'a [Vec<Entity>]
+    pub renders: &'a [Vec<Entity>],
+    pub world: &'a World
 }
 
 pub fn draw(
@@ -70,6 +72,29 @@ pub fn draw(
     animation: f32
 )
 {
+    info.bind_pipeline(shaders.shadow);
+
+    renderables.world.draw_shadows(info, &visibility);
+
+    renderables.renders.iter().flatten().filter_map(|entity|
+    {
+        entities.occluder(*entity)
+    }).for_each(|occluder|
+    {
+        if !occluder.visible(visibility)
+        {
+            return;
+        }
+
+        occluder.draw(info);
+    });
+
+    info.bind_pipeline(shaders.world);
+
+    renderables.world.draw(info);
+
+    info.bind_pipeline(shaders.default);
+
     renderables.renders.iter().flatten().for_each(|&entity|
     {
         let outline = entities.outlineable(entity).and_then(|outline|
@@ -88,19 +113,7 @@ pub fn draw(
         render.draw(info, outline);
     });
 
-    info.set_depth_test(false);
+    info.bind_pipeline(shaders.world_shaded);
 
-    info.bind_pipeline(shaders.shadow);
-    renderables.renders.iter().flatten().filter_map(|entity|
-    {
-        entities.occluder(*entity)
-    }).for_each(|occluder|
-    {
-        if !occluder.visible(visibility)
-        {
-            return;
-        }
-
-        occluder.draw(info);
-    });
+    renderables.world.draw(info);
 }

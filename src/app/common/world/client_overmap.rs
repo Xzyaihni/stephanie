@@ -7,7 +7,7 @@ use nalgebra::{Vector2, Vector3};
 
 use serde::{Serialize, Deserialize};
 
-use yanyaengine::{ShaderId, game_object::*};
+use yanyaengine::game_object::*;
 
 use crate::{
     client::{
@@ -414,24 +414,21 @@ impl ClientOvermap
         self.visual_overmap.update_buffers(info, visibility, caster);
     }
 
-    pub fn draw(
+    pub fn draw_shadows(
         &self,
         info: &mut DrawInfo,
-        visibility: &VisibilityChecker,
-        shadow: ShaderId
+        visibility: &VisibilityChecker
+    )
+    {
+        self.visual_overmap.draw_shadows(info, visibility);
+    }
+
+    pub fn draw(
+        &self,
+        info: &mut DrawInfo
     )
     {
         self.visual_overmap.draw_tiles(info);
-
-        let original_pipeline = info.current_pipeline_id().unwrap();
-        info.bind_pipeline(shadow);
-
-        self.visual_overmap.draw_shadows(info, visibility);
-
-        info.bind_pipeline(original_pipeline);
-
-        info.set_depth_write(false);
-
         self.visual_overmap.draw_gradients(info);
     }
 }

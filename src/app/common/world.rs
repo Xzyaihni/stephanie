@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use nalgebra::{Vector2, Vector3};
 
-use yanyaengine::{Transform, ShaderId, game_object::*};
+use yanyaengine::{Transform, game_object::*};
 
 use crate::{
     client::{
@@ -291,13 +291,20 @@ impl World
         self.overmap.update_buffers(info, visibility, caster);
     }
 
-    pub fn draw(
+    pub fn draw_shadows(
         &self,
         info: &mut DrawInfo,
-        visibility: &VisibilityChecker,
-        shadow: ShaderId
+        visibility: &VisibilityChecker
     )
     {
-        self.overmap.draw(info, visibility, shadow);
+        self.overmap.draw_shadows(info, visibility);
+    }
+
+    pub fn draw(
+        &self,
+        info: &mut DrawInfo
+    )
+    {
+        self.overmap.draw(info);
     }
 }
