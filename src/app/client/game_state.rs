@@ -127,6 +127,7 @@ pub struct ClientEntitiesContainer
     pub follow_entity: Entity,
     pub ui_mouse_entity: Entity,
     visible_renders: Vec<Vec<Entity>>,
+    shaded_renders: Vec<Entity>,
     player_entity: Entity,
     animation: f32
 }
@@ -163,6 +164,7 @@ impl ClientEntitiesContainer
             ui_mouse_entity,
             player_entity,
             visible_renders: Vec::new(),
+            shaded_renders: Vec::new(),
             animation: 0.0
         }
     }
@@ -251,6 +253,8 @@ impl ClientEntitiesContainer
         caster: &OccludingCaster
     )
     {
+        self.shaded_renders.clear();
+
         let mut visible_renders = BTreeMap::new();
         for_each_component!(self.entities, render, |entity, render: &RefCell<ClientRenderInfo>|
         {
@@ -265,6 +269,11 @@ impl ClientEntitiesContainer
             if render.z_level() >= ZLevel::lowest_ui()
             {
                 return;
+            }
+
+            if render.shadow_visible
+            {
+                self.shaded_renders.push(entity);
             }
 
             let real_z = (transform.position.z / TILE_SIZE).floor() as i32;
@@ -1137,6 +1146,7 @@ impl GameState
 
         let draw_entities = render_system::DrawEntities{
             renders: &self.entities.visible_renders,
+            shaded_renders: &self.entities.shaded_renders,
             world: &self.world
         };
 

@@ -13,5 +13,5 @@ void main()
     gl_Position = position;
 
     tex_coords = uv;
-    depth = max(position.z - TILE_SIZE, 0.0);
+    depth = max(0.0, position.z - TILE_SIZE);
 }

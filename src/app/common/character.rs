@@ -1590,9 +1590,17 @@ impl Character
             }
         };
 
+        let scale = match self.sprite_state.value()
+        {
+            SpriteState::Normal => None,
+            SpriteState::Crawling
+            | SpriteState::Lying => Some(Vector3::repeat(ENTITY_SCALE))
+        };
+
         entities.lazy_setter.borrow_mut().set_collider(entity, Some(ColliderInfo{
             kind: ColliderType::Circle,
             layer,
+            scale,
             ..Default::default()
         }.into()));
 

@@ -60,6 +60,7 @@ pub fn update_buffers(
 pub struct DrawEntities<'a>
 {
     pub renders: &'a [Vec<Entity>],
+    pub shaded_renders: &'a [Entity],
     pub world: &'a World
 }
 
@@ -116,4 +117,17 @@ pub fn draw(
     info.bind_pipeline(shaders.world_shaded);
 
     renderables.world.draw(info);
+
+    info.bind_pipeline(shaders.default_shaded);
+
+    renderables.shaded_renders.iter().for_each(|&entity|
+    {
+        let render = entities.render(entity).unwrap();
+
+        render.draw(info, OutlinedInfo::new(
+            render.mix,
+            Default::default(),
+            animation
+        ));
+    });
 }

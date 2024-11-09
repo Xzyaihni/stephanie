@@ -52,6 +52,7 @@ impl<'a> FurnitureBuilder<'a>
                 object: Some(RenderObjectKind::Texture{
                     name: "furniture/crate.png".to_owned()
                 }.into()),
+                shadow_visible: true,
                 z_level: ZLevel::Hips,
                 ..Default::default()
             }),

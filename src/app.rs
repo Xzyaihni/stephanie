@@ -50,6 +50,7 @@ pub mod client;
 pub struct ProgramShaders
 {
     pub default: ShaderId,
+    pub default_shaded: ShaderId,
     pub world: ShaderId,
     pub world_shaded: ShaderId,
     pub shadow: ShaderId,

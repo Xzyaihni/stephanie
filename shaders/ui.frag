@@ -14,11 +14,7 @@ layout(push_constant) uniform OutlineInfo{
 
 vec4 with_mix(vec4 color)
 {
-    float a = color.a;
-    if (!outline.keep_transparency)
-    {
-        a = 1.0;
-    }
+    float a = outline.keep_transparency ? color.a : 1.0;
 
     return mix(color, vec4(outline.other_color, a), outline.other_mix);
 }

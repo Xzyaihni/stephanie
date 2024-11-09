@@ -323,6 +323,7 @@ impl ZLevel
 pub struct RenderInfo
 {
     pub visible: bool,
+    pub shadow_visible: bool,
     pub scissor: Option<Scissor>,
     pub object: Option<RenderObject>,
     pub visibility_check: bool,
@@ -337,6 +338,7 @@ impl Default for RenderInfo
     {
         Self{
             visible: true,
+            shadow_visible: false,
             scissor: None,
             object: None,
             visibility_check: true,
@@ -437,6 +439,7 @@ impl ClientRenderObject
 pub struct ClientRenderInfo
 {
     pub visible: bool,
+    pub shadow_visible: bool,
     pub scissor: Option<VulkanoScissor>,
     pub object: Option<ClientRenderObject>,
     pub visibility_check: bool,
@@ -466,6 +469,7 @@ impl ServerToClient<ClientRenderInfo> for RenderInfo
 
         let mut this = ClientRenderInfo{
             visible: self.visible,
+            shadow_visible: self.shadow_visible,
             scissor,
             object,
             visibility_check: self.visibility_check,
