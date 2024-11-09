@@ -23,7 +23,7 @@ void main()
     vec3 blended_color = mix(color.xyz, background_color, depth);
     vec3 darkened_color = mix(blended_color, blend, DARKEN);
 
-    vec3 solid_color = mix(blended_color, blend, mix(DARKEN, 1.0, 0.5));
+    vec3 solid_color = mix(blended_color, blend, mix(DARKEN, 1.0, 0.3));
     vec3 final_color = (depth == 0.0) ? solid_color : darkened_color;
 
     f_color = vec4(final_color, color.w);

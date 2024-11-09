@@ -2,9 +2,11 @@
 
 layout(location = 0) out vec4 f_color;
 
-const vec3 background_color = vec3(0.831, 0.941, 0.988);
+layout(constant_id = 0) const float BACK_RED = 0.0;
+layout(constant_id = 1) const float BACK_GREEN = 0.0;
+layout(constant_id = 2) const float BACK_BLUE = 0.0;
 
 void main()
 {
-    f_color = vec4(background_color, 1.0);
+    f_color = vec4(vec3(BACK_RED, BACK_GREEN, BACK_BLUE), 1.0);
 }

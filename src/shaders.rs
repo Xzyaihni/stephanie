@@ -12,6 +12,7 @@ use nalgebra::Vector3;
 use yanyaengine::{ShadersContainer, Shader, ShadersGroup, ShadersQuery};
 
 use crate::{
+    BACKGROUND_COLOR,
     app::ProgramShaders,
     common::world::TILE_SIZE
 };
@@ -202,10 +203,21 @@ pub fn create() -> ShadersCreated
         ..Default::default()
     });
 
+    let shadow_color = BACKGROUND_COLOR.lerp(&SHADOW_COLOR, DARKEN);
+
     let shadow_shader = shaders.push(Shader{
         shader: ShadersGroup::new(
             shadow_vertex::load,
-            shadow_fragment::load
+            move |device|
+            {
+                shadow_fragment::load(device).unwrap().specialize(
+                    [
+                        (0, shadow_color.x.into()),
+                        (1, shadow_color.y.into()),
+                        (2, shadow_color.z.into())
+                    ].into_iter().collect()
+                )
+            }
         ),
         stencil: Some(create_stencil(StencilOpState{
             ops: StencilOps{

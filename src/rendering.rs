@@ -17,6 +17,8 @@ use vulkano::{
 
 use yanyaengine::Rendering;
 
+use crate::BACKGROUND_COLOR;
+
 
 #[derive(Clone)]
 pub struct ThisSetup
@@ -84,6 +86,9 @@ pub fn create() -> Rendering<ThisSetup>
 
             vec![view, depth_stencil]
         }),
-        clear: vec![Some([0.831, 0.941, 0.988, 1.0].into()), Some((1.0, 1).into())]
+        clear: vec![
+            Some([BACKGROUND_COLOR.x, BACKGROUND_COLOR.y, BACKGROUND_COLOR.z, 1.0].into()),
+            Some((1.0, 1).into())
+        ]
     }
 }
