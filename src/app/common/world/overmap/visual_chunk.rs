@@ -17,7 +17,6 @@ use crate::{
         VisibilityChecker,
         tiles_factory::{
             ChunkSlice,
-            ChunkObjects,
             TilesFactory,
             OccluderInfo,
             ChunkInfo,
@@ -38,7 +37,6 @@ use crate::{
             Tile,
             TILE_SIZE,
             CHUNK_SIZE,
-            PosDirection,
             overmap::FlatChunksContainer,
             visual_overmap::TileReader
         }
@@ -62,7 +60,7 @@ struct OccluderInfoRaw
 
 pub struct VisualChunkInfo
 {
-    infos: ChunkSlice<ChunkObjects<Option<ChunkInfo>>>,
+    infos: ChunkSlice<Option<ChunkInfo>>,
     occluders: ChunkSlice<Box<[OccluderInfo]>>,
     draw_height: ChunkSlice<usize>,
     draw_next: ChunkSlice<bool>
@@ -71,7 +69,7 @@ pub struct VisualChunkInfo
 #[derive(Debug)]
 pub struct VisualChunk
 {
-    objects: ChunkSlice<ChunkObjects<Option<Object>>>,
+    objects: ChunkSlice<Option<Object>>,
     occluders: ChunkSlice<Box<[OccludingPlane]>>,
     draw_height: ChunkSlice<usize>,
     draw_next: ChunkSlice<bool>,
@@ -83,7 +81,7 @@ impl VisualChunk
     pub fn new() -> Self
     {
         Self{
-            objects: Self::create_empty_slice(|| ChunkObjects::repeat_with(|| None)),
+            objects: Self::create_empty_slice(Option::default),
             occluders: Self::create_empty(),
             draw_height: [0; CHUNK_SIZE],
             draw_next: [true; CHUNK_SIZE],
@@ -458,30 +456,6 @@ impl VisualChunk
 
         model_builder.create(pos, tiles.this);
 
-        PosDirection::iter_non_z().for_each(|direction|
-        {
-            if let Some(gradient_tile) = tiles[direction]
-            {
-                let fits = |tile|
-                {
-                    let info = &tilemap[tile];
-
-                    !info.transparent && info.gradientable
-                };
-
-                if gradient_tile != tiles.this
-                    && fits(gradient_tile)
-                    && fits(tiles.this)
-                {
-                    model_builder.create_direction(
-                        direction,
-                        pos,
-                        gradient_tile
-                    );
-                }
-            }
-        });
-
         #[allow(clippy::let_and_return)]
         let occluding = !tilemap[tiles.this].transparent;
 
@@ -522,8 +496,10 @@ impl VisualChunk
 
         self.objects[draw_range.clone()].iter_mut().for_each(|objects|
         {
-            objects.iter_mut().filter_map(Option::as_mut)
-                .for_each(|object| object.update_buffers(info));
+            if let Some(object) = objects.as_mut()
+            {
+                object.update_buffers(info);
+            }
         });
 
         self.occluders[height].iter_mut().for_each(|x|
@@ -543,23 +519,9 @@ impl VisualChunk
     {
         let draw_range = self.draw_range(height);
 
-        self.objects[draw_range].iter().filter_map(|x| x.normal.as_ref()).for_each(|object|
+        self.objects[draw_range].iter().filter_map(|x| x.as_ref()).for_each(|object|
         {
             object.draw(info);
-        });
-    }
-
-    pub fn draw_gradients(
-        &self,
-        info: &mut DrawInfo,
-        height: usize
-    )
-    {
-        let draw_range = self.draw_range(height);
-
-        self.objects[draw_range].iter().for_each(|objects|
-        {
-            objects.gradients.iter().flatten().for_each(|object| object.draw(info));
         });
     }
 

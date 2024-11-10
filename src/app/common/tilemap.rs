@@ -15,8 +15,6 @@ use image::{
     error::ImageError
 };
 
-use strum::{EnumIter, EnumCount};
-
 use yanyaengine::{
     UniformLocation,
     ShaderId,
@@ -69,7 +67,6 @@ pub struct TileInfoRaw
     pub special: Option<SpecialTile>,
     pub colliding: Option<bool>,
     pub transparent: Option<bool>,
-    pub gradientable: Option<bool>,
     pub texture: Option<PathBuf>
 }
 
@@ -89,7 +86,6 @@ pub struct TileInfo
     pub drawable: bool,
     pub special: Option<SpecialTile>,
     pub colliding: bool,
-    pub gradientable: bool,
     pub transparent: bool
 }
 
@@ -102,7 +98,6 @@ impl TileInfo
             drawable: tile_raw.drawable.unwrap_or(true),
             special: tile_raw.special,
             colliding: tile_raw.colliding.unwrap_or(true),
-            gradientable: tile_raw.gradientable.unwrap_or(true),
             transparent: tile_raw.transparent.unwrap_or_else(||
             {
                 texture.as_ref().map(|texture| texture.colors.iter().any(|color|
@@ -152,17 +147,9 @@ impl TileInfo
     }
 }
 
-#[derive(Debug, EnumIter, EnumCount)]
-pub enum GradientMask
-{
-    Outer,
-    Inner
-}
-
 pub struct TileMapWithTextures
 {
     pub tilemap: TileMap,
-    pub gradient_mask: SimpleImage,
     pub textures: Vec<Option<SimpleImage>>
 }
 
@@ -231,13 +218,6 @@ impl TileMap
     ) -> Result<TileMapWithTextures, TileMapError>
     {
         let textures_root = Path::new(textures_root);
-        let gradient_mask = textures_root.join("gradient.png");
-
-        let gradient_mask = Self::load_texture(
-            TEXTURE_TILE_SIZE as u32 * 2,
-            TEXTURE_TILE_SIZE as u32,
-            gradient_mask
-        )?;
 
         let tiles = serde_json::from_reader::<_, Vec<TileInfoRaw>>(File::open(tiles_path)?)?;
 
@@ -266,7 +246,6 @@ impl TileMap
             drawable: false,
             special: None,
             colliding: false,
-            gradientable: false,
             transparent: true
         }).chain(tiles.into_iter().zip(textures.iter()).map(|(tile_raw, texture)|
         {
@@ -275,7 +254,6 @@ impl TileMap
 
         Ok(TileMapWithTextures{
             tilemap: Self{tiles},
-            gradient_mask,
             textures
         })
     }
@@ -332,7 +310,7 @@ impl TileMap
         path: PathBuf
     ) -> Result<SimpleImage, TileMapError>
     {
-        let image = image::open(&path).map_err(|error| 
+        let image = image::open(&path).map_err(|error|
         {
             TileMapError::Image{error, path: Some(path)}
         })?;
@@ -350,40 +328,6 @@ impl TileMap
         };
 
         Ok(SimpleImage::from(image))
-    }
-
-    pub fn apply_texture_mask<'a, I>(mask_type: GradientMask, mask: &SimpleImage, textures: I)
-    where
-        I: Iterator<Item=&'a mut Option<SimpleImage>>
-    {
-        textures.filter_map(Option::as_mut).for_each(|texture|
-        {
-            for y in 0..TEXTURE_TILE_SIZE
-            {
-                for x in 0..TEXTURE_TILE_SIZE
-                {
-                    let (mask_x, mask_y) = match mask_type
-                    {
-                        GradientMask::Outer => (x, y),
-                        GradientMask::Inner => (TEXTURE_TILE_SIZE + x, y)
-                    };
-
-                    let mask_pixel = mask.get_pixel(mask_x, mask_y);
-
-                    let mask = mask_pixel.r;
-                    let mask = match mask_type
-                    {
-                        GradientMask::Inner => mask,
-                        _ => u8::MAX - mask
-                    };
-
-                    let mut pixel = texture.get_pixel(x, y);
-
-                    pixel.a = mask;
-                    texture.set_pixel(pixel, x, y);
-                }
-            }
-        });
     }
 
     pub fn generate_tilemap(

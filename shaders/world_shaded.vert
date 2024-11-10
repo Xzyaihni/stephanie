@@ -5,6 +5,7 @@ layout(location = 1) in vec2 uv;
 
 layout(location = 0) out vec2 tex_coords;
 layout(location = 1) out float depth;
+layout(location = 2) out float up_depth;
 
 layout(constant_id = 0) const float TILE_SIZE = 0.0;
 
@@ -14,4 +15,5 @@ void main()
 
     tex_coords = uv;
     depth = sqrt(max(0.0, position.z - TILE_SIZE * 2.0));
+    up_depth = max(0.0, position.z - TILE_SIZE);
 }

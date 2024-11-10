@@ -54,6 +54,15 @@ mod default_shaded_fragment
     }
 }
 
+mod world_shaded_vertex
+{
+    vulkano_shaders::shader!
+    {
+        ty: "vertex",
+        path: "shaders/world_shaded.vert"
+    }
+}
+
 mod world_shaded_fragment
 {
     vulkano_shaders::shader!
@@ -131,6 +140,11 @@ pub fn create() -> ShadersCreated
         ..Default::default()
     });
 
+    let world_depth = DepthState{
+        write_enable: true,
+        compare_op: CompareOp::Always
+    };
+
     let default_shader = shaders.push(Shader{
         shader: ShadersGroup::new(
             default_vertex,
@@ -150,7 +164,7 @@ pub fn create() -> ShadersCreated
             world_fragment::load
         ),
         stencil: Some(default_stencil),
-        depth: Some(DepthState::simple()),
+        depth: Some(world_depth),
         ..Default::default()
     });
 
@@ -174,7 +188,12 @@ pub fn create() -> ShadersCreated
         let shaded_specialization = shaded_specialization.clone();
         shaders.push(Shader{
             shader: ShadersGroup::new(
-                default_vertex,
+                move |device|
+                {
+                    world_shaded_vertex::load(device).unwrap().specialize(
+                        [(0, TILE_SIZE.into())].into_iter().collect()
+                    )
+                },
                 move |device|
                 {
                     world_shaded_fragment::load(device).unwrap().specialize(
@@ -183,7 +202,7 @@ pub fn create() -> ShadersCreated
                 }
             ),
             stencil: Some(shaded_stencil.clone()),
-            depth: Some(DepthState::simple()),
+            depth: Some(world_depth),
             ..Default::default()
         })
     };

@@ -390,20 +390,6 @@ impl VisualOvermap
         });
     }
 
-    pub fn draw_gradients(
-        &self,
-        info: &mut DrawInfo
-    )
-    {
-        self.for_each_visible(|chunk, pos|
-        {
-            chunk.draw_gradients(
-                info,
-                self.visibility_checker.height(pos)
-            )
-        });
-    }
-
     pub fn draw_shadows(
         &self,
         info: &mut DrawInfo,

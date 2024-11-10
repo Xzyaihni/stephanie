@@ -1596,15 +1596,15 @@ impl HumanAnatomy
 
         let Speeds{arms, legs} = Self::speed_scale(&self.body, speeds);
 
-        let crawl_speed = arms;
-        let crawling = self.override_crawling || (legs < crawl_speed);
+        let crawl_threshold = arms * 0.9; // prefer walking
+        let crawling = self.override_crawling || (legs < crawl_threshold);
 
         let speed_scale = if !crawling
         {
             legs
         } else
         {
-            crawl_speed
+            arms
         };
 
         let speed = if speed_scale == 0.0

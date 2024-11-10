@@ -429,7 +429,6 @@ impl ClientOvermap
     )
     {
         self.visual_overmap.draw_tiles(info);
-        self.visual_overmap.draw_gradients(info);
     }
 }
 

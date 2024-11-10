@@ -2,6 +2,7 @@
 
 layout(location = 0) in vec2 tex_coords;
 layout(location = 1) in float depth;
+layout(location = 2) in float up_depth;
 
 layout(location = 0) out vec4 f_color;
 
@@ -24,7 +25,7 @@ void main()
     vec3 darkened_color = mix(blended_color, blend, DARKEN);
 
     vec3 solid_color = mix(blended_color, blend, mix(DARKEN, 1.0, 0.3));
-    vec3 final_color = (depth == 0.0) ? solid_color : darkened_color;
+    vec3 final_color = (up_depth == 0.0) ? solid_color : darkened_color;
 
     f_color = vec4(final_color, color.w);
 }
