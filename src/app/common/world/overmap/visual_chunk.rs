@@ -201,7 +201,7 @@ impl VisualChunk
             }
         }
 
-        let vertical_occluders = Self::create_vertical_occluders(occlusions.clone(), pos);
+        let vertical_occluders = Self::create_vertical_occluders(&occlusions, pos);
 
         let infos = model_builder.build(pos);
 
@@ -241,22 +241,28 @@ impl VisualChunk
     }
 
     fn create_vertical_occluders(
-        mut occlusions: [[bool; CHUNK_SIZE * CHUNK_SIZE]; CHUNK_SIZE],
+        occlusions: &[[bool; CHUNK_SIZE * CHUNK_SIZE]; CHUNK_SIZE],
         pos: GlobalPos
     ) -> ChunkSlice<Box<[VerticalOccluder]>>
     {
         let chunk_position = Chunk::position_of_chunk(pos);
 
-        (0..CHUNK_SIZE).map(|z|
+        (0..CHUNK_SIZE).scan([false; CHUNK_SIZE * CHUNK_SIZE], |state, z|
         {
             let mut occluders = Vec::new();
 
-            while let Some(occluder) = Self::create_vertical_occluder(&mut occlusions[z])
+            state.iter_mut().zip(occlusions[z]).for_each(|(top, bottom)|
+            {
+                *top = !*top && bottom;
+            });
+
+            let mut current_occlusions = state.clone();
+            while let Some(occluder) = Self::create_vertical_occluder(&mut current_occlusions)
             {
                 occluders.push(occluder.into_global(chunk_position, z));
             }
 
-            occluders.into_boxed_slice()
+            Some(occluders.into_boxed_slice())
         }).collect::<Vec<_>>().try_into().unwrap()
     }
 
