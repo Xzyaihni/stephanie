@@ -13,9 +13,11 @@ use nalgebra::Vector3;
 use yanyaengine::{
     Object,
     ObjectInfo,
+    SolidObject,
     Transform,
     ObjectFactory,
     ShaderId,
+    DefaultModel,
     object::{
         Texture,
         Model
@@ -49,6 +51,13 @@ pub struct OccluderInfo
     pub position: Vector3<f32>,
     pub horizontal: bool,
     pub length: f32
+}
+
+#[derive(Debug)]
+pub struct VerticalOccluder
+{
+    pub position: Vector3<f32>,
+    pub size: Vector3<f32>
 }
 
 #[derive(Debug)]
@@ -197,6 +206,7 @@ impl ChunkModelBuilder
 pub struct TilesFactory
 {
     object_factory: Rc<ObjectFactory>,
+    square: Arc<RwLock<Model>>,
     tilemap: Arc<TileMap>,
     texture: Arc<RwLock<Texture>>
 }
@@ -230,8 +240,16 @@ impl TilesFactory
 
         let tilemap = Arc::new(tilemap);
 
+        let square = {
+            let assets = init_info.partial.assets.lock();
+
+            let id = assets.default_model(DefaultModel::Square);
+            assets.model(id).clone()
+        };
+
         Ok(Self{
             object_factory: init_info.partial.object_factory.clone(),
+            square,
             tilemap,
             texture
         })
@@ -276,6 +294,26 @@ impl TilesFactory
                 let occluding = self.object_factory.create_occluding(transform);
 
                 OccludingPlane::new(occluding)
+            }).collect()
+        })
+    }
+
+    pub fn build_vertical_occluders(
+        &mut self,
+        occluders: ChunkSlice<Box<[VerticalOccluder]>>
+    ) -> ChunkSlice<Box<[SolidObject]>>
+    {
+        occluders.map(|occluders|
+        {
+            occluders.iter().map(|occluder|
+            {
+                let transform = Transform{
+                    position: occluder.position,
+                    scale: occluder.size,
+                    ..Default::default()
+                };
+
+                self.object_factory.create_solid(self.square.clone(), transform)
             }).collect()
         })
     }

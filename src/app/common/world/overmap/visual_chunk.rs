@@ -9,6 +9,7 @@ use nalgebra::{Vector2, Vector3};
 
 use yanyaengine::{
     Object,
+    SolidObject,
     game_object::*
 };
 
@@ -19,6 +20,7 @@ use crate::{
             ChunkSlice,
             TilesFactory,
             OccluderInfo,
+            VerticalOccluder,
             ChunkInfo,
             ChunkModelBuilder
         }
@@ -58,10 +60,63 @@ struct OccluderInfoRaw
     length: usize
 }
 
+impl OccluderInfoRaw
+{
+    fn into_global(self, chunk_position: Vector3<f32>, z: usize) -> OccluderInfo
+    {
+        let mut tile_position = Vector3::new(self.position.x, self.position.y, z).cast();
+
+        if self.horizontal
+        {
+            tile_position.x += self.length as f32 * 0.5;
+        } else
+        {
+            tile_position.y += self.length as f32 * 0.5;
+        }
+
+        let tile_position = tile_position * TILE_SIZE;
+
+        // a little padding to hide seams
+        let padding = TILE_SIZE * 0.01;
+
+        OccluderInfo{
+            position: chunk_position + tile_position,
+            horizontal: self.horizontal,
+            length: self.length as f32 * TILE_SIZE + padding
+        }
+    }
+}
+
+struct VerticalOccluderRaw
+{
+    position: Vector2<usize>,
+    size: Vector2<usize>
+}
+
+impl VerticalOccluderRaw
+{
+    fn into_global(self, chunk_position: Vector3<f32>, z: usize) -> VerticalOccluder
+    {
+        let tile_position = Vector3::new(self.position.x, self.position.y, z).cast() * TILE_SIZE;
+
+        // a little padding to hide seams
+        let padding = TILE_SIZE * 0.01;
+
+        let size = Vector3::new(self.size.x, self.size.y, 1).cast() * TILE_SIZE;
+        let half_size = Vector3::new(size.x, size.y, 0.0) / 2.0;
+
+        VerticalOccluder{
+            position: chunk_position + tile_position + half_size,
+            size: size + Vector3::repeat(padding)
+        }
+    }
+}
+
 pub struct VisualChunkInfo
 {
     infos: ChunkSlice<Option<ChunkInfo>>,
     occluders: ChunkSlice<Box<[OccluderInfo]>>,
+    vertical_occluders: ChunkSlice<Box<[VerticalOccluder]>>,
     draw_height: ChunkSlice<usize>,
     draw_next: ChunkSlice<bool>
 }
@@ -71,6 +126,7 @@ pub struct VisualChunk
 {
     objects: ChunkSlice<Option<Object>>,
     occluders: ChunkSlice<Box<[OccludingPlane]>>,
+    vertical_occluders: ChunkSlice<Box<[SolidObject]>>,
     draw_height: ChunkSlice<usize>,
     draw_next: ChunkSlice<bool>,
     generated: bool
@@ -83,6 +139,7 @@ impl VisualChunk
         Self{
             objects: Self::create_empty_slice(Option::default),
             occluders: Self::create_empty(),
+            vertical_occluders: Self::create_empty(),
             draw_height: [0; CHUNK_SIZE],
             draw_next: [true; CHUNK_SIZE],
             generated: false
@@ -144,6 +201,8 @@ impl VisualChunk
             }
         }
 
+        let vertical_occluders = Self::create_vertical_occluders(occlusions.clone(), pos);
+
         let infos = model_builder.build(pos);
 
         let (draw_next, draw_height) = Self::from_occlusions(&occlusions);
@@ -151,6 +210,7 @@ impl VisualChunk
         VisualChunkInfo{
             infos,
             occluders,
+            vertical_occluders,
             draw_height,
             draw_next
         }
@@ -163,10 +223,12 @@ impl VisualChunk
     {
         let objects = tiles_factory.build(chunk_info.infos);
         let occluders = tiles_factory.build_occluders(chunk_info.occluders);
+        let vertical_occluders = tiles_factory.build_vertical_occluders(chunk_info.vertical_occluders);
 
         Self{
             objects,
             occluders,
+            vertical_occluders,
             generated: true,
             draw_height: chunk_info.draw_height,
             draw_next: chunk_info.draw_next
@@ -178,13 +240,82 @@ impl VisualChunk
         self.draw_next[height]
     }
 
+    fn create_vertical_occluders(
+        mut occlusions: [[bool; CHUNK_SIZE * CHUNK_SIZE]; CHUNK_SIZE],
+        pos: GlobalPos
+    ) -> ChunkSlice<Box<[VerticalOccluder]>>
+    {
+        let chunk_position = Chunk::position_of_chunk(pos);
+
+        (0..CHUNK_SIZE).map(|z|
+        {
+            let mut occluders = Vec::new();
+
+            while let Some(occluder) = Self::create_vertical_occluder(&mut occlusions[z])
+            {
+                occluders.push(occluder.into_global(chunk_position, z));
+            }
+
+            occluders.into_boxed_slice()
+        }).collect::<Vec<_>>().try_into().unwrap()
+    }
+
+    fn create_vertical_occluder(
+        occlusions: &mut [bool; CHUNK_SIZE * CHUNK_SIZE]
+    ) -> Option<VerticalOccluderRaw>
+    {
+        let start_index = Self::vertical_occluder_start(occlusions)?;
+        let start_point = Vector2::new(start_index % CHUNK_SIZE, start_index / CHUNK_SIZE);
+
+        let width = occlusions[start_index..(start_index + (CHUNK_SIZE - start_point.x))].iter_mut()
+            .take_while(|x|
+            {
+                **x
+            })
+            .map(|x: &mut bool|
+            {
+                *x = false;
+            })
+            .count();
+
+        let height = (1..(CHUNK_SIZE - start_point.y - 1)).take_while(|y|
+        {
+            let index = start_index + y * CHUNK_SIZE;
+            let r = index..(index + width);
+
+            let include = occlusions[r.clone()].iter().all(|x| *x);
+
+            if include
+            {
+                occlusions[r].iter_mut().for_each(|x| *x = false);
+            }
+
+            include
+        }).count() + 1;
+
+        Some(VerticalOccluderRaw{
+            position: start_point,
+            size: Vector2::new(width, height)
+        })
+    }
+
+    fn vertical_occluder_start(
+        occlusions: &[bool; CHUNK_SIZE * CHUNK_SIZE]
+    ) -> Option<usize>
+    {
+        occlusions.iter().enumerate().find_map(|(index, occluded)|
+        {
+            occluded.then_some(index)
+        })
+    }
+
     fn create_occluders(
         tilemap: &TileMap,
         pos: GlobalPos,
         tiles: &TileReader
     ) -> ChunkSlice<Box<[OccluderInfo]>>
     {
-        let chunk_position = Chunk::transform_of_chunk(pos).position;
+        let chunk_position = Chunk::position_of_chunk(pos);
 
         type ContainerType = FlatChunksContainer<Option<OccludingState>>;
 
@@ -264,28 +395,9 @@ impl VisualChunk
                 }
             }
 
-            Self::simplify_occluders(plane).map(|info: OccluderInfoRaw|
+            Self::simplify_occluders(plane).map(|raw|
             {
-                let mut tile_position = Vector3::new(info.position.x, info.position.y, z).cast();
-
-                if info.horizontal
-                {
-                    tile_position.x += info.length as f32 * 0.5;
-                } else
-                {
-                    tile_position.y += info.length as f32 * 0.5;
-                }
-
-                let tile_position = tile_position * TILE_SIZE;
-
-                // a little padding to hide seams
-                let padding = TILE_SIZE * 0.01;
-
-                OccluderInfo{
-                    position: chunk_position + tile_position,
-                    horizontal: info.horizontal,
-                    length: info.length as f32 * TILE_SIZE + padding
-                }
+                raw.into_global(chunk_position, z)
             }).collect::<Box<[_]>>()
         }).collect::<Vec<_>>().try_into().unwrap_or_else(|_| unreachable!())
     }
@@ -511,6 +623,19 @@ impl VisualChunk
         });
     }
 
+    pub fn update_sky_buffers(
+        &mut self,
+        info: &mut UpdateBuffersInfo,
+        height: Option<usize>
+    )
+    {
+        let start = height.map(|height| height + 1).unwrap_or(0);
+        self.vertical_occluders[start..].iter_mut().for_each(|x|
+        {
+            x.iter_mut().for_each(|x| x.update_buffers(info));
+        });
+    }
+
     pub fn draw_tiles(
         &self,
         info: &mut DrawInfo,
@@ -538,6 +663,19 @@ impl VisualChunk
             {
                 x.draw(info)
             }
+        });
+    }
+
+    pub fn draw_sky_shadows(
+        &self,
+        info: &mut DrawInfo,
+        height: Option<usize>
+    )
+    {
+        let start = height.map(|height| height + 1).unwrap_or(0);
+        self.vertical_occluders[start..].iter().for_each(|x|
+        {
+            x.iter().for_each(|x| x.draw(info));
         });
     }
 }

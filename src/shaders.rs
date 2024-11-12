@@ -9,7 +9,14 @@ use vulkano::pipeline::graphics::depth_stencil::{
 
 use nalgebra::Vector3;
 
-use yanyaengine::{ShadersContainer, Shader, ShadersGroup, ShadersQuery};
+use yanyaengine::{
+    OccludingPlane,
+    Object,
+    ShadersContainer,
+    Shader,
+    ShadersGroup,
+    ShadersQuery
+};
 
 use crate::{
     BACKGROUND_COLOR,
@@ -155,6 +162,7 @@ pub fn create() -> ShadersCreated
             write_enable: false,
             compare_op: CompareOp::Less
         }),
+        per_vertex: Some(Object::per_vertex()),
         ..Default::default()
     });
 
@@ -165,6 +173,7 @@ pub fn create() -> ShadersCreated
         ),
         stencil: Some(default_stencil),
         depth: Some(world_depth),
+        per_vertex: Some(Object::per_vertex()),
         ..Default::default()
     });
 
@@ -203,6 +212,7 @@ pub fn create() -> ShadersCreated
             ),
             stencil: Some(shaded_stencil.clone()),
             depth: Some(world_depth),
+            per_vertex: Some(Object::per_vertex()),
             ..Default::default()
         })
     };
@@ -219,6 +229,7 @@ pub fn create() -> ShadersCreated
         ),
         stencil: Some(shaded_stencil),
         depth: Some(DepthState::simple()),
+        per_vertex: Some(Object::per_vertex()),
         ..Default::default()
     });
 
@@ -246,6 +257,7 @@ pub fn create() -> ShadersCreated
             },
             ..Default::default()
         })),
+        per_vertex: Some(OccludingPlane::per_vertex()),
         ..Default::default()
     });
 
@@ -254,6 +266,7 @@ pub fn create() -> ShadersCreated
             ui_vertex::load,
             ui_fragment::load
         ),
+        per_vertex: Some(Object::per_vertex()),
         ..Default::default()
     });
 

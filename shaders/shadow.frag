@@ -8,5 +8,5 @@ layout(constant_id = 2) const float BACK_BLUE = 0.0;
 
 void main()
 {
-    f_color = vec4(vec3(BACK_RED, BACK_GREEN, BACK_BLUE), 1.0);
+    f_color = vec4(BACK_RED, BACK_GREEN, BACK_BLUE, 1.0);
 }

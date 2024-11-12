@@ -107,14 +107,19 @@ impl VisibilityChecker
 
     pub fn height(&self, pos: LocalPos) -> usize
     {
+        self.maybe_height(pos).unwrap_or(CHUNK_SIZE - 1)
+    }
+
+    pub fn maybe_height(&self, pos: LocalPos) -> Option<usize>
+    {
         let middle = self.size.z / 2;
 
         if pos.pos.z == middle
         {
-            self.player_height()
+            Some(self.player_height())
         } else
         {
-            CHUNK_SIZE - 1
+            None
         }
     }
 
@@ -340,6 +345,17 @@ impl VisualOvermap
         self.chunks.swap(a, b);
     }
 
+    fn for_sky_occluders(
+        visibility_checker: &VisibilityChecker,
+        pos: LocalPos,
+        f: impl FnMut(LocalPos)
+    )
+    {
+        let size_z = visibility_checker.size.z;
+        let top = size_z / 2;
+        pos.with_z_range(top..size_z).for_each(f);
+    }
+
     pub fn update_buffers(
         &mut self,
         info: &mut UpdateBuffersInfo,
@@ -359,6 +375,14 @@ impl VisualOvermap
                         caster,
                         self.visibility_checker.height(pos)
                     )
+                });
+
+                Self::for_sky_occluders(&self.visibility_checker, pos, |pos|
+                {
+                    self.chunks[pos].1.update_sky_buffers(
+                        info,
+                        self.visibility_checker.maybe_height(pos)
+                    );
                 });
             });
     }
@@ -408,6 +432,14 @@ impl VisualOvermap
                         self.visibility_checker.height(pos)
                     )
                 }
+
+                Self::for_sky_occluders(&self.visibility_checker, pos, |pos|
+                {
+                    self.chunks[pos].1.draw_sky_shadows(
+                        info,
+                        self.visibility_checker.maybe_height(pos)
+                    );
+                });
             });
     }
 }
