@@ -355,7 +355,7 @@ impl Game
         }
     }
 
-    fn pop_entity(args: &mut ArgsWrapper, memory: &mut impl Memoriable) -> Result<Entity, lisp::Error>
+    /*fn pop_entity(memory: &mut LispMemory) -> Result<Entity, lisp::Error>
     {
         let lst = args.pop(memory).as_list()?;
 
@@ -384,48 +384,47 @@ impl Game
         let id = LispValue::new_integer(entity.id() as i32);
 
         memory.cons_list([tag, local, id])
-    }
+    }*/
 
     fn add_simple_setter<F>(&self, primitives: &mut Primitives, name: &str, f: F)
     where
         F: Fn(
             &mut ClientEntities,
             Entity,
-            &mut MemoryWrapper,
-            ArgsWrapper
-        ) -> Result<(), lisp::Error> + 'static + Clone
+            &mut LispMemory
+        ) -> Result<(), lisp::Error> + 'static
     {
         let game_state = self.game_state.clone();
 
-        primitives.add(
+        todo!();
+        /*primitives.add(
             name,
-            PrimitiveProcedureInfo::new_simple_effect(2, move |memory, mut args|
+            PrimitiveProcedureInfo::new_simple_effect(2, move |memory|
             {
                 let game_state = game_state.upgrade().unwrap();
                 let mut game_state = game_state.borrow_mut();
                 let entities = game_state.entities_mut();
 
-                let entity = Self::pop_entity(&mut args, memory)?;
+                let entity = Self::pop_entity(memory)?;
                 f(entities, entity, memory, args)?;
 
                 memory.push_stack(());
 
                 Ok(())
-            }));
+            }));*/
     }
 
     fn maybe_print_component(
         game_state: &Weak<RefCell<GameState>>,
-        memory: &mut impl Memoriable,
-        mut args: ArgsWrapper,
+        memory: &mut LispMemory,
         print: bool
     ) -> Result<(), lisp::Error>
     {
-        let game_state = game_state.upgrade().unwrap();
+        /*let game_state = game_state.upgrade().unwrap();
         let game_state = game_state.borrow();
         let entities = game_state.entities();
 
-        let entity = Self::pop_entity(&mut args, memory)?;
+        let entity = Self::pop_entity(memory)?;
         let component = args.pop(memory).as_symbol()?;
 
         let maybe_info = entities.component_info(entity, &component);
@@ -445,7 +444,8 @@ impl Game
 
         memory.push_stack(found);
 
-        Ok(())
+        Ok(())*/
+        todo!()
     }
 
     fn console_primitives(&mut self) -> Rc<Primitives>
@@ -467,7 +467,8 @@ impl Game
 
         let mut primitives = Primitives::new();
 
-        {
+        todo!();
+        /*{
             let game_state = self.game_state.clone();
 
             primitives.add(
@@ -853,7 +854,7 @@ impl Game
 
                     Ok(())
                 }));
-        }
+        }*/
 
         Rc::new(primitives)
     }

@@ -213,7 +213,7 @@ impl ChunkGenerator
         let fallback_tile = Tile::none();
         let names_map: HashMap<String, Tile> = tilemap.names_owned_map();
 
-        primitives.add(
+        /*primitives.add(
             "tile",
             PrimitiveProcedureInfo::new_simple(ArgsCount::Min(1), move |memory, mut args|
             {
@@ -239,7 +239,7 @@ impl ChunkGenerator
                 }
 
                 tile.as_lisp_value(memory)
-            }));
+            }));*/todo!();
 
         primitives
     }

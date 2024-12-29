@@ -1,5 +1,6 @@
 use std::{
     mem,
+    borrow::Borrow,
     rc::Rc,
     ops::Range,
     fmt::{self, Display, Debug},
@@ -10,15 +11,11 @@ use std::{
 use strum::EnumCount;
 
 pub use program::{
-    Memoriable,
-    MemoriableRef,
-    MemoryWrapper,
     Program,
     PrimitiveProcedureInfo,
     Primitives,
     WithPosition,
-    ArgsCount,
-    ArgsWrapper
+    ArgsCount
 };
 
 use program::{PrimitiveType, Register, CodePosition};
@@ -1474,8 +1471,32 @@ impl LispMemory
         stack.push(value);
     }
 
-    pub fn try_pop_arg() -> Option<LispValue>
+    pub fn pop_arg(&mut self) -> LispValue
     {
+        self.try_pop_arg().expect("cant get more arguments than stored")
+    }
+
+    pub fn try_pop_arg(&mut self) -> Option<LispValue>
+    {
+        let argument = self.registers[Register::Argument as usize];
+        if argument.is_null()
+        {
+            return None;
+        }
+
+        self.registers[Register::Argument as usize] = self.pop_stack();
+
+        Some(argument)
+    }
+
+    pub fn is_empty_args(&self) -> bool
+    {
+        self.registers[Register::Argument as usize].is_null()
+    }
+
+    pub fn return_value(&mut self, value: LispValue)
+    {
+        self.registers[Register::Value as usize] = value;
     }
 
     pub fn push_stack(&mut self, value: impl Into<LispValue>)
@@ -1725,11 +1746,11 @@ impl<'a> OutputWrapperRef<'a>
     }
 }
 
-impl<M: MemoriableRef> Display for GenericOutputWrapper<M>
+impl<M: Borrow<LispMemory>> Display for GenericOutputWrapper<M>
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
     {
-        write!(f, "{}", self.value.to_string(self.memory.as_memory()))
+        write!(f, "{}", self.value.to_string(self.memory.borrow()))
     }
 }
 
@@ -1751,21 +1772,21 @@ impl<M> GenericOutputWrapper<M>
     }
 }
 
-impl<M: MemoriableRef> GenericOutputWrapper<M>
+impl<M: Borrow<LispMemory>> GenericOutputWrapper<M>
 {
     pub fn as_vector_ref(&self) -> Result<LispVectorRef, Error>
     {
-        self.value.as_vector_ref(self.memory.as_memory())
+        self.value.as_vector_ref(self.memory.borrow())
     }
 
     pub fn as_vector(&self) -> Result<LispVector, Error>
     {
-        self.value.as_vector(self.memory.as_memory())
+        self.value.as_vector(self.memory.borrow())
     }
 
     pub fn as_symbol(&self) -> Result<String, Error>
     {
-        self.value.as_symbol(self.memory.as_memory())
+        self.value.as_symbol(self.memory.borrow())
     }
 }
 

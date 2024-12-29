@@ -89,6 +89,7 @@ impl From<usize> for ArgsCount
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Effect
 {
     Pure,
@@ -176,9 +177,9 @@ impl Primitives
         {
             ($f:expr) =>
             {
-                |memory, args|
+                |memory|
                 {
-                    Self::do_cond(memory, args, |a, b| Some($f(a, b)), |a, b| Some($f(a, b)))
+                    Self::do_cond(memory, |a, b| Some($f(a, b)), |a, b| Some($f(a, b)))
                 }
             }
         }
@@ -187,9 +188,9 @@ impl Primitives
         {
             ($float_op:ident, $int_op:ident) =>
             {
-                |memory, args|
+                |memory|
                 {
-                    Self::do_op(memory, args, |a, b|
+                    Self::do_op(memory, |a, b|
                     {
                         Some(LispValue::new_integer(a.$int_op(b)?))
                     }, |a, b|
@@ -235,7 +236,7 @@ impl Primitives
         }
 
         let (indices, primitives): (HashMap<_, _>, Vec<_>) = [
-            ("+", PrimitiveProcedureInfo::new_simple(ArgsCount::Min(2), Effect::Pure, do_op!(add, checked_add))),
+            ("+", PrimitiveProcedureInfo::new_simple(ArgsCount::Min(2), Effect::Pure, Rc::new(do_op!(add, checked_add)))),
             (BEGIN_PRIMITIVE,
                 PrimitiveProcedureInfo::new_eval(ArgsCount::Min(1), Rc::new(|memory, primitives, args|
                 {
@@ -838,7 +839,7 @@ impl Primitives
         FI: Fn(i32, i32) -> Option<LispValue>,
         FF: Fn(f32, f32) -> Option<LispValue>
     {
-        let first = *args.pop(memory);
+        /*let first = *args.pop(memory);
         let second = *args.pop(memory);
 
         let output = Self::call_op(first, second, &op_integer, &op_float)?;
@@ -857,7 +858,8 @@ impl Primitives
             args.push(memory, second);
 
             Self::do_cond(memory, op_integer, op_float)
-        }
+        }*/
+        todo!()
     }
 
     fn do_op<FI, FF>(
@@ -869,19 +871,19 @@ impl Primitives
         FI: Fn(i32, i32) -> Option<LispValue>,
         FF: Fn(f32, f32) -> Option<LispValue>
     {
-        let first = *args.pop(memory);
-        let second = *args.pop(memory);
+        let first = memory.pop_arg();
+        let second = memory.pop_arg();
 
         let output = Self::call_op(first, second, &op_integer, &op_float)?;
 
-        if args.is_empty()
+        if memory.is_empty_args()
         {
-            memory.push_stack(output);
+            memory.return_value(output);
 
             Ok(())
         } else
         {
-            args.push(memory, output);
+            memory.push_stack(output);
 
             Self::do_op(memory, op_integer, op_float)
         }
@@ -1389,7 +1391,10 @@ impl CompiledProgram
 
                     if let Ok(proc) = op.as_primitive_procedure()
                     {
-                        (self.primitives.get(proc).on_apply.as_ref().unwrap())(memory);
+                        if let Err(err) = (self.primitives.get(proc).on_apply.as_ref().unwrap().1)(memory)
+                        {
+                            return Err(err).with_position(self.positions[i].expect("function call must have a codepos"));
+                        }
                     } else if let Ok(proc) = op.as_procedure()
                     {
                         todo!()
