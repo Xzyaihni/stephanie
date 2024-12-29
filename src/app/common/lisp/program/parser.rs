@@ -1,6 +1,11 @@
-use std::{iter, vec, ops::Deref};
+use std::{
+    iter,
+    vec,
+    fmt::{self, Display},
+    ops::Deref
+};
 
-use super::{Error, ErrorPos};
+use super::{BEGIN_PRIMITIVE, Error, ErrorPos};
 
 pub use lexer::CodePosition;
 
@@ -19,12 +24,25 @@ pub enum PrimitiveType
     Bool(bool)
 }
 
-#[derive(Debug, Clone)]
-pub struct AstPos
+impl Display for PrimitiveType
 {
-    pub position: CodePosition,
-    pub ast: Ast
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
+    {
+        write!(f, "{}", match self
+        {
+            Self::Value(x) =>
+            {
+                return write!(f, "{x}");
+            },
+            Self::Char(x) => x.to_string(),
+            Self::Float(x) => x.to_string(),
+            Self::Integer(x) => x.to_string(),
+            Self::Bool(x) => x.to_string()
+        })
+    }
 }
+
+pub type AstPos = WithPosition<Ast>;
 
 impl AstPos
 {
@@ -32,13 +50,13 @@ impl AstPos
     {
         Self{
             position: car.position,
-            ast: Ast::List{car: Box::new(car), cdr: Box::new(cdr)}
+            value: Ast::List{car: Box::new(car), cdr: Box::new(cdr)}
         }
     }
 
     pub fn as_value(&self) -> Result<PrimitiveType, ErrorPos>
     {
-        match &self.ast
+        match &self.value
         {
             Ast::Value(x) => Ast::parse_primitive(x)
                 .map_err(|error| ErrorPos{position: self.position, error}),
@@ -49,7 +67,7 @@ impl AstPos
     pub fn map(self, f: impl FnOnce(Ast) -> Ast) -> Self
     {
         Self{
-            ast: f(self.ast),
+            value: f(self.value),
             ..self
         }
     }
@@ -68,21 +86,11 @@ impl AstPos
 
         AstPos{
             position: self.position,
-            ast: Ast::List{
+            value: Ast::List{
                 car: Box::new(f(car)),
                 cdr: Box::new(cdr.map_list(f))
             }
         }
-    }
-}
-
-impl Deref for AstPos
-{
-    type Target = Ast;
-
-    fn deref(&self) -> &Self::Target
-    {
-        &self.ast
     }
 }
 
@@ -128,7 +136,7 @@ impl Ast
         match self
         {
             Self::EmptyList => "()".to_owned(),
-            Self::Value(x) => x.clone(),
+            Self::Value(x) => Self::parse_primitive(&x).map_or_else(|_| x.clone(), |x| x.to_string()),
             Self::List{car, cdr} => format!(
                 "({} {})",
                 car.to_string_pretty(),
@@ -246,37 +254,68 @@ impl Ast
     }
 }
 
-pub trait WithPosition
-{
-    type Output: Sized;
 
-    fn with_position(self, position: CodePosition) -> Self::Output;
+#[derive(Debug, Clone, Copy)]
+pub struct WithPosition<T>
+{
+    pub position: CodePosition,
+    pub value: T
 }
 
-impl WithPosition for Option<Ast>
+impl<T> WithPositionTrait<WithPosition<T>> for T
 {
-    type Output = Result<AstPos, ErrorPos>;
-
-    fn with_position(self, position: CodePosition) -> Self::Output
+    fn with_position(self, position: CodePosition) -> WithPosition<T>
     {
-        Ok(AstPos{
-            position,
-            ast: self.ok_or(ErrorPos{position, error: Error::UnexpectedClose})?
-        })
+        WithPosition{position, value: self}
     }
 }
 
-impl WithPosition for Ast
+impl<T> Deref for WithPosition<T>
 {
-    type Output = AstPos;
+    type Target = T;
 
-    fn with_position(self, position: CodePosition) -> Self::Output
+    fn deref(&self) -> &Self::Target
     {
-        AstPos{
-            position,
-            ast: self
-        }
+        &self.value
     }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct WithPositionMaybe<T>
+{
+    pub position: Option<CodePosition>,
+    pub value: T
+}
+
+impl<T> From<T> for WithPositionMaybe<T>
+{
+    fn from(value: T) -> Self
+    {
+        Self{position: None, value}
+    }
+}
+
+impl<T> Deref for WithPositionMaybe<T>
+{
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target
+    {
+        &self.value
+    }
+}
+
+impl<T> WithPositionTrait<WithPositionMaybe<T>> for T
+{
+    fn with_position(self, position: CodePosition) -> WithPositionMaybe<T>
+    {
+        WithPositionMaybe{position: Some(position), value: self}
+    }
+}
+
+pub trait WithPositionTrait<T>
+{
+    fn with_position(self, position: CodePosition) -> T;
 }
 
 pub struct Parser
@@ -296,18 +335,23 @@ impl Parser
     {
         let lexemes = Lexer::parse(code);
 
-        let open = LexemePos{position: CodePosition::new(), lexeme: Lexeme::OpenParen};
-        let close = LexemePos{position: CodePosition::new(), lexeme: Lexeme::CloseParen};
-
-        let lexemes = iter::once(open)
+        let lexemes = iter::once(Lexeme::OpenParen.with_position(Default::default()))
             .chain(lexemes)
-            .chain(iter::once(close));
+            .chain(iter::once(Lexeme::CloseParen.with_position(Default::default())));
 
         let mut this = Self{current_position: CodePosition::new(), lexemes};
 
         let (pos, ast) = this.parse_one()?;
 
-        ast.with_position(pos)
+        let ast = AstPos{
+            position: pos,
+            value: ast.ok_or(ErrorPos{position: pos, error: Error::UnexpectedClose})?
+        };
+
+        Ok(Ast::List{
+            car: AstPos{position: Default::default(), value: Ast::Value(BEGIN_PRIMITIVE.to_owned())}.into(),
+            cdr: ast.into()
+        }.with_position(Default::default()))
     }
 
     fn parse_one(&mut self) -> Result<(CodePosition, Option<Ast>), ErrorPos>
@@ -317,7 +361,7 @@ impl Parser
 
         let position = lexeme.position;
 
-        let ast = match lexeme.lexeme
+        let ast = match lexeme.value
         {
             Lexeme::Value(x) =>
             {
@@ -327,21 +371,21 @@ impl Parser
             {
                 let (_, rest) = self.parse_one()?;
 
-                let rest = rest.with_position(position).map(|x| x.ast)?;
+                let rest = rest.ok_or(ErrorPos{position, error: Error::ExpectedClose})?;
 
                 let rest = Ast::List{
-                    car: Box::new(AstPos{position, ast: rest}),
-                    cdr: Box::new(AstPos{position, ast: Ast::EmptyList})
+                    car: Box::new(AstPos{position, value: rest}),
+                    cdr: Box::new(AstPos{position, value: Ast::EmptyList})
                 };
 
-                let car = Box::new(AstPos{position, ast: Ast::Value("quote".to_owned())});
-                let cdr = Box::new(AstPos{position, ast: rest});
+                let car = Box::new(AstPos{position, value: Ast::Value("quote".to_owned())});
+                let cdr = Box::new(AstPos{position, value: rest});
 
                 Some(Ast::List{car, cdr})
             },
             Lexeme::OpenParen =>
             {
-                Some(self.parse_list()?.ast)
+                Some(self.parse_list()?.value)
             },
             Lexeme::CloseParen =>
             {
@@ -358,12 +402,12 @@ impl Parser
 
         if let Some(car) = car
         {
-            self.parse_list_with_car(AstPos{position: pos, ast: car})
+            self.parse_list_with_car(AstPos{position: pos, value: car})
         } else
         {
             Ok(AstPos{
                 position: pos,
-                ast: Ast::EmptyList
+                value: Ast::EmptyList
             })
         }
     }
@@ -375,14 +419,14 @@ impl Parser
 
         let ast = if let Some(cdr) = cdr
         {
-            let new_cdr = self.parse_list_with_car(AstPos{position: pos, ast: cdr})?;
+            let new_cdr = self.parse_list_with_car(AstPos{position: pos, value: cdr})?;
 
             Ast::List{car, cdr: Box::new(new_cdr)}
         } else
         {
             let cdr = AstPos{
                 position: pos,
-                ast: Ast::EmptyList
+                value: Ast::EmptyList
             };
 
             Ast::List{car, cdr: Box::new(cdr)}
@@ -390,7 +434,7 @@ impl Parser
 
         Ok(AstPos{
             position: pos,
-            ast
+            value: ast
         })
     }
 }

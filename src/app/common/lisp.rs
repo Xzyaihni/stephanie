@@ -7,6 +7,8 @@ use std::{
     collections::HashMap
 };
 
+use strum::EnumCount;
+
 pub use program::{
     Memoriable,
     MemoriableRef,
@@ -14,14 +16,12 @@ pub use program::{
     Program,
     PrimitiveProcedureInfo,
     Primitives,
-    Lambdas,
-    StoredLambda,
     WithPosition,
     ArgsCount,
     ArgsWrapper
 };
 
-use program::{Expression, ExpressionPos, CodePosition};
+use program::{PrimitiveType, Register, CodePosition};
 
 mod program;
 
@@ -117,6 +117,7 @@ impl Display for Special
 pub union ValueRaw
 {
     unsigned: u32,
+    address: u32,
     pub integer: i32,
     pub float: f32,
     pub char: char,
@@ -153,6 +154,7 @@ pub enum ValueTag
     PrimitiveProcedure,
     List,
     Vector,
+    Address,
     VectorMoved
 }
 
@@ -168,6 +170,7 @@ impl ValueTag
                 | ValueTag::PrimitiveProcedure
                 | ValueTag::Symbol
                 | ValueTag::VectorMoved
+                | ValueTag::Address
                 | ValueTag::Special => false,
             ValueTag::String
                 | ValueTag::Procedure
@@ -454,6 +457,13 @@ impl LispValue
         }
     }
 
+    pub fn new_address(address: u32) -> Self
+    {
+        unsafe{
+            Self::new(ValueTag::Address, ValueRaw{address})
+        }
+    }
+
     pub fn new_float(value: f32) -> Self
     {
         unsafe{
@@ -635,6 +645,7 @@ impl LispValue
             ValueTag::Procedure => format!("<procedure #{}>", unsafe{ self.value.procedure }),
             ValueTag::PrimitiveProcedure => format!("<primitive procedure #{}>", unsafe{ self.value.primitive_procedure }),
             ValueTag::VectorMoved => "<vector-moved>".to_owned(),
+            ValueTag::Address => unsafe{ self.value.address.to_string() },
             ValueTag::String => block.map(|memory|
             {
                 memory.get_string(unsafe{ self.value.string }).unwrap()
@@ -720,7 +731,7 @@ pub enum Error
     CharTooLong(String),
     UndefinedVariable(String),
     AttemptedShadowing(String),
-    ApplyNonApplication,
+    CallNonProcedure(ValueTag),
     WrongArgumentsCount{proc: String, this_invoked: bool, expected: String, got: usize},
     IndexOutOfRange(i32),
     CharOutOfRange,
@@ -728,6 +739,7 @@ pub enum Error
     VectorWrongType{expected: ValueTag, got: ValueTag},
     OperationError{a: String, b: String},
     ExpectedNumerical{a: ValueTag, b: ValueTag},
+    ExpectedList,
     ExpectedParam,
     ExpectedArg,
     ExpectedOp,
@@ -751,7 +763,7 @@ impl Display for Error
             Self::CharTooLong(s) => format!("cant parse `{s}` as char"),
             Self::UndefinedVariable(s) => format!("variable `{s}` is undefined"),
             Self::AttemptedShadowing(s) => format!("attempted to shadow `{s}` which is a primitive"),
-            Self::ApplyNonApplication => "apply was called on a non application".to_owned(),
+            Self::CallNonProcedure(t) => format!("cant call non procedure, tried calling `{t:?}`"),
             Self::ExpectedNumerical{a, b} => format!("primitive operation expected 2 numbers, got {a:?} and {b:?}"),
             Self::WrongArgumentsCount{proc, this_invoked: _, expected, got} =>
                 format!("wrong amount of arguments (got {got}) passed to {proc} (expected {expected})"),
@@ -762,6 +774,7 @@ impl Display for Error
                 format!("vector expected `{expected:?}` got `{got:?}`"),
             Self::OperationError{a, b} =>
                 format!("numeric error with {a} and {b} operands"),
+            Self::ExpectedList => "expected a list".to_owned(),
             Self::ExpectedParam => "expected a parameter".to_owned(),
             Self::ExpectedArg => "expected an argument".to_owned(),
             Self::ExpectedOp => "expected an operator".to_owned(),
@@ -819,7 +832,6 @@ impl<'a> Debug for MemoryBlockWith<'a>
 
 struct MemoryBlock
 {
-    lambdas: Lambdas,
     general: Vec<ValueRaw>,
     cars: Vec<LispValue>,
     cdrs: Vec<LispValue>
@@ -830,7 +842,6 @@ impl Clone for MemoryBlock
     fn clone(&self) -> Self
     {
         Self{
-            lambdas: self.lambdas.clone(),
             general: clone_with_capacity(&self.general),
             cars: clone_with_capacity(&self.cars),
             cdrs: clone_with_capacity(&self.cdrs)
@@ -854,15 +865,12 @@ impl MemoryBlock
 
         let general = Vec::with_capacity(half_memory);
 
-        let third_half = half_memory / 3;
+        let half_half = half_memory / 2;
 
-        let cars = Vec::with_capacity(third_half);
-        let cdrs = Vec::with_capacity(third_half);
+        let cars = Vec::with_capacity(half_half);
+        let cdrs = Vec::with_capacity(half_half);
 
-        let rest = half_memory - third_half * 2;
-        let lambdas = Lambdas::new(rest);
-
-        Self{lambdas, general, cars, cdrs}
+        Self{general, cars, cdrs}
     }
 
     fn vector_raw_info(&self, id: u32) -> (ValueTag, usize)
@@ -999,7 +1007,6 @@ impl MemoryBlock
 
     pub fn clear(&mut self)
     {
-        self.lambdas.clear();
         self.general.clear();
         self.cars.clear();
         self.cdrs.clear();
@@ -1065,12 +1072,10 @@ pub struct LispMemory
 {
     env: LispValue,
     symbols: Symbols,
-    remapped_lambdas: HashMap<u32, u32>,
     memory: MemoryBlock,
     swap_memory: MemoryBlock,
-    returns: Vec<LispValue>,
-    ops: Vec<LispValue>,
-    envs: Vec<LispValue>
+    stack: Vec<LispValue>,
+    registers: [LispValue; Register::COUNT]
 }
 
 impl Debug for LispMemory
@@ -1082,18 +1087,14 @@ impl Debug for LispMemory
             v.to_string(self)
         };
 
-        let returns = self.returns.iter().map(pv).collect::<Vec<_>>();
-        let ops = self.ops.iter().map(pv).collect::<Vec<_>>();
-        let envs = self.envs.iter().map(pv).collect::<Vec<_>>();
+        let stack = self.stack.iter().map(pv).collect::<Vec<_>>();
 
         let block = MemoryBlockWith{memory: Some(self), block: &self.memory};
         f.debug_struct("MemoryBlock")
             .field("env", &self.env.to_string(self))
             .field("symbols", &self.symbols)
             .field("memory", &block)
-            .field("returns", &returns)
-            .field("ops", &ops)
-            .field("envs", &envs)
+            .field("stack", &stack)
             .finish()
     }
 }
@@ -1105,12 +1106,10 @@ impl Clone for LispMemory
         Self{
             env: self.env,
             symbols: self.symbols.clone(),
-            remapped_lambdas: HashMap::new(),
             memory: self.memory.clone(),
             swap_memory: self.swap_memory.clone(),
-            returns: clone_with_capacity(&self.returns),
-            ops: clone_with_capacity(&self.ops),
-            envs: clone_with_capacity(&self.envs)
+            stack: clone_with_capacity(&self.stack),
+            registers: self.registers.clone()
         }
     }
 }
@@ -1133,12 +1132,10 @@ impl LispMemory
         let mut this = Self{
             env: LispValue::new_empty_list(),
             symbols: Symbols::new(),
-            remapped_lambdas: HashMap::new(),
             memory,
             swap_memory,
-            returns: Vec::with_capacity(stack_size),
-            ops: Vec::with_capacity(stack_size),
-            envs: Vec::with_capacity(stack_size)
+            stack: Vec::with_capacity(stack_size),
+            registers: [LispValue::new_empty_list(); Register::COUNT]
         };
 
         this.env = this.create_env("global-env", ()).expect("must have enough memory for default env");
@@ -1149,26 +1146,16 @@ impl LispMemory
     pub fn create_env(&mut self, name: &str, parent: impl Into<LispValue>) -> Result<LispValue, Error>
     {
         let symbol = self.new_symbol(name);
-        self.push_return(symbol);
+        self.push_stack(symbol);
 
-        self.push_return(());
-        self.push_return(parent.into());
-
-        self.cons()?;
+        self.push_stack(());
+        self.push_stack(parent.into());
 
         self.cons()?;
 
-        Ok(self.pop_return())
-    }
+        self.cons()?;
 
-    pub fn lambdas(&self) -> &Lambdas
-    {
-        &self.memory.lambdas
-    }
-
-    pub fn lambdas_mut(&mut self) -> &mut Lambdas
-    {
-        &mut self.memory.lambdas
+        Ok(self.pop_stack())
     }
 
     pub fn no_memory() -> Self
@@ -1210,17 +1197,17 @@ impl LispMemory
             pair.as_list_id().expect("env cdr must be list")
         };
 
-        self.push_return(key);
-        self.push_return(value);
+        self.push_stack(key);
+        self.push_stack(value);
         self.cons()?;
 
         let tail = self.get_car(mappings_id(self));
 
-        self.push_return(tail);
+        self.push_stack(tail);
 
         self.cons()?;
 
-        let new_env = self.pop_return();
+        let new_env = self.pop_stack();
 
         self.set_car(mappings_id(self), new_env);
 
@@ -1299,7 +1286,6 @@ impl LispMemory
     }
 
     fn transfer_to_swap_value(
-        remapped_lambdas: &mut HashMap<u32, u32>,
         memory: &mut MemoryBlock,
         swap_memory: &mut MemoryBlock,
         value: LispValue
@@ -1307,22 +1293,6 @@ impl LispMemory
     {
         match value.tag
         {
-            ValueTag::Procedure =>
-            {
-                let id = unsafe{ value.value.procedure };
-
-                if let Some(new_id) = remapped_lambdas.get(&id)
-                {
-                    return LispValue::new_procedure(*new_id);
-                }
-
-                let lambda = memory.lambdas.get(id);
-
-                let new_id = swap_memory.lambdas.add_shared(lambda.clone());
-                remapped_lambdas.insert(id, new_id);
-
-                LispValue::new_procedure(new_id)
-            },
             ValueTag::List =>
             {
                 let id = unsafe{ value.value.list };
@@ -1387,7 +1357,6 @@ impl LispMemory
                 self.$name.iter_mut().for_each(|value|
                 {
                     *value = Self::transfer_to_swap_value(
-                        &mut self.remapped_lambdas,
                         &mut self.memory,
                         &mut self.swap_memory,
                         *value
@@ -1396,15 +1365,12 @@ impl LispMemory
             }
         }
 
-        transfer_stack!(returns);
-        transfer_stack!(ops);
-        transfer_stack!(envs);
+        transfer_stack!(stack);
     }
 
     pub fn gc(&mut self)
     {
         self.env = Self::transfer_to_swap_value(
-            &mut self.remapped_lambdas,
             &mut self.memory,
             &mut self.swap_memory,
             self.env
@@ -1414,7 +1380,6 @@ impl LispMemory
 
         let transfer_swap = |
             this: &mut Self,
-            lambdas_scan: &mut usize,
             general_scan: &mut usize,
             cars_scan: &mut usize,
             cdrs_scan: &mut usize
@@ -1428,7 +1393,6 @@ impl LispMemory
                     {
                         let value = this.swap_memory.$part[*$scan];
                         this.swap_memory.$part[*$scan] = Self::transfer_to_swap_value(
-                            &mut this.remapped_lambdas,
                             &mut this.memory,
                             &mut this.swap_memory,
                             value
@@ -1445,7 +1409,6 @@ impl LispMemory
             while *cars_scan < this.swap_memory.cars.len()
                 || *cdrs_scan < this.swap_memory.cdrs.len()
                 || *general_scan < this.swap_memory.general.len()
-                || *lambdas_scan < this.swap_memory.lambdas.len()
             {
                 transfer_memory!(cars, cars_scan);
                 transfer_memory!(cdrs, cdrs_scan);
@@ -1466,7 +1429,6 @@ impl LispMemory
                         {
                             let value = this.swap_memory.general[*general_scan];
                             this.swap_memory.general[*general_scan] = Self::transfer_to_swap_value(
-                                &mut this.remapped_lambdas,
                                 &mut this.memory,
                                 &mut this.swap_memory,
                                 LispValue{tag: general_tag, value}
@@ -1481,37 +1443,17 @@ impl LispMemory
                         }
                     }
                 }
-
-                while *lambdas_scan < this.swap_memory.lambdas.len()
-                {
-                    let new_value = {
-                        let value = *this.swap_memory.lambdas[*lambdas_scan].parent_env.borrow();
-
-                        Self::transfer_to_swap_value(
-                            &mut this.remapped_lambdas,
-                            &mut this.memory,
-                            &mut this.swap_memory,
-                            value
-                        )
-                    };
-
-                    *this.swap_memory.lambdas[*lambdas_scan].parent_env.borrow_mut() = new_value;
-
-                    *lambdas_scan += 1;
-                }
             }
 
             debug_assert!(general_remaining == 0);
         };
 
-        let mut lambdas_scan = 0;
         let mut general_scan = 0;
         let mut cars_scan = 0;
         let mut cdrs_scan = 0;
 
         transfer_swap(
             self,
-            &mut lambdas_scan,
             &mut general_scan,
             &mut cars_scan,
             &mut cdrs_scan
@@ -1520,7 +1462,6 @@ impl LispMemory
         mem::swap(&mut self.memory, &mut self.swap_memory);
 
         self.swap_memory.clear();
-        self.remapped_lambdas.clear();
     }
 
     fn stack_push(stack: &mut Vec<LispValue>, value: LispValue)
@@ -1533,53 +1474,28 @@ impl LispMemory
         stack.push(value);
     }
 
-    pub fn save_env(&mut self)
+    pub fn try_pop_arg() -> Option<LispValue>
     {
-        Self::stack_push(&mut self.envs, self.env)
     }
 
-    pub fn restore_env(&mut self)
+    pub fn push_stack(&mut self, value: impl Into<LispValue>)
     {
-        self.env = self.envs.pop().expect("cant pop from empty envs stack");
+        Self::stack_push(&mut self.stack, value.into())
     }
 
-    pub fn push_op(&mut self, op: LispValue)
+    pub fn pop_stack(&mut self) -> LispValue
     {
-        Self::stack_push(&mut self.ops, op)
+        self.try_pop_stack().expect("cant pop from an empty stack, how did this happen?")
     }
 
-    pub fn pop_op(&mut self) -> LispValue
+    pub fn try_pop_stack(&mut self) -> Option<LispValue>
     {
-        self.ops.pop().expect("cant pop from empty ops stack")
+        self.stack.pop()
     }
 
-    pub fn push_return(&mut self, value: impl Into<LispValue>)
+    pub fn stack_len(&self) -> usize
     {
-        Self::stack_push(&mut self.returns, value.into())
-    }
-
-    pub fn pop_return(&mut self) -> LispValue
-    {
-        self.try_pop_return().expect("cant pop from an empty stack, how did this happen?")
-    }
-
-    pub fn try_pop_return(&mut self) -> Option<LispValue>
-    {
-        self.returns.pop()
-    }
-
-    pub fn pop_return_prelast(&mut self) -> LispValue
-    {
-        let value = self.pop_return();
-        let returned = self.pop_return();
-        self.push_return(value);
-
-        returned
-    }
-
-    pub fn returns_len(&self) -> usize
-    {
-        self.returns.len()
+        self.stack.len()
     }
 
     pub fn get_vector_ref(&self, id: u32) -> LispVectorRef
@@ -1668,8 +1584,8 @@ impl LispMemory
     {
         self.cons_inner(|this|
         {
-            let cdr = this.pop_return();
-            let car = this.pop_return();
+            let cdr = this.pop_stack();
+            let car = this.pop_stack();
 
             (car, cdr)
         })
@@ -1679,8 +1595,8 @@ impl LispMemory
     {
         self.cons_inner(|this|
         {
-            let car = this.pop_return();
-            let cdr = this.pop_return();
+            let car = this.pop_stack();
+            let cdr = this.pop_stack();
 
             (car, cdr)
         })
@@ -1697,7 +1613,7 @@ impl LispMemory
 
         let pair = self.memory.cons(car, cdr);
 
-        self.push_return(pair);
+        self.push_stack(pair);
 
         Ok(())
     }
@@ -1714,11 +1630,23 @@ impl LispMemory
         let iter = values.into_iter();
         let len = iter.len();
 
-        iter.for_each(|x| self.push_return(x));
+        iter.for_each(|x| self.push_stack(x));
 
-        self.push_return(());
+        self.push_stack(());
 
         (0..len).try_for_each(|_| self.cons())
+    }
+
+    pub fn new_primitive_value(&mut self, x: PrimitiveType) -> LispValue
+    {
+        match x
+        {
+            PrimitiveType::Value(x) => self.new_symbol(x),
+            PrimitiveType::Char(x) => LispValue::new_char(x),
+            PrimitiveType::Float(x) => LispValue::new_float(x),
+            PrimitiveType::Integer(x) => LispValue::new_integer(x),
+            PrimitiveType::Bool(x) => LispValue::new_bool(x)
+        }
     }
 
     pub fn new_symbol(
@@ -1745,38 +1673,7 @@ impl LispMemory
 
         let id = self.memory.allocate_iter(vec.tag, vec.values.iter());
 
-        self.push_return(LispValue::new_vector(id));
-
-        Ok(())
-    }
-
-    pub fn allocate_expression(
-        &mut self,
-        expression: &Expression
-    ) -> Result<(), Error>
-    {
-        let value = match expression
-        {
-            Expression::Float(x)
-            | Expression::Integer(x)
-            | Expression::Bool(x)
-            | Expression::PrimitiveProcedure(x)
-            | Expression::Char(x)
-            | Expression::Value(x) => *x,
-            Expression::EmptyList => LispValue::new_empty_list(),
-            Expression::List{car, cdr} =>
-            {
-                self.allocate_expression(&car.expression)?;
-                self.allocate_expression(&cdr.expression)?;
-
-                return self.cons();
-            },
-            Expression::Lambda{..} => unreachable!(),
-            Expression::Application{..} => unreachable!(),
-            Expression::Sequence{..} => unreachable!()
-        };
-
-        self.push_return(value);
+        self.push_stack(LispValue::new_vector(id));
 
         Ok(())
     }
@@ -1875,7 +1772,7 @@ impl<M: MemoriableRef> GenericOutputWrapper<M>
 #[derive(Debug, Clone)]
 pub struct LispState
 {
-    exprs: Vec<ExpressionPos>,
+    exprs: Vec<()>,
     memory: LispMemory
 }
 
@@ -1897,7 +1794,7 @@ impl LispState
 
 pub struct StateOutputWrapper
 {
-    exprs: Vec<ExpressionPos>,
+    exprs: Vec<()>,
     value: OutputWrapper
 }
 

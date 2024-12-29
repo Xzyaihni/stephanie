@@ -70,8 +70,8 @@ impl Tile
 
     pub fn as_lisp_value(&self, memory: &mut LispMemory) -> Result<(), lisp::Error>
     {
-        memory.push_return(self.id as i32);
-        memory.push_return(self.rotation as i32);
+        memory.push_stack(self.id as i32);
+        memory.push_stack(self.rotation as i32);
 
         memory.cons()
     }

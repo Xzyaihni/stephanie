@@ -399,7 +399,7 @@ impl Game
 
         primitives.add(
             name,
-            PrimitiveProcedureInfo::new_simple_effect(2, move |_state, memory, mut args|
+            PrimitiveProcedureInfo::new_simple_effect(2, move |memory, mut args|
             {
                 let game_state = game_state.upgrade().unwrap();
                 let mut game_state = game_state.borrow_mut();
@@ -408,7 +408,7 @@ impl Game
                 let entity = Self::pop_entity(&mut args, memory)?;
                 f(entities, entity, memory, args)?;
 
-                memory.push_return(());
+                memory.push_stack(());
 
                 Ok(())
             }));
@@ -443,7 +443,7 @@ impl Game
             }
         }
 
-        memory.push_return(found);
+        memory.push_stack(found);
 
         Ok(())
     }
@@ -472,7 +472,7 @@ impl Game
 
             primitives.add(
                 "entity-collided",
-                PrimitiveProcedureInfo::new_simple(1, move |_state, memory, mut args|
+                PrimitiveProcedureInfo::new_simple(1, move |memory, mut args|
                 {
                     let game_state = game_state.upgrade().unwrap();
                     let game_state = game_state.borrow();
@@ -488,7 +488,7 @@ impl Game
                         Self::push_entity(memory, collided)?;
                     } else
                     {
-                        memory.push_return(());
+                        memory.push_stack(());
                     }
 
                     Ok(())
@@ -500,7 +500,7 @@ impl Game
 
             primitives.add(
                 "all-entities-query",
-                PrimitiveProcedureInfo::new_simple(0, move |_state, memory, _args|
+                PrimitiveProcedureInfo::new_simple(0, move |memory, _args|
                 {
                     let game_state = game_state.upgrade().unwrap();
                     let game_state = game_state.borrow();
@@ -524,7 +524,7 @@ impl Game
                         }
                     });
 
-                    memory.push_return(total - 1);
+                    memory.push_stack(total - 1);
 
                     let mut allocate_lisp_vector = |v: Vec<i32>| -> Result<(), lisp::Error>
                     {
@@ -544,7 +544,7 @@ impl Game
 
         primitives.add(
             "query-entity-next",
-            PrimitiveProcedureInfo::new_simple_effect(1, move |_state, memory, mut args|
+            PrimitiveProcedureInfo::new_simple_effect(1, move |memory, mut args|
             {
                 let query_arg = args.pop(memory);
                 let query = query_arg.as_list()?;
@@ -558,7 +558,7 @@ impl Game
 
                 if index < 0
                 {
-                    memory.push_return(());
+                    memory.push_stack(());
                     return Ok(());
                 }
 
@@ -591,7 +591,7 @@ impl Game
 
             primitives.add(
                 "print-chunk-of",
-                PrimitiveProcedureInfo::new_simple_effect(1..=2, move |_state, memory, mut args|
+                PrimitiveProcedureInfo::new_simple_effect(1..=2, move |memory, mut args|
                 {
                     let game_state = game_state.upgrade().unwrap();
                     let game_state = game_state.borrow();
@@ -606,7 +606,7 @@ impl Game
                         game_state.world.debug_chunk(position.into(), visual)
                     );
 
-                    memory.push_return(());
+                    memory.push_stack(());
 
                     Ok(())
                 }));
@@ -697,7 +697,7 @@ impl Game
 
             primitives.add(
                 "add-item",
-                PrimitiveProcedureInfo::new_simple_effect(2, move |_state, memory, mut args|
+                PrimitiveProcedureInfo::new_simple_effect(2, move |memory, mut args|
                 {
                     let game_state = game_state.upgrade().unwrap();
                     let game_state = game_state.borrow_mut();
@@ -715,7 +715,7 @@ impl Game
 
                     inventory.push(Item{id});
 
-                    memory.push_return(());
+                    memory.push_stack(());
 
                     Ok(())
                 }));
@@ -726,7 +726,7 @@ impl Game
 
             primitives.add(
                 "player-entity",
-                PrimitiveProcedureInfo::new_simple(0, move |_state, memory, _args|
+                PrimitiveProcedureInfo::new_simple(0, move |memory, _args|
                 {
                     Self::push_entity(memory, player_entity)
                 }));
@@ -737,7 +737,7 @@ impl Game
 
             primitives.add(
                 "mouse-entity",
-                PrimitiveProcedureInfo::new_simple(0, move |_state, memory, _args|
+                PrimitiveProcedureInfo::new_simple(0, move |memory, _args|
                 {
                     Self::push_entity(memory, mouse_entity)
                 }));
@@ -748,7 +748,7 @@ impl Game
 
             primitives.add(
                 "children-of",
-                PrimitiveProcedureInfo::new_simple(1, move |_state, memory, mut args|
+                PrimitiveProcedureInfo::new_simple(1, move |memory, mut args|
                 {
                     let game_state = game_state.upgrade().unwrap();
                     let game_state = game_state.borrow();
@@ -756,7 +756,7 @@ impl Game
 
                     let entity = Self::pop_entity(&mut args, memory)?;
 
-                    memory.push_return(());
+                    memory.push_stack(());
                     entities.children_of(entity).try_for_each(|x|
                     {
                         Self::push_entity(memory, x)?;
@@ -772,7 +772,7 @@ impl Game
 
             primitives.add(
                 "position-entity",
-                PrimitiveProcedureInfo::new_simple(1, move |_state, memory, mut args|
+                PrimitiveProcedureInfo::new_simple(1, move |memory, mut args|
                 {
                     let game_state = game_state.upgrade().unwrap();
                     let game_state = game_state.borrow();
@@ -791,7 +791,7 @@ impl Game
 
             primitives.add(
                 "print-component",
-                PrimitiveProcedureInfo::new_simple_effect(2, move |_state, memory, args|
+                PrimitiveProcedureInfo::new_simple_effect(2, move |memory, args|
                 {
                     Self::maybe_print_component(&game_state, memory, args, true)
                 }));
@@ -802,7 +802,7 @@ impl Game
 
             primitives.add(
                 "has-component",
-                PrimitiveProcedureInfo::new_simple(2, move |_state, memory, args|
+                PrimitiveProcedureInfo::new_simple(2, move |memory, args|
                 {
                     Self::maybe_print_component(&game_state, memory, args, false)
                 }));
@@ -813,7 +813,7 @@ impl Game
 
             primitives.add(
                 "print-entity-info",
-                PrimitiveProcedureInfo::new_simple_effect(1, move |_state, memory, mut args|
+                PrimitiveProcedureInfo::new_simple_effect(1, move |memory, mut args|
                 {
                     let game_state = game_state.upgrade().unwrap();
                     let game_state = game_state.borrow();
@@ -823,7 +823,7 @@ impl Game
 
                     eprintln!("entity info: {}", entities.info_ref(entity));
 
-                    memory.push_return(());
+                    memory.push_stack(());
 
                     Ok(())
                 }));
@@ -834,7 +834,7 @@ impl Game
 
             primitives.add(
                 "help",
-                PrimitiveProcedureInfo::new_simple_effect(0, move |_state, memory, _args|
+                PrimitiveProcedureInfo::new_simple_effect(0, move |memory, _args|
                 {
                     let info = info.borrow();
 
@@ -849,7 +849,7 @@ impl Game
                         println!("{name} with {args} arguments");
                     });
 
-                    memory.push_return(());
+                    memory.push_stack(());
 
                     Ok(())
                 }));

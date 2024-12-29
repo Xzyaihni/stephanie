@@ -4,12 +4,22 @@ use std::{
     str::Chars
 };
 
+use super::{WithPosition, WithPositionTrait};
+
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CodePosition
 {
     pub line: usize,
     pub char: usize
+}
+
+impl Default for CodePosition
+{
+    fn default() -> Self
+    {
+        Self::new()
+    }
 }
 
 impl CodePosition
@@ -39,12 +49,7 @@ impl Display for CodePosition
     }
 }
 
-#[derive(Debug)]
-pub struct LexemePos
-{
-    pub position: CodePosition,
-    pub lexeme: Lexeme
-}
+pub type LexemePos = WithPosition<Lexeme>;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Lexeme
@@ -115,10 +120,7 @@ impl<'a> Lexer<'a>
                         continue;
                     }
 
-                    return Some(LexemePos{
-                        position,
-                        lexeme: Lexeme::Value(current)
-                    });
+                    return Some(Lexeme::Value(current).with_position(position));
                 }
 
                 if c == '\''
@@ -127,16 +129,10 @@ impl<'a> Lexer<'a>
                     {
                         self.consume_char();
 
-                        return Some(LexemePos{
-                            position,
-                            lexeme: Lexeme::Quote
-                        });
+                        return Some(Lexeme::Quote.with_position(position));
                     }
 
-                    return Some(LexemePos{
-                        position,
-                        lexeme: Lexeme::Value(current)
-                    });
+                    return Some(Lexeme::Value(current).with_position(position));
                 }
 
                 if (c == '(') || (c == ')')
@@ -156,16 +152,10 @@ impl<'a> Lexer<'a>
                             unreachable!()
                         };
 
-                        return Some(LexemePos{
-                            position,
-                            lexeme
-                        });
+                        return Some(lexeme.with_position(position));
                     }
 
-                    return Some(LexemePos{
-                        position,
-                        lexeme: Lexeme::Value(current)
-                    });
+                    return Some(Lexeme::Value(current).with_position(position));
                 }
 
                 if !current.is_empty() || !c.is_whitespace()
@@ -174,10 +164,7 @@ impl<'a> Lexer<'a>
                     {
                         if last_c.is_whitespace() && !c.is_whitespace()
                         {
-                            return Some(LexemePos{
-                                position,
-                                lexeme: Lexeme::Value(current)
-                            });
+                            return Some(Lexeme::Value(current).with_position(position));
                         } else
                         {
                             current.push(c);
@@ -196,10 +183,7 @@ impl<'a> Lexer<'a>
                     return None;
                 }
 
-                return Some(LexemePos{
-                    position: self.position,
-                    lexeme: Lexeme::Value(current)
-                });
+                return Some(Lexeme::Value(current).with_position(self.position));
             }
         }
     }

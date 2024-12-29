@@ -215,7 +215,7 @@ impl ChunkGenerator
 
         primitives.add(
             "tile",
-            PrimitiveProcedureInfo::new_simple(ArgsCount::Min(1), move |_state, memory, mut args|
+            PrimitiveProcedureInfo::new_simple(ArgsCount::Min(1), move |memory, mut args|
             {
                 let name = args.pop(memory).as_symbol()?;
                 let rotation = args.try_pop(memory);

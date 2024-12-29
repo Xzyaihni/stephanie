@@ -1,6 +1,8 @@
 use std::{
     vec,
     iter,
+    array,
+    iter::{Map, Enumerate},
     rc::Rc,
     cell::RefCell,
     io::{self, Write},
@@ -9,12 +11,15 @@ use std::{
     ops::{RangeInclusive, Add, Sub, Mul, Div, Rem, Deref, Index, IndexMut}
 };
 
+use strum::{EnumCount, FromRepr};
+
 use crate::debug_config::*;
 
 pub use super::{
     transfer_with_capacity,
     Error,
     ErrorPos,
+    SymbolId,
     LispValue,
     LispMemory,
     LispState,
@@ -25,242 +30,27 @@ pub use super::{
     OutputWrapperRef
 };
 
-pub use parser::{CodePosition, WithPosition};
+pub use parser::{PrimitiveType, CodePosition, WithPosition, WithPositionMaybe, WithPositionTrait};
 
-use parser::{Parser, Ast, AstPos, PrimitiveType};
+use parser::{Parser, Ast, AstPos};
 
 mod parser;
 
 
+pub const BEGIN_PRIMITIVE: &'static str = "begin";
+
 // unreadable, great
 pub type OnApply = Rc<
     dyn for<'a> Fn(
-        &mut EvalQueue<'a>,
-        &State,
-        &mut LispMemory,
-        &'a ApplicationArgs,
-        Action
-    ) -> Result<(), ErrorPos>>;
+        &mut LispMemory
+    ) -> Result<(), Error>>;
 
 pub type OnEval = Rc<
     dyn Fn(
-        ExpressionPos,
-        &mut AnalyzeState,
         &mut LispMemory,
+        &Primitives,
         AstPos
-    ) -> Result<ExpressionPos, ErrorPos>>;
-
-pub trait MemoriableRef
-{
-    fn as_memory(&self) -> &LispMemory;
-}
-
-impl MemoriableRef for LispMemory
-{
-    fn as_memory(&self) -> &LispMemory
-    {
-        self
-    }
-}
-
-impl<'a> MemoriableRef for &'a LispMemory
-{
-    fn as_memory(&self) -> &'a LispMemory
-    {
-        self
-    }
-}
-
-pub trait Memoriable
-{
-    fn as_memory_mut(&mut self) -> &mut LispMemory;
-
-    fn push_return(&mut self, value: impl Into<LispValue>);
-}
-
-impl Memoriable for LispMemory
-{
-    fn as_memory_mut(&mut self) -> &mut LispMemory
-    {
-        self
-    }
-
-    fn push_return(&mut self, value: impl Into<LispValue>)
-    {
-        self.push_return(value);
-    }
-}
-
-#[derive(Debug)]
-pub struct MemoryWrapper<'a>
-{
-    memory: &'a mut LispMemory,
-    ignore_return: bool
-}
-
-impl<'a> Memoriable for MemoryWrapper<'a>
-{
-    fn as_memory_mut(&mut self) -> &mut LispMemory
-    {
-        self.memory
-    }
-
-
-    fn push_return(&mut self, value: impl Into<LispValue>)
-    {
-        if self.ignore_return
-        {
-            return;
-        }
-
-        self.memory.push_return(value.into());
-    }
-}
-
-impl MemoryWrapper<'_>
-{
-    pub fn can_return(&self) -> bool
-    {
-        !self.ignore_return
-    }
-}
-
-pub fn simple_apply<const EFFECT: bool>(f: impl Fn(
-    &State,
-    &mut MemoryWrapper,
-    ArgsWrapper
-) -> Result<(), Error> + 'static + Clone) -> OnApply
-{
-    Rc::new(move |
-        eval_queue: &mut EvalQueue,
-        _state: &State,
-        _memory: &mut LispMemory,
-        args: &ApplicationArgs,
-        action: Action
-    |
-    {
-        let position = args.0.position;
-
-        let skip_apply = !EFFECT && action == Action::None;
-
-        let (args, args_wrapper) = args;
-
-        if !skip_apply
-        {
-            let f = f.clone();
-            eval_queue.push(Evaluated{
-                args: EvaluatedArgs{
-                    expr: None,
-                    args: None
-                },
-                run: Box::new(move |EvaluatedArgs{..}, _eval_queue, state, memory|
-                {
-                    let mut memory = MemoryWrapper{memory, ignore_return: action == Action::None};
-
-                    f(state, &mut memory, *args_wrapper).with_position(position)
-                })
-            });
-        }
-
-        args.eval_args(eval_queue, if EFFECT {
-            Action::Return
-        } else
-        {
-            action
-        })
-    })
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct ArgsWrapper
-{
-    count: usize
-}
-
-impl From<usize> for ArgsWrapper
-{
-    fn from(count: usize) -> Self
-    {
-        Self{count}
-    }
-}
-
-impl ArgsWrapper
-{
-    pub fn new() -> Self
-    {
-        Self{count: 0}
-    }
-
-    pub fn pop<'a>(&mut self, memory: &'a mut impl Memoriable) -> OutputWrapperRef<'a>
-    {
-        self.try_pop(memory).expect("pop must be called on argcount > 0")
-    }
-
-    pub fn try_pop<'a>(&mut self, memory: &'a mut impl Memoriable) -> Option<OutputWrapperRef<'a>>
-    {
-        if self.count == 0
-        {
-            return None;
-        }
-
-        self.count -= 1;
-
-        let memory = memory.as_memory_mut();
-        let value = memory.pop_return();
-
-        Some(OutputWrapperRef{memory, value})
-    }
-
-    pub fn push(&mut self, memory: &mut LispMemory, value: LispValue)
-    {
-        self.count += 1;
-
-        memory.push_return(value);
-    }
-
-    pub fn as_list(&mut self, memory: &mut LispMemory) -> Result<LispValue, Error>
-    {
-        let args: Vec<_> = (0..self.count).map(|_| memory.pop_return()).collect();
-
-        args.into_iter().for_each(|value|
-        {
-            memory.push_return(value);
-        });
-
-        memory.push_return(());
-        (0..self.count).try_for_each(|_| memory.cons())?;
-
-        self.count = 0;
-
-        Ok(memory.pop_return())
-    }
-
-    pub fn clear(&mut self, memory: &mut LispMemory)
-    {
-        while !self.is_empty()
-        {
-            self.pop(memory);
-        }
-    }
-
-    pub fn len(&self) -> usize
-    {
-        self.count
-    }
-
-    pub fn is_empty(&self) -> bool
-    {
-        self.count == 0
-    }
-
-    pub fn increment(mut self) -> Self
-    {
-        self.count += 1;
-
-        self
-    }
-}
+    ) -> Result<InterRepr, ErrorPos>>;
 
 #[derive(Debug, Clone, Copy)]
 pub enum ArgsCount
@@ -299,24 +89,15 @@ impl From<usize> for ArgsCount
     }
 }
 
-impl WithPosition for Expression
+pub enum Effect
 {
-    type Output = ExpressionPos;
-
-    fn with_position(self, position: CodePosition) -> Self::Output
-    {
-        ExpressionPos{
-            position,
-            expression: self
-        }
-    }
+    Pure,
+    Impure
 }
 
-impl<T> WithPosition for Result<T, Error>
+impl<T> WithPositionTrait<Result<T, ErrorPos>> for Result<T, Error>
 {
-    type Output = Result<T, ErrorPos>;
-
-    fn with_position(self, position: CodePosition) -> Self::Output
+    fn with_position(self, position: CodePosition) -> Result<T, ErrorPos>
     {
         self.map_err(|error| ErrorPos{position, error})
     }
@@ -327,7 +108,7 @@ pub struct PrimitiveProcedureInfo
 {
     args_count: ArgsCount,
     on_eval: Option<OnEval>,
-    on_apply: Option<OnApply>
+    on_apply: Option<(Effect, OnApply)>
 }
 
 impl PrimitiveProcedureInfo
@@ -346,6 +127,7 @@ impl PrimitiveProcedureInfo
 
     pub fn new(
         args_count: impl Into<ArgsCount>,
+        effect: Effect,
         on_eval: OnEval,
         on_apply: OnApply
     ) -> Self
@@ -353,59 +135,20 @@ impl PrimitiveProcedureInfo
         Self{
             args_count: args_count.into(),
             on_eval: Some(on_eval),
-            on_apply: Some(on_apply)
+            on_apply: Some((effect, on_apply))
         }
     }
 
-    pub fn new_simple_lazy(args_count: impl Into<ArgsCount>, on_apply: OnApply) -> Self
-    {
-        Self{
-            args_count: args_count.into(),
-            on_eval: None,
-            on_apply: Some(on_apply)
-        }
-    }
-
-    pub fn new_simple_effect<F>(
+    pub fn new_simple(
         args_count: impl Into<ArgsCount>,
-        on_apply: F
+        effect: Effect,
+        on_apply: OnApply
     ) -> Self
-    where
-        F: Fn(
-            &State,
-            &mut MemoryWrapper,
-            ArgsWrapper
-        ) -> Result<(), Error> + 'static + Clone
     {
-        let on_apply = simple_apply::<true>(on_apply);
-
         Self{
             args_count: args_count.into(),
             on_eval: None,
-            on_apply: Some(on_apply)
-        }
-    }
-
-    pub fn new_simple<F>(
-        args_count: impl Into<ArgsCount>,
-        on_apply: F
-    ) -> Self
-    where
-        F: Fn(
-            &State,
-            &mut LispMemory,
-            ArgsWrapper
-        ) -> Result<(), Error> + 'static + Clone
-    {
-        let on_apply = simple_apply::<false>(move |state, memory, args|
-        {
-            on_apply(state, memory.memory, args)
-        });
-
-        Self{
-            args_count: args_count.into(),
-            on_eval: None,
-            on_apply: Some(on_apply)
+            on_apply: Some((effect, on_apply))
         }
     }
 }
@@ -415,200 +158,6 @@ impl Debug for PrimitiveProcedureInfo
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
     {
         write!(f, "<procedure with {} args>", &self.args_count)
-    }
-}
-
-#[derive(Debug, Clone)]
-pub enum Either<A, B>
-{
-    Left(A),
-    Right(B)
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct ExprId(usize);
-
-// i dont wanna store the body over and over in the virtual memory
-// but this seems silly, so i dunno >~<
-#[derive(Debug, Clone)]
-pub struct StoredLambda
-{
-    pub parent_env: RefCell<LispValue>,
-    // params r just symbols so theyre not boxed
-    params: Either<LispValue, ArgValues<LispValue>>,
-    body: ExprId
-}
-
-impl StoredLambda
-{
-    pub fn new(
-        memory: &mut LispMemory,
-        params: &ExpressionPos,
-        body: ExprId
-    ) -> Result<Self, ErrorPos>
-    {
-        let params = Self::new_params(params)?;
-
-        Ok(Self{parent_env: RefCell::new(memory.env), params, body})
-    }
-
-    fn new_params(
-        params: &ExpressionPos
-    ) -> Result<Either<LispValue, ArgValues<LispValue>>, ErrorPos>
-    {
-        Ok(match params.as_value()
-        {
-            Ok(x) => Either::Left(x),
-            Err(_) => Either::Right(params.map_list(|arg|
-            {
-                arg.as_value()
-            })?)
-        })
-    }
-
-    fn apply_inner(
-        this: Rc<StoredLambda>,
-        memory: &mut LispMemory,
-        mut args: ArgsWrapper
-    ) -> Result<(), Error>
-    {
-        let params = this.params.clone();
-
-        let parent_env = *this.parent_env.borrow();
-
-        drop(this);
-
-        memory.env = memory.create_env("env", parent_env)?;
-
-        match params
-        {
-            Either::Right(params) =>
-            {
-                if params.len() != args.len()
-                {
-                    return Err(Error::WrongArgumentsCount{
-                        proc: format!("<compound procedure {:?}>", params),
-                        this_invoked: true,
-                        expected: params.len().to_string(),
-                        got: args.len()
-                    });
-                }
-
-                params.iter().try_for_each(|key|
-                {
-                    let value = *args.pop(memory);
-
-                    memory.define_symbol(*key, value)
-                })
-            },
-            Either::Left(name) =>
-            {
-                let lst = args.as_list(memory)?;
-
-                memory.define_symbol(name, lst)
-            }
-        }
-    }
-
-    pub fn apply<'a>(
-        this: Rc<StoredLambda>,
-        eval_queue: &mut EvalQueue<'a>,
-        state: &'a State,
-        memory: &mut LispMemory,
-        args: ArgsWrapper,
-        action: Action
-    ) -> Result<(), ErrorPos>
-    {
-        let body = this.body;
-
-        if let Err(error) = Self::apply_inner(this, memory, args)
-        {
-            return Err(ErrorPos{position: state.get_expr(body).position, error});
-        }
-
-        state.get_expr(body).eval(eval_queue, memory, action)
-    }
-}
-
-#[derive(Debug)]
-pub struct Lambdas
-{
-    lambdas: Vec<Rc<StoredLambda>>
-}
-
-impl Index<usize> for Lambdas
-{
-    type Output = Rc<StoredLambda>;
-
-    fn index(&self, index: usize) -> &Self::Output
-    {
-        &self.lambdas[index]
-    }
-}
-
-impl IndexMut<usize> for Lambdas
-{
-    fn index_mut(&mut self, index: usize) -> &mut Self::Output
-    {
-        &mut self.lambdas[index]
-    }
-}
-
-impl Clone for Lambdas
-{
-    fn clone(&self) -> Self
-    {
-        // deep copy the lambdas
-        Self{
-            lambdas: transfer_with_capacity(&self.lambdas, |x|
-            {
-                let x: &StoredLambda = x;
-
-                Rc::new(x.clone())
-            })
-        }
-    }
-}
-
-impl Lambdas
-{
-    pub fn new(capacity: usize) -> Self
-    {
-        Self{lambdas: Vec::with_capacity(capacity)}
-    }
-
-    pub fn len(&self) -> usize
-    {
-        self.lambdas.len()
-    }
-
-    pub fn add(&mut self, lambda: StoredLambda) -> u32
-    {
-        self.add_shared(Rc::new(lambda))
-    }
-
-    pub fn add_shared(&mut self, lambda: Rc<StoredLambda>) -> u32
-    {
-        let id = self.lambdas.len() as u32;
-
-        self.lambdas.push(lambda);
-
-        id
-    }
-
-    pub fn iter(&self) -> impl Iterator<Item=&Rc<StoredLambda>>
-    {
-        self.lambdas.iter()
-    }
-
-    pub fn get(&self, index: u32) -> Rc<StoredLambda>
-    {
-        self.lambdas[index as usize].clone()
-    }
-
-    pub fn clear(&mut self)
-    {
-        self.lambdas.clear();
     }
 }
 
@@ -627,7 +176,7 @@ impl Primitives
         {
             ($f:expr) =>
             {
-                |_state, memory, args|
+                |memory, args|
                 {
                     Self::do_cond(memory, args, |a, b| Some($f(a, b)), |a, b| Some($f(a, b)))
                 }
@@ -638,7 +187,7 @@ impl Primitives
         {
             ($float_op:ident, $int_op:ident) =>
             {
-                |_state, memory, args|
+                |memory, args|
                 {
                     Self::do_op(memory, args, |a, b|
                     {
@@ -655,7 +204,7 @@ impl Primitives
         {
             ($op:ident) =>
             {
-                |_state, memory, args|
+                |memory, args|
                 {
                     Self::do_op(memory, args, |a, b|
                     {
@@ -672,7 +221,7 @@ impl Primitives
         {
             ($tag:expr) =>
             {
-                |_state, memory, mut args|
+                |memory, mut args|
                 {
                     let arg = args.pop(memory);
 
@@ -686,6 +235,13 @@ impl Primitives
         }
 
         let (indices, primitives): (HashMap<_, _>, Vec<_>) = [
+            ("+", PrimitiveProcedureInfo::new_simple(ArgsCount::Min(2), Effect::Pure, do_op!(add, checked_add))),
+            (BEGIN_PRIMITIVE,
+                PrimitiveProcedureInfo::new_eval(ArgsCount::Min(1), Rc::new(|memory, primitives, args|
+                {
+                    Ok(InterRepr::Sequence(InterReprPos::parse_args(memory, primitives, args)?))
+                })))
+        ]/*[
             ("display",
                 PrimitiveProcedureInfo::new_simple_effect(1, move |_state, memory, mut args|
                 {
@@ -959,11 +515,6 @@ impl Primitives
                         }
                     })
                 }))),
-            ("begin",
-                PrimitiveProcedureInfo::new_eval(ArgsCount::Min(1), Rc::new(|_op, state, memory, args|
-                {
-                    ExpressionPos::analyze_sequence(state, memory, args)
-                }))),
             ("lambda",
                 PrimitiveProcedureInfo::new_eval(2, Rc::new(|_op, state, memory, args|
                 {
@@ -1005,7 +556,7 @@ impl Primitives
                             AstPos::cons(
                                 AstPos{
                                     position: body.position,
-                                    ast: Ast::Value("begin".to_owned())
+                                    ast: Ast::Value(BEGIN_PRIMITIVE.to_owned())
                                 },
                                 body
                             )
@@ -1168,7 +719,7 @@ impl Primitives
 
                     Ok(())
                 }))
-        ].into_iter().enumerate().map(|(index, (k, v))|
+        ]*/.into_iter().enumerate().map(|(index, (k, v))|
         {
             ((k.to_owned(), index as u32), v)
         }).unzip();
@@ -1230,8 +781,6 @@ impl Primitives
         FI: Fn(i32, i32) -> Option<LispValue>,
         FF: Fn(f32, f32) -> Option<LispValue>
     {
-        // i cant be bothered with implicit type coercions im just gonna error
-
         macro_rules! number_error
         {
             ($a:expr, $b:expr) =>
@@ -1282,7 +831,6 @@ impl Primitives
 
     fn do_cond<FI, FF>(
         memory: &mut LispMemory,
-        mut args: ArgsWrapper,
         op_integer: FI,
         op_float: FF
     ) -> Result<(), Error>
@@ -1301,20 +849,19 @@ impl Primitives
         {
             args.clear(memory);
 
-            memory.push_return(output);
+            memory.push_stack(output);
 
             Ok(())
         } else
         {
             args.push(memory, second);
 
-            Self::do_cond(memory, args, op_integer, op_float)
+            Self::do_cond(memory, op_integer, op_float)
         }
     }
 
     fn do_op<FI, FF>(
         memory: &mut LispMemory,
-        mut args: ArgsWrapper,
         op_integer: FI,
         op_float: FF
     ) -> Result<(), Error>
@@ -1329,946 +876,577 @@ impl Primitives
 
         if args.is_empty()
         {
-            memory.push_return(output);
+            memory.push_stack(output);
 
             Ok(())
         } else
         {
             args.push(memory, output);
 
-            Self::do_op(memory, args, op_integer, op_float)
+            Self::do_op(memory, op_integer, op_float)
         }
     }
 }
 
-pub type EvaluatedFunc<'a> = Box<dyn for<'b> FnOnce(
-    EvaluatedArgs<'b>,
-    &mut EvalQueue<'b>,
-    &'b State,
-    &mut LispMemory
-) -> Result<(), ErrorPos> + 'a>;
+#[derive(Debug, Clone, Copy)]
+enum Command
+{
+    Push(Register),
+    Pop(Register),
+    PutValue{value: LispValue, register: Register},
+    Lookup{id: SymbolId, register: Register},
+    PutReturn(Label),
+    Jump(Label),
+    Call,
+    Label(Label)
+}
+
+impl Command
+{
+    pub fn modifies_register(self) -> Option<Register>
+    {
+        match self
+        {
+            Self::PutValue{register, ..} => Some(register),
+            Self::Lookup{register, ..} => Some(register),
+            _ => None
+        }
+    }
+
+    pub fn is_label(&self) -> bool
+    {
+        if let Self::Label(_) = self
+        {
+            true
+        } else
+        {
+            false
+        }
+    }
+
+    pub fn into_raw(self, labels: &HashMap<Label, usize>) -> CommandRaw
+    {
+        match self
+        {
+            Self::Push(register) => CommandRaw::Push(register),
+            Self::Pop(register) => CommandRaw::Pop(register),
+            Self::PutValue{value, register} => CommandRaw::PutValue{value, register},
+            Self::Lookup{id, register} => CommandRaw::Lookup{id, register},
+            Self::PutReturn(label) =>
+            {
+                CommandRaw::PutValue{
+                    value: LispValue::new_address(*labels.get(&label).unwrap() as u32),
+                    register: Register::Return
+                }
+            },
+            Self::Jump(label) => CommandRaw::Jump(*labels.get(&label).unwrap()),
+            Self::Call => CommandRaw::Call,
+            Self::Label(_) => unreachable!("labels have no raw equivalent")
+        }
+    }
+}
+
+type CommandPos = WithPositionMaybe<Command>;
 
 #[derive(Debug)]
-pub struct EvaluatedArgs<'a>
+struct CompiledPart
 {
-    pub expr: Option<&'a ExpressionPos>,
-    pub args: Option<&'a ApplicationArgs>
+    modifies: RegisterStates,
+    requires: RegisterStates,
+    commands: Vec<CommandPos>
 }
 
-// trying to do this with a do_next (monad?) and functional style cost me like 5 days or something :S
-pub struct Evaluated<'a>
+impl CompiledPart
 {
-    args: EvaluatedArgs<'a>,
-    run: EvaluatedFunc<'a>
-}
-
-impl<'a> Debug for Evaluated<'a>
-{
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
+    pub fn new() -> Self
     {
-        f.debug_struct("Evaluated")
-            .field("args", &self.args)
-            .finish()
+        Self::from_commands(Vec::new())
     }
-}
 
-#[derive(Debug)]
-pub struct EvalQueue<'a>(Vec<Evaluated<'a>>);
-
-impl<'a> EvalQueue<'a>
-{
-    pub fn push(&mut self, value: Evaluated<'a>)
+    pub fn from_commands(commands: Vec<CommandPos>) -> Self
     {
-        self.0.push(value);
-    }
-}
+        let mut modifies = RegisterStates::default();
+        commands.iter().for_each(|CommandPos{value, ..}|
+        {
+            if let Some(register) = value.modifies_register()
+            {
+                modifies[register] = true;
+            }
+        });
 
-#[derive(Debug, Clone)]
-pub struct AnalyzeState
-{
-    pub primitives: Rc<Primitives>,
-    pub exprs: Vec<ExpressionPos>
-}
-
-impl AnalyzeState
-{
-    pub fn push_expr(&mut self, expr: ExpressionPos) -> ExprId
-    {
-        let id = self.exprs.len();
-        self.exprs.push(expr);
-
-        ExprId(id)
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct State
-{
-    pub primitives: Rc<Primitives>,
-    pub exprs: Rc<Vec<ExpressionPos>>
-}
-
-impl From<AnalyzeState> for State
-{
-    fn from(state: AnalyzeState) -> Self
-    {
         Self{
-            primitives: state.primitives,
-            exprs: Rc::new(state.exprs)
+            modifies,
+            requires: RegisterStates::default(),
+            commands
+        }
+    }
+
+    pub fn with_requires(mut self, requires: RegisterStates) -> Self
+    {
+        self.requires = self.requires.union(requires);
+
+        self
+    }
+
+    pub fn combine(self, other: Self) -> Self
+    {
+        let save = other.requires.intersection(self.modifies);
+
+        let save_registers = save.into_iter().filter(|(_, x)| *x);
+
+        let commands = save_registers.clone().map(|(register, _)| -> CommandPos
+            {
+                Command::Push(register).into()
+            })
+            .chain(self.commands.into_iter())
+            .chain(save_registers.rev().map(|(register, _)| -> CommandPos
+            {
+                Command::Pop(register).into()
+            }))
+            .chain(other.commands)
+            .collect();
+
+        Self{
+            modifies: self.modifies.union(other.modifies),
+            requires: self.requires,
+            commands
+        }
+    }
+
+    pub fn simple_add(mut self, commands: impl IntoIterator<Item=CommandPos>) -> Self
+    {
+        self.commands.extend(commands.into_iter());
+
+        self
+    }
+
+    pub fn into_program(mut self, primitives: Rc<Primitives>) -> CompiledProgram
+    {
+        self.commands.push(Command::Label(Label::Halt).into());
+
+        let labels = {
+            let mut filtered_labels = 0;
+
+            self.commands.iter().enumerate().filter_map(|(index, WithPositionMaybe{value: command, ..})|
+            {
+                if let Command::Label(label) = command
+                {
+                    let address = index - filtered_labels;
+                    filtered_labels += 1;
+
+                    Some((*label, address))
+                } else
+                {
+                    None
+                }
+            }).collect::<HashMap<Label, usize>>()
+        };
+
+        let (positions, commands) = self.commands.into_iter().filter(|command|
+        {
+            !command.is_label()
+        }).map(|WithPositionMaybe{position, value: command}|
+        {
+            (position, command.into_raw(&labels))
+        }).unzip();
+
+        CompiledProgram{
+            primitives,
+            positions,
+            commands
         }
     }
 }
 
-impl State
+type InterReprPos = WithPosition<InterRepr>;
+
+#[derive(Debug)]
+enum InterRepr
 {
-    pub fn get_expr(&self, id: ExprId) -> &ExpressionPos
+    Apply{op: Box<InterReprPos>, args: Vec<InterReprPos>},
+    Sequence(Vec<InterReprPos>),
+    Lookup(SymbolId),
+    Value(LispValue)
+}
+
+impl InterReprPos
+{
+    pub fn parse(
+        memory: &mut LispMemory,
+        primitives: &Primitives,
+        ast: AstPos
+    ) -> Result<Self, ErrorPos>
     {
-        &self.exprs[id.0]
+        match ast.value
+        {
+            Ast::Value(x) =>
+            {
+                let p: Result<_, ErrorPos> = Ast::parse_primitive(&x).with_position(ast.position);
+                let value = memory.new_primitive_value(p?);
+
+                Ok(if let Ok(id) = value.as_symbol_id()
+                {
+                    if let Some(primitive_id) = primitives.index_by_name(&memory.get_symbol(id))
+                    {
+                        InterRepr::Value(LispValue::new_primitive_procedure(primitive_id))
+                    } else
+                    {
+                        InterRepr::Lookup(id)
+                    }
+                } else
+                {
+                    InterRepr::Value(value)
+                }.with_position(ast.position))
+            },
+            Ast::EmptyList => Ok(InterRepr::Value(LispValue::new_empty_list()).with_position(ast.position)),
+            Ast::List{car, cdr} =>
+            {
+                let op = Self::parse(memory, primitives, *car)?;
+
+                if let InterRepr::Value(value) = op.value
+                {
+                    if let Ok(id) = value.as_primitive_procedure()
+                    {
+                        if let Some(on_eval) = &primitives.get(id).on_eval
+                        {
+                            return on_eval(memory, primitives, *cdr).map(|x| x.with_position(ast.position));
+                        }
+                    }
+                }
+
+                let args = Self::parse_args(memory, primitives, *cdr)?;
+
+                Ok(InterRepr::Apply{op: Box::new(op), args}.with_position(ast.position))
+            }
+        }
+    }
+
+    pub fn parse_args(
+        memory: &mut LispMemory,
+        primitives: &Primitives,
+        ast: AstPos
+    ) -> Result<Vec<Self>, ErrorPos>
+    {
+        match ast.value
+        {
+            Ast::Value(_) => unreachable!("malformed ast"),
+            Ast::EmptyList => Ok(Vec::new()),
+            Ast::List{car, cdr} =>
+            {
+                let tail = Self::parse_args(memory, primitives, *cdr)?;
+
+                Ok(iter::once(Self::parse(memory, primitives, *car)?).chain(tail).collect())
+            }
+        }
+    }
+
+    pub fn compile(
+        self,
+        target: PutValue,
+        proceed: Proceed
+    ) -> CompiledPart
+    {
+        match self.value
+        {
+            InterRepr::Value(value) =>
+            {
+                if let Some(register) = target
+                {
+                    CompiledPart::from_commands(vec![Command::PutValue{value, register}.with_position(self.position)])
+                } else
+                {
+                    CompiledPart::new()
+                }.combine(proceed.into_compiled())
+            },
+            InterRepr::Lookup(id) =>
+            {
+                if let Some(register) = target
+                {
+                    CompiledPart::from_commands(vec![Command::Lookup{id, register}.with_position(self.position)])
+                } else
+                {
+                    CompiledPart::new()
+                }.combine(proceed.into_compiled())
+            },
+            InterRepr::Sequence(values) =>
+            {
+                let len = values.len();
+                values.into_iter().rev().enumerate().map(|(i, x)|
+                {
+                    if (i + 1) == len
+                    {
+                        x.compile(target, proceed)
+                    } else
+                    {
+                        x.compile(None, Proceed::Next)
+                    }
+                }).reduce(CompiledPart::combine).unwrap_or_else(CompiledPart::new)
+            },
+            InterRepr::Apply{op, args} =>
+            {
+                let empty_list = CompiledPart::from_commands(vec![
+                    Command::PutValue{value: LispValue::new_empty_list(), register: Register::Argument}.into()
+                ]);
+
+                let args_part = args.into_iter().rev().map(|x|
+                {
+                    x.compile(Some(Register::Argument), Proceed::Next)
+                }).fold(empty_list, |acc, x|
+                {
+                    let save = CompiledPart::from_commands(vec![Command::Push(Register::Argument).into()]);
+                    acc.combine(save).combine(x)
+                });
+
+                let setup = op.compile(Some(Register::Operator), Proceed::Next).combine(args_part);
+
+                let return_command = match proceed
+                {
+                    Proceed::Jump(label) => Command::PutReturn(label),
+                    Proceed::Next => Command::PutReturn(todo!()),
+                    Proceed::Return => Command::Pop(Register::Return)
+                };
+
+                let call_part = CompiledPart::from_commands(iter::once(return_command.into())
+                    .chain(iter::once(Command::Call.into()))
+                    .collect());
+
+                setup.combine(call_part).with_requires(RegisterStates::all())
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumCount, FromRepr)]
+pub enum Register
+{
+    Return,
+    Operator,
+    Argument,
+    Value
+}
+
+pub type PutValue = Option<Register>;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Label
+{
+    Halt
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Proceed
+{
+    Next,
+    Jump(Label),
+    Return
+}
+
+impl Proceed
+{
+    fn into_compiled(self) -> CompiledPart
+    {
+        match self
+        {
+            Self::Next => CompiledPart::new(),
+            Self::Jump(label) => CompiledPart::from_commands(vec![Command::Jump(label).into()]),
+            Self::Return => todo!()
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+enum CommandRaw
+{
+    Push(Register),
+    Pop(Register),
+    PutValue{value: LispValue, register: Register},
+    Lookup{id: SymbolId, register: Register},
+    Jump(usize),
+    Call
+}
+
+#[derive(Debug, Clone, Copy)]
+struct RegisterStates([bool; Register::COUNT]);
+
+impl Index<Register> for RegisterStates
+{
+    type Output = bool;
+
+    fn index(&self, register: Register) -> &Self::Output
+    {
+        &self.0[register as usize]
+    }
+}
+
+impl IndexMut<Register> for RegisterStates
+{
+    fn index_mut(&mut self, register: Register) -> &mut Self::Output
+    {
+        &mut self.0[register as usize]
+    }
+}
+
+impl Default for RegisterStates
+{
+    fn default() -> Self
+    {
+        Self::none()
+    }
+}
+
+impl RegisterStates
+{
+    pub fn all() -> Self
+    {
+        Self([true; Register::COUNT])
+    }
+
+    pub fn none() -> Self
+    {
+        Self([false; Register::COUNT])
+    }
+
+    pub fn set(mut self, register: Register) -> Self
+    {
+        self[register] = true;
+
+        self
+    }
+
+    pub fn into_iter(self) -> impl DoubleEndedIterator<Item=(Register, bool)> + Clone
+    {
+        self.0.into_iter().enumerate().map(|(index, x)| (Register::from_repr(index).unwrap(), x))
+    }
+
+    pub fn zip_map(self, other: Self, f: impl FnMut((bool, bool)) -> bool) -> Self
+    {
+        Self(self.0.into_iter().zip(other.0).map(f).collect::<Vec<_>>().try_into().unwrap())
+    }
+
+    pub fn intersection(self, other: Self) -> Self
+    {
+        self.zip_map(other, |(a, b)|
+        {
+            a && b
+        })
+    }
+
+    pub fn union(self, other: Self) -> Self
+    {
+        self.zip_map(other, |(a, b)|
+        {
+            a || b
+        })
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct CompiledProgram
+{
+    primitives: Rc<Primitives>,
+    positions: Vec<Option<CodePosition>>,
+    commands: Vec<CommandRaw>
+}
+
+impl CompiledProgram
+{
+    fn run(&self, memory: &mut LispMemory) -> Result<(), ErrorPos>
+    {
+        let mut i = 0;
+        while i < self.commands.len()
+        {
+            match self.commands[i]
+            {
+                CommandRaw::Push(register) =>
+                {
+                    memory.push_stack(memory.registers[register as usize]);
+                },
+                CommandRaw::Pop(register) =>
+                {
+                    memory.registers[register as usize] = memory.pop_stack();
+                },
+                CommandRaw::Lookup{id, register} =>
+                {
+                    if let Some(value) = memory.lookup_symbol(id)
+                    {
+                        memory.registers[register as usize] = value;
+                    } else
+                    {
+                        return Err(ErrorPos{
+                            position: self.positions[i].expect("lookup must have a codepos"),
+                            error: Error::UndefinedVariable(memory.get_symbol(id))
+                        });
+                    }
+                },
+                CommandRaw::PutValue{value, register} => memory.registers[register as usize] = value,
+                CommandRaw::Jump(destination) =>
+                {
+                    i = destination;
+                },
+                CommandRaw::Call =>
+                {
+                    let op = memory.registers[Register::Operator as usize];
+
+                    if let Ok(proc) = op.as_primitive_procedure()
+                    {
+                        (self.primitives.get(proc).on_apply.as_ref().unwrap())(memory);
+                    } else if let Ok(proc) = op.as_procedure()
+                    {
+                        todo!()
+                    } else
+                    {
+                        return Err(ErrorPos{
+                            position: self.positions[i].expect("function call must have a codepos"),
+                            error: Error::CallNonProcedure(op.tag)
+                        });
+                    }
+                }
+            }
+
+            i += 1;
+        }
+
+        Ok(())
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct Program
 {
-    state: State,
-    expression: ExpressionPos,
-    memory: LispMemory
+    memory: LispMemory,
+    code: CompiledProgram
 }
 
 impl Program
 {
     pub fn parse(
         primitives: Rc<Primitives>,
-        state: LispState,
+        mut state: LispState,
         code: &str
     ) -> Result<Self, ErrorPos>
     {
         let ast = Parser::parse(code)?;
 
-        let LispState{exprs, mut memory} = state;
+        let ir = InterReprPos::parse(&mut state.memory, &primitives, ast)?;
+        let compiled = ir.compile(Some(Register::Value), Proceed::Jump(Label::Halt));
+        let code = compiled.into_program(primitives);
 
-        let mut state = AnalyzeState{
-            primitives,
-            exprs
-        };
-
-        let expression = ExpressionPos::analyze_sequence(&mut state, &mut memory, ast)?;
-
-        Ok(Self{state: state.into(), expression, memory})
+        Ok(Self{memory: state.memory, code})
     }
 
     pub fn eval(&self) -> Result<StateOutputWrapper, ErrorPos>
     {
         let mut memory = self.memory.clone();
 
-        {
-            let mut eval_queue = EvalQueue(Vec::new());
-            self.expression.eval(
-                &mut eval_queue,
-                &mut memory,
-                Action::Return
-            )?;
+        self.code.run(&mut memory)?;
 
-            while let Some(Evaluated{args, run}) = eval_queue.0.pop()
-            {
-                run(args, &mut eval_queue, &self.state, &mut memory)?;
-            }
-        }
-
-        let value = memory.pop_return();
-
-        let exprs: &Vec<ExpressionPos> = &self.state.exprs;
-        Ok(StateOutputWrapper{exprs: exprs.clone(), value: OutputWrapper{memory, value}})
+        /*let exprs: &Vec<ExpressionPos> = &self.state.exprs;
+        Ok(StateOutputWrapper{exprs: exprs.clone(), value: OutputWrapper{memory, value}})*/
+        todo!()
     }
 
     pub fn memory_mut(&mut self) -> &mut LispMemory
     {
         &mut self.memory
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct ArgValues<T=LispValue>
-{
-    position: CodePosition,
-    args: Vec<T>
-}
-
-impl<T> ArgValues<T>
-{
-    pub fn new(position: CodePosition) -> Self
-    {
-        Self{position, args: Vec::new()}
-    }
-
-    pub fn position(&self) -> CodePosition
-    {
-        self.position
-    }
-
-    pub fn is_empty(&self) -> bool
-    {
-        self.args.is_empty()
-    }
-
-    pub fn len(&self) -> usize
-    {
-        self.args.len()
-    }
-
-    pub fn iter(&self) -> impl Iterator<Item=&T>
-    {
-        self.args.iter().rev()
-    }
-
-    #[allow(dead_code)]
-    pub fn iter_mut(&mut self) -> impl Iterator<Item=&mut T>
-    {
-        self.args.iter_mut().rev()
-    }
-
-    pub fn pop(&mut self) -> Result<T, ErrorPos>
-    {
-        let top = self.args.pop();
-
-        top.ok_or(ErrorPos{position: self.position, error: Error::ExpectedArg})
-    }
-
-    pub fn push(&mut self, value: T)
-    {
-        self.args.push(value);
-    }
-}
-
-impl<T> IntoIterator for ArgValues<T>
-{
-    type Item = T;
-    type IntoIter = iter::Rev<vec::IntoIter<T>>;
-
-    fn into_iter(self) -> Self::IntoIter
-    {
-        self.args.into_iter().rev()
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Action
-{
-    None,
-    Return
-}
-
-#[derive(Clone)]
-pub struct ExpressionPos
-{
-    pub position: CodePosition,
-    pub expression: Expression
-}
-
-impl Debug for ExpressionPos
-{
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
-    {
-        write!(f, "{} {:#?}", self.position, self.expression)
-    }
-}
-
-impl ExpressionPos
-{
-    pub fn cons(car: Self, cdr: Self) -> Self
-    {
-        Self{
-            position: car.position,
-            expression: Expression::List{car: Box::new(car), cdr: Box::new(cdr)}
-        }
-    }
-
-    pub fn as_value(&self) -> Result<LispValue, ErrorPos>
-    {
-        match &self.expression
-        {
-            Expression::Value(x) => Ok(*x),
-            _ => Err(ErrorPos{position: self.position, error: Error::ExpectedOp})
-        }
-    }
-
-    pub fn eval<'a>(
-        &'a self,
-        eval_queue: &mut EvalQueue<'a>,
-        memory: &mut LispMemory,
-        action: Action
-    ) -> Result<(), ErrorPos>
-    {
-        let value = match &self.expression
-        {
-            Expression::Integer(x)
-            | Expression::Float(x)
-            | Expression::Bool(x)
-            | Expression::PrimitiveProcedure(x) => *x,
-            | Expression::Char(x) => *x,
-            Expression::Value(s) =>
-            {
-                memory.lookup_symbol(s.as_symbol_id().expect("value must be a symbol"))
-                    .ok_or_else(||
-                    {
-                        Error::UndefinedVariable(s.as_symbol(memory).expect("value must be a symbol"))
-                    })
-                    .with_position(self.position)?
-            },
-            Expression::Lambda{body, params} =>
-            {
-                let lambda = StoredLambda::new(memory, params, *body)?;
-
-                let id = memory.lambdas_mut().add(lambda);
-
-                LispValue::new_procedure(id)
-            },
-            Expression::Application{op, args} =>
-            {
-                return op.apply(eval_queue, args, action);
-            },
-            Expression::Sequence{first, after} =>
-            {
-                eval_queue.push(Evaluated{
-                    args: EvaluatedArgs{
-                        expr: Some(after),
-                        args: None
-                    },
-                    run: Box::new(move |EvaluatedArgs{expr: after, ..}, eval_queue, _state, memory|
-                    {
-                        memory.restore_env();
-
-                        after.unwrap().eval(eval_queue, memory, action)
-                    })
-                });
-
-                eval_queue.push(Evaluated{
-                    args: EvaluatedArgs{
-                        expr: Some(first),
-                        args: None
-                    },
-                    run: Box::new(move |EvaluatedArgs{expr: first, ..}, eval_queue, _state, memory|
-                    {
-                        memory.save_env();
-
-                        first.unwrap().eval(eval_queue, memory, Action::None)
-                    })
-                });
-
-                return Ok(());
-            },
-            _ => return Err(ErrorPos{position: self.position, error: Error::ApplyNonApplication})
-        };
-
-        if action == Action::Return
-        {
-            memory.push_return(value);
-        }
-
-        Ok(())
-    }
-
-    pub fn apply<'a>(
-        &'a self,
-        eval_queue: &mut EvalQueue<'a>,
-        args: &'a ApplicationArgs,
-        action: Action
-    ) -> Result<(), ErrorPos>
-    {
-        let position = self.position;
-
-        eval_queue.push(Evaluated{
-            args: EvaluatedArgs{
-                expr: None,
-                args: Some(args)
-            },
-            run: Box::new(move |EvaluatedArgs{args, ..}, eval_queue, state, memory|
-            {
-                let args = args.unwrap();
-                memory.restore_env();
-
-                let op = memory.pop_return();
-
-                if let Ok(op) = op.as_primitive_procedure()
-                {
-                    let primitive = state.primitives.get(op);
-
-                    let got = args.1.len();
-                    let correct = match primitive.args_count
-                    {
-                        ArgsCount::Some(count) => got == count,
-                        ArgsCount::Between{start, end_inclusive} =>
-                        {
-                            (start..=end_inclusive).contains(&got)
-                        },
-                        ArgsCount::Min(expected) =>
-                        {
-                            got >= expected
-                        }
-                    };
-
-                    if !correct
-                    {
-                        let error = Error::WrongArgumentsCount{
-                            proc: state.primitives.name_by_index(op).to_owned(),
-                            this_invoked: true,
-                            expected: primitive.args_count.to_string(),
-                            got
-                        };
-
-                        return Err(ErrorPos{
-                            position: args.0.position,
-                            error
-                        });
-                    }
-
-                    if DebugConfig::is_enabled(DebugTool::Lisp)
-                    {
-                        eprintln!(
-                            "({}) called primitive: {}",
-                            position,
-                            state.primitives.name_by_index(op)
-                        );
-                    }
-
-                    (primitive.on_apply.as_ref().expect("must have apply"))(
-                        eval_queue,
-                        state,
-                        memory,
-                        args,
-                        action
-                    )
-                } else
-                {
-                    let args_wrapper = args.1;
-                    eval_queue.push(Evaluated{
-                        args: EvaluatedArgs{
-                            expr: None,
-                            args: None
-                        },
-                        run: Box::new(move |EvaluatedArgs{..}, eval_queue, state, memory|
-                        {
-                            let op = memory.pop_op();
-                            let op = op.as_procedure().with_position(position)?;
-
-                            let lambda = memory.lambdas().get(op);
-                            StoredLambda::apply(
-                                lambda,
-                                eval_queue,
-                                state,
-                                memory,
-                                args_wrapper,
-                                action
-                            ).map_err(move |mut err|
-                            {
-                                #[allow(clippy::single_match)]
-                                match &mut err.error
-                                {
-                                    Error::WrongArgumentsCount{this_invoked, ..} =>
-                                    {
-                                        if *this_invoked
-                                        {
-                                            err.position = position;
-
-                                            *this_invoked = false;
-                                        }
-                                    },
-                                    _ => ()
-                                }
-
-                                err
-                            })
-                        })
-                    });
-
-                    eval_queue.push(Evaluated{
-                        args: EvaluatedArgs{
-                            expr: None,
-                            args: Some(args)
-                        },
-                        run: Box::new(move |EvaluatedArgs{args, ..}, eval_queue, _state, memory|
-                        {
-                            memory.push_op(op);
-
-                            args.unwrap().0.eval_args(eval_queue, Action::Return)
-                        })
-                    });
-
-                    Ok(())
-                }
-            })
-        });
-
-        eval_queue.push(Evaluated{
-            args: EvaluatedArgs{
-                expr: Some(self),
-                args: None
-            },
-            run: Box::new(move |EvaluatedArgs{expr, ..}, eval_queue, _state, memory|
-            {
-                memory.save_env();
-
-                expr.unwrap().eval(eval_queue, memory, Action::Return)
-            })
-        });
-
-
-        Ok(())
-    }
-
-    pub fn map_list<T, F, E>(&self, mut f: F) -> Result<ArgValues<T>, E>
-    where
-        F: FnMut(&Self) -> Result<T, E>
-    {
-        if self.is_null()
-        {
-            // i got it backwards, whatever who CARES
-            Ok(ArgValues::new(self.position))
-        } else
-        {
-            let car = f(self.car())?;
-            let cdr = self.cdr();
-
-            let mut args = cdr.map_list(f)?;
-
-            args.push(car);
-
-            Ok(args)
-        }
-    }
-
-    pub fn eval_args<'a>(
-        &'a self,
-        eval_queue: &mut EvalQueue<'a>,
-        action: Action
-    ) -> Result<(), ErrorPos>
-    {
-        self.eval_args_inner(eval_queue, action, false)
-    }
-
-    fn eval_args_inner<'a>(
-        &'a self,
-        eval_queue: &mut EvalQueue<'a>,
-        action: Action,
-        save_env: bool
-    ) -> Result<(), ErrorPos>
-    {
-        if self.is_null()
-        {
-            Ok(())
-        } else
-        {
-            let car = self.car();
-            let cdr = self.cdr();
-
-            if save_env
-            {
-                eval_queue.push(Evaluated{
-                    args: EvaluatedArgs{
-                        expr: None,
-                        args: None
-                    },
-                    run: Box::new(move |EvaluatedArgs{..}, _eval_queue, _state, memory|
-                    {
-                        memory.restore_env();
-
-                        Ok(())
-                    })
-                });
-            }
-
-            eval_queue.push(Evaluated{
-                args: EvaluatedArgs{
-                    expr: Some(car),
-                    args: None
-                },
-                run: Box::new(move |EvaluatedArgs{expr: car, ..}, eval_queue, _state, memory|
-                {
-                    if save_env
-                    {
-                        memory.save_env();
-                    }
-
-                    car.unwrap().eval(eval_queue, memory, action)
-                })
-            });
-
-            cdr.eval_args_inner(eval_queue, action, true)
-        }
-    }
-
-    pub fn quote(
-        memory: &mut LispMemory,
-        ast: AstPos
-    ) -> Result<Self, ErrorPos>
-    {
-        let expression = if ast.is_list()
-        {
-            if ast.is_null()
-            {
-                Expression::EmptyList
-            } else
-            {
-                let car = Self::quote(memory, ast.car())?;
-                let cdr = Self::quote(memory, ast.cdr())?;
-
-                Expression::List{
-                    car: Box::new(car),
-                    cdr: Box::new(cdr)
-                }
-            }
-        } else
-        {
-            Expression::analyze_primitive_ast(memory, ast.as_value()?)
-        };
-
-        Ok(Self{position: ast.position, expression})
-    }
-
-    pub fn analyze(
-        state: &mut AnalyzeState,
-        memory: &mut LispMemory,
-        ast: AstPos
-    ) -> Result<Self, ErrorPos>
-    {
-        if ast.is_null()
-        {
-            return Ok(Self{position: ast.position, expression: Expression::EmptyList});
-        }
-
-        if ast.is_list()
-        {
-            let op = Self::analyze(state, memory, ast.car())?;
-
-            let args = ast.cdr();
-            Self::analyze_op(state, memory, op, args)
-        } else
-        {
-            Self::analyze_atom(state, memory, ast)
-        }
-    }
-
-    pub fn analyze_op(
-        state: &mut AnalyzeState,
-        memory: &mut LispMemory,
-        op: Self,
-        ast: AstPos
-    ) -> Result<Self, ErrorPos>
-    {
-        if let Expression::PrimitiveProcedure(id) = op.expression
-        {
-            let id = id.as_primitive_procedure().expect("primitive must be a primitive");
-            if let Some(on_eval) = state.primitives.get(id).on_eval.clone()
-            {
-                return on_eval(op, state, memory, ast);
-            }
-        }
-
-        let args = Self::analyze_args(state, memory, ast)?;
-
-        Ok(Self{
-            position: op.position,
-            expression: Expression::Application{
-                op: Box::new(op),
-                args
-            }
-        })
-    }
-
-    pub fn analyze_lambda(
-        state: &mut AnalyzeState,
-        memory: &mut LispMemory,
-        args: AstPos
-    ) -> Result<Self, ErrorPos>
-    {
-        Expression::argument_count_ast("lambda".to_owned(), 2, &args)?;
-
-        let params = Box::new(ExpressionPos::analyze_params(state, memory, args.car())?);
-        let body = Self::analyze(state, memory, args.cdr().car())?;
-
-        let body = state.push_expr(body);
-
-        Ok(Self{position: args.position, expression: Expression::Lambda{body, params}})
-    }
-
-    pub fn analyze_params(
-        state: &mut AnalyzeState,
-        memory: &mut LispMemory,
-        params: AstPos
-    ) -> Result<Self, ErrorPos>
-    {
-        if params.is_list()
-        {
-            if params.is_null()
-            {
-                return Ok(Self{position: params.position, expression: Expression::EmptyList});
-            }
-
-            let out = Expression::List{
-                car: Box::new(Self::analyze_param(state, memory, params.car())?),
-                cdr: Box::new(Self::analyze_params(state, memory, params.cdr())?)
-            };
-
-            Ok(Self{position: params.position, expression: out})
-        } else
-        {
-            Self::analyze_param(state, memory, params)
-        }
-    }
-
-    pub fn analyze_param(
-        state: &mut AnalyzeState,
-        memory: &mut LispMemory,
-        param: AstPos
-    ) -> Result<Self, ErrorPos>
-    {
-        let expression = match param.as_value()?
-        {
-            PrimitiveType::Value(x) =>
-            {
-                Self::check_shadowing(state, &x).with_position(param.position)?;
-
-                Expression::Value(memory.new_symbol(x))
-            },
-            _ => return Err(ErrorPos{position: param.position, error: Error::ExpectedParam})
-        };
-
-        Ok(Self{position: param.position, expression})
-    }
-
-    fn check_shadowing(
-        state: &mut AnalyzeState,
-        name: &str
-    ) -> Result<(), Error>
-    {
-        if state.primitives.get_by_name(name).is_some()
-        {
-            return Err(Error::AttemptedShadowing(name.to_owned()));
-        }
-
-        Ok(())
-    }
-
-    pub fn analyze_args(
-        state: &mut AnalyzeState,
-        memory: &mut LispMemory,
-        args: AstPos
-    ) -> Result<ApplicationArgs, ErrorPos>
-    {
-        if args.is_null()
-        {
-            return Ok((
-                Box::new(Self{position: args.position, expression: Expression::EmptyList}),
-                ArgsWrapper::new()
-            ));
-        }
-
-        let (rest, count) = Self::analyze_args(state, memory, args.cdr())?;
-
-        let out = Expression::List{
-            car: Box::new(Self::analyze(state, memory, args.car())?),
-            cdr: rest
-        };
-
-        Ok((Box::new(Self{position: args.position, expression: out}), count.increment()))
-    }
-
-    pub fn analyze_atom(
-        state: &mut AnalyzeState,
-        memory: &mut LispMemory,
-        ast: AstPos
-    ) -> Result<Self, ErrorPos>
-    {
-        let expression = Expression::analyze_primitive_ast(memory, ast.as_value()?);
-
-        Ok(Self{
-            position: ast.position,
-            expression: match expression
-            {
-                Expression::Value(ref x) =>
-                {
-                    let name = x.as_symbol(memory).expect("value must be a symbol");
-                    if let Some(id) = state.primitives.index_by_name(&name)
-                    {
-                        Expression::PrimitiveProcedure(LispValue::new_primitive_procedure(id))
-                    } else
-                    {
-                        expression
-                    }
-                },
-                x => x
-            }
-        })
-    }
-
-    pub fn analyze_sequence(
-        state: &mut AnalyzeState,
-        memory: &mut LispMemory,
-        ast: AstPos
-    ) -> Result<Self, ErrorPos>
-    {
-        if ast.is_null()
-        {
-            return Err(ErrorPos{position: ast.position, error: Error::EmptySequence});
-        }
-
-        let car = Self::analyze(state, memory, ast.car())?;
-        let cdr = ast.cdr();
-
-        Ok(if cdr.is_null()
-        {
-            car
-        } else
-        {
-            Self{
-                position: car.position,
-                expression: Expression::Sequence{
-                    first: Box::new(car),
-                    after: Box::new(Self::analyze_sequence(state, memory, cdr)?)
-                }
-            }
-        })
-    }
-
-    pub fn argument_count(name: String, count: usize, args: &Self) -> Result<(), ErrorPos>
-    {
-        Expression::argument_count_inner(name, args.position, count, Expression::arg_count(args))
-    }
-}
-
-impl Deref for ExpressionPos
-{
-    type Target = Expression;
-
-    fn deref(&self) -> &Self::Target
-    {
-        &self.expression
-    }
-}
-
-pub type ApplicationArgs = (Box<ExpressionPos>, ArgsWrapper);
-
-#[derive(Debug, Clone)]
-pub enum Expression
-{
-    // none of the LispValue r boxed so its fine to store them
-    Value(LispValue),
-    Char(LispValue),
-    PrimitiveProcedure(LispValue),
-    Float(LispValue),
-    Integer(LispValue),
-    Bool(LispValue),
-    EmptyList,
-    Lambda{body: ExprId, params: Box<ExpressionPos>},
-    List{car: Box<ExpressionPos>, cdr: Box<ExpressionPos>},
-    Application{op: Box<ExpressionPos>, args: ApplicationArgs},
-    Sequence{first: Box<ExpressionPos>, after: Box<ExpressionPos>}
-}
-
-impl Expression
-{
-    pub fn car(&self) -> &ExpressionPos
-    {
-        match self
-        {
-            Self::List{car, ..} => car,
-            x => panic!("car must be called on a list, called on {x:?}")
-        }
-    }
-
-    pub fn cdr(&self) -> &ExpressionPos
-    {
-        match self
-        {
-            Self::List{cdr, ..} => cdr,
-            x => panic!("cdr must be called on a list, called on {x:?}")
-        }
-    }
-
-    pub fn is_null(&self) -> bool
-    {
-        match self
-        {
-            Self::EmptyList => true,
-            _ => false
-        }
-    }
-
-    pub fn is_list(&self) -> bool
-    {
-        match self
-        {
-            Self::List{..} | Self::EmptyList => true,
-            _ => false
-        }
-    }
-
-    pub fn analyze_primitive_ast(
-        memory: &mut LispMemory,
-        primitive: PrimitiveType
-    ) -> Self
-    {
-        match primitive
-        {
-            PrimitiveType::Value(x) => Self::Value(memory.new_symbol(x)),
-            PrimitiveType::Char(x) => Self::Char(LispValue::new_char(x)),
-            PrimitiveType::Float(x) => Self::Float(LispValue::new_float(x)),
-            PrimitiveType::Integer(x) => Self::Integer(LispValue::new_integer(x)),
-            PrimitiveType::Bool(x) => Self::Bool(LispValue::new_bool(x))
-        }
-    }
-
-    pub fn argument_count_ast(name: String, count: usize, args: &AstPos) -> Result<(), ErrorPos>
-    {
-        Self::argument_count_inner(name, args.position, count, Self::arg_count_ast(args))
-    }
-
-    fn argument_count_inner(
-        name: String,
-        position: CodePosition,
-        expected: usize,
-        got: usize
-    ) -> Result<(), ErrorPos>
-    {
-        if got == expected
-        {
-            Ok(())
-        } else
-        {
-            Err(ErrorPos{
-                position,
-                error: Error::WrongArgumentsCount{
-                    proc: name,
-                    this_invoked: true,
-                    expected: expected.to_string(),
-                    got
-                }
-            })
-        }
-    }
-
-    fn arg_count(args: &Self) -> usize
-    {
-        if !args.is_list()
-        {
-            1
-        } else if args.is_null()
-        {
-            0
-        } else
-        {
-            1 + Self::arg_count(args.cdr())
-        }
-    }
-
-    fn arg_count_ast(args: &AstPos) -> usize
-    {
-        if args.is_null() || !args.is_list()
-        {
-            0
-        } else
-        {
-            1 + Self::arg_count_ast(&args.cdr())
-        }
     }
 }
