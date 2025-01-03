@@ -154,20 +154,6 @@ impl PrimitiveProcedureInfo
         }
     }
 
-    pub fn new(
-        args_count: impl Into<ArgsCount>,
-        effect: Effect,
-        on_eval: OnEval,
-        on_apply: impl Fn(PrimitiveArgs) -> Result<LispValue, Error> + 'static
-    ) -> Self
-    {
-        Self{
-            args_count: args_count.into(),
-            on_eval: Some(on_eval),
-            on_apply: Some((effect, simple_apply(on_apply)))
-        }
-    }
-
     pub fn new_simple(
         args_count: impl Into<ArgsCount>,
         effect: Effect,
@@ -310,14 +296,10 @@ impl Primitives
                     Ok(InterRepr::Sequence(InterReprPos::parse_args(memory, primitives, args)?))
                 }))),
             (QUOTE_PRIMITIVE.into(),
-                PrimitiveProcedureInfo::new(1, Effect::Pure, Rc::new(|memory, _primitives, args|
+                PrimitiveProcedureInfo::new_eval(1, Rc::new(|memory, _primitives, args|
                 {
                     Ok(InterRepr::Value(InterReprPos::parse_quote_args(memory, args)?))
-                }), |args|
-                {
-                    todo!()
-                    // memory.allocate_expression(&args.0)
-                })),
+                }))),
             (CONS_PRIMITIVE.into(),
                 PrimitiveProcedureInfo::new_simple(2, Effect::Pure, |args|
                 {
@@ -943,7 +925,7 @@ impl Command
             | Self::Lookup{register, ..}
             | Self::Cons{target: register, ..}
             | Self::CallPrimitiveValue{target: register, ..} => Some(*register),
-            Self::IsPrimitiveProcedure => Some(Register::Temp),
+            Self::IsPrimitiveProcedure => Some(Register::Temporary),
             Self::PutReturn(_) => Some(Register::Return),
             Self::Push(_)
             | Self::Pop(_)
@@ -1207,7 +1189,7 @@ impl InterReprPos
         {
             if cdr.is_null()
             {
-                car
+                *car
             } else
             {
                 return Err(Error::WrongArgumentsCount{
@@ -1222,10 +1204,13 @@ impl InterReprPos
             unreachable!()
         };
 
-        let target = Register::Value;
-        Self::allocate_quote(memory, *value, target)?;
+        dbg!(&value);
+        Self::allocate_quote(memory, value, Register::Value)?;
 
-        Ok(memory.get_register(target))
+        let value = memory.get_register(Register::Value);
+        memory.add_quoted(value);
+
+        Ok(value)
     }
 
     fn allocate_quote(
@@ -1244,13 +1229,15 @@ impl InterReprPos
             Ast::EmptyList => LispValue::new_empty_list(),
             Ast::List{car, cdr} =>
             {
-                /*Self::allocate_quote(memory, *car, Register::Argument)?;
+                memory.push_stack_register(Register::Temporary);
+                Self::allocate_quote(memory, *car, Register::Temporary)?;
+                Self::allocate_quote(memory, *cdr, Register::Value)?;
 
-                memory.push_stack_register(Register::Argument);
+                let result = memory.cons(target, Register::Temporary, Register::Value).with_position(ast.position);
 
-                Self::allocate_quote(memory, *cdr, Register::Argument)?;
+                memory.pop_stack_register(Register::Temporary);
 
-                return memory.cons(target).with_position(ast.position);*/todo!()
+                return result;
             }
         };
 
@@ -1334,14 +1321,14 @@ impl InterReprPos
                 }).fold(empty_list, |acc, x|
                 {
                     let separator: CompiledPart = Command::PutRegister{
-                        target: Register::Temp,
+                        target: Register::Temporary,
                         source: Register::Argument
                     }.into();
 
                     let ending: CommandPos = Command::Cons{
                         target: Register::Argument,
                         car: Register::Argument,
-                        cdr: Register::Temp
+                        cdr: Register::Temporary
                     }.with_position(self.position);
 
                     acc.combine(separator).combine(x).combine(ending)
@@ -1362,7 +1349,7 @@ impl InterReprPos
                 let call_part = CompiledPart::from_commands(vec![
                     return_command.into(),
                     Command::IsPrimitiveProcedure.into(),
-                    Command::JumpIfTrue{target: primitive_branch, check: Register::Temp}.with_position(self.position),
+                    Command::JumpIfTrue{target: primitive_branch, check: Register::Temporary}.with_position(self.position),
                     Command::Jump(Label::Halt).into(),
                     Command::Label(primitive_branch).into(),
                     Command::CallPrimitiveValue{target: target.expect("make None target be ok later")}.into()
@@ -1406,7 +1393,7 @@ pub enum Register
     Operator,
     Argument,
     Value,
-    Temp
+    Temporary
 }
 
 pub type PutValue = Option<Register>;
@@ -1606,7 +1593,7 @@ impl CompiledProgram
                 CommandRaw::IsPrimitiveProcedure =>
                 {
                     let is_primitive = memory.get_register(Register::Operator).tag == ValueTag::PrimitiveProcedure;
-                    memory.set_register(Register::Temp, is_primitive);
+                    memory.set_register(Register::Temporary, is_primitive);
                 },
                 CommandRaw::Cons{target, car, cdr} =>
                 {

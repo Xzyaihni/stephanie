@@ -1078,7 +1078,7 @@ impl Symbols
 pub struct LispMemory
 {
     env: LispValue,
-    target: Register,
+    quoted: Vec<LispValue>,
     symbols: Symbols,
     memory: MemoryBlock,
     swap_memory: MemoryBlock,
@@ -1090,19 +1090,23 @@ impl Debug for LispMemory
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
     {
-        let pv = |v: &LispValue|
+        let pv = |v: LispValue|
         {
             v.to_string(self)
         };
 
-        let stack = self.stack.iter().map(pv).collect::<Vec<_>>();
+        let quoted = self.quoted.iter().copied().map(pv).collect::<Vec<_>>();
+        let stack = self.stack.iter().copied().map(pv).collect::<Vec<_>>();
+        let registers = self.registers.map(pv);
 
         let block = MemoryBlockWith{memory: Some(self), block: &self.memory};
         f.debug_struct("MemoryBlock")
             .field("env", &self.env.to_string(self))
+            .field("quoted", &quoted)
             .field("symbols", &self.symbols)
             .field("memory", &block)
             .field("stack", &stack)
+            .field("registers", &registers)
             .finish()
     }
 }
@@ -1113,7 +1117,7 @@ impl Clone for LispMemory
     {
         Self{
             env: self.env,
-            target: self.target,
+            quoted: self.quoted.clone(),
             symbols: self.symbols.clone(),
             memory: self.memory.clone(),
             swap_memory: self.swap_memory.clone(),
@@ -1140,7 +1144,7 @@ impl LispMemory
 
         let mut this = Self{
             env: LispValue::new_empty_list(),
-            target: Register::Value,
+            quoted: Vec::new(),
             symbols: Symbols::new(),
             memory,
             swap_memory,
@@ -1148,7 +1152,7 @@ impl LispMemory
             registers: [LispValue::new_empty_list(); Register::COUNT]
         };
 
-        this.env = this.create_env("global-env", ()).expect("must have enough memory for default env");
+        this.env = this.create_env("env", ()).expect("must have enough memory for default env");
 
         this
     }
@@ -1182,6 +1186,10 @@ impl LispMemory
     pub fn get_symbol_by_name(&self, name: &str) -> Option<SymbolId>
     {
         self.symbols.get_by_name(name)
+    }
+    pub fn add_quoted(&mut self, value: LispValue)
+    {
+        self.quoted.push(value);
     }
 
     pub fn define(&mut self, key: impl Into<String>, value: LispValue) -> Result<(), Error>
@@ -1377,6 +1385,7 @@ impl LispMemory
         }
 
         transfer_stack!(stack);
+        transfer_stack!(quoted);
     }
 
     pub fn gc(&mut self)
@@ -1517,11 +1526,6 @@ impl LispMemory
     pub fn is_empty_args(&self) -> bool
     {
         self.get_register(Register::Argument).is_null()
-    }
-
-    pub fn return_value(&mut self, value: LispValue)
-    {
-        self.set_register(self.target, value);
     }
 
     pub fn push_stack_register(&mut self, register: Register)
