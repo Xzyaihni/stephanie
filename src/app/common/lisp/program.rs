@@ -2,6 +2,7 @@ use std::{
     vec,
     iter,
     array,
+    borrow::Borrow,
     iter::{Map, Enumerate},
     rc::Rc,
     cell::RefCell,
@@ -22,10 +23,8 @@ pub use super::{
     SymbolId,
     LispValue,
     LispMemory,
-    LispState,
     ValueTag,
     LispVectorRef,
-    StateOutputWrapper,
     OutputWrapper,
     OutputWrapperRef
 };
@@ -38,11 +37,14 @@ mod parser;
 
 
 pub const BEGIN_PRIMITIVE: &'static str = "begin";
+pub const QUOTE_PRIMITIVE: &'static str = "quote";
+pub const CONS_PRIMITIVE: &'static str = "cons";
 
 // unreadable, great
 pub type OnApply = Rc<
-    dyn for<'a> Fn(
-        &mut LispMemory
+    dyn Fn(
+        &mut LispMemory,
+        Register
     ) -> Result<(), Error>>;
 
 pub type OnEval = Rc<
@@ -104,6 +106,32 @@ impl<T> WithPositionTrait<Result<T, ErrorPos>> for Result<T, Error>
     }
 }
 
+pub struct PrimitiveArgs<'a>
+{
+    memory: &'a mut LispMemory
+}
+
+impl<'a> Iterator for PrimitiveArgs<'a>
+{
+    type Item = LispValue;
+
+    fn next(&mut self) -> Option<Self::Item>
+    {
+        self.memory.try_pop_arg()
+    }
+}
+
+fn simple_apply(f: impl Fn(PrimitiveArgs) -> Result<LispValue, Error> + 'static) -> OnApply
+{
+    Rc::new(move |memory, target|
+    {
+        let value = f(PrimitiveArgs{memory})?;
+        memory.set_register(target, value);
+
+        Ok(())
+    })
+}
+
 #[derive(Clone)]
 pub struct PrimitiveProcedureInfo
 {
@@ -130,26 +158,26 @@ impl PrimitiveProcedureInfo
         args_count: impl Into<ArgsCount>,
         effect: Effect,
         on_eval: OnEval,
-        on_apply: OnApply
+        on_apply: impl Fn(PrimitiveArgs) -> Result<LispValue, Error> + 'static
     ) -> Self
     {
         Self{
             args_count: args_count.into(),
             on_eval: Some(on_eval),
-            on_apply: Some((effect, on_apply))
+            on_apply: Some((effect, simple_apply(on_apply)))
         }
     }
 
     pub fn new_simple(
         args_count: impl Into<ArgsCount>,
         effect: Effect,
-        on_apply: OnApply
+        on_apply: impl Fn(PrimitiveArgs) -> Result<LispValue, Error> + 'static
     ) -> Self
     {
         Self{
             args_count: args_count.into(),
             on_eval: None,
-            on_apply: Some((effect, on_apply))
+            on_apply: Some((effect, simple_apply(on_apply)))
         }
     }
 }
@@ -162,10 +190,50 @@ impl Debug for PrimitiveProcedureInfo
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum HiddenPrimitive
+{
+    Add,
+    Sub,
+    Mul,
+    Div
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum PrimitiveName
+{
+    String(String),
+    Hidden(HiddenPrimitive)
+}
+
+impl From<HiddenPrimitive> for PrimitiveName
+{
+    fn from(value: HiddenPrimitive) -> Self
+    {
+        Self::Hidden(value)
+    }
+}
+
+impl From<String> for PrimitiveName
+{
+    fn from(value: String) -> Self
+    {
+        Self::String(value)
+    }
+}
+
+impl From<&str> for PrimitiveName
+{
+    fn from(value: &str) -> Self
+    {
+        Self::from(value.to_owned())
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Primitives
 {
-    indices: HashMap<String, u32>,
+    indices: HashMap<PrimitiveName, u32>,
     primitives: Vec<PrimitiveProcedureInfo>
 }
 
@@ -177,7 +245,7 @@ impl Primitives
         {
             ($f:expr) =>
             {
-                |memory|
+                |args|
                 {
                     Self::do_cond(memory, |a, b| Some($f(a, b)), |a, b| Some($f(a, b)))
                 }
@@ -188,14 +256,18 @@ impl Primitives
         {
             ($float_op:ident, $int_op:ident) =>
             {
-                |memory|
+                |mut args|
                 {
-                    Self::do_op(memory, |a, b|
+                    let start = args.next().expect("must have 2 or more args");
+                    args.try_fold(start, |acc, x|
                     {
-                        Some(LispValue::new_integer(a.$int_op(b)?))
-                    }, |a, b|
-                    {
-                        Some(LispValue::new_float(a.$float_op(b)))
+                        Self::call_op(acc, x, |a, b|
+                        {
+                            Some(LispValue::new_integer(a.$int_op(b)?))
+                        }, |a, b|
+                        {
+                            Some(LispValue::new_float(a.$float_op(b)))
+                        })
                     })
                 }
             }
@@ -205,9 +277,9 @@ impl Primitives
         {
             ($op:ident) =>
             {
-                |memory, args|
+                |mut args|
                 {
-                    Self::do_op(memory, args, |a, b|
+                    Self::call_op(args.next().unwrap(), args.next().unwrap(), |a, b|
                     {
                         Some(LispValue::new_integer(a.$op(b)))
                     }, |a, b|
@@ -222,26 +294,37 @@ impl Primitives
         {
             ($tag:expr) =>
             {
-                |memory, mut args|
+                |mut args|
                 {
-                    let arg = args.pop(memory);
+                    let is_equal = args.next().unwrap().tag == $tag;
 
-                    let is_equal = arg.tag == $tag;
-
-                    memory.push_return(is_equal);
-
-                    Ok(())
+                    Ok(is_equal.into())
                 }
             }
         }
 
-        let (indices, primitives): (HashMap<_, _>, Vec<_>) = [
-            ("+", PrimitiveProcedureInfo::new_simple(ArgsCount::Min(2), Effect::Pure, Rc::new(do_op!(add, checked_add)))),
-            (BEGIN_PRIMITIVE,
+        let (indices, primitives): (HashMap<PrimitiveName, _>, Vec<_>) = [
+            (PrimitiveName::from(BEGIN_PRIMITIVE),
                 PrimitiveProcedureInfo::new_eval(ArgsCount::Min(1), Rc::new(|memory, primitives, args|
                 {
                     Ok(InterRepr::Sequence(InterReprPos::parse_args(memory, primitives, args)?))
-                })))
+                }))),
+            (QUOTE_PRIMITIVE.into(),
+                PrimitiveProcedureInfo::new(1, Effect::Pure, Rc::new(|memory, _primitives, args|
+                {
+                    Ok(InterRepr::Value(InterReprPos::parse_quote_args(memory, args)?))
+                }), |args|
+                {
+                    todo!()
+                    // memory.allocate_expression(&args.0)
+                })),
+            (CONS_PRIMITIVE.into(),
+                PrimitiveProcedureInfo::new_simple(2, Effect::Pure, |args|
+                {
+                    todo!()
+                    // memory.cons(target, args[0], args[1])
+                })),
+            ("+".into(), PrimitiveProcedureInfo::new_simple(ArgsCount::Min(2), Effect::Pure, do_op!(add, checked_add))),
         ]/*[
             ("display",
                 PrimitiveProcedureInfo::new_simple_effect(1, move |_state, memory, mut args|
@@ -405,7 +488,6 @@ impl Primitives
 
                     Ok(())
                 })),
-            ("+", PrimitiveProcedureInfo::new_simple(ArgsCount::Min(2), do_op!(add, checked_add))),
             ("-", PrimitiveProcedureInfo::new_simple(ArgsCount::Min(2), do_op!(sub, checked_sub))),
             ("*", PrimitiveProcedureInfo::new_simple(ArgsCount::Min(2), do_op!(mul, checked_mul))),
             ("/", PrimitiveProcedureInfo::new_simple(ArgsCount::Min(2), do_op!(div, checked_div))),
@@ -645,33 +727,6 @@ impl Primitives
 
                     Ok(())
                 }))),
-            ("quote",
-                PrimitiveProcedureInfo::new(ArgsCount::Min(0), Rc::new(|op, _state, memory, args|
-                {
-                    let arg = ExpressionPos::quote(memory, args.car())?;
-
-                    Ok(ExpressionPos{
-                        position: args.position,
-                        expression: Expression::Application{
-                            op: Box::new(op),
-                            args: (Box::new(arg), ArgsWrapper::from(1))
-                        }
-                    })
-                }), Rc::new(|_eval_queue, _state, memory, args, action|
-                {
-                    if action == Action::Return
-                    {
-                        memory.allocate_expression(&args.0).with_position(args.0.position)?;
-                    }
-
-                    Ok(())
-                }))),
-            ("cons",
-                PrimitiveProcedureInfo::new_simple(2, |_state, memory, _args|
-                {
-                    // yea yea its the reverse version, i just push the args from back to front
-                    memory.rcons()
-                })),
             ("car",
                 PrimitiveProcedureInfo::new_simple(1, |_state, memory, mut args|
                 {
@@ -731,14 +786,6 @@ impl Primitives
         }
     }
 
-    pub fn iter_infos(&self) -> impl Iterator<Item=(&str, ArgsCount)>
-    {
-        self.indices.iter().map(|(name, index)|
-        {
-            (name.as_ref(), self.primitives[*index as usize].args_count)
-        })
-    }
-
     pub fn add(&mut self, name: impl Into<String>, procedure: PrimitiveProcedureInfo)
     {
         let name = name.into();
@@ -746,10 +793,10 @@ impl Primitives
         let id = self.primitives.len();
 
         self.primitives.push(procedure);
-        self.indices.insert(name, id as u32);
+        self.indices.insert(PrimitiveName::String(name), id as u32);
     }
 
-    pub fn name_by_index(&self, index: u32) -> &str
+    pub fn name_by_index(&self, index: u32) -> &PrimitiveName
     {
         self.indices.iter().find(|(_key, value)|
         {
@@ -757,12 +804,17 @@ impl Primitives
         }).expect("index must exist").0
     }
 
-    pub fn index_by_name(&self, name: &str) -> Option<u32>
+    pub fn index_by_name(&self, name: impl Into<String>) -> Option<u32>
     {
-        self.indices.get(name).copied()
+        self.index_by_primitive_name(PrimitiveName::String(name.into()))
     }
 
-    pub fn get_by_name(&self, name: &str) -> Option<&PrimitiveProcedureInfo>
+    pub fn index_by_primitive_name(&self, primitive_name: impl Borrow<PrimitiveName>) -> Option<u32>
+    {
+        self.indices.get(primitive_name.borrow()).copied()
+    }
+
+    pub fn get_by_name(&self, name: String) -> Option<&PrimitiveProcedureInfo>
     {
         self.index_by_name(name).map(|index| self.get(index))
     }
@@ -861,57 +913,43 @@ impl Primitives
         }*/
         todo!()
     }
-
-    fn do_op<FI, FF>(
-        memory: &mut LispMemory,
-        op_integer: FI,
-        op_float: FF
-    ) -> Result<(), Error>
-    where
-        FI: Fn(i32, i32) -> Option<LispValue>,
-        FF: Fn(f32, f32) -> Option<LispValue>
-    {
-        let first = memory.pop_arg();
-        let second = memory.pop_arg();
-
-        let output = Self::call_op(first, second, &op_integer, &op_float)?;
-
-        if memory.is_empty_args()
-        {
-            memory.return_value(output);
-
-            Ok(())
-        } else
-        {
-            memory.push_stack(output);
-
-            Self::do_op(memory, op_integer, op_float)
-        }
-    }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 enum Command
 {
     Push(Register),
     Pop(Register),
+    PutRegister{target: Register, source: Register},
     PutValue{value: LispValue, register: Register},
     Lookup{id: SymbolId, register: Register},
     PutReturn(Label),
     Jump(Label),
-    Call,
+    JumpIfTrue{target: Label, check: Register},
+    IsPrimitiveProcedure,
+    Cons{target: Register, car: Register, cdr: Register},
+    CallPrimitiveValue{target: Register},
     Label(Label)
 }
 
 impl Command
 {
-    pub fn modifies_register(self) -> Option<Register>
+    pub fn modifies_register(&self) -> Option<Register>
     {
         match self
         {
-            Self::PutValue{register, ..} => Some(register),
-            Self::Lookup{register, ..} => Some(register),
-            _ => None
+            Self::PutRegister{target: register, ..}
+            | Self::PutValue{register, ..}
+            | Self::Lookup{register, ..}
+            | Self::Cons{target: register, ..}
+            | Self::CallPrimitiveValue{target: register, ..} => Some(*register),
+            Self::IsPrimitiveProcedure => Some(Register::Temp),
+            Self::PutReturn(_) => Some(Register::Return),
+            Self::Push(_)
+            | Self::Pop(_)
+            | Self::Jump(_)
+            | Self::JumpIfTrue{..}
+            | Self::Label(_) => None
         }
     }
 
@@ -932,6 +970,7 @@ impl Command
         {
             Self::Push(register) => CommandRaw::Push(register),
             Self::Pop(register) => CommandRaw::Pop(register),
+            Self::PutRegister{target, source} => CommandRaw::PutRegister{target, source},
             Self::PutValue{value, register} => CommandRaw::PutValue{value, register},
             Self::Lookup{id, register} => CommandRaw::Lookup{id, register},
             Self::PutReturn(label) =>
@@ -942,7 +981,10 @@ impl Command
                 }
             },
             Self::Jump(label) => CommandRaw::Jump(*labels.get(&label).unwrap()),
-            Self::Call => CommandRaw::Call,
+            Self::JumpIfTrue{target, check} => CommandRaw::JumpIfTrue{target: *labels.get(&target).unwrap(), check},
+            Self::IsPrimitiveProcedure => CommandRaw::IsPrimitiveProcedure,
+            Self::Cons{target, car, cdr} => CommandRaw::Cons{target, car, cdr},
+            Self::CallPrimitiveValue{target} => CommandRaw::CallPrimitiveValue{target},
             Self::Label(_) => unreachable!("labels have no raw equivalent")
         }
     }
@@ -956,6 +998,22 @@ struct CompiledPart
     modifies: RegisterStates,
     requires: RegisterStates,
     commands: Vec<CommandPos>
+}
+
+impl From<Command> for CompiledPart
+{
+    fn from(command: Command) -> Self
+    {
+        Self::from(CommandPos::from(command))
+    }
+}
+
+impl From<CommandPos> for CompiledPart
+{
+    fn from(command: CommandPos) -> Self
+    {
+        Self::from_commands(vec![command])
+    }
 }
 
 impl CompiledPart
@@ -990,8 +1048,17 @@ impl CompiledPart
         self
     }
 
-    pub fn combine(self, other: Self) -> Self
+    pub fn with_modifies(mut self, modifies: RegisterStates) -> Self
     {
+        self.modifies = self.modifies.union(modifies);
+
+        self
+    }
+
+    pub fn combine(self, other: impl Into<Self>) -> Self
+    {
+        let other = other.into();
+
         let save = other.requires.intersection(self.modifies);
 
         let save_registers = save.into_iter().filter(|(_, x)| *x);
@@ -1025,6 +1092,14 @@ impl CompiledPart
     pub fn into_program(mut self, primitives: Rc<Primitives>) -> CompiledProgram
     {
         self.commands.push(Command::Label(Label::Halt).into());
+
+        if DebugConfig::is_enabled(DebugTool::Lisp)
+        {
+            self.commands.iter().for_each(|WithPositionMaybe{value, position}|
+            {
+                eprintln!("{value:?}{}", position.map(|x| format!(" ({x})")).unwrap_or_default());
+            });
+        }
 
         let labels = {
             let mut filtered_labels = 0;
@@ -1060,10 +1135,10 @@ impl CompiledPart
     }
 }
 
-type InterReprPos = WithPosition<InterRepr>;
+pub type InterReprPos = WithPosition<InterRepr>;
 
 #[derive(Debug)]
-enum InterRepr
+pub enum InterRepr
 {
     Apply{op: Box<InterReprPos>, args: Vec<InterReprPos>},
     Sequence(Vec<InterReprPos>),
@@ -1123,6 +1198,67 @@ impl InterReprPos
         }
     }
 
+    pub fn parse_quote_args(
+        memory: &mut LispMemory,
+        ast: AstPos
+    ) -> Result<LispValue, ErrorPos>
+    {
+        let value = if let Ast::List{car, cdr} = ast.value
+        {
+            if cdr.is_null()
+            {
+                car
+            } else
+            {
+                return Err(Error::WrongArgumentsCount{
+                    proc: QUOTE_PRIMITIVE.to_owned(),
+                    this_invoked: false,
+                    expected: "1".to_owned(),
+                    got: None
+                }).with_position(ast.position);
+            }
+        } else
+        {
+            unreachable!()
+        };
+
+        let target = Register::Value;
+        Self::allocate_quote(memory, *value, target)?;
+
+        Ok(memory.get_register(target))
+    }
+
+    fn allocate_quote(
+        memory: &mut LispMemory,
+        ast: AstPos,
+        target: Register
+    ) -> Result<(), ErrorPos>
+    {
+        let value = match ast.value
+        {
+            Ast::Value(x) =>
+            {
+                let p: Result<_, ErrorPos> = Ast::parse_primitive(&x).with_position(ast.position);
+                memory.new_primitive_value(p?)
+            },
+            Ast::EmptyList => LispValue::new_empty_list(),
+            Ast::List{car, cdr} =>
+            {
+                /*Self::allocate_quote(memory, *car, Register::Argument)?;
+
+                memory.push_stack_register(Register::Argument);
+
+                Self::allocate_quote(memory, *cdr, Register::Argument)?;
+
+                return memory.cons(target).with_position(ast.position);*/todo!()
+            }
+        };
+
+        memory.set_register(target, value);
+
+        Ok(())
+    }
+
     pub fn parse_args(
         memory: &mut LispMemory,
         primitives: &Primitives,
@@ -1144,6 +1280,7 @@ impl InterReprPos
 
     pub fn compile(
         self,
+        state: &mut CompileState,
         target: PutValue,
         proceed: Proceed
     ) -> CompiledPart
@@ -1177,29 +1314,40 @@ impl InterReprPos
                 {
                     if (i + 1) == len
                     {
-                        x.compile(target, proceed)
+                        x.compile(state, target, proceed)
                     } else
                     {
-                        x.compile(None, Proceed::Next)
+                        x.compile(state, None, Proceed::Next)
                     }
                 }).reduce(CompiledPart::combine).unwrap_or_else(CompiledPart::new)
             },
             InterRepr::Apply{op, args} =>
             {
-                let empty_list = CompiledPart::from_commands(vec![
-                    Command::PutValue{value: LispValue::new_empty_list(), register: Register::Argument}.into()
-                ]);
+                let empty_list: CompiledPart = Command::PutValue{
+                    value: LispValue::new_empty_list(),
+                    register: Register::Argument
+                }.into();
 
                 let args_part = args.into_iter().rev().map(|x|
                 {
-                    x.compile(Some(Register::Argument), Proceed::Next)
+                    x.compile(state, Some(Register::Argument), Proceed::Next)
                 }).fold(empty_list, |acc, x|
                 {
-                    let save = CompiledPart::from_commands(vec![Command::Push(Register::Argument).into()]);
-                    acc.combine(save).combine(x)
+                    let separator: CompiledPart = Command::PutRegister{
+                        target: Register::Temp,
+                        source: Register::Argument
+                    }.into();
+
+                    let ending: CommandPos = Command::Cons{
+                        target: Register::Argument,
+                        car: Register::Argument,
+                        cdr: Register::Temp
+                    }.with_position(self.position);
+
+                    acc.combine(separator).combine(x).combine(ending)
                 });
 
-                let setup = op.compile(Some(Register::Operator), Proceed::Next).combine(args_part);
+                let setup = op.compile(state, Some(Register::Operator), Proceed::Next).combine(args_part);
 
                 let return_command = match proceed
                 {
@@ -1208,13 +1356,46 @@ impl InterReprPos
                     Proceed::Return => Command::Pop(Register::Return)
                 };
 
-                let call_part = CompiledPart::from_commands(iter::once(return_command.into())
-                    .chain(iter::once(Command::Call.into()))
-                    .collect());
+                let make_lambda_branch_not_halt = ();
 
-                setup.combine(call_part).with_requires(RegisterStates::all())
+                let primitive_branch = Label::PrimitiveBranch(state.label_id());
+                let call_part = CompiledPart::from_commands(vec![
+                    return_command.into(),
+                    Command::IsPrimitiveProcedure.into(),
+                    Command::JumpIfTrue{target: primitive_branch, check: Register::Temp}.with_position(self.position),
+                    Command::Jump(Label::Halt).into(),
+                    Command::Label(primitive_branch).into(),
+                    Command::CallPrimitiveValue{target: target.expect("make None target be ok later")}.into()
+                ]);
+
+                setup.combine(call_part.with_modifies(RegisterStates::all()))
             }
         }
+    }
+}
+
+#[derive(Debug)]
+struct CompileState
+{
+    label_id: u32
+}
+
+impl CompileState
+{
+    pub fn new(primitives: &Primitives) -> Self
+    {
+        Self{
+            label_id: 0
+        }
+    }
+
+    pub fn label_id(&mut self) -> u32
+    {
+        let id = self.label_id;
+
+        self.label_id += 1;
+
+        id
     }
 }
 
@@ -1224,7 +1405,8 @@ pub enum Register
     Return,
     Operator,
     Argument,
-    Value
+    Value,
+    Temp
 }
 
 pub type PutValue = Option<Register>;
@@ -1232,7 +1414,9 @@ pub type PutValue = Option<Register>;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Label
 {
-    Halt
+    Halt,
+    PrimitiveBranch(u32),
+    ProcedureReturn(u32)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1256,15 +1440,19 @@ impl Proceed
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 enum CommandRaw
 {
     Push(Register),
     Pop(Register),
+    PutRegister{target: Register, source: Register},
     PutValue{value: LispValue, register: Register},
     Lookup{id: SymbolId, register: Register},
     Jump(usize),
-    Call
+    JumpIfTrue{target: usize, check: Register},
+    IsPrimitiveProcedure,
+    Cons{target: Register, car: Register, cdr: Register},
+    CallPrimitiveValue{target: Register}
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -1357,53 +1545,88 @@ impl CompiledProgram
         let mut i = 0;
         while i < self.commands.len()
         {
-            match self.commands[i]
+            macro_rules! return_error
+            {
+                ($error:expr, $name:literal) =>
+                {
+                    return Err(ErrorPos{
+                        position: self.positions[i].unwrap_or_else(|| panic!("{} must have a codepos", $name)),
+                        error: $error
+                    })
+                }
+            }
+
+            if DebugConfig::is_enabled(DebugTool::Lisp)
+            {
+                eprintln!("{i}: {:?}", &self.commands[i]);
+            }
+
+            match &self.commands[i]
             {
                 CommandRaw::Push(register) =>
                 {
-                    memory.push_stack(memory.registers[register as usize]);
+                    memory.push_stack_register(*register);
                 },
                 CommandRaw::Pop(register) =>
                 {
-                    memory.registers[register as usize] = memory.pop_stack();
+                    memory.pop_stack_register(*register);
                 },
                 CommandRaw::Lookup{id, register} =>
                 {
-                    if let Some(value) = memory.lookup_symbol(id)
+                    if let Some(value) = memory.lookup_symbol(*id)
                     {
-                        memory.registers[register as usize] = value;
+                        memory.registers[*register as usize] = value;
                     } else
                     {
-                        return Err(ErrorPos{
-                            position: self.positions[i].expect("lookup must have a codepos"),
-                            error: Error::UndefinedVariable(memory.get_symbol(id))
-                        });
+                        return_error!(Error::UndefinedVariable(memory.get_symbol(*id)), "lookup")
                     }
                 },
-                CommandRaw::PutValue{value, register} => memory.registers[register as usize] = value,
+                CommandRaw::PutRegister{target, source} => memory.set_register(*target, memory.get_register(*source)),
+                CommandRaw::PutValue{value, register} => memory.set_register(*register, *value),
                 CommandRaw::Jump(destination) =>
                 {
-                    i = destination;
+                    i = *destination;
+                    continue;
                 },
-                CommandRaw::Call =>
+                CommandRaw::JumpIfTrue{target, check} =>
                 {
-                    let op = memory.registers[Register::Operator as usize];
-
-                    if let Ok(proc) = op.as_primitive_procedure()
+                    match memory.get_register(*check).as_bool()
                     {
-                        if let Err(err) = (self.primitives.get(proc).on_apply.as_ref().unwrap().1)(memory)
+                        Ok(value) =>
                         {
-                            return Err(err).with_position(self.positions[i].expect("function call must have a codepos"));
-                        }
-                    } else if let Ok(proc) = op.as_procedure()
+                            if value
+                            {
+                                i = *target;
+                                continue;
+                            }
+                        },
+                        Err(err) => return_error!(err, "jump if true")
+                    }
+                },
+                CommandRaw::IsPrimitiveProcedure =>
+                {
+                    let is_primitive = memory.get_register(Register::Operator).tag == ValueTag::PrimitiveProcedure;
+                    memory.set_register(Register::Temp, is_primitive);
+                },
+                CommandRaw::Cons{target, car, cdr} =>
+                {
+                    if let Err(err) = memory.cons(*target, *car, *cdr)
                     {
-                        todo!()
-                    } else
+                        return_error!(err, "cons")
+                    }
+                },
+                CommandRaw::CallPrimitiveValue{target} =>
+                {
+                    let op = memory.get_register(Register::Operator).as_primitive_procedure()
+                        .expect("must be checked");
+
+                    let primitive = &self.primitives.get(op).on_apply.as_ref()
+                        .expect("primitive must have apply")
+                        .1;
+
+                    if let Err(err) = primitive(memory, *target)
                     {
-                        return Err(ErrorPos{
-                            position: self.positions[i].expect("function call must have a codepos"),
-                            error: Error::CallNonProcedure(op.tag)
-                        });
+                        return_error!(err, "primitive")
                     }
                 }
             }
@@ -1426,28 +1649,33 @@ impl Program
 {
     pub fn parse(
         primitives: Rc<Primitives>,
-        mut state: LispState,
+        mut memory: LispMemory,
         code: &str
     ) -> Result<Self, ErrorPos>
     {
         let ast = Parser::parse(code)?;
 
-        let ir = InterReprPos::parse(&mut state.memory, &primitives, ast)?;
-        let compiled = ir.compile(Some(Register::Value), Proceed::Jump(Label::Halt));
+        let ir = InterReprPos::parse(&mut memory, &primitives, ast)?;
+
+        let compiled = {
+            let mut state = CompileState::new(&primitives);
+
+            ir.compile(&mut state, Some(Register::Value), Proceed::Jump(Label::Halt))
+        };
+
         let code = compiled.into_program(primitives);
 
-        Ok(Self{memory: state.memory, code})
+        Ok(Self{memory, code})
     }
 
-    pub fn eval(&self) -> Result<StateOutputWrapper, ErrorPos>
+    pub fn eval(&self) -> Result<OutputWrapper, ErrorPos>
     {
         let mut memory = self.memory.clone();
 
         self.code.run(&mut memory)?;
 
-        /*let exprs: &Vec<ExpressionPos> = &self.state.exprs;
-        Ok(StateOutputWrapper{exprs: exprs.clone(), value: OutputWrapper{memory, value}})*/
-        todo!()
+        let value = memory.get_register(Register::Value);
+        Ok(OutputWrapper{memory, value})
     }
 
     pub fn memory_mut(&mut self) -> &mut LispMemory

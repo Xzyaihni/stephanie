@@ -101,12 +101,12 @@ impl Game
             load("lisp/standard.scm") + &load("lisp/console.scm")
         };
 
-        let console_infos: (LispState, Rc<Primitives>) = {
+        let console_infos: (LispMemory, Rc<Primitives>) = {
             let primitives = this.console_primitives();
 
             let config = LispConfig{
                 primitives: primitives.clone(),
-                state: LispMemory::new(2048, 1 << 14).into()
+                memory: LispMemory::new(2048, 1 << 14)
             };
 
             let lisp = Lisp::new_with_config(
@@ -114,13 +114,13 @@ impl Game
                 &standard_code
             );
 
-            let state = lisp.and_then(|mut x|
+            let memory = lisp.and_then(|mut x|
             {
                 x.run()
             }).unwrap_or_else(|err| panic!("error in stdlib: {err}"))
-                .into_state();
+                .into_memory();
 
-            (state, primitives)
+            (memory, primitives)
         };
 
         this.info.borrow_mut().console.infos = Some(console_infos);
@@ -867,7 +867,7 @@ impl Game
 
             LispConfig{
                 primitives: infos.1.clone(),
-                state: infos.0.clone()
+                memory: infos.0.clone()
             }
         };
 
@@ -893,7 +893,7 @@ impl Game
 
         eprintln!("ran command {command}, result: {result}");
 
-        self.info.borrow_mut().update_memory(result.into_state());
+        self.info.borrow_mut().update_memory(result.into_memory());
     }
 
     pub fn player_exists(&mut self) -> bool
@@ -920,7 +920,7 @@ struct ConsoleInfo
 {
     entity: Entity,
     contents: Option<String>,
-    infos: Option<(LispState, Rc<Primitives>)>,
+    infos: Option<(LispMemory, Rc<Primitives>)>,
 }
 
 impl ConsoleInfo
@@ -988,11 +988,11 @@ impl PlayerInfo
         }
     }
 
-    pub fn update_memory(&mut self, state: LispState)
+    pub fn update_memory(&mut self, memory: LispMemory)
     {
         if let Some(x) = self.console.infos.as_mut()
         {
-            x.0 = state;
+            x.0 = memory;
         }
     }
 }

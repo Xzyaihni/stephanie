@@ -729,7 +729,7 @@ pub enum Error
     UndefinedVariable(String),
     AttemptedShadowing(String),
     CallNonProcedure(ValueTag),
-    WrongArgumentsCount{proc: String, this_invoked: bool, expected: String, got: usize},
+    WrongArgumentsCount{proc: String, this_invoked: bool, expected: String, got: Option<usize>},
     IndexOutOfRange(i32),
     CharOutOfRange,
     EmptySequence,
@@ -763,7 +763,17 @@ impl Display for Error
             Self::CallNonProcedure(t) => format!("cant call non procedure, tried calling `{t:?}`"),
             Self::ExpectedNumerical{a, b} => format!("primitive operation expected 2 numbers, got {a:?} and {b:?}"),
             Self::WrongArgumentsCount{proc, this_invoked: _, expected, got} =>
-                format!("wrong amount of arguments (got {got}) passed to {proc} (expected {expected})"),
+            {
+                let got = if let Some(got) = got
+                {
+                    format!(" (got {got})")
+                } else
+                {
+                    String::new()
+                };
+
+                format!("wrong amount of arguments{got} passed to {proc} (expected {expected})")
+            },
             Self::IndexOutOfRange(i) => format!("index {i} out of range"),
             Self::CharOutOfRange => "char out of range".to_owned(),
             Self::EmptySequence => "empty sequence".to_owned(),
@@ -1068,6 +1078,7 @@ impl Symbols
 pub struct LispMemory
 {
     env: LispValue,
+    target: Register,
     symbols: Symbols,
     memory: MemoryBlock,
     swap_memory: MemoryBlock,
@@ -1102,6 +1113,7 @@ impl Clone for LispMemory
     {
         Self{
             env: self.env,
+            target: self.target,
             symbols: self.symbols.clone(),
             memory: self.memory.clone(),
             swap_memory: self.swap_memory.clone(),
@@ -1128,6 +1140,7 @@ impl LispMemory
 
         let mut this = Self{
             env: LispValue::new_empty_list(),
+            target: Register::Value,
             symbols: Symbols::new(),
             memory,
             swap_memory,
@@ -1143,16 +1156,17 @@ impl LispMemory
     pub fn create_env(&mut self, name: &str, parent: impl Into<LispValue>) -> Result<LispValue, Error>
     {
         let symbol = self.new_symbol(name);
-        self.push_stack(symbol);
 
-        self.push_stack(());
-        self.push_stack(parent.into());
+        self.set_register(Register::Value, parent);
+        self.set_register(Register::Argument, ());
 
-        self.cons()?;
+        self.cons(Register::Argument, Register::Value, Register::Argument)?;
 
-        self.cons()?;
+        self.set_register(Register::Value, symbol);
 
-        Ok(self.pop_stack())
+        self.cons(Register::Value, Register::Value, Register::Argument)?;
+
+        Ok(self.get_register(Register::Value))
     }
 
     pub fn no_memory() -> Self
@@ -1179,7 +1193,7 @@ impl LispMemory
 
     pub fn define_symbol(&mut self, key: LispValue, value: LispValue) -> Result<(), Error>
     {
-        if let Some(id) = self.lookup_in_env_id::<false>(
+        /*if let Some(id) = self.lookup_in_env_id::<false>(
             self.env,
             key.as_symbol_id().expect("key must be a symbol")
         )
@@ -1208,7 +1222,7 @@ impl LispMemory
 
         self.set_car(mappings_id(self), new_env);
 
-        Ok(())
+        Ok(())*/todo!()
     }
 
     pub fn lookup(&self, name: &str) -> Option<LispValue>
@@ -1478,25 +1492,46 @@ impl LispMemory
 
     pub fn try_pop_arg(&mut self) -> Option<LispValue>
     {
-        let argument = self.registers[Register::Argument as usize];
-        if argument.is_null()
+        let pair = self.registers[Register::Argument as usize];
+        if pair.is_null()
         {
             return None;
         }
 
-        self.registers[Register::Argument as usize] = self.pop_stack();
+        let LispList{car, cdr} = pair.as_list(self).expect("arg register must contain a pair");
+        self.set_register(Register::Argument, cdr);
 
-        Some(argument)
+        Some(car)
+    }
+
+    pub fn get_register(&self, register: Register) -> LispValue
+    {
+        self.registers[register as usize]
+    }
+
+    pub fn set_register(&mut self, register: Register, value: impl Into<LispValue>)
+    {
+        self.registers[register as usize] = value.into();
     }
 
     pub fn is_empty_args(&self) -> bool
     {
-        self.registers[Register::Argument as usize].is_null()
+        self.get_register(Register::Argument).is_null()
     }
 
     pub fn return_value(&mut self, value: LispValue)
     {
-        self.registers[Register::Value as usize] = value;
+        self.set_register(self.target, value);
+    }
+
+    pub fn push_stack_register(&mut self, register: Register)
+    {
+        self.push_stack(self.registers[register as usize]);
+    }
+
+    pub fn pop_stack_register(&mut self, register: Register)
+    {
+        self.registers[register as usize] = self.pop_stack();
     }
 
     pub fn push_stack(&mut self, value: impl Into<LispValue>)
@@ -1601,40 +1636,15 @@ impl LispMemory
         Ok(())
     }
 
-    pub fn cons(&mut self) -> Result<(), Error>
-    {
-        self.cons_inner(|this|
-        {
-            let cdr = this.pop_stack();
-            let car = this.pop_stack();
-
-            (car, cdr)
-        })
-    }
-
-    pub fn rcons(&mut self) -> Result<(), Error>
-    {
-        self.cons_inner(|this|
-        {
-            let car = this.pop_stack();
-            let cdr = this.pop_stack();
-
-            (car, cdr)
-        })
-    }
-
-    fn cons_inner(
-        &mut self,
-        f: impl FnOnce(&mut Self) -> (LispValue, LispValue)
-    ) -> Result<(), Error>
+    pub fn cons(&mut self, target: Register, car: Register, cdr: Register) -> Result<(), Error>
     {
         self.need_list_memory(1)?;
 
-        let (car, cdr) = f(self);
+        let car = self.get_register(car);
+        let cdr = self.get_register(cdr);
 
         let pair = self.memory.cons(car, cdr);
-
-        self.push_stack(pair);
+        self.set_register(target, pair);
 
         Ok(())
     }
@@ -1648,14 +1658,14 @@ impl LispMemory
         I: IntoIterator<Item=V>,
         I::IntoIter: DoubleEndedIterator + ExactSizeIterator
     {
-        let iter = values.into_iter();
+        /*let iter = values.into_iter();
         let len = iter.len();
 
         iter.for_each(|x| self.push_stack(x));
 
         self.push_stack(());
 
-        (0..len).try_for_each(|_| self.cons())
+        (0..len).try_for_each(|_| self.cons())*/todo!()
     }
 
     pub fn new_primitive_value(&mut self, x: PrimitiveType) -> LispValue
@@ -1770,6 +1780,16 @@ impl<M> GenericOutputWrapper<M>
     {
         self.value
     }
+
+    pub fn into_memory(self) -> M
+    {
+        self.memory
+    }
+
+    pub fn destructure(self) -> (M, LispValue)
+    {
+        (self.memory, self.value)
+    }
 }
 
 impl<M: Borrow<LispMemory>> GenericOutputWrapper<M>
@@ -1790,71 +1810,10 @@ impl<M: Borrow<LispMemory>> GenericOutputWrapper<M>
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct LispState
-{
-    exprs: Vec<()>,
-    memory: LispMemory
-}
-
-impl From<LispMemory> for LispState
-{
-    fn from(memory: LispMemory) -> Self
-    {
-        Self{exprs: Vec::new(), memory}
-    }
-}
-
-impl LispState
-{
-    pub fn into_memory(self) -> LispMemory
-    {
-        self.memory
-    }
-}
-
-pub struct StateOutputWrapper
-{
-    exprs: Vec<()>,
-    value: OutputWrapper
-}
-
-impl Display for StateOutputWrapper
-{
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
-    {
-        write!(f, "{}", self.value)
-    }
-}
-
-impl Deref for StateOutputWrapper
-{
-    type Target = OutputWrapper;
-
-    fn deref(&self) -> &Self::Target
-    {
-        &self.value
-    }
-}
-
-impl StateOutputWrapper
-{
-    pub fn into_state(self) -> LispState
-    {
-        LispState{exprs: self.exprs, memory: self.value.memory}
-    }
-
-    pub fn destructure(self) -> (LispState, LispValue)
-    {
-        let value = self.value.value;
-        (self.into_state(), value)
-    }
-}
-
 pub struct LispConfig
 {
     pub primitives: Rc<Primitives>,
-    pub state: LispState
+    pub memory: LispMemory
 }
 
 #[derive(Debug)]
@@ -1872,7 +1831,7 @@ impl Lisp
     {
         let program = Program::parse(
             config.primitives,
-            config.state,
+            config.memory,
             code
         )?;
 
@@ -1886,7 +1845,7 @@ impl Lisp
     {
         let config = LispConfig{
             primitives: Rc::new(Primitives::new()),
-            state: memory.into()
+            memory
         };
 
         Self::new_with_config(config, code)
@@ -1912,7 +1871,7 @@ impl Lisp
         LispMemory::default()
     }
 
-    pub fn run(&mut self) -> Result<StateOutputWrapper, ErrorPos>
+    pub fn run(&mut self) -> Result<OutputWrapper, ErrorPos>
     {
         self.program.eval()
     }

@@ -247,7 +247,7 @@ impl ChunkGenerator
     fn default_state(
         primitives: Rc<Primitives>,
         path: &Path
-    ) -> LispState
+    ) -> LispMemory
     {
         fn load(name: &Path) -> String
         {
@@ -255,13 +255,13 @@ impl ChunkGenerator
                 .unwrap_or_else(|err| panic!("{} must exist >_< ({err})", name.display()))
         }
 
-        let run_default = |state: LispState, path: PathBuf| -> LispState
+        let run_default = |memory: LispMemory, path: PathBuf| -> LispMemory
         {
             let default_code = load(&path);
 
             let config = LispConfig{
                 primitives: primitives.clone(),
-                state
+                memory
             };
 
             Lisp::new_with_config(config, &default_code)
@@ -269,18 +269,18 @@ impl ChunkGenerator
                 {
                     x.run()
                 }).unwrap_or_else(|err| panic!("{} has an error ({err})", path.display()))
-                .into_state()
+                .into_memory()
         };
 
-        let state: LispState = LispMemory::new(256, 1 << 13).into();
-        let state = run_default(state, "lisp/standard.scm".into());
+        let memory: LispMemory = LispMemory::new(256, 1 << 13);
+        let memory = run_default(memory, "lisp/standard.scm".into());
 
-        run_default(state, path.join("default.scm"))
+        run_default(memory, path.join("default.scm"))
     }
 
     fn parse_function(
         &mut self,
-        state: LispState,
+        memory: LispMemory,
         filepath: PathBuf,
         name: &str
     ) -> Result<(), ParseError>
@@ -293,7 +293,7 @@ impl ChunkGenerator
 
         let config = LispConfig{
             primitives: self.primitives.clone(),
-            state
+            memory
         };
 
         let lisp = Lisp::new_with_config(config, &code).unwrap_or_else(|err|
@@ -333,14 +333,12 @@ impl ChunkGenerator
                 panic!("error allocating tag symbol: {err}")
             });
 
-            let (state, value): (LispState, LispValue) = this_chunk.run()
+            let (memory, value): (LispMemory, LispValue) = this_chunk.run()
                 .unwrap_or_else(|err|
                 {
                     panic!("runtime lisp error: {err} (in {chunk_name})")
                 })
                 .destructure();
-
-            let memory = state.into_memory();
 
             let output = value.as_vector_ref(&memory)
                 .unwrap_or_else(|err|

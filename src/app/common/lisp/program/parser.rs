@@ -5,7 +5,7 @@ use std::{
     ops::Deref
 };
 
-use super::{BEGIN_PRIMITIVE, Error, ErrorPos};
+use super::{BEGIN_PRIMITIVE, QUOTE_PRIMITIVE, Error, ErrorPos};
 
 pub use lexer::CodePosition;
 
@@ -378,7 +378,7 @@ impl Parser
                     cdr: Box::new(AstPos{position, value: Ast::EmptyList})
                 };
 
-                let car = Box::new(AstPos{position, value: Ast::Value("quote".to_owned())});
+                let car = Box::new(AstPos{position, value: Ast::Value(QUOTE_PRIMITIVE.to_owned())});
                 let cdr = Box::new(AstPos{position, value: rest});
 
                 Some(Ast::List{car, cdr})
