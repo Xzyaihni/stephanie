@@ -557,7 +557,16 @@ impl LispValue
         match self.tag
         {
             ValueTag::Char => Ok(unsafe{ self.value.char }),
-            x => Err(Error::WrongType{expected: ValueTag::Integer, got: x})
+            x => Err(Error::WrongType{expected: ValueTag::Char, got: x})
+        }
+    }
+
+    pub fn as_address(self) -> Result<u32, Error>
+    {
+        match self.tag
+        {
+            ValueTag::Address => Ok(unsafe{ self.value.address }),
+            x => Err(Error::WrongType{expected: ValueTag::Address, got: x})
         }
     }
 
@@ -701,18 +710,13 @@ impl LispValue
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct ErrorPos
-{
-    pub position: CodePosition,
-    pub error: Error
-}
+pub type ErrorPos = WithPosition<Error>;
 
 impl Display for ErrorPos
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
     {
-        write!(f, "{}: {}", self.position, self.error)
+        write!(f, "{}: {}", self.position, self.value)
     }
 }
 
@@ -738,7 +742,6 @@ pub enum Error
     ExpectedNumerical{a: ValueTag, b: ValueTag},
     ExpectedList,
     ExpectedParam,
-    ExpectedArg,
     ExpectedOp,
     ExpectedClose,
     UnexpectedClose,
@@ -783,7 +786,6 @@ impl Display for Error
                 format!("numeric error with {a} and {b} operands"),
             Self::ExpectedList => "expected a list".to_owned(),
             Self::ExpectedParam => "expected a parameter".to_owned(),
-            Self::ExpectedArg => "expected an argument".to_owned(),
             Self::ExpectedOp => "expected an operator".to_owned(),
             Self::ExpectedClose => "expected a closing parenthesis".to_owned(),
             Self::UnexpectedClose => "unexpected closing parenthesis".to_owned(),
@@ -1077,7 +1079,6 @@ impl Symbols
 
 pub struct LispMemory
 {
-    env: LispValue,
     quoted: Vec<LispValue>,
     symbols: Symbols,
     memory: MemoryBlock,
@@ -1101,7 +1102,6 @@ impl Debug for LispMemory
 
         let block = MemoryBlockWith{memory: Some(self), block: &self.memory};
         f.debug_struct("MemoryBlock")
-            .field("env", &self.env.to_string(self))
             .field("quoted", &quoted)
             .field("symbols", &self.symbols)
             .field("memory", &block)
@@ -1116,7 +1116,6 @@ impl Clone for LispMemory
     fn clone(&self) -> Self
     {
         Self{
-            env: self.env,
             quoted: self.quoted.clone(),
             symbols: self.symbols.clone(),
             memory: self.memory.clone(),
@@ -1143,7 +1142,6 @@ impl LispMemory
         let swap_memory = MemoryBlock::new(memory_size);
 
         let mut this = Self{
-            env: LispValue::new_empty_list(),
             quoted: Vec::new(),
             symbols: Symbols::new(),
             memory,
@@ -1152,7 +1150,8 @@ impl LispMemory
             registers: [LispValue::new_empty_list(); Register::COUNT]
         };
 
-        this.env = this.create_env("env", ()).expect("must have enough memory for default env");
+        let env = this.create_env("env", ()).expect("must have enough memory for default env");
+        this.set_register(Register::Environment, env);
 
         this
     }
@@ -1196,14 +1195,14 @@ impl LispMemory
     {
         let symbol = self.new_symbol(key.into());
 
-        self.define_symbol(symbol, value)
+        self.define_symbol(symbol.as_symbol_id().expect("must be a symbol"), value)
     }
 
-    pub fn define_symbol(&mut self, key: LispValue, value: LispValue) -> Result<(), Error>
+    pub fn define_symbol(&mut self, key: SymbolId, value: LispValue) -> Result<(), Error>
     {
-        /*if let Some(id) = self.lookup_in_env_id::<false>(
-            self.env,
-            key.as_symbol_id().expect("key must be a symbol")
+        if let Some(id) = self.lookup_in_env_id::<false>(
+            self.get_register(Register::Environment),
+            key
         )
         {
             self.set_cdr(id, value);
@@ -1212,25 +1211,50 @@ impl LispMemory
 
         let mappings_id = |this: &Self|
         {
-            let pair = this.env.as_list(this).expect("env must be a list").cdr;
+            let pair = this.get_register(Register::Environment).as_list(this).expect("env must be a list").cdr;
             pair.as_list_id().expect("env cdr must be list")
         };
 
-        self.push_stack(key);
-        self.push_stack(value);
-        self.cons()?;
+        {
+            let restore = self.with_saved_registers([Register::Value, Register::Temporary]);
 
-        let tail = self.get_car(mappings_id(self));
+            self.set_register(Register::Value, LispValue::new_symbol(key));
+            self.set_register(Register::Temporary, value);
+            self.cons(Register::Value, Register::Value, Register::Temporary)?;
 
-        self.push_stack(tail);
+            let tail = self.get_car(mappings_id(self));
 
-        self.cons()?;
+            self.set_register(Register::Temporary, tail);
 
-        let new_env = self.pop_stack();
+            self.cons(Register::Value, Register::Value, Register::Temporary)?;
 
-        self.set_car(mappings_id(self), new_env);
+            let new_env = self.get_register(Register::Value);
 
-        Ok(())*/todo!()
+            self.set_car(mappings_id(self), new_env);
+
+            restore(self);
+        }
+
+        Ok(())
+    }
+
+    pub fn with_saved_registers(
+        &mut self,
+        registers: impl IntoIterator<Item=Register> + Clone
+    ) -> impl FnOnce(&mut LispMemory)
+    {
+        registers.clone().into_iter().for_each(|register|
+        {
+            self.push_stack_register(register);
+        });
+
+        move |memory|
+        {
+            registers.into_iter().for_each(|register|
+            {
+                memory.pop_stack_register(register);
+            });
+        }
     }
 
     pub fn lookup(&self, name: &str) -> Option<LispValue>
@@ -1241,7 +1265,7 @@ impl LispMemory
 
     pub fn lookup_symbol(&self, symbol: SymbolId) -> Option<LispValue>
     {
-        self.lookup_in_env::<true>(self.env, symbol)
+        self.lookup_in_env::<true>(self.get_register(Register::Environment), symbol)
     }
 
     fn lookup_in_env<const CHECK_PARENT: bool>(
@@ -1386,16 +1410,11 @@ impl LispMemory
 
         transfer_stack!(stack);
         transfer_stack!(quoted);
+        transfer_stack!(registers);
     }
 
     pub fn gc(&mut self)
     {
-        self.env = Self::transfer_to_swap_value(
-            &mut self.memory,
-            &mut self.swap_memory,
-            self.env
-        );
-
         self.transfer_stacks();
 
         let transfer_swap = |

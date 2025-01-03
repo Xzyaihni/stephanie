@@ -102,7 +102,7 @@ impl<T> WithPositionTrait<Result<T, ErrorPos>> for Result<T, Error>
 {
     fn with_position(self, position: CodePosition) -> Result<T, ErrorPos>
     {
-        self.map_err(|error| ErrorPos{position, error})
+        self.map_err(|value| ErrorPos{position, value})
     }
 }
 
@@ -142,6 +142,20 @@ pub struct PrimitiveProcedureInfo
 
 impl PrimitiveProcedureInfo
 {
+    pub fn new(
+        args_count: impl Into<ArgsCount>,
+        effect: Effect,
+        on_eval: OnEval,
+        on_apply: impl Fn(PrimitiveArgs) -> Result<LispValue, Error> + 'static
+    ) -> Self
+    {
+        Self{
+            args_count: args_count.into(),
+            on_eval: Some(on_eval),
+            on_apply: Some((effect, simple_apply(on_apply)))
+        }
+    }
+
     pub fn new_eval(
         args_count: impl Into<ArgsCount>,
         on_eval: OnEval
@@ -301,12 +315,172 @@ impl Primitives
                     Ok(InterRepr::Value(InterReprPos::parse_quote_args(memory, args)?))
                 }))),
             (CONS_PRIMITIVE.into(),
-                PrimitiveProcedureInfo::new_simple(2, Effect::Pure, |args|
+                PrimitiveProcedureInfo::new_simple(2, Effect::Pure, |mut args|
                 {
-                    todo!()
-                    // memory.cons(target, args[0], args[1])
+                    let car = args.next().unwrap();
+                    args.memory.set_register(Register::Temporary, car);
+
+                    let cdr = args.next().unwrap();
+                    args.memory.set_register(Register::Value, cdr);
+
+                    args.memory.cons(Register::Value, Register::Temporary, Register::Value)?;
+
+                    Ok(args.memory.get_register(Register::Value))
                 })),
             ("+".into(), PrimitiveProcedureInfo::new_simple(ArgsCount::Min(2), Effect::Pure, do_op!(add, checked_add))),
+            ("-".into(), PrimitiveProcedureInfo::new_simple(ArgsCount::Min(2), Effect::Pure, do_op!(sub, checked_sub))),
+            ("*".into(), PrimitiveProcedureInfo::new_simple(ArgsCount::Min(2), Effect::Pure, do_op!(mul, checked_mul))),
+            ("/".into(), PrimitiveProcedureInfo::new_simple(ArgsCount::Min(2), Effect::Pure, do_op!(div, checked_div))),
+            ("remainder".into(), PrimitiveProcedureInfo::new_simple(2, Effect::Pure, do_op_simple!(rem))),
+            ("define".into(),
+                PrimitiveProcedureInfo::new(2, Effect::Impure, Rc::new(|memory, primitives, args: AstPos|
+                {
+                    if args.is_null()
+                    {
+                        return Err(ErrorPos{position: args.position, value: Error::WrongArgumentsCount{
+                            proc: "define".to_owned(),
+                            this_invoked: true,
+                            expected: ArgsCount::Min(2).to_string(),
+                            got: Some(0)
+                        }});
+                    }
+
+                    let first = args.car();
+
+                    let is_procedure = first.is_list();
+
+                    if is_procedure
+                    {
+                        /*let position = args.position;
+
+                        let body: Vec<_> = iter::from_fn(||
+                        {
+                            let next = args.cdr();
+                            args = next.clone();
+
+                            (!next.is_null()).then(|| next.car())
+                        }).collect();
+
+                        let body = if body.len() > 1
+                        {
+                            let body = body.into_iter().rev().fold(
+                                Ast::EmptyList.with_position(position),
+                                |acc, x|
+                                {
+                                    AstPos::cons(x, acc)
+                                });
+
+                            AstPos::cons(
+                                AstPos{
+                                    position: body.position,
+                                    ast: Ast::Value(BEGIN_PRIMITIVE.to_owned())
+                                },
+                                body
+                            )
+                        } else
+                        {
+                            body.into_iter().next().unwrap()
+                        };
+
+                        let name = ExpressionPos::analyze(state, memory, first.car())?;
+                        let name = Expression::Value(name.as_value()?).with_position(position);
+
+                        let params = first.cdr();
+
+                        let lambda_args =
+                            AstPos::cons(
+                                params,
+                                AstPos::cons(
+                                    body,
+                                    Ast::EmptyList.with_position(position)));
+
+                        let lambda = ExpressionPos::analyze_lambda(state, memory, lambda_args)?;
+
+                        let args = ExpressionPos::cons(
+                            name,
+                            ExpressionPos::cons(
+                                lambda,
+                                Expression::EmptyList.with_position(position)));
+
+                        (Box::new(args), ArgsWrapper::from(2))*/todo!()
+                    } else
+                    {
+                        let name: Result<_, ErrorPos> = if let Ast::Value(x) = first.value
+                        {
+                            InterReprPos::parse_primitive_text(memory, &x).with_position(first.position)
+                        } else
+                        {
+                            unreachable!()
+                        };
+
+                        let name: Result<_, ErrorPos> = name?.as_symbol_id().with_position(first.position);
+                        let name = name?;
+
+                        let position = args.position;
+                        let args = InterReprPos::parse_args(memory, primitives, args.cdr())?;
+                        let args_len = args.len();
+
+                        if args_len != 1
+                        {
+                            return Err(ErrorPos{position, value: Error::WrongArgumentsCount{
+                                proc: "define".to_owned(),
+                                this_invoked: true,
+                                expected: "2".to_owned(),
+                                got: Some(args_len + 1)
+                            }});
+                        }
+
+                        Ok(InterRepr::Define{
+                            name,
+                            body: Box::new(args.into_iter().next().unwrap())
+                        })
+                    }
+                }), |args|
+                {
+                    /*let first = args.0.car();
+                    let second = args.0.cdr().car();
+
+                    let pos = first.position;
+
+                    let key = first.as_value()?;
+
+                    eval_queue.push(Evaluated{
+                        args: EvaluatedArgs{
+                            expr: None,
+                            args: None
+                        },
+                        run: Box::new(move |EvaluatedArgs{..}, _eval_queue, _state, memory|
+                        {
+                            memory.restore_env();
+
+                            let value = memory.pop_return();
+
+                            memory.define_symbol(key, value).with_position(pos)?;
+
+                            if action == Action::Return
+                            {
+                                memory.push_return(());
+                            }
+
+                            Ok(())
+                        })
+                    });
+
+                    eval_queue.push(Evaluated{
+                        args: EvaluatedArgs{
+                            expr: Some(second),
+                            args: None
+                        },
+                        run: Box::new(move |EvaluatedArgs{expr: second, ..}, eval_queue, _state, memory|
+                        {
+                            memory.save_env();
+
+                            second.unwrap().eval(eval_queue, memory, Action::Return)
+                        })
+                    });
+
+                    Ok(())*/todo!()
+                })),
         ]/*[
             ("display",
                 PrimitiveProcedureInfo::new_simple_effect(1, move |_state, memory, mut args|
@@ -470,10 +644,6 @@ impl Primitives
 
                     Ok(())
                 })),
-            ("-", PrimitiveProcedureInfo::new_simple(ArgsCount::Min(2), do_op!(sub, checked_sub))),
-            ("*", PrimitiveProcedureInfo::new_simple(ArgsCount::Min(2), do_op!(mul, checked_mul))),
-            ("/", PrimitiveProcedureInfo::new_simple(ArgsCount::Min(2), do_op!(div, checked_div))),
-            ("remainder", PrimitiveProcedureInfo::new_simple(2, do_op_simple!(rem))),
             ("=",
                 PrimitiveProcedureInfo::new_simple(
                     ArgsCount::Min(2),
@@ -584,130 +754,6 @@ impl Primitives
                 PrimitiveProcedureInfo::new_eval(2, Rc::new(|_op, state, memory, args|
                 {
                     ExpressionPos::analyze_lambda(state, memory, args)
-                }))),
-            ("define",
-                PrimitiveProcedureInfo::new(ArgsCount::Min(2), Rc::new(|op, state, memory, mut args|
-                {
-                    if args.is_null()
-                    {
-                        return Err(ErrorPos{position: args.position, error: Error::ExpectedArg});
-                    }
-
-                    let first = args.car();
-
-                    let is_procedure = first.is_list();
-
-                    let args = if is_procedure
-                    {
-                        let position = args.position;
-
-                        let body: Vec<_> = iter::from_fn(||
-                        {
-                            let next = args.cdr();
-                            args = next.clone();
-
-                            (!next.is_null()).then(|| next.car())
-                        }).collect();
-
-                        let body = if body.len() > 1
-                        {
-                            let body = body.into_iter().rev().fold(
-                                Ast::EmptyList.with_position(position),
-                                |acc, x|
-                                {
-                                    AstPos::cons(x, acc)
-                                });
-
-                            AstPos::cons(
-                                AstPos{
-                                    position: body.position,
-                                    ast: Ast::Value(BEGIN_PRIMITIVE.to_owned())
-                                },
-                                body
-                            )
-                        } else
-                        {
-                            body.into_iter().next().unwrap()
-                        };
-
-                        let name = ExpressionPos::analyze(state, memory, first.car())?;
-                        let name = Expression::Value(name.as_value()?).with_position(position);
-
-                        let params = first.cdr();
-
-                        let lambda_args =
-                            AstPos::cons(
-                                params,
-                                AstPos::cons(
-                                    body,
-                                    Ast::EmptyList.with_position(position)));
-
-                        let lambda = ExpressionPos::analyze_lambda(state, memory, lambda_args)?;
-
-                        let args = ExpressionPos::cons(
-                            name,
-                            ExpressionPos::cons(
-                                lambda,
-                                Expression::EmptyList.with_position(position)));
-
-                        (Box::new(args), ArgsWrapper::from(2))
-                    } else
-                    {
-                        ExpressionPos::analyze_args(state, memory, args)?
-                    };
-
-                    Ok(ExpressionPos{
-                        position: args.0.position,
-                        expression: Expression::Application{
-                            op: Box::new(op),
-                            args
-                        }
-                    })
-                }), Rc::new(|eval_queue, _state, _memory, args, action|
-                {
-                    let first = args.0.car();
-                    let second = args.0.cdr().car();
-
-                    let pos = first.position;
-
-                    let key = first.as_value()?;
-
-                    eval_queue.push(Evaluated{
-                        args: EvaluatedArgs{
-                            expr: None,
-                            args: None
-                        },
-                        run: Box::new(move |EvaluatedArgs{..}, _eval_queue, _state, memory|
-                        {
-                            memory.restore_env();
-
-                            let value = memory.pop_return();
-
-                            memory.define_symbol(key, value).with_position(pos)?;
-
-                            if action == Action::Return
-                            {
-                                memory.push_return(());
-                            }
-
-                            Ok(())
-                        })
-                    });
-
-                    eval_queue.push(Evaluated{
-                        args: EvaluatedArgs{
-                            expr: Some(second),
-                            args: None
-                        },
-                        run: Box::new(move |EvaluatedArgs{expr: second, ..}, eval_queue, _state, memory|
-                        {
-                            memory.save_env();
-
-                            second.unwrap().eval(eval_queue, memory, Action::Return)
-                        })
-                    });
-
-                    Ok(())
                 }))),
             ("car",
                 PrimitiveProcedureInfo::new_simple(1, |_state, memory, mut args|
@@ -905,7 +951,9 @@ enum Command
     PutRegister{target: Register, source: Register},
     PutValue{value: LispValue, register: Register},
     Lookup{id: SymbolId, register: Register},
+    Define{id: SymbolId, register: Register},
     PutReturn(Label),
+    Return,
     Jump(Label),
     JumpIfTrue{target: Label, check: Register},
     IsPrimitiveProcedure,
@@ -927,7 +975,9 @@ impl Command
             | Self::CallPrimitiveValue{target: register, ..} => Some(*register),
             Self::IsPrimitiveProcedure => Some(Register::Temporary),
             Self::PutReturn(_) => Some(Register::Return),
-            Self::Push(_)
+            Self::Define{..}
+            | Self::Return
+            | Self::Push(_)
             | Self::Pop(_)
             | Self::Jump(_)
             | Self::JumpIfTrue{..}
@@ -955,6 +1005,7 @@ impl Command
             Self::PutRegister{target, source} => CommandRaw::PutRegister{target, source},
             Self::PutValue{value, register} => CommandRaw::PutValue{value, register},
             Self::Lookup{id, register} => CommandRaw::Lookup{id, register},
+            Self::Define{id, register} => CommandRaw::Define{id, register},
             Self::PutReturn(label) =>
             {
                 CommandRaw::PutValue{
@@ -962,6 +1013,7 @@ impl Command
                     register: Register::Return
                 }
             },
+            Self::Return => CommandRaw::Return,
             Self::Jump(label) => CommandRaw::Jump(*labels.get(&label).unwrap()),
             Self::JumpIfTrue{target, check} => CommandRaw::JumpIfTrue{target: *labels.get(&target).unwrap(), check},
             Self::IsPrimitiveProcedure => CommandRaw::IsPrimitiveProcedure,
@@ -1124,12 +1176,18 @@ pub enum InterRepr
 {
     Apply{op: Box<InterReprPos>, args: Vec<InterReprPos>},
     Sequence(Vec<InterReprPos>),
+    Define{name: SymbolId, body: Box<InterReprPos>},
     Lookup(SymbolId),
     Value(LispValue)
 }
 
 impl InterReprPos
 {
+    pub fn parse_primitive_text(memory: &mut LispMemory, text: &str) -> Result<LispValue, Error>
+    {
+        Ok(memory.new_primitive_value(Ast::parse_primitive(&text)?))
+    }
+
     pub fn parse(
         memory: &mut LispMemory,
         primitives: &Primitives,
@@ -1140,8 +1198,10 @@ impl InterReprPos
         {
             Ast::Value(x) =>
             {
-                let p: Result<_, ErrorPos> = Ast::parse_primitive(&x).with_position(ast.position);
-                let value = memory.new_primitive_value(p?);
+                let result: Result<_, ErrorPos> = Self::parse_primitive_text(memory, &x)
+                    .with_position(ast.position);
+
+                let value = result?;
 
                 Ok(if let Ok(id) = value.as_symbol_id()
                 {
@@ -1204,7 +1264,6 @@ impl InterReprPos
             unreachable!()
         };
 
-        dbg!(&value);
         Self::allocate_quote(memory, value, Register::Value)?;
 
         let value = memory.get_register(Register::Value);
@@ -1223,8 +1282,9 @@ impl InterReprPos
         {
             Ast::Value(x) =>
             {
-                let p: Result<_, ErrorPos> = Ast::parse_primitive(&x).with_position(ast.position);
-                memory.new_primitive_value(p?)
+                let value: Result<_, ErrorPos> = Self::parse_primitive_text(memory, &x).with_position(ast.position);
+
+                value?
             },
             Ast::EmptyList => LispValue::new_empty_list(),
             Ast::List{car, cdr} =>
@@ -1265,7 +1325,7 @@ impl InterReprPos
         }
     }
 
-    pub fn compile(
+    fn compile(
         self,
         state: &mut CompileState,
         target: PutValue,
@@ -1297,7 +1357,7 @@ impl InterReprPos
             InterRepr::Sequence(values) =>
             {
                 let len = values.len();
-                values.into_iter().rev().enumerate().map(|(i, x)|
+                values.into_iter().enumerate().map(|(i, x)|
                 {
                     if (i + 1) == len
                     {
@@ -1307,6 +1367,26 @@ impl InterReprPos
                         x.compile(state, None, Proceed::Next)
                     }
                 }).reduce(CompiledPart::combine).unwrap_or_else(CompiledPart::new)
+            },
+            InterRepr::Define{name, body} =>
+            {
+                let temp = if let Some(target) = target
+                {
+                    target
+                } else
+                {
+                    Register::Value
+                };
+
+                let mut commands = vec![Command::Define{id: name, register: temp}.with_position(self.position)];
+
+                if let Some(target) = target
+                {
+                    commands.push(Command::PutValue{value: ().into(), register: target}.into());
+                }
+
+                let body = body.compile(state, Some(temp), Proceed::Next);
+                body.combine(CompiledPart::from_commands(commands)).combine(proceed.into_compiled())
             },
             InterRepr::Apply{op, args} =>
             {
@@ -1336,24 +1416,41 @@ impl InterReprPos
 
                 let setup = op.compile(state, Some(Register::Operator), Proceed::Next).combine(args_part);
 
-                let return_command = match proceed
+                let prepare_return = /*match proceed
                 {
                     Proceed::Jump(label) => Command::PutReturn(label),
                     Proceed::Next => Command::PutReturn(todo!()),
                     Proceed::Return => Command::Pop(Register::Return)
+                }*/();
+
+                let primitive_return: CompiledPart = match proceed
+                {
+                    Proceed::Jump(label) => Command::Jump(label).into(),
+                    Proceed::Next => CompiledPart::new(),
+                    Proceed::Return => CompiledPart::from_commands(vec![
+                        Command::Pop(Register::Return).into(),
+                        Command::Return.into()
+                    ])
                 };
 
                 let make_lambda_branch_not_halt = ();
 
                 let primitive_branch = Label::PrimitiveBranch(state.label_id());
-                let call_part = CompiledPart::from_commands(vec![
-                    return_command.into(),
+                let check_part = CompiledPart::from_commands(vec![
                     Command::IsPrimitiveProcedure.into(),
-                    Command::JumpIfTrue{target: primitive_branch, check: Register::Temporary}.with_position(self.position),
+                    Command::JumpIfTrue{target: primitive_branch, check: Register::Temporary}.with_position(self.position)
+                ]);
+
+                let compound_part = CompiledPart::from_commands(vec![
                     Command::Jump(Label::Halt).into(),
+                ]);
+
+                let primitive_part = CompiledPart::from_commands(vec![
                     Command::Label(primitive_branch).into(),
                     Command::CallPrimitiveValue{target: target.expect("make None target be ok later")}.into()
-                ]);
+                ]).combine(primitive_return);
+
+                let call_part = check_part.combine(compound_part).combine(primitive_part);
 
                 setup.combine(call_part.with_modifies(RegisterStates::all()))
             }
@@ -1390,6 +1487,7 @@ impl CompileState
 pub enum Register
 {
     Return,
+    Environment,
     Operator,
     Argument,
     Value,
@@ -1435,6 +1533,8 @@ enum CommandRaw
     PutRegister{target: Register, source: Register},
     PutValue{value: LispValue, register: Register},
     Lookup{id: SymbolId, register: Register},
+    Define{id: SymbolId, register: Register},
+    Return,
     Jump(usize),
     JumpIfTrue{target: usize, check: Register},
     IsPrimitiveProcedure,
@@ -1538,7 +1638,7 @@ impl CompiledProgram
                 {
                     return Err(ErrorPos{
                         position: self.positions[i].unwrap_or_else(|| panic!("{} must have a codepos", $name)),
-                        error: $error
+                        value: $error
                     })
                 }
             }
@@ -1562,14 +1662,29 @@ impl CompiledProgram
                 {
                     if let Some(value) = memory.lookup_symbol(*id)
                     {
-                        memory.registers[*register as usize] = value;
+                        memory.set_register(*register, value);
                     } else
                     {
                         return_error!(Error::UndefinedVariable(memory.get_symbol(*id)), "lookup")
                     }
                 },
+                CommandRaw::Define{id, register} =>
+                {
+                    let value = memory.get_register(*register);
+                    if let Err(err) = memory.define_symbol(*id, value)
+                    {
+                        return_error!(err, "define")
+                    }
+                },
                 CommandRaw::PutRegister{target, source} => memory.set_register(*target, memory.get_register(*source)),
                 CommandRaw::PutValue{value, register} => memory.set_register(*register, *value),
+                CommandRaw::Return =>
+                {
+                    i = memory.get_register(Register::Return).as_address()
+                        .expect("return register must contain an address") as usize;
+
+                    continue;
+                },
                 CommandRaw::Jump(destination) =>
                 {
                     i = *destination;
@@ -1643,6 +1758,11 @@ impl Program
         let ast = Parser::parse(code)?;
 
         let ir = InterReprPos::parse(&mut memory, &primitives, ast)?;
+
+        if DebugConfig::is_enabled(DebugTool::Lisp)
+        {
+            dbg!(&ir);
+        }
 
         let compiled = {
             let mut state = CompileState::new(&primitives);

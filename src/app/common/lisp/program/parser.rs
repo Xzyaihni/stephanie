@@ -59,7 +59,7 @@ impl AstPos
         match &self.value
         {
             Ast::Value(x) => Ast::parse_primitive(x)
-                .map_err(|error| ErrorPos{position: self.position, error}),
+                .map_err(|value| ErrorPos{position: self.position, value}),
             x => panic!("as_value must be called on a value, called on {x:?}")
         }
     }
@@ -345,7 +345,7 @@ impl Parser
 
         let ast = AstPos{
             position: pos,
-            value: ast.ok_or(ErrorPos{position: pos, error: Error::UnexpectedClose})?
+            value: ast.ok_or(ErrorPos{position: pos, value: Error::UnexpectedClose})?
         };
 
         Ok(Ast::List{
@@ -357,7 +357,7 @@ impl Parser
     fn parse_one(&mut self) -> Result<(CodePosition, Option<Ast>), ErrorPos>
     {
         let position = self.current_position;
-        let lexeme = self.lexemes.next().ok_or(ErrorPos{position, error: Error::ExpectedClose})?;
+        let lexeme = self.lexemes.next().ok_or(ErrorPos{position, value: Error::ExpectedClose})?;
 
         let position = lexeme.position;
 
@@ -371,7 +371,7 @@ impl Parser
             {
                 let (_, rest) = self.parse_one()?;
 
-                let rest = rest.ok_or(ErrorPos{position, error: Error::ExpectedClose})?;
+                let rest = rest.ok_or(ErrorPos{position, value: Error::ExpectedClose})?;
 
                 let rest = Ast::List{
                     car: Box::new(AstPos{position, value: rest}),
