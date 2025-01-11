@@ -94,22 +94,6 @@ impl Special
     }
 }
 
-impl Display for Special
-{
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
-    {
-        let s = match self
-        {
-            Self::True => "#t",
-            Self::False => "#f",
-            Self::EmptyList => "()",
-            Self::BrokenHeart => "<broken-heart>"
-        };
-
-        write!(f, "{}", s)
-    }
-}
-
 #[derive(Clone, Copy)]
 pub union ValueRaw
 {
@@ -117,16 +101,17 @@ pub union ValueRaw
     address: u32,
     pub integer: i32,
     pub float: f32,
-    pub char: char,
+    pub character: char,
     pub len: u32,
     pub procedure: u32,
     pub primitive_procedure: u32,
     tag: ValueTag,
-    pub special: Special,
+    pub boolean: bool,
     pub list: u32,
     symbol: SymbolId,
     string: u32,
-    vector: u32
+    vector: u32,
+    empty: ()
 }
 
 impl PartialEq for ValueRaw
@@ -146,12 +131,13 @@ pub enum ValueTag
     Char,
     String,
     Symbol,
-    Special,
-    Procedure,
+    Bool,
+    EmptyList,
     PrimitiveProcedure,
     List,
     Vector,
     Address,
+    BrokenHeart,
     VectorMoved
 }
 
@@ -166,11 +152,12 @@ impl ValueTag
                 | ValueTag::Char
                 | ValueTag::PrimitiveProcedure
                 | ValueTag::Symbol
-                | ValueTag::VectorMoved
+                | ValueTag::Bool
                 | ValueTag::Address
-                | ValueTag::Special => false,
+                | ValueTag::EmptyList
+                | ValueTag::BrokenHeart
+                | ValueTag::VectorMoved => false,
             ValueTag::String
-                | ValueTag::Procedure
                 | ValueTag::List
                 | ValueTag::Vector => true
         }
@@ -334,7 +321,7 @@ impl From<bool> for LispValue
 
 impl LispValuable for bool
 {
-    fn tag() -> ValueTag { ValueTag::Special }
+    fn tag() -> ValueTag { ValueTag::Bool }
 }
 
 impl From<()> for LispValue
@@ -347,7 +334,7 @@ impl From<()> for LispValue
 
 impl LispValuable for ()
 {
-    fn tag() -> ValueTag { ValueTag::Special }
+    fn tag() -> ValueTag { ValueTag::EmptyList }
 }
 
 #[derive(Clone, Copy)]
@@ -367,6 +354,30 @@ impl Debug for LispValue
     }
 }
 
+macro_rules! implement_tagged
+{
+    ($(($new_func:ident, $as_func:ident, $value_type:ident, $union_name:ident, $tag_name:ident)),+) =>
+    {
+        $(
+            pub fn $new_func($union_name: $value_type) -> Self
+            {
+                unsafe{
+                    Self::new(ValueTag::$tag_name, ValueRaw{$union_name})
+                }
+            }
+
+            pub fn $as_func(self) -> Result<$value_type, Error>
+            {
+                match self.tag
+                {
+                    ValueTag::$tag_name => Ok(unsafe{ self.value.$union_name }),
+                    x => Err(Error::WrongType{expected: ValueTag::$tag_name, got: x})
+                }
+            }
+        )+
+    }
+}
+
 impl LispValue
 {
     /// # Safety
@@ -376,11 +387,15 @@ impl LispValue
         Self{tag, value}
     }
 
-    pub fn new_list(list: u32) -> Self
-    {
-        unsafe{
-            Self::new(ValueTag::List, ValueRaw{list})
-        }
+    implement_tagged!{
+        (new_integer, as_integer, i32, integer, Integer),
+        (new_float, as_float, f32, float, Float),
+        (new_char, as_char, char, character, Char),
+        (new_bool, as_bool, bool, boolean, Bool),
+        (new_address, as_address, u32, address, Address),
+        (new_primitive_procedure, as_primitive_procedure, u32, primitive_procedure, PrimitiveProcedure),
+        (new_symbol_id, as_symbol_id, SymbolId, symbol, Symbol),
+        (new_list_id, as_list_id, u32, list, List)
     }
 
     pub fn new_vector(vector: u32) -> Self
@@ -397,74 +412,17 @@ impl LispValue
         }
     }
 
-    pub fn new_symbol(symbol: SymbolId) -> Self
-    {
-        unsafe{
-            Self::new(ValueTag::Symbol, ValueRaw{symbol})
-        }
-    }
-
-    pub fn new_procedure(procedure: u32) -> Self
-    {
-        unsafe{
-            Self::new(ValueTag::Procedure, ValueRaw{procedure})
-        }
-    }
-
-    pub fn new_primitive_procedure(primitive_procedure: u32) -> Self
-    {
-        unsafe{
-            Self::new(ValueTag::PrimitiveProcedure, ValueRaw{primitive_procedure})
-        }
-    }
-
-    pub fn new_char(c: char) -> Self
-    {
-        unsafe{
-            Self::new(ValueTag::Char, ValueRaw{char: c})
-        }
-    }
-
-    pub fn new_bool(value: bool) -> Self
-    {
-        Self::new_special(Special::new_bool(value))
-    }
-
     pub fn new_empty_list() -> Self
     {
-        Self::new_special(Special::new_empty_list())
+        unsafe{
+            Self::new(ValueTag::EmptyList, ValueRaw{empty: ()})
+        }
     }
 
     pub fn new_broken_heart() -> Self
     {
-        Self::new_special(Special::new_broken_heart())
-    }
-
-    fn new_special(special: Special) -> Self
-    {
         unsafe{
-            Self::new(ValueTag::Special, ValueRaw{special})
-        }
-    }
-
-    pub fn new_integer(value: i32) -> Self
-    {
-        unsafe{
-            Self::new(ValueTag::Integer, ValueRaw{integer: value})
-        }
-    }
-
-    pub fn new_address(address: u32) -> Self
-    {
-        unsafe{
-            Self::new(ValueTag::Address, ValueRaw{address})
-        }
-    }
-
-    pub fn new_float(value: f32) -> Self
-    {
-        unsafe{
-            Self::new(ValueTag::Float, ValueRaw{float: value})
+            Self::new(ValueTag::BrokenHeart, ValueRaw{empty: ()})
         }
     }
 
@@ -475,49 +433,22 @@ impl LispValue
 
     pub fn is_null(&self) -> bool
     {
-        self.as_special().map(|x| x.is_null()).unwrap_or(false)
+        self.tag == ValueTag::EmptyList
     }
 
     pub fn is_broken_heart(&self) -> bool
     {
-        self.as_special().map(|x| x.is_broken_heart()).unwrap_or(false)
+        self.tag == ValueTag::BrokenHeart
     }
 
     pub fn is_true(&self) -> bool
     {
-        self.as_special().map(|x| x.is_true()).unwrap_or(true)
-    }
-
-    fn as_special(&self) -> Option<Special>
-    {
-        match self.tag
-        {
-            ValueTag::Special => Some(unsafe{ self.value.special }),
-            _ => None
-        }
-    }
-
-    pub fn as_symbol_id(self) -> Result<SymbolId, Error>
-    {
-        match self.tag
-        {
-            ValueTag::Symbol => Ok(unsafe{ self.value.symbol }),
-            x => Err(Error::WrongType{expected: ValueTag::Symbol, got: x})
-        }
+        if self.tag == ValueTag::Bool { unsafe{ self.value.boolean } } else { true }
     }
 
     pub fn as_symbol(self, memory: &LispMemory) -> Result<String, Error>
     {
         self.as_symbol_id().map(|id| memory.get_symbol(id))
-    }
-
-    pub fn as_list_id(self) -> Result<u32, Error>
-    {
-        match self.tag
-        {
-            ValueTag::List => Ok(unsafe{ self.value.list }),
-            x => Err(Error::WrongType{expected: ValueTag::List, got: x})
-        }
     }
 
     pub fn as_list(self, memory: &LispMemory) -> Result<LispList, Error>
@@ -552,74 +483,6 @@ impl LispValue
         }
     }
 
-    pub fn as_char(self) -> Result<char, Error>
-    {
-        match self.tag
-        {
-            ValueTag::Char => Ok(unsafe{ self.value.char }),
-            x => Err(Error::WrongType{expected: ValueTag::Char, got: x})
-        }
-    }
-
-    pub fn as_address(self) -> Result<u32, Error>
-    {
-        match self.tag
-        {
-            ValueTag::Address => Ok(unsafe{ self.value.address }),
-            x => Err(Error::WrongType{expected: ValueTag::Address, got: x})
-        }
-    }
-
-    pub fn as_integer(self) -> Result<i32, Error>
-    {
-        match self.tag
-        {
-            ValueTag::Integer => Ok(unsafe{ self.value.integer }),
-            x => Err(Error::WrongType{expected: ValueTag::Integer, got: x})
-        }
-    }
-
-    pub fn as_float(self) -> Result<f32, Error>
-    {
-        match self.tag
-        {
-            ValueTag::Float => Ok(unsafe{ self.value.float }),
-            x => Err(Error::WrongType{expected: ValueTag::Float, got: x})
-        }
-    }
-
-    pub fn as_bool(self) -> Result<bool, Error>
-    {
-        match self.tag
-        {
-            ValueTag::Special =>
-            {
-                let special = unsafe{ self.value.special };
-
-                special.as_bool().ok_or(Error::WrongSpecial{expected: "boolean"})
-            },
-            x => Err(Error::WrongType{expected: ValueTag::Special, got: x})
-        }
-    }
-
-    pub fn as_procedure(self) -> Result<u32, Error>
-    {
-        match self.tag
-        {
-            ValueTag::Procedure => Ok(unsafe{ self.value.procedure }),
-            x => Err(Error::WrongType{expected: ValueTag::Procedure, got: x})
-        }
-    }
-
-    pub fn as_primitive_procedure(self) -> Result<u32, Error>
-    {
-        match self.tag
-        {
-            ValueTag::PrimitiveProcedure => Ok(unsafe{ self.value.primitive_procedure }),
-            x => Err(Error::WrongType{expected: ValueTag::PrimitiveProcedure, got: x})
-        }
-    }
-
     pub fn to_string(&self, memory: &LispMemory) -> String
     {
         self.maybe_to_string(
@@ -646,12 +509,13 @@ impl LispValue
         {
             ValueTag::Integer => unsafe{ self.value.integer.to_string() },
             ValueTag::Float => unsafe{ self.value.float.to_string() },
-            ValueTag::Char => unsafe{ self.value.char.to_string() },
-            ValueTag::Special => unsafe{ self.value.special.to_string() },
-            ValueTag::Procedure => format!("<procedure #{}>", unsafe{ self.value.procedure }),
+            ValueTag::Char => unsafe{ self.value.character.to_string() },
             ValueTag::PrimitiveProcedure => format!("<primitive procedure #{}>", unsafe{ self.value.primitive_procedure }),
+            ValueTag::Bool => if unsafe{ self.value.boolean } { "#t" } else { "#f" }.to_owned(),
+            ValueTag::EmptyList => "()".to_owned(),
             ValueTag::VectorMoved => "<vector-moved>".to_owned(),
-            ValueTag::Address => unsafe{ self.value.address.to_string() },
+            ValueTag::BrokenHeart => "<broken-heart>".to_owned(),
+            ValueTag::Address => format!("<address {}>", unsafe{ self.value.address.to_string() }),
             ValueTag::String => block.map(|memory|
             {
                 memory.get_string(unsafe{ self.value.string }).unwrap()
@@ -732,7 +596,7 @@ pub enum Error
     CharTooLong(String),
     UndefinedVariable(String),
     AttemptedShadowing(String),
-    CallNonProcedure(ValueTag),
+    CallNonProcedure{got: String},
     WrongArgumentsCount{proc: String, this_invoked: bool, expected: String, got: Option<usize>},
     IndexOutOfRange(i32),
     CharOutOfRange,
@@ -744,6 +608,7 @@ pub enum Error
     ExpectedParam,
     ExpectedOp,
     ExpectedClose,
+    ExpectedSymbol,
     UnexpectedClose,
     UnexpectedEndOfFile
 }
@@ -763,8 +628,8 @@ impl Display for Error
             Self::CharTooLong(s) => format!("cant parse `{s}` as char"),
             Self::UndefinedVariable(s) => format!("variable `{s}` is undefined"),
             Self::AttemptedShadowing(s) => format!("attempted to shadow `{s}` which is a primitive"),
-            Self::CallNonProcedure(t) => format!("cant call non procedure, tried calling `{t:?}`"),
             Self::ExpectedNumerical{a, b} => format!("primitive operation expected 2 numbers, got {a:?} and {b:?}"),
+            Self::CallNonProcedure{got} => format!("cant apply `{got}` as procedure"),
             Self::WrongArgumentsCount{proc, this_invoked: _, expected, got} =>
             {
                 let got = if let Some(got) = got
@@ -788,6 +653,7 @@ impl Display for Error
             Self::ExpectedParam => "expected a parameter".to_owned(),
             Self::ExpectedOp => "expected an operator".to_owned(),
             Self::ExpectedClose => "expected a closing parenthesis".to_owned(),
+            Self::ExpectedSymbol => "expected a valid symbol".to_owned(),
             Self::UnexpectedClose => "unexpected closing parenthesis".to_owned(),
             Self::UnexpectedEndOfFile => "unexpected end of file".to_owned()
         };
@@ -939,7 +805,7 @@ impl MemoryBlock
             return Err(Error::VectorWrongType{expected: ValueTag::Char, got: vec.tag});
         }
 
-        Ok(vec.values.iter().map(|x| unsafe{ x.char }).collect())
+        Ok(vec.values.iter().map(|x| unsafe{ x.character }).collect())
     }
 
     pub fn get_list(&self, id: u32) -> LispList
@@ -979,7 +845,7 @@ impl MemoryBlock
         self.cars.push(car);
         self.cdrs.push(cdr);
 
-        LispValue::new_list(id as u32)
+        LispValue::new_list_id(id as u32)
     }
 
     fn allocate_iter<'a>(
@@ -1218,7 +1084,7 @@ impl LispMemory
         {
             let restore = self.with_saved_registers([Register::Value, Register::Temporary]);
 
-            self.set_register(Register::Value, LispValue::new_symbol(key));
+            self.set_register(Register::Value, LispValue::new_symbol_id(key));
             self.set_register(Register::Temporary, value);
             self.cons(Register::Value, Register::Value, Register::Temporary)?;
 
@@ -1712,7 +1578,7 @@ impl LispMemory
 
         let id = self.symbols.push(x);
 
-        LispValue::new_symbol(id)
+        LispValue::new_symbol_id(id)
     }
 
     pub fn allocate_vector(
@@ -2617,5 +2483,17 @@ mod tests
         ";
 
         simple_integer_test(code, 6);
+    }
+
+    #[test]
+    fn empty_quote()
+    {
+        let code = "
+            (quote)
+        ";
+
+        let lisp = Lisp::new(code);
+
+        assert!(lisp.is_err());
     }
 }

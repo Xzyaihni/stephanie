@@ -38,7 +38,6 @@ mod parser;
 
 pub const BEGIN_PRIMITIVE: &'static str = "begin";
 pub const QUOTE_PRIMITIVE: &'static str = "quote";
-pub const CONS_PRIMITIVE: &'static str = "cons";
 
 // unreadable, great
 pub type OnApply = Rc<
@@ -292,14 +291,15 @@ impl Primitives
 
         macro_rules! is_tag
         {
-            ($tag:expr) =>
+            ($name:literal, $($tag:expr),+) =>
             {
-                |mut args|
+                (PrimitiveName::from($name), PrimitiveProcedureInfo::new_simple(1, Effect::Pure, |mut args|
                 {
-                    let is_equal = args.next().unwrap().tag == $tag;
+                    let tag = args.next().unwrap().tag;
+                    let is_equal = false $(|| tag == $tag)+;
 
                     Ok(is_equal.into())
-                }
+                }))
             }
         }
 
@@ -314,9 +314,11 @@ impl Primitives
                 {
                     Ok(InterRepr::Value(InterReprPos::parse_quote_args(memory, args)?))
                 }))),
-            (CONS_PRIMITIVE.into(),
+            ("cons".into(),
                 PrimitiveProcedureInfo::new_simple(2, Effect::Pure, |mut args|
                 {
+                    let restore = args.memory.with_saved_registers([Register::Temporary, Register::Value]);
+
                     let car = args.next().unwrap();
                     args.memory.set_register(Register::Temporary, car);
 
@@ -325,15 +327,47 @@ impl Primitives
 
                     args.memory.cons(Register::Value, Register::Temporary, Register::Value)?;
 
-                    Ok(args.memory.get_register(Register::Value))
+                    let value = args.memory.get_register(Register::Value);
+                    restore(args.memory);
+
+                    Ok(value)
+                })),
+            ("car".into(),
+                PrimitiveProcedureInfo::new_simple(1, Effect::Pure, |mut args|
+                {
+                    let arg = args.next().unwrap();
+                    let value = arg.as_list(args.memory)?.car;
+
+                    Ok(value)
+                })),
+            ("cdr".into(),
+                PrimitiveProcedureInfo::new_simple(1, Effect::Pure, |mut args|
+                {
+                    let arg = args.next().unwrap();
+                    let value = arg.as_list(args.memory)?.cdr;
+
+                    Ok(value)
                 })),
             ("+".into(), PrimitiveProcedureInfo::new_simple(ArgsCount::Min(2), Effect::Pure, do_op!(add, checked_add))),
             ("-".into(), PrimitiveProcedureInfo::new_simple(ArgsCount::Min(2), Effect::Pure, do_op!(sub, checked_sub))),
             ("*".into(), PrimitiveProcedureInfo::new_simple(ArgsCount::Min(2), Effect::Pure, do_op!(mul, checked_mul))),
             ("/".into(), PrimitiveProcedureInfo::new_simple(ArgsCount::Min(2), Effect::Pure, do_op!(div, checked_div))),
             ("remainder".into(), PrimitiveProcedureInfo::new_simple(2, Effect::Pure, do_op_simple!(rem))),
+            is_tag!("symbol?", ValueTag::Symbol),
+            is_tag!("pair?", ValueTag::List),
+            is_tag!("null?", ValueTag::EmptyList),
+            is_tag!("char?", ValueTag::Char),
+            is_tag!("boolean?", ValueTag::Bool),
+            is_tag!("vector?", ValueTag::Vector),
+            is_tag!("procedure?", ValueTag::Address, ValueTag::PrimitiveProcedure),
+            is_tag!("number?", ValueTag::Integer, ValueTag::Float),
+            ("lambda".into(),
+                PrimitiveProcedureInfo::new_eval(2, Rc::new(|memory, primitives, args|
+                {
+                    Ok(InterRepr::parse_lambda(memory, primitives, args)?)
+                }))),
             ("define".into(),
-                PrimitiveProcedureInfo::new(2, Effect::Impure, Rc::new(|memory, primitives, args: AstPos|
+                PrimitiveProcedureInfo::new_eval(2, Rc::new(|memory, primitives, args: AstPos|
                 {
                     if args.is_null()
                     {
@@ -405,16 +439,7 @@ impl Primitives
                         (Box::new(args), ArgsWrapper::from(2))*/todo!()
                     } else
                     {
-                        let name: Result<_, ErrorPos> = if let Ast::Value(x) = first.value
-                        {
-                            InterReprPos::parse_primitive_text(memory, &x).with_position(first.position)
-                        } else
-                        {
-                            unreachable!()
-                        };
-
-                        let name: Result<_, ErrorPos> = name?.as_symbol_id().with_position(first.position);
-                        let name = name?;
+                        let name = InterReprPos::parse_symbol(memory, &first)?;
 
                         let position = args.position;
                         let args = InterReprPos::parse_args(memory, primitives, args.cdr())?;
@@ -435,52 +460,7 @@ impl Primitives
                             body: Box::new(args.into_iter().next().unwrap())
                         })
                     }
-                }), |args|
-                {
-                    /*let first = args.0.car();
-                    let second = args.0.cdr().car();
-
-                    let pos = first.position;
-
-                    let key = first.as_value()?;
-
-                    eval_queue.push(Evaluated{
-                        args: EvaluatedArgs{
-                            expr: None,
-                            args: None
-                        },
-                        run: Box::new(move |EvaluatedArgs{..}, _eval_queue, _state, memory|
-                        {
-                            memory.restore_env();
-
-                            let value = memory.pop_return();
-
-                            memory.define_symbol(key, value).with_position(pos)?;
-
-                            if action == Action::Return
-                            {
-                                memory.push_return(());
-                            }
-
-                            Ok(())
-                        })
-                    });
-
-                    eval_queue.push(Evaluated{
-                        args: EvaluatedArgs{
-                            expr: Some(second),
-                            args: None
-                        },
-                        run: Box::new(move |EvaluatedArgs{expr: second, ..}, eval_queue, _state, memory|
-                        {
-                            memory.save_env();
-
-                            second.unwrap().eval(eval_queue, memory, Action::Return)
-                        })
-                    });
-
-                    Ok(())*/todo!()
-                })),
+                }))),
         ]/*[
             ("display",
                 PrimitiveProcedureInfo::new_simple_effect(1, move |_state, memory, mut args|
@@ -575,41 +555,6 @@ impl Primitives
 
                 Ok(())
             })),
-            ("null?", PrimitiveProcedureInfo::new_simple(1, |_state, memory, mut args|
-            {
-                let arg = *args.pop(memory);
-
-                memory.push_return(arg.is_null());
-
-                Ok(())
-            })),
-            ("symbol?", PrimitiveProcedureInfo::new_simple(1, is_tag!(ValueTag::Symbol))),
-            ("pair?", PrimitiveProcedureInfo::new_simple(1, is_tag!(ValueTag::List))),
-            ("char?", PrimitiveProcedureInfo::new_simple(1, is_tag!(ValueTag::Char))),
-            ("vector?", PrimitiveProcedureInfo::new_simple(1, is_tag!(ValueTag::Vector))),
-            ("procedure?", PrimitiveProcedureInfo::new_simple(1, is_tag!(ValueTag::Procedure))),
-            ("number?",
-                PrimitiveProcedureInfo::new_simple(1, |_state, memory, mut args|
-                {
-                    let arg = args.pop(memory);
-
-                    let is_number = arg.tag == ValueTag::Integer || arg.tag == ValueTag::Float;
-
-                    memory.push_return(is_number);
-
-                    Ok(())
-                })),
-            ("boolean?",
-                PrimitiveProcedureInfo::new_simple(1, |_state, memory, mut args|
-                {
-                    let arg = args.pop(memory);
-
-                    let is_bool = arg.as_bool().map(|_| true).unwrap_or(false);
-
-                    memory.push_return(is_bool);
-
-                    Ok(())
-                })),
             ("exact->inexact",
                 PrimitiveProcedureInfo::new_simple(1, |_state, memory, mut args|
                 {
@@ -750,31 +695,6 @@ impl Primitives
                         }
                     })
                 }))),
-            ("lambda",
-                PrimitiveProcedureInfo::new_eval(2, Rc::new(|_op, state, memory, args|
-                {
-                    ExpressionPos::analyze_lambda(state, memory, args)
-                }))),
-            ("car",
-                PrimitiveProcedureInfo::new_simple(1, |_state, memory, mut args|
-                {
-                    let arg = args.pop(memory);
-                    let value = *arg.as_list()?.car;
-
-                    memory.push_return(value);
-
-                    Ok(())
-                })),
-            ("cdr",
-                PrimitiveProcedureInfo::new_simple(1, |_state, memory, mut args|
-                {
-                    let arg = args.pop(memory);
-                    let value = *arg.as_list()?.cdr;
-
-                    memory.push_return(value);
-
-                    Ok(())
-                })),
             ("set-car!",
                 PrimitiveProcedureInfo::new_simple(2, |_state, memory, mut args|
                 {
@@ -948,17 +868,20 @@ enum Command
 {
     Push(Register),
     Pop(Register),
-    PutRegister{target: Register, source: Register},
     PutValue{value: LispValue, register: Register},
     Lookup{id: SymbolId, register: Register},
     Define{id: SymbolId, register: Register},
-    PutReturn(Label),
-    Return,
+    PutLabel{target: Register, label: Label},
     Jump(Label),
+    JumpRegister(Register),
     JumpIfTrue{target: Label, check: Register},
-    IsPrimitiveProcedure,
+    JumpIfFalse{target: Label, check: Register},
+    IsOperatorTag(ValueTag),
     Cons{target: Register, car: Register, cdr: Register},
+    CarArg{target: Register},
+    CdrArg{target: Register},
     CallPrimitiveValue{target: Register},
+    Error(ErrorPos),
     Label(Label)
 }
 
@@ -968,19 +891,22 @@ impl Command
     {
         match self
         {
-            Self::PutRegister{target: register, ..}
-            | Self::PutValue{register, ..}
+            Self::PutValue{register, ..}
             | Self::Lookup{register, ..}
+            | Self::PutLabel{target: register, ..}
+            | Self::Pop(register)
             | Self::Cons{target: register, ..}
+            | Self::CarArg{target: register}
+            | Self::CdrArg{target: register}
             | Self::CallPrimitiveValue{target: register, ..} => Some(*register),
-            Self::IsPrimitiveProcedure => Some(Register::Temporary),
-            Self::PutReturn(_) => Some(Register::Return),
-            Self::Define{..}
-            | Self::Return
-            | Self::Push(_)
-            | Self::Pop(_)
+            Self::Define{..} => Some(Register::Environment),
+            Self::IsOperatorTag(_) => Some(Register::Temporary),
+            Self::Push(_)
             | Self::Jump(_)
+            | Self::JumpRegister(_)
             | Self::JumpIfTrue{..}
+            | Self::JumpIfFalse{..}
+            | Self::Error(_)
             | Self::Label(_) => None
         }
     }
@@ -1002,23 +928,26 @@ impl Command
         {
             Self::Push(register) => CommandRaw::Push(register),
             Self::Pop(register) => CommandRaw::Pop(register),
-            Self::PutRegister{target, source} => CommandRaw::PutRegister{target, source},
             Self::PutValue{value, register} => CommandRaw::PutValue{value, register},
             Self::Lookup{id, register} => CommandRaw::Lookup{id, register},
             Self::Define{id, register} => CommandRaw::Define{id, register},
-            Self::PutReturn(label) =>
+            Self::PutLabel{target, label} =>
             {
                 CommandRaw::PutValue{
                     value: LispValue::new_address(*labels.get(&label).unwrap() as u32),
-                    register: Register::Return
+                    register: target
                 }
             },
-            Self::Return => CommandRaw::Return,
             Self::Jump(label) => CommandRaw::Jump(*labels.get(&label).unwrap()),
+            Self::JumpRegister(register) => CommandRaw::JumpRegister(register),
             Self::JumpIfTrue{target, check} => CommandRaw::JumpIfTrue{target: *labels.get(&target).unwrap(), check},
-            Self::IsPrimitiveProcedure => CommandRaw::IsPrimitiveProcedure,
+            Self::JumpIfFalse{target, check} => CommandRaw::JumpIfFalse{target: *labels.get(&target).unwrap(), check},
+            Self::IsOperatorTag(tag) => CommandRaw::IsOperatorTag(tag),
             Self::Cons{target, car, cdr} => CommandRaw::Cons{target, car, cdr},
+            Self::CarArg{target} => CommandRaw::CarArg{target},
+            Self::CdrArg{target} => CommandRaw::CdrArg{target},
             Self::CallPrimitiveValue{target} => CommandRaw::CallPrimitiveValue{target},
+            Self::Error(err) => CommandRaw::Error(err),
             Self::Label(_) => unreachable!("labels have no raw equivalent")
         }
     }
@@ -1116,15 +1045,15 @@ impl CompiledPart
         }
     }
 
-    pub fn simple_add(mut self, commands: impl IntoIterator<Item=CommandPos>) -> Self
+    pub fn into_program(mut self, state: CompileState, primitives: Rc<Primitives>) -> CompiledProgram
     {
-        self.commands.extend(commands.into_iter());
+        self.commands.push(Command::Jump(Label::Halt).into());
 
-        self
-    }
+        state.lambdas.into_iter().for_each(|lambda|
+        {
+            self.commands.extend(lambda.commands);
+        });
 
-    pub fn into_program(mut self, primitives: Rc<Primitives>) -> CompiledProgram
-    {
         self.commands.push(Command::Label(Label::Halt).into());
 
         if DebugConfig::is_enabled(DebugTool::Lisp)
@@ -1172,17 +1101,98 @@ impl CompiledPart
 pub type InterReprPos = WithPosition<InterRepr>;
 
 #[derive(Debug)]
+pub enum LambdaParams
+{
+    Variadic(SymbolId),
+    Normal(Vec<SymbolId>)
+}
+
+impl LambdaParams
+{
+    pub fn parse(
+        memory: &mut LispMemory,
+        ast: AstPos
+    ) -> Result<Self, ErrorPos>
+    {
+        match &ast.value
+        {
+            Ast::Value(_) =>
+            {
+                Ok(Self::Variadic(InterReprPos::parse_symbol(memory, &ast)?))
+            },
+            Ast::List{..} => Ok(Self::Normal(Self::parse_list(memory, ast)?)),
+            Ast::EmptyList => Err(ErrorPos{position: ast.position, value: Error::ExpectedParam})
+        }
+    }
+
+    pub fn parse_list(memory: &mut LispMemory, ast: AstPos) -> Result<Vec<SymbolId>, ErrorPos>
+    {
+        match ast.value
+        {
+            Ast::List{car, cdr} =>
+            {
+                let tail = Self::parse_list(memory, *cdr)?;
+                let symbol = InterReprPos::parse_symbol(memory, &car)?;
+
+                Ok(iter::once(symbol).chain(tail).collect())
+            },
+            Ast::EmptyList => Ok(Vec::new()),
+            Ast::Value(_) => unreachable!("malformed ast")
+        }
+    }
+
+    fn compile(self) -> CompiledPart
+    {
+        match self
+        {
+            Self::Variadic(id) => Command::Define{id, register: Register::Argument}.into(),
+            Self::Normal(params) =>
+            {
+                let commands = params.into_iter().flat_map(|param|
+                {
+                    [
+                        Command::CarArg{target: Register::Temporary},
+                        Command::Define{id: param, register: Register::Temporary},
+                        Command::CdrArg{target: Register::Argument}
+                    ]
+                }).map(|x| CommandPos::from(x)).collect::<Vec<_>>();
+
+                CompiledPart::from_commands(commands)
+            }
+        }
+    }
+}
+
+#[derive(Debug)]
 pub enum InterRepr
 {
     Apply{op: Box<InterReprPos>, args: Vec<InterReprPos>},
     Sequence(Vec<InterReprPos>),
     Define{name: SymbolId, body: Box<InterReprPos>},
+    Lambda{params: LambdaParams, body: Box<InterReprPos>},
     Lookup(SymbolId),
     Value(LispValue)
 }
 
 impl InterReprPos
 {
+    pub fn parse_symbol(memory: &mut LispMemory, ast: &AstPos) -> Result<SymbolId, ErrorPos>
+    {
+        let position = ast.position;
+        Self::parse_primitive_value(memory, ast).and_then(|x| x.as_symbol_id().with_position(position))
+    }
+
+    pub fn parse_primitive_value(memory: &mut LispMemory, ast: &AstPos) -> Result<LispValue, ErrorPos>
+    {
+        if let Ast::Value(ref x) = ast.value
+        {
+            InterReprPos::parse_primitive_text(memory, x).with_position(ast.position)
+        } else
+        {
+            Err(ErrorPos{position: ast.position, value: Error::ExpectedSymbol})
+        }
+    }
+
     pub fn parse_primitive_text(memory: &mut LispMemory, text: &str) -> Result<LispValue, Error>
     {
         Ok(memory.new_primitive_value(Ast::parse_primitive(&text)?))
@@ -1196,12 +1206,9 @@ impl InterReprPos
     {
         match ast.value
         {
-            Ast::Value(x) =>
+            Ast::Value(ref x) =>
             {
-                let result: Result<_, ErrorPos> = Self::parse_primitive_text(memory, &x)
-                    .with_position(ast.position);
-
-                let value = result?;
+                let value = Self::parse_primitive_value(memory, &ast)?;
 
                 Ok(if let Ok(id) = value.as_symbol_id()
                 {
@@ -1245,6 +1252,16 @@ impl InterReprPos
         ast: AstPos
     ) -> Result<LispValue, ErrorPos>
     {
+        let args_error = |count|
+        {
+            return Err(Error::WrongArgumentsCount{
+                proc: QUOTE_PRIMITIVE.to_owned(),
+                this_invoked: false,
+                expected: "1".to_owned(),
+                got: count
+            }).with_position(ast.position);
+        };
+
         let value = if let Ast::List{car, cdr} = ast.value
         {
             if cdr.is_null()
@@ -1252,16 +1269,11 @@ impl InterReprPos
                 *car
             } else
             {
-                return Err(Error::WrongArgumentsCount{
-                    proc: QUOTE_PRIMITIVE.to_owned(),
-                    this_invoked: false,
-                    expected: "1".to_owned(),
-                    got: None
-                }).with_position(ast.position);
+                return args_error(None);
             }
         } else
         {
-            unreachable!()
+            return args_error(Some(0));
         };
 
         Self::allocate_quote(memory, value, Register::Value)?;
@@ -1368,6 +1380,22 @@ impl InterReprPos
                     }
                 }).reduce(CompiledPart::combine).unwrap_or_else(CompiledPart::new)
             },
+            InterRepr::Lambda{params, body} =>
+            {
+                let target = if let Some(target) = target
+                {
+                    target
+                } else
+                {
+                    return CompiledPart::new();
+                };
+
+                let params_define = params.compile();
+                let body = body.compile(state, Some(Register::Value), Proceed::Return);
+                let label = state.add_lambda(params_define.combine(body));
+
+                CompiledPart::from(Command::PutLabel{target, label}).combine(proceed.into_compiled())
+            },
             InterRepr::Define{name, body} =>
             {
                 let temp = if let Some(target) = target
@@ -1395,56 +1423,52 @@ impl InterReprPos
                     register: Register::Argument
                 }.into();
 
-                let args_part = args.into_iter().rev().map(|x|
+                let args_part = args.into_iter().rev().fold(empty_list, |acc, x|
                 {
-                    x.compile(state, Some(Register::Argument), Proceed::Next)
-                }).fold(empty_list, |acc, x|
-                {
-                    let separator: CompiledPart = Command::PutRegister{
-                        target: Register::Temporary,
-                        source: Register::Argument
-                    }.into();
-
                     let ending: CommandPos = Command::Cons{
                         target: Register::Argument,
-                        car: Register::Argument,
-                        cdr: Register::Temporary
+                        car: Register::Temporary,
+                        cdr: Register::Argument
                     }.with_position(self.position);
 
-                    acc.combine(separator).combine(x).combine(ending)
+                    let body = x.compile(state, Some(Register::Temporary), Proceed::Next);
+
+                    acc.combine(body).combine(ending)
                 });
 
                 let setup = op.compile(state, Some(Register::Operator), Proceed::Next).combine(args_part);
 
-                let prepare_return = /*match proceed
+                let after_procedure = Label::AfterProcedure(state.label_id());
+                let prepare_return = match proceed
                 {
-                    Proceed::Jump(label) => Command::PutReturn(label),
-                    Proceed::Next => Command::PutReturn(todo!()),
-                    Proceed::Return => Command::Pop(Register::Return)
-                }*/();
+                    Proceed::Jump(label) => Command::PutLabel{target: Register::Return, label}.into(),
+                    Proceed::Next => Command::PutLabel{target: Register::Return, label: after_procedure}.into(),
+                    Proceed::Return => CompiledPart::new()
+                };
 
                 let primitive_return: CompiledPart = match proceed
                 {
                     Proceed::Jump(label) => Command::Jump(label).into(),
                     Proceed::Next => CompiledPart::new(),
-                    Proceed::Return => CompiledPart::from_commands(vec![
-                        Command::Pop(Register::Return).into(),
-                        Command::Return.into()
-                    ])
+                    Proceed::Return => Command::JumpRegister(Register::Return).into()
                 };
-
-                let make_lambda_branch_not_halt = ();
 
                 let primitive_branch = Label::PrimitiveBranch(state.label_id());
                 let check_part = CompiledPart::from_commands(vec![
-                    Command::IsPrimitiveProcedure.into(),
-                    Command::JumpIfTrue{target: primitive_branch, check: Register::Temporary}.with_position(self.position)
+                    Command::IsOperatorTag(ValueTag::PrimitiveProcedure).into(),
+                    Command::JumpIfTrue{target: primitive_branch, check: Register::Temporary}.into()
                 ]);
 
-                let compound_part = CompiledPart::from_commands(vec![
-                    Command::Jump(Label::Halt).into(),
-                ]);
+                let error_branch = Label::ErrorBranch(state.label_id());
+                let compound_part = prepare_return.combine(CompiledPart::from_commands(vec![
+                    Command::IsOperatorTag(ValueTag::Address).into(),
+                    Command::JumpIfFalse{target: error_branch, check: Register::Temporary}.into(),
+                    Command::JumpRegister(Register::Operator).into(),
+                    Command::Label(error_branch).into(),
+                    Command::Error(Error::CallNonProcedure{got: String::new()}.with_position(self.position)).into()
+                ]).with_modifies(RegisterStates::all()));
 
+                let remove_the_expect = ();
                 let primitive_part = CompiledPart::from_commands(vec![
                     Command::Label(primitive_branch).into(),
                     Command::CallPrimitiveValue{target: target.expect("make None target be ok later")}.into()
@@ -1452,15 +1476,66 @@ impl InterReprPos
 
                 let call_part = check_part.combine(compound_part).combine(primitive_part);
 
-                setup.combine(call_part.with_modifies(RegisterStates::all()))
+                let call_with_return = if let Proceed::Next = proceed
+                {
+                    call_part.combine(Command::Label(after_procedure))
+                } else
+                {
+                    call_part
+                };
+
+                setup.combine(call_with_return)
             }
         }
+    }
+}
+
+impl InterRepr
+{
+    pub fn parse_lambda(
+        memory: &mut LispMemory,
+        primitives: &Primitives,
+        ast: AstPos
+    ) -> Result<Self, ErrorPos>
+    {
+        let args_error = |count|
+        {
+            Err(Error::WrongArgumentsCount{
+                proc: "lambda".to_owned(),
+                this_invoked: false,
+                expected: ArgsCount::Min(2).to_string(),
+                got: Some(count)
+            }).with_position(ast.position)
+        };
+
+        let (params, body) = if let Ast::List{car, cdr} = ast.value
+        {
+            let bodies_position = cdr.position;
+
+            let bodies = InterReprPos::parse_args(memory, primitives, *cdr)?;
+            if bodies.is_empty()
+            {
+                return args_error(1);
+            }
+
+            let body = InterRepr::Sequence(bodies).with_position(bodies_position);
+
+            (*car, body)
+        } else
+        {
+            return args_error(0);
+        };
+
+        let params = LambdaParams::parse(memory, params)?;
+
+        Ok(Self::Lambda{params, body: Box::new(body)})
     }
 }
 
 #[derive(Debug)]
 struct CompileState
 {
+    lambdas: Vec<CompiledPart>,
     label_id: u32
 }
 
@@ -1469,6 +1544,7 @@ impl CompileState
     pub fn new(primitives: &Primitives) -> Self
     {
         Self{
+            lambdas: Vec::new(),
             label_id: 0
         }
     }
@@ -1480,6 +1556,20 @@ impl CompileState
         self.label_id += 1;
 
         id
+    }
+
+    pub fn add_lambda(&mut self, lambda: CompiledPart) -> Label
+    {
+        let id = self.lambdas.len();
+        let label = Label::Procedure(id as u32);
+
+        self.lambdas.push(
+            CompiledPart::from(Command::Label(label))
+                .combine(lambda)
+                .combine(Command::JumpRegister(Register::Return))
+        );
+
+        label
     }
 }
 
@@ -1500,6 +1590,9 @@ pub type PutValue = Option<Register>;
 pub enum Label
 {
     Halt,
+    ErrorBranch(u32),
+    Procedure(u32),
+    AfterProcedure(u32),
     PrimitiveBranch(u32),
     ProcedureReturn(u32)
 }
@@ -1530,15 +1623,18 @@ enum CommandRaw
 {
     Push(Register),
     Pop(Register),
-    PutRegister{target: Register, source: Register},
     PutValue{value: LispValue, register: Register},
     Lookup{id: SymbolId, register: Register},
     Define{id: SymbolId, register: Register},
-    Return,
     Jump(usize),
+    JumpRegister(Register),
     JumpIfTrue{target: usize, check: Register},
-    IsPrimitiveProcedure,
+    JumpIfFalse{target: usize, check: Register},
+    IsOperatorTag(ValueTag),
     Cons{target: Register, car: Register, cdr: Register},
+    CarArg{target: Register},
+    CdrArg{target: Register},
+    Error(ErrorPos),
     CallPrimitiveValue{target: Register}
 }
 
@@ -1676,38 +1772,36 @@ impl CompiledProgram
                         return_error!(err, "define")
                     }
                 },
-                CommandRaw::PutRegister{target, source} => memory.set_register(*target, memory.get_register(*source)),
                 CommandRaw::PutValue{value, register} => memory.set_register(*register, *value),
-                CommandRaw::Return =>
-                {
-                    i = memory.get_register(Register::Return).as_address()
-                        .expect("return register must contain an address") as usize;
-
-                    continue;
-                },
                 CommandRaw::Jump(destination) =>
                 {
                     i = *destination;
                     continue;
                 },
+                CommandRaw::JumpRegister(register) =>
+                {
+                    i = memory.get_register(*register).as_address().expect("must be checked") as usize;
+                    continue;
+                },
                 CommandRaw::JumpIfTrue{target, check} =>
                 {
-                    match memory.get_register(*check).as_bool()
+                    if memory.get_register(*check).as_bool().expect("must be checked")
                     {
-                        Ok(value) =>
-                        {
-                            if value
-                            {
-                                i = *target;
-                                continue;
-                            }
-                        },
-                        Err(err) => return_error!(err, "jump if true")
+                        i = *target;
+                        continue;
                     }
                 },
-                CommandRaw::IsPrimitiveProcedure =>
+                CommandRaw::JumpIfFalse{target, check} =>
                 {
-                    let is_primitive = memory.get_register(Register::Operator).tag == ValueTag::PrimitiveProcedure;
+                    if !memory.get_register(*check).as_bool().expect("must be checked")
+                    {
+                        i = *target;
+                        continue;
+                    }
+                },
+                CommandRaw::IsOperatorTag(tag) =>
+                {
+                    let is_primitive = memory.get_register(Register::Operator).tag == *tag;
                     memory.set_register(Register::Temporary, is_primitive);
                 },
                 CommandRaw::Cons{target, car, cdr} =>
@@ -1716,6 +1810,36 @@ impl CompiledProgram
                     {
                         return_error!(err, "cons")
                     }
+                },
+                CommandRaw::CarArg{target} =>
+                {
+                    let value = memory.get_register(Register::Argument).as_list(memory)
+                        .expect("must be a list")
+                        .car;
+
+                    memory.set_register(*target, value);
+                },
+                CommandRaw::CdrArg{target} =>
+                {
+                    let value = memory.get_register(Register::Argument).as_list(memory)
+                        .expect("must be a list")
+                        .cdr;
+
+                    memory.set_register(*target, value);
+                },
+                CommandRaw::Error(err) =>
+                {
+                    let mut err = err.clone();
+                    match &mut err.value
+                    {
+                        Error::CallNonProcedure{got} =>
+                        {
+                            *got = memory.get_register(Register::Operator).to_string(memory);
+                        },
+                        _ => ()
+                    }
+
+                    return Err(err);
                 },
                 CommandRaw::CallPrimitiveValue{target} =>
                 {
@@ -1759,18 +1883,13 @@ impl Program
 
         let ir = InterReprPos::parse(&mut memory, &primitives, ast)?;
 
-        if DebugConfig::is_enabled(DebugTool::Lisp)
-        {
-            dbg!(&ir);
-        }
-
-        let compiled = {
+        let code = {
             let mut state = CompileState::new(&primitives);
 
-            ir.compile(&mut state, Some(Register::Value), Proceed::Jump(Label::Halt))
-        };
+            let compiled = ir.compile(&mut state, Some(Register::Value), Proceed::Jump(Label::Halt));
 
-        let code = compiled.into_program(primitives);
+            compiled.into_program(state, primitives)
+        };
 
         Ok(Self{memory, code})
     }
