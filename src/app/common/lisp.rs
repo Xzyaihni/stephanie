@@ -2443,6 +2443,16 @@ mod tests
     }
 
     #[test]
+    fn compound_args()
+    {
+        let code = "
+            (+ (* 5 10) 4 (/ 100 2))
+        ";
+
+        simple_integer_test(code, 104);
+    }
+
+    #[test]
     fn addition()
     {
         let code = "

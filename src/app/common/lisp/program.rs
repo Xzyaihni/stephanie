@@ -1431,12 +1431,16 @@ impl InterReprPos
                         cdr: Register::Argument
                     }.with_position(self.position);
 
-                    let body = x.compile(state, Some(Register::Temporary), Proceed::Next);
+                    let ending = CompiledPart::from(ending)
+                        .with_requires(RegisterStates::default().set(Register::Argument));
 
-                    acc.combine(body).combine(ending)
+                    let body = x.compile(state, Some(Register::Temporary), Proceed::Next)
+                        .combine(ending);
+
+                    acc.combine(body)
                 });
 
-                let setup = op.compile(state, Some(Register::Operator), Proceed::Next).combine(args_part);
+                let operator_setup = op.compile(state, Some(Register::Operator), Proceed::Next);
 
                 let after_procedure = Label::AfterProcedure(state.label_id());
                 let prepare_return = match proceed
@@ -1482,9 +1486,11 @@ impl InterReprPos
                 } else
                 {
                     call_part
-                };
+                }.with_requires(RegisterStates::default().set(Register::Operator));
 
-                setup.combine(call_with_return)
+                let after_operator = args_part.combine(call_with_return);
+
+                operator_setup.combine(after_operator)
             }
         }
     }
