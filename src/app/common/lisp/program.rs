@@ -314,6 +314,11 @@ impl Primitives
                 {
                     Ok(InterRepr::Value(InterReprPos::parse_quote_args(memory, args)?))
                 }))),
+            ("if".into(),
+                PrimitiveProcedureInfo::new_eval(2..=3, Rc::new(|_memory, primitives, args|
+                {
+                    Ok(todo!())
+                }))),
             ("cons".into(),
                 PrimitiveProcedureInfo::new_simple(2, Effect::Pure, |mut args|
                 {
@@ -601,70 +606,6 @@ impl Primitives
                 PrimitiveProcedureInfo::new_simple(
                     ArgsCount::Min(2),
                     do_cond!(|a, b| LispValue::new_bool(a < b)))),
-            ("if",
-                PrimitiveProcedureInfo::new_simple_lazy(
-                    2..=3,
-                    Rc::new(|eval_queue, _state, _memory, args, action|
-                    {
-                        let has_else = args.1.len() == 3;
-                        let args = &args.0;
-
-                        eval_queue.push(Evaluated{
-                            args: EvaluatedArgs{
-                                expr: Some(args.cdr()),
-                                args: None
-                            },
-                            run: Box::new(move |EvaluatedArgs{expr, ..}, eval_queue, _state, memory|
-                            {
-                                let args = expr.unwrap();
-
-                                memory.restore_env();
-
-                                let predicate = memory.pop_return();
-
-                                let on_true = args.car();
-
-                                let predicate = predicate.is_true();
-
-                                if predicate
-                                {
-                                    on_true.eval(eval_queue, memory, action)
-                                } else
-                                {
-                                    #[allow(clippy::collapsible_else_if)]
-                                    if has_else
-                                    {
-                                        let on_false = args.cdr().car();
-
-                                        on_false.eval(eval_queue, memory, action)
-                                    } else
-                                    {
-                                        if action == Action::Return
-                                        {
-                                            memory.push_return(());
-                                        }
-
-                                        Ok(())
-                                    }
-                                }
-                            })
-                        });
-
-                        eval_queue.push(Evaluated{
-                            args: EvaluatedArgs{
-                                expr: Some(args.car()),
-                                args: None
-                            },
-                            run: Box::new(move |EvaluatedArgs{expr, ..}, eval_queue, _state, memory|
-                            {
-                                memory.save_env();
-
-                                expr.unwrap().eval(eval_queue, memory, Action::Return)
-                            })
-                        });
-
-                        Ok(())
-                    }))),
             ("let",
                 PrimitiveProcedureInfo::new_eval(2, Rc::new(|_op, state, memory, args|
                 {
@@ -871,15 +812,16 @@ enum Command
     PutValue{value: LispValue, register: Register},
     Lookup{id: SymbolId, register: Register},
     Define{id: SymbolId, register: Register},
+    CreateChildEnvironment,
     PutLabel{target: Register, label: Label},
     Jump(Label),
     JumpRegister(Register),
     JumpIfTrue{target: Label, check: Register},
     JumpIfFalse{target: Label, check: Register},
-    IsOperatorTag(ValueTag),
+    IsTag{check: Register, tag: ValueTag},
     Cons{target: Register, car: Register, cdr: Register},
-    CarArg{target: Register},
-    CdrArg{target: Register},
+    Car{target: Register, source: Register},
+    Cdr{target: Register, source: Register},
     CallPrimitiveValue{target: Register},
     Error(ErrorPos),
     Label(Label)
@@ -887,7 +829,7 @@ enum Command
 
 impl Command
 {
-    pub fn modifies_register(&self) -> Option<Register>
+    pub fn modifies_registers(&self) -> Vec<Register>
     {
         match self
         {
@@ -896,18 +838,19 @@ impl Command
             | Self::PutLabel{target: register, ..}
             | Self::Pop(register)
             | Self::Cons{target: register, ..}
-            | Self::CarArg{target: register}
-            | Self::CdrArg{target: register}
-            | Self::CallPrimitiveValue{target: register, ..} => Some(*register),
-            Self::Define{..} => Some(Register::Environment),
-            Self::IsOperatorTag(_) => Some(Register::Temporary),
+            | Self::Car{target: register, ..}
+            | Self::Cdr{target: register, ..}
+            | Self::CallPrimitiveValue{target: register, ..} => vec![*register],
+            Self::Define{..}
+            | Self::CreateChildEnvironment => vec![Register::Environment, Register::Value, Register::Temporary],
+            Self::IsTag{..} => vec![Register::Temporary],
             Self::Push(_)
             | Self::Jump(_)
             | Self::JumpRegister(_)
             | Self::JumpIfTrue{..}
             | Self::JumpIfFalse{..}
             | Self::Error(_)
-            | Self::Label(_) => None
+            | Self::Label(_) => Vec::new()
         }
     }
 
@@ -931,6 +874,7 @@ impl Command
             Self::PutValue{value, register} => CommandRaw::PutValue{value, register},
             Self::Lookup{id, register} => CommandRaw::Lookup{id, register},
             Self::Define{id, register} => CommandRaw::Define{id, register},
+            Self::CreateChildEnvironment => CommandRaw::CreateChildEnvironment,
             Self::PutLabel{target, label} =>
             {
                 CommandRaw::PutValue{
@@ -942,10 +886,10 @@ impl Command
             Self::JumpRegister(register) => CommandRaw::JumpRegister(register),
             Self::JumpIfTrue{target, check} => CommandRaw::JumpIfTrue{target: *labels.get(&target).unwrap(), check},
             Self::JumpIfFalse{target, check} => CommandRaw::JumpIfFalse{target: *labels.get(&target).unwrap(), check},
-            Self::IsOperatorTag(tag) => CommandRaw::IsOperatorTag(tag),
+            Self::IsTag{check, tag} => CommandRaw::IsTag{check, tag},
             Self::Cons{target, car, cdr} => CommandRaw::Cons{target, car, cdr},
-            Self::CarArg{target} => CommandRaw::CarArg{target},
-            Self::CdrArg{target} => CommandRaw::CdrArg{target},
+            Self::Car{target, source} => CommandRaw::Car{target, source},
+            Self::Cdr{target, source} => CommandRaw::Cdr{target, source},
             Self::CallPrimitiveValue{target} => CommandRaw::CallPrimitiveValue{target},
             Self::Error(err) => CommandRaw::Error(err),
             Self::Label(_) => unreachable!("labels have no raw equivalent")
@@ -991,10 +935,10 @@ impl CompiledPart
         let mut modifies = RegisterStates::default();
         commands.iter().for_each(|CommandPos{value, ..}|
         {
-            if let Some(register) = value.modifies_register()
+            value.modifies_registers().into_iter().for_each(|register|
             {
                 modifies[register] = true;
-            }
+            });
         });
 
         Self{
@@ -1058,9 +1002,29 @@ impl CompiledPart
 
         if DebugConfig::is_enabled(DebugTool::Lisp)
         {
-            self.commands.iter().for_each(|WithPositionMaybe{value, position}|
+            let mut offset = 0;
+            self.commands.iter().enumerate().for_each(|(index, WithPositionMaybe{value, position})|
             {
-                eprintln!("{value:?}{}", position.map(|x| format!(" ({x})")).unwrap_or_default());
+                let is_label = value.is_label();
+
+                if is_label
+                {
+                    offset += 1;
+                }
+
+                if !is_label
+                {
+                    eprint!("{}: ", index - offset);
+                }
+
+                eprint!("{value:?}");
+
+                if let Some(position) = position
+                {
+                    eprint!(" ({position})");
+                }
+
+                eprintln!();
             });
         }
 
@@ -1151,9 +1115,9 @@ impl LambdaParams
                 let commands = params.into_iter().flat_map(|param|
                 {
                     [
-                        Command::CarArg{target: Register::Temporary},
+                        Command::Car{target: Register::Temporary, source: Register::Argument},
                         Command::Define{id: param, register: Register::Temporary},
-                        Command::CdrArg{target: Register::Argument}
+                        Command::Cdr{target: Register::Argument, source: Register::Argument}
                     ]
                 }).map(|x| CommandPos::from(x)).collect::<Vec<_>>();
 
@@ -1394,7 +1358,19 @@ impl InterReprPos
                 let body = body.compile(state, Some(Register::Value), Proceed::Return);
                 let label = state.add_lambda(params_define.combine(body));
 
-                CompiledPart::from(Command::PutLabel{target, label}).combine(proceed.into_compiled())
+                let label_part: CompiledPart = Command::PutLabel{target, label}.into();
+
+                let env_part = CompiledPart::from_commands(vec![
+                    Command::CreateChildEnvironment.with_position(self.position)
+                ]);
+
+                let cons_part = CompiledPart::from_commands(vec![
+                    Command::Cons{target, car: Register::Environment, cdr: target}.with_position(self.position)
+                ]).with_requires(RegisterStates::default().set(target));
+
+                let lambda = label_part.combine(env_part.combine(cons_part));
+
+                lambda.combine(proceed.into_compiled())
             },
             InterRepr::Define{name, body} =>
             {
@@ -1459,18 +1435,37 @@ impl InterReprPos
 
                 let primitive_branch = Label::PrimitiveBranch(state.label_id());
                 let check_part = CompiledPart::from_commands(vec![
-                    Command::IsOperatorTag(ValueTag::PrimitiveProcedure).into(),
+                    Command::IsTag{check: Register::Operator, tag: ValueTag::PrimitiveProcedure}.into(),
                     Command::JumpIfTrue{target: primitive_branch, check: Register::Temporary}.into()
                 ]);
 
                 let error_branch = Label::ErrorBranch(state.label_id());
-                let compound_part = prepare_return.combine(CompiledPart::from_commands(vec![
-                    Command::IsOperatorTag(ValueTag::Address).into(),
+                let compound_check = CompiledPart::from_commands(vec![
+                    Command::IsTag{check: Register::Operator, tag: ValueTag::List}.into(),
                     Command::JumpIfFalse{target: error_branch, check: Register::Temporary}.into(),
-                    Command::JumpRegister(Register::Operator).into(),
+                    Command::Car{target: Register::Environment, source: Register::Operator}.into(),
+                    Command::Car{target: Register::Temporary, source: Register::Environment}.into(),
+                    Command::IsTag{check: Register::Temporary, tag: ValueTag::EnvironmentMarker}.into(),
+                    Command::JumpIfFalse{target: error_branch, check: Register::Temporary}.into()
+                ]);
+
+                let compound_no_check = CompiledPart::from_commands(vec![
+                    Command::Car{target: Register::Environment, source: Register::Operator}.into()
+                ]);
+
+                let compound_call_part = CompiledPart::from_commands(vec![
+                    Command::Cdr{target: Register::Operator, source: Register::Operator}.into(),
+                    Command::JumpRegister(Register::Operator).into()
+                ]).with_modifies(RegisterStates::all());
+
+                let compound_error = CompiledPart::from_commands(vec![
                     Command::Label(error_branch).into(),
                     Command::Error(Error::CallNonProcedure{got: String::new()}.with_position(self.position)).into()
-                ]).with_modifies(RegisterStates::all()));
+                ]);
+
+                let compound_part = prepare_return.combine(compound_check)
+                    .combine(compound_call_part)
+                    .combine(compound_error);
 
                 let remove_the_expect = ();
                 let primitive_part = CompiledPart::from_commands(vec![
@@ -1632,14 +1627,15 @@ enum CommandRaw
     PutValue{value: LispValue, register: Register},
     Lookup{id: SymbolId, register: Register},
     Define{id: SymbolId, register: Register},
+    CreateChildEnvironment,
     Jump(usize),
     JumpRegister(Register),
     JumpIfTrue{target: usize, check: Register},
     JumpIfFalse{target: usize, check: Register},
-    IsOperatorTag(ValueTag),
+    IsTag{check: Register, tag: ValueTag},
     Cons{target: Register, car: Register, cdr: Register},
-    CarArg{target: Register},
-    CdrArg{target: Register},
+    Car{target: Register, source: Register},
+    Cdr{target: Register, source: Register},
     Error(ErrorPos),
     CallPrimitiveValue{target: Register}
 }
@@ -1747,7 +1743,7 @@ impl CompiledProgram
 
             if DebugConfig::is_enabled(DebugTool::Lisp)
             {
-                eprintln!("{i}: {:?}", &self.commands[i]);
+                eprintln!("[RUNNING] {i}: {:?}", &self.commands[i]);
             }
 
             match &self.commands[i]
@@ -1778,6 +1774,15 @@ impl CompiledProgram
                         return_error!(err, "define")
                     }
                 },
+                CommandRaw::CreateChildEnvironment =>
+                {
+                    let parent = memory.get_register(Register::Environment);
+                    match memory.create_env(parent)
+                    {
+                        Ok(env) => memory.set_register(Register::Environment, env),
+                        Err(err) => return_error!(err, "create child environment")
+                    }
+                },
                 CommandRaw::PutValue{value, register} => memory.set_register(*register, *value),
                 CommandRaw::Jump(destination) =>
                 {
@@ -1805,9 +1810,9 @@ impl CompiledProgram
                         continue;
                     }
                 },
-                CommandRaw::IsOperatorTag(tag) =>
+                CommandRaw::IsTag{check, tag} =>
                 {
-                    let is_primitive = memory.get_register(Register::Operator).tag == *tag;
+                    let is_primitive = memory.get_register(*check).tag == *tag;
                     memory.set_register(Register::Temporary, is_primitive);
                 },
                 CommandRaw::Cons{target, car, cdr} =>
@@ -1817,17 +1822,17 @@ impl CompiledProgram
                         return_error!(err, "cons")
                     }
                 },
-                CommandRaw::CarArg{target} =>
+                CommandRaw::Car{target, source} =>
                 {
-                    let value = memory.get_register(Register::Argument).as_list(memory)
+                    let value = memory.get_register(*source).as_list(memory)
                         .expect("must be a list")
                         .car;
 
                     memory.set_register(*target, value);
                 },
-                CommandRaw::CdrArg{target} =>
+                CommandRaw::Cdr{target, source} =>
                 {
-                    let value = memory.get_register(Register::Argument).as_list(memory)
+                    let value = memory.get_register(*source).as_list(memory)
                         .expect("must be a list")
                         .cdr;
 

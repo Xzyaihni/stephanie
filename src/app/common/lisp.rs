@@ -23,77 +23,6 @@ use program::{PrimitiveType, Register, CodePosition};
 mod program;
 
 
-#[repr(u32)]
-#[derive(Debug, Clone, Copy)]
-pub enum Special
-{
-    True,
-    False,
-    EmptyList,
-    BrokenHeart
-}
-
-impl Special
-{
-    pub fn new_bool(value: bool) -> Self
-    {
-        if value
-        {
-            Self::True
-        } else
-        {
-            Self::False
-        }
-    }
-
-    pub fn new_empty_list() -> Self
-    {
-        Self::EmptyList
-    }
-
-    pub fn new_broken_heart() -> Self
-    {
-        Self::BrokenHeart
-    }
-
-    pub fn is_null(&self) -> bool
-    {
-        match self
-        {
-            Self::EmptyList => true,
-            _ => false
-        }
-    }
-
-    pub fn is_broken_heart(&self) -> bool
-    {
-        match self
-        {
-            Self::BrokenHeart => true,
-            _ => false
-        }
-    }
-
-    pub fn is_true(&self) -> bool
-    {
-        match self
-        {
-            Self::False => false,
-            _ => true
-        }
-    }
-
-    pub fn as_bool(&self) -> Option<bool>
-    {
-        match self
-        {
-            Self::True => Some(true),
-            Self::False => Some(false),
-            _ => None
-        }
-    }
-}
-
 #[derive(Clone, Copy)]
 pub union ValueRaw
 {
@@ -123,7 +52,7 @@ impl PartialEq for ValueRaw
 }
 
 #[repr(u32)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ValueTag
 {
     Integer,
@@ -137,6 +66,7 @@ pub enum ValueTag
     List,
     Vector,
     Address,
+    EnvironmentMarker,
     BrokenHeart,
     VectorMoved
 }
@@ -150,11 +80,12 @@ impl ValueTag
             ValueTag::Integer
                 | ValueTag::Float
                 | ValueTag::Char
-                | ValueTag::PrimitiveProcedure
                 | ValueTag::Symbol
                 | ValueTag::Bool
-                | ValueTag::Address
                 | ValueTag::EmptyList
+                | ValueTag::PrimitiveProcedure
+                | ValueTag::Address
+                | ValueTag::EnvironmentMarker
                 | ValueTag::BrokenHeart
                 | ValueTag::VectorMoved => false,
             ValueTag::String
@@ -252,7 +183,7 @@ impl<T: IntoIterator<Item=ValueRaw>> LispVectorInner<T>
     }
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct LispList<T=LispValue>
 {
     car: T,
@@ -337,7 +268,7 @@ impl LispValuable for ()
     fn tag() -> ValueTag { ValueTag::EmptyList }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 pub struct LispValue
 {
     tag: ValueTag,
@@ -348,7 +279,8 @@ impl Debug for LispValue
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
     {
-        let s = self.maybe_to_string(None, None);
+        let mut visited = Vec::new();
+        let s = self.maybe_to_string(&mut visited, None, None);
 
         write!(f, "{s}")
     }
@@ -419,6 +351,13 @@ impl LispValue
         }
     }
 
+    pub fn new_environment_marker() -> Self
+    {
+        unsafe{
+            Self::new(ValueTag::EnvironmentMarker, ValueRaw{empty: ()})
+        }
+    }
+
     pub fn new_broken_heart() -> Self
     {
         unsafe{
@@ -485,7 +424,9 @@ impl LispValue
 
     pub fn to_string(&self, memory: &LispMemory) -> String
     {
+        let mut visited = Vec::new();
         self.maybe_to_string(
+            &mut visited,
             Some(memory),
             Some(&memory.memory)
         )
@@ -496,15 +437,30 @@ impl LispValue
     #[allow(dead_code)]
     fn to_string_block(&self, memory: &MemoryBlock) -> String
     {
-        self.maybe_to_string(None, Some(memory))
+        let mut visited = Vec::new();
+        self.maybe_to_string(&mut visited, None, Some(memory))
     }
 
     fn maybe_to_string(
         &self,
+        visited_boxed: &mut Vec<LispValue>,
         memory: Option<&LispMemory>,
         block: Option<&MemoryBlock>
     ) -> String
     {
+        if self.tag.is_boxed()
+        {
+            let contains = visited_boxed.contains(self);
+
+            if contains
+            {
+                return "<cycle detected>".to_owned();
+            } else
+            {
+                visited_boxed.push(*self);
+            }
+        }
+
         match self.tag
         {
             ValueTag::Integer => unsafe{ self.value.integer.to_string() },
@@ -513,6 +469,7 @@ impl LispValue
             ValueTag::PrimitiveProcedure => format!("<primitive procedure #{}>", unsafe{ self.value.primitive_procedure }),
             ValueTag::Bool => if unsafe{ self.value.boolean } { "#t" } else { "#f" }.to_owned(),
             ValueTag::EmptyList => "()".to_owned(),
+            ValueTag::EnvironmentMarker => "<environment>".to_owned(),
             ValueTag::VectorMoved => "<vector-moved>".to_owned(),
             ValueTag::BrokenHeart => "<broken-heart>".to_owned(),
             ValueTag::Address => format!("<address {}>", unsafe{ self.value.address.to_string() }),
@@ -536,8 +493,8 @@ impl LispValue
             {
                 let list = block.get_list(unsafe{ self.value.list });
 
-                let car = list.car.maybe_to_string(memory, Some(block));
-                let cdr = list.cdr.maybe_to_string(memory, Some(block));
+                let car = list.car.maybe_to_string(visited_boxed, memory, Some(block));
+                let cdr = list.cdr.maybe_to_string(visited_boxed, memory, Some(block));
 
                 format!("({car} {cdr})")
             }).unwrap_or_else(||
@@ -553,7 +510,7 @@ impl LispValue
                     .fold("#(".to_owned(), |acc, value|
                     {
                         leftover_space = true;
-                        let value = value.maybe_to_string(memory, Some(block));
+                        let value = value.maybe_to_string(visited_boxed, memory, Some(block));
 
                         acc + &value + " "
                     });
@@ -691,7 +648,8 @@ impl<'a> Debug for MemoryBlockWith<'a>
 
         let pv = |v: &LispValue|
         {
-            v.maybe_to_string(self.memory, Some(self.block))
+            let mut visited = Vec::new();
+            v.maybe_to_string(&mut visited, self.memory, Some(self.block))
         };
 
         let cars = self.block.cars.iter().map(pv).collect::<Vec<_>>();
@@ -1016,24 +974,22 @@ impl LispMemory
             registers: [LispValue::new_empty_list(); Register::COUNT]
         };
 
-        let env = this.create_env("env", ()).expect("must have enough memory for default env");
+        let env = this.create_env(()).expect("must have enough memory for default env");
         this.set_register(Register::Environment, env);
 
         this
     }
 
-    pub fn create_env(&mut self, name: &str, parent: impl Into<LispValue>) -> Result<LispValue, Error>
+    pub fn create_env(&mut self, parent: impl Into<LispValue>) -> Result<LispValue, Error>
     {
-        let symbol = self.new_symbol(name);
+        self.set_register(Register::Value, ());
+        self.set_register(Register::Temporary, parent);
 
-        self.set_register(Register::Value, parent);
-        self.set_register(Register::Argument, ());
+        self.cons(Register::Temporary, Register::Value, Register::Temporary)?;
 
-        self.cons(Register::Argument, Register::Value, Register::Argument)?;
+        self.set_register(Register::Value, LispValue::new_environment_marker());
 
-        self.set_register(Register::Value, symbol);
-
-        self.cons(Register::Value, Register::Value, Register::Argument)?;
+        self.cons(Register::Value, Register::Value, Register::Temporary)?;
 
         Ok(self.get_register(Register::Value))
     }
@@ -2348,7 +2304,6 @@ mod tests
         ";
 
         let mut lisp = Lisp::new(code).unwrap();
-        dbg!(&lisp);
 
         let value = lisp.run().unwrap().as_char().unwrap();
 
