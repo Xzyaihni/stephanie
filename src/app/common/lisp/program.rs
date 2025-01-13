@@ -242,12 +242,22 @@ impl Primitives
     {
         macro_rules! do_cond
         {
-            ($f:expr) =>
+            ($name:literal, $f:expr) =>
             {
-                |args|
+                (PrimitiveName::from($name), PrimitiveProcedureInfo::new_simple(ArgsCount::Min(2), Effect::Pure, |mut args|
                 {
-                    Self::do_cond(memory, |a, b| Some($f(a, b)), |a, b| Some($f(a, b)))
-                }
+                    let start = args.next().expect("must have 2 or more args");
+                    args.try_fold(start, |acc, x|
+                    {
+                        Self::call_op(acc, x, |a, b|
+                        {
+                            Some(LispValue::new_bool($f(a, b)))
+                        }, |a, b|
+                        {
+                            Some(LispValue::new_bool($f(a, b)))
+                        })
+                    })
+                }))
             }
         }
 
@@ -303,6 +313,7 @@ impl Primitives
             }
         }
 
+        let make_procedure_tag_check_work = ();
         let (indices, primitives): (HashMap<PrimitiveName, _>, Vec<_>) = [
             (PrimitiveName::from(BEGIN_PRIMITIVE),
                 PrimitiveProcedureInfo::new_eval(ArgsCount::Min(1), Rc::new(|memory, primitives, args|
@@ -315,9 +326,9 @@ impl Primitives
                     Ok(InterRepr::Value(InterReprPos::parse_quote_args(memory, args)?))
                 }))),
             ("if".into(),
-                PrimitiveProcedureInfo::new_eval(2..=3, Rc::new(|_memory, primitives, args|
+                PrimitiveProcedureInfo::new_eval(2..=3, Rc::new(|memory, primitives, args|
                 {
-                    Ok(todo!())
+                    InterRepr::parse_if(memory, primitives, args)
                 }))),
             ("cons".into(),
                 PrimitiveProcedureInfo::new_simple(2, Effect::Pure, |mut args|
@@ -353,18 +364,52 @@ impl Primitives
 
                     Ok(value)
                 })),
+            ("set-car!".into(),
+                PrimitiveProcedureInfo::new_simple(2, Effect::Impure, |mut args|
+                {
+                    let arg = args.next().unwrap();
+                    let list_id = arg.as_list_id()?;
+
+                    let value = args.next().unwrap();
+
+                    args.memory.set_car(list_id, value);
+
+                    Ok(().into())
+                })),
+            ("set-cdr!".into(),
+                PrimitiveProcedureInfo::new_simple(2, Effect::Impure, |mut args|
+                {
+                    let arg = args.next().unwrap();
+                    let list_id = arg.as_list_id()?;
+
+                    let value = args.next().unwrap();
+
+                    args.memory.set_cdr(list_id, value);
+
+                    Ok(().into())
+                })),
             ("+".into(), PrimitiveProcedureInfo::new_simple(ArgsCount::Min(2), Effect::Pure, do_op!(add, checked_add))),
             ("-".into(), PrimitiveProcedureInfo::new_simple(ArgsCount::Min(2), Effect::Pure, do_op!(sub, checked_sub))),
             ("*".into(), PrimitiveProcedureInfo::new_simple(ArgsCount::Min(2), Effect::Pure, do_op!(mul, checked_mul))),
             ("/".into(), PrimitiveProcedureInfo::new_simple(ArgsCount::Min(2), Effect::Pure, do_op!(div, checked_div))),
             ("remainder".into(), PrimitiveProcedureInfo::new_simple(2, Effect::Pure, do_op_simple!(rem))),
+            do_cond!("=", |a, b| a == b),
+            do_cond!(">", |a, b| a > b),
+            do_cond!("<", |a, b| a < b),
+            ("eq?".into(), PrimitiveProcedureInfo::new_simple(2, Effect::Pure, |mut args|
+            {
+                let a = args.next().unwrap();
+                let b = args.next().unwrap();
+
+                Ok((a.value == b.value).into())
+            })),
             is_tag!("symbol?", ValueTag::Symbol),
             is_tag!("pair?", ValueTag::List),
             is_tag!("null?", ValueTag::EmptyList),
             is_tag!("char?", ValueTag::Char),
             is_tag!("boolean?", ValueTag::Bool),
             is_tag!("vector?", ValueTag::Vector),
-            is_tag!("procedure?", ValueTag::Address, ValueTag::PrimitiveProcedure),
+            // is_tag!("procedure?", ValueTag::Address, ValueTag::PrimitiveProcedure),
             is_tag!("number?", ValueTag::Integer, ValueTag::Float),
             ("lambda".into(),
                 PrimitiveProcedureInfo::new_eval(2, Rc::new(|memory, primitives, args|
@@ -466,150 +511,10 @@ impl Primitives
                         })
                     }
                 }))),
-        ]/*[
-            ("display",
-                PrimitiveProcedureInfo::new_simple_effect(1, move |_state, memory, mut args|
+            ("let".into(),
+                PrimitiveProcedureInfo::new_eval(2, Rc::new(|memory, primitives, args|
                 {
-                    let arg = args.pop(memory);
-
-                    print!("{arg}");
-                    io::stdout().flush().unwrap();
-
-                    memory.push_return(());
-
-                    Ok(())
-                })),
-            ("newline",
-                PrimitiveProcedureInfo::new_simple_effect(0, move |_state, memory, _args|
-                {
-                    println!();
-
-                    memory.push_return(());
-
-                    Ok(())
-                })),
-            ("random-integer",
-                PrimitiveProcedureInfo::new_simple(1, move |_state, memory, mut args|
-                {
-                    let limit = args.pop(memory).as_integer()?;
-
-                    memory.push_return(fastrand::i32(0..limit));
-
-                    Ok(())
-                })),
-            ("make-vector",
-                PrimitiveProcedureInfo::new_simple(2, |_state, memory, mut args|
-                {
-                    let len = args.pop(memory).as_integer()? as usize;
-                    let fill = args.pop(memory);
-
-                    let vec = LispVectorRef{
-                        tag: fill.tag,
-                        values: &vec![(*fill).value; len]
-                    };
-
-                    memory.allocate_vector(vec)
-                })),
-            ("vector-set!",
-                PrimitiveProcedureInfo::new_simple_effect(
-                    3,
-                    |_state, memory, mut args|
-                    {
-                        let vec = *args.pop(memory);
-                        let index = *args.pop(memory);
-                        let value = *args.pop(memory);
-
-                        let vec = vec.as_vector_mut(memory.as_memory_mut())?;
-
-                        let index = index.as_integer()?;
-
-                        if vec.tag != value.tag
-                        {
-                            return Err(
-                                Error::VectorWrongType{expected: vec.tag, got: value.tag}
-                            );
-                        }
-
-                        *vec.values.get_mut(index as usize)
-                            .ok_or(Error::IndexOutOfRange(index))? = value.value;
-
-                        memory.push_return(());
-
-                        Ok(())
-                    })),
-            ("vector-ref",
-                PrimitiveProcedureInfo::new_simple(2, |_state, memory, mut args|
-                {
-                    let vec = *args.pop(memory);
-                    let index = *args.pop(memory);
-
-                    let vec = vec.as_vector_ref(memory.as_memory_mut())?;
-                    let index = index.as_integer()?;
-
-                    let value = vec.try_get(index as usize).ok_or(Error::IndexOutOfRange(index))?;
-                    memory.push_return(value);
-
-                    Ok(())
-                })),
-            ("eq?", PrimitiveProcedureInfo::new_simple(2, |_state, memory, mut args|
-            {
-                let a = *args.pop(memory);
-                let b = *args.pop(memory);
-
-                memory.push_return(a.value == b.value);
-
-                Ok(())
-            })),
-            ("exact->inexact",
-                PrimitiveProcedureInfo::new_simple(1, |_state, memory, mut args|
-                {
-                    let arg = *args.pop(memory);
-
-                    if arg.tag == ValueTag::Float
-                    {
-                        memory.push_return(arg);
-                    } else
-                    {
-                        let number = arg.as_integer()?;
-
-                        memory.push_return(number as f32);
-                    }
-
-                    Ok(())
-                })),
-            ("inexact->exact",
-                PrimitiveProcedureInfo::new_simple(1, |_state, memory, mut args|
-                {
-                    let arg = *args.pop(memory);
-
-                    if arg.tag == ValueTag::Integer
-                    {
-                        memory.push_return(arg);
-                    } else
-                    {
-                        let number = arg.as_float()?;
-
-                        memory.push_return(number.round() as i32);
-                    }
-
-                    Ok(())
-                })),
-            ("=",
-                PrimitiveProcedureInfo::new_simple(
-                    ArgsCount::Min(2),
-                    do_cond!(|a, b| LispValue::new_bool(a == b)))),
-            (">",
-                PrimitiveProcedureInfo::new_simple(
-                    ArgsCount::Min(2),
-                    do_cond!(|a, b| LispValue::new_bool(a > b)))),
-            ("<",
-                PrimitiveProcedureInfo::new_simple(
-                    ArgsCount::Min(2),
-                    do_cond!(|a, b| LispValue::new_bool(a < b)))),
-            ("let",
-                PrimitiveProcedureInfo::new_eval(2, Rc::new(|_op, state, memory, args|
-                {
-                    let bindings = args.car();
+                    /*let bindings = args.car();
                     let body = args.cdr().car();
 
                     let params = bindings.map_list(|x| x.car());
@@ -634,37 +539,117 @@ impl Primitives
                             op: Box::new(lambda),
                             args: apply_args
                         }
-                    })
+                    })*/todo!()
                 }))),
-            ("set-car!",
-                PrimitiveProcedureInfo::new_simple(2, |_state, memory, mut args|
+            ("make-vector".into(),
+                PrimitiveProcedureInfo::new_simple(2, Effect::Pure, |mut args|
                 {
-                    let arg = args.pop(memory);
-                    let list_id = arg.as_list_id()?;
+                    let len = args.next().unwrap().as_integer()? as usize;
+                    let fill = args.next().unwrap();
 
-                    let value = *args.pop(memory);
+                    let vec = LispVectorRef{
+                        tag: fill.tag,
+                        values: &vec![fill.value; len]
+                    };
 
-                    memory.set_car(list_id, value);
-
-                    memory.push_return(());
-
-                    Ok(())
+                    todo!()
+                    // memory.allocate_vector(vec)
                 })),
-            ("set-cdr!",
-                PrimitiveProcedureInfo::new_simple(2, |_state, memory, mut args|
+            ("vector-set!".into(),
+                PrimitiveProcedureInfo::new_simple(3, Effect::Impure, |mut args|
                 {
-                    let arg = args.pop(memory);
-                    let list_id = arg.as_list_id()?;
+                    let vec = args.next().unwrap();
+                    let index = args.next().unwrap();
+                    let value = args.next().unwrap();
 
-                    let value = *args.pop(memory);
+                    let vec = vec.as_vector_mut(args.memory)?;
 
-                    memory.set_cdr(list_id, value);
+                    let index = index.as_integer()?;
 
-                    memory.push_return(());
+                    if vec.tag != value.tag
+                    {
+                        return Err(
+                            Error::VectorWrongType{expected: vec.tag, got: value.tag}
+                        );
+                    }
 
-                    Ok(())
+                    *vec.values.get_mut(index as usize)
+                        .ok_or(Error::IndexOutOfRange(index))? = value.value;
+
+                    Ok(().into())
+                })),
+            ("vector-ref".into(),
+                PrimitiveProcedureInfo::new_simple(2, Effect::Pure, |mut args|
+                {
+                    let vec = args.next().unwrap();
+                    let index = args.next().unwrap();
+
+                    let vec = vec.as_vector_ref(args.memory)?;
+                    let index = index.as_integer()?;
+
+                    let value = vec.try_get(index as usize).ok_or(Error::IndexOutOfRange(index))?;
+
+                    Ok(value)
+                })),
+            ("display".into(),
+                PrimitiveProcedureInfo::new_simple(1, Effect::Impure, |mut args|
+                {
+                    let arg = args.next().unwrap();
+
+                    print!("{}", arg.to_string(args.memory));
+                    io::stdout().flush().unwrap();
+
+                    Ok(().into())
+                })),
+            ("newline".into(),
+                PrimitiveProcedureInfo::new_simple(0, Effect::Impure, |_args|
+                {
+                    println!();
+
+                    Ok(().into())
+                })),
+            ("random-integer".into(),
+                PrimitiveProcedureInfo::new_simple(1, Effect::Impure, |mut args|
+                {
+                    let limit = args.next().unwrap().as_integer()?;
+
+                    Ok(fastrand::i32(0..limit).into())
+                })),
+            ("exact->inexact".into(),
+                PrimitiveProcedureInfo::new_simple(1, Effect::Pure, |mut args|
+                {
+                    let arg = args.next().unwrap();
+
+                    let value = if arg.tag == ValueTag::Float
+                    {
+                        arg
+                    } else
+                    {
+                        let number = arg.as_integer()?;
+
+                        (number as f32).into()
+                    };
+
+                    Ok(value)
+                })),
+            ("inexact->exact".into(),
+                PrimitiveProcedureInfo::new_simple(1, Effect::Pure, |mut args|
+                {
+                    let arg = args.next().unwrap();
+
+                    let value = if arg.tag == ValueTag::Integer
+                    {
+                        arg
+                    } else
+                    {
+                        let number = arg.as_float()?;
+
+                        (number.round() as i32).into()
+                    };
+
+                    Ok(value)
                 }))
-        ]*/.into_iter().enumerate().map(|(index, (k, v))|
+        ].into_iter().enumerate().map(|(index, (k, v))|
         {
             ((k.to_owned(), index as u32), v)
         }).unzip();
@@ -769,38 +754,6 @@ impl Primitives
             },
             (a, b) => Err(Error::ExpectedNumerical{a, b})
         }
-    }
-
-    fn do_cond<FI, FF>(
-        memory: &mut LispMemory,
-        op_integer: FI,
-        op_float: FF
-    ) -> Result<(), Error>
-    where
-        FI: Fn(i32, i32) -> Option<LispValue>,
-        FF: Fn(f32, f32) -> Option<LispValue>
-    {
-        /*let first = *args.pop(memory);
-        let second = *args.pop(memory);
-
-        let output = Self::call_op(first, second, &op_integer, &op_float)?;
-
-        let is_true = output.as_bool()?;
-
-        if !is_true || args.is_empty()
-        {
-            args.clear(memory);
-
-            memory.push_stack(output);
-
-            Ok(())
-        } else
-        {
-            args.push(memory, second);
-
-            Self::do_cond(memory, op_integer, op_float)
-        }*/
-        todo!()
     }
 }
 
@@ -1132,6 +1085,7 @@ pub enum InterRepr
 {
     Apply{op: Box<InterReprPos>, args: Vec<InterReprPos>},
     Sequence(Vec<InterReprPos>),
+    If{check: Box<InterReprPos>, then: Box<InterReprPos>, else_body: Box<InterReprPos>},
     Define{name: SymbolId, body: Box<InterReprPos>},
     Lambda{params: LambdaParams, body: Box<InterReprPos>},
     Lookup(SymbolId),
@@ -1344,6 +1298,35 @@ impl InterReprPos
                     }
                 }).reduce(CompiledPart::combine).unwrap_or_else(CompiledPart::new)
             },
+            InterRepr::If{check, then, else_body} =>
+            {
+                let else_branch = Label::ElseBranch(state.label_id());
+
+                let check = check.compile(state, Some(Register::Value), Proceed::Next)
+                    .combine(Command::JumpIfFalse{target: else_branch, check: Register::Value});
+
+                let after_if_label = Label::AfterIf(state.label_id());
+
+                let then_proceed = match proceed
+                {
+                    Proceed::Next => Proceed::Jump(after_if_label),
+                    x => x
+                };
+
+                let then_part = then.compile(state, target, then_proceed);
+                let else_part = CompiledPart::from(Command::Label(else_branch))
+                    .combine(else_body.compile(state, target, proceed));
+
+                let if_body = check.combine(then_part).combine(else_part);
+
+                if let Proceed::Next = proceed
+                {
+                    if_body.combine(Command::Label(after_if_label))
+                } else
+                {
+                    if_body
+                }
+            },
             InterRepr::Lambda{params, body} =>
             {
                 let target = if let Some(target) = target
@@ -1493,6 +1476,38 @@ impl InterReprPos
 
 impl InterRepr
 {
+    pub fn parse_if(
+        memory: &mut LispMemory,
+        primitives: &Primitives,
+        ast: AstPos
+    ) -> Result<Self, ErrorPos>
+    {
+        let position = ast.position;
+        let args = InterReprPos::parse_args(memory, primitives, ast)?;
+
+        if !(2..=3).contains(&args.len())
+        {
+            return Err(Error::WrongArgumentsCount{
+                proc: "if".to_owned(),
+                this_invoked: false,
+                expected: ArgsCount::from(2..=3).to_string(),
+                got: Some(args.len())
+            }).with_position(position);
+        }
+
+        let mut args = args.into_iter();
+
+        let check = Box::new(args.next().unwrap());
+        let then_body = Box::new(args.next().unwrap());
+
+        let else_body = Box::new(args.next().unwrap_or_else(||
+        {
+            Self::Value(LispValue::new_empty_list()).with_position(then_body.position)
+        }));
+
+        Ok(Self::If{check, then: then_body, else_body})
+    }
+
     pub fn parse_lambda(
         memory: &mut LispMemory,
         primitives: &Primitives,
@@ -1592,6 +1607,8 @@ pub enum Label
 {
     Halt,
     ErrorBranch(u32),
+    ElseBranch(u32),
+    AfterIf(u32),
     Procedure(u32),
     AfterProcedure(u32),
     PrimitiveBranch(u32),
@@ -1613,8 +1630,8 @@ impl Proceed
         match self
         {
             Self::Next => CompiledPart::new(),
-            Self::Jump(label) => CompiledPart::from_commands(vec![Command::Jump(label).into()]),
-            Self::Return => todo!()
+            Self::Jump(label) => CompiledPart::from(Command::Jump(label)),
+            Self::Return => CompiledPart::from(Command::JumpRegister(Register::Return))
         }
     }
 }
