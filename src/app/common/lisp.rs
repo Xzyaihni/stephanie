@@ -546,7 +546,7 @@ pub enum Error
 {
     OutOfMemory,
     WrongType{expected: ValueTag, got: ValueTag},
-    WrongSpecial{expected: &'static str},
+    WrongConditionalType(String),
     Custom(String),
     NumberParse(String),
     SpecialParse(String),
@@ -578,7 +578,7 @@ impl Display for Error
         {
             Self::OutOfMemory => "out of memory".to_owned(),
             Self::WrongType{expected, got} => format!("expected type `{expected:?}` got `{got:?}`"),
-            Self::WrongSpecial{expected} => format!("wrong special, expected `{expected:?}`"),
+            Self::WrongConditionalType(s) => format!("conditional expected boolean, got `{s}`"),
             Self::Custom(s) => s.clone(),
             Self::NumberParse(s) => format!("cant parse `{s}` as number"),
             Self::SpecialParse(s) => format!("cant parse `{s}` as a special"),

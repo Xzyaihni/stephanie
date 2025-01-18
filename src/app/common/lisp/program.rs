@@ -763,6 +763,7 @@ enum Command
     Push(Register),
     Pop(Register),
     PutValue{value: LispValue, register: Register},
+    Move{target: Register, source: Register},
     Lookup{id: SymbolId, register: Register},
     Define{id: SymbolId, register: Register},
     CreateChildEnvironment,
@@ -789,6 +790,7 @@ impl Command
             Self::PutValue{register, ..}
             | Self::Lookup{register, ..}
             | Self::PutLabel{target: register, ..}
+            | Self::Move{target: register, ..}
             | Self::Pop(register)
             | Self::Cons{target: register, ..}
             | Self::Car{target: register, ..}
@@ -825,6 +827,7 @@ impl Command
             Self::Push(register) => CommandRaw::Push(register),
             Self::Pop(register) => CommandRaw::Pop(register),
             Self::PutValue{value, register} => CommandRaw::PutValue{value, register},
+            Self::Move{target, source} => CommandRaw::Move{target, source},
             Self::Lookup{id, register} => CommandRaw::Lookup{id, register},
             Self::Define{id, register} => CommandRaw::Define{id, register},
             Self::CreateChildEnvironment => CommandRaw::CreateChildEnvironment,
@@ -885,7 +888,8 @@ impl CompiledPart
 
     pub fn from_commands(commands: Vec<CommandPos>) -> Self
     {
-        let mut modifies = RegisterStates::default();
+        let mut modifies = RegisterStates::none();
+
         commands.iter().for_each(|CommandPos{value, ..}|
         {
             value.modifies_registers().into_iter().for_each(|register|
@@ -896,7 +900,7 @@ impl CompiledPart
 
         Self{
             modifies,
-            requires: RegisterStates::default(),
+            requires: RegisterStates::none(),
             commands
         }
     }
@@ -917,9 +921,14 @@ impl CompiledPart
 
     pub fn combine(self, other: impl Into<Self>) -> Self
     {
+        self.combine_preserving(other, RegisterStates::none())
+    }
+
+    pub fn combine_preserving(self, other: impl Into<Self>, registers: RegisterStates) -> Self
+    {
         let other = other.into();
 
-        let save = other.requires.intersection(self.modifies);
+        let save = other.requires.intersection(self.modifies).intersection(registers);
 
         let save_registers = save.into_iter().filter(|(_, x)| *x);
 
@@ -937,9 +946,14 @@ impl CompiledPart
 
         Self{
             modifies: self.modifies.union(other.modifies),
-            requires: self.requires,
+            requires: self.requires.union(other.requires),
             commands
         }
+    }
+
+    pub fn with_proceed(self, proceed: Proceed) -> Self
+    {
+        self.combine_preserving(proceed.into_compiled(), RegisterStates::one(Register::Return))
     }
 
     pub fn into_program(mut self, state: CompileState, primitives: Rc<Primitives>) -> CompiledProgram
@@ -1272,17 +1286,18 @@ impl InterReprPos
                 } else
                 {
                     CompiledPart::new()
-                }.combine(proceed.into_compiled())
+                }.with_proceed(proceed)
             },
             InterRepr::Lookup(id) =>
             {
                 if let Some(register) = target
                 {
                     CompiledPart::from_commands(vec![Command::Lookup{id, register}.with_position(self.position)])
+                        .with_requires(RegisterStates::one(Register::Environment))
                 } else
                 {
                     CompiledPart::new()
-                }.combine(proceed.into_compiled())
+                }.with_proceed(proceed)
             },
             InterRepr::Sequence(values) =>
             {
@@ -1302,7 +1317,27 @@ impl InterReprPos
             {
                 let else_branch = Label::ElseBranch(state.label_id());
 
-                let check = check.compile(state, Some(Register::Value), Proceed::Next)
+                let check_pos = check.position;
+                let check_value = check.compile(state, Some(Register::Value), Proceed::Next);
+
+                let type_check = if state.type_checks
+                {
+                    let error_branch = Label::ErrorBranch(state.label_id());
+                    let post_branch = Label::AfterError(state.label_id());
+
+                    CompiledPart::from_commands(vec![
+                        Command::IsTag{check: Register::Operator, tag: ValueTag::List}.into(),
+                        Command::JumpIfTrue{target: post_branch, check: Register::Temporary}.into(),
+                        Command::Label(error_branch).into(),
+                        Command::Error(Error::WrongConditionalType(String::new()).with_position(check_pos)).into(),
+                        Command::Label(post_branch).into()
+                    ])
+                } else
+                {
+                    CompiledPart::new()
+                };
+
+                let check = check_value.combine(type_check)
                     .combine(Command::JumpIfFalse{target: else_branch, check: Register::Value});
 
                 let after_if_label = Label::AfterIf(state.label_id());
@@ -1345,15 +1380,15 @@ impl InterReprPos
 
                 let env_part = CompiledPart::from_commands(vec![
                     Command::CreateChildEnvironment.with_position(self.position)
-                ]);
+                ]).with_requires(RegisterStates::one(Register::Environment));
 
                 let cons_part = CompiledPart::from_commands(vec![
                     Command::Cons{target, car: Register::Environment, cdr: target}.with_position(self.position)
-                ]).with_requires(RegisterStates::default().set(target));
+                ]).with_requires(RegisterStates::one(target));
 
-                let lambda = label_part.combine(env_part.combine(cons_part));
+                let lambda = label_part.combine(env_part.combine_preserving(cons_part, RegisterStates::one(target)));
 
-                lambda.combine(proceed.into_compiled())
+                lambda.with_proceed(proceed)
             },
             InterRepr::Define{name, body} =>
             {
@@ -1373,7 +1408,9 @@ impl InterReprPos
                 }
 
                 let body = body.compile(state, Some(temp), Proceed::Next);
-                body.combine(CompiledPart::from_commands(commands)).combine(proceed.into_compiled())
+                body.combine_preserving(CompiledPart::from_commands(commands), RegisterStates::one(Register::Environment))
+                    .with_proceed(proceed)
+                    .with_requires(RegisterStates::one(Register::Environment))
             },
             InterRepr::Apply{op, args} =>
             {
@@ -1386,28 +1423,20 @@ impl InterReprPos
                 {
                     let ending: CommandPos = Command::Cons{
                         target: Register::Argument,
-                        car: Register::Temporary,
+                        car: Register::Value,
                         cdr: Register::Argument
                     }.with_position(self.position);
 
                     let ending = CompiledPart::from(ending)
-                        .with_requires(RegisterStates::default().set(Register::Argument));
+                        .with_requires(RegisterStates::one(Register::Argument));
 
-                    let body = x.compile(state, Some(Register::Temporary), Proceed::Next)
-                        .combine(ending);
+                    let body = x.compile(state, Some(Register::Value), Proceed::Next)
+                        .combine_preserving(ending, RegisterStates::one(Register::Argument));
 
-                    acc.combine(body)
+                    acc.combine_preserving(body, RegisterStates::one(Register::Argument))
                 });
 
                 let operator_setup = op.compile(state, Some(Register::Operator), Proceed::Next);
-
-                let after_procedure = Label::AfterProcedure(state.label_id());
-                let prepare_return = match proceed
-                {
-                    Proceed::Jump(label) => Command::PutLabel{target: Register::Return, label}.into(),
-                    Proceed::Next => Command::PutLabel{target: Register::Return, label: after_procedure}.into(),
-                    Proceed::Return => CompiledPart::new()
-                };
 
                 let primitive_return: CompiledPart = match proceed
                 {
@@ -1422,51 +1451,93 @@ impl InterReprPos
                     Command::JumpIfTrue{target: primitive_branch, check: Register::Temporary}.into()
                 ]);
 
-                let error_branch = Label::ErrorBranch(state.label_id());
-                let compound_check = CompiledPart::from_commands(vec![
-                    Command::IsTag{check: Register::Operator, tag: ValueTag::List}.into(),
-                    Command::JumpIfFalse{target: error_branch, check: Register::Temporary}.into(),
-                    Command::Car{target: Register::Environment, source: Register::Operator}.into(),
-                    Command::Car{target: Register::Temporary, source: Register::Environment}.into(),
-                    Command::IsTag{check: Register::Temporary, tag: ValueTag::EnvironmentMarker}.into(),
-                    Command::JumpIfFalse{target: error_branch, check: Register::Temporary}.into()
-                ]);
-
-                let compound_no_check = CompiledPart::from_commands(vec![
-                    Command::Car{target: Register::Environment, source: Register::Operator}.into()
-                ]);
-
                 let compound_call_part = CompiledPart::from_commands(vec![
                     Command::Cdr{target: Register::Operator, source: Register::Operator}.into(),
                     Command::JumpRegister(Register::Operator).into()
                 ]).with_modifies(RegisterStates::all());
 
-                let compound_error = CompiledPart::from_commands(vec![
-                    Command::Label(error_branch).into(),
-                    Command::Error(Error::CallNonProcedure{got: String::new()}.with_position(self.position)).into()
-                ]);
+                let (compound_check, compound_error) = if state.type_checks
+                {
+                    let error_branch = Label::ErrorBranch(state.label_id());
 
-                let compound_part = prepare_return.combine(compound_check)
+                    (CompiledPart::from_commands(vec![
+                        Command::IsTag{check: Register::Operator, tag: ValueTag::List}.into(),
+                        Command::JumpIfFalse{target: error_branch, check: Register::Temporary}.into(),
+                        Command::Car{target: Register::Environment, source: Register::Operator}.into(),
+                        Command::Car{target: Register::Temporary, source: Register::Environment}.into(),
+                        Command::IsTag{check: Register::Temporary, tag: ValueTag::EnvironmentMarker}.into(),
+                        Command::JumpIfFalse{target: error_branch, check: Register::Temporary}.into()
+                    ]), CompiledPart::from_commands(vec![
+                        Command::Label(error_branch).into(),
+                        Command::Error(Error::CallNonProcedure{got: String::new()}.with_position(self.position)).into()
+                    ]))
+                } else
+                {
+                    (CompiledPart::from_commands(vec![
+                        Command::Car{target: Register::Environment, source: Register::Operator}.into()
+                    ]), CompiledPart::new())
+                };
+
+                let compound_part_basic = compound_check
                     .combine(compound_call_part)
-                    .combine(compound_error);
+                    .combine(compound_error)
+                    .with_requires(RegisterStates::one(Register::Environment));
 
-                let remove_the_expect = ();
+                let after_procedure = Label::AfterProcedure(state.label_id());
+
+                let compound_part = if target.is_none() || target == Some(Register::Value)
+                {
+                    let prepare_return = match proceed
+                    {
+                        Proceed::Jump(label) => Command::PutLabel{target: Register::Return, label}.into(),
+                        Proceed::Next => Command::PutLabel{target: Register::Return, label: after_procedure}.into(),
+                        Proceed::Return => CompiledPart::new()
+                    };
+
+                    prepare_return.combine(compound_part_basic)
+                } else
+                {
+                    let procedure_return = Label::ProcedureReturn(state.label_id());
+
+                    let prepare_return: CompiledPart = Command::PutLabel{
+                        target: Register::Return,
+                        label: procedure_return
+                    }.into();
+
+                    let proceed = match proceed
+                    {
+                        Proceed::Next => Command::Jump(after_procedure).into(),
+                        _ => proceed.into_compiled()
+                    };
+
+                    prepare_return.combine(compound_part_basic).combine(CompiledPart::from_commands(vec![
+                        Command::Label(procedure_return).into(),
+                        Command::Move{target: target.expect("checked in branch"), source: Register::Value}.into()
+                    ])).combine(proceed)
+                };
+
                 let primitive_part = CompiledPart::from_commands(vec![
                     Command::Label(primitive_branch).into(),
-                    Command::CallPrimitiveValue{target: target.expect("make None target be ok later")}.into()
+                    Command::CallPrimitiveValue{target: target.unwrap_or(Register::Temporary)}.with_position(self.position)
                 ]).combine(primitive_return);
 
                 let call_part = check_part.combine(compound_part).combine(primitive_part);
 
-                let call_with_return = if let Proceed::Next = proceed
+                let after_procedure = if proceed == Proceed::Next
                 {
-                    call_part.combine(Command::Label(after_procedure))
+                    CompiledPart::from(Command::Label(after_procedure))
                 } else
                 {
-                    call_part
-                }.with_requires(RegisterStates::default().set(Register::Operator));
+                    CompiledPart::new()
+                };
 
-                let after_operator = args_part.combine(call_with_return);
+                let call_with_return = call_part.combine(after_procedure)
+                    .with_requires(RegisterStates::one(Register::Operator));
+
+                let after_operator = args_part.combine_preserving(
+                    call_with_return,
+                    RegisterStates::one(Register::Operator).set(Register::Environment)
+                );
 
                 operator_setup.combine(after_operator)
             }
@@ -1551,15 +1622,17 @@ impl InterRepr
 #[derive(Debug)]
 struct CompileState
 {
+    type_checks: bool,
     lambdas: Vec<CompiledPart>,
     label_id: u32
 }
 
 impl CompileState
 {
-    pub fn new(primitives: &Primitives) -> Self
+    pub fn new(type_checks: bool) -> Self
     {
         Self{
+            type_checks,
             lambdas: Vec::new(),
             label_id: 0
         }
@@ -1607,6 +1680,7 @@ pub enum Label
 {
     Halt,
     ErrorBranch(u32),
+    AfterError(u32),
     ElseBranch(u32),
     AfterIf(u32),
     Procedure(u32),
@@ -1631,7 +1705,11 @@ impl Proceed
         {
             Self::Next => CompiledPart::new(),
             Self::Jump(label) => CompiledPart::from(Command::Jump(label)),
-            Self::Return => CompiledPart::from(Command::JumpRegister(Register::Return))
+            Self::Return =>
+            {
+                CompiledPart::from(Command::JumpRegister(Register::Return))
+                    .with_requires(RegisterStates::one(Register::Return))
+            }
         }
     }
 }
@@ -1642,6 +1720,7 @@ enum CommandRaw
     Push(Register),
     Pop(Register),
     PutValue{value: LispValue, register: Register},
+    Move{target: Register, source: Register},
     Lookup{id: SymbolId, register: Register},
     Define{id: SymbolId, register: Register},
     CreateChildEnvironment,
@@ -1696,6 +1775,11 @@ impl RegisterStates
     pub fn none() -> Self
     {
         Self([false; Register::COUNT])
+    }
+
+    pub fn one(register: Register) -> Self
+    {
+        Self::none().set(register)
     }
 
     pub fn set(mut self, register: Register) -> Self
@@ -1801,6 +1885,12 @@ impl CompiledProgram
                     }
                 },
                 CommandRaw::PutValue{value, register} => memory.set_register(*register, *value),
+                CommandRaw::Move{target, source} =>
+                {
+                    let value = memory.get_register(*source);
+
+                    memory.set_register(*target, value);
+                },
                 CommandRaw::Jump(destination) =>
                 {
                     i = *destination;
@@ -1864,6 +1954,10 @@ impl CompiledProgram
                         {
                             *got = memory.get_register(Register::Operator).to_string(memory);
                         },
+                        Error::WrongConditionalType(s) =>
+                        {
+                            *s = memory.get_register(Register::Operator).to_string(memory);
+                        },
                         _ => ()
                     }
 
@@ -1912,7 +2006,7 @@ impl Program
         let ir = InterReprPos::parse(&mut memory, &primitives, ast)?;
 
         let code = {
-            let mut state = CompileState::new(&primitives);
+            let mut state = CompileState::new(true);
 
             let compiled = ir.compile(&mut state, Some(Register::Value), Proceed::Jump(Label::Halt));
 
