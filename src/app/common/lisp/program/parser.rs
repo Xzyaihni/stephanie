@@ -333,7 +333,7 @@ impl Parser
 {
     pub fn parse(code: &str) -> Result<AstPos, ErrorPos>
     {
-        let lexemes = dbg!(Lexer::parse(code));
+        let lexemes = Lexer::parse(code);
 
         let lexemes = iter::once(Lexeme::OpenParen.with_position(Default::default()))
             .chain(lexemes)
