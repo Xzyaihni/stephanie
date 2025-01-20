@@ -11,7 +11,7 @@ use super::{WithPosition, WithPositionTrait};
 pub struct CodePosition
 {
     pub line: usize,
-    pub char: usize
+    pub character: usize
 }
 
 impl Default for CodePosition
@@ -26,18 +26,18 @@ impl CodePosition
 {
     pub fn new() -> Self
     {
-        Self{line: 1, char: 1}
+        Self{line: 1, character: 0}
     }
 
     pub fn next_char(&mut self)
     {
-        self.char += 1;
+        self.character += 1;
     }
 
     pub fn next_line(&mut self)
     {
         self.line += 1;
-        self.char = 1;
+        self.character = 0;
     }
 }
 
@@ -45,7 +45,7 @@ impl Display for CodePosition
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
     {
-        write!(f, "{}:{}", self.line, self.char)
+        write!(f, "{}:{}", self.line, self.character)
     }
 }
 
@@ -96,8 +96,6 @@ impl<'a> Lexer<'a>
         {
             if let Some(c) = self.next_char()
             {
-                self.position.next_char();
-
                 if c == '\n'
                 {
                     self.position.next_line();
@@ -139,6 +137,7 @@ impl<'a> Lexer<'a>
                 {
                     if current.is_empty()
                     {
+                        let position = self.position;
                         self.consume_char();
 
                         let lexeme = if c == ')'
@@ -204,6 +203,8 @@ impl<'a> Lexer<'a>
 
     fn consume_char(&mut self)
     {
+        self.position.next_char();
+
         self.current_char = None;
     }
 }

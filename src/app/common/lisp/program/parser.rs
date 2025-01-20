@@ -333,7 +333,7 @@ impl Parser
 {
     pub fn parse(code: &str) -> Result<AstPos, ErrorPos>
     {
-        let lexemes = Lexer::parse(code);
+        let lexemes = dbg!(Lexer::parse(code));
 
         let lexemes = iter::once(Lexeme::OpenParen.with_position(Default::default()))
             .chain(lexemes)
@@ -356,20 +356,21 @@ impl Parser
 
     fn parse_one(&mut self) -> Result<(CodePosition, Option<Ast>), ErrorPos>
     {
-        let position = self.current_position;
-        let lexeme = self.lexemes.next().ok_or(ErrorPos{position, value: Error::ExpectedClose})?;
+        let lexeme = self.lexemes.next()
+            .ok_or(ErrorPos{position: self.current_position, value: Error::ExpectedClose})?;
 
         let position = lexeme.position;
+        self.current_position = position;
 
-        let ast = match lexeme.value
+        let pair = match lexeme.value
         {
             Lexeme::Value(x) =>
             {
-                Some(Ast::Value(x))
+                (position, Some(Ast::Value(x)))
             },
             Lexeme::Quote =>
             {
-                let (_, rest) = self.parse_one()?;
+                let (position, rest) = self.parse_one()?;
 
                 let rest = rest.ok_or(ErrorPos{position, value: Error::ExpectedClose})?;
 
@@ -381,19 +382,20 @@ impl Parser
                 let car = Box::new(AstPos{position, value: Ast::Value(QUOTE_PRIMITIVE.to_owned())});
                 let cdr = Box::new(AstPos{position, value: rest});
 
-                Some(Ast::List{car, cdr})
+                (position, Some(Ast::List{car, cdr}))
             },
             Lexeme::OpenParen =>
             {
-                Some(self.parse_list()?.value)
+                let lst = self.parse_list()?;
+                (position, Some(lst.value))
             },
             Lexeme::CloseParen =>
             {
-                None
+                (position, None)
             }
         };
 
-        Ok((position, ast))
+        Ok(pair)
     }
 
     fn parse_list(&mut self) -> Result<AstPos, ErrorPos>
@@ -417,11 +419,11 @@ impl Parser
         let car = Box::new(car);
         let (pos, cdr) = self.parse_one()?;
 
-        let ast = if let Some(cdr) = cdr
+        let (car, cdr) = if let Some(cdr) = cdr
         {
             let new_cdr = self.parse_list_with_car(AstPos{position: pos, value: cdr})?;
 
-            Ast::List{car, cdr: Box::new(new_cdr)}
+            (car, new_cdr)
         } else
         {
             let cdr = AstPos{
@@ -429,12 +431,12 @@ impl Parser
                 value: Ast::EmptyList
             };
 
-            Ast::List{car, cdr: Box::new(cdr)}
+            (car, cdr)
         };
 
         Ok(AstPos{
-            position: pos,
-            value: ast
+            position: car.position,
+            value: Ast::List{car, cdr: Box::new(cdr)}
         })
     }
 }

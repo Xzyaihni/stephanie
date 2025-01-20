@@ -1138,7 +1138,7 @@ impl InterReprPos
     {
         match ast.value
         {
-            Ast::Value(ref x) =>
+            Ast::Value(_) =>
             {
                 let value = Self::parse_primitive_value(memory, &ast)?;
 
@@ -1326,7 +1326,7 @@ impl InterReprPos
                     let post_branch = Label::AfterError(state.label_id());
 
                     CompiledPart::from_commands(vec![
-                        Command::IsTag{check: Register::Operator, tag: ValueTag::List}.into(),
+                        Command::IsTag{check: Register::Value, tag: ValueTag::List}.into(),
                         Command::JumpIfTrue{target: post_branch, check: Register::Temporary}.into(),
                         Command::Label(error_branch).into(),
                         Command::Error(Error::WrongConditionalType(String::new()).with_position(check_pos)).into(),
@@ -1352,7 +1352,10 @@ impl InterReprPos
                 let else_part = CompiledPart::from(Command::Label(else_branch))
                     .combine(else_body.compile(state, target, proceed));
 
-                let if_body = check.combine(then_part).combine(else_part);
+                let if_body = check.combine_preserving(
+                    then_part.combine(else_part),
+                    RegisterStates::one(Register::Environment)
+                );
 
                 if let Proceed::Next = proceed
                 {
@@ -1956,7 +1959,7 @@ impl CompiledProgram
                         },
                         Error::WrongConditionalType(s) =>
                         {
-                            *s = memory.get_register(Register::Operator).to_string(memory);
+                            *s = memory.get_register(Register::Value).to_string(memory);
                         },
                         _ => ()
                     }
