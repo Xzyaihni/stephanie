@@ -1342,7 +1342,7 @@ impl LispMemory
 
     pub fn try_pop_arg(&mut self) -> Option<LispValue>
     {
-        let pair = self.registers[Register::Argument as usize];
+        let pair = self.get_register(Register::Argument);
         if pair.is_null()
         {
             return None;
@@ -2328,13 +2328,13 @@ mod tests
     fn if_test()
     {
         let code = "
-            (define x
-                (lambda (x)
-                    (if (= x 1)
-                        8
-                        2)))
+            (define x           ; 2
+                (lambda (x)     ; 3
+                    (if (= x 1) ; 4
+                        8       ; 5
+                        2)))    ; 6
 
-            (+ (x 1) (x 5))
+            (+ (x 1) (x 5))     ; 8
         ";
 
         simple_integer_test(code, 10);

@@ -796,10 +796,10 @@ impl Command
             | Self::Car{target: register, ..}
             | Self::Cdr{target: register, ..}
             | Self::CallPrimitiveValue{target: register, ..} => vec![*register],
-            Self::Define{..}
-            | Self::CreateChildEnvironment => vec![Register::Environment, Register::Value, Register::Temporary],
+            Self::CreateChildEnvironment => vec![Register::Environment, Register::Value, Register::Temporary],
             Self::IsTag{..} => vec![Register::Temporary],
             Self::Push(_)
+            | Self::Define{..}
             | Self::Jump(_)
             | Self::JumpRegister(_)
             | Self::JumpIfTrue{..}
@@ -945,15 +945,15 @@ impl CompiledPart
             .collect();
 
         Self{
-            modifies: self.modifies.union(other.modifies),
-            requires: self.requires.union(other.requires),
+            modifies: self.modifies.difference(save).union(other.modifies),
+            requires: self.requires.union(other.requires.difference(self.modifies.difference(save))),
             commands
         }
     }
 
     pub fn with_proceed(self, proceed: Proceed) -> Self
     {
-        self.combine_preserving(proceed.into_compiled(), RegisterStates::one(Register::Return))
+        self.combine(proceed.into_compiled())
     }
 
     pub fn into_program(mut self, state: CompileState, primitives: Rc<Primitives>) -> CompiledProgram
@@ -1311,7 +1311,10 @@ impl InterReprPos
                     {
                         x.compile(state, None, Proceed::Next)
                     }
-                }).reduce(CompiledPart::combine).unwrap_or_else(CompiledPart::new)
+                }).reduce(|acc, x|
+                {
+                    acc.combine_preserving(x, RegisterStates::one(Register::Environment).set(Register::Return))
+                }).unwrap_or_else(CompiledPart::new)
             },
             InterRepr::If{check, then, else_body} =>
             {
@@ -1322,13 +1325,11 @@ impl InterReprPos
 
                 let type_check = if state.type_checks
                 {
-                    let error_branch = Label::ErrorBranch(state.label_id());
                     let post_branch = Label::AfterError(state.label_id());
 
                     CompiledPart::from_commands(vec![
-                        Command::IsTag{check: Register::Value, tag: ValueTag::List}.into(),
+                        Command::IsTag{check: Register::Value, tag: ValueTag::Bool}.into(),
                         Command::JumpIfTrue{target: post_branch, check: Register::Temporary}.into(),
-                        Command::Label(error_branch).into(),
                         Command::Error(Error::WrongConditionalType(String::new()).with_position(check_pos)).into(),
                         Command::Label(post_branch).into()
                     ])
@@ -1411,9 +1412,10 @@ impl InterReprPos
                 }
 
                 let body = body.compile(state, Some(temp), Proceed::Next);
-                body.combine_preserving(CompiledPart::from_commands(commands), RegisterStates::one(Register::Environment))
-                    .with_proceed(proceed)
-                    .with_requires(RegisterStates::one(Register::Environment))
+                body.combine_preserving(
+                    CompiledPart::from_commands(commands).with_requires(RegisterStates::one(Register::Environment)),
+                    RegisterStates::one(Register::Environment)
+                ).with_proceed(proceed)
             },
             InterRepr::Apply{op, args} =>
             {
@@ -1436,7 +1438,7 @@ impl InterReprPos
                     let body = x.compile(state, Some(Register::Value), Proceed::Next)
                         .combine_preserving(ending, RegisterStates::one(Register::Argument));
 
-                    acc.combine_preserving(body, RegisterStates::one(Register::Argument))
+                    acc.combine_preserving(body, RegisterStates::one(Register::Environment))
                 });
 
                 let operator_setup = op.compile(state, Some(Register::Operator), Proceed::Next);
@@ -1542,7 +1544,7 @@ impl InterReprPos
                     RegisterStates::one(Register::Operator).set(Register::Environment)
                 );
 
-                operator_setup.combine(after_operator)
+                operator_setup.combine_preserving(after_operator, RegisterStates::one(Register::Environment))
             }
         }
     }
@@ -1815,6 +1817,14 @@ impl RegisterStates
         self.zip_map(other, |(a, b)|
         {
             a || b
+        })
+    }
+
+    pub fn difference(self, other: Self) -> Self
+    {
+        self.zip_map(other, |(a, b)|
+        {
+            a && !b
         })
     }
 }
