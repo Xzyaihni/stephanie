@@ -263,16 +263,16 @@ impl Primitives
                 (PrimitiveName::from($name), PrimitiveProcedureInfo::new_simple(ArgsCount::Min(2), Effect::Pure, |mut args|
                 {
                     let start = args.next().expect("must have 2 or more args");
-                    args.try_fold(start, |acc, x|
+                    args.try_fold((true, start), |(state, acc), x|
                     {
                         Self::call_op(acc, x, |a, b|
                         {
-                            Some(LispValue::new_bool($f(a, b)))
+                            Some($f(a, b))
                         }, |a, b|
                         {
-                            Some(LispValue::new_bool($f(a, b)))
-                        })
-                    })
+                            Some($f(a, b))
+                        }).map(|next_state| (state && next_state, x))
+                    }).map(|(state, _)| LispValue::new_bool(state))
                 }))
             }
         }
@@ -449,83 +449,41 @@ impl Primitives
 
                     let is_procedure = first.is_list();
 
-                    if is_procedure
+                    let position = args.position;
+
+                    let (name, value) = if is_procedure
                     {
-                        /*let position = args.position;
-
-                        let body: Vec<_> = iter::from_fn(||
+                        if first.is_null()
                         {
-                            let next = args.cdr();
-                            args = next.clone();
+                            return Err(ErrorPos{position, value: Error::DefineEmptyList});
+                        }
 
-                            (!next.is_null()).then(|| next.car())
-                        }).collect();
+                        let name = InterReprPos::parse_symbol(memory, &first.car())?;
+                        let lambdas_body = AstPos::cons(first.cdr(), args.cdr());
 
-                        let body = if body.len() > 1
-                        {
-                            let body = body.into_iter().rev().fold(
-                                Ast::EmptyList.with_position(position),
-                                |acc, x|
-                                {
-                                    AstPos::cons(x, acc)
-                                });
-
-                            AstPos::cons(
-                                AstPos{
-                                    position: body.position,
-                                    ast: Ast::Value(BEGIN_PRIMITIVE.to_owned())
-                                },
-                                body
-                            )
-                        } else
-                        {
-                            body.into_iter().next().unwrap()
-                        };
-
-                        let name = ExpressionPos::analyze(state, memory, first.car())?;
-                        let name = Expression::Value(name.as_value()?).with_position(position);
-
-                        let params = first.cdr();
-
-                        let lambda_args =
-                            AstPos::cons(
-                                params,
-                                AstPos::cons(
-                                    body,
-                                    Ast::EmptyList.with_position(position)));
-
-                        let lambda = ExpressionPos::analyze_lambda(state, memory, lambda_args)?;
-
-                        let args = ExpressionPos::cons(
-                            name,
-                            ExpressionPos::cons(
-                                lambda,
-                                Expression::EmptyList.with_position(position)));
-
-                        (Box::new(args), ArgsWrapper::from(2))*/todo!()
+                        (name, InterRepr::parse_lambda(memory, primitives, lambdas_body)?.with_position(position))
                     } else
                     {
                         let name = InterReprPos::parse_symbol(memory, &first)?;
-
-                        let position = args.position;
                         let args = InterReprPos::parse_args(memory, primitives, args.cdr())?;
-                        let args_len = args.len();
 
-                        if args_len != 1
+                        if args.len() != 1
                         {
                             return Err(ErrorPos{position, value: Error::WrongArgumentsCount{
                                 proc: "define".to_owned(),
                                 this_invoked: true,
                                 expected: "2".to_owned(),
-                                got: Some(args_len + 1)
+                                got: Some(args.len() + 1)
                             }});
                         }
 
-                        Ok(InterRepr::Define{
-                            name,
-                            body: Box::new(args.into_iter().next().unwrap())
-                        })
-                    }
+                        (name, args.into_iter().next().unwrap())
+                    };
+
+                    Ok(InterRepr::Define{
+                        name,
+                        body: Box::new(value)
+                    })
                 }))),
             ("let".into(),
                 PrimitiveProcedureInfo::new_eval(2, Rc::new(|memory, primitives, args|
@@ -713,15 +671,15 @@ impl Primitives
         &self.primitives[id as usize]
     }
 
-    fn call_op<FI, FF>(
+    fn call_op<T, FI, FF>(
         a: LispValue,
         b: LispValue,
         op_integer: FI,
         op_float: FF
-    ) -> Result<LispValue, Error>
+    ) -> Result<T, Error>
     where
-        FI: Fn(i32, i32) -> Option<LispValue>,
-        FF: Fn(f32, f32) -> Option<LispValue>
+        FI: Fn(i32, i32) -> Option<T>,
+        FF: Fn(f32, f32) -> Option<T>
     {
         macro_rules! number_error
         {
