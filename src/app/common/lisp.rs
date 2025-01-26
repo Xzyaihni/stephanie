@@ -553,9 +553,11 @@ pub enum Error
     CharTooLong(String),
     UndefinedVariable(String),
     DefineEmptyList,
+    LetNoValue,
+    LetTooMany,
     AttemptedShadowing(String),
     CallNonProcedure{got: String},
-    WrongArgumentsCount{proc: String, this_invoked: bool, expected: String, got: Option<usize>},
+    WrongArgumentsCount{proc: String, this_invoked: bool, expected: String, got: usize},
     IndexOutOfRange(i32),
     CharOutOfRange,
     EmptySequence,
@@ -563,7 +565,6 @@ pub enum Error
     OperationError{a: String, b: String},
     ExpectedNumerical{a: ValueTag, b: ValueTag},
     ExpectedList,
-    ExpectedParam,
     ExpectedOp,
     ExpectedClose,
     ExpectedSymbol,
@@ -586,20 +587,14 @@ impl Display for Error
             Self::CharTooLong(s) => format!("cant parse `{s}` as char"),
             Self::UndefinedVariable(s) => format!("variable `{s}` is undefined"),
             Self::DefineEmptyList => "cannot define an empty list".to_owned(),
+            Self::LetNoValue => "let must have a name/value pair".to_owned(),
+            Self::LetTooMany => "let has too many values in a pair, must have 2".to_owned(),
             Self::AttemptedShadowing(s) => format!("attempted to shadow `{s}` which is a primitive"),
             Self::ExpectedNumerical{a, b} => format!("primitive operation expected 2 numbers, got {a:?} and {b:?}"),
             Self::CallNonProcedure{got} => format!("cant apply `{got}` as procedure"),
             Self::WrongArgumentsCount{proc, this_invoked: _, expected, got} =>
             {
-                let got = if let Some(got) = got
-                {
-                    format!(" (got {got})")
-                } else
-                {
-                    String::new()
-                };
-
-                format!("wrong amount of arguments{got} passed to {proc} (expected {expected})")
+                format!("wrong amount of arguments (got {got}) passed to {proc} (expected {expected})")
             },
             Self::IndexOutOfRange(i) => format!("index {i} out of range"),
             Self::CharOutOfRange => "char out of range".to_owned(),
@@ -609,7 +604,6 @@ impl Display for Error
             Self::OperationError{a, b} =>
                 format!("numeric error with {a} and {b} operands"),
             Self::ExpectedList => "expected a list".to_owned(),
-            Self::ExpectedParam => "expected a parameter".to_owned(),
             Self::ExpectedOp => "expected an operator".to_owned(),
             Self::ExpectedClose => "expected a closing parenthesis".to_owned(),
             Self::ExpectedSymbol => "expected a valid symbol".to_owned(),
@@ -1932,7 +1926,7 @@ mod tests
         ";
 
         let memory_size = 92;
-        let memory = LispMemory::new(10, memory_size);
+        let memory = LispMemory::new(20, memory_size);
 
         let mut lisp = Lisp::new_with_memory(memory, code).unwrap();
 

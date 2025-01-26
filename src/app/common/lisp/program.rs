@@ -90,6 +90,19 @@ impl From<usize> for ArgsCount
     }
 }
 
+impl ArgsCount
+{
+    pub fn contains(&self, value: usize) -> bool
+    {
+        match self
+        {
+            Self::Min(min) => value >= *min,
+            Self::Between{start, end_inclusive} => (*start..=*end_inclusive).contains(&value),
+            Self::Some(exact) => value == *exact
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Effect
 {
@@ -205,50 +218,10 @@ impl Debug for PrimitiveProcedureInfo
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum HiddenPrimitive
-{
-    Add,
-    Sub,
-    Mul,
-    Div
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum PrimitiveName
-{
-    String(String),
-    Hidden(HiddenPrimitive)
-}
-
-impl From<HiddenPrimitive> for PrimitiveName
-{
-    fn from(value: HiddenPrimitive) -> Self
-    {
-        Self::Hidden(value)
-    }
-}
-
-impl From<String> for PrimitiveName
-{
-    fn from(value: String) -> Self
-    {
-        Self::String(value)
-    }
-}
-
-impl From<&str> for PrimitiveName
-{
-    fn from(value: &str) -> Self
-    {
-        Self::from(value.to_owned())
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct Primitives
 {
-    indices: HashMap<PrimitiveName, u32>,
+    indices: HashMap<String, u32>,
     primitives: Vec<PrimitiveProcedureInfo>
 }
 
@@ -260,7 +233,7 @@ impl Primitives
         {
             ($name:literal, $f:expr) =>
             {
-                (PrimitiveName::from($name), PrimitiveProcedureInfo::new_simple(ArgsCount::Min(2), Effect::Pure, |mut args|
+                ($name, PrimitiveProcedureInfo::new_simple(ArgsCount::Min(2), Effect::Pure, |mut args|
                 {
                     let start = args.next().expect("must have 2 or more args");
                     args.try_fold((true, start), |(state, acc), x|
@@ -319,7 +292,7 @@ impl Primitives
         {
             ($name:literal, $($tag:expr),+) =>
             {
-                (PrimitiveName::from($name), PrimitiveProcedureInfo::new_simple(1, Effect::Pure, |mut args|
+                ($name, PrimitiveProcedureInfo::new_simple(1, Effect::Pure, |mut args|
                 {
                     let tag = args.next().unwrap().tag;
                     let is_equal = false $(|| tag == $tag)+;
@@ -330,23 +303,23 @@ impl Primitives
         }
 
         let make_procedure_tag_check_work = ();
-        let (indices, primitives): (HashMap<PrimitiveName, _>, Vec<_>) = [
-            (PrimitiveName::from(BEGIN_PRIMITIVE),
+        let (indices, primitives): (HashMap<String, _>, Vec<_>) = [
+            (BEGIN_PRIMITIVE,
                 PrimitiveProcedureInfo::new_eval(ArgsCount::Min(1), Rc::new(|memory, primitives, args|
                 {
                     Ok(InterRepr::Sequence(InterReprPos::parse_args(memory, primitives, args)?))
                 }))),
-            (QUOTE_PRIMITIVE.into(),
+            (QUOTE_PRIMITIVE,
                 PrimitiveProcedureInfo::new_eval(1, Rc::new(|memory, _primitives, args|
                 {
                     Ok(InterRepr::Value(InterReprPos::parse_quote_args(memory, args)?))
                 }))),
-            ("if".into(),
+            ("if",
                 PrimitiveProcedureInfo::new_eval(2..=3, Rc::new(|memory, primitives, args|
                 {
                     InterRepr::parse_if(memory, primitives, args)
                 }))),
-            ("cons".into(),
+            ("cons",
                 PrimitiveProcedureInfo::new_simple(2, Effect::Pure, |mut args|
                 {
                     let restore = args.memory.with_saved_registers([Register::Value]);
@@ -364,7 +337,7 @@ impl Primitives
 
                     Ok(value)
                 })),
-            ("car".into(),
+            ("car",
                 PrimitiveProcedureInfo::new_simple(1, Effect::Pure, |mut args|
                 {
                     let arg = args.next().unwrap();
@@ -372,7 +345,7 @@ impl Primitives
 
                     Ok(value)
                 })),
-            ("cdr".into(),
+            ("cdr",
                 PrimitiveProcedureInfo::new_simple(1, Effect::Pure, |mut args|
                 {
                     let arg = args.next().unwrap();
@@ -380,7 +353,7 @@ impl Primitives
 
                     Ok(value)
                 })),
-            ("set-car!".into(),
+            ("set-car!",
                 PrimitiveProcedureInfo::new_simple(2, Effect::Impure, |mut args|
                 {
                     let arg = args.next().unwrap();
@@ -392,7 +365,7 @@ impl Primitives
 
                     Ok(().into())
                 })),
-            ("set-cdr!".into(),
+            ("set-cdr!",
                 PrimitiveProcedureInfo::new_simple(2, Effect::Impure, |mut args|
                 {
                     let arg = args.next().unwrap();
@@ -404,15 +377,15 @@ impl Primitives
 
                     Ok(().into())
                 })),
-            ("+".into(), PrimitiveProcedureInfo::new_simple(ArgsCount::Min(2), Effect::Pure, do_op!(add, checked_add))),
-            ("-".into(), PrimitiveProcedureInfo::new_simple(ArgsCount::Min(2), Effect::Pure, do_op!(sub, checked_sub))),
-            ("*".into(), PrimitiveProcedureInfo::new_simple(ArgsCount::Min(2), Effect::Pure, do_op!(mul, checked_mul))),
-            ("/".into(), PrimitiveProcedureInfo::new_simple(ArgsCount::Min(2), Effect::Pure, do_op!(div, checked_div))),
-            ("remainder".into(), PrimitiveProcedureInfo::new_simple(2, Effect::Pure, do_op_simple!(rem))),
+            ("+", PrimitiveProcedureInfo::new_simple(ArgsCount::Min(2), Effect::Pure, do_op!(add, checked_add))),
+            ("-", PrimitiveProcedureInfo::new_simple(ArgsCount::Min(2), Effect::Pure, do_op!(sub, checked_sub))),
+            ("*", PrimitiveProcedureInfo::new_simple(ArgsCount::Min(2), Effect::Pure, do_op!(mul, checked_mul))),
+            ("/", PrimitiveProcedureInfo::new_simple(ArgsCount::Min(2), Effect::Pure, do_op!(div, checked_div))),
+            ("remainder", PrimitiveProcedureInfo::new_simple(2, Effect::Pure, do_op_simple!(rem))),
             do_cond!("=", |a, b| a == b),
             do_cond!(">", |a, b| a > b),
             do_cond!("<", |a, b| a < b),
-            ("eq?".into(), PrimitiveProcedureInfo::new_simple(2, Effect::Pure, |mut args|
+            ("eq?", PrimitiveProcedureInfo::new_simple(2, Effect::Pure, |mut args|
             {
                 let a = args.next().unwrap();
                 let b = args.next().unwrap();
@@ -427,24 +400,14 @@ impl Primitives
             is_tag!("vector?", ValueTag::Vector),
             // is_tag!("procedure?", ValueTag::Address, ValueTag::PrimitiveProcedure),
             is_tag!("number?", ValueTag::Integer, ValueTag::Float),
-            ("lambda".into(),
-                PrimitiveProcedureInfo::new_eval(2, Rc::new(|memory, primitives, args|
+            ("lambda",
+                PrimitiveProcedureInfo::new_eval(ArgsCount::Min(2), Rc::new(|memory, primitives, args|
                 {
                     Ok(InterRepr::parse_lambda(memory, primitives, args)?)
                 }))),
-            ("define".into(),
-                PrimitiveProcedureInfo::new_eval(2, Rc::new(|memory, primitives, args: AstPos|
+            ("define",
+                PrimitiveProcedureInfo::new_eval(ArgsCount::Min(2), Rc::new(|memory, primitives, args: AstPos|
                 {
-                    if args.is_null()
-                    {
-                        return Err(ErrorPos{position: args.position, value: Error::WrongArgumentsCount{
-                            proc: "define".to_owned(),
-                            this_invoked: true,
-                            expected: ArgsCount::Min(2).to_string(),
-                            got: Some(0)
-                        }});
-                    }
-
                     let first = args.car();
 
                     let is_procedure = first.is_list();
@@ -467,16 +430,6 @@ impl Primitives
                         let name = InterReprPos::parse_symbol(memory, &first)?;
                         let args = InterReprPos::parse_args(memory, primitives, args.cdr())?;
 
-                        if args.len() != 1
-                        {
-                            return Err(ErrorPos{position, value: Error::WrongArgumentsCount{
-                                proc: "define".to_owned(),
-                                this_invoked: true,
-                                expected: "2".to_owned(),
-                                got: Some(args.len() + 1)
-                            }});
-                        }
-
                         (name, args.into_iter().next().unwrap())
                     };
 
@@ -485,37 +438,12 @@ impl Primitives
                         body: Box::new(value)
                     })
                 }))),
-            ("let".into(),
+            ("let",
                 PrimitiveProcedureInfo::new_eval(2, Rc::new(|memory, primitives, args|
                 {
-                    /*let bindings = args.car();
-                    let body = args.cdr().car();
-
-                    let params = bindings.map_list(|x| x.car());
-                    let apply_args = ExpressionPos::analyze_args(
-                        state,
-                        memory,
-                        bindings.map_list(|x| x.cdr().car())
-                    )?;
-
-                    let lambda_args =
-                        AstPos::cons(
-                            params,
-                            AstPos::cons(
-                                body,
-                                Ast::EmptyList.with_position(args.position)));
-
-                    let lambda = ExpressionPos::analyze_lambda(state, memory, lambda_args)?;
-
-                    Ok(ExpressionPos{
-                        position: args.position,
-                        expression: Expression::Application{
-                            op: Box::new(lambda),
-                            args: apply_args
-                        }
-                    })*/todo!()
+                    Ok(InterRepr::parse_let(memory, primitives, args)?)
                 }))),
-            ("make-vector".into(),
+            ("make-vector",
                 PrimitiveProcedureInfo::new_with_target(2, Effect::Pure, |mut args, target|
                 {
                     let len = args.next().unwrap().as_integer()? as usize;
@@ -528,7 +456,7 @@ impl Primitives
 
                     args.memory.make_vector(target, vec)
                 })),
-            ("vector-set!".into(),
+            ("vector-set!",
                 PrimitiveProcedureInfo::new_simple(3, Effect::Impure, |mut args|
                 {
                     let vec = args.next().unwrap();
@@ -551,7 +479,7 @@ impl Primitives
 
                     Ok(().into())
                 })),
-            ("vector-ref".into(),
+            ("vector-ref",
                 PrimitiveProcedureInfo::new_simple(2, Effect::Pure, |mut args|
                 {
                     let vec = args.next().unwrap();
@@ -564,7 +492,7 @@ impl Primitives
 
                     Ok(value)
                 })),
-            ("display".into(),
+            ("display",
                 PrimitiveProcedureInfo::new_simple(1, Effect::Impure, |mut args|
                 {
                     let arg = args.next().unwrap();
@@ -574,21 +502,21 @@ impl Primitives
 
                     Ok(().into())
                 })),
-            ("newline".into(),
+            ("newline",
                 PrimitiveProcedureInfo::new_simple(0, Effect::Impure, |_args|
                 {
                     println!();
 
                     Ok(().into())
                 })),
-            ("random-integer".into(),
+            ("random-integer",
                 PrimitiveProcedureInfo::new_simple(1, Effect::Impure, |mut args|
                 {
                     let limit = args.next().unwrap().as_integer()?;
 
                     Ok(fastrand::i32(0..limit).into())
                 })),
-            ("exact->inexact".into(),
+            ("exact->inexact",
                 PrimitiveProcedureInfo::new_simple(1, Effect::Pure, |mut args|
                 {
                     let arg = args.next().unwrap();
@@ -605,7 +533,7 @@ impl Primitives
 
                     Ok(value)
                 })),
-            ("inexact->exact".into(),
+            ("inexact->exact",
                 PrimitiveProcedureInfo::new_simple(1, Effect::Pure, |mut args|
                 {
                     let arg = args.next().unwrap();
@@ -640,10 +568,10 @@ impl Primitives
         let id = self.primitives.len();
 
         self.primitives.push(procedure);
-        self.indices.insert(PrimitiveName::String(name), id as u32);
+        self.indices.insert(name, id as u32);
     }
 
-    pub fn name_by_index(&self, index: u32) -> &PrimitiveName
+    pub fn name_by_index(&self, index: u32) -> &str
     {
         self.indices.iter().find(|(_key, value)|
         {
@@ -651,17 +579,12 @@ impl Primitives
         }).expect("index must exist").0
     }
 
-    pub fn index_by_name(&self, name: impl Into<String>) -> Option<u32>
+    pub fn index_by_name(&self, name: &str) -> Option<u32>
     {
-        self.index_by_primitive_name(PrimitiveName::String(name.into()))
+        self.indices.get(name).copied()
     }
 
-    pub fn index_by_primitive_name(&self, primitive_name: impl Borrow<PrimitiveName>) -> Option<u32>
-    {
-        self.indices.get(primitive_name.borrow()).copied()
-    }
-
-    pub fn get_by_name(&self, name: String) -> Option<&PrimitiveProcedureInfo>
+    pub fn get_by_name(&self, name: &str) -> Option<&PrimitiveProcedureInfo>
     {
         self.index_by_name(name).map(|index| self.get(index))
     }
@@ -926,11 +849,6 @@ impl CompiledPart
 
     pub fn with_proceed(self, proceed: Proceed) -> Self
     {
-        if proceed == Proceed::Return
-        {
-            dbg!(&self);
-        }
-
         self.combine_preserving(proceed.into_compiled(), RegisterStates::one(Register::Return))
     }
 
@@ -1028,7 +946,7 @@ impl LambdaParams
                 Ok(Self::Variadic(InterReprPos::parse_symbol(memory, &ast)?))
             },
             Ast::List{..} => Ok(Self::Normal(Self::parse_list(memory, ast)?)),
-            Ast::EmptyList => Err(ErrorPos{position: ast.position, value: Error::ExpectedParam})
+            Ast::EmptyList => Ok(Self::Normal(Vec::new()))
         }
     }
 
@@ -1141,9 +1059,23 @@ impl InterReprPos
                 {
                     if let Ok(id) = value.as_primitive_procedure()
                     {
-                        if let Some(on_eval) = &primitives.get(id).on_eval
+                        let primitive = &primitives.get(id);
+                        if let Some(on_eval) = &primitive.on_eval
                         {
-                            return on_eval(memory, primitives, *cdr).map(|x| x.with_position(ast.position));
+                            let args = *cdr;
+
+                            let args_count = args.list_length();
+                            if !primitive.args_count.contains(args_count)
+                            {
+                                return Err(Error::WrongArgumentsCount{
+                                    proc: primitives.name_by_index(id).to_owned(),
+                                    this_invoked: false,
+                                    expected: primitive.args_count.to_string(),
+                                    got: args_count
+                                }).with_position(ast.position);
+                            }
+
+                            return on_eval(memory, primitives, args).map(|x| x.with_position(ast.position));
                         }
                     }
                 }
@@ -1160,29 +1092,7 @@ impl InterReprPos
         ast: AstPos
     ) -> Result<LispValue, ErrorPos>
     {
-        let args_error = |count|
-        {
-            return Err(Error::WrongArgumentsCount{
-                proc: QUOTE_PRIMITIVE.to_owned(),
-                this_invoked: false,
-                expected: "1".to_owned(),
-                got: count
-            }).with_position(ast.position);
-        };
-
-        let value = if let Ast::List{car, cdr} = ast.value
-        {
-            if cdr.is_null()
-            {
-                *car
-            } else
-            {
-                return args_error(None);
-            }
-        } else
-        {
-            return args_error(Some(0));
-        };
+        let value = ast.car();
 
         Self::allocate_quote(memory, value, Register::Value)?;
 
@@ -1250,6 +1160,17 @@ impl InterReprPos
         if let InterRepr::Value(value) = self.value
         {
             value.as_primitive_procedure().is_ok()
+        } else
+        {
+            false
+        }
+    }
+
+    fn is_known_compound(&self) -> bool
+    {
+        if let InterRepr::Lambda{..} = self.value
+        {
+            true
         } else
         {
             false
@@ -1404,6 +1325,7 @@ impl InterReprPos
             InterRepr::Apply{op, args} =>
             {
                 let is_known_primitive = op.is_known_primitive();
+                let is_known_compound = op.is_known_compound();
 
                 let empty_list: CompiledPart = Command::PutValue{
                     value: LispValue::new_empty_list(),
@@ -1505,7 +1427,16 @@ impl InterReprPos
 
                     let proceed = match proceed
                     {
-                        Proceed::Next => Command::Jump(after_procedure).into(),
+                        Proceed::Next =>
+                        {
+                            if !is_known_compound
+                            {
+                                Command::Jump(after_procedure).into()
+                            } else
+                            {
+                                CompiledPart::new()
+                            }
+                        },
                         _ => proceed.into_compiled()
                     };
 
@@ -1519,15 +1450,21 @@ impl InterReprPos
                     Command::CallPrimitiveValue{target: target.unwrap_or(Register::Temporary)}.with_position(self.position)
                 ]);
 
-                let call_part = if is_known_primitive
+                let call_part = if is_known_compound
                 {
-                    primitive_part
+                    compound_part
                 } else
                 {
-                    check_part.combine(compound_part)
-                        .combine(Command::Label(primitive_branch))
-                        .combine(primitive_part)
-                }.combine_preserving(primitive_return, RegisterStates::one(Register::Return));
+                    if is_known_primitive
+                    {
+                        primitive_part
+                    } else
+                    {
+                        check_part.combine(compound_part)
+                            .combine(Command::Label(primitive_branch))
+                            .combine(primitive_part)
+                    }.combine_preserving(primitive_return, RegisterStates::one(Register::Return))
+                };
 
                 let after_procedure = if proceed == Proceed::Next && !is_known_primitive
                 {
@@ -1562,18 +1499,7 @@ impl InterRepr
         ast: AstPos
     ) -> Result<Self, ErrorPos>
     {
-        let position = ast.position;
         let args = InterReprPos::parse_args(memory, primitives, ast)?;
-
-        if !(2..=3).contains(&args.len())
-        {
-            return Err(Error::WrongArgumentsCount{
-                proc: "if".to_owned(),
-                this_invoked: false,
-                expected: ArgsCount::from(2..=3).to_string(),
-                got: Some(args.len())
-            }).with_position(position);
-        }
 
         let mut args = args.into_iter();
 
@@ -1588,39 +1514,72 @@ impl InterRepr
         Ok(Self::If{check, then: then_body, else_body})
     }
 
+    pub fn parse_let(
+        memory: &mut LispMemory,
+        primitives: &Primitives,
+        ast: AstPos
+    ) -> Result<Self, ErrorPos>
+    {
+        let position = ast.position;
+
+        let params_ast = ast.car();
+        let body = InterReprPos::parse_args(memory, primitives, ast.cdr())?
+            .into_iter().next().unwrap();
+
+        let mut params = Vec::new();
+        let mut args = Vec::new();
+
+        params_ast.list_to_vec().into_iter().try_for_each(|pair|
+        {
+            if !pair.is_list() || pair.is_null()
+            {
+                return Err(ErrorPos{position: pair.position, value: Error::LetNoValue});
+            }
+
+            let name = pair.car();
+
+            let rest = pair.cdr();
+
+            if rest.is_null()
+            {
+                return Err(ErrorPos{position: rest.position, value: Error::LetNoValue});
+            }
+
+            let arg = rest.car();
+
+            let last = rest.cdr();
+            if !last.is_null()
+            {
+                return Err(ErrorPos{position: last.position, value: Error::LetTooMany});
+            }
+
+            params.push(InterReprPos::parse_symbol(memory, &name)?);
+            args.push(InterReprPos::parse(memory, primitives, arg)?);
+
+            Ok(())
+        })?;
+
+        let params = LambdaParams::Normal(params);
+
+        let lambda = Self::Lambda{params, body: Box::new(body)}.with_position(position);
+
+        Ok(Self::Apply{op: Box::new(lambda), args})
+    }
+
     pub fn parse_lambda(
         memory: &mut LispMemory,
         primitives: &Primitives,
         ast: AstPos
     ) -> Result<Self, ErrorPos>
     {
-        let args_error = |count|
-        {
-            Err(Error::WrongArgumentsCount{
-                proc: "lambda".to_owned(),
-                this_invoked: false,
-                expected: ArgsCount::Min(2).to_string(),
-                got: Some(count)
-            }).with_position(ast.position)
-        };
+        let params = ast.car();
 
-        let (params, body) = if let Ast::List{car, cdr} = ast.value
-        {
-            let bodies_position = cdr.position;
+        let cdr = ast.cdr();
 
-            let bodies = InterReprPos::parse_args(memory, primitives, *cdr)?;
-            if bodies.is_empty()
-            {
-                return args_error(1);
-            }
+        let bodies_position = cdr.position;
 
-            let body = InterRepr::Sequence(bodies).with_position(bodies_position);
-
-            (*car, body)
-        } else
-        {
-            return args_error(0);
-        };
+        let bodies = InterReprPos::parse_args(memory, primitives, cdr)?;
+        let body = InterRepr::Sequence(bodies).with_position(bodies_position);
 
         let params = LambdaParams::parse(memory, params)?;
 

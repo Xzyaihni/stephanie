@@ -92,6 +92,22 @@ impl AstPos
             }
         }
     }
+
+    pub fn list_to_vec(self) -> Vec<Self>
+    {
+        if !self.is_list()
+        {
+            panic!("list to vec must be called on a list");
+        }
+
+        if self.is_null()
+        {
+            Vec::new()
+        } else
+        {
+            iter::once(self.car()).chain(self.cdr().list_to_vec().into_iter()).collect()
+        }
+    }
 }
 
 // the most inefficient implementation of this ever!
@@ -227,6 +243,22 @@ impl Ast
         {
             Self::List{..} | Self::EmptyList => true,
             _ => false
+        }
+    }
+
+    pub fn list_length(&self) -> usize
+    {
+        if !self.is_list()
+        {
+            panic!("list length must be called on a list");
+        }
+
+        if self.is_null()
+        {
+            0
+        } else
+        {
+            1 + self.cdr().list_length()
         }
     }
 
