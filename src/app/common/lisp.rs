@@ -1537,8 +1537,9 @@ impl LispMemory
         LispValue::new_symbol_id(id)
     }
 
-    pub fn allocate_vector(
+    pub fn make_vector(
         &mut self,
+        target: Register,
         vec: LispVectorInner<&[ValueRaw]>
     ) -> Result<(), Error>
     {
@@ -1549,7 +1550,7 @@ impl LispMemory
 
         let id = self.memory.allocate_iter(vec.tag, vec.values.iter());
 
-        self.push_stack(LispValue::new_vector(id));
+        self.set_register(target, LispValue::new_vector(id));
 
         Ok(())
     }
@@ -1658,6 +1659,7 @@ impl<M: Borrow<LispMemory>> GenericOutputWrapper<M>
 pub struct LispConfig
 {
     pub primitives: Rc<Primitives>,
+    pub type_checks: bool,
     pub memory: LispMemory
 }
 
@@ -1676,6 +1678,7 @@ impl Lisp
     {
         let program = Program::parse(
             config.primitives,
+            config.type_checks,
             config.memory,
             code
         )?;
@@ -1690,6 +1693,7 @@ impl Lisp
     {
         let config = LispConfig{
             primitives: Rc::new(Primitives::new()),
+            type_checks: true,
             memory
         };
 
@@ -1747,17 +1751,21 @@ mod tests
     #[test]
     fn ycomb_factorial()
     {
-        let code = "
+        let code = |number|
+        {
+            format!("
             ((lambda (x)
                     ((lambda (f) (f f x))
                         (lambda (f n)
                             (if (= n 1)
                                 1
                                 (* n (f f (- n 1)))))))
-                7)
-        ";
+                {number})")
+        };
 
-        simple_integer_test(code, 5040);
+        simple_integer_test(&code(1), 1);
+        simple_integer_test(&code(2), 2);
+        simple_integer_test(&code(7), 5040);
     }
 
     #[test]

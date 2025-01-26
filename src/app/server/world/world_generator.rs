@@ -261,6 +261,7 @@ impl ChunkGenerator
 
             let config = LispConfig{
                 primitives: primitives.clone(),
+                type_checks: cfg!(debug_assertions),
                 memory
             };
 
@@ -293,6 +294,7 @@ impl ChunkGenerator
 
         let config = LispConfig{
             primitives: self.primitives.clone(),
+            type_checks: cfg!(debug_assertions),
             memory
         };
 

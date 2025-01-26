@@ -179,6 +179,22 @@ impl PrimitiveProcedureInfo
             on_apply: Some((effect, simple_apply(on_apply)))
         }
     }
+
+    pub fn new_with_target(
+        args_count: impl Into<ArgsCount>,
+        effect: Effect,
+        on_apply: impl Fn(PrimitiveArgs, Register) -> Result<(), Error> + 'static
+    ) -> Self
+    {
+        Self{
+            args_count: args_count.into(),
+            on_eval: None,
+            on_apply: Some((effect, Rc::new(move |memory, target|
+            {
+                on_apply(PrimitiveArgs{memory}, target)
+            })))
+        }
+    }
 }
 
 impl Debug for PrimitiveProcedureInfo
@@ -333,7 +349,7 @@ impl Primitives
             ("cons".into(),
                 PrimitiveProcedureInfo::new_simple(2, Effect::Pure, |mut args|
                 {
-                    let restore = args.memory.with_saved_registers([Register::Temporary, Register::Value]);
+                    let restore = args.memory.with_saved_registers([Register::Value]);
 
                     let car = args.next().unwrap();
                     args.memory.set_register(Register::Temporary, car);
@@ -542,7 +558,7 @@ impl Primitives
                     })*/todo!()
                 }))),
             ("make-vector".into(),
-                PrimitiveProcedureInfo::new_simple(2, Effect::Pure, |mut args|
+                PrimitiveProcedureInfo::new_with_target(2, Effect::Pure, |mut args, target|
                 {
                     let len = args.next().unwrap().as_integer()? as usize;
                     let fill = args.next().unwrap();
@@ -552,8 +568,7 @@ impl Primitives
                         values: &vec![fill.value; len]
                     };
 
-                    todo!()
-                    // memory.allocate_vector(vec)
+                    args.memory.make_vector(target, vec)
                 })),
             ("vector-set!".into(),
                 PrimitiveProcedureInfo::new_simple(3, Effect::Impure, |mut args|
@@ -953,13 +968,16 @@ impl CompiledPart
 
     pub fn with_proceed(self, proceed: Proceed) -> Self
     {
-        self.combine(proceed.into_compiled())
+        if proceed == Proceed::Return
+        {
+            dbg!(&self);
+        }
+
+        self.combine_preserving(proceed.into_compiled(), RegisterStates::one(Register::Return))
     }
 
     pub fn into_program(mut self, state: CompileState, primitives: Rc<Primitives>) -> CompiledProgram
     {
-        self.commands.push(Command::Jump(Label::Halt).into());
-
         state.lambdas.into_iter().for_each(|lambda|
         {
             self.commands.extend(lambda.commands);
@@ -1269,6 +1287,17 @@ impl InterReprPos
         }
     }
 
+    fn is_known_primitive(&self) -> bool
+    {
+        if let InterRepr::Value(value) = self.value
+        {
+            value.as_primitive_procedure().is_ok()
+        } else
+        {
+            false
+        }
+    }
+
     fn compile(
         self,
         state: &mut CompileState,
@@ -1338,8 +1367,7 @@ impl InterReprPos
                     CompiledPart::new()
                 };
 
-                let check = check_value.combine(type_check)
-                    .combine(Command::JumpIfFalse{target: else_branch, check: Register::Value});
+                let check = check_value.combine(type_check);
 
                 let after_if_label = Label::AfterIf(state.label_id());
 
@@ -1349,13 +1377,15 @@ impl InterReprPos
                     x => x
                 };
 
-                let then_part = then.compile(state, target, then_proceed);
+                let then_part = CompiledPart::from(Command::JumpIfFalse{target: else_branch, check: Register::Value})
+                    .combine(then.compile(state, target, then_proceed));
+
                 let else_part = CompiledPart::from(Command::Label(else_branch))
                     .combine(else_body.compile(state, target, proceed));
 
                 let if_body = check.combine_preserving(
                     then_part.combine(else_part),
-                    RegisterStates::one(Register::Environment)
+                    RegisterStates::one(Register::Environment).set(Register::Return)
                 );
 
                 if let Proceed::Next = proceed
@@ -1382,15 +1412,11 @@ impl InterReprPos
 
                 let label_part: CompiledPart = Command::PutLabel{target, label}.into();
 
-                let env_part = CompiledPart::from_commands(vec![
-                    Command::CreateChildEnvironment.with_position(self.position)
-                ]).with_requires(RegisterStates::one(Register::Environment));
-
                 let cons_part = CompiledPart::from_commands(vec![
                     Command::Cons{target, car: Register::Environment, cdr: target}.with_position(self.position)
-                ]).with_requires(RegisterStates::one(target));
+                ]);
 
-                let lambda = label_part.combine(env_part.combine_preserving(cons_part, RegisterStates::one(target)));
+                let lambda = label_part.combine(cons_part);
 
                 lambda.with_proceed(proceed)
             },
@@ -1419,6 +1445,8 @@ impl InterReprPos
             },
             InterRepr::Apply{op, args} =>
             {
+                let is_known_primitive = op.is_known_primitive();
+
                 let empty_list: CompiledPart = Command::PutValue{
                     value: LispValue::new_empty_list(),
                     register: Register::Argument
@@ -1438,7 +1466,7 @@ impl InterReprPos
                     let body = x.compile(state, Some(Register::Value), Proceed::Next)
                         .combine_preserving(ending, RegisterStates::one(Register::Argument));
 
-                    acc.combine_preserving(body, RegisterStates::one(Register::Environment))
+                    acc.combine_preserving(body, RegisterStates::one(Register::Environment).set(Register::Return))
                 });
 
                 let operator_setup = op.compile(state, Some(Register::Operator), Proceed::Next);
@@ -1447,7 +1475,11 @@ impl InterReprPos
                 {
                     Proceed::Jump(label) => Command::Jump(label).into(),
                     Proceed::Next => CompiledPart::new(),
-                    Proceed::Return => Command::JumpRegister(Register::Return).into()
+                    Proceed::Return =>
+                    {
+                        CompiledPart::from(Command::JumpRegister(Register::Return))
+                            .with_requires(RegisterStates::one(Register::Return))
+                    }
                 };
 
                 let primitive_branch = Label::PrimitiveBranch(state.label_id());
@@ -1483,10 +1515,14 @@ impl InterReprPos
                     ]), CompiledPart::new())
                 };
 
+                let env_part = CompiledPart::from_commands(vec![
+                    Command::CreateChildEnvironment.with_position(self.position)
+                ]).with_requires(RegisterStates::one(Register::Environment));
+
                 let compound_part_basic = compound_check
+                    .combine(env_part)
                     .combine(compound_call_part)
-                    .combine(compound_error)
-                    .with_requires(RegisterStates::one(Register::Environment));
+                    .combine(compound_error);
 
                 let after_procedure = Label::AfterProcedure(state.label_id());
 
@@ -1496,7 +1532,7 @@ impl InterReprPos
                     {
                         Proceed::Jump(label) => Command::PutLabel{target: Register::Return, label}.into(),
                         Proceed::Next => Command::PutLabel{target: Register::Return, label: after_procedure}.into(),
-                        Proceed::Return => CompiledPart::new()
+                        Proceed::Return => CompiledPart::new().with_requires(RegisterStates::one(Register::Return))
                     };
 
                     prepare_return.combine(compound_part_basic)
@@ -1518,17 +1554,24 @@ impl InterReprPos
                     prepare_return.combine(compound_part_basic).combine(CompiledPart::from_commands(vec![
                         Command::Label(procedure_return).into(),
                         Command::Move{target: target.expect("checked in branch"), source: Register::Value}.into()
-                    ])).combine(proceed)
+                    ])).combine_preserving(proceed, RegisterStates::one(Register::Return))
                 };
 
                 let primitive_part = CompiledPart::from_commands(vec![
-                    Command::Label(primitive_branch).into(),
                     Command::CallPrimitiveValue{target: target.unwrap_or(Register::Temporary)}.with_position(self.position)
-                ]).combine(primitive_return);
+                ]);
 
-                let call_part = check_part.combine(compound_part).combine(primitive_part);
+                let call_part = if is_known_primitive
+                {
+                    primitive_part
+                } else
+                {
+                    check_part.combine(compound_part)
+                        .combine(Command::Label(primitive_branch))
+                        .combine(primitive_part)
+                }.combine_preserving(primitive_return, RegisterStates::one(Register::Return));
 
-                let after_procedure = if proceed == Proceed::Next
+                let after_procedure = if proceed == Proceed::Next && !is_known_primitive
                 {
                     CompiledPart::from(Command::Label(after_procedure))
                 } else
@@ -1541,10 +1584,13 @@ impl InterReprPos
 
                 let after_operator = args_part.combine_preserving(
                     call_with_return,
-                    RegisterStates::one(Register::Operator).set(Register::Environment)
+                    RegisterStates::one(Register::Operator).set(Register::Environment).set(Register::Return)
                 );
 
-                operator_setup.combine_preserving(after_operator, RegisterStates::one(Register::Environment))
+                operator_setup.combine_preserving(
+                    after_operator,
+                    RegisterStates::one(Register::Environment).set(Register::Return)
+                )
             }
         }
     }
@@ -1657,11 +1703,7 @@ impl CompileState
         let id = self.lambdas.len();
         let label = Label::Procedure(id as u32);
 
-        self.lambdas.push(
-            CompiledPart::from(Command::Label(label))
-                .combine(lambda)
-                .combine(Command::JumpRegister(Register::Return))
-        );
+        self.lambdas.push(CompiledPart::from(Command::Label(label)).combine(lambda));
 
         label
     }
@@ -2010,6 +2052,7 @@ impl Program
 {
     pub fn parse(
         primitives: Rc<Primitives>,
+        type_checks: bool,
         mut memory: LispMemory,
         code: &str
     ) -> Result<Self, ErrorPos>
@@ -2019,7 +2062,7 @@ impl Program
         let ir = InterReprPos::parse(&mut memory, &primitives, ast)?;
 
         let code = {
-            let mut state = CompileState::new(true);
+            let mut state = CompileState::new(type_checks && DebugConfig::is_disabled(DebugTool::LispDisableChecks));
 
             let compiled = ir.compile(&mut state, Some(Register::Value), Proceed::Jump(Label::Halt));
 

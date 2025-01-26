@@ -258,11 +258,15 @@ impl ChunkRuleTag
         raw_tag: ChunkRuleRawTag
     ) -> Self
     {
-        let content = Program::parse(primitives, LispMemory::new(64, 64).into(), &raw_tag.content)
-            .unwrap_or_else(|err|
-            {
-                panic!("error evaluating program: {err}")
-            });
+        let content = Program::parse(
+            primitives,
+            cfg!(debug_assertions),
+            LispMemory::new(64, 64),
+            &raw_tag.content
+        ).unwrap_or_else(|err|
+        {
+            panic!("error evaluating program: {err}")
+        });
 
         Self{
             name: text_mapping.to_id(raw_tag.name),

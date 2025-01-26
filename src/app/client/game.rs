@@ -106,6 +106,7 @@ impl Game
 
             let config = LispConfig{
                 primitives: primitives.clone(),
+                type_checks: true,
                 memory: LispMemory::new(2048, 1 << 14)
             };
 
@@ -867,6 +868,7 @@ impl Game
 
             LispConfig{
                 primitives: infos.1.clone(),
+                type_checks: true,
                 memory: infos.0.clone()
             }
         };
