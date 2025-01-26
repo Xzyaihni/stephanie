@@ -1448,7 +1448,7 @@ impl InterReprPos
 
                 let primitive_part = CompiledPart::from_commands(vec![
                     Command::CallPrimitiveValue{target: target.unwrap_or(Register::Temporary)}.with_position(self.position)
-                ]);
+                ]).combine_preserving(primitive_return, RegisterStates::one(Register::Return));
 
                 let call_part = if is_known_compound
                 {
@@ -1463,7 +1463,7 @@ impl InterReprPos
                         check_part.combine(compound_part)
                             .combine(Command::Label(primitive_branch))
                             .combine(primitive_part)
-                    }.combine_preserving(primitive_return, RegisterStates::one(Register::Return))
+                    }
                 };
 
                 let after_procedure = if proceed == Proceed::Next && !is_known_primitive
