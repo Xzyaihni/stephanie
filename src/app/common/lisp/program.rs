@@ -1,15 +1,11 @@
 use std::{
     vec,
     iter,
-    array,
-    borrow::Borrow,
-    iter::{Map, Enumerate},
     rc::Rc,
-    cell::RefCell,
     io::{self, Write},
     fmt::{self, Debug, Display},
     collections::HashMap,
-    ops::{RangeInclusive, Add, Sub, Mul, Div, Rem, Deref, Index, IndexMut}
+    ops::{RangeInclusive, Add, Sub, Mul, Div, Rem, Index, IndexMut}
 };
 
 use strum::{EnumCount, FromRepr};
@@ -17,7 +13,6 @@ use strum::{EnumCount, FromRepr};
 use crate::debug_config::*;
 
 pub use super::{
-    transfer_with_capacity,
     Error,
     ErrorPos,
     SymbolId,
@@ -25,8 +20,7 @@ pub use super::{
     LispMemory,
     ValueTag,
     LispVectorRef,
-    OutputWrapper,
-    OutputWrapperRef
+    OutputWrapper
 };
 
 pub use parser::{PrimitiveType, CodePosition, WithPosition, WithPositionMaybe, WithPositionTrait};
@@ -49,7 +43,6 @@ pub type OnApply = Rc<
 pub type OnEval = Rc<
     dyn Fn(
         &mut LispMemory,
-        &Primitives,
         AstPos
     ) -> Result<InterRepr, ErrorPos>>;
 
@@ -120,7 +113,7 @@ impl<T> WithPositionTrait<Result<T, ErrorPos>> for Result<T, Error>
 
 pub struct PrimitiveArgs<'a>
 {
-    memory: &'a mut LispMemory
+    pub memory: &'a mut LispMemory
 }
 
 impl<'a> Iterator for PrimitiveArgs<'a>
@@ -225,9 +218,9 @@ pub struct Primitives
     primitives: Vec<PrimitiveProcedureInfo>
 }
 
-impl Primitives
+impl Default for Primitives
 {
-    pub fn new() -> Self
+    fn default() -> Self
     {
         macro_rules! do_cond
         {
@@ -302,22 +295,21 @@ impl Primitives
             }
         }
 
-        let make_procedure_tag_check_work = ();
         let (indices, primitives): (HashMap<String, _>, Vec<_>) = [
             (BEGIN_PRIMITIVE,
-                PrimitiveProcedureInfo::new_eval(ArgsCount::Min(1), Rc::new(|memory, primitives, args|
+                PrimitiveProcedureInfo::new_eval(ArgsCount::Min(1), Rc::new(|memory, args|
                 {
-                    Ok(InterRepr::Sequence(InterReprPos::parse_args(memory, primitives, args)?))
+                    Ok(InterRepr::Sequence(InterReprPos::parse_args(memory, args)?))
                 }))),
             (QUOTE_PRIMITIVE,
-                PrimitiveProcedureInfo::new_eval(1, Rc::new(|_memory, _primitives, args|
+                PrimitiveProcedureInfo::new_eval(1, Rc::new(|_memory, args|
                 {
                     Ok(InterRepr::Quoted(args.car()))
                 }))),
             ("if",
-                PrimitiveProcedureInfo::new_eval(2..=3, Rc::new(|memory, primitives, args|
+                PrimitiveProcedureInfo::new_eval(2..=3, Rc::new(|memory, args|
                 {
-                    InterRepr::parse_if(memory, primitives, args)
+                    InterRepr::parse_if(memory, args)
                 }))),
             ("cons",
                 PrimitiveProcedureInfo::new_simple(2, Effect::Pure, |mut args|
@@ -398,15 +390,30 @@ impl Primitives
             is_tag!("char?", ValueTag::Char),
             is_tag!("boolean?", ValueTag::Bool),
             is_tag!("vector?", ValueTag::Vector),
-            // is_tag!("procedure?", ValueTag::Address, ValueTag::PrimitiveProcedure),
             is_tag!("number?", ValueTag::Integer, ValueTag::Float),
-            ("lambda",
-                PrimitiveProcedureInfo::new_eval(ArgsCount::Min(2), Rc::new(|memory, primitives, args|
+            ("procedure?", PrimitiveProcedureInfo::new_simple(1, Effect::Pure, |mut args|
+            {
+                let value = args.next().unwrap();
+
+                let is_compound = ||
                 {
-                    Ok(InterRepr::parse_lambda(memory, primitives, args)?)
+                    value.as_list(args.memory).map(|x|
+                    {
+                        x.cdr.tag == ValueTag::Address
+                    }).unwrap_or(false)
+                };
+
+                let is_equal = value.tag == ValueTag::PrimitiveProcedure || is_compound();
+
+                Ok(is_equal.into())
+            })),
+            ("lambda",
+                PrimitiveProcedureInfo::new_eval(ArgsCount::Min(2), Rc::new(|memory, args|
+                {
+                    Ok(InterRepr::parse_lambda(memory, args)?)
                 }))),
             ("define",
-                PrimitiveProcedureInfo::new_eval(ArgsCount::Min(2), Rc::new(|memory, primitives, args: AstPos|
+                PrimitiveProcedureInfo::new_eval(ArgsCount::Min(2), Rc::new(|memory, args: AstPos|
                 {
                     let first = args.car();
 
@@ -424,11 +431,11 @@ impl Primitives
                         let name = InterReprPos::parse_symbol(memory, &first.car())?;
                         let lambdas_body = AstPos::cons(first.cdr(), args.cdr());
 
-                        (name, InterRepr::parse_lambda(memory, primitives, lambdas_body)?.with_position(position))
+                        (name, InterRepr::parse_lambda(memory, lambdas_body)?.with_position(position))
                     } else
                     {
                         let name = InterReprPos::parse_symbol(memory, &first)?;
-                        let args = InterReprPos::parse_args(memory, primitives, args.cdr())?;
+                        let args = InterReprPos::parse_args(memory, args.cdr())?;
 
                         (name, args.into_iter().next().unwrap())
                     };
@@ -439,9 +446,9 @@ impl Primitives
                     })
                 }))),
             ("let",
-                PrimitiveProcedureInfo::new_eval(2, Rc::new(|memory, primitives, args|
+                PrimitiveProcedureInfo::new_eval(2, Rc::new(|memory, args|
                 {
-                    Ok(InterRepr::parse_let(memory, primitives, args)?)
+                    Ok(InterRepr::parse_let(memory, args)?)
                 }))),
             ("make-vector",
                 PrimitiveProcedureInfo::new_with_target(2, Effect::Pure, |mut args, target|
@@ -560,7 +567,10 @@ impl Primitives
             primitives
         }
     }
+}
 
+impl Primitives
+{
     pub fn add(&mut self, name: impl Into<String>, procedure: PrimitiveProcedureInfo)
     {
         let name = name.into();
@@ -852,7 +862,7 @@ impl CompiledPart
         self.combine_preserving(proceed.into_compiled(), RegisterStates::one(Register::Return))
     }
 
-    pub fn into_program(mut self, state: CompileState, primitives: Rc<Primitives>) -> CompiledProgram
+    pub fn into_program(mut self, state: CompileState) -> CompiledProgram
     {
         state.lambdas.into_iter().for_each(|lambda|
         {
@@ -916,7 +926,6 @@ impl CompiledPart
         }).unzip();
 
         CompiledProgram{
-            primitives,
             positions,
             commands
         }
@@ -1027,7 +1036,6 @@ impl InterReprPos
 
     pub fn parse(
         memory: &mut LispMemory,
-        primitives: &Primitives,
         ast: AstPos
     ) -> Result<Self, ErrorPos>
     {
@@ -1039,7 +1047,7 @@ impl InterReprPos
 
                 Ok(if let Ok(id) = value.as_symbol_id()
                 {
-                    if let Some(primitive_id) = primitives.index_by_name(&memory.get_symbol(id))
+                    if let Some(primitive_id) = memory.primitives.index_by_name(&memory.get_symbol(id))
                     {
                         InterRepr::Value(LispValue::new_primitive_procedure(primitive_id))
                     } else
@@ -1054,13 +1062,13 @@ impl InterReprPos
             Ast::EmptyList => Ok(InterRepr::Value(LispValue::new_empty_list()).with_position(ast.position)),
             Ast::List{car, cdr} =>
             {
-                let op = Self::parse(memory, primitives, *car)?;
+                let op = Self::parse(memory, *car)?;
 
                 if let InterRepr::Value(value) = op.value
                 {
                     if let Ok(id) = value.as_primitive_procedure()
                     {
-                        let primitive = &primitives.get(id);
+                        let primitive = memory.primitives.get(id).clone();
                         if let Some(on_eval) = &primitive.on_eval
                         {
                             let args = *cdr;
@@ -1069,19 +1077,19 @@ impl InterReprPos
                             if !primitive.args_count.contains(args_count)
                             {
                                 return Err(Error::WrongArgumentsCount{
-                                    proc: primitives.name_by_index(id).to_owned(),
+                                    proc: memory.primitives.name_by_index(id).to_owned(),
                                     this_invoked: false,
                                     expected: primitive.args_count.to_string(),
                                     got: args_count
                                 }).with_position(ast.position);
                             }
 
-                            return on_eval(memory, primitives, args).map(|x| x.with_position(ast.position));
+                            return on_eval(memory, args).map(|x| x.with_position(ast.position));
                         }
                     }
                 }
 
-                let args = Self::parse_args(memory, primitives, *cdr)?;
+                let args = Self::parse_args(memory, *cdr)?;
 
                 Ok(InterRepr::Apply{op: Box::new(op), args}.with_position(ast.position))
             }
@@ -1090,7 +1098,6 @@ impl InterReprPos
 
     pub fn parse_args(
         memory: &mut LispMemory,
-        primitives: &Primitives,
         ast: AstPos
     ) -> Result<Vec<Self>, ErrorPos>
     {
@@ -1100,9 +1107,9 @@ impl InterReprPos
             Ast::EmptyList => Ok(Vec::new()),
             Ast::List{car, cdr} =>
             {
-                let tail = Self::parse_args(memory, primitives, *cdr)?;
+                let tail = Self::parse_args(memory, *cdr)?;
 
-                Ok(iter::once(Self::parse(memory, primitives, *car)?).chain(tail).collect())
+                Ok(iter::once(Self::parse(memory, *car)?).chain(tail).collect())
             }
         }
     }
@@ -1488,11 +1495,10 @@ impl InterRepr
 {
     pub fn parse_if(
         memory: &mut LispMemory,
-        primitives: &Primitives,
         ast: AstPos
     ) -> Result<Self, ErrorPos>
     {
-        let args = InterReprPos::parse_args(memory, primitives, ast)?;
+        let args = InterReprPos::parse_args(memory, ast)?;
 
         let mut args = args.into_iter();
 
@@ -1509,14 +1515,13 @@ impl InterRepr
 
     pub fn parse_let(
         memory: &mut LispMemory,
-        primitives: &Primitives,
         ast: AstPos
     ) -> Result<Self, ErrorPos>
     {
         let position = ast.position;
 
         let params_ast = ast.car();
-        let body = InterReprPos::parse_args(memory, primitives, ast.cdr())?
+        let body = InterReprPos::parse_args(memory, ast.cdr())?
             .into_iter().next().unwrap();
 
         let mut params = Vec::new();
@@ -1547,7 +1552,7 @@ impl InterRepr
             }
 
             params.push(InterReprPos::parse_symbol(memory, &name)?);
-            args.push(InterReprPos::parse(memory, primitives, arg)?);
+            args.push(InterReprPos::parse(memory, arg)?);
 
             Ok(())
         })?;
@@ -1561,7 +1566,6 @@ impl InterRepr
 
     pub fn parse_lambda(
         memory: &mut LispMemory,
-        primitives: &Primitives,
         ast: AstPos
     ) -> Result<Self, ErrorPos>
     {
@@ -1571,7 +1575,7 @@ impl InterRepr
 
         let bodies_position = cdr.position;
 
-        let bodies = InterReprPos::parse_args(memory, primitives, cdr)?;
+        let bodies = InterReprPos::parse_args(memory, cdr)?;
         let body = InterRepr::Sequence(bodies).with_position(bodies_position);
 
         let params = LambdaParams::parse(memory, params)?;
@@ -1695,6 +1699,54 @@ enum CommandRaw
     CallPrimitiveValue{target: Register}
 }
 
+struct DebugRaw(String);
+
+impl Debug for DebugRaw
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
+    {
+        write!(f, "{}", self.0)
+    }
+}
+
+struct CommandRawDisplay<'a, 'b>
+{
+    memory: &'a mut LispMemory,
+    value: &'b CommandRaw
+}
+
+impl Debug for CommandRawDisplay<'_, '_>
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
+    {
+        match self.value
+        {
+            CommandRaw::PutValue{value, register} =>
+            {
+                f.debug_struct("PutValue")
+                    .field("value", &DebugRaw(value.to_string(self.memory)))
+                    .field("register", register)
+                    .finish()
+            },
+            CommandRaw::Lookup{id, register} =>
+            {
+                f.debug_struct("Lookup")
+                    .field("id", &DebugRaw(LispValue::new_symbol_id(*id).to_string(self.memory)))
+                    .field("register", register)
+                    .finish()
+            },
+            CommandRaw::Define{id, register} =>
+            {
+                f.debug_struct("Define")
+                    .field("id", &DebugRaw(LispValue::new_symbol_id(*id).to_string(self.memory)))
+                    .field("register", register)
+                    .finish()
+            },
+            x => write!(f, "{x:?}")
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 struct RegisterStates([bool; Register::COUNT]);
 
@@ -1786,7 +1838,6 @@ impl RegisterStates
 #[derive(Debug, Clone)]
 pub struct CompiledProgram
 {
-    primitives: Rc<Primitives>,
     positions: Vec<Option<CodePosition>>,
     commands: Vec<CommandRaw>
 }
@@ -1811,7 +1862,7 @@ impl CompiledProgram
 
             if DebugConfig::is_enabled(DebugTool::Lisp)
             {
-                eprintln!("[RUNNING] {i}: {:?}", &self.commands[i]);
+                eprintln!("[RUNNING] {i}: {:?}", CommandRawDisplay{memory, value: &self.commands[i]});
             }
 
             match &self.commands[i]
@@ -1934,9 +1985,10 @@ impl CompiledProgram
                     let op = memory.get_register(Register::Operator).as_primitive_procedure()
                         .expect("must be checked");
 
-                    let primitive = &self.primitives.get(op).on_apply.as_ref()
+                    let primitive = &memory.primitives.get(op).on_apply.as_ref()
                         .expect("primitive must have apply")
-                        .1;
+                        .1
+                        .clone();
 
                     if let Err(err) = primitive(memory, *target)
                     {
@@ -1962,7 +2014,6 @@ pub struct Program
 impl Program
 {
     pub fn parse(
-        primitives: Rc<Primitives>,
         type_checks: bool,
         mut memory: LispMemory,
         code: &str
@@ -1970,7 +2021,7 @@ impl Program
     {
         let ast = Parser::parse(code)?;
 
-        let ir = InterReprPos::parse(&mut memory, &primitives, ast)?;
+        let ir = InterReprPos::parse(&mut memory, ast)?;
 
         let code = {
             let type_checks = type_checks && DebugConfig::is_disabled(DebugTool::LispDisableChecks);
@@ -1978,7 +2029,7 @@ impl Program
 
             let compiled = ir.compile(&mut state, Some(Register::Value), Proceed::Jump(Label::Halt));
 
-            compiled.into_program(state, primitives)
+            compiled.into_program(state)
         };
 
         Ok(Self{memory, code})

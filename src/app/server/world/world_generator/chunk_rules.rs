@@ -259,9 +259,8 @@ impl ChunkRuleTag
     ) -> Self
     {
         let content = Program::parse(
-            primitives,
             cfg!(debug_assertions),
-            LispMemory::new(64, 64),
+            LispMemory::new(primitives, 64, 64),
             &raw_tag.content
         ).unwrap_or_else(|err|
         {
@@ -294,7 +293,7 @@ impl ChunkRule
             {
                 ChunkRuleTag::from_raw(
                     &mut name_mappings.text,
-                    Self::default_primitives(),
+                    Rc::new(Primitives::default()),
                     tag
                 )
             }).collect(),
@@ -307,11 +306,6 @@ impl ChunkRule
                 }).collect::<Vec<_>>()
             })
         }
-    }
-
-    fn default_primitives() -> Rc<Primitives>
-    {
-        Rc::new(Primitives::new())
     }
 
     pub fn name(&self) -> &str

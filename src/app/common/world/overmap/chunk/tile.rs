@@ -4,7 +4,7 @@ use serde::{Serialize, Deserialize};
 
 use strum::{FromRepr, EnumString};
 
-use crate::common::lisp::{self, LispMemory, ValueRaw};
+use crate::common::lisp::{self, Register, LispValue, LispMemory, ValueRaw};
 
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, FromRepr, EnumString, Serialize, Deserialize)]
@@ -68,13 +68,20 @@ impl Tile
         format!("{}{}", self.id, self.rotation.to_arrow_str())
     }
 
-    pub fn as_lisp_value(&self, memory: &mut LispMemory) -> Result<(), lisp::Error>
+    pub fn as_lisp_value(&self, memory: &mut LispMemory) -> Result<LispValue, lisp::Error>
     {
-        /*memory.push_stack(self.id as i32);
-        memory.push_stack(self.rotation as i32);
+        let restore = memory.with_saved_registers([Register::Value, Register::Temporary]);
 
-        memory.cons()*/
-        todo!()
+        memory.set_register(Register::Value, self.id as i32);
+        memory.set_register(Register::Temporary, self.rotation as i32);
+
+        memory.cons(Register::Value, Register::Value, Register::Temporary)?;
+
+        let value = memory.get_register(Register::Value);
+
+        restore(memory);
+
+        Ok(value)
     }
 
     /// # Safety

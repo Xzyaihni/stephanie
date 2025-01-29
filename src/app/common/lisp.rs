@@ -11,6 +11,9 @@ use std::{
 use strum::EnumCount;
 
 pub use program::{
+    Register,
+    Effect,
+    PrimitiveArgs,
     Program,
     PrimitiveProcedureInfo,
     Primitives,
@@ -18,7 +21,7 @@ pub use program::{
     ArgsCount
 };
 
-use program::{PrimitiveType, Register, CodePosition};
+use program::PrimitiveType;
 
 mod program;
 
@@ -902,7 +905,7 @@ impl Symbols
 
 pub struct LispMemory
 {
-    quoted: Vec<LispValue>,
+    pub primitives: Rc<Primitives>,
     symbols: Symbols,
     memory: MemoryBlock,
     swap_memory: MemoryBlock,
@@ -919,13 +922,12 @@ impl Debug for LispMemory
             v.to_string(self)
         };
 
-        let quoted = self.quoted.iter().copied().map(pv).collect::<Vec<_>>();
         let stack = self.stack.iter().copied().map(pv).collect::<Vec<_>>();
         let registers = self.registers.map(pv);
 
         let block = MemoryBlockWith{memory: Some(self), block: &self.memory};
         f.debug_struct("MemoryBlock")
-            .field("quoted", &quoted)
+            .field("primitives", &self.primitives)
             .field("symbols", &self.symbols)
             .field("memory", &block)
             .field("stack", &stack)
@@ -939,7 +941,7 @@ impl Clone for LispMemory
     fn clone(&self) -> Self
     {
         Self{
-            quoted: self.quoted.clone(),
+            primitives: self.primitives.clone(),
             symbols: self.symbols.clone(),
             memory: self.memory.clone(),
             swap_memory: self.swap_memory.clone(),
@@ -953,19 +955,19 @@ impl Default for LispMemory
 {
     fn default() -> Self
     {
-        Self::new(256, 1 << 10)
+        Self::new(Rc::new(Primitives::default()), 256, 1 << 10)
     }
 }
 
 impl LispMemory
 {
-    pub fn new(stack_size: usize, memory_size: usize) -> Self
+    pub fn new(primitives: Rc<Primitives>, stack_size: usize, memory_size: usize) -> Self
     {
         let memory = MemoryBlock::new(memory_size);
         let swap_memory = MemoryBlock::new(memory_size);
 
         let mut this = Self{
-            quoted: Vec::new(),
+            primitives,
             symbols: Symbols::new(),
             memory,
             swap_memory,
@@ -993,11 +995,6 @@ impl LispMemory
         Ok(self.get_register(Register::Value))
     }
 
-    pub fn no_memory() -> Self
-    {
-        Self::new(256, 0)
-    }
-
     pub fn clear(&mut self)
     {
         self.memory.clear();
@@ -1006,10 +1003,6 @@ impl LispMemory
     pub fn get_symbol_by_name(&self, name: &str) -> Option<SymbolId>
     {
         self.symbols.get_by_name(name)
-    }
-    pub fn add_quoted(&mut self, value: LispValue)
-    {
-        self.quoted.push(value);
     }
 
     pub fn define(&mut self, key: impl Into<String>, value: LispValue) -> Result<(), Error>
@@ -1054,6 +1047,7 @@ impl LispMemory
         Ok(())
     }
 
+    #[must_use]
     pub fn with_saved_registers(
         &mut self,
         registers: impl IntoIterator<Item=Register> + Clone
@@ -1490,20 +1484,32 @@ impl LispMemory
     pub fn cons_list<I, V>(
         &mut self,
         values: I
-    ) -> Result<(), Error>
+    ) -> Result<LispValue, Error>
     where
         V: Into<LispValue>,
         I: IntoIterator<Item=V>,
         I::IntoIter: DoubleEndedIterator + ExactSizeIterator
     {
-        /*let iter = values.into_iter();
+        let iter = values.into_iter();
         let len = iter.len();
 
-        iter.for_each(|x| self.push_stack(x));
+        let restore = self.with_saved_registers([Register::Value, Register::Temporary]);
 
-        self.push_stack(());
+        iter.rev().for_each(|x| self.push_stack(x));
+        self.set_register(Register::Value, ());
 
-        (0..len).try_for_each(|_| self.cons())*/todo!()
+        (0..len).try_for_each(|_|
+        {
+            self.pop_stack_register(Register::Temporary);
+
+            self.cons(Register::Value, Register::Temporary, Register::Value)
+        })?;
+
+        let value = self.get_register(Register::Value);
+
+        restore(self);
+
+        Ok(value)
     }
 
     pub fn new_primitive_value(&mut self, x: PrimitiveType) -> LispValue
@@ -1651,7 +1657,6 @@ impl<M: Borrow<LispMemory>> GenericOutputWrapper<M>
 
 pub struct LispConfig
 {
-    pub primitives: Rc<Primitives>,
     pub type_checks: bool,
     pub memory: LispMemory
 }
@@ -1670,7 +1675,6 @@ impl Lisp
     ) -> Result<Self, ErrorPos>
     {
         let program = Program::parse(
-            config.primitives,
             config.type_checks,
             config.memory,
             code
@@ -1685,7 +1689,6 @@ impl Lisp
     ) -> Result<Self, ErrorPos>
     {
         let config = LispConfig{
-            primitives: Rc::new(Primitives::new()),
             type_checks: true,
             memory
         };
@@ -1701,11 +1704,6 @@ impl Lisp
     pub fn memory_mut(&mut self) -> &mut LispMemory
     {
         self.program.memory_mut()
-    }
-
-    pub fn empty_memory() -> LispMemory
-    {
-        LispMemory::no_memory()
     }
 
     pub fn default_memory() -> LispMemory
@@ -1923,7 +1921,7 @@ mod tests
         ";
 
         let memory_size = 92;
-        let memory = LispMemory::new(20, memory_size);
+        let memory = LispMemory::new(Rc::new(Primitives::default()), 20, memory_size);
 
         let mut lisp = Lisp::new_with_memory(memory, code).unwrap();
 
@@ -1973,7 +1971,7 @@ mod tests
         ";
 
         let memory_size = 430;
-        let memory = LispMemory::new(64, memory_size);
+        let memory = LispMemory::new(Rc::new(Primitives::default()), 64, memory_size);
 
         let mut lisp = Lisp::new_with_memory(memory, code).unwrap();
 
@@ -2185,7 +2183,7 @@ mod tests
         ");
 
         let memory_size = 300;
-        let memory = LispMemory::new(256, memory_size);
+        let memory = LispMemory::new(Rc::new(Primitives::default()), 256, memory_size);
 
         let mut lisp = Lisp::new_with_memory(memory, &code).unwrap();
 

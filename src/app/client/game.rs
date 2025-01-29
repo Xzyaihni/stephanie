@@ -101,13 +101,12 @@ impl Game
             load("lisp/standard.scm") + &load("lisp/console.scm")
         };
 
-        let console_infos: (LispMemory, Rc<Primitives>) = {
+        let console_info: LispMemory = {
             let primitives = this.console_primitives();
 
             let config = LispConfig{
-                primitives: primitives.clone(),
                 type_checks: true,
-                memory: LispMemory::new(2048, 1 << 14)
+                memory: LispMemory::new(primitives.clone(), 2048, 1 << 14)
             };
 
             let lisp = Lisp::new_with_config(
@@ -121,10 +120,10 @@ impl Game
             }).unwrap_or_else(|err| panic!("error in stdlib: {err}"))
                 .into_memory();
 
-            (memory, primitives)
+            memory
         };
 
-        this.info.borrow_mut().console.infos = Some(console_infos);
+        this.info.borrow_mut().console.infos = Some(console_info);
 
         this
     }
@@ -356,11 +355,11 @@ impl Game
         }
     }
 
-    /*fn pop_entity(memory: &mut LispMemory) -> Result<Entity, lisp::Error>
+    fn pop_entity(args: &mut PrimitiveArgs) -> Result<Entity, lisp::Error>
     {
-        let lst = args.pop(memory).as_list()?;
+        let lst = args.next().unwrap().as_list(args.memory)?;
 
-        let tag = lst.car().as_symbol()?;
+        let tag = lst.car().as_symbol(args.memory)?;
         if tag != "entity"
         {
             let s = format!("(expected tag `entity` got `{tag}`)");
@@ -368,51 +367,48 @@ impl Game
             return Err(lisp::Error::Custom(s));
         }
 
-        let tail = lst.cdr().as_list()?;
+        let tail = lst.cdr().as_list(args.memory)?;
 
         let local = tail.car().as_bool()?;
-        let id = tail.cdr().as_list()?.car().as_integer()?;
+        let id = tail.cdr().as_list(args.memory)?.car().as_integer()?;
 
         let entity = Entity::from_raw(local, id as usize);
 
         Ok(entity)
     }
 
-    fn push_entity(memory: &mut LispMemory, entity: Entity) -> Result<(), lisp::Error>
+    fn push_entity(memory: &mut LispMemory, entity: Entity) -> Result<LispValue, lisp::Error>
     {
         let tag = memory.new_symbol("entity");
         let local = LispValue::new_bool(entity.local());
         let id = LispValue::new_integer(entity.id() as i32);
 
         memory.cons_list([tag, local, id])
-    }*/
+    }
 
     fn add_simple_setter<F>(&self, primitives: &mut Primitives, name: &str, f: F)
     where
         F: Fn(
             &mut ClientEntities,
             Entity,
-            &mut LispMemory
+            PrimitiveArgs
         ) -> Result<(), lisp::Error> + 'static
     {
         let game_state = self.game_state.clone();
 
-        todo!();
-        /*primitives.add(
+        primitives.add(
             name,
-            PrimitiveProcedureInfo::new_simple_effect(2, move |memory|
+            PrimitiveProcedureInfo::new_simple(2, Effect::Impure, move |mut args|
             {
                 let game_state = game_state.upgrade().unwrap();
                 let mut game_state = game_state.borrow_mut();
                 let entities = game_state.entities_mut();
 
-                let entity = Self::pop_entity(memory)?;
-                f(entities, entity, memory, args)?;
+                let entity = Self::pop_entity(&mut args)?;
+                f(entities, entity, args)?;
 
-                memory.push_stack(());
-
-                Ok(())
-            }));*/
+                Ok(().into())
+            }));
     }
 
     fn maybe_print_component(
@@ -466,43 +462,40 @@ impl Game
             }
         }
 
-        let mut primitives = Primitives::new();
+        let mut primitives = Primitives::default();
 
-        todo!();
-        /*{
+        {
             let game_state = self.game_state.clone();
 
             primitives.add(
                 "entity-collided",
-                PrimitiveProcedureInfo::new_simple(1, move |memory, mut args|
+                PrimitiveProcedureInfo::new_simple(1, Effect::Pure, move |mut args|
                 {
                     let game_state = game_state.upgrade().unwrap();
                     let game_state = game_state.borrow();
                     let entities = game_state.entities();
 
-                    let entity = Self::pop_entity(&mut args, memory)?;
+                    let entity = Self::pop_entity(&mut args)?;
                     let collided = entities.collider(entity)
                         .map(|x| x.collided().to_vec()).into_iter().flatten()
                         .next();
 
                     if let Some(collided) = collided
                     {
-                        Self::push_entity(memory, collided)?;
+                        Self::push_entity(args.memory, collided)
                     } else
                     {
-                        memory.push_stack(());
+                        Ok(().into())
                     }
-
-                    Ok(())
                 }));
         }
 
-        {
+        /*{
             let game_state = self.game_state.clone();
 
             primitives.add(
                 "all-entities-query",
-                PrimitiveProcedureInfo::new_simple(0, move |memory, _args|
+                PrimitiveProcedureInfo::new_simple(0, move |mut args|
                 {
                     let game_state = game_state.upgrade().unwrap();
                     let game_state = game_state.borrow();
@@ -541,10 +534,10 @@ impl Game
 
                     memory.cons()
                 }));
-        }
+        }*/
+        dbg!("uncomment");
 
-
-        primitives.add(
+        /*primitives.add(
             "query-entity-next",
             PrimitiveProcedureInfo::new_simple_effect(1, move |memory, mut args|
             {
@@ -867,9 +860,8 @@ impl Game
             let infos = infos.console.infos.as_ref().expect("always initialized");
 
             LispConfig{
-                primitives: infos.1.clone(),
                 type_checks: true,
-                memory: infos.0.clone()
+                memory: infos.clone()
             }
         };
 
@@ -922,7 +914,7 @@ struct ConsoleInfo
 {
     entity: Entity,
     contents: Option<String>,
-    infos: Option<(LispMemory, Rc<Primitives>)>,
+    infos: Option<LispMemory>
 }
 
 impl ConsoleInfo
@@ -994,7 +986,7 @@ impl PlayerInfo
     {
         if let Some(x) = self.console.infos.as_mut()
         {
-            x.0 = memory;
+            *x = memory;
         }
     }
 }

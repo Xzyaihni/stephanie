@@ -177,7 +177,7 @@ impl ChunkGenerator
 
         let primitives = Rc::new(Self::default_primitives(&tilemap));
 
-        let state = Self::default_state(
+        let memory = Self::default_memory(
             primitives.clone(),
             &parent_directory
         );
@@ -200,7 +200,7 @@ impl ChunkGenerator
         {
             let filename = parent_directory.join(format!("{name}.scm"));
 
-            this.parse_function(state.clone(), filename, name)
+            this.parse_function(memory.clone(), filename, name)
         })?;
 
         Ok(this)
@@ -208,17 +208,17 @@ impl ChunkGenerator
 
     fn default_primitives(tilemap: &TileMap) -> Primitives
     {
-        let mut primitives = Primitives::new();
+        let mut primitives = Primitives::default();
 
         let fallback_tile = Tile::none();
         let names_map: HashMap<String, Tile> = tilemap.names_owned_map();
 
-        /*primitives.add(
+        primitives.add(
             "tile",
-            PrimitiveProcedureInfo::new_simple(ArgsCount::Min(1), move |memory, mut args|
+            PrimitiveProcedureInfo::new_simple(ArgsCount::Min(1), Effect::Pure, move |mut args|
             {
-                let name = args.pop(memory).as_symbol()?;
-                let rotation = args.try_pop(memory);
+                let name = args.next().unwrap().as_symbol(args.memory)?;
+                let rotation = args.next();
 
                 let mut tile = *names_map.get(&name).unwrap_or_else(||
                 {
@@ -229,7 +229,7 @@ impl ChunkGenerator
 
                 if let Some(rotation) = rotation
                 {
-                    let name = rotation.as_symbol()?;
+                    let name = rotation.as_symbol(args.memory)?;
 
                     match TileRotation::from_str(&name)
                     {
@@ -238,13 +238,13 @@ impl ChunkGenerator
                     }
                 }
 
-                tile.as_lisp_value(memory)
-            }));*/todo!();
+                tile.as_lisp_value(args.memory)
+            }));
 
         primitives
     }
 
-    fn default_state(
+    fn default_memory(
         primitives: Rc<Primitives>,
         path: &Path
     ) -> LispMemory
@@ -260,7 +260,6 @@ impl ChunkGenerator
             let default_code = load(&path);
 
             let config = LispConfig{
-                primitives: primitives.clone(),
                 type_checks: cfg!(debug_assertions),
                 memory
             };
@@ -273,7 +272,7 @@ impl ChunkGenerator
                 .into_memory()
         };
 
-        let memory: LispMemory = LispMemory::new(256, 1 << 13);
+        let memory: LispMemory = LispMemory::new(primitives, 256, 1 << 13);
         let memory = run_default(memory, "lisp/standard.scm".into());
 
         run_default(memory, path.join("default.scm"))
@@ -293,7 +292,6 @@ impl ChunkGenerator
         })?;
 
         let config = LispConfig{
-            primitives: self.primitives.clone(),
             type_checks: cfg!(debug_assertions),
             memory
         };
