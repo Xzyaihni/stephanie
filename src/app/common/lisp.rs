@@ -472,7 +472,17 @@ impl LispValue
             ValueTag::Integer => unsafe{ self.value.integer.to_string() },
             ValueTag::Float => unsafe{ self.value.float.to_string() },
             ValueTag::Char => unsafe{ self.value.character.to_string() },
-            ValueTag::PrimitiveProcedure => format!("<primitive procedure #{}>", unsafe{ self.value.primitive_procedure }),
+            ValueTag::PrimitiveProcedure =>
+            {
+                let id = unsafe{ self.value.primitive_procedure };
+                memory.map(|memory|
+                {
+                    format!("<primitive procedure `{}`>", memory.primitives.name_by_index(id))
+                }).unwrap_or_else(||
+                {
+                    format!("<primitive procedure #{id}>")
+                })
+            },
             ValueTag::Bool => if unsafe{ self.value.boolean } { "#t" } else { "#f" }.to_owned(),
             ValueTag::EmptyList => "()".to_owned(),
             ValueTag::EnvironmentMarker => "<environment>".to_owned(),
