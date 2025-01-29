@@ -310,9 +310,9 @@ impl Primitives
                     Ok(InterRepr::Sequence(InterReprPos::parse_args(memory, primitives, args)?))
                 }))),
             (QUOTE_PRIMITIVE,
-                PrimitiveProcedureInfo::new_eval(1, Rc::new(|memory, _primitives, args|
+                PrimitiveProcedureInfo::new_eval(1, Rc::new(|_memory, _primitives, args|
                 {
-                    Ok(InterRepr::Value(InterReprPos::parse_quote_args(memory, args)?))
+                    Ok(InterRepr::Quoted(args.car()))
                 }))),
             ("if",
                 PrimitiveProcedureInfo::new_eval(2..=3, Rc::new(|memory, primitives, args|
@@ -693,9 +693,9 @@ impl Command
             | Self::Cdr{target: register, ..}
             | Self::CallPrimitiveValue{target: register, ..} => vec![*register],
             Self::CreateChildEnvironment => vec![Register::Environment, Register::Value, Register::Temporary],
+            Self::Define{..} => vec![Register::Value, Register::Temporary],
             Self::IsTag{..} => vec![Register::Temporary],
             Self::Push(_)
-            | Self::Define{..}
             | Self::Jump(_)
             | Self::JumpRegister(_)
             | Self::JumpIfTrue{..}
@@ -996,6 +996,7 @@ pub enum InterRepr
     If{check: Box<InterReprPos>, then: Box<InterReprPos>, else_body: Box<InterReprPos>},
     Define{name: SymbolId, body: Box<InterReprPos>},
     Lambda{params: LambdaParams, body: Box<InterReprPos>},
+    Quoted(AstPos),
     Lookup(SymbolId),
     Value(LispValue)
 }
@@ -1087,55 +1088,6 @@ impl InterReprPos
         }
     }
 
-    pub fn parse_quote_args(
-        memory: &mut LispMemory,
-        ast: AstPos
-    ) -> Result<LispValue, ErrorPos>
-    {
-        let value = ast.car();
-
-        Self::allocate_quote(memory, value, Register::Value)?;
-
-        let value = memory.get_register(Register::Value);
-        memory.add_quoted(value);
-
-        Ok(value)
-    }
-
-    fn allocate_quote(
-        memory: &mut LispMemory,
-        ast: AstPos,
-        target: Register
-    ) -> Result<(), ErrorPos>
-    {
-        let value = match ast.value
-        {
-            Ast::Value(x) =>
-            {
-                let value: Result<_, ErrorPos> = Self::parse_primitive_text(memory, &x).with_position(ast.position);
-
-                value?
-            },
-            Ast::EmptyList => LispValue::new_empty_list(),
-            Ast::List{car, cdr} =>
-            {
-                memory.push_stack_register(Register::Temporary);
-                Self::allocate_quote(memory, *car, Register::Temporary)?;
-                Self::allocate_quote(memory, *cdr, Register::Value)?;
-
-                let result = memory.cons(target, Register::Temporary, Register::Value).with_position(ast.position);
-
-                memory.pop_stack_register(Register::Temporary);
-
-                return result;
-            }
-        };
-
-        memory.set_register(target, value);
-
-        Ok(())
-    }
-
     pub fn parse_args(
         memory: &mut LispMemory,
         primitives: &Primitives,
@@ -1174,6 +1126,37 @@ impl InterReprPos
         } else
         {
             false
+        }
+    }
+
+    fn compile_quoted(
+        memory: &mut LispMemory,
+        target: Register,
+        ast: AstPos
+    ) -> CompiledPart
+    {
+        match ast.value
+        {
+            Ast::Value(x) =>
+            {
+                let value = Self::parse_primitive_text(memory, &x).unwrap();
+
+                Command::PutValue{value, register: target}.into()
+            },
+            Ast::EmptyList =>
+            {
+                Command::PutValue{value: LispValue::new_empty_list(), register: target}.into()
+            },
+            Ast::List{car, cdr} =>
+            {
+                let car = Self::compile_quoted(memory, Register::Value, *car);
+                let cdr = Self::compile_quoted(memory, Register::Temporary, *cdr);
+
+                let cons = CompiledPart::from(Command::Cons{target, car: Register::Value, cdr: Register::Temporary})
+                    .with_requires(RegisterStates::one(Register::Value));
+
+                car.combine(cdr.combine_preserving(cons, RegisterStates::one(Register::Value)))
+            }
         }
     }
 
@@ -1321,6 +1304,16 @@ impl InterReprPos
                     CompiledPart::from_commands(commands).with_requires(RegisterStates::one(Register::Environment)),
                     RegisterStates::one(Register::Environment)
                 ).with_proceed(proceed)
+            },
+            InterRepr::Quoted(ast) =>
+            {
+                if let Some(register) = target
+                {
+                    Self::compile_quoted(state.memory, register, ast)
+                } else
+                {
+                    CompiledPart::new()
+                }.with_proceed(proceed)
             },
             InterRepr::Apply{op, args} =>
             {
@@ -1588,18 +1581,20 @@ impl InterRepr
 }
 
 #[derive(Debug)]
-struct CompileState
+struct CompileState<'a>
 {
+    pub memory: &'a mut LispMemory,
     type_checks: bool,
     lambdas: Vec<CompiledPart>,
     label_id: u32
 }
 
-impl CompileState
+impl<'a> CompileState<'a>
 {
-    pub fn new(type_checks: bool) -> Self
+    pub fn new(memory: &'a mut LispMemory, type_checks: bool) -> Self
     {
         Self{
+            memory,
             type_checks,
             lambdas: Vec::new(),
             label_id: 0
@@ -1841,8 +1836,7 @@ impl CompiledProgram
                 },
                 CommandRaw::Define{id, register} =>
                 {
-                    let value = memory.get_register(*register);
-                    if let Err(err) = memory.define_symbol(*id, value)
+                    if let Err(err) = memory.define_symbol(*id, *register)
                     {
                         return_error!(err, "define")
                     }
@@ -1979,7 +1973,8 @@ impl Program
         let ir = InterReprPos::parse(&mut memory, &primitives, ast)?;
 
         let code = {
-            let mut state = CompileState::new(type_checks && DebugConfig::is_disabled(DebugTool::LispDisableChecks));
+            let type_checks = type_checks && DebugConfig::is_disabled(DebugTool::LispDisableChecks);
+            let mut state = CompileState::new(&mut memory, type_checks);
 
             let compiled = ir.compile(&mut state, Some(Register::Value), Proceed::Jump(Label::Halt));
 

@@ -397,29 +397,32 @@ impl LispValue
 
     pub fn as_vector_ref(self, memory: &LispMemory) -> Result<LispVectorRef, Error>
     {
-        match self.tag
-        {
-            ValueTag::Vector => Ok(memory.get_vector_ref(unsafe{ self.value.vector })),
-            x => Err(Error::WrongType{expected: ValueTag::Vector, got: x})
-        }
+        let id = self.as_vector_id()?;
+
+        Ok(memory.get_vector_ref(id))
     }
 
     pub fn as_vector_mut(self, memory: &mut LispMemory) -> Result<LispVectorMut, Error>
     {
+        let id = self.as_vector_id()?;
+
+        Ok(memory.get_vector_mut(id))
+    }
+
+    pub fn as_vector_id(self) -> Result<u32, Error>
+    {
         match self.tag
         {
-            ValueTag::Vector => Ok(memory.get_vector_mut(unsafe{ self.value.vector })),
+            ValueTag::Vector => Ok(unsafe{ self.value.vector }),
             x => Err(Error::WrongType{expected: ValueTag::Vector, got: x})
         }
     }
 
     pub fn as_vector(self, memory: &LispMemory) -> Result<LispVector, Error>
     {
-        match self.tag
-        {
-            ValueTag::Vector => Ok(memory.get_vector(unsafe{ self.value.vector })),
-            x => Err(Error::WrongType{expected: ValueTag::Vector, got: x})
-        }
+        let id = self.as_vector_id()?;
+
+        Ok(memory.get_vector(id))
     }
 
     pub fn to_string(&self, memory: &LispMemory) -> String
@@ -1013,17 +1016,18 @@ impl LispMemory
     {
         let symbol = self.new_symbol(key.into());
 
-        self.define_symbol(symbol.as_symbol_id().expect("must be a symbol"), value)
+        self.set_register(Register::Value, value);
+        self.define_symbol(symbol.as_symbol_id().expect("must be a symbol"), Register::Value)
     }
 
-    pub fn define_symbol(&mut self, key: SymbolId, value: LispValue) -> Result<(), Error>
+    pub fn define_symbol(&mut self, key: SymbolId, value: Register) -> Result<(), Error>
     {
         if let Some(id) = self.lookup_in_env_id::<false>(
             self.get_register(Register::Environment),
             key
         )
         {
-            self.set_cdr(id, value);
+            self.set_cdr(id, self.get_register(value));
             return Ok(());
         }
 
@@ -1033,25 +1037,19 @@ impl LispMemory
             pair.as_list_id().expect("env cdr must be list")
         };
 
-        {
-            let restore = self.with_saved_registers([Register::Value, Register::Temporary]);
+        let other_register = if value == Register::Value { Register::Temporary } else { Register::Value };
+        self.set_register(other_register, LispValue::new_symbol_id(key));
+        self.cons(Register::Value, other_register, value)?;
 
-            self.set_register(Register::Value, LispValue::new_symbol_id(key));
-            self.set_register(Register::Temporary, value);
-            self.cons(Register::Value, Register::Value, Register::Temporary)?;
+        let tail = self.get_car(mappings_id(self));
 
-            let tail = self.get_car(mappings_id(self));
+        self.set_register(Register::Temporary, tail);
 
-            self.set_register(Register::Temporary, tail);
+        self.cons(Register::Value, Register::Value, Register::Temporary)?;
 
-            self.cons(Register::Value, Register::Value, Register::Temporary)?;
+        let new_env = self.get_register(Register::Value);
 
-            let new_env = self.get_register(Register::Value);
-
-            self.set_car(mappings_id(self), new_env);
-
-            restore(self);
-        }
+        self.set_car(mappings_id(self), new_env);
 
         Ok(())
     }
@@ -1227,7 +1225,6 @@ impl LispMemory
         }
 
         transfer_stack!(stack);
-        transfer_stack!(quoted);
         transfer_stack!(registers);
     }
 
@@ -1976,7 +1973,7 @@ mod tests
         ";
 
         let memory_size = 430;
-        let memory = LispMemory::new(32, memory_size);
+        let memory = LispMemory::new(64, memory_size);
 
         let mut lisp = Lisp::new_with_memory(memory, code).unwrap();
 
