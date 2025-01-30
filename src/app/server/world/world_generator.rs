@@ -346,14 +346,9 @@ impl ChunkGenerator
                     panic!("expected vector: {err} (in {chunk_name})")
                 });
 
-            if output.tag != ValueTag::List
+            output.iter().map(|x|
             {
-                panic!("wrong vector type `{:?}` (in {chunk_name})", output.tag);
-            }
-
-            output.values.iter().map(|x|
-            {
-                unsafe{ Tile::from_lisp_value(&memory, *x) }
+                Tile::from_lisp_value(&memory, *x)
             }).collect::<Result<Box<[Tile]>, _>>().unwrap_or_else(|err|
             {
                 panic!("error getting tile: {err}")

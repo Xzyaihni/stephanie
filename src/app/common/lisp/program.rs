@@ -19,7 +19,6 @@ pub use super::{
     LispValue,
     LispMemory,
     ValueTag,
-    LispVectorRef,
     OutputWrapper
 };
 
@@ -456,12 +455,7 @@ impl Default for Primitives
                     let len = args.next().unwrap().as_integer()? as usize;
                     let fill = args.next().unwrap();
 
-                    let vec = LispVectorRef{
-                        tag: fill.tag,
-                        values: &vec![fill.value; len]
-                    };
-
-                    args.memory.make_vector(target, vec)
+                    args.memory.make_vector(target, vec![fill; len])
                 })),
             ("vector-set!",
                 PrimitiveProcedureInfo::new_simple(3, Effect::Impure, |mut args|
@@ -474,15 +468,8 @@ impl Default for Primitives
 
                     let index = index.as_integer()?;
 
-                    if vec.tag != value.tag
-                    {
-                        return Err(
-                            Error::VectorWrongType{expected: vec.tag, got: value.tag}
-                        );
-                    }
-
-                    *vec.values.get_mut(index as usize)
-                        .ok_or(Error::IndexOutOfRange(index))? = value.value;
+                    *vec.get_mut(index as usize)
+                        .ok_or(Error::IndexOutOfRange(index))? = value;
 
                     Ok(().into())
                 })),
@@ -495,7 +482,7 @@ impl Default for Primitives
                     let vec = vec.as_vector_ref(args.memory)?;
                     let index = index.as_integer()?;
 
-                    let value = vec.try_get(index as usize).ok_or(Error::IndexOutOfRange(index))?;
+                    let value = *vec.get(index as usize).ok_or(Error::IndexOutOfRange(index))?;
 
                     Ok(value)
                 })),

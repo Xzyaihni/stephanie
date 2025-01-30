@@ -4,7 +4,7 @@ use serde::{Serialize, Deserialize};
 
 use strum::{FromRepr, EnumString};
 
-use crate::common::lisp::{self, Register, LispValue, LispMemory, ValueRaw};
+use crate::common::lisp::{self, Register, LispValue, LispMemory};
 
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, FromRepr, EnumString, Serialize, Deserialize)]
@@ -84,18 +84,16 @@ impl Tile
         Ok(value)
     }
 
-    /// # Safety
-    /// value must be of type ValueTag::List
-    pub unsafe fn from_lisp_value(
+    pub fn from_lisp_value(
         memory: &LispMemory,
-        value: ValueRaw
+        value: LispValue
     ) -> Result<Self, lisp::Error>
     {
-        let lst = memory.get_list(unsafe{ value.list });
+        let lst = value.as_list(memory).unwrap();
 
-        let id = lst.car().as_integer()? as usize;
+        let id = lst.car.as_integer()? as usize;
 
-        let rotation = lst.cdr().as_integer()?;
+        let rotation = lst.cdr.as_integer()?;
         let rotation = TileRotation::from_repr(rotation as usize).unwrap_or_else(||
         {
             panic!("{rotation} is an invalid rotation number")

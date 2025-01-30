@@ -1,5 +1,6 @@
 use std::{
     mem,
+    iter,
     borrow::Borrow,
     rc::Rc,
     ops::Range,
@@ -8,7 +9,7 @@ use std::{
     collections::HashMap
 };
 
-use strum::EnumCount;
+use strum::{Display, EnumCount};
 
 pub use program::{
     Register,
@@ -34,14 +35,12 @@ pub union ValueRaw
     pub integer: i32,
     pub float: f32,
     pub character: char,
-    pub len: u32,
-    pub procedure: u32,
+    pub length: u32,
     pub primitive_procedure: u32,
     tag: ValueTag,
     pub boolean: bool,
     pub list: u32,
     symbol: SymbolId,
-    string: u32,
     vector: u32,
     empty: ()
 }
@@ -55,13 +54,12 @@ impl PartialEq for ValueRaw
 }
 
 #[repr(u32)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Display, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ValueTag
 {
     Integer,
     Float,
     Char,
-    String,
     Symbol,
     Bool,
     EmptyList,
@@ -69,6 +67,8 @@ pub enum ValueTag
     List,
     Vector,
     Address,
+    Length,
+    Tag,
     EnvironmentMarker,
     BrokenHeart,
     VectorMoved
@@ -88,109 +88,26 @@ impl ValueTag
                 | ValueTag::EmptyList
                 | ValueTag::PrimitiveProcedure
                 | ValueTag::Address
+                | ValueTag::Length
+                | ValueTag::Tag
                 | ValueTag::EnvironmentMarker
                 | ValueTag::BrokenHeart
                 | ValueTag::VectorMoved => false,
-            ValueTag::String
-                | ValueTag::List
+            ValueTag::List
                 | ValueTag::Vector => true
         }
     }
 }
 
-pub struct LispVectorInner<T>
-{
-    pub tag: ValueTag,
-    pub values: T
-}
-
-pub type LispVector = LispVectorInner<Vec<ValueRaw>>;
-pub type LispVectorRef<'a> = LispVectorInner<&'a [ValueRaw]>;
-pub type LispVectorMut<'a> = LispVectorInner<&'a mut [ValueRaw]>;
-
-impl LispVector
-{
-    pub fn as_ref_vector(&self) -> LispVectorInner<&[ValueRaw]>
-    {
-        LispVectorInner{
-            tag: self.tag,
-            values: &self.values
-        }
-    }
-}
-
-impl<T: Deref<Target=[ValueRaw]>> LispVectorInner<T>
-{
-    /// # Safety
-    /// all vectors must be valid therefore the tag and values r in sync
-    pub fn try_get(&self, index: usize) -> Option<LispValue>
-    {
-        self.values.get(index).map(|value| unsafe{ LispValue::new(self.tag, *value) })
-    }
-
-    pub fn get(&self, index: usize) -> LispValue
-    {
-        self.try_get(index).unwrap_or_else(||
-        {
-            panic!("index {index} out of bounds")
-        })
-    }
-
-    pub fn len(&self) -> usize
-    {
-        self.values.len()
-    }
-}
-
-impl<T: LispValuable> From<Vec<T>> for LispVector
-{
-    fn from(v: Vec<T>) -> Self
-    {
-        Self{
-            tag: <T as LispValuable>::tag(),
-            values: v.into_iter().map(|x|
-            {
-                let value: LispValue = x.into();
-
-                value.value
-            }).collect()
-        }
-    }
-}
-
-impl<T: IntoIterator<Item=ValueRaw>> LispVectorInner<T>
-{
-    // eh
-    pub fn as_vec_usize(self) -> Result<Vec<usize>, Error>
-    {
-        match self.tag
-        {
-            ValueTag::Integer => Ok(self.values.into_iter().map(|x|
-            {
-                unsafe{ x.integer as usize }
-            }).collect()),
-            x => Err(Error::VectorWrongType{expected: ValueTag::Integer, got: x})
-        }
-    }
-
-    pub fn as_vec_integer(self) -> Result<Vec<i32>, Error>
-    {
-        match self.tag
-        {
-            ValueTag::Integer => Ok(self.values.into_iter().map(|x|
-            {
-                unsafe{ x.integer }
-            }).collect()),
-            x => Err(Error::VectorWrongType{expected: ValueTag::Integer, got: x})
-        }
-    }
-}
+pub type LispVector = Vec<LispValue>;
+pub type LispVectorRef<'a> = &'a [LispValue];
+pub type LispVectorMut<'a> = &'a mut [LispValue];
 
 #[derive(Debug, Clone)]
 pub struct LispList<T=LispValue>
 {
-    car: T,
-    cdr: T
+    pub car: T,
+    pub cdr: T
 }
 
 impl<T> LispList<T>
@@ -328,6 +245,8 @@ impl LispValue
         (new_char, as_char, char, character, Char),
         (new_bool, as_bool, bool, boolean, Bool),
         (new_address, as_address, u32, address, Address),
+        (new_length, as_length, u32, length, Length),
+        (new_tag, as_tag, ValueTag, tag, Tag),
         (new_primitive_procedure, as_primitive_procedure, u32, primitive_procedure, PrimitiveProcedure),
         (new_symbol_id, as_symbol_id, SymbolId, symbol, Symbol),
         (new_list_id, as_list_id, u32, list, List)
@@ -337,13 +256,6 @@ impl LispValue
     {
         unsafe{
             Self::new(ValueTag::Vector, ValueRaw{vector})
-        }
-    }
-
-    pub fn new_string(string: u32) -> Self
-    {
-        unsafe{
-            Self::new(ValueTag::String, ValueRaw{string})
         }
     }
 
@@ -488,14 +400,9 @@ impl LispValue
             ValueTag::EnvironmentMarker => "<environment>".to_owned(),
             ValueTag::VectorMoved => "<vector-moved>".to_owned(),
             ValueTag::BrokenHeart => "<broken-heart>".to_owned(),
-            ValueTag::Address => format!("<address {}>", unsafe{ self.value.address.to_string() }),
-            ValueTag::String => block.map(|memory|
-            {
-                memory.get_string(unsafe{ self.value.string }).unwrap()
-            }).unwrap_or_else(||
-            {
-                format!("<string {}>", unsafe{ self.value.string })
-            }),
+            ValueTag::Address => format!("<address {}>", unsafe{ self.value.address }),
+            ValueTag::Length => format!("<length {}>", unsafe{ self.value.length }),
+            ValueTag::Tag => format!("<tag {}>", unsafe{ self.value.tag }),
             ValueTag::Symbol => memory.map(|memory|
             {
                 let s = memory.get_symbol(unsafe{ self.value.symbol });
@@ -521,24 +428,14 @@ impl LispValue
             {
                 let vec = block.get_vector_ref(unsafe{ self.value.vector });
 
-                let mut leftover_space = false;
-                let mut s = vec.values.iter().map(|raw| unsafe{ LispValue::new(vec.tag, *raw) })
-                    .fold("#(".to_owned(), |acc, value|
+                let s = vec.iter()
+                    .map(|x| x.maybe_to_string(visited_boxed, memory, Some(block)))
+                    .reduce(|acc, value|
                     {
-                        leftover_space = true;
-                        let value = value.maybe_to_string(visited_boxed, memory, Some(block));
+                        acc + " " + &value
+                    }).unwrap_or_default();
 
-                        acc + &value + " "
-                    });
-
-                if leftover_space
-                {
-                    s.pop();
-                }
-
-                s.push(')');
-
-                s
+                "#(".to_owned() + &s + ")"
             }).unwrap_or_else(||
             {
                 format!("<vector {}>", unsafe{ self.value.vector })
@@ -577,7 +474,6 @@ pub enum Error
     IndexOutOfRange(i32),
     CharOutOfRange,
     EmptySequence,
-    VectorWrongType{expected: ValueTag, got: ValueTag},
     OperationError{a: String, b: String},
     ExpectedNumerical{a: ValueTag, b: ValueTag},
     ExpectedList,
@@ -615,8 +511,6 @@ impl Display for Error
             Self::IndexOutOfRange(i) => format!("index {i} out of range"),
             Self::CharOutOfRange => "char out of range".to_owned(),
             Self::EmptySequence => "empty sequence".to_owned(),
-            Self::VectorWrongType{expected, got} =>
-                format!("vector expected `{expected:?}` got `{got:?}`"),
             Self::OperationError{a, b} =>
                 format!("numeric error with {a} and {b} operands"),
             Self::ExpectedList => "expected a list".to_owned(),
@@ -655,14 +549,13 @@ impl<'a> Debug for MemoryBlockWith<'a>
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
     {
-        // all fields r 32 bits long and u32 has no invalid states
-        let general = self.block.general.iter().map(|raw| unsafe{ raw.unsigned }).collect::<Vec<u32>>();
-
         let pv = |v: &LispValue|
         {
             let mut visited = Vec::new();
             v.maybe_to_string(&mut visited, self.memory, Some(self.block))
         };
+
+        let general = self.block.general.iter().map(pv).collect::<Vec<_>>();
 
         let cars = self.block.cars.iter().map(pv).collect::<Vec<_>>();
         let cdrs = self.block.cdrs.iter().map(pv).collect::<Vec<_>>();
@@ -677,7 +570,7 @@ impl<'a> Debug for MemoryBlockWith<'a>
 
 struct MemoryBlock
 {
-    general: Vec<ValueRaw>,
+    general: Vec<LispValue>,
     cars: Vec<LispValue>,
     cdrs: Vec<LispValue>
 }
@@ -720,68 +613,47 @@ impl MemoryBlock
 
     pub fn iter_values(&self) -> impl Iterator<Item=LispValue> + '_
     {
-        self.cars.iter().copied()
+        self.general.iter().copied()
+            .chain(self.cars.iter().copied())
             .chain(self.cdrs.iter().copied())
     }
 
-    fn vector_raw_info(&self, id: u32) -> (ValueTag, usize)
+    fn vector_raw_info(&self, id: u32) -> usize
     {
         let id = id as usize;
 
-        let len = unsafe{ self.general[id].len };
-        let tag = unsafe{ self.general[id + 1].tag };
+        let len = self.general[id].as_length().unwrap();
 
-        (tag, len as usize)
+        len as usize
     }
 
-    fn vector_info(&self, id: u32) -> (ValueTag, Range<usize>)
+    fn vector_info(&self, id: u32) -> Range<usize>
     {
-        let (tag, len) = self.vector_raw_info(id);
+        let len = self.vector_raw_info(id);
 
-        let start = (id + 2) as usize;
-        (tag, start..(start + len))
+        let start = (id + 1) as usize;
+        start..(start + len)
     }
 
     pub fn get_vector_ref(&self, id: u32) -> LispVectorRef
     {
-        let (tag, range) = self.vector_info(id);
+        let range = self.vector_info(id);
 
-        LispVectorRef{
-            tag,
-            values: &self.general[range]
-        }
+        &self.general[range]
     }
 
     pub fn get_vector_mut(&mut self, id: u32) -> LispVectorMut
     {
-        let (tag, range) = self.vector_info(id);
+        let range = self.vector_info(id);
 
-        LispVectorMut{
-            tag,
-            values: &mut self.general[range]
-        }
+        &mut self.general[range]
     }
 
     pub fn get_vector(&self, id: u32) -> LispVector
     {
-        let (tag, range) = self.vector_info(id);
+        let range = self.vector_info(id);
 
-        LispVector{
-            tag,
-            values: self.general[range].to_vec()
-        }
-    }
-
-    pub fn get_string(&self, id: u32) -> Result<String, Error>
-    {
-        let vec = self.get_vector_ref(id);
-
-        if vec.tag != ValueTag::Char
-        {
-            return Err(Error::VectorWrongType{expected: ValueTag::Char, got: vec.tag});
-        }
-
-        Ok(vec.values.iter().map(|x| unsafe{ x.character }).collect())
+        self.general[range].to_vec()
     }
 
     pub fn get_list(&self, id: u32) -> LispList
@@ -824,17 +696,15 @@ impl MemoryBlock
         LispValue::new_list_id(id as u32)
     }
 
-    fn allocate_iter<'a>(
+    fn allocate_iter(
         &mut self,
-        tag: ValueTag,
-        iter: impl ExactSizeIterator<Item=&'a ValueRaw>
+        iter: impl ExactSizeIterator<Item=LispValue>
     ) -> u32
     {
         let id = self.general.len() as u32;
 
         let len = iter.len() as u32;
-        let beginning = [ValueRaw{len}, ValueRaw{tag}];
-        let iter = beginning.into_iter().chain(iter.copied());
+        let iter = iter::once(LispValue::new_length(len)).chain(iter);
 
         self.general.extend(iter);
 
@@ -1194,38 +1064,23 @@ impl LispMemory
 
                 new_value
             },
-            ValueTag::Vector | ValueTag::String =>
+            ValueTag::Vector =>
             {
-                let id = match value.tag
-                {
-                    ValueTag::Vector => unsafe{ value.value.vector },
-                    ValueTag::String => unsafe{ value.value.string },
-                    _ => unreachable!()
-                } as usize;
+                let id = unsafe{ value.value.vector } as usize;
 
-                let create_id = |id: u32|
+                let body = memory.general[id];
+                if body.tag == ValueTag::VectorMoved
                 {
-                    match value.tag
-                    {
-                        ValueTag::String => LispValue::new_string(id),
-                        ValueTag::Vector => LispValue::new_vector(id),
-                        _ => unreachable!()
-                    }
-                };
-
-                if let ValueTag::VectorMoved = unsafe{ memory.general[id + 1].tag }
-                {
-                    return create_id(unsafe{ memory.general[id].vector });
+                    return LispValue::new_vector(unsafe{ body.value.vector });
                 }
 
-                let (tag, range) = memory.vector_info(id as u32);
+                let range = memory.vector_info(id as u32);
 
-                let new_id = swap_memory.allocate_iter(tag, memory.general[range].iter());
+                let new_id = swap_memory.allocate_iter(memory.general[range].iter().copied());
 
-                memory.general[id] = ValueRaw{vector: new_id};
-                memory.general[id + 1] = ValueRaw{tag: ValueTag::VectorMoved};
+                memory.general[id] = unsafe{ LispValue::new(ValueTag::VectorMoved, ValueRaw{vector: new_id}) };
 
-                create_id(new_id)
+                LispValue::new_vector(new_id)
             },
             _ => value
         }
@@ -1281,49 +1136,14 @@ impl LispMemory
                 }
             }
 
-            let mut general_tag = ValueTag::Integer;
-            let mut general_remaining = 0;
-
-            while *cars_scan < this.swap_memory.cars.len()
+            while *general_scan < this.swap_memory.general.len()
+                || *cars_scan < this.swap_memory.cars.len()
                 || *cdrs_scan < this.swap_memory.cdrs.len()
-                || *general_scan < this.swap_memory.general.len()
             {
+                transfer_memory!(general, general_scan);
                 transfer_memory!(cars, cars_scan);
                 transfer_memory!(cdrs, cdrs_scan);
-
-                while *general_scan < this.swap_memory.general.len()
-                {
-                    if general_remaining == 0
-                    {
-                        (general_tag, general_remaining) = this.swap_memory
-                            .vector_raw_info(*general_scan as u32);
-
-                        *general_scan += 2;
-                    }
-
-                    if general_remaining > 0
-                    {
-                        if general_tag.is_boxed()
-                        {
-                            let value = this.swap_memory.general[*general_scan];
-                            this.swap_memory.general[*general_scan] = Self::transfer_to_swap_value(
-                                &mut this.memory,
-                                &mut this.swap_memory,
-                                LispValue{tag: general_tag, value}
-                            ).value;
-
-                            general_remaining -= 1;
-                            *general_scan += 1;
-                        } else
-                        {
-                            *general_scan += general_remaining;
-                            general_remaining = 0;
-                        }
-                    }
-                }
             }
-
-            debug_assert!(general_remaining == 0);
         };
 
         let mut general_scan = 0;
@@ -1434,11 +1254,6 @@ impl LispMemory
     pub fn get_symbol(&self, id: SymbolId) -> String
     {
         self.symbols.get_by_id(id).to_owned()
-    }
-
-    pub fn get_string(&self, id: u32) -> Result<String, Error>
-    {
-        self.memory.get_string(id)
     }
 
     pub fn get_list(&self, id: u32) -> LispList
@@ -1566,18 +1381,22 @@ impl LispMemory
         LispValue::new_symbol_id(id)
     }
 
-    pub fn make_vector(
+    pub fn make_vector<I>(
         &mut self,
         target: Register,
-        vec: LispVectorInner<&[ValueRaw]>
+        vec: I
     ) -> Result<(), Error>
+    where
+        I: IntoIterator<Item=LispValue>,
+        I::IntoIter: ExactSizeIterator
     {
-        let len = vec.values.len();
+        let iter = vec.into_iter();
+        let len = iter.len();
 
-        // +2 for the length and for the type tag
-        self.need_memory(len + 2)?;
+        // +1 for the length
+        self.need_memory(len + 1)?;
 
-        let id = self.memory.allocate_iter(vec.tag, vec.values.iter());
+        let id = self.memory.allocate_iter(iter);
 
         self.set_register(target, LispValue::new_vector(id));
 
@@ -1900,6 +1719,11 @@ mod tests
         assert!(value > 0.9999 && value <= 1.0, "{value}");
     }
 
+    fn compare_integer_vec(values: Vec<LispValue>, other: Vec<i32>)
+    {
+        assert_eq!(values.into_iter().map(|x| x.as_integer().unwrap()).collect::<Vec<i32>>(), other);
+    }
+
     #[test]
     fn begin()
     {
@@ -1920,9 +1744,9 @@ mod tests
         let mut lisp = Lisp::new(code).unwrap();
 
         let output = lisp.run().unwrap();
-        let value = output.as_vector().unwrap().as_vec_integer().unwrap();
+        let value = output.as_vector().unwrap();
 
-        assert_eq!(value, vec![1, 2, 3]);
+        compare_integer_vec(value, vec![1, 2, 3]);
     }
 
     #[test]
@@ -2132,9 +1956,9 @@ mod tests
         let mut lisp = Lisp::new(code).unwrap();
 
         let output = lisp.run().unwrap();
-        let value = output.as_vector().unwrap().as_vec_integer().unwrap();
+        let value = output.as_vector().unwrap();
 
-        assert_eq!(value, vec![999, 999, 999, 999, 999]);
+        compare_integer_vec(value, vec![999, 999, 999, 999, 999]);
     }
 
     #[test]
@@ -2159,15 +1983,15 @@ mod tests
         let mut lisp = Lisp::new(code).unwrap();
 
         let output = lisp.run().unwrap();
-        let value = output.as_vector().unwrap().as_vec_integer().unwrap();
+        let value = output.as_vector().unwrap();
 
-        assert_eq!(value, vec![1005, 9, 5, 123, 1000]);
+        compare_integer_vec(value, vec![1005, 9, 5, 123, 1000]);
     }
 
     #[test]
     fn gc_vector()
     {
-        let amount = 100;
+        let amount = 1000;
         let code = format!("
             (define x (make-vector 5 999))
 
@@ -2204,8 +2028,7 @@ mod tests
                         (loop
                             (lambda (i) (inc-by-1! x (make-pair 3 (- i 3))))
                             5)))
-                {amount}) ; this should be 1000 but rust doesnt guarantee tail call optimization
-            ; so it overflows the stack
+                {amount})
 
             (inc-by-1! x (make-pair 3 1))
 
@@ -2219,9 +2042,9 @@ mod tests
 
         let output = lisp.run().unwrap();
 
-        let value = output.as_vector().unwrap().as_vec_integer().unwrap();
+        let value = output.as_vector().unwrap();
 
-        assert_eq!(value, vec![amount, amount, amount, amount, amount + 1]);
+        compare_integer_vec(value, vec![amount, amount, amount, amount, amount + 1]);
     }
 
     #[test]
