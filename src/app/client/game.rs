@@ -413,16 +413,16 @@ impl Game
 
     fn maybe_print_component(
         game_state: &Weak<RefCell<GameState>>,
-        memory: &mut LispMemory,
+        args: &mut PrimitiveArgs,
         print: bool
-    ) -> Result<(), lisp::Error>
+    ) -> Result<LispValue, lisp::Error>
     {
-        /*let game_state = game_state.upgrade().unwrap();
+        let game_state = game_state.upgrade().unwrap();
         let game_state = game_state.borrow();
         let entities = game_state.entities();
 
-        let entity = Self::pop_entity(memory)?;
-        let component = args.pop(memory).as_symbol()?;
+        let entity = Self::pop_entity(args)?;
+        let component = args.next().unwrap().as_symbol(args.memory)?;
 
         let maybe_info = entities.component_info(entity, &component);
 
@@ -439,10 +439,7 @@ impl Game
             }
         }
 
-        memory.push_stack(found);
-
-        Ok(())*/
-        todo!()
+        Ok(found.into())
     }
 
     fn console_primitives(&mut self) -> Rc<Primitives>
@@ -605,45 +602,45 @@ impl Game
 
                     Ok(())
                 }));
-        }
+        }*/
 
-        self.add_simple_setter(&mut primitives, "set-floating", |entities, entity, memory, mut args|
+        self.add_simple_setter(&mut primitives, "set-floating", |entities, entity, mut args|
         {
-            let state = args.pop(memory).as_bool()?;
+            let state = args.next().unwrap().as_bool()?;
 
             get_component_mut!(physical_mut, entities, entity).set_floating(state);
 
             Ok(())
         });
 
-        self.add_simple_setter(&mut primitives, "set-speed", |entities, entity, memory, mut args|
+        self.add_simple_setter(&mut primitives, "set-speed", |entities, entity, mut args|
         {
-            let speed = args.pop(memory).as_float()?;
+            let speed = args.next().unwrap().as_float()?;
 
             get_component_mut!(anatomy_mut, entities, entity).set_speed(speed);
 
             Ok(())
         });
 
-        self.add_simple_setter(&mut primitives, "set-ghost", |entities, entity, memory, mut args|
+        self.add_simple_setter(&mut primitives, "set-ghost", |entities, entity, mut args|
         {
-            let state = args.pop(memory).as_bool()?;
+            let state = args.next().unwrap().as_bool()?;
 
             get_component_mut!(collider_mut, entities, entity).ghost = state;
 
             Ok(())
         });
 
-        self.add_simple_setter(&mut primitives, "set-position", |entities, entity, memory, mut args|
+        self.add_simple_setter(&mut primitives, "set-position", |entities, entity, mut args|
         {
-            let mut list = args.pop(memory).as_list();
+            let mut list = args.next().unwrap().as_list(args.memory);
 
             let mut next_float = ||
             {
                 let current = list.clone()?;
                 let value = current.car().as_float();
 
-                list = current.cdr().as_list();
+                list = current.cdr().as_list(args.memory);
 
                 value
             };
@@ -655,16 +652,16 @@ impl Game
             Ok(())
         });
 
-        self.add_simple_setter(&mut primitives, "set-rotation", |entities, entity, memory, mut args|
+        self.add_simple_setter(&mut primitives, "set-rotation", |entities, entity, mut args|
         {
-            get_component_mut!(target, entities, entity).rotation = args.pop(memory).as_float()?;
+            get_component_mut!(target, entities, entity).rotation = args.next().unwrap().as_float()?;
 
             Ok(())
         });
 
-        self.add_simple_setter(&mut primitives, "set-faction", |entities, entity, memory, mut args|
+        self.add_simple_setter(&mut primitives, "set-faction", |entities, entity, mut args|
         {
-            let faction = args.pop(memory).as_symbol()?;
+            let faction = args.next().unwrap().as_symbol(args.memory)?;
             let faction: String = faction.to_lowercase().chars().enumerate().map(|(i, c)|
             {
                 if i == 0
@@ -692,14 +689,14 @@ impl Game
 
             primitives.add(
                 "add-item",
-                PrimitiveProcedureInfo::new_simple_effect(2, move |memory, mut args|
+                PrimitiveProcedureInfo::new_simple(2, Effect::Impure, move |mut args|
                 {
                     let game_state = game_state.upgrade().unwrap();
                     let game_state = game_state.borrow_mut();
                     let entities = game_state.entities();
 
-                    let entity = Self::pop_entity(&mut args, memory)?;
-                    let name = args.pop(memory).as_symbol()?.replace('_', " ");
+                    let entity = Self::pop_entity(&mut args)?;
+                    let name = args.next().unwrap().as_symbol(args.memory)?.replace('_', " ");
 
                     let mut inventory = entities.inventory_mut(entity).unwrap();
 
@@ -710,9 +707,7 @@ impl Game
 
                     inventory.push(Item{id});
 
-                    memory.push_stack(());
-
-                    Ok(())
+                    Ok(().into())
                 }));
         }
 
@@ -721,9 +716,9 @@ impl Game
 
             primitives.add(
                 "player-entity",
-                PrimitiveProcedureInfo::new_simple(0, move |memory, _args|
+                PrimitiveProcedureInfo::new_simple(0, Effect::Impure, move |args|
                 {
-                    Self::push_entity(memory, player_entity)
+                    Self::push_entity(args.memory, player_entity)
                 }));
         }
 
@@ -732,9 +727,9 @@ impl Game
 
             primitives.add(
                 "mouse-entity",
-                PrimitiveProcedureInfo::new_simple(0, move |memory, _args|
+                PrimitiveProcedureInfo::new_simple(0, Effect::Impure, move |args|
                 {
-                    Self::push_entity(memory, mouse_entity)
+                    Self::push_entity(args.memory, mouse_entity)
                 }));
         }
 
@@ -743,22 +738,22 @@ impl Game
 
             primitives.add(
                 "children-of",
-                PrimitiveProcedureInfo::new_simple(1, move |memory, mut args|
+                PrimitiveProcedureInfo::new_simple(1, Effect::Pure, move |mut args|
                 {
                     let game_state = game_state.upgrade().unwrap();
                     let game_state = game_state.borrow();
                     let entities = game_state.entities();
 
-                    let entity = Self::pop_entity(&mut args, memory)?;
+                    let entity = Self::pop_entity(&mut args)?;
 
-                    memory.push_stack(());
+                    /*memory.push_stack(());
                     entities.children_of(entity).try_for_each(|x|
                     {
-                        Self::push_entity(memory, x)?;
+                        Self::push_entity(args.memory, x)?;
                         memory.rcons()
                     })?;
 
-                    Ok(())
+                    Ok(())*/todo!()
                 }));
         }
 
@@ -767,17 +762,17 @@ impl Game
 
             primitives.add(
                 "position-entity",
-                PrimitiveProcedureInfo::new_simple(1, move |memory, mut args|
+                PrimitiveProcedureInfo::new_simple(1, Effect::Impure, move |mut args|
                 {
                     let game_state = game_state.upgrade().unwrap();
                     let game_state = game_state.borrow();
                     let entities = game_state.entities();
 
-                    let entity = Self::pop_entity(&mut args, memory)?;
+                    let entity = Self::pop_entity(&mut args)?;
 
                     let position = entities.transform(entity).unwrap().position;
 
-                    memory.cons_list([position.x, position.y, position.z])
+                    args.memory.cons_list([position.x, position.y, position.z])
                 }));
         }
 
@@ -786,9 +781,9 @@ impl Game
 
             primitives.add(
                 "print-component",
-                PrimitiveProcedureInfo::new_simple_effect(2, move |memory, args|
+                PrimitiveProcedureInfo::new_simple(2, Effect::Impure, move |mut args|
                 {
-                    Self::maybe_print_component(&game_state, memory, args, true)
+                    Self::maybe_print_component(&game_state, &mut args, true)
                 }));
         }
 
@@ -797,9 +792,9 @@ impl Game
 
             primitives.add(
                 "has-component",
-                PrimitiveProcedureInfo::new_simple(2, move |memory, args|
+                PrimitiveProcedureInfo::new_simple(2, Effect::Impure, move |mut args|
                 {
-                    Self::maybe_print_component(&game_state, memory, args, false)
+                    Self::maybe_print_component(&game_state, &mut args, false)
                 }));
         }
 
@@ -808,19 +803,17 @@ impl Game
 
             primitives.add(
                 "print-entity-info",
-                PrimitiveProcedureInfo::new_simple_effect(1, move |memory, mut args|
+                PrimitiveProcedureInfo::new_simple(1, Effect::Impure, move |mut args|
                 {
                     let game_state = game_state.upgrade().unwrap();
                     let game_state = game_state.borrow();
                     let entities = game_state.entities();
 
-                    let entity = Self::pop_entity(&mut args, memory)?;
+                    let entity = Self::pop_entity(&mut args)?;
 
                     eprintln!("entity info: {}", entities.info_ref(entity));
 
-                    memory.push_stack(());
-
-                    Ok(())
+                    Ok(().into())
                 }));
         }
 
@@ -829,11 +822,11 @@ impl Game
 
             primitives.add(
                 "help",
-                PrimitiveProcedureInfo::new_simple_effect(0, move |memory, _args|
+                PrimitiveProcedureInfo::new_simple(0, Effect::Impure, move |args|
                 {
                     let info = info.borrow();
 
-                    let primitives = &info.console.infos.as_ref().unwrap().1;
+                    let primitives = &info.console.infos.as_ref().unwrap().primitives;
 
                     let mut infos: Vec<(_, _)> = primitives.iter_infos().collect();
 
@@ -844,11 +837,9 @@ impl Game
                         println!("{name} with {args} arguments");
                     });
 
-                    memory.push_stack(());
-
-                    Ok(())
+                    Ok(().into())
                 }));
-        }*/
+        }
 
         Rc::new(primitives)
     }

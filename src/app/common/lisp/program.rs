@@ -572,6 +572,14 @@ impl Primitives
         self.indices.insert(name, id as u32);
     }
 
+    pub fn iter_infos(&self) -> impl Iterator<Item=(&String, ArgsCount)>
+    {
+        self.indices.iter().map(|(name, index)|
+        {
+            (name, self.primitives[*index as usize].args_count)
+        })
+    }
+
     pub fn name_by_index(&self, index: u32) -> &str
     {
         self.indices.iter().find(|(_key, value)|
