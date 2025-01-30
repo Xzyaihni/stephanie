@@ -856,7 +856,56 @@ impl CompiledPart
         self.combine_preserving(proceed.into_compiled(), RegisterStates::one(Register::Return))
     }
 
-    pub fn into_program(mut self, state: CompileState) -> CompiledProgram
+    fn print_program(&self)
+    {
+        let mut offset = 0;
+        self.commands.iter().enumerate().for_each(|(index, WithPositionMaybe{value, position})|
+        {
+            let is_label = value.is_label();
+
+            if is_label
+            {
+                offset += 1;
+            }
+
+            if !is_label
+            {
+                eprint!("{}: ", index - offset);
+            }
+
+            eprint!("{value:?}");
+
+            if let Some(position) = position
+            {
+                eprint!(" ({position})");
+            }
+
+            eprintln!();
+        });
+    }
+
+    fn verify_program(commands: &[CommandPos], memory: &LispMemory) -> Result<(), ErrorPos>
+    {
+        commands.iter().try_for_each(|CommandPos{position, value}|
+        {
+            if let Command::Define{id, ..} = value
+            {
+                let name = memory.get_symbol(*id);
+
+                if memory.primitives.get_by_name(&name).is_some()
+                {
+                    return Err(ErrorPos{
+                        position: position.expect("define must have a position"),
+                        value: Error::AttemptedShadowing(name)
+                    });
+                }
+            }
+
+            Ok(())
+        })
+    }
+
+    pub fn into_program(mut self, state: CompileState) -> Result<CompiledProgram, ErrorPos>
     {
         state.lambdas.into_iter().for_each(|lambda|
         {
@@ -867,31 +916,10 @@ impl CompiledPart
 
         if DebugConfig::is_enabled(DebugTool::Lisp)
         {
-            let mut offset = 0;
-            self.commands.iter().enumerate().for_each(|(index, WithPositionMaybe{value, position})|
-            {
-                let is_label = value.is_label();
-
-                if is_label
-                {
-                    offset += 1;
-                }
-
-                if !is_label
-                {
-                    eprint!("{}: ", index - offset);
-                }
-
-                eprint!("{value:?}");
-
-                if let Some(position) = position
-                {
-                    eprint!(" ({position})");
-                }
-
-                eprintln!();
-            });
+            self.print_program();
         }
+
+        Self::verify_program(&self.commands, state.memory)?;
 
         let labels = {
             let mut filtered_labels = 0;
@@ -919,10 +947,10 @@ impl CompiledPart
             (position, command.into_raw(&labels))
         }).unzip();
 
-        CompiledProgram{
+        Ok(CompiledProgram{
             positions,
             commands
-        }
+        })
     }
 }
 
@@ -931,7 +959,7 @@ pub type InterReprPos = WithPosition<InterRepr>;
 #[derive(Debug)]
 pub enum LambdaParams
 {
-    Variadic(SymbolId),
+    Variadic(WithPosition<SymbolId>),
     Normal(Vec<WithPosition<SymbolId>>)
 }
 
@@ -946,7 +974,7 @@ impl LambdaParams
         {
             Ast::Value(_) =>
             {
-                Ok(Self::Variadic(InterReprPos::parse_symbol(memory, &ast)?))
+                Ok(Self::Variadic(InterReprPos::parse_symbol(memory, &ast)?.with_position(ast.position)))
             },
             Ast::List{..} => Ok(Self::Normal(Self::parse_list(memory, ast)?)),
             Ast::EmptyList => Ok(Self::Normal(Vec::new()))
@@ -979,7 +1007,10 @@ impl LambdaParams
     {
         match self
         {
-            Self::Variadic(id) => Command::Define{id, register: Register::Argument}.into(),
+            Self::Variadic(WithPosition{position, value: id}) => CompiledPart::from_commands(vec![CommandPos{
+                position: Some(position),
+                value: Command::Define{id, register: Register::Argument}
+            }]),
             Self::Normal(params) =>
             {
                 let amount = params.len();
@@ -990,13 +1021,16 @@ impl LambdaParams
                     let define_one = |include_tail|
                     {
                         let mut commands = vec![
-                            Command::Car{target: Register::Temporary, source: Register::Argument},
-                            Command::Define{id: param, register: Register::Temporary}
+                            Command::Car{target: Register::Temporary, source: Register::Argument}.into(),
+                            CommandPos{
+                                position: Some(position),
+                                value: Command::Define{id: param, register: Register::Temporary}
+                            }
                         ];
 
                         if include_tail
                         {
-                            commands.push(Command::Cdr{target: Register::Argument, source: Register::Argument});
+                            commands.push(Command::Cdr{target: Register::Argument, source: Register::Argument}.into());
                         }
 
                         commands
@@ -1011,14 +1045,14 @@ impl LambdaParams
                         let after_little_error = Label::AfterError(state.label_id());
 
                         let mut commands: Vec<_> = [
-                            Command::IsTag{check: Register::Argument, tag: ValueTag::List},
-                            Command::JumpIfTrue{target: after_little_error, check: Register::Temporary},
+                            Command::IsTag{check: Register::Argument, tag: ValueTag::List}.into(),
+                            Command::JumpIfTrue{target: after_little_error, check: Register::Temporary}.into(),
                             Command::Error(ErrorPos{position, value: Error::WrongArgumentsCount{
                                 proc: name.clone(),
                                 expected: amount.to_string(),
                                 got: index
-                            }}),
-                            Command::Label(after_little_error)
+                            }}).into(),
+                            Command::Label(after_little_error).into()
                         ].into_iter().chain(commands).collect();
 
                         if is_last
@@ -1026,14 +1060,14 @@ impl LambdaParams
                             let after_error = Label::AfterError(state.label_id());
 
                             commands.extend([
-                                Command::IsTag{check: Register::Argument, tag: ValueTag::EmptyList},
-                                Command::JumpIfTrue{target: after_error, check: Register::Temporary},
+                                Command::IsTag{check: Register::Argument, tag: ValueTag::EmptyList}.into(),
+                                Command::JumpIfTrue{target: after_error, check: Register::Temporary}.into(),
                                 Command::Error(ErrorPos{position, value: Error::WrongArgumentsCount{
                                     proc: name.clone(),
                                     expected: amount.to_string(),
                                     got: amount
-                                }}),
-                                Command::Label(after_error)
+                                }}).into(),
+                                Command::Label(after_error).into()
                             ]);
                         }
 
@@ -1042,7 +1076,7 @@ impl LambdaParams
                     {
                         commands
                     }
-                }).map(|x| CommandPos::from(x)).collect::<Vec<_>>();
+                }).collect::<Vec<_>>();
 
                 CompiledPart::from_commands(commands)
             }
@@ -2148,7 +2182,7 @@ impl Program
             let compiled = ir.compile(&mut state, Some(Register::Value), Proceed::Jump(Label::Halt));
 
             compiled.into_program(state)
-        };
+        }?;
 
         Ok(Self{memory, code})
     }

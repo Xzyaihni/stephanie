@@ -2356,6 +2356,25 @@ mod tests
     }
 
     #[test]
+    fn attempted_primitive_shadowing()
+    {
+        let code = "
+            (define + 1)
+        ";
+
+        assert_error(code, |err|
+        {
+            if let Error::AttemptedShadowing{..} = err
+            {
+                true
+            } else
+            {
+                false
+            }
+        });
+    }
+
+    #[test]
     fn define()
     {
         let code = "
