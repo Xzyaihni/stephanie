@@ -718,6 +718,12 @@ impl MemoryBlock
         Self{general, cars, cdrs}
     }
 
+    pub fn iter_values(&self) -> impl Iterator<Item=LispValue> + '_
+    {
+        self.cars.iter().copied()
+            .chain(self.cdrs.iter().copied())
+    }
+
     fn vector_raw_info(&self, id: u32) -> (ValueTag, usize)
     {
         let id = id as usize;
@@ -985,8 +991,7 @@ impl LispMemory
             registers: [LispValue::new_empty_list(); Register::COUNT]
         };
 
-        let env = this.create_env(()).expect("must have enough memory for default env");
-        this.set_register(Register::Environment, env);
+        this.initialize();
 
         this
     }
@@ -1008,6 +1013,21 @@ impl LispMemory
     pub fn clear(&mut self)
     {
         self.memory.clear();
+
+        self.initialize();
+    }
+
+    fn initialize(&mut self)
+    {
+        let env = self.create_env(()).expect("must have enough memory for default env");
+        self.set_register(Register::Environment, env);
+    }
+
+    pub fn iter_values(&self) -> impl Iterator<Item=LispValue> + '_
+    {
+        self.memory.iter_values()
+            .chain(self.stack.iter().copied())
+            .chain(self.registers.iter().copied())
     }
 
     pub fn get_symbol_by_name(&self, name: &str) -> Option<SymbolId>

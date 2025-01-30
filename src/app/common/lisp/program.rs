@@ -2019,6 +2019,8 @@ impl Program
         code: &str
     ) -> Result<Self, ErrorPos>
     {
+        debug_assert!(memory.iter_values().all(|x| x.tag != ValueTag::Address));
+
         let ast = Parser::parse(code)?;
 
         let ir = InterReprPos::parse(&mut memory, ast)?;
