@@ -310,6 +310,22 @@ impl LispValue
         self.as_list_id().map(|id| memory.get_list(id))
     }
 
+    pub fn as_pairs_list(&self, memory: &LispMemory) -> Result<Vec<LispValue>, Error>
+    {
+        let mut collected = Vec::new();
+        let mut current = *self;
+
+        while !current.is_null()
+        {
+            let lst = current.as_list(memory)?;
+
+            collected.push(lst.car);
+            current = lst.cdr;
+        }
+
+        Ok(collected)
+    }
+
     pub fn as_vector_ref(self, memory: &LispMemory) -> Result<LispVectorRef, Error>
     {
         let id = self.as_vector_id()?;
@@ -907,6 +923,20 @@ impl LispMemory
         self.symbols.get_by_name(name)
     }
 
+    pub fn defined_values(&self) -> impl Iterator<Item=(SymbolId, LispValue)> + '_
+    {
+        let mappings = self.get_register(Register::Environment)
+            .as_list(self).unwrap().cdr
+            .as_list(self).unwrap().car
+            .as_pairs_list(self).unwrap();
+
+        mappings.into_iter().map(|value|
+        {
+            let lst = value.as_list(self).unwrap();
+            (lst.car.as_symbol_id().unwrap(), lst.cdr)
+        })
+    }
+
     pub fn define(&mut self, key: impl Into<String>, value: LispValue) -> Result<(), Error>
     {
         let symbol = self.new_symbol(key.into());
@@ -928,8 +958,10 @@ impl LispMemory
 
         let mappings_id = |this: &Self|
         {
-            let pair = this.get_register(Register::Environment).as_list(this).expect("env must be a list").cdr;
-            pair.as_list_id().expect("env cdr must be list")
+            let pair = this.get_register(Register::Environment)
+                .as_list(this).unwrap().cdr;
+
+            pair.as_list_id().unwrap()
         };
 
         let other_register = if value == Register::Value { Register::Temporary } else { Register::Value };

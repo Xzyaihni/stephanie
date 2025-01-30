@@ -101,29 +101,13 @@ impl Game
             load("lisp/standard.scm") + &load("lisp/console.scm")
         };
 
-        let console_info: LispMemory = {
-            let primitives = this.console_primitives();
+        let primitives = this.console_primitives();
 
-            let config = LispConfig{
-                type_checks: true,
-                memory: LispMemory::new(primitives.clone(), 2048, 1 << 14)
-            };
-
-            let lisp = Lisp::new_with_config(
-                config,
-                &standard_code
-            );
-
-            let memory = lisp.and_then(|mut x|
-            {
-                x.run()
-            }).unwrap_or_else(|err| panic!("error in stdlib: {err}"))
-                .into_memory();
-
-            memory
-        };
-
-        this.info.borrow_mut().console.infos = Some(console_info);
+        {
+            let mut infos = this.info.borrow_mut();
+            infos.console.primitives = Some(primitives);
+            infos.console.past_commands = standard_code;
+        }
 
         this
     }
@@ -357,9 +341,9 @@ impl Game
 
     fn pop_entity(args: &mut PrimitiveArgs) -> Result<Entity, lisp::Error>
     {
-        let lst = args.next().unwrap().as_list(args.memory)?;
+        let mut values = args.next().unwrap().as_pairs_list(args.memory)?.into_iter();
 
-        let tag = lst.car().as_symbol(args.memory)?;
+        let tag = values.next().unwrap().as_symbol(args.memory)?;
         if tag != "entity"
         {
             let s = format!("(expected tag `entity` got `{tag}`)");
@@ -367,10 +351,8 @@ impl Game
             return Err(lisp::Error::Custom(s));
         }
 
-        let tail = lst.cdr().as_list(args.memory)?;
-
-        let local = tail.car().as_bool()?;
-        let id = tail.cdr().as_list(args.memory)?.car().as_integer()?;
+        let local = values.next().unwrap().as_bool()?;
+        let id = values.next().unwrap().as_integer()?;
 
         let entity = Entity::from_raw(local, id as usize);
 
@@ -818,24 +800,23 @@ impl Game
         }
 
         {
-            let info = self.info.clone();
+            let mut infos: Vec<(_, _)> = primitives.iter_infos().collect();
+
+            infos.sort_unstable_by_key(|x| x.0);
+
+            let help_message = infos.into_iter().map(|(name, args)|
+            {
+                format!("{name} with {args} arguments")
+            }).reduce(|acc, x|
+            {
+                acc + "\n" + &x
+            }).unwrap_or_default();
 
             primitives.add(
                 "help",
-                PrimitiveProcedureInfo::new_simple(0, Effect::Impure, move |args|
+                PrimitiveProcedureInfo::new_simple(0, Effect::Impure, move |_args|
                 {
-                    let info = info.borrow();
-
-                    let primitives = &info.console.infos.as_ref().unwrap().primitives;
-
-                    let mut infos: Vec<(_, _)> = primitives.iter_infos().collect();
-
-                    infos.sort_unstable_by_key(|x| x.0);
-
-                    infos.into_iter().for_each(|(name, args)|
-                    {
-                        println!("{name} with {args} arguments");
-                    });
+                    println!("{help_message}");
 
                     Ok(().into())
                 }));
@@ -846,17 +827,14 @@ impl Game
 
     fn console_command(&mut self, command: String)
     {
-        let config = {
-            let infos = self.info.borrow();
-            let infos = infos.console.infos.as_ref().expect("always initialized");
+        let infos = self.info.borrow();
 
-            LispConfig{
-                type_checks: true,
-                memory: infos.clone()
-            }
+        let config = LispConfig{
+            type_checks: true,
+            memory: LispMemory::new(infos.console.primitives.as_ref().unwrap().clone(), 2048, 1 << 14)
         };
 
-        let mut lisp = match Lisp::new_with_config(config, &command)
+        let mut lisp = match Lisp::new_with_config(config, &(infos.console.past_commands.clone() + &command))
         {
             Ok(x) => x,
             Err(err) =>
@@ -878,7 +856,11 @@ impl Game
 
         eprintln!("ran command {command}, result: {result}");
 
-        self.info.borrow_mut().update_memory(result.into_memory());
+        let changed_environment = todo!();
+        if changed_environment
+        {
+            self.info.borrow_mut().remember_command(&command);
+        }
     }
 
     pub fn player_exists(&mut self) -> bool
@@ -905,7 +887,8 @@ struct ConsoleInfo
 {
     entity: Entity,
     contents: Option<String>,
-    infos: Option<LispMemory>
+    primitives: Option<Rc<Primitives>>,
+    past_commands: String
 }
 
 impl ConsoleInfo
@@ -915,7 +898,8 @@ impl ConsoleInfo
         Self{
             entity: info.console_entity,
             contents: None,
-            infos: None
+            primitives: None,
+            past_commands: String::new()
         }
     }
 }
@@ -973,12 +957,9 @@ impl PlayerInfo
         }
     }
 
-    pub fn update_memory(&mut self, memory: LispMemory)
+    pub fn remember_command(&mut self, command: &str)
     {
-        if let Some(x) = self.console.infos.as_mut()
-        {
-            *x = memory;
-        }
+        self.console.past_commands += command;
     }
 }
 
