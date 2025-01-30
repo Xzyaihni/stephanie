@@ -470,7 +470,7 @@ pub enum Error
     LetTooMany,
     AttemptedShadowing(String),
     CallNonProcedure{got: String},
-    WrongArgumentsCount{proc: String, this_invoked: bool, expected: String, got: usize},
+    WrongArgumentsCount{proc: String, expected: String, got: usize},
     IndexOutOfRange(i32),
     CharOutOfRange,
     EmptySequence,
@@ -504,7 +504,7 @@ impl Display for Error
             Self::AttemptedShadowing(s) => format!("attempted to shadow `{s}` which is a primitive"),
             Self::ExpectedNumerical{a, b} => format!("primitive operation expected 2 numbers, got {a:?} and {b:?}"),
             Self::CallNonProcedure{got} => format!("cant apply `{got}` as procedure"),
-            Self::WrongArgumentsCount{proc, this_invoked: _, expected, got} =>
+            Self::WrongArgumentsCount{proc, expected, got} =>
             {
                 format!("wrong amount of arguments (got {got}) passed to {proc} (expected {expected})")
             },
@@ -2219,6 +2219,92 @@ mod tests
         ";
 
         simple_integer_test(code, 2);
+    }
+
+    fn run_with_error(code: &str) -> Result<GenericOutputWrapper<LispMemory>, ErrorPos>
+    {
+        let mut lisp = Lisp::new(code)?;
+
+        lisp.run()
+    }
+
+    fn assert_error(code: &str, check: impl FnOnce(&Error) -> bool)
+    {
+        match run_with_error(code).map_err(|x| x.value)
+        {
+            Ok(x) => panic!("expected error, got: {x}"),
+            Err(err) =>
+            {
+                if !check(&err)
+                {
+                    panic!("got unexpected error: {err}")
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn runtime_wrong_argcount()
+    {
+        let code = "
+            (
+                (if
+                    (= (random-integer 2) 1)
+                    make-vector
+                    cons)
+                1
+                2
+                3)
+        ";
+
+        assert_error(code, |err|
+        {
+            if let Error::WrongArgumentsCount{..} = err
+            {
+                true
+            } else
+            {
+                false
+            }
+        });
+    }
+
+    #[test]
+    fn wrong_argcount()
+    {
+        let code = "
+            (cons 1 2 3)
+        ";
+
+        assert_error(code, |err|
+        {
+            if let Error::WrongArgumentsCount{..} = err
+            {
+                true
+            } else
+            {
+                false
+            }
+        });
+    }
+
+    #[test]
+    fn apply_non_apply()
+    {
+        let code = "
+            (1234 1 2 3)
+        ";
+
+        assert_error(code, |err|
+        {
+            if let Error::CallNonProcedure{..} = err
+            {
+                true
+            } else
+            {
+                false
+            }
+        });
     }
 
     #[test]

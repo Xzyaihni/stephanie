@@ -409,7 +409,7 @@ impl Default for Primitives
             ("lambda",
                 PrimitiveProcedureInfo::new_eval(ArgsCount::Min(2), Rc::new(|memory, args|
                 {
-                    Ok(InterRepr::parse_lambda(memory, args)?)
+                    Ok(InterRepr::parse_lambda(memory, "<lambda>".to_owned(), args)?)
                 }))),
             ("define",
                 PrimitiveProcedureInfo::new_eval(ArgsCount::Min(2), Rc::new(|memory, args: AstPos|
@@ -430,7 +430,11 @@ impl Default for Primitives
                         let name = InterReprPos::parse_symbol(memory, &first.car())?;
                         let lambdas_body = AstPos::cons(first.cdr(), args.cdr());
 
-                        (name, InterRepr::parse_lambda(memory, lambdas_body)?.with_position(position))
+                        let lambda_name = memory.get_symbol(name);
+                        let lambda = InterRepr::parse_lambda(memory, lambda_name, lambdas_body)?
+                            .with_position(position);
+
+                        (name, lambda)
                     } else
                     {
                         let name = InterReprPos::parse_symbol(memory, &first)?;
@@ -670,6 +674,7 @@ enum Command
     Car{target: Register, source: Register},
     Cdr{target: Register, source: Register},
     CallPrimitiveValue{target: Register},
+    CallPrimitiveValueUnchecked{target: Register},
     Error(ErrorPos),
     Label(Label)
 }
@@ -688,7 +693,8 @@ impl Command
             | Self::Cons{target: register, ..}
             | Self::Car{target: register, ..}
             | Self::Cdr{target: register, ..}
-            | Self::CallPrimitiveValue{target: register, ..} => vec![*register],
+            | Self::CallPrimitiveValue{target: register, ..}
+            | Self::CallPrimitiveValueUnchecked{target: register, ..} => vec![*register],
             Self::CreateChildEnvironment => vec![Register::Environment, Register::Value, Register::Temporary],
             Self::Define{..} => vec![Register::Value, Register::Temporary],
             Self::IsTag{..} => vec![Register::Temporary],
@@ -740,6 +746,7 @@ impl Command
             Self::Car{target, source} => CommandRaw::Car{target, source},
             Self::Cdr{target, source} => CommandRaw::Cdr{target, source},
             Self::CallPrimitiveValue{target} => CommandRaw::CallPrimitiveValue{target},
+            Self::CallPrimitiveValueUnchecked{target} => CommandRaw::CallPrimitiveValueUnchecked{target},
             Self::Error(err) => CommandRaw::Error(err),
             Self::Label(_) => unreachable!("labels have no raw equivalent")
         }
@@ -925,7 +932,7 @@ pub type InterReprPos = WithPosition<InterRepr>;
 pub enum LambdaParams
 {
     Variadic(SymbolId),
-    Normal(Vec<SymbolId>)
+    Normal(Vec<WithPosition<SymbolId>>)
 }
 
 impl LambdaParams
@@ -946,36 +953,84 @@ impl LambdaParams
         }
     }
 
-    pub fn parse_list(memory: &mut LispMemory, ast: AstPos) -> Result<Vec<SymbolId>, ErrorPos>
+    pub fn parse_list(memory: &mut LispMemory, ast: AstPos) -> Result<Vec<WithPosition<SymbolId>>, ErrorPos>
     {
         match ast.value
         {
             Ast::List{car, cdr} =>
             {
+                let position = car.position;
+
                 let tail = Self::parse_list(memory, *cdr)?;
                 let symbol = InterReprPos::parse_symbol(memory, &car)?;
 
-                Ok(iter::once(symbol).chain(tail).collect())
+                Ok(iter::once(WithPosition{position, value: symbol}).chain(tail).collect())
             },
             Ast::EmptyList => Ok(Vec::new()),
             Ast::Value(_) => unreachable!("malformed ast")
         }
     }
 
-    fn compile(self) -> CompiledPart
+    fn compile(
+        self,
+        state: &mut CompileState,
+        name: String
+    ) -> CompiledPart
     {
         match self
         {
             Self::Variadic(id) => Command::Define{id, register: Register::Argument}.into(),
             Self::Normal(params) =>
             {
-                let commands = params.into_iter().flat_map(|param|
+                let amount = params.len();
+                let commands = params.into_iter().enumerate().flat_map(|(index, WithPosition{position, value: param})|
                 {
-                    [
-                        Command::Car{target: Register::Temporary, source: Register::Argument},
-                        Command::Define{id: param, register: Register::Temporary},
-                        Command::Cdr{target: Register::Argument, source: Register::Argument}
-                    ]
+                    let is_last = amount == (index + 1);
+
+                    let define_one = |include_tail|
+                    {
+                        let mut commands = vec![
+                            Command::Car{target: Register::Temporary, source: Register::Argument},
+                            Command::Define{id: param, register: Register::Temporary}
+                        ];
+
+                        if include_tail
+                        {
+                            commands.push(Command::Cdr{target: Register::Argument, source: Register::Argument});
+                        }
+
+                        commands
+                    };
+
+                    let include_tail = state.type_checks || !is_last;
+
+                    let commands = define_one(include_tail);
+
+                    if state.type_checks
+                    {
+                        let mut commands = commands;
+
+                        if is_last
+                        {
+                            let after_error = Label::AfterError(state.label_id());
+
+                            commands.extend([
+                                Command::IsTag{check: Register::Argument, tag: ValueTag::EmptyList},
+                                Command::JumpIfTrue{target: after_error, check: Register::Temporary},
+                                Command::Error(ErrorPos{position, value: Error::WrongArgumentsCount{
+                                    proc: name.clone(),
+                                    expected: amount.to_string(),
+                                    got: amount
+                                }}),
+                                Command::Label(after_error)
+                            ]);
+                        }
+
+                        commands
+                    } else
+                    {
+                        commands
+                    }
                 }).map(|x| CommandPos::from(x)).collect::<Vec<_>>();
 
                 CompiledPart::from_commands(commands)
@@ -991,7 +1046,7 @@ pub enum InterRepr
     Sequence(Vec<InterReprPos>),
     If{check: Box<InterReprPos>, then: Box<InterReprPos>, else_body: Box<InterReprPos>},
     Define{name: SymbolId, body: Box<InterReprPos>},
-    Lambda{params: LambdaParams, body: Box<InterReprPos>},
+    Lambda{name: String, params: LambdaParams, body: Box<InterReprPos>},
     Quoted(AstPos),
     Lookup(SymbolId),
     Value(LispValue)
@@ -1065,7 +1120,6 @@ impl InterReprPos
                             {
                                 return Err(Error::WrongArgumentsCount{
                                     proc: memory.primitives.name_by_index(id).to_owned(),
-                                    this_invoked: false,
                                     expected: primitive.args_count.to_string(),
                                     got: args_count
                                 }).with_position(ast.position);
@@ -1252,7 +1306,7 @@ impl InterReprPos
                     if_body
                 }
             },
-            InterRepr::Lambda{params, body} =>
+            InterRepr::Lambda{name, params, body} =>
             {
                 let target = if let Some(target) = target
                 {
@@ -1262,7 +1316,7 @@ impl InterReprPos
                     return CompiledPart::new();
                 };
 
-                let params_define = params.compile();
+                let params_define = params.compile(state, name);
                 let body = body.compile(state, Some(Register::Value), Proceed::Return);
                 let label = state.add_lambda(params_define.combine(body));
 
@@ -1313,6 +1367,8 @@ impl InterReprPos
             {
                 let is_known_primitive = op.is_known_primitive();
                 let is_known_compound = op.is_known_compound();
+
+                let args_count = args.len();
 
                 let empty_list: CompiledPart = Command::PutValue{
                     value: LispValue::new_empty_list(),
@@ -1433,9 +1489,23 @@ impl InterReprPos
                     ])).combine_preserving(proceed, RegisterStates::one(Register::Return))
                 };
 
-                let primitive_part = CompiledPart::from_commands(vec![
-                    Command::CallPrimitiveValue{target: target.unwrap_or(Register::Temporary)}.with_position(self.position)
-                ]).combine_preserving(primitive_return, RegisterStates::one(Register::Return));
+                let primitive_commands = if state.type_checks
+                {
+                    vec![
+                        Command::PutValue{value: LispValue::new_length(args_count as u32), register: Register::Temporary}.into(),
+                        Command::CallPrimitiveValue{target: target.unwrap_or(Register::Temporary)}
+                            .with_position(self.position)
+                    ]
+                } else
+                {
+                    vec![
+                        Command::CallPrimitiveValueUnchecked{target: target.unwrap_or(Register::Temporary)}
+                            .with_position(self.position)
+                    ]
+                };
+
+                let primitive_part = CompiledPart::from_commands(primitive_commands)
+                    .combine_preserving(primitive_return, RegisterStates::one(Register::Return));
 
                 let call_part = if is_known_compound
                 {
@@ -1538,7 +1608,13 @@ impl InterRepr
                 return Err(ErrorPos{position: last.position, value: Error::LetTooMany});
             }
 
-            params.push(InterReprPos::parse_symbol(memory, &name)?);
+            let param = WithPosition{
+                position: pair.position,
+                value: InterReprPos::parse_symbol(memory, &name)?
+            };
+
+            params.push(param);
+
             args.push(InterReprPos::parse(memory, arg)?);
 
             Ok(())
@@ -1546,13 +1622,15 @@ impl InterRepr
 
         let params = LambdaParams::Normal(params);
 
-        let lambda = Self::Lambda{params, body: Box::new(body)}.with_position(position);
+        let lambda = Self::Lambda{name: "<lambda>".to_owned(), params, body: Box::new(body)}
+            .with_position(position);
 
         Ok(Self::Apply{op: Box::new(lambda), args})
     }
 
     pub fn parse_lambda(
         memory: &mut LispMemory,
+        name: String,
         ast: AstPos
     ) -> Result<Self, ErrorPos>
     {
@@ -1567,7 +1645,7 @@ impl InterRepr
 
         let params = LambdaParams::parse(memory, params)?;
 
-        Ok(Self::Lambda{params, body: Box::new(body)})
+        Ok(Self::Lambda{name, params, body: Box::new(body)})
     }
 }
 
@@ -1683,7 +1761,8 @@ enum CommandRaw
     Car{target: Register, source: Register},
     Cdr{target: Register, source: Register},
     Error(ErrorPos),
-    CallPrimitiveValue{target: Register}
+    CallPrimitiveValue{target: Register},
+    CallPrimitiveValueUnchecked{target: Register}
 }
 
 struct DebugRaw(String);
@@ -1847,12 +1926,14 @@ impl CompiledProgram
                 }
             }
 
+            let command = &self.commands[i];
+
             if DebugConfig::is_enabled(DebugTool::Lisp)
             {
-                eprintln!("[RUNNING] {i}: {:?}", CommandRawDisplay{memory, value: &self.commands[i]});
+                eprintln!("[RUNNING] {i}: {:?}", CommandRawDisplay{memory, value: command});
             }
 
-            match &self.commands[i]
+            match command
             {
                 CommandRaw::Push(register) =>
                 {
@@ -1967,12 +2048,30 @@ impl CompiledProgram
 
                     return Err(err);
                 },
-                CommandRaw::CallPrimitiveValue{target} =>
+                CommandRaw::CallPrimitiveValue{target}
+                | CommandRaw::CallPrimitiveValueUnchecked{target} =>
                 {
                     let op = memory.get_register(Register::Operator).as_primitive_procedure()
                         .expect("must be checked");
 
-                    let primitive = &memory.primitives.get(op).on_apply.as_ref()
+                    let primitive = memory.primitives.get(op);
+
+                    if let CommandRaw::CallPrimitiveValue{..} = command
+                    {
+                        let count = memory.get_register(Register::Temporary).as_length()
+                            .expect("must be set");
+
+                        if !primitive.args_count.contains(count as usize)
+                        {
+                            return_error!(Error::WrongArgumentsCount{
+                                proc: memory.primitives.name_by_index(op).to_owned(),
+                                expected: primitive.args_count.to_string(),
+                                got: count as usize
+                            }, "primitive")
+                        }
+                    }
+
+                    let primitive = primitive.on_apply.as_ref()
                         .expect("primitive must have apply")
                         .1
                         .clone();
