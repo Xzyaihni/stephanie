@@ -159,7 +159,6 @@ impl From<lisp::Error> for ParseError
 pub struct ChunkGenerator
 {
     rules: Rc<ChunkRulesGroup>,
-    primitives: Rc<Primitives>,
     chunks: HashMap<String, Lisp>,
     tilemap: Rc<TileMap>
 }
@@ -177,19 +176,13 @@ impl ChunkGenerator
 
         let primitives = Rc::new(Self::default_primitives(&tilemap));
 
-        let memory = Self::default_memory(
-            primitives.clone(),
-            &parent_directory
-        );
+        let memory = LispMemory::new(primitives, 256, 1 << 13);
 
         let mut this = Self{
             rules: rules.clone(),
-            primitives,
             chunks,
             tilemap
         };
-
-        let parent_directory = parent_directory.join("chunks");
 
         rules.iter_names().filter(|name|
         {
@@ -198,9 +191,7 @@ impl ChunkGenerator
             name != "none"
         }).try_for_each(|name|
         {
-            let filename = parent_directory.join(format!("{name}.scm"));
-
-            this.parse_function(memory.clone(), filename, name)
+            this.parse_function(&parent_directory, memory.clone(), name)
         })?;
 
         Ok(this)
@@ -244,52 +235,29 @@ impl ChunkGenerator
         primitives
     }
 
-    fn default_memory(
-        primitives: Rc<Primitives>,
-        path: &Path
-    ) -> LispMemory
+    fn parse_function(
+        &mut self,
+        parent_directory: &Path,
+        memory: LispMemory,
+        name: &str
+    ) -> Result<(), ParseError>
     {
-        fn load(name: &Path) -> String
+        fn load(name: impl AsRef<Path>) -> String
         {
+            let name = name.as_ref();
             fs::read_to_string(name)
                 .unwrap_or_else(|err| panic!("{} must exist >_< ({err})", name.display()))
         }
 
-        let run_default = |memory: LispMemory, path: PathBuf| -> LispMemory
-        {
-            let default_code = load(&path);
+        let filepath = parent_directory.join("chunks").join(format!("{name}.scm"));
 
-            let config = LispConfig{
-                type_checks: cfg!(debug_assertions),
-                memory
-            };
-
-            Lisp::new_with_config(config, &default_code)
-                .and_then(|mut x|
-                {
-                    x.run()
-                }).unwrap_or_else(|err| panic!("{} has an error ({err})", path.display()))
-                .into_memory()
-        };
-
-        let memory: LispMemory = LispMemory::new(primitives, 256, 1 << 13);
-        let memory = run_default(memory, "lisp/standard.scm".into());
-
-        run_default(memory, path.join("default.scm"))
-    }
-
-    fn parse_function(
-        &mut self,
-        memory: LispMemory,
-        filepath: PathBuf,
-        name: &str
-    ) -> Result<(), ParseError>
-    {
-        let code = fs::read_to_string(&filepath).map_err(|err|
-        {
-            // cant remove the clone cuz ? is cringe or something
-            ParseError::new_named(filepath.clone(), err)
-        })?;
+        let code = load("lisp/standard.scm")
+            + &load(parent_directory.join("default.scm"))
+            + &fs::read_to_string(&filepath).map_err(|err|
+            {
+                // cant remove the clone cuz ? is cringe or something
+                ParseError::new_named(filepath.clone(), err)
+            })?;
 
         let config = LispConfig{
             type_checks: cfg!(debug_assertions),
