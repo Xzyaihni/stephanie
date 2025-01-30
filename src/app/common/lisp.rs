@@ -458,6 +458,7 @@ impl Display for ErrorPos
 pub enum Error
 {
     OutOfMemory,
+    StackOverflow,
     WrongType{expected: ValueTag, got: ValueTag},
     WrongConditionalType(String),
     Custom(String),
@@ -491,6 +492,7 @@ impl Display for Error
         let s = match self
         {
             Self::OutOfMemory => "out of memory".to_owned(),
+            Self::StackOverflow => "stack overflow".to_owned(),
             Self::WrongType{expected, got} => format!("expected type `{expected:?}` got `{got:?}`"),
             Self::WrongConditionalType(s) => format!("conditional expected boolean, got `{s}`"),
             Self::Custom(s) => s.clone(),
@@ -951,19 +953,23 @@ impl LispMemory
     pub fn with_saved_registers(
         &mut self,
         registers: impl IntoIterator<Item=Register> + Clone
-    ) -> impl FnOnce(&mut LispMemory)
+    ) -> impl FnOnce(&mut LispMemory) -> Result<(), Error>
     {
-        registers.clone().into_iter().for_each(|register|
+        let result = registers.clone().into_iter().try_for_each(|register|
         {
-            self.push_stack_register(register);
+            self.push_stack_register(register)
         });
 
         move |memory|
         {
+            result?;
+
             registers.into_iter().for_each(|register|
             {
                 memory.pop_stack_register(register);
             });
+
+            Ok(())
         }
     }
 
@@ -1162,14 +1168,16 @@ impl LispMemory
         self.swap_memory.clear();
     }
 
-    fn stack_push(stack: &mut Vec<LispValue>, value: LispValue)
+    fn stack_push(stack: &mut Vec<LispValue>, value: LispValue) -> Result<(), Error>
     {
         if stack.len() == stack.capacity()
         {
-            panic!("stack overflow!!!! ahhhh!!");
+            return Err(Error::StackOverflow);
         }
 
         stack.push(value);
+
+        Ok(())
     }
 
     pub fn pop_arg(&mut self) -> LispValue
@@ -1206,9 +1214,9 @@ impl LispMemory
         self.get_register(Register::Argument).is_null()
     }
 
-    pub fn push_stack_register(&mut self, register: Register)
+    pub fn push_stack_register(&mut self, register: Register) -> Result<(), Error>
     {
-        self.push_stack(self.registers[register as usize]);
+        self.push_stack(self.registers[register as usize])
     }
 
     pub fn pop_stack_register(&mut self, register: Register)
@@ -1216,7 +1224,7 @@ impl LispMemory
         self.registers[register as usize] = self.pop_stack();
     }
 
-    pub fn push_stack(&mut self, value: impl Into<LispValue>)
+    pub fn push_stack(&mut self, value: impl Into<LispValue>) -> Result<(), Error>
     {
         Self::stack_push(&mut self.stack, value.into())
     }
@@ -1340,7 +1348,7 @@ impl LispMemory
 
         let restore = self.with_saved_registers([Register::Value, Register::Temporary]);
 
-        iter.rev().for_each(|x| self.push_stack(x));
+        iter.rev().try_for_each(|x| self.push_stack(x))?;
         self.set_register(Register::Value, ());
 
         (0..len).try_for_each(|_|
@@ -1352,7 +1360,7 @@ impl LispMemory
 
         let value = self.get_register(Register::Value);
 
-        restore(self);
+        restore(self)?;
 
         Ok(value)
     }

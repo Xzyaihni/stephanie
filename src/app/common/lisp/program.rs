@@ -324,7 +324,7 @@ impl Default for Primitives
                     args.memory.cons(Register::Value, Register::Temporary, Register::Value)?;
 
                     let value = args.memory.get_register(Register::Value);
-                    restore(args.memory);
+                    restore(args.memory)?;
 
                     Ok(value)
                 })),
@@ -1948,7 +1948,13 @@ impl CompiledProgram
             {
                 CommandRaw::Push(register) =>
                 {
-                    memory.push_stack_register(*register);
+                    if let Err(err) = memory.push_stack_register(*register)
+                    {
+                        return Err(ErrorPos{
+                            position: CodePosition::default(),
+                            value: err
+                        })
+                    }
                 },
                 CommandRaw::Pop(register) =>
                 {

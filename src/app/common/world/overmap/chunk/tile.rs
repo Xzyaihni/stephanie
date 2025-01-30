@@ -79,7 +79,7 @@ impl Tile
 
         let value = memory.get_register(Register::Value);
 
-        restore(memory);
+        restore(memory)?;
 
         Ok(value)
     }
