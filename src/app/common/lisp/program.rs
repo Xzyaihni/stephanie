@@ -1008,7 +1008,18 @@ impl LambdaParams
 
                     if state.type_checks
                     {
-                        let mut commands = commands;
+                        let after_little_error = Label::AfterError(state.label_id());
+
+                        let mut commands: Vec<_> = [
+                            Command::IsTag{check: Register::Argument, tag: ValueTag::List},
+                            Command::JumpIfTrue{target: after_little_error, check: Register::Temporary},
+                            Command::Error(ErrorPos{position, value: Error::WrongArgumentsCount{
+                                proc: name.clone(),
+                                expected: amount.to_string(),
+                                got: index
+                            }}),
+                            Command::Label(after_little_error)
+                        ].into_iter().chain(commands).collect();
 
                         if is_last
                         {
@@ -2042,6 +2053,19 @@ impl CompiledProgram
                         Error::WrongConditionalType(s) =>
                         {
                             *s = memory.get_register(Register::Value).to_string(memory);
+                        },
+                        Error::WrongArgumentsCount{got, ..} =>
+                        {
+                            let mut leftover = 0;
+
+                            while let Ok(lst) = memory.get_register(Register::Argument).as_list(memory)
+                            {
+                                memory.set_register(Register::Argument, lst.cdr);
+
+                                leftover += 1;
+                            }
+
+                            *got = *got + leftover;
                         },
                         _ => ()
                     }

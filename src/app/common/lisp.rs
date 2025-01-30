@@ -2259,7 +2259,7 @@ mod tests
 
         assert_error(code, |err|
         {
-            if let Error::WrongArgumentsCount{..} = err
+            if let Error::WrongArgumentsCount{got: 3, ..} = err
             {
                 true
             } else
@@ -2278,9 +2278,49 @@ mod tests
 
         assert_error(code, |err|
         {
-            if let Error::WrongArgumentsCount{..} = err
+            if let Error::WrongArgumentsCount{got: 3, ..} = err
             {
                 true
+            } else
+            {
+                false
+            }
+        });
+    }
+
+    #[test]
+    fn wrong_compound_argcount_too_little()
+    {
+        let code = "
+            (define (test-func a b c) (+ a b c))
+            (test-func 1 2)
+        ";
+
+        assert_error(code, |err|
+        {
+            if let Error::WrongArgumentsCount{expected, got: 2, ..} = err
+            {
+                expected == "3"
+            } else
+            {
+                false
+            }
+        });
+    }
+
+    #[test]
+    fn wrong_compound_argcount_too_many()
+    {
+        let code = "
+            (define (test-func a b c) (+ a b c))
+            (test-func 1 2 3 4 5 6 7)
+        ";
+
+        assert_error(code, |err|
+        {
+            if let Error::WrongArgumentsCount{expected, got: 7, ..} = err
+            {
+                expected == "3"
             } else
             {
                 false
