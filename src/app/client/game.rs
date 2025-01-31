@@ -109,6 +109,8 @@ impl Game
             infos.console.past_commands = standard_code;
         }
 
+        this.console_command(String::new());
+
         this
     }
 
@@ -373,7 +375,8 @@ impl Game
         F: Fn(
             &mut ClientEntities,
             Entity,
-            PrimitiveArgs
+            &mut LispMemory,
+            LispValue
         ) -> Result<(), lisp::Error> + 'static
     {
         let game_state = self.game_state.clone();
@@ -387,7 +390,9 @@ impl Game
                 let entities = game_state.entities_mut();
 
                 let entity = Self::pop_entity(&mut args)?;
-                f(entities, entity, args)?;
+                let value = args.next().unwrap();
+
+                f(entities, entity, args.memory, value)?;
 
                 Ok(().into())
             }));
@@ -586,43 +591,43 @@ impl Game
                 }));
         }*/
 
-        self.add_simple_setter(&mut primitives, "set-floating", |entities, entity, mut args|
+        self.add_simple_setter(&mut primitives, "set-floating", |entities, entity, _memory, value|
         {
-            let state = args.next().unwrap().as_bool()?;
+            let state = value.as_bool()?;
 
             get_component_mut!(physical_mut, entities, entity).set_floating(state);
 
             Ok(())
         });
 
-        self.add_simple_setter(&mut primitives, "set-speed", |entities, entity, mut args|
+        self.add_simple_setter(&mut primitives, "set-speed", |entities, entity, _memory, value|
         {
-            let speed = args.next().unwrap().as_float()?;
+            let speed = value.as_float()?;
 
             get_component_mut!(anatomy_mut, entities, entity).set_speed(speed);
 
             Ok(())
         });
 
-        self.add_simple_setter(&mut primitives, "set-ghost", |entities, entity, mut args|
+        self.add_simple_setter(&mut primitives, "set-ghost", |entities, entity, _memory, value|
         {
-            let state = args.next().unwrap().as_bool()?;
+            let state = value.as_bool()?;
 
             get_component_mut!(collider_mut, entities, entity).ghost = state;
 
             Ok(())
         });
 
-        self.add_simple_setter(&mut primitives, "set-position", |entities, entity, mut args|
+        self.add_simple_setter(&mut primitives, "set-position", |entities, entity, memory, value|
         {
-            let mut list = args.next().unwrap().as_list(args.memory);
+            let mut list = value.as_list(memory);
 
             let mut next_float = ||
             {
                 let current = list.clone()?;
                 let value = current.car().as_float();
 
-                list = current.cdr().as_list(args.memory);
+                list = current.cdr().as_list(memory);
 
                 value
             };
@@ -634,16 +639,16 @@ impl Game
             Ok(())
         });
 
-        self.add_simple_setter(&mut primitives, "set-rotation", |entities, entity, mut args|
+        self.add_simple_setter(&mut primitives, "set-rotation", |entities, entity, _memory, value|
         {
-            get_component_mut!(target, entities, entity).rotation = args.next().unwrap().as_float()?;
+            get_component_mut!(target, entities, entity).rotation = value.as_float()?;
 
             Ok(())
         });
 
-        self.add_simple_setter(&mut primitives, "set-faction", |entities, entity, mut args|
+        self.add_simple_setter(&mut primitives, "set-faction", |entities, entity, memory, value|
         {
-            let faction = args.next().unwrap().as_symbol(args.memory)?;
+            let faction = value.as_symbol(memory)?;
             let faction: String = faction.to_lowercase().chars().enumerate().map(|(i, c)|
             {
                 if i == 0
@@ -827,19 +832,21 @@ impl Game
 
     fn console_command(&mut self, command: String)
     {
-        let infos = self.info.borrow();
+        let mut infos = self.info.borrow_mut();
 
         let config = LispConfig{
             type_checks: true,
             memory: LispMemory::new(infos.console.primitives.as_ref().unwrap().clone(), 2048, 1 << 14)
         };
 
-        let mut lisp = match Lisp::new_with_config(config, &(infos.console.past_commands.clone() + &command))
+        let source = infos.console.past_commands.clone() + &command;
+        let mut lisp = match Lisp::new_with_config(config, &source)
         {
             Ok(x) => x,
             Err(err) =>
             {
                 eprintln!("error parsing {command}: {err}");
+                Lisp::print_highlighted(&source, err.position);
                 return;
             }
         };
@@ -850,16 +857,18 @@ impl Game
             Err(err) =>
             {
                 eprintln!("error running {command}: {err}");
+                Lisp::print_highlighted(&source, err.position);
                 return;
             }
         };
 
         eprintln!("ran command {command}, result: {result}");
 
-        let changed_environment = todo!();
+        let defined_this = result.into_memory().defined_values().unwrap().len();
+        let changed_environment = defined_this > infos.console.standard_definitions;
         if changed_environment
         {
-            self.info.borrow_mut().remember_command(&command);
+            infos.remember_command(defined_this, &command);
         }
     }
 
@@ -888,6 +897,7 @@ struct ConsoleInfo
     entity: Entity,
     contents: Option<String>,
     primitives: Option<Rc<Primitives>>,
+    standard_definitions: usize,
     past_commands: String
 }
 
@@ -899,6 +909,7 @@ impl ConsoleInfo
             entity: info.console_entity,
             contents: None,
             primitives: None,
+            standard_definitions: 0,
             past_commands: String::new()
         }
     }
@@ -957,8 +968,9 @@ impl PlayerInfo
         }
     }
 
-    pub fn remember_command(&mut self, command: &str)
+    pub fn remember_command(&mut self, definitions: usize, command: &str)
     {
+        self.console.standard_definitions = definitions;
         self.console.past_commands += command;
     }
 }

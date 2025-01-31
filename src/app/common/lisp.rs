@@ -22,7 +22,7 @@ pub use program::{
     ArgsCount
 };
 
-use program::PrimitiveType;
+use program::{PrimitiveType, CodePosition};
 
 mod program;
 
@@ -923,18 +923,43 @@ impl LispMemory
         self.symbols.get_by_name(name)
     }
 
-    pub fn defined_values(&self) -> impl Iterator<Item=(SymbolId, LispValue)> + '_
+    fn set_top_level_env(&mut self)
     {
+        loop
+        {
+            let parent = self.get_register(Register::Environment)
+                .as_list(self).unwrap().cdr
+                .as_list(self).unwrap().cdr;
+
+            if parent.is_null()
+            {
+                break;
+            }
+
+            self.set_register(Register::Environment, parent);
+        }
+    }
+
+    pub fn defined_values(&mut self) -> Result<Vec<(SymbolId, LispValue)>, Error>
+    {
+        let restore = self.with_saved_registers([Register::Environment]);
+
+        self.set_top_level_env();
+
         let mappings = self.get_register(Register::Environment)
             .as_list(self).unwrap().cdr
             .as_list(self).unwrap().car
             .as_pairs_list(self).unwrap();
 
-        mappings.into_iter().map(|value|
+        let values: Vec<_> = mappings.into_iter().map(|value|
         {
             let lst = value.as_list(self).unwrap();
             (lst.car.as_symbol_id().unwrap(), lst.cdr)
-        })
+        }).collect();
+
+        restore(self)?;
+
+        Ok(values)
     }
 
     pub fn define(&mut self, key: impl Into<String>, value: LispValue) -> Result<(), Error>
@@ -1373,14 +1398,14 @@ impl LispMemory
     where
         V: Into<LispValue>,
         I: IntoIterator<Item=V>,
-        I::IntoIter: DoubleEndedIterator + ExactSizeIterator
+        I::IntoIter: ExactSizeIterator
     {
-        let iter = values.into_iter();
+        let mut iter = values.into_iter();
         let len = iter.len();
 
         let restore = self.with_saved_registers([Register::Value, Register::Temporary]);
 
-        iter.rev().try_for_each(|x| self.push_stack(x))?;
+        iter.try_for_each(|x| self.push_stack(x))?;
         self.set_register(Register::Value, ());
 
         (0..len).try_for_each(|_|
@@ -1603,6 +1628,16 @@ impl Lisp
     pub fn run(&mut self) -> Result<OutputWrapper, ErrorPos>
     {
         self.program.eval()
+    }
+
+    pub fn print_highlighted(source: &str, position: CodePosition)
+    {
+        let line = source.lines().skip(position.line - 1).next().expect("line must exist");
+
+        eprintln!("{line}");
+
+        let padding = iter::repeat(' ').take(position.character - 1).collect::<String>();
+        eprintln!("{padding}^");
     }
 }
 
