@@ -474,12 +474,12 @@ impl Game
                 }));
         }
 
-        /*{
+        {
             let game_state = self.game_state.clone();
 
             primitives.add(
                 "all-entities-query",
-                PrimitiveProcedureInfo::new_simple(0, move |mut args|
+                PrimitiveProcedureInfo::new_simple(0, Effect::Impure, move |args|
                 {
                     let game_state = game_state.upgrade().unwrap();
                     let game_state = game_state.borrow();
@@ -492,7 +492,7 @@ impl Game
                     entities.for_each_entity(|entity|
                     {
                         total += 1;
-                        let id = entity.id() as i32;
+                        let id = LispValue::new_integer(entity.id() as i32);
 
                         if entity.local()
                         {
@@ -503,42 +503,44 @@ impl Game
                         }
                     });
 
-                    memory.push_stack(total - 1);
+                    let memory = args.memory;
 
-                    let mut allocate_lisp_vector = |v: Vec<i32>| -> Result<(), lisp::Error>
-                    {
-                        let v: LispVector = v.into();
-                        memory.allocate_vector(v.as_ref_vector())
-                    };
+                    let restore = memory.with_saved_registers([Register::Value, Register::Temporary]);
 
-                    allocate_lisp_vector(normal_entities)?;
-                    allocate_lisp_vector(local_entities)?;
+                    memory.make_vector(Register::Temporary, normal_entities)?;
+                    memory.make_vector(Register::Value, local_entities)?;
 
-                    memory.cons()?;
+                    memory.cons(Register::Value, Register::Temporary, Register::Value)?;
 
-                    memory.cons()
+                    memory.set_register(Register::Temporary, total - 1);
+
+                    memory.cons(Register::Value, Register::Temporary, Register::Value)?;
+
+                    let value = memory.get_register(Register::Value);
+
+                    restore(memory)?;
+
+                    Ok(value)
                 }));
-        }*/
-        dbg!("uncomment");
+        }
 
-        /*primitives.add(
+        primitives.add(
             "query-entity-next",
-            PrimitiveProcedureInfo::new_simple_effect(1, move |memory, mut args|
+            PrimitiveProcedureInfo::new_simple(1, Effect::Impure, move |mut args|
             {
-                let query_arg = args.pop(memory);
-                let query = query_arg.as_list()?;
+                let query_arg = args.next().unwrap();
+                let query = query_arg.as_list(args.memory)?;
                 let query_id = query_arg.as_list_id()?;
 
                 let index = query.car().as_integer()?;
-                let entities = query.cdr().as_list()?;
+                let entities = query.cdr().as_list(args.memory)?;
 
-                let normal_entities = entities.car().as_vector_ref()?;
-                let local_entities = entities.cdr().as_vector_ref()?;
+                let normal_entities = entities.car().as_vector_ref(args.memory)?;
+                let local_entities = entities.cdr().as_vector_ref(args.memory)?;
 
                 if index < 0
                 {
-                    memory.push_stack(());
-                    return Ok(());
+                    return Ok(().into());
                 }
 
                 let index = index as usize;
@@ -547,22 +549,16 @@ impl Game
                 {
                     let index = index - normal_entities.len();
 
-                    Entity::from_raw(true, local_entities.get(index).as_integer()? as usize)
+                    Entity::from_raw(true, local_entities[index].as_integer()? as usize)
                 } else
                 {
-                    Entity::from_raw(false, normal_entities.get(index).as_integer()? as usize)
+                    Entity::from_raw(false, normal_entities[index].as_integer()? as usize)
                 };
 
                 // set to next index
-                memory.as_memory_mut().set_car(query_id, (index as i32 - 1).into());
+                args.memory.set_car(query_id, (index as i32 - 1).into());
 
-                if memory.can_return()
-                {
-                    Self::push_entity(memory.as_memory_mut(), entity)
-                } else
-                {
-                    Ok(())
-                }
+                Self::push_entity(args.memory, entity)
             }));
 
         {
@@ -570,26 +566,24 @@ impl Game
 
             primitives.add(
                 "print-chunk-of",
-                PrimitiveProcedureInfo::new_simple_effect(1..=2, move |memory, mut args|
+                PrimitiveProcedureInfo::new_simple(1..=2, Effect::Impure, move |mut args|
                 {
                     let game_state = game_state.upgrade().unwrap();
                     let game_state = game_state.borrow();
 
-                    let entity = Self::pop_entity(&mut args, memory)?;
+                    let entity = Self::pop_entity(&mut args)?;
                     let position = game_state.entities().transform(entity).unwrap().position;
 
-                    let visual = args.try_pop(memory).map(|x| x.as_bool()).unwrap_or(Ok(false))?;
+                    let visual = args.next().map(|x| x.as_bool()).unwrap_or(Ok(false))?;
 
                     eprintln!(
                         "entity info: {}",
                         game_state.world.debug_chunk(position.into(), visual)
                     );
 
-                    memory.push_stack(());
-
-                    Ok(())
+                    Ok(().into())
                 }));
-        }*/
+        }
 
         self.add_simple_setter(&mut primitives, "set-floating", |entities, entity, _memory, value|
         {
@@ -733,14 +727,21 @@ impl Game
 
                     let entity = Self::pop_entity(&mut args)?;
 
-                    /*memory.push_stack(());
-                    entities.children_of(entity).try_for_each(|x|
+                    args.memory.cons_list_with(|memory|
                     {
-                        Self::push_entity(args.memory, x)?;
-                        memory.rcons()
-                    })?;
+                        let mut count = 0;
+                        entities.children_of(entity).try_for_each(|x|
+                        {
+                            count += 1;
+                            let value = Self::push_entity(memory, x)?;
 
-                    Ok(())*/todo!()
+                            memory.push_stack(value)?;
+
+                            Ok(())
+                        })?;
+
+                        Ok(count)
+                    })
                 }));
         }
 

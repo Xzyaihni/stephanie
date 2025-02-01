@@ -1391,21 +1391,15 @@ impl LispMemory
         Ok(())
     }
 
-    pub fn cons_list<I, V>(
+    pub fn cons_list_with(
         &mut self,
-        values: I
+        f: impl FnOnce(&mut Self) -> Result<usize, Error>
     ) -> Result<LispValue, Error>
-    where
-        V: Into<LispValue>,
-        I: IntoIterator<Item=V>,
-        I::IntoIter: ExactSizeIterator
     {
-        let mut iter = values.into_iter();
-        let len = iter.len();
-
         let restore = self.with_saved_registers([Register::Value, Register::Temporary]);
 
-        iter.try_for_each(|x| self.push_stack(x))?;
+        let len = f(self)?;
+
         self.set_register(Register::Value, ());
 
         (0..len).try_for_each(|_|
@@ -1420,6 +1414,26 @@ impl LispMemory
         restore(self)?;
 
         Ok(value)
+    }
+
+    pub fn cons_list<I, V>(
+        &mut self,
+        values: I
+    ) -> Result<LispValue, Error>
+    where
+        V: Into<LispValue>,
+        I: IntoIterator<Item=V>,
+        I::IntoIter: ExactSizeIterator
+    {
+        self.cons_list_with(move |this|
+        {
+            let mut iter = values.into_iter();
+
+            let len = iter.len();
+            iter.try_for_each(|x| this.push_stack(x))?;
+
+            Ok(len)
+        })
     }
 
     pub fn new_primitive_value(&mut self, x: PrimitiveType) -> LispValue
