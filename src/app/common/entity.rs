@@ -897,11 +897,6 @@ macro_rules! common_trait_impl
                 (entity, self.z_level(entity).unwrap())
             }).reduce(reducer);
 
-            iterate_components_with!(self, ui_element, filter_map, |entity, _|
-            {
-                self.z_level(entity).map(|z| (entity, z))
-            }).reduce(reducer);
-
             for_each_component!(self, saveable, |entity, _|
             {
                 if let Some(parent) = self.parent(entity)
@@ -1237,27 +1232,12 @@ macro_rules! define_entities_both
                 Entity{local, id}
             }
 
-            fn resort_by_z(&mut self, only_ui: bool)
+            fn resort_by_z(&mut self)
             {
                 // cycle sort has the least amount of swaps but i dunno
                 // if its worth the increased amount of checks
 
                 // maybe shellsort is better?
-
-                let mut z_levels: Vec<_> = iterate_components_with!(self, ui_element, filter_map, |entity, _|
-                {
-                    self.z_level(entity).map(|z| (z, entity))
-                }).collect();
-
-                insertion_sort_with(&mut z_levels, |(z_level, _)| *z_level, |&(_, before), &(_, after)|
-                {
-                    swap_fully!(self, ui_element, before, after);
-                });
-
-                if only_ui
-                {
-                    return;
-                }
 
                 let mut z_levels: Vec<_> = iterate_components_with!(self, render, map, |entity, _|
                 {
@@ -1356,10 +1336,7 @@ macro_rules! define_entities_both
 
                                 if Component::$name == Component::render
                                 {
-                                    self.resort_by_z(false);
-                                } else if Component::$name == Component::ui_element
-                                {
-                                    self.resort_by_z(true);
+                                    self.resort_by_z();
                                 }
 
                                 None
@@ -1762,7 +1739,7 @@ macro_rules! define_entities_both
 
                 if needs_resort
                 {
-                    self.resort_by_z(false);
+                    self.resort_by_z();
                 }
             }
 
@@ -2036,21 +2013,6 @@ macro_rules! define_entities_both
                     {
                         on_state_change(entity);
                     }
-                });
-            }
-
-            pub fn update_ui_aspect(
-                &mut self,
-                aspect: f32
-            )
-            {
-                for_each_component!(self, ui_element, |entity, ui_element: &RefCell<UiElement>|
-                {
-                    ui_element.borrow_mut().update_aspect(
-                        self,
-                        entity,
-                        aspect
-                    );
                 });
             }
 
@@ -2473,8 +2435,7 @@ macro_rules! define_entities
 define_entities!{
     (side_specific
         (render, render_mut, set_render, on_render, resort_render, render_exists, SetRender, RenderType, RenderInfo, ClientRenderInfo),
-        (occluder, occluder_mut, set_occluder, on_occluder_mut, resort_occluder, occluder_exists, SetOccluder, OccluderType, Occluder, ClientOccluder),
-        (ui_element, ui_element_mut, set_ui_element, on_ui_element, resort_ui_element, ui_element_exists, SetNone, UiElementType, UiElementServer, UiElement)),
+        (occluder, occluder_mut, set_occluder, on_occluder_mut, resort_occluder, occluder_exists, SetOccluder, OccluderType, Occluder, ClientOccluder)),
     (parent, parent_mut, set_parent, on_parent, resort_parent, parent_exists, SetParent, ParentType, Parent),
     (lazy_mix, lazy_mix_mut, set_lazy_mix, on_lazy_mix, resort_lazy_mix, lazy_mix_exists, SetLazyMix, LazyMixType, LazyMix),
     (outlineable, outlineable_mut, set_outlineable, on_outlineable, resort_outlineable, outlineable_exists, SetOutlineable, OutlineableType, Outlineable),

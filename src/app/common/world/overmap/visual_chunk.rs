@@ -14,6 +14,7 @@ use yanyaengine::{
 };
 
 use crate::{
+    debug_config::*,
     client::{
         VisibilityChecker,
         tiles_factory::{
@@ -678,6 +679,11 @@ impl VisualChunk
         height: Option<usize>
     )
     {
+        if DebugConfig::is_enabled(DebugTool::NoSkyOcclusion)
+        {
+            return;
+        }
+
         let start = height.map(|height| height + 1).unwrap_or(0);
         self.vertical_occluders[start..].iter().for_each(|x|
         {

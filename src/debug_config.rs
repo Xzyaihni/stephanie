@@ -30,6 +30,7 @@ pub enum DebugTool
     SuperSpeed,
     PrintDamage,
     NoOcclusion,
+    NoSkyOcclusion,
     NoGravity,
     NoResolve,
     NoJoints,

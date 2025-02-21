@@ -79,12 +79,10 @@ use super::{
     ConnectionsHandler,
     TilesFactory,
     VisibilityChecker,
-    ui_element::UiActionKind,
     world_receiver::WorldReceiver
 };
 
 pub use controls_controller::{Control, ControlState, KeyMapping};
-pub use entity_creator::EntityCreator;
 
 use controls_controller::ControlsController;
 
@@ -93,19 +91,15 @@ use notifications::{Notifications, Notification};
 pub use anatomy_locations::UiAnatomyLocations;
 pub use ui::{
     Ui,
-    UiSpecializedWindow,
-    WindowCreateInfo,
-    WindowError,
-    WindowType
+    WindowCreateInfo
 };
 
-use ui::{NotificationCreateInfo, NotificationSeverity, NotificationKind};
+use ui::{NotificationInfo, NotificationSeverity, NotificationKindInfo};
 
 mod controls_controller;
 
 mod notifications;
 
-mod entity_creator;
 mod anatomy_locations;
 mod ui;
 
@@ -178,13 +172,6 @@ impl ClientEntitiesContainer
         self.entities.handle_message(create_info, message)
     }
 
-    pub fn entity_creator(&mut self) -> EntityCreator
-    {
-        EntityCreator{
-            entities: &mut self.entities
-        }
-    }
-
     pub fn update(
         &mut self,
         world: &World,
@@ -227,8 +214,6 @@ impl ClientEntitiesContainer
     pub fn update_aspect(&mut self, size: Vector2<f32>, aspect: f32)
     {
         self.update_resize(size);
-
-        self.entities.update_ui_aspect(aspect);
     }
 
     pub fn main_player(&self) -> Entity
@@ -262,11 +247,6 @@ impl ClientEntitiesContainer
 
             let render = render.borrow();
             if !render.visible_with(visibility, &transform)
-            {
-                return;
-            }
-
-            if render.z_level() >= ZLevel::lowest_ui()
             {
                 return;
             }
@@ -405,139 +385,6 @@ impl CommonTextures
     }
 }
 
-pub struct UiNotifications
-{
-    ui: Rc<RefCell<Ui>>,
-    pub stamina: Option<WindowType>,
-    pub weapon_cooldown: Option<WindowType>,
-    pub tile_tooltip: Option<WindowType>
-}
-
-impl UiNotifications
-{
-    fn set_notification(
-        notification: &mut Option<WindowType>,
-        entities: &mut ClientEntities,
-        ui: &Rc<RefCell<Ui>>,
-        owner: Entity,
-        lifetime: f32,
-        update: impl FnOnce(&mut ClientEntities, &mut NotificationKind),
-        create: impl FnOnce() -> NotificationCreateInfo
-    )
-    {
-        if let Some(notification) = notification.as_ref().and_then(|x| x.upgrade())
-        {
-            let mut notification = notification.borrow_mut();
-            let notification = notification.as_notification_mut().unwrap();
-
-            notification.lifetime = lifetime;
-            update(entities, &mut notification.kind);
-        } else
-        {
-            let window = WindowCreateInfo::Notification{owner, lifetime, info: create()};
-
-            let mut creator = EntityCreator{entities};
-            let window = Ui::add_window(ui.clone(), &mut creator, window);
-            *notification = Some(window);
-        }
-    }
-
-    fn set_bar(
-        id: &mut Option<WindowType>,
-        entities: &mut ClientEntities,
-        ui: &Rc<RefCell<Ui>>,
-        owner: Entity,
-        lifetime: f32,
-        amount: f32,
-        f: impl FnOnce() -> NotificationCreateInfo
-    )
-    {
-        Self::set_notification(id, entities, ui, owner, lifetime, move |entities, kind|
-        {
-            kind.as_bar_mut().unwrap().set_amount(entities, amount);
-        }, f)
-    }
-
-    fn set_text(
-        id: &mut Option<WindowType>,
-        entities: &mut ClientEntities,
-        ui: &Rc<RefCell<Ui>>,
-        owner: Entity,
-        lifetime: f32,
-        text: String,
-        f: impl FnOnce(String) -> NotificationCreateInfo
-    )
-    {
-        if let Some(window) = id.as_ref().and_then(|x| x.upgrade())
-        {
-            {
-                let mut notification = window.borrow_mut();
-                let notification = notification.as_notification_mut().unwrap();
-
-                if let NotificationKind::Text(x) = &mut notification.kind
-                {
-                    if x.text() == text
-                    {
-                        notification.lifetime = lifetime;
-                        return;
-                    }
-                }
-            }
-
-            let _ = ui.borrow_mut().remove_window_instant(entities, window);
-        } else
-        {
-            let window = WindowCreateInfo::Notification{owner, lifetime, info: f(text)};
-
-            let mut creator = EntityCreator{entities};
-            let window = Ui::add_window(ui.clone(), &mut creator, window);
-            *id = Some(window);
-        }
-    }
-
-    pub fn set_stamina_bar(
-        &mut self,
-        entities: &mut ClientEntities,
-        owner: Entity,
-        lifetime: f32,
-        amount: f32
-    )
-    {
-        Self::set_bar(&mut self.stamina, entities, &self.ui, owner, lifetime, amount, ||
-        {
-            NotificationCreateInfo::Bar{name: "STAMINA".to_owned(), color: [0.367, 0.639, 0.995], amount}
-        })
-    }
-
-    pub fn set_weapon_cooldown_bar(
-        &mut self,
-        entities: &mut ClientEntities,
-        owner: Entity,
-        lifetime: f32,
-        amount: f32
-    )
-    {
-        Self::set_bar(&mut self.weapon_cooldown, entities, &self.ui, owner, lifetime, amount, ||
-        {
-            NotificationCreateInfo::Bar{name: "WEAPON".to_owned(), color: [0.995, 0.784, 0.367], amount}
-        })
-    }
-
-    pub fn set_tile_tooltip_text(
-        &mut self,
-        entities: &mut ClientEntities,
-        owner: Entity,
-        lifetime: f32,
-        text: String
-    )
-    {
-        Self::set_text(&mut self.tile_tooltip, entities, &self.ui, owner, lifetime, text, |text|
-        {
-            NotificationCreateInfo::Text{severity: NotificationSeverity::Normal, text}
-        })
-    }
-}
-
 type DebugVisibility = <DebugConfig as DebugConfigTrait>::DebugVisibility;
 
 pub struct DebugVisibilityState
@@ -649,7 +496,6 @@ pub struct GameState
     pub assets: Arc<Mutex<Assets>>,
     pub object_factory: Rc<ObjectFactory>,
     pub notifications: Notifications,
-    pub ui_notifications: UiNotifications,
     pub entities: ClientEntitiesContainer,
     pub controls: ControlsController,
     pub running: bool,
@@ -794,13 +640,6 @@ impl GameState
             &info.camera.read()
         );
 
-        let ui_notifications = UiNotifications{
-            ui: ui.clone(),
-            stamina: None,
-            weapon_cooldown: None,
-            tile_tooltip: None
-        };
-
         let ui_camera = Camera::new(1.0, -1.0..1.0);
 
         let mut this = Self{
@@ -809,7 +648,6 @@ impl GameState
             assets,
             object_factory: info.object_info.partial.object_factory,
             notifications,
-            ui_notifications,
             entities,
             items_info: info.data_infos.items_info,
             characters_info: info.data_infos.characters_info,
@@ -906,11 +744,6 @@ impl GameState
     pub fn player(&self) -> Entity
     {
         self.entities.main_player()
-    }
-
-    pub fn entity_creator(&mut self) -> EntityCreator
-    {
-        self.entities.entity_creator()
     }
 
     pub fn process_messages(&mut self, create_info: &mut RenderCreateInfo)
@@ -1021,43 +854,6 @@ impl GameState
         self.connections_handler.write().send_message(message);
     }
 
-    pub fn create_popup(&mut self, responses: Vec<UserEvent>)
-    {
-        let popup_position = self.ui_mouse_position();
-
-        let mut creator = EntityCreator{
-            entities: &mut self.entities.entities
-        };
-
-        Ui::add_window(
-            self.ui.clone(),
-            &mut creator,
-            WindowCreateInfo::ActionsList{popup_position, responses}
-        );
-    }
-
-    pub fn close_popup(&mut self)
-    {
-        self.ui.borrow_mut().close_popup(&self.entities.entities);
-    }
-
-    pub fn add_window(&mut self, info: WindowCreateInfo) -> WindowType
-    {
-        let mut creator = EntityCreator{
-            entities: &mut self.entities.entities
-        };
-
-        Ui::add_window(self.ui.clone(), &mut creator, info)
-    }
-
-    pub fn remove_window(
-        &mut self,
-        window: Rc<RefCell<UiSpecializedWindow>>
-    ) -> Result<(), WindowError>
-    {
-        self.ui.borrow_mut().remove_window(&self.entities.entities, window)
-    }
-
     pub fn tile(&self, index: TilePos) -> Option<&Tile>
     {
         self.world.tile(index)
@@ -1109,26 +905,7 @@ impl GameState
         info.update_camera(&self.ui_camera);
         let normal_camera = self.camera.read();
 
-        let entities = &self.entities.entities;
-        self.ui.borrow().in_render_order(|entity|
-        {
-            let is_world = entities.ui_element(entity).map(|x| x.world_position).unwrap_or(false);
-            if is_world
-            {
-                info.update_camera(&normal_camera);
-            }
-
-            let transform = some_or_return!(entities.transform(entity));
-            let mut render = some_or_return!(entities.render_mut(entity));
-
-            render.set_transform(transform.clone());
-            render.update_buffers(info);
-
-            if is_world
-            {
-                info.update_camera(&self.ui_camera);
-            }
-        });
+        self.ui.borrow_mut().update_buffers(info);
 
         self.entities.entities.handle_on_change();
     }
@@ -1161,15 +938,7 @@ impl GameState
 
         info.bind_pipeline(self.shaders.ui);
 
-        let entities = &self.entities.entities;
-        self.ui.borrow().in_render_order(|entity|
-        {
-            let render = some_or_return!(entities.render(entity));
-
-            let outline = UiOutlinedInfo::new(render.mix);
-
-            render.draw(info, outline);
-        });
+        self.ui.borrow().draw(info);
     }
 
     fn visibility_checker(&self) -> VisibilityChecker
@@ -1215,7 +984,7 @@ impl GameState
         self.world.update(dt);
 
         self.ui.borrow_mut().update(
-            &mut self.entities.entity_creator(),
+            &self.entities.entities,
             &self.ui_camera,
             dt
         );
@@ -1235,51 +1004,7 @@ impl GameState
 
     pub fn ui_input(&mut self, event: UiEvent) -> bool
     {
-        let entities = &self.entities.entities;
-
-        let mut elements = Vec::new();
-        self.ui.borrow().in_render_order(|entity| elements.push(entity));
-
-        elements.into_iter().rev().fold(false, |captured, entity|
-        {
-            if !entities.is_visible(entity)
-            {
-                return captured;
-            }
-
-            let transform = some_or_value!(entities.transform(entity), captured);
-            let action = some_or_value!(entities.ui_element_mut(entity), captured).on_input(
-                entities,
-                &transform,
-                &event,
-                captured
-            );
-
-            if let Some(state) = action.set_highlight
-            {
-                if let Some(mut lazy_mix) = entities.lazy_mix_mut(entity)
-                {
-                    lazy_mix.target.amount = if state { 0.4 } else { 0.0 };
-                }
-            }
-
-            if let Some(kind) = action.action
-            {
-                match kind
-                {
-                    UiActionKind::Close =>
-                    {
-                        let mut ui = self.ui.borrow_mut();
-                        if let Some(window) = ui.find_window_with_body(entity).and_then(|x| x.upgrade())
-                        {
-                            let _ = ui.remove_window(entities, window);
-                        }
-                    }
-                }
-            }
-
-            action.captured
-        })
+        false
     }
 
     pub fn update(
@@ -1393,8 +1118,6 @@ impl GameState
         {
             self.world.rescale(size);
         }
-
-        self.ui.borrow().update_resize(&self.entities.entities, self.ui_camera.size());
 
         self.entities.update_aspect(size, aspect);
     }

@@ -292,20 +292,14 @@ pub enum ZLevel
     Head,
     Hair,
     Hat,
-    Door,
-    Ui
+    Door
 }
 
 impl ZLevel
 {
-    pub fn highest_non_ui() -> Self
+    pub fn highest() -> Self
     {
-        Self::lowest_ui().prev().unwrap()
-    }
-
-    pub fn lowest_ui() -> Self
-    {
-        Self::Ui
+        Self::Door
     }
 
     pub fn prev(self) -> Option<Self>

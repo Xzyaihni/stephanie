@@ -21,7 +21,6 @@ use crate::{
     common::{
         some_or_value,
         some_or_return,
-        render_info::*,
         collider::*,
         character::*,
         SpecialTile,
@@ -38,9 +37,7 @@ use crate::{
 
 use super::game_state::{
     GameState,
-    WindowType,
     WindowCreateInfo,
-    EntityCreator,
     InventoryWhich,
     UserEvent,
     ControlState,
@@ -63,8 +60,6 @@ impl Game
             let mut game_state = game_state.borrow_mut();
             let player = game_state.player();
 
-            let console_entity = game_state.ui.borrow().console();
-
             let entities = game_state.entities_mut();
             let mouse_entity = entities.push_eager(true, EntityInfo{
                 transform: Some(Transform{
@@ -84,8 +79,7 @@ impl Game
                 camera: game_state.entities.camera_entity,
                 follow: game_state.entities.follow_entity,
                 entity: player,
-                mouse_entity,
-                console_entity
+                mouse_entity
             })
         };
 
@@ -889,13 +883,11 @@ struct PlayerCreateInfo
     pub camera: Entity,
     pub follow: Entity,
     pub entity: Entity,
-    pub mouse_entity: Entity,
-    pub console_entity: Entity
+    pub mouse_entity: Entity
 }
 
 struct ConsoleInfo
 {
-    entity: Entity,
     contents: Option<String>,
     primitives: Option<Rc<Primitives>>,
     standard_definitions: usize,
@@ -904,10 +896,9 @@ struct ConsoleInfo
 
 impl ConsoleInfo
 {
-    pub fn new(info: &PlayerCreateInfo) -> Self
+    pub fn new() -> Self
     {
         Self{
-            entity: info.console_entity,
             contents: None,
             primitives: None,
             standard_definitions: 0,
@@ -918,8 +909,8 @@ impl ConsoleInfo
 
 struct InventoriesInfo
 {
-    player: Option<WindowType>,
-    other: Option<WindowType>
+    player: Option<()>,
+    other: Option<()>
 }
 
 impl InventoriesInfo
@@ -952,7 +943,7 @@ impl PlayerInfo
 {
     pub fn new(info: PlayerCreateInfo) -> Self
     {
-        let console = ConsoleInfo::new(&info);
+        let console = ConsoleInfo::new();
 
         Self{
             camera: info.camera,
@@ -1115,7 +1106,7 @@ impl<'a> PlayerContainer<'a>
                     if entities.within_interactable_distance(self.info.entity, mouse_touched)
                         && entities.is_lootable(mouse_touched)
                     {
-                        if let Some(previous) = self.info.inventories.other.take()
+                        /*if let Some(previous) = self.info.inventories.other.take()
                             .and_then(|x| x.upgrade())
                         {
                             let _ = self.game_state.remove_window(previous);
@@ -1138,7 +1129,7 @@ impl<'a> PlayerContainer<'a>
                             })
                         });
 
-                        self.info.inventories.other = Some(id);
+                        self.info.inventories.other = Some(id);*/todo!();
 
                         return;
                     }
@@ -1172,28 +1163,15 @@ impl<'a> PlayerContainer<'a>
 
     fn update_console(&mut self)
     {
-        self.game_state.entities()
-            .render_mut(self.info.console.entity)
-            .unwrap()
-            .visible = self.info.console.contents.is_some();
-
-        let text = self.info.console.contents.clone().unwrap_or_default();
-
-        let object = RenderObjectKind::Text{
-            text,
-            font_size: 30,
-            font: FontStyle::Sans,
-            align: TextAlign::centered()
-        }.into();
-
-        self.game_state.entities().set_deferred_render_object(self.info.console.entity, object);
+        self.game_state.ui.borrow_mut().set_console(self.info.console.contents.clone());
     }
 
     fn handle_user_event(&mut self, event: UserEvent)
     {
         let player = self.info.entity;
 
-        self.game_state.close_popup();
+        // self.game_state.close_popup();
+        todo!();
         match event
         {
             UserEvent::UiAction(action) =>
@@ -1205,10 +1183,10 @@ impl<'a> PlayerContainer<'a>
                 if let Some(item) = self.get_inventory(which)
                     .and_then(|inventory| inventory.get(item).cloned())
                 {
-                    self.game_state.add_window(WindowCreateInfo::ItemInfo{
+                    /*self.game_state.add_window(WindowCreateInfo::ItemInfo{
                         spawn_position: self.game_state.ui_mouse_position(),
                         item
-                    });
+                    });*/todo!()
                 } else
                 {
                     eprintln!("tried to show info for an item that doesnt exist");
@@ -1278,7 +1256,7 @@ impl<'a> PlayerContainer<'a>
 
     fn toggle_inventory(&mut self)
     {
-        if self.info.inventories.player.take().and_then(|window|
+        /*if self.info.inventories.player.take().and_then(|window|
         {
             window.upgrade().map(|window| self.game_state.remove_window(window).is_ok())
         }).is_none()
@@ -1300,7 +1278,8 @@ impl<'a> PlayerContainer<'a>
             });
 
             self.info.inventories.player = Some(window);
-        }
+        }*/
+        todo!()
     }
 
     fn update_inventory_inner(
@@ -1315,9 +1294,7 @@ impl<'a> PlayerContainer<'a>
             InventoryWhich::Player => info.entity
         };
 
-        let entity_creator = EntityCreator{entities};
-
-        if let Some(window) = match which
+        /*if let Some(window) = match which
         {
             InventoryWhich::Player => &info.inventories.player,
             InventoryWhich::Other => &info.inventories.other
@@ -1327,7 +1304,7 @@ impl<'a> PlayerContainer<'a>
             let inventory = window.as_inventory_mut().unwrap();
 
             inventory.full_update(&entity_creator, entity);
-        }
+        }*/todo!()
     }
 
     pub fn this_update(&mut self, dt: f32)
@@ -1382,12 +1359,8 @@ impl<'a> PlayerContainer<'a>
 
                 if !was_none
                 {
-                    self.game_state.ui_notifications.set_stamina_bar(
-                        entities,
-                        self.info.entity,
-                        delay,
-                        current_stamina.unwrap_or(0.0)
-                    );
+                    let stamina = current_stamina.unwrap_or(0.0);
+                    dbg!("show stamina here");
                 }
             }
 
@@ -1411,12 +1384,7 @@ impl<'a> PlayerContainer<'a>
                     0.0
                 };
 
-                self.game_state.ui_notifications.set_weapon_cooldown_bar(
-                    entities,
-                    self.info.entity,
-                    delay,
-                    fraction
-                );
+                dbg!("show weapon cooldown here");
             }
         }
 
@@ -1445,10 +1413,12 @@ impl<'a> PlayerContainer<'a>
         {
             if !self.game_state.entities().within_interactable_distance(self.info.entity, other_entity)
             {
-                if let Some(window) = self.info.inventories.other.take().and_then(|x| x.upgrade())
+                /*if let Some(window) = self.info.inventories.other.take().and_then(|x| x.upgrade())
                 {
-                    let _ = self.game_state.remove_window(window);
-                }
+                    // let _ = self.game_state.remove_window(window);
+                    todo!()
+                }*/
+                todo!()
             }
         }
 
@@ -1545,12 +1515,6 @@ impl<'a> PlayerContainer<'a>
 
     fn show_tile_tooltip(&mut self, text: String)
     {
-        self.game_state.ui_notifications.set_tile_tooltip_text(
-            &mut self.game_state.entities.entities,
-            self.info.entity,
-            0.1,
-            text
-        );
     }
 
     fn colliding_info(&self, f: impl FnOnce(CollidingInfo))
