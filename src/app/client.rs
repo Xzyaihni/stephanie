@@ -41,22 +41,19 @@ use crate::{
 
 pub use visibility_checker::VisibilityChecker;
 
-pub use ui_element::{UiEvent, MouseEvent, UiElement};
-
 pub use game_state::{
     Ui,
     Control,
     ControlState,
     KeyMapping,
-    CommonTextures
+    CommonTextures,
+    ui::element::{UiEvent, MouseEvent, UiElement, UiElementShapeMask}
 };
 
 pub use connections_handler::ConnectionsHandler;
 pub use tiles_factory::{TilesFactory, ChunkInfo};
 
 pub mod visibility_checker;
-
-pub mod ui_element;
 
 pub mod game_state;
 pub mod game;
@@ -110,7 +107,7 @@ impl Client
         {
             Ok(_) => (),
             Err(err) if err.kind() == io::ErrorKind::NotFound => (),
-            Err(err) => 
+            Err(err) =>
             {
                 eprintln!("error removing log file: {err}");
             }

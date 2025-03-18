@@ -1,5 +1,12 @@
 (define list (lambda xs (reverse xs)))
 
+(define (list-tail xs n)
+    (if (= n 0)
+	xs
+	(list-tail (cdr xs) (- n 1))))
+
+(define (list-ref xs n) (car (list-tail xs n)))
+
 (define (counter x)
     (define (counter-inner current)
         (if (< current x)
@@ -14,10 +21,10 @@
 
 (define (reverse xs) (fold cons '() xs))
 
-(define (map f lst)
-    (if (null? lst)
+(define (map f xs)
+    (if (null? xs)
         '()
-        (cons (f (car lst)) (map f (cdr lst)))))
+        (cons (f (car xs)) (map f (cdr xs)))))
 
 (define (zip as bs)
     (if (or (null? as) (null? bs))
@@ -31,24 +38,24 @@
             (f (car xs))
             (for-each f (cdr xs)))))
 
-(define (filter p lst)
+(define (filter p xs)
     (fold
         (lambda (x acc)
             (if (p x)
                 (cons x acc)
                 acc))
         '()
-        lst))
+        xs))
 
-(define (drop lst n)
-    (if (or (= n 0) (null? lst))
-        lst
-        (drop (cdr lst) (- n 1))))
+(define (drop xs n)
+    (if (or (= n 0) (null? xs))
+        xs
+        (drop (cdr xs) (- n 1))))
 
-(define (take lst n)
-    (if (or (= n 0) (null? lst))
+(define (take xs n)
+    (if (or (= n 0) (null? xs))
         '()
-        (cons (car lst) (take (cdr lst) (- n 1)))))
+        (cons (car xs) (take (cdr xs) (- n 1)))))
 
 (define (replicate n x)
     (if (= n 0)

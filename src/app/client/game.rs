@@ -45,6 +45,26 @@ use super::game_state::{
 };
 
 
+enum ConsoleOutput
+{
+    Quiet,
+    Normal
+}
+
+impl ConsoleOutput
+{
+    fn is_quiet(&self) -> bool
+    {
+        if let Self::Quiet = self
+        {
+            true
+        } else
+        {
+            false
+        }
+    }
+}
+
 pub struct Game
 {
     game_state: Weak<RefCell<GameState>>,
@@ -103,7 +123,7 @@ impl Game
             infos.console.past_commands = standard_code;
         }
 
-        this.console_command(String::new());
+        this.console_command(String::new(), ConsoleOutput::Quiet);
 
         this
     }
@@ -257,7 +277,7 @@ impl Game
                         info.console.contents.take().unwrap()
                     };
 
-                    self.console_command(contents);
+                    self.console_command(contents, ConsoleOutput::Normal);
 
                     self.player_container(|mut x| x.update_console());
 
@@ -825,7 +845,7 @@ impl Game
         Rc::new(primitives)
     }
 
-    fn console_command(&mut self, command: String)
+    fn console_command(&mut self, command: String, output: ConsoleOutput)
     {
         let mut infos = self.info.borrow_mut();
 
@@ -857,7 +877,10 @@ impl Game
             }
         };
 
-        eprintln!("ran command {command}, result: {result}");
+        if !output.is_quiet()
+        {
+            eprintln!("ran command {command}, result: {result}");
+        }
 
         let defined_this = result.into_memory().defined_values().unwrap().len();
         let changed_environment = defined_this > infos.console.standard_definitions;

@@ -48,7 +48,7 @@ pub struct OutlinedInfo
     keep_transparency: u32
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct MixColor
 {
     pub color: [f32; 3],
@@ -379,7 +379,7 @@ pub struct ClientRenderObject
 
 impl ClientRenderObject
 {
-    fn set_transform(&mut self, transform: Transform)
+    pub fn set_transform(&mut self, transform: Transform)
     {
         match &mut self.kind
         {
@@ -401,7 +401,7 @@ impl ClientRenderObject
         }
     }
 
-    fn transform(&self) -> Option<&Transform>
+    pub fn transform(&self) -> Option<&Transform>
     {
         match &self.kind
         {
@@ -410,7 +410,7 @@ impl ClientRenderObject
         }
     }
 
-    fn update_buffers(&mut self, info: &mut UpdateBuffersInfo)
+    pub fn update_buffers(&mut self, info: &mut UpdateBuffersInfo)
     {
         match &mut self.kind
         {
@@ -419,7 +419,7 @@ impl ClientRenderObject
         }
     }
 
-    fn draw(&self, info: &mut DrawInfo)
+    pub fn draw(&self, info: &mut DrawInfo)
     {
         match &self.kind
         {

@@ -101,7 +101,7 @@ mod controls_controller;
 mod notifications;
 
 mod anatomy_locations;
-mod ui;
+pub mod ui;
 
 
 const DEFAULT_ZOOM: f32 = 3.0;
@@ -606,9 +606,8 @@ impl GameState
 
         let user_receiver = UiReceiver::new();
 
-        let assets = info.object_info.partial.assets;
+        let assets = info.object_info.partial.assets.clone();
 
-        let builder_wrapper = &mut info.object_info.partial.builder_wrapper;
         let anatomy_locations = {
             let base_image = image::open("textures/special/anatomy_areas.png")
                 .expect("anatomy_areas.png must exist");
@@ -617,7 +616,7 @@ impl GameState
 
             let part_creator = PartCreator{
                 assets: &mut assets,
-                resource_uploader: builder_wrapper.resource_uploader(),
+                resource_uploader: info.object_info.partial.builder_wrapper.resource_uploader(),
                 shader: info.shaders.ui
             };
 
@@ -627,7 +626,7 @@ impl GameState
         let ui_mouse_entity = entities.ui_mouse_entity;
         let ui = Ui::new(
             info.data_infos.items_info.clone(),
-            builder_wrapper.fonts().clone(),
+            &info.object_info,
             &mut entities.entities,
             ui_mouse_entity,
             anatomy_locations,
@@ -902,10 +901,21 @@ impl GameState
 
         self.entities.update_buffers(&visibility, info, &caster);
 
-        info.update_camera(&self.ui_camera);
-        let normal_camera = self.camera.read();
+        {
+            info.update_camera(&self.ui_camera);
 
-        self.ui.borrow_mut().update_buffers(info);
+            let mut create_info = RenderCreateInfo{
+                location: UniformLocation{set: 0, binding: 0},
+                shader: self.shaders.ui,
+                square,
+                object_info: info
+            };
+
+            let mut ui = self.ui.borrow_mut();
+
+            ui.create_renders(&mut create_info);
+            ui.update_buffers(info);
+        }
 
         self.entities.entities.handle_on_change();
     }

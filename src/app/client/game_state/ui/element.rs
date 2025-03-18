@@ -1,7 +1,5 @@
 use std::fmt::{self, Debug};
 
-use strum::AsRefStr;
-
 use nalgebra::{Vector2, Vector3};
 
 use yanyaengine::Transform;
@@ -257,16 +255,56 @@ impl UiElementShape
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum UiTexture
 {
-    Solid
+    Solid,
+    Custom(String)
 }
 
-#[derive(Debug)]
+impl UiTexture
+{
+    pub fn name(&self) -> String
+    {
+        match self
+        {
+            Self::Solid => "ui/solid.png".to_owned(),
+            Self::Custom(x) => x.clone()
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum UiSizeKind
+{
+    ParentScale(f64)
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct UiSize
+{
+    pub minimum_size: Option<UiSizeKind>,
+    pub kind: UiSizeKind
+}
+
+impl Default for UiSize
+{
+    fn default() -> Self
+    {
+        Self{
+            minimum_size: None,
+            kind: UiSizeKind::ParentScale(1.0)
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct UiElement
 {
-    pub texture: UiTexture
+    pub texture: UiTexture,
+    pub mix: Option<MixColor>,
+    pub width: UiSize,
+    pub height: UiSize
 }
 
 impl Default for UiElement
@@ -274,7 +312,10 @@ impl Default for UiElement
     fn default() -> Self
     {
         Self{
-            texture: UiTexture::Solid
+            texture: UiTexture::Solid,
+            mix: None,
+            width: UiSize::default(),
+            height: UiSize::default()
         }
     }
 }

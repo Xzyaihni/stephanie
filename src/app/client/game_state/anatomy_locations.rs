@@ -8,7 +8,7 @@ use yanyaengine::TextureId;
 
 use super::PartCreator;
 use crate::{
-    client::ui_element::*,
+    client::UiElementShapeMask,
     common::{anatomy::HumanPartId, Side1d}
 };
 

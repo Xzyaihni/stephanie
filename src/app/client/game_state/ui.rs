@@ -12,7 +12,7 @@ use yanyaengine::{Transform, FontsContainer, TextInfo, camera::Camera, game_obje
 use crate::{
     LONGEST_FRAME,
     client::{
-        ui_element::*,
+        RenderCreateInfo,
         game_state::{UiAnatomyLocations, GameState, UserEvent, UiReceiver}
     },
     common::{
@@ -38,6 +38,10 @@ use crate::{
     }
 };
 
+use element::*;
+use controller::*;
+
+pub mod element;
 mod controller;
 
 
@@ -62,7 +66,17 @@ const DEFAULT_COLOR: [f32; 3] = [0.165, 0.161, 0.192];
 
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-struct UiWindowId(usize);
+enum UiId
+{
+    Screen,
+    ConsoleBody,
+    ConsoleText
+}
+
+impl UiIdable for UiId
+{
+    fn screen() -> Self { Self::Screen }
+}
 
 pub enum NotificationSeverity
 {
@@ -111,27 +125,31 @@ pub struct Ui
     mouse: Entity,
     console_contents: Option<String>,
     anatomy_locations: UiAnatomyLocations,
-    user_receiver: Rc<RefCell<UiReceiver>>
+    user_receiver: Rc<RefCell<UiReceiver>>,
+    controller: Controller<UiId>
 }
 
 impl Ui
 {
     pub fn new(
         items_info: Arc<ItemsInfo>,
-        fonts: Rc<FontsContainer>,
+        info: &ObjectCreateInfo,
         entities: &mut ClientEntities,
         mouse: Entity,
         anatomy_locations: UiAnatomyLocations,
         user_receiver: Rc<RefCell<UiReceiver>>
     ) -> Rc<RefCell<Self>>
     {
+        let controller = Controller::new();
+
         let this = Self{
             items_info,
-            fonts,
+            fonts: info.partial.builder_wrapper.fonts().clone(),
             mouse,
             console_contents: None,
             anatomy_locations,
-            user_receiver
+            user_receiver,
+            controller
         };
 
         let this = Rc::new(RefCell::new(this));
@@ -168,15 +186,6 @@ impl Ui
         this
     }
 
-    pub fn create_window<'a, 'b>(
-        this: &Rc<RefCell<Self>>,
-        window: WindowCreateInfo,
-        id: UiWindowId
-    )
-    {
-        todo!()
-    }
-
     pub fn set_console(&mut self, contents: Option<String>)
     {
         self.console_contents = contents;
@@ -203,6 +212,38 @@ impl Ui
         dt: f32
     )
     {
+        self.controller.begin();
+
+        let body = self.controller.update(UiId::ConsoleBody, UiElement{
+            mix: Some(MixColor{color: [1.0, 0.0, 0.0], amount: 0.8, keep_transparency: false}),
+            width: UiSize{
+                kind: UiSizeKind::ParentScale(1.0),
+                ..Default::default()
+            },
+            height: UiSize{
+                minimum_size: Some(UiSizeKind::ParentScale(0.1)),
+                kind: UiSizeKind::ParentScale(0.5),
+                ..Default::default()
+            },
+            ..Default::default()
+        });
+
+        body.update(UiId::ConsoleText, UiElement{
+            mix: Some(MixColor{color: [0.0, 0.0, 1.0], amount: 0.8, keep_transparency: false}),
+            width: UiSize{
+                kind: UiSizeKind::ParentScale(0.8),
+                ..Default::default()
+            },
+            ..Default::default()
+        });
+    }
+
+    pub fn create_renders(
+        &mut self,
+        create_info: &mut RenderCreateInfo
+    )
+    {
+        self.controller.create_renders(create_info);
     }
 
     pub fn update_buffers(
@@ -210,6 +251,7 @@ impl Ui
         info: &mut UpdateBuffersInfo
     )
     {
+        self.controller.update_buffers(info);
     }
 
     pub fn draw(
@@ -217,5 +259,6 @@ impl Ui
         info: &mut DrawInfo
     )
     {
+        self.controller.draw(info);
     }
 }

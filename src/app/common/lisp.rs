@@ -1650,7 +1650,7 @@ impl Lisp
 
         eprintln!("{line}");
 
-        let padding = iter::repeat(' ').take(position.character - 1).collect::<String>();
+        let padding = iter::repeat(' ').take(position.character.saturating_sub(1)).collect::<String>();
         eprintln!("{padding}^");
     }
 }
