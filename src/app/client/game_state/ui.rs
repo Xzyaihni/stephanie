@@ -214,28 +214,31 @@ impl Ui
     {
         self.controller.begin();
 
-        let body = self.controller.update(UiId::ConsoleBody, UiElement{
-            mix: Some(MixColor{color: [1.0, 0.0, 0.0], amount: 0.8, keep_transparency: false}),
-            width: UiSize{
-                kind: UiSizeKind::ParentScale(1.0),
+        if let Some(text) = self.console_contents.as_ref()
+        {
+            let body = self.controller.update(UiId::ConsoleBody, UiElement{
+                mix: Some(MixColor{color: [1.0, 0.0, 0.0], amount: 0.8, keep_transparency: false}),
+                width: UiSize{
+                    kind: UiSizeKind::ParentScale(1.0),
+                    ..Default::default()
+                },
+                height: UiSize{
+                    minimum_size: Some(UiSizeKind::ParentScale(0.1)),
+                    kind: UiSizeKind::ParentScale(0.5),
+                    ..Default::default()
+                },
                 ..Default::default()
-            },
-            height: UiSize{
-                minimum_size: Some(UiSizeKind::ParentScale(0.1)),
-                kind: UiSizeKind::ParentScale(0.5),
-                ..Default::default()
-            },
-            ..Default::default()
-        });
+            });
 
-        body.update(UiId::ConsoleText, UiElement{
-            mix: Some(MixColor{color: [0.0, 0.0, 1.0], amount: 0.8, keep_transparency: false}),
-            width: UiSize{
-                kind: UiSizeKind::ParentScale(0.8),
+            body.update(UiId::ConsoleText, UiElement{
+                mix: Some(MixColor{color: [0.0, 0.0, 1.0], amount: 0.8, keep_transparency: false}),
+                width: UiSize{
+                    kind: UiSizeKind::ParentScale(0.8),
+                    ..Default::default()
+                },
                 ..Default::default()
-            },
-            ..Default::default()
-        });
+            });
+        }
     }
 
     pub fn create_renders(

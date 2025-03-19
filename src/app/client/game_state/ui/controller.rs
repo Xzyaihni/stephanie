@@ -4,6 +4,8 @@ use std::{
     hash::Hash
 };
 
+use nalgebra::Vector3;
+
 use yanyaengine::{
     Transform,
     game_object::*
@@ -32,13 +34,25 @@ impl UiElementCached
 {
     fn from_element(
         create_info: &mut RenderCreateInfo,
+        deferred: UiDeferredInfo,
         element: &UiElement
     ) -> Self
     {
-        let transform = Transform::default();
-        let object = RenderObject{
-            kind: RenderObjectKind::Texture{name: element.texture.name()}
-        }.into_client(transform, create_info);
+        let transform = Transform{
+            scale: Vector3::new(
+                deferred.width.unwrap(),
+                deferred.height.unwrap(),
+                1.0
+            ),
+            ..Default::default()
+        };
+
+        let object = element.texture.name().and_then(|name|
+        {
+            RenderObject{
+                kind: RenderObjectKind::Texture{name}
+            }.into_client(transform, create_info)
+        });
 
         Self{
             object
@@ -46,10 +60,62 @@ impl UiElementCached
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct UiDeferredInfo
+{
+    width: Option<f32>,
+    height: Option<f32>
+}
+
+impl Default for UiDeferredInfo
+{
+    fn default() -> Self
+    {
+        Self{
+            width: None,
+            height: None
+        }
+    }
+}
+
+impl UiDeferredInfo
+{
+    fn screen() -> Self
+    {
+        Self{
+            width: Some(1.0),
+            height: Some(1.0)
+        }
+    }
+
+    fn resolve(&mut self, element: &UiElement, parent: &Self)
+    {
+        if let Some(width) = parent.width
+        {
+            self.width = Some(element.width.resolve(SizeResolveInfo{
+                parent: width
+            }));
+        }
+
+        if let Some(height) = parent.height
+        {
+            self.height = Some(element.height.resolve(SizeResolveInfo{
+                parent: height
+            }));
+        }
+    }
+
+    fn resolved(&self) -> bool
+    {
+        self.width.is_some() && self.height.is_some()
+    }
+}
+
 #[derive(Debug)]
 pub struct TreeElement<Id>
 {
     element: UiElement,
+    deferred: UiDeferredInfo,
     children: Vec<(Id, Self)>
 }
 
@@ -59,15 +125,21 @@ impl<Id> TreeElement<Id>
     {
         Self{
             element,
+            deferred: UiDeferredInfo::default(),
             children: Vec::new()
         }
     }
 
     fn screen() -> Self
     {
-        Self::new(UiElement{
-            ..Default::default()
-        })
+        Self{
+            element: UiElement{
+                texture: UiTexture::None,
+                ..Default::default()
+            },
+            deferred: UiDeferredInfo::screen(),
+            children: Vec::new()
+        }
     }
 
     pub fn update(&mut self, id: Id, element: UiElement) -> &mut Self
@@ -78,14 +150,33 @@ impl<Id> TreeElement<Id>
         &mut self.children[index].1
     }
 
-    fn for_each(self, id: Id, mut f: impl FnMut(Id, UiElement))
+    pub fn resolve_backward(&mut self)
+    {
+    }
+
+    pub fn resolve_forward(&mut self, parent: &UiDeferredInfo)
+    {
+        if !self.deferred.resolved()
+        {
+            self.deferred.resolve(&self.element, parent);
+        }
+
+        self.children.iter_mut().for_each(|(_, x)| x.resolve_forward(&self.deferred));
+    }
+
+    pub fn resolved(&self) -> bool
+    {
+        self.deferred.resolved() && self.children.iter().all(|(_, x)| x.resolved())
+    }
+
+    fn for_each(self, id: Id, mut f: impl FnMut(Id, UiElement, UiDeferredInfo))
     {
         self.for_each_inner(id, &mut f)
     }
 
-    fn for_each_inner(self, id: Id, f: &mut impl FnMut(Id, UiElement))
+    fn for_each_inner(self, id: Id, f: &mut impl FnMut(Id, UiElement, UiDeferredInfo))
     {
-        f(id, self.element);
+        f(id, self.element, self.deferred);
         self.children.into_iter().for_each(|(id, child)| child.for_each_inner(id, f));
     }
 }
@@ -94,7 +185,7 @@ impl<Id> TreeElement<Id>
 pub struct Controller<Id>
 {
     order: Vec<Id>,
-    created: Vec<(Id, UiElement)>,
+    created: Vec<(Id, UiElement, UiDeferredInfo)>,
     elements: HashMap<Id, (UiElement, UiElementCached)>,
     root: TreeElement<Id>
 }
@@ -125,7 +216,26 @@ impl<Id: Hash + Eq + Clone + UiIdable> Controller<Id>
 
     fn prepare(&mut self)
     {
-        mem::replace(&mut self.root, TreeElement::screen()).for_each(Id::screen(), |id, element|
+        let empty = UiDeferredInfo::default();
+
+        const LIMIT: usize = 1000;
+        for i in 0..=LIMIT
+        {
+            self.root.resolve_backward();
+            self.root.resolve_forward(&empty);
+
+            if self.root.resolved()
+            {
+                break;
+            }
+
+            if i == LIMIT
+            {
+                panic!("couldnt resolve all deferred infos");
+            }
+        }
+
+        mem::replace(&mut self.root, TreeElement::screen()).for_each(Id::screen(), |id, element, deferred|
         {
             self.order.push(id.clone());
 
@@ -137,7 +247,7 @@ impl<Id: Hash + Eq + Clone + UiIdable> Controller<Id>
                 }
             }
 
-            self.created.push((id, element));
+            self.created.push((id, element, deferred));
         });
     }
 
@@ -148,9 +258,9 @@ impl<Id: Hash + Eq + Clone + UiIdable> Controller<Id>
     {
         self.prepare();
 
-        mem::take(&mut self.created).into_iter().for_each(|(id, element)|
+        mem::take(&mut self.created).into_iter().for_each(|(id, element, deferred)|
         {
-            let element_cached = UiElementCached::from_element(create_info, &element);
+            let element_cached = UiElementCached::from_element(create_info, deferred, &element);
             if let Some((old_element, old_element_cached)) = self.elements.get_mut(&id)
             {
                 // do fancy ops here later

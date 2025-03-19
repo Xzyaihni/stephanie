@@ -258,26 +258,45 @@ impl UiElementShape
 #[derive(Debug, Clone, PartialEq)]
 pub enum UiTexture
 {
+    None,
     Solid,
     Custom(String)
 }
 
 impl UiTexture
 {
-    pub fn name(&self) -> String
+    pub fn name(&self) -> Option<String>
     {
         match self
         {
-            Self::Solid => "ui/solid.png".to_owned(),
-            Self::Custom(x) => x.clone()
+            Self::None => None,
+            Self::Solid => Some("ui/solid.png".to_owned()),
+            Self::Custom(x) => Some(x.clone())
         }
     }
+}
+
+#[derive(Debug, Clone)]
+pub struct SizeResolveInfo
+{
+    pub parent: f32
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum UiSizeKind
 {
-    ParentScale(f64)
+    ParentScale(f32)
+}
+
+impl UiSizeKind
+{
+    pub fn resolve(&self, info: SizeResolveInfo) -> f32
+    {
+        match self
+        {
+            Self::ParentScale(fraction) => info.parent * fraction
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -294,6 +313,21 @@ impl Default for UiSize
         Self{
             minimum_size: None,
             kind: UiSizeKind::ParentScale(1.0)
+        }
+    }
+}
+
+impl UiSize
+{
+    pub fn resolve(&self, info: SizeResolveInfo) -> f32
+    {
+        let size = self.kind.resolve(info.clone());
+        if let Some(minimum) = self.minimum_size.as_ref().map(|x| x.resolve(info))
+        {
+            size.min(minimum)
+        } else
+        {
+            size
         }
     }
 }
