@@ -416,7 +416,7 @@ impl EaseOut for f32
     }
 }
 
-impl EaseOut for [f32; 3]
+impl<const N: usize> EaseOut for [f32; N]
 {
     fn ease_out(&self, target: Self, decay: f32, dt: f32) -> Self
     {
@@ -614,7 +614,7 @@ pub fn direction_arrow_info(
                     name: "arrow.png".to_owned()
                 }.into()),
                 z_level: ZLevel::Door,
-                mix: Some(MixColor{color, amount: 1.0, keep_transparency: true}),
+                mix: Some(MixColor{color: [color[0], color[1], color[2], 1.0], amount: 1.0, keep_transparency: true}),
                 aspect: Aspect::KeepMax,
                 ..Default::default()
             }),

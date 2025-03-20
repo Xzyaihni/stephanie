@@ -62,7 +62,8 @@ const ANIMATION_SCALE: Vector3<f32> = Vector3::new(4.0, 0.0, 1.0);
 const TOOLTIP_LIFETIME: f32 = 0.1;
 const CLOSED_LIFETIME: f32 = 1.0;
 
-const DEFAULT_COLOR: [f32; 3] = [0.165, 0.161, 0.192];
+const BACKGROUND_COLOR: [f32; 4] = [0.165, 0.161, 0.192, 0.5];
+const TEXT_COLOR: [f32; 4] = [1.0, 1.0, 1.0, 1.0];
 
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -217,9 +218,9 @@ impl Ui
         if let Some(text) = self.console_contents.as_ref()
         {
             let body = self.controller.update(UiId::ConsoleBody, UiElement{
-                mix: Some(MixColor{color: [1.0, 0.0, 0.0], amount: 0.8, keep_transparency: false}),
+                mix: Some(MixColor{color: BACKGROUND_COLOR, amount: 0.8, keep_transparency: false}),
                 width: UiSize{
-                    kind: UiSizeKind::ParentScale(1.0),
+                    kind: UiSizeKind::ParentScale(0.9),
                     ..Default::default()
                 },
                 height: UiSize{
@@ -231,7 +232,7 @@ impl Ui
             });
 
             body.update(UiId::ConsoleText, UiElement{
-                mix: Some(MixColor{color: [0.0, 0.0, 1.0], amount: 0.8, keep_transparency: false}),
+                mix: Some(MixColor{color: TEXT_COLOR, amount: 0.8, keep_transparency: false}),
                 width: UiSize{
                     kind: UiSizeKind::ParentScale(0.8),
                     ..Default::default()

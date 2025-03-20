@@ -17,10 +17,10 @@ impl LazyMix
 {
     pub fn ui() -> Self
     {
-        Self::ui_color([1.0; 3])
+        Self::ui_color([1.0; 4])
     }
 
-    pub fn ui_color(color: [f32; 3]) -> Self
+    pub fn ui_color(color: [f32; 4]) -> Self
     {
         Self{
             decay: 16.0,

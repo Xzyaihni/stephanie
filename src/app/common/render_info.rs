@@ -41,7 +41,7 @@ use crate::{
 #[derive(BufferContents)]
 pub struct OutlinedInfo
 {
-    other_color: [f32; 3],
+    other_color: [f32; 4],
     other_mix: f32,
     animation: f32,
     outlined: f32,
@@ -51,14 +51,14 @@ pub struct OutlinedInfo
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct MixColor
 {
-    pub color: [f32; 3],
+    pub color: [f32; 4],
     pub amount: f32,
     pub keep_transparency: bool
 }
 
 struct RawMixColor
 {
-    other_color: [f32; 3],
+    other_color: [f32; 4],
     other_mix: f32,
     keep_transparency: u32
 }
@@ -77,7 +77,7 @@ impl From<Option<MixColor>> for RawMixColor
         } else
         {
             Self{
-                other_color: [0.0; 3],
+                other_color: [0.0; 4],
                 other_mix: 0.0,
                 keep_transparency: 1
             }
@@ -109,7 +109,7 @@ impl OutlinedInfo
 #[derive(BufferContents)]
 pub struct UiOutlinedInfo
 {
-    other_color: [f32; 3],
+    other_color: [f32; 4],
     other_mix: f32,
     keep_transparency: u32
 }

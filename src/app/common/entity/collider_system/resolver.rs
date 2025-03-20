@@ -771,10 +771,10 @@ impl ContactResolver
     {
         let color = if contact.b.is_some()
         {
-            [0.0, 1.0, 0.0]
+            [0.0, 1.0, 0.0, 1.0]
         } else
         {
-            [1.0, 0.0, 0.0]
+            [1.0, 0.0, 0.0, 1.0]
         };
 
         entities.push(true, EntityInfo{
@@ -795,7 +795,7 @@ impl ContactResolver
             ..Default::default()
         });
 
-        if let Some(info) = direction_arrow_info(contact.point, *contact.normal, 0.05, color)
+        if let Some(info) = direction_arrow_info(contact.point, *contact.normal, 0.05, [color[0], color[1], color[2]])
         {
             entities.push(true, info);
         }

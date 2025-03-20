@@ -324,7 +324,7 @@ impl UiSize
         let size = self.kind.resolve(info.clone());
         if let Some(minimum) = self.minimum_size.as_ref().map(|x| x.resolve(info))
         {
-            size.min(minimum)
+            size.max(minimum)
         } else
         {
             size

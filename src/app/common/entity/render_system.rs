@@ -32,10 +32,10 @@ pub fn update_buffers(
                 {
                     let color = if physical.sleeping()
                     {
-                        [0.2, 0.2, 1.0]
+                        [0.2, 0.2, 1.0, 1.0]
                     } else
                     {
-                        [0.2, 1.0, 0.2]
+                        [0.2, 1.0, 0.2, 1.0]
                     };
 
                     render.mix = Some(MixColor{color, amount: 0.7, keep_transparency: true});
