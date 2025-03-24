@@ -63,7 +63,6 @@ const TOOLTIP_LIFETIME: f32 = 0.1;
 const CLOSED_LIFETIME: f32 = 1.0;
 
 const BACKGROUND_COLOR: [f32; 4] = [0.165, 0.161, 0.192, 0.5];
-const TEXT_COLOR: [f32; 4] = [1.0, 1.0, 1.0, 1.0];
 
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -141,7 +140,7 @@ impl Ui
         user_receiver: Rc<RefCell<UiReceiver>>
     ) -> Rc<RefCell<Self>>
     {
-        let controller = Controller::new();
+        let controller = Controller::new(&info.partial);
 
         let this = Self{
             items_info,
@@ -215,29 +214,25 @@ impl Ui
     {
         self.controller.begin();
 
-        if let Some(text) = self.console_contents.as_ref()
+        if let Some(text) = self.console_contents.clone()
         {
             let body = self.controller.update(UiId::ConsoleBody, UiElement{
-                mix: Some(MixColor{color: BACKGROUND_COLOR, amount: 0.8, keep_transparency: false}),
-                width: UiSize{
-                    kind: UiSizeKind::ParentScale(0.9),
+                mix: Some(MixColor{color: BACKGROUND_COLOR, amount: 1.0, keep_transparency: false}),
+                width: UiElementSize{
+                    size: UiSize::ParentScale(0.9),
                     ..Default::default()
                 },
-                height: UiSize{
-                    minimum_size: Some(UiSizeKind::ParentScale(0.1)),
-                    kind: UiSizeKind::ParentScale(0.5),
+                height: UiElementSize{
+                    minimum_size: Some(UiMinimumSize::Absolute(0.1)),
+                    size: UiSize::FitChildren,
                     ..Default::default()
                 },
                 ..Default::default()
             });
 
             body.update(UiId::ConsoleText, UiElement{
-                mix: Some(MixColor{color: TEXT_COLOR, amount: 0.8, keep_transparency: false}),
-                width: UiSize{
-                    kind: UiSizeKind::ParentScale(0.8),
-                    ..Default::default()
-                },
-                ..Default::default()
+                texture: UiTexture::Text{text, font_size: 30, font: FontStyle::Sans, align: TextAlign::default()},
+                ..UiElement::fit_content()
             });
         }
     }

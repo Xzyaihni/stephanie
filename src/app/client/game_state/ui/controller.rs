@@ -1,13 +1,21 @@
 use std::{
     mem,
     collections::HashMap,
-    hash::Hash
+    hash::Hash,
+    rc::Rc,
+    sync::Arc
 };
 
-use nalgebra::Vector3;
+use nalgebra::{Vector2, Vector3};
+
+use parking_lot::Mutex;
 
 use yanyaengine::{
     Transform,
+    FontsContainer,
+    Assets,
+    TextObject,
+    TextInfo,
     game_object::*
 };
 
@@ -47,12 +55,28 @@ impl UiElementCached
             ..Default::default()
         };
 
-        let object = element.texture.name().and_then(|name|
+        let object = match &element.texture
         {
-            RenderObject{
-                kind: RenderObjectKind::Texture{name}
-            }.into_client(transform, create_info)
-        });
+            UiTexture::None => None,
+            UiTexture::Text{text, font_size, font, align} =>
+            {
+                RenderObject{
+                    kind: RenderObjectKind::Text{
+                        text: text.clone(),
+                        font_size: *font_size,
+                        font: *font,
+                        align: *align
+                    }
+                }.into_client(transform, create_info)
+            },
+            UiTexture::Solid
+            | UiTexture::Custom(_) =>
+            {
+                RenderObject{
+                    kind: RenderObjectKind::Texture{name: element.texture.name().unwrap().to_owned()}
+                }.into_client(transform, create_info)
+            }
+        };
 
         Self{
             object
@@ -63,8 +87,8 @@ impl UiElementCached
 #[derive(Debug, Clone)]
 pub struct UiDeferredInfo
 {
-    width: Option<f32>,
-    height: Option<f32>
+    width: ResolvedSize,
+    height: ResolvedSize
 }
 
 impl Default for UiDeferredInfo
@@ -72,8 +96,8 @@ impl Default for UiDeferredInfo
     fn default() -> Self
     {
         Self{
-            width: None,
-            height: None
+            width: ResolvedSize::default(),
+            height: ResolvedSize::default()
         }
     }
 }
@@ -82,32 +106,57 @@ impl UiDeferredInfo
 {
     fn screen() -> Self
     {
+        let one = ResolvedSize{minimum_size: None, size: Some(1.0)};
+
         Self{
-            width: Some(1.0),
-            height: Some(1.0)
+            width: one.clone(),
+            height: one
         }
     }
 
-    fn resolve(&mut self, element: &UiElement, parent: &Self)
+    fn resolve_forward(&mut self, element: &UiElement, parent: &Self)
     {
-        if let Some(width) = parent.width
+        if !self.width.resolved()
         {
-            self.width = Some(element.width.resolve(SizeResolveInfo{
-                parent: width
-            }));
+            self.width = element.width.resolve_forward(SizeForwardInfo{
+                parent: parent.width.size
+            });
         }
 
-        if let Some(height) = parent.height
+        if !self.height.resolved()
         {
-            self.height = Some(element.height.resolve(SizeResolveInfo{
-                parent: height
-            }));
+            self.height = element.height.resolve_forward(SizeForwardInfo{
+                parent: parent.height.size
+            });
+        }
+    }
+
+    fn resolve_backward(
+        &mut self,
+        sizer: &TextureSizer,
+        element: &UiElement,
+        children: Vec<ResolvedBackward>
+    ) -> ResolvedBackward
+    {
+        let texture_size = || sizer.size(&element.texture);
+
+        ResolvedBackward{
+            width: self.width.resolve_backward(
+                || texture_size().x,
+                &element.width,
+                children.iter().map(|x| x.width.clone())
+            ),
+            height: self.height.resolve_backward(
+                || texture_size().y,
+                &element.height,
+                children.iter().map(|x| x.height.clone())
+            )
         }
     }
 
     fn resolved(&self) -> bool
     {
-        self.width.is_some() && self.height.is_some()
+        self.width.resolved() && self.height.resolved()
     }
 }
 
@@ -150,15 +199,18 @@ impl<Id> TreeElement<Id>
         &mut self.children[index].1
     }
 
-    pub fn resolve_backward(&mut self)
+    pub fn resolve_backward(&mut self, sizer: &TextureSizer) -> ResolvedBackward
     {
+        let infos: Vec<_> = self.children.iter_mut().map(|(_, x)| x.resolve_backward(sizer)).collect();
+
+        self.deferred.resolve_backward(sizer, &self.element, infos)
     }
 
     pub fn resolve_forward(&mut self, parent: &UiDeferredInfo)
     {
         if !self.deferred.resolved()
         {
-            self.deferred.resolve(&self.element, parent);
+            self.deferred.resolve_forward(&self.element, parent);
         }
 
         self.children.iter_mut().for_each(|(_, x)| x.resolve_forward(&self.deferred));
@@ -181,9 +233,48 @@ impl<Id> TreeElement<Id>
     }
 }
 
-#[derive(Debug)]
+pub struct TextureSizer
+{
+    fonts: Rc<FontsContainer>,
+    assets: Arc<Mutex<Assets>>
+}
+
+impl TextureSizer
+{
+    pub fn new(info: &ObjectCreatePartialInfo) -> Self
+    {
+        Self{
+            fonts: info.builder_wrapper.fonts().clone(),
+            assets: info.assets.clone()
+        }
+    }
+
+    pub fn size(&self, texture: &UiTexture) -> Vector2<f32>
+    {
+        match texture
+        {
+            UiTexture::None => Vector2::zeros(),
+            UiTexture::Text{text, font_size, font, align} =>
+            {
+                TextObject::calculate_bounds(TextInfo{
+                    font_size: *font_size,
+                    font: *font,
+                    align: *align,
+                    text
+                }, &self.fonts)
+            },
+            UiTexture::Solid
+            | UiTexture::Custom(_) =>
+            {
+                self.assets.lock().texture_by_name(texture.name().unwrap()).read().size()
+            }
+        }
+    }
+}
+
 pub struct Controller<Id>
 {
+    sizer: TextureSizer,
     order: Vec<Id>,
     created: Vec<(Id, UiElement, UiDeferredInfo)>,
     elements: HashMap<Id, (UiElement, UiElementCached)>,
@@ -192,9 +283,10 @@ pub struct Controller<Id>
 
 impl<Id: Hash + Eq + Clone + UiIdable> Controller<Id>
 {
-    pub fn new() -> Self
+    pub fn new(info: &ObjectCreatePartialInfo) -> Self
     {
         Self{
+            sizer: TextureSizer::new(info),
             order: Vec::new(),
             created: Vec::new(),
             elements: HashMap::new(),
@@ -219,19 +311,19 @@ impl<Id: Hash + Eq + Clone + UiIdable> Controller<Id>
         let empty = UiDeferredInfo::default();
 
         const LIMIT: usize = 1000;
-        for i in 0..=LIMIT
+        for i in 0..LIMIT
         {
-            self.root.resolve_backward();
             self.root.resolve_forward(&empty);
+            self.root.resolve_backward(&self.sizer);
 
             if self.root.resolved()
             {
                 break;
             }
 
-            if i == LIMIT
+            if i == (LIMIT - 1)
             {
-                panic!("couldnt resolve all deferred infos");
+                panic!("must be resolved");
             }
         }
 

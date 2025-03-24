@@ -260,74 +260,259 @@ pub enum UiTexture
 {
     None,
     Solid,
+    Text{text: String, font_size: u32, font: FontStyle, align: TextAlign},
     Custom(String)
 }
 
 impl UiTexture
 {
-    pub fn name(&self) -> Option<String>
+    pub fn name(&self) -> Option<&str>
     {
         match self
         {
-            Self::None => None,
-            Self::Solid => Some("ui/solid.png".to_owned()),
-            Self::Custom(x) => Some(x.clone())
+            Self::None
+            | Self::Text{..} => None,
+            Self::Solid => Some("ui/solid.png"),
+            Self::Custom(x) => Some(x)
         }
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct SizeResolveInfo
+pub struct SizeForwardInfo
 {
-    pub parent: f32
+    pub parent: Option<f32>
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum UiSizeKind
+#[derive(Debug, Clone)]
+pub enum SizeBackward
 {
-    ParentScale(f32)
+    ParentRelative(f32),
+    Value(f32)
 }
 
-impl UiSizeKind
+impl SizeBackward
 {
-    pub fn resolve(&self, info: SizeResolveInfo) -> f32
+    fn max(self, other: f32) -> Self
     {
         match self
         {
-            Self::ParentScale(fraction) => info.parent * fraction
+            Self::Value(x) => Self::Value(x + other),
+            _ => panic!("cant solve minimum size constraint")
+        }
+    }
+}
+
+pub type SizeBackwardInfo = SizeBackward;
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum UiMinimumSize
+{
+    Absolute(f32),
+    FitChildren,
+    FitContent
+}
+
+impl UiMinimumSize
+{
+    fn as_general(&self) -> UiSize
+    {
+        match self
+        {
+            Self::Absolute(x) => UiSize::Absolute(*x),
+            Self::FitChildren => UiSize::FitChildren,
+            Self::FitContent => UiSize::FitContent
         }
     }
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct UiSize
+pub enum UiSize
 {
-    pub minimum_size: Option<UiSizeKind>,
-    pub kind: UiSizeKind
+    ParentScale(f32),
+    Absolute(f32),
+    FitChildren,
+    FitContent
 }
 
 impl Default for UiSize
 {
     fn default() -> Self
     {
-        Self{
-            minimum_size: None,
-            kind: UiSizeKind::ParentScale(1.0)
-        }
+        Self::ParentScale(1.0)
     }
 }
 
 impl UiSize
 {
-    pub fn resolve(&self, info: SizeResolveInfo) -> f32
+    pub fn resolve_forward(&self, info: &SizeForwardInfo) -> Option<f32>
     {
-        let size = self.kind.resolve(info.clone());
-        if let Some(minimum) = self.minimum_size.as_ref().map(|x| x.resolve(info))
+        match self
         {
-            size.max(minimum)
+            Self::ParentScale(fraction) => info.parent.map(|x| x * fraction),
+            Self::Absolute(x) => Some(*x),
+            Self::FitChildren => None,
+            Self::FitContent => None
+        }
+    }
+
+    pub fn resolve_backward(
+        &self,
+        bounds: impl Fn() -> f32,
+        children: impl Iterator<Item=SizeBackward>
+    ) -> Option<f32>
+    {
+        match self
+        {
+            Self::ParentScale(_) => None,
+            Self::Absolute(x) => Some(*x),
+            Self::FitChildren =>
+            {
+                let (sum_normal, sum_relative) = children.fold(
+                    (0.0, 0.0),
+                    |(sum_normal, sum_relative), info|
+                    {
+                        match info
+                        {
+                            SizeBackward::ParentRelative(x) => (sum_normal, sum_relative + x),
+                            SizeBackward::Value(x) => (sum_normal + x, sum_relative)
+                        }
+                    });
+
+                assert!(sum_relative < 1.0);
+
+                let leftover = 1.0 - sum_relative;
+
+                Some(sum_normal / leftover)
+            },
+            Self::FitContent => Some(bounds())
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ResolvedBackward
+{
+    pub width: SizeBackwardInfo,
+    pub height: SizeBackwardInfo
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct ResolvedSize
+{
+    pub minimum_size: Option<f32>,
+    pub size: Option<f32>
+}
+
+impl Default for ResolvedSize
+{
+    fn default() -> Self
+    {
+        Self{
+            minimum_size: None,
+            size: None
+        }
+    }
+}
+
+impl ResolvedSize
+{
+    pub fn resolved(&self) -> bool
+    {
+        self.size.is_some()
+    }
+
+    fn value(&self) -> Option<f32>
+    {
+        let size = self.size?;
+        if let Some(minimum) = self.minimum_size
+        {
+            Some(size.max(minimum))
+        } else
+        {
+            Some(size)
+        }
+    }
+
+    pub fn unwrap(self) -> f32
+    {
+        self.value().unwrap()
+    }
+
+    fn as_resolved(value: Option<f32>, size: &UiSize) -> SizeBackward
+    {
+        if let Some(x) = value
+        {
+            SizeBackward::Value(x)
+        } else
+        {
+            if let UiSize::ParentScale(x) = size
+            {
+                SizeBackward::ParentRelative(*x)
+            } else
+            {
+                unreachable!()
+            }
+        }
+    }
+
+    pub fn resolve_backward(
+        &mut self,
+        bounds: impl Fn() -> f32,
+        size: &UiElementSize,
+        children: impl Iterator<Item=SizeBackwardInfo> + Clone
+    ) -> SizeBackwardInfo
+    {
+        if self.minimum_size.is_none()
+        {
+            self.minimum_size = size.minimum_size.as_ref().map(|x|
+            {
+                x.as_general().resolve_backward(&bounds, children.clone()).unwrap()
+            });
+        }
+
+        if self.size.is_none()
+        {
+            self.size = size.size.resolve_backward(&bounds, children);
+        }
+
+        let size = Self::as_resolved(self.size.clone(), &size.size);
+
+        if let Some(minimum_size) = self.minimum_size
+        {
+            size.max(minimum_size)
         } else
         {
             size
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct UiElementSize
+{
+    pub minimum_size: Option<UiMinimumSize>,
+    pub size: UiSize
+}
+
+impl Default for UiElementSize
+{
+    fn default() -> Self
+    {
+        Self{
+            minimum_size: None,
+            size: UiSize::default()
+        }
+    }
+}
+
+impl UiElementSize
+{
+    pub fn resolve_forward(&self, info: SizeForwardInfo) -> ResolvedSize
+    {
+        ResolvedSize{
+            minimum_size: self.minimum_size.as_ref().and_then(|x| x.as_general().resolve_forward(&info)),
+            size: self.size.resolve_forward(&info)
         }
     }
 }
@@ -337,8 +522,8 @@ pub struct UiElement
 {
     pub texture: UiTexture,
     pub mix: Option<MixColor>,
-    pub width: UiSize,
-    pub height: UiSize
+    pub width: UiElementSize,
+    pub height: UiElementSize
 }
 
 impl Default for UiElement
@@ -348,8 +533,25 @@ impl Default for UiElement
         Self{
             texture: UiTexture::Solid,
             mix: None,
-            width: UiSize::default(),
-            height: UiSize::default()
+            width: UiElementSize::default(),
+            height: UiElementSize::default()
+        }
+    }
+}
+
+impl UiElement
+{
+    pub fn fit_content() -> Self
+    {
+        let fit_content = UiElementSize{
+            size: UiSize::FitContent,
+            ..Default::default()
+        };
+
+        Self{
+            width: fit_content.clone(),
+            height: fit_content,
+            ..Default::default()
         }
     }
 }
