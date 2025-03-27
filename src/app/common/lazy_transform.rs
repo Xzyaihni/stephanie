@@ -18,7 +18,7 @@ use crate::common::{
 };
 
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ValueAnimation
 {
     Linear,
@@ -41,7 +41,7 @@ impl ValueAnimation
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SpringConnection
 {
     pub physical: Physical,
@@ -49,7 +49,7 @@ pub struct SpringConnection
     pub strength: f32
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct EaseOutRotation
 {
     pub decay: f32,
@@ -57,14 +57,14 @@ pub struct EaseOutRotation
     pub momentum: f32
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ConstantRotation
 {
     pub speed: f32,
     pub momentum: f32
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RotationInfo<T>
 {
     last_move: f32,
@@ -93,7 +93,7 @@ impl EaseOutRotationInfo
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct StretchDeformation
 {
     pub animation: ValueAnimation,
@@ -115,7 +115,7 @@ impl StretchDeformation
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TimedConnection
 {
     lifetime: Lifetime,
@@ -130,14 +130,14 @@ impl From<Lifetime> for TimedConnection
     }
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum LimitMode
 {
     Normal(f32),
     Manhattan(Vector3<f32>)
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Connection
 {
     Ignore,
@@ -240,7 +240,7 @@ impl Connection
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Rotation
 {
     Ignore,
@@ -355,13 +355,39 @@ impl Rotation
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SpringScaling
+{
+    velocity: Vector3<f32>,
+    info: SpringScalingInfo
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SpringScalingInfo
+{
+    pub damping: f32,
+    pub strength: f32
+}
+
+impl SpringScaling
+{
+    pub fn new(info: SpringScalingInfo) -> Self
+    {
+        Self{
+            velocity: Vector3::zeros(),
+            info
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Scaling
 {
     Ignore,
     Instant,
     EaseOut{decay: f32},
-    Constant{speed: f32}
+    Constant{speed: f32},
+    Spring(SpringScaling)
 }
 
 impl Scaling
@@ -373,7 +399,7 @@ impl Scaling
         dt: f32
     )
     {
-        match &self
+        match self
         {
             Scaling::Ignore => (),
             Scaling::Instant =>
@@ -382,7 +408,7 @@ impl Scaling
             },
             Scaling::Constant{speed} =>
             {
-                let max_move = Vector3::repeat(speed * dt);
+                let max_move = Vector3::repeat(*speed * dt);
 
                 let current_difference = target - *current;
 
@@ -396,19 +422,29 @@ impl Scaling
             Scaling::EaseOut{decay} =>
             {
                 *current = current.ease_out(target, *decay, dt);
+            },
+            Scaling::Spring(SpringScaling{velocity, info: SpringScalingInfo{damping, strength}}) =>
+            {
+                let difference = (target - *current) * *strength;
+
+                *velocity += difference * dt;
+
+                *current += *velocity * dt;
+
+                *velocity *= damping.powf(dt);
             }
         }
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Deformation
 {
     Rigid,
     Stretch(StretchDeformation)
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FollowRotation
 {
     pub parent: Entity,
@@ -441,7 +477,7 @@ impl FollowRotation
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FollowPosition
 {
     pub parent: Entity,
@@ -526,7 +562,7 @@ impl Default for LazyTransformInfo
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LazyTransform
 {
     pub target_local: Transform,

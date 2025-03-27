@@ -20,7 +20,7 @@ const MOVEMENT_BIAS: f32 = 0.8;
 
 const SLEEP_MOVEMENT_MAX: f32 = SLEEP_THRESHOLD * 16.0;
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct PhysicalFixed
 {
     pub rotation: bool
@@ -72,7 +72,7 @@ impl Default for PhysicalProperties
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Physical
 {
     pub inverse_mass: f32,

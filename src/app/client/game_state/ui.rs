@@ -218,12 +218,18 @@ impl Ui
         {
             let body = self.controller.update(UiId::ConsoleBody, UiElement{
                 mix: Some(MixColor{color: BACKGROUND_COLOR, amount: 1.0, keep_transparency: false}),
+                animation: Animation{
+                    scaling: Some(ScalingAnimation{
+                        start_scaling: Vector2::new(2.0, 0.1),
+                        scaling: Scaling::EaseOut{decay: 1.5}
+                    })
+                },
                 width: UiElementSize{
                     size: UiSize::ParentScale(0.9),
                     ..Default::default()
                 },
                 height: UiElementSize{
-                    minimum_size: Some(UiMinimumSize::Absolute(0.1)),
+                    // minimum_size: Some(UiMinimumSize::Absolute(0.1)),
                     size: UiSize::FitChildren,
                     ..Default::default()
                 },

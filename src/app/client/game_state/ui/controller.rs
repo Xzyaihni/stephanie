@@ -331,14 +331,6 @@ impl<Id: Hash + Eq + Clone + UiIdable> Controller<Id>
         {
             self.order.push(id.clone());
 
-            if let Some((old_element, _)) = self.elements.get(&id)
-            {
-                if *old_element == element
-                {
-                    return;
-                }
-            }
-
             self.created.push((id, element, deferred));
         });
     }

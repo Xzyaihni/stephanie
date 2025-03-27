@@ -15,6 +15,8 @@ use crate::{
     }
 };
 
+pub use crate::common::lazy_transform::Scaling;
+
 
 #[derive(Debug, Clone)]
 pub struct MouseEvent
@@ -518,10 +520,34 @@ impl UiElementSize
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct ScalingAnimation
+{
+    pub start_scaling: Vector2<f32>,
+    pub scaling: Scaling
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Animation
+{
+    pub scaling: Option<ScalingAnimation>
+}
+
+impl Default for Animation
+{
+    fn default() -> Self
+    {
+        Self{
+            scaling: None
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct UiElement
 {
     pub texture: UiTexture,
     pub mix: Option<MixColor>,
+    pub animation: Animation,
     pub width: UiElementSize,
     pub height: UiElementSize
 }
@@ -533,6 +559,7 @@ impl Default for UiElement
         Self{
             texture: UiTexture::Solid,
             mix: None,
+            animation: Animation::default(),
             width: UiElementSize::default(),
             height: UiElementSize::default()
         }

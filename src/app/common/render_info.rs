@@ -356,19 +356,11 @@ impl RenderInfo
     }
 }
 
-#[derive(AsRefStr)]
+#[derive(Debug, AsRefStr)]
 pub enum ClientObjectType
 {
     Normal(Object),
     Text(TextObject)
-}
-
-impl Debug for ClientObjectType
-{
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
-    {
-        write!(f, "ClientObjectType::{}", self.as_ref())
-    }
 }
 
 #[derive(Debug)]

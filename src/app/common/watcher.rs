@@ -14,7 +14,7 @@ use crate::common::{
 };
 
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Lifetime
 {
     pub current: f32,
