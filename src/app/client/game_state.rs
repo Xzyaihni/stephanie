@@ -514,6 +514,7 @@ pub struct GameState
     is_trusted: bool,
     camera_scale: f32,
     rare_timer: f32,
+    dt: f32,
     debug_visibility: <DebugVisibility as DebugVisibilityTrait>::State,
     connections_handler: Arc<RwLock<ConnectionsHandler>>,
     receiver_handle: Option<JoinHandle<()>>,
@@ -659,6 +660,7 @@ impl GameState
             tilemap,
             camera_scale: 1.0,
             rare_timer: 0.0,
+            dt: 0.0,
             ui,
             common_textures,
             connected_and_ready: false,
@@ -913,7 +915,7 @@ impl GameState
 
             let mut ui = self.ui.borrow_mut();
 
-            ui.create_renders(&mut create_info);
+            ui.create_renders(&mut create_info, self.dt);
             ui.update_buffers(info);
         }
 
@@ -1024,6 +1026,8 @@ impl GameState
         dt: f32
     )
     {
+        self.dt = dt;
+
         self.ui_input(UiEvent::MouseMove(self.ui_mouse_position()));
 
         let mut create_info = RenderCreateInfo{

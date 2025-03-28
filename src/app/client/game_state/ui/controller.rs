@@ -1,6 +1,5 @@
 use std::{
     mem,
-    collections::HashMap,
     hash::Hash,
     rc::Rc,
     sync::Arc
@@ -20,12 +19,15 @@ use yanyaengine::{
 };
 
 use crate::{
+    some_or_value,
     client::RenderCreateInfo,
     common::render_info::*
 };
 
 use super::element::*;
 
+
+pub const MINIMUM_SCALE: f32 = 0.001;
 
 pub trait UiIdable
 {
@@ -46,12 +48,16 @@ impl UiElementCached
         element: &UiElement
     ) -> Self
     {
+        let scaling = element.animation.scaling
+            .as_ref()
+            .map(|x| x.start_scaling)
+            .unwrap_or(Vector2::repeat(1.0));
+
+        let width = deferred.width.unwrap() * scaling.x;
+        let height = deferred.height.unwrap() * scaling.y;
+
         let transform = Transform{
-            scale: Vector3::new(
-                deferred.width.unwrap(),
-                deferred.height.unwrap(),
-                1.0
-            ),
+            scale: Vector3::new(width, height, 1.0),
             ..Default::default()
         };
 
@@ -81,6 +87,54 @@ impl UiElementCached
         Self{
             object
         }
+    }
+
+    fn update(
+        &mut self,
+        create_info: &mut RenderCreateInfo,
+        deferred: UiDeferredInfo,
+        element: &mut UiElement,
+        dt: f32
+    )
+    {
+        if let Some(object) = self.object.as_mut()
+        {
+            let mut transform = object.transform().cloned().unwrap_or_default();
+
+            let target_scale = Vector3::new(deferred.width.unwrap(), deferred.height.unwrap(), 1.0);
+
+            if let Some(scaling) = element.animation.scaling.as_mut()
+            {
+                scaling.start_mode.next(&mut transform.scale, target_scale, dt);
+            } else
+            {
+                transform.scale = target_scale;
+            }
+
+            object.set_transform(transform);
+        } else
+        {
+            self.object = Self::from_element(create_info, deferred, element).object;
+        }
+    }
+
+    fn update_closing(&mut self, element: &mut UiElement, dt: f32) -> bool
+    {
+        let object = some_or_value!(self.object.as_mut(), false);
+        let mut transform = some_or_value!(object.transform().cloned(), false);
+
+        let scaling = some_or_value!(element.animation.scaling.as_mut(), false);
+
+        scaling.close_mode.next(&mut transform.scale, Vector3::zeros(), dt);
+
+        if transform.scale.max() < MINIMUM_SCALE
+        {
+            return false;
+        }
+
+        object.set_transform(transform);
+
+        true
     }
 }
 
@@ -272,12 +326,19 @@ impl TextureSizer
     }
 }
 
+struct Element<Id>
+{
+    id: Id,
+    element: UiElement,
+    cached: UiElementCached,
+    closing: bool
+}
+
 pub struct Controller<Id>
 {
     sizer: TextureSizer,
-    order: Vec<Id>,
     created: Vec<(Id, UiElement, UiDeferredInfo)>,
-    elements: HashMap<Id, (UiElement, UiElementCached)>,
+    elements: Vec<Element<Id>>,
     root: TreeElement<Id>
 }
 
@@ -287,21 +348,15 @@ impl<Id: Hash + Eq + Clone + UiIdable> Controller<Id>
     {
         Self{
             sizer: TextureSizer::new(info),
-            order: Vec::new(),
             created: Vec::new(),
-            elements: HashMap::new(),
+            elements: Vec::new(),
             root: TreeElement::screen()
         }
     }
 
-    pub fn begin(&mut self)
-    {
-        self.order.clear();
-    }
-
     pub fn update(&mut self, id: Id, element: UiElement) -> &mut TreeElement<Id>
     {
-        debug_assert!(!self.order.contains(&id));
+        debug_assert!(!self.created.iter().any(|(x, _, _)| *x == id));
 
         self.root.update(id, element)
     }
@@ -329,30 +384,51 @@ impl<Id: Hash + Eq + Clone + UiIdable> Controller<Id>
 
         mem::replace(&mut self.root, TreeElement::screen()).for_each(Id::screen(), |id, element, deferred|
         {
-            self.order.push(id.clone());
-
             self.created.push((id, element, deferred));
         });
     }
 
     pub fn create_renders(
         &mut self,
-        create_info: &mut RenderCreateInfo
+        create_info: &mut RenderCreateInfo,
+        dt: f32
     )
     {
         self.prepare();
 
-        mem::take(&mut self.created).into_iter().for_each(|(id, element, deferred)|
+        self.elements.iter_mut().for_each(|element| element.closing = true);
+        mem::take(&mut self.created).into_iter().for_each(|(id, mut element, deferred)|
         {
-            let element_cached = UiElementCached::from_element(create_info, deferred, &element);
-            if let Some((old_element, old_element_cached)) = self.elements.get_mut(&id)
+            if let Some(index) = self.elements.iter().position(|element| element.id == id)
             {
-                // do fancy ops here later
-                *old_element = element;
-                *old_element_cached = element_cached;
+                let Element{element: old_element, cached: old_cached, closing, ..} = &mut self.elements[index];
+
+                *closing = false;
+
+                if *old_element == element
+                {
+                    old_cached.update(create_info, deferred, old_element, dt);
+                } else
+                {
+                    *old_cached = UiElementCached::from_element(create_info, deferred, &element);
+                }
+
+                element.keep_transient(old_element);
             } else
             {
-                self.elements.insert(id, (element, element_cached));
+                let cached = UiElementCached::from_element(create_info, deferred, &element);
+                self.elements.push(Element{id, element, cached, closing: false});
+            }
+        });
+
+        self.elements.retain_mut(|element|
+        {
+            if element.closing
+            {
+                element.cached.update_closing(&mut element.element, dt)
+            } else
+            {
+                true
             }
         });
     }
@@ -362,9 +438,9 @@ impl<Id: Hash + Eq + Clone + UiIdable> Controller<Id>
         info: &mut UpdateBuffersInfo
     )
     {
-        self.elements.values_mut().for_each(|(_, element)|
+        self.elements.iter_mut().for_each(|Element{cached, ..}|
         {
-            if let Some(object) = element.object.as_mut()
+            if let Some(object) = cached.object.as_mut()
             {
                 object.update_buffers(info)
             }
@@ -376,10 +452,9 @@ impl<Id: Hash + Eq + Clone + UiIdable> Controller<Id>
         info: &mut DrawInfo
     )
     {
-        self.order.iter().for_each(|id|
+        self.elements.iter().for_each(|Element{element, cached, ..}|
         {
-            let (element, element_cached) = &self.elements[id];
-            if let Some(object) = element_cached.object.as_ref()
+            if let Some(object) = cached.object.as_ref()
             {
                 info.push_constants(UiOutlinedInfo::new(element.mix));
 

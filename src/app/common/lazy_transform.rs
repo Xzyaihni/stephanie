@@ -151,7 +151,7 @@ pub enum Connection
 
 impl Connection
 {
-    fn next(
+    pub fn next(
         &mut self,
         current: &mut Transform,
         target: Vector3<f32>,
@@ -251,7 +251,7 @@ pub enum Rotation
 
 impl Rotation
 {
-    fn next(
+    pub fn next(
         &mut self,
         current: &mut f32,
         target: f32,
@@ -355,11 +355,19 @@ impl Rotation
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SpringScaling
 {
     velocity: Vector3<f32>,
     info: SpringScalingInfo
+}
+
+impl PartialEq for SpringScaling
+{
+    fn eq(&self, other: &Self) -> bool
+    {
+        self.info.eq(&other.info)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -392,7 +400,7 @@ pub enum Scaling
 
 impl Scaling
 {
-    fn next(
+    pub fn next(
         &mut self,
         current: &mut Vector3<f32>,
         target: Vector3<f32>,
@@ -433,6 +441,18 @@ impl Scaling
 
                 *velocity *= damping.powf(dt);
             }
+        }
+    }
+
+    pub fn keep_transient(&mut self, target: &Self)
+    {
+        match (self, target)
+        {
+            (Self::Spring(SpringScaling{velocity, ..}), Self::Spring(SpringScaling{velocity: old_velocity, ..})) =>
+            {
+                *velocity = *old_velocity;
+            },
+            _ => ()
         }
     }
 }

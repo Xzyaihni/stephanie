@@ -212,8 +212,6 @@ impl Ui
         dt: f32
     )
     {
-        self.controller.begin();
-
         if let Some(text) = self.console_contents.clone()
         {
             let body = self.controller.update(UiId::ConsoleBody, UiElement{
@@ -221,7 +219,11 @@ impl Ui
                 animation: Animation{
                     scaling: Some(ScalingAnimation{
                         start_scaling: Vector2::new(2.0, 0.1),
-                        scaling: Scaling::EaseOut{decay: 1.5}
+                        start_mode: Scaling::Spring(SpringScaling::new(SpringScalingInfo{
+                            damping: 0.5,
+                            strength: 4.0
+                        })),
+                        close_mode: Scaling::EaseOut{decay: 1.5}
                     })
                 },
                 width: UiElementSize{
@@ -229,7 +231,7 @@ impl Ui
                     ..Default::default()
                 },
                 height: UiElementSize{
-                    // minimum_size: Some(UiMinimumSize::Absolute(0.1)),
+                    minimum_size: Some(UiMinimumSize::Absolute(0.1)),
                     size: UiSize::FitChildren,
                     ..Default::default()
                 },
@@ -245,10 +247,11 @@ impl Ui
 
     pub fn create_renders(
         &mut self,
-        create_info: &mut RenderCreateInfo
+        create_info: &mut RenderCreateInfo,
+        dt: f32
     )
     {
-        self.controller.create_renders(create_info);
+        self.controller.create_renders(create_info, dt);
     }
 
     pub fn update_buffers(

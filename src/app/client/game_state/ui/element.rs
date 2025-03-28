@@ -523,7 +523,17 @@ impl UiElementSize
 pub struct ScalingAnimation
 {
     pub start_scaling: Vector2<f32>,
-    pub scaling: Scaling
+    pub start_mode: Scaling,
+    pub close_mode: Scaling
+}
+
+impl ScalingAnimation
+{
+    pub fn keep_transient(&mut self, target: &Self)
+    {
+        self.start_mode.keep_transient(&target.start_mode);
+        self.close_mode.keep_transient(&target.close_mode);
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -538,6 +548,17 @@ impl Default for Animation
     {
         Self{
             scaling: None
+        }
+    }
+}
+
+impl Animation
+{
+    pub fn keep_transient(&mut self, target: &Self)
+    {
+        if let (Some(scaling), Some(target)) = (self.scaling.as_mut(), target.scaling.as_ref())
+        {
+            scaling.keep_transient(target);
         }
     }
 }
@@ -568,6 +589,11 @@ impl Default for UiElement
 
 impl UiElement
 {
+    pub fn keep_transient(&mut self, target: &Self)
+    {
+        self.animation.keep_transient(&target.animation);
+    }
+
     pub fn fit_content() -> Self
     {
         let fit_content = UiElementSize{
