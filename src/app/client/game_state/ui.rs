@@ -239,7 +239,14 @@ impl Ui
             });
 
             body.update(UiId::ConsoleText, UiElement{
-                texture: UiTexture::Text{text, font_size: 30, font: FontStyle::Sans, align: TextAlign::default()},
+                texture: UiTexture::Text{text, font_size: 30, font: FontStyle::Sans, align: None},
+                animation: Animation{
+                    scaling: Some(ScalingAnimation{
+                        start_scaling: Vector2::new(1.1, 1.1),
+                        start_mode: Scaling::EaseOut{decay: 1.0},
+                        close_mode: Scaling::EaseIn(EaseInScaling::new(1.0))
+                    })
+                },
                 ..UiElement::fit_content()
             });
         }

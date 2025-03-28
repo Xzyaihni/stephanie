@@ -150,7 +150,7 @@ pub enum RenderObjectKind
 {
     Texture{name: String},
     TextureId{id: TextureId},
-    Text{text: String, font_size: u32, font: FontStyle, align: TextAlign}
+    Text{text: String, font_size: u32, font: FontStyle, align: Option<TextAlign>}
 }
 
 impl RenderObjectKind
@@ -191,7 +191,6 @@ impl RenderObjectKind
                 let object = create_info.object_info.partial.builder_wrapper.create_text(
                     TextCreateInfo{
                         transform,
-                        dynamic_scale: None,
                         inner: TextInfo{
                             font_size,
                             font,
@@ -493,25 +492,6 @@ impl ClientRenderInfo
         {
             x.set_inplace_texture(texture);
         }
-    }
-
-    pub fn set_text_dynamic_scale(&mut self, dynamic_scale: Option<Vector2<f32>>) -> Result<(), &'static str>
-    {
-        if let Some(object) = self.object.as_mut()
-        {
-            if let ClientRenderObject{
-                kind: ClientObjectType::Text(x),
-                ..
-            } = object
-            {
-                x.set_dynamic_scale(dynamic_scale);
-            } else
-            {
-                return Err("tried to set dynamic scale of non text object");
-            }
-        }
-
-        Ok(())
     }
 
     pub fn as_text(&self) -> Option<&TextObject>

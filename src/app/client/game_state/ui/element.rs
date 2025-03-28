@@ -262,7 +262,7 @@ pub enum UiTexture
 {
     None,
     Solid,
-    Text{text: String, font_size: u32, font: FontStyle, align: TextAlign},
+    Text{text: String, font_size: u32, font: FontStyle, align: Option<TextAlign>},
     Custom(String)
 }
 
