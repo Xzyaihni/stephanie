@@ -356,6 +356,29 @@ impl Rotation
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EaseInScaling
+{
+    velocity: f32,
+    strength: f32
+}
+
+impl PartialEq for EaseInScaling
+{
+    fn eq(&self, other: &Self) -> bool
+    {
+        self.strength.eq(&other.strength)
+    }
+}
+
+impl EaseInScaling
+{
+    pub fn new(strength: f32) -> Self
+    {
+        Self{velocity: 0.0, strength}
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SpringScaling
 {
     velocity: Vector3<f32>,
@@ -381,10 +404,7 @@ impl SpringScaling
 {
     pub fn new(info: SpringScalingInfo) -> Self
     {
-        Self{
-            velocity: Vector3::zeros(),
-            info
-        }
+        Self{velocity: Vector3::zeros(), info}
     }
 }
 
@@ -395,6 +415,7 @@ pub enum Scaling
     Instant,
     EaseOut{decay: f32},
     Constant{speed: f32},
+    EaseIn(EaseInScaling),
     Spring(SpringScaling)
 }
 
@@ -430,6 +451,25 @@ impl Scaling
             Scaling::EaseOut{decay} =>
             {
                 *current = current.ease_out(target, *decay, dt);
+            },
+            Scaling::EaseIn(EaseInScaling{velocity, strength}) =>
+            {
+                let difference = target - *current;
+
+                *velocity += *strength * dt;
+
+                *current += Vector3::repeat(*velocity)
+                    .component_mul(&difference)
+                    .zip_map(&difference, |x, limit|
+                    {
+                        if limit < 0.0
+                        {
+                            x.max(limit)
+                        } else
+                        {
+                            x.min(limit)
+                        }
+                    });
             },
             Scaling::Spring(SpringScaling{velocity, info: SpringScalingInfo{damping, strength}}) =>
             {

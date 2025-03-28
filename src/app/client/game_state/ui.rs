@@ -220,10 +220,10 @@ impl Ui
                     scaling: Some(ScalingAnimation{
                         start_scaling: Vector2::new(2.0, 0.1),
                         start_mode: Scaling::Spring(SpringScaling::new(SpringScalingInfo{
-                            damping: 0.5,
-                            strength: 4.0
+                            damping: 0.01,
+                            strength: 70.0
                         })),
-                        close_mode: Scaling::EaseOut{decay: 1.5}
+                        close_mode: Scaling::EaseIn(EaseInScaling::new(0.5))
                     })
                 },
                 width: UiElementSize{

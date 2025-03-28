@@ -125,6 +125,11 @@ impl UiElementCached
 
         let scaling = some_or_value!(element.animation.scaling.as_mut(), false);
 
+        if let Scaling::Ignore = scaling.close_mode
+        {
+            return false;
+        }
+
         scaling.close_mode.next(&mut transform.scale, Vector3::zeros(), dt);
 
         if transform.scale.max() < MINIMUM_SCALE
