@@ -331,6 +331,7 @@ impl TextureSizer
     }
 }
 
+#[derive(Debug)]
 struct Element<Id>
 {
     id: Id,
@@ -402,7 +403,7 @@ impl<Id: Hash + Eq + Clone + UiIdable> Controller<Id>
         self.prepare();
 
         self.elements.iter_mut().for_each(|element| element.closing = true);
-        mem::take(&mut self.created).into_iter().for_each(|(id, mut element, deferred)|
+        mem::take(&mut self.created).into_iter().for_each(|(id, element, deferred)|
         {
             if let Some(index) = self.elements.iter().position(|element| element.id == id)
             {
@@ -416,9 +417,8 @@ impl<Id: Hash + Eq + Clone + UiIdable> Controller<Id>
                 } else
                 {
                     *old_cached = UiElementCached::from_element(create_info, deferred, &element);
+                    *old_element = element;
                 }
-
-                element.keep_transient(old_element);
             } else
             {
                 let cached = UiElementCached::from_element(create_info, deferred, &element);

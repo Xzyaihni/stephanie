@@ -483,18 +483,6 @@ impl Scaling
             }
         }
     }
-
-    pub fn keep_transient(&mut self, target: &Self)
-    {
-        match (self, target)
-        {
-            (Self::Spring(SpringScaling{velocity, ..}), Self::Spring(SpringScaling{velocity: old_velocity, ..})) =>
-            {
-                *velocity = *old_velocity;
-            },
-            _ => ()
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

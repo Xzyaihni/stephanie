@@ -3,7 +3,7 @@ use std::{
     sync::Arc
 };
 
-use strum::{FromRepr, AsRefStr};
+use strum::FromRepr;
 
 use parking_lot::RwLock;
 
@@ -355,7 +355,7 @@ impl RenderInfo
     }
 }
 
-#[derive(Debug, AsRefStr)]
+#[derive(Debug)]
 pub enum ClientObjectType
 {
     Normal(Object),

@@ -243,7 +243,7 @@ impl Ui
                 animation: Animation{
                     scaling: Some(ScalingAnimation{
                         start_scaling: Vector2::new(1.1, 1.1),
-                        start_mode: Scaling::EaseOut{decay: 1.0},
+                        start_mode: Scaling::EaseOut{decay: 10.0},
                         close_mode: Scaling::EaseIn(EaseInScaling::new(1.0))
                     })
                 },
