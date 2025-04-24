@@ -47,7 +47,7 @@ pub use game_state::{
     ControlState,
     KeyMapping,
     CommonTextures,
-    ui::element::{UiEvent, MouseEvent, UiElement, UiElementShapeMask}
+    ui::element::{UiElement, UiElementShapeMask}
 };
 
 pub use connections_handler::ConnectionsHandler;

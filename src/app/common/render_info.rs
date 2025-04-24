@@ -56,6 +56,14 @@ pub struct MixColor
     pub keep_transparency: bool
 }
 
+impl MixColor
+{
+    pub fn color(color: [f32; 4]) -> Self
+    {
+        Self{color, amount: 1.0, keep_transparency: false}
+    }
+}
+
 struct RawMixColor
 {
     other_color: [f32; 4],

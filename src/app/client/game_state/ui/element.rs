@@ -8,6 +8,7 @@ use crate::{
     client::{Control, ControlState, RenderCreateInfo, game_state::Ui},
     common::{
         render_info::*,
+        lazy_transform::*,
         AnyEntities,
         Entity,
         ServerToClient,
@@ -17,67 +18,6 @@ use crate::{
 
 pub use crate::common::lazy_transform::Scaling;
 
-
-#[derive(Debug, Clone)]
-pub struct MouseEvent
-{
-    main_button: bool,
-    position: Vector2<f32>,
-    state: ControlState
-}
-
-#[allow(dead_code)]
-#[derive(Debug, Clone)]
-pub struct KeyboardEvent
-{
-    state: ControlState,
-    control: yanyaengine::Control
-}
-
-#[derive(Debug, Clone)]
-pub enum UiEvent
-{
-    MouseMove(Vector2<f32>),
-    Mouse(MouseEvent),
-    Keyboard(KeyboardEvent)
-}
-
-impl UiEvent
-{
-    pub fn as_mouse(&self) -> Option<&MouseEvent>
-    {
-        match self
-        {
-            Self::Mouse(x) => Some(x),
-            _ => None
-        }
-    }
-}
-
-impl UiEvent
-{
-    pub fn from_control(
-        mouse_position: Vector2<f32>,
-        state: ControlState,
-        control: Control
-    ) -> Option<Self>
-    {
-        match control
-        {
-            Control::MainAction =>
-            {
-                let event = MouseEvent{main_button: true, position: mouse_position, state};
-                Some(UiEvent::Mouse(event))
-            },
-            Control::SecondaryAction =>
-            {
-                let event = MouseEvent{main_button: false, position: mouse_position, state};
-                Some(UiEvent::Mouse(event))
-            },
-            _ => None
-        }
-    }
-}
 
 #[derive(Debug)]
 pub enum UiElementPredicate
@@ -312,7 +252,7 @@ pub enum UiMinimumSize
 {
     Absolute(f32),
     FitChildren,
-    FitContent
+    FitContent(f32)
 }
 
 impl UiMinimumSize
@@ -323,7 +263,7 @@ impl UiMinimumSize
         {
             Self::Absolute(x) => UiSize::Absolute(*x),
             Self::FitChildren => UiSize::FitChildren,
-            Self::FitContent => UiSize::FitContent
+            Self::FitContent(x) => UiSize::FitContent(*x)
         }
     }
 }
@@ -334,7 +274,7 @@ pub enum UiSize
     ParentScale(f32),
     Absolute(f32),
     FitChildren,
-    FitContent
+    FitContent(f32)
 }
 
 impl Default for UiSize
@@ -354,7 +294,7 @@ impl UiSize
             Self::ParentScale(fraction) => info.parent.map(|x| x * fraction),
             Self::Absolute(x) => Some(*x),
             Self::FitChildren => None,
-            Self::FitContent => None
+            Self::FitContent(_) => None
         }
     }
 
@@ -387,7 +327,7 @@ impl UiSize
 
                 Some(sum_normal / leftover)
             },
-            Self::FitContent => Some(bounds())
+            Self::FitContent(x) => Some(bounds() * *x)
         }
     }
 }
@@ -543,6 +483,53 @@ impl Default for Animation
     }
 }
 
+impl Animation
+{
+    pub fn normal() -> Self
+    {
+        Self{
+            scaling: Some(ScalingAnimation{
+                start_scaling: Vector2::new(2.0, 0.1),
+                start_mode: Scaling::EaseOut{decay: 20.0},
+                close_mode: Scaling::EaseIn(EaseInScaling::new(2.0))
+            })
+        }
+    }
+
+    pub fn text() -> Self
+    {
+        Self{
+            scaling: Some(ScalingAnimation{
+                start_scaling: Vector2::repeat(0.5),
+                start_mode: Scaling::EaseOut{decay: 20.0},
+                close_mode: Scaling::EaseIn(EaseInScaling::new(2.0))
+            })
+        }
+    }
+
+    pub fn button() -> Self
+    {
+        Self{
+            scaling: Some(ScalingAnimation{
+                start_scaling: Vector2::repeat(0.5),
+                start_mode: Scaling::EaseOut{decay: 20.0},
+                close_mode: Scaling::EaseIn(EaseInScaling::new(2.0))
+            })
+        }
+    }
+
+    pub fn typing_text() -> Self
+    {
+        Self{
+            scaling: Some(ScalingAnimation{
+                start_scaling: Vector2::new(1.1, 1.1),
+                start_mode: Scaling::EaseOut{decay: 10.0},
+                close_mode: Scaling::EaseIn(EaseInScaling::new(1.0))
+            })
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct UiElement
 {
@@ -572,7 +559,7 @@ impl UiElement
     pub fn fit_content() -> Self
     {
         let fit_content = UiElementSize{
-            size: UiSize::FitContent,
+            size: UiSize::FitContent(1.0),
             ..Default::default()
         };
 

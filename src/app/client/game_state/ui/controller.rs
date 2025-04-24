@@ -295,7 +295,8 @@ impl<Id> TreeElement<Id>
 pub struct TextureSizer
 {
     fonts: Rc<FontsContainer>,
-    assets: Arc<Mutex<Assets>>
+    assets: Arc<Mutex<Assets>>,
+    size: Vector2<f32>
 }
 
 impl TextureSizer
@@ -304,8 +305,14 @@ impl TextureSizer
     {
         Self{
             fonts: info.builder_wrapper.fonts().clone(),
-            assets: info.assets.clone()
+            assets: info.assets.clone(),
+            size: info.size.into()
         }
+    }
+
+    pub fn update_screen_size(&mut self, size: Vector2<f32>)
+    {
+        self.size = size;
     }
 
     pub fn size(&self, texture: &UiTexture) -> Vector2<f32>
@@ -320,12 +327,12 @@ impl TextureSizer
                     font: *font,
                     align: *align,
                     text
-                }, &self.fonts)
+                }, &self.fonts, &self.size).component_mul(&(self.size / self.size.max()))
             },
             UiTexture::Solid
             | UiTexture::Custom(_) =>
             {
-                self.assets.lock().texture_by_name(texture.name().unwrap()).read().size()
+                self.assets.lock().texture_by_name(texture.name().unwrap()).read().size() / self.size.max()
             }
         }
     }
@@ -443,6 +450,8 @@ impl<Id: Hash + Eq + Clone + UiIdable> Controller<Id>
         info: &mut UpdateBuffersInfo
     )
     {
+        self.sizer.update_screen_size(info.partial.size.into());
+
         self.elements.iter_mut().for_each(|Element{cached, ..}|
         {
             if let Some(object) = cached.object.as_mut()

@@ -129,7 +129,7 @@ pub struct ControlsController
     clipboard: Option<ClipboardContext>,
     key_mapping: BiMap<KeyMapping, Control>,
     keys: [ControlState; Control::COUNT],
-    changed: Vec<(ControlState, Control)>
+    changed: Vec<(ControlState, KeyMapping)>
 }
 
 impl ControlsController
@@ -204,28 +204,21 @@ impl ControlsController
         self.keys[control as usize]
     }
 
-    pub fn handle_input(&mut self, input: yanyaengine::Control) -> Option<(ControlState, Control)>
+    pub fn handle_input(&mut self, input: yanyaengine::Control) -> bool
     {
         let state = ControlState::from(&input);
 
         let this_key = KeyMapping::from_control(input);
-        
+
         if let Some(this_key) = this_key
         {
-            let matched = self.key_mapping.get(&this_key);
+            self.changed.push((state, this_key));
 
-            if let Some(matched) = matched
-            {
-                self.keys[*matched as usize] = state;
-
-                let pair = (state, *matched);
-                self.changed.push(pair);
-
-                return Some(pair);
-            }
+            true
+        } else
+        {
+            false
         }
-
-        None
     }
 
     pub fn key_for(&self, control: &Control) -> Option<&KeyMapping>
@@ -233,8 +226,27 @@ impl ControlsController
         self.key_mapping.get_back(control)
     }
 
-    pub fn changed_this_frame(&mut self) -> Vec<(ControlState, Control)>
+    pub fn changed_this_frame(&mut self) -> Vec<(ControlState, KeyMapping)>
     {
         mem::take(&mut self.changed)
+    }
+
+    pub fn consume_changed<'a, ChangedIter>(
+        &'a mut self,
+        changed: ChangedIter
+    ) -> impl Iterator<Item=(ControlState, Control)> + 'a
+    where
+        ChangedIter: IntoIterator<Item=(ControlState, KeyMapping)>,
+        ChangedIter::IntoIter: 'a
+    {
+        changed.into_iter().filter_map(|(state, key)|
+        {
+            self.key_mapping.get(&key).map(|matched|
+            {
+                self.keys[*matched as usize] = state;
+
+                (state, *matched)
+            })
+        })
     }
 }

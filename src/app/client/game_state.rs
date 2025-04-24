@@ -73,7 +73,6 @@ use crate::{
 };
 
 use super::{
-    UiEvent,
     ClientInfo,
     MessagePasser,
     ConnectionsHandler,
@@ -94,7 +93,7 @@ pub use ui::{
     WindowCreateInfo
 };
 
-use ui::{NotificationInfo, NotificationSeverity, NotificationKindInfo};
+use ui::{UpdateInfo, NotificationInfo, NotificationSeverity, NotificationKindInfo};
 
 mod controls_controller;
 
@@ -119,7 +118,6 @@ pub struct ClientEntitiesContainer
     pub entities: ClientEntities,
     pub camera_entity: Entity,
     pub follow_entity: Entity,
-    pub ui_mouse_entity: Entity,
     visible_renders: Vec<Vec<Entity>>,
     shaded_renders: Vec<Entity>,
     player_entity: Entity,
@@ -146,16 +144,10 @@ impl ClientEntitiesContainer
             ..Default::default()
         });
 
-        let ui_mouse_entity = entities.push_eager(true, EntityInfo{
-            transform: Some(Transform::default()),
-            ..Default::default()
-        });
-
         Self{
             entities,
             camera_entity,
             follow_entity,
-            ui_mouse_entity,
             player_entity,
             visible_renders: Vec::new(),
             shaded_renders: Vec::new(),
@@ -198,12 +190,6 @@ impl ClientEntitiesContainer
         self.entities.update_colliders(world, &space, dt);
 
         self.animation = (self.animation + dt) % (f32::consts::PI * 2.0);
-    }
-
-    pub fn update_mouse(&self, ui_mouse_position: Vector2<f32>)
-    {
-        let pos = Vector3::new(ui_mouse_position.x, ui_mouse_position.y, 0.0);
-        self.entities.transform_mut(self.ui_mouse_entity).unwrap().position = pos;
     }
 
     pub fn update_resize(&mut self, size: Vector2<f32>)
@@ -624,12 +610,10 @@ impl GameState
             UiAnatomyLocations::new(part_creator, base_image)
         };
 
-        let ui_mouse_entity = entities.ui_mouse_entity;
         let ui = Ui::new(
             info.data_infos.items_info.clone(),
             &info.object_info,
             &mut entities.entities,
-            ui_mouse_entity,
             anatomy_locations,
             user_receiver.clone()
         );
@@ -991,15 +975,7 @@ impl GameState
     {
         self.check_resize_camera(dt);
 
-        self.entities.update_mouse(self.ui_mouse_position());
-
         self.world.update(dt);
-
-        self.ui.borrow_mut().update(
-            &self.entities.entities,
-            &self.ui_camera,
-            dt
-        );
 
         if self.connected_and_ready
         {
@@ -1014,9 +990,12 @@ impl GameState
         }
     }
 
-    pub fn ui_input(&mut self, event: UiEvent) -> bool
+    pub fn ui_update(&mut self, controls: &mut Vec<(ControlState, KeyMapping)>)
     {
-        false
+        self.ui.borrow_mut().update(UpdateInfo{
+            entities: &self.entities.entities,
+            controls
+        });
     }
 
     pub fn update(
@@ -1027,8 +1006,6 @@ impl GameState
     )
     {
         self.dt = dt;
-
-        self.ui_input(UiEvent::MouseMove(self.ui_mouse_position()));
 
         let mut create_info = RenderCreateInfo{
             location: UniformLocation{set: 0, binding: 0},
@@ -1083,7 +1060,7 @@ impl GameState
     {
         if self.debug_visibility.input(&control) { return true; };
 
-        self.controls.handle_input(control).is_some()
+        self.controls.handle_input(control)
     }
 
     pub fn pressed(&self, control: Control) -> bool
@@ -1094,6 +1071,8 @@ impl GameState
     pub fn mouse_moved(&mut self, position: Vector2<f32>)
     {
         self.mouse_position = position;
+
+        self.ui.borrow_mut().set_mouse_position(position);
     }
 
     pub fn mouse_offset(&self) -> Vector2<f32>

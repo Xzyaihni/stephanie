@@ -16,23 +16,20 @@ use yanyaengine::{
     game_object::*
 };
 
-use crate::{
-    client::UiEvent,
-    common::{
-        some_or_value,
-        some_or_return,
-        collider::*,
-        character::*,
-        SpecialTile,
-        AnyEntities,
-        Item,
-        Inventory,
-        Entity,
-        EntityInfo,
-        entity::ClientEntities,
-        lisp::{self, *},
-        world::{CHUNK_VISUAL_SIZE, TILE_SIZE, Pos3, TilePos}
-    }
+use crate::common::{
+    some_or_value,
+    some_or_return,
+    collider::*,
+    character::*,
+    SpecialTile,
+    AnyEntities,
+    Item,
+    Inventory,
+    Entity,
+    EntityInfo,
+    entity::ClientEntities,
+    lisp::{self, *},
+    world::{CHUNK_VISUAL_SIZE, TILE_SIZE, Pos3, TilePos}
 };
 
 use super::game_state::{
@@ -186,28 +183,15 @@ impl Game
         self.player_container(|mut x| x.this_update(dt));
 
         let mut game_state_mut = game_state.borrow_mut();
-        let changed_this_frame = game_state_mut.controls.changed_this_frame();
-        let mouse_position = game_state_mut.ui_mouse_position();
+        let mut changed_this_frame = game_state_mut.controls.changed_this_frame();
+
+        game_state_mut.ui_update(&mut changed_this_frame);
+
+        let controls: Vec<_> = game_state_mut.controls.consume_changed(changed_this_frame).collect();
 
         drop(game_state_mut);
 
-        for (state, control) in changed_this_frame
-        {
-            let event = UiEvent::from_control(mouse_position, state, control);
-            if let Some(event) = event
-            {
-                let mut game_state = game_state.borrow_mut();
-
-                let captured = game_state.ui_input(event);
-
-                if captured
-                {
-                    continue;
-                }
-            }
-
-            self.on_control(state, control);
-        }
+        controls.into_iter().for_each(|(state, control)| self.on_control(state, control));
 
         game_state.borrow_mut().update(squares, info, dt);
 
@@ -930,23 +914,6 @@ impl ConsoleInfo
     }
 }
 
-struct InventoriesInfo
-{
-    player: Option<()>,
-    other: Option<()>
-}
-
-impl InventoriesInfo
-{
-    pub fn new() -> Self
-    {
-        Self{
-            player: None,
-            other: None
-        }
-    }
-}
-
 struct PlayerInfo
 {
     camera: Entity,
@@ -954,7 +921,6 @@ struct PlayerInfo
     entity: Entity,
     mouse_entity: Entity,
     other_entity: Option<Entity>,
-    inventories: InventoriesInfo,
     console: ConsoleInfo,
     previous_stamina: Option<f32>,
     previous_cooldown: (f32, f32),
@@ -974,7 +940,6 @@ impl PlayerInfo
             entity: info.entity,
             mouse_entity: info.mouse_entity,
             other_entity: None,
-            inventories: InventoriesInfo::new(),
             console,
             previous_stamina: None,
             previous_cooldown: (0.0, 0.0),
@@ -1129,15 +1094,14 @@ impl<'a> PlayerContainer<'a>
                     if entities.within_interactable_distance(self.info.entity, mouse_touched)
                         && entities.is_lootable(mouse_touched)
                     {
-                        /*if let Some(previous) = self.info.inventories.other.take()
-                            .and_then(|x| x.upgrade())
+                        if let Some(other) = self.info.other_entity
                         {
-                            let _ = self.game_state.remove_window(previous);
+                            self.game_state.ui.borrow_mut().close_inventory(other);
                         }
 
                         self.info.other_entity = Some(mouse_touched);
 
-                        let id = self.game_state.add_window(WindowCreateInfo::Inventory{
+                        /*let id = self.game_state.open_inventory(WindowCreateInfo::Inventory{
                             spawn_position: self.game_state.ui_mouse_position(),
                             entity: mouse_touched,
                             on_click: Box::new(|_anchor, item|
@@ -1279,6 +1243,18 @@ impl<'a> PlayerContainer<'a>
 
     fn toggle_inventory(&mut self)
     {
+        let mut ui = self.game_state.ui.borrow_mut();
+        let this = self.info.entity;
+
+        if !ui.close_inventory(this)
+        {
+            ui.open_inventory(this, Box::new(|_, item|
+            {
+                dbg!(item);
+
+                todo!()
+            }));
+        }
         /*if self.info.inventories.player.take().and_then(|window|
         {
             window.upgrade().map(|window| self.game_state.remove_window(window).is_ok())
@@ -1302,7 +1278,6 @@ impl<'a> PlayerContainer<'a>
 
             self.info.inventories.player = Some(window);
         }*/
-        todo!()
     }
 
     fn update_inventory_inner(
@@ -1436,12 +1411,7 @@ impl<'a> PlayerContainer<'a>
         {
             if !self.game_state.entities().within_interactable_distance(self.info.entity, other_entity)
             {
-                /*if let Some(window) = self.info.inventories.other.take().and_then(|x| x.upgrade())
-                {
-                    // let _ = self.game_state.remove_window(window);
-                    todo!()
-                }*/
-                todo!()
+                self.game_state.ui.borrow_mut().close_inventory(other_entity);
             }
         }
 

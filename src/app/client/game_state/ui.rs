@@ -13,7 +13,8 @@ use crate::{
     LONGEST_FRAME,
     client::{
         RenderCreateInfo,
-        game_state::{UiAnatomyLocations, GameState, UserEvent, UiReceiver}
+        ControlState,
+        game_state::{KeyMapping, UiAnatomyLocations, GameState, UserEvent, UiReceiver}
     },
     common::{
         lerp,
@@ -62,7 +63,8 @@ const ANIMATION_SCALE: Vector3<f32> = Vector3::new(4.0, 0.0, 1.0);
 const TOOLTIP_LIFETIME: f32 = 0.1;
 const CLOSED_LIFETIME: f32 = 1.0;
 
-const BACKGROUND_COLOR: [f32; 4] = [0.165, 0.161, 0.192, 0.5];
+const BACKGROUND_COLOR: [f32; 4] = [0.923, 0.998, 1.0, 0.9];
+const TEXT_COLOR: [f32; 4] = [1.0, 0.393, 0.901, 1.0];
 
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -70,13 +72,31 @@ enum UiId
 {
     Screen,
     ConsoleBody,
-    ConsoleText
+    ConsoleText,
+    Window(UiIdWindow),
+    WindowTitlebar(UiIdWindow),
+    WindowTitlebutton(UiIdWindow, UiIdTitlebutton)
 }
 
 impl UiIdable for UiId
 {
     fn screen() -> Self { Self::Screen }
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum UiIdWindow
+{
+    Inventory(Entity)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum UiIdTitlebutton
+{
+    Close
+}
+
+pub type UiController = Controller<UiId>;
+pub type UiParentElement = TreeElement<UiId>;
 
 pub enum NotificationSeverity
 {
@@ -105,6 +125,8 @@ pub enum TooltipInfo
     Anatomy{entity: Entity, id: HumanPartId}
 }
 
+pub type InventoryOnClick = Box<dyn FnMut(Entity, InventoryItem) -> UserEvent>;
+
 pub enum WindowCreateInfo
 {
     ActionsList{popup_position: Vector2<f32>, responses: Vec<UserEvent>},
@@ -114,19 +136,105 @@ pub enum WindowCreateInfo
     Inventory{
         spawn_position: Vector2<f32>,
         entity: Entity,
-        on_click: Box<dyn FnMut(Entity, InventoryItem) -> UserEvent>
+        on_click: InventoryOnClick
     }
+}
+
+enum WindowKind
+{
+    Inventory{entity: Entity, on_click: InventoryOnClick}
+}
+
+impl WindowKind
+{
+    fn update(&mut self, parent: &mut UiParentElement, info: UpdateInfo)
+    {
+        let id = self.as_id();
+        let mut with_titlebar = |title|
+        {
+            parent.update(UiId::WindowTitlebar(id), UiElement{
+                texture: UiTexture::Text{text: title, font_size: 30, font: FontStyle::Sans, align: None},
+                mix: Some(MixColor{keep_transparency: true, ..MixColor::color(TEXT_COLOR)}),
+                animation: Animation::text(),
+                ..UiElement::fit_content()
+            });
+
+            let size = UiElementSize{
+                size: UiSize::FitContent(2.0),
+                ..Default::default()
+            };
+
+            parent.update(UiId::WindowTitlebutton(id, UiIdTitlebutton::Close), UiElement{
+                texture: UiTexture::Custom("ui/close_button.png".to_owned()),
+                width: size.clone(),
+                height: size,
+                animation: Animation::button(),
+                ..Default::default()
+            });
+        };
+
+        match self
+        {
+            Self::Inventory{entity, on_click} =>
+            {
+                with_titlebar("cool title yuh".to_owned());
+            }
+        }
+    }
+
+    fn as_id(&self) -> UiIdWindow
+    {
+        match self
+        {
+            Self::Inventory{entity, ..} => UiIdWindow::Inventory(*entity)
+        }
+    }
+}
+
+struct Window
+{
+    position: Vector2<f32>,
+    kind: WindowKind
+}
+
+impl Window
+{
+    fn update(&mut self, ui: &mut UiController, info: UpdateInfo)
+    {
+        let body = ui.update(UiId::Window(self.kind.as_id()), UiElement{
+            mix: Some(MixColor::color(BACKGROUND_COLOR)),
+            animation: Animation::normal(),
+            width: UiElementSize{
+                size: UiSize::FitChildren,
+                ..Default::default()
+            },
+            height: UiElementSize{
+                size: UiSize::FitChildren,
+                ..Default::default()
+            },
+            ..Default::default()
+        });
+
+        self.kind.update(body, info);
+    }
+}
+
+pub struct UpdateInfo<'a, 'b>
+{
+    pub entities: &'a ClientEntities,
+    pub controls: &'b mut Vec<(ControlState, KeyMapping)>
 }
 
 pub struct Ui
 {
     items_info: Arc<ItemsInfo>,
     fonts: Rc<FontsContainer>,
-    mouse: Entity,
-    console_contents: Option<String>,
     anatomy_locations: UiAnatomyLocations,
     user_receiver: Rc<RefCell<UiReceiver>>,
-    controller: Controller<UiId>
+    controller: UiController,
+    mouse_position: Vector2<f32>,
+    console_contents: Option<String>,
+    windows: Vec<Window>
 }
 
 impl Ui
@@ -135,7 +243,6 @@ impl Ui
         items_info: Arc<ItemsInfo>,
         info: &ObjectCreateInfo,
         entities: &mut ClientEntities,
-        mouse: Entity,
         anatomy_locations: UiAnatomyLocations,
         user_receiver: Rc<RefCell<UiReceiver>>
     ) -> Rc<RefCell<Self>>
@@ -145,11 +252,12 @@ impl Ui
         let this = Self{
             items_info,
             fonts: info.partial.builder_wrapper.fonts().clone(),
-            mouse,
-            console_contents: None,
             anatomy_locations,
             user_receiver,
-            controller
+            controller,
+            mouse_position: Vector2::zeros(),
+            console_contents: None,
+            windows: Vec::new()
         };
 
         let this = Rc::new(RefCell::new(this));
@@ -186,9 +294,44 @@ impl Ui
         this
     }
 
+    pub fn set_mouse_position(&mut self, position: Vector2<f32>)
+    {
+        self.mouse_position = position;
+    }
+
     pub fn set_console(&mut self, contents: Option<String>)
     {
         self.console_contents = contents;
+    }
+
+    pub fn close_inventory(&mut self, owner: Entity) -> bool
+    {
+        if let Some(index) = self.windows.iter().position(|x|
+        {
+            if let WindowKind::Inventory{entity, ..} = x.kind
+            {
+                entity == owner
+            } else
+            {
+                false
+            }
+        })
+        {
+            self.windows.remove(index);
+
+            true
+        } else
+        {
+            false
+        }
+    }
+
+    pub fn open_inventory(&mut self, entity: Entity, on_click: InventoryOnClick)
+    {
+        self.windows.push(Window{
+            position: self.mouse_position,
+            kind: WindowKind::Inventory{entity, on_click}
+        });
     }
 
     pub fn set_notification(
@@ -205,27 +348,13 @@ impl Ui
     {
     }
 
-    pub fn update(
-        &mut self,
-        creator: &ClientEntities,
-        camera: &Camera,
-        dt: f32
-    )
+    pub fn update(&mut self, info: UpdateInfo)
     {
         if let Some(text) = self.console_contents.clone()
         {
             let body = self.controller.update(UiId::ConsoleBody, UiElement{
-                mix: Some(MixColor{color: BACKGROUND_COLOR, amount: 1.0, keep_transparency: false}),
-                animation: Animation{
-                    scaling: Some(ScalingAnimation{
-                        start_scaling: Vector2::new(2.0, 0.1),
-                        start_mode: Scaling::Spring(SpringScaling::new(SpringScalingInfo{
-                            damping: 0.01,
-                            strength: 70.0
-                        })),
-                        close_mode: Scaling::EaseIn(EaseInScaling::new(0.5))
-                    })
-                },
+                mix: Some(MixColor::color(BACKGROUND_COLOR)),
+                animation: Animation::normal(),
                 width: UiElementSize{
                     size: UiSize::ParentScale(0.9),
                     ..Default::default()
@@ -240,16 +369,19 @@ impl Ui
 
             body.update(UiId::ConsoleText, UiElement{
                 texture: UiTexture::Text{text, font_size: 30, font: FontStyle::Sans, align: None},
-                animation: Animation{
-                    scaling: Some(ScalingAnimation{
-                        start_scaling: Vector2::new(1.1, 1.1),
-                        start_mode: Scaling::EaseOut{decay: 10.0},
-                        close_mode: Scaling::EaseIn(EaseInScaling::new(1.0))
-                    })
-                },
+                mix: Some(MixColor{keep_transparency: true, ..MixColor::color(TEXT_COLOR)}),
+                animation: Animation::typing_text(),
                 ..UiElement::fit_content()
             });
         }
+
+        self.windows.iter_mut().for_each(|x|
+        {
+            x.update(&mut self.controller, UpdateInfo{
+                entities: info.entities,
+                controls: info.controls
+            })
+        });
     }
 
     pub fn create_renders(
