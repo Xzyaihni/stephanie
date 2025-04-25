@@ -216,8 +216,8 @@ impl UiDeferredInfo
                     self.position = element.position.resolve_forward(
                         &parent_element.children_layout,
                         previous_position,
-                        self.width.value(),
-                        self.height.value()
+                        parent.width.value().map(|x| x / 2.0),
+                        parent.height.value().map(|x| x / 2.0)
                     );
                 }
             } else

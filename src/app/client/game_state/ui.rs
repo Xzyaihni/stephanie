@@ -75,6 +75,7 @@ enum UiId
     ConsoleText,
     Window(UiIdWindow),
     WindowTitlebar(UiIdWindow),
+    WindowTitlebarName(UiIdWindow),
     WindowTitlebutton(UiIdWindow, UiIdTitlebutton)
 }
 
@@ -152,7 +153,9 @@ impl WindowKind
         let id = self.as_id();
         let mut with_titlebar = |title|
         {
-            parent.update(UiId::WindowTitlebar(id), UiElement{
+            let titlebar = parent.update(UiId::WindowTitlebar(id), UiElement::default());
+
+            titlebar.update(UiId::WindowTitlebarName(id), UiElement{
                 texture: UiTexture::Text{text: title, font_size: 30, font: FontStyle::Sans, align: None},
                 mix: Some(MixColor{keep_transparency: true, ..MixColor::color(TEXT_COLOR)}),
                 animation: Animation::text(),
@@ -164,7 +167,7 @@ impl WindowKind
                 ..Default::default()
             };
 
-            parent.update(UiId::WindowTitlebutton(id, UiIdTitlebutton::Close), UiElement{
+            titlebar.update(UiId::WindowTitlebutton(id, UiIdTitlebutton::Close), UiElement{
                 texture: UiTexture::Custom("ui/close_button.png".to_owned()),
                 width: size.clone(),
                 height: size,
@@ -202,17 +205,10 @@ impl Window
     fn update(&mut self, ui: &mut UiController, info: UpdateInfo)
     {
         let body = ui.update(UiId::Window(self.kind.as_id()), UiElement{
+            texture: UiTexture::Solid,
             mix: Some(MixColor::color(BACKGROUND_COLOR)),
             animation: Animation::normal(),
             position: UiPosition::Absolute(self.position - Vector2::repeat(0.5)),
-            width: UiElementSize{
-                size: UiSize::FitChildren,
-                ..Default::default()
-            },
-            height: UiElementSize{
-                size: UiSize::FitChildren,
-                ..Default::default()
-            },
             children_layout: UiLayout::Vertical,
             ..Default::default()
         });
@@ -355,15 +351,16 @@ impl Ui
         if let Some(text) = self.console_contents.clone()
         {
             let body = self.controller.update(UiId::ConsoleBody, UiElement{
+                texture: UiTexture::Solid,
                 mix: Some(MixColor::color(BACKGROUND_COLOR)),
                 animation: Animation::normal(),
+                position: UiPosition::Absolute(Vector2::zeros()),
                 width: UiElementSize{
                     size: UiSize::ParentScale(0.9),
                     ..Default::default()
                 },
                 height: UiElementSize{
                     minimum_size: Some(UiMinimumSize::Absolute(0.1)),
-                    size: UiSize::FitChildren,
                     ..Default::default()
                 },
                 ..Default::default()
@@ -373,6 +370,7 @@ impl Ui
                 texture: UiTexture::Text{text, font_size: 30, font: FontStyle::Sans, align: None},
                 mix: Some(MixColor{keep_transparency: true, ..MixColor::color(TEXT_COLOR)}),
                 animation: Animation::typing_text(),
+                position: UiPosition::Absolute(Vector2::zeros()),
                 ..UiElement::fit_content()
             });
         }

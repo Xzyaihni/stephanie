@@ -281,7 +281,7 @@ impl Default for UiSize
 {
     fn default() -> Self
     {
-        Self::ParentScale(1.0)
+        Self::FitChildren
     }
 }
 
@@ -629,7 +629,7 @@ impl Default for UiElement
     fn default() -> Self
     {
         Self{
-            texture: UiTexture::Solid,
+            texture: UiTexture::None,
             mix: None,
             animation: Animation::default(),
             position: UiPosition::default(),
