@@ -104,6 +104,9 @@ impl UiElementCached
         {
             let mut transform = object.transform().cloned().unwrap_or_default();
 
+            let position = deferred.position.unwrap();
+            transform.position = Vector3::new(position.x, position.y, 0.0);
+
             let target_scale = Vector3::new(deferred.width.unwrap(), deferred.height.unwrap(), 1.0);
 
             if let Some(scaling) = element.animation.scaling.as_mut()
@@ -203,7 +206,10 @@ impl UiDeferredInfo
 
         if self.position.is_none()
         {
-            if let Some(previous) = previous
+            if let UiPosition::Absolute(x) = element.position
+            {
+                self.position = Some(x);
+            } else if let Some(previous) = previous
             {
                 if let Some(previous_position) = previous.position
                 {
@@ -216,10 +222,17 @@ impl UiDeferredInfo
                 }
             } else
             {
-                let make_this_correct = ();
-                self.position = Some(Vector2::zeros());
+                self.position = self.starting_position(parent);
             }
         }
+    }
+
+    fn starting_position(&self, parent: &Self) -> Option<Vector2<f32>>
+    {
+        let this_size = Vector2::new(self.width.value()?, self.height.value()?);
+        let parent_size = Vector2::new(parent.width.value()?, parent.height.value()?);
+
+        Some(parent.position? + (this_size - parent_size) / 2.0)
     }
 
     fn resolve_backward(

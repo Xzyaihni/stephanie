@@ -204,7 +204,7 @@ impl Window
         let body = ui.update(UiId::Window(self.kind.as_id()), UiElement{
             mix: Some(MixColor::color(BACKGROUND_COLOR)),
             animation: Animation::normal(),
-            position: UiPosition::Absolute(self.position),
+            position: UiPosition::Absolute(self.position - Vector2::repeat(0.5)),
             width: UiElementSize{
                 size: UiSize::FitChildren,
                 ..Default::default()

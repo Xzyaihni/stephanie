@@ -394,7 +394,7 @@ impl UiPosition
     {
         match self
         {
-            Self::Absolute(x) => Some(*x),
+            Self::Absolute(_) => unreachable!(),
             Self::Next =>
             {
                 match layout
