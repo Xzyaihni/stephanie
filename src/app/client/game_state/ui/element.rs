@@ -301,6 +301,7 @@ impl UiSize
     pub fn resolve_backward(
         &self,
         bounds: impl Fn() -> f32,
+        parallel: bool,
         children: impl Iterator<Item=SizeBackward>
     ) -> Option<f32>
     {
@@ -310,24 +311,104 @@ impl UiSize
             Self::Absolute(x) => Some(*x),
             Self::FitChildren =>
             {
-                let (sum_normal, sum_relative) = children.fold(
-                    (0.0, 0.0),
-                    |(sum_normal, sum_relative), info|
+                if parallel
+                {
+                    let (sum_normal, sum_relative) = children.fold(
+                        (0.0, 0.0),
+                        |(sum_normal, sum_relative), info|
+                        {
+                            match info
+                            {
+                                SizeBackward::ParentRelative(x) => (sum_normal, sum_relative + x),
+                                SizeBackward::Value(x) => (sum_normal + x, sum_relative)
+                            }
+                        });
+
+                    assert!(sum_relative < 1.0);
+
+                    let leftover = 1.0 - sum_relative;
+
+                    Some(sum_normal / leftover)
+                } else
+                {
+                    Some(children.filter_map(|info|
                     {
                         match info
                         {
-                            SizeBackward::ParentRelative(x) => (sum_normal, sum_relative + x),
-                            SizeBackward::Value(x) => (sum_normal + x, sum_relative)
+                            SizeBackward::Value(x) => Some(x),
+                            _ => None
                         }
-                    });
-
-                assert!(sum_relative < 1.0);
-
-                let leftover = 1.0 - sum_relative;
-
-                Some(sum_normal / leftover)
+                    }).max_by(|a, b| a.partial_cmp(&b).unwrap()).unwrap_or(0.0))
+                }
             },
             Self::FitContent(x) => Some(bounds() * *x)
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum UiLayout
+{
+    Horizontal,
+    Vertical
+}
+
+impl UiLayout
+{
+    pub fn is_horizontal(&self) -> bool
+    {
+        if let Self::Horizontal = self
+        {
+            true
+        } else
+        {
+            false
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum UiPosition
+{
+    Absolute(Vector2<f32>),
+    Next
+}
+
+impl Default for UiPosition
+{
+    fn default() -> Self
+    {
+        Self::Next
+    }
+}
+
+impl UiPosition
+{
+    pub fn resolve_forward(
+        &self,
+        layout: &UiLayout,
+        previous: Vector2<f32>,
+        width: Option<f32>,
+        height: Option<f32>
+    ) -> Option<Vector2<f32>>
+    {
+        match self
+        {
+            Self::Absolute(x) => Some(*x),
+            Self::Next =>
+            {
+                match layout
+                {
+                    UiLayout::Horizontal =>
+                    {
+                        width.map(|w| Vector2::new(w, 0.0))
+                    },
+                    UiLayout::Vertical =>
+                    {
+                        height.map(|h| Vector2::new(0.0, h))
+                    }.map(|x| previous + x)
+                }
+            }
         }
     }
 }
@@ -364,7 +445,7 @@ impl ResolvedSize
         self.size.is_some()
     }
 
-    fn value(&self) -> Option<f32>
+    pub fn value(&self) -> Option<f32>
     {
         let size = self.size?;
         if let Some(minimum) = self.minimum_size
@@ -401,6 +482,7 @@ impl ResolvedSize
     pub fn resolve_backward(
         &mut self,
         bounds: impl Fn() -> f32,
+        parallel: bool,
         size: &UiElementSize,
         children: impl Iterator<Item=SizeBackwardInfo> + Clone
     ) -> SizeBackwardInfo
@@ -409,13 +491,13 @@ impl ResolvedSize
         {
             self.minimum_size = size.minimum_size.as_ref().map(|x|
             {
-                x.as_general().resolve_backward(&bounds, children.clone()).unwrap()
+                x.as_general().resolve_backward(&bounds, parallel, children.clone()).unwrap()
             });
         }
 
         if self.size.is_none()
         {
-            self.size = size.size.resolve_backward(&bounds, children);
+            self.size = size.size.resolve_backward(&bounds, parallel, children);
         }
 
         let size = Self::as_resolved(self.size.clone(), &size.size);
@@ -536,6 +618,8 @@ pub struct UiElement
     pub texture: UiTexture,
     pub mix: Option<MixColor>,
     pub animation: Animation,
+    pub position: UiPosition,
+    pub children_layout: UiLayout,
     pub width: UiElementSize,
     pub height: UiElementSize
 }
@@ -548,6 +632,8 @@ impl Default for UiElement
             texture: UiTexture::Solid,
             mix: None,
             animation: Animation::default(),
+            position: UiPosition::default(),
+            children_layout: UiLayout::Horizontal,
             width: UiElementSize::default(),
             height: UiElementSize::default()
         }

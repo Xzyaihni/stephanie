@@ -95,8 +95,8 @@ enum UiIdTitlebutton
     Close
 }
 
-pub type UiController = Controller<UiId>;
-pub type UiParentElement = TreeElement<UiId>;
+type UiController = Controller<UiId>;
+type UiParentElement = TreeElement<UiId>;
 
 pub enum NotificationSeverity
 {
@@ -160,7 +160,7 @@ impl WindowKind
             });
 
             let size = UiElementSize{
-                size: UiSize::FitContent(2.0),
+                size: UiSize::FitContent(0.5),
                 ..Default::default()
             };
 
@@ -204,6 +204,7 @@ impl Window
         let body = ui.update(UiId::Window(self.kind.as_id()), UiElement{
             mix: Some(MixColor::color(BACKGROUND_COLOR)),
             animation: Animation::normal(),
+            position: UiPosition::Absolute(self.position),
             width: UiElementSize{
                 size: UiSize::FitChildren,
                 ..Default::default()
@@ -212,6 +213,7 @@ impl Window
                 size: UiSize::FitChildren,
                 ..Default::default()
             },
+            children_layout: UiLayout::Vertical,
             ..Default::default()
         });
 

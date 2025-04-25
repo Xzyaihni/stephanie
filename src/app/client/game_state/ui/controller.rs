@@ -56,8 +56,11 @@ impl UiElementCached
         let width = deferred.width.unwrap() * scaling.x;
         let height = deferred.height.unwrap() * scaling.y;
 
+        let position = deferred.position.unwrap();
+
         let transform = Transform{
             scale: Vector3::new(width, height, 1.0),
+            position: Vector3::new(position.x, position.y, 0.0),
             ..Default::default()
         };
 
@@ -146,6 +149,7 @@ impl UiElementCached
 #[derive(Debug, Clone)]
 pub struct UiDeferredInfo
 {
+    position: Option<Vector2<f32>>,
     width: ResolvedSize,
     height: ResolvedSize
 }
@@ -155,6 +159,7 @@ impl Default for UiDeferredInfo
     fn default() -> Self
     {
         Self{
+            position: None,
             width: ResolvedSize::default(),
             height: ResolvedSize::default()
         }
@@ -168,12 +173,19 @@ impl UiDeferredInfo
         let one = ResolvedSize{minimum_size: None, size: Some(1.0)};
 
         Self{
+            position: Some(Vector2::zeros()),
             width: one.clone(),
             height: one
         }
     }
 
-    fn resolve_forward(&mut self, element: &UiElement, parent: &Self)
+    fn resolve_forward(
+        &mut self,
+        element: &UiElement,
+        previous: Option<&Self>,
+        parent: &Self,
+        parent_element: &UiElement
+    )
     {
         if !self.width.resolved()
         {
@@ -188,6 +200,26 @@ impl UiDeferredInfo
                 parent: parent.height.size
             });
         }
+
+        if self.position.is_none()
+        {
+            if let Some(previous) = previous
+            {
+                if let Some(previous_position) = previous.position
+                {
+                    self.position = element.position.resolve_forward(
+                        &parent_element.children_layout,
+                        previous_position,
+                        self.width.value(),
+                        self.height.value()
+                    );
+                }
+            } else
+            {
+                let make_this_correct = ();
+                self.position = Some(Vector2::zeros());
+            }
+        }
     }
 
     fn resolve_backward(
@@ -199,14 +231,18 @@ impl UiDeferredInfo
     {
         let texture_size = || sizer.size(&element.texture);
 
+        let is_width_parallel = element.children_layout.is_horizontal();
+
         ResolvedBackward{
             width: self.width.resolve_backward(
                 || texture_size().x,
+                is_width_parallel,
                 &element.width,
                 children.iter().map(|x| x.width.clone())
             ),
             height: self.height.resolve_backward(
                 || texture_size().y,
+                !is_width_parallel,
                 &element.height,
                 children.iter().map(|x| x.height.clone())
             )
@@ -215,7 +251,9 @@ impl UiDeferredInfo
 
     fn resolved(&self) -> bool
     {
-        self.width.resolved() && self.height.resolved()
+        self.width.resolved()
+            && self.height.resolved()
+            && self.position.is_some()
     }
 }
 
@@ -234,7 +272,7 @@ impl<Id> TreeElement<Id>
         Self{
             element,
             deferred: UiDeferredInfo::default(),
-            children: Vec::new()
+            ..Self::screen()
         }
     }
 
@@ -265,14 +303,29 @@ impl<Id> TreeElement<Id>
         self.deferred.resolve_backward(sizer, &self.element, infos)
     }
 
-    pub fn resolve_forward(&mut self, parent: &UiDeferredInfo)
+    pub fn resolve_forward(
+        &mut self,
+        previous: Option<&UiDeferredInfo>,
+        parent: &UiDeferredInfo,
+        parent_element: &UiElement
+    )
     {
         if !self.deferred.resolved()
         {
-            self.deferred.resolve_forward(&self.element, parent);
+            self.deferred.resolve_forward(
+                &self.element,
+                previous,
+                parent,
+                parent_element
+            );
         }
 
-        self.children.iter_mut().for_each(|(_, x)| x.resolve_forward(&self.deferred));
+        self.children.iter_mut().fold(None, |previous, (_, x)|
+        {
+            x.resolve_forward(previous, &self.deferred, &self.element);
+
+            Some(&x.deferred)
+        });
     }
 
     pub fn resolved(&self) -> bool
@@ -377,11 +430,12 @@ impl<Id: Hash + Eq + Clone + UiIdable> Controller<Id>
     fn prepare(&mut self)
     {
         let empty = UiDeferredInfo::default();
+        let empty_element = UiElement::default();
 
         const LIMIT: usize = 1000;
         for i in 0..LIMIT
         {
-            self.root.resolve_forward(&empty);
+            self.root.resolve_forward(None, &empty, &empty_element);
             self.root.resolve_backward(&self.sizer);
 
             if self.root.resolved()
