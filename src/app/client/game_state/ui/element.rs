@@ -406,8 +406,8 @@ impl UiPosition
                     UiLayout::Vertical =>
                     {
                         height.map(|h| Vector2::new(0.0, h))
-                    }.map(|x| previous + x)
-                }
+                    }
+                }.map(|x| previous + x)
             }
         }
     }
