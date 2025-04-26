@@ -46,7 +46,7 @@ pub mod element;
 mod controller;
 
 
-const TITLE_PADDING: f32 = 0.05;
+const TITLE_PADDING: f32 = 0.02;
 
 const PANEL_SIZE: f32 = 0.15;
 
@@ -199,7 +199,10 @@ impl WindowKind
         {
             Self::Inventory{entity, on_click} =>
             {
-                with_titlebar("cool title yuh".to_owned());
+                let name = info.entities.named(*entity).as_deref().cloned()
+                    .unwrap_or_else(|| "unnamed".to_owned());
+
+                with_titlebar(name);
             }
         }
     }
