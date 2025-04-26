@@ -46,12 +46,7 @@ pub mod element;
 mod controller;
 
 
-const MAX_WINDOWS: usize = 5;
-
-const WINDOW_HEIGHT: f32 = 0.1;
-const WINDOW_WIDTH: f32 = WINDOW_HEIGHT * 1.5;
-const WINDOW_SIZE: Vector3<f32> = Vector3::new(WINDOW_WIDTH, WINDOW_HEIGHT, WINDOW_HEIGHT);
-const TITLE_PADDING: f32 = WINDOW_HEIGHT * 0.1;
+const TITLE_PADDING: f32 = 0.05;
 
 const PANEL_SIZE: f32 = 0.15;
 
@@ -71,6 +66,7 @@ const TEXT_COLOR: [f32; 4] = [1.0, 0.393, 0.901, 1.0];
 enum UiId
 {
     Screen,
+    Padding(u32),
     ConsoleBody,
     ConsoleText,
     Window(UiIdWindow),
@@ -98,6 +94,26 @@ enum UiIdTitlebutton
 
 type UiController = Controller<UiId>;
 type UiParentElement = TreeElement<UiId>;
+
+fn add_padding(x: &mut impl TreeElementable<UiId>, width: UiElementSize, height: UiElementSize)
+{
+    let id = x.consecutive();
+    x.update(UiId::Padding(id), UiElement{
+        width,
+        height,
+        ..Default::default()
+    });
+}
+
+fn add_padding_horizontal(x: &mut impl TreeElementable<UiId>, size: UiElementSize)
+{
+    add_padding(x, size, 0.0.into())
+}
+
+fn add_padding_vertical(x: &mut impl TreeElementable<UiId>, size: UiElementSize)
+{
+    add_padding(x, 0.0.into(), size)
+}
 
 pub enum NotificationSeverity
 {
@@ -155,12 +171,14 @@ impl WindowKind
         {
             let titlebar = parent.update(UiId::WindowTitlebar(id), UiElement::default());
 
+            add_padding_horizontal(titlebar, TITLE_PADDING.into());
             titlebar.update(UiId::WindowTitlebarName(id), UiElement{
                 texture: UiTexture::Text{text: title, font_size: 30, font: FontStyle::Sans, align: None},
                 mix: Some(MixColor{keep_transparency: true, ..MixColor::color(TEXT_COLOR)}),
                 animation: Animation::text(),
                 ..UiElement::fit_content()
             });
+            add_padding_horizontal(titlebar, TITLE_PADDING.into());
 
             let size = UiElementSize{
                 size: UiSize::FitContent(0.5),
@@ -169,6 +187,7 @@ impl WindowKind
 
             titlebar.update(UiId::WindowTitlebutton(id, UiIdTitlebutton::Close), UiElement{
                 texture: UiTexture::Custom("ui/close_button.png".to_owned()),
+                mix: Some(MixColor{keep_transparency: true, ..MixColor::color(TEXT_COLOR)}),
                 width: size.clone(),
                 height: size,
                 animation: Animation::button(),
@@ -355,10 +374,7 @@ impl Ui
                 mix: Some(MixColor::color(BACKGROUND_COLOR)),
                 animation: Animation::normal(),
                 position: UiPosition::Absolute(Vector2::zeros()),
-                width: UiElementSize{
-                    size: UiSize::ParentScale(0.9),
-                    ..Default::default()
-                },
+                width: UiSize::ParentScale(0.9).into(),
                 height: UiElementSize{
                     minimum_size: Some(UiMinimumSize::Absolute(0.1)),
                     ..Default::default()

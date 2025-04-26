@@ -2,6 +2,7 @@ use std::{
     mem,
     hash::Hash,
     rc::Rc,
+    cell::RefCell,
     sync::Arc
 };
 
@@ -32,6 +33,12 @@ pub const MINIMUM_SCALE: f32 = 0.001;
 pub trait UiIdable
 {
     fn screen() -> Self;
+}
+
+pub trait TreeElementable<Id>
+{
+    fn update(&mut self, id: Id, element: UiElement) -> &mut TreeElement<Id>;
+    fn consecutive(&mut self) -> u32;
 }
 
 #[derive(Debug)]
@@ -211,14 +218,22 @@ impl UiDeferredInfo
                 self.position = Some(x);
             } else if let Some(previous) = previous
             {
-                if let Some(previous_position) = previous.position
+                if let (Some(previous_position), Some(parent_position)) = (previous.position, parent.position)
                 {
-                    self.position = element.position.resolve_forward(
+                    self.position = Some(element.position.resolve_forward(
                         &parent_element.children_layout,
                         previous_position,
-                        parent.width.value().map(|x| x / 2.0),
-                        parent.height.value().map(|x| x / 2.0)
-                    );
+                        PositionResolveInfo{
+                            this: self.width.unwrap(),
+                            previous: previous.width.unwrap(),
+                            parent_position: parent_position.x
+                        },
+                        PositionResolveInfo{
+                            this: self.height.unwrap(),
+                            previous: previous.height.unwrap(),
+                            parent_position: parent_position.y
+                        }
+                    ));
                 }
             } else
             {
@@ -275,21 +290,22 @@ pub struct TreeElement<Id>
 {
     element: UiElement,
     deferred: UiDeferredInfo,
-    children: Vec<(Id, Self)>
+    children: Vec<(Id, Self)>,
+    consecutive: Rc<RefCell<u32>>
 }
 
 impl<Id> TreeElement<Id>
 {
-    pub fn new(element: UiElement) -> Self
+    pub fn new(consecutive: Rc<RefCell<u32>>, element: UiElement) -> Self
     {
         Self{
             element,
             deferred: UiDeferredInfo::default(),
-            ..Self::screen()
+            ..Self::screen(consecutive)
         }
     }
 
-    fn screen() -> Self
+    fn screen(consecutive: Rc<RefCell<u32>>) -> Self
     {
         Self{
             element: UiElement{
@@ -297,16 +313,9 @@ impl<Id> TreeElement<Id>
                 ..Default::default()
             },
             deferred: UiDeferredInfo::screen(),
-            children: Vec::new()
+            children: Vec::new(),
+            consecutive
         }
-    }
-
-    pub fn update(&mut self, id: Id, element: UiElement) -> &mut Self
-    {
-        let index = self.children.len();
-        self.children.push((id, Self::new(element)));
-
-        &mut self.children[index].1
     }
 
     pub fn resolve_backward(&mut self, sizer: &TextureSizer) -> ResolvedBackward
@@ -355,6 +364,27 @@ impl<Id> TreeElement<Id>
     {
         f(id, self.element, self.deferred);
         self.children.into_iter().for_each(|(id, child)| child.for_each_inner(id, f));
+    }
+}
+
+impl<Id> TreeElementable<Id> for TreeElement<Id>
+{
+    fn update(&mut self, id: Id, element: UiElement) -> &mut Self
+    {
+        let index = self.children.len();
+        self.children.push((id, Self::new(self.consecutive.clone(), element)));
+
+        &mut self.children[index].1
+    }
+
+    fn consecutive(&mut self) -> u32
+    {
+        let mut consecutive = self.consecutive.borrow_mut();
+        let x = *consecutive;
+
+        *consecutive += 1;
+
+        x
     }
 }
 
@@ -418,26 +448,23 @@ pub struct Controller<Id>
     sizer: TextureSizer,
     created: Vec<(Id, UiElement, UiDeferredInfo)>,
     elements: Vec<Element<Id>>,
-    root: TreeElement<Id>
+    root: TreeElement<Id>,
+    consecutive: Rc<RefCell<u32>>
 }
 
 impl<Id: Hash + Eq + Clone + UiIdable> Controller<Id>
 {
     pub fn new(info: &ObjectCreatePartialInfo) -> Self
     {
+        let consecutive = Rc::new(RefCell::new(0));
+
         Self{
             sizer: TextureSizer::new(info),
             created: Vec::new(),
             elements: Vec::new(),
-            root: TreeElement::screen()
+            root: TreeElement::screen(consecutive.clone()),
+            consecutive
         }
-    }
-
-    pub fn update(&mut self, id: Id, element: UiElement) -> &mut TreeElement<Id>
-    {
-        debug_assert!(!self.created.iter().any(|(x, _, _)| *x == id));
-
-        self.root.update(id, element)
     }
 
     fn prepare(&mut self)
@@ -462,10 +489,11 @@ impl<Id: Hash + Eq + Clone + UiIdable> Controller<Id>
             }
         }
 
-        mem::replace(&mut self.root, TreeElement::screen()).for_each(Id::screen(), |id, element, deferred|
-        {
-            self.created.push((id, element, deferred));
-        });
+        mem::replace(&mut self.root, TreeElement::screen(self.consecutive.clone()))
+            .for_each(Id::screen(), |id, element, deferred|
+            {
+                self.created.push((id, element, deferred));
+            });
     }
 
     pub fn create_renders(
@@ -474,6 +502,8 @@ impl<Id: Hash + Eq + Clone + UiIdable> Controller<Id>
         dt: f32
     )
     {
+        *self.consecutive.borrow_mut() = 0;
+
         self.prepare();
 
         self.elements.iter_mut().for_each(|element| element.closing = true);
@@ -542,5 +572,20 @@ impl<Id: Hash + Eq + Clone + UiIdable> Controller<Id>
                 object.draw(info)
             }
         });
+    }
+}
+
+impl<Id: Eq> TreeElementable<Id> for Controller<Id>
+{
+    fn update(&mut self, id: Id, element: UiElement) -> &mut TreeElement<Id>
+    {
+        debug_assert!(!self.created.iter().any(|(x, _, _)| *x == id));
+
+        self.root.update(id, element)
+    }
+
+    fn consecutive(&mut self) -> u32
+    {
+        self.root.consecutive()
     }
 }

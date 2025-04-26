@@ -285,6 +285,14 @@ impl Default for UiSize
     }
 }
 
+impl From<f32> for UiSize
+{
+    fn from(size: f32) -> Self
+    {
+        UiSize::Absolute(size)
+    }
+}
+
 impl UiSize
 {
     pub fn resolve_forward(&self, info: &SizeForwardInfo) -> Option<f32>
@@ -367,6 +375,13 @@ impl UiLayout
     }
 }
 
+pub struct PositionResolveInfo
+{
+    pub this: f32,
+    pub previous: f32,
+    pub parent_position: f32
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum UiPosition
 {
@@ -388,26 +403,36 @@ impl UiPosition
         &self,
         layout: &UiLayout,
         previous: Vector2<f32>,
-        width: Option<f32>,
-        height: Option<f32>
-    ) -> Option<Vector2<f32>>
+        width: PositionResolveInfo,
+        height: PositionResolveInfo
+    ) -> Vector2<f32>
     {
         match self
         {
             Self::Absolute(_) => unreachable!(),
             Self::Next =>
             {
+                let position_parallel = |this: PositionResolveInfo, position|
+                {
+                    (this.previous + this.this) / 2.0 + position
+                };
+
+                let position_perpendicular = |other: PositionResolveInfo|
+                {
+                    other.parent_position
+                };
+
                 match layout
                 {
                     UiLayout::Horizontal =>
                     {
-                        width.map(|w| Vector2::new(w, 0.0))
+                        Vector2::new(position_parallel(width, previous.x), position_perpendicular(height))
                     },
                     UiLayout::Vertical =>
                     {
-                        height.map(|h| Vector2::new(0.0, h))
+                        Vector2::new(position_perpendicular(width), position_parallel(height, previous.y))
                     }
-                }.map(|x| previous + x)
+                }
             }
         }
     }
@@ -523,10 +548,26 @@ impl Default for UiElementSize
 {
     fn default() -> Self
     {
+        Self::from(UiSize::default())
+    }
+}
+
+impl From<UiSize> for UiElementSize
+{
+    fn from(size: UiSize) -> Self
+    {
         Self{
             minimum_size: None,
-            size: UiSize::default()
+            size
         }
+    }
+}
+
+impl From<f32> for UiElementSize
+{
+    fn from(size: f32) -> Self
+    {
+        Self::from(UiSize::from(size))
     }
 }
 
