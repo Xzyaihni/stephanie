@@ -75,9 +75,11 @@ enum UiId
     WindowTitlebutton(UiIdWindow, UiIdTitlebutton)
 }
 
-impl UiIdable for UiId
+impl Idable for UiId
 {
     fn screen() -> Self { Self::Screen }
+
+    fn padding(id: u32) -> Self { Self::Padding(id) }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -94,26 +96,6 @@ enum UiIdTitlebutton
 
 type UiController = Controller<UiId>;
 type UiParentElement = TreeElement<UiId>;
-
-fn add_padding(x: &mut impl TreeElementable<UiId>, width: UiElementSize, height: UiElementSize)
-{
-    let id = x.consecutive();
-    x.update(UiId::Padding(id), UiElement{
-        width,
-        height,
-        ..Default::default()
-    });
-}
-
-fn add_padding_horizontal(x: &mut impl TreeElementable<UiId>, size: UiElementSize)
-{
-    add_padding(x, size, 0.0.into())
-}
-
-fn add_padding_vertical(x: &mut impl TreeElementable<UiId>, size: UiElementSize)
-{
-    add_padding(x, 0.0.into(), size)
-}
 
 pub enum NotificationSeverity
 {
@@ -185,7 +167,7 @@ impl WindowKind
                 ..Default::default()
             };
 
-            titlebar.update(UiId::WindowTitlebutton(id, UiIdTitlebutton::Close), UiElement{
+            let close_button = titlebar.update(UiId::WindowTitlebutton(id, UiIdTitlebutton::Close), UiElement{
                 texture: UiTexture::Custom("ui/close_button.png".to_owned()),
                 mix: Some(MixColor{keep_transparency: true, ..MixColor::color(TEXT_COLOR)}),
                 width: size.clone(),
@@ -193,6 +175,11 @@ impl WindowKind
                 animation: Animation::button(),
                 ..Default::default()
             });
+
+            if close_button.is_mouse_inside()
+            {
+                println!("AHHHHHHHH");
+            }
         };
 
         match self
@@ -230,7 +217,7 @@ impl Window
             texture: UiTexture::Solid,
             mix: Some(MixColor::color(BACKGROUND_COLOR)),
             animation: Animation::normal(),
-            position: UiPosition::Absolute(self.position - Vector2::repeat(0.5)),
+            position: UiPosition::Absolute(self.position),
             children_layout: UiLayout::Vertical,
             ..Default::default()
         });
@@ -317,6 +304,8 @@ impl Ui
     pub fn set_mouse_position(&mut self, position: Vector2<f32>)
     {
         self.mouse_position = position;
+
+        self.controller.set_mouse_position(position);
     }
 
     pub fn set_console(&mut self, contents: Option<String>)

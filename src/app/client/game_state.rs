@@ -1072,7 +1072,10 @@ impl GameState
     {
         self.mouse_position = position;
 
-        self.ui.borrow_mut().set_mouse_position(position.component_mul(&self.camera.read().normalized_size()));
+        let normalized_size = self.camera.read().normalized_size();
+        let position = position.component_mul(&normalized_size) - (normalized_size / 2.0);
+
+        self.ui.borrow_mut().set_mouse_position(position);
     }
 
     pub fn mouse_offset(&self) -> Vector2<f32>

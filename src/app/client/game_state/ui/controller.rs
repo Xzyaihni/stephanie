@@ -30,12 +30,13 @@ use super::element::*;
 
 pub const MINIMUM_SCALE: f32 = 0.001;
 
-pub trait UiIdable
+pub trait Idable: Hash + Eq + Clone
 {
     fn screen() -> Self;
+    fn padding(id: u32) -> Self;
 }
 
-pub trait TreeElementable<Id>
+pub trait TreeElementable<Id: Idable>
 {
     fn update(&mut self, id: Id, element: UiElement) -> &mut TreeElement<Id>;
     fn consecutive(&mut self) -> u32;
@@ -51,7 +52,7 @@ impl UiElementCached
 {
     fn from_element(
         create_info: &mut RenderCreateInfo,
-        deferred: UiDeferredInfo,
+        deferred: &UiDeferredInfo,
         element: &UiElement
     ) -> Self
     {
@@ -102,7 +103,7 @@ impl UiElementCached
     fn update(
         &mut self,
         create_info: &mut RenderCreateInfo,
-        deferred: UiDeferredInfo,
+        deferred: &UiDeferredInfo,
         element: &mut UiElement,
         dt: f32
     )
@@ -127,7 +128,7 @@ impl UiElementCached
             object.set_transform(transform);
         } else
         {
-            self.object = Self::from_element(create_info, deferred, element).object;
+            self.object = Self::from_element(create_info, &deferred, element).object;
         }
     }
 
@@ -288,33 +289,36 @@ impl UiDeferredInfo
 #[derive(Debug)]
 pub struct TreeElement<Id>
 {
+    id: Id,
     element: UiElement,
     deferred: UiDeferredInfo,
     children: Vec<(Id, Self)>,
-    consecutive: Rc<RefCell<u32>>
+    shared: Rc<RefCell<SharedInfo<Id>>>
 }
 
 impl<Id> TreeElement<Id>
 {
-    pub fn new(consecutive: Rc<RefCell<u32>>, element: UiElement) -> Self
+    fn new(shared: Rc<RefCell<SharedInfo<Id>>>, id: Id, element: UiElement) -> Self
     {
         Self{
+            id,
             element,
             deferred: UiDeferredInfo::default(),
-            ..Self::screen(consecutive)
+            children: Vec::new(),
+            shared
         }
     }
 
-    fn screen(consecutive: Rc<RefCell<u32>>) -> Self
+    fn screen(shared: Rc<RefCell<SharedInfo<Id>>>) -> Self
+    where
+        Id: Idable
     {
         Self{
-            element: UiElement{
-                texture: UiTexture::None,
-                ..Default::default()
-            },
+            id: Id::screen(),
+            element: UiElement::default(),
             deferred: UiDeferredInfo::screen(),
             children: Vec::new(),
-            consecutive
+            shared
         }
     }
 
@@ -355,6 +359,35 @@ impl<Id> TreeElement<Id>
         self.deferred.resolved() && self.children.iter().all(|(_, x)| x.resolved())
     }
 
+    pub fn is_inside(&self, check_position: Vector2<f32>) -> bool
+    where
+        Id: Eq
+    {
+        let shared = self.shared.borrow();
+        shared.element_id(&self.id).map(|index|
+        {
+            let deferred = &shared.elements[index].deferred;
+
+            let position = deferred.position.unwrap();
+            let size = Vector2::new(deferred.width.unwrap(), deferred.height.unwrap());
+
+            let checks = (check_position - position).zip_map(&size, |x, size|
+            {
+                let half_size = size / 2.0;
+                (-half_size..=half_size).contains(&x)
+            });
+
+            checks.x && checks.y
+        }).unwrap_or(false)
+    }
+
+    pub fn is_mouse_inside(&self) -> bool
+    where
+        Id: Eq
+    {
+        self.is_inside(self.shared.borrow().mouse_position)
+    }
+
     fn for_each(self, id: Id, mut f: impl FnMut(Id, UiElement, UiDeferredInfo))
     {
         self.for_each_inner(id, &mut f)
@@ -367,19 +400,19 @@ impl<Id> TreeElement<Id>
     }
 }
 
-impl<Id> TreeElementable<Id> for TreeElement<Id>
+impl<Id: Idable> TreeElementable<Id> for TreeElement<Id>
 {
     fn update(&mut self, id: Id, element: UiElement) -> &mut Self
     {
         let index = self.children.len();
-        self.children.push((id, Self::new(self.consecutive.clone(), element)));
+        self.children.push((id.clone(), Self::new(self.shared.clone(), id, element)));
 
         &mut self.children[index].1
     }
 
     fn consecutive(&mut self) -> u32
     {
-        let mut consecutive = self.consecutive.borrow_mut();
+        let consecutive = &mut self.shared.borrow_mut().consecutive;
         let x = *consecutive;
 
         *consecutive += 1;
@@ -440,30 +473,56 @@ struct Element<Id>
     id: Id,
     element: UiElement,
     cached: UiElementCached,
+    deferred: UiDeferredInfo,
     closing: bool
+}
+
+#[derive(Debug)]
+struct SharedInfo<Id>
+{
+    consecutive: u32,
+    mouse_position: Vector2<f32>,
+    elements: Vec<Element<Id>>
+}
+
+impl<Id> SharedInfo<Id>
+{
+    pub fn new() -> Self
+    {
+        Self{
+            consecutive: 0,
+            mouse_position: Vector2::zeros(),
+            elements: Vec::new()
+        }
+    }
+
+    pub fn element_id(&self, id: &Id) -> Option<usize>
+    where
+        Id: Eq
+    {
+        self.elements.iter().position(|element| element.id == *id)
+    }
 }
 
 pub struct Controller<Id>
 {
     sizer: TextureSizer,
     created: Vec<(Id, UiElement, UiDeferredInfo)>,
-    elements: Vec<Element<Id>>,
     root: TreeElement<Id>,
-    consecutive: Rc<RefCell<u32>>
+    shared: Rc<RefCell<SharedInfo<Id>>>
 }
 
-impl<Id: Hash + Eq + Clone + UiIdable> Controller<Id>
+impl<Id: Idable> Controller<Id>
 {
     pub fn new(info: &ObjectCreatePartialInfo) -> Self
     {
-        let consecutive = Rc::new(RefCell::new(0));
+        let shared = Rc::new(RefCell::new(SharedInfo::new()));
 
         Self{
             sizer: TextureSizer::new(info),
             created: Vec::new(),
-            elements: Vec::new(),
-            root: TreeElement::screen(consecutive.clone()),
-            consecutive
+            root: TreeElement::screen(shared.clone()),
+            shared
         }
     }
 
@@ -489,7 +548,7 @@ impl<Id: Hash + Eq + Clone + UiIdable> Controller<Id>
             }
         }
 
-        mem::replace(&mut self.root, TreeElement::screen(self.consecutive.clone()))
+        mem::replace(&mut self.root, TreeElement::screen(self.shared.clone()))
             .for_each(Id::screen(), |id, element, deferred|
             {
                 self.created.push((id, element, deferred));
@@ -502,35 +561,41 @@ impl<Id: Hash + Eq + Clone + UiIdable> Controller<Id>
         dt: f32
     )
     {
-        *self.consecutive.borrow_mut() = 0;
+        self.shared.borrow_mut().consecutive = 0;
 
         self.prepare();
 
-        self.elements.iter_mut().for_each(|element| element.closing = true);
+        self.shared.borrow_mut().elements.iter_mut().for_each(|element| element.closing = true);
         mem::take(&mut self.created).into_iter().for_each(|(id, element, deferred)|
         {
-            if let Some(index) = self.elements.iter().position(|element| element.id == id)
+            let index = self.shared.borrow().element_id(&id);
+            if let Some(index) = index
             {
-                let Element{element: old_element, cached: old_cached, closing, ..} = &mut self.elements[index];
+                let Element{
+                    element: old_element,
+                    cached: old_cached,
+                    closing,
+                    ..
+                } = &mut self.shared.borrow_mut().elements[index];
 
                 *closing = false;
 
                 if *old_element == element
                 {
-                    old_cached.update(create_info, deferred, old_element, dt);
+                    old_cached.update(create_info, &deferred, old_element, dt);
                 } else
                 {
-                    *old_cached = UiElementCached::from_element(create_info, deferred, &element);
+                    *old_cached = UiElementCached::from_element(create_info, &deferred, &element);
                     *old_element = element;
                 }
             } else
             {
-                let cached = UiElementCached::from_element(create_info, deferred, &element);
-                self.elements.push(Element{id, element, cached, closing: false});
+                let cached = UiElementCached::from_element(create_info, &deferred, &element);
+                self.shared.borrow_mut().elements.push(Element{id, element, cached, deferred, closing: false});
             }
         });
 
-        self.elements.retain_mut(|element|
+        self.shared.borrow_mut().elements.retain_mut(|element|
         {
             if element.closing
             {
@@ -542,6 +607,11 @@ impl<Id: Hash + Eq + Clone + UiIdable> Controller<Id>
         });
     }
 
+    pub fn set_mouse_position(&mut self, position: Vector2<f32>)
+    {
+        self.shared.borrow_mut().mouse_position = position;
+    }
+
     pub fn update_buffers(
         &mut self,
         info: &mut UpdateBuffersInfo
@@ -549,7 +619,7 @@ impl<Id: Hash + Eq + Clone + UiIdable> Controller<Id>
     {
         self.sizer.update_screen_size(info.partial.size.into());
 
-        self.elements.iter_mut().for_each(|Element{cached, ..}|
+        self.shared.borrow_mut().elements.iter_mut().for_each(|Element{cached, ..}|
         {
             if let Some(object) = cached.object.as_mut()
             {
@@ -563,7 +633,7 @@ impl<Id: Hash + Eq + Clone + UiIdable> Controller<Id>
         info: &mut DrawInfo
     )
     {
-        self.elements.iter().for_each(|Element{element, cached, ..}|
+        self.shared.borrow().elements.iter().for_each(|Element{element, cached, ..}|
         {
             if let Some(object) = cached.object.as_ref()
             {
@@ -575,7 +645,7 @@ impl<Id: Hash + Eq + Clone + UiIdable> Controller<Id>
     }
 }
 
-impl<Id: Eq> TreeElementable<Id> for Controller<Id>
+impl<Id: Idable> TreeElementable<Id> for Controller<Id>
 {
     fn update(&mut self, id: Id, element: UiElement) -> &mut TreeElement<Id>
     {
@@ -588,4 +658,24 @@ impl<Id: Eq> TreeElementable<Id> for Controller<Id>
     {
         self.root.consecutive()
     }
+}
+
+pub fn add_padding<E: TreeElementable<Id>, Id: Idable>(x: &mut E, width: UiElementSize, height: UiElementSize)
+{
+    let id = x.consecutive();
+    x.update(Id::padding(id), UiElement{
+        width,
+        height,
+        ..Default::default()
+    });
+}
+
+pub fn add_padding_horizontal<E: TreeElementable<Id>, Id: Idable>(x: &mut E, size: UiElementSize)
+{
+    add_padding(x, size, 0.0.into())
+}
+
+pub fn add_padding_vertical<E: TreeElementable<Id>, Id: Idable>(x: &mut E, size: UiElementSize)
+{
+    add_padding(x, 0.0.into(), size)
 }
