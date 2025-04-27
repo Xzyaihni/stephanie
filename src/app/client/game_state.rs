@@ -295,6 +295,13 @@ impl PartCreator<'_, '_>
     }
 }
 
+#[derive(Clone)]
+pub enum UiEvent
+{
+    Action(Rc<dyn Fn(&mut GameState)>),
+    Game(GameUiEvent)
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InventoryWhich
 {
@@ -303,22 +310,20 @@ pub enum InventoryWhich
 }
 
 #[derive(Clone)]
-pub enum UserEvent
+pub enum GameUiEvent
 {
-    UiAction(Rc<dyn Fn(&mut GameState)>),
     Info{which: InventoryWhich, item: InventoryItem},
     Drop{which: InventoryWhich, item: InventoryItem},
     Wield(InventoryItem),
     Take(InventoryItem)
 }
 
-impl UserEvent
+impl GameUiEvent
 {
     pub fn name(&self) -> &str
     {
         match self
         {
-            Self::UiAction{..} => unreachable!(),
             Self::Info{..} => "info",
             Self::Drop{..} => "drop",
             Self::Wield(..) => "wield",
@@ -329,7 +334,7 @@ impl UserEvent
 
 pub struct UiReceiver
 {
-    events: Vec<UserEvent>
+    events: Vec<UiEvent>
 }
 
 impl UiReceiver
@@ -343,12 +348,12 @@ impl UiReceiver
         Rc::new(RefCell::new(this))
     }
 
-    pub fn push(&mut self, event: UserEvent)
+    pub fn push(&mut self, event: UiEvent)
     {
         self.events.push(event);
     }
 
-    pub fn consume(&mut self) -> impl Iterator<Item=UserEvent>
+    pub fn consume(&mut self) -> impl Iterator<Item=UiEvent>
     {
         mem::take(&mut self.events).into_iter()
     }

@@ -593,7 +593,8 @@ pub struct ScalingAnimation
 #[derive(Debug, Clone, PartialEq)]
 pub struct Animation
 {
-    pub scaling: Option<ScalingAnimation>
+    pub scaling: Option<ScalingAnimation>,
+    pub mix: Option<f32>
 }
 
 impl Default for Animation
@@ -601,7 +602,8 @@ impl Default for Animation
     fn default() -> Self
     {
         Self{
-            scaling: None
+            scaling: None,
+            mix: None
         }
     }
 }
@@ -614,8 +616,9 @@ impl Animation
             scaling: Some(ScalingAnimation{
                 start_scaling: Vector2::new(2.0, 0.1),
                 start_mode: Scaling::EaseOut{decay: 20.0},
-                close_mode: Scaling::EaseIn(EaseInScaling::new(2.0))
-            })
+                close_mode: Scaling::EaseOut{decay: 30.0}
+            }),
+            ..Default::default()
         }
     }
 
@@ -625,8 +628,9 @@ impl Animation
             scaling: Some(ScalingAnimation{
                 start_scaling: Vector2::repeat(0.5),
                 start_mode: Scaling::EaseOut{decay: 20.0},
-                close_mode: Scaling::EaseIn(EaseInScaling::new(2.0))
-            })
+                close_mode: Scaling::EaseOut{decay: 30.0}
+            }),
+            ..Default::default()
         }
     }
 
@@ -637,7 +641,9 @@ impl Animation
                 start_scaling: Vector2::repeat(0.5),
                 start_mode: Scaling::EaseOut{decay: 20.0},
                 close_mode: Scaling::EaseIn(EaseInScaling::new(2.0))
-            })
+            }),
+            mix: Some(10.0),
+            ..Default::default()
         }
     }
 
@@ -648,7 +654,8 @@ impl Animation
                 start_scaling: Vector2::new(1.1, 1.1),
                 start_mode: Scaling::EaseOut{decay: 10.0},
                 close_mode: Scaling::EaseIn(EaseInScaling::new(1.0))
-            })
+            }),
+            ..Default::default()
         }
     }
 }

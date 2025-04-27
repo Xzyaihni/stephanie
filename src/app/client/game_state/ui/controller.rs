@@ -22,7 +22,10 @@ use yanyaengine::{
 use crate::{
     some_or_value,
     client::RenderCreateInfo,
-    common::render_info::*
+    common::{
+        render_info::*,
+        LazyMix
+    }
 };
 
 use super::element::*;
@@ -45,6 +48,7 @@ pub trait TreeElementable<Id: Idable>
 #[derive(Debug)]
 struct UiElementCached
 {
+    mix: Option<MixColor>,
     object: Option<ClientRenderObject>
 }
 
@@ -96,6 +100,7 @@ impl UiElementCached
         };
 
         Self{
+            mix: element.mix,
             object
         }
     }
@@ -104,10 +109,19 @@ impl UiElementCached
         &mut self,
         create_info: &mut RenderCreateInfo,
         deferred: &UiDeferredInfo,
-        element: &mut UiElement,
+        old_element: &mut UiElement,
         dt: f32
     )
     {
+        if let (
+            Some(decay),
+            Some(mix),
+            Some(target)
+        ) = (old_element.animation.mix, self.mix.as_mut(), old_element.mix)
+        {
+            *mix = LazyMix{decay, target}.update(*mix, dt);
+        }
+
         if let Some(object) = self.object.as_mut()
         {
             let mut transform = object.transform().cloned().unwrap_or_default();
@@ -117,7 +131,7 @@ impl UiElementCached
 
             let target_scale = Vector3::new(deferred.width.unwrap(), deferred.height.unwrap(), 1.0);
 
-            if let Some(scaling) = element.animation.scaling.as_mut()
+            if let Some(scaling) = old_element.animation.scaling.as_mut()
             {
                 scaling.start_mode.next(&mut transform.scale, target_scale, dt);
             } else
@@ -128,7 +142,7 @@ impl UiElementCached
             object.set_transform(transform);
         } else
         {
-            self.object = Self::from_element(create_info, &deferred, element).object;
+            self.object = Self::from_element(create_info, &deferred, old_element).object;
         }
     }
 
@@ -169,6 +183,8 @@ impl UiElementCached
         if fields_match!(texture, animation, position, children_layout, width, height)
         {
             debug_assert!(old_element.mix != new_element.mix);
+
+            new.mix = self.mix;
 
             if let (Some(new), Some(old)) = (new.object.as_mut(), self.object.as_ref().and_then(|x| x.transform()))
             {
@@ -664,11 +680,11 @@ impl<Id: Idable> Controller<Id>
         info: &mut DrawInfo
     )
     {
-        self.shared.borrow().elements.iter().for_each(|Element{element, cached, ..}|
+        self.shared.borrow().elements.iter().for_each(|Element{cached, ..}|
         {
             if let Some(object) = cached.object.as_ref()
             {
-                info.push_constants(UiOutlinedInfo::new(element.mix));
+                info.push_constants(UiOutlinedInfo::new(cached.mix));
 
                 object.draw(info)
             }

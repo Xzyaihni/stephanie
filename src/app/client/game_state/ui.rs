@@ -14,7 +14,14 @@ use crate::{
     client::{
         RenderCreateInfo,
         ControlState,
-        game_state::{KeyMapping, UiAnatomyLocations, GameState, UserEvent, UiReceiver}
+        game_state::{
+            KeyMapping,
+            UiAnatomyLocations,
+            GameState,
+            UiEvent,
+            GameUiEvent,
+            UiReceiver
+        }
     },
     common::{
         lerp,
@@ -125,11 +132,11 @@ pub enum TooltipInfo
     Anatomy{entity: Entity, id: HumanPartId}
 }
 
-pub type InventoryOnClick = Box<dyn FnMut(Entity, InventoryItem) -> UserEvent>;
+pub type InventoryOnClick = Box<dyn FnMut(Entity, InventoryItem) -> UiEvent>;
 
 pub enum WindowCreateInfo
 {
-    ActionsList{popup_position: Vector2<f32>, responses: Vec<UserEvent>},
+    ActionsList{popup_position: Vector2<f32>, responses: Vec<GameUiEvent>},
     Anatomy{spawn_position: Vector2<f32>, entity: Entity},
     Stats{spawn_position: Vector2<f32>, entity: Entity},
     ItemInfo{spawn_position: Vector2<f32>, item: Item},

@@ -15,19 +15,6 @@ pub struct LazyMix
 
 impl LazyMix
 {
-    pub fn ui() -> Self
-    {
-        Self::ui_color([1.0; 4])
-    }
-
-    pub fn ui_color(color: [f32; 4]) -> Self
-    {
-        Self{
-            decay: 16.0,
-            target: MixColor{color, amount: 0.0, keep_transparency: false}
-        }
-    }
-
     pub fn update(
         &self,
         current: MixColor,

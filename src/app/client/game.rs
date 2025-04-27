@@ -36,7 +36,8 @@ use super::game_state::{
     GameState,
     WindowCreateInfo,
     InventoryWhich,
-    UserEvent,
+    UiEvent,
+    GameUiEvent,
     ControlState,
     Control
 };
@@ -1153,19 +1154,28 @@ impl<'a> PlayerContainer<'a>
         self.game_state.ui.borrow_mut().set_console(self.info.console.contents.clone());
     }
 
-    fn handle_user_event(&mut self, event: UserEvent)
+    fn handle_ui_event(&mut self, event: UiEvent)
+    {
+        match event
+        {
+            UiEvent::Action(action) =>
+            {
+                action(self.game_state);
+            },
+            UiEvent::Game(event) => self.handle_game_ui_event(event)
+        }
+    }
+
+    fn handle_game_ui_event(&mut self, event: GameUiEvent)
     {
         let player = self.info.entity;
 
         // self.game_state.close_popup();
         todo!();
+
         match event
         {
-            UserEvent::UiAction(action) =>
-            {
-                action(self.game_state);
-            },
-            UserEvent::Info{which, item} =>
+            GameUiEvent::Info{which, item} =>
             {
                 if let Some(item) = self.get_inventory(which)
                     .and_then(|inventory| inventory.get(item).cloned())
@@ -1179,7 +1189,7 @@ impl<'a> PlayerContainer<'a>
                     eprintln!("tried to show info for an item that doesnt exist");
                 }
             },
-            UserEvent::Drop{which, item} =>
+            GameUiEvent::Drop{which, item} =>
             {
                 if self.get_inventory(which)
                     .and_then(|mut inventory| inventory.remove(item))
@@ -1195,11 +1205,11 @@ impl<'a> PlayerContainer<'a>
                     eprintln!("tried to drop item that doesnt exist");
                 }
             },
-            UserEvent::Wield(item) =>
+            GameUiEvent::Wield(item) =>
             {
                 self.game_state.entities().character_mut(player).unwrap().set_holding(Some(item));
             },
-            UserEvent::Take(item) =>
+            GameUiEvent::Take(item) =>
             {
                 if let Some(taken) = self.get_inventory(InventoryWhich::Other)
                     .and_then(|mut inventory| inventory.remove(item))
@@ -1237,7 +1247,7 @@ impl<'a> PlayerContainer<'a>
         let events = self.game_state.user_receiver.borrow_mut().consume();
         events.for_each(|event|
         {
-            self.handle_user_event(event);
+            self.handle_ui_event(event);
         });
     }
 
