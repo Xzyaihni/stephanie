@@ -155,6 +155,27 @@ impl UiElementCached
 
         true
     }
+
+    fn keep_old(&self, new: &mut Self, old_element: &UiElement, new_element: &UiElement)
+    {
+        macro_rules! fields_match
+        {
+            ($($field:ident),+) =>
+            {
+                true $(&& old_element.$field == new_element.$field)+
+            }
+        }
+
+        if fields_match!(texture, animation, position, children_layout, width, height)
+        {
+            debug_assert!(old_element.mix != new_element.mix);
+
+            if let (Some(new), Some(old)) = (new.object.as_mut(), self.object.as_ref().and_then(|x| x.transform()))
+            {
+                new.modify_transform(|transform| transform.scale = old.scale);
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -357,6 +378,11 @@ impl<Id> TreeElement<Id>
     pub fn resolved(&self) -> bool
     {
         self.deferred.resolved() && self.children.iter().all(|(_, x)| x.resolved())
+    }
+
+    pub fn element(&mut self) -> &mut UiElement
+    {
+        &mut self.element
     }
 
     pub fn is_inside(&self, check_position: Vector2<f32>) -> bool
@@ -585,7 +611,12 @@ impl<Id: Idable> Controller<Id>
                     old_cached.update(create_info, &deferred, old_element, dt);
                 } else
                 {
-                    *old_cached = UiElementCached::from_element(create_info, &deferred, &element);
+                    let mut cached = UiElementCached::from_element(create_info, &deferred, &element);
+
+                    old_cached.keep_old(&mut cached, old_element, &element);
+
+                    *old_cached = cached;
+
                     *old_element = element;
                 }
             } else

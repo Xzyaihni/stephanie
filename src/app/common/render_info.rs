@@ -400,6 +400,16 @@ impl ClientRenderObject
         }
     }
 
+    pub fn modify_transform(&mut self, f: impl FnOnce(&mut Transform))
+    {
+        if let Some(mut transform) = self.transform().cloned()
+        {
+            f(&mut transform);
+
+            self.set_transform(transform);
+        }
+    }
+
     pub fn transform(&self) -> Option<&Transform>
     {
         match &self.kind

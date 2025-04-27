@@ -59,7 +59,8 @@ const TOOLTIP_LIFETIME: f32 = 0.1;
 const CLOSED_LIFETIME: f32 = 1.0;
 
 const BACKGROUND_COLOR: [f32; 4] = [0.923, 0.998, 1.0, 0.9];
-const TEXT_COLOR: [f32; 4] = [1.0, 0.393, 0.901, 1.0];
+const ACCENT_COLOR: [f32; 4] = [1.0, 0.393, 0.901, 1.0];
+const HIGHLIGHTED_COLOR: [f32; 4] = [1.0, 0.659, 0.848, 1.0];
 
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -156,7 +157,7 @@ impl WindowKind
             add_padding_horizontal(titlebar, TITLE_PADDING.into());
             titlebar.update(UiId::WindowTitlebarName(id), UiElement{
                 texture: UiTexture::Text{text: title, font_size: 30, font: FontStyle::Sans, align: None},
-                mix: Some(MixColor{keep_transparency: true, ..MixColor::color(TEXT_COLOR)}),
+                mix: Some(MixColor{keep_transparency: true, ..MixColor::color(ACCENT_COLOR)}),
                 animation: Animation::text(),
                 ..UiElement::fit_content()
             });
@@ -169,7 +170,7 @@ impl WindowKind
 
             let close_button = titlebar.update(UiId::WindowTitlebutton(id, UiIdTitlebutton::Close), UiElement{
                 texture: UiTexture::Custom("ui/close_button.png".to_owned()),
-                mix: Some(MixColor{keep_transparency: true, ..MixColor::color(TEXT_COLOR)}),
+                mix: Some(MixColor{keep_transparency: true, ..MixColor::color(ACCENT_COLOR)}),
                 width: size.clone(),
                 height: size,
                 animation: Animation::button(),
@@ -178,7 +179,7 @@ impl WindowKind
 
             if close_button.is_mouse_inside()
             {
-                println!("AHHHHHHHH");
+                close_button.element().mix.as_mut().unwrap().color = HIGHLIGHTED_COLOR;
             }
         };
 
@@ -376,7 +377,7 @@ impl Ui
 
             body.update(UiId::ConsoleText, UiElement{
                 texture: UiTexture::Text{text, font_size: 30, font: FontStyle::Sans, align: None},
-                mix: Some(MixColor{keep_transparency: true, ..MixColor::color(TEXT_COLOR)}),
+                mix: Some(MixColor{keep_transparency: true, ..MixColor::color(ACCENT_COLOR)}),
                 animation: Animation::typing_text(),
                 position: UiPosition::Absolute(Vector2::zeros()),
                 ..UiElement::fit_content()
