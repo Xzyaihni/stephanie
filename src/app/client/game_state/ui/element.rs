@@ -274,7 +274,8 @@ pub enum UiSize
     ParentScale(f32),
     Absolute(f32),
     FitChildren,
-    FitContent(f32)
+    FitContent(f32),
+    Rest(f32)
 }
 
 impl Default for UiSize
@@ -302,7 +303,8 @@ impl UiSize
             Self::ParentScale(fraction) => info.parent.map(|x| x * fraction),
             Self::Absolute(x) => Some(*x),
             Self::FitChildren => None,
-            Self::FitContent(_) => None
+            Self::FitContent(_) => None,
+            Self::Rest(_) => None
         }
     }
 
@@ -349,7 +351,8 @@ impl UiSize
                     }).max_by(|a, b| a.partial_cmp(&b).unwrap()).unwrap_or(0.0))
                 }
             },
-            Self::FitContent(x) => Some(bounds() * *x)
+            Self::FitContent(x) => Some(bounds() * *x),
+            Self::Rest(_) => None
         }
     }
 }
@@ -497,6 +500,9 @@ impl ResolvedSize
             if let UiSize::ParentScale(x) = size
             {
                 SizeBackward::ParentRelative(*x)
+            } else if let UiSize::Rest(_) = size
+            {
+                SizeBackward::Value(0.0)
             } else
             {
                 unreachable!()
@@ -533,6 +539,35 @@ impl ResolvedSize
         } else
         {
             size
+        }
+    }
+
+    pub fn resolve_children<'a, 'b>(&self, children: impl Iterator<Item=(&'a mut Option<f32>, &'b UiSize)>)
+    {
+        if let Some(parent_size) = self.value()
+        {
+            let mut children_size = 0.0;
+            let rests = children.filter(|(size, x)|
+            {
+                children_size += size.unwrap_or(0.0);
+                if let UiSize::Rest(_) = x { true } else { false }
+            }).collect::<Vec<_>>();
+
+            if rests.iter().any(|(x, _)| x.is_some())
+            {
+                return;
+            }
+
+            let ratios_total: f32 = rests.iter().map(|(_, x)| if let UiSize::Rest(x) = x { x } else { unreachable!() })
+                .sum();
+
+            rests.into_iter().for_each(|(value, ratio)|
+            {
+                let ratio = if let UiSize::Rest(x) = ratio { x } else { unreachable!() };
+                let size = (parent_size - children_size) * (ratio / ratios_total);
+
+                *value = Some(size);
+            });
         }
     }
 }

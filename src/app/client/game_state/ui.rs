@@ -63,7 +63,9 @@ mod controller;
 
 const TITLE_PADDING: f32 = 0.02;
 
-const PANEL_SIZE: f32 = 0.15;
+const INVENTORY_WIDTH: f32 = 0.1;
+const SCROLLBAR_WIDTH: f32 = 0.02;
+const SCROLLBAR_HEIGHT: f32 = SCROLLBAR_WIDTH * 6.0;
 
 const NOTIFICATION_HEIGHT: f32 = 0.0375;
 const NOTIFICATION_WIDTH: f32 = NOTIFICATION_HEIGHT * 4.0;
@@ -73,9 +75,11 @@ const ANIMATION_SCALE: Vector3<f32> = Vector3::new(4.0, 0.0, 1.0);
 const TOOLTIP_LIFETIME: f32 = 0.1;
 const CLOSED_LIFETIME: f32 = 1.0;
 
-const BACKGROUND_COLOR: [f32; 4] = [0.923, 0.998, 1.0, 0.9];
+const BACKGROUND_COLOR: [f32; 4] = [0.923, 0.998, 1.0, 1.0];
 const ACCENT_COLOR: [f32; 4] = [1.0, 0.393, 0.901, 1.0];
 const HIGHLIGHTED_COLOR: [f32; 4] = [1.0, 0.659, 0.848, 1.0];
+
+const SCROLLBAR_COLOR: [f32; 4] = [1.0, 0.893, 0.987, 1.0];
 
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -88,7 +92,11 @@ enum UiId
     Window(UiIdWindow),
     WindowTitlebar(UiIdWindow),
     WindowTitlebarName(UiIdWindow),
-    WindowTitlebutton(UiIdWindow, UiIdTitlebutton)
+    WindowTitlebutton(UiIdWindow, UiIdTitlebutton),
+    WindowBody(UiIdWindow),
+    InventoryList(UiIdWindow),
+    Scrollbar(UiIdWindow),
+    ScrollbarBar(UiIdWindow)
 }
 
 impl Idable for UiId
@@ -165,7 +173,15 @@ impl WindowKind
     fn update(&mut self, parent: &mut UiParentElement, info: UpdateInfo)
     {
         let id = self.as_id();
-        let mut with_titlebar = |title|
+
+        fn constrain<'a, F>(f: F) -> F
+        where
+            F: FnOnce(&'a mut UiParentElement, String) -> &'a mut UiParentElement
+        {
+            f
+        }
+
+        let with_titlebar = constrain(move |parent: &mut UiParentElement, title|
         {
             let titlebar = parent.update(UiId::WindowTitlebar(id), UiElement::default());
 
@@ -204,7 +220,12 @@ impl WindowKind
                     })));
                 }
             }
-        };
+
+            parent.update(UiId::WindowBody(id), UiElement{
+                width: UiSize::ParentScale(1.0).into(),
+                ..Default::default()
+            })
+        });
 
         match self
         {
@@ -213,7 +234,36 @@ impl WindowKind
                 let name = info.entities.named(*entity).as_deref().cloned()
                     .unwrap_or_else(|| "unnamed".to_owned());
 
-                with_titlebar(name);
+                let body = with_titlebar(parent, name);
+                body.element().children_layout = UiLayout::Horizontal;
+
+                let put_minimum_size_back = ();
+                let inventory_list = body.update(UiId::InventoryList(id), UiElement{
+                    width: UiElementSize{
+                        minimum_size: Some(UiMinimumSize::Absolute(INVENTORY_WIDTH)),
+                        size: UiSize::Rest(1.0)
+                    },
+                    height: UiSize::ParentScale(1.0).into(),
+                    ..Default::default()
+                });
+
+                let scrollbar = body.update(UiId::Scrollbar(id), UiElement{
+                    texture: UiTexture::Solid,
+                    mix: Some(MixColor::color(SCROLLBAR_COLOR)),
+                    width: SCROLLBAR_WIDTH.into(),
+                    height: SCROLLBAR_HEIGHT.into(),
+                    ..Default::default()
+                });
+
+                let make_this_adjust = ();
+                let bar_height = 0.2;
+                scrollbar.update(UiId::ScrollbarBar(id), UiElement{
+                    texture: UiTexture::Solid,
+                    mix: Some(MixColor::color(ACCENT_COLOR)),
+                    width: UiSize::ParentScale(1.0).into(),
+                    height: UiSize::ParentScale(bar_height).into(),
+                    ..Default::default()
+                });
             }
         }
     }
@@ -338,7 +388,7 @@ impl Ui
         self.console_contents = contents;
     }
 
-    pub fn remove_window(&mut self, id: UiIdWindow) -> bool
+    fn remove_window(&mut self, id: UiIdWindow) -> bool
     {
         if let Some(index) = self.windows.iter().position(|x|
         {

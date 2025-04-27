@@ -315,6 +315,12 @@ impl UiDeferredInfo
         }
     }
 
+    fn resolve_children<Id>(&self, children: &mut [(Id, TreeElement<Id>)])
+    {
+        self.width.resolve_children(children.iter_mut().map(|(_, x)| (&mut x.deferred.width.size, &x.element.width.size)));
+        self.height.resolve_children(children.iter_mut().map(|(_, x)| (&mut x.deferred.height.size, &x.element.height.size)));
+    }
+
     fn resolved(&self) -> bool
     {
         self.width.resolved()
@@ -363,7 +369,10 @@ impl<Id> TreeElement<Id>
     {
         let infos: Vec<_> = self.children.iter_mut().map(|(_, x)| x.resolve_backward(sizer)).collect();
 
-        self.deferred.resolve_backward(sizer, &self.element, infos)
+        let resolved = self.deferred.resolve_backward(sizer, &self.element, infos);
+        self.deferred.resolve_children(&mut self.children);
+
+        resolved
     }
 
     pub fn resolve_forward(
