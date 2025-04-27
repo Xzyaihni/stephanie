@@ -1,7 +1,8 @@
 use std::{
     mem,
     error,
-    fmt::{self, Display}
+    fmt::{self, Display},
+    collections::HashMap
 };
 
 use yanyaengine::{ElementState, PhysicalKey, KeyCode, KeyCodeNamed, MouseButton};
@@ -74,6 +75,16 @@ impl ControlState
             Self::Pressed => true
         }
     }
+
+    pub fn is_down(self) -> bool
+    {
+        self.to_bool()
+    }
+
+    pub fn is_up(self) -> bool
+    {
+        !self.is_down()
+    }
 }
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
@@ -124,12 +135,30 @@ impl KeyMapping
     }
 }
 
+pub struct UiControls
+{
+    controls: HashMap<KeyMapping, ControlState>
+}
+
+impl UiControls
+{
+    pub fn take_key(&mut self, key: &KeyMapping) -> Option<ControlState>
+    {
+        self.controls.remove(key)
+    }
+
+    pub fn take_is_down(&mut self, key: &KeyMapping) -> bool
+    {
+        self.take_key(key).map(|x| x.is_down()).unwrap_or(false)
+    }
+}
+
 pub struct ControlsController
 {
     clipboard: Option<ClipboardContext>,
     key_mapping: BiMap<KeyMapping, Control>,
     keys: [ControlState; Control::COUNT],
-    changed: Vec<(ControlState, KeyMapping)>
+    changed: HashMap<KeyMapping, ControlState>
 }
 
 impl ControlsController
@@ -173,7 +202,7 @@ impl ControlsController
             clipboard,
             key_mapping,
             keys: [ControlState::Released; Control::COUNT],
-            changed: Vec::new()
+            changed: HashMap::new()
         }
     }
 
@@ -212,7 +241,7 @@ impl ControlsController
 
         if let Some(this_key) = this_key
         {
-            self.changed.push((state, this_key));
+            self.changed.insert(this_key, state);
 
             true
         } else
@@ -226,26 +255,23 @@ impl ControlsController
         self.key_mapping.get_back(control)
     }
 
-    pub fn changed_this_frame(&mut self) -> Vec<(ControlState, KeyMapping)>
+    pub fn changed_this_frame(&mut self) -> UiControls
     {
-        mem::take(&mut self.changed)
+        UiControls{controls: mem::take(&mut self.changed)}
     }
 
-    pub fn consume_changed<'a, ChangedIter>(
+    pub fn consume_changed<'a>(
         &'a mut self,
-        changed: ChangedIter
-    ) -> impl Iterator<Item=(ControlState, Control)> + 'a
-    where
-        ChangedIter: IntoIterator<Item=(ControlState, KeyMapping)>,
-        ChangedIter::IntoIter: 'a
+        changed: UiControls
+    ) -> impl Iterator<Item=(Control, ControlState)> + 'a
     {
-        changed.into_iter().filter_map(|(state, key)|
+        changed.controls.into_iter().filter_map(|(key, state)|
         {
             self.key_mapping.get(&key).map(|matched|
             {
                 self.keys[*matched as usize] = state;
 
-                (state, *matched)
+                (*matched, state)
             })
         })
     }

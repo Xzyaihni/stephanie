@@ -7,7 +7,14 @@ use std::{
 
 use nalgebra::{Vector2, Vector3};
 
-use yanyaengine::{Transform, FontsContainer, TextInfo, camera::Camera, game_object::*};
+use yanyaengine::{
+    MouseButton,
+    Transform,
+    FontsContainer,
+    TextInfo,
+    camera::Camera,
+    game_object::*
+};
 
 use crate::{
     LONGEST_FRAME,
@@ -17,6 +24,7 @@ use crate::{
         game_state::{
             KeyMapping,
             UiAnatomyLocations,
+            UiControls,
             GameState,
             UiEvent,
             GameUiEvent,
@@ -187,6 +195,14 @@ impl WindowKind
             if close_button.is_mouse_inside()
             {
                 close_button.element().mix.as_mut().unwrap().color = HIGHLIGHTED_COLOR;
+
+                if info.controls.take_is_down(&KeyMapping::Mouse(MouseButton::Left))
+                {
+                    info.user_receiver.push(UiEvent::Action(Rc::new(move |game_state|
+                    {
+                        game_state.ui.borrow_mut().remove_window(id);
+                    })));
+                }
             }
         };
 
@@ -234,10 +250,11 @@ impl Window
     }
 }
 
-pub struct UpdateInfo<'a, 'b>
+pub struct UpdateInfo<'a, 'b, 'c>
 {
     pub entities: &'a ClientEntities,
-    pub controls: &'b mut Vec<(ControlState, KeyMapping)>
+    pub controls: &'b mut UiControls,
+    pub user_receiver: &'c mut UiReceiver
 }
 
 pub struct Ui
@@ -321,16 +338,14 @@ impl Ui
         self.console_contents = contents;
     }
 
-    pub fn close_inventory(&mut self, owner: Entity) -> bool
+    pub fn remove_window(&mut self, id: UiIdWindow) -> bool
     {
         if let Some(index) = self.windows.iter().position(|x|
         {
-            if let WindowKind::Inventory{entity, ..} = x.kind
+            match (&x.kind, id)
             {
-                entity == owner
-            } else
-            {
-                false
+                (WindowKind::Inventory{entity, ..}, UiIdWindow::Inventory(other_entity)) if *entity == other_entity => true,
+                _ => false
             }
         })
         {
@@ -341,6 +356,11 @@ impl Ui
         {
             false
         }
+    }
+
+    pub fn close_inventory(&mut self, owner: Entity) -> bool
+    {
+        self.remove_window(UiIdWindow::Inventory(owner))
     }
 
     pub fn open_inventory(&mut self, entity: Entity, on_click: InventoryOnClick)
@@ -365,7 +385,7 @@ impl Ui
     {
     }
 
-    pub fn update(&mut self, info: UpdateInfo)
+    pub fn update(&mut self, entities: &ClientEntities, controls: &mut UiControls)
     {
         if let Some(text) = self.console_contents.clone()
         {
@@ -394,8 +414,9 @@ impl Ui
         self.windows.iter_mut().for_each(|x|
         {
             x.update(&mut self.controller, UpdateInfo{
-                entities: info.entities,
-                controls: info.controls
+                entities: entities,
+                controls: controls,
+                user_receiver: &mut self.user_receiver.borrow_mut()
             })
         });
     }

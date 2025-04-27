@@ -81,7 +81,7 @@ use super::{
     world_receiver::WorldReceiver
 };
 
-pub use controls_controller::{Control, ControlState, KeyMapping};
+pub use controls_controller::{UiControls, Control, ControlState, KeyMapping};
 
 use controls_controller::ControlsController;
 
@@ -995,12 +995,9 @@ impl GameState
         }
     }
 
-    pub fn ui_update(&mut self, controls: &mut Vec<(ControlState, KeyMapping)>)
+    pub fn ui_update(&mut self, controls: &mut UiControls)
     {
-        self.ui.borrow_mut().update(UpdateInfo{
-            entities: &self.entities.entities,
-            controls
-        });
+        self.ui.borrow_mut().update(&self.entities.entities, controls);
     }
 
     pub fn update(

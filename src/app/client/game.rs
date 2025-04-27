@@ -192,7 +192,7 @@ impl Game
 
         drop(game_state_mut);
 
-        controls.into_iter().for_each(|(state, control)| self.on_control(state, control));
+        controls.into_iter().for_each(|(control, state)| self.on_control(state, control));
 
         game_state.borrow_mut().update(squares, info, dt);
 
