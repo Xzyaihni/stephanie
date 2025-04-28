@@ -1,8 +1,13 @@
-use std::fmt::Debug;
+use std::{
+    rc::Rc,
+    cell::RefCell,
+    fmt::Debug
+};
 
 use nalgebra::Vector2;
 
 use crate::common::{
+    some_or_value,
     render_info::*,
     lazy_transform::*
 };
@@ -113,9 +118,10 @@ impl UiTexture
 }
 
 #[derive(Debug, Clone)]
-pub struct SizeForwardInfo
+pub struct SizeForwardInfo<SizeGet>
 {
-    pub parent: Option<f32>
+    pub parent: Option<f32>,
+    pub get_element_size: SizeGet
 }
 
 #[derive(Debug, Clone)]
@@ -168,8 +174,7 @@ pub enum UiSize<Id>
     FitChildren,
     FitContent(f32),
     Rest(f32),
-    CopyWidth(Id),
-    CopyHeight(Id)
+    CopyElement(UiDirection, Id)
 }
 
 impl<Id> Default for UiSize<Id>
@@ -190,7 +195,10 @@ impl<Id> From<f32> for UiSize<Id>
 
 impl<Id> UiSize<Id>
 {
-    pub fn resolve_forward(&self, info: &SizeForwardInfo) -> Option<f32>
+    pub fn resolve_forward<SizeGet: Fn(&UiDirection, &Id) -> Option<f32> + Copy>(
+        &self,
+        info: &SizeForwardInfo<SizeGet>
+    ) -> Option<f32>
     {
         match self
         {
@@ -199,8 +207,10 @@ impl<Id> UiSize<Id>
             Self::FitChildren => None,
             Self::FitContent(_) => None,
             Self::Rest(_) => None,
-            Self::CopyWidth(id) => None,
-            Self::CopyHeight(id) => None
+            Self::CopyElement(direction, id) =>
+            {
+                Some(some_or_value!((info.get_element_size)(direction, id), Some(0.0)))
+            }
         }
     }
 
@@ -249,20 +259,19 @@ impl<Id> UiSize<Id>
             },
             Self::FitContent(x) => Some(bounds() * *x),
             Self::Rest(_) => None,
-            Self::CopyWidth(_) => None,
-            Self::CopyHeight(_) => None
+            Self::CopyElement(_, _) => None
         }
     }
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum UiLayout
+pub enum UiDirection
 {
     Horizontal,
     Vertical
 }
 
-impl UiLayout
+impl UiDirection
 {
     pub fn is_horizontal(&self) -> bool
     {
@@ -275,6 +284,8 @@ impl UiLayout
         }
     }
 }
+
+pub type UiLayout = UiDirection;
 
 pub struct PositionResolveInfo
 {
@@ -506,7 +517,10 @@ impl<Id> From<f32> for UiElementSize<Id>
 
 impl<Id> UiElementSize<Id>
 {
-    pub fn resolve_forward(&self, info: SizeForwardInfo) -> ResolvedSize
+    pub fn resolve_forward<SizeGet: Fn(&UiDirection, &Id) -> Option<f32> + Copy>(
+        &self,
+        info: SizeForwardInfo<SizeGet>
+    ) -> ResolvedSize
     {
         ResolvedSize{
             minimum_size: self.minimum_size.as_ref().and_then(|x| x.as_general::<Id>().resolve_forward(&info)),

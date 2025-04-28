@@ -245,7 +245,7 @@ impl WindowKind
                 let scrollbar = body.update(UiId::Scrollbar(id), UiElement{
                     texture: UiTexture::Solid,
                     mix: Some(MixColor::color(SCROLLBAR_COLOR)),
-                    width: UiSize::CopyWidth(UiId::WindowTitlebutton(id, UiIdTitlebutton::Close)).into(),
+                    width: UiSize::CopyElement(UiDirection::Horizontal, UiId::WindowTitlebutton(id, UiIdTitlebutton::Close)).into(),
                     height: SCROLLBAR_HEIGHT.into(),
                     animation: Animation::scrollbar(),
                     ..Default::default()

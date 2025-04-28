@@ -228,25 +228,43 @@ impl UiDeferredInfo
         }
     }
 
-    fn resolve_forward<Id>(
+    fn resolve_forward<Id: Idable>(
         &mut self,
+        shared: &Rc<RefCell<SharedInfo<Id>>>,
         element: &UiElement<Id>,
         previous: Option<&Self>,
         parent: &Self,
         parent_element: &UiElement<Id>
     )
     {
+        let get_element_size = |direction: &_, id: &Id| -> Option<_>
+        {
+            let shared = shared.borrow();
+            let index = shared.element_id(&id)?;
+            let element = &shared.elements[index].deferred;
+
+            let size = match direction
+            {
+                UiDirection::Horizontal => element.width,
+                UiDirection::Vertical => element.height
+            };
+
+            Some(size.unwrap())
+        };
+
         if !self.width.resolved()
         {
             self.width = element.width.resolve_forward(SizeForwardInfo{
-                parent: parent.width.size
+                parent: parent.width.size,
+                get_element_size
             });
         }
 
         if !self.height.resolved()
         {
             self.height = element.height.resolve_forward(SizeForwardInfo{
-                parent: parent.height.size
+                parent: parent.height.size,
+                get_element_size
             });
         }
 
@@ -382,10 +400,13 @@ impl<Id> TreeElement<Id>
         parent: &UiDeferredInfo,
         parent_element: &UiElement<Id>
     )
+    where
+        Id: Idable
     {
         if !self.deferred.resolved()
         {
             self.deferred.resolve_forward(
+                &self.shared,
                 &self.element,
                 previous,
                 parent,
