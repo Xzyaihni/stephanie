@@ -1,122 +1,14 @@
-use std::fmt::{self, Debug};
+use std::fmt::Debug;
 
-use nalgebra::{Vector2, Vector3};
+use nalgebra::Vector2;
 
-use yanyaengine::Transform;
-
-use crate::{
-    client::{Control, ControlState, RenderCreateInfo, game_state::Ui},
-    common::{
-        render_info::*,
-        lazy_transform::*,
-        AnyEntities,
-        Entity,
-        ServerToClient,
-        entity::ClientEntities
-    }
+use crate::common::{
+    render_info::*,
+    lazy_transform::*
 };
 
 pub use crate::common::lazy_transform::Scaling;
 
-
-#[derive(Debug)]
-pub enum UiElementPredicate
-{
-    None,
-    Inside(Entity)
-}
-
-impl UiElementPredicate
-{
-    pub fn matches(
-        &self,
-        entities: &ClientEntities,
-        query: UiQuery,
-        position: Vector2<f32>
-    ) -> bool
-    {
-        match self
-        {
-            Self::None => true,
-            Self::Inside(entity) =>
-            {
-                let transform = entities.transform(*entity).unwrap();
-
-                query.with_transform(&transform).is_inside(position)
-            }
-        }
-    }
-}
-
-#[derive(Debug)]
-pub struct UiQuery<'a>
-{
-    pub shape: &'a UiElementShape,
-    pub transform: &'a Transform
-}
-
-impl<'a> UiQuery<'a>
-{
-    pub fn with_transform(self, transform: &'a Transform) -> Self
-    {
-        Self{
-            transform,
-            ..self
-        }
-    }
-
-    pub fn relative_position(&self) -> Vector2<f32>
-    {
-        self.transform.position.xy()
-    }
-
-    pub fn distance(&self, position: Vector2<f32>) -> Vector2<f32>
-    {
-        (self.relative_position() - position).component_div(&self.transform.scale.xy())
-    }
-
-    pub fn is_inside(&self, position: Vector2<f32>) -> bool
-    {
-        self.shape.is_inside(
-            self.transform.scale.xy(),
-            position - self.relative_position()
-        )
-    }
-}
-
-#[derive(Debug)]
-pub enum AspectMode
-{
-    ShrinkX,
-    FillRestX
-}
-
-#[derive(Debug)]
-pub enum AspectPosition
-{
-    UiScaled(Vector2<f32>),
-    Absolute(Vector2<f32>)
-}
-
-#[derive(Debug)]
-pub struct KeepAspect
-{
-    pub scale: Vector2<f32>,
-    pub position: AspectPosition,
-    pub mode: AspectMode,
-}
-
-impl Default for KeepAspect
-{
-    fn default() -> Self
-    {
-        Self{
-            scale: Vector2::repeat(1.0),
-            position: AspectPosition::UiScaled(Vector2::zeros()),
-            mode: AspectMode::ShrinkX,
-        }
-    }
-}
 
 // i wanted to do this with FlatChunksContainer but i dont like how i made that one
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -257,7 +149,7 @@ pub enum UiMinimumSize
 
 impl UiMinimumSize
 {
-    fn as_general(&self) -> UiSize
+    fn as_general<Id>(&self) -> UiSize<Id>
     {
         match self
         {
@@ -269,16 +161,18 @@ impl UiMinimumSize
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum UiSize
+pub enum UiSize<Id>
 {
     ParentScale(f32),
     Absolute(f32),
     FitChildren,
     FitContent(f32),
-    Rest(f32)
+    Rest(f32),
+    CopyWidth(Id),
+    CopyHeight(Id)
 }
 
-impl Default for UiSize
+impl<Id> Default for UiSize<Id>
 {
     fn default() -> Self
     {
@@ -286,7 +180,7 @@ impl Default for UiSize
     }
 }
 
-impl From<f32> for UiSize
+impl<Id> From<f32> for UiSize<Id>
 {
     fn from(size: f32) -> Self
     {
@@ -294,7 +188,7 @@ impl From<f32> for UiSize
     }
 }
 
-impl UiSize
+impl<Id> UiSize<Id>
 {
     pub fn resolve_forward(&self, info: &SizeForwardInfo) -> Option<f32>
     {
@@ -304,7 +198,9 @@ impl UiSize
             Self::Absolute(x) => Some(*x),
             Self::FitChildren => None,
             Self::FitContent(_) => None,
-            Self::Rest(_) => None
+            Self::Rest(_) => None,
+            Self::CopyWidth(id) => None,
+            Self::CopyHeight(id) => None
         }
     }
 
@@ -352,7 +248,9 @@ impl UiSize
                 }
             },
             Self::FitContent(x) => Some(bounds() * *x),
-            Self::Rest(_) => None
+            Self::Rest(_) => None,
+            Self::CopyWidth(_) => None,
+            Self::CopyHeight(_) => None
         }
     }
 }
@@ -490,7 +388,7 @@ impl ResolvedSize
         self.value().unwrap()
     }
 
-    fn as_resolved(value: Option<f32>, size: &UiSize) -> SizeBackward
+    fn as_resolved<Id>(value: Option<f32>, size: &UiSize<Id>) -> SizeBackward
     {
         if let Some(x) = value
         {
@@ -510,11 +408,11 @@ impl ResolvedSize
         }
     }
 
-    pub fn resolve_backward(
+    pub fn resolve_backward<Id>(
         &mut self,
         bounds: impl Fn() -> f32,
         parallel: bool,
-        size: &UiElementSize,
+        size: &UiElementSize<Id>,
         children: impl Iterator<Item=SizeBackwardInfo> + Clone
     ) -> SizeBackwardInfo
     {
@@ -522,7 +420,7 @@ impl ResolvedSize
         {
             self.minimum_size = size.minimum_size.as_ref().map(|x|
             {
-                x.as_general().resolve_backward(&bounds, parallel, children.clone()).unwrap()
+                x.as_general::<Id>().resolve_backward(&bounds, parallel, children.clone()).unwrap()
             });
         }
 
@@ -542,7 +440,7 @@ impl ResolvedSize
         }
     }
 
-    pub fn resolve_children<'a, 'b>(&self, children: impl Iterator<Item=(&'a mut Option<f32>, &'b UiSize)>)
+    pub fn resolve_children<'a, 'b, Id: 'b>(&self, children: impl Iterator<Item=(&'a mut Option<f32>, &'b UiSize<Id>)>)
     {
         if let Some(parent_size) = self.value()
         {
@@ -573,13 +471,13 @@ impl ResolvedSize
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct UiElementSize
+pub struct UiElementSize<Id>
 {
     pub minimum_size: Option<UiMinimumSize>,
-    pub size: UiSize
+    pub size: UiSize<Id>
 }
 
-impl Default for UiElementSize
+impl<Id> Default for UiElementSize<Id>
 {
     fn default() -> Self
     {
@@ -587,9 +485,9 @@ impl Default for UiElementSize
     }
 }
 
-impl From<UiSize> for UiElementSize
+impl<Id> From<UiSize<Id>> for UiElementSize<Id>
 {
-    fn from(size: UiSize) -> Self
+    fn from(size: UiSize<Id>) -> Self
     {
         Self{
             minimum_size: None,
@@ -598,7 +496,7 @@ impl From<UiSize> for UiElementSize
     }
 }
 
-impl From<f32> for UiElementSize
+impl<Id> From<f32> for UiElementSize<Id>
 {
     fn from(size: f32) -> Self
     {
@@ -606,12 +504,12 @@ impl From<f32> for UiElementSize
     }
 }
 
-impl UiElementSize
+impl<Id> UiElementSize<Id>
 {
     pub fn resolve_forward(&self, info: SizeForwardInfo) -> ResolvedSize
     {
         ResolvedSize{
-            minimum_size: self.minimum_size.as_ref().and_then(|x| x.as_general().resolve_forward(&info)),
+            minimum_size: self.minimum_size.as_ref().and_then(|x| x.as_general::<Id>().resolve_forward(&info)),
             size: self.size.resolve_forward(&info)
         }
     }
@@ -675,11 +573,28 @@ impl Animation
             scaling: Some(ScalingAnimation{
                 start_scaling: Vector2::repeat(0.5),
                 start_mode: Scaling::EaseOut{decay: 20.0},
-                close_mode: Scaling::EaseIn(EaseInScaling::new(2.0))
+                close_mode: Scaling::EaseOut{decay: 30.0}
             }),
             mix: Some(10.0),
             ..Default::default()
         }
+    }
+
+    pub fn scrollbar() -> Self
+    {
+        Self{
+            scaling: Some(ScalingAnimation{
+                start_scaling: Vector2::repeat(0.1),
+                start_mode: Scaling::EaseOut{decay: 30.0},
+                close_mode: Scaling::EaseOut{decay: 30.0}
+            }),
+            ..Default::default()
+        }
+    }
+
+    pub fn scrollbar_bar() -> Self
+    {
+        Self::button()
     }
 
     pub fn typing_text() -> Self
@@ -696,18 +611,18 @@ impl Animation
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct UiElement
+pub struct UiElement<Id>
 {
     pub texture: UiTexture,
     pub mix: Option<MixColor>,
     pub animation: Animation,
     pub position: UiPosition,
     pub children_layout: UiLayout,
-    pub width: UiElementSize,
-    pub height: UiElementSize
+    pub width: UiElementSize<Id>,
+    pub height: UiElementSize<Id>
 }
 
-impl Default for UiElement
+impl<Id> Default for UiElement<Id>
 {
     fn default() -> Self
     {
@@ -723,9 +638,11 @@ impl Default for UiElement
     }
 }
 
-impl UiElement
+impl<Id> UiElement<Id>
 {
     pub fn fit_content() -> Self
+    where
+        Id: Clone
     {
         let fit_content = UiElementSize{
             size: UiSize::FitContent(1.0),

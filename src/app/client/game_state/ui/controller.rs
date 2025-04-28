@@ -3,7 +3,8 @@ use std::{
     hash::Hash,
     rc::Rc,
     cell::RefCell,
-    sync::Arc
+    sync::Arc,
+    fmt::Debug
 };
 
 use nalgebra::{Vector2, Vector3};
@@ -33,7 +34,7 @@ use super::element::*;
 
 pub const MINIMUM_SCALE: f32 = 0.001;
 
-pub trait Idable: Hash + Eq + Clone
+pub trait Idable: Hash + Eq + Clone + Debug
 {
     fn screen() -> Self;
     fn padding(id: u32) -> Self;
@@ -41,7 +42,7 @@ pub trait Idable: Hash + Eq + Clone
 
 pub trait TreeElementable<Id: Idable>
 {
-    fn update(&mut self, id: Id, element: UiElement) -> &mut TreeElement<Id>;
+    fn update(&mut self, id: Id, element: UiElement<Id>) -> &mut TreeElement<Id>;
     fn consecutive(&mut self) -> u32;
 }
 
@@ -54,10 +55,10 @@ struct UiElementCached
 
 impl UiElementCached
 {
-    fn from_element(
+    fn from_element<Id>(
         create_info: &mut RenderCreateInfo,
         deferred: &UiDeferredInfo,
-        element: &UiElement
+        element: &UiElement<Id>
     ) -> Self
     {
         let scaling = element.animation.scaling
@@ -105,11 +106,11 @@ impl UiElementCached
         }
     }
 
-    fn update(
+    fn update<Id>(
         &mut self,
         create_info: &mut RenderCreateInfo,
         deferred: &UiDeferredInfo,
-        old_element: &mut UiElement,
+        old_element: &mut UiElement<Id>,
         dt: f32
     )
     {
@@ -146,7 +147,7 @@ impl UiElementCached
         }
     }
 
-    fn update_closing(&mut self, element: &mut UiElement, dt: f32) -> bool
+    fn update_closing<Id>(&mut self, element: &mut UiElement<Id>, dt: f32) -> bool
     {
         let object = some_or_value!(self.object.as_mut(), false);
         let mut transform = some_or_value!(object.transform().cloned(), false);
@@ -170,7 +171,7 @@ impl UiElementCached
         true
     }
 
-    fn keep_old(&self, new: &mut Self, old_element: &UiElement, new_element: &UiElement)
+    fn keep_old<Id: Eq>(&self, new: &mut Self, old_element: &UiElement<Id>, new_element: &UiElement<Id>)
     {
         macro_rules! fields_match
         {
@@ -227,12 +228,12 @@ impl UiDeferredInfo
         }
     }
 
-    fn resolve_forward(
+    fn resolve_forward<Id>(
         &mut self,
-        element: &UiElement,
+        element: &UiElement<Id>,
         previous: Option<&Self>,
         parent: &Self,
-        parent_element: &UiElement
+        parent_element: &UiElement<Id>
     )
     {
         if !self.width.resolved()
@@ -288,10 +289,10 @@ impl UiDeferredInfo
         Some(parent.position? + (this_size - parent_size) / 2.0)
     }
 
-    fn resolve_backward(
+    fn resolve_backward<Id>(
         &mut self,
         sizer: &TextureSizer,
-        element: &UiElement,
+        element: &UiElement<Id>,
         children: Vec<ResolvedBackward>
     ) -> ResolvedBackward
     {
@@ -333,7 +334,7 @@ impl UiDeferredInfo
 pub struct TreeElement<Id>
 {
     id: Id,
-    element: UiElement,
+    element: UiElement<Id>,
     deferred: UiDeferredInfo,
     children: Vec<(Id, Self)>,
     shared: Rc<RefCell<SharedInfo<Id>>>
@@ -341,7 +342,7 @@ pub struct TreeElement<Id>
 
 impl<Id> TreeElement<Id>
 {
-    fn new(shared: Rc<RefCell<SharedInfo<Id>>>, id: Id, element: UiElement) -> Self
+    fn new(shared: Rc<RefCell<SharedInfo<Id>>>, id: Id, element: UiElement<Id>) -> Self
     {
         Self{
             id,
@@ -379,7 +380,7 @@ impl<Id> TreeElement<Id>
         &mut self,
         previous: Option<&UiDeferredInfo>,
         parent: &UiDeferredInfo,
-        parent_element: &UiElement
+        parent_element: &UiElement<Id>
     )
     {
         if !self.deferred.resolved()
@@ -405,7 +406,7 @@ impl<Id> TreeElement<Id>
         self.deferred.resolved() && self.children.iter().all(|(_, x)| x.resolved())
     }
 
-    pub fn element(&mut self) -> &mut UiElement
+    pub fn element(&mut self) -> &mut UiElement<Id>
     {
         &mut self.element
     }
@@ -439,12 +440,12 @@ impl<Id> TreeElement<Id>
         self.is_inside(self.shared.borrow().mouse_position)
     }
 
-    fn for_each(self, id: Id, mut f: impl FnMut(Id, UiElement, UiDeferredInfo))
+    fn for_each(self, id: Id, mut f: impl FnMut(Id, UiElement<Id>, UiDeferredInfo))
     {
         self.for_each_inner(id, &mut f)
     }
 
-    fn for_each_inner(self, id: Id, f: &mut impl FnMut(Id, UiElement, UiDeferredInfo))
+    fn for_each_inner(self, id: Id, f: &mut impl FnMut(Id, UiElement<Id>, UiDeferredInfo))
     {
         f(id, self.element, self.deferred);
         self.children.into_iter().for_each(|(id, child)| child.for_each_inner(id, f));
@@ -453,7 +454,7 @@ impl<Id> TreeElement<Id>
 
 impl<Id: Idable> TreeElementable<Id> for TreeElement<Id>
 {
-    fn update(&mut self, id: Id, element: UiElement) -> &mut Self
+    fn update(&mut self, id: Id, element: UiElement<Id>) -> &mut Self
     {
         let index = self.children.len();
         self.children.push((id.clone(), Self::new(self.shared.clone(), id, element)));
@@ -522,7 +523,7 @@ impl TextureSizer
 struct Element<Id>
 {
     id: Id,
-    element: UiElement,
+    element: UiElement<Id>,
     cached: UiElementCached,
     deferred: UiDeferredInfo,
     closing: bool
@@ -558,7 +559,7 @@ impl<Id> SharedInfo<Id>
 pub struct Controller<Id>
 {
     sizer: TextureSizer,
-    created: Vec<(Id, UiElement, UiDeferredInfo)>,
+    created: Vec<(Id, UiElement<Id>, UiDeferredInfo)>,
     root: TreeElement<Id>,
     shared: Rc<RefCell<SharedInfo<Id>>>
 }
@@ -617,14 +618,19 @@ impl<Id: Idable> Controller<Id>
         self.prepare();
 
         self.shared.borrow_mut().elements.iter_mut().for_each(|element| element.closing = true);
+
+        let mut last_match = None;
         mem::take(&mut self.created).into_iter().for_each(|(id, element, deferred)|
         {
             let index = self.shared.borrow().element_id(&id);
             if let Some(index) = index
             {
+                last_match = Some(index);
+
                 let Element{
                     element: old_element,
                     cached: old_cached,
+                    deferred: old_deferred,
                     closing,
                     ..
                 } = &mut self.shared.borrow_mut().elements[index];
@@ -644,10 +650,24 @@ impl<Id: Idable> Controller<Id>
 
                     *old_element = element;
                 }
+
+                *old_deferred = deferred;
             } else
             {
                 let cached = UiElementCached::from_element(create_info, &deferred, &element);
-                self.shared.borrow_mut().elements.push(Element{id, element, cached, deferred, closing: false});
+                let element = Element{id, element, cached, deferred, closing: false};
+
+                let elements = &mut self.shared.borrow_mut().elements;
+
+                if let Some(index) = last_match
+                {
+                    elements.insert(index + 1, element);
+
+                    last_match = Some(index + 1);
+                } else
+                {
+                    elements.push(element);
+                }
             }
         });
 
@@ -703,7 +723,7 @@ impl<Id: Idable> Controller<Id>
 
 impl<Id: Idable> TreeElementable<Id> for Controller<Id>
 {
-    fn update(&mut self, id: Id, element: UiElement) -> &mut TreeElement<Id>
+    fn update(&mut self, id: Id, element: UiElement<Id>) -> &mut TreeElement<Id>
     {
         debug_assert!(!self.created.iter().any(|(x, _, _)| *x == id));
 
@@ -716,7 +736,7 @@ impl<Id: Idable> TreeElementable<Id> for Controller<Id>
     }
 }
 
-pub fn add_padding<E: TreeElementable<Id>, Id: Idable>(x: &mut E, width: UiElementSize, height: UiElementSize)
+pub fn add_padding<E: TreeElementable<Id>, Id: Idable>(x: &mut E, width: UiElementSize<Id>, height: UiElementSize<Id>)
 {
     let id = x.consecutive();
     x.update(Id::padding(id), UiElement{
@@ -726,12 +746,12 @@ pub fn add_padding<E: TreeElementable<Id>, Id: Idable>(x: &mut E, width: UiEleme
     });
 }
 
-pub fn add_padding_horizontal<E: TreeElementable<Id>, Id: Idable>(x: &mut E, size: UiElementSize)
+pub fn add_padding_horizontal<E: TreeElementable<Id>, Id: Idable>(x: &mut E, size: UiElementSize<Id>)
 {
     add_padding(x, size, 0.0.into())
 }
 
-pub fn add_padding_vertical<E: TreeElementable<Id>, Id: Idable>(x: &mut E, size: UiElementSize)
+pub fn add_padding_vertical<E: TreeElementable<Id>, Id: Idable>(x: &mut E, size: UiElementSize<Id>)
 {
     add_padding(x, 0.0.into(), size)
 }

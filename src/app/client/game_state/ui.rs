@@ -64,22 +64,18 @@ mod controller;
 const TITLE_PADDING: f32 = 0.02;
 
 const INVENTORY_WIDTH: f32 = 0.1;
-const SCROLLBAR_WIDTH: f32 = 0.02;
-const SCROLLBAR_HEIGHT: f32 = SCROLLBAR_WIDTH * 6.0;
+const SCROLLBAR_HEIGHT: f32 = 0.1;
 
 const NOTIFICATION_HEIGHT: f32 = 0.0375;
 const NOTIFICATION_WIDTH: f32 = NOTIFICATION_HEIGHT * 4.0;
 
-const ANIMATION_SCALE: Vector3<f32> = Vector3::new(4.0, 0.0, 1.0);
-
 const TOOLTIP_LIFETIME: f32 = 0.1;
-const CLOSED_LIFETIME: f32 = 1.0;
 
 const BACKGROUND_COLOR: [f32; 4] = [0.923, 0.998, 1.0, 1.0];
 const ACCENT_COLOR: [f32; 4] = [1.0, 0.393, 0.901, 1.0];
 const HIGHLIGHTED_COLOR: [f32; 4] = [1.0, 0.659, 0.848, 1.0];
 
-const SCROLLBAR_COLOR: [f32; 4] = [1.0, 0.893, 0.987, 1.0];
+const SCROLLBAR_COLOR: [f32; 4] = [1.0, 0.656, 0.944, 1.0];
 
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -237,7 +233,6 @@ impl WindowKind
                 let body = with_titlebar(parent, name);
                 body.element().children_layout = UiLayout::Horizontal;
 
-                let put_minimum_size_back = ();
                 let inventory_list = body.update(UiId::InventoryList(id), UiElement{
                     width: UiElementSize{
                         minimum_size: Some(UiMinimumSize::Absolute(INVENTORY_WIDTH)),
@@ -250,8 +245,9 @@ impl WindowKind
                 let scrollbar = body.update(UiId::Scrollbar(id), UiElement{
                     texture: UiTexture::Solid,
                     mix: Some(MixColor::color(SCROLLBAR_COLOR)),
-                    width: SCROLLBAR_WIDTH.into(),
+                    width: UiSize::CopyWidth(UiId::WindowTitlebutton(id, UiIdTitlebutton::Close)).into(),
                     height: SCROLLBAR_HEIGHT.into(),
+                    animation: Animation::scrollbar(),
                     ..Default::default()
                 });
 
@@ -262,6 +258,7 @@ impl WindowKind
                     mix: Some(MixColor::color(ACCENT_COLOR)),
                     width: UiSize::ParentScale(1.0).into(),
                     height: UiSize::ParentScale(bar_height).into(),
+                    animation: Animation::scrollbar_bar(),
                     ..Default::default()
                 });
             }

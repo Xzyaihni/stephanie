@@ -14,10 +14,7 @@ use yanyaengine::{TextureId, Transform};
 
 use crate::{
     server,
-    client::{
-        RenderCreateInfo,
-        UiElement
-    },
+    client::RenderCreateInfo,
     common::{
         some_or_return,
         write_log,
@@ -239,6 +236,8 @@ macro_rules! no_on_set_for
     }
 }
 
+type UnitType = ();
+
 no_on_set!{
     ClientRenderInfo,
     RenderInfo,
@@ -260,8 +259,7 @@ no_on_set!{
     Watchers,
     Occluder,
     ClientOccluder,
-    UiElement,
-    UiElementServer
+    UnitType
 }
 
 no_on_set_for!{ServerEntities, Character}
@@ -307,8 +305,6 @@ impl Parent
         self.entity
     }
 }
-
-pub type UiElementServer = ();
 
 macro_rules! normal_forward_impl
 {
