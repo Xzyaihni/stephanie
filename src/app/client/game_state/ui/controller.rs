@@ -5,6 +5,7 @@ use std::{
     rc::Rc,
     cell::RefCell,
     sync::Arc,
+    collections::HashMap,
     fmt::Debug
 };
 
@@ -231,17 +232,16 @@ impl UiDeferredInfo
 
     fn resolve_forward<Id: Idable>(
         &mut self,
-        shared: &Rc<RefCell<SharedInfo<Id>>>,
+        resolved: &HashMap<Id, Self>,
         element: &UiElement<Id>,
         previous: Option<&Self>,
         parent: &Self,
         parent_element: &UiElement<Id>
     )
     {
-        let get_element_size = |direction: &_, id: &Id| -> Option<_>
+        let get_element_size = |direction: &_, id: &Id| -> Option<f32>
         {
-            let shared = shared.borrow();
-            let element = &shared.element_any(id)?.deferred;
+            let element = resolved.get(id)?;
 
             let size = match direction
             {
@@ -249,7 +249,7 @@ impl UiDeferredInfo
                 UiDirection::Vertical => element.height
             };
 
-            Some(size.unwrap())
+            size.value()
         };
 
         if !self.width.resolved()
@@ -275,9 +275,7 @@ impl UiDeferredInfo
                 UiPosition::Absolute(x) => self.position = Some(*x),
                 UiPosition::Offset(id, x) =>
                 {
-                    self.position = shared.borrow().element_any(id)
-                        .and_then(|element| element.deferred.position)
-                        .map(|position| position + *x);
+                    self.position = resolved.get(id).and_then(|element| element.position.map(|pos| pos + *x));
                 },
                 _ =>
                 {
@@ -418,6 +416,7 @@ impl<Id: Idable> TreeElement<Id>
 
     pub fn resolve_forward(
         &mut self,
+        resolved: &mut HashMap<Id, UiDeferredInfo>,
         previous: Option<&UiDeferredInfo>,
         parent: &UiDeferredInfo,
         parent_element: &UiElement<Id>
@@ -428,17 +427,19 @@ impl<Id: Idable> TreeElement<Id>
         if !self.deferred.resolved()
         {
             self.deferred.resolve_forward(
-                &self.shared,
+                resolved,
                 &self.element,
                 previous,
                 parent,
                 parent_element
             );
+
+            resolved.insert(self.id.clone(), self.deferred.clone());
         }
 
         self.children.iter_mut().fold(None, |previous, x|
         {
-            x.resolve_forward(previous, &self.deferred, &self.element);
+            x.resolve_forward(resolved, previous, &self.deferred, &self.element);
 
             Some(&x.deferred)
         });
@@ -595,11 +596,6 @@ impl<Id: Idable> SharedInfo<Id>
     {
         self.elements.iter().position(|element| element.id == *id)
     }
-
-    pub fn element_any<'a>(&'a self, id: &Id) -> Option<&'a Element<Id>>
-    {
-        self.element_id(id).map(|index| &self.elements[index])
-    }
 }
 
 pub struct Controller<Id>
@@ -626,13 +622,14 @@ impl<Id: Idable> Controller<Id>
 
     fn prepare(&mut self)
     {
+        let mut resolved = HashMap::new();
         let empty = UiDeferredInfo::default();
         let empty_element = UiElement::default();
 
         const LIMIT: usize = 1000;
         for i in 0..LIMIT
         {
-            self.root.resolve_forward(None, &empty, &empty_element);
+            self.root.resolve_forward(&mut resolved, None, &empty, &empty_element);
             self.root.resolve_backward(&self.sizer);
 
             if self.root.resolved()

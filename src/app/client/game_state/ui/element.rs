@@ -1,4 +1,5 @@
 use std::{
+    convert,
     rc::Rc,
     cell::RefCell,
     fmt::Debug
@@ -210,7 +211,7 @@ impl<Id> UiSize<Id>
         &self,
         bounds: impl Fn() -> f32,
         parallel: bool,
-        children: impl Iterator<Item=SizeBackward>
+        children: impl Iterator<Item=Option<SizeBackward>> + Clone
     ) -> Option<f32>
     {
         match self
@@ -219,6 +220,13 @@ impl<Id> UiSize<Id>
             Self::Absolute(x) => Some(*x),
             Self::FitChildren =>
             {
+                if children.clone().any(|x| x.is_none())
+                {
+                    return None;
+                }
+
+                let children = children.filter_map(convert::identity);
+
                 if parallel
                 {
                     let (sum_normal, sum_relative) = children.fold(
@@ -347,14 +355,14 @@ impl<Id> UiPosition<Id>
 #[derive(Debug, Clone)]
 pub struct ResolvedBackward
 {
-    pub width: SizeBackwardInfo,
-    pub height: SizeBackwardInfo
+    pub width: Option<SizeBackwardInfo>,
+    pub height: Option<SizeBackwardInfo>
 }
 
 #[derive(Debug, Clone, Copy)]
 pub struct ResolvedSize
 {
-    pub minimum_size: Option<f32>,
+    pub minimum_size: Option<Option<f32>>,
     pub size: Option<f32>
 }
 
@@ -381,7 +389,7 @@ impl ResolvedSize
         let size = self.size?;
         if let Some(minimum) = self.minimum_size
         {
-            Some(size.max(minimum))
+            Some(size.max(minimum?))
         } else
         {
             Some(size)
@@ -393,22 +401,22 @@ impl ResolvedSize
         self.value().unwrap()
     }
 
-    fn as_resolved<Id>(value: Option<f32>, size: &UiSize<Id>) -> SizeBackward
+    fn as_resolved<Id>(value: Option<f32>, size: &UiSize<Id>) -> Option<SizeBackward>
     {
         if let Some(x) = value
         {
-            SizeBackward::Value(x)
+            Some(SizeBackward::Value(x))
         } else
         {
             if let UiSize::ParentScale(x) = size
             {
-                SizeBackward::ParentRelative(*x)
+                Some(SizeBackward::ParentRelative(*x))
             } else if let UiSize::Rest(_) = size
             {
-                SizeBackward::Value(0.0)
+                Some(SizeBackward::Value(0.0))
             } else
             {
-                unreachable!()
+                None
             }
         }
     }
@@ -418,15 +426,14 @@ impl ResolvedSize
         bounds: impl Fn() -> f32,
         parallel: bool,
         size: &UiElementSize<Id>,
-        children: impl Iterator<Item=SizeBackwardInfo> + Clone
-    ) -> SizeBackwardInfo
+        children: impl Iterator<Item=Option<SizeBackwardInfo>> + Clone
+    ) -> Option<SizeBackward>
     {
-        if self.minimum_size.is_none()
+        if self.minimum_size.map(|x| x.is_none()).unwrap_or(false)
         {
-            self.minimum_size = size.minimum_size.as_ref().map(|x|
-            {
-                x.as_general::<Id>().resolve_backward(&bounds, parallel, children.clone()).unwrap()
-            });
+            self.minimum_size = Some(size.minimum_size.as_ref().unwrap()
+                .as_general::<Id>()
+                .resolve_backward(&bounds, parallel, children.clone()));
         }
 
         if self.size.is_none()
@@ -434,14 +441,14 @@ impl ResolvedSize
             self.size = size.size.resolve_backward(&bounds, parallel, children);
         }
 
-        let size = Self::as_resolved(self.size.clone(), &size.size);
+        let size = Self::as_resolved(self.size.clone(), &size.size)?;
 
         if let Some(minimum_size) = self.minimum_size
         {
-            size.max(minimum_size)
+            Some(size.max(minimum_size?))
         } else
         {
-            size
+            Some(size)
         }
     }
 
@@ -517,7 +524,7 @@ impl<Id> UiElementSize<Id>
     ) -> ResolvedSize
     {
         ResolvedSize{
-            minimum_size: self.minimum_size.as_ref().and_then(|x| x.as_general::<Id>().resolve_forward(&info)),
+            minimum_size: self.minimum_size.as_ref().map(|x| x.as_general::<Id>().resolve_forward(&info)),
             size: self.size.resolve_forward(&info)
         }
     }
