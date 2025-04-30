@@ -1,5 +1,6 @@
 use std::{
     mem,
+    fmt,
     hash::Hash,
     rc::Rc,
     cell::RefCell,
@@ -240,7 +241,7 @@ impl UiDeferredInfo
         let get_element_size = |direction: &_, id: &Id| -> Option<_>
         {
             let shared = shared.borrow();
-            let index = shared.element_id(&id)?;
+            let index = shared.element_id(id)?;
             let element = &shared.elements[index].deferred;
 
             let size = match direction
@@ -307,7 +308,7 @@ impl UiDeferredInfo
         Some(parent.position? + (this_size - parent_size) / 2.0)
     }
 
-    fn resolve_backward<Id>(
+    fn resolve_backward<Id: Idable>(
         &mut self,
         sizer: &TextureSizer,
         element: &UiElement<Id>,
@@ -334,10 +335,10 @@ impl UiDeferredInfo
         }
     }
 
-    fn resolve_children<Id>(&self, children: &mut [(Id, TreeElement<Id>)])
+    fn resolve_children<Id>(&self, children: &mut [TreeElement<Id>])
     {
-        self.width.resolve_children(children.iter_mut().map(|(_, x)| (&mut x.deferred.width.size, &x.element.width.size)));
-        self.height.resolve_children(children.iter_mut().map(|(_, x)| (&mut x.deferred.height.size, &x.element.height.size)));
+        self.width.resolve_children(children.iter_mut().map(|x| (&mut x.deferred.width.size, &x.element.width.size)));
+        self.height.resolve_children(children.iter_mut().map(|x| (&mut x.deferred.height.size, &x.element.height.size)));
     }
 
     fn resolved(&self) -> bool
@@ -348,17 +349,29 @@ impl UiDeferredInfo
     }
 }
 
-#[derive(Debug)]
 pub struct TreeElement<Id>
 {
     id: Id,
     element: UiElement<Id>,
     deferred: UiDeferredInfo,
-    children: Vec<(Id, Self)>,
+    children: Vec<Self>,
     shared: Rc<RefCell<SharedInfo<Id>>>
 }
 
-impl<Id> TreeElement<Id>
+impl<Id: Debug> Debug for TreeElement<Id>
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
+    {
+        f.debug_struct("TreeElement")
+            .field("id", &self.id)
+            .field("element", &self.element)
+            .field("deferred", &self.deferred)
+            .field("children", &self.children)
+            .finish()
+    }
+}
+
+impl<Id: Idable> TreeElement<Id>
 {
     fn new(shared: Rc<RefCell<SharedInfo<Id>>>, id: Id, element: UiElement<Id>) -> Self
     {
@@ -386,7 +399,7 @@ impl<Id> TreeElement<Id>
 
     pub fn resolve_backward(&mut self, sizer: &TextureSizer) -> ResolvedBackward
     {
-        let infos: Vec<_> = self.children.iter_mut().map(|(_, x)| x.resolve_backward(sizer)).collect();
+        let infos: Vec<_> = self.children.iter_mut().map(|x| x.resolve_backward(sizer)).collect();
 
         let resolved = self.deferred.resolve_backward(sizer, &self.element, infos);
         self.deferred.resolve_children(&mut self.children);
@@ -414,7 +427,7 @@ impl<Id> TreeElement<Id>
             );
         }
 
-        self.children.iter_mut().fold(None, |previous, (_, x)|
+        self.children.iter_mut().fold(None, |previous, x|
         {
             x.resolve_forward(previous, &self.deferred, &self.element);
 
@@ -424,7 +437,7 @@ impl<Id> TreeElement<Id>
 
     pub fn resolved(&self) -> bool
     {
-        self.deferred.resolved() && self.children.iter().all(|(_, x)| x.resolved())
+        self.deferred.resolved() && self.children.iter().all(|x| x.resolved())
     }
 
     pub fn element(&mut self) -> &mut UiElement<Id>
@@ -461,15 +474,15 @@ impl<Id> TreeElement<Id>
         self.is_inside(self.shared.borrow().mouse_position)
     }
 
-    fn for_each(self, id: Id, mut f: impl FnMut(Id, UiElement<Id>, UiDeferredInfo))
+    fn for_each(self, mut f: impl FnMut(Id, UiElement<Id>, UiDeferredInfo))
     {
-        self.for_each_inner(id, &mut f)
+        self.for_each_inner(&mut f)
     }
 
-    fn for_each_inner(self, id: Id, f: &mut impl FnMut(Id, UiElement<Id>, UiDeferredInfo))
+    fn for_each_inner(self, f: &mut impl FnMut(Id, UiElement<Id>, UiDeferredInfo))
     {
-        f(id, self.element, self.deferred);
-        self.children.into_iter().for_each(|(id, child)| child.for_each_inner(id, f));
+        f(self.id, self.element, self.deferred);
+        self.children.into_iter().for_each(|child| child.for_each_inner(f));
     }
 }
 
@@ -478,9 +491,9 @@ impl<Id: Idable> TreeElementable<Id> for TreeElement<Id>
     fn update(&mut self, id: Id, element: UiElement<Id>) -> &mut Self
     {
         let index = self.children.len();
-        self.children.push((id.clone(), Self::new(self.shared.clone(), id, element)));
+        self.children.push(Self::new(self.shared.clone(), id, element));
 
-        &mut self.children[index].1
+        &mut self.children[index]
     }
 
     fn consecutive(&mut self) -> u32
@@ -622,7 +635,7 @@ impl<Id: Idable> Controller<Id>
         }
 
         mem::replace(&mut self.root, TreeElement::screen(self.shared.clone()))
-            .for_each(Id::screen(), |id, element, deferred|
+            .for_each(|id, element, deferred|
             {
                 self.created.push((id, element, deferred));
             });

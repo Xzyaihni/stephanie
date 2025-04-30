@@ -79,15 +79,7 @@ impl UiElementShape
         {
             Self::Rectangle =>
             {
-                let inbounds = |half_size: f32, pos: f32| -> bool
-                {
-                    (-half_size..=half_size).contains(&pos)
-                };
-
-                let half_scale = scale / 2.0;
-
-                inbounds(half_scale.x, position.x)
-                    && inbounds(half_scale.y, position.y)
+                todo!()
             },
             Self::Mask(x) => x.is_inside(position.component_div(&scale) + Vector2::repeat(0.5))
         }
@@ -137,7 +129,7 @@ impl SizeBackward
     {
         match self
         {
-            Self::Value(x) => Self::Value(x + other),
+            Self::Value(x) => Self::Value(x.max(other)),
             _ => panic!("cant solve minimum size constraint")
         }
     }
