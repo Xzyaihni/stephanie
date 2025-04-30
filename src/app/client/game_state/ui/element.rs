@@ -201,7 +201,7 @@ impl<Id> UiSize<Id>
             Self::Rest(_) => None,
             Self::CopyElement(direction, id) =>
             {
-                Some(some_or_value!((info.get_element_size)(direction, id), Some(0.0)))
+                (info.get_element_size)(direction, id)
             }
         }
     }
@@ -287,13 +287,14 @@ pub struct PositionResolveInfo
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum UiPosition
+pub enum UiPosition<Id>
 {
     Absolute(Vector2<f32>),
+    Offset(Id, Vector2<f32>),
     Next
 }
 
-impl Default for UiPosition
+impl<Id> Default for UiPosition<Id>
 {
     fn default() -> Self
     {
@@ -301,7 +302,7 @@ impl Default for UiPosition
     }
 }
 
-impl UiPosition
+impl<Id> UiPosition<Id>
 {
     pub fn resolve_forward(
         &self,
@@ -314,6 +315,7 @@ impl UiPosition
         match self
         {
             Self::Absolute(_) => unreachable!(),
+            Self::Offset(_, _) => unreachable!(),
             Self::Next =>
             {
                 let position_parallel = |this: PositionResolveInfo, position|
@@ -622,7 +624,7 @@ pub struct UiElement<Id>
     pub texture: UiTexture,
     pub mix: Option<MixColor>,
     pub animation: Animation,
-    pub position: UiPosition,
+    pub position: UiPosition<Id>,
     pub children_layout: UiLayout,
     pub width: UiElementSize<Id>,
     pub height: UiElementSize<Id>

@@ -90,6 +90,8 @@ enum UiId
     WindowTitlebutton(UiIdWindow, UiIdTitlebutton),
     WindowBody(UiIdWindow),
     InventoryList(UiIdWindow),
+    InventoryItems(UiIdWindow),
+    InventoryItem(UiIdWindow, u32),
     Scrollbar(UiIdWindow),
     ScrollbarBar(UiIdWindow),
     Separator(UiIdWindow)
@@ -242,6 +244,16 @@ impl WindowKind
                         size: UiSize::Rest(1.0)
                     },
                     height: UiSize::ParentScale(1.0).into(),
+                    ..Default::default()
+                });
+
+                let items_list = inventory_list.update(UiId::InventoryItems(id), UiElement{
+                    texture: UiTexture::Solid,
+                    mix: Some(MixColor::color([1.0, 0.0, 0.0, 1.0])),
+                    position: UiPosition::Offset(UiId::InventoryList(id), Vector2::new(0.0, 0.3)),
+                    children_layout: UiLayout::Vertical,
+                    width: UiSize::ParentScale(1.0).into(),
+                    height: 1.0.into(),
                     ..Default::default()
                 });
 

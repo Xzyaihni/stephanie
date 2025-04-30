@@ -241,8 +241,7 @@ impl UiDeferredInfo
         let get_element_size = |direction: &_, id: &Id| -> Option<_>
         {
             let shared = shared.borrow();
-            let index = shared.element_id(id)?;
-            let element = &shared.elements[index].deferred;
+            let element = &shared.element_any(id)?.deferred;
 
             let size = match direction
             {
@@ -271,31 +270,41 @@ impl UiDeferredInfo
 
         if self.position.is_none()
         {
-            if let UiPosition::Absolute(x) = element.position
+            match &element.position
             {
-                self.position = Some(x);
-            } else if let Some(previous) = previous
-            {
-                if let (Some(previous_position), Some(parent_position)) = (previous.position, parent.position)
+                UiPosition::Absolute(x) => self.position = Some(*x),
+                UiPosition::Offset(id, x) =>
                 {
-                    self.position = Some(element.position.resolve_forward(
-                        &parent_element.children_layout,
-                        previous_position,
-                        PositionResolveInfo{
-                            this: self.width.unwrap(),
-                            previous: previous.width.unwrap(),
-                            parent_position: parent_position.x
-                        },
-                        PositionResolveInfo{
-                            this: self.height.unwrap(),
-                            previous: previous.height.unwrap(),
-                            parent_position: parent_position.y
+                    self.position = shared.borrow().element_any(id)
+                        .and_then(|element| element.deferred.position)
+                        .map(|position| position + *x);
+                },
+                _ =>
+                {
+                    if let Some(previous) = previous
+                    {
+                        if let (Some(previous_position), Some(parent_position)) = (previous.position, parent.position)
+                        {
+                            self.position = Some(element.position.resolve_forward(
+                                &parent_element.children_layout,
+                                previous_position,
+                                PositionResolveInfo{
+                                    this: self.width.unwrap(),
+                                    previous: previous.width.unwrap(),
+                                    parent_position: parent_position.x
+                                },
+                                PositionResolveInfo{
+                                    this: self.height.unwrap(),
+                                    previous: previous.height.unwrap(),
+                                    parent_position: parent_position.y
+                                }
+                            ));
                         }
-                    ));
+                    } else
+                    {
+                        self.position = self.starting_position(parent);
+                    }
                 }
-            } else
-            {
-                self.position = self.starting_position(parent);
             }
         }
     }
@@ -571,7 +580,7 @@ struct SharedInfo<Id>
     elements: Vec<Element<Id>>
 }
 
-impl<Id> SharedInfo<Id>
+impl<Id: Idable> SharedInfo<Id>
 {
     pub fn new() -> Self
     {
@@ -583,10 +592,13 @@ impl<Id> SharedInfo<Id>
     }
 
     pub fn element_id(&self, id: &Id) -> Option<usize>
-    where
-        Id: Eq
     {
         self.elements.iter().position(|element| element.id == *id)
+    }
+
+    pub fn element_any<'a>(&'a self, id: &Id) -> Option<&'a Element<Id>>
+    {
+        self.element_id(id).map(|index| &self.elements[index])
     }
 }
 
