@@ -140,6 +140,7 @@ impl Game
         {
             let game_state = self.game_state.upgrade().unwrap();
             let mut game_state = game_state.borrow_mut();
+            let ui = game_state.ui.clone();
             let info = self.info.clone();
 
             game_state.entities_mut().on_inventory(Box::new(move |entities, entity|
@@ -159,11 +160,13 @@ impl Game
 
                 if let Some(which) = which
                 {
-                    PlayerContainer::update_inventory_inner(
-                        entities,
-                        &mut info,
-                        which
-                    );
+                    let entity = match which
+                    {
+                        InventoryWhich::Other => info.other_entity.unwrap(),
+                        InventoryWhich::Player => info.entity
+                    };
+
+                    ui.borrow_mut().inventory_changed(entity);
                 }
             }));
         }
@@ -1288,31 +1291,6 @@ impl<'a> PlayerContainer<'a>
 
             self.info.inventories.player = Some(window);
         }*/
-    }
-
-    fn update_inventory_inner(
-        entities: &mut ClientEntities,
-        info: &mut PlayerInfo,
-        which: InventoryWhich
-    )
-    {
-        let entity = match which
-        {
-            InventoryWhich::Other => info.other_entity.unwrap(),
-            InventoryWhich::Player => info.entity
-        };
-
-        /*if let Some(window) = match which
-        {
-            InventoryWhich::Player => &info.inventories.player,
-            InventoryWhich::Other => &info.inventories.other
-        }.as_ref().and_then(|window| window.upgrade())
-        {
-            let mut window = window.borrow_mut();
-            let inventory = window.as_inventory_mut().unwrap();
-
-            inventory.full_update(&entity_creator, entity);
-        }*/todo!()
     }
 
     pub fn this_update(&mut self, dt: f32)

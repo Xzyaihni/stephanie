@@ -100,7 +100,7 @@ macro_rules! some_or_return
 {
     ($value:expr) =>
     {
-        $crate::some_or_value!{$value, ()}
+        $crate::some_or_value!{$value, Default::default()}
     }
 }
 

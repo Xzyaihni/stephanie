@@ -64,6 +64,7 @@ mod controller;
 const TITLE_PADDING: f32 = 0.02;
 
 const INVENTORY_WIDTH: f32 = 0.1;
+
 const SCROLLBAR_HEIGHT: f32 = 0.1;
 const SEPARATOR_SIZE: f32 = 0.003;
 
@@ -92,6 +93,7 @@ enum UiId
     InventoryList(UiIdWindow),
     InventoryItems(UiIdWindow),
     InventoryItem(UiIdWindow, u32),
+    InventoryItemName(UiIdWindow, u32),
     Scrollbar(UiIdWindow),
     ScrollbarBar(UiIdWindow),
     Separator(UiIdWindow)
@@ -161,9 +163,46 @@ pub enum WindowCreateInfo
     }
 }
 
+pub struct UiInventory
+{
+    items: Vec<(String, InventoryItem)>,
+    sorter: InventorySorter,
+    entity: Entity,
+    on_click: InventoryOnClick,
+    needs_update: bool
+}
+
+impl UiInventory
+{
+    fn items(&self, info: &UpdateInfo) -> Vec<(String, InventoryItem)>
+    {
+        let inventory = some_or_return!(info.entities.inventory(self.entity));
+
+        let mut items: Vec<_> = inventory.items_ids().collect();
+        items.sort_by(|a, b|
+        {
+            self.sorter.order(&info.items_info, a.1, b.1)
+        });
+
+        items.into_iter().map(|(index, x)|
+        {
+            (info.items_info.get(x.id).name.clone(), index)
+        }).collect()
+    }
+
+    fn update_items(&mut self, info: &UpdateInfo)
+    {
+        if self.needs_update
+        {
+            self.items = self.items(info);
+            self.needs_update = false;
+        }
+    }
+}
+
 enum WindowKind
 {
-    Inventory{entity: Entity, on_click: InventoryOnClick}
+    Inventory(UiInventory)
 }
 
 impl WindowKind
@@ -179,7 +218,7 @@ impl WindowKind
             f
         }
 
-        let with_titlebar = constrain(move |parent: &mut UiParentElement, title|
+        let with_titlebar = constrain(|parent: &mut UiParentElement, title|
         {
             let titlebar = parent.update(UiId::WindowTitlebar(id), UiElement::default());
 
@@ -230,9 +269,9 @@ impl WindowKind
 
         match self
         {
-            Self::Inventory{entity, on_click} =>
+            Self::Inventory(inventory) =>
             {
-                let name = info.entities.named(*entity).as_deref().cloned()
+                let name = info.entities.named(inventory.entity).as_deref().cloned()
                     .unwrap_or_else(|| "unnamed".to_owned());
 
                 let body = with_titlebar(parent, name);
@@ -253,8 +292,25 @@ impl WindowKind
                     position: UiPosition::Offset(UiId::InventoryList(id), Vector2::new(0.0, 0.3)),
                     children_layout: UiLayout::Vertical,
                     width: UiSize::ParentScale(1.0).into(),
-                    height: 1.0.into(),
+                    height: (SCROLLBAR_HEIGHT * 2.0).into(),
                     ..Default::default()
+                });
+
+                inventory.update_items(&info);
+                inventory.items.iter().enumerate().for_each(|(index, (item_name, item_id))|
+                {
+                    let body = items_list.update(UiId::InventoryItem(id, index as u32), UiElement{
+                        texture: UiTexture::Solid,
+                        mix: Some(MixColor::color([0.0, 1.0, 0.0, 1.0])),
+                        width: UiSize::ParentScale(1.0).into(),
+                        ..Default::default()
+                    });
+
+                    body.update(UiId::InventoryItemName(id, index as u32), UiElement{
+                        texture: UiTexture::Text{text: item_name.clone(), font_size: 20, font: FontStyle::Sans, align: None},
+                        mix: Some(MixColor{keep_transparency: true, ..MixColor::color(ACCENT_COLOR)}),
+                        ..UiElement::fit_content()
+                    });
                 });
 
                 body.update(UiId::Separator(id), UiElement{
@@ -290,7 +346,7 @@ impl WindowKind
     {
         match self
         {
-            Self::Inventory{entity, ..} => UiIdWindow::Inventory(*entity)
+            Self::Inventory(inventory) => UiIdWindow::Inventory(inventory.entity)
         }
     }
 }
@@ -318,11 +374,12 @@ impl Window
     }
 }
 
-pub struct UpdateInfo<'a, 'b, 'c>
+pub struct UpdateInfo<'a, 'b, 'c, 'd>
 {
     pub entities: &'a ClientEntities,
-    pub controls: &'b mut UiControls,
-    pub user_receiver: &'c mut UiReceiver
+    pub items_info: &'b ItemsInfo,
+    pub controls: &'c mut UiControls,
+    pub user_receiver: &'d mut UiReceiver
 }
 
 pub struct Ui
@@ -406,16 +463,21 @@ impl Ui
         self.console_contents = contents;
     }
 
-    fn remove_window(&mut self, id: UiIdWindow) -> bool
+    fn find_window(&self, id: UiIdWindow) -> Option<usize>
     {
-        if let Some(index) = self.windows.iter().position(|x|
+        self.windows.iter().position(|x|
         {
             match (&x.kind, id)
             {
-                (WindowKind::Inventory{entity, ..}, UiIdWindow::Inventory(other_entity)) if *entity == other_entity => true,
+                (WindowKind::Inventory(inventory), UiIdWindow::Inventory(other_entity)) if inventory.entity == other_entity => true,
                 _ => false
             }
         })
+    }
+
+    fn remove_window(&mut self, id: UiIdWindow) -> bool
+    {
+        if let Some(index) = self.find_window(id)
         {
             self.windows.remove(index);
 
@@ -431,11 +493,28 @@ impl Ui
         self.remove_window(UiIdWindow::Inventory(owner))
     }
 
+    pub fn inventory_changed(&mut self, owner: Entity)
+    {
+        if let Some(index) = self.find_window(UiIdWindow::Inventory(owner))
+        {
+            if let WindowKind::Inventory(inventory) = &mut self.windows[index].kind
+            {
+                inventory.needs_update = true;
+            }
+        }
+    }
+
     pub fn open_inventory(&mut self, entity: Entity, on_click: InventoryOnClick)
     {
         self.windows.push(Window{
             position: self.mouse_position,
-            kind: WindowKind::Inventory{entity, on_click}
+            kind: WindowKind::Inventory(UiInventory{
+                items: Vec::new(),
+                sorter: InventorySorter::default(),
+                entity,
+                on_click,
+                needs_update: true
+            })
         });
     }
 
@@ -483,6 +562,7 @@ impl Ui
         {
             x.update(&mut self.controller, UpdateInfo{
                 entities: entities,
+                items_info: &self.items_info,
                 controls: controls,
                 user_receiver: &mut self.user_receiver.borrow_mut()
             })
