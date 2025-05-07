@@ -29,7 +29,7 @@ use yanyaengine::{
     game_object::*
 };
 
-pub use yanyaengine::{TextCreateInfo, FontStyle, TextAlign, HorizontalAlign, VerticalAlign, object::model::Uvs};
+pub use yanyaengine::{TextCreateInfo, object::model::Uvs};
 
 use crate::{
     client::{RenderCreateInfo, VisibilityChecker},
@@ -158,7 +158,7 @@ pub enum RenderObjectKind
 {
     Texture{name: String},
     TextureId{id: TextureId},
-    Text{text: String, font_size: u32, font: FontStyle, align: Option<TextAlign>}
+    Text{text: String, font_size: u32}
 }
 
 impl RenderObjectKind
@@ -194,15 +194,13 @@ impl RenderObjectKind
 
                 Self::TextureId{id}.into_client(transform, create_info)
             },
-            Self::Text{ref text, font_size, font, align} =>
+            Self::Text{ref text, font_size} =>
             {
                 let object = create_info.object_info.partial.builder_wrapper.create_text(
                     TextCreateInfo{
                         transform,
                         inner: TextInfo{
                             font_size,
-                            font,
-                            align,
                             text
                         }
                     },
@@ -385,16 +383,9 @@ impl ClientRenderObject
             ClientObjectType::Normal(x) => x.set_transform(transform),
             ClientObjectType::Text(x) =>
             {
-                let mut scale_changed = false;
                 if let Some(object) = x.object.as_mut()
                 {
-                    scale_changed = *object.scale() != transform.scale;
                     object.set_transform(transform);
-                }
-
-                if scale_changed
-                {
-                    x.update_scale();
                 }
             }
         }

@@ -82,14 +82,12 @@ impl UiElementCached
         let object = match &element.texture
         {
             UiTexture::None => None,
-            UiTexture::Text{text, font_size, font, align} =>
+            UiTexture::Text{text, font_size} =>
             {
                 RenderObject{
                     kind: RenderObjectKind::Text{
                         text: text.clone(),
-                        font_size: *font_size,
-                        font: *font,
-                        align: *align
+                        font_size: *font_size
                     }
                 }.into_client(transform, create_info)
             },
@@ -219,20 +217,21 @@ impl Default for UiDeferredInfo
 
 impl UiDeferredInfo
 {
-    fn screen() -> Self
+    fn screen(aspect: Vector2<f32>) -> Self
     {
-        let one = ResolvedSize{minimum_size: None, size: Some(1.0)};
+        let one = |v| ResolvedSize{minimum_size: None, size: Some(v)};
 
         Self{
             position: Some(Vector2::zeros()),
-            width: one.clone(),
-            height: one
+            width: one(aspect.x),
+            height: one(aspect.y)
         }
     }
 
     fn resolve_forward<Id: Idable>(
         &mut self,
         resolved: &HashMap<Id, Self>,
+        screen_size: &Vector2<f32>,
         element: &UiElement<Id>,
         previous: Option<&Self>,
         parent: &Self,
@@ -256,6 +255,7 @@ impl UiDeferredInfo
         {
             self.width = element.width.resolve_forward(SizeForwardInfo{
                 parent: parent.width.size,
+                screen_size: screen_size.x,
                 get_element_size
             });
         }
@@ -264,6 +264,7 @@ impl UiDeferredInfo
         {
             self.height = element.height.resolve_forward(SizeForwardInfo{
                 parent: parent.height.size,
+                screen_size: screen_size.y,
                 get_element_size
             });
         }
@@ -395,10 +396,11 @@ impl<Id: Idable> TreeElement<Id>
     where
         Id: Idable
     {
+        let aspect = shared.borrow().aspect();
         Self{
             id: Id::screen(),
             element: UiElement::default(),
-            deferred: UiDeferredInfo::screen(),
+            deferred: UiDeferredInfo::screen(aspect),
             children: Vec::new(),
             shared
         }
@@ -426,8 +428,11 @@ impl<Id: Idable> TreeElement<Id>
     {
         if !self.deferred.resolved()
         {
+            let shared = self.shared.borrow();
+            let screen_size = shared.screen_size.component_div(&shared.aspect());
             self.deferred.resolve_forward(
                 resolved,
+                &screen_size,
                 &self.element,
                 previous,
                 parent,
@@ -545,14 +550,12 @@ impl TextureSizer
         match texture
         {
             UiTexture::None => Vector2::zeros(),
-            UiTexture::Text{text, font_size, font, align} =>
+            UiTexture::Text{text, font_size} =>
             {
                 TextObject::calculate_bounds(TextInfo{
                     font_size: *font_size,
-                    font: *font,
-                    align: *align,
                     text
-                }, &self.fonts, &self.size).component_mul(&(self.size / self.size.max()))
+                }, self.fonts.default_font(), &self.size).component_mul(&(self.size / self.size.max()))
             },
             UiTexture::Solid
             | UiTexture::Custom(_) =>
@@ -578,6 +581,7 @@ struct SharedInfo<Id>
 {
     consecutive: u32,
     mouse_position: Vector2<f32>,
+    screen_size: Vector2<f32>,
     elements: Vec<Element<Id>>
 }
 
@@ -588,8 +592,14 @@ impl<Id: Idable> SharedInfo<Id>
         Self{
             consecutive: 0,
             mouse_position: Vector2::zeros(),
+            screen_size: Vector2::repeat(1.0),
             elements: Vec::new()
         }
+    }
+
+    pub fn aspect(&self) -> Vector2<f32>
+    {
+        self.screen_size / self.screen_size.max()
     }
 
     pub fn element_id(&self, id: &Id) -> Option<usize>
@@ -731,12 +741,19 @@ impl<Id: Idable> Controller<Id>
         self.shared.borrow_mut().mouse_position = position;
     }
 
+    fn set_screen_size(&mut self, size: Vector2<f32>)
+    {
+        self.sizer.update_screen_size(size);
+
+        self.shared.borrow_mut().screen_size = size;
+    }
+
     pub fn update_buffers(
         &mut self,
         info: &mut UpdateBuffersInfo
     )
     {
-        self.sizer.update_screen_size(info.partial.size.into());
+        self.set_screen_size(Vector2::from(info.partial.size));
 
         self.shared.borrow_mut().elements.iter_mut().for_each(|Element{cached, ..}|
         {

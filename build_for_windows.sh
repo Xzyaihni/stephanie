@@ -8,7 +8,7 @@ mv target/x86_64-pc-windows-gnu/release/stephanie.exe target/winbuild/stephanie/
 
 cp ~/fromsource/libs/liblzma-5.dll target/winbuild/stephanie
 
-deps=(lisp shaders textures tiles items world_generation enemies 'icon.png')
+deps=(lisp shaders fonts textures tiles items world_generation enemies 'icon.png')
 for f in ${deps[@]}; do
     cp -r $f target/winbuild/stephanie/
 done

@@ -66,7 +66,7 @@ const TITLE_PADDING: f32 = 0.02;
 const INVENTORY_WIDTH: f32 = 0.1;
 
 const SCROLLBAR_HEIGHT: f32 = 0.1;
-const SEPARATOR_SIZE: f32 = 0.003;
+const SEPARATOR_SIZE: f32 = 3.0;
 
 const NOTIFICATION_HEIGHT: f32 = 0.0375;
 const NOTIFICATION_WIDTH: f32 = NOTIFICATION_HEIGHT * 4.0;
@@ -96,7 +96,8 @@ enum UiId
     InventoryItemName(UiIdWindow, u32),
     Scrollbar(UiIdWindow),
     ScrollbarBar(UiIdWindow),
-    Separator(UiIdWindow)
+    SeparatorTall(UiIdWindow),
+    SeparatorWide(UiIdWindow)
 }
 
 impl Idable for UiId
@@ -224,7 +225,7 @@ impl WindowKind
 
             add_padding_horizontal(titlebar, TITLE_PADDING.into());
             titlebar.update(UiId::WindowTitlebarName(id), UiElement{
-                texture: UiTexture::Text{text: title, font_size: 30, font: FontStyle::Sans, align: None},
+                texture: UiTexture::Text{text: title, font_size: 25},
                 mix: Some(MixColor{keep_transparency: true, ..MixColor::color(ACCENT_COLOR)}),
                 animation: Animation::text(),
                 ..UiElement::fit_content()
@@ -257,6 +258,14 @@ impl WindowKind
                     })));
                 }
             }
+
+            parent.update(UiId::SeparatorWide(id), UiElement{
+                texture: UiTexture::Solid,
+                mix: Some(MixColor::color(ACCENT_COLOR)),
+                width: UiSize::ParentScale(1.0).into(),
+                height: UiSize::Pixels(SEPARATOR_SIZE).into(),
+                ..Default::default()
+            });
 
             parent.update(UiId::WindowBody(id), UiElement{
                 width: UiElementSize{
@@ -307,16 +316,16 @@ impl WindowKind
                     });
 
                     body.update(UiId::InventoryItemName(id, index as u32), UiElement{
-                        texture: UiTexture::Text{text: item_name.clone(), font_size: 20, font: FontStyle::Sans, align: None},
+                        texture: UiTexture::Text{text: item_name.clone(), font_size: 20},
                         mix: Some(MixColor{keep_transparency: true, ..MixColor::color(ACCENT_COLOR)}),
                         ..UiElement::fit_content()
                     });
                 });
 
-                body.update(UiId::Separator(id), UiElement{
+                body.update(UiId::SeparatorTall(id), UiElement{
                     texture: UiTexture::Solid,
                     mix: Some(MixColor::color(ACCENT_COLOR)),
-                    width: SEPARATOR_SIZE.into(),
+                    width: UiSize::Pixels(SEPARATOR_SIZE).into(),
                     height: UiSize::CopyElement(UiDirection::Vertical, UiId::Scrollbar(id)).into(),
                     ..Default::default()
                 });
@@ -550,7 +559,7 @@ impl Ui
             });
 
             body.update(UiId::ConsoleText, UiElement{
-                texture: UiTexture::Text{text, font_size: 30, font: FontStyle::Sans, align: None},
+                texture: UiTexture::Text{text, font_size: 30},
                 mix: Some(MixColor{keep_transparency: true, ..MixColor::color(ACCENT_COLOR)}),
                 animation: Animation::typing_text(),
                 position: UiPosition::Absolute(Vector2::zeros()),

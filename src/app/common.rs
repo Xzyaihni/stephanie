@@ -152,9 +152,10 @@ pub mod physics;
 pub mod joint;
 
 
-pub type MessageError = bincode::Error;
-pub type MessageSerError = MessageError;
-pub type MessageDeError = MessageError;
+pub type MessageSerError = bincode::error::EncodeError;
+pub type MessageDeError = bincode::error::DecodeError;
+
+pub const BINCODE_CONFIG: bincode::config::Configuration = bincode::config::standard();
 
 #[macro_export]
 macro_rules! time_this
@@ -228,12 +229,14 @@ impl MessagePasser
             return Ok(());
         }
 
-        bincode::serialize_into(&mut self.stream, messages)
+        bincode::serde::encode_into_std_write(messages, &mut self.stream, BINCODE_CONFIG)?;
+
+        Ok(())
     }
 
     pub fn receive(&mut self) -> Result<Vec<Message>, MessageDeError>
     {
-        bincode::deserialize_from(&mut self.stream)
+        bincode::serde::decode_from_std_read(&mut self.stream, BINCODE_CONFIG)
     }
 
     pub fn receive_one(&mut self) -> Result<Option<Message>, MessageDeError>

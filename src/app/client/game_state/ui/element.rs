@@ -8,7 +8,6 @@ use std::{
 use nalgebra::Vector2;
 
 use crate::common::{
-    some_or_value,
     render_info::*,
     lazy_transform::*
 };
@@ -92,7 +91,7 @@ pub enum UiTexture
 {
     None,
     Solid,
-    Text{text: String, font_size: u32, font: FontStyle, align: Option<TextAlign>},
+    Text{text: String, font_size: u32},
     Custom(String)
 }
 
@@ -114,6 +113,7 @@ impl UiTexture
 pub struct SizeForwardInfo<SizeGet>
 {
     pub parent: Option<f32>,
+    pub screen_size: f32,
     pub get_element_size: SizeGet
 }
 
@@ -164,6 +164,7 @@ pub enum UiSize<Id>
 {
     ParentScale(f32),
     Absolute(f32),
+    Pixels(f32),
     FitChildren,
     FitContent(f32),
     Rest(f32),
@@ -197,6 +198,7 @@ impl<Id> UiSize<Id>
         {
             Self::ParentScale(fraction) => info.parent.map(|x| x * fraction),
             Self::Absolute(x) => Some(*x),
+            Self::Pixels(x) => Some(*x / info.screen_size),
             Self::FitChildren => None,
             Self::FitContent(_) => None,
             Self::Rest(_) => None,
@@ -218,6 +220,7 @@ impl<Id> UiSize<Id>
         {
             Self::ParentScale(_) => None,
             Self::Absolute(x) => Some(*x),
+            Self::Pixels(x) => None,
             Self::FitChildren =>
             {
                 if children.clone().any(|x| x.is_none())

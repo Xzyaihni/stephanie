@@ -389,7 +389,7 @@ where
 
             let mut lzma_writer = LzmaWriter::new_compressor(file, LZMA_PRESET).unwrap();
 
-            bincode::serialize_into(&mut lzma_writer, &pair.value).unwrap();
+            bincode::serde::encode_into_std_write(&pair.value, &mut lzma_writer, crate::common::BINCODE_CONFIG).unwrap();
 
             lzma_writer.finish().unwrap();
 
@@ -406,9 +406,9 @@ where
     {
         self.load_with(pos, |_parent_path, file|
         {
-            let lzma_reader = LzmaReader::new_decompressor(file).unwrap();
+            let mut lzma_reader = LzmaReader::new_decompressor(file).unwrap();
 
-            bincode::deserialize_from(lzma_reader).unwrap()
+            bincode::serde::decode_from_std_read(&mut lzma_reader, crate::common::BINCODE_CONFIG).unwrap()
         })
     }
 
