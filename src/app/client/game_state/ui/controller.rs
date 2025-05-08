@@ -1,9 +1,8 @@
 use std::{
-    mem,
     fmt,
     hash::Hash,
     rc::Rc,
-    cell::RefCell,
+    cell::{Ref, RefMut, RefCell},
     sync::Arc,
     collections::HashMap,
     fmt::Debug
@@ -34,7 +33,7 @@ use crate::{
 use super::element::*;
 
 
-pub const MINIMUM_SCALE: f32 = 0.001;
+pub const MINIMUM_SCALE: f32 = 0.0005;
 
 pub trait Idable: Hash + Eq + Clone + Debug
 {
@@ -42,10 +41,56 @@ pub trait Idable: Hash + Eq + Clone + Debug
     fn padding(id: u32) -> Self;
 }
 
-pub trait TreeElementable<Id: Idable>
+#[derive(Debug, Clone, Copy)]
+pub struct TreeInserter<'a, Id>
 {
-    fn update(&mut self, id: Id, element: UiElement<Id>) -> &mut TreeElement<Id>;
-    fn consecutive(&mut self) -> u32;
+    elements: &'a RefCell<Vec<TreeElement<Id>>>,
+    index: usize
+}
+
+impl<'a, Id: Idable> TreeInserter<'a, Id>
+{
+    fn tree_element(&self) -> Ref<TreeElement<Id>>
+    {
+        Ref::map(self.elements.borrow(), |x| &x[self.index])
+    }
+
+    fn tree_element_mut(&self) -> RefMut<TreeElement<Id>>
+    {
+        RefMut::map(self.elements.borrow_mut(), |x| &mut x[self.index])
+    }
+
+    pub fn update(&self, id: Id, element: UiElement<Id>) -> TreeInserter<'a, Id>
+    {
+        debug_assert!(!self.elements.borrow().iter().any(|x| x.id == id));
+
+        let index = self.tree_element_mut().update(id, element);
+
+        Self{
+            elements: self.elements,
+            index
+        }
+    }
+
+    pub fn consecutive(&self) -> u32
+    {
+        self.tree_element_mut().consecutive()
+    }
+
+    pub fn element(&self) -> RefMut<UiElement<Id>>
+    {
+        RefMut::map(self.tree_element_mut(), |x| x.element())
+    }
+
+    pub fn is_inside(&self, check_position: Vector2<f32>) -> bool
+    {
+        self.tree_element().is_inside(check_position)
+    }
+
+    pub fn is_mouse_inside(&self) -> bool
+    {
+        self.tree_element().is_mouse_inside()
+    }
 }
 
 #[derive(Debug)]
@@ -161,7 +206,7 @@ impl UiElementCached
 
         scaling.close_mode.next(&mut transform.scale, Vector3::zeros(), dt);
 
-        if transform.scale.max() < MINIMUM_SCALE
+        if transform.scale.min() < MINIMUM_SCALE
         {
             return false;
         }
@@ -455,14 +500,12 @@ impl<Id: Idable> TreeElement<Id>
         self.deferred.resolved() && self.children.iter().all(|x| x.resolved())
     }
 
-    pub fn element(&mut self) -> &mut UiElement<Id>
+    fn element(&mut self) -> &mut UiElement<Id>
     {
         &mut self.element
     }
 
-    pub fn is_inside(&self, check_position: Vector2<f32>) -> bool
-    where
-        Id: Eq
+    fn is_inside(&self, check_position: Vector2<f32>) -> bool
     {
         let shared = self.shared.borrow();
         shared.element_id(&self.id).map(|index|
@@ -482,33 +525,17 @@ impl<Id: Idable> TreeElement<Id>
         }).unwrap_or(false)
     }
 
-    pub fn is_mouse_inside(&self) -> bool
-    where
-        Id: Eq
+    fn is_mouse_inside(&self) -> bool
     {
         self.is_inside(self.shared.borrow().mouse_position)
     }
 
-    fn for_each(self, mut f: impl FnMut(Id, UiElement<Id>, UiDeferredInfo))
-    {
-        self.for_each_inner(&mut f)
-    }
-
-    fn for_each_inner(self, f: &mut impl FnMut(Id, UiElement<Id>, UiDeferredInfo))
-    {
-        f(self.id, self.element, self.deferred);
-        self.children.into_iter().for_each(|child| child.for_each_inner(f));
-    }
-}
-
-impl<Id: Idable> TreeElementable<Id> for TreeElement<Id>
-{
-    fn update(&mut self, id: Id, element: UiElement<Id>) -> &mut Self
+    fn update(&mut self, id: Id, element: UiElement<Id>) -> usize
     {
         let index = self.children.len();
         self.children.push(Self::new(self.shared.clone(), id, element));
 
-        &mut self.children[index]
+        todo!()
     }
 
     fn consecutive(&mut self) -> u32
@@ -519,6 +546,28 @@ impl<Id: Idable> TreeElementable<Id> for TreeElement<Id>
         *consecutive += 1;
 
         x
+    }
+
+    fn for_each(
+        &self,
+        trees: &Vec<TreeElement<Id>>,
+        mut f: impl FnMut(Id, UiElement<Id>, UiDeferredInfo)
+    )
+    {
+        self.for_each_inner(trees, &mut f)
+    }
+
+    fn for_each_inner(
+        &self,
+        trees: &Vec<TreeElement<Id>>,
+        f: &mut impl FnMut(Id, UiElement<Id>, UiDeferredInfo)
+    )
+    {
+        f(self.id.clone(), self.element.clone(), self.deferred.clone());
+        self.children.iter().for_each(|child|
+        {
+            child.for_each_inner(trees, f)
+        });
     }
 }
 
@@ -611,8 +660,8 @@ impl<Id: Idable> SharedInfo<Id>
 pub struct Controller<Id>
 {
     sizer: TextureSizer,
+    created_trees: RefCell<Vec<TreeElement<Id>>>,
     created: Vec<(Id, UiElement<Id>, UiDeferredInfo)>,
-    root: TreeElement<Id>,
     shared: Rc<RefCell<SharedInfo<Id>>>
 }
 
@@ -620,18 +669,27 @@ impl<Id: Idable> Controller<Id>
 {
     pub fn new(info: &ObjectCreatePartialInfo) -> Self
     {
-        let shared = Rc::new(RefCell::new(SharedInfo::new()));
-
         Self{
             sizer: TextureSizer::new(info),
+            created_trees: RefCell::new(Vec::new()),
             created: Vec::new(),
-            root: TreeElement::screen(shared.clone()),
-            shared
+            shared: Rc::new(RefCell::new(SharedInfo::new()))
         }
+    }
+
+    pub fn update(&self, id: Id, element: UiElement<Id>) -> TreeInserter<Id>
+    {
+        TreeInserter{
+            elements: &self.created_trees,
+            index: 0
+        }.update(id, element)
     }
 
     fn prepare(&mut self)
     {
+        let mut created_trees = self.created_trees.borrow_mut();
+        let root = &mut created_trees[0];
+
         let mut resolved = HashMap::new();
         let empty = UiDeferredInfo::default();
         let empty_element = UiElement::default();
@@ -639,10 +697,10 @@ impl<Id: Idable> Controller<Id>
         const LIMIT: usize = 1000;
         for i in 0..LIMIT
         {
-            self.root.resolve_forward(&mut resolved, None, &empty, &empty_element);
-            self.root.resolve_backward(&self.sizer);
+            root.resolve_forward(&mut resolved, None, &empty, &empty_element);
+            root.resolve_backward(&self.sizer);
 
-            if self.root.resolved()
+            if root.resolved()
             {
                 break;
             }
@@ -652,12 +710,6 @@ impl<Id: Idable> Controller<Id>
                 panic!("must be resolved");
             }
         }
-
-        mem::replace(&mut self.root, TreeElement::screen(self.shared.clone()))
-            .for_each(|id, element, deferred|
-            {
-                self.created.push((id, element, deferred));
-            });
     }
 
     pub fn create_renders(
@@ -670,10 +722,12 @@ impl<Id: Idable> Controller<Id>
 
         self.prepare();
 
+        let mut created_trees = self.created_trees.borrow_mut();
+
         self.shared.borrow_mut().elements.iter_mut().for_each(|element| element.closing = true);
 
         let mut last_match = None;
-        mem::take(&mut self.created).into_iter().for_each(|(id, element, deferred)|
+        created_trees[0].for_each(&created_trees, |id, element, deferred|
         {
             let index = self.shared.borrow().element_id(&id);
             if let Some(index) = index
@@ -734,6 +788,9 @@ impl<Id: Idable> Controller<Id>
                 true
             }
         });
+
+        created_trees.clear();
+        created_trees.push(TreeElement::screen(self.shared.clone()));
     }
 
     pub fn set_mouse_position(&mut self, position: Vector2<f32>)
@@ -781,22 +838,7 @@ impl<Id: Idable> Controller<Id>
     }
 }
 
-impl<Id: Idable> TreeElementable<Id> for Controller<Id>
-{
-    fn update(&mut self, id: Id, element: UiElement<Id>) -> &mut TreeElement<Id>
-    {
-        debug_assert!(!self.created.iter().any(|(x, _, _)| *x == id));
-
-        self.root.update(id, element)
-    }
-
-    fn consecutive(&mut self) -> u32
-    {
-        self.root.consecutive()
-    }
-}
-
-pub fn add_padding<E: TreeElementable<Id>, Id: Idable>(x: &mut E, width: UiElementSize<Id>, height: UiElementSize<Id>)
+pub fn add_padding<Id: Idable>(x: TreeInserter<Id>, width: UiElementSize<Id>, height: UiElementSize<Id>)
 {
     let id = x.consecutive();
     x.update(Id::padding(id), UiElement{
@@ -806,12 +848,12 @@ pub fn add_padding<E: TreeElementable<Id>, Id: Idable>(x: &mut E, width: UiEleme
     });
 }
 
-pub fn add_padding_horizontal<E: TreeElementable<Id>, Id: Idable>(x: &mut E, size: UiElementSize<Id>)
+pub fn add_padding_horizontal<Id: Idable>(x: TreeInserter<Id>, size: UiElementSize<Id>)
 {
     add_padding(x, size, 0.0.into())
 }
 
-pub fn add_padding_vertical<E: TreeElementable<Id>, Id: Idable>(x: &mut E, size: UiElementSize<Id>)
+pub fn add_padding_vertical<Id: Idable>(x: TreeInserter<Id>, size: UiElementSize<Id>)
 {
     add_padding(x, 0.0.into(), size)
 }

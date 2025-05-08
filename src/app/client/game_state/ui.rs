@@ -65,7 +65,9 @@ const TITLE_PADDING: f32 = 0.02;
 
 const INVENTORY_WIDTH: f32 = 0.1;
 
-const SCROLLBAR_HEIGHT: f32 = 0.1;
+const SCROLLBAR_WIDTH: f32 = 20.0;
+const SCROLLBAR_HEIGHT: f32 = SCROLLBAR_WIDTH * 10.0;
+
 const SEPARATOR_SIZE: f32 = 3.0;
 
 const NOTIFICATION_HEIGHT: f32 = 0.0375;
@@ -90,13 +92,11 @@ enum UiId
     WindowTitlebarName(UiIdWindow),
     WindowTitlebutton(UiIdWindow, UiIdTitlebutton),
     WindowBody(UiIdWindow),
-    InventoryList(UiIdWindow),
-    InventoryItems(UiIdWindow),
+    InventoryList(UiIdWindow, UiListPart),
     InventoryItem(UiIdWindow, u32),
     InventoryItemName(UiIdWindow, u32),
     Scrollbar(UiIdWindow),
     ScrollbarBar(UiIdWindow),
-    SeparatorTall(UiIdWindow),
     SeparatorWide(UiIdWindow)
 }
 
@@ -105,6 +105,16 @@ impl Idable for UiId
     fn screen() -> Self { Self::Screen }
 
     fn padding(id: u32) -> Self { Self::Padding(id) }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum UiListPart
+{
+    Body,
+    Moving,
+    Separator,
+    Scrollbar,
+    Bar
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -120,7 +130,7 @@ enum UiIdTitlebutton
 }
 
 type UiController = Controller<UiId>;
-type UiParentElement = TreeElement<UiId>;
+type UiParentElement<'a> = TreeInserter<'a, UiId>;
 
 pub enum NotificationSeverity
 {
@@ -164,18 +174,118 @@ pub enum WindowCreateInfo
     }
 }
 
+fn handle_button(
+    info: &mut UpdateInfo,
+    button: UiParentElement,
+    f: impl FnOnce(&mut UpdateInfo)
+)
+{
+    if button.is_mouse_inside()
+    {
+        button.element().mix.as_mut().unwrap().color = HIGHLIGHTED_COLOR;
+
+        if info.controls.take_is_down(&KeyMapping::Mouse(MouseButton::Left))
+        {
+            f(info);
+        }
+    }
+}
+
+pub struct UiList
+{
+    position: f32,
+    items: Vec<String>
+}
+
+impl UiList
+{
+    fn new() -> Self
+    {
+        Self{
+            position: 0.0,
+            items: Vec::new()
+        }
+    }
+
+    fn update(
+        &mut self,
+        info: &mut UpdateInfo,
+        parent: UiParentElement,
+        id: impl Fn(UiListPart) -> UiId,
+        mut update_item: impl FnMut(&mut UpdateInfo, UiParentElement, &str, u32)
+    ) -> Option<usize>
+    {
+        assert!(parent.element().children_layout.is_horizontal());
+
+        let body_id = id(UiListPart::Body);
+        let body = parent.update(body_id, UiElement{
+            width: UiSize::Rest(1.0).into(),
+            height: UiSize::ParentScale(1.0).into(),
+            ..Default::default()
+        });
+
+        let height = 1.0;
+        let offset = self.position + (height / 2.0);
+
+        let moving_part = body.update(id(UiListPart::Moving), UiElement{
+            texture: UiTexture::Solid,
+            mix: Some(MixColor::color([1.0, 0.0, 0.0, 1.0])),
+            position: UiPosition::Offset(body_id, Vector2::new(0.0, offset)),
+            children_layout: UiLayout::Vertical,
+            width: UiSize::ParentScale(1.0).into(),
+            height: height.into(),
+            ..Default::default()
+        });
+
+        body.update(id(UiListPart::Separator), UiElement{
+            texture: UiTexture::Solid,
+            mix: Some(MixColor::color(ACCENT_COLOR)),
+            width: UiSize::Pixels(SEPARATOR_SIZE).into(),
+            height: UiSize::ParentScale(1.0).into(),
+            animation: Animation::separator_tall(),
+            ..Default::default()
+        });
+
+        let scrollbar = body.update(id(UiListPart::Scrollbar), UiElement{
+            width: UiSize::Pixels(SCROLLBAR_WIDTH).into(),
+            height: UiSize::ParentScale(1.0).into(),
+            animation: Animation::scrollbar(),
+            ..Default::default()
+        });
+
+        let make_this_adjust = ();
+        let bar_height = 0.2;
+        scrollbar.update(id(UiListPart::Bar), UiElement{
+            texture: UiTexture::Solid,
+            mix: Some(MixColor::color(ACCENT_COLOR)),
+            width: UiSize::ParentScale(1.0).into(),
+            height: UiSize::ParentScale(bar_height).into(),
+            animation: Animation::scrollbar_bar(),
+            ..Default::default()
+        });
+
+        self.items.iter().enumerate().for_each(|(index, name)|
+        {
+            update_item(info, moving_part, name, index as u32);
+        });
+
+        None
+    }
+}
+
 pub struct UiInventory
 {
-    items: Vec<(String, InventoryItem)>,
+    items: Vec<InventoryItem>,
     sorter: InventorySorter,
     entity: Entity,
     on_click: InventoryOnClick,
+    list: UiList,
     needs_update: bool
 }
 
 impl UiInventory
 {
-    fn items(&self, info: &UpdateInfo) -> Vec<(String, InventoryItem)>
+    fn items(&self, info: &UpdateInfo) -> (Vec<String>, Vec<InventoryItem>)
     {
         let inventory = some_or_return!(info.entities.inventory(self.entity));
 
@@ -188,14 +298,17 @@ impl UiInventory
         items.into_iter().map(|(index, x)|
         {
             (info.items_info.get(x.id).name.clone(), index)
-        }).collect()
+        }).unzip()
     }
 
     fn update_items(&mut self, info: &UpdateInfo)
     {
         if self.needs_update
         {
-            self.items = self.items(info);
+            let (names, items) = self.items(info);
+
+            self.list.items = names;
+            self.items = items;
             self.needs_update = false;
         }
     }
@@ -208,18 +321,18 @@ enum WindowKind
 
 impl WindowKind
 {
-    fn update(&mut self, parent: &mut UiParentElement, info: UpdateInfo)
+    fn update(&mut self, parent: UiParentElement, mut info: UpdateInfo)
     {
         let id = self.as_id();
 
-        fn constrain<'a, F>(f: F) -> F
+        fn constrain<'a, 'b, F>(f: F) -> F
         where
-            F: FnOnce(&'a mut UiParentElement, String) -> &'a mut UiParentElement
+            F: FnOnce(UiParentElement<'a>, &'b mut UpdateInfo, String) -> UiParentElement<'a>
         {
             f
         }
 
-        let with_titlebar = constrain(|parent: &mut UiParentElement, title|
+        let with_titlebar = constrain(|parent, info, title|
         {
             let titlebar = parent.update(UiId::WindowTitlebar(id), UiElement::default());
 
@@ -232,10 +345,7 @@ impl WindowKind
             });
             add_padding_horizontal(titlebar, TITLE_PADDING.into());
 
-            let size = UiElementSize{
-                size: UiSize::FitContent(0.5),
-                ..Default::default()
-            };
+            let size: UiElementSize<UiId> = UiSize::Pixels(SCROLLBAR_WIDTH).into();
 
             let close_button = titlebar.update(UiId::WindowTitlebutton(id, UiIdTitlebutton::Close), UiElement{
                 texture: UiTexture::Custom("ui/close_button.png".to_owned()),
@@ -246,24 +356,20 @@ impl WindowKind
                 ..Default::default()
             });
 
-            if close_button.is_mouse_inside()
+            handle_button(info, close_button, |info|
             {
-                close_button.element().mix.as_mut().unwrap().color = HIGHLIGHTED_COLOR;
-
-                if info.controls.take_is_down(&KeyMapping::Mouse(MouseButton::Left))
+                info.user_receiver.push(UiEvent::Action(Rc::new(move |game_state|
                 {
-                    info.user_receiver.push(UiEvent::Action(Rc::new(move |game_state|
-                    {
-                        game_state.ui.borrow_mut().remove_window(id);
-                    })));
-                }
-            }
+                    game_state.ui.borrow_mut().remove_window(id);
+                })));
+            });
 
             parent.update(UiId::SeparatorWide(id), UiElement{
                 texture: UiTexture::Solid,
                 mix: Some(MixColor::color(ACCENT_COLOR)),
                 width: UiSize::ParentScale(1.0).into(),
                 height: UiSize::Pixels(SEPARATOR_SIZE).into(),
+                animation: Animation::separator_wide(),
                 ..Default::default()
             });
 
@@ -283,69 +389,29 @@ impl WindowKind
                 let name = info.entities.named(inventory.entity).as_deref().cloned()
                     .unwrap_or_else(|| "unnamed".to_owned());
 
-                let body = with_titlebar(parent, name);
+                let body = with_titlebar(parent, &mut info, name);
                 body.element().children_layout = UiLayout::Horizontal;
-
-                let inventory_list = body.update(UiId::InventoryList(id), UiElement{
-                    width: UiElementSize{
-                        minimum_size: Some(UiMinimumSize::Absolute(INVENTORY_WIDTH)),
-                        size: UiSize::Rest(1.0)
-                    },
-                    height: UiSize::ParentScale(1.0).into(),
-                    ..Default::default()
-                });
-
-                let items_list = inventory_list.update(UiId::InventoryItems(id), UiElement{
-                    texture: UiTexture::Solid,
-                    mix: Some(MixColor::color([1.0, 0.0, 0.0, 1.0])),
-                    position: UiPosition::Offset(UiId::InventoryList(id), Vector2::new(0.0, 0.3)),
-                    children_layout: UiLayout::Vertical,
-                    width: UiSize::ParentScale(1.0).into(),
-                    height: (SCROLLBAR_HEIGHT * 2.0).into(),
-                    ..Default::default()
-                });
+                body.element().height = UiSize::Pixels(SCROLLBAR_HEIGHT).into();
 
                 inventory.update_items(&info);
-                inventory.items.iter().enumerate().for_each(|(index, (item_name, item_id))|
+
+                inventory.list.update(&mut info, body, |list_part|
                 {
-                    let body = items_list.update(UiId::InventoryItem(id, index as u32), UiElement{
+                    UiId::InventoryList(id, list_part)
+                }, |info, parent, name, index|
+                {
+                    let body = parent.update(UiId::InventoryItem(id, index), UiElement{
                         texture: UiTexture::Solid,
                         mix: Some(MixColor::color([0.0, 1.0, 0.0, 1.0])),
                         width: UiSize::ParentScale(1.0).into(),
                         ..Default::default()
                     });
 
-                    body.update(UiId::InventoryItemName(id, index as u32), UiElement{
-                        texture: UiTexture::Text{text: item_name.clone(), font_size: 20},
+                    body.update(UiId::InventoryItemName(id, index), UiElement{
+                        texture: UiTexture::Text{text: name.to_owned(), font_size: 20},
                         mix: Some(MixColor{keep_transparency: true, ..MixColor::color(ACCENT_COLOR)}),
                         ..UiElement::fit_content()
                     });
-                });
-
-                body.update(UiId::SeparatorTall(id), UiElement{
-                    texture: UiTexture::Solid,
-                    mix: Some(MixColor::color(ACCENT_COLOR)),
-                    width: UiSize::Pixels(SEPARATOR_SIZE).into(),
-                    height: UiSize::CopyElement(UiDirection::Vertical, UiId::Scrollbar(id)).into(),
-                    ..Default::default()
-                });
-
-                let scrollbar = body.update(UiId::Scrollbar(id), UiElement{
-                    width: UiSize::CopyElement(UiDirection::Horizontal, UiId::WindowTitlebutton(id, UiIdTitlebutton::Close)).into(),
-                    height: SCROLLBAR_HEIGHT.into(),
-                    animation: Animation::scrollbar(),
-                    ..Default::default()
-                });
-
-                let make_this_adjust = ();
-                let bar_height = 0.2;
-                scrollbar.update(UiId::ScrollbarBar(id), UiElement{
-                    texture: UiTexture::Solid,
-                    mix: Some(MixColor::color(ACCENT_COLOR)),
-                    width: UiSize::ParentScale(1.0).into(),
-                    height: UiSize::ParentScale(bar_height).into(),
-                    animation: Animation::scrollbar_bar(),
-                    ..Default::default()
                 });
             }
         }
@@ -522,6 +588,7 @@ impl Ui
                 sorter: InventorySorter::default(),
                 entity,
                 on_click,
+                list: UiList::new(),
                 needs_update: true
             })
         });

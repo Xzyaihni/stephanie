@@ -598,6 +598,28 @@ impl Animation
         }
     }
 
+    pub fn separator_tall() -> Self
+    {
+        Self{
+            scaling: Some(ScalingAnimation{
+                start_scaling: Vector2::new(1.0, 0.01),
+                start_mode: Scaling::EaseOut{decay: 30.0},
+                close_mode: Scaling::EaseOut{decay: 30.0}
+            }),
+            ..Default::default()
+        }
+    }
+
+    pub fn separator_wide() -> Self
+    {
+        let mut tall = Self::separator_tall();
+
+        let start_scaling = &mut tall.scaling.as_mut().unwrap().start_scaling;
+        *start_scaling = start_scaling.yx();
+
+        tall
+    }
+
     pub fn scrollbar() -> Self
     {
         Self{
