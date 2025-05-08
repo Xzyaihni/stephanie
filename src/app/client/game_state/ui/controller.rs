@@ -64,7 +64,19 @@ impl<'a, Id: Idable> TreeInserter<'a, Id>
     {
         debug_assert!(!self.elements.borrow().iter().any(|x| x.id == id));
 
-        let index = self.tree_element_mut().update(&mut *self.elements.borrow_mut(), id, element);
+        let shared = self.tree_element().shared.clone();
+        let element = TreeElement::new(shared, id, element);
+
+        let index = {
+            let mut elements = self.elements.borrow_mut();
+
+            let index = elements.len();
+            elements.push(element);
+
+            index
+        };
+
+        self.tree_element_mut().children.push(index);
 
         Self{
             elements: self.elements,
@@ -388,12 +400,6 @@ impl UiDeferredInfo
         }
     }
 
-    fn resolve_children<Id>(&self, children: &mut [TreeElement<Id>])
-    {
-        self.width.resolve_children(children.iter_mut().map(|x| (&mut x.deferred.width.size, &x.element.width.size)));
-        self.height.resolve_children(children.iter_mut().map(|x| (&mut x.deferred.height.size, &x.element.height.size)));
-    }
-
     fn resolved(&self) -> bool
     {
         self.width.resolved()
@@ -451,14 +457,63 @@ impl<Id: Idable> TreeElement<Id>
         }
     }
 
-    pub fn resolve_backward(&mut self, sizer: &TextureSizer) -> ResolvedBackward
+    pub fn resolve_backward(
+        trees: &mut Vec<TreeElement<Id>>,
+        index: usize,
+        sizer: &TextureSizer
+    ) -> ResolvedBackward
     {
-        /*let infos: Vec<_> = self.children.iter_mut().map(|x| x.resolve_backward(sizer)).collect();
+        let infos = {
+            let mut infos = Vec::new();
 
-        let resolved = self.deferred.resolve_backward(sizer, &self.element, infos);
-        self.deferred.resolve_children(&mut self.children);*/todo!();
+            let children_len = trees[index].children.len();
 
-        // resolved
+            for i in 0..children_len
+            {
+                let x = trees[index].children[i];
+
+                infos.push(Self::resolve_backward(trees, x, sizer));
+            }
+
+            infos
+        };
+
+        let resolved = {
+            let this = &mut trees[index];
+            this.deferred.resolve_backward(sizer, &this.element, infos)
+        };
+
+        {
+            let this = &mut trees[index];
+            if let Some(width) = this.deferred.width.value()
+            {
+                let children: Vec<_> = this.children.iter().copied().collect();
+                ResolvedSize::resolve_rest(
+                    trees,
+                    width,
+                    |trees, index| &mut trees[index].deferred.width.size,
+                    |trees, index| &trees[index].element.width.size,
+                    children.into_iter()
+                );
+            }
+        }
+
+        {
+            let this = &mut trees[index];
+            if let Some(height) = this.deferred.height.value()
+            {
+                let children: Vec<_> = this.children.iter().copied().collect();
+                ResolvedSize::resolve_rest(
+                    trees,
+                    height,
+                    |trees, index| &mut trees[index].deferred.height.size,
+                    |trees, index| &trees[index].element.height.size,
+                    children.into_iter()
+                );
+            }
+        }
+
+        resolved
     }
 
     pub fn resolve_forward(
@@ -547,21 +602,6 @@ impl<Id: Idable> TreeElement<Id>
     fn is_mouse_inside(&self) -> bool
     {
         self.is_inside(self.shared.borrow().mouse_position)
-    }
-
-    fn update(
-        &mut self,
-        elements: &mut Vec<TreeElement<Id>>,
-        id: Id,
-        element: UiElement<Id>
-    ) -> usize
-    {
-        let element = Self::new(self.shared.clone(), id, element);
-
-        let index = elements.len();
-        elements.push(element);
-
-        index
     }
 
     fn consecutive(&mut self) -> u32
@@ -694,10 +734,11 @@ impl<Id: Idable> Controller<Id>
 {
     pub fn new(info: &ObjectCreatePartialInfo) -> Self
     {
+        let shared = Rc::new(RefCell::new(SharedInfo::new()));
         Self{
             sizer: TextureSizer::new(info),
-            created_trees: RefCell::new(Vec::new()),
-            shared: Rc::new(RefCell::new(SharedInfo::new()))
+            created_trees: RefCell::new(vec![TreeElement::screen(shared.clone())]),
+            shared
         }
     }
 
@@ -719,8 +760,7 @@ impl<Id: Idable> Controller<Id>
         for i in 0..LIMIT
         {
             TreeElement::resolve_forward(&mut created_trees, 0, None, &mut resolved, None);
-
-            created_trees[0].resolve_backward(&self.sizer);
+            TreeElement::resolve_backward(&mut created_trees, 0, &self.sizer);
 
             if created_trees[0].resolved(&created_trees)
             {

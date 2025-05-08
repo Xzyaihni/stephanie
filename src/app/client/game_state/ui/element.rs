@@ -455,33 +455,46 @@ impl ResolvedSize
         }
     }
 
-    pub fn resolve_children<'a, 'b, Id: 'b>(&self, children: impl Iterator<Item=(&'a mut Option<f32>, &'b UiSize<Id>)>)
+    pub fn resolve_rest<Id, T>(
+        elements: &mut T,
+        parent_size: f32,
+        mut output_getter: impl FnMut(&mut T, usize) -> &mut Option<f32>,
+        mut size_getter: impl FnMut(&mut T, usize) -> &UiSize<Id>,
+        children: impl Iterator<Item=usize>
+    )
     {
-        if let Some(parent_size) = self.value()
+        let mut children_size = 0.0;
+        let rests = children.filter(|index|
         {
-            let mut children_size = 0.0;
-            let rests = children.filter(|(size, x)|
-            {
-                children_size += size.unwrap_or(0.0);
-                if let UiSize::Rest(_) = x { true } else { false }
-            }).collect::<Vec<_>>();
+            children_size += output_getter(elements, *index).unwrap_or(0.0);
+            if let UiSize::Rest(_) = size_getter(elements, *index) { true } else { false }
+        }).collect::<Vec<_>>();
 
-            if rests.iter().any(|(x, _)| x.is_some())
-            {
-                return;
-            }
-
-            let ratios_total: f32 = rests.iter().map(|(_, x)| if let UiSize::Rest(x) = x { x } else { unreachable!() })
-                .sum();
-
-            rests.into_iter().for_each(|(value, ratio)|
-            {
-                let ratio = if let UiSize::Rest(x) = ratio { x } else { unreachable!() };
-                let size = (parent_size - children_size) * (ratio / ratios_total);
-
-                *value = Some(size);
-            });
+        if rests.iter().any(|index| output_getter(elements, *index).is_some())
+        {
+            return;
         }
+
+        let ratios_total: f32 = rests.iter().map(|index|
+        {
+            if let UiSize::Rest(x) = size_getter(elements, *index)
+            {
+                *x
+            } else
+            {
+                unreachable!()
+            }
+        }).sum();
+
+        rests.into_iter().for_each(|index|
+        {
+            let ratio = size_getter(elements, index);
+
+            let ratio = if let UiSize::Rest(x) = ratio { x } else { unreachable!() };
+            let size = (parent_size - children_size) * (ratio / ratios_total);
+
+            *output_getter(elements, index) = Some(size);
+        });
     }
 }
 
