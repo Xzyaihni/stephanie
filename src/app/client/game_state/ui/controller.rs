@@ -64,7 +64,7 @@ impl<'a, Id: Idable> TreeInserter<'a, Id>
     {
         debug_assert!(!self.elements.borrow().iter().any(|x| x.id == id));
 
-        let index = self.tree_element_mut().update(id, element);
+        let index = self.tree_element_mut().update(&mut *self.elements.borrow_mut(), id, element);
 
         Self{
             elements: self.elements,
@@ -407,7 +407,7 @@ pub struct TreeElement<Id>
     id: Id,
     element: UiElement<Id>,
     deferred: UiDeferredInfo,
-    children: Vec<Self>,
+    children: Vec<usize>,
     shared: Rc<RefCell<SharedInfo<Id>>>
 }
 
@@ -453,51 +453,70 @@ impl<Id: Idable> TreeElement<Id>
 
     pub fn resolve_backward(&mut self, sizer: &TextureSizer) -> ResolvedBackward
     {
-        let infos: Vec<_> = self.children.iter_mut().map(|x| x.resolve_backward(sizer)).collect();
+        /*let infos: Vec<_> = self.children.iter_mut().map(|x| x.resolve_backward(sizer)).collect();
 
         let resolved = self.deferred.resolve_backward(sizer, &self.element, infos);
-        self.deferred.resolve_children(&mut self.children);
+        self.deferred.resolve_children(&mut self.children);*/todo!();
 
-        resolved
+        // resolved
     }
 
     pub fn resolve_forward(
-        &mut self,
+        trees: &mut Vec<TreeElement<Id>>,
+        index: usize,
+        parent_index: Option<usize>,
         resolved: &mut HashMap<Id, UiDeferredInfo>,
-        previous: Option<&UiDeferredInfo>,
-        parent: &UiDeferredInfo,
-        parent_element: &UiElement<Id>
+        previous: Option<usize>
     )
     where
         Id: Idable
     {
-        if !self.deferred.resolved()
+        let is_resolved = trees[index].deferred.resolved();
+        if !is_resolved
         {
-            let shared = self.shared.borrow();
+            let parent_index = parent_index.unwrap();
+            let (this, parent, previous) = if let Some(previous) = previous
+            {
+                let [this, parent, previous] = trees.get_disjoint_mut([index, parent_index, previous]).unwrap();
+
+                (this, parent, Some(&previous.deferred))
+            } else
+            {
+                let [this, parent] = trees.get_disjoint_mut([index, parent_index]).unwrap();
+
+                (this, parent, None)
+            };
+
+            let shared = this.shared.borrow();
             let screen_size = shared.screen_size.component_div(&shared.aspect());
-            self.deferred.resolve_forward(
+
+            this.deferred.resolve_forward(
                 resolved,
                 &screen_size,
-                &self.element,
+                &this.element,
                 previous,
-                parent,
-                parent_element
+                &parent.deferred,
+                &parent.element
             );
 
-            resolved.insert(self.id.clone(), self.deferred.clone());
+            resolved.insert(this.id.clone(), this.deferred.clone());
         }
 
-        self.children.iter_mut().fold(None, |previous, x|
-        {
-            x.resolve_forward(resolved, previous, &self.deferred, &self.element);
+        let children_len = trees[index].children.len();
 
-            Some(&x.deferred)
-        });
+        let mut previous = None;
+        for i in 0..children_len
+        {
+            let x = trees[index].children[i];
+            Self::resolve_forward(trees, x, Some(index), resolved, previous);
+
+            previous = Some(x);
+        }
     }
 
-    pub fn resolved(&self) -> bool
+    fn resolved(&self, trees: &Vec<TreeElement<Id>>) -> bool
     {
-        self.deferred.resolved() && self.children.iter().all(|x| x.resolved())
+        self.deferred.resolved() && self.children.iter().all(|index| trees[*index].resolved(trees))
     }
 
     fn element(&mut self) -> &mut UiElement<Id>
@@ -530,12 +549,19 @@ impl<Id: Idable> TreeElement<Id>
         self.is_inside(self.shared.borrow().mouse_position)
     }
 
-    fn update(&mut self, id: Id, element: UiElement<Id>) -> usize
+    fn update(
+        &mut self,
+        elements: &mut Vec<TreeElement<Id>>,
+        id: Id,
+        element: UiElement<Id>
+    ) -> usize
     {
-        let index = self.children.len();
-        self.children.push(Self::new(self.shared.clone(), id, element));
+        let element = Self::new(self.shared.clone(), id, element);
 
-        todo!()
+        let index = elements.len();
+        elements.push(element);
+
+        index
     }
 
     fn consecutive(&mut self) -> u32
@@ -564,9 +590,9 @@ impl<Id: Idable> TreeElement<Id>
     )
     {
         f(self.id.clone(), self.element.clone(), self.deferred.clone());
-        self.children.iter().for_each(|child|
+        self.children.iter().for_each(|index|
         {
-            child.for_each_inner(trees, f)
+            trees[*index].for_each_inner(trees, f)
         });
     }
 }
@@ -661,7 +687,6 @@ pub struct Controller<Id>
 {
     sizer: TextureSizer,
     created_trees: RefCell<Vec<TreeElement<Id>>>,
-    created: Vec<(Id, UiElement<Id>, UiDeferredInfo)>,
     shared: Rc<RefCell<SharedInfo<Id>>>
 }
 
@@ -672,7 +697,6 @@ impl<Id: Idable> Controller<Id>
         Self{
             sizer: TextureSizer::new(info),
             created_trees: RefCell::new(Vec::new()),
-            created: Vec::new(),
             shared: Rc::new(RefCell::new(SharedInfo::new()))
         }
     }
@@ -688,19 +712,17 @@ impl<Id: Idable> Controller<Id>
     fn prepare(&mut self)
     {
         let mut created_trees = self.created_trees.borrow_mut();
-        let root = &mut created_trees[0];
 
         let mut resolved = HashMap::new();
-        let empty = UiDeferredInfo::default();
-        let empty_element = UiElement::default();
 
         const LIMIT: usize = 1000;
         for i in 0..LIMIT
         {
-            root.resolve_forward(&mut resolved, None, &empty, &empty_element);
-            root.resolve_backward(&self.sizer);
+            TreeElement::resolve_forward(&mut created_trees, 0, None, &mut resolved, None);
 
-            if root.resolved()
+            created_trees[0].resolve_backward(&self.sizer);
+
+            if created_trees[0].resolved(&created_trees)
             {
                 break;
             }
