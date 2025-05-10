@@ -135,27 +135,57 @@ impl KeyMapping
     }
 }
 
+struct ControlsState
+{
+    is_click_held: bool,
+    click_mappings: Vec<KeyMapping>
+}
+
 pub struct UiControls
 {
+    state: ControlsState,
     controls: HashMap<KeyMapping, ControlState>
 }
 
 impl UiControls
 {
-    pub fn take_key(&mut self, key: &KeyMapping) -> Option<ControlState>
+    pub fn take_click_down(&mut self) -> bool
     {
-        self.controls.remove(key)
+        self.state.click_mappings.iter().fold(false, |acc, mapping|
+        {
+            let is_down = if self.controls.get(mapping).map(|x| x.is_down()).unwrap_or(false)
+            {
+                self.controls.remove(mapping);
+                true
+            } else
+            {
+                false
+            };
+
+            acc || is_down
+        })
     }
 
-    pub fn take_is_down(&mut self, key: &KeyMapping) -> bool
+    pub fn poll_action_held(&mut self) -> bool
     {
-        self.take_key(key).map(|x| x.is_down()).unwrap_or(false)
+        if self.take_click_down()
+        {
+            self.state.is_click_held = true;
+        }
+
+        self.state.is_click_held
+    }
+
+    pub fn observe_action_held(&self) -> bool
+    {
+        self.state.is_click_held
     }
 }
 
 pub struct ControlsController
 {
     clipboard: Option<ClipboardContext>,
+    controls_state: Option<ControlsState>,
     key_mapping: BiMap<KeyMapping, Control>,
     keys: [ControlState; Control::COUNT],
     changed: HashMap<KeyMapping, ControlState>
@@ -165,7 +195,7 @@ impl ControlsController
 {
     pub fn new() -> Self
     {
-        let key_mapping = [
+        let key_mapping: BiMap<KeyMapping, Control> = [
             (KeyMapping::Keyboard(KeyCode::KeyD), Control::MoveRight),
             (KeyMapping::Keyboard(KeyCode::KeyA), Control::MoveLeft),
             (KeyMapping::Keyboard(KeyCode::KeyS), Control::MoveDown),
@@ -187,6 +217,22 @@ impl ControlsController
             (KeyMapping::Keyboard(KeyCode::Digit0), Control::ZoomReset)
         ].into_iter().collect();
 
+        let click_mappings = key_mapping.iter().filter_map(|(mapping, control)|
+        {
+            if let Control::MainAction = control
+            {
+                Some(*mapping)
+            } else
+            {
+                None
+            }
+        }).collect();
+
+        let controls_state = Some(ControlsState{
+            is_click_held: false,
+            click_mappings
+        });
+
         let clipboard = match ClipboardProvider::new()
         {
             Ok(x) => Some(x),
@@ -200,6 +246,7 @@ impl ControlsController
 
         Self{
             clipboard,
+            controls_state,
             key_mapping,
             keys: [ControlState::Released; Control::COUNT],
             changed: HashMap::new()
@@ -257,7 +304,10 @@ impl ControlsController
 
     pub fn changed_this_frame(&mut self) -> UiControls
     {
-        UiControls{controls: mem::take(&mut self.changed)}
+        UiControls{
+            state: mem::take(&mut self.controls_state).unwrap(),
+            controls: mem::take(&mut self.changed)
+        }
     }
 
     pub fn consume_changed<'a>(
@@ -265,13 +315,18 @@ impl ControlsController
         changed: UiControls
     ) -> impl Iterator<Item=(Control, ControlState)> + 'a
     {
+        self.controls_state = Some(changed.state);
         changed.controls.into_iter().filter_map(|(key, state)|
         {
-            self.key_mapping.get(&key).map(|matched|
+            self.key_mapping.get(&key).cloned().map(|matched|
             {
-                self.keys[*matched as usize] = state;
+                self.keys[matched as usize] = state;
+                if self.is_up(Control::MainAction)
+                {
+                    self.controls_state.as_mut().unwrap().is_click_held = false;
+                }
 
-                (*matched, state)
+                (matched, state)
             })
         })
     }

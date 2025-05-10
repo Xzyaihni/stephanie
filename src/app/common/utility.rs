@@ -176,6 +176,11 @@ impl<K: Hash + Eq, V: Hash + Eq> BiMap<K, V>
         self.back.get(key)
     }
 
+    pub fn iter(&self) -> impl Iterator<Item=(&K, &V)>
+    {
+        self.normal.iter()
+    }
+
     pub fn iter_front(&self) -> impl Iterator<Item=&K>
     {
         self.normal.keys()

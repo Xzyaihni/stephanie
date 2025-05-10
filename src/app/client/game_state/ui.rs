@@ -8,7 +8,6 @@ use std::{
 use nalgebra::{Vector2, Vector3};
 
 use yanyaengine::{
-    MouseButton,
     Transform,
     FontsContainer,
     TextInfo,
@@ -111,6 +110,7 @@ enum UiListPart
     Moving,
     Separator,
     Scrollbar,
+    BarPad,
     Bar
 }
 
@@ -181,7 +181,7 @@ fn handle_button(
     {
         button.element().mix.as_mut().unwrap().color = HIGHLIGHTED_COLOR;
 
-        if info.controls.take_is_down(&KeyMapping::Mouse(MouseButton::Left))
+        if info.controls.take_click_down()
         {
             f(info);
         }
@@ -218,7 +218,7 @@ impl UiList
         let body = parent.update(body_id, UiElement{
             width: UiSize::Rest(1.0).into(),
             height: UiSize::Rest(1.0).into(),
-            scissor: true,
+            // scissor: true,
             ..Default::default()
         });
 
@@ -255,7 +255,28 @@ impl UiList
 
         let make_this_adjust = ();
         let bar_height = 0.2;
-        scrollbar.update(id(UiListPart::Bar), UiElement{
+
+        {
+            let position = scrollbar.mouse_position_mapped().y;
+
+            if scrollbar.is_mouse_inside()
+            {
+                info.controls.poll_action_held();
+            }
+
+            if info.controls.observe_action_held()
+            {
+                let half_bar_height = bar_height / 2.0;
+                self.position = (position.clamp(half_bar_height, 1.0 - half_bar_height) - half_bar_height) / (1.0 - bar_height);
+            }
+        }
+
+        scrollbar.update(id(UiListPart::BarPad), UiElement{
+            height: UiSize::CopyElement(UiDirection::Vertical, (1.0 - bar_height) * self.position, scrollbar_id).into(),
+            ..Default::default()
+        });
+
+        let bar = scrollbar.update(id(UiListPart::Bar), UiElement{
             texture: UiTexture::Solid,
             mix: Some(MixColor::color(ACCENT_COLOR)),
             width: UiSize::Rest(1.0).into(),
@@ -263,6 +284,11 @@ impl UiList
             animation: Animation::scrollbar_bar(),
             ..Default::default()
         });
+
+        if bar.is_mouse_inside()
+        {
+            bar.element().mix.as_mut().unwrap().color = HIGHLIGHTED_COLOR;
+        }
 
         self.items.iter().enumerate().for_each(|(index, name)|
         {

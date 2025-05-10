@@ -95,14 +95,42 @@ impl<'a, Id: Idable> TreeInserter<'a, Id>
         RefMut::map(self.tree_element_mut(), |x| x.element())
     }
 
+    pub fn position_mapped(&self, check_position: Vector2<f32>) -> Vector2<f32>
+    {
+        self.tree_element().position_mapped(check_position)
+    }
+
+    pub fn position_inside(&self, check_position: Vector2<f32>) -> Option<Vector2<f32>>
+    {
+        let mapped = self.position_mapped(check_position);
+
+        let r = 0.0..1.0;
+        (r.contains(&mapped.x) && r.contains(&mapped.y)).then(|| mapped)
+    }
+
     pub fn is_inside(&self, check_position: Vector2<f32>) -> bool
     {
-        self.tree_element().is_inside(check_position)
+        self.position_inside(check_position).is_some()
+    }
+
+    pub fn mouse_position_inside(&self) -> Option<Vector2<f32>>
+    {
+        self.position_inside(self.mouse_position())
+    }
+
+    pub fn mouse_position_mapped(&self) -> Vector2<f32>
+    {
+        self.position_mapped(self.mouse_position())
     }
 
     pub fn is_mouse_inside(&self) -> bool
     {
-        self.tree_element().is_mouse_inside()
+        self.is_inside(self.mouse_position())
+    }
+
+    fn mouse_position(&self) -> Vector2<f32>
+    {
+        self.tree_element().shared.borrow().mouse_position
     }
 }
 
@@ -646,7 +674,7 @@ impl<Id: Idable> TreeElement<Id>
         &mut self.element
     }
 
-    fn is_inside(&self, check_position: Vector2<f32>) -> bool
+    fn position_mapped(&self, check_position: Vector2<f32>) -> Vector2<f32>
     {
         let shared = self.shared.borrow();
         shared.element_id(&self.id).map(|index|
@@ -656,19 +684,8 @@ impl<Id: Idable> TreeElement<Id>
             let position = deferred.position.unwrap();
             let size = Vector2::new(deferred.width.unwrap(), deferred.height.unwrap());
 
-            let checks = (check_position - position).zip_map(&size, |x, size|
-            {
-                let half_size = size / 2.0;
-                (-half_size..=half_size).contains(&x)
-            });
-
-            checks.x && checks.y
-        }).unwrap_or(false)
-    }
-
-    fn is_mouse_inside(&self) -> bool
-    {
-        self.is_inside(self.shared.borrow().mouse_position)
+            ((check_position - position) + (size / 2.0)).component_div(&size)
+        }).unwrap_or_default()
     }
 
     fn consecutive(&mut self) -> u32
