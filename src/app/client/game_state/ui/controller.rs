@@ -333,8 +333,9 @@ impl UiDeferredInfo
                 Some(position)
             ) = (parent.width.value(), parent.height.value(), parent.position)
             {
+                let aspect = screen_size / screen_size.max();
                 let size = Vector2::new(width, height);
-                let offset = position + Vector2::repeat(0.5) - (size / 2.0);
+                let offset = position + (aspect / 2.0) - (size / 2.0);
 
                 self.scissor = Some(Scissor{offset: offset.into(), extent: size.into()});
             }
@@ -349,7 +350,7 @@ impl UiDeferredInfo
         {
             self.width = element.width.resolve_forward(SizeForwardInfo{
                 parent: parent.width.size,
-                screen_size: screen_size.x,
+                screen_size: screen_size.max(),
                 get_element_size
             });
         }
@@ -358,7 +359,7 @@ impl UiDeferredInfo
         {
             self.height = element.height.resolve_forward(SizeForwardInfo{
                 parent: parent.height.size,
-                screen_size: screen_size.y,
+                screen_size: screen_size.max(),
                 get_element_size
             });
         }
@@ -601,11 +602,10 @@ impl<Id: Idable> TreeElement<Id>
             };
 
             let shared = this.shared.borrow();
-            let screen_size = shared.screen_size.component_div(&shared.aspect());
 
             this.deferred.resolve_forward(
                 resolved,
-                &screen_size,
+                &shared.screen_size,
                 &this.element,
                 previous,
                 &parent.deferred,

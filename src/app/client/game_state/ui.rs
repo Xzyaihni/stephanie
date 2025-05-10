@@ -626,6 +626,16 @@ impl Ui
 
     pub fn update(&mut self, entities: &ClientEntities, controls: &mut UiControls)
     {
+        self.windows.iter_mut().for_each(|x|
+        {
+            x.update(&mut self.controller, UpdateInfo{
+                entities: entities,
+                items_info: &self.items_info,
+                controls: controls,
+                user_receiver: &mut self.user_receiver.borrow_mut()
+            })
+        });
+
         if let Some(text) = self.console_contents.clone()
         {
             let body = self.controller.update(UiId::ConsoleBody, UiElement{
@@ -649,16 +659,6 @@ impl Ui
                 ..UiElement::fit_content()
             });
         }
-
-        self.windows.iter_mut().for_each(|x|
-        {
-            x.update(&mut self.controller, UpdateInfo{
-                entities: entities,
-                items_info: &self.items_info,
-                controls: controls,
-                user_receiver: &mut self.user_receiver.borrow_mut()
-            })
-        });
     }
 
     pub fn create_renders(
