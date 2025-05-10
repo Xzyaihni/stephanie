@@ -23,6 +23,7 @@ use yanyaengine::{
 
 use crate::{
     some_or_value,
+    some_or_return,
     client::RenderCreateInfo,
     common::{
         render_info::*,
@@ -109,6 +110,7 @@ impl<'a, Id: Idable> TreeInserter<'a, Id>
 struct UiElementCached
 {
     mix: Option<MixColor>,
+    scissor: Option<VulkanoScissor>,
     object: Option<ClientRenderObject>
 }
 
@@ -120,6 +122,12 @@ impl UiElementCached
         element: &UiElement<Id>
     ) -> Self
     {
+        let scissor = deferred.scissor.map(|x|
+        {
+            let highest = Vector2::from(create_info.object_info.partial.size).max();
+            x.into_global([highest, highest])
+        });
+
         let scaling = element.animation.scaling
             .as_ref()
             .map(|x| x.start_scaling)
@@ -159,6 +167,7 @@ impl UiElementCached
 
         Self{
             mix: element.mix,
+            scissor,
             object
         }
     }
@@ -255,6 +264,8 @@ impl UiElementCached
 #[derive(Debug, Clone)]
 pub struct UiDeferredInfo
 {
+    scissor: Option<Scissor>,
+    scissor_resolved: bool,
     position: Option<Vector2<f32>>,
     width: ResolvedSize,
     height: ResolvedSize
@@ -265,6 +276,8 @@ impl Default for UiDeferredInfo
     fn default() -> Self
     {
         Self{
+            scissor: None,
+            scissor_resolved: false,
             position: None,
             width: ResolvedSize::default(),
             height: ResolvedSize::default()
@@ -279,6 +292,8 @@ impl UiDeferredInfo
         let one = |v| ResolvedSize{minimum_size: None, size: Some(v)};
 
         Self{
+            scissor: None,
+            scissor_resolved: true,
             position: Some(Vector2::zeros()),
             width: one(aspect.x),
             height: one(aspect.y)
@@ -308,6 +323,28 @@ impl UiDeferredInfo
             size.value()
         };
 
+        if parent_element.scissor && !self.scissor_resolved
+        {
+            debug_assert!(!element.scissor, "nested scissors not supported");
+
+            if let (
+                Some(width),
+                Some(height),
+                Some(position)
+            ) = (parent.width.value(), parent.height.value(), parent.position)
+            {
+                let size = Vector2::new(width, height);
+                let offset = position + Vector2::repeat(0.5) - (size / 2.0);
+
+                self.scissor = Some(Scissor{offset: offset.into(), extent: size.into()});
+            }
+
+            self.scissor_resolved = self.scissor.is_some();
+        } else
+        {
+            self.scissor_resolved = true;
+        }
+
         if !self.width.resolved()
         {
             self.width = element.width.resolve_forward(SizeForwardInfo{
@@ -328,49 +365,71 @@ impl UiDeferredInfo
 
         if self.position.is_none()
         {
-            match &element.position
-            {
-                UiPosition::Absolute(x) => self.position = Some(*x),
-                UiPosition::Offset(id, x) =>
-                {
-                    self.position = resolved.get(id).and_then(|element| element.position.map(|pos| pos + *x));
-                },
-                _ =>
-                {
-                    if let Some(previous) = previous
-                    {
-                        if let (Some(previous_position), Some(parent_position)) = (previous.position, parent.position)
-                        {
-                            self.position = Some(element.position.resolve_forward(
-                                &parent_element.children_layout,
-                                previous_position,
-                                PositionResolveInfo{
-                                    this: self.width.unwrap(),
-                                    previous: previous.width.unwrap(),
-                                    parent_position: parent_position.x
-                                },
-                                PositionResolveInfo{
-                                    this: self.height.unwrap(),
-                                    previous: previous.height.unwrap(),
-                                    parent_position: parent_position.y
-                                }
-                            ));
-                        }
-                    } else
-                    {
-                        self.position = self.starting_position(parent);
-                    }
-                }
-            }
+            self.position = self.resolve_position(
+                resolved,
+                element,
+                previous,
+                parent,
+                parent_element
+            );
         }
     }
 
-    fn starting_position(&self, parent: &Self) -> Option<Vector2<f32>>
+    fn resolve_position<Id: Idable>(
+        &mut self,
+        resolved: &HashMap<Id, Self>,
+        element: &UiElement<Id>,
+        previous: Option<&Self>,
+        parent: &Self,
+        parent_element: &UiElement<Id>
+    ) -> Option<Vector2<f32>>
     {
-        let this_size = Vector2::new(self.width.value()?, self.height.value()?);
-        let parent_size = Vector2::new(parent.width.value()?, parent.height.value()?);
-
-        Some(parent.position? + (this_size - parent_size) / 2.0)
+        match &element.position
+        {
+            UiPosition::Absolute(x) => Some(*x),
+            UiPosition::Offset(id, x) =>
+            {
+                resolved.get(id).and_then(|element| element.position.map(|pos| pos + *x))
+            },
+            _ =>
+            {
+                let parent_position = parent.position?;
+                if let Some(previous) = previous
+                {
+                    let previous_position = previous.position?;
+                    Some(element.position.resolve_forward(
+                        &parent_element.children_layout,
+                        previous_position,
+                        PositionResolveInfo{
+                            this: self.width.value()?,
+                            previous: previous.width.value()?,
+                            parent_position: parent_position.x
+                        },
+                        PositionResolveInfo{
+                            this: self.height.value()?,
+                            previous: previous.height.value()?,
+                            parent_position: parent_position.y
+                        }
+                    ))
+                } else
+                {
+                    Some(UiPosition::<Id>::next_position(
+                        &parent_element.children_layout,
+                        parent_position,
+                        PositionResolveInfo{
+                            this: self.width.value()?,
+                            previous: -parent.width.value()?,
+                            parent_position: parent_position.x
+                        },
+                        PositionResolveInfo{
+                            this: self.height.value()?,
+                            previous: -parent.height.value()?,
+                            parent_position: parent_position.y
+                        }
+                    ))
+                }
+            }
+        }
     }
 
     fn resolve_backward<Id: Idable>(
@@ -405,6 +464,7 @@ impl UiDeferredInfo
         self.width.resolved()
             && self.height.resolved()
             && self.position.is_some()
+            && self.scissor_resolved
     }
 }
 
@@ -483,35 +543,33 @@ impl<Id: Idable> TreeElement<Id>
             this.deferred.resolve_backward(sizer, &this.element, infos)
         };
 
+        macro_rules! for_children
         {
-            let this = &mut trees[index];
-            if let Some(width) = this.deferred.width.value()
+            ($name:ident, $is_width:expr) =>
             {
-                let children: Vec<_> = this.children.iter().copied().collect();
-                ResolvedSize::resolve_rest(
-                    trees,
-                    width,
-                    |trees, index| &mut trees[index].deferred.width.size,
-                    |trees, index| &trees[index].element.width.size,
-                    children.into_iter()
-                );
+                {
+                    let this = &mut trees[index];
+                    if let Some($name) = this.deferred.$name.value()
+                    {
+                        let parallel = $is_width ^ (!this.element.children_layout.is_horizontal());
+
+                        let children: Vec<_> = this.children.iter().copied().collect();
+                        ResolvedSize::resolve_rest(
+                            trees,
+                            parallel,
+                            $name,
+                            |trees, index| &mut trees[index].deferred.$name.size,
+                            |trees, index| trees[index].deferred.$name.minimum_size,
+                            |trees, index| &trees[index].element.$name.size,
+                            children.into_iter()
+                        );
+                    }
+                }
             }
         }
 
-        {
-            let this = &mut trees[index];
-            if let Some(height) = this.deferred.height.value()
-            {
-                let children: Vec<_> = this.children.iter().copied().collect();
-                ResolvedSize::resolve_rest(
-                    trees,
-                    height,
-                    |trees, index| &mut trees[index].deferred.height.size,
-                    |trees, index| &trees[index].element.height.size,
-                    children.into_iter()
-                );
-            }
-        }
+        for_children!(width, true);
+        for_children!(height, false);
 
         resolved
     }
@@ -769,6 +827,7 @@ impl<Id: Idable> Controller<Id>
 
             if i == (LIMIT - 1)
             {
+                eprintln!("{created_trees:#?}");
                 panic!("must be resolved");
             }
         }
@@ -892,9 +951,19 @@ impl<Id: Idable> Controller<Id>
         {
             if let Some(object) = cached.object.as_ref()
             {
+                if let Some(scissor) = cached.scissor
+                {
+                    info.set_scissor(scissor);
+                }
+
                 info.push_constants(UiOutlinedInfo::new(cached.mix));
 
-                object.draw(info)
+                object.draw(info);
+
+                if cached.scissor.is_some()
+                {
+                    info.reset_scissor();
+                }
             }
         });
     }

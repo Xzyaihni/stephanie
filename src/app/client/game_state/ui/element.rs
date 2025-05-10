@@ -117,25 +117,7 @@ pub struct SizeForwardInfo<SizeGet>
     pub get_element_size: SizeGet
 }
 
-#[derive(Debug, Clone)]
-pub enum SizeBackward
-{
-    ParentRelative(f32),
-    Value(f32)
-}
-
-impl SizeBackward
-{
-    fn max(self, other: f32) -> Self
-    {
-        match self
-        {
-            Self::Value(x) => Self::Value(x.max(other)),
-            _ => panic!("cant solve minimum size constraint")
-        }
-    }
-}
-
+pub type SizeBackward = f32;
 pub type SizeBackwardInfo = SizeBackward;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -144,6 +126,14 @@ pub enum UiMinimumSize
     Absolute(f32),
     FitChildren,
     FitContent(f32)
+}
+
+impl From<f32> for UiMinimumSize
+{
+    fn from(size: f32) -> Self
+    {
+        Self::Absolute(size)
+    }
 }
 
 impl UiMinimumSize
@@ -162,13 +152,12 @@ impl UiMinimumSize
 #[derive(Debug, Clone, PartialEq)]
 pub enum UiSize<Id>
 {
-    ParentScale(f32),
     Absolute(f32),
     Pixels(f32),
     FitChildren,
     FitContent(f32),
     Rest(f32),
-    CopyElement(UiDirection, Id)
+    CopyElement(UiDirection, f32, Id)
 }
 
 impl<Id> Default for UiSize<Id>
@@ -196,15 +185,14 @@ impl<Id> UiSize<Id>
     {
         match self
         {
-            Self::ParentScale(fraction) => info.parent.map(|x| x * fraction),
             Self::Absolute(x) => Some(*x),
             Self::Pixels(x) => Some(*x / info.screen_size),
             Self::FitChildren => None,
             Self::FitContent(_) => None,
             Self::Rest(_) => None,
-            Self::CopyElement(direction, id) =>
+            Self::CopyElement(direction, scale, id) =>
             {
-                (info.get_element_size)(direction, id)
+                (info.get_element_size)(direction, id).map(|x| x * scale)
             }
         }
     }
@@ -218,9 +206,8 @@ impl<Id> UiSize<Id>
     {
         match self
         {
-            Self::ParentScale(_) => None,
             Self::Absolute(x) => Some(*x),
-            Self::Pixels(x) => None,
+            Self::Pixels(_) => None,
             Self::FitChildren =>
             {
                 if children.clone().any(|x| x.is_none())
@@ -232,37 +219,15 @@ impl<Id> UiSize<Id>
 
                 if parallel
                 {
-                    let (sum_normal, sum_relative) = children.fold(
-                        (0.0, 0.0),
-                        |(sum_normal, sum_relative), info|
-                        {
-                            match info
-                            {
-                                SizeBackward::ParentRelative(x) => (sum_normal, sum_relative + x),
-                                SizeBackward::Value(x) => (sum_normal + x, sum_relative)
-                            }
-                        });
-
-                    assert!(sum_relative < 1.0);
-
-                    let leftover = 1.0 - sum_relative;
-
-                    Some(sum_normal / leftover)
+                    Some(children.sum())
                 } else
                 {
-                    Some(children.filter_map(|info|
-                    {
-                        match info
-                        {
-                            SizeBackward::Value(x) => Some(x),
-                            _ => None
-                        }
-                    }).max_by(|a, b| a.partial_cmp(&b).unwrap()).unwrap_or(0.0))
+                    Some(children.max_by(|a, b| a.partial_cmp(&b).unwrap()).unwrap_or(0.0))
                 }
             },
             Self::FitContent(x) => Some(bounds() * *x),
             Self::Rest(_) => None,
-            Self::CopyElement(_, _) => None
+            Self::CopyElement(_, _, _) => None
         }
     }
 }
@@ -315,6 +280,36 @@ impl<Id> Default for UiPosition<Id>
 
 impl<Id> UiPosition<Id>
 {
+    pub fn next_position(
+        layout: &UiLayout,
+        previous: Vector2<f32>,
+        width: PositionResolveInfo,
+        height: PositionResolveInfo
+    ) -> Vector2<f32>
+    {
+        let position_parallel = |this: PositionResolveInfo, position|
+        {
+            (this.previous + this.this) / 2.0 + position
+        };
+
+        let position_perpendicular = |other: PositionResolveInfo|
+        {
+            other.parent_position
+        };
+
+        match layout
+        {
+            UiLayout::Horizontal =>
+            {
+                Vector2::new(position_parallel(width, previous.x), position_perpendicular(height))
+            },
+            UiLayout::Vertical =>
+            {
+                Vector2::new(position_perpendicular(width), position_parallel(height, previous.y))
+            }
+        }
+    }
+
     pub fn resolve_forward(
         &self,
         layout: &UiLayout,
@@ -327,30 +322,7 @@ impl<Id> UiPosition<Id>
         {
             Self::Absolute(_) => unreachable!(),
             Self::Offset(_, _) => unreachable!(),
-            Self::Next =>
-            {
-                let position_parallel = |this: PositionResolveInfo, position|
-                {
-                    (this.previous + this.this) / 2.0 + position
-                };
-
-                let position_perpendicular = |other: PositionResolveInfo|
-                {
-                    other.parent_position
-                };
-
-                match layout
-                {
-                    UiLayout::Horizontal =>
-                    {
-                        Vector2::new(position_parallel(width, previous.x), position_perpendicular(height))
-                    },
-                    UiLayout::Vertical =>
-                    {
-                        Vector2::new(position_perpendicular(width), position_parallel(height, previous.y))
-                    }
-                }
-            }
+            Self::Next => Self::next_position(layout, previous, width, height)
         }
     }
 }
@@ -408,15 +380,12 @@ impl ResolvedSize
     {
         if let Some(x) = value
         {
-            Some(SizeBackward::Value(x))
+            Some(x)
         } else
         {
-            if let UiSize::ParentScale(x) = size
+            if let UiSize::Rest(_) = size
             {
-                Some(SizeBackward::ParentRelative(*x))
-            } else if let UiSize::Rest(_) = size
-            {
-                Some(SizeBackward::Value(0.0))
+                Some(0.0)
             } else
             {
                 None
@@ -457,44 +426,101 @@ impl ResolvedSize
 
     pub fn resolve_rest<Id, T>(
         elements: &mut T,
+        parallel: bool,
         parent_size: f32,
         mut output_getter: impl FnMut(&mut T, usize) -> &mut Option<f32>,
+        mut minimum_size_getter: impl FnMut(&mut T, usize) -> Option<Option<f32>>,
         mut size_getter: impl FnMut(&mut T, usize) -> &UiSize<Id>,
         children: impl Iterator<Item=usize>
     )
     {
-        let mut children_size = 0.0;
-        let rests = children.filter(|index|
+        if parallel
         {
-            children_size += output_getter(elements, *index).unwrap_or(0.0);
-            if let UiSize::Rest(_) = size_getter(elements, *index) { true } else { false }
-        }).collect::<Vec<_>>();
-
-        if rests.iter().any(|index| output_getter(elements, *index).is_some())
-        {
-            return;
-        }
-
-        let ratios_total: f32 = rests.iter().map(|index|
-        {
-            if let UiSize::Rest(x) = size_getter(elements, *index)
+            let mut is_ready = true;
+            let mut children_size = 0.0;
+            let rests = children.filter_map(|index|
             {
-                *x
-            } else
+                let output = output_getter(elements, index);
+                let is_some = output.is_some();
+
+                children_size += output.unwrap_or(0.0);
+
+                let value = if let UiSize::Rest(x) = size_getter(elements, index)
+                {
+                    let x: f32 = *x;
+
+                    if is_some
+                    {
+                        is_ready = false;
+                    }
+
+                    if minimum_size_getter(elements, index).map(|x| x.is_none()).unwrap_or(false)
+                    {
+                        is_ready = false;
+                    }
+
+                    Some(x)
+                } else
+                {
+                    if !is_some
+                    {
+                        is_ready = false;
+                    }
+
+                    None
+                };
+
+                value.map(|x| (index, x))
+            }).collect::<Vec<_>>();
+
+            if !is_ready
             {
-                unreachable!()
+                return;
             }
-        }).sum();
 
-        rests.into_iter().for_each(|index|
+            let mut ratios_total: f32 = rests.iter().map(|(_, x)| *x).sum();
+
+            let rest_size = |children_size, ratio, ratios_total|
+            {
+                (parent_size - children_size) * (ratio / ratios_total)
+            };
+
+            let mut minimums = rests.iter().filter_map(|(index, ratio)|
+            {
+                minimum_size_getter(elements, *index).map(|x| x.unwrap()).map(|minimum_size|
+                {
+                    (minimum_size, ratio)
+                })
+            }).collect::<Vec<_>>();
+            minimums.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+
+            minimums.into_iter().for_each(|(minimum_size, ratio)|
+            {
+                let expected_size = rest_size(children_size, *ratio, ratios_total);
+
+                if minimum_size > expected_size
+                {
+                    children_size += minimum_size;
+                    ratios_total -= *ratio;
+                }
+            });
+
+            rests.into_iter().for_each(|(index, ratio)|
+            {
+                let size = rest_size(children_size, ratio, ratios_total);
+
+                *output_getter(elements, index) = Some(size);
+            });
+        } else
         {
-            let ratio = size_getter(elements, index);
-
-            let ratio = if let UiSize::Rest(x) = ratio { x } else { unreachable!() };
-            let size = (parent_size - children_size) * (ratio / ratios_total);
-
-            *output_getter(elements, index) = Some(size);
-        });
+            children.for_each(|index|
+            {
+                if let UiSize::Rest(_) = size_getter(elements, index)
+                {
+                    *output_getter(elements, index) = Some(parent_size);
+                }
+            });
+        }
     }
 }
 
@@ -656,7 +682,7 @@ impl Animation
             scaling: Some(ScalingAnimation{
                 start_scaling: Vector2::new(1.1, 1.1),
                 start_mode: Scaling::EaseOut{decay: 10.0},
-                close_mode: Scaling::EaseIn(EaseInScaling::new(1.0))
+                close_mode: Scaling::EaseOut{decay: 30.0}
             }),
             ..Default::default()
         }
@@ -672,7 +698,8 @@ pub struct UiElement<Id>
     pub position: UiPosition<Id>,
     pub children_layout: UiLayout,
     pub width: UiElementSize<Id>,
-    pub height: UiElementSize<Id>
+    pub height: UiElementSize<Id>,
+    pub scissor: bool
 }
 
 impl<Id> Default for UiElement<Id>
@@ -686,7 +713,8 @@ impl<Id> Default for UiElement<Id>
             position: UiPosition::default(),
             children_layout: UiLayout::Horizontal,
             width: UiElementSize::default(),
-            height: UiElementSize::default()
+            height: UiElementSize::default(),
+            scissor: false
         }
     }
 }

@@ -78,10 +78,12 @@ macro_rules! some_or_value
 {
     ($value:expr, $return_value:expr) =>
     {
-        match $value
         {
-            Some(x) => x,
-            None => return $return_value
+            match $value
+            {
+                Some(x) => x,
+                None => return $return_value
+            }
         }
     }
 }

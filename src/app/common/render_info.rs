@@ -1,5 +1,5 @@
 use std::{
-    fmt::{self, Debug},
+    fmt::Debug,
     sync::Arc
 };
 
@@ -9,12 +9,7 @@ use parking_lot::RwLock;
 
 use serde::{Serialize, Deserialize};
 
-use vulkano::{
-    buffer::BufferContents,
-    pipeline::graphics::viewport::Scissor as VulkanoScissor
-};
-
-use nalgebra::Vector2;
+use vulkano::buffer::BufferContents;
 
 use yanyaengine::{
     Object,
@@ -30,6 +25,8 @@ use yanyaengine::{
 };
 
 pub use yanyaengine::{TextCreateInfo, object::model::Uvs};
+
+pub use vulkano::pipeline::graphics::viewport::Scissor as VulkanoScissor;
 
 use crate::{
     client::{RenderCreateInfo, VisibilityChecker},
@@ -248,7 +245,7 @@ impl From<RenderObjectKind> for RenderObject
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct Scissor
 {
     pub offset: [f32; 2],

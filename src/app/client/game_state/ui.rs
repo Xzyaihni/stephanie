@@ -63,10 +63,8 @@ mod controller;
 
 const TITLE_PADDING: f32 = 0.02;
 
-const INVENTORY_WIDTH: f32 = 0.1;
-
-const SCROLLBAR_WIDTH: f32 = 20.0;
-const SCROLLBAR_HEIGHT: f32 = SCROLLBAR_WIDTH * 10.0;
+const BUTTON_SIZE: f32 = 40.0;
+const SCROLLBAR_HEIGHT: f32 = BUTTON_SIZE * 5.0;
 
 const SEPARATOR_SIZE: f32 = 3.0;
 
@@ -92,11 +90,10 @@ enum UiId
     WindowTitlebarName(UiIdWindow),
     WindowTitlebutton(UiIdWindow, UiIdTitlebutton),
     WindowBody(UiIdWindow),
+    WindowBodyNested(UiIdWindow),
     InventoryList(UiIdWindow, UiListPart),
     InventoryItem(UiIdWindow, u32),
     InventoryItemName(UiIdWindow, u32),
-    Scrollbar(UiIdWindow),
-    ScrollbarBar(UiIdWindow),
     SeparatorWide(UiIdWindow)
 }
 
@@ -220,35 +217,37 @@ impl UiList
         let body_id = id(UiListPart::Body);
         let body = parent.update(body_id, UiElement{
             width: UiSize::Rest(1.0).into(),
-            height: UiSize::ParentScale(1.0).into(),
+            height: UiSize::Rest(1.0).into(),
+            scissor: true,
             ..Default::default()
         });
 
         let height = 1.0;
-        let offset = self.position + (height / 2.0);
+        let offset = 0.0;
 
         let moving_part = body.update(id(UiListPart::Moving), UiElement{
             texture: UiTexture::Solid,
             mix: Some(MixColor::color([1.0, 0.0, 0.0, 1.0])),
             position: UiPosition::Offset(body_id, Vector2::new(0.0, offset)),
             children_layout: UiLayout::Vertical,
-            width: UiSize::ParentScale(1.0).into(),
+            width: UiSize::Rest(1.0).into(),
             height: height.into(),
             ..Default::default()
         });
 
-        body.update(id(UiListPart::Separator), UiElement{
+        parent.update(id(UiListPart::Separator), UiElement{
             texture: UiTexture::Solid,
             mix: Some(MixColor::color(ACCENT_COLOR)),
             width: UiSize::Pixels(SEPARATOR_SIZE).into(),
-            height: UiSize::ParentScale(1.0).into(),
+            height: UiSize::Rest(1.0).into(),
             animation: Animation::separator_tall(),
             ..Default::default()
         });
 
-        let scrollbar = body.update(id(UiListPart::Scrollbar), UiElement{
-            width: UiSize::Pixels(SCROLLBAR_WIDTH).into(),
-            height: UiSize::ParentScale(1.0).into(),
+        let scrollbar_id = id(UiListPart::Scrollbar);
+        let scrollbar = parent.update(scrollbar_id, UiElement{
+            width: UiSize::Pixels(BUTTON_SIZE).into(),
+            height: UiSize::Rest(1.0).into(),
             animation: Animation::scrollbar(),
             ..Default::default()
         });
@@ -258,8 +257,8 @@ impl UiList
         scrollbar.update(id(UiListPart::Bar), UiElement{
             texture: UiTexture::Solid,
             mix: Some(MixColor::color(ACCENT_COLOR)),
-            width: UiSize::ParentScale(1.0).into(),
-            height: UiSize::ParentScale(bar_height).into(),
+            width: UiSize::Rest(1.0).into(),
+            height: UiSize::CopyElement(UiDirection::Vertical, bar_height, scrollbar_id).into(),
             animation: Animation::scrollbar_bar(),
             ..Default::default()
         });
@@ -334,7 +333,13 @@ impl WindowKind
 
         let with_titlebar = constrain(|parent, info, title|
         {
-            let titlebar = parent.update(UiId::WindowTitlebar(id), UiElement::default());
+            let titlebar = parent.update(UiId::WindowTitlebar(id), UiElement{
+                width: UiElementSize{
+                    minimum_size: Some(UiMinimumSize::FitChildren),
+                    size: UiSize::Rest(1.0)
+                },
+                ..Default::default()
+            });
 
             add_padding_horizontal(titlebar, TITLE_PADDING.into());
             titlebar.update(UiId::WindowTitlebarName(id), UiElement{
@@ -345,7 +350,7 @@ impl WindowKind
             });
             add_padding_horizontal(titlebar, TITLE_PADDING.into());
 
-            let size: UiElementSize<UiId> = UiSize::Pixels(SCROLLBAR_WIDTH).into();
+            let size: UiElementSize<UiId> = UiSize::Pixels(BUTTON_SIZE).into();
 
             let close_button = titlebar.update(UiId::WindowTitlebutton(id, UiIdTitlebutton::Close), UiElement{
                 texture: UiTexture::Custom("ui/close_button.png".to_owned()),
@@ -367,7 +372,7 @@ impl WindowKind
             parent.update(UiId::SeparatorWide(id), UiElement{
                 texture: UiTexture::Solid,
                 mix: Some(MixColor::color(ACCENT_COLOR)),
-                width: UiSize::ParentScale(1.0).into(),
+                width: UiSize::Rest(1.0).into(),
                 height: UiSize::Pixels(SEPARATOR_SIZE).into(),
                 animation: Animation::separator_wide(),
                 ..Default::default()
@@ -376,7 +381,7 @@ impl WindowKind
             parent.update(UiId::WindowBody(id), UiElement{
                 width: UiElementSize{
                     minimum_size: Some(UiMinimumSize::FitChildren),
-                    size: UiSize::CopyElement(UiDirection::Horizontal, UiId::WindowTitlebar(id)),
+                    size: UiSize::Rest(1.0)
                 },
                 ..Default::default()
             })
@@ -390,8 +395,16 @@ impl WindowKind
                     .unwrap_or_else(|| "unnamed".to_owned());
 
                 let body = with_titlebar(parent, &mut info, name);
-                body.element().children_layout = UiLayout::Horizontal;
                 body.element().height = UiSize::Pixels(SCROLLBAR_HEIGHT).into();
+
+                let body = body.update(UiId::WindowBodyNested(id), UiElement{
+                    width: UiElementSize{
+                        minimum_size: Some(UiMinimumSize::FitChildren),
+                        size: UiSize::Pixels(SCROLLBAR_HEIGHT * 2.0)
+                    },
+                    height: UiSize::Rest(1.0).into(),
+                    ..Default::default()
+                });
 
                 inventory.update_items(&info);
 
@@ -403,7 +416,7 @@ impl WindowKind
                     let body = parent.update(UiId::InventoryItem(id, index), UiElement{
                         texture: UiTexture::Solid,
                         mix: Some(MixColor::color([0.0, 1.0, 0.0, 1.0])),
-                        width: UiSize::ParentScale(1.0).into(),
+                        width: UiSize::Rest(1.0).into(),
                         ..Default::default()
                     });
 
@@ -617,7 +630,7 @@ impl Ui
                 mix: Some(MixColor::color(BACKGROUND_COLOR)),
                 animation: Animation::normal(),
                 position: UiPosition::Absolute(Vector2::zeros()),
-                width: UiSize::ParentScale(0.9).into(),
+                width: 0.9.into(),
                 height: UiElementSize{
                     minimum_size: Some(UiMinimumSize::Absolute(0.1)),
                     ..Default::default()
