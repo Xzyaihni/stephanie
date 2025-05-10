@@ -248,6 +248,7 @@ impl UiList
         let scrollbar = parent.update(scrollbar_id, UiElement{
             width: UiSize::Pixels(BUTTON_SIZE).into(),
             height: UiSize::Rest(1.0).into(),
+            children_layout: UiLayout::Vertical,
             animation: Animation::scrollbar(),
             ..Default::default()
         });
@@ -341,14 +342,16 @@ impl WindowKind
                 ..Default::default()
             });
 
-            add_padding_horizontal(titlebar, TITLE_PADDING.into());
+            let padding_size = UiElementSize{minimum_size: Some(TITLE_PADDING.into()), size: UiSize::Rest(1.0)};
+
+            add_padding_horizontal(titlebar, padding_size.clone());
             titlebar.update(UiId::WindowTitlebarName(id), UiElement{
                 texture: UiTexture::Text{text: title, font_size: 25},
                 mix: Some(MixColor{keep_transparency: true, ..MixColor::color(ACCENT_COLOR)}),
                 animation: Animation::text(),
                 ..UiElement::fit_content()
             });
-            add_padding_horizontal(titlebar, TITLE_PADDING.into());
+            add_padding_horizontal(titlebar, padding_size);
 
             let size: UiElementSize<UiId> = UiSize::Pixels(BUTTON_SIZE).into();
 
