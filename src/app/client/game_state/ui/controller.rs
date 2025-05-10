@@ -323,27 +323,36 @@ impl UiDeferredInfo
             size.value()
         };
 
-        if parent_element.scissor && !self.scissor_resolved
+        if !self.scissor_resolved
         {
-            debug_assert!(!element.scissor, "nested scissors not supported");
-
-            if let (
-                Some(width),
-                Some(height),
-                Some(position)
-            ) = (parent.width.value(), parent.height.value(), parent.position)
+            if parent_element.scissor
             {
-                let aspect = screen_size / screen_size.max();
-                let size = Vector2::new(width, height);
-                let offset = position + (aspect / 2.0) - (size / 2.0);
+                debug_assert!(!element.scissor, "nested scissors not supported");
 
-                self.scissor = Some(Scissor{offset: offset.into(), extent: size.into()});
+                if let (
+                    Some(width),
+                    Some(height),
+                    Some(position)
+                ) = (parent.width.value(), parent.height.value(), parent.position)
+                {
+                    let aspect = screen_size / screen_size.max();
+                    let size = Vector2::new(width, height);
+                    let offset = position + (aspect / 2.0) - (size / 2.0);
+
+                    self.scissor = Some(Scissor{offset: offset.into(), extent: size.into()});
+                }
+
+                self.scissor_resolved = self.scissor.is_some();
+            } else if let Some(scissor) = parent.scissor
+            {
+                debug_assert!(!element.scissor, "nested scissors not supported");
+
+                self.scissor = Some(scissor);
+                self.scissor_resolved = true;
+            } else if parent.scissor_resolved
+            {
+                self.scissor_resolved = true;
             }
-
-            self.scissor_resolved = self.scissor.is_some();
-        } else
-        {
-            self.scissor_resolved = true;
         }
 
         if !self.width.resolved()
