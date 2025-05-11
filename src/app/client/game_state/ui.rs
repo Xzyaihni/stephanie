@@ -213,7 +213,7 @@ impl UiList
         parent: UiParentElement,
         id: impl Fn(UiListPart) -> UiId,
         item_height: f32,
-        mut update_item: impl FnMut(&mut UpdateInfo, UiParentElement, &str, u32)
+        mut update_item: impl FnMut(&mut UpdateInfo, UiParentElement, &str, u32, bool)
     ) -> Option<usize>
     {
         assert!(parent.element().children_layout.is_horizontal());
@@ -226,7 +226,7 @@ impl UiList
             ..Default::default()
         });
 
-        let body_height = body.height();
+        let body_height = body.try_height()?;
 
         let items_total = self.items.len() as f32 * item_height;
         let items_fit = (body_height / item_height).ceil() as usize + 1;
@@ -237,7 +237,9 @@ impl UiList
         let offset = bottom_scroll * self.position;
 
         let starting_item = (offset / item_height) as usize;
-        let moving_offset = (height - body_height) / 2.0 - (offset % item_height);
+
+        let relative_offset = offset % item_height;
+        let moving_offset = (height - body_height) / 2.0 - relative_offset;
 
         let moving_part = body.update(id(UiListPart::Moving), UiElement{
             position: UiPosition::Offset(body_id, Vector2::new(0.0, moving_offset)),
@@ -306,12 +308,19 @@ impl UiList
             bar.element().mix.as_mut().unwrap().color = HIGHLIGHTED_COLOR;
         }
 
-        self.items.iter().enumerate().skip(starting_item).take(items_fit).for_each(|(index, name)|
+        let selected_index = body.mouse_position_inside().map(|position|
         {
-            update_item(info, moving_part, name, index as u32);
+            let item_height = item_height / body_height;
+            starting_item + ((position.y + (relative_offset / body_height)) / item_height) as usize
         });
 
-        None
+        self.items.iter().enumerate().skip(starting_item).take(items_fit).for_each(|(index, name)|
+        {
+            let is_selected = selected_index.map(|x| x == index).unwrap_or(false);
+            update_item(info, moving_part, name, index as u32, is_selected);
+        });
+
+        selected_index
     }
 }
 
@@ -458,9 +467,14 @@ impl WindowKind
                 inventory.list.update(&mut info, body, |list_part|
                 {
                     UiId::InventoryList(id, list_part)
-                }, item_height, |info, parent, name, index|
+                }, item_height, |info, parent, name, index, is_selected|
                 {
+                    let mut body_color = ACCENT_COLOR;
+                    body_color[3] = if is_selected { 0.2 } else { 0.0 };
+
                     let body = parent.update(UiId::InventoryItem(id, index), UiElement{
+                        texture: UiTexture::Solid,
+                        mix: Some(MixColor::color(body_color)),
                         width: UiSize::Rest(1.0).into(),
                         ..Default::default()
                     });

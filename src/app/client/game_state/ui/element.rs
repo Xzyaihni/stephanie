@@ -680,7 +680,7 @@ impl Animation
     {
         Self{
             scaling: Some(ScalingAnimation{
-                start_scaling: Vector2::new(1.0, 1.1),
+                start_scaling: Vector2::new(1.0, 1.3),
                 start_mode: Scaling::EaseOut{decay: 10.0},
                 close_mode: Scaling::EaseOut{decay: 30.0}
             }),

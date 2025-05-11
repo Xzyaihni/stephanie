@@ -115,14 +115,14 @@ impl<'a, Id: Idable> TreeInserter<'a, Id>
         }
     }
 
-    pub fn width(&self) -> f32
+    pub fn try_width(&self) -> Option<f32>
     {
-        self.persistent_element(|x| x.map(|x| x.deferred.width.unwrap()).unwrap_or(0.0))
+        self.persistent_element(|x| x.map(|x| x.deferred.width.unwrap()))
     }
 
-    pub fn height(&self) -> f32
+    pub fn try_height(&self) -> Option<f32>
     {
-        self.persistent_element(|x| x.map(|x| x.deferred.height.unwrap()).unwrap_or(0.0))
+        self.persistent_element(|x| x.map(|x| x.deferred.height.unwrap()))
     }
 
     pub fn position_mapped(&self, check_position: Vector2<f32>) -> Vector2<f32>
@@ -739,22 +739,23 @@ impl<Id: Idable> TreeElement<Id>
     fn for_each(
         &self,
         trees: &Vec<TreeElement<Id>>,
-        mut f: impl FnMut(Id, UiElement<Id>, UiDeferredInfo)
+        mut f: impl FnMut(Option<&Self>, &Self)
     )
     {
-        self.for_each_inner(trees, &mut f)
+        self.for_each_inner(trees, None, &mut f)
     }
 
     fn for_each_inner(
         &self,
         trees: &Vec<TreeElement<Id>>,
-        f: &mut impl FnMut(Id, UiElement<Id>, UiDeferredInfo)
+        parent: Option<&Self>,
+        f: &mut impl FnMut(Option<&Self>, &Self)
     )
     {
-        f(self.id.clone(), self.element.clone(), self.deferred.clone());
+        f(parent, self);
         self.children.iter().for_each(|index|
         {
-            trees[*index].for_each_inner(trees, f)
+            trees[*index].for_each_inner(trees, Some(self), f)
         });
     }
 }
@@ -919,9 +920,9 @@ impl<Id: Idable> Controller<Id>
         self.shared.borrow_mut().elements.iter_mut().for_each(|element| element.closing = true);
 
         let mut last_match = None;
-        created_trees[0].for_each(&created_trees, |id, element, deferred|
+        created_trees[0].for_each(&created_trees, |parent, this|
         {
-            let index = self.shared.borrow().element_id(&id);
+            let index = self.shared.borrow().element_id(&this.id);
             if let Some(index) = index
             {
                 last_match = Some(index);
@@ -936,25 +937,31 @@ impl<Id: Idable> Controller<Id>
 
                 *closing = false;
 
-                if *old_element == element
+                if *old_element == this.element
                 {
-                    old_cached.update(create_info, &deferred, old_element, dt);
+                    old_cached.update(create_info, &this.deferred, old_element, dt);
                 } else
                 {
-                    let mut cached = UiElementCached::from_element(create_info, &deferred, &element);
+                    let mut cached = UiElementCached::from_element(create_info, &this.deferred, &this.element);
 
-                    old_cached.keep_old(&mut cached, old_element, &element);
+                    old_cached.keep_old(&mut cached, old_element, &this.element);
 
                     *old_cached = cached;
 
-                    *old_element = element;
+                    *old_element = this.element.clone();
                 }
 
-                *old_deferred = deferred;
+                *old_deferred = this.deferred.clone();
             } else
             {
-                let cached = UiElementCached::from_element(create_info, &deferred, &element);
-                let element = Element{id, element, cached, deferred, closing: false};
+                let cached = UiElementCached::from_element(create_info, &this.deferred, &this.element);
+                let element = Element{
+                    id: this.id.clone(),
+                    element: this.element.clone(),
+                    cached,
+                    deferred: this.deferred.clone(),
+                    closing: false
+                };
 
                 let elements = &mut self.shared.borrow_mut().elements;
 
