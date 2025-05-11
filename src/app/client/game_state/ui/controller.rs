@@ -49,6 +49,7 @@ pub struct TreeInserter<'a, Id>
     index: usize
 }
 
+#[allow(dead_code)]
 impl<'a, Id: Idable> TreeInserter<'a, Id>
 {
     fn tree_element(&self) -> Ref<TreeElement<Id>>
@@ -167,6 +168,9 @@ impl<'a, Id: Idable> TreeInserter<'a, Id>
 #[derive(Debug)]
 struct UiElementCached
 {
+    scale_fraction: Vector2<f32>,
+    scale_fraction_inherit: Vector2<f32>,
+    scale: Vector2<f32>,
     mix: Option<MixColor>,
     scissor: Option<VulkanoScissor>,
     object: Option<ClientRenderObject>
@@ -193,11 +197,12 @@ impl UiElementCached
 
         let width = deferred.width.unwrap() * scaling.x;
         let height = deferred.height.unwrap() * scaling.y;
+        let scale = Vector2::new(width, height);
 
         let position = deferred.position.unwrap();
 
         let transform = Transform{
-            scale: Vector3::new(width, height, 1.0),
+            scale: Vector3::new(scale.x, scale.y, 1.0),
             position: Vector3::new(position.x, position.y, 0.0),
             ..Default::default()
         };
@@ -230,6 +235,9 @@ impl UiElementCached
         };
 
         Self{
+            scale_fraction: Vector2::repeat(1.0),
+            scale_fraction_inherit: Vector2::repeat(1.0),
+            scale,
             mix: element.mix,
             scissor,
             object
@@ -255,6 +263,18 @@ impl UiElementCached
             };
         }
 
+        let target_scale = Vector3::new(deferred.width.unwrap(), deferred.height.unwrap(), 1.0);
+
+        if let Some(scaling) = old_element.animation.scaling.as_mut()
+        {
+            let mut scale = Vector3::new(self.scale.x, self.scale.y, 1.0);
+            scaling.start_mode.next(&mut scale, target_scale, dt);
+            self.scale = scale.xy();
+        } else
+        {
+            self.scale = target_scale.xy();
+        }
+
         if let Some(object) = self.object.as_mut()
         {
             let mut transform = object.transform().cloned().unwrap_or_default();
@@ -262,20 +282,24 @@ impl UiElementCached
             let position = deferred.position.unwrap();
             transform.position = Vector3::new(position.x, position.y, 0.0);
 
-            let target_scale = Vector3::new(deferred.width.unwrap(), deferred.height.unwrap(), 1.0);
-
-            if let Some(scaling) = old_element.animation.scaling.as_mut()
-            {
-                scaling.start_mode.next(&mut transform.scale, target_scale, dt);
-            } else
-            {
-                transform.scale = target_scale;
-            }
-
             object.set_transform(transform);
+
+            self.update_scale();
         } else
         {
             self.object = Self::from_element(create_info, &deferred, old_element).object;
+        }
+    }
+
+    fn update_scale(&mut self)
+    {
+        if let Some(object) = self.object.as_mut()
+        {
+            object.modify_transform(|transform|
+            {
+                let scale = self.scale.component_mul(&self.scale_fraction);
+                transform.scale = Vector3::new(scale.x, scale.y, 1.0)
+            })
         }
     }
 
@@ -305,6 +329,9 @@ impl UiElementCached
 
     fn keep_old<Id: Eq>(&self, new: &mut Self, old_element: &UiElement<Id>, new_element: &UiElement<Id>)
     {
+        new.scale_fraction = self.scale_fraction;
+        new.scale_fraction_inherit = self.scale_fraction_inherit;
+
         macro_rules! fields_match
         {
             ($($field:ident),+) =>
@@ -318,12 +345,10 @@ impl UiElementCached
             debug_assert!(old_element.mix != new_element.mix);
 
             new.mix = self.mix;
-
-            if let (Some(new), Some(old)) = (new.object.as_mut(), self.object.as_ref().and_then(|x| x.transform()))
-            {
-                new.modify_transform(|transform| transform.scale = old.scale);
-            }
+            new.scale = self.scale;
         }
+
+        new.update_scale();
     }
 }
 
@@ -922,6 +947,15 @@ impl<Id: Idable> Controller<Id>
         let mut last_match = None;
         created_trees[0].for_each(&created_trees, |parent, this|
         {
+            let parent_fraction = parent.as_ref().and_then(|parent|
+            {
+                let shared = self.shared.borrow();
+                shared.element_id(&parent.id).map(|index|
+                {
+                    shared.elements[index].cached.scale_fraction_inherit
+                })
+            }).unwrap_or_else(|| Vector2::repeat(1.0));
+
             let index = self.shared.borrow().element_id(&this.id);
             if let Some(index) = index
             {
@@ -952,16 +986,20 @@ impl<Id: Idable> Controller<Id>
                 }
 
                 *old_deferred = this.deferred.clone();
+
+                Self::update_fraction(parent_fraction, old_cached, old_deferred);
             } else
             {
                 let cached = UiElementCached::from_element(create_info, &this.deferred, &this.element);
-                let element = Element{
+                let mut element = Element{
                     id: this.id.clone(),
                     element: this.element.clone(),
                     cached,
                     deferred: this.deferred.clone(),
                     closing: false
                 };
+
+                Self::update_fraction(parent_fraction, &mut element.cached, &element.deferred);
 
                 let elements = &mut self.shared.borrow_mut().elements;
 
@@ -992,6 +1030,21 @@ impl<Id: Idable> Controller<Id>
         created_trees.push(TreeElement::screen(self.shared.clone()));
     }
 
+    fn update_fraction(
+        parent_fraction: Vector2<f32>,
+        cached: &mut UiElementCached,
+        deferred: &UiDeferredInfo
+    )
+    {
+        cached.scale_fraction = parent_fraction;
+
+        let target_scale = Vector2::new(deferred.width.unwrap(), deferred.height.unwrap());
+
+        let fraction = cached.scale.xy().component_div(&target_scale);
+
+        cached.scale_fraction_inherit = fraction.component_mul(&parent_fraction);
+    }
+
     pub fn set_mouse_position(&mut self, position: Vector2<f32>)
     {
         self.shared.borrow_mut().mouse_position = position;
@@ -1004,6 +1057,7 @@ impl<Id: Idable> Controller<Id>
         self.shared.borrow_mut().screen_size = size;
     }
 
+    #[allow(dead_code)]
     pub fn screen_size(&self) -> Vector2<f32>
     {
         self.shared.borrow().screen_size
