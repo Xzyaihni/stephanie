@@ -244,13 +244,15 @@ impl UiElementCached
         dt: f32
     )
     {
-        if let (
-            Some(decay),
-            Some(mix),
-            Some(target)
-        ) = (old_element.animation.mix, self.mix.as_mut(), old_element.mix)
+        if let (Some(mix), Some(target)) = (self.mix.as_mut(), old_element.mix)
         {
-            *mix = LazyMix{decay, target}.update(*mix, dt);
+            *mix = if let Some(decay) = old_element.animation.mix
+            {
+                LazyMix{decay, target}.update(*mix, dt)
+            } else
+            {
+                target
+            };
         }
 
         if let Some(object) = self.object.as_mut()

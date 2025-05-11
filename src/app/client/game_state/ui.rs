@@ -261,7 +261,6 @@ impl UiList
             width: UiSize::Pixels(BUTTON_SIZE).into(),
             height: UiSize::Rest(1.0).into(),
             children_layout: UiLayout::Vertical,
-            animation: Animation::scrollbar(),
             ..Default::default()
         });
 
@@ -391,7 +390,6 @@ impl WindowKind
             titlebar.update(UiId::WindowTitlebarName(id), UiElement{
                 texture: UiTexture::Text{text: title, font_size: 25},
                 mix: Some(MixColor{keep_transparency: true, ..MixColor::color(ACCENT_COLOR)}),
-                animation: Animation::text(),
                 ..UiElement::fit_content()
             });
             add_padding_horizontal(titlebar, padding_size);
@@ -401,9 +399,9 @@ impl WindowKind
             let close_button = titlebar.update(UiId::WindowTitlebutton(id, UiIdTitlebutton::Close), UiElement{
                 texture: UiTexture::Custom("ui/close_button.png".to_owned()),
                 mix: Some(MixColor{keep_transparency: true, ..MixColor::color(ACCENT_COLOR)}),
+                animation: Animation::button(),
                 width: size.clone(),
                 height: size,
-                animation: Animation::button(),
                 ..Default::default()
             });
 

@@ -1646,12 +1646,16 @@ impl Lisp
 
     pub fn print_highlighted(source: &str, position: CodePosition)
     {
-        let line = source.lines().skip(position.line - 1).next().expect("line must exist");
+        if let Some(line) = source.lines().skip(position.line - 1).next()
+        {
+            eprintln!("{line}");
 
-        eprintln!("{line}");
-
-        let padding = iter::repeat(' ').take(position.character.saturating_sub(1)).collect::<String>();
-        eprintln!("{padding}^");
+            let padding = iter::repeat(' ').take(position.character.saturating_sub(1)).collect::<String>();
+            eprintln!("{padding}^");
+        } else
+        {
+            eprintln!("couldnt find line {} in {source}", position.line - 1);
+        }
     }
 }
 

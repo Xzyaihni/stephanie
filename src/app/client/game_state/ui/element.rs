@@ -680,7 +680,7 @@ impl Animation
     {
         Self{
             scaling: Some(ScalingAnimation{
-                start_scaling: Vector2::new(1.1, 1.1),
+                start_scaling: Vector2::new(1.0, 1.1),
                 start_mode: Scaling::EaseOut{decay: 10.0},
                 close_mode: Scaling::EaseOut{decay: 30.0}
             }),
@@ -695,6 +695,7 @@ pub struct UiElement<Id>
     pub texture: UiTexture,
     pub mix: Option<MixColor>,
     pub animation: Animation,
+    pub inherit_animation: bool,
     pub position: UiPosition<Id>,
     pub children_layout: UiLayout,
     pub width: UiElementSize<Id>,
@@ -710,6 +711,7 @@ impl<Id> Default for UiElement<Id>
             texture: UiTexture::None,
             mix: None,
             animation: Animation::default(),
+            inherit_animation: true,
             position: UiPosition::default(),
             children_layout: UiLayout::Horizontal,
             width: UiElementSize::default(),
