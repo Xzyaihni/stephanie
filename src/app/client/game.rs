@@ -1105,22 +1105,16 @@ impl<'a> PlayerContainer<'a>
 
                         self.info.other_entity = Some(mouse_touched);
 
-                        /*let id = self.game_state.open_inventory(WindowCreateInfo::Inventory{
-                            spawn_position: self.game_state.ui_mouse_position(),
-                            entity: mouse_touched,
-                            on_click: Box::new(|_anchor, item|
+                        self.game_state.ui.borrow_mut().open_inventory(mouse_touched, Box::new(|_, item|
+                        {
+                            UiEvent::Action(Rc::new(move |game_state|
                             {
-                                UserEvent::UiAction(Rc::new(move |game_state|
-                                {
-                                    game_state.create_popup(vec![
-                                        UserEvent::Take(item),
-                                        UserEvent::Info{which: InventoryWhich::Other, item}
-                                    ]);
-                                }))
-                            })
-                        });
-
-                        self.info.inventories.other = Some(id);*/todo!();
+                                /*game_state.create_popup(vec![
+                                    UserEvent::Take(item),
+                                    UserEvent::Info{which: InventoryWhich::Other, item}
+                                ]);*/todo!()
+                            }))
+                        }));
 
                         return;
                     }
@@ -1263,34 +1257,16 @@ impl<'a> PlayerContainer<'a>
         {
             ui.open_inventory(this, Box::new(|_, item|
             {
-                dbg!(item);
-
-                todo!()
+                UiEvent::Action(Rc::new(move |game_state|
+                {
+                    /*game_state.create_popup(vec![
+                        UserEvent::Wield(item),
+                        UserEvent::Drop{which: InventoryWhich::Player, item},
+                        UserEvent::Info{which: InventoryWhich::Player, item}
+                    ]);*/todo!()
+                }))
             }));
         }
-        /*if self.info.inventories.player.take().and_then(|window|
-        {
-            window.upgrade().map(|window| self.game_state.remove_window(window).is_ok())
-        }).is_none()
-        {
-            let window = self.game_state.add_window(WindowCreateInfo::Inventory{
-                spawn_position: self.game_state.ui_mouse_position(),
-                entity: self.info.entity,
-                on_click: Box::new(|_anchor, item|
-                {
-                    UserEvent::UiAction(Rc::new(move |game_state|
-                    {
-                        game_state.create_popup(vec![
-                            UserEvent::Wield(item),
-                            UserEvent::Drop{which: InventoryWhich::Player, item},
-                            UserEvent::Info{which: InventoryWhich::Player, item}
-                        ]);
-                    }))
-                })
-            });
-
-            self.info.inventories.player = Some(window);
-        }*/
     }
 
     pub fn this_update(&mut self, dt: f32)

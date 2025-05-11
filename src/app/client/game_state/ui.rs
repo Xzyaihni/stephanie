@@ -464,7 +464,7 @@ impl WindowKind
                 let font_size = 20;
                 let item_height = info.fonts.text_height(font_size, body.screen_size().max());
 
-                inventory.list.update(&mut info, body, |list_part|
+                let selected = inventory.list.update(&mut info, body, |list_part|
                 {
                     UiId::InventoryList(id, list_part)
                 }, item_height, |info, parent, name, index, is_selected|
@@ -524,6 +524,16 @@ impl WindowKind
                         ..UiElement::fit_content()
                     });
                 });
+
+                if let Some(index) = selected
+                {
+                    if info.controls.take_click_down()
+                    {
+                        let event = (inventory.on_click)(inventory.entity, inventory.items[index]);
+
+                        info.user_receiver.push(event);
+                    }
+                }
             }
         }
     }
