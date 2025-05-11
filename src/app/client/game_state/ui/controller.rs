@@ -23,7 +23,6 @@ use yanyaengine::{
 
 use crate::{
     some_or_value,
-    some_or_return,
     client::RenderCreateInfo,
     common::{
         render_info::*,
@@ -180,6 +179,7 @@ impl UiElementCached
 {
     fn from_element<Id>(
         create_info: &mut RenderCreateInfo,
+        parent_fraction: Vector2<f32>,
         deferred: &UiDeferredInfo,
         element: &UiElement<Id>
     ) -> Self
@@ -202,7 +202,6 @@ impl UiElementCached
         let position = deferred.position.unwrap();
 
         let transform = Transform{
-            scale: Vector3::new(scale.x, scale.y, 1.0),
             position: Vector3::new(position.x, position.y, 0.0),
             ..Default::default()
         };
@@ -234,19 +233,40 @@ impl UiElementCached
             }
         };
 
-        Self{
+        let mut this = Self{
             scale_fraction: Vector2::repeat(1.0),
             scale_fraction_inherit: Vector2::repeat(1.0),
             scale,
             mix: element.mix,
             scissor,
             object
-        }
+        };
+
+        this.update_fraction(parent_fraction, deferred);
+        this.update_scale();
+
+        this
+    }
+
+    fn update_fraction(
+        &mut self,
+        parent_fraction: Vector2<f32>,
+        deferred: &UiDeferredInfo
+    )
+    {
+        self.scale_fraction = parent_fraction;
+
+        let target_scale = Vector2::new(deferred.width.unwrap(), deferred.height.unwrap());
+
+        let fraction = self.scale.xy().component_div(&target_scale);
+
+        self.scale_fraction_inherit = fraction.component_mul(&parent_fraction);
     }
 
     fn update<Id>(
         &mut self,
         create_info: &mut RenderCreateInfo,
+        parent_fraction: Vector2<f32>,
         deferred: &UiDeferredInfo,
         old_element: &mut UiElement<Id>,
         dt: f32
@@ -287,7 +307,7 @@ impl UiElementCached
             self.update_scale();
         } else
         {
-            self.object = Self::from_element(create_info, &deferred, old_element).object;
+            self.object = Self::from_element(create_info, parent_fraction, &deferred, old_element).object;
         }
     }
 
@@ -329,9 +349,6 @@ impl UiElementCached
 
     fn keep_old<Id: Eq>(&self, new: &mut Self, old_element: &UiElement<Id>, new_element: &UiElement<Id>)
     {
-        new.scale_fraction = self.scale_fraction;
-        new.scale_fraction_inherit = self.scale_fraction_inherit;
-
         macro_rules! fields_match
         {
             ($($field:ident),+) =>
@@ -346,9 +363,8 @@ impl UiElementCached
 
             new.mix = self.mix;
             new.scale = self.scale;
+            new.update_scale();
         }
-
-        new.update_scale();
     }
 }
 
@@ -973,10 +989,15 @@ impl<Id: Idable> Controller<Id>
 
                 if *old_element == this.element
                 {
-                    old_cached.update(create_info, &this.deferred, old_element, dt);
+                    old_cached.update(create_info, parent_fraction, &this.deferred, old_element, dt);
                 } else
                 {
-                    let mut cached = UiElementCached::from_element(create_info, &this.deferred, &this.element);
+                    let mut cached = UiElementCached::from_element(
+                        create_info,
+                        parent_fraction,
+                        &this.deferred,
+                        &this.element
+                    );
 
                     old_cached.keep_old(&mut cached, old_element, &this.element);
 
@@ -987,10 +1008,16 @@ impl<Id: Idable> Controller<Id>
 
                 *old_deferred = this.deferred.clone();
 
-                Self::update_fraction(parent_fraction, old_cached, old_deferred);
+                old_cached.update_fraction(parent_fraction, old_deferred);
             } else
             {
-                let cached = UiElementCached::from_element(create_info, &this.deferred, &this.element);
+                let cached = UiElementCached::from_element(
+                    create_info,
+                    parent_fraction,
+                    &this.deferred,
+                    &this.element
+                );
+
                 let mut element = Element{
                     id: this.id.clone(),
                     element: this.element.clone(),
@@ -999,7 +1026,7 @@ impl<Id: Idable> Controller<Id>
                     closing: false
                 };
 
-                Self::update_fraction(parent_fraction, &mut element.cached, &element.deferred);
+                element.cached.update_fraction(parent_fraction, &element.deferred);
 
                 let elements = &mut self.shared.borrow_mut().elements;
 
@@ -1028,21 +1055,6 @@ impl<Id: Idable> Controller<Id>
 
         created_trees.clear();
         created_trees.push(TreeElement::screen(self.shared.clone()));
-    }
-
-    fn update_fraction(
-        parent_fraction: Vector2<f32>,
-        cached: &mut UiElementCached,
-        deferred: &UiDeferredInfo
-    )
-    {
-        cached.scale_fraction = parent_fraction;
-
-        let target_scale = Vector2::new(deferred.width.unwrap(), deferred.height.unwrap());
-
-        let fraction = cached.scale.xy().component_div(&target_scale);
-
-        cached.scale_fraction_inherit = fraction.component_mul(&parent_fraction);
     }
 
     pub fn set_mouse_position(&mut self, position: Vector2<f32>)
@@ -1121,6 +1133,7 @@ pub fn add_padding_horizontal<Id: Idable>(x: TreeInserter<Id>, size: UiElementSi
     add_padding(x, size, 0.0.into())
 }
 
+#[allow(dead_code)]
 pub fn add_padding_vertical<Id: Idable>(x: TreeInserter<Id>, size: UiElementSize<Id>)
 {
     add_padding(x, 0.0.into(), size)
