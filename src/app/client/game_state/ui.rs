@@ -61,6 +61,7 @@ mod controller;
 
 
 const TITLE_PADDING: f32 = 0.02;
+const ITEM_PADDING: f32 = 10.0;
 
 const BUTTON_SIZE: f32 = 40.0;
 const SCROLLBAR_HEIGHT: f32 = BUTTON_SIZE * 5.0;
@@ -92,6 +93,8 @@ enum UiId
     WindowBodyNested(UiIdWindow),
     InventoryList(UiIdWindow, UiListPart),
     InventoryItem(UiIdWindow, u32),
+    InventoryIconBody(UiIdWindow, u32),
+    InventoryIcon(UiIdWindow, u32),
     InventoryItemName(UiIdWindow, u32),
     SeparatorWide(UiIdWindow)
 }
@@ -209,6 +212,7 @@ impl UiList
         info: &mut UpdateInfo,
         parent: UiParentElement,
         id: impl Fn(UiListPart) -> UiId,
+        item_height: f32,
         mut update_item: impl FnMut(&mut UpdateInfo, UiParentElement, &str, u32)
     ) -> Option<usize>
     {
@@ -218,17 +222,25 @@ impl UiList
         let body = parent.update(body_id, UiElement{
             width: UiSize::Rest(1.0).into(),
             height: UiSize::Rest(1.0).into(),
-            // scissor: true,
+            scissor: true,
             ..Default::default()
         });
 
+        let body_height = body.height();
+
+        let items_total = self.items.len() as f32 * item_height;
+        let items_fit = (body_height / item_height).ceil() as usize + 1;
+
         let height = 1.0;
-        let offset = 0.0;
+
+        let bottom_scroll = (items_total - body_height).max(0.0);
+        let offset = bottom_scroll * self.position;
+
+        let starting_item = (offset / item_height) as usize;
+        let moving_offset = (height - body_height) / 2.0 - (offset % item_height);
 
         let moving_part = body.update(id(UiListPart::Moving), UiElement{
-            texture: UiTexture::Solid,
-            mix: Some(MixColor::color([1.0, 0.0, 0.0, 1.0])),
-            position: UiPosition::Offset(body_id, Vector2::new(0.0, offset)),
+            position: UiPosition::Offset(body_id, Vector2::new(0.0, moving_offset)),
             children_layout: UiLayout::Vertical,
             width: UiSize::Rest(1.0).into(),
             height: height.into(),
@@ -253,8 +265,7 @@ impl UiList
             ..Default::default()
         });
 
-        let make_this_adjust = ();
-        let bar_height = 0.2;
+        let bar_height = (body_height / items_total).min(1.0);
 
         {
             let position = scrollbar.mouse_position_mapped().y;
@@ -266,8 +277,14 @@ impl UiList
 
             if info.controls.observe_action_held()
             {
-                let half_bar_height = bar_height / 2.0;
-                self.position = (position.clamp(half_bar_height, 1.0 - half_bar_height) - half_bar_height) / (1.0 - bar_height);
+                if bar_height > 0.99
+                {
+                    self.position = 0.0;
+                } else
+                {
+                    let half_bar_height = bar_height / 2.0;
+                    self.position = (position.clamp(half_bar_height, 1.0 - half_bar_height) - half_bar_height) / (1.0 - bar_height);
+                }
             }
         }
 
@@ -290,7 +307,7 @@ impl UiList
             bar.element().mix.as_mut().unwrap().color = HIGHLIGHTED_COLOR;
         }
 
-        self.items.iter().enumerate().for_each(|(index, name)|
+        self.items.iter().enumerate().skip(starting_item).take(items_fit).for_each(|(index, name)|
         {
             update_item(info, moving_part, name, index as u32);
         });
@@ -437,20 +454,60 @@ impl WindowKind
 
                 inventory.update_items(&info);
 
+                let font_size = 20;
+                let item_height = info.fonts.text_height(font_size, body.screen_size().max());
+
                 inventory.list.update(&mut info, body, |list_part|
                 {
                     UiId::InventoryList(id, list_part)
-                }, |info, parent, name, index|
+                }, item_height, |info, parent, name, index|
                 {
                     let body = parent.update(UiId::InventoryItem(id, index), UiElement{
-                        texture: UiTexture::Solid,
-                        mix: Some(MixColor::color([0.0, 1.0, 0.0, 1.0])),
                         width: UiSize::Rest(1.0).into(),
                         ..Default::default()
                     });
 
+                    add_padding_horizontal(body, UiSize::Pixels(ITEM_PADDING).into());
+
+                    let icon_size = item_height * 0.9;
+                    let icon_id = UiId::InventoryIconBody(id, index);
+                    let icon = body.update(icon_id, UiElement{
+                        texture: UiTexture::Solid,
+                        mix: Some(MixColor::color(ACCENT_COLOR)),
+                        width: icon_size.into(),
+                        height: icon_size.into(),
+                        children_layout: UiLayout::Vertical,
+                        ..UiElement::default()
+                    });
+
+                    let v = || -> Option<_>
+                    {
+                        let item_id = inventory.items[index as usize];
+
+                        let inventory = info.entities.inventory(inventory.entity)?;
+
+                        let item = inventory.get(item_id)?;
+                        let item = info.items_info.get(item.id);
+
+                        let texture = item.texture?;
+
+                        Some((item.aspect, texture))
+                    }();
+
+                    if let Some((aspect, texture)) = v
+                    {
+                        icon.update(UiId::InventoryIcon(id, index), UiElement{
+                            texture: UiTexture::CustomId(texture),
+                            width: UiSize::CopyElement(UiDirection::Horizontal, aspect.x, icon_id).into(),
+                            height: UiSize::CopyElement(UiDirection::Vertical, aspect.y, icon_id).into(),
+                            ..UiElement::default()
+                        });
+                    }
+
+                    add_padding_horizontal(body, UiSize::Pixels(ITEM_PADDING / 2.0).into());
+
                     body.update(UiId::InventoryItemName(id, index), UiElement{
-                        texture: UiTexture::Text{text: name.to_owned(), font_size: 20},
+                        texture: UiTexture::Text{text: name.to_owned(), font_size},
                         mix: Some(MixColor{keep_transparency: true, ..MixColor::color(ACCENT_COLOR)}),
                         ..UiElement::fit_content()
                     });
@@ -491,12 +548,13 @@ impl Window
     }
 }
 
-pub struct UpdateInfo<'a, 'b, 'c, 'd>
+pub struct UpdateInfo<'a, 'b, 'c>
 {
     pub entities: &'a ClientEntities,
-    pub items_info: &'b ItemsInfo,
-    pub controls: &'c mut UiControls,
-    pub user_receiver: &'d mut UiReceiver
+    pub items_info: &'a ItemsInfo,
+    pub fonts: &'a FontsContainer,
+    pub controls: &'b mut UiControls,
+    pub user_receiver: &'c mut UiReceiver
 }
 
 pub struct Ui
@@ -657,6 +715,7 @@ impl Ui
             x.update(&mut self.controller, UpdateInfo{
                 entities: entities,
                 items_info: &self.items_info,
+                fonts: &self.fonts,
                 controls: controls,
                 user_receiver: &mut self.user_receiver.borrow_mut()
             })
@@ -669,7 +728,10 @@ impl Ui
                 mix: Some(MixColor::color(BACKGROUND_COLOR)),
                 animation: Animation::normal(),
                 position: UiPosition::Absolute(Vector2::zeros()),
-                width: 0.9.into(),
+                width: UiElementSize{
+                    minimum_size: Some(UiMinimumSize::Absolute(0.9)),
+                    ..Default::default()
+                },
                 height: UiElementSize{
                     minimum_size: Some(UiMinimumSize::Absolute(0.1)),
                     ..Default::default()

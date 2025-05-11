@@ -1,16 +1,10 @@
-use std::{
-    convert,
-    rc::Rc,
-    cell::RefCell,
-    fmt::Debug
-};
+use std::{convert, fmt::Debug};
 
 use nalgebra::Vector2;
 
-use crate::common::{
-    render_info::*,
-    lazy_transform::*
-};
+use yanyaengine::TextureId;
+
+use crate::common::render_info::*;
 
 pub use crate::common::lazy_transform::Scaling;
 
@@ -92,7 +86,8 @@ pub enum UiTexture
     None,
     Solid,
     Text{text: String, font_size: u32},
-    Custom(String)
+    Custom(String),
+    CustomId(TextureId)
 }
 
 impl UiTexture
@@ -104,7 +99,8 @@ impl UiTexture
             Self::None
             | Self::Text{..} => None,
             Self::Solid => Some("ui/solid.png"),
-            Self::Custom(x) => Some(x)
+            Self::Custom(x) => Some(x),
+            Self::CustomId(_) => None
         }
     }
 }
@@ -673,7 +669,11 @@ impl Animation
 
     pub fn scrollbar_bar() -> Self
     {
-        Self::button()
+        let mut button = Self::button();
+
+        button.scaling.as_mut().unwrap().start_scaling.x = 1.0;
+
+        button
     }
 
     pub fn typing_text() -> Self

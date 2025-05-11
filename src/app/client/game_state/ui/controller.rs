@@ -95,6 +95,36 @@ impl<'a, Id: Idable> TreeInserter<'a, Id>
         RefMut::map(self.tree_element_mut(), |x| x.element())
     }
 
+    pub fn screen_size(&self) -> Vector2<f32>
+    {
+        self.tree_element().shared.borrow().screen_size
+    }
+
+    fn persistent_element<T>(&self, f: impl FnOnce(Option<&Element<Id>>) -> T) -> T
+    {
+        let element = self.tree_element();
+        let id = &element.id;
+        let shared = element.shared.borrow();
+
+        if let Some(index) = shared.element_id(id)
+        {
+            f(Some(&shared.elements[index]))
+        } else
+        {
+            f(None)
+        }
+    }
+
+    pub fn width(&self) -> f32
+    {
+        self.persistent_element(|x| x.map(|x| x.deferred.width.unwrap()).unwrap_or(0.0))
+    }
+
+    pub fn height(&self) -> f32
+    {
+        self.persistent_element(|x| x.map(|x| x.deferred.height.unwrap()).unwrap_or(0.0))
+    }
+
     pub fn position_mapped(&self, check_position: Vector2<f32>) -> Vector2<f32>
     {
         self.tree_element().position_mapped(check_position)
@@ -189,6 +219,12 @@ impl UiElementCached
             {
                 RenderObject{
                     kind: RenderObjectKind::Texture{name: element.texture.name().unwrap().to_owned()}
+                }.into_client(transform, create_info)
+            },
+            UiTexture::CustomId(id) =>
+            {
+                RenderObject{
+                    kind: RenderObjectKind::TextureId{id: *id}
                 }.into_client(transform, create_info)
             }
         };
@@ -757,9 +793,16 @@ impl TextureSizer
                 }, self.fonts.default_font(), &self.size).component_mul(&(self.size / self.size.max()))
             },
             UiTexture::Solid
-            | UiTexture::Custom(_) =>
+            | UiTexture::Custom(_)
+            | UiTexture::CustomId(_) =>
             {
-                self.assets.lock().texture_by_name(texture.name().unwrap()).read().size() / self.size.max()
+                (if let UiTexture::CustomId(id) = texture
+                {
+                    self.assets.lock().texture(*id).read().size()
+                } else
+                {
+                    self.assets.lock().texture_by_name(texture.name().unwrap()).read().size()
+                }) / self.size.max()
             }
         }
     }
@@ -950,6 +993,11 @@ impl<Id: Idable> Controller<Id>
         self.sizer.update_screen_size(size);
 
         self.shared.borrow_mut().screen_size = size;
+    }
+
+    pub fn screen_size(&self) -> Vector2<f32>
+    {
+        self.shared.borrow().screen_size
     }
 
     pub fn update_buffers(
