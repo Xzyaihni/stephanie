@@ -1,54 +1,37 @@
 use std::{
-    rc::{Weak, Rc},
+    rc::Rc,
     cell::RefCell,
-    sync::Arc,
-    collections::{HashMap, VecDeque}
+    sync::Arc
 };
 
-use nalgebra::{Vector2, Vector3};
+use nalgebra::Vector2;
 
 use yanyaengine::{
-    Transform,
     FontsContainer,
-    TextInfo,
-    camera::Camera,
     game_object::*
 };
 
 use crate::{
-    LONGEST_FRAME,
     client::{
         RenderCreateInfo,
-        ControlState,
         game_state::{
-            KeyMapping,
             UiAnatomyLocations,
             UiControls,
-            GameState,
             UiEvent,
             GameUiEvent,
             UiReceiver
         }
     },
     common::{
-        lerp,
         some_or_return,
         render_info::*,
-        lazy_transform::*,
-        watcher::*,
-        physics::*,
         anatomy::*,
-        ObjectsStore,
         EaseOut,
-        LazyMix,
-        AnyEntities,
         Item,
         InventoryItem,
         InventorySorter,
-        Parent,
         Entity,
         ItemsInfo,
-        EntityInfo,
         entity::ClientEntities
     }
 };
@@ -194,6 +177,7 @@ fn handle_button(
 pub struct UiList
 {
     position: f32,
+    target_position: f32,
     items: Vec<String>
 }
 
@@ -203,6 +187,7 @@ impl UiList
     {
         Self{
             position: 0.0,
+            target_position: 0.0,
             items: Vec::new()
         }
     }
@@ -217,6 +202,8 @@ impl UiList
     ) -> Option<usize>
     {
         assert!(parent.element().children_layout.is_horizontal());
+
+        self.position = self.position.ease_out(self.target_position, 10.0, info.dt);
 
         let body_id = id(UiListPart::Body);
         let body = parent.update(body_id, UiElement{
@@ -278,14 +265,14 @@ impl UiList
 
             if info.controls.observe_action_held()
             {
-                if bar_height > 0.99
+                self.target_position = if bar_height > 0.99
                 {
-                    self.position = 0.0;
+                    0.0
                 } else
                 {
                     let half_bar_height = bar_height / 2.0;
-                    self.position = (position.clamp(half_bar_height, 1.0 - half_bar_height) - half_bar_height) / (1.0 - bar_height);
-                }
+                    (position.clamp(half_bar_height, 1.0 - half_bar_height) - half_bar_height) / (1.0 - bar_height)
+                };
             }
         }
 
@@ -576,7 +563,8 @@ pub struct UpdateInfo<'a, 'b, 'c>
     pub items_info: &'a ItemsInfo,
     pub fonts: &'a FontsContainer,
     pub controls: &'b mut UiControls,
-    pub user_receiver: &'c mut UiReceiver
+    pub user_receiver: &'c mut UiReceiver,
+    pub dt: f32
 }
 
 pub struct Ui
@@ -730,7 +718,7 @@ impl Ui
     {
     }
 
-    pub fn update(&mut self, entities: &ClientEntities, controls: &mut UiControls)
+    pub fn update(&mut self, entities: &ClientEntities, controls: &mut UiControls, dt: f32)
     {
         self.windows.iter_mut().for_each(|x|
         {
@@ -739,7 +727,8 @@ impl Ui
                 items_info: &self.items_info,
                 fonts: &self.fonts,
                 controls: controls,
-                user_receiver: &mut self.user_receiver.borrow_mut()
+                user_receiver: &mut self.user_receiver.borrow_mut(),
+                dt
             })
         });
 

@@ -997,7 +997,7 @@ impl GameState
 
     pub fn ui_update(&mut self, controls: &mut UiControls)
     {
-        self.ui.borrow_mut().update(&self.entities.entities, controls);
+        self.ui.borrow_mut().update(&self.entities.entities, controls, self.dt);
     }
 
     pub fn update(
