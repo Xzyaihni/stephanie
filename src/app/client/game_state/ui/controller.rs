@@ -226,11 +226,10 @@ impl UiElementCached
         element: &UiElement<Id>
     ) -> Self
     {
-        let scissor = deferred.scissor.map(|x|
-        {
-            let highest = Vector2::from(create_info.object_info.partial.size).max();
-            x.into_global([highest, highest])
-        });
+        let scissor = Self::calculate_scissor(
+            Vector2::from(create_info.object_info.partial.size),
+            deferred
+        );
 
         let scaling = element.animation.scaling
             .as_ref()
@@ -319,6 +318,7 @@ impl UiElementCached
         &mut self,
         deferred: &UiDeferredInfo,
         element: &mut UiElement<Id>,
+        screen_size: Vector2<f32>,
         dt: f32
     )
     {
@@ -332,6 +332,8 @@ impl UiElementCached
                 target
             };
         }
+
+        self.scissor = Self::calculate_scissor(screen_size, deferred);
 
         let target_position = deferred.position.unwrap();
 
@@ -372,12 +374,34 @@ impl UiElementCached
             target_scale.xy()
         };
 
-        self.update_always(deferred, old_element, dt);
+        self.update_always(
+            deferred,
+            old_element,
+            Vector2::from(create_info.object_info.partial.size),
+            dt
+        );
 
         if self.object.is_none()
         {
             self.object = Self::from_element(create_info, parent_fraction, &deferred, old_element).object;
         }
+    }
+
+    fn calculate_scissor(
+        screen_size: Vector2<f32>,
+        deferred: &UiDeferredInfo
+    ) -> Option<VulkanoScissor>
+    {
+        deferred.scissor.map(|mut x|
+        {
+            let highest = screen_size.max();
+
+            let aspect = screen_size / highest;
+
+            x.offset = (Vector2::from(x.offset) + (aspect / 2.0)).into();
+
+            x.into_global([highest, highest])
+        })
     }
 
     fn update_scale(&mut self)
@@ -409,6 +433,7 @@ impl UiElementCached
         deferred: &UiDeferredInfo,
         element: &mut UiElement<Id>,
         close_soon: bool,
+        screen_size: Vector2<f32>,
         dt: f32
     ) -> bool
     {
@@ -434,7 +459,7 @@ impl UiElementCached
             }
         }
 
-        self.update_always(deferred, element, dt);
+        self.update_always(deferred, element, screen_size, dt);
 
         if self.fractions.scale.min() < MINIMUM_SCALE
         {
@@ -559,9 +584,8 @@ impl UiDeferredInfo
                     Some(position)
                 ) = (parent.width.value(), parent.height.value(), parent.position)
                 {
-                    let aspect = screen_size / screen_size.max();
                     let size = Vector2::new(width, height);
-                    let offset = position + (aspect / 2.0) - (size / 2.0);
+                    let offset = position - (size / 2.0);
 
                     self.scissor = Some(Scissor{offset: offset.into(), extent: size.into()});
                 }
@@ -1219,6 +1243,7 @@ impl<Id: Idable> Controller<Id>
                 }
             }
 
+            let screen_size = shared.screen_size;
             shared.elements.retain_mut(|element|
             {
                 if element.closing
@@ -1232,6 +1257,7 @@ impl<Id: Idable> Controller<Id>
                         &element.deferred,
                         &mut element.element,
                         element.close_soon,
+                        screen_size,
                         dt
                     );
 
