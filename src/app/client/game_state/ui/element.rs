@@ -263,14 +263,14 @@ pub enum UiPosition<Id>
 {
     Absolute(Vector2<f32>),
     Offset(Id, Vector2<f32>),
-    Next
+    Next(Vector2<f32>)
 }
 
 impl<Id> Default for UiPosition<Id>
 {
     fn default() -> Self
     {
-        Self::Next
+        Self::Next(Vector2::zeros())
     }
 }
 
@@ -318,7 +318,7 @@ impl<Id> UiPosition<Id>
         {
             Self::Absolute(_) => unreachable!(),
             Self::Offset(_, _) => unreachable!(),
-            Self::Next => Self::next_position(layout, previous, width, height)
+            Self::Next(_) => Self::next_position(layout, previous, width, height)
         }
     }
 }

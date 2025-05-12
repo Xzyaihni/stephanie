@@ -302,14 +302,14 @@ pub enum UiEvent
     Game(GameUiEvent)
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum InventoryWhich
 {
     Player,
     Other
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum GameUiEvent
 {
     Info{which: InventoryWhich, item: InventoryItem},

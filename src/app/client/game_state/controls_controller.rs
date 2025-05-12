@@ -143,6 +143,7 @@ struct ControlsState
 
 pub struct UiControls
 {
+    click_taken: bool,
     state: ControlsState,
     controls: HashMap<KeyMapping, ControlState>
 }
@@ -153,16 +154,28 @@ impl UiControls
     {
         self.state.click_mappings.iter().fold(false, |acc, mapping|
         {
-            let is_down = if self.controls.get(mapping).map(|x| x.is_down()).unwrap_or(false)
+            let is_down = self.controls.get(mapping).map(|x| x.is_down()).unwrap_or(false);
+
+            if is_down
             {
+                self.click_taken = true;
                 self.controls.remove(mapping);
-                true
-            } else
-            {
-                false
-            };
+            }
 
             acc || is_down
+        })
+    }
+
+    pub fn is_click_taken(&self) -> bool
+    {
+        self.click_taken
+    }
+
+    pub fn is_click_down(&self) -> bool
+    {
+        self.state.click_mappings.iter().any(|mapping|
+        {
+            self.controls.get(mapping).map(|x| x.is_down()).unwrap_or(false)
         })
     }
 
@@ -305,6 +318,7 @@ impl ControlsController
     pub fn changed_this_frame(&mut self) -> UiControls
     {
         UiControls{
+            click_taken: false,
             state: mem::take(&mut self.controls_state).unwrap(),
             controls: mem::take(&mut self.changed)
         }

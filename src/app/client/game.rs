@@ -1109,10 +1109,10 @@ impl<'a> PlayerContainer<'a>
                         {
                             UiEvent::Action(Rc::new(move |game_state|
                             {
-                                /*game_state.create_popup(vec![
-                                    UserEvent::Take(item),
-                                    UserEvent::Info{which: InventoryWhich::Other, item}
-                                ]);*/todo!()
+                                game_state.ui.borrow_mut().create_popup(vec![
+                                    GameUiEvent::Take(item),
+                                    GameUiEvent::Info{which: InventoryWhich::Other, item}
+                                ]);
                             }))
                         }));
 
@@ -1166,9 +1166,6 @@ impl<'a> PlayerContainer<'a>
     fn handle_game_ui_event(&mut self, event: GameUiEvent)
     {
         let player = self.info.entity;
-
-        // self.game_state.close_popup();
-        todo!();
 
         match event
         {
@@ -1259,11 +1256,11 @@ impl<'a> PlayerContainer<'a>
             {
                 UiEvent::Action(Rc::new(move |game_state|
                 {
-                    /*game_state.create_popup(vec![
-                        UserEvent::Wield(item),
-                        UserEvent::Drop{which: InventoryWhich::Player, item},
-                        UserEvent::Info{which: InventoryWhich::Player, item}
-                    ]);*/todo!()
+                    game_state.ui.borrow_mut().create_popup(vec![
+                        GameUiEvent::Wield(item),
+                        GameUiEvent::Drop{which: InventoryWhich::Player, item},
+                        GameUiEvent::Info{which: InventoryWhich::Player, item}
+                    ]);
                 }))
             }));
         }

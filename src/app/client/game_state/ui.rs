@@ -61,25 +61,14 @@ const ACCENT_COLOR: [f32; 4] = [1.0, 0.393, 0.901, 1.0];
 const HIGHLIGHTED_COLOR: [f32; 4] = [1.0, 0.659, 0.848, 1.0];
 
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 enum UiId
 {
     Screen,
     Padding(u32),
-    ConsoleBody,
-    ConsoleText,
-    Window(UiIdWindow),
-    WindowTitlebar(UiIdWindow),
-    WindowTitlebarName(UiIdWindow),
-    WindowTitlebutton(UiIdWindow, UiIdTitlebutton),
-    WindowBody(UiIdWindow),
-    WindowBodyNested(UiIdWindow),
-    InventoryList(UiIdWindow, UiListPart),
-    InventoryItem(UiIdWindow, u32),
-    InventoryIconBody(UiIdWindow, u32),
-    InventoryIcon(UiIdWindow, u32),
-    InventoryItemName(UiIdWindow, u32),
-    SeparatorWide(UiIdWindow)
+    Console(ConsolePart),
+    Popup(PopupPart),
+    Window(UiIdWindow, WindowPart)
 }
 
 impl Idable for UiId
@@ -89,7 +78,70 @@ impl Idable for UiId
     fn padding(id: u32) -> Self { Self::Padding(id) }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+enum ConsolePart
+{
+    Body,
+    Text
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+enum PopupPart
+{
+    Body,
+    Button(GameUiEvent, PopupButtonPart)
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+enum PopupButtonPart
+{
+    Body,
+    Text,
+    Separator
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+enum WindowPart
+{
+    Panel,
+    Body,
+    Separator,
+    Title(TitlePart),
+    Inventory(InventoryPart)
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+enum InventoryPart
+{
+    Body,
+    List(UiListPart),
+    Item(u32, ItemPart),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+enum ItemPart
+{
+    Body,
+    Icon(IconPart),
+    Name
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+enum IconPart
+{
+    Body,
+    Picture
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+enum TitlePart
+{
+    Body,
+    Text,
+    Button(UiIdTitlebutton)
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 enum UiListPart
 {
     Body,
@@ -100,13 +152,13 @@ enum UiListPart
     Bar
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 enum UiIdWindow
 {
     Inventory(Entity)
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 enum UiIdTitlebutton
 {
     Close
@@ -163,6 +215,11 @@ fn handle_button(
     f: impl FnOnce(&mut UpdateInfo)
 )
 {
+    if info.mouse_taken
+    {
+        return;
+    }
+
     if button.is_mouse_inside()
     {
         button.element().mix.as_mut().unwrap().color = HIGHLIGHTED_COLOR;
@@ -206,7 +263,7 @@ impl UiList
         self.position = self.position.ease_out(self.target_position, 10.0, info.dt);
 
         let body_id = id(UiListPart::Body);
-        let body = parent.update(body_id, UiElement{
+        let body = parent.update(body_id.clone(), UiElement{
             width: UiSize::Rest(1.0).into(),
             height: UiSize::Rest(1.0).into(),
             scissor: true,
@@ -246,7 +303,7 @@ impl UiList
         });
 
         let scrollbar_id = id(UiListPart::Scrollbar);
-        let scrollbar = parent.update(scrollbar_id, UiElement{
+        let scrollbar = parent.update(scrollbar_id.clone(), UiElement{
             width: UiSize::Pixels(BUTTON_SIZE).into(),
             height: UiSize::Rest(1.0).into(),
             children_layout: UiLayout::Vertical,
@@ -255,10 +312,11 @@ impl UiList
 
         let bar_height = (body_height / items_total).min(1.0);
 
+        if let Some(position) = scrollbar.mouse_position_mapped()
         {
-            let position = scrollbar.mouse_position_mapped().y;
+            let position = position.y;
 
-            if scrollbar.is_mouse_inside()
+            if scrollbar.is_mouse_inside() && !info.mouse_taken
             {
                 info.controls.poll_action_held();
             }
@@ -277,7 +335,7 @@ impl UiList
         }
 
         scrollbar.update(id(UiListPart::BarPad), UiElement{
-            height: UiSize::CopyElement(UiDirection::Vertical, (1.0 - bar_height) * self.position, scrollbar_id).into(),
+            height: UiSize::CopyElement(UiDirection::Vertical, (1.0 - bar_height) * self.position, scrollbar_id.clone()).into(),
             ..Default::default()
         });
 
@@ -290,16 +348,22 @@ impl UiList
             ..Default::default()
         });
 
-        if bar.is_mouse_inside()
+        if bar.is_mouse_inside() && !info.mouse_taken
         {
             bar.element().mix.as_mut().unwrap().color = HIGHLIGHTED_COLOR;
         }
 
-        let selected_index = body.mouse_position_inside().map(|position|
+        let selected_index = if info.mouse_taken
         {
-            let item_height = item_height / body_height;
-            starting_item + ((position.y + (relative_offset / body_height)) / item_height) as usize
-        });
+            None
+        } else
+        {
+            body.mouse_position_inside().map(|position|
+            {
+                let item_height = item_height / body_height;
+                starting_item + ((position.y + (relative_offset / body_height)) / item_height) as usize
+            })
+        };
 
         self.items.iter().enumerate().skip(starting_item).take(items_fit).for_each(|(index, name)|
         {
@@ -361,7 +425,14 @@ impl WindowKind
 {
     fn update(&mut self, parent: UiParentElement, mut info: UpdateInfo)
     {
-        let id = self.as_id();
+        let window_id = self.as_id();
+        let id = {
+            let window_id = window_id.clone();
+            move |part|
+            {
+                UiId::Window(window_id.clone(), part)
+            }
+        };
 
         fn constrain<'a, 'b, F>(f: F) -> F
         where
@@ -372,7 +443,7 @@ impl WindowKind
 
         let with_titlebar = constrain(|parent, info, title|
         {
-            let titlebar = parent.update(UiId::WindowTitlebar(id), UiElement{
+            let titlebar = parent.update(id(WindowPart::Title(TitlePart::Body)), UiElement{
                 width: UiElementSize{
                     minimum_size: Some(UiMinimumSize::FitChildren),
                     size: UiSize::Rest(1.0)
@@ -383,7 +454,7 @@ impl WindowKind
             let padding_size = UiElementSize{minimum_size: Some(TITLE_PADDING.into()), size: UiSize::Rest(1.0)};
 
             add_padding_horizontal(titlebar, padding_size.clone());
-            titlebar.update(UiId::WindowTitlebarName(id), UiElement{
+            titlebar.update(id(WindowPart::Title(TitlePart::Text)), UiElement{
                 texture: UiTexture::Text{text: title, font_size: 25},
                 mix: Some(MixColor{keep_transparency: true, ..MixColor::color(ACCENT_COLOR)}),
                 ..UiElement::fit_content()
@@ -392,7 +463,7 @@ impl WindowKind
 
             let size: UiElementSize<UiId> = UiSize::Pixels(BUTTON_SIZE).into();
 
-            let close_button = titlebar.update(UiId::WindowTitlebutton(id, UiIdTitlebutton::Close), UiElement{
+            let close_button = titlebar.update(id(WindowPart::Title(TitlePart::Button(UiIdTitlebutton::Close))), UiElement{
                 texture: UiTexture::Custom("ui/close_button.png".to_owned()),
                 mix: Some(MixColor{keep_transparency: true, ..MixColor::color(ACCENT_COLOR)}),
                 animation: Animation::button(),
@@ -405,11 +476,11 @@ impl WindowKind
             {
                 info.user_receiver.push(UiEvent::Action(Rc::new(move |game_state|
                 {
-                    game_state.ui.borrow_mut().remove_window(id);
+                    game_state.ui.borrow_mut().remove_window(&window_id);
                 })));
             });
 
-            parent.update(UiId::SeparatorWide(id), UiElement{
+            parent.update(id(WindowPart::Separator), UiElement{
                 texture: UiTexture::Solid,
                 mix: Some(MixColor::color(ACCENT_COLOR)),
                 width: UiSize::Rest(1.0).into(),
@@ -418,7 +489,7 @@ impl WindowKind
                 ..Default::default()
             });
 
-            parent.update(UiId::WindowBody(id), UiElement{
+            parent.update(id(WindowPart::Body), UiElement{
                 width: UiElementSize{
                     minimum_size: Some(UiMinimumSize::FitChildren),
                     size: UiSize::Rest(1.0)
@@ -431,13 +502,18 @@ impl WindowKind
         {
             Self::Inventory(inventory) =>
             {
+                let id = |part|
+                {
+                    id(WindowPart::Inventory(part))
+                };
+
                 let name = info.entities.named(inventory.entity).as_deref().cloned()
                     .unwrap_or_else(|| "unnamed".to_owned());
 
                 let body = with_titlebar(parent, &mut info, name);
                 body.element().height = UiSize::Pixels(SCROLLBAR_HEIGHT).into();
 
-                let body = body.update(UiId::WindowBodyNested(id), UiElement{
+                let body = body.update(id(InventoryPart::Body), UiElement{
                     width: UiElementSize{
                         minimum_size: Some(UiMinimumSize::FitChildren),
                         size: UiSize::Pixels(SCROLLBAR_HEIGHT * 2.0)
@@ -453,24 +529,33 @@ impl WindowKind
 
                 let selected = inventory.list.update(&mut info, body, |list_part|
                 {
-                    UiId::InventoryList(id, list_part)
+                    id(InventoryPart::List(list_part))
                 }, item_height, |info, parent, name, index, is_selected|
                 {
-                    let mut body_color = ACCENT_COLOR;
-                    body_color[3] = if is_selected { 0.2 } else { 0.0 };
+                    let id = |part|
+                    {
+                        id(InventoryPart::Item(index, part))
+                    };
 
-                    let body = parent.update(UiId::InventoryItem(id, index), UiElement{
+                    let mut body_color = ACCENT_COLOR;
+                    body_color[3] = if is_selected { 0.3 } else { 0.0 };
+
+                    let body = parent.update(id(ItemPart::Body), UiElement{
                         texture: UiTexture::Solid,
                         mix: Some(MixColor::color(body_color)),
                         width: UiSize::Rest(1.0).into(),
+                        animation: Animation{
+                            mix: Animation::button().mix,
+                            ..Default::default()
+                        },
                         ..Default::default()
                     });
 
                     add_padding_horizontal(body, UiSize::Pixels(ITEM_PADDING).into());
 
                     let icon_size = item_height * 0.9;
-                    let icon_id = UiId::InventoryIconBody(id, index);
-                    let icon = body.update(icon_id, UiElement{
+                    let icon_id = id(ItemPart::Icon(IconPart::Body));
+                    let icon = body.update(icon_id.clone(), UiElement{
                         texture: UiTexture::Solid,
                         mix: Some(MixColor::color(ACCENT_COLOR)),
                         width: icon_size.into(),
@@ -495,9 +580,9 @@ impl WindowKind
 
                     if let Some((aspect, texture)) = v
                     {
-                        icon.update(UiId::InventoryIcon(id, index), UiElement{
+                        icon.update(id(ItemPart::Icon(IconPart::Picture)), UiElement{
                             texture: UiTexture::CustomId(texture),
-                            width: UiSize::CopyElement(UiDirection::Horizontal, aspect.x, icon_id).into(),
+                            width: UiSize::CopyElement(UiDirection::Horizontal, aspect.x, icon_id.clone()).into(),
                             height: UiSize::CopyElement(UiDirection::Vertical, aspect.y, icon_id).into(),
                             ..UiElement::default()
                         });
@@ -505,7 +590,7 @@ impl WindowKind
 
                     add_padding_horizontal(body, UiSize::Pixels(ITEM_PADDING / 2.0).into());
 
-                    body.update(UiId::InventoryItemName(id, index), UiElement{
+                    body.update(id(ItemPart::Name), UiElement{
                         texture: UiTexture::Text{text: name.to_owned(), font_size},
                         mix: Some(MixColor{keep_transparency: true, ..MixColor::color(ACCENT_COLOR)}),
                         ..UiElement::fit_content()
@@ -544,7 +629,7 @@ impl Window
 {
     fn update(&mut self, ui: &mut UiController, info: UpdateInfo)
     {
-        let body = ui.update(UiId::Window(self.kind.as_id()), UiElement{
+        let body = ui.update(UiId::Window(self.kind.as_id(), WindowPart::Panel), UiElement{
             texture: UiTexture::Solid,
             mix: Some(MixColor::color(BACKGROUND_COLOR)),
             animation: Animation::normal(),
@@ -562,6 +647,7 @@ pub struct UpdateInfo<'a, 'b, 'c>
     pub entities: &'a ClientEntities,
     pub items_info: &'a ItemsInfo,
     pub fonts: &'a FontsContainer,
+    pub mouse_taken: bool,
     pub controls: &'b mut UiControls,
     pub user_receiver: &'c mut UiReceiver,
     pub dt: f32
@@ -576,7 +662,8 @@ pub struct Ui
     controller: UiController,
     mouse_position: Vector2<f32>,
     console_contents: Option<String>,
-    windows: Vec<Window>
+    windows: Vec<Window>,
+    popup: Option<(Vector2<f32>, Vec<GameUiEvent>)>
 }
 
 impl Ui
@@ -599,7 +686,8 @@ impl Ui
             controller,
             mouse_position: Vector2::zeros(),
             console_contents: None,
-            windows: Vec::new()
+            windows: Vec::new(),
+            popup: None
         };
 
         let this = Rc::new(RefCell::new(this));
@@ -648,19 +736,19 @@ impl Ui
         self.console_contents = contents;
     }
 
-    fn find_window(&self, id: UiIdWindow) -> Option<usize>
+    fn find_window(&self, id: &UiIdWindow) -> Option<usize>
     {
         self.windows.iter().position(|x|
         {
             match (&x.kind, id)
             {
-                (WindowKind::Inventory(inventory), UiIdWindow::Inventory(other_entity)) if inventory.entity == other_entity => true,
+                (WindowKind::Inventory(inventory), UiIdWindow::Inventory(other_entity)) if inventory.entity == *other_entity => true,
                 _ => false
             }
         })
     }
 
-    fn remove_window(&mut self, id: UiIdWindow) -> bool
+    fn remove_window(&mut self, id: &UiIdWindow) -> bool
     {
         if let Some(index) = self.find_window(id)
         {
@@ -675,12 +763,12 @@ impl Ui
 
     pub fn close_inventory(&mut self, owner: Entity) -> bool
     {
-        self.remove_window(UiIdWindow::Inventory(owner))
+        self.remove_window(&UiIdWindow::Inventory(owner))
     }
 
     pub fn inventory_changed(&mut self, owner: Entity)
     {
-        if let Some(index) = self.find_window(UiIdWindow::Inventory(owner))
+        if let Some(index) = self.find_window(&UiIdWindow::Inventory(owner))
         {
             if let WindowKind::Inventory(inventory) = &mut self.windows[index].kind
             {
@@ -704,6 +792,11 @@ impl Ui
         });
     }
 
+    pub fn create_popup(&mut self, actions: Vec<GameUiEvent>)
+    {
+        self.popup = Some((self.mouse_position, actions));
+    }
+
     pub fn set_notification(
         &mut self,
         notification: NotificationInfo
@@ -720,21 +813,97 @@ impl Ui
 
     pub fn update(&mut self, entities: &ClientEntities, controls: &mut UiControls, dt: f32)
     {
+        let popup_taken = {
+            if self.controller.input_of(&UiId::Popup(PopupPart::Body)).is_mouse_inside()
+            {
+                true
+            } else
+            {
+                false
+            }
+        };
+
         self.windows.iter_mut().for_each(|x|
         {
             x.update(&mut self.controller, UpdateInfo{
                 entities: entities,
                 items_info: &self.items_info,
                 fonts: &self.fonts,
+                mouse_taken: popup_taken,
                 controls: controls,
                 user_receiver: &mut self.user_receiver.borrow_mut(),
                 dt
             })
         });
 
+        if let Some((position, actions)) = &self.popup
+        {
+            let popup_body = self.controller.update(UiId::Popup(PopupPart::Body), UiElement{
+                texture: UiTexture::Solid,
+                mix: Some(MixColor::color(ACCENT_COLOR)),
+                animation: Animation::normal(),
+                position: UiPosition::Absolute(*position),
+                children_layout: UiLayout::Vertical,
+                ..Default::default()
+            });
+
+            let pressed = actions.iter().fold(false, |acc, action|
+            {
+                let id = |part|
+                {
+                    UiId::Popup(PopupPart::Button(action.clone(), part))
+                };
+
+                let body = popup_body.update(id(PopupButtonPart::Body), UiElement{
+                    texture: UiTexture::Solid,
+                    mix: Some(MixColor::color(BACKGROUND_COLOR)),
+                    width: UiElementSize{
+                        minimum_size: Some(UiMinimumSize::FitChildren),
+                        size: UiSize::Rest(1.0)
+                    },
+                    ..Default::default()
+                });
+
+                body.update(id(PopupButtonPart::Text), UiElement{
+                    texture: UiTexture::Text{text: action.name().to_owned(), font_size: 20},
+                    mix: Some(MixColor{keep_transparency: true, ..MixColor::color(ACCENT_COLOR)}),
+                    ..UiElement::fit_content()
+                });
+
+                add_padding_horizontal(body, UiSize::Rest(1.0).into());
+
+                body.update(id(PopupButtonPart::Separator), UiElement{
+                    texture: UiTexture::Solid,
+                    mix: Some(MixColor::color(ACCENT_COLOR)),
+                    width: UiSize::Pixels(SEPARATOR_SIZE).into(),
+                    height: UiSize::Rest(1.0).into(),
+                    ..Default::default()
+                });
+
+                if body.is_mouse_inside()
+                {
+                    let offset = popup_body.try_width().unwrap_or(0.0) * 0.2;
+                    body.element().position = UiPosition::Next(Vector2::new(offset, 0.0));
+
+                    if controls.take_click_down()
+                    {
+                        self.user_receiver.borrow_mut().push(UiEvent::Game(action.clone()));
+                        return true;
+                    }
+                }
+
+                acc
+            });
+
+            if pressed | (!popup_taken && (controls.is_click_taken() || controls.is_click_down()))
+            {
+                self.popup = None;
+            }
+        }
+
         if let Some(text) = self.console_contents.clone()
         {
-            let body = self.controller.update(UiId::ConsoleBody, UiElement{
+            let body = self.controller.update(UiId::Console(ConsolePart::Body), UiElement{
                 texture: UiTexture::Solid,
                 mix: Some(MixColor::color(BACKGROUND_COLOR)),
                 animation: Animation::normal(),
@@ -750,7 +919,7 @@ impl Ui
                 ..Default::default()
             });
 
-            body.update(UiId::ConsoleText, UiElement{
+            body.update(UiId::Console(ConsolePart::Text), UiElement{
                 texture: UiTexture::Text{text, font_size: 30},
                 mix: Some(MixColor{keep_transparency: true, ..MixColor::color(ACCENT_COLOR)}),
                 animation: Animation::typing_text(),

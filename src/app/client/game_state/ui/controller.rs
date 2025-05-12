@@ -41,11 +41,52 @@ pub trait Idable: Hash + Eq + Clone + Debug
     fn padding(id: u32) -> Self;
 }
 
-#[derive(Debug, Clone, Copy)]
+pub trait Inputable
+{
+    fn position_mapped(&self, check_position: Vector2<f32>) -> Option<Vector2<f32>>;
+    fn mouse_position(&self) -> Vector2<f32>;
+
+    fn position_inside(&self, check_position: Vector2<f32>) -> Option<Vector2<f32>>
+    {
+        let mapped = self.position_mapped(check_position)?;
+
+        let r = 0.0..1.0;
+        (r.contains(&mapped.x) && r.contains(&mapped.y)).then(|| mapped)
+    }
+
+    fn is_inside(&self, check_position: Vector2<f32>) -> bool
+    {
+        self.position_inside(check_position).is_some()
+    }
+
+    fn mouse_position_inside(&self) -> Option<Vector2<f32>>
+    {
+        self.position_inside(self.mouse_position())
+    }
+
+    fn mouse_position_mapped(&self) -> Option<Vector2<f32>>
+    {
+        self.position_mapped(self.mouse_position())
+    }
+
+    fn is_mouse_inside(&self) -> bool
+    {
+        self.is_inside(self.mouse_position())
+    }
+}
+
+#[derive(Debug)]
 pub struct TreeInserter<'a, Id>
 {
     elements: &'a RefCell<Vec<TreeElement<Id>>>,
     index: usize
+}
+
+impl<Id> Copy for TreeInserter<'_, Id> {}
+
+impl<Id> Clone for TreeInserter<'_, Id>
+{
+    fn clone(&self) -> Self { *self }
 }
 
 #[allow(dead_code)]
@@ -124,38 +165,16 @@ impl<'a, Id: Idable> TreeInserter<'a, Id>
     {
         self.persistent_element(|x| x.map(|x| x.deferred.height.unwrap()))
     }
+}
 
-    pub fn position_mapped(&self, check_position: Vector2<f32>) -> Vector2<f32>
+impl<Id: Idable> Inputable for TreeInserter<'_, Id>
+{
+    fn position_mapped(&self, check_position: Vector2<f32>) -> Option<Vector2<f32>>
     {
-        self.tree_element().position_mapped(check_position)
-    }
+        let shared = Ref::map(self.tree_element(), |x| &x.shared);
 
-    pub fn position_inside(&self, check_position: Vector2<f32>) -> Option<Vector2<f32>>
-    {
-        let mapped = self.position_mapped(check_position);
-
-        let r = 0.0..1.0;
-        (r.contains(&mapped.x) && r.contains(&mapped.y)).then(|| mapped)
-    }
-
-    pub fn is_inside(&self, check_position: Vector2<f32>) -> bool
-    {
-        self.position_inside(check_position).is_some()
-    }
-
-    pub fn mouse_position_inside(&self) -> Option<Vector2<f32>>
-    {
-        self.position_inside(self.mouse_position())
-    }
-
-    pub fn mouse_position_mapped(&self) -> Vector2<f32>
-    {
-        self.position_mapped(self.mouse_position())
-    }
-
-    pub fn is_mouse_inside(&self) -> bool
-    {
-        self.is_inside(self.mouse_position())
+        let shared = shared.borrow();
+        shared.position_mapped(&self.tree_element().id, check_position)
     }
 
     fn mouse_position(&self) -> Vector2<f32>
@@ -508,13 +527,13 @@ impl UiDeferredInfo
             {
                 resolved.get(id).and_then(|element| element.position.map(|pos| pos + *x))
             },
-            _ =>
+            UiPosition::Next(offset) =>
             {
                 let parent_position = parent.position?;
-                if let Some(previous) = previous
+                Some((if let Some(previous) = previous
                 {
                     let previous_position = previous.position?;
-                    Some(element.position.resolve_forward(
+                    element.position.resolve_forward(
                         &parent_element.children_layout,
                         previous_position,
                         PositionResolveInfo{
@@ -527,10 +546,10 @@ impl UiDeferredInfo
                             previous: previous.height.value()?,
                             parent_position: parent_position.y
                         }
-                    ))
+                    )
                 } else
                 {
-                    Some(UiPosition::<Id>::next_position(
+                    UiPosition::<Id>::next_position(
                         &parent_element.children_layout,
                         parent_position,
                         PositionResolveInfo{
@@ -543,8 +562,8 @@ impl UiDeferredInfo
                             previous: -parent.height.value()?,
                             parent_position: parent_position.y
                         }
-                    ))
-                }
+                    )
+                }) + *offset)
             }
         }
     }
@@ -753,20 +772,6 @@ impl<Id: Idable> TreeElement<Id>
         &mut self.element
     }
 
-    fn position_mapped(&self, check_position: Vector2<f32>) -> Vector2<f32>
-    {
-        let shared = self.shared.borrow();
-        shared.element_id(&self.id).map(|index|
-        {
-            let deferred = &shared.elements[index].deferred;
-
-            let position = deferred.position.unwrap();
-            let size = Vector2::new(deferred.width.unwrap(), deferred.height.unwrap());
-
-            ((check_position - position) + (size / 2.0)).component_div(&size)
-        }).unwrap_or_default()
-    }
-
     fn consecutive(&mut self) -> u32
     {
         let consecutive = &mut self.shared.borrow_mut().consecutive;
@@ -892,6 +897,39 @@ impl<Id: Idable> SharedInfo<Id>
     {
         self.elements.iter().position(|element| element.id == *id)
     }
+
+    pub fn position_mapped(&self, id: &Id, check_position: Vector2<f32>) -> Option<Vector2<f32>>
+    {
+        self.element_id(id).map(|index|
+        {
+            let deferred = &self.elements[index].deferred;
+
+            let position = deferred.position.unwrap();
+            let size = Vector2::new(deferred.width.unwrap(), deferred.height.unwrap());
+
+            ((check_position - position) + (size / 2.0)).component_div(&size)
+        })
+    }
+}
+
+pub struct InputHandler<'a, Id>
+{
+    mouse_position: Vector2<f32>,
+    shared: &'a RefCell<SharedInfo<Id>>,
+    id: &'a Id
+}
+
+impl<Id: Idable> Inputable for InputHandler<'_, Id>
+{
+    fn position_mapped(&self, check_position: Vector2<f32>) -> Option<Vector2<f32>>
+    {
+        self.shared.borrow().position_mapped(self.id, check_position)
+    }
+
+    fn mouse_position(&self) -> Vector2<f32>
+    {
+        self.mouse_position
+    }
 }
 
 pub struct Controller<Id>
@@ -919,6 +957,11 @@ impl<Id: Idable> Controller<Id>
             elements: &self.created_trees,
             index: 0
         }.update(id, element)
+    }
+
+    pub fn input_of<'a>(&'a self, id: &'a Id) -> InputHandler<'a, Id>
+    {
+        InputHandler{mouse_position: self.shared.borrow().mouse_position, shared: &self.shared, id}
     }
 
     fn prepare(&mut self)
