@@ -869,7 +869,7 @@ impl Ui
                         size: UiSize::Rest(1.0)
                     },
                     animation: Animation{
-                        position: Some(10.0),
+                        position: Some(10.0 * 0.001),
                         ..Default::default()
                     },
                     ..Default::default()

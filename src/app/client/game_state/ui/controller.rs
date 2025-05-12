@@ -283,6 +283,46 @@ impl UiElementCached
         self.scale_fraction_inherit = fraction.component_mul(&parent_fraction);
     }
 
+    fn update_always<Id>(
+        &mut self,
+        deferred: &UiDeferredInfo,
+        element: &mut UiElement<Id>,
+        dt: f32
+    )
+    {
+        if let (Some(mix), Some(target)) = (self.mix.as_mut(), element.mix)
+        {
+            *mix = if let Some(decay) = element.animation.mix
+            {
+                LazyMix{decay, target}.update(*mix, dt)
+            } else
+            {
+                target
+            };
+        }
+
+        if let Some(object) = self.object.as_mut()
+        {
+            let mut transform = object.transform().cloned().unwrap_or_default();
+
+            let target_position = deferred.position.unwrap();
+
+            let position = if let Some(decay) = element.animation.position
+            {
+                transform.position.xy().ease_out(target_position, decay, dt)
+            } else
+            {
+                target_position
+            };
+
+            transform.position = Vector3::new(position.x, position.y, 0.0);
+
+            object.set_transform(transform);
+
+            self.update_scale();
+        }
+    }
+
     fn update<Id>(
         &mut self,
         create_info: &mut RenderCreateInfo,
@@ -292,17 +332,6 @@ impl UiElementCached
         dt: f32
     )
     {
-        if let (Some(mix), Some(target)) = (self.mix.as_mut(), old_element.mix)
-        {
-            *mix = if let Some(decay) = old_element.animation.mix
-            {
-                LazyMix{decay, target}.update(*mix, dt)
-            } else
-            {
-                target
-            };
-        }
-
         let target_scale = Vector3::new(deferred.width.unwrap(), deferred.height.unwrap(), 1.0);
 
         self.scale = if let Some(scaling) = old_element.animation.scaling.as_mut()
@@ -316,26 +345,9 @@ impl UiElementCached
             target_scale.xy()
         };
 
-        if let Some(object) = self.object.as_mut()
-        {
-            let mut transform = object.transform().cloned().unwrap_or_default();
+        self.update_always(deferred, old_element, dt);
 
-            let target_position = deferred.position.unwrap();
-
-            let position = if let Some(decay) = old_element.animation.position
-            {
-                transform.position.xy().ease_out(target_position, decay, dt)
-            } else
-            {
-                target_position
-            };
-
-            transform.position = Vector3::new(position.x, position.y, 0.0);
-
-            object.set_transform(transform);
-
-            self.update_scale();
-        } else
+        if self.object.is_none()
         {
             self.object = Self::from_element(create_info, parent_fraction, &deferred, old_element).object;
         }
@@ -353,26 +365,27 @@ impl UiElementCached
         }
     }
 
-    fn update_closing<Id>(&mut self, element: &mut UiElement<Id>, dt: f32) -> bool
+    fn update_closing<Id>(
+        &mut self,
+        deferred: &UiDeferredInfo,
+        element: &mut UiElement<Id>,
+        dt: f32
+    ) -> bool
     {
-        let object = some_or_value!(self.object.as_mut(), false);
-        let mut transform = some_or_value!(object.transform().cloned(), false);
+        if let Some(scaling) = element.animation.scaling.as_mut()
+        {
+            let mut scale = Vector3::new(self.scale.x, self.scale.y, 1.0);
+            scaling.close_mode.next(&mut scale, Vector3::zeros(), dt);
 
-        let scaling = some_or_value!(element.animation.scaling.as_mut(), false);
+            self.scale = scale.xy();
+        }
 
-        if let Scaling::Ignore = scaling.close_mode
+        self.update_always(deferred, element, dt);
+
+        if self.scale_fraction.min() < MINIMUM_SCALE
         {
             return false;
         }
-
-        scaling.close_mode.next(&mut transform.scale, Vector3::zeros(), dt);
-
-        if transform.scale.min() < MINIMUM_SCALE
-        {
-            return false;
-        }
-
-        object.set_transform(transform);
 
         true
     }
@@ -891,6 +904,8 @@ impl TextureSizer
 struct Element<Id>
 {
     id: Id,
+    parent: Option<Id>,
+    parent_fraction: Vector2<f32>,
     element: UiElement<Id>,
     cached: UiElementCached,
     deferred: UiDeferredInfo,
@@ -1093,6 +1108,8 @@ impl<Id: Idable> Controller<Id>
 
                 let mut element = Element{
                     id: this.id.clone(),
+                    parent: parent.map(|x| x.id.clone()),
+                    parent_fraction,
                     element: this.element.clone(),
                     cached,
                     deferred: this.deferred.clone(),
@@ -1115,16 +1132,43 @@ impl<Id: Idable> Controller<Id>
             }
         });
 
-        self.shared.borrow_mut().elements.retain_mut(|element|
         {
-            if element.closing
+            let mut shared = self.shared.borrow_mut();
+
+            for i in 0..shared.elements.len()
             {
-                element.cached.update_closing(&mut element.element, dt)
-            } else
-            {
-                true
+                if shared.elements[i].closing
+                {
+                    let index = shared.elements[i].parent.as_ref().and_then(|parent_id|
+                    {
+                        shared.element_id(parent_id)
+                    });
+
+                    shared.elements[i].parent_fraction = if let Some(index) = index
+                    {
+                        shared.elements[index].cached.scale_fraction_inherit
+                    } else
+                    {
+                        Vector2::zeros()
+                    };
+                }
             }
-        });
+
+            shared.elements.retain_mut(|element|
+            {
+                if element.closing
+                {
+                    let keep = element.cached.update_closing(&element.deferred, &mut element.element, dt);
+
+                    element.cached.update_fraction(element.parent_fraction, &element.deferred);
+
+                    keep
+                } else
+                {
+                    true
+                }
+            });
+        }
 
         created_trees.clear();
         created_trees.push(TreeElement::screen(self.shared.clone()));

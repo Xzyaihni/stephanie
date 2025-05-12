@@ -576,6 +576,18 @@ pub struct ScalingAnimation
     pub close_mode: Scaling
 }
 
+impl Default for ScalingAnimation
+{
+    fn default() -> Self
+    {
+        Self{
+            start_scaling: Vector2::repeat(1.0),
+            start_mode: Scaling::Instant,
+            close_mode: Scaling::Ignore
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Animation
 {
@@ -610,25 +622,13 @@ impl Animation
         }
     }
 
-    pub fn text() -> Self
-    {
-        Self{
-            scaling: Some(ScalingAnimation{
-                start_scaling: Vector2::repeat(0.5),
-                start_mode: Scaling::EaseOut{decay: 20.0},
-                close_mode: Scaling::EaseOut{decay: 30.0}
-            }),
-            ..Default::default()
-        }
-    }
-
     pub fn button() -> Self
     {
         Self{
             scaling: Some(ScalingAnimation{
-                start_scaling: Vector2::repeat(0.5),
+                start_scaling: Vector2::new(1.0, 0.1),
                 start_mode: Scaling::EaseOut{decay: 20.0},
-                close_mode: Scaling::EaseOut{decay: 30.0}
+                ..Default::default()
             }),
             mix: Some(10.0),
             ..Default::default()
@@ -641,7 +641,7 @@ impl Animation
             scaling: Some(ScalingAnimation{
                 start_scaling: Vector2::new(1.0, 0.01),
                 start_mode: Scaling::EaseOut{decay: 30.0},
-                close_mode: Scaling::EaseOut{decay: 30.0}
+                close_mode: Scaling::EaseOut{decay: 10.0}
             }),
             ..Default::default()
         }
@@ -661,9 +661,9 @@ impl Animation
     {
         Self{
             scaling: Some(ScalingAnimation{
-                start_scaling: Vector2::repeat(0.1),
+                start_scaling: Vector2::new(1.0, 0.1),
                 start_mode: Scaling::EaseOut{decay: 30.0},
-                close_mode: Scaling::EaseOut{decay: 30.0}
+                ..Default::default()
             }),
             ..Default::default()
         }
@@ -684,7 +684,7 @@ impl Animation
             scaling: Some(ScalingAnimation{
                 start_scaling: Vector2::new(1.0, 1.3),
                 start_mode: Scaling::EaseOut{decay: 10.0},
-                close_mode: Scaling::EaseOut{decay: 30.0}
+                ..Default::default()
             }),
             ..Default::default()
         }
