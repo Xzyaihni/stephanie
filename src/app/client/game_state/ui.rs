@@ -358,10 +358,12 @@ impl UiList
             None
         } else
         {
-            body.mouse_position_inside().map(|position|
+            body.mouse_position_inside().and_then(|position|
             {
                 let item_height = item_height / body_height;
-                starting_item + ((position.y + (relative_offset / body_height)) / item_height) as usize
+                let index = starting_item + ((position.y + (relative_offset / body_height)) / item_height) as usize;
+
+                (index < self.items.len()).then(|| index)
             })
         };
 
