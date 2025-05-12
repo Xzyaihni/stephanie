@@ -663,7 +663,7 @@ pub struct Ui
     console_contents: Option<String>,
     windows: Vec<Window>,
     popup_unique_id: u8,
-    popup: Option<(Vector2<f32>, Vec<GameUiEvent>)>
+    popup: Option<(Vector2<f32>, Entity, Vec<GameUiEvent>)>
 }
 
 impl Ui
@@ -764,6 +764,14 @@ impl Ui
 
     pub fn close_inventory(&mut self, owner: Entity) -> bool
     {
+        if let Some((_, entity, _)) = self.popup
+        {
+            if entity == owner
+            {
+                self.popup = None;
+            }
+        }
+
         self.remove_window(&UiIdWindow::Inventory(owner))
     }
 
@@ -792,10 +800,10 @@ impl Ui
         });
     }
 
-    pub fn create_popup(&mut self, actions: Vec<GameUiEvent>)
+    pub fn create_popup(&mut self, owner: Entity, actions: Vec<GameUiEvent>)
     {
         self.popup_unique_id = self.popup_unique_id.wrapping_add(1);
-        self.popup = Some((self.mouse_position, actions));
+        self.popup = Some((self.mouse_position, owner, actions));
     }
 
     pub fn set_notification(
@@ -837,7 +845,7 @@ impl Ui
             })
         });
 
-        if let Some((position, actions)) = &self.popup
+        if let Some((position, _, actions)) = &self.popup
         {
             let popup_body = self.controller.update(UiId::Popup(self.popup_unique_id, PopupPart::Body), UiElement{
                 texture: UiTexture::Solid,

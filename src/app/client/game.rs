@@ -1105,11 +1105,11 @@ impl<'a> PlayerContainer<'a>
 
                         self.info.other_entity = Some(mouse_touched);
 
-                        self.game_state.ui.borrow_mut().open_inventory(mouse_touched, Box::new(|_, item|
+                        self.game_state.ui.borrow_mut().open_inventory(mouse_touched, Box::new(move |_, item|
                         {
                             UiEvent::Action(Rc::new(move |game_state|
                             {
-                                game_state.ui.borrow_mut().create_popup(vec![
+                                game_state.ui.borrow_mut().create_popup(mouse_touched, vec![
                                     GameUiEvent::Take(item),
                                     GameUiEvent::Info{which: InventoryWhich::Other, item}
                                 ]);
@@ -1252,11 +1252,11 @@ impl<'a> PlayerContainer<'a>
 
         if !ui.close_inventory(this)
         {
-            ui.open_inventory(this, Box::new(|_, item|
+            ui.open_inventory(this, Box::new(move |_, item|
             {
                 UiEvent::Action(Rc::new(move |game_state|
                 {
-                    game_state.ui.borrow_mut().create_popup(vec![
+                    game_state.ui.borrow_mut().create_popup(this, vec![
                         GameUiEvent::Wield(item),
                         GameUiEvent::Drop{which: InventoryWhich::Player, item},
                         GameUiEvent::Info{which: InventoryWhich::Player, item}
