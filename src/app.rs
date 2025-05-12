@@ -313,6 +313,9 @@ impl YanyaApp for App
             } else if self.slow_mode.run_frame()
             {
                 self.client.update(&mut info, 1.0 / 60.0);
+            } else
+            {
+                self.client.no_update();
             }
         } else
         {

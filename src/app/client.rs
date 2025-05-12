@@ -165,6 +165,11 @@ impl Client
         some_or_return!(&self.game_state).borrow_mut().resize(aspect);
     }
 
+    pub fn no_update(&mut self)
+    {
+        some_or_return!(&self.game_state).borrow_mut().no_update();
+    }
+
     pub fn update(
         &mut self,
         info: &mut UpdateBuffersInfo,

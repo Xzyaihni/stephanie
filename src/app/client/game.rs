@@ -145,7 +145,7 @@ impl Game
 
             game_state.entities_mut().on_inventory(Box::new(move |entities, entity|
             {
-                let mut info = info.borrow_mut();
+                let info = info.borrow_mut();
 
                 let which = if entity == info.entity
                 {

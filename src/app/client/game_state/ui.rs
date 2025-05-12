@@ -8,6 +8,7 @@ use nalgebra::Vector2;
 
 use yanyaengine::{
     FontsContainer,
+    TextureId,
     game_object::*
 };
 
@@ -231,14 +232,14 @@ fn handle_button(
     }
 }
 
-pub struct UiList
+pub struct UiList<T>
 {
     position: f32,
     target_position: f32,
-    items: Vec<String>
+    items: Vec<T>
 }
 
-impl UiList
+impl<T> UiList<T>
 {
     fn new() -> Self
     {
@@ -255,7 +256,7 @@ impl UiList
         parent: UiParentElement,
         id: impl Fn(UiListPart) -> UiId,
         item_height: f32,
-        mut update_item: impl FnMut(&mut UpdateInfo, UiParentElement, &str, u32, bool)
+        mut update_item: impl FnMut(&mut UpdateInfo, UiParentElement, &T, u32, bool)
     ) -> Option<usize>
     {
         assert!(parent.element().children_layout.is_horizontal());
@@ -377,19 +378,26 @@ impl UiList
     }
 }
 
+struct UiInventoryItem
+{
+    item: InventoryItem,
+    name: String,
+    aspect: Vector2<f32>,
+    texture: Option<TextureId>
+}
+
 pub struct UiInventory
 {
-    items: Vec<InventoryItem>,
     sorter: InventorySorter,
     entity: Entity,
     on_click: InventoryOnClick,
-    list: UiList,
+    list: UiList<UiInventoryItem>,
     needs_update: bool
 }
 
 impl UiInventory
 {
-    fn items(&self, info: &UpdateInfo) -> (Vec<String>, Vec<InventoryItem>)
+    fn items(&self, info: &UpdateInfo) -> Vec<UiInventoryItem>
     {
         let inventory = some_or_return!(info.entities.inventory(self.entity));
 
@@ -401,18 +409,21 @@ impl UiInventory
 
         items.into_iter().map(|(index, x)|
         {
-            (info.items_info.get(x.id).name.clone(), index)
-        }).unzip()
+            let item = info.items_info.get(x.id);
+            UiInventoryItem{
+                item: index,
+                name: item.name.clone(),
+                aspect: item.aspect,
+                texture: item.texture.clone()
+            }
+        }).collect()
     }
 
     fn update_items(&mut self, info: &UpdateInfo)
     {
         if self.needs_update
         {
-            let (names, items) = self.items(info);
-
-            self.list.items = names;
-            self.items = items;
+            self.list.items = self.items(info);
             self.needs_update = false;
         }
     }
@@ -532,7 +543,7 @@ impl WindowKind
                 let selected = inventory.list.update(&mut info, body, |list_part|
                 {
                     id(InventoryPart::List(list_part))
-                }, item_height, |info, parent, name, index, is_selected|
+                }, item_height, |info, parent, item, index, is_selected|
                 {
                     let id = |part|
                     {
@@ -566,26 +577,12 @@ impl WindowKind
                         ..UiElement::default()
                     });
 
-                    let v = || -> Option<_>
-                    {
-                        let item_id = inventory.items[index as usize];
-
-                        let inventory = info.entities.inventory(inventory.entity)?;
-
-                        let item = inventory.get(item_id)?;
-                        let item = info.items_info.get(item.id);
-
-                        let texture = item.texture?;
-
-                        Some((item.aspect, texture))
-                    }();
-
-                    if let Some((aspect, texture)) = v
+                    if let Some(texture) = item.texture
                     {
                         icon.update(id(ItemPart::Icon(IconPart::Picture)), UiElement{
                             texture: UiTexture::CustomId(texture),
-                            width: UiSize::CopyElement(UiDirection::Horizontal, aspect.x, icon_id.clone()).into(),
-                            height: UiSize::CopyElement(UiDirection::Vertical, aspect.y, icon_id).into(),
+                            width: UiSize::CopyElement(UiDirection::Horizontal, item.aspect.x, icon_id.clone()).into(),
+                            height: UiSize::CopyElement(UiDirection::Vertical, item.aspect.y, icon_id).into(),
                             ..UiElement::default()
                         });
                     }
@@ -593,7 +590,7 @@ impl WindowKind
                     add_padding_horizontal(body, UiSize::Pixels(ITEM_PADDING / 2.0).into());
 
                     body.update(id(ItemPart::Name), UiElement{
-                        texture: UiTexture::Text{text: name.to_owned(), font_size},
+                        texture: UiTexture::Text{text: item.name.clone(), font_size},
                         mix: Some(MixColor{keep_transparency: true, ..MixColor::color(ACCENT_COLOR)}),
                         ..UiElement::fit_content()
                     });
@@ -603,7 +600,7 @@ impl WindowKind
                 {
                     if info.controls.take_click_down()
                     {
-                        let event = (inventory.on_click)(inventory.entity, inventory.items[index]);
+                        let event = (inventory.on_click)(inventory.entity, inventory.list.items[index].item);
 
                         info.user_receiver.push(event);
                     }
@@ -786,7 +783,6 @@ impl Ui
         self.windows.push(Window{
             position: self.mouse_position,
             kind: WindowKind::Inventory(UiInventory{
-                items: Vec::new(),
                 sorter: InventorySorter::default(),
                 entity,
                 on_click,

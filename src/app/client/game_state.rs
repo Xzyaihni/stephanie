@@ -505,7 +505,7 @@ pub struct GameState
     is_trusted: bool,
     camera_scale: f32,
     rare_timer: f32,
-    dt: f32,
+    dt: Option<f32>,
     debug_visibility: <DebugVisibility as DebugVisibilityTrait>::State,
     connections_handler: Arc<RwLock<ConnectionsHandler>>,
     receiver_handle: Option<JoinHandle<()>>,
@@ -649,7 +649,7 @@ impl GameState
             tilemap,
             camera_scale: 1.0,
             rare_timer: 0.0,
-            dt: 0.0,
+            dt: None,
             ui,
             common_textures,
             connected_and_ready: false,
@@ -904,7 +904,11 @@ impl GameState
 
             let mut ui = self.ui.borrow_mut();
 
-            ui.create_renders(&mut create_info, self.dt);
+            if let Some(dt) = self.dt
+            {
+                ui.create_renders(&mut create_info, dt);
+            }
+
             ui.update_buffers(info);
         }
 
@@ -995,9 +999,19 @@ impl GameState
         }
     }
 
+    fn get_dt(&self) -> f32
+    {
+        self.dt.unwrap_or_else(|| 1.0 / 60.0)
+    }
+
+    pub fn no_update(&mut self)
+    {
+        self.dt = None;
+    }
+
     pub fn ui_update(&mut self, controls: &mut UiControls)
     {
-        self.ui.borrow_mut().update(&self.entities.entities, controls, self.dt);
+        self.ui.borrow_mut().update(&self.entities.entities, controls, self.get_dt());
     }
 
     pub fn update(
@@ -1007,7 +1021,7 @@ impl GameState
         dt: f32
     )
     {
-        self.dt = dt;
+        self.dt = Some(dt);
 
         let mut create_info = RenderCreateInfo{
             location: UniformLocation{set: 0, binding: 0},
@@ -1062,7 +1076,9 @@ impl GameState
     {
         if self.debug_visibility.input(&control) { return true; };
 
-        self.controls.handle_input(control)
+        self.controls.handle_input(control);
+
+        false
     }
 
     pub fn pressed(&self, control: Control) -> bool
