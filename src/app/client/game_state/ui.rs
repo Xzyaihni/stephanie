@@ -30,6 +30,7 @@ use crate::{
         anatomy::*,
         EaseOut,
         Item,
+        ItemId,
         InventoryItem,
         InventorySorter,
         Entity,
@@ -47,16 +48,17 @@ mod controller;
 
 const TITLE_PADDING: f32 = 0.02;
 const ITEM_PADDING: f32 = 10.0;
+const BODY_PADDING: f32 = 20.0;
 
 const BUTTON_SIZE: f32 = 40.0;
 const SCROLLBAR_HEIGHT: f32 = BUTTON_SIZE * 5.0;
 
 const SEPARATOR_SIZE: f32 = 3.0;
 
+const SMALL_TEXT_SIZE: u32 = 20;
+
 const NOTIFICATION_HEIGHT: f32 = 0.0375;
 const NOTIFICATION_WIDTH: f32 = NOTIFICATION_HEIGHT * 4.0;
-
-const TOOLTIP_LIFETIME: f32 = 0.1;
 
 const BACKGROUND_COLOR: [f32; 4] = [0.923, 0.998, 1.0, 1.0];
 const ACCENT_COLOR: [f32; 4] = [1.0, 0.393, 0.901, 1.0];
@@ -109,7 +111,10 @@ enum WindowPart
     Body,
     Separator,
     Title(TitlePart),
-    Inventory(InventoryPart)
+    Inventory(InventoryPart),
+    ItemInfo,
+    Stats,
+    Anatomy
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -158,7 +163,7 @@ enum UiListPart
 enum UiIdWindow
 {
     Inventory(Entity),
-    ItemInfo(Entity, InventoryItem),
+    ItemInfo(ItemId),
     Stats(Entity),
     Anatomy(Entity)
 }
@@ -202,19 +207,6 @@ pub enum TooltipInfo
 }
 
 pub type InventoryOnClick = Box<dyn FnMut(Entity, InventoryItem) -> UiEvent>;
-
-pub enum WindowCreateInfo
-{
-    ActionsList{popup_position: Vector2<f32>, responses: Vec<GameUiEvent>},
-    Anatomy{spawn_position: Vector2<f32>, entity: Entity},
-    Stats{spawn_position: Vector2<f32>, entity: Entity},
-    ItemInfo{spawn_position: Vector2<f32>, item: Item},
-    Inventory{
-        spawn_position: Vector2<f32>,
-        entity: Entity,
-        on_click: InventoryOnClick
-    }
-}
 
 fn handle_button(
     info: &mut UpdateInfo,
@@ -476,7 +468,7 @@ impl UiInventory
 enum WindowKind
 {
     Inventory(UiInventory),
-    ItemInfo{owner: Entity, item: InventoryItem},
+    ItemInfo(Item),
     Stats(Entity),
     Anatomy(Entity)
 }
@@ -622,7 +614,7 @@ impl WindowKind
 
                 inventory.update_items(&info);
 
-                let font_size = 20;
+                let font_size = SMALL_TEXT_SIZE;
                 let item_height = info.fonts.text_height(font_size, body.screen_size().max());
 
                 let selected = inventory.list.update(&mut info, body, |list_part|
@@ -691,34 +683,67 @@ impl WindowKind
                     }
                 }
             },
-            Self::ItemInfo{owner, item} =>
+            Self::ItemInfo(item) =>
             {
-                let item = if let Some(x) = info.entities.inventory(*owner).and_then(|x|
-                {
-                    x.get(*item).cloned()
-                })
-                {
-                    x
-                } else
-                {
-                    close_this(&mut info);
-                    return;
+                let item_info = info.items_info.get(item.id);
+
+                let title = format!("info about - {}", item_info.name);
+                let body = with_titlebar(parent, &mut info, title, &[]);
+
+                let id = {
+                    let window_id = window_id.clone();
+                    move ||
+                    {
+                        UiId::Window(window_id.clone(), WindowPart::ItemInfo)
+                    }
                 };
 
-                let item = info.items_info.get(item.id);
+                let description = format!(
+                    "{} weighs around {} kg\nand is about {} meters in size!",
+                    item_info.name,
+                    item_info.mass,
+                    item_info.scale
+                );
 
-                let title = format!("info about - {}", item.name);
-                let body = with_titlebar(parent, &mut info, title, &[]);
+                add_padding_horizontal(body, UiSize::Pixels(BODY_PADDING).into());
+
+                body.update(id(), UiElement{
+                    texture: UiTexture::Text{text: description, font_size: SMALL_TEXT_SIZE},
+                    mix: Some(MixColor{keep_transparency: true, ..MixColor::color(ACCENT_COLOR)}),
+                    ..UiElement::fit_content()
+                });
+
+                add_padding_horizontal(body, UiSize::Pixels(BODY_PADDING).into());
             },
             Self::Stats(owner) =>
             {
                 let title = name_of(*owner);
                 let body = with_titlebar(parent, &mut info, title, &[]);
+
+                add_padding_horizontal(body, UiSize::Pixels(BODY_PADDING).into());
+
+                body.update(UiId::Window(window_id.clone(), WindowPart::Stats), UiElement{
+                    texture: UiTexture::Text{text: "nothing here yet :/".to_owned(), font_size: SMALL_TEXT_SIZE},
+                    mix: Some(MixColor{keep_transparency: true, ..MixColor::color(ACCENT_COLOR)}),
+                    ..UiElement::fit_content()
+                });
+
+                add_padding_horizontal(body, UiSize::Pixels(BODY_PADDING).into());
             },
             Self::Anatomy(owner) =>
             {
                 let title = name_of(*owner);
                 let body = with_titlebar(parent, &mut info, title, &[]);
+
+                add_padding_horizontal(body, UiSize::Pixels(BODY_PADDING).into());
+
+                body.update(UiId::Window(window_id.clone(), WindowPart::Anatomy), UiElement{
+                    texture: UiTexture::Text{text: "anatomyyyyyy".to_owned(), font_size: SMALL_TEXT_SIZE},
+                    mix: Some(MixColor{keep_transparency: true, ..MixColor::color(ACCENT_COLOR)}),
+                    ..UiElement::fit_content()
+                });
+
+                add_padding_horizontal(body, UiSize::Pixels(BODY_PADDING).into());
             }
         }
     }
@@ -728,7 +753,7 @@ impl WindowKind
         match self
         {
             Self::Inventory(inventory) => UiIdWindow::Inventory(inventory.entity),
-            Self::ItemInfo{owner, item} => UiIdWindow::ItemInfo(*owner, *item),
+            Self::ItemInfo(item) => UiIdWindow::ItemInfo(item.id),
             Self::Stats(owner) => UiIdWindow::Stats(*owner),
             Self::Anatomy(owner) => UiIdWindow::Anatomy(*owner)
         }
@@ -927,9 +952,9 @@ impl Ui
         }));
     }
 
-    pub fn open_item_info(&mut self, owner: Entity, item: InventoryItem)
+    pub fn open_item_info(&mut self, item: Item)
     {
-        self.create_window(WindowKind::ItemInfo{owner, item});
+        self.create_window(WindowKind::ItemInfo(item));
     }
 
     pub fn create_popup(&mut self, owner: Entity, actions: Vec<GameUiEvent>)
@@ -1032,7 +1057,7 @@ impl Ui
                 add_padding_horizontal(body, UiSize::Pixels(ITEM_PADDING).into());
 
                 body.update(id(PopupButtonPart::Text), UiElement{
-                    texture: UiTexture::Text{text: action.name().to_owned(), font_size: 20},
+                    texture: UiTexture::Text{text: action.name().to_owned(), font_size: SMALL_TEXT_SIZE},
                     mix: Some(MixColor{keep_transparency: true, ..MixColor::color(ACCENT_COLOR)}),
                     ..UiElement::fit_content()
                 });

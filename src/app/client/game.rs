@@ -34,7 +34,6 @@ use crate::common::{
 
 use super::game_state::{
     GameState,
-    WindowCreateInfo,
     InventoryWhich,
     UiEvent,
     GameUiEvent,
@@ -1171,12 +1170,13 @@ impl<'a> PlayerContainer<'a>
         {
             GameUiEvent::Info{which, item} =>
             {
-                if let Some(entity) = self.get_inventory_entity(which)
+                if let Some(item) = self.get_inventory(which)
+                    .and_then(|inventory| inventory.get(item).cloned())
                 {
-                    self.game_state.ui.borrow_mut().open_item_info(entity, item);
+                    self.game_state.ui.borrow_mut().open_item_info(item);
                 } else
                 {
-                    eprintln!("tried to show info for an item in a non existing inventory");
+                    eprintln!("tried to show info for an item that doesnt exist");
                 }
             },
             GameUiEvent::Drop{which, item} =>

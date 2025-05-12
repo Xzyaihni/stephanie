@@ -8,7 +8,7 @@ macro_rules! define_info_id
 {
     ($name:ident) =>
     {
-        #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
         pub struct $name(usize);
 
         impl From<usize> for $name

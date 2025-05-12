@@ -52,7 +52,7 @@ pub use sides::{Side1d, Side2d, Side3d};
 pub use drug::Drug;
 pub use loot::Loot;
 pub use item::Item;
-pub use items_info::{ItemInfo, ItemsInfo, Ranged};
+pub use items_info::{ItemInfo, ItemId, ItemsInfo, Ranged};
 
 pub use inventory::{InventorySorter, InventoryItem, Inventory};
 

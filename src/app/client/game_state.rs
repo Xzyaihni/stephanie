@@ -88,10 +88,7 @@ use controls_controller::ControlsController;
 use notifications::{Notifications, Notification};
 
 pub use anatomy_locations::UiAnatomyLocations;
-pub use ui::{
-    Ui,
-    WindowCreateInfo
-};
+pub use ui::Ui;
 
 use ui::{UpdateInfo, NotificationInfo, NotificationSeverity, NotificationKindInfo};
 
