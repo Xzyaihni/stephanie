@@ -297,64 +297,67 @@ impl<T> UiList<T>
             ..Default::default()
         });
 
-        parent.update(id(UiListPart::Separator), UiElement{
-            texture: UiTexture::Solid,
-            mix: Some(MixColor::color(ACCENT_COLOR)),
-            width: UiSize::Pixels(SEPARATOR_SIZE).into(),
-            height: UiSize::Rest(1.0).into(),
-            animation: Animation::separator_tall(),
-            ..Default::default()
-        });
-
-        let scrollbar_id = id(UiListPart::Scrollbar);
-        let scrollbar = parent.update(scrollbar_id.clone(), UiElement{
-            width: UiSize::Pixels(BUTTON_SIZE).into(),
-            height: UiSize::Rest(1.0).into(),
-            children_layout: UiLayout::Vertical,
-            ..Default::default()
-        });
-
         let bar_height = (body_height / items_total).min(1.0);
 
-        if let Some(position) = scrollbar.mouse_position_mapped()
+        if bar_height < 1.0
         {
-            let position = position.y;
+            parent.update(id(UiListPart::Separator), UiElement{
+                texture: UiTexture::Solid,
+                mix: Some(MixColor::color(ACCENT_COLOR)),
+                width: UiSize::Pixels(SEPARATOR_SIZE).into(),
+                height: UiSize::Rest(1.0).into(),
+                animation: Animation::separator_tall(),
+                ..Default::default()
+            });
 
-            if scrollbar.is_mouse_inside() && !info.mouse_taken
+            let scrollbar_id = id(UiListPart::Scrollbar);
+            let scrollbar = parent.update(scrollbar_id.clone(), UiElement{
+                width: UiSize::Pixels(BUTTON_SIZE).into(),
+                height: UiSize::Rest(1.0).into(),
+                children_layout: UiLayout::Vertical,
+                ..Default::default()
+            });
+
+            if let Some(position) = scrollbar.mouse_position_mapped()
             {
-                info.controls.poll_action_held();
+                let position = position.y;
+
+                if scrollbar.is_mouse_inside() && !info.mouse_taken
+                {
+                    info.controls.poll_action_held();
+                }
+
+                if info.controls.observe_action_held()
+                {
+                    self.target_position = if bar_height > 0.99
+                    {
+                        0.0
+                    } else
+                    {
+                        let half_bar_height = bar_height / 2.0;
+                        (position.clamp(half_bar_height, 1.0 - half_bar_height) - half_bar_height) / (1.0 - bar_height)
+                    };
+                }
             }
 
-            if info.controls.observe_action_held()
+            scrollbar.update(id(UiListPart::BarPad), UiElement{
+                height: UiSize::CopyElement(UiDirection::Vertical, (1.0 - bar_height) * self.position, scrollbar_id.clone()).into(),
+                ..Default::default()
+            });
+
+            let bar = scrollbar.update(id(UiListPart::Bar), UiElement{
+                texture: UiTexture::Solid,
+                mix: Some(MixColor::color(ACCENT_COLOR)),
+                width: UiSize::Rest(1.0).into(),
+                height: UiSize::CopyElement(UiDirection::Vertical, bar_height, scrollbar_id).into(),
+                animation: Animation::scrollbar_bar(),
+                ..Default::default()
+            });
+
+            if bar.is_mouse_inside() && !info.mouse_taken
             {
-                self.target_position = if bar_height > 0.99
-                {
-                    0.0
-                } else
-                {
-                    let half_bar_height = bar_height / 2.0;
-                    (position.clamp(half_bar_height, 1.0 - half_bar_height) - half_bar_height) / (1.0 - bar_height)
-                };
+                bar.element().mix.as_mut().unwrap().color = HIGHLIGHTED_COLOR;
             }
-        }
-
-        scrollbar.update(id(UiListPart::BarPad), UiElement{
-            height: UiSize::CopyElement(UiDirection::Vertical, (1.0 - bar_height) * self.position, scrollbar_id.clone()).into(),
-            ..Default::default()
-        });
-
-        let bar = scrollbar.update(id(UiListPart::Bar), UiElement{
-            texture: UiTexture::Solid,
-            mix: Some(MixColor::color(ACCENT_COLOR)),
-            width: UiSize::Rest(1.0).into(),
-            height: UiSize::CopyElement(UiDirection::Vertical, bar_height, scrollbar_id).into(),
-            animation: Animation::scrollbar_bar(),
-            ..Default::default()
-        });
-
-        if bar.is_mouse_inside() && !info.mouse_taken
-        {
-            bar.element().mix.as_mut().unwrap().color = HIGHLIGHTED_COLOR;
         }
 
         let selected_index = if info.mouse_taken
@@ -892,14 +895,19 @@ impl Ui
 
         if let Some((position, _, actions)) = &self.popup
         {
-            let popup_body = self.controller.update(UiId::Popup(self.popup_unique_id, PopupPart::Body), UiElement{
-                texture: UiTexture::Solid,
-                mix: Some(MixColor::color(ACCENT_COLOR)),
-                animation: Animation::normal(),
-                position: UiPosition::Absolute(*position),
-                children_layout: UiLayout::Vertical,
-                ..Default::default()
-            });
+            let popup_body = {
+                let mut animation = Animation::normal();
+                animation.scaling.as_mut().unwrap().start_scaling = Vector2::new(0.1, 1.0);
+
+                self.controller.update(UiId::Popup(self.popup_unique_id, PopupPart::Body), UiElement{
+                    texture: UiTexture::Solid,
+                    mix: Some(MixColor::color(ACCENT_COLOR)),
+                    animation,
+                    position: UiPosition::Absolute(*position),
+                    children_layout: UiLayout::Vertical,
+                    ..Default::default()
+                })
+            };
 
             let selected_index = popup_body.mouse_position_inside().map(|position|
             {
