@@ -16,6 +16,7 @@ use crate::{
     client::{
         RenderCreateInfo,
         game_state::{
+            GameState,
             UiAnatomyLocations,
             UiControls,
             UiEvent,
@@ -139,7 +140,7 @@ enum TitlePart
 {
     Body,
     Text,
-    Button(UiIdTitlebutton)
+    Button(UiIdTitleButton)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -160,8 +161,10 @@ enum UiIdWindow
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-enum UiIdTitlebutton
+enum UiIdTitleButton
 {
+    Anatomy,
+    Stats,
     Close
 }
 
@@ -386,12 +389,20 @@ struct UiInventoryItem
     texture: Option<TextureId>
 }
 
+struct UiTitleButton
+{
+    id: UiIdTitleButton,
+    texture: String,
+    action: Rc<dyn Fn(&mut GameState)>
+}
+
 pub struct UiInventory
 {
     sorter: InventorySorter,
     entity: Entity,
     on_click: InventoryOnClick,
     list: UiList<UiInventoryItem>,
+    buttons: Vec<UiTitleButton>,
     needs_update: bool
 }
 
@@ -423,6 +434,25 @@ impl UiInventory
     {
         if self.needs_update
         {
+            self.buttons = Vec::new();
+            if info.entities.anatomy(self.entity).is_some()
+            {
+                self.buttons.push(UiTitleButton{
+                    id: UiIdTitleButton::Anatomy,
+                    texture: "ui/anatomy_button.png".to_owned(),
+                    action: Rc::new(|game_state| todo!())
+                });
+            }
+
+            if info.entities.player(self.entity).is_some()
+            {
+                self.buttons.push(UiTitleButton{
+                    id: UiIdTitleButton::Stats,
+                    texture: "ui/stats_button.png".to_owned(),
+                    action: Rc::new(|game_state| todo!())
+                });
+            }
+
             self.list.items = self.items(info);
             self.needs_update = false;
         }
@@ -439,29 +469,53 @@ impl WindowKind
     fn update(&mut self, parent: UiParentElement, mut info: UpdateInfo)
     {
         let window_id = self.as_id();
-        let id = {
-            let window_id = window_id.clone();
-            move |part|
-            {
-                UiId::Window(window_id.clone(), part)
-            }
-        };
 
-        fn constrain<'a, 'b, F>(f: F) -> F
-        where
-            F: FnOnce(UiParentElement<'a>, &'b mut UpdateInfo, String) -> UiParentElement<'a>
+        fn with_titlebar<'a, 'b>(
+            window_id: UiIdWindow,
+            parent: UiParentElement<'a>,
+            info: &'b mut UpdateInfo,
+            title: String,
+            buttons: &[UiTitleButton]
+        ) -> UiParentElement<'a>
         {
-            f
-        }
+            let id = {
+                let window_id = window_id.clone();
+                move |part|
+                {
+                    UiId::Window(window_id.clone(), part)
+                }
+            };
 
-        let with_titlebar = constrain(|parent, info, title|
-        {
             let titlebar = parent.update(id(WindowPart::Title(TitlePart::Body)), UiElement{
                 width: UiElementSize{
                     minimum_size: Some(UiMinimumSize::FitChildren),
                     size: UiSize::Rest(1.0)
                 },
                 ..Default::default()
+            });
+
+            let mut update_button = |button_id, texture, action|
+            {
+                let size: UiElementSize<UiId> = UiSize::Pixels(BUTTON_SIZE).into();
+
+                let close_button = titlebar.update(id(WindowPart::Title(TitlePart::Button(button_id))), UiElement{
+                    texture: UiTexture::Custom(texture),
+                    mix: Some(MixColor{keep_transparency: true, ..MixColor::color(ACCENT_COLOR)}),
+                    animation: Animation::button(),
+                    width: size.clone(),
+                    height: size,
+                    ..Default::default()
+                });
+
+                handle_button(info, close_button, move |info|
+                {
+                    info.user_receiver.push(UiEvent::Action(action));
+                });
+            };
+
+            buttons.iter().for_each(|button|
+            {
+                update_button(button.id.clone(), button.texture.clone(), button.action.clone());
             });
 
             let padding_size = UiElementSize{minimum_size: Some(TITLE_PADDING.into()), size: UiSize::Rest(1.0)};
@@ -474,24 +528,10 @@ impl WindowKind
             });
             add_padding_horizontal(titlebar, padding_size);
 
-            let size: UiElementSize<UiId> = UiSize::Pixels(BUTTON_SIZE).into();
-
-            let close_button = titlebar.update(id(WindowPart::Title(TitlePart::Button(UiIdTitlebutton::Close))), UiElement{
-                texture: UiTexture::Custom("ui/close_button.png".to_owned()),
-                mix: Some(MixColor{keep_transparency: true, ..MixColor::color(ACCENT_COLOR)}),
-                animation: Animation::button(),
-                width: size.clone(),
-                height: size,
-                ..Default::default()
-            });
-
-            handle_button(info, close_button, |info|
+            update_button(UiIdTitleButton::Close, "ui/close_button.png".to_owned(), Rc::new(move |game_state|
             {
-                info.user_receiver.push(UiEvent::Action(Rc::new(move |game_state|
-                {
-                    game_state.ui.borrow_mut().remove_window(&window_id);
-                })));
-            });
+                game_state.ui.borrow_mut().remove_window(&window_id);
+            }));
 
             parent.update(id(WindowPart::Separator), UiElement{
                 texture: UiTexture::Solid,
@@ -509,21 +549,25 @@ impl WindowKind
                 },
                 ..Default::default()
             })
-        });
+        }
 
         match self
         {
             Self::Inventory(inventory) =>
             {
-                let id = |part|
-                {
-                    id(WindowPart::Inventory(part))
+                let id = {
+                    let window_id = window_id.clone();
+                    move |part|
+                    {
+                        UiId::Window(window_id.clone(), WindowPart::Inventory(part))
+                    }
                 };
 
                 let name = info.entities.named(inventory.entity).as_deref().cloned()
                     .unwrap_or_else(|| "unnamed".to_owned());
 
-                let body = with_titlebar(parent, &mut info, name);
+                let body = with_titlebar(window_id.clone(), parent, &mut info, name, &inventory.buttons);
+
                 body.element().height = UiSize::Pixels(SCROLLBAR_HEIGHT).into();
 
                 let body = body.update(id(InventoryPart::Body), UiElement{
@@ -543,7 +587,7 @@ impl WindowKind
                 let selected = inventory.list.update(&mut info, body, |list_part|
                 {
                     id(InventoryPart::List(list_part))
-                }, item_height, |info, parent, item, index, is_selected|
+                }, item_height, |_info, parent, item, index, is_selected|
                 {
                     let id = |part|
                     {
@@ -795,6 +839,7 @@ impl Ui
                 entity,
                 on_click,
                 list: UiList::new(),
+                buttons: Vec::new(),
                 needs_update: true
             })
         });
