@@ -26,6 +26,7 @@ use crate::{
     client::RenderCreateInfo,
     common::{
         render_info::*,
+        EaseOut,
         LazyMix
     }
 };
@@ -304,21 +305,31 @@ impl UiElementCached
 
         let target_scale = Vector3::new(deferred.width.unwrap(), deferred.height.unwrap(), 1.0);
 
-        if let Some(scaling) = old_element.animation.scaling.as_mut()
+        self.scale = if let Some(scaling) = old_element.animation.scaling.as_mut()
         {
             let mut scale = Vector3::new(self.scale.x, self.scale.y, 1.0);
             scaling.start_mode.next(&mut scale, target_scale, dt);
-            self.scale = scale.xy();
+
+            scale.xy()
         } else
         {
-            self.scale = target_scale.xy();
-        }
+            target_scale.xy()
+        };
 
         if let Some(object) = self.object.as_mut()
         {
             let mut transform = object.transform().cloned().unwrap_or_default();
 
-            let position = deferred.position.unwrap();
+            let target_position = deferred.position.unwrap();
+
+            let position = if let Some(decay) = old_element.animation.position
+            {
+                transform.position.xy().ease_out(target_position, decay, dt)
+            } else
+            {
+                target_position
+            };
+
             transform.position = Vector3::new(position.x, position.y, 0.0);
 
             object.set_transform(transform);
@@ -376,13 +387,32 @@ impl UiElementCached
             }
         }
 
-        if fields_match!(texture, animation, position, children_layout, width, height)
+        if fields_match!(texture, animation, inherit_animation, position, children_layout, width, height, scissor)
         {
             debug_assert!(old_element.mix != new_element.mix);
 
             new.mix = self.mix;
             new.scale = self.scale;
             new.update_scale();
+        }
+
+        if fields_match!(texture, mix, animation, inherit_animation, children_layout, width, height, scissor)
+        {
+            debug_assert!(old_element.position != new_element.position);
+
+            if new_element.animation.position.is_some()
+            {
+                if let (
+                    Some(new_object),
+                    Some(old_position)
+                ) = (new.object.as_mut(), self.object.as_ref().and_then(|x| x.transform()).map(|x| x.position))
+                {
+                    new_object.modify_transform(|transform|
+                    {
+                        transform.position = old_position;
+                    });
+                }
+            }
         }
     }
 }

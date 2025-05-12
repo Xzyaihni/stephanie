@@ -847,7 +847,12 @@ impl Ui
                 ..Default::default()
             });
 
-            let pressed = actions.iter().fold(false, |acc, action|
+            let selected_index = popup_body.mouse_position_inside().map(|position|
+            {
+                (position.y * actions.len() as f32) as usize
+            });
+
+            let pressed = actions.iter().enumerate().fold(false, |acc, (index, action)|
             {
                 let id = |part|
                 {
@@ -861,8 +866,14 @@ impl Ui
                         minimum_size: Some(UiMinimumSize::FitChildren),
                         size: UiSize::Rest(1.0)
                     },
+                    animation: Animation{
+                        position: Some(10.0),
+                        ..Default::default()
+                    },
                     ..Default::default()
                 });
+
+                add_padding_horizontal(body, UiSize::Pixels(ITEM_PADDING).into());
 
                 body.update(id(PopupButtonPart::Text), UiElement{
                     texture: UiTexture::Text{text: action.name().to_owned(), font_size: 20},
@@ -880,7 +891,7 @@ impl Ui
                     ..Default::default()
                 });
 
-                if body.is_mouse_inside()
+                if selected_index == Some(index)
                 {
                     let offset = popup_body.try_width().unwrap_or(0.0) * 0.2;
                     body.element().position = UiPosition::Next(Vector2::new(offset, 0.0));

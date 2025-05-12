@@ -580,6 +580,7 @@ pub struct ScalingAnimation
 pub struct Animation
 {
     pub scaling: Option<ScalingAnimation>,
+    pub position: Option<f32>,
     pub mix: Option<f32>
 }
 
@@ -589,6 +590,7 @@ impl Default for Animation
     {
         Self{
             scaling: None,
+            position: None,
             mix: None
         }
     }

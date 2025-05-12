@@ -435,6 +435,17 @@ impl<const N: usize> EaseOut for [f32; N]
     }
 }
 
+impl EaseOut for Vector2<f32>
+{
+    fn ease_out(&self, target: Self, decay: f32, dt: f32) -> Self
+    {
+        self.zip_map(&target, |a, b|
+            {
+                ease_out(a, b, decay, dt)
+            })
+    }
+}
+
 impl EaseOut for Vector3<f32>
 {
     fn ease_out(&self, target: Self, decay: f32, dt: f32) -> Self
