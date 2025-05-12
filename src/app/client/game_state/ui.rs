@@ -89,7 +89,7 @@ enum ConsolePart
 enum PopupPart
 {
     Body,
-    Button(GameUiEvent, PopupButtonPart)
+    Button(u32, PopupButtonPart)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -858,7 +858,7 @@ impl Ui
             {
                 let id = |part|
                 {
-                    UiId::Popup(PopupPart::Button(action.clone(), part))
+                    UiId::Popup(PopupPart::Button(index as u32, part))
                 };
 
                 let body = popup_body.update(id(PopupButtonPart::Body), UiElement{
@@ -869,7 +869,7 @@ impl Ui
                         size: UiSize::Rest(1.0)
                     },
                     animation: Animation{
-                        position: Some(10.0 * 0.001),
+                        position: Some(10.0),
                         ..Default::default()
                     },
                     ..Default::default()
