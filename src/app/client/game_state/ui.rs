@@ -157,7 +157,10 @@ enum UiListPart
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 enum UiIdWindow
 {
-    Inventory(Entity)
+    Inventory(Entity),
+    ItemInfo(Entity, InventoryItem),
+    Stats(Entity),
+    Anatomy(Entity)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -370,7 +373,7 @@ impl<T> UiList<T>
                 let item_height = item_height / body_height;
                 let index = starting_item + ((position.y + (relative_offset / body_height)) / item_height) as usize;
 
-                (index < self.items.len()).then(|| index)
+                (index < self.items.len()).then_some(index)
             })
         };
 
@@ -437,13 +440,18 @@ impl UiInventory
     {
         if self.needs_update
         {
+            let entity = self.entity;
+
             self.buttons = Vec::new();
             if info.entities.anatomy(self.entity).is_some()
             {
                 self.buttons.push(UiTitleButton{
                     id: UiIdTitleButton::Anatomy,
                     texture: "ui/anatomy_button.png".to_owned(),
-                    action: Rc::new(|game_state| todo!())
+                    action: Rc::new(move |game_state|
+                    {
+                        game_state.ui.borrow_mut().create_window(WindowKind::Anatomy(entity));
+                    })
                 });
             }
 
@@ -452,7 +460,10 @@ impl UiInventory
                 self.buttons.push(UiTitleButton{
                     id: UiIdTitleButton::Stats,
                     texture: "ui/stats_button.png".to_owned(),
-                    action: Rc::new(|game_state| todo!())
+                    action: Rc::new(move |game_state|
+                    {
+                        game_state.ui.borrow_mut().create_window(WindowKind::Stats(entity));
+                    })
                 });
             }
 
@@ -464,7 +475,10 @@ impl UiInventory
 
 enum WindowKind
 {
-    Inventory(UiInventory)
+    Inventory(UiInventory),
+    ItemInfo{owner: Entity, item: InventoryItem},
+    Stats(Entity),
+    Anatomy(Entity)
 }
 
 impl WindowKind
@@ -554,6 +568,31 @@ impl WindowKind
             })
         }
 
+        let with_titlebar = {
+            let window_id = window_id.clone();
+            move |parent, info, title, buttons|
+            {
+                with_titlebar(window_id.clone(), parent, info, title, buttons)
+            }
+        };
+
+        let name_of = |entity|
+        {
+            info.entities.named(entity).as_deref().cloned()
+                .unwrap_or_else(|| "unnamed".to_owned())
+        };
+
+        let close_this = {
+            let window_id = window_id.clone();
+            |info: &mut UpdateInfo|
+            {
+                info.user_receiver.push(UiEvent::Action(Rc::new(move |game_state|
+                {
+                    game_state.ui.borrow_mut().remove_window(&window_id);
+                })));
+            }
+        };
+
         match self
         {
             Self::Inventory(inventory) =>
@@ -566,10 +605,9 @@ impl WindowKind
                     }
                 };
 
-                let name = info.entities.named(inventory.entity).as_deref().cloned()
-                    .unwrap_or_else(|| "unnamed".to_owned());
+                let name = name_of(inventory.entity);
 
-                let body = with_titlebar(window_id.clone(), parent, &mut info, name, &inventory.buttons);
+                let body = with_titlebar(parent, &mut info, name, &inventory.buttons);
 
                 body.element().height = UiSize::Pixels(SCROLLBAR_HEIGHT).into();
 
@@ -652,6 +690,35 @@ impl WindowKind
                         info.user_receiver.push(event);
                     }
                 }
+            },
+            Self::ItemInfo{owner, item} =>
+            {
+                let item = if let Some(x) = info.entities.inventory(*owner).and_then(|x|
+                {
+                    x.get(*item).cloned()
+                })
+                {
+                    x
+                } else
+                {
+                    close_this(&mut info);
+                    return;
+                };
+
+                let item = info.items_info.get(item.id);
+
+                let title = format!("info about - {}", item.name);
+                let body = with_titlebar(parent, &mut info, title, &[]);
+            },
+            Self::Stats(owner) =>
+            {
+                let title = name_of(*owner);
+                let body = with_titlebar(parent, &mut info, title, &[]);
+            },
+            Self::Anatomy(owner) =>
+            {
+                let title = name_of(*owner);
+                let body = with_titlebar(parent, &mut info, title, &[]);
             }
         }
     }
@@ -660,7 +727,10 @@ impl WindowKind
     {
         match self
         {
-            Self::Inventory(inventory) => UiIdWindow::Inventory(inventory.entity)
+            Self::Inventory(inventory) => UiIdWindow::Inventory(inventory.entity),
+            Self::ItemInfo{owner, item} => UiIdWindow::ItemInfo(*owner, *item),
+            Self::Stats(owner) => UiIdWindow::Stats(*owner),
+            Self::Anatomy(owner) => UiIdWindow::Anatomy(*owner)
         }
     }
 }
@@ -673,9 +743,15 @@ struct Window
 
 impl Window
 {
+    fn id(&self) -> UiId
+    {
+        UiId::Window(self.kind.as_id(), WindowPart::Panel)
+    }
+
     fn update(&mut self, ui: &mut UiController, info: UpdateInfo)
     {
-        let body = ui.update(UiId::Window(self.kind.as_id(), WindowPart::Panel), UiElement{
+        let id = self.id();
+        let body = ui.update(id, UiElement{
             texture: UiTexture::Solid,
             mix: Some(MixColor::color(BACKGROUND_COLOR)),
             animation: Animation::normal(),
@@ -788,11 +864,7 @@ impl Ui
     {
         self.windows.iter().position(|x|
         {
-            match (&x.kind, id)
-            {
-                (WindowKind::Inventory(inventory), UiIdWindow::Inventory(other_entity)) if inventory.entity == *other_entity => true,
-                _ => false
-            }
+            x.kind.as_id() == *id
         })
     }
 
@@ -807,6 +879,16 @@ impl Ui
         {
             false
         }
+    }
+
+    fn create_window(&mut self, kind: WindowKind)
+    {
+        self.remove_window(&kind.as_id());
+
+        self.windows.push(Window{
+            position: self.mouse_position,
+            kind
+        });
     }
 
     pub fn close_inventory(&mut self, owner: Entity) -> bool
@@ -835,17 +917,19 @@ impl Ui
 
     pub fn open_inventory(&mut self, entity: Entity, on_click: InventoryOnClick)
     {
-        self.windows.push(Window{
-            position: self.mouse_position,
-            kind: WindowKind::Inventory(UiInventory{
-                sorter: InventorySorter::default(),
-                entity,
-                on_click,
-                list: UiList::new(),
-                buttons: Vec::new(),
-                needs_update: true
-            })
-        });
+        self.create_window(WindowKind::Inventory(UiInventory{
+            sorter: InventorySorter::default(),
+            entity,
+            on_click,
+            list: UiList::new(),
+            buttons: Vec::new(),
+            needs_update: true
+        }));
+    }
+
+    pub fn open_item_info(&mut self, owner: Entity, item: InventoryItem)
+    {
+        self.create_window(WindowKind::ItemInfo{owner, item});
     }
 
     pub fn create_popup(&mut self, owner: Entity, actions: Vec<GameUiEvent>)
@@ -880,13 +964,23 @@ impl Ui
             }
         };
 
-        self.windows.iter_mut().for_each(|x|
+        let takes_input = self.windows.iter().enumerate().rev().find_map(|(index, window)|
         {
+            self.controller.input_of(&window.id()).is_mouse_inside().then_some(index)
+        });
+
+        self.windows.iter_mut().enumerate().for_each(|(index, x)|
+        {
+            let window_taken = takes_input.map(|taken_index|
+            {
+                index < taken_index
+            }).unwrap_or(false);
+
             x.update(&mut self.controller, UpdateInfo{
                 entities: entities,
                 items_info: &self.items_info,
                 fonts: &self.fonts,
-                mouse_taken: popup_taken,
+                mouse_taken: window_taken || popup_taken,
                 controls: controls,
                 user_receiver: &mut self.user_receiver.borrow_mut(),
                 dt

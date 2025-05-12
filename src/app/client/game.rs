@@ -1171,16 +1171,12 @@ impl<'a> PlayerContainer<'a>
         {
             GameUiEvent::Info{which, item} =>
             {
-                if let Some(item) = self.get_inventory(which)
-                    .and_then(|inventory| inventory.get(item).cloned())
+                if let Some(entity) = self.get_inventory_entity(which)
                 {
-                    /*self.game_state.add_window(WindowCreateInfo::ItemInfo{
-                        spawn_position: self.game_state.ui_mouse_position(),
-                        item
-                    });*/todo!()
+                    self.game_state.ui.borrow_mut().open_item_info(entity, item);
                 } else
                 {
-                    eprintln!("tried to show info for an item that doesnt exist");
+                    eprintln!("tried to show info for an item in a non existing inventory");
                 }
             },
             GameUiEvent::Drop{which, item} =>

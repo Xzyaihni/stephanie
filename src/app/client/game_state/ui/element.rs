@@ -58,28 +58,6 @@ impl UiElementShapeMask
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum UiElementShape
-{
-    Rectangle,
-    Mask(UiElementShapeMask)
-}
-
-impl UiElementShape
-{
-    pub fn is_inside(&self, scale: Vector2<f32>, position: Vector2<f32>) -> bool
-    {
-        match self
-        {
-            Self::Rectangle =>
-            {
-                todo!()
-            },
-            Self::Mask(x) => x.is_inside(position.component_div(&scale) + Vector2::repeat(0.5))
-        }
-    }
-}
-
 #[derive(Debug, Clone, PartialEq)]
 pub enum UiTexture
 {

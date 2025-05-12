@@ -52,7 +52,7 @@ pub trait Inputable
         let mapped = self.position_mapped(check_position)?;
 
         let r = 0.0..1.0;
-        (r.contains(&mapped.x) && r.contains(&mapped.y)).then(|| mapped)
+        (r.contains(&mapped.x) && r.contains(&mapped.y)).then_some(mapped)
     }
 
     fn is_inside(&self, check_position: Vector2<f32>) -> bool
