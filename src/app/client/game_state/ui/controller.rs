@@ -204,16 +204,6 @@ impl Fractions
             position_inherit: Vector2::zeros()
         }
     }
-
-    pub fn zero() -> Self
-    {
-        Self{
-            scale: Vector2::zeros(),
-            scale_inherit: Vector2::zeros(),
-            position: Vector2::zeros(),
-            position_inherit: Vector2::zeros()
-        }
-    }
 }
 
 #[derive(Debug)]
@@ -418,15 +408,30 @@ impl UiElementCached
         &mut self,
         deferred: &UiDeferredInfo,
         element: &mut UiElement<Id>,
+        close_soon: bool,
         dt: f32
     ) -> bool
     {
         if let Some(scaling) = element.animation.scaling.as_mut()
         {
+            if let Scaling::Ignore = scaling.close_mode
+            {
+                if close_soon
+                {
+                    return false;
+                }
+            }
+
             let mut scale = Vector3::new(self.scale.x, self.scale.y, 1.0);
             scaling.close_mode.next(&mut scale, Vector3::zeros(), dt);
 
             self.scale = scale.xy();
+        } else
+        {
+            if close_soon
+            {
+                return false;
+            }
         }
 
         self.update_always(deferred, element, dt);
@@ -461,9 +466,20 @@ impl UiElementCached
         {
             debug_assert!(old_element.position != new_element.position);
 
-            if new_element.animation.position.is_some()
+            let keep = match (&old_element.position, &new_element.position)
             {
-                new.position = self.position;
+                (UiPosition::Next(_), UiPosition::Next(_))
+                | (UiPosition::Absolute(_), UiPosition::Absolute(_)) => true,
+                (UiPosition::Offset(old_id, _), UiPosition::Offset(new_id, _)) if old_id == new_id => true,
+                _ => false
+            };
+
+            if keep
+            {
+                if new_element.animation.position.is_some()
+                {
+                    new.position = self.position;
+                }
             }
         }
     }
@@ -945,6 +961,8 @@ struct Element<Id>
     id: Id,
     parent: Option<Id>,
     parent_fraction: Fractions,
+    close_immediately: bool,
+    close_soon: bool,
     element: UiElement<Id>,
     cached: UiElementCached,
     deferred: UiDeferredInfo,
@@ -1149,6 +1167,8 @@ impl<Id: Idable> Controller<Id>
                     id: this.id.clone(),
                     parent: parent.map(|x| x.id.clone()),
                     parent_fraction,
+                    close_immediately: false,
+                    close_soon: false,
                     element: this.element.clone(),
                     cached,
                     deferred: this.deferred.clone(),
@@ -1183,13 +1203,19 @@ impl<Id: Idable> Controller<Id>
                         shared.element_id(parent_id)
                     });
 
-                    shared.elements[i].parent_fraction = if let Some(index) = index
+                    let index = if let Some(x) = index { x } else
                     {
-                        shared.elements[index].cached.fractions.clone()
-                    } else
-                    {
-                        Fractions::zero()
+                        shared.elements[i].close_immediately = true;
+                        continue;
                     };
+
+                    if !shared.elements[index].closing
+                    {
+                        shared.elements[i].close_soon = true;
+                        continue;
+                    }
+
+                    shared.elements[i].parent_fraction = shared.elements[index].cached.fractions.clone();
                 }
             }
 
@@ -1197,7 +1223,17 @@ impl<Id: Idable> Controller<Id>
             {
                 if element.closing
                 {
-                    let keep = element.cached.update_closing(&element.deferred, &mut element.element, dt);
+                    if element.close_immediately
+                    {
+                        return false;
+                    }
+
+                    let keep = element.cached.update_closing(
+                        &element.deferred,
+                        &mut element.element,
+                        element.close_soon,
+                        dt
+                    );
 
                     element.cached.update_fraction(&element.parent_fraction, &element.deferred);
 

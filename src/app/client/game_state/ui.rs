@@ -67,7 +67,7 @@ enum UiId
     Screen,
     Padding(u32),
     Console(ConsolePart),
-    Popup(PopupPart),
+    Popup(u8, PopupPart),
     Window(UiIdWindow, WindowPart)
 }
 
@@ -665,6 +665,7 @@ pub struct Ui
     mouse_position: Vector2<f32>,
     console_contents: Option<String>,
     windows: Vec<Window>,
+    popup_unique_id: u8,
     popup: Option<(Vector2<f32>, Vec<GameUiEvent>)>
 }
 
@@ -689,6 +690,7 @@ impl Ui
             mouse_position: Vector2::zeros(),
             console_contents: None,
             windows: Vec::new(),
+            popup_unique_id: 0,
             popup: None
         };
 
@@ -796,6 +798,7 @@ impl Ui
 
     pub fn create_popup(&mut self, actions: Vec<GameUiEvent>)
     {
+        self.popup_unique_id = self.popup_unique_id.wrapping_add(1);
         self.popup = Some((self.mouse_position, actions));
     }
 
@@ -816,7 +819,7 @@ impl Ui
     pub fn update(&mut self, entities: &ClientEntities, controls: &mut UiControls, dt: f32)
     {
         let popup_taken = {
-            if self.controller.input_of(&UiId::Popup(PopupPart::Body)).is_mouse_inside()
+            if self.controller.input_of(&UiId::Popup(self.popup_unique_id, PopupPart::Body)).is_mouse_inside()
             {
                 true
             } else
@@ -840,7 +843,7 @@ impl Ui
 
         if let Some((position, actions)) = &self.popup
         {
-            let popup_body = self.controller.update(UiId::Popup(PopupPart::Body), UiElement{
+            let popup_body = self.controller.update(UiId::Popup(self.popup_unique_id, PopupPart::Body), UiElement{
                 texture: UiTexture::Solid,
                 mix: Some(MixColor::color(ACCENT_COLOR)),
                 animation: Animation::normal(),
@@ -858,7 +861,7 @@ impl Ui
             {
                 let id = |part|
                 {
-                    UiId::Popup(PopupPart::Button(index as u32, part))
+                    UiId::Popup(self.popup_unique_id, PopupPart::Button(index as u32, part))
                 };
 
                 let body = popup_body.update(id(PopupButtonPart::Body), UiElement{
