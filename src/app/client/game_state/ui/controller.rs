@@ -466,6 +466,17 @@ impl UiElementCached
             return false;
         }
 
+        if let Some(scale) = self.object.as_ref().and_then(|object|
+        {
+            object.transform().map(|transform| transform.scale.xy().min())
+        })
+        {
+            if scale < MINIMUM_SCALE
+            {
+                return false;
+            }
+        }
+
         true
     }
 
