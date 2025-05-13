@@ -88,9 +88,7 @@ use controls_controller::ControlsController;
 use notifications::{Notifications, Notification};
 
 pub use anatomy_locations::UiAnatomyLocations;
-pub use ui::Ui;
-
-use ui::{UpdateInfo, NotificationInfo, NotificationSeverity, NotificationKindInfo};
+pub use ui::{Ui, NotificationInfo, NotificationKindInfo};
 
 mod controls_controller;
 
@@ -194,7 +192,7 @@ impl ClientEntitiesContainer
         self.entities.target(self.camera_entity).unwrap().scale = size.xyx();
     }
 
-    pub fn update_aspect(&mut self, size: Vector2<f32>, aspect: f32)
+    pub fn update_aspect(&mut self, size: Vector2<f32>)
     {
         self.update_resize(size);
     }
@@ -616,6 +614,7 @@ impl GameState
             info.data_infos.items_info.clone(),
             &info.object_info,
             &mut entities.entities,
+            entities.camera_entity,
             anatomy_locations,
             user_receiver.clone()
         );
@@ -1130,7 +1129,7 @@ impl GameState
             self.world.rescale(size);
         }
 
-        self.entities.update_aspect(size, aspect);
+        self.entities.update_aspect(size);
     }
 }
 

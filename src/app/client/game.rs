@@ -34,6 +34,8 @@ use crate::common::{
 
 use super::game_state::{
     GameState,
+    NotificationInfo,
+    NotificationKindInfo,
     InventoryWhich,
     UiEvent,
     GameUiEvent,
@@ -142,7 +144,7 @@ impl Game
             let ui = game_state.ui.clone();
             let info = self.info.clone();
 
-            game_state.entities_mut().on_inventory(Box::new(move |entities, entity|
+            game_state.entities_mut().on_inventory(Box::new(move |_entities, entity|
             {
                 let info = info.borrow_mut();
 
@@ -1465,6 +1467,13 @@ impl<'a> PlayerContainer<'a>
 
     fn show_tile_tooltip(&mut self, text: String)
     {
+        let notification = NotificationInfo{
+            owner: self.info.entity,
+            lifetime: 0.1,
+            kind: NotificationKindInfo::Text{text}
+        };
+
+        self.game_state.ui.borrow_mut().show_notification(notification);
     }
 
     fn colliding_info(&self, f: impl FnOnce(CollidingInfo))

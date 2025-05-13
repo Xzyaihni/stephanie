@@ -22,7 +22,6 @@ use yanyaengine::{
 };
 
 use crate::{
-    some_or_value,
     client::RenderCreateInfo,
     common::{
         render_info::*,
@@ -482,41 +481,32 @@ impl UiElementCached
 
     fn keep_old<Id: Eq>(&self, new: &mut Self, old_element: &UiElement<Id>, new_element: &UiElement<Id>)
     {
-        macro_rules! fields_match
+        macro_rules! fields_different
         {
             ($($field:ident),+) =>
             {
-                true $(&& old_element.$field == new_element.$field)+
+                false $(|| old_element.$field != new_element.$field)+
             }
         }
 
-        if fields_match!(texture, animation, inherit_animation, position, children_layout, width, height, scissor)
+        if fields_different!(texture, animation)
         {
-            debug_assert!(old_element.mix != new_element.mix);
+            return;
+        }
 
+        if new_element.animation.mix.is_some()
+        {
             new.mix = self.mix;
-            new.scale = self.scale;
         }
 
-        if fields_match!(texture, mix, animation, inherit_animation, children_layout, width, height, scissor)
+        if new_element.animation.position.is_some()
         {
-            debug_assert!(old_element.position != new_element.position);
+            new.position = self.position;
+        }
 
-            let keep = match (&old_element.position, &new_element.position)
-            {
-                (UiPosition::Next(_), UiPosition::Next(_))
-                | (UiPosition::Absolute(_), UiPosition::Absolute(_)) => true,
-                (UiPosition::Offset(old_id, _), UiPosition::Offset(new_id, _)) if old_id == new_id => true,
-                _ => false
-            };
-
-            if keep
-            {
-                if new_element.animation.position.is_some()
-                {
-                    new.position = self.position;
-                }
-            }
+        if new_element.animation.scaling.is_some()
+        {
+            new.scale = self.scale;
         }
     }
 }
@@ -1167,10 +1157,7 @@ impl<Id: Idable> Controller<Id>
 
                 *closing = false;
 
-                if *old_element == this.element
-                {
-                    old_cached.update(create_info, &parent_fraction, &this.deferred, old_element, dt);
-                } else
+                if *old_element != this.element
                 {
                     let mut cached = UiElementCached::from_element(
                         create_info,
@@ -1185,6 +1172,8 @@ impl<Id: Idable> Controller<Id>
 
                     *old_element = this.element.clone();
                 }
+
+                old_cached.update(create_info, &parent_fraction, &this.deferred, old_element, dt);
 
                 *old_deferred = this.deferred.clone();
 

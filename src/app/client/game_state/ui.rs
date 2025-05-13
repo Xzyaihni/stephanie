@@ -1,4 +1,5 @@
 use std::{
+    hash::{Hash, Hasher},
     rc::Rc,
     cell::RefCell,
     sync::Arc
@@ -26,6 +27,7 @@ use crate::{
     },
     common::{
         some_or_return,
+        some_or_value,
         render_info::*,
         anatomy::*,
         EaseOut,
@@ -49,6 +51,7 @@ mod controller;
 const TITLE_PADDING: f32 = 0.02;
 const ITEM_PADDING: f32 = 10.0;
 const BODY_PADDING: f32 = 20.0;
+const NOTIFICATION_PADDING: f32 = 10.0;
 
 const BUTTON_SIZE: f32 = 40.0;
 const SCROLLBAR_HEIGHT: f32 = BUTTON_SIZE * 5.0;
@@ -56,9 +59,6 @@ const SCROLLBAR_HEIGHT: f32 = BUTTON_SIZE * 5.0;
 const SEPARATOR_SIZE: f32 = 3.0;
 
 const SMALL_TEXT_SIZE: u32 = 20;
-
-const NOTIFICATION_HEIGHT: f32 = 0.0375;
-const NOTIFICATION_WIDTH: f32 = NOTIFICATION_HEIGHT * 4.0;
 
 const BACKGROUND_COLOR: [f32; 4] = [0.923, 0.998, 1.0, 1.0];
 const ACCENT_COLOR: [f32; 4] = [1.0, 0.393, 0.901, 1.0];
@@ -71,6 +71,7 @@ enum UiId
     Screen,
     Padding(u32),
     Console(ConsolePart),
+    Notification(NotificationInfo, NotificationPart),
     Popup(u8, PopupPart),
     Window(UiIdWindow, WindowPart)
 }
@@ -84,6 +85,13 @@ impl Idable for UiId
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 enum ConsolePart
+{
+    Body,
+    Text
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+enum NotificationPart
 {
     Body,
     Text
@@ -179,25 +187,38 @@ enum UiIdTitleButton
 type UiController = Controller<UiId>;
 type UiParentElement<'a> = TreeInserter<'a, UiId>;
 
-pub enum NotificationSeverity
-{
-    Normal,
-    DamageMinor,
-    Damage,
-    DamageMajor
-}
-
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum NotificationKindInfo
 {
-    Bar{name: String, color: [f32; 3], amount: f32},
-    Text{severity: NotificationSeverity, text: String}
+    Text{text: String}
 }
 
+#[derive(Debug, Clone)]
 pub struct NotificationInfo
 {
     pub owner: Entity,
     pub lifetime: f32,
     pub kind: NotificationKindInfo
+}
+
+impl PartialEq for NotificationInfo
+{
+    fn eq(&self, other: &Self) -> bool
+    {
+        self.owner == other.owner
+            && self.kind == other.kind
+    }
+}
+
+impl Eq for NotificationInfo {}
+
+impl Hash for NotificationInfo
+{
+    fn hash<H: Hasher>(&self, state: &mut H)
+    {
+        self.owner.hash(state);
+        self.kind.hash(state);
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -806,10 +827,12 @@ pub struct Ui
     fonts: Rc<FontsContainer>,
     anatomy_locations: UiAnatomyLocations,
     user_receiver: Rc<RefCell<UiReceiver>>,
+    camera: Entity,
     controller: UiController,
     mouse_position: Vector2<f32>,
     console_contents: Option<String>,
     windows: Vec<Window>,
+    notifications: Vec<NotificationInfo>,
     popup_unique_id: u8,
     popup: Option<(Vector2<f32>, Entity, Vec<GameUiEvent>)>
 }
@@ -820,6 +843,7 @@ impl Ui
         items_info: Arc<ItemsInfo>,
         info: &ObjectCreateInfo,
         entities: &mut ClientEntities,
+        camera: Entity,
         anatomy_locations: UiAnatomyLocations,
         user_receiver: Rc<RefCell<UiReceiver>>
     ) -> Rc<RefCell<Self>>
@@ -831,10 +855,12 @@ impl Ui
             fonts: info.partial.builder_wrapper.fonts().clone(),
             anatomy_locations,
             user_receiver,
+            camera,
             controller,
             mouse_position: Vector2::zeros(),
             console_contents: None,
             windows: Vec::new(),
+            notifications: Vec::new(),
             popup_unique_id: 0,
             popup: None
         };
@@ -852,7 +878,7 @@ impl Ui
 
             broken.into_iter().for_each(|part|
             {
-                let severity = match part.kind
+                /*let severity = match part.kind
                 {
                     BrokenKind::Skin => NotificationSeverity::DamageMinor,
                     BrokenKind::Muscle => NotificationSeverity::Damage,
@@ -866,7 +892,7 @@ impl Ui
 
                 let notification = NotificationInfo{owner: entity, lifetime: 1.0, kind};
 
-                ui.borrow_mut().set_notification(notification);
+                ui.borrow_mut().show_notification(notification);*/todo!()
             });
         }));
 
@@ -963,11 +989,21 @@ impl Ui
         self.popup = Some((self.mouse_position, owner, actions));
     }
 
-    pub fn set_notification(
+    pub fn show_notification(
         &mut self,
         notification: NotificationInfo
     )
     {
+        if let Some(index) = self.notifications.iter().position(|this|
+        {
+            *this == notification
+        })
+        {
+            self.notifications[index] = notification;
+        } else
+        {
+            self.notifications.push(notification);
+        }
     }
 
     pub fn set_tooltip(
@@ -979,6 +1015,59 @@ impl Ui
 
     pub fn update(&mut self, entities: &ClientEntities, controls: &mut UiControls, dt: f32)
     {
+        self.notifications.retain_mut(|notification|
+        {
+            notification.lifetime -= dt;
+
+            let id = |part|
+            {
+                UiId::Notification(notification.clone(), part)
+            };
+
+            let owner_transform = some_or_value!(entities.transform(notification.owner), false);
+            let camera_transform = some_or_value!(entities.transform(self.camera), false);
+
+            let owner_position = owner_transform.position.xy() - camera_transform.position.xy();
+            let position_absolute = owner_position - Vector2::new(0.0, owner_transform.scale.y * 0.5);
+
+            let position = position_absolute / camera_transform.scale.xy().max();
+
+            let body = self.controller.update(id(NotificationPart::Body), UiElement{
+                texture: UiTexture::Solid,
+                mix: Some(MixColor::color(BACKGROUND_COLOR)),
+                position: UiPosition::Absolute(position),
+                animation: Animation{
+                    position: Some(10.0),
+                    ..Animation::normal()
+                },
+                ..Default::default()
+            });
+
+            if let Some(height) = body.try_height()
+            {
+                let offset = height * 0.5;
+                body.element().position = UiPosition::Absolute(position - Vector2::new(0.0, offset));
+            }
+
+            add_padding_horizontal(body, UiSize::Pixels(NOTIFICATION_PADDING).into());
+
+            match &notification.kind
+            {
+                NotificationKindInfo::Text{text} =>
+                {
+                    body.update(id(NotificationPart::Text), UiElement{
+                        texture: UiTexture::Text{text: text.clone(), font_size: SMALL_TEXT_SIZE},
+                        mix: Some(MixColor{keep_transparency: true, ..MixColor::color(ACCENT_COLOR)}),
+                        ..UiElement::fit_content()
+                    });
+                }
+            }
+
+            add_padding_horizontal(body, UiSize::Pixels(NOTIFICATION_PADDING).into());
+
+            notification.lifetime > 0.0
+        });
+
         let popup_taken = {
             if self.controller.input_of(&UiId::Popup(self.popup_unique_id, PopupPart::Body)).is_mouse_inside()
             {
@@ -989,9 +1078,9 @@ impl Ui
             }
         };
 
-        let takes_input = self.windows.iter().enumerate().rev().find_map(|(index, window)|
+        let takes_input = self.windows.iter().rposition(|window|
         {
-            self.controller.input_of(&window.id()).is_mouse_inside().then_some(index)
+            self.controller.input_of(&window.id()).is_mouse_inside()
         });
 
         self.windows.iter_mut().enumerate().for_each(|(index, x)|
