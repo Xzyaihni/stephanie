@@ -91,8 +91,12 @@ pub struct SizeForwardInfo<SizeGet>
     pub get_element_size: SizeGet
 }
 
-pub type SizeBackward = f32;
-pub type SizeBackwardInfo = SizeBackward;
+#[derive(Debug, Clone, Copy)]
+pub struct SizeBackwardInfo
+{
+    pub changes_total: bool,
+    pub value: f32
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum UiMinimumSize
@@ -175,7 +179,7 @@ impl<Id> UiSize<Id>
         &self,
         bounds: impl Fn() -> f32,
         parallel: bool,
-        children: impl Iterator<Item=Option<SizeBackward>> + Clone
+        children: impl Iterator<Item=Option<SizeBackwardInfo>> + Clone
     ) -> Option<f32>
     {
         match self
@@ -193,10 +197,10 @@ impl<Id> UiSize<Id>
 
                 if parallel
                 {
-                    Some(children.sum())
+                    Some(children.filter_map(|x| x.changes_total.then_some(x.value)).sum())
                 } else
                 {
-                    Some(children.max_by(|a, b| a.partial_cmp(&b).unwrap()).unwrap_or(0.0))
+                    Some(children.map(|x| x.value).max_by(|a, b| a.partial_cmp(&b).unwrap()).unwrap_or(0.0))
                 }
             },
             Self::FitContent(x) => Some(bounds() * *x),
@@ -241,7 +245,8 @@ pub enum UiPosition<Id>
 {
     Absolute(Vector2<f32>),
     Offset(Id, Vector2<f32>),
-    Next(Vector2<f32>)
+    Next(Vector2<f32>),
+    Inherit
 }
 
 impl<Id> Default for UiPosition<Id>
@@ -254,6 +259,11 @@ impl<Id> Default for UiPosition<Id>
 
 impl<Id> UiPosition<Id>
 {
+    pub fn is_inherit(&self) -> bool
+    {
+        if let Self::Inherit = self { true } else { false }
+    }
+
     pub fn next_position(
         layout: &UiLayout,
         previous: Vector2<f32>,
@@ -281,22 +291,6 @@ impl<Id> UiPosition<Id>
             {
                 Vector2::new(position_perpendicular(width), position_parallel(height, previous.y))
             }
-        }
-    }
-
-    pub fn resolve_forward(
-        &self,
-        layout: &UiLayout,
-        previous: Vector2<f32>,
-        width: PositionResolveInfo,
-        height: PositionResolveInfo
-    ) -> Vector2<f32>
-    {
-        match self
-        {
-            Self::Absolute(_) => unreachable!(),
-            Self::Offset(_, _) => unreachable!(),
-            Self::Next(_) => Self::next_position(layout, previous, width, height)
         }
     }
 }
@@ -350,7 +344,7 @@ impl ResolvedSize
         self.value().unwrap()
     }
 
-    fn as_resolved<Id>(value: Option<f32>, size: &UiSize<Id>) -> Option<SizeBackward>
+    fn as_resolved<Id>(value: Option<f32>, size: &UiSize<Id>) -> Option<f32>
     {
         if let Some(x) = value
         {
@@ -373,7 +367,7 @@ impl ResolvedSize
         parallel: bool,
         size: &UiElementSize<Id>,
         children: impl Iterator<Item=Option<SizeBackwardInfo>> + Clone
-    ) -> Option<SizeBackward>
+    ) -> Option<f32>
     {
         if self.minimum_size.map(|x| x.is_none()).unwrap_or(false)
         {

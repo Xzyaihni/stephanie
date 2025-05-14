@@ -41,7 +41,6 @@ use crate::{
     client::RenderCreateInfo,
     common::{
         some_or_return,
-        some_or_value,
         sender_loop,
         receiver_loop,
         render_info::*,

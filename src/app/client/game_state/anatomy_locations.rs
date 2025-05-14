@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use image::{Rgba, DynamicImage, RgbaImage};
 
 use nalgebra::Vector2;
@@ -57,8 +55,7 @@ impl UiAnatomyLocation
 
 pub struct UiAnatomyLocations
 {
-    pub aspect: f32,
-    pub locations: HashMap<HumanPartId, UiAnatomyLocation>
+    pub locations: Vec<(HumanPartId, UiAnatomyLocation)>
 }
 
 impl UiAnatomyLocations
@@ -69,15 +66,12 @@ impl UiAnatomyLocations
     ) -> Self
     {
         let base_image = base_image.into_rgba8();
-        let aspect = base_image.width() as f32 / base_image.height() as f32;
 
-        let color_pairs: HashMap<HumanPartId, Rgba<u8>> = [
+        let color_pairs: Vec<(HumanPartId, Rgba<u8>)> = [
             (HumanPartId::Head, 0xff0000),
             (HumanPartId::Spine, 0xdda0dd),
             (HumanPartId::Torso, 0x00008b),
             (HumanPartId::Pelvis, 0x00fa9a),
-            (HumanPartId::Eye(Side1d::Right), 0x696969),
-            (HumanPartId::Eye(Side1d::Left), 0xf5f5f5),
             (HumanPartId::Arm(Side1d::Right), 0xff1493),
             (HumanPartId::Arm(Side1d::Left), 0xff8c00),
             (HumanPartId::Forearm(Side1d::Right), 0x8b0000),
@@ -89,7 +83,9 @@ impl UiAnatomyLocations
             (HumanPartId::Calf(Side1d::Right), 0x00ffff),
             (HumanPartId::Calf(Side1d::Left), 0xff00ff),
             (HumanPartId::Foot(Side1d::Right), 0x00bfff),
-            (HumanPartId::Foot(Side1d::Left), 0xf0e68c)
+            (HumanPartId::Foot(Side1d::Left), 0xf0e68c),
+            (HumanPartId::Eye(Side1d::Right), 0x696969),
+            (HumanPartId::Eye(Side1d::Left), 0xf5f5f5)
         ].into_iter().map(|(key, value): (_, u32)|
         {
             let r = (value >> (8 * 2)) & 0xff;
@@ -101,17 +97,17 @@ impl UiAnatomyLocations
             (key, color)
         }).collect();
 
-        let locations: HashMap<_, _> = HumanPartId::iter().map(|id|
+        let locations: Vec<_> = HumanPartId::iter().map(|id|
         {
             let location = UiAnatomyLocation::from_color(
                 &mut part_creator,
                 &base_image,
-                color_pairs[&id]
+                color_pairs.iter().find(|(this_id, _)| *this_id == id).unwrap().1
             );
 
             (id, location)
         }).collect();
 
-        Self{aspect, locations}
+        Self{locations}
     }
 }

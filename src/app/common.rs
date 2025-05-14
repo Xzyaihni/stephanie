@@ -91,6 +91,7 @@ pub use world::{PosDirection, Pos3, Axis, FlatChunksContainer, ChunksContainer};
 pub use joint::Joint;
 
 pub mod utility;
+pub mod colors;
 
 pub mod sides;
 pub mod lisp;

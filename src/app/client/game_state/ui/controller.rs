@@ -92,14 +92,22 @@ impl<Id> Clone for TreeInserter<'_, Id>
 #[allow(dead_code)]
 impl<'a, Id: Idable> TreeInserter<'a, Id>
 {
-    fn tree_element(&self) -> Ref<TreeElement<Id>>
+    fn tree_element(&self) -> Ref<'a, TreeElement<Id>>
     {
         Ref::map(self.elements.borrow(), |x| &x[self.index])
     }
 
-    fn tree_element_mut(&self) -> RefMut<TreeElement<Id>>
+    fn tree_element_mut(&self) -> RefMut<'a, TreeElement<Id>>
     {
         RefMut::map(self.elements.borrow_mut(), |x| &mut x[self.index])
+    }
+
+    pub fn input_of<'b>(&self, id: &'b Id) -> InputHandler<'b, Id>
+    {
+        let shared = self.tree_element().shared.clone();
+        let mouse_position = shared.borrow().mouse_position;
+
+        InputHandler{mouse_position, shared, id}
     }
 
     pub fn update(&self, id: Id, element: UiElement<Id>) -> TreeInserter<'a, Id>
@@ -643,6 +651,25 @@ impl UiDeferredInfo
         parent_element: &UiElement<Id>
     ) -> Option<Vector2<f32>>
     {
+        let resolve_inherit = || -> Option<_>
+        {
+            let parent_position = parent.position?;
+            Some(UiPosition::<Id>::next_position(
+                &parent_element.children_layout,
+                parent_position,
+                PositionResolveInfo{
+                    this: self.width.value()?,
+                    previous: -parent.width.value()?,
+                    parent_position: parent_position.x
+                },
+                PositionResolveInfo{
+                    this: self.height.value()?,
+                    previous: -parent.height.value()?,
+                    parent_position: parent_position.y
+                }
+            ))
+        };
+
         match &element.position
         {
             UiPosition::Absolute(x) => Some(*x),
@@ -652,11 +679,11 @@ impl UiDeferredInfo
             },
             UiPosition::Next(offset) =>
             {
-                let parent_position = parent.position?;
                 Some((if let Some(previous) = previous
                 {
+                    let parent_position = parent.position?;
                     let previous_position = previous.position?;
-                    element.position.resolve_forward(
+                    UiPosition::<Id>::next_position(
                         &parent_element.children_layout,
                         previous_position,
                         PositionResolveInfo{
@@ -672,22 +699,10 @@ impl UiDeferredInfo
                     )
                 } else
                 {
-                    UiPosition::<Id>::next_position(
-                        &parent_element.children_layout,
-                        parent_position,
-                        PositionResolveInfo{
-                            this: self.width.value()?,
-                            previous: -parent.width.value()?,
-                            parent_position: parent_position.x
-                        },
-                        PositionResolveInfo{
-                            this: self.height.value()?,
-                            previous: -parent.height.value()?,
-                            parent_position: parent_position.y
-                        }
-                    )
+                    resolve_inherit()?
                 }) + *offset)
-            }
+            },
+            UiPosition::Inherit => resolve_inherit()
         }
     }
 
@@ -695,6 +710,7 @@ impl UiDeferredInfo
         &mut self,
         sizer: &TextureSizer,
         element: &UiElement<Id>,
+        changes_total: bool,
         children: Vec<ResolvedBackward>
     ) -> ResolvedBackward
     {
@@ -708,13 +724,13 @@ impl UiDeferredInfo
                 is_width_parallel,
                 &element.width,
                 children.iter().map(|x| x.width.clone())
-            ),
+            ).map(|value| SizeBackwardInfo{changes_total, value}),
             height: self.height.resolve_backward(
                 || texture_size().y,
                 !is_width_parallel,
                 &element.height,
                 children.iter().map(|x| x.height.clone())
-            )
+            ).map(|value| SizeBackwardInfo{changes_total, value})
         }
     }
 
@@ -732,6 +748,7 @@ pub struct TreeElement<Id>
     id: Id,
     element: UiElement<Id>,
     deferred: UiDeferredInfo,
+    is_first_child: Option<bool>,
     children: Vec<usize>,
     shared: Rc<RefCell<SharedInfo<Id>>>
 }
@@ -758,6 +775,7 @@ impl<Id: Idable> TreeElement<Id>
             element,
             deferred: UiDeferredInfo::default(),
             children: Vec::new(),
+            is_first_child: None,
             shared
         }
     }
@@ -772,6 +790,7 @@ impl<Id: Idable> TreeElement<Id>
             element: UiElement::default(),
             deferred: UiDeferredInfo::screen(aspect),
             children: Vec::new(),
+            is_first_child: Some(true),
             shared
         }
     }
@@ -799,7 +818,14 @@ impl<Id: Idable> TreeElement<Id>
 
         let resolved = {
             let this = &mut trees[index];
-            this.deferred.resolve_backward(sizer, &this.element, infos)
+
+            let ignored_total = !this.is_first_child.unwrap() && this.element.position.is_inherit();
+            this.deferred.resolve_backward(
+                sizer,
+                &this.element,
+                !ignored_total,
+                infos
+            )
         };
 
         macro_rules! for_children
@@ -858,6 +884,8 @@ impl<Id: Idable> TreeElement<Id>
 
                 (this, parent, None)
             };
+
+            this.is_first_child = Some(previous.is_none());
 
             let shared = this.shared.borrow();
 
@@ -1042,7 +1070,7 @@ impl<Id: Idable> SharedInfo<Id>
 pub struct InputHandler<'a, Id>
 {
     mouse_position: Vector2<f32>,
-    shared: &'a RefCell<SharedInfo<Id>>,
+    shared: Rc<RefCell<SharedInfo<Id>>>,
     id: &'a Id
 }
 
@@ -1086,9 +1114,9 @@ impl<Id: Idable> Controller<Id>
         }.update(id, element)
     }
 
-    pub fn input_of<'a>(&'a self, id: &'a Id) -> InputHandler<'a, Id>
+    pub fn input_of<'a>(&self, id: &'a Id) -> InputHandler<'a, Id>
     {
-        InputHandler{mouse_position: self.shared.borrow().mouse_position, shared: &self.shared, id}
+        InputHandler{mouse_position: self.shared.borrow().mouse_position, shared: self.shared.clone(), id}
     }
 
     fn prepare(&mut self)

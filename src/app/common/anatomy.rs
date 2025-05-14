@@ -469,6 +469,27 @@ impl<Data> BodyPart<Data>
         }
     }
 
+    pub fn average_health(&self) -> f32
+    {
+        let mut count = 0;
+        let mut total = 0.0;
+
+        let mut with_total = |value: Option<Health>|
+        {
+            if let Some(value) = value
+            {
+                count += 1;
+                total += value.fraction();
+            }
+        };
+
+        with_total(Some(*self.bone));
+        with_total(*self.skin);
+        with_total(*self.muscle);
+
+        total / count as f32
+    }
+
     fn damage(&mut self, damage: Damage) -> Option<Damage>
     where
         Data: DamageReceiver + Debug

@@ -1,4 +1,5 @@
 use std::{
+    f32,
     hash::{Hash, Hasher},
     rc::Rc,
     cell::RefCell,
@@ -30,6 +31,7 @@ use crate::{
         some_or_value,
         render_info::*,
         anatomy::*,
+        colors::*,
         EaseOut,
         Item,
         ItemId,
@@ -63,6 +65,8 @@ const SMALL_TEXT_SIZE: u32 = 20;
 const BACKGROUND_COLOR: [f32; 4] = [0.923, 0.998, 1.0, 1.0];
 const ACCENT_COLOR: [f32; 4] = [1.0, 0.393, 0.901, 1.0];
 const HIGHLIGHTED_COLOR: [f32; 4] = [1.0, 0.659, 0.848, 1.0];
+
+const MISSING_PART_COLOR: [f32; 4] = [0.0, 0.0, 0.05, 0.5];
 
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -122,7 +126,13 @@ enum WindowPart
     Inventory(InventoryPart),
     ItemInfo,
     Stats,
-    Anatomy
+    Anatomy(AnatomyPart)
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+enum AnatomyPart
+{
+    BodyPart(HumanPartId)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -219,12 +229,6 @@ impl Hash for NotificationInfo
         self.owner.hash(state);
         self.kind.hash(state);
     }
-}
-
-#[derive(Debug, Clone)]
-pub enum TooltipInfo
-{
-    Anatomy{entity: Entity, id: HumanPartId}
 }
 
 pub type InventoryOnClick = Box<dyn FnMut(Entity, InventoryItem) -> UiEvent>;
@@ -610,12 +614,9 @@ impl WindowKind
         {
             Self::Inventory(inventory) =>
             {
-                let id = {
-                    let window_id = window_id.clone();
-                    move |part|
-                    {
-                        UiId::Window(window_id.clone(), WindowPart::Inventory(part))
-                    }
+                let id = move |part|
+                {
+                    UiId::Window(window_id.clone(), WindowPart::Inventory(part))
                 };
 
                 let name = name_of(inventory.entity);
@@ -711,12 +712,9 @@ impl WindowKind
                 let title = format!("info about - {}", item_info.name);
                 let body = with_titlebar(parent, &mut info, title, &[]);
 
-                let id = {
-                    let window_id = window_id.clone();
-                    move ||
-                    {
-                        UiId::Window(window_id.clone(), WindowPart::ItemInfo)
-                    }
+                let id = move ||
+                {
+                    UiId::Window(window_id.clone(), WindowPart::ItemInfo)
                 };
 
                 let description = format!(
@@ -755,16 +753,63 @@ impl WindowKind
             {
                 let title = name_of(*owner);
                 let body = with_titlebar(parent, &mut info, title, &[]);
+                body.element().children_layout = UiLayout::Vertical;
 
-                add_padding_horizontal(body, UiSize::Pixels(BODY_PADDING).into());
+                let id = move |part|
+                {
+                    UiId::Window(window_id.clone(), WindowPart::Anatomy(part))
+                };
 
-                body.update(UiId::Window(window_id.clone(), WindowPart::Anatomy), UiElement{
-                    texture: UiTexture::Text{text: "anatomyyyyyy".to_owned(), font_size: SMALL_TEXT_SIZE},
-                    mix: Some(MixColor{keep_transparency: true, ..MixColor::color(ACCENT_COLOR)}),
-                    ..UiElement::fit_content()
+                let anatomy = if let Some(x) = info.entities.anatomy(*owner)
+                {
+                    x
+                } else
+                {
+                    close_this(&mut info);
+                    return;
+                };
+
+                let selected_index = info.anatomy_locations.locations.iter().rposition(|(part_id, location)|
+                {
+                    let id = id(AnatomyPart::BodyPart(*part_id));
+                    body.input_of(&id).mouse_position_inside().map(|position|
+                    {
+                        location.mask.is_inside(position)
+                    }).unwrap_or(false)
                 });
 
-                add_padding_horizontal(body, UiSize::Pixels(BODY_PADDING).into());
+                info.anatomy_locations.locations.iter().enumerate().for_each(|(index, (part_id, location))|
+                {
+                    let selected = selected_index == Some(index);
+
+                    let health_color = anatomy.get_human(*part_id).unwrap().map(|part|
+                    {
+                        // pi radians is lab green, 0 is red
+                        let x = part.average_health();
+                        let color = Lch{l: 50.0, c: 100.0, h: x * (f32::consts::PI * 0.8)};
+
+                        let [r, g, b] = Rgb::from(if selected
+                        {
+                            color.with_added_lightness(30.0)
+                        } else
+                        {
+                            color
+                        }).0;
+
+                        [r, g, b, 1.0]
+                    }).unwrap_or(MISSING_PART_COLOR);
+
+                    body.update(id(AnatomyPart::BodyPart(*part_id)), UiElement{
+                        texture: UiTexture::CustomId(location.id),
+                        mix: Some(MixColor{keep_transparency: true, ..MixColor::color(health_color)}),
+                        position: UiPosition::Inherit,
+                        animation: Animation{
+                            mix: Some(15.0),
+                            ..Default::default()
+                        },
+                        ..UiElement::fit_content()
+                    });
+                });
             }
         }
     }
@@ -815,6 +860,7 @@ pub struct UpdateInfo<'a, 'b, 'c>
     pub entities: &'a ClientEntities,
     pub items_info: &'a ItemsInfo,
     pub fonts: &'a FontsContainer,
+    pub anatomy_locations: &'a UiAnatomyLocations,
     pub mouse_taken: bool,
     pub controls: &'b mut UiControls,
     pub user_receiver: &'c mut UiReceiver,
@@ -1006,13 +1052,6 @@ impl Ui
         }
     }
 
-    pub fn set_tooltip(
-        &mut self,
-        tooltip: TooltipInfo
-    )
-    {
-    }
-
     pub fn update(&mut self, entities: &ClientEntities, controls: &mut UiControls, dt: f32)
     {
         self.notifications.retain_mut(|notification|
@@ -1094,6 +1133,7 @@ impl Ui
                 entities: entities,
                 items_info: &self.items_info,
                 fonts: &self.fonts,
+                anatomy_locations: &self.anatomy_locations,
                 mouse_taken: window_taken || popup_taken,
                 controls: controls,
                 user_receiver: &mut self.user_receiver.borrow_mut(),
