@@ -1,5 +1,6 @@
 use std::{
     fmt,
+    mem,
     hash::Hash,
     rc::Rc,
     cell::{Ref, RefMut, RefCell},
@@ -1163,7 +1164,8 @@ impl<Id: Idable> Controller<Id>
 
         self.shared.borrow_mut().elements.iter_mut().for_each(|element| element.closing = true);
 
-        let mut last_match = None;
+        let mut replace_elements = Vec::new();
+
         created_trees[0].for_each(&created_trees, |parent, this|
         {
             let parent_fraction = parent.as_ref().and_then(|parent|
@@ -1178,39 +1180,41 @@ impl<Id: Idable> Controller<Id>
             let index = self.shared.borrow().element_id(&this.id);
             if let Some(index) = index
             {
-                last_match = Some(index);
-
-                let Element{
-                    element: old_element,
-                    cached: old_cached,
-                    deferred: old_deferred,
-                    closing,
-                    ..
-                } = &mut self.shared.borrow_mut().elements[index];
-
-                *closing = false;
-
-                if *old_element != this.element
                 {
-                    let mut cached = UiElementCached::from_element(
-                        create_info,
-                        &parent_fraction,
-                        &this.deferred,
-                        &this.element
-                    );
+                    let Element{
+                        element: old_element,
+                        cached: old_cached,
+                        deferred: old_deferred,
+                        closing,
+                        ..
+                    } = &mut self.shared.borrow_mut().elements[index];
 
-                    old_cached.keep_old(&mut cached, old_element, &this.element);
+                    *closing = false;
 
-                    *old_cached = cached;
+                    if *old_element != this.element
+                    {
+                        let mut cached = UiElementCached::from_element(
+                            create_info,
+                            &parent_fraction,
+                            &this.deferred,
+                            &this.element
+                        );
 
-                    *old_element = this.element.clone();
+                        old_cached.keep_old(&mut cached, old_element, &this.element);
+
+                        *old_cached = cached;
+
+                        *old_element = this.element.clone();
+                    }
+
+                    old_cached.update(create_info, &parent_fraction, &this.deferred, old_element, dt);
+
+                    *old_deferred = this.deferred.clone();
+
+                    old_cached.update_fraction(&parent_fraction, old_deferred);
                 }
 
-                old_cached.update(create_info, &parent_fraction, &this.deferred, old_element, dt);
-
-                *old_deferred = this.deferred.clone();
-
-                old_cached.update_fraction(&parent_fraction, old_deferred);
+                replace_elements.push(self.shared.borrow_mut().elements.remove(index));
             } else
             {
                 let cached = UiElementCached::from_element(
@@ -1234,19 +1238,15 @@ impl<Id: Idable> Controller<Id>
 
                 element.cached.update_fraction(&element.parent_fraction, &element.deferred);
 
-                let elements = &mut self.shared.borrow_mut().elements;
-
-                if let Some(index) = last_match
-                {
-                    elements.insert(index + 1, element);
-
-                    last_match = Some(index + 1);
-                } else
-                {
-                    elements.push(element);
-                }
+                replace_elements.push(element);
             }
         });
+
+        {
+            let mut shared = self.shared.borrow_mut();
+
+            shared.elements = mem::take(&mut shared.elements).into_iter().chain(replace_elements).collect();
+        }
 
         {
             let mut shared = self.shared.borrow_mut();
