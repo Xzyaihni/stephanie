@@ -165,6 +165,16 @@ impl From<Lch> for Rgb<f32>
     }
 }
 
+impl From<Lch> for [f32; 4]
+{
+    fn from(value: Lch) -> Self
+    {
+        let [r, g, b] = Rgb::from(Lab::from(value)).0;
+
+        [r, g, b, 1.0]
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct Lab
 {

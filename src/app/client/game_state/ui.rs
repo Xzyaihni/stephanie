@@ -77,7 +77,29 @@ enum UiId
     Console(ConsolePart),
     Notification(NotificationInfo, NotificationPart),
     Popup(u8, PopupPart),
-    Window(UiIdWindow, WindowPart)
+    Window(UiIdWindow, WindowPart),
+    BarsBody,
+    BarsBodyInner,
+    BarDisplay(BarDisplayKind, BarDisplayPart)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum BarDisplayKind
+{
+    Stamina,
+    Cooldown
+}
+
+impl BarDisplayKind
+{
+    fn name(self) -> String
+    {
+        match self
+        {
+            Self::Stamina => "STAMINA".to_owned(),
+            Self::Cooldown => "COOLDOWN".to_owned()
+        }
+    }
 }
 
 impl Idable for UiId
@@ -85,6 +107,15 @@ impl Idable for UiId
     fn screen() -> Self { Self::Screen }
 
     fn padding(id: u32) -> Self { Self::Padding(id) }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+enum BarDisplayPart
+{
+    Body,
+    Bar,
+    BarFill,
+    Text
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -788,15 +819,13 @@ impl WindowKind
                         let x = part.average_health();
                         let color = Lch{l: 50.0, c: 100.0, h: x * (f32::consts::PI * 0.8)};
 
-                        let [r, g, b] = Rgb::from(if selected
+                        if selected
                         {
                             color.with_added_lightness(30.0)
                         } else
                         {
                             color
-                        }).0;
-
-                        [r, g, b, 1.0]
+                        }.into()
                     }).unwrap_or(MISSING_PART_COLOR);
 
                     body.update(id(AnatomyPart::BodyPart(*part_id)), UiElement{
@@ -867,6 +896,21 @@ pub struct UpdateInfo<'a, 'b, 'c>
     pub dt: f32
 }
 
+#[derive(Debug, Clone, Copy)]
+struct BarDisplay
+{
+    lifetime: f32,
+    value: f32
+}
+
+impl Default for BarDisplay
+{
+    fn default() -> Self
+    {
+        Self{lifetime: 0.0, value: 0.0}
+    }
+}
+
 pub struct Ui
 {
     items_info: Arc<ItemsInfo>,
@@ -878,6 +922,8 @@ pub struct Ui
     mouse_position: Vector2<f32>,
     console_contents: Option<String>,
     windows: Vec<Window>,
+    stamina: BarDisplay,
+    cooldown: BarDisplay,
     notifications: Vec<NotificationInfo>,
     popup_unique_id: u8,
     popup: Option<(Vector2<f32>, Entity, Vec<GameUiEvent>)>
@@ -906,6 +952,8 @@ impl Ui
             mouse_position: Vector2::zeros(),
             console_contents: None,
             windows: Vec::new(),
+            stamina: BarDisplay::default(),
+            cooldown: BarDisplay::default(),
             notifications: Vec::new(),
             popup_unique_id: 0,
             popup: None
@@ -1050,6 +1098,22 @@ impl Ui
         {
             self.notifications.push(notification);
         }
+    }
+
+    pub fn set_stamina(&mut self, value: f32)
+    {
+        self.stamina = BarDisplay{
+            lifetime: 1.0,
+            value
+        };
+    }
+
+    pub fn set_cooldown(&mut self, value: f32)
+    {
+        self.cooldown = BarDisplay{
+            lifetime: 1.0,
+            value
+        };
     }
 
     pub fn update(&mut self, entities: &ClientEntities, controls: &mut UiControls, dt: f32)
@@ -1221,6 +1285,66 @@ impl Ui
                 self.popup = None;
             }
         }
+
+        let bars_body_outer = self.controller.update(UiId::BarsBody, UiElement{
+            width: UiSize::Rest(1.0).into(),
+            height: UiSize::Rest(1.0).into(),
+            position: UiPosition::Inherit,
+            ..Default::default()
+        });
+
+        let bars_body = bars_body_outer.update(UiId::BarsBodyInner, UiElement{
+            height: UiSize::Rest(1.0).into(),
+            children_layout: UiLayout::Vertical,
+            ..Default::default()
+        });
+
+        add_padding_horizontal(bars_body_outer, UiSize::Rest(1.0).into());
+        add_padding_vertical(bars_body, UiSize::Rest(1.0).into());
+
+        let render_bar_display = |kind, bar: &mut BarDisplay, color: [f32; 4]|
+        {
+            if bar.lifetime > 0.0
+            {
+                let body = bars_body.update(UiId::BarDisplay(kind, BarDisplayPart::Body), UiElement{
+                    texture: UiTexture::Solid,
+                    mix: Some(MixColor::color([0.0, 0.0, 0.05, 0.2])),
+                    width: UiSize::Pixels(300.0).into(),
+                    children_layout: UiLayout::Vertical,
+                    ..Default::default()
+                });
+
+                let text_id = UiId::BarDisplay(kind, BarDisplayPart::Text);
+
+                let bar_body = body.update(UiId::BarDisplay(kind, BarDisplayPart::Bar), UiElement{
+                    width: UiSize::Rest(1.0).into(),
+                    height: UiSize::CopyElement(UiDirection::Vertical, 1.0, text_id.clone()).into(),
+                    ..Default::default()
+                });
+
+                bar_body.update(UiId::BarDisplay(kind, BarDisplayPart::BarFill), UiElement{
+                    texture: UiTexture::Solid,
+                    mix: Some(MixColor::color(color)),
+                    width: UiSize::Rest(bar.value).into(),
+                    height: UiSize::Rest(1.0).into(),
+                    ..Default::default()
+                });
+
+                add_padding_horizontal(bar_body, UiSize::Rest(1.0 - bar.value).into());
+
+                body.update(text_id, UiElement{
+                    texture: UiTexture::Text{text: kind.name(), font_size: 30},
+                    mix: Some(MixColor{keep_transparency: true, ..MixColor::color([1.0, 1.0, 1.0, 1.0])}),
+                    position: UiPosition::Inherit,
+                    ..UiElement::fit_content()
+                });
+
+                bar.lifetime -= dt;
+            }
+        };
+
+        render_bar_display(BarDisplayKind::Stamina, &mut self.stamina, Lch{l: 70.0, c: 120.0, h: 1.5}.into());
+        render_bar_display(BarDisplayKind::Cooldown, &mut self.cooldown, Lch{l: 50.0, c: 100.0, h: 4.0}.into());
 
         if let Some(text) = self.console_contents.clone()
         {

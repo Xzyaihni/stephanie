@@ -1106,12 +1106,17 @@ impl<Id: Idable> Controller<Id>
         }
     }
 
-    pub fn update(&self, id: Id, element: UiElement<Id>) -> TreeInserter<Id>
+    pub fn as_inserter(&self) -> TreeInserter<Id>
     {
         TreeInserter{
             elements: &self.created_trees,
             index: 0
-        }.update(id, element)
+        }
+    }
+
+    pub fn update(&self, id: Id, element: UiElement<Id>) -> TreeInserter<Id>
+    {
+        self.as_inserter().update(id, element)
     }
 
     pub fn input_of<'a>(&self, id: &'a Id) -> InputHandler<'a, Id>

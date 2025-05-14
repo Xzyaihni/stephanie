@@ -1307,8 +1307,6 @@ impl<'a> PlayerContainer<'a>
             (x.stamina_fraction(entities), x.attack_cooldown())
         })
         {
-            let delay = 0.7;
-
             if self.info.previous_stamina != current_stamina
             {
                 let was_none = self.info.previous_stamina.is_none();
@@ -1317,7 +1315,8 @@ impl<'a> PlayerContainer<'a>
                 if !was_none
                 {
                     let stamina = current_stamina.unwrap_or(0.0);
-                    dbg!("show stamina here");
+
+                    self.game_state.ui.borrow_mut().set_stamina(stamina);
                 }
             }
 
@@ -1341,7 +1340,7 @@ impl<'a> PlayerContainer<'a>
                     0.0
                 };
 
-                dbg!("show weapon cooldown here");
+                self.game_state.ui.borrow_mut().set_cooldown(fraction);
             }
         }
 

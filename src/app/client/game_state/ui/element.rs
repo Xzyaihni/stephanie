@@ -102,6 +102,7 @@ pub struct SizeBackwardInfo
 pub enum UiMinimumSize
 {
     Absolute(f32),
+    Pixels(f32),
     FitChildren,
     FitContent(f32)
 }
@@ -121,6 +122,7 @@ impl UiMinimumSize
         match self
         {
             Self::Absolute(x) => UiSize::Absolute(*x),
+            Self::Pixels(x) => UiSize::Pixels(*x),
             Self::FitChildren => UiSize::FitChildren,
             Self::FitContent(x) => UiSize::FitContent(*x)
         }
