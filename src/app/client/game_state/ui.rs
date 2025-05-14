@@ -1311,6 +1311,10 @@ impl Ui
                     mix: Some(MixColor::color([0.0, 0.0, 0.05, 0.2])),
                     width: UiSize::Pixels(300.0).into(),
                     children_layout: UiLayout::Vertical,
+                    animation: Animation{
+                        position: Some(10.0),
+                        ..Default::default()
+                    },
                     ..Default::default()
                 });
 

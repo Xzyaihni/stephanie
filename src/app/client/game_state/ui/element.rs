@@ -6,7 +6,7 @@ use yanyaengine::TextureId;
 
 use crate::common::render_info::*;
 
-pub use crate::common::lazy_transform::Scaling;
+pub use crate::common::lazy_transform::{Scaling, Connection};
 
 
 // i wanted to do this with FlatChunksContainer but i dont like how i made that one
@@ -547,6 +547,7 @@ pub struct ScalingAnimation
 {
     pub start_scaling: Vector2<f32>,
     pub start_mode: Scaling,
+    pub close_scaling: Vector2<f32>,
     pub close_mode: Scaling
 }
 
@@ -557,9 +558,19 @@ impl Default for ScalingAnimation
         Self{
             start_scaling: Vector2::repeat(1.0),
             start_mode: Scaling::Instant,
+            close_scaling: Vector2::new(1.0, 0.0),
             close_mode: Scaling::Ignore
         }
     }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct PositionAnimation
+{
+    pub start_position: Vector2<f32>,
+    pub start_mode: Connection,
+    pub close_position: Vector2<f32>,
+    pub close_mode: Connection
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -590,7 +601,8 @@ impl Animation
             scaling: Some(ScalingAnimation{
                 start_scaling: Vector2::new(2.0, 0.1),
                 start_mode: Scaling::EaseOut{decay: 20.0},
-                close_mode: Scaling::EaseOut{decay: 30.0}
+                close_mode: Scaling::EaseOut{decay: 30.0},
+                ..Default::default()
             }),
             ..Default::default()
         }
@@ -615,6 +627,7 @@ impl Animation
             scaling: Some(ScalingAnimation{
                 start_scaling: Vector2::new(1.0, 0.01),
                 start_mode: Scaling::EaseOut{decay: 30.0},
+                close_scaling: Vector2::new(1.0, 0.0),
                 close_mode: Scaling::EaseOut{decay: 10.0}
             }),
             ..Default::default()
@@ -625,8 +638,9 @@ impl Animation
     {
         let mut tall = Self::separator_tall();
 
-        let start_scaling = &mut tall.scaling.as_mut().unwrap().start_scaling;
-        *start_scaling = start_scaling.yx();
+        let scaling = tall.scaling.as_mut().unwrap();
+        scaling.start_scaling = scaling.start_scaling.yx();
+        scaling.close_scaling = scaling.close_scaling.yx();
 
         tall
     }

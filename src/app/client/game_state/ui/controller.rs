@@ -201,9 +201,9 @@ struct Fractions
     position_inherit: Vector2<f32>
 }
 
-impl Fractions
+impl Default for Fractions
 {
-    pub fn new() -> Self
+    fn default() -> Self
     {
         Self{
             scale: Vector2::repeat(1.0),
@@ -280,7 +280,7 @@ impl UiElementCached
         };
 
         let mut this = Self{
-            fractions: Fractions::new(),
+            fractions: Fractions::default(),
             scale,
             position,
             mix: element.mix,
@@ -318,12 +318,22 @@ impl UiElementCached
             self.fractions.position_inherit = fraction + parent_fraction.position_inherit;
         }
 
-        self.update_scale();
-        self.update_position();
+        if let Some(object) = self.object.as_mut()
+        {
+            object.modify_transform(|transform|
+            {
+                let scale = self.scale.component_mul(&self.fractions.scale);
+                transform.scale = Vector3::new(scale.x, scale.y, 1.0);
+
+                let position = self.position + self.fractions.position;
+                transform.position = Vector3::new(position.x, position.y, 0.0);
+            })
+        }
     }
 
     fn update_always<Id>(
         &mut self,
+        parent_fraction: &Fractions,
         deferred: &UiDeferredInfo,
         element: &mut UiElement<Id>,
         screen_size: Vector2<f32>,
@@ -353,11 +363,7 @@ impl UiElementCached
             target_position
         };
 
-        if self.object.is_some()
-        {
-            self.update_scale();
-            self.update_position();
-        }
+        self.update_fraction(parent_fraction, deferred);
     }
 
     fn update<Id>(
@@ -383,6 +389,7 @@ impl UiElementCached
         };
 
         self.update_always(
+            parent_fraction,
             deferred,
             old_element,
             Vector2::from(create_info.object_info.partial.size),
@@ -412,32 +419,9 @@ impl UiElementCached
         })
     }
 
-    fn update_scale(&mut self)
-    {
-        if let Some(object) = self.object.as_mut()
-        {
-            object.modify_transform(|transform|
-            {
-                let scale = self.scale.component_mul(&self.fractions.scale);
-                transform.scale = Vector3::new(scale.x, scale.y, 1.0)
-            })
-        }
-    }
-
-    fn update_position(&mut self)
-    {
-        if let Some(object) = self.object.as_mut()
-        {
-            object.modify_transform(|transform|
-            {
-                let position = self.position + self.fractions.position;
-                transform.position = Vector3::new(position.x, position.y, 0.0)
-            })
-        }
-    }
-
     fn update_closing<Id>(
         &mut self,
+        parent_fraction: &Fractions,
         deferred: &UiDeferredInfo,
         element: &mut UiElement<Id>,
         close_soon: bool,
@@ -455,8 +439,14 @@ impl UiElementCached
                 }
             }
 
+            let close_scaling = scaling.close_scaling.component_mul(&self.scale);
+
             let mut scale = Vector3::new(self.scale.x, self.scale.y, 1.0);
-            scaling.close_mode.next(&mut scale, Vector3::zeros(), dt);
+            scaling.close_mode.next(
+                &mut scale,
+                Vector3::new(close_scaling.x, close_scaling.y, 0.0),
+                dt
+            );
 
             self.scale = scale.xy();
         } else
@@ -467,7 +457,7 @@ impl UiElementCached
             }
         }
 
-        self.update_always(deferred, element, screen_size, dt);
+        self.update_always(parent_fraction, deferred, element, screen_size, dt);
 
         if self.fractions.scale.min() < MINIMUM_SCALE
         {
@@ -1164,21 +1154,26 @@ impl<Id: Idable> Controller<Id>
 
         self.shared.borrow_mut().elements.iter_mut().for_each(|element| element.closing = true);
 
-        let mut replace_elements = Vec::new();
+        let mut replace_elements: Vec<Element<Id>> = Vec::new();
 
         created_trees[0].for_each(&created_trees, |parent, this|
         {
             let parent_fraction = parent.as_ref().and_then(|parent|
             {
                 let shared = self.shared.borrow();
-                shared.element_id(&parent.id).map(|index|
+
+                let search_id = &parent.id;
+                shared.element_id(search_id).map(|index|
                 {
-                    shared.elements[index].cached.fractions.clone()
-                })
-            }).unwrap_or_else(Fractions::new);
+                    &shared.elements[index]
+                }).or_else(||
+                {
+                    replace_elements.iter().find(|x| x.id == *search_id)
+                }).map(|x| x.cached.fractions.clone())
+            }).unwrap_or_default();
 
             let index = self.shared.borrow().element_id(&this.id);
-            if let Some(index) = index
+            let mut element = if let Some(index) = index
             {
                 {
                     let Element{
@@ -1207,14 +1202,10 @@ impl<Id: Idable> Controller<Id>
                         *old_element = this.element.clone();
                     }
 
-                    old_cached.update(create_info, &parent_fraction, &this.deferred, old_element, dt);
-
                     *old_deferred = this.deferred.clone();
-
-                    old_cached.update_fraction(&parent_fraction, old_deferred);
                 }
 
-                replace_elements.push(self.shared.borrow_mut().elements.remove(index));
+                self.shared.borrow_mut().elements.remove(index)
             } else
             {
                 let cached = UiElementCached::from_element(
@@ -1224,22 +1215,21 @@ impl<Id: Idable> Controller<Id>
                     &this.element
                 );
 
-                let mut element = Element{
+                Element{
                     id: this.id.clone(),
                     parent: parent.map(|x| x.id.clone()),
-                    parent_fraction,
+                    parent_fraction: parent_fraction.clone(),
                     close_immediately: false,
                     close_soon: false,
                     element: this.element.clone(),
                     cached,
                     deferred: this.deferred.clone(),
                     closing: false
-                };
+                }
+            };
 
-                element.cached.update_fraction(&element.parent_fraction, &element.deferred);
-
-                replace_elements.push(element);
-            }
+            element.cached.update(create_info, &parent_fraction, &this.deferred, &mut element.element, dt);
+            replace_elements.push(element);
         });
 
         {
@@ -1287,14 +1277,13 @@ impl<Id: Idable> Controller<Id>
                     }
 
                     let keep = element.cached.update_closing(
+                        &element.parent_fraction,
                         &element.deferred,
                         &mut element.element,
                         element.close_soon,
                         screen_size,
                         dt
                     );
-
-                    element.cached.update_fraction(&element.parent_fraction, &element.deferred);
 
                     keep
                 } else
