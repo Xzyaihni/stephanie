@@ -564,20 +564,61 @@ impl Default for ScalingAnimation
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct PositionOffsets
+{
+    pub start: Vector2<f32>,
+    pub end: Vector2<f32>
+}
+
+impl Default for PositionOffsets
+{
+    fn default() -> Self
+    {
+        Self{
+            start: Vector2::zeros(),
+            end: Vector2::zeros()
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct PositionAnimation
 {
-    pub start_position: Vector2<f32>,
+    pub offsets: Option<PositionOffsets>,
     pub start_mode: Connection,
-    pub close_position: Vector2<f32>,
     pub close_mode: Connection
+}
+
+impl Default for PositionAnimation
+{
+    fn default() -> Self
+    {
+        Self{
+            offsets: None,
+            start_mode: Connection::Rigid,
+            close_mode: Connection::Rigid
+        }
+    }
+}
+
+impl PositionAnimation
+{
+    pub fn ease_out(decay: f32) -> Self
+    {
+        Self{
+            offsets: None,
+            start_mode: Connection::EaseOut{decay, limit: None},
+            close_mode: Connection::Ignore
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Animation
 {
     pub scaling: Option<ScalingAnimation>,
-    pub position: Option<f32>,
+    pub position: Option<PositionAnimation>,
     pub mix: Option<f32>
 }
 

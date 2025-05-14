@@ -26,7 +26,6 @@ use crate::{
     client::RenderCreateInfo,
     common::{
         render_info::*,
-        EaseOut,
         LazyMix
     }
 };
@@ -353,16 +352,6 @@ impl UiElementCached
 
         self.scissor = Self::calculate_scissor(screen_size, deferred);
 
-        let target_position = deferred.position.unwrap();
-
-        self.position = if let Some(decay) = element.animation.position
-        {
-            self.position.ease_out(target_position, decay, dt)
-        } else
-        {
-            target_position
-        };
-
         self.update_fraction(parent_fraction, deferred);
     }
 
@@ -375,18 +364,28 @@ impl UiElementCached
         dt: f32
     )
     {
-        let target_scale = Vector3::new(deferred.width.unwrap(), deferred.height.unwrap(), 1.0);
+        let target_scale = Vector2::new(deferred.width.unwrap(), deferred.height.unwrap());
 
-        self.scale = if let Some(scaling) = old_element.animation.scaling.as_mut()
+        if let Some(scaling) = old_element.animation.scaling.as_mut()
         {
-            let mut scale = Vector3::new(self.scale.x, self.scale.y, 1.0);
-            scaling.start_mode.next(&mut scale, target_scale, dt);
-
-            scale.xy()
+            scaling.start_mode.next_2d(&mut self.scale, target_scale, dt);
         } else
         {
-            target_scale.xy()
-        };
+            self.scale = target_scale;
+        }
+
+        let target_position = deferred.position.unwrap();
+        if let Some(connection) = old_element.animation.position.as_mut()
+        {
+            connection.start_mode.simple_next_2d(
+                &mut self.position,
+                target_position + connection.offsets.map(|x| x.end).unwrap_or_else(Vector2::zeros),
+                dt
+            );
+        } else
+        {
+            self.position = target_position;
+        }
 
         self.update_always(
             parent_fraction,
@@ -455,6 +454,19 @@ impl UiElementCached
             {
                 return false;
             }
+        }
+
+        let target_position = deferred.position.unwrap();
+        if let Some(connection) = element.animation.position.as_mut()
+        {
+            connection.close_mode.simple_next_2d(
+                &mut self.position,
+                target_position + connection.offsets.map(|x| x.start).unwrap_or_else(Vector2::zeros),
+                dt
+            );
+        } else
+        {
+            self.position = target_position;
         }
 
         self.update_always(parent_fraction, deferred, element, screen_size, dt);

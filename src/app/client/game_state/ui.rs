@@ -1140,7 +1140,7 @@ impl Ui
                 mix: Some(MixColor::color(BACKGROUND_COLOR)),
                 position: UiPosition::Absolute(position),
                 animation: Animation{
-                    position: Some(10.0),
+                    position: Some(PositionAnimation::ease_out(10.0)),
                     ..Animation::normal()
                 },
                 ..Default::default()
@@ -1241,7 +1241,7 @@ impl Ui
                         size: UiSize::Rest(1.0)
                     },
                     animation: Animation{
-                        position: Some(10.0),
+                        position: Some(PositionAnimation::ease_out(10.0)),
                         ..Default::default()
                     },
                     ..Default::default()
@@ -1312,7 +1312,11 @@ impl Ui
                     width: UiSize::Pixels(300.0).into(),
                     children_layout: UiLayout::Vertical,
                     animation: Animation{
-                        position: Some(10.0),
+                        position: Some(PositionAnimation{
+                            offsets: None,
+                            start_mode: Connection::EaseOut{decay: 10.0, limit: None},
+                            close_mode: Connection::Ignore
+                        }),
                         ..Default::default()
                     },
                     ..Default::default()

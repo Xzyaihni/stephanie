@@ -151,9 +151,23 @@ pub enum Connection
 
 impl Connection
 {
-    pub fn next(
+    pub fn simple_next_2d(
         &mut self,
-        current: &mut Transform,
+        current: &mut Vector2<f32>,
+        target: Vector2<f32>,
+        dt: f32
+    )
+    {
+        let target = Vector3::new(target.x, target.y, 0.0);
+        let mut position = Vector3::new(current.x, current.y, 0.0);
+        self.simple_next(&mut position, target, dt);
+
+        *current = position.xy();
+    }
+
+    pub fn simple_next(
+        &mut self,
+        current: &mut Vector3<f32>,
         target: Vector3<f32>,
         dt: f32
     )
@@ -163,18 +177,18 @@ impl Connection
             Connection::Ignore => (),
             Connection::Rigid =>
             {
-                current.position = target;
+                *current = target;
             },
             Connection::Timed(TimedConnection{lifetime, ref mut start}) =>
             {
                 if start.is_none()
                 {
-                    *start = Some(current.position);
+                    *start = Some(*current);
                 }
 
                 let remaining = 1.0 - lifetime.fraction();
 
-                current.position = start.unwrap().zip_map(&target, |a, b|
+                *current = start.unwrap().zip_map(&target, |a, b|
                 {
                     lerp(a, b, remaining)
                 });
@@ -185,36 +199,51 @@ impl Connection
             {
                 let max_move = Vector3::repeat(*speed * dt);
 
-                let current_difference = target - current.position;
+                let current_difference = target - *current;
 
                 let move_amount = current_difference.zip_map(&max_move, |diff, limit: f32|
                 {
                     diff.clamp(-limit, limit)
                 });
 
-                current.position += move_amount;
+                *current += move_amount;
             },
             Connection::Limit{mode} =>
             {
-                current.position = LazyTransform::clamp_distance(
+                *current = LazyTransform::clamp_distance(
                     *mode,
                     target,
-                    current.position
+                    *current
                 );
             },
             Connection::EaseOut{decay, limit} =>
             {
-                current.position = current.position.ease_out(target, *decay, dt);
+                *current = current.ease_out(target, *decay, dt);
 
                 if let Some(limit) = limit
                 {
-                    current.position = LazyTransform::clamp_distance(
+                    *current = LazyTransform::clamp_distance(
                         *limit,
                         target,
-                        current.position
+                        *current
                     );
                 }
             },
+            _ => ()
+        }
+
+        current.z = target.z;
+    }
+
+    pub fn next(
+        &mut self,
+        current: &mut Transform,
+        target: Vector3<f32>,
+        dt: f32
+    )
+    {
+        match self
+        {
             Connection::Spring(connection) =>
             {
                 let distance = target - current.position;
@@ -233,6 +262,10 @@ impl Connection
                     target,
                     current.position
                 );
+            },
+            _ =>
+            {
+                self.simple_next(&mut current.position, target, dt)
             }
         }
 
@@ -421,6 +454,20 @@ pub enum Scaling
 
 impl Scaling
 {
+    pub fn next_2d(
+        &mut self,
+        current: &mut Vector2<f32>,
+        target: Vector2<f32>,
+        dt: f32
+    )
+    {
+        let target = Vector3::new(target.x, target.y, 1.0);
+        let mut scale = Vector3::new(current.x, current.y, 1.0);
+        self.next(&mut scale, target, dt);
+
+        *current = scale.xy();
+    }
+
     pub fn next(
         &mut self,
         current: &mut Vector3<f32>,
