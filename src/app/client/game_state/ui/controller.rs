@@ -34,6 +34,7 @@ use super::element::*;
 
 
 pub const MINIMUM_SCALE: f32 = 0.0005;
+pub const MINIMUM_DISTANCE: f32 = 0.0001;
 
 pub trait Idable: Hash + Eq + Clone + Debug
 {
@@ -238,16 +239,27 @@ impl UiElementCached
             deferred
         );
 
-        let scaling = element.animation.scaling
-            .as_ref()
-            .map(|x| x.start_scaling)
-            .unwrap_or(Vector2::repeat(1.0));
+        let scale = {
+            let scaling = element.animation.scaling
+                .as_ref()
+                .map(|x| x.start_scaling)
+                .unwrap_or(Vector2::repeat(1.0));
 
-        let width = deferred.width.unwrap() * scaling.x;
-        let height = deferred.height.unwrap() * scaling.y;
-        let scale = Vector2::new(width, height);
+            let width = deferred.width.unwrap() * scaling.x;
+            let height = deferred.height.unwrap() * scaling.y;
 
-        let position = deferred.position.unwrap();
+            Vector2::new(width, height)
+        };
+
+        let position = {
+            let offset = element.animation.position
+                .as_ref()
+                .and_then(|x| x.offsets)
+                .map(|x| x.start)
+                .unwrap_or_else(Vector2::zeros);
+
+            deferred.position.unwrap() + offset
+        };
 
         let transform = Transform::default();
 
@@ -379,7 +391,7 @@ impl UiElementCached
         {
             connection.start_mode.simple_next_2d(
                 &mut self.position,
-                target_position + connection.offsets.map(|x| x.end).unwrap_or_else(Vector2::zeros),
+                target_position,
                 dt
             );
         } else
@@ -440,33 +452,37 @@ impl UiElementCached
 
             let close_scaling = scaling.close_scaling.component_mul(&self.scale);
 
-            let mut scale = Vector3::new(self.scale.x, self.scale.y, 1.0);
-            scaling.close_mode.next(
-                &mut scale,
-                Vector3::new(close_scaling.x, close_scaling.y, 0.0),
+            scaling.close_mode.next_2d(
+                &mut self.scale,
+                close_scaling,
                 dt
             );
-
-            self.scale = scale.xy();
-        } else
-        {
-            if close_soon
-            {
-                return false;
-            }
         }
 
-        let target_position = deferred.position.unwrap();
+        let offset = element.animation.position.as_ref()
+            .and_then(|x| x.offsets)
+            .map(|x| x.end)
+            .unwrap_or_else(Vector2::zeros);
+
+        let target_position = deferred.position.unwrap() + offset;
         if let Some(connection) = element.animation.position.as_mut()
         {
             connection.close_mode.simple_next_2d(
                 &mut self.position,
-                target_position + connection.offsets.map(|x| x.start).unwrap_or_else(Vector2::zeros),
+                target_position,
                 dt
             );
         } else
         {
             self.position = target_position;
+        }
+
+        if element.animation.scaling.is_none() && element.animation.position.is_none()
+        {
+            if close_soon
+            {
+                return false;
+            }
         }
 
         self.update_always(parent_fraction, deferred, element, screen_size, dt);
@@ -482,6 +498,14 @@ impl UiElementCached
         })
         {
             if scale < MINIMUM_SCALE
+            {
+                return false;
+            }
+        }
+
+        if element.animation.scaling.is_none() && element.animation.position.is_some()
+        {
+            if (target_position - self.position).abs().sum() < MINIMUM_DISTANCE
             {
                 return false;
             }

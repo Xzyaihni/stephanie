@@ -32,6 +32,7 @@ use crate::{
         render_info::*,
         anatomy::*,
         colors::*,
+        lazy_transform::*,
         EaseOut,
         Item,
         ItemId,
@@ -1306,16 +1307,22 @@ impl Ui
         {
             if bar.lifetime > 0.0
             {
+                let width = 300.0;
+                let outside_offset = Vector2::new(-width / self.controller.screen_size().max(), 0.0);
+
                 let body = bars_body.update(UiId::BarDisplay(kind, BarDisplayPart::Body), UiElement{
                     texture: UiTexture::Solid,
                     mix: Some(MixColor::color([0.0, 0.0, 0.05, 0.2])),
-                    width: UiSize::Pixels(300.0).into(),
+                    width: UiSize::Pixels(width).into(),
                     children_layout: UiLayout::Vertical,
                     animation: Animation{
                         position: Some(PositionAnimation{
-                            offsets: None,
+                            offsets: Some(PositionOffsets{
+                                start: outside_offset,
+                                end: outside_offset
+                            }),
                             start_mode: Connection::EaseOut{decay: 10.0, limit: None},
-                            close_mode: Connection::Ignore
+                            close_mode: Connection::EaseIn(EaseInInfo::new(0.8))
                         }),
                         ..Default::default()
                     },

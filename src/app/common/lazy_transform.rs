@@ -146,6 +146,7 @@ pub enum Connection
     Timed(TimedConnection),
     Constant{speed: f32},
     EaseOut{decay: f32, limit: Option<LimitMode>},
+    EaseIn(EaseInInfo),
     Spring(SpringConnection)
 }
 
@@ -228,6 +229,10 @@ impl Connection
                         *current
                     );
                 }
+            },
+            Connection::EaseIn(info) =>
+            {
+                info.next(current, target, dt);
             },
             _ => ()
         }
@@ -389,13 +394,13 @@ impl Rotation
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct EaseInScaling
+pub struct EaseInInfo
 {
     velocity: f32,
     strength: f32
 }
 
-impl PartialEq for EaseInScaling
+impl PartialEq for EaseInInfo
 {
     fn eq(&self, other: &Self) -> bool
     {
@@ -403,11 +408,30 @@ impl PartialEq for EaseInScaling
     }
 }
 
-impl EaseInScaling
+impl EaseInInfo
 {
     pub fn new(strength: f32) -> Self
     {
         Self{velocity: 0.0, strength}
+    }
+
+    pub fn next(&mut self, current: &mut Vector3<f32>, target: Vector3<f32>, dt: f32)
+    {
+        let difference = target - *current;
+
+        self.velocity += self.strength * dt;
+        *current += Vector3::repeat(self.velocity)
+            .component_mul(&(difference.map(f32::signum)))
+            .zip_map(&difference, |x, limit|
+            {
+                if limit < 0.0
+                {
+                    x.max(limit)
+                } else
+                {
+                    x.min(limit)
+                }
+            });
     }
 }
 
@@ -448,7 +472,7 @@ pub enum Scaling
     Instant,
     EaseOut{decay: f32},
     Constant{speed: f32},
-    EaseIn(EaseInScaling),
+    EaseIn(EaseInInfo),
     Spring(SpringScaling)
 }
 
@@ -499,24 +523,9 @@ impl Scaling
             {
                 *current = current.ease_out(target, *decay, dt);
             },
-            Scaling::EaseIn(EaseInScaling{velocity, strength}) =>
+            Scaling::EaseIn(info) =>
             {
-                let difference = target - *current;
-
-                *velocity += *strength * dt;
-
-                *current += Vector3::repeat(*velocity)
-                    .component_mul(&difference)
-                    .zip_map(&difference, |x, limit|
-                    {
-                        if limit < 0.0
-                        {
-                            x.max(limit)
-                        } else
-                        {
-                            x.min(limit)
-                        }
-                    });
+                info.next(current, target, dt);
             },
             Scaling::Spring(SpringScaling{velocity, info: SpringScalingInfo{damping, strength}}) =>
             {
@@ -750,7 +759,8 @@ impl LazyTransform
             Connection::Ignore
             | Connection::Rigid
             | Connection::Constant{..}
-            | Connection::Timed{..} => (),
+            | Connection::Timed{..}
+            | Connection::EaseIn(..) => (),
             Connection::Limit{mode} =>
             {
                 *mode = new_limit;
