@@ -1451,6 +1451,11 @@ impl Ui
                 ..UiElement::fit_content()
             });
         }
+
+        if takes_input.is_some() || popup_taken
+        {
+            controls.take_click_down();
+        }
     }
 
     pub fn create_renders(
