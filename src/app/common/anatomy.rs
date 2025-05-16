@@ -102,11 +102,19 @@ impl Anatomy
         }
     }
 
-    pub fn for_broken_parts(&mut self, f: impl FnMut(BrokenPart))
+    pub fn for_changed_parts(&mut self, f: impl FnMut(ChangedPart))
     {
         match self
         {
-            Self::Human(x) => x.for_broken_parts(f)
+            Self::Human(x) => x.for_changed_parts(f)
+        }
+    }
+
+    pub fn for_accessed_parts(&mut self, f: impl FnMut(ChangedPart))
+    {
+        match self
+        {
+            Self::Human(x) => x.for_accessed_parts(f)
         }
     }
 }
@@ -132,51 +140,20 @@ trait DamageReceiver
     ) -> Option<DamageType>;
 }
 
-pub enum BrokenKind
+pub enum ChangedKind
 {
     Bone,
     Muscle,
     Skin
 }
 
-pub struct BrokenPart
+pub struct ChangedPart
 {
     pub id: HumanPartId,
-    pub kind: BrokenKind
+    pub kind: ChangedKind
 }
 
-impl Display for BrokenPart
-{
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
-    {
-        let s = match self.kind
-        {
-            BrokenKind::Bone =>
-            {
-                let side = self.id.side_name();
-                if let HumanPartId::Eye(_) = self.id
-                {
-                    format!("{side}eye raptured")
-                } else
-                {
-                    format!("{side}{} fractured", self.id.bone_name())
-                }
-            },
-            BrokenKind::Muscle =>
-            {
-                format!("{} muscles torn", self.id)
-            },
-            BrokenKind::Skin =>
-            {
-                format!("{} skin ripped", self.id)
-            }
-        };
-
-        write!(f, "{s}")
-    }
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct SimpleHealth
 {
     max: f32,
@@ -227,7 +204,7 @@ impl SimpleHealth
     }
 }
 
-#[derive(Clone, Copy, Serialize, Deserialize)]
+#[derive(Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Health
 {
     max_block: f32,
@@ -348,35 +325,15 @@ impl From<HumanAnatomyInfo> for BodyPartInfo
     }
 }
 
-pub trait BreakTrackable
-{
-    fn is_broken(&self) -> bool;
-}
-
-impl BreakTrackable for Health
-{
-    fn is_broken(&self) -> bool
-    {
-        self.is_zero()
-    }
-}
-
-impl BreakTrackable for Option<Health>
-{
-    fn is_broken(&self) -> bool
-    {
-        self.map(|x| x.is_zero()).unwrap_or(true)
-    }
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct BreakTracking<T>
+pub struct ChangeTracking<T>
 {
-    previous_broken: bool,
+    accessed: bool,
+    previous: T,
     value: T
 }
 
-impl<T> Deref for BreakTracking<T>
+impl<T> Deref for ChangeTracking<T>
 {
     type Target = T;
 
@@ -386,36 +343,49 @@ impl<T> Deref for BreakTracking<T>
     }
 }
 
-impl<T> DerefMut for BreakTracking<T>
+impl<T> DerefMut for ChangeTracking<T>
 {
     fn deref_mut(&mut self) -> &mut Self::Target
     {
+        self.accessed = true;
         &mut self.value
     }
 }
 
-impl<T: BreakTrackable> From<T> for BreakTracking<T>
+impl<T: Clone> From<T> for ChangeTracking<T>
 {
     fn from(value: T) -> Self
     {
-        Self{previous_broken: value.is_broken(), value}
+        Self{accessed: false, previous: value.clone(), value}
     }
 }
 
-impl<T: BreakTrackable> BreakTracking<T>
+impl<T: Clone + PartialEq> ChangeTracking<T>
 {
     fn update(&mut self)
     {
-        self.previous_broken = self.value.is_broken();
+        self.previous = self.value.clone();
     }
 
-    fn consume_broken(&mut self) -> bool
+    fn consume_changed(&mut self) -> bool
     {
-        let broken = !self.previous_broken && self.value.is_broken();
+        let changed = self.previous != self.value;
 
-        self.update();
+        if changed
+        {
+            self.update();
+        }
 
-        broken
+        changed
+    }
+
+    fn consume_accessed(&mut self) -> bool
+    {
+        let accessed = self.accessed;
+
+        self.accessed = false;
+
+        accessed
     }
 }
 
@@ -423,9 +393,9 @@ impl<T: BreakTrackable> BreakTracking<T>
 pub struct BodyPart<Data>
 {
     name: DebugName,
-    pub bone: BreakTracking<Health>,
-    pub skin: BreakTracking<Option<Health>>,
-    pub muscle: BreakTracking<Option<Health>>,
+    pub bone: ChangeTracking<Health>,
+    pub skin: ChangeTracking<Option<Health>>,
+    pub muscle: ChangeTracking<Option<Health>>,
     size: f64,
     contents: Vec<Data>
 }
@@ -557,11 +527,18 @@ impl<Data> BodyPart<Data>
         None
     }
 
-    fn consume_broken(&mut self) -> impl Iterator<Item=BrokenKind>
+    fn consume_changed(&mut self) -> impl Iterator<Item=ChangedKind>
     {
-        self.bone.consume_broken().then_some(BrokenKind::Bone).into_iter()
-            .chain(self.muscle.consume_broken().then_some(BrokenKind::Muscle))
-            .chain(self.skin.consume_broken().then_some(BrokenKind::Skin))
+        self.bone.consume_changed().then_some(ChangedKind::Bone).into_iter()
+            .chain(self.muscle.consume_changed().then_some(ChangedKind::Muscle))
+            .chain(self.skin.consume_changed().then_some(ChangedKind::Skin))
+    }
+
+    fn consume_accessed(&mut self) -> impl Iterator<Item=ChangedKind>
+    {
+        self.bone.consume_accessed().then_some(ChangedKind::Bone).into_iter()
+            .chain(self.muscle.consume_accessed().then_some(ChangedKind::Muscle))
+            .chain(self.skin.consume_accessed().then_some(ChangedKind::Skin))
     }
 }
 
@@ -1413,13 +1390,27 @@ impl HumanAnatomy
         self.update_cache();
     }
 
-    pub fn for_broken_parts(&mut self, mut f: impl FnMut(BrokenPart))
+    pub fn for_changed_parts(&mut self, mut f: impl FnMut(ChangedPart))
     {
         HumanPartId::iter().filter_map(|id|
         {
             self.body.get_mut(id).map(move |x|
             {
-                x.consume_broken().map(move |kind| BrokenPart{id, kind})
+                x.consume_changed().map(move |kind| ChangedPart{id, kind})
+            })
+        }).for_each(|part|
+        {
+            part.for_each(&mut f);
+        });
+    }
+
+    pub fn for_accessed_parts(&mut self, mut f: impl FnMut(ChangedPart))
+    {
+        HumanPartId::iter().filter_map(|id|
+        {
+            self.body.get_mut(id).map(move |x|
+            {
+                x.consume_accessed().map(move |kind| ChangedPart{id, kind})
             })
         }).for_each(|part|
         {

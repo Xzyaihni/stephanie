@@ -1,3 +1,5 @@
+use std::f32;
+
 use crate::common::lerp;
 
 pub use image::{Rgb, Rgba};
@@ -153,6 +155,24 @@ impl Lch
             l: (self.l + l).clamp(0.0, 100.0),
             c: self.c,
             h: self.h
+        }
+    }
+
+    pub fn with_added_chroma(self, c: f32) -> Self
+    {
+        Self{
+            l: self.l,
+            c: self.c + c,
+            h: self.h
+        }
+    }
+
+    pub fn with_added_hue(self, h: f32) -> Self
+    {
+        Self{
+            l: self.l,
+            c: self.c,
+            h: (self.h + h) % (f32::consts::PI * 2.0)
         }
     }
 }

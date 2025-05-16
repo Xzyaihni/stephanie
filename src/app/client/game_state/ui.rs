@@ -1,5 +1,6 @@
 use std::{
     f32,
+    collections::HashMap,
     hash::{Hash, Hasher},
     rc::Rc,
     cell::RefCell,
@@ -77,11 +78,19 @@ enum UiId
     Padding(u32),
     Console(ConsolePart),
     Notification(NotificationInfo, NotificationPart),
+    AnatomyNotification(Entity, AnatomyNotificationPart),
     Popup(u8, PopupPart),
     Window(UiIdWindow, WindowPart),
     BarsBody,
     BarsBodyInner,
     BarDisplay(BarDisplayKind, BarDisplayPart)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum AnatomyNotificationPart
+{
+    Body,
+    Part(HumanPartId)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -172,7 +181,7 @@ enum InventoryPart
 {
     Body,
     List(UiListPart),
-    Item(u32, ItemPart),
+    Item(InventoryItem, ItemPart),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -287,6 +296,16 @@ fn handle_button(
     }
 }
 
+fn health_color(anatomy: &Anatomy, id: HumanPartId) -> Option<Lch>
+{
+    anatomy.get_human(id).unwrap().map(|part|
+    {
+        // pi radians is lab green, 0 is red
+        let x = part.average_health();
+        Lch{l: 50.0, c: 100.0, h: x * (f32::consts::PI * 0.5) + (f32::consts::PI * 0.3)}
+    })
+}
+
 pub struct UiList<T>
 {
     position: f32,
@@ -311,7 +330,7 @@ impl<T> UiList<T>
         parent: UiParentElement,
         id: impl Fn(UiListPart) -> UiId,
         item_height: f32,
-        mut update_item: impl FnMut(&mut UpdateInfo, UiParentElement, &T, u32, bool)
+        mut update_item: impl FnMut(&mut UpdateInfo, UiParentElement, &T, bool)
     ) -> Option<usize>
     {
         assert!(parent.element().children_layout.is_horizontal());
@@ -426,10 +445,10 @@ impl<T> UiList<T>
             })
         };
 
-        self.items.iter().enumerate().skip(starting_item).take(items_fit).for_each(|(index, name)|
+        self.items.iter().enumerate().skip(starting_item).take(items_fit).for_each(|(index, value)|
         {
             let is_selected = selected_index.map(|x| x == index).unwrap_or(false);
-            update_item(info, moving_part, name, index as u32, is_selected);
+            update_item(info, moving_part, value, is_selected);
         });
 
         selected_index
@@ -674,11 +693,11 @@ impl WindowKind
                 let selected = inventory.list.update(&mut info, body, |list_part|
                 {
                     id(InventoryPart::List(list_part))
-                }, item_height, |_info, parent, item, index, is_selected|
+                }, item_height, |_info, parent, item, is_selected|
                 {
                     let id = |part|
                     {
-                        id(InventoryPart::Item(index, part))
+                        id(InventoryPart::Item(item.item, part))
                     };
 
                     let mut body_color = ACCENT_COLOR;
@@ -814,15 +833,12 @@ impl WindowKind
                 {
                     let selected = selected_index == Some(index);
 
-                    let health_color = anatomy.get_human(*part_id).unwrap().map(|part|
+                    let health_color = health_color(&anatomy, *part_id).map(|color|
                     {
-                        // pi radians is lab green, 0 is red
-                        let x = part.average_health();
-                        let color = Lch{l: 50.0, c: 100.0, h: x * (f32::consts::PI * 0.8)};
-
                         if selected
                         {
-                            color.with_added_lightness(30.0)
+                            color.with_added_lightness(20.0)
+                                .with_added_chroma(-30.0)
                         } else
                         {
                             color
@@ -917,6 +933,7 @@ pub struct Ui
     items_info: Arc<ItemsInfo>,
     fonts: Rc<FontsContainer>,
     anatomy_locations: UiAnatomyLocations,
+    anatomy_locations_small: UiAnatomyLocations,
     user_receiver: Rc<RefCell<UiReceiver>>,
     camera: Entity,
     controller: UiController,
@@ -926,6 +943,7 @@ pub struct Ui
     stamina: BarDisplay,
     cooldown: BarDisplay,
     notifications: Vec<NotificationInfo>,
+    anatomy_notifications: HashMap<Entity, (f32, Vec<HumanPartId>)>,
     popup_unique_id: u8,
     popup: Option<(Vector2<f32>, Entity, Vec<GameUiEvent>)>
 }
@@ -934,10 +952,10 @@ impl Ui
 {
     pub fn new(
         items_info: Arc<ItemsInfo>,
-        info: &ObjectCreateInfo,
+        info: &mut ObjectCreateInfo,
         entities: &mut ClientEntities,
         camera: Entity,
-        anatomy_locations: UiAnatomyLocations,
+        mut anatomy_locations: impl FnMut(&mut ObjectCreateInfo, &str) -> UiAnatomyLocations,
         user_receiver: Rc<RefCell<UiReceiver>>
     ) -> Rc<RefCell<Self>>
     {
@@ -946,7 +964,8 @@ impl Ui
         let this = Self{
             items_info,
             fonts: info.partial.builder_wrapper.fonts().clone(),
-            anatomy_locations,
+            anatomy_locations: anatomy_locations(info, "anatomy_areas"),
+            anatomy_locations_small: anatomy_locations(info, "anatomy_areas_small"),
             user_receiver,
             camera,
             controller,
@@ -956,6 +975,7 @@ impl Ui
             stamina: BarDisplay::default(),
             cooldown: BarDisplay::default(),
             notifications: Vec::new(),
+            anatomy_notifications: HashMap::new(),
             popup_unique_id: 0,
             popup: None
         };
@@ -965,29 +985,21 @@ impl Ui
         let ui = this.clone();
         entities.on_anatomy(Box::new(move |entities, entity|
         {
-            let mut broken = Vec::new();
-            some_or_return!(entities.anatomy_mut(entity)).for_broken_parts(|part|
+            if entities.player(entity).is_some()
             {
-                broken.push(part);
-            });
+                return;
+            }
 
-            broken.into_iter().for_each(|part|
+            some_or_return!(entities.anatomy_mut(entity)).for_accessed_parts(|part|
             {
-                /*let severity = match part.kind
-                {
-                    BrokenKind::Skin => NotificationSeverity::DamageMinor,
-                    BrokenKind::Muscle => NotificationSeverity::Damage,
-                    BrokenKind::Bone => NotificationSeverity::DamageMajor
-                };
+                let default_lifetime = 2.0;
 
-                let kind = NotificationKindInfo::Text{
-                    severity,
-                    text: part.to_string()
-                };
-
-                let notification = NotificationInfo{owner: entity, lifetime: 1.0, kind};
-
-                ui.borrow_mut().show_notification(notification);*/todo!()
+                ui.borrow_mut().anatomy_notifications.entry(entity)
+                    .and_modify(|(lifetime, parts)|
+                    {
+                        *lifetime = default_lifetime;
+                        parts.push(part.id);
+                    }).or_insert_with(|| (default_lifetime, vec![part.id]));
             });
         }));
 
@@ -1119,6 +1131,17 @@ impl Ui
 
     pub fn update(&mut self, entities: &ClientEntities, controls: &mut UiControls, dt: f32)
     {
+        let position_of = |camera: Entity, owner: Entity| -> Option<Vector2<f32>>
+        {
+            let owner_transform = some_or_return!(entities.transform(owner));
+            let camera_transform = some_or_return!(entities.transform(camera));
+
+            let owner_position = owner_transform.position.xy() - camera_transform.position.xy();
+            let position_absolute = owner_position - Vector2::new(0.0, owner_transform.scale.y * 0.5);
+
+            Some(position_absolute / camera_transform.scale.xy().max())
+        };
+
         self.notifications.retain_mut(|notification|
         {
             notification.lifetime -= dt;
@@ -1128,13 +1151,7 @@ impl Ui
                 UiId::Notification(notification.clone(), part)
             };
 
-            let owner_transform = some_or_value!(entities.transform(notification.owner), false);
-            let camera_transform = some_or_value!(entities.transform(self.camera), false);
-
-            let owner_position = owner_transform.position.xy() - camera_transform.position.xy();
-            let position_absolute = owner_position - Vector2::new(0.0, owner_transform.scale.y * 0.5);
-
-            let position = position_absolute / camera_transform.scale.xy().max();
+            let position = some_or_value!(position_of(self.camera, notification.owner), false);
 
             let body = self.controller.update(id(NotificationPart::Body), UiElement{
                 texture: UiTexture::Solid,
@@ -1170,6 +1187,60 @@ impl Ui
             add_padding_horizontal(body, UiSize::Pixels(NOTIFICATION_PADDING).into());
 
             notification.lifetime > 0.0
+        });
+
+        self.anatomy_notifications.retain(|entity, (lifetime, parts)|
+        {
+            *lifetime -= dt;
+
+            let position = some_or_value!(position_of(self.camera, *entity), false);
+
+            let body = self.controller.update(UiId::AnatomyNotification(*entity, AnatomyNotificationPart::Body), UiElement{
+                position: UiPosition::Absolute(position),
+                animation: Animation{
+                    position: Some(PositionAnimation::ease_out(10.0)),
+                    ..Animation::normal()
+                },
+                ..Default::default()
+            });
+
+            if let Some(height) = body.try_height()
+            {
+                let offset = height * 0.5;
+                body.element().position = UiPosition::Absolute(position - Vector2::new(0.0, offset));
+            }
+
+            let anatomy = some_or_value!(entities.anatomy(*entity), false);
+            self.anatomy_locations_small.locations.iter().for_each(|(part_id, location)|
+            {
+                let selected = parts.contains(part_id);
+                let health_color = health_color(&anatomy, *part_id).map(|color|
+                {
+                    if selected
+                    {
+                        color.with_added_lightness(50.0)
+                            .with_added_chroma(-50.0)
+                    } else
+                    {
+                        color
+                    }.into()
+                }).unwrap_or(MISSING_PART_COLOR);
+
+                body.update(UiId::AnatomyNotification(*entity, AnatomyNotificationPart::Part(*part_id)), UiElement{
+                    texture: UiTexture::CustomId(location.id),
+                    mix: Some(MixColor{keep_transparency: true, ..MixColor::color(health_color)}),
+                    position: UiPosition::Inherit,
+                    animation: Animation{
+                        mix: Some(5.0),
+                        ..Default::default()
+                    },
+                    ..UiElement::fit_content()
+                });
+            });
+
+            parts.clear();
+
+            *lifetime > 0.0
         });
 
         let popup_taken = {

@@ -594,15 +594,19 @@ impl GameState
 
         let assets = info.object_info.partial.assets.clone();
 
-        let anatomy_locations = {
-            let base_image = image::open("textures/special/anatomy_areas.png")
-                .expect("anatomy_areas.png must exist");
+        let anatomy_locations = |object_info: &mut ObjectCreateInfo, name: &str| -> UiAnatomyLocations
+        {
+            let base_image = image::open(format!("textures/special/{name}.png"))
+                .unwrap_or_else(|err|
+                {
+                    panic!("{name}.png must exist: {err}")
+                });
 
             let mut assets = assets.lock();
 
             let part_creator = PartCreator{
                 assets: &mut assets,
-                resource_uploader: info.object_info.partial.builder_wrapper.resource_uploader(),
+                resource_uploader: object_info.partial.builder_wrapper.resource_uploader(),
                 shader: info.shaders.ui
             };
 
@@ -611,7 +615,7 @@ impl GameState
 
         let ui = Ui::new(
             info.data_infos.items_info.clone(),
-            &info.object_info,
+            &mut info.object_info,
             &mut entities.entities,
             entities.camera_entity,
             anatomy_locations,
