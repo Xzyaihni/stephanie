@@ -26,6 +26,7 @@ use crate::{
     client::RenderCreateInfo,
     common::{
         render_info::*,
+        colors::Lcha,
         EaseOut
     }
 };
@@ -353,10 +354,20 @@ impl UiElementCached
     {
         if let (Some(mix), Some(target)) = (self.mix.as_mut(), element.mix)
         {
-            *mix = if let Some(decay) = element.animation.mix
+            *mix = if let Some(animation) = &element.animation.mix
             {
+                macro_rules! mix_color
+                {
+                    ($($field:ident),+) =>
+                    {
+                        Lcha{
+                            $($field: mix.color.$field.ease_out(target.color.$field, animation.$field, dt),)+
+                        }
+                    }
+                }
+
                 MixColorLch{
-                    color: mix.color.ease_out(target.color, decay, dt),
+                    color: mix_color!(l, c, h, a),
                     ..target
                 }
             } else

@@ -615,11 +615,28 @@ impl PositionAnimation
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct MixAnimation
+{
+    pub l: f32,
+    pub c: f32,
+    pub h: f32,
+    pub a: f32
+}
+
+impl MixAnimation
+{
+    pub fn all(x: f32) -> Self
+    {
+        Self{l: x, c: x, h: x, a: x}
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct Animation
 {
     pub scaling: Option<ScalingAnimation>,
     pub position: Option<PositionAnimation>,
-    pub mix: Option<f32>
+    pub mix: Option<MixAnimation>
 }
 
 impl Default for Animation
@@ -657,7 +674,7 @@ impl Animation
                 start_mode: Scaling::EaseOut{decay: 20.0},
                 ..Default::default()
             }),
-            mix: Some(10.0),
+            mix: Some(MixAnimation::all(10.0)),
             ..Default::default()
         }
     }

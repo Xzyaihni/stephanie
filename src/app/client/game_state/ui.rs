@@ -852,7 +852,7 @@ impl WindowKind
                         mix: Some(MixColorLch{keep_transparency: true, ..MixColorLch::color(health_color)}),
                         position: UiPosition::Inherit,
                         animation: Animation{
-                            mix: Some(15.0),
+                            mix: Some(MixAnimation{l: 50.0, c: 50.0, ..MixAnimation::all(20.0)}),
                             ..Default::default()
                         },
                         ..UiElement::fit_content()
@@ -1231,7 +1231,7 @@ impl Ui
                     mix: Some(MixColorLch{keep_transparency: true, ..MixColorLch::color(health_color)}),
                     position: UiPosition::Inherit,
                     animation: Animation{
-                        mix: Some(5.0),
+                        mix: Some(MixAnimation{l: 2.0, c: 2.0, ..MixAnimation::all(20.0)}),
                         ..Default::default()
                     },
                     ..UiElement::fit_content()
