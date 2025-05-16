@@ -30,7 +30,7 @@ pub use vulkano::pipeline::graphics::viewport::Scissor as VulkanoScissor;
 
 use crate::{
     client::{RenderCreateInfo, VisibilityChecker},
-    common::ServerToClient
+    common::{colors::Lcha, ServerToClient}
 };
 
 
@@ -46,18 +46,33 @@ pub struct OutlinedInfo
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-pub struct MixColor
+pub struct MixColorGeneric<T>
 {
-    pub color: [f32; 4],
+    pub color: T,
     pub amount: f32,
     pub keep_transparency: bool
 }
 
-impl MixColor
+impl<T> MixColorGeneric<T>
 {
-    pub fn color(color: [f32; 4]) -> Self
+    pub fn color(color: T) -> Self
     {
         Self{color, amount: 1.0, keep_transparency: false}
+    }
+}
+
+pub type MixColor = MixColorGeneric<[f32; 4]>;
+pub type MixColorLch = MixColorGeneric<Lcha>;
+
+impl From<MixColorLch> for MixColor
+{
+    fn from(color: MixColorLch) -> Self
+    {
+        Self{
+            color: color.color.into(),
+            amount: color.amount,
+            keep_transparency: color.keep_transparency
+        }
     }
 }
 

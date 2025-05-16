@@ -26,7 +26,7 @@ use crate::{
     client::RenderCreateInfo,
     common::{
         render_info::*,
-        LazyMix
+        EaseOut
     }
 };
 
@@ -220,7 +220,7 @@ struct UiElementCached
     fractions: Fractions,
     scale: Vector2<f32>,
     position: Vector2<f32>,
-    mix: Option<MixColor>,
+    mix: Option<MixColorLch>,
     scissor: Option<VulkanoScissor>,
     object: Option<ClientRenderObject>
 }
@@ -355,7 +355,10 @@ impl UiElementCached
         {
             *mix = if let Some(decay) = element.animation.mix
             {
-                LazyMix{decay, target}.update(*mix, dt)
+                MixColorLch{
+                    color: mix.color.ease_out(target.color, decay, dt),
+                    ..target
+                }
             } else
             {
                 target
@@ -1381,7 +1384,7 @@ impl<Id: Idable> Controller<Id>
                     info.set_scissor(scissor);
                 }
 
-                info.push_constants(UiOutlinedInfo::new(cached.mix));
+                info.push_constants(UiOutlinedInfo::new(cached.mix.map(|x| x.into())));
 
                 object.draw(info);
 

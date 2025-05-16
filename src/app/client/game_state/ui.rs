@@ -64,11 +64,14 @@ const SEPARATOR_SIZE: f32 = 3.0;
 
 const SMALL_TEXT_SIZE: u32 = 20;
 
-const BACKGROUND_COLOR: [f32; 4] = [0.923, 0.998, 1.0, 1.0];
-const ACCENT_COLOR: [f32; 4] = [1.0, 0.393, 0.901, 1.0];
-const HIGHLIGHTED_COLOR: [f32; 4] = [1.0, 0.659, 0.848, 1.0];
+const WHITE_COLOR: Lcha = Lcha{l: 100.0, c: 0.0, h: 0.0, a: 1.0};
+const BLACK_COLOR: Lcha = Lcha{l: 0.0, c: 0.0, h: 0.0, a: 1.0};
 
-const MISSING_PART_COLOR: [f32; 4] = [0.0, 0.0, 0.05, 0.5];
+const BACKGROUND_COLOR: Lcha = WHITE_COLOR;
+const ACCENT_COLOR: Lcha = Lcha{l: 70.0, c: 50.0, h: 6.0, a: 1.0};
+const HIGHLIGHTED_COLOR: Lcha = ACCENT_COLOR.with_added_lightness(20.0).with_added_chroma(-20.0);
+
+const MISSING_PART_COLOR: Lcha = Lcha{a: 0.5, ..BLACK_COLOR};
 
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -296,14 +299,14 @@ fn handle_button(
     }
 }
 
-fn health_color(anatomy: &Anatomy, id: HumanPartId) -> Option<Lch>
+fn health_color(anatomy: &Anatomy, id: HumanPartId) -> Lcha
 {
     anatomy.get_human(id).unwrap().map(|part|
     {
         // pi radians is lab green, 0 is red
         let x = part.average_health();
-        Lch{l: 50.0, c: 100.0, h: x * (f32::consts::PI * 0.5) + (f32::consts::PI * 0.3)}
-    })
+        Lcha{l: 50.0, c: 100.0, h: x * (f32::consts::PI * 0.5) + (f32::consts::PI * 0.3), a: 1.0}
+    }).unwrap_or(MISSING_PART_COLOR)
 }
 
 pub struct UiList<T>
@@ -374,7 +377,7 @@ impl<T> UiList<T>
         {
             parent.update(id(UiListPart::Separator), UiElement{
                 texture: UiTexture::Solid,
-                mix: Some(MixColor::color(ACCENT_COLOR)),
+                mix: Some(MixColorLch::color(ACCENT_COLOR)),
                 width: UiSize::Pixels(SEPARATOR_SIZE).into(),
                 height: UiSize::Rest(1.0).into(),
                 animation: Animation::separator_tall(),
@@ -418,7 +421,7 @@ impl<T> UiList<T>
 
             let bar = scrollbar.update(id(UiListPart::Bar), UiElement{
                 texture: UiTexture::Solid,
-                mix: Some(MixColor::color(ACCENT_COLOR)),
+                mix: Some(MixColorLch::color(ACCENT_COLOR)),
                 width: UiSize::Rest(1.0).into(),
                 height: UiSize::CopyElement(UiDirection::Vertical, bar_height, scrollbar_id).into(),
                 animation: Animation::scrollbar_bar(),
@@ -585,7 +588,7 @@ impl WindowKind
 
                 let close_button = titlebar.update(id(WindowPart::Title(TitlePart::Button(button_id))), UiElement{
                     texture: UiTexture::Custom(texture),
-                    mix: Some(MixColor{keep_transparency: true, ..MixColor::color(ACCENT_COLOR)}),
+                    mix: Some(MixColorLch{keep_transparency: true, ..MixColorLch::color(ACCENT_COLOR)}),
                     animation: Animation::button(),
                     width: size.clone(),
                     height: size,
@@ -608,7 +611,7 @@ impl WindowKind
             add_padding_horizontal(titlebar, padding_size.clone());
             titlebar.update(id(WindowPart::Title(TitlePart::Text)), UiElement{
                 texture: UiTexture::Text{text: title, font_size: 25},
-                mix: Some(MixColor{keep_transparency: true, ..MixColor::color(ACCENT_COLOR)}),
+                mix: Some(MixColorLch{keep_transparency: true, ..MixColorLch::color(ACCENT_COLOR)}),
                 ..UiElement::fit_content()
             });
             add_padding_horizontal(titlebar, padding_size);
@@ -620,7 +623,7 @@ impl WindowKind
 
             parent.update(id(WindowPart::Separator), UiElement{
                 texture: UiTexture::Solid,
-                mix: Some(MixColor::color(ACCENT_COLOR)),
+                mix: Some(MixColorLch::color(ACCENT_COLOR)),
                 width: UiSize::Rest(1.0).into(),
                 height: UiSize::Pixels(SEPARATOR_SIZE).into(),
                 animation: Animation::separator_wide(),
@@ -700,12 +703,14 @@ impl WindowKind
                         id(InventoryPart::Item(item.item, part))
                     };
 
-                    let mut body_color = ACCENT_COLOR;
-                    body_color[3] = if is_selected { 0.3 } else { 0.0 };
+                    let body_color = Lcha{
+                        a: if is_selected { 0.3 } else { 0.0 },
+                        ..ACCENT_COLOR
+                    };
 
                     let body = parent.update(id(ItemPart::Body), UiElement{
                         texture: UiTexture::Solid,
-                        mix: Some(MixColor::color(body_color)),
+                        mix: Some(MixColorLch::color(body_color)),
                         width: UiSize::Rest(1.0).into(),
                         animation: Animation{
                             mix: Animation::button().mix,
@@ -720,7 +725,7 @@ impl WindowKind
                     let icon_id = id(ItemPart::Icon(IconPart::Body));
                     let icon = body.update(icon_id.clone(), UiElement{
                         texture: UiTexture::Solid,
-                        mix: Some(MixColor::color(ACCENT_COLOR)),
+                        mix: Some(MixColorLch::color(ACCENT_COLOR)),
                         width: icon_size.into(),
                         height: icon_size.into(),
                         children_layout: UiLayout::Vertical,
@@ -741,7 +746,7 @@ impl WindowKind
 
                     body.update(id(ItemPart::Name), UiElement{
                         texture: UiTexture::Text{text: item.name.clone(), font_size},
-                        mix: Some(MixColor{keep_transparency: true, ..MixColor::color(ACCENT_COLOR)}),
+                        mix: Some(MixColorLch{keep_transparency: true, ..MixColorLch::color(ACCENT_COLOR)}),
                         ..UiElement::fit_content()
                     });
                 });
@@ -779,7 +784,7 @@ impl WindowKind
 
                 body.update(id(), UiElement{
                     texture: UiTexture::Text{text: description, font_size: SMALL_TEXT_SIZE},
-                    mix: Some(MixColor{keep_transparency: true, ..MixColor::color(ACCENT_COLOR)}),
+                    mix: Some(MixColorLch{keep_transparency: true, ..MixColorLch::color(ACCENT_COLOR)}),
                     ..UiElement::fit_content()
                 });
 
@@ -794,7 +799,7 @@ impl WindowKind
 
                 body.update(UiId::Window(window_id.clone(), WindowPart::Stats), UiElement{
                     texture: UiTexture::Text{text: "nothing here yet :/".to_owned(), font_size: SMALL_TEXT_SIZE},
-                    mix: Some(MixColor{keep_transparency: true, ..MixColor::color(ACCENT_COLOR)}),
+                    mix: Some(MixColorLch{keep_transparency: true, ..MixColorLch::color(ACCENT_COLOR)}),
                     ..UiElement::fit_content()
                 });
 
@@ -833,21 +838,18 @@ impl WindowKind
                 {
                     let selected = selected_index == Some(index);
 
-                    let health_color = health_color(&anatomy, *part_id).map(|color|
+                    let color = health_color(&anatomy, *part_id);
+                    let health_color = if selected
                     {
-                        if selected
-                        {
-                            color.with_added_lightness(20.0)
-                                .with_added_chroma(-30.0)
-                        } else
-                        {
-                            color
-                        }.into()
-                    }).unwrap_or(MISSING_PART_COLOR);
+                        color.with_added_lightness(20.0).with_added_chroma(-30.0)
+                    } else
+                    {
+                        color
+                    };
 
                     body.update(id(AnatomyPart::BodyPart(*part_id)), UiElement{
                         texture: UiTexture::CustomId(location.id),
-                        mix: Some(MixColor{keep_transparency: true, ..MixColor::color(health_color)}),
+                        mix: Some(MixColorLch{keep_transparency: true, ..MixColorLch::color(health_color)}),
                         position: UiPosition::Inherit,
                         animation: Animation{
                             mix: Some(15.0),
@@ -890,7 +892,7 @@ impl Window
         let id = self.id();
         let body = ui.update(id, UiElement{
             texture: UiTexture::Solid,
-            mix: Some(MixColor::color(BACKGROUND_COLOR)),
+            mix: Some(MixColorLch::color(BACKGROUND_COLOR)),
             animation: Animation::normal(),
             position: UiPosition::Absolute(self.position),
             children_layout: UiLayout::Vertical,
@@ -1155,7 +1157,7 @@ impl Ui
 
             let body = self.controller.update(id(NotificationPart::Body), UiElement{
                 texture: UiTexture::Solid,
-                mix: Some(MixColor::color(BACKGROUND_COLOR)),
+                mix: Some(MixColorLch::color(BACKGROUND_COLOR)),
                 position: UiPosition::Absolute(position),
                 animation: Animation{
                     position: Some(PositionAnimation::ease_out(10.0)),
@@ -1178,7 +1180,7 @@ impl Ui
                 {
                     body.update(id(NotificationPart::Text), UiElement{
                         texture: UiTexture::Text{text: text.clone(), font_size: SMALL_TEXT_SIZE},
-                        mix: Some(MixColor{keep_transparency: true, ..MixColor::color(ACCENT_COLOR)}),
+                        mix: Some(MixColorLch{keep_transparency: true, ..MixColorLch::color(ACCENT_COLOR)}),
                         ..UiElement::fit_content()
                     });
                 }
@@ -1214,21 +1216,19 @@ impl Ui
             self.anatomy_locations_small.locations.iter().for_each(|(part_id, location)|
             {
                 let selected = parts.contains(part_id);
-                let health_color = health_color(&anatomy, *part_id).map(|color|
+
+                let color = health_color(&anatomy, *part_id);
+                let health_color = if selected
                 {
-                    if selected
-                    {
-                        color.with_added_lightness(50.0)
-                            .with_added_chroma(-50.0)
-                    } else
-                    {
-                        color
-                    }.into()
-                }).unwrap_or(MISSING_PART_COLOR);
+                    color.with_added_lightness(50.0).with_added_chroma(-50.0)
+                } else
+                {
+                    color
+                };
 
                 body.update(UiId::AnatomyNotification(*entity, AnatomyNotificationPart::Part(*part_id)), UiElement{
                     texture: UiTexture::CustomId(location.id),
-                    mix: Some(MixColor{keep_transparency: true, ..MixColor::color(health_color)}),
+                    mix: Some(MixColorLch{keep_transparency: true, ..MixColorLch::color(health_color)}),
                     position: UiPosition::Inherit,
                     animation: Animation{
                         mix: Some(5.0),
@@ -1285,7 +1285,7 @@ impl Ui
 
                 self.controller.update(UiId::Popup(self.popup_unique_id, PopupPart::Body), UiElement{
                     texture: UiTexture::Solid,
-                    mix: Some(MixColor::color(ACCENT_COLOR)),
+                    mix: Some(MixColorLch::color(ACCENT_COLOR)),
                     animation,
                     position: UiPosition::Absolute(*position),
                     children_layout: UiLayout::Vertical,
@@ -1307,7 +1307,7 @@ impl Ui
 
                 let body = popup_body.update(id(PopupButtonPart::Body), UiElement{
                     texture: UiTexture::Solid,
-                    mix: Some(MixColor::color(BACKGROUND_COLOR)),
+                    mix: Some(MixColorLch::color(BACKGROUND_COLOR)),
                     width: UiElementSize{
                         minimum_size: Some(UiMinimumSize::FitChildren),
                         size: UiSize::Rest(1.0)
@@ -1323,7 +1323,7 @@ impl Ui
 
                 body.update(id(PopupButtonPart::Text), UiElement{
                     texture: UiTexture::Text{text: action.name().to_owned(), font_size: SMALL_TEXT_SIZE},
-                    mix: Some(MixColor{keep_transparency: true, ..MixColor::color(ACCENT_COLOR)}),
+                    mix: Some(MixColorLch{keep_transparency: true, ..MixColorLch::color(ACCENT_COLOR)}),
                     ..UiElement::fit_content()
                 });
 
@@ -1331,7 +1331,7 @@ impl Ui
 
                 body.update(id(PopupButtonPart::Separator), UiElement{
                     texture: UiTexture::Solid,
-                    mix: Some(MixColor::color(ACCENT_COLOR)),
+                    mix: Some(MixColorLch::color(ACCENT_COLOR)),
                     width: UiSize::Pixels(SEPARATOR_SIZE).into(),
                     height: UiSize::Rest(1.0).into(),
                     ..Default::default()
@@ -1374,7 +1374,7 @@ impl Ui
         add_padding_horizontal(bars_body_outer, UiSize::Rest(1.0).into());
         add_padding_vertical(bars_body, UiSize::Rest(1.0).into());
 
-        let render_bar_display = |kind, bar: &mut BarDisplay, color: [f32; 4]|
+        let render_bar_display = |kind, bar: &mut BarDisplay, color: Lcha|
         {
             if bar.lifetime > 0.0
             {
@@ -1383,7 +1383,7 @@ impl Ui
 
                 let body = bars_body.update(UiId::BarDisplay(kind, BarDisplayPart::Body), UiElement{
                     texture: UiTexture::Solid,
-                    mix: Some(MixColor::color([0.0, 0.0, 0.05, 0.2])),
+                    mix: Some(MixColorLch::color(Lcha{a: 0.2, ..BLACK_COLOR})),
                     width: UiSize::Pixels(width).into(),
                     children_layout: UiLayout::Vertical,
                     animation: Animation{
@@ -1410,7 +1410,7 @@ impl Ui
 
                 bar_body.update(UiId::BarDisplay(kind, BarDisplayPart::BarFill), UiElement{
                     texture: UiTexture::Solid,
-                    mix: Some(MixColor::color(color)),
+                    mix: Some(MixColorLch::color(color)),
                     width: UiSize::Rest(bar.value).into(),
                     height: UiSize::Rest(1.0).into(),
                     ..Default::default()
@@ -1420,7 +1420,7 @@ impl Ui
 
                 body.update(text_id, UiElement{
                     texture: UiTexture::Text{text: kind.name(), font_size: 30},
-                    mix: Some(MixColor{keep_transparency: true, ..MixColor::color([1.0, 1.0, 1.0, 1.0])}),
+                    mix: Some(MixColorLch{keep_transparency: true, ..MixColorLch::color(WHITE_COLOR)}),
                     position: UiPosition::Inherit,
                     ..UiElement::fit_content()
                 });
@@ -1429,14 +1429,14 @@ impl Ui
             }
         };
 
-        render_bar_display(BarDisplayKind::Stamina, &mut self.stamina, Lch{l: 70.0, c: 120.0, h: 1.5}.into());
-        render_bar_display(BarDisplayKind::Cooldown, &mut self.cooldown, Lch{l: 50.0, c: 100.0, h: 4.0}.into());
+        render_bar_display(BarDisplayKind::Stamina, &mut self.stamina, Lcha{l: 70.0, c: 120.0, h: 1.5, a: 1.0});
+        render_bar_display(BarDisplayKind::Cooldown, &mut self.cooldown, Lcha{l: 50.0, c: 100.0, h: 4.0, a: 1.0});
 
         if let Some(text) = self.console_contents.clone()
         {
             let body = self.controller.update(UiId::Console(ConsolePart::Body), UiElement{
                 texture: UiTexture::Solid,
-                mix: Some(MixColor::color(BACKGROUND_COLOR)),
+                mix: Some(MixColorLch::color(BACKGROUND_COLOR)),
                 animation: Animation::normal(),
                 position: UiPosition::Absolute(Vector2::zeros()),
                 width: UiElementSize{
@@ -1452,7 +1452,7 @@ impl Ui
 
             body.update(UiId::Console(ConsolePart::Text), UiElement{
                 texture: UiTexture::Text{text, font_size: 30},
-                mix: Some(MixColor{keep_transparency: true, ..MixColor::color(ACCENT_COLOR)}),
+                mix: Some(MixColorLch{keep_transparency: true, ..MixColorLch::color(ACCENT_COLOR)}),
                 animation: Animation::typing_text(),
                 position: UiPosition::Absolute(Vector2::zeros()),
                 ..UiElement::fit_content()

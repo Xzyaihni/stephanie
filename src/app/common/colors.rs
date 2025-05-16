@@ -1,6 +1,6 @@
 use std::f32;
 
-use crate::common::lerp;
+use crate::common::{lerp, EaseOut};
 
 pub use image::{Rgb, Rgba};
 
@@ -134,7 +134,7 @@ impl From<Rgba<f32>> for Laba
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Lch
 {
     pub l: f32,
@@ -142,56 +142,85 @@ pub struct Lch
     pub h: f32
 }
 
-impl Lch
+impl From<Lcha> for Lch
+{
+    fn from(value: Lcha) -> Self
+    {
+        Lch{
+            l: value.l,
+            c: value.c,
+            h: value.h
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Lcha
+{
+    pub l: f32,
+    pub c: f32,
+    pub h: f32,
+    pub a: f32
+}
+
+impl Lcha
 {
     pub fn add_lightness(&mut self, l: f32)
     {
         self.l = self.with_added_lightness(l).l;
     }
 
-    pub fn with_added_lightness(self, l: f32) -> Self
+    pub const fn with_added_lightness(self, l: f32) -> Self
     {
         Self{
             l: (self.l + l).clamp(0.0, 100.0),
             c: self.c,
-            h: self.h
+            h: self.h,
+            a: self.a
         }
     }
 
-    pub fn with_added_chroma(self, c: f32) -> Self
+    pub const fn with_added_chroma(self, c: f32) -> Self
     {
         Self{
             l: self.l,
             c: self.c + c,
-            h: self.h
+            h: self.h,
+            a: self.a
         }
     }
 
-    pub fn with_added_hue(self, h: f32) -> Self
+    pub const fn with_added_hue(self, h: f32) -> Self
     {
         Self{
             l: self.l,
             c: self.c,
-            h: (self.h + h) % (f32::consts::PI * 2.0)
+            h: (self.h + h) % (f32::consts::PI * 2.0),
+            a: self.a
         }
     }
 }
 
-impl From<Lch> for Rgb<f32>
+impl From<Lcha> for [f32; 4]
 {
-    fn from(value: Lch) -> Self
+    fn from(value: Lcha) -> Self
     {
-        Self::from(Lab::from(value))
+        let [r, g, b] = Rgb::from(Lab::from(Lch::from(value))).0;
+
+        [r, g, b, value.a]
     }
 }
 
-impl From<Lch> for [f32; 4]
+impl EaseOut for Lcha
 {
-    fn from(value: Lch) -> Self
+    fn ease_out(&self, target: Self, decay: f32, dt: f32) -> Self
     {
-        let [r, g, b] = Rgb::from(Lab::from(value)).0;
-
-        [r, g, b, 1.0]
+        Self{
+            l: self.l.ease_out(target.l, decay, dt),
+            c: self.c.ease_out(target.c, decay, dt),
+            h: self.h.ease_out(target.h, decay, dt),
+            a: self.a.ease_out(target.a, decay, dt)
+        }
     }
 }
 

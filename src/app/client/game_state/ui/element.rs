@@ -724,7 +724,7 @@ impl Animation
 pub struct UiElement<Id>
 {
     pub texture: UiTexture,
-    pub mix: Option<MixColor>,
+    pub mix: Option<MixColorLch>,
     pub animation: Animation,
     pub inherit_animation: bool,
     pub position: UiPosition<Id>,
