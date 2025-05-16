@@ -75,7 +75,7 @@ pub fn draw(
 {
     info.bind_pipeline(shaders.shadow);
 
-    renderables.world.draw_shadows(info, &visibility);
+    renderables.world.draw_shadows(info, visibility);
 
     renderables.renders.iter().flatten().filter_map(|entity|
     {

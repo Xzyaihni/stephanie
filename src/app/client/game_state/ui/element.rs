@@ -1,4 +1,4 @@
-use std::{convert, fmt::Debug};
+use std::fmt::Debug;
 
 use nalgebra::Vector2;
 
@@ -195,14 +195,14 @@ impl<Id> UiSize<Id>
                     return None;
                 }
 
-                let children = children.filter_map(convert::identity);
+                let children = children.flatten();
 
                 if parallel
                 {
                     Some(children.filter_map(|x| x.changes_total.then_some(x.value)).sum())
                 } else
                 {
-                    Some(children.map(|x| x.value).max_by(|a, b| a.partial_cmp(&b).unwrap()).unwrap_or(0.0))
+                    Some(children.map(|x| x.value).max_by(|a, b| a.partial_cmp(b).unwrap()).unwrap_or(0.0))
                 }
             },
             Self::FitContent(x) => Some(bounds() * *x),
@@ -383,7 +383,7 @@ impl ResolvedSize
             self.size = size.size.resolve_backward(&bounds, parallel, children);
         }
 
-        let size = Self::as_resolved(self.size.clone(), &size.size)?;
+        let size = Self::as_resolved(self.size, &size.size)?;
 
         if let Some(minimum_size) = self.minimum_size
         {

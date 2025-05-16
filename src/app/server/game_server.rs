@@ -379,7 +379,7 @@ impl GameServer
 
             let info = self.entities.info(inserted);
 
-            let message = Message::EntitySet{entity: inserted, info};
+            let message = Message::EntitySet{entity: inserted, info: Box::new(info)};
             self.connection_handler.write().send_message(message);
 
             inserted
@@ -455,7 +455,7 @@ impl GameServer
             }
 
             let info = self.entities.info(entity);
-            let message = Message::EntitySet{entity, info};
+            let message = Message::EntitySet{entity, info: Box::new(info)};
 
             messager.send_blocking(message)
         })?;

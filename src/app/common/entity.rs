@@ -429,7 +429,7 @@ macro_rules! impl_common_systems
                 {
                     if let Some(mut x) = self.target(entity)
                     {
-                        *x = target;
+                        *x = *target;
                     }
 
                     None
@@ -1961,7 +1961,7 @@ macro_rules! define_entities_both
 
                     passer.send_message(Message::SetTarget{
                         entity,
-                        target
+                        target: Box::new(target)
                     });
                 };
 
@@ -2095,7 +2095,7 @@ macro_rules! define_entities_both
             {
                 self.create_queued_common(|_this, entity, info|
                 {
-                    let message = Message::EntitySet{entity, info: info.clone()};
+                    let message = Message::EntitySet{entity, info: Box::new(info.clone())};
 
                     writer.send_message(message);
 
@@ -2109,7 +2109,7 @@ macro_rules! define_entities_both
             {
                 let entity = self.push_inner(false, info);
 
-                Message::EntitySet{entity, info: self.info(entity)}
+                Message::EntitySet{entity, info: Box::new(self.info(entity))}
             }
 
             pub fn remove_message(&mut self, entity: Entity) -> Message

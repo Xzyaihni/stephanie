@@ -105,7 +105,7 @@ impl AstPos
             Vec::new()
         } else
         {
-            iter::once(self.car()).chain(self.cdr().list_to_vec().into_iter()).collect()
+            iter::once(self.car()).chain(self.cdr().list_to_vec()).collect()
         }
     }
 }
@@ -152,7 +152,7 @@ impl Ast
         match self
         {
             Self::EmptyList => "()".to_owned(),
-            Self::Value(x) => Self::parse_primitive(&x).map_or_else(|_| x.clone(), |x| x.to_string()),
+            Self::Value(x) => Self::parse_primitive(x).map_or_else(|_| x.clone(), |x| x.to_string()),
             Self::List{car, cdr} => format!(
                 "({} {})",
                 car.to_string_pretty(),

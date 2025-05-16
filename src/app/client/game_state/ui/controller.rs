@@ -423,7 +423,7 @@ impl UiElementCached
 
         if self.object.is_none()
         {
-            self.object = Self::from_element(create_info, parent_fraction, &deferred, old_element).object;
+            self.object = Self::from_element(create_info, parent_fraction, deferred, old_element).object;
         }
     }
 
@@ -764,13 +764,13 @@ impl UiDeferredInfo
                 || texture_size().x,
                 is_width_parallel,
                 &element.width,
-                children.iter().map(|x| x.width.clone())
+                children.iter().map(|x| x.width)
             ).map(|value| SizeBackwardInfo{changes_total, value}),
             height: self.height.resolve_backward(
                 || texture_size().y,
                 !is_width_parallel,
                 &element.height,
-                children.iter().map(|x| x.height.clone())
+                children.iter().map(|x| x.height)
             ).map(|value| SizeBackwardInfo{changes_total, value})
         }
     }

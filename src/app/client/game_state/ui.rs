@@ -492,7 +492,7 @@ impl UiInventory
         let mut items: Vec<_> = inventory.items_ids().collect();
         items.sort_by(|a, b|
         {
-            self.sorter.order(&info.items_info, a.1, b.1)
+            self.sorter.order(info.items_info, a.1, b.1)
         });
 
         items.into_iter().map(|(index, x)|
@@ -502,7 +502,7 @@ impl UiInventory
                 item: index,
                 name: item.name.clone(),
                 aspect: item.aspect,
-                texture: item.texture.clone()
+                texture: item.texture
             }
         }).collect()
     }
@@ -1243,15 +1243,8 @@ impl Ui
             *lifetime > 0.0
         });
 
-        let popup_taken = {
-            if self.controller.input_of(&UiId::Popup(self.popup_unique_id, PopupPart::Body)).is_mouse_inside()
-            {
-                true
-            } else
-            {
-                false
-            }
-        };
+        let popup_taken = self.controller.input_of(&UiId::Popup(self.popup_unique_id, PopupPart::Body))
+            .is_mouse_inside();
 
         let takes_input = self.windows.iter().rposition(|window|
         {
@@ -1266,12 +1259,12 @@ impl Ui
             }).unwrap_or(false);
 
             x.update(&mut self.controller, UpdateInfo{
-                entities: entities,
+                entities,
                 items_info: &self.items_info,
                 fonts: &self.fonts,
                 anatomy_locations: &self.anatomy_locations,
                 mouse_taken: window_taken || popup_taken,
-                controls: controls,
+                controls,
                 user_receiver: &mut self.user_receiver.borrow_mut(),
                 dt
             })

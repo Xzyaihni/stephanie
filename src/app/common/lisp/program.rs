@@ -29,8 +29,8 @@ use parser::{Parser, Ast, AstPos};
 mod parser;
 
 
-pub const BEGIN_PRIMITIVE: &'static str = "begin";
-pub const QUOTE_PRIMITIVE: &'static str = "quote";
+pub const BEGIN_PRIMITIVE: &str = "begin";
+pub const QUOTE_PRIMITIVE: &str = "quote";
 
 // unreadable, great
 pub type OnApply = Rc<
@@ -409,7 +409,7 @@ impl Default for Primitives
             ("lambda",
                 PrimitiveProcedureInfo::new_eval(ArgsCount::Min(2), Rc::new(|memory, args|
                 {
-                    Ok(InterRepr::parse_lambda(memory, "<lambda>".to_owned(), args)?)
+                    InterRepr::parse_lambda(memory, "<lambda>".to_owned(), args)
                 }))),
             ("define",
                 PrimitiveProcedureInfo::new_eval(ArgsCount::Min(2), Rc::new(|memory, args: AstPos|
@@ -451,7 +451,7 @@ impl Default for Primitives
             ("let",
                 PrimitiveProcedureInfo::new_eval(2, Rc::new(|memory, args|
                 {
-                    Ok(InterRepr::parse_let(memory, args)?)
+                    InterRepr::parse_let(memory, args)
                 }))),
             ("make-vector",
                 PrimitiveProcedureInfo::new_with_target(2, Effect::Pure, |mut args, target|
@@ -844,7 +844,7 @@ impl CompiledPart
             {
                 Command::Push(register).into()
             })
-            .chain(self.commands.into_iter())
+            .chain(self.commands)
             .chain(save_registers.rev().map(|(register, _)| -> CommandPos
             {
                 Command::Pop(register).into()
@@ -1126,7 +1126,7 @@ impl InterReprPos
 
     pub fn parse_primitive_text(memory: &mut LispMemory, text: &str) -> Result<LispValue, Error>
     {
-        Ok(memory.new_primitive_value(Ast::parse_primitive(&text)?))
+        Ok(memory.new_primitive_value(Ast::parse_primitive(text)?))
     }
 
     pub fn parse(
@@ -2113,7 +2113,7 @@ impl CompiledProgram
                                 leftover += 1;
                             }
 
-                            *got = *got + leftover;
+                            *got += leftover;
                         },
                         _ => ()
                     }

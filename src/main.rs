@@ -15,6 +15,8 @@
 #![allow(clippy::type_complexity)]
 // ITS MORE DESCRIPTIVE OF WUT IT IS
 #![allow(clippy::let_and_return)]
+// consistency????????
+#![allow(clippy::excessive_precision)]
 
 use std::{process, fmt::Display};
 

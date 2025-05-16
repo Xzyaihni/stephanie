@@ -678,7 +678,7 @@ impl GameState
         let entities = self.entities();
         if let Some(target) = entities.target_ref(entity)
         {
-            self.send_message(Message::SetTarget{entity, target: target.clone()});
+            self.send_message(Message::SetTarget{entity, target: Box::new(target.clone())});
         }
 
         if let Some(character) = entities.character(entity)

@@ -282,7 +282,7 @@ impl World
             let mut create = |info|
             {
                 let entity = container.push(false, info);
-                let message = Message::EntitySet{entity, info: container.info(entity)};
+                let message = Message::EntitySet{entity, info: Box::new(container.info(entity))};
 
                 writer.send_message(message);
 

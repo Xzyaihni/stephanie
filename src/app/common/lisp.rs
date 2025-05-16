@@ -850,7 +850,7 @@ impl Clone for LispMemory
             memory: self.memory.clone(),
             swap_memory: self.swap_memory.clone(),
             stack: clone_with_capacity(&self.stack),
-            registers: self.registers.clone()
+            registers: self.registers
         }
     }
 }
@@ -1006,7 +1006,7 @@ impl LispMemory
         Ok(())
     }
 
-    #[must_use]
+    #[must_use = "saved registers must get restored"]
     pub fn with_saved_registers(
         &mut self,
         registers: impl IntoIterator<Item=Register> + Clone
@@ -1646,11 +1646,11 @@ impl Lisp
 
     pub fn print_highlighted(source: &str, position: CodePosition)
     {
-        if let Some(line) = source.lines().skip(position.line - 1).next()
+        if let Some(line) = source.lines().nth(position.line - 1)
         {
             eprintln!("{line}");
 
-            let padding = iter::repeat(' ').take(position.character.saturating_sub(1)).collect::<String>();
+            let padding = " ".repeat(position.character.saturating_sub(1));
             eprintln!("{padding}^");
         } else
         {

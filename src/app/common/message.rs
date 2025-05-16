@@ -36,7 +36,7 @@ use crate::common::{
 #[derive(Debug, Clone, EnumCount, Serialize, Deserialize)]
 pub enum Message
 {
-    EntitySet{entity: Entity, info: EntityInfo},
+    EntitySet{entity: Entity, info: Box<EntityInfo>},
     SetParent{entity: Entity, component: Box<Parent>},
     SetTransform{entity: Entity, component: Box<Transform>},
     SetLazyTransform{entity: Entity, component: Box<LazyTransform>},
@@ -58,7 +58,7 @@ pub enum Message
     SetNamed{entity: Entity, component: Box<String>},
     SetOccluder{entity: Entity, component: Box<Occluder>},
     SetNone{entity: Entity, component: Box<()>},
-    SetTarget{entity: Entity, target: Transform},
+    SetTarget{entity: Entity, target: Box<Transform>},
     SyncPosition{entity: Entity, position: Vector3<f32>},
     SyncPositionRotation{entity: Entity, position: Vector3<f32>, rotation: f32},
     SyncCharacter{entity: Entity, info: CharacterSyncInfo},

@@ -193,29 +193,26 @@ pub fn create() -> ShadersCreated
         (3, SHADOW_COLOR.z.into())
     ];
 
-    let world_shaded_shader = {
-        let shaded_specialization = shaded_specialization.clone();
-        shaders.push(Shader{
-            shader: ShadersGroup::new(
-                move |device|
-                {
-                    world_shaded_vertex::load(device).unwrap().specialize(
-                        [(0, TILE_SIZE.into())].into_iter().collect()
-                    )
-                },
-                move |device|
-                {
-                    world_shaded_fragment::load(device).unwrap().specialize(
-                        shaded_specialization.into_iter().collect()
-                    )
-                }
-            ),
-            stencil: Some(shaded_stencil.clone()),
-            depth: Some(world_depth),
-            per_vertex: Some(Object::per_vertex()),
-            ..Default::default()
-        })
-    };
+    let world_shaded_shader = shaders.push(Shader{
+        shader: ShadersGroup::new(
+            move |device|
+            {
+                world_shaded_vertex::load(device).unwrap().specialize(
+                    [(0, TILE_SIZE.into())].into_iter().collect()
+                )
+            },
+            move |device|
+            {
+                world_shaded_fragment::load(device).unwrap().specialize(
+                    shaded_specialization.into_iter().collect()
+                )
+            }
+        ),
+        stencil: Some(shaded_stencil.clone()),
+        depth: Some(world_depth),
+        per_vertex: Some(Object::per_vertex()),
+        ..Default::default()
+    });
 
     let default_shaded_shader = shaders.push(Shader{
         shader: ShadersGroup::new(

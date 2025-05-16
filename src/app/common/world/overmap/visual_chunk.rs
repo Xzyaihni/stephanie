@@ -257,8 +257,7 @@ impl VisualChunk
                 *top = !*top && bottom;
             });
 
-            let mut current_occlusions = state.clone();
-            while let Some(occluder) = Self::create_vertical_occluder(&mut current_occlusions)
+            while let Some(occluder) = Self::create_vertical_occluder(state)
             {
                 occluders.push(occluder.into_global(chunk_position, z));
             }
