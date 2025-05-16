@@ -1,6 +1,6 @@
 use serde::{Serialize, Deserialize};
 
-use crate::common::Item;
+use crate::common::{ObjectsStore, Item};
 
 pub use sorter::InventorySorter;
 
@@ -13,19 +13,19 @@ pub struct InventoryItem(usize);
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Inventory
 {
-    items: Vec<Item>
+    items: ObjectsStore<Item>
 }
 
 impl Inventory
 {
     pub fn new() -> Self
     {
-        Self{items: Vec::new()}
+        Self{items: ObjectsStore::new()}
     }
 
-    pub fn push(&mut self, item: Item)
+    pub fn push(&mut self, item: Item) -> InventoryItem
     {
-        self.items.push(item);
+        InventoryItem(self.items.push(item))
     }
 
     pub fn get(&self, id: InventoryItem) -> Option<&Item>
@@ -35,23 +35,12 @@ impl Inventory
 
     pub fn remove(&mut self, id: InventoryItem) -> Option<Item>
     {
-        if self.items.get(id.0).is_none()
-        {
-            None
-        } else
-        {
-            Some(self.items.remove(id.0))
-        }
+        self.items.remove(id.0)
     }
 
     pub fn is_empty(&self) -> bool
     {
         self.items.is_empty()
-    }
-
-    pub fn items(&self) -> &[Item]
-    {
-        &self.items
     }
 
     pub fn random(&self) -> InventoryItem
@@ -63,6 +52,6 @@ impl Inventory
 
     pub fn items_ids(&self) -> impl Iterator<Item=(InventoryItem, &Item)>
     {
-        self.items.iter().enumerate().map(|(index, item)| (InventoryItem(index), item))
+        self.items.iter().map(|(index, item)| (InventoryItem(index), item))
     }
 }

@@ -68,7 +68,7 @@ const WHITE_COLOR: Lcha = Lcha{l: 100.0, c: 0.0, h: 0.0, a: 1.0};
 const BLACK_COLOR: Lcha = Lcha{l: 0.0, c: 0.0, h: 0.0, a: 1.0};
 
 const BACKGROUND_COLOR: Lcha = WHITE_COLOR;
-const ACCENT_COLOR: Lcha = Lcha{l: 70.0, c: 50.0, h: 6.0, a: 1.0};
+const ACCENT_COLOR: Lcha = Lcha{l: 70.0, c: 90.0, h: 6.0, a: 1.0};
 const HIGHLIGHTED_COLOR: Lcha = ACCENT_COLOR.with_added_lightness(20.0).with_added_chroma(-20.0);
 
 const MISSING_PART_COLOR: Lcha = Lcha{a: 0.5, ..BLACK_COLOR};
@@ -714,6 +714,15 @@ impl WindowKind
                         width: UiSize::Rest(1.0).into(),
                         animation: Animation{
                             mix: Animation::button().mix,
+                            scaling: Some(ScalingAnimation{
+                                close_scaling: Vector2::new(0.0, 1.0),
+                                close_mode: Scaling::EaseOut{decay: 20.0},
+                                ..Default::default()
+                            }),
+                            position: Some(PositionAnimation{
+                                start_mode: Connection::EaseOut{decay: 10.0, limit: None},
+                                ..Default::default()
+                            }),
                             ..Default::default()
                         },
                         ..Default::default()
@@ -745,7 +754,7 @@ impl WindowKind
                     add_padding_horizontal(body, UiSize::Pixels(ITEM_PADDING / 2.0).into());
 
                     body.update(id(ItemPart::Name), UiElement{
-                        texture: UiTexture::Text{text: item.name.clone(), font_size},
+                        texture: UiTexture::Text{text: format!("{:?}", &item.item), font_size},
                         mix: Some(MixColorLch{keep_transparency: true, ..MixColorLch::color(ACCENT_COLOR)}),
                         ..UiElement::fit_content()
                     });

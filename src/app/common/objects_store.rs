@@ -4,8 +4,10 @@ use std::{
     ops::{Range, Index, IndexMut}
 };
 
+use serde::{Serialize, Deserialize};
 
-#[derive(Debug, Clone)]
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ObjectsStore<T>
 {
     data: Vec<Option<T>>,
@@ -148,6 +150,11 @@ impl<T> ObjectsStore<T>
     pub fn len(&self) -> usize
     {
         self.data.len() - self.free_list.len()
+    }
+
+    pub fn is_empty(&self) -> bool
+    {
+        self.len() == 0
     }
 
     #[allow(dead_code)]
