@@ -1,5 +1,6 @@
 use std::{
     f32,
+    fmt::{self, Display},
     collections::HashMap,
     hash::{Hash, Hasher},
     rc::Rc,
@@ -34,6 +35,7 @@ use crate::{
         anatomy::*,
         colors::*,
         lazy_transform::*,
+        f32_to_range,
         EaseOut,
         Item,
         ItemId,
@@ -63,6 +65,7 @@ const SCROLLBAR_HEIGHT: f32 = BUTTON_SIZE * 5.0;
 const SEPARATOR_SIZE: f32 = 3.0;
 
 const SMALL_TEXT_SIZE: u32 = 20;
+const SMALLEST_TEXT_SIZE: u32 = 15;
 
 const WHITE_COLOR: Lcha = Lcha{l: 100.0, c: 0.0, h: 0.0, a: 1.0};
 const BLACK_COLOR: Lcha = Lcha{l: 0.0, c: 0.0, h: 0.0, a: 1.0};
@@ -122,7 +125,7 @@ impl Idable for UiId
     fn padding(id: u32) -> Self { Self::Padding(id) }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum BarDisplayPart
 {
     Body,
@@ -131,28 +134,28 @@ enum BarDisplayPart
     Text
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum ConsolePart
 {
     Body,
     Text
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum NotificationPart
 {
     Body,
     Text
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum PopupPart
 {
     Body,
     Button(u32, PopupButtonPart)
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum PopupButtonPart
 {
     Body,
@@ -173,10 +176,45 @@ enum WindowPart
     Anatomy(AnatomyPart)
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum AnatomyPart
 {
-    BodyPart(HumanPartId)
+    BodyPart(HumanPartId),
+    Tooltip(AnatomyTooltipPart)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum AnatomyTooltipPart
+{
+    Panel,
+    Title,
+    Name,
+    Body,
+    Separator,
+    Healthbar(BarId, BarDisplayPart)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum BarId
+{
+    Health,
+    Skin,
+    Muscle,
+    Bone
+}
+
+impl Display for BarId
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
+    {
+        write!(f, "{}", match self
+        {
+            Self::Health => "HEALTH",
+            Self::Skin => "SKIN",
+            Self::Muscle => "MUSCLE",
+            Self::Bone => "BONE"
+        })
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -299,14 +337,20 @@ fn handle_button(
     }
 }
 
-fn health_color(anatomy: &Anatomy, id: HumanPartId) -> Lcha
+fn single_health_color(fraction: Option<f32>) -> Lcha
 {
-    anatomy.get_human(id).unwrap().map(|part|
+    fraction.map(|x|
     {
-        // pi radians is lab green, 0 is red
-        let x = part.average_health();
-        Lcha{l: 50.0, c: 100.0, h: x * (f32::consts::PI * 0.5) + (f32::consts::PI * 0.3), a: 1.0}
+        let range = 0.7..=2.6;
+        let h = f32_to_range(range, x.powi(3));
+
+        Lcha{l: 50.0, c: 100.0, h, a: 1.0}
     }).unwrap_or(MISSING_PART_COLOR)
+}
+
+fn average_health_color(anatomy: &Anatomy, id: HumanPartId) -> Lcha
+{
+    single_health_color(anatomy.get_human(id).unwrap().map(|x| x.average_health()))
 }
 
 pub struct UiList<T>
@@ -850,7 +894,7 @@ impl WindowKind
                 {
                     let selected = selected_index == Some(index);
 
-                    let color = health_color(&anatomy, *part_id);
+                    let color = average_health_color(&anatomy, *part_id);
                     let health_color = if selected
                     {
                         color.with_added_lightness(20.0).with_added_chroma(-30.0)
@@ -859,17 +903,154 @@ impl WindowKind
                         color
                     };
 
+                    let twice_size: UiElementSize<_> = UiSize::FitContent(2.0).into();
                     body.update(id(AnatomyPart::BodyPart(*part_id)), UiElement{
                         texture: UiTexture::CustomId(location.id),
                         mix: Some(MixColorLch{keep_transparency: true, ..MixColorLch::color(health_color)}),
                         position: UiPosition::Inherit,
+                        width: twice_size.clone(),
+                        height: twice_size,
                         animation: Animation{
                             mix: Some(MixAnimation{l: 50.0, c: 50.0, ..MixAnimation::all(20.0)}),
                             ..Default::default()
                         },
-                        ..UiElement::fit_content()
+                        ..Default::default()
                     });
                 });
+
+                if let Some(part_id) = selected_index.map(|x| info.anatomy_locations.locations[x].0)
+                {
+                    let id = |part|
+                    {
+                        id(AnatomyPart::Tooltip(part))
+                    };
+
+                    let body = body.update(id(AnatomyTooltipPart::Panel), UiElement{
+                        texture: UiTexture::Solid,
+                        mix: Some(MixColorLch::color(Lcha{a: 0.5, ..BACKGROUND_COLOR})),
+                        position: UiPosition::Absolute{position: info.mouse_position, align: UiPositionAlign{
+                            horizontal: AlignHorizontal::Left,
+                            vertical: AlignVertical::Top
+                        }},
+                        animation: Animation::tooltip(),
+                        children_layout: UiLayout::Vertical,
+                        ..Default::default()
+                    });
+
+                    let title = body.update(id(AnatomyTooltipPart::Title), UiElement{
+                        width: UiElementSize{
+                            minimum_size: Some(UiMinimumSize::FitChildren),
+                            size: UiSize::Rest(1.0)
+                        },
+                        children_layout: UiLayout::Vertical,
+                        ..Default::default()
+                    });
+
+                    title.update(id(AnatomyTooltipPart::Name), UiElement{
+                        texture: UiTexture::Text{text: part_id.to_string(), font_size: SMALL_TEXT_SIZE},
+                        mix: Some(MixColorLch{keep_transparency: true, ..MixColorLch::color(ACCENT_COLOR)}),
+                        ..UiElement::fit_content()
+                    });
+
+                    body.update(id(AnatomyTooltipPart::Separator), UiElement{
+                        texture: UiTexture::Solid,
+                        mix: Some(MixColorLch::color(ACCENT_COLOR)),
+                        width: UiElementSize{
+                            minimum_size: Some(UiMinimumSize::Pixels(200.0)),
+                            size: UiSize::Rest(1.0)
+                        },
+                        height: UiSize::Pixels(SEPARATOR_SIZE).into(),
+                        animation: Animation::separator_wide(),
+                        ..Default::default()
+                    });
+
+                    let body = body.update(id(AnatomyTooltipPart::Body), UiElement{
+                        width: UiElementSize{
+                            minimum_size: Some(UiMinimumSize::FitChildren),
+                            size: UiSize::Rest(1.0)
+                        },
+                        children_layout: UiLayout::Vertical,
+                        ..Default::default()
+                    });
+
+                    let draw_separator = ||
+                    {
+                        add_padding_vertical(body, UiSize::Pixels(2.0).into());
+                    };
+
+                    let draw_bar = |bar_id|
+                    {
+                        let id = |part|
+                        {
+                            id(AnatomyTooltipPart::Healthbar(bar_id, part))
+                        };
+
+                        let body = body.update(id(BarDisplayPart::Body), UiElement{
+                            texture: UiTexture::Solid,
+                            mix: Some(MixColorLch::color(Lcha{a: 0.2, ..BLACK_COLOR})),
+                            width: UiSize::Rest(1.0).into(),
+                            children_layout: UiLayout::Vertical,
+                            ..Default::default()
+                        });
+
+                        let text_id = id(BarDisplayPart::Text);
+
+                        let bar_body = body.update(id(BarDisplayPart::Bar), UiElement{
+                            width: UiSize::Rest(1.0).into(),
+                            height: UiSize::CopyElement(UiDirection::Vertical, 1.0, text_id.clone()).into(),
+                            ..Default::default()
+                        });
+
+                        let value = anatomy.get_human(part_id).unwrap().and_then(|x|
+                        {
+                            match bar_id
+                            {
+                                BarId::Bone | BarId::Health => Some(*x.bone),
+                                BarId::Muscle => *x.muscle,
+                                BarId::Skin => *x.skin
+                            }
+                        }).map(|x| x.fraction());
+
+                        let health_color = single_health_color(value);
+
+                        let value = value.unwrap_or(0.0);
+
+                        bar_body.update(id(BarDisplayPart::BarFill), UiElement{
+                            texture: UiTexture::Solid,
+                            mix: Some(MixColorLch::color(health_color)),
+                            width: UiSize::Rest(value).into(),
+                            height: UiSize::Rest(1.0).into(),
+                            ..Default::default()
+                        });
+
+                        add_padding_horizontal(bar_body, UiSize::Rest(1.0 - value).into());
+
+                        body.update(text_id, UiElement{
+                            texture: UiTexture::Text{text: bar_id.to_string(), font_size: SMALLEST_TEXT_SIZE},
+                            mix: Some(MixColorLch{keep_transparency: true, ..MixColorLch::color(WHITE_COLOR)}),
+                            position: UiPosition::Inherit,
+                            ..UiElement::fit_content()
+                        });
+                    };
+
+                    draw_separator();
+                    if let HumanPartId::Eye(_) = part_id
+                    {
+                        draw_bar(BarId::Health);
+                    } else
+                    {
+                        draw_bar(BarId::Skin);
+
+                        draw_separator();
+
+                        draw_bar(BarId::Muscle);
+
+                        draw_separator();
+
+                        draw_bar(BarId::Bone);
+                    }
+                    draw_separator();
+                }
             }
         }
     }
@@ -921,6 +1102,7 @@ pub struct UpdateInfo<'a, 'b, 'c>
     pub items_info: &'a ItemsInfo,
     pub fonts: &'a FontsContainer,
     pub anatomy_locations: &'a UiAnatomyLocations,
+    pub mouse_position: Vector2<f32>,
     pub mouse_taken: bool,
     pub controls: &'b mut UiControls,
     pub user_receiver: &'c mut UiReceiver,
@@ -1224,7 +1406,7 @@ impl Ui
             {
                 let selected = parts.iter().any(|x| x.1 == *part_id);
 
-                let color = health_color(&anatomy, *part_id);
+                let color = average_health_color(&anatomy, *part_id);
                 let health_color = if selected
                 {
                     color.with_added_lightness(50.0).with_added_chroma(-50.0)
@@ -1277,6 +1459,7 @@ impl Ui
                 items_info: &self.items_info,
                 fonts: &self.fonts,
                 anatomy_locations: &self.anatomy_locations,
+                mouse_position: self.mouse_position,
                 mouse_taken: window_taken || popup_taken,
                 controls,
                 user_receiver: &mut self.user_receiver.borrow_mut(),
@@ -1462,10 +1645,9 @@ impl Ui
             });
 
             body.update(UiId::Console(ConsolePart::Text), UiElement{
-                texture: UiTexture::Text{text, font_size: 30},
+                texture: UiTexture::Text{text, font_size: 15},
                 mix: Some(MixColorLch{keep_transparency: true, ..MixColorLch::color(ACCENT_COLOR)}),
                 animation: Animation::typing_text(),
-                position: UiPosition::Absolute{position: Vector2::zeros(), align: Default::default()},
                 ..UiElement::fit_content()
             });
         }

@@ -369,6 +369,18 @@ pub struct ResolvedBackward
     pub height: Option<SizeBackwardInfo>
 }
 
+impl ResolvedBackward
+{
+    pub fn empty() -> Self
+    {
+        let empty_value = SizeBackwardInfo{changes_total: false, value: 0.0};
+        Self{
+            width: Some(empty_value),
+            height: Some(empty_value)
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct ResolvedSize
 {
@@ -624,7 +636,7 @@ impl Default for ScalingAnimation
             start_scaling: Vector2::repeat(1.0),
             start_mode: Scaling::Instant,
             close_scaling: Vector2::new(1.0, 0.0),
-            close_mode: Scaling::Ignore
+            close_mode: Scaling::Instant
         }
     }
 }
@@ -734,12 +746,24 @@ impl Animation
         }
     }
 
+    pub fn tooltip() -> Self
+    {
+        Self{
+            scaling: Some(ScalingAnimation{
+                close_mode: Scaling::EaseOut{decay: 40.0},
+                ..Default::default()
+            }),
+            ..Default::default()
+        }
+    }
+
     pub fn button() -> Self
     {
         Self{
             scaling: Some(ScalingAnimation{
                 start_scaling: Vector2::new(1.0, 0.1),
                 start_mode: Scaling::EaseOut{decay: 20.0},
+                close_mode: Scaling::Ignore,
                 ..Default::default()
             }),
             mix: Some(MixAnimation::all(10.0)),
@@ -777,6 +801,7 @@ impl Animation
             scaling: Some(ScalingAnimation{
                 start_scaling: Vector2::new(1.0, 0.1),
                 start_mode: Scaling::EaseOut{decay: 30.0},
+                close_mode: Scaling::Ignore,
                 ..Default::default()
             }),
             ..Default::default()
@@ -798,6 +823,7 @@ impl Animation
             scaling: Some(ScalingAnimation{
                 start_scaling: Vector2::new(1.0, 1.3),
                 start_mode: Scaling::EaseOut{decay: 10.0},
+                close_mode: Scaling::Ignore,
                 ..Default::default()
             }),
             ..Default::default()

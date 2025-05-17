@@ -285,9 +285,14 @@ pub fn normalize_path(path: impl AsRef<Path>) -> String
     }).unwrap_or_default()
 }
 
+pub fn f32_to_range(range: RangeInclusive<f32>, value: f32) -> f32
+{
+    value * (range.end() - range.start()) + range.start()
+}
+
 pub fn random_f32(range: RangeInclusive<f32>) -> f32
 {
-    fastrand::f32() * (range.end() - range.start()) + range.start()
+    f32_to_range(range, fastrand::f32())
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

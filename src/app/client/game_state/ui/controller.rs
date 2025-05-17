@@ -795,7 +795,7 @@ impl UiDeferredInfo
 
         let is_width_parallel = element.children_layout.is_horizontal();
 
-        ResolvedBackward{
+        let resolved = ResolvedBackward{
             width: self.width.resolve_backward(
                 || texture_size().x,
                 is_width_parallel,
@@ -808,7 +808,14 @@ impl UiDeferredInfo
                 &element.height,
                 children.iter().map(|x| x.height)
             ).map(|value| SizeBackwardInfo{changes_total, value})
+        };
+
+        if let UiPosition::Absolute{..} = element.position
+        {
+            return ResolvedBackward::empty();
         }
+
+        resolved
     }
 
     fn resolved(&self) -> bool
