@@ -587,7 +587,8 @@ pub struct PositionAnimation
 {
     pub offsets: Option<PositionOffsets>,
     pub start_mode: Connection,
-    pub close_mode: Connection
+    pub close_mode: Connection,
+    pub parent_relative: bool
 }
 
 impl Default for PositionAnimation
@@ -597,7 +598,8 @@ impl Default for PositionAnimation
         Self{
             offsets: None,
             start_mode: Connection::Rigid,
-            close_mode: Connection::Rigid
+            close_mode: Connection::Rigid,
+            parent_relative: false
         }
     }
 }
@@ -609,7 +611,8 @@ impl PositionAnimation
         Self{
             offsets: None,
             start_mode: Connection::EaseOut{decay, limit: None},
-            close_mode: Connection::Ignore
+            close_mode: Connection::Ignore,
+            parent_relative: false
         }
     }
 }

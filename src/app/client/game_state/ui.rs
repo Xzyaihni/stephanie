@@ -351,25 +351,24 @@ impl<T> UiList<T>
         let body_height = body.try_height()?;
 
         let items_total = self.items.len() as f32 * item_height;
-        let items_fit = (body_height / item_height).ceil() as usize + 1;
-
-        let height = 1.0;
+        let items_fit = (body_height / item_height).ceil() as usize + 2;
 
         let bottom_scroll = (items_total - body_height).max(0.0);
         let offset = bottom_scroll * self.position;
 
         let starting_item = (offset / item_height) as usize;
 
-        let relative_offset = offset % item_height;
-        let moving_offset = (height - body_height) / 2.0 - relative_offset;
+        let moving_offset = -body_height / 2.0 - offset;
 
         let moving_part = body.update(id(UiListPart::Moving), UiElement{
             position: UiPosition::Offset(body_id, Vector2::new(0.0, moving_offset)),
             children_layout: UiLayout::Vertical,
             width: UiSize::Rest(1.0).into(),
-            height: height.into(),
+            height: 0.0.into(),
             ..Default::default()
         });
+
+        add_padding_vertical(moving_part, (offset - (offset % item_height) - item_height).max(0.0).into());
 
         let bar_height = (body_height / items_total).min(1.0);
 
@@ -441,18 +440,21 @@ impl<T> UiList<T>
         {
             body.mouse_position_inside().and_then(|position|
             {
-                let item_height = item_height / body_height;
-                let index = starting_item + ((position.y + (relative_offset / body_height)) / item_height) as usize;
+                let fraction = offset % item_height;
+                let index = starting_item + ((position.y * body_height + fraction) / item_height) as usize;
 
                 (index < self.items.len()).then_some(index)
             })
         };
 
-        self.items.iter().enumerate().skip(starting_item).take(items_fit).for_each(|(index, value)|
-        {
-            let is_selected = selected_index.map(|x| x == index).unwrap_or(false);
-            update_item(info, moving_part, value, is_selected);
-        });
+        self.items.iter().enumerate()
+            .skip(starting_item.saturating_sub(1))
+            .take(items_fit)
+            .for_each(|(index, value)|
+            {
+                let is_selected = selected_index.map(|x| x == index).unwrap_or(false);
+                update_item(info, moving_part, value, is_selected);
+            });
 
         selected_index
     }
@@ -720,7 +722,8 @@ impl WindowKind
                                 ..Default::default()
                             }),
                             position: Some(PositionAnimation{
-                                start_mode: Connection::EaseOut{decay: 10.0, limit: None},
+                                start_mode: Connection::EaseOut{decay: 20.0, limit: None},
+                                parent_relative: true,
                                 ..Default::default()
                             }),
                             ..Default::default()
@@ -754,7 +757,7 @@ impl WindowKind
                     add_padding_horizontal(body, UiSize::Pixels(ITEM_PADDING / 2.0).into());
 
                     body.update(id(ItemPart::Name), UiElement{
-                        texture: UiTexture::Text{text: format!("{:?}", &item.item), font_size},
+                        texture: UiTexture::Text{text: item.name.clone(), font_size},
                         mix: Some(MixColorLch{keep_transparency: true, ..MixColorLch::color(ACCENT_COLOR)}),
                         ..UiElement::fit_content()
                     });
@@ -1395,7 +1398,8 @@ impl Ui
                                 end: outside_offset
                             }),
                             start_mode: Connection::EaseOut{decay: 10.0, limit: None},
-                            close_mode: Connection::EaseIn(EaseInInfo::new(0.8))
+                            close_mode: Connection::EaseIn(EaseInInfo::new(0.8)),
+                            ..Default::default()
                         }),
                         ..Default::default()
                     },

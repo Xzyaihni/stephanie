@@ -25,6 +25,7 @@ use yanyaengine::{
 use crate::{
     client::RenderCreateInfo,
     common::{
+        some_or_value,
         render_info::*,
         colors::Lcha,
         EaseOut
@@ -193,6 +194,15 @@ impl<Id: Idable> Inputable for TreeInserter<'_, Id>
     }
 }
 
+fn parental_position_of<Id>(parent_deferred: Option<&UiDeferredInfo>, element: &UiElement<Id>) -> Vector2<f32>
+{
+    element.animation.position
+        .as_ref().map(|x| x.parent_relative).unwrap_or(false)
+        .then(|| parent_deferred.and_then(|x| x.position))
+        .flatten()
+        .unwrap_or_else(Vector2::zeros)
+}
+
 #[derive(Debug, Clone)]
 struct Fractions
 {
@@ -220,6 +230,7 @@ struct UiElementCached
 {
     fractions: Fractions,
     scale: Vector2<f32>,
+    parental_position: Vector2<f32>,
     position: Vector2<f32>,
     mix: Option<MixColorLch>,
     scissor: Option<VulkanoScissor>,
@@ -231,6 +242,7 @@ impl UiElementCached
     fn from_element<Id>(
         create_info: &mut RenderCreateInfo,
         parent_fraction: &Fractions,
+        parent_deferred: Option<&UiDeferredInfo>,
         deferred: &UiDeferredInfo,
         element: &UiElement<Id>
     ) -> Self
@@ -252,6 +264,8 @@ impl UiElementCached
             Vector2::new(width, height)
         };
 
+        let parental_position = parental_position_of(parent_deferred, element);
+
         let position = {
             let offset = element.animation.position
                 .as_ref()
@@ -259,7 +273,7 @@ impl UiElementCached
                 .map(|x| x.start)
                 .unwrap_or_else(Vector2::zeros);
 
-            deferred.position.unwrap() + offset
+            deferred.position.unwrap() + offset - parental_position
         };
 
         let transform = Transform::default();
@@ -295,6 +309,7 @@ impl UiElementCached
             fractions: Fractions::default(),
             scale,
             position,
+            parental_position,
             mix: element.mix,
             scissor,
             object
@@ -318,12 +333,13 @@ impl UiElementCached
             let target_scale = Vector2::new(deferred.width.unwrap(), deferred.height.unwrap());
 
             let fraction = self.scale.component_div(&target_scale);
+            let fraction = fraction.zip_map(&target_scale, |a, b| if b == 0.0 { 1.0 } else { a });
 
             self.fractions.scale_inherit = fraction.component_mul(&parent_fraction.scale_inherit);
         }
 
         {
-            let target_position = deferred.position.unwrap();
+            let target_position = deferred.position.unwrap() - self.parental_position;
 
             let fraction = self.position - target_position;
 
@@ -337,7 +353,7 @@ impl UiElementCached
                 let scale = self.scale.component_mul(&self.fractions.scale);
                 transform.scale = Vector3::new(scale.x, scale.y, 1.0);
 
-                let position = self.position + self.fractions.position;
+                let position = self.position + self.fractions.position + self.parental_position;
                 transform.position = Vector3::new(position.x, position.y, 0.0);
             })
         }
@@ -385,6 +401,7 @@ impl UiElementCached
         &mut self,
         create_info: &mut RenderCreateInfo,
         parent_fraction: &Fractions,
+        parent_deferred: Option<&UiDeferredInfo>,
         deferred: &UiDeferredInfo,
         old_element: &mut UiElement<Id>,
         dt: f32
@@ -400,7 +417,9 @@ impl UiElementCached
             self.scale = target_scale;
         }
 
-        let target_position = deferred.position.unwrap();
+        self.parental_position = parental_position_of(parent_deferred, old_element);
+
+        let target_position = deferred.position.unwrap() - self.parental_position;
         if let Some(connection) = old_element.animation.position.as_mut()
         {
             connection.start_mode.simple_next_2d(
@@ -423,7 +442,13 @@ impl UiElementCached
 
         if self.object.is_none()
         {
-            self.object = Self::from_element(create_info, parent_fraction, deferred, old_element).object;
+            self.object = Self::from_element(
+                create_info,
+                parent_fraction,
+                parent_deferred,
+                deferred,
+                old_element
+            ).object;
         }
     }
 
@@ -478,7 +503,7 @@ impl UiElementCached
             .map(|x| x.end)
             .unwrap_or_else(Vector2::zeros);
 
-        let target_position = deferred.position.unwrap() + offset;
+        let target_position = deferred.position.unwrap() + offset - self.parental_position;
         if let Some(connection) = element.animation.position.as_mut()
         {
             connection.close_mode.simple_next_2d(
@@ -1208,42 +1233,54 @@ impl<Id: Idable> Controller<Id>
 
         created_trees[0].for_each(&created_trees, |parent, this|
         {
-            let parent_fraction = parent.as_ref().and_then(|parent|
+            let mut shared = self.shared.borrow_mut();
+
+            fn constrain<Id: Sized, F>(f: F) -> F
+            where
+                for<'a> F: Fn(&'a SharedInfo<Id>, &'a [Element<Id>]) -> Option<&'a Element<Id>>
             {
-                let shared = self.shared.borrow();
+                f
+            }
 
-                let search_id = &parent.id;
-                shared.element_id(search_id).map(|index|
+            let get_parent = constrain(|shared, replace_elements|
+            {
+                parent.as_ref().and_then(|parent|
                 {
-                    &shared.elements[index]
-                }).or_else(||
-                {
-                    replace_elements.iter().find(|x| x.id == *search_id)
-                }).map(|x| x.cached.fractions.clone())
-            }).unwrap_or_default();
+                    let search_id = &parent.id;
+                    shared.element_id(search_id).map(|index|
+                    {
+                        &shared.elements[index]
+                    }).or_else(||
+                    {
+                        replace_elements.iter().find(|x| x.id == *search_id)
+                    })
+                })
+            });
 
-            let index = self.shared.borrow().element_id(&this.id);
+            let parent_fraction = get_parent(
+                &shared,
+                &replace_elements
+            ).map(|x| x.cached.fractions.clone()).unwrap_or_default();
+
+            let index = shared.element_id(&this.id);
             let mut element = if let Some(index) = index
             {
                 {
-                    let Element{
-                        element: old_element,
-                        cached: old_cached,
-                        deferred: old_deferred,
-                        closing,
-                        ..
-                    } = &mut self.shared.borrow_mut().elements[index];
-
-                    *closing = false;
-
-                    if *old_element != this.element
+                    if shared.elements[index].element != this.element
                     {
                         let mut cached = UiElementCached::from_element(
                             create_info,
                             &parent_fraction,
+                            get_parent(&shared, &replace_elements).map(|x| &x.deferred),
                             &this.deferred,
                             &this.element
                         );
+
+                        let Element{
+                            element: old_element,
+                            cached: old_cached,
+                            ..
+                        } = &mut shared.elements[index];
 
                         old_cached.keep_old(&mut cached, old_element, &this.element);
 
@@ -1252,15 +1289,23 @@ impl<Id: Idable> Controller<Id>
                         *old_element = this.element.clone();
                     }
 
+                    let Element{
+                        deferred: old_deferred,
+                        closing,
+                        ..
+                    } = &mut shared.elements[index];
+
+                    *closing = false;
                     *old_deferred = this.deferred.clone();
                 }
 
-                self.shared.borrow_mut().elements.remove(index)
+                shared.elements.remove(index)
             } else
             {
                 let cached = UiElementCached::from_element(
                     create_info,
                     &parent_fraction,
+                    get_parent(&shared, &replace_elements).map(|x| &x.deferred),
                     &this.deferred,
                     &this.element
                 );
@@ -1278,14 +1323,38 @@ impl<Id: Idable> Controller<Id>
                 }
             };
 
-            element.cached.update(create_info, &parent_fraction, &this.deferred, &mut element.element, dt);
+            element.cached.update(
+                create_info,
+                &parent_fraction,
+                get_parent(&shared, &replace_elements).map(|x| &x.deferred),
+                &this.deferred,
+                &mut element.element,
+                dt
+            );
+
             replace_elements.push(element);
         });
 
         {
             let mut shared = self.shared.borrow_mut();
 
-            shared.elements = mem::take(&mut shared.elements).into_iter().chain(replace_elements).collect();
+            let mut last_inserted = None;
+
+            let old_elements = mem::take(&mut shared.elements);
+            old_elements.into_iter().for_each(|element|
+            {
+                if let Some(index) = replace_elements.iter().position(|x|
+                {
+                    x.id == *some_or_value!(element.parent.as_ref(), false)
+                })
+                {
+                    last_inserted = Some(index);
+                }
+
+                replace_elements.insert(last_inserted.map(|x| x + 1).unwrap_or(0), element);
+            });
+
+            shared.elements = replace_elements;
         }
 
         {
