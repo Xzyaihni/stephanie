@@ -906,7 +906,7 @@ impl Window
             texture: UiTexture::Solid,
             mix: Some(MixColorLch::color(BACKGROUND_COLOR)),
             animation: Animation::normal(),
-            position: UiPosition::Absolute(self.position),
+            position: UiPosition::Absolute{position: self.position, align: Default::default()},
             children_layout: UiLayout::Vertical,
             ..Default::default()
         });
@@ -1170,19 +1170,16 @@ impl Ui
             let body = self.controller.update(id(NotificationPart::Body), UiElement{
                 texture: UiTexture::Solid,
                 mix: Some(MixColorLch::color(BACKGROUND_COLOR)),
-                position: UiPosition::Absolute(position),
+                position: UiPosition::Absolute{position, align: UiPositionAlign{
+                    horizontal: AlignHorizontal::Middle,
+                    vertical: AlignVertical::Bottom
+                }},
                 animation: Animation{
                     position: Some(PositionAnimation::ease_out(10.0)),
                     ..Animation::normal()
                 },
                 ..Default::default()
             });
-
-            if let Some(height) = body.try_height()
-            {
-                let offset = height * 0.5;
-                body.element().position = UiPosition::Absolute(position - Vector2::new(0.0, offset));
-            }
 
             add_padding_horizontal(body, UiSize::Pixels(NOTIFICATION_PADDING).into());
 
@@ -1210,19 +1207,16 @@ impl Ui
             let position = some_or_value!(position_of(self.camera, *entity), false);
 
             let body = self.controller.update(UiId::AnatomyNotification(*entity, AnatomyNotificationPart::Body), UiElement{
-                position: UiPosition::Absolute(position),
+                position: UiPosition::Absolute{position, align: UiPositionAlign{
+                    horizontal: AlignHorizontal::Middle,
+                    vertical: AlignVertical::Bottom
+                }},
                 animation: Animation{
                     position: Some(PositionAnimation::ease_out(10.0)),
                     ..Animation::normal()
                 },
                 ..Default::default()
             });
-
-            if let Some(height) = body.try_height()
-            {
-                let offset = height * 0.5;
-                body.element().position = UiPosition::Absolute(position - Vector2::new(0.0, offset));
-            }
 
             let anatomy = some_or_value!(entities.anatomy(*entity), false);
             self.anatomy_locations_small.locations.iter().for_each(|(part_id, location)|
@@ -1292,7 +1286,10 @@ impl Ui
                     texture: UiTexture::Solid,
                     mix: Some(MixColorLch::color(ACCENT_COLOR)),
                     animation,
-                    position: UiPosition::Absolute(*position),
+                    position: UiPosition::Absolute{position: *position, align: UiPositionAlign{
+                        horizontal: AlignHorizontal::Left,
+                        vertical: AlignVertical::Top
+                    }},
                     children_layout: UiLayout::Vertical,
                     ..Default::default()
                 })
@@ -1444,7 +1441,7 @@ impl Ui
                 texture: UiTexture::Solid,
                 mix: Some(MixColorLch::color(BACKGROUND_COLOR)),
                 animation: Animation::normal(),
-                position: UiPosition::Absolute(Vector2::zeros()),
+                position: UiPosition::Absolute{position: Vector2::zeros(), align: Default::default()},
                 width: UiElementSize{
                     minimum_size: Some(UiMinimumSize::Absolute(0.9)),
                     ..Default::default()
@@ -1460,7 +1457,7 @@ impl Ui
                 texture: UiTexture::Text{text, font_size: 30},
                 mix: Some(MixColorLch{keep_transparency: true, ..MixColorLch::color(ACCENT_COLOR)}),
                 animation: Animation::typing_text(),
-                position: UiPosition::Absolute(Vector2::zeros()),
+                position: UiPosition::Absolute{position: Vector2::zeros(), align: Default::default()},
                 ..UiElement::fit_content()
             });
         }

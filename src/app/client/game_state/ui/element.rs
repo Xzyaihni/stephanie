@@ -242,10 +242,75 @@ pub struct PositionResolveInfo
     pub parent_position: f32
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum AlignHorizontal
+{
+    Left,
+    Middle,
+    Right
+}
+
+impl Default for AlignHorizontal
+{
+    fn default() -> Self
+    {
+        Self::Middle
+    }
+}
+
+impl AlignHorizontal
+{
+    pub fn as_value(self) -> f32
+    {
+        match self
+        {
+            Self::Left => 1.0,
+            Self::Middle => 0.0,
+            Self::Right => -1.0
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum AlignVertical
+{
+    Top,
+    Middle,
+    Bottom
+}
+
+impl Default for AlignVertical
+{
+    fn default() -> Self
+    {
+        Self::Middle
+    }
+}
+
+impl AlignVertical
+{
+    pub fn as_value(self) -> f32
+    {
+        match self
+        {
+            Self::Top => 1.0,
+            Self::Middle => 0.0,
+            Self::Bottom => -1.0
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct UiPositionAlign
+{
+    pub horizontal: AlignHorizontal,
+    pub vertical: AlignVertical
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum UiPosition<Id>
 {
-    Absolute(Vector2<f32>),
+    Absolute{position: Vector2<f32>, align: UiPositionAlign},
     Offset(Id, Vector2<f32>),
     Next(Vector2<f32>),
     Inherit

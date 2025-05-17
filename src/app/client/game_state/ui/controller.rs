@@ -738,7 +738,18 @@ impl UiDeferredInfo
 
         match &element.position
         {
-            UiPosition::Absolute(x) => Some(*x),
+            UiPosition::Absolute{position, align} =>
+            {
+                let get_offset = |value: f32, size: Option<f32>| -> Option<f32>
+                {
+                    Some((value != 0.0).then_some(value * size? * 0.5).unwrap_or(0.0))
+                };
+
+                Some(Vector2::new(
+                    position.x + get_offset(align.horizontal.as_value(), self.width.value())?,
+                    position.y + get_offset(align.vertical.as_value(), self.height.value())?
+                ))
+            },
             UiPosition::Offset(id, x) =>
             {
                 resolved.get(id).and_then(|element| element.position.map(|pos| pos + *x))
