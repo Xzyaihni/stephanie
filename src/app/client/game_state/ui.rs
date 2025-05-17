@@ -54,10 +54,11 @@ pub mod element;
 mod controller;
 
 
-const TITLE_PADDING: f32 = 0.02;
-const ITEM_PADDING: f32 = 10.0;
+const TITLE_PADDING: f32 = 15.0;
+const SMALL_PADDING: f32 = 10.0;
+const ITEM_PADDING: f32 = SMALL_PADDING;
 const BODY_PADDING: f32 = 20.0;
-const NOTIFICATION_PADDING: f32 = 10.0;
+const NOTIFICATION_PADDING: f32 = SMALL_PADDING;
 
 const BUTTON_SIZE: f32 = 40.0;
 const SCROLLBAR_HEIGHT: f32 = BUTTON_SIZE * 5.0;
@@ -171,7 +172,7 @@ enum WindowPart
     Separator,
     Title(TitlePart),
     Inventory(InventoryPart),
-    ItemInfo,
+    ItemInfo(ItemInfoPart),
     Stats,
     Anatomy(AnatomyPart)
 }
@@ -181,6 +182,14 @@ enum AnatomyPart
 {
     BodyPart(HumanPartId),
     Tooltip(AnatomyTooltipPart)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum ItemInfoPart
+{
+    Text,
+    ImageBody,
+    Image
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -334,6 +343,35 @@ fn handle_button(
         {
             f(info);
         }
+    }
+}
+
+fn draw_item_image(
+    parent: UiParentElement,
+    texture: Option<TextureId>,
+    aspect: Vector2<f32>,
+    id: UiId,
+    inner_id: UiId,
+    size: UiElementSize<UiId>
+)
+{
+    if let Some(texture) = texture
+    {
+        let image = parent.update(id.clone(), UiElement{
+            texture: UiTexture::Solid,
+            mix: Some(MixColorLch::color(ACCENT_COLOR)),
+            width: size.clone(),
+            height: size,
+            children_layout: if aspect.x == 1.0 { UiLayout::Horizontal } else { UiLayout::Vertical },
+            ..Default::default()
+        });
+
+        image.update(inner_id, UiElement{
+            texture: UiTexture::CustomId(texture),
+            width: UiSize::CopyElement(UiDirection::Horizontal, aspect.x, id.clone()).into(),
+            height: UiSize::CopyElement(UiDirection::Vertical, aspect.y, id).into(),
+            ..Default::default()
+        });
     }
 }
 
@@ -609,6 +647,7 @@ impl WindowKind
             parent: UiParentElement<'a>,
             info: &'b mut UpdateInfo,
             title: String,
+            prepad: bool,
             buttons: &[UiTitleButton]
         ) -> UiParentElement<'a>
         {
@@ -652,7 +691,10 @@ impl WindowKind
                 update_button(button.id.clone(), button.texture.clone(), button.action.clone());
             });
 
-            let padding_size = UiElementSize{minimum_size: Some(TITLE_PADDING.into()), size: UiSize::Rest(1.0)};
+            let padding_size = UiElementSize{
+                minimum_size: Some(UiMinimumSize::Pixels(TITLE_PADDING)),
+                size: UiSize::Rest(1.0)
+            };
 
             add_padding_horizontal(titlebar, padding_size.clone());
             titlebar.update(id(WindowPart::Title(TitlePart::Text)), UiElement{
@@ -676,20 +718,26 @@ impl WindowKind
                 ..Default::default()
             });
 
-            parent.update(id(WindowPart::Body), UiElement{
+            if prepad { add_padding_vertical(parent, UiSize::Pixels(SMALL_PADDING).into()); }
+
+            let body = parent.update(id(WindowPart::Body), UiElement{
                 width: UiElementSize{
                     minimum_size: Some(UiMinimumSize::FitChildren),
                     size: UiSize::Rest(1.0)
                 },
                 ..Default::default()
-            })
+            });
+
+            if prepad { add_padding_vertical(parent, UiSize::Pixels(SMALL_PADDING).into()); }
+
+            body
         }
 
         let with_titlebar = {
             let window_id = window_id.clone();
-            move |parent, info, title, buttons|
+            move |parent, info, title, prepad, buttons|
             {
-                with_titlebar(window_id.clone(), parent, info, title, buttons)
+                with_titlebar(window_id.clone(), parent, info, title, prepad, buttons)
             }
         };
 
@@ -721,7 +769,7 @@ impl WindowKind
 
                 let name = name_of(inventory.entity);
 
-                let body = with_titlebar(parent, &mut info, name, &inventory.buttons);
+                let body = with_titlebar(parent, &mut info, name, false, &inventory.buttons);
 
                 body.element().height = UiSize::Pixels(SCROLLBAR_HEIGHT).into();
 
@@ -782,25 +830,15 @@ impl WindowKind
                     add_padding_horizontal(body, UiSize::Pixels(ITEM_PADDING).into());
 
                     let icon_size = item_height * 0.9;
-                    let icon_id = id(ItemPart::Icon(IconPart::Body));
-                    let icon = body.update(icon_id.clone(), UiElement{
-                        texture: UiTexture::Solid,
-                        mix: Some(MixColorLch::color(ACCENT_COLOR)),
-                        width: icon_size.into(),
-                        height: icon_size.into(),
-                        children_layout: UiLayout::Vertical,
-                        ..UiElement::default()
-                    });
 
-                    if let Some(texture) = item.texture
-                    {
-                        icon.update(id(ItemPart::Icon(IconPart::Picture)), UiElement{
-                            texture: UiTexture::CustomId(texture),
-                            width: UiSize::CopyElement(UiDirection::Horizontal, item.aspect.x, icon_id.clone()).into(),
-                            height: UiSize::CopyElement(UiDirection::Vertical, item.aspect.y, icon_id).into(),
-                            ..UiElement::default()
-                        });
-                    }
+                    draw_item_image(
+                        body,
+                        item.texture,
+                        item.aspect,
+                        id(ItemPart::Icon(IconPart::Body)),
+                        id(ItemPart::Icon(IconPart::Picture)),
+                        icon_size.into()
+                    );
 
                     add_padding_horizontal(body, UiSize::Pixels(ITEM_PADDING / 2.0).into());
 
@@ -833,11 +871,11 @@ impl WindowKind
                 let item_info = info.items_info.get(item.id);
 
                 let title = format!("info about - {}", item_info.name);
-                let body = with_titlebar(parent, &mut info, title, &[]);
+                let body = with_titlebar(parent, &mut info, title, true, &[]);
 
-                let id = move ||
+                let id = move |part|
                 {
-                    UiId::Window(window_id.clone(), WindowPart::ItemInfo)
+                    UiId::Window(window_id.clone(), WindowPart::ItemInfo(part))
                 };
 
                 let description = format!(
@@ -849,7 +887,20 @@ impl WindowKind
 
                 add_padding_horizontal(body, UiSize::Pixels(BODY_PADDING).into());
 
-                body.update(id(), UiElement{
+                let size: UiElementSize<_> = UiSize::Pixels(64.0).into();
+
+                draw_item_image(
+                    body,
+                    item_info.texture,
+                    item_info.aspect,
+                    id(ItemInfoPart::ImageBody),
+                    id(ItemInfoPart::Image),
+                    size
+                );
+
+                add_padding_horizontal(body, UiSize::Pixels(BODY_PADDING).into());
+
+                body.update(id(ItemInfoPart::Text), UiElement{
                     texture: UiTexture::Text{text: description, font_size: SMALL_TEXT_SIZE},
                     mix: Some(MixColorLch{keep_transparency: true, ..MixColorLch::color(ACCENT_COLOR)}),
                     ..UiElement::fit_content()
@@ -860,7 +911,7 @@ impl WindowKind
             Self::Stats(owner) =>
             {
                 let title = name_of(*owner);
-                let body = with_titlebar(parent, &mut info, title, &[]);
+                let body = with_titlebar(parent, &mut info, title, true, &[]);
 
                 add_padding_horizontal(body, UiSize::Pixels(BODY_PADDING).into());
 
@@ -875,7 +926,7 @@ impl WindowKind
             Self::Anatomy(owner) =>
             {
                 let title = name_of(*owner);
-                let body = with_titlebar(parent, &mut info, title, &[]);
+                let body = with_titlebar(parent, &mut info, title, true, &[]);
                 body.element().children_layout = UiLayout::Vertical;
 
                 let id = move |part|
@@ -1352,6 +1403,100 @@ impl Ui
         };
     }
 
+    fn update_popup(
+        &mut self,
+        controls: &mut UiControls,
+        popup_taken: bool
+    )
+    {
+        if let Some(UiItemPopup{position, events, ..}) = &self.popup
+        {
+            let id = |part|
+            {
+                UiId::Popup(self.popup_unique_id, part)
+            };
+
+            let popup_body = {
+                let mut animation = Animation::normal();
+                animation.scaling.as_mut().unwrap().start_scaling = Vector2::new(0.1, 1.0);
+
+                self.controller.update(id(PopupPart::Body), UiElement{
+                    animation,
+                    position: UiPosition::Absolute{position: *position, align: UiPositionAlign{
+                        horizontal: AlignHorizontal::Left,
+                        vertical: AlignVertical::Top
+                    }},
+                    children_layout: UiLayout::Vertical,
+                    ..Default::default()
+                })
+            };
+
+            let selected_index = popup_body.mouse_position_inside().map(|position|
+            {
+                (position.y * events.len() as f32) as usize
+            });
+
+            let pressed = events.iter().enumerate().fold(false, |acc, (index, action)|
+            {
+                let id = |part|
+                {
+                    id(PopupPart::Button(index as u32, part))
+                };
+
+                let body = popup_body.update(id(PopupButtonPart::Body), UiElement{
+                    texture: UiTexture::Solid,
+                    mix: Some(MixColorLch::color(BACKGROUND_COLOR)),
+                    width: UiElementSize{
+                        minimum_size: Some(UiMinimumSize::FitChildren),
+                        size: UiSize::Rest(1.0)
+                    },
+                    animation: Animation{
+                        position: Some(PositionAnimation::ease_out(10.0)),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                });
+
+                add_padding_horizontal(body, UiSize::Pixels(ITEM_PADDING).into());
+
+                body.update(id(PopupButtonPart::Text), UiElement{
+                    texture: UiTexture::Text{text: action.name().to_owned(), font_size: SMALL_TEXT_SIZE},
+                    mix: Some(MixColorLch{keep_transparency: true, ..MixColorLch::color(ACCENT_COLOR)}),
+                    ..UiElement::fit_content()
+                });
+
+                add_padding_horizontal(body, UiSize::Rest(1.0).into());
+
+                body.update(id(PopupButtonPart::Separator), UiElement{
+                    texture: UiTexture::Solid,
+                    mix: Some(MixColorLch::color(ACCENT_COLOR)),
+                    width: UiSize::Pixels(SEPARATOR_SIZE).into(),
+                    height: UiSize::Rest(1.0).into(),
+                    ..Default::default()
+                });
+
+                if selected_index == Some(index)
+                {
+                    let offset = popup_body.try_width().unwrap_or(0.0) * 0.2;
+                    body.element().position = UiPosition::Next(Vector2::new(offset, 0.0));
+
+                    if controls.take_click_down()
+                    {
+                        self.user_receiver.borrow_mut().push(UiEvent::Game(action.clone()));
+                        return true;
+                    }
+                }
+
+                acc
+            });
+
+            if pressed | (!popup_taken && (controls.is_click_taken() || controls.is_click_down()))
+            {
+                self.popup = None;
+            }
+        }
+    }
+
     pub fn update(&mut self, entities: &ClientEntities, controls: &mut UiControls, dt: f32)
     {
         let position_of = |camera: Entity, owner: Entity| -> Option<Vector2<f32>>
@@ -1494,89 +1639,7 @@ impl Ui
             })
         });
 
-        if let Some(UiItemPopup{position, events, ..}) = &self.popup
-        {
-            let popup_body = {
-                let mut animation = Animation::normal();
-                animation.scaling.as_mut().unwrap().start_scaling = Vector2::new(0.1, 1.0);
-
-                self.controller.update(UiId::Popup(self.popup_unique_id, PopupPart::Body), UiElement{
-                    texture: UiTexture::Solid,
-                    mix: Some(MixColorLch::color(ACCENT_COLOR)),
-                    animation,
-                    position: UiPosition::Absolute{position: *position, align: UiPositionAlign{
-                        horizontal: AlignHorizontal::Left,
-                        vertical: AlignVertical::Top
-                    }},
-                    children_layout: UiLayout::Vertical,
-                    ..Default::default()
-                })
-            };
-
-            let selected_index = popup_body.mouse_position_inside().map(|position|
-            {
-                (position.y * events.len() as f32) as usize
-            });
-
-            let pressed = events.iter().enumerate().fold(false, |acc, (index, action)|
-            {
-                let id = |part|
-                {
-                    UiId::Popup(self.popup_unique_id, PopupPart::Button(index as u32, part))
-                };
-
-                let body = popup_body.update(id(PopupButtonPart::Body), UiElement{
-                    texture: UiTexture::Solid,
-                    mix: Some(MixColorLch::color(BACKGROUND_COLOR)),
-                    width: UiElementSize{
-                        minimum_size: Some(UiMinimumSize::FitChildren),
-                        size: UiSize::Rest(1.0)
-                    },
-                    animation: Animation{
-                        position: Some(PositionAnimation::ease_out(10.0)),
-                        ..Default::default()
-                    },
-                    ..Default::default()
-                });
-
-                add_padding_horizontal(body, UiSize::Pixels(ITEM_PADDING).into());
-
-                body.update(id(PopupButtonPart::Text), UiElement{
-                    texture: UiTexture::Text{text: action.name().to_owned(), font_size: SMALL_TEXT_SIZE},
-                    mix: Some(MixColorLch{keep_transparency: true, ..MixColorLch::color(ACCENT_COLOR)}),
-                    ..UiElement::fit_content()
-                });
-
-                add_padding_horizontal(body, UiSize::Rest(1.0).into());
-
-                body.update(id(PopupButtonPart::Separator), UiElement{
-                    texture: UiTexture::Solid,
-                    mix: Some(MixColorLch::color(ACCENT_COLOR)),
-                    width: UiSize::Pixels(SEPARATOR_SIZE).into(),
-                    height: UiSize::Rest(1.0).into(),
-                    ..Default::default()
-                });
-
-                if selected_index == Some(index)
-                {
-                    let offset = popup_body.try_width().unwrap_or(0.0) * 0.2;
-                    body.element().position = UiPosition::Next(Vector2::new(offset, 0.0));
-
-                    if controls.take_click_down()
-                    {
-                        self.user_receiver.borrow_mut().push(UiEvent::Game(action.clone()));
-                        return true;
-                    }
-                }
-
-                acc
-            });
-
-            if pressed | (!popup_taken && (controls.is_click_taken() || controls.is_click_down()))
-            {
-                self.popup = None;
-            }
-        }
+        self.update_popup(controls, popup_taken);
 
         let bars_body_outer = self.controller.update(UiId::BarsBody, UiElement{
             width: UiSize::Rest(1.0).into(),
