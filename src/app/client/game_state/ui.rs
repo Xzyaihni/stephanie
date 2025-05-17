@@ -313,7 +313,7 @@ impl Hash for NotificationInfo
     }
 }
 
-pub type InventoryOnClick = Box<dyn FnMut(Entity, InventoryItem) -> UiEvent>;
+pub type InventoryOnClick = Box<dyn FnMut(InventoryItem) -> Vec<GameUiEvent>>;
 
 fn handle_button(
     info: &mut UpdateInfo,
@@ -739,18 +739,22 @@ impl WindowKind
                 let font_size = SMALL_TEXT_SIZE;
                 let item_height = info.fonts.text_height(font_size, body.screen_size().max());
 
+                let picked_item = info.popup.as_ref().map(|x| x.item);
+
                 let selected = inventory.list.update(&mut info, body, |list_part|
                 {
                     id(InventoryPart::List(list_part))
                 }, item_height, |_info, parent, item, is_selected|
                 {
+                    let is_picked = picked_item == Some(item.item);
+
                     let id = |part|
                     {
                         id(InventoryPart::Item(item.item, part))
                     };
 
                     let body_color = Lcha{
-                        a: if is_selected { 0.3 } else { 0.0 },
+                        a: if is_picked { 0.5 } else if is_selected { 0.3 } else { 0.0 },
                         ..ACCENT_COLOR
                     };
 
@@ -811,7 +815,14 @@ impl WindowKind
                 {
                     if info.controls.take_click_down()
                     {
-                        let event = (inventory.on_click)(inventory.entity, inventory.list.items[index].item);
+                        let item = inventory.list.items[index].item;
+                        let entity = inventory.entity;
+
+                        let events = (inventory.on_click)(item);
+                        let event = UiEvent::Action(Rc::new(move |game_state|
+                        {
+                            game_state.ui.borrow_mut().create_popup(entity, item, events.clone());
+                        }));
 
                         info.user_receiver.push(event);
                     }
@@ -1096,17 +1107,18 @@ impl Window
     }
 }
 
-pub struct UpdateInfo<'a, 'b, 'c>
+struct UpdateInfo<'a, 'b, 'c>
 {
-    pub entities: &'a ClientEntities,
-    pub items_info: &'a ItemsInfo,
-    pub fonts: &'a FontsContainer,
-    pub anatomy_locations: &'a UiAnatomyLocations,
-    pub mouse_position: Vector2<f32>,
-    pub mouse_taken: bool,
-    pub controls: &'b mut UiControls,
-    pub user_receiver: &'c mut UiReceiver,
-    pub dt: f32
+    entities: &'a ClientEntities,
+    items_info: &'a ItemsInfo,
+    fonts: &'a FontsContainer,
+    anatomy_locations: &'a UiAnatomyLocations,
+    popup: &'a Option<UiItemPopup>,
+    mouse_position: Vector2<f32>,
+    mouse_taken: bool,
+    controls: &'b mut UiControls,
+    user_receiver: &'c mut UiReceiver,
+    dt: f32
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -1122,6 +1134,15 @@ impl Default for BarDisplay
     {
         Self{lifetime: 0.0, value: 0.0}
     }
+}
+
+#[derive(Debug, Clone)]
+struct UiItemPopup
+{
+    owner: Entity,
+    item: InventoryItem,
+    position: Vector2<f32>,
+    events: Vec<GameUiEvent>
 }
 
 pub struct Ui
@@ -1141,7 +1162,7 @@ pub struct Ui
     notifications: Vec<NotificationInfo>,
     anatomy_notifications: HashMap<Entity, (f32, Vec<(f32, HumanPartId)>)>,
     popup_unique_id: u8,
-    popup: Option<(Vector2<f32>, Entity, Vec<GameUiEvent>)>
+    popup: Option<UiItemPopup>
 }
 
 impl Ui
@@ -1248,9 +1269,9 @@ impl Ui
 
     pub fn close_inventory(&mut self, owner: Entity) -> bool
     {
-        if let Some((_, entity, _)) = self.popup
+        if let Some(UiItemPopup{owner: entity, ..}) = &self.popup
         {
-            if entity == owner
+            if *entity == owner
             {
                 self.popup = None;
             }
@@ -1287,10 +1308,15 @@ impl Ui
         self.create_window(WindowKind::ItemInfo(item));
     }
 
-    pub fn create_popup(&mut self, owner: Entity, actions: Vec<GameUiEvent>)
+    pub fn create_popup(
+        &mut self,
+        owner: Entity,
+        item: InventoryItem,
+        actions: Vec<GameUiEvent>
+    )
     {
         self.popup_unique_id = self.popup_unique_id.wrapping_add(1);
-        self.popup = Some((self.mouse_position, owner, actions));
+        self.popup = Some(UiItemPopup{owner, item, position: self.mouse_position, events: actions});
     }
 
     pub fn show_notification(
@@ -1459,6 +1485,7 @@ impl Ui
                 items_info: &self.items_info,
                 fonts: &self.fonts,
                 anatomy_locations: &self.anatomy_locations,
+                popup: &self.popup,
                 mouse_position: self.mouse_position,
                 mouse_taken: window_taken || popup_taken,
                 controls,
@@ -1467,7 +1494,7 @@ impl Ui
             })
         });
 
-        if let Some((position, _, actions)) = &self.popup
+        if let Some(UiItemPopup{position, events, ..}) = &self.popup
         {
             let popup_body = {
                 let mut animation = Animation::normal();
@@ -1488,10 +1515,10 @@ impl Ui
 
             let selected_index = popup_body.mouse_position_inside().map(|position|
             {
-                (position.y * actions.len() as f32) as usize
+                (position.y * events.len() as f32) as usize
             });
 
-            let pressed = actions.iter().enumerate().fold(false, |acc, (index, action)|
+            let pressed = events.iter().enumerate().fold(false, |acc, (index, action)|
             {
                 let id = |part|
                 {
