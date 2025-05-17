@@ -957,7 +957,7 @@ pub struct Ui
     stamina: BarDisplay,
     cooldown: BarDisplay,
     notifications: Vec<NotificationInfo>,
-    anatomy_notifications: HashMap<Entity, (f32, Vec<HumanPartId>)>,
+    anatomy_notifications: HashMap<Entity, (f32, Vec<(f32, HumanPartId)>)>,
     popup_unique_id: u8,
     popup: Option<(Vector2<f32>, Entity, Vec<GameUiEvent>)>
 }
@@ -1007,13 +1007,14 @@ impl Ui
             some_or_return!(entities.anatomy_mut(entity)).for_accessed_parts(|part|
             {
                 let default_lifetime = 2.0;
+                let part = (0.2, part.id);
 
                 ui.borrow_mut().anatomy_notifications.entry(entity)
                     .and_modify(|(lifetime, parts)|
                     {
                         *lifetime = default_lifetime;
-                        parts.push(part.id);
-                    }).or_insert_with(|| (default_lifetime, vec![part.id]));
+                        parts.push(part);
+                    }).or_insert_with(|| (default_lifetime, vec![part]));
             });
         }));
 
@@ -1221,7 +1222,7 @@ impl Ui
             let anatomy = some_or_value!(entities.anatomy(*entity), false);
             self.anatomy_locations_small.locations.iter().for_each(|(part_id, location)|
             {
-                let selected = parts.contains(part_id);
+                let selected = parts.iter().any(|x| x.1 == *part_id);
 
                 let color = health_color(&anatomy, *part_id);
                 let health_color = if selected
@@ -1232,19 +1233,26 @@ impl Ui
                     color
                 };
 
+                let lightness_decay = if selected { 50.0 } else { 2.0 };
+
                 body.update(UiId::AnatomyNotification(*entity, AnatomyNotificationPart::Part(*part_id)), UiElement{
                     texture: UiTexture::CustomId(location.id),
                     mix: Some(MixColorLch{keep_transparency: true, ..MixColorLch::color(health_color)}),
                     position: UiPosition::Inherit,
                     animation: Animation{
-                        mix: Some(MixAnimation{l: 2.0, c: 2.0, ..MixAnimation::all(20.0)}),
+                        mix: Some(MixAnimation{l: lightness_decay, c: lightness_decay, ..MixAnimation::all(20.0)}),
                         ..Default::default()
                     },
                     ..UiElement::fit_content()
                 });
             });
 
-            parts.clear();
+            parts.retain_mut(|part|
+            {
+                part.0 -= dt;
+
+                part.0 > 0.0
+            });
 
             *lifetime > 0.0
         });

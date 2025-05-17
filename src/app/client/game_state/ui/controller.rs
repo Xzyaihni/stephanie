@@ -563,7 +563,7 @@ impl UiElementCached
             }
         }
 
-        if fields_different!(texture, animation)
+        if fields_different!(texture)
         {
             return;
         }
