@@ -141,7 +141,7 @@ impl ItemInfo
 
         let texture = get_texture(texture_name);
 
-        let aspect = assets.texture(texture).read().aspect_min();
+        let aspect = assets.texture(texture).lock().aspect_min();
 
         let scale = raw.scale.unwrap_or(0.1) * 4.0;
 

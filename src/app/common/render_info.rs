@@ -5,7 +5,7 @@ use std::{
 
 use strum::FromRepr;
 
-use parking_lot::RwLock;
+use parking_lot::Mutex;
 
 use serde::{Serialize, Deserialize};
 
@@ -215,9 +215,7 @@ impl RenderObjectKind
                             font_size,
                             text
                         }
-                    },
-                    create_info.location,
-                    create_info.shader
+                    }
                 );
 
                 if object.object.is_none()
@@ -493,7 +491,7 @@ impl ServerToClient<ClientRenderInfo> for RenderInfo
 
 impl ClientRenderInfo
 {
-    pub fn set_texture(&mut self, texture: Arc<RwLock<Texture>>)
+    pub fn set_texture(&mut self, texture: Arc<Mutex<Texture>>)
     {
         if let Some(ClientRenderObject{
             kind: ClientObjectType::Normal(x),
@@ -539,7 +537,7 @@ impl ClientRenderInfo
         self.z_level = z_level;
     }
 
-    pub fn texture(&self) -> Option<&Arc<RwLock<Texture>>>
+    pub fn texture(&self) -> Option<&Arc<Mutex<Texture>>>
     {
         match &self.object.as_ref()?.kind
         {
@@ -610,7 +608,7 @@ impl ClientRenderInfo
             {
                 if let Some(texture) = self.texture()
                 {
-                    let aspect = texture.read().aspect_min();
+                    let aspect = texture.lock().aspect_min();
 
                     let scale = if aspect.y > aspect.x
                     {

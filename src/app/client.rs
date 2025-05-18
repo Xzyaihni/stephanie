@@ -15,9 +15,7 @@ use image::error::ImageError;
 
 use yanyaengine::{
     ElementState,
-    UniformLocation,
     DefaultModel,
-    ShaderId,
     ModelId,
     TextureId,
     Assets,
@@ -86,8 +84,6 @@ impl CachedIds
 
 pub struct RenderCreateInfo<'a, 'b>
 {
-    pub location: UniformLocation,
-    pub shader: ShaderId,
     pub ids: CachedIds,
     pub object_info: &'a mut ObjectCreateInfo<'b>
 }
@@ -139,7 +135,6 @@ impl Client
 
         let tiles_factory = TilesFactory::new(
             &mut info,
-            client_init_info.app_info.shaders.world,
             client_init_info.tilemap
         )?;
 

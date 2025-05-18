@@ -14,8 +14,7 @@ use yanyaengine::{
     Object,
     ShadersContainer,
     Shader,
-    ShadersGroup,
-    ShadersQuery
+    ShadersGroup
 };
 
 use crate::{
@@ -122,8 +121,7 @@ const SHADOW_COLOR: Vector3<f32> = Vector3::new(0.07, 0.02, 0.1);
 pub struct ShadersCreated
 {
     pub shaders: ShadersContainer,
-    pub group: ProgramShaders,
-    pub query: ShadersQuery
+    pub group: ProgramShaders
 }
 
 pub fn create() -> ShadersCreated
@@ -276,16 +274,6 @@ pub fn create() -> ShadersCreated
             world_shaded: world_shaded_shader,
             shadow: shadow_shader,
             ui: ui_shader
-        },
-        query: Box::new(move |path|
-        {
-            if path.starts_with("ui")
-            {
-                ui_shader
-            } else
-            {
-                default_shader
-            }
-        })
+        }
     }
 }

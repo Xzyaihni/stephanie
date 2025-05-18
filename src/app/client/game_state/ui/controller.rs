@@ -742,7 +742,7 @@ impl UiDeferredInfo
             {
                 let get_offset = |value: f32, size: Option<f32>| -> Option<f32>
                 {
-                    Some((value != 0.0).then_some(value * size? * 0.5).unwrap_or(0.0))
+                    Some(if value == 0.0 { 0.0 } else { value * size? * 0.5 })
                 };
 
                 Some(Vector2::new(
@@ -1082,10 +1082,10 @@ impl TextureSizer
             {
                 (if let UiTexture::CustomId(id) = texture
                 {
-                    self.assets.lock().texture(*id).read().size()
+                    self.assets.lock().texture(*id).lock().size()
                 } else
                 {
-                    self.assets.lock().texture_by_name(texture.name().unwrap()).read().size()
+                    self.assets.lock().texture_by_name(texture.name().unwrap()).lock().size()
                 }) / self.size.max()
             }
         }

@@ -15,13 +15,9 @@ use image::{
     error::ImageError
 };
 
-use yanyaengine::{
-    UniformLocation,
-    ShaderId,
-    object::{
-        resource_uploader::ResourceUploader,
-        texture::{Color, SimpleImage, Texture}
-    }
+use yanyaengine::object::{
+    resource_uploader::ResourceUploader,
+    texture::{Color, SimpleImage, Texture}
 };
 
 use crate::common::world::Tile;
@@ -333,7 +329,6 @@ impl TileMap
     pub fn generate_tilemap(
         &self,
         resource_uploader: &mut ResourceUploader,
-        shader: ShaderId,
         textures: &[Option<SimpleImage>]
     ) -> Texture
     {
@@ -389,9 +384,7 @@ impl TileMap
 
         Texture::new(
             resource_uploader,
-            tilemap.into(),
-            UniformLocation{set: 0, binding: 0},
-            shader
+            tilemap.into()
         )
     }
 }

@@ -26,9 +26,7 @@ use yanyaengine::{
     Assets,
     ObjectFactory,
     Transform,
-    ShaderId,
     TextureId,
-    UniformLocation,
     object::{texture::SimpleImage, Texture},
     camera::Camera,
     game_object::*
@@ -287,8 +285,7 @@ pub struct GameStateInfo<'a>
 pub struct PartCreator<'a, 'b>
 {
     resource_uploader: &'a mut ResourceUploader<'b>,
-    assets: &'a mut Assets,
-    shader: ShaderId
+    assets: &'a mut Assets
 }
 
 impl PartCreator<'_, '_>
@@ -297,9 +294,7 @@ impl PartCreator<'_, '_>
     {
         let texture = Texture::new(
             self.resource_uploader,
-            SimpleImage::from(image).into(),
-            UniformLocation{set: 0, binding: 0},
-            self.shader
+            SimpleImage::from(image).into()
         );
 
         self.assets.push_texture(texture)
@@ -626,8 +621,7 @@ impl GameState
 
             let part_creator = PartCreator{
                 assets: &mut assets,
-                resource_uploader: object_info.partial.builder_wrapper.resource_uploader(),
-                shader: info.shaders.ui
+                resource_uploader: object_info.partial.builder_wrapper.resource_uploader_mut()
             };
 
             UiAnatomyLocations::new(part_creator, base_image)
@@ -901,8 +895,6 @@ impl GameState
         self.world.update_buffers(info, &visibility, &caster);
 
         let mut create_info = RenderCreateInfo{
-            location: UniformLocation{set: 0, binding: 0},
-            shader: self.shaders.default,
             ids: self.cached_ids,
             object_info: info
         };
@@ -915,8 +907,6 @@ impl GameState
             info.update_camera(&self.ui_camera);
 
             let mut create_info = RenderCreateInfo{
-                location: UniformLocation{set: 0, binding: 0},
-                shader: self.shaders.ui,
                 ids: self.cached_ids,
                 object_info: info
             };
@@ -1043,8 +1033,6 @@ impl GameState
         self.dt = Some(dt);
 
         let mut create_info = RenderCreateInfo{
-            location: UniformLocation{set: 0, binding: 0},
-            shader: self.shaders.default,
             ids: self.cached_ids,
             object_info
         };

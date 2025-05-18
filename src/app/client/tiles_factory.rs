@@ -6,7 +6,7 @@ use std::{
 
 use image::error::ImageError;
 
-use parking_lot::RwLock;
+use parking_lot::{RwLock, Mutex};
 
 use nalgebra::Vector3;
 
@@ -16,7 +16,6 @@ use yanyaengine::{
     SolidObject,
     Transform,
     ObjectFactory,
-    ShaderId,
     DefaultModel,
     object::{
         Texture,
@@ -208,7 +207,7 @@ pub struct TilesFactory
     object_factory: Rc<ObjectFactory>,
     square: Arc<RwLock<Model>>,
     tilemap: Arc<TileMap>,
-    texture: Arc<RwLock<Texture>>
+    texture: Arc<Mutex<Texture>>
 }
 
 #[allow(dead_code)]
@@ -216,7 +215,6 @@ impl TilesFactory
 {
     pub fn new(
         init_info: &mut InitInfo,
-        shader: ShaderId,
         tilemap: TileMapWithTextures
     ) -> Result<Self, ImageError>
     {
@@ -228,12 +226,11 @@ impl TilesFactory
         let mut make_tilemap = |textures: &[_]|
         {
             let tilemap = tilemap.generate_tilemap(
-                init_info.partial.builder_wrapper.resource_uploader(),
-                shader,
+                init_info.partial.builder_wrapper.resource_uploader_mut(),
                 textures
             );
 
-            Arc::new(RwLock::new(tilemap))
+            Arc::new(Mutex::new(tilemap))
         };
 
         let texture = make_tilemap(&base_textures);

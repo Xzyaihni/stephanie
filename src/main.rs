@@ -58,7 +58,7 @@ fn main()
 {
     // unsafe{ float_excepts() };
 
-    let shaders::ShadersCreated{shaders, group, query} = shaders::create();
+    let shaders::ShadersCreated{shaders, group} = shaders::create();
 
     let init = AppInfo{
         shaders: group
@@ -70,7 +70,7 @@ fn main()
         .with_title("stey funy")
         .with_textures_path("textures/normal")
         .with_icon("icon.png")
-        .with_shaders(shaders, query)
+        .with_shaders(shaders)
         .with_app_init(Some(init))
         .with_rendering(rendering)
         .run();
