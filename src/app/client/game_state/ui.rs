@@ -1421,6 +1421,8 @@ impl Ui
                 animation.scaling.as_mut().unwrap().start_scaling = Vector2::new(0.1, 1.0);
 
                 self.controller.update(id(PopupPart::Body), UiElement{
+                    texture: UiTexture::Solid,
+                    mix: Some(MixColorLch::color(ACCENT_COLOR)),
                     animation,
                     position: UiPosition::Absolute{position: *position, align: UiPositionAlign{
                         horizontal: AlignHorizontal::Left,
@@ -1586,7 +1588,7 @@ impl Ui
                     color
                 };
 
-                let lightness_decay = if selected { 50.0 } else { 2.0 };
+                let lightness_decay = if selected { 50.0 } else { 10.0 };
 
                 body.update(UiId::AnatomyNotification(*entity, AnatomyNotificationPart::Part(*part_id)), UiElement{
                     texture: UiTexture::CustomId(location.id),

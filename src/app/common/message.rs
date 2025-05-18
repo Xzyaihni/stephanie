@@ -12,6 +12,7 @@ use crate::common::{
     damaging::*,
     Occluder,
     Joint,
+    Light,
     LazyMix,
     Outlineable,
     Transform,
@@ -49,6 +50,7 @@ pub enum Message
     SetCollider{entity: Entity, component: Box<Collider>},
     SetPhysical{entity: Entity, component: Box<Physical>},
     SetJoint{entity: Entity, component: Box<Joint>},
+    SetLight{entity: Entity, component: Box<Light>},
     SetWatchers{entity: Entity, component: Box<Watchers>},
     SetDamaging{entity: Entity, component: Box<Damaging>},
     SetAnatomy{entity: Entity, component: Box<Anatomy>},
@@ -109,6 +111,7 @@ impl Message
             | Message::SetCollider{entity, ..}
             | Message::SetPhysical{entity, ..}
             | Message::SetJoint{entity, ..}
+            | Message::SetLight{entity, ..}
             | Message::SetWatchers{entity, ..}
             | Message::SetDamaging{entity, ..}
             | Message::SetAnatomy{entity, ..}

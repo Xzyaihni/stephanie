@@ -245,6 +245,7 @@ pub struct Character
     #[serde(skip, default)]
     cached: CachedInfo,
     attack_state: AttackState,
+    #[serde(skip, default)]
     info: Option<AfterInfo>,
     held_update: bool,
     attack_cooldown: f32,
@@ -324,11 +325,16 @@ impl Character
     pub fn initialize(
         &mut self,
         entities: &impl AnyEntities,
-        entity: Entity,
-        rotation: f32,
-        mut inserter: impl FnMut(EntityInfo) -> Entity
+        entity: Entity
     )
     {
+        let inserter = |info|
+        {
+            entities.push(true, info)
+        };
+
+        let rotation = entities.transform(entity).map(|x| x.rotation).unwrap_or(0.0);
+
         let character_info = entities.infos().characters_info.get(self.id);
 
         let held_item = |parent: Option<Entity>, flip: bool|
@@ -467,6 +473,8 @@ impl Character
     {
         self.sprite_state.set_state(*previous.sprite_state.value());
         self.sprite_state.dirty();
+
+        self.info = previous.info;
     }
 
     pub fn push_action(&mut self, action: CharacterAction)
@@ -1504,12 +1512,17 @@ impl Character
     pub fn update(
         &mut self,
         combined_info: CombinedInfo,
+        entity: Entity,
         dt: f32,
         set_sprite: impl FnOnce(TextureId)
     )
     {
-        let entity = some_or_return!(self.info.as_ref()).this;
-        let entities = &combined_info.entities;
+        let entities = combined_info.entities;
+
+        if self.info.is_none()
+        {
+            self.initialize(entities, entity);
+        }
 
         self.handle_actions(combined_info);
 

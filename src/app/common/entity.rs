@@ -28,6 +28,7 @@ use crate::{
         SpatialGrid,
         SpatialInfo,
         Joint,
+        Light,
         Outlineable,
         LazyMix,
         DataInfos,
@@ -255,6 +256,7 @@ no_on_set!{
     Collider,
     Physical,
     Joint,
+    Light,
     Damaging,
     Watchers,
     Occluder,
@@ -408,7 +410,7 @@ macro_rules! impl_common_systems
         {
             let entity = self.push_empty(local, info.parent.as_ref().map(|x| x.entity));
 
-            info.setup_components(self, entity);
+            info.setup_components(self);
 
             self.set_each(entity, info);
 
@@ -567,7 +569,7 @@ macro_rules! impl_common_systems
             {
                 if self.exists(entity)
                 {
-                    info.setup_components(self, entity);
+                    info.setup_components(self);
 
                     let info = f(self, entity, info);
 
@@ -614,7 +616,7 @@ macro_rules! entity_info_common
 {
     () =>
     {
-        pub fn setup_components_ref(
+        pub fn setup_components(
             &mut self,
             entities: &impl AnyEntities
         )
@@ -693,17 +695,8 @@ macro_rules! entity_info_common
             {
                 self.watchers = Some(Watchers::default());
             }
-        }
 
-        pub fn setup_components(
-            &mut self,
-            entities: &mut impl AnyEntities,
-            entity: Entity
-        )
-        {
-            self.setup_components_ref(entities);
-
-            if let Some(character) = self.character.as_mut()
+            if self.character.is_some()
             {
                 self.lazy_transform.as_mut().unwrap().deformation = Deformation::Stretch(
                     StretchDeformation{
@@ -713,12 +706,6 @@ macro_rules! entity_info_common
                         strength: 0.2
                     }
                 );
-
-                let rotation = self.transform.as_ref().map(|x| x.rotation).unwrap_or_default();
-                character.initialize(entities, entity, rotation, |info|
-                {
-                    entities.push(entity.local(), info)
-                });
             }
         }
     }
@@ -1553,7 +1540,7 @@ macro_rules! define_entities_both
             {
                 let entity = self.push_empty(true, info.parent.as_ref().map(|x| x.entity));
 
-                info.setup_components_ref(self);
+                info.setup_components(self);
 
                 let mut lazy_setter = self.lazy_setter.borrow_mut();
                 $(
@@ -2025,6 +2012,7 @@ macro_rules! define_entities_both
 
                     character.borrow_mut().update(
                         combined_info,
+                        entity,
                         dt,
                         |texture|
                         {
@@ -2185,8 +2173,6 @@ macro_rules! define_entities
                 assert!(local);
 
                 let entity = self.push_inner(local, info.shared());
-
-                info.setup_components(self, entity);
 
                 self.create_queue.borrow_mut().push((entity, info));
 
@@ -2449,6 +2435,7 @@ define_entities!{
     (collider, collider_mut, set_collider, on_collider, resort_collider, collider_exists, SetCollider, ColliderType, Collider),
     (physical, physical_mut, set_physical, on_physical, resort_physical, physical_exists, SetPhysical, PhysicalType, Physical),
     (anatomy, anatomy_mut, set_anatomy, on_anatomy, resort_anatomy, anatomy_exists, SetAnatomy, AnatomyType, Anatomy),
+    (light, light_mut, set_light, on_light, resort_light, light_exists, SetLight, LightType, Light),
     (joint, joint_mut, set_joint, on_joint, resort_joint, joint_exists, SetJoint, JointType, Joint),
     (saveable, saveable_mut, set_saveable, on_saveable, resort_saveable, saveable_exists, SetNone, SaveableType, Saveable)
 }
