@@ -29,6 +29,7 @@ use crate::{
         SpatialInfo,
         Joint,
         Light,
+        ClientLight,
         Outlineable,
         LazyMix,
         DataInfos,
@@ -257,6 +258,7 @@ no_on_set!{
     Physical,
     Joint,
     Light,
+    ClientLight,
     Damaging,
     Watchers,
     Occluder,
@@ -2417,6 +2419,7 @@ macro_rules! define_entities
 define_entities!{
     (side_specific
         (render, render_mut, set_render, on_render, resort_render, render_exists, SetRender, RenderType, RenderInfo, ClientRenderInfo),
+        (light, light_mut, set_light, on_light, resort_light, light_exists, SetLight, LightType, Light, ClientLight),
         (occluder, occluder_mut, set_occluder, on_occluder_mut, resort_occluder, occluder_exists, SetOccluder, OccluderType, Occluder, ClientOccluder)),
     (parent, parent_mut, set_parent, on_parent, resort_parent, parent_exists, SetParent, ParentType, Parent),
     (lazy_mix, lazy_mix_mut, set_lazy_mix, on_lazy_mix, resort_lazy_mix, lazy_mix_exists, SetLazyMix, LazyMixType, LazyMix),
@@ -2435,7 +2438,6 @@ define_entities!{
     (collider, collider_mut, set_collider, on_collider, resort_collider, collider_exists, SetCollider, ColliderType, Collider),
     (physical, physical_mut, set_physical, on_physical, resort_physical, physical_exists, SetPhysical, PhysicalType, Physical),
     (anatomy, anatomy_mut, set_anatomy, on_anatomy, resort_anatomy, anatomy_exists, SetAnatomy, AnatomyType, Anatomy),
-    (light, light_mut, set_light, on_light, resort_light, light_exists, SetLight, LightType, Light),
     (joint, joint_mut, set_joint, on_joint, resort_joint, joint_exists, SetJoint, JointType, Joint),
     (saveable, saveable_mut, set_saveable, on_saveable, resort_saveable, saveable_exists, SetNone, SaveableType, Saveable)
 }

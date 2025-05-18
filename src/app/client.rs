@@ -19,6 +19,8 @@ use yanyaengine::{
     DefaultModel,
     ShaderId,
     ModelId,
+    TextureId,
+    Assets,
     camera::Camera,
     game_object::*
 };
@@ -64,11 +66,29 @@ pub mod tiles_factory;
 pub mod world_receiver;
 
 
+#[derive(Debug, Clone, Copy)]
+pub struct CachedIds
+{
+    pub square: ModelId,
+    pub light_texture: TextureId
+}
+
+impl CachedIds
+{
+    pub fn new(assets: &Assets) -> Self
+    {
+        Self{
+            square: assets.default_model(DefaultModel::Square),
+            light_texture: assets.texture_id("light.png")
+        }
+    }
+}
+
 pub struct RenderCreateInfo<'a, 'b>
 {
     pub location: UniformLocation,
     pub shader: ShaderId,
-    pub square: ModelId,
+    pub ids: CachedIds,
     pub object_info: &'a mut ObjectCreateInfo<'b>
 }
 
@@ -92,8 +112,7 @@ pub struct Client
 {
     pub camera: Arc<RwLock<Camera>>,
     game_state: Option<Rc<RefCell<GameState>>>,
-    game: Game,
-    square: ModelId
+    game: Game
 }
 
 impl Client
@@ -129,7 +148,6 @@ impl Client
 
         let message_passer = MessagePasser::new(stream);
 
-        let assets = info.partial.assets.clone();
         let info = GameStateInfo{
             shaders: client_init_info.app_info.shaders,
             camera: camera.clone(),
@@ -145,13 +163,10 @@ impl Client
 
         let game = Game::new(Rc::downgrade(&game_state));
 
-        let assets = assets.lock();
-
         Ok(Self{
             game_state: Some(game_state),
             camera,
-            game,
-            square: assets.default_model(DefaultModel::Square)
+            game
         })
     }
 
@@ -178,7 +193,7 @@ impl Client
     {
         let game_state = some_or_return!(&self.game_state);
 
-        self.game.update(self.square, info, dt);
+        self.game.update(info, dt);
 
         if self.game.player_exists()
         {
@@ -198,7 +213,7 @@ impl Client
 
     pub fn update_buffers(&mut self, info: &mut UpdateBuffersInfo)
     {
-        some_or_return!(&self.game_state).borrow_mut().update_buffers(self.square, info);
+        some_or_return!(&self.game_state).borrow_mut().update_buffers(info);
     }
 
     pub fn draw(&mut self, mut info: DrawInfo)

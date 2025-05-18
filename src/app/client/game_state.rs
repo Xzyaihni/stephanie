@@ -28,7 +28,6 @@ use yanyaengine::{
     Transform,
     ShaderId,
     TextureId,
-    ModelId,
     UniformLocation,
     object::{texture::SimpleImage, Texture},
     camera::Camera,
@@ -38,7 +37,7 @@ use yanyaengine::{
 use crate::{
     debug_config::*,
     ProgramShaders,
-    client::RenderCreateInfo,
+    client::{CachedIds, RenderCreateInfo},
     common::{
         some_or_return,
         sender_loop,
@@ -113,7 +112,8 @@ pub struct ClientEntitiesContainer
     pub camera_entity: Entity,
     pub follow_entity: Entity,
     visible_renders: Vec<Vec<Entity>>,
-    shaded_renders: Vec<Entity>,
+    light_renders: Vec<Vec<Entity>>,
+    shaded_renders: Vec<Vec<Entity>>,
     player_entity: Entity,
     animation: f32
 }
@@ -144,6 +144,7 @@ impl ClientEntitiesContainer
             follow_entity,
             player_entity,
             visible_renders: Vec::new(),
+            light_renders: Vec::new(),
             shaded_renders: Vec::new(),
             animation: 0.0
         }
@@ -218,8 +219,8 @@ impl ClientEntitiesContainer
         caster: &OccludingCaster
     )
     {
-        self.shaded_renders.clear();
-
+        let mut shaded_renders = BTreeMap::new();
+        let mut light_renders = BTreeMap::new();
         let mut visible_renders = BTreeMap::new();
         for_each_component!(self.entities, render, |entity, render: &RefCell<ClientRenderInfo>|
         {
@@ -231,19 +232,35 @@ impl ClientEntitiesContainer
                 return;
             }
 
-            if render.shadow_visible
+            let real_z = (transform.position.z / TILE_SIZE).floor() as i32;
+
+            fn insert_render<V>(renders: &mut BTreeMap<i32, Vec<V>>, value: V, key: i32)
             {
-                self.shaded_renders.push(entity);
+                match renders.entry(key)
+                {
+                    Entry::Vacant(entry) => { entry.insert(vec![value]); },
+                    Entry::Occupied(mut entry) => entry.get_mut().push(value)
+                }
             }
 
-            let real_z = (transform.position.z / TILE_SIZE).floor() as i32;
-            match visible_renders.entry(real_z)
+            insert_render(&mut visible_renders, entity, real_z);
+
+            if render.shadow_visible
             {
-                Entry::Vacant(entry) => { entry.insert(vec![entity]); },
-                Entry::Occupied(mut entry) => entry.get_mut().push(entity)
+                insert_render(&mut shaded_renders, entity, real_z);
+            }
+
+            if let Some(light) = self.entities.light(entity)
+            {
+                if light.is_visible()
+                {
+                    insert_render(&mut light_renders, entity, real_z);
+                }
             }
         });
 
+        self.shaded_renders = shaded_renders.into_values().collect();
+        self.light_renders = light_renders.into_values().collect();
         self.visible_renders = visible_renders.into_values().collect();
 
         render_system::update_buffers(
@@ -493,6 +510,7 @@ pub struct GameState
     pub common_textures: CommonTextures,
     pub connected_and_ready: bool,
     pub world: World,
+    cached_ids: CachedIds,
     ui_camera: Camera,
     shaders: ProgramShaders,
     host: bool,
@@ -594,6 +612,8 @@ impl GameState
 
         let assets = info.object_info.partial.assets.clone();
 
+        let cached_ids = CachedIds::new(&assets.lock());
+
         let anatomy_locations = |object_info: &mut ObjectCreateInfo, name: &str| -> UiAnatomyLocations
         {
             let base_image = image::open(format!("textures/special/{name}.png"))
@@ -641,6 +661,7 @@ impl GameState
             characters_info: info.data_infos.characters_info,
             controls,
             running: true,
+            cached_ids,
             ui_camera,
             shaders: info.shaders,
             world,
@@ -865,7 +886,6 @@ impl GameState
 
     pub fn update_buffers(
         &mut self,
-        square: ModelId,
         info: &mut UpdateBuffersInfo
     )
     {
@@ -883,7 +903,7 @@ impl GameState
         let mut create_info = RenderCreateInfo{
             location: UniformLocation{set: 0, binding: 0},
             shader: self.shaders.default,
-            square,
+            ids: self.cached_ids,
             object_info: info
         };
 
@@ -897,7 +917,7 @@ impl GameState
             let mut create_info = RenderCreateInfo{
                 location: UniformLocation{set: 0, binding: 0},
                 shader: self.shaders.ui,
-                square,
+                ids: self.cached_ids,
                 object_info: info
             };
 
@@ -928,6 +948,7 @@ impl GameState
         let draw_entities = render_system::DrawEntities{
             renders: &self.entities.visible_renders,
             shaded_renders: &self.entities.shaded_renders,
+            light_renders: &self.entities.light_renders,
             world: &self.world
         };
 
@@ -1015,7 +1036,6 @@ impl GameState
 
     pub fn update(
         &mut self,
-        square: ModelId,
         object_info: &mut UpdateBuffersInfo,
         dt: f32
     )
@@ -1025,7 +1045,7 @@ impl GameState
         let mut create_info = RenderCreateInfo{
             location: UniformLocation{set: 0, binding: 0},
             shader: self.shaders.default,
-            square,
+            ids: self.cached_ids,
             object_info
         };
 

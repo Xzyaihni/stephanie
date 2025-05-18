@@ -60,7 +60,8 @@ pub fn update_buffers(
 pub struct DrawEntities<'a>
 {
     pub renders: &'a [Vec<Entity>],
-    pub shaded_renders: &'a [Entity],
+    pub shaded_renders: &'a [Vec<Entity>],
+    pub light_renders: &'a [Vec<Entity>],
     pub world: &'a World
 }
 
@@ -120,7 +121,7 @@ pub fn draw(
 
     info.bind_pipeline(shaders.default_shaded);
 
-    renderables.shaded_renders.iter().for_each(|&entity|
+    renderables.shaded_renders.iter().flatten().for_each(|&entity|
     {
         let render = entities.render(entity).unwrap();
 

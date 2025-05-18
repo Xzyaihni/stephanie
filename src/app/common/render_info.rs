@@ -188,7 +188,7 @@ impl RenderObjectKind
             Self::TextureId{id} =>
             {
                 let info = ObjectInfo{
-                    model: assets.model(create_info.square).clone(),
+                    model: assets.model(create_info.ids.square).clone(),
                     texture: assets.texture(id).clone(),
                     transform
                 };

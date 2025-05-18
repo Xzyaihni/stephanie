@@ -42,6 +42,7 @@ use crate::{
         EntityInfo,
         CharacterId,
         CharactersInfo,
+        Light,
         ItemsInfo,
         Item,
         InventoryItem,
@@ -388,6 +389,7 @@ impl Character
                     ..Default::default()
                 }.into()),
                 watchers: Some(Default::default()),
+                light: Some(Light{strength: 0.0}),
                 ..Default::default()
             }
         };
@@ -628,8 +630,11 @@ impl Character
             }
         }));
 
+        let mut light = entities.light_mut(holding_entity).unwrap();
         if let Some(item) = holding_item
         {
+            light.modify_light(|light| light.strength = item.lighting);
+
             let mut lazy_transform = entities.lazy_transform_mut(holding_entity).unwrap();
 
             let texture = get_texture(item.texture.unwrap());
@@ -651,6 +656,9 @@ impl Character
             render.set_texture(texture);
 
             self.update_hands_rotation(combined_info);
+        } else
+        {
+            light.modify_light(|light| light.strength = 0.0);
         }
 
         some_or_return!(entities.lazy_transform_mut(hand_right)).connection = if holding_state

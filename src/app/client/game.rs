@@ -12,7 +12,6 @@ use yanyaengine::{
     Key,
     KeyCode,
     NamedKey,
-    ModelId,
     game_object::*
 };
 
@@ -177,7 +176,6 @@ impl Game
 
     pub fn update(
         &mut self,
-        squares: ModelId,
         info: &mut UpdateBuffersInfo,
         dt: f32
     )
@@ -198,7 +196,7 @@ impl Game
 
         controls.into_iter().for_each(|(control, state)| self.on_control(state, control));
 
-        game_state.borrow_mut().update(squares, info, dt);
+        game_state.borrow_mut().update(info, dt);
 
         self.camera_sync();
     }

@@ -160,6 +160,14 @@
         "groups": ["drugs"]
     },
     {
+        "name": "lamp",
+        "comfort": 0.5,
+        "scale": 0.3,
+        "mass": 0.4,
+        "commonness": 0.1,
+        "groups": ["utility"]
+    },
+    {
         "name": "snel",
         "scale": 0.03,
         "mass": 0.1,

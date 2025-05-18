@@ -80,6 +80,7 @@ pub struct ItemInfoRaw
     scale: Option<f32>,
     mass: Option<f32>,
     commonness: Option<f64>,
+    lighting: Option<f32>,
     groups: Vec<String>,
     texture: Option<String>
 }
@@ -99,6 +100,7 @@ pub struct ItemInfo
     pub aspect: Vector2<f32>,
     pub mass: f32,
     pub commonness: f64,
+    pub lighting: f32,
     pub texture: Option<TextureId>
 }
 
@@ -155,6 +157,7 @@ impl ItemInfo
             aspect,
             mass: raw.mass.unwrap_or(1.0),
             commonness: raw.commonness.unwrap_or(1.0),
+            lighting: raw.lighting.unwrap_or(0.0),
             texture: Some(texture)
         }
     }
@@ -172,6 +175,7 @@ impl ItemInfo
             aspect: Vector2::repeat(1.0),
             mass: 0.3,
             commonness: 1.0,
+            lighting: 0.0,
             texture: None
         }
     }
