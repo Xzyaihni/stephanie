@@ -2,7 +2,7 @@ use serde::{Serialize, Deserialize};
 
 use nalgebra::Vector3;
 
-use yanyaengine::{ObjectInfo, TransformContainer, Transform, Object};
+use yanyaengine::{game_object::*, ObjectInfo, TransformContainer, Transform, Object};
 
 use crate::{
     client::RenderCreateInfo,
@@ -38,9 +38,15 @@ impl ClientLight
         self.object.set_scale(Vector3::new(scale, scale, 1.0));
     }
 
-    pub fn update_buffers(&mut self, position: Vector3<f32>)
+    pub fn update_buffers(&mut self, info: &mut UpdateBuffersInfo, position: Vector3<f32>)
     {
         self.object.set_position(position);
+        self.object.update_buffers(info);
+    }
+
+    pub fn draw(&self, info: &mut DrawInfo)
+    {
+        self.object.draw(info);
     }
 
     pub fn is_visible(&self) -> bool

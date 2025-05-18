@@ -1,3 +1,5 @@
+use nalgebra::Vector3;
+
 use yanyaengine::game_object::*;
 
 use crate::{
@@ -18,6 +20,7 @@ use crate::{
 pub fn update_buffers(
     entities: &ClientEntities,
     renderables: impl Iterator<Item=Entity>,
+    lights: impl Iterator<Item=Entity>,
     info: &mut UpdateBuffersInfo,
     caster: &OccludingCaster
 )
@@ -55,6 +58,14 @@ pub fn update_buffers(
             occluder.update_buffers(info, caster);
         }
     });
+
+    lights.for_each(|entity|
+    {
+        let position = entities.transform(entity).map(|x| x.position).unwrap_or_else(Vector3::zeros);
+        let mut light = entities.light_mut(entity).unwrap();
+
+        light.update_buffers(info, position);
+    });
 }
 
 pub struct DrawEntities<'a>
@@ -78,9 +89,9 @@ pub fn draw(
 
     renderables.world.draw_shadows(info, visibility);
 
-    renderables.renders.iter().flatten().filter_map(|entity|
+    renderables.renders.iter().flatten().copied().filter_map(|entity|
     {
-        entities.occluder(*entity)
+        entities.occluder(entity)
     }).for_each(|occluder|
     {
         if !occluder.visible(visibility)
@@ -121,7 +132,14 @@ pub fn draw(
 
     info.bind_pipeline(shaders.default_shaded);
 
-    renderables.shaded_renders.iter().flatten().for_each(|&entity|
+    renderables.light_renders.iter().flatten().copied().for_each(|entity|
+    {
+        entities.light(entity).unwrap().draw(info);
+    });
+
+    info.bind_pipeline(shaders.default_shaded);
+
+    renderables.shaded_renders.iter().flatten().copied().for_each(|entity|
     {
         let render = entities.render(entity).unwrap();
 

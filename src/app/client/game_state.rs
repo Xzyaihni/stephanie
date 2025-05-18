@@ -264,6 +264,7 @@ impl ClientEntitiesContainer
         render_system::update_buffers(
             &self.entities,
             self.visible_renders.iter().flatten().copied(),
+            self.light_renders.iter().flatten().copied(),
             info,
             caster
         );
