@@ -1316,7 +1316,7 @@ impl HumanAnatomy
                 Health::new(50.0, 100.0),
                 None,
                 None,
-                0.01,
+                0.05,
                 Vec::new()
             ));
 
