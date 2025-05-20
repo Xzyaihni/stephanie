@@ -1,6 +1,8 @@
 use nalgebra::Vector3;
 
-use yanyaengine::game_object::*;
+use vulkano::descriptor_set::WriteDescriptorSet;
+
+use yanyaengine::{game_object::*, SolidObject};
 
 use crate::{
     debug_config::*,
@@ -70,6 +72,7 @@ pub fn update_buffers(
 
 pub struct DrawEntities<'a>
 {
+    pub solid: &'a SolidObject,
     pub renders: &'a [Vec<Entity>],
     pub shaded_renders: &'a [Vec<Entity>],
     pub light_renders: &'a [Vec<Entity>],
@@ -85,23 +88,6 @@ pub fn draw(
     animation: f32
 )
 {
-    info.bind_pipeline(shaders.shadow);
-
-    renderables.world.draw_shadows(info, visibility);
-
-    renderables.renders.iter().flatten().copied().filter_map(|entity|
-    {
-        entities.occluder(entity)
-    }).for_each(|occluder|
-    {
-        if !occluder.visible(visibility)
-        {
-            return;
-        }
-
-        occluder.draw(info);
-    });
-
     info.bind_pipeline(shaders.world);
 
     renderables.world.draw(info);
@@ -126,16 +112,11 @@ pub fn draw(
         render.draw(info, outline);
     });
 
+    info.next_subpass();
+
     info.bind_pipeline(shaders.world_shaded);
 
     renderables.world.draw(info);
-
-    info.bind_pipeline(shaders.default_shaded);
-
-    renderables.light_renders.iter().flatten().copied().for_each(|entity|
-    {
-        entities.light(entity).unwrap().draw(info);
-    });
 
     info.bind_pipeline(shaders.default_shaded);
 
@@ -149,4 +130,40 @@ pub fn draw(
             animation
         ));
     });
+
+    info.next_subpass();
+
+    info.bind_pipeline(shaders.shadow);
+
+    renderables.world.draw_sky_occluders(info, visibility);
+
+    info.bind_pipeline(shaders.lighting);
+
+    renderables.light_renders.iter().flatten().copied().for_each(|entity|
+    {
+        entities.light(entity).unwrap().draw(info);
+    });
+
+    /*renderables.renders.iter().flatten().copied().filter_map(|entity|
+    {
+        entities.occluder(entity)
+    }).for_each(|occluder|
+    {
+        if !occluder.visible(visibility)
+        {
+            return;
+        }
+
+        occluder.draw(info);
+    });*/let a = ();
+
+    info.next_subpass();
+    info.bind_pipeline(shaders.final_mix);
+    info.current_sets = vec![info.create_descriptor_set(0, [
+        WriteDescriptorSet::image_view(0, info.attachments[0].clone()),
+        WriteDescriptorSet::image_view(1, info.attachments[2].clone()),
+        WriteDescriptorSet::image_view(2, info.attachments[4].clone())
+    ])];
+
+    renderables.solid.draw(info);
 }

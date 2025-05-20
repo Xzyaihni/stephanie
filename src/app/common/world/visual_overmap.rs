@@ -432,7 +432,19 @@ impl VisualOvermap
                         self.visibility_checker.height(pos)
                     )
                 }
+            });
+    }
 
+    pub fn draw_sky_occluders(
+        &self,
+        info: &mut DrawInfo,
+        visibility: &EntityVisibilityChecker
+    )
+    {
+        self.chunks.positions_2d()
+            .filter(|pos| self.visible(*pos))
+            .for_each(|pos|
+            {
                 Self::for_sky_occluders(&self.visibility_checker, pos, |pos|
                 {
                     self.chunks[pos].1.draw_sky_shadows(

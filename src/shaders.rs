@@ -1,10 +1,10 @@
-use vulkano::pipeline::graphics::depth_stencil::{
-    DepthState,
-    StencilState,
-    StencilOpState,
-    StencilOps,
-    StencilOp,
-    CompareOp
+use vulkano::pipeline::graphics::{
+    color_blend::{AttachmentBlend, BlendFactor, BlendOp},
+    vertex_input::Vertex,
+    depth_stencil::{
+        DepthState,
+        CompareOp
+    }
 };
 
 use nalgebra::Vector3;
@@ -12,13 +12,14 @@ use nalgebra::Vector3;
 use yanyaengine::{
     OccludingPlane,
     Object,
+    ObjectVertex,
+    SimpleVertex,
     ShadersContainer,
     Shader,
     ShadersGroup
 };
 
 use crate::{
-    BACKGROUND_COLOR,
     app::ProgramShaders,
     common::world::TILE_SIZE
 };
@@ -78,21 +79,39 @@ mod world_shaded_fragment
     }
 }
 
-mod shadow_vertex
+mod occluder_vertex
 {
     vulkano_shaders::shader!
     {
         ty: "vertex",
-        path: "shaders/shadow.vert"
+        path: "shaders/occluder.vert"
     }
 }
 
-mod shadow_fragment
+mod occluder_fragment
 {
     vulkano_shaders::shader!
     {
         ty: "fragment",
-        path: "shaders/shadow.frag"
+        path: "shaders/occluder.frag"
+    }
+}
+
+mod light_vertex
+{
+    vulkano_shaders::shader!
+    {
+        ty: "vertex",
+        path: "shaders/light.vert"
+    }
+}
+
+mod light_fragment
+{
+    vulkano_shaders::shader!
+    {
+        ty: "fragment",
+        path: "shaders/light.frag"
     }
 }
 
@@ -111,6 +130,24 @@ mod ui_fragment
     {
         ty: "fragment",
         path: "shaders/ui.frag"
+    }
+}
+
+mod final_vertex
+{
+    vulkano_shaders::shader!
+    {
+        ty: "vertex",
+        path: "shaders/final.vert"
+    }
+}
+
+mod final_fragment
+{
+    vulkano_shaders::shader!
+    {
+        ty: "fragment",
+        path: "shaders/final.frag"
     }
 }
 
@@ -135,19 +172,14 @@ pub fn create() -> ShadersCreated
         )
     };
 
-    let create_stencil = |stencil| StencilState{front: stencil, back: stencil};
-    let default_stencil = create_stencil(StencilOpState{
-        ops: StencilOps{
-            compare_op: CompareOp::Equal,
-            ..Default::default()
-        },
-        reference: 1,
-        ..Default::default()
-    });
-
     let world_depth = DepthState{
         write_enable: true,
         compare_op: CompareOp::Always
+    };
+
+    let object_depth = DepthState{
+        write_enable: false,
+        compare_op: CompareOp::Less
     };
 
     let default_shader = shaders.push(Shader{
@@ -155,12 +187,9 @@ pub fn create() -> ShadersCreated
             default_vertex,
             default_fragment::load
         ),
-        stencil: Some(default_stencil.clone()),
-        depth: Some(DepthState{
-            write_enable: false,
-            compare_op: CompareOp::Less
-        }),
+        depth: Some(object_depth),
         per_vertex: Some(Object::per_vertex()),
+        subpass: 0,
         ..Default::default()
     });
 
@@ -169,18 +198,9 @@ pub fn create() -> ShadersCreated
             default_vertex,
             world_fragment::load
         ),
-        stencil: Some(default_stencil),
         depth: Some(world_depth),
         per_vertex: Some(Object::per_vertex()),
-        ..Default::default()
-    });
-
-    let shaded_stencil = create_stencil(StencilOpState{
-        ops: StencilOps{
-            compare_op: CompareOp::Equal,
-            ..Default::default()
-        },
-        reference: 0,
+        subpass: 0,
         ..Default::default()
     });
 
@@ -206,9 +226,9 @@ pub fn create() -> ShadersCreated
                 )
             }
         ),
-        stencil: Some(shaded_stencil.clone()),
         depth: Some(world_depth),
         per_vertex: Some(Object::per_vertex()),
+        subpass: 1,
         ..Default::default()
     });
 
@@ -222,46 +242,83 @@ pub fn create() -> ShadersCreated
                 )
             }
         ),
-        stencil: Some(shaded_stencil),
-        depth: Some(DepthState::simple()),
+        depth: Some(object_depth),
         per_vertex: Some(Object::per_vertex()),
+        subpass: 1,
         ..Default::default()
     });
-
-    let shadow_color = BACKGROUND_COLOR.lerp(&SHADOW_COLOR, DARKEN);
 
     let shadow_shader = shaders.push(Shader{
         shader: ShadersGroup::new(
-            shadow_vertex::load,
-            move |device|
-            {
-                shadow_fragment::load(device).unwrap().specialize(
-                    [
-                        (0, shadow_color.x.into()),
-                        (1, shadow_color.y.into()),
-                        (2, shadow_color.z.into())
-                    ].into_iter().collect()
-                )
-            }
+            occluder_vertex::load,
+            occluder_fragment::load
         ),
-        stencil: Some(create_stencil(StencilOpState{
-            ops: StencilOps{
-                pass_op: StencilOp::Zero,
-                compare_op: CompareOp::Always,
-                ..Default::default()
-            },
-            ..Default::default()
-        })),
+        depth: Some(DepthState{
+            write_enable: false,
+            compare_op: CompareOp::Always
+        }),
         per_vertex: Some(OccludingPlane::per_vertex()),
+        subpass: 2,
+        blend: None,
         ..Default::default()
     });
 
-    let ui_shader = shaders.push(Shader{
+    let occluder_shader = shaders.push(Shader{
+        shader: ShadersGroup::new(
+            occluder_vertex::load,
+            occluder_fragment::load
+        ),
+        depth: Some(DepthState{
+            write_enable: false,
+            compare_op: CompareOp::Always
+        }),
+        per_vertex: Some(OccludingPlane::per_vertex()),
+        subpass: 2,
+        blend: None,
+        ..Default::default()
+    });
+
+    let lighting_shader = shaders.push(Shader{
+        shader: ShadersGroup::new(
+            light_vertex::load,
+            light_fragment::load
+        ),
+        depth: Some(DepthState{
+            write_enable: true,
+            compare_op: CompareOp::LessOrEqual
+        }),
+        per_vertex: Some(ObjectVertex::per_vertex()),
+        subpass: 2,
+        blend: Some(AttachmentBlend{
+            src_color_blend_factor: BlendFactor::Zero,
+            dst_color_blend_factor: BlendFactor::DstColor,
+            color_blend_op: BlendOp::Add,
+            src_alpha_blend_factor: BlendFactor::SrcAlpha,
+            dst_alpha_blend_factor: BlendFactor::DstAlpha,
+            alpha_blend_op: BlendOp::Min
+        }),
+        ..Default::default()
+    });
+
+    let temp = ();
+    let ui_shader = /*shaders.push(Shader{
         shader: ShadersGroup::new(
             ui_vertex::load,
             ui_fragment::load
         ),
         per_vertex: Some(Object::per_vertex()),
+        subpass: 1,
+        ..Default::default()
+    })*/lighting_shader;
+
+    let final_mix_shader = shaders.push(Shader{
+        shader: ShadersGroup::new(
+            final_vertex::load,
+            final_fragment::load
+        ),
+        per_vertex: Some(SimpleVertex::per_vertex()),
+        subpass: 3,
+        blend: None,
         ..Default::default()
     });
 
@@ -273,7 +330,10 @@ pub fn create() -> ShadersCreated
             world: world_shader,
             world_shaded: world_shaded_shader,
             shadow: shadow_shader,
-            ui: ui_shader
+            occluder: occluder_shader,
+            lighting: lighting_shader,
+            ui: ui_shader,
+            final_mix: final_mix_shader
         }
     }
 }

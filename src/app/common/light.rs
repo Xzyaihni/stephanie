@@ -2,7 +2,7 @@ use serde::{Serialize, Deserialize};
 
 use nalgebra::Vector3;
 
-use yanyaengine::{game_object::*, ObjectInfo, TransformContainer, Transform, Object};
+use yanyaengine::{game_object::*, TransformContainer, Transform, SolidObject, ObjectVertex};
 
 use crate::{
     client::RenderCreateInfo,
@@ -16,11 +16,19 @@ pub struct Light
     pub strength: f32
 }
 
+impl Default for Light
+{
+    fn default() -> Self
+    {
+        Self{strength: 0.0}
+    }
+}
+
 #[derive(Debug)]
 pub struct ClientLight
 {
     light: Light,
-    object: Object
+    object: SolidObject<ObjectVertex>
 }
 
 impl ClientLight
@@ -69,13 +77,10 @@ impl ServerToClient<ClientLight> for Light
         };
 
         let assets = create_info.object_info.partial.assets.lock();
-        let info = ObjectInfo{
-            model: assets.model(create_info.ids.square).clone(),
-            texture: assets.texture(create_info.ids.light_texture).clone(),
+        let object = create_info.object_info.partial.object_factory.create_solid(
+            assets.model(create_info.ids.square).clone(),
             transform
-        };
-
-        let object = create_info.object_info.partial.object_factory.create(info);
+        );
 
         let mut this = ClientLight{light: self, object};
 

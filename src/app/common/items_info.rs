@@ -16,7 +16,8 @@ use crate::common::{
     character::HAND_SCALE,
     Drug,
     DamageType,
-    Item
+    Item,
+    Light
 };
 
 
@@ -100,7 +101,7 @@ pub struct ItemInfo
     pub aspect: Vector2<f32>,
     pub mass: f32,
     pub commonness: f64,
-    pub lighting: f32,
+    pub lighting: Light,
     pub texture: Option<TextureId>
 }
 
@@ -157,7 +158,7 @@ impl ItemInfo
             aspect,
             mass: raw.mass.unwrap_or(1.0),
             commonness: raw.commonness.unwrap_or(1.0),
-            lighting: raw.lighting.unwrap_or(0.0),
+            lighting: raw.lighting.map(|strength| Light{strength}).unwrap_or_default(),
             texture: Some(texture)
         }
     }
@@ -175,7 +176,7 @@ impl ItemInfo
             aspect: Vector2::repeat(1.0),
             mass: 0.3,
             commonness: 1.0,
-            lighting: 0.0,
+            lighting: Light::default(),
             texture: None
         }
     }

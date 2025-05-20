@@ -310,24 +310,6 @@ impl Parent
     }
 }
 
-macro_rules! normal_forward_impl
-{
-    ($(($fn_ref:ident, $fn_mut:ident, $value:ident)),+,) =>
-    {
-        $(
-        fn $fn_ref(&self, entity: Entity) -> Option<Ref<$value>>
-        {
-            Self::$fn_ref(self, entity)
-        }
-
-        fn $fn_mut(&self, entity: Entity) -> Option<RefMut<$value>>
-        {
-            Self::$fn_mut(self, entity)
-        }
-        )+
-    }
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FullEntityInfo
 {
@@ -548,24 +530,6 @@ macro_rules! impl_common_systems
             mut f: impl FnMut(&mut Self, Entity, EntityInfo) -> $this_entity_info
         )
         {
-            {
-                let mut lazy_setter = self.lazy_setter.borrow_mut();
-                if lazy_setter.changed
-                {
-                    lazy_setter.changed = false;
-
-                    drop(lazy_setter);
-
-                    $(
-                        let queue = mem::take(&mut self.lazy_setter.borrow_mut().$name);
-                        queue.into_iter().for_each(|(entity, component)|
-                        {
-                            self.$set_func(entity, component);
-                        });
-                    )+
-                }
-            }
-
             let queue = mem::take(self.create_queue.get_mut());
             queue.into_iter().for_each(|(entity, mut info)|
             {
@@ -715,11 +679,34 @@ macro_rules! entity_info_common
 
 macro_rules! common_trait_impl
 {
-    ($(($fn_ref:ident, $fn_mut:ident, $value_type:ident)),+,) =>
+    (
+        ($(($fn_ref:ident, $fn_mut:ident, $value_type:ident)),+,),
+        ($(($set_func:ident, $exists_name:ident, $shared_type:ident)),+,)
+    ) =>
     {
-        normal_forward_impl!{
-            $(($fn_ref, $fn_mut, $value_type),)+
-        }
+        $(
+            fn $fn_ref(&self, entity: Entity) -> Option<Ref<$value_type>>
+            {
+                Self::$fn_ref(self, entity)
+            }
+
+            fn $fn_mut(&self, entity: Entity) -> Option<RefMut<$value_type>>
+            {
+                Self::$fn_mut(self, entity)
+            }
+        )+
+
+        $(
+            fn $exists_name(&self, entity: Entity) -> bool
+            {
+                Self::$exists_name(self, entity)
+            }
+
+            fn $set_func(&self, entity: Entity, component: Option<$shared_type>)
+            {
+                self.lazy_setter.borrow_mut().$set_func(entity, component);
+            }
+        )+
 
         fn infos(&self) -> &DataInfos
         {
@@ -1075,7 +1062,7 @@ macro_rules! define_entities_both
         {
             pub local_components: RefCell<ObjectsStore<ComponentsIndices>>,
             pub components: RefCell<ObjectsStore<ComponentsIndices>>,
-            pub lazy_setter: RefCell<SetterQueue<$($component_type,)+>>,
+            pub lazy_setter: RefCell<SetterQueue<$($default_type,)+>>,
             infos: Option<DataInfos>,
             z_changed: RefCell<bool>,
             remove_queue: RefCell<Vec<Entity>>,
@@ -1177,7 +1164,7 @@ macro_rules! define_entities_both
                 format!("{info:#?}")
             }
 
-            pub fn in_flight(&self) -> InFlightGetter<RefMut<SetterQueue<$($component_type,)+>>>
+            pub fn in_flight(&self) -> InFlightGetter<RefMut<SetterQueue<$($default_type,)+>>>
             {
                 InFlightGetter(self.lazy_setter.borrow_mut())
             }
@@ -1535,26 +1522,6 @@ macro_rules! define_entities_both
                 self.transform(entity).as_deref().cloned()
             }
 
-            pub fn push_client(
-                &self,
-                mut info: ClientEntityInfo
-            ) -> Entity
-            {
-                let entity = self.push_empty(true, info.parent.as_ref().map(|x| x.entity));
-
-                info.setup_components(self);
-
-                let mut lazy_setter = self.lazy_setter.borrow_mut();
-                $(
-                    if let Some(component) = info.$name
-                    {
-                        lazy_setter.$set_func(entity, Some(component));
-                    }
-                )+
-
-                entity
-            }
-
             #[allow(dead_code)]
             pub fn push_client_eager(
                 &mut self,
@@ -1733,6 +1700,7 @@ macro_rules! define_entities_both
                 create_info: &mut RenderCreateInfo
             )
             {
+                self.lazy_set_common(create_info);
                 self.create_queued_common(|this, entity, info|
                 {
                     ClientEntityInfo::from_server(
@@ -2083,6 +2051,7 @@ macro_rules! define_entities_both
                 writer: &mut server::ConnectionsHandler
             )
             {
+                self.lazy_set_common(&mut ());
                 self.create_queued_common(|_this, entity, info|
                 {
                     let message = Message::EntitySet{entity, info: Box::new(info.clone())};
@@ -2130,6 +2099,33 @@ macro_rules! define_entities_both
     }
 }
 
+macro_rules! implement_common_complex
+{
+    ($(($name:ident, $set_func:ident, $this_type:ident, $server_type:ident),)+) =>
+    {
+        fn lazy_set_common<C>(&mut self, t: &mut C)
+        where
+            $(C: ServerClientConverter<Self, $this_type, $server_type>,)+
+        {
+            let mut lazy_setter = self.lazy_setter.borrow_mut();
+            if lazy_setter.changed
+            {
+                lazy_setter.changed = false;
+
+                drop(lazy_setter);
+
+                $(
+                    let queue = mem::take(&mut self.lazy_setter.borrow_mut().$name);
+                    queue.into_iter().for_each(|(entity, component)|
+                    {
+                        self.$set_func(entity, component.map(|x| t.convert(self, entity, x)));
+                    });
+                )+
+            }
+        }
+    }
+}
+
 macro_rules! define_entities
 {
     ((side_specific
@@ -2161,9 +2157,80 @@ macro_rules! define_entities
             $(($name, $mut_func, $set_func, $on_name, $resort_name, $exists_name, $message_name, $component_type, $default_type),)+
         }
 
+        trait ServerClientConverter<E, T, U>
+        {
+            fn convert(&mut self, entities: &E, entity: Entity, value: T) -> U;
+        }
+
+        $(
+            impl ServerClientConverter<ServerEntities, $default_type, $default_type> for ()
+            {
+                fn convert(
+                    &mut self,
+                    _entities: &ServerEntities,
+                    _entity: Entity,
+                    value: $default_type
+                ) -> $default_type { value }
+            }
+
+            impl ServerClientConverter<ClientEntities, $default_type, $default_type> for RenderCreateInfo<'_, '_>
+            {
+                fn convert(
+                    &mut self,
+                    _entities: &ClientEntities,
+                    _entity: Entity,
+                    value: $default_type
+                ) -> $default_type { value }
+            }
+        )+
+
+        $(
+            impl ServerClientConverter<ServerEntities, $side_default_type, $side_default_type> for ()
+            {
+                fn convert(
+                    &mut self,
+                    _entities: &ServerEntities,
+                    _entity: Entity,
+                    value: $side_default_type
+                ) -> $side_default_type { value }
+            }
+
+            impl ServerClientConverter<ClientEntities, $side_default_type, $client_type> for RenderCreateInfo<'_, '_>
+            {
+                fn convert(
+                    &mut self,
+                    entities: &ClientEntities,
+                    entity: Entity,
+                    value: $side_default_type
+                ) -> $client_type
+                {
+                    value.server_to_client(|| entities.transform(entity).as_deref().cloned().unwrap_or_default(), self)
+                }
+            }
+        )+
+
+        impl ClientEntities
+        {
+            implement_common_complex!{
+                $(($name, $set_func, $default_type, $default_type),)+
+                $(($side_name, $side_set_func, $side_default_type, $client_type),)+
+            }
+        }
+
+        impl ServerEntities
+        {
+            implement_common_complex!{
+                $(($name, $set_func, $default_type, $default_type),)+
+                $(($side_name, $side_set_func, $side_default_type, $side_default_type),)+
+            }
+        }
+
         impl AnyEntities for ClientEntities
         {
-            common_trait_impl!{$(($name, $mut_func, $default_type),)+}
+            common_trait_impl!{
+                ($(($name, $mut_func, $default_type),)+),
+                ($(($side_set_func, $side_exists_name, $side_default_type),)+ $(($set_func, $exists_name, $default_type),)+)
+            }
 
             fn push_eager(
                 &mut self,
@@ -2196,7 +2263,10 @@ macro_rules! define_entities
 
         impl AnyEntities for ServerEntities
         {
-            common_trait_impl!{$(($name, $mut_func, $default_type),)+}
+            common_trait_impl!{
+                ($(($name, $mut_func, $default_type),)+),
+                ($(($side_set_func, $side_exists_name, $side_default_type),)+ $(($set_func, $exists_name, $default_type),)+)
+            }
 
             fn push_eager(&mut self, local: bool, info: EntityInfo) -> Entity
             {
@@ -2218,6 +2288,16 @@ macro_rules! define_entities
             $(
                 fn $name(&self, entity: Entity) -> Option<Ref<$default_type>>;
                 fn $mut_func(&self, entity: Entity) -> Option<RefMut<$default_type>>;
+            )+
+
+            $(
+                fn $set_func(&self, entity: Entity, component: Option<$default_type>);
+                fn $exists_name(&self, entity: Entity) -> bool;
+            )+
+
+            $(
+                fn $side_set_func(&self, entity: Entity, component: Option<$side_default_type>);
+                fn $side_exists_name(&self, entity: Entity) -> bool;
             )+
 
             fn infos(&self) -> &DataInfos;

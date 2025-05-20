@@ -17,7 +17,6 @@ use yanyaengine::{
     ElementState,
     DefaultModel,
     ModelId,
-    TextureId,
     Assets,
     camera::Camera,
     game_object::*
@@ -67,8 +66,7 @@ pub mod world_receiver;
 #[derive(Debug, Clone, Copy)]
 pub struct CachedIds
 {
-    pub square: ModelId,
-    pub light_texture: TextureId
+    pub square: ModelId
 }
 
 impl CachedIds
@@ -76,8 +74,7 @@ impl CachedIds
     pub fn new(assets: &Assets) -> Self
     {
         Self{
-            square: assets.default_model(DefaultModel::Square),
-            light_texture: assets.texture_id("light.png")
+            square: assets.default_model(DefaultModel::Square)
         }
     }
 }

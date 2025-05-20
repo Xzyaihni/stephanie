@@ -329,6 +329,11 @@ impl Character
         entity: Entity
     )
     {
+        if !entities.light_exists(entity)
+        {
+            entities.set_light(entity, Some(Default::default()));
+        }
+
         let inserter = |info|
         {
             entities.push(true, info)
@@ -389,7 +394,6 @@ impl Character
                     ..Default::default()
                 }.into()),
                 watchers: Some(Default::default()),
-                light: Some(Light{strength: 0.0}),
                 ..Default::default()
             }
         };
@@ -605,6 +609,7 @@ impl Character
 
         let info = some_or_return!(self.info.as_ref());
 
+        let this_entity = info.this;
         let holding_entity = info.holding;
         let hand_left = info.hand_left;
         let hand_right = info.hand_right;
@@ -630,10 +635,10 @@ impl Character
             }
         }));
 
-        let mut light = entities.light_mut(holding_entity).unwrap();
+        let mut light = some_or_return!(entities.light_mut(this_entity));
         if let Some(item) = holding_item
         {
-            light.modify_light(|light| light.strength = item.lighting);
+            light.modify_light(|light| *light = item.lighting);
 
             let mut lazy_transform = entities.lazy_transform_mut(holding_entity).unwrap();
 
@@ -658,7 +663,7 @@ impl Character
             self.update_hands_rotation(combined_info);
         } else
         {
-            light.modify_light(|light| light.strength = 0.0);
+            light.modify_light(|light| *light = Light::default());
         }
 
         some_or_return!(entities.lazy_transform_mut(hand_right)).connection = if holding_state
@@ -785,6 +790,7 @@ impl Character
                         kind: ColliderType::Rectangle,
                         ..Default::default()
                     }.into()),
+                    light: Some(item_info.lighting),
                     damaging: Some(DamagingInfo{
                         damage: DamagingType::Mass(mass),
                         faction: Some(self.faction),

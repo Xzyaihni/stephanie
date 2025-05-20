@@ -300,6 +300,15 @@ impl World
         self.overmap.draw_shadows(info, visibility);
     }
 
+    pub fn draw_sky_occluders(
+        &self,
+        info: &mut DrawInfo,
+        visibility: &VisibilityChecker
+    )
+    {
+        self.overmap.draw_sky_occluders(info, visibility);
+    }
+
     pub fn draw(
         &self,
         info: &mut DrawInfo

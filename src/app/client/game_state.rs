@@ -15,7 +15,7 @@ use std::{
 
 use parking_lot::{RwLock, Mutex};
 
-use nalgebra::{Vector2, Vector3};
+use nalgebra::{Vector2, Vector3, Matrix4};
 
 use serde::{Serialize, Deserialize};
 
@@ -27,6 +27,7 @@ use yanyaengine::{
     ObjectFactory,
     Transform,
     TextureId,
+    SolidObject,
     object::{texture::SimpleImage, Texture},
     camera::Camera,
     game_object::*
@@ -506,6 +507,7 @@ pub struct GameState
     pub common_textures: CommonTextures,
     pub connected_and_ready: bool,
     pub world: World,
+    screen_object: SolidObject,
     cached_ids: CachedIds,
     ui_camera: Camera,
     shaders: ProgramShaders,
@@ -610,6 +612,11 @@ impl GameState
 
         let cached_ids = CachedIds::new(&assets.lock());
 
+        let screen_object = info.object_info.partial.object_factory.create_solid(
+            assets.lock().model(cached_ids.square).clone(),
+            Transform{scale: Vector3::repeat(2.0), ..Default::default()}
+        );
+
         let anatomy_locations = |object_info: &mut ObjectCreateInfo, name: &str| -> UiAnatomyLocations
         {
             let base_image = image::open(format!("textures/special/{name}.png"))
@@ -656,6 +663,7 @@ impl GameState
             characters_info: info.data_infos.characters_info,
             controls,
             running: true,
+            screen_object,
             cached_ids,
             ui_camera,
             shaders: info.shaders,
@@ -884,6 +892,15 @@ impl GameState
         info: &mut UpdateBuffersInfo
     )
     {
+        {
+            let projection = info.projection_view;
+
+            info.projection_view = Matrix4::identity();
+            self.screen_object.update_buffers(info);
+
+            info.projection_view = projection;
+        }
+
         self.debug_visibility.update(&self.camera.read());
 
         let caster = self.entities.player_transform().map(|x| x.position)
@@ -927,16 +944,12 @@ impl GameState
 
     pub fn draw(&self, info: &mut DrawInfo)
     {
-        if !self.entities.player_exists()
-        {
-            return;
-        }
-
         let visibility = self.visibility_checker();
 
         let animation = self.entities.animation.sin();
 
         let draw_entities = render_system::DrawEntities{
+            solid: &self.screen_object,
             renders: &self.entities.visible_renders,
             shaded_renders: &self.entities.shaded_renders,
             light_renders: &self.entities.light_renders,
@@ -952,9 +965,10 @@ impl GameState
             animation
         );
 
-        info.bind_pipeline(self.shaders.ui);
+        let temp = ();
+        /*info.bind_pipeline(self.shaders.ui);
 
-        self.ui.borrow().draw(info);
+        self.ui.borrow().draw(info);*/
     }
 
     fn visibility_checker(&self) -> VisibilityChecker
