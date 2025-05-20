@@ -1377,7 +1377,11 @@ impl Character
                 {
                     {
                         let state = $state;
-                        self.clear_attack_state(combined_info, state);
+
+                        if self.attack_cooldown <= 0.0
+                        {
+                            self.clear_attack_state(combined_info, state);
+                        }
                     }
                 }
             }
