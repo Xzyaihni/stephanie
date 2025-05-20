@@ -329,11 +329,6 @@ impl Character
         entity: Entity
     )
     {
-        if !entities.light_exists(entity)
-        {
-            entities.set_light(entity, Some(Default::default()));
-        }
-
         let inserter = |info|
         {
             entities.push(true, info)
@@ -469,6 +464,11 @@ impl Character
             holding: inserter(held_item(Some(hand_left), false)),
             hair
         };
+
+        if !entities.light_exists(entity)
+        {
+            entities.set_light(entity, Some(Light{source: Some(info.holding), ..Default::default()}));
+        }
 
         self.info = Some(info);
 
@@ -743,8 +743,8 @@ impl Character
 
                 let direction = {
                     let rotation = angle_between(
-                        target,
-                        holding_transform.position
+                        holding_transform.position,
+                        target
                     );
 
                     Vector3::new(rotation.cos(), -rotation.sin(), 0.0)
@@ -1220,7 +1220,7 @@ impl Character
 
                     let hit_position = hits.hit_position(hit);
 
-                    let angle = angle_between(hit_position, transform.position);
+                    let angle = angle_between(transform.position, hit_position);
 
                     let damage = DamagePartial{
                         data: damage,
@@ -1769,6 +1769,16 @@ impl Character
     pub fn aggressive(&self, other: &Self) -> bool
     {
         self.faction.aggressive(&other.faction)
+    }
+
+    pub fn visibility(&self) -> f32
+    {
+        match self.sprite_state.value()
+        {
+            SpriteState::Normal => 1.0,
+            SpriteState::Crawling => 0.5,
+            SpriteState::Lying => 0.3
+        }
     }
 
     fn set_sprite(&mut self, state: SpriteState)

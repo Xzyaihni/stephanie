@@ -1,4 +1,5 @@
 use std::{
+    f32,
     iter,
     convert,
     rc::Rc,
@@ -12,10 +13,14 @@ use strum::{EnumCount, FromRepr, IntoStaticStr};
 
 use nalgebra::Vector3;
 
+use yanyaengine::Transform;
+
 use crate::{
     debug_config::*,
     common::{
         some_or_value,
+        angle_between,
+        short_rotation,
         SeededRandom,
         WeightedPicker,
         Damage,
@@ -58,6 +63,7 @@ impl Anatomy
     simple_getter!(stamina);
     simple_getter!(max_stamina);
     simple_getter!(vision);
+    simple_getter!(vision_angle);
 
     pub fn get_human(&self, id: HumanPartId) -> Option<Option<&HumanPart>>
     {
@@ -87,11 +93,28 @@ impl Anatomy
         }
     }
 
-    pub fn sees(&self, this_position: &Vector3<f32>, other_position: &Vector3<f32>) -> bool
+    pub fn sees(
+        &self,
+        transform: &Transform,
+        visibility: f32,
+        other_position: &Vector3<f32>
+    ) -> bool
     {
-        let distance = this_position.metric_distance(other_position);
+        let angle = angle_between(transform.position, *other_position);
+        let angle_offset = short_rotation(angle + transform.rotation).abs();
 
-        self.vision().unwrap_or(0.0) >= distance
+        let vision_angle = self.vision_angle().unwrap_or(0.0);
+
+        let distance = transform.position.metric_distance(other_position);
+
+        let vision = self.vision().unwrap_or(0.0);
+
+        if angle_offset > vision_angle
+        {
+            return false;
+        }
+
+        vision * visibility >= distance
     }
 
     pub fn set_speed(&mut self, speed: f32)
@@ -1376,6 +1399,11 @@ impl HumanAnatomy
     pub fn vision(&self) -> Option<f32>
     {
         self.cached.vision
+    }
+
+    pub fn vision_angle(&self) -> Option<f32>
+    {
+        self.vision().map(|x| (x * 0.5).min(1.0) * f32::consts::PI)
     }
 
     pub fn is_crawling(&self) -> bool

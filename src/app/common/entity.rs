@@ -60,6 +60,7 @@ pub mod damaging_system;
 mod physical_system;
 mod collider_system;
 mod raycast_system;
+mod enemy_system;
 
 
 // too many macros, the syntax is horrible, why r they so limiting? wuts up with that?
@@ -799,6 +800,8 @@ macro_rules! common_trait_impl
 
         fn check_guarantees(&mut self)
         {
+            const PANIC_ON_FAIL: bool = false;
+
             let for_components = |components: &RefCell<ObjectsStore<ComponentsIndices>>, local|
             {
                 let components = components.borrow();
@@ -837,6 +840,8 @@ macro_rules! common_trait_impl
                                     self.info_ref(parent),
                                     self.info_ref(entity)
                                 ));
+
+                                if PANIC_ON_FAIL { panic!() }
                             }
                         }
                     }
@@ -859,6 +864,8 @@ macro_rules! common_trait_impl
                         self.info_ref(before),
                         self.info_ref(after)
                     ));
+
+                    if PANIC_ON_FAIL { panic!() }
                 }
 
                 x
@@ -890,6 +897,8 @@ macro_rules! common_trait_impl
                                 self.info_ref(parent_entity),
                                 self.info_ref(entity)
                             ));
+
+                            if PANIC_ON_FAIL { panic!() }
                         }
                     }
                 }
@@ -1080,7 +1089,7 @@ macro_rules! define_entities_both
         {
             pub fn new(infos: impl Into<Option<DataInfos>>) -> Self
             {
-                Self{
+                let this = Self{
                     local_components: RefCell::new(ObjectsStore::new()),
                     components: RefCell::new(ObjectsStore::new()),
                     lazy_setter: RefCell::new(Default::default()),
@@ -1092,7 +1101,14 @@ macro_rules! define_entities_both
                     changed_entities: RefCell::new(Default::default()),
                     $($on_name: Rc::new(RefCell::new(Vec::new())),)+
                     $($name: ObjectsStore::new(),)+
-                }
+                };
+
+                this.on_render(Box::new(move |entities, _entity|
+                {
+                    entities.resort_by_z();
+                }));
+
+                this
             }
 
             pub fn exists(&self, entity: Entity) -> bool
@@ -1324,6 +1340,11 @@ macro_rules! define_entities_both
                     {
                         remove_component!(self, entity, $name);
                     }
+                }
+
+                pub fn $on_name(&self, f: OnComponentChange)
+                {
+                    self.$on_name.borrow_mut().push(f);
                 }
 
                 fn $resort_name(
@@ -1561,13 +1582,6 @@ macro_rules! define_entities_both
             }
 
             impl_common_systems!{ClientEntityInfo, $(($name, $set_func, $component_type),)+}
-
-            $(
-                pub fn $on_name(&self, f: OnComponentChange)
-                {
-                    self.$on_name.borrow_mut().push(f);
-                }
-            )+
 
             pub fn handle_on_change(&mut self)
             {
@@ -1906,67 +1920,7 @@ macro_rules! define_entities_both
 
             pub fn update_enemy(&mut self, passer: &mut impl EntityPasser, dt: f32)
             {
-                let mut on_state_change = |entity|
-                {
-                    let enemy = self.enemy(entity).unwrap().clone();
-                    let target = self.target_ref(entity).unwrap().clone();
-
-                    passer.send_message(Message::SetEnemy{
-                        entity,
-                        component: enemy.into()
-                    });
-
-                    passer.send_message(Message::SetTarget{
-                        entity,
-                        target: Box::new(target)
-                    });
-                };
-
-                for_each_component!(self, enemy, |entity, enemy: &RefCell<Enemy>|
-                {
-                    if enemy.borrow().check_hostiles()
-                    {
-                        let character = self.character_mut(entity).unwrap();
-                        self.character.iter()
-                            .map(|(_, x)| x)
-                            .filter(|x| x.entity != entity)
-                            .filter(|x|
-                            {
-                                let other_character = x.get();
-                                character.aggressive(&other_character)
-                            })
-                            .filter(|x|
-                            {
-                                let other_entity = x.entity;
-
-                                let anatomy = self.anatomy(entity).unwrap();
-
-                                let transform = self.transform(entity).unwrap();
-                                let other_transform = self.transform(other_entity).unwrap();
-
-                                anatomy.sees(&transform.position, &other_transform.position)
-                            })
-                            .for_each(|&ComponentWrapper{
-                                entity: other_entity,
-                                ..
-                            }|
-                            {
-                                enemy.borrow_mut().set_attacking(other_entity);
-                                on_state_change(entity);
-                            });
-                    }
-
-                    let state_changed = enemy.borrow_mut().update(
-                        self,
-                        entity,
-                        dt
-                    );
-
-                    if state_changed
-                    {
-                        on_state_change(entity);
-                    }
-                });
+                enemy_system::update(self, passer, dt);
             }
 
             pub fn update_characters(

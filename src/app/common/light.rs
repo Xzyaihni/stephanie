@@ -6,13 +6,14 @@ use yanyaengine::{game_object::*, TransformContainer, Transform, SolidObject, Ob
 
 use crate::{
     client::RenderCreateInfo,
-    common::ServerToClient
+    common::{Entity, ServerToClient}
 };
 
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct Light
 {
+    pub source: Option<Entity>,
     pub strength: f32
 }
 
@@ -20,7 +21,7 @@ impl Default for Light
 {
     fn default() -> Self
     {
-        Self{strength: 0.0}
+        Self{source: None, strength: 0.0}
     }
 }
 

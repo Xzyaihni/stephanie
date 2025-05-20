@@ -410,7 +410,7 @@ pub fn angle_between(a: Vector3<f32>, b: Vector3<f32>) -> f32
 {
     let offset = b - a;
 
-    let angle_between = offset.y.atan2(-offset.x);
+    let angle_between = (-offset.y).atan2(offset.x);
 
     short_rotation(angle_between)
 }

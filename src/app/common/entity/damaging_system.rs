@@ -44,7 +44,7 @@ pub fn entity_damager<'a>(
             return;
         };
 
-        let relative_rotation = angle - (-entity_rotation);
+        let relative_rotation = angle + entity_rotation;
         let damage = damage.with_direction(Side2d::from_angle(relative_rotation));
 
         let damaged = entities.damage_entity_common(entity, faction, damage.clone());
@@ -73,7 +73,7 @@ pub fn entity_damager<'a>(
                         },
                         decay: ParticleDecay::Random(7.0..=10.0),
                         position: ParticlePosition::Spread(0.1),
-                        rotation: ParticleRotation::Exact(f32::consts::PI - angle),
+                        rotation: ParticleRotation::Exact(-angle),
                         scale: ParticleScale::Spread{scale, variation: 0.1},
                         min_scale: ENTITY_SCALE * 0.15
                     },
@@ -134,8 +134,8 @@ pub fn update(
                     collided_transform.position
                 );
 
-                let parent_angle = -parent_transform.rotation;
-                let relative_angle = angle + (f32::consts::PI - parent_angle);
+                let parent_angle = parent_transform.rotation;
+                let relative_angle = angle + parent_angle;
 
                 Some(short_rotation(relative_angle))
             };

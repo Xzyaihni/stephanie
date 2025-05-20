@@ -158,7 +158,7 @@ impl ItemInfo
             aspect,
             mass: raw.mass.unwrap_or(1.0),
             commonness: raw.commonness.unwrap_or(1.0),
-            lighting: raw.lighting.map(|strength| Light{strength}).unwrap_or_default(),
+            lighting: raw.lighting.map(|strength| Light{strength, ..Default::default()}).unwrap_or_default(),
             texture: Some(texture)
         }
     }

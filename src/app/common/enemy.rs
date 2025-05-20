@@ -171,11 +171,12 @@ impl Enemy
 
                 if let Some(other_transform) = entities.transform(other_entity)
                 {
+                    let other_character = entities.character(other_entity).unwrap();
                     let aggressive = character.aggressive(
-                        &entities.character(other_entity).unwrap()
+                        &other_character
                     );
 
-                    let sees = anatomy.sees(&transform.position, &other_transform.position);
+                    let sees = anatomy.sees(&transform, other_character.visibility(), &other_transform.position);
 
                     if aggressive && sees
                     {

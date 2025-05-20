@@ -938,8 +938,6 @@ impl GameState
 
             ui.update_buffers(info);
         }
-
-        self.entities.entities.handle_on_change();
     }
 
     pub fn draw(&self, info: &mut DrawInfo)
@@ -1068,6 +1066,7 @@ impl GameState
         self.entities.entities.update_watchers(dt);
 
         self.entities.entities.create_queued(&mut create_info);
+        self.entities.entities.handle_on_change();
 
         if self.rare_timer <= 0.0
         {

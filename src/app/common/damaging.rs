@@ -6,7 +6,7 @@ use nalgebra::Vector3;
 
 use yanyaengine::Transform;
 
-use crate::common::{short_rotation, angle_between, damage::*, Faction, Physical, Entity};
+use crate::common::{angle_between, damage::*, Faction, Physical, Entity};
 
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -65,7 +65,7 @@ impl CollisionInfo
         other_physical: Option<&Physical>
     ) -> Self
     {
-        let global_rotation = short_rotation(angle_between(this.position, other.position));
+        let global_rotation = angle_between(other.position, this.position);
 
         let relative_velocity = other_physical.zip(this_physical).map(|(other, this)|
         {
