@@ -335,9 +335,12 @@ impl ControlsController
             self.key_mapping.get(&key).cloned().map(|matched|
             {
                 self.keys[matched as usize] = state;
-                if self.is_up(Control::MainAction)
+                if let Control::MainAction = matched
                 {
-                    self.controls_state.as_mut().unwrap().is_click_held = false;
+                    if state.is_up()
+                    {
+                        self.controls_state.as_mut().unwrap().is_click_held = false;
+                    }
                 }
 
                 (matched, state)
