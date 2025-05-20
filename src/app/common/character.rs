@@ -1259,7 +1259,7 @@ impl Character
             height: DamageHeight::random()
         };
 
-        let angle = self.bash_side.to_angle() - f32::consts::FRAC_PI_2;
+        let angle = self.bash_side.to_angle();
 
         combined_info.entities.push(
             true,

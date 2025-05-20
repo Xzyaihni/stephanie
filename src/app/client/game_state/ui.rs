@@ -1154,6 +1154,40 @@ impl Window
             ..Default::default()
         });
 
+        let screen_size = ui.screen_size() / ui.screen_size().max();
+
+        if let Some(width) = body.try_width()
+        {
+            let half = width * 0.5;
+            let limit = screen_size.x * 0.5;
+
+            if (self.position.x - half) < -limit
+            {
+                self.position.x = half - limit;
+            }
+
+            if (self.position.x + half) > limit
+            {
+                self.position.x = limit - half;
+            }
+        }
+
+        if let Some(height) = body.try_height()
+        {
+            let half = height * 0.5;
+            let limit = screen_size.y * 0.5;
+
+            if (self.position.y - half) < -limit
+            {
+                self.position.y = half - limit;
+            }
+
+            if (self.position.y + half) > limit
+            {
+                self.position.y = limit - half;
+            }
+        }
+
         self.kind.update(body, info);
     }
 }
@@ -1588,7 +1622,7 @@ impl Ui
                     color
                 };
 
-                let lightness_decay = if selected { 50.0 } else { 10.0 };
+                let lightness_decay = if selected { 100.0 } else { 30.0 };
 
                 body.update(UiId::AnatomyNotification(*entity, AnatomyNotificationPart::Part(*part_id)), UiElement{
                     texture: UiTexture::CustomId(location.id),

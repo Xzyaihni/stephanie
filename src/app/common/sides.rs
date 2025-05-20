@@ -124,10 +124,10 @@ impl Side2d
     {
         match self
         {
-            Self::Right => 0.0,
-            Self::Front => f32::consts::FRAC_PI_2,
-            Self::Left => f32::consts::PI,
-            Self::Back => -f32::consts::FRAC_PI_2
+            Self::Right => -f32::consts::FRAC_PI_2,
+            Self::Front => 0.0,
+            Self::Left => f32::consts::FRAC_PI_2,
+            Self::Back => -f32::consts::PI
         }
     }
 

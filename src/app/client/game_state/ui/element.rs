@@ -742,6 +742,10 @@ impl Animation
                 close_mode: Scaling::EaseOut{decay: 30.0},
                 ..Default::default()
             }),
+            position: Some(PositionAnimation{
+                start_mode: Connection::EaseOut{decay: 20.0, limit: None},
+                ..Default::default()
+            }),
             ..Default::default()
         }
     }

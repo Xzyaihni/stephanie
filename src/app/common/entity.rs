@@ -255,6 +255,7 @@ no_on_set!{
     Transform,
     Enemy,
     Player,
+    Anatomy,
     Collider,
     Physical,
     Joint,
@@ -277,16 +278,6 @@ impl OnSet<ClientEntities> for Character
         {
             entities.character_mut(entity).unwrap().with_previous(previous);
         }
-    }
-}
-
-no_on_set_for!{ServerEntities, Anatomy}
-
-impl OnSet<ClientEntities> for Anatomy
-{
-    fn on_set(_previous: Option<Self>, entities: &ClientEntities, entity: Entity)
-    {
-        entities.anatomy_changed(entity);
     }
 }
 
@@ -480,8 +471,6 @@ macro_rules! impl_common_systems
             if self.anatomy_exists(entity)
             {
                 damaging_system::damage(self, entity, damage);
-
-                Anatomy::on_set(None, self, entity);
 
                 return true;
             }
@@ -1106,6 +1095,11 @@ macro_rules! define_entities_both
                 this.on_render(Box::new(move |entities, _entity|
                 {
                     entities.resort_by_z();
+                }));
+
+                this.on_anatomy(Box::new(move |entities, entity|
+                {
+                    entities.anatomy_changed(entity);
                 }));
 
                 this

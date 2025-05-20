@@ -193,6 +193,21 @@ pub fn update(
 
 pub fn damage(entities: &impl AnyEntities, entity: Entity, damage: Damage)
 {
+    if let Some(enemy) = entities.enemy(entity)
+    {
+        if !enemy.is_attacking()
+        {
+            let change = damage.direction.side.to_angle();
+            if let Some(mut character) = entities.character_mut(entity)
+            {
+                if entities.anatomy(entity).map(|x| x.speed().is_some()).unwrap_or(false)
+                {
+                    character.rotation -= change;
+                }
+            }
+        }
+    }
+
     let flash_white = |entity: Entity|
     {
         if let Some(mut watchers) = entities.watchers_mut(entity)
