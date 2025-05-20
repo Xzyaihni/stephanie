@@ -959,16 +959,12 @@ impl GameState
         render_system::draw(
             &self.entities.entities,
             &self.shaders,
+            &self.ui.borrow(),
             draw_entities,
             &visibility,
             info,
             animation
         );
-
-        let temp = ();
-        /*info.bind_pipeline(self.shaders.ui);
-
-        self.ui.borrow().draw(info);*/
     }
 
     fn visibility_checker(&self) -> VisibilityChecker

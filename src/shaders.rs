@@ -152,8 +152,8 @@ mod final_fragment
 }
 
 
-const DARKEN: f32 = 0.97;
-const SHADOW_COLOR: Vector3<f32> = Vector3::new(0.07, 0.02, 0.1);
+pub const DARKEN: f32 = 0.97;
+pub const SHADOW_COLOR: Vector3<f32> = Vector3::new(0.07, 0.02, 0.1);
 
 pub struct ShadersCreated
 {
@@ -300,17 +300,6 @@ pub fn create() -> ShadersCreated
         ..Default::default()
     });
 
-    let temp = ();
-    let ui_shader = /*shaders.push(Shader{
-        shader: ShadersGroup::new(
-            ui_vertex::load,
-            ui_fragment::load
-        ),
-        per_vertex: Some(Object::per_vertex()),
-        subpass: 1,
-        ..Default::default()
-    })*/lighting_shader;
-
     let final_mix_shader = shaders.push(Shader{
         shader: ShadersGroup::new(
             final_vertex::load,
@@ -319,6 +308,16 @@ pub fn create() -> ShadersCreated
         per_vertex: Some(SimpleVertex::per_vertex()),
         subpass: 3,
         blend: None,
+        ..Default::default()
+    });
+
+    let ui_shader = shaders.push(Shader{
+        shader: ShadersGroup::new(
+            ui_vertex::load,
+            ui_fragment::load
+        ),
+        per_vertex: Some(Object::per_vertex()),
+        subpass: 4,
         ..Default::default()
     });
 

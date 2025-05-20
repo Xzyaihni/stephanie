@@ -302,11 +302,10 @@ impl World
 
     pub fn draw_sky_occluders(
         &self,
-        info: &mut DrawInfo,
-        visibility: &VisibilityChecker
+        info: &mut DrawInfo
     )
     {
-        self.overmap.draw_sky_occluders(info, visibility);
+        self.overmap.draw_sky_occluders(info);
     }
 
     pub fn draw(

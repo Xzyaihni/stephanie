@@ -437,8 +437,7 @@ impl VisualOvermap
 
     pub fn draw_sky_occluders(
         &self,
-        info: &mut DrawInfo,
-        visibility: &EntityVisibilityChecker
+        info: &mut DrawInfo
     )
     {
         self.chunks.positions_2d()

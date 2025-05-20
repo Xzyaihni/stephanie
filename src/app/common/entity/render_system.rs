@@ -7,7 +7,7 @@ use yanyaengine::{game_object::*, SolidObject};
 use crate::{
     debug_config::*,
     ProgramShaders,
-    client::VisibilityChecker,
+    client::{Ui, VisibilityChecker},
     common::{
         render_info::*,
         Entity,
@@ -82,6 +82,7 @@ pub struct DrawEntities<'a>
 pub fn draw(
     entities: &ClientEntities,
     shaders: &ProgramShaders,
+    ui: &Ui,
     renderables: DrawEntities,
     visibility: &VisibilityChecker,
     info: &mut DrawInfo,
@@ -135,7 +136,7 @@ pub fn draw(
 
     info.bind_pipeline(shaders.shadow);
 
-    renderables.world.draw_sky_occluders(info, visibility);
+    renderables.world.draw_sky_occluders(info);
 
     info.bind_pipeline(shaders.lighting);
 
@@ -144,7 +145,11 @@ pub fn draw(
         entities.light(entity).unwrap().draw(info);
     });
 
-    /*renderables.renders.iter().flatten().copied().filter_map(|entity|
+    info.bind_pipeline(shaders.shadow);
+
+    renderables.world.draw_shadows(info, visibility);
+
+    renderables.renders.iter().flatten().copied().filter_map(|entity|
     {
         entities.occluder(entity)
     }).for_each(|occluder|
@@ -155,7 +160,7 @@ pub fn draw(
         }
 
         occluder.draw(info);
-    });*/let a = ();
+    });
 
     info.next_subpass();
     info.bind_pipeline(shaders.final_mix);
@@ -166,4 +171,10 @@ pub fn draw(
     ])];
 
     renderables.solid.draw(info);
+
+    info.next_subpass();
+    info.bind_pipeline(shaders.ui);
+    info.current_sets.clear();
+
+    ui.draw(info);
 }

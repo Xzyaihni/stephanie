@@ -29,6 +29,9 @@ pub use app::{common, server, client, ProgramShaders};
 use app::AppInfo;
 
 pub use common::{debug_env, is_debug_env};
+
+pub use shaders::{DARKEN, SHADOW_COLOR};
+
 pub mod debug_config;
 
 mod app;
