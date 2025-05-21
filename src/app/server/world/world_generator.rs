@@ -224,7 +224,16 @@ impl ChunkGenerator
 
                     match TileRotation::from_str(&name)
                     {
-                        Ok(x) => tile.rotation = x,
+                        Ok(x) =>
+                        {
+                            if let Some(tile) = &mut tile.0
+                            {
+                                tile.rotation = x;
+                            } else
+                            {
+                                eprintln!("air cannot have rotation");
+                            }
+                        },
                         Err(_) => eprintln!("no rotation named `{name}`")
                     }
                 }

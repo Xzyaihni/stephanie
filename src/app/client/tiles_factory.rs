@@ -36,6 +36,7 @@ use crate::common::{
         GlobalPos,
         Pos3,
         Tile,
+        TileExisting,
         TileRotation,
         chunk::ChunkLocal,
     }
@@ -86,7 +87,7 @@ impl ChunkModelBuilder
         Self{model, tilemap}
     }
 
-    pub fn create(&mut self, pos: ChunkLocal, tile: Tile)
+    pub fn create(&mut self, pos: ChunkLocal, tile: TileExisting)
     {
         self.create_inner(pos, tile);
     }
@@ -94,7 +95,7 @@ impl ChunkModelBuilder
     fn create_inner(
         &mut self,
         chunk_pos: ChunkLocal,
-        tile: Tile
+        tile: TileExisting
     )
     {
         let mut pos = Pos3::<f32>::from(*chunk_pos.pos()) * TILE_SIZE;
@@ -115,11 +116,11 @@ impl ChunkModelBuilder
         }
     }
 
-    fn tile_uvs(&self, tile: Tile, flip_xy: bool) -> impl Iterator<Item=[f32; 2]>
+    fn tile_uvs(&self, tile: TileExisting, flip_xy: bool) -> impl Iterator<Item=[f32; 2]>
     {
         let side = self.tilemap.texture_row_size();
 
-        let id = tile.id() - 1;
+        let id = tile.id();
         let x = id % side;
         let y = id / side;
 

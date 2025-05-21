@@ -49,39 +49,48 @@ impl TileRotation
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Tile
-{
-    id: usize,
-    pub rotation: TileRotation
-}
+#[repr(transparent)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Tile(pub Option<TileExisting>);
 
 impl Tile
 {
     pub fn new(id: usize) -> Self
     {
-        Self{id, rotation: TileRotation::default()}
+        Self(Some(TileExisting{id, rotation: TileRotation::default()}))
     }
 
     pub fn id_string(&self) -> String
     {
-        format!("{}{}", self.id, self.rotation.to_arrow_str())
+        if let Some(tile) = self.0
+        {
+            format!("{}{}", tile.id, tile.rotation.to_arrow_str())
+        } else
+        {
+            "_".to_owned()
+        }
     }
 
     pub fn as_lisp_value(&self, memory: &mut LispMemory) -> Result<LispValue, lisp::Error>
     {
-        let restore = memory.with_saved_registers([Register::Value, Register::Temporary]);
+        Ok(if let Some(tile) = self.0
+        {
+            let restore = memory.with_saved_registers([Register::Value, Register::Temporary]);
 
-        memory.set_register(Register::Value, self.id as i32);
-        memory.set_register(Register::Temporary, self.rotation as i32);
+            memory.set_register(Register::Value, tile.id as i32);
+            memory.set_register(Register::Temporary, tile.rotation as i32);
 
-        memory.cons(Register::Value, Register::Value, Register::Temporary)?;
+            memory.cons(Register::Value, Register::Value, Register::Temporary)?;
 
-        let value = memory.get_register(Register::Value);
+            let value = memory.get_register(Register::Value);
 
-        restore(memory)?;
+            restore(memory)?;
 
-        Ok(value)
+            value
+        } else
+        {
+            ().into()
+        })
     }
 
     pub fn from_lisp_value(
@@ -89,7 +98,12 @@ impl Tile
         value: LispValue
     ) -> Result<Self, lisp::Error>
     {
-        let lst = value.as_list(memory).unwrap();
+        if value.is_null()
+        {
+            return Ok(Tile::none());
+        }
+
+        let lst = value.as_list(memory)?;
 
         let id = lst.car.as_integer()? as usize;
 
@@ -99,21 +113,36 @@ impl Tile
             panic!("{rotation} is an invalid rotation number")
         });
 
-        Ok(Tile{id, rotation})
+        Ok(Tile(Some(TileExisting{id, rotation})))
     }
 
-    pub fn id(&self) -> usize
+    pub fn id(&self) -> Option<usize>
     {
-        self.id
+        self.0.map(|x| x.id)
     }
 
     pub fn none() -> Self
     {
-        Self::new(0)
+        Self::default()
     }
 
     pub fn is_none(&self) -> bool
     {
-        self.id == 0
+        self.0.is_none()
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TileExisting
+{
+    id: usize,
+    pub rotation: TileRotation
+}
+
+impl TileExisting
+{
+    pub fn id(&self) -> usize
+    {
+        self.id
     }
 }

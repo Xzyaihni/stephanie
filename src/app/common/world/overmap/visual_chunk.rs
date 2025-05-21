@@ -572,7 +572,7 @@ impl VisualChunk
             return false;
         }
 
-        model_builder.create(pos, tiles.this);
+        model_builder.create(pos, tiles.this.0.unwrap());
 
         #[allow(clippy::let_and_return)]
         let occluding = !tilemap[tiles.this].transparent;

@@ -202,6 +202,7 @@ impl From<io::Error> for TileMapError
 #[derive(Debug)]
 pub struct TileMap
 {
+    air: TileInfo,
     tiles: Vec<TileInfo>
 }
 
@@ -237,19 +238,21 @@ impl TileMap
             }
         }).collect::<Result<Vec<Option<SimpleImage>>, _>>()?;
 
-        let tiles = iter::once(TileInfo{
+        let tiles = tiles.into_iter().zip(textures.iter()).map(|(tile_raw, texture)|
+        {
+            TileInfo::from_raw(texture, tile_raw)
+        }).collect();
+
+        let air = TileInfo{
             name: "air".to_owned(),
             drawable: false,
             special: None,
             colliding: false,
             transparent: true
-        }).chain(tiles.into_iter().zip(textures.iter()).map(|(tile_raw, texture)|
-        {
-            TileInfo::from_raw(texture, tile_raw)
-        })).collect();
+        };
 
         Ok(TileMapWithTextures{
-            tilemap: Self{tiles},
+            tilemap: Self{air, tiles},
             textures
         })
     }
@@ -269,11 +272,16 @@ impl TileMap
         self.tiles.iter().enumerate().map(|(index, tile_info)|
         {
             (tile_info.name.as_str(), Tile::new(index))
-        })
+        }).chain(iter::once((self.air.name.as_str(), Tile::none())))
     }
 
     pub fn tile_named(&self, name: &str) -> Option<Tile>
     {
+        if self.air.name == name
+        {
+            return Some(Tile::none());
+        }
+
         self.tiles.iter().position(|tile_info|
         {
             tile_info.name == name
@@ -282,7 +290,7 @@ impl TileMap
 
     pub fn info(&self, tile: Tile) -> &TileInfo
     {
-        self.tiles.get(tile.id()).unwrap()
+        tile.id().map(|id| self.tiles.get(id).unwrap()).unwrap_or(&self.air)
     }
 
     pub fn len(&self) -> usize
@@ -395,6 +403,6 @@ impl Index<Tile> for TileMap
 
     fn index(&self, tile: Tile) -> &Self::Output
     {
-        self.tiles.get(tile.id()).unwrap()
+        self.info(tile)
     }
 }
