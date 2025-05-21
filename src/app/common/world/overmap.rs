@@ -163,6 +163,8 @@ pub trait OvermapIndexing: CommonIndexing
 
     fn to_global(&self, pos: LocalPos) -> GlobalPos
     {
+        debug_assert!(self.size() == pos.size, "{:?} != {:?}", self.size(), pos.size);
+
         self.player_offset(pos) + self.player_position()
     }
 

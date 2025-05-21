@@ -806,6 +806,32 @@ impl Game
                 }));
         }
 
+        #[cfg(debug_assertions)]
+        {
+            use crate::common::message::{Message, DebugMessage};
+
+            let game_state = self.game_state.clone();
+
+            primitives.add(
+                "send-debug-message",
+                PrimitiveProcedureInfo::new_simple(1, Effect::Impure, move |mut args|
+                {
+                    let game_state = game_state.upgrade().unwrap();
+                    let game_state = game_state.borrow();
+
+                    let message = args.next().unwrap().as_symbol(args.memory)?;
+                    let message = format!("\"{message}\"");
+                    let message: DebugMessage = serde_json::from_str(&message).map_err(|_|
+                    {
+                        lisp::Error::Custom(format!("cant deserialize {message} as DebugMessage"))
+                    })?;
+
+                    game_state.send_message(Message::DebugMessage(message));
+
+                    Ok(().into())
+                }));
+        }
+
         {
             let mut infos: Vec<(_, _)> = primitives.iter_infos().collect();
 

@@ -34,6 +34,12 @@ use crate::common::{
 };
 
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum DebugMessage
+{
+    PrintServerOvermaps
+}
+
 #[derive(Debug, Clone, EnumCount, Serialize, Deserialize)]
 pub enum Message
 {
@@ -75,7 +81,9 @@ pub enum Message
     ChunkRequest{pos: GlobalPos},
     ChunkSync{pos: GlobalPos, chunk: Chunk},
     SetTile{pos: TilePos, tile: Tile},
-    RepeatMessage{message: Box<Message>}
+    RepeatMessage{message: Box<Message>},
+    #[cfg(debug_assertions)]
+    DebugMessage(DebugMessage)
 }
 
 impl Message
@@ -136,7 +144,9 @@ impl Message
             | Message::ChunkRequest{..}
             | Message::ChunkSync{..}
             | Message::SetTile{..}
-            | Message::RepeatMessage{..} => None
+            | Message::RepeatMessage{..} => None,
+            #[cfg(debug_assertions)]
+            Message::DebugMessage(_) => None
         }
     }
 }

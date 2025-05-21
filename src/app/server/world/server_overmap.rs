@@ -212,9 +212,13 @@ impl<S: SaveLoad<WorldChunksBlock>> ServerOvermap<S>
                         self.world_chunks[position].as_ref().map(|chunk| chunk[z].clone()).unwrap()
                     });
 
+                    let tags = self.world_plane.world_chunk(
+                        LocalPos::new(Pos3{z: 0, ..local_pos.pos}, Pos3{z: 1, ..local_pos.size})
+                    ).tags();
+
                     let info = ConditionalInfo{
                         height: self.to_global_z(local_pos.pos.z) * CHUNK_RATIO.z as i32 + z as i32,
-                        tags: self.world_plane.world_chunk(local_pos).tags()
+                        tags
                     };
 
                     let world_chunk = self.world_generator.borrow_mut().generate_chunk(
@@ -283,28 +287,30 @@ impl<S: SaveLoad<WorldChunksBlock>> Overmap<WorldChunksBlock> for ServerOvermap<
             let z = 0;
             let local_z = self.to_local_z(z);
 
-            let mut generate_surface = |surface_blocks, indexer|
+            let mut generate_surface = |surface_blocks|
             {
-                generator.generate_surface(surface_blocks, &mut self.world_plane, indexer)
+                let mut outside_indexer = self.indexer.clone();
+                outside_indexer.player_position.0.z = 0;
+                outside_indexer.size.z = 1;
+
+                generator.generate_surface(surface_blocks, &mut self.world_plane, &outside_indexer)
             };
 
             if let Some(local_z) = local_z
             {
-                let mut surface_blocks = self.world_chunks.map_slice_ref(local_z, |(_pos, chunk)| chunk.clone()).with_z(local_z);
-                generate_surface(&mut surface_blocks, &self.indexer);
+                let mut surface_blocks = self.world_chunks.map_slice_ref(local_z, |(_pos, chunk)| chunk.clone());
+                generate_surface(&mut surface_blocks);
 
                 surface_blocks.into_iter().for_each(|(pos, block)|
                 {
+                    let pos = LocalPos::new(Pos3{z: local_z, ..pos.pos}, Pos3{z: self.indexer.size.z, ..pos.size});
                     self.world_chunks[pos] = block;
                 });
             } else
             {
-                let mut outside_indexer = self.indexer.clone();
-                outside_indexer.player_position.0.z = outside_indexer.size.z as i32 / 2;
-
                 let mut surface_blocks = FlatChunksContainer::new(self.world_chunks.size());
 
-                generate_surface(&mut surface_blocks, &outside_indexer);
+                generate_surface(&mut surface_blocks);
             }
         }
 

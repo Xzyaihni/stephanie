@@ -604,6 +604,21 @@ impl World
             self.player_moved(container, id, new_position.into());
         }
 
+        #[cfg(debug_assertions)]
+        {
+            use crate::common::message::DebugMessage;
+
+            match message
+            {
+                Message::DebugMessage(DebugMessage::PrintServerOvermaps) =>
+                {
+                    eprintln!("server overmaps: {:#?}", self.overmaps.borrow());
+                    return None;
+                },
+                _ => ()
+            }
+        }
+
         match message
         {
             Message::SetTile{pos, tile} =>

@@ -367,11 +367,17 @@ impl<S: SaveLoad<WorldChunksBlock>> WorldGenerator<S>
         global_mapper: &M
     )
     {
-        debug_assert!(
-            world_chunks.iter().all(|(pos, _)| global_mapper.to_global(pos).0.z == 0),
-            "z must be 0, {global_mapper:#?} {:?}",
-            world_chunks.iter().map(|(pos, _)| (pos, global_mapper.to_global(pos).0)).next().unwrap()
-        );
+        #[cfg(debug_assertions)]
+        {
+            let chunk_positions: Vec<_> = world_chunks.iter()
+                .map(|(pos, _)| pos)
+                .collect();
+
+            debug_assert!(
+                chunk_positions.iter().all(|pos| global_mapper.to_global(*pos).0.z == 0),
+                "z must be 0, {global_mapper:#?} {chunk_positions:#?}"
+            );
+        }
 
         self.load_missing(world_chunks.iter_mut(), global_mapper);
 
@@ -385,7 +391,7 @@ impl<S: SaveLoad<WorldChunksBlock>> WorldGenerator<S>
         if let Some(local) = global_mapper.to_local(GlobalPos::new(0, 0, 0))
         {
             wave_collapser.generate_single_maybe(
-                local.moved(local.pos.x, local.pos.y, 0),
+                LocalPos::new(Pos3{z: 0, ..local.pos}, Pos3{z: 1, ..local.size}),
                 ||
                 {
                     let id = self.rules.name_mappings().world_chunk["bunker"];
@@ -407,8 +413,56 @@ impl<S: SaveLoad<WorldChunksBlock>> WorldGenerator<S>
     {
         debug_assert!(world_plane.all_exist());
         debug_assert!(world_chunks.size().z == SERVER_OVERMAP_SIZE_Z);
+        debug_assert!(global_mapper.size() == world_chunks.size());
 
         self.load_missing(world_chunks.iter_mut(), global_mapper);
+
+        #[cfg(debug_assertions)]
+        {
+            use crate::debug_config::*;
+
+            if DebugConfig::is_enabled(DebugTool::RedundantWorldChecks)
+            {
+                world_plane.0.iter().for_each(|(pos, value)|
+                {
+                    let global_pos = global_mapper.to_global(
+                        LocalPos::new(pos.pos, Pos3{z: global_mapper.size().z, ..pos.size})
+                    );
+
+                    if let Some(saved) = self.saver.load(GlobalPos(Pos3{z: 0, ..global_pos.0}))
+                    {
+                        debug_assert!(
+                            saved[0] == value.clone().unwrap(),
+                            "{global_pos:?} {:?} != {:?}",
+                            saved[0],
+                            value.clone().unwrap()
+                        );
+                    }
+                });
+
+                world_chunks.iter().for_each(|(pos, value)|
+                {
+                    if let Some(saved) = self.saver.load(global_mapper.to_global(pos))
+                    {
+                        debug_assert!(saved == value.clone().unwrap(), "{saved:?} != {value:?}");
+                    }
+                });
+            }
+
+            if let Some(local_z) = global_mapper.to_local_z(0)
+            {
+                let s = world_chunks.map_slice_ref(local_z, |(pos, x)|
+                {
+                    let plane_pos = LocalPos::new(Pos3{z: 0, ..pos.pos}, Pos3{z: 1, ..pos.size});
+                    (world_plane.0[plane_pos].clone(), x.as_ref().map(|x| x[0].clone()))
+                });
+
+                debug_assert!(
+                    s.iter().all(|(_, (a, b))| b.as_ref().map(|b| *a == Some(b.clone())).unwrap_or(true)),
+                    "world plane must match the worldchunks: {s:#?}"
+                );
+            }
+        }
 
         let indexer = FlatIndexer::new(world_chunks.size());
         (0..indexer.size().product()).for_each(|index|
@@ -436,7 +490,9 @@ impl<S: SaveLoad<WorldChunksBlock>> WorldGenerator<S>
 
                     let global_z = global_pos.0.z;
 
-                    let this_surface = world_plane.world_chunk(local_pos);
+                    let this_surface = world_plane.world_chunk(
+                        LocalPos::new(Pos3{z: 0, ..local_pos.pos}, Pos3{z: 1, ..local_pos.size})
+                    );
 
                     match global_z.cmp(&0)
                     {
@@ -481,6 +537,19 @@ impl<S: SaveLoad<WorldChunksBlock>> WorldGenerator<S>
                 *this_world_chunk = Some(block);
             });
         });
+
+        #[cfg(debug_assertions)]
+        if let Some(z) = global_mapper.to_local_z(0)
+        {
+            let world_chunks_slice = world_chunks.map_slice_ref(z, |(_, v)| v.as_ref().map(|x| x[0].clone()));
+
+            assert!(
+                world_chunks_slice.iter().zip(world_plane.0.iter()).all(|(a, b)| a == b),
+                "world_chunks: {:#?}, world_plane: {:#?}",
+                world_chunks_slice,
+                world_plane.0
+            );
+        }
 
         debug_assert!(
             world_chunks.iter().all(|(_, x)| x.is_some()),

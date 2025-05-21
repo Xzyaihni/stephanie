@@ -172,6 +172,11 @@ macro_rules! implement_common
             {
                 IterMut::new(self.chunks.iter_mut(), self.indexer.clone())
             }
+
+            fn verify_pos(&self, pos: LocalPos)
+            {
+                debug_assert!(pos.size == self.indexer.size, "{} != {}", pos.size, self.indexer.size);
+            }
         }
 
         impl<T> Index<Pos3<usize>> for $name<T>
@@ -198,6 +203,7 @@ macro_rules! implement_common
 
             fn index(&self, value: LocalPos) -> &Self::Output
             {
+                self.verify_pos(value);
                 &self.chunks[self.indexer.to_index(value.pos)]
             }
         }
@@ -206,6 +212,7 @@ macro_rules! implement_common
         {
             fn index_mut(&mut self, value: LocalPos) -> &mut Self::Output
             {
+                self.verify_pos(value);
                 &mut self.chunks[self.indexer.to_index(value.pos)]
             }
         }
@@ -459,6 +466,8 @@ impl CommonIndexing for FlatIndexer
 
     fn to_index(&self, pos: Pos3<usize>) -> usize
     {
+        debug_assert!(pos.z == self.z, "{} != {}", pos.z, self.z);
+
         pos.y * self.size.x + pos.x
     }
 
