@@ -29,7 +29,7 @@
                     (lambda (x) (- (car x) (cdr x)))
                     (zip (entity->position a) (entity->position b)))))))
 
-(define (fold-entities start f)
+(define (fold-entities f start)
     (define query (all-entities-query))
     (define (rest-entities state)
         (let ((next (query-entity-next query)))

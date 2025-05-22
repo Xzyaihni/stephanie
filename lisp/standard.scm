@@ -47,6 +47,28 @@
         '()
         xs))
 
+; does a bubble sort
+(define (sort id xs)
+    (define (is-sorted xs)
+        (if (or (null? xs) (null? (cdr xs)))
+	    #t
+	    (if (> (id (car xs)) (id (car (cdr xs))))
+		#f
+		(is-sorted (cdr xs)))))
+    (define (swap-one xs)
+	(if (null? (cdr xs))
+	    xs
+	    (let ((a (car xs)) (b (car (cdr xs))))
+		(if (> (id a) (id b))
+		    (cons b (cons a (cdr (cdr xs))))
+		    (cons a (swap-one (cdr xs)))))))
+    (define (do-once xs)
+	(if (is-sorted xs)
+	    xs
+	    (do-once (swap-one xs))))
+    (do-once xs))
+
+
 (define (drop xs n)
     (if (or (= n 0) (null? xs))
         xs
