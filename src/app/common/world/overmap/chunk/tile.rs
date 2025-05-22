@@ -1,6 +1,13 @@
-use std::f32;
+use std::{fmt, f32};
 
-use serde::{Serialize, Deserialize};
+use serde::{
+    Serialize,
+    Deserialize,
+    Serializer,
+    ser::SerializeTuple,
+    Deserializer,
+    de::{EnumAccess, VariantAccess, Visitor}
+};
 
 use strum::{FromRepr, EnumString};
 
@@ -8,21 +15,87 @@ use crate::common::lisp::{self, Register, LispValue, LispMemory};
 
 
 #[repr(transparent)]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Tile(pub Option<TileExisting>);
+
+impl Serialize for Tile
+{
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    {
+        if let Some(tile) = self.0
+        {
+            let id = tile.id * 2;
+            if let Some(info) = tile.info.as_ref()
+            {
+                let mut t = serializer.serialize_tuple(2)?;
+
+                t.serialize_element(&(id + 2))?;
+                t.serialize_element(info)?;
+
+                t.end()
+            } else
+            {
+                serializer.serialize_u64(id as u64 + 1)
+            }
+        } else
+        {
+            serializer.serialize_u64(0)
+        }
+    }
+}
+
+struct TileVisitor;
+
+impl<'de> Visitor<'de> for TileVisitor
+{
+    type Value = Tile;
+
+    fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result
+    {
+        write!(f, "a tile")
+    }
+
+    fn visit_enum<A: EnumAccess<'de>>(self, data: A) -> Result<Self::Value, A::Error>
+    {
+        let (id, variant): (usize, A::Variant) = data.variant()?;
+
+        let tile = if id == 0
+        {
+            Tile(None)
+        } else if id % 2 == 1
+        {
+            Tile(Some(TileExisting{id: id / 2, info: None}))
+        } else
+        {
+            let info: TileInfo = variant.newtype_variant()?;
+
+            Tile(Some(TileExisting{id: id / 2 - 1, info: Some(info)}))
+        };
+
+        Ok(tile)
+    }
+}
+
+impl<'de> Deserialize<'de> for Tile
+{
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error>
+    {
+        deserializer.deserialize_enum("tile", &["none", "tileinfoless", "tileinfo"], TileVisitor)
+    }
+}
 
 impl Tile
 {
     pub fn new(id: usize) -> Self
     {
-        Self(Some(TileExisting{id, rotation: TileRotation::default()}))
+        Self(Some(TileExisting{id, info: None}))
     }
 
     pub fn id_string(&self) -> String
     {
         if let Some(tile) = self.0
         {
-            format!("{}{}", tile.id, tile.rotation.to_arrow_str())
+            tile.id_string()
         } else
         {
             "_".to_owned()
@@ -31,24 +104,7 @@ impl Tile
 
     pub fn as_lisp_value(&self, memory: &mut LispMemory) -> Result<LispValue, lisp::Error>
     {
-        Ok(if let Some(tile) = self.0
-        {
-            let restore = memory.with_saved_registers([Register::Value, Register::Temporary]);
-
-            memory.set_register(Register::Value, tile.id as i32);
-            memory.set_register(Register::Temporary, tile.rotation as i32);
-
-            memory.cons(Register::Value, Register::Value, Register::Temporary)?;
-
-            let value = memory.get_register(Register::Value);
-
-            restore(memory)?;
-
-            value
-        } else
-        {
-            ().into()
-        })
+        self.0.map(|x| x.as_lisp_value(memory)).unwrap_or_else(|| Ok(().into()))
     }
 
     pub fn from_lisp_value(
@@ -65,13 +121,9 @@ impl Tile
 
         let id = lst.car.as_integer()? as usize;
 
-        let rotation = lst.cdr.as_integer()?;
-        let rotation = TileRotation::from_repr(rotation as usize).unwrap_or_else(||
-        {
-            panic!("{rotation} is an invalid rotation number")
-        });
+        let info = TileInfo::from_lisp_value(memory, lst.cdr)?;
 
-        Ok(Tile(Some(TileExisting{id, rotation})))
+        Ok(Tile(Some(TileExisting{id, info})))
     }
 
     pub fn id(&self) -> Option<usize>
@@ -132,11 +184,11 @@ impl TileRotation
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TileExisting
 {
     id: usize,
-    pub rotation: TileRotation
+    info: Option<TileInfo>
 }
 
 impl TileExisting
@@ -144,5 +196,95 @@ impl TileExisting
     pub fn id(&self) -> usize
     {
         self.id
+    }
+
+    pub fn id_string(&self) -> String
+    {
+        format!("{}{}", self.id, self.info.unwrap_or_default().id_string())
+    }
+
+    pub fn rotation(&self) -> TileRotation
+    {
+        self.info.map(|x| x.rotation).unwrap_or_default()
+    }
+
+    pub fn set_rotation(&mut self, rotation: TileRotation)
+    {
+        if let Some(info) = self.info.as_mut()
+        {
+            info.rotation = rotation;
+        } else
+        {
+            self.info = Some(TileInfo{rotation, ..Default::default()});
+        }
+
+        self.simplify();
+    }
+
+    fn simplify(&mut self)
+    {
+        if let Some(info) = self.info
+        {
+            if info == TileInfo::default()
+            {
+                self.info = None;
+            }
+        }
+    }
+
+    pub fn as_lisp_value(&self, memory: &mut LispMemory) -> Result<LispValue, lisp::Error>
+    {
+        let restore = memory.with_saved_registers([Register::Value, Register::Temporary]);
+
+        memory.set_register(Register::Value, self.id as i32);
+
+        let value = self.info.unwrap_or_default().as_lisp_value(memory)?;
+        memory.set_register(Register::Temporary, value);
+
+        memory.cons(Register::Value, Register::Value, Register::Temporary)?;
+
+        let value = memory.get_register(Register::Value);
+
+        restore(memory)?;
+
+        Ok(value)
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TileInfo
+{
+    pub rotation: TileRotation
+}
+
+impl TileInfo
+{
+    pub fn from_lisp_value(
+        _memory: &LispMemory,
+        value: LispValue
+    ) -> Result<Option<Self>, lisp::Error>
+    {
+        if value.is_null()
+        {
+            return Ok(None);
+        }
+
+        let rotation = value.as_integer()?;
+        let rotation = TileRotation::from_repr(rotation as usize).unwrap_or_else(||
+        {
+            panic!("{rotation} is an invalid rotation number")
+        });
+
+        Ok(Some(TileInfo{rotation}))
+    }
+
+    pub fn as_lisp_value(&self, _memory: &mut LispMemory) -> Result<LispValue, lisp::Error>
+    {
+        Ok((self.rotation as i32).into())
+    }
+
+    pub fn id_string(&self) -> String
+    {
+        self.rotation.to_arrow_str().to_owned()
     }
 }

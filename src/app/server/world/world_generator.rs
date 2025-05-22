@@ -228,7 +228,7 @@ impl ChunkGenerator
                         {
                             if let Some(tile) = &mut tile.0
                             {
-                                tile.rotation = x;
+                                tile.set_rotation(x);
                             } else
                             {
                                 eprintln!("air cannot have rotation");

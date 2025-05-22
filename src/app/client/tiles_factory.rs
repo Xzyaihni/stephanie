@@ -142,7 +142,7 @@ impl ChunkModelBuilder
         let mut c = [x_end, y];
         let mut d = [x_end, y_end];
 
-        match tile.rotation
+        match tile.rotation()
         {
             TileRotation::Up => (),
             TileRotation::Down =>
