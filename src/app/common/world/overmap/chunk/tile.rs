@@ -123,7 +123,7 @@ impl Tile
 
         let info = TileInfo::from_lisp_value(memory, lst.cdr)?;
 
-        Ok(Tile(Some(TileExisting{id, info})))
+        Ok(Tile(Some(TileExisting::new(id, info))))
     }
 
     pub fn id(&self) -> Option<usize>
@@ -193,6 +193,14 @@ pub struct TileExisting
 
 impl TileExisting
 {
+    pub fn new(id: usize, info: Option<TileInfo>) -> Self
+    {
+        let mut this = Self{id, info};
+        this.simplify();
+
+        this
+    }
+
     pub fn id(&self) -> usize
     {
         self.id

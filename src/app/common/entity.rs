@@ -305,49 +305,66 @@ impl Parent
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FullEntityInfo
 {
-    pub parent: Option<Box<FullEntityInfo>>,
+    pub children: Vec<FullEntityInfo>,
     pub info: EntityInfo
 }
 
 impl FullEntityInfo
 {
-    pub fn create(self, mut f: impl FnMut(EntityInfo) -> Entity) -> EntityInfo
+    pub fn create(self, mut f: impl FnMut(EntityInfo) -> Entity) -> Entity
     {
         self.create_inner(&mut f)
     }
 
-    fn create_inner(mut self, f: &mut impl FnMut(EntityInfo) -> Entity) -> EntityInfo
+    fn create_inner(self, f: &mut impl FnMut(EntityInfo) -> Entity) -> Entity
     {
-        if let Some(parent) = self.parent
+        let this = f(self.info);
+
+        self.children.into_iter().for_each(|mut child|
         {
-            let parent = parent.create_inner(f);
+            child.info.parent = Some(Parent::new(this, true));
 
-            let entity = f(parent);
+            child.create_inner(f);
+        });
 
-            self.info.parent.as_mut().expect("must have a parent component").entity = entity;
-
-            self.info
-        } else
-        {
-            debug_assert!(self.info.parent.is_none());
-
-            self.info
-        }
+        this
     }
 }
 
 impl EntityInfo
 {
-    pub fn to_full(self, entities: &ServerEntities) -> FullEntityInfo
+    pub fn to_full(
+        entities: &ServerEntities,
+        this: Entity
+    ) -> Option<FullEntityInfo>
     {
-        if let Some(parent) = self.parent.as_ref()
-        {
-            let parent = entities.info(parent.entity());
+        debug_assert!(entities.saveable_exists(this));
 
-            FullEntityInfo{parent: Some(Box::new(parent.to_full(entities))), info: self}
-        } else
+        // this isnt the root node therefore skip
+        if let Some(parent) = entities.parent(this)
         {
-            FullEntityInfo{parent: None, info: self}
+            debug_assert!(entities.saveable_exists(parent.entity()));
+
+            return None;
+        }
+
+        Some(Self::to_full_always(entities, this))
+    }
+
+    fn to_full_always(entities: &ServerEntities, this: Entity) -> FullEntityInfo
+    {
+        let info = entities.info(this);
+
+        let children: Vec<_> = entities.children_of(this).map(|child|
+        {
+            entities.set_parent(child, None);
+
+            Self::to_full_always(entities, child)
+        }).collect();
+
+        FullEntityInfo{
+            children,
+            info
         }
     }
 }

@@ -1050,7 +1050,7 @@ mod tests
                     "🪨"
                 } else
                 {
-                    panic!("id must be either a b c or d")
+                    panic!("id must be either a b c or d, got {id:?}, expected {a:?} {b:?} {c:?} {d:?}")
                 }
             }).display()
         };

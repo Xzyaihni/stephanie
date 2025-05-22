@@ -279,9 +279,8 @@ impl World
 
         entities.for_each(|entity_info|
         {
-            let mut create = |info|
+            let mut sync_entity = |entity|
             {
-                let entity = container.push(false, info);
                 let message = Message::EntitySet{entity, info: Box::new(container.info(entity))};
 
                 writer.send_message(message);
@@ -289,9 +288,16 @@ impl World
                 entity
             };
 
-            let info = entity_info.create(&mut create);
+            let mut create = |info|
+            {
+                let entity = container.push(false, info);
 
-            create(info);
+                sync_entity(entity)
+            };
+
+            let entity = entity_info.create(&mut create);
+
+            sync_entity(entity);
         });
     }
 
@@ -527,11 +533,9 @@ impl World
             {
                 !keep(*pos)
             })
-            .map(|(entity, pos)|
+            .filter_map(|(entity, pos)|
             {
-                let info = container.info(entity);
-
-                (entity, info.to_full(container), pos)
+                EntityInfo::to_full(container, entity).map(|full_info| (entity, full_info, pos))
             });
 
         let (delete_ids, delete_entities) = Self::collect_to_delete(delete_entities);
