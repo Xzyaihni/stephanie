@@ -23,6 +23,7 @@ pub enum DebugTool
     Lisp,
     LispDisableChecks,
     RedundantWorldChecks,
+    ShowMessages,
     CollisionWorldBounds,
     CollisionBounds,
     Contacts,

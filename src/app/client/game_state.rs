@@ -785,6 +785,11 @@ impl GameState
 
     fn process_message_inner(&mut self, create_info: &mut RenderCreateInfo, message: Message)
     {
+        if DebugConfig::is_enabled(DebugTool::ShowMessages)
+        {
+            eprintln!("{message:#?}");
+        }
+
         let message = some_or_return!{self.entities.handle_message(create_info, message)};
         let message = some_or_return!{self.world.handle_message(message)};
 
