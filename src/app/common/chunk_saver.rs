@@ -698,14 +698,19 @@ mod tests
             {
                 let mut tile = Tile::new(fastrand::usize(0..100));
 
-                tile.rotation = match fastrand::usize(0..4)
+                if let Some(tile) = tile.0.as_mut()
                 {
-                    0 => TileRotation::Up,
-                    1 => TileRotation::Right,
-                    2 => TileRotation::Left,
-                    3 => TileRotation::Down,
-                    _ => unreachable!()
-                };
+                    let rotation = match fastrand::usize(0..4)
+                    {
+                        0 => TileRotation::Up,
+                        1 => TileRotation::Right,
+                        2 => TileRotation::Left,
+                        3 => TileRotation::Down,
+                        _ => unreachable!()
+                    };
+
+                    tile.set_rotation(rotation);
+                }
 
                 tile
             })
