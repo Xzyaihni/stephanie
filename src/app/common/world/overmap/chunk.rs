@@ -4,6 +4,7 @@ use std::{
 };
 
 use serde::{Serialize, Deserialize};
+use serde_with::serde_as;
 
 use nalgebra::Vector3;
 
@@ -84,10 +85,12 @@ impl ChunkLocal
     }
 }
 
+#[serde_as]
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Chunk
 {
-    tiles: Box<[Tile]>
+    #[serde_as(as = "Box<[_; CHUNK_VOLUME]>")]
+    tiles: Box<[Tile; CHUNK_VOLUME]>
 }
 
 impl Debug for Chunk
@@ -105,14 +108,14 @@ impl Chunk
 {
     pub fn new() -> Self
     {
-        let tiles = vec![Tile::none(); CHUNK_VOLUME].into_boxed_slice();
+        let tiles = Box::new([Tile::none(); CHUNK_VOLUME]);
 
         Self{tiles}
     }
 
     pub fn new_with(f: impl FnMut(usize) -> Tile) -> Self
     {
-        let tiles = (0..CHUNK_VOLUME).map(f).collect();
+        let tiles = Box::new((0..CHUNK_VOLUME).map(f).collect::<Vec<_>>().try_into().unwrap());
 
         Self{tiles}
     }
@@ -165,9 +168,9 @@ impl Chunk
     }
 }
 
-impl From<Box<[Tile]>> for Chunk
+impl From<Box<[Tile; CHUNK_VOLUME]>> for Chunk
 {
-    fn from(value: Box<[Tile]>) -> Self
+    fn from(value: Box<[Tile; CHUNK_VOLUME]>) -> Self
     {
         Self{tiles: value}
     }

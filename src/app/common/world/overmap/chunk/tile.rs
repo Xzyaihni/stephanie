@@ -7,48 +7,6 @@ use strum::{FromRepr, EnumString};
 use crate::common::lisp::{self, Register, LispValue, LispMemory};
 
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, FromRepr, EnumString, Serialize, Deserialize)]
-pub enum TileRotation
-{
-    Up,
-    Right,
-    Left,
-    Down
-}
-
-impl Default for TileRotation
-{
-    fn default() -> Self
-    {
-        Self::Up
-    }
-}
-
-impl TileRotation
-{
-    pub fn to_angle(&self) -> f32
-    {
-        match self
-        {
-            Self::Right => 0.0,
-            Self::Up => f32::consts::FRAC_PI_2,
-            Self::Left => f32::consts::PI,
-            Self::Down => -f32::consts::FRAC_PI_2
-        }
-    }
-
-    pub fn to_arrow_str(&self) -> &str
-    {
-        match self
-        {
-            Self::Up => "↑",
-            Self::Right => "→",
-            Self::Left => "←",
-            Self::Down => "↓"
-        }
-    }
-}
-
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Tile(pub Option<TileExisting>);
@@ -129,6 +87,48 @@ impl Tile
     pub fn is_none(&self) -> bool
     {
         self.0.is_none()
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, FromRepr, EnumString, Serialize, Deserialize)]
+pub enum TileRotation
+{
+    Up,
+    Right,
+    Left,
+    Down
+}
+
+impl Default for TileRotation
+{
+    fn default() -> Self
+    {
+        Self::Up
+    }
+}
+
+impl TileRotation
+{
+    pub fn to_angle(&self) -> f32
+    {
+        match self
+        {
+            Self::Right => 0.0,
+            Self::Up => f32::consts::FRAC_PI_2,
+            Self::Left => f32::consts::PI,
+            Self::Down => -f32::consts::FRAC_PI_2
+        }
+    }
+
+    pub fn to_arrow_str(&self) -> &str
+    {
+        match self
+        {
+            Self::Up => "↑",
+            Self::Right => "→",
+            Self::Left => "←",
+            Self::Down => "↓"
+        }
     }
 }
 
