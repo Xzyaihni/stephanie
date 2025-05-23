@@ -440,11 +440,26 @@ impl ClientOvermap
     }
 }
 
-impl Overmap<Arc<Chunk>> for ClientOvermap
+impl Overmap<Option<Arc<Chunk>>> for ClientOvermap
 {
     fn get_local(&self, pos: LocalPos) -> &Option<Arc<Chunk>>
     {
         &self.chunks[pos]
+    }
+
+    fn is_empty(&self, pos: LocalPos) -> bool
+    {
+        self.get_local(pos).is_none()
+    }
+
+    fn get(&self, pos: GlobalPos) -> Option<&Option<Arc<Chunk>>>
+    {
+        self.to_local(pos).map(|local_pos| self.get_local(local_pos))
+    }
+
+    fn contains(&self, pos: GlobalPos) -> bool
+    {
+        self.get(pos).map(|x| x.is_some()).unwrap_or(false)
     }
 
     fn remove(&mut self, pos: LocalPos)

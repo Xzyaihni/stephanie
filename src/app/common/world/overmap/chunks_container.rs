@@ -73,22 +73,22 @@ macro_rules! implement_common
 
             pub fn new_with<F: FnMut(LocalPos) -> T>(size: Pos3<usize>, mut default_function: F) -> Self
             {
-                let indexer = Indexer::new(size);
+                let indexer = $indexer_name::new(size);
 
-                Self::new_indexed(size, |index| default_function(indexer.index_to_pos(index)))
+                Self::new_indexed(indexer.clone(), |index| default_function(indexer.index_to_pos(index)))
             }
 
             pub fn new_indexed<F: FnMut(usize) -> T>(
-                size: Pos3<usize>,
+                indexer: $indexer_name,
                 mut default_function: F
             ) -> Self
             {
-                let data = (0..$indexer_name::new(size).size.product()).map(|index|
+                let data = (0..indexer.size.product()).map(|index|
                 {
                     default_function(index)
                 }).collect::<Box<[_]>>();
 
-                Self::from_raw(size, data)
+                Self::from_raw_indexer(data, indexer)
             }
 
             pub fn map<F, U>(&self, f: F) -> $name<U>

@@ -251,7 +251,7 @@ impl<S: SaveLoad<WorldChunksBlock>> ServerOvermap<S>
     }
 }
 
-impl<S: SaveLoad<WorldChunksBlock>> Overmap<WorldChunksBlock> for ServerOvermap<S>
+impl<S: SaveLoad<WorldChunksBlock>> Overmap<Option<WorldChunksBlock>> for ServerOvermap<S>
 {
     fn remove(&mut self, pos: LocalPos)
     {
@@ -266,6 +266,21 @@ impl<S: SaveLoad<WorldChunksBlock>> Overmap<WorldChunksBlock> for ServerOvermap<
     fn get_local(&self, pos: LocalPos) -> &Option<WorldChunksBlock>
     {
         &self.world_chunks[pos]
+    }
+
+    fn is_empty(&self, pos: LocalPos) -> bool
+    {
+        self.get_local(pos).is_none()
+    }
+
+    fn get(&self, pos: GlobalPos) -> Option<&Option<WorldChunksBlock>>
+    {
+        self.to_local(pos).map(|local_pos| self.get_local(local_pos))
+    }
+
+    fn contains(&self, pos: GlobalPos) -> bool
+    {
+        self.get(pos).map(|x| x.is_some()).unwrap_or(false)
     }
 
     fn mark_ungenerated(&mut self, _pos: LocalPos) {}

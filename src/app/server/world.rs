@@ -31,6 +31,7 @@ use crate::{
         EntityInfo,
         FullEntityInfo,
         ConnectionId,
+        ChunksContainer,
         entity::ServerEntities,
         message::Message,
         world::{
@@ -42,6 +43,7 @@ use crate::{
             Tile,
             Chunk,
             ChunkLocal,
+            LocalPos,
             GlobalPos,
             Pos3,
             overmap::{Overmap, OvermapIndexing, CommonIndexing}
@@ -89,6 +91,64 @@ impl OvermapIndexing for ClientIndexer
     }
 }
 
+struct EntitiesTracker
+{
+    pub indexer: ClientIndexer,
+    values: ChunksContainer<bool>,
+    needs_loading: bool
+}
+
+impl EntitiesTracker
+{
+    fn new(indexer: ClientIndexer) -> Self
+    {
+        let values = ChunksContainer::new(indexer.size());
+
+        Self{indexer, values, needs_loading: true}
+    }
+}
+
+impl CommonIndexing for EntitiesTracker
+{
+    fn size(&self) -> Pos3<usize>
+    {
+        self.indexer.size()
+    }
+}
+
+impl OvermapIndexing for EntitiesTracker
+{
+    fn player_position(&self) -> GlobalPos
+    {
+        self.indexer.player_position()
+    }
+}
+
+impl Overmap<bool> for EntitiesTracker
+{
+    fn remove(&mut self, pos: LocalPos)
+    {
+        self.values[pos] = false;
+    }
+
+    fn swap(&mut self, a: LocalPos, b: LocalPos)
+    {
+        self.values.swap(a, b);
+    }
+
+    fn get_local(&self, pos: LocalPos) -> &bool
+    {
+        &self.values[pos]
+    }
+
+    fn mark_ungenerated(&mut self, _pos: LocalPos) {}
+
+    fn generate_missing(&mut self, _offset: Option<Pos3<i32>>)
+    {
+        self.needs_loading = true;
+    }
+}
+
 pub struct World
 {
     message_handler: Arc<RwLock<ConnectionsHandler>>,
@@ -100,7 +160,7 @@ pub struct World
     enemies_info: Arc<EnemiesInfo>,
     items_info: Arc<ItemsInfo>,
     overmaps: OvermapsType,
-    client_indexers: HashMap<ConnectionId, ClientIndexer>
+    client_indexers: HashMap<ConnectionId, EntitiesTracker>
 }
 
 impl World
@@ -172,7 +232,7 @@ impl World
         let indexer_size = common::world::World::overmap_size();
         let indexer = ClientIndexer{size: indexer_size, player_position: position.rounded()};
 
-        self.client_indexers.insert(id, indexer);
+        self.client_indexers.insert(id, EntitiesTracker::new(indexer));
         self.overmaps.borrow_mut().insert(id, overmap);
 
         self.unload_entities(container);
@@ -199,17 +259,23 @@ impl World
     {
         if let Some(indexer) = self.client_indexers.get_mut(&id)
         {
-            let previous_position = &mut indexer.player_position;
+            let previous_position = &mut indexer.indexer.player_position;
 
             let new_position = new_position.rounded();
 
-            let position_changed = *previous_position != new_position;
+            let offset = new_position - *previous_position;
 
-            *previous_position = new_position;
-
-            if position_changed
+            if offset.0 != Pos3::repeat(0)
             {
+                *previous_position = new_position;
+
+                // this will unload entities even far outside the chunks if somehow any manage to leave
                 self.unload_entities(container);
+
+                if let Some(indexer) = self.client_indexers.get_mut(&id)
+                {
+                    indexer.position_offset(offset.0);
+                }
             }
         }
     }
@@ -220,14 +286,12 @@ impl World
     )
     {
         let mut writer = self.message_handler.write();
-        let overmaps = self.overmaps.borrow();
 
         Self::unload_entities_inner(&mut self.entities_saver, container, &mut writer, |global|
         {
-            self.client_indexers.iter().zip(overmaps.values()).any(|((_, indexer), overmap)|
+            self.client_indexers.iter().any(|(_, indexer)|
             {
-                indexer.inbounds(global)
-                    || overmap.contains(global)
+                indexer.indexer.inbounds(global)
             })
         });
     }
@@ -247,7 +311,7 @@ impl World
         id: ConnectionId
     )
     {
-        let indexer = self.client_indexers[&id].clone();
+        let indexer = self.client_indexers[&id].indexer.clone();
 
         let ordering = indexer.default_ordering(indexer.clone().positions());
 
@@ -270,13 +334,11 @@ impl World
     }
 
     fn create_entities_full(
-        &self,
+        writer: &mut ConnectionsHandler,
         container: &mut ServerEntities,
         entities: impl Iterator<Item=FullEntityInfo>
     )
     {
-        let mut writer = self.message_handler.write();
-
         entities.for_each(|entity_info|
         {
             let mut sync_entity = |entity|
@@ -440,6 +502,32 @@ impl World
         self.create_entities(container, entities);
     }
 
+    fn update(
+        &mut self,
+        container: &mut ServerEntities
+    )
+    {
+        self.client_indexers.iter_mut().for_each(|(_, indexer)|
+        {
+            if indexer.needs_loading
+            {
+                indexer.values.iter_mut().filter(|(_, x)| !**x).for_each(|(local_pos, x)|
+                {
+                    *x = true;
+
+                    let pos = indexer.indexer.to_global(local_pos);
+                    if let Some(entities) = self.entities_saver.load(pos)
+                    {
+                        self.entities_saver.save(pos, Vec::new());
+
+                        let mut writer = self.message_handler.write();
+                        Self::create_entities_full(&mut writer, container, entities.into_iter());
+                    }
+                });
+            }
+        });
+    }
+
     fn load_chunk(
         &mut self,
         container: &mut ServerEntities,
@@ -447,33 +535,20 @@ impl World
         pos: GlobalPos
     ) -> Chunk
     {
-        let loaded_chunk = self.chunk_saver.load(pos);
-
-        if loaded_chunk.is_some()
-        {
-            let containing_amount = self.client_indexers.iter().filter(|(_, indexer)|
-            {
-                indexer.inbounds(pos)
-            }).count();
-
-            // only 1 overmap contains chunk
-            if containing_amount <= 1
-            {
-                if let Some(entities) = self.entities_saver.load(pos)
-                {
-                    self.entities_saver.save(pos, Vec::new());
-                    self.create_entities_full(container, entities.into_iter());
-                }
-            }
-        }
-
-        loaded_chunk.unwrap_or_else(||
+        self.chunk_saver.load(pos).unwrap_or_else(||
         {
             let mut chunk = self.overmaps.borrow_mut().get_mut(&id)
                 .expect("id must be valid")
                 .generate_chunk(pos);
 
             self.add_entities(container, pos.into(), &mut chunk);
+            self.client_indexers.iter_mut().for_each(|(_, indexer)|
+            {
+                if let Some(pos) = indexer.indexer.to_local(pos)
+                {
+                    indexer.values[pos] = true;
+                }
+            });
 
             self.chunk_saver.save(pos, chunk.clone());
 
@@ -606,6 +681,7 @@ impl World
         if let Some(new_position) = new_position
         {
             self.player_moved(container, id, new_position.into());
+            self.update(container);
         }
 
         #[cfg(debug_assertions)]

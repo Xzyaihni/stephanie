@@ -24,13 +24,14 @@ pub trait Overmap<T>: OvermapIndexing
 
     fn swap(&mut self, a: LocalPos, b: LocalPos);
 
-    fn get_local(&self, pos: LocalPos) -> &Option<T>;
+    fn get_local(&self, pos: LocalPos) -> &T;
+    fn is_empty(&self, _pos: LocalPos) -> bool { false }
 
     fn mark_ungenerated(&mut self, pos: LocalPos);
 
     fn get(&self, pos: GlobalPos) -> Option<&T>
     {
-        self.to_local(pos).and_then(|local_pos| self.get_local(local_pos).as_ref())
+        self.to_local(pos).map(|local_pos| self.get_local(local_pos))
     }
 
     fn contains(&self, pos: GlobalPos) -> bool
@@ -91,7 +92,7 @@ pub trait Overmap<T>: OvermapIndexing
     fn shift_chunk(&mut self, offset: Pos3<i32>, old_local: LocalPos)
     {
         //early return if the chunk is empty
-        if self.get_local(old_local).is_none()
+        if self.is_empty(old_local)
         {
             return;
         }
