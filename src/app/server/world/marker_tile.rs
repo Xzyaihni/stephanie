@@ -70,7 +70,7 @@ impl MarkerTile
                 let offset_inside = 0.15;
                 let half_tile = TILE_SIZE / 2.0;
 
-                let rotation = rotation.to_angle();
+                let rotation = rotation.to_angle() + f32::consts::PI;
 
                 let mut position = Vector3::from(pos) + Vector3::repeat(half_tile);
                 position += rotate_point_z_3d(
