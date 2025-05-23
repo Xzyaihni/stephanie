@@ -15,7 +15,6 @@ use crate::{
     server::ConnectionsHandler,
     common::{
         self,
-        SpecialTile,
         FurnitureBuilder,
         EnemyBuilder,
         TileMap,
@@ -56,11 +55,12 @@ use world_generator::WorldGenerator;
 use server_overmap::ServerOvermap;
 
 pub use world_generator::ParseError;
+pub use marker_tile::{MarkerTile, MarkerKind};
 
 pub mod world_generator;
 mod server_overmap;
 
-mod spawner;
+mod marker_tile;
 
 
 pub const SERVER_OVERMAP_SIZE: usize = CLIENT_OVERMAP_SIZE + 1;
@@ -152,7 +152,6 @@ impl Overmap<bool> for EntitiesTracker
 pub struct World
 {
     message_handler: Arc<RwLock<ConnectionsHandler>>,
-    tilemap: Rc<TileMap>,
     world_name: String,
     world_generator: Rc<RefCell<WorldGenerator<WorldChunkSaver>>>,
     chunk_saver: ChunkSaver,
@@ -193,7 +192,6 @@ impl World
 
         Ok(Self{
             message_handler,
-            tilemap,
             world_name,
             world_generator,
             chunk_saver,
@@ -379,12 +377,12 @@ impl World
         });
     }
 
-    fn add_on_ground<'a>(
+    fn add_on_ground<'a, F: Fn(Vector3<f32>) -> Option<EntityInfo>>(
         chunk_pos: Pos3<f32>,
         chunk: &'a Chunk,
         amount: usize,
-        f: impl Fn(Vector3<f32>) -> Option<EntityInfo> + 'a
-    ) -> impl Iterator<Item=EntityInfo> + 'a
+        f: F
+    ) -> impl Iterator<Item=EntityInfo> + use<'a, F>
     {
         (0..amount)
             .map(|_|
@@ -437,28 +435,6 @@ impl World
             })
     }
 
-    fn create_spawners(
-        &self,
-        container: &mut ServerEntities,
-        chunk_pos: Pos3<f32>,
-        chunk: &mut Chunk
-    )
-    {
-        chunk.iter_mut().for_each(|(pos, tile)|
-        {
-            let info = self.tilemap.info(*tile);
-
-            if let Some(SpecialTile::Spawner(spawner)) = &info.special
-            {
-                let pos = chunk_pos + pos.pos().map(|x| x as f32 * TILE_SIZE);
-
-                spawner::create_spawner(container, pos, tile.0.unwrap().rotation(), spawner);
-
-                *tile = Tile::none();
-            }
-        });
-    }
-
     fn add_entities(
         &self,
         container: &mut ServerEntities,
@@ -470,8 +446,6 @@ impl World
         {
             return;
         }
-
-        self.create_spawners(container, chunk_pos, chunk);
 
         let spawns = fastrand::usize(0..3);
         let crates = fastrand::usize(0..2);
@@ -537,11 +511,15 @@ impl World
     {
         self.chunk_saver.load(pos).unwrap_or_else(||
         {
+            let chunk_pos = pos.into();
             let mut chunk = self.overmaps.borrow_mut().get_mut(&id)
                 .expect("id must be valid")
-                .generate_chunk(pos);
+                .generate_chunk(pos, |marker|
+                {
+                    marker.create(container, chunk_pos);
+                });
 
-            self.add_entities(container, pos.into(), &mut chunk);
+            self.add_entities(container, chunk_pos, &mut chunk);
             self.client_indexers.iter_mut().for_each(|(_, indexer)|
             {
                 if let Some(pos) = indexer.indexer.to_local(pos)

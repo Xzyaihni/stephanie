@@ -688,10 +688,10 @@ impl ContactResolver
         mut updater: impl FnMut(&ClientEntities, &mut AnalyzedContact, Moves, Vector3<f32>)
     )
     {
-        fn contact_selector<'a, 'b>(
-            compare: &'b impl Fn(&AnalyzedContact) -> f32,
-            epsilon: &'b IterativeEpsilon
-        ) -> impl FnMut(&'a mut AnalyzedContact) -> Option<(f32, &'a mut AnalyzedContact)> + 'b
+        fn contact_selector<'a, Compare: Fn(&AnalyzedContact) -> f32>(
+            compare: &'a Compare,
+            epsilon: &'a IterativeEpsilon
+        ) -> impl for<'b> FnMut(&'b mut AnalyzedContact) -> Option<(f32, &'b mut AnalyzedContact)> + use<'a, Compare>
         {
             move |contact|
             {

@@ -85,7 +85,7 @@
         (define (door x)
             (this-tile
                 (make-point x 12)
-                (tile 'metal-door 'Right)))
+		(single-marker (list 'door 'right 'metal 2))))
 
         (door 6)
         (door 9)
@@ -122,7 +122,7 @@
             (put-tile
                 this-chunk
                 (make-point 7 0)
-                (tile 'metal-door-wide)))
+                (single-marker (list 'door 'up 'metal 2))))
         this-chunk))
 
 (define (generate-roof level)

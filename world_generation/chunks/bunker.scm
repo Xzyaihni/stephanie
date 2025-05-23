@@ -13,7 +13,7 @@
     (put-tile
         this-chunk
         (make-point (/ size-x 2) (- size-y 4))
-        (tile 'stairs-down 'Down)))
+        (tile 'stairs-down 'down)))
 
 (define (generate-walls)
     (if (= height 1)
@@ -36,7 +36,7 @@
                     (put-tile
                         this-chunk
                         doorway-point
-                        (tile 'metal-door-wide)))))
+                        (single-marker (list 'door 'left 'metal 2))))))
         (begin
             (define this-chunk (filled-chunk (tile 'concrete)))
             (fill-area
@@ -48,7 +48,7 @@
             (put-tile
                 this-chunk
                 (make-point (/ size-x 2) (- size-y 4))
-                (tile 'stairs-up 'Down)))))
+                (tile 'stairs-up 'down)))))
 
 (if (= height 2)
     (generate-roof)

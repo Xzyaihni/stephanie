@@ -28,11 +28,11 @@ use crate::common::{
 use yanyaengine::TextureId;
 
 
-pub fn entity_damager<'a>(
+pub fn entity_damager<'a, Passer: EntityPasser>(
     entities: &'a ClientEntities,
-    passer: &'a mut impl EntityPasser,
+    passer: &'a mut Passer,
     blood_texture: TextureId
-) -> impl FnMut(Entity, f32, Faction, DamagePartial) + 'a
+) -> impl FnMut(Entity, f32, Faction, DamagePartial) + use<'a, Passer>
 {
     move |entity, angle, faction, damage|
     {

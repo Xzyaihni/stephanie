@@ -1,11 +1,14 @@
 (define size-x 16)
 (define size-y 16)
 
+(define (single-marker x)
+    (cons 'marker (cons x '())))
+
 (define (filled-chunk this-tile)
     (make-vector (* size-x size-y) this-tile))
 
 (define (index-of point)
-    (+ (* size-x (point-y point)) (point-x point))) 
+    (+ (* size-x (point-y point)) (point-x point)))
 
 (define make-point cons)
 (define point-x car)
@@ -135,9 +138,9 @@
         chunk
         area
         (tile wall)
-        (tile wall 'Right)
-        (tile wall 'Left)
-        (tile wall 'Down))
+        (tile wall 'right)
+        (tile wall 'left)
+        (tile wall 'down))
     (let (
             (end (area-end area))
             (start (area-start area))
@@ -148,7 +151,7 @@
                         pos
                         (tile corner rotation)))))
         (begin
-            (put-corner start 'Up)
-            (put-corner (make-point (point-x end) (point-y start)) 'Right)
-            (put-corner end 'Down)
-            (put-corner (make-point (point-x start) (point-y end)) 'Left))))
+            (put-corner start 'up)
+            (put-corner (make-point (point-x end) (point-y start)) 'right)
+            (put-corner end 'down)
+            (put-corner (make-point (point-x start) (point-y end)) 'left))))

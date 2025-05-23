@@ -135,31 +135,39 @@ impl World
         self.overmap.debug_chunk(self.chunk_of(pos), visual)
     }
 
-    pub fn tiles_inside<'a>(
-        &'a self,
+    pub fn tiles_inside<'a, Predicate>(
+        &self,
         collider: &'a CollidingInfo<'a>,
-        predicate: impl Fn(Option<&'a Tile>) -> bool + 'a + Copy
-    ) -> impl Iterator<Item=TilePos> + 'a
+        predicate: Predicate
+    ) -> impl Iterator<Item=TilePos> + use<'a, '_, Predicate>
+    where
+        Predicate: Fn(Option<&Tile>) -> bool + Copy
     {
-        self.tiles_inside_inner::<fn(_)>(collider, None, predicate)
+        self.tiles_inside_inner::<fn(_), Predicate>(collider, None, predicate)
     }
 
-    pub fn tiles_contacts<'a, ContactAdder: FnMut(Contact) + 'a>(
-        &'a self,
+    pub fn tiles_contacts<'a, ContactAdder, Predicate>(
+        &self,
         collider: &'a CollidingInfo<'a>,
         add_contact: ContactAdder,
-        predicate: impl Fn(Option<&'a Tile>) -> bool + 'a + Copy
-    ) -> impl Iterator<Item=TilePos> + 'a
+        predicate: Predicate
+    ) -> impl Iterator<Item=TilePos> + use<'a, '_, Predicate, ContactAdder>
+    where
+        ContactAdder: FnMut(Contact),
+        Predicate: Fn(Option<&Tile>) -> bool + Copy
     {
         self.tiles_inside_inner(collider, Some(add_contact), predicate)
     }
 
-    fn tiles_inside_inner<'a, ContactAdder: FnMut(Contact) + 'a>(
-        &'a self,
+    fn tiles_inside_inner<'a, ContactAdder, Predicate>(
+        &self,
         collider: &'a CollidingInfo<'a>,
         mut add_contact: Option<ContactAdder>,
-        predicate: impl Fn(Option<&'a Tile>) -> bool + 'a + Copy
-    ) -> impl Iterator<Item=TilePos> + 'a
+        predicate: Predicate
+    ) -> impl Iterator<Item=TilePos> + use<'a, '_, Predicate, ContactAdder>
+    where
+        ContactAdder: FnMut(Contact),
+        Predicate: Fn(Option<&Tile>) -> bool + Copy
     {
         let half_scale = collider.bounds();
 

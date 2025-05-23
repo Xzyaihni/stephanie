@@ -30,29 +30,10 @@ pub const PADDING: usize = TEXTURE_TILE_SIZE / 2;
 const PADDED_TILE_SIZE: usize = TEXTURE_TILE_SIZE + PADDING * 2;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub enum SpawnerTile
-{
-    Door{width: u32}
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SpecialTile
 {
     StairsUp,
-    StairsDown,
-    Spawner(SpawnerTile)
-}
-
-impl SpecialTile
-{
-    fn is_spawner(&self) -> bool
-    {
-        match self
-        {
-            Self::Spawner(..) => true,
-            _ => false
-        }
-    }
+    StairsDown
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -71,7 +52,6 @@ impl TileInfoRaw
     fn has_texture(&self) -> bool
     {
         self.drawable.unwrap_or(true)
-            && self.special.as_ref().map(|x| !x.is_spawner()).unwrap_or(true)
     }
 }
 
@@ -112,23 +92,6 @@ impl TileInfo
                 {
                     this.colliding = false;
                     this.transparent = true;
-                },
-                SpecialTile::Spawner(spawner) =>
-                {
-                    this.drawable = false;
-                    this.colliding = false;
-
-                    match spawner
-                    {
-                        SpawnerTile::Door{width} =>
-                        {
-                            if *width == 0
-                            {
-                                eprintln!("width must be above 0, replacing with 1");
-                                *width = 1;
-                            }
-                        }
-                    }
                 },
                 _ => ()
             }
@@ -298,9 +261,14 @@ impl TileMap
         self.tiles.len()
     }
 
+    fn visible_tiles(&self) -> usize
+    {
+        self.tiles.iter().filter(|x| x.drawable).count()
+    }
+
     pub fn texture_row_size(&self) -> usize
     {
-        (((self.tiles.len() - 1) as f64).sqrt().ceil() as usize).max(2)
+        (((self.visible_tiles()) as f64).sqrt().ceil() as usize).max(2)
     }
 
     pub fn pixel_fraction(&self, fraction: f32) -> f32

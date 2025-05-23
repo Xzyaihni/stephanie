@@ -411,11 +411,11 @@ impl<'b> TransformMatrix<'b>
     }
 
     fn handle_penetration<'a, F>(
-        &'a self,
+        &self,
         other: &'a Self,
         axis: Unit<Vector3<f32>>,
         penetration: f32
-    ) -> impl FnOnce(F) + 'a
+    ) -> impl FnOnce(F) + use<'a, '_, F>
     where
         F: FnMut(Contact)
     {

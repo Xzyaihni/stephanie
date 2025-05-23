@@ -11,7 +11,7 @@ use serde::{
 
 use strum::{FromRepr, EnumString};
 
-use crate::common::lisp::{self, Register, LispValue, LispMemory};
+use crate::common::lisp::{self, *};
 
 
 #[repr(transparent)]
@@ -107,21 +107,18 @@ impl Tile
         self.0.map(|x| x.as_lisp_value(memory)).unwrap_or_else(|| Ok(().into()))
     }
 
-    pub fn from_lisp_value(
-        memory: &LispMemory,
-        value: LispValue
-    ) -> Result<Self, lisp::Error>
+    pub fn from_lisp_value(value: OutputWrapperRef) -> Result<Self, lisp::Error>
     {
         if value.is_null()
         {
             return Ok(Tile::none());
         }
 
-        let lst = value.as_list(memory)?;
+        let lst = value.as_list()?;
 
         let id = lst.car.as_integer()? as usize;
 
-        let info = TileInfo::from_lisp_value(memory, lst.cdr)?;
+        let info = TileInfo::from_lisp_value(lst.cdr)?;
 
         Ok(Tile(Some(TileExisting::new(id, info))))
     }
@@ -143,6 +140,7 @@ impl Tile
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, FromRepr, EnumString, Serialize, Deserialize)]
+#[strum(ascii_case_insensitive)]
 pub enum TileRotation
 {
     Up,
@@ -267,10 +265,7 @@ pub struct TileInfo
 
 impl TileInfo
 {
-    pub fn from_lisp_value(
-        _memory: &LispMemory,
-        value: LispValue
-    ) -> Result<Option<Self>, lisp::Error>
+    pub fn from_lisp_value(value: OutputWrapperRef) -> Result<Option<Self>, lisp::Error>
     {
         if value.is_null()
         {

@@ -20,7 +20,6 @@ pub use tilemap::{
     TileMap,
     TileInfo,
     SpecialTile,
-    SpawnerTile,
     TileMapWithTextures
 };
 

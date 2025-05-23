@@ -155,7 +155,7 @@ impl Chunk
         self.tiles.iter_mut().enumerate().map(|(index, tile)| (Self::index_to_pos(index), tile))
     }
 
-    fn index_to_pos(index: usize) -> ChunkLocal
+    pub fn index_to_pos(index: usize) -> ChunkLocal
     {
         ChunkLocal(Pos3::from_rectangle(Pos3::repeat(CHUNK_SIZE), index))
     }

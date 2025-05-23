@@ -1,11 +1,14 @@
 use std::{rc::Rc, cell::RefCell};
 
-use super::world_generator::{
-    WORLD_CHUNK_SIZE,
-    CHUNK_RATIO,
-    ConditionalInfo,
-    WorldGenerator,
-    WorldChunk
+use super::{
+    MarkerTile,
+    world_generator::{
+        WORLD_CHUNK_SIZE,
+        CHUNK_RATIO,
+        ConditionalInfo,
+        WorldGenerator,
+        WorldChunk
+    }
 };
 
 use crate::common::{
@@ -167,7 +170,7 @@ impl<S: SaveLoad<WorldChunksBlock>> ServerOvermap<S>
         false
     }
 
-    pub fn generate_chunk(&mut self, pos: GlobalPos) -> Chunk
+    pub fn generate_chunk(&mut self, pos: GlobalPos, marker: impl FnMut(MarkerTile)) -> Chunk
     {
         let pos = worldchunk_pos(pos);
 
@@ -182,7 +185,7 @@ impl<S: SaveLoad<WorldChunksBlock>> ServerOvermap<S>
             self.shift_overmap_by(shift_offset);
         }
 
-        self.generate_existing_chunk(self.to_local(pos).unwrap())
+        self.generate_existing_chunk(self.to_local(pos).unwrap(), marker)
     }
 
     fn shift_overmap_by(&mut self, shift_offset: Pos3<i32>)
@@ -192,7 +195,7 @@ impl<S: SaveLoad<WorldChunksBlock>> ServerOvermap<S>
         self.position_offset(shift_offset);
     }
 
-    fn generate_existing_chunk(&self, local_pos: LocalPos) -> Chunk
+    fn generate_existing_chunk(&self, local_pos: LocalPos, mut marker: impl FnMut(MarkerTile)) -> Chunk
     {
         let mut chunk = Chunk::new();
 
@@ -223,7 +226,8 @@ impl<S: SaveLoad<WorldChunksBlock>> ServerOvermap<S>
 
                     let world_chunk = self.world_generator.borrow_mut().generate_chunk(
                         &info,
-                        group
+                        group,
+                        &mut marker
                     );
 
                     Self::partially_fill(&mut chunk, world_chunk, this_pos);
@@ -427,7 +431,7 @@ mod tests
 
         for _ in 0..30
         {
-            let _chunk = overmap.generate_chunk(random_chunk());
+            let _chunk = overmap.generate_chunk(random_chunk(), |_| {});
         }
     }
 }

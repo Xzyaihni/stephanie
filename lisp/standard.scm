@@ -1,4 +1,4 @@
-(define list (lambda xs (reverse xs)))
+(define list (lambda xs xs))
 
 (define (list-tail xs n)
     (if (= n 0)

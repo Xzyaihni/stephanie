@@ -1527,6 +1527,17 @@ impl<'a> OutputWrapperRef<'a>
             OutputWrapperRef{memory: self.memory, value: *value}
         }))
     }
+
+    pub fn as_pairs_list(&self) -> Result<Vec<Self>, Error>
+    {
+        self.value.as_pairs_list(self.memory).map(|x|
+        {
+            x.into_iter().map(|value|
+            {
+                OutputWrapperRef{memory: self.memory, value}
+            }).collect::<Vec<_>>()
+        })
+    }
 }
 
 impl<M: Borrow<LispMemory>> Display for GenericOutputWrapper<M>
@@ -1549,6 +1560,11 @@ impl<M> Deref for GenericOutputWrapper<M>
 
 impl<M> GenericOutputWrapper<M>
 {
+    pub fn new(memory: M, value: LispValue) -> Self
+    {
+        Self{memory, value}
+    }
+
     pub fn into_value(self) -> LispValue
     {
         self.value

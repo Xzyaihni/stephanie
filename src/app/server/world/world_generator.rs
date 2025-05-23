@@ -21,6 +21,7 @@ use crate::common::{
         LocalPos,
         GlobalPos,
         AlwaysGroup,
+        Chunk,
         overmap::{
             CommonIndexing,
             OvermapIndexing,
@@ -37,6 +38,8 @@ use crate::common::{
 
 use super::{
     SERVER_OVERMAP_SIZE_Z,
+    MarkerTile,
+    MarkerKind,
     server_overmap::WorldPlane
 };
 
@@ -286,7 +289,8 @@ impl ChunkGenerator
     pub fn generate_chunk(
         &mut self,
         info: &ConditionalInfo,
-        group: AlwaysGroup<&str>
+        group: AlwaysGroup<&str>,
+        marker: &mut impl FnMut(MarkerTile)
     ) -> ChunksContainer<Tile>
     {
         let tiles = {
@@ -323,12 +327,32 @@ impl ChunkGenerator
                     panic!("expected vector: {err} (in {chunk_name})")
                 });
 
-            output.iter().map(|x|
+            output.iter().enumerate().map(|(index, x)|
             {
-                Tile::from_lisp_value(&memory, *x)
+                let x = OutputWrapperRef::new(&memory, *x);
+                if let Some(s) = x.as_list().and_then(|lst| lst.car.as_symbol()).ok()
+                {
+                    if s != "marker"
+                    {
+                        panic!("malformed tile, expected marker got {s}");
+                    }
+
+                    let value = x.as_list().unwrap().cdr;
+
+                    let pos = Chunk::index_to_pos(index);
+                    MarkerKind::from_lisp_value(value)?.into_iter().for_each(|marker_tile|
+                    {
+                        marker(MarkerTile{kind: marker_tile, pos});
+                    });
+
+                    Ok(Tile::none())
+                } else
+                {
+                    Tile::from_lisp_value(x)
+                }
             }).collect::<Result<Box<[Tile]>, _>>().unwrap_or_else(|err|
             {
-                panic!("error getting tile: {err}")
+                panic!("error getting tile: {err} (in {chunk_name})")
             })
         };
 
@@ -603,7 +627,8 @@ impl<S: SaveLoad<WorldChunksBlock>> WorldGenerator<S>
     pub fn generate_chunk(
         &mut self,
         info: &ConditionalInfo,
-        group: AlwaysGroup<WorldChunk>
+        group: AlwaysGroup<WorldChunk>,
+        marker: &mut impl FnMut(MarkerTile)
     ) -> ChunksContainer<Tile>
     {
         if group.this.id() == WorldChunkId::none()
@@ -614,7 +639,7 @@ impl<S: SaveLoad<WorldChunksBlock>> WorldGenerator<S>
         self.generator.generate_chunk(info, group.map(|world_chunk|
         {
             self.rules.name(world_chunk.id())
-        }))
+        }), marker)
     }
 }
 
@@ -1011,7 +1036,7 @@ mod tests
                 down: "none",
                 up: "none"
             }
-        });
+        }, &mut |_| {});
 
         let check_tiles = ChunksContainer::from_raw(Pos3::new(16, 16, 1), Box::new([
             a,a,a,a,b,b,b,b,c,c,d,d,d,d,d,d,

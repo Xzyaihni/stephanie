@@ -38,25 +38,5 @@
         "name": "stairs-down",
         "special": "StairsDown",
         "gradientable": false
-    },
-    {
-        "name": "metal-door",
-        "special": {
-            "Spawner": {
-                "Door": {
-                    "width": 1
-                }
-            }
-        }
-    },
-    {
-        "name": "metal-door-wide",
-        "special": {
-            "Spawner": {
-                "Door": {
-                    "width": 2
-                }
-            }
-        }
     }
 ]

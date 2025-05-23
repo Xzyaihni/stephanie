@@ -324,10 +324,10 @@ impl ControlsController
         }
     }
 
-    pub fn consume_changed<'a>(
-        &'a mut self,
+    pub fn consume_changed(
+        &mut self,
         changed: UiControls
-    ) -> impl Iterator<Item=(Control, ControlState)> + 'a
+    ) -> impl Iterator<Item=(Control, ControlState)> + use<'_>
     {
         self.controls_state = Some(changed.state);
         changed.controls.into_iter().filter_map(|(key, state)|
