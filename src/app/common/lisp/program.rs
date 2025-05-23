@@ -1379,7 +1379,7 @@ impl InterReprPos
                     Command::Cons{target, car: Register::Environment, cdr: target}.with_position(self.position)
                 ]);
 
-                let lambda = label_part.combine(cons_part);
+                let lambda = label_part.combine(cons_part).with_requires(RegisterStates::one(Register::Environment));
 
                 lambda.with_proceed(proceed)
             },

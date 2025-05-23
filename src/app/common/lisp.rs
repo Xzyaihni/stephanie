@@ -2175,6 +2175,35 @@ mod tests
     }
 
     #[test]
+    fn lots_of_nesting()
+    {
+        let code = "
+            (define list (lambda xs xs))
+
+            (define (fold f start xs)
+                (if (null? xs)
+                    start
+                    (fold f (f (car xs) start) (cdr xs))))
+
+            ((lambda (c) (fold (lambda (a b) c) 999 (list 123))) 1)
+        ";
+
+        simple_integer_test(code, 1);
+    }
+
+    #[test]
+    fn simple_failing()
+    {
+        let code = "
+            (define list (lambda xs xs))
+
+            ((lambda (c) (begin (list 123) ((lambda () c)))) 1)
+        ";
+
+        simple_integer_test(code, 1);
+    }
+
+    #[test]
     fn comments()
     {
         let code = "
