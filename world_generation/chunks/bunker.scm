@@ -25,6 +25,10 @@
                     (make-point 2 2)
                     (make-point (- size-x 4) (- size-y 4)))
                 (tile 'concrete))
+            (put-tile
+                this-chunk
+                (make-point (/ size-x 2) (/ size-y 2))
+		(single-marker (list 'light 0.75)))
             (let ((doorway-point (make-point (- (/ size-x 2) 1) 2)))
                 (begin
                     (fill-area
@@ -45,6 +49,10 @@
                     (make-point 3 3)
                     (make-point (- size-x 6) (- size-y 6)))
                 (tile 'air))
+            (put-tile
+                this-chunk
+                (make-point (/ size-x 2) (/ size-y 2))
+		(single-marker (list 'light 0.75)))
             (put-tile
                 this-chunk
                 (make-point (/ size-x 2) (- size-y 4))

@@ -75,7 +75,7 @@ pub struct DrawEntities<'a>
     pub solid: &'a SolidObject,
     pub renders: &'a [Vec<Entity>],
     pub shaded_renders: &'a [Vec<Entity>],
-    pub light_renders: &'a [Vec<Entity>],
+    pub light_renders: &'a [Entity],
     pub world: &'a World
 }
 
@@ -140,7 +140,7 @@ pub fn draw(
 
     info.bind_pipeline(shaders.lighting);
 
-    renderables.light_renders.iter().flatten().copied().for_each(|entity|
+    renderables.light_renders.iter().copied().for_each(|entity|
     {
         entities.light(entity).unwrap().draw(info);
     });

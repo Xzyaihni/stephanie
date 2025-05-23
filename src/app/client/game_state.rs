@@ -43,6 +43,7 @@ use crate::{
         receiver_loop,
         render_info::*,
         lazy_transform::*,
+        ClientLight,
         SpatialGrid,
         TileMap,
         DataInfos,
@@ -111,7 +112,7 @@ pub struct ClientEntitiesContainer
     pub camera_entity: Entity,
     pub follow_entity: Entity,
     visible_renders: Vec<Vec<Entity>>,
-    light_renders: Vec<Vec<Entity>>,
+    light_renders: Vec<Entity>,
     shaded_renders: Vec<Vec<Entity>>,
     player_entity: Entity,
     animation: f32
@@ -218,8 +219,18 @@ impl ClientEntitiesContainer
         caster: &OccludingCaster
     )
     {
+        fn insert_render<V>(renders: &mut BTreeMap<i32, Vec<V>>, value: V, key: i32)
+        {
+            match renders.entry(key)
+            {
+                Entry::Vacant(entry) => { entry.insert(vec![value]); },
+                Entry::Occupied(mut entry) => entry.get_mut().push(value)
+            }
+        }
+
+        self.light_renders.clear();
+
         let mut shaded_renders = BTreeMap::new();
-        let mut light_renders = BTreeMap::new();
         let mut visible_renders = BTreeMap::new();
         for_each_component!(self.entities, render, |entity, render: &RefCell<ClientRenderInfo>|
         {
@@ -233,39 +244,29 @@ impl ClientEntitiesContainer
 
             let real_z = (transform.position.z / TILE_SIZE).floor() as i32;
 
-            fn insert_render<V>(renders: &mut BTreeMap<i32, Vec<V>>, value: V, key: i32)
-            {
-                match renders.entry(key)
-                {
-                    Entry::Vacant(entry) => { entry.insert(vec![value]); },
-                    Entry::Occupied(mut entry) => entry.get_mut().push(value)
-                }
-            }
-
             insert_render(&mut visible_renders, entity, real_z);
 
             if render.shadow_visible
             {
                 insert_render(&mut shaded_renders, entity, real_z);
             }
+        });
 
-            if let Some(light) = self.entities.light(entity)
+        for_each_component!(self.entities, light, |entity, light: &RefCell<ClientLight>|
+        {
+            if light.borrow().is_visible()
             {
-                if light.is_visible()
-                {
-                    insert_render(&mut light_renders, entity, real_z);
-                }
+                self.light_renders.push(entity);
             }
         });
 
         self.shaded_renders = shaded_renders.into_values().collect();
-        self.light_renders = light_renders.into_values().collect();
         self.visible_renders = visible_renders.into_values().collect();
 
         render_system::update_buffers(
             &self.entities,
             self.visible_renders.iter().flatten().copied(),
-            self.light_renders.iter().flatten().copied(),
+            self.light_renders.iter().copied(),
             info,
             caster
         );

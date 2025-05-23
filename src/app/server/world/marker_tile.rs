@@ -21,6 +21,7 @@ use crate::common::{
     AnyEntities,
     Occluder,
     Parent,
+    Light,
     entity::ServerEntities,
     lisp::{self, *},
     world::{
@@ -63,16 +64,31 @@ impl MarkerTile
     {
         let pos = chunk_pos + self.pos.pos().map(|x| x as f32 * TILE_SIZE);
 
+        let half_tile = TILE_SIZE / 2.0;
+        let position = Vector3::from(pos) + Vector3::repeat(half_tile);
+
         match self.kind
         {
+            MarkerKind::Light{strength} =>
+            {
+                entities.push(false, EntityInfo{
+                    transform: Some(Transform{
+                        position,
+                        scale: Vector3::repeat(TILE_SIZE),
+                        ..Default::default()
+                    }),
+                    light: Some(Light{source: None, strength}),
+                    saveable: Some(()),
+                    ..Default::default()
+                });
+            },
             MarkerKind::Door{rotation, material, width} =>
             {
                 let offset_inside = 0.15;
-                let half_tile = TILE_SIZE / 2.0;
 
                 let rotation = rotation.to_angle() + f32::consts::PI;
 
-                let mut position = Vector3::from(pos) + Vector3::repeat(half_tile);
+                let mut position = position;
                 position += rotate_point_z_3d(
                     Vector3::new(-(TILE_SIZE / 2.0 + TILE_SIZE * offset_inside), 0.0, 0.0),
                     rotation
@@ -148,7 +164,8 @@ impl MarkerTile
 #[derive(Debug, Clone)]
 pub enum MarkerKind
 {
-    Door{rotation: TileRotation, material: DoorMaterial, width: u32}
+    Door{rotation: TileRotation, material: DoorMaterial, width: u32},
+    Light{strength: f32}
 }
 
 impl MarkerKind
@@ -182,6 +199,12 @@ impl MarkerKind
                 let width = next_value("door width")?.as_integer()? as u32;
 
                 Ok(Self::Door{rotation, material, width})
+            },
+            "light" =>
+            {
+                let strength = next_value("light strength")?.as_float()?;
+
+                Ok(Self::Light{strength})
             },
             x => Err(lisp::Error::Custom(format!("unknown marker id `{x}`")))
         }
