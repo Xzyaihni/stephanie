@@ -224,6 +224,12 @@ impl<S: SaveLoad<WorldChunksBlock>> ServerOvermap<S>
                         tags
                     };
 
+                    let mut marker = |mut marker_tile: MarkerTile|
+                    {
+                        marker_tile.pos.pos_mut().z = z;
+                        marker(marker_tile)
+                    };
+
                     let world_chunk = self.world_generator.borrow_mut().generate_chunk(
                         &info,
                         group,

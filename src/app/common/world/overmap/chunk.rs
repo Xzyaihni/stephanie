@@ -74,7 +74,7 @@ impl ChunkLocal
         Pos3::repeat(CHUNK_SIZE)
     }
 
-    fn pos_mut(&mut self) -> &mut Pos3<usize>
+    pub fn pos_mut(&mut self) -> &mut Pos3<usize>
     {
         &mut self.0
     }
