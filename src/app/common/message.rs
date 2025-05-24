@@ -16,7 +16,6 @@ use crate::common::{
     LazyMix,
     Outlineable,
     Transform,
-    Faction,
     Collider,
     Physical,
     Inventory,
@@ -27,9 +26,9 @@ use crate::common::{
     Player,
     Parent,
     Enemy,
-    Damage,
     Anatomy,
     RenderInfo,
+    entity::damaging_system::*,
     world::{TilePos, Tile, Chunk, GlobalPos}
 };
 
@@ -71,7 +70,7 @@ pub enum Message
     SyncPositionRotation{entity: Entity, position: Vector3<f32>, rotation: f32},
     SyncCharacter{entity: Entity, info: CharacterSyncInfo},
     EntityDestroy{entity: Entity},
-    EntityDamage{entity: Entity, faction: Faction, damage: Damage},
+    Damage(DamagingResult),
     PlayerConnect{name: String},
     PlayerOnConnect{player_entity: Entity},
     PlayerFullyConnected,
@@ -133,8 +132,7 @@ impl Message
             | Message::SyncPosition{entity, ..}
             | Message::SyncPositionRotation{entity, ..}
             | Message::SyncCharacter{entity, ..}
-            | Message::EntityDestroy{entity, ..}
-            | Message::EntityDamage{entity, ..} => Some(*entity),
+            | Message::EntityDestroy{entity, ..}  => Some(*entity),
             Message::PlayerConnect{..}
             | Message::PlayerOnConnect{..}
             | Message::PlayerFullyConnected
@@ -145,6 +143,10 @@ impl Message
             | Message::ChunkSync{..}
             | Message::SetTile{..}
             | Message::RepeatMessage{..} => None,
+            Message::Damage(result) =>
+            {
+                if let DamagingKind::Entity(entity, _) = &result.kind { Some(*entity) } else { None }
+            },
             #[cfg(debug_assertions)]
             Message::DebugMessage(_) => None
         }

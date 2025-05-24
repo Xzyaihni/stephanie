@@ -1011,20 +1011,6 @@ impl<'a> PlayerContainer<'a>
         player_transform.position = position;
         drop(player_transform);
 
-        let current_tile = self.game_state.tile_of(position.into());
-
-        let r = 3;
-        for y in 0..r
-        {
-            for x in 0..r
-            {
-                let hr = r / 2;
-                let pos = Pos3::new(x - hr, y - hr, 0);
-
-                self.game_state.destroy_tile(current_tile.offset(pos));
-            }
-        }
-
         self.camera_sync_instant();
     }
 

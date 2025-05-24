@@ -59,7 +59,8 @@ use crate::{
         message::{
             Message,
             MessageBuffer
-        }
+        },
+        entity::damaging_system
     }
 };
 
@@ -524,6 +525,8 @@ impl GameServer
         )};
 
         let message = some_or_return!{self.entities.handle_message(message)};
+
+        let message = some_or_return!{damaging_system::handle_message(&self.entities, None, message)};
 
         match message
         {

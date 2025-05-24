@@ -19,6 +19,7 @@ use crate::common::{
     raycast::raycast_this,
     world::{
         TILE_SIZE,
+        TilePos,
         Directions3dGroup,
         World
     }
@@ -217,7 +218,8 @@ pub struct Collider
     pub layer: ColliderLayer,
     pub ghost: bool,
     pub scale: Option<Vector3<f32>>,
-    collided: Vec<Entity>
+    collided: Vec<Entity>,
+    collided_tiles: Vec<TilePos>
 }
 
 impl From<ColliderInfo> for Collider
@@ -229,7 +231,8 @@ impl From<ColliderInfo> for Collider
             layer: info.layer,
             ghost: info.ghost,
             scale: info.scale,
-            collided: Vec::new()
+            collided: Vec::new(),
+            collided_tiles: Vec::new()
         }
     }
 }
@@ -264,14 +267,25 @@ impl Collider
         &self.collided
     }
 
+    pub fn collided_tiles(&self) -> &[TilePos]
+    {
+        &self.collided_tiles
+    }
+
     pub fn push_collided(&mut self, entity: Entity)
     {
         self.collided.push(entity);
     }
 
+    pub fn push_collided_tile(&mut self, tile: TilePos)
+    {
+        self.collided_tiles.push(tile);
+    }
+
     pub fn reset_frame(&mut self)
     {
         self.collided.clear();
+        self.collided_tiles.clear();
     }
 }
 
@@ -1029,37 +1043,39 @@ impl<'a> CollidingInfo<'a>
                 $(($a:ident, $b:ident, $name:ident)),+
             ) =>
             {
-                #[allow(unreachable_patterns)]
-                match (self.collider.kind, other.collider.kind)
                 {
-                    $(
-                        ($a_ignored, $b_ignored) => false,
-                        ($b_ignored, $a_ignored) => false,
-                    )+
-                    $(
-                        (ColliderType::Tile(_), ColliderType::$b_world) => unreachable!(),
-                        (ColliderType::$b_world, ColliderType::Tile(ref info)) =>
-                        {
-                            if info.fold(true, |acc, (_, x)| acc && x)
+                    #[allow(unreachable_patterns)]
+                    match (self.collider.kind, other.collider.kind)
+                    {
+                        $(
+                            ($a_ignored, $b_ignored) => false,
+                            ($b_ignored, $a_ignored) => false,
+                        )+
+                        $(
+                            (ColliderType::Tile(_), ColliderType::$b_world) => unreachable!(),
+                            (ColliderType::$b_world, ColliderType::Tile(ref info)) =>
                             {
-                                // early exit if all directions r blocked
-                                false
-                            } else
+                                if info.fold(true, |acc, (_, x)| acc && x)
+                                {
+                                    // early exit if all directions r blocked
+                                    false
+                                } else
+                                {
+                                    other.$world_name(self, info, add_contact)
+                                }
+                            },
+                        )+
+                        $(
+                            (ColliderType::$a, ColliderType::$b) =>
                             {
-                                other.$world_name(self, info, add_contact)
-                            }
-                        },
-                    )+
-                    $(
-                        (ColliderType::$a, ColliderType::$b) =>
-                        {
-                            self.$name(other, add_contact)
-                        },
-                        (ColliderType::$b, ColliderType::$a) =>
-                        {
-                            other.$name(self, add_contact)
-                        },
-                    )+
+                                self.$name(other, add_contact)
+                            },
+                            (ColliderType::$b, ColliderType::$a) =>
+                            {
+                                other.$name(self, add_contact)
+                            },
+                        )+
+                    }
                 }
             }
         }
@@ -1123,15 +1139,18 @@ impl<'a> CollidingInfo<'a>
             return false;
         }
 
-        // !!!!!!!!!!!DONT REMOVE COUNT, IT NEEDS TO CONSUME THE WHOLE THING!!!!!!!!!!!
-        let collided = world.tiles_contacts(self, |contact| contacts.push(contact), |tile|
+        let collided: Vec<_> = world.tiles_contacts(self, |contact| contacts.push(contact), |tile|
         {
             let colliding_tile = tile.map(|x| world.tile_info(*x).colliding);
 
             colliding_tile.unwrap_or(true)
-        }).count() > 0;
+        }).collect();
 
-        collided
+        let is_collided = !collided.is_empty();
+
+        collided.into_iter().for_each(|pos| self.collider.push_collided_tile(pos));
+
+        is_collided
     }
 }
 

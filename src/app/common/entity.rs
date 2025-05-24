@@ -35,8 +35,6 @@ use crate::{
         DataInfos,
         Occluder,
         ClientOccluder,
-        Faction,
-        Damage,
         EntityPasser,
         Inventory,
         Anatomy,
@@ -414,12 +412,6 @@ macro_rules! impl_common_systems
         {
             match message
             {
-                Message::EntityDamage{entity, faction, damage} =>
-                {
-                    self.damage_entity_common(entity, faction, damage);
-
-                    None
-                },
                 Message::SetTarget{entity, target} =>
                 {
                     if let Some(mut x) = self.target(entity)
@@ -465,42 +457,6 @@ macro_rules! impl_common_systems
                 },
                 x => Some(x)
             }
-        }
-
-        pub fn damage_entity_common(
-            &self,
-            entity: Entity,
-            faction: Faction,
-            damage: Damage
-        ) -> bool
-        {
-            if let Some(other) = self.faction(entity)
-            {
-                if !faction.aggressive(&other)
-                {
-                    return false;
-                }
-            } else
-            {
-                return false;
-            }
-
-            if self.anatomy_exists(entity)
-            {
-                damaging_system::damage(self, entity, damage);
-
-                return true;
-            }
-
-            false
-        }
-
-        pub fn faction(&self, entity: Entity) -> Option<Faction>
-        {
-            self.character(entity).map(|character|
-            {
-                character.faction
-            })
         }
 
         pub fn update_lazy_mix(&mut self, dt: f32)

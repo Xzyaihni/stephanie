@@ -49,7 +49,7 @@ use crate::{
         ItemInfo,
         Parent,
         Anatomy,
-        entity::{damaging_system, ClientEntities}
+        entity::{damaging_system::{self, *}, ClientEntities}
     }
 };
 
@@ -1233,9 +1233,9 @@ impl Character
 
                     damaging_system::entity_damager(
                         combined_info.entities,
-                        &mut *passer,
-                        combined_info.common_textures.blood
-                    )(id, angle, self.faction, damage);
+                        Some(&mut *passer),
+                        Some(combined_info.common_textures.blood)
+                    )(DamagingResult{kind: DamagingKind::Entity(id, self.faction), angle, damage});
                 },
                 _ => ()
             }
