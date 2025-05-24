@@ -56,6 +56,12 @@
                         (single-marker (list 'door 'left 'metal 2))))))
         (begin
             (define this-chunk (filled-chunk (tile 'soil)))
+            (rectangle-outline
+                this-chunk
+                (make-area
+                    (make-point 5 4)
+                    (make-point (- size-x 9) (- size-y 7)))
+                (tile 'concrete))
             (fill-area
                 this-chunk
                 (make-area

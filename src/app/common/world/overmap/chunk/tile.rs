@@ -15,7 +15,7 @@ use crate::common::lisp::{self, *};
 
 
 #[repr(transparent)]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct Tile(pub Option<TileExisting>);
 
 impl Serialize for Tile
@@ -139,7 +139,7 @@ impl Tile
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, FromRepr, EnumString, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, FromRepr, EnumString, Serialize, Deserialize)]
 #[strum(ascii_case_insensitive)]
 pub enum TileRotation
 {
@@ -182,7 +182,7 @@ impl TileRotation
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct TileExisting
 {
     id: usize,
@@ -257,10 +257,19 @@ impl TileExisting
     }
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct TileInfo
 {
-    pub rotation: TileRotation
+    pub rotation: TileRotation,
+    pub health_fraction: f32
+}
+
+impl Default for TileInfo
+{
+    fn default() -> Self
+    {
+        Self{rotation: TileRotation::default(), health_fraction: 1.0}
+    }
 }
 
 impl TileInfo
@@ -278,7 +287,7 @@ impl TileInfo
             panic!("{rotation} is an invalid rotation number")
         });
 
-        Ok(Some(TileInfo{rotation}))
+        Ok(Some(TileInfo{rotation, ..Default::default()}))
     }
 
     pub fn as_lisp_value(&self, _memory: &mut LispMemory) -> Result<LispValue, lisp::Error>

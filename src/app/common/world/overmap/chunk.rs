@@ -86,7 +86,7 @@ impl ChunkLocal
 }
 
 #[serde_as]
-#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
 pub struct Chunk
 {
     #[serde_as(as = "Box<[_; CHUNK_VOLUME]>")]
