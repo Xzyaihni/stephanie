@@ -2,17 +2,30 @@
     (fill-area
         (filled-chunk (tile 'air))
         (make-area
-            (make-point 2 2)
-            (make-point (- size-x 4) (- size-y 4)))
+            (make-point 5 4)
+            (make-point (- size-x 9) (- size-y 7)))
         (tile 'concrete)))
 
-(define (generate-floor) (filled-chunk (tile 'concrete)))
+(define (generate-floor)
+    (define this-chunk (filled-chunk (tile 'soil)))
+    (fill-area
+        this-chunk
+	(make-area
+	    (make-point 6 5)
+	    (make-point (- size-x 11) (- size-y 9)))
+	(tile 'concrete)))
 
 (define (generate-ground)
-    (define this-chunk (filled-chunk (tile 'concrete)))
+    (define this-chunk (filled-chunk (tile 'grassie)))
+    (fill-area
+        this-chunk
+	(make-area
+	    (make-point 6 5)
+	    (make-point (- size-x 11) (- size-y 9)))
+	(tile 'concrete))
     (put-tile
         this-chunk
-        (make-point (/ size-x 2) (- size-y 4))
+        (make-point (/ size-x 2) (- size-y 5))
         (tile 'stairs-down 'down)))
 
 (define (generate-walls)
@@ -22,14 +35,14 @@
             (rectangle-outline
                 this-chunk
                 (make-area
-                    (make-point 2 2)
-                    (make-point (- size-x 4) (- size-y 4)))
+                    (make-point 5 4)
+                    (make-point (- size-x 9) (- size-y 7)))
                 (tile 'concrete))
             (put-tile
                 this-chunk
                 (make-point (/ size-x 2) (/ size-y 2))
-		(single-marker (list 'light 0.75)))
-            (let ((doorway-point (make-point (- (/ size-x 2) 1) 2)))
+		(single-marker (list 'light 1.0)))
+            (let ((doorway-point (make-point (- (/ size-x 2) 1) 4)))
                 (begin
                     (fill-area
                         this-chunk
@@ -42,20 +55,20 @@
                         doorway-point
                         (single-marker (list 'door 'left 'metal 2))))))
         (begin
-            (define this-chunk (filled-chunk (tile 'concrete)))
+            (define this-chunk (filled-chunk (tile 'soil)))
             (fill-area
                 this-chunk
                 (make-area
-                    (make-point 3 3)
-                    (make-point (- size-x 6) (- size-y 6)))
+                    (make-point 6 5)
+                    (make-point (- size-x 11) (- size-y 9)))
                 (tile 'air))
             (put-tile
                 this-chunk
                 (make-point (/ size-x 2) (/ size-y 2))
-		(single-marker (list 'light 0.75)))
+		(single-marker (list 'light 1.0)))
             (put-tile
                 this-chunk
-                (make-point (/ size-x 2) (- size-y 4))
+                (make-point (/ size-x 2) (- size-y 5))
                 (tile 'stairs-up 'down)))))
 
 (if (= height 2)

@@ -290,12 +290,12 @@ pub fn create() -> ShadersCreated
         per_vertex: Some(ObjectVertex::per_vertex()),
         subpass: 2,
         blend: Some(AttachmentBlend{
-            src_color_blend_factor: BlendFactor::Zero,
+            src_color_blend_factor: BlendFactor::SrcColor,
             dst_color_blend_factor: BlendFactor::DstColor,
             color_blend_op: BlendOp::Add,
             src_alpha_blend_factor: BlendFactor::SrcAlpha,
             dst_alpha_blend_factor: BlendFactor::DstAlpha,
-            alpha_blend_op: BlendOp::Min
+            alpha_blend_op: BlendOp::Add
         }),
         ..Default::default()
     });

@@ -143,7 +143,7 @@ pub fn create() -> Rendering<()>
                 Some(1.0.into()),
                 Some([darksky.x, darksky.y, darksky.z, 1.0].into()),
                 Some(1.0.into()),
-                Some([1.0, 1.0, 1.0, 0.0].into()),
+                Some([1.0, 1.0, 1.0, 1.0].into()),
                 None
             ]
         }

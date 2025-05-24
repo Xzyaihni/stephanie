@@ -10,5 +10,5 @@ void main()
 {
     vec4 light = subpassLoad(lighting).rgba;
     float a = light.a;
-    f_color = mix(subpassLoad(color).rgba * vec4(light.rgb, 1.0), subpassLoad(shaded).rgba, a);
+    f_color = mix(subpassLoad(shaded).rgba, subpassLoad(color).rgba * vec4(light.rgb, 1.0), a);
 }
