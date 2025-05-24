@@ -248,22 +248,27 @@ impl VisualChunk
     {
         let chunk_position = Chunk::position_of_chunk(pos);
 
-        (0..CHUNK_SIZE).scan([false; CHUNK_SIZE * CHUNK_SIZE], |state, z|
+        (0..CHUNK_SIZE).rev().scan([false; CHUNK_SIZE * CHUNK_SIZE], |state, z|
         {
             let mut occluders = Vec::new();
 
-            state.iter_mut().zip(occlusions[z]).for_each(|(top, bottom)|
+            let mut occlusion = occlusions[z].clone();
+
+            state.iter_mut().zip(occlusion.iter_mut()).for_each(|(top, bottom)|
             {
-                *top = !*top && bottom;
+                *top |= *bottom;
+                *bottom = *top;
             });
 
-            while let Some(occluder) = Self::create_vertical_occluder(state)
+            while let Some(occluder) = Self::create_vertical_occluder(&mut occlusion)
             {
                 occluders.push(occluder.into_global(chunk_position, z));
             }
 
             Some(occluders.into_boxed_slice())
-        }).collect::<Vec<_>>().try_into().unwrap()
+        }).collect::<Vec<_>>().into_iter()
+            .rev()
+            .collect::<Vec<_>>().try_into().unwrap()
     }
 
     fn create_vertical_occluder(
@@ -284,7 +289,7 @@ impl VisualChunk
             })
             .count();
 
-        let height = (1..(CHUNK_SIZE - start_point.y - 1)).take_while(|y|
+        let height = (1..(CHUNK_SIZE - start_point.y)).take_while(|y|
         {
             let index = start_index + y * CHUNK_SIZE;
             let r = index..(index + width);
@@ -632,13 +637,12 @@ impl VisualChunk
     pub fn update_sky_buffers(
         &mut self,
         info: &mut UpdateBuffersInfo,
-        height: Option<usize>
+        height: usize
     )
     {
-        let start = height.map(|height| height + 1).unwrap_or(0);
-        self.vertical_occluders[start..].iter_mut().for_each(|x|
+        self.vertical_occluders[height].iter_mut().for_each(|x|
         {
-            x.iter_mut().for_each(|x| x.update_buffers(info));
+            x.update_buffers(info)
         });
     }
 
@@ -663,6 +667,11 @@ impl VisualChunk
         height: usize
     )
     {
+        if DebugConfig::is_enabled(DebugTool::NoWallOcclusion)
+        {
+            return;
+        }
+
         self.occluders[height].iter().for_each(|x|
         {
             if x.visible(visibility)
@@ -675,7 +684,7 @@ impl VisualChunk
     pub fn draw_sky_shadows(
         &self,
         info: &mut DrawInfo,
-        height: Option<usize>
+        height: usize
     )
     {
         if DebugConfig::is_enabled(DebugTool::NoSkyOcclusion)
@@ -683,10 +692,9 @@ impl VisualChunk
             return;
         }
 
-        let start = height.map(|height| height + 1).unwrap_or(0);
-        self.vertical_occluders[start..].iter().for_each(|x|
+        self.vertical_occluders[height].iter().for_each(|x|
         {
-            x.iter().for_each(|x| x.draw(info));
+            x.draw(info)
         });
     }
 }

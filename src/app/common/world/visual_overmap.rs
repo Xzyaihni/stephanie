@@ -356,6 +356,11 @@ impl VisualOvermap
         pos.with_z_range(top..size_z).for_each(f);
     }
 
+    fn sky_draw_height(height: Option<usize>) -> usize
+    {
+        height.map(|x| (x + 1).min(CHUNK_SIZE - 1)).unwrap_or(0)
+    }
+
     pub fn update_buffers(
         &mut self,
         info: &mut UpdateBuffersInfo,
@@ -381,7 +386,7 @@ impl VisualOvermap
                 {
                     self.chunks[pos].1.update_sky_buffers(
                         info,
-                        self.visibility_checker.maybe_height(pos)
+                        Self::sky_draw_height(self.visibility_checker.maybe_height(pos))
                     );
                 });
             });
@@ -448,7 +453,7 @@ impl VisualOvermap
                 {
                     self.chunks[pos].1.draw_sky_shadows(
                         info,
-                        self.visibility_checker.maybe_height(pos)
+                        Self::sky_draw_height(self.visibility_checker.maybe_height(pos))
                     );
                 });
             });
