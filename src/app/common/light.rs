@@ -5,7 +5,7 @@ use nalgebra::Vector3;
 use yanyaengine::{game_object::*, TransformContainer, Transform, SolidObject, ObjectVertex};
 
 use crate::{
-    client::RenderCreateInfo,
+    client::{VisibilityChecker, RenderCreateInfo},
     common::{Entity, ServerToClient}
 };
 
@@ -43,8 +43,14 @@ impl ClientLight
 
     fn light_modified(&mut self)
     {
+        let scale = self.scale();
+        self.object.set_scale(scale);
+    }
+
+    fn scale(&self) -> Vector3<f32>
+    {
         let scale = self.light.strength;
-        self.object.set_scale(Vector3::new(scale, scale, 1.0));
+        Vector3::new(scale, scale, 1.0)
     }
 
     pub fn update_buffers(&mut self, info: &mut UpdateBuffersInfo, position: Vector3<f32>)
@@ -56,6 +62,15 @@ impl ClientLight
     pub fn draw(&self, info: &mut DrawInfo)
     {
         self.object.draw(info);
+    }
+
+    pub fn visible_with(&self, visibility: &VisibilityChecker, transform: &Transform) -> bool
+    {
+        visibility.visible_sphere(&Transform{
+            position: transform.position,
+            scale: self.scale(),
+            ..Default::default()
+        }) && self.is_visible()
     }
 
     pub fn is_visible(&self) -> bool

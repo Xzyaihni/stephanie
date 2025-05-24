@@ -237,6 +237,8 @@ impl ClientEntitiesContainer
             let transform = some_or_return!(self.entities.transform(entity));
 
             let render = render.borrow();
+
+            // uses transform because update buffers might not be called and transforms not synced
             if !render.visible_with(visibility, &transform)
             {
                 return;
@@ -254,10 +256,16 @@ impl ClientEntitiesContainer
 
         for_each_component!(self.entities, light, |entity, light: &RefCell<ClientLight>|
         {
-            if light.borrow().is_visible()
+            let transform = some_or_return!(self.entities.transform(entity));
+
+            let light = light.borrow();
+
+            if !light.visible_with(visibility, &transform)
             {
-                self.light_renders.push(entity);
+                return;
             }
+
+            self.light_renders.push(entity);
         });
 
         self.shaded_renders = shaded_renders.into_values().collect();
