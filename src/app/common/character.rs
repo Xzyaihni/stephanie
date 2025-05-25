@@ -334,7 +334,7 @@ impl Character
             entities.push(true, info)
         };
 
-        let rotation = entities.transform(entity).map(|x| x.rotation).unwrap_or(0.0);
+        let rotation = some_or_return!(entities.transform(entity).map(|x| x.rotation));
 
         let character_info = entities.infos().characters_info.get(self.id);
 
@@ -1542,6 +1542,10 @@ impl Character
         if self.info.is_none()
         {
             self.initialize(entities, entity);
+            if self.info.is_none()
+            {
+                return;
+            }
         }
 
         self.handle_actions(combined_info);
