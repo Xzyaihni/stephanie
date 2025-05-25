@@ -1,5 +1,7 @@
 use std::cell::RefCell;
 
+use parking_lot::RwLock;
+
 use crate::common::{
     entity::{for_each_component, ClientEntities, ComponentWrapper},
     AnyEntities,
@@ -9,13 +11,14 @@ use crate::common::{
 };
 
 
-pub fn update(entities: &mut ClientEntities, passer: &mut impl EntityPasser, dt: f32)
+pub fn update<Passer: EntityPasser>(entities: &mut ClientEntities, passer: &RwLock<Passer>, dt: f32)
 {
-    let mut on_state_change = |entity|
+    let on_state_change = |entity|
     {
         let enemy = entities.enemy(entity).unwrap().clone();
         let target = entities.target_ref(entity).unwrap().clone();
 
+        let mut passer = passer.write();
         passer.send_message(Message::SetEnemy{
             entity,
             component: enemy.into()

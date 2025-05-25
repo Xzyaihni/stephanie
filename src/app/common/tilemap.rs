@@ -40,6 +40,7 @@ pub enum SpecialTile
 pub struct TileInfoRaw
 {
     pub name: String,
+    pub health: Option<f32>,
     pub drawable: Option<bool>,
     pub special: Option<SpecialTile>,
     pub colliding: Option<bool>,
@@ -59,6 +60,7 @@ impl TileInfoRaw
 pub struct TileInfo
 {
     pub name: String,
+    pub health: f32,
     pub drawable: bool,
     pub special: Option<SpecialTile>,
     pub colliding: bool,
@@ -71,6 +73,7 @@ impl TileInfo
     {
         let mut this = TileInfo{
             name: tile_raw.name,
+            health: tile_raw.health.unwrap_or(1.0),
             drawable: tile_raw.drawable.unwrap_or(true),
             special: tile_raw.special,
             colliding: tile_raw.colliding.unwrap_or(true),
@@ -208,6 +211,7 @@ impl TileMap
 
         let air = TileInfo{
             name: "air".to_owned(),
+            health: 0.0,
             drawable: false,
             special: None,
             colliding: false,

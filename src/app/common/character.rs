@@ -49,7 +49,7 @@ use crate::{
         ItemInfo,
         Parent,
         Anatomy,
-        entity::{damaging_system::{self, *}, ClientEntities}
+        entity::{raycast_system, damaging_system::{self, *}, ClientEntities}
     }
 };
 
@@ -1202,7 +1202,7 @@ impl Character
             ignore_end: true
         };
 
-        let hits = combined_info.entities.raycast(info, start, &target);
+        let hits = raycast_system::raycast(combined_info.entities, info, start, &target);
 
         let damage = ranged.damage();
 
@@ -1229,12 +1229,14 @@ impl Character
 
                     drop(transform);
 
-                    let mut passer = combined_info.passer.write();
-
-                    damaging_system::entity_damager(
+                    damaging_system::damager(
                         combined_info.entities,
-                        Some(&mut *passer),
-                        Some(combined_info.common_textures.blood)
+                        Some(&combined_info.passer),
+                        Some(&combined_info.common_textures),
+                        |_tile_pos, _damage|
+                        {
+                            todo!()
+                        }
                     )(DamagingResult{kind: DamagingKind::Entity(id, self.faction), angle, damage});
                 },
                 _ => ()

@@ -11,7 +11,12 @@ use serde::{
 
 use strum::{FromRepr, EnumString};
 
-use crate::common::lisp::{self, *};
+use crate::common::{
+    some_or_return,
+    TileMap,
+    DamageType,
+    lisp::{self, *}
+};
 
 
 #[repr(transparent)]
@@ -136,6 +141,31 @@ impl Tile
     pub fn is_none(&self) -> bool
     {
         self.0.is_none()
+    }
+
+    pub fn damage(&mut self, tilemap: &TileMap, damage: DamageType)
+    {
+        let this_tile = *self;
+        let tile = some_or_return!(&mut self.0);
+
+        let mut info = tile.info.unwrap_or_default();
+        let health_fraction = info.health_fraction;
+
+        let tile_info = tilemap.info(this_tile);
+        let health = health_fraction * tile_info.health;
+
+        let damage = damage.as_flat();
+
+        let new_health = health - damage;
+
+        if new_health < 0.0
+        {
+            self.0 = None;
+        } else
+        {
+            info.health_fraction = new_health / health;
+            tile.info = Some(info);
+        }
     }
 }
 

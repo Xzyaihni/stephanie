@@ -1,21 +1,26 @@
 [
     {
-        "name": "asphalt"
+        "name": "asphalt",
+	"health": 0.9
     },
     {
-        "name": "grassie"
+        "name": "grassie",
+	"health": 0.15
     },
     {
         "name": "concrete"
     },
     {
-        "name": "wood"
+        "name": "wood",
+	"health": 0.5
     },
     {
-        "name": "soil"
+        "name": "soil",
+	"health": 0.2
     },
     {
-        "name": "glass"
+        "name": "glass",
+	"health": 0.01
     },
     {
         "name": "concrete-fence",

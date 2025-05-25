@@ -11,6 +11,7 @@ use crate::{
         world_receiver::WorldReceiver
     },
     common::{
+        some_or_return,
         collider::*,
         TileMap,
         TileInfo,
@@ -224,6 +225,19 @@ impl World
                 collider.collide_immutable(&info, |_| {})
             }
         })
+    }
+
+    pub fn modify_tile(&mut self, pos: TilePos, f: impl FnOnce(&mut Tile))
+    {
+        let tile: Tile = *some_or_return!(self.tile(pos));
+        let mut new_tile: Tile = tile;
+
+        f(&mut new_tile);
+
+        if tile != new_tile
+        {
+            self.set_tile(pos, new_tile);
+        }
     }
 
     pub fn tile(&self, index: TilePos) -> Option<&Tile>

@@ -28,6 +28,7 @@ use yanyaengine::{
     Transform,
     TextureId,
     SolidObject,
+    DefaultTexture,
     object::{texture::SimpleImage, Texture},
     camera::Camera,
     game_object::*
@@ -59,7 +60,15 @@ use crate::{
         OccludingCaster,
         message::Message,
         character::PartialCombinedInfo,
-        entity::{for_each_component, render_system, ClientEntities},
+        entity::{
+            for_each_component,
+            render_system,
+            collider_system,
+            physical_system,
+            enemy_system,
+            damaging_system,
+            ClientEntities
+        },
         world::{
             TILE_SIZE,
             World,
@@ -159,11 +168,12 @@ impl ClientEntitiesContainer
         self.entities.handle_message(create_info, message)
     }
 
-    pub fn update(
+    pub fn update<Passer: EntityPasser>(
         &mut self,
-        world: &World,
-        passer: &mut impl EntityPasser,
-        damage_info: TextureId,
+        world: &mut World,
+        tilemap: &TileMap,
+        passer: &RwLock<Passer>,
+        damage_info: &CommonTextures,
         _is_trusted: bool,
         dt: f32
     )
@@ -171,18 +181,24 @@ impl ClientEntitiesContainer
         let mut space = SpatialGrid::new();
         self.entities.build_space(&mut space);
 
-        self.entities.update_physical(world, dt);
+        physical_system::update(&mut self.entities, world, dt);
         self.entities.update_lazy(dt);
-        self.entities.update_enemy(passer, dt);
+        enemy_system::update(&mut self.entities, passer, dt);
         self.entities.update_children();
 
-        self.entities.update_damaging(passer, damage_info);
+        damaging_system::update(&mut self.entities, passer, damage_info, |tile_pos, damage|
+        {
+            world.modify_tile(tile_pos, |tile|
+            {
+                tile.damage(tilemap, damage.data)
+            })
+        });
 
         self.entities.update_lazy_mix(dt);
 
         self.entities.update_outlineable(dt);
 
-        self.entities.update_colliders(world, &space, dt);
+        collider_system::update(&mut self.entities, world, &space, dt);
 
         self.animation = (self.animation + dt) % (f32::consts::PI * 2.0);
     }
@@ -379,7 +395,8 @@ impl UiReceiver
 pub struct CommonTextures
 {
     pub dust: TextureId,
-    pub blood: TextureId
+    pub blood: TextureId,
+    pub solid: TextureId
 }
 
 impl CommonTextures
@@ -388,7 +405,8 @@ impl CommonTextures
     {
         Self{
             dust: assets.texture_id("decals/dust.png"),
-            blood: assets.texture_id("decals/blood.png")
+            blood: assets.texture_id("decals/blood.png"),
+            solid: assets.default_texture(DefaultTexture::Solid)
         }
     }
 }
@@ -743,11 +761,6 @@ impl GameState
         }
     }
 
-    fn damage_info(&self) -> TextureId
-    {
-        self.common_textures.blood
-    }
-
     pub fn entities(&self) -> &ClientEntities
     {
         &self.entities.entities
@@ -1021,11 +1034,11 @@ impl GameState
 
         if self.connected_and_ready
         {
-            let mut passer = self.connections_handler.write();
             self.entities.update(
-                &self.world,
-                &mut *passer,
-                self.damage_info(),
+                &mut self.world,
+                &self.tilemap,
+                &self.connections_handler,
+                &self.common_textures,
                 self.is_trusted,
                 dt
             );

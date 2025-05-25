@@ -526,7 +526,10 @@ impl GameServer
 
         let message = some_or_return!{self.entities.handle_message(message)};
 
-        let message = some_or_return!{damaging_system::handle_message(&self.entities, None, message)};
+        let message = some_or_return!{damaging_system::handle_message(&self.entities, None, message, |tile_pos, damage|
+        {
+            todo!()
+        })};
 
         match message
         {

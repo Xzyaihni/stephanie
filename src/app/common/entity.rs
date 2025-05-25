@@ -8,9 +8,7 @@ use std::{
 
 use serde::{Serialize, Deserialize};
 
-use nalgebra::Vector3;
-
-use yanyaengine::{TextureId, Transform};
+use yanyaengine::Transform;
 
 use crate::{
     server,
@@ -24,7 +22,6 @@ use crate::{
         watcher::*,
         lazy_transform::*,
         damaging::*,
-        raycast::*,
         SpatialGrid,
         SpatialInfo,
         Joint,
@@ -46,8 +43,7 @@ use crate::{
         ObjectsStore,
         Message,
         Saveable,
-        character::PartialCombinedInfo,
-        world::World
+        character::PartialCombinedInfo
     }
 };
 
@@ -55,10 +51,10 @@ pub use crate::{iterate_components_with, for_each_component};
 
 pub mod render_system;
 pub mod damaging_system;
-mod physical_system;
-mod collider_system;
-mod raycast_system;
-mod enemy_system;
+pub mod physical_system;
+pub mod collider_system;
+pub mod raycast_system;
+pub mod enemy_system;
 
 
 // too many macros, the syntax is horrible, why r they so limiting? wuts up with that?
@@ -1568,16 +1564,6 @@ macro_rules! define_entities_both
                 )+
             }
 
-            pub fn raycast(
-                &self,
-                info: RaycastInfo,
-                start: &Vector3<f32>,
-                end: &Vector3<f32>
-            ) -> RaycastHits
-            {
-                raycast_system::raycast(self, info, start, end)
-            }
-
             pub fn create_render_queued(&mut self, create_info: &mut RenderCreateInfo)
             {
                 let render_queue = {
@@ -1693,15 +1679,6 @@ macro_rules! define_entities_both
                 });
             }
 
-            pub fn update_damaging(
-                &mut self,
-                passer: &mut impl EntityPasser,
-                blood_texture: TextureId
-            )
-            {
-                damaging_system::update(self, passer, blood_texture);
-            }
-
             pub fn update_children(&mut self)
             {
                 for_each_component!(self, parent, |entity, parent: &RefCell<Parent>|
@@ -1718,15 +1695,6 @@ macro_rules! define_entities_both
                         render.visible = parent.visible && parent_visible;
                     }
                 });
-            }
-
-            pub fn update_physical(
-                &mut self,
-                world: &World,
-                dt: f32
-            )
-            {
-                physical_system::update(self, world, dt)
             }
 
             pub fn is_lootable(&self, entity: Entity) -> bool
@@ -1830,16 +1798,6 @@ macro_rules! define_entities_both
                 });
             }
 
-            pub fn update_colliders(
-                &mut self,
-                world: &World,
-                space: &SpatialGrid,
-                dt: f32
-            )
-            {
-                collider_system::update(self, world, space, dt);
-            }
-
             pub fn update_lazy_one(
                 &self,
                 entity: Entity,
@@ -1883,11 +1841,6 @@ macro_rules! define_entities_both
                 {
                     self.update_lazy_one(entity, lazy.borrow_mut(), dt);
                 });
-            }
-
-            pub fn update_enemy(&mut self, passer: &mut impl EntityPasser, dt: f32)
-            {
-                enemy_system::update(self, passer, dt);
             }
 
             pub fn update_characters(

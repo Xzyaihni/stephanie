@@ -3,35 +3,38 @@ use std::{
     cell::RefCell
 };
 
+use parking_lot::RwLock;
+
 use nalgebra::{Unit, Vector3};
 
 use serde::{Serialize, Deserialize};
 
-use crate::common::{
-    some_or_value,
-    some_or_return,
-    angle_between,
-    short_rotation,
-    damage::*,
-    damaging::*,
-    character::*,
-    render_info::*,
-    watcher::*,
-    particle_creator::*,
-    ENTITY_SCALE,
-    EntityInfo,
-    PhysicalProperties,
-    Transform,
-    Message,
-    Side2d,
-    AnyEntities,
-    Entity,
-    EntityPasser,
-    entity::{iterate_components_with, ClientEntities},
-    world::{TILE_SIZE, TilePos}
+use crate::{
+    client::CommonTextures,
+    common::{
+        some_or_value,
+        some_or_return,
+        angle_between,
+        short_rotation,
+        damage::*,
+        damaging::*,
+        character::*,
+        render_info::*,
+        watcher::*,
+        particle_creator::*,
+        ENTITY_SCALE,
+        EntityInfo,
+        PhysicalProperties,
+        Transform,
+        Message,
+        Side2d,
+        AnyEntities,
+        Entity,
+        EntityPasser,
+        entity::{iterate_components_with, ClientEntities},
+        world::{TILE_SIZE, TilePos}
+    }
 };
-
-use yanyaengine::TextureId;
 
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -49,17 +52,18 @@ pub struct DamagingResult
     pub damage: DamagePartial
 }
 
-pub fn handle_message<E: AnyEntities>(
+pub fn handle_message<E: AnyEntities, TileDamager: FnMut(TilePos, DamagePartial)>(
     entities: &E,
-    blood_texture: Option<TextureId>,
-    message: Message
+    textures: Option<&CommonTextures>,
+    message: Message,
+    damage_tile: TileDamager
 ) -> Option<Message>
 {
     match message
     {
         Message::Damage(damage) =>
         {
-            entity_damager::<E, ()>(entities, None, blood_texture)(damage);
+            damager::<E, (), TileDamager>(entities, None, textures, damage_tile)(damage);
 
             None
         },
@@ -67,11 +71,12 @@ pub fn handle_message<E: AnyEntities>(
     }
 }
 
-pub fn entity_damager<'a, E: AnyEntities, Passer: EntityPasser>(
+pub fn damager<'a, 'b, E: AnyEntities, Passer: EntityPasser, TileDamager: FnMut(TilePos, DamagePartial)>(
     entities: &'a E,
-    mut passer: Option<&'a mut Passer>,
-    blood_texture: Option<TextureId>
-) -> impl FnMut(DamagingResult) + use<'a, Passer, E>
+    mut passer: Option<&'b RwLock<Passer>>,
+    textures: Option<&'a CommonTextures>,
+    mut damage_tile: TileDamager
+) -> impl FnMut(DamagingResult) + use<'a, 'b, Passer, E, TileDamager>
 {
     move |result|
     {
@@ -121,18 +126,35 @@ pub fn entity_damager<'a, E: AnyEntities, Passer: EntityPasser>(
             },
             DamagingKind::Tile(tile_pos) =>
             {
-                dbg!(tile_pos);
-                todo!()
+                damage_tile(tile_pos, damage);
+
+                entities.push(true, EntityInfo{
+                    render: Some(RenderInfo{
+                        object: Some(RenderObjectKind::TextureId{
+                            id: some_or_return!(textures.as_ref()).solid
+                        }.into()),
+                        ..Default::default()
+                    }),
+                    transform: Some(Transform{
+                        position: tile_pos.position().into(),
+                        scale: Vector3::repeat(TILE_SIZE),
+                        ..Default::default()
+                    }),
+                    watchers: Some(Default::default()),
+                    ..Default::default()
+                })
             }
         };
 
-        let blood_texture = some_or_return!(blood_texture);
+        let textures = some_or_return!(textures.as_ref());
         // only clients get to this point
 
         if let Some(passer) = passer.as_mut()
         {
-            passer.send_message(Message::Damage(result));
+            passer.write().send_message(Message::Damage(result));
         }
+
+        flash_white(entities, entity);
 
         let direction = Unit::new_unchecked(
             Vector3::new(-angle.cos(), angle.sin(), 0.0)
@@ -166,7 +188,7 @@ pub fn entity_damager<'a, E: AnyEntities, Passer: EntityPasser>(
                     }.into()),
                     render: Some(RenderInfo{
                         object: Some(RenderObjectKind::TextureId{
-                            id: blood_texture
+                            id: textures.blood
                         }.into()),
                         z_level: ZLevel::Knee,
                         ..Default::default()
@@ -179,10 +201,11 @@ pub fn entity_damager<'a, E: AnyEntities, Passer: EntityPasser>(
     }
 }
 
-pub fn update(
+pub fn update<Passer: EntityPasser>(
     entities: &mut ClientEntities,
-    passer: &mut impl EntityPasser,
-    blood_texture: TextureId
+    passer: &RwLock<Passer>,
+    textures: &CommonTextures,
+    damage_tile: impl FnMut(TilePos, DamagePartial)
 )
 {
     // "zero" "cost" "abstractions" "borrow" "checker"
@@ -288,7 +311,7 @@ pub fn update(
         }).collect::<Vec<_>>()
     }).collect::<Vec<_>>();
 
-    damage_entities.into_iter().for_each(entity_damager(entities, Some(passer), Some(blood_texture)));
+    damage_entities.into_iter().for_each(damager(entities, Some(passer), Some(textures), damage_tile));
 }
 
 fn flash_white_single(entities: &impl AnyEntities, entity: Entity)
@@ -332,8 +355,6 @@ pub fn damage_entity(entities: &impl AnyEntities, entity: Entity, damage: Damage
             }
         }
     }
-
-    flash_white(entities, entity);
 
     if let Some(mut anatomy) = entities.anatomy_mut(entity)
     {
