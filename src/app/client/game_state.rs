@@ -192,7 +192,7 @@ impl ClientEntitiesContainer
         {
             world.modify_tile(tile_pos, |tile|
             {
-                tile.damage(tilemap, damage.data)
+                tile.damage(tilemap, damage.data);
             })
         });
 

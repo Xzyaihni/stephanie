@@ -43,6 +43,7 @@ impl EnemyBehavior
                 {
                     BehaviorState::Wait => 10.0..=20.0,
                     BehaviorState::MoveDirection(_) => 0.8..=2.0,
+                    BehaviorState::MoveTo(_) => return None,
                     BehaviorState::Attack(_) => return None
                 }
             }
@@ -57,6 +58,7 @@ pub enum BehaviorState
 {
     Wait,
     MoveDirection(Unit<Vector3<f32>>),
+    MoveTo(Vector3<f32>),
     Attack(Entity)
 }
 
@@ -100,7 +102,7 @@ impl Enemy
         }
     }
 
-    fn next_state(&self) -> BehaviorState
+    fn next_state(&self, entities: &impl AnyEntities) -> BehaviorState
     {
         match &self.behavior
         {
@@ -118,7 +120,14 @@ impl Enemy
                         BehaviorState::MoveDirection(direction)
                     },
                     BehaviorState::MoveDirection(_) => BehaviorState::Wait,
-                    BehaviorState::Attack(_) => BehaviorState::Wait
+                    BehaviorState::MoveTo(_) => BehaviorState::Wait,
+                    BehaviorState::Attack(entity) =>
+                    {
+                        entities.transform(*entity).map(|transform|
+                        {
+                            BehaviorState::MoveTo(transform.position)
+                        }).unwrap_or_else(|| BehaviorState::Wait)
+                    }
                 }
             }
         }
@@ -156,6 +165,24 @@ impl Enemy
                     &mut character,
                     &anatomy,
                     *direction,
+                    dt
+                );
+            },
+            BehaviorState::MoveTo(point) =>
+            {
+                let distance = point - transform.position;
+
+                if distance.magnitude() < transform.scale.min()
+                {
+                    self.reset_state = true;
+                    return;
+                }
+
+                Self::move_direction(
+                    &mut physical,
+                    &mut character,
+                    &anatomy,
+                    Unit::new_normalize(distance),
                     dt
                 );
             },
@@ -259,7 +286,7 @@ impl Enemy
             let changed_state = *current_state_left <= 0.0;
             if changed_state
             {
-                self.set_next_state();
+                self.set_next_state(entities);
             }
 
             changed_state
@@ -273,7 +300,7 @@ impl Enemy
             self.reset_state = false;
 
             changed = true;
-            self.set_next_state();
+            self.set_next_state(entities);
         }
 
         self.do_behavior(entities, entity, dt);
@@ -281,9 +308,9 @@ impl Enemy
         changed
     }
 
-    fn set_next_state(&mut self)
+    fn set_next_state(&mut self, entities: &impl AnyEntities)
     {
-        self.set_state(self.next_state());
+        self.set_state(self.next_state(entities));
     }
 
     fn set_state(&mut self, state: BehaviorState)

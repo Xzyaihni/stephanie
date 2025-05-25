@@ -143,7 +143,7 @@ impl Tile
         self.0.is_none()
     }
 
-    pub fn damage(&mut self, tilemap: &TileMap, damage: DamageType)
+    pub fn damage(&mut self, tilemap: &TileMap, damage: DamageType) -> bool
     {
         let this_tile = *self;
         let tile = some_or_return!(&mut self.0);
@@ -158,7 +158,9 @@ impl Tile
 
         let new_health = health - damage;
 
-        if new_health < 0.0
+        let destroyed = new_health < 0.0;
+
+        if destroyed
         {
             self.0 = None;
         } else
@@ -166,6 +168,8 @@ impl Tile
             info.health_fraction = new_health / tile_info.health;
             tile.info = Some(info);
         }
+
+        destroyed
     }
 }
 
