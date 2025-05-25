@@ -154,7 +154,7 @@ impl Tile
         let tile_info = tilemap.info(this_tile);
         let health = health_fraction * tile_info.health;
 
-        let damage = damage.as_flat();
+        let damage = damage.as_flat() * 0.00001;
 
         let new_health = health - damage;
 
@@ -163,7 +163,7 @@ impl Tile
             self.0 = None;
         } else
         {
-            info.health_fraction = new_health / health;
+            info.health_fraction = new_health / tile_info.health;
             tile.info = Some(info);
         }
     }

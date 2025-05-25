@@ -311,6 +311,16 @@ pub fn create() -> ShadersCreated
         ..Default::default()
     });
 
+    let above_world_shader = shaders.push(Shader{
+        shader: ShadersGroup::new(
+            default_vertex,
+            default_fragment::load
+        ),
+        per_vertex: Some(Object::per_vertex()),
+        subpass: 4,
+        ..Default::default()
+    });
+
     let ui_shader = shaders.push(Shader{
         shader: ShadersGroup::new(
             ui_vertex::load,
@@ -325,6 +335,7 @@ pub fn create() -> ShadersCreated
         shaders,
         group: ProgramShaders{
             default: default_shader,
+            above_world: above_world_shader,
             default_shaded: default_shaded_shader,
             world: world_shader,
             world_shaded: world_shaded_shader,

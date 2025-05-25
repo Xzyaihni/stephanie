@@ -166,13 +166,11 @@ impl World
 {
     pub fn new(
         message_handler: Arc<RwLock<ConnectionsHandler>>,
-        tilemap: TileMap,
+        tilemap: Rc<TileMap>,
         enemies_info: Arc<EnemiesInfo>,
         items_info: Arc<ItemsInfo>
     ) -> Result<Self, ParseError>
     {
-        let tilemap = Rc::new(tilemap);
-
         let world_name = "default".to_owned();
 
         let world_path = Self::world_path_associated(&world_name);
@@ -205,9 +203,17 @@ impl World
 
     fn set_tile_local(&mut self, pos: TilePos, tile: Tile)
     {
-        if let Some(chunk) = self.chunk_saver.load(pos.chunk)
+        self.modify_chunk(pos, |chunk|
         {
-            let chunk = chunk.with_set_tile(pos.local, tile);
+            *chunk = chunk.with_set_tile(pos.local, tile);
+        });
+    }
+
+    pub fn modify_chunk(&mut self, pos: TilePos, f: impl FnOnce(&mut Chunk))
+    {
+        if let Some(mut chunk) = self.chunk_saver.load(pos.chunk)
+        {
+            f(&mut chunk);
 
             self.chunk_saver.save(pos.chunk, chunk);
         }

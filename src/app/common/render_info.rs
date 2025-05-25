@@ -336,6 +336,7 @@ pub struct RenderInfo
     pub scissor: Option<Scissor>,
     pub object: Option<RenderObject>,
     pub visibility_check: bool,
+    pub above_world: bool,
     pub mix: Option<MixColor>,
     pub aspect: Aspect,
     pub z_level: ZLevel
@@ -351,6 +352,7 @@ impl Default for RenderInfo
             scissor: None,
             object: None,
             visibility_check: true,
+            above_world: false,
             mix: None,
             aspect: Aspect::Fill,
             z_level: ZLevel::Shoulders
@@ -447,6 +449,7 @@ pub struct ClientRenderInfo
     pub scissor: Option<VulkanoScissor>,
     pub object: Option<ClientRenderObject>,
     pub visibility_check: bool,
+    pub above_world: bool,
     pub mix: Option<MixColor>,
     pub aspect: Aspect,
     z_level: ZLevel
@@ -477,6 +480,7 @@ impl ServerToClient<ClientRenderInfo> for RenderInfo
             scissor,
             object,
             visibility_check: self.visibility_check,
+            above_world: self.above_world,
             mix: self.mix,
             aspect: self.aspect,
             z_level: self.z_level

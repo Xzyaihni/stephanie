@@ -74,6 +74,7 @@ pub struct DrawEntities<'a>
 {
     pub solid: &'a SolidObject,
     pub renders: &'a [Vec<Entity>],
+    pub above_world: &'a [Entity],
     pub shaded_renders: &'a [Vec<Entity>],
     pub light_renders: &'a [Entity],
     pub world: &'a World
@@ -173,8 +174,29 @@ pub fn draw(
     renderables.solid.draw(info);
 
     info.next_subpass();
-    info.bind_pipeline(shaders.ui);
+
     info.current_sets.clear();
+    info.bind_pipeline(shaders.above_world);
+
+    renderables.above_world.iter().for_each(|&entity|
+    {
+        let outline = entities.outlineable(entity).and_then(|outline|
+        {
+            outline.current()
+        }).unwrap_or_default();
+
+        let render = entities.render(entity).unwrap();
+
+        let outline = OutlinedInfo::new(
+            render.mix,
+            outline,
+            animation
+        );
+
+        render.draw(info, outline);
+    });
+
+    info.bind_pipeline(shaders.ui);
 
     ui.draw(info);
 }

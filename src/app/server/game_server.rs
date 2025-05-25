@@ -2,6 +2,7 @@ use std::{
     f32,
     fmt,
     mem,
+    rc::Rc,
     thread::JoinHandle,
     ops::ControlFlow,
     net::TcpStream,
@@ -120,6 +121,7 @@ pub struct GameServer
     player_character: CharacterId,
     characters_info: Arc<CharactersInfo>,
     world: World,
+    tilemap: Rc<TileMap>,
     sender: Sender<(ConnectionId, Message, Entity)>,
     receiver: Receiver<(ConnectionId, Message, Entity)>,
     connection_receiver: Receiver<TcpStream>,
@@ -152,12 +154,13 @@ impl GameServer
         limit: usize
     ) -> Result<(Sender<TcpStream>, Self), ParseError>
     {
+        let tilemap = Rc::new(tilemap);
         let entities = Entities::new(data_infos.clone());
         let connection_handler = Arc::new(RwLock::new(ConnectionsHandler::new(limit)));
 
         let world = World::new(
             connection_handler.clone(),
-            tilemap,
+            tilemap.clone(),
             data_infos.enemies_info.clone(),
             data_infos.items_info.clone()
         )?;
@@ -173,6 +176,7 @@ impl GameServer
             player_character: data_infos.player_character,
             characters_info: data_infos.characters_info,
             world,
+            tilemap,
             sender,
             receiver,
             connection_receiver,
@@ -528,7 +532,10 @@ impl GameServer
 
         let message = some_or_return!{damaging_system::handle_message(&self.entities, None, message, |tile_pos, damage|
         {
-            todo!()
+            self.world.modify_chunk(tile_pos, |chunk|
+            {
+                chunk[tile_pos.local].damage(&self.tilemap, damage.data);
+            });
         })};
 
         match message

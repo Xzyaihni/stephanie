@@ -121,6 +121,7 @@ pub struct ClientEntitiesContainer
     pub camera_entity: Entity,
     pub follow_entity: Entity,
     visible_renders: Vec<Vec<Entity>>,
+    above_world_renders: Vec<Entity>,
     light_renders: Vec<Entity>,
     shaded_renders: Vec<Vec<Entity>>,
     player_entity: Entity,
@@ -153,6 +154,7 @@ impl ClientEntitiesContainer
             follow_entity,
             player_entity,
             visible_renders: Vec::new(),
+            above_world_renders: Vec::new(),
             light_renders: Vec::new(),
             shaded_renders: Vec::new(),
             animation: 0.0
@@ -244,6 +246,7 @@ impl ClientEntitiesContainer
             }
         }
 
+        self.above_world_renders.clear();
         self.light_renders.clear();
 
         let mut shaded_renders = BTreeMap::new();
@@ -257,6 +260,12 @@ impl ClientEntitiesContainer
             // uses transform because update buffers might not be called and transforms not synced
             if !render.visible_with(visibility, &transform)
             {
+                return;
+            }
+
+            if render.above_world
+            {
+                self.above_world_renders.push(entity);
                 return;
             }
 
@@ -289,7 +298,7 @@ impl ClientEntitiesContainer
 
         render_system::update_buffers(
             &self.entities,
-            self.visible_renders.iter().flatten().copied(),
+            self.visible_renders.iter().flatten().chain(self.above_world_renders.iter()).copied(),
             self.light_renders.iter().copied(),
             info,
             caster
@@ -976,6 +985,7 @@ impl GameState
         let draw_entities = render_system::DrawEntities{
             solid: &self.screen_object,
             renders: &self.entities.visible_renders,
+            above_world: &self.entities.above_world_renders,
             shaded_renders: &self.entities.shaded_renders,
             light_renders: &self.entities.light_renders,
             world: &self.world

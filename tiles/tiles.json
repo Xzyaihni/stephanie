@@ -20,7 +20,7 @@
     },
     {
         "name": "glass",
-	"health": 0.01
+	"health": 0.004
     },
     {
         "name": "concrete-fence",

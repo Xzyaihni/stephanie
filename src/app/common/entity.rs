@@ -746,6 +746,11 @@ macro_rules! common_trait_impl
             })
         }
 
+        fn in_flight(&self) -> InFlightGetter<RefMut<SetterQueue<$($shared_type,)+>>>
+        {
+            InFlightGetter(self.lazy_setter.borrow_mut())
+        }
+
         fn remove_deferred(&self, entity: Entity)
         {
             self.remove_queue.borrow_mut().push(entity);
@@ -1141,11 +1146,6 @@ macro_rules! define_entities_both
                 )+};
 
                 format!("{info:#?}")
-            }
-
-            pub fn in_flight(&self) -> InFlightGetter<RefMut<SetterQueue<$($default_type,)+>>>
-            {
-                InFlightGetter(self.lazy_setter.borrow_mut())
             }
 
             fn set_each(&mut self, entity: Entity, info: EntityInfo<$($component_type,)+>)
@@ -2192,6 +2192,8 @@ macro_rules! define_entities
 
             fn remove_deferred(&self, entity: Entity);
             fn remove(&mut self, entity: Entity);
+
+            fn in_flight(&self) -> InFlightGetter<RefMut<SetterQueue<$($side_default_type,)+ $($default_type,)+>>>;
 
             fn push_eager(
                 &mut self,

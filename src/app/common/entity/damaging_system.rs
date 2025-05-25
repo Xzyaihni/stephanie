@@ -13,7 +13,6 @@ use crate::{
     client::CommonTextures,
     common::{
         some_or_value,
-        some_or_return,
         angle_between,
         short_rotation,
         damage::*,
@@ -36,6 +35,8 @@ use crate::{
     }
 };
 
+
+const HIGHLIGHT_DURATION: f32 = 0.2;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum DamagingKind
@@ -83,7 +84,53 @@ pub fn damager<'a, 'b, E: AnyEntities, Passer: EntityPasser, TileDamager: FnMut(
         let angle = result.angle;
         let damage = result.damage.clone();
 
-        let entity = match result.kind
+        let create_particles = |textures: &CommonTextures|
+        {
+            let direction = Unit::new_unchecked(
+                Vector3::new(-angle.cos(), angle.sin(), 0.0)
+            );
+
+            let scale = Vector3::repeat(ENTITY_SCALE * 0.1)
+                .component_mul(&Vector3::new(4.0, 1.0, 1.0));
+
+            Watcher{
+                kind: WatcherType::Instant,
+                action: WatcherAction::Explode(Box::new(ExplodeInfo{
+                    keep: true,
+                    info: ParticlesInfo{
+                        amount: 2..4,
+                        speed: ParticleSpeed::DirectionSpread{
+                            direction,
+                            speed: 1.7..=2.0,
+                            spread: 0.2
+                        },
+                        decay: ParticleDecay::Random(7.0..=10.0),
+                        position: ParticlePosition::Spread(0.1),
+                        rotation: ParticleRotation::Exact(-angle),
+                        scale: ParticleScale::Spread{scale, variation: 0.1},
+                        min_scale: ENTITY_SCALE * 0.15
+                    },
+                    prototype: EntityInfo{
+                        physical: Some(PhysicalProperties{
+                            inverse_mass: 0.05_f32.recip(),
+                            floating: true,
+                            ..Default::default()
+                        }.into()),
+                        render: Some(RenderInfo{
+                            object: Some(RenderObjectKind::TextureId{
+                                id: textures.blood
+                            }.into()),
+                            z_level: ZLevel::Knee,
+                            ..Default::default()
+                        }),
+                        ..Default::default()
+                    }
+                })),
+                ..Default::default()
+            }
+        };
+
+        match result.kind
         {
             DamagingKind::Entity(entity, faction) =>
             {
@@ -122,82 +169,51 @@ pub fn damager<'a, 'b, E: AnyEntities, Passer: EntityPasser, TileDamager: FnMut(
                     return;
                 }
 
-                entity
+                if let Some(textures) = textures.as_ref()
+                {
+                    entities.watchers_mut(entity).unwrap().push(create_particles(textures));
+
+                    flash_white(entities, entity);
+                }
             },
             DamagingKind::Tile(tile_pos) =>
             {
                 damage_tile(tile_pos, damage);
 
-                entities.push(true, EntityInfo{
-                    render: Some(RenderInfo{
-                        object: Some(RenderObjectKind::TextureId{
-                            id: some_or_return!(textures.as_ref()).solid
-                        }.into()),
+                if let Some(textures) = textures.as_ref()
+                {
+                    entities.push(true, EntityInfo{
+                        render: Some(RenderInfo{
+                            object: Some(RenderObjectKind::TextureId{
+                                id: textures.solid
+                            }.into()),
+                            above_world: true,
+                            mix: Some(MixColor::color([1.0, 1.0, 1.0, 0.02])),
+                            ..Default::default()
+                        }),
+                        transform: Some(Transform{
+                            position: Vector3::from(tile_pos.position()) + Vector3::repeat(TILE_SIZE / 2.0),
+                            scale: Vector3::repeat(TILE_SIZE),
+                            ..Default::default()
+                        }),
+                        watchers: Some(Watchers::new(vec![
+                            create_particles(textures),
+                            Watcher{
+                                kind: WatcherType::Lifetime(HIGHLIGHT_DURATION.into()),
+                                action: WatcherAction::Remove,
+                                ..Default::default()
+                            }
+                        ])),
                         ..Default::default()
-                    }),
-                    transform: Some(Transform{
-                        position: tile_pos.position().into(),
-                        scale: Vector3::repeat(TILE_SIZE),
-                        ..Default::default()
-                    }),
-                    watchers: Some(Default::default()),
-                    ..Default::default()
-                })
+                    });
+                }
             }
-        };
-
-        let textures = some_or_return!(textures.as_ref());
-        // only clients get to this point
+        }
 
         if let Some(passer) = passer.as_mut()
         {
             passer.write().send_message(Message::Damage(result));
         }
-
-        flash_white(entities, entity);
-
-        let direction = Unit::new_unchecked(
-            Vector3::new(-angle.cos(), angle.sin(), 0.0)
-        );
-
-        let scale = Vector3::repeat(ENTITY_SCALE * 0.1)
-            .component_mul(&Vector3::new(4.0, 1.0, 1.0));
-
-        entities.watchers_mut(entity).unwrap().push(Watcher{
-            kind: WatcherType::Instant,
-            action: WatcherAction::Explode(Box::new(ExplodeInfo{
-                keep: true,
-                info: ParticlesInfo{
-                    amount: 2..4,
-                    speed: ParticleSpeed::DirectionSpread{
-                        direction,
-                        speed: 1.7..=2.0,
-                        spread: 0.2
-                    },
-                    decay: ParticleDecay::Random(7.0..=10.0),
-                    position: ParticlePosition::Spread(0.1),
-                    rotation: ParticleRotation::Exact(-angle),
-                    scale: ParticleScale::Spread{scale, variation: 0.1},
-                    min_scale: ENTITY_SCALE * 0.15
-                },
-                prototype: EntityInfo{
-                    physical: Some(PhysicalProperties{
-                        inverse_mass: 0.05_f32.recip(),
-                        floating: true,
-                        ..Default::default()
-                    }.into()),
-                    render: Some(RenderInfo{
-                        object: Some(RenderObjectKind::TextureId{
-                            id: textures.blood
-                        }.into()),
-                        z_level: ZLevel::Knee,
-                        ..Default::default()
-                    }),
-                    ..Default::default()
-                }
-            })),
-            ..Default::default()
-        });
     }
 }
 
@@ -255,7 +271,7 @@ pub fn update<Passer: EntityPasser>(
 
             if same_tile_z
             {
-                if ((position.z + TILE_SIZE / 2.0) - this_transform.position.z).abs() > TILE_SIZE
+                if ((position.z + TILE_SIZE / 2.0) - this_transform.position.z).abs() > (TILE_SIZE / 2.0)
                 {
                     return None;
                 }
@@ -324,7 +340,7 @@ fn flash_white_single(entities: &impl AnyEntities, entity: Entity)
 
             watchers.push(
                 Watcher{
-                    kind: WatcherType::Lifetime(0.2.into()),
+                    kind: WatcherType::Lifetime(HIGHLIGHT_DURATION.into()),
                     action: WatcherAction::SetMixColor(None),
                     ..Default::default()
                 }
