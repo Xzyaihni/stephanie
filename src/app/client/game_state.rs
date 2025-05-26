@@ -733,11 +733,6 @@ impl GameState
         {
             self.send_message(Message::SetTarget{entity, target: Box::new(target.clone())});
         }
-
-        if let Some(character) = entities.character(entity)
-        {
-            self.send_message(Message::SyncCharacter{entity, info: character.get_sync_info()});
-        }
     }
 
     fn connect_to_server(

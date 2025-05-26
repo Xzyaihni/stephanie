@@ -1609,7 +1609,10 @@ impl<'a> PlayerContainer<'a>
 
         let rotation = pos.y.atan2(pos.x);
 
-        character.rotation = rotation;
+        if let Some(x) = character.rotation_mut()
+        {
+            *x = rotation;
+        }
     }
 
     fn player_position(&self) -> Option<Vector3<f32>>

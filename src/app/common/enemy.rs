@@ -254,7 +254,10 @@ impl Enemy
     {
         let angle = direction.y.atan2(direction.x);
 
-        character.rotation = angle;
+        if let Some(x) = character.rotation_mut()
+        {
+            *x = angle;
+        }
     }
 
     pub fn update(

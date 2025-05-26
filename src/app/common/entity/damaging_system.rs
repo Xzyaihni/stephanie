@@ -446,7 +446,10 @@ pub fn damage_entity(entities: &impl AnyEntities, entity: Entity, damage: Damage
             {
                 if entities.anatomy(entity).map(|x| x.speed().is_some()).unwrap_or(false)
                 {
-                    character.rotation -= change;
+                    if let Some(x) = character.rotation_mut()
+                    {
+                        *x -= change;
+                    }
                 }
             }
         }

@@ -218,7 +218,8 @@ pub struct AfterInfo
     hand_left: Entity,
     hand_right: Entity,
     holding: Entity,
-    hair: Vec<Entity>
+    hair: Vec<Entity>,
+    rotation: f32
 }
 
 #[derive(Default, Debug, Clone)]
@@ -241,7 +242,6 @@ pub struct Character
     pub id: CharacterId,
     pub faction: Faction,
     pub sprinting: bool,
-    pub rotation: f32,
     oversprint_cooldown: f32,
     stamina: f32,
     jiggle: f32,
@@ -270,7 +270,6 @@ impl Character
             id,
             faction,
             sprinting: false,
-            rotation: 0.0,
             oversprint_cooldown: 0.0,
             stamina: f32::MAX,
             jiggle: 0.0,
@@ -285,18 +284,6 @@ impl Character
             actions: Vec::new(),
             sprite_state: SpriteState::Normal.into()
         }
-    }
-
-    pub fn get_sync_info(&self) -> CharacterSyncInfo
-    {
-        CharacterSyncInfo{
-            rotation: self.rotation
-        }
-    }
-
-    pub fn sync_info(&mut self, info: CharacterSyncInfo)
-    {
-        self.rotation = info.rotation;
     }
 
     fn default_connection() -> Connection
@@ -466,7 +453,8 @@ impl Character
             hand_left,
             hand_right: inserter(held_item(None, false)),
             holding: inserter(held_item(Some(hand_left), false)),
-            hair
+            hair,
+            rotation
         };
 
         if !entities.light_exists(entity)
@@ -475,8 +463,6 @@ impl Character
         }
 
         self.info = Some(info);
-
-        self.rotation = rotation;
     }
 
     pub fn with_previous(&mut self, previous: Self)
@@ -1665,6 +1651,11 @@ impl Character
         self.set_sprite(state);
     }
 
+    pub fn rotation_mut(&mut self) -> Option<&mut f32>
+    {
+        self.info.as_mut().map(|x| &mut x.rotation)
+    }
+
     fn is_sprinting(&self) -> bool
     {
         if self.oversprint_cooldown <= 0.0
@@ -1678,7 +1669,7 @@ impl Character
 
     fn update_jiggle(&mut self, combined_info: CombinedInfo, dt: f32)
     {
-        let info = some_or_return!(self.info.as_ref());
+        let info = some_or_return!(self.info.as_mut());
         let physical = some_or_return!(combined_info.entities.physical(info.this));
         let speed = physical.velocity().xy().magnitude() * 50.0;
 
@@ -1688,10 +1679,10 @@ impl Character
 
         target.rotation = if *self.sprite_state.value() == SpriteState::Crawling
         {
-            self.rotation + self.jiggle.sin() * 0.25
+            info.rotation + self.jiggle.sin() * 0.25
         } else
         {
-            self.rotation
+            info.rotation
         };
     }
 
