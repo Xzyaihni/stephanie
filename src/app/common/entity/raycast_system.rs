@@ -86,7 +86,7 @@ pub fn raycast(
     {
         let mut pierce_left = info.pierce;
 
-        let world_hits = raycast_world(world, start, &direction, |hit|
+        let world_hits = raycast_world(world, start, &direction, |tile, hit|
         {
             if let Some(left) = pierce_left.as_mut()
             {
@@ -95,8 +95,11 @@ pub fn raycast(
                     return true;
                 }
 
-                let include_pierce_info_here = ();
-                *left -= hit.result.pierce;
+                *left -= hit.result.pierce * match info.pierce_scale
+                {
+                    RaycastPierce::None => 1.0,
+                    RaycastPierce::Density{..} => tile.health
+                };
             }
 
             if (hit.result.distance > max_distance) && !info.ignore_end
@@ -121,8 +124,33 @@ pub fn raycast(
         {
             if pierce > 0.0
             {
-                let include_pierce_info_here = ();
-                pierce -= x.result.pierce;
+                pierce -= x.result.pierce * match info.pierce_scale
+                {
+                    RaycastPierce::None => 1.0,
+                    RaycastPierce::Density{ignore_anatomy} =>
+                    {
+                        match x.id
+                        {
+                            RaycastHitId::Tile(pos) => world.tile(pos).map(|tile| world.tile_info(*tile).health).unwrap_or(1.0),
+                            RaycastHitId::Entity(entity) =>
+                            {
+                                if ignore_anatomy && entities.anatomy_exists(entity)
+                                {
+                                    0.0
+                                } else if let Some(physical) = entities.physical(entity)
+                                {
+                                    entities.transform(entity).map(|x|
+                                    {
+                                        x.scale.product()
+                                    }).unwrap_or(1.0) * physical.inverse_mass.recip()
+                                } else
+                                {
+                                    1.0
+                                }
+                            }
+                        }
+                    }
+                };
 
                 true
             } else

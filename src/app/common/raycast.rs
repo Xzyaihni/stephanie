@@ -14,6 +14,7 @@ use crate::common::{
     collider::*,
     damaging::DamagedId,
     world::{TILE_SIZE, TilePos},
+    TileInfo,
     World,
     Entity,
     Pos3
@@ -59,7 +60,7 @@ impl RaycastResult
 pub enum RaycastPierce
 {
     None,
-    Density
+    Density{ignore_anatomy: bool}
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -97,7 +98,7 @@ impl RaycastHits
     }
 }
 
-pub fn raycast_world<'a, Exit: FnMut(&RaycastHit) -> bool>(
+pub fn raycast_world<'a, Exit: FnMut(&TileInfo, &RaycastHit) -> bool>(
     world: &'a World,
     start: &'a Vector3<f32>,
     direction: &'a Unit<Vector3<f32>>,
@@ -123,8 +124,9 @@ pub fn raycast_world<'a, Exit: FnMut(&RaycastHit) -> bool>(
     (0..).scan((TilePos::from(Pos3::from(*start)), inside_tile_pos(*start)), move |(current_pos, current), _| -> Option<Option<RaycastHit>>
     {
         let tile = *world.tile(*current_pos)?;
+        let tile_info = world.tile_info(tile);
 
-        let is_colliding = world.tile_info(tile).colliding;
+        let is_colliding = tile_info.colliding;
 
         let axis_distances = current.zip_map(&direction, |x, d|
         {
@@ -175,7 +177,7 @@ pub fn raycast_world<'a, Exit: FnMut(&RaycastHit) -> bool>(
 
         if let Some(hit) = hit.as_ref()
         {
-            if early_exit(hit)
+            if early_exit(tile_info, hit)
             {
                 return None;
             }

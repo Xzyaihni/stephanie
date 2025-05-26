@@ -1,6 +1,6 @@
 use std::{
     f32,
-    ops::Mul,
+    ops::{Mul, MulAssign},
     fmt::{self, Debug}
 };
 
@@ -91,6 +91,14 @@ impl Mul<f32> for DamageType
         }
 
         self
+    }
+}
+
+impl MulAssign<f32> for DamageType
+{
+    fn mul_assign(&mut self, scale: f32)
+    {
+        *self = *self * scale;
     }
 }
 

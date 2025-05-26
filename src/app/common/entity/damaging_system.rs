@@ -267,7 +267,10 @@ fn damaging_raycasting(
 
         entities.remove_deferred(entity);
 
-        DamagingResult{kind, angle, damage: damage.clone()}
+        let mut damage = damage.clone();
+        damage.data *= hit.result.pierce.min(1.0);
+
+        DamagingResult{kind, angle, damage}
     }).collect()
 }
 

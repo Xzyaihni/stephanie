@@ -1671,17 +1671,17 @@ impl HumanAnatomy
 
     fn updated_stamina(&mut self) -> Option<f32>
     {
-        Some(0.5)
+        Some(0.2)
     }
 
     fn updated_max_stamina(&mut self) -> Option<f32>
     {
-        Some(10.0)
+        Some(1.0)
     }
 
     fn updated_vision(&mut self) -> Option<f32>
     {
-        Some(TILE_SIZE * 8.0)
+        Some(TILE_SIZE * 10.0)
     }
 
     fn update_cache(&mut self)

@@ -527,9 +527,9 @@ impl Character
     {
         let item_info = self.held_info(combined_info);
 
-        let heaviness = item_info.mass / (self.newtons(combined_info)? * 0.01);
+        let heaviness = item_info.mass / (self.newtons(combined_info)? * 0.1);
 
-        Some(item_info.comfort.recip() * heaviness.clamp(0.5, 2.0))
+        Some(item_info.comfort.recip() * heaviness.clamp(1.0, 2.0))
     }
 
     fn bash_attack_cooldown(&self, combined_info: CombinedInfo) -> Option<f32>
@@ -848,7 +848,7 @@ impl Character
 
         let raw_use = item_info.mass / self.newtons(combined_info)? * 70.0;
 
-        let cost = raw_use / item_info.comfort;
+        let cost = 0.1 + raw_use / item_info.comfort;
 
         Some(cost)
     }
@@ -1189,7 +1189,7 @@ impl Character
 
         let info = RaycastInfo{
             pierce: Some(damage.as_ranged_pierce()),
-            pierce_scale: RaycastPierce::Density,
+            pierce_scale: RaycastPierce::Density{ignore_anatomy: true},
             layer: ColliderLayer::Damage,
             ignore_entity: Some(info.this),
             ignore_end: true
