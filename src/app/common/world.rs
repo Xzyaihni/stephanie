@@ -99,6 +99,11 @@ impl World
         Self{tilemap, world_receiver, overmap}
     }
 
+    pub fn tilemap(&self) -> &TileMap
+    {
+        &self.tilemap
+    }
+
     pub fn tile_info(&self, tile: Tile) -> &TileInfo
     {
         self.tilemap.info(tile)
@@ -227,12 +232,12 @@ impl World
         })
     }
 
-    pub fn modify_tile(&mut self, pos: TilePos, f: impl FnOnce(&mut Tile))
+    pub fn modify_tile(&mut self, pos: TilePos, f: impl FnOnce(&mut Self, &mut Tile))
     {
         let tile: Tile = *some_or_return!(self.tile(pos));
         let mut new_tile: Tile = tile;
 
-        f(&mut new_tile);
+        f(self, &mut new_tile);
 
         if tile != new_tile
         {

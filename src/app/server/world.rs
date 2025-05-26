@@ -743,7 +743,7 @@ mod tests
 
             let mut world = World::new(
                 passer.clone(),
-                tilemap.tilemap,
+                Rc::new(tilemap.tilemap),
                 Arc::new(EnemiesInfo::empty()),
                 Arc::new(ItemsInfo::empty())
             ).unwrap();

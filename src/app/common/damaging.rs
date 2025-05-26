@@ -12,6 +12,7 @@ use crate::common::{
     Faction,
     Physical,
     Entity,
+    raycast::RaycastInfo,
     world::TilePos
 };
 
@@ -53,7 +54,8 @@ pub enum DamagingType
 {
     None,
     Mass(f32),
-    Damage{angle: f32, damage: DamagePartial}
+    Collision{angle: f32, damage: DamagePartial},
+    Raycast{info: RaycastInfo, damage: DamagePartial, start: Vector3<f32>, target: Vector3<f32>}
 }
 
 pub struct CollisionInfo
@@ -98,6 +100,7 @@ impl DamagingType
         match self
         {
             Self::None => None,
+            Self::Raycast{..} => None,
             Self::Mass(mass) =>
             {
                 let info = collision()?;
@@ -114,7 +117,7 @@ impl DamagingType
 
                 Some((info.global_rotation, damage))
             },
-            Self::Damage{angle, damage} =>
+            Self::Collision{angle, damage} =>
             {
                 let info = collision()?;
 

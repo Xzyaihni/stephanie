@@ -173,7 +173,6 @@ impl ClientEntitiesContainer
     pub fn update<Passer: EntityPasser>(
         &mut self,
         world: &mut World,
-        tilemap: &TileMap,
         passer: &RwLock<Passer>,
         damage_info: &CommonTextures,
         _is_trusted: bool,
@@ -188,13 +187,7 @@ impl ClientEntitiesContainer
         enemy_system::update(&mut self.entities, passer, dt);
         self.entities.update_children();
 
-        damaging_system::update(&mut self.entities, passer, damage_info, |tile_pos, damage|
-        {
-            world.modify_tile(tile_pos, |tile|
-            {
-                tile.damage(tilemap, damage.data);
-            })
-        });
+        damaging_system::update(&mut self.entities, world, passer, damage_info);
 
         self.entities.update_lazy_mix(dt);
 
@@ -1041,7 +1034,6 @@ impl GameState
         {
             self.entities.update(
                 &mut self.world,
-                &self.tilemap,
                 &self.connections_handler,
                 &self.common_textures,
                 self.is_trusted,

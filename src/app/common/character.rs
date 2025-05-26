@@ -50,7 +50,7 @@ use crate::{
         Parent,
         Anatomy,
         World,
-        entity::{raycast_system, damaging_system::{self, *}, ClientEntities}
+        entity::ClientEntities
     }
 };
 
@@ -1197,61 +1197,32 @@ impl Character
 
         let info = some_or_false!(self.info.as_ref());
 
-        let start = &combined_info.entities.transform(info.this).unwrap().position;
+        let start = combined_info.entities.transform(info.this).unwrap().position;
+
+        let damage = ranged.damage();
 
         let info = RaycastInfo{
-            pierce: None,
+            pierce: Some(damage.as_flat()),
             layer: ColliderLayer::Damage,
             ignore_entity: Some(info.this),
             ignore_end: true
         };
 
-        let hits = raycast_system::raycast(
-            combined_info.entities,
-            combined_info.world,
-            info,
-            start,
-            &target
-        );
-
-        let damage = ranged.damage();
-
         let height = DamageHeight::random();
 
-        for hit in &hits.hits
-        {
-            #[allow(clippy::single_match)]
-            match hit.id
-            {
-                RaycastHitId::Entity(id) =>
-                {
-                    let transform = combined_info.entities.transform(id)
-                        .unwrap();
+        let damage = DamagePartial{
+            data: damage,
+            height
+        };
 
-                    let hit_position = hits.hit_position(hit);
-
-                    let angle = angle_between(transform.position, hit_position);
-
-                    let damage = DamagePartial{
-                        data: damage,
-                        height
-                    };
-
-                    drop(transform);
-
-                    damaging_system::damager(
-                        combined_info.entities,
-                        Some(&combined_info.passer),
-                        Some(&combined_info.common_textures),
-                        |_tile_pos, _damage|
-                        {
-                            todo!()
-                        }
-                    )(DamagingResult{kind: DamagingKind::Entity(id, self.faction), angle, damage});
-                },
-                _ => ()
-            }
-        }
+        combined_info.entities.push(true, EntityInfo{
+            damaging: Some(DamagingInfo{
+                damage: DamagingType::Raycast{info, damage, start, target},
+                faction: Some(self.faction),
+                ..Default::default()
+            }.into()),
+            ..Default::default()
+        });
 
         true
     }
@@ -1291,7 +1262,7 @@ impl Character
                     ..Default::default()
                 }.into()),
                 damaging: Some(DamagingInfo{
-                    damage: DamagingType::Damage{
+                    damage: DamagingType::Collision{
                         angle,
                         damage
                     },
@@ -1354,7 +1325,7 @@ impl Character
                     ..Default::default()
                 }.into()),
                 damaging: Some(DamagingInfo{
-                    damage: DamagingType::Damage{
+                    damage: DamagingType::Collision{
                         angle: 0.0,
                         damage
                     },

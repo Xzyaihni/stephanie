@@ -21,6 +21,7 @@ use crate::{
         render_info::*,
         watcher::*,
         particle_creator::*,
+        raycast::*,
         ENTITY_SCALE,
         EntityInfo,
         PhysicalProperties,
@@ -30,7 +31,8 @@ use crate::{
         AnyEntities,
         Entity,
         EntityPasser,
-        entity::{iterate_components_with, ClientEntities},
+        World,
+        entity::{iterate_components_with, raycast_system, ClientEntities},
         world::{TILE_SIZE, TilePos}
     }
 };
@@ -217,117 +219,195 @@ pub fn damager<'a, 'b, E: AnyEntities, Passer: EntityPasser, TileDamager: FnMut(
     }
 }
 
+fn damaging_raycasting(
+    entities: &ClientEntities,
+    world: &World,
+    damaging: &mut Damaging,
+    entity: Entity
+) -> Vec<DamagingResult>
+{
+    let info;
+    let damage;
+    let start;
+    let target;
+
+    if let DamagingType::Raycast{
+        info: this_info,
+        damage: this_damage,
+        start: this_start,
+        target: this_target
+    } = &damaging.damage
+    {
+        info = this_info;
+        damage = this_damage;
+        start = this_start;
+        target = this_target;
+    } else
+    {
+        unreachable!()
+    }
+
+    let hits = raycast_system::raycast(
+        entities,
+        world,
+        info.clone(),
+        &start,
+        &target
+    );
+
+    hits.hits.iter().map(|hit|
+    {
+        let angle = hits.direction.x.acos();
+
+        let kind = match hit.id
+        {
+            RaycastHitId::Entity(entity) => DamagingKind::Entity(entity, damaging.faction),
+            RaycastHitId::Tile(tile) => DamagingKind::Tile(tile)
+        };
+
+        entities.remove_deferred(entity);
+
+        DamagingResult{kind, angle, damage: damage.clone()}
+    }).collect()
+}
+
+fn damaging_colliding(
+    entities: &ClientEntities,
+    damaging: &mut Damaging,
+    entity: Entity
+) -> Vec<DamagingResult>
+{
+    let collider = entities.collider(entity).unwrap();
+
+    let parent_angle_between = |collided_position| -> Option<_>
+    {
+        let parent = entities.parent(entity)?.entity;
+
+        let parent_transform = entities.transform(parent)?;
+
+        let angle = angle_between(
+            parent_transform.position,
+            collided_position
+        );
+
+        let parent_angle = parent_transform.rotation;
+        let relative_angle = angle + parent_angle;
+
+        Some(short_rotation(relative_angle))
+    };
+
+    let meets_predicate = |damaging: &Damaging, collided_position|
+    {
+        damaging.predicate.meets(|| parent_angle_between(collided_position).unwrap_or(0.0))
+    };
+
+    let source_entity = if let Some(other) = damaging.source
+    {
+        other
+    } else
+    {
+        entity
+    };
+
+    let this_transform = some_or_value!(entities.transform(source_entity), Vec::new());
+
+    let faction = damaging.faction;
+    let same_tile_z = damaging.same_tile_z;
+    collider.collided_tiles().iter().copied().filter_map(|tile_pos|
+    {
+        let position: Vector3<f32> = tile_pos.position().into();
+
+        if same_tile_z
+        {
+            if ((position.z + TILE_SIZE / 2.0) - this_transform.position.z).abs() > (TILE_SIZE / 2.0)
+            {
+                return None;
+            }
+        }
+
+        let transform = Transform{
+            position,
+            scale: Vector3::repeat(TILE_SIZE),
+            ..Default::default()
+        };
+
+        Some((
+            transform,
+            None,
+            DamagingKind::Tile(tile_pos),
+            DamagedId::Tile(tile_pos)
+        ))
+    }).chain(collider.collided().iter().copied().filter_map(|collided|
+    {
+        let collided_transform = entities.transform(collided)?.clone();
+        let collided_physical = entities.physical(collided);
+
+        Some((
+            collided_transform,
+            collided_physical,
+            DamagingKind::Entity(collided, faction),
+            DamagedId::Entity(collided)
+        ))
+    })).filter_map(|(collided_transform, collided_physical, kind, id)|
+    {
+        if damaging.can_damage(&id) && meets_predicate(&damaging, collided_transform.position)
+        {
+            damaging.damaged(id);
+
+            damaging.damage.as_damage(||
+            {
+                let this_physical = entities.physical(entity);
+
+                Some(CollisionInfo::new(
+                    &this_transform,
+                    &collided_transform,
+                    this_physical.as_deref(),
+                    collided_physical.as_deref()
+                ))
+            }).map(|(angle, damage)|
+            {
+                DamagingResult{kind, angle, damage}
+            })
+        } else
+        {
+            None
+        }
+    }).collect::<Vec<_>>()
+}
+
 pub fn update<Passer: EntityPasser>(
     entities: &mut ClientEntities,
+    world: &mut World,
     passer: &RwLock<Passer>,
-    textures: &CommonTextures,
-    damage_tile: impl FnMut(TilePos, DamagePartial)
+    textures: &CommonTextures
 )
 {
     // "zero" "cost" "abstractions" "borrow" "checker"
-    let damage_entities = iterate_components_with!(entities, damaging, flat_map, |entity, damaging: &RefCell<Damaging>|
-    {
-        let collider = entities.collider(entity).unwrap();
+    let damage_entities = {
+        let entities: &ClientEntities = entities;
 
-        let parent_angle_between = |collided_position| -> Option<_>
+        iterate_components_with!(entities, damaging, flat_map, |entity, damaging: &RefCell<Damaging>|
         {
-            let parent = entities.parent(entity)?.entity;
+            let mut damaging = damaging.borrow_mut();
 
-            let parent_transform = entities.transform(parent)?;
-
-            let angle = angle_between(
-                parent_transform.position,
-                collided_position
-            );
-
-            let parent_angle = parent_transform.rotation;
-            let relative_angle = angle + parent_angle;
-
-            Some(short_rotation(relative_angle))
-        };
-
-        let mut damaging = damaging.borrow_mut();
-
-        let meets_predicate = |damaging: &Damaging, collided_position|
-        {
-            damaging.predicate.meets(|| parent_angle_between(collided_position).unwrap_or(0.0))
-        };
-
-        let source_entity = if let Some(other) = damaging.source
-        {
-            other
-        } else
-        {
-            entity
-        };
-
-        let this_transform = some_or_value!(entities.transform(source_entity), Vec::new());
-
-        let faction = damaging.faction;
-        let same_tile_z = damaging.same_tile_z;
-        collider.collided_tiles().iter().copied().filter_map(|tile_pos|
-        {
-            let position: Vector3<f32> = tile_pos.position().into();
-
-            if same_tile_z
+            match &damaging.damage
             {
-                if ((position.z + TILE_SIZE / 2.0) - this_transform.position.z).abs() > (TILE_SIZE / 2.0)
+                DamagingType::Raycast{..} =>
                 {
-                    return None;
-                }
-            }
-
-            let transform = Transform{
-                position,
-                scale: Vector3::repeat(TILE_SIZE),
-                ..Default::default()
-            };
-
-            Some((
-                transform,
-                None,
-                DamagingKind::Tile(tile_pos),
-                DamagedId::Tile(tile_pos)
-            ))
-        }).chain(collider.collided().iter().copied().filter_map(|collided|
-        {
-            let collided_transform = entities.transform(collided)?.clone();
-            let collided_physical = entities.physical(collided);
-
-            Some((
-                collided_transform,
-                collided_physical,
-                DamagingKind::Entity(collided, faction),
-                DamagedId::Entity(collided)
-            ))
-        })).filter_map(|(collided_transform, collided_physical, kind, id)|
-        {
-            if damaging.can_damage(&id) && meets_predicate(&damaging, collided_transform.position)
-            {
-                damaging.damaged(id);
-
-                damaging.damage.as_damage(||
-                {
-                    let this_physical = entities.physical(entity);
-
-                    Some(CollisionInfo::new(
-                        &this_transform,
-                        &collided_transform,
-                        this_physical.as_deref(),
-                        collided_physical.as_deref()
-                    ))
-                }).map(|(angle, damage)|
-                {
-                    DamagingResult{kind, angle, damage}
-                })
-            } else
-            {
-                None
+                    damaging_raycasting(entities, world, &mut damaging, entity)
+                },
+                _ => damaging_colliding(entities, &mut damaging, entity)
             }
         }).collect::<Vec<_>>()
-    }).collect::<Vec<_>>();
+    };
 
-    damage_entities.into_iter().for_each(damager(entities, Some(passer), Some(textures), damage_tile));
+    damage_entities.into_iter().for_each(damager(entities, Some(passer), Some(textures), |tile_pos, damage|
+    {
+        world.modify_tile(tile_pos, |world, tile|
+        {
+            tile.damage(world.tilemap(), damage.data);
+        })
+    }));
 }
 
 fn flash_white_single(entities: &impl AnyEntities, entity: Entity)

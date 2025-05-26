@@ -6,6 +6,8 @@ use std::{
 
 use nalgebra::{Unit, Vector3, VectorView3, Rotation3};
 
+use serde::{Serialize, Deserialize};
+
 use yanyaengine::Transform;
 
 use crate::common::{
@@ -53,6 +55,7 @@ impl RaycastResult
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RaycastInfo
 {
     pub pierce: Option<f32>,
