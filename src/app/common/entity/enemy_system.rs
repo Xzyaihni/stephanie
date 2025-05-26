@@ -60,8 +60,17 @@ pub fn update<Passer: EntityPasser>(entities: &mut ClientEntities, passer: &RwLo
                     ..
                 }|
                 {
-                    enemy.borrow_mut().set_attacking(other_entity);
-                    on_state_change(entity);
+                    let mut enemy = enemy.borrow_mut();
+                    if enemy.seen_timer() >= 1.0
+                    {
+                        enemy.set_attacking(other_entity);
+                        drop(enemy);
+
+                        on_state_change(entity);
+                    } else
+                    {
+                        enemy.increase_seen(dt);
+                    }
                 });
         }
 

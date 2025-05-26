@@ -1710,7 +1710,7 @@ impl HumanAnatomy
             lung.health.fraction() * hemisphere.frontal.motor.body.fraction().powi(3)
         }).combine(|a, b| a + b) / 2.0;
 
-        Some(base * amount)
+        Some(base * amount * self.body.torso.muscle.map(|x| x.fraction()).unwrap_or(0.0))
     }
 
     fn updated_max_stamina(&mut self) -> Option<f32>

@@ -77,6 +77,8 @@ pub struct Enemy
     behavior_state: BehaviorState,
     current_state_left: Option<f32>,
     hostile_timer: f32,
+    seen_timer: f32,
+    seen_now: bool,
     reset_state: bool,
     id: EnemyId,
     rng: SeededRandom
@@ -96,6 +98,8 @@ impl Enemy
             behavior_state,
             behavior,
             hostile_timer: 0.0,
+            seen_timer: 0.0,
+            seen_now: false,
             reset_state: false,
             id,
             rng
@@ -282,6 +286,13 @@ impl Enemy
             self.hostile_timer -= dt;
         }
 
+        if self.seen_timer > 0.0 && !self.seen_now
+        {
+            self.seen_timer = (self.seen_timer - dt).max(0.0);
+        }
+
+        self.seen_now = false;
+
         let mut changed = if let Some(current_state_left) = self.current_state_left.as_mut()
         {
             *current_state_left -= dt;
@@ -301,6 +312,7 @@ impl Enemy
         if self.reset_state
         {
             self.reset_state = false;
+            self.seen_timer = 0.0;
 
             changed = true;
             self.set_next_state(entities);
@@ -326,8 +338,20 @@ impl Enemy
         );
     }
 
+    pub fn seen_timer(&self) -> f32
+    {
+        self.seen_timer
+    }
+
+    pub fn increase_seen(&mut self, dt: f32)
+    {
+        self.seen_timer += dt;
+        self.seen_now = true;
+    }
+
     pub fn set_attacking(&mut self, entity: Entity)
     {
+        self.seen_timer = 0.0;
         self.set_state(BehaviorState::Attack(entity));
     }
 
@@ -342,7 +366,7 @@ impl Enemy
 
     pub fn check_hostiles(&self) -> bool
     {
-        !self.is_attacking() && (self.hostile_timer <= 0.0)
+        !self.is_attacking() && ((self.hostile_timer <= 0.0) || self.seen_timer > 0.0)
     }
 
     pub fn behavior(&self) -> &EnemyBehavior
