@@ -87,7 +87,6 @@ impl RaycastHits
 }
 
 pub fn raycast_world<'a>(
-    entities: &'a crate::common::entity::ClientEntities,
     world: &'a World,
     start: &'a Vector3<f32>,
     direction: &'a Unit<Vector3<f32>>

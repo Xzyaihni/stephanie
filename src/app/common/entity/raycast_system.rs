@@ -83,7 +83,7 @@ pub fn raycast(
         })
         .collect();
 
-    let world_hits = raycast_world(entities, world, start, &direction);
+    let world_hits = raycast_world(world, start, &direction);
     hits.extend(world_hits);
 
     hits.sort_unstable_by(|a, b|
