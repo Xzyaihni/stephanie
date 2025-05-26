@@ -908,11 +908,6 @@ impl GameState
         self.world.tile(index)
     }
 
-    pub fn tile_of(&self, position: Pos3<f32>) -> TilePos
-    {
-        self.world.tile_of(position)
-    }
-
     pub fn destroy_tile(&mut self, tile: TilePos)
     {
         self.world.set_tile(tile, Tile::none());
@@ -1087,6 +1082,7 @@ impl GameState
 
         let assets = create_info.object_info.partial.assets.clone();
         let partial = PartialCombinedInfo{
+            world: &self.world,
             assets: &assets,
             passer: &self.connections_handler,
             common_textures: &self.common_textures,

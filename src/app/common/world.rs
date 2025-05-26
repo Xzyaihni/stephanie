@@ -121,19 +121,19 @@ impl World
         max_scale
     }
 
-    fn chunk_of(&self, pos: Pos3<f32>) -> GlobalPos
+    fn chunk_of(pos: Pos3<f32>) -> GlobalPos
     {
-        self.tile_of(pos).chunk
+        TilePos::from(pos).chunk
     }
 
     pub fn inside_chunk(&self, pos: Pos3<f32>) -> bool
     {
-        self.overmap.contains(self.chunk_of(pos))
+        self.overmap.contains(Self::chunk_of(pos))
     }
 
     pub fn debug_chunk(&self, pos: Pos3<f32>, visual: bool) -> String
     {
-        self.overmap.debug_chunk(self.chunk_of(pos), visual)
+        self.overmap.debug_chunk(Self::chunk_of(pos), visual)
     }
 
     pub fn tiles_inside<'a, Predicate>(
@@ -172,8 +172,8 @@ impl World
     {
         let half_scale = collider.bounds();
 
-        let top_left = self.tile_of((collider.transform.position - half_scale).into());
-        let bottom_right = self.tile_of((collider.transform.position + half_scale).into());
+        let top_left = TilePos::from(Pos3::from(collider.transform.position - half_scale));
+        let bottom_right = TilePos::from(Pos3::from(collider.transform.position + half_scale));
 
         top_left.tiles_between(bottom_right).filter(move |pos|
         {
@@ -243,11 +243,6 @@ impl World
     pub fn tile(&self, index: TilePos) -> Option<&Tile>
     {
         self.overmap.tile(index)
-    }
-
-    pub fn tile_of(&self, position: Pos3<f32>) -> TilePos
-    {
-        self.overmap.tile_of(position)
     }
 
     pub fn set_tile(&mut self, pos: TilePos, tile: Tile)

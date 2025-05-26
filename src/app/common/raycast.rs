@@ -1,4 +1,5 @@
 use std::{
+    convert,
     ops::Range,
     cmp::Ordering
 };
@@ -7,7 +8,14 @@ use nalgebra::{Unit, Vector3, VectorView3, Rotation3};
 
 use yanyaengine::Transform;
 
-use crate::common::{collider::*, Entity};
+use crate::common::{
+    collider::*,
+    damaging::DamagedId,
+    world::{TILE_SIZE, TilePos},
+    World,
+    Entity,
+    Pos3
+};
 
 
 #[derive(Debug, Clone)]
@@ -53,13 +61,7 @@ pub struct RaycastInfo
     pub ignore_end: bool
 }
 
-#[derive(Debug, Clone)]
-pub enum RaycastHitId
-{
-    Entity(Entity),
-    // later
-    Tile
-}
+pub type RaycastHitId = DamagedId;
 
 #[derive(Debug, Clone)]
 pub struct RaycastHit
@@ -82,6 +84,130 @@ impl RaycastHits
     {
         hit.result.hit_points(self.start, self.direction).0
     }
+}
+
+pub fn raycast_world<'a>(
+    entities: &'a crate::common::entity::ClientEntities,
+    world: &'a World,
+    start: &'a Vector3<f32>,
+    direction: &'a Unit<Vector3<f32>>
+) -> impl Iterator<Item=RaycastHit> + use<'a>
+{
+    fn inside_tile_pos(position: Vector3<f32>) -> Vector3<f32>
+    {
+        position.map(|x| x % TILE_SIZE)
+    }
+
+    (0..).scan((TilePos::from(Pos3::from(*start)), inside_tile_pos(*start)), move |(current_pos, current), _| -> Option<Option<RaycastHit>>
+    {
+        {
+            use yanyaengine::Transform;
+            use crate::common::{watcher::*, render_info::*, AnyEntities, EntityInfo};
+            entities.push(true, EntityInfo{
+                render: Some(RenderInfo{
+                    object: Some(RenderObjectKind::Texture{
+                        name: "missing".to_owned()
+                    }.into()),
+                    above_world: true,
+                    mix: Some(MixColor::color([0.0, 1.0, 0.0, 1.0])),
+                    ..Default::default()
+                }),
+                transform: Some(Transform{
+                    position: Vector3::from(current_pos.position()) + *current,
+                    scale: Vector3::repeat(0.005),
+                    ..Default::default()
+                }),
+                watchers: Some(Watchers::new(vec![
+                    Watcher{
+                        kind: WatcherType::Lifetime(5.0.into()),
+                        action: WatcherAction::Remove,
+                        ..Default::default()
+                    }
+                ])),
+                ..Default::default()
+            });
+
+            entities.push(true, EntityInfo{
+                render: Some(RenderInfo{
+                    object: Some(RenderObjectKind::Texture{
+                        name: "missing".to_owned()
+                    }.into()),
+                    above_world: true,
+                    mix: Some(MixColor::color([0.0, 1.0, 0.0, 0.02])),
+                    ..Default::default()
+                }),
+                transform: Some(Transform{
+                    position: Vector3::from(current_pos.position()) + Vector3::repeat(TILE_SIZE / 2.0),
+                    scale: Vector3::repeat(TILE_SIZE),
+                    ..Default::default()
+                }),
+                watchers: Some(Watchers::new(vec![
+                    Watcher{
+                        kind: WatcherType::Lifetime(5.0.into()),
+                        action: WatcherAction::Remove,
+                        ..Default::default()
+                    }
+                ])),
+                ..Default::default()
+            });
+        }
+
+        let tile = *world.tile(*current_pos)?;
+
+        let is_colliding = world.tile_info(tile).colliding;
+
+        let axis_distances = current.zip_map(&direction, |x, d|
+        {
+            if x < 0.0
+            {
+                if d < 0.0 { TILE_SIZE + x } else { -x }
+            } else
+            {
+                if d < 0.0 { x } else { TILE_SIZE - x }
+            }
+        });
+
+        let axis_amounts = axis_distances.component_div(&direction);
+
+        let change_index = axis_amounts.iamin();
+        let change: Pos3<i32> = {
+            let mut value = Vector3::repeat(0);
+            value[change_index] = if direction[change_index] < 0.0 { -1 } else { 1 };
+
+            value.into()
+        };
+
+        let next_start = {
+            let step_size = axis_amounts[change_index].abs();
+
+            let mut offset = *current + **direction * step_size;
+            offset[change_index] = if direction[change_index] < 0.0 { TILE_SIZE } else { 0.0 };
+
+            offset
+        };
+
+        *current_pos = current_pos.offset(change);
+
+        let hit = is_colliding.then(||
+        {
+            let id = RaycastHitId::Tile(*current_pos);
+
+            let position = Vector3::from(current_pos.position()) + *current;
+
+            let distance = position.metric_distance(start);
+            let pierce = current.metric_distance(&(next_start + Vector3::repeat(TILE_SIZE)));
+            let result = RaycastResult{
+                distance,
+                pierce
+            };
+
+            RaycastHit{id, result}
+        });
+
+        *current = next_start;
+
+        Some(hit)
+    }).filter_map(convert::identity)
 }
 
 pub fn raycast_this(

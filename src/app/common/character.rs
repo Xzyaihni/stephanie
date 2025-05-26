@@ -49,6 +49,7 @@ use crate::{
         ItemInfo,
         Parent,
         Anatomy,
+        World,
         entity::{raycast_system, damaging_system::{self, *}, ClientEntities}
     }
 };
@@ -157,6 +158,7 @@ pub const HAND_SCALE: f32 = 0.3;
 #[derive(Clone, Copy)]
 pub struct PartialCombinedInfo<'a>
 {
+    pub world: &'a World,
     pub passer: &'a Arc<RwLock<ConnectionsHandler>>,
     pub assets: &'a Arc<Mutex<Assets>>,
     pub common_textures: &'a CommonTextures,
@@ -173,6 +175,7 @@ impl<'a> PartialCombinedInfo<'a>
     {
         CombinedInfo{
             entities,
+            world: self.world,
             assets: self.assets,
             passer: self.passer,
             common_textures: self.common_textures,
@@ -187,6 +190,7 @@ pub struct CombinedInfo<'a>
 {
     pub passer: &'a Arc<RwLock<ConnectionsHandler>>,
     pub entities: &'a ClientEntities,
+    pub world: &'a World,
     pub assets: &'a Arc<Mutex<Assets>>,
     pub common_textures: &'a CommonTextures,
     pub items_info: &'a ItemsInfo,
@@ -1202,7 +1206,13 @@ impl Character
             ignore_end: true
         };
 
-        let hits = raycast_system::raycast(combined_info.entities, info, start, &target);
+        let hits = raycast_system::raycast(
+            combined_info.entities,
+            combined_info.world,
+            info,
+            start,
+            &target
+        );
 
         let damage = ranged.damage();
 

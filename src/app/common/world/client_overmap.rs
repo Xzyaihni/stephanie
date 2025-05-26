@@ -76,6 +76,17 @@ pub struct TilePos
     pub local: ChunkLocal
 }
 
+impl From<Pos3<f32>> for TilePos
+{
+    fn from(position: Pos3<f32>) -> Self
+    {
+        TilePos{
+            chunk: position.rounded(),
+            local: ChunkLocal::from(position.to_tile())
+        }
+    }
+}
+
 impl TilePos
 {
     pub fn position(&self) -> Pos3<f32>
@@ -353,14 +364,6 @@ impl ClientOvermap
                     self.visual_overmap.force_generate(&self.chunks, pos)
                 });
             }
-        }
-    }
-
-    pub fn tile_of(&self, position: Pos3<f32>) -> TilePos
-    {
-        TilePos{
-            chunk: position.rounded(),
-            local: ChunkLocal::from(position.to_tile())
         }
     }
 

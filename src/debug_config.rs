@@ -24,6 +24,7 @@ pub enum DebugTool
     LispDisableChecks,
     RedundantWorldChecks,
     ShowMessages,
+    DisplayRaycast,
     CollisionWorldBounds,
     CollisionBounds,
     Contacts,

@@ -5,18 +5,29 @@ use std::{
 
 use nalgebra::{Unit, Vector3};
 
-use crate::common::{
-    collider::*,
-    raycast::*,
-    entity::{
-        iterate_components_with,
-        ClientEntities
+use yanyaengine::Transform;
+
+use crate::{
+    debug_config::*,
+    common::{
+        collider::*,
+        raycast::*,
+        watcher::*,
+        render_info::*,
+        World,
+        EntityInfo,
+        AnyEntities,
+        entity::{
+            iterate_components_with,
+            ClientEntities
+        }
     }
 };
 
 
 pub fn raycast(
     entities: &ClientEntities,
+    world: &World,
     info: RaycastInfo,
     start: &Vector3<f32>,
     end: &Vector3<f32>
@@ -72,6 +83,9 @@ pub fn raycast(
         })
         .collect();
 
+    let world_hits = raycast_world(entities, world, start, &direction);
+    hits.extend(world_hits);
+
     hits.sort_unstable_by(|a, b|
     {
         a.result.distance.partial_cmp(&b.result.distance).unwrap_or(Ordering::Equal)
@@ -97,6 +111,38 @@ pub fn raycast(
 
         first.map(|x| vec![x]).unwrap_or_default()
     };
+
+    if DebugConfig::is_enabled(DebugTool::DisplayRaycast)
+    {
+        hits.iter().for_each(|hit|
+        {
+            let color = match hit.id
+            {
+                RaycastHitId::Entity(_) => [1.0, 0.0, 0.0, 1.0],
+                RaycastHitId::Tile(_) => [0.0, 0.0, 1.0, 1.0]
+            };
+
+            let position = *start + *direction * hit.result.distance;
+
+            entities.push(true, EntityInfo{
+                transform: Some(Transform{
+                    position,
+                    scale: Vector3::repeat(0.01),
+                    ..Default::default()
+                }),
+                render: Some(RenderInfo{
+                    object: Some(RenderObjectKind::Texture{
+                        name: "circle.png".to_owned()
+                    }.into()),
+                    above_world: true,
+                    mix: Some(MixColor{keep_transparency: true, ..MixColor::color(color)}),
+                    ..Default::default()
+                }),
+                watchers: Some(Watchers::simple_disappearing(10.0)),
+                ..Default::default()
+            });
+        });
+    }
 
     RaycastHits{start: *start, direction, hits}
 }
