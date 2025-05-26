@@ -174,7 +174,7 @@ impl ItemInfo
             side_sharpness: 0.0,
             scale: HAND_SCALE,
             aspect: Vector2::repeat(1.0),
-            mass: 0.05, // 0.3 would be more accurate but i want balance
+            mass: 0.1, // 0.3 would be more accurate but i want balance
             commonness: 1.0,
             lighting: Light::default(),
             texture: None

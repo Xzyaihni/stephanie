@@ -55,7 +55,7 @@ pub enum DamagingType
     None,
     Mass(f32),
     Collision{angle: f32, damage: DamagePartial},
-    Raycast{info: RaycastInfo, damage: DamagePartial, start: Vector3<f32>, target: Vector3<f32>}
+    Raycast{info: RaycastInfo, damage: DamagePartial, start: Vector3<f32>, target: Vector3<f32>, scale_pierce: bool}
 }
 
 pub struct CollisionInfo

@@ -846,9 +846,9 @@ impl Character
     {
         let item_info = self.held_info(combined_info);
 
-        let raw_use = item_info.mass / self.newtons(combined_info)? * 70.0;
+        let raw_use = item_info.mass / self.newtons(combined_info)? * 4.0;
 
-        let cost = 0.1 + raw_use / item_info.comfort;
+        let cost = 0.3 + raw_use / item_info.comfort;
 
         Some(cost)
     }
@@ -1204,7 +1204,7 @@ impl Character
 
         combined_info.entities.push(true, EntityInfo{
             damaging: Some(DamagingInfo{
-                damage: DamagingType::Raycast{info, damage, start, target},
+                damage: DamagingType::Raycast{info, damage, start, target, scale_pierce: true},
                 faction: Some(self.faction),
                 ..Default::default()
             }.into()),
@@ -1661,7 +1661,7 @@ impl Character
     {
         if self.oversprint_cooldown <= 0.0
         {
-            self.sprinting
+            self.sprinting && self.stamina > 0.0
         } else
         {
             false

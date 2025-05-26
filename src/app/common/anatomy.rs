@@ -19,6 +19,7 @@ use crate::{
     debug_config::*,
     common::{
         some_or_value,
+        some_or_return,
         angle_between,
         short_rotation,
         SeededRandom,
@@ -590,12 +591,17 @@ impl<T> Halves<T>
         }
     }
 
-    pub fn map<U>(self, mut f: impl FnMut(T) -> U) -> Halves<U>
+    pub fn map_sides<U>(self, mut f: impl FnMut(Side1d, T) -> U) -> Halves<U>
     {
         Halves{
-            left: f(self.left),
-            right: f(self.right)
+            left: f(Side1d::Left, self.left),
+            right: f(Side1d::Right, self.right)
         }
+    }
+
+    pub fn map<U>(self, mut f: impl FnMut(T) -> U) -> Halves<U>
+    {
+        self.map_sides(|_, x| f(x))
     }
 
     pub fn combine<U>(self, mut f: impl FnMut(T, T) -> U) -> U
@@ -634,6 +640,7 @@ impl<T> IndexMut<Side1d> for Halves<T>
 pub struct MotorCortex
 {
     arms: Health,
+    body: Health,
     legs: Health
 }
 
@@ -643,6 +650,7 @@ impl Default for MotorCortex
     {
         Self{
             arms: Health::new(4.0, 50.0),
+            body: Health::new(4.0, 50.0),
             legs: Health::new(4.0, 50.0)
         }
     }
@@ -657,7 +665,7 @@ impl DamageReceiver for MotorCortex
         damage: DamageType
     ) -> Option<DamageType>
     {
-        let mut order = vec![&mut self.arms, &mut self.legs];
+        let mut order = vec![&mut self.arms, &mut self.body, &mut self.legs];
 
         match side
         {
@@ -1629,8 +1637,8 @@ impl HumanAnatomy
         let speeds = brain.as_ref().map(|hemisphere|
         {
             Speeds{
-                arms: hemisphere.frontal.motor.arms.fraction(),
-                legs: hemisphere.frontal.motor.legs.fraction()
+                arms: hemisphere.frontal.motor.arms.fraction().powi(3),
+                legs: hemisphere.frontal.motor.legs.fraction().powi(3)
             }
         });
 
@@ -1669,19 +1677,68 @@ impl HumanAnatomy
         Some(self.base_strength)
     }
 
+    fn lung(&self, side: Side1d) -> Option<&Lung>
+    {
+        self.body.torso.contents.iter()
+            .find_map(|x|
+            {
+                if let HumanOrgan::Lung(x) = x
+                {
+                    if x.side == side
+                    {
+                        Some(x)
+                    } else
+                    {
+                        None
+                    }
+                } else
+                {
+                    None
+                }
+            })
+    }
+
     fn updated_stamina(&mut self) -> Option<f32>
     {
-        Some(0.2)
+        let base = 0.2;
+
+        let brain = some_or_return!(self.brain());
+
+        let amount = brain.as_ref().map_sides(|side, hemisphere|
+        {
+            let lung = some_or_value!(self.lung(side), 0.0);
+            lung.health.fraction() * hemisphere.frontal.motor.body.fraction().powi(3)
+        }).combine(|a, b| a + b) / 2.0;
+
+        Some(base * amount)
     }
 
     fn updated_max_stamina(&mut self) -> Option<f32>
     {
-        Some(1.0)
+        let base = 1.0;
+
+        let amount = Halves{left: Side1d::Left, right: Side1d::Right}.map(|side|
+        {
+            some_or_value!(self.lung(side), 0.0).health.fraction()
+        }).combine(|a, b| a + b) / 2.0;
+
+        Some(base * amount)
     }
 
     fn updated_vision(&mut self) -> Option<f32>
     {
-        Some(TILE_SIZE * 10.0)
+        let base = TILE_SIZE * 10.0;
+
+        let brain = some_or_return!(self.brain());
+
+        let vision = brain.as_ref().zip(self.body.sided.as_ref()).map(|(hemisphere, body)|
+        {
+            let fraction = hemisphere.occipital.fraction().powi(3);
+
+            body.eye.as_ref().map(|x| x.bone.fraction()).unwrap_or(0.0) * fraction
+        }).combine(|a, b| a.max(b));
+
+        Some(base * vision)
     }
 
     fn update_cache(&mut self)

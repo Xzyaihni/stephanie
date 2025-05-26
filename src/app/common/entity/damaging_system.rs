@@ -230,18 +230,21 @@ fn damaging_raycasting(
     let damage;
     let start;
     let target;
+    let scale_pierce;
 
     if let DamagingType::Raycast{
         info: this_info,
         damage: this_damage,
         start: this_start,
-        target: this_target
+        target: this_target,
+        scale_pierce: this_scale_pierce
     } = &damaging.damage
     {
         info = this_info;
         damage = this_damage;
         start = this_start;
         target = this_target;
+        scale_pierce = this_scale_pierce;
     } else
     {
         unreachable!()
@@ -268,7 +271,11 @@ fn damaging_raycasting(
         entities.remove_deferred(entity);
 
         let mut damage = damage.clone();
-        damage.data *= hit.result.pierce.min(1.0);
+
+        if *scale_pierce
+        {
+            damage.data *= hit.result.pierce.min(1.0);
+        }
 
         DamagingResult{kind, angle, damage}
     }).collect()
