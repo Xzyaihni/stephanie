@@ -135,10 +135,11 @@ pub fn raycast_world<'a>(
             value.into()
         };
 
-        let next_start = {
-            let step_size = axis_amounts[change_index].abs();
+        let step_size = axis_amounts[change_index].abs();
+        let direction_change = **direction * step_size;
 
-            let mut offset = *current + **direction * step_size;
+        let next_start = {
+            let mut offset = *current + direction_change;
             offset[change_index] = if direction[change_index] < 0.0 { TILE_SIZE } else { 0.0 };
 
             offset
@@ -151,7 +152,7 @@ pub fn raycast_world<'a>(
             let position = Vector3::from(current_pos.position()) + *current;
 
             let distance = position.metric_distance(start);
-            let pierce = current.metric_distance(&(next_start + Vector3::repeat(TILE_SIZE)));
+            let pierce = direction_change.magnitude();
             let result = RaycastResult{
                 distance,
                 pierce

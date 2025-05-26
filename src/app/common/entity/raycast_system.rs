@@ -141,6 +141,30 @@ pub fn raycast(
                 watchers: Some(Watchers::simple_disappearing(10.0)),
                 ..Default::default()
             });
+
+            let arrow_scale = hit.result.pierce;
+
+            if let Some(arrow) = crate::common::direction_arrow_info(
+                position,
+                *direction,
+                arrow_scale,
+                [0.0, 0.0, 0.0]
+            )
+            {
+                entities.push(true, EntityInfo{
+                    transform: arrow.transform,
+                    render: Some(RenderInfo{
+                        object: Some(RenderObjectKind::Texture{
+                            name: "arrow.png".to_owned()
+                        }.into()),
+                        above_world: true,
+                        mix: Some(MixColor{keep_transparency: true, ..MixColor::color(color)}),
+                        ..Default::default()
+                    }),
+                    watchers: Some(Watchers::simple_disappearing(10.0)),
+                    ..Default::default()
+                });
+            }
         });
     }
 
