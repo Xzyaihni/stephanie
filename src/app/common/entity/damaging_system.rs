@@ -190,7 +190,7 @@ pub fn damager<'a, 'b, E: AnyEntities, Passer: EntityPasser, TileDamager: FnMut(
                                 id: textures.solid
                             }.into()),
                             above_world: true,
-                            mix: Some(MixColor::color([1.0, 1.0, 1.0, 0.02])),
+                            mix: Some(MixColor::color([1.0, 1.0, 1.0, 0.005])),
                             ..Default::default()
                         }),
                         transform: Some(Transform{

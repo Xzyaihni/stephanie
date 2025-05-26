@@ -55,7 +55,7 @@ impl Ranged
 
             let spread = fastrand::f32() * damage * 0.05;
 
-            damage * spread
+            damage + spread
         };
 
         match self

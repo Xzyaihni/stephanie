@@ -56,9 +56,17 @@ impl RaycastResult
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum RaycastPierce
+{
+    None,
+    Density
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RaycastInfo
 {
     pub pierce: Option<f32>,
+    pub pierce_scale: RaycastPierce,
     pub layer: ColliderLayer,
     pub ignore_entity: Option<Entity>,
     pub ignore_end: bool
@@ -89,11 +97,12 @@ impl RaycastHits
     }
 }
 
-pub fn raycast_world<'a>(
+pub fn raycast_world<'a, Exit: FnMut(&RaycastHit) -> bool>(
     world: &'a World,
     start: &'a Vector3<f32>,
-    direction: &'a Unit<Vector3<f32>>
-) -> impl Iterator<Item=RaycastHit> + use<'a>
+    direction: &'a Unit<Vector3<f32>>,
+    mut early_exit: Exit
+) -> impl Iterator<Item=RaycastHit> + use<'a, Exit>
 {
     fn inside_tile_pos(position: Vector3<f32>) -> Vector3<f32>
     {
@@ -163,6 +172,14 @@ pub fn raycast_world<'a>(
 
             RaycastHit{id, result}
         });
+
+        if let Some(hit) = hit.as_ref()
+        {
+            if early_exit(hit)
+            {
+                return None;
+            }
+        }
 
         *current_pos = current_pos.offset(change);
         *current = next_start;

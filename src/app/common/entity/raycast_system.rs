@@ -83,8 +83,32 @@ pub fn raycast(
         })
         .collect();
 
-    let world_hits = raycast_world(world, start, &direction);
-    hits.extend(world_hits);
+    {
+        let mut pierce_left = info.pierce;
+
+        let world_hits = raycast_world(world, start, &direction, |hit|
+        {
+            if let Some(left) = pierce_left.as_mut()
+            {
+                if *left <= 0.0
+                {
+                    return true;
+                }
+
+                let include_pierce_info_here = ();
+                *left -= hit.result.pierce;
+            }
+
+            if (hit.result.distance > max_distance) && !info.ignore_end
+            {
+                return true;
+            }
+
+            false
+        });
+
+        hits.extend(world_hits);
+    }
 
     hits.sort_unstable_by(|a, b|
     {
@@ -97,6 +121,7 @@ pub fn raycast(
         {
             if pierce > 0.0
             {
+                let include_pierce_info_here = ();
                 pierce -= x.result.pierce;
 
                 true

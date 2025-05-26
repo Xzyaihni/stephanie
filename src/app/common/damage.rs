@@ -105,6 +105,11 @@ impl DamageType
             Self::Bullet(x) => x
         }
     }
+
+    pub fn as_ranged_pierce(self) -> f32
+    {
+        self.as_flat() * 0.0001
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
