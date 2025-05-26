@@ -96,6 +96,17 @@ impl Tile
         Self(Some(TileExisting{id, info: None}))
     }
 
+    pub fn visual_eq(&self, other: &Self) -> bool
+    {
+        if let (Some(a), Some(b)) = (&self.0, &other.0)
+        {
+            a.visual_eq(b)
+        } else
+        {
+            false
+        }
+    }
+
     pub fn id_string(&self) -> String
     {
         if let Some(tile) = self.0
@@ -238,6 +249,12 @@ impl TileExisting
         self.id
     }
 
+    pub fn visual_eq(&self, other: &Self) -> bool
+    {
+        self.id == other.id
+            && self.info.unwrap_or_default().visual_eq(&other.info.unwrap_or_default())
+    }
+
     pub fn id_string(&self) -> String
     {
         format!("{}{}", self.id, self.info.unwrap_or_default().id_string())
@@ -308,6 +325,11 @@ impl Default for TileInfo
 
 impl TileInfo
 {
+    pub fn visual_eq(&self, other: &Self) -> bool
+    {
+        self.rotation == other.rotation
+    }
+
     pub fn from_lisp_value(value: OutputWrapperRef) -> Result<Option<Self>, lisp::Error>
     {
         if value.is_null()

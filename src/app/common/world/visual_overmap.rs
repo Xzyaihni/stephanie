@@ -148,6 +148,23 @@ pub struct TileReader
 
 impl TileReader
 {
+    pub fn creatable(
+        chunks: &ChunksContainer<Option<Arc<Chunk>>>,
+        local_pos: LocalPos
+    ) -> bool
+    {
+        let mut missing = false;
+        local_pos.maybe_group().map(|position|
+        {
+            if chunks[position].is_none()
+            {
+                missing = true;
+            }
+        });
+
+        !missing
+    }
+
     pub fn new(
         chunks: &ChunksContainer<Option<Arc<Chunk>>>,
         local_pos: LocalPos
@@ -216,6 +233,25 @@ impl VisualOvermap
     )
     {
         if self.is_generated(pos)
+        {
+            return;
+        }
+
+        self.force_generate(chunks, pos);
+    }
+
+    pub fn try_force_generate(
+        &mut self,
+        chunks: &ChunksContainer<Option<Arc<Chunk>>>,
+        pos: LocalPos
+    )
+    {
+        if chunks[pos].is_none()
+        {
+            return;
+        }
+
+        if !TileReader::creatable(chunks, pos)
         {
             return;
         }

@@ -353,15 +353,21 @@ impl ClientOvermap
         {
             if let Some(ref chunk) = self.chunks[local]
             {
+                let old_tile = chunk[pos.local];
                 let new_chunk = chunk.with_set_tile(pos.local, tile);
 
                 self.chunks[local] = Some(Arc::new(new_chunk));
 
-                self.visual_overmap.force_generate(&self.chunks, local);
+                if old_tile.visual_eq(&tile)
+                {
+                    return;
+                }
+
+                self.visual_overmap.try_force_generate(&self.chunks, local);
 
                 local.directions().flatten().for_each(|pos|
                 {
-                    self.visual_overmap.force_generate(&self.chunks, pos)
+                    self.visual_overmap.try_force_generate(&self.chunks, pos)
                 });
             }
         }
