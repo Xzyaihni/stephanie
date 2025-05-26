@@ -95,63 +95,22 @@ pub fn raycast_world<'a>(
 {
     fn inside_tile_pos(position: Vector3<f32>) -> Vector3<f32>
     {
-        position.map(|x| x % TILE_SIZE)
+        position.map(|x|
+        {
+            let m = x % TILE_SIZE;
+
+            if m < 0.0
+            {
+                TILE_SIZE + m
+            } else
+            {
+                m
+            }
+        })
     }
 
     (0..).scan((TilePos::from(Pos3::from(*start)), inside_tile_pos(*start)), move |(current_pos, current), _| -> Option<Option<RaycastHit>>
     {
-        {
-            use yanyaengine::Transform;
-            use crate::common::{watcher::*, render_info::*, AnyEntities, EntityInfo};
-            entities.push(true, EntityInfo{
-                render: Some(RenderInfo{
-                    object: Some(RenderObjectKind::Texture{
-                        name: "missing".to_owned()
-                    }.into()),
-                    above_world: true,
-                    mix: Some(MixColor::color([0.0, 1.0, 0.0, 1.0])),
-                    ..Default::default()
-                }),
-                transform: Some(Transform{
-                    position: Vector3::from(current_pos.position()) + *current,
-                    scale: Vector3::repeat(0.005),
-                    ..Default::default()
-                }),
-                watchers: Some(Watchers::new(vec![
-                    Watcher{
-                        kind: WatcherType::Lifetime(5.0.into()),
-                        action: WatcherAction::Remove,
-                        ..Default::default()
-                    }
-                ])),
-                ..Default::default()
-            });
-
-            entities.push(true, EntityInfo{
-                render: Some(RenderInfo{
-                    object: Some(RenderObjectKind::Texture{
-                        name: "missing".to_owned()
-                    }.into()),
-                    above_world: true,
-                    mix: Some(MixColor::color([0.0, 1.0, 0.0, 0.02])),
-                    ..Default::default()
-                }),
-                transform: Some(Transform{
-                    position: Vector3::from(current_pos.position()) + Vector3::repeat(TILE_SIZE / 2.0),
-                    scale: Vector3::repeat(TILE_SIZE),
-                    ..Default::default()
-                }),
-                watchers: Some(Watchers::new(vec![
-                    Watcher{
-                        kind: WatcherType::Lifetime(5.0.into()),
-                        action: WatcherAction::Remove,
-                        ..Default::default()
-                    }
-                ])),
-                ..Default::default()
-            });
-        }
-
         let tile = *world.tile(*current_pos)?;
 
         let is_colliding = world.tile_info(tile).colliding;
@@ -186,8 +145,6 @@ pub fn raycast_world<'a>(
             offset
         };
 
-        *current_pos = current_pos.offset(change);
-
         let hit = is_colliding.then(||
         {
             let id = RaycastHitId::Tile(*current_pos);
@@ -204,6 +161,7 @@ pub fn raycast_world<'a>(
             RaycastHit{id, result}
         });
 
+        *current_pos = current_pos.offset(change);
         *current = next_start;
 
         Some(hit)
