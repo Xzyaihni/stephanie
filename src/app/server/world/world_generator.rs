@@ -330,7 +330,7 @@ impl ChunkGenerator
             output.iter().enumerate().map(|(index, x)|
             {
                 let x = OutputWrapperRef::new(&memory, *x);
-                if let Some(s) = x.as_list().and_then(|lst| lst.car.as_symbol()).ok()
+                if let Ok(s) = x.as_list().and_then(|lst| lst.car.as_symbol())
                 {
                     if s != "marker"
                     {

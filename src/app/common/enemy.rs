@@ -343,6 +343,11 @@ impl Enemy
         self.seen_timer
     }
 
+    pub fn seen_fraction(&self) -> Option<f32>
+    {
+        (self.seen_timer > 0.0).then_some(self.seen_timer)
+    }
+
     pub fn increase_seen(&mut self, dt: f32)
     {
         self.seen_timer += dt;

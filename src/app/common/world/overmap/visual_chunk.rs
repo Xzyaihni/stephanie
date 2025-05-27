@@ -252,7 +252,7 @@ impl VisualChunk
         {
             let mut occluders = Vec::new();
 
-            let mut occlusion = occlusions[z].clone();
+            let mut occlusion = occlusions[z];
 
             state.iter_mut().zip(occlusion.iter_mut()).for_each(|(top, bottom)|
             {

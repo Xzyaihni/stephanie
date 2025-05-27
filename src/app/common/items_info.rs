@@ -188,14 +188,19 @@ impl ItemInfo
         self
     }
 
+    fn damage_base(&self) -> f32
+    {
+        self.mass * 100.0
+    }
+
     pub fn bash_damage(&self) -> DamageType
     {
         if self.side_sharpness == 0.0
         {
-            DamageType::Blunt(self.mass * 100.0)
+            DamageType::Blunt(self.damage_base())
         } else
         {
-            DamageType::Sharp{sharpness: self.side_sharpness, damage: self.mass * 100.0}
+            DamageType::Sharp{sharpness: self.side_sharpness, damage: self.damage_base()}
         }
     }
 
@@ -203,10 +208,10 @@ impl ItemInfo
     {
         if self.sharpness == 0.0
         {
-            DamageType::Blunt(self.mass * 50.0)
+            DamageType::Blunt(self.damage_base() * 0.5)
         } else
         {
-            DamageType::Sharp{sharpness: self.sharpness, damage: self.mass * 100.0}
+            DamageType::Sharp{sharpness: self.sharpness, damage: self.damage_base()}
         }
     }
 

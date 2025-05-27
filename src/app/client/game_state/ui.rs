@@ -1,7 +1,7 @@
 use std::{
     f32,
     fmt::{self, Display},
-    collections::HashMap,
+    collections::{HashSet, HashMap},
     hash::{Hash, Hasher},
     rc::Rc,
     cell::RefCell,
@@ -84,6 +84,7 @@ enum UiId
     Screen,
     Padding(u32),
     Console(ConsolePart),
+    SeenNotification(Entity, SeenNotificationPart),
     Notification(NotificationInfo, NotificationPart),
     AnatomyNotification(Entity, AnatomyNotificationPart),
     Popup(u8, PopupPart),
@@ -91,6 +92,16 @@ enum UiId
     BarsBody,
     BarsBodyInner,
     BarDisplay(BarDisplayKind, BarDisplayPart)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum SeenNotificationPart
+{
+    Body,
+    Clip,
+    ClipBody,
+    Back,
+    Fill
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -1245,6 +1256,7 @@ pub struct Ui
     stamina: BarDisplay,
     cooldown: BarDisplay,
     notifications: Vec<NotificationInfo>,
+    seen_notifications: HashSet<Entity>,
     anatomy_notifications: HashMap<Entity, (f32, Vec<(f32, HumanPartId)>)>,
     popup_unique_id: u8,
     popup: Option<UiItemPopup>
@@ -1277,6 +1289,7 @@ impl Ui
             stamina: BarDisplay::default(),
             cooldown: BarDisplay::default(),
             notifications: Vec::new(),
+            seen_notifications: HashSet::new(),
             anatomy_notifications: HashMap::new(),
             popup_unique_id: 0,
             popup: None
@@ -1284,27 +1297,40 @@ impl Ui
 
         let this = Rc::new(RefCell::new(this));
 
-        let ui = this.clone();
-        entities.on_anatomy(Box::new(move |entities, entity|
         {
-            if entities.player(entity).is_some()
+            let ui = this.clone();
+            entities.on_anatomy(Box::new(move |entities, entity|
             {
-                return;
-            }
+                if entities.player(entity).is_some()
+                {
+                    return;
+                }
 
-            some_or_return!(entities.anatomy_mut(entity)).for_accessed_parts(|part|
+                some_or_return!(entities.anatomy_mut(entity)).for_accessed_parts(|part|
+                {
+                    let default_lifetime = 2.0;
+                    let part = (0.2, part.id);
+
+                    ui.borrow_mut().anatomy_notifications.entry(entity)
+                        .and_modify(|(lifetime, parts)|
+                        {
+                            *lifetime = default_lifetime;
+                            parts.push(part);
+                        }).or_insert_with(|| (default_lifetime, vec![part]));
+                });
+            }));
+        }
+
+        {
+            let ui = this.clone();
+            entities.on_enemy(Box::new(move |entities, entity|
             {
-                let default_lifetime = 2.0;
-                let part = (0.2, part.id);
-
-                ui.borrow_mut().anatomy_notifications.entry(entity)
-                    .and_modify(|(lifetime, parts)|
-                    {
-                        *lifetime = default_lifetime;
-                        parts.push(part);
-                    }).or_insert_with(|| (default_lifetime, vec![part]));
-            });
-        }));
+                if some_or_return!(entities.enemy(entity)).seen_fraction().is_some()
+                {
+                    ui.borrow_mut().seen_notifications.insert(entity);
+                }
+            }));
+        }
 
         this
     }
@@ -1533,18 +1559,81 @@ impl Ui
         }
     }
 
+    fn position_of(entities: &ClientEntities, camera: Entity, owner: Entity) -> Option<Vector2<f32>>
+    {
+        let owner_transform = some_or_return!(entities.transform(owner));
+        let camera_transform = some_or_return!(entities.transform(camera));
+
+        let owner_position = owner_transform.position.xy() - camera_transform.position.xy();
+        let position_absolute = owner_position - Vector2::new(0.0, owner_transform.scale.y * 0.5);
+
+        Some(position_absolute / camera_transform.scale.xy().max())
+    }
+
     pub fn update(&mut self, entities: &ClientEntities, controls: &mut UiControls, dt: f32)
     {
-        let position_of = |camera: Entity, owner: Entity| -> Option<Vector2<f32>>
-        {
-            let owner_transform = some_or_return!(entities.transform(owner));
-            let camera_transform = some_or_return!(entities.transform(camera));
-
-            let owner_position = owner_transform.position.xy() - camera_transform.position.xy();
-            let position_absolute = owner_position - Vector2::new(0.0, owner_transform.scale.y * 0.5);
-
-            Some(position_absolute / camera_transform.scale.xy().max())
+        let position_of = {
+            let camera = self.camera;
+            move |owner|
+            {
+                Self::position_of(entities, camera, owner)
+            }
         };
+
+        self.seen_notifications.retain(|&entity|
+        {
+            let id = |part|
+            {
+                UiId::SeenNotification(entity, part)
+            };
+
+            let fraction = some_or_value!(entities.enemy(entity).and_then(|x| x.seen_fraction()), false);
+
+            let position = some_or_value!(position_of(entity), false);
+
+            let body_position = UiPosition::Absolute{position, align: UiPositionAlign{
+                horizontal: AlignHorizontal::Middle,
+                vertical: AlignVertical::Bottom
+            }};
+
+            let body = self.controller.update(id(SeenNotificationPart::Body), UiElement{
+                position: body_position.clone(),
+                children_layout: UiLayout::Vertical,
+                ..Default::default()
+            });
+
+            let faded_id = id(SeenNotificationPart::Back);
+            body.update(faded_id.clone(), UiElement{
+                texture: UiTexture::Custom("ui/seen_faded.png".to_owned()),
+                position: UiPosition::Inherit,
+                ..UiElement::fit_content()
+            });
+
+            let clip = body.update(id(SeenNotificationPart::Clip), UiElement{
+                position: UiPosition::Inherit,
+                width: UiSize::Rest(1.0).into(),
+                height: UiSize::CopyElement(UiDirection::Vertical, 1.0, faded_id.clone()).into(),
+                children_layout: UiLayout::Vertical,
+                ..Default::default()
+            });
+
+            add_padding_vertical(clip, UiSize::Rest(1.0 - fraction).into());
+
+            let clip_body = clip.update(id(SeenNotificationPart::ClipBody), UiElement{
+                width: UiSize::CopyElement(UiDirection::Horizontal, 1.0, faded_id).into(),
+                height: UiSize::Rest(fraction).into(),
+                scissor: true,
+                ..Default::default()
+            });
+
+            clip_body.update(id(SeenNotificationPart::Fill), UiElement{
+                texture: UiTexture::Custom("ui/seen.png".to_owned()),
+                position: body_position,
+                ..UiElement::fit_content()
+            });
+
+            true
+        });
 
         self.notifications.retain_mut(|notification|
         {
@@ -1555,7 +1644,7 @@ impl Ui
                 UiId::Notification(notification.clone(), part)
             };
 
-            let position = some_or_value!(position_of(self.camera, notification.owner), false);
+            let position = some_or_value!(position_of(notification.owner), false);
 
             let body = self.controller.update(id(NotificationPart::Body), UiElement{
                 texture: UiTexture::Solid,
@@ -1594,7 +1683,7 @@ impl Ui
         {
             *lifetime -= dt;
 
-            let position = some_or_value!(position_of(self.camera, *entity), false);
+            let position = some_or_value!(position_of(*entity), false);
 
             let body = self.controller.update(UiId::AnatomyNotification(*entity, AnatomyNotificationPart::Body), UiElement{
                 position: UiPosition::Absolute{position, align: UiPositionAlign{

@@ -1204,7 +1204,7 @@ impl Character
 
         combined_info.entities.push(true, EntityInfo{
             damaging: Some(DamagingInfo{
-                damage: DamagingType::Raycast{info, damage, start, target, scale_pierce: true},
+                damage: DamagingType::Raycast{info, damage, start, target, scale_pierce: Some(ENTITY_SCALE)},
                 faction: Some(self.faction),
                 ..Default::default()
             }.into()),
@@ -1212,6 +1212,24 @@ impl Character
         });
 
         true
+    }
+
+    fn target_mass(&self, combined_info: CombinedInfo) -> f32
+    {
+        self.newtons(combined_info).unwrap_or(0.0) * 0.005
+    }
+
+    fn mass_maxed(&self, combined_info: CombinedInfo, mass: f32) -> f32
+    {
+        let diff = self.target_mass(combined_info) - mass;
+
+        if diff > 0.0
+        {
+            1.0
+        } else
+        {
+            (1.0 + diff).max(0.1)
+        }
     }
 
     fn bash_projectile(&mut self, combined_info: CombinedInfo)
@@ -1223,7 +1241,9 @@ impl Character
         let hand_mass = ItemInfo::hand().mass;
         let item_info = self.held_info(combined_info);
 
-        let damage_scale = some_or_return!(self.newtons(combined_info)) * 0.05;
+        let strength_scale = some_or_return!(self.newtons(combined_info)) * 0.05;
+
+        let damage_scale = strength_scale * self.mass_maxed(combined_info, item_info.mass);
         let damage = DamagePartial{
             data: (*item_info).clone().with_changed(|x| x.mass += hand_mass).bash_damage() * damage_scale,
             height: DamageHeight::random()
@@ -1283,7 +1303,9 @@ impl Character
 
         let offset = projectile_scale / 2.0;
 
-        let damage_scale = some_or_return!(self.newtons(combined_info)) * 0.03;
+        let strength_scale = some_or_return!(self.newtons(combined_info)) * 0.03;
+
+        let damage_scale = strength_scale * self.mass_maxed(combined_info, item_info.mass);
         let damage = DamagePartial{
             data: item_info.clone().with_changed(|x| x.mass += hand_mass).poke_damage() * damage_scale,
             height: DamageHeight::random()
@@ -1694,7 +1716,7 @@ impl Character
 
         if self.is_sprinting()
         {
-            Self::decrease_timer(&mut self.stamina, dt);
+            Self::decrease_timer(&mut self.stamina, 0.5 * dt);
             if self.stamina < 0.0
             {
                 let until_half = ((max_stamina / 2.0) - self.stamina) / recharge_speed;
@@ -1759,8 +1781,8 @@ impl Character
         match self.sprite_state.value()
         {
             SpriteState::Normal => 1.0,
-            SpriteState::Crawling => 0.5,
-            SpriteState::Lying => 0.3
+            SpriteState::Crawling => 0.8,
+            SpriteState::Lying => 0.5
         }
     }
 

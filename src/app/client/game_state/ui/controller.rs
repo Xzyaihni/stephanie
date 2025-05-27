@@ -1369,7 +1369,15 @@ impl<Id: Idable> Controller<Id>
                     last_inserted = Some(index);
                 }
 
-                replace_elements.insert(last_inserted.map(|x| x + 1).unwrap_or(0), element);
+                if let Some(inserted) = last_inserted.as_mut()
+                {
+                    replace_elements.insert(*inserted + 1, element);
+                    *inserted += 1;
+                } else
+                {
+                    replace_elements.insert(0, element);
+                    last_inserted = Some(0);
+                }
             });
 
             shared.elements = replace_elements;

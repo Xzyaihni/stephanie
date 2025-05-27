@@ -1,5 +1,4 @@
 use std::{
-    convert,
     ops::Range,
     cmp::Ordering
 };
@@ -128,7 +127,7 @@ pub fn raycast_world<'a, Exit: FnMut(&TileInfo, &RaycastHit) -> bool>(
 
         let is_colliding = tile_info.colliding;
 
-        let axis_distances = current.zip_map(&direction, |x, d|
+        let axis_distances = current.zip_map(direction, |x, d|
         {
             if x < 0.0
             {
@@ -139,7 +138,7 @@ pub fn raycast_world<'a, Exit: FnMut(&TileInfo, &RaycastHit) -> bool>(
             }
         });
 
-        let axis_amounts = axis_distances.component_div(&direction);
+        let axis_amounts = axis_distances.component_div(direction);
 
         let change_index = axis_amounts.iamin();
         let change: Pos3<i32> = {
@@ -187,7 +186,7 @@ pub fn raycast_world<'a, Exit: FnMut(&TileInfo, &RaycastHit) -> bool>(
         *current = next_start;
 
         Some(hit)
-    }).filter_map(convert::identity)
+    }).flatten()
 }
 
 pub fn raycast_this(

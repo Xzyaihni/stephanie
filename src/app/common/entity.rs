@@ -365,6 +365,8 @@ impl EntityInfo
 
 pub struct InFlightGetter<T>(T);
 
+pub struct SetChanged<'a>(&'a ClientEntities);
+
 #[derive(Debug, Clone)]
 pub struct ComponentWrapper<T>
 {
@@ -908,6 +910,17 @@ macro_rules! define_entities_both
         const fn count_components() -> usize
         {
             0 $(+ {let _ = Component::$name; 1})+
+        }
+
+        #[allow(dead_code)]
+        impl SetChanged<'_>
+        {
+            $(
+                fn $name(&self, entity: Entity)
+                {
+                    self.0.changed_entities.borrow_mut().$name.push(entity);
+                }
+            )+
         }
 
         pub const COMPONENTS_COUNT: usize = count_components();
@@ -1495,6 +1508,11 @@ macro_rules! define_entities_both
             fn transform_clone(&self, entity: Entity) -> Option<Transform>
             {
                 self.transform(entity).as_deref().cloned()
+            }
+
+            pub fn set_changed(&self) -> SetChanged
+            {
+                SetChanged(self)
             }
 
             #[allow(dead_code)]

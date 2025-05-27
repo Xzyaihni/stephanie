@@ -254,8 +254,8 @@ fn damaging_raycasting(
         entities,
         world,
         info.clone(),
-        &start,
-        &target
+        start,
+        target
     );
 
     hits.hits.iter().map(|hit|
@@ -272,9 +272,9 @@ fn damaging_raycasting(
 
         let mut damage = damage.clone();
 
-        if *scale_pierce
+        if let Some(s) = scale_pierce
         {
-            damage.data *= hit.result.pierce.min(1.0);
+            damage.data *= (hit.result.pierce * s).min(1.0);
         }
 
         DamagingResult{kind, angle, damage}
@@ -360,7 +360,7 @@ fn damaging_colliding(
         ))
     })).filter_map(|(collided_transform, collided_physical, kind, id)|
     {
-        if damaging.can_damage(&id) && meets_predicate(&damaging, collided_transform.position)
+        if damaging.can_damage(&id) && meets_predicate(damaging, collided_transform.position)
         {
             damaging.damaged(id);
 

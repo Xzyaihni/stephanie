@@ -60,6 +60,8 @@ pub fn update<Passer: EntityPasser>(entities: &mut ClientEntities, passer: &RwLo
                     ..
                 }|
                 {
+                    entities.set_changed().enemy(entity);
+
                     let mut enemy = enemy.borrow_mut();
                     if enemy.seen_timer() >= 1.0
                     {
