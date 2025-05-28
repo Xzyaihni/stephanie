@@ -1,6 +1,5 @@
 use std::{
     fmt,
-    mem,
     hash::Hash,
     rc::Rc,
     cell::{Ref, RefMut, RefCell},
@@ -25,7 +24,6 @@ use yanyaengine::{
 use crate::{
     client::RenderCreateInfo,
     common::{
-        some_or_value,
         render_info::*,
         colors::Lcha,
         EaseOut
@@ -158,13 +156,7 @@ impl<'a, Id: Idable> TreeInserter<'a, Id>
         let id = &element.id;
         let shared = element.shared.borrow();
 
-        if let Some(index) = shared.element_id(id)
-        {
-            f(Some(&shared.elements[index]))
-        } else
-        {
-            f(None)
-        }
+        f(shared.elements.get(id))
     }
 
     pub fn try_width(&self) -> Option<f32>
@@ -1096,7 +1088,6 @@ impl TextureSizer
 struct Element<Id>
 {
     id: Id,
-    parent: Option<Id>,
     parent_fraction: Fractions,
     close_immediately: bool,
     close_soon: bool,
@@ -1107,12 +1098,80 @@ struct Element<Id>
 }
 
 #[derive(Debug)]
+struct CachedTree<Id>
+{
+    value: Option<Id>,
+    children: Vec<CachedTree<Id>>
+}
+
+impl<Id: Idable> Default for CachedTree<Id>
+{
+    fn default() -> Self
+    {
+        Self{value: Some(Id::screen()), children: Vec::new()}
+    }
+}
+
+impl<Id: Idable> CachedTree<Id>
+{
+    fn for_each(&self, mut f: impl FnMut(Option<&Id>, &Id))
+    {
+        self.for_each_inner(None, &mut f)
+    }
+
+    fn for_each_inner(&self, parent: Option<&Id>, f: &mut impl FnMut(Option<&Id>, &Id))
+    {
+        if let Some(id) = self.value.as_ref()
+        {
+            f(parent, id);
+        }
+
+        self.children.iter().for_each(|x| x.for_each_inner(self.value.as_ref(), f));
+    }
+
+    fn remove(&mut self, id: &Id) -> bool
+    {
+        if self.value.as_ref() == Some(id)
+        {
+            self.value = None;
+        } else
+        {
+            self.children.retain_mut(|child| !child.remove(id));
+        }
+
+        self.value.is_none() && self.children.is_empty()
+    }
+
+    fn push_child(&mut self, parent: &Id, value: &Id) -> bool
+    {
+        if self.value.as_ref() == Some(value)
+        {
+            return true;
+        }
+
+        if self.value.as_ref() == Some(parent)
+        {
+            if self.children.iter().all(|child| child.value.as_ref() != Some(value))
+            {
+                self.children.push(CachedTree{value: Some(value.clone()), children: Vec::new()});
+            }
+
+            true
+        } else
+        {
+            self.children.iter_mut().any(|x| x.push_child(parent, value))
+        }
+    }
+}
+
+#[derive(Debug)]
 struct SharedInfo<Id>
 {
     consecutive: u32,
     mouse_position: Vector2<f32>,
     screen_size: Vector2<f32>,
-    elements: Vec<Element<Id>>
+    elements: HashMap<Id, Element<Id>>,
+    tree: CachedTree<Id>
 }
 
 impl<Id: Idable> SharedInfo<Id>
@@ -1123,7 +1182,8 @@ impl<Id: Idable> SharedInfo<Id>
             consecutive: 0,
             mouse_position: Vector2::zeros(),
             screen_size: Vector2::repeat(1.0),
-            elements: Vec::new()
+            elements: HashMap::new(),
+            tree: Default::default()
         }
     }
 
@@ -1132,16 +1192,11 @@ impl<Id: Idable> SharedInfo<Id>
         self.screen_size / self.screen_size.max()
     }
 
-    pub fn element_id(&self, id: &Id) -> Option<usize>
-    {
-        self.elements.iter().position(|element| element.id == *id)
-    }
-
     pub fn position_mapped(&self, id: &Id, check_position: Vector2<f32>) -> Option<Vector2<f32>>
     {
-        self.element_id(id).map(|index|
+        self.elements.get(id).map(|element|
         {
-            let deferred = &self.elements[index].deferred;
+            let deferred = &element.deferred;
 
             let position = deferred.position.unwrap();
             let size = Vector2::new(deferred.width.unwrap(), deferred.height.unwrap());
@@ -1245,174 +1300,158 @@ impl<Id: Idable> Controller<Id>
 
         let mut created_trees = self.created_trees.borrow_mut();
 
-        self.shared.borrow_mut().elements.iter_mut().for_each(|element| element.closing = true);
+        self.shared.borrow_mut().elements.values_mut().for_each(|element| element.closing = true);
 
-        let mut replace_elements: Vec<Element<Id>> = Vec::new();
+        let mut replace_tree = CachedTree{
+            value: Some(Id::screen()),
+            children: Vec::new()
+        };
 
         created_trees[0].for_each(&created_trees, |parent, this|
         {
             let mut shared = self.shared.borrow_mut();
 
-            fn constrain<Id: Sized, F>(f: F) -> F
-            where
-                for<'a> F: Fn(&'a SharedInfo<Id>, &'a [Element<Id>]) -> Option<&'a Element<Id>>
             {
-                f
-            }
-
-            let get_parent = constrain(|shared, replace_elements|
-            {
-                parent.as_ref().and_then(|parent|
+                let [element, parent] = if let Some(parent) = parent.as_ref()
                 {
-                    let search_id = &parent.id;
-                    shared.element_id(search_id).map(|index|
-                    {
-                        &shared.elements[index]
-                    }).or_else(||
-                    {
-                        replace_elements.iter().find(|x| x.id == *search_id)
-                    })
-                })
-            });
-
-            let parent_fraction = get_parent(
-                &shared,
-                &replace_elements
-            ).map(|x| x.cached.fractions.clone()).unwrap_or_default();
-
-            let index = shared.element_id(&this.id);
-            let mut element = if let Some(index) = index
-            {
+                    shared.elements.get_disjoint_mut([&this.id, &parent.id])
+                } else
                 {
-                    if shared.elements[index].element != this.element
+                    [shared.elements.get_mut(&this.id), None]
+                };
+
+                let parent_fraction = parent.as_ref().map(|x| x.cached.fractions.clone()).unwrap_or_default();
+
+                if let Some(element) = element
+                {
+                    if element.element != this.element
                     {
                         let mut cached = UiElementCached::from_element(
                             create_info,
                             &parent_fraction,
-                            get_parent(&shared, &replace_elements).map(|x| &x.deferred),
+                            parent.as_ref().map(|x| &x.deferred),
                             &this.deferred,
                             &this.element
                         );
 
-                        let Element{
-                            element: old_element,
-                            cached: old_cached,
-                            ..
-                        } = &mut shared.elements[index];
+                        element.cached.keep_old(&mut cached, &element.element, &this.element);
 
-                        old_cached.keep_old(&mut cached, old_element, &this.element);
+                        element.cached = cached;
 
-                        *old_cached = cached;
-
-                        *old_element = this.element.clone();
+                        element.element = this.element.clone();
                     }
 
-                    let Element{
-                        deferred: old_deferred,
-                        closing,
-                        ..
-                    } = &mut shared.elements[index];
+                    element.closing = false;
+                    element.deferred = this.deferred.clone();
 
-                    *closing = false;
-                    *old_deferred = this.deferred.clone();
+                    element.cached.update(
+                        create_info,
+                        &parent_fraction,
+                        parent.as_ref().map(|x| &x.deferred),
+                        &this.deferred,
+                        &mut element.element,
+                        dt
+                    );
+                } else
+                {
+                    let cached = UiElementCached::from_element(
+                        create_info,
+                        &parent_fraction,
+                        parent.as_ref().map(|x| &x.deferred),
+                        &this.deferred,
+                        &this.element
+                    );
+
+                    let mut element = Element{
+                        id: this.id.clone(),
+                        parent_fraction: parent_fraction.clone(),
+                        close_immediately: false,
+                        close_soon: false,
+                        element: this.element.clone(),
+                        cached,
+                        deferred: this.deferred.clone(),
+                        closing: false
+                    };
+
+                    element.cached.update(
+                        create_info,
+                        &parent_fraction,
+                        parent.as_ref().map(|x| &x.deferred),
+                        &this.deferred,
+                        &mut element.element,
+                        dt
+                    );
+
+                    shared.elements.insert(element.id.clone(), element);
                 }
+            }
 
-                shared.elements.remove(index)
-            } else
+            let id = &this.id;
+
+            if let Some(parent) = parent.as_ref()
             {
-                let cached = UiElementCached::from_element(
-                    create_info,
-                    &parent_fraction,
-                    get_parent(&shared, &replace_elements).map(|x| &x.deferred),
-                    &this.deferred,
-                    &this.element
-                );
+                replace_tree.push_child(&parent.id, id);
+            }
 
-                Element{
-                    id: this.id.clone(),
-                    parent: parent.map(|x| x.id.clone()),
-                    parent_fraction: parent_fraction.clone(),
-                    close_immediately: false,
-                    close_soon: false,
-                    element: this.element.clone(),
-                    cached,
-                    deferred: this.deferred.clone(),
-                    closing: false
-                }
-            };
-
-            element.cached.update(
-                create_info,
-                &parent_fraction,
-                get_parent(&shared, &replace_elements).map(|x| &x.deferred),
-                &this.deferred,
-                &mut element.element,
-                dt
-            );
-
-            replace_elements.push(element);
+            if id != &Id::screen()
+            {
+                shared.tree.remove(id);
+            }
         });
 
         {
             let mut shared = self.shared.borrow_mut();
+            let shared: &mut SharedInfo<Id> = &mut shared;
 
-            let mut last_inserted = None;
-
-            let old_elements = mem::take(&mut shared.elements);
-            old_elements.into_iter().for_each(|element|
+            replace_tree.for_each(|parent_id, id|
             {
-                if let Some(index) = replace_elements.iter().position(|x|
+                if let Some(parent_id) = parent_id
                 {
-                    x.id == *some_or_value!(element.parent.as_ref(), false)
-                })
-                {
-                    last_inserted = Some(index);
-                }
-
-                if let Some(inserted) = last_inserted.as_mut()
-                {
-                    replace_elements.insert(*inserted + 1, element);
-                    *inserted += 1;
+                    shared.tree.push_child(parent_id, id);
                 } else
                 {
-                    replace_elements.insert(0, element);
-                    last_inserted = Some(0);
+                    shared.tree.push_child(&Id::screen(), id);
                 }
             });
 
-            shared.elements = replace_elements;
+            shared.tree.for_each(|parent, id|
+            {
+                let [element, parent] = if let Some(parent) = parent
+                {
+                    shared.elements.get_disjoint_mut([id, parent])
+                } else
+                {
+                    [shared.elements.get_mut(id), None]
+                };
+
+                let element = element.unwrap();
+
+                if element.closing
+                {
+                    if let Some(parent) = parent
+                    {
+                        if !parent.closing
+                        {
+                            element.close_soon = true;
+                        } else
+                        {
+                            element.parent_fraction = parent.cached.fractions.clone();
+                        }
+                    } else
+                    {
+                        element.close_immediately = true;
+                    }
+                }
+            });
         }
 
         {
             let mut shared = self.shared.borrow_mut();
-
-            for i in 0..shared.elements.len()
-            {
-                if shared.elements[i].closing
-                {
-                    let index = shared.elements[i].parent.as_ref().and_then(|parent_id|
-                    {
-                        shared.element_id(parent_id)
-                    });
-
-                    let index = if let Some(x) = index { x } else
-                    {
-                        shared.elements[i].close_immediately = true;
-                        continue;
-                    };
-
-                    if !shared.elements[index].closing
-                    {
-                        shared.elements[i].close_soon = true;
-                        continue;
-                    }
-
-                    shared.elements[i].parent_fraction = shared.elements[index].cached.fractions.clone();
-                }
-            }
+            let shared: &mut SharedInfo<Id> = &mut shared;
 
             let screen_size = shared.screen_size;
-            shared.elements.retain_mut(|element|
+
+            let closer = |element: &mut Element<Id>|
             {
                 if element.closing
                 {
@@ -1421,20 +1460,30 @@ impl<Id: Idable> Controller<Id>
                         return false;
                     }
 
-                    let keep = element.cached.update_closing(
+                    element.cached.update_closing(
                         &element.parent_fraction,
                         &element.deferred,
                         &mut element.element,
                         element.close_soon,
                         screen_size,
                         dt
-                    );
-
-                    keep
+                    )
                 } else
                 {
                     true
                 }
+            };
+
+            shared.elements.retain(|id, element|
+            {
+                let keep = closer(element);
+
+                if !keep
+                {
+                    shared.tree.remove(id);
+                }
+
+                keep
             });
         }
 
@@ -1467,9 +1516,12 @@ impl<Id: Idable> Controller<Id>
     {
         self.set_screen_size(Vector2::from(info.partial.size));
 
-        self.shared.borrow_mut().elements.iter_mut().for_each(|Element{cached, ..}|
+        let mut shared = self.shared.borrow_mut();
+        let shared: &mut SharedInfo<Id> = &mut shared;
+
+        shared.tree.for_each(|_, id|
         {
-            if let Some(object) = cached.object.as_mut()
+            if let Some(object) = shared.elements.get_mut(id).unwrap().cached.object.as_mut()
             {
                 object.update_buffers(info)
             }
@@ -1481,8 +1533,11 @@ impl<Id: Idable> Controller<Id>
         info: &mut DrawInfo
     )
     {
-        self.shared.borrow().elements.iter().for_each(|Element{cached, ..}|
+        let shared = self.shared.borrow();
+        shared.tree.for_each(|_, id|
         {
+            let element = shared.elements.get(id).unwrap();
+            let cached = &element.cached;
             if let Some(object) = cached.object.as_ref()
             {
                 if let Some(scissor) = cached.scissor
