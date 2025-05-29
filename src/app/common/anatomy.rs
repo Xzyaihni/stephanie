@@ -99,7 +99,7 @@ impl Anatomy
         transform: &Transform,
         visibility: f32,
         other_position: &Vector3<f32>
-    ) -> bool
+    ) -> Option<f32>
     {
         let angle = angle_between(transform.position, *other_position);
         let angle_offset = short_rotation(angle + transform.rotation).abs();
@@ -112,10 +112,20 @@ impl Anatomy
 
         if angle_offset > vision_angle
         {
-            return false;
+            return None;
         }
 
-        vision * visibility >= distance
+        let max_distance = vision * visibility;
+
+        let is_visible = distance < max_distance;
+
+        is_visible.then(||
+        {
+            let angle_fraction = 1.0 - (angle_offset / vision_angle).powi(3);
+            let distance_fraction = 1.0 - (distance / max_distance).powi(3);
+
+            visibility * angle_fraction * distance_fraction
+        })
     }
 
     pub fn set_speed(&mut self, speed: f32)

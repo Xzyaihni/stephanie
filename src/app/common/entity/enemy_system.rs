@@ -3,7 +3,7 @@ use std::cell::RefCell;
 use parking_lot::RwLock;
 
 use crate::common::{
-    entity::{for_each_component, ClientEntities, ComponentWrapper},
+    entity::{for_each_component, ClientEntities},
     AnyEntities,
     Enemy,
     EntityPasser,
@@ -43,7 +43,7 @@ pub fn update<Passer: EntityPasser>(entities: &mut ClientEntities, passer: &RwLo
                     let other_character = x.get();
                     character.aggressive(&other_character)
                 })
-                .filter(|x|
+                .filter_map(|x|
                 {
                     let other_entity = x.entity;
 
@@ -53,26 +53,25 @@ pub fn update<Passer: EntityPasser>(entities: &mut ClientEntities, passer: &RwLo
                     let transform = entities.transform(entity).unwrap();
                     let other_transform = entities.transform(other_entity).unwrap();
 
-                    anatomy.sees(&transform, other_visibility, &other_transform.position)
+                    anatomy.sees(&transform, other_visibility, &other_transform.position).map(|visibility|
+                    {
+                        (other_entity, visibility)
+                    })
                 })
-                .for_each(|ComponentWrapper{
-                    entity: other_entity,
-                    component
-                }|
+                .for_each(|(other_entity, visibility)|
                 {
                     entities.set_changed().enemy(entity);
 
                     let mut enemy = enemy.borrow_mut();
                     if enemy.seen_timer() >= 1.0
                     {
-                        enemy.set_attacking(*other_entity);
+                        enemy.set_attacking(other_entity);
                         drop(enemy);
 
                         on_state_change(entity);
                     } else
                     {
-                        let other_visibility = component.borrow().visibility();
-                        enemy.increase_seen(other_visibility * dt);
+                        enemy.increase_seen(visibility * 2.0 * dt);
                     }
                 });
         }

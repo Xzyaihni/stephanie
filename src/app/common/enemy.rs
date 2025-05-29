@@ -207,7 +207,8 @@ impl Enemy
                         &other_character
                     );
 
-                    let sees = anatomy.sees(&transform, other_character.visibility(), &other_transform.position);
+                    let sees = anatomy.sees(&transform, other_character.visibility(), &other_transform.position)
+                        .is_some();
 
                     if aggressive && sees
                     {
