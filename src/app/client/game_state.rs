@@ -184,7 +184,7 @@ impl ClientEntitiesContainer
 
         physical_system::update(&mut self.entities, world, dt);
         self.entities.update_lazy(dt);
-        enemy_system::update(&mut self.entities, passer, dt);
+        enemy_system::update(&mut self.entities, world, passer, dt);
         self.entities.update_children();
 
         damaging_system::update(&mut self.entities, world, passer, damage_info);

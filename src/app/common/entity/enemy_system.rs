@@ -3,7 +3,9 @@ use std::cell::RefCell;
 use parking_lot::RwLock;
 
 use crate::common::{
+    enemy,
     entity::{for_each_component, ClientEntities},
+    World,
     AnyEntities,
     Enemy,
     EntityPasser,
@@ -11,7 +13,12 @@ use crate::common::{
 };
 
 
-pub fn update<Passer: EntityPasser>(entities: &mut ClientEntities, passer: &RwLock<Passer>, dt: f32)
+pub fn update<Passer: EntityPasser>(
+    entities: &mut ClientEntities,
+    world: &World,
+    passer: &RwLock<Passer>,
+    dt: f32
+)
 {
     let on_state_change = |entity|
     {
@@ -47,13 +54,7 @@ pub fn update<Passer: EntityPasser>(entities: &mut ClientEntities, passer: &RwLo
                 {
                     let other_entity = x.entity;
 
-                    let anatomy = entities.anatomy(entity).unwrap();
-                    let other_visibility = x.get().visibility();
-
-                    let transform = entities.transform(entity).unwrap();
-                    let other_transform = entities.transform(other_entity).unwrap();
-
-                    anatomy.sees(&transform, other_visibility, &other_transform.position).map(|visibility|
+                    enemy::sees(entities, world, entity, other_entity).map(|visibility|
                     {
                         (other_entity, visibility)
                     })
@@ -78,6 +79,7 @@ pub fn update<Passer: EntityPasser>(entities: &mut ClientEntities, passer: &RwLo
 
         let state_changed = enemy.borrow_mut().update(
             entities,
+            world,
             entity,
             dt
         );

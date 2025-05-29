@@ -11,17 +11,11 @@ use serde::{Serialize, Deserialize};
 
 use strum::{EnumCount, FromRepr, IntoStaticStr};
 
-use nalgebra::Vector3;
-
-use yanyaengine::Transform;
-
 use crate::{
     debug_config::*,
     common::{
         some_or_value,
         some_or_return,
-        angle_between,
-        short_rotation,
         SeededRandom,
         WeightedPicker,
         Damage,
@@ -92,40 +86,6 @@ impl Anatomy
         {
             Self::Human(x) => x.is_crawling()
         }
-    }
-
-    pub fn sees(
-        &self,
-        transform: &Transform,
-        visibility: f32,
-        other_position: &Vector3<f32>
-    ) -> Option<f32>
-    {
-        let angle = angle_between(transform.position, *other_position);
-        let angle_offset = short_rotation(angle + transform.rotation).abs();
-
-        let vision_angle = self.vision_angle().unwrap_or(0.0);
-
-        let distance = transform.position.metric_distance(other_position);
-
-        let vision = self.vision().unwrap_or(0.0);
-
-        if angle_offset > vision_angle
-        {
-            return None;
-        }
-
-        let max_distance = vision * visibility;
-
-        let is_visible = distance < max_distance;
-
-        is_visible.then(||
-        {
-            let angle_fraction = 1.0 - (angle_offset / vision_angle).powi(3);
-            let distance_fraction = 1.0 - (distance / max_distance).powi(3);
-
-            visibility * angle_fraction * distance_fraction
-        })
     }
 
     pub fn set_speed(&mut self, speed: f32)

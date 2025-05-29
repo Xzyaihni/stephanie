@@ -5,7 +5,13 @@ use nalgebra::{Unit, Vector3};
 use crate::common::{
     some_or_value,
     some_or_return,
+    angle_between,
+    short_rotation,
     character::*,
+    raycast::*,
+    collider::*,
+    entity::{raycast_system, ClientEntities},
+    World,
     SeededRandom,
     AnyEntities,
     Entity,
@@ -16,6 +22,81 @@ use crate::common::{
     Anatomy
 };
 
+
+pub fn sees(
+    entities: &ClientEntities,
+    world: &World,
+    entity: Entity,
+    other_entity: Entity
+) -> Option<f32>
+{
+    let anatomy = entities.anatomy(entity)?;
+    let transform = entities.transform(entity)?;
+
+    let other_position = entities.transform(other_entity)?.position;
+
+    let angle = angle_between(transform.position, other_position);
+    let angle_offset = short_rotation(angle + transform.rotation).abs();
+
+    let vision_angle = anatomy.vision_angle().unwrap_or(0.0);
+
+    let distance = transform.position.metric_distance(&other_position);
+
+    let vision = anatomy.vision().unwrap_or(0.0);
+
+    if angle_offset > vision_angle
+    {
+        return None;
+    }
+
+    let visibility = entities.character(other_entity)?.visibility();
+
+    let max_distance = vision * visibility;
+
+    let is_visible = distance < max_distance;
+
+    if !is_visible
+    {
+        return None;
+    }
+
+    let info = RaycastInfo{
+        pierce: None,
+        pierce_scale: RaycastPierce::None,
+        layer: ColliderLayer::Vision,
+        ignore_entity: Some(entity),
+        ignore_end: false
+    };
+
+    let hits = raycast_system::raycast(
+        entities,
+        world,
+        info,
+        &transform.position,
+        &other_position
+    ).hits;
+
+    let hit_something = hits.into_iter().any(|hit|
+    {
+        if let RaycastHitId::Entity(hit_entity) = hit.id
+        {
+            hit_entity != other_entity
+        } else
+        {
+            true
+        }
+    });
+
+    if hit_something
+    {
+        return None;
+    }
+
+    let angle_fraction = 1.0 - (angle_offset / vision_angle).powi(3);
+    let distance_fraction = 1.0 - (distance / max_distance).powi(3);
+
+    Some(visibility * angle_fraction * distance_fraction)
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum EnemyBehavior
@@ -144,7 +225,8 @@ impl Enemy
 
     fn do_behavior(
         &mut self,
-        entities: &impl AnyEntities,
+        entities: &ClientEntities,
+        world: &World,
         entity: Entity,
         dt: f32
     )
@@ -207,8 +289,7 @@ impl Enemy
                         &other_character
                     );
 
-                    let sees = anatomy.sees(&transform, other_character.visibility(), &other_transform.position)
-                        .is_some();
+                    let sees = sees(entities, world, entity, other_entity).is_some();
 
                     if aggressive && sees
                     {
@@ -267,7 +348,8 @@ impl Enemy
 
     pub fn update(
         &mut self,
-        entities: &impl AnyEntities,
+        entities: &ClientEntities,
+        world: &World,
         entity: Entity,
         dt: f32
     ) -> bool
@@ -319,7 +401,7 @@ impl Enemy
             self.set_next_state(entities);
         }
 
-        self.do_behavior(entities, entity, dt);
+        self.do_behavior(entities, world, entity, dt);
 
         changed
     }
