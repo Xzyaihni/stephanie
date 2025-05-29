@@ -159,6 +159,11 @@ impl<'a, Id: Idable> TreeInserter<'a, Id>
         f(shared.elements.get(id))
     }
 
+    pub fn try_position(&self) -> Option<Vector2<f32>>
+    {
+        self.persistent_element(|x| x.map(|x| x.deferred.position.unwrap()))
+    }
+
     pub fn try_width(&self) -> Option<f32>
     {
         self.persistent_element(|x| x.map(|x| x.deferred.width.unwrap()))

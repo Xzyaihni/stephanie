@@ -1,7 +1,7 @@
 use std::{
     f32,
     fmt::{self, Display},
-    collections::{HashSet, HashMap},
+    collections::HashMap,
     hash::{Hash, Hasher},
     rc::Rc,
     cell::RefCell,
@@ -1256,7 +1256,7 @@ pub struct Ui
     stamina: BarDisplay,
     cooldown: BarDisplay,
     notifications: Vec<NotificationInfo>,
-    seen_notifications: HashSet<Entity>,
+    seen_notifications: HashMap<Entity, f32>,
     anatomy_notifications: HashMap<Entity, (f32, Vec<(f32, HumanPartId)>)>,
     popup_unique_id: u8,
     popup: Option<UiItemPopup>
@@ -1289,7 +1289,7 @@ impl Ui
             stamina: BarDisplay::default(),
             cooldown: BarDisplay::default(),
             notifications: Vec::new(),
-            seen_notifications: HashSet::new(),
+            seen_notifications: HashMap::new(),
             anatomy_notifications: HashMap::new(),
             popup_unique_id: 0,
             popup: None
@@ -1327,7 +1327,7 @@ impl Ui
             {
                 if some_or_return!(entities.enemy(entity)).seen_fraction().is_some()
                 {
-                    ui.borrow_mut().seen_notifications.insert(entity);
+                    ui.borrow_mut().seen_notifications.insert(entity, 1.0);
                 }
             }));
         }
@@ -1580,14 +1580,16 @@ impl Ui
             }
         };
 
-        self.seen_notifications.retain(|&entity|
+        self.seen_notifications.retain(|&entity, lifetime|
         {
             let id = |part|
             {
                 UiId::SeenNotification(entity, part)
             };
 
-            let fraction = some_or_value!(entities.enemy(entity), false).seen_fraction();
+            let enemy = some_or_value!(entities.enemy(entity), false);
+            let fraction = enemy.seen_fraction();
+            let is_attacking = enemy.is_attacking();
 
             let position = some_or_value!(position_of(entity), false);
 
@@ -1602,11 +1604,8 @@ impl Ui
                 animation: Animation{
                     position: None,
                     scaling: Some(ScalingAnimation{
-                        close_mode: Scaling::Spring(SpringScaling::new(SpringScalingInfo{
-                            start_velocity: Vector2::new(0.01, 0.3),
-                            damping: 0.99,
-                            strength: 13.0
-                        })),
+                        close_mode: Scaling::EaseIn(EaseInInfo::new(0.1)),
+                        close_scaling: Vector2::new(0.8, 0.0),
                         ..Animation::normal().scaling.unwrap()
                     }),
                     ..Animation::normal()
@@ -1614,12 +1613,26 @@ impl Ui
                 ..Default::default()
             });
 
+            let is_detected = fraction.is_none() && is_attacking;
+
+            if fraction.is_none()
+            {
+                *lifetime -= dt;
+            } else
+            {
+                *lifetime = 1.0;
+            }
+
             let faded_id = id(SeenNotificationPart::Back);
-            body.update(faded_id.clone(), UiElement{
-                texture: UiTexture::Custom(if fraction.is_some() { "ui/seen_faded.png" } else { "ui/seen_done.png" }.to_owned()),
-                position: UiPosition::Inherit,
-                ..UiElement::fit_content()
-            });
+
+            if !is_detected
+            {
+                body.update(faded_id.clone(), UiElement{
+                    texture: UiTexture::Custom("ui/seen_faded.png".to_owned()),
+                    position: UiPosition::Inherit,
+                    ..UiElement::fit_content()
+                });
+            }
 
             if let Some(fraction) = fraction
             {
@@ -1645,9 +1658,28 @@ impl Ui
                     position: body_position,
                     ..UiElement::fit_content()
                 });
+            } else
+            {
+                if is_detected
+                {
+                    body.update(id(SeenNotificationPart::Fill), UiElement{
+                        texture: UiTexture::Custom("ui/seen_done.png".to_owned()),
+                        position: UiPosition::Inherit,
+                        animation: Animation{
+                            scaling: Some(ScalingAnimation{
+                                start_scaling: Vector2::repeat(2.0),
+                                start_mode: Scaling::EaseOut{decay: 20.0},
+                                close_mode: Scaling::Ignore,
+                                ..Default::default()
+                            }),
+                            ..Default::default()
+                        },
+                        ..UiElement::fit_content()
+                    });
+                }
             }
 
-            fraction.is_some()
+            *lifetime > 0.0
         });
 
         self.notifications.retain_mut(|notification|
