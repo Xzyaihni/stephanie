@@ -1348,15 +1348,17 @@ impl<'a> PlayerContainer<'a>
             }
         }
 
-        if let Some(movement) = self.movement_direction()
         {
-            if let Some(mut character) = self.game_state.entities()
-                .character_mut(self.info.entity)
+            let movement_direction = self.movement_direction();
+            if let Some(character) = self.game_state.entities().character_mut(self.info.entity).as_mut()
             {
-                character.sprinting = self.game_state.pressed(Control::Sprint);
+                character.sprinting = movement_direction.is_some() && self.game_state.pressed(Control::Sprint);
             }
 
-            self.walk(movement, dt);
+            if let Some(movement) = movement_direction
+            {
+                self.walk(movement, dt);
+            }
         }
 
         let able_to_move = self.game_state.entities()
