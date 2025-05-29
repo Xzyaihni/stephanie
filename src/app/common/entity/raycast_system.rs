@@ -98,6 +98,7 @@ pub fn raycast(
                 *left -= hit.result.pierce * match info.pierce_scale
                 {
                     RaycastPierce::None => 1.0,
+                    RaycastPierce::Ignore => 0.0,
                     RaycastPierce::Density{..} => tile.health
                 };
             }
@@ -127,6 +128,7 @@ pub fn raycast(
                 pierce -= x.result.pierce * match info.pierce_scale
                 {
                     RaycastPierce::None => 1.0,
+                    RaycastPierce::Ignore => 0.0,
                     RaycastPierce::Density{ignore_anatomy} =>
                     {
                         match x.id

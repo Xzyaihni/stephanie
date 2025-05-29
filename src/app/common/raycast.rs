@@ -59,6 +59,7 @@ impl RaycastResult
 pub enum RaycastPierce
 {
     None,
+    Ignore,
     Density{ignore_anatomy: bool}
 }
 

@@ -61,8 +61,8 @@ pub fn sees(
     }
 
     let info = RaycastInfo{
-        pierce: None,
-        pierce_scale: RaycastPierce::None,
+        pierce: Some(1.0),
+        pierce_scale: RaycastPierce::Ignore,
         layer: ColliderLayer::Vision,
         ignore_entity: Some(entity),
         ignore_end: false
@@ -76,18 +76,20 @@ pub fn sees(
         &other_position
     ).hits;
 
-    let hit_something = hits.into_iter().any(|hit|
+    let hit_obstacle = hits.into_iter().any(|hit|
     {
-        if let RaycastHitId::Entity(hit_entity) = hit.id
+        match hit.id
         {
-            hit_entity != other_entity
-        } else
-        {
-            true
+            RaycastHitId::Entity(hit_entity) => hit_entity != other_entity,
+            RaycastHitId::Tile(pos) =>
+            {
+                let tile = some_or_value!(world.tile(pos), false);
+                !world.tile_info(*tile).transparent
+            }
         }
     });
 
-    if hit_something
+    if hit_obstacle
     {
         return None;
     }
