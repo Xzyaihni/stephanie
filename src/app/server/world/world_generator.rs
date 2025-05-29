@@ -62,7 +62,7 @@ pub enum ParseErrorKind
 {
     Io(io::Error),
     Json(serde_json::Error),
-    Lisp(lisp::Error)
+    Lisp(lisp::ErrorPos)
 }
 
 impl fmt::Display for ParseErrorKind
@@ -96,9 +96,9 @@ impl From<serde_json::Error> for ParseErrorKind
     }
 }
 
-impl From<lisp::Error> for ParseErrorKind
+impl From<lisp::ErrorPos> for ParseErrorKind
 {
-    fn from(value: lisp::Error) -> Self
+    fn from(value: lisp::ErrorPos) -> Self
     {
         ParseErrorKind::Lisp(value)
     }
@@ -151,9 +151,9 @@ impl From<io::Error> for ParseError
     }
 }
 
-impl From<lisp::Error> for ParseError
+impl From<lisp::ErrorPos> for ParseError
 {
-    fn from(value: lisp::Error) -> Self
+    fn from(value: lisp::ErrorPos) -> Self
     {
         ParseError::new(value)
     }
@@ -276,10 +276,10 @@ impl ChunkGenerator
             memory
         };
 
-        let lisp = Lisp::new_with_config(config, &code).unwrap_or_else(|err|
+        let lisp = Lisp::new_with_config(config, &code).map_err(|err|
         {
-            panic!("error parsing {name}: {err}")
-        });
+            ParseError::new_named(PathBuf::from(name), err)
+        })?;
 
         self.chunks.insert(name.to_owned(), lisp);
 

@@ -15,8 +15,9 @@ use crate::{
     server::ConnectionsHandler,
     common::{
         self,
-        FurnitureBuilder,
-        EnemyBuilder,
+        furniture_creator,
+        enemy_creator,
+        Loot,
         TileMap,
         WorldChunkSaver,
         ChunkSaver,
@@ -157,7 +158,7 @@ pub struct World
     chunk_saver: ChunkSaver,
     entities_saver: EntitiesSaver,
     enemies_info: Arc<EnemiesInfo>,
-    items_info: Arc<ItemsInfo>,
+    loot: Loot,
     overmaps: OvermapsType,
     client_indexers: HashMap<ConnectionId, EntitiesTracker>
 }
@@ -188,6 +189,8 @@ impl World
         let overmaps = Rc::new(RefCell::new(HashMap::new()));
         let client_indexers = HashMap::new();
 
+        let loot = Loot::new(items_info, "items/loot.scm")?;
+
         Ok(Self{
             message_handler,
             world_name,
@@ -195,7 +198,7 @@ impl World
             chunk_saver,
             entities_saver,
             enemies_info,
-            items_info,
+            loot,
             overmaps,
             client_indexers
         })
@@ -442,7 +445,7 @@ impl World
     }
 
     fn add_entities(
-        &self,
+        &mut self,
         container: &mut ServerEntities,
         chunk_pos: Pos3<f32>,
         chunk: &mut Chunk
@@ -460,15 +463,15 @@ impl World
         {
             let picked = self.enemies_info.weighted_random(1.0)?;
 
-            Some(EnemyBuilder::new(
+            Some(enemy_creator::create(
                 &self.enemies_info,
-                &self.items_info,
+                &self.loot,
                 picked,
                 pos
-            ).build())
+            ))
         }).chain(Self::add_on_ground(chunk_pos, chunk, crates, |pos|
         {
-            Some(FurnitureBuilder::new(&self.items_info, pos).build())
+            Some(furniture_creator::create(&self.loot, pos))
         })).map(|mut entity_info|
         {
             if entity_info.saveable.is_none()

@@ -35,8 +35,7 @@ struct EnemyInfoRaw
     crawling: String,
     lying: String,
     hand: String,
-    commonness: Option<f32>,
-    loot_commonness: Option<f32>
+    commonness: Option<f32>
 }
 
 type EnemiesInfoRaw = Vec<EnemyInfoRaw>;
@@ -50,8 +49,7 @@ pub struct EnemyInfo
     pub behavior: EnemyBehavior,
     pub character: CharacterId,
     pub scale: f32,
-    pub commonness: f32,
-    pub loot_commonness: f32
+    pub commonness: f32
 }
 
 impl GenericItem for EnemyInfo
@@ -97,8 +95,7 @@ impl EnemyInfo
             behavior: raw.behavior.unwrap_or(EnemyBehavior::Melee),
             character,
             scale,
-            commonness: raw.commonness.unwrap_or(1.0),
-            loot_commonness: raw.loot_commonness.unwrap_or(1.0)
+            commonness: raw.commonness.unwrap_or(1.0)
         }
     }
 }

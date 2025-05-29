@@ -868,7 +868,7 @@ impl Game
         };
 
         let source = infos.console.past_commands.clone() + &command;
-        let mut lisp = match Lisp::new_with_config(config, &source)
+        let lisp = match Lisp::new_with_config(config, &source)
         {
             Ok(x) => x,
             Err(err) =>

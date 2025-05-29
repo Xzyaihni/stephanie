@@ -43,11 +43,16 @@ impl Inventory
         self.items.is_empty()
     }
 
-    pub fn random(&self) -> InventoryItem
+    pub fn random(&self) -> Option<InventoryItem>
     {
+        if self.items.is_empty()
+        {
+            return None;
+        }
+
         let id = fastrand::usize(0..self.items.len());
 
-        InventoryItem(id)
+        Some(InventoryItem(id))
     }
 
     pub fn items_ids(&self) -> impl Iterator<Item=(InventoryItem, &Item)>

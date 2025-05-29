@@ -20,8 +20,7 @@
         "crawling": "runner/crawling.png",
         "lying": "runner/lying.png",
         "hand": "hand.png",
-        "commonness": 0.4,
-        "loot_commonness": 0.9
+        "commonness": 0.4
     },
     {
         "name": "bigy",
@@ -38,8 +37,7 @@
         "crawling": "bigy/crawling.png",
         "lying": "bigy/lying.png",
         "hand": "hand.png",
-        "commonness": 0.2,
-        "loot_commonness": 0.5
+        "commonness": 0.2
     },
     {
         "name": "me",
@@ -58,7 +56,6 @@
         "crawling": "../player/crawling.png",
         "lying": "../player/lying.png",
         "hand": "../player/hand.png",
-        "commonness": 0.05,
-        "loot_commonness": 1.1
+        "commonness": 0.05
     }
 ]

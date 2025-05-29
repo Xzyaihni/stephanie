@@ -1,150 +1,88 @@
-use std::ops::Range;
+use std::{
+    fs,
+    cell::RefCell,
+    path::PathBuf,
+    sync::Arc
+};
 
-use crate::common::{
-    pick_by_commonness,
-    Inventory,
-    Item,
-    ItemsInfo
+use crate::{
+    server::world::ParseError,
+    common::{
+        lisp::{self, *},
+        Item,
+        ItemsInfo
+    }
 };
 
 
-pub struct Loot<'a>
+pub struct Loot
 {
-    info: &'a ItemsInfo,
-    groups: Vec<&'static str>,
-    commonness: f32
+    info: Arc<ItemsInfo>,
+    creator: RefCell<Lisp>
 }
 
-impl<'a> Loot<'a>
+impl Loot
 {
-    pub fn new(
-        info: &'a ItemsInfo,
-        groups: Vec<&'static str>,
-        commonness: f32
-    ) -> Self
+    pub fn new(info: Arc<ItemsInfo>, filename: &str) -> Result<Self, ParseError>
     {
-        Self{info, groups, commonness}
+        let load = |filename|
+        {
+            fs::read_to_string(filename)
+                .map_err(|err| ParseError::new_named(PathBuf::from(filename), err))
+        };
+
+        let standard = load("lisp/standard.scm")?;
+        let code = load(filename)?;
+
+        let creator = RefCell::new(Lisp::new(&(standard + &code))
+            .map_err(|err| ParseError::new_named(PathBuf::from(filename), err))?);
+
+        Ok(Self{info, creator})
     }
 
-    pub fn create(&mut self) -> Option<Item>
+    fn parse_item(&self, value: OutputWrapperRef) -> Result<Item, lisp::Error>
     {
-        let possible = self.groups.iter().flat_map(|name| self.info.group(name));
+        let name = value.as_symbol()?;
+        let name: String = name.chars().map(|c| if c == '_' { ' ' } else { c }).collect();
 
-        let id = pick_by_commonness(self.commonness as f64, possible, |id|
+        let id = self.info.get_id(&name).ok_or_else(||
         {
-            self.info.get(*id).commonness
-        });
+            lisp::Error::Custom(format!("item named {name} not found"))
+        })?;
 
-        id.map(|&id|
-        {
-            Item{
-                id
-            }
-        })
+        Ok(Item{id})
     }
 
-    pub fn create_random(&mut self, items: &mut Inventory, amount: Range<usize>)
+    pub fn create(&self, name: &str) -> impl Iterator<Item=Item> + use<'_>
     {
-        (0..fastrand::usize(amount)).filter_map(|_| self.create()).for_each(|item|
         {
-            items.push(item);
-        });
-    }
-}
+            let mut creator = self.creator.borrow_mut();
+            let memory = creator.memory_mut();
 
-#[cfg(test)]
-mod tests
-{
-    use std::{iter, collections::HashMap};
+            let name = memory.new_symbol(name);
 
-    use crate::common::pick_by_commonness;
-
-
-    fn distribution(this_commonness: f64)
-    {
-        let items = [
-            ("bag", 1.2),
-            ("rock", 1.0),
-            ("stick", 0.7),
-            ("bottle", 0.5),
-            ("three", 0.33),
-            ("gem", 0.1)
-        ];
-
-        let commonnest = items.iter().map(|(_, x)| x).max_by(|a, b| a.partial_cmp(b).unwrap())
-            .unwrap();
-
-        let items = items.into_iter().map(|(name, x)| (name, x / commonnest)).collect::<Vec<_>>();
-
-        let longest_item = items.iter().map(|(name, _)| name.len()).max().unwrap();
-
-        let mut gotten: HashMap<&str, (usize, f64)> = items.iter()
-            .map(|(name, commonness)| (*name, (0_usize, *commonness)))
-            .collect();
-
-        let trials = 1500;
-
-        (0..trials).for_each(|_|
-        {
-            let picked = pick_by_commonness(this_commonness, items.iter(), |(_, commonness)|
+            memory.define("name", name).unwrap_or_else(|err|
             {
-                *commonness
-            });
+                panic!("{err}")
+            })
+        }
 
-            gotten.get_mut(picked.unwrap().0).unwrap().0 += 1;
-        });
-
-        let largest_amount = *gotten.iter().map(|(_, (amount, _))| amount).max().unwrap();
-
-        let mut sorted: Vec<(&str, (usize, f64))> = gotten.into_iter().collect();
-        sorted.sort_unstable_by(|a, b| a.1.1.partial_cmp(&b.1.1).unwrap());
-
-        let bar_size = 25;
-
-        println!("drops distribution for commonness {this_commonness}");
-        sorted.into_iter().for_each(|(name, (amount, _))|
+        let (memory, value) = self.creator.borrow().run().unwrap_or_else(|err|
         {
-            let bar: String = {
-                let amount = amount as f32 / largest_amount as f32;
+            panic!("{err}")
+        }).destructure();
 
-                (0..bar_size).map(|i|
-                {
-                    let fraction = i as f32 / (bar_size - 1) as f32;
-
-                    if fraction <= amount
-                    {
-                        '#'
-                    } else
-                    {
-                        '-'
-                    }
-                }).collect()
-            };
-
-            let rate = (amount as f32 / trials as f32) * 100.0;
-
-            println!("{name:>longest_item$}: {bar} {rate:.1}%");
+        let items = value.as_pairs_list(&memory).unwrap_or_else(|err|
+        {
+            panic!("{err}")
         });
-        println!(
-            "{}",
-            iter::repeat('=').take(longest_item + bar_size + 8).collect::<String>()
-        );
-    }
 
-    #[test]
-    fn run_distributions()
-    {
-        [
-            0.01,
-            0.2,
-            0.5,
-            1.0,
-            2.0,
-            4.0,
-            9.0,
-            30.0,
-            60.0,
-            99.0
-        ].into_iter().for_each(distribution);
+        items.into_iter().map(move |item|
+        {
+            self.parse_item(OutputWrapperRef::new(&memory, item)).unwrap_or_else(|err|
+            {
+                panic!("{err}")
+            })
+        })
     }
 }

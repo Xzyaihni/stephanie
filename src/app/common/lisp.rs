@@ -791,9 +791,9 @@ impl Symbols
         }).expect("all ids must be valid")
     }
 
-    pub fn push(&mut self, value: String) -> SymbolId
+    pub fn push(&mut self, value: &str) -> SymbolId
     {
-        if let Some(&id) = self.mappings.get(&value)
+        if let Some(&id) = self.mappings.get(value)
         {
             return id;
         }
@@ -801,7 +801,7 @@ impl Symbols
         let id = SymbolId(self.current_id);
         self.current_id += 1;
 
-        self.mappings.insert(value, id);
+        self.mappings.insert(value.to_owned(), id);
 
         id
     }
@@ -962,9 +962,9 @@ impl LispMemory
         Ok(values)
     }
 
-    pub fn define(&mut self, key: impl Into<String>, value: LispValue) -> Result<(), Error>
+    pub fn define(&mut self, key: &str, value: LispValue) -> Result<(), Error>
     {
-        let symbol = self.new_symbol(key.into());
+        let symbol = self.new_symbol(key);
 
         self.set_register(Register::Value, value);
         self.define_symbol(symbol.as_symbol_id().expect("must be a symbol"), Register::Value)
@@ -1440,7 +1440,7 @@ impl LispMemory
     {
         match x
         {
-            PrimitiveType::Value(x) => self.new_symbol(x),
+            PrimitiveType::Value(x) => self.new_symbol(&x),
             PrimitiveType::Char(x) => LispValue::new_char(x),
             PrimitiveType::Float(x) => LispValue::new_float(x),
             PrimitiveType::Integer(x) => LispValue::new_integer(x),
@@ -1450,11 +1450,9 @@ impl LispMemory
 
     pub fn new_symbol(
         &mut self,
-        x: impl Into<String>
+        x: &str
     ) -> LispValue
     {
-        let x = x.into();
-
         let id = self.symbols.push(x);
 
         LispValue::new_symbol_id(id)
@@ -1502,6 +1500,11 @@ impl OutputWrapper
         {
             OutputWrapperRef{memory: &self.memory, value: *value}
         }))
+    }
+
+    pub fn to_ref(&self) -> OutputWrapperRef
+    {
+        OutputWrapperRef{memory: &self.memory, value: self.value}
     }
 }
 
@@ -1655,7 +1658,7 @@ impl Lisp
         LispMemory::default()
     }
 
-    pub fn run(&mut self) -> Result<OutputWrapper, ErrorPos>
+    pub fn run(&self) -> Result<OutputWrapper, ErrorPos>
     {
         self.program.eval()
     }

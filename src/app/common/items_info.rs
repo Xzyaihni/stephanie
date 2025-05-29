@@ -80,7 +80,6 @@ pub struct ItemInfoRaw
     side_sharpness: Option<f32>,
     scale: Option<f32>,
     mass: Option<f32>,
-    commonness: Option<f64>,
     lighting: Option<f32>,
     groups: Vec<String>,
     texture: Option<String>
@@ -100,7 +99,6 @@ pub struct ItemInfo
     pub scale: f32,
     pub aspect: Vector2<f32>,
     pub mass: f32,
-    pub commonness: f64,
     pub lighting: Light,
     pub texture: Option<TextureId>
 }
@@ -157,7 +155,6 @@ impl ItemInfo
             scale,
             aspect,
             mass: raw.mass.unwrap_or(1.0),
-            commonness: raw.commonness.unwrap_or(1.0),
             lighting: raw.lighting.map(|strength| Light{strength, ..Default::default()}).unwrap_or_default(),
             texture: Some(texture)
         }
@@ -175,7 +172,6 @@ impl ItemInfo
             scale: HAND_SCALE,
             aspect: Vector2::repeat(1.0),
             mass: 0.1, // 0.3 would be more accurate but i want balance
-            commonness: 1.0,
             lighting: Light::default(),
             texture: None
         }
@@ -250,7 +246,7 @@ impl ItemsInfo
         let mut groups: HashMap<String, Vec<ItemId>> = HashMap::new();
 
         let textures_root = textures_root.as_ref();
-        let mut items: Vec<_> = items.into_iter().enumerate().map(|(index, info_raw)|
+        let items: Vec<_> = items.into_iter().enumerate().map(|(index, info_raw)|
         {
             let id = ItemId(index);
 
@@ -263,16 +259,6 @@ impl ItemsInfo
 
             ItemInfo::from_raw(assets, textures_root, info_raw)
         }).collect();
-
-        let commonnest = items.iter().map(|x| x.commonness).max_by(|a, b|
-        {
-            a.partial_cmp(b).unwrap()
-        }).expect("must have at least one info");
-
-        items.iter_mut().for_each(|x|
-        {
-            x.commonness /= commonnest;
-        });
 
         let generic_info = GenericInfo::new(items);
 

@@ -453,6 +453,28 @@ impl Default for Primitives
                 {
                     InterRepr::parse_let(memory, args)
                 }))),
+            ("eval",
+                PrimitiveProcedureInfo::new_simple(1, Effect::Pure, |mut args|
+                {
+                    let value = args.next().unwrap().as_symbol_id()?;
+
+                    let memory = args.memory;
+
+                    if let Some(x) = memory.lookup_symbol(value)
+                    {
+                        Ok(x)
+                    } else
+                    {
+                        let name = memory.get_symbol(value);
+                        memory.primitives.index_by_name(&name).map(|index|
+                        {
+                            LispValue::new_primitive_procedure(index)
+                        }).ok_or_else(||
+                        {
+                            Error::UndefinedVariable(name)
+                        })
+                    }
+                })),
             ("make-vector",
                 PrimitiveProcedureInfo::new_with_target(2, Effect::Pure, |mut args, target|
                 {

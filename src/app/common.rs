@@ -61,8 +61,6 @@ pub use characters_info::{Hairstyle, CharacterId, CharactersInfo, CharacterInfo}
 pub use player::Player;
 
 pub use enemy::{EnemyBehavior, Enemy};
-pub use enemy_builder::EnemyBuilder;
-pub use furniture_builder::FurnitureBuilder;
 pub use enemies_info::{EnemyId, EnemyInfo, EnemiesInfo};
 
 pub use chunk_saver::{SaveLoad, WorldChunksBlock, WorldChunkSaver, ChunkSaver, EntitiesSaver};
@@ -130,10 +128,10 @@ pub mod inventory;
 pub mod player;
 
 pub mod particle_creator;
-pub mod furniture_builder;
+pub mod furniture_creator;
 
 pub mod enemy;
-pub mod enemy_builder;
+pub mod enemy_creator;
 pub mod enemies_info;
 
 pub mod message;
