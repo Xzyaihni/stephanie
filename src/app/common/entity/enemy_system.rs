@@ -55,9 +55,9 @@ pub fn update<Passer: EntityPasser>(entities: &mut ClientEntities, passer: &RwLo
 
                     anatomy.sees(&transform, other_visibility, &other_transform.position)
                 })
-                .for_each(|&ComponentWrapper{
+                .for_each(|ComponentWrapper{
                     entity: other_entity,
-                    ..
+                    component
                 }|
                 {
                     entities.set_changed().enemy(entity);
@@ -65,13 +65,14 @@ pub fn update<Passer: EntityPasser>(entities: &mut ClientEntities, passer: &RwLo
                     let mut enemy = enemy.borrow_mut();
                     if enemy.seen_timer() >= 1.0
                     {
-                        enemy.set_attacking(other_entity);
+                        enemy.set_attacking(*other_entity);
                         drop(enemy);
 
                         on_state_change(entity);
                     } else
                     {
-                        enemy.increase_seen(dt);
+                        let other_visibility = component.borrow().visibility();
+                        enemy.increase_seen(other_visibility * dt);
                     }
                 });
         }

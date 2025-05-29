@@ -439,20 +439,23 @@ impl EaseInInfo
 pub struct SpringScaling
 {
     velocity: Vector3<f32>,
-    info: SpringScalingInfo
+    damping: f32,
+    strength: f32
 }
 
 impl PartialEq for SpringScaling
 {
     fn eq(&self, other: &Self) -> bool
     {
-        self.info.eq(&other.info)
+        self.damping == other.damping
+            && self.strength == other.strength
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SpringScalingInfo
 {
+    pub start_velocity: Vector2<f32>,
     pub damping: f32,
     pub strength: f32
 }
@@ -461,7 +464,11 @@ impl SpringScaling
 {
     pub fn new(info: SpringScalingInfo) -> Self
     {
-        Self{velocity: Vector3::zeros(), info}
+        Self{
+            velocity: Vector3::new(info.start_velocity.x, info.start_velocity.y, 0.0),
+            damping: info.damping,
+            strength: info.strength
+        }
     }
 }
 
@@ -527,7 +534,7 @@ impl Scaling
             {
                 info.next(current, target, dt);
             },
-            Scaling::Spring(SpringScaling{velocity, info: SpringScalingInfo{damping, strength}}) =>
+            Scaling::Spring(SpringScaling{velocity, damping, strength}) =>
             {
                 let difference = (target - *current) * *strength;
 

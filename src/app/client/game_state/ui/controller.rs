@@ -471,16 +471,14 @@ impl UiElementCached
         dt: f32
     ) -> bool
     {
+        let is_scaling_close = element.animation.scaling.as_ref().map(|x| x.close_mode != Scaling::Ignore)
+            .unwrap_or(false);
+
+        let is_position_close = element.animation.position.as_ref().map(|x| x.close_mode != Connection::Ignore)
+            .unwrap_or(false);
+
         if let Some(scaling) = element.animation.scaling.as_mut()
         {
-            if let Scaling::Ignore = scaling.close_mode
-            {
-                if close_soon
-                {
-                    return false;
-                }
-            }
-
             let close_scaling = scaling.close_scaling.component_mul(&self.scale);
 
             scaling.close_mode.next_2d(
@@ -508,7 +506,7 @@ impl UiElementCached
             self.position = target_position;
         }
 
-        if element.animation.scaling.is_none() && element.animation.position.is_none()
+        if !is_scaling_close && !is_position_close
         {
             if close_soon
             {
@@ -523,18 +521,12 @@ impl UiElementCached
             return false;
         }
 
-        if let Some(scale) = self.object.as_ref().and_then(|object|
+        if self.scale.min() < MINIMUM_SCALE
         {
-            object.transform().map(|transform| transform.scale.xy().min())
-        })
-        {
-            if scale < MINIMUM_SCALE
-            {
-                return false;
-            }
+            return false;
         }
 
-        if element.animation.scaling.is_none() && element.animation.position.is_some()
+        if !is_scaling_close && is_position_close
         {
             if (target_position - self.position).abs().sum() < MINIMUM_DISTANCE
             {
@@ -1089,7 +1081,6 @@ struct Element<Id>
 {
     id: Id,
     parent_fraction: Fractions,
-    close_immediately: bool,
     close_soon: bool,
     element: UiElement<Id>,
     cached: UiElementCached,
@@ -1365,7 +1356,6 @@ impl<Id: Idable> Controller<Id>
                     let mut element = Element{
                         id: this.id.clone(),
                         parent_fraction: parent_fraction.clone(),
-                        close_immediately: false,
                         close_soon: false,
                         element: this.element.clone(),
                         cached,
@@ -1430,16 +1420,16 @@ impl<Id: Idable> Controller<Id>
                 {
                     if let Some(parent) = parent
                     {
-                        if !parent.closing
-                        {
-                            element.close_soon = true;
-                        } else
+                        if parent.closing
                         {
                             element.parent_fraction = parent.cached.fractions.clone();
+                        } else
+                        {
+                            element.close_soon = true;
                         }
                     } else
                     {
-                        element.close_immediately = true;
+                        element.close_soon = true;
                     }
                 }
             });
@@ -1455,11 +1445,6 @@ impl<Id: Idable> Controller<Id>
             {
                 if element.closing
                 {
-                    if element.close_immediately
-                    {
-                        return false;
-                    }
-
                     element.cached.update_closing(
                         &element.parent_fraction,
                         &element.deferred,

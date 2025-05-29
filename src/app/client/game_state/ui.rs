@@ -1587,7 +1587,7 @@ impl Ui
                 UiId::SeenNotification(entity, part)
             };
 
-            let fraction = some_or_value!(entities.enemy(entity).and_then(|x| x.seen_fraction()), false);
+            let fraction = some_or_value!(entities.enemy(entity), false).seen_fraction();
 
             let position = some_or_value!(position_of(entity), false);
 
@@ -1599,40 +1599,55 @@ impl Ui
             let body = self.controller.update(id(SeenNotificationPart::Body), UiElement{
                 position: body_position.clone(),
                 children_layout: UiLayout::Vertical,
+                animation: Animation{
+                    position: None,
+                    scaling: Some(ScalingAnimation{
+                        close_mode: Scaling::Spring(SpringScaling::new(SpringScalingInfo{
+                            start_velocity: Vector2::new(0.01, 0.3),
+                            damping: 0.99,
+                            strength: 13.0
+                        })),
+                        ..Animation::normal().scaling.unwrap()
+                    }),
+                    ..Animation::normal()
+                },
                 ..Default::default()
             });
 
             let faded_id = id(SeenNotificationPart::Back);
             body.update(faded_id.clone(), UiElement{
-                texture: UiTexture::Custom("ui/seen_faded.png".to_owned()),
+                texture: UiTexture::Custom(if fraction.is_some() { "ui/seen_faded.png" } else { "ui/seen_done.png" }.to_owned()),
                 position: UiPosition::Inherit,
                 ..UiElement::fit_content()
             });
 
-            let clip = body.update(id(SeenNotificationPart::Clip), UiElement{
-                position: UiPosition::Inherit,
-                width: UiSize::Rest(1.0).into(),
-                height: UiSize::CopyElement(UiDirection::Vertical, 1.0, faded_id.clone()).into(),
-                children_layout: UiLayout::Vertical,
-                ..Default::default()
-            });
+            if let Some(fraction) = fraction
+            {
+                let clip = body.update(id(SeenNotificationPart::Clip), UiElement{
+                    position: UiPosition::Inherit,
+                    width: UiSize::Rest(1.0).into(),
+                    height: UiSize::CopyElement(UiDirection::Vertical, 1.0, faded_id.clone()).into(),
+                    children_layout: UiLayout::Vertical,
+                    ..Default::default()
+                });
 
-            add_padding_vertical(clip, UiSize::Rest(1.0 - fraction).into());
+                add_padding_vertical(clip, UiSize::Rest(1.0 - fraction).into());
 
-            let clip_body = clip.update(id(SeenNotificationPart::ClipBody), UiElement{
-                width: UiSize::CopyElement(UiDirection::Horizontal, 1.0, faded_id).into(),
-                height: UiSize::Rest(fraction).into(),
-                scissor: true,
-                ..Default::default()
-            });
+                let clip_body = clip.update(id(SeenNotificationPart::ClipBody), UiElement{
+                    width: UiSize::CopyElement(UiDirection::Horizontal, 1.0, faded_id).into(),
+                    height: UiSize::Rest(fraction).into(),
+                    scissor: true,
+                    ..Default::default()
+                });
 
-            clip_body.update(id(SeenNotificationPart::Fill), UiElement{
-                texture: UiTexture::Custom("ui/seen.png".to_owned()),
-                position: body_position,
-                ..UiElement::fit_content()
-            });
+                clip_body.update(id(SeenNotificationPart::Fill), UiElement{
+                    texture: UiTexture::Custom("ui/seen.png".to_owned()),
+                    position: body_position,
+                    ..UiElement::fit_content()
+                });
+            }
 
-            true
+            fraction.is_some()
         });
 
         self.notifications.retain_mut(|notification|
