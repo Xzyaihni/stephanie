@@ -33,16 +33,13 @@ pub fn sees(
     let anatomy = entities.anatomy(entity)?;
     let transform = entities.transform(entity)?;
 
-    let other_position = entities.transform(other_entity)?.position;
+    let other_transform = entities.transform(other_entity)?;
+    let other_position = other_transform.position;
 
     let angle = angle_between(transform.position, other_position);
     let angle_offset = short_rotation(angle + transform.rotation).abs();
 
     let vision_angle = anatomy.vision_angle().unwrap_or(0.0);
-
-    let distance = transform.position.metric_distance(&other_position);
-
-    let vision = anatomy.vision().unwrap_or(0.0);
 
     if angle_offset > vision_angle
     {
@@ -51,7 +48,11 @@ pub fn sees(
 
     let visibility = entities.character(other_entity)?.visibility();
 
-    let max_distance = vision * visibility;
+    let vision = anatomy.vision().unwrap_or(0.0);
+
+    let distance = transform.position.metric_distance(&other_position);
+
+    let max_distance = (vision * visibility) + (transform.scale.xy().min() + other_transform.scale.xy().min()) / 2.0;
 
     let is_visible = distance < max_distance;
 

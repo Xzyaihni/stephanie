@@ -37,6 +37,7 @@ use crate::{
         physics::*,
         Hairstyle,
         Side1d,
+        Side2d,
         AnyEntities,
         Entity,
         EntityInfo,
@@ -1239,6 +1240,34 @@ impl Character
             SpriteState::Normal => DamageHeight::either(DamageHeight::Top, DamageHeight::Middle),
             SpriteState::Crawling
             | SpriteState::Lying => DamageHeight::Bottom
+        }
+    }
+
+    pub fn remap_direction(&self, height: DamageHeight, side: Side2d) -> (DamageHeight, Side2d)
+    {
+        match self.sprite_state.value()
+        {
+            SpriteState::Normal => (height, side),
+            SpriteState::Crawling
+            | SpriteState::Lying =>
+            {
+                let new_height = match side
+                {
+                    Side2d::Left | Side2d::Right => DamageHeight::random(),
+                    Side2d::Front => DamageHeight::Top,
+                    Side2d::Back => DamageHeight::Bottom
+                };
+
+                let new_side = if let SpriteState::Crawling = self.sprite_state.value()
+                {
+                    Side2d::Back
+                } else
+                {
+                    Side2d::Front
+                };
+
+                (new_height, new_side)
+            }
         }
     }
 

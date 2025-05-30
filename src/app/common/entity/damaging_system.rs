@@ -147,15 +147,13 @@ pub fn damager<'a, 'b, E: AnyEntities, Passer: EntityPasser, TileDamager: FnMut(
                 };
 
                 let relative_rotation = angle + entity_rotation;
-                let damage = damage.with_direction(Side2d::from_angle(relative_rotation));
 
-                if let Some(other) = entities.character(entity).map(|x| x.faction)
-                {
-                    if !faction.aggressive(&other)
-                    {
-                        return;
-                    }
-                } else
+                let character = some_or_return!(entities.character(entity));
+                let (height, angle) = character.remap_direction(damage.height, Side2d::from_angle(relative_rotation));
+
+                let damage = DamagePartial{height, ..damage}.with_direction(angle);
+
+                if !faction.aggressive(&character.faction)
                 {
                     return;
                 }
