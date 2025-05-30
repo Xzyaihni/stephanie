@@ -130,6 +130,17 @@ pub enum DamageHeight
 
 impl DamageHeight
 {
+    pub fn either(a: Self, b: Self) -> Self
+    {
+        if fastrand::bool()
+        {
+            a
+        } else
+        {
+            b
+        }
+    }
+
     pub fn random() -> Self
     {
         match fastrand::u32(0..3)

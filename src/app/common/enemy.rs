@@ -84,18 +84,18 @@ pub fn sees(
             {
                 let is_target = hit_entity == other_entity;
 
-                let is_enemy = if let (
+                let is_friendly = if let (
                     Some(this_character),
                     Some(other_character)
                 ) = (entities.character(entity), entities.character(hit_entity))
                 {
-                    this_character.aggressive(&other_character)
+                    !this_character.aggressive(&other_character)
                 } else
                 {
                     false
                 };
 
-                !is_target && !is_enemy
+                !is_target && !is_friendly
             },
             RaycastHitId::Tile(pos) =>
             {

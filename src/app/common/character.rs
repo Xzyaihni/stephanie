@@ -1232,6 +1232,16 @@ impl Character
         }
     }
 
+    fn melee_height(&self) -> DamageHeight
+    {
+        match self.sprite_state.value()
+        {
+            SpriteState::Normal => DamageHeight::either(DamageHeight::Top, DamageHeight::Middle),
+            SpriteState::Crawling
+            | SpriteState::Lying => DamageHeight::Bottom
+        }
+    }
+
     fn bash_projectile(&mut self, combined_info: CombinedInfo)
     {
         let info = some_or_return!(self.info.as_ref());
@@ -1246,7 +1256,7 @@ impl Character
         let damage_scale = strength_scale * self.mass_maxed(combined_info, item_info.mass);
         let damage = DamagePartial{
             data: (*item_info).clone().with_changed(|x| x.mass += hand_mass).bash_damage() * damage_scale,
-            height: DamageHeight::random()
+            height: self.melee_height()
         };
 
         let angle = self.bash_side.to_angle();
@@ -1308,7 +1318,7 @@ impl Character
         let damage_scale = strength_scale * self.mass_maxed(combined_info, item_info.mass);
         let damage = DamagePartial{
             data: item_info.clone().with_changed(|x| x.mass += hand_mass).poke_damage() * damage_scale,
-            height: DamageHeight::random()
+            height: self.melee_height()
         };
 
         combined_info.entities.push(
