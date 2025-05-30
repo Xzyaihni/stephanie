@@ -13,6 +13,7 @@ use crate::{
     client::CommonTextures,
     common::{
         some_or_value,
+        some_or_return,
         angle_between,
         short_rotation,
         damage::*,
@@ -51,6 +52,7 @@ pub enum DamagingKind
 pub struct DamagingResult
 {
     pub kind: DamagingKind,
+    pub other_entity: Entity,
     pub angle: f32,
     pub damage: DamagePartial
 }
@@ -161,7 +163,7 @@ pub fn damager<'a, 'b, E: AnyEntities, Passer: EntityPasser, TileDamager: FnMut(
                 let mut damaged = false;
                 if entities.anatomy_exists(entity)
                 {
-                    damage_entity(entities, entity, damage);
+                    damage_entity(entities, entity, result.other_entity, damage);
 
                     damaged = true;
                 }
@@ -277,7 +279,7 @@ fn damaging_raycasting(
             damage.data *= (hit.result.pierce * s).min(1.0);
         }
 
-        DamagingResult{kind, angle, damage}
+        DamagingResult{kind, other_entity: entity, angle, damage}
     }).collect()
 }
 
@@ -376,7 +378,7 @@ fn damaging_colliding(
                 ))
             }).map(|(angle, damage)|
             {
-                DamagingResult{kind, angle, damage}
+                DamagingResult{kind, other_entity: source_entity, angle, damage}
             })
         } else
         {
@@ -445,25 +447,41 @@ fn flash_white(entities: &impl AnyEntities, entity: Entity)
     entities.for_every_child(entity, |child| flash_white_single(entities, child));
 }
 
-pub fn damage_entity(entities: &impl AnyEntities, entity: Entity, damage: Damage)
+fn turn_towards_other(
+    entities: &impl AnyEntities,
+    entity: Entity,
+    other_entity: Entity,
+)
 {
-    if let Some(enemy) = entities.enemy(entity)
+    let mut enemy = some_or_return!(entities.enemy_mut(entity));
+
+    if !enemy.is_attacking()
     {
-        if !enemy.is_attacking()
+        let mut character = some_or_return!(entities.character_mut(entity));
+        let anatomy = some_or_return!(entities.anatomy(entity));
+
+        if anatomy.speed().is_some()
         {
-            let change = damage.direction.side.to_angle();
-            if let Some(mut character) = entities.character_mut(entity)
-            {
-                if entities.anatomy(entity).map(|x| x.speed().is_some()).unwrap_or(false)
-                {
-                    if let Some(x) = character.rotation_mut()
-                    {
-                        *x -= change;
-                    }
-                }
-            }
+            let rotation = some_or_return!(character.rotation_mut());
+
+            let this_position = some_or_return!(entities.transform(entity)).position;
+            let other_position = some_or_return!(entities.transform(other_entity)).position;
+
+            enemy.set_waiting();
+
+            *rotation = -angle_between(this_position, other_position);
         }
     }
+}
+
+pub fn damage_entity(
+    entities: &impl AnyEntities,
+    entity: Entity,
+    other_entity: Entity,
+    damage: Damage
+)
+{
+    turn_towards_other(entities, entity, other_entity);
 
     if let Some(mut anatomy) = entities.anatomy_mut(entity)
     {

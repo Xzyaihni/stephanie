@@ -80,7 +80,23 @@ pub fn sees(
     {
         match hit.id
         {
-            RaycastHitId::Entity(hit_entity) => hit_entity != other_entity,
+            RaycastHitId::Entity(hit_entity) =>
+            {
+                let is_target = hit_entity == other_entity;
+
+                let is_enemy = if let (
+                    Some(this_character),
+                    Some(other_character)
+                ) = (entities.character(entity), entities.character(hit_entity))
+                {
+                    this_character.aggressive(&other_character)
+                } else
+                {
+                    false
+                };
+
+                !is_target && !is_enemy
+            },
             RaycastHitId::Tile(pos) =>
             {
                 let tile = some_or_value!(world.tile(pos), false);
@@ -291,7 +307,11 @@ impl Enemy
                         &other_character
                     );
 
+                    drop(character);
+
                     let sees = sees(entities, world, entity, other_entity).is_some();
+
+                    let mut character = some_or_return!(entities.character_mut(entity));
 
                     if aggressive && sees
                     {
@@ -437,6 +457,11 @@ impl Enemy
     {
         self.seen_timer += dt;
         self.seen_now = true;
+    }
+
+    pub fn set_waiting(&mut self)
+    {
+        self.set_state(BehaviorState::Wait);
     }
 
     pub fn set_attacking(&mut self, entity: Entity)

@@ -41,7 +41,7 @@ pub fn update<Passer: EntityPasser>(
     {
         if enemy.borrow().check_hostiles()
         {
-            let character = entities.character_mut(entity).unwrap();
+            let character = entities.character(entity).unwrap();
             entities.character.iter()
                 .map(|(_, x)| x)
                 .filter(|x| x.entity != entity)
