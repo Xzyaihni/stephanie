@@ -1,0 +1,15 @@
+{
+    "rules": [
+        {
+            "name": "b",
+            "range": {
+                "start": {
+                    "Number": 0
+                },
+                "end": {
+                    "Number": 9999999
+                }
+            }
+        }
+    ]
+}

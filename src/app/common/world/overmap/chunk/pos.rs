@@ -1,6 +1,6 @@
 use std::{
     fmt::{self, Display},
-    ops::{Range, Index, Sub, Add, Mul, Div, Neg}
+    ops::{Range, Index, Sub, Add, Mul, Div, Neg, SubAssign, AddAssign, MulAssign, DivAssign}
 };
 
 use serde::{Serialize, Deserialize};
@@ -252,7 +252,7 @@ impl<T: Copy + Scalar + fmt::Debug> From<Point3<T>> for Pos3<T>
 
 macro_rules! pos3_op_impl
 {
-    ($op_trait:ident, $op_func:ident) =>
+    ($op_trait:ident, $op_assign:ident, $op_func:ident, $op_assign_func:ident) =>
     {
         impl<T: $op_trait<Output=T>> $op_trait for Pos3<T>
         {
@@ -281,13 +281,29 @@ macro_rules! pos3_op_impl
                 )
             }
         }
+
+        impl<T: $op_trait<Output=T> + Copy> $op_assign<T> for Pos3<T>
+        {
+            fn $op_assign_func(&mut self, rhs: T)
+            {
+                *self = self.$op_func(rhs);
+            }
+        }
+
+        impl<T: $op_trait<Output=T> + Clone> $op_assign for Pos3<T>
+        {
+            fn $op_assign_func(&mut self, rhs: Self)
+            {
+                *self = (self.clone()).$op_func(rhs);
+            }
+        }
     }
 }
 
-pos3_op_impl!{Add, add}
-pos3_op_impl!{Sub, sub}
-pos3_op_impl!{Mul, mul}
-pos3_op_impl!{Div, div}
+pos3_op_impl!{Add, AddAssign, add, add_assign}
+pos3_op_impl!{Sub, SubAssign, sub, sub_assign}
+pos3_op_impl!{Mul, MulAssign, mul, mul_assign}
+pos3_op_impl!{Div, DivAssign, div, div_assign}
 
 impl<T: Neg<Output=T>> Neg for Pos3<T>
 {
@@ -346,7 +362,7 @@ impl GlobalPos
 
 macro_rules! globalpos_op_impl
 {
-    ($op_trait:ident, $op_func:ident) =>
+    ($op_trait:ident, $op_assign:ident, $op_func:ident, $op_assign_func:ident) =>
     {
         impl $op_trait<Pos3<i32>> for GlobalPos
         {
@@ -377,13 +393,37 @@ macro_rules! globalpos_op_impl
                 Self(self.0.$op_func(rhs))
             }
         }
+
+        impl $op_assign<i32> for GlobalPos
+        {
+            fn $op_assign_func(&mut self, rhs: i32)
+            {
+                self.0.$op_assign_func(rhs)
+            }
+        }
+
+        impl $op_assign<Pos3<i32>> for GlobalPos
+        {
+            fn $op_assign_func(&mut self, rhs: Pos3<i32>)
+            {
+                self.0.$op_assign_func(rhs)
+            }
+        }
+
+        impl $op_assign for GlobalPos
+        {
+            fn $op_assign_func(&mut self, rhs: Self)
+            {
+                self.0.$op_assign_func(rhs.0)
+            }
+        }
     }
 }
 
-globalpos_op_impl!{Add, add}
-globalpos_op_impl!{Sub, sub}
-globalpos_op_impl!{Mul, mul}
-globalpos_op_impl!{Div, div}
+globalpos_op_impl!{Add, AddAssign, add, add_assign}
+globalpos_op_impl!{Sub, SubAssign, sub, sub_assign}
+globalpos_op_impl!{Mul, MulAssign, mul, mul_assign}
+globalpos_op_impl!{Div, DivAssign, div, div_assign}
 
 impl Neg for GlobalPos
 {

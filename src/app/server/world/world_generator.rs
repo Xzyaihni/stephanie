@@ -170,12 +170,11 @@ impl ChunkGenerator
 {
     pub fn new(
         tilemap: Rc<TileMap>,
-        rules: Rc<ChunkRulesGroup>
+        rules: Rc<ChunkRulesGroup>,
+        parent_directory: PathBuf
     ) -> Result<Self, ParseError>
     {
         let chunks = HashMap::new();
-
-        let parent_directory = PathBuf::from("world_generation");
 
         let primitives = Rc::new(Self::default_primitives(&tilemap));
 
@@ -386,9 +385,10 @@ impl<S: SaveLoad<WorldChunksBlock>> WorldGenerator<S>
         path: impl Into<PathBuf>
     ) -> Result<Self, ParseError>
     {
-        let rules = Rc::new(ChunkRulesGroup::load(path.into())?);
+        let path = path.into();
+        let rules = Rc::new(ChunkRulesGroup::load(path.clone())?);
 
-        let generator = ChunkGenerator::new(tilemap, rules.clone())?;
+        let generator = ChunkGenerator::new(tilemap, rules.clone(), path)?;
 
         Ok(Self{generator, saver, rules})
     }
@@ -423,15 +423,16 @@ impl<S: SaveLoad<WorldChunksBlock>> WorldGenerator<S>
 
         if let Some(local) = global_mapper.to_local(GlobalPos::new(0, 0, 0))
         {
-            wave_collapser.generate_single_maybe(
-                LocalPos::new(Pos3{z: 0, ..local.pos}, Pos3{z: 1, ..local.size}),
-                ||
-                {
-                    let id = self.rules.name_mappings().world_chunk["bunker"];
-
-                    WorldChunk::new(id, Vec::new())
-                }
-            );
+            if let Some(bunker_id) = self.rules.name_mappings().world_chunk.get("bunker")
+            {
+                wave_collapser.generate_single_maybe(
+                    LocalPos::new(Pos3{z: 0, ..local.pos}, Pos3{z: 1, ..local.size}),
+                    ||
+                    {
+                        WorldChunk::new(*bunker_id, Vec::new())
+                    }
+                );
+            }
         }
 
         wave_collapser.generate();
@@ -1015,12 +1016,13 @@ mod tests
         let c = get_tile("glass");
         let d = get_tile("concrete");
 
-        let mut rules = ChunkRulesGroup::load(PathBuf::from("world_generation")).unwrap();
+        let parent_path = PathBuf::from("world_generation");
+        let mut rules = ChunkRulesGroup::load(parent_path.clone()).unwrap();
         rules.insert_chunk("test_chunk".to_owned());
 
         let rules = Rc::new(rules);
 
-        let mut generator = ChunkGenerator::new(Rc::new(tilemap), rules).unwrap();
+        let mut generator = ChunkGenerator::new(Rc::new(tilemap), rules, parent_path).unwrap();
 
         let empty = [];
         let info = ConditionalInfo{

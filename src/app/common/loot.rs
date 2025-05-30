@@ -53,36 +53,43 @@ impl Loot
         Ok(Item{id})
     }
 
-    pub fn create(&self, name: &str) -> impl Iterator<Item=Item> + use<'_>
+    pub fn create<'a>(&'a self, name: &'a str) -> impl Iterator<Item=Item> + use<'a>
     {
         {
             let mut creator = self.creator.borrow_mut();
             let memory = creator.memory_mut();
 
-            let name = memory.new_symbol(name);
-
-            memory.define("name", name).unwrap_or_else(|err|
+            let symbol = memory.new_symbol(name);
+            memory.define("name", symbol).unwrap_or_else(|err|
             {
-                panic!("{err}")
+                panic!("{name}: {err}")
             })
         }
 
         let (memory, value) = self.creator.borrow().run().unwrap_or_else(|err|
         {
-            panic!("{err}")
+            panic!("{name}: {err}")
         }).destructure();
 
         let items = value.as_pairs_list(&memory).unwrap_or_else(|err|
         {
-            panic!("{err}")
+            panic!("{name}: {err}")
         });
 
-        items.into_iter().map(move |item|
+        items.into_iter().filter_map(move |item|
         {
-            self.parse_item(OutputWrapperRef::new(&memory, item)).unwrap_or_else(|err|
+            let item = self.parse_item(OutputWrapperRef::new(&memory, item));
+
+            match item
             {
-                panic!("{err}")
-            })
+                Ok(x) => Some(x),
+                Err(err) =>
+                {
+                    eprintln!("{name}: {err}");
+
+                    None
+                }
+            }
         })
     }
 }

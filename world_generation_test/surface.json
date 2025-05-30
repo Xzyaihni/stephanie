@@ -1,0 +1,49 @@
+{
+    "rules": [
+        {
+            "name": "a",
+            "weight": 1,
+            "neighbors": {
+                "up": [
+                    "a",
+                    "b"
+                ],
+                "down": [
+                    "a",
+                    "b"
+                ],
+                "right": [
+                    "a",
+                    "b"
+                ],
+                "left": [
+                    "a",
+                    "b"
+                ]
+            }
+        },
+        {
+            "name": "b",
+            "weight": 1,
+            "neighbors": {
+                "up": [
+                    "a",
+                    "b"
+                ],
+                "down": [
+                    "a",
+                    "b"
+                ],
+                "right": [
+                    "a",
+                    "b"
+                ],
+                "left": [
+                    "a",
+                    "b"
+                ]
+            }
+        }
+    ],
+    "fallback": "a"
+}

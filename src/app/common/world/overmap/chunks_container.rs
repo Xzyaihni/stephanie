@@ -336,7 +336,7 @@ impl<T> ChunksContainer<T>
         )
     }
 
-    pub fn iter_axis(&self, axis: Axis, fixed: usize) -> impl Iterator<Item=&T>
+    pub fn iter_axis(&self, axis: Axis, fixed: usize) -> impl Iterator<Item=(Pos3<usize>, &T)>
     {
         let size = self.indexer.size();
 
@@ -358,7 +358,7 @@ impl<T> ChunksContainer<T>
                     Axis::Z => Pos3::new(a, b, fixed)
                 }
             })
-        }).map(|pos| &self[pos])
+        }).map(|pos| (pos, &self[pos]))
     }
 
     fn flat_slice_range(&self, z: usize) -> (usize, usize)

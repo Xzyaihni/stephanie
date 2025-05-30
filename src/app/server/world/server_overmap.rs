@@ -1,4 +1,4 @@
-use std::{rc::Rc, cell::RefCell};
+use std::{fmt, rc::Rc, cell::RefCell};
 
 use super::{
     MarkerTile,
@@ -12,6 +12,7 @@ use super::{
 };
 
 use crate::common::{
+    Axis,
     SaveLoad,
     WorldChunksBlock,
     world::{
@@ -104,13 +105,93 @@ fn chunk_pos(pos: GlobalPos) -> GlobalPos
     GlobalPos::from(pos)
 }
 
-#[derive(Debug)]
+fn debug_overmap_with<S: fmt::Debug, T: fmt::Display>(
+    overmap: &ServerOvermap<S>,
+    f: impl Fn(Option<&WorldChunk>) -> T
+) -> String
+{
+    let size = overmap.world_chunks.size();
+
+    let position_to_string = |pos: Pos3<usize>|
+    {
+        let local = LocalPos::new(pos, size);
+        let global = overmap.to_global(local);
+
+        format!(
+            "(local: {}, {}, {}) | global: {}, {}, {})",
+            pos.x, pos.y, pos.z,
+            global.0.x, global.0.y, global.0.z
+        )
+    };
+
+    let longest_position = (0..size.x).map(|x|
+    {
+        (0..size.y).map(move |y|
+        {
+            (0..size.z).map(move |z| position_to_string(Pos3::new(x, y, z)).len()).max().unwrap_or(0)
+        }).max().unwrap_or(0)
+    }).max().unwrap_or(0);
+
+    let size_z = size.z;
+    let world_chunks = (0..size_z).fold(String::new(), |mut acc, z|
+    {
+        overmap.world_chunks.iter_axis(Axis::Z, z).for_each(|(pos, maybe_block)|
+        {
+            let line = if let Some(block) = maybe_block
+            {
+                block.iter().fold(String::new(), |mut acc, world_chunk|
+                {
+                    let value = f(Some(world_chunk)).to_string();
+
+                    acc += &value;
+
+                    acc
+                })
+            } else
+            {
+                (0..size_z).fold(String::new(), |mut acc, _|
+                {
+                    let value = f(None).to_string();
+
+                    acc += &value;
+
+                    acc
+                })
+            };
+
+            let position_info = format!("{:<longest_position$}: ", position_to_string(pos));
+
+            acc += "\n";
+            acc += &position_info;
+            acc += &line;
+        });
+
+        acc
+    });
+
+    let world_plane = overmap.world_plane.0.pretty_print_with(|x| f(x.as_ref()).to_string());
+
+    format!(
+        "{:#?}\n{:#?}{world_chunks}\n{world_plane}",
+        &overmap.world_generator,
+        &overmap.indexer
+    )
+}
+
 pub struct ServerOvermap<S>
 {
     world_generator: Rc<RefCell<WorldGenerator<S>>>,
     world_chunks: ChunksContainer<Option<WorldChunksBlock>>,
     world_plane: WorldPlane,
     indexer: Indexer
+}
+
+impl<S: fmt::Debug> fmt::Debug for ServerOvermap<S>
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
+    {
+        write!(f, "{}", debug_overmap_with(self, |x| format!("{x:?}")))
+    }
 }
 
 // have u heard of a constant clippy?
@@ -190,7 +271,7 @@ impl<S: SaveLoad<WorldChunksBlock>> ServerOvermap<S>
 
     fn shift_overmap_by(&mut self, shift_offset: Pos3<i32>)
     {
-        self.indexer.player_position = self.indexer.player_position + shift_offset;
+        self.indexer.player_position += shift_offset;
 
         self.position_offset(shift_offset);
     }
@@ -259,6 +340,61 @@ impl<S: SaveLoad<WorldChunksBlock>> ServerOvermap<S>
             }
         }
     }
+
+    fn generate_missing_inner(&mut self, offset: Option<Pos3<i32>>, surface_override: bool)
+    {
+        let update_surface = if let Some(offset) = offset
+        {
+            offset.x != 0 || offset.y != 0
+        } else
+        {
+            true
+        };
+
+        if update_surface
+        {
+            let z = 0;
+            let local_z = self.to_local_z(z);
+
+            let mut generate_surface = |surface_blocks|
+            {
+                let mut outside_indexer = self.indexer.clone();
+                outside_indexer.player_position.0.z = 0;
+                outside_indexer.size.z = 1;
+
+                self.world_generator.borrow_mut()
+                    .generate_surface(surface_blocks, &mut self.world_plane, &outside_indexer)
+            };
+
+            if let Some(local_z) = local_z
+            {
+                let mut surface_blocks = self.world_chunks.map_slice_ref(local_z, |(_pos, chunk)| chunk.clone());
+                generate_surface(&mut surface_blocks);
+
+                surface_blocks.into_iter().for_each(|(pos, block)|
+                {
+                    let pos = LocalPos::new(Pos3{z: local_z, ..pos.pos}, Pos3{z: self.indexer.size.z, ..pos.size});
+                    self.world_chunks[pos] = block;
+                });
+            } else
+            {
+                debug_assert!(!surface_override);
+
+                let new_offset = Pos3::new(0, 0, -self.indexer.player_position().0.z);
+
+                self.indexer.player_position += new_offset;
+                self.shift_chunks(new_offset);
+
+                self.generate_missing_inner(None, true);
+
+                self.indexer.player_position -= new_offset;
+                self.shift_chunks(-new_offset);
+            }
+        }
+
+        self.world_generator.borrow_mut()
+            .generate_missing(&mut self.world_chunks, &self.world_plane, &self.indexer);
+    }
 }
 
 impl<S: SaveLoad<WorldChunksBlock>> Overmap<Option<WorldChunksBlock>> for ServerOvermap<S>
@@ -297,49 +433,7 @@ impl<S: SaveLoad<WorldChunksBlock>> Overmap<Option<WorldChunksBlock>> for Server
 
     fn generate_missing(&mut self, offset: Option<Pos3<i32>>)
     {
-        let mut generator = self.world_generator.borrow_mut();
-
-        let update_surface = if let Some(offset) = offset
-        {
-            offset.x != 0 || offset.y != 0
-        } else
-        {
-            true
-        };
-
-        if update_surface
-        {
-            let z = 0;
-            let local_z = self.to_local_z(z);
-
-            let mut generate_surface = |surface_blocks|
-            {
-                let mut outside_indexer = self.indexer.clone();
-                outside_indexer.player_position.0.z = 0;
-                outside_indexer.size.z = 1;
-
-                generator.generate_surface(surface_blocks, &mut self.world_plane, &outside_indexer)
-            };
-
-            if let Some(local_z) = local_z
-            {
-                let mut surface_blocks = self.world_chunks.map_slice_ref(local_z, |(_pos, chunk)| chunk.clone());
-                generate_surface(&mut surface_blocks);
-
-                surface_blocks.into_iter().for_each(|(pos, block)|
-                {
-                    let pos = LocalPos::new(Pos3{z: local_z, ..pos.pos}, Pos3{z: self.indexer.size.z, ..pos.size});
-                    self.world_chunks[pos] = block;
-                });
-            } else
-            {
-                let mut surface_blocks = FlatChunksContainer::new(self.world_chunks.size());
-
-                generate_surface(&mut surface_blocks);
-            }
-        }
-
-        generator.generate_missing(&mut self.world_chunks, &self.world_plane, &self.indexer);
+        self.generate_missing_inner(offset, false)
     }
 }
 
@@ -375,6 +469,14 @@ mod tests
     struct TestSaver<T>
     {
         data: HashMap<GlobalPos, T>
+    }
+
+    impl<T> fmt::Debug for TestSaver<T>
+    {
+        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
+        {
+            write!(f, "")
+        }
     }
 
     impl<T> TestSaver<T>
@@ -438,6 +540,132 @@ mod tests
         for _ in 0..30
         {
             let _chunk = overmap.generate_chunk(random_chunk(), |_| {});
+        }
+    }
+
+    #[ignore]
+    #[test]
+    fn moving_around_pillars()
+    {
+        let saver = TestSaver::new();
+
+        let tiles = "tiles/tiles.json";
+
+        let tilemap = TileMap::parse(tiles, "textures/tiles/").unwrap().tilemap;
+
+        let world_generator = Rc::new(RefCell::new(
+            WorldGenerator::new(saver, Rc::new(tilemap), "world_generation_test/").unwrap()
+        ));
+
+        let size = Pos3::new(10, 11, SERVER_OVERMAP_SIZE_Z);
+
+        let random_chunk = ||
+        {
+            let r = |s: usize|
+            {
+                let ps = (s as i32).pow(2);
+
+                fastrand::i32(0..(ps * 2)) - ps
+            };
+
+            GlobalPos::new(
+                r(size.x),
+                r(size.y),
+                r(size.z)
+            )
+        };
+
+        let mut overmap = ServerOvermap::new(
+            world_generator.clone(),
+            size,
+            Pos3::repeat(0.0)
+        );
+
+        let (a_id, c_id, none_id) = {
+            let world_generator = world_generator.borrow();
+            let names = &world_generator.rules().name_mappings().world_chunk;
+
+            (names["a"], names["c"], names["none"])
+        };
+
+        let overmap_format = |x: Option<&WorldChunk>|
+        {
+            x.map(|x|
+            {
+                let id = x.id();
+
+                let world_generator = world_generator.borrow();
+                let name = world_generator.rules().name(id);
+
+                match name
+                {
+                    "none" => '_',
+                    "a" => 'O',
+                    "b" => 'X',
+                    "c" => '*',
+                    x => panic!("unhandled name: {x}")
+                }
+            }).unwrap_or('?')
+        };
+
+        let mut move_to = |pos|
+        {
+            eprintln!("moving to {pos:?}");
+            let _chunk = overmap.generate_chunk(pos, |_| {});
+
+            (0..size.x).for_each(|x|
+            {
+                (0..size.y).for_each(|y|
+                {
+                    let mut pillar_type: Option<WorldChunk> = None;
+                    (0..size.z).for_each(|z|
+                    {
+                        let local_pos = LocalPos::new(Pos3::new(x, y, z), size);
+                        let global_pos = overmap.to_global(local_pos);
+
+                        let current = overmap.get(global_pos);
+
+                        if let Some(Some(current)) = current
+                        {
+                            current.into_iter().for_each(|world_chunk|
+                            {
+                                if let Some(expected_pillar) = pillar_type.as_ref()
+                                {
+                                    let correct_follow = match (expected_pillar, world_chunk)
+                                    {
+                                        (a, b) if a.id() == a_id && b.id() == none_id => true,
+                                        (a, _b) if a.id() == c_id => true,
+                                        (a, b) if a == b => true,
+                                        (a, b) =>
+                                        {
+                                            eprintln!("({global_pos:?}) got incorrect follow: {a:?} -> {b:?}");
+                                            false
+                                        }
+                                    };
+
+                                    assert!(
+                                        correct_follow,
+                                        "{}",
+                                        debug_overmap_with(&overmap, overmap_format)
+                                    );
+                                } else
+                                {
+                                    pillar_type = Some(world_chunk.clone());
+                                }
+                            });
+                        }
+                    })
+                });
+            });
+        };
+
+        move_to(GlobalPos::new(0, 0, 0));
+
+        for _ in 0..1000
+        {
+            let pos = random_chunk();
+
+            move_to(pos)
         }
     }
 }
