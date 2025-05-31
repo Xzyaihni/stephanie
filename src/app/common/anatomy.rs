@@ -45,6 +45,75 @@ macro_rules! simple_getter
     }
 }
 
+pub trait PartFieldGetter
+{
+    type V<'a>;
+
+    fn get<C: BodyContentable>(value: &HumanPart<C>) -> &Self::V<'_>;
+    fn get_mut<C: BodyContentable>(value: &mut HumanPart<C>) -> &mut Self::V<'_>;
+    fn run<C: BodyContentable>(value: &mut HumanPart<C>) -> Self::V<'_>;
+}
+
+macro_rules! simple_field_getter
+{
+    ($name:ident, $t:ty, $f:ident) =>
+    {
+        pub struct $name;
+
+        impl PartFieldGetter for $name
+        {
+            type V<'a> = $t;
+
+            fn get<T: BodyContentable>(value: &HumanPart<T>) -> &Self::V<'_> { &value.$f }
+            fn get_mut<T: BodyContentable>(value: &mut HumanPart<T>) -> &mut Self::V<'_> { &mut value.$f }
+            fn run<T: BodyContentable>(_value: &mut HumanPart<T>) -> Self::V<'_> { unreachable!() }
+        }
+    }
+}
+
+simple_field_getter!{BoneHealthGetter, Health, bone}
+simple_field_getter!{MuscleHealthGetter, Option<Health>, muscle}
+simple_field_getter!{SkinHealthGetter, Option<Health>, skin}
+simple_field_getter!{SizeGetter, f64, size}
+
+impl PartFieldGetter for ()
+{
+    type V<'a> = ();
+
+    fn get<T: BodyContentable>(_value: &HumanPart<T>) -> &Self::V<'_> { &() }
+    fn get_mut<T: BodyContentable>(_value: &mut HumanPart<T>) -> &mut Self::V<'_> { unreachable!() }
+    fn run<T: BodyContentable>(_value: &mut HumanPart<T>) -> Self::V<'_> { }
+}
+
+struct DamagerGetter;
+impl PartFieldGetter for DamagerGetter
+{
+    type V<'a> = Box<dyn FnOnce(Damage) -> Option<Damage> + 'a>;
+
+    fn get<T: BodyContentable>(_value: &HumanPart<T>) -> &Self::V<'_> { unreachable!() }
+    fn get_mut<T: BodyContentable>(_value: &mut HumanPart<T>) -> &mut Self::V<'_> { unreachable!() }
+    fn run<T: BodyContentable>(value: &mut HumanPart<T>) -> Self::V<'_>
+    {
+        Box::new(|damage|
+        {
+            value.damage(damage)
+        })
+    }
+}
+
+struct AccessedGetter;
+impl PartFieldGetter for AccessedGetter
+{
+    type V<'a> = Box<dyn FnOnce(&mut dyn FnMut(ChangedKind)) + 'a>;
+
+    fn get<T: BodyContentable>(_value: &HumanPart<T>) -> &Self::V<'_> { unreachable!() }
+    fn get_mut<T: BodyContentable>(_value: &mut HumanPart<T>) -> &mut Self::V<'_> { unreachable!() }
+    fn run<T: BodyContentable>(value: &mut HumanPart<T>) -> Self::V<'_>
+    {
+        Box::new(|f| { value.consume_accessed(f) })
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Anatomy
 {
@@ -60,12 +129,15 @@ impl Anatomy
     simple_getter!(vision);
     simple_getter!(vision_angle);
 
-    pub fn get_human(&self, id: HumanPartId) -> Option<Option<&HumanPart>>
+    pub fn get_human<F: PartFieldGetter>(
+        &self,
+        id: HumanPartId
+    ) -> Option<Option<&F::V<'_>>>
     {
         #[allow(irrefutable_let_patterns)]
         if let Self::Human(x) = self
         {
-            Some(x.body.get(id))
+            Some(x.body.get::<F>(id))
         } else
         {
             None
@@ -96,14 +168,6 @@ impl Anatomy
         }
     }
 
-    pub fn for_changed_parts(&mut self, f: impl FnMut(ChangedPart))
-    {
-        match self
-        {
-            Self::Human(x) => x.for_changed_parts(f)
-        }
-    }
-
     pub fn for_accessed_parts(&mut self, f: impl FnMut(ChangedPart))
     {
         match self
@@ -124,7 +188,7 @@ impl Damageable for Anatomy
     }
 }
 
-trait DamageReceiver
+pub trait DamageReceiver
 {
     fn damage(
         &mut self,
@@ -138,7 +202,8 @@ pub enum ChangedKind
 {
     Bone,
     Muscle,
-    Skin
+    Skin,
+    Organ(OrganId)
 }
 
 pub struct ChangedPart
@@ -323,7 +388,6 @@ impl From<HumanAnatomyInfo> for BodyPartInfo
 pub struct ChangeTracking<T>
 {
     accessed: bool,
-    previous: T,
     value: T
 }
 
@@ -346,33 +410,16 @@ impl<T> DerefMut for ChangeTracking<T>
     }
 }
 
-impl<T: Clone> From<T> for ChangeTracking<T>
+impl<T> From<T> for ChangeTracking<T>
 {
     fn from(value: T) -> Self
     {
-        Self{accessed: false, previous: value.clone(), value}
+        Self{accessed: false, value}
     }
 }
 
-impl<T: Clone + PartialEq> ChangeTracking<T>
+impl<T> ChangeTracking<T>
 {
-    fn update(&mut self)
-    {
-        self.previous = self.value.clone();
-    }
-
-    fn consume_changed(&mut self) -> bool
-    {
-        let changed = self.previous != self.value;
-
-        if changed
-        {
-            self.update();
-        }
-
-        changed
-    }
-
     fn consume_accessed(&mut self) -> bool
     {
         let accessed = self.accessed;
@@ -383,25 +430,50 @@ impl<T: Clone + PartialEq> ChangeTracking<T>
     }
 }
 
+pub trait BodyContentable: DamageReceiver + Debug
+{
+    fn clear(&mut self);
+    fn consume_accessed<F: FnMut(OrganId)>(&mut self, f: F);
+}
+
+impl DamageReceiver for ()
+{
+    fn damage(
+        &mut self,
+        _rng: &mut SeededRandom,
+        _side: Side2d,
+        damage: DamageType
+    ) -> Option<DamageType>
+    {
+        Some(damage)
+    }
+}
+
+impl BodyContentable for ()
+{
+    fn clear(&mut self) {}
+    fn consume_accessed<F: FnMut(OrganId)>(&mut self, _f: F) {}
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct BodyPart<Data>
+pub struct BodyPart<Contents=()>
 {
     name: DebugName,
     pub bone: ChangeTracking<Health>,
     pub skin: ChangeTracking<Option<Health>>,
     pub muscle: ChangeTracking<Option<Health>>,
     size: f64,
-    contents: Vec<Data>
+    contents: Contents
 }
 
-impl<Data> BodyPart<Data>
+impl<Contents> BodyPart<Contents>
 {
     pub fn new(
         name: DebugName,
         info: BodyPartInfo,
         bone: f32,
         size: f64,
-        contents: Vec<Data>
+        contents: Contents
     ) -> Self
     {
         Self::new_full(
@@ -420,7 +492,7 @@ impl<Data> BodyPart<Data>
         skin: Option<Health>,
         muscle: Option<Health>,
         size: f64,
-        contents: Vec<Data>
+        contents: Contents
     ) -> Self
     {
         Self{
@@ -453,10 +525,11 @@ impl<Data> BodyPart<Data>
 
         total / count as f32
     }
+}
 
+impl<Contents: BodyContentable> BodyPart<Contents>
+{
     fn damage(&mut self, damage: Damage) -> Option<Damage>
-    where
-        Data: DamageReceiver + Debug
     {
         if DebugConfig::is_enabled(DebugTool::PrintDamage)
         {
@@ -478,8 +551,6 @@ impl<Data> BodyPart<Data>
         side: Side2d,
         damage: DamageType
     ) -> Option<DamageType>
-    where
-        Data: DamageReceiver
     {
         // huh
         if let Some(pierce) = self.skin.as_mut().map(|x|
@@ -506,33 +577,35 @@ impl<Data> BodyPart<Data>
                         self.contents.clear();
                     }
 
-                    if self.contents.is_empty()
-                    {
-                        return Some(pierce);
-                    }
-
-                    let id = rng.next_usize_between(0..self.contents.len());
-
-                    return self.contents[id].damage(rng, side, pierce);
+                    return self.contents.damage(rng, side, pierce);
                 }
             }
         }
 
         None
     }
+}
 
-    fn consume_changed(&mut self) -> impl Iterator<Item=ChangedKind>
+impl<Contents: BodyContentable> BodyPart<Contents>
+{
+    fn consume_accessed(&mut self, mut f: impl FnMut(ChangedKind))
     {
-        self.bone.consume_changed().then_some(ChangedKind::Bone).into_iter()
-            .chain(self.muscle.consume_changed().then_some(ChangedKind::Muscle))
-            .chain(self.skin.consume_changed().then_some(ChangedKind::Skin))
-    }
+        if self.bone.consume_accessed()
+        {
+            f(ChangedKind::Bone)
+        }
 
-    fn consume_accessed(&mut self) -> impl Iterator<Item=ChangedKind>
-    {
-        self.bone.consume_accessed().then_some(ChangedKind::Bone).into_iter()
-            .chain(self.muscle.consume_accessed().then_some(ChangedKind::Muscle))
-            .chain(self.skin.consume_accessed().then_some(ChangedKind::Skin))
+        if self.muscle.consume_accessed()
+        {
+            f(ChangedKind::Muscle)
+        }
+
+        if self.skin.consume_accessed()
+        {
+            f(ChangedKind::Skin)
+        }
+
+        self.contents.consume_accessed(|x| f(ChangedKind::Organ(x)));
     }
 }
 
@@ -545,11 +618,34 @@ pub struct Halves<T>
 
 impl<T> Halves<T>
 {
+    pub fn repeat(value: T) -> Self
+    where
+        T: Clone
+    {
+        Self{left: value.clone(), right: value}
+    }
+
+    pub fn flip(self) -> Self
+    {
+        Self{
+            left: self.right,
+            right: self.left
+        }
+    }
+
     pub fn as_ref(&self) -> Halves<&T>
     {
         Halves{
             left: &self.left,
             right: &self.right
+        }
+    }
+
+    pub fn as_mut(&mut self) -> Halves<&mut T>
+    {
+        Halves{
+            left: &mut self.left,
+            right: &mut self.right
         }
     }
 
@@ -609,9 +705,9 @@ impl<T> IndexMut<Side1d> for Halves<T>
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MotorCortex
 {
-    arms: Health,
-    body: Health,
-    legs: Health
+    arms: ChangeTracking<Health>,
+    body: ChangeTracking<Health>,
+    legs: ChangeTracking<Health>
 }
 
 impl Default for MotorCortex
@@ -619,9 +715,30 @@ impl Default for MotorCortex
     fn default() -> Self
     {
         Self{
-            arms: Health::new(4.0, 50.0),
-            body: Health::new(4.0, 50.0),
-            legs: Health::new(4.0, 50.0)
+            arms: Health::new(4.0, 50.0).into(),
+            body: Health::new(4.0, 50.0).into(),
+            legs: Health::new(4.0, 50.0).into()
+        }
+    }
+}
+
+impl MotorCortex
+{
+    fn consume_accessed(&mut self, mut f: impl FnMut(MotorId))
+    {
+        if self.arms.consume_accessed()
+        {
+            f(MotorId::Arms)
+        }
+
+        if self.body.consume_accessed()
+        {
+            f(MotorId::Body)
+        }
+
+        if self.legs.consume_accessed()
+        {
+            f(MotorId::Legs)
         }
     }
 }
@@ -678,6 +795,14 @@ impl Default for FrontalLobe
     }
 }
 
+impl FrontalLobe
+{
+    fn consume_accessed(&mut self, mut f: impl FnMut(FrontalId))
+    {
+        self.motor.consume_accessed(|id| f(FrontalId::Motor(id)));
+    }
+}
+
 impl DamageReceiver for FrontalLobe
 {
     fn damage(
@@ -704,9 +829,9 @@ pub enum LobeId
 pub struct Hemisphere
 {
     frontal: FrontalLobe,
-    parietal: Health,
-    temporal: Health,
-    occipital: Health
+    parietal: ChangeTracking<Health>,
+    temporal: ChangeTracking<Health>,
+    occipital: ChangeTracking<Health>
 }
 
 impl Default for Hemisphere
@@ -715,9 +840,9 @@ impl Default for Hemisphere
     {
         Self{
             frontal: FrontalLobe::default(),
-            parietal: Health::new(4.0, 50.0),
-            temporal: Health::new(4.0, 50.0),
-            occipital: Health::new(4.0, 50.0)
+            parietal: Health::new(4.0, 50.0).into(),
+            temporal: Health::new(4.0, 50.0).into(),
+            occipital: Health::new(4.0, 50.0).into()
         }
     }
 }
@@ -738,6 +863,26 @@ impl Hemisphere
             LobeId::Parietal => self.parietal.damage_pierce(damage),
             LobeId::Temporal => self.temporal.damage_pierce(damage),
             LobeId::Occipital => self.occipital.damage_pierce(damage)
+        }
+    }
+
+    fn consume_accessed(&mut self, mut f: impl FnMut(BrainId))
+    {
+        self.frontal.consume_accessed(|id| f(BrainId::Frontal(id)));
+
+        if self.parietal.consume_accessed()
+        {
+            f(BrainId::Parietal)
+        }
+
+        if self.temporal.consume_accessed()
+        {
+            f(BrainId::Temporal)
+        }
+
+        if self.occipital.consume_accessed()
+        {
+            f(BrainId::Occipital)
         }
     }
 }
@@ -794,28 +939,58 @@ impl Default for Brain
     }
 }
 
+impl DamageReceiver for Brain
+{
+    fn damage(
+        &mut self,
+        rng: &mut SeededRandom,
+        side: Side2d,
+        damage: DamageType
+    ) -> Option<DamageType>
+    {
+        let hemispheres = [&mut self.left, &mut self.right];
+
+        match side
+        {
+            Side2d::Left =>
+            {
+                Health::pierce_many(damage, hemispheres.into_iter(), |part, damage|
+                {
+                    part.damage(rng, side, damage)
+                })
+            },
+            Side2d::Right =>
+            {
+                Health::pierce_many(damage, hemispheres.into_iter().rev(), |part, damage|
+                {
+                    part.damage(rng, side, damage)
+                })
+            },
+            Side2d::Front | Side2d::Back =>
+            {
+                if rng.next_bool()
+                {
+                    hemispheres[0].damage(rng, side, damage)
+                } else
+                {
+                    hemispheres[1].damage(rng, side, damage)
+                }
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Lung
 {
-    health: Health,
-    side: Side1d
+    health: ChangeTracking<Health>
 }
 
 impl Lung
 {
-    fn left() -> Self
+    fn new() -> Self
     {
-        Self::new(Side1d::Left)
-    }
-
-    fn right() -> Self
-    {
-        Self::new(Side1d::Right)
-    }
-
-    fn new(side: Side1d) -> Self
-    {
-        Self{health: Health::new(3.0, 20.0), side}
+        Self{health: Health::new(3.0, 20.0).into()}
     }
 }
 
@@ -832,67 +1007,34 @@ impl DamageReceiver for Lung
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum HumanOrgan
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum MotorId
 {
-    Brain(Brain),
-    Lung(Lung)
+    Arms,
+    Body,
+    Legs
 }
 
-impl DamageReceiver for HumanOrgan
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum FrontalId
 {
-    fn damage(
-        &mut self,
-        rng: &mut SeededRandom,
-        side: Side2d,
-        damage: DamageType
-    ) -> Option<DamageType>
-    {
-        if DebugConfig::is_enabled(DebugTool::PrintDamage)
-        {
-            eprintln!("damaging {self:?} at {side:?} for {damage:?}");
-        }
+    Motor(MotorId)
+}
 
-        match self
-        {
-            Self::Brain(brain) =>
-            {
-                let hemispheres = [&mut brain.left, &mut brain.right];
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum BrainId
+{
+    Frontal(FrontalId),
+    Parietal,
+    Temporal,
+    Occipital
+}
 
-                match side
-                {
-                    Side2d::Left =>
-                    {
-                        Health::pierce_many(damage, hemispheres.into_iter(), |part, damage|
-                        {
-                            part.damage(rng, side, damage)
-                        })
-                    },
-                    Side2d::Right =>
-                    {
-                        Health::pierce_many(damage, hemispheres.into_iter().rev(), |part, damage|
-                        {
-                            part.damage(rng, side, damage)
-                        })
-                    },
-                    Side2d::Front | Side2d::Back =>
-                    {
-                        if rng.next_bool()
-                        {
-                            hemispheres[0].damage(rng, side, damage)
-                        } else
-                        {
-                            hemispheres[1].damage(rng, side, damage)
-                        }
-                    }
-                }
-            },
-            Self::Lung(lung) =>
-            {
-                lung.damage(rng, side, damage)
-            }
-        }
-    }
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum OrganId
+{
+    Brain(Side1d, BrainId),
+    Lung(Side1d)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, IntoStaticStr, Serialize, Deserialize)]
@@ -1009,7 +1151,7 @@ impl HumanPartId
     }
 }
 
-pub type HumanPart = BodyPart<HumanOrgan>;
+pub type HumanPart<Contents=()> = BodyPart<Contents>;
 
 #[derive(Debug, Clone)]
 struct Speeds
@@ -1055,6 +1197,114 @@ impl Default for HumanAnatomyInfo
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HeadOrgans
+{
+    pub brain: Option<Brain>
+}
+
+impl DamageReceiver for HeadOrgans
+{
+    fn damage(
+        &mut self,
+        rng: &mut SeededRandom,
+        side: Side2d,
+        damage: DamageType
+    ) -> Option<DamageType>
+    {
+        if let Some(brain) = self.brain.as_mut()
+        {
+            brain.damage(rng, side, damage)
+        } else
+        {
+            Some(damage)
+        }
+    }
+}
+
+impl BodyContentable for HeadOrgans
+{
+    fn clear(&mut self)
+    {
+        self.brain = None;
+    }
+
+    fn consume_accessed<F: FnMut(OrganId)>(&mut self, mut f: F)
+    {
+        if let Some(brain) = self.brain.as_mut()
+        {
+            brain.as_mut().map_sides(|side, hemisphere|
+            {
+                hemisphere.consume_accessed(|id| f(OrganId::Brain(side, id)));
+            });
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TorsoOrgans
+{
+    pub lungs: Halves<Option<Lung>>
+}
+
+impl BodyContentable for TorsoOrgans
+{
+    fn clear(&mut self)
+    {
+        self.lungs.as_mut().map(|x| { *x = None; });
+    }
+
+    fn consume_accessed<F: FnMut(OrganId)>(&mut self, mut f: F)
+    {
+        self.lungs.as_mut().map_sides(|side, lung|
+        {
+            if let Some(lung) = lung.as_mut()
+            {
+                if lung.health.consume_accessed() { f(OrganId::Lung(side)); }
+            }
+        });
+    }
+}
+
+impl DamageReceiver for TorsoOrgans
+{
+    fn damage(
+        &mut self,
+        rng: &mut SeededRandom,
+        side: Side2d,
+        damage: DamageType
+    ) -> Option<DamageType>
+    {
+        let exists = self.lungs.as_ref().map(|x| x.is_some());
+        if exists.clone().combine(|a, b| !a && !b)
+        {
+            return Some(damage);
+        }
+
+        let lung = if exists.clone().combine(|a, b| a && b)
+        {
+            if rng.next_bool()
+            {
+                &mut self.lungs.left
+            } else
+            {
+                &mut self.lungs.right
+            }
+        } else
+        {
+            if exists.left
+            {
+                &mut self.lungs.left
+            } else
+            {
+                &mut self.lungs.right
+            }
+        };
+
+        lung.as_mut().unwrap().damage(rng, side, damage)
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HumanBodySided
 {
     pub eye: Option<HumanPart>,
@@ -1070,31 +1320,34 @@ pub struct HumanBodySided
 pub struct HumanBody
 {
     pub sided: Halves<HumanBodySided>,
-    pub head: HumanPart,
-    pub torso: HumanPart,
+    pub head: HumanPart<HeadOrgans>,
+    pub torso: HumanPart<TorsoOrgans>,
     pub pelvis: HumanPart,
     pub spine: HumanPart
 }
 
 macro_rules! impl_get
 {
-    ($fn_name:ident, $option_fn:ident, $($b:tt)+) =>
+    ($fn_name:ident, $option_fn:ident, $rt:ty, $($b:tt)+) =>
     {
-        pub fn $fn_name($($b)+ self, id: HumanPartId) -> Option<$($b)+ HumanPart>
+        pub fn $fn_name<F: PartFieldGetter>(
+            $($b)+ self,
+            id: HumanPartId
+        ) -> Option<$rt>
         {
             match id
             {
-                HumanPartId::Head => Some($($b)+ self.head),
-                HumanPartId::Torso => Some($($b)+ self.torso),
-                HumanPartId::Pelvis => Some($($b)+ self.pelvis),
-                HumanPartId::Spine => Some($($b)+ self.spine),
-                HumanPartId::Eye(side) => self.sided[side].eye.$option_fn(),
-                HumanPartId::Thigh(side) => self.sided[side].upper_leg.$option_fn(),
-                HumanPartId::Calf(side) => self.sided[side].lower_leg.$option_fn(),
-                HumanPartId::Foot(side) => self.sided[side].foot.$option_fn(),
-                HumanPartId::Arm(side) => self.sided[side].upper_arm.$option_fn(),
-                HumanPartId::Forearm(side) => self.sided[side].lower_arm.$option_fn(),
-                HumanPartId::Hand(side) => self.sided[side].hand.$option_fn()
+                HumanPartId::Head => Some(F::$fn_name($($b)+ self.head)),
+                HumanPartId::Torso => Some(F::$fn_name($($b)+ self.torso)),
+                HumanPartId::Pelvis => Some(F::$fn_name($($b)+ self.pelvis)),
+                HumanPartId::Spine => Some(F::$fn_name($($b)+ self.spine)),
+                HumanPartId::Eye(side) => self.sided[side].eye.$option_fn().map(|x| F::$fn_name(x)),
+                HumanPartId::Thigh(side) => self.sided[side].upper_leg.$option_fn().map(|x| F::$fn_name(x)),
+                HumanPartId::Calf(side) => self.sided[side].lower_leg.$option_fn().map(|x| F::$fn_name(x)),
+                HumanPartId::Foot(side) => self.sided[side].foot.$option_fn().map(|x| F::$fn_name(x)),
+                HumanPartId::Arm(side) => self.sided[side].upper_arm.$option_fn().map(|x| F::$fn_name(x)),
+                HumanPartId::Forearm(side) => self.sided[side].lower_arm.$option_fn().map(|x| F::$fn_name(x)),
+                HumanPartId::Hand(side) => self.sided[side].hand.$option_fn().map(|x| F::$fn_name(x))
             }
         }
     }
@@ -1102,8 +1355,9 @@ macro_rules! impl_get
 
 impl HumanBody
 {
-    impl_get!{get, as_ref, &}
-    impl_get!{get_mut, as_mut, &mut}
+    impl_get!{get, as_ref, &F::V<'_>, &}
+    impl_get!{get_mut, as_mut, &mut F::V<'_>, &mut}
+    impl_get!{run, as_mut, F::V<'_>, &mut}
 }
 
 struct PierceType
@@ -1142,7 +1396,7 @@ impl PierceType
             action: Rc::new(move |this: &mut HumanAnatomy, mut damage|
             {
                 let mut possible_actions = possible_cloned.clone();
-                possible_actions.retain(|x| this.body.get(*x).is_some());
+                possible_actions.retain(|x| this.body.get::<()>(*x).is_some());
 
                 if possible_actions.is_empty()
                 {
@@ -1157,7 +1411,7 @@ impl PierceType
 
                 let target = damage.rng.choice(possible_actions);
 
-                f(this.body.get_mut(target).unwrap().damage(damage))
+                f(this.body.run::<DamagerGetter>(target).unwrap()(damage))
             })
         }
     }
@@ -1190,7 +1444,7 @@ impl PierceType
                 };
 
                 let pierce = some_or_value!(
-                    this.body.get_mut(target).unwrap().damage(damage),
+                    this.body.run::<DamagerGetter>(target).unwrap()(damage),
                     None
                 );
 
@@ -1214,12 +1468,12 @@ impl PierceType
 
     fn any_exists(&self, anatomy: &HumanAnatomy) -> bool
     {
-        self.possible.iter().any(|x| anatomy.body.get(*x).is_some())
+        self.possible.iter().any(|x| anatomy.body.get::<()>(*x).is_some())
     }
 
     fn combined_scale(&self, anatomy: &HumanAnatomy) -> f64
     {
-        self.possible.iter().filter_map(|x| anatomy.body.get(*x).map(|x| x.size)).sum()
+        self.possible.iter().filter_map(|x| anatomy.body.get::<SizeGetter>(*x)).sum()
     }
 }
 
@@ -1255,20 +1509,27 @@ impl HumanAnatomy
         let base_strength = info.base_strength;
         let part = BodyPartInfo::from(info);
 
-        let new_part_with_contents = |name, health, size, contents|
+        fn new_part_with_contents<Contents>(
+            name: DebugName,
+            part: BodyPartInfo,
+            bone_toughness: f32,
+            health: f32,
+            size: f64,
+            contents: Contents
+        ) -> HumanPart<Contents>
         {
             HumanPart::new(
                 name,
-                part.clone(),
+                part,
                 bone_toughness * health,
                 size,
                 contents
             )
-        };
+        }
 
         let new_part = |name, health, size|
         {
-            new_part_with_contents(name, health, size, Vec::new())
+            new_part_with_contents(name, part.clone(), bone_toughness, health, size, ())
         };
 
         // max hp is amount of newtons i found on the interner needed to break a bone
@@ -1295,7 +1556,7 @@ impl HumanAnatomy
                 None,
                 None,
                 0.1,
-                Vec::new()
+                ()
             ));
 
             HumanBodySided{
@@ -1316,20 +1577,23 @@ impl HumanAnatomy
 
         let head = new_part_with_contents(
             DebugName::new("head"),
+            part.clone(),
+            bone_toughness,
             5000.0,
             0.39,
-            vec![HumanOrgan::Brain(Brain::default())]
+            HeadOrgans{brain: Some(Brain::default())}
         );
 
         let pelvis = new_part(DebugName::new("pelvis"), 6000.0, 0.37);
         let torso = new_part_with_contents(
             DebugName::new("torso"),
+            part.clone(),
+            bone_toughness,
             3300.0,
             0.82,
-            vec![
-                HumanOrgan::Lung(Lung::left()),
-                HumanOrgan::Lung(Lung::right())
-            ]
+            TorsoOrgans{
+                lungs: Halves::repeat(Some(Lung::new()))
+            }
         );
 
         let body = HumanBody{
@@ -1396,31 +1660,15 @@ impl HumanAnatomy
         self.update_cache();
     }
 
-    pub fn for_changed_parts(&mut self, mut f: impl FnMut(ChangedPart))
-    {
-        HumanPartId::iter().filter_map(|id|
-        {
-            self.body.get_mut(id).map(move |x|
-            {
-                x.consume_changed().map(move |kind| ChangedPart{id, kind})
-            })
-        }).for_each(|part|
-        {
-            part.for_each(&mut f);
-        });
-    }
-
     pub fn for_accessed_parts(&mut self, mut f: impl FnMut(ChangedPart))
     {
-        HumanPartId::iter().filter_map(|id|
+        HumanPartId::iter().for_each(|id|
         {
-            self.body.get_mut(id).map(move |x|
+            let f = &mut f;
+            if let Some(x) = self.body.run::<AccessedGetter>(id)
             {
-                x.consume_accessed().map(move |kind| ChangedPart{id, kind})
-            })
-        }).for_each(|part|
-        {
-            part.for_each(&mut f);
+                x(&mut |kind| f(ChangedPart{id, kind}));
+            }
         });
     }
 
@@ -1528,7 +1776,7 @@ impl HumanAnatomy
 
         ids.retain(|(id, pierce)|
         {
-            self.body.get(*id).is_some() || pierce.any_exists(self)
+            self.body.get::<()>(*id).is_some() || pierce.any_exists(self)
         });
 
         let ids: &Vec<_> = &ids;
@@ -1538,15 +1786,16 @@ impl HumanAnatomy
             ids,
             |(id, pierce)|
             {
-                self.body.get(*id).map(|x| x.size).unwrap_or_else(|| pierce.combined_scale(self))
+                self.body.get::<SizeGetter>(*id).copied().unwrap_or_else(|| pierce.combined_scale(self))
             }
         );
 
         let pierce = picked.and_then(|(picked, on_pierce)|
         {
-            if let Some(main_pick) = self.body.get_mut(*picked)
+            let picked_damage = self.body.run::<DamagerGetter>(*picked).map(|x| x(damage.clone()));
+            if let Some(damage) = picked_damage
             {
-                main_pick.damage(damage).and_then(|pierce|
+                damage.and_then(|pierce|
                 {
                     (on_pierce.action)(self, pierce)
                 })
@@ -1585,7 +1834,7 @@ impl HumanAnatomy
 
     fn speed_scale(body: &HumanBody, motor: Halves<Speeds>) -> Speeds
     {
-        body.sided.as_ref().zip(motor).map(|(body, motor)|
+        body.sided.as_ref().zip(motor.flip()).map(|(body, motor)|
         {
             Speeds{
                 legs: Self::leg_speed(body) * motor.legs,
@@ -1596,8 +1845,7 @@ impl HumanAnatomy
 
     fn brain(&self) -> Option<&Brain>
     {
-        self.body.head.contents.iter()
-            .find_map(|x| if let HumanOrgan::Brain(x) = x { Some(x) } else { None })
+        self.body.head.contents.brain.as_ref()
     }
 
     fn updated_speed(&mut self) -> (bool, Option<f32>)
@@ -1649,23 +1897,15 @@ impl HumanAnatomy
 
     fn lung(&self, side: Side1d) -> Option<&Lung>
     {
-        self.body.torso.contents.iter()
-            .find_map(|x|
-            {
-                if let HumanOrgan::Lung(x) = x
-                {
-                    if x.side == side
-                    {
-                        Some(x)
-                    } else
-                    {
-                        None
-                    }
-                } else
-                {
-                    None
-                }
-            })
+        let contents = &self.body.torso.contents.lungs;
+
+        if side.is_left()
+        {
+            contents.left.as_ref()
+        } else
+        {
+            contents.right.as_ref()
+        }
     }
 
     fn updated_stamina(&mut self) -> Option<f32>
@@ -1676,7 +1916,7 @@ impl HumanAnatomy
 
         let amount = brain.as_ref().map_sides(|side, hemisphere|
         {
-            let lung = some_or_value!(self.lung(side), 0.0);
+            let lung = some_or_value!(self.lung(side.opposite()), 0.0);
             lung.health.fraction() * hemisphere.frontal.motor.body.fraction().powi(3)
         }).combine(|a, b| a + b) / 2.0;
 
@@ -1701,10 +1941,11 @@ impl HumanAnatomy
 
         let brain = some_or_return!(self.brain());
 
-        let vision = brain.as_ref().zip(self.body.sided.as_ref()).map(|(hemisphere, body)|
+        let vision = brain.as_ref().map(|hemisphere|
         {
-            let fraction = hemisphere.occipital.fraction().powi(3);
-
+            hemisphere.occipital.fraction().powi(3)
+        }).flip().zip(self.body.sided.as_ref()).map(|(fraction, body)|
+        {
             body.eye.as_ref().map(|x| x.bone.fraction()).unwrap_or(0.0) * fraction
         }).combine(|a, b| a.max(b));
 

@@ -108,7 +108,15 @@ enum SeenNotificationPart
 enum AnatomyNotificationPart
 {
     Body,
+    Organ(OrganId, OrganPart),
     Part(HumanPartId)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum OrganPart
+{
+    Body,
+    Organ
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -399,7 +407,7 @@ fn single_health_color(fraction: Option<f32>) -> Lcha
 
 fn average_health_color(anatomy: &Anatomy, id: HumanPartId) -> Lcha
 {
-    single_health_color(anatomy.get_human(id).unwrap().map(|x| x.average_health()))
+    single_health_color(anatomy.get_human::<BoneHealthGetter>(id).unwrap().map(|x| x.fraction()))
 }
 
 pub struct UiList<T>
@@ -1074,15 +1082,7 @@ impl WindowKind
                             ..Default::default()
                         });
 
-                        let value = anatomy.get_human(part_id).unwrap().and_then(|x|
-                        {
-                            match bar_id
-                            {
-                                BarId::Bone | BarId::Health => Some(*x.bone),
-                                BarId::Muscle => *x.muscle,
-                                BarId::Skin => *x.skin
-                            }
-                        }).map(|x| x.fraction());
+                        let value: Option<f32> = todo!();
 
                         let health_color = single_health_color(value);
 
@@ -1241,6 +1241,20 @@ struct UiItemPopup
     events: Vec<GameUiEvent>
 }
 
+#[derive(Debug, Clone)]
+enum AnatomyNotificationKind
+{
+    Normal(HumanPartId),
+    Organ(OrganId)
+}
+
+#[derive(Debug, Clone)]
+struct AnatomyNotification
+{
+    pub lifetime: f32,
+    pub kind: AnatomyNotificationKind
+}
+
 pub struct Ui
 {
     items_info: Arc<ItemsInfo>,
@@ -1257,7 +1271,7 @@ pub struct Ui
     cooldown: BarDisplay,
     notifications: Vec<NotificationInfo>,
     seen_notifications: HashMap<Entity, f32>,
-    anatomy_notifications: HashMap<Entity, (f32, Vec<(f32, HumanPartId)>)>,
+    anatomy_notifications: HashMap<Entity, (f32, Vec<AnatomyNotification>)>,
     popup_unique_id: u8,
     popup: Option<UiItemPopup>
 }
@@ -1309,13 +1323,32 @@ impl Ui
                 some_or_return!(entities.anatomy_mut(entity)).for_accessed_parts(|part|
                 {
                     let default_lifetime = 2.0;
-                    let part = (0.2, part.id);
+
+                    let part = match part.kind
+                    {
+                        ChangedKind::Bone
+                        | ChangedKind::Muscle
+                        | ChangedKind::Skin =>
+                        {
+                            AnatomyNotification{
+                                lifetime: 0.2,
+                                kind: AnatomyNotificationKind::Normal(part.id)
+                            }
+                        },
+                        ChangedKind::Organ(organ) =>
+                        {
+                            AnatomyNotification{
+                                lifetime: default_lifetime,
+                                kind: AnatomyNotificationKind::Organ(organ)
+                            }
+                        }
+                    };
 
                     ui.borrow_mut().anatomy_notifications.entry(entity)
                         .and_modify(|(lifetime, parts)|
                         {
                             *lifetime = default_lifetime;
-                            parts.push(part);
+                            parts.push(part.clone());
                         }).or_insert_with(|| (default_lifetime, vec![part]));
                 });
             }));
@@ -1747,7 +1780,16 @@ impl Ui
             let anatomy = some_or_value!(entities.anatomy(*entity), false);
             self.anatomy_locations_small.locations.iter().for_each(|(part_id, location)|
             {
-                let selected = parts.iter().any(|x| x.1 == *part_id);
+                let selected = parts.iter().any(|x|
+                {
+                    if let AnatomyNotificationKind::Normal(id) = x.kind
+                    {
+                        id == *part_id
+                    } else
+                    {
+                        false
+                    }
+                });
 
                 let color = average_health_color(&anatomy, *part_id);
                 let health_color = if selected
@@ -1772,11 +1814,75 @@ impl Ui
                 });
             });
 
+            let get_next_position = |current: TreeInserter<UiId>|
+            {
+                let position = current.try_position().unwrap_or_else(|| position);
+
+                position - Vector2::new(0.0, current.try_height().unwrap_or(0.0) / 2.0)
+            };
+
+            parts.iter().filter_map(|part|
+            {
+                if let AnatomyNotificationKind::Organ(organ) = &part.kind
+                {
+                    Some(organ)
+                } else
+                {
+                    None
+                }
+            }).fold(get_next_position(body), |position, organ|
+            {
+                let id = |part| UiId::AnatomyNotification(*entity, AnatomyNotificationPart::Organ(*organ, part));
+
+                let body = self.controller.update(id(OrganPart::Body), UiElement{
+                    position: UiPosition::Absolute{position, align: UiPositionAlign{
+                        horizontal: AlignHorizontal::Middle,
+                        vertical: AlignVertical::Bottom
+                    }},
+                    animation: Animation{
+                        position: Some(PositionAnimation::ease_out(10.0)),
+                        ..Animation::normal()
+                    },
+                    children_layout: UiLayout::Vertical,
+                    ..Default::default()
+                });
+
+                let mix = |health|
+                {
+                    let health_color = single_health_color(health);
+                    Some(MixColorLch{keep_transparency: true, ..MixColorLch::color(health_color)})
+                };
+
+                let width = |flip| UiSize::FitContent(if flip { -1.0 } else { 1.0 }).into();
+                let height = UiSize::FitContent(1.0).into();
+
+                match organ
+                {
+                    OrganId::Brain(side, brain_id) =>
+                    {
+                    },
+                    OrganId::Lung(side) =>
+                    {
+                        body.update(id(OrganPart::Organ), UiElement{
+                            texture: UiTexture::Custom("ui/lung.png".to_owned()),
+                            mix: mix(Some(1.0)),
+                            width: width(side.is_left()),
+                            height,
+                            ..Default::default()
+                        });
+                    }
+                };
+
+                add_padding_vertical(body, UiSize::Pixels(NOTIFICATION_PADDING).into());
+
+                get_next_position(body)
+            });
+
             parts.retain_mut(|part|
             {
-                part.0 -= dt;
+                part.lifetime -= dt;
 
-                part.0 > 0.0
+                part.lifetime > 0.0
             });
 
             *lifetime > 0.0

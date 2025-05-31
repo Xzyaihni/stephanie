@@ -48,6 +48,11 @@ impl TryFrom<Side2d> for Side1d
 
 impl Side1d
 {
+    pub fn is_left(self) -> bool
+    {
+        if let Self::Left = self { true } else { false }
+    }
+
     pub fn opposite(self) -> Self
     {
         match self
