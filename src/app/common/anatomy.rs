@@ -49,9 +49,9 @@ pub trait PartFieldGetter
 {
     type V<'a>;
 
-    fn get<C: BodyContentable>(value: &HumanPart<C>) -> &Self::V<'_>;
-    fn get_mut<C: BodyContentable>(value: &mut HumanPart<C>) -> &mut Self::V<'_>;
-    fn run<C: BodyContentable>(value: &mut HumanPart<C>) -> Self::V<'_>;
+    fn get<C: Organ>(value: &HumanPart<C>) -> &Self::V<'_>;
+    fn get_mut<C: Organ>(value: &mut HumanPart<C>) -> &mut Self::V<'_>;
+    fn run<C: Organ>(value: &mut HumanPart<C>) -> Self::V<'_>;
 }
 
 macro_rules! simple_field_getter
@@ -64,9 +64,9 @@ macro_rules! simple_field_getter
         {
             type V<'a> = $t;
 
-            fn get<T: BodyContentable>(value: &HumanPart<T>) -> &Self::V<'_> { &value.$f }
-            fn get_mut<T: BodyContentable>(value: &mut HumanPart<T>) -> &mut Self::V<'_> { &mut value.$f }
-            fn run<T: BodyContentable>(_value: &mut HumanPart<T>) -> Self::V<'_> { unreachable!() }
+            fn get<T: Organ>(value: &HumanPart<T>) -> &Self::V<'_> { &value.$f }
+            fn get_mut<T: Organ>(value: &mut HumanPart<T>) -> &mut Self::V<'_> { &mut value.$f }
+            fn run<T: Organ>(_value: &mut HumanPart<T>) -> Self::V<'_> { unreachable!() }
         }
     }
 }
@@ -76,13 +76,23 @@ simple_field_getter!{MuscleHealthGetter, Option<Health>, muscle}
 simple_field_getter!{SkinHealthGetter, Option<Health>, skin}
 simple_field_getter!{SizeGetter, f64, size}
 
+pub struct AverageHealthGetter;
+impl PartFieldGetter for AverageHealthGetter
+{
+    type V<'a> = f32;
+
+    fn get<T: Organ>(_value: &HumanPart<T>) -> &Self::V<'_> { unreachable!() }
+    fn get_mut<T: Organ>(_value: &mut HumanPart<T>) -> &mut Self::V<'_> { unreachable!() }
+    fn run<T: Organ>(_value: &mut HumanPart<T>) -> Self::V<'_> { unreachable!() }
+}
+
 impl PartFieldGetter for ()
 {
     type V<'a> = ();
 
-    fn get<T: BodyContentable>(_value: &HumanPart<T>) -> &Self::V<'_> { &() }
-    fn get_mut<T: BodyContentable>(_value: &mut HumanPart<T>) -> &mut Self::V<'_> { unreachable!() }
-    fn run<T: BodyContentable>(_value: &mut HumanPart<T>) -> Self::V<'_> { }
+    fn get<T: Organ>(_value: &HumanPart<T>) -> &Self::V<'_> { &() }
+    fn get_mut<T: Organ>(_value: &mut HumanPart<T>) -> &mut Self::V<'_> { unreachable!() }
+    fn run<T: Organ>(_value: &mut HumanPart<T>) -> Self::V<'_> { }
 }
 
 struct DamagerGetter;
@@ -90,9 +100,9 @@ impl PartFieldGetter for DamagerGetter
 {
     type V<'a> = Box<dyn FnOnce(Damage) -> Option<Damage> + 'a>;
 
-    fn get<T: BodyContentable>(_value: &HumanPart<T>) -> &Self::V<'_> { unreachable!() }
-    fn get_mut<T: BodyContentable>(_value: &mut HumanPart<T>) -> &mut Self::V<'_> { unreachable!() }
-    fn run<T: BodyContentable>(value: &mut HumanPart<T>) -> Self::V<'_>
+    fn get<T: Organ>(_value: &HumanPart<T>) -> &Self::V<'_> { unreachable!() }
+    fn get_mut<T: Organ>(_value: &mut HumanPart<T>) -> &mut Self::V<'_> { unreachable!() }
+    fn run<T: Organ>(value: &mut HumanPart<T>) -> Self::V<'_>
     {
         Box::new(|damage|
         {
@@ -106,9 +116,9 @@ impl PartFieldGetter for AccessedGetter
 {
     type V<'a> = Box<dyn FnOnce(&mut dyn FnMut(ChangedKind)) + 'a>;
 
-    fn get<T: BodyContentable>(_value: &HumanPart<T>) -> &Self::V<'_> { unreachable!() }
-    fn get_mut<T: BodyContentable>(_value: &mut HumanPart<T>) -> &mut Self::V<'_> { unreachable!() }
-    fn run<T: BodyContentable>(value: &mut HumanPart<T>) -> Self::V<'_>
+    fn get<T: Organ>(_value: &HumanPart<T>) -> &Self::V<'_> { unreachable!() }
+    fn get_mut<T: Organ>(_value: &mut HumanPart<T>) -> &mut Self::V<'_> { unreachable!() }
+    fn run<T: Organ>(value: &mut HumanPart<T>) -> Self::V<'_>
     {
         Box::new(|f| { value.consume_accessed(f) })
     }
@@ -131,7 +141,7 @@ impl Anatomy
 
     pub fn get_human<F: PartFieldGetter>(
         &self,
-        id: HumanPartId
+        id: AnatomyId
     ) -> Option<Option<&F::V<'_>>>
     {
         #[allow(irrefutable_let_patterns)]
@@ -430,7 +440,7 @@ impl<T> ChangeTracking<T>
     }
 }
 
-pub trait BodyContentable: DamageReceiver + Debug
+pub trait Organ: DamageReceiver + Debug
 {
     fn clear(&mut self);
     fn consume_accessed<F: FnMut(OrganId)>(&mut self, f: F);
@@ -449,7 +459,7 @@ impl DamageReceiver for ()
     }
 }
 
-impl BodyContentable for ()
+impl Organ for ()
 {
     fn clear(&mut self) {}
     fn consume_accessed<F: FnMut(OrganId)>(&mut self, _f: F) {}
@@ -527,7 +537,7 @@ impl<Contents> BodyPart<Contents>
     }
 }
 
-impl<Contents: BodyContentable> BodyPart<Contents>
+impl<Contents: Organ> BodyPart<Contents>
 {
     fn damage(&mut self, damage: Damage) -> Option<Damage>
     {
@@ -586,7 +596,7 @@ impl<Contents: BodyContentable> BodyPart<Contents>
     }
 }
 
-impl<Contents: BodyContentable> BodyPart<Contents>
+impl<Contents: Organ> BodyPart<Contents>
 {
     fn consume_accessed(&mut self, mut f: impl FnMut(ChangedKind))
     {
@@ -981,6 +991,20 @@ impl DamageReceiver for Brain
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Eye
+{
+    health: ChangeTracking<Health>
+}
+
+impl Eye
+{
+    pub fn new() -> Self
+    {
+        Self{health: Health::new(50.0, 100.0).into()}
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Lung
 {
     health: ChangeTracking<Health>
@@ -1033,8 +1057,32 @@ pub enum BrainId
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum OrganId
 {
+    Eye(Side1d),
     Brain(Side1d, BrainId),
     Lung(Side1d)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum AnatomyId
+{
+    Organ(OrganId),
+    Part(HumanPartId)
+}
+
+impl From<OrganId> for AnatomyId
+{
+    fn from(id: OrganId) -> Self
+    {
+        Self::Organ(id)
+    }
+}
+
+impl From<HumanPartId> for AnatomyId
+{
+    fn from(id: HumanPartId) -> Self
+    {
+        Self::Part(id)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, IntoStaticStr, Serialize, Deserialize)]
@@ -1044,7 +1092,6 @@ pub enum HumanPartId
     Torso,
     Spine,
     Pelvis,
-    Eye(Side1d),
     Thigh(Side1d),
     Calf(Side1d),
     Arm(Side1d),
@@ -1087,8 +1134,7 @@ impl HumanPartId
     {
         match self
         {
-            Self::Eye(x)
-            | Self::Thigh(x)
+            Self::Thigh(x)
             | Self::Calf(x)
             | Self::Arm(x)
             | Self::Forearm(x)
@@ -1116,9 +1162,7 @@ impl HumanPartId
             Self::Hand(Side1d::Left),
             Self::Hand(Side1d::Right),
             Self::Foot(Side1d::Left),
-            Self::Foot(Side1d::Right),
-            Self::Eye(Side1d::Left),
-            Self::Eye(Side1d::Right)
+            Self::Foot(Side1d::Right)
         ].into_iter()
     }
 
@@ -1145,8 +1189,7 @@ impl HumanPartId
             Self::Arm(_) => "humerus",
             Self::Forearm(_) => "radius",
             Self::Hand(_) => "hand", // lmao i cant rly pick any of the bones
-            Self::Foot(_) => "foot", // same with this one
-            Self::Eye(_) => "eye" // the eye bone
+            Self::Foot(_) => "foot" // same with this one
         }
     }
 }
@@ -1199,6 +1242,7 @@ impl Default for HumanAnatomyInfo
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HeadOrgans
 {
+    pub eyes: Halves<Option<Eye>>,
     pub brain: Option<Brain>
 }
 
@@ -1221,7 +1265,7 @@ impl DamageReceiver for HeadOrgans
     }
 }
 
-impl BodyContentable for HeadOrgans
+impl Organ for HeadOrgans
 {
     fn clear(&mut self)
     {
@@ -1246,7 +1290,7 @@ pub struct TorsoOrgans
     pub lungs: Halves<Option<Lung>>
 }
 
-impl BodyContentable for TorsoOrgans
+impl Organ for TorsoOrgans
 {
     fn clear(&mut self)
     {
@@ -1328,9 +1372,29 @@ pub struct HumanBody
 
 macro_rules! impl_get
 {
-    ($fn_name:ident, $option_fn:ident, $rt:ty, $($b:tt)+) =>
+    ($fn_name:ident, $part_fn_name:ident, $organ_fn_name:ident, $option_fn:ident, $rt:ty, $($b:tt)+) =>
     {
         pub fn $fn_name<F: PartFieldGetter>(
+            $($b)+ self,
+            id: AnatomyId
+        ) -> Option<$rt>
+        {
+            match id
+            {
+                AnatomyId::Organ(id) => self.$organ_fn_name::<F>(id),
+                AnatomyId::Part(id) => self.$part_fn_name::<F>(id)
+            }
+        }
+
+        pub fn $organ_fn_name<F: PartFieldGetter>(
+            $($b)+ self,
+            id: OrganId
+        ) -> Option<$rt>
+        {
+            todo!()
+        }
+
+        pub fn $part_fn_name<F: PartFieldGetter>(
             $($b)+ self,
             id: HumanPartId
         ) -> Option<$rt>
@@ -1341,7 +1405,6 @@ macro_rules! impl_get
                 HumanPartId::Torso => Some(F::$fn_name($($b)+ self.torso)),
                 HumanPartId::Pelvis => Some(F::$fn_name($($b)+ self.pelvis)),
                 HumanPartId::Spine => Some(F::$fn_name($($b)+ self.spine)),
-                HumanPartId::Eye(side) => self.sided[side].eye.$option_fn().map(|x| F::$fn_name(x)),
                 HumanPartId::Thigh(side) => self.sided[side].upper_leg.$option_fn().map(|x| F::$fn_name(x)),
                 HumanPartId::Calf(side) => self.sided[side].lower_leg.$option_fn().map(|x| F::$fn_name(x)),
                 HumanPartId::Foot(side) => self.sided[side].foot.$option_fn().map(|x| F::$fn_name(x)),
@@ -1355,14 +1418,14 @@ macro_rules! impl_get
 
 impl HumanBody
 {
-    impl_get!{get, as_ref, &F::V<'_>, &}
-    impl_get!{get_mut, as_mut, &mut F::V<'_>, &mut}
-    impl_get!{run, as_mut, F::V<'_>, &mut}
+    impl_get!{get, get_part, get_organ, as_ref, &F::V<'_>, &}
+    impl_get!{get_mut, get_part_mut, get_organ_mut, as_mut, &mut F::V<'_>, &mut}
+    impl_get!{run, run_part, run_organ, as_mut, F::V<'_>, &mut}
 }
 
 struct PierceType
 {
-    possible: Vec<HumanPartId>,
+    possible: Vec<AnatomyId>,
     action: Rc<dyn Fn(&mut HumanAnatomy, Damage) -> Option<Damage>>
 }
 
@@ -1375,17 +1438,17 @@ impl PierceType
 
     fn head_back() -> Self
     {
-        let possible = vec![HumanPartId::Eye(Side1d::Left), HumanPartId::Eye(Side1d::Right)];
+        let possible = vec![OrganId::Eye(Side1d::Left).into(), OrganId::Eye(Side1d::Right).into()];
 
         Self::possible_pierce(possible, 1, convert::identity)
     }
 
     fn torso_front() -> Self
     {
-        Self::possible_pierce(vec![HumanPartId::Spine], 2, convert::identity)
+        Self::possible_pierce(vec![HumanPartId::Spine.into()], 2, convert::identity)
     }
 
-    fn possible_pierce<F>(possible: Vec<HumanPartId>, misses: usize, f: F) -> Self
+    fn possible_pierce<F>(possible: Vec<AnatomyId>, misses: usize, f: F) -> Self
     where
         F: Fn(Option<Damage>) -> Option<Damage> + 'static
     {
@@ -1421,9 +1484,9 @@ impl PierceType
         let opposite = side.opposite();
 
         let possible = vec![
-            HumanPartId::Arm(opposite),
-            HumanPartId::Forearm(opposite),
-            HumanPartId::Hand(opposite)
+            HumanPartId::Arm(opposite).into(),
+            HumanPartId::Forearm(opposite).into(),
+            HumanPartId::Hand(opposite).into()
         ];
 
         Self::possible_pierce(possible, 1, convert::identity)
@@ -1432,7 +1495,7 @@ impl PierceType
     fn arm_pierce(side: Side1d) -> PierceType
     {
         Self{
-            possible: vec![HumanPartId::Spine, HumanPartId::Torso],
+            possible: vec![HumanPartId::Spine.into(), HumanPartId::Torso.into()],
             action: Rc::new(move |this: &mut HumanAnatomy, mut damage|
             {
                 let target = if damage.rng.next_bool()
@@ -1444,7 +1507,7 @@ impl PierceType
                 };
 
                 let pierce = some_or_value!(
-                    this.body.run::<DamagerGetter>(target).unwrap()(damage),
+                    this.body.run::<DamagerGetter>(target.into()).unwrap()(damage),
                     None
                 );
 
@@ -1458,9 +1521,9 @@ impl PierceType
         let opposite = side.opposite();
 
         let possible = vec![
-            HumanPartId::Thigh(opposite),
-            HumanPartId::Calf(opposite),
-            HumanPartId::Foot(opposite)
+            HumanPartId::Thigh(opposite).into(),
+            HumanPartId::Calf(opposite).into(),
+            HumanPartId::Foot(opposite).into()
         ];
 
         Self::possible_pierce(possible, 0, convert::identity)
@@ -1581,7 +1644,7 @@ impl HumanAnatomy
             bone_toughness,
             5000.0,
             0.39,
-            HeadOrgans{brain: Some(Brain::default())}
+            HeadOrgans{eyes: Halves::repeat(Some(Eye::new())), brain: Some(Brain::default())}
         );
 
         let pelvis = new_part(DebugName::new("pelvis"), 6000.0, 0.37);
@@ -1665,7 +1728,7 @@ impl HumanAnatomy
         HumanPartId::iter().for_each(|id|
         {
             let f = &mut f;
-            if let Some(x) = self.body.run::<AccessedGetter>(id)
+            if let Some(x) = self.body.run::<AccessedGetter>(id.into())
             {
                 x(&mut |kind| f(ChangedPart{id, kind}));
             }
@@ -1684,25 +1747,25 @@ impl HumanAnatomy
 
         let no_pierce = PierceType::empty;
 
-        let mut ids = match damage.direction.height
+        let mut ids: Vec<(AnatomyId, _)> = match damage.direction.height
         {
             DamageHeight::Top =>
             {
                 match damage.direction.side
                 {
                     Side2d::Back => vec![
-                        (HumanPartId::Spine, no_pierce()),
-                        (HumanPartId::Head, PierceType::head_back())
+                        (HumanPartId::Spine.into(), no_pierce()),
+                        (HumanPartId::Head.into(), PierceType::head_back())
                     ],
                     Side2d::Front => vec![
-                        (HumanPartId::Spine, no_pierce()),
-                        (HumanPartId::Head, no_pierce()),
-                        (HumanPartId::Eye(Side1d::Left), no_pierce()),
-                        (HumanPartId::Eye(Side1d::Right), no_pierce())
+                        (HumanPartId::Spine.into(), no_pierce()),
+                        (HumanPartId::Head.into(), no_pierce()),
+                        (OrganId::Eye(Side1d::Left).into(), no_pierce()),
+                        (OrganId::Eye(Side1d::Right).into(), no_pierce())
                     ],
                     Side2d::Left | Side2d::Right => vec![
-                        (HumanPartId::Spine, no_pierce()),
-                        (HumanPartId::Head, no_pierce())
+                        (HumanPartId::Spine.into(), no_pierce()),
+                        (HumanPartId::Head.into(), no_pierce())
                     ]
                 }
             },
@@ -1711,37 +1774,37 @@ impl HumanAnatomy
                 match damage.direction.side
                 {
                     Side2d::Back => vec![
-                        (HumanPartId::Spine, no_pierce()),
-                        (HumanPartId::Torso, no_pierce()),
-                        (HumanPartId::Arm(Side1d::Left), no_pierce()),
-                        (HumanPartId::Forearm(Side1d::Left), no_pierce()),
-                        (HumanPartId::Hand(Side1d::Left), no_pierce()),
-                        (HumanPartId::Arm(Side1d::Right), no_pierce()),
-                        (HumanPartId::Forearm(Side1d::Right), no_pierce()),
-                        (HumanPartId::Hand(Side1d::Right), no_pierce())
+                        (HumanPartId::Spine.into(), no_pierce()),
+                        (HumanPartId::Torso.into(), no_pierce()),
+                        (HumanPartId::Arm(Side1d::Left).into(), no_pierce()),
+                        (HumanPartId::Forearm(Side1d::Left).into(), no_pierce()),
+                        (HumanPartId::Hand(Side1d::Left).into(), no_pierce()),
+                        (HumanPartId::Arm(Side1d::Right).into(), no_pierce()),
+                        (HumanPartId::Forearm(Side1d::Right).into(), no_pierce()),
+                        (HumanPartId::Hand(Side1d::Right).into(), no_pierce())
                     ],
                     Side2d::Front => vec![
-                        (HumanPartId::Torso, PierceType::torso_front()),
-                        (HumanPartId::Arm(Side1d::Left), no_pierce()),
-                        (HumanPartId::Forearm(Side1d::Left), no_pierce()),
-                        (HumanPartId::Hand(Side1d::Left), no_pierce()),
-                        (HumanPartId::Arm(Side1d::Right), no_pierce()),
-                        (HumanPartId::Forearm(Side1d::Right), no_pierce()),
-                        (HumanPartId::Hand(Side1d::Right), no_pierce())
+                        (HumanPartId::Torso.into(), PierceType::torso_front()),
+                        (HumanPartId::Arm(Side1d::Left).into(), no_pierce()),
+                        (HumanPartId::Forearm(Side1d::Left).into(), no_pierce()),
+                        (HumanPartId::Hand(Side1d::Left).into(), no_pierce()),
+                        (HumanPartId::Arm(Side1d::Right).into(), no_pierce()),
+                        (HumanPartId::Forearm(Side1d::Right).into(), no_pierce()),
+                        (HumanPartId::Hand(Side1d::Right).into(), no_pierce())
                     ],
                     Side2d::Left => vec![
-                        (HumanPartId::Spine, PierceType::middle_pierce(Side1d::Left)),
-                        (HumanPartId::Torso, PierceType::middle_pierce(Side1d::Left)),
-                        (HumanPartId::Arm(Side1d::Left), PierceType::arm_pierce(Side1d::Left)),
-                        (HumanPartId::Forearm(Side1d::Left), PierceType::arm_pierce(Side1d::Left)),
-                        (HumanPartId::Hand(Side1d::Left), PierceType::arm_pierce(Side1d::Left))
+                        (HumanPartId::Spine.into(), PierceType::middle_pierce(Side1d::Left)),
+                        (HumanPartId::Torso.into(), PierceType::middle_pierce(Side1d::Left)),
+                        (HumanPartId::Arm(Side1d::Left).into(), PierceType::arm_pierce(Side1d::Left)),
+                        (HumanPartId::Forearm(Side1d::Left).into(), PierceType::arm_pierce(Side1d::Left)),
+                        (HumanPartId::Hand(Side1d::Left).into(), PierceType::arm_pierce(Side1d::Left))
                     ],
                     Side2d::Right => vec![
-                        (HumanPartId::Spine, PierceType::middle_pierce(Side1d::Right)),
-                        (HumanPartId::Torso, PierceType::middle_pierce(Side1d::Right)),
-                        (HumanPartId::Arm(Side1d::Right), PierceType::arm_pierce(Side1d::Right)),
-                        (HumanPartId::Forearm(Side1d::Right), PierceType::arm_pierce(Side1d::Right)),
-                        (HumanPartId::Hand(Side1d::Right), PierceType::arm_pierce(Side1d::Right))
+                        (HumanPartId::Spine.into(), PierceType::middle_pierce(Side1d::Right)),
+                        (HumanPartId::Torso.into(), PierceType::middle_pierce(Side1d::Right)),
+                        (HumanPartId::Arm(Side1d::Right).into(), PierceType::arm_pierce(Side1d::Right)),
+                        (HumanPartId::Forearm(Side1d::Right).into(), PierceType::arm_pierce(Side1d::Right)),
+                        (HumanPartId::Hand(Side1d::Right).into(), PierceType::arm_pierce(Side1d::Right))
                     ]
                 }
             },
@@ -1750,25 +1813,25 @@ impl HumanAnatomy
                 match damage.direction.side
                 {
                     Side2d::Back | Side2d::Front => vec![
-                        (HumanPartId::Pelvis, no_pierce()),
-                        (HumanPartId::Thigh(Side1d::Left), no_pierce()),
-                        (HumanPartId::Calf(Side1d::Left), no_pierce()),
-                        (HumanPartId::Foot(Side1d::Left), no_pierce()),
-                        (HumanPartId::Thigh(Side1d::Right), no_pierce()),
-                        (HumanPartId::Calf(Side1d::Right), no_pierce()),
-                        (HumanPartId::Foot(Side1d::Right), no_pierce())
+                        (HumanPartId::Pelvis.into(), no_pierce()),
+                        (HumanPartId::Thigh(Side1d::Left).into(), no_pierce()),
+                        (HumanPartId::Calf(Side1d::Left).into(), no_pierce()),
+                        (HumanPartId::Foot(Side1d::Left).into(), no_pierce()),
+                        (HumanPartId::Thigh(Side1d::Right).into(), no_pierce()),
+                        (HumanPartId::Calf(Side1d::Right).into(), no_pierce()),
+                        (HumanPartId::Foot(Side1d::Right).into(), no_pierce())
                     ],
                     Side2d::Left => vec![
-                        (HumanPartId::Pelvis, no_pierce()),
-                        (HumanPartId::Thigh(Side1d::Left), PierceType::leg_pierce(Side1d::Left)),
-                        (HumanPartId::Calf(Side1d::Left), PierceType::leg_pierce(Side1d::Left)),
-                        (HumanPartId::Foot(Side1d::Left), PierceType::leg_pierce(Side1d::Left))
+                        (HumanPartId::Pelvis.into(), no_pierce()),
+                        (HumanPartId::Thigh(Side1d::Left).into(), PierceType::leg_pierce(Side1d::Left)),
+                        (HumanPartId::Calf(Side1d::Left).into(), PierceType::leg_pierce(Side1d::Left)),
+                        (HumanPartId::Foot(Side1d::Left).into(), PierceType::leg_pierce(Side1d::Left))
                     ],
                     Side2d::Right => vec![
-                        (HumanPartId::Pelvis, no_pierce()),
-                        (HumanPartId::Thigh(Side1d::Right), PierceType::leg_pierce(Side1d::Right)),
-                        (HumanPartId::Calf(Side1d::Right), PierceType::leg_pierce(Side1d::Right)),
-                        (HumanPartId::Foot(Side1d::Right), PierceType::leg_pierce(Side1d::Right))
+                        (HumanPartId::Pelvis.into(), no_pierce()),
+                        (HumanPartId::Thigh(Side1d::Right).into(), PierceType::leg_pierce(Side1d::Right)),
+                        (HumanPartId::Calf(Side1d::Right).into(), PierceType::leg_pierce(Side1d::Right)),
+                        (HumanPartId::Foot(Side1d::Right).into(), PierceType::leg_pierce(Side1d::Right))
                     ]
                 }
             }

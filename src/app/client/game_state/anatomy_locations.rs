@@ -83,9 +83,7 @@ impl UiAnatomyLocations
             (HumanPartId::Calf(Side1d::Right), 0x00ffff),
             (HumanPartId::Calf(Side1d::Left), 0xff00ff),
             (HumanPartId::Foot(Side1d::Right), 0x00bfff),
-            (HumanPartId::Foot(Side1d::Left), 0xf0e68c),
-            (HumanPartId::Eye(Side1d::Right), 0x696969),
-            (HumanPartId::Eye(Side1d::Left), 0xf5f5f5)
+            (HumanPartId::Foot(Side1d::Left), 0xf0e68c)
         ].into_iter().map(|(key, value): (_, u32)|
         {
             let r = (value >> (8 * 2)) & 0xff;

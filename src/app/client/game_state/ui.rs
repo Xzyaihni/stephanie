@@ -405,9 +405,9 @@ fn single_health_color(fraction: Option<f32>) -> Lcha
     }).unwrap_or(MISSING_PART_COLOR)
 }
 
-fn average_health_color(anatomy: &Anatomy, id: HumanPartId) -> Lcha
+fn average_health_color(anatomy: &Anatomy, id: AnatomyId) -> Lcha
 {
-    single_health_color(anatomy.get_human::<BoneHealthGetter>(id).unwrap().map(|x| x.fraction()))
+    single_health_color(anatomy.get_human::<AverageHealthGetter>(id).unwrap().copied())
 }
 
 pub struct UiList<T>
@@ -975,7 +975,7 @@ impl WindowKind
                 {
                     let selected = selected_index == Some(index);
 
-                    let color = average_health_color(&anatomy, *part_id);
+                    let color = average_health_color(&anatomy, (*part_id).into());
                     let health_color = if selected
                     {
                         color.with_added_lightness(20.0).with_added_chroma(-30.0)
@@ -1106,7 +1106,7 @@ impl WindowKind
                         });
                     };
 
-                    draw_separator();
+                    /*draw_separator();
                     if let HumanPartId::Eye(_) = part_id
                     {
                         draw_bar(BarId::Health);
@@ -1122,7 +1122,7 @@ impl WindowKind
 
                         draw_bar(BarId::Bone);
                     }
-                    draw_separator();
+                    draw_separator();*/
                 }
             }
         }
@@ -1791,7 +1791,7 @@ impl Ui
                     }
                 });
 
-                let color = average_health_color(&anatomy, *part_id);
+                let color = average_health_color(&anatomy, (*part_id).into());
                 let health_color = if selected
                 {
                     color.with_added_lightness(50.0).with_added_chroma(-50.0)
@@ -1858,6 +1858,9 @@ impl Ui
 
                 match organ
                 {
+                    OrganId::Eye(side) =>
+                    {
+                    },
                     OrganId::Brain(side, brain_id) =>
                     {
                     },
