@@ -542,7 +542,7 @@ pub trait Organ: DamageReceiver + Debug
     fn size(&self) -> &f64;
 
     fn clear(&mut self);
-    fn consume_accessed<F: FnMut(OrganId)>(&mut self, f: F);
+    fn consume_accessed<F: FnMut(OrganId)>(&mut self, _f: F) {}
 }
 
 impl DamageReceiver for ()
@@ -814,6 +814,38 @@ impl<T> IndexMut<Side1d> for Halves<T>
     }
 }
 
+
+impl DamageReceiver for ChangeTracking<Health>
+{
+    fn damage(
+        &mut self,
+        _rng: &mut SeededRandom,
+        _side: Side2d,
+        damage: DamageType
+    ) -> Option<DamageType>
+    {
+        self.damage_pierce(damage)
+    }
+}
+
+impl Organ for ChangeTracking<Health>
+{
+    fn average_health(&self) -> f32
+    {
+        self.fraction()
+    }
+
+    fn size(&self) -> &f64
+    {
+        unreachable!()
+    }
+
+    fn clear(&mut self)
+    {
+        unreachable!()
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MotorCortex
 {
@@ -908,11 +940,6 @@ impl Organ for MotorCortex
     {
         unreachable!()
     }
-
-    fn consume_accessed<F: FnMut(OrganId)>(&mut self, _f: F)
-    {
-        unreachable!()
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -967,11 +994,6 @@ impl Organ for FrontalLobe
     {
         unreachable!()
     }
-
-    fn consume_accessed<F: FnMut(OrganId)>(&mut self, _f: F)
-    {
-        unreachable!()
-    }
 }
 
 #[derive(Debug, Clone, Copy, FromRepr, EnumCount, Serialize, Deserialize)]
@@ -984,12 +1006,162 @@ pub enum LobeId
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ParietalLobe(ChangeTracking<Health>);
+
+impl Default for ParietalLobe
+{
+    fn default() -> Self
+    {
+        Self(Health::new(4.0, 50.0).into())
+    }
+}
+
+impl ParietalLobe
+{
+    fn consume_accessed(&mut self, mut f: impl FnMut())
+    {
+        if self.0.consume_accessed() { f(); }
+    }
+}
+
+impl DamageReceiver for ParietalLobe
+{
+    fn damage(
+        &mut self,
+        _rng: &mut SeededRandom,
+        _side: Side2d,
+        damage: DamageType
+    ) -> Option<DamageType>
+    {
+        self.0.damage_pierce(damage)
+    }
+}
+
+impl Organ for ParietalLobe
+{
+    fn average_health(&self) -> f32
+    {
+        self.0.fraction()
+    }
+
+    fn size(&self) -> &f64
+    {
+        &0.01
+    }
+
+    fn clear(&mut self)
+    {
+        unreachable!()
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TemporalLobe(ChangeTracking<Health>);
+
+impl Default for TemporalLobe
+{
+    fn default() -> Self
+    {
+        Self(Health::new(4.0, 50.0).into())
+    }
+}
+
+impl TemporalLobe
+{
+    fn consume_accessed(&mut self, mut f: impl FnMut())
+    {
+        if self.0.consume_accessed() { f(); }
+    }
+}
+
+impl DamageReceiver for TemporalLobe
+{
+    fn damage(
+        &mut self,
+        _rng: &mut SeededRandom,
+        _side: Side2d,
+        damage: DamageType
+    ) -> Option<DamageType>
+    {
+        self.0.damage_pierce(damage)
+    }
+}
+
+impl Organ for TemporalLobe
+{
+    fn average_health(&self) -> f32
+    {
+        self.0.fraction()
+    }
+
+    fn size(&self) -> &f64
+    {
+        &0.01
+    }
+
+    fn clear(&mut self)
+    {
+        unreachable!()
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OccipitalLobe(ChangeTracking<Health>);
+
+impl Default for OccipitalLobe
+{
+    fn default() -> Self
+    {
+        Self(Health::new(4.0, 50.0).into())
+    }
+}
+
+impl OccipitalLobe
+{
+    fn consume_accessed(&mut self, mut f: impl FnMut())
+    {
+        if self.0.consume_accessed() { f(); }
+    }
+}
+
+impl DamageReceiver for OccipitalLobe
+{
+    fn damage(
+        &mut self,
+        _rng: &mut SeededRandom,
+        _side: Side2d,
+        damage: DamageType
+    ) -> Option<DamageType>
+    {
+        self.0.damage_pierce(damage)
+    }
+}
+
+impl Organ for OccipitalLobe
+{
+    fn average_health(&self) -> f32
+    {
+        self.0.fraction()
+    }
+
+    fn size(&self) -> &f64
+    {
+        &0.01
+    }
+
+    fn clear(&mut self)
+    {
+        unreachable!()
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Hemisphere
 {
     frontal: FrontalLobe,
-    parietal: ChangeTracking<Health>,
-    temporal: ChangeTracking<Health>,
-    occipital: ChangeTracking<Health>
+    parietal: ParietalLobe,
+    temporal: TemporalLobe,
+    occipital: OccipitalLobe
 }
 
 impl Default for Hemisphere
@@ -998,9 +1170,9 @@ impl Default for Hemisphere
     {
         Self{
             frontal: FrontalLobe::default(),
-            parietal: Health::new(4.0, 50.0).into(),
-            temporal: Health::new(4.0, 50.0).into(),
-            occipital: Health::new(4.0, 50.0).into()
+            parietal: ParietalLobe::default(),
+            temporal: TemporalLobe::default(),
+            occipital: OccipitalLobe::default()
         }
     }
 }
@@ -1018,30 +1190,18 @@ impl Hemisphere
         match lobe
         {
             LobeId::Frontal => self.frontal.damage(rng, side, damage),
-            LobeId::Parietal => self.parietal.damage_pierce(damage),
-            LobeId::Temporal => self.temporal.damage_pierce(damage),
-            LobeId::Occipital => self.occipital.damage_pierce(damage)
+            LobeId::Parietal => self.parietal.damage(rng, side, damage),
+            LobeId::Temporal => self.temporal.damage(rng, side, damage),
+            LobeId::Occipital => self.occipital.damage(rng, side, damage)
         }
     }
 
     fn consume_accessed(&mut self, mut f: impl FnMut(BrainId))
     {
         self.frontal.consume_accessed(|id| f(BrainId::Frontal(id)));
-
-        if self.parietal.consume_accessed()
-        {
-            f(BrainId::Parietal)
-        }
-
-        if self.temporal.consume_accessed()
-        {
-            f(BrainId::Temporal)
-        }
-
-        if self.occipital.consume_accessed()
-        {
-            f(BrainId::Occipital)
-        }
+        self.parietal.consume_accessed(|| f(BrainId::Parietal));
+        self.temporal.consume_accessed(|| f(BrainId::Temporal));
+        self.occipital.consume_accessed(|| f(BrainId::Occipital));
     }
 }
 
@@ -1092,9 +1252,9 @@ impl Organ for Hemisphere
     fn average_health(&self) -> f32
     {
         (self.frontal.average_health()
-            + self.parietal.fraction()
-            + self.temporal.fraction()
-            + self.occipital.fraction()) / 4.0
+            + self.parietal.average_health()
+            + self.temporal.average_health()
+            + self.occipital.average_health()) / 4.0
     }
 
     fn size(&self) -> &f64
@@ -1103,11 +1263,6 @@ impl Organ for Hemisphere
     }
 
     fn clear(&mut self)
-    {
-        unreachable!()
-    }
-
-    fn consume_accessed<F: FnMut(OrganId)>(&mut self, _f: F)
     {
         unreachable!()
     }
@@ -1180,11 +1335,6 @@ impl Organ for Brain
     {
         unreachable!()
     }
-
-    fn consume_accessed<F: FnMut(OrganId)>(&mut self, _f: F)
-    {
-        unreachable!()
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1230,11 +1380,6 @@ impl Organ for Eye
     {
         unreachable!()
     }
-
-    fn consume_accessed<F: FnMut(OrganId)>(&mut self, _f: F)
-    {
-        unreachable!()
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1277,11 +1422,6 @@ impl Organ for Lung
     }
 
     fn clear(&mut self)
-    {
-        unreachable!()
-    }
-
-    fn consume_accessed<F: FnMut(OrganId)>(&mut self, _f: F)
     {
         unreachable!()
     }
@@ -1690,7 +1830,48 @@ macro_rules! impl_get
             id: OrganId
         ) -> Option<F::V<'_>>
         {
-            todo!()
+            match id
+            {
+                OrganId::Brain(side, id) =>
+                {
+                    self.head.contents.brain.$option_fn().map(|x|
+                    {
+                        let hemisphere = $($b)+ x[side];
+
+                        match id
+                        {
+                            BrainId::Frontal(id) =>
+                            {
+                                let lobe = $($b)+ hemisphere.frontal;
+                                match id
+                                {
+                                    FrontalId::Motor(id) =>
+                                    {
+                                        let motor = $($b)+ lobe.motor;
+                                        match id
+                                        {
+                                            MotorId::Arms => F::get($($b)+ motor.arms),
+                                            MotorId::Body => F::get($($b)+ motor.body),
+                                            MotorId::Legs => F::get($($b)+ motor.legs)
+                                        }
+                                    }
+                                }
+                            },
+                            BrainId::Parietal => F::get($($b)+ hemisphere.parietal),
+                            BrainId::Temporal => F::get($($b)+ hemisphere.temporal),
+                            BrainId::Occipital => F::get($($b)+ hemisphere.occipital)
+                        }
+                    })
+                },
+                OrganId::Eye(side) =>
+                {
+                    self.head.contents.eyes[side].$option_fn().map(|x| F::get(x))
+                },
+                OrganId::Lung(side) =>
+                {
+                    self.torso.contents.lungs[side].$option_fn().map(|x| F::get(x))
+                }
+            }
         }
 
         pub fn $part_fn_name<F: PartFieldGetter<$part_getter>>(
@@ -2304,7 +2485,7 @@ impl HumanAnatomy
 
         let vision = brain.as_ref().map(|hemisphere|
         {
-            hemisphere.occipital.fraction().powi(3)
+            hemisphere.occipital.0.fraction().powi(3)
         }).flip().zip(self.body.sided.as_ref()).map(|(fraction, body)|
         {
             body.eye.as_ref().map(|x| x.bone.fraction()).unwrap_or(0.0) * fraction
