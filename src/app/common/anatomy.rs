@@ -45,13 +45,71 @@ macro_rules! simple_getter
     }
 }
 
-pub trait PartFieldGetter
+pub trait FieldGet
 {
-    type V<'a>;
+    type T<'a, O>
+    where
+        Self: 'a,
+        O: 'a;
+}
 
-    fn get<C: Organ>(value: &HumanPart<C>) -> &Self::V<'_>;
-    fn get_mut<C: Organ>(value: &mut HumanPart<C>) -> &mut Self::V<'_>;
-    fn run<C: Organ>(value: &mut HumanPart<C>) -> Self::V<'_>;
+pub struct RefHumanPartFieldGet;
+impl FieldGet for RefHumanPartFieldGet
+{
+    type T<'a, O> = &'a HumanPart<O>
+    where
+        Self: 'a,
+        O: 'a;
+}
+
+pub struct RefOrganFieldGet;
+impl FieldGet for RefOrganFieldGet
+{
+    type T<'a, O> = &'a O
+    where
+        Self: 'a,
+        O: 'a;
+}
+
+pub struct RefMutHumanPartFieldGet;
+impl FieldGet for RefMutHumanPartFieldGet
+{
+    type T<'a, O> = &'a mut HumanPart<O>
+    where
+        Self: 'a,
+        O: 'a;
+}
+
+pub struct RefMutOrganFieldGet;
+impl FieldGet for RefMutOrganFieldGet
+{
+    type T<'a, O> = &'a mut O
+    where
+        Self: 'a,
+        O: 'a;
+}
+
+pub trait PartFieldGetter<F: FieldGet>
+{
+    type V<'a>
+    where
+        F: 'a;
+
+    fn get<'a, O: Organ + 'a>(value: F::T<'a, O>) -> Self::V<'a>;
+}
+
+impl PartFieldGetter<RefHumanPartFieldGet> for ()
+{
+    type V<'a> = ();
+
+    fn get<'a, O: Organ + 'a>(_value: &'a HumanPart<O>) -> Self::V<'a> { }
+}
+
+impl PartFieldGetter<RefOrganFieldGet> for ()
+{
+    type V<'a> = ();
+
+    fn get<'a, O: Organ + 'a>(_value: &'a O) -> Self::V<'a> { }
 }
 
 macro_rules! simple_field_getter
@@ -60,13 +118,18 @@ macro_rules! simple_field_getter
     {
         pub struct $name;
 
-        impl PartFieldGetter for $name
+        impl PartFieldGetter<RefHumanPartFieldGet> for $name
         {
-            type V<'a> = $t;
+            type V<'a> = &'a $t;
 
-            fn get<T: Organ>(value: &HumanPart<T>) -> &Self::V<'_> { &value.$f }
-            fn get_mut<T: Organ>(value: &mut HumanPart<T>) -> &mut Self::V<'_> { &mut value.$f }
-            fn run<T: Organ>(_value: &mut HumanPart<T>) -> Self::V<'_> { unreachable!() }
+            fn get<'a, O: Organ + 'a>(value: &'a HumanPart<O>) -> Self::V<'a> { &value.$f }
+        }
+
+        impl PartFieldGetter<RefMutHumanPartFieldGet> for $name
+        {
+            type V<'a> = &'a mut $t;
+
+            fn get<'a, O: Organ + 'a>(value: &'a mut HumanPart<O>) -> Self::V<'a> { &mut value.$f }
         }
     }
 }
@@ -76,33 +139,34 @@ simple_field_getter!{MuscleHealthGetter, Option<Health>, muscle}
 simple_field_getter!{SkinHealthGetter, Option<Health>, skin}
 simple_field_getter!{SizeGetter, f64, size}
 
+impl PartFieldGetter<RefOrganFieldGet> for SizeGetter
+{
+    type V<'a> = &'a f64;
+
+    fn get<'a, O: Organ + 'a>(value: &'a O) -> Self::V<'a> { value.size() }
+}
+
 pub struct AverageHealthGetter;
-impl PartFieldGetter for AverageHealthGetter
+impl PartFieldGetter<RefHumanPartFieldGet> for AverageHealthGetter
 {
     type V<'a> = f32;
 
-    fn get<T: Organ>(_value: &HumanPart<T>) -> &Self::V<'_> { unreachable!() }
-    fn get_mut<T: Organ>(_value: &mut HumanPart<T>) -> &mut Self::V<'_> { unreachable!() }
-    fn run<T: Organ>(_value: &mut HumanPart<T>) -> Self::V<'_> { unreachable!() }
+    fn get<'a, O: Organ + 'a>(value: &'a HumanPart<O>) -> Self::V<'a> { value.average_health() }
 }
 
-impl PartFieldGetter for ()
+impl PartFieldGetter<RefOrganFieldGet> for AverageHealthGetter
 {
-    type V<'a> = ();
+    type V<'a> = f32;
 
-    fn get<T: Organ>(_value: &HumanPart<T>) -> &Self::V<'_> { &() }
-    fn get_mut<T: Organ>(_value: &mut HumanPart<T>) -> &mut Self::V<'_> { unreachable!() }
-    fn run<T: Organ>(_value: &mut HumanPart<T>) -> Self::V<'_> { }
+    fn get<'a, O: Organ + 'a>(value: &'a O) -> Self::V<'a> { value.average_health() }
 }
 
 struct DamagerGetter;
-impl PartFieldGetter for DamagerGetter
+impl PartFieldGetter<RefMutHumanPartFieldGet> for DamagerGetter
 {
     type V<'a> = Box<dyn FnOnce(Damage) -> Option<Damage> + 'a>;
 
-    fn get<T: Organ>(_value: &HumanPart<T>) -> &Self::V<'_> { unreachable!() }
-    fn get_mut<T: Organ>(_value: &mut HumanPart<T>) -> &mut Self::V<'_> { unreachable!() }
-    fn run<T: Organ>(value: &mut HumanPart<T>) -> Self::V<'_>
+    fn get<'a, O: Organ + 'a>(value: &'a mut HumanPart<O>) -> Self::V<'a>
     {
         Box::new(|damage|
         {
@@ -111,16 +175,45 @@ impl PartFieldGetter for DamagerGetter
     }
 }
 
+impl PartFieldGetter<RefMutOrganFieldGet> for DamagerGetter
+{
+    type V<'a> = Box<dyn FnOnce(Damage) -> Option<Damage> + 'a>;
+
+    fn get<'a, O: Organ + 'a>(value: &'a mut O) -> Self::V<'a>
+    {
+        Box::new(|mut damage|
+        {
+            let data = value.damage(&mut damage.rng, damage.direction.side, damage.data);
+
+            data.map(|data| Damage{data, ..damage})
+        })
+    }
+}
+
 struct AccessedGetter;
-impl PartFieldGetter for AccessedGetter
+impl PartFieldGetter<RefMutHumanPartFieldGet> for AccessedGetter
 {
     type V<'a> = Box<dyn FnOnce(&mut dyn FnMut(ChangedKind)) + 'a>;
 
-    fn get<T: Organ>(_value: &HumanPart<T>) -> &Self::V<'_> { unreachable!() }
-    fn get_mut<T: Organ>(_value: &mut HumanPart<T>) -> &mut Self::V<'_> { unreachable!() }
-    fn run<T: Organ>(value: &mut HumanPart<T>) -> Self::V<'_>
+    fn get<'a, O: Organ + 'a>(value: &'a mut HumanPart<O>) -> Self::V<'a>
     {
-        Box::new(|f| { value.consume_accessed(f) })
+        Box::new(|f|
+        {
+            value.consume_accessed(f)
+        })
+    }
+}
+
+impl PartFieldGetter<RefMutOrganFieldGet> for AccessedGetter
+{
+    type V<'a> = Box<dyn FnOnce(&mut dyn FnMut(ChangedKind)) + 'a>;
+
+    fn get<'a, O: Organ + 'a>(value: &'a mut O) -> Self::V<'a>
+    {
+        Box::new(|f|
+        {
+            value.consume_accessed(|id| f(ChangedKind::Organ(id)))
+        })
     }
 }
 
@@ -139,10 +232,13 @@ impl Anatomy
     simple_getter!(vision);
     simple_getter!(vision_angle);
 
-    pub fn get_human<F: PartFieldGetter>(
+    pub fn get_human<F>(
         &self,
         id: AnatomyId
-    ) -> Option<Option<&F::V<'_>>>
+    ) -> Option<Option<<F as PartFieldGetter<RefHumanPartFieldGet>>::V<'_>>>
+    where
+        F: PartFieldGetter<RefHumanPartFieldGet>,
+        F: for<'a> PartFieldGetter<RefOrganFieldGet, V<'a>=<F as PartFieldGetter<RefHumanPartFieldGet>>::V<'a>>
     {
         #[allow(irrefutable_let_patterns)]
         if let Self::Human(x) = self
@@ -442,6 +538,9 @@ impl<T> ChangeTracking<T>
 
 pub trait Organ: DamageReceiver + Debug
 {
+    fn average_health(&self) -> f32;
+    fn size(&self) -> &f64;
+
     fn clear(&mut self);
     fn consume_accessed<F: FnMut(OrganId)>(&mut self, f: F);
 }
@@ -461,6 +560,9 @@ impl DamageReceiver for ()
 
 impl Organ for ()
 {
+    fn average_health(&self) -> f32 { 0.0 }
+    fn size(&self) -> &f64 { &0.0 }
+
     fn clear(&mut self) {}
     fn consume_accessed<F: FnMut(OrganId)>(&mut self, _f: F) {}
 }
@@ -790,6 +892,29 @@ impl DamageReceiver for MotorCortex
     }
 }
 
+impl Organ for MotorCortex
+{
+    fn average_health(&self) -> f32
+    {
+        (self.arms.fraction() + self.body.fraction() + self.legs.fraction()) / 3.0
+    }
+
+    fn size(&self) -> &f64
+    {
+        &0.05
+    }
+
+    fn clear(&mut self)
+    {
+        unreachable!()
+    }
+
+    fn consume_accessed<F: FnMut(OrganId)>(&mut self, _f: F)
+    {
+        unreachable!()
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FrontalLobe
 {
@@ -823,6 +948,29 @@ impl DamageReceiver for FrontalLobe
     ) -> Option<DamageType>
     {
         self.motor.damage(rng, side, damage)
+    }
+}
+
+impl Organ for FrontalLobe
+{
+    fn average_health(&self) -> f32
+    {
+        self.motor.average_health()
+    }
+
+    fn size(&self) -> &f64
+    {
+        &0.05
+    }
+
+    fn clear(&mut self)
+    {
+        unreachable!()
+    }
+
+    fn consume_accessed<F: FnMut(OrganId)>(&mut self, _f: F)
+    {
+        unreachable!()
     }
 }
 
@@ -939,6 +1087,32 @@ impl DamageReceiver for Hemisphere
     }
 }
 
+impl Organ for Hemisphere
+{
+    fn average_health(&self) -> f32
+    {
+        (self.frontal.average_health()
+            + self.parietal.fraction()
+            + self.temporal.fraction()
+            + self.occipital.fraction()) / 4.0
+    }
+
+    fn size(&self) -> &f64
+    {
+        &0.1
+    }
+
+    fn clear(&mut self)
+    {
+        unreachable!()
+    }
+
+    fn consume_accessed<F: FnMut(OrganId)>(&mut self, _f: F)
+    {
+        unreachable!()
+    }
+}
+
 pub type Brain = Halves<Hemisphere>;
 
 impl Default for Brain
@@ -990,6 +1164,29 @@ impl DamageReceiver for Brain
     }
 }
 
+impl Organ for Brain
+{
+    fn average_health(&self) -> f32
+    {
+        self.as_ref().map(|x| x.average_health()).combine(|a, b| (a + b) / 2.0)
+    }
+
+    fn size(&self) -> &f64
+    {
+        &0.2
+    }
+
+    fn clear(&mut self)
+    {
+        unreachable!()
+    }
+
+    fn consume_accessed<F: FnMut(OrganId)>(&mut self, _f: F)
+    {
+        unreachable!()
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Eye
 {
@@ -1001,6 +1198,42 @@ impl Eye
     pub fn new() -> Self
     {
         Self{health: Health::new(50.0, 100.0).into()}
+    }
+}
+
+impl DamageReceiver for Eye
+{
+    fn damage(
+        &mut self,
+        _rng: &mut SeededRandom,
+        _side: Side2d,
+        damage: DamageType
+    ) -> Option<DamageType>
+    {
+        self.health.damage_pierce(damage)
+    }
+}
+
+impl Organ for Eye
+{
+    fn average_health(&self) -> f32
+    {
+        self.health.fraction()
+    }
+
+    fn size(&self) -> &f64
+    {
+        &0.1
+    }
+
+    fn clear(&mut self)
+    {
+        unreachable!()
+    }
+
+    fn consume_accessed<F: FnMut(OrganId)>(&mut self, _f: F)
+    {
+        unreachable!()
     }
 }
 
@@ -1028,6 +1261,29 @@ impl DamageReceiver for Lung
     ) -> Option<DamageType>
     {
         self.health.damage_pierce(damage)
+    }
+}
+
+impl Organ for Lung
+{
+    fn average_health(&self) -> f32
+    {
+        self.health.fraction()
+    }
+
+    fn size(&self) -> &f64
+    {
+        &0.3
+    }
+
+    fn clear(&mut self)
+    {
+        unreachable!()
+    }
+
+    fn consume_accessed<F: FnMut(OrganId)>(&mut self, _f: F)
+    {
+        unreachable!()
     }
 }
 
@@ -1267,13 +1523,35 @@ impl DamageReceiver for HeadOrgans
 
 impl Organ for HeadOrgans
 {
+    fn average_health(&self) -> f32
+    {
+        unimplemented!()
+    }
+
+    fn size(&self) -> &f64
+    {
+        unimplemented!()
+    }
+
     fn clear(&mut self)
     {
+        self.eyes.as_mut().map(|eye| { *eye = None; } );
         self.brain = None;
     }
 
     fn consume_accessed<F: FnMut(OrganId)>(&mut self, mut f: F)
     {
+        self.eyes.as_mut().map_sides(|side, eye|
+        {
+            if let Some(eye) = eye.as_mut()
+            {
+                if eye.health.consume_accessed()
+                {
+                    f(OrganId::Eye(side));
+                }
+            }
+        });
+
         if let Some(brain) = self.brain.as_mut()
         {
             brain.as_mut().map_sides(|side, hemisphere|
@@ -1292,6 +1570,16 @@ pub struct TorsoOrgans
 
 impl Organ for TorsoOrgans
 {
+    fn average_health(&self) -> f32
+    {
+        unimplemented!()
+    }
+
+    fn size(&self) -> &f64
+    {
+        unimplemented!()
+    }
+
     fn clear(&mut self)
     {
         self.lungs.as_mut().map(|x| { *x = None; });
@@ -1372,12 +1660,23 @@ pub struct HumanBody
 
 macro_rules! impl_get
 {
-    ($fn_name:ident, $part_fn_name:ident, $organ_fn_name:ident, $option_fn:ident, $rt:ty, $($b:tt)+) =>
+    (
+        $part_getter:ident,
+        $organ_getter:ident,
+        $fn_name:ident,
+        $part_fn_name:ident,
+        $organ_fn_name:ident,
+        $option_fn:ident,
+        $($b:tt)+
+    ) =>
     {
-        pub fn $fn_name<F: PartFieldGetter>(
+        pub fn $fn_name<F>(
             $($b)+ self,
             id: AnatomyId
-        ) -> Option<$rt>
+        ) -> Option<<F as PartFieldGetter<$part_getter>>::V<'_>>
+        where
+            F: PartFieldGetter<$part_getter>,
+            F: for<'a> PartFieldGetter<$organ_getter, V<'a>=<F as PartFieldGetter<$part_getter>>::V<'a>>
         {
             match id
             {
@@ -1386,31 +1685,31 @@ macro_rules! impl_get
             }
         }
 
-        pub fn $organ_fn_name<F: PartFieldGetter>(
+        pub fn $organ_fn_name<F: PartFieldGetter<$organ_getter>>(
             $($b)+ self,
             id: OrganId
-        ) -> Option<$rt>
+        ) -> Option<F::V<'_>>
         {
             todo!()
         }
 
-        pub fn $part_fn_name<F: PartFieldGetter>(
+        pub fn $part_fn_name<F: PartFieldGetter<$part_getter>>(
             $($b)+ self,
             id: HumanPartId
-        ) -> Option<$rt>
+        ) -> Option<F::V<'_>>
         {
             match id
             {
-                HumanPartId::Head => Some(F::$fn_name($($b)+ self.head)),
-                HumanPartId::Torso => Some(F::$fn_name($($b)+ self.torso)),
-                HumanPartId::Pelvis => Some(F::$fn_name($($b)+ self.pelvis)),
-                HumanPartId::Spine => Some(F::$fn_name($($b)+ self.spine)),
-                HumanPartId::Thigh(side) => self.sided[side].upper_leg.$option_fn().map(|x| F::$fn_name(x)),
-                HumanPartId::Calf(side) => self.sided[side].lower_leg.$option_fn().map(|x| F::$fn_name(x)),
-                HumanPartId::Foot(side) => self.sided[side].foot.$option_fn().map(|x| F::$fn_name(x)),
-                HumanPartId::Arm(side) => self.sided[side].upper_arm.$option_fn().map(|x| F::$fn_name(x)),
-                HumanPartId::Forearm(side) => self.sided[side].lower_arm.$option_fn().map(|x| F::$fn_name(x)),
-                HumanPartId::Hand(side) => self.sided[side].hand.$option_fn().map(|x| F::$fn_name(x))
+                HumanPartId::Head => Some(F::get($($b)+ self.head)),
+                HumanPartId::Torso => Some(F::get($($b)+ self.torso)),
+                HumanPartId::Pelvis => Some(F::get($($b)+ self.pelvis)),
+                HumanPartId::Spine => Some(F::get($($b)+ self.spine)),
+                HumanPartId::Thigh(side) => self.sided[side].upper_leg.$option_fn().map(|x| F::get(x)),
+                HumanPartId::Calf(side) => self.sided[side].lower_leg.$option_fn().map(|x| F::get(x)),
+                HumanPartId::Foot(side) => self.sided[side].foot.$option_fn().map(|x| F::get(x)),
+                HumanPartId::Arm(side) => self.sided[side].upper_arm.$option_fn().map(|x| F::get(x)),
+                HumanPartId::Forearm(side) => self.sided[side].lower_arm.$option_fn().map(|x| F::get(x)),
+                HumanPartId::Hand(side) => self.sided[side].hand.$option_fn().map(|x| F::get(x))
             }
         }
     }
@@ -1418,9 +1717,8 @@ macro_rules! impl_get
 
 impl HumanBody
 {
-    impl_get!{get, get_part, get_organ, as_ref, &F::V<'_>, &}
-    impl_get!{get_mut, get_part_mut, get_organ_mut, as_mut, &mut F::V<'_>, &mut}
-    impl_get!{run, run_part, run_organ, as_mut, F::V<'_>, &mut}
+    impl_get!{RefHumanPartFieldGet, RefOrganFieldGet, get, get_part, get_organ, as_ref, &}
+    impl_get!{RefMutHumanPartFieldGet, RefMutOrganFieldGet, get_mut, get_part_mut, get_organ_mut, as_mut, &mut}
 }
 
 struct PierceType
@@ -1474,7 +1772,7 @@ impl PierceType
 
                 let target = damage.rng.choice(possible_actions);
 
-                f(this.body.run::<DamagerGetter>(target).unwrap()(damage))
+                f(this.body.get_mut::<DamagerGetter>(target).unwrap()(damage))
             })
         }
     }
@@ -1507,7 +1805,7 @@ impl PierceType
                 };
 
                 let pierce = some_or_value!(
-                    this.body.run::<DamagerGetter>(target.into()).unwrap()(damage),
+                    this.body.get_mut::<DamagerGetter>(target.into()).unwrap()(damage),
                     None
                 );
 
@@ -1728,7 +2026,7 @@ impl HumanAnatomy
         HumanPartId::iter().for_each(|id|
         {
             let f = &mut f;
-            if let Some(x) = self.body.run::<AccessedGetter>(id.into())
+            if let Some(x) = self.body.get_mut::<AccessedGetter>(id.into())
             {
                 x(&mut |kind| f(ChangedPart{id, kind}));
             }
@@ -1855,7 +2153,7 @@ impl HumanAnatomy
 
         let pierce = picked.and_then(|(picked, on_pierce)|
         {
-            let picked_damage = self.body.run::<DamagerGetter>(*picked).map(|x| x(damage.clone()));
+            let picked_damage = self.body.get_mut::<DamagerGetter>(*picked).map(|x| x(damage.clone()));
             if let Some(damage) = picked_damage
             {
                 damage.and_then(|pierce|

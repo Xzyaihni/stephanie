@@ -407,7 +407,7 @@ fn single_health_color(fraction: Option<f32>) -> Lcha
 
 fn average_health_color(anatomy: &Anatomy, id: AnatomyId) -> Lcha
 {
-    single_health_color(anatomy.get_human::<AverageHealthGetter>(id).unwrap().copied())
+    single_health_color(anatomy.get_human::<AverageHealthGetter>(id).unwrap())
 }
 
 pub struct UiList<T>
