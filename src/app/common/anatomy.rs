@@ -1,6 +1,5 @@
 use std::{
     f32,
-    iter,
     convert,
     rc::Rc,
     fmt::{self, Debug, Display},
@@ -16,6 +15,7 @@ use crate::{
     common::{
         some_or_value,
         some_or_return,
+        from_upper_camel,
         SeededRandom,
         WeightedPicker,
         Damage,
@@ -206,13 +206,13 @@ impl PartFieldGetter<RefMutHumanPartFieldGet> for AccessedGetter
 
 impl PartFieldGetter<RefMutOrganFieldGet> for AccessedGetter
 {
-    type V<'a> = Box<dyn FnOnce(&mut dyn FnMut(ChangedKind)) + 'a>;
+    type V<'a> = Box<dyn FnOnce(&mut dyn FnMut(OrganId)) + 'a>;
 
     fn get<'a, O: Organ + 'a>(value: &'a mut O) -> Self::V<'a>
     {
         Box::new(|f|
         {
-            value.consume_accessed(|id| f(ChangedKind::Organ(id)))
+            value.consume_accessed(|id| f(id))
         })
     }
 }
@@ -240,10 +240,16 @@ impl Anatomy
         F: PartFieldGetter<RefHumanPartFieldGet>,
         F: for<'a> PartFieldGetter<RefOrganFieldGet, V<'a>=<F as PartFieldGetter<RefHumanPartFieldGet>>::V<'a>>
     {
+        let human = self.as_human()?;
+        Some(human.body.get::<F>(id))
+    }
+
+    pub fn as_human(&self) -> Option<&HumanAnatomy>
+    {
         #[allow(irrefutable_let_patterns)]
         if let Self::Human(x) = self
         {
-            Some(x.body.get::<F>(id))
+            Some(x)
         } else
         {
             None
@@ -304,18 +310,62 @@ pub trait DamageReceiver
     ) -> Option<DamageType>;
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ChangedKind
 {
     Bone,
     Muscle,
-    Skin,
+    Skin
+}
+
+impl Display for ChangedKind
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
+    {
+        match self
+        {
+            Self::Bone => write!(f, "bone"),
+            Self::Muscle => write!(f, "muscle"),
+            Self::Skin => write!(f, "skin")
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ChangedPart
+{
+    Part(HumanPartId, ChangedKind),
     Organ(OrganId)
 }
 
-pub struct ChangedPart
+impl Display for ChangedPart
 {
-    pub id: HumanPartId,
-    pub kind: ChangedKind
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
+    {
+        match self
+        {
+            Self::Part(id, kind) =>
+            {
+                match kind
+                {
+                    ChangedKind::Bone => write!(f, "{}", id.bone_to_string()),
+                    _ => write!(f, "{id} {kind}")
+                }
+            },
+            Self::Organ(id) => Display::fmt(id, f)
+        }
+    }
+}
+
+impl ChangedPart
+{
+    pub fn iter() -> impl Iterator<Item=Self>
+    {
+        HumanPartId::iter().map(|x| Self::Part(x, ChangedKind::Bone))
+            .chain(HumanPartId::iter().map(|x| Self::Part(x, ChangedKind::Muscle)))
+            .chain(HumanPartId::iter().map(|x| Self::Part(x, ChangedKind::Skin)))
+            .chain(OrganId::iter().map(|x| Self::Organ(x)))
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -617,6 +667,11 @@ impl<Contents> BodyPart<Contents>
         }
     }
 
+    pub fn contents(&self) -> &Contents
+    {
+        &self.contents
+    }
+
     pub fn average_health(&self) -> f32
     {
         let mut count = 0;
@@ -716,8 +771,6 @@ impl<Contents: Organ> BodyPart<Contents>
         {
             f(ChangedKind::Skin)
         }
-
-        self.contents.consume_accessed(|x| f(ChangedKind::Organ(x)));
     }
 }
 
@@ -1435,10 +1488,54 @@ pub enum MotorId
     Legs
 }
 
+impl Display for MotorId
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
+    {
+        match self
+        {
+            Self::Arms => write!(f, "arms"),
+            Self::Body => write!(f, "body"),
+            Self::Legs => write!(f, "legs")
+        }
+    }
+}
+
+impl MotorId
+{
+    pub fn iter() -> impl Iterator<Item=Self>
+    {
+        [
+            Self::Arms,
+            Self::Body,
+            Self::Legs
+        ].into_iter()
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum FrontalId
 {
     Motor(MotorId)
+}
+
+impl Display for FrontalId
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
+    {
+        match self
+        {
+            Self::Motor(id) => write!(f, "motor cortex ({id} muscle group)")
+        }
+    }
+}
+
+impl FrontalId
+{
+    pub fn iter() -> impl Iterator<Item=Self>
+    {
+        MotorId::iter().map(|id| Self::Motor(id))
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -1450,12 +1547,76 @@ pub enum BrainId
     Occipital
 }
 
+impl Display for BrainId
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
+    {
+        match self
+        {
+            Self::Frontal(id) => return Display::fmt(id, f),
+            _ => ()
+        }
+
+        let name = match self
+        {
+            Self::Parietal => "parietal",
+            Self::Temporal => "temporal",
+            Self::Occipital => "occipital",
+            x => unreachable!("{x:?}")
+        };
+
+        write!(f, "{name} cortex")
+    }
+}
+
+impl BrainId
+{
+    pub fn iter() -> impl Iterator<Item=Self>
+    {
+        [
+            Self::Parietal,
+            Self::Temporal,
+            Self::Occipital
+        ].into_iter().chain(FrontalId::iter().map(|id| Self::Frontal(id)))
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum OrganId
 {
     Eye(Side1d),
     Brain(Side1d, BrainId),
     Lung(Side1d)
+}
+
+impl Display for OrganId
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
+    {
+        let (side, name) = match self
+        {
+            Self::Eye(side) => (side, "eye".to_owned()),
+            Self::Lung(side) => (side, "lung".to_owned()),
+            Self::Brain(side, id) => (side, id.to_string())
+        };
+
+        write!(f, "{side} {name}")
+    }
+}
+
+impl OrganId
+{
+    pub fn iter() -> impl Iterator<Item=Self>
+    {
+        [
+            Self::Eye(Side1d::Left),
+            Self::Eye(Side1d::Right),
+            Self::Lung(Side1d::Left),
+            Self::Lung(Side1d::Right)
+        ].into_iter()
+            .chain(BrainId::iter().map(|id| Self::Brain(Side1d::Left, id)))
+            .chain(BrainId::iter().map(|id| Self::Brain(Side1d::Right, id)))
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -1481,6 +1642,15 @@ impl From<HumanPartId> for AnatomyId
     }
 }
 
+impl AnatomyId
+{
+    pub fn iter() -> impl Iterator<Item=Self>
+    {
+        HumanPartId::iter().map(|x| Self::Part(x))
+            .chain(OrganId::iter().map(|x| Self::Organ(x)))
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, IntoStaticStr, Serialize, Deserialize)]
 pub enum HumanPartId
 {
@@ -1503,22 +1673,7 @@ impl Display for HumanPartId
         let maybe_side: String = self.side_name();
 
         let s: &str = self.into();
-
-        let mut previous_uppercase = true;
-        let name: String = s.chars().flat_map(|c|
-        {
-            let is_uppercase = c.is_uppercase();
-            let c = c.to_lowercase();
-
-            if is_uppercase && !previous_uppercase
-            {
-                return iter::once(' ').chain(c).collect::<Vec<_>>();
-            }
-
-            previous_uppercase = is_uppercase;
-
-            c.collect::<Vec<_>>()
-        }).collect();
+        let name = from_upper_camel(s);
 
         write!(f, "{maybe_side}{name}")
     }
@@ -1562,14 +1717,13 @@ impl HumanPartId
         ].into_iter()
     }
 
-    pub fn side_name(&self) -> String
+    pub fn bone_to_string(&self) -> String
     {
-        self.side().map(|x|
-        {
-            let s: &str = x.into();
+        let maybe_side = self.side_name();
 
-            format!("{} ", s.to_lowercase())
-        }).unwrap_or_default()
+        let name = self.bone_name();
+
+        format!("{maybe_side}{name}")
     }
 
     pub fn bone_name(&self) -> &str
@@ -1584,9 +1738,17 @@ impl HumanPartId
             Self::Calf(_) => "tibia",
             Self::Arm(_) => "humerus",
             Self::Forearm(_) => "radius",
-            Self::Hand(_) => "hand", // lmao i cant rly pick any of the bones
-            Self::Foot(_) => "foot" // same with this one
+            Self::Hand(_) => "hand bones",
+            Self::Foot(_) => "foot bones"
         }
+    }
+
+    pub fn side_name(&self) -> String
+    {
+        self.side().map(|s|
+        {
+            format!("{s} ")
+        }).unwrap_or_default()
     }
 }
 
@@ -2086,11 +2248,22 @@ impl HumanAnatomy
 
             let upper_leg = Some(new_part(DebugName::new(with_name("upper leg")), 4000.0, 0.6));
             let lower_leg = Some(new_part(DebugName::new(with_name("lower leg")), 3500.0, 0.44));
-            let foot = Some(new_part(DebugName::new(with_name("foot")), 2000.0, 0.17));
+            let foot = {
+                let mut x = new_part(DebugName::new(with_name("foot")), 2000.0, 0.17);
+                x.muscle = None.into();
+
+                Some(x)
+            };
 
             let upper_arm = Some(new_part(DebugName::new(with_name("upper arm")), 2500.0, 0.2));
             let lower_arm = Some(new_part(DebugName::new(with_name("lower arm")), 2000.0, 0.17));
-            let hand = Some(new_part(DebugName::new(with_name("hand")), 2000.0, 0.07));
+            let hand = {
+                let mut x = new_part(DebugName::new(with_name("hand")), 2000.0, 0.07);
+                x.muscle = None.into();
+
+                Some(x)
+            };
+
 
             let eye = Some(HumanPart::new_full(
                 DebugName::new(with_name("eye")),
@@ -2160,6 +2333,11 @@ impl HumanAnatomy
         this
     }
 
+    pub fn body(&self) -> &HumanBody
+    {
+        &self.body
+    }
+
     pub fn speed(&self) -> Option<f32>
     {
         self.cached.speed
@@ -2204,12 +2382,26 @@ impl HumanAnatomy
 
     pub fn for_accessed_parts(&mut self, mut f: impl FnMut(ChangedPart))
     {
-        HumanPartId::iter().for_each(|id|
+        AnatomyId::iter().for_each(|id|
         {
             let f = &mut f;
-            if let Some(x) = self.body.get_mut::<AccessedGetter>(id.into())
+
+            match id
             {
-                x(&mut |kind| f(ChangedPart{id, kind}));
+                AnatomyId::Part(id) =>
+                {
+                    if let Some(x) = self.body.get_part_mut::<AccessedGetter>(id)
+                    {
+                        x(&mut |kind| f(ChangedPart::Part(id, kind)));
+                    }
+                },
+                AnatomyId::Organ(id) =>
+                {
+                    if let Some(x) = self.body.get_organ_mut::<AccessedGetter>(id)
+                    {
+                        x(&mut |id| f(ChangedPart::Organ(id)));
+                    }
+                }
             }
         });
     }

@@ -1,6 +1,7 @@
 use std::{
     f32,
     env,
+    iter,
     borrow::Borrow,
     cmp::Ordering,
     hash::Hash,
@@ -645,6 +646,26 @@ pub fn direction_arrow_info(
             ..Default::default()
         }
     })
+}
+
+pub fn from_upper_camel(s: &str) -> String
+{
+    let mut previous_uppercase = true;
+
+    s.chars().flat_map(|c|
+    {
+        let is_uppercase = c.is_uppercase();
+        let c = c.to_lowercase();
+
+        if is_uppercase && !previous_uppercase
+        {
+            return iter::once(' ').chain(c).collect::<Vec<_>>();
+        }
+
+        previous_uppercase = is_uppercase;
+
+        c.collect::<Vec<_>>()
+    }).collect()
 }
 
 pub fn debug_env() -> Option<String>

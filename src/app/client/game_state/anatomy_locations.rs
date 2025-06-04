@@ -1,3 +1,5 @@
+use std::fmt::{self, Display};
+
 use image::{Rgba, DynamicImage, RgbaImage};
 
 use nalgebra::Vector2;
@@ -6,8 +8,9 @@ use yanyaengine::TextureId;
 
 use super::PartCreator;
 use crate::{
+    debug_config::*,
     client::UiElementShapeMask,
-    common::{anatomy::HumanPartId, Side1d}
+    common::{anatomy::*, Side1d}
 };
 
 
@@ -53,9 +56,74 @@ impl UiAnatomyLocation
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum AnatomyChangedPart
+{
+    Exact(ChangedPart),
+    Brain(Side1d)
+}
+
+impl From<ChangedPart> for AnatomyChangedPart
+{
+    fn from(x: ChangedPart) -> Self
+    {
+        if let ChangedPart::Organ(OrganId::Brain(side, _)) = &x
+        {
+            return Self::Brain(*side);
+        }
+
+        Self::Exact(x)
+    }
+}
+
+impl Display for AnatomyChangedPart
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
+    {
+        match self
+        {
+            Self::Exact(x) => Display::fmt(x, f),
+            Self::Brain(side) => write!(f, "{side} brain hemisphere")
+        }
+    }
+}
+
+fn color_pairs() -> Vec<(AnatomyChangedPart, Rgba<u8>)>
+{
+    let parts: Vec<_> = ChangedPart::iter().filter_map(|x|
+    {
+        if let ChangedPart::Organ(OrganId::Brain(_, _)) = x
+        {
+            return None;
+        }
+
+        Some(AnatomyChangedPart::Exact(x))
+    }).chain([AnatomyChangedPart::Brain(Side1d::Left), AnatomyChangedPart::Brain(Side1d::Right)])
+        .collect();
+
+    let per_channel = (parts.len() as f64).cbrt().ceil() as usize;
+    parts.into_iter().enumerate().map(|(index, key)|
+    {
+        let index_to_c = |i: usize| -> u8
+        {
+            let step = 255.0 / (per_channel - 1) as f64;
+
+            (step * i as f64).round().clamp(0.0, u8::MAX as f64) as u8
+        };
+
+        let r = index_to_c(index / (per_channel * per_channel));
+        let g = index_to_c((index / per_channel) % per_channel);
+        let b = index_to_c(index % per_channel);
+
+        let color = Rgba([r, g, b, u8::MAX]);
+
+        (key, color)
+    }).collect()
+}
+
 pub struct UiAnatomyLocations
 {
-    pub locations: Vec<(HumanPartId, UiAnatomyLocation)>
+    pub locations: Vec<(AnatomyChangedPart, UiAnatomyLocation)>
 }
 
 impl UiAnatomyLocations
@@ -67,40 +135,25 @@ impl UiAnatomyLocations
     {
         let base_image = base_image.into_rgba8();
 
-        let color_pairs: Vec<(HumanPartId, Rgba<u8>)> = [
-            (HumanPartId::Head, 0xff0000),
-            (HumanPartId::Spine, 0xdda0dd),
-            (HumanPartId::Torso, 0x00008b),
-            (HumanPartId::Pelvis, 0x00fa9a),
-            (HumanPartId::Arm(Side1d::Right), 0xff1493),
-            (HumanPartId::Arm(Side1d::Left), 0xff8c00),
-            (HumanPartId::Forearm(Side1d::Right), 0x8b0000),
-            (HumanPartId::Forearm(Side1d::Left), 0xffff00),
-            (HumanPartId::Hand(Side1d::Right), 0x008000),
-            (HumanPartId::Hand(Side1d::Left), 0x7fff00),
-            (HumanPartId::Thigh(Side1d::Right), 0xe9967a),
-            (HumanPartId::Thigh(Side1d::Left), 0x0000ff),
-            (HumanPartId::Calf(Side1d::Right), 0x00ffff),
-            (HumanPartId::Calf(Side1d::Left), 0xff00ff),
-            (HumanPartId::Foot(Side1d::Right), 0x00bfff),
-            (HumanPartId::Foot(Side1d::Left), 0xf0e68c)
-        ].into_iter().map(|(key, value): (_, u32)|
+        let color_pairs = color_pairs();
+
+        if DebugConfig::is_enabled(DebugTool::PrintAnatomyColors)
         {
-            let r = (value >> (8 * 2)) & 0xff;
-            let g = (value >> 8) & 0xff;
-            let b = value & 0xff;
+            color_pairs.iter().for_each(|(name, color)|
+            {
+                let [r, g, b, _] = color.0;
+                let h = b as u32 + ((g as u32) << 8) + ((r as u32) << 16);
 
-            let color = Rgba([r as u8, g as u8, b as u8, u8::MAX]);
+                eprintln!("{name:?} has color {color:?} ({h:06x})");
+            });
+        }
 
-            (key, color)
-        }).collect();
-
-        let locations: Vec<_> = HumanPartId::iter().map(|id|
+        let locations: Vec<_> = color_pairs.into_iter().map(|(id, color)|
         {
             let location = UiAnatomyLocation::from_color(
                 &mut part_creator,
                 &base_image,
-                color_pairs.iter().find(|(this_id, _)| *this_id == id).unwrap().1
+                color
             );
 
             (id, location)

@@ -1,19 +1,31 @@
-use std::f32;
+use std::{fmt::{self, Display}, f32};
 
 use serde::{Serialize, Deserialize};
 
-use strum::{EnumCount, FromRepr, IntoStaticStr};
+use strum::{EnumCount, FromRepr};
 
 use nalgebra::Vector3;
 
 use crate::common::short_rotation;
 
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, IntoStaticStr, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Side1d
 {
     Left,
     Right
+}
+
+impl Display for Side1d
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
+    {
+        match self
+        {
+            Self::Left => write!(f, "left"),
+            Self::Right => write!(f, "right")
+        }
+    }
 }
 
 impl TryFrom<Side3d> for Side1d

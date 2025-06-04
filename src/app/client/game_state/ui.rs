@@ -22,6 +22,7 @@ use crate::{
         game_state::{
             GameState,
             UiAnatomyLocations,
+            AnatomyChangedPart,
             UiControls,
             UiEvent,
             GameUiEvent,
@@ -108,15 +109,7 @@ enum SeenNotificationPart
 enum AnatomyNotificationPart
 {
     Body,
-    Organ(OrganId, OrganPart),
-    Part(HumanPartId)
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-enum OrganPart
-{
-    Body,
-    Organ
+    Part(AnatomyChangedPart)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -199,7 +192,7 @@ enum WindowPart
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum AnatomyPart
 {
-    BodyPart(HumanPartId),
+    BodyPart(AnatomyChangedPart),
     Tooltip(AnatomyTooltipPart)
 }
 
@@ -405,9 +398,36 @@ fn single_health_color(fraction: Option<f32>) -> Lcha
     }).unwrap_or(MISSING_PART_COLOR)
 }
 
-fn average_health_color(anatomy: &Anatomy, id: AnatomyId) -> Lcha
+fn health_color(anatomy: &Anatomy, id: AnatomyChangedPart) -> Lcha
 {
-    single_health_color(anatomy.get_human::<AverageHealthGetter>(id).unwrap())
+    let health = match id
+    {
+        AnatomyChangedPart::Exact(id) =>
+        {
+            let body = anatomy.as_human().unwrap().body();
+            match id
+            {
+                ChangedPart::Part(x, kind) =>
+                {
+                    let health = match kind
+                    {
+                        ChangedKind::Bone => body.get_part::<BoneHealthGetter>(x).copied(),
+                        ChangedKind::Muscle => body.get_part::<MuscleHealthGetter>(x).copied().flatten(),
+                        ChangedKind::Skin => body.get_part::<SkinHealthGetter>(x).copied().flatten()
+                    };
+
+                    health.map(|x| x.fraction())
+                },
+                ChangedPart::Organ(x) => body.get_organ::<AverageHealthGetter>(x)
+            }
+        },
+        AnatomyChangedPart::Brain(side) =>
+        {
+            anatomy.as_human().unwrap().body().head.contents().brain.as_ref().map(|x| x[side].average_health())
+        }
+    };
+
+    single_health_color(health)
 }
 
 pub struct UiList<T>
@@ -975,7 +995,7 @@ impl WindowKind
                 {
                     let selected = selected_index == Some(index);
 
-                    let color = average_health_color(&anatomy, (*part_id).into());
+                    let color = health_color(&anatomy, *part_id);
                     let health_color = if selected
                     {
                         color.with_added_lightness(20.0).with_added_chroma(-30.0)
@@ -1054,7 +1074,7 @@ impl WindowKind
                         ..Default::default()
                     });
 
-                    let draw_separator = ||
+                    /*let draw_separator = ||
                     {
                         add_padding_vertical(body, UiSize::Pixels(2.0).into());
                     };
@@ -1104,7 +1124,7 @@ impl WindowKind
                             position: UiPosition::Inherit,
                             ..UiElement::fit_content()
                         });
-                    };
+                    };*/
 
                     /*draw_separator();
                     if let HumanPartId::Eye(_) = part_id
@@ -1242,17 +1262,10 @@ struct UiItemPopup
 }
 
 #[derive(Debug, Clone)]
-enum AnatomyNotificationKind
-{
-    Normal(HumanPartId),
-    Organ(OrganId)
-}
-
-#[derive(Debug, Clone)]
 struct AnatomyNotification
 {
     pub lifetime: f32,
-    pub kind: AnatomyNotificationKind
+    pub kind: AnatomyChangedPart
 }
 
 pub struct Ui
@@ -1324,24 +1337,9 @@ impl Ui
                 {
                     let default_lifetime = 2.0;
 
-                    let part = match part.kind
-                    {
-                        ChangedKind::Bone
-                        | ChangedKind::Muscle
-                        | ChangedKind::Skin =>
-                        {
-                            AnatomyNotification{
-                                lifetime: 0.2,
-                                kind: AnatomyNotificationKind::Normal(part.id)
-                            }
-                        },
-                        ChangedKind::Organ(organ) =>
-                        {
-                            AnatomyNotification{
-                                lifetime: default_lifetime,
-                                kind: AnatomyNotificationKind::Organ(organ)
-                            }
-                        }
+                    let part = AnatomyNotification{
+                        lifetime: 0.2,
+                        kind: part.into()
                     };
 
                     ui.borrow_mut().anatomy_notifications.entry(entity)
@@ -1782,16 +1780,10 @@ impl Ui
             {
                 let selected = parts.iter().any(|x|
                 {
-                    if let AnatomyNotificationKind::Normal(id) = x.kind
-                    {
-                        id == *part_id
-                    } else
-                    {
-                        false
-                    }
+                    x.kind == *part_id
                 });
 
-                let color = average_health_color(&anatomy, (*part_id).into());
+                let color = health_color(&anatomy, *part_id);
                 let health_color = if selected
                 {
                     color.with_added_lightness(50.0).with_added_chroma(-50.0)
@@ -1812,73 +1804,6 @@ impl Ui
                     },
                     ..UiElement::fit_content()
                 });
-            });
-
-            let get_next_position = |current: TreeInserter<UiId>|
-            {
-                let position = current.try_position().unwrap_or_else(|| position);
-
-                position - Vector2::new(0.0, current.try_height().unwrap_or(0.0) / 2.0)
-            };
-
-            parts.iter().filter_map(|part|
-            {
-                if let AnatomyNotificationKind::Organ(organ) = &part.kind
-                {
-                    Some(organ)
-                } else
-                {
-                    None
-                }
-            }).fold(get_next_position(body), |position, organ|
-            {
-                let id = |part| UiId::AnatomyNotification(*entity, AnatomyNotificationPart::Organ(*organ, part));
-
-                let body = self.controller.update(id(OrganPart::Body), UiElement{
-                    position: UiPosition::Absolute{position, align: UiPositionAlign{
-                        horizontal: AlignHorizontal::Middle,
-                        vertical: AlignVertical::Bottom
-                    }},
-                    animation: Animation{
-                        position: Some(PositionAnimation::ease_out(10.0)),
-                        ..Animation::normal()
-                    },
-                    children_layout: UiLayout::Vertical,
-                    ..Default::default()
-                });
-
-                let mix = |health|
-                {
-                    let health_color = single_health_color(health);
-                    Some(MixColorLch{keep_transparency: true, ..MixColorLch::color(health_color)})
-                };
-
-                let width = |flip| UiSize::FitContent(if flip { -1.0 } else { 1.0 }).into();
-                let height = UiSize::FitContent(1.0).into();
-
-                match organ
-                {
-                    OrganId::Eye(side) =>
-                    {
-                    },
-                    OrganId::Brain(side, brain_id) =>
-                    {
-                    },
-                    OrganId::Lung(side) =>
-                    {
-                        body.update(id(OrganPart::Organ), UiElement{
-                            texture: UiTexture::Custom("ui/lung.png".to_owned()),
-                            mix: mix(Some(1.0)),
-                            width: width(side.is_left()),
-                            height,
-                            ..Default::default()
-                        });
-                    }
-                };
-
-                add_padding_vertical(body, UiSize::Pixels(NOTIFICATION_PADDING).into());
-
-                get_next_position(body)
             });
 
             parts.retain_mut(|part|

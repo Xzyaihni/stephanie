@@ -32,6 +32,7 @@ pub enum DebugTool
     Velocity,
     SuperSpeed,
     PrintDamage,
+    PrintAnatomyColors,
     NoOcclusion,
     NoWallOcclusion,
     NoSkyOcclusion,
