@@ -1754,7 +1754,7 @@ impl HumanPartId
 
 pub type HumanPart<Contents=()> = BodyPart<Contents>;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Default, Clone)]
 struct Speeds
 {
     arms: f32,
@@ -2406,6 +2406,26 @@ impl HumanAnatomy
         });
     }
 
+    pub fn get_health(&self, id: ChangedPart) -> Option<f32>
+    {
+        let body = &self.body;
+        match id
+        {
+            ChangedPart::Part(x, kind) =>
+            {
+                let health = match kind
+                {
+                    ChangedKind::Bone => body.get_part::<BoneHealthGetter>(x).copied(),
+                    ChangedKind::Muscle => body.get_part::<MuscleHealthGetter>(x).copied().flatten(),
+                    ChangedKind::Skin => body.get_part::<SkinHealthGetter>(x).copied().flatten()
+                };
+
+                health.map(|x| x.fraction())
+            },
+            ChangedPart::Organ(x) => body.get_organ::<AverageHealthGetter>(x)
+        }
+    }
+
     fn damage_random_part(
         &mut self,
         mut damage: Damage
@@ -2544,9 +2564,13 @@ impl HumanAnatomy
         pierce
     }
 
-    fn speed_multiply(part: &HumanPart, base: f32) -> f32
+    fn speed_multiply(part: &HumanPart, base: f32, override_muscle: Option<f32>) -> f32
     {
-        let muscle_health = part.muscle.as_ref().map(|x| x.fraction()).unwrap_or(0.0);
+        let muscle_health = override_muscle.unwrap_or_else(||
+        {
+            part.muscle.as_ref().map(|x| x.fraction()).unwrap_or(0.0)
+        });
+
         let health_mult = (part.bone.fraction() * 0.9 + 0.1) * muscle_health;
 
         base * health_mult
@@ -2554,21 +2578,43 @@ impl HumanAnatomy
 
     fn leg_speed(body: &HumanBodySided) -> f32
     {
-        body.upper_leg.as_ref().map(|x| Self::speed_multiply(x, 0.4)).unwrap_or_default()
-            + body.lower_leg.as_ref().map(|x| Self::speed_multiply(x, 0.12)).unwrap_or_default()
-            + body.foot.as_ref().map(|x| Self::speed_multiply(x, 0.07)).unwrap_or_default()
+        let foot_speed = body.foot.as_ref().map(|x|
+        {
+            let muscle = body.lower_leg.as_ref().and_then(|part| part.muscle.map(|x| x.fraction())).unwrap_or(0.0);
+            Self::speed_multiply(x, 0.07, Some(muscle))
+        }).unwrap_or_default();
+
+        body.upper_leg.as_ref().map(|x| Self::speed_multiply(x, 0.4, None)).unwrap_or_default()
+            + body.lower_leg.as_ref().map(|x| Self::speed_multiply(x, 0.12, None)).unwrap_or_default()
+            + foot_speed
     }
 
     fn arm_speed(body: &HumanBodySided) -> f32
     {
-        body.upper_arm.as_ref().map(|x| Self::speed_multiply(x, 0.2)).unwrap_or_default()
-            + body.lower_arm.as_ref().map(|x| Self::speed_multiply(x, 0.1)).unwrap_or_default()
-            + body.hand.as_ref().map(|x| Self::speed_multiply(x, 0.05)).unwrap_or_default()
+        let hand_speed = body.hand.as_ref().map(|x|
+        {
+            let muscle = body.lower_arm.as_ref().and_then(|part| part.muscle.map(|x| x.fraction())).unwrap_or(0.0);
+            Self::speed_multiply(x, 0.05, Some(muscle))
+        }).unwrap_or_default();
+
+        body.upper_arm.as_ref().map(|x| Self::speed_multiply(x, 0.2, None)).unwrap_or_default()
+            + body.lower_arm.as_ref().map(|x| Self::speed_multiply(x, 0.1, None)).unwrap_or_default()
+            + hand_speed
     }
 
-    fn speed_scale(body: &HumanBody, motor: Halves<Speeds>) -> Speeds
+    fn speed_scale(&self) -> Speeds
     {
-        body.sided.as_ref().zip(motor.flip()).map(|(body, motor)|
+        let brain = some_or_return!(self.brain());
+
+        let motor = brain.as_ref().map(|hemisphere|
+        {
+            Speeds{
+                arms: hemisphere.frontal.motor.arms.fraction().powi(3),
+                legs: hemisphere.frontal.motor.legs.fraction().powi(3)
+            }
+        });
+
+        self.body.sided.as_ref().zip(motor.flip()).map(|(body, motor)|
         {
             Speeds{
                 legs: Self::leg_speed(body) * motor.legs,
@@ -2584,17 +2630,7 @@ impl HumanAnatomy
 
     fn updated_speed(&mut self) -> (bool, Option<f32>)
     {
-        let brain = some_or_value!(self.brain(), (false, None));
-
-        let speeds = brain.as_ref().map(|hemisphere|
-        {
-            Speeds{
-                arms: hemisphere.frontal.motor.arms.fraction().powi(3),
-                legs: hemisphere.frontal.motor.legs.fraction().powi(3)
-            }
-        });
-
-        let Speeds{arms, legs} = Self::speed_scale(&self.body, speeds);
+        let Speeds{arms, legs} = self.speed_scale();
 
         let crawl_threshold = arms * 0.9; // prefer walking
         let crawling = self.override_crawling || (legs < crawl_threshold);
@@ -2626,7 +2662,9 @@ impl HumanAnatomy
 
     fn updated_strength(&mut self) -> Option<f32>
     {
-        Some(self.base_strength)
+        let fraction = self.speed_scale().arms * 2.5;
+
+        Some(self.base_strength * fraction)
     }
 
     fn lung(&self, side: Side1d) -> Option<&Lung>

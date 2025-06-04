@@ -37,6 +37,7 @@ use crate::{
         colors::*,
         lazy_transform::*,
         f32_to_range,
+        Side1d,
         EaseOut,
         Item,
         ItemId,
@@ -219,22 +220,18 @@ enum AnatomyTooltipPart
 enum BarId
 {
     Health,
-    Skin,
-    Muscle,
-    Bone
+    Brain(Side1d, BrainId)
 }
 
 impl Display for BarId
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
     {
-        write!(f, "{}", match self
+        match self
         {
-            Self::Health => "HEALTH",
-            Self::Skin => "SKIN",
-            Self::Muscle => "MUSCLE",
-            Self::Bone => "BONE"
-        })
+            Self::Health => write!(f, "HEALTH"),
+            Self::Brain(_side, id) => write!(f, "{id}")
+        }
     }
 }
 
@@ -404,22 +401,7 @@ fn health_color(anatomy: &Anatomy, id: AnatomyChangedPart) -> Lcha
     {
         AnatomyChangedPart::Exact(id) =>
         {
-            let body = anatomy.as_human().unwrap().body();
-            match id
-            {
-                ChangedPart::Part(x, kind) =>
-                {
-                    let health = match kind
-                    {
-                        ChangedKind::Bone => body.get_part::<BoneHealthGetter>(x).copied(),
-                        ChangedKind::Muscle => body.get_part::<MuscleHealthGetter>(x).copied().flatten(),
-                        ChangedKind::Skin => body.get_part::<SkinHealthGetter>(x).copied().flatten()
-                    };
-
-                    health.map(|x| x.fraction())
-                },
-                ChangedPart::Organ(x) => body.get_organ::<AverageHealthGetter>(x)
-            }
+            anatomy.as_human().unwrap().get_health(id)
         },
         AnatomyChangedPart::Brain(side) =>
         {
@@ -1057,7 +1039,7 @@ impl WindowKind
                         texture: UiTexture::Solid,
                         mix: Some(MixColorLch::color(ACCENT_COLOR)),
                         width: UiElementSize{
-                            minimum_size: Some(UiMinimumSize::Pixels(200.0)),
+                            minimum_size: Some(UiMinimumSize::FitChildren),
                             size: UiSize::Rest(1.0)
                         },
                         height: UiSize::Pixels(SEPARATOR_SIZE).into(),
@@ -1074,22 +1056,27 @@ impl WindowKind
                         ..Default::default()
                     });
 
-                    /*let draw_separator = ||
+                    let draw_separator = ||
                     {
                         add_padding_vertical(body, UiSize::Pixels(2.0).into());
                     };
 
-                    let draw_bar = |bar_id|
+                    let draw_bar = |bar_id, this_id|
                     {
                         let id = |part|
                         {
                             id(AnatomyTooltipPart::Healthbar(bar_id, part))
                         };
 
+                        add_padding_horizontal(body, UiSize::Pixels(200.0).into());
+
                         let body = body.update(id(BarDisplayPart::Body), UiElement{
                             texture: UiTexture::Solid,
                             mix: Some(MixColorLch::color(Lcha{a: 0.2, ..BLACK_COLOR})),
-                            width: UiSize::Rest(1.0).into(),
+                            width: UiElementSize{
+                                minimum_size: Some(UiMinimumSize::FitChildren),
+                                size: UiSize::Rest(1.0).into()
+                            },
                             children_layout: UiLayout::Vertical,
                             ..Default::default()
                         });
@@ -1102,7 +1089,7 @@ impl WindowKind
                             ..Default::default()
                         });
 
-                        let value: Option<f32> = todo!();
+                        let value: Option<f32> = anatomy.as_human().unwrap().get_health(this_id);
 
                         let health_color = single_health_color(value);
 
@@ -1124,25 +1111,27 @@ impl WindowKind
                             position: UiPosition::Inherit,
                             ..UiElement::fit_content()
                         });
-                    };*/
+                    };
 
-                    /*draw_separator();
-                    if let HumanPartId::Eye(_) = part_id
+                    draw_separator();
+                    match part_id
                     {
-                        draw_bar(BarId::Health);
-                    } else
-                    {
-                        draw_bar(BarId::Skin);
+                        AnatomyChangedPart::Exact(id) =>
+                        {
+                            draw_bar(BarId::Health, id);
+                            draw_separator();
+                        },
+                        AnatomyChangedPart::Brain(side) =>
+                        {
+                            BrainId::iter().for_each(|brain_id|
+                            {
+                                let id = ChangedPart::Organ(OrganId::Brain(side, brain_id));
 
-                        draw_separator();
-
-                        draw_bar(BarId::Muscle);
-
-                        draw_separator();
-
-                        draw_bar(BarId::Bone);
+                                draw_bar(BarId::Brain(side, brain_id), id);
+                                draw_separator();
+                            });
+                        }
                     }
-                    draw_separator();*/
                 }
             }
         }
