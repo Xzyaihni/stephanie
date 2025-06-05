@@ -95,7 +95,7 @@ use controls_controller::ControlsController;
 use notifications::{Notifications, Notification};
 
 pub use anatomy_locations::{UiAnatomyLocations, AnatomyChangedPart};
-pub use ui::{Ui, NotificationInfo, NotificationKindInfo};
+pub use ui::{Ui, UiId, NotificationInfo, NotificationKindInfo};
 
 mod controls_controller;
 
@@ -525,7 +525,7 @@ pub struct GameState
     pub object_factory: Rc<ObjectFactory>,
     pub notifications: Notifications,
     pub entities: ClientEntitiesContainer,
-    pub controls: ControlsController,
+    pub controls: ControlsController<UiId>,
     pub running: bool,
     pub debug_mode: bool,
     pub tilemap: Arc<TileMap>,
@@ -1047,7 +1047,7 @@ impl GameState
         self.dt = None;
     }
 
-    pub fn ui_update(&mut self, controls: &mut UiControls)
+    pub fn ui_update(&mut self, controls: &mut UiControls<UiId>)
     {
         self.ui.borrow_mut().update(&self.entities.entities, controls, self.get_dt());
     }

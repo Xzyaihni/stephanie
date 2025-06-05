@@ -135,20 +135,20 @@ impl KeyMapping
     }
 }
 
-struct ControlsState
+struct ControlsState<Id>
 {
-    is_click_held: bool,
+    is_click_held: Option<Id>,
     click_mappings: Vec<KeyMapping>
 }
 
-pub struct UiControls
+pub struct UiControls<Id>
 {
     click_taken: bool,
-    state: ControlsState,
+    state: ControlsState<Id>,
     controls: HashMap<KeyMapping, ControlState>
 }
 
-impl UiControls
+impl<Id: PartialEq + Clone> UiControls<Id>
 {
     pub fn take_click_down(&mut self) -> bool
     {
@@ -179,32 +179,32 @@ impl UiControls
         })
     }
 
-    pub fn poll_action_held(&mut self) -> bool
+    pub fn poll_action_held(&mut self, id: &Id) -> bool
     {
         if self.take_click_down()
         {
-            self.state.is_click_held = true;
+            self.state.is_click_held = Some(id.clone());
         }
 
-        self.state.is_click_held
+        self.observe_action_held(id)
     }
 
-    pub fn observe_action_held(&self) -> bool
+    pub fn observe_action_held(&self, id: &Id) -> bool
     {
-        self.state.is_click_held
+        self.state.is_click_held.as_ref().map(|x| x == id).unwrap_or(false)
     }
 }
 
-pub struct ControlsController
+pub struct ControlsController<Id>
 {
     clipboard: Option<ClipboardContext>,
-    controls_state: Option<ControlsState>,
+    controls_state: Option<ControlsState<Id>>,
     key_mapping: BiMap<KeyMapping, Control>,
     keys: [ControlState; Control::COUNT],
     changed: HashMap<KeyMapping, ControlState>
 }
 
-impl ControlsController
+impl<Id> ControlsController<Id>
 {
     pub fn new() -> Self
     {
@@ -242,7 +242,7 @@ impl ControlsController
         }).collect();
 
         let controls_state = Some(ControlsState{
-            is_click_held: false,
+            is_click_held: None,
             click_mappings
         });
 
@@ -315,7 +315,7 @@ impl ControlsController
         self.key_mapping.get_back(control)
     }
 
-    pub fn changed_this_frame(&mut self) -> UiControls
+    pub fn changed_this_frame(&mut self) -> UiControls<Id>
     {
         UiControls{
             click_taken: false,
@@ -326,8 +326,8 @@ impl ControlsController
 
     pub fn consume_changed(
         &mut self,
-        changed: UiControls
-    ) -> impl Iterator<Item=(Control, ControlState)> + use<'_>
+        changed: UiControls<Id>
+    ) -> impl Iterator<Item=(Control, ControlState)> + use<'_, Id>
     {
         self.controls_state = Some(changed.state);
         changed.controls.into_iter().filter_map(|(key, state)|
@@ -339,7 +339,7 @@ impl ControlsController
                 {
                     if state.is_up()
                     {
-                        self.controls_state.as_mut().unwrap().is_click_held = false;
+                        self.controls_state.as_mut().unwrap().is_click_held = None;
                     }
                 }
 

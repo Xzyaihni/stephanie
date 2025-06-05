@@ -81,7 +81,7 @@ const MISSING_PART_COLOR: Lcha = Lcha{a: 0.5, ..BLACK_COLOR};
 
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-enum UiId
+pub enum UiId
 {
     Screen,
     Padding(u32),
@@ -97,7 +97,7 @@ enum UiId
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-enum SeenNotificationPart
+pub enum SeenNotificationPart
 {
     Body,
     Clip,
@@ -107,14 +107,14 @@ enum SeenNotificationPart
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-enum AnatomyNotificationPart
+pub enum AnatomyNotificationPart
 {
     Body,
     Part(AnatomyChangedPart)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-enum BarDisplayKind
+pub enum BarDisplayKind
 {
     Stamina,
     Cooldown
@@ -140,7 +140,7 @@ impl Idable for UiId
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-enum BarDisplayPart
+pub enum BarDisplayPart
 {
     Body,
     Bar,
@@ -149,28 +149,28 @@ enum BarDisplayPart
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-enum ConsolePart
+pub enum ConsolePart
 {
     Body,
     Text
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-enum NotificationPart
+pub enum NotificationPart
 {
     Body,
     Text
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-enum PopupPart
+pub enum PopupPart
 {
     Body,
     Button(u32, PopupButtonPart)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-enum PopupButtonPart
+pub enum PopupButtonPart
 {
     Body,
     Text,
@@ -178,7 +178,7 @@ enum PopupButtonPart
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-enum WindowPart
+pub enum WindowPart
 {
     Panel,
     Body,
@@ -191,14 +191,14 @@ enum WindowPart
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-enum AnatomyPart
+pub enum AnatomyPart
 {
     BodyPart(AnatomyChangedPart),
     Tooltip(AnatomyTooltipPart)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-enum ItemInfoPart
+pub enum ItemInfoPart
 {
     Text,
     ImageBody,
@@ -206,7 +206,7 @@ enum ItemInfoPart
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-enum AnatomyTooltipPart
+pub enum AnatomyTooltipPart
 {
     Panel,
     Title,
@@ -217,7 +217,7 @@ enum AnatomyTooltipPart
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-enum BarId
+pub enum BarId
 {
     Health,
     Brain(Side1d, BrainId)
@@ -236,7 +236,7 @@ impl Display for BarId
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-enum InventoryPart
+pub enum InventoryPart
 {
     Body,
     List(UiListPart),
@@ -244,7 +244,7 @@ enum InventoryPart
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-enum ItemPart
+pub enum ItemPart
 {
     Body,
     Icon(IconPart),
@@ -252,14 +252,14 @@ enum ItemPart
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-enum IconPart
+pub enum IconPart
 {
     Body,
     Picture
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-enum TitlePart
+pub enum TitlePart
 {
     Body,
     Text,
@@ -267,7 +267,7 @@ enum TitlePart
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-enum UiListPart
+pub enum UiListPart
 {
     Body,
     Moving,
@@ -278,7 +278,7 @@ enum UiListPart
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-enum UiIdWindow
+pub enum UiIdWindow
 {
     Inventory(Entity),
     ItemInfo(ItemId),
@@ -287,7 +287,7 @@ enum UiIdWindow
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-enum UiIdTitleButton
+pub enum UiIdTitleButton
 {
     Anatomy,
     Stats,
@@ -500,10 +500,10 @@ impl<T> UiList<T>
 
                 if scrollbar.is_mouse_inside() && !info.mouse_taken
                 {
-                    info.controls.poll_action_held();
+                    info.controls.poll_action_held(&scrollbar_id);
                 }
 
-                if info.controls.observe_action_held()
+                if info.controls.observe_action_held(&scrollbar_id)
                 {
                     self.target_position = if bar_height > 0.99
                     {
@@ -659,9 +659,10 @@ enum WindowKind
 
 impl WindowKind
 {
-    fn update(&mut self, parent: UiParentElement, mut info: UpdateInfo)
+    fn update(&mut self, parent: UiParentElement, info: &mut UpdateInfo)
     {
-        let window_id = self.as_id();
+        let this_window_id = self.as_id();
+        let window_id = this_window_id.clone();
 
         fn with_titlebar<'a, 'b>(
             window_id: UiIdWindow,
@@ -680,13 +681,19 @@ impl WindowKind
                 }
             };
 
-            let titlebar = parent.update(id(WindowPart::Title(TitlePart::Body)), UiElement{
+            let titlebar_id = id(WindowPart::Title(TitlePart::Body));
+            let titlebar = parent.update(titlebar_id.clone(), UiElement{
                 width: UiElementSize{
                     minimum_size: Some(UiMinimumSize::FitChildren),
                     size: UiSize::Rest(1.0)
                 },
                 ..Default::default()
             });
+
+            if info.controls.observe_action_held(&titlebar_id)
+            {
+                info.dragging_currently = true;
+            }
 
             let mut update_button = |button_id, texture, action|
             {
@@ -790,7 +797,7 @@ impl WindowKind
 
                 let name = name_of(inventory.entity);
 
-                let body = with_titlebar(parent, &mut info, name, false, &inventory.buttons);
+                let body = with_titlebar(parent, info, name, false, &inventory.buttons);
 
                 body.element().height = UiSize::Pixels(SCROLLBAR_HEIGHT).into();
 
@@ -810,7 +817,7 @@ impl WindowKind
 
                 let picked_item = info.popup.as_ref().map(|x| x.item);
 
-                let selected = inventory.list.update(&mut info, body, |list_part|
+                let selected = inventory.list.update(info, body, |list_part|
                 {
                     id(InventoryPart::List(list_part))
                 }, item_height, |_info, parent, item, is_selected|
@@ -892,7 +899,7 @@ impl WindowKind
                 let item_info = info.items_info.get(item.id);
 
                 let title = format!("info about - {}", item_info.name);
-                let body = with_titlebar(parent, &mut info, title, true, &[]);
+                let body = with_titlebar(parent, info, title, true, &[]);
 
                 let id = move |part|
                 {
@@ -932,7 +939,7 @@ impl WindowKind
             Self::Stats(owner) =>
             {
                 let title = name_of(*owner);
-                let body = with_titlebar(parent, &mut info, title, true, &[]);
+                let body = with_titlebar(parent, info, title, true, &[]);
 
                 add_padding_horizontal(body, UiSize::Pixels(BODY_PADDING).into());
 
@@ -947,7 +954,7 @@ impl WindowKind
             Self::Anatomy(owner) =>
             {
                 let title = name_of(*owner);
-                let body = with_titlebar(parent, &mut info, title, true, &[]);
+                let body = with_titlebar(parent, info, title, true, &[]);
                 body.element().children_layout = UiLayout::Vertical;
 
                 let id = move |part|
@@ -960,7 +967,7 @@ impl WindowKind
                     x
                 } else
                 {
-                    close_this(&mut info);
+                    close_this(info);
                     return;
                 };
 
@@ -1135,6 +1142,15 @@ impl WindowKind
                 }
             }
         }
+
+        let titlebar_id = UiId::Window(this_window_id, WindowPart::Title(TitlePart::Body));
+        if parent.input_of(&titlebar_id).is_mouse_inside() && info.controls.poll_action_held(&titlebar_id)
+        {
+            if info.dragging_window.is_none()
+            {
+                *info.dragging_window = Some(info.mouse_position);
+            }
+        }
     }
 
     fn as_id(&self) -> UiIdWindow
@@ -1162,14 +1178,19 @@ impl Window
         UiId::Window(self.kind.as_id(), WindowPart::Panel)
     }
 
-    fn update(&mut self, ui: &mut UiController, info: UpdateInfo)
+    fn update(&mut self, ui: &mut UiController, info: &mut UpdateInfo)
     {
+        let position = self.position + info.dragging_window.map(|start|
+        {
+            info.mouse_position - start
+        }).unwrap_or_default();
+
         let id = self.id();
         let body = ui.update(id, UiElement{
             texture: UiTexture::Solid,
             mix: Some(MixColorLch::color(BACKGROUND_COLOR)),
             animation: Animation::normal(),
-            position: UiPosition::Absolute{position: self.position, align: Default::default()},
+            position: UiPosition::Absolute{position, align: Default::default()},
             children_layout: UiLayout::Vertical,
             ..Default::default()
         });
@@ -1212,16 +1233,18 @@ impl Window
     }
 }
 
-struct UpdateInfo<'a, 'b, 'c>
+struct UpdateInfo<'a, 'b, 'c, 'd>
 {
     entities: &'a ClientEntities,
     items_info: &'a ItemsInfo,
     fonts: &'a FontsContainer,
     anatomy_locations: &'a UiAnatomyLocations,
     popup: &'a Option<UiItemPopup>,
+    dragging_window: &'d mut Option<Vector2<f32>>,
+    dragging_currently: bool,
     mouse_position: Vector2<f32>,
     mouse_taken: bool,
-    controls: &'b mut UiControls,
+    controls: &'b mut UiControls<UiId>,
     user_receiver: &'c mut UiReceiver,
     dt: f32
 }
@@ -1266,6 +1289,7 @@ pub struct Ui
     user_receiver: Rc<RefCell<UiReceiver>>,
     camera: Entity,
     controller: UiController,
+    dragging_window: Option<Vector2<f32>>,
     mouse_position: Vector2<f32>,
     console_contents: Option<String>,
     windows: Vec<Window>,
@@ -1299,6 +1323,7 @@ impl Ui
             user_receiver,
             camera,
             controller,
+            dragging_window: None,
             mouse_position: Vector2::zeros(),
             console_contents: None,
             windows: Vec::new(),
@@ -1485,7 +1510,7 @@ impl Ui
 
     fn update_popup(
         &mut self,
-        controls: &mut UiControls,
+        controls: &mut UiControls<UiId>,
         popup_taken: bool
     )
     {
@@ -1590,7 +1615,7 @@ impl Ui
         Some(position_absolute / camera_transform.scale.xy().max())
     }
 
-    pub fn update(&mut self, entities: &ClientEntities, controls: &mut UiControls, dt: f32)
+    pub fn update(&mut self, entities: &ClientEntities, controls: &mut UiControls<UiId>, dt: f32)
     {
         let position_of = {
             let camera = self.camera;
@@ -1820,18 +1845,31 @@ impl Ui
                 index < taken_index
             }).unwrap_or(false);
 
-            x.update(&mut self.controller, UpdateInfo{
+            let mut info = UpdateInfo{
                 entities,
                 items_info: &self.items_info,
                 fonts: &self.fonts,
                 anatomy_locations: &self.anatomy_locations,
                 popup: &self.popup,
+                dragging_window: &mut self.dragging_window,
+                dragging_currently: false,
                 mouse_position: self.mouse_position,
                 mouse_taken: window_taken || popup_taken,
                 controls,
                 user_receiver: &mut self.user_receiver.borrow_mut(),
                 dt
-            })
+            };
+
+            x.update(&mut self.controller, &mut info);
+
+            if let Some(start) = info.dragging_window
+            {
+                if !info.dragging_currently
+                {
+                    x.position += self.mouse_position - *start;
+                    *info.dragging_window = None;
+                }
+            }
         });
 
         self.update_popup(controls, popup_taken);
