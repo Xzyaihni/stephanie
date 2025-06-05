@@ -191,7 +191,7 @@ impl<Id: Idable> Inputable for TreeInserter<'_, Id>
     }
 }
 
-fn parental_position_of<Id>(parent_deferred: Option<&UiDeferredInfo>, element: &UiElement<Id>) -> Vector2<f32>
+fn parental_position_of<Id>(parent_deferred: Option<&UiDeferredInfo<Id>>, element: &UiElement<Id>) -> Vector2<f32>
 {
     element.animation.position
         .as_ref().map(|x| x.parent_relative).unwrap_or(false)
@@ -222,6 +222,13 @@ impl Default for Fractions
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+struct UiScissor
+{
+    pub size: Vector2<f32>,
+    pub position: Vector2<f32>
+}
+
 #[derive(Debug)]
 struct UiElementCached
 {
@@ -230,6 +237,7 @@ struct UiElementCached
     parental_position: Vector2<f32>,
     position: Vector2<f32>,
     mix: Option<MixColorLch>,
+    last_scissor: Option<UiScissor>,
     scissor: Option<VulkanoScissor>,
     object: Option<ClientRenderObject>
 }
@@ -239,14 +247,16 @@ impl UiElementCached
     fn from_element<Id>(
         create_info: &mut RenderCreateInfo,
         parent_fraction: &Fractions,
-        parent_deferred: Option<&UiDeferredInfo>,
-        deferred: &UiDeferredInfo,
+        parent_deferred: Option<&UiDeferredInfo<Id>>,
+        scissor: Option<UiScissor>,
+        deferred: &UiDeferredInfo<Id>,
         element: &UiElement<Id>
     ) -> Self
     {
+        let last_scissor = scissor;
         let scissor = Self::calculate_scissor(
             Vector2::from(create_info.object_info.partial.size),
-            deferred
+            scissor
         );
 
         let scale = {
@@ -308,6 +318,7 @@ impl UiElementCached
             position,
             parental_position,
             mix: element.mix,
+            last_scissor,
             scissor,
             object
         };
@@ -317,10 +328,10 @@ impl UiElementCached
         this
     }
 
-    fn update_fraction(
+    fn update_fraction<Id>(
         &mut self,
         parent_fraction: &Fractions,
-        deferred: &UiDeferredInfo
+        deferred: &UiDeferredInfo<Id>
     )
     {
         self.fractions.scale = parent_fraction.scale_inherit;
@@ -343,23 +354,44 @@ impl UiElementCached
             self.fractions.position_inherit = fraction + parent_fraction.position_inherit;
         }
 
-        if let Some(object) = self.object.as_mut()
         {
-            object.modify_transform(|transform|
-            {
-                let scale = self.scale.component_mul(&self.fractions.scale);
-                transform.scale = Vector3::new(scale.x, scale.y, 1.0);
+            let scale = self.current_scale();
+            let position = self.current_position();
 
-                let position = self.position + self.fractions.position + self.parental_position;
-                transform.position = Vector3::new(position.x, position.y, 0.0);
-            })
+            if let Some(object) = self.object.as_mut()
+            {
+                object.modify_transform(|transform|
+                {
+                    transform.scale = Vector3::new(scale.x, scale.y, 1.0);
+                    transform.position = Vector3::new(position.x, position.y, 0.0);
+                })
+            }
+        }
+    }
+
+    fn current_position(&self) -> Vector2<f32>
+    {
+        self.position + self.fractions.position + self.parental_position
+    }
+
+    fn current_scale(&self) -> Vector2<f32>
+    {
+        self.scale.component_mul(&self.fractions.scale)
+    }
+
+    fn scissor(&self) -> UiScissor
+    {
+        UiScissor{
+            position: self.current_position(),
+            size: self.current_scale()
         }
     }
 
     fn update_always<Id>(
         &mut self,
         parent_fraction: &Fractions,
-        deferred: &UiDeferredInfo,
+        scissor: Option<UiScissor>,
+        deferred: &UiDeferredInfo<Id>,
         element: &mut UiElement<Id>,
         screen_size: Vector2<f32>,
         dt: f32
@@ -389,7 +421,7 @@ impl UiElementCached
             };
         }
 
-        self.scissor = Self::calculate_scissor(screen_size, deferred);
+        self.scissor = Self::calculate_scissor(screen_size, scissor);
 
         self.update_fraction(parent_fraction, deferred);
     }
@@ -398,8 +430,9 @@ impl UiElementCached
         &mut self,
         create_info: &mut RenderCreateInfo,
         parent_fraction: &Fractions,
-        parent_deferred: Option<&UiDeferredInfo>,
-        deferred: &UiDeferredInfo,
+        parent_deferred: Option<&UiDeferredInfo<Id>>,
+        scissor: Option<UiScissor>,
+        deferred: &UiDeferredInfo<Id>,
         old_element: &mut UiElement<Id>,
         dt: f32
     )
@@ -429,8 +462,10 @@ impl UiElementCached
             self.position = target_position;
         }
 
+        self.last_scissor = scissor;
         self.update_always(
             parent_fraction,
+            scissor,
             deferred,
             old_element,
             Vector2::from(create_info.object_info.partial.size),
@@ -443,6 +478,7 @@ impl UiElementCached
                 create_info,
                 parent_fraction,
                 parent_deferred,
+                scissor,
                 deferred,
                 old_element
             ).object;
@@ -451,25 +487,28 @@ impl UiElementCached
 
     fn calculate_scissor(
         screen_size: Vector2<f32>,
-        deferred: &UiDeferredInfo
+        scissor: Option<UiScissor>
     ) -> Option<VulkanoScissor>
     {
-        deferred.scissor.map(|mut x|
+        scissor.map(|UiScissor{size, position}|
         {
+            let offset = position - (size / 2.0);
+
+            let mut scissor = Scissor{offset: offset.into(), extent: size.into()};
             let highest = screen_size.max();
 
             let aspect = screen_size / highest;
 
-            x.offset = (Vector2::from(x.offset) + (aspect / 2.0)).into();
+            scissor.offset = (Vector2::from(scissor.offset) + (aspect / 2.0)).into();
 
-            x.into_global([highest, highest])
+            scissor.into_global([highest, highest])
         })
     }
 
     fn update_closing<Id>(
         &mut self,
         parent_fraction: &Fractions,
-        deferred: &UiDeferredInfo,
+        deferred: &UiDeferredInfo<Id>,
         element: &mut UiElement<Id>,
         close_soon: bool,
         screen_size: Vector2<f32>,
@@ -519,7 +558,14 @@ impl UiElementCached
             }
         }
 
-        self.update_always(parent_fraction, deferred, element, screen_size, dt);
+        self.update_always(
+            parent_fraction,
+            self.last_scissor,
+            deferred,
+            element,
+            screen_size,
+            dt
+        );
 
         if self.fractions.scale.min() < MINIMUM_SCALE
         {
@@ -575,22 +621,20 @@ impl UiElementCached
 }
 
 #[derive(Debug, Clone)]
-pub struct UiDeferredInfo
+pub struct UiDeferredInfo<Id>
 {
-    scissor: Option<Scissor>,
-    scissor_resolved: bool,
+    scissor: Option<Id>,
     position: Option<Vector2<f32>>,
     width: ResolvedSize,
     height: ResolvedSize
 }
 
-impl Default for UiDeferredInfo
+impl<Id> Default for UiDeferredInfo<Id>
 {
     fn default() -> Self
     {
         Self{
             scissor: None,
-            scissor_resolved: false,
             position: None,
             width: ResolvedSize::default(),
             height: ResolvedSize::default()
@@ -598,7 +642,7 @@ impl Default for UiDeferredInfo
     }
 }
 
-impl UiDeferredInfo
+impl<Id: Idable> UiDeferredInfo<Id>
 {
     fn screen(aspect: Vector2<f32>) -> Self
     {
@@ -606,19 +650,19 @@ impl UiDeferredInfo
 
         Self{
             scissor: None,
-            scissor_resolved: true,
             position: Some(Vector2::zeros()),
             width: one(aspect.x),
             height: one(aspect.y)
         }
     }
 
-    fn resolve_forward<Id: Idable>(
+    fn resolve_forward(
         &mut self,
         resolved: &HashMap<Id, Self>,
         screen_size: &Vector2<f32>,
         element: &UiElement<Id>,
         previous: Option<&Self>,
+        parent_id: &Id,
         parent: &Self,
         parent_element: &UiElement<Id>
     )
@@ -636,35 +680,16 @@ impl UiDeferredInfo
             size.value()
         };
 
-        if !self.scissor_resolved
+        if parent_element.scissor
         {
-            if parent_element.scissor
-            {
-                debug_assert!(!element.scissor, "nested scissors not supported");
+            debug_assert!(!element.scissor, "nested scissors not supported");
 
-                if let (
-                    Some(width),
-                    Some(height),
-                    Some(position)
-                ) = (parent.width.value(), parent.height.value(), parent.position)
-                {
-                    let size = Vector2::new(width, height);
-                    let offset = position - (size / 2.0);
+            self.scissor = Some(parent_id.clone());
+        } else if let Some(scissor) = parent.scissor.clone()
+        {
+            debug_assert!(!element.scissor, "nested scissors not supported");
 
-                    self.scissor = Some(Scissor{offset: offset.into(), extent: size.into()});
-                }
-
-                self.scissor_resolved = self.scissor.is_some();
-            } else if let Some(scissor) = parent.scissor
-            {
-                debug_assert!(!element.scissor, "nested scissors not supported");
-
-                self.scissor = Some(scissor);
-                self.scissor_resolved = true;
-            } else if parent.scissor_resolved
-            {
-                self.scissor_resolved = true;
-            }
+            self.scissor = Some(scissor);
         }
 
         if !self.width.resolved()
@@ -697,7 +722,7 @@ impl UiDeferredInfo
         }
     }
 
-    fn resolve_position<Id: Idable>(
+    fn resolve_position(
         &mut self,
         resolved: &HashMap<Id, Self>,
         element: &UiElement<Id>,
@@ -772,7 +797,7 @@ impl UiDeferredInfo
         }
     }
 
-    fn resolve_backward<Id: Idable>(
+    fn resolve_backward(
         &mut self,
         sizer: &TextureSizer,
         element: &UiElement<Id>,
@@ -812,7 +837,6 @@ impl UiDeferredInfo
         self.width.resolved()
             && self.height.resolved()
             && self.position.is_some()
-            && self.scissor_resolved
     }
 }
 
@@ -820,7 +844,7 @@ pub struct TreeElement<Id>
 {
     id: Id,
     element: UiElement<Id>,
-    deferred: UiDeferredInfo,
+    deferred: UiDeferredInfo<Id>,
     is_first_child: Option<bool>,
     children: Vec<usize>,
     shared: Rc<RefCell<SharedInfo<Id>>>
@@ -936,7 +960,7 @@ impl<Id: Idable> TreeElement<Id>
         trees: &mut Vec<TreeElement<Id>>,
         index: usize,
         parent_index: Option<usize>,
-        resolved: &mut HashMap<Id, UiDeferredInfo>,
+        resolved: &mut HashMap<Id, UiDeferredInfo<Id>>,
         previous: Option<usize>
     )
     where
@@ -967,6 +991,7 @@ impl<Id: Idable> TreeElement<Id>
                 &shared.screen_size,
                 &this.element,
                 previous,
+                &parent.id,
                 &parent.deferred,
                 &parent.element
             );
@@ -1089,8 +1114,16 @@ struct Element<Id>
     close_soon: bool,
     element: UiElement<Id>,
     cached: UiElementCached,
-    deferred: UiDeferredInfo,
+    deferred: UiDeferredInfo<Id>,
     closing: bool
+}
+
+impl<Id> Element<Id>
+{
+    fn scissor(&self) -> UiScissor
+    {
+        self.cached.scissor()
+    }
 }
 
 #[derive(Debug)]
@@ -1307,6 +1340,14 @@ impl<Id: Idable> Controller<Id>
         {
             let mut shared = self.shared.borrow_mut();
 
+            let scissor = this.deferred.scissor.as_ref().and_then(|id|
+            {
+                shared.elements.get(id).map(|scissor_element|
+                {
+                    scissor_element.scissor()
+                })
+            });
+
             {
                 let [element, parent] = if let Some(parent) = parent.as_ref()
                 {
@@ -1326,6 +1367,7 @@ impl<Id: Idable> Controller<Id>
                             create_info,
                             &parent_fraction,
                             parent.as_ref().map(|x| &x.deferred),
+                            scissor,
                             &this.deferred,
                             &this.element
                         );
@@ -1344,6 +1386,7 @@ impl<Id: Idable> Controller<Id>
                         create_info,
                         &parent_fraction,
                         parent.as_ref().map(|x| &x.deferred),
+                        scissor,
                         &this.deferred,
                         &mut element.element,
                         dt
@@ -1354,6 +1397,7 @@ impl<Id: Idable> Controller<Id>
                         create_info,
                         &parent_fraction,
                         parent.as_ref().map(|x| &x.deferred),
+                        scissor,
                         &this.deferred,
                         &this.element
                     );
@@ -1372,6 +1416,7 @@ impl<Id: Idable> Controller<Id>
                         create_info,
                         &parent_fraction,
                         parent.as_ref().map(|x| &x.deferred),
+                        scissor,
                         &this.deferred,
                         &mut element.element,
                         dt
