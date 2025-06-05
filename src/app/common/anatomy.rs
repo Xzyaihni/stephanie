@@ -1941,7 +1941,6 @@ impl DamageReceiver for TorsoOrgans
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HumanBodySided
 {
-    pub eye: Option<HumanPart>,
     pub upper_leg: Option<HumanPart>,
     pub lower_leg: Option<HumanPart>,
     pub upper_arm: Option<HumanPart>,
@@ -2264,18 +2263,7 @@ impl HumanAnatomy
                 Some(x)
             };
 
-
-            let eye = Some(HumanPart::new_full(
-                DebugName::new(with_name("eye")),
-                Health::new(50.0, 100.0),
-                None,
-                None,
-                0.1,
-                ()
-            ));
-
             HumanBodySided{
-                eye,
                 upper_leg,
                 lower_leg,
                 upper_arm,
@@ -2716,9 +2704,9 @@ impl HumanAnatomy
         let vision = brain.as_ref().map(|hemisphere|
         {
             hemisphere.occipital.0.fraction().powi(3)
-        }).flip().zip(self.body.sided.as_ref()).map(|(fraction, body)|
+        }).flip().zip(self.body.head.contents.eyes.as_ref()).map(|(fraction, eye)|
         {
-            body.eye.as_ref().map(|x| x.bone.fraction()).unwrap_or(0.0) * fraction
+            eye.as_ref().map(|x| x.average_health()).unwrap_or(0.0) * fraction
         }).combine(|a, b| a.max(b));
 
         Some(base * vision)
