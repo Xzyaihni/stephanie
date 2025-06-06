@@ -672,6 +672,18 @@ impl<Contents> BodyPart<Contents>
         &self.contents
     }
 
+    fn speed_multiply(&self, base: f32, override_muscle: Option<f32>) -> f32
+    {
+        let muscle_health = override_muscle.unwrap_or_else(||
+        {
+            self.muscle.as_ref().map(|x| x.fraction()).unwrap_or(0.0)
+        });
+
+        let health_mult = (self.bone.fraction() * 0.9 + 0.1) * muscle_health;
+
+        base * health_mult
+    }
+
     pub fn average_health(&self) -> f32
     {
         let mut count = 0;
@@ -1939,24 +1951,79 @@ impl DamageReceiver for TorsoOrgans
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct HumanBodySided
+pub struct LowerLimb
 {
-    pub upper_leg: Option<HumanPart>,
-    pub lower_leg: Option<HumanPart>,
-    pub upper_arm: Option<HumanPart>,
-    pub lower_arm: Option<HumanPart>,
-    pub hand: Option<HumanPart>,
-    pub foot: Option<HumanPart>
+    lower: HumanPart,
+    leaf: Option<HumanPart>
+}
+
+impl LowerLimb
+{
+    fn speed_with(&self, lower: f32, leaf: f32) -> f32
+    {
+        let leaf_speed = self.leaf.as_ref().map(|x|
+        {
+            let muscle = self.lower.muscle.map(|x| x.fraction()).unwrap_or(0.0);
+            x.speed_multiply(leaf, Some(muscle))
+        }).unwrap_or_default();
+
+        self.lower.speed_multiply(lower, None) + leaf_speed
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Limb
+{
+    upper: HumanPart,
+    lower: Option<LowerLimb>
+}
+
+impl Limb
+{
+    fn speed_with(&self, upper: f32, lower: f32, leaf: f32) -> f32
+    {
+        self.upper.speed_multiply(upper, None)
+            + self.lower.as_ref().map(|x| x.speed_with(lower, leaf)).unwrap_or_default()
+    }
+
+    fn arm_speed(&self) -> f32
+    {
+        self.speed_with(0.2, 0.1, 0.05)
+    }
+
+    fn leg_speed(&self) -> f32
+    {
+        self.speed_with(0.4, 0.12, 0.07)
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Torso
+{
+    pub torso: HumanPart<TorsoOrgans>,
+    pub arms: Halves<Option<Limb>>
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Pelvis
+{
+    pub pelvis: HumanPart,
+    pub legs: Halves<Option<Limb>>
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Spine
+{
+    pub spine: HumanPart,
+    pub torso: Option<Torso>,
+    pub pelvis: Option<Pelvis>
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HumanBody
 {
-    pub sided: Halves<HumanBodySided>,
     pub head: HumanPart<HeadOrgans>,
-    pub torso: HumanPart<TorsoOrgans>,
-    pub pelvis: HumanPart,
-    pub spine: HumanPart
+    pub spine: Option<Spine>
 }
 
 macro_rules! impl_get
@@ -2030,7 +2097,10 @@ macro_rules! impl_get
                 },
                 OrganId::Lung(side) =>
                 {
-                    self.torso.contents.lungs[side].$option_fn().map(|x| F::get(x))
+                    self.spine.$option_fn()
+                        .and_then(|x| x.torso.$option_fn())
+                        .and_then(|x| x.torso.contents.lungs[side].$option_fn())
+                        .map(|x| F::get(x))
                 }
             }
         }
@@ -2040,19 +2110,19 @@ macro_rules! impl_get
             id: HumanPartId
         ) -> Option<F::V<'_>>
         {
-            match id
+            /*match id
             {
                 HumanPartId::Head => Some(F::get($($b)+ self.head)),
                 HumanPartId::Torso => Some(F::get($($b)+ self.torso)),
-                HumanPartId::Pelvis => Some(F::get($($b)+ self.pelvis)),
-                HumanPartId::Spine => Some(F::get($($b)+ self.spine)),
+                HumanPartId::Pelvis => self.spine.$option_fn(|x| F::get($($b)+ x.pelvis)),
+                HumanPartId::Spine => self.spine.$option_fn(|x| F::get($($b)+ x.spine)),
                 HumanPartId::Thigh(side) => self.sided[side].upper_leg.$option_fn().map(|x| F::get(x)),
                 HumanPartId::Calf(side) => self.sided[side].lower_leg.$option_fn().map(|x| F::get(x)),
                 HumanPartId::Foot(side) => self.sided[side].foot.$option_fn().map(|x| F::get(x)),
                 HumanPartId::Arm(side) => self.sided[side].upper_arm.$option_fn().map(|x| F::get(x)),
                 HumanPartId::Forearm(side) => self.sided[side].lower_arm.$option_fn().map(|x| F::get(x)),
                 HumanPartId::Hand(side) => self.sided[side].hand.$option_fn().map(|x| F::get(x))
-            }
+            }*/None
         }
     }
 }
@@ -2238,15 +2308,20 @@ impl HumanAnatomy
         // max hp is amount of newtons i found on the interner needed to break a bone
         // like half of them i just made up
 
-        let make_side = |side_name|
+        let with_name = |side_name|
         {
-            let with_name = |name|
+            move |name|
             {
                 format!("{side_name} {name}")
-            };
+            }
+        };
 
-            let upper_leg = Some(new_part(DebugName::new(with_name("upper leg")), 4000.0, 0.6));
-            let lower_leg = Some(new_part(DebugName::new(with_name("lower leg")), 3500.0, 0.44));
+        let make_leg = |side_name|
+        {
+            let with_name = with_name(side_name);
+
+            let upper = new_part(DebugName::new(with_name("upper leg")), 4000.0, 0.6);
+            let lower = new_part(DebugName::new(with_name("lower leg")), 3500.0, 0.44);
             let foot = {
                 let mut x = new_part(DebugName::new(with_name("foot")), 2000.0, 0.17);
                 x.muscle = None.into();
@@ -2254,8 +2329,21 @@ impl HumanAnatomy
                 Some(x)
             };
 
-            let upper_arm = Some(new_part(DebugName::new(with_name("upper arm")), 2500.0, 0.2));
-            let lower_arm = Some(new_part(DebugName::new(with_name("lower arm")), 2000.0, 0.17));
+            Some(Limb{
+                upper,
+                lower: Some(LowerLimb{
+                    lower,
+                    leaf: foot
+                })
+            })
+        };
+
+        let make_arm = |side_name|
+        {
+            let with_name = with_name(side_name);
+
+            let upper = new_part(DebugName::new(with_name("upper arm")), 2500.0, 0.2);
+            let lower = new_part(DebugName::new(with_name("lower arm")), 2000.0, 0.17);
             let hand = {
                 let mut x = new_part(DebugName::new(with_name("hand")), 2000.0, 0.07);
                 x.muscle = None.into();
@@ -2263,17 +2351,15 @@ impl HumanAnatomy
                 Some(x)
             };
 
-            HumanBodySided{
-                upper_leg,
-                lower_leg,
-                upper_arm,
-                lower_arm,
-                hand,
-                foot
-            }
-        };
 
-        let sided = Halves{left: make_side("left"), right: make_side("right")};
+            Some(Limb{
+                upper,
+                lower: Some(LowerLimb{
+                    lower,
+                    leaf: hand
+                })
+            })
+        };
 
         // the spine is very complex sizing wise so im just gonna pick a low-ish number
         let spine = new_part(DebugName::new("spine"), 3400.0, 0.25);
@@ -2288,6 +2374,12 @@ impl HumanAnatomy
         );
 
         let pelvis = new_part(DebugName::new("pelvis"), 6000.0, 0.37);
+
+        let pelvis = Pelvis{
+            pelvis,
+            legs: Halves{left: make_leg("left"), right: make_leg("right")}
+        };
+
         let torso = new_part_with_contents(
             DebugName::new("torso"),
             part.clone(),
@@ -2299,12 +2391,20 @@ impl HumanAnatomy
             }
         );
 
-        let body = HumanBody{
-            sided,
-            head,
+        let torso = Torso{
             torso,
-            pelvis,
-            spine
+            arms: Halves{left: make_arm("left"), right: make_arm("right")}
+        };
+
+        let spine = Spine{
+            spine,
+            torso: Some(torso),
+            pelvis: Some(pelvis)
+        };
+
+        let body = HumanBody{
+            head,
+            spine: Some(spine)
         };
 
         let mut this = Self{
@@ -2552,44 +2652,6 @@ impl HumanAnatomy
         pierce
     }
 
-    fn speed_multiply(part: &HumanPart, base: f32, override_muscle: Option<f32>) -> f32
-    {
-        let muscle_health = override_muscle.unwrap_or_else(||
-        {
-            part.muscle.as_ref().map(|x| x.fraction()).unwrap_or(0.0)
-        });
-
-        let health_mult = (part.bone.fraction() * 0.9 + 0.1) * muscle_health;
-
-        base * health_mult
-    }
-
-    fn leg_speed(body: &HumanBodySided) -> f32
-    {
-        let foot_speed = body.foot.as_ref().map(|x|
-        {
-            let muscle = body.lower_leg.as_ref().and_then(|part| part.muscle.map(|x| x.fraction())).unwrap_or(0.0);
-            Self::speed_multiply(x, 0.07, Some(muscle))
-        }).unwrap_or_default();
-
-        body.upper_leg.as_ref().map(|x| Self::speed_multiply(x, 0.4, None)).unwrap_or_default()
-            + body.lower_leg.as_ref().map(|x| Self::speed_multiply(x, 0.12, None)).unwrap_or_default()
-            + foot_speed
-    }
-
-    fn arm_speed(body: &HumanBodySided) -> f32
-    {
-        let hand_speed = body.hand.as_ref().map(|x|
-        {
-            let muscle = body.lower_arm.as_ref().and_then(|part| part.muscle.map(|x| x.fraction())).unwrap_or(0.0);
-            Self::speed_multiply(x, 0.05, Some(muscle))
-        }).unwrap_or_default();
-
-        body.upper_arm.as_ref().map(|x| Self::speed_multiply(x, 0.2, None)).unwrap_or_default()
-            + body.lower_arm.as_ref().map(|x| Self::speed_multiply(x, 0.1, None)).unwrap_or_default()
-            + hand_speed
-    }
-
     fn speed_scale(&self) -> Speeds
     {
         let brain = some_or_return!(self.brain());
@@ -2602,13 +2664,32 @@ impl HumanAnatomy
             }
         });
 
-        self.body.sided.as_ref().zip(motor.flip()).map(|(body, motor)|
+        self.body.spine.as_ref().map(|spine|
         {
-            Speeds{
-                legs: Self::leg_speed(body) * motor.legs,
-                arms: Self::arm_speed(body) * motor.arms
-            }
-        }).combine(|a, b| Speeds{legs: a.legs + b.legs, arms: a.arms + b.arms})
+            let arms = spine.torso.as_ref().map(|torso|
+            {
+                torso.arms.as_ref().map(|arm|
+                {
+                    arm.as_ref().map(|x| x.arm_speed()).unwrap_or(0.0)
+                })
+            }).unwrap_or_else(|| Halves::repeat(0.0));
+
+            let legs = spine.pelvis.as_ref().map(|pelvis|
+            {
+                pelvis.legs.as_ref().map(|leg|
+                {
+                    leg.as_ref().map(|x| x.leg_speed()).unwrap_or(0.0)
+                })
+            }).unwrap_or_else(|| Halves::repeat(0.0));
+
+            arms.zip(legs).zip(motor.flip()).map(|((arms, legs), motor)|
+            {
+                Speeds{
+                    legs: arms * motor.legs,
+                    arms: legs * motor.arms
+                }
+            }).combine(|a, b| Speeds{legs: a.legs + b.legs, arms: a.arms + b.arms})
+        }).unwrap_or_default()
     }
 
     fn brain(&self) -> Option<&Brain>
@@ -2657,15 +2738,10 @@ impl HumanAnatomy
 
     fn lung(&self, side: Side1d) -> Option<&Lung>
     {
-        let contents = &self.body.torso.contents.lungs;
+        let spine = self.body.spine.as_ref()?;
+        let torso = spine.torso.as_ref()?;
 
-        if side.is_left()
-        {
-            contents.left.as_ref()
-        } else
-        {
-            contents.right.as_ref()
-        }
+        torso.torso.contents.lungs.as_ref()[side].as_ref()
     }
 
     fn updated_stamina(&mut self) -> Option<f32>
@@ -2680,7 +2756,13 @@ impl HumanAnatomy
             lung.health.fraction() * hemisphere.frontal.motor.body.fraction().powi(3)
         }).combine(|a, b| a + b) / 2.0;
 
-        Some(base * amount * self.body.torso.muscle.map(|x| x.fraction()).unwrap_or(0.0))
+        let torso_muscle = self.body.spine.as_ref().and_then(|spine|
+        {
+            spine.torso.as_ref()
+        }).and_then(|torso| torso.torso.muscle.map(|x| x.fraction()))
+            .unwrap_or(0.0);
+
+        Some(base * amount * torso_muscle)
     }
 
     fn updated_max_stamina(&mut self) -> Option<f32>
