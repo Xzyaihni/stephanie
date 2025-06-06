@@ -277,7 +277,7 @@ pub enum UiListPart
     Bar
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum UiIdWindow
 {
     Inventory(Entity),
@@ -777,7 +777,7 @@ impl WindowKind
 
         let close_this = {
             let window_id = window_id.clone();
-            |info: &mut UpdateInfo|
+            move |info: &mut UpdateInfo|
             {
                 info.user_receiver.push(UiEvent::Action(Rc::new(move |game_state|
                 {
@@ -1148,7 +1148,7 @@ impl WindowKind
         {
             if info.dragging_window.is_none()
             {
-                *info.dragging_window = Some(info.mouse_position);
+                *info.dragging_window = Some((this_window_id, info.mouse_position));
             }
         }
     }
@@ -1180,12 +1180,16 @@ impl Window
 
     fn update(&mut self, ui: &mut UiController, info: &mut UpdateInfo)
     {
-        let position = self.position + info.dragging_window.map(|start|
+        let id = self.id();
+
+        let position = self.position + info.dragging_window.as_ref().and_then(|(drag_id, start)|
+        {
+            (self.kind.as_id() == *drag_id).then_some(*start)
+        }).map(|start|
         {
             info.mouse_position - start
         }).unwrap_or_default();
 
-        let id = self.id();
         let body = ui.update(id, UiElement{
             texture: UiTexture::Solid,
             mix: Some(MixColorLch::color(BACKGROUND_COLOR)),
@@ -1240,7 +1244,7 @@ struct UpdateInfo<'a, 'b, 'c, 'd>
     fonts: &'a FontsContainer,
     anatomy_locations: &'a UiAnatomyLocations,
     popup: &'a Option<UiItemPopup>,
-    dragging_window: &'d mut Option<Vector2<f32>>,
+    dragging_window: &'d mut Option<(UiIdWindow, Vector2<f32>)>,
     dragging_currently: bool,
     mouse_position: Vector2<f32>,
     mouse_taken: bool,
@@ -1289,7 +1293,7 @@ pub struct Ui
     user_receiver: Rc<RefCell<UiReceiver>>,
     camera: Entity,
     controller: UiController,
-    dragging_window: Option<Vector2<f32>>,
+    dragging_window: Option<(UiIdWindow, Vector2<f32>)>,
     mouse_position: Vector2<f32>,
     console_contents: Option<String>,
     windows: Vec<Window>,
@@ -1862,9 +1866,9 @@ impl Ui
 
             x.update(&mut self.controller, &mut info);
 
-            if let Some(start) = info.dragging_window
+            if let Some((id, start)) = info.dragging_window
             {
-                if !info.dragging_currently
+                if (*id == x.kind.as_id()) && !info.dragging_currently
                 {
                     x.position += self.mouse_position - *start;
                     *info.dragging_window = None;
