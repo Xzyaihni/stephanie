@@ -2110,19 +2110,24 @@ macro_rules! impl_get
             id: HumanPartId
         ) -> Option<F::V<'_>>
         {
-            /*match id
+            let spine = self.spine.$option_fn()?;
+
+            let torso = spine.torso.$option_fn()?;
+            let pelvis = spine.pelvis.$option_fn()?;
+
+            match id
             {
                 HumanPartId::Head => Some(F::get($($b)+ self.head)),
-                HumanPartId::Torso => Some(F::get($($b)+ self.torso)),
-                HumanPartId::Pelvis => self.spine.$option_fn(|x| F::get($($b)+ x.pelvis)),
-                HumanPartId::Spine => self.spine.$option_fn(|x| F::get($($b)+ x.spine)),
-                HumanPartId::Thigh(side) => self.sided[side].upper_leg.$option_fn().map(|x| F::get(x)),
-                HumanPartId::Calf(side) => self.sided[side].lower_leg.$option_fn().map(|x| F::get(x)),
-                HumanPartId::Foot(side) => self.sided[side].foot.$option_fn().map(|x| F::get(x)),
-                HumanPartId::Arm(side) => self.sided[side].upper_arm.$option_fn().map(|x| F::get(x)),
-                HumanPartId::Forearm(side) => self.sided[side].lower_arm.$option_fn().map(|x| F::get(x)),
-                HumanPartId::Hand(side) => self.sided[side].hand.$option_fn().map(|x| F::get(x))
-            }*/None
+                HumanPartId::Spine => Some(F::get($($b)+ spine.spine)),
+                HumanPartId::Torso => Some(F::get($($b)+ torso.torso)),
+                HumanPartId::Pelvis => Some(F::get($($b)+ pelvis.pelvis)),
+                HumanPartId::Thigh(side) => Some(F::get($($b)+ pelvis.legs[side].$option_fn()?.upper)),
+                HumanPartId::Calf(side) => Some(F::get($($b)+ pelvis.legs[side].$option_fn()?.lower.$option_fn()?.lower)),
+                HumanPartId::Foot(side) => Some(F::get(pelvis.legs[side].$option_fn()?.lower.$option_fn()?.leaf.$option_fn()?)),
+                HumanPartId::Arm(side) => Some(F::get($($b)+ torso.arms[side].$option_fn()?.upper)),
+                HumanPartId::Forearm(side) => Some(F::get($($b)+ torso.arms[side].$option_fn()?.lower.$option_fn()?.lower)),
+                HumanPartId::Hand(side) => Some(F::get(torso.arms[side].$option_fn()?.lower.$option_fn()?.leaf.$option_fn()?))
+            }
         }
     }
 }
