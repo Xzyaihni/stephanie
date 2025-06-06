@@ -2690,8 +2690,8 @@ impl HumanAnatomy
             arms.zip(legs).zip(motor.flip()).map(|((arms, legs), motor)|
             {
                 Speeds{
-                    legs: arms * motor.legs,
-                    arms: legs * motor.arms
+                    legs: legs * motor.legs,
+                    arms: arms * motor.arms
                 }
             }).combine(|a, b| Speeds{legs: a.legs + b.legs, arms: a.arms + b.arms})
         }).unwrap_or_default()
