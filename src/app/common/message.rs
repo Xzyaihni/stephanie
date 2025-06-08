@@ -28,7 +28,6 @@ use crate::common::{
     Enemy,
     Anatomy,
     RenderInfo,
-    entity::damaging_system::*,
     world::{TilePos, Tile, Chunk, GlobalPos}
 };
 
@@ -70,7 +69,6 @@ pub enum Message
     SyncPositionRotation{entity: Entity, position: Vector3<f32>, rotation: f32},
     SyncCharacter{entity: Entity, info: CharacterSyncInfo},
     EntityDestroy{entity: Entity},
-    Damage(DamagingResult),
     PlayerConnect{name: String},
     PlayerOnConnect{player_entity: Entity},
     PlayerFullyConnected,
@@ -143,10 +141,6 @@ impl Message
             | Message::ChunkSync{..}
             | Message::SetTile{..}
             | Message::RepeatMessage{..} => None,
-            Message::Damage(result) =>
-            {
-                if let DamagingKind::Entity(entity, _) = &result.kind { Some(*entity) } else { None }
-            },
             #[cfg(debug_assertions)]
             Message::DebugMessage(_) => None
         }

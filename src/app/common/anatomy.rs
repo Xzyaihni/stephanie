@@ -672,6 +672,13 @@ impl<Contents> BodyPart<Contents>
         &self.contents
     }
 
+    pub fn is_broken(&self) -> bool
+    {
+        self.bone.fraction() == 0.0
+            && self.skin.map(|x| x.fraction() == 0.0).unwrap_or(true)
+            && self.muscle.map(|x| x.fraction() == 0.0).unwrap_or(true)
+    }
+
     fn speed_multiply(&self, base: f32, override_muscle: Option<f32>) -> f32
     {
         let muscle_health = override_muscle.unwrap_or_else(||
@@ -1950,6 +1957,17 @@ impl DamageReceiver for TorsoOrgans
     }
 }
 
+macro_rules! remove_broken
+{
+    ($this:expr, $part:ident) =>
+    {
+        if $this.as_ref().map(|x| x.$part.is_broken()).unwrap_or(false)
+        {
+            $this.take();
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LowerLimb
 {
@@ -1959,6 +1977,14 @@ pub struct LowerLimb
 
 impl LowerLimb
 {
+    fn detach_broken(&mut self)
+    {
+        if self.leaf.as_ref().map(|x| x.is_broken()).unwrap_or(false)
+        {
+            self.leaf = None;
+        }
+    }
+
     fn speed_with(&self, lower: f32, leaf: f32) -> f32
     {
         let leaf_speed = self.leaf.as_ref().map(|x|
@@ -1980,6 +2006,16 @@ pub struct Limb
 
 impl Limb
 {
+    fn detach_broken(&mut self)
+    {
+        remove_broken!(self.lower, lower);
+
+        if let Some(lower) = self.lower.as_mut()
+        {
+            lower.detach_broken();
+        }
+    }
+
     fn speed_with(&self, upper: f32, lower: f32, leaf: f32) -> f32
     {
         self.upper.speed_multiply(upper, None)
@@ -2004,11 +2040,43 @@ pub struct Torso
     pub arms: Halves<Option<Limb>>
 }
 
+impl Torso
+{
+    fn detach_broken(&mut self)
+    {
+        self.arms.as_mut().map(|arm|
+        {
+            remove_broken!(arm.as_mut(), upper);
+
+            if let Some(arm) = arm.as_mut()
+            {
+                arm.detach_broken();
+            }
+        });
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Pelvis
 {
     pub pelvis: HumanPart,
     pub legs: Halves<Option<Limb>>
+}
+
+impl Pelvis
+{
+    fn detach_broken(&mut self)
+    {
+        self.legs.as_mut().map(|leg|
+        {
+            remove_broken!(leg.as_mut(), upper);
+
+            if let Some(leg) = leg.as_mut()
+            {
+                leg.detach_broken();
+            }
+        });
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -2019,11 +2087,43 @@ pub struct Spine
     pub pelvis: Option<Pelvis>
 }
 
+impl Spine
+{
+    fn detach_broken(&mut self)
+    {
+        remove_broken!(self.torso, torso);
+        remove_broken!(self.pelvis, pelvis);
+
+        if let Some(torso) = self.torso.as_mut()
+        {
+            torso.detach_broken();
+        }
+
+        if let Some(pelvis) = self.pelvis.as_mut()
+        {
+            pelvis.detach_broken();
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HumanBody
 {
     pub head: HumanPart<HeadOrgans>,
     pub spine: Option<Spine>
+}
+
+impl HumanBody
+{
+    fn detach_broken(&mut self)
+    {
+        remove_broken!(self.spine, spine);
+
+        if let Some(spine) = self.spine.as_mut()
+        {
+            spine.detach_broken();
+        }
+    }
 }
 
 macro_rules! impl_get
@@ -2149,6 +2249,27 @@ impl PierceType
     fn empty() -> Self
     {
         Self{possible: Vec::new(), action: Rc::new(|_, damage| { Some(damage) })}
+    }
+
+    fn always(id: AnatomyId) -> Self
+    {
+        Self{
+            possible: vec![id],
+            action: Rc::new(move |this, damage|
+            {
+                if this.body.get::<()>(id).is_none()
+                {
+                    return None;
+                }
+
+                this.body.get_mut::<DamagerGetter>(id).unwrap()(damage)
+            })
+        }
+    }
+
+    fn pelvis(side: Side1d) -> Self
+    {
+        Self::always(HumanPartId::Thigh(side.opposite()).into())
     }
 
     fn head_back() -> Self
@@ -2526,7 +2647,7 @@ impl HumanAnatomy
     {
         if DebugConfig::is_enabled(DebugTool::PrintDamage)
         {
-            eprintln!("start damage {damage:?}");
+            eprintln!("(rng state {:?}) start damage {damage:?}", damage.rng);
         }
 
         let no_pierce = PierceType::empty;
@@ -2544,8 +2665,8 @@ impl HumanAnatomy
                     Side2d::Front => vec![
                         (HumanPartId::Spine.into(), no_pierce()),
                         (HumanPartId::Head.into(), no_pierce()),
-                        (OrganId::Eye(Side1d::Left).into(), no_pierce()),
-                        (OrganId::Eye(Side1d::Right).into(), no_pierce())
+                        (OrganId::Eye(Side1d::Left).into(), PierceType::always(HumanPartId::Head.into())),
+                        (OrganId::Eye(Side1d::Right).into(), PierceType::always(HumanPartId::Head.into()))
                     ],
                     Side2d::Left | Side2d::Right => vec![
                         (HumanPartId::Spine.into(), no_pierce()),
@@ -2558,7 +2679,7 @@ impl HumanAnatomy
                 match damage.direction.side
                 {
                     Side2d::Back => vec![
-                        (HumanPartId::Spine.into(), no_pierce()),
+                        (HumanPartId::Spine.into(), PierceType::always(HumanPartId::Torso.into())),
                         (HumanPartId::Torso.into(), no_pierce()),
                         (HumanPartId::Arm(Side1d::Left).into(), no_pierce()),
                         (HumanPartId::Forearm(Side1d::Left).into(), no_pierce()),
@@ -2606,13 +2727,13 @@ impl HumanAnatomy
                         (HumanPartId::Foot(Side1d::Right).into(), no_pierce())
                     ],
                     Side2d::Left => vec![
-                        (HumanPartId::Pelvis.into(), no_pierce()),
+                        (HumanPartId::Pelvis.into(), PierceType::pelvis(Side1d::Left)),
                         (HumanPartId::Thigh(Side1d::Left).into(), PierceType::leg_pierce(Side1d::Left)),
                         (HumanPartId::Calf(Side1d::Left).into(), PierceType::leg_pierce(Side1d::Left)),
                         (HumanPartId::Foot(Side1d::Left).into(), PierceType::leg_pierce(Side1d::Left))
                     ],
                     Side2d::Right => vec![
-                        (HumanPartId::Pelvis.into(), no_pierce()),
+                        (HumanPartId::Pelvis.into(), PierceType::pelvis(Side1d::Right)),
                         (HumanPartId::Thigh(Side1d::Right).into(), PierceType::leg_pierce(Side1d::Right)),
                         (HumanPartId::Calf(Side1d::Right).into(), PierceType::leg_pierce(Side1d::Right)),
                         (HumanPartId::Foot(Side1d::Right).into(), PierceType::leg_pierce(Side1d::Right))
@@ -2640,6 +2761,9 @@ impl HumanAnatomy
         let pierce = picked.and_then(|(picked, on_pierce)|
         {
             let picked_damage = self.body.get_mut::<DamagerGetter>(*picked).map(|x| x(damage.clone()));
+
+            self.body.detach_broken();
+
             if let Some(damage) = picked_damage
             {
                 damage.and_then(|pierce|

@@ -60,8 +60,7 @@ use crate::{
         message::{
             Message,
             MessageBuffer
-        },
-        entity::damaging_system
+        }
     }
 };
 
@@ -121,7 +120,6 @@ pub struct GameServer
     player_character: CharacterId,
     characters_info: Arc<CharactersInfo>,
     world: World,
-    tilemap: Rc<TileMap>,
     sender: Sender<(ConnectionId, Message, Entity)>,
     receiver: Receiver<(ConnectionId, Message, Entity)>,
     connection_receiver: Receiver<TcpStream>,
@@ -176,7 +174,6 @@ impl GameServer
             player_character: data_infos.player_character,
             characters_info: data_infos.characters_info,
             world,
-            tilemap,
             sender,
             receiver,
             connection_receiver,
@@ -529,14 +526,6 @@ impl GameServer
         )};
 
         let message = some_or_return!{self.entities.handle_message(message)};
-
-        let message = some_or_return!{damaging_system::handle_message(&self.entities, None, message, |tile_pos, damage|
-        {
-            self.world.modify_chunk(tile_pos, |chunk|
-            {
-                chunk[tile_pos.local].damage(&self.tilemap, damage.data);
-            });
-        })};
 
         match message
         {

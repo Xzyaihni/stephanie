@@ -57,25 +57,6 @@ pub struct DamagingResult
     pub damage: DamagePartial
 }
 
-pub fn handle_message<E: AnyEntities, TileDamager: FnMut(TilePos, DamagePartial)>(
-    entities: &E,
-    textures: Option<&CommonTextures>,
-    message: Message,
-    damage_tile: TileDamager
-) -> Option<Message>
-{
-    match message
-    {
-        Message::Damage(damage) =>
-        {
-            damager::<E, (), TileDamager>(entities, None, textures, damage_tile)(damage);
-
-            None
-        },
-        x => Some(x)
-    }
-}
-
 pub fn damager<'a, 'b, E: AnyEntities, Passer: EntityPasser, TileDamager: FnMut(TilePos, DamagePartial)>(
     entities: &'a E,
     mut passer: Option<&'b RwLock<Passer>>,
@@ -165,6 +146,14 @@ pub fn damager<'a, 'b, E: AnyEntities, Passer: EntityPasser, TileDamager: FnMut(
                 {
                     damage_entity(entities, entity, result.other_entity, damage);
 
+                    if let Some(passer) = passer.as_mut()
+                    {
+                        passer.write().send_message(Message::SetAnatomy{
+                            entity,
+                            component: Box::new(entities.anatomy(entity).unwrap().clone())
+                        });
+                    }
+
                     damaged = true;
                 }
 
@@ -212,11 +201,6 @@ pub fn damager<'a, 'b, E: AnyEntities, Passer: EntityPasser, TileDamager: FnMut(
                     });
                 }
             }
-        }
-
-        if let Some(passer) = passer.as_mut()
-        {
-            passer.write().send_message(Message::Damage(result));
         }
     }
 }
