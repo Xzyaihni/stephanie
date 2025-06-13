@@ -94,7 +94,7 @@ use controls_controller::ControlsController;
 
 use notifications::{Notifications, Notification};
 
-pub use anatomy_locations::{UiAnatomyLocations, AnatomyChangedPart};
+pub use anatomy_locations::UiAnatomyLocations;
 pub use ui::{Ui, UiId, NotificationInfo, NotificationKindInfo};
 
 mod controls_controller;

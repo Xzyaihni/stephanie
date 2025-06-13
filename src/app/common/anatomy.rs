@@ -1,5 +1,6 @@
 use std::{
     f32,
+    mem,
     convert,
     rc::Rc,
     fmt::{self, Debug, Display},
@@ -206,14 +207,11 @@ impl PartFieldGetter<RefMutHumanPartFieldGet> for AccessedGetter
 
 impl PartFieldGetter<RefMutOrganFieldGet> for AccessedGetter
 {
-    type V<'a> = Box<dyn FnOnce(&mut dyn FnMut(OrganId)) + 'a>;
+    type V<'a> = bool;
 
     fn get<'a, O: Organ + 'a>(value: &'a mut O) -> Self::V<'a>
     {
-        Box::new(|f|
-        {
-            value.consume_accessed(|id| f(id))
-        })
+        value.consume_accessed()
     }
 }
 
@@ -334,7 +332,7 @@ impl Display for ChangedKind
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ChangedPart
 {
-    Part(HumanPartId, ChangedKind),
+    Part(HumanPartId, Option<ChangedKind>),
     Organ(OrganId)
 }
 
@@ -348,8 +346,9 @@ impl Display for ChangedPart
             {
                 match kind
                 {
-                    ChangedKind::Bone => write!(f, "{}", id.bone_to_string()),
-                    _ => write!(f, "{id} {kind}")
+                    Some(ChangedKind::Bone) => write!(f, "{}", id.bone_to_string()),
+                    Some(kind) => write!(f, "{id} {kind}"),
+                    None => Display::fmt(id, f)
                 }
             },
             Self::Organ(id) => Display::fmt(id, f)
@@ -359,11 +358,20 @@ impl Display for ChangedPart
 
 impl ChangedPart
 {
+    pub fn whole(id: AnatomyId) -> Self
+    {
+        match id
+        {
+            AnatomyId::Part(x) => Self::Part(x, None),
+            AnatomyId::Organ(x) => Self::Organ(x)
+        }
+    }
+
     pub fn iter() -> impl Iterator<Item=Self>
     {
-        HumanPartId::iter().map(|x| Self::Part(x, ChangedKind::Bone))
-            .chain(HumanPartId::iter().map(|x| Self::Part(x, ChangedKind::Muscle)))
-            .chain(HumanPartId::iter().map(|x| Self::Part(x, ChangedKind::Skin)))
+        HumanPartId::iter().map(|x| Self::Part(x, Some(ChangedKind::Bone)))
+            .chain(HumanPartId::iter().map(|x| Self::Part(x, Some(ChangedKind::Muscle))))
+            .chain(HumanPartId::iter().map(|x| Self::Part(x, Some(ChangedKind::Skin))))
             .chain(OrganId::iter().map(|x| Self::Organ(x)))
     }
 }
@@ -591,8 +599,8 @@ pub trait Organ: DamageReceiver + Debug
     fn average_health(&self) -> f32;
     fn size(&self) -> &f64;
 
-    fn clear(&mut self);
-    fn consume_accessed<F: FnMut(OrganId)>(&mut self, _f: F) {}
+    fn is_broken(&self) -> bool { self.average_health() <= 0.0 }
+    fn consume_accessed(&mut self) -> bool { unimplemented!() }
 }
 
 impl DamageReceiver for ()
@@ -612,9 +620,6 @@ impl Organ for ()
 {
     fn average_health(&self) -> f32 { 0.0 }
     fn size(&self) -> &f64 { &0.0 }
-
-    fn clear(&mut self) {}
-    fn consume_accessed<F: FnMut(OrganId)>(&mut self, _f: F) {}
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -758,11 +763,6 @@ impl<Contents: Organ> BodyPart<Contents>
             {
                 if let Some(pierce) = self.bone.damage_pierce(pierce)
                 {
-                    if self.bone.is_zero()
-                    {
-                        self.contents.clear();
-                    }
-
                     return self.contents.damage(rng, side, pierce);
                 }
             }
@@ -912,9 +912,9 @@ impl Organ for ChangeTracking<Health>
         unreachable!()
     }
 
-    fn clear(&mut self)
+    fn consume_accessed(&mut self) -> bool
     {
-        unreachable!()
+        Self::consume_accessed(self)
     }
 }
 
@@ -934,27 +934,6 @@ impl Default for MotorCortex
             arms: Health::new(4.0, 50.0).into(),
             body: Health::new(4.0, 50.0).into(),
             legs: Health::new(4.0, 50.0).into()
-        }
-    }
-}
-
-impl MotorCortex
-{
-    fn consume_accessed(&mut self, mut f: impl FnMut(MotorId))
-    {
-        if self.arms.consume_accessed()
-        {
-            f(MotorId::Arms)
-        }
-
-        if self.body.consume_accessed()
-        {
-            f(MotorId::Body)
-        }
-
-        if self.legs.consume_accessed()
-        {
-            f(MotorId::Legs)
         }
     }
 }
@@ -1007,11 +986,6 @@ impl Organ for MotorCortex
     {
         &0.05
     }
-
-    fn clear(&mut self)
-    {
-        unreachable!()
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1026,14 +1000,6 @@ impl Default for FrontalLobe
     fn default() -> Self
     {
         Self{motor: MotorCortex::default()}
-    }
-}
-
-impl FrontalLobe
-{
-    fn consume_accessed(&mut self, mut f: impl FnMut(FrontalId))
-    {
-        self.motor.consume_accessed(|id| f(FrontalId::Motor(id)));
     }
 }
 
@@ -1061,11 +1027,6 @@ impl Organ for FrontalLobe
     {
         &0.05
     }
-
-    fn clear(&mut self)
-    {
-        unreachable!()
-    }
 }
 
 #[derive(Debug, Clone, Copy, FromRepr, EnumCount, Serialize, Deserialize)]
@@ -1085,14 +1046,6 @@ impl Default for ParietalLobe
     fn default() -> Self
     {
         Self(Health::new(4.0, 50.0).into())
-    }
-}
-
-impl ParietalLobe
-{
-    fn consume_accessed(&mut self, mut f: impl FnMut())
-    {
-        if self.0.consume_accessed() { f(); }
     }
 }
 
@@ -1121,9 +1074,9 @@ impl Organ for ParietalLobe
         &0.01
     }
 
-    fn clear(&mut self)
+    fn consume_accessed(&mut self) -> bool
     {
-        unreachable!()
+        self.0.consume_accessed()
     }
 }
 
@@ -1135,14 +1088,6 @@ impl Default for TemporalLobe
     fn default() -> Self
     {
         Self(Health::new(4.0, 50.0).into())
-    }
-}
-
-impl TemporalLobe
-{
-    fn consume_accessed(&mut self, mut f: impl FnMut())
-    {
-        if self.0.consume_accessed() { f(); }
     }
 }
 
@@ -1171,9 +1116,9 @@ impl Organ for TemporalLobe
         &0.01
     }
 
-    fn clear(&mut self)
+    fn consume_accessed(&mut self) -> bool
     {
-        unreachable!()
+        self.0.consume_accessed()
     }
 }
 
@@ -1185,14 +1130,6 @@ impl Default for OccipitalLobe
     fn default() -> Self
     {
         Self(Health::new(4.0, 50.0).into())
-    }
-}
-
-impl OccipitalLobe
-{
-    fn consume_accessed(&mut self, mut f: impl FnMut())
-    {
-        if self.0.consume_accessed() { f(); }
     }
 }
 
@@ -1221,9 +1158,9 @@ impl Organ for OccipitalLobe
         &0.01
     }
 
-    fn clear(&mut self)
+    fn consume_accessed(&mut self) -> bool
     {
-        unreachable!()
+        self.0.consume_accessed()
     }
 }
 
@@ -1266,14 +1203,6 @@ impl Hemisphere
             LobeId::Temporal => self.temporal.damage(rng, side, damage),
             LobeId::Occipital => self.occipital.damage(rng, side, damage)
         }
-    }
-
-    fn consume_accessed(&mut self, mut f: impl FnMut(BrainId))
-    {
-        self.frontal.consume_accessed(|id| f(BrainId::Frontal(id)));
-        self.parietal.consume_accessed(|| f(BrainId::Parietal));
-        self.temporal.consume_accessed(|| f(BrainId::Temporal));
-        self.occipital.consume_accessed(|| f(BrainId::Occipital));
     }
 }
 
@@ -1332,11 +1261,6 @@ impl Organ for Hemisphere
     fn size(&self) -> &f64
     {
         &0.1
-    }
-
-    fn clear(&mut self)
-    {
-        unreachable!()
     }
 }
 
@@ -1402,11 +1326,6 @@ impl Organ for Brain
     {
         &0.2
     }
-
-    fn clear(&mut self)
-    {
-        unreachable!()
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1448,9 +1367,9 @@ impl Organ for Eye
         &0.1
     }
 
-    fn clear(&mut self)
+    fn consume_accessed(&mut self) -> bool
     {
-        unreachable!()
+        self.health.consume_accessed()
     }
 }
 
@@ -1493,9 +1412,9 @@ impl Organ for Lung
         &0.3
     }
 
-    fn clear(&mut self)
+    fn consume_accessed(&mut self) -> bool
     {
-        unreachable!()
+        self.health.consume_accessed()
     }
 }
 
@@ -1604,7 +1523,7 @@ impl BrainId
 pub enum OrganId
 {
     Eye(Side1d),
-    Brain(Side1d, BrainId),
+    Brain(Option<Side1d>, Option<BrainId>),
     Lung(Side1d)
 }
 
@@ -1616,7 +1535,18 @@ impl Display for OrganId
         {
             Self::Eye(side) => (side, "eye".to_owned()),
             Self::Lung(side) => (side, "lung".to_owned()),
-            Self::Brain(side, id) => (side, id.to_string())
+            Self::Brain(side, id) =>
+            {
+                let name = id.map(|x| x.to_string()).unwrap_or_else(|| "hemisphere".to_owned());
+
+                if let Some(side) = side
+                {
+                    (side, name)
+                } else
+                {
+                    return write!(f, "{name}");
+                }
+            }
         };
 
         write!(f, "{side} {name}")
@@ -1633,8 +1563,8 @@ impl OrganId
             Self::Lung(Side1d::Left),
             Self::Lung(Side1d::Right)
         ].into_iter()
-            .chain(BrainId::iter().map(|id| Self::Brain(Side1d::Left, id)))
-            .chain(BrainId::iter().map(|id| Self::Brain(Side1d::Right, id)))
+            .chain(BrainId::iter().map(|id| Self::Brain(Some(Side1d::Left), Some(id))))
+            .chain(BrainId::iter().map(|id| Self::Brain(Some(Side1d::Right), Some(id))))
     }
 }
 
@@ -1853,34 +1783,6 @@ impl Organ for HeadOrgans
     {
         unimplemented!()
     }
-
-    fn clear(&mut self)
-    {
-        self.eyes.as_mut().map(|eye| { *eye = None; } );
-        self.brain = None;
-    }
-
-    fn consume_accessed<F: FnMut(OrganId)>(&mut self, mut f: F)
-    {
-        self.eyes.as_mut().map_sides(|side, eye|
-        {
-            if let Some(eye) = eye.as_mut()
-            {
-                if eye.health.consume_accessed()
-                {
-                    f(OrganId::Eye(side));
-                }
-            }
-        });
-
-        if let Some(brain) = self.brain.as_mut()
-        {
-            brain.as_mut().map_sides(|side, hemisphere|
-            {
-                hemisphere.consume_accessed(|id| f(OrganId::Brain(side, id)));
-            });
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1899,22 +1801,6 @@ impl Organ for TorsoOrgans
     fn size(&self) -> &f64
     {
         unimplemented!()
-    }
-
-    fn clear(&mut self)
-    {
-        self.lungs.as_mut().map(|x| { *x = None; });
-    }
-
-    fn consume_accessed<F: FnMut(OrganId)>(&mut self, mut f: F)
-    {
-        self.lungs.as_mut().map_sides(|side, lung|
-        {
-            if let Some(lung) = lung.as_mut()
-            {
-                if lung.health.consume_accessed() { f(OrganId::Lung(side)); }
-            }
-        });
     }
 }
 
@@ -1959,11 +1845,17 @@ impl DamageReceiver for TorsoOrgans
 
 macro_rules! remove_broken
 {
-    ($this:expr, $part:ident) =>
+    ($this:expr, $on_break:expr $(, $part:ident)?) =>
     {
-        if $this.as_ref().map(|x| x.$part.is_broken()).unwrap_or(false)
+        let is_broken = $this.as_ref().map(|x|
+        {
+            x$(.$part)?.is_broken()
+        }).unwrap_or(false);
+
+        if is_broken
         {
             $this.take();
+            $on_break();
         }
     }
 }
@@ -1977,11 +1869,12 @@ pub struct LowerLimb
 
 impl LowerLimb
 {
-    fn detach_broken(&mut self)
+    fn detach_broken(&mut self, on_break: impl FnOnce())
     {
         if self.leaf.as_ref().map(|x| x.is_broken()).unwrap_or(false)
         {
             self.leaf = None;
+            on_break();
         }
     }
 
@@ -2006,13 +1899,18 @@ pub struct Limb
 
 impl Limb
 {
-    fn detach_broken(&mut self)
+    fn detach_broken<OnBreak: FnMut(AnatomyId)>(
+        &mut self,
+        on_break: &mut OnBreak,
+        on_lower: impl FnOnce(&mut OnBreak),
+        on_leaf: impl FnOnce(&mut OnBreak)
+    )
     {
-        remove_broken!(self.lower, lower);
+        remove_broken!(self.lower, || on_lower(on_break), lower);
 
         if let Some(lower) = self.lower.as_mut()
         {
-            lower.detach_broken();
+            lower.detach_broken(|| on_leaf(on_break));
         }
     }
 
@@ -2042,15 +1940,24 @@ pub struct Torso
 
 impl Torso
 {
-    fn detach_broken(&mut self)
+    fn detach_broken(&mut self, on_break: &mut impl FnMut(AnatomyId))
     {
-        self.arms.as_mut().map(|arm|
+        self.torso.contents.lungs.as_mut().map_sides(|side, lung|
         {
-            remove_broken!(arm.as_mut(), upper);
+            remove_broken!(lung, || on_break(AnatomyId::Organ(OrganId::Lung(side))));
+        });
+
+        self.arms.as_mut().map_sides(|side, arm|
+        {
+            remove_broken!(arm.as_mut(), || on_break(AnatomyId::Part(HumanPartId::Arm(side))), upper);
 
             if let Some(arm) = arm.as_mut()
             {
-                arm.detach_broken();
+                arm.detach_broken(
+                    on_break,
+                    |on_break| on_break(AnatomyId::Part(HumanPartId::Forearm(side))),
+                    |on_break| on_break(AnatomyId::Part(HumanPartId::Hand(side)))
+                );
             }
         });
     }
@@ -2065,15 +1972,19 @@ pub struct Pelvis
 
 impl Pelvis
 {
-    fn detach_broken(&mut self)
+    fn detach_broken(&mut self, on_break: &mut impl FnMut(AnatomyId))
     {
-        self.legs.as_mut().map(|leg|
+        self.legs.as_mut().map_sides(|side, leg|
         {
-            remove_broken!(leg.as_mut(), upper);
+            remove_broken!(leg.as_mut(), || on_break(AnatomyId::Part(HumanPartId::Thigh(side))), upper);
 
             if let Some(leg) = leg.as_mut()
             {
-                leg.detach_broken();
+                leg.detach_broken(
+                    on_break,
+                    |on_break| on_break(AnatomyId::Part(HumanPartId::Calf(side))),
+                    |on_break| on_break(AnatomyId::Part(HumanPartId::Foot(side)))
+                );
             }
         });
     }
@@ -2089,19 +2000,19 @@ pub struct Spine
 
 impl Spine
 {
-    fn detach_broken(&mut self)
+    fn detach_broken(&mut self, on_break: &mut impl FnMut(AnatomyId))
     {
-        remove_broken!(self.torso, torso);
-        remove_broken!(self.pelvis, pelvis);
+        remove_broken!(self.torso, || on_break(AnatomyId::Part(HumanPartId::Torso)), torso);
+        remove_broken!(self.pelvis, || on_break(AnatomyId::Part(HumanPartId::Pelvis)), pelvis);
 
         if let Some(torso) = self.torso.as_mut()
         {
-            torso.detach_broken();
+            torso.detach_broken(on_break);
         }
 
         if let Some(pelvis) = self.pelvis.as_mut()
         {
-            pelvis.detach_broken();
+            pelvis.detach_broken(on_break);
         }
     }
 }
@@ -2115,13 +2026,22 @@ pub struct HumanBody
 
 impl HumanBody
 {
-    fn detach_broken(&mut self)
+    fn detach_broken(&mut self, mut on_break: impl FnMut(AnatomyId))
     {
-        remove_broken!(self.spine, spine);
+        let on_break = &mut on_break;
+
+        remove_broken!(self.head.contents.brain, || on_break(AnatomyId::Organ(OrganId::Brain(None, None))));
+
+        self.head.contents.eyes.as_mut().map_sides(|side, eye|
+        {
+            remove_broken!(eye, || on_break(AnatomyId::Organ(OrganId::Eye(side))));
+        });
+
+        remove_broken!(self.spine, || on_break(AnatomyId::Part(HumanPartId::Spine)), spine);
 
         if let Some(spine) = self.spine.as_mut()
         {
-            spine.detach_broken();
+            spine.detach_broken(on_break);
         }
     }
 }
@@ -2164,7 +2084,23 @@ macro_rules! impl_get
                 {
                     self.head.contents.brain.$option_fn().map(|x|
                     {
+                        let side = if let Some(x) = side
+                        {
+                            x
+                        } else
+                        {
+                            return F::get(x);
+                        };
+
                         let hemisphere = $($b)+ x[side];
+
+                        let id = if let Some(x) = id
+                        {
+                            x
+                        } else
+                        {
+                            return F::get(hemisphere);
+                        };
 
                         match id
                         {
@@ -2210,23 +2146,32 @@ macro_rules! impl_get
             id: HumanPartId
         ) -> Option<F::V<'_>>
         {
-            let spine = self.spine.$option_fn()?;
-
-            let torso = spine.torso.$option_fn()?;
-            let pelvis = spine.pelvis.$option_fn()?;
+            let spine = self.spine.$option_fn();
 
             match id
             {
-                HumanPartId::Head => Some(F::get($($b)+ self.head)),
-                HumanPartId::Spine => Some(F::get($($b)+ spine.spine)),
-                HumanPartId::Torso => Some(F::get($($b)+ torso.torso)),
-                HumanPartId::Pelvis => Some(F::get($($b)+ pelvis.pelvis)),
-                HumanPartId::Thigh(side) => Some(F::get($($b)+ pelvis.legs[side].$option_fn()?.upper)),
-                HumanPartId::Calf(side) => Some(F::get($($b)+ pelvis.legs[side].$option_fn()?.lower.$option_fn()?.lower)),
-                HumanPartId::Foot(side) => Some(F::get(pelvis.legs[side].$option_fn()?.lower.$option_fn()?.leaf.$option_fn()?)),
-                HumanPartId::Arm(side) => Some(F::get($($b)+ torso.arms[side].$option_fn()?.upper)),
-                HumanPartId::Forearm(side) => Some(F::get($($b)+ torso.arms[side].$option_fn()?.lower.$option_fn()?.lower)),
-                HumanPartId::Hand(side) => Some(F::get(torso.arms[side].$option_fn()?.lower.$option_fn()?.leaf.$option_fn()?))
+                HumanPartId::Head => return Some(F::get($($b)+ self.head)),
+                HumanPartId::Spine => return Some(F::get($($b)+ spine?.spine)),
+                _ => ()
+            }
+
+            let spine = spine?;
+
+            let torso = spine.torso.$option_fn();
+            let pelvis = spine.pelvis.$option_fn();
+
+            match id
+            {
+                HumanPartId::Head => unreachable!(),
+                HumanPartId::Spine => unreachable!(),
+                HumanPartId::Torso => Some(F::get($($b)+ torso?.torso)),
+                HumanPartId::Pelvis => Some(F::get($($b)+ pelvis?.pelvis)),
+                HumanPartId::Thigh(side) => Some(F::get($($b)+ pelvis?.legs[side].$option_fn()?.upper)),
+                HumanPartId::Calf(side) => Some(F::get($($b)+ pelvis?.legs[side].$option_fn()?.lower.$option_fn()?.lower)),
+                HumanPartId::Foot(side) => Some(F::get(pelvis?.legs[side].$option_fn()?.lower.$option_fn()?.leaf.$option_fn()?)),
+                HumanPartId::Arm(side) => Some(F::get($($b)+ torso?.arms[side].$option_fn()?.upper)),
+                HumanPartId::Forearm(side) => Some(F::get($($b)+ torso?.arms[side].$option_fn()?.lower.$option_fn()?.lower)),
+                HumanPartId::Hand(side) => Some(F::get(torso?.arms[side].$option_fn()?.lower.$option_fn()?.leaf.$option_fn()?))
             }
         }
     }
@@ -2384,6 +2329,7 @@ pub struct HumanAnatomy
     override_crawling: bool,
     blood: SimpleHealth,
     body: HumanBody,
+    broken: Vec<AnatomyId>,
     cached: CachedProps
 }
 
@@ -2539,6 +2485,7 @@ impl HumanAnatomy
             override_crawling: false,
             blood: SimpleHealth::new(4.0),
             body,
+            broken: Vec::new(),
             cached: Default::default()
         };
 
@@ -2596,6 +2543,14 @@ impl HumanAnatomy
 
     pub fn for_accessed_parts(&mut self, mut f: impl FnMut(ChangedPart))
     {
+        {
+            let f = &mut f;
+            mem::take(&mut self.broken).into_iter().for_each(|broken|
+            {
+                f(ChangedPart::whole(broken));
+            });
+        }
+
         AnatomyId::iter().for_each(|id|
         {
             let f = &mut f;
@@ -2606,14 +2561,14 @@ impl HumanAnatomy
                 {
                     if let Some(x) = self.body.get_part_mut::<AccessedGetter>(id)
                     {
-                        x(&mut |kind| f(ChangedPart::Part(id, kind)));
+                        x(&mut |kind| f(ChangedPart::Part(id, Some(kind))));
                     }
                 },
                 AnatomyId::Organ(id) =>
                 {
-                    if let Some(x) = self.body.get_organ_mut::<AccessedGetter>(id)
+                    if self.body.get_organ_mut::<AccessedGetter>(id).unwrap_or(false)
                     {
-                        x(&mut |id| f(ChangedPart::Organ(id)));
+                        f(ChangedPart::Organ(id));
                     }
                 }
             }
@@ -2627,14 +2582,20 @@ impl HumanAnatomy
         {
             ChangedPart::Part(x, kind) =>
             {
-                let health = match kind
+                if let Some(kind) = kind
                 {
-                    ChangedKind::Bone => body.get_part::<BoneHealthGetter>(x).copied(),
-                    ChangedKind::Muscle => body.get_part::<MuscleHealthGetter>(x).copied().flatten(),
-                    ChangedKind::Skin => body.get_part::<SkinHealthGetter>(x).copied().flatten()
-                };
+                    let health = match kind
+                    {
+                        ChangedKind::Bone => body.get_part::<BoneHealthGetter>(x).copied(),
+                        ChangedKind::Muscle => body.get_part::<MuscleHealthGetter>(x).copied().flatten(),
+                        ChangedKind::Skin => body.get_part::<SkinHealthGetter>(x).copied().flatten()
+                    };
 
-                health.map(|x| x.fraction())
+                    health.map(|x| x.fraction())
+                } else
+                {
+                    body.get_part::<AverageHealthGetter>(x)
+                }
             },
             ChangedPart::Organ(x) => body.get_organ::<AverageHealthGetter>(x)
         }
@@ -2762,7 +2723,7 @@ impl HumanAnatomy
         {
             let picked_damage = self.body.get_mut::<DamagerGetter>(*picked).map(|x| x(damage.clone()));
 
-            self.body.detach_broken();
+            self.body.detach_broken(|id| { self.broken.push(id); });
 
             if let Some(damage) = picked_damage
             {

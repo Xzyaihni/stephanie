@@ -1,5 +1,3 @@
-use std::fmt::{self, Display};
-
 use image::{Rgba, DynamicImage, RgbaImage};
 
 use nalgebra::Vector2;
@@ -56,50 +54,20 @@ impl UiAnatomyLocation
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum AnatomyChangedPart
+fn color_pairs() -> Vec<(ChangedPart, Rgba<u8>)>
 {
-    Exact(ChangedPart),
-    Brain(Side1d)
-}
-
-impl From<ChangedPart> for AnatomyChangedPart
-{
-    fn from(x: ChangedPart) -> Self
-    {
-        if let ChangedPart::Organ(OrganId::Brain(side, _)) = &x
-        {
-            return Self::Brain(*side);
-        }
-
-        Self::Exact(x)
-    }
-}
-
-impl Display for AnatomyChangedPart
-{
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
-    {
-        match self
-        {
-            Self::Exact(x) => Display::fmt(x, f),
-            Self::Brain(side) => write!(f, "{side} brain hemisphere")
-        }
-    }
-}
-
-fn color_pairs() -> Vec<(AnatomyChangedPart, Rgba<u8>)>
-{
-    let parts: Vec<_> = ChangedPart::iter().filter_map(|x|
+    let parts: Vec<_> = ChangedPart::iter().filter(|x|
     {
         if let ChangedPart::Organ(OrganId::Brain(_, _)) = x
         {
-            return None;
+            return false;
         }
 
-        Some(AnatomyChangedPart::Exact(x))
-    }).chain([AnatomyChangedPart::Brain(Side1d::Left), AnatomyChangedPart::Brain(Side1d::Right)])
-        .collect();
+        true
+    }).chain([
+        ChangedPart::Organ(OrganId::Brain(Some(Side1d::Left), None)),
+        ChangedPart::Organ(OrganId::Brain(Some(Side1d::Right), None))
+    ]).collect();
 
     let per_channel = (parts.len() as f64).cbrt().ceil() as usize;
     parts.into_iter().enumerate().map(|(index, key)|
@@ -123,7 +91,7 @@ fn color_pairs() -> Vec<(AnatomyChangedPart, Rgba<u8>)>
 
 pub struct UiAnatomyLocations
 {
-    pub locations: Vec<(AnatomyChangedPart, UiAnatomyLocation)>
+    pub locations: Vec<(ChangedPart, UiAnatomyLocation)>
 }
 
 impl UiAnatomyLocations

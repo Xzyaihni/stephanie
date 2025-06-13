@@ -22,7 +22,6 @@ use crate::{
         game_state::{
             GameState,
             UiAnatomyLocations,
-            AnatomyChangedPart,
             UiControls,
             UiEvent,
             GameUiEvent,
@@ -110,7 +109,7 @@ pub enum SeenNotificationPart
 pub enum AnatomyNotificationPart
 {
     Body,
-    Part(AnatomyChangedPart)
+    Part(ChangedPart)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -193,7 +192,7 @@ pub enum WindowPart
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum AnatomyPart
 {
-    BodyPart(AnatomyChangedPart),
+    BodyPart(ChangedPart),
     Tooltip(AnatomyTooltipPart)
 }
 
@@ -395,21 +394,9 @@ fn single_health_color(fraction: Option<f32>) -> Lcha
     }).unwrap_or(MISSING_PART_COLOR)
 }
 
-fn health_color(anatomy: &Anatomy, id: AnatomyChangedPart) -> Lcha
+fn health_color(anatomy: &Anatomy, id: ChangedPart) -> Lcha
 {
-    let health = match id
-    {
-        AnatomyChangedPart::Exact(id) =>
-        {
-            anatomy.as_human().unwrap().get_health(id)
-        },
-        AnatomyChangedPart::Brain(side) =>
-        {
-            anatomy.as_human().unwrap().body().head.contents().brain.as_ref().map(|x| x[side].average_health())
-        }
-    };
-
-    single_health_color(health)
+    single_health_color(anatomy.as_human().unwrap().get_health(id))
 }
 
 pub struct UiList<T>
@@ -1123,20 +1110,20 @@ impl WindowKind
                     draw_separator();
                     match part_id
                     {
-                        AnatomyChangedPart::Exact(id) =>
-                        {
-                            draw_bar(BarId::Health, id);
-                            draw_separator();
-                        },
-                        AnatomyChangedPart::Brain(side) =>
+                        ChangedPart::Organ(OrganId::Brain(side, _)) =>
                         {
                             BrainId::iter().for_each(|brain_id|
                             {
-                                let id = ChangedPart::Organ(OrganId::Brain(side, brain_id));
+                                let id = ChangedPart::Organ(OrganId::Brain(side, Some(brain_id)));
 
-                                draw_bar(BarId::Brain(side, brain_id), id);
+                                draw_bar(BarId::Brain(side.unwrap(), brain_id), id);
                                 draw_separator();
                             });
+                        },
+                        _ =>
+                        {
+                            draw_bar(BarId::Health, part_id);
+                            draw_separator();
                         }
                     }
                 }
@@ -1281,7 +1268,7 @@ struct UiItemPopup
 struct AnatomyNotification
 {
     pub lifetime: f32,
-    pub kind: AnatomyChangedPart
+    pub kind: ChangedPart
 }
 
 pub struct Ui

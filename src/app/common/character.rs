@@ -1205,7 +1205,7 @@ impl Character
 
         combined_info.entities.push(true, EntityInfo{
             damaging: Some(DamagingInfo{
-                damage: DamagingType::Raycast{info, damage, start, target, scale_pierce: Some(ENTITY_SCALE)},
+                damage: DamagingType::Raycast{info, damage, start, target, scale_pierce: Some(ENTITY_SCALE.recip())},
                 faction: Some(self.faction),
                 ..Default::default()
             }.into()),
