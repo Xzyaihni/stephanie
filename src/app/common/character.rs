@@ -232,6 +232,7 @@ pub struct AfterInfo
     holding: Entity,
     hair: Vec<Entity>,
     rotation: f32,
+    sprint_await: bool,
     buffered: [bool; BufferedAction::COUNT]
 }
 
@@ -254,8 +255,7 @@ pub struct Character
 {
     pub id: CharacterId,
     pub faction: Faction,
-    pub sprinting: bool,
-    oversprint_cooldown: f32,
+    sprinting: bool,
     stamina: f32,
     jiggle: f32,
     holding: Option<InventoryItem>,
@@ -283,7 +283,6 @@ impl Character
             id,
             faction,
             sprinting: false,
-            oversprint_cooldown: 0.0,
             stamina: f32::MAX,
             jiggle: 0.0,
             info: None,
@@ -468,6 +467,7 @@ impl Character
             holding: inserter(held_item(Some(hand_left), false)),
             hair,
             rotation,
+            sprint_await: false,
             buffered: [false; BufferedAction::COUNT]
         };
 
@@ -1527,7 +1527,6 @@ impl Character
     )
     {
         Self::decrease_timer(&mut self.attack_cooldown, dt);
-        Self::decrease_timer(&mut self.oversprint_cooldown, dt);
     }
 
     fn update_buffered(&mut self, combined_info: CombinedInfo)
@@ -1769,13 +1768,12 @@ impl Character
 
     fn is_sprinting(&self) -> bool
     {
-        if self.oversprint_cooldown <= 0.0
+        if some_or_value!(self.info.as_ref(), false).sprint_await
         {
-            self.sprinting && self.stamina > 0.0
-        } else
-        {
-            false
+            return false;
         }
+
+        self.sprinting && self.stamina > 0.0
     }
 
     fn update_jiggle(&mut self, combined_info: CombinedInfo, dt: f32)
@@ -1807,9 +1805,9 @@ impl Character
             Self::decrease_timer(&mut self.stamina, 0.5 * dt);
             if self.stamina < 0.0
             {
-                let until_half = ((max_stamina / 2.0) - self.stamina) / recharge_speed;
+                let info = some_or_return!(self.info.as_mut());
 
-                self.oversprint_cooldown = until_half;
+                info.sprint_await = true;
             }
         }
 
@@ -1819,6 +1817,18 @@ impl Character
         }
 
         self.stamina = self.stamina.min(max_stamina);
+    }
+
+    pub fn set_sprinting(&mut self, value: bool)
+    {
+        self.sprinting = value;
+
+        if !value
+        {
+            let info = some_or_return!(self.info.as_mut());
+
+            info.sprint_await = false;
+        }
     }
 
     pub fn walk(

@@ -1089,6 +1089,17 @@ impl<'a> PlayerContainer<'a>
             {
                 self.info.interacted = state == ControlState::Pressed;
             },
+            Control::Sprint =>
+            {
+                let movement_direction = self.movement_direction();
+
+                let is_sprinting = movement_direction.is_some() && state == ControlState::Pressed;
+
+                if let Some(character) = self.game_state.entities().character_mut(self.info.entity).as_mut()
+                {
+                    character.set_sprinting(is_sprinting);
+                }
+            },
             _ => ()
         }
 
@@ -1350,10 +1361,6 @@ impl<'a> PlayerContainer<'a>
 
         {
             let movement_direction = self.movement_direction();
-            if let Some(character) = self.game_state.entities().character_mut(self.info.entity).as_mut()
-            {
-                character.sprinting = movement_direction.is_some() && self.game_state.pressed(Control::Sprint);
-            }
 
             if let Some(movement) = movement_direction
             {
