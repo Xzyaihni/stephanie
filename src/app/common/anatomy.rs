@@ -2020,7 +2020,7 @@ impl Spine
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HumanBody
 {
-    pub head: HumanPart<HeadOrgans>,
+    pub head: Option<HumanPart<HeadOrgans>>,
     pub spine: Option<Spine>
 }
 
@@ -2030,12 +2030,17 @@ impl HumanBody
     {
         let on_break = &mut on_break;
 
-        remove_broken!(self.head.contents.brain, || on_break(AnatomyId::Organ(OrganId::Brain(None, None))));
+        remove_broken!(self.head, || on_break(AnatomyId::Part(HumanPartId::Head)));
 
-        self.head.contents.eyes.as_mut().map_sides(|side, eye|
+        if let Some(head) = self.head.as_mut()
         {
-            remove_broken!(eye, || on_break(AnatomyId::Organ(OrganId::Eye(side))));
-        });
+            remove_broken!(head.contents.brain, || on_break(AnatomyId::Organ(OrganId::Brain(None, None))));
+
+            head.contents.eyes.as_mut().map_sides(|side, eye|
+            {
+                remove_broken!(eye, || on_break(AnatomyId::Organ(OrganId::Eye(side))));
+            });
+        }
 
         remove_broken!(self.spine, || on_break(AnatomyId::Part(HumanPartId::Spine)), spine);
 
@@ -2082,7 +2087,7 @@ macro_rules! impl_get
             {
                 OrganId::Brain(side, id) =>
                 {
-                    self.head.contents.brain.$option_fn().map(|x|
+                    self.head.$option_fn()?.contents.brain.$option_fn().map(|x|
                     {
                         let side = if let Some(x) = side
                         {
@@ -2129,7 +2134,7 @@ macro_rules! impl_get
                 },
                 OrganId::Eye(side) =>
                 {
-                    self.head.contents.eyes[side].$option_fn().map(|x| F::get(x))
+                    self.head.$option_fn()?.contents.eyes[side].$option_fn().map(|x| F::get(x))
                 },
                 OrganId::Lung(side) =>
                 {
@@ -2150,7 +2155,7 @@ macro_rules! impl_get
 
             match id
             {
-                HumanPartId::Head => return Some(F::get($($b)+ self.head)),
+                HumanPartId::Head => return Some(F::get(self.head.$option_fn()?)),
                 HumanPartId::Spine => return Some(F::get($($b)+ spine?.spine)),
                 _ => ()
             }
@@ -2475,7 +2480,7 @@ impl HumanAnatomy
         };
 
         let body = HumanBody{
-            head,
+            head: Some(head),
             spine: Some(spine)
         };
 
@@ -2784,7 +2789,7 @@ impl HumanAnatomy
 
     fn brain(&self) -> Option<&Brain>
     {
-        self.body.head.contents.brain.as_ref()
+        self.body.head.as_ref()?.contents.brain.as_ref()
     }
 
     fn updated_speed(&mut self) -> (bool, Option<f32>)
@@ -2876,7 +2881,7 @@ impl HumanAnatomy
         let vision = brain.as_ref().map(|hemisphere|
         {
             hemisphere.occipital.0.fraction().powi(3)
-        }).flip().zip(self.body.head.contents.eyes.as_ref()).map(|(fraction, eye)|
+        }).flip().zip(self.body.head.as_ref()?.contents.eyes.as_ref()).map(|(fraction, eye)|
         {
             eye.as_ref().map(|x| x.average_health()).unwrap_or(0.0) * fraction
         }).combine(|a, b| a.max(b));
