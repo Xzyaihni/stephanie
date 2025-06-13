@@ -10,6 +10,8 @@ use parking_lot::{RwLock, Mutex};
 
 use serde::{Serialize, Deserialize};
 
+use strum::{IntoEnumIterator, EnumIter, EnumCount};
+
 use nalgebra::{Unit, Vector3};
 
 use yanyaengine::{Assets, Transform, TextureId};
@@ -212,7 +214,16 @@ pub struct CharacterSyncInfo
     pub rotation: f32
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[repr(usize)]
+#[derive(Debug, Clone, Copy, EnumIter, EnumCount)]
+enum BufferedAction
+{
+    Bash = 0,
+    Poke,
+    Aim
+}
+
+#[derive(Debug, Clone)]
 pub struct AfterInfo
 {
     this: Entity,
@@ -220,7 +231,8 @@ pub struct AfterInfo
     hand_right: Entity,
     holding: Entity,
     hair: Vec<Entity>,
-    rotation: f32
+    rotation: f32,
+    buffered: [bool; BufferedAction::COUNT]
 }
 
 #[derive(Default, Debug, Clone)]
@@ -455,7 +467,8 @@ impl Character
             hand_right: inserter(held_item(None, false)),
             holding: inserter(held_item(Some(hand_left), false)),
             hair,
-            rotation
+            rotation,
+            buffered: [false; BufferedAction::COUNT]
         };
 
         if !entities.light_exists(entity)
@@ -876,7 +889,7 @@ impl Character
         let cost = some_or_value!(self.attack_stamina_cost(combined_info), false);
         let attackable_item = cost <= self.stamina;
 
-        self.attackable_state() && attackable_item
+        self.attackable_state() && attackable_item && self.attack_cooldown <= 0.0
     }
 
     fn anatomy<'a>(&'a self, entities: &'a ClientEntities) -> Option<Ref<'a, Anatomy>>
@@ -971,13 +984,12 @@ impl Character
     {
         if !self.can_attack(combined_info)
         {
+            self.start_buffered(BufferedAction::Bash);
+
             return;
         }
 
-        if self.attack_cooldown > 0.0
-        {
-            return;
-        }
+        self.stop_buffered(BufferedAction::Bash);
 
         self.attack_cooldown = some_or_return!(self.bash_attack_cooldown(combined_info));
 
@@ -1029,15 +1041,14 @@ impl Character
 
     fn aim_start(&mut self, combined_info: CombinedInfo)
     {
-        if !self.can_ranged()
+        if !self.can_ranged() || self.attack_cooldown > 0.0
         {
+            self.start_buffered(BufferedAction::Aim);
+
             return;
         }
 
-        if self.attack_cooldown > 0.0
-        {
-            return;
-        }
+        self.stop_buffered(BufferedAction::Aim);
 
         let hand_left = some_or_return!(self.info.as_ref()).hand_left;
 
@@ -1050,17 +1061,31 @@ impl Character
         self.attack_state = AttackState::Aim;
     }
 
+    fn start_buffered(&mut self, action: BufferedAction)
+    {
+        let info = some_or_return!(self.info.as_mut());
+        info.buffered[action as usize] = true;
+    }
+
+    fn stop_buffered(&mut self, action: BufferedAction)
+    {
+        let info = some_or_return!(self.info.as_mut());
+        if info.buffered[action as usize]
+        {
+            info.buffered[action as usize] = false;
+        }
+    }
+
     fn poke_attack_start(&mut self, combined_info: CombinedInfo)
     {
         if !self.can_attack(combined_info)
         {
+            self.start_buffered(BufferedAction::Poke);
+
             return;
         }
 
-        if self.attack_cooldown > 0.0
-        {
-            return;
-        }
+        self.stop_buffered(BufferedAction::Poke);
 
         let hand_left = some_or_return!(self.info.as_ref()).hand_left;
 
@@ -1075,17 +1100,14 @@ impl Character
 
     fn poke_attack(&mut self, combined_info: CombinedInfo) -> bool
     {
+        self.stop_buffered(BufferedAction::Poke);
+
         if self.attack_state != AttackState::Poke
         {
             return false;
         }
 
         if !self.can_attack(combined_info)
-        {
-            return false;
-        }
-
-        if self.attack_cooldown > 0.0
         {
             return false;
         }
@@ -1160,6 +1182,8 @@ impl Character
         target: Vector3<f32>
     ) -> bool
     {
+        self.stop_buffered(BufferedAction::Aim);
+
         if self.attack_state != AttackState::Aim
         {
             return false;
@@ -1506,6 +1530,27 @@ impl Character
         Self::decrease_timer(&mut self.oversprint_cooldown, dt);
     }
 
+    fn update_buffered(&mut self, combined_info: CombinedInfo)
+    {
+        if self.info.is_none()
+        {
+            return;
+        }
+
+        for action in BufferedAction::iter()
+        {
+            if self.info.as_ref().expect("info must not disappear after creation").buffered[action as usize]
+            {
+                match action
+                {
+                    BufferedAction::Poke => { self.poke_attack_start(combined_info); },
+                    BufferedAction::Bash => self.bash_attack(combined_info),
+                    BufferedAction::Aim => self.aim_start(combined_info)
+                }
+            }
+        }
+    }
+
     pub fn scale_ratio(&self, combined_info: CombinedInfo) -> Option<f32>
     {
         let info = combined_info.characters_info.get(self.id);
@@ -1589,6 +1634,8 @@ impl Character
         self.update_jiggle(combined_info, dt);
         self.update_sprint(combined_info, dt);
         self.update_attacks(dt);
+
+        self.update_buffered(combined_info);
 
         if !self.update_common(combined_info.characters_info, combined_info.entities)
         {

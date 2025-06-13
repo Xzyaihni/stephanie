@@ -2356,7 +2356,7 @@ impl HumanAnatomy
 
         let bone_toughness = info.bone_toughness;
         let base_speed = info.base_speed;
-        let base_strength = info.base_strength;
+        let base_strength = info.base_strength * 2.0;
         let part = BodyPartInfo::from(info);
 
         fn new_part_with_contents<Contents>(
