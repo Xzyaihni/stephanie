@@ -1,7 +1,6 @@
 use std::{
     f32,
     mem,
-    convert,
     rc::Rc,
     fmt::{self, Debug, Display},
     ops::{Index, IndexMut, ControlFlow, Deref, DerefMut}
@@ -213,6 +212,11 @@ impl PartFieldGetter<RefMutOrganFieldGet> for AccessedGetter
     {
         value.consume_accessed()
     }
+}
+
+fn no_zero(value: f32) -> Option<f32>
+{
+    (value != 0.0).then_some(value)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -2217,6 +2221,14 @@ impl PierceType
         }
     }
 
+    fn no_follow() -> fn(&mut HumanAnatomy, Option<Damage>) -> Option<Damage>
+    {
+        |_this, damage|
+        {
+            damage
+        }
+    }
+
     fn pelvis(side: Side1d) -> Self
     {
         Self::always(HumanPartId::Thigh(side.opposite()).into())
@@ -2226,17 +2238,17 @@ impl PierceType
     {
         let possible = vec![OrganId::Eye(Side1d::Left).into(), OrganId::Eye(Side1d::Right).into()];
 
-        Self::possible_pierce(possible, 1, convert::identity)
+        Self::possible_pierce(possible, 1, Self::no_follow())
     }
 
     fn torso_front() -> Self
     {
-        Self::possible_pierce(vec![HumanPartId::Spine.into()], 2, convert::identity)
+        Self::possible_pierce(vec![HumanPartId::Spine.into()], 2, Self::no_follow())
     }
 
     fn possible_pierce<F>(possible: Vec<AnatomyId>, misses: usize, f: F) -> Self
     where
-        F: Fn(Option<Damage>) -> Option<Damage> + 'static
+        F: Fn(&mut HumanAnatomy, Option<Damage>) -> Option<Damage> + 'static
     {
         let possible_cloned = possible.clone();
 
@@ -2249,18 +2261,20 @@ impl PierceType
 
                 if possible_actions.is_empty()
                 {
-                    return f(None);
+                    return f(this, None);
                 }
 
                 let miss_check = damage.rng.next_usize_between(0..possible_actions.len() + misses);
                 if miss_check >= possible_actions.len()
                 {
-                    return f(None);
+                    return f(this, None);
                 }
 
                 let target = damage.rng.choice(possible_actions);
 
-                f(this.body.get_mut::<DamagerGetter>(target).unwrap()(damage))
+                let pierce = this.body.get_mut::<DamagerGetter>(target).unwrap()(damage);
+
+                f(this, pierce)
             })
         }
     }
@@ -2275,31 +2289,17 @@ impl PierceType
             HumanPartId::Hand(opposite).into()
         ];
 
-        Self::possible_pierce(possible, 1, convert::identity)
+        Self::possible_pierce(possible, 0, Self::no_follow())
     }
 
     fn arm_pierce(side: Side1d) -> PierceType
     {
-        Self{
-            possible: vec![HumanPartId::Spine.into(), HumanPartId::Torso.into()],
-            action: Rc::new(move |this: &mut HumanAnatomy, mut damage|
-            {
-                let target = if damage.rng.next_bool()
-                {
-                    HumanPartId::Spine
-                } else
-                {
-                    HumanPartId::Torso
-                };
+        let possible = vec![HumanPartId::Spine.into(), HumanPartId::Torso.into()];
 
-                let pierce = some_or_value!(
-                    this.body.get_mut::<DamagerGetter>(target.into()).unwrap()(damage),
-                    None
-                );
-
-                (Self::middle_pierce(side).action)(this, pierce)
-            })
-        }
+        Self::possible_pierce(possible, 0, move |this, pierce|
+        {
+            (Self::middle_pierce(side).action)(this, pierce?)
+        })
     }
 
     fn leg_pierce(side: Side1d) -> PierceType
@@ -2312,7 +2312,7 @@ impl PierceType
             HumanPartId::Foot(opposite).into()
         ];
 
-        Self::possible_pierce(possible, 0, convert::identity)
+        Self::possible_pierce(possible, 0, Self::no_follow())
     }
 
     fn any_exists(&self, anatomy: &HumanAnatomy) -> bool
@@ -2828,7 +2828,7 @@ impl HumanAnatomy
     {
         let fraction = self.speed_scale().arms * 2.5;
 
-        Some(self.base_strength * fraction)
+        no_zero(self.base_strength * fraction)
     }
 
     fn lung(&self, side: Side1d) -> Option<&Lung>
@@ -2857,7 +2857,7 @@ impl HumanAnatomy
         }).and_then(|torso| torso.torso.muscle.map(|x| x.fraction()))
             .unwrap_or(0.0);
 
-        Some(base * amount * torso_muscle)
+        no_zero(base * amount * torso_muscle)
     }
 
     fn updated_max_stamina(&mut self) -> Option<f32>
@@ -2869,7 +2869,7 @@ impl HumanAnatomy
             some_or_value!(self.lung(side), 0.0).health.fraction()
         }).combine(|a, b| a + b) / 2.0;
 
-        Some(base * amount)
+        no_zero(base * amount)
     }
 
     fn updated_vision(&mut self) -> Option<f32>
@@ -2886,7 +2886,7 @@ impl HumanAnatomy
             eye.as_ref().map(|x| x.average_health()).unwrap_or(0.0) * fraction
         }).combine(|a, b| a.max(b));
 
-        Some(base * vision)
+        no_zero(base * vision)
     }
 
     fn update_cache(&mut self)

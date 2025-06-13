@@ -256,6 +256,14 @@ fn damaging_raycasting(
 
         entities.remove_deferred(entity);
 
+        let other_entity = if let Some(source) = damaging.source
+        {
+            source
+        } else
+        {
+            entity
+        };
+
         let mut damage = damage.clone();
 
         if let Some(s) = scale_pierce
@@ -263,7 +271,7 @@ fn damaging_raycasting(
             damage.data *= (hit.result.pierce * s).min(1.0);
         }
 
-        DamagingResult{kind, other_entity: entity, angle, damage}
+        DamagingResult{kind, other_entity, angle, damage}
     }).collect()
 }
 

@@ -1184,6 +1184,7 @@ impl Character
 
         let info = some_or_false!(self.info.as_ref());
 
+        let source = Some(info.this);
         let start = combined_info.entities.transform(info.this).unwrap().position;
 
         let damage = ranged.damage();
@@ -1207,6 +1208,7 @@ impl Character
             damaging: Some(DamagingInfo{
                 damage: DamagingType::Raycast{info, damage, start, target, scale_pierce: Some(ENTITY_SCALE.recip())},
                 faction: Some(self.faction),
+                source,
                 ..Default::default()
             }.into()),
             ..Default::default()
