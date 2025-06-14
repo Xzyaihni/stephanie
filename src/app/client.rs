@@ -215,6 +215,11 @@ impl Client
 
     pub fn input(&mut self, control: yanyaengine::Control) -> bool
     {
+        if let yanyaengine::Control::Keyboard{repeat: true, ..} = control
+        {
+            return true;
+        }
+
         if let yanyaengine::Control::Keyboard{
             logical,
             state,
