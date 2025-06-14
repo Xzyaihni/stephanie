@@ -426,6 +426,7 @@ impl UiElementCached
         self.update_fraction(parent_fraction, deferred);
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn update<Id>(
         &mut self,
         create_info: &mut RenderCreateInfo,
@@ -662,11 +663,12 @@ impl<Id: Idable> UiDeferredInfo<Id>
         screen_size: &Vector2<f32>,
         element: &UiElement<Id>,
         previous: Option<&Self>,
-        parent_id: &Id,
-        parent: &Self,
-        parent_element: &UiElement<Id>
+        parent_info: &TreeElement<Id>
     )
     {
+        let parent_element = &parent_info.element;
+        let parent = &parent_info.deferred;
+
         let get_element_size = |direction: &_, id: &Id| -> Option<f32>
         {
             let element = resolved.get(id)?;
@@ -684,7 +686,7 @@ impl<Id: Idable> UiDeferredInfo<Id>
         {
             debug_assert!(!element.scissor, "nested scissors not supported");
 
-            self.scissor = Some(parent_id.clone());
+            self.scissor = Some(parent_info.id.clone());
         } else if let Some(scissor) = parent.scissor.clone()
         {
             debug_assert!(!element.scissor, "nested scissors not supported");
@@ -991,9 +993,7 @@ impl<Id: Idable> TreeElement<Id>
                 &shared.screen_size,
                 &this.element,
                 previous,
-                &parent.id,
-                &parent.deferred,
-                &parent.element
+                parent
             );
 
             resolved.insert(this.id.clone(), this.deferred.clone());

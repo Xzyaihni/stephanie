@@ -469,10 +469,7 @@ impl Default for Primitives
                         memory.primitives.index_by_name(&name).map(|index|
                         {
                             LispValue::new_primitive_procedure(index)
-                        }).ok_or_else(||
-                        {
-                            Error::UndefinedVariable(name)
-                        })
+                        }).ok_or(Error::UndefinedVariable(name))
                     }
                 })),
             ("make-vector",

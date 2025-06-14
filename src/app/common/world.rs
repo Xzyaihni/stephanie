@@ -126,6 +126,11 @@ impl World
         max_scale
     }
 
+    pub fn exists_fraction(&self) -> f64
+    {
+        self.overmap.exists_fraction()
+    }
+
     fn chunk_of(pos: Pos3<f32>) -> GlobalPos
     {
         TilePos::from(pos).chunk

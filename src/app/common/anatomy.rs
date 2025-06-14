@@ -376,7 +376,7 @@ impl ChangedPart
         HumanPartId::iter().map(|x| Self::Part(x, Some(ChangedKind::Bone)))
             .chain(HumanPartId::iter().map(|x| Self::Part(x, Some(ChangedKind::Muscle))))
             .chain(HumanPartId::iter().map(|x| Self::Part(x, Some(ChangedKind::Skin))))
-            .chain(OrganId::iter().map(|x| Self::Organ(x)))
+            .chain(OrganId::iter().map(Self::Organ))
     }
 }
 
@@ -1476,7 +1476,7 @@ impl FrontalId
 {
     pub fn iter() -> impl Iterator<Item=Self>
     {
-        MotorId::iter().map(|id| Self::Motor(id))
+        MotorId::iter().map(Self::Motor)
     }
 }
 
@@ -1519,7 +1519,7 @@ impl BrainId
             Self::Parietal,
             Self::Temporal,
             Self::Occipital
-        ].into_iter().chain(FrontalId::iter().map(|id| Self::Frontal(id)))
+        ].into_iter().chain(FrontalId::iter().map(Self::Frontal))
     }
 }
 
@@ -1599,8 +1599,8 @@ impl AnatomyId
 {
     pub fn iter() -> impl Iterator<Item=Self>
     {
-        HumanPartId::iter().map(|x| Self::Part(x))
-            .chain(OrganId::iter().map(|x| Self::Organ(x)))
+        HumanPartId::iter().map(Self::Part)
+            .chain(OrganId::iter().map(Self::Organ))
     }
 }
 
@@ -2211,6 +2211,7 @@ impl PierceType
             possible: vec![id],
             action: Rc::new(move |this, damage|
             {
+                #[allow(clippy::question_mark)]
                 if this.body.get::<()>(id).is_none()
                 {
                     return None;
