@@ -1702,6 +1702,7 @@ impl Ui
                     mix: Some(MixAnimation{
                         start_mix: Some(Lcha{a: 0.0, ..BLACK_COLOR}),
                         close_mix: Some(Lcha{a: 0.0, ..BLACK_COLOR}),
+                        decay: MixDecay::all(20.0),
                         ..Default::default()
                     }),
                     ..Default::default()

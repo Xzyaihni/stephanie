@@ -508,7 +508,7 @@ impl Character
 
     pub fn newtons(&self, combined_info: CombinedInfo) -> Option<f32>
     {
-        self.anatomy(combined_info.entities).and_then(|x| x.strength().map(|strength| strength * 30.0))
+        self.anatomy(combined_info.entities).map(|x| x.strength().map(|strength| strength * 30.0).unwrap_or(0.0))
     }
 
     #[allow(dead_code)]
@@ -529,12 +529,12 @@ impl Character
 
     pub fn stamina_speed(&self, combined_info: CombinedInfo) -> Option<f32>
     {
-        self.anatomy(combined_info.entities).and_then(|x| x.stamina())
+        self.anatomy(combined_info.entities).map(|x| x.stamina().unwrap_or(0.0))
     }
 
     pub fn max_stamina(&self, entities: &ClientEntities) -> Option<f32>
     {
-        self.anatomy(entities).and_then(|x| x.max_stamina())
+        self.anatomy(entities).map(|x| x.max_stamina().unwrap_or(0.0))
     }
 
     fn held_attack_cooldown(&self, combined_info: CombinedInfo) -> Option<f32>
@@ -1803,15 +1803,13 @@ impl Character
         if self.is_sprinting()
         {
             Self::decrease_timer(&mut self.stamina, 0.5 * dt);
-            if self.stamina < 0.0
+            if self.stamina <= 0.0
             {
                 let info = some_or_return!(self.info.as_mut());
 
                 info.sprint_await = true;
             }
-        }
-
-        if !self.is_sprinting()
+        } else
         {
             self.stamina += dt * recharge_speed;
         }

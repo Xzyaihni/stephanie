@@ -1400,7 +1400,7 @@ impl<'a> PlayerContainer<'a>
             }
         }
 
-        let animation_duration = 1.0;
+        let animation_duration = 0.7;
 
         let mut tile_info = None;
         let mut new_animation = None;
