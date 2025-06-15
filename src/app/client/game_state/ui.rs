@@ -77,7 +77,7 @@ const BACKGROUND_COLOR: Lcha = WHITE_COLOR;
 const ACCENT_COLOR: Lcha = Lcha{l: 70.0, c: 90.0, h: 6.0, a: 1.0};
 const HIGHLIGHTED_COLOR: Lcha = ACCENT_COLOR.with_added_lightness(20.0).with_added_chroma(-20.0);
 
-const MISSING_PART_COLOR: Lcha = Lcha{a: 0.5, ..BLACK_COLOR};
+const MISSING_PART_COLOR: Lcha = Lcha{l: 50.0, ..BLACK_COLOR};
 
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
