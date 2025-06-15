@@ -1839,7 +1839,7 @@ impl Ui
                     vertical: AlignVertical::Bottom
                 }},
                 animation: Animation{
-                    position: Some(PositionAnimation::ease_out(10.0)),
+                    position: None,
                     ..Animation::normal()
                 },
                 ..Default::default()
@@ -1876,7 +1876,7 @@ impl Ui
                     vertical: AlignVertical::Bottom
                 }},
                 animation: Animation{
-                    position: Some(PositionAnimation::ease_out(10.0)),
+                    position: None,
                     ..Animation::normal()
                 },
                 ..Default::default()
@@ -1903,7 +1903,10 @@ impl Ui
 
                 body.update(UiId::AnatomyNotification(*entity, AnatomyNotificationPart::Part(*part_id)), UiElement{
                     texture: UiTexture::CustomId(location.id),
-                    mix: Some(MixColorLch{keep_transparency: true, ..MixColorLch::color(health_color)}),
+                    mix: Some(MixColorLch{
+                        keep_transparency: true,
+                        ..MixColorLch::color(Lcha{a: 0.5, ..health_color})
+                    }),
                     position: UiPosition::Inherit,
                     animation: Animation{
                         mix: Some(MixAnimation{
