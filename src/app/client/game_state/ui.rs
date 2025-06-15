@@ -66,6 +66,7 @@ const SCROLLBAR_HEIGHT: f32 = BUTTON_SIZE * 5.0;
 
 const SEPARATOR_SIZE: f32 = 3.0;
 
+const BIG_TEXT_SIZE: u32 = 30;
 const SMALL_TEXT_SIZE: u32 = 20;
 const SMALLEST_TEXT_SIZE: u32 = 15;
 
@@ -83,6 +84,7 @@ const MISSING_PART_COLOR: Lcha = Lcha{a: 0.5, ..BLACK_COLOR};
 pub enum UiId
 {
     Screen,
+    Loading(LoadingPart),
     Padding(u32),
     Console(ConsolePart),
     SeenNotification(Entity, SeenNotificationPart),
@@ -93,6 +95,16 @@ pub enum UiId
     BarsBody,
     BarsBodyInner,
     BarDisplay(BarDisplayKind, BarDisplayPart)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum LoadingPart
+{
+    Cover,
+    Body,
+    Text,
+    BarBody,
+    Bar
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -1274,6 +1286,7 @@ pub struct Ui
     dragging_window: Option<(UiIdWindow, Vector2<f32>)>,
     mouse_position: Vector2<f32>,
     console_contents: Option<String>,
+    loading: Option<f32>,
     windows: Vec<Window>,
     stamina: BarDisplay,
     cooldown: BarDisplay,
@@ -1308,6 +1321,7 @@ impl Ui
             dragging_window: None,
             mouse_position: Vector2::zeros(),
             console_contents: None,
+            loading: Some(0.0),
             windows: Vec::new(),
             stamina: BarDisplay::default(),
             cooldown: BarDisplay::default(),
@@ -1360,6 +1374,16 @@ impl Ui
         }
 
         this
+    }
+
+    pub fn is_loading(&self) -> bool
+    {
+        self.loading.is_some()
+    }
+
+    pub fn set_loading(&mut self, value: Option<f32>)
+    {
+        self.loading = value;
     }
 
     pub fn set_mouse_position(&mut self, position: Vector2<f32>)
@@ -1599,6 +1623,49 @@ impl Ui
 
     pub fn update(&mut self, entities: &ClientEntities, controls: &mut UiControls<UiId>, dt: f32)
     {
+        if let Some(progress) = self.loading
+        {
+            self.controller.update(UiId::Loading(LoadingPart::Cover), UiElement{
+                texture: UiTexture::Solid,
+                mix: Some(MixColorLch::color(BLACK_COLOR)),
+                width: 1.0.into(),
+                height: 1.0.into(),
+                ..Default::default()
+            });
+
+            let body = self.controller.update(UiId::Loading(LoadingPart::Body), UiElement{
+                position: UiPosition::Absolute{position: Vector2::zeros(), align: Default::default()},
+                children_layout: UiLayout::Vertical,
+                ..Default::default()
+            });
+
+            body.update(UiId::Loading(LoadingPart::Text), UiElement{
+                texture: UiTexture::Text{text: "LOADING".to_owned(), font_size: BIG_TEXT_SIZE},
+                ..UiElement::fit_content()
+            });
+
+            let bar = body.update(UiId::Loading(LoadingPart::BarBody), UiElement{
+                texture: UiTexture::Solid,
+                mix: Some(MixColorLch::color(Lcha{l: 10.0, c: 0.0, h: 0.0, a: 1.0})),
+                width: UiSize::Rest(1.0).into(),
+                height: UiSize::Pixels(30.0).into(),
+                children_layout: UiLayout::Horizontal,
+                ..Default::default()
+            });
+
+            bar.update(UiId::Loading(LoadingPart::Bar), UiElement{
+                texture: UiTexture::Solid,
+                mix: Some(MixColorLch::color(WHITE_COLOR)),
+                width: UiSize::Rest(progress).into(),
+                height: UiSize::Rest(1.0).into(),
+                ..Default::default()
+            });
+
+            add_padding_horizontal(bar, UiSize::Rest(1.0 - progress).into());
+
+            return;
+        }
+
         let position_of = {
             let camera = self.camera;
             move |owner|

@@ -287,9 +287,9 @@ impl ClientOvermap
         }
     }
 
-    pub fn exists_fraction(&self) -> f64
+    pub fn exists_missing(&self) -> (u32, u32)
     {
-        let (exists, missing) = self.chunks.iter().fold((0, 0), |(exists, missing), (_, x)|
+        self.chunks.iter().fold((0, 0), |(exists, missing), (_, x)|
         {
             if x.is_some()
             {
@@ -298,9 +298,7 @@ impl ClientOvermap
             {
                 (exists, missing + 1)
             }
-        });
-
-        exists as f64 / (exists + missing) as f64
+        })
     }
 
     pub fn rescale(&mut self, camera_size: Vector2<f32>)

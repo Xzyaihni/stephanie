@@ -542,6 +542,7 @@ pub struct GameState
     shaders: ProgramShaders,
     host: bool,
     is_trusted: bool,
+    is_loading: bool,
     camera_scale: f32,
     rare_timer: f32,
     dt: Option<f32>,
@@ -707,6 +708,7 @@ impl GameState
             connected_and_ready: false,
             host: info.host,
             is_trusted: false,
+            is_loading: true,
             user_receiver,
             debug_visibility,
             connections_handler,
@@ -810,7 +812,37 @@ impl GameState
         }
 
         let message = some_or_return!{self.entities.handle_message(create_info, message)};
-        let message = some_or_return!{self.world.handle_message(message)};
+        let message = if let Some(x) = self.world.handle_message(message)
+        {
+            x
+        } else
+        {
+            if self.is_loading
+            {
+                let (exists, missing) = self.world.exists_missing();
+
+                let is_loading = missing != 0 || !self.connected_and_ready;
+
+                let loading = is_loading.then(||
+                {
+                    let world_progress = exists as f32 / (exists + missing) as f32;
+
+                    let f = 0.5;
+
+                    if self.connected_and_ready
+                    {
+                        f + world_progress * (1.0 - f)
+                    } else
+                    {
+                        world_progress * f
+                    }
+                });
+
+                self.set_loading(loading);
+            }
+
+            return;
+        };
 
         match message
         {
@@ -824,6 +856,13 @@ impl GameState
             },
             x => panic!("unhandled message: {x:?}")
         }
+    }
+
+    fn set_loading(&mut self, value: Option<f32>)
+    {
+        self.is_loading = value.is_some();
+
+        self.ui.borrow_mut().set_loading(value);
     }
 
     fn check_resize_camera(&mut self, dt: f32)

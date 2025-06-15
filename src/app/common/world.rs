@@ -126,9 +126,9 @@ impl World
         max_scale
     }
 
-    pub fn exists_fraction(&self) -> f64
+    pub fn exists_missing(&self) -> (u32, u32)
     {
-        self.overmap.exists_fraction()
+        self.overmap.exists_missing()
     }
 
     fn chunk_of(pos: Pos3<f32>) -> GlobalPos
