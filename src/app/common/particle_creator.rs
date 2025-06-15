@@ -150,7 +150,7 @@ impl ParticleCreator
         let position;
         let scale;
         {
-            let transform = entities.transform(entity).unwrap();
+            let transform = entities.transform(entity).expect("particle creator must have a transform");
 
             position = transform.position;
             scale = transform.scale;
@@ -207,7 +207,7 @@ impl ParticleCreator
 
                 physical.set_velocity_raw(velocity);
             }
-        
+
             // for now particles r local (i might change that?)
             entities.push_eager(true, prototype);
         })

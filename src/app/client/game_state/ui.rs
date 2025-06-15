@@ -1719,108 +1719,6 @@ impl Ui
             }
         };
 
-        self.seen_notifications.retain(|&entity, lifetime|
-        {
-            let id = |part|
-            {
-                UiId::SeenNotification(entity, part)
-            };
-
-            let enemy = some_or_value!(entities.enemy(entity), false);
-            let fraction = enemy.seen_fraction();
-            let is_attacking = enemy.is_attacking();
-
-            let position = some_or_value!(position_of(entity), false);
-
-            let body_position = UiPosition::Absolute{position, align: UiPositionAlign{
-                horizontal: AlignHorizontal::Middle,
-                vertical: AlignVertical::Bottom
-            }};
-
-            let body = self.controller.update(id(SeenNotificationPart::Body), UiElement{
-                position: body_position.clone(),
-                children_layout: UiLayout::Vertical,
-                animation: Animation{
-                    position: None,
-                    scaling: Some(ScalingAnimation{
-                        close_mode: Scaling::EaseIn(EaseInInfo::new(0.1)),
-                        close_scaling: Vector2::new(0.8, 0.0),
-                        ..Animation::normal().scaling.unwrap()
-                    }),
-                    ..Animation::normal()
-                },
-                ..Default::default()
-            });
-
-            let is_detected = fraction.is_none() && is_attacking;
-
-            if fraction.is_none()
-            {
-                *lifetime -= dt;
-            } else
-            {
-                *lifetime = 1.0;
-            }
-
-            let faded_id = id(SeenNotificationPart::Back);
-
-            if !is_detected
-            {
-                body.update(faded_id.clone(), UiElement{
-                    texture: UiTexture::Custom("ui/seen_faded.png".to_owned()),
-                    position: UiPosition::Inherit,
-                    ..UiElement::fit_content()
-                });
-            }
-
-            if let Some(fraction) = fraction
-            {
-                let clip = body.update(id(SeenNotificationPart::Clip), UiElement{
-                    position: UiPosition::Inherit,
-                    width: UiSize::Rest(1.0).into(),
-                    height: UiSize::CopyElement(UiDirection::Vertical, 1.0, faded_id.clone()).into(),
-                    children_layout: UiLayout::Vertical,
-                    ..Default::default()
-                });
-
-                add_padding_vertical(clip, UiSize::Rest(1.0 - fraction).into());
-
-                let clip_body = clip.update(id(SeenNotificationPart::ClipBody), UiElement{
-                    width: UiSize::CopyElement(UiDirection::Horizontal, 1.0, faded_id).into(),
-                    height: UiSize::Rest(fraction).into(),
-                    scissor: true,
-                    ..Default::default()
-                });
-
-                clip_body.update(id(SeenNotificationPart::Fill), UiElement{
-                    texture: UiTexture::Custom("ui/seen.png".to_owned()),
-                    position: body_position,
-                    ..UiElement::fit_content()
-                });
-            } else
-            {
-                if is_detected
-                {
-                    body.update(id(SeenNotificationPart::Fill), UiElement{
-                        texture: UiTexture::Custom("ui/seen_done.png".to_owned()),
-                        position: UiPosition::Inherit,
-                        animation: Animation{
-                            scaling: Some(ScalingAnimation{
-                                start_scaling: Vector2::repeat(2.0),
-                                start_mode: Scaling::EaseOut{decay: 20.0},
-                                close_mode: Scaling::Ignore,
-                                ..Default::default()
-                            }),
-                            ..Default::default()
-                        },
-                        ..UiElement::fit_content()
-                    });
-                }
-            }
-
-            *lifetime > 0.0
-        });
-
         self.notifications.retain_mut(|notification|
         {
             notification.lifetime -= dt;
@@ -1926,6 +1824,108 @@ impl Ui
 
                 part.lifetime > 0.0
             });
+
+            *lifetime > 0.0
+        });
+
+        self.seen_notifications.retain(|&entity, lifetime|
+        {
+            let id = |part|
+            {
+                UiId::SeenNotification(entity, part)
+            };
+
+            let enemy = some_or_value!(entities.enemy(entity), false);
+            let fraction = enemy.seen_fraction();
+            let is_attacking = enemy.is_attacking();
+
+            let position = some_or_value!(position_of(entity), false);
+
+            let body_position = UiPosition::Absolute{position, align: UiPositionAlign{
+                horizontal: AlignHorizontal::Middle,
+                vertical: AlignVertical::Bottom
+            }};
+
+            let body = self.controller.update(id(SeenNotificationPart::Body), UiElement{
+                position: body_position.clone(),
+                children_layout: UiLayout::Vertical,
+                animation: Animation{
+                    position: None,
+                    scaling: Some(ScalingAnimation{
+                        close_mode: Scaling::EaseIn(EaseInInfo::new(0.2)),
+                        close_scaling: Vector2::new(0.8, 0.0),
+                        ..Animation::normal().scaling.unwrap()
+                    }),
+                    ..Animation::normal()
+                },
+                ..Default::default()
+            });
+
+            let is_detected = fraction.is_none() && is_attacking;
+
+            if fraction.is_none()
+            {
+                *lifetime -= dt;
+            } else
+            {
+                *lifetime = 1.0;
+            }
+
+            let faded_id = id(SeenNotificationPart::Back);
+
+            if !is_detected
+            {
+                body.update(faded_id.clone(), UiElement{
+                    texture: UiTexture::Custom("ui/seen_faded.png".to_owned()),
+                    position: UiPosition::Inherit,
+                    ..UiElement::fit_content()
+                });
+            }
+
+            if let Some(fraction) = fraction
+            {
+                let clip = body.update(id(SeenNotificationPart::Clip), UiElement{
+                    position: UiPosition::Inherit,
+                    width: UiSize::Rest(1.0).into(),
+                    height: UiSize::CopyElement(UiDirection::Vertical, 1.0, faded_id.clone()).into(),
+                    children_layout: UiLayout::Vertical,
+                    ..Default::default()
+                });
+
+                add_padding_vertical(clip, UiSize::Rest(1.0 - fraction).into());
+
+                let clip_body = clip.update(id(SeenNotificationPart::ClipBody), UiElement{
+                    width: UiSize::CopyElement(UiDirection::Horizontal, 1.0, faded_id).into(),
+                    height: UiSize::Rest(fraction).into(),
+                    scissor: true,
+                    ..Default::default()
+                });
+
+                clip_body.update(id(SeenNotificationPart::Fill), UiElement{
+                    texture: UiTexture::Custom("ui/seen.png".to_owned()),
+                    position: body_position,
+                    ..UiElement::fit_content()
+                });
+            } else
+            {
+                if is_detected
+                {
+                    body.update(id(SeenNotificationPart::Fill), UiElement{
+                        texture: UiTexture::Custom("ui/seen_done.png".to_owned()),
+                        position: UiPosition::Inherit,
+                        animation: Animation{
+                            scaling: Some(ScalingAnimation{
+                                start_scaling: Vector2::repeat(2.0),
+                                start_mode: Scaling::EaseOut{decay: 20.0},
+                                close_mode: Scaling::Ignore,
+                                ..Default::default()
+                            }),
+                            ..Default::default()
+                        },
+                        ..UiElement::fit_content()
+                    });
+                }
+            }
 
             *lifetime > 0.0
         });

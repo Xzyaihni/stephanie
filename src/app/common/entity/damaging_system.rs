@@ -41,59 +41,44 @@ use crate::{
 
 const HIGHLIGHT_DURATION: f32 = 0.2;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum DamagingKind
+enum ParticlesKind
 {
-    Entity(Entity, Faction),
-    Tile(TilePos)
+    Blood,
+    Dust
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DamagingResult
+impl ParticlesKind
 {
-    pub kind: DamagingKind,
-    pub other_entity: Entity,
-    pub angle: f32,
-    pub damage: DamagePartial
-}
-
-pub fn damager<'a, 'b, E: AnyEntities, Passer: EntityPasser, TileDamager: FnMut(TilePos, DamagePartial)>(
-    entities: &'a E,
-    mut passer: Option<&'b RwLock<Passer>>,
-    textures: Option<&'a CommonTextures>,
-    mut damage_tile: TileDamager
-) -> impl FnMut(DamagingResult) + use<'a, 'b, Passer, E, TileDamager>
-{
-    move |result|
+    fn create(self, textures: &CommonTextures, weak: bool, angle: f32) -> Watcher
     {
-        let angle = result.angle;
-        let damage = result.damage.clone();
+        let direction = Unit::new_unchecked(
+            Vector3::new(-angle.cos(), angle.sin(), 0.0)
+        );
 
-        let create_particles = |textures: &CommonTextures|
+        let keep = false;
+
+        let info = match self
         {
-            let direction = Unit::new_unchecked(
-                Vector3::new(-angle.cos(), angle.sin(), 0.0)
-            );
+            Self::Blood =>
+            {
+                let scale_single = ENTITY_SCALE * 0.1 * if weak { 0.8 } else { 1.0 };
+                let scale = Vector3::repeat(scale_single)
+                    .component_mul(&Vector3::new(4.0, 1.0, 1.0));
 
-            let scale = Vector3::repeat(ENTITY_SCALE * 0.1)
-                .component_mul(&Vector3::new(4.0, 1.0, 1.0));
-
-            Watcher{
-                kind: WatcherType::Instant,
-                action: WatcherAction::Explode(Box::new(ExplodeInfo{
-                    keep: true,
+                ExplodeInfo{
+                    keep,
                     info: ParticlesInfo{
                         amount: 2..4,
                         speed: ParticleSpeed::DirectionSpread{
                             direction,
-                            speed: 1.7..=2.0,
+                            speed: if weak { 0.5..=0.7 } else { 1.7..=2.0 },
                             spread: 0.2
                         },
                         decay: ParticleDecay::Random(7.0..=10.0),
                         position: ParticlePosition::Spread(0.1),
                         rotation: ParticleRotation::Exact(-angle),
                         scale: ParticleScale::Spread{scale, variation: 0.1},
-                        min_scale: ENTITY_SCALE * 0.15
+                        min_scale: scale_single * 1.1
                     },
                     prototype: EntityInfo{
                         physical: Some(PhysicalProperties{
@@ -110,9 +95,107 @@ pub fn damager<'a, 'b, E: AnyEntities, Passer: EntityPasser, TileDamager: FnMut(
                         }),
                         ..Default::default()
                     }
-                })),
-                ..Default::default()
+                }
+            },
+            Self::Dust =>
+            {
+                let scale_single = ENTITY_SCALE * 0.3 * if weak { 0.8 } else { 1.0 };
+                let scale = Vector3::repeat(scale_single);
+
+                ExplodeInfo{
+                    keep,
+                    info: ParticlesInfo{
+                        amount: 2..4,
+                        speed: ParticleSpeed::DirectionSpread{
+                            direction,
+                            speed: if weak { 0.08..=0.1 } else { 0.4..=0.5 },
+                            spread: if weak { 1.0 } else { 0.3 }
+                        },
+                        decay: ParticleDecay::Random(0.7..=1.0),
+                        position: ParticlePosition::Spread(0.1),
+                        rotation: ParticleRotation::Random,
+                        scale: ParticleScale::Spread{scale, variation: 0.1},
+                        min_scale: scale_single * 0.3
+                    },
+                    prototype: EntityInfo{
+                        physical: Some(PhysicalProperties{
+                            inverse_mass: 0.01_f32.recip(),
+                            floating: true,
+                            damping: 0.1,
+                            ..Default::default()
+                        }.into()),
+                        render: Some(RenderInfo{
+                            object: Some(RenderObjectKind::TextureId{
+                                id: textures.dust
+                            }.into()),
+                            z_level: ZLevel::Knee,
+                            ..Default::default()
+                        }),
+                        ..Default::default()
+                    }
+                }
             }
+        };
+
+        Watcher{
+            kind: WatcherType::Instant,
+            action: WatcherAction::Explode(Box::new(info)),
+            ..Default::default()
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum DamagingKind
+{
+    Entity(Entity, Faction),
+    Tile(TilePos)
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DamagingResult
+{
+    pub kind: DamagingKind,
+    pub other_entity: Entity,
+    pub damage_entry: Vector3<f32>,
+    pub damage_exit: Option<Vector3<f32>>,
+    pub angle: f32,
+    pub damage: DamagePartial
+}
+
+pub fn damager<'a, 'b, E: AnyEntities, Passer: EntityPasser, TileDamager: FnMut(TilePos, DamagePartial)>(
+    entities: &'a E,
+    mut passer: Option<&'b RwLock<Passer>>,
+    textures: Option<&'a CommonTextures>,
+    mut damage_tile: TileDamager
+) -> impl FnMut(DamagingResult) + use<'a, 'b, Passer, E, TileDamager>
+{
+    move |result|
+    {
+        let angle = result.angle;
+        let damage = result.damage.clone();
+
+        let create_particles = |textures: &CommonTextures, kind: ParticlesKind, weak: bool, position: Vector3<f32>|
+        {
+            let angle = if weak
+            {
+                angle
+            } else
+            {
+                f32::consts::PI + angle
+            };
+
+            let watcher = kind.create(textures, weak, angle);
+
+            entities.push(true, EntityInfo{
+                transform: Some(Transform{
+                    position,
+                    scale: Vector3::repeat(ENTITY_SCALE),
+                    ..Default::default()
+                }),
+                watchers: Some(Watchers::new(vec![watcher])),
+                ..Default::default()
+            });
         };
 
         match result.kind
@@ -164,7 +247,11 @@ pub fn damager<'a, 'b, E: AnyEntities, Passer: EntityPasser, TileDamager: FnMut(
 
                 if let Some(textures) = textures.as_ref()
                 {
-                    entities.watchers_mut(entity).unwrap().push(create_particles(textures));
+                    create_particles(textures, ParticlesKind::Blood, true, result.damage_entry);
+                    if let Some(position) = result.damage_exit
+                    {
+                        create_particles(textures, ParticlesKind::Blood, false, position);
+                    }
 
                     flash_white(entities, entity);
                 }
@@ -175,6 +262,12 @@ pub fn damager<'a, 'b, E: AnyEntities, Passer: EntityPasser, TileDamager: FnMut(
 
                 if let Some(textures) = textures.as_ref()
                 {
+                    create_particles(textures, ParticlesKind::Dust, true, result.damage_entry);
+                    if let Some(position) = result.damage_exit
+                    {
+                        create_particles(textures, ParticlesKind::Dust, false, position);
+                    }
+
                     entities.push(true, EntityInfo{
                         render: Some(RenderInfo{
                             object: Some(RenderObjectKind::TextureId{
@@ -190,7 +283,6 @@ pub fn damager<'a, 'b, E: AnyEntities, Passer: EntityPasser, TileDamager: FnMut(
                             ..Default::default()
                         }),
                         watchers: Some(Watchers::new(vec![
-                            create_particles(textures),
                             Watcher{
                                 kind: WatcherType::Lifetime(HIGHLIGHT_DURATION.into()),
                                 action: WatcherAction::Remove,
@@ -244,9 +336,10 @@ fn damaging_raycasting(
         target
     );
 
-    hits.hits.iter().map(|hit|
+    let hits_len = hits.hits.len();
+    hits.hits.iter().enumerate().map(|(index, hit)|
     {
-        let angle = hits.direction.x.acos();
+        let angle = (-hits.direction.y).atan2(hits.direction.x);
 
         let kind = match hit.id
         {
@@ -271,7 +364,13 @@ fn damaging_raycasting(
             damage.data *= (hit.result.pierce * s).min(1.0);
         }
 
-        DamagingResult{kind, other_entity, angle, damage}
+        let is_last_hit = (index + 1) == hits_len;
+
+        let (damage_entry, damage_exit) = hit.result.hit_points(hits.start, hits.direction);
+
+        let damage_exit = if is_last_hit { None } else { damage_exit };
+
+        DamagingResult{kind, other_entity, damage_entry, damage_exit, angle, damage}
     }).collect()
 }
 
@@ -370,7 +469,14 @@ fn damaging_colliding(
                 ))
             }).map(|(angle, damage)|
             {
-                DamagingResult{kind, other_entity: source_entity, angle, damage}
+                let direction = Vector3::new(angle.cos(), angle.sin(), 0.0);
+
+                let damage_entry = collided_transform.position
+                    + direction.component_mul(&(collided_transform.scale * 0.5));
+
+                let damage_exit = None;
+
+                DamagingResult{kind, other_entity: source_entity, damage_entry, damage_exit, angle, damage}
             })
         } else
         {
