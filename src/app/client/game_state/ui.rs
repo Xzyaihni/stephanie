@@ -85,6 +85,7 @@ pub enum UiId
 {
     Screen,
     Loading(LoadingPart),
+    Fade,
     Padding(u32),
     Console(ConsolePart),
     SeenNotification(Entity, SeenNotificationPart),
@@ -991,7 +992,10 @@ impl WindowKind
                         width: twice_size.clone(),
                         height: twice_size,
                         animation: Animation{
-                            mix: Some(MixAnimation{l: 50.0, c: 50.0, ..MixAnimation::all(20.0)}),
+                            mix: Some(MixAnimation{
+                                decay: MixDecay{l: 50.0, c: 50.0, ..MixDecay::all(20.0)},
+                                ..Default::default()
+                            }),
                             ..Default::default()
                         },
                         ..Default::default()
@@ -1287,6 +1291,7 @@ pub struct Ui
     mouse_position: Vector2<f32>,
     console_contents: Option<String>,
     loading: Option<f32>,
+    is_fade: bool,
     windows: Vec<Window>,
     stamina: BarDisplay,
     cooldown: BarDisplay,
@@ -1322,6 +1327,7 @@ impl Ui
             mouse_position: Vector2::zeros(),
             console_contents: None,
             loading: Some(0.0),
+            is_fade: false,
             windows: Vec::new(),
             stamina: BarDisplay::default(),
             cooldown: BarDisplay::default(),
@@ -1514,6 +1520,11 @@ impl Ui
         };
     }
 
+    pub fn set_fade(&mut self, fade: bool)
+    {
+        self.is_fade = fade;
+    }
+
     fn update_popup(
         &mut self,
         controls: &mut UiControls<UiId>,
@@ -1630,12 +1641,26 @@ impl Ui
                 mix: Some(MixColorLch::color(BLACK_COLOR)),
                 width: 1.0.into(),
                 height: 1.0.into(),
+                animation: Animation{
+                    mix: Some(MixAnimation{
+                        close_mix: Some(Lcha{a: 0.0, ..BLACK_COLOR}),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
                 ..Default::default()
             });
 
             let body = self.controller.update(UiId::Loading(LoadingPart::Body), UiElement{
                 position: UiPosition::Absolute{position: Vector2::zeros(), align: Default::default()},
                 children_layout: UiLayout::Vertical,
+                animation: Animation{
+                    scaling: Some(ScalingAnimation{
+                        close_mode: Scaling::EaseOut{decay: 20.0},
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
                 ..Default::default()
             });
 
@@ -1664,6 +1689,25 @@ impl Ui
             add_padding_horizontal(bar, UiSize::Rest(1.0 - progress).into());
 
             return;
+        }
+
+        if self.is_fade
+        {
+            self.controller.update(UiId::Fade, UiElement{
+                texture: UiTexture::Solid,
+                mix: Some(MixColorLch::color(BLACK_COLOR)),
+                width: 1.0.into(),
+                height: 1.0.into(),
+                animation: Animation{
+                    mix: Some(MixAnimation{
+                        start_mix: Some(Lcha{a: 0.0, ..BLACK_COLOR}),
+                        close_mix: Some(Lcha{a: 0.0, ..BLACK_COLOR}),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+                ..Default::default()
+            });
         }
 
         let position_of = {
@@ -1862,7 +1906,10 @@ impl Ui
                     mix: Some(MixColorLch{keep_transparency: true, ..MixColorLch::color(health_color)}),
                     position: UiPosition::Inherit,
                     animation: Animation{
-                        mix: Some(MixAnimation{l: lightness_decay, c: lightness_decay, ..MixAnimation::all(20.0)}),
+                        mix: Some(MixAnimation{
+                            decay: MixDecay{l: lightness_decay, c: lightness_decay, ..MixDecay::all(20.0)},
+                            ..Default::default()
+                        }),
                         ..Default::default()
                     },
                     ..UiElement::fit_content()

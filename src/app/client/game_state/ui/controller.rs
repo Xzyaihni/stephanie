@@ -35,6 +35,7 @@ use super::element::*;
 
 pub const MINIMUM_SCALE: f32 = 0.0005;
 pub const MINIMUM_DISTANCE: f32 = 0.0001;
+pub const MINIMUM_COLOR_DISTANCE: f32 = 0.01;
 
 pub trait Idable: Hash + Eq + Clone + Debug
 {
@@ -312,12 +313,19 @@ impl UiElementCached
             }
         };
 
+        let mix = element.mix.map(|mix|
+        {
+            let color = element.animation.mix.as_ref().and_then(|x| x.start_mix).unwrap_or(mix.color);
+
+            MixColorLch{color, ..mix}
+        });
+
         let mut this = Self{
             fractions: Fractions::default(),
             scale,
             position,
             parental_position,
-            mix: element.mix,
+            mix,
             last_scissor,
             scissor,
             object
@@ -387,17 +395,24 @@ impl UiElementCached
         }
     }
 
-    fn update_always<Id>(
+    fn update_mix<Id>(
         &mut self,
-        parent_fraction: &Fractions,
-        scissor: Option<UiScissor>,
-        deferred: &UiDeferredInfo<Id>,
-        element: &mut UiElement<Id>,
-        screen_size: Vector2<f32>,
+        element: &UiElement<Id>,
+        target_mix: Option<MixColorLch>,
         dt: f32
     )
     {
-        if let (Some(mix), Some(target)) = (self.mix.as_mut(), element.mix)
+        let target = if let Some(x) = target_mix
+        {
+            x
+        } else
+        {
+            self.mix = None;
+
+            return;
+        };
+
+        if let Some(mix) = self.mix.as_mut()
         {
             *mix = if let Some(animation) = &element.animation.mix
             {
@@ -406,7 +421,7 @@ impl UiElementCached
                     ($($field:ident),+) =>
                     {
                         Lcha{
-                            $($field: mix.color.$field.ease_out(target.color.$field, animation.$field, dt),)+
+                            $($field: mix.color.$field.ease_out(target.color.$field, animation.decay.$field, dt),)+
                         }
                     }
                 }
@@ -420,7 +435,16 @@ impl UiElementCached
                 target
             };
         }
+    }
 
+    fn update_always<Id>(
+        &mut self,
+        parent_fraction: &Fractions,
+        scissor: Option<UiScissor>,
+        deferred: &UiDeferredInfo<Id>,
+        screen_size: Vector2<f32>
+    )
+    {
         self.scissor = Self::calculate_scissor(screen_size, scissor);
 
         self.update_fraction(parent_fraction, deferred);
@@ -463,14 +487,14 @@ impl UiElementCached
             self.position = target_position;
         }
 
+        self.update_mix(old_element, old_element.mix, dt);
+
         self.last_scissor = scissor;
         self.update_always(
             parent_fraction,
             scissor,
             deferred,
-            old_element,
-            Vector2::from(create_info.object_info.partial.size),
-            dt
+            Vector2::from(create_info.object_info.partial.size)
         );
 
         if self.object.is_none()
@@ -522,6 +546,9 @@ impl UiElementCached
         let is_position_close = element.animation.position.as_ref().map(|x| x.close_mode != Connection::Ignore)
             .unwrap_or(false);
 
+        let is_mix_close = element.animation.mix.as_ref().map(|x| x.close_mix.is_some())
+            .unwrap_or(false);
+
         if let Some(scaling) = element.animation.scaling.as_mut()
         {
             let close_scaling = scaling.close_scaling.component_mul(&self.scale);
@@ -551,7 +578,7 @@ impl UiElementCached
             self.position = target_position;
         }
 
-        if !is_scaling_close && !is_position_close
+        if !is_scaling_close && !is_position_close && !is_mix_close
         {
             if close_soon
             {
@@ -559,13 +586,21 @@ impl UiElementCached
             }
         }
 
+        let target_mix = if let Some(x) = element.animation.mix.as_ref().and_then(|x| x.close_mix)
+        {
+            element.mix.map(|mix| MixColorLch{color: x, ..mix})
+        } else
+        {
+            element.mix
+        };
+
+        self.update_mix(element, target_mix, dt);
+
         self.update_always(
             parent_fraction,
             self.last_scissor,
             deferred,
-            element,
-            screen_size,
-            dt
+            screen_size
         );
 
         if self.fractions.scale.min() < MINIMUM_SCALE
@@ -581,6 +616,22 @@ impl UiElementCached
         if !is_scaling_close && is_position_close
         {
             if (target_position - self.position).abs().sum() < MINIMUM_DISTANCE
+            {
+                return false;
+            }
+        }
+
+        if !is_scaling_close && is_mix_close
+        {
+            let current = self.mix.expect("must be mix close").color;
+            let target = target_mix.expect("must be mix close").color;
+
+            let distance = (target.l - current.l).abs()
+                + (target.c - current.c).abs()
+                + (target.h - current.h).abs()
+                + (target.a - current.a).abs();
+
+            if distance < MINIMUM_COLOR_DISTANCE
             {
                 return false;
             }

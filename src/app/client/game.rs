@@ -943,6 +943,12 @@ impl ConsoleInfo
     }
 }
 
+struct PlayerAnimation
+{
+    duration: f32,
+    action: Option<(f32, Box<dyn FnOnce(&mut PlayerContainer)>)>
+}
+
 struct PlayerInfo
 {
     camera: Entity,
@@ -951,6 +957,7 @@ struct PlayerInfo
     mouse_entity: Entity,
     other_entity: Option<Entity>,
     console: ConsoleInfo,
+    animation: Option<PlayerAnimation>,
     previous_stamina: Option<f32>,
     previous_cooldown: (f32, f32),
     ctrl_held: bool,
@@ -970,6 +977,7 @@ impl PlayerInfo
             mouse_entity: info.mouse_entity,
             other_entity: None,
             console,
+            animation: None,
             previous_stamina: None,
             previous_cooldown: (0.0, 0.0),
             ctrl_held: false,
@@ -1056,6 +1064,11 @@ impl<'a> PlayerContainer<'a>
 
     pub fn on_control(&mut self, state: ControlState, control: Control)
     {
+        if self.info.animation.is_some()
+        {
+            return;
+        }
+
         let is_floating = self.game_state.entities().physical(self.info.entity).map(|x|
         {
             x.floating()
@@ -1359,6 +1372,7 @@ impl<'a> PlayerContainer<'a>
             }
         }
 
+        if self.info.animation.is_none()
         {
             let movement_direction = self.movement_direction();
 
@@ -1371,7 +1385,7 @@ impl<'a> PlayerContainer<'a>
         let able_to_move = self.game_state.entities()
             .anatomy(self.info.entity)
             .map(|anatomy| anatomy.speed().is_some())
-            .unwrap_or(false);
+            .unwrap_or(false) && self.info.animation.is_none();
 
         if able_to_move
         {
@@ -1386,7 +1400,11 @@ impl<'a> PlayerContainer<'a>
             }
         }
 
+        let animation_duration = 1.0;
+
         let mut tile_info = None;
+        let mut new_animation = None;
+
         self.colliding_info(|mut colliding|
         {
             let world = &self.game_state.world;
@@ -1427,11 +1445,17 @@ impl<'a> PlayerContainer<'a>
 
                     if self.info.interacted
                     {
-                        let mut transform = self.game_state.entities()
-                            .target(self.info.entity)
-                            .unwrap();
+                        new_animation = Some(PlayerAnimation{
+                            duration: animation_duration,
+                            action: Some((animation_duration * 0.5, Box::new(|this|
+                            {
+                                let mut transform = this.game_state.entities()
+                                    .target(this.info.entity)
+                                    .unwrap();
 
-                        transform.position.z += TILE_SIZE * 2.0;
+                                transform.position.z += TILE_SIZE * 2.0;
+                            })))
+                        });
                     }
                 }
             }
@@ -1458,18 +1482,57 @@ impl<'a> PlayerContainer<'a>
 
                 if self.info.interacted
                 {
-                    let mut transform = self.game_state.entities()
-                        .target(self.info.entity)
-                        .unwrap();
+                    new_animation = Some(PlayerAnimation{
+                        duration: animation_duration,
+                        action: Some((animation_duration * 0.5, Box::new(|this|
+                        {
+                            let mut transform = this.game_state.entities()
+                                .target(this.info.entity)
+                                .unwrap();
 
-                    transform.position.z -= TILE_SIZE * 2.0;
+                            transform.position.z -= TILE_SIZE * 2.0;
+                        })))
+                    });
                 }
             }
         });
 
-        if let Some(text) = tile_info
+        if new_animation.is_some()
         {
-            self.show_tile_tooltip(text);
+            self.info.animation = new_animation;
+        }
+
+        self.game_state.ui.borrow_mut().set_fade(self.info.animation.is_some());
+
+        if self.info.animation.is_some()
+        {
+            {
+                let animation = self.info.animation.as_mut().unwrap();
+                animation.duration -= dt;
+
+                if animation.action.is_some()
+                {
+                    let action = animation.action.as_mut().unwrap();
+                    action.0 -= dt;
+
+                    if action.0 <= 0.0
+                    {
+                        (animation.action.take().unwrap().1)(self);
+                    }
+                }
+            }
+
+            let animation = self.info.animation.as_mut().unwrap();
+            if animation.duration <= 0.0
+            {
+                debug_assert!(self.info.animation.take().unwrap().action.is_none());
+            }
+        } else
+        {
+            if let Some(text) = tile_info
+            {
+                self.show_tile_tooltip(text);
+            }
         }
 
         self.game_state.sync_character(self.info.entity);

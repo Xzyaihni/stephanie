@@ -4,7 +4,7 @@ use nalgebra::Vector2;
 
 use yanyaengine::TextureId;
 
-use crate::common::render_info::*;
+use crate::common::{render_info::*, colors::Lcha};
 
 pub use crate::common::lazy_transform::{Scaling, Connection};
 
@@ -695,7 +695,7 @@ impl PositionAnimation
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct MixAnimation
+pub struct MixDecay
 {
     pub l: f32,
     pub c: f32,
@@ -703,11 +703,31 @@ pub struct MixAnimation
     pub a: f32
 }
 
-impl MixAnimation
+impl MixDecay
 {
     pub fn all(x: f32) -> Self
     {
         Self{l: x, c: x, h: x, a: x}
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct MixAnimation
+{
+    pub decay: MixDecay,
+    pub start_mix: Option<Lcha>,
+    pub close_mix: Option<Lcha>
+}
+
+impl Default for MixAnimation
+{
+    fn default() -> Self
+    {
+        Self{
+            decay: MixDecay::all(10.0),
+            start_mix: None,
+            close_mix: None
+        }
     }
 }
 
@@ -770,7 +790,10 @@ impl Animation
                 close_mode: Scaling::Ignore,
                 ..Default::default()
             }),
-            mix: Some(MixAnimation::all(10.0)),
+            mix: Some(MixAnimation{
+                decay: MixDecay::all(10.0),
+                ..Default::default()
+            }),
             ..Default::default()
         }
     }
