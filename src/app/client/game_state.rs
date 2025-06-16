@@ -344,10 +344,28 @@ pub enum InventoryWhich
     Other
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum UsageKind
+{
+    Ingest
+}
+
+impl UsageKind
+{
+    fn name(&self) -> &str
+    {
+        match self
+        {
+            Self::Ingest => "ingest"
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum GameUiEvent
 {
     Info{which: InventoryWhich, item: InventoryItem},
+    Use{usage: UsageKind, which: InventoryWhich, item: InventoryItem},
     Drop{which: InventoryWhich, item: InventoryItem},
     Wield(InventoryItem),
     Take(InventoryItem)
@@ -360,6 +378,7 @@ impl GameUiEvent
         match self
         {
             Self::Info{..} => "info",
+            Self::Use{usage, ..} => usage.name(),
             Self::Drop{..} => "drop",
             Self::Wield(..) => "wield",
             Self::Take(..) => "take"

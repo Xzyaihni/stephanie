@@ -20,10 +20,12 @@ use crate::common::{
     some_or_return,
     collider::*,
     character::*,
+    Damageable,
     SpecialTile,
     AnyEntities,
     Item,
     Inventory,
+    Drug,
     Entity,
     EntityInfo,
     entity::ClientEntities,
@@ -1140,12 +1142,19 @@ impl<'a> PlayerContainer<'a>
 
                         self.info.other_entity = Some(mouse_touched);
 
-                        self.game_state.ui.borrow_mut().open_inventory(mouse_touched, Box::new(move |item|
+                        self.game_state.ui.borrow_mut().open_inventory(mouse_touched, Box::new(move |_item, info, item_id|
                         {
-                            vec![
-                                GameUiEvent::Take(item),
-                                GameUiEvent::Info{which: InventoryWhich::Other, item}
-                            ]
+                            let mut actions = vec![
+                                GameUiEvent::Take(item_id),
+                                GameUiEvent::Info{which: InventoryWhich::Other, item: item_id}
+                            ];
+
+                            if let Some(usage) = info.usage()
+                            {
+                                actions.insert(1, GameUiEvent::Use{usage, which: InventoryWhich::Other, item: item_id});
+                            }
+
+                            actions
                         }));
 
                         return;
@@ -1204,12 +1213,47 @@ impl<'a> PlayerContainer<'a>
             GameUiEvent::Info{which, item} =>
             {
                 if let Some(item) = self.get_inventory(which)
-                    .and_then(|inventory| inventory.get(item).cloned())
+                    .map(|inventory| inventory[item].clone())
                 {
                     self.game_state.ui.borrow_mut().open_item_info(item);
                 } else
                 {
                     eprintln!("tried to show info for an item that doesnt exist");
+                }
+            },
+            GameUiEvent::Use{which, item, ..} =>
+            {
+                if let Some(id) = self.get_inventory(which)
+                    .map(|inventory| inventory[item].id)
+                {
+                    let info = self.game_state.items_info.get(id);
+
+                    if let Some(drug) = info.drug.as_ref()
+                    {
+                        let mut anatomy = some_or_return!(self.game_state.entities().anatomy_mut(self.info.entity));
+
+                        let consumed = match drug
+                        {
+                            Drug::Heal{amount} =>
+                            {
+                                let is_full = anatomy.is_full();
+                                if !is_full
+                                {
+                                    anatomy.heal(*amount);
+                                }
+
+                                !is_full
+                            }
+                        };
+
+                        if consumed
+                        {
+                            self.get_inventory(which).unwrap().remove(item);
+                        }
+                    }
+                } else
+                {
+                    eprintln!("tried to use an item that doesnt exist");
                 }
             },
             GameUiEvent::Drop{which, item} =>
@@ -1281,13 +1325,20 @@ impl<'a> PlayerContainer<'a>
 
         if !ui.close_inventory(this)
         {
-            ui.open_inventory(this, Box::new(move |item|
+            ui.open_inventory(this, Box::new(move |_item, info, item_id|
             {
-                vec![
-                    GameUiEvent::Wield(item),
-                    GameUiEvent::Drop{which: InventoryWhich::Player, item},
-                    GameUiEvent::Info{which: InventoryWhich::Player, item}
-                ]
+                let mut actions = vec![
+                    GameUiEvent::Wield(item_id),
+                    GameUiEvent::Drop{which: InventoryWhich::Player, item: item_id},
+                    GameUiEvent::Info{which: InventoryWhich::Player, item: item_id}
+                ];
+
+                if let Some(usage) = info.usage()
+                {
+                    actions.insert(1, GameUiEvent::Use{usage, which: InventoryWhich::Player, item: item_id});
+                }
+
+                actions
             }));
         }
     }

@@ -1,3 +1,5 @@
+use std::ops::{Index, IndexMut};
+
 use serde::{Serialize, Deserialize};
 
 use crate::common::{ObjectsStore, Item};
@@ -14,6 +16,24 @@ pub struct InventoryItem(usize);
 pub struct Inventory
 {
     items: ObjectsStore<Item>
+}
+
+impl Index<InventoryItem> for Inventory
+{
+    type Output = Item;
+
+    fn index(&self, index: InventoryItem) -> &Self::Output
+    {
+        &self.items[index.0]
+    }
+}
+
+impl IndexMut<InventoryItem> for Inventory
+{
+    fn index_mut(&mut self, index: InventoryItem) -> &mut Self::Output
+    {
+        &mut self.items[index.0]
+    }
 }
 
 impl Inventory

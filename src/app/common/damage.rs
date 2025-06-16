@@ -83,12 +83,7 @@ impl Mul<f32> for DamageType
 
     fn mul(mut self, scale: f32) -> Self
     {
-        match &mut self
-        {
-            Self::Blunt(x) => *x *= scale,
-            Self::Sharp{damage, ..} => *damage *= scale,
-            Self::Bullet(x) => *x *= scale
-        }
+        self *= scale;
 
         self
     }
@@ -98,7 +93,12 @@ impl MulAssign<f32> for DamageType
 {
     fn mul_assign(&mut self, scale: f32)
     {
-        *self = *self * scale;
+        match self
+        {
+            Self::Blunt(x) => *x *= scale,
+            Self::Sharp{damage, ..} => *damage *= scale,
+            Self::Bullet(x) => *x *= scale
+        }
     }
 }
 
@@ -179,4 +179,7 @@ pub struct DamageDirection
 pub trait Damageable
 {
     fn damage(&mut self, damage: Damage) -> Option<Damage>;
+
+    fn is_full(&self) -> bool;
+    fn heal(&mut self, amount: f32) -> Option<f32>;
 }

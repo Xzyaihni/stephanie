@@ -10,14 +10,17 @@ use serde::Deserialize;
 
 use yanyaengine::{Assets, TextureId};
 
-use crate::common::{
-    lerp,
-    generic_info::*,
-    character::HAND_SCALE,
-    Drug,
-    DamageType,
-    Item,
-    Light
+use crate::{
+    client::game_state::UsageKind,
+    common::{
+        lerp,
+        generic_info::*,
+        character::HAND_SCALE,
+        Drug,
+        DamageType,
+        Item,
+        Light
+    }
 };
 
 
@@ -214,6 +217,16 @@ impl ItemInfo
     pub fn scale3(&self) -> Vector3<f32>
     {
         (self.aspect * lerp(self.scale, 1.0, 0.2)).xyx()
+    }
+
+    pub fn usage(&self) -> Option<UsageKind>
+    {
+        if self.drug.is_some()
+        {
+            return Some(UsageKind::Ingest);
+        }
+
+        None
     }
 }
 

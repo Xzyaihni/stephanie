@@ -43,6 +43,7 @@ use crate::{
         InventoryItem,
         InventorySorter,
         Entity,
+        ItemInfo,
         ItemsInfo,
         entity::ClientEntities
     }
@@ -343,7 +344,7 @@ impl Hash for NotificationInfo
     }
 }
 
-pub type InventoryOnClick = Box<dyn FnMut(InventoryItem) -> Vec<GameUiEvent>>;
+pub type InventoryOnClick = Box<dyn FnMut(&Item, &ItemInfo, InventoryItem) -> Vec<GameUiEvent>>;
 
 fn handle_button(
     info: &mut UpdateInfo,
@@ -872,16 +873,22 @@ impl WindowKind
                 {
                     if info.controls.take_click_down()
                     {
-                        let item = inventory.list.items[index].item;
+                        let item_id = inventory.list.items[index].item;
                         let entity = inventory.entity;
 
-                        let events = (inventory.on_click)(item);
-                        let event = UiEvent::Action(Rc::new(move |game_state|
+                        if let Some(items_inventory) = info.entities.inventory(entity)
                         {
-                            game_state.ui.borrow_mut().create_popup(entity, item, events.clone());
-                        }));
+                            if let Some(item) = items_inventory.get(item_id)
+                            {
+                                let events = (inventory.on_click)(item, info.items_info.get(item.id), item_id);
+                                let event = UiEvent::Action(Rc::new(move |game_state|
+                                {
+                                    game_state.ui.borrow_mut().create_popup(entity, item_id, events.clone());
+                                }));
 
-                        info.user_receiver.push(event);
+                                info.user_receiver.push(event);
+                            }
+                        }
                     }
                 }
             },

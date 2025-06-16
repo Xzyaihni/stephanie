@@ -300,9 +300,73 @@ impl Damageable for Anatomy
             Self::Human(x) => x.damage(damage)
         }
     }
+
+    fn is_full(&self) -> bool
+    {
+        match self
+        {
+            Self::Human(x) => x.is_full()
+        }
+    }
+
+    fn heal(&mut self, amount: f32) -> Option<f32>
+    {
+        match self
+        {
+            Self::Human(x) => x.heal(amount)
+        }
+    }
 }
 
-pub trait DamageReceiver
+fn heal_iterative<const COUNT: usize>(
+    amount: f32,
+    mut values: [&mut dyn HealReceiver; COUNT]
+) -> Option<f32>
+{
+    let mut pool = amount;
+
+    let mut filled = values.each_ref().map(|x| x.is_full());
+
+    loop
+    {
+        let mut current = filled.iter().filter(|x| !**x).count();
+
+        if current == 0
+        {
+            break;
+        }
+
+        for (value, filled) in values.iter_mut().zip(filled.iter_mut()).filter(|(_, filled)| !**filled)
+        {
+            let heal_amount = pool / current as f32;
+            pool -= heal_amount;
+
+            pool += value.heal(heal_amount).unwrap_or(0.0);
+
+            if pool <= 0.0
+            {
+                return None;
+            }
+
+            current -= 1;
+
+            if value.is_full()
+            {
+                *filled = true;
+            }
+        }
+    }
+
+    Some(pool)
+}
+
+pub trait HealReceiver
+{
+    fn is_full(&self) -> bool;
+    fn heal(&mut self, amount: f32) -> Option<f32>;
+}
+
+pub trait DamageReceiver: HealReceiver
 {
     fn damage(
         &mut self,
@@ -383,8 +447,8 @@ impl ChangedPart
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct SimpleHealth
 {
-    max: f32,
-    current: f32
+    pub max: f32,
+    pub current: f32
 }
 
 impl Display for SimpleHealth
@@ -415,6 +479,22 @@ impl SimpleHealth
         self.current = (self.current - amount).clamp(0.0, self.max);
     }
 
+    pub fn heal_remainder(&mut self, amount: f32) -> Option<f32>
+    {
+        let remain = self.max - self.current;
+        if remain < amount
+        {
+            self.current = self.max;
+
+            Some(amount - remain)
+        } else
+        {
+            self.current += amount;
+
+            None
+        }
+    }
+
     pub fn current(&self) -> f32
     {
         self.current
@@ -429,13 +509,18 @@ impl SimpleHealth
     {
         self.current == 0.0
     }
+
+    pub fn is_full(&self) -> bool
+    {
+        self.current == self.max
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Health
 {
-    max_block: f32,
-    health: SimpleHealth
+    pub max_block: f32,
+    pub health: SimpleHealth
 }
 
 impl Debug for Health
@@ -463,9 +548,19 @@ impl Health
         self.health.is_zero()
     }
 
+    pub fn is_full(&self) -> bool
+    {
+        self.health.is_full()
+    }
+
     pub fn current(&self) -> f32
     {
         self.health.current()
+    }
+
+    pub fn heal_remainder(&mut self, amount: f32) -> Option<f32>
+    {
+        self.health.heal_remainder(amount)
     }
 
     pub fn damage_pierce(&mut self, damage: DamageType) -> Option<DamageType>
@@ -607,6 +702,12 @@ pub trait Organ: DamageReceiver + Debug
     fn consume_accessed(&mut self) -> bool { unimplemented!() }
 }
 
+impl HealReceiver for ()
+{
+    fn is_full(&self) -> bool { true }
+    fn heal(&mut self, amount: f32) -> Option<f32> { Some(amount) }
+}
+
 impl DamageReceiver for ()
 {
     fn damage(
@@ -635,6 +736,27 @@ pub struct BodyPart<Contents=()>
     pub muscle: ChangeTracking<Option<Health>>,
     size: f64,
     contents: Contents
+}
+
+impl<Contents: Organ> HealReceiver for BodyPart<Contents>
+{
+    fn is_full(&self) -> bool
+    {
+        self.bone.is_full()
+            && self.skin.map(|x| x.is_full()).unwrap_or(true)
+            && self.muscle.map(|x| x.is_full()).unwrap_or(true)
+            && self.contents.is_full()
+    }
+
+    fn heal(&mut self, amount: f32) -> Option<f32>
+    {
+        heal_iterative(amount, [
+            &mut self.bone,
+            &mut self.skin,
+            &mut self.muscle,
+            &mut self.contents
+        ])
+    }
 }
 
 impl<Contents> BodyPart<Contents>
@@ -890,6 +1012,31 @@ impl<T> IndexMut<Side1d> for Halves<T>
     }
 }
 
+impl HealReceiver for ChangeTracking<Health>
+{
+    fn is_full(&self) -> bool
+    {
+        Health::is_full(self)
+    }
+
+    fn heal(&mut self, amount: f32) -> Option<f32>
+    {
+        self.heal_remainder(amount)
+    }
+}
+
+impl HealReceiver for ChangeTracking<Option<Health>>
+{
+    fn is_full(&self) -> bool
+    {
+        self.as_ref().map(|x| x.is_full()).unwrap_or(true)
+    }
+
+    fn heal(&mut self, amount: f32) -> Option<f32>
+    {
+        self.as_mut().map(|x| x.heal_remainder(amount)).unwrap_or(Some(amount))
+    }
+}
 
 impl DamageReceiver for ChangeTracking<Health>
 {
@@ -939,6 +1086,19 @@ impl Default for MotorCortex
             body: Health::new(4.0, 50.0).into(),
             legs: Health::new(4.0, 50.0).into()
         }
+    }
+}
+
+impl HealReceiver for MotorCortex
+{
+    fn is_full(&self) -> bool
+    {
+        self.arms.is_full() && self.body.is_full() && self.legs.is_full()
+    }
+
+    fn heal(&mut self, amount: f32) -> Option<f32>
+    {
+        heal_iterative(amount, [&mut self.arms, &mut self.body, &mut self.legs])
     }
 }
 
@@ -1007,6 +1167,19 @@ impl Default for FrontalLobe
     }
 }
 
+impl HealReceiver for FrontalLobe
+{
+    fn is_full(&self) -> bool
+    {
+        self.motor.is_full()
+    }
+
+    fn heal(&mut self, amount: f32) -> Option<f32>
+    {
+        self.motor.heal(amount)
+    }
+}
+
 impl DamageReceiver for FrontalLobe
 {
     fn damage(
@@ -1053,6 +1226,19 @@ impl Default for ParietalLobe
     }
 }
 
+impl HealReceiver for ParietalLobe
+{
+    fn is_full(&self) -> bool
+    {
+        self.0.is_full()
+    }
+
+    fn heal(&mut self, amount: f32) -> Option<f32>
+    {
+        self.0.heal(amount)
+    }
+}
+
 impl DamageReceiver for ParietalLobe
 {
     fn damage(
@@ -1095,6 +1281,19 @@ impl Default for TemporalLobe
     }
 }
 
+impl HealReceiver for TemporalLobe
+{
+    fn is_full(&self) -> bool
+    {
+        self.0.is_full()
+    }
+
+    fn heal(&mut self, amount: f32) -> Option<f32>
+    {
+        self.0.heal(amount)
+    }
+}
+
 impl DamageReceiver for TemporalLobe
 {
     fn damage(
@@ -1134,6 +1333,19 @@ impl Default for OccipitalLobe
     fn default() -> Self
     {
         Self(Health::new(4.0, 50.0).into())
+    }
+}
+
+impl HealReceiver for OccipitalLobe
+{
+    fn is_full(&self) -> bool
+    {
+        self.0.is_full()
+    }
+
+    fn heal(&mut self, amount: f32) -> Option<f32>
+    {
+        self.0.heal(amount)
     }
 }
 
@@ -1210,6 +1422,19 @@ impl Hemisphere
     }
 }
 
+impl HealReceiver for Hemisphere
+{
+    fn is_full(&self) -> bool
+    {
+        self.frontal.is_full() && self.parietal.is_full() && self.temporal.is_full() && self.occipital.is_full()
+    }
+
+    fn heal(&mut self, amount: f32) -> Option<f32>
+    {
+        heal_iterative(amount, [&mut self.frontal, &mut self.parietal, &mut self.temporal, &mut self.occipital])
+    }
+}
+
 impl DamageReceiver for Hemisphere
 {
     fn damage(
@@ -1275,6 +1500,19 @@ impl Default for Brain
     fn default() -> Self
     {
         Self{left: Hemisphere::default(), right: Hemisphere::default()}
+    }
+}
+
+impl HealReceiver for Brain
+{
+    fn is_full(&self) -> bool
+    {
+        self.left.is_full() && self.right.is_full()
+    }
+
+    fn heal(&mut self, amount: f32) -> Option<f32>
+    {
+        heal_iterative(amount, [&mut self.left, &mut self.right])
     }
 }
 
@@ -1346,6 +1584,19 @@ impl Eye
     }
 }
 
+impl HealReceiver for Eye
+{
+    fn is_full(&self) -> bool
+    {
+        self.health.is_full()
+    }
+
+    fn heal(&mut self, amount: f32) -> Option<f32>
+    {
+        self.health.heal(amount)
+    }
+}
+
 impl DamageReceiver for Eye
 {
     fn damage(
@@ -1388,6 +1639,19 @@ impl Lung
     fn new() -> Self
     {
         Self{health: Health::new(3.0, 20.0).into()}
+    }
+}
+
+impl HealReceiver for Lung
+{
+    fn is_full(&self) -> bool
+    {
+        self.health.is_full()
+    }
+
+    fn heal(&mut self, amount: f32) -> Option<f32>
+    {
+        self.health.heal(amount)
     }
 }
 
@@ -1757,6 +2021,24 @@ pub struct HeadOrgans
     pub brain: Option<Brain>
 }
 
+impl HealReceiver for HeadOrgans
+{
+    fn is_full(&self) -> bool
+    {
+        self.eyes.as_ref().map(|x| x.as_ref().map(|x| x.is_full()).unwrap_or(true)).combine(|a, b| a && b)
+            && self.brain.as_ref().map(|x| x.is_full()).unwrap_or(true)
+    }
+
+    fn heal(&mut self, amount: f32) -> Option<f32>
+    {
+        heal_iterative(amount, [
+            self.eyes.left.as_mut().map(|x| -> &mut dyn HealReceiver { x }).unwrap_or(&mut ()),
+            self.eyes.right.as_mut().map(|x| -> &mut dyn HealReceiver { x }).unwrap_or(&mut ()),
+            self.brain.as_mut().map(|x| -> &mut dyn HealReceiver { x }).unwrap_or(&mut ())
+        ])
+    }
+}
+
 impl DamageReceiver for HeadOrgans
 {
     fn damage(
@@ -1805,6 +2087,22 @@ impl Organ for TorsoOrgans
     fn size(&self) -> &f64
     {
         unimplemented!()
+    }
+}
+
+impl HealReceiver for TorsoOrgans
+{
+    fn is_full(&self) -> bool
+    {
+        self.lungs.as_ref().map(|x| x.as_ref().map(|x| x.is_full()).unwrap_or(true)).combine(|a, b| a && b)
+    }
+
+    fn heal(&mut self, amount: f32) -> Option<f32>
+    {
+        heal_iterative(amount, [
+            self.lungs.left.as_mut().map(|x| -> &mut dyn HealReceiver { x }).unwrap_or(&mut ()),
+            self.lungs.right.as_mut().map(|x| -> &mut dyn HealReceiver { x }).unwrap_or(&mut ())
+        ])
     }
 }
 
@@ -1871,6 +2169,23 @@ pub struct LowerLimb
     leaf: Option<HumanPart>
 }
 
+impl HealReceiver for LowerLimb
+{
+    fn is_full(&self) -> bool
+    {
+        self.lower.is_full()
+            && self.leaf.as_ref().map(|x| x.is_full()).unwrap_or(true)
+    }
+
+    fn heal(&mut self, amount: f32) -> Option<f32>
+    {
+        heal_iterative(amount, [
+            &mut self.lower,
+            self.leaf.as_mut().map(|x| -> &mut dyn HealReceiver { x }).unwrap_or(&mut ())
+        ])
+    }
+}
+
 impl LowerLimb
 {
     fn detach_broken(&mut self, on_break: impl FnOnce())
@@ -1899,6 +2214,23 @@ pub struct Limb
 {
     upper: HumanPart,
     lower: Option<LowerLimb>
+}
+
+impl HealReceiver for Limb
+{
+    fn is_full(&self) -> bool
+    {
+        self.upper.is_full()
+            && self.lower.as_ref().map(|x| x.is_full()).unwrap_or(true)
+    }
+
+    fn heal(&mut self, amount: f32) -> Option<f32>
+    {
+        heal_iterative(amount, [
+            &mut self.upper,
+            self.lower.as_mut().map(|x| -> &mut dyn HealReceiver { x }).unwrap_or(&mut ())
+        ])
+    }
 }
 
 impl Limb
@@ -1942,6 +2274,24 @@ pub struct Torso
     pub arms: Halves<Option<Limb>>
 }
 
+impl HealReceiver for Torso
+{
+    fn is_full(&self) -> bool
+    {
+        self.torso.is_full()
+            && self.arms.as_ref().map(|x| x.as_ref().map(|x| x.is_full()).unwrap_or(true)).combine(|a, b| a && b)
+    }
+
+    fn heal(&mut self, amount: f32) -> Option<f32>
+    {
+        heal_iterative(amount, [
+            &mut self.torso,
+            self.arms.left.as_mut().map(|x| -> &mut dyn HealReceiver { x }).unwrap_or(&mut ()),
+            self.arms.right.as_mut().map(|x| -> &mut dyn HealReceiver { x }).unwrap_or(&mut ())
+        ])
+    }
+}
+
 impl Torso
 {
     fn detach_broken(&mut self, on_break: &mut impl FnMut(AnatomyId))
@@ -1974,6 +2324,24 @@ pub struct Pelvis
     pub legs: Halves<Option<Limb>>
 }
 
+impl HealReceiver for Pelvis
+{
+    fn is_full(&self) -> bool
+    {
+        self.pelvis.is_full()
+            && self.legs.as_ref().map(|x| x.as_ref().map(|x| x.is_full()).unwrap_or(true)).combine(|a, b| a && b)
+    }
+
+    fn heal(&mut self, amount: f32) -> Option<f32>
+    {
+        heal_iterative(amount, [
+            &mut self.pelvis,
+            self.legs.left.as_mut().map(|x| -> &mut dyn HealReceiver { x }).unwrap_or(&mut ()),
+            self.legs.right.as_mut().map(|x| -> &mut dyn HealReceiver { x }).unwrap_or(&mut ())
+        ])
+    }
+}
+
 impl Pelvis
 {
     fn detach_broken(&mut self, on_break: &mut impl FnMut(AnatomyId))
@@ -2002,6 +2370,25 @@ pub struct Spine
     pub pelvis: Option<Pelvis>
 }
 
+impl HealReceiver for Spine
+{
+    fn is_full(&self) -> bool
+    {
+        self.spine.is_full()
+            && self.torso.as_ref().map(|x| x.is_full()).unwrap_or(true)
+            && self.pelvis.as_ref().map(|x| x.is_full()).unwrap_or(true)
+    }
+
+    fn heal(&mut self, amount: f32) -> Option<f32>
+    {
+        heal_iterative(amount, [
+            &mut self.spine,
+            self.torso.as_mut().map(|x| -> &mut dyn HealReceiver { x }).unwrap_or(&mut ()),
+            self.pelvis.as_mut().map(|x| -> &mut dyn HealReceiver { x }).unwrap_or(&mut ())
+        ])
+    }
+}
+
 impl Spine
 {
     fn detach_broken(&mut self, on_break: &mut impl FnMut(AnatomyId))
@@ -2026,6 +2413,23 @@ pub struct HumanBody
 {
     pub head: Option<HumanPart<HeadOrgans>>,
     pub spine: Option<Spine>
+}
+
+impl HealReceiver for HumanBody
+{
+    fn is_full(&self) -> bool
+    {
+        self.head.as_ref().map(|x| x.is_full()).unwrap_or(true)
+            && self.spine.as_ref().map(|x| x.is_full()).unwrap_or(true)
+    }
+
+    fn heal(&mut self, amount: f32) -> Option<f32>
+    {
+        heal_iterative(amount, [
+            self.head.as_mut().map(|x| -> &mut dyn HealReceiver { x }).unwrap_or(&mut ()),
+            self.spine.as_mut().map(|x| -> &mut dyn HealReceiver { x }).unwrap_or(&mut ())
+        ])
+    }
 }
 
 impl HumanBody
@@ -2910,5 +3314,46 @@ impl Damageable for HumanAnatomy
         }
 
         self.damage_random_part(damage)
+    }
+
+    fn is_full(&self) -> bool
+    {
+        self.body.is_full()
+    }
+
+    fn heal(&mut self, amount: f32) -> Option<f32>
+    {
+        self.body.heal(amount)
+    }
+}
+
+#[cfg(test)]
+mod tests
+{
+    use super::*;
+
+
+    #[test]
+    fn healing()
+    {
+        let health_with = |amount| -> ChangeTracking<Health>
+        {
+            let mut h = Health::new(fastrand::f32(), 1.0);
+            h.health.current = amount;
+
+            h.into()
+        };
+
+        let mut a = health_with(0.7);
+        let mut b = health_with(0.3);
+        let mut c = health_with(0.2);
+
+        heal_iterative(1.0, [&mut a, &mut b, &mut c]);
+
+        let e = f32::EPSILON;
+
+        assert_eq!(a.current(), 1.0);
+        assert!((b.current() - 0.65).abs() < e);
+        assert!((c.current() - 0.55).abs() < e);
     }
 }
