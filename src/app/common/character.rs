@@ -233,7 +233,7 @@ pub struct AfterInfo
     hair: Vec<Entity>,
     rotation: f32,
     sprint_await: bool,
-    buffered: [bool; BufferedAction::COUNT]
+    buffered: [f32; BufferedAction::COUNT]
 }
 
 #[derive(Default, Debug, Clone)]
@@ -468,7 +468,7 @@ impl Character
             hair,
             rotation,
             sprint_await: false,
-            buffered: [false; BufferedAction::COUNT]
+            buffered: [0.0; BufferedAction::COUNT]
         };
 
         if !entities.light_exists(entity)
@@ -980,11 +980,14 @@ impl Character
         self.hands_infront = false;
     }
 
-    fn bash_attack(&mut self, combined_info: CombinedInfo)
+    fn bash_attack(&mut self, combined_info: CombinedInfo, buffer: bool)
     {
         if !self.can_attack(combined_info)
         {
-            self.start_buffered(BufferedAction::Bash);
+            if buffer
+            {
+                self.start_buffered(BufferedAction::Bash);
+            }
 
             return;
         }
@@ -1064,15 +1067,15 @@ impl Character
     fn start_buffered(&mut self, action: BufferedAction)
     {
         let info = some_or_return!(self.info.as_mut());
-        info.buffered[action as usize] = true;
+        info.buffered[action as usize] = 0.5;
     }
 
     fn stop_buffered(&mut self, action: BufferedAction)
     {
         let info = some_or_return!(self.info.as_mut());
-        if info.buffered[action as usize]
+        if info.buffered[action as usize] > 0.0
         {
-            info.buffered[action as usize] = false;
+            info.buffered[action as usize] = 0.0;
         }
     }
 
@@ -1450,7 +1453,7 @@ impl Character
                 CharacterAction::Poke{state: true} => with_clear!(self.poke_attack(combined_info)),
                 CharacterAction::Ranged{state: false, ..} => self.aim_start(combined_info),
                 CharacterAction::Ranged{state: true, target} => with_clear!(self.ranged_attack(combined_info, target)),
-                CharacterAction::Bash => self.bash_attack(combined_info)
+                CharacterAction::Bash => self.bash_attack(combined_info, true)
             }
         });
     }
@@ -1529,7 +1532,7 @@ impl Character
         Self::decrease_timer(&mut self.attack_cooldown, dt);
     }
 
-    fn update_buffered(&mut self, combined_info: CombinedInfo)
+    fn update_buffered(&mut self, combined_info: CombinedInfo, dt: f32)
     {
         if self.info.is_none()
         {
@@ -1538,12 +1541,22 @@ impl Character
 
         for action in BufferedAction::iter()
         {
-            if self.info.as_ref().expect("info must not disappear after creation").buffered[action as usize]
+            let is_buffered = {
+                let buffered = &mut self.info.as_mut()
+                    .expect("info must not disappear after creation")
+                    .buffered[action as usize];
+
+                *buffered = (*buffered - dt).max(0.0);
+
+                *buffered > 0.0
+            };
+
+            if is_buffered
             {
                 match action
                 {
                     BufferedAction::Poke => { self.poke_attack_start(combined_info); },
-                    BufferedAction::Bash => self.bash_attack(combined_info),
+                    BufferedAction::Bash => self.bash_attack(combined_info, false),
                     BufferedAction::Aim => self.aim_start(combined_info)
                 }
             }
@@ -1634,7 +1647,7 @@ impl Character
         self.update_sprint(combined_info, dt);
         self.update_attacks(dt);
 
-        self.update_buffered(combined_info);
+        self.update_buffered(combined_info, dt);
 
         if !self.update_common(combined_info.characters_info, combined_info.entities)
         {
