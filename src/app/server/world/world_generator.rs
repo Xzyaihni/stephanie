@@ -10,6 +10,8 @@ use std::{
     path::{Path, PathBuf}
 };
 
+use nalgebra::Vector3;
+
 use crate::common::{
     TileMap,
     SaveLoad,
@@ -159,6 +161,14 @@ impl From<lisp::ErrorPos> for ParseError
     }
 }
 
+pub fn chunk_difficulty(pos: GlobalPos) -> f32
+{
+    let mut p: Vector3<f32> = Vector3::from(pos.0).cast();
+    p.z = 0.0;
+
+    p.magnitude() * 0.01
+}
+
 pub struct ChunkGenerator
 {
     rules: Rc<ChunkRulesGroup>,
@@ -300,10 +310,16 @@ impl ChunkGenerator
                     panic!("worldchunk named `{}` doesnt exist", group.this)
                 });
 
-            this_chunk.memory_mut().define("height", info.height.into()).unwrap_or_else(|err|
+            let mut define_symbol = |name, value|
             {
-                panic!("error allocating height symbol: {err}")
-            });
+                this_chunk.memory_mut().define(name, value).unwrap_or_else(|err|
+                {
+                    panic!("error allocating {name} symbol: {err}")
+                });
+            };
+
+            define_symbol("height", info.height.into());
+            define_symbol("difficulty", info.difficulty.into());
 
             info.tags.iter().try_for_each(|tag|
             {
@@ -517,6 +533,8 @@ impl<S: SaveLoad<WorldChunksBlock>> WorldGenerator<S>
 
                 let global_pos = global_mapper.to_global(local_pos);
 
+                let difficulty = chunk_difficulty(global_pos);
+
                 let block: WorldChunksBlock = (0..CHUNK_RATIO.z).map(|index|
                 {
                     let mut global_pos = global_pos;
@@ -536,6 +554,7 @@ impl<S: SaveLoad<WorldChunksBlock>> WorldGenerator<S>
                             // above ground
                             let info = ConditionalInfo{
                                 height: global_z,
+                                difficulty,
                                 tags: this_surface.tags()
                             };
 
@@ -546,6 +565,7 @@ impl<S: SaveLoad<WorldChunksBlock>> WorldGenerator<S>
                             // underground
                             let info = ConditionalInfo{
                                 height: global_z,
+                                difficulty,
                                 tags: this_surface.tags()
                             };
 

@@ -82,6 +82,21 @@
                 (make-point 2 (- size-y 3)))
             (tile 'air))
 
+	(put-tile
+	    this-chunk
+	    (make-point 7 4)
+	    (single-marker (list 'light 1.0)))
+
+	(put-tile
+	    this-chunk
+	    (make-point 7 8)
+	    (single-marker (list 'light 1.0)))
+
+	(put-tile
+	    this-chunk
+	    (make-point 7 12)
+	    (single-marker (list 'light 1.0)))
+
         (define (door x)
             (this-tile
                 (make-point x 12)

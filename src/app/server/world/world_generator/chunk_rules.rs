@@ -467,6 +467,7 @@ impl ConditionalRule
 pub struct ConditionalInfo<'a>
 {
     pub height: i32,
+    pub difficulty: f32,
     pub tags: &'a [WorldChunkTag]
 }
 

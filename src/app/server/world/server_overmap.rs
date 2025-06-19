@@ -5,6 +5,7 @@ use super::{
     world_generator::{
         WORLD_CHUNK_SIZE,
         CHUNK_RATIO,
+        chunk_difficulty,
         ConditionalInfo,
         WorldGenerator,
         WorldChunk
@@ -300,9 +301,14 @@ impl<S: SaveLoad<WorldChunksBlock>> ServerOvermap<S>
                         LocalPos::new(Pos3{z: 0, ..local_pos.pos}, Pos3{z: 1, ..local_pos.size})
                     ).tags();
 
-                    let info = ConditionalInfo{
-                        height: self.to_global_z(local_pos.pos.z) * CHUNK_RATIO.z as i32 + z as i32,
-                        tags
+                    let info = {
+                        let global_pos = self.to_global(local_pos);
+
+                        ConditionalInfo{
+                            height: global_pos.0.z * CHUNK_RATIO.z as i32 + z as i32,
+                            difficulty: chunk_difficulty(global_pos),
+                            tags
+                        }
                     };
 
                     let mut marker = |mut marker_tile: MarkerTile|

@@ -10,7 +10,7 @@ void main()
     float d = sqrt((o.x * o.x) + (o.y * o.y)) * 2.0;
 
     float cut = 0.9;
-    float b = 5.0;
+    float b = 40.0;
 
     float cut_brightness = 1.0 / (1.0 + b * cut * cut);
 
