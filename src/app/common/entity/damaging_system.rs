@@ -470,7 +470,10 @@ fn damaging_colliding(
                 ))
             }).map(|(angle, damage)|
             {
-                let direction = Vector3::new(angle.cos(), -angle.sin(), 0.0);
+                let direction = {
+                    let angle = angle_between(collided_transform.position, this_transform.position);
+                    Vector3::new(angle.cos(), -angle.sin(), 0.0)
+                };
 
                 let damage_entry = collided_transform.position
                     + direction.component_mul(&(collided_transform.scale * 0.5));

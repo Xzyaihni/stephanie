@@ -1047,6 +1047,7 @@ mod tests
         let empty = [];
         let info = ConditionalInfo{
             height: 0,
+            difficulty: 0.0,
             tags: &empty
         };
 
