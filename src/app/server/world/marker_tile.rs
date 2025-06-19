@@ -69,11 +69,11 @@ impl MarkerTile
 
         match self.kind
         {
-            MarkerKind::Light{strength} =>
+            MarkerKind::Light{strength, offset} =>
             {
                 entities.push(false, EntityInfo{
                     transform: Some(Transform{
-                        position,
+                        position: position + offset,
                         scale: Vector3::repeat(TILE_SIZE),
                         ..Default::default()
                     }),
@@ -165,7 +165,7 @@ impl MarkerTile
 pub enum MarkerKind
 {
     Door{rotation: TileRotation, material: DoorMaterial, width: u32},
-    Light{strength: f32}
+    Light{strength: f32, offset: Vector3<f32>}
 }
 
 impl MarkerKind
@@ -187,6 +187,22 @@ impl MarkerKind
             values.next().ok_or_else(|| lisp::Error::Custom(format!("expected {name}")))
         };
 
+        let next_position = |value: Option<GenericOutputWrapper<&LispMemory>>|
+        {
+            value.map(|x| -> Result<_, _>
+            {
+                let lst = x.as_pairs_list()?;
+
+                let mut values = lst.into_iter();
+                let mut next_value = ||
+                {
+                    values.next().map(|x| x.as_float()).unwrap_or(Ok(0.0)).map(|x| x * TILE_SIZE)
+                };
+
+                Ok(Vector3::new(next_value()?, next_value()?, next_value()?))
+            }).unwrap_or_else(|| Ok(Vector3::zeros()))
+        };
+
         let id = next_value("marker tile id")?.as_symbol()?;
 
         match id.as_ref()
@@ -203,8 +219,9 @@ impl MarkerKind
             "light" =>
             {
                 let strength = next_value("light strength")?.as_float()?;
+                let offset = next_position(next_value("").ok())?;
 
-                Ok(Self::Light{strength})
+                Ok(Self::Light{strength, offset})
             },
             x => Err(lisp::Error::Custom(format!("unknown marker id `{x}`")))
         }

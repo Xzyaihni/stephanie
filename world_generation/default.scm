@@ -31,9 +31,6 @@
 (define side-left 2)
 (define side-right 3)
 
-; advanced rng, why do i even have this?
-(define random-side side-up)
-
 (define (put-tile chunk pos this-tile)
     (vector-set!
         chunk

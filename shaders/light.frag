@@ -9,8 +9,8 @@ void main()
     vec2 o = tex_coords - 0.5;
     float d = sqrt((o.x * o.x) + (o.y * o.y)) * 2.0;
 
-    float cut = 0.9;
-    float b = 40.0;
+    float cut = 0.7;
+    float b = 20.0;
 
     float cut_brightness = 1.0 / (1.0 + b * cut * cut);
 

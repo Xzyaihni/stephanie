@@ -40,6 +40,12 @@
     (define (residential-building)
         (define this-chunk (filled-chunk (tile 'air)))
 
+	(define (maybe-light point intensity offset)
+	    (put-tile
+		this-chunk
+		point
+		(single-marker (list 'light intensity offset))))
+
         (define (this-tile point tle) (put-tile this-chunk point tle))
 
         (define wall-material (tile 'concrete))
@@ -82,20 +88,9 @@
                 (make-point 2 (- size-y 3)))
             (tile 'air))
 
-	(put-tile
-	    this-chunk
-	    (make-point 7 4)
-	    (single-marker (list 'light 1.0)))
-
-	(put-tile
-	    this-chunk
-	    (make-point 7 8)
-	    (single-marker (list 'light 1.0)))
-
-	(put-tile
-	    this-chunk
-	    (make-point 7 12)
-	    (single-marker (list 'light 1.0)))
+	(maybe-light (make-point 7 4) 0.5 '(0.5 0.0 0.0))
+	(maybe-light (make-point 7 8) 0.5 '(0.5 0.0 0.0))
+	(maybe-light (make-point 7 12) 0.5 '(0.5 0.0 0.0))
 
         (define (door x)
             (this-tile
