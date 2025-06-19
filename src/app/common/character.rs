@@ -1317,7 +1317,7 @@ impl Character
             height: self.melee_height()
         };
 
-        let angle = self.bash_side.to_angle();
+        let angle = self.bash_side.opposite().to_angle() - f32::consts::FRAC_PI_2;
 
         combined_info.entities.push(
             true,

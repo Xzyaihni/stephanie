@@ -72,13 +72,13 @@ pub fn update(
             if let Some(transform) = entities.transform(entity)
             {
                 let collider = collider.borrow_mut();
-                let (bounds, sprite) = match &collider.kind
+                let (bounds, mix, sprite) = match &collider.kind
                 {
-                    ColliderType::RayZ => (Some(Vector3::repeat(ENTITY_SCALE * 0.06)), "ui/solid.png"),
+                    ColliderType::RayZ => (Some(Vector3::repeat(ENTITY_SCALE * 0.06)), None, "ui/solid.png"),
                     ColliderType::Tile(_)
                     | ColliderType::Aabb
-                    | ColliderType::Rectangle => (None, "ui/background.png"),
-                    ColliderType::Circle => (None, "circle_transparent.png")
+                    | ColliderType::Rectangle => (None, Some(MixColor::color([0.0, 0.0, 0.0, 0.4])), "ui/solid.png"),
+                    ColliderType::Circle => (None, None, "circle_transparent.png")
                 };
 
                 let scale = bounds.unwrap_or_else(|| collider.scale.unwrap_or(transform.scale));
@@ -93,6 +93,7 @@ pub fn update(
                         object: Some(RenderObjectKind::Texture{
                             name: sprite.to_owned()
                         }.into()),
+                        mix,
                         z_level: ZLevel::highest(),
                         ..Default::default()
                     }),

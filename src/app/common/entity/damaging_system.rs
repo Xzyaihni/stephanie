@@ -15,6 +15,7 @@ use crate::{
         some_or_value,
         some_or_return,
         angle_between,
+        opposite_angle,
         short_rotation,
         damage::*,
         damaging::*,
@@ -182,7 +183,7 @@ pub fn damager<'a, 'b, E: AnyEntities, Passer: EntityPasser, TileDamager: FnMut(
                 angle
             } else
             {
-                f32::consts::PI + angle
+                opposite_angle(angle)
             };
 
             let watcher = kind.create(textures, weak, angle);
@@ -418,11 +419,11 @@ fn damaging_colliding(
     let same_tile_z = damaging.same_tile_z;
     collider.collided_tiles().iter().copied().filter_map(|tile_pos|
     {
-        let position: Vector3<f32> = tile_pos.position().into();
+        let position = Vector3::from(tile_pos.position()) + Vector3::repeat(TILE_SIZE / 2.0);
 
         if same_tile_z
         {
-            if ((position.z + TILE_SIZE / 2.0) - this_transform.position.z).abs() > (TILE_SIZE / 2.0)
+            if (position.z - this_transform.position.z).abs() > (TILE_SIZE / 2.0)
             {
                 return None;
             }
@@ -469,14 +470,21 @@ fn damaging_colliding(
                 ))
             }).map(|(angle, damage)|
             {
-                let direction = Vector3::new(angle.cos(), angle.sin(), 0.0);
+                let direction = Vector3::new(angle.cos(), -angle.sin(), 0.0);
 
                 let damage_entry = collided_transform.position
                     + direction.component_mul(&(collided_transform.scale * 0.5));
 
                 let damage_exit = None;
 
-                DamagingResult{kind, other_entity: source_entity, damage_entry, damage_exit, angle, damage}
+                DamagingResult{
+                    kind,
+                    other_entity: source_entity,
+                    damage_entry,
+                    damage_exit,
+                    angle: opposite_angle(angle),
+                    damage
+                }
             })
         } else
         {

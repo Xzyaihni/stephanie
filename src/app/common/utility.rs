@@ -391,6 +391,11 @@ pub fn random_rotation() -> f32
     fastrand::f32() * (f32::consts::PI * 2.0)
 }
 
+pub fn opposite_angle(angle: f32) -> f32
+{
+    f32::consts::PI + angle
+}
+
 pub fn short_rotation(rotation: f32) -> f32
 {
     let rotation = rotation % (f32::consts::PI * 2.0);

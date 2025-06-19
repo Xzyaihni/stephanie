@@ -121,7 +121,7 @@ impl DamagingType
             {
                 let info = collision()?;
 
-                Some((info.global_rotation + *angle, damage.clone()))
+                Some((info.global_rotation - *angle, damage.clone()))
             }
         }
     }
