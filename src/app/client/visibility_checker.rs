@@ -23,7 +23,7 @@ impl VisibilityChecker
 
         let half_size = self.size / 2.0;
 
-        let limit = half_size + Vector3::repeat(radius);
+        let limit = half_size + Vector3::new(radius, radius, 0.0);
 
         (0..3).all(|i|
         {

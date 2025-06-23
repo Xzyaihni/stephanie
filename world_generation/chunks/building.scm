@@ -41,10 +41,11 @@
         (define this-chunk (filled-chunk (tile 'air)))
 
 	(define (maybe-light point intensity offset)
-	    (put-tile
-		this-chunk
-		point
-		(single-marker (list 'light intensity offset))))
+            (if (stop-between-difficulty 0.1 0.2)
+		(put-tile
+		    this-chunk
+		    point
+		    (single-marker (list 'light intensity offset)))))
 
         (define (this-tile point tle) (put-tile this-chunk point tle))
 
@@ -88,9 +89,8 @@
                 (make-point 2 (- size-y 3)))
             (tile 'air))
 
-	(maybe-light (make-point 7 4) 0.5 '(0.5 0.0 0.0))
-	(maybe-light (make-point 7 8) 0.5 '(0.5 0.0 0.0))
-	(maybe-light (make-point 7 12) 0.5 '(0.5 0.0 0.0))
+	(maybe-light (make-point 7 5) 1.0 '(0.5 0.0 0.0))
+	(maybe-light (make-point 7 11) 1.0 '(0.5 0.0 0.0))
 
         (define (door x)
             (this-tile

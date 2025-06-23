@@ -533,6 +533,11 @@ impl Default for Primitives
 
                     Ok(fastrand::i32(0..limit).into())
                 })),
+            ("random-float",
+                PrimitiveProcedureInfo::new_simple(0, Effect::Impure, |_args|
+                {
+                    Ok(fastrand::f32().into())
+                })),
             ("exact->inexact",
                 PrimitiveProcedureInfo::new_simple(1, Effect::Pure, |mut args|
                 {

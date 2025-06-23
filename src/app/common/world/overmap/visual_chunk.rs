@@ -127,6 +127,8 @@ pub struct VisualChunk
 {
     objects: ChunkSlice<Option<Object>>,
     occluders: ChunkSlice<Box<[OccludingPlane]>>,
+    light_occluder_base: ChunkSlice<Box<[OccluderInfo]>>,
+    light_occluders: Vec<ChunkSlice<Box<[OccludingPlane]>>>,
     vertical_occluders: ChunkSlice<Box<[SolidObject]>>,
     draw_height: ChunkSlice<usize>,
     draw_next: ChunkSlice<bool>,
@@ -140,6 +142,8 @@ impl VisualChunk
         Self{
             objects: Self::create_empty_slice(Option::default),
             occluders: Self::create_empty(),
+            light_occluder_base: Self::create_empty(),
+            light_occluders: Vec::new(),
             vertical_occluders: Self::create_empty(),
             draw_height: [0; CHUNK_SIZE],
             draw_next: [true; CHUNK_SIZE],
@@ -223,12 +227,14 @@ impl VisualChunk
     ) -> Self
     {
         let objects = tiles_factory.build(chunk_info.infos);
-        let occluders = tiles_factory.build_occluders(chunk_info.occluders);
+        let occluders = tiles_factory.build_occluders(chunk_info.occluders.clone());
         let vertical_occluders = tiles_factory.build_vertical_occluders(chunk_info.vertical_occluders);
 
         Self{
             objects,
             occluders,
+            light_occluder_base: chunk_info.occluders,
+            light_occluders: Vec::new(),
             vertical_occluders,
             generated: true,
             draw_height: chunk_info.draw_height,
@@ -610,8 +616,6 @@ impl VisualChunk
     pub fn update_buffers(
         &mut self,
         info: &mut UpdateBuffersInfo,
-        visibility: &VisibilityChecker,
-        caster: &OccludingCaster,
         height: usize
     )
     {
@@ -622,14 +626,6 @@ impl VisualChunk
             if let Some(object) = objects.as_mut()
             {
                 object.update_buffers(info);
-            }
-        });
-
-        self.occluders[height].iter_mut().for_each(|x|
-        {
-            if x.visible(visibility)
-            {
-                x.update_buffers(info, caster)
             }
         });
     }
@@ -660,8 +656,54 @@ impl VisualChunk
         });
     }
 
-    pub fn draw_shadows(
-        &self,
+    fn update_buffers_shadows_with(
+        occluders: &mut ChunkSlice<Box<[OccludingPlane]>>,
+        info: &mut UpdateBuffersInfo,
+        visibility: &VisibilityChecker,
+        caster: &OccludingCaster,
+        height: usize
+    )
+    {
+        occluders[height].iter_mut().for_each(|x|
+        {
+            if x.visible(visibility)
+            {
+                x.update_buffers(info, caster)
+            }
+        });
+    }
+
+    pub fn update_buffers_shadows(
+        &mut self,
+        info: &mut UpdateBuffersInfo,
+        visibility: &VisibilityChecker,
+        caster: &OccludingCaster,
+        height: usize
+    )
+    {
+        Self::update_buffers_shadows_with(&mut self.occluders, info, visibility, caster, height)
+    }
+
+    pub fn update_buffers_light_shadows(
+        &mut self,
+        info: &mut UpdateBuffersInfo,
+        tiles_factory: &mut TilesFactory,
+        visibility: &VisibilityChecker,
+        caster: &OccludingCaster,
+        height: usize,
+        id: usize
+    )
+    {
+        if id >= self.light_occluders.len()
+        {
+            self.light_occluders.push(tiles_factory.build_occluders(self.light_occluder_base.clone()));
+        }
+
+        Self::update_buffers_shadows_with(&mut self.light_occluders[id], info, visibility, caster, height)
+    }
+
+    fn draw_shadows_with(
+        occluders: &ChunkSlice<Box<[OccludingPlane]>>,
         info: &mut DrawInfo,
         visibility: &VisibilityChecker,
         height: usize
@@ -672,13 +714,34 @@ impl VisualChunk
             return;
         }
 
-        self.occluders[height].iter().for_each(|x|
+        occluders[height].iter().for_each(|x|
         {
             if x.visible(visibility)
             {
                 x.draw(info)
             }
         });
+    }
+
+    pub fn draw_shadows(
+        &self,
+        info: &mut DrawInfo,
+        visibility: &VisibilityChecker,
+        height: usize
+    )
+    {
+        Self::draw_shadows_with(&self.occluders, info, visibility, height)
+    }
+
+    pub fn draw_light_shadows(
+        &self,
+        info: &mut DrawInfo,
+        visibility: &VisibilityChecker,
+        height: usize,
+        id: usize
+    )
+    {
+        Self::draw_shadows_with(&self.light_occluders[id], info, visibility, height)
     }
 
     pub fn draw_sky_shadows(

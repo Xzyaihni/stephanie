@@ -1,5 +1,5 @@
 use vulkano::pipeline::graphics::{
-    color_blend::AttachmentBlend,
+    color_blend::{AttachmentBlend, BlendFactor, BlendOp},
     vertex_input::Vertex,
     depth_stencil::{
         DepthState,
@@ -112,6 +112,15 @@ mod light_fragment
     {
         ty: "fragment",
         path: "shaders/light.frag"
+    }
+}
+
+mod clear_fragment
+{
+    vulkano_shaders::shader!
+    {
+        ty: "fragment",
+        path: "shaders/clear.frag"
     }
 }
 
@@ -263,7 +272,7 @@ pub fn create() -> ShadersCreated
         ..Default::default()
     });
 
-    let occluder_shader = shaders.push(Shader{
+    let light_shadow_shader = shaders.push(Shader{
         shader: ShadersGroup::new(
             occluder_vertex::load,
             occluder_fragment::load
@@ -274,7 +283,14 @@ pub fn create() -> ShadersCreated
         }),
         per_vertex: Some(OccludingPlane::per_vertex()),
         subpass: 2,
-        blend: None,
+        blend: Some(AttachmentBlend{
+            src_color_blend_factor: BlendFactor::One,
+            dst_color_blend_factor: BlendFactor::One,
+            color_blend_op: BlendOp::Max,
+            src_alpha_blend_factor: BlendFactor::Zero,
+            dst_alpha_blend_factor: BlendFactor::Zero,
+            alpha_blend_op: BlendOp::Add
+        }),
         ..Default::default()
     });
 
@@ -289,7 +305,36 @@ pub fn create() -> ShadersCreated
         }),
         per_vertex: Some(ObjectVertex::per_vertex()),
         subpass: 2,
-        blend: Some(AttachmentBlend::additive()),
+        blend: Some(AttachmentBlend{
+            src_color_blend_factor: BlendFactor::DstAlpha,
+            dst_color_blend_factor: BlendFactor::One,
+            color_blend_op: BlendOp::Add,
+            src_alpha_blend_factor: BlendFactor::Zero,
+            dst_alpha_blend_factor: BlendFactor::Zero,
+            alpha_blend_op: BlendOp::Add
+        }),
+        ..Default::default()
+    });
+
+    let clear_alpha_shader = shaders.push(Shader{
+        shader: ShadersGroup::new(
+            final_vertex::load,
+            clear_fragment::load
+        ),
+        depth: Some(DepthState{
+            write_enable: false,
+            compare_op: CompareOp::Always
+        }),
+        per_vertex: Some(SimpleVertex::per_vertex()),
+        subpass: 2,
+        blend: Some(AttachmentBlend{
+            src_color_blend_factor: BlendFactor::Zero,
+            dst_color_blend_factor: BlendFactor::One,
+            color_blend_op: BlendOp::Add,
+            src_alpha_blend_factor: BlendFactor::One,
+            dst_alpha_blend_factor: BlendFactor::Zero,
+            alpha_blend_op: BlendOp::Add
+        }),
         ..Default::default()
     });
 
@@ -333,8 +378,10 @@ pub fn create() -> ShadersCreated
             world: world_shader,
             world_shaded: world_shaded_shader,
             shadow: shadow_shader,
-            occluder: occluder_shader,
+            occluder: shadow_shader,
+            light_shadow: light_shadow_shader,
             lighting: lighting_shader,
+            clear_alpha: clear_alpha_shader,
             ui: ui_shader,
             final_mix: final_mix_shader
         }

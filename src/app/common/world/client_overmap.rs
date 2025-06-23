@@ -429,12 +429,31 @@ impl ClientOvermap
 
     pub fn update_buffers(
         &mut self,
+        info: &mut UpdateBuffersInfo
+    )
+    {
+        self.visual_overmap.update_buffers(info);
+    }
+
+    pub fn update_buffers_shadows(
+        &mut self,
         info: &mut UpdateBuffersInfo,
         visibility: &VisibilityChecker,
         caster: &OccludingCaster
     )
     {
-        self.visual_overmap.update_buffers(info, visibility, caster);
+        self.visual_overmap.update_buffers_shadows(info, visibility, caster);
+    }
+
+    pub fn update_buffers_light_shadows(
+        &mut self,
+        info: &mut UpdateBuffersInfo,
+        visibility: &VisibilityChecker,
+        caster: &OccludingCaster,
+        id: usize
+    )
+    {
+        self.visual_overmap.update_buffers_light_shadows(info, visibility, caster, id);
     }
 
     pub fn draw_shadows(
@@ -444,6 +463,16 @@ impl ClientOvermap
     )
     {
         self.visual_overmap.draw_shadows(info, visibility);
+    }
+
+    pub fn draw_light_shadows(
+        &self,
+        info: &mut DrawInfo,
+        visibility: &VisibilityChecker,
+        id: usize
+    )
+    {
+        self.visual_overmap.draw_light_shadows(info, visibility, id);
     }
 
     pub fn draw_sky_occluders(

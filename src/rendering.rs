@@ -54,7 +54,7 @@ pub fn create() -> Rendering<()>
                         store_op: DontCare
                     },
                     lighting: {
-                        format: Format::R8G8B8A8_SRGB,
+                        format: Format::R8G8B8A8_UNORM,
                         samples: 1,
                         load_op: Clear,
                         store_op: DontCare
@@ -115,13 +115,13 @@ pub fn create() -> Rendering<()>
             let depth = create_depth();
             let shade_depth = create_depth();
 
-            let normal_image = ||
+            let normal_image = |format|
             {
                 ImageView::new_default(Image::new(
                     allocator.clone(),
                     ImageCreateInfo{
                         image_type: ImageType::Dim2d,
-                        format: Format::R8G8B8A8_SRGB,
+                        format,
                         extent: view.image().extent(),
                         usage: ImageUsage::COLOR_ATTACHMENT | ImageUsage::TRANSIENT_ATTACHMENT | ImageUsage::INPUT_ATTACHMENT,
                         ..Default::default()
@@ -130,9 +130,9 @@ pub fn create() -> Rendering<()>
                 ).unwrap()).unwrap()
             };
 
-            let color = normal_image();
-            let shade = normal_image();
-            let lighting = normal_image();
+            let color = normal_image(Format::R8G8B8A8_SRGB);
+            let shade = normal_image(Format::R8G8B8A8_SRGB);
+            let lighting = normal_image(Format::R8G8B8A8_UNORM);
 
             vec![color, depth, shade, shade_depth, lighting, view]
         }),

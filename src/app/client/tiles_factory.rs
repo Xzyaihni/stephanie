@@ -45,7 +45,7 @@ use crate::common::{
 
 pub type ChunkSlice<T> = [T; CHUNK_SIZE];
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct OccluderInfo
 {
     pub position: Vector3<f32>,

@@ -175,6 +175,7 @@
 (define (sqrt x)
     (newtons-method 1.0 (lambda (y) (- (* y y) x))))
 
+; start inclusive, end exclusive
 (define (random-integer-between start end)
     (let ((distance (- end start)))
         (+ start (random-integer distance))))

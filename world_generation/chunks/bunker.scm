@@ -41,7 +41,7 @@
             (put-tile
                 this-chunk
                 (make-point (/ size-x 2) (/ size-y 2))
-		(single-marker (list 'light 1.0)))
+                (single-marker (list 'light 1.0)))
             (let ((doorway-point (make-point (- (/ size-x 2) 1) 4)))
                 (begin
                     (fill-area
@@ -71,7 +71,7 @@
             (put-tile
                 this-chunk
                 (make-point (/ size-x 2) (/ size-y 2))
-		(single-marker (list 'light 1.0)))
+                (single-marker (list 'light 1.0)))
             (put-tile
                 this-chunk
                 (make-point (/ size-x 2) (- size-y 5))

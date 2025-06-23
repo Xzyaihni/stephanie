@@ -152,3 +152,11 @@
             (put-corner (make-point (point-x end) (point-y start)) 'right)
             (put-corner end 'down)
             (put-corner (make-point (point-x start) (point-y end)) 'left))))
+
+(define (stop-between-difficulty start end)
+    (if (< difficulty start)
+        #t
+        (if (> difficulty end)
+            #f
+            (let ((fraction (/ (- difficulty start) (- end start))))
+                (> (random-float) fraction)))))

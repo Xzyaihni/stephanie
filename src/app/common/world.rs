@@ -310,12 +310,31 @@ impl World
 
     pub fn update_buffers(
         &mut self,
+        info: &mut UpdateBuffersInfo
+    )
+    {
+        self.overmap.update_buffers(info);
+    }
+
+    pub fn update_buffers_shadows(
+        &mut self,
         info: &mut UpdateBuffersInfo,
         visibility: &VisibilityChecker,
         caster: &OccludingCaster
     )
     {
-        self.overmap.update_buffers(info, visibility, caster);
+        self.overmap.update_buffers_shadows(info, visibility, caster);
+    }
+
+    pub fn update_buffers_light_shadows(
+        &mut self,
+        info: &mut UpdateBuffersInfo,
+        visibility: &VisibilityChecker,
+        caster: &OccludingCaster,
+        id: usize
+    )
+    {
+        self.overmap.update_buffers_light_shadows(info, visibility, caster, id);
     }
 
     pub fn draw_shadows(
@@ -325,6 +344,16 @@ impl World
     )
     {
         self.overmap.draw_shadows(info, visibility);
+    }
+
+    pub fn draw_light_shadows(
+        &self,
+        info: &mut DrawInfo,
+        visibility: &VisibilityChecker,
+        id: usize
+    )
+    {
+        self.overmap.draw_light_shadows(info, visibility, id);
     }
 
     pub fn draw_sky_occluders(

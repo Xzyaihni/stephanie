@@ -227,7 +227,8 @@ impl ClientEntitiesContainer
         &mut self,
         visibility: &VisibilityChecker,
         info: &mut UpdateBuffersInfo,
-        caster: &OccludingCaster
+        caster: &OccludingCaster,
+        world: &mut World
     )
     {
         fn insert_render<V>(renders: &mut BTreeMap<i32, Vec<V>>, value: V, key: i32)
@@ -276,12 +277,22 @@ impl ClientEntitiesContainer
         {
             let transform = some_or_return!(self.entities.transform(entity));
 
-            let light = light.borrow();
+            let mut light = light.borrow_mut();
 
             if !light.visible_with(visibility, &transform)
             {
                 return;
             }
+
+            let position = transform.position;
+            light.update_buffers(info, position);
+
+            world.update_buffers_light_shadows(
+                info,
+                &light.visibility_checker_with(position),
+                &OccludingCaster::from(position),
+                self.light_renders.len()
+            );
 
             self.light_renders.push(entity);
         });
@@ -292,7 +303,6 @@ impl ClientEntitiesContainer
         render_system::update_buffers(
             &self.entities,
             self.visible_renders.iter().flatten().chain(self.above_world_renders.iter()).copied(),
-            self.light_renders.iter().copied(),
             info,
             caster
         );
@@ -987,7 +997,8 @@ impl GameState
 
         let visibility = self.visibility_checker();
 
-        self.world.update_buffers(info, &visibility, &caster);
+        self.world.update_buffers(info);
+        self.world.update_buffers_shadows(info, &visibility, &caster);
 
         let mut create_info = RenderCreateInfo{
             ids: self.cached_ids,
@@ -996,7 +1007,7 @@ impl GameState
 
         self.entities.entities.create_render_queued(&mut create_info);
 
-        self.entities.update_buffers(&visibility, info, &caster);
+        self.entities.update_buffers(&visibility, info, &caster, &mut self.world);
 
         {
             info.update_camera(&self.ui_camera);

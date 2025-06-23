@@ -56,7 +56,9 @@ pub struct ProgramShaders
     pub world_shaded: ShaderId,
     pub shadow: ShaderId,
     pub occluder: ShaderId,
+    pub light_shadow: ShaderId,
     pub lighting: ShaderId,
+    pub clear_alpha: ShaderId,
     pub ui: ShaderId,
     pub final_mix: ShaderId
 }

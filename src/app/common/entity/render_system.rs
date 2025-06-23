@@ -1,5 +1,3 @@
-use nalgebra::Vector3;
-
 use vulkano::descriptor_set::WriteDescriptorSet;
 
 use yanyaengine::{game_object::*, SolidObject};
@@ -22,7 +20,6 @@ use crate::{
 pub fn update_buffers(
     entities: &ClientEntities,
     renderables: impl Iterator<Item=Entity>,
-    lights: impl Iterator<Item=Entity>,
     info: &mut UpdateBuffersInfo,
     caster: &OccludingCaster
 )
@@ -59,14 +56,6 @@ pub fn update_buffers(
             occluder.set_transform(transform.clone());
             occluder.update_buffers(info, caster);
         }
-    });
-
-    lights.for_each(|entity|
-    {
-        let position = entities.transform(entity).map(|x| x.position).unwrap_or_else(Vector3::zeros);
-        let mut light = entities.light_mut(entity).unwrap();
-
-        light.update_buffers(info, position);
     });
 }
 
@@ -139,11 +128,24 @@ pub fn draw(
 
     renderables.world.draw_sky_occluders(info);
 
-    info.bind_pipeline(shaders.lighting);
-
-    renderables.light_renders.iter().copied().for_each(|entity|
+    let lights_len = renderables.light_renders.len();
+    renderables.light_renders.iter().copied().enumerate().for_each(|(index, entity)|
     {
-        entities.light(entity).unwrap().draw(info);
+        let is_last = (index + 1) == lights_len;
+
+        let light = entities.light(entity).unwrap();
+
+        info.bind_pipeline(shaders.light_shadow);
+        renderables.world.draw_light_shadows(info, &light.visibility_checker(), index);
+
+        info.bind_pipeline(shaders.lighting);
+        light.draw(info);
+
+        if !is_last
+        {
+            info.bind_pipeline(shaders.clear_alpha);
+            renderables.solid.draw(info);
+        }
     });
 
     info.bind_pipeline(shaders.shadow);

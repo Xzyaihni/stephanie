@@ -47,7 +47,7 @@ struct VisualGenerated
     timestamp: Instant
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct VisibilityChecker
 {
     pub size: Pos3<usize>,
@@ -199,6 +199,14 @@ impl TileReader
     }
 }
 
+fn for_visible_2d<'a>(
+    chunks: &ChunksContainer<(Instant, VisualChunk)>,
+    visibility: &'a VisibilityChecker
+) -> impl Iterator<Item=LocalPos> + use<'a>
+{
+    chunks.positions_2d().filter(|pos| visibility.visible(*pos))
+}
+
 pub struct VisualOvermap
 {
     tiles_factory: TilesFactory,
@@ -332,11 +340,6 @@ impl VisualOvermap
         self.visibility_checker.camera_size = camera_size;
     }
 
-    pub fn visible(&self, pos: LocalPos) -> bool
-    {
-        self.visibility_checker.visible(pos)
-    }
-
     pub fn camera_moved(&mut self, position: Pos3<f32>)
     {
         *self.visibility_checker.player_position.write() = position;
@@ -399,46 +402,38 @@ impl VisualOvermap
 
     pub fn update_buffers(
         &mut self,
-        info: &mut UpdateBuffersInfo,
-        visibility: &EntityVisibilityChecker,
-        caster: &OccludingCaster
+        info: &mut UpdateBuffersInfo
     )
     {
-        self.chunks.positions_2d()
-            .filter(|pos| self.visibility_checker.visible(*pos))
-            .for_each(|pos|
+        for_visible_2d(&self.chunks, &self.visibility_checker).for_each(|pos|
+        {
+            self.visibility_checker.visible_z(&self.chunks, pos).for_each(|pos|
             {
-                self.visibility_checker.visible_z(&self.chunks, pos).for_each(|pos|
-                {
-                    self.chunks[pos].1.update_buffers(
-                        info,
-                        visibility,
-                        caster,
-                        self.visibility_checker.height(pos)
-                    )
-                });
-
-                Self::for_sky_occluders(&self.visibility_checker, pos, |pos|
-                {
-                    self.chunks[pos].1.update_sky_buffers(
-                        info,
-                        Self::sky_draw_height(self.visibility_checker.maybe_height(pos))
-                    );
-                });
+                self.chunks[pos].1.update_buffers(
+                    info,
+                    self.visibility_checker.height(pos)
+                )
             });
+
+            Self::for_sky_occluders(&self.visibility_checker, pos, |pos|
+            {
+                self.chunks[pos].1.update_sky_buffers(
+                    info,
+                    Self::sky_draw_height(self.visibility_checker.maybe_height(pos))
+                );
+            });
+        });
     }
 
     fn for_each_visible(&self, mut f: impl FnMut(&VisualChunk, LocalPos))
     {
-        self.chunks.positions_2d()
-            .filter(|pos| self.visible(*pos))
-            .for_each(|pos|
+        for_visible_2d(&self.chunks, &self.visibility_checker).for_each(|pos|
+        {
+            self.visibility_checker.visible_z(&self.chunks, pos).rev().for_each(|pos|
             {
-                self.visibility_checker.visible_z(&self.chunks, pos).rev().for_each(|pos|
-                {
-                    f(&self.chunks[pos].1, pos)
-                });
+                f(&self.chunks[pos].1, pos)
             });
+        });
     }
 
     pub fn draw_tiles(
@@ -455,25 +450,89 @@ impl VisualOvermap
         });
     }
 
+    pub fn update_buffers_shadows(
+        &mut self,
+        info: &mut UpdateBuffersInfo,
+        visibility: &EntityVisibilityChecker,
+        caster: &OccludingCaster
+    )
+    {
+        for_visible_2d(&self.chunks, &self.visibility_checker).for_each(|pos|
+        {
+            if let Some(pos) = self.visibility_checker.visible_z(&self.chunks, pos).next()
+            {
+                self.chunks[pos].1.update_buffers_shadows(
+                    info,
+                    visibility,
+                    caster,
+                    self.visibility_checker.height(pos)
+                )
+            }
+        });
+    }
+
+    pub fn update_buffers_light_shadows(
+        &mut self,
+        info: &mut UpdateBuffersInfo,
+        visibility: &EntityVisibilityChecker,
+        caster: &OccludingCaster,
+        id: usize
+    )
+    {
+        for_visible_2d(&self.chunks, &self.visibility_checker).for_each(|pos|
+        {
+            if let Some(pos) = self.visibility_checker.visible_z(&self.chunks, pos).next()
+            {
+                self.chunks[pos].1.update_buffers_light_shadows(
+                    info,
+                    &mut self.tiles_factory,
+                    visibility,
+                    caster,
+                    self.visibility_checker.height(pos),
+                    id
+                )
+            }
+        });
+    }
+
     pub fn draw_shadows(
         &self,
         info: &mut DrawInfo,
         visibility: &EntityVisibilityChecker
     )
     {
-        self.chunks.positions_2d()
-            .filter(|pos| self.visible(*pos))
-            .for_each(|pos|
+        for_visible_2d(&self.chunks, &self.visibility_checker).for_each(|pos|
+        {
+            if let Some(pos) = self.visibility_checker.visible_z(&self.chunks, pos).next()
             {
-                if let Some(pos) = self.visibility_checker.visible_z(&self.chunks, pos).next()
-                {
-                    self.chunks[pos].1.draw_shadows(
-                        info,
-                        visibility,
-                        self.visibility_checker.height(pos)
-                    )
-                }
-            });
+                self.chunks[pos].1.draw_shadows(
+                    info,
+                    visibility,
+                    self.visibility_checker.height(pos)
+                )
+            }
+        });
+    }
+
+    pub fn draw_light_shadows(
+        &self,
+        info: &mut DrawInfo,
+        visibility: &EntityVisibilityChecker,
+        id: usize
+    )
+    {
+        for_visible_2d(&self.chunks, &self.visibility_checker).for_each(|pos|
+        {
+            if let Some(pos) = self.visibility_checker.visible_z(&self.chunks, pos).next()
+            {
+                self.chunks[pos].1.draw_light_shadows(
+                    info,
+                    visibility,
+                    self.visibility_checker.height(pos),
+                    id
+                )
+            }
+        });
     }
 
     pub fn draw_sky_occluders(
@@ -481,18 +540,16 @@ impl VisualOvermap
         info: &mut DrawInfo
     )
     {
-        self.chunks.positions_2d()
-            .filter(|pos| self.visible(*pos))
-            .for_each(|pos|
+        for_visible_2d(&self.chunks, &self.visibility_checker).for_each(|pos|
+        {
+            Self::for_sky_occluders(&self.visibility_checker, pos, |pos|
             {
-                Self::for_sky_occluders(&self.visibility_checker, pos, |pos|
-                {
-                    self.chunks[pos].1.draw_sky_shadows(
-                        info,
-                        Self::sky_draw_height(self.visibility_checker.maybe_height(pos))
-                    );
-                });
+                self.chunks[pos].1.draw_sky_shadows(
+                    info,
+                    Self::sky_draw_height(self.visibility_checker.maybe_height(pos))
+                );
             });
+        });
     }
 }
 

@@ -66,11 +66,24 @@ impl ClientLight
 
     pub fn visible_with(&self, visibility: &VisibilityChecker, transform: &Transform) -> bool
     {
-        visibility.visible_sphere(&Transform{
+        self.is_visible() && visibility.visible_sphere(&Transform{
             position: transform.position,
             scale: self.scale(),
             ..Default::default()
-        }) && self.is_visible()
+        })
+    }
+
+    pub fn visibility_checker(&self) -> VisibilityChecker
+    {
+        self.visibility_checker_with(*self.object.position())
+    }
+
+    pub fn visibility_checker_with(&self, position: Vector3<f32>) -> VisibilityChecker
+    {
+        VisibilityChecker{
+            size: self.scale(),
+            position
+        }
     }
 
     pub fn is_visible(&self) -> bool

@@ -9,6 +9,7 @@ layout(location = 0) out vec4 f_color;
 void main()
 {
     vec4 light = subpassLoad(lighting).rgba;
-    float a = light.a;
+    float a = max(max(light.r, light.g), light.b);
+
     f_color = mix(subpassLoad(shaded).rgba, subpassLoad(color).rgba * vec4(light.rgb, 1.0), a);
 }
