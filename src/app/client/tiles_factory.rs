@@ -49,6 +49,7 @@ pub type ChunkSlice<T> = [T; CHUNK_SIZE];
 pub struct OccluderInfo
 {
     pub position: Vector3<f32>,
+    pub inside: bool,
     pub horizontal: bool,
     pub length: f32
 }
@@ -289,7 +290,7 @@ impl TilesFactory
                     ..Default::default()
                 };
 
-                let occluding = self.object_factory.create_occluding(transform);
+                let occluding = self.object_factory.create_occluding(transform, occluder.inside ^ occluder.horizontal);
 
                 OccludingPlane::new(occluding)
             }).collect()

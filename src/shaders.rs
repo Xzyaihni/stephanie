@@ -1,4 +1,5 @@
 use vulkano::pipeline::graphics::{
+    rasterization::CullMode,
     color_blend::{AttachmentBlend, BlendFactor, BlendOp},
     vertex_input::Vertex,
     depth_stencil::{
@@ -199,6 +200,7 @@ pub fn create() -> ShadersCreated
         depth: Some(object_depth),
         per_vertex: Some(Object::per_vertex()),
         subpass: 0,
+        cull: CullMode::None,
         ..Default::default()
     });
 
@@ -254,6 +256,7 @@ pub fn create() -> ShadersCreated
         depth: Some(object_depth),
         per_vertex: Some(Object::per_vertex()),
         subpass: 1,
+        cull: CullMode::None,
         ..Default::default()
     });
 

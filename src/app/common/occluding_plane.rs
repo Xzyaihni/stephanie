@@ -12,7 +12,6 @@ use yanyaengine::{
 };
 
 use crate::{
-    debug_config::*,
     client::{VisibilityChecker, RenderCreateInfo},
     common::{rotate_point_z_3d, ServerToClient, world::TILE_SIZE}
 };
@@ -32,7 +31,7 @@ pub enum ClientOccluder
 
 impl ClientOccluder
 {
-    fn door_transforms(transform: Transform) -> [Transform; 3]
+    fn door_transforms(transform: Transform) -> [(Transform, bool); 3]
     {
         let scale = transform.scale;
         let rotation = transform.rotation;
@@ -42,12 +41,12 @@ impl ClientOccluder
         };
 
         let top = Transform{
-            position: transform.position + world_offset(Vector3::y() * 0.5),
+            position: transform.position + world_offset(-Vector3::y() * 0.5),
             ..transform
         };
 
         let bottom = Transform{
-            position: transform.position + world_offset(-Vector3::y() * 0.5),
+            position: transform.position + world_offset(Vector3::y() * 0.5),
             ..transform
         };
 
@@ -58,7 +57,7 @@ impl ClientOccluder
             ..transform
         };
 
-        [top, bottom, right]
+        [(top, false), (bottom, true), (right, false)]
     }
 
     pub fn set_transform(&mut self, transform: Transform)
@@ -67,7 +66,7 @@ impl ClientOccluder
         {
             Self::Door(planes) =>
             {
-                planes.iter_mut().zip(Self::door_transforms(transform)).for_each(|(x, target)|
+                planes.iter_mut().zip(Self::door_transforms(transform)).for_each(|(x, (target, _))|
                 {
                     x.set_transform(target);
                 });
@@ -131,9 +130,9 @@ impl ServerToClient<ClientOccluder> for Occluder
         create_info: &mut RenderCreateInfo
     ) -> ClientOccluder
     {
-        let create_plane = |transform|
+        let create_plane = |(transform, reverse)|
         {
-            let inner = create_info.object_info.partial.object_factory.create_occluding(transform);
+            let inner = create_info.object_info.partial.object_factory.create_occluding(transform, reverse);
 
             OccludingPlane(inner)
         };
@@ -205,11 +204,9 @@ impl OccludingPlane
         info: &mut DrawInfo
     )
     {
-        if DebugConfig::is_enabled(DebugTool::NoOcclusion)
+        if self.0.is_clockwise() ^ self.0.reverse_winding()
         {
-            return;
+            self.0.draw(info);
         }
-
-        self.0.draw(info);
     }
 }

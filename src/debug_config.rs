@@ -36,6 +36,7 @@ pub enum DebugTool
     NoOcclusion,
     NoWallOcclusion,
     NoSkyOcclusion,
+    NoLighting,
     NoGravity,
     NoResolve,
     NoJoints,

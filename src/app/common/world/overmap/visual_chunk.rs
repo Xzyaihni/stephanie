@@ -50,13 +50,14 @@ use crate::{
 #[derive(Default, Clone, Copy)]
 struct OccludingState
 {
-    horizontal: bool,
-    vertical: bool
+    horizontal: Option<bool>,
+    vertical: Option<bool>
 }
 
 struct OccluderInfoRaw
 {
     position: Vector2<usize>,
+    inside: bool,
     horizontal: bool,
     length: usize
 }
@@ -82,6 +83,7 @@ impl OccluderInfoRaw
 
         OccluderInfo{
             position: chunk_position + tile_position,
+            inside: self.inside,
             horizontal: self.horizontal,
             length: self.length as f32 * TILE_SIZE + padding
         }
@@ -336,25 +338,25 @@ impl VisualChunk
 
         type ContainerType = FlatChunksContainer<Option<OccludingState>>;
 
-        let add_horizontal = |plane: &mut ContainerType, pos: Pos3<usize>|
+        let add_horizontal = |plane: &mut ContainerType, pos: Pos3<usize>, inside|
         {
             if let Some(occluding) = plane[pos].as_mut()
             {
-                occluding.horizontal = true;
+                occluding.horizontal = Some(inside);
             } else
             {
-                plane[pos] = Some(OccludingState{horizontal: true, vertical: false})
+                plane[pos] = Some(OccludingState{horizontal: Some(inside), vertical: None})
             }
         };
 
-        let add_vertical = |plane: &mut ContainerType, pos: Pos3<usize>|
+        let add_vertical = |plane: &mut ContainerType, pos: Pos3<usize>, inside|
         {
             if let Some(occluding) = plane[pos].as_mut()
             {
-                occluding.vertical = true;
+                occluding.vertical = Some(inside);
             } else
             {
-                plane[pos] = Some(OccludingState{horizontal: false, vertical: true})
+                plane[pos] = Some(OccludingState{horizontal: None, vertical: Some(inside)})
             }
         };
 
@@ -380,7 +382,7 @@ impl VisualChunk
                         {
                             if !is_transparent(left)
                             {
-                                add_vertical(&mut plane, pos);
+                                add_vertical(&mut plane, pos, false);
                             }
                         }
 
@@ -388,7 +390,7 @@ impl VisualChunk
                         {
                             if !is_transparent(down)
                             {
-                                add_horizontal(&mut plane, pos);
+                                add_horizontal(&mut plane, pos, false);
                             }
                         }
                     } else
@@ -397,7 +399,7 @@ impl VisualChunk
                         {
                             if is_transparent(left)
                             {
-                                add_vertical(&mut plane, pos);
+                                add_vertical(&mut plane, pos, true);
                             }
                         }
 
@@ -405,7 +407,7 @@ impl VisualChunk
                         {
                             if is_transparent(down)
                             {
-                                add_horizontal(&mut plane, pos);
+                                add_horizontal(&mut plane, pos, true);
                             }
                         }
                     }
@@ -432,7 +434,7 @@ impl VisualChunk
         {
             if let Some(occluding) = occluders[pos]
             {
-                let mut occluder = |horizontal|
+                let mut occluder = |horizontal, inside|
                 {
                     let positions = if horizontal
                     {
@@ -459,24 +461,24 @@ impl VisualChunk
                     {
                         if let Some(occluding) = &mut occluders[position]
                         {
-                            let is_both = occluding.horizontal && occluding.vertical;
+                            let is_both = occluding.horizontal.is_some() && occluding.vertical.is_some();
 
-                            if horizontal && occluding.horizontal
+                            if horizontal && occluding.horizontal.is_some()
                             {
                                 if is_both
                                 {
-                                    occluding.horizontal = false;
+                                    occluding.horizontal = None;
                                 } else
                                 {
                                     occluders[position] = None;
                                 }
 
                                 true
-                            } else if !horizontal && occluding.vertical
+                            } else if !horizontal && occluding.vertical.is_some()
                             {
                                 if is_both
                                 {
-                                    occluding.vertical = false;
+                                    occluding.vertical = None;
                                 } else
                                 {
                                     occluders[position] = None;
@@ -495,13 +497,14 @@ impl VisualChunk
 
                     OccluderInfoRaw{
                         position: to_pos(pos),
+                        inside,
                         horizontal,
                         length
                     }
                 };
 
-                let horizontal = occluding.horizontal.then(|| occluder(true));
-                let vertical = occluding.vertical.then(|| occluder(false));
+                let horizontal = occluding.horizontal.map(|inside| occluder(true, inside));
+                let vertical = occluding.vertical.map(|inside| occluder(false, inside));
                 match (horizontal, vertical)
                 {
                     (Some(a), Some(b)) => vec![a, b],

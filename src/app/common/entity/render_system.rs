@@ -128,42 +128,48 @@ pub fn draw(
 
     renderables.world.draw_sky_occluders(info);
 
-    let lights_len = renderables.light_renders.len();
-    renderables.light_renders.iter().copied().enumerate().for_each(|(index, entity)|
+    if DebugConfig::is_disabled(DebugTool::NoLighting)
     {
-        let is_last = (index + 1) == lights_len;
-
-        let light = entities.light(entity).unwrap();
-
-        info.bind_pipeline(shaders.light_shadow);
-        renderables.world.draw_light_shadows(info, &light.visibility_checker(), index);
-
-        info.bind_pipeline(shaders.lighting);
-        light.draw(info);
-
-        if !is_last
+        let lights_len = renderables.light_renders.len();
+        renderables.light_renders.iter().copied().enumerate().for_each(|(index, entity)|
         {
-            info.bind_pipeline(shaders.clear_alpha);
-            renderables.solid.draw(info);
-        }
-    });
+            let is_last = (index + 1) == lights_len;
+
+            let light = entities.light(entity).unwrap();
+
+            info.bind_pipeline(shaders.light_shadow);
+            renderables.world.draw_light_shadows(info, &light.visibility_checker(), index);
+
+            info.bind_pipeline(shaders.lighting);
+            light.draw(info);
+
+            if !is_last
+            {
+                info.bind_pipeline(shaders.clear_alpha);
+                renderables.solid.draw(info);
+            }
+        });
+    }
 
     info.bind_pipeline(shaders.shadow);
 
     renderables.world.draw_shadows(info, visibility);
 
-    renderables.renders.iter().flatten().copied().filter_map(|entity|
+    if DebugConfig::is_disabled(DebugTool::NoOcclusion)
     {
-        entities.occluder(entity)
-    }).for_each(|occluder|
-    {
-        if !occluder.visible(visibility)
+        renderables.renders.iter().flatten().copied().filter_map(|entity|
         {
-            return;
-        }
+            entities.occluder(entity)
+        }).for_each(|occluder|
+        {
+            if !occluder.visible(visibility)
+            {
+                return;
+            }
 
-        occluder.draw(info);
-    });
+            occluder.draw(info);
+        });
+    }
 
     info.next_subpass();
     info.bind_pipeline(shaders.final_mix);
