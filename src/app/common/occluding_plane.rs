@@ -204,9 +204,6 @@ impl OccludingPlane
         info: &mut DrawInfo
     )
     {
-        if self.0.is_clockwise() ^ self.0.reverse_winding()
-        {
-            self.0.draw(info);
-        }
+        self.0.draw(info);
     }
 }
