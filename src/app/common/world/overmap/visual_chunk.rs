@@ -665,14 +665,17 @@ impl VisualChunk
         info: &mut UpdateBuffersInfo,
         visibility: &VisibilityChecker,
         caster: &OccludingCaster,
-        height: usize
+        height: usize,
+        f: &mut impl FnMut(&OccludingPlane)
     )
     {
         occluders[height].iter_mut().for_each(|x|
         {
             if x.visible(visibility)
             {
-                x.update_buffers(info, caster)
+                x.update_buffers(info, caster);
+
+                f(&x);
             }
         });
     }
@@ -682,10 +685,11 @@ impl VisualChunk
         info: &mut UpdateBuffersInfo,
         visibility: &VisibilityChecker,
         caster: &OccludingCaster,
-        height: usize
+        height: usize,
+        f: &mut impl FnMut(&OccludingPlane)
     )
     {
-        Self::update_buffers_shadows_with(&mut self.occluders, info, visibility, caster, height)
+        Self::update_buffers_shadows_with(&mut self.occluders, info, visibility, caster, height, f)
     }
 
     pub fn update_buffers_light_shadows(
@@ -703,7 +707,7 @@ impl VisualChunk
             self.light_occluders.push(tiles_factory.build_occluders(self.light_occluder_base.clone()));
         }
 
-        Self::update_buffers_shadows_with(&mut self.light_occluders[id], info, visibility, caster, height)
+        Self::update_buffers_shadows_with(&mut self.light_occluders[id], info, visibility, caster, height, &mut |_| {})
     }
 
     fn draw_shadows_with(

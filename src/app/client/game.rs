@@ -128,6 +128,12 @@ impl Game
         this
     }
 
+    #[allow(dead_code)]
+    pub fn mouse_entity(&self) -> Entity
+    {
+        self.info.borrow().mouse_entity
+    }
+
     fn player_container<T>(&mut self, f: impl FnOnce(PlayerContainer) -> T) -> T
     {
         let game_state = self.game_state.upgrade().unwrap();

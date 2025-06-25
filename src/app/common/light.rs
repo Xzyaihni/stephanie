@@ -29,6 +29,7 @@ impl Default for Light
 pub struct ClientLight
 {
     light: Light,
+    pub occluded: bool,
     object: SolidObject<ObjectVertex>
 }
 
@@ -88,7 +89,7 @@ impl ClientLight
 
     pub fn is_visible(&self) -> bool
     {
-        self.light.strength > 0.0
+        !self.occluded && self.light.strength > 0.0
     }
 }
 
@@ -111,7 +112,7 @@ impl ServerToClient<ClientLight> for Light
             transform
         );
 
-        let mut this = ClientLight{light: self, object};
+        let mut this = ClientLight{light: self, occluded: false, object};
 
         this.light_modified();
 

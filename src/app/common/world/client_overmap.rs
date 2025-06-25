@@ -14,7 +14,7 @@ use crate::{
         VisibilityChecker,
         world_receiver::WorldReceiver
     },
-    common::OccludingCaster
+    common::{OccludingPlane, OccludingCaster}
 };
 
 use super::{
@@ -439,10 +439,11 @@ impl ClientOvermap
         &mut self,
         info: &mut UpdateBuffersInfo,
         visibility: &VisibilityChecker,
-        caster: &OccludingCaster
+        caster: &OccludingCaster,
+        f: impl FnMut(&OccludingPlane)
     )
     {
-        self.visual_overmap.update_buffers_shadows(info, visibility, caster);
+        self.visual_overmap.update_buffers_shadows(info, visibility, caster, f);
     }
 
     pub fn update_buffers_light_shadows(

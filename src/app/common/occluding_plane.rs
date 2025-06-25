@@ -1,6 +1,6 @@
 use std::f32;
 
-use nalgebra::Vector3;
+use nalgebra::{Vector2, Vector3};
 
 use serde::{Serialize, Deserialize};
 
@@ -13,12 +13,13 @@ use yanyaengine::{
     Transform,
     TransformContainer,
     OccludingPlane as OccludingPlaneGeneric,
+    OccluderPoints,
     game_object::*
 };
 
 use crate::{
     client::{VisibilityChecker, RenderCreateInfo},
-    common::{rotate_point_z_3d, ServerToClient, world::TILE_SIZE}
+    common::{rotate_point_z_3d, some_or_value, line_on_left, ServerToClient, world::TILE_SIZE}
 };
 
 
@@ -204,6 +205,43 @@ impl OccludingPlane
     pub fn set_transform(&mut self, transform: Transform)
     {
         self.0.set_transform(transform);
+    }
+
+    pub fn points(&self) -> &Option<OccluderPoints>
+    {
+        self.0.points()
+    }
+
+    pub fn occludes_point(&self, point: Vector2<f32>) -> bool
+    {
+        let OccluderPoints{
+            bottom_left,
+            bottom_right,
+            top_left,
+            top_right
+        } = some_or_value!(self.0.points(), false);
+
+        let reverse = self.0.reverse_winding();
+
+        let infront = line_on_left(
+            point,
+            if reverse { *bottom_right } else { *bottom_left },
+            if reverse { *bottom_left } else { *bottom_right }
+        );
+
+        let between_left = line_on_left(
+            point,
+            if reverse { *bottom_left } else { *top_left },
+            if reverse { *top_left } else { *bottom_left }
+        );
+
+        let between_right = line_on_left(
+            point,
+            if reverse { *top_right } else { *bottom_right },
+            if reverse { *bottom_right } else { *top_right }
+        );
+
+        infront && between_left && between_right
     }
 
     pub fn visible(&self, visibility: &VisibilityChecker) -> bool

@@ -21,6 +21,7 @@ use crate::{
         TileMap,
         TileInfo,
         Entity,
+        OccludingPlane,
         OccludingCaster,
         message::Message
     }
@@ -341,10 +342,11 @@ impl World
         &mut self,
         info: &mut UpdateBuffersInfo,
         visibility: &VisibilityChecker,
-        caster: &OccludingCaster
+        caster: &OccludingCaster,
+        f: impl FnMut(&OccludingPlane)
     )
     {
-        self.overmap.update_buffers_shadows(info, visibility, caster);
+        self.overmap.update_buffers_shadows(info, visibility, caster, f);
     }
 
     pub fn update_buffers_light_shadows(

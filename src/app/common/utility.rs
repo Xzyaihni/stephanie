@@ -504,7 +504,12 @@ pub fn project_onto_plane(normal: Unit<Vector3<f32>>, d: f32, p: Vector3<f32>) -
     p - *normal * (p.dot(&normal) - d)
 }
 
-pub fn point_line_side(p: Vector2<f32>, a: Vector2<f32>, b: Vector2<f32>) -> Ordering
+pub fn line_on_left(p: Vector2<f32>, a: Vector2<f32>, b: Vector2<f32>) -> bool
+{
+    (b.x - a.x) * (p.y - a.y) > (b.y - a.y) * (p.x - a.x)
+}
+
+pub fn line_parallel_side(p: Vector2<f32>, a: Vector2<f32>, b: Vector2<f32>) -> Ordering
 {
     let x = project_onto_line(p, a, b);
     if x < 0.0
@@ -532,7 +537,7 @@ pub fn project_onto_line(p: Vector2<f32>, a: Vector2<f32>, b: Vector2<f32>) -> f
 
 pub fn point_line_distance(p: Vector2<f32>, a: Vector2<f32>, b: Vector2<f32>) -> f32
 {
-    let check = match point_line_side(p, a, b)
+    let check = match line_parallel_side(p, a, b)
     {
         Ordering::Equal =>
         {
