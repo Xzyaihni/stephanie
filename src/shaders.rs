@@ -11,7 +11,6 @@ use vulkano::pipeline::graphics::{
 use nalgebra::Vector3;
 
 use yanyaengine::{
-    OccludingPlane,
     Object,
     ObjectVertex,
     SimpleVertex,
@@ -22,7 +21,10 @@ use yanyaengine::{
 
 use crate::{
     app::ProgramShaders,
-    common::world::TILE_SIZE
+    common::{
+        OccludingVertex,
+        world::TILE_SIZE
+    }
 };
 
 
@@ -198,7 +200,7 @@ pub fn create() -> ShadersCreated
             default_fragment::load
         ),
         depth: Some(object_depth),
-        per_vertex: Some(Object::per_vertex()),
+        per_vertex: Some(vec![Object::per_vertex()]),
         subpass: 0,
         cull: CullMode::None,
         ..Default::default()
@@ -210,7 +212,7 @@ pub fn create() -> ShadersCreated
             world_fragment::load
         ),
         depth: Some(world_depth),
-        per_vertex: Some(Object::per_vertex()),
+        per_vertex: Some(vec![Object::per_vertex()]),
         subpass: 0,
         ..Default::default()
     });
@@ -238,7 +240,7 @@ pub fn create() -> ShadersCreated
             }
         ),
         depth: Some(world_depth),
-        per_vertex: Some(Object::per_vertex()),
+        per_vertex: Some(vec![Object::per_vertex()]),
         subpass: 1,
         ..Default::default()
     });
@@ -254,7 +256,7 @@ pub fn create() -> ShadersCreated
             }
         ),
         depth: Some(object_depth),
-        per_vertex: Some(Object::per_vertex()),
+        per_vertex: Some(vec![Object::per_vertex()]),
         subpass: 1,
         cull: CullMode::None,
         ..Default::default()
@@ -269,7 +271,7 @@ pub fn create() -> ShadersCreated
             write_enable: false,
             compare_op: CompareOp::Always
         }),
-        per_vertex: Some(OccludingPlane::per_vertex()),
+        per_vertex: Some(vec![OccludingVertex::per_vertex()]),
         subpass: 2,
         blend: None,
         ..Default::default()
@@ -284,7 +286,7 @@ pub fn create() -> ShadersCreated
             write_enable: false,
             compare_op: CompareOp::Always
         }),
-        per_vertex: Some(OccludingPlane::per_vertex()),
+        per_vertex: Some(vec![OccludingVertex::per_vertex()]),
         subpass: 2,
         blend: Some(AttachmentBlend{
             src_color_blend_factor: BlendFactor::One,
@@ -306,7 +308,7 @@ pub fn create() -> ShadersCreated
             write_enable: true,
             compare_op: CompareOp::LessOrEqual
         }),
-        per_vertex: Some(ObjectVertex::per_vertex()),
+        per_vertex: Some(vec![ObjectVertex::per_vertex()]),
         subpass: 2,
         blend: Some(AttachmentBlend{
             src_color_blend_factor: BlendFactor::DstAlpha,
@@ -328,7 +330,7 @@ pub fn create() -> ShadersCreated
             write_enable: false,
             compare_op: CompareOp::Always
         }),
-        per_vertex: Some(SimpleVertex::per_vertex()),
+        per_vertex: Some(vec![SimpleVertex::per_vertex()]),
         subpass: 2,
         blend: Some(AttachmentBlend{
             src_color_blend_factor: BlendFactor::Zero,
@@ -346,7 +348,7 @@ pub fn create() -> ShadersCreated
             final_vertex::load,
             final_fragment::load
         ),
-        per_vertex: Some(SimpleVertex::per_vertex()),
+        per_vertex: Some(vec![SimpleVertex::per_vertex()]),
         subpass: 3,
         blend: None,
         ..Default::default()
@@ -357,7 +359,7 @@ pub fn create() -> ShadersCreated
             default_vertex,
             default_fragment::load
         ),
-        per_vertex: Some(Object::per_vertex()),
+        per_vertex: Some(vec![Object::per_vertex()]),
         subpass: 4,
         ..Default::default()
     });
@@ -367,7 +369,7 @@ pub fn create() -> ShadersCreated
             ui_vertex::load,
             ui_fragment::load
         ),
-        per_vertex: Some(Object::per_vertex()),
+        per_vertex: Some(vec![Object::per_vertex()]),
         subpass: 4,
         ..Default::default()
     });

@@ -4,10 +4,15 @@ use nalgebra::Vector3;
 
 use serde::{Serialize, Deserialize};
 
+use vulkano::{
+    buffer::subbuffer::BufferContents,
+    pipeline::graphics::vertex_input::Vertex
+};
+
 use yanyaengine::{
     Transform,
     TransformContainer,
-    OccludingPlane as OccludingPlaneInner,
+    OccludingPlane as OccludingPlaneGeneric,
     game_object::*
 };
 
@@ -16,6 +21,33 @@ use crate::{
     common::{rotate_point_z_3d, ServerToClient, world::TILE_SIZE}
 };
 
+
+
+#[derive(BufferContents, Vertex, Debug, Clone, Copy)]
+#[repr(C)]
+pub struct OccludingVertex
+{
+    #[format(R32G32B32_SFLOAT)]
+    pub position: [f32; 3]
+}
+
+impl From<[f32; 4]> for OccludingVertex
+{
+    fn from([x, y, _z, w]: [f32; 4]) -> Self
+    {
+        Self{position: [x, y, w]}
+    }
+}
+
+impl From<([f32; 4], [f32; 2])> for OccludingVertex
+{
+    fn from((position, _uv): ([f32; 4], [f32; 2])) -> Self
+    {
+        Self::from(position)
+    }
+}
+
+pub type OccludingPlaneInner = OccludingPlaneGeneric<OccludingVertex>;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Occluder
