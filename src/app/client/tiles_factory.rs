@@ -25,7 +25,7 @@ use yanyaengine::{
 };
 
 use crate::common::{
-    OccludingVertex,
+    SkyOccludingVertex,
     OccludingPlane,
     TileMap,
     TileMapWithTextures,
@@ -301,7 +301,7 @@ impl TilesFactory
     pub fn build_vertical_occluders(
         &mut self,
         occluders: ChunkSlice<Box<[VerticalOccluder]>>
-    ) -> ChunkSlice<Box<[SolidObject<OccludingVertex>]>>
+    ) -> ChunkSlice<Box<[SolidObject<SkyOccludingVertex>]>>
     {
         occluders.map(|occluders|
         {

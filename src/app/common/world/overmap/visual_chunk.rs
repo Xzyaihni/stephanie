@@ -27,7 +27,7 @@ use crate::{
         }
     },
     common::{
-        OccludingVertex,
+        SkyOccludingVertex,
         OccludingPlane,
         OccludingCaster,
         TileMap,
@@ -132,7 +132,7 @@ pub struct VisualChunk
     occluders: ChunkSlice<Box<[OccludingPlane]>>,
     light_occluder_base: ChunkSlice<Box<[OccluderInfo]>>,
     light_occluders: Vec<ChunkSlice<Box<[OccludingPlane]>>>,
-    vertical_occluders: ChunkSlice<Box<[SolidObject<OccludingVertex>]>>,
+    vertical_occluders: ChunkSlice<Box<[SolidObject<SkyOccludingVertex>]>>,
     draw_height: ChunkSlice<usize>,
     draw_next: ChunkSlice<bool>,
     generated: bool

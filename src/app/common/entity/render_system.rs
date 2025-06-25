@@ -124,7 +124,7 @@ pub fn draw(
 
     info.next_subpass();
 
-    info.bind_pipeline(shaders.shadow);
+    info.bind_pipeline(shaders.sky_shadow);
 
     renderables.world.draw_sky_occluders(info);
 

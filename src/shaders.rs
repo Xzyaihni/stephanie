@@ -23,6 +23,7 @@ use crate::{
     app::ProgramShaders,
     common::{
         OccludingVertex,
+        SkyOccludingVertex,
         world::TILE_SIZE
     }
 };
@@ -79,6 +80,15 @@ mod world_shaded_fragment
     {
         ty: "fragment",
         path: "shaders/world_shaded.frag"
+    }
+}
+
+mod sky_occluder_vertex
+{
+    vulkano_shaders::shader!
+    {
+        ty: "vertex",
+        path: "shaders/sky_occluder.vert"
     }
 }
 
@@ -262,6 +272,21 @@ pub fn create() -> ShadersCreated
         ..Default::default()
     });
 
+    let sky_shadow_shader = shaders.push(Shader{
+        shader: ShadersGroup::new(
+            sky_occluder_vertex::load,
+            occluder_fragment::load
+        ),
+        depth: Some(DepthState{
+            write_enable: false,
+            compare_op: CompareOp::Always
+        }),
+        per_vertex: Some(vec![SkyOccludingVertex::per_vertex()]),
+        subpass: 2,
+        blend: None,
+        ..Default::default()
+    });
+
     let shadow_shader = shaders.push(Shader{
         shader: ShadersGroup::new(
             occluder_vertex::load,
@@ -383,6 +408,7 @@ pub fn create() -> ShadersCreated
             world: world_shader,
             world_shaded: world_shaded_shader,
             shadow: shadow_shader,
+            sky_shadow: sky_shadow_shader,
             occluder: shadow_shader,
             light_shadow: light_shadow_shader,
             lighting: lighting_shader,

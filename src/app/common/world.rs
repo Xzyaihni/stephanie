@@ -2,6 +2,11 @@ use std::sync::Arc;
 
 use nalgebra::{Vector2, Vector3};
 
+use vulkano::{
+    buffer::subbuffer::BufferContents,
+    pipeline::graphics::vertex_input::Vertex
+};
+
 use yanyaengine::{Transform, game_object::*};
 
 use crate::{
@@ -61,6 +66,22 @@ mod visual_overmap;
 
 pub const CLIENT_OVERMAP_SIZE: usize = 8;
 pub const CLIENT_OVERMAP_SIZE_Z: usize = 3;
+
+#[derive(BufferContents, Vertex, Debug, Clone, Copy)]
+#[repr(C)]
+pub struct SkyOccludingVertex
+{
+    #[format(R32G32_SFLOAT)]
+    pub position: [f32; 2]
+}
+
+impl From<([f32; 4], [f32; 2])> for SkyOccludingVertex
+{
+    fn from(([x, y, _z, _w], _uv): ([f32; 4], [f32; 2])) -> Self
+    {
+        Self{position: [x, y]}
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct ChunkWithEntities
