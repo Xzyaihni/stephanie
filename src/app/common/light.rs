@@ -48,7 +48,7 @@ impl ClientLight
         self.object.set_scale(scale);
     }
 
-    fn scale(&self) -> Vector3<f32>
+    pub fn scale(&self) -> Vector3<f32>
     {
         let scale = self.light.strength;
         Vector3::new(scale, scale, 1.0)

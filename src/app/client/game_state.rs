@@ -1003,7 +1003,7 @@ impl GameState
 
         let mut occluded: Vec<_> = iterate_components_with!(self.entities.entities, light, filter_map, |entity, light: &RefCell<ClientLight>|
         {
-            let transform = some_or_return!(self.entities.entities.transform(entity));
+            let mut transform = some_or_return!(self.entities.entities.transform_mut(entity));
 
             let mut light = light.borrow_mut();
 
@@ -1014,13 +1014,11 @@ impl GameState
                 return None;
             }
 
-            Some(entity)
-        }).map(|entity|
-        {
-            let transform = self.entities.entities.transform(entity).unwrap();
+            transform.scale = light.scale();
+
             let points = rectangle_points(&transform);
 
-            (points, entity)
+            Some((points, entity))
         }).collect();
 
         self.world.update_buffers_shadows(info, &visibility, &caster, |occluder|
