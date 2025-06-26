@@ -90,7 +90,7 @@
             (tile 'air))
 
 	(maybe-light (make-point 7 5) 1.0 '(0.5 0.0 0.0))
-	(maybe-light (make-point 7 11) 1.0 '(0.5 0.0 0.0))
+	(maybe-light (make-point 7 10) 1.0 '(0.5 0.0 0.0))
 
         (define (door x)
             (this-tile

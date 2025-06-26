@@ -357,7 +357,7 @@ impl World
         id: usize
     )
     {
-        self.overmap.update_buffers_light_shadows(info, visibility, caster, id);
+        self.overmap.update_buffers_light_shadows(info, visibility, caster, id)
     }
 
     pub fn draw_shadows(

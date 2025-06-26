@@ -1,6 +1,7 @@
 use std::{
     iter,
     convert,
+    collections::HashMap,
     ops::RangeInclusive,
     sync::Arc
 };
@@ -131,7 +132,7 @@ pub struct VisualChunk
     objects: ChunkSlice<Option<Object>>,
     occluders: ChunkSlice<Box<[OccludingPlane]>>,
     light_occluder_base: ChunkSlice<Box<[OccluderInfo]>>,
-    light_occluders: Vec<ChunkSlice<Box<[OccludingPlane]>>>,
+    light_occluders: HashMap<usize, ChunkSlice<Box<[OccludingPlane]>>>,
     vertical_occluders: ChunkSlice<Box<[SolidObject<SkyOccludingVertex>]>>,
     draw_height: ChunkSlice<usize>,
     draw_next: ChunkSlice<bool>,
@@ -146,7 +147,7 @@ impl VisualChunk
             objects: Self::create_empty_slice(Option::default),
             occluders: Self::create_empty(),
             light_occluder_base: Self::create_empty(),
-            light_occluders: Vec::new(),
+            light_occluders: HashMap::new(),
             vertical_occluders: Self::create_empty(),
             draw_height: [0; CHUNK_SIZE],
             draw_next: [true; CHUNK_SIZE],
@@ -237,7 +238,7 @@ impl VisualChunk
             objects,
             occluders,
             light_occluder_base: chunk_info.occluders,
-            light_occluders: Vec::new(),
+            light_occluders: HashMap::new(),
             vertical_occluders,
             generated: true,
             draw_height: chunk_info.draw_height,
@@ -702,12 +703,17 @@ impl VisualChunk
         id: usize
     )
     {
-        if id >= self.light_occluders.len()
-        {
-            self.light_occluders.push(tiles_factory.build_occluders(self.light_occluder_base.clone()));
-        }
+        let occluders = self.light_occluders.entry(id)
+            .or_insert_with(|| tiles_factory.build_occluders(self.light_occluder_base.clone()));
 
-        Self::update_buffers_shadows_with(&mut self.light_occluders[id], info, visibility, caster, height, &mut |_| {})
+        Self::update_buffers_shadows_with(
+            occluders,
+            info,
+            visibility,
+            caster,
+            height,
+            &mut |_| { }
+        );
     }
 
     fn draw_shadows_with(
@@ -756,7 +762,7 @@ impl VisualChunk
         f: &mut Option<impl FnOnce(&mut DrawInfo)>
     )
     {
-        Self::draw_shadows_with(&self.light_occluders[id], info, visibility, height, f);
+        Self::draw_shadows_with(&self.light_occluders[&id], info, visibility, height, f);
     }
 
     pub fn draw_sky_shadows(

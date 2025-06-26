@@ -454,7 +454,7 @@ impl ClientOvermap
         id: usize
     )
     {
-        self.visual_overmap.update_buffers_light_shadows(info, visibility, caster, id);
+        self.visual_overmap.update_buffers_light_shadows(info, visibility, caster, id)
     }
 
     pub fn draw_shadows(

@@ -20,7 +20,6 @@ use crate::{
 
 use super::{
     chunk::{
-        TILE_SIZE,
         CHUNK_SIZE,
         CHUNK_VISUAL_SIZE,
         Pos3,
@@ -94,15 +93,7 @@ impl VisibilityChecker
 
     fn player_height(&self) -> usize
     {
-        let z = ((self.player_position.read().z % CHUNK_VISUAL_SIZE) / TILE_SIZE).floor() as i32;
-
-        if z < 0
-        {
-            (CHUNK_SIZE as i32 + z) as usize
-        } else
-        {
-            z as usize
-        }
+        self.player_position.read().to_tile().z
     }
 
     pub fn height(&self, pos: LocalPos) -> usize
@@ -473,30 +464,6 @@ impl VisualOvermap
         });
     }
 
-    pub fn update_buffers_light_shadows(
-        &mut self,
-        info: &mut UpdateBuffersInfo,
-        visibility: &EntityVisibilityChecker,
-        caster: &OccludingCaster,
-        id: usize
-    )
-    {
-        for_visible_2d(&self.chunks, &self.visibility_checker).for_each(|pos|
-        {
-            if let Some(pos) = self.visibility_checker.visible_z(&self.chunks, pos).next()
-            {
-                self.chunks[pos].1.update_buffers_light_shadows(
-                    info,
-                    &mut self.tiles_factory,
-                    visibility,
-                    caster,
-                    self.visibility_checker.height(pos),
-                    id
-                )
-            }
-        });
-    }
-
     pub fn draw_shadows(
         &self,
         info: &mut DrawInfo,
@@ -516,6 +483,52 @@ impl VisualOvermap
         });
     }
 
+    fn with_position(
+        mut pos: LocalPos,
+        position: f32,
+        player_position: i32
+    ) -> Option<(LocalPos, usize)>
+    {
+        let position = Pos3::repeat(position);
+        let height = position.to_tile().z;
+
+        let chunk_height = position.rounded().0.z - player_position + (pos.size.z as i32 / 2);
+
+        if !(0..pos.size.z as i32).contains(&chunk_height)
+        {
+            return None;
+        }
+
+        pos.pos.z = chunk_height as usize;
+
+        Some((pos, height))
+    }
+
+    pub fn update_buffers_light_shadows(
+        &mut self,
+        info: &mut UpdateBuffersInfo,
+        visibility: &EntityVisibilityChecker,
+        caster: &OccludingCaster,
+        id: usize
+    )
+    {
+        let player_position = self.visibility_checker.player_position.read().rounded().0.z;
+        for_visible_2d(&self.chunks, &self.visibility_checker).for_each(|pos|
+        {
+            if let Some((pos, height)) = Self::with_position(pos, visibility.position.z, player_position)
+            {
+                self.chunks[pos].1.update_buffers_light_shadows(
+                    info,
+                    &mut self.tiles_factory,
+                    visibility,
+                    caster,
+                    height,
+                    id
+                );
+            }
+        });
+    }
+
     pub fn draw_light_shadows(
         &self,
         info: &mut DrawInfo,
@@ -525,18 +538,18 @@ impl VisualOvermap
     )
     {
         let mut f = Some(f);
+        let player_position = self.visibility_checker.player_position.read().rounded().0.z;
         for_visible_2d(&self.chunks, &self.visibility_checker).for_each(|pos|
         {
-            if let Some(pos) = self.visibility_checker.visible_z(&self.chunks, pos).next()
-            {
-                self.chunks[pos].1.draw_light_shadows(
-                    info,
-                    visibility,
-                    self.visibility_checker.height(pos),
-                    id,
-                    &mut f
-                );
-            }
+            let (pos, height) = Self::with_position(pos, visibility.position.z, player_position).unwrap();
+
+            self.chunks[pos].1.draw_light_shadows(
+                info,
+                visibility,
+                height,
+                id,
+                &mut f
+            );
         });
     }
 

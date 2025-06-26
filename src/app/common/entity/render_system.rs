@@ -130,6 +130,7 @@ pub fn draw(
 
     if DebugConfig::is_disabled(DebugTool::NoLighting)
     {
+        let mut is_light_pipeline = false;
         let lights_len = renderables.light_renders.len();
         renderables.light_renders.iter().copied().enumerate().for_each(|(index, entity)|
         {
@@ -141,15 +142,24 @@ pub fn draw(
             renderables.world.draw_light_shadows(info, &light.visibility_checker(), index, |info|
             {
                 info.bind_pipeline(shaders.light_shadow);
+                is_light_pipeline = false;
+
                 has_shadows = true;
             });
 
-            info.bind_pipeline(shaders.lighting);
+            if !is_light_pipeline
+            {
+                info.bind_pipeline(shaders.lighting);
+                is_light_pipeline = true;
+            }
+
             light.draw(info);
 
             if !is_last && has_shadows
             {
                 info.bind_pipeline(shaders.clear_alpha);
+                is_light_pipeline = false;
+
                 renderables.solid.draw(info);
             }
         });

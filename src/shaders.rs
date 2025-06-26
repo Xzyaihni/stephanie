@@ -340,7 +340,7 @@ pub fn create() -> ShadersCreated
             dst_color_blend_factor: BlendFactor::One,
             color_blend_op: BlendOp::Add,
             src_alpha_blend_factor: BlendFactor::Zero,
-            dst_alpha_blend_factor: BlendFactor::Zero,
+            dst_alpha_blend_factor: BlendFactor::One,
             alpha_blend_op: BlendOp::Add
         }),
         ..Default::default()
