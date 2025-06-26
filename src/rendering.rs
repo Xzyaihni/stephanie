@@ -17,6 +17,8 @@ use vulkano::{
 
 use yanyaengine::Rendering;
 
+use crate::{DARKEN, SHADOW_COLOR, BACKGROUND_COLOR, common::lerp};
+
 
 pub fn create() -> Rendering<()>
 {
@@ -30,7 +32,7 @@ pub fn create() -> Rendering<()>
                     color: {
                         format: Format::R8G8B8A8_SRGB,
                         samples: 1,
-                        load_op: DontCare,
+                        load_op: Clear,
                         store_op: DontCare
                     },
                     depth: {
@@ -42,7 +44,7 @@ pub fn create() -> Rendering<()>
                     shade: {
                         format: Format::R8G8B8A8_SRGB,
                         samples: 1,
-                        load_op: DontCare,
+                        load_op: Clear,
                         store_op: DontCare
                     },
                     shade_depth: {
@@ -135,10 +137,11 @@ pub fn create() -> Rendering<()>
             vec![color, depth, shade, shade_depth, lighting, view]
         }),
         clear: {
+            let darksky = BACKGROUND_COLOR.zip_map(&SHADOW_COLOR, |a, b| lerp(a, b, DARKEN));
             vec![
-                None,
+                Some([BACKGROUND_COLOR.x, BACKGROUND_COLOR.y, BACKGROUND_COLOR.z, 1.0].into()),
                 Some(1.0.into()),
-                None,
+                Some([darksky.x, darksky.y, darksky.z, 1.0].into()),
                 Some(1.0.into()),
                 Some([1.0, 1.0, 1.0, 1.0].into()),
                 None
