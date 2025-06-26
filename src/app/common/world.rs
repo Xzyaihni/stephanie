@@ -373,10 +373,11 @@ impl World
         &self,
         info: &mut DrawInfo,
         visibility: &VisibilityChecker,
-        id: usize
+        id: usize,
+        f: impl FnOnce(&mut DrawInfo)
     )
     {
-        self.overmap.draw_light_shadows(info, visibility, id);
+        self.overmap.draw_light_shadows(info, visibility, id, f);
     }
 
     pub fn draw_sky_occluders(

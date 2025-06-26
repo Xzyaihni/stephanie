@@ -470,10 +470,11 @@ impl ClientOvermap
         &self,
         info: &mut DrawInfo,
         visibility: &VisibilityChecker,
-        id: usize
+        id: usize,
+        f: impl FnOnce(&mut DrawInfo)
     )
     {
-        self.visual_overmap.draw_light_shadows(info, visibility, id);
+        self.visual_overmap.draw_light_shadows(info, visibility, id, f);
     }
 
     pub fn draw_sky_occluders(

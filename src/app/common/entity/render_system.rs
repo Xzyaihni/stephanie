@@ -137,13 +137,17 @@ pub fn draw(
 
             let light = entities.light(entity).unwrap();
 
-            info.bind_pipeline(shaders.light_shadow);
-            renderables.world.draw_light_shadows(info, &light.visibility_checker(), index);
+            let mut has_shadows = false;
+            renderables.world.draw_light_shadows(info, &light.visibility_checker(), index, |info|
+            {
+                info.bind_pipeline(shaders.light_shadow);
+                has_shadows = true;
+            });
 
             info.bind_pipeline(shaders.lighting);
             light.draw(info);
 
-            if !is_last
+            if !is_last && has_shadows
             {
                 info.bind_pipeline(shaders.clear_alpha);
                 renderables.solid.draw(info);

@@ -511,7 +511,7 @@ impl VisualOvermap
                     info,
                     visibility,
                     self.visibility_checker.height(pos)
-                )
+                );
             }
         });
     }
@@ -520,9 +520,11 @@ impl VisualOvermap
         &self,
         info: &mut DrawInfo,
         visibility: &EntityVisibilityChecker,
-        id: usize
+        id: usize,
+        f: impl FnOnce(&mut DrawInfo)
     )
     {
+        let mut f = Some(f);
         for_visible_2d(&self.chunks, &self.visibility_checker).for_each(|pos|
         {
             if let Some(pos) = self.visibility_checker.visible_z(&self.chunks, pos).next()
@@ -531,8 +533,9 @@ impl VisualOvermap
                     info,
                     visibility,
                     self.visibility_checker.height(pos),
-                    id
-                )
+                    id,
+                    &mut f
+                );
             }
         });
     }

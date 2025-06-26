@@ -714,7 +714,8 @@ impl VisualChunk
         occluders: &ChunkSlice<Box<[OccludingPlane]>>,
         info: &mut DrawInfo,
         visibility: &VisibilityChecker,
-        height: usize
+        height: usize,
+        f: &mut Option<impl FnOnce(&mut DrawInfo)>
     )
     {
         if DebugConfig::is_enabled(DebugTool::NoWallOcclusion)
@@ -726,6 +727,11 @@ impl VisualChunk
         {
             if x.visible(visibility)
             {
+                if let Some(f) = f.take()
+                {
+                    f(info);
+                }
+
                 x.draw(info)
             }
         });
@@ -738,7 +744,7 @@ impl VisualChunk
         height: usize
     )
     {
-        Self::draw_shadows_with(&self.occluders, info, visibility, height)
+        Self::draw_shadows_with(&self.occluders, info, visibility, height, &mut None::<fn(&mut DrawInfo)>);
     }
 
     pub fn draw_light_shadows(
@@ -746,10 +752,11 @@ impl VisualChunk
         info: &mut DrawInfo,
         visibility: &VisibilityChecker,
         height: usize,
-        id: usize
+        id: usize,
+        f: &mut Option<impl FnOnce(&mut DrawInfo)>
     )
     {
-        Self::draw_shadows_with(&self.light_occluders[id], info, visibility, height)
+        Self::draw_shadows_with(&self.light_occluders[id], info, visibility, height, f);
     }
 
     pub fn draw_sky_shadows(
