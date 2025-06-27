@@ -286,17 +286,27 @@ impl ClientEntitiesContainer
                 return;
             }
 
-            if world.sky_occluded(&self.entities, &transform)
+            let position = transform.position;
+
+            let light_visibility = light.visibility_checker_with(position);
+
+            let below_player = !visibility.world_position.is_same_height(&light_visibility.world_position);
+            if below_player
             {
-                return;
+                if world.sky_occluded(&Transform{
+                    scale: light.scale(),
+                    ..*transform
+                })
+                {
+                    return;
+                }
             }
 
-            let position = transform.position;
             light.update_buffers(info, position);
 
             world.update_buffers_light_shadows(
                 info,
-                &light.visibility_checker_with(position),
+                &light_visibility,
                 &OccludingCaster::from(position),
                 self.light_renders.len()
             );
@@ -1008,7 +1018,7 @@ impl GameState
 
         let mut occluded: Vec<_> = iterate_components_with!(self.entities.entities, light, filter_map, |entity, light: &RefCell<ClientLight>|
         {
-            let mut transform = some_or_return!(self.entities.entities.transform_mut(entity));
+            let transform = some_or_return!(self.entities.entities.transform(entity));
 
             let mut light = light.borrow_mut();
 
@@ -1019,9 +1029,10 @@ impl GameState
                 return None;
             }
 
-            transform.scale = light.scale();
-
-            let points = rectangle_points(&transform);
+            let points = rectangle_points(&Transform{
+                scale: light.scale(),
+                ..*transform
+            });
 
             Some((points, entity))
         }).collect();
@@ -1121,10 +1132,7 @@ impl GameState
         let mut position = camera.position().coords;
         position.z += z_middle;
 
-        VisibilityChecker{
-            size,
-            position
-        }
+        VisibilityChecker::new(size, position)
     }
 
     pub fn on_player_connected(&mut self)

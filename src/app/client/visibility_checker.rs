@@ -4,19 +4,31 @@ use yanyaengine::Transform;
 
 use crate::common::{
     project_onto,
-    raycast::*
+    raycast::*,
+    Pos3,
+    world::TilePos
 };
 
 
 #[derive(Debug, Clone)]
 pub struct VisibilityChecker
 {
+    pub world_position: TilePos,
     pub size: Vector3<f32>,
     pub position: Vector3<f32>
 }
 
 impl VisibilityChecker
 {
+    pub fn new(size: Vector3<f32>, position: Vector3<f32>) -> Self
+    {
+        Self{
+            world_position: TilePos::from(Pos3::from(position)),
+            size,
+            position
+        }
+    }
+
     fn visible_sphere_radius(&self, position: Vector3<f32>, radius: f32) -> bool
     {
         let offset = position - self.position;

@@ -504,7 +504,7 @@ impl VisualOvermap
         Some((pos, height))
     }
 
-    pub fn sky_occluded(&self, e: &crate::common::entity::ClientEntities, transform: &Transform) -> bool
+    pub fn sky_occluded(&self, transform: &Transform) -> bool
     {
         let pos = transform.position;
         let size = transform.scale * 0.5;
@@ -553,8 +553,7 @@ impl VisualOvermap
                     if y == bottom_right.pos.y { bottom_right_tile.y } else { CHUNK_SIZE - 1 }
                 );
 
-                let cpos = self.to_global(pos).0.map(|x| x as f32 * CHUNK_VISUAL_SIZE);
-                self.chunks[pos].1.sky_occluded((e, cpos.into()), top_left_tile.z, tile_start, tile_end)
+                self.chunks[pos].1.sky_occluded(top_left_tile.z, tile_start, tile_end)
             })
         })
     }

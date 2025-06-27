@@ -81,10 +81,7 @@ impl ClientLight
 
     pub fn visibility_checker_with(&self, position: Vector3<f32>) -> VisibilityChecker
     {
-        VisibilityChecker{
-            size: self.scale(),
-            position
-        }
+        VisibilityChecker::new(self.scale(), position)
     }
 
     pub fn is_visible(&self) -> bool

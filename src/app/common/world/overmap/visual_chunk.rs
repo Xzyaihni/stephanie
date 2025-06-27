@@ -635,7 +635,6 @@ impl VisualChunk
 
     pub fn sky_occluded(
         &self,
-        (e, chunk_pos): (&crate::common::entity::ClientEntities, Vector3<f32>),
         height: usize,
         top_left: Vector2<usize>,
         bottom_right: Vector2<usize>
@@ -648,27 +647,6 @@ impl VisualChunk
             (top_left.x..=bottom_right.x).all(move |x|
             {
                 let index = index + x;
-
-            let remove_me = ();
-            use yanyaengine::Transform;
-            use crate::common::{EntityInfo, render_info::*, AnyEntities};
-            e.push(true, EntityInfo{
-                transform: Some(Transform{
-                    position: nalgebra::Vector3::new((index % CHUNK_SIZE) as f32, (index / CHUNK_SIZE) as f32, height as f32) * TILE_SIZE + Vector3::repeat(TILE_SIZE / 2.0) + chunk_pos,
-                    scale: Vector3::repeat(TILE_SIZE),
-                    ..Default::default()
-                }),
-                render: Some(RenderInfo{
-                    object: Some(RenderObjectKind::Texture{
-                        name: "ui/solid.png".to_owned()
-                    }.into()),
-                    above_world: true,
-                    mix: Some(MixColor::color(if total_sky[index] { [1.0, 0.0, 0.0, 1.0] } else { [0.0, 1.0, 0.0, 1.0] })),
-                    ..Default::default()
-                }),
-                watchers: Some(crate::common::watcher::Watchers::simple_one_frame()),
-                ..Default::default()
-            });
 
                 total_sky[index]
             })

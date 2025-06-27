@@ -252,6 +252,12 @@ impl TilePos
     {
         (self.position() + Pos3::repeat(TILE_SIZE / 2.0)).into()
     }
+
+    pub fn is_same_height(&self, other: &Self) -> bool
+    {
+        self.chunk.0.z == other.chunk.0.z
+            && self.local.pos().z == other.local.pos().z
+    }
 }
 
 pub struct ClientOvermap
@@ -446,9 +452,9 @@ impl ClientOvermap
         self.visual_overmap.update_buffers_shadows(info, visibility, caster, f);
     }
 
-    pub fn sky_occluded(&self, e: &crate::common::entity::ClientEntities, transform: &Transform) -> bool
+    pub fn sky_occluded(&self, transform: &Transform) -> bool
     {
-        self.visual_overmap.sky_occluded(e, transform)
+        self.visual_overmap.sky_occluded(transform)
     }
 
     pub fn update_buffers_light_shadows(
