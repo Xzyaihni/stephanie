@@ -9,9 +9,9 @@ use std::{
 
 use parking_lot::RwLock;
 
-use nalgebra::Vector2;
+use nalgebra::{Vector2, Vector3};
 
-use yanyaengine::game_object::*;
+use yanyaengine::{game_object::*, Transform};
 
 use crate::{
     client::{VisibilityChecker as EntityVisibilityChecker, TilesFactory},
@@ -502,6 +502,61 @@ impl VisualOvermap
         pos.pos.z = chunk_height as usize;
 
         Some((pos, height))
+    }
+
+    pub fn sky_occluded(&self, e: &crate::common::entity::ClientEntities, transform: &Transform) -> bool
+    {
+        let pos = transform.position;
+        let size = transform.scale * 0.5;
+        let size = Vector3::new(size.x, size.y, 0.0);
+
+
+        let (top_left, top_left_tile) = {
+            let pos: Pos3<_> = (pos - size).into();
+
+            let chunk = self.to_local(pos.rounded()).unwrap_or_else(||
+            {
+                LocalPos::new(Pos3::repeat(0), self.visibility_checker.size)
+            });
+
+            let tile = pos.to_tile();
+
+            (chunk, tile)
+        };
+
+        let (bottom_right, bottom_right_tile) = {
+            let pos: Pos3<_> = (pos + size).into();
+
+            let chunk = self.to_local(pos.rounded()).unwrap_or_else(||
+            {
+                LocalPos::new(self.visibility_checker.size - Pos3::repeat(1), self.visibility_checker.size)
+            });
+
+            let tile = pos.to_tile();
+
+            (chunk, tile)
+        };
+
+        (top_left.pos.y..=bottom_right.pos.y).all(|y|
+        {
+            (top_left.pos.x..=bottom_right.pos.x).all(move |x|
+            {
+                let pos = LocalPos::new(Pos3{x, y, z: top_left.pos.z}, top_left.size);
+
+                let tile_start = Vector2::new(
+                    if x == top_left.pos.x { top_left_tile.x } else { 0 },
+                    if y == top_left.pos.y { top_left_tile.y } else { 0 }
+                );
+
+                let tile_end = Vector2::new(
+                    if x == bottom_right.pos.x { bottom_right_tile.x } else { CHUNK_SIZE - 1 },
+                    if y == bottom_right.pos.y { bottom_right_tile.y } else { CHUNK_SIZE - 1 }
+                );
+
+                let cpos = self.to_global(pos).0.map(|x| x as f32 * CHUNK_VISUAL_SIZE);
+                self.chunks[pos].1.sky_occluded((e, cpos.into()), top_left_tile.z, tile_start, tile_end)
+            })
+        })
     }
 
     pub fn update_buffers_light_shadows(

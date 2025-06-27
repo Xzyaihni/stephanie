@@ -286,6 +286,11 @@ impl ClientEntitiesContainer
                 return;
             }
 
+            if world.sky_occluded(&self.entities, &transform)
+            {
+                return;
+            }
+
             let position = transform.position;
             light.update_buffers(info, position);
 

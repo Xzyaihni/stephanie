@@ -7,7 +7,7 @@ use nalgebra::{Vector2, Vector3};
 
 use serde::{Serialize, Deserialize};
 
-use yanyaengine::game_object::*;
+use yanyaengine::{game_object::*, Transform};
 
 use crate::{
     client::{
@@ -444,6 +444,11 @@ impl ClientOvermap
     )
     {
         self.visual_overmap.update_buffers_shadows(info, visibility, caster, f);
+    }
+
+    pub fn sky_occluded(&self, e: &crate::common::entity::ClientEntities, transform: &Transform) -> bool
+    {
+        self.visual_overmap.sky_occluded(e, transform)
     }
 
     pub fn update_buffers_light_shadows(

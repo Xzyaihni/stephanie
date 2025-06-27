@@ -122,6 +122,7 @@ pub struct VisualChunkInfo
     infos: ChunkSlice<Option<ChunkInfo>>,
     occluders: ChunkSlice<Box<[OccluderInfo]>>,
     vertical_occluders: ChunkSlice<Box<[VerticalOccluder]>>,
+    total_sky: ChunkSlice<[bool; CHUNK_SIZE * CHUNK_SIZE]>,
     draw_height: ChunkSlice<usize>,
     draw_next: ChunkSlice<bool>
 }
@@ -134,6 +135,7 @@ pub struct VisualChunk
     light_occluder_base: ChunkSlice<Box<[OccluderInfo]>>,
     light_occluders: HashMap<usize, ChunkSlice<Box<[OccludingPlane]>>>,
     vertical_occluders: ChunkSlice<Box<[SolidObject<SkyOccludingVertex>]>>,
+    total_sky: ChunkSlice<[bool; CHUNK_SIZE * CHUNK_SIZE]>,
     draw_height: ChunkSlice<usize>,
     draw_next: ChunkSlice<bool>,
     generated: bool
@@ -149,6 +151,7 @@ impl VisualChunk
             light_occluder_base: Self::create_empty(),
             light_occluders: HashMap::new(),
             vertical_occluders: Self::create_empty(),
+            total_sky: Self::create_empty_slice(|| [false; CHUNK_SIZE * CHUNK_SIZE]),
             draw_height: [0; CHUNK_SIZE],
             draw_next: [true; CHUNK_SIZE],
             generated: false
@@ -216,10 +219,21 @@ impl VisualChunk
 
         let (draw_next, draw_height) = Self::from_occlusions(&occlusions);
 
+        let total_sky = occlusions.into_iter().rev().scan(occlusions[CHUNK_SIZE - 1], |state, occluded|
+        {
+            state.iter_mut().zip(occluded).for_each(|(state, value)|
+            {
+                *state |= value;
+            });
+
+            Some(*state)
+        }).collect::<Vec<_>>().into_iter().rev().collect::<Vec<_>>().try_into().unwrap();
+
         VisualChunkInfo{
             infos,
             occluders,
             vertical_occluders,
+            total_sky,
             draw_height,
             draw_next
         }
@@ -241,6 +255,7 @@ impl VisualChunk
             light_occluders: HashMap::new(),
             vertical_occluders,
             generated: true,
+            total_sky: chunk_info.total_sky,
             draw_height: chunk_info.draw_height,
             draw_next: chunk_info.draw_next
         }
@@ -616,6 +631,48 @@ impl VisualChunk
         let draw_amount = self.draw_height[height];
 
         (height + 1 - draw_amount)..=height
+    }
+
+    pub fn sky_occluded(
+        &self,
+        (e, chunk_pos): (&crate::common::entity::ClientEntities, Vector3<f32>),
+        height: usize,
+        top_left: Vector2<usize>,
+        bottom_right: Vector2<usize>
+    ) -> bool
+    {
+        let total_sky = &self.total_sky[height];
+        (top_left.y..=bottom_right.y).all(|y|
+        {
+            let index = y * CHUNK_SIZE;
+            (top_left.x..=bottom_right.x).all(move |x|
+            {
+                let index = index + x;
+
+            let remove_me = ();
+            use yanyaengine::Transform;
+            use crate::common::{EntityInfo, render_info::*, AnyEntities};
+            e.push(true, EntityInfo{
+                transform: Some(Transform{
+                    position: nalgebra::Vector3::new((index % CHUNK_SIZE) as f32, (index / CHUNK_SIZE) as f32, height as f32) * TILE_SIZE + Vector3::repeat(TILE_SIZE / 2.0) + chunk_pos,
+                    scale: Vector3::repeat(TILE_SIZE),
+                    ..Default::default()
+                }),
+                render: Some(RenderInfo{
+                    object: Some(RenderObjectKind::Texture{
+                        name: "ui/solid.png".to_owned()
+                    }.into()),
+                    above_world: true,
+                    mix: Some(MixColor::color(if total_sky[index] { [1.0, 0.0, 0.0, 1.0] } else { [0.0, 1.0, 0.0, 1.0] })),
+                    ..Default::default()
+                }),
+                watchers: Some(crate::common::watcher::Watchers::simple_one_frame()),
+                ..Default::default()
+            });
+
+                total_sky[index]
+            })
+        })
     }
 
     pub fn update_buffers(
