@@ -1130,9 +1130,16 @@ impl GameState
         let z_middle = (z_low + z_high) / 2.0;
 
         let mut position = camera.position().coords;
+
+        let world_position = TilePos::from(Pos3::from(position));
+
         position.z += z_middle;
 
-        VisibilityChecker::new(size, position)
+        VisibilityChecker{
+            world_position,
+            size,
+            position
+        }
     }
 
     pub fn on_player_connected(&mut self)

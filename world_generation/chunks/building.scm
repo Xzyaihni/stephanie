@@ -89,8 +89,8 @@
                 (make-point 2 (- size-y 3)))
             (tile 'air))
 
-	(maybe-light (make-point 7 5) 1.0 '(0.5 0.0 0.0))
-	(maybe-light (make-point 7 10) 1.0 '(0.5 0.0 0.0))
+	(maybe-light (make-point 7 5) 0.89 '(0.5 0.0 0.0))
+	(maybe-light (make-point 7 10) 0.89 '(0.5 0.0 0.0))
 
         (define (door x)
             (this-tile

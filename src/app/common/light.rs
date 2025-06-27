@@ -6,7 +6,7 @@ use yanyaengine::{game_object::*, TransformContainer, Transform, SolidObject, Ob
 
 use crate::{
     client::{VisibilityChecker, RenderCreateInfo},
-    common::{Entity, ServerToClient}
+    common::{Pos3, Entity, ServerToClient, world::TilePos}
 };
 
 
@@ -81,7 +81,11 @@ impl ClientLight
 
     pub fn visibility_checker_with(&self, position: Vector3<f32>) -> VisibilityChecker
     {
-        VisibilityChecker::new(self.scale(), position)
+        VisibilityChecker{
+            world_position: TilePos::from(Pos3::from(position)),
+            size: self.scale(),
+            position
+        }
     }
 
     pub fn is_visible(&self) -> bool
