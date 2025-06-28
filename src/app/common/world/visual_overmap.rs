@@ -935,8 +935,15 @@ impl VisualOvermap
         info: &mut DrawInfo
     )
     {
+        let z = self.visibility_checker.top_z();
+        let player_height = self.visibility_checker.player_height();
         for_visible_2d(&self.chunks, &self.visibility_checker).for_each(|pos|
         {
+            if self.occluded[pos.with_z(z)][player_height].is_fully_occluded()
+            {
+                return;
+            }
+
             Self::for_sky_occluders(&self.visibility_checker, pos, |pos|
             {
                 self.chunks[pos].1.draw_sky_shadows(
