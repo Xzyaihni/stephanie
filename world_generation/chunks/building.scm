@@ -94,7 +94,7 @@
 
         (define (door x)
             (this-tile
-                (make-point x 12)
+                (make-point x 11)
 		(single-marker (list 'door 'up 'metal 1))))
 
         (door 6)
