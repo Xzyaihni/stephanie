@@ -123,7 +123,7 @@ pub fn draw(
 
     info.bind_pipeline(shaders.shadow);
 
-    renderables.world.draw_shadows(info, visibility);
+    renderables.world.draw_shadows(info);
 
     if DebugConfig::is_disabled(DebugTool::NoOcclusion)
     {

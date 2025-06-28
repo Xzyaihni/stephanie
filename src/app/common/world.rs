@@ -376,11 +376,10 @@ impl World
 
     pub fn draw_shadows(
         &self,
-        info: &mut DrawInfo,
-        visibility: &VisibilityChecker
+        info: &mut DrawInfo
     )
     {
-        self.overmap.draw_shadows(info, visibility);
+        self.overmap.draw_shadows(info);
     }
 
     pub fn draw_light_shadows(

@@ -479,11 +479,10 @@ impl ClientOvermap
 
     pub fn draw_shadows(
         &self,
-        info: &mut DrawInfo,
-        visibility: &VisibilityChecker
+        info: &mut DrawInfo
     )
     {
-        self.visual_overmap.draw_shadows(info, visibility);
+        self.visual_overmap.draw_shadows(info);
     }
 
     pub fn draw_light_shadows(

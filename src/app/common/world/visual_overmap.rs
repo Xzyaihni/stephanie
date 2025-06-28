@@ -45,7 +45,7 @@ use super::{
         OvermapIndexing,
         CommonIndexing,
         ChunksContainer,
-        visual_chunk::{VisualChunk, VisualChunkInfo}
+        visual_chunk::{VisualChunk, VisualChunkInfo, OccluderCached}
     }
 };
 
@@ -241,6 +241,29 @@ impl OccludedSlice
         *self = Self::empty();
     }
 
+    pub fn points_tile_occlusion(&self, index: usize) -> bool
+    {
+        Self::at_tile(&self.points, index)
+    }
+
+    fn at_tile(points: &[bool; (CHUNK_SIZE + 1) * (CHUNK_SIZE + 1)], index: usize) -> bool
+    {
+        fn to_index(x: usize, y: usize) -> usize
+        {
+            y * (CHUNK_SIZE + 1) + x
+        }
+
+        let at = |x, y|
+        {
+            points[to_index(x, y)]
+        };
+
+        let x = index % CHUNK_SIZE;
+        let y = index / CHUNK_SIZE;
+
+        at(x, y) && at(x + 1, y) && at(x, y + 1) && at(x + 1, y + 1)
+    }
+
     pub fn is_fully_occluded(&self) -> bool
     {
         self.visible_points.is_empty()
@@ -269,20 +292,7 @@ impl OccludedSlice
     {
         self.occlusions.iter_mut().enumerate().for_each(|(index, occluded)|
         {
-            fn to_index(x: usize, y: usize) -> usize
-            {
-                y * (CHUNK_SIZE + 1) + x
-            }
-
-            let at = |x, y|
-            {
-                self.points[to_index(x, y)]
-            };
-
-            let x = index % CHUNK_SIZE;
-            let y = index / CHUNK_SIZE;
-
-            *occluded = at(x, y) && at(x + 1, y) && at(x, y + 1) && at(x + 1, y + 1);
+            *occluded = Self::at_tile(&self.points, index);
         });
     }
 
@@ -719,26 +729,32 @@ impl VisualOvermap
                 visibility,
                 caster,
                 height,
-                |occluder|
+                |OccluderCached{occluder, indices, ..}, index|
                 {
-                    if !occluder.is_visible()
-                    {
-                        return;
-                    }
-
-                    visible_occluders.push(occluder.occluder_visibility_checker().unwrap());
+                    visible_occluders.push((occluder.occluder_visibility_checker().unwrap(), *indices, index, pos));
                 }
             )
         });
 
-        visible_occluders.sort_unstable_by_key(|occluder|
+        visible_occluders.sort_unstable_by_key(|(occluder, _, _, _)|
         {
             let distance = occluder.front_position().metric_distance(&Vector3::from(*player_position).xy());
             SortableF32::from(distance)
         });
 
-        visible_occluders.into_iter().for_each(|occluder|
+        visible_occluders.into_iter().for_each(|(occluder, indices, occluder_index, pos)|
         {
+            {
+                let current_occluded = &self.occluded[pos][height];
+                if indices.iter().all(|index| current_occluded.points_tile_occlusion(index))
+                {
+                    self.chunks[pos].1.set_occluder_visible(height, occluder_index, false);
+                    return;
+                }
+            }
+
+            self.chunks[pos].1.set_occluder_visible(height, occluder_index, true);
+
             size.positions_2d().for_each(|check_pos|
             {
                 if !self.visibility_checker.visible(check_pos)
@@ -767,8 +783,7 @@ impl VisualOvermap
 
     pub fn draw_shadows(
         &self,
-        info: &mut DrawInfo,
-        visibility: &EntityVisibilityChecker
+        info: &mut DrawInfo
     )
     {
         let z = self.visibility_checker.top_z();
@@ -779,7 +794,6 @@ impl VisualOvermap
 
             self.chunks[pos].1.draw_shadows(
                 info,
-                visibility,
                 height
             );
         });
@@ -922,7 +936,6 @@ impl VisualOvermap
 
             self.chunks[pos].1.draw_light_shadows(
                 info,
-                visibility,
                 height,
                 id,
                 &mut f

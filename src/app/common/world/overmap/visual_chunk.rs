@@ -83,7 +83,19 @@ impl OccluderInfoRaw
         // a little padding to hide seams
         let padding = TILE_SIZE * 0.01;
 
+        let line_indices = {
+            let start = self.position.y * CHUNK_SIZE + self.position.x;
+            let step = if self.horizontal { 1 } else { CHUNK_SIZE };
+
+            LineIndices{
+                start,
+                end: start + step * self.length,
+                step
+            }
+        };
+
         OccluderInfo{
+            line_indices,
             position: chunk_position + tile_position,
             inside: self.inside,
             horizontal: self.horizontal,
@@ -127,13 +139,40 @@ pub struct VisualChunkInfo
     draw_next: ChunkSlice<bool>
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct LineIndices
+{
+    start: usize,
+    end: usize,
+    step: usize
+}
+
+impl LineIndices
+{
+    pub fn iter(self) -> impl Iterator<Item=usize>
+    {
+        iter::successors(Some(self.start), move |state|
+        {
+            (*state != self.end).then_some(*state + self.step)
+        })
+    }
+}
+
+#[derive(Debug)]
+pub struct OccluderCached
+{
+    pub occluder: OccludingPlane,
+    pub indices: LineIndices,
+    pub visible: bool
+}
+
 #[derive(Debug)]
 pub struct VisualChunk
 {
     objects: ChunkSlice<Option<Object>>,
-    occluders: ChunkSlice<Box<[OccludingPlane]>>,
+    occluders: ChunkSlice<Box<[OccluderCached]>>,
     light_occluder_base: ChunkSlice<Box<[OccluderInfo]>>,
-    light_occluders: HashMap<usize, ChunkSlice<Box<[OccludingPlane]>>>,
+    light_occluders: HashMap<usize, ChunkSlice<Box<[OccluderCached]>>>,
     vertical_occluders: ChunkSlice<Box<[SolidObject<SkyOccludingVertex>]>>,
     total_sky: ChunkSlice<[bool; CHUNK_SIZE * CHUNK_SIZE]>,
     draw_height: ChunkSlice<usize>,
@@ -696,22 +735,36 @@ impl VisualChunk
         });
     }
 
-    fn update_buffers_shadows_with(
-        occluders: &mut ChunkSlice<Box<[OccludingPlane]>>,
+    pub fn set_occluder_visible(&mut self, height: usize, index: usize, value: bool)
+    {
+        self.occluders[height][index].visible = value;
+    }
+
+    fn update_buffers_shadows_with<const CHECK_VISIBLE: bool>(
+        occluders: &mut ChunkSlice<Box<[OccluderCached]>>,
         info: &mut UpdateBuffersInfo,
         visibility: &VisibilityChecker,
         caster: &OccludingCaster,
         height: usize,
-        f: &mut impl FnMut(&OccludingPlane)
+        f: &mut impl FnMut(&OccluderCached, usize)
     )
     {
-        occluders[height].iter_mut().for_each(|x|
+        occluders[height].iter_mut().enumerate().for_each(|(index, x)|
         {
-            if x.visible(visibility)
+            if (!CHECK_VISIBLE || x.visible) && x.occluder.visible(visibility)
             {
-                x.update_buffers(info, caster);
+                x.occluder.update_buffers(info, caster);
 
-                f(&x);
+                if !x.occluder.is_visible()
+                {
+                    x.visible = false;
+                    return;
+                }
+
+                f(&x, index);
+            } else
+            {
+                x.visible = false;
             }
         });
     }
@@ -722,10 +775,10 @@ impl VisualChunk
         visibility: &VisibilityChecker,
         caster: &OccludingCaster,
         height: usize,
-        mut f: impl FnMut(&OccludingPlane)
+        mut f: impl FnMut(&OccluderCached, usize)
     )
     {
-        Self::update_buffers_shadows_with(&mut self.occluders, info, visibility, caster, height, &mut f)
+        Self::update_buffers_shadows_with::<false>(&mut self.occluders, info, visibility, caster, height, &mut f)
     }
 
     pub fn update_buffers_light_shadows(
@@ -741,20 +794,19 @@ impl VisualChunk
         let occluders = self.light_occluders.entry(id)
             .or_insert_with(|| tiles_factory.build_occluders(self.light_occluder_base.clone()));
 
-        Self::update_buffers_shadows_with(
+        Self::update_buffers_shadows_with::<true>(
             occluders,
             info,
             visibility,
             caster,
             height,
-            &mut |_| { }
+            &mut |_, _| { }
         );
     }
 
     fn draw_shadows_with(
-        occluders: &ChunkSlice<Box<[OccludingPlane]>>,
+        occluders: &ChunkSlice<Box<[OccluderCached]>>,
         info: &mut DrawInfo,
-        visibility: &VisibilityChecker,
         height: usize,
         f: &mut Option<impl FnOnce(&mut DrawInfo)>
     )
@@ -766,14 +818,14 @@ impl VisualChunk
 
         occluders[height].iter().for_each(|x|
         {
-            if x.visible(visibility)
+            if x.visible
             {
                 if let Some(f) = f.take()
                 {
                     f(info);
                 }
 
-                x.draw(info)
+                x.occluder.draw(info)
             }
         });
     }
@@ -781,23 +833,21 @@ impl VisualChunk
     pub fn draw_shadows(
         &self,
         info: &mut DrawInfo,
-        visibility: &VisibilityChecker,
         height: usize
     )
     {
-        Self::draw_shadows_with(&self.occluders, info, visibility, height, &mut None::<fn(&mut DrawInfo)>);
+        Self::draw_shadows_with(&self.occluders, info, height, &mut None::<fn(&mut DrawInfo)>);
     }
 
     pub fn draw_light_shadows(
         &self,
         info: &mut DrawInfo,
-        visibility: &VisibilityChecker,
         height: usize,
         id: usize,
         f: &mut Option<impl FnOnce(&mut DrawInfo)>
     )
     {
-        Self::draw_shadows_with(&self.light_occluders[&id], info, visibility, height, f);
+        Self::draw_shadows_with(&self.light_occluders[&id], info, height, f);
     }
 
     pub fn draw_sky_shadows(

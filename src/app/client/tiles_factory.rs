@@ -40,6 +40,7 @@ use crate::common::{
         TileExisting,
         TileRotation,
         chunk::ChunkLocal,
+        overmap::visual_chunk::{OccluderCached, LineIndices}
     }
 };
 
@@ -49,6 +50,7 @@ pub type ChunkSlice<T> = [T; CHUNK_SIZE];
 #[derive(Debug, Clone, Copy)]
 pub struct OccluderInfo
 {
+    pub line_indices: LineIndices,
     pub position: Vector3<f32>,
     pub inside: bool,
     pub horizontal: bool,
@@ -278,7 +280,7 @@ impl TilesFactory
     pub fn build_occluders(
         &mut self,
         occluders: ChunkSlice<Box<[OccluderInfo]>>
-    ) -> ChunkSlice<Box<[OccludingPlane]>>
+    ) -> ChunkSlice<Box<[OccluderCached]>>
     {
         occluders.map(|occluders|
         {
@@ -293,7 +295,11 @@ impl TilesFactory
 
                 let occluding = self.object_factory.create_occluding(transform, occluder.inside ^ occluder.horizontal);
 
-                OccludingPlane::new(occluding)
+                OccluderCached{
+                    occluder: OccludingPlane::new(occluding),
+                    indices: occluder.line_indices,
+                    visible: true
+                }
             }).collect()
         })
     }
