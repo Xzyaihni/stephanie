@@ -1,5 +1,5 @@
 use std::{
-    thread,
+    thread::{self, JoinHandle},
     iter,
     time::Instant,
     sync::{
@@ -365,8 +365,18 @@ pub struct VisualOvermap
     chunks: ChunksContainer<(Instant, VisualChunk)>,
     occluded: ChunksContainer<[OccludedSlice; CHUNK_SIZE]>,
     visibility_checker: VisibilityChecker,
+    generate_thread: Option<JoinHandle<()>>,
     receiver: Receiver<VisualGenerated>,
-    sender: Sender<VisualGenerated>
+    generate_sender: Option<Sender<(TileReader, GlobalPos, Instant)>>
+}
+
+impl Drop for VisualOvermap
+{
+    fn drop(&mut self)
+    {
+        self.generate_sender.take();
+        self.generate_thread.take().unwrap().join().unwrap();
+    }
 }
 
 impl VisualOvermap
@@ -388,14 +398,39 @@ impl VisualOvermap
         });
 
         let (sender, receiver) = mpsc::channel();
+        let (generate_sender, generate_receiver) = mpsc::channel();
+
+        let (info_map, model_builder) = (tiles_factory.tilemap().clone(), tiles_factory.builder());
+
+        let generate_thread = thread::spawn(move ||
+        {
+            while let Ok((tile_reader, chunk_pos, timestamp)) = generate_receiver.recv()
+            {
+                let chunk_info = VisualChunk::create(
+                    info_map.clone(),
+                    model_builder.clone(),
+                    chunk_pos,
+                    tile_reader
+                );
+
+                let generated = VisualGenerated{
+                    chunk_info,
+                    position: chunk_pos,
+                    timestamp
+                };
+
+                sender.send(generated).unwrap();
+            }
+        });
 
         Self{
             tiles_factory,
             chunks,
             occluded,
             visibility_checker,
+            generate_thread: Some(generate_thread),
             receiver,
-            sender
+            generate_sender: Some(generate_sender)
         }
     }
 
@@ -444,30 +479,7 @@ impl VisualOvermap
 
         let chunk_pos = self.to_global(pos);
 
-        let sender = self.sender.clone();
-
-        let (info_map, model_builder) =
-            (self.tiles_factory.tilemap().clone(), self.tiles_factory.builder());
-
-        let timestamp = Instant::now();
-
-        thread::spawn(move ||
-        {
-            let chunk_info = VisualChunk::create(
-                info_map,
-                model_builder,
-                chunk_pos,
-                tile_reader
-            );
-
-            let generated = VisualGenerated{
-                chunk_info,
-                position: chunk_pos,
-                timestamp
-            };
-
-            sender.send(generated).unwrap();
-        });
+        self.generate_sender.as_mut().unwrap().send((tile_reader, chunk_pos, Instant::now())).unwrap();
     }
 
     pub fn update(&mut self, _dt: f32)

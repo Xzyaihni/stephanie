@@ -71,6 +71,7 @@ pub struct ChunkInfo
     transform: Transform
 }
 
+#[derive(Debug, Clone)]
 pub struct ChunkModelBuilder
 {
     model: ChunkSlice<Model>,
