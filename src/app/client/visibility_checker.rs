@@ -1,4 +1,4 @@
-use nalgebra::{Unit, Vector3};
+use nalgebra::{Unit, Vector2, Vector3};
 
 use yanyaengine::Transform;
 
@@ -33,10 +33,21 @@ impl VisibilityChecker
         })
     }
 
-    #[allow(dead_code)]
-    fn visible_point(&self, point: Vector3<f32>) -> bool
+    pub fn visible_point(&self, point: Vector3<f32>) -> bool
     {
         self.visible_sphere_radius(point, 0.0)
+    }
+
+    pub fn visible_point_2d(&self, point: Vector2<f32>) -> bool
+    {
+        let offset = point - self.position.xy();
+
+        let half_size = self.size / 2.0;
+
+        (0..2).all(|i|
+        {
+            offset.index(i).abs() <= *half_size.index(i)
+        })
     }
 
     pub fn visible_sphere(&self, transform: &Transform) -> bool

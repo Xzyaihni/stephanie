@@ -296,19 +296,12 @@ impl OccludedSlice
         });
     }
 
-    pub fn update(
-        &mut self,
-        occluder: &OccluderVisibilityChecker,
-        chunk_pos: Vector2<f32>
-    )
+    fn for_visible_points(&mut self, chunk_pos: Vector2<f32>, occludes: impl Fn(Vector2<f32>) -> bool)
     {
         self.visible_points.retain(|&index|
         {
             let point = Vector2::new(index % (CHUNK_SIZE + 1), index / (CHUNK_SIZE + 1));
-            let occluded = occluder.occludes_point_with_epsilon(
-                point.cast() * TILE_SIZE + chunk_pos,
-                -TILE_SIZE * 0.01
-            );
+            let occluded = occludes(point.cast() * TILE_SIZE + chunk_pos);
 
             if occluded
             {
@@ -316,6 +309,30 @@ impl OccludedSlice
             }
 
             !occluded
+        })
+    }
+
+    pub fn screen_visible_update(
+        &mut self,
+        visibility: &EntityVisibilityChecker,
+        chunk_pos: Vector2<f32>
+    )
+    {
+        self.for_visible_points(chunk_pos, |point|
+        {
+            !visibility.visible_point_2d(point)
+        })
+    }
+
+    pub fn update(
+        &mut self,
+        occluder: &OccluderVisibilityChecker,
+        chunk_pos: Vector2<f32>
+    )
+    {
+        self.for_visible_points(chunk_pos, |point|
+        {
+            occluder.occludes_point_with_epsilon(point, -TILE_SIZE * 0.01)
         })
     }
 }
@@ -681,14 +698,32 @@ impl VisualOvermap
         });
     }
 
-    fn clear_occluders(&mut self)
+    fn global_mapper(&self) -> GlobalMapper
     {
+        GlobalMapper{
+            size: self.size(),
+            position: self.player_position()
+        }
+    }
+
+    fn clear_occluders(&mut self, visibility: &EntityVisibilityChecker)
+    {
+        let mapper = self.global_mapper();
+
         let z = self.visibility_checker.top_z();
         let height = self.visibility_checker.player_height();
+
         for_visible_2d(&self.chunks, &self.visibility_checker).for_each(|pos|
         {
             let pos = pos.with_z(z);
-            self.occluded[pos][height].clear();
+
+            let occluded = &mut self.occluded[pos][height];
+
+            occluded.clear();
+
+            let chunk_pos: Vector3<f32> = mapper.to_global(pos).0.map(|x| x as f32 * CHUNK_VISUAL_SIZE).into();
+
+            occluded.screen_visible_update(visibility, chunk_pos.xy());
         });
     }
 
@@ -699,16 +734,13 @@ impl VisualOvermap
         caster: &OccludingCaster
     )
     {
-        self.clear_occluders();
+        self.clear_occluders(visibility);
 
         let size = self.chunks.size();
 
         let z = self.visibility_checker.top_z();
 
-        let mapper = GlobalMapper{
-            size: self.size(),
-            position: self.player_position()
-        };
+        let mapper = self.global_mapper();
 
         let mut visible_occluders = Vec::new();
 
