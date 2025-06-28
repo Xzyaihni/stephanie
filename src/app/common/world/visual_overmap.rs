@@ -532,15 +532,14 @@ impl VisualOvermap
         self.chunks.swap(a, b);
     }
 
-    fn for_sky_occluders(
+    fn sky_occluders_heights(
         visibility_checker: &VisibilityChecker,
-        pos: LocalPos,
-        f: impl FnMut(LocalPos)
-    )
+        pos: LocalPos
+    ) -> impl Iterator<Item=LocalPos>
     {
         let size_z = visibility_checker.size.z;
         let top = size_z / 2;
-        pos.with_z_range(top..size_z).for_each(f);
+        pos.with_z_range(top..size_z)
     }
 
     fn sky_draw_height(height: Option<usize>) -> usize
@@ -563,7 +562,7 @@ impl VisualOvermap
                 )
             });
 
-            Self::for_sky_occluders(&self.visibility_checker, pos, |pos|
+            Self::sky_occluders_heights(&self.visibility_checker, pos).for_each(|pos|
             {
                 self.chunks[pos].1.update_sky_buffers(
                     info,
@@ -824,7 +823,10 @@ impl VisualOvermap
     {
         self.occluded_with(transform, |pos, height, top_left, bottom_right|
         {
-            self.chunks[pos].1.sky_occluded(height, top_left, bottom_right)
+            Self::sky_occluders_heights(&self.visibility_checker, pos).any(|pos|
+            {
+                self.chunks[pos].1.sky_occluded(height, top_left, bottom_right)
+            })
         })
     }
 
@@ -845,7 +847,6 @@ impl VisualOvermap
         let pos = transform.position;
         let size = transform.scale * 0.5;
         let size = Vector3::new(size.x.abs(), size.y.abs(), 0.0);
-
 
         let (top_left, top_left_tile) = {
             let pos: Pos3<_> = (pos - size).into();
@@ -957,7 +958,7 @@ impl VisualOvermap
                 return;
             }
 
-            Self::for_sky_occluders(&self.visibility_checker, pos, |pos|
+            Self::sky_occluders_heights(&self.visibility_checker, pos).for_each(|pos|
             {
                 self.chunks[pos].1.draw_sky_shadows(
                     info,
