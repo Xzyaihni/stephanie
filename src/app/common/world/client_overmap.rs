@@ -461,6 +461,11 @@ impl ClientOvermap
         self.visual_overmap.sky_occluded(transform)
     }
 
+    pub fn wall_occluded(&self, transform: &Transform) -> bool
+    {
+        self.visual_overmap.wall_occluded(transform)
+    }
+
     pub fn update_buffers_light_shadows(
         &mut self,
         info: &mut UpdateBuffersInfo,

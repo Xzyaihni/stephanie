@@ -9,55 +9,11 @@ use crate::{
     common::{
         render_info::*,
         Entity,
-        MixColor,
-        OccludingCaster,
         world::World,
         entity::ClientEntities
     }
 };
 
-
-pub fn update_buffers(
-    entities: &ClientEntities,
-    renderables: impl Iterator<Item=Entity>,
-    info: &mut UpdateBuffersInfo,
-    caster: &OccludingCaster
-)
-{
-    renderables.for_each(|entity|
-    {
-        if DebugConfig::is_enabled(DebugTool::Sleeping)
-        {
-            if let Some(physical) = entities.physical(entity)
-            {
-                if let Some(mut render) = entities.render_mut(entity)
-                {
-                    let color = if physical.sleeping()
-                    {
-                        [0.2, 0.2, 1.0, 1.0]
-                    } else
-                    {
-                        [0.2, 1.0, 0.2, 1.0]
-                    };
-
-                    render.mix = Some(MixColor{color, amount: 0.7, keep_transparency: true});
-                }
-            }
-        }
-
-        let transform = entities.transform(entity).unwrap();
-
-        let mut render = entities.render_mut(entity).unwrap();
-        render.set_transform(transform.clone());
-        render.update_buffers(info);
-
-        if let Some(mut occluder) = entities.occluder_mut(entity)
-        {
-            occluder.set_transform(transform.clone());
-            occluder.update_buffers(info, caster);
-        }
-    });
-}
 
 pub struct DrawEntities<'a>
 {

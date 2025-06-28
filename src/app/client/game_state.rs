@@ -249,7 +249,7 @@ impl ClientEntitiesContainer
         {
             let transform = some_or_return!(self.entities.transform(entity));
 
-            let render = render.borrow();
+            let mut render = render.borrow_mut();
 
             // uses transform because update buffers might not be called and transforms not synced
             if !render.visible_with(visibility, &transform)
@@ -257,19 +257,61 @@ impl ClientEntitiesContainer
                 return;
             }
 
-            if render.above_world
+            if DebugConfig::is_enabled(DebugTool::Sleeping)
             {
-                self.above_world_renders.push(entity);
-                return;
+                if let Some(physical) = self.entities.physical(entity)
+                {
+                    let color = if physical.sleeping()
+                    {
+                        [0.2, 0.2, 1.0, 1.0]
+                    } else
+                    {
+                        [0.2, 1.0, 0.2, 1.0]
+                    };
+
+                    render.mix = Some(MixColor{color, amount: 0.7, keep_transparency: true});
+                }
             }
 
-            let real_z = (transform.position.z / TILE_SIZE).floor() as i32;
+            let is_render_above = render.above_world;
 
-            insert_render(&mut visible_renders, entity, real_z);
-
-            if render.shadow_visible
+            let mut update_buffers = |entities: &ClientEntities, render: &mut ClientRenderInfo|
             {
-                insert_render(&mut shaded_renders, entity, real_z);
+                render.set_transform(transform.clone());
+                render.update_buffers(info);
+
+                if let Some(mut occluder) = entities.occluder_mut(entity)
+                {
+                    occluder.set_transform(transform.clone());
+                    occluder.update_buffers(info, caster);
+                }
+            };
+
+            if is_render_above
+            {
+                self.above_world_renders.push(entity);
+                update_buffers(&self.entities, &mut render);
+            } else
+            {
+                let real_z = (transform.position.z / TILE_SIZE).floor() as i32;
+
+                let is_render_visible = !world.wall_occluded(&transform);
+                let is_render_shadow = render.shadow_visible;
+
+                if is_render_visible
+                {
+                    insert_render(&mut visible_renders, entity, real_z);
+                }
+
+                if is_render_shadow
+                {
+                    insert_render(&mut shaded_renders, entity, real_z);
+                }
+
+                if is_render_visible || is_render_shadow
+                {
+                    update_buffers(&self.entities, &mut render);
+                }
             }
         });
 
@@ -289,15 +331,23 @@ impl ClientEntitiesContainer
             let light_visibility = light.visibility_checker_with(position);
 
             let below_player = !visibility.world_position.is_same_height(&light_visibility.world_position);
+
+            let light_transform = Transform{
+                scale: light.scale(),
+                ..*transform
+            };
+
             if below_player
             {
-                if world.sky_occluded(&Transform{
-                    scale: light.scale(),
-                    ..*transform
-                })
+                if world.sky_occluded(&light_transform)
                 {
                     return;
                 }
+            }
+
+            if world.wall_occluded(&light_transform)
+            {
+                return;
             }
 
             light.update_buffers(info, position);
@@ -314,13 +364,6 @@ impl ClientEntitiesContainer
 
         self.shaded_renders = shaded_renders.into_values().collect();
         self.visible_renders = visible_renders.into_values().collect();
-
-        render_system::update_buffers(
-            &self.entities,
-            self.visible_renders.iter().flatten().chain(self.above_world_renders.iter()).copied(),
-            info,
-            caster
-        );
     }
 }
 

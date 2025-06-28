@@ -245,6 +245,25 @@ impl OccludedSlice
         self.visible_points.is_empty()
     }
 
+    pub fn occluded(&self, top_left: Vector2<usize>, bottom_right: Vector2<usize>) -> bool
+    {
+        if self.is_fully_occluded()
+        {
+            return true;
+        }
+
+        (top_left.y..=bottom_right.y).all(|y|
+        {
+            let index = y * CHUNK_SIZE;
+            (top_left.x..=bottom_right.x).all(|x|
+            {
+                let index = index + x;
+
+                self.occlusions[index]
+            })
+        })
+    }
+
     pub fn finish(&mut self)
     {
         self.occlusions.iter_mut().enumerate().for_each(|(index, occluded)|
@@ -774,9 +793,29 @@ impl VisualOvermap
 
     pub fn sky_occluded(&self, transform: &Transform) -> bool
     {
+        self.occluded_with(transform, |pos, height, top_left, bottom_right|
+        {
+            self.chunks[pos].1.sky_occluded(height, top_left, bottom_right)
+        })
+    }
+
+    pub fn wall_occluded(&self, transform: &Transform) -> bool
+    {
+        self.occluded_with(transform, |pos, height, top_left, bottom_right|
+        {
+            self.occluded[pos][height].occluded(top_left, bottom_right)
+        })
+    }
+
+    fn occluded_with(
+        &self,
+        transform: &Transform,
+        f: impl Fn(LocalPos, usize, Vector2<usize>, Vector2<usize>) -> bool
+    ) -> bool
+    {
         let pos = transform.position;
         let size = transform.scale * 0.5;
-        let size = Vector3::new(size.x, size.y, 0.0);
+        let size = Vector3::new(size.x.abs(), size.y.abs(), 0.0);
 
 
         let (top_left, top_left_tile) = {
@@ -807,6 +846,7 @@ impl VisualOvermap
 
         (top_left.pos.y..=bottom_right.pos.y).all(|y|
         {
+            let f = &f;
             (top_left.pos.x..=bottom_right.pos.x).all(move |x|
             {
                 let pos = LocalPos::new(Pos3{x, y, z: top_left.pos.z}, top_left.size);
@@ -821,7 +861,7 @@ impl VisualOvermap
                     if y == bottom_right.pos.y { bottom_right_tile.y } else { CHUNK_SIZE - 1 }
                 );
 
-                self.chunks[pos].1.sky_occluded(top_left_tile.z, tile_start, tile_end)
+                f(pos, top_left_tile.z, tile_start, tile_end)
             })
         })
     }
