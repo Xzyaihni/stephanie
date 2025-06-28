@@ -14,7 +14,7 @@ use crate::{
         VisibilityChecker,
         world_receiver::WorldReceiver
     },
-    common::{OccludingPlane, OccludingCaster}
+    common::{OccludingCaster, entity::ClientEntities}
 };
 
 use super::{
@@ -433,6 +433,11 @@ impl ClientOvermap
         }
     }
 
+    pub fn debug_tile_occlusion(&self, entities: &ClientEntities)
+    {
+        self.visual_overmap.debug_tile_occlusion(entities)
+    }
+
     pub fn update_buffers(
         &mut self,
         info: &mut UpdateBuffersInfo
@@ -445,11 +450,10 @@ impl ClientOvermap
         &mut self,
         info: &mut UpdateBuffersInfo,
         visibility: &VisibilityChecker,
-        caster: &OccludingCaster,
-        f: impl FnMut(&OccludingPlane)
+        caster: &OccludingCaster
     )
     {
-        self.visual_overmap.update_buffers_shadows(info, visibility, caster, f);
+        self.visual_overmap.update_buffers_shadows(info, visibility, caster);
     }
 
     pub fn sky_occluded(&self, transform: &Transform) -> bool

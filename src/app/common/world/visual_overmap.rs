@@ -1,5 +1,6 @@
 use std::{
     thread,
+    iter,
     time::Instant,
     sync::{
         Arc,
@@ -15,10 +16,19 @@ use yanyaengine::{game_object::*, Transform};
 
 use crate::{
     client::{VisibilityChecker as EntityVisibilityChecker, TilesFactory},
-    common::{OccludingPlane, OccludingCaster}
+    common::{
+        render_info::*,
+        OccludingCaster,
+        AnyEntities,
+        EntityInfo,
+        OccludingPlane,
+        watcher::Watchers,
+        entity::ClientEntities
+    }
 };
 
 use super::{
+    TILE_SIZE,
     chunk::{
         CHUNK_SIZE,
         CHUNK_VISUAL_SIZE,
@@ -114,13 +124,18 @@ impl VisibilityChecker
         }
     }
 
+    fn top_z(&self) -> usize
+    {
+        self.size.z / 2
+    }
+
     fn visible_z(
         &self,
         chunks: &ChunksContainer<(Instant, VisualChunk)>,
         pos: LocalPos
     ) -> impl DoubleEndedIterator<Item=LocalPos>
     {
-        let top = (self.size.z / 2) + 1;
+        let top = self.top_z() + 1;
         let positions = pos.with_z_range(0..top);
 
         let draw_amount = positions.clone().rev().take_while(|pos|
@@ -198,10 +213,107 @@ fn for_visible_2d<'a>(
     chunks.positions_2d().filter(|pos| visibility.visible(*pos))
 }
 
+#[derive(Debug, Clone)]
+struct OccludedSlice
+{
+    occlusions: [bool; CHUNK_SIZE * CHUNK_SIZE],
+    points: [bool; (CHUNK_SIZE + 1) * (CHUNK_SIZE + 1)],
+    visible_points: Vec<usize>
+}
+
+impl OccludedSlice
+{
+    pub fn empty() -> Self
+    {
+        let points = [false; (CHUNK_SIZE + 1) * (CHUNK_SIZE + 1)];
+        let visible_points = (0..points.len()).collect();
+
+        Self{
+            occlusions: [false; CHUNK_SIZE * CHUNK_SIZE],
+            points,
+            visible_points
+        }
+    }
+
+    pub fn clear(&mut self)
+    {
+        *self = Self::empty();
+    }
+
+    pub fn is_fully_occluded(&self) -> bool
+    {
+        self.visible_points.is_empty()
+    }
+
+    pub fn finish(&mut self)
+    {
+        self.occlusions.iter_mut().enumerate().for_each(|(index, occluded)|
+        {
+            fn to_index(x: usize, y: usize) -> usize
+            {
+                y * (CHUNK_SIZE + 1) + x
+            }
+
+            let at = |x, y|
+            {
+                self.points[to_index(x, y)]
+            };
+
+            let x = index % CHUNK_SIZE;
+            let y = index / CHUNK_SIZE;
+
+            *occluded = at(x, y) && at(x + 1, y) && at(x, y + 1) && at(x + 1, y + 1);
+        });
+    }
+
+    pub fn update(
+        &mut self,
+        occluder: &OccludingPlane,
+        chunk_pos: Vector2<f32>
+    )
+    {
+        self.visible_points.retain(|&index|
+        {
+            let point = Vector2::new(index % (CHUNK_SIZE + 1), index / (CHUNK_SIZE + 1));
+            let occluded = occluder.occludes_point(point.cast() * TILE_SIZE + chunk_pos);
+
+            if occluded
+            {
+                self.points[index] = true;
+            }
+
+            !occluded
+        })
+    }
+}
+
+struct GlobalMapper
+{
+    size: Pos3<usize>,
+    position: GlobalPos
+}
+
+impl CommonIndexing for GlobalMapper
+{
+    fn size(&self) -> Pos3<usize>
+    {
+        self.size
+    }
+}
+
+impl OvermapIndexing for GlobalMapper
+{
+    fn player_position(&self) -> GlobalPos
+    {
+        self.position
+    }
+}
+
 pub struct VisualOvermap
 {
     tiles_factory: TilesFactory,
     chunks: ChunksContainer<(Instant, VisualChunk)>,
+    occluded: ChunksContainer<[OccludedSlice; CHUNK_SIZE]>,
     visibility_checker: VisibilityChecker,
     receiver: Receiver<VisualGenerated>,
     sender: Sender<VisualGenerated>
@@ -219,10 +331,22 @@ impl VisualOvermap
         let visibility_checker = VisibilityChecker::new(size, camera_size, player_position);
 
         let chunks = ChunksContainer::new_with(size, |_| (Instant::now(), VisualChunk::new()));
+        let occluded = ChunksContainer::new_with(size, |_|
+        {
+            iter::repeat_n(OccludedSlice::empty(), CHUNK_SIZE)
+                .collect::<Vec<OccludedSlice>>().try_into().unwrap()
+        });
 
         let (sender, receiver) = mpsc::channel();
 
-        Self{tiles_factory, chunks, visibility_checker, receiver, sender}
+        Self{
+            tiles_factory,
+            chunks,
+            occluded,
+            visibility_checker,
+            receiver,
+            sender
+        }
     }
 
     pub fn try_generate(
@@ -427,6 +551,90 @@ impl VisualOvermap
         });
     }
 
+    pub fn debug_tile_occlusion(&self, entities: &ClientEntities)
+    {
+        let z = self.visibility_checker.top_z();
+        let height = self.visibility_checker.player_height();
+        for_visible_2d(&self.chunks, &self.visibility_checker).for_each(|pos|
+        {
+            let pos = pos.with_z(z);
+
+            let chunk_pos = self.to_global(pos).0.map(|x| x as f32 * CHUNK_VISUAL_SIZE);
+            Self::debug_tile_occlusion_single(
+                &self.occluded[pos],
+                entities,
+                chunk_pos.into(),
+                height
+            );
+        });
+    }
+
+    fn debug_tile_occlusion_single(
+        occluded: &[OccludedSlice; CHUNK_SIZE],
+        entities: &ClientEntities,
+        chunk_pos: Vector3<f32>,
+        height: usize
+    )
+    {
+        occluded[height].occlusions.iter().enumerate().for_each(|(index, state)|
+        {
+            let x = index % CHUNK_SIZE;
+            let y = index / CHUNK_SIZE;
+
+            let tile_position = Vector3::new(
+                x as f32,
+                y as f32,
+                height as f32
+            ) * TILE_SIZE + chunk_pos;
+
+            let position = tile_position + Vector3::repeat(TILE_SIZE / 2.0);
+
+            let color = if *state
+            {
+                [1.0, 0.0, 0.0, 0.2]
+            } else
+            {
+                [0.0, 1.0, 0.0, 0.2]
+            };
+
+            /*entities.push(true, EntityInfo{
+                transform: Some(Transform{
+                    position: tile_position,
+                    scale: Vector3::repeat(0.03),
+                    ..Default::default()
+                }),
+                render: Some(RenderInfo{
+                    object: Some(RenderObjectKind::Texture{
+                        name: "circle.png".to_owned()
+                    }.into()),
+                    above_world: true,
+                    mix: Some(MixColor{keep_transparency: true, ..MixColor::color(if occluded[height].points[y * (CHUNK_SIZE + 1) + x] { [0.0, 0.0, 1.0, 1.0] } else { [0.0, 1.0, 0.0, 1.0] })}),
+                    ..Default::default()
+                }),
+                watchers: Some(Watchers::simple_one_frame()),
+                ..Default::default()
+            });*/
+
+            entities.push(true, EntityInfo{
+                transform: Some(Transform{
+                    position,
+                    scale: Vector3::repeat(TILE_SIZE),
+                    ..Default::default()
+                }),
+                render: Some(RenderInfo{
+                    object: Some(RenderObjectKind::Texture{
+                        name: "ui/solid.png".to_owned()
+                    }.into()),
+                    above_world: true,
+                    mix: Some(MixColor::color(color)),
+                    ..Default::default()
+                }),
+                watchers: Some(Watchers::simple_one_frame()),
+                ..Default::default()
+            });
+        });
+    }
+
     pub fn draw_tiles(
         &self,
         info: &mut DrawInfo
@@ -441,26 +649,82 @@ impl VisualOvermap
         });
     }
 
+    fn clear_occluders(&mut self)
+    {
+        let z = self.visibility_checker.top_z();
+        let height = self.visibility_checker.player_height();
+        for_visible_2d(&self.chunks, &self.visibility_checker).for_each(|pos|
+        {
+            let pos = pos.with_z(z);
+            self.occluded[pos][height].clear();
+        });
+    }
+
     pub fn update_buffers_shadows(
         &mut self,
         info: &mut UpdateBuffersInfo,
         visibility: &EntityVisibilityChecker,
-        caster: &OccludingCaster,
-        mut f: impl FnMut(&OccludingPlane)
+        caster: &OccludingCaster
     )
     {
-        for_visible_2d(&self.chunks, &self.visibility_checker).for_each(|pos|
+        self.clear_occluders();
+
+        let size = self.chunks.size();
+
+        let z = self.visibility_checker.top_z();
+
+        let mapper = GlobalMapper{
+            size: self.size(),
+            position: self.player_position()
+        };
+
+        let height = self.visibility_checker.player_height();
+        size.positions_2d().for_each(|pos|
         {
-            if let Some(pos) = self.visibility_checker.visible_z(&self.chunks, pos).next()
+            if !self.visibility_checker.visible(pos)
             {
-                self.chunks[pos].1.update_buffers_shadows(
-                    info,
-                    visibility,
-                    caster,
-                    self.visibility_checker.height(pos),
-                    &mut f
-                )
+                return;
             }
+
+            let pos = pos.with_z(z);
+
+            self.chunks[pos].1.update_buffers_shadows(
+                info,
+                visibility,
+                caster,
+                height,
+                |occluder|
+                {
+                    if !occluder.is_visible()
+                    {
+                        return;
+                    }
+
+                    size.positions_2d().for_each(|check_pos|
+                    {
+                        if !self.visibility_checker.visible(check_pos)
+                        {
+                            return;
+                        }
+
+                        let check_pos = check_pos.with_z(z);
+
+                        let chunk_pos: Vector3<f32> = mapper.to_global(check_pos).0.map(|x| x as f32 * CHUNK_VISUAL_SIZE).into();
+                        self.occluded[check_pos][height].update(occluder, chunk_pos.xy());
+                    });
+                }
+            )
+        });
+
+        size.positions_2d().for_each(|pos|
+        {
+            if !self.visibility_checker.visible(pos)
+            {
+                return;
+            }
+
+            let pos = pos.with_z(z);
+            self.occluded[pos][height].finish();
         });
     }
 
@@ -470,16 +734,17 @@ impl VisualOvermap
         visibility: &EntityVisibilityChecker
     )
     {
+        let z = self.visibility_checker.top_z();
+        let height = self.visibility_checker.player_height();
         for_visible_2d(&self.chunks, &self.visibility_checker).for_each(|pos|
         {
-            if let Some(pos) = self.visibility_checker.visible_z(&self.chunks, pos).next()
-            {
-                self.chunks[pos].1.draw_shadows(
-                    info,
-                    visibility,
-                    self.visibility_checker.height(pos)
-                );
-            }
+            let pos = pos.with_z(z);
+
+            self.chunks[pos].1.draw_shadows(
+                info,
+                visibility,
+                height
+            );
         });
     }
 

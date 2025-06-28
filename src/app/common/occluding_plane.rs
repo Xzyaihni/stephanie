@@ -229,19 +229,27 @@ impl OccludingPlane
             if reverse { *bottom_left } else { *bottom_right }
         );
 
+        if !infront
+        {
+            return false;
+        }
+
         let between_left = line_on_left(
             point,
             if reverse { *bottom_left } else { *top_left },
             if reverse { *top_left } else { *bottom_left }
         );
 
-        let between_right = line_on_left(
+        if !between_left
+        {
+            return false;
+        }
+
+        line_on_left(
             point,
             if reverse { *top_right } else { *bottom_right },
             if reverse { *bottom_right } else { *top_right }
-        );
-
-        infront && between_left && between_right
+        )
     }
 
     pub fn visible(&self, visibility: &VisibilityChecker) -> bool
@@ -258,6 +266,11 @@ impl OccludingPlane
     pub fn visible_with(visibility: &VisibilityChecker, transform: &Transform) -> bool
     {
         visibility.visible_occluding_plane(transform)
+    }
+
+    pub fn is_visible(&self) -> bool
+    {
+        !self.0.is_back()
     }
 
     pub fn update_buffers(

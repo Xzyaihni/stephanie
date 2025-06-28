@@ -153,7 +153,7 @@ impl VisualChunk
             vertical_occluders: Self::create_empty(),
             total_sky: Self::create_empty_slice(|| [false; CHUNK_SIZE * CHUNK_SIZE]),
             draw_height: [0; CHUNK_SIZE],
-            draw_next: [true; CHUNK_SIZE],
+            draw_next: [false; CHUNK_SIZE],
             generated: false
         }
     }
@@ -722,10 +722,10 @@ impl VisualChunk
         visibility: &VisibilityChecker,
         caster: &OccludingCaster,
         height: usize,
-        f: &mut impl FnMut(&OccludingPlane)
+        mut f: impl FnMut(&OccludingPlane)
     )
     {
-        Self::update_buffers_shadows_with(&mut self.occluders, info, visibility, caster, height, f)
+        Self::update_buffers_shadows_with(&mut self.occluders, info, visibility, caster, height, &mut f)
     }
 
     pub fn update_buffers_light_shadows(

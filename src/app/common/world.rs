@@ -21,8 +21,8 @@ use crate::{
         TileMap,
         TileInfo,
         Entity,
-        OccludingPlane,
         OccludingCaster,
+        entity::ClientEntities,
         message::Message
     }
 };
@@ -166,6 +166,11 @@ impl World
     pub fn debug_chunk(&self, pos: Pos3<f32>, visual: bool) -> String
     {
         self.overmap.debug_chunk(Self::chunk_of(pos), visual)
+    }
+
+    pub fn debug_tile_occlusion(&self, entities: &ClientEntities)
+    {
+        self.overmap.debug_tile_occlusion(entities)
     }
 
     pub fn tiles_inside<'a, Predicate>(
@@ -342,11 +347,10 @@ impl World
         &mut self,
         info: &mut UpdateBuffersInfo,
         visibility: &VisibilityChecker,
-        caster: &OccludingCaster,
-        f: impl FnMut(&OccludingPlane)
+        caster: &OccludingCaster
     )
     {
-        self.overmap.update_buffers_shadows(info, visibility, caster, f);
+        self.overmap.update_buffers_shadows(info, visibility, caster);
     }
 
     pub fn sky_occluded(&self, transform: &Transform) -> bool

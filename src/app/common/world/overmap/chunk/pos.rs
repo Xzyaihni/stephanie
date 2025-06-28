@@ -129,6 +129,17 @@ impl Pos3<usize>
     }
 }
 
+impl Pos3<usize>
+{
+    pub fn positions_2d(self) -> impl Iterator<Item=LocalPos>
+    {
+        (0..self.y).flat_map(move |y|
+        {
+            (0..self.x).map(move |x| LocalPos::new(Pos3::new(x, y, 0), self))
+        })
+    }
+}
+
 impl From<PosDirection> for Pos3<i32>
 {
     fn from(value: PosDirection) -> Self
@@ -964,12 +975,17 @@ impl LocalPos
         Self{pos: Pos3::new(x, y, z), size: self.size}
     }
 
+    pub fn with_z(self, z: usize) -> Self
+    {
+        Self{pos: Pos3{z, ..self.pos}, ..self}
+    }
+
     pub fn with_z_range(
         self,
         z: Range<usize>
     ) -> impl DoubleEndedIterator<Item=Self> + ExactSizeIterator + Clone
     {
-        z.map(move |z| Self{pos: Pos3{z, ..self.pos}, ..self})
+        z.map(move |z| self.with_z(z))
     }
 
     #[allow(dead_code)]

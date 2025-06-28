@@ -156,11 +156,7 @@ macro_rules! implement_common
 
             pub fn positions_2d(&self) -> impl Iterator<Item=LocalPos>
             {
-                let size = self.indexer.size().clone();
-                (0..size.y).flat_map(move |y|
-                {
-                    (0..size.x).map(move |x| LocalPos::new(Pos3::new(x, y, 0), size))
-                })
+                self.indexer.size().clone().positions_2d()
             }
 
             pub fn iter(&self) -> Iter<$indexer_name, T>

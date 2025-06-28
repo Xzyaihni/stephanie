@@ -42,7 +42,6 @@ use crate::{
         some_or_return,
         sender_loop,
         receiver_loop,
-        rectangle_points,
         render_info::*,
         lazy_transform::*,
         ClientLight,
@@ -63,7 +62,6 @@ use crate::{
         character::PartialCombinedInfo,
         entity::{
             for_each_component,
-            iterate_components_with,
             render_system,
             collider_system,
             physical_system,
@@ -1015,45 +1013,12 @@ impl GameState
         let visibility = self.visibility_checker();
 
         self.world.update_buffers(info);
+        self.world.update_buffers_shadows(info, &visibility, &caster);
 
-        let mut occluded: Vec<_> = iterate_components_with!(self.entities.entities, light, filter_map, |entity, light: &RefCell<ClientLight>|
+        if DebugConfig::is_enabled(DebugTool::DrawTileOcclusion)
         {
-            let transform = some_or_return!(self.entities.entities.transform(entity));
-
-            let mut light = light.borrow_mut();
-
-            light.occluded = false;
-
-            if !light.visible_with(&visibility, &transform)
-            {
-                return None;
-            }
-
-            let points = rectangle_points(&Transform{
-                scale: light.scale(),
-                ..*transform
-            });
-
-            Some((points, entity))
-        }).collect();
-
-        self.world.update_buffers_shadows(info, &visibility, &caster, |occluder|
-        {
-            occluded.retain_mut(|(points, entity)|
-            {
-                let all_occluded = points.iter().all(|point| occluder.occludes_point(*point));
-
-                if all_occluded
-                {
-                    self.entities.entities.light_mut(*entity).unwrap().occluded = true;
-
-                    false
-                } else
-                {
-                    true
-                }
-            });
-        });
+            self.world.debug_tile_occlusion(&self.entities.entities);
+        }
 
         let mut create_info = RenderCreateInfo{
             ids: self.cached_ids,
