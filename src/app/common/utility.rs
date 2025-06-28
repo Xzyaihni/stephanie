@@ -504,9 +504,14 @@ pub fn project_onto_plane(normal: Unit<Vector3<f32>>, d: f32, p: Vector3<f32>) -
     p - *normal * (p.dot(&normal) - d)
 }
 
+pub fn line_left_distance(p: Vector2<f32>, a: Vector2<f32>, b: Vector2<f32>) -> f32
+{
+    (b.x - a.x) * (p.y - a.y) - (b.y - a.y) * (p.x - a.x)
+}
+
 pub fn line_on_left(p: Vector2<f32>, a: Vector2<f32>, b: Vector2<f32>) -> bool
 {
-    (b.x - a.x) * (p.y - a.y) > (b.y - a.y) * (p.x - a.x)
+    line_left_distance(p, a, b) > 0.0
 }
 
 pub fn line_parallel_side(p: Vector2<f32>, a: Vector2<f32>, b: Vector2<f32>) -> Ordering

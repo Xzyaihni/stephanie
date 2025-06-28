@@ -19,7 +19,7 @@ use yanyaengine::{
 
 use crate::{
     client::{VisibilityChecker, RenderCreateInfo},
-    common::{rotate_point_z_3d, some_or_value, line_on_left, ServerToClient, world::TILE_SIZE}
+    common::{rotate_point_z_3d, some_or_value, line_left_distance, line_on_left, ServerToClient, world::TILE_SIZE}
 };
 
 
@@ -214,6 +214,15 @@ impl OccludingPlane
 
     pub fn occludes_point(&self, point: Vector2<f32>) -> bool
     {
+        self.occludes_point_with_epsilon(point, 0.0)
+    }
+
+    pub fn occludes_point_with_epsilon(
+        &self,
+        point: Vector2<f32>,
+        front_epsilon: f32
+    ) -> bool
+    {
         let OccluderPoints{
             bottom_left,
             bottom_right,
@@ -223,11 +232,11 @@ impl OccludingPlane
 
         let reverse = self.0.reverse_winding();
 
-        let infront = line_on_left(
+        let infront = line_left_distance(
             point,
             if reverse { *bottom_right } else { *bottom_left },
             if reverse { *bottom_left } else { *bottom_right }
-        );
+        ) > -front_epsilon;
 
         if !infront
         {

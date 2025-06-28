@@ -275,7 +275,10 @@ impl OccludedSlice
         self.visible_points.retain(|&index|
         {
             let point = Vector2::new(index % (CHUNK_SIZE + 1), index / (CHUNK_SIZE + 1));
-            let occluded = occluder.occludes_point(point.cast() * TILE_SIZE + chunk_pos);
+            let occluded = occluder.occludes_point_with_epsilon(
+                point.cast() * TILE_SIZE + chunk_pos,
+                -TILE_SIZE * 0.01
+            );
 
             if occluded
             {
