@@ -107,6 +107,32 @@ macro_rules! some_or_return
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
+pub struct SortableF32(f32);
+
+impl From<f32> for SortableF32
+{
+    fn from(value: f32) -> Self
+    {
+        if value.is_nan()
+        {
+            panic!("cant sort nans");
+        }
+
+        Self(value)
+    }
+}
+
+impl Eq for SortableF32 {}
+
+impl Ord for SortableF32
+{
+    fn cmp(&self, other: &Self) -> Ordering
+    {
+        self.0.partial_cmp(&other.0).unwrap()
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct BiMap<K, V>
 {

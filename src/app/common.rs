@@ -70,6 +70,7 @@ pub use occluding_plane::{
     Occluder,
     ClientOccluder,
     OccludingPlane,
+    OccluderVisibilityChecker,
     OccludingCaster
 };
 

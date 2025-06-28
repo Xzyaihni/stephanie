@@ -19,7 +19,7 @@ use yanyaengine::{
 
 use crate::{
     client::{VisibilityChecker, RenderCreateInfo},
-    common::{rotate_point_z_3d, some_or_value, line_left_distance, line_on_left, ServerToClient, world::TILE_SIZE}
+    common::{rotate_point_z_3d, line_left_distance, line_on_left, ServerToClient, world::TILE_SIZE}
 };
 
 
@@ -192,24 +192,14 @@ impl From<Vector3<f32>> for OccludingCaster
     }
 }
 
-#[derive(Debug)]
-pub struct OccludingPlane(OccludingPlaneInner);
+#[derive(Debug, Clone)]
+pub struct OccluderVisibilityChecker(OccluderPoints, bool);
 
-impl OccludingPlane
+impl OccluderVisibilityChecker
 {
-    pub fn new(inner: OccludingPlaneInner) -> Self
+    pub fn front_position(&self) -> Vector2<f32>
     {
-        OccludingPlane(inner)
-    }
-
-    pub fn set_transform(&mut self, transform: Transform)
-    {
-        self.0.set_transform(transform);
-    }
-
-    pub fn points(&self) -> &Option<OccluderPoints>
-    {
-        self.0.points()
+        self.0.bottom_left.zip_map(&self.0.bottom_right, |x, y| x.midpoint(y))
     }
 
     pub fn occludes_point(&self, point: Vector2<f32>) -> bool
@@ -228,9 +218,9 @@ impl OccludingPlane
             bottom_right,
             top_left,
             top_right
-        } = some_or_value!(self.0.points(), false);
+        } = &self.0;
 
-        let reverse = self.0.reverse_winding();
+        let reverse = self.1;
 
         let infront = line_left_distance(
             point,
@@ -259,6 +249,47 @@ impl OccludingPlane
             if reverse { *top_right } else { *bottom_right },
             if reverse { *bottom_right } else { *top_right }
         )
+    }
+}
+
+#[derive(Debug)]
+pub struct OccludingPlane(OccludingPlaneInner);
+
+impl OccludingPlane
+{
+    pub fn new(inner: OccludingPlaneInner) -> Self
+    {
+        OccludingPlane(inner)
+    }
+
+    pub fn set_transform(&mut self, transform: Transform)
+    {
+        self.0.set_transform(transform);
+    }
+
+    pub fn points(&self) -> &Option<OccluderPoints>
+    {
+        self.0.points()
+    }
+
+    pub fn occluder_visibility_checker(&self) -> Option<OccluderVisibilityChecker>
+    {
+        let reverse_winding = self.0.reverse_winding();
+        self.points().map(|x| OccluderVisibilityChecker(x, reverse_winding))
+    }
+
+    pub fn occludes_point(&self, point: Vector2<f32>) -> bool
+    {
+        self.occluder_visibility_checker().map(|x| x.occludes_point(point)).unwrap_or(false)
+    }
+
+    pub fn occludes_point_with_epsilon(
+        &self,
+        point: Vector2<f32>,
+        front_epsilon: f32
+    ) -> bool
+    {
+        self.occluder_visibility_checker().map(|x| x.occludes_point_with_epsilon(point, front_epsilon)).unwrap_or(false)
     }
 
     pub fn visible(&self, visibility: &VisibilityChecker) -> bool

@@ -17,11 +17,12 @@ use yanyaengine::{game_object::*, Transform};
 use crate::{
     client::{VisibilityChecker as EntityVisibilityChecker, TilesFactory},
     common::{
+        SortableF32,
         render_info::*,
         OccludingCaster,
         AnyEntities,
         EntityInfo,
-        OccludingPlane,
+        OccluderVisibilityChecker,
         watcher::Watchers,
         entity::ClientEntities
     }
@@ -287,7 +288,7 @@ impl OccludedSlice
 
     pub fn update(
         &mut self,
-        occluder: &OccludingPlane,
+        occluder: &OccluderVisibilityChecker,
         chunk_pos: Vector2<f32>
     )
     {
@@ -700,6 +701,9 @@ impl VisualOvermap
             position: self.player_position()
         };
 
+        let mut visible_occluders = Vec::new();
+
+        let player_position = self.visibility_checker.player_position.read();
         let height = self.visibility_checker.player_height();
         size.positions_2d().for_each(|pos|
         {
@@ -722,20 +726,31 @@ impl VisualOvermap
                         return;
                     }
 
-                    size.positions_2d().for_each(|check_pos|
-                    {
-                        if !self.visibility_checker.visible(check_pos)
-                        {
-                            return;
-                        }
-
-                        let check_pos = check_pos.with_z(z);
-
-                        let chunk_pos: Vector3<f32> = mapper.to_global(check_pos).0.map(|x| x as f32 * CHUNK_VISUAL_SIZE).into();
-                        self.occluded[check_pos][height].update(occluder, chunk_pos.xy());
-                    });
+                    visible_occluders.push(occluder.occluder_visibility_checker().unwrap());
                 }
             )
+        });
+
+        visible_occluders.sort_unstable_by_key(|occluder|
+        {
+            let distance = occluder.front_position().metric_distance(&Vector3::from(*player_position).xy());
+            SortableF32::from(distance)
+        });
+
+        visible_occluders.into_iter().for_each(|occluder|
+        {
+            size.positions_2d().for_each(|check_pos|
+            {
+                if !self.visibility_checker.visible(check_pos)
+                {
+                    return;
+                }
+
+                let check_pos = check_pos.with_z(z);
+
+                let chunk_pos: Vector3<f32> = mapper.to_global(check_pos).0.map(|x| x as f32 * CHUNK_VISUAL_SIZE).into();
+                self.occluded[check_pos][height].update(&occluder, chunk_pos.xy());
+            });
         });
 
         size.positions_2d().for_each(|pos|
