@@ -37,7 +37,7 @@ pub fn draw(
 {
     info.bind_pipeline(shaders.world);
 
-    renderables.world.draw(info);
+    renderables.world.draw_tiles(info, false);
 
     info.bind_pipeline(shaders.default);
 
@@ -63,7 +63,7 @@ pub fn draw(
 
     info.bind_pipeline(shaders.world_shaded);
 
-    renderables.world.draw(info);
+    renderables.world.draw_tiles(info, true);
 
     info.bind_pipeline(shaders.default_shaded);
 

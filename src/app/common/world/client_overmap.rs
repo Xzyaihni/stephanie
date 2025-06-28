@@ -505,12 +505,13 @@ impl ClientOvermap
         self.visual_overmap.draw_sky_occluders(info);
     }
 
-    pub fn draw(
+    pub fn draw_tiles(
         &self,
-        info: &mut DrawInfo
+        info: &mut DrawInfo,
+        is_shaded: bool
     )
     {
-        self.visual_overmap.draw_tiles(info);
+        self.visual_overmap.draw_tiles(info, is_shaded);
     }
 }
 

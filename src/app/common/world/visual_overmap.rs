@@ -563,17 +563,6 @@ impl VisualOvermap
         });
     }
 
-    fn for_each_visible(&self, mut f: impl FnMut(&VisualChunk, LocalPos))
-    {
-        for_visible_2d(&self.chunks, &self.visibility_checker).for_each(|pos|
-        {
-            self.visibility_checker.visible_z(&self.chunks, pos).rev().for_each(|pos|
-            {
-                f(&self.chunks[pos].1, pos)
-            });
-        });
-    }
-
     pub fn debug_tile_occlusion(&self, entities: &ClientEntities)
     {
         let z = self.visibility_checker.top_z();
@@ -660,15 +649,26 @@ impl VisualOvermap
 
     pub fn draw_tiles(
         &self,
-        info: &mut DrawInfo
+        info: &mut DrawInfo,
+        is_shaded: bool
     )
     {
-        self.for_each_visible(|chunk, pos|
+        let z = self.visibility_checker.top_z();
+        let player_height = self.visibility_checker.player_height();
+        for_visible_2d(&self.chunks, &self.visibility_checker).for_each(|pos|
         {
-            chunk.draw_tiles(
-                info,
-                self.visibility_checker.height(pos)
-            )
+            if !is_shaded && self.occluded[pos.with_z(z)][player_height].is_fully_occluded()
+            {
+                return;
+            }
+
+            self.visibility_checker.visible_z(&self.chunks, pos).rev().for_each(|pos|
+            {
+                self.chunks[pos].1.draw_tiles(
+                    info,
+                    self.visibility_checker.height(pos)
+                )
+            });
         });
     }
 
