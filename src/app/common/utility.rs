@@ -616,6 +616,24 @@ pub fn project_onto(transform: &Transform, p: &Vector3<f32>) -> Vector3<f32>
     rotate_point_z_3d(scaled, transform.rotation) + transform.position
 }
 
+pub fn aabb_points(transform: &Transform) -> (Vector2<f32>, Vector2<f32>)
+{
+    let points = rectangle_points(transform);
+    points.into_iter().fold((points[0], points[0]), |(mut top_left, mut bottom_right), value|
+    {
+        let x = value.x;
+        let y = value.y;
+
+        top_left.x = top_left.x.min(x);
+        top_left.y = top_left.y.min(y);
+
+        bottom_right.x = bottom_right.x.max(x);
+        bottom_right.y = bottom_right.y.max(y);
+
+        (top_left, bottom_right)
+    })
+}
+
 pub fn rectangle_points(transform: &Transform) -> [Vector2<f32>; 4]
 {
     let size = transform.scale;

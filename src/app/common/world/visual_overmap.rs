@@ -17,6 +17,7 @@ use yanyaengine::{game_object::*, Transform};
 use crate::{
     client::{VisibilityChecker as EntityVisibilityChecker, TilesFactory},
     common::{
+        aabb_points,
         SortableF32,
         render_info::*,
         OccludingCaster,
@@ -857,8 +858,18 @@ impl VisualOvermap
         let size = transform.scale * 0.5;
         let size = Vector3::new(size.x.abs(), size.y.abs(), 0.0);
 
+        let (top_left_pos, bottom_right_pos) = if transform.rotation == 0.0
+        {
+            (pos - size, pos + size)
+        } else
+        {
+            let (a, b) = aabb_points(transform);
+
+            (Vector3::new(a.x, a.y, 0.0), Vector3::new(b.x, b.y, 0.0))
+        };
+
         let (top_left, top_left_tile) = {
-            let pos: Pos3<_> = (pos - size).into();
+            let pos: Pos3<_> = top_left_pos.into();
 
             let chunk = self.to_local(pos.rounded()).unwrap_or_else(||
             {
@@ -871,7 +882,7 @@ impl VisualOvermap
         };
 
         let (bottom_right, bottom_right_tile) = {
-            let pos: Pos3<_> = (pos + size).into();
+            let pos: Pos3<_> = bottom_right_pos.into();
 
             let chunk = self.to_local(pos.rounded()).unwrap_or_else(||
             {
