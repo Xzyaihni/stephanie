@@ -218,7 +218,6 @@ fn for_visible_2d<'a>(
 struct OccludedSlice
 {
     occlusions: [bool; CHUNK_SIZE * CHUNK_SIZE],
-    points: [bool; (CHUNK_SIZE + 1) * (CHUNK_SIZE + 1)],
     visible_points: Vec<usize>
 }
 
@@ -226,12 +225,11 @@ impl OccludedSlice
 {
     pub fn empty() -> Self
     {
-        let points = [false; (CHUNK_SIZE + 1) * (CHUNK_SIZE + 1)];
-        let visible_points = (0..points.len()).collect();
+        let occlusions = [false; CHUNK_SIZE * CHUNK_SIZE];
+        let visible_points = (0..occlusions.len()).collect();
 
         Self{
-            occlusions: [false; CHUNK_SIZE * CHUNK_SIZE],
-            points,
+            occlusions,
             visible_points
         }
     }
@@ -239,29 +237,6 @@ impl OccludedSlice
     pub fn clear(&mut self)
     {
         *self = Self::empty();
-    }
-
-    pub fn points_tile_occlusion(&self, index: usize) -> bool
-    {
-        Self::at_tile(&self.points, index)
-    }
-
-    fn at_tile(points: &[bool; (CHUNK_SIZE + 1) * (CHUNK_SIZE + 1)], index: usize) -> bool
-    {
-        fn to_index(x: usize, y: usize) -> usize
-        {
-            y * (CHUNK_SIZE + 1) + x
-        }
-
-        let at = |x, y|
-        {
-            points[to_index(x, y)]
-        };
-
-        let x = index % CHUNK_SIZE;
-        let y = index / CHUNK_SIZE;
-
-        at(x, y) && at(x + 1, y) && at(x, y + 1) && at(x + 1, y + 1)
     }
 
     pub fn is_fully_occluded(&self) -> bool
@@ -288,24 +263,25 @@ impl OccludedSlice
         })
     }
 
-    pub fn finish(&mut self)
-    {
-        self.occlusions.iter_mut().enumerate().for_each(|(index, occluded)|
-        {
-            *occluded = Self::at_tile(&self.points, index);
-        });
-    }
-
     fn for_visible_points(&mut self, chunk_pos: Vector2<f32>, occludes: impl Fn(Vector2<f32>) -> bool)
     {
         self.visible_points.retain(|&index|
         {
-            let point = Vector2::new(index % (CHUNK_SIZE + 1), index / (CHUNK_SIZE + 1));
-            let occluded = occludes(point.cast() * TILE_SIZE + chunk_pos);
+            let at = |x, y|
+            {
+                let point = Vector2::new(x, y);
+
+                occludes(point.cast() * TILE_SIZE + chunk_pos)
+            };
+
+            let x = index % CHUNK_SIZE;
+            let y = index / CHUNK_SIZE;
+
+            let occluded = at(x, y) && at(x + 1, y) && at(x, y + 1) && at(x + 1, y + 1);
 
             if occluded
             {
-                self.points[index] = true;
+                self.occlusions[index] = true;
             }
 
             !occluded
@@ -789,7 +765,7 @@ impl VisualOvermap
         {
             {
                 let current_occluded = &self.occluded[pos][height];
-                if indices.iter().all(|index| current_occluded.points_tile_occlusion(index))
+                if indices.iter().all(|index| current_occluded.occlusions[index])
                 {
                     self.chunks[pos].1.set_occluder_visible(height, occluder_index, false);
                     return;
@@ -810,17 +786,6 @@ impl VisualOvermap
                 let chunk_pos = Chunk::position_of_chunk(mapper.to_global(check_pos));
                 self.occluded[check_pos][height].update(&occluder, chunk_pos.xy());
             });
-        });
-
-        size.positions_2d().for_each(|pos|
-        {
-            if !self.visibility_checker.visible(pos)
-            {
-                return;
-            }
-
-            let pos = pos.with_z(z);
-            self.occluded[pos][height].finish();
         });
     }
 
