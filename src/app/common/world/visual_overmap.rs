@@ -609,11 +609,11 @@ impl VisualOvermap
         {
             let pos = pos.with_z(z);
 
-            let chunk_pos = self.to_global(pos).0.map(|x| x as f32 * CHUNK_VISUAL_SIZE);
+            let chunk_pos = Chunk::position_of_chunk(self.to_global(pos));
             Self::debug_tile_occlusion_single(
                 &self.occluded[pos],
                 entities,
-                chunk_pos.into(),
+                chunk_pos,
                 height
             );
         });
@@ -733,7 +733,7 @@ impl VisualOvermap
 
             occluded.clear();
 
-            let chunk_pos: Vector3<f32> = mapper.to_global(pos).0.map(|x| x as f32 * CHUNK_VISUAL_SIZE).into();
+            let chunk_pos = Chunk::position_of_chunk(mapper.to_global(pos));
 
             occluded.screen_visible_update(visibility, chunk_pos.xy());
         });
@@ -807,7 +807,7 @@ impl VisualOvermap
 
                 let check_pos = check_pos.with_z(z);
 
-                let chunk_pos: Vector3<f32> = mapper.to_global(check_pos).0.map(|x| x as f32 * CHUNK_VISUAL_SIZE).into();
+                let chunk_pos = Chunk::position_of_chunk(mapper.to_global(check_pos));
                 self.occluded[check_pos][height].update(&occluder, chunk_pos.xy());
             });
         });

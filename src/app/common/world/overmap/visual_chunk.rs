@@ -432,40 +432,15 @@ impl VisualChunk
                         tilemap.info(tile).transparent
                     };
 
-                    if is_transparent(tile.this)
+                    let this_transparent = is_transparent(tile.this);
+                    if tile.other.left.map(|x| this_transparent ^ is_transparent(x)).unwrap_or(false)
                     {
-                        if let Some(left) = tile.other.left
-                        {
-                            if !is_transparent(left)
-                            {
-                                add_vertical(&mut plane, pos, false);
-                            }
-                        }
+                        add_vertical(&mut plane, pos, !this_transparent);
+                    }
 
-                        if let Some(down) = tile.other.down
-                        {
-                            if !is_transparent(down)
-                            {
-                                add_horizontal(&mut plane, pos, false);
-                            }
-                        }
-                    } else
+                    if tile.other.down.map(|x| this_transparent ^ is_transparent(x)).unwrap_or(false)
                     {
-                        if let Some(left) = tile.other.left
-                        {
-                            if is_transparent(left)
-                            {
-                                add_vertical(&mut plane, pos, true);
-                            }
-                        }
-
-                        if let Some(down) = tile.other.down
-                        {
-                            if is_transparent(down)
-                            {
-                                add_horizontal(&mut plane, pos, true);
-                            }
-                        }
+                        add_horizontal(&mut plane, pos, !this_transparent);
                     }
                 }
             }

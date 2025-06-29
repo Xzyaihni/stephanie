@@ -1,8 +1,20 @@
+use std::sync::Arc;
+
+use parking_lot::RwLock;
+
 use serde::{Serialize, Deserialize};
 
 use nalgebra::Vector3;
 
-use yanyaengine::{game_object::*, TransformContainer, Transform, SolidObject, ObjectVertex};
+use yanyaengine::{
+    game_object::*,
+    object::Model,
+    ObjectFactory,
+    TransformContainer,
+    Transform,
+    SolidObject,
+    ObjectVertex
+};
 
 use crate::{
     client::{VisibilityChecker, RenderCreateInfo},
@@ -22,6 +34,33 @@ impl Default for Light
     fn default() -> Self
     {
         Self{source: None, strength: 0.0}
+    }
+}
+
+impl Light
+{
+    pub fn build(
+        self,
+        position: Vector3<f32>,
+        object_factory: &ObjectFactory,
+        square: Arc<RwLock<Model>>
+    ) -> ClientLight
+    {
+        let transform = Transform{
+            position,
+            ..Default::default()
+        };
+
+        let object = object_factory.create_solid(
+            square,
+            transform
+        );
+
+        let mut this = ClientLight{light: self, occluded: false, object};
+
+        this.light_modified();
+
+        this
     }
 }
 
@@ -102,21 +141,13 @@ impl ServerToClient<ClientLight> for Light
         create_info: &mut RenderCreateInfo
     ) -> ClientLight
     {
-        let transform = Transform{
-            position: transform().position,
-            ..Default::default()
-        };
-
         let assets = create_info.object_info.partial.assets.lock();
-        let object = create_info.object_info.partial.object_factory.create_solid(
-            assets.model(create_info.ids.square).clone(),
-            transform
-        );
+        let object_factory = &create_info.object_info.partial.object_factory;
 
-        let mut this = ClientLight{light: self, occluded: false, object};
-
-        this.light_modified();
-
-        this
+        self.build(
+            transform().position,
+            object_factory,
+            assets.model(create_info.ids.square).clone()
+        )
     }
 }
