@@ -858,14 +858,14 @@ impl VisualOvermap
         let size = transform.scale * 0.5;
         let size = Vector3::new(size.x.abs(), size.y.abs(), 0.0);
 
-        let (top_left_pos, bottom_right_pos) = if transform.rotation == 0.0
+        let (top_left_pos, bottom_right_pos) = if transform.rotation == 0.0 || (size.x == size.y)
         {
             (pos - size, pos + size)
         } else
         {
             let (a, b) = aabb_points(transform);
 
-            (Vector3::new(a.x, a.y, 0.0), Vector3::new(b.x, b.y, 0.0))
+            (Vector3::new(a.x, a.y, pos.z), Vector3::new(b.x, b.y, pos.z))
         };
 
         let (top_left, top_left_tile) = {
