@@ -715,7 +715,7 @@ impl VisualChunk
         self.occluders[height][index].visible = value;
     }
 
-    fn update_buffers_shadows_with<const CHECK_VISIBLE: bool>(
+    fn update_buffers_shadows_with(
         occluders: &mut ChunkSlice<Box<[OccluderCached]>>,
         info: &mut UpdateBuffersInfo,
         visibility: &VisibilityChecker,
@@ -726,17 +726,17 @@ impl VisualChunk
     {
         occluders[height].iter_mut().enumerate().for_each(|(index, x)|
         {
-            if (!CHECK_VISIBLE || x.visible) && x.occluder.visible(visibility)
+            if x.occluder.visible(visibility)
             {
                 x.occluder.update_buffers(info, caster);
 
-                if !x.occluder.is_visible()
-                {
-                    x.visible = false;
-                    return;
-                }
+                let visible = x.occluder.is_visible();
+                x.visible = visible;
 
-                f(&x, index);
+                if visible
+                {
+                    f(&x, index);
+                }
             } else
             {
                 x.visible = false;
@@ -753,7 +753,7 @@ impl VisualChunk
         mut f: impl FnMut(&OccluderCached, usize)
     )
     {
-        Self::update_buffers_shadows_with::<false>(&mut self.occluders, info, visibility, caster, height, &mut f)
+        Self::update_buffers_shadows_with(&mut self.occluders, info, visibility, caster, height, &mut f)
     }
 
     pub fn update_buffers_light_shadows(
@@ -769,7 +769,7 @@ impl VisualChunk
         let occluders = self.light_occluders.entry(id)
             .or_insert_with(|| tiles_factory.build_occluders(self.light_occluder_base.clone()));
 
-        Self::update_buffers_shadows_with::<true>(
+        Self::update_buffers_shadows_with(
             occluders,
             info,
             visibility,
