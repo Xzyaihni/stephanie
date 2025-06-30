@@ -115,9 +115,14 @@ impl ChunkModelBuilder
         }
 
         {
-            let vertices = self.tile_vertices(pos);
+            let (vertices, indices) = self.tile_vertices(pos);
 
-            self.model[chunk_height].vertices.extend(vertices);
+            let model = &mut self.model[chunk_height];
+
+            let start_index = model.vertices.len() as u16;
+
+            model.vertices.extend(vertices);
+            model.indices.extend(indices.into_iter().map(|index| start_index + index));
         }
     }
 
@@ -169,22 +174,24 @@ impl ChunkModelBuilder
             (b, c) = (c, b);
         }
 
-        [a, b, c, b, d, c].into_iter()
+        [a, b, c, d].into_iter()
     }
 
-    fn tile_vertices(&self, pos: Pos3<f32>) -> impl Iterator<Item=[f32; 3]>
+    fn tile_vertices(&self, pos: Pos3<f32>) -> ([[f32; 3]; 4], [u16; 6])
     {
         let (x, y, z) = (pos.x, pos.y, pos.z - TILE_SIZE);
         let (x_end, y_end) = (pos.x + TILE_SIZE, pos.y + TILE_SIZE);
 
-        vec![
+        let vertices = [
             [x, y, z],
             [x, y_end, z],
             [x_end, y, z],
-            [x, y_end, z],
-            [x_end, y_end, z],
-            [x_end, y, z]
-        ].into_iter()
+            [x_end, y_end, z]
+        ];
+
+        let indices = [0, 1, 2, 1, 3, 2];
+
+        (vertices, indices)
     }
 
     pub fn build(
