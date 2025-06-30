@@ -295,18 +295,12 @@ impl ClientEntitiesContainer
             {
                 let real_z = (transform.position.z / TILE_SIZE).floor() as i32;
 
-                let is_render_visible = !world.wall_occluded(&transform);
-
                 let below_player = !visibility.world_position.is_same_height(&TilePos::from(Pos3::from(transform.position)));
-                let is_render_visible = if below_player
-                {
-                    is_render_visible && !world.sky_occluded(&transform)
-                } else
-                {
-                    is_render_visible
-                };
+                let sky_occluded = below_player && world.sky_occluded(&transform);
 
-                let is_render_shadow = render.shadow_visible;
+                let is_render_visible = !world.wall_occluded(&transform) && !sky_occluded;
+
+                let is_render_shadow = render.shadow_visible && !sky_occluded;
 
                 if is_render_visible
                 {
