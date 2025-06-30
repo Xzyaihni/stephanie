@@ -2,7 +2,7 @@ use std::{
     iter,
     convert,
     collections::HashMap,
-    ops::RangeInclusive,
+    ops::{RangeInclusive, ControlFlow},
     sync::Arc
 };
 
@@ -561,53 +561,51 @@ impl VisualChunk
     {
         let (next, height): (Vec<_>, Vec<_>) = (0..CHUNK_SIZE).map(|index|
         {
-            let amount = Self::unoccluded_amount(occlusions[0..=index].iter().rev());
+            let draw_next = occlusions[0..index].iter().rev().try_fold(occlusions[index], |current, occlusions|
+            {
+                let combined_occlusions: [bool; CHUNK_SIZE * CHUNK_SIZE] =
+                    current.into_iter().zip(occlusions.iter().copied()).map(|(current, x)|
+                    {
+                        current || x
+                    }).collect::<Vec<_>>().try_into().unwrap();
 
-            let draw_next = amount > (index + 1);
+                let fully_occluded = combined_occlusions.iter().copied().all(convert::identity);
 
-            (draw_next, amount.min(index + 1))
+                if fully_occluded
+                {
+                    ControlFlow::Break(())
+                } else
+                {
+                    ControlFlow::Continue(combined_occlusions)
+                }
+            }).continue_value().map(|xs| !xs.into_iter().all(convert::identity)).unwrap_or(false);
+
+            let last_changed = occlusions[0..index].iter().enumerate().rev()
+                .fold((index, occlusions[index]), |(last_changed, current), (index, occlusions)|
+                {
+                    let mut changed = false;
+                    let new_current = current.iter().copied().zip(occlusions.iter().copied()).map(|(current, x)|
+                    {
+                        if !current
+                        {
+                            if x { changed = true; }
+
+                            x
+                        } else
+                        {
+                            true
+                        }
+                    }).collect::<Vec<_>>().try_into().unwrap();
+
+                    (if changed { index } else { last_changed }, new_current)
+                }).0;
+
+            let amount = index - last_changed + 1;
+
+            (draw_next, amount)
         }).unzip();
 
         (next.try_into().unwrap(), height.try_into().unwrap())
-    }
-
-    fn unoccluded_amount<'a>(
-        mut occlusions: impl Iterator<Item=&'a [bool; CHUNK_SIZE * CHUNK_SIZE]>
-    ) -> usize
-    {
-        let mut current = if let Some(x) = occlusions.next()
-        {
-            x.to_vec()
-        } else
-        {
-            return 0;
-        };
-
-        Self::unoccluded_amount_inner(&mut current, &mut occlusions)
-    }
-
-    fn unoccluded_amount_inner<'a>(
-        current: &mut Vec<bool>,
-        occlusions: &mut impl Iterator<Item=&'a [bool; CHUNK_SIZE * CHUNK_SIZE]>
-    ) -> usize
-    {
-        let fully_occluded = current.iter().copied().all(convert::identity);
-
-        if fully_occluded
-        {
-            1
-        } else if let Some(occlusion) = occlusions.next()
-        {
-            *current = current.iter().zip(occlusion.iter()).map(|(a, b)|
-            {
-                *a || *b
-            }).collect();
-
-            1 + Self::unoccluded_amount_inner(current, occlusions)
-        } else
-        {
-            2
-        }
     }
 
     fn create_tile(
