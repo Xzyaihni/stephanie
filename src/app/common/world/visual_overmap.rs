@@ -873,8 +873,11 @@ impl VisualOvermap
 
     pub fn wall_occluded(&self, transform: &Transform) -> bool
     {
-        self.occluded_with(transform, None, |pos, height, top_left, bottom_right|
+        let z = self.visibility_checker.top_z();
+        let height = self.visibility_checker.player_height();
+        self.occluded_with(transform, None, |pos, _height, top_left, bottom_right|
         {
+            let pos = pos.with_z(z);
             self.occluded[pos][height].occluded(top_left, bottom_right)
         })
     }
