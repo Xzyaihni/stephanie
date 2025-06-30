@@ -134,6 +134,7 @@ pub struct VisualChunkInfo
     infos: ChunkSlice<Option<ChunkInfo>>,
     occluders: ChunkSlice<Box<[OccluderInfo]>>,
     vertical_occluders: ChunkSlice<Box<[VerticalOccluder]>>,
+    sky: ChunkSlice<[bool; CHUNK_SIZE * CHUNK_SIZE]>,
     total_sky: ChunkSlice<[bool; CHUNK_SIZE * CHUNK_SIZE]>,
     draw_height: ChunkSlice<usize>,
     draw_next: ChunkSlice<bool>
@@ -174,6 +175,7 @@ pub struct VisualChunk
     light_occluder_base: ChunkSlice<Box<[OccluderInfo]>>,
     light_occluders: HashMap<usize, ChunkSlice<Box<[OccluderCached]>>>,
     vertical_occluders: ChunkSlice<Box<[SolidObject<SkyOccludingVertex>]>>,
+    sky: ChunkSlice<[bool; CHUNK_SIZE * CHUNK_SIZE]>,
     total_sky: ChunkSlice<[bool; CHUNK_SIZE * CHUNK_SIZE]>,
     draw_height: ChunkSlice<usize>,
     draw_next: ChunkSlice<bool>,
@@ -190,6 +192,7 @@ impl VisualChunk
             light_occluder_base: Self::create_empty(),
             light_occluders: HashMap::new(),
             vertical_occluders: Self::create_empty(),
+            sky: Self::create_empty_slice(|| [false; CHUNK_SIZE * CHUNK_SIZE]),
             total_sky: Self::create_empty_slice(|| [false; CHUNK_SIZE * CHUNK_SIZE]),
             draw_height: [0; CHUNK_SIZE],
             draw_next: [false; CHUNK_SIZE],
@@ -272,6 +275,7 @@ impl VisualChunk
             infos,
             occluders,
             vertical_occluders,
+            sky: occlusions,
             total_sky,
             draw_height,
             draw_next
@@ -294,6 +298,7 @@ impl VisualChunk
             light_occluders: HashMap::new(),
             vertical_occluders,
             generated: true,
+            sky: chunk_info.sky,
             total_sky: chunk_info.total_sky,
             draw_height: chunk_info.draw_height,
             draw_next: chunk_info.draw_next
@@ -647,11 +652,48 @@ impl VisualChunk
         (height + 1 - draw_amount)..=height
     }
 
+    pub fn sky_occluded_between(
+        &self,
+        mut heights: impl Iterator<Item=usize>,
+        top_left: Vector2<usize>,
+        bottom_right: Vector2<usize>,
+        (e, chunk_pos): (Option<&crate::common::entity::ClientEntities>, Vector3<f32>)
+    ) -> bool
+    {
+        heights.any(|z|
+        {
+            let sky = &self.sky[z];
+            (top_left.y..=bottom_right.y).all(|y|
+            {
+                let index = y * CHUNK_SIZE;
+                (top_left.x..=bottom_right.x).all(move |x|
+                {
+                    let index = index + x;
+
+                    if let Some(e) = e
+                    {
+                        let position = chunk_pos + Vector3::new(x, y, z).cast() * TILE_SIZE;
+                        use crate::common::AnyEntities;
+                        e.push(true, crate::common::tile_marker_info(
+                            position,
+                            if sky[index] { [1.0, 0.0, 0.0, 1.0] } else { [0.0, 1.0, 0.0, 1.0] },
+                            CHUNK_SIZE,
+                            z
+                        ));
+                    }
+
+                    sky[index]
+                })
+            })
+        })
+    }
+
     pub fn sky_occluded(
         &self,
         height: usize,
         top_left: Vector2<usize>,
-        bottom_right: Vector2<usize>
+        bottom_right: Vector2<usize>,
+        (e, chunk_pos): (Option<&crate::common::entity::ClientEntities>, Vector3<f32>)
     ) -> bool
     {
         let total_sky = &self.total_sky[height];
@@ -661,6 +703,18 @@ impl VisualChunk
             (top_left.x..=bottom_right.x).all(move |x|
             {
                 let index = index + x;
+
+                if let Some(e) = e
+                {
+                    let position = chunk_pos + Vector3::new(x, y, height).cast() * TILE_SIZE;
+                    use crate::common::AnyEntities;
+                    e.push(true, crate::common::tile_marker_info(
+                        position,
+                        if total_sky[index] { [1.0, 0.0, 0.0, 1.0] } else { [0.0, 1.0, 0.0, 1.0] },
+                        CHUNK_SIZE,
+                        0
+                    ));
+                }
 
                 total_sky[index]
             })

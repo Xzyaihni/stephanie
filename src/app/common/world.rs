@@ -353,9 +353,9 @@ impl World
         self.overmap.update_buffers_shadows(info, visibility, caster);
     }
 
-    pub fn sky_occluded(&self, transform: &Transform) -> bool
+    pub fn sky_occluded(&self, transform: &Transform, e: Option<&ClientEntities>) -> bool
     {
-        self.overmap.sky_occluded(transform)
+        self.overmap.sky_occluded(transform, e)
     }
 
     pub fn wall_occluded(&self, transform: &Transform) -> bool

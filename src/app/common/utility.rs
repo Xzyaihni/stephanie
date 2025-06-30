@@ -29,7 +29,8 @@ pub use crate::{
     common::{
         watcher::*,
         render_info::*,
-        EntityInfo
+        EntityInfo,
+        world::TILE_SIZE
     }
 };
 
@@ -670,6 +671,38 @@ where
         iter.by_ref().next();
         iter.clone().for_each(|b| f(a.clone(), b));
     });
+}
+
+pub fn tile_marker_info(position: Vector3<f32>, color: [f32; 4], amount: usize, id: usize) -> EntityInfo
+{
+    let per_row = (amount as f32).sqrt().ceil() as usize;
+
+    let x = id % per_row;
+    let y = id / per_row;
+
+    let per_row = per_row as f32;
+    let scale = TILE_SIZE / per_row;
+
+    let start = position + Vector3::new(scale, scale, 0.0) / 2.0;
+    let position = start + Vector3::new(x as f32, y as f32, 0.0) * scale;
+
+    EntityInfo{
+        transform: Some(Transform{
+            position,
+            scale: Vector3::repeat(scale),
+            ..Default::default()
+        }),
+        render: Some(RenderInfo{
+            object: Some(RenderObjectKind::Texture{
+                name: "ui/solid.png".to_owned()
+            }.into()),
+            above_world: true,
+            mix: Some(MixColor::color(color)),
+            ..Default::default()
+        }),
+        watchers: Some(Watchers::simple_one_frame()),
+        ..Default::default()
+    }
 }
 
 pub fn direction_arrow_info(

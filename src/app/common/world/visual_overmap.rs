@@ -808,40 +808,74 @@ impl VisualOvermap
         });
     }
 
+    fn chunk_height_of(
+        size_z: usize,
+        position: f32,
+        player_position: i32
+    ) -> Option<usize>
+    {
+        let size_z = size_z as i32;
+
+        let chunk_height = Pos3::repeat(position).rounded().0.z - player_position + (size_z / 2);
+
+        if !(0..size_z).contains(&chunk_height)
+        {
+            return None;
+        }
+
+        Some(chunk_height as usize)
+    }
+
     fn with_position(
         mut pos: LocalPos,
         position: f32,
         player_position: i32
     ) -> Option<(LocalPos, usize)>
     {
+        pos.pos.z = Self::chunk_height_of(pos.size.z, position, player_position)?;
+
         let position = Pos3::repeat(position);
         let height = position.to_tile().z;
-
-        let chunk_height = position.rounded().0.z - player_position + (pos.size.z as i32 / 2);
-
-        if !(0..pos.size.z as i32).contains(&chunk_height)
-        {
-            return None;
-        }
-
-        pos.pos.z = chunk_height as usize;
 
         Some((pos, height))
     }
 
-    pub fn sky_occluded(&self, transform: &Transform) -> bool
+    pub fn sky_occluded(&self, transform: &Transform, e: Option<&ClientEntities>) -> bool
     {
+        if e.is_none() { return false; }
+
+        let size_z = self.visibility_checker.size.z;
+        let player_position_z = self.visibility_checker.player_position.read().rounded().0.z;
+        let player_height = self.visibility_checker.player_height();
+
+        let z = Self::chunk_height_of(size_z, transform.position.z, player_position_z);
         self.occluded_with(transform, |pos, height, top_left, bottom_right|
         {
-            Self::sky_occluders_heights(&self.visibility_checker, pos).any(|pos|
+            let (z, height) = if let Some(z) = z { (z, height) } else { (0, 0) };
+
+            let camera_z = size_z / 2;
+            pos.with_z_range(z..(camera_z + 1)).enumerate().any(|(index, pos)|
             {
-                self.chunks[pos].1.sky_occluded(height, top_left, bottom_right)
+                let height = if index == 0 { height } else { 0 };
+
+                let chunk_pos = Chunk::position_of_chunk(self.to_global(pos));
+
+                let chunk = &self.chunks[pos].1;
+
+                if pos.pos.z == camera_z
+                {
+                    chunk.sky_occluded_between(height..=player_height, top_left, bottom_right, (e, chunk_pos))
+                } else
+                {
+                    chunk.sky_occluded(height, top_left, bottom_right, (e, chunk_pos))
+                }
             })
         })
     }
 
     pub fn wall_occluded(&self, transform: &Transform) -> bool
     {
+        return false;
         self.occluded_with(transform, |pos, height, top_left, bottom_right|
         {
             self.occluded[pos][height].occluded(top_left, bottom_right)
