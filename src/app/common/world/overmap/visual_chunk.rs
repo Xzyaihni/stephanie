@@ -2,7 +2,7 @@ use std::{
     iter,
     convert,
     collections::HashMap,
-    ops::{RangeInclusive, ControlFlow},
+    ops::ControlFlow,
     sync::Arc
 };
 
@@ -136,7 +136,7 @@ pub struct VisualChunkInfo
     vertical_occluders: ChunkSlice<Box<[VerticalOccluder]>>,
     sky: ChunkSlice<[bool; CHUNK_SIZE * CHUNK_SIZE]>,
     total_sky: ChunkSlice<[bool; CHUNK_SIZE * CHUNK_SIZE]>,
-    draw_height: ChunkSlice<usize>,
+    draw_indices: ChunkSlice<Box<[usize]>>,
     draw_next: ChunkSlice<bool>
 }
 
@@ -177,7 +177,7 @@ pub struct VisualChunk
     vertical_occluders: ChunkSlice<Box<[SolidObject<SkyOccludingVertex>]>>,
     sky: ChunkSlice<[bool; CHUNK_SIZE * CHUNK_SIZE]>,
     total_sky: ChunkSlice<[bool; CHUNK_SIZE * CHUNK_SIZE]>,
-    draw_height: ChunkSlice<usize>,
+    draw_indices: ChunkSlice<Box<[usize]>>,
     draw_next: ChunkSlice<bool>,
     generated: bool
 }
@@ -194,7 +194,7 @@ impl VisualChunk
             vertical_occluders: Self::create_empty(),
             sky: Self::create_empty_slice(|| [false; CHUNK_SIZE * CHUNK_SIZE]),
             total_sky: Self::create_empty_slice(|| [false; CHUNK_SIZE * CHUNK_SIZE]),
-            draw_height: [0; CHUNK_SIZE],
+            draw_indices: Self::create_empty_slice(|| Box::from([])),
             draw_next: [false; CHUNK_SIZE],
             generated: false
         }
@@ -233,8 +233,9 @@ impl VisualChunk
         );
 
         let mut occlusions = [[false; CHUNK_SIZE * CHUNK_SIZE]; CHUNK_SIZE];
+        let mut is_drawable = [[false; CHUNK_SIZE * CHUNK_SIZE]; CHUNK_SIZE];
 
-        for (z, slice_occlusions) in occlusions.iter_mut().enumerate()
+        for (z, (slice_occlusions, is_drawable)) in occlusions.iter_mut().zip(is_drawable.iter_mut()).enumerate()
         {
             for y in 0..CHUNK_SIZE
             {
@@ -243,6 +244,8 @@ impl VisualChunk
                     let pos = ChunkLocal::new(x, y, z);
                     let tiles = tiles.tile(pos);
 
+                    let this_drawable = tilemap[tiles.this].drawable;
+
                     let occluded = Self::create_tile(
                         &tilemap,
                         &mut model_builder,
@@ -250,7 +253,9 @@ impl VisualChunk
                         tiles
                     );
 
-                    slice_occlusions[y * CHUNK_SIZE + x] = occluded;
+                    let index = y * CHUNK_SIZE + x;
+                    slice_occlusions[index] = occluded;
+                    is_drawable[index] = this_drawable;
                 }
             }
         }
@@ -259,7 +264,7 @@ impl VisualChunk
 
         let infos = model_builder.build(pos);
 
-        let (draw_next, draw_height) = Self::from_occlusions(&occlusions);
+        let (draw_next, draw_indices) = Self::from_occlusions(&occlusions, &is_drawable);
 
         let total_sky = occlusions.into_iter().rev().scan(occlusions[CHUNK_SIZE - 1], |state, occluded|
         {
@@ -277,7 +282,7 @@ impl VisualChunk
             vertical_occluders,
             sky: occlusions,
             total_sky,
-            draw_height,
+            draw_indices,
             draw_next
         }
     }
@@ -300,7 +305,7 @@ impl VisualChunk
             generated: true,
             sky: chunk_info.sky,
             total_sky: chunk_info.total_sky,
-            draw_height: chunk_info.draw_height,
+            draw_indices: chunk_info.draw_indices,
             draw_next: chunk_info.draw_next
         }
     }
@@ -556,10 +561,11 @@ impl VisualChunk
     }
 
     fn from_occlusions(
-        occlusions: &ChunkSlice<[bool; CHUNK_SIZE * CHUNK_SIZE]>
-    ) -> (ChunkSlice<bool>, ChunkSlice<usize>)
+        occlusions: &ChunkSlice<[bool; CHUNK_SIZE * CHUNK_SIZE]>,
+        is_drawable: &ChunkSlice<[bool; CHUNK_SIZE * CHUNK_SIZE]>
+    ) -> (ChunkSlice<bool>, ChunkSlice<Box<[usize]>>)
     {
-        let (next, height): (Vec<_>, Vec<_>) = (0..CHUNK_SIZE).map(|index|
+        let (next, indices): (Vec<_>, Vec<_>) = (0..CHUNK_SIZE).map(|index|
         {
             let draw_next = occlusions[0..index].iter().rev().try_fold(occlusions[index], |current, occlusions|
             {
@@ -580,32 +586,31 @@ impl VisualChunk
                 }
             }).continue_value().map(|xs| !xs.into_iter().all(convert::identity)).unwrap_or(false);
 
-            let last_changed = occlusions[0..index].iter().enumerate().rev()
-                .fold((index, occlusions[index]), |(last_changed, current), (index, occlusions)|
+            let indices = iter::once(index).chain(occlusions[0..index].iter().zip(is_drawable[0..index].iter()).enumerate().rev()
+                .scan(occlusions[index], |current, (index, (occlusions, is_drawable))|
                 {
                     let mut changed = false;
-                    let new_current = current.iter().copied().zip(occlusions.iter().copied()).map(|(current, x)|
-                    {
-                        if !current
+                    *current = current.iter().copied().zip(occlusions.iter().copied().zip(is_drawable.iter().copied()))
+                        .map(|(current, (x, is_drawable))|
                         {
-                            if x { changed = true; }
+                            if !current
+                            {
+                                if is_drawable { changed = true; }
 
-                            x
-                        } else
-                        {
-                            true
-                        }
-                    }).collect::<Vec<_>>().try_into().unwrap();
+                                x
+                            } else
+                            {
+                                true
+                            }
+                        }).collect::<Vec<_>>().try_into().unwrap();
 
-                    (if changed { index } else { last_changed }, new_current)
-                }).0;
+                    Some(changed.then_some(index))
+                }).flatten()).collect::<Vec<_>>().into_iter().rev().collect();
 
-            let amount = index - last_changed + 1;
-
-            (draw_next, amount)
+            (draw_next, indices)
         }).unzip();
 
-        (next.try_into().unwrap(), height.try_into().unwrap())
+        (next.try_into().unwrap(), indices.try_into().unwrap())
     }
 
     fn create_tile(
@@ -641,13 +646,6 @@ impl VisualChunk
     pub fn mark_ungenerated(&mut self)
     {
         self.generated = false;
-    }
-
-    fn draw_range(&self, height: usize) -> RangeInclusive<usize>
-    {
-        let draw_amount = self.draw_height[height];
-
-        (height + 1 - draw_amount)..=height
     }
 
     pub fn sky_occluded_between(
@@ -699,11 +697,9 @@ impl VisualChunk
         height: usize
     )
     {
-        let draw_range = self.draw_range(height);
-
-        self.objects[draw_range.clone()].iter_mut().for_each(|objects|
+        self.draw_indices[height].iter().copied().for_each(|index|
         {
-            if let Some(object) = objects.as_mut()
+            if let Some(object) = self.objects[index].as_mut()
             {
                 object.update_buffers(info);
             }
@@ -728,11 +724,12 @@ impl VisualChunk
         height: usize
     )
     {
-        let draw_range = self.draw_range(height);
-
-        self.objects[draw_range].iter().filter_map(|x| x.as_ref()).for_each(|object|
+        self.draw_indices[height].iter().copied().for_each(|index|
         {
-            object.draw(info);
+            if let Some(object) = self.objects[index].as_ref()
+            {
+                object.draw(info);
+            }
         });
     }
 
