@@ -842,14 +842,12 @@ impl VisualOvermap
 
     pub fn sky_occluded(&self, transform: &Transform, e: Option<&ClientEntities>) -> bool
     {
-        if e.is_none() { return false; }
-
         let size_z = self.visibility_checker.size.z;
         let player_position_z = self.visibility_checker.player_position.read().rounded().0.z;
         let player_height = self.visibility_checker.player_height();
 
         let z = Self::chunk_height_of(size_z, transform.position.z, player_position_z);
-        self.occluded_with(transform, |pos, height, top_left, bottom_right|
+        self.occluded_with(transform, e, |pos, height, top_left, bottom_right|
         {
             let (z, height) = if let Some(z) = z { (z, height) } else { (0, 0) };
 
@@ -875,8 +873,7 @@ impl VisualOvermap
 
     pub fn wall_occluded(&self, transform: &Transform) -> bool
     {
-        return false;
-        self.occluded_with(transform, |pos, height, top_left, bottom_right|
+        self.occluded_with(transform, None, |pos, height, top_left, bottom_right|
         {
             self.occluded[pos][height].occluded(top_left, bottom_right)
         })
@@ -885,6 +882,7 @@ impl VisualOvermap
     fn occluded_with(
         &self,
         transform: &Transform,
+        e: Option<&ClientEntities>,
         f: impl Fn(LocalPos, usize, Vector2<usize>, Vector2<usize>) -> bool
     ) -> bool
     {
@@ -892,7 +890,7 @@ impl VisualOvermap
         let size = transform.scale * 0.5;
         let size = Vector3::new(size.x.abs(), size.y.abs(), 0.0);
 
-        let (top_left_pos, bottom_right_pos) = if transform.rotation == 0.0 || (size.x == size.y)
+        let (top_left_pos, bottom_right_pos) = if transform.rotation == 0.0
         {
             (pos - size, pos + size)
         } else
@@ -901,6 +899,45 @@ impl VisualOvermap
 
             (Vector3::new(a.x, a.y, pos.z), Vector3::new(b.x, b.y, pos.z))
         };
+
+        if let Some(e) = e
+        {
+            use crate::common::AnyEntities;
+            e.push(true, EntityInfo{
+                transform: Some(Transform{
+                    position: top_left_pos,
+                    scale: Vector3::repeat(0.01),
+                    ..Default::default()
+                }),
+                render: Some(RenderInfo{
+                    object: Some(RenderObjectKind::Texture{
+                        name: "circle.png".to_owned()
+                    }.into()),
+                    above_world: true,
+                    mix: Some(MixColor{keep_transparency: true, ..MixColor::color([0.0, 0.0, 1.0, 1.0])}),
+                    ..Default::default()
+                }),
+                watchers: Some(Watchers::simple_one_frame()),
+                ..Default::default()
+            });
+            e.push(true, EntityInfo{
+                transform: Some(Transform{
+                    position: bottom_right_pos,
+                    scale: Vector3::repeat(0.01),
+                    ..Default::default()
+                }),
+                render: Some(RenderInfo{
+                    object: Some(RenderObjectKind::Texture{
+                        name: "circle.png".to_owned()
+                    }.into()),
+                    above_world: true,
+                    mix: Some(MixColor{keep_transparency: true, ..MixColor::color([1.0, 1.0, 0.0, 1.0])}),
+                    ..Default::default()
+                }),
+                watchers: Some(Watchers::simple_one_frame()),
+                ..Default::default()
+            });
+        }
 
         let (top_left, top_left_tile) = {
             let pos: Pos3<_> = top_left_pos.into();

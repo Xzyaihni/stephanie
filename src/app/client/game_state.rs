@@ -295,7 +295,7 @@ impl ClientEntitiesContainer
             {
                 let real_z = (transform.position.z / TILE_SIZE).floor() as i32;
 
-                let is_render_visible = !world.wall_occluded(&transform) && !world.sky_occluded(&transform, None);
+                let is_render_visible = !world.wall_occluded(&transform) && !world.sky_occluded(&transform, Some(&self.entities));
                 let is_render_shadow = render.shadow_visible;
 
                 if is_render_visible
@@ -339,7 +339,7 @@ impl ClientEntitiesContainer
 
             if below_player
             {
-                if world.sky_occluded(&light_transform, Some(&self.entities))
+                if world.sky_occluded(&light_transform, None)
                 {
                     return;
                 }
