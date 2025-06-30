@@ -456,9 +456,9 @@ impl ClientOvermap
         self.visual_overmap.update_buffers_shadows(info, visibility, caster);
     }
 
-    pub fn sky_occluded(&self, transform: &Transform, e: Option<&ClientEntities>) -> bool
+    pub fn sky_occluded(&self, transform: &Transform) -> bool
     {
-        self.visual_overmap.sky_occluded(transform, e)
+        self.visual_overmap.sky_occluded(transform)
     }
 
     pub fn wall_occluded(&self, transform: &Transform) -> bool

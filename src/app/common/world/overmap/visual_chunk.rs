@@ -656,8 +656,7 @@ impl VisualChunk
         &self,
         mut heights: impl Iterator<Item=usize>,
         top_left: Vector2<usize>,
-        bottom_right: Vector2<usize>,
-        (e, chunk_pos): (Option<&crate::common::entity::ClientEntities>, Vector3<f32>)
+        bottom_right: Vector2<usize>
     ) -> bool
     {
         heights.any(|z|
@@ -670,18 +669,6 @@ impl VisualChunk
                 {
                     let index = index + x;
 
-                    if let Some(e) = e
-                    {
-                        let position = chunk_pos + Vector3::new(x, y, z).cast() * TILE_SIZE;
-                        use crate::common::AnyEntities;
-                        e.push(true, crate::common::tile_marker_info(
-                            position,
-                            if sky[index] { [1.0, 0.0, 0.0, 1.0] } else { [0.0, 1.0, 0.0, 1.0] },
-                            CHUNK_SIZE,
-                            z
-                        ));
-                    }
-
                     sky[index]
                 })
             })
@@ -692,8 +679,7 @@ impl VisualChunk
         &self,
         height: usize,
         top_left: Vector2<usize>,
-        bottom_right: Vector2<usize>,
-        (e, chunk_pos): (Option<&crate::common::entity::ClientEntities>, Vector3<f32>)
+        bottom_right: Vector2<usize>
     ) -> bool
     {
         let total_sky = &self.total_sky[height];
@@ -703,18 +689,6 @@ impl VisualChunk
             (top_left.x..=bottom_right.x).all(move |x|
             {
                 let index = index + x;
-
-                if let Some(e) = e
-                {
-                    let position = chunk_pos + Vector3::new(x, y, height).cast() * TILE_SIZE;
-                    use crate::common::AnyEntities;
-                    e.push(true, crate::common::tile_marker_info(
-                        position,
-                        if total_sky[index] { [1.0, 0.0, 0.0, 1.0] } else { [0.0, 1.0, 0.0, 1.0] },
-                        CHUNK_SIZE,
-                        0
-                    ));
-                }
 
                 total_sky[index]
             })

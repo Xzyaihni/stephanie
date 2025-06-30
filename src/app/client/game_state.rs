@@ -300,7 +300,7 @@ impl ClientEntitiesContainer
                 let below_player = !visibility.world_position.is_same_height(&TilePos::from(Pos3::from(transform.position)));
                 let is_render_visible = if below_player
                 {
-                    is_render_visible && !world.sky_occluded(&transform, Some(&self.entities))
+                    is_render_visible && !world.sky_occluded(&transform)
                 } else
                 {
                     is_render_visible
@@ -349,7 +349,7 @@ impl ClientEntitiesContainer
 
             if below_player
             {
-                if world.sky_occluded(&light_transform, None)
+                if world.sky_occluded(&light_transform)
                 {
                     return;
                 }
