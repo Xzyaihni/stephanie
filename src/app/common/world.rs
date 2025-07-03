@@ -84,6 +84,24 @@ impl From<([f32; 4], [f32; 2])> for SkyOccludingVertex
     }
 }
 
+#[derive(BufferContents, Vertex, Debug, Clone, Copy)]
+#[repr(C)]
+pub struct SkyLightVertex
+{
+    #[format(R32G32_SFLOAT)]
+    pub position: [f32; 2],
+    #[format(R32_SFLOAT)]
+    pub intensity: f32
+}
+
+impl From<([f32; 4], [f32; 2])> for SkyLightVertex
+{
+    fn from(([x, y, _z, _w], [u, _v]): ([f32; 4], [f32; 2])) -> Self
+    {
+        Self{position: [x, y], intensity: u}
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct ChunkWithEntities
 {
@@ -399,6 +417,14 @@ impl World
     )
     {
         self.overmap.draw_sky_occluders(info);
+    }
+
+    pub fn draw_sky_lights(
+        &self,
+        info: &mut DrawInfo
+    )
+    {
+        self.overmap.draw_sky_lights(info);
     }
 
     pub fn draw_tiles(

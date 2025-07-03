@@ -8,7 +8,7 @@ use image::error::ImageError;
 
 use parking_lot::{RwLock, Mutex};
 
-use nalgebra::Vector3;
+use nalgebra::{Vector2, Vector3};
 
 use yanyaengine::{
     Object,
@@ -25,7 +25,9 @@ use yanyaengine::{
 };
 
 use crate::common::{
+    Side2d,
     SkyOccludingVertex,
+    SkyLightVertex,
     OccludingPlane,
     TileMap,
     TileMapWithTextures,
@@ -60,8 +62,90 @@ pub struct OccluderInfo
 #[derive(Debug)]
 pub struct VerticalOccluder
 {
-    pub position: Vector3<f32>,
-    pub size: Vector3<f32>
+    pub position: Vector2<f32>,
+    pub size: Vector2<f32>
+}
+
+#[derive(Debug)]
+pub enum SkyLightKind
+{
+    Cap,
+    OuterCorner,
+    DoubleStraight,
+    Straight,
+    InnerCorner
+}
+
+#[derive(Debug)]
+pub struct SkyLight
+{
+    pub position: Vector2<f32>,
+    pub kind: SkyLightKind,
+    pub rotation: Side2d
+}
+
+impl SkyLight
+{
+    pub fn build(&self) -> (Vec<[f32; 2]>, Vec<u16>, Vec<f32>)
+    {
+        const FRACTION: f32 = 0.8 * 0.5;
+
+        let (vertices, indices, intensities) = match self.kind
+        {
+            SkyLightKind::Cap =>
+            {
+                todo!()
+            },
+            SkyLightKind::OuterCorner =>
+            {
+                todo!()
+            },
+            SkyLightKind::DoubleStraight =>
+            {
+                (vec![
+                    [0.0, 0.0], [1.0, 0.0],
+                    [0.0, FRACTION], [1.0, FRACTION],
+                    [0.0, 1.0 - FRACTION], [1.0, 1.0 - FRACTION],
+                    [0.0, 1.0], [1.0, 1.0]
+                ], vec![
+                    0, 3, 1,
+                    0, 2, 3,
+                    2, 5, 3,
+                    2, 4, 5,
+                    4, 7, 5,
+                    4, 6, 7
+                ], vec![
+                    1.0, 1.0,
+                    0.0, 0.0,
+                    0.0, 0.0,
+                    1.0, 1.0
+                ])
+            },
+            SkyLightKind::Straight =>
+            {
+                (vec![
+                    [0.0, 0.0], [1.0, 0.0],
+                    [0.0, 1.0 - FRACTION], [1.0, 1.0 - FRACTION],
+                    [0.0, 1.0], [1.0, 1.0]
+                ], vec![
+                    0, 3, 1,
+                    0, 2, 3,
+                    2, 5, 3,
+                    2, 4, 5
+                ], vec![
+                    0.0, 0.0,
+                    0.0, 0.0,
+                    1.0, 1.0
+                ])
+            },
+            SkyLightKind::InnerCorner =>
+            {
+                todo!()
+            }
+        };
+
+        (vertices, indices, intensities)
+    }
 }
 
 #[derive(Debug)]
@@ -72,9 +156,23 @@ pub struct ChunkInfo
 }
 
 #[derive(Debug, Clone)]
+struct ExtendableModel(pub Model);
+
+impl ExtendableModel
+{
+    fn extend(&mut self, vertices: impl IntoIterator<Item=[f32; 3]>, indices: impl IntoIterator<Item=u16>)
+    {
+        let start_index = self.0.vertices.len() as u16;
+
+        self.0.vertices.extend(vertices);
+        self.0.indices.extend(indices.into_iter().map(|index| start_index + index));
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct ChunkModelBuilder
 {
-    model: ChunkSlice<Model>,
+    model: ChunkSlice<ExtendableModel>,
     tilemap: Arc<TileMap>
 }
 
@@ -86,7 +184,7 @@ impl ChunkModelBuilder
     {
         let model = (0..CHUNK_SIZE).map(|_|
         {
-            Model::new()
+            ExtendableModel(Model::new())
         }).collect::<Vec<_>>().try_into().unwrap();
 
         Self{model, tilemap}
@@ -109,24 +207,19 @@ impl ChunkModelBuilder
         let chunk_height = chunk_pos.pos().z;
 
         {
-            let uvs = self.tile_uvs(tile, false);
+            let uvs = self.tile_uvs(tile);
 
-            self.model[chunk_height].uvs.extend(uvs);
+            self.model[chunk_height].0.uvs.extend(uvs);
         }
 
         {
             let (vertices, indices) = self.tile_vertices(pos);
 
-            let model = &mut self.model[chunk_height];
-
-            let start_index = model.vertices.len() as u16;
-
-            model.vertices.extend(vertices);
-            model.indices.extend(indices.into_iter().map(|index| start_index + index));
+            self.model[chunk_height].extend(vertices, indices);
         }
     }
 
-    fn tile_uvs(&self, tile: TileExisting, flip_xy: bool) -> impl Iterator<Item=[f32; 2]>
+    fn tile_uvs(&self, tile: TileExisting) -> [[f32; 2]; 4]
     {
         let side = self.tilemap.texture_row_size();
 
@@ -147,34 +240,27 @@ impl ChunkModelBuilder
         let x = to_uv(x) + pixel_fraction;
         let y = to_uv(y) + pixel_fraction;
 
-        let mut a = [x, y];
-        let mut b = [x, y_end];
-        let mut c = [x_end, y];
-        let mut d = [x_end, y_end];
+        let a = [x, y];
+        let b = [x, y_end];
+        let c = [x_end, y];
+        let d = [x_end, y_end];
 
         match tile.rotation()
         {
-            TileRotation::Up => (),
+            TileRotation::Up => [a, b, c, d],
             TileRotation::Down =>
             {
-                (a, b, c, d) = (d, c, b, a);
+                [d, c, b, a]
             },
             TileRotation::Right =>
             {
-                (a, b, c, d) = (b, d, a, c);
+                [b, d, a, c]
             },
             TileRotation::Left =>
             {
-                (a, b, c, d) = (c, a, d, b);
+                [c, a, d, b]
             }
         }
-
-        if flip_xy
-        {
-            (b, c) = (c, b);
-        }
-
-        [a, b, c, d].into_iter()
     }
 
     fn tile_vertices(&self, pos: Pos3<f32>) -> ([[f32; 3]; 4], [u16; 6])
@@ -201,7 +287,7 @@ impl ChunkModelBuilder
     {
         let transform = Chunk::transform_of_chunk(pos);
 
-        self.model.map(|model|
+        self.model.map(|ExtendableModel(model)|
         {
             (!model.vertices.is_empty()).then(||
             {
@@ -322,13 +408,42 @@ impl TilesFactory
             occluders.iter().map(|occluder|
             {
                 let transform = Transform{
-                    position: occluder.position,
-                    scale: occluder.size,
+                    position: Vector3::new(occluder.position.x, occluder.position.y, 0.0),
+                    scale: Vector3::new(occluder.size.x, occluder.size.y, 1.0),
                     ..Default::default()
                 };
 
                 self.object_factory.create_solid(self.square.clone(), transform)
             }).collect()
+        })
+    }
+
+    pub fn build_sky_lights(
+        &mut self,
+        pos: GlobalPos,
+        lights: ChunkSlice<Box<[SkyLight]>>
+    ) -> ChunkSlice<SolidObject<SkyLightVertex>>
+    {
+        let position = Chunk::position_of_chunk(pos);
+
+        lights.map(|lights|
+        {
+            let mut model = ExtendableModel(Model::new());
+
+            lights.iter().for_each(|light|
+            {
+                let (vertices, indices, intensities) = light.build();
+
+                model.0.uvs.extend(intensities.into_iter().map(|x| [x, 0.0]));
+                model.extend(vertices.into_iter().map(|[x, y]| [x, y, 0.0]), indices);
+            });
+
+            let transform = Transform{
+                position,
+                ..Default::default()
+            };
+
+            self.object_factory.create_solid(Arc::new(RwLock::new(model.0)), transform)
         })
     }
 

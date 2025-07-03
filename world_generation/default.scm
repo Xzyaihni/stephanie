@@ -7,6 +7,17 @@
 (define (filled-chunk this-tile)
     (make-vector (* size-x size-y) this-tile))
 
+(define (chunk-from-fn f)
+    (let ((chunk (filled-chunk (tile 'air))))
+        (begin
+            (for-each (lambda (x)
+		(for-each (lambda (y)
+		    (let ((pos (make-point x y)))
+			(put-tile chunk pos (f pos))))
+		    (counter size-y))
+		(counter size-y)))
+            chunk)))
+
 (define (index-of point)
     (+ (* size-x (point-y point)) (point-x point)))
 

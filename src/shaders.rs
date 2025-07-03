@@ -24,6 +24,7 @@ use crate::{
     common::{
         OccludingVertex,
         SkyOccludingVertex,
+        SkyLightVertex,
         world::TILE_SIZE
     }
 };
@@ -107,6 +108,24 @@ mod occluder_fragment
     {
         ty: "fragment",
         path: "shaders/occluder.frag"
+    }
+}
+
+mod sky_light_vertex
+{
+    vulkano_shaders::shader!
+    {
+        ty: "vertex",
+        path: "shaders/sky_light.vert"
+    }
+}
+
+mod sky_light_fragment
+{
+    vulkano_shaders::shader!
+    {
+        ty: "fragment",
+        path: "shaders/sky_light.frag"
     }
 }
 
@@ -324,6 +343,28 @@ pub fn create() -> ShadersCreated
         ..Default::default()
     });
 
+    let sky_lighting_shader = shaders.push(Shader{
+        shader: ShadersGroup::new(
+            sky_light_vertex::load,
+            sky_light_fragment::load
+        ),
+        depth: Some(DepthState{
+            write_enable: false,
+            compare_op: CompareOp::Always
+        }),
+        per_vertex: Some(vec![SkyLightVertex::per_vertex()]),
+        subpass: 2,
+        blend: Some(AttachmentBlend{
+            src_color_blend_factor: BlendFactor::One,
+            dst_color_blend_factor: BlendFactor::One,
+            color_blend_op: BlendOp::Add,
+            src_alpha_blend_factor: BlendFactor::Zero,
+            dst_alpha_blend_factor: BlendFactor::One,
+            alpha_blend_op: BlendOp::Add
+        }),
+        ..Default::default()
+    });
+
     let lighting_shader = shaders.push(Shader{
         shader: ShadersGroup::new(
             light_vertex::load,
@@ -409,6 +450,7 @@ pub fn create() -> ShadersCreated
             world_shaded: world_shaded_shader,
             shadow: shadow_shader,
             sky_shadow: sky_shadow_shader,
+            sky_lighting: sky_lighting_shader,
             occluder: shadow_shader,
             light_shadow: light_shadow_shader,
             lighting: lighting_shader,

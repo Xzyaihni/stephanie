@@ -996,10 +996,7 @@ impl VisualOvermap
         });
     }
 
-    pub fn draw_sky_occluders(
-        &self,
-        info: &mut DrawInfo
-    )
+    fn draw_sky_occluder_chunks(&self, mut f: impl FnMut(&VisualChunk, usize))
     {
         let z = self.visibility_checker.top_z();
         let player_height = self.visibility_checker.player_height();
@@ -1012,12 +1009,25 @@ impl VisualOvermap
 
             Self::sky_occluders_heights(&self.visibility_checker, pos).for_each(|pos|
             {
-                self.chunks[pos].1.draw_sky_shadows(
-                    info,
-                    Self::sky_draw_height(self.visibility_checker.maybe_height(pos))
-                );
+                f(&self.chunks[pos].1, Self::sky_draw_height(self.visibility_checker.maybe_height(pos)))
             });
         });
+    }
+
+    pub fn draw_sky_occluders(
+        &self,
+        info: &mut DrawInfo
+    )
+    {
+        self.draw_sky_occluder_chunks(|chunk, height| chunk.draw_sky_shadows(info, height))
+    }
+
+    pub fn draw_sky_lights(
+        &self,
+        info: &mut DrawInfo
+    )
+    {
+        self.draw_sky_occluder_chunks(|chunk, height| chunk.draw_sky_lights(info, height))
     }
 }
 

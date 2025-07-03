@@ -504,6 +504,14 @@ impl ClientOvermap
         self.visual_overmap.draw_sky_occluders(info);
     }
 
+    pub fn draw_sky_lights(
+        &self,
+        info: &mut DrawInfo
+    )
+    {
+        self.visual_overmap.draw_sky_lights(info);
+    }
+
     pub fn draw_tiles(
         &self,
         info: &mut DrawInfo,

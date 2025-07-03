@@ -29,6 +29,7 @@ use crate::{
     },
     common::{
         SkyOccludingVertex,
+        SkyLightVertex,
         OccludingPlane,
         OccludingCaster,
         TileMap,
@@ -112,19 +113,19 @@ struct VerticalOccluderRaw
 
 impl VerticalOccluderRaw
 {
-    fn into_global(self, chunk_position: Vector3<f32>, z: usize) -> VerticalOccluder
+    fn into_global(self, chunk_position: Vector2<f32>) -> VerticalOccluder
     {
-        let tile_position = Vector3::new(self.position.x, self.position.y, z).cast() * TILE_SIZE;
+        let tile_position = Vector2::new(self.position.x, self.position.y).cast() * TILE_SIZE;
 
         // a little padding to hide seams
         let padding = TILE_SIZE * 0.01;
 
-        let size = Vector3::new(self.size.x, self.size.y, 1).cast() * TILE_SIZE;
-        let half_size = Vector3::new(size.x, size.y, 0.0) / 2.0;
+        let size = self.size.cast() * TILE_SIZE;
+        let half_size = size / 2.0;
 
         VerticalOccluder{
             position: chunk_position + tile_position + half_size,
-            size: size + Vector3::repeat(padding)
+            size: size + Vector2::repeat(padding)
         }
     }
 }
@@ -175,6 +176,8 @@ pub struct VisualChunk
     light_occluder_base: ChunkSlice<Box<[OccluderInfo]>>,
     light_occluders: HashMap<usize, ChunkSlice<Box<[OccluderCached]>>>,
     vertical_occluders: ChunkSlice<Box<[SolidObject<SkyOccludingVertex>]>>,
+    sky_lights: ChunkSlice<Option<SolidObject<SkyLightVertex>>>,
+    light_generated: bool,
     sky: ChunkSlice<[bool; CHUNK_SIZE * CHUNK_SIZE]>,
     total_sky: ChunkSlice<[bool; CHUNK_SIZE * CHUNK_SIZE]>,
     draw_indices: ChunkSlice<Box<[usize]>>,
@@ -192,6 +195,8 @@ impl VisualChunk
             light_occluder_base: Self::create_empty(),
             light_occluders: HashMap::new(),
             vertical_occluders: Self::create_empty(),
+            sky_lights: Self::create_empty_slice(Option::default),
+            light_generated: false,
             sky: Self::create_empty_slice(|| [false; CHUNK_SIZE * CHUNK_SIZE]),
             total_sky: Self::create_empty_slice(|| [false; CHUNK_SIZE * CHUNK_SIZE]),
             draw_indices: Self::create_empty_slice(|| Box::from([])),
@@ -303,6 +308,8 @@ impl VisualChunk
             light_occluders: HashMap::new(),
             vertical_occluders,
             generated: true,
+            sky_lights: Self::create_empty_slice(Option::default),
+            light_generated: false,
             sky: chunk_info.sky,
             total_sky: chunk_info.total_sky,
             draw_indices: chunk_info.draw_indices,
@@ -320,29 +327,32 @@ impl VisualChunk
         pos: GlobalPos
     ) -> ChunkSlice<Box<[VerticalOccluder]>>
     {
-        let chunk_position = Chunk::position_of_chunk(pos);
+        let chunk_position = Chunk::position_of_chunk(pos).xy();
 
-        (0..CHUNK_SIZE).rev().scan([false; CHUNK_SIZE * CHUNK_SIZE], |state, z|
-        {
-            let mut occluders = Vec::new();
-
-            let mut occlusion = occlusions[z];
-
-            state.iter_mut().zip(occlusion.iter_mut()).for_each(|(top, bottom)|
+        let occlusions: Vec<_> = (0..CHUNK_SIZE).rev()
+            .scan([false; CHUNK_SIZE * CHUNK_SIZE], |state, z|
             {
-                *top |= *bottom;
-                *bottom = *top;
-            });
+                let mut occluders = Vec::new();
 
-            while let Some(occluder) = Self::create_vertical_occluder(&mut occlusion)
-            {
-                occluders.push(occluder.into_global(chunk_position, z));
-            }
+                let mut occlusion = occlusions[z];
 
-            Some(occluders.into_boxed_slice())
-        }).collect::<Vec<_>>().into_iter()
-            .rev()
-            .collect::<Vec<_>>().try_into().unwrap()
+                state.iter_mut().zip(occlusion.iter_mut()).for_each(|(top, bottom)|
+                {
+                    *top |= *bottom;
+                    *bottom = *top;
+                });
+
+                while let Some(occluder) = Self::create_vertical_occluder(&mut occlusion)
+                {
+                    occluders.push(occluder.into_global(chunk_position));
+                }
+
+                Some(occluders.into_boxed_slice())
+            }).collect::<Vec<_>>().into_iter()
+                .rev()
+                .collect();
+
+        occlusions.try_into().unwrap()
     }
 
     fn create_vertical_occluder(
@@ -633,6 +643,21 @@ impl VisualChunk
         occluding
     }
 
+    pub fn is_fully_generated(&self) -> bool
+    {
+        self.generated && self.light_generated
+    }
+
+    pub fn is_light_generated(&self) -> bool
+    {
+        self.light_generated
+    }
+
+    pub fn mark_light_generating(&mut self)
+    {
+        self.light_generated = true;
+    }
+
     pub fn is_generated(&self) -> bool
     {
         self.generated
@@ -646,6 +671,7 @@ impl VisualChunk
     pub fn mark_ungenerated(&mut self)
     {
         self.generated = false;
+        self.light_generated = false;
     }
 
     pub fn sky_occluded_between(
@@ -712,6 +738,11 @@ impl VisualChunk
         height: usize
     )
     {
+        self.sky_lights[height].iter_mut().for_each(|x|
+        {
+            x.update_buffers(info)
+        });
+
         self.vertical_occluders[height].iter_mut().for_each(|x|
         {
             x.update_buffers(info)
@@ -860,6 +891,18 @@ impl VisualChunk
         }
 
         self.vertical_occluders[height].iter().for_each(|x|
+        {
+            x.draw(info)
+        });
+    }
+
+    pub fn draw_sky_lights(
+        &self,
+        info: &mut DrawInfo,
+        height: usize
+    )
+    {
+        self.sky_lights[height].iter().for_each(|x|
         {
             x.draw(info)
         });

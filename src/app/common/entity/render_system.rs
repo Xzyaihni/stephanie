@@ -84,6 +84,10 @@ pub fn draw(
 
     renderables.world.draw_sky_occluders(info);
 
+    info.bind_pipeline(shaders.sky_lighting);
+
+    renderables.world.draw_sky_lights(info);
+
     if DebugConfig::is_disabled(DebugTool::NoLighting)
     {
         let mut is_light_pipeline = false;

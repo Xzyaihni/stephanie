@@ -84,3 +84,38 @@
         (if (= height 0)
             (generate-ground)
             (generate-floor))))
+
+(if (= height 2)
+    (begin
+	(define (from-tiles tiles)
+	    (chunk-from-fn
+		(lambda (pos)
+		    (if (= (vector-ref tiles (index-of pos)) 0)
+			(tile 'glass)
+			(tile 'asphalt)))))
+
+	(from-tiles '(
+	    0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+	    0 1 0 1 1 0 1 0 1 1 1 1 1 1 1 0
+	    0 0 0 0 0 0 1 0 0 0 0 0 0 0 0 0
+	    0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+	    0 1 1 0 1 1 0 1 0 0 0 1 0 1 1 0
+	    0 1 0 0 0 1 0 1 1 0 1 1 0 1 1 0
+	    0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+	    0 1 0 1 1 1 0 1 1 1 0 1 1 1 0 0
+	    0 1 0 1 1 1 0 1 1 1 0 1 1 1 0 0
+	    0 1 0 0 1 1 0 1 0 1 0 1 1 0 0 0
+	    0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+	    0 1 0 1 1 1 0 1 1 1 0 1 1 1 0 0
+	    0 1 0 0 1 1 0 1 0 1 0 1 1 0 0 0
+	    0 1 0 1 1 1 0 1 1 1 0 1 1 1 0 0
+	    0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+	    0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+	)))
+    (if (or (= height -1) (= height 1))
+        (if (= height -1)
+            (generate-walls)
+            (filled-chunk (tile 'air)))
+        (if (= height 0)
+            (generate-ground)
+            (generate-floor))))
