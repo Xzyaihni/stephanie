@@ -482,7 +482,7 @@ impl VisualOvermap
 
             if current_chunk.0 <= timestamp
             {
-                let chunk = VisualChunk::build(&mut self.tiles_factory, chunk_info);
+                let chunk = VisualChunk::build(&mut self.tiles_factory, chunk_info, position);
 
                 *current_chunk = (timestamp, chunk);
             }
@@ -509,12 +509,11 @@ impl VisualOvermap
         self.chunks[pos].1.mark_ungenerated();
     }
 
-    #[allow(dead_code)]
-    pub fn mark_all_ungenerated(&mut self)
+    pub fn regenerate_lights(&mut self)
     {
         self.chunks.iter_mut().for_each(|(_, (_, chunk))|
         {
-            chunk.mark_ungenerated();
+            todo!();
         });
     }
 

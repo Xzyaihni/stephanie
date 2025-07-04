@@ -401,12 +401,18 @@ impl ClientOvermap
         let old_rounded_position = self.indexer.player_position.rounded();
 
         let position_difference = (rounded_position - old_rounded_position).0;
+        let z_changed = position_difference.z != 0;
 
         self.indexer.player_position = position;
 
         if position_difference != Pos3::repeat(0)
         {
             self.position_offset(position_difference);
+        }
+
+        if z_changed
+        {
+            self.visual_overmap.regenerate_lights();
         }
     }
 

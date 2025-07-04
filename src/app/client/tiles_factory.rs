@@ -422,12 +422,17 @@ impl TilesFactory
         &mut self,
         pos: GlobalPos,
         lights: ChunkSlice<Box<[SkyLight]>>
-    ) -> ChunkSlice<SolidObject<SkyLightVertex>>
+    ) -> ChunkSlice<Option<SolidObject<SkyLightVertex>>>
     {
         let position = Chunk::position_of_chunk(pos);
 
         lights.map(|lights|
         {
+            if lights.is_empty()
+            {
+                return None;
+            }
+
             let mut model = ExtendableModel(Model::new());
 
             lights.iter().for_each(|light|
@@ -443,7 +448,7 @@ impl TilesFactory
                 ..Default::default()
             };
 
-            self.object_factory.create_solid(Arc::new(RwLock::new(model.0)), transform)
+            Some(self.object_factory.create_solid(Arc::new(RwLock::new(model.0)), transform))
         })
     }
 
