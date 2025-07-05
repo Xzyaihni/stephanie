@@ -502,6 +502,24 @@ impl VisualOvermap
         }
     }
 
+    pub fn try_generate_sky_occlusion(
+        &mut self,
+        chunks: &ChunksContainer<Option<Arc<Chunk>>>,
+        pos: LocalPos
+    )
+    {
+        if let Some(forward) = pos.forward()
+        {
+            if chunks[forward].is_none()
+            {
+                self.dependents.insert(forward.pos);
+                return;
+            }
+        }
+
+        self.generate_sky_occlusion(chunks, pos);
+    }
+
     pub fn try_generate(
         &mut self,
         chunks: &ChunksContainer<Option<Arc<Chunk>>>,
@@ -516,15 +534,6 @@ impl VisualOvermap
         if !TileReader::creatable(chunks, pos)
         {
             return;
-        }
-
-        if let Some(forward) = pos.forward()
-        {
-            if chunks[forward].is_none()
-            {
-                self.dependents.insert(forward.pos);
-                return;
-            }
         }
 
         self.force_generate(chunks, pos);
@@ -573,8 +582,6 @@ impl VisualOvermap
     )
     {
         self.mark_generating(pos);
-
-        self.generate_sky_occlusion(chunks, pos);
 
         let tile_reader = TileReader::new(chunks, pos);
         let occlusion_reader = TileReader::new_with(&self.chunks, pos, |overmap_chunk| overmap_chunk.occlusion.clone().unwrap());
