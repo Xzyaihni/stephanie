@@ -584,11 +584,11 @@ impl VisualOvermap
         self.generate_sender.as_mut().unwrap().send((tile_reader, occlusion_reader, chunk_pos, Instant::now())).unwrap();
     }
 
-    fn generate_sky_occlusion(
-        &mut self,
+    fn sky_occlusion_of(
+        &self,
         chunks: &ChunksContainer<Option<Arc<Chunk>>>,
         pos: LocalPos
-    )
+    ) -> Arc<ChunkSkyOcclusion>
     {
         let tilemap = self.tiles_factory.tilemap();
         let occlusion = ChunkSkyOcclusion::new(tilemap, chunks[pos].as_deref().unwrap(), pos.forward().and_then(|above|
@@ -596,7 +596,17 @@ impl VisualOvermap
             self.chunks[above].occlusion.as_deref()
         }));
 
-        self.chunks[pos].occlusion = Some(Arc::new(occlusion));
+        Arc::new(occlusion)
+    }
+
+    fn generate_sky_occlusion(
+        &mut self,
+        chunks: &ChunksContainer<Option<Arc<Chunk>>>,
+        pos: LocalPos
+    )
+    {
+        let occlusion = self.sky_occlusion_of(chunks, pos);
+        self.chunks[pos].occlusion = Some(occlusion);
     }
 
     pub fn update(&mut self, _dt: f32)
@@ -622,7 +632,7 @@ impl VisualOvermap
 
             if current_chunk.instant <= timestamp
             {
-                let chunk = VisualChunk::build(&mut self.tiles_factory, chunk_info, position);
+                let chunk = VisualChunk::build(&self.tiles_factory, chunk_info, position);
 
                 current_chunk.instant = timestamp;
                 current_chunk.chunk = chunk;
@@ -650,13 +660,43 @@ impl VisualOvermap
         self.chunks[pos].chunk.mark_ungenerated();
     }
 
-    pub fn regenerate_sky_occlusions(&mut self)
+    pub fn regenerate_sky_occlusions(
+        &mut self,
+        chunks: &ChunksContainer<Option<Arc<Chunk>>>
+    )
     {
-        self.chunks.iter_mut().for_each(|(_, overmap_chunk)|
+        let size = self.chunks.size();
+
+        for z in (0..size.z).rev()
         {
-            let also_regen_lights_for_every_chunk = ();
-            todo!();
-        });
+            for y in 0..size.y
+            {
+                for x in 0..size.x
+                {
+                    let local_pos = LocalPos::new(Pos3{x, y, z}, size);
+
+                    let occlusions = self.sky_occlusion_of(chunks, local_pos);
+                    self.chunks[local_pos].occlusion = Some(occlusions);
+                }
+            }
+
+            for y in 0..size.y
+            {
+                for x in 0..size.x
+                {
+                    let local_pos = LocalPos::new(Pos3{x, y, z}, size);
+                    let pos = self.to_global(local_pos);
+
+                    let occlusion_reader = TileReader::new_with(
+                        &self.chunks,
+                        local_pos,
+                        |overmap_chunk| overmap_chunk.occlusion.clone().unwrap()
+                    );
+
+                    self.chunks[local_pos].chunk.recreate_lights(&self.tiles_factory, &occlusion_reader, pos);
+                }
+            }
+        }
     }
 
     pub fn get(&self, pos: LocalPos) -> &VisualChunk
@@ -1104,7 +1144,7 @@ impl VisualOvermap
             {
                 self.chunks[pos].chunk.update_buffers_light_shadows(
                     info,
-                    &mut self.tiles_factory,
+                    &self.tiles_factory,
                     visibility,
                     caster,
                     height,

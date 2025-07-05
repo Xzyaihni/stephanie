@@ -412,7 +412,7 @@ impl ClientOvermap
 
         if z_changed
         {
-            self.visual_overmap.regenerate_sky_occlusions();
+            self.visual_overmap.regenerate_sky_occlusions(&self.chunks);
         }
     }
 

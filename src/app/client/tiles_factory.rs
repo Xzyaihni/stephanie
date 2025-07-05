@@ -352,7 +352,7 @@ impl TilesFactory
     }
 
     pub fn build(
-        &mut self,
+        &self,
         chunk_info: ChunkSlice<Option<ChunkInfo>>
     ) -> ChunkSlice<Option<Object>>
     {
@@ -372,7 +372,7 @@ impl TilesFactory
     }
 
     pub fn build_occluders(
-        &mut self,
+        &self,
         occluders: ChunkSlice<Box<[OccluderInfo]>>
     ) -> ChunkSlice<Box<[OccluderCached]>>
     {
@@ -399,7 +399,7 @@ impl TilesFactory
     }
 
     pub fn build_vertical_occluders(
-        &mut self,
+        &self,
         occluders: ChunkSlice<Box<[VerticalOccluder]>>
     ) -> ChunkSlice<Box<[SolidObject<SkyOccludingVertex>]>>
     {
@@ -419,7 +419,7 @@ impl TilesFactory
     }
 
     pub fn build_sky_lights(
-        &mut self,
+        &self,
         pos: GlobalPos,
         lights: ChunkSlice<Box<[SkyLight]>>
     ) -> ChunkSlice<Option<SolidObject<SkyLightVertex>>>

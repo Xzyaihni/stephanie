@@ -287,8 +287,18 @@ impl VisualChunk
         }
     }
 
+    pub fn recreate_lights(
+        &mut self,
+        tiles_factory: &TilesFactory,
+        sky_occlusions: &TileReader<Arc<ChunkSkyOcclusion>>,
+        pos: GlobalPos
+    )
+    {
+        self.sky_lights = tiles_factory.build_sky_lights(pos, Self::create_sky_lights(sky_occlusions, pos));
+    }
+
     pub fn build(
-        tiles_factory: &mut TilesFactory,
+        tiles_factory: &TilesFactory,
         chunk_info: VisualChunkInfo,
         pos: GlobalPos
     ) -> Self
@@ -818,7 +828,7 @@ impl VisualChunk
     pub fn update_buffers_light_shadows(
         &mut self,
         info: &mut UpdateBuffersInfo,
-        tiles_factory: &mut TilesFactory,
+        tiles_factory: &TilesFactory,
         visibility: &VisibilityChecker,
         caster: &OccludingCaster,
         height: usize,
