@@ -1,4 +1,5 @@
 use std::{
+    ops::Index,
     thread::{self, JoinHandle},
     iter,
     time::Instant,
@@ -41,8 +42,7 @@ use super::{
         ChunkLocal,
         MaybeGroup,
         GlobalPos,
-        LocalPos,
-        tile::Tile
+        LocalPos
     },
     overmap::{
         OvermapIndexing,
@@ -151,18 +151,47 @@ impl VisibilityChecker
     }
 }
 
-pub trait TileReadable
+pub struct TileReader<T>(MaybeGroup<Arc<T>>);
+
+impl<T> TileReader<T>
 {
-    type Output;
+    pub fn creatable(
+        chunks: &ChunksContainer<Option<Arc<T>>>,
+        local_pos: LocalPos
+    ) -> bool
+    {
+        local_pos.directions_inclusive().flatten().all(|pos|
+        {
+            chunks[pos].is_some()
+        })
+    }
 
-    fn tile(&self, pos: ChunkLocal) -> MaybeGroup<Self::Output>;
-}
+    pub fn new_with<U>(
+        chunks: &ChunksContainer<U>,
+        local_pos: LocalPos,
+        f: impl Fn(&U) -> Arc<T>
+    ) -> Self
+    {
+        let group = local_pos.maybe_group().map(|position|
+        {
+            f(&chunks[position])
+        });
 
-impl TileReadable for TileReader<Arc<Chunk>>
-{
-    type Output = Tile;
+        Self(group)
+    }
 
-    fn tile(&self, pos: ChunkLocal) -> MaybeGroup<Self::Output>
+    pub fn new(
+        chunks: &ChunksContainer<Option<Arc<T>>>,
+        local_pos: LocalPos
+    ) -> Self
+    {
+        Self::new_with(chunks, local_pos, |chunk| chunk.clone().unwrap())
+    }
+
+    pub fn tile<V>(&self, pos: ChunkLocal) -> MaybeGroup<V>
+    where
+        V: Copy,
+        T: Index<ChunkLocal, Output=V>
     {
         pos.maybe_group().remap(|value|
         {
@@ -180,46 +209,6 @@ impl TileReadable for TileReader<Arc<Chunk>>
                 })
             })
         })
-    }
-}
-
-pub struct TileReader<T>(MaybeGroup<T>);
-
-impl<T> TileReader<T>
-{
-    pub fn creatable(
-        chunks: &ChunksContainer<Option<T>>,
-        local_pos: LocalPos
-    ) -> bool
-    {
-        local_pos.directions_inclusive().flatten().all(|pos|
-        {
-            chunks[pos].is_some()
-        })
-    }
-
-    pub fn new_with<U>(
-        chunks: &ChunksContainer<U>,
-        local_pos: LocalPos,
-        f: impl Fn(&U) -> T
-    ) -> Self
-    {
-        let group = local_pos.maybe_group().map(|position|
-        {
-            f(&chunks[position])
-        });
-
-        Self(group)
-    }
-
-    pub fn new(
-        chunks: &ChunksContainer<Option<T>>,
-        local_pos: LocalPos
-    ) -> Self
-    where
-        T: Clone
-    {
-        Self::new_with(chunks, local_pos, |chunk| chunk.clone().unwrap())
     }
 
     pub fn get_this(&self) -> &T
@@ -433,7 +422,7 @@ pub struct VisualOvermap
     visibility_checker: VisibilityChecker,
     generate_thread: Option<JoinHandle<()>>,
     receiver: Receiver<VisualGenerated>,
-    generate_sender: Option<Sender<(TileReader<Arc<Chunk>>, TileReader<Arc<ChunkSkyOcclusion>>, GlobalPos, Instant)>>
+    generate_sender: Option<Sender<(TileReader<Chunk>, TileReader<ChunkSkyOcclusion>, GlobalPos, Instant)>>
 }
 
 impl Drop for VisualOvermap

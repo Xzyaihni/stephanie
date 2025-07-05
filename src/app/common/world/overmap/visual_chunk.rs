@@ -45,7 +45,7 @@ use crate::{
             TILE_SIZE,
             CHUNK_SIZE,
             overmap::FlatChunksContainer,
-            visual_overmap::{TileReadable, TileReader, ChunkSkyOcclusion}
+            visual_overmap::{TileReader, ChunkSkyOcclusion}
         }
     }
 };
@@ -228,8 +228,8 @@ impl VisualChunk
         tilemap: Arc<TileMap>,
         mut model_builder: ChunkModelBuilder,
         pos: GlobalPos,
-        tiles: TileReader<Arc<Chunk>>,
-        sky_occlusions: TileReader<Arc<ChunkSkyOcclusion>>
+        tiles: TileReader<Chunk>,
+        sky_occlusions: TileReader<ChunkSkyOcclusion>
     ) -> VisualChunkInfo
     {
         let occluders = Self::create_occluders(
@@ -290,7 +290,7 @@ impl VisualChunk
     pub fn recreate_lights(
         &mut self,
         tiles_factory: &TilesFactory,
-        sky_occlusions: &TileReader<Arc<ChunkSkyOcclusion>>,
+        sky_occlusions: &TileReader<ChunkSkyOcclusion>,
         pos: GlobalPos
     )
     {
@@ -329,7 +329,7 @@ impl VisualChunk
     }
 
     fn create_sky_lights(
-        sky_occlusions: &TileReader<Arc<ChunkSkyOcclusion>>,
+        sky_occlusions: &TileReader<ChunkSkyOcclusion>,
         pos: GlobalPos
     ) -> ChunkSlice<Box<[SkyLight]>>
     {
@@ -438,7 +438,7 @@ impl VisualChunk
     fn create_occluders(
         tilemap: &TileMap,
         pos: GlobalPos,
-        tiles: &TileReader<Arc<Chunk>>
+        tiles: &TileReader<Chunk>
     ) -> ChunkSlice<Box<[OccluderInfo]>>
     {
         let chunk_position = Chunk::position_of_chunk(pos);
