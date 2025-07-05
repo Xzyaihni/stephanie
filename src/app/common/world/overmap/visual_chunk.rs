@@ -45,7 +45,7 @@ use crate::{
             TILE_SIZE,
             CHUNK_SIZE,
             overmap::FlatChunksContainer,
-            visual_overmap::TileReader
+            visual_overmap::{TileReadable, TileReader}
         }
     }
 };
@@ -228,7 +228,7 @@ impl VisualChunk
         tilemap: Arc<TileMap>,
         mut model_builder: ChunkModelBuilder,
         pos: GlobalPos,
-        tiles: TileReader
+        tiles: TileReader<Arc<Chunk>>
     ) -> VisualChunkInfo
     {
         let occluders = Self::create_occluders(
@@ -272,15 +272,7 @@ impl VisualChunk
 
         let (draw_next, draw_indices) = Self::from_occlusions(&occlusions, &is_drawable);
 
-        let total_sky = occlusions.into_iter().rev().scan([false; CHUNK_SIZE * CHUNK_SIZE], |state, occluded|
-        {
-            state.iter_mut().zip(occluded).for_each(|(state, value)|
-            {
-                *state |= value;
-            });
-
-            Some(*state)
-        }).collect::<Vec<_>>().into_iter().rev().collect::<Vec<_>>().try_into().unwrap();
+        let total_sky = todo!();
 
         VisualChunkInfo{
             infos,
@@ -435,7 +427,7 @@ impl VisualChunk
     fn create_occluders(
         tilemap: &TileMap,
         pos: GlobalPos,
-        tiles: &TileReader
+        tiles: &TileReader<Arc<Chunk>>
     ) -> ChunkSlice<Box<[OccluderInfo]>>
     {
         let chunk_position = Chunk::position_of_chunk(pos);

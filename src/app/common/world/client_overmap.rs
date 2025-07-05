@@ -383,11 +383,11 @@ impl ClientOvermap
                     return;
                 }
 
-                self.visual_overmap.try_force_generate(&self.chunks, local);
+                self.visual_overmap.try_regenerate(&self.chunks, local);
 
                 local.directions().flatten().for_each(|pos|
                 {
-                    self.visual_overmap.try_force_generate(&self.chunks, pos)
+                    self.visual_overmap.try_regenerate(&self.chunks, pos)
                 });
             }
         }
@@ -412,7 +412,7 @@ impl ClientOvermap
 
         if z_changed
         {
-            self.visual_overmap.regenerate_lights();
+            self.visual_overmap.regenerate_sky_occlusions();
         }
     }
 
@@ -427,15 +427,7 @@ impl ClientOvermap
 
         if !this_visual_exists
         {
-            let neighbors_exist = pos.directions_inclusive().flatten().all(|pos|
-            {
-                self.chunks[pos].is_some()
-            });
-
-            if neighbors_exist
-            {
-                self.visual_overmap.try_generate(&self.chunks, pos);
-            }
+            self.visual_overmap.try_generate(&self.chunks, pos);
         }
     }
 

@@ -649,6 +649,22 @@ impl<T> MaybeGroup<T>
         }
     }
 
+    pub fn fold<S, F: FnMut(S, T) -> S>(self, state: S, mut f: F) -> S
+    {
+        let state = f(state, self.this);
+
+        self.other.fold(state, |current, (_direction, value)|
+        {
+            if let Some(value) = value
+            {
+                f(current, value)
+            } else
+            {
+                current
+            }
+        })
+    }
+
     pub fn remap<D, TF, DF>(self, this_map: TF, mut direction_map: DF) -> MaybeGroup<D>
     where
         TF: FnOnce(T) -> D,

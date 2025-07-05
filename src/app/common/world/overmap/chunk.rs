@@ -18,7 +18,7 @@ pub mod pos;
 
 
 pub const CHUNK_SIZE: usize = 16;
-const CHUNK_VOLUME: usize = CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE;
+pub const CHUNK_VOLUME: usize = CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE;
 
 pub const CHUNK_VISUAL_SIZE: f32 = CHUNK_SIZE as f32  * TILE_SIZE;
 
@@ -82,7 +82,7 @@ impl ChunkLocal
 pub struct Chunk
 {
     #[serde_as(as = "Box<[_; CHUNK_VOLUME]>")]
-    tiles: Box<[Tile; CHUNK_VOLUME]>
+    pub tiles: Box<[Tile; CHUNK_VOLUME]>
 }
 
 impl Debug for Chunk
