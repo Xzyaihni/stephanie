@@ -221,6 +221,11 @@ impl<T> TileReader<T>
     {
         Self::new_with(chunks, local_pos, |chunk| chunk.clone().unwrap())
     }
+
+    pub fn get_this(&self) -> &T
+    {
+        &self.0.this
+    }
 }
 
 fn for_visible_2d<'a>(
@@ -397,6 +402,11 @@ impl ChunkSkyOcclusion
 
         Self{occluded: values}
     }
+
+    pub fn occluded(&self) -> &[[bool; CHUNK_SIZE * CHUNK_SIZE]; CHUNK_SIZE]
+    {
+        &self.occluded
+    }
 }
 
 pub struct VisualOvermapChunk
@@ -466,7 +476,8 @@ impl VisualOvermap
                     info_map.clone(),
                     model_builder.clone(),
                     chunk_pos,
-                    tile_reader
+                    tile_reader,
+                    occlusion_reader
                 );
 
                 let generated = VisualGenerated{
