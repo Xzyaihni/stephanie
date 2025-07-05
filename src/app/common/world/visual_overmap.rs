@@ -351,6 +351,17 @@ pub struct ChunkSkyOcclusion
     occluded: [[bool; CHUNK_SIZE * CHUNK_SIZE]; CHUNK_SIZE]
 }
 
+impl Index<ChunkLocal> for ChunkSkyOcclusion
+{
+    type Output = bool;
+
+    fn index(&self, pos: ChunkLocal) -> &Self::Output
+    {
+        let pos = pos.pos();
+        &self.occluded[pos.z][pos.y * CHUNK_SIZE + pos.x]
+    }
+}
+
 impl ChunkSkyOcclusion
 {
     fn new(

@@ -272,20 +272,20 @@ impl ChunkGenerator
 
         let filepath = parent_directory.join("chunks").join(format!("{name}.scm"));
 
-        let code = load("lisp/standard.scm")
-            + &load(parent_directory.join("default.scm"))
-            + &fs::read_to_string(&filepath).map_err(|err|
-            {
-                // cant remove the clone cuz ? is cringe or something
-                ParseError::new_named(filepath.clone(), err)
-            })?;
+        let standard_code = load("lisp/standard.scm");
+        let default_code = load(parent_directory.join("default.scm"));
+        let chunk_code = fs::read_to_string(&filepath).map_err(|err|
+        {
+            // cant remove the clone cuz ? is cringe or something
+            ParseError::new_named(filepath.clone(), err)
+        })?;
 
         let config = LispConfig{
             type_checks: cfg!(debug_assertions),
             memory
         };
 
-        let lisp = Lisp::new_with_config(config, &code).map_err(|err|
+        let lisp = Lisp::new_with_config(config, &[&standard_code, &default_code, &chunk_code]).map_err(|err|
         {
             ParseError::new_named(PathBuf::from(name), err)
         })?;

@@ -20,6 +20,8 @@ use crate::{
         VisibilityChecker,
         tiles_factory::{
             SkyLight,
+            SkyLightValue,
+            SkyLightKind,
             ChunkSlice,
             TilesFactory,
             OccluderInfo,
@@ -29,6 +31,7 @@ use crate::{
         }
     },
     common::{
+        Side2d,
         SkyOccludingVertex,
         SkyLightVertex,
         OccludingPlane,
@@ -333,25 +336,61 @@ impl VisualChunk
         pos: GlobalPos
     ) -> ChunkSlice<Box<[SkyLight]>>
     {
+        let chunk_position = Chunk::position_of_chunk(pos).xy();
+
         (0..CHUNK_SIZE).map(|z|
         {
-            /*let mut occluders = Vec::new();
-
-            let mut occlusion = occlusions[z];
-
-            state.iter_mut().zip(occlusion.iter_mut()).for_each(|(top, bottom)|
+            let mut lights: Vec<Option<SkyLightValue>> = (0..CHUNK_SIZE).flat_map(|y|
             {
-                *top |= *bottom;
-                *bottom = *top;
-            });
-
-            while let Some(occluder) = Self::create_vertical_occluder(&mut occlusion)
+                (0..CHUNK_SIZE).map(move |x| ChunkLocal::new(x, y, z))
+            }).map(|pos|
             {
-                occluders.push(occluder.into_global(chunk_position));
-            }
+                let tile = sky_occlusions.tile(pos);
+                tile.this.then(||
+                {
+                    fn f(x: Option<bool>) -> bool { x.unwrap_or(true) }
 
-            Some(occluders.into_boxed_slice())*/
-            todo!()
+                    let value = match (f(tile.other.left), f(tile.other.down), f(tile.other.up), f(tile.other.right))
+                    {
+                        (true, true, true, true) => None,
+                        (true, true, true, false) => Some((SkyLightKind::Straight, Side2d::Front)),
+                        (true, true, false, true) => Some((SkyLightKind::Straight, Side2d::Left)),
+                        (true, true, false, false) => Some((SkyLightKind::OuterCorner, Side2d::Front)),
+                        (true, false, true, true) => Some((SkyLightKind::Straight, Side2d::Right)),
+                        (true, false, true, false) => Some((SkyLightKind::OuterCorner, Side2d::Right)),
+                        (true, false, false, true) => Some((SkyLightKind::DoubleStraight, Side2d::Right)),
+                        (true, false, false, false) => Some((SkyLightKind::Cap, Side2d::Right)),
+                        (false, true, true, true) => Some((SkyLightKind::Straight, Side2d::Back)),
+                        (false, true, true, false) => Some((SkyLightKind::DoubleStraight, Side2d::Front)),
+                        (false, true, false, true) => Some((SkyLightKind::OuterCorner, Side2d::Left)),
+                        (false, true, false, false) => Some((SkyLightKind::Cap, Side2d::Front)),
+                        (false, false, true, true) => Some((SkyLightKind::OuterCorner, Side2d::Back)),
+                        (false, false, true, false) => Some((SkyLightKind::Cap, Side2d::Back)),
+                        (false, false, false, true) => Some((SkyLightKind::Cap, Side2d::Left)),
+                        (false, false, false, false) => unreachable!()
+                    };
+
+                    value.map(|(kind, rotation)|
+                    {
+                        SkyLightValue{
+                            kind,
+                            rotation
+                        }
+                    })
+                }).flatten()
+            }).collect();
+
+            let add_inner_corners_here = ();
+
+            lights.into_iter().enumerate().filter_map(|(index, value)|
+            {
+                value.map(|value| (index, value))
+            }).map(|(index, value)|
+            {
+                let tile_position = Vector2::new(index % CHUNK_SIZE, index / CHUNK_SIZE).cast() * TILE_SIZE;
+
+                SkyLight{position: chunk_position + tile_position, value}
+            }).collect()
         }).collect::<Vec<_>>().try_into().unwrap()
     }
 

@@ -14,8 +14,8 @@
 		(for-each (lambda (y)
 		    (let ((pos (make-point x y)))
 			(put-tile chunk pos (f pos))))
-		    (counter size-y))
-		(counter size-y)))
+		    (counter size-y)))
+                (counter size-y))
             chunk)))
 
 (define (index-of point)

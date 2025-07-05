@@ -2198,7 +2198,7 @@ impl Program
     pub fn parse(
         type_checks: bool,
         mut memory: LispMemory,
-        code: &str
+        code: &[&str]
     ) -> Result<Self, ErrorPos>
     {
         debug_assert!(memory.iter_values().all(|x| x.tag != ValueTag::Address));

@@ -34,7 +34,7 @@ impl Loot
         let standard = load("lisp/standard.scm")?;
         let code = load(filename)?;
 
-        let creator = RefCell::new(Lisp::new(&(standard + &code))
+        let creator = RefCell::new(Lisp::new(&[&standard, &code])
             .map_err(|err| ParseError::new_named(PathBuf::from(filename), err))?);
 
         Ok(Self{info, creator})

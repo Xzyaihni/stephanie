@@ -875,14 +875,13 @@ impl Game
             memory: LispMemory::new(infos.console.primitives.as_ref().unwrap().clone(), 2048, 1 << 14)
         };
 
-        let source = infos.console.past_commands.clone() + &command;
-        let lisp = match Lisp::new_with_config(config, &source)
+        let lisp = match Lisp::new_with_config(config, &[&infos.console.past_commands, &command])
         {
             Ok(x) => x,
             Err(err) =>
             {
                 eprintln!("error parsing {command}: {err}");
-                Lisp::print_highlighted(&source, err.position);
+                Lisp::print_highlighted(&command, err.position);
                 return;
             }
         };
@@ -893,7 +892,7 @@ impl Game
             Err(err) =>
             {
                 eprintln!("error running {command}: {err}");
-                Lisp::print_highlighted(&source, err.position);
+                Lisp::print_highlighted(&command, err.position);
                 return;
             }
         };

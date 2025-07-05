@@ -69,15 +69,18 @@ pub struct Lexer<'a>
 
 impl<'a> Lexer<'a>
 {
-    pub fn parse(text: &'a str) -> Vec<LexemePos>
+    pub fn parse(texts: &[&'a str]) -> Vec<LexemePos>
     {
-        let this = Self{
-            position: CodePosition::new(),
-            chars: text.chars(),
-            current_char: None
-        };
+        texts.iter().flat_map(|text|
+        {
+            let this = Self{
+                position: CodePosition::new(),
+                chars: text.chars(),
+                current_char: None
+            };
 
-        this.parse_lexemes()
+            this.parse_lexemes()
+        }).collect()
     }
 
     // wow not returning an iterator? so inefficient wow wow wow

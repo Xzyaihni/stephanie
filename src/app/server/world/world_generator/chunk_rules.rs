@@ -261,7 +261,7 @@ impl ChunkRuleTag
         let content = Program::parse(
             cfg!(debug_assertions),
             LispMemory::new(primitives, 64, 64),
-            &raw_tag.content
+            &[&raw_tag.content]
         ).unwrap_or_else(|err|
         {
             panic!("error evaluating program: {err}")

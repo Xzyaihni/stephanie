@@ -1618,7 +1618,7 @@ impl Lisp
 {
     pub fn new_with_config(
         config: LispConfig,
-        code: &str
+        code: &[&str]
     ) -> Result<Self, ErrorPos>
     {
         let program = Program::parse(
@@ -1632,7 +1632,7 @@ impl Lisp
 
     pub fn new_with_memory(
         memory: LispMemory,
-        code: &str
+        code: &[&str]
     ) -> Result<Self, ErrorPos>
     {
         let config = LispConfig{
@@ -1643,9 +1643,14 @@ impl Lisp
         Self::new_with_config(config, code)
     }
 
-    pub fn new(code: &str) -> Result<Self, ErrorPos>
+    pub fn new(code: &[&str]) -> Result<Self, ErrorPos>
     {
         Self::new_with_memory(Self::default_memory(), code)
+    }
+
+    pub fn new_one(code: &str) -> Result<Self, ErrorPos>
+    {
+        Self::new_with_memory(Self::default_memory(), &[code])
     }
 
     pub fn memory_mut(&mut self) -> &mut LispMemory
@@ -1685,7 +1690,7 @@ mod tests
 
     fn simple_integer_test(code: &str, result: i32)
     {
-        let lisp = Lisp::new(code).unwrap();
+        let lisp = Lisp::new_one(code).unwrap();
 
         let value = lisp.run().unwrap_or_else(|err|
         {
@@ -1821,7 +1826,7 @@ mod tests
             ((derivative square) 0.5)
         ";
 
-        let lisp = Lisp::new(code).unwrap();
+        let lisp = Lisp::new_one(code).unwrap();
 
         let value = lisp.run()
             .unwrap()
@@ -1853,7 +1858,7 @@ mod tests
             v
         ";
 
-        let lisp = Lisp::new(code).unwrap();
+        let lisp = Lisp::new_one(code).unwrap();
 
         let output = lisp.run().unwrap();
         let value = output.as_vector().unwrap();
@@ -1889,7 +1894,7 @@ mod tests
         let memory_size = 92;
         let memory = LispMemory::new(Rc::new(Primitives::default()), 20, memory_size);
 
-        let lisp = Lisp::new_with_memory(memory, code).unwrap();
+        let lisp = Lisp::new_with_memory(memory, &[code]).unwrap();
 
         let value = lisp.run()
             .unwrap()
@@ -1939,7 +1944,7 @@ mod tests
         let memory_size = 430;
         let memory = LispMemory::new(Rc::new(Primitives::default()), 64, memory_size);
 
-        let lisp = Lisp::new_with_memory(memory, code).unwrap();
+        let lisp = Lisp::new_with_memory(memory, &[code]).unwrap();
 
         let value = lisp.run()
             .unwrap()
@@ -1971,7 +1976,7 @@ mod tests
             (quote (1 2 3 4 5))
         ";
 
-        let lisp = Lisp::new(code).unwrap();
+        let lisp = Lisp::new_one(code).unwrap();
 
         let output = lisp.run().unwrap();
 
@@ -1987,7 +1992,7 @@ mod tests
             '(1 2 3 4 5)
         ";
 
-        let lisp = Lisp::new(code).unwrap();
+        let lisp = Lisp::new_one(code).unwrap();
 
         let output = lisp.run().unwrap();
 
@@ -2003,7 +2008,7 @@ mod tests
             'heyyy
         ";
 
-        let lisp = Lisp::new(code).unwrap();
+        let lisp = Lisp::new_one(code).unwrap();
 
         let output = lisp.run().unwrap();
 
@@ -2019,7 +2024,7 @@ mod tests
             (cons 3 (cons 4 (cons 5 (quote ()))))
         ";
 
-        let lisp = Lisp::new(code).unwrap();
+        let lisp = Lisp::new_one(code).unwrap();
 
         let output = lisp.run().unwrap();
 
@@ -2050,7 +2055,7 @@ mod tests
             (car (cdr (cdr x)))
         ";
 
-        let lisp = Lisp::new(code).unwrap();
+        let lisp = Lisp::new_one(code).unwrap();
 
         let output = lisp.run().unwrap();
         let value = output.as_symbol().unwrap();
@@ -2065,7 +2070,7 @@ mod tests
             (make-vector 5 999)
         ";
 
-        let lisp = Lisp::new(code).unwrap();
+        let lisp = Lisp::new_one(code).unwrap();
 
         let output = lisp.run().unwrap();
         let value = output.as_vector().unwrap();
@@ -2092,7 +2097,7 @@ mod tests
             x
         ";
 
-        let lisp = Lisp::new(code).unwrap();
+        let lisp = Lisp::new_one(code).unwrap();
 
         let output = lisp.run().unwrap();
         let value = output.as_vector().unwrap();
@@ -2150,7 +2155,7 @@ mod tests
         let memory_size = 300;
         let memory = LispMemory::new(Rc::new(Primitives::default()), 256, memory_size);
 
-        let lisp = Lisp::new_with_memory(memory, &code).unwrap();
+        let lisp = Lisp::new_with_memory(memory, &[&code]).unwrap();
 
         let output = lisp.run().unwrap();
 
@@ -2296,7 +2301,7 @@ mod tests
             #\\x
         ";
 
-        let lisp = Lisp::new(code).unwrap();
+        let lisp = Lisp::new_one(code).unwrap();
 
         let value = lisp.run().unwrap().as_char().unwrap();
 
@@ -2310,7 +2315,7 @@ mod tests
             (random-integer 10)
         ";
 
-        let lisp = Lisp::new(code).unwrap();
+        let lisp = Lisp::new_one(code).unwrap();
 
         let value = lisp.run().unwrap().as_integer().unwrap();
 
@@ -2364,7 +2369,7 @@ mod tests
 
     fn run_with_error(code: &str) -> Result<GenericOutputWrapper<LispMemory>, ErrorPos>
     {
-        let lisp = Lisp::new(code)?;
+        let lisp = Lisp::new_one(code)?;
 
         lisp.run()
     }
@@ -2528,7 +2533,7 @@ mod tests
             (x 1312)
         ";
 
-        let lisp = Lisp::new(code).unwrap();
+        let lisp = Lisp::new_one(code).unwrap();
 
         let value = lisp.run().unwrap().as_integer().unwrap();
 
@@ -2595,7 +2600,7 @@ mod tests
             (quote)
         ";
 
-        let lisp = Lisp::new(code);
+        let lisp = Lisp::new_one(code);
 
         assert!(lisp.is_err());
     }

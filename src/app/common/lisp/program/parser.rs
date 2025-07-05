@@ -363,7 +363,7 @@ pub struct Parser
 
 impl Parser
 {
-    pub fn parse(code: &str) -> Result<AstPos, ErrorPos>
+    pub fn parse(code: &[&str]) -> Result<AstPos, ErrorPos>
     {
         let lexemes = Lexer::parse(code);
 

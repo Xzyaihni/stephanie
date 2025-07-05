@@ -77,14 +77,13 @@ pub enum SkyLightKind
 }
 
 #[derive(Debug)]
-pub struct SkyLight
+pub struct SkyLightValue
 {
-    pub position: Vector2<f32>,
     pub kind: SkyLightKind,
     pub rotation: Side2d
 }
 
-impl SkyLight
+impl SkyLightValue
 {
     pub fn build(&self) -> (Vec<[f32; 2]>, Vec<u16>, Vec<f32>)
     {
@@ -94,11 +93,31 @@ impl SkyLight
         {
             SkyLightKind::Cap =>
             {
-                todo!()
+                let this_is_placeholder = ();
+                (vec![
+                    [0.0, 0.0], [1.0, 0.0],
+                    [0.0, 1.0], [1.0, 1.0]
+                ], vec![
+                    0, 3, 1,
+                    0, 2, 3
+                ], vec![
+                    0.0, 0.0,
+                    0.0, 0.0
+                ])
             },
             SkyLightKind::OuterCorner =>
             {
-                todo!()
+                let this_is_placeholder = ();
+                (vec![
+                    [0.0, 0.0], [1.0, 0.0],
+                    [0.0, 1.0], [1.0, 1.0]
+                ], vec![
+                    0, 3, 1,
+                    0, 2, 3
+                ], vec![
+                    0.0, 0.0,
+                    0.0, 0.0
+                ])
             },
             SkyLightKind::DoubleStraight =>
             {
@@ -145,6 +164,26 @@ impl SkyLight
         };
 
         (vertices, indices, intensities)
+    }
+}
+
+#[derive(Debug)]
+pub struct SkyLight
+{
+    pub position: Vector2<f32>,
+    pub value: SkyLightValue
+}
+
+impl SkyLight
+{
+    pub fn build(&self) -> (Vec<[f32; 2]>, Vec<u16>, Vec<f32>)
+    {
+        let (vertices, indices, intensities) = self.value.build();
+
+        (vertices.into_iter().map(|v|
+        {
+            (Vector2::from(v) + self.position).into()
+        }).collect(), indices, intensities)
     }
 }
 

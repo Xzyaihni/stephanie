@@ -90,7 +90,7 @@
 	(define (from-tiles tiles)
 	    (chunk-from-fn
 		(lambda (pos)
-		    (if (= (vector-ref tiles (index-of pos)) 0)
+		    (if (= (list-ref tiles (index-of pos)) 0)
 			(tile 'glass)
 			(tile 'asphalt)))))
 
