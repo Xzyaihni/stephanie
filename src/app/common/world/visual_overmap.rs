@@ -202,6 +202,7 @@ impl<T> TileReader<T>
         V: Copy,
         T: Index<ChunkLocal, Output=V>
     {
+        // because im stupid down is up and up is down ; -;
         pos.maybe_group().remap(|value|
         {
             self.0.this[value]
@@ -217,7 +218,7 @@ impl<T> TileReader<T>
                     chunk[pos.overflow(direction)]
                 })
             })
-        })
+        }).flip_y()
     }
 
     pub fn get_this(&self) -> &T

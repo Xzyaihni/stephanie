@@ -108,30 +108,44 @@ impl SkyLightValue
             },
             SkyLightKind::Cap =>
             {
-                let this_is_placeholder = ();
                 (vec![
                     [0.0, 0.0], [1.0, 0.0],
+                    [0.0, FRACTION], [1.0 - FRACTION, FRACTION],
+                    [0.0, 1.0 - FRACTION], [1.0 - FRACTION, 1.0 - FRACTION],
                     [0.0, 1.0], [1.0, 1.0]
                 ], vec![
                     0, 3, 1,
-                    0, 2, 3
+                    0, 2, 3,
+                    2, 5, 3,
+                    2, 4, 5,
+                    3, 7, 1,
+                    3, 5, 7,
+                    4, 6, 5,
+                    5, 6, 7
                 ], vec![
+                    1.0, 1.0,
                     0.0, 0.0,
-                    0.0, 0.0
+                    0.0, 0.0,
+                    1.0, 1.0
                 ])
             },
             SkyLightKind::OuterCorner =>
             {
-                let this_is_placeholder = ();
                 (vec![
                     [0.0, 0.0], [1.0, 0.0],
-                    [0.0, 1.0], [1.0, 1.0]
+                    [1.0 - FRACTION, 1.0 - FRACTION], [1.0, 1.0 - FRACTION],
+                    [0.0, 1.0], [1.0 - FRACTION, 1.0], [1.0, 1.0]
                 ], vec![
-                    0, 3, 1,
-                    0, 2, 3
+                    0, 2, 1,
+                    2, 3, 1,
+                    0, 4, 2,
+                    4, 5, 2,
+                    2, 6, 3,
+                    2, 5, 6
                 ], vec![
                     0.0, 0.0,
-                    0.0, 0.0
+                    0.0, 0.0,
+                    0.0, 0.0, 1.0
                 ])
             },
             SkyLightKind::DoubleStraight =>
@@ -200,9 +214,9 @@ impl SkyLight
             let vertex = Vector2::from(v);
             let rotated_vertex = match self.value.rotation
             {
-                Side2d::Left => vertex,
+                Side2d::Right => vertex,
                 Side2d::Back => Vector2::new(1.0 - vertex.y, vertex.x),
-                Side2d::Right => Vector2::new(1.0 - vertex.x, 1.0 - vertex.y),
+                Side2d::Left => Vector2::new(1.0 - vertex.x, 1.0 - vertex.y),
                 Side2d::Front => Vector2::new(vertex.y, 1.0 - vertex.x)
             };
 

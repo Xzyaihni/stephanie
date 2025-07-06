@@ -42,7 +42,6 @@ use crate::{
             ChunkLocal,
             LocalPos,
             GlobalPos,
-            MaybeGroup,
             Chunk,
             Tile,
             TILE_SIZE,
@@ -251,15 +250,15 @@ impl VisualChunk
                 for x in 0..CHUNK_SIZE
                 {
                     let pos = ChunkLocal::new(x, y, z);
-                    let tiles = tiles.tile(pos);
+                    let tile = tiles.tile(pos).this;
 
-                    let this_drawable = tilemap[tiles.this].drawable;
+                    let this_drawable = tilemap[tile].drawable;
 
                     let occluded = Self::create_tile(
                         &tilemap,
                         &mut model_builder,
                         pos,
-                        tiles
+                        tile
                     );
 
                     let index = y * CHUNK_SIZE + x;
@@ -526,7 +525,7 @@ impl VisualChunk
                         add_vertical(&mut plane, pos, !this_transparent);
                     }
 
-                    if tile.other.down.map(|x| this_transparent ^ is_transparent(x)).unwrap_or(false)
+                    if tile.other.up.map(|x| this_transparent ^ is_transparent(x)).unwrap_or(false)
                     {
                         add_horizontal(&mut plane, pos, !this_transparent);
                     }
@@ -695,18 +694,18 @@ impl VisualChunk
         tilemap: &TileMap,
         model_builder: &mut ChunkModelBuilder,
         pos: ChunkLocal,
-        tiles: MaybeGroup<Tile>
+        tile: Tile
     ) -> bool
     {
-        if !tilemap[tiles.this].drawable
+        if !tilemap[tile].drawable
         {
             return false;
         }
 
-        model_builder.create(pos, tiles.this.0.unwrap());
+        model_builder.create(pos, tile.0.unwrap());
 
         #[allow(clippy::let_and_return)]
-        let occluding = !tilemap[tiles.this].transparent;
+        let occluding = !tilemap[tile].transparent;
 
         occluding
     }

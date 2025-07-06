@@ -613,6 +613,19 @@ define_group!{
     ((right, Right), (left, Left), (up, Up), (down, Down), (forward, Forward), (back, Back))
 }
 
+impl<T> DirectionsGroup<T>
+{
+    pub fn flip_y(self) -> Self
+    {
+        Self{
+            right: self.right,
+            left: self.left,
+            up: self.down,
+            down: self.up
+        }
+    }
+}
+
 impl<T> Directions3dGroup<T>
 {
     pub fn get_axis_index(&self, index: usize) -> (&T, &T)
@@ -636,6 +649,11 @@ pub struct MaybeGroup<T>
 
 impl<T> MaybeGroup<T>
 {
+    pub fn flip_y(self) -> Self
+    {
+        Self{this: self.this, other: self.other.flip_y()}
+    }
+
     pub fn map<D, F>(self, mut direction_map: F) -> MaybeGroup<D>
     where
         F: FnMut(T) -> D
