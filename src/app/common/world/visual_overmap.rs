@@ -151,6 +151,18 @@ impl VisibilityChecker
     }
 }
 
+fn creatable_with<U>(
+    chunks: &ChunksContainer<U>,
+    local_pos: LocalPos,
+    f: impl Fn(&U) -> bool
+) -> bool
+{
+    local_pos.directions_inclusive().flatten().all(|pos|
+    {
+        f(&chunks[pos])
+    })
+}
+
 pub struct TileReader<T>(MaybeGroup<Arc<T>>);
 
 impl<T> TileReader<T>
@@ -160,10 +172,7 @@ impl<T> TileReader<T>
         local_pos: LocalPos
     ) -> bool
     {
-        local_pos.directions_inclusive().flatten().all(|pos|
-        {
-            chunks[pos].is_some()
-        })
+        creatable_with(chunks, local_pos, |chunk| chunk.is_some())
     }
 
     pub fn new_with<U>(
@@ -429,6 +438,7 @@ pub struct VisualOvermap
     tiles_factory: TilesFactory,
     chunks: ChunksContainer<VisualOvermapChunk>,
     dependents: HashSet<Pos3<usize>>,
+    waiting_chunks: HashSet<Pos3<usize>>,
     occluded: ChunksContainer<[OccludedSlice; CHUNK_SIZE]>,
     visibility_checker: VisibilityChecker,
     generate_thread: Option<JoinHandle<()>>,
@@ -494,6 +504,7 @@ impl VisualOvermap
             tiles_factory,
             chunks,
             dependents: HashSet::new(),
+            waiting_chunks: HashSet::new(),
             occluded,
             visibility_checker,
             generate_thread: Some(generate_thread),
@@ -506,18 +517,25 @@ impl VisualOvermap
         &mut self,
         chunks: &ChunksContainer<Option<Arc<Chunk>>>,
         pos: LocalPos
-    )
+    ) -> bool
     {
+        if self.chunks[pos].occlusion.is_some() || chunks[pos].is_none()
+        {
+            return false;
+        }
+
         if let Some(forward) = pos.forward()
         {
             if chunks[forward].is_none()
             {
                 self.dependents.insert(forward.pos);
-                return;
+                return false;
             }
         }
 
         self.generate_sky_occlusion(chunks, pos);
+
+        true
     }
 
     pub fn try_generate(
@@ -536,9 +554,13 @@ impl VisualOvermap
             return;
         }
 
-        self.force_generate(chunks, pos);
+        if !creatable_with(&self.chunks, pos, |chunk| chunk.occlusion.is_some())
+        {
+            self.waiting_chunks.insert(pos.pos);
+            return;
+        }
 
-        self.generate_dependents(chunks, pos);
+        self.force_generate(chunks, pos);
     }
 
     fn generate_dependents(
@@ -551,8 +573,14 @@ impl VisualOvermap
         {
             let below = pos.back().expect("a dependent must have a child");
 
-            self.force_generate(chunks, below);
-            self.generate_dependents(chunks, below);
+            if self.try_generate_sky_occlusion(chunks, below)
+            {
+                self.dependents.remove(&pos.pos);
+
+                self.try_generate(chunks, below);
+
+                self.generate_dependents(chunks, below);
+            }
         }
     }
 
@@ -568,6 +596,11 @@ impl VisualOvermap
         }
 
         if !TileReader::creatable(chunks, pos)
+        {
+            return;
+        }
+
+        if !creatable_with(&self.chunks, pos, |chunk| chunk.occlusion.is_some())
         {
             return;
         }
@@ -614,6 +647,13 @@ impl VisualOvermap
     {
         let occlusion = self.sky_occlusion_of(chunks, pos);
         self.chunks[pos].occlusion = Some(occlusion);
+
+        pos.directions().flatten().for_each(|pos|
+        {
+            self.try_generate_sky_occlusion(chunks, pos);
+        });
+
+        self.generate_dependents(chunks, pos);
     }
 
     pub fn update(&mut self, _dt: f32)
@@ -676,33 +716,43 @@ impl VisualOvermap
 
         for z in (0..size.z).rev()
         {
+            let mut changed_occlusions = Vec::new();
             for y in 0..size.y
             {
                 for x in 0..size.x
                 {
-                    let local_pos = LocalPos::new(Pos3{x, y, z}, size);
+                    let pos = Pos3{x, y, z};
+                    let local_pos = LocalPos::new(pos, size);
+
+                    if chunks[local_pos].is_none()
+                    {
+                        continue;
+                    }
 
                     let occlusions = self.sky_occlusion_of(chunks, local_pos);
                     self.chunks[local_pos].occlusion = Some(occlusions);
+
+                    changed_occlusions.push(local_pos);
                 }
             }
 
-            for y in 0..size.y
+            changed_occlusions.into_iter().for_each(|local_pos|
             {
-                for x in 0..size.x
+                if !creatable_with(&self.chunks, local_pos, |chunk| chunk.occlusion.is_some())
                 {
-                    let local_pos = LocalPos::new(Pos3{x, y, z}, size);
-                    let pos = self.to_global(local_pos);
-
-                    let occlusion_reader = TileReader::new_with(
-                        &self.chunks,
-                        local_pos,
-                        |overmap_chunk| overmap_chunk.occlusion.clone().unwrap()
-                    );
-
-                    self.chunks[local_pos].chunk.recreate_lights(&self.tiles_factory, &occlusion_reader, pos);
+                    return;
                 }
-            }
+
+                let pos = self.to_global(local_pos);
+
+                let occlusion_reader = TileReader::new_with(
+                    &self.chunks,
+                    local_pos,
+                    |overmap_chunk| overmap_chunk.occlusion.clone().unwrap()
+                );
+
+                self.chunks[local_pos].chunk.recreate_lights(&self.tiles_factory, &occlusion_reader, pos);
+            });
         }
     }
 
