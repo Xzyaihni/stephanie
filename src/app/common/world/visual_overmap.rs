@@ -519,7 +519,12 @@ impl VisualOvermap
         pos: LocalPos
     ) -> bool
     {
-        if self.chunks[pos].occlusion.is_some() || chunks[pos].is_none()
+        if chunks[pos].is_none()
+        {
+            return false;
+        }
+
+        if self.chunks[pos].occlusion.is_some()
         {
             return false;
         }
@@ -653,15 +658,18 @@ impl VisualOvermap
             self.try_generate_sky_occlusion(chunks, pos);
         });
 
-        if self.waiting_chunks.contains(&pos.pos)
+        pos.directions_inclusive().flatten().for_each(|pos|
         {
-            if creatable_with(&self.chunks, pos, |chunk| chunk.occlusion.is_some())
+            if self.waiting_chunks.contains(&pos.pos)
             {
-                self.waiting_chunks.remove(&pos.pos);
+                if creatable_with(&self.chunks, pos, |chunk| chunk.occlusion.is_some())
+                {
+                    self.waiting_chunks.remove(&pos.pos);
 
-                self.force_generate(chunks, pos);
+                    self.force_generate(chunks, pos);
+                }
             }
-        }
+        });
 
         self.generate_dependents(chunks, pos);
     }
