@@ -92,10 +92,7 @@ impl SkyLightValue
     {
         const FRACTION: f32 = 0.8 * 0.5;
 
-        // cos(pi / 4)
-        const ANGLED: f32 = 0.7071067;
-
-        const OVEREXTEND: f32 = FRACTION * 0.5;
+        const OVEREXTEND: f32 = FRACTION;
 
         const LOW: f32 = -LIGHT_PADDING;
         const HIGH: f32 = 1.0 + LIGHT_PADDING;
@@ -129,8 +126,8 @@ impl SkyLightValue
             {
                 (vec![
                     [0.0, LOW], [HIGH, LOW],
-                    [0.0, FRACTION], [1.0 - FRACTION, FRACTION],
-                    [0.0, 1.0 - FRACTION], [1.0 - FRACTION, 1.0 - FRACTION],
+                    [-OVEREXTEND, FRACTION], [1.0 - FRACTION, FRACTION],
+                    [-OVEREXTEND, 1.0 - FRACTION], [1.0 - FRACTION, 1.0 - FRACTION],
                     [0.0, HIGH], [HIGH, HIGH]
                 ], vec![
                     0, 3, 1,
@@ -149,8 +146,8 @@ impl SkyLightValue
             SkyLightKind::OuterCorner =>
             {
                 (vec![
-                    [1.0 - FRACTION, 0.0], [HIGH, 0.0],
-                    [0.0, 1.0 - FRACTION], [1.0 - FRACTION, 1.0 - FRACTION],
+                    [1.0 - FRACTION, -OVEREXTEND], [HIGH, 0.0],
+                    [-OVEREXTEND, 1.0 - FRACTION], [1.0 - FRACTION, 1.0 - FRACTION],
                     [0.0, HIGH], [HIGH, HIGH]
                 ], vec![
                     0, 3, 1,
@@ -167,8 +164,8 @@ impl SkyLightValue
             {
                 (vec![
                     [0.0, LOW], [1.0, LOW],
-                    [0.0, FRACTION], [1.0, FRACTION],
-                    [0.0, 1.0 - FRACTION], [1.0, 1.0 - FRACTION],
+                    [-OVEREXTEND, FRACTION], [1.0 + OVEREXTEND, FRACTION],
+                    [-OVEREXTEND, 1.0 - FRACTION], [1.0 + OVEREXTEND, 1.0 - FRACTION],
                     [0.0, HIGH], [1.0, HIGH]
                 ], vec![
                     0, 3, 1,
@@ -185,7 +182,7 @@ impl SkyLightValue
             SkyLightKind::Straight =>
             {
                 (vec![
-                    [0.0, 1.0 - FRACTION], [1.0, 1.0 - FRACTION],
+                    [-OVEREXTEND, 1.0 - FRACTION], [1.0 + OVEREXTEND, 1.0 - FRACTION],
                     [0.0, HIGH], [1.0, HIGH]
                 ], vec![
                     0, 3, 1,
