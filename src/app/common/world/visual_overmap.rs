@@ -382,7 +382,7 @@ impl ChunkSkyOcclusion
         let mut state = above.map(|x| x.occluded[0]).unwrap_or_else(|| [false; CHUNK_SIZE * CHUNK_SIZE]);
 
         let mut values = [[false; CHUNK_SIZE * CHUNK_SIZE]; CHUNK_SIZE];
-        for z in 0..CHUNK_SIZE
+        for z in (0..CHUNK_SIZE).rev()
         {
             let values_slice = &mut values[z];
 
@@ -451,7 +451,27 @@ impl Drop for VisualOvermap
     fn drop(&mut self)
     {
         self.generate_sender.take();
-        self.generate_thread.take().unwrap().join().unwrap();
+        if let Err(err) = self.generate_thread.take().unwrap().join()
+        {
+            fn p(s: &str)
+            {
+                eprintln!("error dropping chunk generation thread: {s}");
+            }
+
+            if let Some(s) = err.downcast_ref::<&str>()
+            {
+                p(s);
+                return;
+            }
+
+            if let Some(s) = err.downcast_ref::<String>()
+            {
+                p(s);
+            } else
+            {
+                p("unknown error");
+            }
+        }
     }
 }
 

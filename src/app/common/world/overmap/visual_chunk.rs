@@ -336,8 +336,6 @@ impl VisualChunk
         pos: GlobalPos
     ) -> ChunkSlice<Box<[SkyLight]>>
     {
-        let chunk_position = Chunk::position_of_chunk(pos).xy();
-
         (0..CHUNK_SIZE).map(|z|
         {
             let mut lights: Vec<Option<SkyLightValue>> = (0..CHUNK_SIZE).flat_map(|y|
@@ -367,7 +365,7 @@ impl VisualChunk
                         (false, false, true, true) => Some((SkyLightKind::OuterCorner, Side2d::Back)),
                         (false, false, true, false) => Some((SkyLightKind::Cap, Side2d::Back)),
                         (false, false, false, true) => Some((SkyLightKind::Cap, Side2d::Left)),
-                        (false, false, false, false) => unreachable!()
+                        (false, false, false, false) => Some((SkyLightKind::Surround, Side2d::Right))
                     };
 
                     value.map(|(kind, rotation)|
@@ -389,7 +387,7 @@ impl VisualChunk
             {
                 let tile_position = Vector2::new(index % CHUNK_SIZE, index / CHUNK_SIZE).cast() * TILE_SIZE;
 
-                SkyLight{position: chunk_position + tile_position, value}
+                SkyLight{position: tile_position, value}
             }).collect()
         }).collect::<Vec<_>>().try_into().unwrap()
     }

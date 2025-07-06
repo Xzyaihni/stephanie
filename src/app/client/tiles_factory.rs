@@ -69,6 +69,7 @@ pub struct VerticalOccluder
 #[derive(Debug)]
 pub enum SkyLightKind
 {
+    Surround,
     Cap,
     OuterCorner,
     DoubleStraight,
@@ -91,6 +92,20 @@ impl SkyLightValue
 
         let (vertices, indices, intensities) = match self.kind
         {
+            SkyLightKind::Surround =>
+            {
+                let this_is_placeholder = ();
+                (vec![
+                    [0.0, 0.0], [1.0, 0.0],
+                    [0.0, 1.0], [1.0, 1.0]
+                ], vec![
+                    0, 3, 1,
+                    0, 2, 3
+                ], vec![
+                    0.0, 0.0,
+                    0.0, 0.0
+                ])
+            },
             SkyLightKind::Cap =>
             {
                 let this_is_placeholder = ();
@@ -182,7 +197,7 @@ impl SkyLight
 
         (vertices.into_iter().map(|v|
         {
-            (Vector2::from(v) + self.position).into()
+            (Vector2::from(v) * TILE_SIZE + self.position).into()
         }).collect(), indices, intensities)
     }
 }
