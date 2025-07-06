@@ -762,38 +762,58 @@ impl VisualOvermap
     {
         let size = self.chunks.size();
 
+        let mut update_positions = (0..size.y).flat_map(|y|
+        {
+            (0..size.x).map(move |x|
+            {
+                (x, y)
+            })
+        }).collect::<Vec<_>>();
+
         for z in (0..size.z).rev()
         {
-            let mut changed_occlusions = Vec::new();
-            for y in 0..size.y
+            update_positions.retain(|&(x, y)|
             {
-                for x in 0..size.x
+                let local_pos = LocalPos::new(Pos3{x, y, z}, size);
+
+                if chunks[local_pos].is_none()
                 {
-                    let pos = Pos3{x, y, z};
-                    let local_pos = LocalPos::new(pos, size);
-
-                    if chunks[local_pos].is_none()
-                    {
-                        continue;
-                    }
-
-                    if let Some(above) = local_pos.forward()
-                    {
-                        if self.chunks[above].occlusion.is_none()
-                        {
-                            continue;
-                        }
-                    }
-
-                    let occlusions = self.sky_occlusion_of(chunks, local_pos);
-                    self.chunks[local_pos].occlusion = Some(occlusions);
-
-                    changed_occlusions.push(local_pos);
+                    return false;
                 }
-            }
 
-            changed_occlusions.into_iter().for_each(|local_pos|
+                if let Some(above) = local_pos.forward()
+                {
+                    if self.chunks[above].occlusion.is_none()
+                    {
+                        return false;
+                    }
+                }
+
+                let occlusions = self.sky_occlusion_of(chunks, local_pos);
+
+                let this_chunk = &mut self.chunks[local_pos].occlusion;
+
+                let is_more_occluded = occlusions.occluded[CHUNK_SIZE - 1].iter()
+                    .zip(this_chunk.as_ref().unwrap().occluded[CHUNK_SIZE - 1].iter())
+                    .any(|(new, old)|
+                    {
+                        (!old) && *new
+                    });
+
+                if !is_more_occluded
+                {
+                    return false;
+                }
+
+                *this_chunk = Some(occlusions);
+
+                true
+            });
+
+            update_positions.iter().for_each(|&(x, y)|
             {
+                let local_pos = LocalPos::new(Pos3{x, y, z}, size);
+
                 if !creatable_with(&self.chunks, local_pos, |chunk| chunk.occlusion.is_some())
                 {
                     return;
