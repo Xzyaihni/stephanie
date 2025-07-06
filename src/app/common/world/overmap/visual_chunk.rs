@@ -338,13 +338,15 @@ impl VisualChunk
     {
         (0..CHUNK_SIZE).map(|z|
         {
-            let mut lights: Vec<Option<SkyLightValue>> = (0..CHUNK_SIZE).flat_map(|y|
+            (0..(CHUNK_SIZE * CHUNK_SIZE)).filter_map(|index|
             {
-                (0..CHUNK_SIZE).map(move |x| ChunkLocal::new(x, y, z))
-            }).map(|pos|
-            {
+                let x = index % CHUNK_SIZE;
+                let y = index / CHUNK_SIZE;
+
+                let pos = ChunkLocal::new(x, y, z);
+
                 let tile = sky_occlusions.tile(pos);
-                (tilemap[tiles[pos]].transparent && tile.this).then(||
+                let value = (tilemap[tiles[pos]].transparent && tile.this).then(||
                 {
                     fn f(x: Option<bool>) -> bool { x.unwrap_or(true) }
 
@@ -375,19 +377,12 @@ impl VisualChunk
                             rotation
                         }
                     })
-                }).flatten()
-            }).collect();
+                }).flatten();
 
-            let add_inner_corners_here = ();
-
-            lights.into_iter().enumerate().filter_map(|(index, value)|
+                value.map(|value| (Vector2::new(x, y), value))
+            }).map(|(position, value)|
             {
-                value.map(|value| (index, value))
-            }).map(|(index, value)|
-            {
-                let tile_position = Vector2::new(index % CHUNK_SIZE, index / CHUNK_SIZE).cast() * TILE_SIZE;
-
-                SkyLight{position: tile_position, value}
+                SkyLight{position: position.cast() * TILE_SIZE, value}
             }).collect()
         }).collect::<Vec<_>>().try_into().unwrap()
     }
