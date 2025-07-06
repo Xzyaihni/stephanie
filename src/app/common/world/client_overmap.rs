@@ -282,7 +282,7 @@ impl ClientOvermap
 
         let chunks = ChunksContainer::new(size);
 
-        let chunk_ordering = indexer.default_ordering(chunks.positions());
+        let chunk_ordering = indexer.default_ordering();
 
         Self{
             world_receiver,

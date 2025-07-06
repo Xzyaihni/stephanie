@@ -1,3 +1,5 @@
+use std::cmp::Ordering;
+
 use chunk::{
     Pos3,
     GlobalPos,
@@ -122,30 +124,35 @@ pub trait Overmap<T>: OvermapIndexing
     }
 }
 
-pub trait OvermapIndexing: CommonIndexing
+pub trait OvermapIndexing: CommonIndexing + Sized
 {
     fn player_position(&self) -> GlobalPos;
 
-    fn default_ordering(
-        &self,
-        positions: impl Iterator<Item=LocalPos>
-    ) -> Box<[LocalPos]>
+    fn default_ordering(&self) -> Box<[LocalPos]>
     {
-        let mut ordering = positions.collect::<Vec<_>>();
+        let size = self.size();
+        let mut ordering = (0..size.x * size.y).map(|index|
+        {
+            (index % size.x, index / size.x)
+        }).collect::<Vec<_>>();
 
         ordering.sort_unstable_by(move |a, b|
         {
-            let distance = |local_pos| -> f32
+            let distance = |(x, y): (usize, usize)| -> f32
             {
-                let GlobalPos(pos) = self.player_offset(local_pos);
+                let x_offset = x as i32 - size.x as i32 / 2;
+                let y_offset = y as i32 - size.y as i32 / 2;
 
-                ((pos.x.pow(2) + pos.y.pow(2) + pos.z.pow(2)) as f32).sqrt()
+                ((x_offset.pow(2) + y_offset.pow(2)) as f32).sqrt()
             };
 
-            distance(*a).total_cmp(&distance(*b))
+            distance(*a).partial_cmp(&distance(*b)).unwrap_or(Ordering::Equal)
         });
 
-        ordering.into_boxed_slice()
+        (0..size.z).rev().flat_map(|z|
+        {
+            ordering.iter().map(move |&(x, y)| LocalPos::new(Pos3{x, y, z}, size))
+        }).collect()
     }
 
     fn to_local(&self, pos: GlobalPos) -> Option<LocalPos>

@@ -320,7 +320,7 @@ impl World
     {
         let indexer = self.client_indexers[&id].indexer.clone();
 
-        let ordering = indexer.default_ordering(indexer.clone().positions());
+        let ordering = indexer.default_ordering();
 
         ordering.iter().for_each(|pos|
         {
