@@ -197,7 +197,16 @@ impl SkyLight
 
         (vertices.into_iter().map(|v|
         {
-            (Vector2::from(v) * TILE_SIZE + self.position).into()
+            let vertex = Vector2::from(v);
+            let rotated_vertex = match self.value.rotation
+            {
+                Side2d::Left => vertex,
+                Side2d::Back => Vector2::new(1.0 - vertex.y, vertex.x),
+                Side2d::Right => Vector2::new(1.0 - vertex.x, 1.0 - vertex.y),
+                Side2d::Front => Vector2::new(vertex.y, 1.0 - vertex.x)
+            };
+
+            (rotated_vertex * TILE_SIZE + self.position).into()
         }).collect(), indices, intensities)
     }
 }
