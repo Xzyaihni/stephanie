@@ -364,6 +364,7 @@ impl OvermapIndexing for GlobalMapper
     }
 }
 
+#[derive(Debug)]
 pub struct ChunkSkyOcclusion
 {
     occluded: [[bool; CHUNK_SIZE * CHUNK_SIZE]; CHUNK_SIZE]
@@ -560,7 +561,7 @@ impl VisualOvermap
 
         if let Some(forward) = pos.forward()
         {
-            if chunks[forward].is_none()
+            if self.chunks[forward].occlusion.is_none()
             {
                 self.dependents.insert(forward.pos);
                 return false;
@@ -665,9 +666,9 @@ impl VisualOvermap
     ) -> Arc<ChunkSkyOcclusion>
     {
         let tilemap = self.tiles_factory.tilemap();
-        let occlusion = ChunkSkyOcclusion::new(tilemap, chunks[pos].as_deref().unwrap(), pos.forward().and_then(|above|
+        let occlusion = ChunkSkyOcclusion::new(tilemap, chunks[pos].as_deref().unwrap(), pos.forward().map(|above|
         {
-            self.chunks[above].occlusion.as_deref()
+            self.chunks[above].occlusion.as_deref().unwrap()
         }));
 
         Arc::new(occlusion)
@@ -774,6 +775,14 @@ impl VisualOvermap
                     if chunks[local_pos].is_none()
                     {
                         continue;
+                    }
+
+                    if let Some(above) = local_pos.forward()
+                    {
+                        if self.chunks[above].occlusion.is_none()
+                        {
+                            continue;
+                        }
                     }
 
                     let occlusions = self.sky_occlusion_of(chunks, local_pos);

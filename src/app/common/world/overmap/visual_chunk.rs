@@ -267,14 +267,14 @@ impl VisualChunk
             }
         }
 
-        let vertical_occluders = Self::create_vertical_occluders(&occlusions, pos);
+        let total_sky = *sky_occlusions.get_this().occluded();
+
+        let vertical_occluders = Self::create_vertical_occluders(&total_sky, pos);
         let sky_lights = Self::create_sky_lights(&tilemap, tiles.get_this(), &sky_occlusions);
 
         let infos = model_builder.build(pos);
 
         let (draw_next, draw_indices) = Self::from_occlusions(&occlusions, &is_drawable);
-
-        let total_sky = *sky_occlusions.get_this().occluded();
 
         VisualChunkInfo{
             infos,
@@ -394,28 +394,17 @@ impl VisualChunk
     {
         let chunk_position = Chunk::position_of_chunk(pos).xy();
 
-        (0..CHUNK_SIZE).rev()
-            .scan([false; CHUNK_SIZE * CHUNK_SIZE], |state, z|
+        occlusions.iter().copied().map(|mut occlusion|
+        {
+            let mut occluders = Vec::new();
+
+            while let Some(occluder) = Self::create_vertical_occluder(&mut occlusion)
             {
-                let mut occluders = Vec::new();
+                occluders.push(occluder.into_global(chunk_position));
+            }
 
-                let mut occlusion = occlusions[z];
-
-                state.iter_mut().zip(occlusion.iter_mut()).for_each(|(top, bottom)|
-                {
-                    *top |= *bottom;
-                    *bottom = *top;
-                });
-
-                while let Some(occluder) = Self::create_vertical_occluder(&mut occlusion)
-                {
-                    occluders.push(occluder.into_global(chunk_position));
-                }
-
-                Some(occluders.into_boxed_slice())
-            }).collect::<Vec<_>>().into_iter()
-                .rev()
-                .collect::<Vec<_>>().try_into().unwrap()
+            occluders.into_boxed_slice()
+        }).collect::<Vec<_>>().try_into().unwrap()
     }
 
     fn create_vertical_occluder(
