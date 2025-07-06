@@ -19,6 +19,7 @@ use crate::{
     client::{
         VisibilityChecker,
         tiles_factory::{
+            OCCLUDER_PADDING,
             SkyLight,
             SkyLightValue,
             SkyLightKind,
@@ -84,9 +85,6 @@ impl OccluderInfoRaw
 
         let tile_position = tile_position * TILE_SIZE;
 
-        // a little padding to hide seams
-        let padding = TILE_SIZE * 0.01;
-
         let line_indices = {
             let start = self.position.y * CHUNK_SIZE + self.position.x;
             let step = if self.horizontal { 1 } else { CHUNK_SIZE };
@@ -98,12 +96,13 @@ impl OccluderInfoRaw
             }
         };
 
+        // padding to hide the seams
         OccluderInfo{
             line_indices,
             position: chunk_position + tile_position,
             inside: self.inside,
             horizontal: self.horizontal,
-            length: self.length as f32 * TILE_SIZE + padding
+            length: self.length as f32 * TILE_SIZE + OCCLUDER_PADDING
         }
     }
 }
@@ -269,7 +268,7 @@ impl VisualChunk
         }
 
         let vertical_occluders = Self::create_vertical_occluders(&occlusions, pos);
-        let sky_lights = Self::create_sky_lights(&sky_occlusions, pos);
+        let sky_lights = Self::create_sky_lights(&sky_occlusions);
 
         let infos = model_builder.build(pos);
 
@@ -296,7 +295,7 @@ impl VisualChunk
         pos: GlobalPos
     )
     {
-        self.sky_lights = tiles_factory.build_sky_lights(pos, Self::create_sky_lights(sky_occlusions, pos));
+        self.sky_lights = tiles_factory.build_sky_lights(pos, Self::create_sky_lights(sky_occlusions));
     }
 
     pub fn build(
@@ -330,10 +329,7 @@ impl VisualChunk
         self.draw_next[height]
     }
 
-    fn create_sky_lights(
-        sky_occlusions: &TileReader<ChunkSkyOcclusion>,
-        pos: GlobalPos
-    ) -> ChunkSlice<Box<[SkyLight]>>
+    fn create_sky_lights(sky_occlusions: &TileReader<ChunkSkyOcclusion>) -> ChunkSlice<Box<[SkyLight]>>
     {
         (0..CHUNK_SIZE).map(|z|
         {

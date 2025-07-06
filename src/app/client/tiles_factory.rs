@@ -49,6 +49,9 @@ use crate::common::{
 
 pub type ChunkSlice<T> = [T; CHUNK_SIZE];
 
+pub const OCCLUDER_PADDING: f32 = TILE_SIZE * 0.01;
+pub const LIGHT_PADDING: f32 = OCCLUDER_PADDING;
+
 #[derive(Debug, Clone, Copy)]
 pub struct OccluderInfo
 {
@@ -89,16 +92,18 @@ impl SkyLightValue
     pub fn build(&self) -> (Vec<[f32; 2]>, Vec<u16>, Vec<f32>)
     {
         const FRACTION: f32 = 0.8 * 0.5;
+        const LOW: f32 = -LIGHT_PADDING;
+        const HIGH: f32 = 1.0 + LIGHT_PADDING;
 
         let (vertices, indices, intensities) = match self.kind
         {
             SkyLightKind::Surround =>
             {
                 (vec![
-                    [0.0, 0.0], [1.0, 0.0],
+                    [LOW, LOW], [HIGH, LOW],
                     [FRACTION, FRACTION], [1.0 - FRACTION, FRACTION],
                     [FRACTION, 1.0 - FRACTION], [1.0 - FRACTION, 1.0 - FRACTION],
-                    [0.0, 1.0], [1.0, 1.0]
+                    [LOW, HIGH], [HIGH, HIGH]
                 ], vec![
                     0, 3, 1,
                     0, 2, 3,
@@ -120,10 +125,10 @@ impl SkyLightValue
             SkyLightKind::Cap =>
             {
                 (vec![
-                    [0.0, 0.0], [1.0, 0.0],
+                    [0.0, LOW], [HIGH, LOW],
                     [0.0, FRACTION], [1.0 - FRACTION, FRACTION],
                     [0.0, 1.0 - FRACTION], [1.0 - FRACTION, 1.0 - FRACTION],
-                    [0.0, 1.0], [1.0, 1.0]
+                    [0.0, HIGH], [HIGH, HIGH]
                 ], vec![
                     0, 3, 1,
                     0, 2, 3,
@@ -143,9 +148,9 @@ impl SkyLightValue
             SkyLightKind::OuterCorner =>
             {
                 (vec![
-                    [0.0, 0.0], [1.0 - FRACTION, 0.0], [1.0, 0.0],
+                    [0.0, 0.0], [1.0 - FRACTION, 0.0], [HIGH, 0.0],
                     [0.0, 1.0 - FRACTION], [1.0 - FRACTION, 1.0 - FRACTION],
-                    [0.0, 1.0], [1.0, 1.0]
+                    [0.0, HIGH], [HIGH, HIGH]
                 ], vec![
                     0, 4, 1,
                     0, 3, 4,
@@ -162,10 +167,10 @@ impl SkyLightValue
             SkyLightKind::DoubleStraight =>
             {
                 (vec![
-                    [0.0, 0.0], [1.0, 0.0],
+                    [0.0, LOW], [1.0, LOW],
                     [0.0, FRACTION], [1.0, FRACTION],
                     [0.0, 1.0 - FRACTION], [1.0, 1.0 - FRACTION],
-                    [0.0, 1.0], [1.0, 1.0]
+                    [0.0, HIGH], [1.0, HIGH]
                 ], vec![
                     0, 3, 1,
                     0, 2, 3,
@@ -185,7 +190,7 @@ impl SkyLightValue
                 (vec![
                     [0.0, 0.0], [1.0, 0.0],
                     [0.0, 1.0 - FRACTION], [1.0, 1.0 - FRACTION],
-                    [0.0, 1.0], [1.0, 1.0]
+                    [0.0, HIGH], [1.0, HIGH]
                 ], vec![
                     0, 3, 1,
                     0, 2, 3,
@@ -222,13 +227,15 @@ impl SkyLight
 
         (vertices.into_iter().map(|v|
         {
+            const SIZE: f32 = 1.0;
+
             let vertex = Vector2::from(v);
             let rotated_vertex = match self.value.rotation
             {
                 Side2d::Right => vertex,
-                Side2d::Back => Vector2::new(1.0 - vertex.y, vertex.x),
-                Side2d::Left => Vector2::new(1.0 - vertex.x, 1.0 - vertex.y),
-                Side2d::Front => Vector2::new(vertex.y, 1.0 - vertex.x)
+                Side2d::Back => Vector2::new(SIZE - vertex.y, vertex.x),
+                Side2d::Left => Vector2::new(SIZE - vertex.x, SIZE - vertex.y),
+                Side2d::Front => Vector2::new(vertex.y, SIZE - vertex.x)
             };
 
             (rotated_vertex * TILE_SIZE + self.position).into()
