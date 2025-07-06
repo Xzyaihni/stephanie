@@ -653,6 +653,16 @@ impl VisualOvermap
             self.try_generate_sky_occlusion(chunks, pos);
         });
 
+        if self.waiting_chunks.contains(&pos.pos)
+        {
+            if creatable_with(&self.chunks, pos, |chunk| chunk.occlusion.is_some())
+            {
+                self.waiting_chunks.remove(&pos.pos);
+
+                self.force_generate(chunks, pos);
+            }
+        }
+
         self.generate_dependents(chunks, pos);
     }
 
@@ -776,26 +786,13 @@ impl VisualOvermap
         self.chunks.swap(a, b);
     }
 
-    fn sky_occluders_heights(
-        visibility_checker: &VisibilityChecker,
-        pos: LocalPos
-    ) -> impl Iterator<Item=LocalPos>
-    {
-        let size_z = visibility_checker.size.z;
-        let top = size_z / 2;
-        pos.with_z_range(top..size_z)
-    }
-
-    fn sky_draw_height(height: Option<usize>) -> usize
-    {
-        height.map(|x| (x + 1).min(CHUNK_SIZE - 1)).unwrap_or(0)
-    }
-
     pub fn update_buffers(
         &mut self,
         info: &mut UpdateBuffersInfo
     )
     {
+        let z = self.visibility_checker.top_z();
+        let height = self.visibility_checker.player_height();
         for_visible_2d(&self.chunks, &self.visibility_checker).for_each(|pos|
         {
             self.visibility_checker.visible_z(&self.chunks, pos).for_each(|pos|
@@ -806,13 +803,9 @@ impl VisualOvermap
                 )
             });
 
-            Self::sky_occluders_heights(&self.visibility_checker, pos).for_each(|pos|
-            {
-                self.chunks[pos].chunk.update_sky_buffers(
-                    info,
-                    Self::sky_draw_height(self.visibility_checker.maybe_height(pos))
-                );
-            });
+            let pos = pos.with_z(z);
+
+            self.chunks[pos].chunk.update_sky_buffers(info, height);
         });
     }
 
@@ -1084,26 +1077,24 @@ impl VisualOvermap
         let player_position_z = self.visibility_checker.player_position.read().rounded().0.z;
         let player_height = self.visibility_checker.player_height();
 
+        let camera_z = size_z / 2;
+
         let z = Self::chunk_height_of(size_z, transform.position.z, player_position_z);
         self.occluded_with(transform, |pos, height, top_left, bottom_right|
         {
             let (z, height) = if let Some(z) = z { (z, height) } else { (0, 0) };
 
-            let camera_z = size_z / 2;
-            pos.with_z_range(z..(camera_z + 1)).enumerate().any(|(index, pos)|
+            let pos = pos.with_z(z);
+
+            let chunk = &self.chunks[pos].chunk;
+
+            if pos.pos.z == camera_z
             {
-                let height = if index == 0 { height } else { 0 };
-
-                let chunk = &self.chunks[pos].chunk;
-
-                if pos.pos.z == camera_z
-                {
-                    chunk.sky_occluded_between(height..=player_height, top_left, bottom_right)
-                } else
-                {
-                    chunk.sky_occluded(height, top_left, bottom_right)
-                }
-            })
+                chunk.sky_occluded_between(height..=player_height, top_left, bottom_right)
+            } else
+            {
+                chunk.sky_occluded(height, top_left, bottom_right)
+            }
         })
     }
 
@@ -1240,15 +1231,14 @@ impl VisualOvermap
         let player_height = self.visibility_checker.player_height();
         for_visible_2d(&self.chunks, &self.visibility_checker).for_each(|pos|
         {
-            if self.occluded[pos.with_z(z)][player_height].is_fully_occluded()
+            let pos = pos.with_z(z);
+
+            if self.occluded[pos][player_height].is_fully_occluded()
             {
                 return;
             }
 
-            Self::sky_occluders_heights(&self.visibility_checker, pos).for_each(|pos|
-            {
-                f(&self.chunks[pos].chunk, Self::sky_draw_height(self.visibility_checker.maybe_height(pos)))
-            });
+            f(&self.chunks[pos].chunk, player_height)
         });
     }
 
