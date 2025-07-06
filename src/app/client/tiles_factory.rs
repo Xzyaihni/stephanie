@@ -91,6 +91,12 @@ impl SkyLightValue
     pub fn build(&self) -> (Vec<[f32; 2]>, Vec<u16>, Vec<f32>)
     {
         const FRACTION: f32 = 0.8 * 0.5;
+
+        // cos(pi / 4)
+        const ANGLED: f32 = 0.7071067;
+
+        const OVEREXTEND: f32 = FRACTION * 0.5;
+
         const LOW: f32 = -LIGHT_PADDING;
         const HIGH: f32 = 1.0 + LIGHT_PADDING;
 
@@ -143,16 +149,16 @@ impl SkyLightValue
             SkyLightKind::OuterCorner =>
             {
                 (vec![
-                    [0.0, 0.0], [1.0 - FRACTION, 0.0], [HIGH, 0.0],
+                    [1.0 - FRACTION, 0.0], [HIGH, 0.0],
                     [0.0, 1.0 - FRACTION], [1.0 - FRACTION, 1.0 - FRACTION],
                     [0.0, HIGH], [HIGH, HIGH]
                 ], vec![
-                    1, 4, 2,
-                    3, 5, 4,
-                    4, 5, 6,
-                    4, 6, 2
+                    0, 3, 1,
+                    2, 4, 3,
+                    3, 4, 5,
+                    3, 5, 1
                 ], vec![
-                    0.0, 0.0, 1.0,
+                    0.0, 1.0,
                     0.0, 0.0,
                     1.0, 1.0
                 ])
@@ -179,14 +185,12 @@ impl SkyLightValue
             SkyLightKind::Straight =>
             {
                 (vec![
-                    [0.0, 0.0], [1.0, 0.0],
                     [0.0, 1.0 - FRACTION], [1.0, 1.0 - FRACTION],
                     [0.0, HIGH], [1.0, HIGH]
                 ], vec![
-                    2, 5, 3,
-                    2, 4, 5
+                    0, 3, 1,
+                    0, 2, 3
                 ], vec![
-                    0.0, 0.0,
                     0.0, 0.0,
                     1.0, 1.0
                 ])

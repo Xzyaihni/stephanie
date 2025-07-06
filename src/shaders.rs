@@ -355,9 +355,9 @@ pub fn create() -> ShadersCreated
         per_vertex: Some(vec![SkyLightVertex::per_vertex()]),
         subpass: 2,
         blend: Some(AttachmentBlend{
-            src_color_blend_factor: BlendFactor::DstAlpha,
+            src_color_blend_factor: BlendFactor::One,
             dst_color_blend_factor: BlendFactor::One,
-            color_blend_op: BlendOp::Add,
+            color_blend_op: BlendOp::Max,
             src_alpha_blend_factor: BlendFactor::Zero,
             dst_alpha_blend_factor: BlendFactor::One,
             alpha_blend_op: BlendOp::Add
