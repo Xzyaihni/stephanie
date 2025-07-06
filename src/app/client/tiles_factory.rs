@@ -94,16 +94,27 @@ impl SkyLightValue
         {
             SkyLightKind::Surround =>
             {
-                let this_is_placeholder = ();
                 (vec![
                     [0.0, 0.0], [1.0, 0.0],
+                    [FRACTION, FRACTION], [1.0 - FRACTION, FRACTION],
+                    [FRACTION, 1.0 - FRACTION], [1.0 - FRACTION, 1.0 - FRACTION],
                     [0.0, 1.0], [1.0, 1.0]
                 ], vec![
                     0, 3, 1,
-                    0, 2, 3
+                    0, 2, 3,
+                    2, 5, 3,
+                    2, 4, 5,
+                    0, 4, 2,
+                    0, 6, 4,
+                    3, 5, 7,
+                    3, 7, 1,
+                    4, 6, 7,
+                    4, 7, 5
                 ], vec![
+                    1.0, 1.0,
                     0.0, 0.0,
-                    0.0, 0.0
+                    0.0, 0.0,
+                    1.0, 1.0
                 ])
             },
             SkyLightKind::Cap =>
@@ -132,20 +143,20 @@ impl SkyLightValue
             SkyLightKind::OuterCorner =>
             {
                 (vec![
-                    [0.0, 0.0], [1.0, 0.0],
-                    [1.0 - FRACTION, 1.0 - FRACTION], [1.0, 1.0 - FRACTION],
-                    [0.0, 1.0], [1.0 - FRACTION, 1.0], [1.0, 1.0]
+                    [0.0, 0.0], [1.0 - FRACTION, 0.0], [1.0, 0.0],
+                    [0.0, 1.0 - FRACTION], [1.0 - FRACTION, 1.0 - FRACTION],
+                    [0.0, 1.0], [1.0, 1.0]
                 ], vec![
-                    0, 2, 1,
-                    2, 3, 1,
-                    0, 4, 2,
-                    4, 5, 2,
-                    2, 6, 3,
-                    2, 5, 6
+                    0, 4, 1,
+                    0, 3, 4,
+                    1, 4, 2,
+                    3, 5, 4,
+                    4, 5, 6,
+                    4, 6, 2
                 ], vec![
+                    0.0, 0.0, 1.0,
                     0.0, 0.0,
-                    0.0, 0.0,
-                    0.0, 0.0, 1.0
+                    1.0, 1.0
                 ])
             },
             SkyLightKind::DoubleStraight =>
