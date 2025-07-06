@@ -249,7 +249,7 @@ impl VisualChunk
                 for x in 0..CHUNK_SIZE
                 {
                     let pos = ChunkLocal::new(x, y, z);
-                    let tile = tiles.tile(pos).this;
+                    let tile = tiles.this_tile(pos);
 
                     let this_drawable = tilemap[tile].drawable;
 
@@ -268,7 +268,7 @@ impl VisualChunk
         }
 
         let vertical_occluders = Self::create_vertical_occluders(&occlusions, pos);
-        let sky_lights = Self::create_sky_lights(&sky_occlusions);
+        let sky_lights = Self::create_sky_lights(&tilemap, tiles.get_this(), &sky_occlusions);
 
         let infos = model_builder.build(pos);
 
@@ -291,11 +291,12 @@ impl VisualChunk
     pub fn recreate_lights(
         &mut self,
         tiles_factory: &TilesFactory,
+        tiles: &Chunk,
         sky_occlusions: &TileReader<ChunkSkyOcclusion>,
         pos: GlobalPos
     )
     {
-        self.sky_lights = tiles_factory.build_sky_lights(pos, Self::create_sky_lights(sky_occlusions));
+        self.sky_lights = tiles_factory.build_sky_lights(pos, Self::create_sky_lights(tiles_factory.tilemap(), tiles, sky_occlusions));
     }
 
     pub fn build(
@@ -329,7 +330,11 @@ impl VisualChunk
         self.draw_next[height]
     }
 
-    fn create_sky_lights(sky_occlusions: &TileReader<ChunkSkyOcclusion>) -> ChunkSlice<Box<[SkyLight]>>
+    fn create_sky_lights(
+        tilemap: &TileMap,
+        tiles: &Chunk,
+        sky_occlusions: &TileReader<ChunkSkyOcclusion>
+    ) -> ChunkSlice<Box<[SkyLight]>>
     {
         (0..CHUNK_SIZE).map(|z|
         {
@@ -339,7 +344,7 @@ impl VisualChunk
             }).map(|pos|
             {
                 let tile = sky_occlusions.tile(pos);
-                tile.this.then(||
+                (tilemap[tiles[pos]].transparent && tile.this).then(||
                 {
                     fn f(x: Option<bool>) -> bool { x.unwrap_or(true) }
 

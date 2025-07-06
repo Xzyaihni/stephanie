@@ -197,6 +197,14 @@ impl<T> TileReader<T>
         Self::new_with(chunks, local_pos, |chunk| chunk.clone().unwrap())
     }
 
+    pub fn this_tile<V>(&self, pos: ChunkLocal) -> V
+    where
+        V: Copy,
+        T: Index<ChunkLocal, Output=V>
+    {
+        self.0.this[pos]
+    }
+
     pub fn tile<V>(&self, pos: ChunkLocal) -> MaybeGroup<V>
     where
         V: Copy,
@@ -790,7 +798,12 @@ impl VisualOvermap
                     |overmap_chunk| overmap_chunk.occlusion.clone().unwrap()
                 );
 
-                self.chunks[local_pos].chunk.recreate_lights(&self.tiles_factory, &occlusion_reader, pos);
+                self.chunks[local_pos].chunk.recreate_lights(
+                    &self.tiles_factory,
+                    chunks[local_pos].as_deref().unwrap(),
+                    &occlusion_reader,
+                    pos
+                );
             });
         }
     }

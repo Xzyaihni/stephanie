@@ -50,7 +50,7 @@ use crate::common::{
 pub type ChunkSlice<T> = [T; CHUNK_SIZE];
 
 pub const OCCLUDER_PADDING: f32 = TILE_SIZE * 0.01;
-pub const LIGHT_PADDING: f32 = OCCLUDER_PADDING;
+pub const LIGHT_PADDING: f32 = OCCLUDER_PADDING / TILE_SIZE;
 
 #[derive(Debug, Clone, Copy)]
 pub struct OccluderInfo
