@@ -76,8 +76,7 @@ pub enum SkyLightKind
     Cap,
     OuterCorner,
     DoubleStraight,
-    Straight,
-    InnerCorner
+    Straight
 }
 
 #[derive(Debug)]
@@ -107,8 +106,6 @@ impl SkyLightValue
                 ], vec![
                     0, 3, 1,
                     0, 2, 3,
-                    2, 5, 3,
-                    2, 4, 5,
                     0, 4, 2,
                     0, 6, 4,
                     3, 5, 7,
@@ -132,8 +129,6 @@ impl SkyLightValue
                 ], vec![
                     0, 3, 1,
                     0, 2, 3,
-                    2, 5, 3,
-                    2, 4, 5,
                     3, 7, 1,
                     3, 5, 7,
                     4, 6, 5,
@@ -152,8 +147,6 @@ impl SkyLightValue
                     [0.0, 1.0 - FRACTION], [1.0 - FRACTION, 1.0 - FRACTION],
                     [0.0, HIGH], [HIGH, HIGH]
                 ], vec![
-                    0, 4, 1,
-                    0, 3, 4,
                     1, 4, 2,
                     3, 5, 4,
                     4, 5, 6,
@@ -174,8 +167,6 @@ impl SkyLightValue
                 ], vec![
                     0, 3, 1,
                     0, 2, 3,
-                    2, 5, 3,
-                    2, 4, 5,
                     4, 7, 5,
                     4, 6, 7
                 ], vec![
@@ -192,8 +183,6 @@ impl SkyLightValue
                     [0.0, 1.0 - FRACTION], [1.0, 1.0 - FRACTION],
                     [0.0, HIGH], [1.0, HIGH]
                 ], vec![
-                    0, 3, 1,
-                    0, 2, 3,
                     2, 5, 3,
                     2, 4, 5
                 ], vec![
@@ -201,10 +190,6 @@ impl SkyLightValue
                     0.0, 0.0,
                     1.0, 1.0
                 ])
-            },
-            SkyLightKind::InnerCorner =>
-            {
-                todo!()
             }
         };
 
