@@ -68,6 +68,7 @@ struct Tags
 struct ChunkPreviewer
 {
     camera: Camera,
+    controller: Controller<UiId>,
     tags: Tags,
     preview: Option<ChunkPreview>
 }
@@ -80,11 +81,13 @@ impl YanyaApp for ChunkPreviewer
     {
         let camera = Camera::new(info.aspect(), -1.0..1.0);
 
+        let controller = Controller::new(&info);
+
         let tags = Tags{height: 1, difficulty: 0.0};
 
         let preview = None;
 
-        Self{camera, tags, preview}
+        Self{camera, controller, tags, preview}
     }
 
     fn update(&mut self, partial_info: UpdateBuffersPartialInfo, dt: f32)
@@ -126,6 +129,7 @@ impl YanyaApp for ChunkPreviewer
 
     fn resize(&mut self, aspect: f32)
     {
+        self.camera.resize(aspect);
     }
 }
 

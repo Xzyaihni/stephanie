@@ -495,26 +495,9 @@ impl<T> UiList<T>
                 ..Default::default()
             });
 
-            if let Some(position) = scrollbar.mouse_position_mapped()
+            if let Some(value) = scrollbar_handle(info.controls, scrollbar, &scrollbar_id, false, info.mouse_taken)
             {
-                let position = position.y;
-
-                if scrollbar.is_mouse_inside() && !info.mouse_taken
-                {
-                    info.controls.poll_action_held(&scrollbar_id);
-                }
-
-                if info.controls.observe_action_held(&scrollbar_id)
-                {
-                    self.target_position = if bar_height > 0.99
-                    {
-                        0.0
-                    } else
-                    {
-                        let half_bar_height = bar_height / 2.0;
-                        (position.clamp(half_bar_height, 1.0 - half_bar_height) - half_bar_height) / (1.0 - bar_height)
-                    };
-                }
+                self.target_position = value;
             }
 
             scrollbar.update(id(UiListPart::BarPad), UiElement{
