@@ -1071,7 +1071,9 @@ impl<'a> PlayerContainer<'a>
 
     pub fn on_control(&mut self, state: ControlState, control: Control)
     {
-        if self.info.animation.is_some()
+        let is_animating = self.info.animation.is_some();
+
+        if state.is_down() && is_animating
         {
             return;
         }
@@ -1096,10 +1098,20 @@ impl<'a> PlayerContainer<'a>
             },
             Control::Poke =>
             {
+                if is_animating
+                {
+                    return;
+                }
+
                 self.character_action(CharacterAction::Poke{state: !state.to_bool()});
             },
             Control::Shoot =>
             {
+                if is_animating
+                {
+                    return;
+                }
+
                 let mut target = some_or_return!(self.mouse_position());
                 target.z = some_or_return!(self.player_position()).z;
 
@@ -1107,13 +1119,13 @@ impl<'a> PlayerContainer<'a>
             },
             Control::Interact =>
             {
-                self.info.interacted = state == ControlState::Pressed;
+                self.info.interacted = state.is_down();
             },
             Control::Sprint =>
             {
                 let movement_direction = self.movement_direction();
 
-                let is_sprinting = movement_direction.is_some() && state == ControlState::Pressed;
+                let is_sprinting = movement_direction.is_some() && state.is_down();
 
                 if let Some(character) = self.game_state.entities().character_mut(self.info.entity).as_mut()
                 {
