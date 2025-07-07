@@ -1036,7 +1036,7 @@ impl Character
     {
         self.attack_state = AttackState::None;
 
-        if !successful
+        if !successful && self.holding.is_some()
         {
             self.update_hands_rotation(combined_info);
         }
@@ -1079,8 +1079,18 @@ impl Character
         }
     }
 
+    fn can_poke(&self) -> bool
+    {
+        self.holding.is_some()
+    }
+
     fn poke_attack_start(&mut self, combined_info: CombinedInfo)
     {
+        if !self.can_poke()
+        {
+            return;
+        }
+
         if !self.can_attack(combined_info)
         {
             self.start_buffered(BufferedAction::Poke);
@@ -1104,6 +1114,11 @@ impl Character
     fn poke_attack(&mut self, combined_info: CombinedInfo) -> bool
     {
         self.stop_buffered(BufferedAction::Poke);
+
+        if !self.can_poke()
+        {
+            return false;
+        }
 
         if self.attack_state != AttackState::Poke
         {
