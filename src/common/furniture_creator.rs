@@ -51,6 +51,7 @@ pub fn create(
             ..Default::default()
         }.into()),
         inventory: Some(inventory),
+        saveable: Some(()),
         ..Default::default()
     }
 }

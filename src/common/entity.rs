@@ -1947,11 +1947,11 @@ macro_rules! define_entities_both
                 self.create_render_queue.borrow_mut().clear();
             }
 
-            pub fn push_message(&mut self, info: EntityInfo) -> Message
+            pub fn push_message(&mut self, info: EntityInfo) -> (Message, Entity)
             {
                 let entity = self.push_inner(false, info);
 
-                Message::EntitySet{entity, info: Box::new(self.info(entity))}
+                (Message::EntitySet{entity, info: Box::new(self.info(entity))}, entity)
             }
 
             pub fn remove_message(&mut self, entity: Entity) -> Message

@@ -19,7 +19,7 @@ use crate::{
     debug_config::*
 };
 
-use common::{
+use crate::common::{
     TileMap,
     DataInfos,
     ItemsInfo,
@@ -29,9 +29,9 @@ use common::{
     sender_loop::{waiting_loop, DELTA_TIME}
 };
 
-use server::Server;
+use crate::server::Server;
 
-use client::{
+use crate::client::{
     Client,
     ClientInitInfo,
     ClientInfo
@@ -40,11 +40,6 @@ use client::{
 use config::Config;
 
 mod config;
-
-pub mod common;
-
-pub mod server;
-pub mod client;
 
 
 pub struct ProgramShaders

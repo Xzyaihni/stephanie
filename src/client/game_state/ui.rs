@@ -53,7 +53,7 @@ use element::*;
 use controller::*;
 
 pub mod element;
-mod controller;
+pub mod controller;
 
 
 const TITLE_PADDING: f32 = 15.0;

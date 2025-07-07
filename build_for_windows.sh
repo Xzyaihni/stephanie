@@ -1,6 +1,6 @@
 #!/bin/sh
 set -e
-cargo rustc -r --target=x86_64-pc-windows-gnu -- -L ~/fromsource/libs -l lzma-5
+cargo rustc -r --target=x86_64-pc-windows-gnu --bin stephanie -- -L ~/fromsource/libs -l lzma-5
 
 mkdir -p target/winbuild/stephanie
 

@@ -3,10 +3,12 @@ use std::{env, sync::LazyLock};
 use serde::{Serialize, Deserialize};
 
 #[allow(unused_imports)]
-use crate::app::{
-    SlowModeTrue,
-    SlowModeFalse,
-    SlowModeTrait,
+use crate::{
+    app::{
+        SlowModeTrue,
+        SlowModeFalse,
+        SlowModeTrait,
+    },
     client::game_state::{
         DebugVisibilityTrue,
         DebugVisibilityFalse,

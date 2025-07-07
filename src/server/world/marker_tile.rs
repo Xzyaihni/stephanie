@@ -10,25 +10,33 @@ use strum::{EnumString, IntoStaticStr};
 
 use yanyaengine::Transform;
 
-use crate::common::{
-    rotate_point_z_3d,
-    lazy_transform::*,
-    render_info::*,
-    collider::*,
-    physics::*,
-    joint::*,
-    EntityInfo,
-    AnyEntities,
-    Occluder,
-    Parent,
-    Light,
-    entity::ServerEntities,
-    lisp::{self, *},
-    world::{
-        TILE_SIZE,
-        Pos3,
-        ChunkLocal,
-        TileRotation
+use crate::{
+    server::ConnectionsHandler,
+    common::{
+        furniture_creator,
+        enemy_creator,
+        rotate_point_z_3d,
+        some_or_return,
+        lazy_transform::*,
+        render_info::*,
+        collider::*,
+        physics::*,
+        joint::*,
+        EntityPasser,
+        Loot,
+        EnemiesInfo,
+        EntityInfo,
+        Occluder,
+        Parent,
+        Light,
+        entity::ServerEntities,
+        lisp::{self, *},
+        world::{
+            TILE_SIZE,
+            Pos3,
+            ChunkLocal,
+            TileRotation
+        }
     }
 };
 
@@ -58,7 +66,10 @@ impl MarkerTile
 {
     pub fn create(
         self,
+        writer: &mut ConnectionsHandler,
         entities: &mut ServerEntities,
+        enemies: &EnemiesInfo,
+        loot: &Loot,
         chunk_pos: Pos3<f32>
     )
     {
@@ -67,11 +78,35 @@ impl MarkerTile
         let half_tile = TILE_SIZE / 2.0;
         let position = Vector3::from(pos) + Vector3::repeat(half_tile);
 
+        let mut add_entity = |info|
+        {
+            let (message, entity) = entities.push_message(info);
+
+            writer.send_message(message);
+
+            entity
+        };
+
         match self.kind
         {
+            MarkerKind::Enemy{} =>
+            {
+                let picked = some_or_return!(enemies.weighted_random(1.0));
+
+                add_entity(enemy_creator::create(
+                    enemies,
+                    loot,
+                    picked,
+                    position
+                ));
+            },
+            MarkerKind::Furniture{} =>
+            {
+                add_entity(furniture_creator::create(loot, position));
+            },
             MarkerKind::Light{strength, offset} =>
             {
-                entities.push(false, EntityInfo{
+                add_entity(EntityInfo{
                     transform: Some(Transform{
                         position: position + offset,
                         scale: Vector3::repeat(TILE_SIZE),
@@ -94,7 +129,7 @@ impl MarkerTile
                     rotation
                 );
 
-                let hinge = entities.push(false, EntityInfo{
+                let hinge = add_entity(EntityInfo{
                     transform: Some(Transform{
                         position,
                         scale: Vector3::repeat(TILE_SIZE),
@@ -110,7 +145,7 @@ impl MarkerTile
                     <&str>::from(material).to_lowercase()
                 );
 
-                entities.push(false, EntityInfo{
+                add_entity(EntityInfo{
                     lazy_transform: Some(LazyTransformInfo{
                         scaling: Scaling::Ignore,
                         transform: Transform{
@@ -164,6 +199,8 @@ impl MarkerTile
 #[derive(Debug, Clone)]
 pub enum MarkerKind
 {
+    Enemy{},
+    Furniture{},
     Door{rotation: TileRotation, material: DoorMaterial, width: u32},
     Light{strength: f32, offset: Vector3<f32>}
 }
@@ -222,6 +259,14 @@ impl MarkerKind
                 let offset = next_position(next_value("").ok())?;
 
                 Ok(Self::Light{strength, offset})
+            },
+            "enemy" =>
+            {
+                Ok(Self::Enemy{})
+            },
+            "furniture" =>
+            {
+                Ok(Self::Furniture{})
             },
             x => Err(lisp::Error::Custom(format!("unknown marker id `{x}`")))
         }

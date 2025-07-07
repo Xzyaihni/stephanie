@@ -19,7 +19,7 @@ use yanyaengine::{
     ShadersGroup
 };
 
-use crate::{
+use stephanie::{
     app::ProgramShaders,
     common::{
         OccludingVertex,

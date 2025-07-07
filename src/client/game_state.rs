@@ -36,7 +36,7 @@ use yanyaengine::{
 
 use crate::{
     debug_config::*,
-    ProgramShaders,
+    app::ProgramShaders,
     client::{CachedIds, RenderCreateInfo},
     common::{
         some_or_return,

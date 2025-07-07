@@ -17,7 +17,8 @@ use vulkano::{
 
 use yanyaengine::Rendering;
 
-use crate::{DARKEN, SHADOW_COLOR, BACKGROUND_COLOR, common::lerp};
+use super::shaders::{DARKEN, SHADOW_COLOR};
+use stephanie::{BACKGROUND_COLOR, common::lerp};
 
 
 pub fn create() -> Rendering<()>

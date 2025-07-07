@@ -18,38 +18,16 @@
 // consistency????????
 #![allow(clippy::excessive_precision)]
 
-use std::{process, fmt::Display};
-
-use nalgebra::Vector3;
 
 use yanyaengine::App;
 
-pub use app::{common, server, client, ProgramShaders};
+use stephanie::app::{self, AppInfo};
 
-use app::AppInfo;
+pub use stephanie::common::{debug_env, is_debug_env};
 
-pub use common::{debug_env, is_debug_env};
-
-pub use shaders::{DARKEN, SHADOW_COLOR};
-
-pub mod debug_config;
-
-mod app;
 mod rendering;
 mod shaders;
 
-
-pub const LOG_PATH: &str = "log.txt";
-pub const LONGEST_FRAME: f64 = 1.0 / 20.0;
-
-pub const BACKGROUND_COLOR: Vector3<f32> = Vector3::new(0.831, 0.941, 0.988);
-
-pub fn complain(message: impl Display) -> !
-{
-    eprintln!("{message}");
-
-    process::exit(1)
-}
 
 /*#[link(name = "floathelper")]
 extern "C"

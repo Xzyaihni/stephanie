@@ -51,6 +51,27 @@
 
         (define wall-material (tile 'concrete))
 
+        (define (add-windows x)
+            (this-tile
+                (make-point x 3)
+                (tile 'glass))
+            (this-tile
+                (make-point x (- size-y 4))
+                (tile 'glass)))
+
+        (define (door x y)
+            (this-tile
+                (make-point x y)
+		(single-marker (list 'door 'up 'metal 1))))
+
+        (define (room-side flip)
+            (define (x-of x)
+                (if flip
+                    (- (- size-x 1) x)
+                    x))
+            (add-windows (x-of 1))
+            (door (x-of 6) 11))
+
         ; outer walls
         (rectangle-outline
             this-chunk
@@ -92,24 +113,8 @@
 	(maybe-light (make-point 7 5) 0.89 '(0.5 0.0 0.0))
 	(maybe-light (make-point 7 10) 0.89 '(0.5 0.0 0.0))
 
-        (define (door x)
-            (this-tile
-                (make-point x 11)
-		(single-marker (list 'door 'up 'metal 1))))
-
-        (door 6)
-        (door 9)
-
-        (define (add-windows x)
-            (this-tile
-                (make-point x 3)
-                (tile 'glass))
-            (this-tile
-                (make-point x (- size-y 4))
-                (tile 'glass)))
-
-        (add-windows 1)
-        (add-windows (- size-x 2))
+        (room-side #f)
+        (room-side #t)
 
         this-chunk)
 

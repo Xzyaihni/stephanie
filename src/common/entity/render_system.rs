@@ -4,7 +4,7 @@ use yanyaengine::{game_object::*, SolidObject};
 
 use crate::{
     debug_config::*,
-    ProgramShaders,
+    app::ProgramShaders,
     client::{Ui, VisibilityChecker},
     common::{
         render_info::*,

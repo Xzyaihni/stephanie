@@ -78,6 +78,7 @@ pub fn create(
         character: Some(character),
         named: Some(name),
         enemy: Some(Enemy::new(enemies_info, id)),
+        saveable: Some(()),
         ..Default::default()
     }
 }

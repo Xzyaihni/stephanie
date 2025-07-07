@@ -8,15 +8,11 @@ use std::{
 
 use parking_lot::RwLock;
 
-use nalgebra::Vector3;
-
 use crate::{
     debug_config::*,
     server::ConnectionsHandler,
     common::{
         self,
-        furniture_creator,
-        enemy_creator,
         Loot,
         TileMap,
         WorldChunkSaver,
@@ -35,14 +31,11 @@ use crate::{
         entity::ServerEntities,
         message::Message,
         world::{
-            CHUNK_SIZE,
-            TILE_SIZE,
             CLIENT_OVERMAP_SIZE,
             CLIENT_OVERMAP_SIZE_Z,
             TilePos,
             Tile,
             Chunk,
-            ChunkLocal,
             LocalPos,
             GlobalPos,
             Pos3,
@@ -370,121 +363,6 @@ impl World
         });
     }
 
-    fn create_entities(
-        &self,
-        container: &mut ServerEntities,
-        entities: impl Iterator<Item=EntityInfo>
-    )
-    {
-        let mut writer = self.message_handler.write();
-
-        entities.for_each(|entity_info|
-        {
-            let message = container.push_message(entity_info);
-
-            writer.send_message(message);
-        });
-    }
-
-    fn add_on_ground<'a, F: Fn(Vector3<f32>) -> Option<EntityInfo>>(
-        chunk_pos: Pos3<f32>,
-        chunk: &'a Chunk,
-        amount: usize,
-        f: F
-    ) -> impl Iterator<Item=EntityInfo> + use<'a, F>
-    {
-        (0..amount)
-            .map(|_|
-            {
-                ChunkLocal::new(
-                    fastrand::usize(0..CHUNK_SIZE),
-                    fastrand::usize(0..CHUNK_SIZE),
-                    fastrand::usize(0..CHUNK_SIZE - 1)
-                )
-            })
-            .filter_map(|pos|
-            {
-                let mut current_pos = pos;
-
-                let is_ground = |p|
-                {
-                    !chunk[p].is_none()
-                };
-
-                loop
-                {
-                    if is_ground(current_pos)
-                    {
-                        return Some(current_pos);
-                    }
-
-                    if current_pos.pos().z == 0
-                    {
-                        return None;
-                    }
-
-                    let new_pos = *current_pos.pos();
-                    let new_pos = Pos3{z: new_pos.z - 1, ..new_pos};
-
-                    current_pos = ChunkLocal::from(new_pos);
-                }
-            })
-            .filter_map(move |pos|
-            {
-                let above = ChunkLocal::from(*pos.pos() + Pos3{x: 0, y: 0, z: 1});
-                let has_space = chunk[above].is_none();
-
-                has_space.then(||
-                {
-                    let half_tile = TILE_SIZE / 2.0;
-                    let pos = chunk_pos + above.pos().map(|x| x as f32 * TILE_SIZE) + half_tile;
-
-                    f(pos.into())
-                }).flatten()
-            })
-    }
-
-    fn add_entities(
-        &mut self,
-        container: &mut ServerEntities,
-        chunk_pos: Pos3<f32>,
-        chunk: &mut Chunk
-    )
-    {
-        if DebugConfig::is_enabled(DebugTool::NoSpawns)
-        {
-            return;
-        }
-
-        let spawns = fastrand::usize(0..3);
-        let crates = fastrand::usize(0..2);
-
-        let entities = Self::add_on_ground(chunk_pos, chunk, spawns, |pos|
-        {
-            let picked = self.enemies_info.weighted_random(1.0)?;
-
-            Some(enemy_creator::create(
-                &self.enemies_info,
-                &self.loot,
-                picked,
-                pos
-            ))
-        }).chain(Self::add_on_ground(chunk_pos, chunk, crates, |pos|
-        {
-            Some(furniture_creator::create(&self.loot, pos))
-        })).map(|mut entity_info|
-        {
-            if entity_info.saveable.is_none()
-            {
-                entity_info.saveable = Some(());
-            }
-
-            entity_info
-        });
-
-        self.create_entities(container, entities);
-    }
-
     fn update(
         &mut self,
         container: &mut ServerEntities
@@ -521,14 +399,19 @@ impl World
         self.chunk_saver.load(pos).unwrap_or_else(||
         {
             let chunk_pos = pos.into();
-            let mut chunk = self.overmaps.borrow_mut().get_mut(&id)
+            let chunk = self.overmaps.borrow_mut().get_mut(&id)
                 .expect("id must be valid")
                 .generate_chunk(pos, |marker|
                 {
-                    marker.create(container, chunk_pos);
+                    if DebugConfig::is_enabled(DebugTool::NoSpawns)
+                    {
+                        return;
+                    }
+
+                    let mut writer = self.message_handler.write();
+                    marker.create(&mut writer, container, &self.enemies_info, &self.loot, chunk_pos);
                 });
 
-            self.add_entities(container, chunk_pos, &mut chunk);
             self.client_indexers.iter_mut().for_each(|(_, indexer)|
             {
                 if let Some(pos) = indexer.indexer.to_local(pos)
