@@ -21,13 +21,10 @@ use yanyaengine::{
     game_object::*
 };
 
-use crate::{
-    client::RenderCreateInfo,
-    common::{
-        render_info::*,
-        colors::Lcha,
-        EaseOut
-    }
+use crate::common::{
+    render_info::*,
+    colors::Lcha,
+    EaseOut
 };
 
 use super::super::element::*;
@@ -246,7 +243,7 @@ struct UiElementCached
 impl UiElementCached
 {
     fn from_element<Id>(
-        create_info: &mut RenderCreateInfo,
+        create_info: &mut UpdateBuffersInfo,
         parent_fraction: &Fractions,
         parent_deferred: Option<&UiDeferredInfo<Id>>,
         scissor: Option<UiScissor>,
@@ -256,7 +253,7 @@ impl UiElementCached
     {
         let last_scissor = scissor;
         let scissor = Self::calculate_scissor(
-            Vector2::from(create_info.object_info.partial.size),
+            Vector2::from(create_info.partial.size),
             scissor
         );
 
@@ -453,7 +450,7 @@ impl UiElementCached
     #[allow(clippy::too_many_arguments)]
     fn update<Id>(
         &mut self,
-        create_info: &mut RenderCreateInfo,
+        create_info: &mut UpdateBuffersInfo,
         parent_fraction: &Fractions,
         parent_deferred: Option<&UiDeferredInfo<Id>>,
         scissor: Option<UiScissor>,
@@ -494,7 +491,7 @@ impl UiElementCached
             parent_fraction,
             scissor,
             deferred,
-            Vector2::from(create_info.object_info.partial.size)
+            Vector2::from(create_info.partial.size)
         );
 
         if self.object.is_none()
@@ -1370,7 +1367,7 @@ impl<Id: Idable> Controller<Id>
 
     pub fn create_renders(
         &mut self,
-        create_info: &mut RenderCreateInfo,
+        create_info: &mut UpdateBuffersInfo,
         dt: f32
     )
     {

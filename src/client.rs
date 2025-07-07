@@ -15,9 +15,6 @@ use image::error::ImageError;
 
 use yanyaengine::{
     ElementState,
-    DefaultModel,
-    ModelId,
-    Assets,
     camera::Camera,
     game_object::*
 };
@@ -62,28 +59,6 @@ pub mod tiles_factory;
 
 pub mod world_receiver;
 
-
-#[derive(Debug, Clone, Copy)]
-pub struct CachedIds
-{
-    pub square: ModelId
-}
-
-impl CachedIds
-{
-    pub fn new(assets: &Assets) -> Self
-    {
-        Self{
-            square: assets.default_model(DefaultModel::Square)
-        }
-    }
-}
-
-pub struct RenderCreateInfo<'a, 'b>
-{
-    pub ids: CachedIds,
-    pub object_info: &'a mut ObjectCreateInfo<'b>
-}
 
 pub struct ClientInitInfo
 {

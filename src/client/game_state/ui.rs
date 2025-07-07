@@ -17,16 +17,13 @@ use yanyaengine::{
 };
 
 use crate::{
-    client::{
-        RenderCreateInfo,
-        game_state::{
-            GameState,
-            UiAnatomyLocations,
-            UiControls,
-            UiEvent,
-            GameUiEvent,
-            UiReceiver
-        }
+    client::game_state::{
+        GameState,
+        UiAnatomyLocations,
+        UiControls,
+        UiEvent,
+        GameUiEvent,
+        UiReceiver
     },
     common::{
         some_or_return,
@@ -2073,7 +2070,7 @@ impl Ui
 
     pub fn create_renders(
         &mut self,
-        create_info: &mut RenderCreateInfo,
+        create_info: &mut UpdateBuffersInfo,
         dt: f32
     )
     {

@@ -8,11 +8,10 @@ use std::{
 
 use serde::{Serialize, Deserialize};
 
-use yanyaengine::Transform;
+use yanyaengine::{game_object::*, Transform};
 
 use crate::{
     server,
-    client::RenderCreateInfo,
     common::{
         some_or_return,
         write_log,
@@ -177,7 +176,7 @@ pub trait ServerToClient<T>
     fn server_to_client(
         self,
         transform: impl FnOnce() -> Transform,
-        create_info: &mut RenderCreateInfo
+        create_info: &mut UpdateBuffersInfo
     ) -> T;
 }
 
@@ -1573,7 +1572,7 @@ macro_rules! define_entities_both
                 )+
             }
 
-            pub fn create_render_queued(&mut self, create_info: &mut RenderCreateInfo)
+            pub fn create_render_queued(&mut self, create_info: &mut UpdateBuffersInfo)
             {
                 let render_queue = {
                     let mut queue = self.create_render_queue.borrow_mut();
@@ -1643,7 +1642,7 @@ macro_rules! define_entities_both
                             {
                                 if let Some(mut render) = this.render_mut(entity)
                                 {
-                                    let size = create_info.object_info.partial.size;
+                                    let size = create_info.partial.size;
                                     let scissor = scissor.into_global(size);
 
                                     render.scissor = Some(scissor);
@@ -1673,7 +1672,7 @@ macro_rules! define_entities_both
 
             pub fn create_queued(
                 &mut self,
-                create_info: &mut RenderCreateInfo
+                create_info: &mut UpdateBuffersInfo
             )
             {
                 self.lazy_set_common(create_info);
@@ -1855,7 +1854,7 @@ macro_rules! define_entities_both
             pub fn update_characters(
                 &mut self,
                 partial: PartialCombinedInfo,
-                create_info: &mut RenderCreateInfo,
+                create_info: &mut UpdateBuffersInfo,
                 dt: f32
             )
             {
@@ -2056,7 +2055,7 @@ macro_rules! define_entities
                 ) -> $default_type { value }
             }
 
-            impl ServerClientConverter<ClientEntities, $default_type, $default_type> for RenderCreateInfo<'_, '_>
+            impl ServerClientConverter<ClientEntities, $default_type, $default_type> for UpdateBuffersInfo<'_>
             {
                 fn convert(
                     &mut self,
@@ -2078,7 +2077,7 @@ macro_rules! define_entities
                 ) -> $side_default_type { value }
             }
 
-            impl ServerClientConverter<ClientEntities, $side_default_type, $client_type> for RenderCreateInfo<'_, '_>
+            impl ServerClientConverter<ClientEntities, $side_default_type, $client_type> for UpdateBuffersInfo<'_>
             {
                 fn convert(
                     &mut self,
@@ -2252,7 +2251,7 @@ macro_rules! define_entities
             pub fn from_server(
                 entities: &ClientEntities,
                 entity: Entity,
-                create_info: &mut RenderCreateInfo,
+                create_info: &mut UpdateBuffersInfo,
                 info: EntityInfo
             ) -> Self
             {
@@ -2292,7 +2291,7 @@ macro_rules! define_entities
         {
             pub fn handle_message(
                 &mut self,
-                create_info: &mut RenderCreateInfo,
+                create_info: &mut UpdateBuffersInfo,
                 message: Message
             ) -> Option<Message>
             {

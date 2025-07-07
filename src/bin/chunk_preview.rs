@@ -94,6 +94,8 @@ impl YanyaApp for ChunkPreviewer
     {
         let mut info = partial_info.to_full(&self.camera);
 
+        self.controller.create_renders(&mut info, dt);
+
         let recreate_preview = self.preview.is_none();
 
         if recreate_preview
@@ -107,6 +109,8 @@ impl YanyaApp for ChunkPreviewer
         {
             preview.tiles.update_buffers(&mut info);
         }
+
+        self.controller.update_buffers(&mut info);
     }
 
     fn input(&mut self, control: Control)
@@ -125,6 +129,8 @@ impl YanyaApp for ChunkPreviewer
 
             preview.tiles.draw(&mut info);
         }
+
+        self.controller.draw(&mut info);
     }
 
     fn resize(&mut self, aspect: f32)

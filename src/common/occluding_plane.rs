@@ -18,7 +18,7 @@ use yanyaengine::{
 };
 
 use crate::{
-    client::{VisibilityChecker, RenderCreateInfo},
+    client::VisibilityChecker,
     common::{rotate_point_z_3d, line_left_distance, line_on_left, ServerToClient, world::TILE_SIZE}
 };
 
@@ -160,12 +160,12 @@ impl ServerToClient<ClientOccluder> for Occluder
     fn server_to_client(
         self,
         transform: impl FnOnce() -> Transform,
-        create_info: &mut RenderCreateInfo
+        create_info: &mut UpdateBuffersInfo
     ) -> ClientOccluder
     {
         let create_plane = |(transform, reverse)|
         {
-            let inner = create_info.object_info.partial.object_factory.create_occluding(transform, reverse);
+            let inner = create_info.partial.object_factory.create_occluding(transform, reverse);
 
             OccludingPlane(inner)
         };

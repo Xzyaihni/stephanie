@@ -29,6 +29,7 @@ use yanyaengine::{
     TextureId,
     SolidObject,
     DefaultTexture,
+    DefaultModel,
     object::{texture::SimpleImage, Texture},
     camera::Camera,
     game_object::*
@@ -37,7 +38,6 @@ use yanyaengine::{
 use crate::{
     debug_config::*,
     app::ProgramShaders,
-    client::{CachedIds, RenderCreateInfo},
     common::{
         some_or_return,
         sender_loop,
@@ -163,7 +163,7 @@ impl ClientEntitiesContainer
 
     pub fn handle_message(
         &mut self,
-        create_info: &mut RenderCreateInfo,
+        create_info: &mut UpdateBuffersInfo,
         message: Message
     ) -> Option<Message>
     {
@@ -628,7 +628,6 @@ pub struct GameState
     pub connected_and_ready: bool,
     pub world: World,
     screen_object: SolidObject,
-    cached_ids: CachedIds,
     ui_camera: Camera,
     shaders: ProgramShaders,
     host: bool,
@@ -731,12 +730,14 @@ impl GameState
 
         let assets = info.object_info.partial.assets.clone();
 
-        let cached_ids = CachedIds::new(&assets.lock());
+        let screen_object = {
+            let assets = assets.lock();
 
-        let screen_object = info.object_info.partial.object_factory.create_solid(
-            assets.lock().model(cached_ids.square).clone(),
-            Transform{scale: Vector3::repeat(2.0), ..Default::default()}
-        );
+            info.object_info.partial.object_factory.create_solid(
+                assets.model(assets.default_model(DefaultModel::Square)).clone(),
+                Transform{scale: Vector3::repeat(2.0), ..Default::default()}
+            )
+        };
 
         let anatomy_locations = |object_info: &mut ObjectCreateInfo, name: &str| -> UiAnatomyLocations
         {
@@ -785,7 +786,6 @@ impl GameState
             controls,
             running: true,
             screen_object,
-            cached_ids,
             ui_camera,
             shaders: info.shaders,
             world,
@@ -871,7 +871,7 @@ impl GameState
         self.entities.main_player()
     }
 
-    pub fn process_messages(&mut self, create_info: &mut RenderCreateInfo)
+    pub fn process_messages(&mut self, create_info: &mut UpdateBuffersInfo)
     {
         loop
         {
@@ -895,7 +895,7 @@ impl GameState
         }
     }
 
-    fn process_message_inner(&mut self, create_info: &mut RenderCreateInfo, message: Message)
+    fn process_message_inner(&mut self, create_info: &mut UpdateBuffersInfo, message: Message)
     {
         if DebugConfig::is_enabled(DebugTool::ShowMessages)
         {
@@ -1067,28 +1067,18 @@ impl GameState
             self.world.debug_tile_occlusion(&self.entities.entities);
         }
 
-        let mut create_info = RenderCreateInfo{
-            ids: self.cached_ids,
-            object_info: info
-        };
-
-        self.entities.entities.create_render_queued(&mut create_info);
+        self.entities.entities.create_render_queued(info);
 
         self.entities.update_buffers(&visibility, info, &caster, &mut self.world);
 
         {
             info.update_camera(&self.ui_camera);
 
-            let mut create_info = RenderCreateInfo{
-                ids: self.cached_ids,
-                object_info: info
-            };
-
             let mut ui = self.ui.borrow_mut();
 
             if let Some(dt) = self.dt
             {
-                ui.create_renders(&mut create_info, dt);
+                ui.create_renders(info, dt);
             }
 
             ui.update_buffers(info);
@@ -1200,14 +1190,9 @@ impl GameState
     {
         self.dt = Some(dt);
 
-        let mut create_info = RenderCreateInfo{
-            ids: self.cached_ids,
-            object_info
-        };
+        self.process_messages(object_info);
 
-        self.process_messages(&mut create_info);
-
-        let assets = create_info.object_info.partial.assets.clone();
+        let assets = object_info.partial.assets.clone();
         let partial = PartialCombinedInfo{
             world: &self.world,
             assets: &assets,
@@ -1219,13 +1204,13 @@ impl GameState
 
         self.entities.entities.update_characters(
             partial,
-            &mut create_info,
+            object_info,
             dt
         );
 
         self.entities.entities.update_watchers(dt);
 
-        self.entities.entities.create_queued(&mut create_info);
+        self.entities.entities.create_queued(object_info);
         self.entities.entities.handle_on_change();
 
         if self.rare_timer <= 0.0

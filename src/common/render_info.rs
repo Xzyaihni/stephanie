@@ -29,7 +29,7 @@ pub use yanyaengine::{TextCreateInfo, object::model::Uvs};
 pub use vulkano::pipeline::graphics::viewport::Scissor as VulkanoScissor;
 
 use crate::{
-    client::{RenderCreateInfo, VisibilityChecker},
+    client::VisibilityChecker,
     common::{colors::Lcha, ServerToClient}
 };
 
@@ -178,22 +178,22 @@ impl RenderObjectKind
     pub fn into_client(
         self,
         transform: Transform,
-        create_info: &mut RenderCreateInfo
+        create_info: &mut UpdateBuffersInfo
     ) -> Option<ClientRenderObject>
     {
-        let assets = create_info.object_info.partial.assets.lock();
+        let assets = create_info.partial.assets.lock();
 
         match self
         {
             Self::TextureId{id} =>
             {
                 let info = ObjectInfo{
-                    model: assets.model(create_info.ids.square).clone(),
+                    model: assets.model(assets.default_model(DefaultModel::Square)).clone(),
                     texture: assets.texture(id).clone(),
                     transform
                 };
 
-                let object = create_info.object_info.partial.object_factory.create(info);
+                let object = create_info.partial.object_factory.create(info);
 
                 Some(ClientRenderObject{
                     kind: ClientObjectType::Normal(object)
@@ -208,7 +208,7 @@ impl RenderObjectKind
             },
             Self::Text{ref text, font_size} =>
             {
-                let object = create_info.object_info.partial.builder_wrapper.create_text(
+                let object = create_info.partial.builder_wrapper.create_text(
                     TextCreateInfo{
                         transform,
                         inner: TextInfo{
@@ -237,7 +237,7 @@ impl RenderObject
     pub fn into_client(
         self,
         transform: Transform,
-        create_info: &mut RenderCreateInfo
+        create_info: &mut UpdateBuffersInfo
     ) -> Option<ClientRenderObject>
     {
         self.kind.into_client(transform, create_info)
@@ -460,7 +460,7 @@ impl ServerToClient<ClientRenderInfo> for RenderInfo
     fn server_to_client(
         self,
         transform: impl FnOnce() -> Transform,
-        create_info: &mut RenderCreateInfo
+        create_info: &mut UpdateBuffersInfo
     ) -> ClientRenderInfo
     {
         let transform = transform();
@@ -471,7 +471,7 @@ impl ServerToClient<ClientRenderInfo> for RenderInfo
 
         let scissor = self.scissor.map(|x|
         {
-            x.into_global(create_info.object_info.partial.size)
+            x.into_global(create_info.partial.size)
         });
 
         let mut this = ClientRenderInfo{
@@ -552,12 +552,12 @@ impl ClientRenderInfo
 
     pub fn set_sprite(
         &mut self,
-        create_info: &mut RenderCreateInfo,
+        create_info: &mut UpdateBuffersInfo,
         transform: Option<&Transform>,
         texture: TextureId
     )
     {
-        let object_info = &mut create_info.object_info.partial;
+        let object_info = &mut create_info.partial;
         let assets = object_info.assets.lock();
 
         let texture = assets.texture(texture).clone();

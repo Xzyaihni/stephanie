@@ -9,6 +9,7 @@ use nalgebra::Vector3;
 use yanyaengine::{
     game_object::*,
     object::Model,
+    DefaultModel,
     ObjectFactory,
     TransformContainer,
     Transform,
@@ -17,7 +18,7 @@ use yanyaengine::{
 };
 
 use crate::{
-    client::{VisibilityChecker, RenderCreateInfo},
+    client::VisibilityChecker,
     common::{Pos3, Entity, ServerToClient, world::TilePos}
 };
 
@@ -138,16 +139,16 @@ impl ServerToClient<ClientLight> for Light
     fn server_to_client(
         self,
         transform: impl FnOnce() -> Transform,
-        create_info: &mut RenderCreateInfo
+        create_info: &mut UpdateBuffersInfo
     ) -> ClientLight
     {
-        let assets = create_info.object_info.partial.assets.lock();
-        let object_factory = &create_info.object_info.partial.object_factory;
+        let assets = create_info.partial.assets.lock();
+        let object_factory = &create_info.partial.object_factory;
 
         self.build(
             transform().position,
             object_factory,
-            assets.model(create_info.ids.square).clone()
+            assets.model(assets.default_model(DefaultModel::Square)).clone()
         )
     }
 }
