@@ -32,6 +32,7 @@ use yanyaengine::{
 
 use stephanie::{
     server::world::world_generator::{
+        ChunkRulesGroup,
         ChunkGenerator,
         ConditionalInfo
     },
@@ -199,6 +200,7 @@ struct ChunkPreviewer
 {
     shaders: DrawShaders,
     tilemap: TileMap,
+    rules: ChunkRulesGroup,
     memory: LispMemory,
     controls: ControlsController<UiId>,
     camera: Camera,
@@ -248,7 +250,7 @@ impl ChunkPreviewer
         match Lisp::new_with_config(config, &[&standard_code, &default_code, &chunk_code])
         {
             Ok(lisp) => self.chunk_code = Some(lisp),
-            Err(_err) => ()
+            Err(err) => eprintln!("error compiling {}: {err}", &self.preview_tags.name)
         }
     }
 }
@@ -270,6 +272,11 @@ impl YanyaApp for ChunkPreviewer
             panic!("error creating tilemap: {err}")
         }).tilemap;
 
+        let rules = ChunkRulesGroup::load(PathBuf::from("world_generation/")).unwrap_or_else(|err|
+        {
+            panic!("error creating chunk_rules: {err}")
+        });
+
         let primitives = Rc::new(ChunkGenerator::default_primitives(&tilemap));
 
         let memory = LispMemory::new(primitives, 256, 1 << 13);
@@ -287,6 +294,7 @@ impl YanyaApp for ChunkPreviewer
         Self{
             shaders: app_info.unwrap(),
             tilemap,
+            rules,
             memory,
             controls,
             camera,
@@ -442,28 +450,35 @@ impl YanyaApp for ChunkPreviewer
 
                 let tiles = ChunkGenerator::generate_chunk_with(
                     &chunk_info,
+                    &self.rules,
                     chunk_code,
-                    &self.preview_tags.name,
                     &mut |_marker|
                     {
                     }
                 );
 
-                self.preview = Some(ChunkPreview{
-                    tiles: tiles.flat_slice_iter(0).filter_map(|(pos, tile)|
+                match tiles
+                {
+                    Ok(x) =>
                     {
-                        let pos = pos.pos;
+                        self.preview = Some(ChunkPreview{
+                            tiles: x.flat_slice_iter(0).filter_map(|(pos, tile)|
+                            {
+                                let pos = pos.pos;
 
-                        if tile.is_none()
-                        {
-                            return None;
-                        }
+                                if tile.is_none()
+                                {
+                                    return None;
+                                }
 
-                        let name = &self.tilemap.info(*tile).name;
+                                let name = &self.tilemap.info(*tile).name;
 
-                        Some(new_tile(&info.partial, name, Vector2::new(pos.x, pos.y)))
-                    }).collect()
-                });
+                                Some(new_tile(&info.partial, name, Vector2::new(pos.x, pos.y)))
+                            }).collect()
+                        });
+                    },
+                    Err(err) => eprintln!("{err} in ({})", &self.preview_tags.name)
+                }
             }
 
             self.update_timer = 0.5;

@@ -1,7 +1,7 @@
 use std::{
     fs,
     io,
-    fmt::{self, Debug},
+    fmt::{self, Display, Debug},
     str::FromStr,
     rc::Rc,
     ops::{Index, IndexMut},
@@ -45,11 +45,12 @@ use super::{
     server_overmap::WorldPlane
 };
 
-use chunk_rules::{ChunkRulesGroup, ChunkRules};
+use chunk_rules::ChunkRules;
 
 pub use chunk_rules::{
     WORLD_CHUNK_SIZE,
     CHUNK_RATIO,
+    ChunkRulesGroup,
     ConditionalInfo,
     WorldChunk,
     WorldChunkId,
@@ -167,6 +168,30 @@ pub fn chunk_difficulty(pos: GlobalPos) -> f32
     p.z = 0.0;
 
     p.magnitude() * 0.01
+}
+
+pub enum ChunkGenerationError
+{
+    SymbolAllocation(String, lisp::Error),
+    TagSymbolAllocation(lisp::Error),
+    LispRuntime(lisp::ErrorPos),
+    WrongOutput(lisp::Error),
+    Tile(lisp::Error)
+}
+
+impl Display for ChunkGenerationError
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
+    {
+        match self
+        {
+            Self::SymbolAllocation(name, err) => write!(f, "error allocating {name} symbol: {err}"),
+            Self::TagSymbolAllocation(err) => write!(f, "error allocating tag symbol: {err}"),
+            Self::LispRuntime(err) => write!(f, "{err}"),
+            Self::WrongOutput(err) => write!(f, "expected vector: {err}"),
+            Self::Tile(err) => write!(f, "error getting tile: {err}")
+        }
+    }
 }
 
 pub struct ChunkGenerator
@@ -297,35 +322,42 @@ impl ChunkGenerator
 
     pub fn generate_chunk_with(
         info: &ConditionalInfo,
+        rules: &ChunkRulesGroup,
         this_chunk: &mut Lisp,
-        chunk_name: &str,
         marker: &mut impl FnMut(MarkerTile)
-    ) -> ChunksContainer<Tile>
+    ) -> Result<ChunksContainer<Tile>, ChunkGenerationError>
     {
         let tiles = {
             let mut define_symbol = |name, value|
             {
-                this_chunk.memory_mut().define(name, value).unwrap_or_else(|err|
+                this_chunk.memory_mut().define(name, value).map_err(|err|
                 {
-                    panic!("error allocating {name} symbol: {err}")
-                });
+                    ChunkGenerationError::SymbolAllocation(name.to_owned(), err)
+                })
             };
 
-            define_symbol("height", info.height.into());
-            define_symbol("difficulty", info.difficulty.into());
+            define_symbol("height", info.height.into())?;
+            define_symbol("difficulty", info.difficulty.into())?;
+
+            info.tags.iter().try_for_each(|tag|
+            {
+                tag.define(rules.name_mappings(), this_chunk.memory_mut())
+            }).map_err(|err|
+            {
+                ChunkGenerationError::TagSymbolAllocation(err)
+            })?;
 
             let (memory, value): (LispMemory, LispValue) = this_chunk.run()
-                .unwrap_or_else(|err|
+                .map_err(|err|
                 {
-                    panic!("runtime lisp error: {err} (in {chunk_name})")
-                })
+                    ChunkGenerationError::LispRuntime(err)
+                })?
                 .destructure();
 
-            let output = value.as_vector_ref(&memory)
-                .unwrap_or_else(|err|
-                {
-                    panic!("expected vector: {err} (in {chunk_name})")
-                });
+            let output = value.as_vector_ref(&memory).map_err(|err|
+            {
+                ChunkGenerationError::WrongOutput(err)
+            })?;
 
             output.iter().enumerate().map(|(index, x)|
             {
@@ -350,13 +382,13 @@ impl ChunkGenerator
                 {
                     Tile::from_lisp_value(x)
                 }
-            }).collect::<Result<Box<[Tile]>, _>>().unwrap_or_else(|err|
+            }).collect::<Result<Box<[Tile]>, _>>().map_err(|err|
             {
-                panic!("error getting tile: {err} (in {chunk_name})")
-            })
+                ChunkGenerationError::Tile(err)
+            })?
         };
 
-        ChunksContainer::from_raw(WORLD_CHUNK_SIZE, tiles)
+        Ok(ChunksContainer::from_raw(WORLD_CHUNK_SIZE, tiles))
     }
 
     pub fn generate_chunk(
@@ -372,15 +404,10 @@ impl ChunkGenerator
             panic!("worldchunk named `{}` doesnt exist", group.this)
         });
 
-        info.tags.iter().try_for_each(|tag|
+        Self::generate_chunk_with(info, &self.rules, this_chunk, marker).unwrap_or_else(|err|
         {
-            tag.define(self.rules.name_mappings(), this_chunk.memory_mut())
-        }).unwrap_or_else(|err|
-        {
-            panic!("error allocating tag symbol: {err}")
-        });
-
-        Self::generate_chunk_with(info, this_chunk, chunk_name, marker)
+            panic!("{err} in ({chunk_name})")
+        })
     }
 }
 
