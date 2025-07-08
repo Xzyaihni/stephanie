@@ -200,9 +200,9 @@ impl Client
             ..
         } = control.clone()
         {
-            if let Some((KeyMapping::Keyboard(key), Some(logical))) = KeyMapping::from_control(control.clone())
+            if let Some((KeyMapping::Keyboard(key), _)) = KeyMapping::from_control(control.clone())
             {
-                if self.game.on_key_state(logical, key, state == ElementState::Pressed)
+                if self.game.on_key_state(key, state == ElementState::Pressed)
                 {
                     return true;
                 }

@@ -1393,6 +1393,11 @@ impl Ui
         self.controller.set_mouse_position(position);
     }
 
+    pub fn get_console(&self) -> &Option<String>
+    {
+        &self.console_contents
+    }
+
     pub fn set_console(&mut self, contents: Option<String>)
     {
         self.console_contents = contents;
@@ -2043,8 +2048,10 @@ impl Ui
         render_bar_display(BarDisplayKind::Stamina, &mut self.stamina, Lcha{l: 70.0, c: 120.0, h: 1.5, a: 1.0});
         render_bar_display(BarDisplayKind::Cooldown, &mut self.cooldown, Lcha{l: 50.0, c: 100.0, h: 4.0, a: 1.0});
 
-        if let Some(text) = self.console_contents.clone()
+        if let Some(text) = self.console_contents.as_mut()
         {
+            text_input_handle(controls, text);
+
             let body = self.controller.update(UiId::Console(ConsolePart::Body), UiElement{
                 texture: UiTexture::Solid,
                 mix: Some(MixColorLch::color(BACKGROUND_COLOR)),
@@ -2062,7 +2069,7 @@ impl Ui
             });
 
             body.update(UiId::Console(ConsolePart::Text), UiElement{
-                texture: UiTexture::Text{text, font_size: 15},
+                texture: UiTexture::Text{text: text.clone(), font_size: 15},
                 mix: Some(MixColorLch{keep_transparency: true, ..MixColorLch::color(ACCENT_COLOR)}),
                 animation: Animation::typing_text(),
                 ..UiElement::fit_content()

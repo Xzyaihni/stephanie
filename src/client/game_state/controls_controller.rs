@@ -136,6 +136,7 @@ impl KeyMapping
     }
 }
 
+#[derive(Debug)]
 pub struct ControlsState<Id>
 {
     is_click_held: Option<Id>,
@@ -143,6 +144,7 @@ pub struct ControlsState<Id>
     click_mappings: Vec<KeyMapping>
 }
 
+#[derive(Debug)]
 pub struct ClipboardWrapper(Weak<RefCell<Option<Clipboard>>>);
 
 impl ClipboardWrapper
@@ -160,6 +162,7 @@ impl ClipboardWrapper
     }
 }
 
+#[derive(Debug)]
 pub struct UiControls<Id>
 {
     pub clipboard: ClipboardWrapper,
@@ -306,14 +309,6 @@ impl<Id> ControlsController<Id>
             keys: [ControlState::Released; Control::COUNT],
             changed: Vec::new()
         }
-    }
-
-    pub fn get_clipboard(&self) -> Result<String, ClipboardError>
-    {
-        self.clipboard.borrow_mut().as_mut().ok_or_else(||
-        {
-            ClipboardError::DoesntExist
-        }).and_then(|clipboard| clipboard.get_text().map_err(ClipboardError::Clipboard))
     }
 
     pub fn is_down(&self, control: Control) -> bool

@@ -9,9 +9,7 @@ use nalgebra::{Unit, Vector3, Vector2};
 
 use yanyaengine::{
     Transform,
-    Key,
     KeyCode,
-    NamedKey,
     game_object::*
 };
 
@@ -214,139 +212,79 @@ impl Game
         self.player_container(|mut x| x.on_control(state, control));
     }
 
-    pub fn on_key_state(&mut self, logical: Key, key: KeyCode, pressed: bool) -> bool
+    pub fn on_key_state(&mut self, key: KeyCode, pressed: bool) -> bool
     {
-        if logical == Key::Named(NamedKey::Control)
-        {
-            self.info.borrow_mut().ctrl_held = pressed;
-        }
-
         if pressed
         {
-            self.on_key(logical, key)
+            self.on_key(key)
         } else
         {
             false
         }
     }
 
-    fn on_key(&mut self, logical: Key, key: KeyCode) -> bool
+    fn on_key(&mut self, key: KeyCode) -> bool
     {
-        if self.info.borrow().console.contents.is_some()
+        if !self.game_state.upgrade().map(|game_state| game_state.borrow().debug_mode).unwrap_or(false)
+        {
+            return false;
+        }
+
+        if let Some(contents) = self.get_console_contents()
         {
             match key
             {
-                KeyCode::KeyV =>
-                {
-                    let mut info = self.info.borrow_mut();
-                    if info.ctrl_held
-                    {
-                        let contents = info.console.contents.as_mut().unwrap();
-
-                        match self.game_state.upgrade().unwrap().borrow_mut()
-                            .controls
-                            .get_clipboard()
-                        {
-                            Ok(x) =>
-                            {
-                                *contents += &x;
-                            },
-                            Err(err) =>
-                            {
-                                eprintln!("error pasting from clipboard: {err}");
-                            }
-                        }
-
-                        drop(info);
-
-                        self.player_container(|mut x| x.update_console());
-
-                        return true;
-                    }
-                },
                 KeyCode::Enter =>
                 {
-                    let contents = {
-                        let mut info = self.info.borrow_mut();
-
-                        info.console.contents.take().unwrap()
-                    };
-
                     self.console_command(contents, ConsoleOutput::Normal);
 
-                    self.player_container(|mut x| x.update_console());
+                    self.set_console_contents(None);
 
-                    return true;
+                    true
                 },
                 KeyCode::Escape =>
                 {
-                    self.info.borrow_mut().console.contents.take();
+                    self.set_console_contents(None);
 
-                    self.player_container(|mut x| x.update_console());
-
-                    return true;
+                    true
                 },
-                KeyCode::Backspace =>
-                {
-                    {
-                        let mut info = self.info.borrow_mut();
-
-                        let contents = info.console.contents.as_mut().unwrap();
-                        contents.pop();
-                    }
-
-                    self.player_container(|mut x| x.update_console());
-
-                    return true;
-                },
-                _ => ()
+                _ => false
             }
-
-            {
-                let mut info = self.info.borrow_mut();
-
-                let contents = info.console.contents.as_mut().unwrap();
-
-                if let Some(text) = logical.to_text()
-                {
-                    *contents += text;
-                }
-            }
-
-            self.player_container(|mut x| x.update_console());
-
-            true
         } else
         {
-            let is_debug = || -> bool
+            if key == KeyCode::Backquote
             {
-                self.game_state.upgrade().map(|game_state| game_state.borrow().debug_mode)
-                    .unwrap_or(false)
-            };
-
-            if key == KeyCode::Backquote && is_debug()
-            {
+                let value = if self.get_console_contents().is_some()
                 {
-                    let mut info = self.info.borrow_mut();
-                    info.console.contents = if info.console.contents.is_some()
-                    {
-                        None
-                    } else
-                    {
-                        Some(String::new())
-                    };
-                }
+                    None
+                } else
+                {
+                    Some(String::new())
+                };
 
-                self.player_container(|mut x| x.update_console());
-
-                let state = if self.info.borrow().console.contents.is_some() { "opened" } else { "closed" };
+                let state = if value.is_some() { "opened" } else { "closed" };
                 eprintln!("debug console {state}");
+
+                self.set_console_contents(value);
 
                 true
             } else
             {
                 false
             }
+        }
+    }
+
+    fn get_console_contents(&self) -> Option<String>
+    {
+        self.game_state.upgrade().and_then(|game_state| game_state.borrow().ui.borrow().get_console().clone())
+    }
+
+    fn set_console_contents(&self, contents: Option<String>)
+    {
+        if let Some(game_state) = self.game_state.upgrade()
+        {
+            game_state.borrow().ui.borrow_mut().set_console(contents);
         }
     }
 
@@ -931,7 +869,6 @@ struct PlayerCreateInfo
 
 struct ConsoleInfo
 {
-    contents: Option<String>,
     primitives: Option<Rc<Primitives>>,
     standard_definitions: usize,
     past_commands: String
@@ -942,7 +879,6 @@ impl ConsoleInfo
     pub fn new() -> Self
     {
         Self{
-            contents: None,
             primitives: None,
             standard_definitions: 0,
             past_commands: String::new()
@@ -967,7 +903,6 @@ struct PlayerInfo
     animation: Option<PlayerAnimation>,
     previous_stamina: Option<f32>,
     previous_cooldown: (f32, f32),
-    ctrl_held: bool,
     interacted: bool
 }
 
@@ -987,7 +922,6 @@ impl PlayerInfo
             animation: None,
             previous_stamina: None,
             previous_cooldown: (0.0, 0.0),
-            ctrl_held: false,
             interacted: false
         }
     }
@@ -1202,11 +1136,6 @@ impl<'a> PlayerContainer<'a>
         {
             character.push_action(action);
         }
-    }
-
-    fn update_console(&mut self)
-    {
-        self.game_state.ui.borrow_mut().set_console(self.info.console.contents.clone());
     }
 
     fn handle_ui_event(&mut self, event: UiEvent)
