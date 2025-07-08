@@ -670,7 +670,7 @@ impl YanyaApp for ChunkPreviewer
                             },
                             MarkerKind::Light{strength, offset} =>
                             {
-                                pos += offset.xy();
+                                pos += offset.xy() / TILE_SIZE;
 
                                 ("normal/circle_transparent.png", Some(Vector2::repeat(strength * TILE_SCALING)), 0.0)
                             }
