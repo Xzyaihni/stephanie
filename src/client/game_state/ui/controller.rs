@@ -25,6 +25,7 @@ pub fn text_input_handle<Id: Idable>(
             {
                 match key
                 {
+                    KeyCode::Tab => return false,
                     KeyCode::Backspace =>
                     {
                         text.pop();
