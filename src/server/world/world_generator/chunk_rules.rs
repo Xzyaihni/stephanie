@@ -72,6 +72,11 @@ pub struct WorldChunkTag
 
 impl WorldChunkTag
 {
+    pub fn from_raw(name: TextId, content: i32) -> Self
+    {
+        Self{name, content}
+    }
+
     fn generate_content(value: &Program) -> i32
     {
         value.eval().unwrap_or_else(|err|
@@ -552,6 +557,11 @@ impl<T> NameIndexer<T>
         Self(HashMap::new())
     }
 
+    pub fn get(&self, key: &str) -> Option<&T>
+    {
+        self.0.get(key)
+    }
+
     pub fn insert(&mut self, key: String, value: T)
     {
         self.0.insert(key, value);
@@ -593,6 +603,11 @@ impl TextMapping
     pub fn new() -> Self
     {
         Self{text: Vec::new(), indexer: NameIndexer::new()}
+    }
+
+    pub fn get(&self, index: &str) -> Option<TextId>
+    {
+        self.indexer.get(index).copied()
     }
 
     pub fn get_name(&self, id: TextId) -> &str

@@ -32,6 +32,7 @@ use yanyaengine::{
 
 use stephanie::{
     server::world::world_generator::{
+        WorldChunkTag,
         ChunkRulesGroup,
         ChunkGenerator,
         ConditionalInfo
@@ -83,9 +84,40 @@ enum UiId
     Screen,
     ScreenBody,
     Scrollbar(UiScrollbarId, UiScrollbarPart),
-    NameBody,
-    Name,
+    Textbox(TextboxId, TextboxPartId),
+    Button(ButtonId, ButtonPartId),
     Padding(u32)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum ButtonId
+{
+    Add,
+    Remove,
+    Regenerate
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum ButtonPartId
+{
+    Panel,
+    Body,
+    Text
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum TextboxId
+{
+    Name,
+    Tag(u32)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum TextboxPartId
+{
+    Panel,
+    Body,
+    Text
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -193,7 +225,8 @@ struct Tags
 {
     name: String,
     height: i32,
-    difficulty: f32
+    difficulty: f32,
+    others: Vec<String>
 }
 
 struct ChunkPreviewer
@@ -206,6 +239,8 @@ struct ChunkPreviewer
     camera: Camera,
     controller: Controller<UiId>,
     update_timer: f32,
+    regenerate: bool,
+    selected_textbox: Option<TextboxId>,
     chunk_code: Option<Lisp>,
     current_tags: Tags,
     preview_tags: Tags,
@@ -287,7 +322,7 @@ impl YanyaApp for ChunkPreviewer
 
         let controller = Controller::new(&info);
 
-        let tags = Tags{name: String::new(), height: 1, difficulty: 0.0};
+        let tags = Tags{name: String::new(), height: 1, difficulty: 0.0, others: Vec::new()};
 
         let preview = None;
 
@@ -300,6 +335,8 @@ impl YanyaApp for ChunkPreviewer
             camera,
             controller,
             update_timer: 0.0,
+            regenerate: false,
+            selected_textbox: None,
             chunk_code: None,
             current_tags: tags.clone(),
             preview_tags: tags,
@@ -406,46 +443,143 @@ impl YanyaApp for ChunkPreviewer
 
             update_scrollbar(UiScrollbarId::Difficulty, &mut self.current_tags);
 
+            let mut update_button = |name: &str, id|
+            {
+                add_padding_vertical(screen_body, UiSize::Pixels(10.0).into());
+
+                let panel = screen_body.update(UiId::Button(id, ButtonPartId::Panel), UiElement{
+                    width: UiSize::Rest(1.0).into(),
+                    ..Default::default()
+                });
+
+                let button = panel.update(UiId::Button(id, ButtonPartId::Body), UiElement{
+                    texture: UiTexture::Solid,
+                    mix: Some(MixColorLch::color(Lcha{l: 0.0, c: 0.0, h: 0.0, a: 0.5})),
+                    width: UiSize::Pixels(150.0).into(),
+                    children_layout: UiLayout::Vertical,
+                    ..Default::default()
+                });
+
+                button.update(UiId::Button(id, ButtonPartId::Text), UiElement{
+                    texture: UiTexture::Text{text: name.to_owned(), font_size: 20},
+                    ..UiElement::fit_content()
+                });
+
+                button.is_mouse_inside() && controls.take_click_down()
+            };
+
+            if update_button("add tag", ButtonId::Add)
+            {
+                self.current_tags.others.push(String::new());
+            }
+
+            if update_button("remove tag", ButtonId::Remove)
+            {
+                self.current_tags.others.pop();
+            }
+
+            if update_button("regenerate", ButtonId::Regenerate)
+            {
+                self.regenerate = true;
+            }
+
+            let mut update_textbox = |textbox_id, text: &mut String, centered|
+            {
+                let id = |part|
+                {
+                    UiId::Textbox(textbox_id, part)
+                };
+
+                let parent = if centered
+                {
+                    screen_body
+                } else
+                {
+                    screen_body.update(id(TextboxPartId::Panel), UiElement{
+                        width: UiSize::Rest(1.0).into(),
+                        ..Default::default()
+                    })
+                };
+
+                let name_body = parent.update(id(TextboxPartId::Body), UiElement{
+                    texture: UiTexture::Solid,
+                    mix: Some(MixColorLch::color(Lcha{l: 0.0, c: 0.0, h: 0.0, a: 0.3})),
+                    width: UiElementSize{minimum_size: Some(UiMinimumSize::Pixels(250.0)), size: UiSize::FitChildren},
+                    height: UiSize::Pixels(50.0).into(),
+                    ..Default::default()
+                });
+
+                if name_body.is_mouse_inside() && controls.take_click_down()
+                {
+                    self.selected_textbox = Some(textbox_id);
+                }
+
+                add_padding_horizontal(name_body, UiSize::Pixels(10.0).into());
+
+                if self.selected_textbox.as_ref().map(|x| *x == textbox_id).unwrap_or(false)
+                {
+                    name_body.element().mix = Some(MixColorLch::color(Lcha{l: 0.0, c: 0.0, h: 0.0, a: 0.5}));
+
+                    text_input_handle(controls, text);
+                }
+
+                name_body.update(id(TextboxPartId::Text), UiElement{
+                    texture: UiTexture::Text{text: text.clone(), font_size: 20},
+                    ..UiElement::fit_content()
+                });
+
+                add_padding_horizontal(name_body, UiSize::Pixels(10.0).into());
+            };
+
+            self.current_tags.others.iter_mut().enumerate().for_each(|(index, tag)|
+            {
+                add_padding_vertical(screen_body, UiSize::Pixels(10.0).into());
+
+                update_textbox(TextboxId::Tag(index as u32), tag, false);
+            });
+
+            add_padding_vertical(screen_body, UiSize::Pixels(10.0).into());
+
             add_padding_vertical(screen_body, UiSize::Rest(1.0).into());
 
-            let name_body = screen_body.update(UiId::NameBody, UiElement{
-                texture: UiTexture::Solid,
-                mix: Some(MixColorLch::color(Lcha{l: 0.0, c: 0.0, h: 0.0, a: 0.5})),
-                width: UiElementSize{minimum_size: Some(UiMinimumSize::Pixels(250.0)), size: UiSize::FitChildren},
-                height: UiSize::Pixels(50.0).into(),
-                ..Default::default()
-            });
-
-            add_padding_horizontal(name_body, UiSize::Pixels(10.0).into());
-
-            let name = &mut self.current_tags.name;
-
-            text_input_handle(controls, name);
-
-            name_body.update(UiId::Name, UiElement{
-                texture: UiTexture::Text{text: name.clone(), font_size: 20},
-                ..UiElement::fit_content()
-            });
-
-            add_padding_horizontal(name_body, UiSize::Pixels(10.0).into());
+            update_textbox(TextboxId::Name, &mut self.current_tags.name, true);
         }
 
         self.controller.create_renders(&mut info, dt);
 
-        let recreate_preview = self.update_timer <= 0.0 && (self.preview.is_none() || self.current_tags != self.preview_tags);
+        let needs_recreate = self.preview.is_none() || self.current_tags != self.preview_tags;
+        let recreate_preview = self.regenerate || (self.update_timer <= 0.0 && needs_recreate);
 
         if recreate_preview
         {
+            self.regenerate = false;
+
             self.preview_tags = self.current_tags.clone();
 
             self.compile_chunk();
 
             if let Some(chunk_code) = self.chunk_code.as_mut()
             {
+                let mappings = &self.rules.name_mappings().text;
+
+                let tags = self.preview_tags.others.iter().filter_map(|text|
+                {
+                    let equals_pos = text.chars().position(|x| x == '=')?;
+
+                    let name = text.chars().take(equals_pos).collect::<String>();
+
+                    let content: i32 = text.chars().skip(equals_pos + 1).collect::<String>()
+                        .trim()
+                        .parse()
+                        .ok()?;
+
+                    Some(WorldChunkTag::from_raw(mappings.get(&name)?, content))
+                }).collect::<Vec<_>>();
+
                 let chunk_info = ConditionalInfo{
                     height: self.preview_tags.height,
                     difficulty: self.preview_tags.difficulty,
-                    tags: &[]
+                    tags: &tags
                 };
 
                 let tiles = ChunkGenerator::generate_chunk_with(
