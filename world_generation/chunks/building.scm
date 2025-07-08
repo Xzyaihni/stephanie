@@ -40,37 +40,76 @@
     (define (residential-building)
         (define this-chunk (filled-chunk (tile 'air)))
 
+        (define (this-tile point tle) (put-tile this-chunk point tle))
+
 	(define (maybe-light point intensity offset)
             (if (stop-between-difficulty 0.1 0.2)
-		(put-tile
-		    this-chunk
+		(this-tile
 		    point
 		    (single-marker (list 'light intensity offset)))))
 
-        (define (this-tile point tle) (put-tile this-chunk point tle))
+        (define (maybe-enemy point)
+            (if (difficulty-scaled 2.0)
+                (this-tile
+                    point
+                    (single-marker (list 'enemy)))))
 
         (define wall-material (tile 'concrete))
 
-        (define (add-windows x)
-            (this-tile
-                (make-point x 3)
-                (tile 'glass))
-            (this-tile
-                (make-point x (- size-y 4))
-                (tile 'glass)))
-
-        (define (door x y)
+        (define (door x y side material)
             (this-tile
                 (make-point x y)
-		(single-marker (list 'door 'up 'metal 1))))
+		(single-marker (list 'door side material 1))))
 
         (define (room-side flip)
+	    (define (add-window y)
+		(this-tile
+		    (make-point (x-of 1) y)
+		    (tile 'glass)))
+
             (define (x-of x)
                 (if flip
                     (- (- size-x 1) x)
                     x))
-            (add-windows (x-of 1))
-            (door (x-of 6) 11))
+
+            (define (area-of a)
+                (if flip
+                    (let ((start (area-start a)) (size (area-size a)))
+                        (make-area
+                            (make-point (- (x-of (point-x start)) (- (point-x size) 1)) (point-y start))
+                            size))
+                    a))
+
+            ((random-choice
+                (list
+                    (lambda ()
+                        (add-window 8)
+                        (add-window 9)
+                        (add-window 10)
+                        (add-window 11)
+                        (this-tile (make-point (x-of 3) 14) (tile 'glass))
+                        (this-tile (make-point (x-of 4) 14) (tile 'glass))
+                        (door (x-of 6) 4 'up 'metal)
+                        (fill-area
+                            this-chunk
+                            (area-of (make-area (make-point 3 5) (make-point 3 1)))
+                            wall-material)
+                        (door (x-of 2) 5 (if flip 'left 'right) 'metal)
+                        (maybe-enemy (make-point (x-of (random-integer-between 2 6)) (random-integer-between 6 (- size-y 2)))))
+                    (lambda ()
+                        (this-tile (make-point (x-of 2) 1) (tile 'glass))
+                        (this-tile (make-point (x-of 3) 1) (tile 'glass))
+                        (this-tile (make-point (x-of 4) 1) (tile 'glass))
+                        (door (x-of 6) 12 'up 'metal)
+			(rectangle-outline
+			    this-chunk
+			    (area-of
+                                (make-area
+				    (make-point 1 10)
+				    (make-point 4 5)))
+			    wall-material)
+                        (door (x-of 4) 12 'up 'metal)
+                        (maybe-enemy (make-point (x-of (random-integer-between 2 5)) (random-integer-between 2 (- size-y 7)))))))))
 
         ; outer walls
         (rectangle-outline
@@ -109,6 +148,12 @@
                 (make-point 7 1)
                 (make-point 2 (- size-y 3)))
             (tile 'air))
+
+        (define (hallway-enemy x)
+            (maybe-enemy (make-point x (random-integer-between 1 (- size-y 2)))))
+
+        (hallway-enemy 7)
+        (hallway-enemy 8)
 
 	(maybe-light (make-point 7 5) 0.89 '(0.5 0.0 0.0))
 	(maybe-light (make-point 7 10) 0.89 '(0.5 0.0 0.0))

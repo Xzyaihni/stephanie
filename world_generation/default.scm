@@ -164,6 +164,8 @@
             (put-corner end 'down)
             (put-corner (make-point (point-x start) (point-y end)) 'left))))
 
+(define (difficulty-scaled scale) (< (random-float) (* difficulty scale)))
+
 (define (stop-between-difficulty start end)
     (if (< difficulty start)
         #t
