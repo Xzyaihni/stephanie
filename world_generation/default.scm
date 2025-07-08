@@ -4,6 +4,12 @@
 (define (single-marker x)
     (cons 'marker (cons x '())))
 
+(define (combine-markers chunk point marker)
+    (let ((markers (get-tile chunk point)))
+        (if (null? markers)
+            (put-tile chunk point (single-marker marker))
+            (set-cdr! markers (cons marker (cdr markers))))))
+
 (define (filled-chunk this-tile)
     (make-vector (* size-x size-y) this-tile))
 
@@ -164,7 +170,7 @@
             (put-corner end 'down)
             (put-corner (make-point (point-x start) (point-y end)) 'left))))
 
-(define (difficulty-scaled scale) (< (random-float) (* difficulty scale)))
+(define (difficulty-chance scale start) (< (random-float) (+ (* difficulty scale) start)))
 
 (define (stop-between-difficulty start end)
     (if (< difficulty start)

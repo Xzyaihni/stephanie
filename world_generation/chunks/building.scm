@@ -44,15 +44,11 @@
 
 	(define (maybe-light point intensity offset)
             (if (stop-between-difficulty 0.1 0.2)
-		(this-tile
-		    point
-		    (single-marker (list 'light intensity offset)))))
+		(combine-markers this-chunk point (list 'light intensity offset))))
 
         (define (maybe-enemy point)
-            (if (difficulty-scaled 2.0)
-                (this-tile
-                    point
-                    (single-marker (list 'enemy)))))
+            (if (difficulty-chance 0.5 0.3)
+                (combine-markers this-chunk point (list 'enemy))))
 
         (define wall-material (tile 'concrete))
 
@@ -94,6 +90,8 @@
                             this-chunk
                             (area-of (make-area (make-point 3 5) (make-point 3 1)))
                             wall-material)
+                        (maybe-light (make-point (x-of 3) 3) 0.7 '(0.0 0.0 0.0))
+                        (maybe-light (make-point (x-of 3) 9) 0.9 (list (if flip -0.5 0.5) 0.5 0.0))
                         (door (x-of 2) 5 (if flip 'left 'right) 'metal)
                         (maybe-enemy (make-point (x-of (random-integer-between 2 6)) (random-integer-between 6 (- size-y 2)))))
                     (lambda ()
@@ -108,6 +106,8 @@
 				    (make-point 1 10)
 				    (make-point 4 5)))
 			    wall-material)
+                        (maybe-light (make-point (x-of 4) 5) 1.0 '(0.0 0.5 0.0))
+                        (maybe-light (make-point (x-of 2) 12) 0.4 (list (if flip -0.5 0.5) 0.0 0.0))
                         (door (x-of 4) 12 'up 'metal)
                         (maybe-enemy (make-point (x-of (random-integer-between 2 5)) (random-integer-between 2 (- size-y 7)))))))))
 
@@ -155,8 +155,8 @@
         (hallway-enemy 7)
         (hallway-enemy 8)
 
-	(maybe-light (make-point 7 5) 0.89 '(0.5 0.0 0.0))
-	(maybe-light (make-point 7 10) 0.89 '(0.5 0.0 0.0))
+	(maybe-light (make-point 7 5) 0.89 '(0.5 -0.4 0.0))
+	(maybe-light (make-point 7 9) 0.89 '(0.5 0.4 0.0))
 
         (room-side #f)
         (room-side #t)

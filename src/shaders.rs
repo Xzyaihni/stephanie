@@ -147,6 +147,15 @@ mod light_fragment
     }
 }
 
+mod clear_vertex
+{
+    vulkano_shaders::shader!
+    {
+        ty: "vertex",
+        path: "shaders/clear.vert"
+    }
+}
+
 mod clear_fragment
 {
     vulkano_shaders::shader!
@@ -302,7 +311,14 @@ pub fn create() -> ShadersCreated
         }),
         per_vertex: Some(vec![SkyOccludingVertex::per_vertex()]),
         subpass: 2,
-        blend: None,
+        blend: Some(AttachmentBlend{
+            src_color_blend_factor: BlendFactor::One,
+            dst_color_blend_factor: BlendFactor::Zero,
+            color_blend_op: BlendOp::Add,
+            src_alpha_blend_factor: BlendFactor::Zero,
+            dst_alpha_blend_factor: BlendFactor::One,
+            alpha_blend_op: BlendOp::Add
+        }),
         ..Default::default()
     });
 
@@ -317,27 +333,12 @@ pub fn create() -> ShadersCreated
         }),
         per_vertex: Some(vec![OccludingVertex::per_vertex()]),
         subpass: 2,
-        blend: None,
-        ..Default::default()
-    });
-
-    let light_shadow_shader = shaders.push(Shader{
-        shader: ShadersGroup::new(
-            occluder_vertex::load,
-            occluder_fragment::load
-        ),
-        depth: Some(DepthState{
-            write_enable: false,
-            compare_op: CompareOp::Always
-        }),
-        per_vertex: Some(vec![OccludingVertex::per_vertex()]),
-        subpass: 2,
         blend: Some(AttachmentBlend{
             src_color_blend_factor: BlendFactor::One,
-            dst_color_blend_factor: BlendFactor::One,
-            color_blend_op: BlendOp::Max,
+            dst_color_blend_factor: BlendFactor::Zero,
+            color_blend_op: BlendOp::Add,
             src_alpha_blend_factor: BlendFactor::Zero,
-            dst_alpha_blend_factor: BlendFactor::Zero,
+            dst_alpha_blend_factor: BlendFactor::One,
             alpha_blend_op: BlendOp::Add
         }),
         ..Default::default()
@@ -365,6 +366,28 @@ pub fn create() -> ShadersCreated
         ..Default::default()
     });
 
+    let light_shadow_shader = shaders.push(Shader{
+        shader: ShadersGroup::new(
+            occluder_vertex::load,
+            occluder_fragment::load
+        ),
+        depth: Some(DepthState{
+            write_enable: false,
+            compare_op: CompareOp::Always
+        }),
+        per_vertex: Some(vec![OccludingVertex::per_vertex()]),
+        subpass: 2,
+        blend: Some(AttachmentBlend{
+            src_color_blend_factor: BlendFactor::DstAlpha,
+            dst_color_blend_factor: BlendFactor::One,
+            color_blend_op: BlendOp::Add,
+            src_alpha_blend_factor: BlendFactor::One,
+            dst_alpha_blend_factor: BlendFactor::Zero,
+            alpha_blend_op: BlendOp::Add
+        }),
+        ..Default::default()
+    });
+
     let lighting_shader = shaders.push(Shader{
         shader: ShadersGroup::new(
             light_vertex::load,
@@ -380,8 +403,8 @@ pub fn create() -> ShadersCreated
             src_color_blend_factor: BlendFactor::DstAlpha,
             dst_color_blend_factor: BlendFactor::One,
             color_blend_op: BlendOp::Add,
-            src_alpha_blend_factor: BlendFactor::Zero,
-            dst_alpha_blend_factor: BlendFactor::One,
+            src_alpha_blend_factor: BlendFactor::One,
+            dst_alpha_blend_factor: BlendFactor::Zero,
             alpha_blend_op: BlendOp::Add
         }),
         ..Default::default()
@@ -389,14 +412,14 @@ pub fn create() -> ShadersCreated
 
     let clear_alpha_shader = shaders.push(Shader{
         shader: ShadersGroup::new(
-            final_vertex::load,
+            clear_vertex::load,
             clear_fragment::load
         ),
         depth: Some(DepthState{
             write_enable: false,
-            compare_op: CompareOp::Always
+            compare_op: CompareOp::LessOrEqual
         }),
-        per_vertex: Some(vec![SimpleVertex::per_vertex()]),
+        per_vertex: Some(vec![ObjectVertex::per_vertex()]),
         subpass: 2,
         blend: Some(AttachmentBlend{
             src_color_blend_factor: BlendFactor::Zero,
