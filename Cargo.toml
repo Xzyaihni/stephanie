@@ -18,7 +18,7 @@ fastrand = "2.3"
 strum = { version = "0.27", features = ["derive"] }
 rust-lzma = "0.6"
 bincode = { version = "2.0", features = ["serde"] }
-clipboard = "0.5"
+arboard = "3.6"
 serde_with = "3.12.0"
 
 [profile.dev]

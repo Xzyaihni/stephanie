@@ -1,15 +1,15 @@
 use std::{
     mem,
-    error,
-    fmt::{self, Display},
-    collections::HashMap
+    rc::{Rc, Weak},
+    cell::RefCell,
+    fmt::{self, Display}
 };
 
-use yanyaengine::{ElementState, PhysicalKey, KeyCode, KeyCodeNamed, MouseButton};
+use yanyaengine::{ElementState, PhysicalKey, Key, KeyCode, KeyCodeNamed, MouseButton};
 
 use strum::EnumCount;
 
-use clipboard::{ClipboardProvider, ClipboardContext};
+use arboard::Clipboard;
 
 use crate::common::BiMap;
 
@@ -120,32 +120,52 @@ impl Display for KeyMapping
 
 impl KeyMapping
 {
-    pub fn from_control(value: yanyaengine::Control) -> Option<Self>
+    pub fn from_control(value: yanyaengine::Control) -> Option<(Self, Option<Key>)>
     {
         match value
         {
             yanyaengine::Control::Keyboard{
                 keycode: PhysicalKey::Code(code),
+                logical,
                 ..
-            } => Some(KeyMapping::Keyboard(code)),
-            yanyaengine::Control::Mouse{button, ..} => Some(KeyMapping::Mouse(button)),
+            } => Some((KeyMapping::Keyboard(code), Some(logical))),
+            yanyaengine::Control::Mouse{button, ..} => Some((KeyMapping::Mouse(button), None)),
             yanyaengine::Control::Scroll{..} => None,
             _ => None
         }
     }
 }
 
-struct ControlsState<Id>
+pub struct ControlsState<Id>
 {
     is_click_held: Option<Id>,
+    pub ctrl_held: bool,
     click_mappings: Vec<KeyMapping>
+}
+
+pub struct ClipboardWrapper(Weak<RefCell<Option<Clipboard>>>);
+
+impl ClipboardWrapper
+{
+    pub fn get_text(&self) -> Result<String, ClipboardError>
+    {
+        let clipboard = self.0.upgrade().ok_or_else(|| ClipboardError::DoesntExist)?;
+
+        let mut clipboard = clipboard.borrow_mut();
+
+        clipboard.as_mut().ok_or_else(||
+        {
+            ClipboardError::DoesntExist
+        }).and_then(|clipboard| clipboard.get_text().map_err(ClipboardError::Clipboard))
+    }
 }
 
 pub struct UiControls<Id>
 {
+    pub clipboard: ClipboardWrapper,
     click_taken: bool,
-    state: ControlsState<Id>,
-    controls: HashMap<KeyMapping, ControlState>
+    pub state: ControlsState<Id>,
+    pub controls: Vec<((KeyMapping, Option<Key>), ControlState)>
 }
 
 impl<Id: PartialEq + Clone> UiControls<Id>
@@ -154,12 +174,13 @@ impl<Id: PartialEq + Clone> UiControls<Id>
     {
         self.state.click_mappings.iter().fold(false, |acc, mapping|
         {
-            let is_down = self.controls.get(mapping).map(|x| x.is_down()).unwrap_or(false);
+            let key_id = self.controls.iter().position(|((key, _), _)| mapping == key);
+            let is_down = key_id.map(|index| self.controls[index].1.is_down()).unwrap_or(false);
 
             if is_down
             {
                 self.click_taken = true;
-                self.controls.remove(mapping);
+                self.controls.remove(key_id.unwrap());
             }
 
             acc || is_down
@@ -175,7 +196,7 @@ impl<Id: PartialEq + Clone> UiControls<Id>
     {
         self.state.click_mappings.iter().any(|mapping|
         {
-            self.controls.get(mapping).map(|x| x.is_down()).unwrap_or(false)
+            self.controls.iter().find(|((key, _), _)| mapping == key).map(|(_, x)| x.is_down()).unwrap_or(false)
         })
     }
 
@@ -195,13 +216,31 @@ impl<Id: PartialEq + Clone> UiControls<Id>
     }
 }
 
+pub enum ClipboardError
+{
+    DoesntExist,
+    Clipboard(arboard::Error)
+}
+
+impl Display for ClipboardError
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
+    {
+        match self
+        {
+            Self::DoesntExist => write!(f, "clipboard doesnt exist"),
+            Self::Clipboard(err) => Display::fmt(err, f)
+        }
+    }
+}
+
 pub struct ControlsController<Id>
 {
-    clipboard: Option<ClipboardContext>,
+    clipboard: Rc<RefCell<Option<Clipboard>>>,
     controls_state: Option<ControlsState<Id>>,
     key_mapping: BiMap<KeyMapping, Control>,
     keys: [ControlState; Control::COUNT],
-    changed: HashMap<KeyMapping, ControlState>
+    changed: Vec<((KeyMapping, Option<Key>), ControlState)>
 }
 
 impl<Id> ControlsController<Id>
@@ -243,10 +282,11 @@ impl<Id> ControlsController<Id>
 
         let controls_state = Some(ControlsState{
             is_click_held: None,
+            ctrl_held: false,
             click_mappings
         });
 
-        let clipboard = match ClipboardProvider::new()
+        let clipboard = match Clipboard::new()
         {
             Ok(x) => Some(x),
             Err(err) =>
@@ -257,21 +297,23 @@ impl<Id> ControlsController<Id>
             }
         };
 
+        let clipboard = Rc::new(RefCell::new(clipboard));
+
         Self{
             clipboard,
             controls_state,
             key_mapping,
             keys: [ControlState::Released; Control::COUNT],
-            changed: HashMap::new()
+            changed: Vec::new()
         }
     }
 
-    pub fn get_clipboard(&mut self) -> Result<String, Box<dyn error::Error>>
+    pub fn get_clipboard(&self) -> Result<String, ClipboardError>
     {
-        self.clipboard.as_mut().ok_or_else(||
+        self.clipboard.borrow_mut().as_mut().ok_or_else(||
         {
-            "clipboard not initialized".into()
-        }).and_then(|clipboard| clipboard.get_contents())
+            ClipboardError::DoesntExist
+        }).and_then(|clipboard| clipboard.get_text().map_err(ClipboardError::Clipboard))
     }
 
     pub fn is_down(&self, control: Control) -> bool
@@ -301,7 +343,7 @@ impl<Id> ControlsController<Id>
 
         if let Some(this_key) = this_key
         {
-            self.changed.insert(this_key, state);
+            self.changed.push((this_key, state));
 
             true
         } else
@@ -318,6 +360,7 @@ impl<Id> ControlsController<Id>
     pub fn changed_this_frame(&mut self) -> UiControls<Id>
     {
         UiControls{
+            clipboard: ClipboardWrapper(Rc::downgrade(&self.clipboard)),
             click_taken: false,
             state: mem::take(&mut self.controls_state).unwrap(),
             controls: mem::take(&mut self.changed)
@@ -330,7 +373,7 @@ impl<Id> ControlsController<Id>
     ) -> impl Iterator<Item=(Control, ControlState)> + use<'_, Id>
     {
         self.controls_state = Some(changed.state);
-        changed.controls.into_iter().filter_map(|(key, state)|
+        changed.controls.into_iter().filter_map(|((key, _logical), state)|
         {
             self.key_mapping.get(&key).cloned().map(|matched|
             {

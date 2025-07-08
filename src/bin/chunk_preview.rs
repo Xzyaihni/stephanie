@@ -166,9 +166,10 @@ struct ChunkPreview
     tiles: Object
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 struct Tags
 {
+    name: String,
     height: i32,
     difficulty: f32
 }
@@ -203,7 +204,7 @@ impl YanyaApp for ChunkPreviewer
 
         let controller = Controller::new(&info);
 
-        let tags = Tags{height: 1, difficulty: 0.0};
+        let tags = Tags{name: String::new(), height: 1, difficulty: 0.0};
 
         let preview = None;
 
@@ -213,7 +214,7 @@ impl YanyaApp for ChunkPreviewer
             camera,
             controller,
             update_timer: 0.0,
-            current_tags: tags,
+            current_tags: tags.clone(),
             preview_tags: tags,
             preview
         }
@@ -329,10 +330,16 @@ impl YanyaApp for ChunkPreviewer
             });
 
             add_padding_horizontal(name_body, UiSize::Pixels(10.0).into());
+
+            let name = &mut self.current_tags.name;
+
+            text_input_handle(controls, name);
+
             name_body.update(UiId::Name, UiElement{
-                texture: UiTexture::Text{text: "asdsada".to_owned(), font_size: 20},
+                texture: UiTexture::Text{text: name.clone(), font_size: 20},
                 ..UiElement::fit_content()
             });
+
             add_padding_horizontal(name_body, UiSize::Pixels(10.0).into());
         }
 
@@ -342,10 +349,10 @@ impl YanyaApp for ChunkPreviewer
 
         if recreate_preview
         {
-            self.preview_tags = self.current_tags;
+            self.preview_tags = self.current_tags.clone();
 
             self.preview = Some(ChunkPreview{
-                tiles: new_tile(&info.partial, "soil")
+                tiles: new_tile(&info.partial, &self.preview_tags.name)
             });
 
             self.update_timer = 0.5;
