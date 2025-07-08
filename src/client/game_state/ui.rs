@@ -492,7 +492,14 @@ impl<T> UiList<T>
                 ..Default::default()
             });
 
-            if let Some(value) = scrollbar_handle(info.controls, scrollbar, &scrollbar_id, false, info.mouse_taken)
+            if let Some(value) = scrollbar_handle(
+                info.controls,
+                scrollbar,
+                &scrollbar_id,
+                bar_height,
+                false,
+                info.mouse_taken
+            )
             {
                 self.target_position = value;
             }
@@ -506,12 +513,12 @@ impl<T> UiList<T>
                 texture: UiTexture::Solid,
                 mix: Some(MixColorLch::color(ACCENT_COLOR)),
                 width: UiSize::Rest(1.0).into(),
-                height: UiSize::CopyElement(UiDirection::Vertical, bar_height, scrollbar_id).into(),
+                height: UiSize::CopyElement(UiDirection::Vertical, bar_height, scrollbar_id.clone()).into(),
                 animation: Animation::scrollbar_bar(),
                 ..Default::default()
             });
 
-            if bar.is_mouse_inside() && !info.mouse_taken
+            if (bar.is_mouse_inside() || info.controls.observe_action_held(&scrollbar_id)) && !info.mouse_taken
             {
                 bar.element().mix.as_mut().unwrap().color = HIGHLIGHTED_COLOR;
             }

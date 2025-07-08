@@ -18,6 +18,7 @@ use yanyaengine::{
     Assets,
     TextObject,
     TextInfo,
+    DefaultTexture,
     game_object::*
 };
 
@@ -27,7 +28,7 @@ use crate::common::{
     EaseOut
 };
 
-use super::super::element::*;
+pub use super::super::element::*;
 
 
 pub const MINIMUM_SCALE: f32 = 0.0005;
@@ -295,11 +296,18 @@ impl UiElementCached
                     }
                 }.into_client(transform, create_info)
             },
-            UiTexture::Solid
-            | UiTexture::Custom(_) =>
+            UiTexture::Solid =>
+            {
+                let id = create_info.partial.assets.lock().default_texture(DefaultTexture::Solid);
+
+                RenderObject{
+                    kind: RenderObjectKind::TextureId{id}
+                }.into_client(transform, create_info)
+            },
+            UiTexture::Custom(name) =>
             {
                 RenderObject{
-                    kind: RenderObjectKind::Texture{name: element.texture.name().unwrap().to_owned()}
+                    kind: RenderObjectKind::Texture{name: name.clone()}
                 }.into_client(transform, create_info)
             },
             UiTexture::CustomId(id) =>
@@ -1142,13 +1150,26 @@ impl TextureSizer
             | UiTexture::Custom(_)
             | UiTexture::CustomId(_) =>
             {
-                (if let UiTexture::CustomId(id) = texture
+                let assets = self.assets.lock();
+                let size = match texture
                 {
-                    self.assets.lock().texture(*id).lock().size()
-                } else
-                {
-                    self.assets.lock().texture_by_name(texture.name().unwrap()).lock().size()
-                }) / self.size.max()
+                    UiTexture::CustomId(id) =>
+                    {
+                        assets.texture(*id)
+                    },
+                    UiTexture::Solid =>
+                    {
+                        assets.texture(assets.default_texture(DefaultTexture::Solid))
+                    },
+                    UiTexture::Custom(name) =>
+                    {
+                        assets.texture_by_name(name)
+                    },
+                    _ => unreachable!()
+                };
+
+                let this_size = size.lock().size();
+                this_size / self.size.max()
             }
         }
     }

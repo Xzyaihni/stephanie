@@ -8,6 +8,7 @@ pub fn scrollbar_handle<Id: Idable>(
     controls: &mut UiControls<Id>,
     scrollbar: TreeInserter<Id>,
     scrollbar_id: &Id,
+    bar_size: f32,
     horizontal: bool,
     taken: bool
 ) -> Option<f32>
@@ -23,9 +24,6 @@ pub fn scrollbar_handle<Id: Idable>(
 
         if controls.observe_action_held(scrollbar_id)
         {
-            let maybe_size = if horizontal { scrollbar.try_width() } else { scrollbar.try_height() };
-            let bar_size = maybe_size?;
-
             let value = if bar_size > 0.99
             {
                 0.0

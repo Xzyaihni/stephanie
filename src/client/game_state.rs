@@ -88,9 +88,7 @@ use super::{
     world_receiver::WorldReceiver
 };
 
-pub use controls_controller::{UiControls, Control, ControlState, KeyMapping};
-
-use controls_controller::ControlsController;
+pub use controls_controller::{ControlsController, UiControls, Control, ControlState, KeyMapping};
 
 use notifications::{Notifications, Notification};
 

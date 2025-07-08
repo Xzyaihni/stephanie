@@ -68,21 +68,6 @@ pub enum UiTexture
     CustomId(TextureId)
 }
 
-impl UiTexture
-{
-    pub fn name(&self) -> Option<&str>
-    {
-        match self
-        {
-            Self::None
-            | Self::Text{..} => None,
-            Self::Solid => Some("ui/solid.png"),
-            Self::Custom(x) => Some(x),
-            Self::CustomId(_) => None
-        }
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct SizeForwardInfo<SizeGet>
 {
