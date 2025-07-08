@@ -33,11 +33,14 @@ use yanyaengine::{
 };
 
 use stephanie::{
-    server::world::world_generator::{
-        WorldChunkTag,
-        ChunkRulesGroup,
-        ChunkGenerator,
-        ConditionalInfo
+    server::world::{
+        MarkerKind,
+        world_generator::{
+            WorldChunkTag,
+            ChunkRulesGroup,
+            ChunkGenerator,
+            ConditionalInfo
+        }
     },
     client::game_state::{
         ControlsController,
@@ -48,7 +51,7 @@ use stephanie::{
         lisp::*,
         TileMap,
         colors::Lcha,
-        world::{CHUNK_SIZE, Tile, TileRotation}
+        world::{TILE_SIZE, CHUNK_SIZE, Tile, TileRotation}
     }
 };
 
@@ -184,11 +187,17 @@ impl Idable for UiId
     fn padding(id: u32) -> Self { Self::Padding(id) }
 }
 
-fn new_tile(
+const TOTAL_CHUNK_SIZE: f32 = 0.5;
+
+const THIS_TILE_SCALING: f32 = TOTAL_CHUNK_SIZE / CHUNK_SIZE as f32;
+const TILE_SCALING: f32 = THIS_TILE_SCALING / TILE_SIZE;
+
+fn new_tile_like(
     info: &ObjectCreatePartialInfo,
-    tilemap: &TileMap,
-    tile: Tile,
-    pos: Vector2<usize>
+    texture: &str,
+    rotation: f32,
+    scale: Option<Vector2<f32>>,
+    pos: Vector2<f32>
 ) -> Object
 {
     let assets = info.assets.lock();
@@ -196,24 +205,16 @@ fn new_tile(
     let model_id = assets.default_model(DefaultModel::Square);
     let model = assets.model(model_id).clone();
 
-    let tile_info = tilemap.info(tile);
-    let name = &tile_info.name;
-    let rotation = match tile.0.unwrap().rotation()
-    {
-        TileRotation::Up => 0.0,
-        TileRotation::Right => f32::consts::FRAC_PI_2,
-        TileRotation::Left => -f32::consts::FRAC_PI_2,
-        TileRotation::Down => f32::consts::PI
-    };
+    let texture = assets.texture_by_name(texture).clone();
 
-    let texture = assets.texture_by_name(&format!("tiles/{name}.png")).clone();
-
-    let total_size = 0.5;
-    let tile_size = total_size / CHUNK_SIZE as f32;
-
-    let pos = Vector2::repeat((-total_size + tile_size) * 0.5) + pos.cast() * tile_size;
+    let pos = Vector2::repeat((-TOTAL_CHUNK_SIZE + THIS_TILE_SCALING) * 0.5) + pos * THIS_TILE_SCALING;
 
     let position = Vector3::new(pos.x, pos.y, 0.0);
+
+    let scale = scale.map(|x|
+    {
+        Vector3::new(x.x, x.y, 1.0)
+    }).unwrap_or(Vector3::repeat(THIS_TILE_SCALING));
 
     let object_info = ObjectInfo{
         model,
@@ -221,12 +222,27 @@ fn new_tile(
         transform: Transform{
             position,
             rotation,
-            scale: Vector3::repeat(tile_size),
+            scale,
             ..Default::default()
         }
     };
 
     info.object_factory.create(object_info)
+}
+
+fn new_tile(
+    info: &ObjectCreatePartialInfo,
+    tilemap: &TileMap,
+    tile: Tile,
+    pos: Vector2<usize>
+) -> Object
+{
+
+    let tile_info = tilemap.info(tile);
+    let name = &tile_info.name;
+    let rotation = -(tile.0.unwrap().rotation().to_angle() - f32::consts::FRAC_PI_2);
+
+    new_tile_like(info, &format!("tiles/{name}.png"), rotation, None, pos.cast())
 }
 
 struct ChunkPreview
@@ -620,12 +636,47 @@ impl YanyaApp for ChunkPreviewer
                     tags: &tags
                 };
 
+                let mut markers = Vec::new();
                 let tiles = ChunkGenerator::generate_chunk_with(
                     &chunk_info,
                     &self.rules,
                     chunk_code,
-                    &mut |_marker|
+                    &mut |marker|
                     {
+                        let pos = marker.pos.pos();
+
+                        let mut pos: Vector2<f32> = Vector2::new(pos.x, pos.y).cast();
+
+                        let (texture, scale, rotation) = match marker.kind
+                        {
+                            MarkerKind::Enemy{} => ("normal/enemy/zob/zob.png", None, 0.0),
+                            MarkerKind::Furniture{} => ("normal/furniture/crate.png", None, 0.0),
+                            MarkerKind::Door{rotation: tile_rotation, width, ..} =>
+                            {
+                                let rotation = tile_rotation.to_angle() + f32::consts::PI;
+                                let scale = Vector2::new(width as f32, 0.2) * THIS_TILE_SCALING;
+
+                                let offset = (width as f32 - 1.0) * 0.5;
+
+                                match tile_rotation
+                                {
+                                    TileRotation::Left => pos.x += offset,
+                                    TileRotation::Right => pos.x -= offset,
+                                    TileRotation::Down => pos.y += offset,
+                                    TileRotation::Up => pos.y -= offset,
+                                }
+
+                                ("normal/furniture/metal_door1.png", Some(scale), rotation)
+                            },
+                            MarkerKind::Light{strength, offset} =>
+                            {
+                                pos += offset.xy();
+
+                                ("normal/circle_transparent.png", Some(Vector2::repeat(strength * TILE_SCALING)), 0.0)
+                            }
+                        };
+
+                        markers.push(new_tile_like(&info.partial, texture, rotation, scale, pos));
                     }
                 );
 
@@ -644,7 +695,7 @@ impl YanyaApp for ChunkPreviewer
                                 }
 
                                 Some(new_tile(&info.partial, &self.tilemap, *tile, Vector2::new(pos.x, pos.y)))
-                            }).collect()
+                            }).chain(markers).collect()
                         });
                     },
                     Err(err) => eprintln!("{err} in ({})", &self.preview_tags.name)
