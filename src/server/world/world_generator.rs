@@ -209,7 +209,7 @@ impl ChunkGenerator
         Ok(this)
     }
 
-    fn default_primitives(tilemap: &TileMap) -> Primitives
+    pub fn default_primitives(tilemap: &TileMap) -> Primitives
     {
         let mut primitives = Primitives::default();
 
@@ -295,21 +295,14 @@ impl ChunkGenerator
         Ok(())
     }
 
-    pub fn generate_chunk(
-        &mut self,
+    pub fn generate_chunk_with(
         info: &ConditionalInfo,
-        group: AlwaysGroup<&str>,
+        this_chunk: &mut Lisp,
+        chunk_name: &str,
         marker: &mut impl FnMut(MarkerTile)
     ) -> ChunksContainer<Tile>
     {
         let tiles = {
-            let chunk_name = group.this;
-            let this_chunk = self.chunks.get_mut(chunk_name)
-                .unwrap_or_else(||
-                {
-                    panic!("worldchunk named `{}` doesnt exist", group.this)
-                });
-
             let mut define_symbol = |name, value|
             {
                 this_chunk.memory_mut().define(name, value).unwrap_or_else(|err|
@@ -320,14 +313,6 @@ impl ChunkGenerator
 
             define_symbol("height", info.height.into());
             define_symbol("difficulty", info.difficulty.into());
-
-            info.tags.iter().try_for_each(|tag|
-            {
-                tag.define(self.rules.name_mappings(), this_chunk.memory_mut())
-            }).unwrap_or_else(|err|
-            {
-                panic!("error allocating tag symbol: {err}")
-            });
 
             let (memory, value): (LispMemory, LispValue) = this_chunk.run()
                 .unwrap_or_else(|err|
@@ -372,6 +357,30 @@ impl ChunkGenerator
         };
 
         ChunksContainer::from_raw(WORLD_CHUNK_SIZE, tiles)
+    }
+
+    pub fn generate_chunk(
+        &mut self,
+        info: &ConditionalInfo,
+        group: AlwaysGroup<&str>,
+        marker: &mut impl FnMut(MarkerTile)
+    ) -> ChunksContainer<Tile>
+    {
+        let chunk_name = group.this;
+        let this_chunk = self.chunks.get_mut(chunk_name).unwrap_or_else(||
+        {
+            panic!("worldchunk named `{}` doesnt exist", group.this)
+        });
+
+        info.tags.iter().try_for_each(|tag|
+        {
+            tag.define(self.rules.name_mappings(), this_chunk.memory_mut())
+        }).unwrap_or_else(|err|
+        {
+            panic!("error allocating tag symbol: {err}")
+        });
+
+        Self::generate_chunk_with(info, this_chunk, chunk_name, marker)
     }
 }
 

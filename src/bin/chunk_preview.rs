@@ -1,3 +1,9 @@
+use std::{
+    fs,
+    rc::Rc,
+    path::PathBuf
+};
+
 use vulkano::pipeline::graphics::{
     rasterization::CullMode,
     depth_stencil::{
@@ -25,12 +31,18 @@ use yanyaengine::{
 };
 
 use stephanie::{
+    server::world::world_generator::{
+        ChunkGenerator,
+        ConditionalInfo
+    },
     client::game_state::{
         ControlsController,
         ui::controller::*
     },
     common::{
         render_info::*,
+        lisp::*,
+        TileMap,
         colors::Lcha,
         world::CHUNK_SIZE
     }
@@ -139,7 +151,8 @@ impl Idable for UiId
 
 fn new_tile(
     info: &ObjectCreatePartialInfo,
-    name: &str
+    name: &str,
+    pos: Vector2<usize>
 ) -> Object
 {
     let assets = info.assets.lock();
@@ -149,11 +162,19 @@ fn new_tile(
 
     let texture = assets.texture_by_name(&format!("tiles/{name}.png")).clone();
 
+    let total_size = 0.5;
+    let tile_size = total_size / CHUNK_SIZE as f32;
+
+    let pos = Vector2::repeat((-total_size + tile_size) * 0.5) + pos.cast() * tile_size;
+
+    let position = Vector3::new(pos.x, pos.y, 0.0);
+
     let object_info = ObjectInfo{
         model,
         texture,
         transform: Transform{
-            scale: Vector3::repeat(0.5),
+            position,
+            scale: Vector3::repeat(tile_size),
             ..Default::default()
         }
     };
@@ -163,7 +184,7 @@ fn new_tile(
 
 struct ChunkPreview
 {
-    tiles: Object
+    tiles: Vec<Object>
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -177,13 +198,59 @@ struct Tags
 struct ChunkPreviewer
 {
     shaders: DrawShaders,
+    tilemap: TileMap,
+    memory: LispMemory,
     controls: ControlsController<UiId>,
     camera: Camera,
     controller: Controller<UiId>,
     update_timer: f32,
+    chunk_code: Option<Lisp>,
     current_tags: Tags,
     preview_tags: Tags,
     preview: Option<ChunkPreview>
+}
+
+impl ChunkPreviewer
+{
+    fn compile_chunk(&mut self)
+    {
+        let parent_directory = PathBuf::from("world_generation");
+        let filepath = parent_directory.join("chunks").join(format!("{}.scm", &self.preview_tags.name));
+
+        if !filepath.exists()
+        {
+            self.chunk_code = None;
+            return;
+        }
+
+        let standard_path = "lisp/standard.scm";
+        let standard_code = fs::read_to_string(standard_path).unwrap_or_else(|err|
+        {
+            panic!("cant load {standard_path}: {err}")
+        });
+
+        let default_path = parent_directory.join("default.scm");
+        let default_code = fs::read_to_string(&default_path).unwrap_or_else(|err|
+        {
+            panic!("cant load {}: {err}", default_path.display())
+        });
+
+        let chunk_code = fs::read_to_string(&filepath).unwrap_or_else(|err|
+        {
+            panic!("cant load {}: {err}", filepath.display())
+        });
+
+        let config = LispConfig{
+            type_checks: true,
+            memory: self.memory.clone()
+        };
+
+        match Lisp::new_with_config(config, &[&standard_code, &default_code, &chunk_code])
+        {
+            Ok(lisp) => self.chunk_code = Some(lisp),
+            Err(_err) => ()
+        }
+    }
 }
 
 struct DrawShaders
@@ -198,6 +265,15 @@ impl YanyaApp for ChunkPreviewer
 
     fn init(info: InitPartialInfo, app_info: Self::AppInfo) -> Self
     {
+        let tilemap = TileMap::parse("tiles/tiles.json", "textures/tiles/").unwrap_or_else(|err|
+        {
+            panic!("error creating tilemap: {err}")
+        }).tilemap;
+
+        let primitives = Rc::new(ChunkGenerator::default_primitives(&tilemap));
+
+        let memory = LispMemory::new(primitives, 256, 1 << 13);
+
         let controls = ControlsController::new();
 
         let camera = Camera::new(info.aspect(), -1.0..1.0);
@@ -210,10 +286,13 @@ impl YanyaApp for ChunkPreviewer
 
         Self{
             shaders: app_info.unwrap(),
+            tilemap,
+            memory,
             controls,
             camera,
             controller,
             update_timer: 0.0,
+            chunk_code: None,
             current_tags: tags.clone(),
             preview_tags: tags,
             preview
@@ -351,9 +430,41 @@ impl YanyaApp for ChunkPreviewer
         {
             self.preview_tags = self.current_tags.clone();
 
-            self.preview = Some(ChunkPreview{
-                tiles: new_tile(&info.partial, &self.preview_tags.name)
-            });
+            self.compile_chunk();
+
+            if let Some(chunk_code) = self.chunk_code.as_mut()
+            {
+                let chunk_info = ConditionalInfo{
+                    height: self.preview_tags.height,
+                    difficulty: self.preview_tags.difficulty,
+                    tags: &[]
+                };
+
+                let tiles = ChunkGenerator::generate_chunk_with(
+                    &chunk_info,
+                    chunk_code,
+                    &self.preview_tags.name,
+                    &mut |_marker|
+                    {
+                    }
+                );
+
+                self.preview = Some(ChunkPreview{
+                    tiles: tiles.flat_slice_iter(0).filter_map(|(pos, tile)|
+                    {
+                        let pos = pos.pos;
+
+                        if tile.is_none()
+                        {
+                            return None;
+                        }
+
+                        let name = &self.tilemap.info(*tile).name;
+
+                        Some(new_tile(&info.partial, name, Vector2::new(pos.x, pos.y)))
+                    }).collect()
+                });
+            }
 
             self.update_timer = 0.5;
         }
@@ -362,7 +473,7 @@ impl YanyaApp for ChunkPreviewer
 
         if let Some(preview) = self.preview.as_mut()
         {
-            preview.tiles.update_buffers(&mut info);
+            preview.tiles.iter_mut().for_each(|x| x.update_buffers(&mut info));
         }
 
         self.controller.update_buffers(&mut info);
@@ -388,7 +499,7 @@ impl YanyaApp for ChunkPreviewer
         {
             info.bind_pipeline(self.shaders.normal);
 
-            preview.tiles.draw(&mut info);
+            preview.tiles.iter().for_each(|x| x.draw(&mut info));
         }
 
         info.bind_pipeline(self.shaders.ui);
