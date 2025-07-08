@@ -1,6 +1,7 @@
 use std::{
     f32,
     fs,
+    time::SystemTime,
     rc::Rc,
     path::PathBuf
 };
@@ -236,6 +237,7 @@ struct ChunkPreview
 #[derive(Debug, Clone, PartialEq)]
 struct Tags
 {
+    last_modified: Option<SystemTime>,
     name: String,
     height: i32,
     difficulty: f32,
@@ -260,11 +262,18 @@ struct ChunkPreviewer
     preview: Option<ChunkPreview>
 }
 
+const PARENT_DIRECTORY: &str = "world_generation";
+
 impl ChunkPreviewer
 {
+    fn chunk_name(name: &str) -> PathBuf
+    {
+        PathBuf::from(PARENT_DIRECTORY).join("chunks").join(format!("{name}.scm"))
+    }
+
     fn compile_chunk(&mut self)
     {
-        let parent_directory = PathBuf::from("world_generation");
+        let parent_directory = PathBuf::from(PARENT_DIRECTORY);
         let filepath = parent_directory.join("chunks").join(format!("{}.scm", &self.preview_tags.name));
 
         if !filepath.exists()
@@ -335,7 +344,13 @@ impl YanyaApp for ChunkPreviewer
 
         let controller = Controller::new(&info);
 
-        let tags = Tags{name: String::new(), height: 1, difficulty: 0.0, others: Vec::new()};
+        let tags = Tags{
+            last_modified: None,
+            name: String::new(),
+            height: 1,
+            difficulty: 0.0,
+            others: Vec::new()
+        };
 
         let preview = None;
 
@@ -559,6 +574,16 @@ impl YanyaApp for ChunkPreviewer
         }
 
         self.controller.create_renders(&mut info, dt);
+
+        if self.update_timer <= 0.0
+        {
+            self.current_tags.last_modified = fs::metadata(Self::chunk_name(&self.current_tags.name))
+                .ok()
+                .and_then(|x|
+                {
+                    x.modified().ok()
+                });
+        }
 
         let needs_recreate = self.preview.is_none() || self.current_tags != self.preview_tags;
         let recreate_preview = self.regenerate || (self.update_timer <= 0.0 && needs_recreate);
