@@ -1,4 +1,5 @@
 use std::{
+    f32,
     fs,
     rc::Rc,
     path::PathBuf
@@ -46,7 +47,7 @@ use stephanie::{
         lisp::*,
         TileMap,
         colors::Lcha,
-        world::CHUNK_SIZE
+        world::{CHUNK_SIZE, Tile, TileRotation}
     }
 };
 
@@ -184,7 +185,8 @@ impl Idable for UiId
 
 fn new_tile(
     info: &ObjectCreatePartialInfo,
-    name: &str,
+    tilemap: &TileMap,
+    tile: Tile,
     pos: Vector2<usize>
 ) -> Object
 {
@@ -192,6 +194,16 @@ fn new_tile(
 
     let model_id = assets.default_model(DefaultModel::Square);
     let model = assets.model(model_id).clone();
+
+    let tile_info = tilemap.info(tile);
+    let name = &tile_info.name;
+    let rotation = match tile.0.unwrap().rotation()
+    {
+        TileRotation::Up => 0.0,
+        TileRotation::Right => f32::consts::FRAC_PI_2,
+        TileRotation::Left => -f32::consts::FRAC_PI_2,
+        TileRotation::Down => f32::consts::PI
+    };
 
     let texture = assets.texture_by_name(&format!("tiles/{name}.png")).clone();
 
@@ -207,6 +219,7 @@ fn new_tile(
         texture,
         transform: Transform{
             position,
+            rotation,
             scale: Vector3::repeat(tile_size),
             ..Default::default()
         }
@@ -605,9 +618,7 @@ impl YanyaApp for ChunkPreviewer
                                     return None;
                                 }
 
-                                let name = &self.tilemap.info(*tile).name;
-
-                                Some(new_tile(&info.partial, name, Vector2::new(pos.x, pos.y)))
+                                Some(new_tile(&info.partial, &self.tilemap, *tile, Vector2::new(pos.x, pos.y)))
                             }).collect()
                         });
                     },
