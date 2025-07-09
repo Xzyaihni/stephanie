@@ -5,7 +5,7 @@ use nalgebra::Vector3;
 use crate::common::Entity;
 
 
-const MAX_DEPTH: usize = 9;
+const MAX_DEPTH: usize = 10;
 
 pub type CellPos = Vector3<i32>;
 
