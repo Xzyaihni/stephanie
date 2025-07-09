@@ -8,6 +8,7 @@ use crate::{
     debug_config::*,
     common::{
         unique_pairs_no_self,
+        some_or_return,
         collider::*,
         render_info::*,
         watcher::*,
@@ -154,10 +155,10 @@ pub fn update(
 
     for_each_component!(entities, joint, |entity, joint: &RefCell<Joint>|
     {
-        let parent = entities.parent(entity).unwrap();
-        let transform = entities.transform(entity).unwrap();
+        let parent = some_or_return!(entities.parent(entity));
+        let transform = some_or_return!(entities.transform(entity));
 
-        let parent_position = entities.transform(parent.entity()).unwrap().position;
+        let parent_position = some_or_return!(entities.transform(parent.entity())).position;
 
         joint.borrow().add_contacts(&transform, entity, parent_position, &mut contacts);
     });
