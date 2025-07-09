@@ -242,6 +242,38 @@ impl Enemy
         enemies_info.get(self.id)
     }
 
+    fn move_to(
+        entities: &ClientEntities,
+        entity: Entity,
+        point: Vector3<f32>,
+        dt: f32
+    ) -> bool
+    {
+        let transform = some_or_return!(entities.target_ref(entity));
+
+        let distance = point - transform.position;
+
+        if distance.magnitude() < transform.scale.min()
+        {
+            return true;
+        }
+
+        let anatomy = entities.anatomy(entity).unwrap();
+
+        let mut physical = some_or_return!(entities.physical_mut_no_change(entity));
+        let mut character = some_or_return!(entities.character_mut_no_change(entity));
+
+        Self::move_direction(
+            &mut physical,
+            &mut character,
+            &anatomy,
+            Unit::new_normalize(distance),
+            dt
+        );
+
+        false
+    }
+
     fn do_behavior(
         &mut self,
         entities: &ClientEntities,
@@ -257,14 +289,13 @@ impl Enemy
             return;
         }
 
-        let transform = some_or_return!(entities.target_ref(entity));
-        let mut physical = some_or_return!(entities.physical_mut_no_change(entity));
-        let mut character = some_or_return!(entities.character_mut_no_change(entity));
-
         match &self.behavior_state
         {
             BehaviorState::MoveDirection(direction) =>
             {
+                let mut physical = some_or_return!(entities.physical_mut_no_change(entity));
+                let mut character = some_or_return!(entities.character_mut_no_change(entity));
+
                 Self::move_direction(
                     &mut physical,
                     &mut character,
@@ -275,21 +306,11 @@ impl Enemy
             },
             BehaviorState::MoveTo(point) =>
             {
-                let distance = point - transform.position;
-
-                if distance.magnitude() < transform.scale.min()
+                if Self::move_to(entities, entity, *point, dt)
                 {
                     self.reset_state = true;
                     return;
                 }
-
-                Self::move_direction(
-                    &mut physical,
-                    &mut character,
-                    &anatomy,
-                    Unit::new_normalize(distance),
-                    dt
-                );
             },
             BehaviorState::Attack(other_entity) =>
             {
@@ -304,40 +325,27 @@ impl Enemy
                 if let Some(other_transform) = entities.transform(other_entity)
                 {
                     let other_character = entities.character(other_entity).unwrap();
-                    let aggressive = character.aggressive(
-                        &other_character
-                    );
-
-                    drop(character);
+                    let aggressive = some_or_return!(entities.character(entity)).aggressive(&other_character);
 
                     let sees = sees(entities, world, entity, other_entity).is_some();
 
-                    let mut character = some_or_return!(entities.character_mut_no_change(entity));
-
                     if aggressive && sees
                     {
-                        let direction = other_transform.position - transform.position;
+                        Self::move_to(entities, entity, other_transform.position, dt);
 
-                        Self::move_direction(
-                            &mut physical,
-                            &mut character,
-                            &anatomy,
-                            some_or_return!(Unit::try_new(direction, 0.01)),
-                            dt
-                        );
+                        let mut character = some_or_return!(entities.character_mut_no_change(entity));
 
+                        let transform = some_or_return!(entities.target_ref(entity));
                         if character.bash_reachable(&transform, &other_transform.position)
                         {
                             character.push_action(CharacterAction::Bash);
                         }
-                    } else
-                    {
-                        self.reset_state = true;
+
+                        return;
                     }
-                } else
-                {
-                    self.reset_state = true;
                 }
+
+                self.reset_state = true;
             },
             BehaviorState::Wait => ()
         }
