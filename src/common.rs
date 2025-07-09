@@ -176,6 +176,21 @@ macro_rules! time_this
     }
 }
 
+#[macro_export]
+macro_rules! maybe_time_this
+{
+    ($name:expr, $time_it:expr, $($tt:tt)*) =>
+    {
+        if $time_it
+        {
+            crate::time_this!($name, $($tt)*)
+        } else
+        {
+            $($tt)*;
+        }
+    }
+}
+
 pub const ENTITY_SCALE: f32 = 0.09;
 
 #[derive(Clone)]

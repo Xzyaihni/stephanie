@@ -25,6 +25,7 @@ use game_state::{GameState, GameStateInfo};
 
 use crate::{
     LOG_PATH,
+    debug_config::*,
     app::{AppInfo, TimestampQuery},
     common::{
         some_or_value,
@@ -161,34 +162,48 @@ impl Client
         dt: f32
     )
     {
-        let game_state = some_or_return!(&self.game_state);
-
-        self.game.update(info, dt);
-
-        if self.game.player_exists()
-        {
-            if game_state.borrow_mut().player_connected()
+        crate::maybe_time_this!{
+            "update",
+            DebugConfig::is_enabled(DebugTool::FrameTimings),
             {
-                self.game.on_player_connected();
+                let game_state = some_or_return!(&self.game_state);
 
-                game_state.borrow_mut().on_player_connected();
+                self.game.update(info, dt);
+
+                if self.game.player_exists()
+                {
+                    if game_state.borrow_mut().player_connected()
+                    {
+                        self.game.on_player_connected();
+
+                        game_state.borrow_mut().on_player_connected();
+                    }
+                }
+
+                if !game_state.borrow().running
+                {
+                    self.exit();
+                }
             }
-        }
-
-        if !game_state.borrow().running
-        {
-            self.exit();
-        }
+        };
     }
 
     pub fn update_buffers(&mut self, info: &mut UpdateBuffersInfo)
     {
-        some_or_return!(&self.game_state).borrow_mut().update_buffers(info);
+        crate::maybe_time_this!{
+            "update-buffers",
+            DebugConfig::is_enabled(DebugTool::FrameTimings),
+            some_or_return!(&self.game_state).borrow_mut().update_buffers(info)
+        };
     }
 
     pub fn draw(&mut self, mut info: DrawInfo)
     {
-        some_or_return!(&self.game_state).borrow().draw(&mut info);
+        crate::maybe_time_this!{
+            "draw",
+            DebugConfig::is_enabled(DebugTool::FrameTimings),
+            some_or_return!(&self.game_state).borrow().draw(&mut info)
+        };
     }
 
     pub fn input(&mut self, control: yanyaengine::Control) -> bool
