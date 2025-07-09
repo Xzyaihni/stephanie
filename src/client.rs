@@ -25,7 +25,7 @@ use game_state::{GameState, GameStateInfo};
 
 use crate::{
     LOG_PATH,
-    app::AppInfo,
+    app::{AppInfo, TimestampQuery},
     common::{
         some_or_value,
         some_or_return,
@@ -86,7 +86,7 @@ pub struct Client
 impl Client
 {
     pub fn new(
-        info: InitPartialInfo,
+        info: InitPartialInfo<TimestampQuery>,
         client_init_info: ClientInitInfo
     ) -> Result<Self, ImageError>
     {
@@ -100,8 +100,10 @@ impl Client
             }
         }
 
-        let camera = Camera::new(info.aspect(), -1.0..1.0);
-        let mut info = info.to_full(&camera);
+        let camera = Camera::new(info.object_info.aspect(), -1.0..1.0);
+
+        let timestamp_query = info.setup.clone();
+        let mut info = info.object_info.to_full(&camera);
 
         let camera = Arc::new(RwLock::new(camera));
 
@@ -118,6 +120,7 @@ impl Client
         let info = GameStateInfo{
             shaders: client_init_info.app_info.shaders,
             camera: camera.clone(),
+            timestamp_query,
             object_info: info,
             data_infos: client_init_info.data_infos,
             tiles_factory,
@@ -216,5 +219,10 @@ impl Client
     {
         let position = Vector2::new(position.0 as f32, position.1 as f32);
         some_or_return!(&self.game_state).borrow_mut().mouse_moved(position);
+    }
+
+    pub fn render_pass_ended(&mut self)
+    {
+        some_or_return!(&self.game_state).borrow_mut().render_pass_ended();
     }
 }

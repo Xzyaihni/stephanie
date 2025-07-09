@@ -1522,7 +1522,8 @@ impl<'a> PlayerContainer<'a>
             let animation = self.info.animation.as_mut().unwrap();
             if animation.duration <= 0.0
             {
-                debug_assert!(self.info.animation.take().unwrap().action.is_none());
+                let animation = self.info.animation.take();
+                debug_assert!(animation.unwrap().action.is_none());
             }
         } else
         {

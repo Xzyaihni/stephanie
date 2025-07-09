@@ -18,13 +18,16 @@ use vulkano::{
 use yanyaengine::Rendering;
 
 use super::shaders::{DARKEN, SHADOW_COLOR};
-use stephanie::{BACKGROUND_COLOR, common::lerp};
+use stephanie::{BACKGROUND_COLOR, app::TimestampQuery, common::lerp};
 
 
-pub fn create() -> Rendering<()>
+pub fn create() -> Rendering<TimestampQuery>
 {
     Rendering{
-        setup: Box::new(|_| {}),
+        setup: Box::new(|device|
+        {
+            TimestampQuery::from(&device)
+        }),
         render_pass: Box::new(|_setup, device, image_format|
         {
             vulkano::ordered_passes_renderpass!(

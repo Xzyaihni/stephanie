@@ -36,6 +36,7 @@ pub enum DebugTool
     PrintDamage,
     PrintAnatomyColors,
     DrawTileOcclusion,
+    GpuDrawTimings,
     NoOcclusion,
     NoWallOcclusion,
     NoSkyOcclusion,

@@ -4,7 +4,7 @@ use yanyaengine::{game_object::*, SolidObject};
 
 use crate::{
     debug_config::*,
-    app::ProgramShaders,
+    app::{ProgramShaders, TimestampQuery},
     client::{Ui, VisibilityChecker},
     common::{
         render_info::*,
@@ -25,23 +25,66 @@ pub struct DrawEntities<'a>
     pub world: &'a World
 }
 
+pub struct DrawingInfo<'a, 'b, 'c>
+{
+    pub shaders: &'a ProgramShaders,
+    pub info: &'b mut DrawInfo<'c>,
+    pub timestamp_query: TimestampQuery
+}
+
 pub fn draw(
     entities: &ClientEntities,
-    shaders: &ProgramShaders,
     ui: &Ui,
-    renderables: DrawEntities,
+    DrawEntities{
+        solid,
+        renders,
+        above_world,
+        shaded_renders,
+        light_renders,
+        world
+    }: DrawEntities,
+    DrawingInfo{
+        shaders,
+        info,
+        timestamp_query
+    }: DrawingInfo,
     visibility: &VisibilityChecker,
-    info: &mut DrawInfo,
     animation: f32
 )
 {
+    macro_rules! timing_start
+    {
+        ($index:literal) =>
+        {
+            if DebugConfig::is_enabled(DebugTool::GpuDrawTimings)
+            {
+                timestamp_query.start(info, $index);
+            }
+        }
+    }
+
+    macro_rules! timing_end
+    {
+        ($index:literal) =>
+        {
+            if DebugConfig::is_enabled(DebugTool::GpuDrawTimings)
+            {
+                timestamp_query.end(info, $index);
+            }
+        }
+    }
+
+    timing_start!(0);
+
     info.bind_pipeline(shaders.world);
 
-    renderables.world.draw_tiles(info, false);
+    world.draw_tiles(info, false);
+
+    timing_end!(1);
 
     info.bind_pipeline(shaders.default);
 
-    renderables.renders.iter().flatten().for_each(|&entity|
+    renders.iter().flatten().for_each(|&entity|
     {
         let outline = entities.outlineable(entity).and_then(|outline|
         {
@@ -61,13 +104,15 @@ pub fn draw(
 
     info.next_subpass();
 
+    timing_end!(2);
+
     info.bind_pipeline(shaders.world_shaded);
 
-    renderables.world.draw_tiles(info, true);
+    world.draw_tiles(info, true);
 
     info.bind_pipeline(shaders.default_shaded);
 
-    renderables.shaded_renders.iter().flatten().copied().for_each(|entity|
+    shaded_renders.iter().flatten().copied().for_each(|entity|
     {
         let render = entities.render(entity).unwrap();
 
@@ -80,17 +125,23 @@ pub fn draw(
 
     info.next_subpass();
 
+    timing_end!(3);
+
     info.bind_pipeline(shaders.sky_shadow);
 
-    renderables.world.draw_sky_occluders(info);
+    world.draw_sky_occluders(info);
+
+    timing_end!(4);
 
     info.bind_pipeline(shaders.sky_lighting);
 
-    renderables.world.draw_sky_lights(info);
+    world.draw_sky_lights(info);
+
+    timing_end!(5);
 
     if DebugConfig::is_disabled(DebugTool::NoLighting)
     {
-        renderables.light_renders.iter().copied().enumerate().for_each(|(index, entity)|
+        light_renders.iter().copied().enumerate().for_each(|(index, entity)|
         {
             let light = entities.light(entity).unwrap();
 
@@ -101,7 +152,7 @@ pub fn draw(
                 light.draw(info);
             }
 
-            renderables.world.draw_light_shadows(info, &light.visibility_checker(), index, |info|
+            world.draw_light_shadows(info, &light.visibility_checker(), index, |info|
             {
                 info.bind_pipeline(shaders.light_shadow);
             });
@@ -111,13 +162,17 @@ pub fn draw(
         });
     }
 
+    timing_end!(6);
+
     info.bind_pipeline(shaders.shadow);
 
-    renderables.world.draw_shadows(info);
+    world.draw_shadows(info);
+
+    timing_end!(7);
 
     if DebugConfig::is_disabled(DebugTool::NoOcclusion)
     {
-        renderables.renders.iter().flatten().copied().filter_map(|entity|
+        renders.iter().flatten().copied().filter_map(|entity|
         {
             entities.occluder(entity)
         }).for_each(|occluder|
@@ -139,14 +194,14 @@ pub fn draw(
         WriteDescriptorSet::image_view(2, info.attachments[4].clone())
     ])];
 
-    renderables.solid.draw(info);
+    solid.draw(info);
 
     info.next_subpass();
 
     info.current_sets.clear();
     info.bind_pipeline(shaders.above_world);
 
-    renderables.above_world.iter().for_each(|&entity|
+    above_world.iter().for_each(|&entity|
     {
         let outline = entities.outlineable(entity).and_then(|outline|
         {
@@ -167,4 +222,6 @@ pub fn draw(
     info.bind_pipeline(shaders.ui);
 
     ui.draw(info);
+
+    timing_end!(8);
 }

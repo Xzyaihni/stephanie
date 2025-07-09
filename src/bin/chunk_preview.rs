@@ -336,9 +336,10 @@ struct DrawShaders
 
 impl YanyaApp for ChunkPreviewer
 {
+    type SetupInfo = ();
     type AppInfo = Option<DrawShaders>;
 
-    fn init(info: InitPartialInfo, app_info: Self::AppInfo) -> Self
+    fn init(info: InitPartialInfo<Self::SetupInfo>, app_info: Self::AppInfo) -> Self
     {
         let tilemap = TileMap::parse("tiles/tiles.json", "textures/tiles/").unwrap_or_else(|err|
         {
@@ -356,9 +357,9 @@ impl YanyaApp for ChunkPreviewer
 
         let controls = ControlsController::new();
 
-        let camera = Camera::new(info.aspect(), -1.0..1.0);
+        let camera = Camera::new(info.object_info.aspect(), -1.0..1.0);
 
-        let controller = Controller::new(&info);
+        let controller = Controller::new(&info.object_info);
 
         let tags = Tags{
             last_modified: None,

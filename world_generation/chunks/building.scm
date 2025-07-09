@@ -47,7 +47,7 @@
 		(combine-markers this-chunk point (list 'light intensity offset))))
 
         (define (maybe-enemy point)
-            (if (difficulty-chance 0.5 0.3)
+            (if #f; (difficulty-chance 0.5 0.3)
                 (combine-markers this-chunk point (list 'enemy))))
 
         (define wall-material (tile 'concrete))
@@ -79,12 +79,12 @@
             ((random-choice
                 (list
                     (lambda ()
-                        (add-window 8)
-                        (add-window 9)
-                        (add-window 10)
-                        (add-window 11)
-                        (this-tile (make-point (x-of 3) 14) (tile 'glass))
-                        (this-tile (make-point (x-of 4) 14) (tile 'glass))
+                        ; (add-window 8)
+                        ; (add-window 9)
+                        ; (add-window 10)
+                        ; (add-window 11)
+                        ; (this-tile (make-point (x-of 3) 14) (tile 'glass))
+                        ; (this-tile (make-point (x-of 4) 14) (tile 'glass))
                         (door (x-of 6) 4 'up 'metal)
                         (fill-area
                             this-chunk
@@ -95,9 +95,9 @@
                         (door (x-of 2) 5 (if flip 'left 'right) 'metal)
                         (maybe-enemy (make-point (x-of (random-integer-between 2 6)) (random-integer-between 6 (- size-y 2)))))
                     (lambda ()
-                        (this-tile (make-point (x-of 2) 1) (tile 'glass))
-                        (this-tile (make-point (x-of 3) 1) (tile 'glass))
-                        (this-tile (make-point (x-of 4) 1) (tile 'glass))
+                        ; (this-tile (make-point (x-of 2) 1) (tile 'glass))
+                        ; (this-tile (make-point (x-of 3) 1) (tile 'glass))
+                        ; (this-tile (make-point (x-of 4) 1) (tile 'glass))
                         (door (x-of 6) 12 'up 'metal)
 			(rectangle-outline
 			    this-chunk

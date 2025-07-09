@@ -4,6 +4,20 @@ use std::{
     sync::{mpsc, Arc}
 };
 
+use vulkano::device::Device;
+
+#[cfg(debug_assertions)]
+use vulkano::{
+    DeviceSize,
+    sync::PipelineStage,
+    query::{
+        QueryResultFlags,
+        QueryPool,
+        QueryPoolCreateInfo,
+        QueryType
+    }
+};
+
 use yanyaengine::{
     YanyaApp,
     Control,
@@ -41,6 +55,129 @@ use config::Config;
 
 mod config;
 
+
+#[allow(dead_code)]
+const TIMESTAMPS_COUNT: u32 = 9;
+
+#[derive(Clone)]
+pub struct TimestampQuery
+{
+    #[cfg(debug_assertions)]
+    pub period: f32,
+    #[cfg(debug_assertions)]
+    pub query_pool: Arc<QueryPool>
+}
+
+impl From<&Arc<Device>> for TimestampQuery
+{
+    #[allow(unused_variables)]
+    fn from(device: &Arc<Device>) -> Self
+    {
+        #[cfg(debug_assertions)]
+        {
+            let period = device.physical_device().properties().timestamp_period;
+
+            let query_pool = QueryPool::new(
+                device.clone(),
+                QueryPoolCreateInfo{
+                    query_count: TIMESTAMPS_COUNT,
+                    ..QueryPoolCreateInfo::query_type(QueryType::Timestamp)
+                }
+            ).unwrap();
+
+            Self{period, query_pool}
+        }
+
+        #[cfg(not(debug_assertions))]
+        {
+            Self{}
+        }
+    }
+}
+
+impl TimestampQuery
+{
+    #[allow(unused_variables)]
+    pub fn setup(&self, info: &mut ObjectCreateInfo)
+    {
+        #[cfg(debug_assertions)]
+        {
+            let builder = info.partial.builder_wrapper.builder();
+
+            unsafe{
+                builder.reset_query_pool(
+                    self.query_pool.clone(),
+                    0..TIMESTAMPS_COUNT
+                ).unwrap();
+            }
+        }
+    }
+
+    #[allow(unused_variables)]
+    pub fn start(&self, info: &mut DrawInfo, index: u32)
+    {
+        #[cfg(debug_assertions)]
+        {
+            if index >= TIMESTAMPS_COUNT
+            {
+                panic!("tried to start a timestamp with an index above the length")
+            }
+
+            let builder = info.object_info.builder_wrapper.builder();
+
+            unsafe{
+                builder.write_timestamp(
+                    self.query_pool.clone(),
+                    index,
+                    PipelineStage::TopOfPipe
+                ).unwrap();
+            }
+        }
+    }
+
+    #[allow(unused_variables)]
+    pub fn end(&self, info: &mut DrawInfo, index: u32)
+    {
+        #[cfg(debug_assertions)]
+        {
+            let builder = info.object_info.builder_wrapper.builder();
+
+            unsafe{
+                builder.write_timestamp(
+                    self.query_pool.clone(),
+                    index,
+                    PipelineStage::BottomOfPipe
+                ).unwrap();
+            }
+        }
+    }
+
+    pub fn get_results(&self) -> Vec<Option<u64>>
+    {
+        #[cfg(debug_assertions)]
+        {
+            let flags = QueryResultFlags::WITH_AVAILABILITY;
+
+            let count = self.query_pool.result_len(flags) * TIMESTAMPS_COUNT as DeviceSize;
+            let mut buffer = vec![0; count as usize];
+
+            self.query_pool.get_results(0..TIMESTAMPS_COUNT, &mut buffer, flags).unwrap();
+
+            (0..TIMESTAMPS_COUNT as usize).map(|index|
+            {
+                (buffer[index * 2 + 1] != 0).then(||
+                {
+                    buffer[index * 2]
+                })
+            }).collect()
+        }
+
+        #[cfg(not(debug_assertions))]
+        {
+            unreachable!()
+        }
+    }
+}
 
 pub struct ProgramShaders
 {
@@ -185,9 +322,10 @@ impl Drop for App
 
 impl YanyaApp for App
 {
+    type SetupInfo = TimestampQuery;
     type AppInfo = Option<AppInfo>;
 
-    fn init(partial_info: InitPartialInfo, app_info: Self::AppInfo) -> Self
+    fn init(partial_info: InitPartialInfo<Self::SetupInfo>, app_info: Self::AppInfo) -> Self
     {
         let deferred_parse = || TileMap::parse("tiles/tiles.json", "textures/tiles/");
         let app_info = app_info.unwrap();
@@ -195,7 +333,7 @@ impl YanyaApp for App
         let Config{name, address, port, debug} = Config::parse(env::args().skip(1));
 
         let items_info = ItemsInfo::parse(
-            &partial_info.assets.lock(),
+            &partial_info.object_info.assets.lock(),
             "items",
             "items/items.json"
         );
@@ -203,11 +341,11 @@ impl YanyaApp for App
         let mut characters_info = CharactersInfo::new();
 
         let player_character = characters_info.push(CharacterInfo::player(
-            &partial_info.assets.lock()
+            &partial_info.object_info.assets.lock()
         ));
 
         let enemies_info = EnemiesInfo::parse(
-            &partial_info.assets.lock(),
+            &partial_info.object_info.assets.lock(),
             &mut characters_info,
             "enemy",
             "enemies/enemies.json"
@@ -350,5 +488,10 @@ impl YanyaApp for App
     fn resize(&mut self, aspect: f32)
     {
         self.client.resize(aspect);
+    }
+
+    fn render_pass_ended(&mut self, _builder: &mut CommandBuilderType)
+    {
+        self.client.render_pass_ended();
     }
 }

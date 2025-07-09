@@ -37,7 +37,7 @@ use yanyaengine::{
 
 use crate::{
     debug_config::*,
-    app::ProgramShaders,
+    app::{ProgramShaders, TimestampQuery},
     common::{
         some_or_return,
         sender_loop,
@@ -373,6 +373,7 @@ pub struct GameStateInfo<'a>
 {
     pub shaders: ProgramShaders,
     pub camera: Arc<RwLock<Camera>>,
+    pub timestamp_query: TimestampQuery,
     pub object_info: ObjectCreateInfo<'a>,
     pub data_infos: DataInfos,
     pub tiles_factory: TilesFactory,
@@ -627,6 +628,7 @@ pub struct GameState
     pub world: World,
     screen_object: SolidObject,
     ui_camera: Camera,
+    timestamp_query: TimestampQuery,
     shaders: ProgramShaders,
     host: bool,
     is_trusted: bool,
@@ -785,6 +787,7 @@ impl GameState
             running: true,
             screen_object,
             ui_camera,
+            timestamp_query: info.timestamp_query,
             shaders: info.shaders,
             world,
             debug_mode: info.client_info.debug,
@@ -1098,15 +1101,61 @@ impl GameState
             world: &self.world
         };
 
+        let info = render_system::DrawingInfo{
+            shaders: &self.shaders,
+            info,
+            timestamp_query: self.timestamp_query.clone()
+        };
+
         render_system::draw(
             &self.entities.entities,
-            &self.shaders,
             &self.ui.borrow(),
             draw_entities,
-            &visibility,
             info,
+            &visibility,
             animation
         );
+    }
+
+    pub fn before_render_pass(&mut self, object_info: &mut UpdateBuffersInfo)
+    {
+        if DebugConfig::is_enabled(DebugTool::GpuDrawTimings)
+        {
+            self.timestamp_query.setup(object_info);
+        }
+    }
+
+    pub fn render_pass_ended(&mut self)
+    {
+        if DebugConfig::is_enabled(DebugTool::GpuDrawTimings)
+        {
+            #[cfg(debug_assertions)]
+            {
+                let mut results = self.timestamp_query.get_results().into_iter();
+
+                let start = some_or_return!(results.next().unwrap()) as i64;
+
+                let mut last = start;
+                results.enumerate().filter_map(|(index, x)|
+                {
+                    x.map(|x| (index, x as i64))
+                }).for_each(|(index, x)|
+                {
+                    let us_from = |last|
+                    {
+                        let ns = (x - last) as f32 * self.timestamp_query.period;
+                        ns * 0.001
+                    };
+
+                    let last_us = us_from(last);
+                    let total_us = us_from(start);
+
+                    last = x;
+
+                    eprintln!("gpu draw timing #{index}: {last_us:.1} us (total {total_us:.2} us)");
+                });
+            }
+        }
     }
 
     fn visibility_checker(&self) -> VisibilityChecker
@@ -1186,6 +1235,8 @@ impl GameState
         dt: f32
     )
     {
+        self.before_render_pass(object_info);
+
         self.dt = Some(dt);
 
         self.process_messages(object_info);
