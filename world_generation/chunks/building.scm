@@ -94,6 +94,26 @@
             ((random-choice
                 (list
                     (lambda ()
+                        (add-window 11)
+                        (add-window 12)
+                        (this-tile (make-point (x-of 3) 14) (tile 'glass))
+                        (this-tile (make-point (x-of 4) 14) (tile 'glass))
+                        (door (x-of 6) 7 'up 'metal)
+                        (fill-area
+                            this-chunk
+                            (area-of (make-area (make-point 3 5) (make-point 3 1)))
+                            wall-material)
+                        (fill-area
+                            this-chunk
+                            (area-of (make-area (make-point 2 9) (make-point 4 1)))
+                            wall-material)
+                        (door (x-of 3) 9 (if flip 'left 'right) 'metal)
+                        (maybe-light (make-point (x-of 3) 3) 0.7 '(0.0 0.0 0.0))
+                        (maybe-light (make-point (x-of 3) 7) 0.55 (list (if flip -0.5 0.5) 0.0 0.0))
+                        (maybe-light (make-point (x-of 3) 11) 0.55 (list (if flip -0.5 0.5) 0.2 0.0))
+                        (door (x-of 2) 5 (if flip 'left 'right) 'metal)
+                        (maybe-enemy (make-point (x-of (random-integer-between 2 6)) (random-integer-between 8 (- size-y 5)))))
+                    (lambda ()
                         (add-window 8)
                         (add-window 9)
                         (add-window 10)
