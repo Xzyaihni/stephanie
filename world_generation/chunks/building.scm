@@ -63,7 +63,7 @@
 				'(normal strong)
 				difficulty
 				0.0
-				2.0))))))
+				0.6))))))
 
         (define wall-material (tile 'concrete))
 
