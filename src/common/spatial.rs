@@ -5,7 +5,7 @@ use nalgebra::Vector3;
 use crate::common::Entity;
 
 
-const MAX_DEPTH: usize = 10;
+const MAX_DEPTH: usize = 9;
 
 pub type CellPos = Vector3<i32>;
 
@@ -31,37 +31,6 @@ impl KNode
         Self::Leaf{entities: Vec::new()}
     }
 
-    fn find_median(infos: &mut [SpatialInfo], axis_i: usize) -> f32
-    {
-        infos.sort_unstable_by(|a, b|
-        {
-            a.position.index(axis_i).partial_cmp(b.position.index(axis_i))
-                .unwrap_or(Ordering::Equal)
-        });
-
-        let query_index = |i: usize| -> f32
-        {
-            *infos[i].position.index(axis_i)
-        };
-
-        let len = infos.len();
-        if len % 2 == 0
-        {
-            if len == 0
-            {
-                return query_index(0);
-            }
-
-            let a = len / 2;
-            let b = a - 1;
-
-            (query_index(a) + query_index(b)) / 2.0
-        } else
-        {
-            query_index(len / 2)
-        }
-    }
-
     fn new_leaf(infos: Vec<SpatialInfo>) -> Self
     {
         Self::Leaf{entities: infos.into_iter().map(|x| x.entity).collect()}
@@ -84,15 +53,27 @@ impl KNode
         let axis_i = depth % 3;
 
         let median = {
-            const AMOUNT: usize = 16;
+            const AMOUNT: usize = 15;
 
-            if infos.len() <= AMOUNT
+            if infos.len() < AMOUNT
             {
-                Self::find_median(&mut infos, axis_i)
+                infos.sort_unstable_by(|a, b|
+                {
+                    a.position.index(axis_i).partial_cmp(b.position.index(axis_i))
+                        .unwrap_or(Ordering::Equal)
+                });
+
+                *infos[infos.len() / 2].position.index(axis_i)
             } else
             {
                 let mut random_sample = Self::random_sample(&infos, AMOUNT);
-                Self::find_median(&mut random_sample, axis_i)
+                random_sample.sort_unstable_by(|a, b|
+                {
+                    a.position.index(axis_i).partial_cmp(b.position.index(axis_i))
+                        .unwrap_or(Ordering::Equal)
+                });
+
+                *random_sample[AMOUNT / 2].position.index(axis_i)
             }
         };
 
@@ -179,7 +160,7 @@ mod tests
 {
     use super::*;
 
-    
+
     fn almost_equal(a: f32, b: f32)
     {
         assert!((a - b).abs() < 0.0001);
