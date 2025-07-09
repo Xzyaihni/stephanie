@@ -46,9 +46,24 @@
             (if (stop-between-difficulty 0.1 0.2)
 		(combine-markers this-chunk point (list 'light intensity offset))))
 
+        (define (decide-enemy type)
+            (if (eq? type 'normal)
+                (pick-weighted 'zob 'runner 0.25)
+                'bigy))
+
         (define (maybe-enemy point)
             (if (difficulty-chance 0.5 0.3)
-                (combine-markers this-chunk point (list 'enemy))))
+                (combine-markers
+                    this-chunk
+                    point
+                    (list
+                        'enemy
+                        (decide-enemy
+                            (gradient-pick
+				'(normal strong)
+				difficulty
+				0.0
+				2.0))))))
 
         (define wall-material (tile 'concrete))
 

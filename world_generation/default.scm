@@ -170,6 +170,22 @@
             (put-corner end 'down)
             (put-corner (make-point (point-x start) (point-y end)) 'left))))
 
+(define (pick-weighted a b value)
+    (if (< (random-float) value)
+        b
+        a))
+
+(define (gradient-pick xs value start end)
+    (let ((total (length xs)))
+        (let ((index-fractional (* (/ (- total 1) end) value)))
+	    (let ((start-index (inexact->exact (floor index-fractional))))
+                (if (< start-index (- total 1))
+		    (pick-weighted
+			(list-ref xs start-index)
+			(list-ref xs (+ start-index 1))
+			(remainder index-fractional 1))
+                    (list-ref xs (- total 1)))))))
+
 (define (difficulty-chance scale start) (< (random-float) (+ (* difficulty scale) start)))
 
 (define (stop-between-difficulty start end)

@@ -15,12 +15,10 @@
             "base_speed": 1.3,
             "base_strength": 0.5
         },
-        "behavior": "Melee",
         "normal": "runner/zob.png",
         "crawling": "runner/crawling.png",
         "lying": "runner/lying.png",
-        "hand": "hand.png",
-        "commonness": 0.4
+        "hand": "hand.png"
     },
     {
         "name": "bigy",
@@ -32,12 +30,10 @@
             "base_strength": 1.5
         },
         "scale": 1.3,
-        "behavior": "Melee",
         "normal": "bigy/zob.png",
         "crawling": "bigy/crawling.png",
         "lying": "bigy/lying.png",
-        "hand": "hand.png",
-        "commonness": 0.2
+        "hand": "hand.png"
     },
     {
         "name": "me",
@@ -48,14 +44,12 @@
             "base_speed": 0.8,
             "base_strength": 0.4
         },
-        "behavior": "Melee",
         "hairstyle": {
             "Pons": "../player/pon.png"
         },
         "normal": "../player/hair.png",
         "crawling": "../player/crawling.png",
         "lying": "../player/lying.png",
-        "hand": "../player/hand.png",
-        "commonness": 0.05
+        "hand": "../player/hand.png"
     }
 ]

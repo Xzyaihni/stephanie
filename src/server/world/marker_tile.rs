@@ -16,7 +16,6 @@ use crate::{
         furniture_creator,
         enemy_creator,
         rotate_point_z_3d,
-        some_or_return,
         lazy_transform::*,
         render_info::*,
         collider::*,
@@ -89,14 +88,21 @@ impl MarkerTile
 
         match self.kind
         {
-            MarkerKind::Enemy{} =>
+            MarkerKind::Enemy{name} =>
             {
-                let picked = some_or_return!(enemies.weighted_random(1.0));
+                let id = if let Some(x) = enemies.get_id(&name)
+                {
+                    x
+                } else
+                {
+                    eprintln!("cant find enemy named `{name}`");
+                    return;
+                };
 
                 add_entity(enemy_creator::create(
                     enemies,
                     loot,
-                    picked,
+                    id,
                     position
                 ));
             },
@@ -199,7 +205,7 @@ impl MarkerTile
 #[derive(Debug, Clone)]
 pub enum MarkerKind
 {
-    Enemy{},
+    Enemy{name: String},
     Furniture{},
     Door{rotation: TileRotation, material: DoorMaterial, width: u32},
     Light{strength: f32, offset: Vector3<f32>}
@@ -262,7 +268,9 @@ impl MarkerKind
             },
             "enemy" =>
             {
-                Ok(Self::Enemy{})
+                let name = next_value("name")?.as_symbol()?;
+
+                Ok(Self::Enemy{name})
             },
             "furniture" =>
             {

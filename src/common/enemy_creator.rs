@@ -32,17 +32,12 @@ pub fn create(
 {
     let info = enemies_info.get(id);
 
-    let name = enemies_info.get(id).name.clone();
+    let name = info.name.clone();
 
     let mut inventory = Inventory::new();
     loot.create(&name).for_each(|item| { inventory.push(item); });
 
-    let mut character = Character::new(info.character, Faction::Zob);
-
-    if fastrand::f32() < 0.1
-    {
-        character.set_holding(inventory.random());
-    }
+    let character = Character::new(info.character, Faction::Zob);
 
     EntityInfo{
         lazy_transform: Some(LazyTransformInfo{

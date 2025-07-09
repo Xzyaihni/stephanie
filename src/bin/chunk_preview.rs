@@ -650,8 +650,20 @@ impl YanyaApp for ChunkPreviewer
 
                         let (texture, scale, rotation) = match marker.kind
                         {
-                            MarkerKind::Enemy{} => ("normal/enemy/zob/zob.png", None, 0.0),
-                            MarkerKind::Furniture{} => ("normal/furniture/crate.png", None, 0.0),
+                            MarkerKind::Enemy{name} =>
+                            {
+                                let try_texture = format!("normal/enemy/{name}/zob.png");
+                                let texture = if PathBuf::from("textures").join(&try_texture).exists()
+                                {
+                                    try_texture
+                                } else
+                                {
+                                    "normal/enemy/zob/zob.png".to_owned()
+                                };
+
+                                (texture, None, 0.0)
+                            },
+                            MarkerKind::Furniture{} => ("normal/furniture/crate.png".to_owned(), None, 0.0),
                             MarkerKind::Door{rotation: tile_rotation, width, ..} =>
                             {
                                 let rotation = tile_rotation.to_angle() + f32::consts::PI;
@@ -667,17 +679,17 @@ impl YanyaApp for ChunkPreviewer
                                     TileRotation::Up => pos.y -= offset,
                                 }
 
-                                ("normal/furniture/metal_door1.png", Some(scale), rotation)
+                                ("normal/furniture/metal_door1.png".to_owned(), Some(scale), rotation)
                             },
                             MarkerKind::Light{strength, offset} =>
                             {
                                 pos += offset.xy() / TILE_SIZE;
 
-                                ("normal/circle_transparent.png", Some(Vector2::repeat(strength * TILE_SCALING)), 0.0)
+                                ("normal/circle_transparent.png".to_owned(), Some(Vector2::repeat(strength * TILE_SCALING)), 0.0)
                             }
                         };
 
-                        markers.push(new_tile_like(&info.partial, texture, rotation, scale, pos));
+                        markers.push(new_tile_like(&info.partial, &texture, rotation, scale, pos));
                     }
                 );
 

@@ -538,6 +538,11 @@ impl Default for Primitives
                 {
                     Ok(fastrand::f32().into())
                 })),
+            ("floor",
+                PrimitiveProcedureInfo::new_simple(1, Effect::Pure, |mut args|
+                {
+                    Ok(args.next().unwrap().as_float()?.floor().into())
+                })),
             ("exact->inexact",
                 PrimitiveProcedureInfo::new_simple(1, Effect::Pure, |mut args|
                 {

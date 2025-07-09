@@ -8,7 +8,6 @@ use serde::Deserialize;
 use yanyaengine::Assets;
 
 use crate::common::{
-    pick_by_commonness,
     normalize_path,
     ENTITY_SCALE,
     generic_info::*,
@@ -34,8 +33,7 @@ struct EnemyInfoRaw
     normal: String,
     crawling: String,
     lying: String,
-    hand: String,
-    commonness: Option<f32>
+    hand: String
 }
 
 type EnemiesInfoRaw = Vec<EnemyInfoRaw>;
@@ -48,8 +46,7 @@ pub struct EnemyInfo
     pub anatomy: HumanAnatomyInfo,
     pub behavior: EnemyBehavior,
     pub character: CharacterId,
-    pub scale: f32,
-    pub commonness: f32
+    pub scale: f32
 }
 
 impl GenericItem for EnemyInfo
@@ -94,8 +91,7 @@ impl EnemyInfo
             anatomy: raw.anatomy,
             behavior: raw.behavior.unwrap_or(EnemyBehavior::Melee),
             character,
-            scale,
-            commonness: raw.commonness.unwrap_or(1.0)
+            scale
         }
     }
 }
@@ -121,31 +117,11 @@ impl EnemiesInfo
         let enemies: EnemiesInfoRaw = serde_json::from_reader(info).unwrap();
 
         let textures_root = textures_root.as_ref();
-        let mut enemies: Vec<_> = enemies.into_iter().map(|info_raw|
+        let enemies: Vec<_> = enemies.into_iter().map(|info_raw|
         {
             EnemyInfo::from_raw(assets, characters_info, textures_root, info_raw)
         }).collect();
 
-        let commonnest = enemies.iter().map(|x| x.commonness).max_by(|a, b|
-        {
-            a.partial_cmp(b).unwrap()
-        }).expect("must have at least one info");
-
-        enemies.iter_mut().for_each(|x|
-        {
-            x.commonness /= commonnest;
-        });
-
         GenericInfo::new(enemies)
-    }
-
-    pub fn weighted_random(&self, commonness: f64) -> Option<EnemyId>
-    {
-        let ids = (0..self.items().len()).map(EnemyId::from);
-
-        pick_by_commonness(commonness, ids, |id|
-        {
-            self.get(id).commonness as f64
-        })
     }
 }
