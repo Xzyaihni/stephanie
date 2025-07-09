@@ -1673,10 +1673,10 @@ impl Character
 
         let set_visible = |entity, is_visible|
         {
-            if let Some(mut parent) = entities.parent_mut(entity)
+            if let Some(mut parent) = entities.parent_mut_no_change(entity)
             {
                 parent.visible = is_visible;
-            } else if let Some(mut render) = entities.render_mut(entity)
+            } else if let Some(mut render) = entities.render_mut_no_change(entity)
             {
                 render.visible = is_visible;
             }

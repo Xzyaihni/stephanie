@@ -258,8 +258,8 @@ impl Enemy
         }
 
         let transform = some_or_return!(entities.target_ref(entity));
-        let mut physical = some_or_return!(entities.physical_mut(entity));
-        let mut character = some_or_return!(entities.character_mut(entity));
+        let mut physical = some_or_return!(entities.physical_mut_no_change(entity));
+        let mut character = some_or_return!(entities.character_mut_no_change(entity));
 
         match &self.behavior_state
         {
@@ -312,7 +312,7 @@ impl Enemy
 
                     let sees = sees(entities, world, entity, other_entity).is_some();
 
-                    let mut character = some_or_return!(entities.character_mut(entity));
+                    let mut character = some_or_return!(entities.character_mut_no_change(entity));
 
                     if aggressive && sees
                     {

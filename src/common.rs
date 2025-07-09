@@ -171,7 +171,7 @@ macro_rules! time_this
 
             $($tt)*;
 
-            eprintln!("{} took {} ms", $name, start_time.elapsed().as_millis());
+            eprintln!("{} took {:.2} ms", $name, start_time.elapsed().as_micros() as f64 / 1000.0);
         }
     }
 }

@@ -42,7 +42,7 @@ pub fn update(
     {
         ($result_variable:expr, $entity:expr) =>
         {
-            let mut collider = entities.collider_mut($entity).unwrap();
+            let mut collider = entities.collider_mut_no_change($entity).unwrap();
             {
                 let mut transform = entities.transform($entity).unwrap().clone();
 

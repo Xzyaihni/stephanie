@@ -35,6 +35,7 @@ pub enum DebugTool
     SuperSpeed,
     PrintDamage,
     PrintAnatomyColors,
+    PrintListenerUpdates,
     DrawTileOcclusion,
     GpuDrawTimings,
     FrameTimings,

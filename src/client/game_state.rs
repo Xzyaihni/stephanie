@@ -178,20 +178,60 @@ impl ClientEntitiesContainer
     )
     {
         let mut space = SpatialGrid::new();
-        self.entities.build_space(&mut space);
 
-        physical_system::update(&mut self.entities, world, dt);
-        self.entities.update_lazy(dt);
-        enemy_system::update(&mut self.entities, world, passer, dt);
-        self.entities.update_children();
+        crate::maybe_time_this!{
+            "spatial-grid-build",
+            DebugConfig::is_enabled(DebugTool::FrameTimings),
+            self.entities.build_space(&mut space)
+        };
 
-        damaging_system::update(&mut self.entities, world, passer, damage_info);
+        crate::maybe_time_this!{
+            "physical-system-update",
+            DebugConfig::is_enabled(DebugTool::FrameTimings),
+            physical_system::update(&mut self.entities, world, dt)
+        };
 
-        self.entities.update_lazy_mix(dt);
+        crate::maybe_time_this!{
+            "lazy-transform-update",
+            DebugConfig::is_enabled(DebugTool::FrameTimings),
+            self.entities.update_lazy(dt)
+        };
 
-        self.entities.update_outlineable(dt);
+        crate::maybe_time_this!{
+            "enemy-system-update",
+            DebugConfig::is_enabled(DebugTool::FrameTimings),
+            enemy_system::update(&mut self.entities, world, passer, dt)
+        };
 
-        collider_system::update(&mut self.entities, world, &space, dt);
+        crate::maybe_time_this!{
+            "children-update",
+            DebugConfig::is_enabled(DebugTool::FrameTimings),
+            self.entities.update_children()
+        };
+
+        crate::maybe_time_this!{
+            "damaging-system-update",
+            DebugConfig::is_enabled(DebugTool::FrameTimings),
+            damaging_system::update(&mut self.entities, world, passer, damage_info)
+        };
+
+        crate::maybe_time_this!{
+            "lazy-mix-update",
+            DebugConfig::is_enabled(DebugTool::FrameTimings),
+            self.entities.update_lazy_mix(dt)
+        };
+
+        crate::maybe_time_this!{
+            "outlineable-update",
+            DebugConfig::is_enabled(DebugTool::FrameTimings),
+            self.entities.update_outlineable(dt)
+        };
+
+        crate::maybe_time_this!{
+            "collider-system-update",
+            DebugConfig::is_enabled(DebugTool::FrameTimings),
+            collider_system::update(&mut self.entities, world, &space, dt)
+        };
 
         self.animation = (self.animation + dt) % (f32::consts::PI * 2.0);
     }
@@ -278,7 +318,7 @@ impl ClientEntitiesContainer
                 render.set_transform(transform.clone());
                 render.update_buffers(info);
 
-                if let Some(mut occluder) = entities.occluder_mut(entity)
+                if let Some(mut occluder) = entities.occluder_mut_no_change(entity)
                 {
                     occluder.set_transform(transform.clone());
                     occluder.update_buffers(info, caster);
@@ -1239,7 +1279,11 @@ impl GameState
 
         self.dt = Some(dt);
 
-        self.process_messages(object_info);
+        crate::maybe_time_this!{
+            "process-messages",
+            DebugConfig::is_enabled(DebugTool::FrameTimings),
+            self.process_messages(object_info)
+        };
 
         let assets = object_info.partial.assets.clone();
         let partial = PartialCombinedInfo{
@@ -1251,16 +1295,33 @@ impl GameState
             items_info: &self.items_info
         };
 
-        self.entities.entities.update_characters(
-            partial,
-            object_info,
-            dt
-        );
+        crate::maybe_time_this!{
+            "characters-update",
+            DebugConfig::is_enabled(DebugTool::FrameTimings),
+            self.entities.entities.update_characters(
+                partial,
+                object_info,
+                dt
+            )
+        };
 
-        self.entities.entities.update_watchers(dt);
+        crate::maybe_time_this!{
+            "watchers-update",
+            DebugConfig::is_enabled(DebugTool::FrameTimings),
+            self.entities.entities.update_watchers(dt)
+        };
 
-        self.entities.entities.create_queued(object_info);
-        self.entities.entities.handle_on_change();
+        crate::maybe_time_this!{
+            "create-queued",
+            DebugConfig::is_enabled(DebugTool::FrameTimings),
+            self.entities.entities.create_queued(object_info)
+        };
+
+        crate::maybe_time_this!{
+            "handle-on-change",
+            DebugConfig::is_enabled(DebugTool::FrameTimings),
+            self.entities.entities.handle_on_change()
+        };
 
         if self.rare_timer <= 0.0
         {

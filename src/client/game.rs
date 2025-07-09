@@ -13,22 +13,25 @@ use yanyaengine::{
     game_object::*
 };
 
-use crate::common::{
-    some_or_value,
-    some_or_return,
-    collider::*,
-    character::*,
-    Damageable,
-    SpecialTile,
-    AnyEntities,
-    Item,
-    Inventory,
-    Drug,
-    Entity,
-    EntityInfo,
-    entity::ClientEntities,
-    lisp::{self, *},
-    world::{CHUNK_VISUAL_SIZE, TILE_SIZE, Pos3, TilePos}
+use crate::{
+    debug_config::*,
+    common::{
+        some_or_value,
+        some_or_return,
+        collider::*,
+        character::*,
+        Damageable,
+        SpecialTile,
+        AnyEntities,
+        Item,
+        Inventory,
+        Drug,
+        Entity,
+        EntityInfo,
+        entity::ClientEntities,
+        lisp::{self, *},
+        world::{CHUNK_VISUAL_SIZE, TILE_SIZE, Pos3, TilePos}
+    }
 };
 
 use super::game_state::{
@@ -187,14 +190,23 @@ impl Game
     )
     {
         let game_state = self.game_state.upgrade().unwrap();
-        game_state.borrow_mut().update_pre(dt);
+
+        crate::maybe_time_this!{
+            "update-pre",
+            DebugConfig::is_enabled(DebugTool::FrameTimings),
+            game_state.borrow_mut().update_pre(dt)
+        };
 
         self.player_container(|mut x| x.this_update(dt));
 
         let mut game_state_mut = game_state.borrow_mut();
         let mut changed_this_frame = game_state_mut.controls.changed_this_frame();
 
-        game_state_mut.ui_update(&mut changed_this_frame);
+        crate::maybe_time_this!{
+            "ui-update",
+            DebugConfig::is_enabled(DebugTool::FrameTimings),
+            game_state_mut.ui_update(&mut changed_this_frame)
+        };
 
         let controls: Vec<_> = game_state_mut.controls.consume_changed(changed_this_frame).collect();
 
@@ -202,7 +214,11 @@ impl Game
 
         controls.into_iter().for_each(|(control, state)| self.on_control(state, control));
 
-        game_state.borrow_mut().update(info, dt);
+        crate::maybe_time_this!{
+            "game-state-update",
+            DebugConfig::is_enabled(DebugTool::FrameTimings),
+            game_state.borrow_mut().update(info, dt)
+        };
 
         self.camera_sync();
     }
@@ -1061,7 +1077,7 @@ impl<'a> PlayerContainer<'a>
 
                 let is_sprinting = movement_direction.is_some() && state.is_down();
 
-                if let Some(character) = self.game_state.entities().character_mut(self.info.entity).as_mut()
+                if let Some(character) = self.game_state.entities().character_mut_no_change(self.info.entity).as_mut()
                 {
                     character.set_sprinting(is_sprinting);
                 }
@@ -1554,7 +1570,7 @@ impl<'a> PlayerContainer<'a>
         let entities = self.game_state.entities();
 
         let transform = some_or_return!(entities.transform(self.info.entity)).clone();
-        let mut collider = some_or_return!(entities.collider_mut(self.info.entity));
+        let mut collider = some_or_return!(entities.collider_mut_no_change(self.info.entity));
 
         f(CollidingInfo{
             entity: Some(self.info.entity),
@@ -1648,7 +1664,7 @@ impl<'a> PlayerContainer<'a>
         if let Some(character) = entities.character(self.info.entity)
         {
             let anatomy = some_or_return!(entities.anatomy(self.info.entity));
-            let mut physical = some_or_return!(entities.physical_mut(self.info.entity));
+            let mut physical = some_or_return!(entities.physical_mut_no_change(self.info.entity));
 
             let direction = some_or_return!(Unit::try_new(direction, 0.01));
             character.walk(&anatomy, &mut physical, direction, dt);
@@ -1666,7 +1682,7 @@ impl<'a> PlayerContainer<'a>
     {
         let camera_pos = self.game_state.camera.read().position().xy().coords;
 
-        let mut character = self.game_state.entities().character_mut(self.info.entity).unwrap();
+        let mut character = self.game_state.entities().character_mut_no_change(self.info.entity).unwrap();
         let player_transform = self.game_state.entities()
             .transform(self.info.entity)
             .expect("player must have a transform");

@@ -11,6 +11,7 @@ use serde::{Serialize, Deserialize};
 use yanyaengine::{game_object::*, Transform};
 
 use crate::{
+    debug_config::*,
     server,
     common::{
         some_or_return,
@@ -269,7 +270,7 @@ impl OnSet<ClientEntities> for Character
     {
         if let Some(previous) = previous
         {
-            entities.character_mut(entity).unwrap().with_previous(previous);
+            entities.character_mut_no_change(entity).unwrap().with_previous(previous);
         }
     }
 }
@@ -451,7 +452,7 @@ macro_rules! impl_common_systems
         {
             for_each_component!(self, lazy_mix, |entity, lazy_mix: &RefCell<LazyMix>|
             {
-                if let Some(mut render) = self.render_mut(entity)
+                if let Some(mut render) = self.render_mut_no_change(entity)
                 {
                     let lazy_mix = lazy_mix.borrow();
 
@@ -890,6 +891,7 @@ macro_rules! define_entities_both
 {
     ($(($name:ident,
         $mut_func:ident,
+        $mut_func_no_change:ident,
         $set_func:ident,
         $on_name:ident,
         $resort_name:ident,
@@ -1212,8 +1214,16 @@ macro_rules! define_entities_both
 
                 pub fn $mut_func(&self, entity: Entity) -> Option<RefMut<$component_type>>
                 {
-                    self.changed_entities.borrow_mut().$name.push(entity);
+                    if (stringify!($name) != "transform") && (stringify!($name) != "lazy_transform")
+                    {
+                        self.changed_entities.borrow_mut().$name.push(entity);
+                    }
 
+                    self.$mut_func_no_change(entity)
+                }
+
+                pub fn $mut_func_no_change(&self, entity: Entity) -> Option<RefMut<$component_type>>
+                {
                     get_entity!(self, entity, get_mut, $name)
                 }
 
@@ -1562,6 +1572,11 @@ macro_rules! define_entities_both
                     let taken = mem::take(&mut changed_entities.$name);
                     taken.into_iter().for_each(|entity|
                     {
+                        if DebugConfig::is_enabled(DebugTool::PrintListenerUpdates)
+                        {
+                            eprintln!("updating {} listener", stringify!($on_name));
+                        }
+
                         let listeners = self.$on_name.clone();
 
                         listeners.borrow_mut().iter_mut().for_each(|on_change|
@@ -1640,7 +1655,7 @@ macro_rules! define_entities_both
                             },
                             RenderComponent::Scissor(scissor) =>
                             {
-                                if let Some(mut render) = this.render_mut(entity)
+                                if let Some(mut render) = this.render_mut_no_change(entity)
                                 {
                                     let size = create_info.partial.size;
                                     let scissor = scissor.into_global(size);
@@ -1693,7 +1708,7 @@ macro_rules! define_entities_both
                 {
                     let parent = parent.borrow();
 
-                    if let Some(mut render) = self.render_mut(entity)
+                    if let Some(mut render) = self.render_mut_no_change(entity)
                     {
                         let parent_visible = self.render(parent.entity).map(|parent_render|
                         {
@@ -1823,7 +1838,7 @@ macro_rules! define_entities_both
                         dt
                     );
 
-                    if let Some(mut follow) = self.follow_rotation_mut(entity)
+                    if let Some(mut follow) = self.follow_rotation_mut_no_change(entity)
                     {
                         let current = &mut transform.rotation;
 
@@ -1833,7 +1848,7 @@ macro_rules! define_entities_both
                         }
                     }
 
-                    if let Some(mut follow) = self.follow_position_mut(entity)
+                    if let Some(mut follow) = self.follow_position_mut_no_change(entity)
                     {
                         if let Some(target) = self.transform(follow.parent()).map(|x| x.position)
                         {
@@ -2013,6 +2028,7 @@ macro_rules! define_entities
     ((side_specific
         $(($side_name:ident,
             $side_mut_func:ident,
+            $side_mut_func_no_change:ident,
             $side_set_func:ident,
             $side_on_name:ident,
             $side_resort_name:ident,
@@ -2024,6 +2040,7 @@ macro_rules! define_entities
         )),+),
         $(($name:ident,
             $mut_func:ident,
+            $mut_func_no_change:ident,
             $set_func:ident,
             $on_name:ident,
             $resort_name:ident,
@@ -2035,8 +2052,8 @@ macro_rules! define_entities
     ) =>
     {
         define_entities_both!{
-            $(($side_name, $side_mut_func, $side_set_func, $side_on_name, $side_resort_name, $side_exists_name, $side_message_name, $side_component_type, $side_default_type),)+
-            $(($name, $mut_func, $set_func, $on_name, $resort_name, $exists_name, $message_name, $component_type, $default_type),)+
+            $(($side_name, $side_mut_func, $side_mut_func_no_change, $side_set_func, $side_on_name, $side_resort_name, $side_exists_name, $side_message_name, $side_component_type, $side_default_type),)+
+            $(($name, $mut_func, $mut_func_no_change, $set_func, $on_name, $resort_name, $exists_name, $message_name, $component_type, $default_type),)+
         }
 
         trait ServerClientConverter<E, T, U>
@@ -2382,26 +2399,26 @@ macro_rules! define_entities
 // im okay :)
 define_entities!{
     (side_specific
-        (render, render_mut, set_render, on_render, resort_render, render_exists, SetRender, RenderType, RenderInfo, ClientRenderInfo),
-        (light, light_mut, set_light, on_light, resort_light, light_exists, SetLight, LightType, Light, ClientLight),
-        (occluder, occluder_mut, set_occluder, on_occluder_mut, resort_occluder, occluder_exists, SetOccluder, OccluderType, Occluder, ClientOccluder)),
-    (parent, parent_mut, set_parent, on_parent, resort_parent, parent_exists, SetParent, ParentType, Parent),
-    (lazy_mix, lazy_mix_mut, set_lazy_mix, on_lazy_mix, resort_lazy_mix, lazy_mix_exists, SetLazyMix, LazyMixType, LazyMix),
-    (outlineable, outlineable_mut, set_outlineable, on_outlineable, resort_outlineable, outlineable_exists, SetOutlineable, OutlineableType, Outlineable),
-    (lazy_transform, lazy_transform_mut, set_lazy_transform, on_lazy_transform, resort_lazy_transform, lazy_transform_exists, SetLazyTransform, LazyTransformType, LazyTransform),
-    (follow_rotation, follow_rotation_mut, set_follow_rotation, on_follow_rotation, resort_follow_rotation, follow_rotation_exists, SetFollowRotation, FollowRotationType, FollowRotation),
-    (follow_position, follow_position_mut, set_follow_position, on_follow_position, resort_follow_position, follow_position_exists, SetFollowPosition, FollowPositionType, FollowPosition),
-    (watchers, watchers_mut, set_watchers, on_watchers, resort_watchers, watchers_exists, SetWatchers, WatchersType, Watchers),
-    (damaging, damaging_mut, set_damaging, on_damaging, resort_damaging, damaging_exists, SetDamaging, DamagingType, Damaging),
-    (inventory, inventory_mut, set_inventory, on_inventory, resort_inventory, inventory_exists, SetInventory, InventoryType, Inventory),
-    (named, named_mut, set_named, on_named, resort_named, named_exists, SetNamed, NamedType, String),
-    (transform, transform_mut, set_transform, on_transform, resort_transform, transform_exists, SetTransform, TransformType, Transform),
-    (character, character_mut, set_character, on_character, resort_character, character_exists, SetCharacter, CharacterType, Character),
-    (enemy, enemy_mut, set_enemy, on_enemy, resort_enemy, enemy_exists, SetEnemy, EnemyType, Enemy),
-    (player, player_mut, set_player, on_player, resort_player, player_exists, SetPlayer, PlayerType, Player),
-    (collider, collider_mut, set_collider, on_collider, resort_collider, collider_exists, SetCollider, ColliderType, Collider),
-    (physical, physical_mut, set_physical, on_physical, resort_physical, physical_exists, SetPhysical, PhysicalType, Physical),
-    (anatomy, anatomy_mut, set_anatomy, on_anatomy, resort_anatomy, anatomy_exists, SetAnatomy, AnatomyType, Anatomy),
-    (joint, joint_mut, set_joint, on_joint, resort_joint, joint_exists, SetJoint, JointType, Joint),
-    (saveable, saveable_mut, set_saveable, on_saveable, resort_saveable, saveable_exists, SetNone, SaveableType, Saveable)
+        (render, render_mut, render_mut_no_change, set_render, on_render, resort_render, render_exists, SetRender, RenderType, RenderInfo, ClientRenderInfo),
+        (light, light_mut, light_mut_no_change, set_light, on_light, resort_light, light_exists, SetLight, LightType, Light, ClientLight),
+        (occluder, occluder_mut, occluder_mut_no_change, set_occluder, on_occluder_mut, resort_occluder, occluder_exists, SetOccluder, OccluderType, Occluder, ClientOccluder)),
+    (parent, parent_mut, parent_mut_no_change, set_parent, on_parent, resort_parent, parent_exists, SetParent, ParentType, Parent),
+    (lazy_mix, lazy_mix_mut, lazy_mix_mut_no_change, set_lazy_mix, on_lazy_mix, resort_lazy_mix, lazy_mix_exists, SetLazyMix, LazyMixType, LazyMix),
+    (outlineable, outlineable_mut, outlinable_mut_no_change, set_outlineable, on_outlineable, resort_outlineable, outlineable_exists, SetOutlineable, OutlineableType, Outlineable),
+    (lazy_transform, lazy_transform_mut, lazy_transform_mut_no_change, set_lazy_transform, on_lazy_transform, resort_lazy_transform, lazy_transform_exists, SetLazyTransform, LazyTransformType, LazyTransform),
+    (follow_rotation, follow_rotation_mut, follow_rotation_mut_no_change, set_follow_rotation, on_follow_rotation, resort_follow_rotation, follow_rotation_exists, SetFollowRotation, FollowRotationType, FollowRotation),
+    (follow_position, follow_position_mut, follow_position_mut_no_change, set_follow_position, on_follow_position, resort_follow_position, follow_position_exists, SetFollowPosition, FollowPositionType, FollowPosition),
+    (watchers, watchers_mut, watchers_mut_no_change, set_watchers, on_watchers, resort_watchers, watchers_exists, SetWatchers, WatchersType, Watchers),
+    (damaging, damaging_mut, damaging_mut_no_change, set_damaging, on_damaging, resort_damaging, damaging_exists, SetDamaging, DamagingType, Damaging),
+    (inventory, inventory_mut, inventory_mut_no_change, set_inventory, on_inventory, resort_inventory, inventory_exists, SetInventory, InventoryType, Inventory),
+    (named, named_mut, named_mut_no_change, set_named, on_named, resort_named, named_exists, SetNamed, NamedType, String),
+    (transform, transform_mut, transform_mut_no_change, set_transform, on_transform, resort_transform, transform_exists, SetTransform, TransformType, Transform),
+    (character, character_mut, character_mut_no_change, set_character, on_character, resort_character, character_exists, SetCharacter, CharacterType, Character),
+    (enemy, enemy_mut, enemy_mut_no_change, set_enemy, on_enemy, resort_enemy, enemy_exists, SetEnemy, EnemyType, Enemy),
+    (player, player_mut, player_mut_no_change, set_player, on_player, resort_player, player_exists, SetPlayer, PlayerType, Player),
+    (collider, collider_mut, collider_mut_no_change, set_collider, on_collider, resort_collider, collider_exists, SetCollider, ColliderType, Collider),
+    (physical, physical_mut, physical_mut_no_change, set_physical, on_physical, resort_physical, physical_exists, SetPhysical, PhysicalType, Physical),
+    (anatomy, anatomy_mut, anatomy_mut_no_change, set_anatomy, on_anatomy, resort_anatomy, anatomy_exists, SetAnatomy, AnatomyType, Anatomy),
+    (joint, joint_mut, joint_mut_no_change, set_joint, on_joint, resort_joint, joint_exists, SetJoint, JointType, Joint),
+    (saveable, saveable_mut, saveable_mut_no_change, set_saveable, on_saveable, resort_saveable, saveable_exists, SetNone, SaveableType, Saveable)
 }
