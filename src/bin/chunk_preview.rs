@@ -1,6 +1,7 @@
 use std::{
     f32,
     fs,
+    ops::Range,
     time::SystemTime,
     rc::Rc,
     path::PathBuf
@@ -132,6 +133,7 @@ enum UiScrollbarId
     Difficulty
 }
 
+const HEIGHT_RANGE: Range<i32> = -5..20;
 const DIFFICULTY_MAX: f32 = 5.0;
 
 impl UiScrollbarId
@@ -142,9 +144,8 @@ impl UiScrollbarId
         {
             Self::Height =>
             {
-                let top = CHUNK_SIZE as i32 - 1;
-
-                tags.height = ((value * top as f32).floor() as i32).clamp(0, top);
+                let span = HEIGHT_RANGE.end - HEIGHT_RANGE.start;
+                tags.height = ((value * span as f32).floor() as i32) + HEIGHT_RANGE.start;
             },
             Self::Difficulty =>
             {
@@ -159,9 +160,8 @@ impl UiScrollbarId
         {
             Self::Height =>
             {
-                let top = CHUNK_SIZE as i32 - 1;
-
-                tags.height as f32 / top as f32
+                let span = HEIGHT_RANGE.end - HEIGHT_RANGE.start;
+                (tags.height - HEIGHT_RANGE.start) as f32 / span as f32
             },
             Self::Difficulty =>
             {

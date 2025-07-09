@@ -112,7 +112,7 @@
                         (maybe-light (make-point (x-of 3) 7) 0.55 (list (if flip -0.5 0.5) 0.0 0.0))
                         (maybe-light (make-point (x-of 3) 11) 0.55 (list (if flip -0.5 0.5) 0.2 0.0))
                         (door (x-of 2) 5 (if flip 'left 'right) 'metal)
-                        (maybe-enemy (make-point (x-of (random-integer-between 2 6)) (random-integer-between 8 (- size-y 5)))))
+                        (maybe-enemy (make-point (x-of (random-integer-between 2 6)) (random-integer-between 6 (- size-y 7)))))
                     (lambda ()
                         (add-window 8)
                         (add-window 9)
