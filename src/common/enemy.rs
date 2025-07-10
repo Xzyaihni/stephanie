@@ -13,7 +13,7 @@ use crate::{
         raycast::*,
         collider::*,
         entity::{raycast_system, ClientEntities},
-        world::pathfind::*,
+        world::{TILE_SIZE, pathfind::*},
         World,
         SeededRandom,
         AnyEntities,
@@ -259,15 +259,15 @@ impl Enemy
         entity: Entity,
         point: Vector3<f32>,
         dt: f32
-    ) -> bool
+    )
     {
         let transform = some_or_return!(entities.target_ref(entity));
 
         let distance = point - transform.position;
 
-        if distance.magnitude() < transform.scale.min()
+        if distance.magnitude() < f32::EPSILON
         {
-            return true;
+            return;
         }
 
         let anatomy = entities.anatomy(entity).unwrap();
@@ -282,8 +282,6 @@ impl Enemy
             Unit::new_normalize(distance),
             dt
         );
-
-        false
     }
 
     fn do_behavior(
@@ -323,8 +321,10 @@ impl Enemy
                     path.debug_display(entities);
                 }
 
-                let position = some_or_return!(entities.transform(entity)).position;
-                if let Some(direction) = path.move_along(position)
+                let transform = some_or_return!(entities.transform(entity));
+
+                let position = transform.position;
+                if let Some(direction) = path.move_along(TILE_SIZE * 0.1, position)
                 {
                     Self::move_to(entities, entity, position + direction, dt);
                 } else

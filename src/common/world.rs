@@ -1,7 +1,7 @@
 use std::{
     cmp::Ordering,
     sync::Arc,
-    collections::{HashSet, VecDeque, BinaryHeap}
+    collections::{HashSet, BinaryHeap}
 };
 
 use nalgebra::{Vector2, Vector3};
@@ -201,19 +201,18 @@ impl World
         {
             fn path_to(self) -> WorldPath
             {
-                let mut path = VecDeque::from([self.value]);
+                let mut path = vec![self.value];
                 self.path_to_inner(&mut path);
 
-                WorldPath::new(path.into())
+                WorldPath::new(path)
             }
 
-            fn path_to_inner(self, path: &mut VecDeque<TilePos>)
+            fn path_to_inner(self, path: &mut Vec<TilePos>)
             {
                 if let Some(node) = self.previous
                 {
-                    path.push_front(node.value);
-
-                    node.path_to_inner(path)
+                    path.push(node.value);
+                    node.path_to_inner(path);
                 }
             }
         }

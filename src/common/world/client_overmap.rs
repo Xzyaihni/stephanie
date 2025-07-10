@@ -97,6 +97,11 @@ impl TilePos
         big_pos + small_pos
     }
 
+    pub fn center_position(&self) -> Pos3<f32>
+    {
+        self.position() + Pos3::repeat(TILE_SIZE * 0.5)
+    }
+
     pub fn tiles_between(&self, other: Self) -> impl Iterator<Item=TilePos>
     {
         let start = self.min_componentwise(other);
