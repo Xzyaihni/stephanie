@@ -160,9 +160,9 @@ pub type MessageDeError = bincode::error::DecodeError;
 pub const BINCODE_CONFIG: bincode::config::Configuration = bincode::config::standard();
 
 #[macro_export]
-macro_rules! time_this
+macro_rules! get_time_this
 {
-    ($name:expr, $($tt:tt)*) =>
+    ($($tt:tt)*) =>
     {
         {
             use std::time::Instant;
@@ -171,22 +171,77 @@ macro_rules! time_this
 
             $($tt)*;
 
-            eprintln!("{} took {:.2} ms", $name, start_time.elapsed().as_micros() as f64 / 1000.0);
+            start_time.elapsed().as_micros() as f64 / 1000.0
         }
     }
 }
 
 #[macro_export]
-macro_rules! maybe_time_this
+macro_rules! time_this
 {
-    ($name:expr, $time_it:expr, $($tt:tt)*) =>
+    ($name:literal, $($tt:tt)*) =>
     {
-        if $time_it
         {
-            crate::time_this!($name, $($tt)*)
-        } else
+            let time = $crate::get_time_this!($($tt)*);
+
+            eprintln!("{} took {time:.2} ms", $name);
+        }
+    }
+}
+
+#[macro_export]
+macro_rules! frame_time_this
+{
+    ($name:ident, $($tt:tt)*) =>
+    {
         {
-            $($tt)*;
+            use std::sync::{LazyLock, Mutex};
+
+            use $crate::debug_config::*;
+
+            if DebugConfig::is_enabled(DebugTool::FrameTimings)
+            {
+                #[allow(non_upper_case_globals)]
+                static $name: LazyLock<Mutex<(f64, [Option<f64>; 5], usize)>> = LazyLock::new(|| Mutex::new((0.0, [None; 5], 0)));
+
+                let time = $crate::get_time_this!($($tt)*);
+
+                {
+                    let mut value = $name.lock().unwrap();
+
+                    value.0 = value.0.max(time);
+
+                    {
+                        let index = value.2;
+                        value.1[index] = Some(time);
+                    }
+
+                    // currently selected index
+                    value.2 += 1;
+                    if value.2 == value.1.len()
+                    {
+                        value.2 = 0;
+                    }
+
+                    let (total, amount) = value.1.iter().fold((0.0, 0), |(total, amount), x|
+                    {
+                        if let Some(x) = x
+                        {
+                            (total + x, amount + 1)
+                        } else
+                        {
+                            (total, amount)
+                        }
+                    });
+
+                    let average_time = total / amount as f64;
+
+                    eprintln!("{} takes ({:.2} ms max) {average_time:.2} ms", stringify!($name), value.0);
+                }
+            } else
+            {
+                $($tt)*;
+            }
         }
     }
 }

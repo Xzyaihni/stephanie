@@ -25,7 +25,6 @@ use game_state::{GameState, GameStateInfo};
 
 use crate::{
     LOG_PATH,
-    debug_config::*,
     app::{AppInfo, TimestampQuery},
     common::{
         some_or_value,
@@ -162,9 +161,8 @@ impl Client
         dt: f32
     )
     {
-        crate::maybe_time_this!{
-            "update",
-            DebugConfig::is_enabled(DebugTool::FrameTimings),
+        crate::frame_time_this!{
+            update,
             {
                 let game_state = some_or_return!(&self.game_state);
 
@@ -190,18 +188,16 @@ impl Client
 
     pub fn update_buffers(&mut self, info: &mut UpdateBuffersInfo)
     {
-        crate::maybe_time_this!{
-            "update-buffers",
-            DebugConfig::is_enabled(DebugTool::FrameTimings),
+        crate::frame_time_this!{
+            update_buffers,
             some_or_return!(&self.game_state).borrow_mut().update_buffers(info)
         };
     }
 
     pub fn draw(&mut self, mut info: DrawInfo)
     {
-        crate::maybe_time_this!{
-            "draw",
-            DebugConfig::is_enabled(DebugTool::FrameTimings),
+        crate::frame_time_this!{
+            draw,
             some_or_return!(&self.game_state).borrow().draw(&mut info)
         };
     }

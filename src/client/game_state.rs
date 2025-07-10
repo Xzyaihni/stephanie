@@ -179,57 +179,48 @@ impl ClientEntitiesContainer
     {
         let mut space = SpatialGrid::new();
 
-        crate::maybe_time_this!{
-            "spatial-grid-build",
-            DebugConfig::is_enabled(DebugTool::FrameTimings),
+        crate::frame_time_this!{
+            spatial_grid_build,
             self.entities.build_space(&mut space)
         };
 
-        crate::maybe_time_this!{
-            "physical-system-update",
-            DebugConfig::is_enabled(DebugTool::FrameTimings),
+        crate::frame_time_this!{
+            physical_system_update,
             physical_system::update(&mut self.entities, world, dt)
         };
 
-        crate::maybe_time_this!{
-            "lazy-transform-update",
-            DebugConfig::is_enabled(DebugTool::FrameTimings),
+        crate::frame_time_this!{
+            lazy_transform_update,
             self.entities.update_lazy(dt)
         };
 
-        crate::maybe_time_this!{
-            "enemy-system-update",
-            DebugConfig::is_enabled(DebugTool::FrameTimings),
+        crate::frame_time_this!{
+            enemy_system_update,
             enemy_system::update(&mut self.entities, world, passer, dt)
         };
 
-        crate::maybe_time_this!{
-            "children-update",
-            DebugConfig::is_enabled(DebugTool::FrameTimings),
+        crate::frame_time_this!{
+            children_update,
             self.entities.update_children()
         };
 
-        crate::maybe_time_this!{
-            "damaging-system-update",
-            DebugConfig::is_enabled(DebugTool::FrameTimings),
+        crate::frame_time_this!{
+            damaging_system_update,
             damaging_system::update(&mut self.entities, world, passer, damage_info)
         };
 
-        crate::maybe_time_this!{
-            "lazy-mix-update",
-            DebugConfig::is_enabled(DebugTool::FrameTimings),
+        crate::frame_time_this!{
+            lazy_mix_update,
             self.entities.update_lazy_mix(dt)
         };
 
-        crate::maybe_time_this!{
-            "outlineable-update",
-            DebugConfig::is_enabled(DebugTool::FrameTimings),
+        crate::frame_time_this!{
+            outlineable_update,
             self.entities.update_outlineable(dt)
         };
 
-        crate::maybe_time_this!{
-            "collider-system-update",
-            DebugConfig::is_enabled(DebugTool::FrameTimings),
+        crate::frame_time_this!{
+            collider_system_update,
             collider_system::update(&mut self.entities, world, &space, dt)
         };
 
@@ -1279,9 +1270,8 @@ impl GameState
 
         self.dt = Some(dt);
 
-        crate::maybe_time_this!{
-            "process-messages",
-            DebugConfig::is_enabled(DebugTool::FrameTimings),
+        crate::frame_time_this!{
+            process_messages,
             self.process_messages(object_info)
         };
 
@@ -1295,9 +1285,8 @@ impl GameState
             items_info: &self.items_info
         };
 
-        crate::maybe_time_this!{
-            "characters-update",
-            DebugConfig::is_enabled(DebugTool::FrameTimings),
+        crate::frame_time_this!{
+            characters_update,
             self.entities.entities.update_characters(
                 partial,
                 object_info,
@@ -1305,21 +1294,18 @@ impl GameState
             )
         };
 
-        crate::maybe_time_this!{
-            "watchers-update",
-            DebugConfig::is_enabled(DebugTool::FrameTimings),
+        crate::frame_time_this!{
+            watchers_update,
             self.entities.entities.update_watchers(dt)
         };
 
-        crate::maybe_time_this!{
-            "create-queued",
-            DebugConfig::is_enabled(DebugTool::FrameTimings),
+        crate::frame_time_this!{
+            create_queued,
             self.entities.entities.create_queued(object_info)
         };
 
-        crate::maybe_time_this!{
-            "handle-on-change",
-            DebugConfig::is_enabled(DebugTool::FrameTimings),
+        crate::frame_time_this!{
+            handle_on_change,
             self.entities.entities.handle_on_change()
         };
 

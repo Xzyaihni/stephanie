@@ -13,25 +13,22 @@ use yanyaengine::{
     game_object::*
 };
 
-use crate::{
-    debug_config::*,
-    common::{
-        some_or_value,
-        some_or_return,
-        collider::*,
-        character::*,
-        Damageable,
-        SpecialTile,
-        AnyEntities,
-        Item,
-        Inventory,
-        Drug,
-        Entity,
-        EntityInfo,
-        entity::ClientEntities,
-        lisp::{self, *},
-        world::{CHUNK_VISUAL_SIZE, TILE_SIZE, Pos3, TilePos}
-    }
+use crate::common::{
+    some_or_value,
+    some_or_return,
+    collider::*,
+    character::*,
+    Damageable,
+    SpecialTile,
+    AnyEntities,
+    Item,
+    Inventory,
+    Drug,
+    Entity,
+    EntityInfo,
+    entity::ClientEntities,
+    lisp::{self, *},
+    world::{CHUNK_VISUAL_SIZE, TILE_SIZE, Pos3, TilePos}
 };
 
 use super::game_state::{
@@ -191,9 +188,8 @@ impl Game
     {
         let game_state = self.game_state.upgrade().unwrap();
 
-        crate::maybe_time_this!{
-            "update-pre",
-            DebugConfig::is_enabled(DebugTool::FrameTimings),
+        crate::frame_time_this!{
+            update_pre,
             game_state.borrow_mut().update_pre(dt)
         };
 
@@ -202,9 +198,8 @@ impl Game
         let mut game_state_mut = game_state.borrow_mut();
         let mut changed_this_frame = game_state_mut.controls.changed_this_frame();
 
-        crate::maybe_time_this!{
-            "ui-update",
-            DebugConfig::is_enabled(DebugTool::FrameTimings),
+        crate::frame_time_this!{
+            ui_update,
             game_state_mut.ui_update(&mut changed_this_frame)
         };
 
@@ -214,9 +209,8 @@ impl Game
 
         controls.into_iter().for_each(|(control, state)| self.on_control(state, control));
 
-        crate::maybe_time_this!{
-            "game-state-update",
-            DebugConfig::is_enabled(DebugTool::FrameTimings),
+        crate::frame_time_this!{
+            game_state_update,
             game_state.borrow_mut().update(info, dt)
         };
 
