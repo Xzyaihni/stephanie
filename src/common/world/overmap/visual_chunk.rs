@@ -825,7 +825,7 @@ impl VisualChunk
 
                 if visible
                 {
-                    f(&x, index);
+                    f(x, index);
                 }
             } else
             {

@@ -1,3 +1,5 @@
+#![allow(clippy::suspicious_else_formatting)]
+
 use std::{
     f32,
     fs,
@@ -138,6 +140,7 @@ const DIFFICULTY_MAX: f32 = 5.0;
 
 impl UiScrollbarId
 {
+    #[allow(clippy::wrong_self_convention)]
     fn from_f32(&self, tags: &mut Tags, value: f32)
     {
         match self
@@ -154,6 +157,7 @@ impl UiScrollbarId
         }
     }
 
+    #[allow(clippy::wrong_self_convention)]
     fn to_f32(&self, tags: &Tags) -> f32
     {
         match self

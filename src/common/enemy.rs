@@ -309,7 +309,6 @@ impl Enemy
                 if Self::move_to(entities, entity, *point, dt)
                 {
                     self.reset_state = true;
-                    return;
                 }
             },
             BehaviorState::Attack(other_entity) =>

@@ -126,6 +126,9 @@ impl From<f32> for SortableF32
 
 impl Eq for SortableF32 {}
 
+// this is okay because in the constructor im making sure it cant be a nan
+// and afaik nans are the only reason floats dont have full ord
+#[allow(clippy::derive_ord_xor_partial_ord)]
 impl Ord for SortableF32
 {
     fn cmp(&self, other: &Self) -> Ordering

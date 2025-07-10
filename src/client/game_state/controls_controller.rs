@@ -151,14 +151,13 @@ impl ClipboardWrapper
 {
     pub fn get_text(&self) -> Result<String, ClipboardError>
     {
-        let clipboard = self.0.upgrade().ok_or_else(|| ClipboardError::DoesntExist)?;
+        let clipboard = self.0.upgrade().ok_or(ClipboardError::DoesntExist)?;
 
         let mut clipboard = clipboard.borrow_mut();
 
-        clipboard.as_mut().ok_or_else(||
-        {
-            ClipboardError::DoesntExist
-        }).and_then(|clipboard| clipboard.get_text().map_err(ClipboardError::Clipboard))
+        clipboard.as_mut()
+            .ok_or(ClipboardError::DoesntExist)
+            .and_then(|clipboard| clipboard.get_text().map_err(ClipboardError::Clipboard))
     }
 }
 
