@@ -2,24 +2,28 @@ use serde::{Serialize, Deserialize};
 
 use nalgebra::{Unit, Vector3};
 
-use crate::common::{
-    some_or_value,
-    some_or_return,
-    angle_between,
-    short_rotation,
-    character::*,
-    raycast::*,
-    collider::*,
-    entity::{raycast_system, ClientEntities},
-    World,
-    SeededRandom,
-    AnyEntities,
-    Entity,
-    EnemiesInfo,
-    EnemyInfo,
-    EnemyId,
-    Physical,
-    Anatomy
+use crate::{
+    debug_config::*,
+    common::{
+        some_or_value,
+        some_or_return,
+        angle_between,
+        short_rotation,
+        character::*,
+        raycast::*,
+        collider::*,
+        entity::{raycast_system, ClientEntities},
+        world::pathfind::*,
+        World,
+        SeededRandom,
+        AnyEntities,
+        Entity,
+        EnemiesInfo,
+        EnemyInfo,
+        EnemyId,
+        Physical,
+        Anatomy
+    }
 };
 
 
@@ -158,7 +162,7 @@ pub enum BehaviorState
 {
     Wait,
     MoveDirection(Unit<Vector3<f32>>),
-    MoveTo(Vector3<f32>),
+    MoveTo(WorldPath),
     Attack(Entity)
 }
 
@@ -206,7 +210,12 @@ impl Enemy
         }
     }
 
-    fn next_state(&self, entities: &impl AnyEntities) -> BehaviorState
+    fn next_state(
+        &self,
+        entities: &impl AnyEntities,
+        world: &World,
+        this_entity: Entity
+    ) -> BehaviorState
     {
         match &self.behavior
         {
@@ -227,10 +236,13 @@ impl Enemy
                     BehaviorState::MoveTo(_) => BehaviorState::Wait,
                     BehaviorState::Attack(entity) =>
                     {
-                        entities.transform(*entity).map(|transform|
-                        {
-                            BehaviorState::MoveTo(transform.position)
-                        }).unwrap_or_else(|| BehaviorState::Wait)
+                        entities.transform(*entity).zip(entities.transform(this_entity).map(|x| x.position))
+                            .and_then(|(transform, this_position)|
+                            {
+                                let path = world.pathfind(this_position, transform.position)?;
+
+                                Some(BehaviorState::MoveTo(path))
+                            }).unwrap_or_else(|| BehaviorState::Wait)
                     }
                 }
             }
@@ -289,7 +301,7 @@ impl Enemy
             return;
         }
 
-        match &self.behavior_state
+        match &mut self.behavior_state
         {
             BehaviorState::MoveDirection(direction) =>
             {
@@ -304,9 +316,18 @@ impl Enemy
                     dt
                 );
             },
-            BehaviorState::MoveTo(point) =>
+            BehaviorState::MoveTo(path) =>
             {
-                if Self::move_to(entities, entity, *point, dt)
+                if DebugConfig::is_enabled(DebugTool::DisplayPathfind)
+                {
+                    path.debug_display(entities);
+                }
+
+                let position = some_or_return!(entities.transform(entity)).position;
+                if let Some(direction) = path.move_along(position)
+                {
+                    Self::move_to(entities, entity, position + direction, dt);
+                } else
                 {
                     self.reset_state = true;
                 }
@@ -413,7 +434,7 @@ impl Enemy
             let changed_state = *current_state_left <= 0.0;
             if changed_state
             {
-                self.set_next_state(entities);
+                self.set_next_state(entities, world, entity);
             }
 
             changed_state
@@ -428,7 +449,7 @@ impl Enemy
             self.seen_timer = 0.0;
 
             changed = true;
-            self.set_next_state(entities);
+            self.set_next_state(entities, world, entity);
         }
 
         self.do_behavior(entities, world, entity, dt);
@@ -436,9 +457,9 @@ impl Enemy
         changed
     }
 
-    fn set_next_state(&mut self, entities: &impl AnyEntities)
+    fn set_next_state(&mut self, entities: &impl AnyEntities, world: &World, entity: Entity)
     {
-        self.set_state(self.next_state(entities));
+        self.set_state(self.next_state(entities, world, entity));
     }
 
     fn set_state(&mut self, state: BehaviorState)

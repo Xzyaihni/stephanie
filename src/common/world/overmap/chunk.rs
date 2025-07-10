@@ -24,7 +24,7 @@ pub const CHUNK_VISUAL_SIZE: f32 = CHUNK_SIZE as f32  * TILE_SIZE;
 
 pub const TILE_SIZE: f32 = 0.1;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ChunkLocal(Pos3<usize>);
 
 impl From<ChunkLocal> for Pos3<f32>

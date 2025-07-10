@@ -27,6 +27,7 @@ pub enum DebugTool
     RedundantWorldChecks,
     ShowMessages,
     DisplayRaycast,
+    DisplayPathfind,
     CollisionWorldBounds,
     CollisionBounds,
     Contacts,

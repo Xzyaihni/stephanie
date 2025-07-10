@@ -697,7 +697,7 @@ pub fn tile_marker_info(position: Vector3<f32>, color: [f32; 4], amount: usize, 
         }),
         render: Some(RenderInfo{
             object: Some(RenderObjectKind::Texture{
-                name: "ui/solid.png".to_owned()
+                name: "solid.png".to_owned()
             }.into()),
             above_world: true,
             mix: Some(MixColor::color(color)),
@@ -708,6 +708,19 @@ pub fn tile_marker_info(position: Vector3<f32>, color: [f32; 4], amount: usize, 
     }
 }
 
+pub fn line_info(
+    start: Vector3<f32>,
+    end: Vector3<f32>,
+    thickness: f32,
+    color: [f32; 3]
+) -> Option<EntityInfo>
+{
+    let direction = end - start;
+    let scale = Vector3::new(direction.magnitude(), thickness, 1.0);
+
+    direction_like_info("solid.png", start, direction, scale, color)
+}
+
 pub fn direction_arrow_info(
     point: Vector3<f32>,
     direction: Vector3<f32>,
@@ -715,26 +728,35 @@ pub fn direction_arrow_info(
     color: [f32; 3]
 ) -> Option<EntityInfo>
 {
+    direction_like_info("arrow.png", point, direction, Vector3::repeat(arrow_scale), color)
+}
+
+fn direction_like_info(
+    texture: &str,
+    point: Vector3<f32>,
+    direction: Vector3<f32>,
+    scale: Vector3<f32>,
+    color: [f32; 3]
+) -> Option<EntityInfo>
+{
     Unit::try_new(direction.xy(), 0.01).map(|normal_direction|
     {
         let angle = normal_direction.y.atan2(normal_direction.x);
-        let shift_amount = Vector3::new(normal_direction.x, normal_direction.y, 0.0)
-            * (arrow_scale / 2.0);
+        let shift_amount = Vector3::new(normal_direction.x, normal_direction.y, 0.0) * (scale.x / 2.0);
 
         EntityInfo{
             transform: Some(Transform{
                 position: point + shift_amount,
-                scale: Vector3::repeat(arrow_scale),
+                scale,
                 rotation: angle,
                 ..Default::default()
             }),
             render: Some(RenderInfo{
                 object: Some(RenderObjectKind::Texture{
-                    name: "arrow.png".to_owned()
+                    name: texture.to_owned()
                 }.into()),
-                z_level: ZLevel::Door,
                 mix: Some(MixColor{color: [color[0], color[1], color[2], 1.0], amount: 1.0, keep_transparency: true}),
-                aspect: Aspect::KeepMax,
+                above_world: true,
                 ..Default::default()
             }),
             watchers: Some(Watchers::simple_one_frame()),

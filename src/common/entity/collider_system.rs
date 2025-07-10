@@ -75,10 +75,10 @@ pub fn update(
                 let collider = collider.borrow_mut();
                 let (bounds, mix, sprite) = match &collider.kind
                 {
-                    ColliderType::RayZ => (Some(Vector3::repeat(ENTITY_SCALE * 0.06)), None, "ui/solid.png"),
+                    ColliderType::RayZ => (Some(Vector3::repeat(ENTITY_SCALE * 0.06)), None, "solid.png"),
                     ColliderType::Tile(_)
                     | ColliderType::Aabb
-                    | ColliderType::Rectangle => (None, Some(MixColor::color([0.0, 0.0, 0.0, 0.4])), "ui/solid.png"),
+                    | ColliderType::Rectangle => (None, Some(MixColor::color([0.0, 0.0, 0.0, 0.4])), "solid.png"),
                     ColliderType::Circle => (None, None, "circle_transparent.png")
                 };
 

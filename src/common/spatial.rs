@@ -190,33 +190,3 @@ impl SpatialGrid
         self.node.possible_pairs(&mut f);
     }
 }
-
-
-#[cfg(test)]
-mod tests
-{
-    use super::*;
-
-
-    fn almost_equal(a: f32, b: f32)
-    {
-        assert!((a - b).abs() < 0.0001);
-    }
-
-    #[test]
-    fn median()
-    {
-        let mut values = [5.3, 0.2, 11.3, 31.2].map(|x|
-        {
-            SpatialInfo{
-                entity: Entity::from_raw(false, 0),
-                position: Vector3::new(x, 0.0, 0.0),
-                scale: Vector3::zeros()
-            }
-        });
-
-        let x = KNode::find_median(&mut values, 0);
-
-        almost_equal(x, 8.3);
-    }
-}

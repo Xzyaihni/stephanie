@@ -952,7 +952,7 @@ impl VisualOvermap
                 }),
                 render: Some(RenderInfo{
                     object: Some(RenderObjectKind::Texture{
-                        name: "ui/solid.png".to_owned()
+                        name: "solid.png".to_owned()
                     }.into()),
                     above_world: true,
                     mix: Some(MixColor::color(color)),

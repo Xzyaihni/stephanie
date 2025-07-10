@@ -1,4 +1,8 @@
-use std::sync::Arc;
+use std::{
+    cmp::Ordering,
+    sync::Arc,
+    collections::{HashSet, VecDeque, BinaryHeap}
+};
 
 use nalgebra::{Vector2, Vector3};
 
@@ -59,10 +63,14 @@ pub use client_overmap::TilePos;
 use client_overmap::ClientOvermap;
 use visual_overmap::VisualOvermap;
 
+use pathfind::WorldPath;
+
 pub mod overmap;
 
 mod client_overmap;
 mod visual_overmap;
+
+pub mod pathfind;
 
 
 pub const CLIENT_OVERMAP_SIZE: usize = 8;
@@ -174,6 +182,120 @@ impl World
     fn chunk_of(pos: Pos3<f32>) -> GlobalPos
     {
         TilePos::from(pos).chunk
+    }
+
+    pub fn pathfind(&self, start: Vector3<f32>, end: Vector3<f32>) -> Option<WorldPath>
+    {
+        let target = TilePos::from(Pos3::from(end));
+        let start = TilePos::from(Pos3::from(start));
+
+        #[derive(Debug, Clone)]
+        struct Node
+        {
+            cost: f32,
+            value: TilePos,
+            previous: Option<Box<Self>>
+        }
+
+        impl Node
+        {
+            fn path_to(self) -> WorldPath
+            {
+                let mut path = VecDeque::from([self.value]);
+                self.path_to_inner(&mut path);
+
+                WorldPath::new(path.into())
+            }
+
+            fn path_to_inner(self, path: &mut VecDeque<TilePos>)
+            {
+                if let Some(node) = self.previous
+                {
+                    path.push_front(node.value);
+
+                    node.path_to_inner(path)
+                }
+            }
+        }
+
+        impl PartialEq for Node
+        {
+            fn eq(&self, other: &Self) -> bool
+            {
+                self.cost.eq(&other.cost)
+            }
+        }
+
+        impl Eq for Node {}
+
+        impl PartialOrd for Node
+        {
+            fn partial_cmp(&self, other: &Self) -> Option<Ordering>
+            {
+                other.cost.partial_cmp(&self.cost)
+            }
+        }
+
+        impl Ord for Node
+        {
+            fn cmp(&self, other: &Self) -> Ordering { self.partial_cmp(other).unwrap() }
+        }
+
+        let mut explored = HashSet::new();
+        let mut unexplored = BinaryHeap::from([
+            Node{cost: 0.0, value: start, previous: None}
+        ]);
+
+        while !unexplored.is_empty()
+        {
+            let current = unexplored.pop()?;
+
+            if current.value == target
+            {
+                return Some(current.path_to());
+            }
+
+            explored.insert(current.value);
+
+            let create_node = |value: TilePos|
+            {
+                let start_distance = Vector3::from(start.distance(value)).cast::<f32>().magnitude();
+                let goal_distance = Vector3::from(value.distance(target)).cast::<f32>().magnitude();
+
+                let cost = start_distance + goal_distance;
+
+                Node{cost, value, previous: Some(Box::new(current.clone()))}
+            };
+
+            let below = current.value.offset(Pos3::new(0, 0, -1));
+            let is_grounded = !self.tile(below)?.is_none();
+
+            let mut try_push = |position|
+            {
+                if !explored.contains(&position)
+                {
+                    unexplored.push(create_node(position));
+                }
+            };
+
+            if is_grounded
+            {
+                PosDirection::iter_non_z().for_each(|direction|
+                {
+                    let position = current.value.offset(Pos3::from(direction));
+
+                    if self.tile(position).map(|x| x.is_none()).unwrap_or(false)
+                    {
+                        try_push(position);
+                    }
+                });
+            } else
+            {
+                try_push(below);
+            }
+        }
+
+        None
     }
 
     pub fn inside_chunk(&self, pos: Pos3<f32>) -> bool
