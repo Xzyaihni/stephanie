@@ -1,5 +1,4 @@
-
-use std::cmp::Ordering;
+use std::{cmp::Ordering, ops::ControlFlow};
 
 use nalgebra::Vector3;
 
@@ -37,11 +36,42 @@ impl KNode
         Self::Leaf{entities: infos.into_iter().map(|x| x.entity).collect()}
     }
 
-    fn random_sample<T: Clone>(values: &[T], amount: usize) -> Vec<T>
+    fn random_sample<const AMOUNT: usize, T: Clone>(values: &[T]) -> Vec<T>
     {
-        let s = fastrand::usize(0..values.len());
+        const OVERSAMPLE: usize = 2;
 
-        values.iter().chain(values.iter()).skip(s).take(amount).cloned().collect()
+        let total = values.len();
+
+        let difference = total - AMOUNT;
+        if difference < AMOUNT / 2
+        {
+            return values.iter().skip(fastrand::usize(0..(difference + 1))).take(AMOUNT).cloned().collect();
+        }
+
+        let indices = (0..AMOUNT * OVERSAMPLE).try_fold(Vec::new(), |mut state, _|
+        {
+            let value = fastrand::usize(0..total);
+
+            if !state.contains(&value)
+            {
+                state.push(value);
+
+                if state.len() == AMOUNT
+                {
+                    return ControlFlow::Break(state);
+                }
+            }
+
+            ControlFlow::Continue(state)
+        });
+
+        let indices = match indices
+        {
+            ControlFlow::Continue(x) => x,
+            ControlFlow::Break(x) => x
+        };
+
+        indices.into_iter().map(|index| values[index].clone()).collect()
     }
 
     pub fn new(mut infos: Vec<SpatialInfo>, depth: usize) -> Self
@@ -77,7 +107,7 @@ impl KNode
                 (get_axis(&infos, infos.len() / 2 - 1) + get_axis(&infos, infos.len() / 2)) / 2.0
             } else
             {
-                let mut random_sample = Self::random_sample(&infos, AMOUNT);
+                let mut random_sample = Self::random_sample::<AMOUNT, SpatialInfo>(&infos);
                 axis_sort(&mut random_sample);
 
                 (get_axis(&random_sample, AMOUNT / 2 - 1) + get_axis(&random_sample, AMOUNT / 2)) / 2.0
