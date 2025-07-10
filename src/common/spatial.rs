@@ -1,3 +1,4 @@
+
 use std::cmp::Ordering;
 
 use nalgebra::Vector3;
@@ -53,27 +54,33 @@ impl KNode
         let axis_i = depth % 3;
 
         let median = {
-            const AMOUNT: usize = 15;
+            const AMOUNT: usize = 16;
+
+            let axis_sort = |values: &mut [SpatialInfo]|
+            {
+                values.sort_unstable_by(|a, b|
+                {
+                    a.position.index(axis_i).partial_cmp(b.position.index(axis_i))
+                        .unwrap_or(Ordering::Equal)
+                });
+            };
+
+            let get_axis = |values: &[SpatialInfo], index: usize|
+            {
+                *values[index].position.index(axis_i)
+            };
 
             if infos.len() < AMOUNT
             {
-                infos.sort_unstable_by(|a, b|
-                {
-                    a.position.index(axis_i).partial_cmp(b.position.index(axis_i))
-                        .unwrap_or(Ordering::Equal)
-                });
+                axis_sort(&mut infos);
 
-                *infos[infos.len() / 2].position.index(axis_i)
+                (get_axis(&infos, infos.len() / 2 - 1) + get_axis(&infos, infos.len() / 2)) / 2.0
             } else
             {
                 let mut random_sample = Self::random_sample(&infos, AMOUNT);
-                random_sample.sort_unstable_by(|a, b|
-                {
-                    a.position.index(axis_i).partial_cmp(b.position.index(axis_i))
-                        .unwrap_or(Ordering::Equal)
-                });
+                axis_sort(&mut random_sample);
 
-                *random_sample[AMOUNT / 2].position.index(axis_i)
+                (get_axis(&random_sample, AMOUNT / 2 - 1) + get_axis(&random_sample, AMOUNT / 2)) / 2.0
             }
         };
 
