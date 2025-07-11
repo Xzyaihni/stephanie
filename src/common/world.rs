@@ -287,7 +287,7 @@ impl World
                                 ..Default::default()
                             },
                             distance
-                        ).is_some()
+                        ).is_none()
                     };
 
                     let is_reachable = is_next || is_tile_reachable(&tiles);
