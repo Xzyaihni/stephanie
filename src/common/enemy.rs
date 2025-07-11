@@ -366,6 +366,7 @@ impl Enemy
                 }
 
                 self.reset_state = true;
+                self.seen_timer = 0.0;
             },
             BehaviorState::Wait => ()
         }
@@ -446,7 +447,6 @@ impl Enemy
         if self.reset_state
         {
             self.reset_state = false;
-            self.seen_timer = 0.0;
 
             changed = true;
             self.set_next_state(entities, world, entity);
