@@ -33,6 +33,7 @@ use crate::{
         colors::*,
         lazy_transform::*,
         f32_to_range,
+        Pos3,
         Side1d,
         EaseOut,
         Item,
@@ -42,7 +43,8 @@ use crate::{
         Entity,
         ItemInfo,
         ItemsInfo,
-        entity::ClientEntities
+        entity::ClientEntities,
+        world::TilePos
     }
 };
 
@@ -1624,6 +1626,16 @@ impl Ui
     {
         let owner_transform = some_or_return!(entities.transform(owner));
         let camera_transform = some_or_return!(entities.transform(camera));
+
+        let z_of = |pos|
+        {
+            TilePos::from(Pos3::from(pos)).to_global().z
+        };
+
+        if z_of(owner_transform.position) > z_of(camera_transform.position)
+        {
+            return None;
+        }
 
         let owner_position = owner_transform.position.xy() - camera_transform.position.xy();
         let position_absolute = owner_position - Vector2::new(0.0, owner_transform.scale.y * 0.5);

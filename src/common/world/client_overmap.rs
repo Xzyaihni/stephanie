@@ -214,6 +214,11 @@ impl TilePos
         Pos3{x, y, z}
     }
 
+    pub fn to_global(&self) -> Pos3<i32>
+    {
+        self.chunk.0 * CHUNK_SIZE as i32 + self.local.pos().map(|x| x as i32)
+    }
+
     pub fn distance(&self, other: Self) -> Pos3<i32>
     {
         let chunk = other.chunk.0 - self.chunk.0;
