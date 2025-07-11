@@ -1,3 +1,5 @@
+use std::iter;
+
 use serde::{Serialize, Deserialize};
 
 use nalgebra::Vector3;
@@ -21,17 +23,21 @@ use crate::common::{
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorldPath
 {
-    values: Vec<TilePos>
+    values: Vec<TilePos>,
+    target: Vector3<f32>
 }
 
 impl WorldPath
 {
-    pub fn new(values: Vec<TilePos>) -> Self
+    pub fn new(
+        values: Vec<TilePos>,
+        target: Vector3<f32>
+    ) -> Self
     {
-        Self{values}
+        Self{values, target}
     }
 
-    pub fn target(&self) -> Option<&TilePos>
+    pub fn target_tile(&self) -> Option<&TilePos>
     {
         self.values.first()
     }
@@ -49,7 +55,14 @@ impl WorldPath
     {
         if self.values.is_empty()
         {
-            return None;
+            let distance = self.target - position;
+
+            if distance.magnitude() < near
+            {
+                return None;
+            }
+
+            return Some(distance);
         }
 
         let target_position: Vector3<f32> = self.values.last().unwrap().center_position().into();
@@ -68,11 +81,12 @@ impl WorldPath
     pub fn debug_display(&self, entities: &ClientEntities)
     {
         let amount = self.values.len();
-        self.values.iter().enumerate().for_each(|(index, pos)|
+        iter::once((amount == 0, self.target)).chain(self.values.iter().enumerate().map(|(index, pos)|
         {
-            let is_last = (index + 1) == amount;
-
-            let color = if is_last
+            ((index + 1) == amount, Vector3::from(pos.center_position()))
+        })).for_each(|(is_selected, position)|
+        {
+            let color = if is_selected
             {
                 [1.0, 0.0, 0.0, 0.5]
             } else
@@ -82,7 +96,7 @@ impl WorldPath
 
             entities.push(true, EntityInfo{
                 transform: Some(Transform{
-                    position: Vector3::from(pos.center_position()),
+                    position,
                     scale: Vector3::repeat(TILE_SIZE * 0.3),
                     ..Default::default()
                 }),
@@ -99,17 +113,14 @@ impl WorldPath
             });
         });
 
-        self.values.iter().zip(self.values.iter().skip(1)).for_each(|(previous, current)|
-        {
-            if let Some(info) = line_info(
-                Vector3::from(previous.center_position()),
-                Vector3::from(current.center_position()),
-                TILE_SIZE * 0.1,
-                [0.2, 0.2, 1.0]
-            )
+        iter::once(self.target).chain(self.values.iter().map(|x| Vector3::from(x.center_position())))
+            .zip(self.values.iter().map(|x| Vector3::from(x.center_position())))
+            .for_each(|(previous, current)|
             {
-                entities.push(true, info);
-            }
-        });
+                if let Some(info) = line_info(previous, current, TILE_SIZE * 0.1, [0.2, 0.2, 1.0])
+                {
+                    entities.push(true, info);
+                }
+            });
     }
 }

@@ -332,7 +332,7 @@ impl Enemy
                         let transform = some_or_return!(entities.target_ref(entity));
 
                         let target = other_transform.position;
-                        let regenerate_path = path.as_ref().and_then(|x| x.target())
+                        let regenerate_path = path.as_ref().and_then(|x| x.target_tile())
                             .map(|x| *x != TilePos::from(target))
                             .unwrap_or(true);
 
@@ -343,6 +343,11 @@ impl Enemy
 
                         if let Some(path) = path.as_mut()
                         {
+                            if DebugConfig::is_enabled(DebugTool::DisplayPathfind)
+                            {
+                                path.debug_display(entities);
+                            }
+
                             if let Some(direction) = path.move_along(PATH_NEAR, transform.position)
                             {
                                 Self::move_direction(entities, entity, Unit::new_normalize(direction), dt);

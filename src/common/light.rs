@@ -19,7 +19,7 @@ use yanyaengine::{
 
 use crate::{
     client::VisibilityChecker,
-    common::{Pos3, Entity, ServerToClient, world::TilePos}
+    common::{Entity, ServerToClient, world::TilePos}
 };
 
 
@@ -122,7 +122,7 @@ impl ClientLight
     pub fn visibility_checker_with(&self, position: Vector3<f32>) -> VisibilityChecker
     {
         VisibilityChecker{
-            world_position: TilePos::from(Pos3::from(position)),
+            world_position: TilePos::from(position),
             size: self.scale(),
             position
         }

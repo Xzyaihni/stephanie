@@ -33,7 +33,6 @@ use crate::{
         colors::*,
         lazy_transform::*,
         f32_to_range,
-        Pos3,
         Side1d,
         EaseOut,
         Item,
@@ -1629,7 +1628,7 @@ impl Ui
 
         let z_of = |pos|
         {
-            TilePos::from(Pos3::from(pos)).to_global().z
+            TilePos::from(pos).to_global().z
         };
 
         if z_of(owner_transform.position) > z_of(camera_transform.position)

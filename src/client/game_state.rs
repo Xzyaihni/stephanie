@@ -324,7 +324,7 @@ impl ClientEntitiesContainer
             {
                 let real_z = (transform.position.z / TILE_SIZE).floor() as i32;
 
-                let below_player = !visibility.world_position.is_same_height(&TilePos::from(Pos3::from(transform.position)));
+                let below_player = !visibility.world_position.is_same_height(&TilePos::from(transform.position));
                 let sky_occluded = below_player && world.sky_occluded(&transform);
 
                 let is_render_visible = !world.wall_occluded(&transform) && !sky_occluded;
@@ -1211,7 +1211,7 @@ impl GameState
 
         let mut position = camera.position().coords;
 
-        let world_position = TilePos::from(Pos3::from(position));
+        let world_position = TilePos::from(position);
 
         position.z += z_middle;
 

@@ -119,7 +119,7 @@ pub fn swept_aabb_world(
     let top_left = start.zip_map(&end, |a, b| a.min(b)) - half_size;
     let bottom_right = start.zip_map(&end, |a, b| a.max(b)) + half_size;
 
-    TilePos::from(Pos3::from(top_left)).tiles_between(TilePos::from(Pos3::from(bottom_right) + TILE_SIZE))
+    TilePos::from(top_left).tiles_between(TilePos::from(bottom_right + Vector3::repeat(TILE_SIZE)))
         .filter_map(|pos|
         {
             let tile = world.tile(pos);

@@ -209,8 +209,8 @@ impl World
         end: Vector3<f32>
     ) -> Option<WorldPath>
     {
-        let target = TilePos::from(Pos3::from(end));
-        let start = TilePos::from(Pos3::from(start));
+        let target = TilePos::from(end);
+        let start = TilePos::from(start);
 
         if start.distance(target).z > 0
         {
@@ -339,7 +339,7 @@ impl World
                     simplified.push(tiles[index - 1]);
                 }
 
-                return Some(WorldPath::new(simplified));
+                return Some(WorldPath::new(simplified, end));
             }
 
             let below = current.value.offset(Pos3::new(0, 0, -1));
@@ -456,8 +456,8 @@ impl World
     {
         let half_scale = collider.bounds();
 
-        let top_left = TilePos::from(Pos3::from(collider.transform.position - half_scale));
-        let bottom_right = TilePos::from(Pos3::from(collider.transform.position + half_scale));
+        let top_left = TilePos::from(collider.transform.position - half_scale);
+        let bottom_right = TilePos::from(collider.transform.position + half_scale);
 
         top_left.tiles_between(bottom_right).filter(move |pos|
         {
