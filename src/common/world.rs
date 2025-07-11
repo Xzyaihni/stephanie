@@ -4,7 +4,7 @@ use std::{
     collections::{HashSet, BinaryHeap}
 };
 
-use nalgebra::{Unit, Vector2, Vector3};
+use nalgebra::{Vector2, Vector3};
 
 use vulkano::{
     buffer::subbuffer::BufferContents,
@@ -185,7 +185,12 @@ impl World
         TilePos::from(pos).chunk
     }
 
-    pub fn pathfind(&self, start: Vector3<f32>, end: Vector3<f32>) -> Option<WorldPath>
+    pub fn pathfind(
+        &self,
+        scale: Vector3<f32>,
+        start: Vector3<f32>,
+        end: Vector3<f32>
+    ) -> Option<WorldPath>
     {
         let target = TilePos::from(Pos3::from(end));
         let start = TilePos::from(Pos3::from(start));
@@ -271,22 +276,18 @@ impl World
                     let is_tile_reachable = |tiles: &[TilePos]|
                     {
                         let distance: Vector3<f32> = Vector3::from(tiles[check].distance(tiles[index])).cast() * TILE_SIZE;
-                        let max_distance = distance.magnitude();
-
-                        let direction = Unit::new_normalize(distance);
 
                         let start = Vector3::from(tiles[check].center_position());
 
-                        let mut hits = raycast::raycast_world(
+                        raycast::swept_aabb_world(
                             self,
-                            &start,
-                            &direction,
-                            move |_, hit|
-                            {
-                                hit.result.distance >= max_distance
-                            });
-
-                        hits.find(|x| x.id.is_tile()).is_none()
+                            &Transform{
+                                position: start,
+                                scale,
+                                ..Default::default()
+                            },
+                            distance
+                        ).is_some()
                     };
 
                     let is_reachable = is_next || is_tile_reachable(&tiles);
@@ -376,30 +377,41 @@ impl World
     where
         Predicate: Fn(Option<&Tile>) -> bool + Copy
     {
-        self.tiles_inside_inner::<fn(_), Predicate>(collider, None, predicate)
+        self.tiles_inside_inner(
+            collider,
+            predicate,
+            |info| collider.collide_immutable(&info, |_| {}),
+            false
+        )
     }
 
     pub fn tiles_contacts<'a, ContactAdder, Predicate>(
         &self,
         collider: &'a CollidingInfo<'a>,
-        add_contact: ContactAdder,
+        mut add_contact: ContactAdder,
         predicate: Predicate
     ) -> impl Iterator<Item=TilePos> + use<'a, '_, Predicate, ContactAdder>
     where
         ContactAdder: FnMut(Contact),
         Predicate: Fn(Option<&Tile>) -> bool + Copy
     {
-        self.tiles_inside_inner(collider, Some(add_contact), predicate)
+        self.tiles_inside_inner(
+            collider,
+            predicate,
+            move |info| collider.collide_immutable(&info, &mut add_contact),
+            true
+        )
     }
 
-    fn tiles_inside_inner<'a, ContactAdder, Predicate>(
+    fn tiles_inside_inner<'a, CheckCollision, Predicate>(
         &self,
         collider: &'a CollidingInfo<'a>,
-        mut add_contact: Option<ContactAdder>,
-        predicate: Predicate
-    ) -> impl Iterator<Item=TilePos> + use<'a, '_, Predicate, ContactAdder>
+        predicate: Predicate,
+        mut check_collision: CheckCollision,
+        check_neighbors: bool
+    ) -> impl Iterator<Item=TilePos> + use<'a, '_, Predicate, CheckCollision>
     where
-        ContactAdder: FnMut(Contact),
+        CheckCollision: FnMut(CollidingInfo) -> bool,
         Predicate: Fn(Option<&Tile>) -> bool + Copy
     {
         let half_scale = collider.bounds();
@@ -417,7 +429,7 @@ impl World
                 predicate(self.tile(pos))
             };
 
-            let world = if add_contact.is_some()
+            let world = if check_neighbors
             {
                 Directions3dGroup{
                     left: check_tile(pos.offset(Pos3::new(-1, 0, 0))),
@@ -449,13 +461,7 @@ impl World
                 collider: &mut world_collider
             };
 
-            if let Some(add_contact) = add_contact.as_mut()
-            {
-                collider.collide_immutable(&info, add_contact)
-            } else
-            {
-                collider.collide_immutable(&info, |_| {})
-            }
+            check_collision(info)
         })
     }
 

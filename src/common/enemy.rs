@@ -77,8 +77,8 @@ pub fn sees(
         entities,
         world,
         info,
-        &transform.position,
-        &other_position
+        transform.position,
+        other_position
     ).hits;
 
     let hit_obstacle = hits.into_iter().any(|hit|
@@ -239,7 +239,7 @@ impl Enemy
                         entities.transform(*entity).zip(entities.transform(this_entity).map(|x| x.position))
                             .and_then(|(transform, this_position)|
                             {
-                                let path = world.pathfind(this_position, transform.position)?;
+                                let path = world.pathfind(transform.scale, this_position, transform.position)?;
 
                                 Some(BehaviorState::MoveTo(path))
                             }).unwrap_or_else(|| BehaviorState::Wait)

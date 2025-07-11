@@ -333,8 +333,8 @@ fn damaging_raycasting(
         entities,
         world,
         info.clone(),
-        start,
-        target
+        *start,
+        *target
     );
 
     let hits_len = hits.hits.len();

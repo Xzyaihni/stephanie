@@ -957,8 +957,8 @@ impl<'a> CollidingInfo<'a>
         let direction = Unit::new_unchecked(Vector3::z());
 
         if let Some(result) = raycast_this(
-            &start,
-            &direction,
+            start,
+            direction,
             other.collider.kind,
             &other.transform
         )

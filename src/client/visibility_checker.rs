@@ -73,7 +73,7 @@ impl VisibilityChecker
             ..Default::default()
         };
 
-        if let Some(result) = raycast_rectangle(&start, &direction, &rectangle)
+        if let Some(result) = raycast_rectangle(start, direction, &rectangle)
         {
             result.within_limits(magnitude)
         } else

@@ -98,10 +98,59 @@ impl RaycastHits
     }
 }
 
+pub fn swept_aabb_world(
+    world: &World,
+    this: &Transform,
+    direction: Vector3<f32>
+) -> Option<f32>
+{
+    let tilemap = world.tilemap();
+
+    let start = this.position;
+    let end = start + direction;
+
+    let limit = direction.magnitude();
+
+    let direction = Unit::new_normalize(direction);
+
+    let size = this.scale + Vector3::repeat(TILE_SIZE);
+    let half_size = size / 2.0;
+
+    let top_left = start.zip_map(&end, |a, b| a.min(b)) - half_size;
+    let bottom_right = start.zip_map(&end, |a, b| a.max(b)) + half_size;
+
+    TilePos::from(Pos3::from(top_left)).tiles_between(TilePos::from(Pos3::from(bottom_right) + TILE_SIZE))
+        .filter_map(|pos|
+        {
+            let tile = world.tile(pos);
+
+            let is_colliding = tile.map(|tile| tilemap[*tile].colliding).unwrap_or(false);
+
+            if !is_colliding
+            {
+                return None;
+            }
+
+            let other = Transform{
+                scale: size,
+                position: pos.center_position().into(),
+                ..Default::default()
+            };
+
+            raycast_rectangle(start, direction, &other).map(|x|
+            {
+                x.distance
+            }).filter(|x|
+            {
+                (0.0..=limit).contains(&x)
+            })
+        }).min_by(|a, b| a.partial_cmp(&b).unwrap())
+}
+
 pub fn raycast_world<'a, Exit: FnMut(&TileInfo, &RaycastHit) -> bool>(
     world: &'a World,
-    start: &'a Vector3<f32>,
-    direction: &'a Unit<Vector3<f32>>,
+    start: Vector3<f32>,
+    direction: Unit<Vector3<f32>>,
     mut early_exit: Exit
 ) -> impl Iterator<Item=RaycastHit> + use<'a, Exit>
 {
@@ -121,14 +170,14 @@ pub fn raycast_world<'a, Exit: FnMut(&TileInfo, &RaycastHit) -> bool>(
         })
     }
 
-    (0..).scan((TilePos::from(Pos3::from(*start)), inside_tile_pos(*start)), move |(current_pos, current), _| -> Option<Option<RaycastHit>>
+    (0..).scan((TilePos::from(Pos3::from(start)), inside_tile_pos(start)), move |(current_pos, current), _| -> Option<Option<RaycastHit>>
     {
         let tile = *world.tile(*current_pos)?;
         let tile_info = world.tile_info(tile);
 
         let is_colliding = tile_info.colliding;
 
-        let axis_distances = current.zip_map(direction, |x, d|
+        let axis_distances = current.zip_map(&direction, |x, d|
         {
             if x < 0.0
             {
@@ -139,7 +188,7 @@ pub fn raycast_world<'a, Exit: FnMut(&TileInfo, &RaycastHit) -> bool>(
             }
         });
 
-        let axis_amounts = axis_distances.component_div(direction);
+        let axis_amounts = axis_distances.component_div(&direction);
 
         let change_index = axis_amounts.iamin();
         let change: Pos3<i32> = {
@@ -150,7 +199,7 @@ pub fn raycast_world<'a, Exit: FnMut(&TileInfo, &RaycastHit) -> bool>(
         };
 
         let step_size = axis_amounts[change_index].abs();
-        let direction_change = **direction * step_size;
+        let direction_change = *direction * step_size;
 
         let next_start = {
             let mut offset = *current + direction_change;
@@ -165,7 +214,7 @@ pub fn raycast_world<'a, Exit: FnMut(&TileInfo, &RaycastHit) -> bool>(
 
             let position = Vector3::from(current_pos.position()) + *current;
 
-            let distance = position.metric_distance(start);
+            let distance = position.metric_distance(&start);
             let pierce = direction_change.magnitude();
             let result = RaycastResult{
                 distance,
@@ -191,8 +240,8 @@ pub fn raycast_world<'a, Exit: FnMut(&TileInfo, &RaycastHit) -> bool>(
 }
 
 pub fn raycast_this(
-    start: &Vector3<f32>,
-    direction: &Unit<Vector3<f32>>,
+    start: Vector3<f32>,
+    direction: Unit<Vector3<f32>>,
     kind: ColliderType,
     transform: &Transform
 ) -> Option<RaycastResult>
@@ -208,8 +257,8 @@ pub fn raycast_this(
 }
 
 pub fn raycast_circle(
-    start: &Vector3<f32>,
-    direction: &Unit<Vector3<f32>>,
+    start: Vector3<f32>,
+    direction: Unit<Vector3<f32>>,
     transform: &Transform
 ) -> Option<RaycastResult>
 {
@@ -270,11 +319,11 @@ fn ray_slab_interval(
     Range{start: a.min(b), end: a.max(b)}
 }
 
-pub fn raycast_rectangle(
-    start: &Vector3<f32>,
-    direction: &Unit<Vector3<f32>>,
+fn line_rectangle_intersections(
+    start: Vector3<f32>,
+    direction: Unit<Vector3<f32>>,
     transform: &Transform
-) -> Option<RaycastResult>
+) -> Vector3<Range<f32>>
 {
     let point = start - transform.position;
 
@@ -283,7 +332,7 @@ pub fn raycast_rectangle(
         let axis: Vector3<f32> = axis.into();
         let axis = Unit::new_unchecked(axis);
 
-        ray_slab_interval(point, *direction, &axis, d)
+        ray_slab_interval(point, direction, &axis, d)
     };
 
     let rotation_matrix = Rotation3::from_axis_angle(
@@ -293,9 +342,24 @@ pub fn raycast_rectangle(
 
     let rotation_matrix = rotation_matrix.matrix();
 
-    let x = check_axis(rotation_matrix.column(0), transform.scale.x);
-    let y = check_axis(rotation_matrix.column(1), transform.scale.y);
-    let z = check_axis(rotation_matrix.column(2), transform.scale.z);
+    let mut axes = (0..3).map(|i| check_axis(rotation_matrix.column(i), transform.scale[i]));
+
+    let mut n = ||
+    {
+        axes.next().unwrap_or_else(|| unreachable!())
+    };
+
+    Vector3::new(n(), n(), n())
+}
+
+pub fn raycast_rectangle(
+    start: Vector3<f32>,
+    direction: Unit<Vector3<f32>>,
+    transform: &Transform
+) -> Option<RaycastResult>
+{
+    let intersections = line_rectangle_intersections(start, direction, transform);
+    let [x, y, z] = intersections.as_ref();
 
     let furthest_start = x.start.max(y.start).max(z.start);
     let earliest_end = x.end.min(y.end).min(z.end);
@@ -309,4 +373,19 @@ pub fn raycast_rectangle(
         },
         Ordering::Greater => None
     }
+}
+
+pub fn swept_aabb_vs_aabb(
+    this: &Transform,
+    direction: Unit<Vector3<f32>>,
+    other: &Transform
+) -> Option<RaycastResult>
+{
+    let start = this.position;
+    let other = Transform{
+        scale: other.scale + this.scale,
+        ..other.clone()
+    };
+
+    raycast_rectangle(start, direction, &other)
 }

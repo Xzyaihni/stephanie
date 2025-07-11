@@ -29,8 +29,8 @@ pub fn raycast(
     entities: &ClientEntities,
     world: &World,
     info: RaycastInfo,
-    start: &Vector3<f32>,
-    end: &Vector3<f32>
+    start: Vector3<f32>,
+    end: Vector3<f32>
 ) -> RaycastHits
 {
     let direction = end - start;
@@ -66,7 +66,7 @@ pub fn raycast(
         })
         .filter_map(|(entity, kind, transform)|
         {
-            raycast_this(start, &direction, kind, &transform).and_then(|hit|
+            raycast_this(start, direction, kind, &transform).and_then(|hit|
             {
                 let backwards = hit.is_behind();
                 let past_end = (hit.distance > max_distance) && !info.ignore_end;
@@ -86,7 +86,7 @@ pub fn raycast(
     {
         let mut pierce_left = info.pierce;
 
-        let world_hits = raycast_world(world, start, &direction, |tile, hit|
+        let world_hits = raycast_world(world, start, direction, |tile, hit|
         {
             if let Some(left) = pierce_left.as_mut()
             {
@@ -177,7 +177,7 @@ pub fn raycast(
                 RaycastHitId::Tile(_) => [0.0, 0.0, 1.0, 1.0]
             };
 
-            let position = *start + *direction * hit.result.distance;
+            let position = start + *direction * hit.result.distance;
 
             entities.push(true, EntityInfo{
                 transform: Some(Transform{
@@ -223,5 +223,5 @@ pub fn raycast(
         });
     }
 
-    RaycastHits{start: *start, direction, hits}
+    RaycastHits{start, direction, hits}
 }
