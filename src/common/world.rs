@@ -204,6 +204,7 @@ impl World
         struct Node
         {
             cost: f32,
+            moves_from_start: u32,
             value: TilePos,
             previous: Option<Box<Self>>
         }
@@ -253,7 +254,7 @@ impl World
 
         let mut explored = HashSet::new();
         let mut unexplored = BinaryHeap::from([
-            Node{cost: 0.0, value: start, previous: None}
+            Node{cost: 0.0, moves_from_start: 0, value: start, previous: None}
         ]);
 
         while !unexplored.is_empty()
@@ -315,12 +316,16 @@ impl World
 
             let create_node = |value: TilePos|
             {
-                let start_distance = Vector3::from(start.distance(value)).cast::<f32>().magnitude();
                 let goal_distance = Vector3::from(value.distance(target)).cast::<f32>().magnitude();
 
-                let cost = start_distance + goal_distance;
+                let cost = current.moves_from_start as f32 + goal_distance;
 
-                Node{cost, value, previous: Some(Box::new(current.clone()))}
+                Node{
+                    cost,
+                    moves_from_start: current.moves_from_start + 1,
+                    value,
+                    previous: Some(Box::new(current.clone()))
+                }
             };
 
             let below = current.value.offset(Pos3::new(0, 0, -1));
