@@ -1,7 +1,7 @@
 use std::{
     cmp::Ordering,
     sync::Arc,
-    collections::{HashSet, BinaryHeap}
+    collections::{HashMap, BinaryHeap}
 };
 
 use nalgebra::{Vector2, Vector3};
@@ -76,6 +76,8 @@ pub mod pathfind;
 
 pub const CLIENT_OVERMAP_SIZE: usize = 8;
 pub const CLIENT_OVERMAP_SIZE_Z: usize = 3;
+
+const PATHFIND_MAX_STEPS: usize = 1000;
 
 #[derive(BufferContents, Vertex, Debug, Clone, Copy)]
 #[repr(C)]
@@ -192,6 +194,21 @@ impl World
         end: Vector3<f32>
     ) -> Option<WorldPath>
     {
+        self.pathfind_with_start(scale, start, end).map(|mut x|
+        {
+            x.remove_current_target();
+
+            x
+        })
+    }
+
+    pub fn pathfind_with_start(
+        &self,
+        scale: Vector3<f32>,
+        start: Vector3<f32>,
+        end: Vector3<f32>
+    ) -> Option<WorldPath>
+    {
         let target = TilePos::from(Pos3::from(end));
         let start = TilePos::from(Pos3::from(start));
 
@@ -200,31 +217,35 @@ impl World
             return None;
         }
 
+        struct NodeInfo
+        {
+            moves_from_start: u32,
+            previous: Option<Node>
+        }
+
         #[derive(Debug, Clone)]
         struct Node
         {
             cost: f32,
-            moves_from_start: u32,
-            value: TilePos,
-            previous: Option<Box<Self>>
+            value: TilePos
         }
 
         impl Node
         {
-            fn path_to(self) -> Vec<TilePos>
+            fn path_to(self, explored: &mut HashMap<TilePos, NodeInfo>) -> Vec<TilePos>
             {
                 let mut path = vec![self.value];
-                self.path_to_inner(&mut path);
+                self.path_to_inner(explored, &mut path);
 
                 path
             }
 
-            fn path_to_inner(self, path: &mut Vec<TilePos>)
+            fn path_to_inner(self, explored: &mut HashMap<TilePos, NodeInfo>, path: &mut Vec<TilePos>)
             {
-                if let Some(node) = self.previous
+                if let Some(node) = explored.remove(&self.value).unwrap().previous
                 {
                     path.push(node.value);
-                    node.path_to_inner(path);
+                    node.path_to_inner(explored, path);
                 }
             }
         }
@@ -252,18 +273,27 @@ impl World
             fn cmp(&self, other: &Self) -> Ordering { self.partial_cmp(other).unwrap() }
         }
 
-        let mut explored = HashSet::new();
+        let mut steps = 0;
+
         let mut unexplored = BinaryHeap::from([
-            Node{cost: 0.0, moves_from_start: 0, value: start, previous: None}
+            Node{cost: 0.0, value: start}
         ]);
+
+        let mut explored = HashMap::from([(start, NodeInfo{moves_from_start: 0, previous: None})]);
 
         while !unexplored.is_empty()
         {
+            steps += 1;
+            if steps > PATHFIND_MAX_STEPS
+            {
+                return None;
+            }
+
             let current = unexplored.pop()?;
 
             if current.value == target
             {
-                let tiles = current.path_to();
+                let tiles = current.path_to(&mut explored);
 
                 let mut check = 0;
 
@@ -312,30 +342,35 @@ impl World
                 return Some(WorldPath::new(simplified));
             }
 
-            explored.insert(current.value);
-
-            let create_node = |value: TilePos|
-            {
-                let goal_distance = Vector3::from(value.distance(target)).cast::<f32>().magnitude();
-
-                let cost = current.moves_from_start as f32 + goal_distance;
-
-                Node{
-                    cost,
-                    moves_from_start: current.moves_from_start + 1,
-                    value,
-                    previous: Some(Box::new(current.clone()))
-                }
-            };
-
             let below = current.value.offset(Pos3::new(0, 0, -1));
             let is_grounded = !self.tile(below)?.is_none();
 
-            let mut try_push = |position|
+            let mut try_push = |position: TilePos|
             {
-                if !explored.contains(&position)
+                let moves_from_start = explored[&current.value].moves_from_start;
+
+                if let Some(explored) = explored.get_mut(&position)
                 {
-                    unexplored.push(create_node(position));
+                    if explored.moves_from_start > moves_from_start + 1
+                    {
+                        explored.moves_from_start = moves_from_start + 1;
+                        explored.previous = Some(current.clone());
+                    }
+                } else
+                {
+                    let moves_from_start = moves_from_start + 1;
+
+                    let info = NodeInfo{moves_from_start, previous: Some(current.clone())};
+                    explored.insert(position, info);
+
+                    let goal_distance = Vector3::from(position.distance(target)).cast::<f32>().magnitude();
+
+                    let cost = moves_from_start as f32 + goal_distance;
+
+                    unexplored.push(Node{
+                        cost,
+                        value: position
+                    });
                 }
             };
 

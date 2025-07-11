@@ -13,19 +13,19 @@ use crate::{
         raycast::*,
         collider::*,
         entity::{raycast_system, ClientEntities},
-        world::{TILE_SIZE, pathfind::*},
+        world::{TILE_SIZE, pathfind::*, TilePos},
         World,
         SeededRandom,
         AnyEntities,
         Entity,
         EnemiesInfo,
         EnemyInfo,
-        EnemyId,
-        Physical,
-        Anatomy
+        EnemyId
     }
 };
 
+
+const PATH_NEAR: f32 = TILE_SIZE * 0.1;
 
 pub fn sees(
     entities: &ClientEntities,
@@ -148,7 +148,7 @@ impl EnemyBehavior
                     BehaviorState::Wait => 10.0..=20.0,
                     BehaviorState::MoveDirection(_) => 0.8..=2.0,
                     BehaviorState::MoveTo(_) => return None,
-                    BehaviorState::Attack(_) => return None
+                    BehaviorState::Attack(_, _) => return None
                 }
             }
         };
@@ -163,7 +163,7 @@ pub enum BehaviorState
     Wait,
     MoveDirection(Unit<Vector3<f32>>),
     MoveTo(WorldPath),
-    Attack(Entity)
+    Attack(Option<WorldPath>, Entity)
 }
 
 impl Default for BehaviorState
@@ -234,7 +234,7 @@ impl Enemy
                     },
                     BehaviorState::MoveDirection(_) => BehaviorState::Wait,
                     BehaviorState::MoveTo(_) => BehaviorState::Wait,
-                    BehaviorState::Attack(entity) =>
+                    BehaviorState::Attack(_, entity) =>
                     {
                         entities.transform(*entity).zip(entities.transform(this_entity).map(|x| x.position))
                             .and_then(|(transform, this_position)|
@@ -254,34 +254,21 @@ impl Enemy
         enemies_info.get(self.id)
     }
 
-    fn move_to(
+    fn move_direction(
         entities: &ClientEntities,
         entity: Entity,
-        point: Vector3<f32>,
+        direction: Unit<Vector3<f32>>,
         dt: f32
     )
     {
-        let transform = some_or_return!(entities.target_ref(entity));
-
-        let distance = point - transform.position;
-
-        if distance.magnitude() < f32::EPSILON
-        {
-            return;
-        }
-
         let anatomy = entities.anatomy(entity).unwrap();
 
         let mut physical = some_or_return!(entities.physical_mut_no_change(entity));
         let mut character = some_or_return!(entities.character_mut_no_change(entity));
 
-        Self::move_direction(
-            &mut physical,
-            &mut character,
-            &anatomy,
-            Unit::new_normalize(distance),
-            dt
-        );
+        Self::look_direction(&mut character, direction);
+
+        character.walk(&anatomy, &mut physical, direction, dt);
     }
 
     fn do_behavior(
@@ -303,16 +290,7 @@ impl Enemy
         {
             BehaviorState::MoveDirection(direction) =>
             {
-                let mut physical = some_or_return!(entities.physical_mut_no_change(entity));
-                let mut character = some_or_return!(entities.character_mut_no_change(entity));
-
-                Self::move_direction(
-                    &mut physical,
-                    &mut character,
-                    &anatomy,
-                    *direction,
-                    dt
-                );
+                Self::move_direction(entities, entity, *direction, dt);
             },
             BehaviorState::MoveTo(path) =>
             {
@@ -324,15 +302,15 @@ impl Enemy
                 let transform = some_or_return!(entities.transform(entity));
 
                 let position = transform.position;
-                if let Some(direction) = path.move_along(TILE_SIZE * 0.1, position)
+                if let Some(direction) = path.move_along(PATH_NEAR, position)
                 {
-                    Self::move_to(entities, entity, position + direction, dt);
+                    Self::move_direction(entities, entity, Unit::new_normalize(direction), dt);
                 } else
                 {
                     self.reset_state = true;
                 }
             },
-            BehaviorState::Attack(other_entity) =>
+            BehaviorState::Attack(path, other_entity) =>
             {
                 let other_entity = *other_entity;
 
@@ -351,17 +329,34 @@ impl Enemy
 
                     if aggressive && sees
                     {
-                        Self::move_to(entities, entity, other_transform.position, dt);
-
-                        let mut character = some_or_return!(entities.character_mut_no_change(entity));
-
                         let transform = some_or_return!(entities.target_ref(entity));
-                        if character.bash_reachable(&transform, &other_transform.position)
+
+                        let target = other_transform.position;
+                        let regenerate_path = path.as_ref().and_then(|x| x.target())
+                            .map(|x| *x != TilePos::from(target))
+                            .unwrap_or(true);
+
+                        if regenerate_path
                         {
-                            character.push_action(CharacterAction::Bash);
+                            *path = world.pathfind(transform.scale, transform.position, target);
                         }
 
-                        return;
+                        if let Some(path) = path.as_mut()
+                        {
+                            if let Some(direction) = path.move_along(PATH_NEAR, transform.position)
+                            {
+                                Self::move_direction(entities, entity, Unit::new_normalize(direction), dt);
+                            }
+
+                            let mut character = some_or_return!(entities.character_mut_no_change(entity));
+
+                            if character.bash_reachable(&transform, &target)
+                            {
+                                character.push_action(CharacterAction::Bash);
+                            }
+
+                            return;
+                        }
                     }
                 }
 
@@ -370,19 +365,6 @@ impl Enemy
             },
             BehaviorState::Wait => ()
         }
-    }
-
-    fn move_direction(
-        physical: &mut Physical,
-        character: &mut Character,
-        anatomy: &Anatomy,
-        direction: Unit<Vector3<f32>>,
-        dt: f32
-    )
-    {
-        Self::look_direction(character, direction);
-
-        character.walk(anatomy, physical, direction, dt);
     }
 
     fn look_direction(
@@ -496,14 +478,14 @@ impl Enemy
     pub fn set_attacking(&mut self, entity: Entity)
     {
         self.seen_timer = 0.0;
-        self.set_state(BehaviorState::Attack(entity));
+        self.set_state(BehaviorState::Attack(None, entity));
     }
 
     pub fn is_attacking(&self) -> bool
     {
         match self.behavior_state
         {
-            BehaviorState::Attack(_) => true,
+            BehaviorState::Attack(_, _) => true,
             _ => false
         }
     }

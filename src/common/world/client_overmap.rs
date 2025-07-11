@@ -87,6 +87,14 @@ impl From<Pos3<f32>> for TilePos
     }
 }
 
+impl From<Vector3<f32>> for TilePos
+{
+    fn from(position: Vector3<f32>) -> Self
+    {
+        Self::from(Pos3::from(position))
+    }
+}
+
 impl TilePos
 {
     pub fn position(&self) -> Pos3<f32>

@@ -31,6 +31,16 @@ impl WorldPath
         Self{values}
     }
 
+    pub fn target(&self) -> Option<&TilePos>
+    {
+        self.values.first()
+    }
+
+    pub fn remove_current_target(&mut self)
+    {
+        self.values.pop();
+    }
+
     pub fn move_along(
         &mut self,
         near: f32,
@@ -48,7 +58,7 @@ impl WorldPath
 
         if distance.magnitude() < near
         {
-            self.values.pop();
+            self.remove_current_target();
             return self.move_along(near, position)
         }
 
