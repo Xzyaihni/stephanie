@@ -4,7 +4,7 @@ use std::{
     collections::{HashSet, BinaryHeap}
 };
 
-use nalgebra::{Vector2, Vector3};
+use nalgebra::{Unit, Vector2, Vector3};
 
 use vulkano::{
     buffer::subbuffer::BufferContents,
@@ -22,6 +22,7 @@ use crate::{
     common::{
         some_or_return,
         collider::*,
+        raycast,
         TileMap,
         TileInfo,
         Entity,
@@ -189,6 +190,11 @@ impl World
         let target = TilePos::from(Pos3::from(end));
         let start = TilePos::from(Pos3::from(start));
 
+        if start.distance(target).z > 0
+        {
+            return None;
+        }
+
         #[derive(Debug, Clone)]
         struct Node
         {
@@ -199,12 +205,12 @@ impl World
 
         impl Node
         {
-            fn path_to(self) -> WorldPath
+            fn path_to(self) -> Vec<TilePos>
             {
                 let mut path = vec![self.value];
                 self.path_to_inner(&mut path);
 
-                WorldPath::new(path)
+                path
             }
 
             fn path_to_inner(self, path: &mut Vec<TilePos>)
@@ -251,7 +257,57 @@ impl World
 
             if current.value == target
             {
-                return Some(current.path_to());
+                let tiles = current.path_to();
+
+                let mut check = 0;
+
+                let mut simplified = vec![tiles[0]];
+
+                let mut index = 1;
+                while index < tiles.len()
+                {
+                    let is_next = (check + 1) == index;
+
+                    let is_tile_reachable = |tiles: &[TilePos]|
+                    {
+                        let distance: Vector3<f32> = Vector3::from(tiles[check].distance(tiles[index])).cast() * TILE_SIZE;
+                        let max_distance = distance.magnitude();
+
+                        let direction = Unit::new_normalize(distance);
+
+                        let start = Vector3::from(tiles[check].center_position());
+
+                        let mut hits = raycast::raycast_world(
+                            self,
+                            &start,
+                            &direction,
+                            move |_, hit|
+                            {
+                                hit.result.distance >= max_distance
+                            });
+
+                        hits.find(|x| x.id.is_tile()).is_none()
+                    };
+
+                    let is_reachable = is_next || is_tile_reachable(&tiles);
+
+                    if is_reachable
+                    {
+                        index += 1;
+                    } else
+                    {
+                        check = index - 1;
+
+                        simplified.push(tiles[check]);
+                    }
+                }
+
+                if index != 1
+                {
+                    simplified.push(tiles[index - 1]);
+                }
+
+                return Some(WorldPath::new(simplified));
             }
 
             explored.insert(current.value);

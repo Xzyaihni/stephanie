@@ -160,6 +160,20 @@ pub enum DamagedId
     Tile(TilePos)
 }
 
+impl DamagedId
+{
+    pub fn is_tile(&self) -> bool
+    {
+        if let Self::Tile(_) = self
+        {
+            true
+        } else
+        {
+            false
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Damaging
 {
