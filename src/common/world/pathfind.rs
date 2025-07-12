@@ -1,5 +1,3 @@
-use std::iter;
-
 use serde::{Serialize, Deserialize};
 
 use nalgebra::Vector3;
@@ -14,8 +12,7 @@ use crate::common::{
     EntityInfo,
     world::{
         TILE_SIZE,
-        ClientEntities,
-        TilePos
+        ClientEntities
     }
 };
 
@@ -23,21 +20,17 @@ use crate::common::{
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorldPath
 {
-    values: Vec<TilePos>,
-    target: Vector3<f32>
+    values: Vec<Vector3<f32>>
 }
 
 impl WorldPath
 {
-    pub fn new(
-        values: Vec<TilePos>,
-        target: Vector3<f32>
-    ) -> Self
+    pub fn new(values: Vec<Vector3<f32>>) -> Self
     {
-        Self{values, target}
+        Self{values}
     }
 
-    pub fn target_tile(&self) -> Option<&TilePos>
+    pub fn target(&self) -> Option<&Vector3<f32>>
     {
         self.values.first()
     }
@@ -55,17 +48,10 @@ impl WorldPath
     {
         if self.values.is_empty()
         {
-            let distance = self.target - position;
-
-            if distance.magnitude() < near
-            {
-                return None;
-            }
-
-            return Some(distance);
+            return None;
         }
 
-        let target_position: Vector3<f32> = self.values.last().unwrap().center_position().into();
+        let target_position = self.values.last().unwrap();
 
         let distance = target_position - position;
 
@@ -81,11 +67,10 @@ impl WorldPath
     pub fn debug_display(&self, entities: &ClientEntities)
     {
         let amount = self.values.len();
-        iter::once((amount == 0, self.target)).chain(self.values.iter().enumerate().map(|(index, pos)|
+        self.values.iter().copied().enumerate().for_each(|(index, position)|
         {
-            ((index + 1) == amount, Vector3::from(pos.center_position()))
-        })).for_each(|(is_selected, position)|
-        {
+            let is_selected = (index + 1) == amount;
+
             let color = if is_selected
             {
                 [1.0, 0.0, 0.0, 0.5]
@@ -113,14 +98,12 @@ impl WorldPath
             });
         });
 
-        iter::once(self.target).chain(self.values.iter().map(|x| Vector3::from(x.center_position())))
-            .zip(self.values.iter().map(|x| Vector3::from(x.center_position())))
-            .for_each(|(previous, current)|
+        self.values.iter().zip(self.values.iter().skip(1)).for_each(|(previous, current)|
+        {
+            if let Some(info) = line_info(*previous, *current, TILE_SIZE * 0.1, [0.2, 0.2, 1.0])
             {
-                if let Some(info) = line_info(previous, current, TILE_SIZE * 0.1, [0.2, 0.2, 1.0])
-                {
-                    entities.push(true, info);
-                }
-            });
+                entities.push(true, info);
+            }
+        });
     }
 }

@@ -194,21 +194,6 @@ impl World
         end: Vector3<f32>
     ) -> Option<WorldPath>
     {
-        self.pathfind_with_start(scale, start, end).map(|mut x|
-        {
-            x.remove_current_target();
-
-            x
-        })
-    }
-
-    pub fn pathfind_with_start(
-        &self,
-        scale: Vector3<f32>,
-        start: Vector3<f32>,
-        end: Vector3<f32>
-    ) -> Option<WorldPath>
-    {
         let target = TilePos::from(end);
         let start = TilePos::from(start);
 
@@ -232,20 +217,17 @@ impl World
 
         impl Node
         {
-            fn path_to(self, explored: &mut HashMap<TilePos, NodeInfo>) -> Vec<TilePos>
-            {
-                let mut path = vec![self.value];
-                self.path_to_inner(explored, &mut path);
-
-                path
-            }
-
-            fn path_to_inner(self, explored: &mut HashMap<TilePos, NodeInfo>, path: &mut Vec<TilePos>)
+            fn path_to<T, F: Fn(TilePos) -> T>(
+                self,
+                explored: &mut HashMap<TilePos, NodeInfo>,
+                path: &mut Vec<T>,
+                f: F
+            )
             {
                 if let Some(node) = explored.remove(&self.value).unwrap().previous
                 {
-                    path.push(node.value);
-                    node.path_to_inner(explored, path);
+                    path.push(f(node.value));
+                    node.path_to(explored, path, f);
                 }
             }
         }
@@ -293,7 +275,13 @@ impl World
 
             if current.value == target
             {
-                let tiles = current.path_to(&mut explored);
+                let tiles = {
+                    let current_position: Vector3<f32> = current.value.center_position().into();
+                    let mut path = vec![Vector3::new(end.x, end.y, current_position.z), current_position];
+                    current.path_to(&mut explored, &mut path, |x| x.center_position().into());
+
+                    path
+                };
 
                 let mut check = 0;
 
@@ -304,11 +292,11 @@ impl World
                 {
                     let is_next = (check + 1) == index;
 
-                    let is_tile_reachable = |tiles: &[TilePos]|
+                    let is_tile_reachable = |tiles: &[Vector3<f32>]|
                     {
-                        let distance: Vector3<f32> = Vector3::from(tiles[check].distance(tiles[index])).cast() * TILE_SIZE;
+                        let distance = tiles[index] - tiles[check];
 
-                        let start = Vector3::from(tiles[check].center_position());
+                        let start = Vector3::from(tiles[check]);
 
                         raycast::swept_aabb_world(
                             self,
@@ -334,12 +322,7 @@ impl World
                     }
                 }
 
-                if index != 1
-                {
-                    simplified.push(tiles[index - 1]);
-                }
-
-                return Some(WorldPath::new(simplified, end));
+                return Some(WorldPath::new(simplified));
             }
 
             let below = current.value.offset(Pos3::new(0, 0, -1));

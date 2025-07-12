@@ -13,7 +13,7 @@ use crate::{
         raycast::*,
         collider::*,
         entity::{raycast_system, ClientEntities},
-        world::{TILE_SIZE, pathfind::*, TilePos},
+        world::{TILE_SIZE, pathfind::*},
         World,
         SeededRandom,
         AnyEntities,
@@ -26,6 +26,7 @@ use crate::{
 
 
 const PATH_NEAR: f32 = TILE_SIZE * 0.1;
+const RECALCULATE_PATH: f32 = TILE_SIZE * 0.5;
 
 pub fn sees(
     entities: &ClientEntities,
@@ -332,8 +333,8 @@ impl Enemy
                         let transform = some_or_return!(entities.target_ref(entity));
 
                         let target = other_transform.position;
-                        let regenerate_path = path.as_ref().and_then(|x| x.target_tile())
-                            .map(|x| *x != TilePos::from(target))
+                        let regenerate_path = path.as_ref().and_then(|x| x.target())
+                            .map(|x| x.metric_distance(&target) > RECALCULATE_PATH)
                             .unwrap_or(true);
 
                         if regenerate_path
