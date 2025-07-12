@@ -330,7 +330,7 @@ impl YanyaApp for App
         let deferred_parse = || TileMap::parse("tiles/tiles.json", "textures/tiles/");
         let app_info = app_info.unwrap();
 
-        let Config{name, address, port, debug} = Config::parse(env::args().skip(1));
+        let Config{name, listen_outside, address, port, debug} = Config::parse(env::args().skip(1));
 
         let items_info = ItemsInfo::parse(
             &partial_info.object_info.assets.lock(),
@@ -375,10 +375,12 @@ impl YanyaApp for App
                     {
                         let port = port.unwrap_or(0);
 
+                        let listen_address = format!("{}:{port}", if listen_outside { "0.0.0.0" } else { "localhost" });
+
                         let x = Server::new(
                             tilemap,
                             data_infos,
-                            &format!("0.0.0.0:{port}"),
+                            &listen_address,
                             16
                         );
 
