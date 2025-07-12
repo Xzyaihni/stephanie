@@ -1377,6 +1377,11 @@ impl Ui
         this
     }
 
+    pub fn is_input_captured(&self) -> bool
+    {
+        self.is_loading() || self.console_contents.is_some()
+    }
+
     pub fn is_loading(&self) -> bool
     {
         self.loading.is_some()

@@ -1332,9 +1332,16 @@ impl GameState
 
     pub fn input(&mut self, control: yanyaengine::Control) -> bool
     {
-        if self.debug_visibility.input(&control) { return true; };
+        let debug_control = control.clone();
 
         self.controls.handle_input(control);
+
+        if self.ui.borrow().is_input_captured()
+        {
+            return true;
+        }
+
+        if self.debug_visibility.input(&debug_control) { return true; };
 
         false
     }
