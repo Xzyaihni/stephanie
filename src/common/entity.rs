@@ -24,6 +24,7 @@ use crate::{
         damaging::*,
         SpatialGrid,
         SpatialInfo,
+        Door,
         Joint,
         Light,
         ClientLight,
@@ -252,6 +253,7 @@ no_on_set!{
     Anatomy,
     Collider,
     Physical,
+    Door,
     Joint,
     Light,
     ClientLight,
@@ -2419,6 +2421,7 @@ define_entities!{
     (collider, collider_mut, collider_mut_no_change, set_collider, on_collider, resort_collider, collider_exists, SetCollider, ColliderType, Collider),
     (physical, physical_mut, physical_mut_no_change, set_physical, on_physical, resort_physical, physical_exists, SetPhysical, PhysicalType, Physical),
     (anatomy, anatomy_mut, anatomy_mut_no_change, set_anatomy, on_anatomy, resort_anatomy, anatomy_exists, SetAnatomy, AnatomyType, Anatomy),
+    (door, door_mut, door_mut_no_change, set_door, on_door, resort_door, door_exists, SetDoor, DoorType, Door),
     (joint, joint_mut, joint_mut_no_change, set_joint, on_joint, resort_joint, joint_exists, SetJoint, JointType, Joint),
     (saveable, saveable_mut, saveable_mut_no_change, set_saveable, on_saveable, resort_saveable, saveable_exists, SetNone, SaveableType, Saveable)
 }

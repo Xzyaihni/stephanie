@@ -4,9 +4,7 @@ use std::{
     str::FromStr
 };
 
-use nalgebra::{Vector2, Vector3};
-
-use strum::{EnumString, IntoStaticStr};
+use nalgebra::Vector3;
 
 use yanyaengine::Transform;
 
@@ -15,18 +13,17 @@ use crate::{
     common::{
         furniture_creator,
         enemy_creator,
-        rotate_point_z_3d,
-        lazy_transform::*,
         render_info::*,
         collider::*,
         physics::*,
-        joint::*,
+        door::*,
+        lazy_transform::*,
         EntityPasser,
+        Parent,
         Loot,
         EnemiesInfo,
         EntityInfo,
         Occluder,
-        Parent,
         Light,
         entity::ServerEntities,
         lisp::{self, *},
@@ -44,14 +41,6 @@ fn parse_enum<T: FromStr<Err=strum::ParseError>>(value: OutputWrapperRef) -> Res
 {
     let name = value.as_symbol()?.to_lowercase();
     T::from_str(&name).map_err(|err| lisp::Error::Custom(format!("{} parse error: {err}", type_name::<T>())))
-}
-
-#[derive(Debug, Clone, EnumString, IntoStaticStr)]
-#[strum(ascii_case_insensitive)]
-pub enum DoorMaterial
-{
-    Metal,
-    Wood
 }
 
 #[derive(Debug, Clone)]
@@ -125,44 +114,17 @@ impl MarkerTile
             },
             MarkerKind::Door{rotation, material, width} =>
             {
-                let offset_inside = 0.15;
+                let door = Door::new(position, rotation, material, width);
 
-                let rotation = rotation.to_angle() + f32::consts::PI;
+                let texture = door.texture();
 
-                let mut position = position;
-                position += rotate_point_z_3d(
-                    Vector3::new(-(TILE_SIZE / 2.0 + TILE_SIZE * offset_inside), 0.0, 0.0),
-                    rotation
-                );
+                let transform = door.door_transform();
+                let door_height = transform.scale.y;
 
-                let hinge = add_entity(EntityInfo{
-                    transform: Some(Transform{
-                        position,
-                        scale: Vector3::repeat(TILE_SIZE),
-                        rotation,
-                        ..Default::default()
-                    }),
-                    saveable: Some(()),
-                    ..Default::default()
-                });
-
-                let texture = format!(
-                    "furniture/{}_door{width}.png",
-                    <&str>::from(material).to_lowercase()
-                );
-
-                add_entity(EntityInfo{
+                let door_entity = add_entity(EntityInfo{
                     lazy_transform: Some(LazyTransformInfo{
-                        scaling: Scaling::Ignore,
-                        transform: Transform{
-                            position: rotate_point_z_3d(
-                                Vector3::new((0.5 * width as f32) + offset_inside / 2.0, 0.0, 0.0),
-                                rotation
-                            ),
-                            scale: Vector2::new(1.0 * width as f32 + offset_inside, 0.3).xyx(),
-                            ..Default::default()
-                        },
-                        inherit_rotation: false,
+                        transform,
+                        origin: Vector3::new(-1.0, 0.0, 0.0),
                         ..Default::default()
                     }.into()),
                     render: Some(RenderInfo{
@@ -174,27 +136,48 @@ impl MarkerTile
                         ..Default::default()
                     }),
                     collider: Some(ColliderInfo{
-                        kind: ColliderType::Rectangle,
+                        kind: ColliderType::Aabb,
                         layer: ColliderLayer::Door,
                         ..Default::default()
                     }.into()),
                     physical: Some(PhysicalProperties{
-                        inverse_mass: (10.0 * width as f32).recip(),
-                        restitution: 0.0,
+                        inverse_mass: 0.0,
                         floating: true,
                         move_z: false,
                         ..Default::default()
                     }.into()),
-                    parent: Some(Parent::new(hinge, true)),
-                    saveable: Some(()),
                     occluder: Some(Occluder::Door),
-                    joint: Some(Joint::Hinge(HingeJoint{
-                        origin: Vector3::new(-0.5, 0.0, 0.0),
-                        angle_limit: Some(HingeAngleLimit{
-                            base: rotation,
-                            distance: f32::consts::FRAC_PI_2 * 0.9
-                        })
-                    })),
+                    saveable: Some(()),
+                    ..Default::default()
+                });
+
+                let make_visibility_in_parent_false_and_remove_render = ();
+                add_entity(EntityInfo{
+                    lazy_transform: Some(LazyTransformInfo{
+                        transform: Transform{
+                            scale: Vector3::new(1.0, TILE_SIZE / door_height, 1.0),
+                            ..Default::default()
+                        },
+                        inherit_rotation: false,
+                        ..Default::default()
+                    }.into()),
+                    render: Some(RenderInfo{
+                        object: Some(RenderObjectKind::Texture{
+                            name: "solid.png".to_owned()
+                        }.into()),
+                        mix: Some(MixColor::color([1.0, 0.0, 0.0, 0.1])),
+                        above_world: true,
+                        ..Default::default()
+                    }),
+                    collider: Some(ColliderInfo{
+                        kind: ColliderType::Aabb,
+                        layer: ColliderLayer::Door,
+                        ghost: true,
+                        ..Default::default()
+                    }.into()),
+                    parent: Some(Parent::new(door_entity, true)),
+                    door: Some(door),
+                    saveable: Some(()),
                     ..Default::default()
                 });
             }

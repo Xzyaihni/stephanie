@@ -262,7 +262,14 @@ impl Enemy
         dt: f32
     )
     {
-        let anatomy = entities.anatomy(entity).unwrap();
+        let collider = some_or_return!(entities.collider(entity));
+        if let Some(door_entity) = collider.collided().iter().find(|x| entities.door_exists(**x)).copied()
+        {
+            let mut door = entities.door_mut(door_entity).unwrap();
+            door.set_open(entities, door_entity, true);
+        }
+
+        let anatomy = some_or_return!(entities.anatomy(entity));
 
         let mut physical = some_or_return!(entities.physical_mut_no_change(entity));
         let mut character = some_or_return!(entities.character_mut_no_change(entity));

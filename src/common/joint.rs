@@ -8,8 +8,6 @@ use crate::{
     debug_config::*,
     common::{
         project_onto,
-        project_onto_plane,
-        short_rotation,
         collider::*,
         Entity
     }
@@ -17,7 +15,6 @@ use crate::{
 
 
 const HINGE_EPSILON: f32 = 0.002;
-const LIMIT_MAX: f32 = 0.01;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct HingeAngleLimit
@@ -29,8 +26,7 @@ pub struct HingeAngleLimit
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HingeJoint
 {
-    pub origin: Vector3<f32>,
-    pub angle_limit: Option<HingeAngleLimit>
+    pub origin: Vector3<f32>
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -64,41 +60,6 @@ fn hinge_contact(
             penetration: magnitude - HINGE_EPSILON,
             normal
         });
-    }
-
-    if let Some(angle_limit) = joint.angle_limit
-    {
-        let angle_local = short_rotation(this.rotation - angle_limit.base);
-        if angle_local.abs() > angle_limit.distance
-        {
-            let point = project_onto(this, &-joint.origin);
-
-            // perpendicular to the angle normal
-            let angle_local = angle_local.clamp(-angle_limit.distance, angle_limit.distance);
-
-            let angle = angle_local + angle_limit.base;
-            let plane_normal = Unit::new_unchecked(Vector3::new(-angle.sin(), angle.cos(), 0.0));
-
-            let projected = project_onto_plane(plane_normal, 0.0, point - this.position);
-
-            let diff = (projected + this.position) - point;
-            let penetration = diff.magnitude();
-
-            if penetration < HINGE_EPSILON
-            {
-                return;
-            }
-
-            let normal = Unit::new_unchecked(diff / penetration);
-
-            contacts.push(Contact{
-                a: entity,
-                b: None,
-                point,
-                penetration: (penetration - HINGE_EPSILON).min(LIMIT_MAX),
-                normal
-            });
-        }
     }
 }
 

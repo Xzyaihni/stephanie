@@ -87,6 +87,7 @@ pub use physics::{Physical, PhysicalProperties, PhysicalFixed};
 
 pub use world::{World, SkyOccludingVertex, SkyLightVertex, PosDirection, Pos3, Axis, FlatChunksContainer, ChunksContainer};
 
+pub use door::Door;
 pub use joint::Joint;
 pub use light::{Light, ClientLight};
 
@@ -150,6 +151,7 @@ pub mod spatial;
 pub mod collider;
 pub mod physics;
 
+pub mod door;
 pub mod joint;
 pub mod light;
 

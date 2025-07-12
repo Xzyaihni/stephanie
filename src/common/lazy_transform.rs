@@ -2,7 +2,7 @@ use std::f32;
 
 use serde::{Serialize, Deserialize};
 
-use nalgebra::{Vector2, Vector3, Rotation as NRotation};
+use nalgebra::{Vector2, Vector3};
 
 use yanyaengine::Transform;
 
@@ -857,17 +857,14 @@ impl LazyTransform
 
         if let Some(parent) = parent_transform
         {
-            let rotation = NRotation::from_axis_angle(
-                &Vector3::z_axis(),
-                current.rotation + self.origin_rotation
-            );
+            let rotation = current.rotation + self.origin_rotation;
 
             let scaled_origin = self.origin.component_mul(&parent.scale);
 
             let scaled_position = self.scaled_position(&parent.scale);
             let offset_position = scaled_position - scaled_origin;
 
-            target.position = rotation * offset_position + scaled_origin;
+            target.position = rotate_point_z_3d(offset_position, rotation) + scaled_origin;
 
             if self.inherit_position
             {

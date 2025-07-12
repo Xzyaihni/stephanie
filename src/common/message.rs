@@ -11,6 +11,7 @@ use crate::common::{
     lazy_transform::*,
     damaging::*,
     Occluder,
+    Door,
     Joint,
     Light,
     LazyMix,
@@ -53,6 +54,7 @@ pub enum Message
     SetRender{entity: Entity, component: Box<RenderInfo>},
     SetCollider{entity: Entity, component: Box<Collider>},
     SetPhysical{entity: Entity, component: Box<Physical>},
+    SetDoor{entity: Entity, component: Box<Door>},
     SetJoint{entity: Entity, component: Box<Joint>},
     SetLight{entity: Entity, component: Box<Light>},
     SetWatchers{entity: Entity, component: Box<Watchers>},
@@ -115,6 +117,7 @@ impl Message
             | Message::SetRender{entity, ..}
             | Message::SetCollider{entity, ..}
             | Message::SetPhysical{entity, ..}
+            | Message::SetDoor{entity, ..}
             | Message::SetJoint{entity, ..}
             | Message::SetLight{entity, ..}
             | Message::SetWatchers{entity, ..}
