@@ -282,6 +282,14 @@ impl Anatomy
         }
     }
 
+    pub fn take_killed(&mut self) -> bool
+    {
+        match self
+        {
+            Self::Human(x) => x.take_killed()
+        }
+    }
+
     pub fn for_accessed_parts(&mut self, f: impl FnMut(ChangedPart))
     {
         match self
@@ -2740,6 +2748,7 @@ pub struct HumanAnatomy
     blood: SimpleHealth,
     body: HumanBody,
     broken: Vec<AnatomyId>,
+    killed: Option<bool>,
     cached: CachedProps
 }
 
@@ -2896,6 +2905,7 @@ impl HumanAnatomy
             blood: SimpleHealth::new(4.0),
             body,
             broken: Vec::new(),
+            killed: None,
             cached: Default::default()
         };
 
@@ -2907,6 +2917,25 @@ impl HumanAnatomy
     pub fn body(&self) -> &HumanBody
     {
         &self.body
+    }
+
+    pub fn is_dead(&self) -> bool
+    {
+        self.speed().is_none() && self.strength().is_none()
+    }
+
+    pub fn take_killed(&mut self) -> bool
+    {
+        if let Some(killed) = self.killed.as_mut()
+        {
+            if *killed
+            {
+                *killed = false;
+                return true;
+            }
+        }
+
+        false
     }
 
     pub fn speed(&self) -> Option<f32>
@@ -3301,6 +3330,11 @@ impl HumanAnatomy
         self.cached.stamina = self.updated_stamina();
         self.cached.max_stamina = self.updated_max_stamina();
         self.cached.vision = self.updated_vision();
+
+        if self.is_dead() && self.killed.is_none()
+        {
+            self.killed = Some(true);
+        }
     }
 }
 

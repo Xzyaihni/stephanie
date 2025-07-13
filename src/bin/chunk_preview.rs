@@ -667,7 +667,7 @@ impl YanyaApp for ChunkPreviewer
 
                                 (texture, None, 0.0)
                             },
-                            MarkerKind::Furniture{} => ("normal/furniture/crate.png".to_owned(), None, 0.0),
+                            MarkerKind::Furniture{name} => (format!("normal/furniture/{name}.png"), None, 0.0),
                             MarkerKind::Door{rotation: tile_rotation, width, ..} =>
                             {
                                 let rotation = tile_rotation.to_angle() + f32::consts::PI;

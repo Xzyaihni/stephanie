@@ -160,6 +160,7 @@ impl GameServer
             connection_handler.clone(),
             tilemap.clone(),
             data_infos.enemies_info.clone(),
+            data_infos.furnitures_info.clone(),
             data_infos.items_info.clone()
         )?;
 
@@ -348,16 +349,13 @@ impl GameServer
         let position = transform.position;
 
         let info = EntityInfo{
-            player: Some(Player),
+            player: Some(Player::default()),
             named: Some(format!("stephanie #{player_index}")),
             lazy_transform: Some(LazyTransformInfo{
                 transform: transform.clone(),
                 ..Default::default()
             }.into()),
             render: Some(RenderInfo{
-                object: Some(RenderObjectKind::Texture{
-                    name: "player/hair.png".to_owned()
-                }.into()),
                 z_level: ZLevel::Head,
                 aspect: Aspect::KeepMax,
                 ..Default::default()

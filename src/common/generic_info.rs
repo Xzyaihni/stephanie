@@ -1,6 +1,14 @@
-use std::collections::HashMap;
+use std::{
+    path::Path,
+    collections::HashMap
+};
 
-pub use crate::define_info_id;
+use yanyaengine::{Assets, TextureId};
+
+pub use crate::{
+    define_info_id,
+    common::normalize_path
+};
 
 
 #[macro_export]
@@ -27,6 +35,16 @@ macro_rules! define_info_id
             }
         }
     }
+}
+
+pub fn load_texture(assets: &Assets, root: &Path, name: &str) -> TextureId
+{
+    let formatted_name = name.replace(' ', "_") + ".png";
+    let path = root.join(formatted_name);
+
+    let name = normalize_path(path);
+
+    assets.texture_id(&name)
 }
 
 pub trait GenericItem

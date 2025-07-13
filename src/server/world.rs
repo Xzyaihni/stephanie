@@ -20,6 +20,7 @@ use crate::{
         ItemsInfo,
         EntitiesSaver,
         EnemiesInfo,
+        FurnituresInfo,
         SaveLoad,
         AnyEntities,
         EntityPasser,
@@ -151,6 +152,7 @@ pub struct World
     chunk_saver: ChunkSaver,
     entities_saver: EntitiesSaver,
     enemies_info: Arc<EnemiesInfo>,
+    furnitures_info: Arc<FurnituresInfo>,
     loot: Loot,
     overmaps: OvermapsType,
     client_indexers: HashMap<ConnectionId, EntitiesTracker>
@@ -162,6 +164,7 @@ impl World
         message_handler: Arc<RwLock<ConnectionsHandler>>,
         tilemap: Rc<TileMap>,
         enemies_info: Arc<EnemiesInfo>,
+        furnitures_info: Arc<FurnituresInfo>,
         items_info: Arc<ItemsInfo>
     ) -> Result<Self, ParseError>
     {
@@ -191,6 +194,7 @@ impl World
             chunk_saver,
             entities_saver,
             enemies_info,
+            furnitures_info,
             loot,
             overmaps,
             client_indexers
@@ -408,8 +412,13 @@ impl World
                         return;
                     }
 
+                    let create_infos = marker_tile::CreateInfos{
+                        enemies: &self.enemies_info,
+                        furnitures: &self.furnitures_info
+                    };
+
                     let mut writer = self.message_handler.write();
-                    marker.create(&mut writer, container, &self.enemies_info, &self.loot, chunk_pos);
+                    marker.create(&mut writer, container, create_infos, &self.loot, chunk_pos);
                 });
 
             self.client_indexers.iter_mut().for_each(|(_, indexer)|
@@ -631,6 +640,7 @@ mod tests
                 passer.clone(),
                 Rc::new(tilemap.tilemap),
                 Arc::new(EnemiesInfo::empty()),
+                Arc::new(FurnituresInfo::empty()),
                 Arc::new(ItemsInfo::empty())
             ).unwrap();
 

@@ -925,10 +925,22 @@ impl WindowKind
                 let title = name_of(*owner);
                 let body = with_titlebar(parent, info, title, true, &[]);
 
+                let player = if let Some(x) = info.entities.player(*owner)
+                {
+                    x
+                } else
+                {
+                    close_this(info);
+                    return;
+                };
+
+                let kills = player.kills;
+                let kills_text = format!("kills: {kills}");
+
                 add_padding_horizontal(body, UiSize::Pixels(BODY_PADDING).into());
 
                 body.update(UiId::Window(window_id, WindowPart::Stats), UiElement{
-                    texture: UiTexture::Text{text: "nothing here yet :/".to_owned(), font_size: SMALL_TEXT_SIZE},
+                    texture: UiTexture::Text{text: kills_text, font_size: SMALL_TEXT_SIZE},
                     mix: Some(MixColorLch{keep_transparency: true, ..MixColorLch::color(ACCENT_COLOR)}),
                     ..UiElement::fit_content()
                 });
@@ -1339,7 +1351,7 @@ impl Ui
             let ui = this.clone();
             entities.on_anatomy(Box::new(move |entities, entity|
             {
-                if entities.player(entity).is_some()
+                if entities.player_exists(entity)
                 {
                     return;
                 }

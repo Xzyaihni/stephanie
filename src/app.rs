@@ -38,6 +38,7 @@ use crate::common::{
     DataInfos,
     ItemsInfo,
     EnemiesInfo,
+    FurnituresInfo,
     CharactersInfo,
     CharacterInfo,
     sender_loop::{waiting_loop, DELTA_TIME}
@@ -351,9 +352,16 @@ impl YanyaApp for App
             "enemies/enemies.json"
         );
 
+        let furnitures_info = FurnituresInfo::parse(
+            &partial_info.object_info.assets.lock(),
+            "furniture",
+            "furnitures/furnitures.json"
+        );
+
         let data_infos = DataInfos{
             items_info: Arc::new(items_info),
             enemies_info: Arc::new(enemies_info),
+            furnitures_info: Arc::new(furnitures_info),
             characters_info: Arc::new(characters_info),
             player_character
         };

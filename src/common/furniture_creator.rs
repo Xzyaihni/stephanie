@@ -10,16 +10,22 @@ use crate::common::{
     PhysicalProperties,
     EntityInfo,
     Loot,
+    FurnituresInfo,
+    FurnitureId,
     Inventory
 };
 
 
 pub fn create(
+    furnitures_info: &FurnituresInfo,
     loot: &Loot,
+    id: FurnitureId,
     pos: Vector3<f32>
 ) -> EntityInfo
 {
-    let name = "crate".to_owned();
+    let info = furnitures_info.get(id);
+
+    let name = info.name.clone();
 
     let mut inventory = Inventory::new();
     loot.create(&name).for_each(|item| { inventory.push(item); });

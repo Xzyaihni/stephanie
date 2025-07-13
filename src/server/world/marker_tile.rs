@@ -23,6 +23,7 @@ use crate::{
         Loot,
         EnemiesInfo,
         EntityInfo,
+        FurnituresInfo,
         Light,
         watcher::Watchers,
         entity::ServerEntities,
@@ -43,6 +44,12 @@ fn parse_enum<T: FromStr<Err=strum::ParseError>>(value: OutputWrapperRef) -> Res
     T::from_str(&name).map_err(|err| lisp::Error::Custom(format!("{} parse error: {err}", type_name::<T>())))
 }
 
+pub struct CreateInfos<'a>
+{
+    pub enemies: &'a EnemiesInfo,
+    pub furnitures: &'a FurnituresInfo
+}
+
 #[derive(Debug, Clone)]
 pub struct MarkerTile
 {
@@ -56,7 +63,10 @@ impl MarkerTile
         self,
         writer: &mut ConnectionsHandler,
         entities: &mut ServerEntities,
-        enemies: &EnemiesInfo,
+        CreateInfos{
+            enemies,
+            furnitures
+        }: CreateInfos,
         loot: &Loot,
         chunk_pos: Pos3<f32>
     )
@@ -95,9 +105,18 @@ impl MarkerTile
                     position
                 ));
             },
-            MarkerKind::Furniture{} =>
+            MarkerKind::Furniture{name} =>
             {
-                add_entity(furniture_creator::create(loot, position));
+                let id = if let Some(x) = furnitures.get_id(&name)
+                {
+                    x
+                } else
+                {
+                    eprintln!("cant find furniture named `{name}`");
+                    return;
+                };
+
+                add_entity(furniture_creator::create(furnitures, loot, id, position));
             },
             MarkerKind::Light{strength, offset} =>
             {
@@ -185,7 +204,7 @@ impl MarkerTile
 pub enum MarkerKind
 {
     Enemy{name: String},
-    Furniture{},
+    Furniture{name: String},
     Door{rotation: TileRotation, material: DoorMaterial, width: u32},
     Light{strength: f32, offset: Vector3<f32>}
 }
@@ -253,7 +272,9 @@ impl MarkerKind
             },
             "furniture" =>
             {
-                Ok(Self::Furniture{})
+                let name = next_value("name")?.as_symbol()?;
+
+                Ok(Self::Furniture{name})
             },
             x => Err(lisp::Error::Custom(format!("unknown marker id `{x}`")))
         }

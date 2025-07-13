@@ -1,6 +1,6 @@
 use std::{
     fs::File,
-    path::Path
+    path::{Path, PathBuf}
 };
 
 use serde::Deserialize;
@@ -8,7 +8,6 @@ use serde::Deserialize;
 use yanyaengine::Assets;
 
 use crate::common::{
-    normalize_path,
     ENTITY_SCALE,
     generic_info::*,
     Hairstyle,
@@ -30,10 +29,10 @@ struct EnemyInfoRaw
     anatomy: HumanAnatomyInfo,
     behavior: Option<EnemyBehavior>,
     scale: Option<f32>,
-    normal: String,
-    crawling: String,
-    lying: String,
-    hand: String
+    normal: Option<String>,
+    crawling: Option<String>,
+    lying: Option<String>,
+    hand: Option<String>
 }
 
 type EnemiesInfoRaw = Vec<EnemyInfoRaw>;
@@ -66,24 +65,27 @@ impl EnemyInfo
         raw: EnemyInfoRaw
     ) -> Self
     {
-        let get_texture = |name|
+        let get_texture = |default_name: &str, texture: Option<String>|
         {
-            let path = textures_root.join(name);
+            texture.map(|x| load_texture(assets, textures_root, &x))
+                .unwrap_or_else(||
+                {
+                    let name = PathBuf::from(&raw.name).join(default_name);
+                    let name = name.to_string_lossy().into_owned();
 
-            let name = normalize_path(path);
-
-            assets.texture_id(&name)
+                    load_texture(assets, textures_root, &name)
+                })
         };
 
         let scale = raw.scale.unwrap_or(1.0) * ENTITY_SCALE;
 
         let character = characters_info.push(CharacterInfo{
             scale,
-            hairstyle: raw.hairstyle.map(get_texture),
-            normal: get_texture(raw.normal),
-            crawling: get_texture(raw.crawling),
-            lying: get_texture(raw.lying),
-            hand: get_texture(raw.hand)
+            hairstyle: raw.hairstyle.map(|x| load_texture(assets, textures_root, &x)),
+            normal: get_texture("body", raw.normal),
+            crawling: get_texture("crawling", raw.crawling),
+            lying: get_texture("lying", raw.lying),
+            hand: get_texture("hand", raw.hand)
         });
 
         Self{

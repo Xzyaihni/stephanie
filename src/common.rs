@@ -55,6 +55,8 @@ pub use items_info::{ItemInfo, ItemId, ItemsInfo, Ranged};
 
 pub use inventory::{InventorySorter, InventoryItem, Inventory};
 
+pub use furnitures_info::{FurnitureId, FurnitureInfo, FurnituresInfo};
+
 pub use character::{CharacterSyncInfo, Character, Faction};
 pub use characters_info::{Hairstyle, CharacterId, CharactersInfo, CharacterInfo};
 
@@ -132,6 +134,7 @@ pub mod player;
 
 pub mod particle_creator;
 pub mod furniture_creator;
+pub mod furnitures_info;
 
 pub mod enemy;
 pub mod enemy_creator;
@@ -255,6 +258,7 @@ pub struct DataInfos
 {
     pub items_info: Arc<ItemsInfo>,
     pub enemies_info: Arc<EnemiesInfo>,
+    pub furnitures_info: Arc<FurnituresInfo>,
     pub characters_info: Arc<CharactersInfo>,
     pub player_character: CharacterId
 }

@@ -215,6 +215,11 @@
                 (make-point 7 0)
                 2
                 (tile 'air))
+            (if (< (random-float) 0.3)
+                (combine-markers
+                    this-chunk
+                    (make-point (if (random-bool) 0 (- size-x 1)) (random-integer-between 1 (- size-y 1)))
+                    (list 'furniture 'crate)))
             (put-tile
                 this-chunk
                 (make-point 7 0)

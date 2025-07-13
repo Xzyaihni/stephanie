@@ -54,7 +54,7 @@ impl CharacterInfo
         Self{
             scale: ENTITY_SCALE,
             hairstyle: Hairstyle::Pons(assets.texture_id("player/pon.png")),
-            normal: assets.texture_id("player/hair.png"),
+            normal: assets.texture_id("player/body.png"),
             crawling: assets.texture_id("player/crawling.png"),
             lying: assets.texture_id("player/lying.png"),
             hand: assets.texture_id("player/hand.png")

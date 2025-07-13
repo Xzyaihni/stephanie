@@ -182,3 +182,6 @@
 (define (random-integer-between start end)
     (let ((distance (- end start)))
         (+ start (random-integer distance))))
+
+(define (random-bool)
+    (= (random-integer 2) 1))

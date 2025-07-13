@@ -122,26 +122,16 @@ impl ItemInfo
         raw: ItemInfoRaw
     ) -> Self
     {
-        let get_texture = |name|
-        {
-            let path = textures_root.join(name);
-            let name = path.to_string_lossy().replace('\\', "/");
-
-            assets.texture_id(&name)
-        };
-
         let texture_name = raw.texture.unwrap_or_else(||
         {
             let folder: String = raw.groups.first().cloned().unwrap_or_default();
 
-            let name = raw.name.replace(' ', "_") + ".png";
-
-            let path = PathBuf::from(folder).join(name);
+            let path = PathBuf::from(folder).join(&raw.name);
 
             path.to_string_lossy().into_owned()
         });
 
-        let texture = get_texture(texture_name);
+        let texture = load_texture(assets, textures_root, &texture_name);
 
         let aspect = assets.texture(texture).lock().aspect_min();
 

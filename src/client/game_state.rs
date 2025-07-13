@@ -146,6 +146,25 @@ impl ClientEntitiesContainer
             ..Default::default()
         });
 
+        entities.on_anatomy(Box::new(move |entities, entity|
+        {
+            if entities.player_exists(entity)
+            {
+                return;
+            }
+
+            if let Some(mut anatomy) = entities.anatomy_mut_no_change(entity)
+            {
+                if anatomy.take_killed()
+                {
+                    if let Some(mut player) = entities.player_mut(player_entity)
+                    {
+                        player.kills += 1;
+                    }
+                }
+            }
+        }));
+
         Self{
             entities,
             camera_entity,
