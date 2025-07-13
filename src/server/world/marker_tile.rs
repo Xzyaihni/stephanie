@@ -24,6 +24,7 @@ use crate::{
         EnemiesInfo,
         EntityInfo,
         Light,
+        watcher::Watchers,
         entity::ServerEntities,
         lisp::{self, *},
         world::{
@@ -142,6 +143,7 @@ impl MarkerTile
                         move_z: false,
                         ..Default::default()
                     }.into()),
+                    watchers: Some(Watchers::new(Vec::new())),
                     occluder: door.door_occluder(),
                     saveable: Some(()),
                     ..Default::default()

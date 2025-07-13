@@ -5,11 +5,14 @@ use nalgebra::Vector3;
 use serde::{Serialize, Deserialize};
 
 use crate::common::{
+    short_rotation,
     render_info::*,
     particle_creator::*,
     lazy_transform::*,
     Entity,
     EntityInfo,
+    Collider,
+    Occluder,
     entity::AnyEntities
 };
 
@@ -67,6 +70,7 @@ pub enum WatcherType
     Collision,
     Lifetime(Lifetime),
     Frames(Frames),
+    RotationDistance{from: f32, near: f32},
     ScaleDistance{from: Vector3<f32>, near: f32}
 }
 
@@ -85,6 +89,16 @@ impl WatcherType
             Self::Collision =>
             {
                 entities.collider(entity).map(|x| !x.collided().is_empty()).unwrap_or(false)
+            },
+            Self::RotationDistance{from, near} =>
+            {
+                if let Some(transform) = entities.transform(entity)
+                {
+                    short_rotation(transform.rotation - *from).abs() < *near
+                } else
+                {
+                    false
+                }
             },
             Self::ScaleDistance{from, near} =>
             {
@@ -141,6 +155,8 @@ pub enum WatcherAction
     OutlineableDisable,
     SetVisible(bool),
     SetMixColor(Option<MixColor>),
+    SetCollider(Option<Box<Collider>>),
+    SetOccluder(Option<Occluder>),
     SetTargetPosition(Vector3<f32>),
     SetTargetScale(Vector3<f32>),
     SetTargetRotation(f32),
@@ -190,6 +206,14 @@ impl WatcherAction
                 {
                     *target = value;
                 }
+            },
+            Self::SetCollider(value) =>
+            {
+                entities.set_collider(entity, value.map(|x| *x));
+            },
+            Self::SetOccluder(value) =>
+            {
+                entities.set_occluder(entity, value);
             },
             Self::SetTargetPosition(position) =>
             {
@@ -348,6 +372,11 @@ impl Watchers
         });
 
         actions
+    }
+
+    pub fn replace(&mut self, watchers: Vec<Watcher>)
+    {
+        self.0 = watchers;
     }
 
     pub fn push(&mut self, watcher: Watcher)

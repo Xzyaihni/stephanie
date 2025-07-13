@@ -11,6 +11,7 @@ use yanyaengine::Transform;
 use crate::common::{
     rotate_point_z_3d,
     collider::*,
+    watcher::*,
     Entity,
     Occluder,
     entity::ClientEntities,
@@ -74,9 +75,31 @@ impl Door
                     lazy.set_origin_rotation(if self.open { OPEN_ANGLE } else { 0.0 });
                 }
 
+                let collider = self.door_collider();
+                let occluder = self.door_occluder();
+
                 let mut setter = entities.lazy_setter.borrow_mut();
-                setter.set_collider(visible_door, self.door_collider());
-                setter.set_occluder(visible_door, self.door_occluder());
+                setter.set_occluder(visible_door, occluder);
+
+                if self.open
+                {
+                    setter.set_collider(visible_door, collider);
+                } else
+                {
+                    if let Some(mut watchers) = entities.watchers_mut(visible_door)
+                    {
+                        let collider_watcher = Watcher{
+                            kind: WatcherType::RotationDistance{
+                                from: self.door_rotation(),
+                                near: 0.04
+                            },
+                            action: WatcherAction::SetCollider(collider.map(|x| Box::new(x))),
+                            ..Default::default()
+                        };
+
+                        watchers.replace(vec![collider_watcher]);
+                    }
+                }
             }
         }
     }
