@@ -72,9 +72,9 @@ const SMALLEST_TEXT_SIZE: u32 = 15;
 const WHITE_COLOR: Lcha = Lcha{l: 100.0, c: 0.0, h: 0.0, a: 1.0};
 const BLACK_COLOR: Lcha = Lcha{l: 0.0, c: 0.0, h: 0.0, a: 1.0};
 
-const BACKGROUND_COLOR: Lcha = WHITE_COLOR;
-const ACCENT_COLOR: Lcha = Lcha{l: 70.0, c: 90.0, h: 6.0, a: 1.0};
-const HIGHLIGHTED_COLOR: Lcha = ACCENT_COLOR.with_added_lightness(20.0).with_added_chroma(-20.0);
+const BACKGROUND_COLOR: Lcha = Lcha{a: 0.5, ..BLACK_COLOR};
+const ACCENT_COLOR: Lcha = Lcha{h: HIGHLIGHTED_COLOR.h, ..WHITE_COLOR};
+const HIGHLIGHTED_COLOR: Lcha = Lcha{l: 70.0, c: 90.0, h: 6.0, a: 1.0};
 
 const MISSING_PART_COLOR: Lcha = Lcha{l: 50.0, ..BLACK_COLOR};
 
@@ -1767,7 +1767,7 @@ impl Ui
                 {
                     body.update(id(NotificationPart::Text), UiElement{
                         texture: UiTexture::Text{text: text.clone(), font_size: SMALL_TEXT_SIZE},
-                        mix: Some(MixColorLch{keep_transparency: true, ..MixColorLch::color(ACCENT_COLOR)}),
+                        mix: Some(MixColorLch{keep_transparency: true, ..MixColorLch::color(Lcha{a: 0.5, ..ACCENT_COLOR})}),
                         ..UiElement::fit_content()
                     });
                 }
