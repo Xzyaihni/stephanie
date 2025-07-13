@@ -378,8 +378,6 @@ fn draw_item_image(
     if let Some(texture) = texture
     {
         let image = parent.update(id.clone(), UiElement{
-            texture: UiTexture::Solid,
-            mix: Some(MixColorLch::color(ACCENT_COLOR)),
             width: size.clone(),
             height: size,
             children_layout: if aspect.x == 1.0 { UiLayout::Horizontal } else { UiLayout::Vertical },
@@ -1549,7 +1547,7 @@ impl Ui
 
                 self.controller.update(id(PopupPart::Body), UiElement{
                     texture: UiTexture::Solid,
-                    mix: Some(MixColorLch::color(ACCENT_COLOR)),
+                    mix: Some(MixColorLch::color(Lcha{a: 1.0, ..BACKGROUND_COLOR})),
                     animation,
                     position: UiPosition::Absolute{position: *position, align: UiPositionAlign{
                         horizontal: AlignHorizontal::Left,
@@ -1574,7 +1572,7 @@ impl Ui
 
                 let body = popup_body.update(id(PopupButtonPart::Body), UiElement{
                     texture: UiTexture::Solid,
-                    mix: Some(MixColorLch::color(BACKGROUND_COLOR)),
+                    mix: Some(MixColorLch::color(Lcha{a: 1.0, ..BACKGROUND_COLOR})),
                     width: UiElementSize{
                         minimum_size: Some(UiMinimumSize::FitChildren),
                         size: UiSize::Rest(1.0)
