@@ -1131,7 +1131,9 @@ impl WindowKind
         }
 
         let titlebar_id = UiId::Window(this_window_id, WindowPart::Title(TitlePart::Body));
-        if parent.input_of(&titlebar_id).is_mouse_inside() && info.controls.poll_action_held(&titlebar_id)
+        if !info.mouse_taken
+            && parent.input_of(&titlebar_id).is_mouse_inside()
+            && info.controls.poll_action_held(&titlebar_id)
         {
             if info.dragging_window.is_none()
             {
