@@ -904,7 +904,7 @@ impl LazyTransform
         {
             let rotation = current.rotation + origin_rotation;
 
-            let scaled_origin = self.origin.component_mul(&parent.scale);
+            let scaled_origin = rotate_point_z_3d(self.origin.component_mul(&parent.scale), self.target_local.rotation);
 
             let scaled_position = self.scaled_position(&parent.scale);
             let offset_position = scaled_position - scaled_origin;
@@ -919,7 +919,8 @@ impl LazyTransform
         {
             if self.origin != Vector3::zeros()
             {
-                let scaled_origin = self.origin.component_mul(&self.target_local.scale);
+                let scaled_origin = rotate_point_z_3d(self.origin.component_mul(&self.target_local.scale), self.target_local.rotation);
+
                 let origin_position = self.target_local.position + scaled_origin;
 
                 let around_origin = rotate_point_z_3d(self.target_local.position - origin_position, origin_rotation);

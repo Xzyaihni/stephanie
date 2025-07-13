@@ -266,7 +266,7 @@ impl Enemy
         if let Some(door_entity) = collider.collided().iter().find(|x| entities.door_exists(**x)).copied()
         {
             let mut door = entities.door_mut(door_entity).unwrap();
-            door.set_open(entities, door_entity, true);
+            door.set_open(entities, door_entity, entity, true);
         }
 
         let anatomy = some_or_return!(entities.anatomy(entity));

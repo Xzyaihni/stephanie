@@ -204,6 +204,29 @@ impl Default for TileRotation
 
 impl TileRotation
 {
+    pub fn is_horizontal(&self) -> bool
+    {
+        match self
+        {
+            Self::Down | Self::Up => false,
+            Self::Left | Self::Right => true
+        }
+    }
+
+    pub fn is_vertical(&self) -> bool
+    {
+        !self.is_horizontal()
+    }
+
+    pub fn is_positive(&self) -> bool
+    {
+        match self
+        {
+            Self::Down | Self::Left => false,
+            Self::Up | Self::Right => true
+        }
+    }
+
     pub fn to_angle(&self) -> f32
     {
         match self

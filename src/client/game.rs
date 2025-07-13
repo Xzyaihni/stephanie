@@ -1431,7 +1431,7 @@ impl<'a> PlayerContainer<'a>
 
                     if self.info.interacted
                     {
-                        door.set_open(entities, door_entity, new_state);
+                        door.set_open(entities, door_entity, self.info.entity, new_state);
                     } else
                     {
                         tile_info = Some(interact_button());

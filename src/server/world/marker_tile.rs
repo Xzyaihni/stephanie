@@ -120,12 +120,14 @@ impl MarkerTile
 
                 let transform = door.door_transform();
 
+                let origin = Vector3::new(-0.5, 0.0, 0.0);
+
                 let door_entity = add_entity(EntityInfo{
                     lazy_transform: Some(LazyTransformInfo{
                         transform: transform.clone(),
                         combine_origin_rotation: true,
                         origin_rotation_interpolation: Some(10.0),
-                        origin: Vector3::new(-0.5, 0.0, 0.0),
+                        origin,
                         ..Default::default()
                     }.into()),
                     render: Some(RenderInfo{
@@ -149,10 +151,18 @@ impl MarkerTile
                     ..Default::default()
                 });
 
+                let scale = if rotation.is_horizontal()
+                {
+                    Vector3::new(transform.scale.x, TILE_SIZE, transform.scale.z)
+                } else
+                {
+                    Vector3::new(TILE_SIZE, transform.scale.x, transform.scale.z)
+                };
+
                 add_entity(EntityInfo{
                     transform: Some(Transform{
                         position: transform.position,
-                        scale: Vector3::new(transform.scale.x, TILE_SIZE, transform.scale.z),
+                        scale,
                         ..Default::default()
                     }),
                     collider: Some(ColliderInfo{

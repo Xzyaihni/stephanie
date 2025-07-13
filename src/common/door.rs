@@ -9,6 +9,7 @@ use nalgebra::{Vector2, Vector3};
 use yanyaengine::Transform;
 
 use crate::common::{
+    some_or_return,
     rotate_point_z_3d,
     collider::*,
     watcher::*,
@@ -18,8 +19,6 @@ use crate::common::{
     world::{TILE_SIZE, TileRotation}
 };
 
-
-const OPEN_ANGLE: f32 = -f32::consts::FRAC_PI_2;
 
 #[derive(Debug, Clone, Copy, EnumString, IntoStaticStr, Serialize, Deserialize)]
 #[strum(ascii_case_insensitive)]
@@ -61,7 +60,13 @@ impl Door
         self.rotation.to_angle() + f32::consts::PI
     }
 
-    pub fn set_open(&mut self, entities: &ClientEntities, entity: Entity, state: bool)
+    pub fn set_open(
+        &mut self,
+        entities: &ClientEntities,
+        entity: Entity,
+        opener: Entity,
+        state: bool
+    )
     {
         if self.open != state
         {
@@ -72,7 +77,32 @@ impl Door
                 let visible_door = parent.entity();
                 if let Some(mut lazy) = entities.lazy_transform_mut(visible_door)
                 {
-                    lazy.set_origin_rotation(if self.open { OPEN_ANGLE } else { 0.0 });
+                    let angle = if self.open
+                    {
+                        let opener_position = some_or_return!(entities.transform(opener)).position;
+                        let this_position = self.position;
+
+                        let flip = match self.rotation
+                        {
+                            TileRotation::Left => opener_position.y < this_position.y,
+                            TileRotation::Right => opener_position.y > this_position.y,
+                            TileRotation::Down => opener_position.x > this_position.x,
+                            TileRotation::Up => opener_position.x < this_position.x
+                        };
+
+                        if flip
+                        {
+                            f32::consts::FRAC_PI_2
+                        } else
+                        {
+                            -f32::consts::FRAC_PI_2
+                        }
+                    } else
+                    {
+                        0.0
+                    };
+
+                    lazy.set_origin_rotation(angle);
                 }
 
                 let collider = self.door_collider();
