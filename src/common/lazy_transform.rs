@@ -644,6 +644,8 @@ pub struct LazyTransformInfo
     pub rotation: Rotation,
     pub scaling: Scaling,
     pub deformation: Deformation,
+    pub combine_origin_rotation: bool,
+    pub origin_rotation_interpolation: Option<f32>,
     pub origin_rotation: f32,
     pub origin: Vector3<f32>,
     pub unscaled_position: bool,
@@ -662,6 +664,8 @@ impl Default for LazyTransformInfo
             rotation: Rotation::Instant,
             scaling: Scaling::Instant,
             deformation: Deformation::Rigid,
+            combine_origin_rotation: false,
+            origin_rotation_interpolation: None,
             origin_rotation: 0.0,
             origin: Vector3::zeros(),
             unscaled_position: false,
@@ -673,10 +677,19 @@ impl Default for LazyTransformInfo
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+struct OriginRotationInterpolation
+{
+    pub decay: f32,
+    pub current: f32
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LazyTransform
 {
     pub target_local: Transform,
+    combine_origin_rotation: bool,
+    origin_rotation_interpolation: Option<OriginRotationInterpolation>,
     origin_rotation: f32,
     origin: Vector3<f32>,
     unscaled_position: bool,
@@ -706,8 +719,15 @@ impl From<LazyTransformInfo> for LazyTransform
 {
     fn from(info: LazyTransformInfo) -> Self
     {
+        let origin_rotation_interpolation = info.origin_rotation_interpolation.map(|decay|
+        {
+            OriginRotationInterpolation{decay, current: info.origin_rotation}
+        });
+
         Self{
             target_local: info.transform,
+            combine_origin_rotation: info.combine_origin_rotation,
+            origin_rotation_interpolation,
             origin_rotation: info.origin_rotation,
             origin: info.origin,
             unscaled_position: info.unscaled_position,
@@ -736,6 +756,23 @@ impl LazyTransform
         let pi2 = 2.0 * f32::consts::PI;
         current.rotation %= pi2;
         target_global.rotation %= pi2;
+
+        {
+            let origin_rotation = if let Some(x) = self.origin_rotation_interpolation.as_mut()
+            {
+                x.current = x.current.ease_out(self.origin_rotation, x.decay, dt);
+
+                x.current
+            } else
+            {
+                self.origin_rotation
+            };
+
+            if self.combine_origin_rotation
+            {
+                target_global.rotation += origin_rotation;
+            }
+        }
 
         self.scaling.next(&mut current.scale, target_global.scale, dt);
         self.rotation.next(&mut current.rotation, target_global.rotation, dt);
@@ -855,9 +892,17 @@ impl LazyTransform
             return;
         }
 
+        let origin_rotation = if let Some(x) = self.origin_rotation_interpolation
+        {
+            x.current
+        } else
+        {
+            self.origin_rotation
+        };
+
         if let Some(parent) = parent_transform
         {
-            let rotation = current.rotation + self.origin_rotation;
+            let rotation = current.rotation + origin_rotation;
 
             let scaled_origin = self.origin.component_mul(&parent.scale);
 
@@ -869,6 +914,16 @@ impl LazyTransform
             if self.inherit_position
             {
                 target.position += parent.position;
+            }
+        } else
+        {
+            if self.origin != Vector3::zeros()
+            {
+                let scaled_origin = self.origin.component_mul(&self.target_local.scale);
+                let origin_position = self.target_local.position + scaled_origin;
+
+                let around_origin = rotate_point_z_3d(self.target_local.position - origin_position, origin_rotation);
+                target.position = around_origin + origin_position;
             }
         }
     }

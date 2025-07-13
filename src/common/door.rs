@@ -10,11 +10,15 @@ use yanyaengine::Transform;
 
 use crate::common::{
     rotate_point_z_3d,
+    collider::*,
     Entity,
+    Occluder,
     entity::ClientEntities,
     world::{TILE_SIZE, TileRotation}
 };
 
+
+const OPEN_ANGLE: f32 = -f32::consts::FRAC_PI_2;
 
 #[derive(Debug, Clone, Copy, EnumString, IntoStaticStr, Serialize, Deserialize)]
 #[strum(ascii_case_insensitive)]
@@ -51,6 +55,11 @@ impl Door
         self.open
     }
 
+    fn door_rotation(&self) -> f32
+    {
+        self.rotation.to_angle() + f32::consts::PI
+    }
+
     pub fn set_open(&mut self, entities: &ClientEntities, entity: Entity, state: bool)
     {
         if self.open != state
@@ -59,19 +68,41 @@ impl Door
 
             if let Some(parent) = entities.parent(entity)
             {
-                if let Some(mut lazy) = entities.lazy_transform_mut(parent.entity())
+                let visible_door = parent.entity();
+                if let Some(mut lazy) = entities.lazy_transform_mut(visible_door)
                 {
-                    lazy.set_origin_rotation(if self.open { -f32::consts::FRAC_PI_2 } else { 0.0 });
+                    lazy.set_origin_rotation(if self.open { OPEN_ANGLE } else { 0.0 });
                 }
+
+                let mut setter = entities.lazy_setter.borrow_mut();
+                setter.set_collider(visible_door, self.door_collider());
+                setter.set_occluder(visible_door, self.door_occluder());
             }
         }
+    }
+
+    pub fn door_occluder(&self) -> Option<Occluder>
+    {
+        (!self.open).then_some(Occluder::Door)
+    }
+
+    pub fn door_collider(&self) -> Option<Collider>
+    {
+        (!self.open).then(||
+        {
+            ColliderInfo{
+                kind: ColliderType::Aabb,
+                layer: ColliderLayer::Door,
+                ..Default::default()
+            }.into()
+        })
     }
 
     pub fn door_transform(&self) -> Transform
     {
         let offset_inside = 0.075;
 
-        let rotation = self.rotation.to_angle() + f32::consts::PI;
+        let rotation = self.door_rotation();
 
         let offset = -(TILE_SIZE / 2.0 + TILE_SIZE * offset_inside)
             + (self.width as f32 * TILE_SIZE) / 2.0;

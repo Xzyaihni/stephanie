@@ -1407,10 +1407,39 @@ impl<'a> PlayerContainer<'a>
             }
         }
 
+        let interact_button = ||
+        {
+            self.game_state.controls.key_for(&Control::Interact).map(ToString::to_string)
+                .unwrap_or_else(|| "unassigned".to_owned())
+        };
+
         let animation_duration = 0.7;
 
         let mut tile_info = None;
         let mut new_animation = None;
+
+        {
+            let entities = self.game_state.entities();
+
+            if let Some(collider) = entities.collider(self.info.entity)
+            {
+                if let Some(door_entity) = collider.collided().iter().find(|x| entities.door_exists(**x)).copied()
+                {
+                    let mut door = entities.door_mut(door_entity).unwrap();
+
+                    let new_state = !door.is_open();
+
+                    if self.info.interacted
+                    {
+                        door.set_open(entities, door_entity, new_state);
+                    } else
+                    {
+                        let action = if new_state { "open" } else { "close" };
+                        tile_info = Some(format!("press {} to {action} the door", interact_button()));
+                    }
+                }
+            }
+        }
 
         self.colliding_info(|mut colliding|
         {
@@ -1423,12 +1452,6 @@ impl<'a> PlayerContainer<'a>
                     world.tile_info(*tile).special == Some(SpecialTile::StairsUp)
                 }).unwrap_or(false)
             }).next();
-
-            let interact_button = ||
-            {
-                self.game_state.controls.key_for(&Control::Interact).map(ToString::to_string)
-                    .unwrap_or_else(|| "unassigned".to_owned())
-            };
 
             if let Some(stairs) = stairs
             {
@@ -1448,8 +1471,6 @@ impl<'a> PlayerContainer<'a>
                     }
                 }).unwrap_or(false)
                 {
-                    tile_info = Some(format!("press {} to go up", interact_button()));
-
                     if self.info.interacted
                     {
                         new_animation = Some(PlayerAnimation{
@@ -1463,6 +1484,9 @@ impl<'a> PlayerContainer<'a>
                                 transform.position.z += TILE_SIZE * 2.0;
                             })))
                         });
+                    } else
+                    {
+                        tile_info = Some(format!("press {} to go up", interact_button()));
                     }
                 }
             }

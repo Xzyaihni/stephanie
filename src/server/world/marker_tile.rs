@@ -23,7 +23,6 @@ use crate::{
         Loot,
         EnemiesInfo,
         EntityInfo,
-        Occluder,
         Light,
         entity::ServerEntities,
         lisp::{self, *},
@@ -119,12 +118,13 @@ impl MarkerTile
                 let texture = door.texture();
 
                 let transform = door.door_transform();
-                let door_height = transform.scale.y;
 
                 let door_entity = add_entity(EntityInfo{
                     lazy_transform: Some(LazyTransformInfo{
-                        transform,
-                        origin: Vector3::new(-1.0, 0.0, 0.0),
+                        transform: transform.clone(),
+                        combine_origin_rotation: true,
+                        origin_rotation_interpolation: Some(10.0),
+                        origin: Vector3::new(-0.5, 0.0, 0.0),
                         ..Default::default()
                     }.into()),
                     render: Some(RenderInfo{
@@ -135,38 +135,22 @@ impl MarkerTile
                         z_level: ZLevel::Door,
                         ..Default::default()
                     }),
-                    collider: Some(ColliderInfo{
-                        kind: ColliderType::Aabb,
-                        layer: ColliderLayer::Door,
-                        ..Default::default()
-                    }.into()),
+                    collider: door.door_collider(),
                     physical: Some(PhysicalProperties{
                         inverse_mass: 0.0,
                         floating: true,
                         move_z: false,
                         ..Default::default()
                     }.into()),
-                    occluder: Some(Occluder::Door),
+                    occluder: door.door_occluder(),
                     saveable: Some(()),
                     ..Default::default()
                 });
 
-                let make_visibility_in_parent_false_and_remove_render = ();
                 add_entity(EntityInfo{
-                    lazy_transform: Some(LazyTransformInfo{
-                        transform: Transform{
-                            scale: Vector3::new(1.0, TILE_SIZE / door_height, 1.0),
-                            ..Default::default()
-                        },
-                        inherit_rotation: false,
-                        ..Default::default()
-                    }.into()),
-                    render: Some(RenderInfo{
-                        object: Some(RenderObjectKind::Texture{
-                            name: "solid.png".to_owned()
-                        }.into()),
-                        mix: Some(MixColor::color([1.0, 0.0, 0.0, 0.1])),
-                        above_world: true,
+                    transform: Some(Transform{
+                        position: transform.position,
+                        scale: Vector3::new(transform.scale.x, TILE_SIZE, transform.scale.z),
                         ..Default::default()
                     }),
                     collider: Some(ColliderInfo{
@@ -175,7 +159,7 @@ impl MarkerTile
                         ghost: true,
                         ..Default::default()
                     }.into()),
-                    parent: Some(Parent::new(door_entity, true)),
+                    parent: Some(Parent::new(door_entity, false)),
                     door: Some(door),
                     saveable: Some(()),
                     ..Default::default()
