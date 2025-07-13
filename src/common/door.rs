@@ -144,7 +144,7 @@ impl Door
         (!self.open).then(||
         {
             ColliderInfo{
-                kind: ColliderType::Aabb,
+                kind: ColliderType::Rectangle,
                 layer: ColliderLayer::Door,
                 ..Default::default()
             }.into()
