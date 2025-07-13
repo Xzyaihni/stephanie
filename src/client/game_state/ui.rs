@@ -1767,7 +1767,7 @@ impl Ui
                 {
                     body.update(id(NotificationPart::Text), UiElement{
                         texture: UiTexture::Text{text: text.clone(), font_size: SMALL_TEXT_SIZE},
-                        mix: Some(MixColorLch{keep_transparency: true, ..MixColorLch::color(Lcha{a: 0.5, ..ACCENT_COLOR})}),
+                        mix: Some(MixColorLch{keep_transparency: true, ..MixColorLch::color(ACCENT_COLOR)}),
                         ..UiElement::fit_content()
                     });
                 }

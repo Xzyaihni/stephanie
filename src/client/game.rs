@@ -1434,8 +1434,7 @@ impl<'a> PlayerContainer<'a>
                         door.set_open(entities, door_entity, new_state);
                     } else
                     {
-                        let action = if new_state { "open" } else { "close" };
-                        tile_info = Some(format!("press {} to {action} the door", interact_button()));
+                        tile_info = Some(interact_button());
                     }
                 }
             }
@@ -1486,7 +1485,7 @@ impl<'a> PlayerContainer<'a>
                         });
                     } else
                     {
-                        tile_info = Some(format!("press {} to go up", interact_button()));
+                        tile_info = Some(interact_button());
                     }
                 }
             }
@@ -1509,7 +1508,7 @@ impl<'a> PlayerContainer<'a>
                 })
             }).unwrap_or(false)
             {
-                tile_info = Some(format!("press {} to go down", interact_button()));
+                tile_info = Some(interact_button());
 
                 if self.info.interacted
                 {
