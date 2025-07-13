@@ -399,6 +399,14 @@ impl<'b> TransformMatrix<'b>
         (self.rotation_matrix * point) + self.transform.position
     }
 
+    pub fn inside_obb(&self, point: Vector3<f32>) -> bool
+    {
+        self.into_obb_local(point).zip_map(&(self.transform.scale.abs() / 2.0), |x, limit|
+        {
+            (-limit..limit).contains(&x)
+        }).fold(true, |a, b| a && b)
+    }
+
     pub fn project_onto_obb_edge(&self, point: Vector3<f32>) -> (Vector3<f32>, Vector3<f32>)
     {
         let local_point = self.into_obb_local(point);
@@ -604,7 +612,10 @@ impl<'b> TransformMatrix<'b>
 
         if penetration <= 0.0
         {
-            return false;
+            if !self.inside_obb(circle_pos)
+            {
+                return false;
+            }
         }
 
         let normal = Unit::try_new(projected_inside - circle_pos, 0.0001);
