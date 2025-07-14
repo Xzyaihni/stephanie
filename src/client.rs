@@ -21,7 +21,7 @@ use yanyaengine::{
 
 use game::Game;
 
-use game_state::{GameState, GameStateInfo};
+use game_state::{GameState, GameStateWithDrop, GameStateInfo};
 
 use crate::{
     LOG_PATH,
@@ -79,7 +79,7 @@ pub struct ClientInfo
 pub struct Client
 {
     pub camera: Arc<RwLock<Camera>>,
-    game_state: Option<Rc<RefCell<GameState>>>,
+    game_state: Option<Rc<RefCell<GameStateWithDrop>>>,
     game: Game
 }
 
@@ -147,12 +147,12 @@ impl Client
 
     pub fn resize(&mut self, aspect: f32)
     {
-        some_or_return!(&self.game_state).borrow_mut().resize(aspect);
+        some_or_return!(self.game_state.as_ref()).borrow_mut().get_mut().resize(aspect);
     }
 
     pub fn no_update(&mut self)
     {
-        some_or_return!(&self.game_state).borrow_mut().no_update();
+        some_or_return!(self.game_state.as_ref()).borrow_mut().get_mut().no_update();
     }
 
     pub fn update(
@@ -164,21 +164,28 @@ impl Client
         crate::frame_time_this!{
             update,
             {
-                let game_state = some_or_return!(&self.game_state);
+                if !self.game.update(info, dt)
+                {
+                    let new_game_state = self.game_state.as_ref().unwrap()
+                        .borrow_mut().0.take()
+                        .unwrap().restart();
 
-                self.game.update(info, dt);
+                    self.game_state.as_ref().unwrap().borrow_mut().0 = Some(new_game_state);
+                }
+
+                let game_state = some_or_return!(self.game_state.as_ref());
 
                 if self.game.player_exists()
                 {
-                    if game_state.borrow_mut().player_connected()
+                    if game_state.borrow_mut().get_mut().player_connected()
                     {
                         self.game.on_player_connected();
 
-                        game_state.borrow_mut().on_player_connected();
+                        game_state.borrow_mut().get_mut().on_player_connected();
                     }
                 }
 
-                if !game_state.borrow().running
+                if !game_state.borrow().get().running
                 {
                     self.exit();
                 }
@@ -190,7 +197,7 @@ impl Client
     {
         crate::frame_time_this!{
             update_buffers,
-            some_or_return!(&self.game_state).borrow_mut().update_buffers(info)
+            some_or_return!(self.game_state.as_ref()).borrow_mut().get_mut().update_buffers(info)
         };
     }
 
@@ -198,7 +205,7 @@ impl Client
     {
         crate::frame_time_this!{
             draw,
-            some_or_return!(&self.game_state).borrow().draw(&mut info)
+            some_or_return!(self.game_state.as_ref()).borrow().get().draw(&mut info)
         };
     }
 
@@ -223,17 +230,17 @@ impl Client
             }
         }
 
-        some_or_value!(&self.game_state, false).borrow_mut().input(control)
+        some_or_value!(self.game_state.as_ref(), false).borrow_mut().get_mut().input(control)
     }
 
     pub fn mouse_move(&mut self, position: (f64, f64))
     {
         let position = Vector2::new(position.0 as f32, position.1 as f32);
-        some_or_return!(&self.game_state).borrow_mut().mouse_moved(position);
+        some_or_return!(self.game_state.as_ref()).borrow_mut().get_mut().mouse_moved(position);
     }
 
     pub fn render_pass_ended(&mut self)
     {
-        some_or_return!(&self.game_state).borrow_mut().render_pass_ended();
+        some_or_return!(self.game_state.as_ref()).borrow_mut().get_mut().render_pass_ended();
     }
 }

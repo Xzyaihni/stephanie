@@ -1832,7 +1832,7 @@ impl Ui
 
                 if controls.take_click_down()
                 {
-                    dbg!("restart here lalala");
+                    self.user_receiver.borrow_mut().push(UiEvent::Restart);
                 }
             }
 

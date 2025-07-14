@@ -1,6 +1,7 @@
 use std::{
     fs,
     f32,
+    ops::ControlFlow,
     rc::{Rc, Weak},
     cell::{RefMut, RefCell}
 };
@@ -33,6 +34,7 @@ use crate::common::{
 
 use super::game_state::{
     GameState,
+    GameStateWithDrop,
     NotificationInfo,
     NotificationKindInfo,
     InventoryWhich,
@@ -63,19 +65,32 @@ impl ConsoleOutput
     }
 }
 
+fn with_game_state<T>(
+    game_state: &Weak<RefCell<GameStateWithDrop>>,
+    f: impl FnOnce(&mut GameState) -> T
+) -> T
+{
+    let game_state = game_state.upgrade().unwrap();
+    let mut game_state = game_state.borrow_mut();
+
+    f(game_state.get_mut())
+}
+
 pub struct Game
 {
-    game_state: Weak<RefCell<GameState>>,
+    game_state: Weak<RefCell<GameStateWithDrop>>,
     info: Rc<RefCell<PlayerInfo>>
 }
 
 impl Game
 {
-    pub fn new(game_state: Weak<RefCell<GameState>>) -> Self
+    pub fn new(game_state: Weak<RefCell<GameStateWithDrop>>) -> Self
     {
         let info = {
             let game_state = game_state.upgrade().unwrap();
             let mut game_state = game_state.borrow_mut();
+            let game_state = game_state.get_mut();
+
             let player = game_state.player();
 
             let entities = game_state.entities_mut();
@@ -121,7 +136,7 @@ impl Game
             infos.console.past_commands = standard_code;
         }
 
-        this.console_command(String::new(), ConsoleOutput::Quiet);
+        this.player_container(|mut x| x.console_command(String::new(), ConsoleOutput::Quiet));
 
         this
     }
@@ -134,22 +149,19 @@ impl Game
 
     fn player_container<T>(&mut self, f: impl FnOnce(PlayerContainer) -> T) -> T
     {
-        let game_state = self.game_state.upgrade().unwrap();
-        let mut game_state = game_state.borrow_mut();
         let mut info = self.info.borrow_mut();
 
-        f(PlayerContainer::new(&mut info, &mut game_state))
+        with_game_state(&self.game_state, |game_state| f(PlayerContainer::new(&mut info, game_state)))
     }
 
     pub fn on_player_connected(&mut self)
     {
+        let info = self.info.clone();
+        self.player_container(move |mut x|
         {
-            let game_state = self.game_state.upgrade().unwrap();
-            let mut game_state = game_state.borrow_mut();
-            let ui = game_state.ui.clone();
-            let info = self.info.clone();
+            let ui = x.game_state.ui.clone();
 
-            game_state.entities_mut().on_inventory(Box::new(move |_entities, entity|
+            x.game_state.entities_mut().on_inventory(Box::new(move |_entities, entity|
             {
                 let info = info.borrow_mut();
 
@@ -175,133 +187,66 @@ impl Game
                     ui.borrow_mut().inventory_changed(entity);
                 }
             }));
-        }
 
-        self.player_container(|mut x| x.on_player_connected());
+            x.on_player_connected()
+        });
     }
 
     pub fn update(
         &mut self,
         info: &mut UpdateBuffersInfo,
         dt: f32
-    )
+    ) -> bool
     {
-        let game_state = self.game_state.upgrade().unwrap();
+        let keep_running = self.player_container(|mut x|
+        {
+            crate::frame_time_this!{
+                update_pre,
+                x.game_state.update_pre(dt)
+            };
 
-        crate::frame_time_this!{
-            update_pre,
-            game_state.borrow_mut().update_pre(dt)
-        };
+            x.this_update(dt)
+        });
 
-        self.player_container(|mut x| x.this_update(dt));
+        if !keep_running
+        {
+            return false;
+        }
 
-        let mut game_state_mut = game_state.borrow_mut();
-        let mut changed_this_frame = game_state_mut.controls.changed_this_frame();
-
-        crate::frame_time_this!{
-            ui_update,
-            game_state_mut.ui_update(&mut changed_this_frame)
-        };
-
-        let controls: Vec<_> = game_state_mut.controls.consume_changed(changed_this_frame).collect();
-
-        drop(game_state_mut);
-
-        controls.into_iter().for_each(|(control, state)| self.on_control(state, control));
-
-        crate::frame_time_this!{
-            game_state_update,
-            game_state.borrow_mut().update(info, dt)
-        };
 
         self.player_container(|mut x|
         {
+            let mut changed_this_frame = x.game_state.controls.changed_this_frame();
+
+            crate::frame_time_this!{
+                ui_update,
+                x.game_state.ui_update(&mut changed_this_frame)
+            };
+
+            let controls: Vec<_> = x.game_state.controls.consume_changed(changed_this_frame).collect();
+
+            controls.into_iter().for_each(|(control, state)| x.on_control(state, control));
+        });
+
+        self.player_container(|mut x|
+        {
+            crate::frame_time_this!{
+                game_state_update,
+                x.game_state.update(info, dt)
+            };
+
             if !x.is_dead()
             {
                 x.camera_sync();
             }
         });
-    }
 
-    pub fn on_control(&mut self, state: ControlState, control: Control)
-    {
-        self.player_container(|mut x| x.on_control(state, control));
+        true
     }
 
     pub fn on_key_state(&mut self, key: KeyCode, pressed: bool) -> bool
     {
-        if pressed
-        {
-            self.on_key(key)
-        } else
-        {
-            false
-        }
-    }
-
-    fn on_key(&mut self, key: KeyCode) -> bool
-    {
-        if !self.game_state.upgrade().map(|game_state| game_state.borrow().debug_mode).unwrap_or(false)
-        {
-            return false;
-        }
-
-        if let Some(contents) = self.get_console_contents()
-        {
-            match key
-            {
-                KeyCode::Enter =>
-                {
-                    self.console_command(contents, ConsoleOutput::Normal);
-
-                    self.set_console_contents(None);
-
-                    true
-                },
-                KeyCode::Escape =>
-                {
-                    self.set_console_contents(None);
-
-                    true
-                },
-                _ => false
-            }
-        } else
-        {
-            if key == KeyCode::Backquote
-            {
-                let value = if self.get_console_contents().is_some()
-                {
-                    None
-                } else
-                {
-                    Some(String::new())
-                };
-
-                let state = if value.is_some() { "opened" } else { "closed" };
-                eprintln!("debug console {state}");
-
-                self.set_console_contents(value);
-
-                true
-            } else
-            {
-                false
-            }
-        }
-    }
-
-    fn get_console_contents(&self) -> Option<String>
-    {
-        self.game_state.upgrade().and_then(|game_state| game_state.borrow().ui.borrow().get_console().clone())
-    }
-
-    fn set_console_contents(&self, contents: Option<String>)
-    {
-        if let Some(game_state) = self.game_state.upgrade()
-        {
-            game_state.borrow().ui.borrow_mut().set_console(contents);
-        }
+        self.player_container(move |mut x| x.on_key_state(key, pressed))
     }
 
     fn pop_entity(args: &mut PrimitiveArgs) -> Result<Entity, lisp::Error>
@@ -348,48 +293,50 @@ impl Game
             name,
             PrimitiveProcedureInfo::new_simple(2, Effect::Impure, move |mut args|
             {
-                let game_state = game_state.upgrade().unwrap();
-                let mut game_state = game_state.borrow_mut();
-                let entities = game_state.entities_mut();
+                with_game_state(&game_state, |game_state|
+                {
+                    let entities = game_state.entities_mut();
 
-                let entity = Self::pop_entity(&mut args)?;
-                let value = args.next().unwrap();
+                    let entity = Self::pop_entity(&mut args)?;
+                    let value = args.next().unwrap();
 
-                f(entities, entity, args.memory, value)?;
+                    f(entities, entity, args.memory, value)?;
 
-                Ok(().into())
+                    Ok(().into())
+                })
             }));
     }
 
     fn maybe_print_component(
-        game_state: &Weak<RefCell<GameState>>,
+        game_state: &Weak<RefCell<GameStateWithDrop>>,
         args: &mut PrimitiveArgs,
         print: bool
     ) -> Result<LispValue, lisp::Error>
     {
-        let game_state = game_state.upgrade().unwrap();
-        let game_state = game_state.borrow();
-        let entities = game_state.entities();
-
-        let entity = Self::pop_entity(args)?;
-        let component = args.next().unwrap().as_symbol(args.memory)?;
-
-        let maybe_info = entities.component_info(entity, &component);
-
-        let found = maybe_info.is_some();
-
-        if print
+        with_game_state(game_state, |game_state|
         {
-            if let Some(info) = maybe_info
-            {
-                eprintln!("{component}: {info}");
-            } else
-            {
-                eprintln!("{component} doesnt exist");
-            }
-        }
+            let entities = game_state.entities();
 
-        Ok(found.into())
+            let entity = Self::pop_entity(args)?;
+            let component = args.next().unwrap().as_symbol(args.memory)?;
+
+            let maybe_info = entities.component_info(entity, &component);
+
+            let found = maybe_info.is_some();
+
+            if print
+            {
+                if let Some(info) = maybe_info
+                {
+                    eprintln!("{component}: {info}");
+                } else
+                {
+                    eprintln!("{component} doesnt exist");
+                }
+            }
+
+            Ok(found.into())
+        })
     }
 
     fn console_primitives(&mut self) -> Rc<Primitives>
@@ -418,22 +365,23 @@ impl Game
                 "entity-collided",
                 PrimitiveProcedureInfo::new_simple(1, Effect::Pure, move |mut args|
                 {
-                    let game_state = game_state.upgrade().unwrap();
-                    let game_state = game_state.borrow();
-                    let entities = game_state.entities();
-
-                    let entity = Self::pop_entity(&mut args)?;
-                    let collided = entities.collider(entity)
-                        .map(|x| x.collided().to_vec()).into_iter().flatten()
-                        .next();
-
-                    if let Some(collided) = collided
+                    with_game_state(&game_state, |game_state|
                     {
-                        Self::push_entity(args.memory, collided)
-                    } else
-                    {
-                        Ok(().into())
-                    }
+                        let entities = game_state.entities();
+
+                        let entity = Self::pop_entity(&mut args)?;
+                        let collided = entities.collider(entity)
+                            .map(|x| x.collided().to_vec()).into_iter().flatten()
+                            .next();
+
+                        if let Some(collided) = collided
+                        {
+                            Self::push_entity(args.memory, collided)
+                        } else
+                        {
+                            Ok(().into())
+                        }
+                    })
                 }));
         }
 
@@ -444,46 +392,47 @@ impl Game
                 "all-entities-query",
                 PrimitiveProcedureInfo::new_simple(0, Effect::Impure, move |args|
                 {
-                    let game_state = game_state.upgrade().unwrap();
-                    let game_state = game_state.borrow();
-                    let entities = game_state.entities();
-
-                    let mut normal_entities = Vec::new();
-                    let mut local_entities = Vec::new();
-
-                    let mut total = 0;
-                    entities.for_each_entity(|entity|
+                    with_game_state(&game_state, |game_state|
                     {
-                        total += 1;
-                        let id = LispValue::new_integer(entity.id() as i32);
+                        let entities = game_state.entities();
 
-                        if entity.local()
+                        let mut normal_entities = Vec::new();
+                        let mut local_entities = Vec::new();
+
+                        let mut total = 0;
+                        entities.for_each_entity(|entity|
                         {
-                            local_entities.push(id);
-                        } else
-                        {
-                            normal_entities.push(id);
-                        }
-                    });
+                            total += 1;
+                            let id = LispValue::new_integer(entity.id() as i32);
 
-                    let memory = args.memory;
+                            if entity.local()
+                            {
+                                local_entities.push(id);
+                            } else
+                            {
+                                normal_entities.push(id);
+                            }
+                        });
 
-                    let restore = memory.with_saved_registers([Register::Value, Register::Temporary]);
+                        let memory = args.memory;
 
-                    memory.make_vector(Register::Temporary, normal_entities)?;
-                    memory.make_vector(Register::Value, local_entities)?;
+                        let restore = memory.with_saved_registers([Register::Value, Register::Temporary]);
 
-                    memory.cons(Register::Value, Register::Temporary, Register::Value)?;
+                        memory.make_vector(Register::Temporary, normal_entities)?;
+                        memory.make_vector(Register::Value, local_entities)?;
 
-                    memory.set_register(Register::Temporary, total - 1);
+                        memory.cons(Register::Value, Register::Temporary, Register::Value)?;
 
-                    memory.cons(Register::Value, Register::Temporary, Register::Value)?;
+                        memory.set_register(Register::Temporary, total - 1);
 
-                    let value = memory.get_register(Register::Value);
+                        memory.cons(Register::Value, Register::Temporary, Register::Value)?;
 
-                    restore(memory)?;
+                        let value = memory.get_register(Register::Value);
 
-                    Ok(value)
+                        restore(memory)?;
+
+                        Ok(value)
+                    })
                 }));
         }
 
@@ -531,20 +480,20 @@ impl Game
                 "print-chunk-of",
                 PrimitiveProcedureInfo::new_simple(1..=2, Effect::Impure, move |mut args|
                 {
-                    let game_state = game_state.upgrade().unwrap();
-                    let game_state = game_state.borrow();
+                    with_game_state(&game_state, |game_state|
+                    {
+                        let entity = Self::pop_entity(&mut args)?;
+                        let position = game_state.entities().transform(entity).unwrap().position;
 
-                    let entity = Self::pop_entity(&mut args)?;
-                    let position = game_state.entities().transform(entity).unwrap().position;
+                        let visual = args.next().map(|x| x.as_bool()).unwrap_or(Ok(false))?;
 
-                    let visual = args.next().map(|x| x.as_bool()).unwrap_or(Ok(false))?;
+                        eprintln!(
+                            "entity info: {}",
+                            game_state.world.debug_chunk(position.into(), visual)
+                        );
 
-                    eprintln!(
-                        "entity info: {}",
-                        game_state.world.debug_chunk(position.into(), visual)
-                    );
-
-                    Ok(().into())
+                        Ok(().into())
+                    })
                 }));
         }
 
@@ -635,23 +584,24 @@ impl Game
                 "add-item",
                 PrimitiveProcedureInfo::new_simple(2, Effect::Impure, move |mut args|
                 {
-                    let game_state = game_state.upgrade().unwrap();
-                    let game_state = game_state.borrow_mut();
-                    let entities = game_state.entities();
-
-                    let entity = Self::pop_entity(&mut args)?;
-                    let name = args.next().unwrap().as_symbol(args.memory)?.replace('_', " ");
-
-                    let mut inventory = entities.inventory_mut(entity).unwrap();
-
-                    let id = game_state.items_info.get_id(&name).ok_or_else(||
+                    with_game_state(&game_state, |game_state|
                     {
-                        lisp::Error::Custom(format!("item named {name} doesnt exist"))
-                    })?;
+                        let entities = game_state.entities();
 
-                    inventory.push(Item{id});
+                        let entity = Self::pop_entity(&mut args)?;
+                        let name = args.next().unwrap().as_symbol(args.memory)?.replace('_', " ");
 
-                    Ok(().into())
+                        let mut inventory = entities.inventory_mut(entity).unwrap();
+
+                        let id = game_state.items_info.get_id(&name).ok_or_else(||
+                        {
+                            lisp::Error::Custom(format!("item named {name} doesnt exist"))
+                        })?;
+
+                        inventory.push(Item{id});
+
+                        Ok(().into())
+                    })
                 }));
         }
 
@@ -684,26 +634,27 @@ impl Game
                 "children-of",
                 PrimitiveProcedureInfo::new_simple(1, Effect::Pure, move |mut args|
                 {
-                    let game_state = game_state.upgrade().unwrap();
-                    let game_state = game_state.borrow();
-                    let entities = game_state.entities();
-
-                    let entity = Self::pop_entity(&mut args)?;
-
-                    args.memory.cons_list_with(|memory|
+                    with_game_state(&game_state, |game_state|
                     {
-                        let mut count = 0;
-                        entities.children_of(entity).try_for_each(|x|
+                        let entities = game_state.entities();
+
+                        let entity = Self::pop_entity(&mut args)?;
+
+                        args.memory.cons_list_with(|memory|
                         {
-                            count += 1;
-                            let value = Self::push_entity(memory, x)?;
+                            let mut count = 0;
+                            entities.children_of(entity).try_for_each(|x|
+                            {
+                                count += 1;
+                                let value = Self::push_entity(memory, x)?;
 
-                            memory.push_stack(value)?;
+                                memory.push_stack(value)?;
 
-                            Ok(())
-                        })?;
+                                Ok(())
+                            })?;
 
-                        Ok(count)
+                            Ok(count)
+                        })
                     })
                 }));
         }
@@ -715,15 +666,16 @@ impl Game
                 "position-entity",
                 PrimitiveProcedureInfo::new_simple(1, Effect::Impure, move |mut args|
                 {
-                    let game_state = game_state.upgrade().unwrap();
-                    let game_state = game_state.borrow();
-                    let entities = game_state.entities();
+                    with_game_state(&game_state, |game_state|
+                    {
+                        let entities = game_state.entities();
 
-                    let entity = Self::pop_entity(&mut args)?;
+                        let entity = Self::pop_entity(&mut args)?;
 
-                    let position = entities.transform(entity).unwrap().position;
+                        let position = entities.transform(entity).unwrap().position;
 
-                    args.memory.cons_list([position.x, position.y, position.z])
+                        args.memory.cons_list([position.x, position.y, position.z])
+                    })
                 }));
         }
 
@@ -756,15 +708,16 @@ impl Game
                 "print-entity-info",
                 PrimitiveProcedureInfo::new_simple(1, Effect::Impure, move |mut args|
                 {
-                    let game_state = game_state.upgrade().unwrap();
-                    let game_state = game_state.borrow();
-                    let entities = game_state.entities();
+                    with_game_state(&game_state, |game_state|
+                    {
+                        let entities = game_state.entities();
 
-                    let entity = Self::pop_entity(&mut args)?;
+                        let entity = Self::pop_entity(&mut args)?;
 
-                    eprintln!("entity info: {}", entities.info_ref(entity));
+                        eprintln!("entity info: {}", entities.info_ref(entity));
 
-                    Ok(().into())
+                        Ok(().into())
+                    })
                 }));
         }
 
@@ -778,19 +731,19 @@ impl Game
                 "send-debug-message",
                 PrimitiveProcedureInfo::new_simple(1, Effect::Impure, move |mut args|
                 {
-                    let game_state = game_state.upgrade().unwrap();
-                    let game_state = game_state.borrow();
-
-                    let message = args.next().unwrap().as_symbol(args.memory)?;
-                    let message = format!("\"{message}\"");
-                    let message: DebugMessage = serde_json::from_str(&message).map_err(|_|
+                    with_game_state(&game_state, |game_state|
                     {
-                        lisp::Error::Custom(format!("cant deserialize {message} as DebugMessage"))
-                    })?;
+                        let message = args.next().unwrap().as_symbol(args.memory)?;
+                        let message = format!("\"{message}\"");
+                        let message: DebugMessage = serde_json::from_str(&message).map_err(|_|
+                        {
+                            lisp::Error::Custom(format!("cant deserialize {message} as DebugMessage"))
+                        })?;
 
-                    game_state.send_message(Message::DebugMessage(message));
+                        game_state.send_message(Message::DebugMessage(message));
 
-                    Ok(().into())
+                        Ok(().into())
+                    })
                 }));
         }
 
@@ -818,50 +771,6 @@ impl Game
         }
 
         Rc::new(primitives)
-    }
-
-    fn console_command(&mut self, command: String, output: ConsoleOutput)
-    {
-        let mut infos = self.info.borrow_mut();
-
-        let config = LispConfig{
-            type_checks: true,
-            memory: LispMemory::new(infos.console.primitives.as_ref().unwrap().clone(), 2048, 1 << 14)
-        };
-
-        let lisp = match Lisp::new_with_config(config, &[&infos.console.past_commands, &command])
-        {
-            Ok(x) => x,
-            Err(err) =>
-            {
-                eprintln!("error parsing {command}: {err}");
-                Lisp::print_highlighted(&command, err.position);
-                return;
-            }
-        };
-
-        let result = match lisp.run()
-        {
-            Ok(x) => x,
-            Err(err) =>
-            {
-                eprintln!("error running {command}: {err}");
-                Lisp::print_highlighted(&command, err.position);
-                return;
-            }
-        };
-
-        if !output.is_quiet()
-        {
-            eprintln!("ran command {command}, result: {result}");
-        }
-
-        let defined_this = result.into_memory().defined_values().unwrap().len();
-        let changed_environment = defined_this > infos.console.standard_definitions;
-        if changed_environment
-        {
-            infos.remember_command(defined_this, &command);
-        }
     }
 
     pub fn player_exists(&mut self) -> bool
@@ -1141,6 +1050,121 @@ impl<'a> PlayerContainer<'a>
         }
     }
 
+    pub fn on_key_state(&mut self, key: KeyCode, pressed: bool) -> bool
+    {
+        if pressed
+        {
+            self.on_key(key)
+        } else
+        {
+            false
+        }
+    }
+
+    fn on_key(&mut self, key: KeyCode) -> bool
+    {
+        if !self.game_state.debug_mode
+        {
+            return false;
+        }
+
+        if let Some(contents) = self.get_console_contents()
+        {
+            match key
+            {
+                KeyCode::Enter =>
+                {
+                    self.console_command(contents, ConsoleOutput::Normal);
+
+                    self.set_console_contents(None);
+
+                    true
+                },
+                KeyCode::Escape =>
+                {
+                    self.set_console_contents(None);
+
+                    true
+                },
+                _ => false
+            }
+        } else
+        {
+            if key == KeyCode::Backquote
+            {
+                let value = if self.get_console_contents().is_some()
+                {
+                    None
+                } else
+                {
+                    Some(String::new())
+                };
+
+                let state = if value.is_some() { "opened" } else { "closed" };
+                eprintln!("debug console {state}");
+
+                self.set_console_contents(value);
+
+                true
+            } else
+            {
+                false
+            }
+        }
+    }
+
+    fn get_console_contents(&self) -> Option<String>
+    {
+        self.game_state.ui.borrow().get_console().clone()
+    }
+
+    fn set_console_contents(&self, contents: Option<String>)
+    {
+        self.game_state.ui.borrow_mut().set_console(contents);
+    }
+
+    fn console_command(&mut self, command: String, output: ConsoleOutput)
+    {
+        let config = LispConfig{
+            type_checks: true,
+            memory: LispMemory::new(self.info.console.primitives.as_ref().unwrap().clone(), 2048, 1 << 14)
+        };
+
+        let lisp = match Lisp::new_with_config(config, &[&self.info.console.past_commands, &command])
+        {
+            Ok(x) => x,
+            Err(err) =>
+            {
+                eprintln!("error parsing {command}: {err}");
+                Lisp::print_highlighted(&command, err.position);
+                return;
+            }
+        };
+
+        let result = match lisp.run()
+        {
+            Ok(x) => x,
+            Err(err) =>
+            {
+                eprintln!("error running {command}: {err}");
+                Lisp::print_highlighted(&command, err.position);
+                return;
+            }
+        };
+
+        if !output.is_quiet()
+        {
+            eprintln!("ran command {command}, result: {result}");
+        }
+
+        let defined_this = result.into_memory().defined_values().unwrap().len();
+        let changed_environment = defined_this > self.info.console.standard_definitions;
+        if changed_environment
+        {
+            self.info.remember_command(defined_this, &command);
+        }
+    }
+
     fn character_action(&self, action: CharacterAction)
     {
         if let Some(mut character) = self.game_state.entities().character_mut(self.info.entity)
@@ -1153,6 +1177,7 @@ impl<'a> PlayerContainer<'a>
     {
         match event
         {
+            UiEvent::Restart => unreachable!(),
             UiEvent::Action(action) =>
             {
                 action(self.game_state);
@@ -1266,13 +1291,20 @@ impl<'a> PlayerContainer<'a>
         entity.and_then(|entity| self.game_state.entities().inventory_mut(entity))
     }
 
-    fn update_user_events(&mut self)
+    fn update_user_events(&mut self) -> bool
     {
-        let events = self.game_state.user_receiver.borrow_mut().consume();
-        events.for_each(|event|
+        let mut events = self.game_state.user_receiver.borrow_mut().consume();
+        events.try_for_each(|event|
         {
+            if let UiEvent::Restart = event
+            {
+                return ControlFlow::Break(());
+            }
+
             self.handle_ui_event(event);
-        });
+
+            ControlFlow::Continue(())
+        }).is_continue()
     }
 
     fn toggle_inventory(&mut self)
@@ -1300,14 +1332,17 @@ impl<'a> PlayerContainer<'a>
         }
     }
 
-    pub fn this_update(&mut self, dt: f32)
+    pub fn this_update(&mut self, dt: f32) -> bool
     {
         if !self.exists()
         {
-            return;
+            return true;
         }
 
-        self.update_user_events();
+        if !self.update_user_events()
+        {
+            return false;
+        }
 
         let mouse_position = self.game_state.world_mouse_position();
         let mouse_position = Vector3::new(mouse_position.x, mouse_position.y, 0.0);
@@ -1570,6 +1605,8 @@ impl<'a> PlayerContainer<'a>
         self.game_state.sync_character(self.info.entity);
 
         self.info.interacted = false;
+
+        true
     }
 
     fn show_tile_tooltip(&mut self, text: String)

@@ -435,6 +435,7 @@ impl PartCreator<'_, '_>
 #[derive(Clone)]
 pub enum UiEvent
 {
+    Restart,
     Action(Rc<dyn Fn(&mut GameState)>),
     Game(GameUiEvent)
 }
@@ -638,6 +639,48 @@ impl DebugVisibilityTrait for DebugVisibilityFalse
     fn as_bool() -> bool { false }
 }
 
+pub struct GameStateWithDrop(pub Option<GameState>);
+
+impl Drop for GameStateWithDrop
+{
+    fn drop(&mut self)
+    {
+        let this = self.0.as_mut().unwrap();
+
+        let mut writer = this.connections_handler.write();
+        if let Err(err) = writer.send_blocking(&Message::PlayerDisconnect{host: this.host})
+        {
+            eprintln!("error sending player disconnect message: {err}");
+        }
+
+        while let Ok(x) = this.receiver.recv()
+        {
+            if let Message::PlayerDisconnectFinished = x
+            {
+                this.receiver_handle.take().unwrap().join().unwrap();
+
+                eprintln!("client shut down properly");
+                return;
+            }
+        }
+
+        eprintln!("disconnect finished improperly");
+    }
+}
+
+impl GameStateWithDrop
+{
+    pub fn get(&self) -> &GameState
+    {
+        self.0.as_ref().unwrap()
+    }
+
+    pub fn get_mut(&mut self) -> &mut GameState
+    {
+        self.0.as_mut().unwrap()
+    }
+}
+
 pub struct GameState
 {
     pub mouse_position: Vector2<f32>,
@@ -673,34 +716,9 @@ pub struct GameState
     receiver: Receiver<Message>
 }
 
-impl Drop for GameState
-{
-    fn drop(&mut self)
-    {
-        let mut writer = self.connections_handler.write();
-        if let Err(err) = writer.send_blocking(&Message::PlayerDisconnect{host: self.host})
-        {
-            eprintln!("error sending player disconnect message: {err}");
-        }
-
-        while let Ok(x) = self.receiver.recv()
-        {
-            if let Message::PlayerDisconnectFinished = x
-            {
-                self.receiver_handle.take().unwrap().join().unwrap();
-
-                eprintln!("client shut down properly");
-                return;
-            }
-        }
-
-        eprintln!("disconnect finished improperly");
-    }
-}
-
 impl GameState
 {
-    pub fn new(mut info: GameStateInfo) -> Rc<RefCell<Self>>
+    pub fn new(mut info: GameStateInfo) -> Rc<RefCell<GameStateWithDrop>>
     {
         let mouse_position = Vector2::zeros();
 
@@ -800,32 +818,6 @@ impl GameState
             user_receiver.clone()
         );
 
-        {
-            let ui = ui.clone();
-            let player_entity = entities.player_entity;
-
-            entities.entities.on_anatomy(Box::new(move |entities, entity|
-            {
-                if let Some(mut anatomy) = entities.anatomy_mut_no_change(entity)
-                {
-                    if anatomy.take_killed()
-                    {
-                        if entity == player_entity
-                        {
-                            ui.borrow_mut().player_dead();
-
-                            return;
-                        }
-
-                        if let Some(mut player) = entities.player_mut(player_entity)
-                        {
-                            player.kills += 1;
-                        }
-                    }
-                }
-            }));
-        }
-
         let common_textures = CommonTextures::new(&mut assets.lock());
 
         let debug_visibility = <DebugVisibility as DebugVisibilityTrait>::State::new(
@@ -868,16 +860,91 @@ impl GameState
             receiver
         };
 
+        this.initialize();
+
+        Rc::new(RefCell::new(GameStateWithDrop(Some(this))))
+    }
+
+    fn initialize(&mut self)
+    {
         {
-            let aspect = this.camera.read().aspect();
+            let ui = self.ui.clone();
+            let player_entity = self.entities.player_entity;
 
-            this.set_camera_scale(DEFAULT_ZOOM);
+            self.entities.entities.on_anatomy(Box::new(move |entities, entity|
+            {
+                if let Some(mut anatomy) = entities.anatomy_mut_no_change(entity)
+                {
+                    if anatomy.take_killed()
+                    {
+                        if entity == player_entity
+                        {
+                            ui.borrow_mut().player_dead();
 
-            this.resize(aspect);
-            this.camera_resized();
+                            return;
+                        }
+
+                        if let Some(mut player) = entities.player_mut(player_entity)
+                        {
+                            player.kills += 1;
+                        }
+                    }
+                }
+            }));
         }
 
-        Rc::new(RefCell::new(this))
+        {
+            let aspect = self.camera.read().aspect();
+
+            self.set_camera_scale(DEFAULT_ZOOM);
+
+            self.resize(aspect);
+            self.camera_resized();
+        }
+    }
+
+    pub fn restart(self) -> Self
+    {
+        let camera = self.camera;
+        camera.write().set_position(Vector3::zeros().into());
+
+        let mut this = Self{
+            mouse_position: self.mouse_position,
+            camera,
+            assets: self.assets,
+            object_factory: self.object_factory,
+            notifications: Notifications::new(),
+            entities: todo!(),
+            items_info: self.items_info,
+            characters_info: self.characters_info,
+            controls: ControlsController::new(),
+            running: self.running,
+            screen_object: self.screen_object,
+            ui_camera: self.ui_camera,
+            timestamp_query: self.timestamp_query,
+            shaders: self.shaders,
+            world: todo!(),
+            debug_mode: self.debug_mode,
+            tilemap: self.tilemap,
+            camera_scale: self.camera_scale,
+            rare_timer: 0.0,
+            dt: None,
+            ui: todo!(),
+            common_textures: self.common_textures,
+            connected_and_ready: false,
+            host: self.host,
+            is_trusted: self.is_trusted,
+            is_loading: true,
+            user_receiver: UiReceiver::new(),
+            debug_visibility: self.debug_visibility,
+            connections_handler: todo!(),
+            receiver_handle: todo!(),
+            receiver: todo!()
+        };
+
+        this.initialize();
+
+        this
     }
 
     pub fn sync_character(&mut self, entity: Entity)
