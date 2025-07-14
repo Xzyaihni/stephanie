@@ -55,6 +55,7 @@ pub mod controller;
 
 
 const TITLE_PADDING: f32 = 15.0;
+const TINY_PADDING: f32 = 5.0;
 const SMALL_PADDING: f32 = 10.0;
 const ITEM_PADDING: f32 = SMALL_PADDING;
 const BODY_PADDING: f32 = 20.0;
@@ -84,6 +85,7 @@ pub enum UiId
 {
     Screen,
     Loading(LoadingPart),
+    Health(HealthPart),
     Fade,
     Padding(u32),
     Console(ConsolePart),
@@ -95,6 +97,17 @@ pub enum UiId
     BarsBody,
     BarsBodyInner,
     BarDisplay(BarDisplayKind, BarDisplayPart)
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum HealthPart
+{
+    OuterPanel,
+    InnerPanel,
+    PanelVertical,
+    Panel,
+    Body,
+    Anatomy(ChangedPart)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -1285,6 +1298,12 @@ struct AnatomyNotification
     pub kind: ChangedPart
 }
 
+pub struct UiEntities
+{
+    pub camera: Entity,
+    pub player: Entity
+}
+
 pub struct Ui
 {
     items_info: Arc<ItemsInfo>,
@@ -1292,7 +1311,7 @@ pub struct Ui
     anatomy_locations: UiAnatomyLocations,
     anatomy_locations_small: UiAnatomyLocations,
     user_receiver: Rc<RefCell<UiReceiver>>,
-    camera: Entity,
+    ui_entities: UiEntities,
     controller: UiController,
     dragging_window: Option<(UiIdWindow, Vector2<f32>)>,
     mouse_position: Vector2<f32>,
@@ -1315,7 +1334,7 @@ impl Ui
         items_info: Arc<ItemsInfo>,
         info: &mut ObjectCreateInfo,
         entities: &mut ClientEntities,
-        camera: Entity,
+        ui_entities: UiEntities,
         mut anatomy_locations: impl FnMut(&mut ObjectCreateInfo, &str) -> UiAnatomyLocations,
         user_receiver: Rc<RefCell<UiReceiver>>
     ) -> Rc<RefCell<Self>>
@@ -1328,7 +1347,7 @@ impl Ui
             anatomy_locations: anatomy_locations(info, "anatomy_areas"),
             anatomy_locations_small: anatomy_locations(info, "anatomy_areas_small"),
             user_receiver,
-            camera,
+            ui_entities,
             controller,
             dragging_window: None,
             mouse_position: Vector2::zeros(),
@@ -1725,6 +1744,7 @@ impl Ui
                 mix: Some(MixColorLch::color(BLACK_COLOR)),
                 width: 1.0.into(),
                 height: 1.0.into(),
+                position: UiPosition::Inherit,
                 animation: Animation{
                     mix: Some(MixAnimation{
                         start_mix: Some(Lcha{a: 0.0, ..BLACK_COLOR}),
@@ -1738,8 +1758,88 @@ impl Ui
             });
         }
 
+        let ui_screen_width = {
+            let size = self.controller.screen_size();
+
+            size.x / size.max()
+        };
+
+        if let Some(anatomy) = entities.anatomy(self.ui_entities.player)
+        {
+            let health_outer = self.controller.update(UiId::Health(HealthPart::OuterPanel), UiElement{
+                width: ui_screen_width.into(),
+                height: UiSize::Rest(1.0).into(),
+                position: UiPosition::Inherit,
+                children_layout: UiLayout::Vertical,
+                ..Default::default()
+            });
+
+            add_padding_vertical(health_outer, UiSize::Rest(1.0).into());
+
+            let health_inner = health_outer.update(UiId::Health(HealthPart::InnerPanel), UiElement{
+                width: UiSize::Rest(1.0).into(),
+                children_layout: UiLayout::Horizontal,
+                ..Default::default()
+            });
+
+            add_padding_horizontal(health_inner, UiSize::Rest(1.0).into());
+
+            let panel_vertical = health_inner.update(UiId::Health(HealthPart::PanelVertical), UiElement{
+                texture: UiTexture::Solid,
+                mix: Some(MixColorLch::color(BACKGROUND_COLOR)),
+                children_layout: UiLayout::Vertical,
+                ..Default::default()
+            });
+
+            add_padding_vertical(panel_vertical, UiSize::Pixels(TINY_PADDING).into());
+
+            let panel = panel_vertical.update(UiId::Health(HealthPart::Panel), UiElement{
+                children_layout: UiLayout::Horizontal,
+                ..Default::default()
+            });
+
+            add_padding_horizontal(panel, UiSize::Pixels(TINY_PADDING).into());
+
+            let body = panel.update(UiId::Health(HealthPart::Body), UiElement::default());
+
+            self.anatomy_locations.locations.iter().for_each(|(part_id, location)|
+            {
+                let highlighted = false;
+
+                let color = health_color(&anatomy, *part_id);
+                let health_color = if highlighted
+                {
+                    color.with_added_lightness(20.0).with_added_chroma(-30.0)
+                } else
+                {
+                    color
+                };
+
+                let size: UiElementSize<_> = UiSize::FitContent(1.0).into();
+                body.update(UiId::Health(HealthPart::Anatomy(*part_id)), UiElement{
+                    texture: UiTexture::CustomId(location.id),
+                    mix: Some(MixColorLch{keep_transparency: true, ..MixColorLch::color(health_color)}),
+                    position: UiPosition::Inherit,
+                    width: size.clone(),
+                    height: size,
+                    animation: Animation{
+                        mix: Some(MixAnimation{
+                            decay: MixDecay{l: 50.0, c: 50.0, ..MixDecay::all(20.0)},
+                            ..Default::default()
+                        }),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                });
+            });
+
+            add_padding_horizontal(panel, UiSize::Pixels(TINY_PADDING).into());
+
+            add_padding_vertical(panel_vertical, UiSize::Pixels(SMALL_PADDING * 0.5).into());
+        }
+
         let position_of = {
-            let camera = self.camera;
+            let camera = self.ui_entities.camera;
             move |owner|
             {
                 Self::position_of(entities, camera, owner)
@@ -2002,7 +2102,7 @@ impl Ui
         self.update_popup(controls, popup_taken);
 
         let bars_body_outer = self.controller.update(UiId::BarsBody, UiElement{
-            width: UiSize::Rest(1.0).into(),
+            width: ui_screen_width.into(),
             height: UiSize::Rest(1.0).into(),
             position: UiPosition::Inherit,
             ..Default::default()

@@ -93,7 +93,7 @@ pub use controls_controller::{ControlsController, UiControls, Control, ControlSt
 use notifications::{Notifications, Notification};
 
 pub use anatomy_locations::UiAnatomyLocations;
-pub use ui::{Ui, UiId, NotificationInfo, NotificationKindInfo};
+pub use ui::{Ui, UiId, UiEntities, NotificationInfo, NotificationKindInfo};
 
 mod controls_controller;
 
@@ -118,11 +118,11 @@ pub struct ClientEntitiesContainer
     pub entities: ClientEntities,
     pub camera_entity: Entity,
     pub follow_entity: Entity,
+    pub player_entity: Entity,
     visible_renders: Vec<Vec<Entity>>,
     above_world_renders: Vec<Entity>,
     light_renders: Vec<Entity>,
     shaded_renders: Vec<Vec<Entity>>,
-    player_entity: Entity,
     animation: f32
 }
 
@@ -811,7 +811,10 @@ impl GameState
             info.data_infos.items_info.clone(),
             &mut info.object_info,
             &mut entities.entities,
-            entities.camera_entity,
+            UiEntities{
+                camera: entities.camera_entity,
+                player: entities.player_entity
+            },
             anatomy_locations,
             user_receiver.clone()
         );
