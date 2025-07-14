@@ -35,7 +35,11 @@ macro_rules! simple_getter
 {
     ($name:ident) =>
     {
-        pub fn $name(&self) -> Option<f32>
+        simple_getter!($name, Option<f32>);
+    };
+    ($name:ident, $t:ty) =>
+    {
+        pub fn $name(&self) -> $t
         {
             match self
             {
@@ -233,6 +237,8 @@ impl Anatomy
     simple_getter!(max_stamina);
     simple_getter!(vision);
     simple_getter!(vision_angle);
+    simple_getter!(is_crawling, bool);
+    simple_getter!(is_dead, bool);
 
     pub fn get_human<F>(
         &self,
@@ -263,14 +269,6 @@ impl Anatomy
         match self
         {
             Self::Human(x) => x.override_crawling(state)
-        }
-    }
-
-    pub fn is_crawling(&self) -> bool
-    {
-        match self
-        {
-            Self::Human(x) => x.is_crawling()
         }
     }
 

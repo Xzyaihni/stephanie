@@ -214,7 +214,13 @@ impl Game
             game_state.borrow_mut().update(info, dt)
         };
 
-        self.camera_sync();
+        self.player_container(|mut x|
+        {
+            if !x.is_dead()
+            {
+                x.camera_sync();
+            }
+        });
     }
 
     pub fn on_control(&mut self, state: ControlState, control: Control)
@@ -861,11 +867,6 @@ impl Game
     pub fn player_exists(&mut self) -> bool
     {
         self.player_container(|x| x.exists())
-    }
-
-    pub fn camera_sync(&mut self)
-    {
-        self.player_container(|mut x| x.camera_sync());
     }
 }
 
@@ -1716,6 +1717,13 @@ impl<'a> PlayerContainer<'a>
         {
             *x = rotation;
         }
+    }
+
+    fn is_dead(&self) -> bool
+    {
+        self.game_state.entities().anatomy(self.info.entity)
+            .map(|anatomy| anatomy.is_dead())
+            .unwrap_or(true)
     }
 
     fn player_position(&self) -> Option<Vector3<f32>>

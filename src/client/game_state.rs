@@ -146,25 +146,6 @@ impl ClientEntitiesContainer
             ..Default::default()
         });
 
-        entities.on_anatomy(Box::new(move |entities, entity|
-        {
-            if entities.player_exists(entity)
-            {
-                return;
-            }
-
-            if let Some(mut anatomy) = entities.anatomy_mut_no_change(entity)
-            {
-                if anatomy.take_killed()
-                {
-                    if let Some(mut player) = entities.player_mut(player_entity)
-                    {
-                        player.kills += 1;
-                    }
-                }
-            }
-        }));
-
         Self{
             entities,
             camera_entity,
@@ -818,6 +799,32 @@ impl GameState
             anatomy_locations,
             user_receiver.clone()
         );
+
+        {
+            let ui = ui.clone();
+            let player_entity = entities.player_entity;
+
+            entities.entities.on_anatomy(Box::new(move |entities, entity|
+            {
+                if let Some(mut anatomy) = entities.anatomy_mut_no_change(entity)
+                {
+                    if anatomy.take_killed()
+                    {
+                        if entity == player_entity
+                        {
+                            ui.borrow_mut().player_dead();
+
+                            return;
+                        }
+
+                        if let Some(mut player) = entities.player_mut(player_entity)
+                        {
+                            player.kills += 1;
+                        }
+                    }
+                }
+            }));
+        }
 
         let common_textures = CommonTextures::new(&mut assets.lock());
 

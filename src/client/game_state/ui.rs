@@ -67,10 +67,12 @@ const SCROLLBAR_HEIGHT: f32 = BUTTON_SIZE * 5.0;
 const SEPARATOR_SIZE: f32 = 3.0;
 
 const BIG_TEXT_SIZE: u32 = 30;
+const MEDIUM_TEXT_SIZE: u32 = 25;
 const SMALL_TEXT_SIZE: u32 = 20;
 const SMALLEST_TEXT_SIZE: u32 = 15;
 
 const WHITE_COLOR: Lcha = Lcha{l: 100.0, c: 0.0, h: 0.0, a: 1.0};
+const GRAY_COLOR: Lcha = Lcha{l: 5.0, c: 0.0, h: 0.0, a: 1.0};
 const BLACK_COLOR: Lcha = Lcha{l: 0.0, c: 0.0, h: 0.0, a: 1.0};
 
 const BACKGROUND_COLOR: Lcha = Lcha{a: 0.5, ..BLACK_COLOR};
@@ -86,6 +88,7 @@ pub enum UiId
     Screen,
     Loading(LoadingPart),
     Health(HealthPart),
+    DeathScreen(DeathScreenPart),
     Fade,
     Padding(u32),
     Console(ConsolePart),
@@ -97,6 +100,17 @@ pub enum UiId
     BarsBody,
     BarsBodyInner,
     BarDisplay(BarDisplayKind, BarDisplayPart)
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum DeathScreenPart
+{
+    Panel,
+    Body,
+    Text,
+    InfoText,
+    Button,
+    ButtonText
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -1318,6 +1332,7 @@ pub struct Ui
     console_contents: Option<String>,
     loading: Option<f32>,
     is_fade: bool,
+    player_dead: bool,
     windows: Vec<Window>,
     stamina: BarDisplay,
     cooldown: BarDisplay,
@@ -1354,6 +1369,7 @@ impl Ui
             console_contents: None,
             loading: Some(0.0),
             is_fade: false,
+            player_dead: false,
             windows: Vec::new(),
             stamina: BarDisplay::default(),
             cooldown: BarDisplay::default(),
@@ -1421,6 +1437,11 @@ impl Ui
     pub fn set_loading(&mut self, value: Option<f32>)
     {
         self.loading = value;
+    }
+
+    pub fn player_dead(&mut self)
+    {
+        self.player_dead = true;
     }
 
     pub fn set_mouse_position(&mut self, position: Vector2<f32>)
@@ -1717,7 +1738,7 @@ impl Ui
 
             let bar = body.update(UiId::Loading(LoadingPart::BarBody), UiElement{
                 texture: UiTexture::Solid,
-                mix: Some(MixColorLch::color(Lcha{l: 10.0, c: 0.0, h: 0.0, a: 1.0})),
+                mix: Some(MixColorLch::color(GRAY_COLOR)),
                 width: UiSize::Rest(1.0).into(),
                 height: UiSize::Pixels(30.0).into(),
                 children_layout: UiLayout::Horizontal,
@@ -1733,6 +1754,87 @@ impl Ui
             });
 
             add_padding_horizontal(bar, UiSize::Rest(1.0 - progress).into());
+
+            return;
+        }
+
+        if self.player_dead
+        {
+            self.controller.update(UiId::DeathScreen(DeathScreenPart::Panel), UiElement{
+                texture: UiTexture::Solid,
+                mix: Some(MixColorLch::color(Lcha{a: 0.8, ..BLACK_COLOR})),
+                width: 1.0.into(),
+                height: 1.0.into(),
+                animation: Animation{
+                    mix: Some(MixAnimation{
+                        start_mix: Some(Lcha{a: 0.0, ..BLACK_COLOR}),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+                ..Default::default()
+            });
+
+            let body = self.controller.update(UiId::DeathScreen(DeathScreenPart::Body), UiElement{
+                position: UiPosition::Absolute{position: Vector2::zeros(), align: Default::default()},
+                children_layout: UiLayout::Vertical,
+                ..Default::default()
+            });
+
+            let kills = entities.player(self.ui_entities.player).map(|player|
+            {
+                player.kills
+            }).unwrap_or_else(||
+            {
+                eprintln!("the player didnt have a player component, returning 0 kills");
+
+                0
+            });
+
+            body.update(UiId::DeathScreen(DeathScreenPart::Text), UiElement{
+                texture: UiTexture::Text{text: "stephy is dead :(".to_owned(), font_size: MEDIUM_TEXT_SIZE},
+                mix: Some(MixColorLch{keep_transparency: true, ..MixColorLch::color(WHITE_COLOR)}),
+                ..UiElement::fit_content()
+            });
+
+            add_padding_vertical(body, UiSize::Pixels(TINY_PADDING).into());
+
+            let killed_text = format!("killed {kills} enemies");
+
+            body.update(UiId::DeathScreen(DeathScreenPart::InfoText), UiElement{
+                texture: UiTexture::Text{text: killed_text, font_size: MEDIUM_TEXT_SIZE},
+                mix: Some(MixColorLch{keep_transparency: true, ..MixColorLch::color(WHITE_COLOR)}),
+                ..UiElement::fit_content()
+            });
+
+            add_padding_vertical(body, UiSize::Pixels(SMALL_PADDING).into());
+
+            let button = body.update(UiId::DeathScreen(DeathScreenPart::Button), UiElement{
+                texture: UiTexture::Solid,
+                mix: Some(MixColorLch::color(BLACK_COLOR)),
+                animation: Animation::button(),
+                ..Default::default()
+            });
+
+            add_padding_horizontal(button, UiSize::Pixels(TINY_PADDING).into());
+
+            button.update(UiId::DeathScreen(DeathScreenPart::ButtonText), UiElement{
+                texture: UiTexture::Text{text: "RESTART".to_owned(), font_size: BIG_TEXT_SIZE},
+                mix: Some(MixColorLch{keep_transparency: true, ..MixColorLch::color(WHITE_COLOR)}),
+                ..UiElement::fit_content()
+            });
+
+            add_padding_horizontal(button, UiSize::Pixels(TINY_PADDING).into());
+
+            if button.is_mouse_inside()
+            {
+                button.element().mix.as_mut().unwrap().color = GRAY_COLOR;
+
+                if controls.take_click_down()
+                {
+                    dbg!("restart here lalala");
+                }
+            }
 
             return;
         }
