@@ -598,7 +598,17 @@ mod tests
 
     use crate::{
         server::connections_handler::PlayerInfo,
-        common::{AnyEntities, MessagePasser, BufferSender, message::MessageBuffer}
+        common::{
+            AnyEntities,
+            MessagePasser,
+            BufferSender,
+            FurnituresInfo,
+            ItemsInfo,
+            EnemiesInfo,
+            CharactersInfo,
+            CharacterId,
+            message::MessageBuffer
+        }
     };
 
     use super::*;
@@ -635,9 +645,14 @@ mod tests
             let mut world = World::new(
                 passer.clone(),
                 Rc::new(tilemap.tilemap),
-                Arc::new(EnemiesInfo::empty()),
-                Arc::new(FurnituresInfo::empty()),
-                Arc::new(ItemsInfo::empty())
+                DataInfos{
+                    items_info: Arc::new(ItemsInfo::empty()),
+                    enemies_info: Arc::new(EnemiesInfo::empty()),
+                    furnitures_info: Arc::new(FurnituresInfo::empty()),
+                    characters_info: Arc::new(CharactersInfo::new()),
+                    player_character: CharacterId::from(0)
+                },
+                "default".to_owned()
             ).unwrap();
 
             world.add_player(&mut entities, player, Pos3::new(0.0, 0.0, 0.0));

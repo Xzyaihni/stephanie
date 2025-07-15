@@ -2,6 +2,8 @@ use serde::{Serialize, Deserialize};
 
 use nalgebra::{Unit, Vector3};
 
+use yanyaengine::Transform;
+
 use crate::{
     debug_config::*,
     common::{
@@ -148,7 +150,7 @@ impl EnemyBehavior
                 {
                     BehaviorState::Wait => 10.0..=20.0,
                     BehaviorState::MoveDirection(_) => 0.8..=2.0,
-                    BehaviorState::MoveTo(_) => return None,
+                    BehaviorState::MoveTo(_, _) => return None,
                     BehaviorState::Attack(_, _) => return None
                 }
             }
@@ -163,7 +165,7 @@ pub enum BehaviorState
 {
     Wait,
     MoveDirection(Unit<Vector3<f32>>),
-    MoveTo(WorldPath),
+    MoveTo(WorldPath, Transform),
     Attack(Option<WorldPath>, Entity)
 }
 
@@ -173,6 +175,14 @@ impl Default for BehaviorState
     {
         Self::Wait
     }
+}
+
+// to help the enemies not walk inside the thing theyre attacking
+fn close_enough(other: &Transform, this: &Transform) -> bool
+{
+    let minimum_distance = (other.scale + this.scale).min() / 2.0;
+
+    this.position.metric_distance(&other.position) <= minimum_distance
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -234,15 +244,19 @@ impl Enemy
                         BehaviorState::MoveDirection(direction)
                     },
                     BehaviorState::MoveDirection(_) => BehaviorState::Wait,
-                    BehaviorState::MoveTo(_) => BehaviorState::Wait,
+                    BehaviorState::MoveTo(_, _) => BehaviorState::Wait,
                     BehaviorState::Attack(_, entity) =>
                     {
-                        entities.transform(*entity).zip(entities.transform(this_entity).map(|x| x.position))
-                            .and_then(|(transform, this_position)|
+                        entities.transform(*entity).zip(entities.transform(this_entity))
+                            .and_then(|(other_transform, this_transform)|
                             {
-                                let path = world.pathfind(transform.scale, this_position, transform.position)?;
+                                let path = world.pathfind(
+                                    this_transform.scale,
+                                    this_transform.position,
+                                    other_transform.position
+                                )?;
 
-                                Some(BehaviorState::MoveTo(path))
+                                Some(BehaviorState::MoveTo(path, other_transform.clone()))
                             }).unwrap_or_else(|| BehaviorState::Wait)
                     }
                 }
@@ -300,7 +314,7 @@ impl Enemy
             {
                 Self::move_direction(entities, entity, *direction, dt);
             },
-            BehaviorState::MoveTo(path) =>
+            BehaviorState::MoveTo(path, other_transform) =>
             {
                 if DebugConfig::is_enabled(DebugTool::DisplayPathfind)
                 {
@@ -310,13 +324,16 @@ impl Enemy
                 let transform = some_or_return!(entities.transform(entity));
 
                 let position = transform.position;
-                if let Some(direction) = path.move_along(PATH_NEAR, position)
+                if !close_enough(other_transform, &transform)
                 {
-                    Self::move_direction(entities, entity, Unit::new_normalize(direction), dt);
-                } else
-                {
-                    self.reset_state = true;
+                    if let Some(direction) = path.move_along(PATH_NEAR, position)
+                    {
+                        Self::move_direction(entities, entity, Unit::new_normalize(direction), dt);
+                        return;
+                    }
                 }
+
+                self.reset_state = true;
             },
             BehaviorState::Attack(path, other_entity) =>
             {
@@ -356,9 +373,12 @@ impl Enemy
                                 path.debug_display(entities);
                             }
 
-                            if let Some(direction) = path.move_along(PATH_NEAR, transform.position)
+                            if !close_enough(&other_transform, &transform)
                             {
-                                Self::move_direction(entities, entity, Unit::new_normalize(direction), dt);
+                                if let Some(direction) = path.move_along(PATH_NEAR, transform.position)
+                                {
+                                    Self::move_direction(entities, entity, Unit::new_normalize(direction), dt);
+                                }
                             }
 
                             let mut character = some_or_return!(entities.character_mut_no_change(entity));
