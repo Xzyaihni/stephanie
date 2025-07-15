@@ -315,7 +315,7 @@ impl GameServer
             },
             move ||
             {
-                let _ = sender1.send((id, Message::PlayerDisconnect{host: false}, entity));
+                let _ = sender1.send((id, Message::PlayerDisconnect{restart: false, host: false}, entity));
             }
         );
 
@@ -464,13 +464,13 @@ impl GameServer
         Ok((connection_id, messager.clone_messager()))
     }
 
-    fn connection_close(&mut self, host: bool, id: ConnectionId, entity: Entity)
+    fn connection_close(&mut self, restart: bool, host: bool, id: ConnectionId, entity: Entity)
     {
         let removed = self.connection_handler.write().remove_connection(id);
 
         self.world.remove_player(&mut self.entities, id);
 
-        if host
+        if !restart && host
         {
             self.exit();
         }
@@ -528,7 +528,7 @@ impl GameServer
 
         match message
         {
-            Message::PlayerDisconnect{host} => self.connection_close(host, id, entity),
+            Message::PlayerDisconnect{restart, host} => self.connection_close(restart, host, id, entity),
             x => panic!("unhandled message: {x:?}")
         }
     }

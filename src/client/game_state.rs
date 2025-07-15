@@ -44,7 +44,7 @@ use crate::{
         receiver_loop,
         render_info::*,
         lazy_transform::*,
-        MessagePasserCloneable,
+        MessagePasser,
         ClientLight,
         SpatialGrid,
         TileMap,
@@ -405,7 +405,6 @@ pub struct GameStateInfo
     pub timestamp_query: TimestampQuery,
     pub data_infos: DataInfos,
     pub tiles_factory: TilesFactory,
-    pub message_passer: MessagePasserCloneable,
     pub anatomy_locations: Rc<RefCell<dyn FnMut(&mut ObjectCreateInfo, &str) -> UiAnatomyLocations>>,
     pub common_textures: CommonTextures,
     pub player_name: String,
@@ -663,6 +662,7 @@ pub struct GameState
     timestamp_query: TimestampQuery,
     shaders: ProgramShaders,
     host: bool,
+    is_restart: bool,
     is_trusted: bool,
     is_loading: bool,
     camera_scale: f32,
@@ -679,7 +679,10 @@ impl Drop for GameState
     fn drop(&mut self)
     {
         let mut writer = self.connections_handler.write();
-        if let Err(err) = writer.send_blocking(&Message::PlayerDisconnect{host: self.host})
+        if let Err(err) = writer.send_blocking(&Message::PlayerDisconnect{
+            restart: self.is_restart,
+            host: self.host
+        })
         {
             eprintln!("error sending player disconnect message: {err}");
         }
@@ -703,6 +706,7 @@ impl GameState
 {
     pub fn new(
         object_info: &mut ObjectCreateInfo,
+        message_passer: MessagePasser,
         info: GameStateInfo
     ) -> Rc<RefCell<Self>>
     {
@@ -711,7 +715,7 @@ impl GameState
         let notifications = Notifications::new();
         let controls = ControlsController::new();
 
-        let handler = ConnectionsHandler::new(info.message_passer.0);
+        let handler = ConnectionsHandler::new(message_passer);
         let connections_handler = Arc::new(RwLock::new(handler));
 
         let tilemap = info.tiles_factory.tilemap().clone();
@@ -820,6 +824,7 @@ impl GameState
             common_textures: info.common_textures,
             connected_and_ready: false,
             host: info.host,
+            is_restart: false,
             is_trusted: false,
             is_loading: true,
             user_receiver,
@@ -870,6 +875,11 @@ impl GameState
             self.resize(aspect);
             self.camera_resized();
         }
+    }
+
+    pub fn restart(&mut self)
+    {
+        self.is_restart = true;
     }
 
     pub fn sync_character(&mut self, entity: Entity)

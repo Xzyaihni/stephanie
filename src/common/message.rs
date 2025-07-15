@@ -74,7 +74,7 @@ pub enum Message
     PlayerConnect{name: String},
     PlayerOnConnect{player_entity: Entity},
     PlayerFullyConnected,
-    PlayerDisconnect{host: bool},
+    PlayerDisconnect{restart: bool, host: bool},
     PlayerDisconnectFinished,
     SetTrusted,
     ChunkRequest{pos: GlobalPos},

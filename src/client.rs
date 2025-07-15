@@ -31,7 +31,6 @@ use crate::{
         some_or_return,
         DataInfos,
         MessagePasser,
-        MessagePasserCloneable,
         tilemap::TileMapWithTextures
     }
 };
@@ -77,8 +76,17 @@ pub struct ClientInfo
     pub debug: bool
 }
 
+fn create_message_passer(address: &str) -> io::Result<MessagePasser>
+{
+    let stream = TcpStream::connect(address)?;
+    stream.set_nodelay(true).unwrap();
+
+    Ok(MessagePasser::new(stream))
+}
+
 pub struct Client
 {
+    client_info: ClientInfo,
     info: Option<GameStateInfo>,
     pub camera: Arc<RwLock<Camera>>,
     game_state: Option<Rc<RefCell<GameState>>>,
@@ -114,10 +122,7 @@ impl Client
             client_init_info.tilemap
         )?;
 
-        let stream = TcpStream::connect(&client_init_info.client_info.address)?;
-        stream.set_nodelay(true).unwrap();
-
-        let message_passer = MessagePasserCloneable(MessagePasser::new(stream));
+        let message_passer = create_message_passer(&client_init_info.client_info.address)?;
 
         let assets = &info.partial.assets;
         let anatomy_locations = {
@@ -150,19 +155,19 @@ impl Client
             timestamp_query,
             data_infos: client_init_info.data_infos,
             tiles_factory,
-            message_passer,
             anatomy_locations,
             common_textures,
-            player_name: client_init_info.client_info.name,
+            player_name: client_init_info.client_info.name.clone(),
             debug_mode: client_init_info.client_info.debug,
             host: client_init_info.host
         };
 
-        let game_state = GameState::new(&mut object_info, info.clone());
+        let game_state = GameState::new(&mut object_info, message_passer, info.clone());
 
         let game = Game::new(Rc::downgrade(&game_state));
 
         Ok(Self{
+            client_info: client_init_info.client_info,
             info: Some(info),
             game_state: Some(game_state),
             camera,
@@ -197,8 +202,27 @@ impl Client
             {
                 if !self.game.update(info, dt)
                 {
-                    self.game_state.take();
-                    self.game_state = Some(GameState::new(info, self.info.as_ref().unwrap().clone()));
+                    {
+                        let game_state = self.game_state.take().unwrap();
+                        game_state.borrow_mut().restart();
+                    }
+
+                    let message_passer = match create_message_passer(&self.client_info.address)
+                    {
+                        Ok(x) => x,
+                        Err(err) =>
+                        {
+                            self.exit();
+                            panic!("error restarting the game: {err}")
+                        }
+                    };
+
+                    let game_state = GameState::new(info, message_passer, self.info.as_ref().unwrap().clone());
+
+                    self.game = Game::new(Rc::downgrade(&game_state));
+                    self.game_state = Some(game_state);
+
+                    return self.update(info, dt);
                 }
 
                 let game_state = some_or_return!(self.game_state.as_ref());
