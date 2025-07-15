@@ -524,7 +524,7 @@ impl Character
 
     pub fn stamina_fraction(&self, entities: &ClientEntities) -> Option<f32>
     {
-        self.max_stamina(entities).map(|max_stamina| self.stamina / max_stamina)
+        self.max_stamina(entities).map(|max_stamina| (self.stamina / max_stamina).min(1.0))
     }
 
     pub fn stamina_speed(&self, combined_info: CombinedInfo) -> Option<f32>
