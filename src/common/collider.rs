@@ -141,7 +141,8 @@ pub enum ColliderLayer
     Door,
     Mouse,
     Player,
-    Lying,
+    NormalEnemy,
+    LyingEnemy,
     Vision
 }
 
@@ -179,22 +180,32 @@ impl ColliderLayer
             (Player, Mouse, true),
             (Player, Door, true),
 
-            (Lying, Lying, true),
-            (Lying, Player, false),
-            (Lying, Normal, false),
-            (Lying, Damage, true),
-            (Lying, World, true),
-            (Lying, Mouse, true),
-            (Lying, Door, true),
+            (NormalEnemy, NormalEnemy, true),
+            (NormalEnemy, Normal, true),
+            (NormalEnemy, Damage, true),
+            (NormalEnemy, World, true),
+            (NormalEnemy, Mouse, true),
+            (NormalEnemy, Door, true),
+            (NormalEnemy, Player, false),
+
+            (LyingEnemy, LyingEnemy, true),
+            (LyingEnemy, Normal, false),
+            (LyingEnemy, Damage, true),
+            (LyingEnemy, World, true),
+            (LyingEnemy, Mouse, true),
+            (LyingEnemy, Door, true),
+            (LyingEnemy, Player, false),
+            (LyingEnemy, NormalEnemy, false),
 
             (Vision, Vision, false),
-            (Vision, Player, true),
             (Vision, Normal, true),
             (Vision, Damage, false),
             (Vision, World, true),
             (Vision, Mouse, false),
             (Vision, Door, true),
-            (Vision, Lying, false)
+            (Vision, Player, true),
+            (Vision, NormalEnemy, true),
+            (Vision, LyingEnemy, false)
         }
     }
 }

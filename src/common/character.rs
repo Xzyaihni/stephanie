@@ -1689,9 +1689,9 @@ impl Character
         {
             match self.sprite_state.value()
             {
-                SpriteState::Normal => ColliderLayer::Normal,
+                SpriteState::Normal => ColliderLayer::NormalEnemy,
                 SpriteState::Crawling
-                | SpriteState::Lying => ColliderLayer::Lying
+                | SpriteState::Lying => ColliderLayer::LyingEnemy
             }
         };
 
