@@ -10,14 +10,13 @@ use parking_lot::RwLock;
 
 use crate::{
     debug_config::*,
-    server::ConnectionsHandler,
+    server::{DataInfos, ConnectionsHandler},
     common::{
         self,
         Loot,
         TileMap,
         WorldChunkSaver,
         ChunkSaver,
-        ItemsInfo,
         EntitiesSaver,
         EnemiesInfo,
         FurnituresInfo,
@@ -163,13 +162,10 @@ impl World
     pub fn new(
         message_handler: Arc<RwLock<ConnectionsHandler>>,
         tilemap: Rc<TileMap>,
-        enemies_info: Arc<EnemiesInfo>,
-        furnitures_info: Arc<FurnituresInfo>,
-        items_info: Arc<ItemsInfo>
+        data_infos: DataInfos,
+        world_name: String
     ) -> Result<Self, ParseError>
     {
-        let world_name = "default".to_owned();
-
         let world_path = Self::world_path_associated(&world_name);
         let chunk_saver = ChunkSaver::new(world_path.join("chunks"), 100);
         let entities_saver = EntitiesSaver::new(world_path.join("entities"), 0);
@@ -185,7 +181,7 @@ impl World
         let overmaps = Rc::new(RefCell::new(HashMap::new()));
         let client_indexers = HashMap::new();
 
-        let loot = Loot::new(items_info, "items/loot.scm")?;
+        let loot = Loot::new(data_infos.items_info, "items/loot.scm")?;
 
         Ok(Self{
             message_handler,
@@ -193,8 +189,8 @@ impl World
             world_generator,
             chunk_saver,
             entities_saver,
-            enemies_info,
-            furnitures_info,
+            enemies_info: data_infos.enemies_info,
+            furnitures_info: data_infos.furnitures_info,
             loot,
             overmaps,
             client_indexers

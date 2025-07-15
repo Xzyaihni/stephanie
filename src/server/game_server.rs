@@ -2,6 +2,8 @@ use std::{
     f32,
     fmt,
     mem,
+    fs,
+    path::PathBuf,
     rc::Rc,
     thread::JoinHandle,
     ops::ControlFlow,
@@ -45,8 +47,6 @@ use crate::{
         Entity,
         EntityInfo,
         Faction,
-        CharactersInfo,
-        CharacterId,
         Character,
         Player,
         Entities,
@@ -117,9 +117,10 @@ impl From<MessageDeError> for ConnectionError
 pub struct GameServer
 {
     entities: Entities,
-    player_character: CharacterId,
-    characters_info: Arc<CharactersInfo>,
-    world: World,
+    data_infos: DataInfos,
+    tilemap: Rc<TileMap>,
+    world: Option<World>,
+    world_name: String,
     sender: Sender<(ConnectionId, Message, Entity)>,
     receiver: Receiver<(ConnectionId, Message, Entity)>,
     connection_receiver: Receiver<TcpStream>,
@@ -133,7 +134,10 @@ impl Drop for GameServer
 {
     fn drop(&mut self)
     {
-        self.world.exit(&mut self.entities);
+        if let Some(world) = self.world.as_mut()
+        {
+            world.exit(&mut self.entities);
+        }
 
         mem::take(&mut self.receiver_handles).into_iter().for_each(|receiver_handle|
         {
@@ -156,13 +160,14 @@ impl GameServer
         let entities = Entities::new(data_infos.clone());
         let connection_handler = Arc::new(RwLock::new(ConnectionsHandler::new(limit)));
 
-        let world = World::new(
+        let world_name = "default".to_owned();
+
+        let world = Some(World::new(
             connection_handler.clone(),
             tilemap.clone(),
-            data_infos.enemies_info.clone(),
-            data_infos.furnitures_info.clone(),
-            data_infos.items_info.clone()
-        )?;
+            data_infos.clone(),
+            world_name.clone()
+        )?);
 
         let _sender_handle = sender_loop(connection_handler.clone());
 
@@ -172,9 +177,10 @@ impl GameServer
 
         Ok((connector, Self{
             entities,
-            player_character: data_infos.player_character,
-            characters_info: data_infos.characters_info,
+            data_infos,
+            tilemap,
             world,
+            world_name,
             sender,
             receiver,
             connection_receiver,
@@ -185,11 +191,38 @@ impl GameServer
         }))
     }
 
+    fn restart(&mut self)
+    {
+        self.entities = Entities::new(self.data_infos.clone());
+
+        self.world.take();
+
+        {
+            let path = PathBuf::from("worlds").join(&self.world_name);
+            if path.exists()
+            {
+                eprintln!("removing {}", path.display());
+
+                if let Err(err) = fs::remove_dir_all(&path)
+                {
+                    eprintln!("error removing {}: {err}", path.display());
+                }
+            }
+        }
+
+        self.world = Some(World::new(
+            self.connection_handler.clone(),
+            self.tilemap.clone(),
+            self.data_infos.clone(),
+            self.world_name.clone()
+        ).unwrap());
+    }
+
     pub fn update(&mut self, dt: f32) -> bool
     {
         self.process_messages();
 
-        self.entities.update_sprites(&self.characters_info);
+        self.entities.update_sprites(&self.data_infos.characters_info);
 
         {
             let mut writer = self.connection_handler.write();
@@ -369,7 +402,7 @@ impl GameServer
                 ..Default::default()
             }.into()),
             inventory: Some(Inventory::new()),
-            character: Some(Character::new(self.player_character, Faction::Player)),
+            character: Some(Character::new(self.data_infos.player_character, Faction::Player)),
             anatomy: Some(anatomy),
             ..Default::default()
         };
@@ -432,7 +465,7 @@ impl GameServer
 
         let connection_id = self.connection_handler.write().connect(player_info);
 
-        self.world.add_player(
+        self.world.as_mut().unwrap().add_player(
             &mut self.entities,
             connection_id,
             position.into()
@@ -440,7 +473,7 @@ impl GameServer
 
         crate::time_this!{
             "world-gen",
-            self.world.send_all(&mut self.entities, connection_id)
+            self.world.as_mut().unwrap().send_all(&mut self.entities, connection_id)
         };
 
         let mut writer = self.connection_handler.write();
@@ -468,7 +501,7 @@ impl GameServer
     {
         let removed = self.connection_handler.write().remove_connection(id);
 
-        self.world.remove_player(&mut self.entities, id);
+        self.world.as_mut().unwrap().remove_player(&mut self.entities, id);
 
         if !restart && host
         {
@@ -490,8 +523,15 @@ impl GameServer
             println!("player \"{removed_name}\" disconnected");
         }
 
-        let mut writer = self.connection_handler.write();
-        writer.send_message(self.entities.remove_message(entity));
+        {
+            let mut writer = self.connection_handler.write();
+            writer.send_message(self.entities.remove_message(entity));
+        }
+
+        if restart
+        {
+            self.restart();
+        }
     }
 
     fn process_message_inner(
@@ -517,7 +557,7 @@ impl GameServer
             self.connection_handler.write().send_message_without(id, message.clone());
         }
 
-        let message = some_or_return!{self.world.handle_message(
+        let message = some_or_return!{self.world.as_mut().unwrap().handle_message(
             &mut self.entities,
             id,
             entity,

@@ -3,6 +3,7 @@ use std::cell::RefCell;
 use parking_lot::RwLock;
 
 use crate::common::{
+    some_or_return,
     enemy,
     entity::{for_each_component, ClientEntities},
     World,
@@ -41,7 +42,7 @@ pub fn update<Passer: EntityPasser>(
     {
         if enemy.borrow().check_hostiles()
         {
-            let character = entities.character(entity).unwrap();
+            let character = some_or_return!(entities.character(entity));
             entities.character.iter()
                 .map(|(_, x)| x)
                 .filter(|x| x.entity != entity)
