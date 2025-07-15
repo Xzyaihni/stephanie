@@ -34,7 +34,6 @@ use crate::common::{
 
 use super::game_state::{
     GameState,
-    GameStateWithDrop,
     NotificationInfo,
     NotificationKindInfo,
     InventoryWhich,
@@ -66,30 +65,29 @@ impl ConsoleOutput
 }
 
 fn with_game_state<T>(
-    game_state: &Weak<RefCell<GameStateWithDrop>>,
+    game_state: &Weak<RefCell<GameState>>,
     f: impl FnOnce(&mut GameState) -> T
 ) -> T
 {
     let game_state = game_state.upgrade().unwrap();
     let mut game_state = game_state.borrow_mut();
 
-    f(game_state.get_mut())
+    f(&mut game_state)
 }
 
 pub struct Game
 {
-    game_state: Weak<RefCell<GameStateWithDrop>>,
+    game_state: Weak<RefCell<GameState>>,
     info: Rc<RefCell<PlayerInfo>>
 }
 
 impl Game
 {
-    pub fn new(game_state: Weak<RefCell<GameStateWithDrop>>) -> Self
+    pub fn new(game_state: Weak<RefCell<GameState>>) -> Self
     {
         let info = {
             let game_state = game_state.upgrade().unwrap();
             let mut game_state = game_state.borrow_mut();
-            let game_state = game_state.get_mut();
 
             let player = game_state.player();
 
@@ -157,11 +155,11 @@ impl Game
     pub fn on_player_connected(&mut self)
     {
         let info = self.info.clone();
-        self.player_container(move |mut x|
+        with_game_state(&self.game_state, move |game_state|
         {
-            let ui = x.game_state.ui.clone();
+            let ui = game_state.ui.clone();
 
-            x.game_state.entities_mut().on_inventory(Box::new(move |_entities, entity|
+            game_state.entities_mut().on_inventory(Box::new(move |_entities, entity|
             {
                 let info = info.borrow_mut();
 
@@ -187,9 +185,12 @@ impl Game
                     ui.borrow_mut().inventory_changed(entity);
                 }
             }));
-
-            x.on_player_connected()
         });
+
+        self.player_container(|mut x|
+        {
+            x.on_player_connected()
+        })
     }
 
     pub fn update(
@@ -198,13 +199,16 @@ impl Game
         dt: f32
     ) -> bool
     {
-        let keep_running = self.player_container(|mut x|
+        with_game_state(&self.game_state, |game_state|
         {
             crate::frame_time_this!{
                 update_pre,
-                x.game_state.update_pre(dt)
+                game_state.update_pre(dt)
             };
+        });
 
+        let keep_running = self.player_container(|mut x|
+        {
             x.this_update(dt)
         });
 
@@ -213,28 +217,33 @@ impl Game
             return false;
         }
 
-
-        self.player_container(|mut x|
+        let controls: Vec<_> = with_game_state(&self.game_state, |game_state|
         {
-            let mut changed_this_frame = x.game_state.controls.changed_this_frame();
+            let mut changed_this_frame = game_state.controls.changed_this_frame();
 
             crate::frame_time_this!{
                 ui_update,
-                x.game_state.ui_update(&mut changed_this_frame)
+                game_state.ui_update(&mut changed_this_frame)
             };
 
-            let controls: Vec<_> = x.game_state.controls.consume_changed(changed_this_frame).collect();
-
-            controls.into_iter().for_each(|(control, state)| x.on_control(state, control));
+            game_state.controls.consume_changed(changed_this_frame).collect()
         });
 
         self.player_container(|mut x|
         {
+            controls.into_iter().for_each(|(control, state)| x.on_control(state, control));
+        });
+
+        with_game_state(&self.game_state, |game_state|
+        {
             crate::frame_time_this!{
                 game_state_update,
-                x.game_state.update(info, dt)
+                game_state.update(info, dt)
             };
+        });
 
+        self.player_container(|mut x|
+        {
             if !x.is_dead()
             {
                 x.camera_sync();
@@ -308,7 +317,7 @@ impl Game
     }
 
     fn maybe_print_component(
-        game_state: &Weak<RefCell<GameStateWithDrop>>,
+        game_state: &Weak<RefCell<GameState>>,
         args: &mut PrimitiveArgs,
         print: bool
     ) -> Result<LispValue, lisp::Error>
@@ -593,7 +602,7 @@ impl Game
 
                         let mut inventory = entities.inventory_mut(entity).unwrap();
 
-                        let id = game_state.items_info.get_id(&name).ok_or_else(||
+                        let id = game_state.data_infos.items_info.get_id(&name).ok_or_else(||
                         {
                             lisp::Error::Custom(format!("item named {name} doesnt exist"))
                         })?;
@@ -1208,7 +1217,7 @@ impl<'a> PlayerContainer<'a>
                 if let Some(id) = self.get_inventory(which)
                     .map(|inventory| inventory[item].id)
                 {
-                    let info = self.game_state.items_info.get(id);
+                    let info = self.game_state.data_infos.items_info.get(id);
 
                     if let Some(drug) = info.drug.as_ref()
                     {

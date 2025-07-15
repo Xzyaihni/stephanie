@@ -48,10 +48,8 @@ use crate::{
         SpatialGrid,
         TileMap,
         DataInfos,
-        ItemsInfo,
         InventoryItem,
         AnyEntities,
-        CharactersInfo,
         Entity,
         EntityInfo,
         Entities,
@@ -80,7 +78,6 @@ use crate::{
 };
 
 use super::{
-    ClientInfo,
     MessagePasser,
     ConnectionsHandler,
     TilesFactory,
@@ -409,7 +406,8 @@ pub struct GameStateInfo<'a>
     pub data_infos: DataInfos,
     pub tiles_factory: TilesFactory,
     pub message_passer: MessagePasser,
-    pub client_info: &'a ClientInfo,
+    pub player_name: String,
+    pub debug_mode: bool,
     pub host: bool
 }
 
@@ -639,48 +637,6 @@ impl DebugVisibilityTrait for DebugVisibilityFalse
     fn as_bool() -> bool { false }
 }
 
-pub struct GameStateWithDrop(pub Option<GameState>);
-
-impl Drop for GameStateWithDrop
-{
-    fn drop(&mut self)
-    {
-        let this = self.0.as_mut().unwrap();
-
-        let mut writer = this.connections_handler.write();
-        if let Err(err) = writer.send_blocking(&Message::PlayerDisconnect{host: this.host})
-        {
-            eprintln!("error sending player disconnect message: {err}");
-        }
-
-        while let Ok(x) = this.receiver.recv()
-        {
-            if let Message::PlayerDisconnectFinished = x
-            {
-                this.receiver_handle.take().unwrap().join().unwrap();
-
-                eprintln!("client shut down properly");
-                return;
-            }
-        }
-
-        eprintln!("disconnect finished improperly");
-    }
-}
-
-impl GameStateWithDrop
-{
-    pub fn get(&self) -> &GameState
-    {
-        self.0.as_ref().unwrap()
-    }
-
-    pub fn get_mut(&mut self) -> &mut GameState
-    {
-        self.0.as_mut().unwrap()
-    }
-}
-
 pub struct GameState
 {
     pub mouse_position: Vector2<f32>,
@@ -693,8 +649,7 @@ pub struct GameState
     pub running: bool,
     pub debug_mode: bool,
     pub tilemap: Arc<TileMap>,
-    pub items_info: Arc<ItemsInfo>,
-    pub characters_info: Arc<CharactersInfo>,
+    pub data_infos: DataInfos,
     pub user_receiver: Rc<RefCell<UiReceiver>>,
     pub ui: Rc<RefCell<Ui>>,
     pub common_textures: CommonTextures,
@@ -716,9 +671,34 @@ pub struct GameState
     receiver: Receiver<Message>
 }
 
+impl Drop for GameState
+{
+    fn drop(&mut self)
+    {
+        let mut writer = self.connections_handler.write();
+        if let Err(err) = writer.send_blocking(&Message::PlayerDisconnect{host: self.host})
+        {
+            eprintln!("error sending player disconnect message: {err}");
+        }
+
+        while let Ok(x) = self.receiver.recv()
+        {
+            if let Message::PlayerDisconnectFinished = x
+            {
+                self.receiver_handle.take().unwrap().join().unwrap();
+
+                eprintln!("client shut down properly");
+                return;
+            }
+        }
+
+        eprintln!("disconnect finished improperly");
+    }
+}
+
 impl GameState
 {
-    pub fn new(mut info: GameStateInfo) -> Rc<RefCell<GameStateWithDrop>>
+    pub fn new(mut info: GameStateInfo) -> Rc<RefCell<Self>>
     {
         let mouse_position = Vector2::zeros();
 
@@ -740,7 +720,7 @@ impl GameState
 
         let player_entity = Self::connect_to_server(
             connections_handler.clone(),
-            &info.client_info.name
+            &info.player_name
         );
 
         let mut entities = ClientEntitiesContainer::new(
@@ -833,8 +813,7 @@ impl GameState
             object_factory: info.object_info.partial.object_factory,
             notifications,
             entities,
-            items_info: info.data_infos.items_info,
-            characters_info: info.data_infos.characters_info,
+            data_infos: info.data_infos,
             controls,
             running: true,
             screen_object,
@@ -842,7 +821,7 @@ impl GameState
             timestamp_query: info.timestamp_query,
             shaders: info.shaders,
             world,
-            debug_mode: info.client_info.debug,
+            debug_mode: info.debug_mode,
             tilemap,
             camera_scale: 1.0,
             rare_timer: 0.0,
@@ -862,7 +841,7 @@ impl GameState
 
         this.initialize();
 
-        Rc::new(RefCell::new(GameStateWithDrop(Some(this))))
+        Rc::new(RefCell::new(this))
     }
 
     fn initialize(&mut self)
@@ -901,50 +880,6 @@ impl GameState
             self.resize(aspect);
             self.camera_resized();
         }
-    }
-
-    pub fn restart(self) -> Self
-    {
-        let camera = self.camera;
-        camera.write().set_position(Vector3::zeros().into());
-
-        let mut this = Self{
-            mouse_position: self.mouse_position,
-            camera,
-            assets: self.assets,
-            object_factory: self.object_factory,
-            notifications: Notifications::new(),
-            entities: todo!(),
-            items_info: self.items_info,
-            characters_info: self.characters_info,
-            controls: ControlsController::new(),
-            running: self.running,
-            screen_object: self.screen_object,
-            ui_camera: self.ui_camera,
-            timestamp_query: self.timestamp_query,
-            shaders: self.shaders,
-            world: todo!(),
-            debug_mode: self.debug_mode,
-            tilemap: self.tilemap,
-            camera_scale: self.camera_scale,
-            rare_timer: 0.0,
-            dt: None,
-            ui: todo!(),
-            common_textures: self.common_textures,
-            connected_and_ready: false,
-            host: self.host,
-            is_trusted: self.is_trusted,
-            is_loading: true,
-            user_receiver: UiReceiver::new(),
-            debug_visibility: self.debug_visibility,
-            connections_handler: todo!(),
-            receiver_handle: todo!(),
-            receiver: todo!()
-        };
-
-        this.initialize();
-
-        this
     }
 
     pub fn sync_character(&mut self, entity: Entity)
@@ -1377,8 +1312,8 @@ impl GameState
             assets: &assets,
             passer: &self.connections_handler,
             common_textures: &self.common_textures,
-            characters_info: &self.characters_info,
-            items_info: &self.items_info
+            characters_info: &self.data_infos.characters_info,
+            items_info: &self.data_infos.items_info
         };
 
         crate::frame_time_this!{
