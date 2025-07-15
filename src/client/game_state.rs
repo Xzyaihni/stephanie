@@ -44,6 +44,7 @@ use crate::{
         receiver_loop,
         render_info::*,
         lazy_transform::*,
+        MessagePasserCloneable,
         ClientLight,
         SpatialGrid,
         TileMap,
@@ -78,7 +79,6 @@ use crate::{
 };
 
 use super::{
-    MessagePasser,
     ConnectionsHandler,
     TilesFactory,
     VisibilityChecker,
@@ -397,15 +397,17 @@ impl ClientEntitiesContainer
     }
 }
 
-pub struct GameStateInfo<'a>
+#[derive(Clone)]
+pub struct GameStateInfo
 {
     pub shaders: ProgramShaders,
     pub camera: Arc<RwLock<Camera>>,
     pub timestamp_query: TimestampQuery,
-    pub object_info: ObjectCreateInfo<'a>,
     pub data_infos: DataInfos,
     pub tiles_factory: TilesFactory,
-    pub message_passer: MessagePasser,
+    pub message_passer: MessagePasserCloneable,
+    pub anatomy_locations: Rc<RefCell<dyn FnMut(&mut ObjectCreateInfo, &str) -> UiAnatomyLocations>>,
+    pub common_textures: CommonTextures,
     pub player_name: String,
     pub debug_mode: bool,
     pub host: bool
@@ -413,8 +415,8 @@ pub struct GameStateInfo<'a>
 
 pub struct PartCreator<'a, 'b>
 {
-    resource_uploader: &'a mut ResourceUploader<'b>,
-    assets: &'a mut Assets
+    pub resource_uploader: &'a mut ResourceUploader<'b>,
+    pub assets: &'a mut Assets
 }
 
 impl PartCreator<'_, '_>
@@ -514,6 +516,7 @@ impl UiReceiver
     }
 }
 
+#[derive(Clone)]
 pub struct CommonTextures
 {
     pub dust: TextureId,
@@ -698,14 +701,17 @@ impl Drop for GameState
 
 impl GameState
 {
-    pub fn new(mut info: GameStateInfo) -> Rc<RefCell<Self>>
+    pub fn new(
+        object_info: &mut ObjectCreateInfo,
+        info: GameStateInfo
+    ) -> Rc<RefCell<Self>>
     {
         let mouse_position = Vector2::zeros();
 
         let notifications = Notifications::new();
         let controls = ControlsController::new();
 
-        let handler = ConnectionsHandler::new(info.message_passer);
+        let handler = ConnectionsHandler::new(info.message_passer.0);
         let connections_handler = Arc::new(RwLock::new(handler));
 
         let tilemap = info.tiles_factory.tilemap().clone();
@@ -757,48 +763,32 @@ impl GameState
 
         let user_receiver = UiReceiver::new();
 
-        let assets = info.object_info.partial.assets.clone();
+        let assets = object_info.partial.assets.clone();
 
         let screen_object = {
             let assets = assets.lock();
 
-            info.object_info.partial.object_factory.create_solid(
+            object_info.partial.object_factory.create_solid(
                 assets.model(assets.default_model(DefaultModel::Square)).clone(),
                 Transform{scale: Vector3::repeat(2.0), ..Default::default()}
             )
         };
 
-        let anatomy_locations = |object_info: &mut ObjectCreateInfo, name: &str| -> UiAnatomyLocations
-        {
-            let base_image = image::open(format!("textures/special/{name}.png"))
-                .unwrap_or_else(|err|
-                {
-                    panic!("{name}.png must exist: {err}")
-                });
+        let ui = {
+            let mut anatomy_locations = info.anatomy_locations.borrow_mut();
 
-            let mut assets = assets.lock();
-
-            let part_creator = PartCreator{
-                assets: &mut assets,
-                resource_uploader: object_info.partial.builder_wrapper.resource_uploader_mut()
-            };
-
-            UiAnatomyLocations::new(part_creator, base_image)
+            Ui::new(
+                info.data_infos.items_info.clone(),
+                object_info,
+                &mut entities.entities,
+                UiEntities{
+                    camera: entities.camera_entity,
+                    player: entities.player_entity
+                },
+                &mut *anatomy_locations,
+                user_receiver.clone()
+            )
         };
-
-        let ui = Ui::new(
-            info.data_infos.items_info.clone(),
-            &mut info.object_info,
-            &mut entities.entities,
-            UiEntities{
-                camera: entities.camera_entity,
-                player: entities.player_entity
-            },
-            anatomy_locations,
-            user_receiver.clone()
-        );
-
-        let common_textures = CommonTextures::new(&mut assets.lock());
 
         let debug_visibility = <DebugVisibility as DebugVisibilityTrait>::State::new(
             &info.camera.read()
@@ -810,7 +800,7 @@ impl GameState
             mouse_position,
             camera: info.camera,
             assets,
-            object_factory: info.object_info.partial.object_factory,
+            object_factory: object_info.partial.object_factory.clone(),
             notifications,
             entities,
             data_infos: info.data_infos,
@@ -827,7 +817,7 @@ impl GameState
             rare_timer: 0.0,
             dt: None,
             ui,
-            common_textures,
+            common_textures: info.common_textures,
             connected_and_ready: false,
             host: info.host,
             is_trusted: false,

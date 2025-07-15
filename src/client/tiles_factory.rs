@@ -381,7 +381,7 @@ impl ChunkModelBuilder
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct TilesFactory
 {
     object_factory: Rc<ObjectFactory>,

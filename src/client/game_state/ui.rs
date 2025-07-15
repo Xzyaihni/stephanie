@@ -1350,7 +1350,7 @@ impl Ui
         info: &mut ObjectCreateInfo,
         entities: &mut ClientEntities,
         ui_entities: UiEntities,
-        mut anatomy_locations: impl FnMut(&mut ObjectCreateInfo, &str) -> UiAnatomyLocations,
+        anatomy_locations: &mut dyn FnMut(&mut ObjectCreateInfo, &str) -> UiAnatomyLocations,
         user_receiver: Rc<RefCell<UiReceiver>>
     ) -> Rc<RefCell<Self>>
     {

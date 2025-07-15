@@ -282,6 +282,16 @@ pub trait EntitiesController
     fn passer(&self) -> Arc<RwLock<Self::Passer>>;
 }
 
+pub struct MessagePasserCloneable(pub MessagePasser);
+
+impl Clone for MessagePasserCloneable
+{
+    fn clone(&self) -> Self
+    {
+        Self(self.0.try_clone())
+    }
+}
+
 #[derive(Debug)]
 pub struct MessagePasser
 {

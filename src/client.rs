@@ -21,7 +21,7 @@ use yanyaengine::{
 
 use game::Game;
 
-use game_state::{GameState, GameStateInfo};
+use game_state::{UiAnatomyLocations, PartCreator, GameState, GameStateInfo};
 
 use crate::{
     LOG_PATH,
@@ -31,6 +31,7 @@ use crate::{
         some_or_return,
         DataInfos,
         MessagePasser,
+        MessagePasserCloneable,
         tilemap::TileMapWithTextures
     }
 };
@@ -78,6 +79,7 @@ pub struct ClientInfo
 
 pub struct Client
 {
+    info: Option<GameStateInfo>,
     pub camera: Arc<RwLock<Camera>>,
     game_state: Option<Rc<RefCell<GameState>>>,
     game: Game
@@ -115,26 +117,53 @@ impl Client
         let stream = TcpStream::connect(&client_init_info.client_info.address)?;
         stream.set_nodelay(true).unwrap();
 
-        let message_passer = MessagePasser::new(stream);
+        let message_passer = MessagePasserCloneable(MessagePasser::new(stream));
 
+        let assets = &info.partial.assets;
+        let anatomy_locations = {
+            let assets = assets.clone();
+            Rc::new(RefCell::new(move |object_info: &mut ObjectCreateInfo, name: &str| -> UiAnatomyLocations
+            {
+                let base_image = image::open(format!("textures/special/{name}.png"))
+                    .unwrap_or_else(|err|
+                    {
+                        panic!("{name}.png must exist: {err}")
+                    });
+
+                let mut assets = assets.lock();
+
+                let part_creator = PartCreator{
+                    assets: &mut assets,
+                    resource_uploader: object_info.partial.builder_wrapper.resource_uploader_mut()
+                };
+
+                UiAnatomyLocations::new(part_creator, base_image)
+            }))
+        };
+
+        let common_textures = CommonTextures::new(&mut assets.lock());
+
+        let mut object_info = info;
         let info = GameStateInfo{
             shaders: client_init_info.app_info.shaders,
             camera: camera.clone(),
             timestamp_query,
-            object_info: info,
             data_infos: client_init_info.data_infos,
             tiles_factory,
             message_passer,
+            anatomy_locations,
+            common_textures,
             player_name: client_init_info.client_info.name,
             debug_mode: client_init_info.client_info.debug,
             host: client_init_info.host
         };
 
-        let game_state = GameState::new(info);
+        let game_state = GameState::new(&mut object_info, info.clone());
 
         let game = Game::new(Rc::downgrade(&game_state));
 
         Ok(Self{
+            info: Some(info),
             game_state: Some(game_state),
             camera,
             game
@@ -143,6 +172,7 @@ impl Client
 
     pub fn exit(&mut self)
     {
+        self.info.take();
         self.game_state.take();
     }
 
@@ -167,7 +197,8 @@ impl Client
             {
                 if !self.game.update(info, dt)
                 {
-                    *self.game_state.as_ref().unwrap().borrow_mut() = todo!();
+                    self.game_state.take();
+                    self.game_state = Some(GameState::new(info, self.info.as_ref().unwrap().clone()));
                 }
 
                 let game_state = some_or_return!(self.game_state.as_ref());

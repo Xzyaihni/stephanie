@@ -180,6 +180,7 @@ impl TimestampQuery
     }
 }
 
+#[derive(Clone)]
 pub struct ProgramShaders
 {
     pub default: ShaderId,
