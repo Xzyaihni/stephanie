@@ -191,7 +191,8 @@ pub struct Enemy
     behavior: EnemyBehavior,
     behavior_state: BehaviorState,
     current_state_left: Option<f32>,
-    hostile_timer: f32,
+    hostile_check_timer: f32,
+    attacking_timer: f32,
     seen_timer: f32,
     seen_now: bool,
     reset_state: bool,
@@ -212,7 +213,8 @@ impl Enemy
             current_state_left: behavior.duration_of(&mut rng, &behavior_state),
             behavior_state,
             behavior,
-            hostile_timer: 0.0,
+            hostile_check_timer: 0.0,
+            attacking_timer: 0.0,
             seen_timer: 0.0,
             seen_now: false,
             reset_state: false,
@@ -341,6 +343,7 @@ impl Enemy
 
                 if entity == other_entity
                 {
+                    eprintln!("{entity:?} tried to attack itself");
                     self.reset_state = true;
                     return;
                 }
@@ -352,14 +355,17 @@ impl Enemy
 
                     let sees = sees(entities, world, entity, other_entity).is_some();
 
-                    if aggressive && sees
+                    if aggressive
                     {
                         let transform = some_or_return!(entities.target_ref(entity));
 
                         let target = other_transform.position;
-                        let regenerate_path = path.as_ref().and_then(|x| x.target())
+
+                        let far_from_path = path.as_ref().and_then(|x| x.target())
                             .map(|x| x.metric_distance(&target) > RECALCULATE_PATH)
                             .unwrap_or(true);
+
+                        let regenerate_path = far_from_path || !sees;
 
                         if regenerate_path
                         {
@@ -388,13 +394,23 @@ impl Enemy
                                 character.push_action(CharacterAction::Bash);
                             }
 
-                            return;
+                            if sees
+                            {
+                                self.attacking_timer = 0.5;
+                                return;
+                            }
                         }
                     }
                 }
 
-                self.reset_state = true;
-                self.seen_timer = 0.0;
+                if self.attacking_timer > 0.0
+                {
+                    self.attacking_timer -= dt;
+                } else
+                {
+                    self.reset_state = true;
+                    self.seen_timer = 0.0;
+                }
             },
             BehaviorState::Wait => ()
         }
@@ -428,12 +444,12 @@ impl Enemy
             return false;
         }
 
-        if self.hostile_timer <= 0.0
+        if self.hostile_check_timer <= 0.0
         {
-            self.hostile_timer = 0.5;
+            self.hostile_check_timer = 0.5;
         } else
         {
-            self.hostile_timer -= dt;
+            self.hostile_check_timer -= dt;
         }
 
         if self.seen_timer > 0.0 && !self.seen_now
@@ -525,7 +541,7 @@ impl Enemy
 
     pub fn check_hostiles(&self) -> bool
     {
-        !self.is_attacking() && ((self.hostile_timer <= 0.0) || self.seen_timer > 0.0)
+        !self.is_attacking() && ((self.hostile_check_timer <= 0.0) || self.seen_timer > 0.0)
     }
 
     pub fn behavior(&self) -> &EnemyBehavior

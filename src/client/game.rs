@@ -134,7 +134,7 @@ impl Game
             infos.console.past_commands = standard_code;
         }
 
-        this.player_container(|mut x| x.console_command(String::new(), ConsoleOutput::Quiet));
+        this.console_command(String::new(), ConsoleOutput::Quiet);
 
         this
     }
@@ -251,11 +251,6 @@ impl Game
         });
 
         true
-    }
-
-    pub fn on_key_state(&mut self, key: KeyCode, pressed: bool) -> bool
-    {
-        self.player_container(move |mut x| x.on_key_state(key, pressed))
     }
 
     fn pop_entity(args: &mut PrimitiveArgs) -> Result<Entity, lisp::Error>
@@ -782,6 +777,124 @@ impl Game
         Rc::new(primitives)
     }
 
+    pub fn on_key_state(&mut self, key: KeyCode, pressed: bool) -> bool
+    {
+        if pressed
+        {
+            self.on_key(key)
+        } else
+        {
+            false
+        }
+    }
+
+    fn on_key(&mut self, key: KeyCode) -> bool
+    {
+        if !with_game_state(&self.game_state, |game_state| game_state.debug_mode)
+        {
+            return false;
+        }
+
+        if let Some(contents) = self.get_console_contents()
+        {
+            match key
+            {
+                KeyCode::Enter =>
+                {
+                    self.console_command(contents, ConsoleOutput::Normal);
+
+                    self.set_console_contents(None);
+
+                    true
+                },
+                KeyCode::Escape =>
+                {
+                    self.set_console_contents(None);
+
+                    true
+                },
+                _ => false
+            }
+        } else
+        {
+            if key == KeyCode::Backquote
+            {
+                let value = if self.get_console_contents().is_some()
+                {
+                    None
+                } else
+                {
+                    Some(String::new())
+                };
+
+                let state = if value.is_some() { "opened" } else { "closed" };
+                eprintln!("debug console {state}");
+
+                self.set_console_contents(value);
+
+                true
+            } else
+            {
+                false
+            }
+        }
+    }
+
+    fn get_console_contents(&self) -> Option<String>
+    {
+        with_game_state(&self.game_state, |x| x.ui.borrow().get_console().clone())
+    }
+
+    fn set_console_contents(&self, contents: Option<String>)
+    {
+        with_game_state(&self.game_state, |x| x.ui.borrow_mut().set_console(contents));
+    }
+
+    fn console_command(&mut self, command: String, output: ConsoleOutput)
+    {
+        let mut info = self.info.borrow_mut();
+        let console = &info.console;
+
+        let config = LispConfig{
+            type_checks: true,
+            memory: LispMemory::new(console.primitives.as_ref().unwrap().clone(), 2048, 1 << 14)
+        };
+
+        let lisp = match Lisp::new_with_config(config, &[&console.past_commands, &command])
+        {
+            Ok(x) => x,
+            Err(err) =>
+            {
+                eprintln!("error parsing {command}: {err}");
+                Lisp::print_highlighted(&command, err.position);
+                return;
+            }
+        };
+
+        let result = match lisp.run()
+        {
+            Ok(x) => x,
+            Err(err) =>
+            {
+                eprintln!("error running {command}: {err}");
+                Lisp::print_highlighted(&command, err.position);
+                return;
+            }
+        };
+
+        if !output.is_quiet()
+        {
+            eprintln!("ran command {command}, result: {result}");
+        }
+
+        let defined_this = result.into_memory().defined_values().unwrap().len();
+        let changed_environment = defined_this > console.standard_definitions;
+        if changed_environment
+        {
+            info.remember_command(defined_this, &command);
+        }
+    }
+
     pub fn player_exists(&mut self) -> bool
     {
         self.player_container(|x| x.exists())
@@ -1056,121 +1169,6 @@ impl<'a> PlayerContainer<'a>
                 self.toggle_inventory();
             },
             _ => ()
-        }
-    }
-
-    pub fn on_key_state(&mut self, key: KeyCode, pressed: bool) -> bool
-    {
-        if pressed
-        {
-            self.on_key(key)
-        } else
-        {
-            false
-        }
-    }
-
-    fn on_key(&mut self, key: KeyCode) -> bool
-    {
-        if !self.game_state.debug_mode
-        {
-            return false;
-        }
-
-        if let Some(contents) = self.get_console_contents()
-        {
-            match key
-            {
-                KeyCode::Enter =>
-                {
-                    self.console_command(contents, ConsoleOutput::Normal);
-
-                    self.set_console_contents(None);
-
-                    true
-                },
-                KeyCode::Escape =>
-                {
-                    self.set_console_contents(None);
-
-                    true
-                },
-                _ => false
-            }
-        } else
-        {
-            if key == KeyCode::Backquote
-            {
-                let value = if self.get_console_contents().is_some()
-                {
-                    None
-                } else
-                {
-                    Some(String::new())
-                };
-
-                let state = if value.is_some() { "opened" } else { "closed" };
-                eprintln!("debug console {state}");
-
-                self.set_console_contents(value);
-
-                true
-            } else
-            {
-                false
-            }
-        }
-    }
-
-    fn get_console_contents(&self) -> Option<String>
-    {
-        self.game_state.ui.borrow().get_console().clone()
-    }
-
-    fn set_console_contents(&self, contents: Option<String>)
-    {
-        self.game_state.ui.borrow_mut().set_console(contents);
-    }
-
-    fn console_command(&mut self, command: String, output: ConsoleOutput)
-    {
-        let config = LispConfig{
-            type_checks: true,
-            memory: LispMemory::new(self.info.console.primitives.as_ref().unwrap().clone(), 2048, 1 << 14)
-        };
-
-        let lisp = match Lisp::new_with_config(config, &[&self.info.console.past_commands, &command])
-        {
-            Ok(x) => x,
-            Err(err) =>
-            {
-                eprintln!("error parsing {command}: {err}");
-                Lisp::print_highlighted(&command, err.position);
-                return;
-            }
-        };
-
-        let result = match lisp.run()
-        {
-            Ok(x) => x,
-            Err(err) =>
-            {
-                eprintln!("error running {command}: {err}");
-                Lisp::print_highlighted(&command, err.position);
-                return;
-            }
-        };
-
-        if !output.is_quiet()
-        {
-            eprintln!("ran command {command}, result: {result}");
-        }
-
-        let defined_this = result.into_memory().defined_values().unwrap().len();
-        let changed_environment = defined_this > self.info.console.standard_definitions;
-        if changed_environment
-        {
-            self.info.remember_command(defined_this, &command);
         }
     }
 
