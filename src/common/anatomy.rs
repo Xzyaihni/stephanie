@@ -777,7 +777,7 @@ impl<Contents> BodyPart<Contents>
     {
         Self::new_full(
             name,
-            Health::new(bone * 0.05, bone),
+            Health::new(bone * 0.1, bone),
             Some(Health::new(info.skin_toughness * 5.0, info.skin_toughness * 100.0)),
             Some(Health::new(info.muscle_toughness * 20.0, info.muscle_toughness * 500.0)),
             size,
@@ -1644,7 +1644,7 @@ impl Lung
 {
     fn new() -> Self
     {
-        Self{health: Health::new(3.0, 20.0).into()}
+        Self{health: Health::new(3.0, 100.0).into()}
     }
 }
 
