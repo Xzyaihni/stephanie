@@ -2826,14 +2826,20 @@ impl HumanAnatomy
         // the spine is very complex sizing wise so im just gonna pick a low-ish number
         let spine = new_part(DebugName::new("spine"), 3400.0, 0.25);
 
-        let head = new_part_with_contents(
-            DebugName::new("head"),
-            part.clone(),
-            bone_toughness,
-            5000.0,
-            0.39,
-            HeadOrgans{eyes: Halves::repeat(Some(Eye::new())), brain: Some(Brain::default())}
-        );
+        let head = {
+            let mut head = new_part_with_contents(
+                DebugName::new("head"),
+                part.clone(),
+                bone_toughness,
+                5000.0,
+                0.39,
+                HeadOrgans{eyes: Halves::repeat(Some(Eye::new())), brain: Some(Brain::default())}
+            );
+
+            head.muscle = None.into();
+
+            head
+        };
 
         let pelvis = new_part(DebugName::new("pelvis"), 6000.0, 0.37);
 
