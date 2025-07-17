@@ -119,7 +119,7 @@ pub fn sees(
     }
 
     let angle_fraction = 1.0 - (angle_offset / vision_angle).powi(3);
-    let distance_fraction = 1.0 - (distance / max_distance).powi(3);
+    let distance_fraction = (1.0 - distance / max_distance).powi(2).max(0.25);
 
     Some(visibility * angle_fraction * distance_fraction)
 }

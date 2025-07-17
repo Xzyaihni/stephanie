@@ -73,7 +73,7 @@ pub fn update<Passer: EntityPasser>(
                         on_state_change(entity);
                     } else
                     {
-                        enemy.increase_seen(visibility * 2.0 * dt);
+                        enemy.increase_seen(visibility * 4.0 * dt);
                     }
                 });
         }
