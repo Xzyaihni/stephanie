@@ -2274,56 +2274,6 @@ impl Limb
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Torso
-{
-    pub torso: HumanPart<TorsoOrgans>,
-    pub arms: Halves<Option<Limb>>
-}
-
-impl HealReceiver for Torso
-{
-    fn is_full(&self) -> bool
-    {
-        self.torso.is_full()
-            && self.arms.as_ref().map(|x| x.as_ref().map(|x| x.is_full()).unwrap_or(true)).combine(|a, b| a && b)
-    }
-
-    fn heal(&mut self, amount: f32) -> Option<f32>
-    {
-        heal_iterative(amount, [
-            &mut self.torso,
-            self.arms.left.as_mut().map(|x| -> &mut dyn HealReceiver { x }).unwrap_or(&mut ()),
-            self.arms.right.as_mut().map(|x| -> &mut dyn HealReceiver { x }).unwrap_or(&mut ())
-        ])
-    }
-}
-
-impl Torso
-{
-    fn detach_broken(&mut self, on_break: &mut impl FnMut(AnatomyId))
-    {
-        self.torso.contents.lungs.as_mut().map_sides(|side, lung|
-        {
-            remove_broken!(lung, || on_break(AnatomyId::Organ(OrganId::Lung(side))));
-        });
-
-        self.arms.as_mut().map_sides(|side, arm|
-        {
-            remove_broken!(arm.as_mut(), || on_break(AnatomyId::Part(HumanPartId::Arm(side))), upper);
-
-            if let Some(arm) = arm.as_mut()
-            {
-                arm.detach_broken(
-                    on_break,
-                    |on_break| on_break(AnatomyId::Part(HumanPartId::Forearm(side))),
-                    |on_break| on_break(AnatomyId::Part(HumanPartId::Hand(side)))
-                );
-            }
-        });
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Pelvis
 {
     pub pelvis: HumanPart,
@@ -2372,7 +2322,8 @@ impl Pelvis
 pub struct Spine
 {
     pub spine: HumanPart,
-    pub torso: Option<Torso>,
+    pub torso: Option<HumanPart<TorsoOrgans>>,
+    pub arms: Halves<Option<Limb>>,
     pub pelvis: Option<Pelvis>
 }
 
@@ -2382,6 +2333,7 @@ impl HealReceiver for Spine
     {
         self.spine.is_full()
             && self.torso.as_ref().map(|x| x.is_full()).unwrap_or(true)
+            && self.arms.as_ref().map(|x| x.as_ref().map(|x| x.is_full()).unwrap_or(true)).combine(|a, b| a && b)
             && self.pelvis.as_ref().map(|x| x.is_full()).unwrap_or(true)
     }
 
@@ -2390,6 +2342,8 @@ impl HealReceiver for Spine
         heal_iterative(amount, [
             &mut self.spine,
             self.torso.as_mut().map(|x| -> &mut dyn HealReceiver { x }).unwrap_or(&mut ()),
+            self.arms.left.as_mut().map(|x| -> &mut dyn HealReceiver { x }).unwrap_or(&mut ()),
+            self.arms.right.as_mut().map(|x| -> &mut dyn HealReceiver { x }).unwrap_or(&mut ()),
             self.pelvis.as_mut().map(|x| -> &mut dyn HealReceiver { x }).unwrap_or(&mut ())
         ])
     }
@@ -2399,13 +2353,30 @@ impl Spine
 {
     fn detach_broken(&mut self, on_break: &mut impl FnMut(AnatomyId))
     {
-        remove_broken!(self.torso, || on_break(AnatomyId::Part(HumanPartId::Torso)), torso);
+        remove_broken!(self.torso, || on_break(AnatomyId::Part(HumanPartId::Torso)));
         remove_broken!(self.pelvis, || on_break(AnatomyId::Part(HumanPartId::Pelvis)), pelvis);
 
         if let Some(torso) = self.torso.as_mut()
         {
-            torso.detach_broken(on_break);
+            torso.contents.lungs.as_mut().map_sides(|side, lung|
+            {
+                remove_broken!(lung, || on_break(AnatomyId::Organ(OrganId::Lung(side))));
+            });
         }
+
+        self.arms.as_mut().map_sides(|side, arm|
+        {
+            remove_broken!(arm.as_mut(), || on_break(AnatomyId::Part(HumanPartId::Arm(side))), upper);
+
+            if let Some(arm) = arm.as_mut()
+            {
+                arm.detach_broken(
+                    on_break,
+                    |on_break| on_break(AnatomyId::Part(HumanPartId::Forearm(side))),
+                    |on_break| on_break(AnatomyId::Part(HumanPartId::Hand(side)))
+                );
+            }
+        });
 
         if let Some(pelvis) = self.pelvis.as_mut()
         {
@@ -2554,7 +2525,7 @@ macro_rules! impl_get
                 {
                     self.spine.$option_fn()
                         .and_then(|x| x.torso.$option_fn())
-                        .and_then(|x| x.torso.contents.lungs[side].$option_fn())
+                        .and_then(|x| x.contents.lungs[side].$option_fn())
                         .map(|x| F::get(x))
                 }
             }
@@ -2579,19 +2550,21 @@ macro_rules! impl_get
             let torso = spine.torso.$option_fn();
             let pelvis = spine.pelvis.$option_fn();
 
-            match id
+            let value = match id
             {
                 HumanPartId::Head => unreachable!(),
                 HumanPartId::Spine => unreachable!(),
-                HumanPartId::Torso => Some(F::get($($b)+ torso?.torso)),
-                HumanPartId::Pelvis => Some(F::get($($b)+ pelvis?.pelvis)),
-                HumanPartId::Thigh(side) => Some(F::get($($b)+ pelvis?.legs[side].$option_fn()?.upper)),
-                HumanPartId::Calf(side) => Some(F::get($($b)+ pelvis?.legs[side].$option_fn()?.lower.$option_fn()?.lower)),
-                HumanPartId::Foot(side) => Some(F::get(pelvis?.legs[side].$option_fn()?.lower.$option_fn()?.leaf.$option_fn()?)),
-                HumanPartId::Arm(side) => Some(F::get($($b)+ torso?.arms[side].$option_fn()?.upper)),
-                HumanPartId::Forearm(side) => Some(F::get($($b)+ torso?.arms[side].$option_fn()?.lower.$option_fn()?.lower)),
-                HumanPartId::Hand(side) => Some(F::get(torso?.arms[side].$option_fn()?.lower.$option_fn()?.leaf.$option_fn()?))
-            }
+                HumanPartId::Torso => F::get(torso?),
+                HumanPartId::Pelvis => F::get($($b)+ pelvis?.pelvis),
+                HumanPartId::Thigh(side) => F::get($($b)+ pelvis?.legs[side].$option_fn()?.upper),
+                HumanPartId::Calf(side) => F::get($($b)+ pelvis?.legs[side].$option_fn()?.lower.$option_fn()?.lower),
+                HumanPartId::Foot(side) => F::get(pelvis?.legs[side].$option_fn()?.lower.$option_fn()?.leaf.$option_fn()?),
+                HumanPartId::Arm(side) => F::get($($b)+ spine.arms[side].$option_fn()?.upper),
+                HumanPartId::Forearm(side) => F::get($($b)+ spine.arms[side].$option_fn()?.lower.$option_fn()?.lower),
+                HumanPartId::Hand(side) => F::get(spine.arms[side].$option_fn()?.lower.$option_fn()?.leaf.$option_fn()?)
+            };
+
+            Some(value)
         }
     }
 }
@@ -2880,14 +2853,10 @@ impl HumanAnatomy
             }
         );
 
-        let torso = Torso{
-            torso,
-            arms: Halves{left: make_arm("left"), right: make_arm("right")}
-        };
-
         let spine = Spine{
             spine,
             torso: Some(torso),
+            arms: Halves{left: make_arm("left"), right: make_arm("right")},
             pelvis: Some(pelvis)
         };
 
@@ -3193,13 +3162,10 @@ impl HumanAnatomy
 
         self.body.spine.as_ref().map(|spine|
         {
-            let arms = spine.torso.as_ref().map(|torso|
+            let arms = spine.arms.as_ref().map(|arm|
             {
-                torso.arms.as_ref().map(|arm|
-                {
-                    arm.as_ref().map(|x| x.arm_speed()).unwrap_or(0.0)
-                })
-            }).unwrap_or_else(|| Halves::repeat(0.0));
+                arm.as_ref().map(|x| x.arm_speed()).unwrap_or(0.0)
+            });
 
             let legs = spine.pelvis.as_ref().map(|pelvis|
             {
@@ -3268,7 +3234,7 @@ impl HumanAnatomy
         let spine = self.body.spine.as_ref()?;
         let torso = spine.torso.as_ref()?;
 
-        torso.torso.contents.lungs.as_ref()[side].as_ref()
+        torso.contents.lungs.as_ref()[side].as_ref()
     }
 
     fn updated_stamina(&mut self) -> Option<f32>
@@ -3286,7 +3252,7 @@ impl HumanAnatomy
         let torso_muscle = self.body.spine.as_ref().and_then(|spine|
         {
             spine.torso.as_ref()
-        }).and_then(|torso| torso.torso.muscle.map(|x| x.fraction()))
+        }).and_then(|torso| torso.muscle.map(|x| x.fraction()))
             .unwrap_or(0.0);
 
         no_zero(base * amount * torso_muscle)
