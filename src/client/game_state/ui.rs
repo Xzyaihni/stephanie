@@ -433,7 +433,12 @@ fn single_health_color(fraction: Option<f32>) -> Lcha
 
 fn health_color(anatomy: &Anatomy, id: ChangedPart) -> Lcha
 {
-    single_health_color(anatomy.as_human().unwrap().get_health(id))
+    let health = anatomy.as_human().unwrap().get_health(id).and_then(|health|
+    {
+        (health > 0.0).then_some(health)
+    });
+
+    single_health_color(health)
 }
 
 pub struct UiList<T>
