@@ -339,6 +339,8 @@ impl Character
 
         let rotation = some_or_return!(entities.transform(entity).map(|x| x.rotation));
 
+        let is_player = entities.player_exists(entity);
+
         let character_info = entities.infos().characters_info.get(self.id);
 
         let held_item = |parent: Option<Entity>, flip: bool|
@@ -441,7 +443,7 @@ impl Character
                     object: Some(RenderObjectKind::TextureId{
                         id: texture
                     }.into()),
-                    z_level: ZLevel::Hair,
+                    z_level: if is_player { ZLevel::PlayerHair } else { ZLevel::Hair },
                     ..Default::default()
                 }),
                 watchers: Some(Default::default()),
@@ -1682,7 +1684,8 @@ impl Character
             }
         };
 
-        let layer = if combined_info.is_player(entity)
+        let is_player = combined_info.is_player(entity);
+        let layer = if is_player
         {
             ColliderLayer::Player
         } else
@@ -1697,7 +1700,7 @@ impl Character
 
         let z_level = match self.sprite_state.value()
         {
-            SpriteState::Normal => ZLevel::Head,
+            SpriteState::Normal => if is_player { ZLevel::PlayerHead } else { ZLevel::Head },
             SpriteState::Crawling
             | SpriteState::Lying => ZLevel::Feet
         };

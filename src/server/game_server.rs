@@ -389,7 +389,6 @@ impl GameServer
                 ..Default::default()
             }.into()),
             render: Some(RenderInfo{
-                z_level: ZLevel::Head,
                 aspect: Aspect::KeepMax,
                 ..Default::default()
             }),

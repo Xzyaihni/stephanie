@@ -306,6 +306,8 @@ pub enum ZLevel
     Shoulders,
     Head,
     Hair,
+    PlayerHead,
+    PlayerHair,
     Hat,
     Door
 }
