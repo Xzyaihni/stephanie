@@ -184,7 +184,7 @@ impl Lcha
     {
         Self{
             l: self.l,
-            c: self.c + c,
+            c: (self.c + c).clamp(0.0, 100.0),
             h: self.h,
             a: self.a
         }

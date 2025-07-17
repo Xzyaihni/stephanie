@@ -1,3 +1,5 @@
+use std::f32;
+
 use serde::{Serialize, Deserialize};
 
 use nalgebra::{Unit, Vector3};
@@ -180,9 +182,14 @@ impl Default for BehaviorState
 // to help the enemies not walk inside the thing theyre attacking
 fn close_enough(other: &Transform, this: &Transform) -> bool
 {
+    let close_angle = f32::consts::FRAC_PI_2;
+
     let minimum_distance = (other.scale + this.scale).min() / 2.0;
 
-    this.position.metric_distance(&other.position) <= minimum_distance
+    let is_close_distance = this.position.metric_distance(&other.position) <= minimum_distance;
+    let angle_between = short_rotation(angle_between(this.position, other.position) + this.rotation);
+
+    is_close_distance && angle_between < close_angle
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

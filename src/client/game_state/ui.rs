@@ -79,7 +79,7 @@ const BACKGROUND_COLOR: Lcha = Lcha{a: 0.5, ..BLACK_COLOR};
 const ACCENT_COLOR: Lcha = Lcha{h: HIGHLIGHTED_COLOR.h, ..WHITE_COLOR};
 const HIGHLIGHTED_COLOR: Lcha = Lcha{l: 70.0, c: 90.0, h: 6.0, a: 1.0};
 
-const MISSING_PART_COLOR: Lcha = Lcha{l: 50.0, ..BLACK_COLOR};
+const MISSING_PART_COLOR: Lcha = Lcha{l: 50.0, a: 0.3, ..BLACK_COLOR};
 
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -1715,6 +1715,7 @@ impl Ui
                 height: 1.0.into(),
                 animation: Animation{
                     mix: Some(MixAnimation{
+                        decay: MixDecay::all(1.0),
                         close_mix: Some(Lcha{a: 0.0, ..BLACK_COLOR}),
                         ..Default::default()
                     }),
@@ -2038,7 +2039,7 @@ impl Ui
                     texture: UiTexture::CustomId(location.id),
                     mix: Some(MixColorLch{
                         keep_transparency: true,
-                        ..MixColorLch::color(Lcha{a: 0.5, ..health_color})
+                        ..MixColorLch::color(Lcha{a: health_color.a * 0.5, ..health_color})
                     }),
                     position: UiPosition::Inherit,
                     animation: Animation{
