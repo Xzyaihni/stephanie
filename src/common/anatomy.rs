@@ -1976,17 +1976,25 @@ impl HumanPartId
 
 pub type HumanPart<Contents=()> = BodyPart<Contents>;
 
-#[derive(Debug, Default, Clone)]
-struct Speeds
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+struct Speeds<T=f32>
 {
-    arms: f32,
-    legs: f32
+    arms: T,
+    legs: T
+}
+
+impl<T> Speeds<T>
+{
+    fn map<U>(self, mut f: impl FnMut(T) -> U) -> Speeds<U>
+    {
+        Speeds{arms: f(self.arms), legs: f(self.legs)}
+    }
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct CachedProps
 {
-    speed: Option<f32>,
+    speed: Speeds<Option<f32>>,
     is_crawling: bool,
     strength: Option<f32>,
     stamina: Option<f32>,
@@ -2898,7 +2906,7 @@ impl HumanAnatomy
 
     pub fn is_dead(&self) -> bool
     {
-        self.speed().is_none() && self.strength().is_none()
+        !self.can_move() && self.strength().is_none()
     }
 
     pub fn take_killed(&mut self) -> bool
@@ -2917,7 +2925,12 @@ impl HumanAnatomy
 
     pub fn speed(&self) -> Option<f32>
     {
-        self.cached.speed
+        if self.is_crawling() { self.cached.speed.arms } else { self.cached.speed.legs }
+    }
+
+    pub fn can_move(&self) -> bool
+    {
+        self.cached.speed.arms.is_some() || self.cached.speed.legs.is_some()
     }
 
     pub fn strength(&self) -> Option<f32>
@@ -2947,7 +2960,9 @@ impl HumanAnatomy
 
     pub fn is_crawling(&self) -> bool
     {
-        self.cached.is_crawling
+        let crawl_threshold = self.cached.speed.arms.unwrap_or(0.0) * 0.9; // prefer walking
+
+        self.override_crawling || (self.cached.speed.legs.unwrap_or(0.0) < crawl_threshold)
     }
 
     pub fn set_speed(&mut self, speed: f32)
@@ -3200,36 +3215,20 @@ impl HumanAnatomy
         self.body.head.as_ref()?.contents.brain.as_ref()
     }
 
-    fn updated_speed(&mut self) -> (bool, Option<f32>)
+    fn updated_speed(&mut self) -> Speeds<Option<f32>>
     {
-        let Speeds{arms, legs} = self.speed_scale();
-
-        let crawl_threshold = arms * 0.9; // prefer walking
-        let crawling = self.override_crawling || (legs < crawl_threshold);
-
-        let speed_scale = if !crawling
+        self.speed_scale().map(|x|
         {
-            legs
-        } else
+            self.base_speed * x
+        }).map(|x|
         {
-            arms
-        };
-
-        let speed = if speed_scale == 0.0
-        {
-            None
-        } else
-        {
-            Some(self.base_speed * speed_scale)
-        };
-
-        (crawling, speed)
+            (x != 0.0).then_some(x)
+        })
     }
 
     fn override_crawling(&mut self, state: bool)
     {
         self.override_crawling = state;
-        self.update_cache();
     }
 
     fn updated_strength(&mut self) -> Option<f32>
@@ -3299,7 +3298,7 @@ impl HumanAnatomy
 
     fn update_cache(&mut self)
     {
-        (self.cached.is_crawling, self.cached.speed) = self.updated_speed();
+        self.cached.speed = self.updated_speed();
         self.cached.strength = self.updated_strength();
         self.cached.stamina = self.updated_stamina();
         self.cached.max_stamina = self.updated_max_stamina();

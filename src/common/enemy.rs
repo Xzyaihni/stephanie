@@ -256,17 +256,19 @@ impl Enemy
                     BehaviorState::MoveTo(_, _) => BehaviorState::Wait,
                     BehaviorState::Attack(_, entity) =>
                     {
-                        entities.transform(*entity).zip(entities.transform(this_entity))
-                            .and_then(|(other_transform, this_transform)|
-                            {
-                                let path = world.pathfind(
-                                    this_transform.scale,
-                                    this_transform.position,
-                                    other_transform.position
-                                )?;
+                        let other_transform = some_or_value!(entities.transform(*entity), BehaviorState::Wait);
+                        let this_transform = some_or_value!(entities.transform(this_entity), BehaviorState::Wait);
 
-                                Some(BehaviorState::MoveTo(path, other_transform.clone()))
-                            }).unwrap_or_else(|| BehaviorState::Wait)
+                        let this_collider = some_or_value!(entities.collider(this_entity), BehaviorState::Wait);
+                        let this_scale = this_collider.scale.unwrap_or(this_transform.scale);
+
+                        let path = world.pathfind(
+                            this_scale,
+                            this_transform.position,
+                            other_transform.position
+                        );
+
+                        BehaviorState::MoveTo(some_or_value!(path, BehaviorState::Wait), other_transform.clone())
                     }
                 }
             }
@@ -376,7 +378,10 @@ impl Enemy
 
                         if regenerate_path
                         {
-                            *path = world.pathfind(transform.scale, transform.position, target);
+                            let this_collider = some_or_return!(entities.collider(entity));
+                            let this_scale = this_collider.scale.unwrap_or(transform.scale);
+
+                            *path = world.pathfind(this_scale, transform.position, target);
                         }
 
                         if let Some(path) = path.as_mut()
