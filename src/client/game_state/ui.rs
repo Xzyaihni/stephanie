@@ -28,6 +28,7 @@ use crate::{
     common::{
         some_or_return,
         some_or_value,
+        lerp,
         render_info::*,
         anatomy::*,
         colors::*,
@@ -43,7 +44,7 @@ use crate::{
         ItemInfo,
         ItemsInfo,
         entity::ClientEntities,
-        world::TilePos
+        world::{TILE_SIZE, TilePos}
     }
 };
 
@@ -2016,6 +2017,15 @@ impl Ui
                 ..Default::default()
             });
 
+            let alpha = {
+                let other_position = some_or_value!(entities.transform(*entity), false).position;
+                let player_position = some_or_value!(entities.transform(self.ui_entities.player), false).position;
+
+                let distance = player_position.metric_distance(&other_position);
+
+                lerp(0.9, 0.1, (distance / (TILE_SIZE * 4.0)).min(1.0))
+            };
+
             let anatomy = some_or_value!(entities.anatomy(*entity), false);
             self.anatomy_locations_small.locations.iter().for_each(|(part_id, location)|
             {
@@ -2039,7 +2049,7 @@ impl Ui
                     texture: UiTexture::CustomId(location.id),
                     mix: Some(MixColorLch{
                         keep_transparency: true,
-                        ..MixColorLch::color(Lcha{a: health_color.a * 0.5, ..health_color})
+                        ..MixColorLch::color(Lcha{a: health_color.a * alpha, ..health_color})
                     }),
                     position: UiPosition::Inherit,
                     animation: Animation{
