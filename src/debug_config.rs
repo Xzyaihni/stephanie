@@ -34,6 +34,7 @@ pub enum DebugTool
     Sleeping,
     Velocity,
     SuperSpeed,
+    DamagePoints,
     PrintDamage,
     PrintAnatomyColors,
     PrintListenerUpdates,

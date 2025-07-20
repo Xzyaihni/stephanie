@@ -65,7 +65,7 @@ impl Ranged
         {
             Self::Pistol{damage, ..} =>
             {
-                DamageType::Bullet(with_base(400.0, damage))
+                DamageType::Bullet(with_base(10.0, damage))
             }
         }
     }
@@ -179,7 +179,7 @@ impl ItemInfo
 
     fn damage_base(&self) -> f32
     {
-        self.mass * 100.0
+        self.mass
     }
 
     pub fn bash_damage(&self) -> DamageType

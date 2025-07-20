@@ -109,7 +109,7 @@ impl DamagingType
 
                 let height = DamageHeight::from_z(info.relative_height);
 
-                let kind = DamageType::Blunt(force.magnitude() * 100.0);
+                let kind = DamageType::Blunt(force.magnitude());
                 let damage = DamagePartial{
                     data: kind,
                     height
@@ -121,7 +121,7 @@ impl DamagingType
             {
                 let info = collision()?;
 
-                Some((info.global_rotation - *angle, damage.clone()))
+                Some((*angle + info.global_rotation, damage.clone()))
             }
         }
     }

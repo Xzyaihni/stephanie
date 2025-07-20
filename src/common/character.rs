@@ -27,6 +27,7 @@ use crate::{
         some_or_false,
         define_layers,
         angle_between,
+        opposite_angle,
         ENTITY_SCALE,
         render_info::*,
         lazy_transform::*,
@@ -1304,12 +1305,19 @@ impl Character
                     Side2d::Back => DamageHeight::Bottom
                 };
 
-                let new_side = if let SpriteState::Crawling = self.sprite_state.value()
+                let new_side = match side
                 {
-                    Side2d::Back
-                } else
-                {
-                    Side2d::Front
+                    Side2d::Front | Side2d::Back =>
+                    {
+                        if let SpriteState::Crawling = self.sprite_state.value()
+                        {
+                            Side2d::Back
+                        } else
+                        {
+                            Side2d::Front
+                        }
+                    },
+                    x => x
                 };
 
                 (new_height, new_side)
@@ -1334,7 +1342,7 @@ impl Character
             height: self.melee_height()
         };
 
-        let angle = self.bash_side.opposite().to_angle() - f32::consts::FRAC_PI_2;
+        let angle = opposite_angle(self.bash_side.opposite().to_angle() - f32::consts::FRAC_PI_2);
 
         combined_info.entities.push(
             true,

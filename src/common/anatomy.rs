@@ -777,9 +777,9 @@ impl<Contents> BodyPart<Contents>
     {
         Self::new_full(
             name,
-            Health::new(bone * 0.1, bone),
-            Some(Health::new(info.skin_toughness * 5.0, info.skin_toughness * 100.0)),
-            Some(Health::new(info.muscle_toughness * 20.0, info.muscle_toughness * 500.0)),
+            Health::new(bone * 0.001, bone),
+            Some(Health::new(info.skin_toughness * 0.05, info.skin_toughness)),
+            Some(Health::new(info.muscle_toughness * 0.2, info.muscle_toughness * 5.0)),
             size,
             contents
         )
@@ -1083,14 +1083,14 @@ pub struct MotorCortex
     legs: ChangeTracking<Health>
 }
 
-impl Default for MotorCortex
+impl MotorCortex
 {
-    fn default() -> Self
+    fn new(base: f32) -> Self
     {
         Self{
-            arms: Health::new(4.0, 50.0).into(),
-            body: Health::new(4.0, 50.0).into(),
-            legs: Health::new(4.0, 50.0).into()
+            arms: Health::new(base * 0.1, base).into(),
+            body: Health::new(base * 0.1, base).into(),
+            legs: Health::new(base * 0.1, base).into()
         }
     }
 }
@@ -1164,12 +1164,11 @@ pub struct FrontalLobe
     motor: MotorCortex
 }
 
-#[allow(clippy::derivable_impls)]
-impl Default for FrontalLobe
+impl FrontalLobe
 {
-    fn default() -> Self
+    fn new(base: f32) -> Self
     {
-        Self{motor: MotorCortex::default()}
+        Self{motor: MotorCortex::new(base)}
     }
 }
 
@@ -1224,11 +1223,11 @@ pub enum LobeId
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ParietalLobe(ChangeTracking<Health>);
 
-impl Default for ParietalLobe
+impl ParietalLobe
 {
-    fn default() -> Self
+    fn new(base: f32) -> Self
     {
-        Self(Health::new(4.0, 50.0).into())
+        Self(Health::new(base * 0.1, base).into())
     }
 }
 
@@ -1279,11 +1278,11 @@ impl Organ for ParietalLobe
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TemporalLobe(ChangeTracking<Health>);
 
-impl Default for TemporalLobe
+impl TemporalLobe
 {
-    fn default() -> Self
+    fn new(base: f32) -> Self
     {
-        Self(Health::new(4.0, 50.0).into())
+        Self(Health::new(base * 0.1, base).into())
     }
 }
 
@@ -1334,11 +1333,11 @@ impl Organ for TemporalLobe
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OccipitalLobe(ChangeTracking<Health>);
 
-impl Default for OccipitalLobe
+impl OccipitalLobe
 {
-    fn default() -> Self
+    fn new(base: f32) -> Self
     {
-        Self(Health::new(4.0, 50.0).into())
+        Self(Health::new(base * 0.1, base).into())
     }
 }
 
@@ -1395,15 +1394,15 @@ pub struct Hemisphere
     occipital: OccipitalLobe
 }
 
-impl Default for Hemisphere
+impl Hemisphere
 {
-    fn default() -> Self
+    fn new(base: f32) -> Self
     {
         Self{
-            frontal: FrontalLobe::default(),
-            parietal: ParietalLobe::default(),
-            temporal: TemporalLobe::default(),
-            occipital: OccipitalLobe::default()
+            frontal: FrontalLobe::new(base),
+            parietal: ParietalLobe::new(base),
+            temporal: TemporalLobe::new(base),
+            occipital: OccipitalLobe::new(base)
         }
     }
 }
@@ -1501,11 +1500,11 @@ impl Organ for Hemisphere
 
 pub type Brain = Halves<Hemisphere>;
 
-impl Default for Brain
+impl Brain
 {
-    fn default() -> Self
+    fn new(base: f32) -> Self
     {
-        Self{left: Hemisphere::default(), right: Hemisphere::default()}
+        Self::repeat(Hemisphere::new(base))
     }
 }
 
@@ -1584,9 +1583,9 @@ pub struct Eye
 
 impl Eye
 {
-    pub fn new() -> Self
+    fn new(base: f32) -> Self
     {
-        Self{health: Health::new(50.0, 100.0).into()}
+        Self{health: Health::new(base * 0.5, base).into()}
     }
 }
 
@@ -1642,9 +1641,9 @@ pub struct Lung
 
 impl Lung
 {
-    fn new() -> Self
+    fn new(base: f32) -> Self
     {
-        Self{health: Health::new(3.0, 100.0).into()}
+        Self{health: Health::new(base * 0.05, base).into()}
     }
 }
 
@@ -2739,9 +2738,14 @@ impl HumanAnatomy
         info.muscle_toughness *= 0.6;
         info.skin_toughness *= 0.6;
 
+        info.base_speed *= 12.0;
+        info.base_strength *= 2.0;
+
         let bone_toughness = info.bone_toughness;
+
         let base_speed = info.base_speed;
-        let base_strength = info.base_strength * 2.0;
+        let base_strength = info.base_strength;
+
         let part = BodyPartInfo::from(info);
 
         fn new_part_with_contents<Contents>(
@@ -2782,10 +2786,10 @@ impl HumanAnatomy
         {
             let with_name = with_name(side_name);
 
-            let upper = new_part(DebugName::new(with_name("upper leg")), 4000.0, 0.6);
-            let lower = new_part(DebugName::new(with_name("lower leg")), 3500.0, 0.44);
+            let upper = new_part(DebugName::new(with_name("upper leg")), 40.0, 0.6);
+            let lower = new_part(DebugName::new(with_name("lower leg")), 35.0, 0.44);
             let foot = {
-                let mut x = new_part(DebugName::new(with_name("foot")), 2000.0, 0.17);
+                let mut x = new_part(DebugName::new(with_name("foot")), 20.0, 0.17);
                 x.muscle = None.into();
 
                 Some(x)
@@ -2804,10 +2808,10 @@ impl HumanAnatomy
         {
             let with_name = with_name(side_name);
 
-            let upper = new_part(DebugName::new(with_name("upper arm")), 2500.0, 0.2);
-            let lower = new_part(DebugName::new(with_name("lower arm")), 2000.0, 0.17);
+            let upper = new_part(DebugName::new(with_name("upper arm")), 25.0, 0.2);
+            let lower = new_part(DebugName::new(with_name("lower arm")), 20.0, 0.17);
             let hand = {
-                let mut x = new_part(DebugName::new(with_name("hand")), 2000.0, 0.07);
+                let mut x = new_part(DebugName::new(with_name("hand")), 20.0, 0.07);
                 x.muscle = None.into();
 
                 Some(x)
@@ -2824,16 +2828,16 @@ impl HumanAnatomy
         };
 
         // the spine is very complex sizing wise so im just gonna pick a low-ish number
-        let spine = new_part(DebugName::new("spine"), 3400.0, 0.25);
+        let spine = new_part(DebugName::new("spine"), 34.0, 0.25);
 
         let head = {
             let mut head = new_part_with_contents(
                 DebugName::new("head"),
                 part.clone(),
                 bone_toughness,
-                5000.0,
+                50.0,
                 0.39,
-                HeadOrgans{eyes: Halves::repeat(Some(Eye::new())), brain: Some(Brain::default())}
+                HeadOrgans{eyes: Halves::repeat(Some(Eye::new(1.0))), brain: Some(Brain::new(0.5))}
             );
 
             head.muscle = None.into();
@@ -2841,7 +2845,7 @@ impl HumanAnatomy
             head
         };
 
-        let pelvis = new_part(DebugName::new("pelvis"), 6000.0, 0.37);
+        let pelvis = new_part(DebugName::new("pelvis"), 60.0, 0.37);
 
         let pelvis = Pelvis{
             pelvis,
@@ -2852,10 +2856,10 @@ impl HumanAnatomy
             DebugName::new("torso"),
             part.clone(),
             bone_toughness,
-            3300.0,
+            33.0,
             0.82,
             TorsoOrgans{
-                lungs: Halves::repeat(Some(Lung::new()))
+                lungs: Halves::repeat(Some(Lung::new(1.0)))
             }
         );
 
@@ -2872,7 +2876,7 @@ impl HumanAnatomy
         };
 
         let mut this = Self{
-            base_speed: base_speed * 12.0,
+            base_speed,
             base_strength,
             override_crawling: false,
             blood: SimpleHealth::new(4.0),

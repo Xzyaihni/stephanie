@@ -10,6 +10,7 @@ use nalgebra::{Unit, Vector3};
 use serde::{Serialize, Deserialize};
 
 use crate::{
+    debug_config::*,
     client::CommonTextures,
     common::{
         some_or_value,
@@ -180,10 +181,10 @@ pub fn damager<'a, 'b, E: AnyEntities, Passer: EntityPasser, TileDamager: FnMut(
         {
             let angle = if weak
             {
-                angle
+                opposite_angle(angle)
             } else
             {
-                opposite_angle(angle)
+                angle
             };
 
             let watcher = kind.create(textures, weak, angle);
@@ -198,6 +199,37 @@ pub fn damager<'a, 'b, E: AnyEntities, Passer: EntityPasser, TileDamager: FnMut(
                 ..Default::default()
             });
         };
+
+        if DebugConfig::is_enabled(DebugTool::DamagePoints)
+        {
+            let make_point = |position, color|
+            {
+                entities.push(true, EntityInfo{
+                    transform: Some(Transform{
+                        position,
+                        scale: Vector3::repeat(0.02),
+                        ..Default::default()
+                    }),
+                    render: Some(RenderInfo{
+                        object: Some(RenderObjectKind::Texture{
+                            name: "circle.png".to_owned()
+                        }.into()),
+                        mix: Some(MixColor{keep_transparency: true, ..MixColor::color(color)}),
+                        above_world: true,
+                        ..Default::default()
+                    }),
+                    watchers: Some(Watchers::simple_disappearing(1.0)),
+                    ..Default::default()
+                });
+            };
+
+            make_point(result.damage_entry, [1.0, 0.0, 0.0, 1.0]);
+
+            if let Some(point) = result.damage_exit
+            {
+                make_point(point, [0.0, 0.0, 1.0, 1.0]);
+            }
+        }
 
         match result.kind
         {
@@ -340,7 +372,7 @@ fn damaging_raycasting(
     let hits_len = hits.hits.len();
     hits.hits.iter().enumerate().map(|(index, hit)|
     {
-        let angle = (-hits.direction.y).atan2(hits.direction.x);
+        let angle = hits.direction.y.atan2(-hits.direction.x);
 
         let kind = match hit.id
         {
@@ -471,7 +503,15 @@ fn damaging_colliding(
             }).map(|(angle, damage)|
             {
                 let direction = {
-                    let angle = angle_between(collided_transform.position, this_transform.position);
+                    let angle = match kind
+                    {
+                        DamagingKind::Entity(_, _) => angle,
+                        DamagingKind::Tile(_) =>
+                        {
+                            angle_between(collided_transform.position, this_transform.position)
+                        }
+                    };
+
                     Vector3::new(angle.cos(), -angle.sin(), 0.0)
                 };
 
@@ -485,7 +525,7 @@ fn damaging_colliding(
                     other_entity: source_entity,
                     damage_entry,
                     damage_exit,
-                    angle: opposite_angle(angle),
+                    angle,
                     damage
                 }
             })
