@@ -1336,11 +1336,15 @@ impl<Id: Idable> Controller<Id>
     pub fn new(info: &ObjectCreatePartialInfo) -> Self
     {
         let shared = Rc::new(RefCell::new(SharedInfo::new()));
-        Self{
+        let mut this = Self{
             sizer: TextureSizer::new(info),
             created_trees: RefCell::new(vec![TreeElement::screen(shared.clone())]),
             shared
-        }
+        };
+
+        this.set_screen_size(info.size.into());
+
+        this
     }
 
     pub fn as_inserter(&self) -> TreeInserter<Id>
