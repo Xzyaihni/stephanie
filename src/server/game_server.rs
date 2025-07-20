@@ -2,7 +2,8 @@ use std::{
     f32,
     fmt,
     mem,
-    fs,
+    io,
+    fs::{self, File},
     path::PathBuf,
     rc::Rc,
     thread::JoinHandle,
@@ -57,6 +58,8 @@ use crate::{
         EntitiesController,
         MessagePasser,
         ConnectionId,
+        world::{TILE_SIZE, CHUNK_VISUAL_SIZE},
+        chunk_saver::{with_temp_save, load_compressed},
         message::{
             Message,
             MessageBuffer
@@ -357,16 +360,57 @@ impl GameServer
         Ok(())
     }
 
-    fn player_connect_inner(
-        &mut self,
-        stream: TcpStream
-    ) -> Result<(Entity, ConnectionId, MessagePasser), ConnectionError>
+    fn load_player_info(&self, player_name: &str) -> Option<EntityInfo>
     {
-        let player_index = self.entities.player.len() + 1;
+        let path = self.player_info_path(player_name);
 
-        let transform = Transform{
-            scale: Vector3::repeat(ENTITY_SCALE),
-            ..Default::default()
+        let file = match File::open(&path)
+        {
+            Ok(x) => Some(x),
+            Err(ref err) if err.kind() == io::ErrorKind::NotFound => None,
+            Err(err) =>
+            {
+                eprintln!("error trying to open \"{player_name}\" save file: {err}");
+
+                None
+            }
+        };
+
+        let info = file.and_then(|file|
+        {
+            match load_compressed(file)
+            {
+                Ok(x) => Some(x),
+                Err(err) =>
+                {
+                    eprintln!("error trying to load player \"{player_name}\": {err}");
+
+                    None
+                }
+            }
+        });
+
+        if info.is_some()
+        {
+            eprintln!("loading player \"{player_name}\"");
+        }
+
+        info
+    }
+
+    fn create_new_player(&self, name: String) -> EntityInfo
+    {
+        let transform = {
+            let scale = Vector3::repeat(ENTITY_SCALE);
+
+            let mut position = Vector3::repeat(CHUNK_VISUAL_SIZE / 2.0);
+            position.z = -TILE_SIZE + (scale.z / 2.0);
+
+            Transform{
+                position,
+                scale,
+                ..Default::default()
+            }
         };
 
         let base_health = 0.6;
@@ -379,11 +423,9 @@ impl GameServer
             ..Default::default()
         }));
 
-        let position = transform.position;
-
-        let info = EntityInfo{
+        EntityInfo{
             player: Some(Player::default()),
-            named: Some(format!("stephanie #{player_index}")),
+            named: Some(name),
             lazy_transform: Some(LazyTransformInfo{
                 transform: transform.clone(),
                 ..Default::default()
@@ -404,7 +446,22 @@ impl GameServer
             character: Some(Character::new(self.data_infos.player_character, Faction::Player)),
             anatomy: Some(anatomy),
             ..Default::default()
-        };
+        }
+    }
+
+    fn player_connect_inner(
+        &mut self,
+        stream: TcpStream
+    ) -> Result<(Entity, ConnectionId, MessagePasser), ConnectionError>
+    {
+        let mut player_info = self.player_info(stream)?;
+
+        let info = self.load_player_info(&player_info.name).unwrap_or_else(||
+        {
+            self.create_new_player(player_info.name.clone())
+        });
+
+        let player_position = info.transform.as_ref().map(|x| x.position).unwrap_or_else(Vector3::zeros);
 
         let mut inserter = |info: EntityInfo|
         {
@@ -420,20 +477,16 @@ impl GameServer
 
         let player_entity = inserter(info);
 
-        let player_info = self.player_info(stream, player_entity)?;
+        player_info.entity = Some(player_entity);
 
-        let (connection, mut messager) = self.player_create(
-            player_entity,
-            player_info,
-            position
-        )?;
+        let (connection, mut messager) = self.player_create(player_info, player_position)?;
 
         messager.send_one(&Message::PlayerFullyConnected)?;
 
         Ok((player_entity, connection, messager))
     }
 
-    fn player_info(&self, stream: TcpStream, entity: Entity) -> Result<PlayerInfo, ConnectionError>
+    fn player_info(&self, stream: TcpStream) -> Result<PlayerInfo, ConnectionError>
     {
         let mut message_passer = MessagePasser::new(stream);
 
@@ -448,19 +501,16 @@ impl GameServer
 
         println!("player \"{name}\" connected");
 
-        self.entities.named_mut(entity).unwrap().clone_from(&name);
-
-        Ok(PlayerInfo::new(MessageBuffer::new(), message_passer, entity, name))
+        Ok(PlayerInfo{message_buffer: MessageBuffer::new(), message_passer, entity: None, name})
     }
 
     fn player_create(
         &mut self,
-        player_entity: Entity,
         mut player_info: PlayerInfo,
         position: Vector3<f32>
     ) -> Result<(ConnectionId, MessagePasser), ConnectionError>
     {
-        player_info.send_blocking(Message::PlayerOnConnect{player_entity})?;
+        player_info.send_blocking(Message::PlayerOnConnect{player_entity: player_info.entity.unwrap()})?;
 
         let connection_id = self.connection_handler.write().connect(player_info);
 
@@ -507,19 +557,44 @@ impl GameServer
             self.exit();
         }
 
-        let removed_name = removed.as_ref().map(|x| x.name().to_owned());
-
         if let Some(mut removed) = removed
         {
+            let player_name = removed.name().to_owned();
+            println!("player \"{player_name}\" disconnected");
+
+            if !restart
+            {
+                if let Some(player_entity) = removed.entity
+                {
+                    let player_info = self.entities.info(player_entity);
+
+                    println!("saving player \"{player_name}\"");
+
+                    let path = self.player_info_path(&player_name);
+
+                    let world_directory = path.parent().expect("player path must not be empty");
+
+                    if let Err(err) = fs::create_dir_all(world_directory)
+                    {
+                        eprintln!("error trying to create world directory: {err}");
+                    }
+
+                    if let Err(err) = File::create(&path)
+                    {
+                        eprintln!("error trying to create player save file: {err}");
+                    }
+
+                    if let Err(err) = with_temp_save(path, player_info)
+                    {
+                        eprintln!("error trying to save player: {err}");
+                    }
+                }
+            }
+
             if let Err(err) = removed.send_blocking(Message::PlayerDisconnectFinished)
             {
                 eprintln!("error while disconnecting: {err}");
             }
-        }
-
-        if let Some(removed_name) = removed_name
-        {
-            println!("player \"{removed_name}\" disconnected");
         }
 
         {
@@ -531,6 +606,22 @@ impl GameServer
         {
             self.restart();
         }
+    }
+
+    fn player_info_path(&self, player_name: &str) -> PathBuf
+    {
+        let formatted_name = player_name.chars().map(|c|
+        {
+            if c.is_ascii_graphic()
+            {
+                c
+            } else
+            {
+                char::REPLACEMENT_CHARACTER
+            }
+        }).collect::<String>();
+
+        PathBuf::from("worlds").join(&self.world_name).join(format!("{formatted_name}.save"))
     }
 
     fn process_message_inner(

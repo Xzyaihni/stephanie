@@ -13,24 +13,14 @@ use crate::common::{
 #[derive(Debug)]
 pub struct PlayerInfo
 {
-    message_buffer: MessageBuffer,
-    message_passer: MessagePasser,
-    entity: Entity,
-    name: String
+    pub message_buffer: MessageBuffer,
+    pub message_passer: MessagePasser,
+    pub entity: Option<Entity>,
+    pub name: String
 }
 
 impl PlayerInfo
 {
-    pub fn new(
-        message_buffer: MessageBuffer,
-        message_passer: MessagePasser,
-        entity: Entity,
-        name: String
-    ) -> Self
-    {
-        Self{message_buffer, message_passer, entity, name}
-    }
-
     pub fn name(&self) -> &str
     {
         &self.name
@@ -144,7 +134,7 @@ impl ConnectionsHandler
 
         self.connections.iter_mut().filter(|(index, player_info)|
         {
-            let same_sync = Some(player_info.entity) == entity_type;
+            let same_sync = player_info.entity == entity_type;
 
             !same_sync && skip_id != Some(ConnectionId(*index))
         }).for_each(|(_, player_info)|

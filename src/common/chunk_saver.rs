@@ -1,4 +1,5 @@
 use std::{
+    any,
     thread,
     fmt::Debug,
     cmp::Ordering,
@@ -15,8 +16,6 @@ use std::{
 
 use parking_lot::Mutex;
 
-use lzma::{LzmaWriter, LzmaReader};
-
 use serde::{Serialize, Deserialize};
 
 use crate::{
@@ -31,9 +30,11 @@ use crate::{
     }
 };
 
+pub use saver::*;
 
-// goes from 0 to 9, 0 being lowest level of compression
-const LZMA_PRESET: u32 = 1;
+mod saver;
+
+
 const SAVE_MODULO: u32 = 20;
 
 pub trait Saveable: Debug + Clone + Send + 'static {}
@@ -382,18 +383,10 @@ where
     {
         Self::new_with_saver(parent_path, |path, pair|
         {
-            let chunk_path = Self::chunk_path(path, pair.key);
-            let temp_path = chunk_path.with_extension("tmp");
-
-            let file = File::create(&temp_path).unwrap();
-
-            let mut lzma_writer = LzmaWriter::new_compressor(file, LZMA_PRESET).unwrap();
-
-            bincode::serde::encode_into_std_write(&pair.value, &mut lzma_writer, crate::common::BINCODE_CONFIG).unwrap();
-
-            lzma_writer.finish().unwrap();
-
-            fs::rename(temp_path, chunk_path).unwrap();
+            if let Err(err) = with_temp_save(Self::chunk_path(path, pair.key), &pair.value)
+            {
+                eprintln!("error saving {} to file: {err}", any::type_name::<T>());
+            }
         })
     }
 
@@ -406,9 +399,11 @@ where
     {
         self.load_with(pos, |_parent_path, file|
         {
-            let mut lzma_reader = LzmaReader::new_decompressor(file).unwrap();
-
-            bincode::serde::decode_from_std_read(&mut lzma_reader, crate::common::BINCODE_CONFIG).unwrap()
+            match load_compressed(file)
+            {
+                Ok(x) => x,
+                Err(err) => panic!("error loading {} from file: {err}", any::type_name::<T>())
+            }
         })
     }
 

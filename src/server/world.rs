@@ -632,12 +632,12 @@ mod tests
 
             let mut entities = ServerEntities::new(None);
 
-            let player = passer.write().connect(PlayerInfo::new(
-                MessageBuffer::new(),
-                MessagePasser::new(stream),
-                entities.push_eager(false, EntityInfo{..Default::default()}),
-                "test_player".to_owned()
-            ));
+            let player = passer.write().connect(PlayerInfo{
+                message_buffer: MessageBuffer::new(),
+                message_passer: MessagePasser::new(stream),
+                entity: Some(entities.push_eager(false, EntityInfo{..Default::default()})),
+                name: "test_player".to_owned()
+            });
 
             let tilemap = TileMap::parse("tiles/tiles.json", "textures/tiles/")
                 .unwrap();

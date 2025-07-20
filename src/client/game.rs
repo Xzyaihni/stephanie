@@ -995,13 +995,6 @@ impl<'a> PlayerContainer<'a>
 
     pub fn on_player_connected(&mut self)
     {
-        let mut player_transform = self.game_state.entities().target(self.info.entity).unwrap();
-        let mut position = Vector3::repeat(CHUNK_VISUAL_SIZE / 2.0);
-        position.z = -TILE_SIZE + (player_transform.scale.z / 2.0);
-
-        player_transform.position = position;
-        drop(player_transform);
-
         self.camera_sync_instant();
     }
 
