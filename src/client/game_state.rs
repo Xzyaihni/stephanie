@@ -165,10 +165,9 @@ impl ClientEntitiesContainer
         self.entities.handle_message(create_info, message)
     }
 
-    pub fn update<Passer: EntityPasser>(
+    pub fn update(
         &mut self,
         world: &mut World,
-        passer: &RwLock<Passer>,
         damage_info: &CommonTextures,
         _is_trusted: bool,
         dt: f32
@@ -193,7 +192,7 @@ impl ClientEntitiesContainer
 
         crate::frame_time_this!{
             enemy_system_update,
-            enemy_system::update(&mut self.entities, world, passer, dt)
+            enemy_system::update(&mut self.entities, world, dt)
         };
 
         crate::frame_time_this!{
@@ -203,7 +202,7 @@ impl ClientEntitiesContainer
 
         crate::frame_time_this!{
             damaging_system_update,
-            damaging_system::update(&mut self.entities, world, passer, damage_info)
+            damaging_system::update(&mut self.entities, world, damage_info)
         };
 
         crate::frame_time_this!{
@@ -1268,7 +1267,6 @@ impl GameState
         {
             self.entities.update(
                 &mut self.world,
-                &self.connections_handler,
                 &self.common_textures,
                 self.is_trusted,
                 dt

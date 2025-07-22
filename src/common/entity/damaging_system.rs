@@ -3,8 +3,6 @@ use std::{
     cell::RefCell
 };
 
-use parking_lot::RwLock;
-
 use nalgebra::{Unit, Vector3};
 
 use serde::{Serialize, Deserialize};
@@ -29,11 +27,9 @@ use crate::{
         EntityInfo,
         PhysicalProperties,
         Transform,
-        Message,
         Side2d,
         AnyEntities,
         Entity,
-        EntityPasser,
         World,
         entity::{iterate_components_with, raycast_system, ClientEntities},
         world::{TILE_SIZE, TilePos}
@@ -165,12 +161,11 @@ pub struct DamagingResult
     pub damage: DamagePartial
 }
 
-pub fn damager<'a, 'b, E: AnyEntities, Passer: EntityPasser, TileDamager: FnMut(TilePos, DamagePartial)>(
+pub fn damager<'a, 'b, E: AnyEntities, TileDamager: FnMut(TilePos, DamagePartial)>(
     entities: &'a E,
-    mut passer: Option<&'b RwLock<Passer>>,
     textures: Option<&'a CommonTextures>,
     mut damage_tile: TileDamager
-) -> impl FnMut(DamagingResult) + use<'a, 'b, Passer, E, TileDamager>
+) -> impl FnMut(DamagingResult) + use<'a, 'b, E, TileDamager>
 {
     move |result|
     {
@@ -257,26 +252,12 @@ pub fn damager<'a, 'b, E: AnyEntities, Passer: EntityPasser, TileDamager: FnMut(
                     DamagePartial{height, ..damage}.with_direction(angle)
                 };
 
-                let mut damaged = false;
-                if entities.anatomy_exists(entity)
-                {
-                    damage_entity(entities, entity, result.other_entity, damage);
-
-                    if let Some(passer) = passer.as_mut()
-                    {
-                        passer.write().send_message(Message::SetAnatomy{
-                            entity,
-                            component: Box::new(entities.anatomy(entity).unwrap().clone())
-                        });
-                    }
-
-                    damaged = true;
-                }
-
-                if !damaged
+                if !entities.anatomy_exists(entity)
                 {
                     return;
                 }
+
+                damage_entity(entities, entity, result.other_entity, damage);
 
                 if let Some(textures) = textures.as_ref()
                 {
@@ -536,10 +517,9 @@ fn damaging_colliding(
     }).collect::<Vec<_>>()
 }
 
-pub fn update<Passer: EntityPasser>(
+pub fn update(
     entities: &mut ClientEntities,
     world: &mut World,
-    passer: &RwLock<Passer>,
     textures: &CommonTextures
 )
 {
@@ -562,7 +542,7 @@ pub fn update<Passer: EntityPasser>(
         }).collect::<Vec<_>>()
     };
 
-    damage_entities.into_iter().for_each(damager(entities, Some(passer), Some(textures), |tile_pos, damage|
+    damage_entities.into_iter().for_each(damager(entities, Some(textures), |tile_pos, damage|
     {
         world.modify_tile(tile_pos, |world, tile|
         {

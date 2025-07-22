@@ -1,43 +1,20 @@
 use std::cell::RefCell;
 
-use parking_lot::RwLock;
-
 use crate::common::{
     some_or_return,
     enemy,
     entity::{for_each_component, ClientEntities},
     World,
-    AnyEntities,
-    Enemy,
-    EntityPasser,
-    Message
+    Enemy
 };
 
 
-pub fn update<Passer: EntityPasser>(
+pub fn update(
     entities: &mut ClientEntities,
     world: &World,
-    passer: &RwLock<Passer>,
     dt: f32
 )
 {
-    let on_state_change = |entity|
-    {
-        let enemy = entities.enemy(entity).unwrap().clone();
-        let target = entities.target_ref(entity).unwrap().clone();
-
-        let mut passer = passer.write();
-        passer.send_message(Message::SetEnemy{
-            entity,
-            component: enemy.into()
-        });
-
-        passer.send_message(Message::SetTarget{
-            entity,
-            target: Box::new(target)
-        });
-    };
-
     for_each_component!(entities, enemy, |entity, enemy: &RefCell<Enemy>|
     {
         if enemy.borrow().check_hostiles()
@@ -68,9 +45,6 @@ pub fn update<Passer: EntityPasser>(
                     if enemy.seen_timer() >= 1.0
                     {
                         enemy.set_attacking(other_entity);
-                        drop(enemy);
-
-                        on_state_change(entity);
                     } else
                     {
                         enemy.increase_seen(visibility * 4.0 * dt);
@@ -78,16 +52,11 @@ pub fn update<Passer: EntityPasser>(
                 });
         }
 
-        let state_changed = enemy.borrow_mut().update(
+        let _state_changed = enemy.borrow_mut().update(
             entities,
             world,
             entity,
             dt
         );
-
-        if state_changed
-        {
-            on_state_change(entity);
-        }
     });
 }
