@@ -313,16 +313,7 @@ impl ClientOvermap
 
     pub fn exists_missing(&self) -> (u32, u32)
     {
-        self.chunks.iter().fold((0, 0), |(exists, missing), (_, x)|
-        {
-            if x.is_some()
-            {
-                (exists + 1, missing)
-            } else
-            {
-                (exists, missing + 1)
-            }
-        })
+        self.visual_overmap.exists_missing()
     }
 
     pub fn rescale(&mut self, camera_size: Vector2<f32>)

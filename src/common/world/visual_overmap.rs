@@ -755,6 +755,20 @@ impl VisualOvermap
         self.chunks[pos].chunk.mark_ungenerated();
     }
 
+    pub fn exists_missing(&self) -> (u32, u32)
+    {
+        self.chunks.iter().fold((0, 0), |(exists, missing), (_pos, x)|
+        {
+            if x.chunk.is_fully_generated()
+            {
+                (exists + 1, missing)
+            } else
+            {
+                (exists, missing + 1)
+            }
+        })
+    }
+
     pub fn regenerate_sky_occlusions(
         &mut self,
         chunks: &ChunksContainer<Option<Arc<Chunk>>>

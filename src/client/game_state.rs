@@ -963,7 +963,13 @@ impl GameState
         {
             let (exists, missing) = self.world.exists_missing();
 
-            let is_loading = missing != 0 || !self.connected_and_ready;
+            let is_loading = if DebugConfig::is_enabled(DebugTool::SkipLoading)
+            {
+                false
+            } else
+            {
+                missing != 0 || !self.connected_and_ready
+            };
 
             let loading = is_loading.then(||
             {

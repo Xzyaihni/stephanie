@@ -184,7 +184,8 @@ pub struct VisualChunk
     total_sky: ChunkSlice<[bool; CHUNK_SIZE * CHUNK_SIZE]>,
     draw_indices: ChunkSlice<Box<[usize]>>,
     draw_next: ChunkSlice<bool>,
-    generated: bool
+    generated: bool,
+    fully_generated: bool
 }
 
 impl VisualChunk
@@ -202,7 +203,8 @@ impl VisualChunk
             total_sky: Self::create_empty_slice(|| [false; CHUNK_SIZE * CHUNK_SIZE]),
             draw_indices: Self::create_empty_slice(|| Box::from([])),
             draw_next: [false; CHUNK_SIZE],
-            generated: false
+            generated: false,
+            fully_generated: false
         }
     }
 
@@ -317,6 +319,7 @@ impl VisualChunk
             light_occluders: HashMap::new(),
             vertical_occluders,
             generated: true,
+            fully_generated: true,
             sky_lights,
             sky: chunk_info.sky,
             total_sky: chunk_info.total_sky,
@@ -693,6 +696,11 @@ impl VisualChunk
         let occluding = !tilemap[tile].transparent;
 
         occluding
+    }
+
+    pub fn is_fully_generated(&self) -> bool
+    {
+        self.fully_generated
     }
 
     pub fn is_generated(&self) -> bool
