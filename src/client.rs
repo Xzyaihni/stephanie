@@ -227,6 +227,8 @@ impl Client
 
                 let game_state = some_or_return!(self.game_state.as_ref());
 
+                game_state.borrow_mut().update_loading();
+
                 if self.game.player_exists()
                 {
                     if game_state.borrow_mut().player_connected()

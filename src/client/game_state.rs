@@ -957,6 +957,33 @@ impl GameState
         }
     }
 
+    pub fn update_loading(&mut self)
+    {
+        if self.is_loading
+        {
+            let (exists, missing) = self.world.exists_missing();
+
+            let is_loading = missing != 0 || !self.connected_and_ready;
+
+            let loading = is_loading.then(||
+            {
+                let world_progress = exists as f32 / (exists + missing) as f32;
+
+                let f = 0.5;
+
+                if self.connected_and_ready
+                {
+                    f + world_progress * (1.0 - f)
+                } else
+                {
+                    world_progress * f
+                }
+            });
+
+            self.set_loading(loading);
+        }
+    }
+
     fn process_message_inner(&mut self, create_info: &mut UpdateBuffersInfo, message: Message)
     {
         if DebugConfig::is_enabled(DebugTool::ShowMessages)
@@ -965,37 +992,7 @@ impl GameState
         }
 
         let message = some_or_return!{self.entities.handle_message(create_info, message)};
-        let message = if let Some(x) = self.world.handle_message(message)
-        {
-            x
-        } else
-        {
-            if self.is_loading
-            {
-                let (exists, missing) = self.world.exists_missing();
-
-                let is_loading = missing != 0 || !self.connected_and_ready;
-
-                let loading = is_loading.then(||
-                {
-                    let world_progress = exists as f32 / (exists + missing) as f32;
-
-                    let f = 0.5;
-
-                    if self.connected_and_ready
-                    {
-                        f + world_progress * (1.0 - f)
-                    } else
-                    {
-                        world_progress * f
-                    }
-                });
-
-                self.set_loading(loading);
-            }
-
-            return;
-        };
+        let message = some_or_return!{self.world.handle_message(message)};
 
         match message
         {

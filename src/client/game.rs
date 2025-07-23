@@ -1442,8 +1442,7 @@ impl<'a> PlayerContainer<'a>
 
         let interact_button = ||
         {
-            self.game_state.controls.key_for(&Control::Interact).map(ToString::to_string)
-                .unwrap_or_else(|| "unassigned".to_owned())
+            self.game_state.controls.key_name(&Control::Interact)
         };
 
         let animation_duration = 0.7;

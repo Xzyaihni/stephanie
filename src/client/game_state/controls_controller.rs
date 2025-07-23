@@ -346,6 +346,11 @@ impl<Id> ControlsController<Id>
         }
     }
 
+    pub fn key_name(&self, control: &Control) -> String
+    {
+        self.key_for(control).map(ToString::to_string).unwrap_or_else(|| "unassigned".to_owned())
+    }
+
     pub fn key_for(&self, control: &Control) -> Option<&KeyMapping>
     {
         self.key_mapping.get_back(control)

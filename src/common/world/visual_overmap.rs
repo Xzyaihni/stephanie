@@ -793,12 +793,18 @@ impl VisualOvermap
 
                 let this_chunk = &mut self.chunks[local_pos].occlusion;
 
-                let is_more_occluded = occlusions.occluded[CHUNK_SIZE - 1].iter()
-                    .zip(this_chunk.as_ref().unwrap().occluded[CHUNK_SIZE - 1].iter())
-                    .any(|(new, old)|
-                    {
-                        (!old) && *new
-                    });
+                let is_more_occluded = if this_chunk.is_none()
+                {
+                    true
+                } else
+                {
+                    occlusions.occluded[CHUNK_SIZE - 1].iter()
+                        .zip(this_chunk.as_ref().unwrap().occluded[CHUNK_SIZE - 1].iter())
+                        .any(|(new, old)|
+                        {
+                            (!old) && *new
+                        })
+                };
 
                 if !is_more_occluded
                 {
