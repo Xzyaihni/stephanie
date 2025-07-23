@@ -1060,9 +1060,6 @@ impl<'a> PlayerContainer<'a>
                 if let Some(mut anatomy) = entities.anatomy_mut(self.info.entity)
                 {
                     anatomy.override_crawling(state.to_bool());
-
-                    drop(anatomy);
-                    entities.anatomy_changed(self.info.entity);
                 }
             },
             Control::Poke =>

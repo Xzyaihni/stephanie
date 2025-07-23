@@ -13,6 +13,7 @@ use yanyaengine::{game_object::*, Transform};
 use crate::{
     debug_config::*,
     server,
+    client,
     common::{
         some_or_return,
         write_log,
@@ -1080,7 +1081,12 @@ macro_rules! define_entities_both
 
                 this.on_anatomy(Box::new(move |entities, entity|
                 {
-                    entities.anatomy_changed(entity);
+                    if let Some(mut character) = entities.character_mut(entity)
+                    {
+                        let anatomy = entities.anatomy(entity).unwrap();
+
+                        character.anatomy_changed(&anatomy);
+                    }
                 }));
 
                 this
@@ -1893,16 +1899,6 @@ macro_rules! define_entities_both
                     )
                 });
             }
-
-            pub fn anatomy_changed(&self, entity: Entity)
-            {
-                if let Some(mut character) = self.character_mut(entity)
-                {
-                    let anatomy = self.anatomy(entity).unwrap();
-
-                    character.anatomy_changed(&anatomy);
-                }
-            }
         }
 
         impl ServerEntities
@@ -2308,6 +2304,25 @@ macro_rules! define_entities
 
         impl ClientEntities
         {
+            pub fn sync_changed(&self, passer: &mut client::ConnectionsHandler)
+            {
+                let changed_entities = self.changed_entities.borrow();
+
+                $(
+                    changed_entities.$name.iter().copied().for_each(|entity|
+                    {
+                        // im not server syncing components that got deleted, i dont think that should be an issue?
+                        if let Some(value) = get_entity!(self, entity, get, $name)
+                        {
+                            passer.send_message(Message::$message_name{
+                                entity,
+                                component: Box::new((*value).clone())
+                            });
+                        }
+                    });
+                )+
+            }
+
             pub fn handle_message(
                 &mut self,
                 create_info: &mut UpdateBuffersInfo,

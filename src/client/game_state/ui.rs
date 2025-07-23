@@ -1397,7 +1397,7 @@ impl Ui
                     return;
                 }
 
-                some_or_return!(entities.anatomy_mut(entity)).for_accessed_parts(|part|
+                some_or_return!(entities.anatomy_mut_no_change(entity)).for_accessed_parts(|part|
                 {
                     let default_lifetime = 2.0;
 
