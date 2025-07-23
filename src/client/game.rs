@@ -1458,12 +1458,12 @@ impl<'a> PlayerContainer<'a>
             {
                 if let Some(door_entity) = collider.collided().iter().find(|x| entities.door_exists(**x)).copied()
                 {
-                    let mut door = entities.door_mut(door_entity).unwrap();
-
-                    let new_state = !door.is_open();
-
                     if self.info.interacted
                     {
+                        let mut door = entities.door_mut(door_entity).unwrap();
+
+                        let new_state = !door.is_open();
+
                         door.set_open(entities, door_entity, self.info.entity, new_state);
                     } else
                     {
