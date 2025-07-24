@@ -382,6 +382,11 @@ impl World
         self.overmap.contains(Self::chunk_of(pos))
     }
 
+    pub fn debug_visual_overmap(&self)
+    {
+        self.overmap.debug_visual_overmap();
+    }
+
     pub fn debug_chunk(&self, pos: Pos3<f32>, visual: bool) -> String
     {
         self.overmap.debug_chunk(Self::chunk_of(pos), visual)

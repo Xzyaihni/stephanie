@@ -327,18 +327,18 @@ impl ClientOvermap
         {
             self.chunks[local_pos] = Some(Arc::new(chunk));
 
-            self.visual_overmap.try_generate_sky_occlusion(&self.chunks, local_pos);
-
-            self.visual_overmap.mark_ungenerated(local_pos);
-
             local_pos.directions_inclusive().flatten().for_each(|pos|
             {
-                if self.get_local(pos).is_some()
-                {
-                    self.check_visual(pos);
-                }
+                self.visual_overmap.mark_ungenerated(pos);
             });
+
+            self.visual_overmap.try_generate_sky_occlusion(&self.chunks, local_pos);
         }
+    }
+
+    pub fn debug_visual_overmap(&self)
+    {
+        self.visual_overmap.debug_visual_overmap();
     }
 
     pub fn debug_chunk(
@@ -424,22 +424,17 @@ impl ClientOvermap
         if z_changed
         {
             self.visual_overmap.regenerate_sky_occlusions(&self.chunks);
+
+            if position_difference.z < 0
+            {
+                self.visual_overmap.moved_down(&self.chunks);
+            }
         }
     }
 
     fn request_chunk(&self, pos: GlobalPos)
     {
         self.world_receiver.request_chunk(pos);
-    }
-
-    fn check_visual(&mut self, pos: LocalPos)
-    {
-        let this_visual_exists = self.visual_overmap.is_generated(pos);
-
-        if !this_visual_exists
-        {
-            self.visual_overmap.try_generate(&self.chunks, pos);
-        }
     }
 
     pub fn debug_tile_occlusion(&self, entities: &ClientEntities)
@@ -566,11 +561,6 @@ impl Overmap<Option<Arc<Chunk>>> for ClientOvermap
         self.visual_overmap.swap(a, b);
     }
 
-    fn mark_ungenerated(&mut self, pos: LocalPos)
-    {
-        self.visual_overmap.mark_ungenerated(pos);
-    }
-
     fn generate_missing(&mut self, _shift: Option<Pos3<i32>>)
     {
         self.chunk_ordering
@@ -582,6 +572,20 @@ impl Overmap<Option<Arc<Chunk>>> for ClientOvermap
 
                 self.request_chunk(global_pos);
             });
+
+        let do_mark_ungenerated_for_edges_here = ();
+        // self.visual_overmap.mark_ungenerated(pos);
+            /*let is_edge_chunk = old_local.pos.zip(self.size()).any(|(pos, size)|
+            {
+                pos == 0 || pos == (size - 1)
+            });
+
+            if is_edge_chunk
+            {
+                self.mark_past_edge(old_local);
+            }*/
+
+        self.debug_visual_overmap();
     }
 }
 

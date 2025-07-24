@@ -29,8 +29,6 @@ pub trait Overmap<T>: OvermapIndexing
     fn get_local(&self, pos: LocalPos) -> &T;
     fn is_empty(&self, _pos: LocalPos) -> bool { false }
 
-    fn mark_ungenerated(&mut self, pos: LocalPos);
-
     fn get(&self, pos: GlobalPos) -> Option<&T>
     {
         self.to_local(pos).map(|local_pos| self.get_local(local_pos))
@@ -106,16 +104,6 @@ pub trait Overmap<T>: OvermapIndexing
         {
             //move the chunk to the new position
             self.swap(old_local, local_pos);
-
-            let is_edge_chunk = old_local.pos.zip(self.size()).any(|(pos, size)|
-            {
-                pos == 0 || pos == (size - 1)
-            });
-
-            if is_edge_chunk
-            {
-                self.mark_ungenerated(local_pos);
-            }
         } else
         {
             //chunk now outside the player range, remove it

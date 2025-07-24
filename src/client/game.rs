@@ -253,6 +253,30 @@ impl Game
         true
     }
 
+    fn pop_position(args: &mut PrimitiveArgs) -> Result<Vector3<f32>, lisp::Error>
+    {
+        let value = args.next().unwrap();
+
+        Self::parse_position(OutputWrapperRef::new(args.memory, value))
+    }
+
+    fn parse_position(value: OutputWrapperRef) -> Result<Vector3<f32>, lisp::Error>
+    {
+        let mut list = value.as_list();
+
+        let mut next_float = ||
+        {
+            let current = list.clone()?;
+            let value = current.car().as_float();
+
+            list = current.cdr().as_list();
+
+            value
+        };
+
+        Ok(Vector3::new(next_float()?, next_float()?, next_float()?))
+    }
+
     fn pop_entity(args: &mut PrimitiveArgs) -> Result<Entity, lisp::Error>
     {
         let mut values = args.next().unwrap().as_pairs_list(args.memory)?.into_iter();
@@ -287,8 +311,7 @@ impl Game
         F: Fn(
             &mut ClientEntities,
             Entity,
-            &mut LispMemory,
-            LispValue
+            OutputWrapperRef
         ) -> Result<(), lisp::Error> + 'static
     {
         let game_state = self.game_state.clone();
@@ -302,9 +325,11 @@ impl Game
                     let entities = game_state.entities_mut();
 
                     let entity = Self::pop_entity(&mut args)?;
-                    let value = args.next().unwrap();
 
-                    f(entities, entity, args.memory, value)?;
+                    let value = args.next().unwrap();
+                    let value = OutputWrapperRef::new(args.memory, value);
+
+                    f(entities, entity, value)?;
 
                     Ok(().into())
                 })
@@ -481,13 +506,12 @@ impl Game
             let game_state = self.game_state.clone();
 
             primitives.add(
-                "print-chunk-of",
+                "print-chunk-at",
                 PrimitiveProcedureInfo::new_simple(1..=2, Effect::Impure, move |mut args|
                 {
                     with_game_state(&game_state, |game_state|
                     {
-                        let entity = Self::pop_entity(&mut args)?;
-                        let position = game_state.entities().transform(entity).unwrap().position;
+                        let position = Self::pop_position(&mut args)?;
 
                         let visual = args.next().map(|x| x.as_bool()).unwrap_or(Ok(false))?;
 
@@ -501,7 +525,23 @@ impl Game
                 }));
         }
 
-        self.add_simple_setter(&mut primitives, "set-floating", |entities, entity, _memory, value|
+        {
+            let game_state = self.game_state.clone();
+
+            primitives.add(
+                "debug-visual-overmap",
+                PrimitiveProcedureInfo::new_simple(0, Effect::Impure, move |_args|
+                {
+                    with_game_state(&game_state, |game_state|
+                    {
+                        game_state.world.debug_visual_overmap();
+
+                        Ok(().into())
+                    })
+                }));
+        }
+
+        self.add_simple_setter(&mut primitives, "set-floating", |entities, entity, value|
         {
             let state = value.as_bool()?;
 
@@ -510,7 +550,7 @@ impl Game
             Ok(())
         });
 
-        self.add_simple_setter(&mut primitives, "set-speed", |entities, entity, _memory, value|
+        self.add_simple_setter(&mut primitives, "set-speed", |entities, entity, value|
         {
             let speed = value.as_float()?;
 
@@ -519,7 +559,7 @@ impl Game
             Ok(())
         });
 
-        self.add_simple_setter(&mut primitives, "set-ghost", |entities, entity, _memory, value|
+        self.add_simple_setter(&mut primitives, "set-ghost", |entities, entity, value|
         {
             let state = value.as_bool()?;
 
@@ -528,37 +568,25 @@ impl Game
             Ok(())
         });
 
-        self.add_simple_setter(&mut primitives, "set-position", |entities, entity, memory, value|
+        self.add_simple_setter(&mut primitives, "set-position", |entities, entity, value|
         {
-            let mut list = value.as_list(memory);
-
-            let mut next_float = ||
-            {
-                let current = list.clone()?;
-                let value = current.car().as_float();
-
-                list = current.cdr().as_list(memory);
-
-                value
-            };
-
-            let position = Vector3::new(next_float()?, next_float()?, next_float()?);
+            let position = Self::parse_position(value)?;
 
             get_component_mut!(target, entities, entity).position = position;
 
             Ok(())
         });
 
-        self.add_simple_setter(&mut primitives, "set-rotation", |entities, entity, _memory, value|
+        self.add_simple_setter(&mut primitives, "set-rotation", |entities, entity, value|
         {
             get_component_mut!(target, entities, entity).rotation = value.as_float()?;
 
             Ok(())
         });
 
-        self.add_simple_setter(&mut primitives, "set-faction", |entities, entity, memory, value|
+        self.add_simple_setter(&mut primitives, "set-faction", |entities, entity, value|
         {
-            let faction = value.as_symbol(memory)?;
+            let faction = value.as_symbol()?;
             let faction: String = faction.to_lowercase().chars().enumerate().map(|(i, c)|
             {
                 if i == 0

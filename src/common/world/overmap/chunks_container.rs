@@ -531,11 +531,47 @@ impl<T> FlatChunksContainer<T>
     }
 }
 
-impl<T: fmt::Display> FlatChunksContainer<T>
+impl<T: Display> FlatChunksContainer<T>
 {
     pub fn pretty_print(&self) -> String
     {
         self.pretty_print_with(T::to_string)
+    }
+}
+
+pub struct DisplayChunksContainer<T>(ChunksContainer<T>);
+
+impl<T: Display> Display for DisplayChunksContainer<T>
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
+    {
+        let s = (0..self.0.size().z).map(|z|
+        {
+            let z_slice = self.0.map_slice_ref(z, |(_pos, x)| x.to_string()).pretty_print();
+
+            format!("z {z}:\n{z_slice}")
+        }).reduce(|acc, s|
+        {
+            acc + "\n" + &s
+        }).unwrap_or_default();
+
+        write!(f, "{s}")
+    }
+}
+
+impl<T: Display> Debug for DisplayChunksContainer<T>
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
+    {
+        debug_3d_slices(f, self.0.size(), |pos| self.0[pos].to_string())
+    }
+}
+
+impl<T: Debug> Debug for ChunksContainer<T>
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
+    {
+        debug_3d_slices(f, self.size(), |pos| format!("{:?}", self[pos]))
     }
 }
 
@@ -632,22 +668,4 @@ pub fn debug_3d_slices(
     }
 
     s.finish()
-}
-
-pub struct DisplayChunksContainer<T>(ChunksContainer<T>);
-
-impl<T: Display> Debug for DisplayChunksContainer<T>
-{
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
-    {
-        debug_3d_slices(f, self.0.size(), |pos| self.0[pos].to_string())
-    }
-}
-
-impl<T: Debug> Debug for ChunksContainer<T>
-{
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
-    {
-        debug_3d_slices(f, self.size(), |pos| format!("{:?}", self[pos]))
-    }
 }

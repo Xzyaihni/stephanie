@@ -6,17 +6,21 @@
         (position-entity x)
         x))
 
+(define (position-combine f a b)
+    (map
+        (lambda (x) (f (car x) (cdr x)))
+        (zip a b)))
+
+(define (position-add a b)
+    (position-combine + a b))
+
 (define (teleport a b)
     (set-position a (entity->position b)))
 
 (define (move a amount)
     (set-position
         a
-        (map
-            (lambda (x) (+ (car x) (cdr x)))
-            (zip
-                (position-entity a)
-                amount))))
+        (position-add (position-entity a) amount)))
 
 (define (distance a b)
     (sqrt

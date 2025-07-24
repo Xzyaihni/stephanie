@@ -435,8 +435,6 @@ impl<S: SaveLoad<WorldChunksBlock>> Overmap<Option<WorldChunksBlock>> for Server
         self.get(pos).map(|x| x.is_some()).unwrap_or(false)
     }
 
-    fn mark_ungenerated(&mut self, _pos: LocalPos) {}
-
     fn generate_missing(&mut self, offset: Option<Pos3<i32>>)
     {
         self.generate_missing_inner(offset, false)

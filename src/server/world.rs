@@ -135,8 +135,6 @@ impl Overmap<bool> for EntitiesTracker
         &self.values[pos]
     }
 
-    fn mark_ungenerated(&mut self, _pos: LocalPos) {}
-
     fn generate_missing(&mut self, _offset: Option<Pos3<i32>>)
     {
         self.needs_loading = true;

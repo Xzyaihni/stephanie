@@ -1,9 +1,9 @@
 use std::{
+    fmt::{self, Display},
     ops::Index,
     thread::{self, JoinHandle},
     iter,
     time::Instant,
-    collections::HashSet,
     sync::{
         Arc,
         mpsc::{self, Receiver, Sender}
@@ -108,6 +108,11 @@ impl VisibilityChecker
     fn player_height(&self) -> usize
     {
         self.player_position.read().to_tile().z
+    }
+
+    fn player_chunk_height(&self) -> i32
+    {
+        self.player_position.read().rounded().0.z
     }
 
     pub fn height(&self, pos: LocalPos) -> usize
@@ -443,17 +448,23 @@ impl Default for VisualOvermapChunk
     }
 }
 
+struct VisualChunkRequest
+{
+    tile_reader: TileReader<Chunk>,
+    occlusion_reader: TileReader<ChunkSkyOcclusion>,
+    chunk_pos: GlobalPos,
+    timestamp: Instant
+}
+
 pub struct VisualOvermap
 {
     tiles_factory: TilesFactory,
     chunks: ChunksContainer<VisualOvermapChunk>,
-    dependents: HashSet<Pos3<usize>>,
-    waiting_chunks: HashSet<Pos3<usize>>,
     occluded: ChunksContainer<[OccludedSlice; CHUNK_SIZE]>,
     visibility_checker: VisibilityChecker,
     generate_thread: Option<JoinHandle<()>>,
     receiver: Receiver<VisualGenerated>,
-    generate_sender: Option<Sender<(TileReader<Chunk>, TileReader<ChunkSkyOcclusion>, GlobalPos, Instant)>>
+    generate_sender: Option<Sender<VisualChunkRequest>>
 }
 
 impl Drop for VisualOvermap
@@ -510,7 +521,7 @@ impl VisualOvermap
 
         let generate_thread = thread::spawn(move ||
         {
-            while let Ok((tile_reader, occlusion_reader, chunk_pos, timestamp)) = generate_receiver.recv()
+            while let Ok(VisualChunkRequest{tile_reader, occlusion_reader, chunk_pos, timestamp}) = generate_receiver.recv()
             {
                 let chunk_info = VisualChunk::create(
                     info_map.clone(),
@@ -533,8 +544,6 @@ impl VisualOvermap
         Self{
             tiles_factory,
             chunks,
-            dependents: HashSet::new(),
-            waiting_chunks: HashSet::new(),
             occluded,
             visibility_checker,
             generate_thread: Some(generate_thread),
@@ -563,7 +572,6 @@ impl VisualOvermap
         {
             if self.chunks[forward].occlusion.is_none()
             {
-                self.dependents.insert(forward.pos);
                 return false;
             }
         }
@@ -571,52 +579,6 @@ impl VisualOvermap
         self.generate_sky_occlusion(chunks, pos);
 
         true
-    }
-
-    pub fn try_generate(
-        &mut self,
-        chunks: &ChunksContainer<Option<Arc<Chunk>>>,
-        pos: LocalPos
-    )
-    {
-        if self.is_generated(pos)
-        {
-            return;
-        }
-
-        if !TileReader::creatable(chunks, pos)
-        {
-            return;
-        }
-
-        if !creatable_with(&self.chunks, pos, |chunk| chunk.occlusion.is_some())
-        {
-            self.waiting_chunks.insert(pos.pos);
-            return;
-        }
-
-        self.force_generate(chunks, pos);
-    }
-
-    fn generate_dependents(
-        &mut self,
-        chunks: &ChunksContainer<Option<Arc<Chunk>>>,
-        pos: LocalPos
-    )
-    {
-        if self.dependents.contains(&pos.pos)
-        {
-            let below = pos.back().expect("a dependent must have a child");
-
-            if self.try_generate_sky_occlusion(chunks, below)
-            {
-                self.dependents.remove(&pos.pos);
-
-                self.try_generate(chunks, below);
-
-                self.generate_dependents(chunks, below);
-            }
-        }
     }
 
     pub fn try_regenerate(
@@ -656,7 +618,14 @@ impl VisualOvermap
 
         let chunk_pos = self.to_global(pos);
 
-        self.generate_sender.as_mut().unwrap().send((tile_reader, occlusion_reader, chunk_pos, Instant::now())).unwrap();
+        let request = VisualChunkRequest{
+            tile_reader,
+            occlusion_reader,
+            chunk_pos,
+            timestamp: Instant::now()
+        };
+
+        self.generate_sender.as_mut().unwrap().send(request).unwrap();
     }
 
     fn sky_occlusion_of(
@@ -683,25 +652,18 @@ impl VisualOvermap
         let occlusion = self.sky_occlusion_of(chunks, pos);
         self.chunks[pos].occlusion = Some(occlusion);
 
-        pos.directions().flatten().for_each(|pos|
-        {
-            self.try_generate_sky_occlusion(chunks, pos);
-        });
-
         pos.directions_inclusive().flatten().for_each(|pos|
         {
-            if self.waiting_chunks.contains(&pos.pos)
+            if creatable_with(&self.chunks, pos, |chunk| chunk.occlusion.is_some())
             {
-                if creatable_with(&self.chunks, pos, |chunk| chunk.occlusion.is_some())
-                {
-                    self.waiting_chunks.remove(&pos.pos);
-
-                    self.force_generate(chunks, pos);
-                }
+                self.force_generate(chunks, pos);
             }
         });
 
-        self.generate_dependents(chunks, pos);
+        if let Some(back) = pos.back()
+        {
+            self.try_generate_sky_occlusion(chunks, back);
+        }
     }
 
     pub fn update(&mut self, _dt: f32)
@@ -769,6 +731,20 @@ impl VisualOvermap
         })
     }
 
+    pub fn moved_down(
+        &mut self,
+        chunks: &ChunksContainer<Option<Arc<Chunk>>>
+    )
+    {
+        let z_size = self.chunks.size().z;
+        chunks.flat_slice_iter(z_size - 1)
+            .filter(|(_pos, chunk)| chunk.is_some())
+            .for_each(|(pos, _chunk)|
+            {
+                self.try_generate_sky_occlusion(chunks, LocalPos{pos: pos.pos, size: Pos3{z: z_size, ..pos.size}});
+            });
+    }
+
     pub fn regenerate_sky_occlusions(
         &mut self,
         chunks: &ChunksContainer<Option<Arc<Chunk>>>
@@ -807,17 +783,17 @@ impl VisualOvermap
 
                 let this_chunk = &mut self.chunks[local_pos].occlusion;
 
-                let is_more_occluded = if this_chunk.is_none()
-                {
-                    true
-                } else
+                let is_more_occluded = if let Some(this_occlusion) = this_chunk.as_ref()
                 {
                     occlusions.occluded[CHUNK_SIZE - 1].iter()
-                        .zip(this_chunk.as_ref().unwrap().occluded[CHUNK_SIZE - 1].iter())
+                        .zip(this_occlusion.occluded[CHUNK_SIZE - 1].iter())
                         .any(|(new, old)|
                         {
                             (!old) && *new
                         })
+                } else
+                {
+                    return false;
                 };
 
                 if !is_more_occluded
@@ -862,11 +838,6 @@ impl VisualOvermap
         &self.chunks[pos].chunk
     }
 
-    pub fn is_generated(&self, pos: LocalPos) -> bool
-    {
-        self.get(pos).is_generated()
-    }
-
     pub fn remove(&mut self, pos: LocalPos)
     {
         self.chunks[pos] = VisualOvermapChunk::default();
@@ -898,6 +869,49 @@ impl VisualOvermap
 
             self.chunks[pos].chunk.update_sky_buffers(info, height);
         });
+    }
+
+    pub fn debug_visual_overmap(&self)
+    {
+        #[derive(Default)]
+        struct Fields
+        {
+            occlusion_generated: bool,
+            generated: bool,
+            fully_generated: bool
+        }
+
+        impl Display for Fields
+        {
+            fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
+            {
+                fn g(state: bool, letter: char) -> char
+                {
+                    if state { letter } else { '_' }
+                }
+
+                write!(
+                    f,
+                    "{}{}{}",
+                    g(self.occlusion_generated, 'o'),
+                    g(self.generated, 'g'),
+                    g(self.fully_generated, 'f')
+                )
+            }
+        }
+
+        let mut states: ChunksContainer<Fields> = ChunksContainer::new(self.chunks.size());
+
+        self.chunks.iter().for_each(|(pos, chunk)|
+        {
+            let state = &mut states[pos];
+
+            state.occlusion_generated = chunk.occlusion.is_some();
+            state.generated = chunk.chunk.is_generated();
+            state.fully_generated = chunk.chunk.is_fully_generated();
+        });
+
+        eprintln!("{}", states.display());
     }
 
     pub fn debug_tile_occlusion(&self, entities: &ClientEntities)
@@ -1165,7 +1179,7 @@ impl VisualOvermap
     pub fn sky_occluded(&self, transform: &Transform) -> bool
     {
         let size_z = self.visibility_checker.size.z;
-        let player_position_z = self.visibility_checker.player_position.read().rounded().0.z;
+        let player_position_z = self.visibility_checker.player_chunk_height();
         let player_height = self.visibility_checker.player_height();
 
         let camera_z = size_z / 2;
@@ -1276,7 +1290,7 @@ impl VisualOvermap
         id: usize
     )
     {
-        let player_position = self.visibility_checker.player_position.read().rounded().0.z;
+        let player_position = self.visibility_checker.player_chunk_height();
         for_visible_2d(&self.chunks, &self.visibility_checker).for_each(|pos|
         {
             if let Some((pos, height)) = Self::with_position(pos, visibility.position.z, player_position)
@@ -1302,7 +1316,7 @@ impl VisualOvermap
     )
     {
         let mut f = Some(f);
-        let player_position = self.visibility_checker.player_position.read().rounded().0.z;
+        let player_position = self.visibility_checker.player_chunk_height();
         for_visible_2d(&self.chunks, &self.visibility_checker).for_each(|pos|
         {
             let (pos, height) = Self::with_position(pos, visibility.position.z, player_position).unwrap();
