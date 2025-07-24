@@ -36,15 +36,13 @@ pub use overmap::{
     Overmap,
     FlatChunksContainer,
     ChunksContainer,
-    chunks_container::{
-        debug_3d_slices,
-        Axis
-    },
+    chunks_container::debug_3d_slices,
     chunk::{
         self,
         CHUNK_SIZE,
         CHUNK_VISUAL_SIZE,
         TILE_SIZE,
+        Axis,
         Pos3,
         Chunk,
         ChunkLocal,

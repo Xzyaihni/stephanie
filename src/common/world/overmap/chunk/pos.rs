@@ -12,6 +12,14 @@ use nalgebra::{Vector3, Point3, Scalar};
 use super::{CHUNK_SIZE, CHUNK_VISUAL_SIZE, TILE_SIZE};
 
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Axis
+{
+    X,
+    Y,
+    Z
+}
+
 #[derive(Debug, Clone, Copy, Hash, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Pos3<T>
 {
@@ -33,6 +41,14 @@ impl<T, V> Pos3<(T, V)>
             y: self.y.1,
             z: self.z.1
         })
+    }
+}
+
+impl Pos3<Axis>
+{
+    pub fn new_axis() -> Self
+    {
+        Self{x: Axis::X, y: Axis::Y, z: Axis::Z}
     }
 }
 
@@ -131,6 +147,29 @@ impl Pos3<usize>
 
 impl Pos3<usize>
 {
+    pub fn positions_axis(&self, axis: Axis, fixed: usize) -> impl Iterator<Item=Pos3<usize>>
+    {
+        let (size_one, size_two) = match axis
+        {
+            Axis::X => (self.y, self.z),
+            Axis::Y => (self.x, self.z),
+            Axis::Z => (self.x, self.y)
+        };
+
+        (0..size_one).flat_map(move |a|
+        {
+            (0..size_two).map(move |b|
+            {
+                match axis
+                {
+                    Axis::X => Pos3::new(fixed, a, b),
+                    Axis::Y => Pos3::new(a, fixed, b),
+                    Axis::Z => Pos3::new(a, b, fixed)
+                }
+            })
+        })
+    }
+
     pub fn positions_2d(self) -> impl Iterator<Item=LocalPos>
     {
         (0..self.y).flat_map(move |y|

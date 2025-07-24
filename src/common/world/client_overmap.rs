@@ -28,6 +28,7 @@ use super::{
         chunk::{
             TILE_SIZE,
             CHUNK_SIZE,
+            Axis,
             Pos3,
             Chunk,
             GlobalPos,
@@ -561,7 +562,7 @@ impl Overmap<Option<Arc<Chunk>>> for ClientOvermap
         self.visual_overmap.swap(a, b);
     }
 
-    fn generate_missing(&mut self, _shift: Option<Pos3<i32>>)
+    fn generate_missing(&mut self, shift: Option<Pos3<i32>>)
     {
         self.chunk_ordering
             .iter()
@@ -573,19 +574,45 @@ impl Overmap<Option<Arc<Chunk>>> for ClientOvermap
                 self.request_chunk(global_pos);
             });
 
-        let do_mark_ungenerated_for_edges_here = ();
-        // self.visual_overmap.mark_ungenerated(pos);
-            /*let is_edge_chunk = old_local.pos.zip(self.size()).any(|(pos, size)|
+        if let Some(offset) = shift
+        {
+            let size = self.size();
+            offset.zip(size).map(|(x, size)|
             {
-                pos == 0 || pos == (size - 1)
+                match x.cmp(&0)
+                {
+                    Ordering::Equal => None,
+                    Ordering::Less =>
+                    {
+                        let value = -x;
+
+                        (value < size as i32).then(|| value as usize)
+                    },
+                    Ordering::Greater =>
+                    {
+                        let value = size as i32 - 1 - x;
+
+                        (value >= 0).then(|| value as usize)
+                    }
+                }
+            }).zip(Pos3::new_axis()).map(|(plane, axis)|
+            {
+                if let Axis::Z = axis
+                {
+                    return;
+                }
+
+                if let Some(plane) = plane
+                {
+                    size.positions_axis(axis, plane).for_each(|pos|
+                    {
+                        let pos = LocalPos{pos, size};
+
+                        self.visual_overmap.mark_ungenerated(pos);
+                    });
+                }
             });
-
-            if is_edge_chunk
-            {
-                self.mark_past_edge(old_local);
-            }*/
-
-        self.debug_visual_overmap();
+        }
     }
 }
 

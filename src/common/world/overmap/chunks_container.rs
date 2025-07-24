@@ -14,19 +14,12 @@ use serde::{Serialize, Deserialize};
 use crate::common::{
     get_two_mut,
     world::{
+        Axis,
         Pos3,
         LocalPos
     }
 };
 
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum Axis
-{
-    X,
-    Y,
-    Z
-}
 
 macro_rules! implement_common
 {
@@ -334,27 +327,7 @@ impl<T> ChunksContainer<T>
 
     pub fn iter_axis(&self, axis: Axis, fixed: usize) -> impl Iterator<Item=(Pos3<usize>, &T)>
     {
-        let size = self.indexer.size();
-
-        let (size_one, size_two) = match axis
-        {
-            Axis::X => (size.y, size.z),
-            Axis::Y => (size.x, size.z),
-            Axis::Z => (size.x, size.y)
-        };
-
-        (0..size_one).flat_map(move |a|
-        {
-            (0..size_two).map(move |b|
-            {
-                match axis
-                {
-                    Axis::X => Pos3::new(fixed, a, b),
-                    Axis::Y => Pos3::new(a, fixed, b),
-                    Axis::Z => Pos3::new(a, b, fixed)
-                }
-            })
-        }).map(|pos| (pos, &self[pos]))
+        self.indexer.size().clone().positions_axis(axis, fixed).map(|pos| (pos, &self[pos]))
     }
 
     fn flat_slice_range(&self, z: usize) -> (usize, usize)
