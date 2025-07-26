@@ -631,16 +631,36 @@ impl GameServer
         entity: Entity
     )
     {
-        let message = match message
+        if let Message::RepeatMessage{message} = message
         {
-            Message::RepeatMessage{message} =>
-            {
-                self.send_message(*message);
+            self.send_message(*message);
 
-                return;
-            },
-            x => x
-        };
+            return;
+        }
+
+        {
+            let sync_transform = |entity: Entity, transform: Transform|
+            {
+                if let Some(mut current) = self.entities.transform_mut(entity)
+                {
+                    *current = transform;
+                }
+            };
+
+            match &message
+            {
+                Message::SetTarget{entity, target} =>
+                {
+                    sync_transform(*entity, (**target).clone());
+                },
+                Message::SetLazyTransform{entity, component} =>
+                {
+                    let parent_transform = self.entities.parent_transform(*entity);
+                    sync_transform(*entity, component.target_global(parent_transform.as_ref()));
+                },
+                _ => ()
+            }
+        }
 
         if message.forward()
         {
