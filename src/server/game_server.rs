@@ -461,7 +461,10 @@ impl GameServer
             self.create_new_player(player_info.name.clone())
         });
 
-        let player_position = info.transform.as_ref().map(|x| x.position).unwrap_or_else(Vector3::zeros);
+        let player_position = info.transform.as_ref().map(|x| x.position).or_else(||
+        {
+            info.lazy_transform.as_ref().map(|x| x.target_local.position)
+        }).unwrap_or_else(Vector3::zeros);
 
         let mut inserter = |info: EntityInfo|
         {
