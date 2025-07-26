@@ -1043,14 +1043,39 @@ impl<'a> PlayerContainer<'a>
 
     pub fn camera_sync_instant(&mut self)
     {
+        if !self.update_camera_follow() { return; }
+
         let entities = self.game_state.entities();
 
-        if let Some(mut transform) = entities.transform_mut(self.info.camera)
         {
-            transform.position = entities.transform(self.info.follow).unwrap().position;
+            let mut transform = some_or_return!(self.game_state.entities().transform_mut(self.info.camera));
+
+            transform.position = some_or_return!(entities.transform(self.info.follow)).position;
         }
 
         self.camera_sync();
+    }
+
+    fn update_camera_follow(&self) -> bool
+    {
+        let mouse_position = self.game_state.world_mouse_position();
+        let mouse_position = Vector3::new(mouse_position.x, mouse_position.y, 0.0);
+
+        let entities = self.game_state.entities();
+
+        let player_position = some_or_value!(entities.transform(self.info.entity), false).position;
+
+        let follow_position = if mouse_position.magnitude() > CHUNK_VISUAL_SIZE * 2.0
+        {
+            player_position
+        } else
+        {
+            player_position + mouse_position / 5.0
+        };
+
+        some_or_value!(entities.transform_mut(self.info.follow), false).position = follow_position;
+
+        true
     }
 
     fn camera_sync_z(&self)
@@ -1371,6 +1396,7 @@ impl<'a> PlayerContainer<'a>
 
         let mouse_position = self.game_state.world_mouse_position();
         let mouse_position = Vector3::new(mouse_position.x, mouse_position.y, 0.0);
+
         let camera_position = self.game_state.camera.read().position().coords;
 
         {
@@ -1383,19 +1409,9 @@ impl<'a> PlayerContainer<'a>
                 self.info.entity,
                 self.info.mouse_entity
             );
-
-            let player_position = entities.transform(self.info.entity).unwrap().position;
-
-            let follow_position = if mouse_position.magnitude() > CHUNK_VISUAL_SIZE * 2.0
-            {
-                player_position
-            } else
-            {
-                player_position + mouse_position / 5.0
-            };
-
-            entities.transform_mut(self.info.follow).unwrap().position = follow_position;
         }
+
+        self.update_camera_follow();
 
         let entities = &mut self.game_state.entities.entities;
         if let Some((current_stamina, current_cooldown)) = entities.character(self.info.entity).map(|x|
