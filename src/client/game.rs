@@ -244,7 +244,7 @@ impl Game
 
         self.player_container(|mut x|
         {
-            if !x.is_dead()
+            if !x.is_dead() && !x.game_state.is_loading()
             {
                 x.camera_sync();
             }

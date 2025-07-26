@@ -58,7 +58,7 @@ use crate::{
         EntitiesController,
         MessagePasser,
         ConnectionId,
-        world::{TILE_SIZE, CHUNK_VISUAL_SIZE},
+        world::{TILE_SIZE, CHUNK_VISUAL_SIZE, Pos3},
         chunk_saver::{with_temp_save, load_compressed},
         message::{
             Message,
@@ -510,9 +510,15 @@ impl GameServer
         position: Vector3<f32>
     ) -> Result<(ConnectionId, MessagePasser), ConnectionError>
     {
-        player_info.send_blocking(Message::PlayerOnConnect{player_entity: player_info.entity.unwrap()})?;
+        let player_position = Pos3::from(position);
+        player_info.send_blocking(Message::PlayerOnConnect{player_entity: player_info.entity.unwrap(), player_position})?;
 
         let connection_id = self.connection_handler.write().connect(player_info);
+
+        if DebugConfig::is_enabled(DebugTool::LoadPosition)
+        {
+            eprintln!("server {connection_id:?}: {player_position}");
+        }
 
         self.world.as_mut().unwrap().add_player(
             &mut self.entities,

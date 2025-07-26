@@ -719,15 +719,7 @@ impl GameState
 
         let tilemap = info.tiles_factory.tilemap().clone();
 
-        let world_receiver = WorldReceiver::new(connections_handler.clone());
-        let world = World::new(
-            world_receiver,
-            info.tiles_factory,
-            info.camera.read().size(),
-            Pos3::new(0.0, 0.0, 0.0)
-        );
-
-        let player_entity = Self::connect_to_server(
+        let (player_entity, player_position) = Self::connect_to_server(
             connections_handler.clone(),
             &info.player_name
         );
@@ -736,6 +728,17 @@ impl GameState
             info.data_infos.clone(),
             player_entity
         );
+
+        let world = {
+            let world_receiver = WorldReceiver::new(connections_handler.clone());
+
+            World::new(
+                world_receiver,
+                info.tiles_factory,
+                info.camera.read().size(),
+                player_position
+            )
+        };
 
         let _sender_handle = sender_loop(connections_handler.clone());
 
@@ -893,7 +896,7 @@ impl GameState
     fn connect_to_server(
         handler: Arc<RwLock<ConnectionsHandler>>,
         name: &str
-    ) -> Entity
+    ) -> (Entity, Pos3<f32>)
     {
         let mut handler = handler.write();
 
@@ -905,9 +908,9 @@ impl GameState
 
         match handler.receive_blocking()
         {
-            Ok(Some(Message::PlayerOnConnect{player_entity})) =>
+            Ok(Some(Message::PlayerOnConnect{player_entity, player_position})) =>
             {
-                player_entity
+                (player_entity, player_position)
             },
             x => panic!("received wrong message on connect: {x:?}")
         }
@@ -957,10 +960,20 @@ impl GameState
         }
     }
 
+    pub fn is_loading(&self) -> bool
+    {
+        self.is_loading
+    }
+
     pub fn update_loading(&mut self)
     {
         if self.is_loading
         {
+            if DebugConfig::is_enabled(DebugTool::LoadPosition)
+            {
+                eprintln!("client: {}", self.world.camera_position());
+            }
+
             let (exists, missing) = self.world.exists_missing();
 
             let is_loading = if DebugConfig::is_enabled(DebugTool::SkipLoading)

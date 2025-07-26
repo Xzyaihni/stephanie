@@ -539,6 +539,11 @@ impl World
         self.overmap.rescale(size);
     }
 
+    pub fn camera_position(&self) -> Pos3<f32>
+    {
+        self.overmap.camera_position()
+    }
+
     pub fn camera_moved(&mut self, pos: Pos3<f32>)
     {
         self.overmap.camera_moved(pos);

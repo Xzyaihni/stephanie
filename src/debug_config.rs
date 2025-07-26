@@ -36,6 +36,7 @@ pub enum DebugTool
     SuperSpeed,
     SkipLoading,
     DamagePoints,
+    LoadPosition,
     PrintDamage,
     PrintAnatomyColors,
     PrintListenerUpdates,

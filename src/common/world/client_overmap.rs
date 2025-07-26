@@ -405,6 +405,11 @@ impl ClientOvermap
         }
     }
 
+    pub fn camera_position(&self) -> Pos3<f32>
+    {
+        self.visual_overmap.camera_position()
+    }
+
     pub fn camera_moved(&mut self, position: Pos3<f32>)
     {
         self.visual_overmap.camera_moved(position);
