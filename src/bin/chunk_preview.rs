@@ -656,13 +656,13 @@ impl YanyaApp for ChunkPreviewer
                         {
                             MarkerKind::Enemy{name} =>
                             {
-                                let try_texture = format!("normal/enemy/{name}/zob.png");
+                                let try_texture = format!("normal/enemy/{name}/body.png");
                                 let texture = if PathBuf::from("textures").join(&try_texture).exists()
                                 {
                                     try_texture
                                 } else
                                 {
-                                    "normal/enemy/zob/zob.png".to_owned()
+                                    "normal/enemy/zob/body.png".to_owned()
                                 };
 
                                 (texture, None, 0.0)
