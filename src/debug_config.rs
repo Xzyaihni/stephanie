@@ -33,6 +33,7 @@ pub enum DebugTool
     Contacts,
     Sleeping,
     Velocity,
+    Spatial,
     SuperSpeed,
     SkipLoading,
     DamagePoints,

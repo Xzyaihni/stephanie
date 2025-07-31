@@ -27,6 +27,7 @@ use crate::{
         TileInfo,
         Entity,
         OccludingCaster,
+        SpatialGrid,
         entity::ClientEntities,
         message::Message
     }
@@ -173,6 +174,11 @@ impl World
         let max_scale = (CLIENT_OVERMAP_SIZE - 1) as f32 * CHUNK_VISUAL_SIZE - padding;
 
         max_scale
+    }
+
+    pub fn build_spatial(&self, entities: &ClientEntities) -> SpatialGrid
+    {
+        SpatialGrid::new(entities, &self.overmap)
     }
 
     pub fn exists_missing(&self) -> (u32, u32)

@@ -7,7 +7,6 @@ use nalgebra::Vector3;
 use crate::{
     debug_config::*,
     common::{
-        unique_pairs_no_self,
         some_or_return,
         collider::*,
         render_info::*,
@@ -34,7 +33,7 @@ mod resolver;
 pub fn update(
     entities: &mut ClientEntities,
     world: &World,
-    space: &SpatialGrid,
+    space: &mut SpatialGrid,
     dt: f32
 )
 {
@@ -109,9 +108,9 @@ pub fn update(
 
     let mut contacts = Vec::new();
 
-    space.possible_pairs(|possible|
-    {
-        let pairs_fn = |entity: Entity, other_entity: Entity|
+    crate::frame_time_this!{
+        collision_system_collision,
+        space.possible_pairs(|entity: Entity, other_entity: Entity|
         {
             let mut this;
             colliding_info!{this, entity};
@@ -120,38 +119,39 @@ pub fn update(
             colliding_info!{other, other_entity};
 
             this.collide(other, |contact| contacts.push(contact));
-        };
+        })
+    };
 
-        unique_pairs_no_self(possible.iter().copied(), pairs_fn);
-    });
-
-    for_each_component!(entities, collider, |entity, _collider|
-    {
-        let mut this;
-        colliding_info!{this, entity};
-
-        if DebugConfig::is_enabled(DebugTool::CollisionWorldBounds)
+    crate::frame_time_this!{
+        collision_system_world,
+        for_each_component!(entities, collider, |entity, _collider|
         {
-            entities.push(true, EntityInfo{
-                transform: Some(Transform{
-                    position: this.transform.position,
-                    scale: this.bounds() * 2.0,
-                    ..Default::default()
-                }),
-                render: Some(RenderInfo{
-                    object: Some(RenderObjectKind::Texture{
-                        name: "ui/background.png".to_owned()
-                    }.into()),
-                    z_level: ZLevel::highest(),
-                    ..Default::default()
-                }),
-                watchers: Some(Watchers::simple_one_frame()),
-                ..Default::default()
-            });
-        }
+            let mut this;
+            colliding_info!{this, entity};
 
-        this.collide_with_world(world, &mut contacts);
-    });
+            if DebugConfig::is_enabled(DebugTool::CollisionWorldBounds)
+            {
+                entities.push(true, EntityInfo{
+                    transform: Some(Transform{
+                        position: this.transform.position,
+                        scale: this.bounds() * 2.0,
+                        ..Default::default()
+                    }),
+                    render: Some(RenderInfo{
+                        object: Some(RenderObjectKind::Texture{
+                            name: "ui/background.png".to_owned()
+                        }.into()),
+                        z_level: ZLevel::highest(),
+                        ..Default::default()
+                    }),
+                    watchers: Some(Watchers::simple_one_frame()),
+                    ..Default::default()
+                });
+            }
+
+            this.collide_with_world(world, &mut contacts);
+        })
+    };
 
     for_each_component!(entities, joint, |entity, joint: &RefCell<Joint>|
     {
@@ -163,5 +163,8 @@ pub fn update(
         joint.borrow().add_contacts(&transform, entity, parent_position, &mut contacts);
     });
 
-    ContactResolver::resolve(entities, contacts, dt);
+    crate::frame_time_this!{
+        collision_system_resolution,
+        ContactResolver::resolve(entities, contacts, dt)
+    };
 }

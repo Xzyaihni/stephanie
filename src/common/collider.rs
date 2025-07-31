@@ -81,6 +81,24 @@ pub enum ColliderType
 
 impl ColliderType
 {
+    pub fn half_size(&self, scale: Vector3<f32>) -> Vector3<f32>
+    {
+        match self
+        {
+            ColliderType::RayZ =>
+            {
+                Vector3::new(0.0, 0.0, scale.z)
+            },
+            ColliderType::Tile(_) =>
+            {
+                unreachable!()
+            },
+            ColliderType::Circle => Vector3::repeat(scale.max() / 2.0),
+            ColliderType::Aabb
+            | ColliderType::Rectangle => scale / 2.0
+        }
+    }
+
     pub fn inverse_inertia_tensor(
         &self,
         physical: &Physical,
@@ -260,6 +278,39 @@ impl From<ColliderInfo> for Collider
 
 impl Collider
 {
+    pub fn bounds(&self, transform: &Transform) -> Vector3<f32>
+    {
+        let scale = self.kind.half_size(transform.scale);
+
+        if self.kind == ColliderType::Rectangle
+        {
+            let points = rectangle_points(&transform);
+
+            let size_axis = |i|
+            {
+                let points = points.iter().map(|x: &Vector2<f32>| -> f32
+                {
+                    let v: &f32 = x.index(i);
+                    *v
+                });
+
+                let size = points.clone().max_by(|a, b| a.partial_cmp(b).unwrap()).unwrap()
+                    - points.min_by(|a, b| a.partial_cmp(b).unwrap()).unwrap();
+
+                size / 2.0
+            };
+
+            Vector3::new(
+                size_axis(0),
+                size_axis(1),
+                scale.z
+            )
+        } else
+        {
+            scale
+        }
+    }
+
     pub fn inverse_inertia_tensor(
         &self,
         physical: &Physical,
@@ -647,53 +698,12 @@ impl<'a> CollidingInfo<'a>
 {
     pub fn bounds(&self) -> Vector3<f32>
     {
-        let scale = self.half_size();
-
-        if self.collider.kind == ColliderType::Rectangle
-        {
-            let points = rectangle_points(&self.transform);
-
-            let size_axis = |i|
-            {
-                let points = points.iter().map(|x: &Vector2<f32>| -> f32
-                {
-                    let v: &f32 = x.index(i);
-                    *v
-                });
-
-                let size = points.clone().max_by(|a, b| a.partial_cmp(b).unwrap()).unwrap()
-                    - points.min_by(|a, b| a.partial_cmp(b).unwrap()).unwrap();
-
-                size / 2.0
-            };
-
-            Vector3::new(
-                size_axis(0),
-                size_axis(1),
-                scale.z
-            )
-        } else
-        {
-            scale
-        }
+        self.collider.bounds(&self.transform)
     }
 
     pub fn half_size(&self) -> Vector3<f32>
     {
-        match self.collider.kind
-        {
-            ColliderType::RayZ =>
-            {
-                Vector3::new(0.0, 0.0, self.transform.scale.z)
-            },
-            ColliderType::Tile(_) =>
-            {
-                unreachable!()
-            },
-            ColliderType::Circle => Vector3::repeat(self.transform.scale.max() / 2.0),
-            ColliderType::Aabb
-            | ColliderType::Rectangle => self.transform.scale / 2.0
-        }
+        self.collider.kind.half_size(self.transform.scale)
     }
 
     fn circle_circle(

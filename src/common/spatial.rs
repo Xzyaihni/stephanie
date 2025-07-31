@@ -1,13 +1,25 @@
-use std::{cmp::Ordering, ops::ControlFlow};
+use std::{
+    cmp::Ordering,
+    ops::ControlFlow,
+    cell::RefCell
+};
 
 use nalgebra::Vector3;
 
-use crate::common::Entity;
+use crate::{
+    debug_config::*,
+    common::{
+        unique_pairs_no_self,
+        Entity,
+        Collider,
+        world::{CHUNK_SIZE, CLIENT_OVERMAP_SIZE_Z, Pos3, overmap::OvermapIndexing},
+        entity::{for_each_component, ClientEntities}
+    }
+};
 
 
-const MAX_DEPTH: usize = 10;
-
-pub type CellPos = Vector3<i32>;
+const MAX_DEPTH: usize = 6;
+const NODES_Z: usize = CHUNK_SIZE * CLIENT_OVERMAP_SIZE_Z;
 
 #[derive(Debug, Clone)]
 pub struct SpatialInfo
@@ -26,6 +38,7 @@ enum KNode
 
 impl KNode
 {
+    #[allow(dead_code)]
     pub fn empty() -> Self
     {
         Self::Leaf{entities: Vec::new()}
@@ -81,7 +94,7 @@ impl KNode
             return Self::new_leaf(infos);
         }
 
-        let axis_i = depth % 3;
+        let axis_i = depth % 2;
 
         let median = {
             const AMOUNT: usize = 16;
@@ -127,6 +140,7 @@ impl KNode
             if median_distance.abs() < this_scale
             {
                 // in both halfspaces
+
                 left_infos.push(info.clone());
                 right_infos.push(info);
             } else if median_distance < 0.0
@@ -146,7 +160,7 @@ impl KNode
         }
     }
 
-    fn possible_pairs(&self, f: &mut impl FnMut(&[Entity]))
+    fn possible_pairs(&self, f: &mut impl FnMut(Entity, Entity))
     {
         match self
         {
@@ -157,7 +171,60 @@ impl KNode
             },
             Self::Leaf{entities} =>
             {
-                f(entities);
+                unique_pairs_no_self(entities.iter().copied(), |a, b|
+                {
+                    f(a, b);
+                });
+            }
+        }
+    }
+
+    fn debug_print(&self, depth: usize) -> (usize, bool, Box<dyn FnOnce()>)
+    {
+        match self
+        {
+            Self::Node{left, right} =>
+            {
+                let new_depth = depth + 1;
+
+                let (left_len, is_left_last, left_f) = left.debug_print(new_depth);
+                let (right_len, is_right_last, right_f) = right.debug_print(new_depth);
+
+                let total = left_len + right_len;
+
+                let f = Box::new(move ||
+                {
+                    if !is_left_last
+                    {
+                        eprintln!("{1:0$}left with {left_len} values {{", new_depth, ' ');
+                    }
+
+                    left_f();
+
+                    if !is_left_last
+                    {
+                        eprintln!("{1:0$}}}", new_depth, ' ');
+                    }
+
+                    if !is_right_last
+                    {
+                        eprintln!("{1:0$}right with {right_len} values {{", new_depth, ' ');
+                    }
+
+                    right_f();
+
+                    if !is_right_last
+                    {
+                        eprintln!("{1:0$}}}", new_depth, ' ');
+                    }
+                });
+
+                (total, false, f)
+            },
+            Self::Leaf{entities} =>
+            {
+                let len = entities.len();
+                (len, true, Box::new(move || eprintln!("{1:0$}leaf with {len} values", depth + 1, ' ')))
             }
         }
     }
@@ -166,27 +233,77 @@ impl KNode
 #[derive(Debug)]
 pub struct SpatialGrid
 {
-    node: KNode
+    z_nodes: [KNode; NODES_Z]
 }
 
 impl SpatialGrid
 {
-    pub fn new() -> Self
+    pub fn new(
+        entities: &ClientEntities,
+        mapper: &impl OvermapIndexing
+    ) -> Self
     {
+        let mut queued = [const { Vec::new() }; NODES_Z];
+        for_each_component!(entities, collider, |entity, collider: &RefCell<Collider>|
+        {
+            let collider = collider.borrow();
+
+            let mut transform = entities.transform(entity).unwrap().clone();
+            if let Some(scale) = collider.scale
+            {
+                transform.scale = scale;
+            }
+
+            let position = transform.position;
+
+            let z = {
+                let position = Pos3::from(position);
+
+                let chunk_z = position.rounded().0.z;
+
+                let chunk_z_local = if let Some(x) = mapper.to_local_z(chunk_z)
+                {
+                    x
+                } else
+                {
+                    return eprintln!("position {position} is out of range");
+                };
+
+                position.to_tile().z + chunk_z_local * CHUNK_SIZE
+            };
+
+            let info = SpatialInfo{
+                entity,
+                scale: collider.bounds(&transform),
+                position
+            };
+
+            queued[z].push(info);
+        });
+
+        let z_nodes = queued.map(|queued| KNode::new(queued, 0));
+
+        z_nodes.iter().enumerate().for_each(|(z, node)|
+        {
+            if DebugConfig::is_enabled(DebugTool::Spatial)
+            {
+                let (amount, _, f) = node.debug_print(0);
+
+                eprintln!("spatial {z} has {amount} entities");
+                f();
+            }
+        });
+
         Self{
-            node: KNode::empty()
+            z_nodes
         }
     }
 
-    pub fn build(&mut self, infos: impl Iterator<Item=SpatialInfo>)
+    pub fn possible_pairs(&mut self, mut f: impl FnMut(Entity, Entity))
     {
-        let queued: Vec<SpatialInfo> = infos.collect();
-
-        self.node = KNode::new(queued, 0);
-    }
-
-    pub fn possible_pairs(&self, mut f: impl FnMut(&[Entity]))
-    {
-        self.node.possible_pairs(&mut f);
+        self.z_nodes.iter().for_each(|node|
+        {
+            node.possible_pairs(&mut f);
+        });
     }
 }

@@ -180,9 +180,20 @@ impl<K: Hash + Eq, V: Hash + Eq> BiMap<K, V>
         Self{normal: HashMap::new(), back: HashMap::new()}
     }
 
+    pub fn clear(&mut self)
+    {
+        self.normal.clear();
+        self.back.clear();
+    }
+
     pub fn contains_key(&self, k: &K) -> bool
     {
         self.normal.contains_key(k)
+    }
+
+    pub fn contains_value(&self, v: &V) -> bool
+    {
+        self.back.contains_key(v)
     }
 
     pub fn insert(&mut self, key: K, value: V)

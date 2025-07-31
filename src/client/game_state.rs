@@ -46,7 +46,6 @@ use crate::{
         lazy_transform::*,
         MessagePasser,
         ClientLight,
-        SpatialGrid,
         TileMap,
         DataInfos,
         InventoryItem,
@@ -173,13 +172,6 @@ impl ClientEntitiesContainer
         dt: f32
     )
     {
-        let mut space = SpatialGrid::new();
-
-        crate::frame_time_this!{
-            spatial_grid_build,
-            self.entities.build_space(&mut space)
-        };
-
         crate::frame_time_this!{
             physical_system_update,
             physical_system::update(&mut self.entities, world, dt)
@@ -215,10 +207,17 @@ impl ClientEntitiesContainer
             self.entities.update_outlineable(dt)
         };
 
-        crate::frame_time_this!{
-            collider_system_update,
-            collider_system::update(&mut self.entities, world, &space, dt)
-        };
+        {
+            let mut space = crate::frame_time_this!{
+                spatial_grid_build,
+                world.build_spatial(&self.entities)
+            };
+
+            crate::frame_time_this!{
+                collider_system_update,
+                collider_system::update(&mut self.entities, world, &mut space, dt)
+            };
+        }
 
         self.animation = (self.animation + dt) % (f32::consts::PI * 2.0);
     }

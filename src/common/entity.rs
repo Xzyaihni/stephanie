@@ -23,8 +23,6 @@ use crate::{
         watcher::*,
         lazy_transform::*,
         damaging::*,
-        SpatialGrid,
-        SpatialInfo,
         Door,
         Joint,
         Light,
@@ -163,7 +161,7 @@ macro_rules! for_each_component
 {
     ($this:expr, $component:ident, $handler:expr) =>
     {
-        $crate::iterate_components_with!($this, $component, for_each, $handler);
+        $crate::iterate_components_with!($this, $component, for_each, $handler)
     }
 }
 
@@ -1545,35 +1543,6 @@ macro_rules! define_entities_both
             ) -> Entity
             {
                 self.push_inner(true, info)
-            }
-
-            pub fn build_space(&self, space: &mut SpatialGrid)
-            {
-                let infos = iterate_components_with!(self, collider, map, |entity, collider: &RefCell<Collider>|
-                {
-                    let mut collider = collider.borrow_mut();
-
-                    let mut transform = self.transform(entity).unwrap().clone();
-                    if let Some(scale) = collider.scale
-                    {
-                        transform.scale = scale;
-                    }
-
-                    let position = transform.position;
-                    let collider = CollidingInfo{
-                        entity: None,
-                        transform,
-                        collider: &mut collider
-                    };
-
-                    SpatialInfo{
-                        entity,
-                        scale: collider.bounds(),
-                        position
-                    }
-                });
-
-                space.build(infos);
             }
 
             impl_common_systems!{ClientEntityInfo, $(($name, $set_func, $component_type),)+}

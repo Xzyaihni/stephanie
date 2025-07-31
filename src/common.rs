@@ -174,9 +174,9 @@ macro_rules! get_time_this
 
             let start_time = Instant::now();
 
-            $($tt)*;
+            let value = $($tt)*;
 
-            start_time.elapsed().as_micros() as f64 / 1000.0
+            (start_time.elapsed().as_micros() as f64 / 1000.0, value)
         }
     }
 }
@@ -187,12 +187,16 @@ macro_rules! time_this
     ($name:literal, $($tt:tt)*) =>
     {
         {
-            let time = $crate::get_time_this!($($tt)*);
+            let (time, value) = $crate::get_time_this!($($tt)*);
 
             eprintln!("{} took {time:.2} ms", $name);
+
+            value
         }
     }
 }
+
+pub const FRAME_TIME_AMOUNT: usize = 120;
 
 #[macro_export]
 macro_rules! frame_time_this
@@ -207,9 +211,12 @@ macro_rules! frame_time_this
             if DebugConfig::is_enabled(DebugTool::FrameTimings)
             {
                 #[allow(non_upper_case_globals)]
-                static $name: LazyLock<Mutex<(f64, [Option<f64>; 5], usize)>> = LazyLock::new(|| Mutex::new((0.0, [None; 5], 0)));
+                static $name: LazyLock<Mutex<(f64, [Option<f64>; $crate::common::FRAME_TIME_AMOUNT], usize)>> = LazyLock::new(||
+                {
+                    Mutex::new((0.0, [None; $crate::common::FRAME_TIME_AMOUNT], 0))
+                });
 
-                let time = $crate::get_time_this!($($tt)*);
+                let (time, value) = $crate::get_time_this!($($tt)*);
 
                 {
                     let mut value = $name.lock().unwrap();
@@ -226,26 +233,28 @@ macro_rules! frame_time_this
                     if value.2 == value.1.len()
                     {
                         value.2 = 0;
+
+                        let (total, amount) = value.1.iter().fold((0.0, 0), |(total, amount), x|
+                        {
+                            if let Some(x) = x
+                            {
+                                (total + x, amount + 1)
+                            } else
+                            {
+                                (total, amount)
+                            }
+                        });
+
+                        let average_time = total / amount as f64;
+
+                        eprintln!("{} takes ({:.2} ms max) {average_time:.2} ms", stringify!($name), value.0);
                     }
-
-                    let (total, amount) = value.1.iter().fold((0.0, 0), |(total, amount), x|
-                    {
-                        if let Some(x) = x
-                        {
-                            (total + x, amount + 1)
-                        } else
-                        {
-                            (total, amount)
-                        }
-                    });
-
-                    let average_time = total / amount as f64;
-
-                    eprintln!("{} takes ({:.2} ms max) {average_time:.2} ms", stringify!($name), value.0);
                 }
+
+                value
             } else
             {
-                $($tt)*;
+                $($tt)*
             }
         }
     }
