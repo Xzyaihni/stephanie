@@ -662,10 +662,10 @@ impl GameServer
                 {
                     sync_transform(*entity, (**target).clone());
                 },
-                Message::SetLazyTransform{entity, component} =>
+                Message::SetLazyTransform{entity, component: Some(lazy)} =>
                 {
                     let parent_transform = self.entities.parent_transform(*entity);
-                    sync_transform(*entity, component.target_global(parent_transform.as_ref()));
+                    sync_transform(*entity, lazy.target_global(parent_transform.as_ref()));
                 },
                 _ => ()
             }

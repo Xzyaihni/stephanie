@@ -545,7 +545,7 @@ impl World
                 }
                 Message::SetTransform{component, ..} =>
                 {
-                    Some(component.position)
+                    component.as_ref().map(|x| x.position)
                 },
                 _ => None
             }

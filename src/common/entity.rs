@@ -1963,7 +1963,7 @@ macro_rules! define_entities_both
                     $(Message::$message_name{entity, component} =>
                     {
                         debug_assert!(!entity.local);
-                        self.$set_func(entity, Some(*component));
+                        self.$set_func(entity, component.map(|x| *x));
 
                         None
                     },)+
@@ -2293,14 +2293,10 @@ macro_rules! define_entities
                 $(
                     changed_entities.$name.iter().copied().for_each(|entity|
                     {
-                        // im not server syncing components that got deleted, i dont think that should be an issue?
-                        if let Some(value) = get_entity!(self, entity, get, $name)
-                        {
-                            passer.send_message(Message::$message_name{
-                                entity,
-                                component: Box::new((*value).clone())
-                            });
-                        }
+                        passer.send_message(Message::$message_name{
+                            entity,
+                            component: get_entity!(self, entity, get, $name).map(|x| Box::new(x.clone()))
+                        });
                     });
                 )+
             }
@@ -2364,25 +2360,28 @@ macro_rules! define_entities
                     $(Message::$side_message_name{entity, component} =>
                     {
                         debug_assert!(!entity.local);
-                        let component = component.server_to_client(||
+                        let component = component.map(|x|
                         {
-                            self.transform_clone(entity).unwrap_or_else(||
+                            x.server_to_client(||
                             {
-                                panic!(
-                                    "{} expected transform, got none",
-                                    stringify!($side_message_name)
-                                )
-                            })
-                        }, create_info);
+                                self.transform_clone(entity).unwrap_or_else(||
+                                {
+                                    panic!(
+                                        "{} expected transform, got none",
+                                        stringify!($side_message_name)
+                                    )
+                                })
+                            }, create_info)
+                        });
 
-                        self.$side_set_func(entity, Some(component));
+                        self.$side_set_func(entity, component);
 
                         None
                     },)+
                     $(Message::$message_name{entity, component} =>
                     {
                         debug_assert!(!entity.local);
-                        self.$set_func(entity, Some(*component));
+                        self.$set_func(entity, component.map(|x| *x));
 
                         None
                     },)+
