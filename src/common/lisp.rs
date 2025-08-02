@@ -248,7 +248,7 @@ impl LispValue
         (new_length, as_length, u32, length, Length),
         (new_tag, as_tag, ValueTag, tag, Tag),
         (new_primitive_procedure, as_primitive_procedure, u32, primitive_procedure, PrimitiveProcedure),
-        (new_symbol_id, as_symbol_id, SymbolId, symbol, Symbol),
+        (new_symbol_raw, as_symbol_id, SymbolId, symbol, Symbol),
         (new_list_id, as_list_id, u32, list, List)
     }
 
@@ -354,6 +354,24 @@ impl LispValue
         let id = self.as_vector_id()?;
 
         Ok(memory.get_vector(id))
+    }
+
+    pub fn as_string(self, memory: &LispMemory) -> Result<String, Error>
+    {
+        let LispList{car, cdr} = self.as_list(memory)?;
+
+        let tag = car.as_symbol(memory)?;
+        let expected_tag = "string";
+
+        if expected_tag != &tag
+        {
+            return Err(Error::WrongTag{expected: expected_tag, got: tag});
+        }
+
+        cdr.as_vector(memory)?.into_iter().map(|value|
+        {
+            value.as_char()
+        }).collect()
     }
 
     pub fn to_string(&self, memory: &LispMemory) -> String
@@ -477,6 +495,7 @@ pub enum Error
     StackOverflow,
     WrongType{expected: ValueTag, got: ValueTag},
     WrongConditionalType(String),
+    WrongTag{expected: &'static str, got: String},
     Custom(String),
     NumberParse(String),
     SpecialParse(String),
@@ -497,6 +516,7 @@ pub enum Error
     ExpectedOp,
     ExpectedClose,
     ExpectedSymbol,
+    ExpectedParams,
     UnexpectedClose,
     UnexpectedEndOfFile
 }
@@ -511,6 +531,7 @@ impl Display for Error
             Self::StackOverflow => "stack overflow".to_owned(),
             Self::WrongType{expected, got} => format!("expected type `{expected:?}` got `{got:?}`"),
             Self::WrongConditionalType(s) => format!("conditional expected boolean, got `{s}`"),
+            Self::WrongTag{expected, got} => format!("expected tag `{expected:?}` got `{got:?}`"),
             Self::Custom(s) => s.clone(),
             Self::NumberParse(s) => format!("cant parse `{s}` as number"),
             Self::SpecialParse(s) => format!("cant parse `{s}` as a special"),
@@ -535,6 +556,7 @@ impl Display for Error
             Self::ExpectedOp => "expected an operator".to_owned(),
             Self::ExpectedClose => "expected a closing parenthesis".to_owned(),
             Self::ExpectedSymbol => "expected a valid symbol".to_owned(),
+            Self::ExpectedParams => "expected lambda parameters".to_owned(),
             Self::UnexpectedClose => "unexpected closing parenthesis".to_owned(),
             Self::UnexpectedEndOfFile => "unexpected end of file".to_owned()
         };
@@ -990,7 +1012,7 @@ impl LispMemory
         };
 
         let other_register = if value == Register::Value { Register::Temporary } else { Register::Value };
-        self.set_register(other_register, LispValue::new_symbol_id(key));
+        self.set_register(other_register, LispValue::new_symbol_raw(key));
         self.cons(Register::Value, other_register, value)?;
 
         let tail = self.get_car(mappings_id(self));
@@ -1448,14 +1470,20 @@ impl LispMemory
         }
     }
 
+    pub fn new_symbol_id(
+        &mut self,
+        x: &str
+    ) -> SymbolId
+    {
+        self.symbols.push(x)
+    }
+
     pub fn new_symbol(
         &mut self,
         x: &str
     ) -> LispValue
     {
-        let id = self.symbols.push(x);
-
-        LispValue::new_symbol_id(id)
+        LispValue::new_symbol_raw(self.new_symbol_id(x))
     }
 
     pub fn make_vector<I>(
@@ -1492,6 +1520,11 @@ pub type OutputWrapper = GenericOutputWrapper<LispMemory>;
 
 impl OutputWrapper
 {
+    pub fn to_ref(&self) -> OutputWrapperRef
+    {
+        OutputWrapperRef{memory: &self.memory, value: self.value}
+    }
+
     pub fn as_list(&self) -> Result<LispList<OutputWrapperRef>, Error>
     {
         let lst = self.value.as_list(&self.memory)?;
@@ -1502,9 +1535,15 @@ impl OutputWrapper
         }))
     }
 
-    pub fn to_ref(&self) -> OutputWrapperRef
+    pub fn as_pairs_list(&self) -> Result<Vec<OutputWrapperRef>, Error>
     {
-        OutputWrapperRef{memory: &self.memory, value: self.value}
+        self.value.as_pairs_list(&self.memory).map(|x|
+        {
+            x.into_iter().map(|value|
+            {
+                OutputWrapperRef{memory: &self.memory, value}
+            }).collect::<Vec<_>>()
+        })
     }
 }
 
@@ -1531,7 +1570,7 @@ impl<'a> OutputWrapperRef<'a>
         }))
     }
 
-    pub fn as_pairs_list(&self) -> Result<Vec<Self>, Error>
+    pub fn as_pairs_list(&self) -> Result<Vec<OutputWrapperRef<'a>>, Error>
     {
         self.value.as_pairs_list(self.memory).map(|x|
         {
@@ -1599,6 +1638,11 @@ impl<M: Borrow<LispMemory>> GenericOutputWrapper<M>
     pub fn as_symbol(&self) -> Result<String, Error>
     {
         self.value.as_symbol(self.memory.borrow())
+    }
+
+    pub fn as_string(&self) -> Result<String, Error>
+    {
+        self.value.as_string(self.memory.borrow())
     }
 }
 
@@ -2046,6 +2090,38 @@ mod tests
     }
 
     #[test]
+    fn string()
+    {
+        let code = "
+            \"test\"
+        ";
+
+        let lisp = Lisp::new_one(code).unwrap();
+
+        let output = lisp.run().unwrap();
+        let value = output.as_string().unwrap();
+
+        assert_eq!(value, "test".to_owned());
+    }
+
+    #[test]
+    fn quoted_string()
+    {
+        let code = "
+            '(1 2 \"three\")
+        ";
+
+        let lisp = Lisp::new_one(code).unwrap();
+
+        let output = lisp.run().unwrap();
+        let mut values = output.as_pairs_list().unwrap().into_iter();
+
+        assert_eq!(values.next().unwrap().as_integer().unwrap(), 1);
+        assert_eq!(values.next().unwrap().as_integer().unwrap(), 2);
+        assert_eq!(values.next().unwrap().as_string().unwrap(), "three".to_owned());
+    }
+
+    #[test]
     fn symbols()
     {
         // hmm
@@ -2209,6 +2285,28 @@ mod tests
         ";
 
         simple_integer_test(code, 1);
+    }
+
+    #[test]
+    fn escaping()
+    {
+        let code = r###"
+            '("\\" ";" "test string \" one")
+        "###;
+
+        let lisp = Lisp::new_one(code).unwrap();
+
+        let output = lisp.run().unwrap();
+        let mut values = output.as_pairs_list().unwrap().into_iter();
+
+        let mut next_s = ||
+        {
+            values.next().unwrap().as_string().unwrap()
+        };
+
+        assert_eq!(next_s(), "\\".to_owned());
+        assert_eq!(next_s(), ";".to_owned());
+        assert_eq!(next_s(), "test string \" one".to_owned());
     }
 
     #[test]

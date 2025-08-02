@@ -31,6 +31,8 @@ mod parser;
 
 pub const BEGIN_PRIMITIVE: &str = "begin";
 pub const QUOTE_PRIMITIVE: &str = "quote";
+pub const MAKE_VECTOR_PRIMITIVE: &str = "make-vector";
+pub const VECTOR_SET_PRIMITIVE: &str = "vector-set!";
 
 // unreadable, great
 pub type OnApply = Rc<
@@ -472,7 +474,7 @@ impl Default for Primitives
                         }).ok_or(Error::UndefinedVariable(name))
                     }
                 })),
-            ("make-vector",
+            (MAKE_VECTOR_PRIMITIVE,
                 PrimitiveProcedureInfo::new_with_target(2, Effect::Pure, |mut args, target|
                 {
                     let len = args.next().unwrap().as_integer()? as usize;
@@ -480,7 +482,7 @@ impl Default for Primitives
 
                     args.memory.make_vector(target, vec![fill; len])
                 })),
-            ("vector-set!",
+            (VECTOR_SET_PRIMITIVE,
                 PrimitiveProcedureInfo::new_simple(3, Effect::Impure, |mut args|
                 {
                     let vec = args.next().unwrap();
@@ -1009,6 +1011,7 @@ impl LambdaParams
     {
         match &ast.value
         {
+            Ast::Allocated(_) => Err(ErrorPos{position: ast.position, value: Error::ExpectedParams}),
             Ast::Value(_) =>
             {
                 Ok(Self::Variadic(InterReprPos::parse_symbol(memory, &ast)?.with_position(ast.position)))
@@ -1032,7 +1035,8 @@ impl LambdaParams
                 Ok(iter::once(WithPosition{position, value: symbol}).chain(tail).collect())
             },
             Ast::EmptyList => Ok(Vec::new()),
-            Ast::Value(_) => unreachable!("malformed ast")
+            Ast::Value(_)
+            | Ast::Allocated(_) => unreachable!("malformed ast")
         }
     }
 
@@ -1183,6 +1187,11 @@ impl InterReprPos
                     InterRepr::Value(value)
                 }.with_position(ast.position))
             },
+            Ast::Allocated(_) =>
+            {
+                let position = ast.position;
+                Ok(InterRepr::Quoted(ast).with_position(position))
+            },
             Ast::EmptyList => Ok(InterRepr::Value(LispValue::new_empty_list()).with_position(ast.position)),
             Ast::List{car, cdr} =>
             {
@@ -1226,7 +1235,8 @@ impl InterReprPos
     {
         match ast.value
         {
-            Ast::Value(_) => unreachable!("malformed ast"),
+            Ast::Value(_)
+            | Ast::Allocated(_) => unreachable!("malformed ast"),
             Ast::EmptyList => Ok(Vec::new()),
             Ast::List{car, cdr} =>
             {
@@ -1259,6 +1269,49 @@ impl InterReprPos
         }
     }
 
+    fn compile_allocated(
+        memory: &mut LispMemory,
+        target: Register,
+        value: String
+    ) -> CompiledPart
+    {
+        let get_primitive = |name|
+        {
+            LispValue::new_primitive_procedure(memory.primitives.index_by_name(name).unwrap())
+        };
+
+        let mut commands = vec![
+            Command::PutValue{value: get_primitive(MAKE_VECTOR_PRIMITIVE), register: Register::Operator}.into(),
+            Command::PutValue{value: LispValue::new_empty_list(), register: Register::Argument}.into(),
+            Command::PutValue{value: LispValue::new_char(' '), register: Register::Value}.into(),
+            Command::Cons{target: Register::Argument, car: Register::Value, cdr: Register::Argument}.into(),
+            Command::PutValue{value: LispValue::new_integer(value.len() as i32), register: Register::Value}.into(),
+            Command::Cons{target: Register::Argument, car: Register::Value, cdr: Register::Argument}.into(),
+            Command::CallPrimitiveValueUnchecked{target: Register::Temporary}.into()
+        ];
+
+        value.chars().enumerate().for_each(|(index, c)|
+        {
+            commands.extend([
+                Command::PutValue{value: get_primitive(VECTOR_SET_PRIMITIVE), register: Register::Operator}.into(),
+                Command::PutValue{value: LispValue::new_empty_list(), register: Register::Argument}.into(),
+                Command::PutValue{value: LispValue::new_char(c), register: Register::Value}.into(),
+                Command::Cons{target: Register::Argument, car: Register::Value, cdr: Register::Argument}.into(),
+                Command::PutValue{value: LispValue::new_integer(index as i32), register: Register::Value}.into(),
+                Command::Cons{target: Register::Argument, car: Register::Value, cdr: Register::Argument}.into(),
+                Command::Cons{target: Register::Argument, car: Register::Temporary, cdr: Register::Argument}.into(),
+                Command::CallPrimitiveValueUnchecked{target: Register::Value}.into()
+            ]);
+        });
+
+        commands.extend([
+            Command::PutValue{value: memory.new_symbol("string"), register: Register::Value}.into(),
+            Command::Cons{target, car: Register::Value, cdr: Register::Temporary}.into()
+        ]);
+
+        CompiledPart::from_commands(commands)
+    }
+
     fn compile_quoted(
         memory: &mut LispMemory,
         target: Register,
@@ -1272,6 +1325,10 @@ impl InterReprPos
                 let value = Self::parse_primitive_text(memory, &x).unwrap();
 
                 Command::PutValue{value, register: target}.into()
+            },
+            Ast::Allocated(x) =>
+            {
+                Self::compile_allocated(memory, target, x)
             },
             Ast::EmptyList =>
             {
@@ -1879,14 +1936,14 @@ impl Debug for CommandRawDisplay<'_, '_>
             CommandRaw::Lookup{id, register} =>
             {
                 f.debug_struct("Lookup")
-                    .field("id", &DebugRaw(LispValue::new_symbol_id(*id).to_string(self.memory)))
+                    .field("id", &DebugRaw(LispValue::new_symbol_raw(*id).to_string(self.memory)))
                     .field("register", register)
                     .finish()
             },
             CommandRaw::Define{id, register} =>
             {
                 f.debug_struct("Define")
-                    .field("id", &DebugRaw(LispValue::new_symbol_id(*id).to_string(self.memory)))
+                    .field("id", &DebugRaw(LispValue::new_symbol_raw(*id).to_string(self.memory)))
                     .field("register", register)
                     .finish()
             },

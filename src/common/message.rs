@@ -36,7 +36,8 @@ use crate::common::{
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum DebugMessage
 {
-    PrintServerOvermaps
+    PrintServerOvermaps,
+    PrintEntityInfo(Entity)
 }
 
 #[derive(Debug, Clone, EnumCount, Serialize, Deserialize)]

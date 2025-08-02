@@ -266,9 +266,11 @@ pub struct Character
     attack_state: AttackState,
     #[serde(skip, default)]
     info: Option<AfterInfo>,
+    #[serde(skip, default="true_fn")]
     held_update: bool,
     attack_cooldown: f32,
     bash_side: Side1d,
+    #[serde(skip, default)]
     actions: Vec<CharacterAction>,
     sprite_state: Stateful<SpriteState>
 }

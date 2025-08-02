@@ -757,22 +757,12 @@ impl LazyTransform
         current.rotation %= pi2;
         target_global.rotation %= pi2;
 
+        if let Some(x) = self.origin_rotation_interpolation.as_mut()
         {
-            let origin_rotation = if let Some(x) = self.origin_rotation_interpolation.as_mut()
-            {
-                x.current = x.current.ease_out(self.origin_rotation, x.decay, dt);
-
-                x.current
-            } else
-            {
-                self.origin_rotation
-            };
-
-            if self.combine_origin_rotation
-            {
-                target_global.rotation += origin_rotation;
-            }
+            x.current = x.current.ease_out(self.origin_rotation, x.decay, dt);
         }
+
+        self.preapply_rotation(&mut target_global);
 
         self.scaling.next(&mut current.scale, target_global.scale, dt);
         self.rotation.next(&mut current.rotation, target_global.rotation, dt);
@@ -874,10 +864,28 @@ impl LazyTransform
     {
         let mut target = self.target_global_unrotated(parent);
 
+        self.preapply_rotation(&mut target);
+
         let current = target.clone();
         self.apply_rotation(&mut target, &current, parent);
 
         target
+    }
+
+    fn preapply_rotation(&self, target: &mut Transform)
+    {
+        let origin_rotation = if let Some(x) = self.origin_rotation_interpolation.as_ref()
+        {
+            x.current
+        } else
+        {
+            self.origin_rotation
+        };
+
+        if self.combine_origin_rotation
+        {
+            target.rotation += origin_rotation;
+        }
     }
 
     fn apply_rotation(

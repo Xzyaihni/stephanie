@@ -30,10 +30,7 @@ impl Display for PrimitiveType
     {
         write!(f, "{}", match self
         {
-            Self::Value(x) =>
-            {
-                return write!(f, "{x}");
-            },
+            Self::Value(x) => x.clone(),
             Self::Char(x) => x.to_string(),
             Self::Float(x) => x.to_string(),
             Self::Integer(x) => x.to_string(),
@@ -141,6 +138,7 @@ fn parse_char(s: &str) -> String
 pub enum Ast
 {
     Value(String),
+    Allocated(String),
     EmptyList,
     List{car: Box<AstPos>, cdr: Box<AstPos>}
 }
@@ -153,6 +151,7 @@ impl Ast
         {
             Self::EmptyList => "()".to_owned(),
             Self::Value(x) => Self::parse_primitive(x).map_or_else(|_| x.clone(), |x| x.to_string()),
+            Self::Allocated(x) => x.clone(),
             Self::List{car, cdr} => format!(
                 "({} {})",
                 car.to_string_pretty(),
@@ -398,7 +397,15 @@ impl Parser
         {
             Lexeme::Value(x) =>
             {
-                (position, Some(Ast::Value(x)))
+                let value = if let Some(s) = x.strip_prefix('"')
+                {
+                    Ast::Allocated(s.to_owned())
+                } else
+                {
+                    Ast::Value(x)
+                };
+
+                (position, Some(value))
             },
             Lexeme::Quote =>
             {

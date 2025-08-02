@@ -94,11 +94,23 @@ impl<'a> Lexer<'a>
         let position = self.position;
         let mut current = String::new();
         let mut comment = false;
+        let mut is_string = false;
+        let mut is_escape = false;
 
         loop
         {
             if let Some(c) = self.next_char()
             {
+                let unescaped = move |check|
+                {
+                    !is_escape && c == check
+                };
+
+                if is_escape
+                {
+                    is_escape = false;
+                }
+
                 if c == '\n'
                 {
                     self.position.next_line();
@@ -112,7 +124,47 @@ impl<'a> Lexer<'a>
                     }
                 }
 
-                if comment || c == ';'
+                if unescaped('\\') && current.chars().next().map(|x| x != '#').unwrap_or(true)
+                {
+                    self.consume_char();
+                    is_escape = true;
+                    continue;
+                }
+
+                if !comment
+                {
+                    if unescaped('"')
+                    {
+                        if is_string
+                        {
+                            self.consume_char();
+
+                            return Some(Lexeme::Value(current).with_position(position));
+                        } else
+                        {
+                            if current.is_empty()
+                            {
+                                self.consume_char();
+                                current.push(c);
+
+                                is_string = true;
+                                continue;
+                            }
+
+                            return Some(Lexeme::Value(current).with_position(position));
+                        }
+                    }
+
+                    if is_string
+                    {
+                        self.consume_char();
+                        current.push(c);
+
+                        continue;
+                    }
+                }
+
+                if comment || unescaped(';')
                 {
                     if current.is_empty()
                     {

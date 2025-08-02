@@ -67,6 +67,9 @@ use crate::{
     }
 };
 
+#[allow(unused_imports)]
+use crate::common::message::DebugMessage;
+
 
 #[derive(Debug)]
 pub enum ConnectionError
@@ -650,10 +653,7 @@ impl GameServer
         {
             let sync_transform = |entity: Entity, transform: Transform|
             {
-                if let Some(mut current) = self.entities.transform_mut(entity)
-                {
-                    *current = transform;
-                }
+                self.entities.set_transform(entity, Some(transform));
             };
 
             match &message
@@ -688,6 +688,11 @@ impl GameServer
         match message
         {
             Message::PlayerDisconnect{restart, host} => self.connection_close(restart, host, id, entity),
+            #[cfg(debug_assertions)]
+            Message::DebugMessage(DebugMessage::PrintEntityInfo(entity)) =>
+            {
+                eprintln!("server entity info: {}", self.entities.info_ref(entity))
+            },
             x => panic!("unhandled message: {x:?}")
         }
     }
