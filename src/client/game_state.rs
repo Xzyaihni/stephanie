@@ -1348,6 +1348,7 @@ impl GameState
             self.entities.entities.create_queued(object_info)
         };
 
+        if self.host
         {
             let mut passer = self.connections_handler.write();
             crate::frame_time_this!{

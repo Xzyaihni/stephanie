@@ -9,6 +9,7 @@ use nalgebra::Vector3;
 use crate::{
     debug_config::*,
     common::{
+        some_or_return,
         unique_pairs_no_self,
         Entity,
         Collider,
@@ -246,9 +247,9 @@ impl SpatialGrid
         let mut queued = [const { Vec::new() }; NODES_Z];
         for_each_component!(entities, collider, |entity, collider: &RefCell<Collider>|
         {
+            let mut transform = some_or_return!(entities.transform(entity)).clone();
             let collider = collider.borrow();
 
-            let mut transform = entities.transform(entity).unwrap().clone();
             if let Some(scale) = collider.scale
             {
                 transform.scale = scale;

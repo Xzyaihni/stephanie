@@ -37,13 +37,13 @@ pub fn update(
     dt: f32
 )
 {
-    macro_rules! colliding_info
+    macro_rules! maybe_colliding_info
     {
         ($result_variable:expr, $entity:expr) =>
         {
             let mut collider = entities.collider_mut_no_change($entity).unwrap();
             {
-                let mut transform = entities.transform($entity).unwrap().clone();
+                let mut transform = some_or_return!(entities.transform($entity)).clone();
 
                 let kind = collider.kind;
                 if kind == ColliderType::Aabb
@@ -113,10 +113,10 @@ pub fn update(
         space.possible_pairs(|entity: Entity, other_entity: Entity|
         {
             let mut this;
-            colliding_info!{this, entity};
+            maybe_colliding_info!{this, entity};
 
             let other;
-            colliding_info!{other, other_entity};
+            maybe_colliding_info!{other, other_entity};
 
             this.collide(other, |contact| contacts.push(contact));
         })
@@ -127,7 +127,7 @@ pub fn update(
         for_each_component!(entities, collider, |entity, _collider|
         {
             let mut this;
-            colliding_info!{this, entity};
+            maybe_colliding_info!{this, entity};
 
             if DebugConfig::is_enabled(DebugTool::CollisionWorldBounds)
             {

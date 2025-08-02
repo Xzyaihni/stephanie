@@ -1048,6 +1048,7 @@ macro_rules! define_entities_both
             create_queue: RefCell<Vec<(Entity, EntityInfo)>>,
             create_render_queue: RefCell<Vec<(Entity, RenderComponent)>>,
             changed_entities: RefCell<ChangedEntities>,
+            side_sync: RefCell<SideSyncEntities>,
             $($on_name: Rc<RefCell<Vec<OnComponentChange>>>,)+
             $(pub $name: ObjectsStore<ComponentWrapper<$component_type>>,)+
         }
@@ -1069,6 +1070,7 @@ macro_rules! define_entities_both
                     create_queue: RefCell::new(Vec::new()),
                     create_render_queue: RefCell::new(Vec::new()),
                     changed_entities: RefCell::new(Default::default()),
+                    side_sync: RefCell::new(Default::default()),
                     $($on_name: Rc::new(RefCell::new(Vec::new())),)+
                     $($name: ObjectsStore::new(),)+
                 };
@@ -1976,11 +1978,12 @@ macro_rules! define_entities_both
 
 macro_rules! implement_common_complex
 {
-    ($(($name:ident, $set_func:ident, $this_type:ident, $server_type:ident),)+) =>
+    ($(($name:ident, $set_func:ident, $server_type:ident, $this_type:ident),)+) =>
     {
         fn lazy_set_common<C>(&mut self, t: &mut C)
         where
-            $(C: ServerClientConverter<Self, $this_type, $server_type>,)+
+            $(Self: LazySideSyncable<$server_type>,)+
+            $(C: ServerClientConverter<Self, $server_type, $this_type>,)+
         {
             let mut lazy_setter = self.lazy_setter.borrow_mut();
             if lazy_setter.changed
@@ -1993,6 +1996,7 @@ macro_rules! implement_common_complex
                     let queue = mem::take(&mut self.lazy_setter.borrow_mut().$name);
                     queue.into_iter().for_each(|(entity, component)|
                     {
+                        self.side_sync(entity, &component);
                         self.$set_func(entity, component.map(|x| t.convert(self, entity, x)));
                     });
                 )+
@@ -2031,6 +2035,13 @@ macro_rules! define_entities
         )),+
     ) =>
     {
+        #[derive(Debug, Default)]
+        struct SideSyncEntities
+        {
+            changed: bool,
+            $($side_name: Vec<(Entity, Option<Box<$side_default_type>>)>,)+
+        }
+
         define_entities_both!{
             $(($side_name, $side_mut_func, $side_mut_func_no_change, $side_set_func, $side_set_func_no_change, $side_on_name, $side_resort_name, $side_exists_name, $side_message_name, $side_component_type, $side_default_type),)+
             $(($name, $mut_func, $mut_func_no_change, $set_func, $set_func_no_change, $on_name, $resort_name, $exists_name, $message_name, $component_type, $default_type),)+
@@ -2084,6 +2095,41 @@ macro_rules! define_entities
                 ) -> $client_type
                 {
                     value.server_to_client(|| entities.transform(entity).as_deref().cloned().unwrap_or_default(), self)
+                }
+            }
+        )+
+
+        trait LazySideSyncable<T>
+        {
+            fn side_sync(&mut self, entity: Entity, value: &Option<T>);
+        }
+
+        $(
+            impl LazySideSyncable<$default_type> for ServerEntities
+            {
+                fn side_sync(&mut self, _entity: Entity, _value: &Option<$default_type>) {}
+            }
+
+            impl LazySideSyncable<$default_type> for ClientEntities
+            {
+                fn side_sync(&mut self, _entity: Entity, _value: &Option<$default_type>) {}
+            }
+        )+
+
+        $(
+            impl LazySideSyncable<$side_default_type> for ServerEntities
+            {
+                fn side_sync(&mut self, _entity: Entity, _value: &Option<$side_default_type>) {}
+            }
+
+            impl LazySideSyncable<$side_default_type> for ClientEntities
+            {
+                fn side_sync(&mut self, entity: Entity, value: &Option<$side_default_type>)
+                {
+                    let mut side_sync = self.side_sync.borrow_mut();
+
+                    side_sync.changed = true;
+                    side_sync.$side_name.push((entity, value.clone().map(Box::new)));
                 }
             }
         )+
@@ -2288,6 +2334,24 @@ macro_rules! define_entities
         {
             pub fn sync_changed(&self, passer: &mut client::ConnectionsHandler)
             {
+                {
+                    let mut side_sync = self.side_sync.borrow_mut();
+                    if side_sync.changed
+                    {
+                        side_sync.changed = false;
+
+                        $(
+                            mem::take(&mut side_sync.$side_name).into_iter().for_each(|(entity, component)|
+                            {
+                                passer.send_message(Message::$side_message_name{
+                                    entity,
+                                    component
+                                });
+                            });
+                        )+
+                    }
+                }
+
                 let changed_entities = self.changed_entities.borrow();
 
                 $(
