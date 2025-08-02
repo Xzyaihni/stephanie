@@ -288,7 +288,16 @@ impl ChunkModelBuilder
         let chunk_height = chunk_pos.pos().z;
 
         {
-            let uvs = self.tile_uvs(tile);
+            let id = if let Some(x) = self.tilemap.info_existing(tile).get_weighted_texture()
+            {
+                x
+            } else
+            {
+                eprintln!("tried to get textures of tile {tile:?}, got none");
+                return;
+            };
+
+            let uvs = self.tile_uvs(tile, id as usize);
 
             self.model[chunk_height].0.uvs.extend(uvs);
         }
@@ -300,11 +309,10 @@ impl ChunkModelBuilder
         }
     }
 
-    fn tile_uvs(&self, tile: TileExisting) -> [[f32; 2]; 4]
+    fn tile_uvs(&self, tile: TileExisting, id: usize) -> [[f32; 2]; 4]
     {
         let side = self.tilemap.texture_row_size();
 
-        let id = tile.id();
         let x = id % side;
         let y = id / side;
 
@@ -403,17 +411,14 @@ impl TilesFactory
             textures: base_textures
         } = tilemap;
 
-        let mut make_tilemap = |textures: &[_]|
-        {
+        let texture = {
             let tilemap = tilemap.generate_tilemap(
                 init_info.partial.builder_wrapper.resource_uploader_mut(),
-                textures
+                base_textures.into_iter().filter(|x| !x.is_empty())
             );
 
             Arc::new(Mutex::new(tilemap))
         };
-
-        let texture = make_tilemap(&base_textures);
 
         let tilemap = Arc::new(tilemap);
 

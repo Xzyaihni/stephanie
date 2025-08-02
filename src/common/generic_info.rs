@@ -37,12 +37,17 @@ macro_rules! define_info_id
     }
 }
 
-pub fn load_texture(assets: &Assets, root: &Path, name: &str) -> TextureId
+pub fn load_texture_path(root: &Path, name: &str) -> String
 {
     let formatted_name = name.replace(' ', "_") + ".png";
     let path = root.join(formatted_name);
 
-    let name = normalize_path(path);
+    normalize_path(path)
+}
+
+pub fn load_texture(assets: &Assets, root: &Path, name: &str) -> TextureId
+{
+    let name = load_texture_path(root, name);
 
     assets.texture_id(&name)
 }

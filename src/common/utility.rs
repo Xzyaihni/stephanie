@@ -250,6 +250,11 @@ where
         Self{total, values}
     }
 
+    pub fn pick_by(&self, get_weight: impl Fn(I::Item) -> f64) -> Option<I::Item>
+    {
+        self.pick_with(fastrand::f64(), get_weight)
+    }
+
     pub fn pick_from(
         random_value: f64,
         values: I,

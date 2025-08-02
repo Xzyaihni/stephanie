@@ -20,7 +20,11 @@ use yanyaengine::object::{
     texture::{Color, SimpleImage, Texture}
 };
 
-use crate::common::world::Tile;
+use crate::common::{
+    WeightedPicker,
+    generic_info::load_texture_path,
+    world::{Tile, TileExisting}
+};
 
 
 pub const PADDING: f32 = 0.01;
@@ -38,12 +42,13 @@ pub enum SpecialTile
 pub struct TileInfoRaw
 {
     pub name: String,
+    pub textures: Option<Vec<f32>>,
     pub health: Option<f32>,
     pub drawable: Option<bool>,
     pub special: Option<SpecialTile>,
     pub colliding: Option<bool>,
     pub transparent: Option<bool>,
-    pub texture: Option<PathBuf>
+    pub texture: Option<String>
 }
 
 impl TileInfoRaw
@@ -54,10 +59,18 @@ impl TileInfoRaw
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct TileTexture
+{
+    pub weight: f32,
+    pub id: u32
+}
+
 #[derive(Debug, Clone)]
 pub struct TileInfo
 {
     pub name: String,
+    pub textures: Vec<TileTexture>,
     pub health: f32,
     pub drawable: bool,
     pub special: Option<SpecialTile>,
@@ -67,17 +80,35 @@ pub struct TileInfo
 
 impl TileInfo
 {
-    fn from_raw(texture: &Option<SimpleImage>, tile_raw: TileInfoRaw) -> Self
+    fn from_raw(
+        textures: &Vec<(u32, SimpleImage)>,
+        tile_raw: TileInfoRaw
+    ) -> Self
     {
         let mut this = TileInfo{
             name: tile_raw.name,
+            textures: {
+                let total_textures_weight: f32 = tile_raw.textures.iter().flatten().copied().sum();
+
+                if textures.len() == 1
+                {
+                    let id = textures.first().unwrap().0;
+                    vec![TileTexture{weight: 1.0, id}]
+                } else
+                {
+                    tile_raw.textures.into_iter().flatten().zip(textures.iter()).map(|(weight, (id, _))|
+                    {
+                        TileTexture{weight: weight / total_textures_weight, id: *id}
+                    }).collect()
+                }
+            },
             health: tile_raw.health.unwrap_or(1.0),
             drawable: tile_raw.drawable.unwrap_or(true),
             special: tile_raw.special,
             colliding: tile_raw.colliding.unwrap_or(true),
             transparent: tile_raw.transparent.unwrap_or_else(||
             {
-                texture.as_ref().map(|texture| texture.colors.iter().any(|color|
+                textures.first().as_ref().map(|(_, texture)| texture.colors.iter().any(|color|
                 {
                     color.a != u8::MAX
                 })).unwrap_or(true)
@@ -105,12 +136,17 @@ impl TileInfo
 
         this
     }
+
+    pub fn get_weighted_texture(&self) -> Option<u32>
+    {
+        WeightedPicker::new(1.0, self.textures.iter()).pick_by(|x| x.weight as f64).map(|x| x.id)
+    }
 }
 
 pub struct TileMapWithTextures
 {
     pub tilemap: TileMap,
-    pub textures: Vec<Option<SimpleImage>>
+    pub textures: Vec<Vec<(u32, SimpleImage)>>
 }
 
 #[derive(Debug)]
@@ -182,33 +218,57 @@ impl TileMap
 
         let tiles = serde_json::from_reader::<_, Vec<TileInfoRaw>>(File::open(tiles_path)?)?;
 
-        let textures = tiles.iter().map(|tile_raw|
+        let textures = tiles.iter().scan(0, |current_id: &mut u32, tile_raw: &TileInfoRaw| -> Option<Result<_, TileMapError>>
         {
-            if tile_raw.has_texture()
+            let value = |tile_raw: &TileInfoRaw| -> Result<_, TileMapError>
             {
-                let default_texture = format!("{}.png", tile_raw.name).into();
+                if tile_raw.has_texture()
+                {
+                    let texture_name = tile_raw.texture.as_ref().unwrap_or(&tile_raw.name);
 
-                let texture = textures_root.join(tile_raw.texture.as_ref()
-                    .unwrap_or(&default_texture));
+                    let loader = |name: &str| -> Result<SimpleImage, TileMapError>
+                    {
+                        Self::load_texture(
+                            TEXTURE_TILE_SIZE as u32,
+                            TEXTURE_TILE_SIZE as u32,
+                            PathBuf::from(load_texture_path(textures_root, name))
+                        )
+                    };
 
-                Self::load_texture(
-                    TEXTURE_TILE_SIZE as u32,
-                    TEXTURE_TILE_SIZE as u32,
-                    texture
-                ).map(Option::Some)
-            } else
-            {
-                Ok(None)
-            }
-        }).collect::<Result<Vec<Option<SimpleImage>>, _>>()?;
+                    let textures = if tile_raw.textures.as_ref().map(|x| x.is_empty()).unwrap_or(true)
+                    {
+                        vec![(*current_id, loader(texture_name)?)]
+                    } else
+                    {
+                        tile_raw.textures.iter().flatten().enumerate().map(|(index, _)|
+                        {
+                            (*current_id + index as u32, format!("{texture_name}{}", index + 1))
+                        }).map(|(id, x)| -> Result<_, TileMapError>
+                        {
+                            Ok((id, loader(x.as_ref())?))
+                        }).collect::<Result<Vec<_>, _>>()?
+                    };
 
-        let tiles = tiles.into_iter().zip(textures.iter()).map(|(tile_raw, texture)|
+                    *current_id += textures.len() as u32;
+
+                    Ok(textures)
+                } else
+                {
+                    Ok(Vec::new())
+                }
+            }(tile_raw);
+
+            Some(value)
+        }).collect::<Result<Vec<Vec<(u32, SimpleImage)>>, _>>()?;
+
+        let tiles = tiles.into_iter().zip(textures.iter()).map(|(tile_raw, textures)|
         {
-            TileInfo::from_raw(texture, tile_raw)
+            TileInfo::from_raw(textures, tile_raw)
         }).collect();
 
         let air = TileInfo{
             name: "air".to_owned(),
+            textures: Vec::new(),
             health: 0.0,
             drawable: false,
             special: None,
@@ -256,6 +316,11 @@ impl TileMap
     pub fn info(&self, tile: Tile) -> &TileInfo
     {
         tile.id().map(|id| self.tiles.get(id).unwrap()).unwrap_or(&self.air)
+    }
+
+    pub fn info_existing(&self, tile: TileExisting) -> &TileInfo
+    {
+        self.tiles.get(tile.id()).unwrap()
     }
 
     pub fn len(&self) -> usize
@@ -307,7 +372,7 @@ impl TileMap
     pub fn generate_tilemap(
         &self,
         resource_uploader: &mut ResourceUploader,
-        textures: &[Option<SimpleImage>]
+        textures: impl Iterator<Item=Vec<(u32, SimpleImage)>>
     ) -> Texture
     {
         let side = self.texture_row_size();
@@ -315,15 +380,13 @@ impl TileMap
         let row = side * TEXTURE_TILE_SIZE;
         let mut tilemap = SimpleImage::new(vec![Color::new(0, 0, 0, 255); row * row], row, row);
 
-        textures.iter().enumerate().filter_map(|(index, texture)|
+        textures.flatten().for_each(|(id, texture)|
         {
-            texture.as_ref().map(|texture| (index, texture))
-        }).for_each(|(index, texture)|
-        {
-            let x = (index % side) * TEXTURE_TILE_SIZE;
-            let y = (index / side) * TEXTURE_TILE_SIZE;
+            let id = id as usize;
+            let x = (id % side) * TEXTURE_TILE_SIZE;
+            let y = (id / side) * TEXTURE_TILE_SIZE;
 
-            tilemap.blit(texture, x, y);
+            tilemap.blit(&texture, x, y);
         });
 
         Texture::new(

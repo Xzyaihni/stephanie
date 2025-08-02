@@ -5,6 +5,7 @@
     },
     {
         "name": "grassie",
+        "textures": [0.1, 0.15, 0.2],
 	"health": 0.15
     },
     {
