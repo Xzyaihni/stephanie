@@ -4,6 +4,14 @@
 	"health": 0.9
     },
     {
+        "name": "asphalt-line-horizontal",
+	"health": 0.9
+    },
+    {
+        "name": "asphalt-line-vertical",
+	"health": 0.9
+    },
+    {
         "name": "grassie",
         "textures": [0.1, 0.15, 0.2],
 	"health": 0.15
