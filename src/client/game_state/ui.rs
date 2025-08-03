@@ -88,6 +88,7 @@ pub enum UiId
 {
     Screen,
     Loading(LoadingPart),
+    Paused(PausedPart),
     Health(HealthPart),
     DeathScreen(DeathScreenPart),
     Fade,
@@ -123,6 +124,13 @@ pub enum HealthPart
     Panel,
     Body,
     Anatomy(ChangedPart)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum PausedPart
+{
+    Cover,
+    Text
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -1337,6 +1345,7 @@ pub struct Ui
     mouse_position: Vector2<f32>,
     console_contents: Option<String>,
     loading: Option<f32>,
+    is_paused: bool,
     is_fade: bool,
     player_dead: bool,
     windows: Vec<Window>,
@@ -1374,6 +1383,7 @@ impl Ui
             mouse_position: Vector2::zeros(),
             console_contents: None,
             loading: Some(0.0),
+            is_paused: false,
             is_fade: false,
             player_dead: false,
             windows: Vec::new(),
@@ -1443,6 +1453,11 @@ impl Ui
     pub fn set_loading(&mut self, value: Option<f32>)
     {
         self.loading = value;
+    }
+
+    pub fn set_paused(&mut self, value: bool)
+    {
+        self.is_paused = value;
     }
 
     pub fn player_dead(&mut self)
@@ -2293,6 +2308,40 @@ impl Ui
 
         render_bar_display(BarDisplayKind::Stamina, &mut self.stamina, Lcha{l: 70.0, c: 120.0, h: 1.5, a: 1.0});
         render_bar_display(BarDisplayKind::Cooldown, &mut self.cooldown, Lcha{l: 50.0, c: 100.0, h: 4.0, a: 1.0});
+
+        if self.is_paused
+        {
+            self.controller.update(UiId::Paused(PausedPart::Cover), UiElement{
+                texture: UiTexture::Solid,
+                mix: Some(MixColorLch::color(Lcha{a: 0.5, ..BLACK_COLOR})),
+                width: 1.0.into(),
+                height: 1.0.into(),
+                position: UiPosition::Inherit,
+                animation: Animation{
+                    mix: Some(MixAnimation{
+                        decay: MixDecay::all(40.0),
+                        start_mix: Some(Lcha{a: 0.0, ..BLACK_COLOR}),
+                        close_mix: Some(Lcha{a: 0.0, ..BLACK_COLOR}),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+                ..Default::default()
+            });
+
+            self.controller.update(UiId::Paused(PausedPart::Text), UiElement{
+                texture: UiTexture::Text{text: "PAUSED".to_owned(), font_size: BIG_TEXT_SIZE},
+                position: UiPosition::Absolute{position: Vector2::zeros(), align: Default::default()},
+                animation: Animation{
+                    scaling: Some(ScalingAnimation{
+                        close_mode: Scaling::EaseOut{decay: 20.0},
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+                ..UiElement::fit_content()
+            });
+        }
 
         if let Some(text) = self.console_contents.as_mut()
         {

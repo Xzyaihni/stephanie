@@ -31,6 +31,7 @@ pub enum Control
     Shoot,
     Throw,
     Inventory,
+    Pause,
     ZoomIn,
     ZoomOut,
     ZoomReset
@@ -266,6 +267,7 @@ impl<Id> ControlsController<Id>
             (KeyMapping::Keyboard(KeyCode::KeyG), Control::Poke),
             (KeyMapping::Keyboard(KeyCode::KeyI), Control::Inventory),
             (KeyMapping::Keyboard(KeyCode::KeyT), Control::Throw),
+            (KeyMapping::Keyboard(KeyCode::Escape), Control::Pause),
             (KeyMapping::Keyboard(KeyCode::Equal), Control::ZoomIn),
             (KeyMapping::Keyboard(KeyCode::Minus), Control::ZoomOut),
             (KeyMapping::Keyboard(KeyCode::Digit0), Control::ZoomReset)

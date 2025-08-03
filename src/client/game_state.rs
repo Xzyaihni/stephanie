@@ -663,6 +663,7 @@ pub struct GameState
     is_restart: bool,
     is_trusted: bool,
     is_loading: bool,
+    is_paused: bool,
     camera_scale: f32,
     rare_timer: f32,
     dt: Option<f32>,
@@ -828,6 +829,7 @@ impl GameState
             is_restart: false,
             is_trusted: false,
             is_loading: true,
+            is_paused: false,
             user_receiver,
             debug_visibility,
             connections_handler,
@@ -957,6 +959,18 @@ impl GameState
                 }
             }
         }
+    }
+
+    pub fn is_paused(&self) -> bool
+    {
+        self.is_paused
+    }
+
+    pub fn pause(&mut self)
+    {
+        self.is_paused = !self.is_paused;
+
+        self.ui.borrow_mut().set_paused(self.is_paused);
     }
 
     pub fn is_loading(&self) -> bool
@@ -1278,7 +1292,7 @@ impl GameState
 
         self.world.update(dt);
 
-        if self.connected_and_ready
+        if self.connected_and_ready && !self.is_paused
         {
             self.entities.update(
                 &mut self.world,
@@ -1319,48 +1333,51 @@ impl GameState
             self.process_messages(object_info)
         };
 
-        let assets = object_info.partial.assets.clone();
-        let partial = PartialCombinedInfo{
-            world: &self.world,
-            assets: &assets,
-            passer: &self.connections_handler,
-            common_textures: &self.common_textures,
-            characters_info: &self.data_infos.characters_info,
-            items_info: &self.data_infos.items_info
-        };
-
-        crate::frame_time_this!{
-            characters_update,
-            self.entities.entities.update_characters(
-                partial,
-                object_info,
-                dt
-            )
-        };
-
-        crate::frame_time_this!{
-            watchers_update,
-            self.entities.entities.update_watchers(dt)
-        };
-
-        crate::frame_time_this!{
-            create_queued,
-            self.entities.entities.create_queued(object_info)
-        };
-
-        if self.host
+        if !self.is_paused
         {
-            let mut passer = self.connections_handler.write();
+            let assets = object_info.partial.assets.clone();
+            let partial = PartialCombinedInfo{
+                world: &self.world,
+                assets: &assets,
+                passer: &self.connections_handler,
+                common_textures: &self.common_textures,
+                characters_info: &self.data_infos.characters_info,
+                items_info: &self.data_infos.items_info
+            };
+
             crate::frame_time_this!{
-                sync_changed,
-                self.entities.entities.sync_changed(&mut passer)
+                characters_update,
+                self.entities.entities.update_characters(
+                    partial,
+                    object_info,
+                    dt
+                )
+            };
+
+            crate::frame_time_this!{
+                watchers_update,
+                self.entities.entities.update_watchers(dt)
+            };
+
+            crate::frame_time_this!{
+                create_queued,
+                self.entities.entities.create_queued(object_info)
+            };
+
+            if self.host
+            {
+                let mut passer = self.connections_handler.write();
+                crate::frame_time_this!{
+                    sync_changed,
+                    self.entities.entities.sync_changed(&mut passer)
+                };
+            }
+
+            crate::frame_time_this!{
+                handle_on_change,
+                self.entities.entities.handle_on_change()
             };
         }
-
-        crate::frame_time_this!{
-            handle_on_change,
-            self.entities.entities.handle_on_change()
-        };
 
         if self.rare_timer <= 0.0
         {

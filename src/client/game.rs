@@ -1092,6 +1092,11 @@ impl<'a> PlayerContainer<'a>
 
     pub fn on_control(&mut self, state: ControlState, control: Control)
     {
+        if control == Control::Pause && state.is_down()
+        {
+            self.game_state.pause();
+        }
+
         let is_animating = self.info.animation.is_some();
 
         if state.is_down() && is_animating
