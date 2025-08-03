@@ -649,7 +649,7 @@ impl Character
         {
             light.modify_light(|light| *light = item.lighting);
 
-            let mut lazy_transform = entities.lazy_transform_mut(holding_entity).unwrap();
+            let mut lazy_transform = entities.lazy_transform_mut_no_change(holding_entity).unwrap();
 
             let texture = get_texture(item.texture.unwrap());
 
@@ -675,7 +675,7 @@ impl Character
             light.modify_light(|light| *light = Light::default());
         }
 
-        some_or_return!(entities.lazy_transform_mut(hand_right)).connection = if holding_state
+        some_or_return!(entities.lazy_transform_mut_no_change(hand_right)).connection = if holding_state
         {
             Connection::Ignore
         } else
@@ -685,7 +685,7 @@ impl Character
 
         let set_for = |entity, y|
         {
-            let mut lazy = entities.lazy_transform_mut(entity).unwrap();
+            let mut lazy = entities.lazy_transform_mut_no_change(entity).unwrap();
             let target = lazy.target();
 
             let x_sign = target.scale.x.signum();
@@ -945,7 +945,7 @@ impl Character
             }
         };
 
-        let mut lazy = some_or_return!(combined_info.entities.lazy_transform_mut(holding));
+        let mut lazy = some_or_return!(combined_info.entities.lazy_transform_mut_no_change(holding));
         let swing_time = some_or_return!(self.bash_attack_cooldown(combined_info));
 
         let new_rotation = self.current_hand_rotation();
@@ -1027,7 +1027,7 @@ impl Character
 
         let f = |entity|
         {
-            if let Some(mut lazy) = combined_info.entities.lazy_transform_mut(entity)
+            if let Some(mut lazy) = combined_info.entities.lazy_transform_mut_no_change(entity)
             {
                 lazy.target().rotation = start_rotation;
             }
@@ -1062,7 +1062,7 @@ impl Character
 
         let entities = combined_info.entities;
 
-        some_or_return!(entities.lazy_transform_mut(hand_left)).rotation = Self::fast_lazy_rotation();
+        some_or_return!(entities.lazy_transform_mut_no_change(hand_left)).rotation = Self::fast_lazy_rotation();
 
         self.forward_point(combined_info);
 
@@ -1109,7 +1109,7 @@ impl Character
 
         let entities = combined_info.entities;
 
-        some_or_return!(entities.lazy_transform_mut(hand_left)).rotation = Self::fast_lazy_rotation();
+        some_or_return!(entities.lazy_transform_mut_no_change(hand_left)).rotation = Self::fast_lazy_rotation();
 
         self.forward_point(combined_info);
 
@@ -1147,7 +1147,7 @@ impl Character
 
         let entities = &combined_info.entities;
 
-        let mut lazy = some_or_false!(entities.lazy_transform_mut(info.hand_left));
+        let mut lazy = some_or_false!(entities.lazy_transform_mut_no_change(info.hand_left));
 
         let lifetime = self.attack_cooldown.min(0.5);
         let extend_time = lifetime * 0.2;

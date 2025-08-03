@@ -681,7 +681,7 @@ macro_rules! common_trait_impl
 
         fn lazy_target(&self, entity: Entity) -> Option<RefMut<Transform>>
         {
-            Self::lazy_transform_mut(self, entity).map(|lazy|
+            Self::lazy_transform_mut_no_change(self, entity).map(|lazy|
             {
                 RefMut::map(lazy, |x| x.target())
             })
@@ -1223,7 +1223,7 @@ macro_rules! define_entities_both
 
                 pub fn $mut_func(&self, entity: Entity) -> Option<RefMut<$component_type>>
                 {
-                    if (stringify!($name) != "transform") && (stringify!($name) != "lazy_transform")
+                    if stringify!($name) != "transform"
                     {
                         self.changed_entities.borrow_mut().$name.push(entity);
                     }
