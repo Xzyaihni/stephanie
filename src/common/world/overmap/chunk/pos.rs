@@ -663,6 +663,16 @@ impl<T> DirectionsGroup<T>
             down: self.up
         }
     }
+
+    pub fn get_axis_index(&self, index: usize) -> (&T, &T)
+    {
+        match index
+        {
+            0 => (&self.left, &self.right),
+            1 => (&self.down, &self.up),
+            x => panic!("{x} isnt a valid axis index")
+        }
+    }
 }
 
 impl<T> Directions3dGroup<T>

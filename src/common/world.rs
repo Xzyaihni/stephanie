@@ -51,7 +51,6 @@ pub use overmap::{
         LocalPos,
         PosDirection,
         DirectionsGroup,
-        Directions3dGroup,
         MaybeGroup,
         AlwaysGroup,
         tile::{Tile, TileExisting, TileRotation}
@@ -463,17 +462,15 @@ impl World
 
             let world = if check_neighbors
             {
-                Directions3dGroup{
+                DirectionsGroup{
                     left: check_tile(pos.offset(Pos3::new(-1, 0, 0))),
                     right: check_tile(pos.offset(Pos3::new(1, 0, 0))),
                     down: check_tile(pos.offset(Pos3::new(0, -1, 0))),
-                    up: check_tile(pos.offset(Pos3::new(0, 1, 0))),
-                    back: check_tile(pos.offset(Pos3::new(0, 0, -1))),
-                    forward: check_tile(pos.offset(Pos3::new(0, 0, 1)))
+                    up: check_tile(pos.offset(Pos3::new(0, 1, 0)))
                 }
             } else
             {
-                Directions3dGroup::repeat(false)
+                DirectionsGroup::repeat(false)
             };
 
             let mut world_collider = ColliderInfo{

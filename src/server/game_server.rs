@@ -439,8 +439,6 @@ impl GameServer
             }),
             physical: Some(PhysicalProperties{
                 inverse_mass: 50.0_f32.recip(),
-                static_friction: 0.9,
-                dynamic_friction: 0.8,
                 fixed: PhysicalFixed{rotation: true, ..Default::default()},
                 can_sleep: false,
                 ..Default::default()

@@ -61,11 +61,11 @@ use crate::{
         entity::{
             for_each_component,
             render_system,
-            collider_system,
             physical_system,
             enemy_system,
             damaging_system,
-            ClientEntities
+            ClientEntities,
+            collider_system::{self, ContactResolver}
         },
         world::{
             TILE_SIZE,
@@ -207,7 +207,7 @@ impl ClientEntitiesContainer
             self.entities.update_outlineable(dt)
         };
 
-        {
+        let contacts = {
             let mut space = crate::frame_time_this!{
                 spatial_grid_build,
                 world.build_spatial(&self.entities)
@@ -215,13 +215,18 @@ impl ClientEntitiesContainer
 
             crate::frame_time_this!{
                 collider_system_update,
-                collider_system::update(&mut self.entities, world, &mut space, dt)
-            };
-        }
+                collider_system::update(&mut self.entities, world, &mut space)
+            }
+        };
 
         crate::frame_time_this!{
             physical_system_apply,
             physical_system::apply(&mut self.entities)
+        };
+
+        crate::frame_time_this!{
+            collision_system_resolution,
+            ContactResolver::resolve(&mut self.entities, contacts, dt)
         };
 
         self.animation = (self.animation + dt) % (f32::consts::PI * 2.0);

@@ -25,6 +25,7 @@ use crate::{
 };
 
 
+#[derive(Clone, Copy)]
 struct IterativeEpsilon
 {
     pub sleep: f32,
@@ -35,7 +36,6 @@ const ANGULAR_LIMIT: f32 = 0.2;
 const VELOCITY_LOW: f32 = 0.002;
 
 const PENETRATION_EPSILON: IterativeEpsilon = IterativeEpsilon{sleep: 0.005, general: 0.0005};
-const VELOCITY_EPSILON: IterativeEpsilon = IterativeEpsilon{sleep: 0.005, general: 0.0005};
 
 fn skew_symmetric(v: Vector3<f32>) -> Matrix3<f32>
 {
@@ -247,10 +247,7 @@ impl AnalyzedContact
         let velocity_change = velocity_amount * *self.contact.normal;
 
         let mut position_change = velocity_change;
-        if !physical.move_z
-        {
-            position_change.z = 0.0;
-        }
+        position_change.z = 0.0;
 
         if physical.target_non_lazy
         {
@@ -359,7 +356,7 @@ impl AnalyzedContact
         {
             debug_assert!(
                 angular_change == 0.0,
-                "angular_change: {angular_change}, impulse_torque: {impulse_torque}"
+                "angular_change: {angular_change}, impulse_torque: {impulse_torque}, impulse: {impulse}, contact_relative: {contact_relative}"
             );
         }
 
@@ -387,6 +384,11 @@ impl AnalyzedContact
             velocity_change_world += b_velocity_change_world;
         }
 
+        if velocity_change_world.magnitude() == 0.0
+        {
+            return None;
+        }
+
         let mut velocity_change = (self.to_world.transpose() * velocity_change_world) * self.to_world;
 
         let mut total_inverse_mass = entities.physical(self.contact.a).unwrap().inverse_mass;
@@ -395,7 +397,7 @@ impl AnalyzedContact
             total_inverse_mass += entities.physical(b).unwrap().inverse_mass;
         }
 
-        let dims = 3;
+        let dims = 2;
         (0..dims).for_each(|i|
         {
             *velocity_change.index_mut((i, i)) += total_inverse_mass;
@@ -406,36 +408,10 @@ impl AnalyzedContact
         let velocity_stop = Vector3::new(
             self.desired_change,
             -self.velocity.y,
-            -self.velocity.z
+            0.0
         );
 
-        let mut impulse_local = impulse_local_matrix * velocity_stop;
-
-        let plane_magnitude = (1..dims)
-            .map(|i| impulse_local.index(i)).map(|x| x.powi(2))
-            .sum::<f32>()
-            .sqrt();
-
-        let static_friction = self.contact.static_friction(entities);
-        if plane_magnitude > impulse_local.x * static_friction
-        {
-            let friction = self.contact.dynamic_friction(entities);
-
-            (1..dims).for_each(|i|
-            {
-                *impulse_local.index_mut(i) /= plane_magnitude;
-            });
-
-            // remove friction in other axes
-            impulse_local.x = self.desired_change / (velocity_change.m11
-                + velocity_change.m12 * friction * impulse_local.y
-                + velocity_change.m13 * friction * impulse_local.z);
-
-            (1..dims).for_each(|i|
-            {
-                *impulse_local.index_mut(i) *= friction * impulse_local.x;
-            });
-        }
+        let impulse_local = impulse_local_matrix * velocity_stop;
 
         let impulse = self.to_world * impulse_local;
 
@@ -520,17 +496,6 @@ impl Contact
         }
 
         a
-    }
-
-    // this is not how friction works irl but i dont care
-    fn dynamic_friction(&self, entities: &ClientEntities) -> f32
-    {
-        self.average_physical(entities, |x| x.dynamic_friction)
-    }
-
-    fn static_friction(&self, entities: &ClientEntities) -> f32
-    {
-        self.average_physical(entities, |x| x.static_friction)
     }
 
     fn calculate_desired_change(
@@ -682,34 +647,36 @@ impl ContactResolver
         entities: &ClientEntities,
         contacts: &mut [AnalyzedContact],
         iterations: usize,
-        epsilon: IterativeEpsilon,
+        epsilon: impl Into<Option<IterativeEpsilon>>,
         compare: impl Fn(&AnalyzedContact) -> f32,
         mut resolver: impl FnMut(&ClientEntities, &mut AnalyzedContact) -> Option<(Moves, Option<Moves>)>,
         mut updater: impl FnMut(&ClientEntities, &mut AnalyzedContact, Moves, Vector3<f32>)
     )
     {
+        let epsilon: Option<IterativeEpsilon> = epsilon.into();
+
         fn contact_selector<'a, Compare: Fn(&AnalyzedContact) -> f32>(
             compare: &'a Compare,
-            epsilon: &'a IterativeEpsilon
+            epsilon: &'a Option<IterativeEpsilon>
         ) -> impl for<'b> FnMut(&'b mut AnalyzedContact) -> Option<(f32, &'b mut AnalyzedContact)> + use<'a, Compare>
         {
             move |contact|
             {
                 let change = compare(contact);
 
-                (change > epsilon.general).then_some((change, contact))
+                epsilon.map(|x| change > x.general).unwrap_or(true).then_some((change, contact))
             }
         }
 
         fn contact_handler<Moves: IteratedMoves + Copy>(
             entities: &ClientEntities,
-            epsilon: &IterativeEpsilon,
+            epsilon: &Option<IterativeEpsilon>,
             mut resolver: impl FnMut(&ClientEntities, &mut AnalyzedContact) -> Option<(Moves, Option<Moves>)>,
             info: (f32, &mut AnalyzedContact)
         ) -> Option<((Moves, Option<Moves>), (Entity, Option<Entity>))>
         {
             let (change, contact) = info;
-            if change > epsilon.sleep
+            if epsilon.map(|x| change > x.sleep).unwrap_or(true)
             {
                 contact.contact.awaken(entities);
             }
@@ -854,7 +821,7 @@ impl ContactResolver
             entities,
             &mut analyzed_contacts,
             iterations,
-            VELOCITY_EPSILON,
+            None,
             |contact| contact.desired_change,
             |entities, contact| contact.resolve_velocity(entities),
             |entities, contact, move_info, contact_relative|

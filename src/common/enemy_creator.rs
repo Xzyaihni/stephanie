@@ -63,8 +63,6 @@ pub fn create(
         }),
         physical: Some(PhysicalProperties{
             inverse_mass: (info.scale / ENTITY_SCALE) * 50.0_f32.recip(),
-            static_friction: 0.9,
-            dynamic_friction: 0.8,
             fixed: PhysicalFixed{rotation: true, ..Default::default()},
             ..Default::default()
         }.into()),

@@ -20,7 +20,7 @@ use crate::common::{
     world::{
         TILE_SIZE,
         TilePos,
-        Directions3dGroup,
+        DirectionsGroup,
         World
     }
 };
@@ -28,7 +28,7 @@ use crate::common::{
 
 const DIMS: usize = 3;
 
-pub type WorldTileInfo = Directions3dGroup<bool>;
+pub type WorldTileInfo = DirectionsGroup<bool>;
 
 #[derive(Debug, Clone)]
 pub struct ContactGeneral<T>
@@ -582,7 +582,7 @@ impl<'b> TransformMatrix<'b>
             }
         }
 
-        let mut penetrations = (0..DIMS).filter_map(|i|
+        let mut penetrations = (0..2).filter_map(|i|
         {
             let axis: Vector3<f32> = self.rotation_matrix.column(i).into();
             let axis = Unit::new_unchecked(axis);
@@ -593,7 +593,7 @@ impl<'b> TransformMatrix<'b>
             {
                 PenetrationInfo::ThisAxis(handler(self, other))
             })
-        }).chain((0..DIMS).map(|i|
+        }).chain((0..2).map(|i|
         {
             let axis: Vector3<f32> = other.rotation_matrix.column(i).into();
             let axis = Unit::new_unchecked(axis);
@@ -783,7 +783,7 @@ impl<'a> CollidingInfo<'a>
 
     fn allowed_axis(world: &WorldTileInfo, axis: Vector3<f32>) -> bool
     {
-        (0..3).all(|axis_i|
+        (0..2).all(|axis_i|
         {
             let (low, high) = world.get_axis_index(axis_i);
 
@@ -824,27 +824,12 @@ impl<'a> CollidingInfo<'a>
 
                 let d = limited.abs();
 
-                let yz = d.y < d.z;
-                let xz = d.x < d.z;
-
                 let sorted = if d.x < d.y
                 {
-                    if yz
-                    {
-                        [0, 1, 2]
-                    } else
-                    {
-                        if xz { [0, 2, 1] } else { [2, 0, 1] }
-                    }
+                    [0, 1]
                 } else
                 {
-                    if yz
-                    {
-                        if xz { [1, 0, 2] } else { [1, 2, 0] }
-                    } else
-                    {
-                        [2, 1, 0]
-                    }
+                    [1, 0]
                 };
 
                 fn with_limited(limited: Vector3<f32>, f: impl Fn(f32) -> f32) -> impl Fn(usize) -> (usize, f32)
@@ -888,7 +873,7 @@ impl<'a> CollidingInfo<'a>
 
             let mut axis: Vector3<f32> = *normal;
 
-            (0..3).for_each(|axis_i|
+            (0..2).for_each(|axis_i|
             {
                 let (low, high) = world.get_axis_index(axis_i);
 

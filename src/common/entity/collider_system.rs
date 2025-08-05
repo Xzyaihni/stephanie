@@ -25,7 +25,7 @@ use crate::{
     }
 };
 
-use resolver::ContactResolver;
+pub use resolver::ContactResolver;
 
 mod resolver;
 
@@ -33,9 +33,8 @@ mod resolver;
 pub fn update(
     entities: &mut ClientEntities,
     world: &World,
-    space: &mut SpatialGrid,
-    dt: f32
-)
+    space: &mut SpatialGrid
+) -> Vec<Contact>
 {
     macro_rules! maybe_colliding_info
     {
@@ -144,7 +143,7 @@ pub fn update(
                     }),
                     render: Some(RenderInfo{
                         object: Some(RenderObjectKind::Texture{
-                            name: "ui/background.png".to_owned()
+                            name: "solid.png".to_owned()
                         }.into()),
                         z_level: ZLevel::highest(),
                         ..Default::default()
@@ -177,8 +176,5 @@ pub fn update(
         joint.borrow().add_contacts(&transform, entity, parent_position, &mut contacts);
     });
 
-    crate::frame_time_this!{
-        collision_system_resolution,
-        ContactResolver::resolve(entities, contacts, dt)
-    };
+    contacts
 }
