@@ -27,6 +27,7 @@ use crate::common::{
     Drug,
     Entity,
     EntityInfo,
+    OnChangeInfo,
     entity::ClientEntities,
     lisp::{self, *},
     world::{CHUNK_VISUAL_SIZE, TILE_SIZE, Pos3, TilePos}
@@ -159,7 +160,7 @@ impl Game
         {
             let ui = game_state.ui.clone();
 
-            game_state.entities_mut().on_inventory(Box::new(move |_entities, entity|
+            game_state.entities_mut().on_inventory(Box::new(move |OnChangeInfo{entity, ..}|
             {
                 let info = info.borrow_mut();
 

@@ -36,6 +36,7 @@ pub use entity::{
     AnyEntities,
     ServerToClient,
     Component,
+    OnChangeInfo,
     Parent,
     Entity,
     EntityInfo,

@@ -170,12 +170,15 @@ pub fn update(
             this.collide_with_world(world, &mut contacts);
 
             let mut physical = some_or_return!(entities.physical_mut_no_change(entity));
-            let next_position = physical.next_position_mut();
 
-            if this.collide_with_world_z(world, *next_position)
+            if physical.move_z
             {
-                next_position.z = this.transform.position.z;
-                physical.remove_velocity_axis(2);
+                let next_position = physical.next_position_mut();
+                if this.collide_with_world_z(world, *next_position)
+                {
+                    next_position.z = this.transform.position.z;
+                    physical.remove_velocity_axis(2);
+                }
             }
         })
     };

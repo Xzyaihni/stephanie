@@ -635,7 +635,7 @@ impl Character
 
         some_or_return!(entities.parent_mut(holding_entity)).visible = holding_item.is_some();
 
-        entities.lazy_setter.borrow_mut().set_follow_position(hand_right, holding_item.map(|_|
+        entities.lazy_setter.borrow_mut().set_follow_position_no_change(hand_right, holding_item.map(|_|
         {
             FollowPosition{
                 parent: hand_left,
@@ -644,7 +644,7 @@ impl Character
             }
         }));
 
-        let mut light = some_or_return!(entities.light_mut(this_entity));
+        let mut light = some_or_return!(entities.light_mut_no_change(this_entity));
         if let Some(item) = holding_item
         {
             light.modify_light(|light| *light = item.lighting);
@@ -660,7 +660,7 @@ impl Character
             drop(lazy_transform);
 
             let height = entities.lazy_target_end(holding_entity).unwrap().scale.y;
-            entities.lazy_setter.borrow_mut().set_follow_position(holding_entity, Some(FollowPosition{
+            entities.lazy_setter.borrow_mut().set_follow_position_no_change(holding_entity, Some(FollowPosition{
                 parent: hand_left,
                 connection: Connection::Rigid,
                 offset: Vector3::new(0.0, -height / 2.0, 0.0)

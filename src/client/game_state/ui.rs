@@ -43,6 +43,7 @@ use crate::{
         Entity,
         ItemInfo,
         ItemsInfo,
+        OnChangeInfo,
         entity::ClientEntities,
         world::{TILE_SIZE, TilePos}
     }
@@ -1400,7 +1401,7 @@ impl Ui
 
         {
             let ui = this.clone();
-            entities.on_anatomy(Box::new(move |entities, entity|
+            entities.on_anatomy(Box::new(move |OnChangeInfo{entities, entity, ..}|
             {
                 if entities.player_exists(entity)
                 {
@@ -1428,7 +1429,7 @@ impl Ui
 
         {
             let ui = this.clone();
-            entities.on_enemy(Box::new(move |entities, entity|
+            entities.on_enemy(Box::new(move |OnChangeInfo{entities, entity, ..}|
             {
                 if some_or_return!(entities.enemy(entity)).seen_fraction().is_some()
                 {

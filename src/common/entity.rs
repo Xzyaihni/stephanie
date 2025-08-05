@@ -986,7 +986,15 @@ macro_rules! define_entities_both
             }
         }
 
-        pub type OnComponentChange = Box<dyn FnMut(&mut ClientEntities, Entity)>;
+        pub struct OnChangeInfo<'a>
+        {
+            pub entities: &'a mut ClientEntities,
+            pub entity: Entity,
+            pub index: usize,
+            pub total: usize
+        }
+
+        pub type OnComponentChange = Box<dyn FnMut(OnChangeInfo)>;
 
         pub type ComponentsIndices = [Option<usize>; COMPONENTS_COUNT];
 
@@ -1000,7 +1008,7 @@ macro_rules! define_entities_both
         pub struct SetterQueue<$($component_type,)+>
         {
             changed: bool,
-            $($name: Vec<(Entity, Option<$component_type>)>,)+
+            $($name: Vec<(Entity, Option<$component_type>, bool)>,)+
         }
 
         impl<$($component_type,)+> SetterQueue<$($component_type,)+>
@@ -1009,7 +1017,13 @@ macro_rules! define_entities_both
                 pub fn $set_func(&mut self, entity: Entity, component: Option<$component_type>)
                 {
                     self.changed = true;
-                    self.$name.push((entity, component));
+                    self.$name.push((entity, component, true));
+                }
+
+                pub fn $set_func_no_change(&mut self, entity: Entity, component: Option<$component_type>)
+                {
+                    self.changed = true;
+                    self.$name.push((entity, component, false));
                 }
             )+
         }
@@ -1030,8 +1044,8 @@ macro_rules! define_entities_both
             $(
                 pub fn $mut_func(&mut self, entity: Entity) -> Option<&mut $component_type>
                 {
-                    self.0.$name.iter_mut().find(|(e, _c)| *e == entity)
-                        .and_then(|(_entity, component)| component.as_mut())
+                    self.0.$name.iter_mut().find(|(e, _c, _)| *e == entity)
+                        .and_then(|(_entity, component, _)| component.as_mut())
                 }
             )+
         }
@@ -1075,12 +1089,15 @@ macro_rules! define_entities_both
                     $($name: ObjectsStore::new(),)+
                 };
 
-                this.on_render(Box::new(move |entities, _entity|
+                this.on_render(Box::new(move |OnChangeInfo{entities, index, total, ..}|
                 {
-                    entities.resort_by_z();
+                    if (index + 1) == total
+                    {
+                        entities.resort_by_z();
+                    }
                 }));
 
-                this.on_anatomy(Box::new(move |entities, entity|
+                this.on_anatomy(Box::new(move |OnChangeInfo{entities, entity, ..}|
                 {
                     if let Some(mut character) = entities.character_mut(entity)
                     {
@@ -1167,7 +1184,7 @@ macro_rules! define_entities_both
                 $(
                     if info.$name.is_some()
                     {
-                        self.$set_func(entity, info.$name);
+                        self.$set_func_no_change(entity, info.$name);
                     }
                 )+
             }
@@ -1223,9 +1240,12 @@ macro_rules! define_entities_both
 
                 pub fn $mut_func(&self, entity: Entity) -> Option<RefMut<$component_type>>
                 {
-                    if stringify!($name) != "transform"
                     {
-                        self.changed_entities.borrow_mut().$name.push(entity);
+                        const NAME: &'static str = stringify!($name);
+                        if (NAME != "transform") && (NAME != "watchers")
+                        {
+                            self.changed_entities.borrow_mut().$name.push(entity);
+                        }
                     }
 
                     self.$mut_func_no_change(entity)
@@ -1565,13 +1585,15 @@ macro_rules! define_entities_both
                         }
                     }
 
-                    taken.into_iter().for_each(|entity|
+                    let total = taken.len();
+                    taken.into_iter().enumerate().for_each(|(index, entity)|
                     {
                         let listeners = self.$on_name.clone();
 
-                        listeners.borrow_mut().iter_mut().for_each(|on_change|
+                        let entities: &mut Self = self;
+                        listeners.borrow_mut().iter_mut().for_each(move |on_change|
                         {
-                            on_change(self, entity);
+                            on_change(OnChangeInfo{entities, entity, index, total});
                         });
                     });
                 )+
@@ -1965,7 +1987,7 @@ macro_rules! define_entities_both
                     $(Message::$message_name{entity, component} =>
                     {
                         debug_assert!(!entity.local);
-                        self.$set_func(entity, component.map(|x| *x));
+                        self.$set_func_no_change(entity, component.map(|x| *x));
 
                         None
                     },)+
@@ -1978,7 +2000,7 @@ macro_rules! define_entities_both
 
 macro_rules! implement_common_complex
 {
-    ($(($name:ident, $set_func:ident, $server_type:ident, $this_type:ident),)+) =>
+    ($(($name:ident, $set_func:ident, $set_func_no_change:ident, $server_type:ident, $this_type:ident),)+) =>
     {
         fn lazy_set_common<C>(&mut self, t: &mut C)
         where
@@ -1994,10 +2016,22 @@ macro_rules! implement_common_complex
 
                 $(
                     let queue = mem::take(&mut self.lazy_setter.borrow_mut().$name);
-                    queue.into_iter().for_each(|(entity, component)|
+                    queue.into_iter().for_each(|(entity, component, is_changed)|
                     {
-                        self.side_sync(entity, &component);
-                        self.$set_func(entity, component.map(|x| t.convert(self, entity, x)));
+                        if is_changed
+                        {
+                            self.side_sync(entity, &component);
+                        }
+
+                        let component = component.map(|x| t.convert(self, entity, x));
+
+                        if is_changed
+                        {
+                            self.$set_func(entity, component);
+                        } else
+                        {
+                            self.$set_func_no_change(entity, component);
+                        }
                     });
                 )+
             }
@@ -2137,16 +2171,16 @@ macro_rules! define_entities
         impl ClientEntities
         {
             implement_common_complex!{
-                $(($name, $set_func, $default_type, $default_type),)+
-                $(($side_name, $side_set_func, $side_default_type, $client_type),)+
+                $(($name, $set_func, $set_func_no_change, $default_type, $default_type),)+
+                $(($side_name, $side_set_func, $side_set_func_no_change, $side_default_type, $client_type),)+
             }
         }
 
         impl ServerEntities
         {
             implement_common_complex!{
-                $(($name, $set_func, $default_type, $default_type),)+
-                $(($side_name, $side_set_func, $side_default_type, $side_default_type),)+
+                $(($name, $set_func, $set_func_no_change, $default_type, $default_type),)+
+                $(($side_name, $side_set_func, $side_set_func_no_change, $side_default_type, $side_default_type),)+
             }
         }
 
@@ -2445,7 +2479,7 @@ macro_rules! define_entities
                     $(Message::$message_name{entity, component} =>
                     {
                         debug_assert!(!entity.local);
-                        self.$set_func(entity, component.map(|x| *x));
+                        self.$set_func_no_change(entity, component.map(|x| *x));
 
                         None
                     },)+

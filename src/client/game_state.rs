@@ -56,6 +56,7 @@ use crate::{
         EntityPasser,
         EntitiesController,
         OccludingCaster,
+        OnChangeInfo,
         message::Message,
         character::PartialCombinedInfo,
         entity::{
@@ -858,7 +859,7 @@ impl GameState
             let ui = self.ui.clone();
             let player_entity = self.entities.player_entity;
 
-            self.entities.entities.on_anatomy(Box::new(move |entities, entity|
+            self.entities.entities.on_anatomy(Box::new(move |OnChangeInfo{entities, entity, ..}|
             {
                 if let Some(mut anatomy) = entities.anatomy_mut_no_change(entity)
                 {

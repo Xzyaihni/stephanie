@@ -58,7 +58,7 @@ impl Default for PhysicalProperties
             inverse_mass: 1.0,
             restitution: 0.3,
             damping: 0.003,
-            angular_damping: 0.4,
+            angular_damping: 0.005,
             can_sleep: true,
             floating: false,
             fixed: PhysicalFixed::default(),
