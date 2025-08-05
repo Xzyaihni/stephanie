@@ -289,9 +289,12 @@ impl SpatialGrid
             if DebugConfig::is_enabled(DebugTool::Spatial)
             {
                 let (amount, _, f) = node.debug_print(0);
-
                 eprintln!("spatial {z} has {amount} entities");
-                f();
+
+                if DebugConfig::is_enabled(DebugTool::SpatialFull)
+                {
+                    f();
+                }
             }
         });
 

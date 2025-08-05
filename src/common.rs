@@ -208,6 +208,11 @@ macro_rules! frame_time_this
 
             use $crate::debug_config::*;
 
+            if DebugConfig::is_enabled(DebugTool::PrintStage)
+            {
+                eprintln!("currently in {}", stringify!($name));
+            }
+
             if DebugConfig::is_enabled(DebugTool::FrameTimings)
             {
                 #[allow(non_upper_case_globals)]

@@ -221,7 +221,7 @@ impl ClientEntitiesContainer
 
         crate::frame_time_this!{
             physical_system_apply,
-            physical_system::apply(&mut self.entities)
+            physical_system::apply(&mut self.entities, world)
         };
 
         crate::frame_time_this!{

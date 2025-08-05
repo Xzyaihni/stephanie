@@ -117,9 +117,23 @@ pub fn update(
             let other;
             maybe_colliding_info!{other, other_entity};
 
+            let before_collision_contacts = contacts.len();
             this.collide(other, |contact| contacts.push(contact));
+
+            if DebugConfig::is_enabled(DebugTool::PrintContactsCount)
+            {
+                if before_collision_contacts != contacts.len()
+                {
+                    eprintln!("after {entity:?} x {other_entity:?}: {} contacts", contacts.len());
+                }
+            }
         })
     };
+
+    if DebugConfig::is_enabled(DebugTool::PrintContactsCount)
+    {
+        eprintln!("after collision: {} contacts", contacts.len());
+    }
 
     crate::frame_time_this!{
         collision_system_world,
@@ -166,6 +180,11 @@ pub fn update(
         })
     };
 
+    if DebugConfig::is_enabled(DebugTool::PrintContactsCount)
+    {
+        eprintln!("after world: {} contacts", contacts.len());
+    }
+
     for_each_component!(entities, joint, |entity, joint: &RefCell<Joint>|
     {
         let parent = some_or_return!(entities.parent(entity));
@@ -175,6 +194,11 @@ pub fn update(
 
         joint.borrow().add_contacts(&transform, entity, parent_position, &mut contacts);
     });
+
+    if DebugConfig::is_enabled(DebugTool::PrintContactsCount)
+    {
+        eprintln!("after joints: {} contacts", contacts.len());
+    }
 
     contacts
 }

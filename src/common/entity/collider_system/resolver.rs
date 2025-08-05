@@ -34,6 +34,7 @@ struct IterativeEpsilon
 
 const ANGULAR_LIMIT: f32 = 0.2;
 const VELOCITY_LOW: f32 = 0.002;
+const ITERATIONS: usize = 50;
 
 const PENETRATION_EPSILON: IterativeEpsilon = IterativeEpsilon{sleep: 0.005, general: 0.0005};
 
@@ -646,7 +647,6 @@ impl ContactResolver
     fn resolve_iterative<Moves: IteratedMoves + Copy>(
         entities: &ClientEntities,
         contacts: &mut [AnalyzedContact],
-        iterations: usize,
         epsilon: impl Into<Option<IterativeEpsilon>>,
         compare: impl Fn(&AnalyzedContact) -> f32,
         mut resolver: impl FnMut(&ClientEntities, &mut AnalyzedContact) -> Option<(Moves, Option<Moves>)>,
@@ -708,7 +708,7 @@ impl ContactResolver
             }
         }
 
-        for _ in 0..iterations
+        for _ in 0..ITERATIONS
         {
             if let Some(info) = contacts.iter_mut()
                 .filter_map(contact_selector(&compare, &epsilon))
@@ -779,6 +779,11 @@ impl ContactResolver
             contacts.iter().for_each(|contact| Self::display_contact(entities, contact));
         }
 
+        if DebugConfig::is_enabled(DebugTool::PrintContactsCount)
+        {
+            eprintln!("resolving {} contacts", contacts.len());
+        }
+
         if DebugConfig::is_enabled(DebugTool::NoResolve)
         {
             return;
@@ -789,11 +794,9 @@ impl ContactResolver
             contact.analyze(entities, dt)
         }).collect();
 
-        let iterations = analyzed_contacts.len();
         Self::resolve_iterative(
             entities,
             &mut analyzed_contacts,
-            iterations,
             PENETRATION_EPSILON,
             |contact| contact.contact.penetration,
             |entities, contact| contact.resolve_penetration(entities),
@@ -820,7 +823,6 @@ impl ContactResolver
         Self::resolve_iterative(
             entities,
             &mut analyzed_contacts,
-            iterations,
             None,
             |contact| contact.desired_change,
             |entities, contact| contact.resolve_velocity(entities),

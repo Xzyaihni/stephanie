@@ -57,7 +57,7 @@ impl Default for PhysicalProperties
         Self{
             inverse_mass: 1.0,
             restitution: 0.3,
-            damping: 0.9,
+            damping: 0.003,
             angular_damping: 0.4,
             can_sleep: true,
             floating: false,
