@@ -15,6 +15,17 @@ use crate::{
 };
 
 
+pub fn apply(entities: &mut ClientEntities)
+{
+    for_each_component!(entities, physical, |entity, physical: &RefCell<Physical>|
+    {
+        if let Some(mut target) = entities.target(entity)
+        {
+            physical.borrow_mut().apply(&mut target);
+        }
+    });
+}
+
 pub fn update(entities: &mut ClientEntities, world: &World, dt: f32)
 {
     for_each_component!(entities, physical, |entity, physical: &RefCell<Physical>|

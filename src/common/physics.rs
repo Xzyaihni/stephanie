@@ -94,7 +94,8 @@ pub struct Physical
     force: Vector3<f32>,
     velocity: Vector3<f32>,
     acceleration: Vector3<f32>,
-    last_acceleration: Vector3<f32>
+    last_acceleration: Vector3<f32>,
+    next_position: Vector3<f32>
 }
 
 impl From<PhysicalProperties> for Physical
@@ -121,7 +122,8 @@ impl From<PhysicalProperties> for Physical
             force: Vector3::zeros(),
             velocity: Vector3::zeros(),
             acceleration: Vector3::zeros(),
-            last_acceleration: Vector3::zeros()
+            last_acceleration: Vector3::zeros(),
+            next_position: Vector3::zeros()
         }
     }
 }
@@ -145,6 +147,11 @@ impl Physical
         }
     }
 
+    pub fn apply(&mut self, transform: &mut Transform)
+    {
+        transform.position = self.next_position;
+    }
+
     pub fn update(
         &mut self,
         transform: &mut Transform,
@@ -162,7 +169,7 @@ impl Physical
             self.acceleration = GRAVITY;
         }
 
-        transform.position += self.velocity * dt;
+        self.next_position = transform.position + self.velocity * dt;
 
         if !self.fixed.rotation
         {
@@ -196,6 +203,11 @@ impl Physical
         {
             self.update_sleep_movement(dt);
         }
+    }
+
+    pub fn next_position_mut(&mut self) -> &mut Vector3<f32>
+    {
+        &mut self.next_position
     }
 
     pub fn floating(&self) -> bool
@@ -269,6 +281,11 @@ impl Physical
     pub fn angular_velocity(&self) -> f32
     {
         self.angular_velocity
+    }
+
+    pub fn remove_velocity_axis(&mut self, axis: usize)
+    {
+        *self.velocity.get_mut(axis).unwrap() = 0.0;
     }
 
     pub fn set_velocity_raw(&mut self, velocity: Vector3<f32>)

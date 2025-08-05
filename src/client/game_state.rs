@@ -219,6 +219,11 @@ impl ClientEntitiesContainer
             };
         }
 
+        crate::frame_time_this!{
+            physical_system_apply,
+            physical_system::apply(&mut self.entities)
+        };
+
         self.animation = (self.animation + dt) % (f32::consts::PI * 2.0);
     }
 

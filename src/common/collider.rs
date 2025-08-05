@@ -16,7 +16,7 @@ use crate::common::{
     rectangle_points,
     Entity,
     Physical,
-    raycast::raycast_this,
+    raycast::{raycast_this, swept_aabb_world},
     world::{
         TILE_SIZE,
         TilePos,
@@ -1168,6 +1168,29 @@ impl<'a> CollidingInfo<'a>
         }
 
         collided
+    }
+
+    pub fn collide_with_world_z(
+        &mut self,
+        world: &World,
+        next_position: Vector3<f32>
+    ) -> bool
+    {
+        if !self.collider.layer.collides(&ColliderLayer::World)
+        {
+            return false;
+        }
+
+        let direction = next_position - self.transform.position;
+
+        if let Some(distance) = swept_aabb_world(world, &self.transform, Vector3::new(0.0, 0.0, direction.z))
+        {
+            self.transform.position += Vector3::new(0.0, 0.0, distance * direction.z.signum());
+
+            return true;
+        }
+
+        false
     }
 
     pub fn collide_with_world(
