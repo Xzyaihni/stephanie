@@ -98,11 +98,29 @@ impl RaycastHits
     }
 }
 
+pub fn swept_aabb_world_with_before<'a>(
+    world: &'a World,
+    this: &'a Transform,
+    direction: Vector3<f32>
+) -> impl Iterator<Item=f32> + use<'a>
+{
+    swept_aabb_world_inner::<false>(world, this, direction)
+}
+
 pub fn swept_aabb_world(
     world: &World,
     this: &Transform,
     direction: Vector3<f32>
 ) -> Option<f32>
+{
+    swept_aabb_world_inner::<true>(world, this, direction).min_by(|a, b| a.partial_cmp(&b).unwrap())
+}
+
+fn swept_aabb_world_inner<'a, const EXCLUDE_BEFORE: bool>(
+    world: &'a World,
+    this: &'a Transform,
+    direction: Vector3<f32>
+) -> impl Iterator<Item=f32> + use<'a, EXCLUDE_BEFORE>
 {
     let tilemap = world.tilemap();
 
@@ -120,7 +138,7 @@ pub fn swept_aabb_world(
     let bottom_right = start.zip_map(&end, |a, b| a.max(b)) + half_size;
 
     TilePos::from(top_left).tiles_between(TilePos::from(bottom_right + Vector3::repeat(TILE_SIZE)))
-        .filter_map(|pos|
+        .filter_map(move |pos|
         {
             let tile = world.tile(pos);
 
@@ -142,9 +160,14 @@ pub fn swept_aabb_world(
                 x.distance
             }).filter(|x|
             {
-                (0.0..=limit).contains(&x)
+                if EXCLUDE_BEFORE && *x < 0.0
+                {
+                    return false;
+                }
+
+                *x <= limit
             })
-        }).min_by(|a, b| a.partial_cmp(&b).unwrap())
+        })
 }
 
 pub fn raycast_world<'a, Exit: FnMut(&TileInfo, &RaycastHit) -> bool>(

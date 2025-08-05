@@ -1610,6 +1610,10 @@ impl<'a> PlayerContainer<'a>
         if new_animation.is_some()
         {
             self.info.animation = new_animation;
+            if let Some(mut physical) = self.game_state.entities().physical_mut(self.info.entity)
+            {
+                physical.set_velocity_raw(Vector3::zeros());
+            }
         }
 
         self.game_state.ui.borrow_mut().set_fade(self.info.animation.is_some());

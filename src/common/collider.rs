@@ -16,7 +16,7 @@ use crate::common::{
     rectangle_points,
     Entity,
     Physical,
-    raycast::{raycast_this, swept_aabb_world},
+    raycast::{raycast_this, swept_aabb_world_with_before},
     world::{
         TILE_SIZE,
         TilePos,
@@ -1168,7 +1168,11 @@ impl<'a> CollidingInfo<'a>
 
         let direction = next_position - self.transform.position;
 
-        if let Some(distance) = swept_aabb_world(world, &self.transform, Vector3::new(0.0, 0.0, direction.z))
+        if let Some(distance) = swept_aabb_world_with_before(
+            world,
+            &self.transform,
+            Vector3::new(0.0, 0.0, direction.z)
+        ).filter(|x| *x > -TILE_SIZE * 0.1).min_by(|a, b| a.partial_cmp(&b).unwrap())
         {
             self.transform.position += Vector3::new(0.0, 0.0, distance * direction.z.signum());
 
