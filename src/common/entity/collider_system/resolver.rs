@@ -546,38 +546,43 @@ impl Contact
         )
     }
 
-    fn analyze(self, entities: &ClientEntities, dt: f32) -> AnalyzedContact
+    fn analyze(self, entities: &ClientEntities, dt: f32) -> Option<AnalyzedContact>
     {
         let to_world = self.to_world_matrix();
 
-        let a_relative = self.point - entities.transform(self.a).unwrap().position;
-        let b_relative = self.b.map(|b| self.point - entities.transform(b).unwrap().position);
+        let a_relative = self.point - entities.transform(self.a)?.position;
+        let b_relative = self.b.and_then(|b| Some(self.point - entities.transform(b)?.position));
 
         let mut velocity = Self::velocity_closing(
-            &entities.physical(self.a).unwrap(),
+            &*entities.physical(self.a)?,
             &to_world,
             a_relative
         );
 
         let a_inverse_inertia_tensor = Self::inverse_inertia_tensor_of(entities, self.a);
 
-        let b_inverse_inertia_tensor = self.b.map(|b|
+        let b_inverse_inertia_tensor = self.b.and_then(|b|
         {
             let b_velocity = Self::velocity_closing(
-                &entities.physical(b).unwrap(),
+                &*entities.physical(b)?,
                 &to_world,
-                b_relative.unwrap()
+                b_relative?
             );
 
             velocity -= b_velocity;
 
-            Self::inverse_inertia_tensor_of(entities, b)
+            Some(Self::inverse_inertia_tensor_of(entities, b))
         });
+
+        if self.b.is_some() && b_inverse_inertia_tensor.is_none()
+        {
+            return None;
+        }
 
         let desired_change = self.calculate_desired_change(entities, &velocity, dt);
         debug_assert!(!desired_change.is_nan());
 
-        AnalyzedContact{
+        Some(AnalyzedContact{
             to_world,
             velocity,
             desired_change,
@@ -586,7 +591,7 @@ impl Contact
             a_relative,
             b_relative,
             contact: self
-        }
+        })
     }
 }
 
@@ -789,7 +794,7 @@ impl ContactResolver
             return;
         }
 
-        let mut analyzed_contacts: Vec<_> = contacts.into_iter().map(|contact|
+        let mut analyzed_contacts: Vec<_> = contacts.into_iter().filter_map(|contact|
         {
             contact.analyze(entities, dt)
         }).collect();
