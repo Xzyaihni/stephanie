@@ -45,6 +45,7 @@ pub enum DebugTool
     PrintListenerUpdates,
     PrintStage,
     PrintContactsCount,
+    PrintPushEntity,
     DrawTileOcclusion,
     GpuDrawTimings,
     FrameTimings,

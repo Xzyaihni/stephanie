@@ -478,6 +478,15 @@ macro_rules! impl_common_systems
             self.children_of(entity).for_each(move |entity| self.for_every_child_inner(entity, f));
         }
 
+        fn remove_queued(&mut self)
+        {
+            let queue = mem::take(self.remove_queue.get_mut());
+            queue.into_iter().for_each(|entity|
+            {
+                self.remove(entity);
+            });
+        }
+
         fn create_queued_common(
             &mut self,
             mut f: impl FnMut(&mut Self, Entity, EntityInfo) -> $this_entity_info
@@ -494,12 +503,6 @@ macro_rules! impl_common_systems
 
                     self.set_each(entity, info);
                 }
-            });
-
-            let queue = mem::take(self.remove_queue.get_mut());
-            queue.into_iter().for_each(|entity|
-            {
-                self.remove(entity);
             });
         }
 
@@ -984,6 +987,24 @@ macro_rules! define_entities_both
                 self.lazy_transform.as_mut()
                     .map(|lazy| lazy.target())
                     .or_else(|| self.transform.as_mut())
+            }
+
+            pub fn compact_format(&self) -> String
+            {
+                let mut components = String::new();
+                $(
+                    if self.$name.is_some()
+                    {
+                        if !components.is_empty()
+                        {
+                            components += ", ";
+                        }
+
+                        components += stringify!($name);
+                    }
+                )+
+
+                format!("EntityInfo[{components}]")
             }
         }
 
@@ -1719,16 +1740,28 @@ macro_rules! define_entities_both
                 create_info: &mut UpdateBuffersInfo
             )
             {
-                self.lazy_set_common(create_info);
-                self.create_queued_common(|this, entity, info|
-                {
-                    ClientEntityInfo::from_server(
-                        this,
-                        entity,
-                        create_info,
-                        info
-                    )
-                });
+                crate::frame_time_this!{
+                    lazy_set,
+                    self.lazy_set_common(create_info)
+                };
+
+                crate::frame_time_this!{
+                    create_queued_common,
+                    self.create_queued_common(|this, entity, info|
+                    {
+                        ClientEntityInfo::from_server(
+                            this,
+                            entity,
+                            create_info,
+                            info
+                        )
+                    })
+                };
+
+                crate::frame_time_this!{
+                    remove_queued,
+                    self.remove_queued()
+                };
             }
 
             pub fn update_children(&mut self)
@@ -1977,6 +2010,8 @@ macro_rules! define_entities_both
                     info
                 });
 
+                self.remove_queued();
+
                 self.create_render_queue.borrow_mut().clear();
             }
 
@@ -2219,6 +2254,11 @@ macro_rules! define_entities
                 // clients cant create global entities
                 assert!(local);
 
+                if DebugConfig::is_enabled(DebugTool::PrintPushEntity)
+                {
+                    eprintln!("eagerly pushing {}", info.compact_format());
+                }
+
                 let entity = self.push_inner(local, info.shared());
 
                 self.create_queue.borrow_mut().push((entity, info));
@@ -2230,6 +2270,11 @@ macro_rules! define_entities
             {
                 // clients cant create global entities
                 assert!(local);
+
+                if DebugConfig::is_enabled(DebugTool::PrintPushEntity)
+                {
+                    eprintln!("pushing {}", info.compact_format());
+                }
 
                 let entity = self.push_empty(local, info.parent.as_ref().map(|x| x.entity));
 
