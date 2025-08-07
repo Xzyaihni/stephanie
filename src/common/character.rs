@@ -147,7 +147,7 @@ impl Faction
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum CharacterAction
 {
-    Throw(Vector3<f32>),
+    Throw{state: bool, target: Vector3<f32>},
     Poke{state: bool},
     Bash,
     Ranged{state: bool, target: Vector3<f32>}
@@ -221,7 +221,8 @@ enum BufferedAction
 {
     Bash = 0,
     Poke,
-    Aim
+    Aim,
+    Throw
 }
 
 #[derive(Debug, Clone)]
@@ -248,7 +249,8 @@ enum AttackState
 {
     None,
     Poke,
-    Aim
+    Aim,
+    Throw
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -728,20 +730,54 @@ impl Character
         self.held_update = false;
     }
 
+    fn can_throw(&self, combined_info: CombinedInfo) -> bool
+    {
+        self.holding.is_some() && self.can_attack(combined_info)
+    }
+
+    fn throw_start(&mut self, combined_info: CombinedInfo)
+    {
+        if !self.can_throw(combined_info)
+        {
+            self.start_buffered(BufferedAction::Throw);
+
+            return;
+        }
+
+        self.stop_buffered(BufferedAction::Throw);
+
+        let hand_left = some_or_return!(self.info.as_ref()).hand_left;
+
+        let entities = combined_info.entities;
+
+        some_or_return!(entities.lazy_transform_mut_no_change(hand_left)).rotation = Self::fast_lazy_rotation();
+
+        self.forward_point(combined_info);
+
+        self.attack_state = AttackState::Throw;
+    }
+
     fn throw_held(
         &mut self,
         combined_info: CombinedInfo,
         target: Vector3<f32>
-    )
+    ) -> bool
     {
-        if !self.can_attack(combined_info)
+        self.stop_buffered(BufferedAction::Throw);
+
+        if self.attack_state != AttackState::Throw
         {
-            return;
+            return false;
+        }
+
+        if !self.can_throw(combined_info)
+        {
+            return false;
         }
 
         let entities = &combined_info.entities;
-        let strength = some_or_return!(self.newtons(combined_info)) * 0.2;
-        let held = some_or_return!(self.holding.take());
+        let strength = some_or_value!(self.newtons(combined_info), false) * 0.2;
+        let held = some_or_value!(self.holding.take(), false);
 
         if let Some(item_info) = self.item_info(combined_info, held)
         {
@@ -848,9 +884,13 @@ impl Character
             entities.push(true, entity_info);
 
             entities.inventory_mut(info.this).unwrap().remove(held);
+
+            self.consume_attack_stamina(combined_info);
         }
 
         self.held_update = true;
+
+        true
     }
 
     pub fn can_move(&self, combined_info: CombinedInfo) -> bool
@@ -1475,7 +1515,8 @@ impl Character
 
             match action
             {
-                CharacterAction::Throw(target) => self.throw_held(combined_info, target),
+                CharacterAction::Throw{state: false, ..} => self.throw_start(combined_info),
+                CharacterAction::Throw{state: true, target} => with_clear!(self.throw_held(combined_info, target)),
                 CharacterAction::Poke{state: false} => self.poke_attack_start(combined_info),
                 CharacterAction::Poke{state: true} => with_clear!(self.poke_attack(combined_info)),
                 CharacterAction::Ranged{state: false, ..} => self.aim_start(combined_info),
@@ -1584,7 +1625,8 @@ impl Character
                 {
                     BufferedAction::Poke => { self.poke_attack_start(combined_info); },
                     BufferedAction::Bash => self.bash_attack(combined_info, false),
-                    BufferedAction::Aim => self.aim_start(combined_info)
+                    BufferedAction::Aim => self.aim_start(combined_info),
+                    BufferedAction::Throw => self.throw_start(combined_info)
                 }
             }
         }

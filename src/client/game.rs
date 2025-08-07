@@ -1141,6 +1141,14 @@ impl<'a> PlayerContainer<'a>
 
                 self.character_action(CharacterAction::Ranged{state: !state.to_bool(), target});
             },
+            Control::Throw =>
+            {
+                let mouse_transform = self.game_state.entities()
+                    .transform(self.info.mouse_entity)
+                    .unwrap();
+
+                self.character_action(CharacterAction::Throw{state: !state.to_bool(), target: mouse_transform.position});
+            },
             Control::Interact =>
             {
                 self.info.interacted = state.is_down();
@@ -1203,14 +1211,6 @@ impl<'a> PlayerContainer<'a>
                 }
 
                 self.character_action(CharacterAction::Bash);
-            },
-            Control::Throw =>
-            {
-                let mouse_transform = self.game_state.entities()
-                    .transform(self.info.mouse_entity)
-                    .unwrap();
-
-                self.character_action(CharacterAction::Throw(mouse_transform.position));
             },
             Control::Inventory =>
             {
