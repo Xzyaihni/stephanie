@@ -238,8 +238,6 @@ macro_rules! frame_time_this
                     value.2 += 1;
                     if value.2 == value.1.len()
                     {
-                        value.2 = 0;
-
                         let (total, amount) = value.1.iter().fold((0.0, 0), |(total, amount), x|
                         {
                             if let Some(x) = x
@@ -254,6 +252,9 @@ macro_rules! frame_time_this
                         let average_time = total / amount as f64;
 
                         eprintln!("{} takes ({:.2} ms max) {average_time:.2} ms", stringify!($name), value.0);
+
+                        value.0 = 0.0;
+                        value.2 = 0;
                     }
                 }
 

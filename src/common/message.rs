@@ -2,7 +2,7 @@ use std::mem;
 
 use serde::{Serialize, Deserialize};
 
-use strum::EnumCount;
+use strum::{EnumCount, IntoStaticStr};
 
 use nalgebra::Vector3;
 
@@ -40,7 +40,7 @@ pub enum DebugMessage
     PrintEntityInfo(Entity)
 }
 
-#[derive(Debug, Clone, EnumCount, Serialize, Deserialize)]
+#[derive(Debug, Clone, EnumCount, IntoStaticStr, Serialize, Deserialize)]
 pub enum Message
 {
     EntitySet{entity: Entity, info: Box<EntityInfo>},

@@ -1029,9 +1029,15 @@ impl GameState
 
     fn process_message_inner(&mut self, create_info: &mut UpdateBuffersInfo, message: Message)
     {
-        if DebugConfig::is_enabled(DebugTool::ShowMessages)
+        if DebugConfig::is_enabled(DebugTool::Messages)
         {
-            eprintln!("{message:#?}");
+            if DebugConfig::is_enabled(DebugTool::MessagesFull)
+            {
+                eprintln!("{message:#?}");
+            } else
+            {
+                eprintln!("message: {}", <&str>::from(&message));
+            }
         }
 
         let message = some_or_return!{self.entities.handle_message(create_info, message)};
@@ -1168,8 +1174,6 @@ impl GameState
         {
             self.world.debug_tile_occlusion(&self.entities.entities);
         }
-
-        self.entities.entities.create_render_queued(info);
 
         self.entities.update_buffers(&visibility, info, &caster, &mut self.world);
 
@@ -1387,6 +1391,13 @@ impl GameState
             crate::frame_time_this!{
                 handle_on_change,
                 self.entities.entities.handle_on_change()
+            };
+
+            self.entities.entities.create_render_queued(object_info);
+
+            crate::frame_time_this!{
+                resort_queued,
+                self.entities.entities.resort_queued()
             };
         }
 

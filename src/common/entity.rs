@@ -758,6 +758,7 @@ macro_rules! common_trait_impl
         fn check_guarantees(&mut self)
         {
             const PANIC_ON_FAIL: bool = false;
+            let side = if Self::is_server() { "SERVER" } else { "CLIENT" };
 
             let for_components = |components: &RefCell<ObjectsStore<ComponentsIndices>>, local|
             {
@@ -788,7 +789,7 @@ macro_rules! common_trait_impl
                         {
                             if !(parent_id < child_id)
                             {
-                                let body = format!("[CHILD-PARENT FAILED] ({parent_id} ({parent:?}) < {child_id} ({entity:?}))",);
+                                let body = format!("[{side} CHILD-PARENT FAILED] ({parent_id} ({parent:?}) < {child_id} ({entity:?}))",);
 
                                 eprintln!("{body}");
 
@@ -812,7 +813,7 @@ macro_rules! common_trait_impl
             {
                 if !(before_z <= after_z)
                 {
-                    let body = format!("[Z-ORDER FAILED] ({before_z:?} ({before:?}) <= {after_z:?} ({after:?}))");
+                    let body = format!("[{side} Z-ORDER FAILED] ({before_z:?} ({before:?}) <= {after_z:?} ({after:?}))");
 
                     eprintln!("{body}");
 
@@ -845,7 +846,7 @@ macro_rules! common_trait_impl
                         if !(parent_index < index)
                         {
                             let parent_entity = parent.entity();
-                            let body = format!("[SAVEABLE ORDER FAILED] ({parent_index:?} ({parent_entity:?}) < {index:?} ({entity:?}))");
+                            let body = format!("[{side} SAVEABLE ORDER FAILED] ({parent_index:?} ({parent_entity:?}) < {index:?} ({entity:?}))");
 
                             eprintln!("{body}");
 
@@ -868,7 +869,7 @@ macro_rules! order_sensitives
 {
     ($(($name:ident, $resort_name:ident)),+) =>
     {
-        fn order_sensitive(component: Component) -> bool
+        const fn order_sensitive(component: Component) -> bool
         {
             match component
             {
@@ -1089,12 +1090,9 @@ macro_rules! define_entities_both
                     $($name: ObjectsStore::new(),)+
                 };
 
-                this.on_render(Box::new(move |OnChangeInfo{entities, index, total, ..}|
+                this.on_render(Box::new(move |OnChangeInfo{entities, ..}|
                 {
-                    if (index + 1) == total
-                    {
-                        entities.resort_by_z();
-                    }
+                    entities.resort_by_z();
                 }));
 
                 this.on_anatomy(Box::new(move |OnChangeInfo{entities, entity, ..}|
@@ -1214,7 +1212,23 @@ macro_rules! define_entities_both
                 Entity{local, id}
             }
 
+            pub fn resort_queued(&mut self)
+            {
+                let changed = self.z_changed.get_mut();
+                if *changed
+                {
+                    *changed = false;
+
+                    self.resort_by_z_force();
+                }
+            }
+
             fn resort_by_z(&mut self)
+            {
+                *self.z_changed.get_mut() = true;
+            }
+
+            fn resort_by_z_force(&mut self)
             {
                 // cycle sort has the least amount of swaps but i dunno
                 // if its worth the increased amount of checks
@@ -1302,7 +1316,8 @@ macro_rules! define_entities_both
                                 component: RefCell::new(component)
                             };
 
-                            if let Some(id) = slot
+                            let existed_before = slot.is_some();
+                            let value = if let Some(id) = slot
                             {
                                 self.$name.insert(*id, component)
                             } else
@@ -1317,28 +1332,30 @@ macro_rules! define_entities_both
 
                                 *slot = Some(id);
 
-                                drop(components);
-
-                                if parent_order_sensitive
-                                {
-                                    self.$resort_name(entity);
-                                } else if Component::$name == Component::parent
-                                {
-                                    let parent_entity = self.parent(entity).map(|x|
-                                    {
-                                        (&*x).into().entity()
-                                    }).unwrap();
-
-                                    self.resort_all(parent_entity);
-                                }
-
-                                if Component::$name == Component::render
-                                {
-                                    self.resort_by_z();
-                                }
-
                                 None
+                            };
+
+                            drop(components);
+
+                            if existed_before && parent_order_sensitive
+                            {
+                                self.$resort_name(entity);
                             }
+
+                            if Component::$name == Component::parent
+                            {
+                                let parent_entity = self.parent(entity).map(|x|
+                                {
+                                    (&*x).into().entity()
+                                }).unwrap();
+
+                                self.resort_all(parent_entity);
+                            } else if Component::$name == Component::render
+                            {
+                                self.resort_by_z();
+                            }
+
+                            value
                         };
 
                         $component_type::on_set(
@@ -2191,6 +2208,8 @@ macro_rules! define_entities
                 ($(($side_set_func, $side_exists_name, $side_default_type),)+ $(($set_func, $exists_name, $default_type),)+)
             }
 
+            fn is_server() -> bool { false }
+
             fn push_eager(
                 &mut self,
                 local: bool,
@@ -2227,6 +2246,8 @@ macro_rules! define_entities
                 ($(($side_set_func, $side_exists_name, $side_default_type),)+ $(($set_func, $exists_name, $default_type),)+)
             }
 
+            fn is_server() -> bool { true }
+
             fn push_eager(&mut self, local: bool, info: EntityInfo) -> Entity
             {
                 Self::push_inner(self, local, info)
@@ -2258,6 +2279,8 @@ macro_rules! define_entities
                 fn $side_set_func(&self, entity: Entity, component: Option<$side_default_type>);
                 fn $side_exists_name(&self, entity: Entity) -> bool;
             )+
+
+            fn is_server() -> bool;
 
             fn infos(&self) -> &DataInfos;
 

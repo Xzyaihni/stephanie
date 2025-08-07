@@ -237,6 +237,8 @@ impl GameServer
 
         self.entities.update_watchers(dt);
 
+        self.entities.resort_queued();
+
         if self.rare_timer <= 0.0
         {
             self.rare();
