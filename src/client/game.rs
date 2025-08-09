@@ -6,7 +6,7 @@ use std::{
     cell::{RefMut, RefCell}
 };
 
-use nalgebra::{Unit, Vector3, Vector2};
+use nalgebra::{Unit, Vector3};
 
 use yanyaengine::{
     Transform,
@@ -1782,31 +1782,13 @@ impl<'a> PlayerContainer<'a>
 
     pub fn look_at_mouse(&mut self)
     {
-        let mouse = self.game_state.world_mouse_position();
-
-        self.look_at(mouse)
-    }
-
-    pub fn look_at(&mut self, look_position: Vector2<f32>)
-    {
-        let camera_pos = self.game_state.camera.read().position().xy().coords;
-
-        let mut character = self.game_state.entities().character_mut_no_change(self.info.entity).unwrap();
-        let player_transform = self.game_state.entities()
-            .transform(self.info.entity)
-            .expect("player must have a transform");
-
-        let player_pos = player_transform.position.xy();
-
-        let player_offset = player_pos - camera_pos;
-
-        let pos = look_position - player_offset;
-
-        let rotation = pos.y.atan2(pos.x);
-
-        if let Some(x) = character.rotation_mut()
+        let entities = self.game_state.entities();
+        if let Some(transform) = entities.transform(self.info.mouse_entity)
         {
-            *x = rotation;
+            if let Some(mut character) = entities.character_mut_no_change(self.info.entity)
+            {
+                character.look_at(entities, self.info.entity, transform.position.xy());
+            }
         }
     }
 

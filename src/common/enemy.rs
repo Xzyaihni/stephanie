@@ -37,7 +37,7 @@ pub fn sees(
     world: &World,
     entity: Entity,
     other_entity: Entity
-) -> Option<f32>
+) -> Option<(bool, f32)>
 {
     let anatomy = entities.anatomy(entity)?;
     let transform = entities.transform(entity)?;
@@ -60,6 +60,11 @@ pub fn sees(
     let vision = anatomy.vision().unwrap_or(0.0);
 
     let distance = transform.position.metric_distance(&other_position);
+
+    if distance < (other_transform.scale.xy().max() + transform.scale.xy().max()) / 2.0
+    {
+        return Some((true, 1.0));
+    }
 
     let max_distance = (vision * visibility) + (transform.scale.xy().min() + other_transform.scale.xy().min()) / 2.0;
 
@@ -123,7 +128,7 @@ pub fn sees(
     let angle_fraction = 1.0 - (angle_offset / vision_angle).powi(3);
     let distance_fraction = (1.0 - distance / max_distance).powi(2).max(0.25);
 
-    Some(visibility * angle_fraction * distance_fraction)
+    Some((false, visibility * angle_fraction * distance_fraction))
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -365,7 +370,11 @@ impl Enemy
                     let other_character = entities.character(other_entity).unwrap();
                     let aggressive = some_or_return!(entities.character(entity)).aggressive(&other_character);
 
-                    let sees = sees(entities, world, entity, other_entity).is_some();
+                    let (is_close, sees) = {
+                        let sees = sees(entities, world, entity, other_entity);
+
+                        (sees.map(|(close, _)| close).unwrap_or(false), sees.is_some())
+                    };
 
                     if aggressive
                     {
@@ -377,7 +386,7 @@ impl Enemy
                             .map(|x| x.metric_distance(&target) > RECALCULATE_PATH)
                             .unwrap_or(true);
 
-                        let regenerate_path = far_from_path || !sees;
+                        let regenerate_path = (far_from_path || !sees) || is_close;
 
                         if regenerate_path
                         {
@@ -394,7 +403,9 @@ impl Enemy
                                 path.debug_display(entities);
                             }
 
-                            if !close_enough(&other_transform, &transform)
+                            let is_close_enough = close_enough(&other_transform, &transform);
+
+                            if !is_close_enough
                             {
                                 if let Some(direction) = path.move_along(PATH_NEAR, transform.position)
                                 {
@@ -403,6 +414,11 @@ impl Enemy
                             }
 
                             let mut character = some_or_return!(entities.character_mut_no_change(entity));
+
+                            if is_close_enough
+                            {
+                                character.look_at(entities, entity, other_transform.position.xy());
+                            }
 
                             if character.bash_reachable(&transform, &target)
                             {

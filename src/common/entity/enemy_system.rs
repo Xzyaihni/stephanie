@@ -32,7 +32,7 @@ pub fn update(
                 {
                     let other_entity = x.entity;
 
-                    enemy::sees(entities, world, entity, other_entity).map(|visibility|
+                    enemy::sees(entities, world, entity, other_entity).map(|(_, visibility)|
                     {
                         (other_entity, visibility)
                     })

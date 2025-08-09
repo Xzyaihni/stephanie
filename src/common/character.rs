@@ -12,7 +12,7 @@ use serde::{Serialize, Deserialize};
 
 use strum::{IntoEnumIterator, EnumIter, EnumCount};
 
-use nalgebra::{Unit, Vector3};
+use nalgebra::{Unit, Vector2, Vector3};
 
 use yanyaengine::{Assets, Transform, TextureId};
 
@@ -1883,6 +1883,25 @@ impl Character
     pub fn rotation_mut(&mut self) -> Option<&mut f32>
     {
         self.info.as_mut().map(|x| &mut x.rotation)
+    }
+
+    pub fn look_at(
+        &mut self,
+        entities: &ClientEntities,
+        entity: Entity,
+        look_position: Vector2<f32>
+    )
+    {
+        let transform = some_or_return!(entities.transform(entity));
+
+        let pos = look_position - transform.position.xy();
+
+        let rotation = pos.y.atan2(pos.x);
+
+        if let Some(x) = self.rotation_mut()
+        {
+            *x = rotation;
+        }
     }
 
     fn is_sprinting(&self) -> bool
