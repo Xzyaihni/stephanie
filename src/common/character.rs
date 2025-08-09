@@ -1425,6 +1425,7 @@ impl Character
         };
 
         let angle = opposite_angle(self.bash_side.opposite().to_angle() - f32::consts::FRAC_PI_2);
+        let minimum_distance = some_or_return!(combined_info.entities.transform(info.this)).scale.xy().max() / 2.0;
 
         combined_info.entities.push(
             true,
@@ -1448,7 +1449,7 @@ impl Character
                         angle,
                         damage
                     },
-                    predicate: DamagingPredicate::ParentAngleLess(f32::consts::PI),
+                    predicate: DamagingPredicate::ParentAngleLess{angle: f32::consts::PI, minimum_distance},
                     faction: Some(self.faction),
                     ..Default::default()
                 }.into()),

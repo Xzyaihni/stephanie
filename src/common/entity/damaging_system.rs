@@ -396,28 +396,6 @@ fn damaging_colliding(
 {
     let collider = entities.collider(entity).unwrap();
 
-    let parent_angle_between = |collided_position| -> Option<_>
-    {
-        let parent = entities.parent(entity)?.entity;
-
-        let parent_transform = entities.transform(parent)?;
-
-        let angle = angle_between(
-            parent_transform.position,
-            collided_position
-        );
-
-        let parent_angle = parent_transform.rotation;
-        let relative_angle = angle + parent_angle;
-
-        Some(short_rotation(relative_angle))
-    };
-
-    let meets_predicate = |damaging: &Damaging, collided_position|
-    {
-        damaging.predicate.meets(|| parent_angle_between(collided_position).unwrap_or(0.0))
-    };
-
     let source_entity = if let Some(other) = damaging.source
     {
         other
@@ -427,6 +405,43 @@ fn damaging_colliding(
     };
 
     let this_transform = some_or_value!(entities.transform(source_entity), Vec::new());
+
+    let meets_predicate = |damaging: &Damaging, collided_position|
+    {
+        match damaging.predicate
+        {
+            DamagingPredicate::None => true,
+            DamagingPredicate::ParentAngleLess{angle: less, minimum_distance} =>
+            {
+                let parent = some_or_value!(entities.parent(entity), true).entity;
+
+                let parent_transform = some_or_value!(entities.transform(parent), true);
+
+                if parent_transform.position.xy().metric_distance(&this_transform.position.xy()) < minimum_distance
+                {
+                    return true;
+                }
+
+                let parent_angle_between = |collided_position| -> Option<_>
+                {
+                    let angle = angle_between(
+                        parent_transform.position,
+                        collided_position
+                    );
+
+                    let parent_angle = parent_transform.rotation;
+                    let relative_angle = angle + parent_angle;
+
+                    Some(short_rotation(relative_angle))
+                };
+
+                let parent_angle_between = parent_angle_between(collided_position).unwrap_or(0.0);
+
+                let angle = parent_angle_between.abs();
+                angle < (less / 2.0)
+            }
+        }
+    };
 
     let faction = damaging.faction;
     let same_tile_z = damaging.same_tile_z;

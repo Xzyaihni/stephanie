@@ -21,26 +21,7 @@ use crate::common::{
 pub enum DamagingPredicate
 {
     None,
-    ParentAngleLess(f32)
-}
-
-impl DamagingPredicate
-{
-    pub fn meets(
-        &self,
-        parent_angle_between: impl FnOnce() -> f32
-    ) -> bool
-    {
-        match self
-        {
-            Self::None => true,
-            Self::ParentAngleLess(less) =>
-            {
-                let angle = parent_angle_between().abs();
-                angle < (*less / 2.0)
-            }
-        }
-    }
+    ParentAngleLess{angle: f32, minimum_distance: f32}
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
