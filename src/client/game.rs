@@ -631,7 +631,7 @@ impl Game
                             lisp::Error::Custom(format!("item named {name} doesnt exist"))
                         })?;
 
-                        inventory.push(Item{id});
+                        inventory.push(Item::new(id));
 
                         Ok(().into())
                     })

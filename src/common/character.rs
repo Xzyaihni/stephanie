@@ -544,6 +544,20 @@ impl Character
         self.anatomy(entities).map(|x| x.max_stamina().unwrap_or(0.0))
     }
 
+    fn held_crit_chance(&self, combined_info: CombinedInfo) -> Option<f32>
+    {
+        let item = self.held_item(combined_info)?;
+
+        Some(0.01 + item.crit_chance().unwrap_or(0.0))
+    }
+
+    fn random_held_crit(&self, combined_info: CombinedInfo) -> Option<f32>
+    {
+        let crit_chance = self.held_crit_chance(combined_info)?;
+
+        (fastrand::f32() < crit_chance).then_some(2.0)
+    }
+
     fn held_attack_cooldown(&self, combined_info: CombinedInfo) -> Option<f32>
     {
         let item_info = self.held_info(combined_info);
@@ -632,7 +646,7 @@ impl Character
             combined_info.assets.lock().texture(texture).clone()
         };
 
-        let holding_item = self.holding.and_then(|holding| self.item_info(combined_info, holding));
+        let holding_item = self.held_item_info(combined_info);
         let holding_state = holding_item.is_some();
 
         some_or_return!(entities.parent_mut(holding_entity)).visible = holding_item.is_some();
@@ -777,10 +791,14 @@ impl Character
 
         let entities = &combined_info.entities;
         let strength = some_or_value!(self.newtons(combined_info), false) * 0.2;
-        let held = some_or_value!(self.holding.take(), false);
 
-        if let Some(item_info) = self.item_info(combined_info, held)
+        if let Some(item) = self.held_item(combined_info)
         {
+            let held = some_or_value!(self.holding.take(), false);
+
+            let item_info = combined_info.items_info.get(item.id);
+            let damage_scale = item.damage_scale().unwrap_or(1.0);
+
             let info = self.info.as_ref().unwrap();
 
             let entity_info = {
@@ -839,7 +857,7 @@ impl Character
                     collider: Some(collider.clone().into()),
                     light: Some(item_info.lighting),
                     damaging: Some(DamagingInfo{
-                        damage: DamagingType::Mass(mass),
+                        damage: DamagingType::Mass(mass * damage_scale),
                         faction: Some(self.faction),
                         ..Default::default()
                     }.into()),
@@ -1288,7 +1306,9 @@ impl Character
         let source = Some(info.this);
         let start = combined_info.entities.transform(info.this).unwrap().position;
 
-        let damage = ranged.damage();
+        let damage_buff = item.damage_scale().unwrap_or(1.0);
+
+        let damage = ranged.damage() * damage_buff;
 
         let info = RaycastInfo{
             pierce: Some(damage.as_ranged_pierce()),
@@ -1390,9 +1410,15 @@ impl Character
         let hand_mass = ItemInfo::hand().mass;
         let item_info = self.held_info(combined_info);
 
+        let damage_buff = self.held_item(combined_info)
+            .and_then(|x| x.damage_scale())
+            .unwrap_or(1.0);
+
+        let crit = self.random_held_crit(combined_info);
+
         let strength_scale = some_or_return!(self.newtons(combined_info)) * 0.05;
 
-        let damage_scale = strength_scale * self.mass_maxed(combined_info, item_info.mass);
+        let damage_scale = strength_scale * self.mass_maxed(combined_info, item_info.mass) * damage_buff * crit.unwrap_or(1.0);
         let damage = DamagePartial{
             data: (*item_info).clone().with_changed(|x| x.mass += hand_mass).bash_damage() * damage_scale,
             height: self.melee_height()
@@ -1452,9 +1478,15 @@ impl Character
 
         let offset = projectile_scale / 2.0;
 
+        let damage_buff = self.held_item(combined_info)
+            .and_then(|x| x.damage_scale())
+            .unwrap_or(1.0);
+
+        let crit = self.random_held_crit(combined_info);
+
         let strength_scale = some_or_return!(self.newtons(combined_info)) * 0.03;
 
-        let damage_scale = strength_scale * self.mass_maxed(combined_info, item_info.mass);
+        let damage_scale = strength_scale * self.mass_maxed(combined_info, item_info.mass) * damage_buff * crit.unwrap_or(1.0);
         let damage = DamagePartial{
             data: item_info.clone().with_changed(|x| x.mass += hand_mass).poke_damage() * damage_scale,
             height: self.melee_height()
@@ -1540,37 +1572,27 @@ impl Character
         });
     }
 
-    fn item_info<'a>(
+    fn held_item_info<'a>(
         &'a self,
-        combined_info: CombinedInfo<'a>,
-        id: InventoryItem
+        combined_info: CombinedInfo<'a>
     ) -> Option<&'a ItemInfo>
     {
-        self.info.as_ref().and_then(move |info|
-        {
-            let inventory = combined_info.entities.inventory(info.this).unwrap();
-            inventory.get(id).map(|x| combined_info.items_info.get(x.id))
-        })
+        self.held_item(combined_info).map(|x| combined_info.items_info.get(x.id))
     }
 
     fn held_info<'a>(&'a self, combined_info: CombinedInfo<'a>) -> Cow<'a, ItemInfo>
     {
-        self.holding.and_then(|holding| self.item_info(combined_info, holding))
+        self.held_item_info(combined_info)
             .map(Cow::Borrowed)
             .unwrap_or_else(move || Cow::Owned(ItemInfo::hand()))
     }
 
     fn held_item(&self, combined_info: CombinedInfo) -> Option<Item>
     {
-        self.info.as_ref().and_then(|info|
-        {
-            combined_info.entities.exists(info.this).then(||
-            {
-                let inventory = combined_info.entities.inventory(info.this).unwrap();
+        let info = self.info.as_ref()?;
+        let held = self.holding?;
 
-                self.holding.and_then(|holding| inventory.get(holding).cloned())
-            }).flatten()
-        })
+        combined_info.entities.inventory(info.this).and_then(|x| x.get(held).cloned())
     }
 
     fn held_distance(&self) -> f32

@@ -50,7 +50,7 @@ impl Loot
             lisp::Error::Custom(format!("item named {name} not found"))
         })?;
 
-        Ok(Item{id})
+        Ok(Item::new(id))
     }
 
     pub fn create<'a>(&'a self, name: &'a str) -> impl Iterator<Item=Item> + use<'a>

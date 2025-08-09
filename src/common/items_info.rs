@@ -307,6 +307,6 @@ impl ItemsInfo
     {
         let id = ItemId(fastrand::usize(0..self.generic_info.items().len()));
 
-        Item{id}
+        Item::new(id)
     }
 }

@@ -37,6 +37,7 @@ use crate::{
         Side1d,
         EaseOut,
         Item,
+        ItemRarity,
         ItemId,
         InventoryItem,
         InventorySorter,
@@ -596,6 +597,7 @@ struct UiInventoryItem
 {
     item: InventoryItem,
     name: String,
+    rarity: ItemRarity,
     aspect: Vector2<f32>,
     texture: Option<TextureId>
 }
@@ -635,6 +637,7 @@ impl UiInventory
             UiInventoryItem{
                 item: index,
                 name: item.name.clone(),
+                rarity: x.rarity,
                 aspect: item.aspect,
                 texture: item.texture
             }
@@ -849,9 +852,14 @@ impl WindowKind
                         id(InventoryPart::Item(item.item, part))
                     };
 
+                    let rarity_hue_chroma = item.rarity.hue_chroma();
+
+                    let rarity_color = rarity_hue_chroma.map(|(h, c)| Lcha{l: 100.0, c, h, a: 1.0})
+                        .unwrap_or(WHITE_COLOR);
+
                     let body_color = Lcha{
                         a: if is_picked { 0.5 } else if is_selected { 0.3 } else { 0.0 },
-                        ..ACCENT_COLOR
+                        ..rarity_color
                     };
 
                     let body = parent.update(id(ItemPart::Body), UiElement{
@@ -890,9 +898,17 @@ impl WindowKind
 
                     add_padding_horizontal(body, UiSize::Pixels(ITEM_PADDING / 2.0).into());
 
+                    let text_color = if let Some((_h, c)) = rarity_hue_chroma
+                    {
+                        Lcha{c: c + 40.0, ..rarity_color}
+                    } else
+                    {
+                        WHITE_COLOR
+                    };
+
                     body.update(id(ItemPart::Name), UiElement{
                         texture: UiTexture::Text{text: item.name.clone(), font_size},
-                        mix: Some(MixColorLch{keep_transparency: true, ..MixColorLch::color(ACCENT_COLOR)}),
+                        mix: Some(MixColorLch{keep_transparency: true, ..MixColorLch::color(text_color)}),
                         ..UiElement::fit_content()
                     });
                 });
@@ -932,12 +948,19 @@ impl WindowKind
                     UiId::Window(window_id, WindowPart::ItemInfo(part))
                 };
 
-                let description = format!(
-                    "{} weighs around {} kg\nand is about {} meters in size!",
-                    item_info.name,
-                    item_info.mass,
-                    item_info.scale
-                );
+                let mut description = format!("{} weighs around {} kg", item_info.name, item_info.mass);
+
+                description += &format!("\nand is about {} meters in size!", item_info.scale);
+
+                if let Some(rarity_name) = item.rarity.name()
+                {
+                    description += &format!("\nit has {rarity_name} rarity which gives it these buffs:");
+                }
+
+                item.buffs.iter().for_each(|buff|
+                {
+                    description += &format!("\n{buff}");
+                });
 
                 add_padding_horizontal(body, UiSize::Pixels(BODY_PADDING).into());
 
