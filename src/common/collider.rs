@@ -161,7 +161,8 @@ pub enum ColliderLayer
     Player,
     NormalEnemy,
     LyingEnemy,
-    Vision
+    Vision,
+    ThrownDecal
 }
 
 impl ColliderLayer
@@ -223,7 +224,18 @@ impl ColliderLayer
             (Vision, Door, true),
             (Vision, Player, true),
             (Vision, NormalEnemy, true),
-            (Vision, LyingEnemy, false)
+            (Vision, LyingEnemy, false),
+
+            (ThrownDecal, ThrownDecal, true),
+            (ThrownDecal, Normal, false),
+            (ThrownDecal, Damage, false),
+            (ThrownDecal, World, true),
+            (ThrownDecal, Mouse, false),
+            (ThrownDecal, Door, false),
+            (ThrownDecal, Player, false),
+            (ThrownDecal, NormalEnemy, false),
+            (ThrownDecal, LyingEnemy, false),
+            (ThrownDecal, Vision, false)
         }
     }
 }
@@ -1168,13 +1180,14 @@ impl<'a> CollidingInfo<'a>
 
         let direction = next_position - self.transform.position;
 
-        if let Some(distance) = swept_aabb_world_with_before(
+        if let Some((tile_pos, distance)) = swept_aabb_world_with_before(
             world,
             &self.transform,
             Vector3::new(0.0, 0.0, direction.z)
-        ).filter(|x| *x > -TILE_SIZE * 0.1).min_by(|a, b| a.partial_cmp(&b).unwrap())
+        ).filter(|(_, x)| *x > -TILE_SIZE * 0.1).min_by(|a, b| a.1.partial_cmp(&b.1).unwrap())
         {
             self.transform.position += Vector3::new(0.0, 0.0, distance * direction.z.signum());
+            self.collider.push_collided_tile(tile_pos);
 
             return true;
         }

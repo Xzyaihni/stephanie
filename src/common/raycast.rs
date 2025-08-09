@@ -102,7 +102,7 @@ pub fn swept_aabb_world_with_before<'a>(
     world: &'a World,
     this: &'a Transform,
     direction: Vector3<f32>
-) -> impl Iterator<Item=f32> + use<'a>
+) -> impl Iterator<Item=(TilePos, f32)> + use<'a>
 {
     swept_aabb_world_inner::<false>(world, this, direction)
 }
@@ -111,16 +111,16 @@ pub fn swept_aabb_world(
     world: &World,
     this: &Transform,
     direction: Vector3<f32>
-) -> Option<f32>
+) -> Option<(TilePos, f32)>
 {
-    swept_aabb_world_inner::<true>(world, this, direction).min_by(|a, b| a.partial_cmp(&b).unwrap())
+    swept_aabb_world_inner::<true>(world, this, direction).min_by(|a, b| a.1.partial_cmp(&b.1).unwrap())
 }
 
 fn swept_aabb_world_inner<'a, const EXCLUDE_BEFORE: bool>(
     world: &'a World,
     this: &'a Transform,
     direction: Vector3<f32>
-) -> impl Iterator<Item=f32> + use<'a, EXCLUDE_BEFORE>
+) -> impl Iterator<Item=(TilePos, f32)> + use<'a, EXCLUDE_BEFORE>
 {
     let tilemap = world.tilemap();
 
@@ -157,8 +157,8 @@ fn swept_aabb_world_inner<'a, const EXCLUDE_BEFORE: bool>(
 
             raycast_rectangle(start, direction, &other).map(|x|
             {
-                x.distance
-            }).filter(|x|
+                (pos, x.distance)
+            }).filter(|(_, x)|
             {
                 if EXCLUDE_BEFORE && *x < 0.0
                 {

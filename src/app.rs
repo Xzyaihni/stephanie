@@ -384,7 +384,7 @@ impl YanyaApp for App
                     {
                         let port = port.unwrap_or(0);
 
-                        let listen_address = format!("{}:{port}", if listen_outside { "0.0.0.0" } else { "localhost" });
+                        let listen_address = format!("{}:{port}", if listen_outside { "0.0.0.0" } else { "127.0.0.1" });
 
                         let x = Server::new(
                             tilemap,

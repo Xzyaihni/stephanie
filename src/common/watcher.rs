@@ -88,7 +88,9 @@ impl WatcherType
             Self::Instant => true,
             Self::Collision =>
             {
-                entities.collider(entity).map(|x| !x.collided().is_empty()).unwrap_or(false)
+                entities.collider(entity)
+                    .map(|x| !x.collided().is_empty() || !x.collided_tiles().is_empty())
+                    .unwrap_or(false)
             },
             Self::RotationDistance{from, near} =>
             {
@@ -152,6 +154,7 @@ pub struct ExplodeInfo
 pub enum WatcherAction
 {
     None,
+    AddWatcher(Box<Watcher>),
     OutlineableDisable,
     SetVisible(bool),
     SetMixColor(Option<MixColor>),
@@ -186,6 +189,13 @@ impl WatcherAction
         match self
         {
             Self::None => (),
+            Self::AddWatcher(watcher) =>
+            {
+                if let Some(mut watchers) = entities.watchers_mut(entity)
+                {
+                    watchers.push(*watcher);
+                }
+            },
             Self::OutlineableDisable =>
             {
                 if let Some(mut outlineable) = entities.outlineable_mut(entity)

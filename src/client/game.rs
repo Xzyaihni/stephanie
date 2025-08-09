@@ -1143,6 +1143,11 @@ impl<'a> PlayerContainer<'a>
             },
             Control::Throw =>
             {
+                if is_animating
+                {
+                    return;
+                }
+
                 let mouse_transform = self.game_state.entities()
                     .transform(self.info.mouse_entity)
                     .unwrap();

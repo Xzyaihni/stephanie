@@ -807,6 +807,11 @@ impl Character
 
                 physical.add_force(direction * throw_amount);
 
+                let collider = ColliderInfo{
+                    kind: ColliderType::Rectangle,
+                    ..Default::default()
+                };
+
                 EntityInfo{
                     physical: Some(physical),
                     lazy_transform: Some(LazyTransformInfo{
@@ -831,10 +836,7 @@ impl Character
                         z_level: ZLevel::Elbow,
                         ..Default::default()
                     }),
-                    collider: Some(ColliderInfo{
-                        kind: ColliderType::Rectangle,
-                        ..Default::default()
-                    }.into()),
+                    collider: Some(collider.clone().into()),
                     light: Some(item_info.lighting),
                     damaging: Some(DamagingInfo{
                         damage: DamagingType::Mass(mass),
@@ -843,36 +845,48 @@ impl Character
                     }.into()),
                     watchers: Some(Watchers::new(vec![
                         Watcher{
-                            kind: WatcherType::Lifetime(2.5.into()),
-                            action: WatcherAction::Explode(Box::new(ExplodeInfo{
-                                keep: false,
-                                info: ParticlesInfo{
-                                    amount: 3..5,
-                                    speed: ParticleSpeed::Random(0.1),
-                                    decay: ParticleDecay::Random(3.5..=5.0),
-                                    position: ParticlePosition::Spread(1.0),
-                                    rotation: ParticleRotation::Random,
-                                    scale: ParticleScale::Spread{
-                                        scale: Vector3::repeat(ENTITY_SCALE * 0.4),
-                                        variation: 0.1
+                            kind: WatcherType::Collision,
+                            action: WatcherAction::SetCollider(Some(Box::new(ColliderInfo{
+                                layer: ColliderLayer::ThrownDecal,
+                                ..collider
+                            }.into()))),
+                            ..Default::default()
+                        },
+                        Watcher{
+                            kind: WatcherType::Collision,
+                            action: WatcherAction::AddWatcher(Box::new(Watcher{
+                                kind: WatcherType::Lifetime(0.5.into()),
+                                action: WatcherAction::Explode(Box::new(ExplodeInfo{
+                                    keep: false,
+                                    info: ParticlesInfo{
+                                        amount: 3..5,
+                                        speed: ParticleSpeed::Random(0.1),
+                                        decay: ParticleDecay::Random(3.5..=5.0),
+                                        position: ParticlePosition::Spread(1.0),
+                                        rotation: ParticleRotation::Random,
+                                        scale: ParticleScale::Spread{
+                                            scale: Vector3::repeat(ENTITY_SCALE * 0.4),
+                                            variation: 0.1
+                                        },
+                                        min_scale: ENTITY_SCALE * 0.02
                                     },
-                                    min_scale: ENTITY_SCALE * 0.02
-                                },
-                                prototype: EntityInfo{
-                                    physical: Some(PhysicalProperties{
-                                        inverse_mass: 0.01_f32.recip(),
-                                        floating: true,
-                                        ..Default::default()
-                                    }.into()),
-                                    render: Some(RenderInfo{
-                                        object: Some(RenderObjectKind::TextureId{
-                                            id: combined_info.common_textures.dust
+                                    prototype: EntityInfo{
+                                        physical: Some(PhysicalProperties{
+                                            inverse_mass: 0.01_f32.recip(),
+                                            floating: true,
+                                            ..Default::default()
                                         }.into()),
-                                        z_level: ZLevel::BelowFeet,
+                                        render: Some(RenderInfo{
+                                            object: Some(RenderObjectKind::TextureId{
+                                                id: combined_info.common_textures.dust
+                                            }.into()),
+                                            z_level: ZLevel::BelowFeet,
+                                            ..Default::default()
+                                        }),
                                         ..Default::default()
-                                    }),
-                                    ..Default::default()
-                                }
+                                    }
+                                })),
+                                ..Default::default()
                             })),
                             ..Default::default()
                         }
