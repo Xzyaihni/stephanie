@@ -3,11 +3,9 @@
         {
             "name": "c",
             "weight": 1,
+            "rotateable": false,
             "neighbors": {
-                "up": [],
-                "down": [],
-                "right": [],
-                "left": []
+                "SymmetryAll": []
             }
         }
     ],

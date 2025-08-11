@@ -191,7 +191,23 @@ impl<S: fmt::Debug> fmt::Debug for ServerOvermap<S>
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
     {
-        write!(f, "{}", debug_overmap_with(self, |x| format!("{x:?}")))
+        write!(f, "{}", debug_overmap_with(self, |x|
+        {
+            if let Some(x) = x
+            {
+                let id = x.id();
+                if x.tags().is_empty()
+                {
+                    format!("({id})")
+                } else
+                {
+                    format!("({id} {:?})", x.tags())
+                }
+            } else
+            {
+                "_".to_owned()
+            }
+        }))
     }
 }
 
@@ -465,7 +481,7 @@ mod tests
     use std::collections::HashMap;
 
     use crate::{
-        common::TileMap,
+        common::{TileMap, world::TileRotation},
         server::world::SERVER_OVERMAP_SIZE_Z
     };
 
@@ -588,8 +604,9 @@ mod tests
         let (a_id, c_id, none_id) = {
             let world_generator = world_generator.borrow();
             let names = &world_generator.rules().name_mappings().world_chunk;
+            let get_name = |name: &str| names[&(TileRotation::Up, name.to_owned())];
 
-            (names["a"], names["c"], names["none"])
+            (get_name("a"), get_name("c"), get_name("none"))
         };
 
         let overmap_format = |x: Option<&WorldChunk>|

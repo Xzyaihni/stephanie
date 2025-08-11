@@ -9,7 +9,7 @@ use serde::{
     de::{EnumAccess, VariantAccess, Visitor}
 };
 
-use strum::{FromRepr, EnumString};
+use strum::{FromRepr, EnumString, EnumIter, IntoEnumIterator};
 
 use crate::common::{
     some_or_return,
@@ -184,7 +184,7 @@ impl Tile
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, FromRepr, EnumString, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, FromRepr, EnumString, EnumIter, Serialize, Deserialize)]
 #[strum(ascii_case_insensitive)]
 pub enum TileRotation
 {
@@ -247,6 +247,53 @@ impl TileRotation
             Self::Left => "←",
             Self::Down => "↓"
         }
+    }
+
+    pub fn combine(&self, other: Self) -> Self
+    {
+        match self
+        {
+            Self::Up => other,
+            Self::Right =>
+            {
+                match other
+                {
+                    Self::Up => *self,
+                    Self::Right => Self::Down,
+                    Self::Left => Self::Up,
+                    Self::Down => Self::Left
+                }
+            },
+            Self::Left =>
+            {
+                match other
+                {
+                    Self::Up => *self,
+                    Self::Right => Self::Up,
+                    Self::Left => Self::Down,
+                    Self::Down => Self::Right
+                }
+            },
+            Self::Down =>
+            {
+                match other
+                {
+                    Self::Up => *self,
+                    Self::Right => Self::Left,
+                    Self::Left => Self::Right,
+                    Self::Down => Self::Up
+                }
+            }
+        }
+    }
+
+    pub fn random() -> Self
+    {
+        let mut iter = Self::iter();
+
+        let len = iter.len();
+
+        iter.nth(fastrand::usize(0..len)).unwrap()
     }
 }
 

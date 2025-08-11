@@ -11,17 +11,23 @@ use std::{
 
 use serde::{Serialize, Deserialize};
 
+use strum::IntoEnumIterator;
+
 use super::{PossibleStates, ParseError};
 
-use crate::common::{
-    BiMap,
-    lisp::{self, Program, Primitives, LispMemory},
-    world::{
-        CHUNK_SIZE,
-        GlobalPos,
-        Pos3,
-        DirectionsGroup,
-        chunk::PosDirection
+use crate::{
+    debug_config::*,
+    common::{
+        BiMap,
+        lisp::{self, Program, Primitives, LispMemory},
+        world::{
+            CHUNK_SIZE,
+            GlobalPos,
+            TileRotation,
+            Pos3,
+            DirectionsGroup,
+            chunk::PosDirection
+        }
     }
 };
 
@@ -33,7 +39,9 @@ pub const CHUNK_RATIO: Pos3<usize> = Pos3{
     z: CHUNK_SIZE / WORLD_CHUNK_SIZE.z
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+const ROTATEABLE_DEFAULT: bool = true;
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct WorldChunkId(usize);
 
@@ -42,6 +50,14 @@ impl fmt::Display for WorldChunkId
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
     {
         write!(f, "{}", self.0)
+    }
+}
+
+impl Debug for WorldChunkId
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
+    {
+        write!(f, "WorldChunkId({})", self.0)
     }
 }
 
@@ -63,11 +79,19 @@ impl WorldChunkId
 #[serde(transparent)]
 pub struct TextId(usize);
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WorldChunkTag
 {
     name: TextId,
     content: i32
+}
+
+impl Debug for WorldChunkTag
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
+    {
+        write!(f, "({} {})", self.name.0, self.content)
+    }
 }
 
 impl WorldChunkTag
@@ -231,14 +255,50 @@ pub struct ChunkRuleRawTag
     content: String
 }
 
+#[derive(Debug, Clone, Copy, Deserialize)]
+pub enum ChunkSymmetry
+{
+    None,
+    Horizontal,
+    Vertical,
+    Both,
+    All
+}
+
+#[derive(Debug, Clone, Deserialize)]
+enum ChunkNeighbors
+{
+    SymmetryNone(DirectionsGroup<Vec<String>>),
+    SymmetryHorizontal{up: Vec<String>, down: Vec<String>, horizontal: Vec<String>},
+    SymmetryVertical{right: Vec<String>, left: Vec<String>, vertical: Vec<String>},
+    SymmetryBoth{horizontal: Vec<String>, vertical: Vec<String>},
+    SymmetryAll(Vec<String>)
+}
+
+impl ChunkNeighbors
+{
+    fn symmetry(&self) -> ChunkSymmetry
+    {
+        match self
+        {
+            Self::SymmetryNone(_) => ChunkSymmetry::None,
+            Self::SymmetryHorizontal{..} => ChunkSymmetry::Horizontal,
+            Self::SymmetryVertical{..} => ChunkSymmetry::Vertical,
+            Self::SymmetryBoth{..} => ChunkSymmetry::Both,
+            Self::SymmetryAll(_) => ChunkSymmetry::All
+        }
+    }
+}
+
 #[derive(Debug, Deserialize)]
-pub struct ChunkRuleRaw
+struct ChunkRuleRaw
 {
     pub name: String,
     #[serde(default)]
     pub tags: Vec<ChunkRuleRawTag>,
     pub weight: f64,
-    pub neighbors: DirectionsGroup<Vec<String>>
+    pub rotateable: Option<bool>,
+    pub neighbors: ChunkNeighbors
 }
 
 #[derive(Debug, Deserialize)]
@@ -285,13 +345,68 @@ pub struct ChunkRule
     name: String,
     tags: Vec<ChunkRuleTag>,
     weight: f64,
+    rotateable: bool,
+    symmetry: ChunkSymmetry,
     neighbors: DirectionsGroup<Vec<WorldChunkId>>
 }
 
 impl ChunkRule
 {
-    fn from_raw(name_mappings: &mut NameMappings, rule: ChunkRuleRaw, total_weight: f64) -> Self
+    fn from_raw(
+        name_mappings: &mut NameMappings,
+        rule: ChunkRuleRaw,
+        total_weight: f64
+    ) -> Self
     {
+        let symmetry = rule.neighbors.symmetry();
+
+        let neighbors = {
+            let n = |neighbors: Vec<String>|
+            {
+                neighbors.into_iter().map(|name|
+                {
+                    name_mappings.world_chunk[&(TileRotation::Up, name)]
+                }).collect::<Vec<_>>()
+            };
+
+            match rule.neighbors
+            {
+                ChunkNeighbors::SymmetryNone(x) => x.map(|_, x| n(x)),
+                ChunkNeighbors::SymmetryHorizontal{up, down, horizontal} =>
+                {
+                    let horizontal = n(horizontal);
+                    DirectionsGroup{
+                        up: n(up),
+                        down: n(down),
+                        left: horizontal.clone(),
+                        right: horizontal
+                    }
+                },
+                ChunkNeighbors::SymmetryVertical{left, right, vertical} =>
+                {
+                    let vertical = n(vertical);
+                    DirectionsGroup{
+                        up: vertical.clone(),
+                        down: vertical,
+                        left: n(left),
+                        right: n(right)
+                    }
+                },
+                ChunkNeighbors::SymmetryBoth{horizontal, vertical} =>
+                {
+                    let horizontal = n(horizontal);
+                    let vertical = n(vertical);
+                    DirectionsGroup{
+                        up: vertical.clone(),
+                        down: vertical,
+                        left: horizontal.clone(),
+                        right: horizontal
+                    }
+                },
+                ChunkNeighbors::SymmetryAll(x) => DirectionsGroup::repeat(n(x))
+            }
+        };
+
         Self{
             name: rule.name,
             tags: rule.tags.into_iter().map(|tag|
@@ -303,13 +418,42 @@ impl ChunkRule
                 )
             }).collect(),
             weight: rule.weight / total_weight,
-            neighbors: rule.neighbors.map(|_, direction|
+            rotateable: rule.rotateable.unwrap_or(ROTATEABLE_DEFAULT),
+            symmetry,
+            neighbors
+        }
+    }
+
+    fn rotated(&self, name_mappings: &NameMappings, rotation: TileRotation) -> Self
+    {
+        let neighbors = {
+            let x = self.neighbors.clone();
+
+            match rotation
             {
-                direction.into_iter().map(|name|
-                {
-                    name_mappings.world_chunk[&name]
-                }).collect::<Vec<_>>()
-            })
+                TileRotation::Up => DirectionsGroup{left: x.left, right: x.right, up: x.up, down: x.down},
+                TileRotation::Right => DirectionsGroup{left: x.down, right: x.up, up: x.left, down: x.right},
+                TileRotation::Left => DirectionsGroup{left: x.up, right: x.down, up: x.right, down: x.left},
+                TileRotation::Down => DirectionsGroup{left: x.right, right: x.left, up: x.down, down: x.up}
+            }
+        };
+
+        let neighbors = neighbors.map(|_, neighbors|
+        {
+            let rotate = |id: WorldChunkId|
+            {
+                let (this_rotation, name) = name_mappings.world_chunk.get_back(&id).unwrap();
+                debug_assert!(*this_rotation == TileRotation::Up);
+
+                *name_mappings.world_chunk.get(&(rotation, name.clone())).unwrap()
+            };
+
+            neighbors.into_iter().map(rotate).collect::<Vec<_>>()
+        });
+
+        Self{
+            neighbors,
+            ..self.clone()
         }
     }
 
@@ -321,6 +465,16 @@ impl ChunkRule
     pub fn weight(&self) -> f64
     {
         self.weight
+    }
+
+    pub fn rotateable(&self) -> bool
+    {
+        self.rotateable
+    }
+
+    pub fn symmetry(&self) -> ChunkSymmetry
+    {
+        self.symmetry
     }
 
     pub fn neighbors(&self, direction: PosDirection) -> &[WorldChunkId]
@@ -440,7 +594,7 @@ impl ConditionalRule
     fn from_raw(name_mappings: &NameMappings, rule: ConditionalRuleRaw) -> Self
     {
         Self{
-            name: name_mappings.world_chunk[&rule.name],
+            name: name_mappings.world_chunk[&(TileRotation::Up, rule.name)],
             variable: rule.variable.unwrap_or(ConditionalVariable::Height),
             range: Range{
                 start: RangeNumber::from_raw(name_mappings, rule.range.start),
@@ -502,7 +656,7 @@ impl CityRules
 {
     fn from_raw(name_mappings: &mut NameMappings, rules: CityRulesRaw) -> Self
     {
-        rules.rules.iter().for_each(|rule| name_mappings.insert(rule.name.clone()));
+        rules.rules.iter().for_each(|rule| name_mappings.insert(TileRotation::Up, rule.name.clone()));
 
         Self{
             rules: rules.rules.into_iter().map(|rule|
@@ -641,16 +795,25 @@ impl Index<&str> for TextMapping
 #[derive(Debug)]
 pub struct NameMappings
 {
-    pub world_chunk: BiMap<String, WorldChunkId>,
+    pub world_chunk: BiMap<(TileRotation, String), WorldChunkId>,
     pub text: TextMapping,
     current_index: usize
 }
 
 impl NameMappings
 {
-    fn insert(&mut self, name: String)
+    fn insert_all(&mut self, name: String)
     {
-        if self.world_chunk.contains_key(&name)
+        TileRotation::iter().for_each(|rotation|
+        {
+            self.insert(rotation, name.clone());
+        });
+    }
+
+    fn insert(&mut self, rotation: TileRotation, name: String)
+    {
+        let key = (rotation, name);
+        if self.world_chunk.contains_key(&key)
         {
             return;
         }
@@ -658,7 +821,7 @@ impl NameMappings
         let id = WorldChunkId(self.current_index);
         self.current_index += 1;
 
-        self.world_chunk.insert(name, id);
+        self.world_chunk.insert(key, id);
     }
 }
 
@@ -681,8 +844,8 @@ impl ChunkRulesGroup
             current_index: 0
         };
 
-        name_mappings.insert("none".to_owned());
-        assert_eq!(name_mappings.world_chunk["none"], WorldChunkId(0));
+        name_mappings.insert(TileRotation::Up, "none".to_owned());
+        assert_eq!(name_mappings.world_chunk[&(TileRotation::Up, "none".to_owned())], WorldChunkId(0));
 
         Ok(Self{
             surface: Self::load_rules(&mut name_mappings, path.join("surface.json"))?,
@@ -695,7 +858,7 @@ impl ChunkRulesGroup
     #[cfg(test)]
     pub fn insert_chunk(&mut self, name: String)
     {
-        self.name_mappings.insert(name);
+        self.name_mappings.insert(TileRotation::Up, name);
     }
 
     fn load_rules<T: ParsableRules>(
@@ -723,13 +886,13 @@ impl ChunkRulesGroup
 
     pub fn name(&self, id: WorldChunkId) -> &str
     {
-        self.name_mappings.world_chunk.get_back(&id).unwrap_or_else(||
+        &self.name_mappings.world_chunk.get_back(&id).unwrap_or_else(||
         {
             panic!("id {id} doesnt exist")
-        })
+        }).1
     }
 
-    pub fn iter_names(&self) -> impl Iterator<Item=&String>
+    pub fn iter_names(&self) -> impl Iterator<Item=&(TileRotation, String)>
     {
         self.name_mappings.world_chunk.iter_front()
     }
@@ -752,19 +915,170 @@ impl ChunkRules
         let total_weight: f64 = weights.clone().sum();
         let entropy = PossibleStates::calculate_entropy(weights);
 
-        rules.rules.iter().for_each(|rule| name_mappings.insert(rule.name.clone()));
+        rules.rules.iter().for_each(|rule|
+        {
+            if rule.rotateable.unwrap_or(ROTATEABLE_DEFAULT)
+            {
+                name_mappings.insert_all(rule.name.clone())
+            } else
+            {
+                name_mappings.insert(TileRotation::Up, rule.name.clone())
+            }
+        });
 
-        Self{
+        let fallback = name_mappings.world_chunk[&(TileRotation::Up, rules.fallback)];
+
+        let mut this = Self{
             entropy,
-            rules: rules.rules.into_iter().map(|rule|
+            rules: rules.rules.into_iter().flat_map(|rule|
             {
                 let rule = ChunkRule::from_raw(name_mappings, rule, total_weight);
-                let id = name_mappings.world_chunk[&rule.name];
 
-                (id, rule)
+                let name_mappings = &*name_mappings;
+
+                let is_rotateable = rule.rotateable;
+
+                let with_rotation = move |rotation|
+                {
+                    let rule = rule.rotated(name_mappings, rotation);
+                    let id = name_mappings.world_chunk[&(rotation, rule.name.clone())];
+
+                    (id, rule)
+                };
+
+                if is_rotateable
+                {
+                    TileRotation::iter().map(with_rotation).collect::<Vec<_>>()
+                } else
+                {
+                    vec![with_rotation(TileRotation::Up)]
+                }
             }).collect::<HashMap<WorldChunkId, ChunkRule>>(),
-            fallback: name_mappings.world_chunk[&rules.fallback]
+            fallback
+        };
+
+        this.union_neighbors(name_mappings);
+
+        if DebugConfig::is_enabled(DebugTool::PrintSurfaceRules)
+        {
+            this.print_neighbors(name_mappings);
         }
+
+        this
+    }
+
+    fn union_neighbors(&mut self, name_mappings: &NameMappings)
+    {
+        fn union<T: PartialEq>(values: &mut Vec<T>, value: T)
+        {
+            if !values.contains(&value)
+            {
+                values.push(value);
+            }
+        }
+
+        let rules: Vec<_> = self.rules.iter().map(|(a, _)| a.clone()).collect();
+
+        let unify_neighbors = |this: &mut Self|
+        {
+            rules.iter().for_each(|this_id|
+            {
+                PosDirection::iter_non_z().for_each(|direction|
+                {
+                    (0..this.rules[this_id].neighbors[direction].len()).for_each(|index|
+                    {
+                        let neighbor = this.rules[this_id].neighbors[direction][index];
+                        let other_rule = this.rules.get_mut(&neighbor).unwrap();
+
+                        union(&mut other_rule.neighbors[direction.opposite()], *this_id);
+                    });
+                });
+            });
+        };
+
+        unify_neighbors(self);
+
+        rules.iter().for_each(|this_id|
+        {
+            let this = self.rules.get_mut(this_id).unwrap();
+            TileRotation::iter().for_each(|direction|
+            {
+                let pos_direction = direction.into();
+                TileRotation::iter()
+                    .filter(|x| *x != direction)
+                    .filter(|x|
+                    {
+                        let is_horizontal = x.is_horizontal() && direction.is_horizontal();
+                        let is_vertical = x.is_vertical() && direction.is_vertical();
+
+                        match this.symmetry
+                        {
+                            ChunkSymmetry::None => false,
+                            ChunkSymmetry::Horizontal => is_horizontal,
+                            ChunkSymmetry::Vertical => is_vertical,
+                            ChunkSymmetry::Both => is_horizontal || is_vertical,
+                            ChunkSymmetry::All => true
+                        }
+                    })
+                    .for_each(|other_direction|
+                    {
+                        (0..this.neighbors[pos_direction].len()).for_each(|index|
+                        {
+                            let (this_rotation, this_name) = {
+                                let id = &this.neighbors[pos_direction][index];
+                                name_mappings.world_chunk.get_back(id).unwrap()
+                            };
+
+                            let new_rotation = direction.combine(other_direction).combine(*this_rotation);
+                            if let Some(rotated_neighbor) = name_mappings.world_chunk.get(&(new_rotation, this_name.clone()))
+                            {
+                                union(&mut this.neighbors[other_direction.into()], *rotated_neighbor);
+                            }
+                        });
+                    });
+            });
+        });
+
+        unify_neighbors(self);
+    }
+
+    fn print_neighbors(&self, name_mappings: &NameMappings)
+    {
+        self.rules.iter().for_each(|(id, rule)|
+        {
+            let format_name = |(direction, name): &(TileRotation, String)|
+            {
+                if *direction == TileRotation::Up
+                {
+                    name.clone()
+                } else
+                {
+                    format!("{}{name}", direction.to_arrow_str())
+                }
+            };
+
+            eprintln!("{}: {{", format_name(name_mappings.world_chunk.get_back(id).unwrap()));
+
+            rule.neighbors.as_ref().for_each(|direction, ids|
+            {
+                let rules = ids.iter()
+                    .map(|id|
+                    {
+                        format_name(name_mappings.world_chunk.get_back(id).unwrap())
+                    })
+                    .reduce(|mut acc, x|
+                    {
+                        acc += ", ";
+                        acc += &x;
+
+                        acc
+                    }).unwrap_or_default();
+
+                eprintln!("    {direction}: [{rules}],");
+            });
+
+            eprintln!("}},");
+        });
     }
 
     pub fn generate(&self, id: WorldChunkId) -> WorldChunk

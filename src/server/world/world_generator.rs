@@ -221,12 +221,12 @@ impl ChunkGenerator
             tilemap
         };
 
-        rules.iter_names().filter(|name|
+        rules.iter_names().filter(|(rotation, name)|
         {
             let name: &str = name.as_ref();
 
-            name != "none"
-        }).try_for_each(|name|
+            name != "none" && *rotation == TileRotation::Up
+        }).try_for_each(|(_, name)|
         {
             this.parse_function(&parent_directory, memory.clone(), name)
         })?;
@@ -475,7 +475,8 @@ impl<S: SaveLoad<WorldChunksBlock>> WorldGenerator<S>
 
         if let Some(local) = global_mapper.to_local(GlobalPos::new(0, 0, 0))
         {
-            if let Some(bunker_id) = self.rules.name_mappings().world_chunk.get("bunker")
+            let random_rotation = TileRotation::random();
+            if let Some(bunker_id) = self.rules.name_mappings().world_chunk.get(&(random_rotation, "bunker".to_owned()))
             {
                 wave_collapser.generate_single_maybe(
                     LocalPos::new(Pos3{z: 0, ..local.pos}, Pos3{z: 1, ..local.size}),

@@ -3,20 +3,9 @@
         {
             "name": "a",
             "weight": 1,
+            "rotateable": false,
             "neighbors": {
-                "up": [
-                    "a",
-                    "b"
-                ],
-                "down": [
-                    "a",
-                    "b"
-                ],
-                "right": [
-                    "a",
-                    "b"
-                ],
-                "left": [
+                "SymmetryAll": [
                     "a",
                     "b"
                 ]
@@ -25,23 +14,9 @@
         {
             "name": "b",
             "weight": 1,
+            "rotateable": false,
             "neighbors": {
-                "up": [
-                    "a",
-                    "b"
-                ],
-                "down": [
-                    "a",
-                    "b"
-                ],
-                "right": [
-                    "a",
-                    "b"
-                ],
-                "left": [
-                    "a",
-                    "b"
-                ]
+                "SymmetryAll": []
             }
         }
     ],

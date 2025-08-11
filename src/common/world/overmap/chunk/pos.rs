@@ -1,13 +1,15 @@
 use std::{
     fmt::{self, Display},
-    ops::{Range, Index, Sub, Add, Mul, Div, Neg, SubAssign, AddAssign, MulAssign, DivAssign}
+    ops::{Range, Index, IndexMut, Sub, Add, Mul, Div, Neg, SubAssign, AddAssign, MulAssign, DivAssign}
 };
 
 use serde::{Serialize, Deserialize};
 
-use strum::{FromRepr, EnumCount};
+use strum::{FromRepr, EnumCount, EnumIter};
 
 use nalgebra::{Vector3, Point3, Scalar};
+
+use crate::common::world::TileRotation;
 
 use super::{CHUNK_SIZE, CHUNK_VISUAL_SIZE, TILE_SIZE};
 
@@ -523,7 +525,7 @@ impl<T> From<Pos3<T>> for [T; 3]
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, FromRepr, EnumCount)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumIter, FromRepr, strum::Display, EnumCount)]
 pub enum PosDirection
 {
     Right,
@@ -532,6 +534,20 @@ pub enum PosDirection
     Down,
     Forward,
     Back
+}
+
+impl From<TileRotation> for PosDirection
+{
+    fn from(x: TileRotation) -> Self
+    {
+        match x
+        {
+            TileRotation::Up => Self::Up,
+            TileRotation::Right => Self::Right,
+            TileRotation::Left => Self::Left,
+            TileRotation::Down => Self::Down
+        }
+    }
 }
 
 impl PosDirection
@@ -594,6 +610,15 @@ macro_rules! define_group
                 }
             }
 
+            pub fn as_ref(&self) -> $name<&T>
+            {
+                $name{
+                    $(
+                        $lowercase: &self.$lowercase,
+                    )+
+                }
+            }
+
             pub fn map<D, F>(self, mut direction_map: F) -> $name<D>
             where
                 F: FnMut(PosDirection, T) -> D
@@ -634,6 +659,21 @@ macro_rules! define_group
                 {
                     $(
                         PosDirection::$uppercase => &self.$lowercase,
+                    )+
+                    _ => unreachable!()
+                }
+            }
+        }
+
+        impl<T> IndexMut<PosDirection> for $name<T>
+        {
+            fn index_mut(&mut self, index: PosDirection) -> &mut Self::Output
+            {
+                #[allow(unreachable_patterns)]
+                match index
+                {
+                    $(
+                        PosDirection::$uppercase => &mut self.$lowercase,
                     )+
                     _ => unreachable!()
                 }
