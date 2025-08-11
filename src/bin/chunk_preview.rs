@@ -100,6 +100,7 @@ enum UiId
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum ButtonId
 {
+    Rotation,
     Add,
     Remove,
     Regenerate
@@ -261,6 +262,7 @@ struct Tags
     name: String,
     height: i32,
     difficulty: f32,
+    rotation: TileRotation,
     others: Vec<String>
 }
 
@@ -370,6 +372,7 @@ impl YanyaApp for ChunkPreviewer
             name: String::new(),
             height: 1,
             difficulty: 0.0,
+            rotation: TileRotation::Up,
             others: Vec::new()
         };
 
@@ -517,6 +520,11 @@ impl YanyaApp for ChunkPreviewer
                 button.is_mouse_inside() && controls.take_click_down()
             };
 
+            if update_button(&format!("{:?}", self.current_tags.rotation), ButtonId::Rotation)
+            {
+                self.current_tags.rotation = self.current_tags.rotation.rotate_clockwise();
+            }
+
             if update_button("add tag", ButtonId::Add)
             {
                 self.current_tags.others.push(String::new());
@@ -638,6 +646,7 @@ impl YanyaApp for ChunkPreviewer
                 let chunk_info = ConditionalInfo{
                     height: self.preview_tags.height,
                     difficulty: self.preview_tags.difficulty,
+                    rotation: self.preview_tags.rotation,
                     tags: &tags
                 };
 

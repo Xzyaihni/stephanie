@@ -44,9 +44,12 @@
         (area-size area)))
 
 (define side-up 0)
-(define side-down 1)
+(define side-right 1)
 (define side-left 2)
-(define side-right 3)
+(define side-down 3)
+
+(define (side-horizontal? x) (or (= x side-left) (= x side-right)))
+(define (side-vertical? x) (not (side-horizontal? x)))
 
 (define (put-tile chunk pos this-tile)
     (vector-set!

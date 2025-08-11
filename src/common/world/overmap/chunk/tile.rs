@@ -227,6 +227,28 @@ impl TileRotation
         }
     }
 
+    pub fn rotate_counterclockwise(&self) -> Self
+    {
+        match self
+        {
+            Self::Up => Self::Left,
+            Self::Right => Self::Up,
+            Self::Down => Self::Right,
+            Self::Left => Self::Down
+        }
+    }
+
+    pub fn rotate_clockwise(&self) -> Self
+    {
+        match self
+        {
+            Self::Up => Self::Right,
+            Self::Right => Self::Down,
+            Self::Down => Self::Left,
+            Self::Left => Self::Up
+        }
+    }
+
     pub fn to_angle(&self) -> f32
     {
         match self
@@ -246,6 +268,17 @@ impl TileRotation
             Self::Right => "→",
             Self::Left => "←",
             Self::Down => "↓"
+        }
+    }
+
+    pub fn subtract(&self, other: Self) -> Self
+    {
+        if other == Self::Up
+        {
+            *self
+        } else
+        {
+            self.rotate_counterclockwise().subtract(other.rotate_counterclockwise())
         }
     }
 

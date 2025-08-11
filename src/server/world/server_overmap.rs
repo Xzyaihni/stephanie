@@ -317,27 +317,32 @@ impl<S: SaveLoad<WorldChunksBlock>> ServerOvermap<S>
                         LocalPos::new(Pos3{z: 0, ..local_pos.pos}, Pos3{z: 1, ..local_pos.size})
                     ).tags();
 
-                    let info = {
-                        let global_pos = self.to_global(local_pos);
+                    let world_chunk = {
+                        let mut world_generator = self.world_generator.borrow_mut();
 
-                        ConditionalInfo{
-                            height: global_pos.0.z * CHUNK_RATIO.z as i32 + z as i32,
-                            difficulty: chunk_difficulty(global_pos),
-                            tags
-                        }
+                        let info = {
+                            let global_pos = self.to_global(local_pos);
+
+                            ConditionalInfo{
+                                height: global_pos.0.z * CHUNK_RATIO.z as i32 + z as i32,
+                                difficulty: chunk_difficulty(global_pos),
+                                rotation: world_generator.rotation_of(group.this.id()),
+                                tags
+                            }
+                        };
+
+                        let mut marker = |mut marker_tile: MarkerTile|
+                        {
+                            marker_tile.pos.pos_mut().z = z;
+                            marker(marker_tile)
+                        };
+
+                        world_generator.generate_chunk(
+                            &info,
+                            group,
+                            &mut marker
+                        )
                     };
-
-                    let mut marker = |mut marker_tile: MarkerTile|
-                    {
-                        marker_tile.pos.pos_mut().z = z;
-                        marker(marker_tile)
-                    };
-
-                    let world_chunk = self.world_generator.borrow_mut().generate_chunk(
-                        &info,
-                        group,
-                        &mut marker
-                    );
 
                     Self::partially_fill(&mut chunk, world_chunk, this_pos);
                 }

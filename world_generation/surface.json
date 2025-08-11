@@ -53,17 +53,27 @@
             }
         },
         {
+            "rotation": "Right",
+            "name": "road_straight",
+            "neighbors": {
+                "SymmetryBoth": {
+                    "horizontal": [],
+                    "vertical": ["park", "building"]
+                }
+            }
+        },
+        {
             "name": "road_corner",
             "weight": 1,
             "neighbors": {
                 "SymmetryNone": {
-		    "up": ["park", "building", "bunker"],
-		    "down": ["road_intersection"],
-		    "right": [
+		    "up": ["road_intersection"],
+		    "down": ["park", "building", "bunker"],
+		    "right": ["park", "building", "bunker"],
+		    "left": [
 			"road_straight",
 			"road_intersection"
-		    ],
-		    "left": ["park", "building", "bunker"]
+		    ]
                 }
             }
         },
@@ -78,10 +88,7 @@
             "name": "park",
             "weight": 1,
             "neighbors": {
-                "SymmetryAll": [
-		     "park",
-		     "building"
-		 ]
+                "SymmetryAll": ["park"]
             }
         }
     ],

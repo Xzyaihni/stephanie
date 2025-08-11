@@ -338,6 +338,7 @@ impl ChunkGenerator
 
             define_symbol("height", info.height.into())?;
             define_symbol("difficulty", info.difficulty.into())?;
+            define_symbol("rotation", (info.rotation as i32).into())?;
 
             info.tags.iter().try_for_each(|tag|
             {
@@ -359,33 +360,71 @@ impl ChunkGenerator
                 ChunkGenerationError::WrongOutput(err)
             })?;
 
-            output.iter().enumerate().map(|(index, x)|
+            debug_assert!(WORLD_CHUNK_SIZE.z == 1, "i didnt implement rotation for anything other than z 1");
+            debug_assert!(WORLD_CHUNK_SIZE.x == WORLD_CHUNK_SIZE.y, "cant rotate non square chunks");
+            assert_eq!(output.len(), WORLD_CHUNK_SIZE.product());
+
+            fn process<'a>(
+                memory: &LispMemory,
+                marker: &mut impl FnMut(MarkerTile),
+                values: impl Iterator<Item=&'a LispValue>
+            ) -> Result<Box<[Tile]>, ChunkGenerationError>
             {
-                let x = OutputWrapperRef::new(&memory, *x);
-                if let Ok(s) = x.as_list().and_then(|lst| lst.car.as_symbol())
+                values.enumerate().map(|(index, x)|
                 {
-                    if s != "marker"
+                    let x = OutputWrapperRef::new(memory, *x);
+                    if let Ok(s) = x.as_list().and_then(|lst| lst.car.as_symbol())
                     {
-                        panic!("malformed tile, expected marker got {s}");
+                        if s != "marker"
+                        {
+                            return Err(lisp::Error::Custom(format!("malformed tile, expected marker got {s}")));
+                        }
+
+                        let value = x.as_list().unwrap().cdr;
+
+                        let pos = Chunk::index_to_pos(index);
+                        MarkerKind::from_lisp_value(value)?.into_iter().for_each(|marker_tile|
+                        {
+                            marker(MarkerTile{kind: marker_tile, pos});
+                        });
+
+                        Ok(Tile::none())
+                    } else
+                    {
+                        Tile::from_lisp_value(x)
                     }
-
-                    let value = x.as_list().unwrap().cdr;
-
-                    let pos = Chunk::index_to_pos(index);
-                    MarkerKind::from_lisp_value(value)?.into_iter().for_each(|marker_tile|
-                    {
-                        marker(MarkerTile{kind: marker_tile, pos});
-                    });
-
-                    Ok(Tile::none())
-                } else
+                }).collect::<Result<Box<[Tile]>, _>>().map_err(|err|
                 {
-                    Tile::from_lisp_value(x)
-                }
-            }).collect::<Result<Box<[Tile]>, _>>().map_err(|err|
+                    ChunkGenerationError::Tile(err)
+                })
+            }
+
+            const SPAN: usize = WORLD_CHUNK_SIZE.x;
+            let values = match info.rotation
             {
-                ChunkGenerationError::Tile(err)
-            })?
+                TileRotation::Up => process(&memory, marker, output.iter()),
+                TileRotation::Right =>
+                {
+                    let values = (0..SPAN).flat_map(|x|
+                    {
+                        (0..SPAN).rev().map(move |y| y * SPAN + x)
+                    }).map(|index| &output[index]);
+
+                    process(&memory, marker, values)
+                },
+                TileRotation::Left =>
+                {
+                    let values = (0..SPAN).rev().flat_map(|x|
+                    {
+                        (0..SPAN).map(move |y| y * SPAN + x)
+                    }).map(|index| &output[index]);
+
+                    process(&memory, marker, values)
+                },
+                TileRotation::Down => process(&memory, marker, output.iter().rev())
+            };
+
+            values?
         };
 
         Ok(ChunksContainer::from_raw(WORLD_CHUNK_SIZE, tiles))
@@ -475,17 +514,17 @@ impl<S: SaveLoad<WorldChunksBlock>> WorldGenerator<S>
 
         if let Some(local) = global_mapper.to_local(GlobalPos::new(0, 0, 0))
         {
-            let random_rotation = TileRotation::random();
-            if let Some(bunker_id) = self.rules.name_mappings().world_chunk.get(&(random_rotation, "bunker".to_owned()))
-            {
-                wave_collapser.generate_single_maybe(
-                    LocalPos::new(Pos3{z: 0, ..local.pos}, Pos3{z: 1, ..local.size}),
-                    ||
+            wave_collapser.generate_single_maybe(
+                LocalPos::new(Pos3{z: 0, ..local.pos}, Pos3{z: 1, ..local.size}),
+                ||
+                {
+                    let random_rotation = TileRotation::random();
+                    self.rules.name_mappings().world_chunk.get(&(random_rotation, "bunker".to_owned())).map(|bunker_id|
                     {
                         WorldChunk::new(*bunker_id, Vec::new())
-                    }
-                );
-            }
+                    }).unwrap_or_else(WorldChunk::none)
+                }
+            );
         }
 
         wave_collapser.generate();
@@ -592,6 +631,7 @@ impl<S: SaveLoad<WorldChunksBlock>> WorldGenerator<S>
                             let info = ConditionalInfo{
                                 height: global_z,
                                 difficulty,
+                                rotation: {let temp = (); TileRotation::Up},
                                 tags: this_surface.tags()
                             };
 
@@ -603,6 +643,7 @@ impl<S: SaveLoad<WorldChunksBlock>> WorldGenerator<S>
                             let info = ConditionalInfo{
                                 height: global_z,
                                 difficulty,
+                                rotation: {let temp = (); TileRotation::Up},
                                 tags: this_surface.tags()
                             };
 
@@ -680,6 +721,11 @@ impl<S: SaveLoad<WorldChunksBlock>> WorldGenerator<S>
                     *chunk = loaded_chunk;
                 }
             });
+    }
+
+    pub fn rotation_of(&self, id: WorldChunkId) -> TileRotation
+    {
+        self.rules.rotation(id)
     }
 
     pub fn generate_chunk(
@@ -1053,7 +1099,7 @@ impl<'a> WaveCollapser<'a>
 #[cfg(test)]
 mod tests
 {
-    use crate::common::world::DirectionsGroup;
+    use crate::common::world::{DirectionsGroup, TileRotation};
 
     use super::*;
 
@@ -1085,6 +1131,7 @@ mod tests
         let info = ConditionalInfo{
             height: 0,
             difficulty: 0.0,
+            rotation: TileRotation::Up,
             tags: &empty
         };
 

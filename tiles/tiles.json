@@ -5,11 +5,27 @@
     },
     {
         "name": "asphalt-line-horizontal",
-	"health": 0.9
+	"inherit": "asphalt"
     },
     {
         "name": "asphalt-line-vertical",
-	"health": 0.9
+	"inherit": "asphalt"
+    },
+    {
+        "name": "asphalt-line-corner-up",
+	"inherit": "asphalt"
+    },
+    {
+        "name": "asphalt-line-corner-right",
+	"inherit": "asphalt"
+    },
+    {
+        "name": "asphalt-line-corner-left",
+	"inherit": "asphalt"
+    },
+    {
+        "name": "asphalt-line-corner-down",
+	"inherit": "asphalt"
     },
     {
         "name": "grassie",

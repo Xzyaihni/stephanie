@@ -42,6 +42,7 @@ pub enum SpecialTile
 pub struct TileInfoRaw
 {
     pub name: String,
+    pub inherit: Option<String>,
     pub textures: Option<Vec<f32>>,
     pub health: Option<f32>,
     pub drawable: Option<bool>,
@@ -56,6 +57,30 @@ impl TileInfoRaw
     fn has_texture(&self) -> bool
     {
         self.drawable.unwrap_or(true)
+    }
+
+    fn combine(&self, other: &Self) -> Self
+    {
+        let mut this = self.clone();
+
+        this.name = other.name.clone();
+
+        macro_rules! with_fields
+        {
+            ($($name:ident),+) =>
+            {
+                $(
+                    if other.$name.is_some()
+                    {
+                        this.$name = other.$name.clone();
+                    }
+                )+
+            }
+        }
+
+        with_fields!(health, drawable, special, colliding, transparent);
+
+        this
     }
 }
 
@@ -216,50 +241,70 @@ impl TileMap
     {
         let textures_root = Path::new(textures_root);
 
-        let tiles = serde_json::from_reader::<_, Vec<TileInfoRaw>>(File::open(tiles_path)?)?;
+        let mut tiles = serde_json::from_reader::<_, Vec<TileInfoRaw>>(File::open(tiles_path)?)?;
 
-        let textures = tiles.iter().scan(0, |current_id: &mut u32, tile_raw: &TileInfoRaw| -> Option<Result<_, TileMapError>>
+        (0..tiles.len()).for_each(|index|
         {
-            let value = |tile_raw: &TileInfoRaw| -> Result<_, TileMapError>
+            if tiles[index].inherit.is_none()
+            {
+                return;
+            }
+
+            if let Some(inherit_index) = tiles.iter().position(|x| x.name == *tiles[index].inherit.as_ref().unwrap())
+            {
+                tiles[index] = tiles[inherit_index].combine(&tiles[index]);
+            } else
+            {
+                eprintln!("inherit tile named `{}` not found", tiles[index].inherit.as_ref().unwrap());
+            }
+        });
+
+        let textures = tiles.iter().scan(0, |current_id: &mut u32, tile_raw: &TileInfoRaw| -> Option<_>
+        {
+            let value = (|tile_raw: &TileInfoRaw|
             {
                 if tile_raw.has_texture()
                 {
                     let texture_name = tile_raw.texture.as_ref().unwrap_or(&tile_raw.name);
 
-                    let loader = |name: &str| -> Result<SimpleImage, TileMapError>
+                    let loader = |name: &str| -> SimpleImage
                     {
                         Self::load_texture(
                             TEXTURE_TILE_SIZE as u32,
                             TEXTURE_TILE_SIZE as u32,
                             PathBuf::from(load_texture_path(textures_root, name))
-                        )
+                        ).unwrap_or_else(|err|
+                        {
+                            eprintln!("{err}, using empty image");
+                            SimpleImage::filled(Color::new(0, 0, 0, 0), TEXTURE_TILE_SIZE, TEXTURE_TILE_SIZE)
+                        })
                     };
 
                     let textures = if tile_raw.textures.as_ref().map(|x| x.is_empty()).unwrap_or(true)
                     {
-                        vec![(*current_id, loader(texture_name)?)]
+                        vec![(*current_id, loader(texture_name))]
                     } else
                     {
                         tile_raw.textures.iter().flatten().enumerate().map(|(index, _)|
                         {
                             (*current_id + index as u32, format!("{texture_name}{}", index + 1))
-                        }).map(|(id, x)| -> Result<_, TileMapError>
+                        }).map(|(id, x)|
                         {
-                            Ok((id, loader(x.as_ref())?))
-                        }).collect::<Result<Vec<_>, _>>()?
+                            (id, loader(x.as_ref()))
+                        }).collect::<Vec<_>>()
                     };
 
                     *current_id += textures.len() as u32;
 
-                    Ok(textures)
+                    textures
                 } else
                 {
-                    Ok(Vec::new())
+                    Vec::new()
                 }
-            }(tile_raw);
+            })(tile_raw);
 
             Some(value)
-        }).collect::<Result<Vec<Vec<(u32, SimpleImage)>>, _>>()?;
+        }).collect::<Vec<Vec<(u32, SimpleImage)>>>();
 
         let tiles = tiles.into_iter().zip(textures.iter()).map(|(tile_raw, textures)|
         {

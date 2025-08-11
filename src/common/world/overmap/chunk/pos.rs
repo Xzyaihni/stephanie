@@ -619,6 +619,24 @@ macro_rules! define_group
                 }
             }
 
+            pub fn as_mut(&mut self) -> $name<&mut T>
+            {
+                $name{
+                    $(
+                        $lowercase: &mut self.$lowercase,
+                    )+
+                }
+            }
+
+            pub fn zip<U>(self, other: $name<U>) -> $name<(T, U)>
+            {
+                $name{
+                    $(
+                        $lowercase: (self.$lowercase, other.$lowercase),
+                    )+
+                }
+            }
+
             pub fn map<D, F>(self, mut direction_map: F) -> $name<D>
             where
                 F: FnMut(PosDirection, T) -> D

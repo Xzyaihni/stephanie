@@ -96,18 +96,13 @@
 
 ; technically the specs say it has to be short circuiting but i dont care
 (define (or a b)
-    (if a
-        #t
-        (if b
-            #t
-            #f)))
+    (if a #t b))
 
 (define (and a b)
-    (if a
-        (if b
-            #t
-            #f)
-        #f))
+    (if a b #f))
+
+(define (xor a b)
+    (if a (not b) b))
 
 (define (>= a b) (or (> a b) (= a b)))
 (define (<= a b) (or (< a b) (= a b)))
