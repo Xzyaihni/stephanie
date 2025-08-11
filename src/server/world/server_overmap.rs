@@ -268,21 +268,20 @@ impl<S: SaveLoad<WorldChunksBlock>> ServerOvermap<S>
         false
     }
 
-    pub fn generate_chunk(&mut self, pos: GlobalPos, marker: impl FnMut(MarkerTile)) -> Chunk
+    pub fn move_to(&mut self, pos: GlobalPos)
     {
         let pos = worldchunk_pos(pos);
 
-        let shift_offset = self.over_bounds_with_padding(
-            pos,
-            Pos3::repeat(1),
-            Pos3{z: 1, ..CHUNK_RATIO.map(|x| x as i32)} + 1
-        );
+        let shift_offset = (pos - self.player_position()).0;
 
         if shift_offset != Pos3::repeat(0_i32)
         {
             self.shift_overmap_by(shift_offset);
         }
+    }
 
+    pub fn generate_chunk(&mut self, pos: GlobalPos, marker: impl FnMut(MarkerTile)) -> Chunk
+    {
         self.generate_existing_chunk(self.to_local(pos).unwrap(), marker)
     }
 

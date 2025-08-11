@@ -57,8 +57,8 @@ mod server_overmap;
 mod marker_tile;
 
 
-pub const SERVER_OVERMAP_SIZE: usize = CLIENT_OVERMAP_SIZE + 1;
-pub const SERVER_OVERMAP_SIZE_Z: usize = CLIENT_OVERMAP_SIZE_Z + 1;
+pub const SERVER_OVERMAP_SIZE: usize = CLIENT_OVERMAP_SIZE + 2;
+pub const SERVER_OVERMAP_SIZE_Z: usize = CLIENT_OVERMAP_SIZE_Z + 2;
 
 type OvermapsType = Rc<RefCell<HashMap<ConnectionId, ServerOvermap<WorldChunkSaver>>>>;
 
@@ -273,6 +273,12 @@ impl World
                 if let Some(indexer) = self.client_indexers.get_mut(&id)
                 {
                     indexer.position_offset(offset.0);
+
+                    let mut overmaps = self.overmaps.borrow_mut();
+                    if let Some(overmap) = overmaps.get_mut(&id)
+                    {
+                        overmap.move_to(new_position);
+                    }
                 }
             }
         }
@@ -527,8 +533,9 @@ impl World
         message: Message
     ) -> Option<Message>
     {
-        let new_position = (message.entity() == Some(entity)).then(||
-            match &message
+        if message.entity() == Some(entity)
+        {
+            let x = match &message
             {
                 Message::EntitySet{info, ..} =>
                 {
@@ -548,13 +555,13 @@ impl World
                     component.as_ref().map(|x| x.position)
                 },
                 _ => None
-            }
-        ).flatten();
+            };
 
-        if let Some(new_position) = new_position
-        {
-            self.player_moved(container, id, new_position.into());
-            self.update(container);
+            if let Some(new_position) = x
+            {
+                self.player_moved(container, id, new_position.into());
+                self.update(container);
+            }
         }
 
         #[cfg(debug_assertions)]

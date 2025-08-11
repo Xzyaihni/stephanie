@@ -254,6 +254,24 @@ impl WorldChunk
             + local_pos.y * CHUNK_RATIO.x
             + local_pos.x
     }
+
+    pub fn format_compact(&self) -> String
+    {
+        let tags = self.tags.iter().map(|x| format!("{x:?}")).reduce(|mut acc, x|
+        {
+            acc += " ";
+            acc += &x;
+            acc
+        });
+
+        if let Some(tags) = tags
+        {
+            format!("{} [{tags}]", self.id)
+        } else
+        {
+            self.id.to_string()
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -362,8 +380,7 @@ impl ChunkRule
 {
     fn from_raw(
         name_mappings: &mut NameMappings,
-        rule: ChunkRuleRaw,
-        total_weight: f64
+        rule: ChunkRuleRaw
     ) -> Self
     {
         let symmetry = rule.neighbors.symmetry();
@@ -425,7 +442,7 @@ impl ChunkRule
                     tag
                 )
             }).collect(),
-            weight: rule.weight.unwrap_or(1.0) / total_weight,
+            weight: rule.weight.unwrap_or(1.0),
             rotateable: rule.rotateable.unwrap_or(ROTATEABLE_DEFAULT),
             symmetry,
             neighbors
@@ -938,11 +955,6 @@ impl ChunkRules
 {
     fn from_raw(name_mappings: &mut NameMappings, rules: ChunkRulesRaw) -> Self
     {
-        let weights = rules.rules.iter().map(|rule| rule.weight.unwrap_or(1.0));
-
-        let total_weight: f64 = weights.clone().sum();
-        let entropy = PossibleStates::calculate_entropy(weights);
-
         rules.rules.iter().for_each(|rule|
         {
             if rule.rotateable.unwrap_or(ROTATEABLE_DEFAULT)
@@ -960,7 +972,7 @@ impl ChunkRules
 
         rules.rules.into_iter().for_each(|rule|
         {
-            let rule = ChunkRule::from_raw(name_mappings, rule, total_weight);
+            let rule = ChunkRule::from_raw(name_mappings, rule);
 
             let name_mappings = &*name_mappings;
 
@@ -989,6 +1001,12 @@ impl ChunkRules
                 with_rotation(TileRotation::Up);
             }
         });
+
+        let weights = this_rules.values().map(|x| x.weight);
+        let total_weight: f64 = weights.clone().sum();
+        let entropy = PossibleStates::calculate_entropy(weights.into_iter().map(|x| x / total_weight));
+
+        this_rules.values_mut().for_each(|rule| rule.weight /= total_weight);
 
         let mut this = Self{
             entropy,

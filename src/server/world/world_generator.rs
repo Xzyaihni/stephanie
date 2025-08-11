@@ -491,6 +491,9 @@ impl<S: SaveLoad<WorldChunksBlock>> WorldGenerator<S>
         global_mapper: &M
     )
     {
+        dbg!(&self.rules.surface);
+        dbg!(self.rules.name_mappings().world_chunk.iter().collect::<Vec<_>>());
+
         #[cfg(debug_assertions)]
         {
             let chunk_positions: Vec<_> = world_chunks.iter()
@@ -763,6 +766,11 @@ impl PossibleStates
     {
         let states: Vec<_> = rules.ids().copied().collect();
 
+        {
+            let total_weight = states.iter().map(|x| rules.get(*x).weight()).sum::<f64>();
+            debug_assert!((total_weight - 1.0).abs() < 0.0001, "{total_weight} must be 1.0");
+        }
+
         Self{
             states,
             total: 1.0,
@@ -859,11 +867,16 @@ impl PossibleStates
                 .expect("rules cannot be empty")
         };
 
+        self.set_collapsed_id(id);
+
+        id
+    }
+
+    pub fn set_collapsed_id(&mut self, id: WorldChunkId)
+    {
         self.states = vec![id];
         self.collapsed = true;
         self.is_all = false;
-
-        id
     }
 
     fn update_entropy(&mut self, rules: &ChunkRules)
@@ -1077,12 +1090,43 @@ impl<'a> WaveCollapser<'a>
     {
         debug_assert!(local.pos.z == 0, "{local:#?}");
 
-        self.world_chunks[local] = Some(chunk);
+        self.entropies[local].set_collapsed_id(chunk.id());
 
-        self.entropies[local].collapse(self.rules);
+        self.world_chunks[local] = Some(chunk);
 
         let mut visited = VisitedTracker::new();
         self.constrain(&mut visited, local);
+
+        eprintln!("{}", self.world_chunks.pretty_print_with(|x|
+        {
+            if let Some(x) = x
+            {
+                format!("{}", x.format_compact())
+            } else
+            {
+                "_".to_owned()
+            }
+        }));
+
+        eprintln!("{}", self.entropies.0.pretty_print_with(|x|
+        {
+            if x.collapsed()
+            {
+                "_".to_owned()
+            } else
+            {
+                let e = x.entropy();
+                let states = x.states.iter().map(|x| x.to_string()).reduce(|mut acc, x| { acc += " "; acc += &x; acc });
+
+                if let Some(s) = states
+                {
+                    format!("({e:.2} [{s}])")
+                } else
+                {
+                    format!("{e:.2}")
+                }
+            }
+        }));
     }
 
     pub fn generate(&mut self)
