@@ -13,6 +13,7 @@ use crate::{
     common::{
         furniture_creator,
         enemy_creator,
+        rotate_point_z_3d,
         render_info::*,
         collider::*,
         physics::*,
@@ -211,6 +212,24 @@ pub enum MarkerKind
 
 impl MarkerKind
 {
+    pub fn rotated(mut self, tile_rotation: TileRotation) -> Self
+    {
+        match &mut self
+        {
+            Self::Door{rotation, ..} =>
+            {
+                *rotation = rotation.combine(tile_rotation);
+            },
+            Self::Light{offset, ..} =>
+            {
+                *offset = rotate_point_z_3d(*offset, tile_rotation.to_angle());
+            },
+            _ => ()
+        }
+
+        self
+    }
+
     pub fn from_lisp_value(value: OutputWrapperRef) -> Result<Vec<Self>, lisp::Error>
     {
         value.as_pairs_list()?.into_iter().map(|value|

@@ -57,7 +57,7 @@ impl Door
 
     fn door_rotation(&self) -> f32
     {
-        self.rotation.to_angle() + f32::consts::PI
+        -(self.rotation.to_angle() + f32::consts::PI)
     }
 
     pub fn set_open(

@@ -688,8 +688,8 @@ impl YanyaApp for ChunkPreviewer
                                 {
                                     TileRotation::Left => pos.x += offset,
                                     TileRotation::Right => pos.x -= offset,
-                                    TileRotation::Down => pos.y += offset,
-                                    TileRotation::Up => pos.y -= offset,
+                                    TileRotation::Down => pos.y -= offset,
+                                    TileRotation::Up => pos.y += offset
                                 }
 
                                 ("normal/furniture/metal_door1.png".to_owned(), Some(scale), rotation)

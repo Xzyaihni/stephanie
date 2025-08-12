@@ -367,6 +367,7 @@ impl ChunkGenerator
             fn process<'a>(
                 memory: &LispMemory,
                 marker: &mut impl FnMut(MarkerTile),
+                rotation: TileRotation,
                 values: impl Iterator<Item=&'a LispValue>
             ) -> Result<Box<[Tile]>, ChunkGenerationError>
             {
@@ -385,7 +386,7 @@ impl ChunkGenerator
                         let pos = Chunk::index_to_pos(index);
                         MarkerKind::from_lisp_value(value)?.into_iter().for_each(|marker_tile|
                         {
-                            marker(MarkerTile{kind: marker_tile, pos});
+                            marker(MarkerTile{kind: marker_tile.rotated(rotation), pos});
                         });
 
                         Ok(Tile::none())
@@ -400,9 +401,10 @@ impl ChunkGenerator
             }
 
             const SPAN: usize = WORLD_CHUNK_SIZE.x;
-            let values = match info.rotation
+            let rotation = info.rotation;
+            let values = match rotation
             {
-                TileRotation::Up => process(&memory, marker, output.iter()),
+                TileRotation::Up => process(&memory, marker, rotation, output.iter()),
                 TileRotation::Right =>
                 {
                     let values = (0..SPAN).flat_map(|x|
@@ -410,7 +412,7 @@ impl ChunkGenerator
                         (0..SPAN).rev().map(move |y| y * SPAN + x)
                     }).map(|index| &output[index]);
 
-                    process(&memory, marker, values)
+                    process(&memory, marker, rotation, values)
                 },
                 TileRotation::Left =>
                 {
@@ -419,9 +421,9 @@ impl ChunkGenerator
                         (0..SPAN).map(move |y| y * SPAN + x)
                     }).map(|index| &output[index]);
 
-                    process(&memory, marker, values)
+                    process(&memory, marker, rotation, values)
                 },
-                TileRotation::Down => process(&memory, marker, output.iter().rev())
+                TileRotation::Down => process(&memory, marker, rotation, output.iter().rev())
             };
 
             values?
