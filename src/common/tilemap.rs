@@ -374,14 +374,14 @@ impl TileMap
         self.tiles.len()
     }
 
-    fn visible_tiles(&self) -> usize
+    fn textures_amount(&self) -> usize
     {
-        self.tiles.iter().filter(|x| x.drawable).count()
+        self.tiles.iter().map(|x| x.textures.len()).sum()
     }
 
     pub fn texture_row_size(&self) -> usize
     {
-        (((self.visible_tiles()) as f64).sqrt().ceil() as usize).max(2)
+        (((self.textures_amount()) as f64).sqrt().ceil() as usize).max(2)
     }
 
     pub fn pixel_fraction(&self, fraction: f32) -> f32
