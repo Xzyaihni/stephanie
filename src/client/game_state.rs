@@ -917,9 +917,6 @@ impl GameState
             position,
             rotation: target.rotation
         });
-
-        drop(target);
-        self.player_moved(position.into());
     }
 
     fn connect_to_server(
@@ -1486,11 +1483,14 @@ impl GameState
         self.mouse_offset().component_mul(&self.ui_camera.size())
     }
 
-    pub fn player_moved(&mut self, position: Pos3<f32>)
+    pub fn camera_moved(&mut self, position: Pos3<f32>)
     {
         if !self.debug_visibility.is_detached()
         {
-            self.world.camera_moved(position);
+            if self.world.camera_moved(position)
+            {
+                self.send_message(Message::SyncCamera{player_entity: self.entities.player_entity, position});
+            }
         }
     }
 

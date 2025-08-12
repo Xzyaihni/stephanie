@@ -5,6 +5,7 @@ use super::{
     world_generator::{
         WORLD_CHUNK_SIZE,
         CHUNK_RATIO,
+        empty_worldchunk,
         chunk_difficulty,
         ConditionalInfo,
         WorldGenerator,
@@ -282,7 +283,18 @@ impl<S: SaveLoad<WorldChunksBlock>> ServerOvermap<S>
 
     pub fn generate_chunk(&mut self, pos: GlobalPos, marker: impl FnMut(MarkerTile)) -> Chunk
     {
-        self.generate_existing_chunk(self.to_local(pos).unwrap(), marker)
+        if let Some(local_pos) = self.to_local(pos)
+        {
+            self.generate_existing_chunk(local_pos, marker)
+        } else
+        {
+            eprintln!(
+                "trying to generate chunk at position {pos:?}, which is outside the server overmap (player position {:?})",
+                self.player_position()
+            );
+
+            Chunk::new()
+        }
     }
 
     fn shift_overmap_by(&mut self, shift_offset: Pos3<i32>)
@@ -306,17 +318,17 @@ impl<S: SaveLoad<WorldChunksBlock>> ServerOvermap<S>
 
                     let local_pos = local_pos + Pos3{x, y, z: 0};
 
-                    let group = local_pos.always_group().expect("chunk must not touch edges");
-                    let group = group.map(|position|
+                    let world_chunk = if let Some(group) = local_pos.always_group()
                     {
-                        self.world_chunks[position].as_ref().map(|chunk| chunk[z].clone()).unwrap()
-                    });
+                        let group = group.map(|position|
+                        {
+                            self.world_chunks[position].as_ref().map(|chunk| chunk[z].clone()).unwrap()
+                        });
 
-                    let tags = self.world_plane.world_chunk(
-                        LocalPos::new(Pos3{z: 0, ..local_pos.pos}, Pos3{z: 1, ..local_pos.size})
-                    ).tags();
+                        let tags = self.world_plane.world_chunk(
+                            LocalPos::new(Pos3{z: 0, ..local_pos.pos}, Pos3{z: 1, ..local_pos.size})
+                        ).tags();
 
-                    let world_chunk = {
                         let mut world_generator = self.world_generator.borrow_mut();
 
                         let info = {
@@ -341,6 +353,10 @@ impl<S: SaveLoad<WorldChunksBlock>> ServerOvermap<S>
                             group,
                             &mut marker
                         )
+                    } else
+                    {
+                        eprintln!("chunk most not be touching edges: {local_pos:?} (player position {:?})", self.player_position());
+                        empty_worldchunk()
                     };
 
                     Self::partially_fill(&mut chunk, world_chunk, this_pos);

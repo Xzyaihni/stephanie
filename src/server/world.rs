@@ -57,8 +57,8 @@ mod server_overmap;
 mod marker_tile;
 
 
-pub const SERVER_OVERMAP_SIZE: usize = CLIENT_OVERMAP_SIZE + 2;
-pub const SERVER_OVERMAP_SIZE_Z: usize = CLIENT_OVERMAP_SIZE_Z + 2;
+pub const SERVER_OVERMAP_SIZE: usize = CLIENT_OVERMAP_SIZE + 3;
+pub const SERVER_OVERMAP_SIZE_Z: usize = CLIENT_OVERMAP_SIZE_Z + 3;
 
 type OvermapsType = Rc<RefCell<HashMap<ConnectionId, ServerOvermap<WorldChunkSaver>>>>;
 
@@ -533,15 +533,6 @@ impl World
         message: Message
     ) -> Option<Message>
     {
-        if let Message::SyncPositionRotation{entity, position, ..} = &message
-        {
-            if *entity == player_entity
-            {
-                self.player_moved(container, id, (*position).into());
-                self.update(container);
-            }
-        }
-
         #[cfg(debug_assertions)]
         {
             use crate::common::message::DebugMessage;
@@ -567,6 +558,16 @@ impl World
             Message::ChunkRequest{pos} =>
             {
                 self.send_chunk(container, id, pos);
+                None
+            },
+            Message::SyncCamera{player_entity: entity, position} =>
+            {
+                if entity == player_entity
+                {
+                    self.player_moved(container, id, position);
+                    self.update(container);
+                }
+
                 None
             },
             _ => Some(message)

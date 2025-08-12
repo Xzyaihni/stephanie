@@ -60,6 +60,11 @@ pub use chunk_rules::{
 mod chunk_rules;
 
 
+pub fn empty_worldchunk() -> ChunksContainer<Tile>
+{
+    ChunksContainer::new_with(WORLD_CHUNK_SIZE, |_| Tile::none())
+}
+
 #[derive(Debug)]
 pub enum ParseErrorKind
 {
@@ -745,7 +750,7 @@ impl<S: SaveLoad<WorldChunksBlock>> WorldGenerator<S>
     {
         if group.this.id() == WorldChunkId::none()
         {
-            return ChunksContainer::new_with(WORLD_CHUNK_SIZE, |_| Tile::none());
+            return empty_worldchunk();
         }
 
         self.generator.generate_chunk(info, group.map(|world_chunk|

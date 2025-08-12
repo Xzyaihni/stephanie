@@ -1034,6 +1034,7 @@ impl<'a> PlayerContainer<'a>
         if let Some(position) = position
         {
             self.game_state.camera.write().set_position(position.into());
+            self.game_state.camera_moved(position.into());
 
             self.camera_sync_z();
         }

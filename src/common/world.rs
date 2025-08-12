@@ -547,9 +547,9 @@ impl World
         self.overmap.camera_position()
     }
 
-    pub fn camera_moved(&mut self, pos: Pos3<f32>)
+    pub fn camera_moved(&mut self, pos: Pos3<f32>) -> bool
     {
-        self.overmap.camera_moved(pos);
+        self.overmap.camera_moved(pos)
     }
 
     pub fn handle_message(&mut self, message: Message) -> Option<Message>
