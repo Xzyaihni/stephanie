@@ -909,10 +909,17 @@ impl GameState
     pub fn sync_character(&mut self, entity: Entity)
     {
         let entities = self.entities();
-        if let Some(target) = entities.target_ref(entity)
-        {
-            self.send_message(Message::SetTarget{entity, target: Box::new(target.clone())});
-        }
+        let target = some_or_return!(entities.target_ref(entity));
+
+        let position = target.position;
+        self.send_message(Message::SyncPositionRotation{
+            entity,
+            position,
+            rotation: target.rotation
+        });
+
+        drop(target);
+        self.player_moved(position.into());
     }
 
     fn connect_to_server(
@@ -1479,7 +1486,7 @@ impl GameState
         self.mouse_offset().component_mul(&self.ui_camera.size())
     }
 
-    pub fn camera_moved(&mut self, position: Pos3<f32>)
+    pub fn player_moved(&mut self, position: Pos3<f32>)
     {
         if !self.debug_visibility.is_detached()
         {

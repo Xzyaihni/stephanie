@@ -529,37 +529,15 @@ impl World
         &mut self,
         container: &mut ServerEntities,
         id: ConnectionId,
-        entity: Entity,
+        player_entity: Entity,
         message: Message
     ) -> Option<Message>
     {
-        if message.entity() == Some(entity)
+        if let Message::SyncPositionRotation{entity, position, ..} = &message
         {
-            let x = match &message
+            if *entity == player_entity
             {
-                Message::EntitySet{info, ..} =>
-                {
-                    info.transform.as_ref().map(|x| x.position)
-                },
-                Message::SetTarget{target, ..} =>
-                {
-                    Some(target.position)
-                },
-                Message::SyncPosition{position, ..}
-                | Message::SyncPositionRotation{position, ..} =>
-                {
-                    Some(*position)
-                }
-                Message::SetTransform{component, ..} =>
-                {
-                    component.as_ref().map(|x| x.position)
-                },
-                _ => None
-            };
-
-            if let Some(new_position) = x
-            {
-                self.player_moved(container, id, new_position.into());
+                self.player_moved(container, id, (*position).into());
                 self.update(container);
             }
         }

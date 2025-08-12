@@ -491,9 +491,6 @@ impl<S: SaveLoad<WorldChunksBlock>> WorldGenerator<S>
         global_mapper: &M
     )
     {
-        dbg!(&self.rules.surface);
-        dbg!(self.rules.name_mappings().world_chunk.iter().collect::<Vec<_>>());
-
         #[cfg(debug_assertions)]
         {
             let chunk_positions: Vec<_> = world_chunks.iter()
@@ -631,10 +628,13 @@ impl<S: SaveLoad<WorldChunksBlock>> WorldGenerator<S>
                         Ordering::Greater =>
                         {
                             // above ground
+
+                            let rotation = self.rotation_of(this_surface.id());
+
                             let info = ConditionalInfo{
                                 height: global_z,
                                 difficulty,
-                                rotation: {let temp = (); TileRotation::Up},
+                                rotation,
                                 tags: this_surface.tags()
                             };
 
@@ -643,10 +643,13 @@ impl<S: SaveLoad<WorldChunksBlock>> WorldGenerator<S>
                         Ordering::Less =>
                         {
                             // underground
+
+                            let rotation = self.rotation_of(this_surface.id());
+
                             let info = ConditionalInfo{
                                 height: global_z,
                                 difficulty,
-                                rotation: {let temp = (); TileRotation::Up},
+                                rotation,
                                 tags: this_surface.tags()
                             };
 
@@ -1096,37 +1099,6 @@ impl<'a> WaveCollapser<'a>
 
         let mut visited = VisitedTracker::new();
         self.constrain(&mut visited, local);
-
-        eprintln!("{}", self.world_chunks.pretty_print_with(|x|
-        {
-            if let Some(x) = x
-            {
-                format!("{}", x.format_compact())
-            } else
-            {
-                "_".to_owned()
-            }
-        }));
-
-        eprintln!("{}", self.entropies.0.pretty_print_with(|x|
-        {
-            if x.collapsed()
-            {
-                "_".to_owned()
-            } else
-            {
-                let e = x.entropy();
-                let states = x.states.iter().map(|x| x.to_string()).reduce(|mut acc, x| { acc += " "; acc += &x; acc });
-
-                if let Some(s) = states
-                {
-                    format!("({e:.2} [{s}])")
-                } else
-                {
-                    format!("{e:.2}")
-                }
-            }
-        }));
     }
 
     pub fn generate(&mut self)

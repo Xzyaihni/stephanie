@@ -1035,8 +1035,6 @@ impl<'a> PlayerContainer<'a>
         {
             self.game_state.camera.write().set_position(position.into());
 
-            self.game_state.camera_moved(position.into());
-
             self.camera_sync_z();
         }
     }

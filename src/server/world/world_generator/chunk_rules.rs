@@ -583,7 +583,7 @@ struct CityRulesRaw
     rules: Vec<ConditionalRuleRaw>
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 enum RangeNumber
 {
     Number(i32),
@@ -617,7 +617,7 @@ impl RangeNumber
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct ConditionalRule
 {
     name: WorldChunkId,
@@ -627,15 +627,23 @@ struct ConditionalRule
 
 impl ConditionalRule
 {
-    fn from_raw(name_mappings: &NameMappings, rule: ConditionalRuleRaw) -> Self
+    fn from_raw_empty(name_mappings: &NameMappings, rule: ConditionalRuleRaw) -> Self
     {
         Self{
-            name: name_mappings.world_chunk[&(TileRotation::Up, rule.name)],
+            name: WorldChunkId::none(),
             variable: rule.variable.unwrap_or(ConditionalVariable::Height),
             range: Range{
                 start: RangeNumber::from_raw(name_mappings, rule.range.start),
                 end: RangeNumber::from_raw(name_mappings, rule.range.end)
             }
+        }
+    }
+
+    pub fn with_id(self, id: WorldChunkId) -> Self
+    {
+        Self{
+            name: id,
+            ..self
         }
     }
 
@@ -693,13 +701,25 @@ impl CityRules
 {
     fn from_raw(name_mappings: &mut NameMappings, rules: CityRulesRaw) -> Self
     {
-        rules.rules.iter().for_each(|rule| name_mappings.insert(TileRotation::Up, rule.name.clone()));
+        rules.rules.iter().for_each(|rule| name_mappings.insert_all(rule.name.clone()));
+
+        let mut this_rules = Vec::new();
+
+        rules.rules.into_iter().for_each(|rule|
+        {
+            let name = rule.name.clone();
+            let rule = ConditionalRule::from_raw_empty(name_mappings, rule);
+
+            TileRotation::iter().for_each(|rotation|
+            {
+                let rule = rule.clone().with_id(name_mappings.world_chunk[&(rotation, name.clone())]);
+
+                this_rules.push(rule);
+            });
+        });
 
         Self{
-            rules: rules.rules.into_iter().map(|rule|
-            {
-                ConditionalRule::from_raw(name_mappings, rule)
-            }).collect()
+            rules: this_rules
         }
     }
 

@@ -1107,7 +1107,10 @@ impl VisualOvermap
         {
             {
                 let current_occluded = &self.occluded[pos][height];
-                if indices.iter().all(|index| current_occluded.occlusions[index])
+                if indices.iter().all(|index|
+                {
+                    if index < (CHUNK_SIZE * CHUNK_SIZE) { current_occluded.occlusions[index] } else { true }
+                })
                 {
                     self.chunks[pos].chunk.set_occluder_visible(height, occluder_index, false);
                     return;
