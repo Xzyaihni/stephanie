@@ -317,14 +317,25 @@ impl ChunkNeighbors
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ChunkRuleTracker
+{
+    pub direction: Option<TileRotation>,
+    pub neighbor: TileRotation
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct ChunkRuleRaw
 {
     pub name: String,
+    pub rotation: Option<TileRotation>,
     #[serde(default)]
     pub tags: Vec<ChunkRuleRawTag>,
     pub weight: Option<f64>,
     pub rotateable: Option<bool>,
-    pub neighbors: ChunkNeighbors
+    pub neighbors: ChunkNeighbors,
+    pub track: Option<ChunkRuleTracker>
 }
 
 #[derive(Debug, Deserialize)]
@@ -992,11 +1003,14 @@ impl ChunkRules
 
         rules.rules.into_iter().for_each(|rule|
         {
+            let override_rotation = rule.rotation;
             let rule = ChunkRule::from_raw(name_mappings, rule);
 
             let name_mappings = &*name_mappings;
 
             let is_rotateable = rule.rotateable;
+
+            let has_override = override_rotation.is_some();
 
             let this_rules = &mut this_rules;
             let mut with_rotation = move |rotation|
@@ -1006,6 +1020,11 @@ impl ChunkRules
 
                 if let Some(current) = this_rules.get_mut(&id)
                 {
+                    if !has_override
+                    {
+                        return eprintln!("{} with no override cant come after rotation overriden rules", &rule.name);
+                    }
+
                     current.combine(rule);
                 } else
                 {
@@ -1013,12 +1032,18 @@ impl ChunkRules
                 }
             };
 
-            if is_rotateable
+            if let Some(rotation) = override_rotation
             {
-                TileRotation::iter().for_each(with_rotation);
+                with_rotation(rotation);
             } else
             {
-                with_rotation(TileRotation::Up);
+                if is_rotateable
+                {
+                    TileRotation::iter().for_each(with_rotation);
+                } else
+                {
+                    with_rotation(TileRotation::Up);
+                }
             }
         });
 

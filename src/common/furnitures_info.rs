@@ -11,6 +11,7 @@ use crate::common::generic_info::*;
 
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct FurnitureInfoRaw
 {
     name: String,

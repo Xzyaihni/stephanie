@@ -20,6 +20,7 @@ use crate::common::{
 
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct EnemyInfoRaw
 {
     name: String,

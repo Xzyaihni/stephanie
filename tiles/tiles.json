@@ -50,23 +50,19 @@
     {
         "name": "concrete-fence",
         "transparent": true,
-        "gradientable": false,
 	"colliding": false
     },
     {
         "name": "concrete-fence-l",
         "transparent": true,
-        "gradientable": false,
 	"colliding": false
     },
     {
         "name": "stairs-up",
-        "special": "StairsUp",
-        "gradientable": false
+        "special": "StairsUp"
     },
     {
         "name": "stairs-down",
-        "special": "StairsDown",
-        "gradientable": false
+        "special": "StairsDown"
     }
 ]

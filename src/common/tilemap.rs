@@ -39,6 +39,7 @@ pub enum SpecialTile
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct TileInfoRaw
 {
     pub name: String,
