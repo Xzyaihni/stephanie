@@ -562,6 +562,16 @@ impl PosDirection
         ].into_iter()
     }
 
+    pub fn flip_y(self) -> Self
+    {
+        match self
+        {
+            Self::Up => Self::Down,
+            Self::Down => Self::Up,
+            x => x
+        }
+    }
+
     pub fn opposite(self) -> Self
     {
         match self

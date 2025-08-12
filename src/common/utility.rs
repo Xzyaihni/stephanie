@@ -530,21 +530,6 @@ pub fn lerp(x: f32, y: f32, a: f32) -> f32
     (1.0 - a) * x + y * a
 }
 
-pub fn get_two_mut<T>(s: &mut [T], one: usize, two: usize) -> (&mut T, &mut T)
-{
-    if one > two
-    {
-        let (left, right) = s.split_at_mut(one);
-
-        (&mut right[0], &mut left[two])
-    } else
-    {
-        let (left, right) = s.split_at_mut(two);
-
-        (&mut left[one], &mut right[0])
-    }
-}
-
 pub fn project_onto_plane(normal: Unit<Vector3<f32>>, d: f32, p: Vector3<f32>) -> Vector3<f32>
 {
     p - *normal * (p.dot(&normal) - d)

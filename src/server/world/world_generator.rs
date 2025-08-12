@@ -914,6 +914,19 @@ impl PossibleStates
     {
         self.entropy
     }
+
+    #[allow(dead_code)]
+    fn format_states(&self) -> String
+    {
+        let states = self.states.iter().map(|x| x.to_string()).reduce(|mut acc, x|
+        {
+            acc += ", ";
+            acc += &x;
+            acc
+        }).unwrap_or_default();
+
+        format!("[{states}]")
+    }
 }
 
 // extremely useful struct (not)
@@ -1060,7 +1073,7 @@ impl<'a> WaveCollapser<'a>
                 {
                     let (this, other) = self.entropies.get_two_mut(pos, direction_pos);
 
-                    let changed = other.constrain(self.rules, this, direction);
+                    let changed = other.constrain(self.rules, this, direction.flip_y());
 
                     if changed
                     {

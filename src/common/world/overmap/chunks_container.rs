@@ -11,13 +11,10 @@ use std::{
 
 use serde::{Serialize, Deserialize};
 
-use crate::common::{
-    get_two_mut,
-    world::{
-        Axis,
-        Pos3,
-        LocalPos
-    }
+use crate::common::world::{
+    Axis,
+    Pos3,
+    LocalPos
 };
 
 
@@ -137,7 +134,9 @@ macro_rules! implement_common
                 let one = self.indexer.to_index(one.pos);
                 let two = self.indexer.to_index(two.pos);
 
-                get_two_mut(&mut self.chunks, one, two)
+                let [a, b] = self.chunks.get_disjoint_mut([one, two]).unwrap();
+
+                (a, b)
             }
 
             pub fn positions(&self) -> impl Iterator<Item=LocalPos>
