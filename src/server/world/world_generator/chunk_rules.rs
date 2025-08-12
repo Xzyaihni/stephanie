@@ -41,12 +41,15 @@ pub const CHUNK_RATIO: Pos3<usize> = Pos3{
 
 const ROTATEABLE_DEFAULT: bool = true;
 
-fn union<T: PartialEq>(values: &mut Vec<T>, value: T)
+fn union<T: PartialEq>(values: &mut Vec<T>, value: T) -> bool
 {
-    if !values.contains(&value)
+    let has_value = values.contains(&value);
+    if !has_value
     {
         values.push(value);
     }
+
+    !has_value
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -316,9 +319,9 @@ impl ChunkNeighbors
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct ChunkRuleTracker
+struct ChunkRuleTrackerRaw
 {
     pub direction: Option<TileRotation>,
     pub neighbor: TileRotation
@@ -335,7 +338,7 @@ struct ChunkRuleRaw
     pub weight: Option<f64>,
     pub rotateable: Option<bool>,
     pub neighbors: ChunkNeighbors,
-    pub track: Option<ChunkRuleTracker>
+    pub track: Option<ChunkRuleTrackerRaw>
 }
 
 #[derive(Debug, Deserialize)]
@@ -384,7 +387,8 @@ pub struct ChunkRule
     weight: f64,
     rotateable: bool,
     symmetry: ChunkSymmetry,
-    neighbors: DirectionsGroup<Vec<WorldChunkId>>
+    neighbors: DirectionsGroup<Vec<WorldChunkId>>,
+    track: Option<TileRotation>
 }
 
 impl ChunkRule
@@ -456,12 +460,24 @@ impl ChunkRule
             weight: rule.weight.unwrap_or(1.0),
             rotateable: rule.rotateable.unwrap_or(ROTATEABLE_DEFAULT),
             symmetry,
-            neighbors
+            neighbors,
+            track: None
         }
     }
 
     fn rotated(&self, name_mappings: &NameMappings, rotation: TileRotation) -> Self
     {
+        let rotate_symmetry = rotation.is_horizontal();
+        let symmetry = match self.symmetry
+        {
+            x @ ChunkSymmetry::None
+            | x @ ChunkSymmetry::Both
+            | x @ ChunkSymmetry::All => x,
+            ChunkSymmetry::Horizontal if rotate_symmetry => ChunkSymmetry::Vertical,
+            ChunkSymmetry::Vertical if rotate_symmetry => ChunkSymmetry::Horizontal,
+            x => x
+        };
+
         let neighbors = {
             let x = self.neighbors.clone();
 
@@ -489,6 +505,7 @@ impl ChunkRule
 
         Self{
             neighbors,
+            symmetry,
             ..self.clone()
         }
     }
@@ -870,6 +887,19 @@ pub struct NameMappings
 
 impl NameMappings
 {
+    fn format_id(&self, id: &WorldChunkId) -> String
+    {
+        let (direction, name) = self.world_chunk.get_back(id).unwrap();
+
+        if *direction == TileRotation::Up
+        {
+            name.clone()
+        } else
+        {
+            format!("{}{name}", direction.to_arrow_str())
+        }
+    }
+
     fn insert_all(&mut self, name: String)
     {
         TileRotation::iter().for_each(|rotation|
@@ -1004,6 +1034,9 @@ impl ChunkRules
         rules.rules.into_iter().for_each(|rule|
         {
             let override_rotation = rule.rotation;
+
+            let track = rule.track.clone();
+
             let rule = ChunkRule::from_raw(name_mappings, rule);
 
             let name_mappings = &*name_mappings;
@@ -1015,7 +1048,15 @@ impl ChunkRules
             let this_rules = &mut this_rules;
             let mut with_rotation = move |rotation|
             {
-                let rule = rule.rotated(name_mappings, rotation);
+                let mut rule = rule.rotated(name_mappings, rotation);
+                if let Some(track) = track.as_ref()
+                {
+                    if track.direction.or(override_rotation).unwrap_or(TileRotation::Up) == rotation
+                    {
+                        rule.track = Some(track.neighbor);
+                    }
+                }
+
                 let id = name_mappings.world_chunk[&(rotation, rule.name.clone())];
 
                 if let Some(current) = this_rules.get_mut(&id)
@@ -1084,7 +1125,21 @@ impl ChunkRules
                         let neighbor = this.rules[this_id].neighbors[direction][index];
                         let other_rule = this.rules.get_mut(&neighbor).unwrap();
 
-                        union(&mut other_rule.neighbors[direction.opposite()], *this_id);
+                        let other_direction = direction.opposite();
+                        if union(&mut other_rule.neighbors[other_direction], *this_id)
+                        {
+                            if let Some(track) = other_rule.track.as_ref()
+                            {
+                                if PosDirection::from(*track) == other_direction
+                                {
+                                    eprintln!(
+                                        "{}: {other_direction} received {} from neighbor sharing",
+                                        name_mappings.format_id(&neighbor),
+                                        name_mappings.format_id(this_id)
+                                    );
+                                }
+                            }
+                        }
                     });
                 });
             });
@@ -1121,15 +1176,28 @@ impl ChunkRules
 
                         (0..this.neighbors[pos_direction].len()).for_each(|index|
                         {
-                            let (this_rotation, this_name) = {
-                                let id = &this.neighbors[pos_direction][index];
-                                name_mappings.world_chunk.get_back(id).unwrap()
-                            };
+                            let from_id = this.neighbors[pos_direction][index];
+                            let (this_rotation, this_name) = name_mappings.world_chunk.get_back(&from_id).unwrap();
 
                             let new_rotation = other_direction.subtract(direction).combine(*this_rotation);
                             if let Some(rotated_neighbor) = name_mappings.world_chunk.get(&(new_rotation, this_name.clone()))
                             {
-                                union(&mut this.neighbors[other_direction.into()], *rotated_neighbor);
+                                let other_direction = other_direction.into();
+                                if union(&mut this.neighbors[other_direction], *rotated_neighbor)
+                                {
+                                    if let Some(track) = this.track.as_ref()
+                                    {
+                                        if PosDirection::from(*track) == other_direction
+                                        {
+                                            eprintln!(
+                                                "{}: {other_direction} received {} from symmetrical rotation of {pos_direction}'s {}",
+                                                name_mappings.format_id(this_id),
+                                                name_mappings.format_id(rotated_neighbor),
+                                                name_mappings.format_id(&from_id)
+                                            );
+                                        }
+                                    }
+                                }
                             }
                         });
                     });
@@ -1143,25 +1211,14 @@ impl ChunkRules
     {
         self.rules.iter().for_each(|(id, rule)|
         {
-            let format_name = |(direction, name): &(TileRotation, String)|
-            {
-                if *direction == TileRotation::Up
-                {
-                    name.clone()
-                } else
-                {
-                    format!("{}{name}", direction.to_arrow_str())
-                }
-            };
-
-            eprintln!("{}: {{", format_name(name_mappings.world_chunk.get_back(id).unwrap()));
+            eprintln!("{}: {{", name_mappings.format_id(id));
 
             rule.neighbors.as_ref().for_each(|direction, ids|
             {
                 let rules = ids.iter()
                     .map(|id|
                     {
-                        format_name(name_mappings.world_chunk.get_back(id).unwrap())
+                        name_mappings.format_id(id)
                     })
                     .reduce(|mut acc, x|
                     {
