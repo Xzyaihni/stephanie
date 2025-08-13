@@ -301,6 +301,16 @@ impl VisualChunk
         self.sky_lights = tiles_factory.build_sky_lights(pos, Self::create_sky_lights(tiles_factory.tilemap(), tiles, sky_occlusions));
     }
 
+    pub fn recreate_sky_occluders(
+        &mut self,
+        tiles_factory: &TilesFactory,
+        total_sky: &[[bool; CHUNK_SIZE * CHUNK_SIZE]; CHUNK_SIZE],
+        pos: GlobalPos
+    )
+    {
+        self.vertical_occluders = tiles_factory.build_vertical_occluders(Self::create_vertical_occluders(total_sky, pos));
+    }
+
     pub fn build(
         tiles_factory: &TilesFactory,
         chunk_info: VisualChunkInfo,

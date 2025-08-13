@@ -828,10 +828,17 @@ impl VisualOvermap
                     |overmap_chunk| overmap_chunk.occlusion.clone().unwrap()
                 );
 
-                self.chunks[local_pos].chunk.recreate_lights(
+                let chunk = &mut self.chunks[local_pos].chunk;
+                chunk.recreate_lights(
                     &self.tiles_factory,
                     chunks[local_pos].as_deref().unwrap(),
                     &occlusion_reader,
+                    pos
+                );
+
+                chunk.recreate_sky_occluders(
+                    &self.tiles_factory,
+                    occlusion_reader.get_this().occluded(),
                     pos
                 );
             });
