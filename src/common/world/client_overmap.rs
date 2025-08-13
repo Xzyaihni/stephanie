@@ -410,7 +410,7 @@ impl ClientOvermap
         self.visual_overmap.camera_position()
     }
 
-    pub fn camera_moved(&mut self, position: Pos3<f32>) -> bool
+    pub fn camera_moved(&mut self, position: Pos3<f32>, on_change: impl FnOnce())
     {
         self.visual_overmap.camera_moved(position);
 
@@ -424,6 +424,7 @@ impl ClientOvermap
 
         if position_difference != Pos3::repeat(0)
         {
+            on_change();
             self.position_offset(position_difference);
         }
 
@@ -436,8 +437,6 @@ impl ClientOvermap
                 self.visual_overmap.moved_down(&self.chunks);
             }
         }
-
-        position_difference != Pos3::repeat(0)
     }
 
     fn request_chunk(&self, pos: GlobalPos)

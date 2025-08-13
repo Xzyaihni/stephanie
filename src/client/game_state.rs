@@ -1487,10 +1487,10 @@ impl GameState
     {
         if !self.debug_visibility.is_detached()
         {
-            if self.world.camera_moved(position)
+            self.world.camera_moved(position, ||
             {
-                self.send_message(Message::SyncCamera{player_entity: self.entities.player_entity, position});
-            }
+                self.connections_handler.write().send_message(Message::SyncCamera{player_entity: self.entities.player_entity, position});
+            });
         }
     }
 
