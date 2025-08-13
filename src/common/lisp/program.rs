@@ -311,6 +311,52 @@ impl Default for Primitives
                 {
                     InterRepr::parse_if(memory, args)
                 }))),
+            ("cond",
+                PrimitiveProcedureInfo::new_eval(ArgsCount::Min(2), Rc::new(|memory, args|
+                {
+                    fn parse_clause(memory: &mut LispMemory, clause: AstPos) -> Result<(InterReprPos, InterReprPos), ErrorPos>
+                    {
+                        let check = InterReprPos::parse(memory, clause.car())?;
+
+                        let tail = clause.cdr();
+                        let tail_position = tail.position;
+                        let then = InterRepr::Sequence(InterReprPos::parse_args(memory, tail)?);
+
+                        Ok((check, then.with_position(tail_position)))
+                    }
+
+                    fn parse_rest(memory: &mut LispMemory, clauses: AstPos) -> Result<InterReprPos, ErrorPos>
+                    {
+                        if !clauses.is_list() || clauses.is_null()
+                        {
+                            return Err(ErrorPos{position: clauses.position, value: Error::ExpectedList});
+                        }
+
+                        let this = clauses.car();
+                        let this_position = this.position;
+                        let (check, then) = parse_clause(memory, this)?;
+
+                        let rest = clauses.cdr();
+
+                        debug_assert!(rest.is_list(), "malformed ast");
+
+                        let else_body = if rest.is_null()
+                        {
+                            InterRepr::Value(LispValue::new_empty_list()).with_position(rest.position)
+                        } else
+                        {
+                            parse_rest(memory, rest)?
+                        };
+
+                        Ok(InterRepr::If{
+                            check: Box::new(check),
+                            then: Box::new(then),
+                            else_body: Box::new(else_body)
+                        }.with_position(this_position))
+                    }
+
+                    parse_rest(memory, args).map(|x| x.value)
+                }))),
             ("cons",
                 PrimitiveProcedureInfo::new_simple(2, Effect::Pure, |mut args|
                 {
@@ -2241,7 +2287,7 @@ impl CompiledProgram
                         .1
                         .clone();
 
-                    if let Err(err) = primitive(memory, code_position!("primitive"), *target)
+                    if let Err(err) = primitive(memory, self.positions[i].unwrap_or_default(), *target)
                     {
                         return_error!(err, "primitive")
                     }

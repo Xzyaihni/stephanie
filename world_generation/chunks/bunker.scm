@@ -26,7 +26,7 @@
     (put-tile
         this-chunk
         (make-point (/ size-x 2) (- size-y 5))
-        (tile 'stairs-down 'down)))
+        (tile 'stairs-down (side-combine side-down rotation))))
 
 (define (generate-walls)
     (if (= height 1)
@@ -75,7 +75,7 @@
             (put-tile
                 this-chunk
                 (make-point (/ size-x 2) (- size-y 5))
-                (tile 'stairs-up 'down)))))
+                (tile 'stairs-up (side-combine side-down rotation))))))
 
 (if (= height 2)
     (generate-roof)

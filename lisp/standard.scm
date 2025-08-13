@@ -1,5 +1,7 @@
 (define list (lambda xs xs))
 
+(define else #t)
+
 (define (list-tail xs n)
     (if (= n 0)
 	xs

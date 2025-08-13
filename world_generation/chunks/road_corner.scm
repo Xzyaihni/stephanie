@@ -35,13 +35,11 @@
 (define
     corner
     (tile
-        (if (= rotation side-up)
-            'asphalt-line-corner-up
-            (if (= rotation side-right)
-                'asphalt-line-corner-right
-                (if (= rotation side-left)
-                    'asphalt-line-corner-left
-                    'asphalt-line-corner-down)))))
+        (cond
+            ((= rotation side-up) 'asphalt-line-corner-up)
+            ((= rotation side-right) 'asphalt-line-corner-right)
+            ((= rotation side-left) 'asphalt-line-corner-left)
+            (else 'asphalt-line-corner-down))))
 
 (this-put-tile (make-point 8 8) corner)
 (this-put-tile (make-point 7 7) corner)

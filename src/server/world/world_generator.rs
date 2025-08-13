@@ -538,7 +538,7 @@ impl<S: SaveLoad<WorldChunksBlock>> WorldGenerator<S>
                     self.rules.name_mappings().world_chunk.get(&(random_rotation, "bunker".to_owned())).map(|bunker_id|
                     {
                         WorldChunk::new(*bunker_id, Vec::new())
-                    }).unwrap_or_else(WorldChunk::none)
+                    }).unwrap_or_else(|| WorldChunk::new(self.rules.surface.fallback(), Vec::new()))
                 }
             );
         }

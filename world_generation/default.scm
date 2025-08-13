@@ -48,6 +48,13 @@
 (define side-left 2)
 (define side-down 3)
 
+(define (side-combine a b)
+    (cond
+        ((= a side-up) b)
+        ((= a side-right) (cond ((= b side-up) side-right) ((= b side-right) side-down) ((= b side-down) side-left) ((= b side-left) side-up)))
+        ((= a side-down) (cond ((= b side-up) side-down) ((= b side-right) side-left) ((= b side-down) side-up) ((= b side-left) side-right)))
+        (else (cond ((= b side-up) side-left) ((= b side-right) side-up) ((= b side-down) side-right) ((= b side-left) side-down)))))
+
 (define (side-horizontal? x) (or (= x side-left) (= x side-right)))
 (define (side-vertical? x) (not (side-horizontal? x)))
 
@@ -155,9 +162,9 @@
         chunk
         area
         (tile wall)
-        (tile wall 'right)
-        (tile wall 'left)
-        (tile wall 'down))
+        (tile wall side-right)
+        (tile wall side-left)
+        (tile wall side-down))
     (let (
             (end (area-end area))
             (start (area-start area))
@@ -168,10 +175,10 @@
                         pos
                         (tile corner rotation)))))
         (begin
-            (put-corner start 'up)
-            (put-corner (make-point (point-x end) (point-y start)) 'right)
-            (put-corner end 'down)
-            (put-corner (make-point (point-x start) (point-y end)) 'left))))
+            (put-corner start side-up)
+            (put-corner (make-point (point-x end) (point-y start)) side-right)
+            (put-corner end side-down)
+            (put-corner (make-point (point-x start) (point-y end)) side-left))))
 
 (define (pick-weighted a b value)
     (if (< (random-float) value)

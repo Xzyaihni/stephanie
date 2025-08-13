@@ -1252,7 +1252,7 @@ impl ChunkRules
 
     pub fn name(&self, id: WorldChunkId) -> &str
     {
-        &self.rules.get(&id).unwrap_or_else(|| panic!("{id} out of range")).name
+        &self.get(id).name
     }
 
     pub fn entropy(&self) -> f64

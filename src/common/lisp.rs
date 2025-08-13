@@ -2449,6 +2449,26 @@ mod tests
     }
 
     #[test]
+    fn cond()
+    {
+        let code = "
+            (+
+                (cond
+                    ((= 2 5) 1)
+                    ((= 3 5) 2 3 4)
+                    ((= 4 5) 5)
+                    (#t 6))
+                (cond
+                    ((= 3 5) 5)
+                    ((= 4 5) 3 4)
+                    ((= 5 5) 1 2)
+                    ((= 123 321) 999)))
+        ";
+
+        simple_integer_test(code, 8);
+    }
+
+    #[test]
     fn predicates_stuff()
     {
         let code = "
