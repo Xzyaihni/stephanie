@@ -34,7 +34,7 @@
         (put-tile
             this-chunk
             (make-point x 1)
-            (tile 'stairs-down))))
+            (tile 'stairs-down rotation))))
 
 (define (generate-room)
     (define (residential-building)
@@ -205,7 +205,7 @@
         (put-tile
             this-chunk
             (make-point x 1)
-            (tile 'stairs-up)))
+            (tile 'stairs-up rotation)))
 
     (if (= height 1)
         ; entrance
@@ -248,7 +248,7 @@
             (put-tile
                 this-chunk
                 (make-point 6 1)
-                (tile 'stairs-down)))
+                (tile 'stairs-down rotation)))
         (if (= level 1)
             (begin
                 (rectangle-fence

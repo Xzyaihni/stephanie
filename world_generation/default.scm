@@ -161,10 +161,10 @@
     (rectangle-outline-different
         chunk
         area
-        (tile wall)
-        (tile wall side-right)
-        (tile wall side-left)
-        (tile wall side-down))
+        (tile wall rotation)
+        (tile wall (side-combine rotation side-right))
+        (tile wall (side-combine rotation side-left))
+        (tile wall (side-combine rotation side-down)))
     (let (
             (end (area-end area))
             (start (area-start area))
@@ -175,10 +175,10 @@
                         pos
                         (tile corner rotation)))))
         (begin
-            (put-corner start side-up)
-            (put-corner (make-point (point-x end) (point-y start)) side-right)
-            (put-corner end side-down)
-            (put-corner (make-point (point-x start) (point-y end)) side-left))))
+            (put-corner start (side-combine rotation side-up))
+            (put-corner (make-point (point-x end) (point-y start)) (side-combine rotation side-right))
+            (put-corner end (side-combine rotation side-down))
+            (put-corner (make-point (point-x start) (point-y end)) (side-combine rotation side-left)))))
 
 (define (pick-weighted a b value)
     (if (< (random-float) value)
