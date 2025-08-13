@@ -86,8 +86,8 @@ impl Door
                         {
                             TileRotation::Left => opener_position.y < this_position.y,
                             TileRotation::Right => opener_position.y > this_position.y,
-                            TileRotation::Down => opener_position.x > this_position.x,
-                            TileRotation::Up => opener_position.x < this_position.x
+                            TileRotation::Down => opener_position.x < this_position.x,
+                            TileRotation::Up => opener_position.x > this_position.x
                         };
 
                         if flip

@@ -2,7 +2,6 @@ use std::{
     fs,
     io,
     fmt::{self, Display, Debug},
-    str::FromStr,
     rc::Rc,
     ops::{Index, IndexMut},
     cmp::Ordering,
@@ -250,6 +249,8 @@ impl ChunkGenerator
             "tile",
             PrimitiveProcedureInfo::new_simple(ArgsCount::Min(1), Effect::Pure, move |mut args|
             {
+                let call_position = args.call_position();
+
                 let name = args.next().unwrap().as_symbol(args.memory)?;
                 let rotation = args.next();
 
@@ -262,21 +263,29 @@ impl ChunkGenerator
 
                 if let Some(rotation) = rotation
                 {
-                    let name = rotation.as_symbol(args.memory)?;
-
-                    match TileRotation::from_str(&name)
+                    if let Err(err) = || -> Result<(), lisp::Error>
                     {
-                        Ok(x) =>
+                        let rotation = rotation.as_integer()?;
+                        let side = rotation.try_into().map_err(|_|
                         {
-                            if let Some(tile) = &mut tile.0
-                            {
-                                tile.set_rotation(x);
-                            } else
-                            {
-                                eprintln!("air cannot have rotation");
-                            }
-                        },
-                        Err(_) => eprintln!("no rotation named `{name}`")
+                            lisp::Error::Custom(format!("{rotation} isnt a valid rotation"))
+                        })?;
+
+                        let rotation = TileRotation::from_repr(side).ok_or_else(||
+                        {
+                            lisp::Error::Custom(format!("no rotation named `{name}`"))
+                        })?;
+
+                        tile.0.as_mut().ok_or_else(||
+                        {
+                            lisp::Error::Custom("air cannot have rotation".to_owned())
+                        })?.set_rotation(rotation);
+
+                        Ok(())
+                    }()
+                    {
+                        let err: lisp::ErrorPos = err.with_position(call_position);
+                        eprintln!("{err}, ignoring");
                     }
                 }
 

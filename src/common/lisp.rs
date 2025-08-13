@@ -19,6 +19,7 @@ pub use program::{
     PrimitiveProcedureInfo,
     Primitives,
     WithPosition,
+    WithPositionTrait,
     ArgsCount
 };
 

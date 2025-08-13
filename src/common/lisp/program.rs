@@ -34,18 +34,8 @@ pub const QUOTE_PRIMITIVE: &str = "quote";
 pub const MAKE_VECTOR_PRIMITIVE: &str = "make-vector";
 pub const VECTOR_SET_PRIMITIVE: &str = "vector-set!";
 
-// unreadable, great
-pub type OnApply = Rc<
-    dyn Fn(
-        &mut LispMemory,
-        Register
-    ) -> Result<(), Error>>;
-
-pub type OnEval = Rc<
-    dyn Fn(
-        &mut LispMemory,
-        AstPos
-    ) -> Result<InterRepr, ErrorPos>>;
+pub type OnApply = Rc<dyn Fn(&mut LispMemory, CodePosition, Register) -> Result<(), Error>>;
+pub type OnEval = Rc<dyn Fn(&mut LispMemory, AstPos) -> Result<InterRepr, ErrorPos>>;
 
 #[derive(Debug, Clone, Copy)]
 pub enum ArgsCount
@@ -114,7 +104,16 @@ impl<T> WithPositionTrait<Result<T, ErrorPos>> for Result<T, Error>
 
 pub struct PrimitiveArgs<'a>
 {
+    pub position: CodePosition,
     pub memory: &'a mut LispMemory
+}
+
+impl<'a> PrimitiveArgs<'a>
+{
+    pub fn call_position(&self) -> CodePosition
+    {
+        self.position
+    }
 }
 
 impl<'a> Iterator for PrimitiveArgs<'a>
@@ -129,9 +128,9 @@ impl<'a> Iterator for PrimitiveArgs<'a>
 
 fn simple_apply(f: impl Fn(PrimitiveArgs) -> Result<LispValue, Error> + 'static) -> OnApply
 {
-    Rc::new(move |memory, target|
+    Rc::new(move |memory, position, target|
     {
-        let value = f(PrimitiveArgs{memory})?;
+        let value = f(PrimitiveArgs{position, memory})?;
         memory.set_register(target, value);
 
         Ok(())
@@ -196,9 +195,9 @@ impl PrimitiveProcedureInfo
         Self{
             args_count: args_count.into(),
             on_eval: None,
-            on_apply: Some((effect, Rc::new(move |memory, target|
+            on_apply: Some((effect, Rc::new(move |memory, position, target|
             {
-                on_apply(PrimitiveArgs{memory}, target)
+                on_apply(PrimitiveArgs{position, memory}, target)
             })))
         }
     }
@@ -2054,12 +2053,20 @@ impl CompiledProgram
         let mut i = 0;
         while i < self.commands.len()
         {
+            macro_rules! code_position
+            {
+                ($name:literal) =>
+                {
+                    self.positions[i].unwrap_or_else(|| panic!("{} must have a codepos", $name))
+                }
+            }
+
             macro_rules! return_error
             {
                 ($error:expr, $name:literal) =>
                 {
                     return Err(ErrorPos{
-                        position: self.positions[i].unwrap_or_else(|| panic!("{} must have a codepos", $name)),
+                        position: code_position!($name),
                         value: $error
                     })
                 }
@@ -2234,7 +2241,7 @@ impl CompiledProgram
                         .1
                         .clone();
 
-                    if let Err(err) = primitive(memory, *target)
+                    if let Err(err) = primitive(memory, code_position!("primitive"), *target)
                     {
                         return_error!(err, "primitive")
                     }
