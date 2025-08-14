@@ -119,7 +119,8 @@ impl DebugConfigTrait for DebugConfigTrue
         {
             let s: &str = tool.into();
 
-            format!("STEPHANIE_{}", s.to_uppercase())
+            let state = if Self::is_enabled(tool) { 'X' } else { ' ' };
+            format!("[{state}] STEPHANIE_{}", s.to_uppercase())
         }).reduce(|acc, x|
         {
             format!("{acc}\n{x}")

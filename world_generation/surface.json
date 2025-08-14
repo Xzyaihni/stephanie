@@ -56,8 +56,8 @@
             "neighbors": {
                 "SymmetryHorizontal": {
                     "up": ["road_t"],
-                    "down": [],
-                    "horizontal": []
+                    "down": ["road_straight"],
+                    "horizontal": ["park", "building", "bunker"]
                 }
             }
         },
@@ -91,7 +91,7 @@
                 "SymmetryNone": {
 		    "up": [],
 		    "down": ["park", "building", "bunker"],
-		    "right": ["park", "building", "bunker", "road_end"],
+		    "right": ["park", "building", "bunker"],
 		    "left": ["road_straight"]
                 }
             }
@@ -103,7 +103,7 @@
                 "SymmetryNone": {
 		    "up": [],
 		    "down": [],
-		    "right": ["road_straight"],
+		    "right": ["road_straight", "road_end"],
 		    "left": ["road_end"]
                 }
             }

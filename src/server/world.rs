@@ -487,6 +487,11 @@ impl World
             {
                 !keep(*pos)
             })
+            .filter(|(entity, _pos)|
+            {
+                // if a player is somehow too far away from their own overmap dont unload them by accident
+                !container.player_exists(*entity)
+            })
             .filter_map(|(entity, pos)|
             {
                 EntityInfo::to_full(container, entity).map(|full_info| (entity, full_info, pos))

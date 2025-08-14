@@ -1250,39 +1250,48 @@ impl ChunkRules
         changed
     }
 
+    fn unify_neighbors(
+        &mut self,
+        name_mappings: &NameMappings,
+        ids: &[WorldChunkId]
+    )
+    {
+        ids.iter().for_each(|this_id|
+        {
+            PosDirection::iter_non_z().for_each(|direction|
+            {
+                (0..self.rules[this_id].neighbors[direction].len()).for_each(|index|
+                {
+                    let neighbor = self.rules[this_id].neighbors[direction][index];
+                    let other_rule = self.rules.get_mut(&neighbor).unwrap();
+
+                    let other_direction = direction.opposite();
+                    if union(&mut other_rule.neighbors[other_direction], *this_id)
+                    {
+                        if let Some(track) = other_rule.track.as_ref()
+                        {
+                            if PosDirection::from(*track) == other_direction
+                            {
+                                eprintln!(
+                                    "{}: {other_direction} received {} from neighbor sharing",
+                                    name_mappings.format_id(&neighbor),
+                                    name_mappings.format_id(this_id)
+                                );
+                            }
+                        }
+                    }
+                });
+            });
+        });
+    }
+
     fn union_neighbors(&mut self, name_mappings: &NameMappings)
     {
         let rules: Vec<_> = self.rules.iter().map(|(a, _)| a.clone()).collect();
 
         let unify_neighbors = |this: &mut Self|
         {
-            rules.iter().for_each(|this_id|
-            {
-                PosDirection::iter_non_z().for_each(|direction|
-                {
-                    (0..this.rules[this_id].neighbors[direction].len()).for_each(|index|
-                    {
-                        let neighbor = this.rules[this_id].neighbors[direction][index];
-                        let other_rule = this.rules.get_mut(&neighbor).unwrap();
-
-                        let other_direction = direction.opposite();
-                        if union(&mut other_rule.neighbors[other_direction], *this_id)
-                        {
-                            if let Some(track) = other_rule.track.as_ref()
-                            {
-                                if PosDirection::from(*track) == other_direction
-                                {
-                                    eprintln!(
-                                        "{}: {other_direction} received {} from neighbor sharing",
-                                        name_mappings.format_id(&neighbor),
-                                        name_mappings.format_id(this_id)
-                                    );
-                                }
-                            }
-                        }
-                    });
-                });
-            });
+            this.unify_neighbors(name_mappings, &rules);
         };
 
         unify_neighbors(self);

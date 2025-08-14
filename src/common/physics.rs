@@ -169,7 +169,13 @@ impl Physical
         self.last_acceleration = self.acceleration + self.force * self.inverse_mass;
 
         self.velocity += self.last_acceleration * dt;
-        self.velocity *= self.damping.powf(dt);
+
+        {
+            let damping = self.damping.powf(dt);
+
+            self.velocity.x *= damping;
+            self.velocity.y *= damping;
+        }
 
         if self.velocity.magnitude() > MAX_VELOCITY
         {
