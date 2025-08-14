@@ -8,13 +8,8 @@ use std::{
     path::{Path, PathBuf},
     fs::{self, File},
     collections::{HashMap, BinaryHeap},
-    sync::{
-        Arc,
-        mpsc::{self, Sender, Receiver}
-    }
+    sync::mpsc::{self, Sender, Receiver}
 };
-
-use parking_lot::Mutex;
 
 use serde::{Serialize, Deserialize};
 
@@ -428,7 +423,7 @@ where
     start: Instant,
     cache_amount: usize,
     cache: BinaryHeap<CachedValue<SaveT>>,
-    file_saver: Arc<Mutex<S>>
+    file_saver: S
 }
 
 impl<S, SaveT: Saveable> Saver<S, SaveT>
@@ -445,7 +440,7 @@ where
 
         Self{
             start: Instant::now(),
-            file_saver: Arc::new(Mutex::new(file_saver)),
+            file_saver,
             cache_amount,
             cache: BinaryHeap::new()
         }
@@ -474,12 +469,12 @@ where
             return Some(found.clone());
         }
 
-        self.file_saver.lock().load(pos)
+        self.file_saver.load(pos)
     }
 
     fn inner_save(&mut self, pair: ValuePair<SaveT>)
     {
-        self.file_saver.lock().save(pair.clone());
+        self.file_saver.save(pair.clone());
 
         let key = CachedKey::new(self.start, pair.key);
         let value = CachedValue{key, value: pair.value};
