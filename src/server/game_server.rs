@@ -532,6 +532,8 @@ impl GameServer
             position.into()
         );
 
+        self.world.as_mut().unwrap().sync_camera(&mut self.entities, connection_id, player_position);
+
         crate::time_this!{
             "world-gen",
             self.world.as_mut().unwrap().send_all(&mut self.entities, connection_id)
@@ -679,7 +681,6 @@ impl GameServer
         let message = some_or_return!{self.world.as_mut().unwrap().handle_message(
             &mut self.entities,
             id,
-            entity,
             message
         )};
 

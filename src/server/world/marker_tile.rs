@@ -269,7 +269,7 @@ impl MarkerKind
         {
             "door" =>
             {
-                let rotation = parse_enum(next_value("door rotation")?)?;
+                let rotation = TileRotation::from_lisp_value(*next_value("door rotation")?)?;
                 let material = parse_enum(next_value("door material")?)?;
 
                 let width = next_value("door width")?.as_integer()? as u32;

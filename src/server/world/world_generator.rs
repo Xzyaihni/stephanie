@@ -61,7 +61,7 @@ mod chunk_rules;
 
 pub fn empty_worldchunk() -> ChunksContainer<Tile>
 {
-    ChunksContainer::new_with(WORLD_CHUNK_SIZE, |_| Tile::none())
+    ChunksContainer::new(WORLD_CHUNK_SIZE)
 }
 
 #[derive(Debug)]
@@ -179,8 +179,7 @@ pub enum ChunkGenerationError
     SymbolAllocation(String, lisp::Error),
     TagSymbolAllocation(lisp::Error),
     LispRuntime(lisp::ErrorPos),
-    WrongOutput(lisp::Error),
-    Tile(lisp::Error)
+    WrongOutput(lisp::Error)
 }
 
 impl Display for ChunkGenerationError
@@ -192,8 +191,7 @@ impl Display for ChunkGenerationError
             Self::SymbolAllocation(name, err) => write!(f, "error allocating {name} symbol: {err}"),
             Self::TagSymbolAllocation(err) => write!(f, "error allocating tag symbol: {err}"),
             Self::LispRuntime(err) => write!(f, "{err}"),
-            Self::WrongOutput(err) => write!(f, "expected vector: {err}"),
-            Self::Tile(err) => write!(f, "error getting tile: {err}")
+            Self::WrongOutput(err) => write!(f, "expected vector: {err}")
         }
     }
 }
@@ -265,16 +263,7 @@ impl ChunkGenerator
                 {
                     if let Err(err) = || -> Result<(), lisp::Error>
                     {
-                        let rotation = rotation.as_integer()?;
-                        let side = rotation.try_into().map_err(|_|
-                        {
-                            lisp::Error::Custom(format!("{rotation} isnt a valid rotation"))
-                        })?;
-
-                        let rotation = TileRotation::from_repr(side).ok_or_else(||
-                        {
-                            lisp::Error::Custom(format!("no rotation named `{name}`"))
-                        })?;
+                        let rotation = TileRotation::from_lisp_value(rotation)?;
 
                         tile.0.as_mut().ok_or_else(||
                         {
@@ -337,6 +326,7 @@ impl ChunkGenerator
     pub fn generate_chunk_with(
         info: &ConditionalInfo,
         rules: &ChunkRulesGroup,
+        chunk_name: &str,
         this_chunk: &mut Lisp,
         marker: &mut impl FnMut(MarkerTile)
     ) -> Result<ChunksContainer<Tile>, ChunkGenerationError>
@@ -381,44 +371,51 @@ impl ChunkGenerator
             fn process<'a>(
                 memory: &LispMemory,
                 marker: &mut impl FnMut(MarkerTile),
+                chunk_name: &str,
                 rotation: TileRotation,
                 values: impl Iterator<Item=&'a LispValue>
-            ) -> Result<Box<[Tile]>, ChunkGenerationError>
+            ) -> Box<[Tile]>
             {
                 values.enumerate().map(|(index, x)|
                 {
-                    let x = OutputWrapperRef::new(memory, *x);
-                    if let Ok(s) = x.as_list().and_then(|lst| lst.car.as_symbol())
+                    || -> Result<_, _>
                     {
-                        if s != "marker"
+                        let x = OutputWrapperRef::new(memory, *x);
+                        if let Ok(s) = x.as_list().and_then(|lst| lst.car.as_symbol())
                         {
-                            return Err(lisp::Error::Custom(format!("malformed tile, expected marker got {s}")));
+                            if s != "marker"
+                            {
+                                return Err(lisp::Error::Custom(format!("malformed tile, expected marker got {s}")));
+                            }
+
+                            let value = x.as_list().unwrap().cdr;
+
+                            let pos = Chunk::index_to_pos(index);
+                            MarkerKind::from_lisp_value(value)?.into_iter().for_each(|marker_tile|
+                            {
+                                marker(MarkerTile{kind: marker_tile.rotated(rotation), pos});
+                            });
+
+                            Ok(Tile::none())
+                        } else
+                        {
+                            Tile::from_lisp_value(x)
                         }
-
-                        let value = x.as_list().unwrap().cdr;
-
-                        let pos = Chunk::index_to_pos(index);
-                        MarkerKind::from_lisp_value(value)?.into_iter().for_each(|marker_tile|
-                        {
-                            marker(MarkerTile{kind: marker_tile.rotated(rotation), pos});
-                        });
-
-                        Ok(Tile::none())
-                    } else
+                    }().unwrap_or_else(|err|
                     {
-                        Tile::from_lisp_value(x)
-                    }
-                }).collect::<Result<Box<[Tile]>, _>>().map_err(|err|
-                {
-                    ChunkGenerationError::Tile(err)
-                })
+                        let pos = *Chunk::index_to_pos(index).pos();
+                        eprintln!("tile error at ({}, {}) in ({}): {err}, using fallback", pos.x, pos.y, chunk_name);
+
+                        Tile::none()
+                    })
+                }).collect::<Box<[Tile]>>()
             }
 
             const SPAN: usize = WORLD_CHUNK_SIZE.x;
             let rotation = info.rotation;
-            let values = match rotation
+            match rotation
             {
-                TileRotation::Up => process(&memory, marker, rotation, output.iter()),
+                TileRotation::Up => process(&memory, marker, chunk_name, rotation, output.iter()),
                 TileRotation::Right =>
                 {
                     let values = (0..SPAN).flat_map(|x|
@@ -426,7 +423,7 @@ impl ChunkGenerator
                         (0..SPAN).rev().map(move |y| y * SPAN + x)
                     }).map(|index| &output[index]);
 
-                    process(&memory, marker, rotation, values)
+                    process(&memory, marker, chunk_name, rotation, values)
                 },
                 TileRotation::Left =>
                 {
@@ -435,12 +432,10 @@ impl ChunkGenerator
                         (0..SPAN).map(move |y| y * SPAN + x)
                     }).map(|index| &output[index]);
 
-                    process(&memory, marker, rotation, values)
+                    process(&memory, marker, chunk_name, rotation, values)
                 },
-                TileRotation::Down => process(&memory, marker, rotation, output.iter().rev())
-            };
-
-            values?
+                TileRotation::Down => process(&memory, marker, chunk_name, rotation, output.iter().rev())
+            }
         };
 
         Ok(ChunksContainer::from_raw(WORLD_CHUNK_SIZE, tiles))
@@ -456,13 +451,19 @@ impl ChunkGenerator
         let chunk_name = group.this;
         let this_chunk = self.chunks.get_mut(chunk_name).unwrap_or_else(||
         {
-            panic!("worldchunk named `{}` doesnt exist", group.this)
+            panic!("worldchunk named `{chunk_name}` doesnt exist")
         });
 
-        Self::generate_chunk_with(info, &self.rules, this_chunk, marker).unwrap_or_else(|err|
+        match Self::generate_chunk_with(info, &self.rules, chunk_name, this_chunk, marker)
         {
-            panic!("{err} in ({chunk_name})")
-        })
+            Ok(x) => x,
+            Err(err) =>
+            {
+                eprintln!("{err} in ({chunk_name}), using fallback");
+
+                empty_worldchunk()
+            }
+        }
     }
 }
 

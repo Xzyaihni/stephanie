@@ -53,7 +53,7 @@
                     (put-tile
                         this-chunk
                         doorway-point
-                        (single-marker (list 'door 'left 'metal 2))))))
+                        (single-marker (list 'door side-left 'metal 2))))))
         (begin
             (define this-chunk (filled-chunk (tile 'soil)))
             (rectangle-outline

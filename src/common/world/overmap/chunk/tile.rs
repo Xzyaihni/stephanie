@@ -204,6 +204,20 @@ impl Default for TileRotation
 
 impl TileRotation
 {
+    pub fn from_lisp_value(value: LispValue) -> Result<Self, lisp::Error>
+    {
+        let rotation = value.as_integer()?;
+        let side = rotation.try_into().map_err(|_|
+        {
+            lisp::Error::Custom(format!("{rotation} isnt a valid rotation"))
+        })?;
+
+        TileRotation::from_repr(side).ok_or_else(||
+        {
+            lisp::Error::Custom(format!("{side} isnt a valid rotation"))
+        })
+    }
+
     pub fn is_horizontal(&self) -> bool
     {
         match self

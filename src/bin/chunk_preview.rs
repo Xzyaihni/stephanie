@@ -654,6 +654,7 @@ impl YanyaApp for ChunkPreviewer
                 let tiles = ChunkGenerator::generate_chunk_with(
                     &chunk_info,
                     &self.rules,
+                    &self.preview_tags.name,
                     chunk_code,
                     &mut |marker|
                     {

@@ -71,7 +71,7 @@ pub enum Message
     SyncPosition{entity: Entity, position: Vector3<f32>},
     SyncPositionRotation{entity: Entity, position: Vector3<f32>, rotation: f32},
     SyncCharacter{entity: Entity, info: CharacterSyncInfo},
-    SyncCamera{player_entity: Entity, position: Pos3<f32>},
+    SyncCamera{position: Pos3<f32>},
     EntityDestroy{entity: Entity},
     PlayerConnect{name: String},
     PlayerOnConnect{player_entity: Entity, player_position: Pos3<f32>},
@@ -135,9 +135,9 @@ impl Message
             | Message::SyncPosition{entity, ..}
             | Message::SyncPositionRotation{entity, ..}
             | Message::SyncCharacter{entity, ..}
-            | Message::SyncCamera{player_entity: entity, ..}
             | Message::EntityDestroy{entity, ..}  => Some(*entity),
-            Message::PlayerConnect{..}
+            Message::SyncCamera{..}
+            | Message::PlayerConnect{..}
             | Message::PlayerOnConnect{..}
             | Message::PlayerFullyConnected
             | Message::PlayerDisconnect{..}

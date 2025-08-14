@@ -525,11 +525,21 @@ impl World
         PathBuf::from("worlds").join(name)
     }
 
+    pub fn sync_camera(
+        &mut self,
+        container: &mut ServerEntities,
+        id: ConnectionId,
+        position: Pos3<f32>
+    )
+    {
+        self.player_moved(container, id, position);
+        self.update(container);
+    }
+
     pub fn handle_message(
         &mut self,
         container: &mut ServerEntities,
         id: ConnectionId,
-        player_entity: Entity,
         message: Message
     ) -> Option<Message>
     {
@@ -560,14 +570,9 @@ impl World
                 self.send_chunk(container, id, pos);
                 None
             },
-            Message::SyncCamera{player_entity: entity, position} =>
+            Message::SyncCamera{position} =>
             {
-                if entity == player_entity
-                {
-                    self.player_moved(container, id, position);
-                    self.update(container);
-                }
-
+                self.sync_camera(container, id, position);
                 None
             },
             _ => Some(message)

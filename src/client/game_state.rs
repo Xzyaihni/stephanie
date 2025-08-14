@@ -1489,7 +1489,7 @@ impl GameState
         {
             self.world.camera_moved(position, ||
             {
-                self.connections_handler.write().send_message(Message::SyncCamera{player_entity: self.entities.player_entity, position});
+                self.connections_handler.write().send_message(Message::SyncCamera{position});
             });
         }
     }
