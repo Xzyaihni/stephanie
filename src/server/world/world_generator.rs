@@ -1106,7 +1106,7 @@ impl<'a> WaveCollapser<'a>
                         {
                             x.map(|x|
                             {
-                                let states = self.entropies.get(x).format_states_with(|x| self.rules.name(x).to_owned());
+                                let states = self.entropies.get(x).format_states_with(|x| self.rules.format_id(x));
 
                                 format!("{direction}: {states}")
                             }).unwrap_or_default()

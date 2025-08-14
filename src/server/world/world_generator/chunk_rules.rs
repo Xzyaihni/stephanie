@@ -282,7 +282,7 @@ pub struct ChunkRuleRawTag
     content: String
 }
 
-#[derive(Debug, Clone, Copy, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 pub enum ChunkSymmetry
 {
     None,
@@ -381,6 +381,7 @@ impl ChunkRuleTag
 pub struct ChunkRule
 {
     name: String,
+    rotation: TileRotation,
     tags: Vec<ChunkRuleTag>,
     weight: f64,
     rotateable: bool,
@@ -447,6 +448,7 @@ impl ChunkRule
 
         Self{
             name: rule.name,
+            rotation: TileRotation::Up,
             tags: rule.tags.into_iter().map(|tag|
             {
                 ChunkRuleTag::from_raw(
@@ -502,6 +504,7 @@ impl ChunkRule
         });
 
         Self{
+            rotation,
             neighbors,
             symmetry,
             ..self.clone()
@@ -875,6 +878,17 @@ impl Index<&str> for TextMapping
     }
 }
 
+fn format_id(name: &str, rotation: TileRotation) -> String
+{
+    if rotation == TileRotation::Up
+    {
+        name.to_owned()
+    } else
+    {
+        format!("{}{name}", rotation.to_arrow_str())
+    }
+}
+
 #[derive(Debug)]
 pub struct NameMappings
 {
@@ -889,13 +903,7 @@ impl NameMappings
     {
         let (direction, name) = self.world_chunk.get_back(id).unwrap();
 
-        if *direction == TileRotation::Up
-        {
-            name.clone()
-        } else
-        {
-            format!("{}{name}", direction.to_arrow_str())
-        }
+        format_id(name, *direction)
     }
 
     fn insert_all(&mut self, name: String)
@@ -1046,7 +1054,7 @@ impl ChunkRules
             let this_rules = &mut this_rules;
             let mut with_rotation = move |rotation|
             {
-                let mut rule = rule.rotated(name_mappings, rotation);
+                let mut rule = if has_override { rule.clone() } else { rule.rotated(name_mappings, rotation) };
                 if let Some(track) = track.as_ref()
                 {
                     if track.direction.or(override_rotation).unwrap_or(TileRotation::Up) == rotation
@@ -1062,6 +1070,11 @@ impl ChunkRules
                     if !has_override
                     {
                         return eprintln!("{} with no override cant come after rotation overriden rules", &rule.name);
+                    }
+
+                    if current.symmetry != rule.symmetry
+                    {
+                        return eprintln!("{} has a rotation override with an unrotated symmetry", &rule.name);
                     }
 
                     current.combine(rule);
@@ -1248,6 +1261,12 @@ impl ChunkRules
     pub fn name(&self, id: WorldChunkId) -> &str
     {
         &self.get(id).name
+    }
+
+    pub fn format_id(&self, id: WorldChunkId) -> String
+    {
+        let rule = self.get(id);
+        format_id(&rule.name, rule.rotation)
     }
 
     pub fn entropy(&self) -> f64
