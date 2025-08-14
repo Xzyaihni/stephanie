@@ -658,6 +658,17 @@ macro_rules! define_group
                 }
             }
 
+            pub fn filter_map<U>(self, mut f: impl FnMut(T) -> Option<U>) -> Vec<U>
+            {
+                let mut output = Vec::new();
+
+                $(
+                    output.extend(f(self.$lowercase));
+                )+
+
+                output
+            }
+
             pub fn for_each(self, f: impl FnMut(PosDirection, T))
             {
                 self.map(f);

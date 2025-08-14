@@ -11,9 +11,20 @@
             "weight": 4,
             "neighbors": {
                 "SymmetryHorizontal": {
-		    "up": [],
-		    "down": ["park", "building"],
-                    "horizontal": ["park", "building"]
+		    "up": ["building"],
+		    "down": ["building"],
+                    "horizontal": ["building"]
+                }
+            }
+        },
+        {
+            "rotation": "Right",
+            "name": "building",
+            "neighbors": {
+                "SymmetryVertical": {
+                    "left": ["building"],
+                    "right": ["building"],
+                    "vertical": ["building"]
                 }
             }
         },
@@ -33,7 +44,7 @@
             "weight": 0.05,
             "neighbors": {
                 "SymmetryVertical": {
-		    "left": ["road_straight"],
+		    "left": ["road_intersection", "road_straight"],
 		    "right": ["park", "building", "bunker"],
                     "vertical": ["park", "building", "bunker", "road_end", "road_straight"]
                 }
@@ -82,7 +93,29 @@
 		    "up": [],
 		    "down": [],
 		    "right": ["road_corner", "road_straight"],
-		    "left": ["road_corner"]
+		    "left": ["road_corner", "road_end"]
+                }
+            }
+        },
+        {
+            "name": "road_t",
+            "weight": 0.9,
+            "neighbors": {
+                "SymmetryVertical": {
+                    "left": ["park", "building"],
+                    "right": ["road_straight", "road_end", "road_corner", "road_intersection"],
+                    "vertical": ["road_intersection"]
+                }
+            }
+        },
+        {
+            "rotation": "Right",
+            "name": "road_t",
+            "neighbors": {
+                "SymmetryHorizontal": {
+                    "up": [],
+                    "down": [],
+                    "horizontal": ["road_straight"]
                 }
             }
         },
@@ -95,7 +128,7 @@
         },
         {
             "name": "park",
-            "weight": 1,
+            "weight": 0.05,
             "neighbors": {
                 "SymmetryAll": ["park"]
             }

@@ -1,6 +1,7 @@
 use std::{
     fs,
     io,
+    convert,
     fmt::{self, Display, Debug},
     rc::Rc,
     ops::{Index, IndexMut},
@@ -1108,12 +1109,12 @@ impl<'a> WaveCollapser<'a>
                             {
                                 let states = self.entropies.get(x).format_states_with(|x| self.rules.format_id(x));
 
-                                format!("{direction}: {states}")
-                            }).unwrap_or_default()
-                        }).reduce(|acc, (_, x)|
+                                format!("{}: {states}", direction.flip_y())
+                            })
+                        }).filter_map(convert::identity).into_iter().reduce(|acc, x|
                         {
                             acc + ", " + &x
-                        });
+                        }).unwrap_or_default();
 
                         eprintln!("couldnt find a valid worldchunk with {neighbors}, using fallback");
                     }

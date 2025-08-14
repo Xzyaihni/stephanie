@@ -1121,44 +1121,14 @@ impl ChunkRules
         this
     }
 
-    fn union_neighbors(&mut self, name_mappings: &NameMappings)
+    fn self_symmetry_union(
+        &mut self,
+        name_mappings: &NameMappings,
+        ids: &[WorldChunkId]
+    ) -> bool
     {
-        let rules: Vec<_> = self.rules.iter().map(|(a, _)| a.clone()).collect();
-
-        let unify_neighbors = |this: &mut Self|
-        {
-            rules.iter().for_each(|this_id|
-            {
-                PosDirection::iter_non_z().for_each(|direction|
-                {
-                    (0..this.rules[this_id].neighbors[direction].len()).for_each(|index|
-                    {
-                        let neighbor = this.rules[this_id].neighbors[direction][index];
-                        let other_rule = this.rules.get_mut(&neighbor).unwrap();
-
-                        let other_direction = direction.opposite();
-                        if union(&mut other_rule.neighbors[other_direction], *this_id)
-                        {
-                            if let Some(track) = other_rule.track.as_ref()
-                            {
-                                if PosDirection::from(*track) == other_direction
-                                {
-                                    eprintln!(
-                                        "{}: {other_direction} received {} from neighbor sharing",
-                                        name_mappings.format_id(&neighbor),
-                                        name_mappings.format_id(this_id)
-                                    );
-                                }
-                            }
-                        }
-                    });
-                });
-            });
-        };
-
-        unify_neighbors(self);
-
-        rules.iter().for_each(|this_id|
+        let mut changed = false;
+        ids.iter().for_each(|this_id|
         {
             let this_symmetry = self.rules[this_id].symmetry;
 
@@ -1196,6 +1166,7 @@ impl ChunkRules
                                 let other_direction = other_direction.into();
                                 if union(&mut this.neighbors[other_direction], *rotated_neighbor)
                                 {
+                                    changed = true;
                                     if let Some(track) = this.track.as_ref()
                                     {
                                         if PosDirection::from(*track) == other_direction
@@ -1215,7 +1186,129 @@ impl ChunkRules
             });
         });
 
+        changed
+    }
+
+    fn rotation_symmetry_union(
+        &mut self,
+        name_mappings: &NameMappings,
+        ids: &[WorldChunkId]
+    ) -> bool
+    {
+        let mut changed = false;
+        ids.iter().for_each(|this_id|
+        {
+            let (this_rotation, this_name) = name_mappings.world_chunk.get_back(this_id).unwrap();
+
+            TileRotation::iter().filter(|x| *x != *this_rotation).for_each(|other_rotation|
+            {
+                let other_id = name_mappings.world_chunk.get(&(other_rotation, this_name.clone())).unwrap();
+
+                let (this_rule, other_rule) = {
+                    let [a, b] = self.rules.get_disjoint_mut([this_id, other_id]);
+
+                    (a.unwrap(), b.unwrap())
+                };
+
+                let difference = other_rotation.subtract(*this_rotation);
+
+                TileRotation::iter().for_each(|neighbor_direction|
+                {
+                    let output_direction = neighbor_direction.combine(difference);
+
+                    this_rule.neighbors[neighbor_direction.into()].iter().for_each(|neighbor_id|
+                    {
+                        let (previous_rotation, neighbor_name) = name_mappings.world_chunk.get_back(neighbor_id).unwrap();
+
+                        let new_rotation = previous_rotation.combine(difference);
+
+                        let neighbor = name_mappings.world_chunk.get(&(new_rotation, neighbor_name.clone())).unwrap();
+
+                        let output_direction = output_direction.into();
+                        if union(&mut other_rule.neighbors[output_direction], *neighbor)
+                        {
+                            changed = true;
+                            if let Some(track) = other_rule.track.as_ref()
+                            {
+                                if PosDirection::from(*track) == output_direction
+                                {
+                                    eprintln!(
+                                        "{}: {output_direction} received {} from {} {} by rotational symmetry",
+                                        name_mappings.format_id(other_id),
+                                        name_mappings.format_id(neighbor),
+                                        name_mappings.format_id(this_id),
+                                        PosDirection::from(*this_rotation)
+                                    );
+                                }
+                            }
+                        }
+                    });
+                })
+            });
+        });
+
+        changed
+    }
+
+    fn union_neighbors(&mut self, name_mappings: &NameMappings)
+    {
+        let rules: Vec<_> = self.rules.iter().map(|(a, _)| a.clone()).collect();
+
+        let unify_neighbors = |this: &mut Self|
+        {
+            rules.iter().for_each(|this_id|
+            {
+                PosDirection::iter_non_z().for_each(|direction|
+                {
+                    (0..this.rules[this_id].neighbors[direction].len()).for_each(|index|
+                    {
+                        let neighbor = this.rules[this_id].neighbors[direction][index];
+                        let other_rule = this.rules.get_mut(&neighbor).unwrap();
+
+                        let other_direction = direction.opposite();
+                        if union(&mut other_rule.neighbors[other_direction], *this_id)
+                        {
+                            if let Some(track) = other_rule.track.as_ref()
+                            {
+                                if PosDirection::from(*track) == other_direction
+                                {
+                                    eprintln!(
+                                        "{}: {other_direction} received {} from neighbor sharing",
+                                        name_mappings.format_id(&neighbor),
+                                        name_mappings.format_id(this_id)
+                                    );
+                                }
+                            }
+                        }
+                    });
+                });
+            });
+        };
+
         unify_neighbors(self);
+
+        loop
+        {
+            let self_symmetry_changed = self.self_symmetry_union(name_mappings, &rules);
+
+            if self_symmetry_changed
+            {
+                unify_neighbors(self);
+            }
+
+            let rotation_symmetry_changed = self.rotation_symmetry_union(name_mappings, &rules);
+
+            if rotation_symmetry_changed
+            {
+                unify_neighbors(self);
+            } else
+            {
+                if !self_symmetry_changed
+                {
+                    break;
+                }
+            }
+        }
     }
 
     fn print_neighbors(&self, name_mappings: &NameMappings)
