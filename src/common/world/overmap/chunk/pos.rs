@@ -674,6 +674,22 @@ macro_rules! define_group
 
                 state.unwrap()
             }
+
+            pub fn reduce<F>(self, mut f: F) -> T
+            where
+                F: FnMut(T, (PosDirection, T)) -> T
+            {
+                self.fold(None, |state, x|
+                {
+                    if let Some(s) = state
+                    {
+                        Some(f(s, x))
+                    } else
+                    {
+                        Some(x.1)
+                    }
+                }).unwrap()
+            }
         }
 
         impl<T> Index<PosDirection> for $name<T>

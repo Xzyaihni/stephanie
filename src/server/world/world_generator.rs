@@ -818,28 +818,20 @@ impl PossibleStates
         rules: &ChunkRules,
         other: &PossibleStates,
         direction: PosDirection
-    ) -> bool
+    ) -> Option<bool>
     {
         if other.is_all() || self.collapsed()
         {
-            return false;
+            return Some(false);
         }
 
         let mut any_constrained = false;
 
-        let fallback_array = [rules.fallback()];
-        let other_states: &[WorldChunkId] = if other.states.is_empty()
-        {
-            eprintln!("using fallback worldchunk");
-            &fallback_array
-        } else
-        {
-            &other.states
-        };
+        debug_assert!(!other.states.is_empty());
 
         self.states.retain(|state|
         {
-            let keep = other_states.iter().any(|other_state|
+            let keep = other.states.iter().any(|other_state|
             {
                 let other_rule = rules.get(*other_state);
                 let possible = &other_rule.neighbors(direction);
@@ -860,11 +852,19 @@ impl PossibleStates
 
         if any_constrained
         {
-            self.is_all = false;
-            self.update_entropy(rules);
+            if self.states.is_empty()
+            {
+                self.states = vec![rules.fallback()];
+
+                return None;
+            } else
+            {
+                self.is_all = false;
+                self.update_entropy(rules);
+            }
         }
 
-        any_constrained
+        Some(any_constrained)
     }
 
     pub fn collapse(&mut self, rules: &ChunkRules) -> WorldChunkId
@@ -935,11 +935,14 @@ impl PossibleStates
     #[allow(dead_code)]
     fn format_states(&self) -> String
     {
-        let states = self.states.iter().map(|x| x.to_string()).reduce(|mut acc, x|
+        self.format_states_with(|x| x.to_string())
+    }
+
+    fn format_states_with(&self, f: impl Fn(WorldChunkId) -> String) -> String
+    {
+        let states = self.states.iter().copied().map(f).reduce(|acc, x|
         {
-            acc += ", ";
-            acc += &x;
-            acc
+            acc + ", " + &x
         }).unwrap_or_default();
 
         format!("[{states}]")
@@ -976,6 +979,11 @@ impl Entropies
     pub fn positions(&self) -> impl Iterator<Item=LocalPos>
     {
         self.0.positions()
+    }
+
+    pub fn get(&self, pos: LocalPos) -> &PossibleStates
+    {
+        &self.0[pos]
     }
 
     pub fn get_two_mut(
@@ -1092,7 +1100,25 @@ impl<'a> WaveCollapser<'a>
 
                     let changed = other.constrain(self.rules, this, direction.flip_y());
 
-                    if changed
+                    if changed.is_none()
+                    {
+                        let neighbors = direction_pos.directions_group().map(|direction, x|
+                        {
+                            x.map(|x|
+                            {
+                                let states = self.entropies.get(x).format_states_with(|x| self.rules.name(x).to_owned());
+
+                                format!("{direction}: {states}")
+                            }).unwrap_or_default()
+                        }).reduce(|acc, (_, x)|
+                        {
+                            acc + ", " + &x
+                        });
+
+                        eprintln!("couldnt find a valid worldchunk with {neighbors}, using fallback");
+                    }
+
+                    if changed.unwrap_or(true)
                     {
                         self.constrain(visited, direction_pos);
                     }

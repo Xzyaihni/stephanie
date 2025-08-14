@@ -260,11 +260,9 @@ impl WorldChunk
 
     pub fn format_compact(&self) -> String
     {
-        let tags = self.tags.iter().map(|x| format!("{x:?}")).reduce(|mut acc, x|
+        let tags = self.tags.iter().map(|x| format!("{x:?}")).reduce(|acc, x|
         {
-            acc += " ";
-            acc += &x;
-            acc
+            acc + " " + &x
         });
 
         if let Some(tags) = tags
@@ -1220,12 +1218,9 @@ impl ChunkRules
                     {
                         name_mappings.format_id(id)
                     })
-                    .reduce(|mut acc, x|
+                    .reduce(|acc, x|
                     {
-                        acc += ", ";
-                        acc += &x;
-
-                        acc
+                        acc + ", " + &x
                     }).unwrap_or_default();
 
                 eprintln!("    {direction}: [{rules}],");
