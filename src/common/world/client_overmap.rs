@@ -430,11 +430,12 @@ impl ClientOvermap
 
         if z_changed
         {
-            self.visual_overmap.regenerate_sky_occlusions(&self.chunks);
-
             if position_difference.z < 0
             {
                 self.visual_overmap.moved_down(&self.chunks);
+            } else
+            {
+                self.visual_overmap.regenerate_sky_occlusions(&self.chunks);
             }
         }
     }

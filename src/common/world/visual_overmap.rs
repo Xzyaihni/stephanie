@@ -563,11 +563,6 @@ impl VisualOvermap
             return false;
         }
 
-        if self.chunks[pos].occlusion.is_some()
-        {
-            return false;
-        }
-
         if let Some(forward) = pos.forward()
         {
             if self.chunks[forward].occlusion.is_none()
