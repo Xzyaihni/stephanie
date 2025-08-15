@@ -174,7 +174,7 @@ pub fn update(
             if physical.move_z
             {
                 let next_position = physical.next_position_mut();
-                if this.collide_with_world_z(world, *next_position)
+                if this.collide_with_world_z(world, *next_position) && !this.collider.ghost
                 {
                     next_position.z = this.transform.position.z;
                     physical.remove_velocity_axis(2);

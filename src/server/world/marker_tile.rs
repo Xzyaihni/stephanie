@@ -222,7 +222,7 @@ impl MarkerKind
             },
             Self::Light{offset, ..} =>
             {
-                *offset = rotate_point_z_3d(*offset, tile_rotation.to_angle());
+                *offset = rotate_point_z_3d(*offset, -(tile_rotation.to_angle() - f32::consts::FRAC_PI_2));
             },
             _ => ()
         }
