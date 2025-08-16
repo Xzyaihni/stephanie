@@ -142,7 +142,8 @@ pub fn create() -> Rendering<App, TimestampQuery>
         }),
         clear: Box::new(|app|
         {
-            let light = app.client().with_game_state(|x| x.world.sky_light() as f32).unwrap_or(0.0);
+            let light = app.client().with_game_state(|x| x.world.sky_light()).unwrap_or_default();
+            let sky_light = light.light_color();
 
             let darksky = BACKGROUND_COLOR.zip_map(&SHADOW_COLOR, |a, b| lerp(a, b, DARKEN));
             vec![
@@ -150,7 +151,7 @@ pub fn create() -> Rendering<App, TimestampQuery>
                 Some(1.0.into()),
                 Some([darksky.x, darksky.y, darksky.z, 1.0].into()),
                 Some(1.0.into()),
-                Some([light, light, light, 1.0].into()),
+                Some([sky_light[0], sky_light[1], sky_light[2], 1.0].into()),
                 None
             ]
         })

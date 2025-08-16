@@ -1228,10 +1228,10 @@ impl GameState
         };
 
         let sky_colors = {
-            let light = self.world.sky_light() as f32;
+            let light = self.world.sky_light();
 
             render_system::SkyColors{
-                light_color: [light, light, light]
+                light_color: light.light_color()
             }
         };
 

@@ -62,12 +62,16 @@ pub use client_overmap::TilePos;
 use client_overmap::ClientOvermap;
 use visual_overmap::VisualOvermap;
 
+pub use sky_light::SkyLight;
+
 use pathfind::WorldPath;
 
 pub mod overmap;
 
 mod client_overmap;
 mod visual_overmap;
+
+mod sky_light;
 
 pub mod pathfind;
 
@@ -553,20 +557,20 @@ impl World
         self.time_speed = speed;
     }
 
-    pub fn sky_light(&self) -> f64
+    pub fn sky_light(&self) -> SkyLight
     {
         if self.time < DAY_LENGTH
         {
-            1.0
+            SkyLight::Day
         } else if self.time < (DAY_LENGTH + BETWEEN_LENGTH)
         {
-            1.0 - ((self.time - DAY_LENGTH) / BETWEEN_LENGTH)
+            SkyLight::Sunset((self.time - DAY_LENGTH) / BETWEEN_LENGTH)
         } else if self.time < (DAY_LENGTH + BETWEEN_LENGTH + NIGHT_LENGTH)
         {
-            0.0
+            SkyLight::Night
         } else
         {
-            (self.time - (DAY_LENGTH + BETWEEN_LENGTH + NIGHT_LENGTH)) / BETWEEN_LENGTH
+            SkyLight::Sunrise((self.time - (DAY_LENGTH + BETWEEN_LENGTH + NIGHT_LENGTH)) / BETWEEN_LENGTH)
         }
     }
 
