@@ -18,10 +18,10 @@ use vulkano::{
 use yanyaengine::Rendering;
 
 use super::shaders::{DARKEN, SHADOW_COLOR};
-use stephanie::{BACKGROUND_COLOR, app::TimestampQuery, common::lerp};
+use stephanie::{BACKGROUND_COLOR, app::{App, TimestampQuery}, common::lerp};
 
 
-pub fn create() -> Rendering<TimestampQuery>
+pub fn create() -> Rendering<App, TimestampQuery>
 {
     Rendering{
         setup: Box::new(|device|
@@ -140,16 +140,19 @@ pub fn create() -> Rendering<TimestampQuery>
 
             vec![color, depth, shade, shade_depth, lighting, view]
         }),
-        clear: {
+        clear: Box::new(|app|
+        {
+            let light = app.client().with_game_state(|x| x.world.sky_light() as f32).unwrap_or(0.0);
+
             let darksky = BACKGROUND_COLOR.zip_map(&SHADOW_COLOR, |a, b| lerp(a, b, DARKEN));
             vec![
                 Some([BACKGROUND_COLOR.x, BACKGROUND_COLOR.y, BACKGROUND_COLOR.z, 1.0].into()),
                 Some(1.0.into()),
                 Some([darksky.x, darksky.y, darksky.z, 1.0].into()),
                 Some(1.0.into()),
-                Some([1.0, 1.0, 1.0, 1.0].into()),
+                Some([light, light, light, 1.0].into()),
                 None
             ]
-        }
+        })
     }
 }

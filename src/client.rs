@@ -181,6 +181,11 @@ impl Client
         self.game_state.take();
     }
 
+    pub fn with_game_state<T>(&self, f: impl FnOnce(&GameState) -> T) -> Option<T>
+    {
+        Some(f(&some_or_return!(self.game_state.as_ref()).borrow()))
+    }
+
     pub fn resize(&mut self, aspect: f32)
     {
         some_or_return!(self.game_state.as_ref()).borrow_mut().resize(aspect);

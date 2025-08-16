@@ -614,6 +614,23 @@ impl Game
             let game_state = self.game_state.clone();
 
             primitives.add(
+                "set-time-speed",
+                PrimitiveProcedureInfo::new_simple(1, Effect::Impure, move |mut args|
+                {
+                    with_game_state(&game_state, |game_state|
+                    {
+                        let speed = args.next().unwrap().as_float()?;
+                        game_state.world.set_time_speed(speed as f64);
+
+                        Ok(().into())
+                    })
+                }));
+        }
+
+        {
+            let game_state = self.game_state.clone();
+
+            primitives.add(
                 "add-item",
                 PrimitiveProcedureInfo::new_simple(2, Effect::Impure, move |mut args|
                 {

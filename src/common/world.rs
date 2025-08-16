@@ -75,6 +75,10 @@ pub mod pathfind;
 pub const CLIENT_OVERMAP_SIZE: usize = 8;
 pub const CLIENT_OVERMAP_SIZE_Z: usize = 3;
 
+pub const DAY_LENGTH: f64 = 60.0 * 6.0;
+pub const BETWEEN_LENGTH: f64 = 60.0 * 2.0;
+pub const NIGHT_LENGTH: f64 = 60.0 * 5.0;
+
 const PATHFIND_MAX_STEPS: usize = 1000;
 
 #[derive(BufferContents, Vertex, Debug, Clone, Copy)]
@@ -122,7 +126,9 @@ pub struct World
 {
     tilemap: Arc<TileMap>,
     world_receiver: WorldReceiver,
-    overmap: ClientOvermap
+    overmap: ClientOvermap,
+    time_speed: f64,
+    time: f64
 }
 
 impl World
@@ -145,7 +151,7 @@ impl World
             player_position
         );
 
-        Self{tilemap, world_receiver, overmap}
+        Self{tilemap, world_receiver, overmap, time_speed: 1.0, time: 0.0}
     }
 
     pub fn tilemap(&self) -> &TileMap
@@ -532,8 +538,45 @@ impl World
         true
     }
 
+    pub fn time(&self) -> f64
+    {
+        self.time
+    }
+
+    pub fn set_time(&mut self, time: f64)
+    {
+        self.time = time % (DAY_LENGTH + NIGHT_LENGTH + BETWEEN_LENGTH * 2.0);
+    }
+
+    pub fn set_time_speed(&mut self, speed: f64)
+    {
+        self.time_speed = speed;
+    }
+
+    pub fn sky_light(&self) -> f64
+    {
+        if self.time < DAY_LENGTH
+        {
+            1.0
+        } else if self.time < (DAY_LENGTH + BETWEEN_LENGTH)
+        {
+            1.0 - ((self.time - DAY_LENGTH) / BETWEEN_LENGTH)
+        } else if self.time < (DAY_LENGTH + BETWEEN_LENGTH + NIGHT_LENGTH)
+        {
+            0.0
+        } else
+        {
+            (self.time - (DAY_LENGTH + BETWEEN_LENGTH + NIGHT_LENGTH)) / BETWEEN_LENGTH
+        }
+    }
+
     pub fn update(&mut self, dt: f32)
     {
+        {
+            let time = self.time() + dt as f64 * self.time_speed;
+            self.set_time(time);
+        }
+
         self.overmap.update(dt);
     }
 

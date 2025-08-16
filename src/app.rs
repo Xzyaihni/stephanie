@@ -509,3 +509,11 @@ impl YanyaApp for App
         self.client.render_pass_ended();
     }
 }
+
+impl App
+{
+    pub fn client(&self) -> &Client
+    {
+        &self.client
+    }
+}
