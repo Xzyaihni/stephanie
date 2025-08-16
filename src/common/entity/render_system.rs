@@ -1,4 +1,7 @@
-use vulkano::descriptor_set::WriteDescriptorSet;
+use vulkano::{
+    descriptor_set::WriteDescriptorSet,
+    buffer::BufferContents,
+};
 
 use yanyaengine::{game_object::*, SolidObject};
 
@@ -15,6 +18,13 @@ use crate::{
 };
 
 
+#[derive(BufferContents)]
+#[repr(C)]
+pub struct BackgroundColor
+{
+    pub color: [f32; 3]
+}
+
 pub struct DrawEntities<'a>
 {
     pub solid: &'a SolidObject,
@@ -30,6 +40,11 @@ pub struct DrawingInfo<'a, 'b, 'c>
     pub shaders: &'a ProgramShaders,
     pub info: &'b mut DrawInfo<'c>,
     pub timestamp_query: TimestampQuery
+}
+
+pub struct SkyColors
+{
+    pub light_color: [f32; 3]
 }
 
 pub fn draw(
@@ -49,6 +64,9 @@ pub fn draw(
         timestamp_query
     }: DrawingInfo,
     visibility: &VisibilityChecker,
+    SkyColors{
+        light_color
+    }: SkyColors,
     animation: f32
 )
 {
@@ -134,6 +152,8 @@ pub fn draw(
     timing_end!(4);
 
     info.bind_pipeline(shaders.sky_lighting);
+
+    info.push_constants(BackgroundColor{color: light_color});
 
     world.draw_sky_lights(info);
 

@@ -1227,12 +1227,21 @@ impl GameState
             timestamp_query: self.timestamp_query.clone()
         };
 
+        let sky_colors = {
+            let light = self.world.sky_light() as f32;
+
+            render_system::SkyColors{
+                light_color: [light, light, light]
+            }
+        };
+
         render_system::draw(
             &self.entities.entities,
             &self.ui.borrow(),
             draw_entities,
             info,
             &visibility,
+            sky_colors,
             animation
         );
     }
