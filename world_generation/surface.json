@@ -55,7 +55,7 @@
             "name": "road_end",
             "neighbors": {
                 "SymmetryHorizontal": {
-                    "up": ["road_t"],
+                    "up": ["road_t", "road_end"],
                     "down": ["road_straight"],
                     "horizontal": ["park", "building", "bunker"]
                 }
@@ -102,7 +102,7 @@
             "neighbors": {
                 "SymmetryNone": {
 		    "up": [],
-		    "down": [],
+		    "down": ["road_end"],
 		    "right": ["road_straight", "road_end"],
 		    "left": ["road_end"]
                 }
