@@ -302,6 +302,14 @@ impl ChunkModelBuilder
         }
 
         {
+            let pos = if self.tilemap.info_existing(tile).transparent
+            {
+                Pos3{z: pos.z - TILE_SIZE, ..pos}
+            } else
+            {
+                pos
+            };
+
             let (vertices, indices) = self.tile_vertices(pos);
 
             self.model[chunk_height].extend(vertices, indices);
