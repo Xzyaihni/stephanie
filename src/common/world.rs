@@ -405,9 +405,9 @@ impl World
         self.overmap.debug_chunk(Self::chunk_of(pos), visual)
     }
 
-    pub fn debug_tile_occlusion(&self, entities: &ClientEntities)
+    pub fn debug_tile_field(&self, entities: &ClientEntities)
     {
-        self.overmap.debug_tile_occlusion(entities)
+        self.overmap.debug_tile_field(entities)
     }
 
     pub fn tiles_inside<'a, Predicate>(
@@ -638,6 +638,11 @@ impl World
     pub fn sky_occluded(&self, transform: &Transform) -> bool
     {
         self.overmap.sky_occluded(transform)
+    }
+
+    pub fn light_sky_occluded(&self, transform: &Transform) -> bool
+    {
+        self.overmap.light_sky_occluded(transform)
     }
 
     pub fn wall_occluded(&self, transform: &Transform) -> bool

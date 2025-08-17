@@ -382,7 +382,7 @@ impl ClientEntitiesContainer
 
             if below_player
             {
-                if world.sky_occluded(&light_transform)
+                if world.light_sky_occluded(&light_transform)
                 {
                     return;
                 }
@@ -1185,9 +1185,9 @@ impl GameState
         self.world.update_buffers(info);
         self.world.update_buffers_shadows(info, &visibility, &caster);
 
-        if DebugConfig::is_enabled(DebugTool::DrawTileOcclusion)
+        if DebugConfig::is_enabled(DebugTool::DebugTileField)
         {
-            self.world.debug_tile_occlusion(&self.entities.entities);
+            self.world.debug_tile_field(&self.entities.entities);
         }
 
         self.entities.update_buffers(&visibility, info, &caster, &mut self.world);

@@ -182,6 +182,7 @@ pub struct VisualChunk
     sky_lights: ChunkSlice<Option<SolidObject<SkyLightVertex>>>,
     sky: ChunkSlice<[bool; CHUNK_SIZE * CHUNK_SIZE]>,
     total_sky: ChunkSlice<[bool; CHUNK_SIZE * CHUNK_SIZE]>,
+    sky_changed: ChunkSlice<[bool; CHUNK_SIZE * CHUNK_SIZE]>,
     draw_indices: ChunkSlice<Box<[usize]>>,
     draw_next: ChunkSlice<bool>,
     generated: bool,
@@ -201,6 +202,7 @@ impl VisualChunk
             sky_lights: Self::create_empty_slice(Option::default),
             sky: Self::create_empty_slice(|| [false; CHUNK_SIZE * CHUNK_SIZE]),
             total_sky: Self::create_empty_slice(|| [false; CHUNK_SIZE * CHUNK_SIZE]),
+            sky_changed: Self::create_empty_slice(|| [false; CHUNK_SIZE * CHUNK_SIZE]),
             draw_indices: Self::create_empty_slice(|| Box::from([])),
             draw_next: [false; CHUNK_SIZE],
             generated: false,
@@ -317,6 +319,19 @@ impl VisualChunk
         pos: GlobalPos
     ) -> Self
     {
+        let sky_changed = (0..CHUNK_SIZE).map(|z|
+        {
+            (0..(CHUNK_SIZE * CHUNK_SIZE)).map(|index|
+            {
+                let previous = chunk_info.total_sky.get(z + 1).unwrap_or_else(||
+                {
+                    &chunk_info.total_sky[0]
+                })[index];
+
+                if previous { false } else { chunk_info.sky[z][index] }
+            }).collect::<Vec<_>>().try_into().unwrap()
+        }).collect::<Vec<_>>().try_into().unwrap();
+
         let objects = tiles_factory.build(chunk_info.infos);
         let occluders = tiles_factory.build_occluders(chunk_info.occluders.clone());
         let vertical_occluders = tiles_factory.build_vertical_occluders(chunk_info.vertical_occluders);
@@ -333,6 +348,7 @@ impl VisualChunk
             sky_lights,
             sky: chunk_info.sky,
             total_sky: chunk_info.total_sky,
+            sky_changed,
             draw_indices: chunk_info.draw_indices,
             draw_next: chunk_info.draw_next
         }
@@ -728,6 +744,21 @@ impl VisualChunk
         self.generated = false;
     }
 
+    pub fn sky(&self) -> &ChunkSlice<[bool; CHUNK_SIZE * CHUNK_SIZE]>
+    {
+        &self.sky
+    }
+
+    pub fn total_sky(&self) -> &ChunkSlice<[bool; CHUNK_SIZE * CHUNK_SIZE]>
+    {
+        &self.total_sky
+    }
+
+    pub fn sky_changed(&self) -> &ChunkSlice<[bool; CHUNK_SIZE * CHUNK_SIZE]>
+    {
+        &self.sky_changed
+    }
+
     pub fn sky_occluded_between(
         &self,
         mut heights: impl Iterator<Item=usize>,
@@ -767,6 +798,26 @@ impl VisualChunk
                 let index = index + x;
 
                 total_sky[index]
+            })
+        })
+    }
+
+    pub fn sky_occlusion_changed(
+        &self,
+        height: usize,
+        top_left: Vector2<usize>,
+        bottom_right: Vector2<usize>
+    ) -> bool
+    {
+        let changed = &self.sky_changed[height];
+        (top_left.y..=bottom_right.y).any(|y|
+        {
+            let index = y * CHUNK_SIZE;
+            (top_left.x..=bottom_right.x).any(move |x|
+            {
+                let index = index + x;
+
+                changed[index]
             })
         })
     }

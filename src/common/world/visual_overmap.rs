@@ -17,6 +17,7 @@ use nalgebra::{Vector2, Vector3};
 use yanyaengine::{game_object::*, Transform};
 
 use crate::{
+    debug_config::*,
     client::{VisibilityChecker as EntityVisibilityChecker, TilesFactory},
     common::{
         aabb_points,
@@ -921,7 +922,7 @@ impl VisualOvermap
         eprintln!("{}", states.display());
     }
 
-    pub fn debug_tile_occlusion(&self, entities: &ClientEntities)
+    pub fn debug_tile_field(&self, entities: &ClientEntities)
     {
         let z = self.visibility_checker.top_z();
         let height = self.visibility_checker.player_height();
@@ -930,8 +931,26 @@ impl VisualOvermap
             let pos = pos.with_z(z);
 
             let chunk_pos = Chunk::position_of_chunk(self.to_global(pos));
-            Self::debug_tile_occlusion_single(
-                &self.occluded[pos],
+
+            let field = if DebugConfig::is_enabled(DebugTool::DrawTileOcclusion)
+            {
+                &self.occluded[pos][height].occlusions
+            } else if DebugConfig::is_enabled(DebugTool::DrawTotalSky)
+            {
+                &self.chunks[pos].chunk.total_sky()[height]
+            } else if DebugConfig::is_enabled(DebugTool::DrawSky)
+            {
+                &self.chunks[pos].chunk.sky()[height]
+            } else if DebugConfig::is_enabled(DebugTool::DrawSkyChanged)
+            {
+                &self.chunks[pos].chunk.sky_changed()[height]
+            } else
+            {
+                return eprintln!("tile field debug must have one of the draw modes enabled");
+            };
+
+            Self::debug_tile_field_single(
+                field,
                 entities,
                 chunk_pos,
                 height
@@ -939,14 +958,14 @@ impl VisualOvermap
         });
     }
 
-    fn debug_tile_occlusion_single(
-        occluded: &[OccludedSlice; CHUNK_SIZE],
+    fn debug_tile_field_single(
+        values: &[bool; CHUNK_SIZE * CHUNK_SIZE],
         entities: &ClientEntities,
         chunk_pos: Vector3<f32>,
         height: usize
     )
     {
-        occluded[height].occlusions.iter().enumerate().for_each(|(index, state)|
+        values.iter().enumerate().for_each(|(index, state)|
         {
             let x = index % CHUNK_SIZE;
             let y = index / CHUNK_SIZE;
@@ -966,24 +985,6 @@ impl VisualOvermap
             {
                 [0.0, 1.0, 0.0, 0.2]
             };
-
-            /*entities.push(true, EntityInfo{
-                transform: Some(Transform{
-                    position: tile_position,
-                    scale: Vector3::repeat(0.03),
-                    ..Default::default()
-                }),
-                render: Some(RenderInfo{
-                    object: Some(RenderObjectKind::Texture{
-                        name: "circle.png".to_owned()
-                    }.into()),
-                    above_world: true,
-                    mix: Some(MixColor{keep_transparency: true, ..MixColor::color(if occluded[height].points[y * (CHUNK_SIZE + 1) + x] { [0.0, 0.0, 1.0, 1.0] } else { [0.0, 1.0, 0.0, 1.0] })}),
-                    ..Default::default()
-                }),
-                watchers: Some(Watchers::simple_one_frame()),
-                ..Default::default()
-            });*/
 
             entities.push(true, EntityInfo{
                 transform: Some(Transform{
@@ -1210,6 +1211,22 @@ impl VisualOvermap
             {
                 chunk.sky_occluded(height, top_left, bottom_right)
             }
+        })
+    }
+
+    pub fn light_sky_occluded(&self, transform: &Transform) -> bool
+    {
+        let size_z = self.visibility_checker.size.z;
+        let player_position_z = self.visibility_checker.player_chunk_height();
+
+        let z = Self::chunk_height_of(size_z, transform.position.z - TILE_SIZE, player_position_z);
+        self.occluded_with(transform, |pos, height, top_left, bottom_right|
+        {
+            let (z, height) = if let Some(z) = z { (z, height) } else { (0, 0) };
+
+            let chunk = &self.chunks[pos.with_z(z)].chunk;
+
+            !chunk.sky_occlusion_changed(height, top_left, bottom_right)
         })
     }
 

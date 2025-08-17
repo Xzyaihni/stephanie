@@ -445,9 +445,9 @@ impl ClientOvermap
         self.world_receiver.request_chunk(pos);
     }
 
-    pub fn debug_tile_occlusion(&self, entities: &ClientEntities)
+    pub fn debug_tile_field(&self, entities: &ClientEntities)
     {
-        self.visual_overmap.debug_tile_occlusion(entities)
+        self.visual_overmap.debug_tile_field(entities)
     }
 
     pub fn update_buffers(
@@ -471,6 +471,11 @@ impl ClientOvermap
     pub fn sky_occluded(&self, transform: &Transform) -> bool
     {
         self.visual_overmap.sky_occluded(transform)
+    }
+
+    pub fn light_sky_occluded(&self, transform: &Transform) -> bool
+    {
+        self.visual_overmap.light_sky_occluded(transform)
     }
 
     pub fn wall_occluded(&self, transform: &Transform) -> bool
