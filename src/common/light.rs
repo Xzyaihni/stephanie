@@ -19,7 +19,7 @@ use yanyaengine::{
 
 use crate::{
     client::VisibilityChecker,
-    common::{Entity, ServerToClient, world::TilePos}
+    common::{Pos3, Entity, ServerToClient, world::TilePos}
 };
 
 
@@ -57,7 +57,7 @@ impl Light
             transform
         );
 
-        let mut this = ClientLight{light: self, occluded: false, object};
+        let mut this = ClientLight{light: self, occluded: false, position, object};
 
         this.light_modified();
 
@@ -70,6 +70,7 @@ pub struct ClientLight
 {
     light: Light,
     pub occluded: bool,
+    position: Vector3<f32>,
     object: SolidObject<ObjectVertex>
 }
 
@@ -96,7 +97,12 @@ impl ClientLight
 
     pub fn update_buffers(&mut self, info: &mut UpdateBuffersInfo, position: Vector3<f32>)
     {
-        self.object.set_position(position);
+        self.position = position;
+
+        let z = TilePos::from(position).offset(Pos3::new(0, 0, -1)).position().z;
+
+        self.object.set_position(Vector3::new(position.x, position.y, z));
+
         self.object.update_buffers(info);
     }
 
@@ -116,7 +122,7 @@ impl ClientLight
 
     pub fn visibility_checker(&self) -> VisibilityChecker
     {
-        self.visibility_checker_with(*self.object.position())
+        self.visibility_checker_with(self.position)
     }
 
     pub fn visibility_checker_with(&self, position: Vector3<f32>) -> VisibilityChecker

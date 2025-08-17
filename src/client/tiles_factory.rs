@@ -282,8 +282,7 @@ impl ChunkModelBuilder
         tile: TileExisting
     )
     {
-        let mut pos = Pos3::<f32>::from(*chunk_pos.pos()) * TILE_SIZE;
-        pos.z += TILE_SIZE;
+        let pos = (Pos3::<f32>::from(*chunk_pos.pos()) + Pos3::new(0.0, 0.0, 1.0)) * TILE_SIZE;
 
         let chunk_height = chunk_pos.pos().z;
 

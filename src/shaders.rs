@@ -394,8 +394,8 @@ pub fn create() -> ShadersCreated
             light_fragment::load
         ),
         depth: Some(DepthState{
-            write_enable: true,
-            compare_op: CompareOp::LessOrEqual
+            write_enable: false,
+            compare_op: CompareOp::Equal
         }),
         per_vertex: Some(vec![ObjectVertex::per_vertex()]),
         subpass: 2,
