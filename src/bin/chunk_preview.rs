@@ -46,6 +46,7 @@ use stephanie::{
         }
     },
     client::game_state::{
+        UiControls,
         ControlsController,
         ui::controller::*
     },
@@ -118,6 +119,7 @@ enum ButtonPartId
 enum TextboxId
 {
     Name,
+    Seed,
     Tag(u32)
 }
 
@@ -263,6 +265,7 @@ struct Tags
     height: i32,
     difficulty: f32,
     rotation: TileRotation,
+    seed: String,
     others: Vec<String>
 }
 
@@ -373,6 +376,7 @@ impl YanyaApp for ChunkPreviewer
             height: 1,
             difficulty: 0.0,
             rotation: TileRotation::Up,
+            seed: String::new(),
             others: Vec::new()
         };
 
@@ -495,7 +499,7 @@ impl YanyaApp for ChunkPreviewer
 
             update_scrollbar(UiScrollbarId::Difficulty, &mut self.current_tags);
 
-            let mut update_button = |name: &str, id|
+            let update_button = |controls: &mut UiControls<_>, name: &str, id|
             {
                 add_padding_vertical(screen_body, UiSize::Pixels(10.0).into());
 
@@ -520,27 +524,7 @@ impl YanyaApp for ChunkPreviewer
                 button.is_mouse_inside() && controls.take_click_down()
             };
 
-            if update_button(&format!("{:?}", self.current_tags.rotation), ButtonId::Rotation)
-            {
-                self.current_tags.rotation = self.current_tags.rotation.rotate_clockwise();
-            }
-
-            if update_button("add tag", ButtonId::Add)
-            {
-                self.current_tags.others.push(String::new());
-            }
-
-            if update_button("remove tag", ButtonId::Remove)
-            {
-                self.current_tags.others.pop();
-            }
-
-            if update_button("regenerate", ButtonId::Regenerate)
-            {
-                self.regenerate = true;
-            }
-
-            let mut update_textbox = |textbox_id, text: &mut String, centered|
+            let mut update_textbox = |controls: &mut UiControls<_>, textbox_id, text: &mut String, centered|
             {
                 let id = |part|
                 {
@@ -588,18 +572,42 @@ impl YanyaApp for ChunkPreviewer
                 add_padding_horizontal(name_body, UiSize::Pixels(10.0).into());
             };
 
+            if update_button(controls, &format!("{:?}", self.current_tags.rotation), ButtonId::Rotation)
+            {
+                self.current_tags.rotation = self.current_tags.rotation.rotate_clockwise();
+            }
+
+            if update_button(controls, "regenerate", ButtonId::Regenerate)
+            {
+                self.regenerate = true;
+            }
+
+            add_padding_vertical(screen_body, UiSize::Pixels(10.0).into());
+
+            update_textbox(controls, TextboxId::Seed, &mut self.current_tags.seed, false);
+
+            add_padding_vertical(screen_body, UiSize::Pixels(20.0).into());
+
+            if update_button(controls, "add tag", ButtonId::Add)
+            {
+                self.current_tags.others.push(String::new());
+            }
+
+            if update_button(controls, "remove tag", ButtonId::Remove)
+            {
+                self.current_tags.others.pop();
+            }
+
             self.current_tags.others.iter_mut().enumerate().for_each(|(index, tag)|
             {
                 add_padding_vertical(screen_body, UiSize::Pixels(10.0).into());
 
-                update_textbox(TextboxId::Tag(index as u32), tag, false);
+                update_textbox(controls, TextboxId::Tag(index as u32), tag, false);
             });
-
-            add_padding_vertical(screen_body, UiSize::Pixels(10.0).into());
 
             add_padding_vertical(screen_body, UiSize::Rest(1.0).into());
 
-            update_textbox(TextboxId::Name, &mut self.current_tags.name, true);
+            update_textbox(controls, TextboxId::Name, &mut self.current_tags.name, true);
         }
 
         self.controller.create_renders(&mut info, dt);
@@ -649,6 +657,13 @@ impl YanyaApp for ChunkPreviewer
                     rotation: self.preview_tags.rotation,
                     tags: &tags
                 };
+
+                if !self.preview_tags.seed.is_empty()
+                {
+                    let seed = self.preview_tags.seed.bytes().fold(0_u64, |acc, x| acc + x as u64);
+
+                    fastrand::seed(seed);
+                }
 
                 let mut markers = Vec::new();
                 let tiles = ChunkGenerator::generate_chunk_with(
