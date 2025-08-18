@@ -502,6 +502,11 @@ impl Character
     pub fn set_holding(&mut self, holding: Option<InventoryItem>)
     {
         self.holding = holding;
+        self.update_holding();
+    }
+
+    pub fn update_holding(&mut self)
+    {
         self.held_update = true;
     }
 

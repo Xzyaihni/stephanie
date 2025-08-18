@@ -891,6 +891,14 @@ impl GameState
             }));
         }
 
+        self.entities.entities.on_inventory(Box::new(move |OnChangeInfo{entities, entity, ..}|
+        {
+            if let Some(mut character) = entities.character_mut_no_change(entity)
+            {
+                character.update_holding();
+            }
+        }));
+
         {
             let aspect = self.camera.read().aspect();
 
