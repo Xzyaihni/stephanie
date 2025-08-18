@@ -358,7 +358,10 @@ impl Collider
 
     pub fn push_collided(&mut self, entity: Entity)
     {
-        self.collided.push(entity);
+        if !self.collided.contains(&entity)
+        {
+            self.collided.push(entity);
+        }
     }
 
     pub fn push_collided_tile(&mut self, tile: TilePos)

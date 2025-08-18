@@ -134,7 +134,7 @@
         "name": "heal pills",
         "drug": {
             "Heal": {
-                "amount": 200.0
+                "amount": 2.0
             }
         },
         "comfort": 0.5,
