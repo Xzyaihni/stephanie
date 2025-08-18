@@ -39,6 +39,7 @@
     },
     {
         "name": "bottle",
+        "damage_scale": 0.5,
         "comfort": 0.5,
         "scale": 0.2,
         "mass": 0.02,

@@ -2747,7 +2747,6 @@ impl HumanAnatomy
         info.skin_toughness *= 0.6;
 
         info.base_speed *= 12.0;
-        info.base_strength *= 2.0;
 
         let bone_toughness = info.bone_toughness;
 

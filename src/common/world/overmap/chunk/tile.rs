@@ -165,7 +165,7 @@ impl Tile
         let tile_info = tilemap.info(this_tile);
         let health = health_fraction * tile_info.health;
 
-        let damage = damage.as_flat() * 0.01;
+        let damage = damage.as_flat() * 0.005;
 
         let new_health = health - damage;
 

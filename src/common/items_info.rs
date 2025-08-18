@@ -79,6 +79,7 @@ pub struct ItemInfoRaw
     ranged: Option<Ranged>,
     drug: Option<Drug>,
     rarity_rolls: Option<bool>,
+    damage_scale: Option<f32>,
     comfort: Option<f32>,
     sharpness: Option<f32>,
     side_sharpness: Option<f32>,
@@ -98,6 +99,7 @@ pub struct ItemInfo
     pub ranged: Option<Ranged>,
     pub drug: Option<Drug>,
     pub rarity_rolls: bool,
+    pub damage_scale: f32,
     pub comfort: f32,
     pub sharpness: f32,
     pub side_sharpness: f32,
@@ -144,6 +146,7 @@ impl ItemInfo
             ranged: raw.ranged,
             drug: raw.drug,
             rarity_rolls: raw.rarity_rolls.unwrap_or(true),
+            damage_scale: raw.damage_scale.unwrap_or(1.0),
             comfort: raw.comfort.unwrap_or(1.0),
             sharpness: raw.sharpness.unwrap_or(0.0),
             side_sharpness: raw.side_sharpness.unwrap_or(0.0),
@@ -163,12 +166,13 @@ impl ItemInfo
             ranged: None,
             drug: None,
             rarity_rolls: false,
+            damage_scale: 0.5,
             comfort: 2.0,
             sharpness: 0.0,
             side_sharpness: 0.0,
             scale: HAND_SCALE,
             aspect: Vector2::repeat(1.0),
-            mass: 0.05, // 0.3 would be more accurate but i want balance
+            mass: 0.3,
             lighting: Light::default(),
             texture: None
         }
@@ -183,7 +187,7 @@ impl ItemInfo
 
     fn damage_base(&self) -> f32
     {
-        self.mass
+        self.mass * self.damage_scale
     }
 
     pub fn bash_damage(&self) -> DamageType

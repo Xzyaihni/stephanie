@@ -558,18 +558,14 @@ impl Character
         (fastrand::f32() < crit_chance).then_some(2.0)
     }
 
-    fn held_attack_cooldown(&self, combined_info: CombinedInfo) -> Option<f32>
+    fn held_attack_cooldown(&self) -> f32
     {
-        let item_info = self.held_info(combined_info);
-
-        let heaviness = item_info.mass / (self.newtons(combined_info)? * 0.1);
-
-        Some(item_info.comfort.recip() * heaviness.clamp(1.0, 2.0))
+        0.5
     }
 
-    fn bash_attack_cooldown(&self, combined_info: CombinedInfo) -> Option<f32>
+    fn bash_attack_cooldown(&self) -> f32
     {
-        self.held_attack_cooldown(combined_info).map(|x| x * 0.8)
+        self.held_attack_cooldown() * 0.8
     }
 
     pub fn bash_reachable(
@@ -1018,7 +1014,7 @@ impl Character
         };
 
         let mut lazy = some_or_return!(combined_info.entities.lazy_transform_mut_no_change(holding));
-        let swing_time = some_or_return!(self.bash_attack_cooldown(combined_info));
+        let swing_time = self.bash_attack_cooldown();
 
         let new_rotation = self.current_hand_rotation();
 
@@ -1071,7 +1067,7 @@ impl Character
 
         self.stop_buffered(BufferedAction::Bash);
 
-        self.attack_cooldown = some_or_return!(self.bash_attack_cooldown(combined_info));
+        self.attack_cooldown = self.bash_attack_cooldown();
 
         self.bash_side = self.bash_side.opposite();
 
@@ -1209,7 +1205,7 @@ impl Character
 
         let item = some_or_false!(self.held_item(combined_info));
 
-        self.attack_cooldown = some_or_false!(self.held_attack_cooldown(combined_info));
+        self.attack_cooldown = self.held_attack_cooldown();
 
         self.consume_attack_stamina(combined_info);
 
