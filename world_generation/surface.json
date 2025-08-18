@@ -40,7 +40,6 @@
             }
         },
         {
-            "track": {"direction": "Left", "neighbor": "Down"},
             "name": "road_end",
             "weight": 0.05,
             "neighbors": {

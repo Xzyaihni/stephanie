@@ -78,7 +78,7 @@ const WHITE_COLOR: Lcha = Lcha{l: 100.0, c: 0.0, h: 0.0, a: 1.0};
 const GRAY_COLOR: Lcha = Lcha{l: 5.0, c: 0.0, h: 0.0, a: 1.0};
 const BLACK_COLOR: Lcha = Lcha{l: 0.0, c: 0.0, h: 0.0, a: 1.0};
 
-const BACKGROUND_COLOR: Lcha = Lcha{a: 0.5, ..BLACK_COLOR};
+const BACKGROUND_COLOR: Lcha = BLACK_COLOR;
 const ACCENT_COLOR: Lcha = Lcha{h: HIGHLIGHTED_COLOR.h, ..WHITE_COLOR};
 const HIGHLIGHTED_COLOR: Lcha = Lcha{l: 70.0, c: 90.0, h: 6.0, a: 1.0};
 
@@ -1934,7 +1934,7 @@ impl Ui
 
             let panel_vertical = health_inner.update(UiId::Health(HealthPart::PanelVertical), UiElement{
                 texture: UiTexture::Solid,
-                mix: Some(MixColorLch::color(BACKGROUND_COLOR)),
+                mix: Some(MixColorLch::color(Lcha{a: 0.5, ..BACKGROUND_COLOR})),
                 children_layout: UiLayout::Vertical,
                 ..Default::default()
             });
@@ -2007,7 +2007,7 @@ impl Ui
 
             let body = self.controller.update(id(NotificationPart::Body), UiElement{
                 texture: UiTexture::Solid,
-                mix: Some(MixColorLch::color(BACKGROUND_COLOR)),
+                mix: Some(MixColorLch::color(Lcha{a: 0.5, ..BACKGROUND_COLOR})),
                 position: UiPosition::Absolute{position, align: UiPositionAlign{
                     horizontal: AlignHorizontal::Middle,
                     vertical: AlignVertical::Bottom
@@ -2373,7 +2373,7 @@ impl Ui
 
             let body = self.controller.update(UiId::Console(ConsolePart::Body), UiElement{
                 texture: UiTexture::Solid,
-                mix: Some(MixColorLch::color(BACKGROUND_COLOR)),
+                mix: Some(MixColorLch::color(Lcha{a: 0.5, ..BACKGROUND_COLOR})),
                 animation: Animation::normal(),
                 position: UiPosition::Absolute{position: Vector2::zeros(), align: Default::default()},
                 width: UiElementSize{

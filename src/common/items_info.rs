@@ -78,6 +78,7 @@ pub struct ItemInfoRaw
     name: String,
     ranged: Option<Ranged>,
     drug: Option<Drug>,
+    rarity_rolls: Option<bool>,
     comfort: Option<f32>,
     sharpness: Option<f32>,
     side_sharpness: Option<f32>,
@@ -96,6 +97,7 @@ pub struct ItemInfo
     pub name: String,
     pub ranged: Option<Ranged>,
     pub drug: Option<Drug>,
+    pub rarity_rolls: bool,
     pub comfort: f32,
     pub sharpness: f32,
     pub side_sharpness: f32,
@@ -141,6 +143,7 @@ impl ItemInfo
             name: raw.name,
             ranged: raw.ranged,
             drug: raw.drug,
+            rarity_rolls: raw.rarity_rolls.unwrap_or(true),
             comfort: raw.comfort.unwrap_or(1.0),
             sharpness: raw.sharpness.unwrap_or(0.0),
             side_sharpness: raw.side_sharpness.unwrap_or(0.0),
@@ -159,6 +162,7 @@ impl ItemInfo
             name: "hand".to_owned(),
             ranged: None,
             drug: None,
+            rarity_rolls: false,
             comfort: 2.0,
             sharpness: 0.0,
             side_sharpness: 0.0,
@@ -307,6 +311,6 @@ impl ItemsInfo
     {
         let id = ItemId(fastrand::usize(0..self.generic_info.items().len()));
 
-        Item::new(id)
+        Item::new(self, id)
     }
 }

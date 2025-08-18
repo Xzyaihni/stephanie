@@ -6,6 +6,7 @@ use strum::{IntoEnumIterator, EnumIter};
 
 use crate::common::{
     random_f32,
+    ItemsInfo,
     items_info::ItemId
 };
 
@@ -124,9 +125,9 @@ impl Default for Item
 
 impl Item
 {
-    pub fn new(id: ItemId) -> Self
+    pub fn new(info: &ItemsInfo, id: ItemId) -> Self
     {
-        let rarity = ItemRarity::random();
+        let rarity = if info.get(id).rarity_rolls { ItemRarity::random() } else { ItemRarity::Normal };
         Item{rarity, buffs: rarity.random_buffs(), id}
     }
 

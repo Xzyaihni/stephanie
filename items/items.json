@@ -137,6 +137,7 @@
                 "amount": 2.0
             }
         },
+        "rarity_rolls": false,
         "comfort": 0.5,
         "scale": 0.1,
         "mass": 0.05,

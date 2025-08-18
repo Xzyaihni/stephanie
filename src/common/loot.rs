@@ -42,15 +42,20 @@ impl Loot
 
     fn parse_item(&self, value: OutputWrapperRef) -> Result<Item, lisp::Error>
     {
-        let name = value.as_symbol()?;
-        let name: String = name.chars().map(|c| if c == '_' { ' ' } else { c }).collect();
+        let name = value.as_symbol().map(|name|
+        {
+            name.chars().map(|c| if c == '_' { ' ' } else { c }).collect::<String>()
+        }).or_else(|_|
+        {
+            value.as_string()
+        })?;
 
         let id = self.info.get_id(&name).ok_or_else(||
         {
             lisp::Error::Custom(format!("item named {name} not found"))
         })?;
 
-        Ok(Item::new(id))
+        Ok(Item::new(&self.info, id))
     }
 
     pub fn create<'a>(&'a self, name: &'a str) -> impl Iterator<Item=Item> + use<'a>

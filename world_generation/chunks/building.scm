@@ -286,7 +286,7 @@
                 this-chunk
                 (make-area
                     (make-point 5 0)
-                    (make-point 6 3))
+                    (make-point 6 4))
                 (tile 'concrete)))))
 
 (define roof-start (- building-height 3))
