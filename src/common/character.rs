@@ -1425,7 +1425,7 @@ impl Character
         };
 
         let angle = opposite_angle(self.bash_side.opposite().to_angle() - f32::consts::FRAC_PI_2);
-        let minimum_distance = some_or_return!(combined_info.entities.transform(info.this)).scale.xy().max() / 2.0;
+        let minimum_distance = some_or_return!(combined_info.entities.transform(info.this)).scale.xy().max();
 
         combined_info.entities.push(
             true,

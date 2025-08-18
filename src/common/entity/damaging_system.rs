@@ -406,7 +406,7 @@ fn damaging_colliding(
 
     let this_transform = some_or_value!(entities.transform(source_entity), Vec::new());
 
-    let meets_predicate = |damaging: &Damaging, collided_position|
+    let meets_predicate = |damaging: &Damaging, collided_position: Vector3<f32>|
     {
         match damaging.predicate
         {
@@ -417,7 +417,7 @@ fn damaging_colliding(
 
                 let parent_transform = some_or_value!(entities.transform(parent), true);
 
-                if parent_transform.position.xy().metric_distance(&this_transform.position.xy()) < minimum_distance
+                if collided_position.xy().metric_distance(&this_transform.position.xy()) < minimum_distance
                 {
                     return true;
                 }

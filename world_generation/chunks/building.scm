@@ -262,14 +262,26 @@
                     this-chunk
                     (make-area
                         (make-point 5 0)
-                        (make-point 6 3))
+                        (make-point 6 4))
                     (tile 'concrete))
                 (fill-area
                     this-chunk
                     (make-area
                         (make-point 6 1)
                         (make-point 4 2))
-                    (tile 'air)))
+                    (tile 'air))
+		(put-tile
+                    this-chunk
+		    (make-point 7 2)
+		    (single-marker (list 'light 0.6 '(0.5 0.0 0.0))))
+                (put-tile
+                    this-chunk
+		    (make-point 8 3)
+		    (tile 'air))
+		(put-tile
+                    this-chunk
+		    (make-point 9 3)
+		    (single-marker (list 'door side-right 'metal 2))))
             (fill-area
                 this-chunk
                 (make-area
