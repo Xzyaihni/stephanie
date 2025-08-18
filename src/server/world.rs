@@ -88,8 +88,7 @@ impl OvermapIndexing for ClientIndexer
 struct EntitiesTracker
 {
     pub indexer: ClientIndexer,
-    values: ChunksContainer<bool>,
-    needs_loading: bool
+    values: ChunksContainer<bool>
 }
 
 impl EntitiesTracker
@@ -98,7 +97,7 @@ impl EntitiesTracker
     {
         let values = ChunksContainer::new(indexer.size());
 
-        Self{indexer, values, needs_loading: true}
+        Self{indexer, values}
     }
 }
 
@@ -135,10 +134,7 @@ impl Overmap<bool> for EntitiesTracker
         &self.values[pos]
     }
 
-    fn generate_missing(&mut self, _offset: Option<Pos3<i32>>)
-    {
-        self.needs_loading = true;
-    }
+    fn generate_missing(&mut self, _offset: Option<Pos3<i32>>) {}
 }
 
 pub struct World
@@ -332,65 +328,32 @@ impl World
         pos: GlobalPos
     )
     {
-        let chunk = self.load_chunk(container, id, pos);
+        let message = self.load_chunk(container, id, pos);
 
-        self.message_handler.write().send_single(id, Message::ChunkSync{pos, chunk});
+        self.message_handler.write().send_single(id, message);
     }
 
     fn create_entities_full(
-        writer: &mut ConnectionsHandler,
         container: &mut ServerEntities,
         entities: impl Iterator<Item=FullEntityInfo>
-    )
+    ) -> Vec<(Entity, EntityInfo)>
     {
+        let mut output = Vec::new();
         entities.for_each(|entity_info|
         {
-            let mut sync_entity = |entity|
+            let mut create = |info: EntityInfo| -> Entity
             {
-                let message = Message::EntitySet{entity, info: Box::new(container.info(entity))};
+                let entity = container.push(false, info.clone());
 
-                writer.send_message(message);
+                output.push((entity, info));
 
                 entity
             };
 
-            let mut create = |info|
-            {
-                let entity = container.push(false, info);
-
-                sync_entity(entity)
-            };
-
-            let entity = entity_info.create(&mut create);
-
-            sync_entity(entity);
+            entity_info.create(&mut create);
         });
-    }
 
-    fn update(
-        &mut self,
-        container: &mut ServerEntities
-    )
-    {
-        self.client_indexers.iter_mut().for_each(|(_, indexer)|
-        {
-            if indexer.needs_loading
-            {
-                indexer.values.iter_mut().filter(|(_, x)| !**x).for_each(|(local_pos, x)|
-                {
-                    *x = true;
-
-                    let pos = indexer.indexer.to_global(local_pos);
-                    if let Some(entities) = self.entities_saver.load(pos)
-                    {
-                        self.entities_saver.save(pos, Vec::new());
-
-                        let mut writer = self.message_handler.write();
-                        Self::create_entities_full(&mut writer, container, entities.into_iter());
-                    }
-                });
-            }
-        });
+        output
     }
 
     fn load_chunk(
@@ -398,9 +361,18 @@ impl World
         container: &mut ServerEntities,
         id: ConnectionId,
         pos: GlobalPos
-    ) -> Chunk
+    ) -> Message
     {
-        self.chunk_saver.load(pos).unwrap_or_else(||
+        let entities = self.entities_saver.load(pos).map(|x|
+        {
+            self.entities_saver.save(pos, Vec::new());
+
+            x
+        }).unwrap_or_default();
+
+        let entities = Self::create_entities_full(container, entities.into_iter());
+
+        let chunk = self.chunk_saver.load(pos).unwrap_or_else(||
         {
             let chunk_pos = pos.into();
             let chunk = self.overmaps.borrow_mut().get_mut(&id)
@@ -432,7 +404,9 @@ impl World
             self.chunk_saver.save(pos, chunk.clone());
 
             chunk
-        })
+        });
+
+        Message::ChunkSync{pos, chunk, entities}
     }
 
     fn collect_to_delete<I>(iter: I) -> (Vec<Entity>, HashMap<GlobalPos, Vec<FullEntityInfo>>)
@@ -538,7 +512,6 @@ impl World
     )
     {
         self.player_moved(container, id, position);
-        self.update(container);
     }
 
     pub fn handle_message(
@@ -699,7 +672,7 @@ mod tests
             {
                 match message
                 {
-                    Message::ChunkSync{pos, chunk} =>
+                    Message::ChunkSync{pos, chunk, entities: _} =>
                     {
                         remembered.insert(pos, chunk);
                     },
@@ -722,7 +695,7 @@ mod tests
             {
                 match message
                 {
-                    Message::ChunkSync{pos, chunk} =>
+                    Message::ChunkSync{pos, chunk, entities: _} =>
                     {
                         total += 1;
 

@@ -50,11 +50,6 @@ impl EntityPasser for ConnectionsHandler
 
     fn send_message(&mut self, message: Message)
     {
-        if message.entity().map(|x| x.local()).unwrap_or(false)
-        {
-            return;
-        }
-
         self.message_buffer.set_message(message);
     }
 }

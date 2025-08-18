@@ -130,13 +130,9 @@ impl ConnectionsHandler
 
     fn send_message_inner(&mut self, skip_id: Option<ConnectionId>, message: Message)
     {
-        let entity_type = message.entity();
-
-        self.connections.iter_mut().filter(|(index, player_info)|
+        self.connections.iter_mut().filter(|(index, _player_info)|
         {
-            let same_sync = player_info.entity == entity_type;
-
-            !same_sync && skip_id != Some(ConnectionId(*index))
+            skip_id != Some(ConnectionId(*index))
         }).for_each(|(_, player_info)|
         {
             player_info.set_message(message.clone());

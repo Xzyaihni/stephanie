@@ -608,10 +608,10 @@ impl World
                 self.set_tile_local(pos, tile);
                 None
             },
-            Message::ChunkSync{pos, chunk} =>
+            Message::ChunkSync{pos, chunk, entities} =>
             {
                 self.overmap.set(pos, chunk);
-                None
+                Some(Message::EntitySetMany{entities})
             },
             _ => Some(message)
         }

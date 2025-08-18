@@ -1969,6 +1969,11 @@ macro_rules! define_entities_both
                 )+}
             }
 
+            pub fn try_info(&self, entity: Entity) -> Option<EntityInfo>
+            {
+                self.exists(entity).then(|| self.info(entity))
+            }
+
             impl_common_systems!{EntityInfo, $(($name, $set_func, $component_type),)+}
 
             pub fn update_lazy(&mut self)
@@ -2038,7 +2043,7 @@ macro_rules! define_entities_both
                 {
                     $(Message::$message_name{entity, component} =>
                     {
-                        debug_assert!(!entity.local);
+                        debug_assert!(!entity.local, "{entity:?} {component:#?} {:#?}", self.try_info(entity));
                         self.$set_func_no_change(entity, component.map(|x| *x));
 
                         None
@@ -2459,12 +2464,66 @@ macro_rules! define_entities
                 $(
                     changed_entities.$name.iter().copied().for_each(|entity|
                     {
+                        if entity.local
+                        {
+                            return;
+                        }
+
                         passer.send_message(Message::$message_name{
                             entity,
                             component: get_entity!(self, entity, get, $name).map(|x| Box::new(x.clone()))
                         });
                     });
                 )+
+            }
+
+            fn handle_entity_set(
+                &mut self,
+                create_info: &mut UpdateBuffersInfo,
+                entity: Entity,
+                info: EntityInfo
+            )
+            {
+                debug_assert!(!entity.local, "{entity:?} {info:#?}");
+
+                let transform = info.transform.clone()
+                    .or_else(||self.transform_clone(entity));
+
+                $({
+                    let component = info.$side_name.map(|x|
+                    {
+                        x.server_to_client(||
+                        {
+                            transform.clone().unwrap_or_else(||
+                            {
+                                panic!(
+                                    "{} expected transform, got none",
+                                    stringify!($side_name)
+                                )
+                            })
+                        }, create_info)
+                    });
+
+                    if component.is_some()
+                    {
+                        self.$side_set_func_no_change(entity, component);
+                    }
+                })+
+
+                $(
+                    if info.$name.is_some()
+                    {
+                        self.$set_func_no_change(entity, info.$name);
+                    }
+                )+
+
+                if let (
+                    Some(end),
+                    Some(mut transform)
+                ) = (self.lazy_target_end(entity), self.transform_mut(entity))
+                {
+                    *transform = end;
+                }
             }
 
             pub fn handle_message(
@@ -2478,48 +2537,18 @@ macro_rules! define_entities
                 #[allow(unreachable_patterns)]
                 match message
                 {
+                    Message::EntitySetMany{entities} =>
+                    {
+                        entities.into_iter().for_each(|(entity, info)|
+                        {
+                            self.handle_entity_set(create_info, entity, info);
+                        });
+
+                        None
+                    },
                     Message::EntitySet{entity, info} =>
                     {
-                        let transform = info.transform.clone()
-                            .or_else(||self.transform_clone(entity));
-
-                        $({
-                            let component = info.$side_name.map(|x|
-                            {
-                                x.server_to_client(||
-                                {
-                                    transform.clone().unwrap_or_else(||
-                                    {
-                                        panic!(
-                                            "{} expected transform, got none",
-                                            stringify!($side_name)
-                                        )
-                                    })
-                                }, create_info)
-                            });
-
-                            if component.is_some()
-                            {
-                                self.$side_set_func_no_change(entity, component);
-                            }
-                        })+
-
-                        $(
-                            if info.$name.is_some()
-                            {
-                                self.$set_func_no_change(entity, info.$name);
-                            }
-                        )+
-
-                        debug_assert!(!entity.local);
-
-                        if let (
-                            Some(end),
-                            Some(mut transform)
-                        ) = (self.lazy_target_end(entity), self.transform_mut(entity))
-                        {
-                            *transform = end;
-                        }
+                        self.handle_entity_set(create_info, entity, *info);
 
                         None
                     },

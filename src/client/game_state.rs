@@ -817,7 +817,7 @@ impl GameState
         );
 
         let message_throttler = MessageThrottler::new(MessageThrottlerInfo{
-            max_entity_sets: 20
+            max_chunk_syncs: 1
         });
 
         let ui_camera = Camera::new(1.0, -1.0..1.0);
@@ -1055,8 +1055,8 @@ impl GameState
             }
         }
 
-        let message = some_or_return!{self.entities.handle_message(create_info, message)};
         let message = some_or_return!{self.world.handle_message(message)};
+        let message = some_or_return!{self.entities.handle_message(create_info, message)};
 
         match message
         {

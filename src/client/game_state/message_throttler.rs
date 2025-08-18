@@ -3,7 +3,7 @@ use crate::common::message::Message;
 
 pub struct MessageThrottlerInfo
 {
-    pub max_entity_sets: usize
+    pub max_chunk_syncs: usize
 }
 
 struct CountLimited
@@ -35,7 +35,7 @@ impl CountLimited
 pub struct MessageThrottler
 {
     available: bool,
-    entity_sets: CountLimited
+    chunk_syncs: CountLimited
 }
 
 impl MessageThrottler
@@ -44,7 +44,7 @@ impl MessageThrottler
     {
         Self{
             available: true,
-            entity_sets: CountLimited::new(info.max_entity_sets)
+            chunk_syncs: CountLimited::new(info.max_chunk_syncs)
         }
     }
 
@@ -52,14 +52,14 @@ impl MessageThrottler
     {
         self.available = true;
 
-        self.entity_sets.reset();
+        self.chunk_syncs.reset();
     }
 
     pub fn process(&mut self, message: &Message)
     {
         let available = match message
         {
-            Message::EntitySet{..} => self.entity_sets.add(),
+            Message::ChunkSync{..} => self.chunk_syncs.add(),
             _ => true
         };
 

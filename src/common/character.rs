@@ -649,7 +649,7 @@ impl Character
         let holding_item = self.held_item_info(combined_info);
         let holding_state = holding_item.is_some();
 
-        some_or_return!(entities.parent_mut(holding_entity)).visible = holding_item.is_some();
+        some_or_return!(entities.parent_mut_no_change(holding_entity)).visible = holding_item.is_some();
 
         entities.lazy_setter.borrow_mut().set_follow_position_no_change(hand_right, holding_item.map(|_|
         {

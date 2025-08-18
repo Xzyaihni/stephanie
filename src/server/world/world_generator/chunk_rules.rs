@@ -18,6 +18,7 @@ use super::{PossibleStates, ParseError};
 use crate::{
     debug_config::*,
     common::{
+        some_or_return,
         BiMap,
         lisp::{self, Program, Primitives, LispMemory},
         world::{
@@ -1202,7 +1203,7 @@ impl ChunkRules
 
             TileRotation::iter().filter(|x| *x != *this_rotation).for_each(|other_rotation|
             {
-                let other_id = name_mappings.world_chunk.get(&(other_rotation, this_name.clone())).unwrap();
+                let other_id = some_or_return!(name_mappings.world_chunk.get(&(other_rotation, this_name.clone())));
 
                 let (this_rule, other_rule) = {
                     let [a, b] = self.rules.get_disjoint_mut([this_id, other_id]);

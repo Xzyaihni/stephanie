@@ -44,6 +44,7 @@ pub enum DebugMessage
 pub enum Message
 {
     EntitySet{entity: Entity, info: Box<EntityInfo>},
+    EntitySetMany{entities: Vec<(Entity, EntityInfo)>},
     SetParent{entity: Entity, component: Option<Box<Parent>>},
     SetTransform{entity: Entity, component: Option<Box<Transform>>},
     SetLazyTransform{entity: Entity, component: Option<Box<LazyTransform>>},
@@ -80,7 +81,7 @@ pub enum Message
     PlayerDisconnectFinished,
     SetTrusted,
     ChunkRequest{pos: GlobalPos},
-    ChunkSync{pos: GlobalPos, chunk: Chunk},
+    ChunkSync{pos: GlobalPos, chunk: Chunk, entities: Vec<(Entity, EntityInfo)>},
     SetTile{pos: TilePos, tile: Tile},
     RepeatMessage{message: Box<Message>},
     #[cfg(debug_assertions)]
@@ -100,55 +101,6 @@ impl Message
             | Message::PlayerDisconnect{..}
             | Message::PlayerDisconnectFinished => false,
             _ => true
-        }
-    }
-
-    pub fn entity(&self) -> Option<Entity>
-    {
-        match self
-        {
-            Message::EntitySet{entity, ..}
-            | Message::SetParent{entity, ..}
-            | Message::SetTransform{entity, ..}
-            | Message::SetLazyTransform{entity, ..}
-            | Message::SetLazyMix{entity, ..}
-            | Message::SetOutlineable{entity, ..}
-            | Message::SetFollowRotation{entity, ..}
-            | Message::SetFollowPosition{entity, ..}
-            | Message::SetInventory{entity, ..}
-            | Message::SetRender{entity, ..}
-            | Message::SetCollider{entity, ..}
-            | Message::SetPhysical{entity, ..}
-            | Message::SetDoor{entity, ..}
-            | Message::SetJoint{entity, ..}
-            | Message::SetLight{entity, ..}
-            | Message::SetWatchers{entity, ..}
-            | Message::SetDamaging{entity, ..}
-            | Message::SetAnatomy{entity, ..}
-            | Message::SetCharacter{entity, ..}
-            | Message::SetPlayer{entity, ..}
-            | Message::SetEnemy{entity, ..}
-            | Message::SetNamed{entity, ..}
-            | Message::SetOccluder{entity, ..}
-            | Message::SetNone{entity, ..}
-            | Message::SetTarget{entity, ..}
-            | Message::SyncPosition{entity, ..}
-            | Message::SyncPositionRotation{entity, ..}
-            | Message::SyncCharacter{entity, ..}
-            | Message::EntityDestroy{entity, ..}  => Some(*entity),
-            Message::SyncCamera{..}
-            | Message::PlayerConnect{..}
-            | Message::PlayerOnConnect{..}
-            | Message::PlayerFullyConnected
-            | Message::PlayerDisconnect{..}
-            | Message::PlayerDisconnectFinished
-            | Message::SetTrusted
-            | Message::ChunkRequest{..}
-            | Message::ChunkSync{..}
-            | Message::SetTile{..}
-            | Message::RepeatMessage{..} => None,
-            #[cfg(debug_assertions)]
-            Message::DebugMessage(_) => None
         }
     }
 }
