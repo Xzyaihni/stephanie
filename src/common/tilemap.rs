@@ -107,7 +107,7 @@ pub struct TileInfo
 impl TileInfo
 {
     fn from_raw(
-        textures: &Vec<(u32, SimpleImage)>,
+        textures: &[(u32, SimpleImage)],
         tile_raw: TileInfoRaw
     ) -> Self
     {
@@ -262,8 +262,7 @@ impl TileMap
 
         let textures = tiles.iter().scan(0, |current_id: &mut u32, tile_raw: &TileInfoRaw| -> Option<_>
         {
-            let value = (|tile_raw: &TileInfoRaw|
-            {
+            let value = {
                 if tile_raw.has_texture()
                 {
                     let texture_name = tile_raw.texture.as_ref().unwrap_or(&tile_raw.name);
@@ -302,7 +301,7 @@ impl TileMap
                 {
                     Vec::new()
                 }
-            })(tile_raw);
+            };
 
             Some(value)
         }).collect::<Vec<Vec<(u32, SimpleImage)>>>();

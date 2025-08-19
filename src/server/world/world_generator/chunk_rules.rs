@@ -293,6 +293,8 @@ pub enum ChunkSymmetry
     All
 }
 
+// im using the same prefix for the json to be more readable
+#[allow(clippy::enum_variant_names)]
 #[derive(Debug, Clone, Deserialize)]
 enum ChunkNeighbors
 {
@@ -1288,7 +1290,7 @@ impl ChunkRules
 
     fn union_neighbors(&mut self, name_mappings: &NameMappings)
     {
-        let rules: Vec<_> = self.rules.iter().map(|(a, _)| a.clone()).collect();
+        let rules: Vec<_> = self.rules.keys().copied().collect();
 
         let unify_neighbors = |this: &mut Self|
         {

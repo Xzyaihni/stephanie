@@ -328,7 +328,7 @@ impl ChunkModelBuilder
             value as f32 / side as f32
         };
 
-        let pixel_fraction = self.tilemap.pixel_fraction(PADDING as f32);
+        let pixel_fraction = self.tilemap.pixel_fraction(PADDING);
 
         let x_end = to_uv(x + 1) - pixel_fraction;
         let y_end = to_uv(y + 1) - pixel_fraction;

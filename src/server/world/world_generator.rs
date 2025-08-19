@@ -180,7 +180,8 @@ pub enum ChunkGenerationError
     SymbolAllocation(String, lisp::Error),
     TagSymbolAllocation(lisp::Error),
     LispRuntime(lisp::ErrorPos),
-    WrongOutput(lisp::Error)
+    WrongOutput(lisp::Error),
+    WrongSize{expected: usize, got: usize}
 }
 
 impl Display for ChunkGenerationError
@@ -192,7 +193,8 @@ impl Display for ChunkGenerationError
             Self::SymbolAllocation(name, err) => write!(f, "error allocating {name} symbol: {err}"),
             Self::TagSymbolAllocation(err) => write!(f, "error allocating tag symbol: {err}"),
             Self::LispRuntime(err) => write!(f, "{err}"),
-            Self::WrongOutput(err) => write!(f, "expected vector: {err}")
+            Self::WrongOutput(err) => write!(f, "expected vector: {err}"),
+            Self::WrongSize{expected, got} => write!(f, "expected vector with {expected} elements, got {got}")
         }
     }
 }
@@ -365,9 +367,23 @@ impl ChunkGenerator
                 ChunkGenerationError::WrongOutput(err)
             })?;
 
-            debug_assert!(WORLD_CHUNK_SIZE.z == 1, "i didnt implement rotation for anything other than z 1");
-            debug_assert!(WORLD_CHUNK_SIZE.x == WORLD_CHUNK_SIZE.y, "cant rotate non square chunks");
-            assert_eq!(output.len(), WORLD_CHUNK_SIZE.product());
+            {
+                const _: () = assert!(WORLD_CHUNK_SIZE.z == 1, "i didnt implement rotation for anything other than z 1");
+            }
+
+            {
+                const _: () = assert!(WORLD_CHUNK_SIZE.x == WORLD_CHUNK_SIZE.y, "cant rotate non square chunks");
+            }
+
+            {
+                let expected = WORLD_CHUNK_SIZE.product();
+                let got = output.len();
+
+                if got != expected
+                {
+                    return Err(ChunkGenerationError::WrongSize{expected, got});
+                }
+            }
 
             fn process<'a>(
                 memory: &LispMemory,

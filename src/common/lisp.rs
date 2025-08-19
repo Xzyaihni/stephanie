@@ -364,7 +364,7 @@ impl LispValue
         let tag = car.as_symbol(memory)?;
         let expected_tag = "string";
 
-        if expected_tag != &tag
+        if expected_tag != tag
         {
             return Err(Error::WrongTag{expected: expected_tag, got: tag});
         }

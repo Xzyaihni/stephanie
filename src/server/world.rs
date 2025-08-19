@@ -363,11 +363,9 @@ impl World
         pos: GlobalPos
     ) -> Message
     {
-        let entities = self.entities_saver.load(pos).map(|x|
+        let entities = self.entities_saver.load(pos).inspect(|_|
         {
             self.entities_saver.save(pos, Vec::new());
-
-            x
         }).unwrap_or_default();
 
         let entities = Self::create_entities_full(container, entities.into_iter());

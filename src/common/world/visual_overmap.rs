@@ -700,7 +700,7 @@ impl VisualOvermap
 
     pub fn camera_position(&self) -> Pos3<f32>
     {
-        (*self.visibility_checker.player_position.read()).into()
+        *self.visibility_checker.player_position.read()
     }
 
     pub fn camera_moved(&mut self, position: Pos3<f32>)

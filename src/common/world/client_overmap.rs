@@ -598,13 +598,13 @@ impl Overmap<Option<Arc<Chunk>>> for ClientOvermap
                     {
                         let value = -x;
 
-                        (value < size as i32).then(|| value as usize)
+                        (value < size as i32).then_some(value as usize)
                     },
                     Ordering::Greater =>
                     {
                         let value = size as i32 - 1 - x;
 
-                        (value >= 0).then(|| value as usize)
+                        (value >= 0).then_some(value as usize)
                     }
                 }
             }).zip(Pos3::new_axis()).map(|(plane, axis)|

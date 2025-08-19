@@ -296,7 +296,7 @@ impl Collider
 
         if self.kind == ColliderType::Rectangle
         {
-            let points = rectangle_points(&transform);
+            let points = rectangle_points(transform);
 
             let size_axis = |i|
             {

@@ -257,6 +257,8 @@ impl World
 
         impl PartialOrd for Node
         {
+            // clippy bug
+            #[allow(clippy::non_canonical_partial_ord_impl)]
             fn partial_cmp(&self, other: &Self) -> Option<Ordering>
             {
                 other.cost.partial_cmp(&self.cost)
@@ -265,7 +267,7 @@ impl World
 
         impl Ord for Node
         {
-            fn cmp(&self, other: &Self) -> Ordering { self.partial_cmp(other).unwrap() }
+            fn cmp(&self, other: &Self) -> Ordering { self.partial_cmp(other).unwrap_or(Ordering::Equal) }
         }
 
         let mut steps = 0;

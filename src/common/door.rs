@@ -123,7 +123,7 @@ impl Door
                                 from: self.door_rotation(),
                                 near: 0.04
                             },
-                            action: WatcherAction::SetCollider(collider.map(|x| Box::new(x))),
+                            action: WatcherAction::SetCollider(collider.map(Box::new)),
                             ..Default::default()
                         };
 

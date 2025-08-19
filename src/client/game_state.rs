@@ -231,7 +231,7 @@ impl ClientEntitiesContainer
 
         crate::frame_time_this!{
             collision_system_resolution,
-            ContactResolver::resolve(&mut self.entities, contacts, dt)
+            ContactResolver::resolve(&self.entities, contacts, dt)
         };
 
         self.animation = (self.animation + dt) % (f32::consts::PI * 2.0);
