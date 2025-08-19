@@ -49,13 +49,6 @@ use crate::{
 
 pub use crate::{iterate_components_with, for_each_component};
 
-pub mod render_system;
-pub mod damaging_system;
-pub mod physical_system;
-pub mod collider_system;
-pub mod raycast_system;
-pub mod enemy_system;
-
 
 // too many macros, the syntax is horrible, why r they so limiting? wuts up with that?
 
@@ -923,7 +916,7 @@ macro_rules! define_entities_both
         impl SetChanged<'_>
         {
             $(
-                fn $name(&self, entity: Entity)
+                pub fn $name(&self, entity: Entity)
                 {
                     self.0.changed_entities.borrow_mut().$name.push(entity);
                 }

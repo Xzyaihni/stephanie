@@ -23,6 +23,7 @@ use crate::{
         watcher::*,
         particle_creator::*,
         raycast::*,
+        systems::raycast_system,
         ENTITY_SCALE,
         EntityInfo,
         PhysicalProperties,
@@ -31,7 +32,7 @@ use crate::{
         AnyEntities,
         Entity,
         World,
-        entity::{iterate_components_with, raycast_system, ClientEntities},
+        entity::{iterate_components_with, ClientEntities},
         world::{TILE_SIZE, TilePos}
     }
 };
@@ -413,7 +414,7 @@ fn damaging_colliding(
             DamagingPredicate::None => true,
             DamagingPredicate::ParentAngleLess{angle: less, minimum_distance} =>
             {
-                let parent = some_or_value!(entities.parent(entity), true).entity;
+                let parent = some_or_value!(entities.parent(entity), true).entity();
 
                 let parent_transform = some_or_value!(entities.transform(parent), true);
 

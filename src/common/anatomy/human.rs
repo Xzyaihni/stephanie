@@ -59,7 +59,7 @@ impl<T> Speeds<T>
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct CachedProps
 {
     speed: Speeds<f32>,
@@ -96,7 +96,7 @@ impl Default for HumanAnatomyInfo
 struct PierceType
 {
     possible: Vec<AnatomyId>,
-    action: Rc<dyn Fn(&mut HumanAnatomy, Damage) -> Option<Damage>>
+    action: Rc<dyn Fn(&mut HumanAnatomyValues, Damage) -> Option<Damage>>
 }
 
 impl PierceType
@@ -123,7 +123,7 @@ impl PierceType
         }
     }
 
-    fn no_follow() -> fn(&mut HumanAnatomy, Option<Damage>) -> Option<Damage>
+    fn no_follow() -> fn(&mut HumanAnatomyValues, Option<Damage>) -> Option<Damage>
     {
         |_this, damage|
         {
@@ -150,13 +150,13 @@ impl PierceType
 
     fn possible_pierce<F>(possible: Vec<AnatomyId>, misses: usize, f: F) -> Self
     where
-        F: Fn(&mut HumanAnatomy, Option<Damage>) -> Option<Damage> + 'static
+        F: Fn(&mut HumanAnatomyValues, Option<Damage>) -> Option<Damage> + 'static
     {
         let possible_cloned = possible.clone();
 
         Self{
             possible,
-            action: Rc::new(move |this: &mut HumanAnatomy, mut damage|
+            action: Rc::new(move |this: &mut HumanAnatomyValues, mut damage|
             {
                 let mut possible_actions = possible_cloned.clone();
                 possible_actions.retain(|x| this.body.get::<()>(*x).is_some());
@@ -217,19 +217,19 @@ impl PierceType
         Self::possible_pierce(possible, 0, Self::no_follow())
     }
 
-    fn any_exists(&self, anatomy: &HumanAnatomy) -> bool
+    fn any_exists(&self, anatomy: &HumanAnatomyValues) -> bool
     {
         self.possible.iter().any(|x| anatomy.body.get::<()>(*x).is_some())
     }
 
-    fn combined_scale(&self, anatomy: &HumanAnatomy) -> f64
+    fn combined_scale(&self, anatomy: &HumanAnatomyValues) -> f64
     {
         self.possible.iter().filter_map(|x| anatomy.body.get::<SizeGetter>(*x)).sum()
     }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct HumanAnatomy
+pub struct HumanAnatomyValues
 {
     base_speed: f32,
     base_strength: f32,
@@ -237,11 +237,10 @@ pub struct HumanAnatomy
     blood: SimpleHealth,
     body: HumanBody,
     broken: Vec<AnatomyId>,
-    killed: Option<bool>,
-    cached: Option<CachedProps>
+    killed: Option<bool>
 }
 
-impl Default for HumanAnatomy
+impl Default for HumanAnatomyValues
 {
     fn default() -> Self
     {
@@ -249,7 +248,15 @@ impl Default for HumanAnatomy
     }
 }
 
-impl HumanAnatomy
+impl From<HumanAnatomy> for HumanAnatomyValues
+{
+    fn from(x: HumanAnatomy) -> Self
+    {
+        x.this
+    }
+}
+
+impl HumanAnatomyValues
 {
     pub fn new(mut info: HumanAnatomyInfo) -> Self
     {
@@ -391,158 +398,15 @@ impl HumanAnatomy
             spine: Some(spine)
         };
 
-        let mut this = Self{
+        Self{
             base_speed,
             base_strength,
             override_crawling: false,
             blood: SimpleHealth::new(4.0),
             body,
             broken: Vec::new(),
-            killed: None,
-            cached: None
-        };
-
-        this.update_cache();
-
-        this
-    }
-
-    fn cached(&self) -> &CachedProps
-    {
-        self.cached.as_ref().unwrap()
-    }
-
-    pub fn body(&self) -> &HumanBody
-    {
-        &self.body
-    }
-
-    pub fn is_dead(&self) -> bool
-    {
-        !self.can_move() && self.strength() == 0.0
-    }
-
-    pub fn take_killed(&mut self) -> bool
-    {
-        if let Some(killed) = self.killed.as_mut()
-        {
-            if *killed
-            {
-                *killed = false;
-                return true;
-            }
-        }
-
-        false
-    }
-
-    pub fn speed(&self) -> f32
-    {
-        if self.is_crawling() { self.cached().speed.arms } else { self.cached().speed.legs }
-    }
-
-    pub fn can_move(&self) -> bool
-    {
-        self.cached().speed.arms != 0.0 || self.cached().speed.legs != 0.0
-    }
-
-    pub fn strength(&self) -> f32
-    {
-        self.cached().strength
-    }
-
-    pub fn stamina_speed(&self) -> f32
-    {
-        self.cached().oxygenation.current * 0.2
-    }
-
-    pub fn max_stamina(&self) -> f32
-    {
-        self.cached().oxygenation.max
-    }
-
-    pub fn vision(&self) -> f32
-    {
-        self.cached().vision
-    }
-
-    pub fn vision_angle(&self) -> f32
-    {
-        (self.vision() * 0.5).min(1.0) * f32::consts::PI
-    }
-
-    pub fn is_crawling(&self) -> bool
-    {
-        let crawl_threshold = self.cached().speed.arms * 0.9; // prefer walking
-
-        self.override_crawling || (self.cached().speed.legs < crawl_threshold)
-    }
-
-    pub fn set_speed(&mut self, speed: f32)
-    {
-        self.base_speed = speed;
-
-        self.update_cache();
-    }
-
-    pub fn for_accessed_parts(&mut self, mut f: impl FnMut(ChangedPart))
-    {
-        {
-            let f = &mut f;
-            mem::take(&mut self.broken).into_iter().for_each(|broken|
-            {
-                f(ChangedPart::whole(broken));
-            });
-        }
-
-        AnatomyId::iter().for_each(|id|
-        {
-            let f = &mut f;
-
-            match id
-            {
-                AnatomyId::Part(id) =>
-                {
-                    if let Some(x) = self.body.get_part_mut::<AccessedGetter>(id)
-                    {
-                        x(&mut |kind| f(ChangedPart::Part(id, Some(kind))));
-                    }
-                },
-                AnatomyId::Organ(id) =>
-                {
-                    if self.body.get_organ_mut::<AccessedGetter>(id).unwrap_or(false)
-                    {
-                        f(ChangedPart::Organ(id));
-                    }
-                }
-            }
-        });
-    }
-
-    pub fn get_health(&self, id: ChangedPart) -> Option<f32>
-    {
-        let body = &self.body;
-        match id
-        {
-            ChangedPart::Part(x, kind) =>
-            {
-                if let Some(kind) = kind
-                {
-                    let health = match kind
-                    {
-                        ChangedKind::Bone => body.get_part::<BoneHealthGetter>(x).copied(),
-                        ChangedKind::Muscle => body.get_part::<MuscleHealthGetter>(x).copied().flatten(),
-                        ChangedKind::Skin => body.get_part::<SkinHealthGetter>(x).copied().flatten()
-                    };
-
-                    health.map(|x| x.fraction())
-                } else
-                {
-                    body.get_part::<AverageHealthGetter>(x)
-                }
-            },
-            ChangedPart::Organ(x) => body.get_organ::<AverageHealthGetter>(x)
-        }
+            killed: None
+        }.into()
     }
 
     fn damage_random_part(
@@ -663,7 +527,7 @@ impl HumanAnatomy
             }
         );
 
-        let pierce = picked.and_then(|(picked, on_pierce)|
+        picked.and_then(|(picked, on_pierce)|
         {
             let picked_damage = self.body.get_mut::<DamagerGetter>(*picked).map(|x| x(damage.clone()));
 
@@ -679,11 +543,183 @@ impl HumanAnatomy
             {
                 (on_pierce.action)(self, damage)
             }
-        });
+        })
+    }
+}
+
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+#[serde(from = "HumanAnatomyValues")]
+#[serde(into = "HumanAnatomyValues")]
+pub struct HumanAnatomy
+{
+    this: HumanAnatomyValues,
+    cached: Option<CachedProps>
+}
+
+impl From<HumanAnatomyValues> for HumanAnatomy
+{
+    fn from(this: HumanAnatomyValues) -> Self
+    {
+        let mut this = Self{
+            this,
+            cached: None
+        };
+
+        this.update_cache();
+
+        this
+    }
+}
+
+impl HumanAnatomy
+{
+    pub fn new(info: HumanAnatomyInfo) -> Self
+    {
+        Self::from(HumanAnatomyValues::new(info))
+    }
+
+    pub fn update(&mut self, dt: f32)
+    {
+        let cached = self.cached();
+        self.this.blood.heal_remainder(cached.blood_change * dt);
+    }
+
+    fn cached(&self) -> &CachedProps
+    {
+        self.cached.as_ref().unwrap()
+    }
+
+    pub fn body(&self) -> &HumanBody
+    {
+        &self.this.body
+    }
+
+    pub fn is_dead(&self) -> bool
+    {
+        !self.can_move() && self.strength() == 0.0
+    }
+
+    pub fn take_killed(&mut self) -> bool
+    {
+        if let Some(killed) = self.this.killed.as_mut()
+        {
+            if *killed
+            {
+                *killed = false;
+                return true;
+            }
+        }
+
+        false
+    }
+
+    pub fn speed(&self) -> f32
+    {
+        if self.is_crawling() { self.cached().speed.arms } else { self.cached().speed.legs }
+    }
+
+    pub fn can_move(&self) -> bool
+    {
+        self.cached().speed.arms != 0.0 || self.cached().speed.legs != 0.0
+    }
+
+    pub fn strength(&self) -> f32
+    {
+        self.cached().strength
+    }
+
+    pub fn stamina_speed(&self) -> f32
+    {
+        self.cached().oxygenation.current * 0.2
+    }
+
+    pub fn max_stamina(&self) -> f32
+    {
+        self.cached().oxygenation.max
+    }
+
+    pub fn vision(&self) -> f32
+    {
+        self.cached().vision
+    }
+
+    pub fn vision_angle(&self) -> f32
+    {
+        (self.vision() * 0.5).min(1.0) * f32::consts::PI
+    }
+
+    pub fn is_crawling(&self) -> bool
+    {
+        let crawl_threshold = self.cached().speed.arms * 0.9; // prefer walking
+
+        self.this.override_crawling || (self.cached().speed.legs < crawl_threshold)
+    }
+
+    pub fn set_speed(&mut self, speed: f32)
+    {
+        self.this.base_speed = speed;
 
         self.update_cache();
+    }
 
-        pierce
+    pub fn for_accessed_parts(&mut self, mut f: impl FnMut(ChangedPart))
+    {
+        {
+            let f = &mut f;
+            mem::take(&mut self.this.broken).into_iter().for_each(|broken|
+            {
+                f(ChangedPart::whole(broken));
+            });
+        }
+
+        AnatomyId::iter().for_each(|id|
+        {
+            let f = &mut f;
+
+            match id
+            {
+                AnatomyId::Part(id) =>
+                {
+                    if let Some(x) = self.this.body.get_part_mut::<AccessedGetter>(id)
+                    {
+                        x(&mut |kind| f(ChangedPart::Part(id, Some(kind))));
+                    }
+                },
+                AnatomyId::Organ(id) =>
+                {
+                    if self.this.body.get_organ_mut::<AccessedGetter>(id).unwrap_or(false)
+                    {
+                        f(ChangedPart::Organ(id));
+                    }
+                }
+            }
+        });
+    }
+
+    pub fn get_health(&self, id: ChangedPart) -> Option<f32>
+    {
+        let body = &self.this.body;
+        match id
+        {
+            ChangedPart::Part(x, kind) =>
+            {
+                if let Some(kind) = kind
+                {
+                    let health = match kind
+                    {
+                        ChangedKind::Bone => body.get_part::<BoneHealthGetter>(x).copied(),
+                        ChangedKind::Muscle => body.get_part::<MuscleHealthGetter>(x).copied().flatten(),
+                        ChangedKind::Skin => body.get_part::<SkinHealthGetter>(x).copied().flatten()
+                    };
+
+                    health.map(|x| x.fraction())
+                } else
+                {
+                    body.get_part::<AverageHealthGetter>(x)
+                }
+            },
+            ChangedPart::Organ(x) => body.get_organ::<AverageHealthGetter>(x)
+        }
     }
 
     fn speed_scale(&self) -> Speeds
@@ -698,7 +734,7 @@ impl HumanAnatomy
             }
         });
 
-        self.body.spine.as_ref().map(|spine|
+        self.body().spine.as_ref().map(|spine|
         {
             let arms = spine.arms.as_ref().map(|arm|
             {
@@ -725,32 +761,32 @@ impl HumanAnatomy
 
     fn brain(&self) -> Option<&Brain>
     {
-        self.body.head.as_ref()?.contents.brain.as_ref()
+        self.body().head.as_ref()?.contents.brain.as_ref()
     }
 
     fn updated_speed(&self) -> Speeds<f32>
     {
         self.speed_scale().map(|x|
         {
-            self.base_speed * x
+            self.this.base_speed * x
         })
     }
 
     pub fn override_crawling(&mut self, state: bool)
     {
-        self.override_crawling = state;
+        self.this.override_crawling = state;
     }
 
     fn updated_strength(&self) -> f32
     {
         let fraction = self.speed_scale().arms * 2.5;
 
-        self.base_strength * fraction
+        self.this.base_strength * fraction
     }
 
     fn lung(&self, side: Side1d) -> Option<&Lung>
     {
-        let spine = self.body.spine.as_ref()?;
+        let spine = self.body().spine.as_ref()?;
         let torso = spine.torso.as_ref()?;
 
         torso.contents.lungs.as_ref()[side].as_ref()
@@ -766,7 +802,7 @@ impl HumanAnatomy
             lung.health.fraction() * hemisphere.frontal.motor.body.fraction().powi(3)
         }).combine(|a, b| a + b) / 2.0;
 
-        let torso_muscle = self.body.spine.as_ref().and_then(|spine|
+        let torso_muscle = self.body().spine.as_ref().and_then(|spine|
         {
             spine.torso.as_ref()
         }).and_then(|torso| torso.muscle.map(|x| x.fraction()))
@@ -800,7 +836,7 @@ impl HumanAnatomy
         let vision = brain.as_ref().map(|hemisphere|
         {
             hemisphere.occipital.0.fraction().powi(3)
-        }).flip().zip(some_or_return!(self.body.head.as_ref()).contents.eyes.as_ref()).map(|(fraction, eye)|
+        }).flip().zip(some_or_return!(self.body().head.as_ref()).contents.eyes.as_ref()).map(|(fraction, eye)|
         {
             eye.as_ref().map(|x| x.average_health()).unwrap_or(0.0) * fraction
         }).combine(|a, b| a.max(b));
@@ -818,9 +854,9 @@ impl HumanAnatomy
             blood_change: 0.0
         });
 
-        if self.is_dead() && self.killed.is_none()
+        if self.is_dead() && self.this.killed.is_none()
         {
-            self.killed = Some(true);
+            self.this.killed = Some(true);
         }
     }
 }
@@ -834,16 +870,20 @@ impl Damageable for HumanAnatomy
             damage = damage * 2.0;
         }
 
-        self.damage_random_part(damage)
+        let damage = self.this.damage_random_part(damage);
+
+        self.update_cache();
+
+        damage
     }
 
     fn is_full(&self) -> bool
     {
-        self.body.is_full()
+        self.body().is_full()
     }
 
     fn heal(&mut self, amount: f32) -> Option<f32>
     {
-        self.body.heal(amount)
+        self.this.body.heal(amount)
     }
 }

@@ -269,6 +269,14 @@ impl Anatomy
         }
     }
 
+    pub fn update(&mut self, dt: f32)
+    {
+        match self
+        {
+            Self::Human(x) => x.update(dt)
+        }
+    }
+
     pub fn take_killed(&mut self) -> bool
     {
         match self

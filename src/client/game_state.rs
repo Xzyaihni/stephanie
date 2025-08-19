@@ -59,14 +59,16 @@ use crate::{
         OnChangeInfo,
         message::Message,
         character::PartialCombinedInfo,
-        entity::{
-            for_each_component,
+        systems::{
             render_system,
             physical_system,
             enemy_system,
             damaging_system,
-            ClientEntities,
             collider_system::{self, ContactResolver}
+        },
+        entity::{
+            for_each_component,
+            ClientEntities
         },
         world::{
             TILE_SIZE,
