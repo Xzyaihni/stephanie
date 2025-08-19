@@ -47,7 +47,7 @@ pub fn sees(
 
     let visibility = entities.character(other_entity)?.visibility();
 
-    let vision = anatomy.vision().unwrap_or(0.0);
+    let vision = anatomy.vision();
 
     let distance = transform.position.metric_distance(&other_position);
 
@@ -59,7 +59,7 @@ pub fn sees(
     let angle = angle_between(transform.position, other_position);
     let angle_offset = short_rotation(angle + transform.rotation).abs();
 
-    let vision_angle = anatomy.vision_angle().unwrap_or(0.0);
+    let vision_angle = anatomy.vision_angle();
 
     if angle_offset > vision_angle
     {
@@ -322,7 +322,7 @@ impl Enemy
     {
         let anatomy = entities.anatomy(entity).unwrap();
 
-        if anatomy.speed().is_none()
+        if anatomy.speed() == 0.0
         {
             return;
         }
@@ -470,7 +470,7 @@ impl Enemy
     {
         let anatomy = some_or_value!{entities.anatomy(entity), false};
 
-        if anatomy.speed().is_none()
+        if anatomy.speed() == 0.0
         {
             return false;
         }

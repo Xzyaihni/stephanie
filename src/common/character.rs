@@ -520,7 +520,7 @@ impl Character
 
     pub fn newtons(&self, combined_info: CombinedInfo) -> Option<f32>
     {
-        self.anatomy(combined_info.entities).map(|x| x.strength().map(|strength| strength * 30.0).unwrap_or(0.0))
+        self.anatomy(combined_info.entities).map(|x| x.strength() * 30.0)
     }
 
     #[allow(dead_code)]
@@ -541,12 +541,12 @@ impl Character
 
     pub fn stamina_speed(&self, combined_info: CombinedInfo) -> Option<f32>
     {
-        self.anatomy(combined_info.entities).map(|x| x.stamina().unwrap_or(0.0))
+        self.anatomy(combined_info.entities).map(|x| x.stamina_speed())
     }
 
     pub fn max_stamina(&self, entities: &ClientEntities) -> Option<f32>
     {
-        self.anatomy(entities).map(|x| x.max_stamina().unwrap_or(0.0))
+        self.anatomy(entities).map(|x| x.max_stamina())
     }
 
     fn held_crit_chance(&self, combined_info: CombinedInfo) -> Option<f32>
@@ -930,7 +930,7 @@ impl Character
     {
         self.anatomy(combined_info.entities).map(|anatomy|
         {
-            anatomy.speed().is_some()
+            anatomy.speed() != 0.0
         }).unwrap_or(true)
     }
 
@@ -1863,7 +1863,7 @@ impl Character
 
     pub fn anatomy_changed(&mut self, anatomy: &Anatomy)
     {
-        let can_move = anatomy.speed().is_some();
+        let can_move = anatomy.speed() != 0.0;
 
         let state = if can_move
         {
@@ -1977,7 +1977,12 @@ impl Character
         dt: f32
     )
     {
-        let speed = some_or_return!(anatomy.speed());
+        let speed = anatomy.speed();
+
+        if speed == 0.0
+        {
+            return;
+        }
 
         let speed = if self.is_sprinting()
         {

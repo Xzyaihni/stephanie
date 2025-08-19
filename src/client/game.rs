@@ -1494,7 +1494,7 @@ impl<'a> PlayerContainer<'a>
 
         let able_to_move = self.game_state.entities()
             .anatomy(self.info.entity)
-            .map(|anatomy| anatomy.speed().is_some())
+            .map(|anatomy| anatomy.speed() != 0.0)
             .unwrap_or(false) && self.info.animation.is_none();
 
         if able_to_move

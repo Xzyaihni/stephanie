@@ -10,7 +10,6 @@ use crate::{
     debug_config::*,
     common::{
         some_or_return,
-        some_or_value,
         TILE_SIZE,
         Side1d,
         Side2d,
@@ -22,7 +21,6 @@ use crate::{
 };
 
 use super::{
-    no_zero,
     DebugName,
     Halves,
     BodyPartInfo,
@@ -61,15 +59,13 @@ impl<T> Speeds<T>
     }
 }
 
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CachedProps
 {
-    speed: Speeds<Option<f32>>,
-    is_crawling: bool,
-    strength: Option<f32>,
-    stamina: Option<f32>,
-    max_stamina: Option<f32>,
-    vision: Option<f32>,
+    speed: Speeds<f32>,
+    strength: f32,
+    vision: f32,
+    oxygenation: SimpleHealth,
     blood_change: f32
 }
 
@@ -242,7 +238,7 @@ pub struct HumanAnatomy
     body: HumanBody,
     broken: Vec<AnatomyId>,
     killed: Option<bool>,
-    cached: CachedProps
+    cached: Option<CachedProps>
 }
 
 impl Default for HumanAnatomy
@@ -403,12 +399,17 @@ impl HumanAnatomy
             body,
             broken: Vec::new(),
             killed: None,
-            cached: Default::default()
+            cached: None
         };
 
         this.update_cache();
 
         this
+    }
+
+    fn cached(&self) -> &CachedProps
+    {
+        self.cached.as_ref().unwrap()
     }
 
     pub fn body(&self) -> &HumanBody
@@ -418,7 +419,7 @@ impl HumanAnatomy
 
     pub fn is_dead(&self) -> bool
     {
-        !self.can_move() && self.strength().is_none()
+        !self.can_move() && self.strength() == 0.0
     }
 
     pub fn take_killed(&mut self) -> bool
@@ -435,46 +436,46 @@ impl HumanAnatomy
         false
     }
 
-    pub fn speed(&self) -> Option<f32>
+    pub fn speed(&self) -> f32
     {
-        if self.is_crawling() { self.cached.speed.arms } else { self.cached.speed.legs }
+        if self.is_crawling() { self.cached().speed.arms } else { self.cached().speed.legs }
     }
 
     pub fn can_move(&self) -> bool
     {
-        self.cached.speed.arms.is_some() || self.cached.speed.legs.is_some()
+        self.cached().speed.arms != 0.0 || self.cached().speed.legs != 0.0
     }
 
-    pub fn strength(&self) -> Option<f32>
+    pub fn strength(&self) -> f32
     {
-        self.cached.strength
+        self.cached().strength
     }
 
-    pub fn stamina(&self) -> Option<f32>
+    pub fn stamina_speed(&self) -> f32
     {
-        self.cached.stamina
+        self.cached().oxygenation.current * 0.2
     }
 
-    pub fn max_stamina(&self) -> Option<f32>
+    pub fn max_stamina(&self) -> f32
     {
-        self.cached.max_stamina
+        self.cached().oxygenation.max
     }
 
-    pub fn vision(&self) -> Option<f32>
+    pub fn vision(&self) -> f32
     {
-        self.cached.vision
+        self.cached().vision
     }
 
-    pub fn vision_angle(&self) -> Option<f32>
+    pub fn vision_angle(&self) -> f32
     {
-        self.vision().map(|x| (x * 0.5).min(1.0) * f32::consts::PI)
+        (self.vision() * 0.5).min(1.0) * f32::consts::PI
     }
 
     pub fn is_crawling(&self) -> bool
     {
-        let crawl_threshold = self.cached.speed.arms.unwrap_or(0.0) * 0.9; // prefer walking
+        let crawl_threshold = self.cached().speed.arms * 0.9; // prefer walking
 
-        self.override_crawling || (self.cached.speed.legs.unwrap_or(0.0) < crawl_threshold)
+        self.override_crawling || (self.cached().speed.legs < crawl_threshold)
     }
 
     pub fn set_speed(&mut self, speed: f32)
@@ -727,14 +728,11 @@ impl HumanAnatomy
         self.body.head.as_ref()?.contents.brain.as_ref()
     }
 
-    fn updated_speed(&mut self) -> Speeds<Option<f32>>
+    fn updated_speed(&self) -> Speeds<f32>
     {
         self.speed_scale().map(|x|
         {
             self.base_speed * x
-        }).map(|x|
-        {
-            (x != 0.0).then_some(x)
         })
     }
 
@@ -743,11 +741,11 @@ impl HumanAnatomy
         self.override_crawling = state;
     }
 
-    fn updated_strength(&mut self) -> Option<f32>
+    fn updated_strength(&self) -> f32
     {
         let fraction = self.speed_scale().arms * 2.5;
 
-        no_zero(self.base_strength * fraction)
+        self.base_strength * fraction
     }
 
     fn lung(&self, side: Side1d) -> Option<&Lung>
@@ -758,15 +756,13 @@ impl HumanAnatomy
         torso.contents.lungs.as_ref()[side].as_ref()
     }
 
-    fn updated_stamina(&mut self) -> Option<f32>
+    fn updated_oxygenation_speed(&self) -> f32
     {
-        let base = 0.2;
-
         let brain = some_or_return!(self.brain());
 
         let amount = brain.as_ref().map_sides(|side, hemisphere|
         {
-            let lung = some_or_value!(self.lung(side.opposite()), 0.0);
+            let lung = some_or_return!(self.lung(side.opposite()));
             lung.health.fraction() * hemisphere.frontal.motor.body.fraction().powi(3)
         }).combine(|a, b| a + b) / 2.0;
 
@@ -776,22 +772,26 @@ impl HumanAnatomy
         }).and_then(|torso| torso.muscle.map(|x| x.fraction()))
             .unwrap_or(0.0);
 
-        no_zero(base * amount * torso_muscle)
+        amount * torso_muscle
     }
 
-    fn updated_max_stamina(&mut self) -> Option<f32>
+    fn updated_oxygenation_max(&self) -> f32
     {
-        let base = 1.0;
-
-        let amount = Halves{left: Side1d::Left, right: Side1d::Right}.map(|side|
+        Halves{left: Side1d::Left, right: Side1d::Right}.map(|side|
         {
-            some_or_value!(self.lung(side), 0.0).health.fraction()
-        }).combine(|a, b| a + b) / 2.0;
-
-        no_zero(base * amount)
+            some_or_return!(self.lung(side)).health.fraction()
+        }).combine(|a, b| a + b) / 2.0
     }
 
-    fn updated_vision(&mut self) -> Option<f32>
+    fn updated_oxygenation(&self) -> SimpleHealth
+    {
+        let max = self.updated_oxygenation_max();
+        let fraction = self.updated_oxygenation_speed();
+
+        SimpleHealth{current: max * fraction, max}
+    }
+
+    fn updated_vision(&self) -> f32
     {
         let base = TILE_SIZE * 10.0;
 
@@ -800,21 +800,23 @@ impl HumanAnatomy
         let vision = brain.as_ref().map(|hemisphere|
         {
             hemisphere.occipital.0.fraction().powi(3)
-        }).flip().zip(self.body.head.as_ref()?.contents.eyes.as_ref()).map(|(fraction, eye)|
+        }).flip().zip(some_or_return!(self.body.head.as_ref()).contents.eyes.as_ref()).map(|(fraction, eye)|
         {
             eye.as_ref().map(|x| x.average_health()).unwrap_or(0.0) * fraction
         }).combine(|a, b| a.max(b));
 
-        no_zero(base * vision)
+        base * vision
     }
 
     fn update_cache(&mut self)
     {
-        self.cached.speed = self.updated_speed();
-        self.cached.strength = self.updated_strength();
-        self.cached.stamina = self.updated_stamina();
-        self.cached.max_stamina = self.updated_max_stamina();
-        self.cached.vision = self.updated_vision();
+        self.cached = Some(CachedProps{
+            speed: self.updated_speed(),
+            strength: self.updated_strength(),
+            vision: self.updated_vision(),
+            oxygenation: self.updated_oxygenation(),
+            blood_change: 0.0
+        });
 
         if self.is_dead() && self.killed.is_none()
         {

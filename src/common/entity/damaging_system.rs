@@ -604,7 +604,7 @@ fn turn_towards_other(
         let mut character = some_or_return!(entities.character_mut(entity));
         let anatomy = some_or_return!(entities.anatomy(entity));
 
-        if anatomy.speed().is_some()
+        if anatomy.speed() != 0.0
         {
             let rotation = some_or_return!(character.rotation_mut());
 

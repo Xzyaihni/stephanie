@@ -29,7 +29,7 @@ macro_rules! simple_getter
 {
     ($name:ident) =>
     {
-        simple_getter!($name, Option<f32>);
+        simple_getter!($name, f32);
     };
     ($name:ident, $t:ty) =>
     {
@@ -212,11 +212,6 @@ impl PartFieldGetter<RefMutOrganFieldGet> for AccessedGetter
     }
 }
 
-fn no_zero(value: f32) -> Option<f32>
-{
-    (value != 0.0).then_some(value)
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Anatomy
 {
@@ -227,7 +222,7 @@ impl Anatomy
 {
     simple_getter!(speed);
     simple_getter!(strength);
-    simple_getter!(stamina);
+    simple_getter!(stamina_speed);
     simple_getter!(max_stamina);
     simple_getter!(vision);
     simple_getter!(vision_angle);
@@ -647,11 +642,19 @@ impl From<HumanAnatomyInfo> for BodyPartInfo
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct ChangeTracking<T>
 {
     accessed: bool,
     value: T
+}
+
+impl<T: Debug> Debug for ChangeTracking<T>
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
+    {
+        self.value.fmt(f)
+    }
 }
 
 impl<T> Deref for ChangeTracking<T>

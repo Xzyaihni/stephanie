@@ -1792,7 +1792,7 @@ macro_rules! define_entities_both
 
                 let maybe_anatomy = if let Some(anatomy) = self.anatomy(entity)
                 {
-                    anatomy.speed().is_none()
+                    anatomy.speed() == 0.0
                 } else
                 {
                     true
