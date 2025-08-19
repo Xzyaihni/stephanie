@@ -257,9 +257,7 @@ impl HumanAnatomy
 {
     pub fn new(mut info: HumanAnatomyInfo) -> Self
     {
-        info.bone_toughness *= 0.3;
-        info.muscle_toughness *= 0.6;
-        info.skin_toughness *= 0.6;
+        info.bone_toughness *= 0.5;
 
         info.base_speed *= 12.0;
 
