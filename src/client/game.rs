@@ -1786,7 +1786,7 @@ impl<'a> PlayerContainer<'a>
     pub fn walk(&mut self, direction: Vector3<f32>, dt: f32)
     {
         let entities = self.game_state.entities();
-        if let Some(character) = entities.character(self.info.entity)
+        if let Some(mut character) = entities.character_mut_no_change(self.info.entity)
         {
             let anatomy = some_or_return!(entities.anatomy(self.info.entity));
             let mut physical = some_or_return!(entities.physical_mut_no_change(self.info.entity));

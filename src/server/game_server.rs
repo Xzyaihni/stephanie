@@ -447,7 +447,7 @@ impl GameServer
             bone_toughness: base_health,
             muscle_toughness: base_health,
             skin_toughness: base_health,
-            base_speed: 0.9,
+            base_speed: 0.8,
             base_strength: 1.0,
             ..Default::default()
         }));

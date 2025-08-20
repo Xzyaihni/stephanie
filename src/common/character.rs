@@ -234,6 +234,7 @@ pub struct AfterInfo
     holding: Entity,
     hair: Vec<Entity>,
     rotation: f32,
+    walking: bool,
     sprint_await: bool,
     buffered: [f32; BufferedAction::COUNT]
 }
@@ -472,6 +473,7 @@ impl Character
             holding: inserter(held_item(Some(hand_left), false)),
             hair,
             rotation,
+            walking: false,
             sprint_await: false,
             buffered: [0.0; BufferedAction::COUNT]
         };
@@ -1747,6 +1749,29 @@ impl Character
 
         self.update_buffered(combined_info, dt);
 
+        {
+            let is_sprinting = self.is_sprinting();
+
+            let info = some_or_return!(self.info.as_mut());
+            let mut anatomy = some_or_return!(combined_info.entities.anatomy_mut_no_change(info.this));
+
+            *anatomy.external_oxygen_change_mut() = if info.walking
+            {
+                if is_sprinting
+                {
+                    -(0.5 + anatomy.oxygen_speed().max(0.0))
+                } else
+                {
+                    -0.1
+                }
+            } else
+            {
+                0.0
+            };
+
+            info.walking = false;
+        }
+
         if !self.update_common(combined_info.characters_info, combined_info.entities)
         {
             return;
@@ -1930,15 +1955,12 @@ impl Character
     {
         let is_sprinting = self.is_sprinting();
 
-        let info = some_or_return!(self.info.as_mut());
-
-        let mut anatomy = some_or_return!(combined_info.entities.anatomy_mut_no_change(info.this));
-        *anatomy.external_oxygen_change_mut() = if is_sprinting { -0.5 } else { 0.0 };
-
         if is_sprinting
         {
-            if anatomy.oxygen().current <= 0.0
+            if self.anatomy(combined_info.entities).map(|x| x.oxygen().current <= 0.0).unwrap_or(true)
             {
+                let info = some_or_return!(self.info.as_mut());
+
                 info.sprint_await = true;
             }
         }
@@ -1957,7 +1979,7 @@ impl Character
     }
 
     pub fn walk(
-        &self,
+        &mut self,
         anatomy: &Anatomy,
         physical: &mut Physical,
         direction: Unit<Vector3<f32>>,
@@ -1966,12 +1988,16 @@ impl Character
     {
         let speed = anatomy.speed();
 
+        let is_sprinting = self.is_sprinting();
+
         if speed == 0.0
         {
             return;
         }
 
-        let speed = if self.is_sprinting()
+        some_or_return!(self.info.as_mut()).walking = true;
+
+        let speed = if is_sprinting
         {
             speed * 1.8
         } else
