@@ -1,7 +1,4 @@
-use std::{
-    iter,
-    fmt::{self, Display}
-};
+use std::fmt::{self, Display};
 
 use serde::{Serialize, Deserialize};
 
@@ -404,16 +401,13 @@ impl Organ for Brain
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Eye
-{
-    pub health: HealthField
-}
+pub struct Eye(pub HealthField);
 
 impl Eye
 {
     pub fn new(base: f32) -> Self
     {
-        Self{health: Health::new(base * 0.5, base).into()}
+        Self(Health::new(base * 0.5, base).into())
     }
 }
 
@@ -421,12 +415,12 @@ impl HealthIterate for Eye
 {
     fn health_iter(&self) -> impl Iterator<Item=&HealthField>
     {
-        [&self.health].into_iter()
+        [&self.0].into_iter()
     }
 
     fn health_sided_iter_mut(&mut self, _side: Side2d) -> impl Iterator<Item=&mut HealthField>
     {
-        [&mut self.health].into_iter()
+        [&mut self.0].into_iter()
     }
 }
 
@@ -442,21 +436,18 @@ impl Organ for Eye
 
     fn consume_accessed(&mut self) -> bool
     {
-        self.health.consume_accessed()
+        self.0.consume_accessed()
     }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Lung
-{
-    pub health: HealthField
-}
+pub struct Lung(pub HealthField);
 
 impl Lung
 {
     pub fn new(base: f32) -> Self
     {
-        Self{health: Health::new(base * 0.05, base).into()}
+        Self(Health::new(base * 0.05, base).into())
     }
 }
 
@@ -464,12 +455,12 @@ impl HealthIterate for Lung
 {
     fn health_iter(&self) -> impl Iterator<Item=&HealthField>
     {
-        [&self.health].into_iter()
+        [&self.0].into_iter()
     }
 
     fn health_sided_iter_mut(&mut self, _side: Side2d) -> impl Iterator<Item=&mut HealthField>
     {
-        [&mut self.health].into_iter()
+        [&mut self.0].into_iter()
     }
 }
 
@@ -485,21 +476,25 @@ impl Organ for Lung
 
     fn consume_accessed(&mut self) -> bool
     {
-        self.health.consume_accessed()
+        self.0.consume_accessed()
     }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SpinalCord
 {
-    pub health: HealthField
+    pub cervical: HealthField,
+    pub lumbar: HealthField
 }
 
 impl SpinalCord
 {
     pub fn new(base: f32) -> Self
     {
-        Self{health: Health::new(base * 0.05, base).into()}
+        Self{
+            cervical: Health::new(base * 0.05, base).into(),
+            lumbar: Health::new(base * 0.025, base * 0.5).into()
+        }
     }
 }
 
@@ -507,12 +502,12 @@ impl HealthIterate for SpinalCord
 {
     fn health_iter(&self) -> impl Iterator<Item=&HealthField>
     {
-        [&self.health].into_iter()
+        [&self.cervical, &self.lumbar].into_iter()
     }
 
     fn health_sided_iter_mut(&mut self, _side: Side2d) -> impl Iterator<Item=&mut HealthField>
     {
-        [&mut self.health].into_iter()
+        [&mut self.cervical, &mut self.lumbar].into_iter()
     }
 }
 
@@ -524,11 +519,6 @@ impl Organ for SpinalCord
     fn size(&self) -> &f64
     {
         &0.3
-    }
-
-    fn consume_accessed(&mut self) -> bool
-    {
-        self.health.consume_accessed()
     }
 }
 
@@ -634,11 +624,41 @@ impl BrainId
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum SpinalCordId
+{
+    Cervical,
+    Lumbar
+}
+
+impl Display for SpinalCordId
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
+    {
+        write!(f, "{}", match self
+        {
+            Self::Cervical => "cervical",
+            Self::Lumbar => "lumbar"
+        })
+    }
+}
+
+impl SpinalCordId
+{
+    pub fn iter() -> impl Iterator<Item=Self>
+    {
+        [
+            Self::Cervical,
+            Self::Lumbar
+        ].into_iter()
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum OrganId
 {
     Eye(Side1d),
     Brain(Option<Side1d>, Option<BrainId>),
-    SpinalCord,
+    SpinalCord(SpinalCordId),
     Lung(Side1d)
 }
 
@@ -650,7 +670,7 @@ impl Display for OrganId
         {
             Self::Eye(side) => (side, "eye".to_owned()),
             Self::Lung(side) => (side, "lung".to_owned()),
-            Self::SpinalCord => return write!(f, "spinal cord"),
+            Self::SpinalCord(part) => return write!(f, "spinal cord ({part})"),
             Self::Brain(side, id) =>
             {
                 let name = id.map(|x| x.to_string()).unwrap_or_else(|| "hemisphere".to_owned());
@@ -681,7 +701,7 @@ impl OrganId
         ].into_iter()
             .chain(BrainId::iter().map(|id| Self::Brain(Some(Side1d::Left), Some(id))))
             .chain(BrainId::iter().map(|id| Self::Brain(Some(Side1d::Right), Some(id))))
-            .chain(iter::once(Self::SpinalCord))
+            .chain(SpinalCordId::iter().map(Self::SpinalCord))
     }
 }
 
@@ -1271,9 +1291,17 @@ macro_rules! impl_get
                         .torso.$option_fn()?
                         .contents.lungs[side].$option_fn()?))
                 },
-                OrganId::SpinalCord =>
+                OrganId::SpinalCord(part) =>
                 {
-                    Some(F::get($($b)+ self.spine.$option_fn()?.spine.contents))
+                    let spine = $($b)+ self.spine.$option_fn()?.spine.contents;
+
+                    let part = match part
+                    {
+                        SpinalCordId::Cervical => $($b)+ spine.cervical,
+                        SpinalCordId::Lumbar => $($b)+ spine.lumbar
+                    };
+
+                    Some(F::get(part))
                 }
             }
         }

@@ -856,7 +856,7 @@ impl HumanAnatomy
         let amount = brain.as_ref().map_sides(|side, hemisphere|
         {
             let lung = some_or_return!(self.lung(side.opposite()));
-            lung.health.fraction().unwrap_or(0.0) * hemisphere.frontal.motor.body.fraction().unwrap_or(0.0).powi(3)
+            lung.0.fraction().unwrap_or(0.0) * hemisphere.frontal.motor.body.fraction().unwrap_or(0.0).powi(3)
         }).combine(|a, b| a + b) / 2.0;
 
         let torso_muscle = self.body().spine.as_ref().and_then(|spine|
@@ -874,7 +874,7 @@ impl HumanAnatomy
     {
         Halves{left: Side1d::Left, right: Side1d::Right}.map(|side|
         {
-            some_or_return!(self.lung(side)).health.fraction().unwrap_or(0.0)
+            some_or_return!(self.lung(side)).0.fraction().unwrap_or(0.0)
         }).combine(|a, b| a + b) / 2.0
     }
 

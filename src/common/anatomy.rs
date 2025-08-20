@@ -766,6 +766,7 @@ pub trait Organ: DamageReceiver + Debug
     fn size(&self) -> &f64;
 
     fn is_broken(&self) -> bool { self.average_health().unwrap_or(0.0) == 0.0 }
+
     fn consume_accessed(&mut self) -> bool { unimplemented!() }
 
     fn average_health(&self) -> Option<f32>
