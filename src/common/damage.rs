@@ -6,7 +6,7 @@ use std::{
 
 use serde::{Serialize, Deserialize};
 
-use crate::common::{Side2d, SeededRandom};
+use crate::common::Side2d;
 
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -32,7 +32,6 @@ impl DamagePartial
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Damage
 {
-    pub rng: SeededRandom,
     pub data: DamageType,
     pub direction: DamageDirection
 }
@@ -65,13 +64,19 @@ impl Damage
 {
     pub fn new(direction: DamageDirection, data: DamageType) -> Self
     {
-        Self{rng: SeededRandom::new(), data, direction}
+        Self{data, direction}
+    }
+
+    pub fn area_each(amount: f32) -> Self
+    {
+        Self{data: DamageType::AreaEach(amount), direction: DamageDirection::default()}
     }
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum DamageType
 {
+    AreaEach(f32),
     Blunt(f32),
     Sharp{sharpness: f32, damage: f32},
     Bullet(f32)
@@ -95,6 +100,7 @@ impl MulAssign<f32> for DamageType
     {
         match self
         {
+            Self::AreaEach(x) => *x *= scale,
             Self::Blunt(x) => *x *= scale,
             Self::Sharp{damage, ..} => *damage *= scale,
             Self::Bullet(x) => *x *= scale
@@ -108,6 +114,7 @@ impl DamageType
     {
         match self
         {
+            Self::AreaEach(x) => x,
             Self::Blunt(x) => x,
             Self::Sharp{damage, ..} => damage,
             Self::Bullet(x) => x
@@ -126,6 +133,14 @@ pub enum DamageHeight
     Top,
     Middle,
     Bottom
+}
+
+impl Default for DamageHeight
+{
+    fn default() -> Self
+    {
+        Self::Middle
+    }
 }
 
 impl DamageHeight
@@ -169,7 +184,7 @@ impl DamageHeight
     }
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Copy, Serialize, Deserialize)]
 pub struct DamageDirection
 {
     pub side: Side2d,

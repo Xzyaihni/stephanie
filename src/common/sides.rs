@@ -94,6 +94,14 @@ pub enum Side2d
     Back
 }
 
+impl Default for Side2d
+{
+    fn default() -> Self
+    {
+        Self::Front
+    }
+}
+
 impl From<Side1d> for Side2d
 {
     fn from(side: Side1d) -> Self

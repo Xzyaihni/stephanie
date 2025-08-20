@@ -64,6 +64,7 @@ use crate::{
             physical_system,
             enemy_system,
             damaging_system,
+            anatomy_system,
             collider_system::{self, ContactResolver}
         },
         entity::{
@@ -187,6 +188,11 @@ impl ClientEntitiesContainer
         crate::frame_time_this!{
             lazy_transform_update,
             self.entities.update_lazy(dt)
+        };
+
+        crate::frame_time_this!{
+            anatomy_system_update,
+            anatomy_system::update(&mut self.entities, dt)
         };
 
         crate::frame_time_this!{

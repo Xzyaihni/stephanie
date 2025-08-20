@@ -1,5 +1,6 @@
 use std::{
     f32,
+    iter,
     fmt::{self, Debug, Display},
     ops::{Index, IndexMut, ControlFlow, Deref, DerefMut}
 };
@@ -9,7 +10,6 @@ use serde::{Serialize, Deserialize};
 use crate::{
     debug_config::*,
     common::{
-        SeededRandom,
         Damage,
         DamageType,
         Side1d,
@@ -179,9 +179,9 @@ impl PartFieldGetter<RefMutOrganFieldGet> for DamagerGetter
 
     fn get<'a, O: Organ + 'a>(value: &'a mut O) -> Self::V<'a>
     {
-        Box::new(|mut damage|
+        Box::new(|damage|
         {
-            let data = value.damage(&mut damage.rng, damage.direction.side, damage.data);
+            let data = value.damage(damage.direction.side, damage.data);
 
             data.map(|data| Damage{data, ..damage})
         })
@@ -269,7 +269,7 @@ impl Anatomy
         }
     }
 
-    pub fn update(&mut self, dt: f32)
+    pub fn update(&mut self, dt: f32) -> bool
     {
         match self
         {
@@ -321,62 +321,92 @@ impl Damageable for Anatomy
     }
 }
 
-fn heal_iterative<const COUNT: usize>(
-    amount: f32,
-    mut values: [&mut dyn HealReceiver; COUNT]
-) -> Option<f32>
+pub fn health_iter_mut_helper(side: Side2d, x: &mut impl HealthIterate) -> Vec<&mut HealthField>
 {
-    let mut pool = amount;
-
-    let mut filled = values.each_ref().map(|x| x.is_full());
-
-    loop
-    {
-        let mut current = filled.iter().filter(|x| !**x).count();
-
-        if current == 0
-        {
-            break;
-        }
-
-        for (value, filled) in values.iter_mut().zip(filled.iter_mut()).filter(|(_, filled)| !**filled)
-        {
-            let heal_amount = pool / current as f32;
-            pool -= heal_amount;
-
-            pool += value.heal(heal_amount).unwrap_or(0.0);
-
-            if pool <= 0.0
-            {
-                return None;
-            }
-
-            current -= 1;
-
-            if value.is_full()
-            {
-                *filled = true;
-            }
-        }
-    }
-
-    Some(pool)
+    x.health_sided_iter_mut(side).collect()
 }
 
-pub trait HealReceiver
+pub type HealthField = ChangeTracking<Health>;
+
+pub trait HealthIterate
 {
-    fn is_full(&self) -> bool;
-    fn heal(&mut self, amount: f32) -> Option<f32>;
+    fn health_iter(&self) -> impl Iterator<Item=&HealthField>;
+    fn health_sided_iter_mut(&mut self, side: Side2d) -> impl Iterator<Item=&mut HealthField>;
+}
+
+pub trait HealReceiver: HealthIterate
+{
+    fn is_full(&self) -> bool
+    {
+        self.health_iter().all(|x| (**x).is_full())
+    }
+
+    fn heal(&mut self, amount: f32) -> Option<f32>
+    {
+        let mut pool = amount;
+
+        loop
+        {
+            let mut current = self.health_iter().filter(|x| !(***x).is_full()).count();
+
+            if current == 0
+            {
+                break;
+            }
+
+            for health in self.health_sided_iter_mut(Side2d::default()).filter(|x| !(***x).is_full())
+            {
+                let heal_amount = pool / current as f32;
+                pool -= heal_amount;
+
+                pool += health.heal_remainder(heal_amount).unwrap_or(0.0);
+
+                if pool <= 0.0
+                {
+                    return None;
+                }
+
+                current -= 1;
+            }
+        }
+
+        Some(pool)
+    }
 }
 
 pub trait DamageReceiver: HealReceiver
 {
     fn damage(
         &mut self,
-        rng: &mut SeededRandom,
         side: Side2d,
         damage: DamageType
-    ) -> Option<DamageType>;
+    ) -> Option<DamageType>
+    {
+        if let DamageType::AreaEach(_) = &damage
+        {
+            self.health_sided_iter_mut(side).for_each(|x|
+            {
+                x.damage_pierce(damage);
+            });
+
+            None
+        } else
+        {
+            self.damage_normal(side, damage)
+        }
+    }
+
+    fn damage_normal(
+        &mut self,
+        side: Side2d,
+        damage: DamageType
+    ) -> Option<DamageType>
+    {
+        self.health_sided_iter_mut(side).try_fold(damage, |acc, x|
+        {
+            x.damage_pierce(acc)
+        })
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -477,9 +507,24 @@ impl SimpleHealth
         Self{max, current: max}
     }
 
+    pub fn set_max(&mut self, new_max: f32)
+    {
+        self.max = new_max;
+
+        if self.current > self.max
+        {
+            self.current = self.max;
+        }
+    }
+
+    pub fn change(&mut self, change: f32)
+    {
+        self.current = (self.current + change).clamp(0.0, self.max);
+    }
+
     pub fn subtract_hp(&mut self, amount: f32)
     {
-        self.current = (self.current - amount).clamp(0.0, self.max);
+        self.change(-amount);
     }
 
     pub fn heal_remainder(&mut self, amount: f32) -> Option<f32>
@@ -570,6 +615,11 @@ impl Health
     {
         match damage
         {
+            DamageType::AreaEach(x) =>
+            {
+                self.simple_pierce(x);
+                None
+            },
             DamageType::Blunt(damage) =>
             {
                 self.simple_pierce(damage).map(DamageType::Blunt)
@@ -706,31 +756,37 @@ impl<T> ChangeTracking<T>
 
 pub trait Organ: DamageReceiver + Debug
 {
-    fn average_health(&self) -> f32;
     fn size(&self) -> &f64;
 
     fn is_broken(&self) -> bool { self.average_health() <= 0.0 }
     fn consume_accessed(&mut self) -> bool { unimplemented!() }
-}
 
-impl HealReceiver for ()
-{
-    fn is_full(&self) -> bool { true }
-    fn heal(&mut self, amount: f32) -> Option<f32> { Some(amount) }
-}
-
-impl DamageReceiver for ()
-{
-    fn damage(
-        &mut self,
-        _rng: &mut SeededRandom,
-        _side: Side2d,
-        damage: DamageType
-    ) -> Option<DamageType>
+    fn average_health(&self) -> f32
     {
-        Some(damage)
+        let (total, sum) = self.health_iter().fold((0, 0.0), |(total, sum), x|
+        {
+            (total + 1, sum + x.fraction())
+        });
+
+        sum / total as f32
     }
 }
+
+impl HealthIterate for ()
+{
+    fn health_iter(&self) -> impl Iterator<Item=&HealthField>
+    {
+        [].into_iter()
+    }
+
+    fn health_sided_iter_mut(&mut self, _side: Side2d) -> impl Iterator<Item=&mut HealthField>
+    {
+        [].into_iter()
+    }
+}
+
+impl HealReceiver for () {}
+impl DamageReceiver for () {}
 
 impl Organ for ()
 {
@@ -749,26 +805,26 @@ pub struct BodyPart<Contents=()>
     contents: Contents
 }
 
-impl<Contents: Organ> HealReceiver for BodyPart<Contents>
+impl<Contents: HealthIterate> HealthIterate for BodyPart<Contents>
 {
-    fn is_full(&self) -> bool
+    fn health_iter(&self) -> impl Iterator<Item=&HealthField>
     {
-        self.bone.is_full()
-            && self.skin.map(|x| x.is_full()).unwrap_or(true)
-            && self.muscle.map(|x| x.is_full()).unwrap_or(true)
-            && self.contents.is_full()
+        self.skin.health_iter()
+            .chain(self.muscle.health_iter())
+            .chain(iter::once(&self.bone))
+            .chain(self.contents.health_iter())
     }
 
-    fn heal(&mut self, amount: f32) -> Option<f32>
+    fn health_sided_iter_mut(&mut self, side: Side2d) -> impl Iterator<Item=&mut HealthField>
     {
-        heal_iterative(amount, [
-            &mut self.bone,
-            &mut self.skin,
-            &mut self.muscle,
-            &mut self.contents
-        ])
+        self.skin.health_sided_iter_mut(side)
+            .chain(self.muscle.health_sided_iter_mut(side))
+            .chain(iter::once(&mut self.bone))
+            .chain(self.contents.health_sided_iter_mut(side))
     }
 }
+
+impl<Contents: Organ> HealReceiver for BodyPart<Contents> {}
 
 impl<Contents> BodyPart<Contents>
 {
@@ -782,7 +838,7 @@ impl<Contents> BodyPart<Contents>
     {
         Self::new_full(
             name,
-            Health::new(bone * 0.001, bone),
+            Health::new(bone * 0.1, bone),
             Some(Health::new(info.skin_toughness * 0.05, info.skin_toughness)),
             Some(Health::new(info.muscle_toughness * 0.2, info.muscle_toughness * 5.0)),
             size,
@@ -864,18 +920,16 @@ impl<Contents: Organ> BodyPart<Contents>
             eprintln!("damaging {} for {damage:?}", self.name.name());
         }
 
-        let mut rng = damage.rng;
         let direction = damage.direction;
 
-        self.damage_inner(&mut rng, direction.side, damage.data).map(|damage|
+        self.damage_inner(direction.side, damage.data).map(|damage|
         {
-            Damage{rng, direction, data: damage}
+            Damage{direction, data: damage}
         })
     }
 
     fn damage_inner(
         &mut self,
-        rng: &mut SeededRandom,
         side: Side2d,
         damage: DamageType
     ) -> Option<DamageType>
@@ -891,7 +945,8 @@ impl<Contents: Organ> BodyPart<Contents>
                 {
                     x.damage_pierce(damage * (base_mult + sharpness).clamp(0.0, 1.0))
                 },
-                DamageType::Bullet(_) => x.damage_pierce(damage)
+                DamageType::Bullet(_)
+                | DamageType::AreaEach(_) => x.damage_pierce(damage)
             }
         }).unwrap_or(Some(damage))
         {
@@ -900,7 +955,7 @@ impl<Contents: Organ> BodyPart<Contents>
             {
                 if let Some(pierce) = self.bone.damage_pierce(pierce)
                 {
-                    return self.contents.damage(rng, side, pierce);
+                    return self.contents.damage(side, pierce);
                 }
             }
         }
@@ -1023,16 +1078,31 @@ impl<T> IndexMut<Side1d> for Halves<T>
     }
 }
 
-impl HealReceiver for ChangeTracking<Health>
+impl HealthIterate for ChangeTracking<Health>
 {
-    fn is_full(&self) -> bool
+    fn health_iter(&self) -> impl Iterator<Item=&HealthField>
     {
-        Health::is_full(self)
+        iter::once(self)
     }
 
-    fn heal(&mut self, amount: f32) -> Option<f32>
+    fn health_sided_iter_mut(&mut self, _side: Side2d) -> impl Iterator<Item=&mut HealthField>
     {
-        self.heal_remainder(amount)
+        iter::once(self)
+    }
+}
+
+impl HealReceiver for ChangeTracking<Health> {}
+
+impl HealthIterate for ChangeTracking<Option<Health>>
+{
+    fn health_iter(&self) -> impl Iterator<Item=&HealthField>
+    {
+        [].into_iter()
+    }
+
+    fn health_sided_iter_mut(&mut self, _side: Side2d) -> impl Iterator<Item=&mut HealthField>
+    {
+        [].into_iter()
     }
 }
 
@@ -1049,18 +1119,7 @@ impl HealReceiver for ChangeTracking<Option<Health>>
     }
 }
 
-impl DamageReceiver for ChangeTracking<Health>
-{
-    fn damage(
-        &mut self,
-        _rng: &mut SeededRandom,
-        _side: Side2d,
-        damage: DamageType
-    ) -> Option<DamageType>
-    {
-        self.damage_pierce(damage)
-    }
-}
+impl DamageReceiver for ChangeTracking<Health> {}
 
 impl Organ for ChangeTracking<Health>
 {
@@ -1077,36 +1136,5 @@ impl Organ for ChangeTracking<Health>
     fn consume_accessed(&mut self) -> bool
     {
         Self::consume_accessed(self)
-    }
-}
-
-#[cfg(test)]
-mod tests
-{
-    use super::*;
-
-
-    #[test]
-    fn healing()
-    {
-        let health_with = |amount| -> ChangeTracking<Health>
-        {
-            let mut h = Health::new(fastrand::f32(), 1.0);
-            h.health.current = amount;
-
-            h.into()
-        };
-
-        let mut a = health_with(0.7);
-        let mut b = health_with(0.3);
-        let mut c = health_with(0.2);
-
-        heal_iterative(1.0, [&mut a, &mut b, &mut c]);
-
-        let e = f32::EPSILON;
-
-        assert_eq!(a.current(), 1.0);
-        assert!((b.current() - 0.65).abs() < e);
-        assert!((c.current() - 0.55).abs() < e);
     }
 }

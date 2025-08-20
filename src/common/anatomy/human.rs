@@ -65,7 +65,7 @@ pub struct CachedProps
     speed: Speeds<f32>,
     strength: f32,
     vision: f32,
-    oxygenation: SimpleHealth,
+    oxygen_change: f32,
     blood_change: f32
 }
 
@@ -156,7 +156,7 @@ impl PierceType
 
         Self{
             possible,
-            action: Rc::new(move |this: &mut HumanAnatomyValues, mut damage|
+            action: Rc::new(move |this: &mut HumanAnatomyValues, damage|
             {
                 let mut possible_actions = possible_cloned.clone();
                 possible_actions.retain(|x| this.body.get::<()>(*x).is_some());
@@ -166,13 +166,13 @@ impl PierceType
                     return f(this, None);
                 }
 
-                let miss_check = damage.rng.next_usize_between(0..possible_actions.len() + misses);
+                let miss_check = fastrand::usize(0..possible_actions.len() + misses);
                 if miss_check >= possible_actions.len()
                 {
                     return f(this, None);
                 }
 
-                let target = damage.rng.choice(possible_actions);
+                let target = fastrand::choice(possible_actions).unwrap();
 
                 let pierce = this.body.get_mut::<DamagerGetter>(target).unwrap()(damage);
 
@@ -235,6 +235,8 @@ pub struct HumanAnatomyValues
     base_strength: f32,
     override_crawling: bool,
     blood: SimpleHealth,
+    oxygen: SimpleHealth,
+    hypoxic: f32,
     body: HumanBody,
     broken: Vec<AnatomyId>,
     killed: Option<bool>
@@ -403,6 +405,8 @@ impl HumanAnatomyValues
             base_strength,
             override_crawling: false,
             blood: SimpleHealth::new(4.0),
+            oxygen: SimpleHealth::new(1.0),
+            hypoxic: 0.0,
             body,
             broken: Vec::new(),
             killed: None
@@ -411,12 +415,12 @@ impl HumanAnatomyValues
 
     fn damage_random_part(
         &mut self,
-        mut damage: Damage
+        damage: Damage
     ) -> Option<Damage>
     {
         if DebugConfig::is_enabled(DebugTool::PrintDamage)
         {
-            eprintln!("(rng state {:?}) start damage {damage:?}", damage.rng);
+            eprintln!("start damage {damage:?}");
         }
 
         let no_pierce = PierceType::empty;
@@ -519,7 +523,7 @@ impl HumanAnatomyValues
         let ids: &Vec<_> = &ids;
 
         let picked = WeightedPicker::pick_from(
-            damage.rng.next_f64(),
+            fastrand::f64(),
             ids,
             |(id, pierce)|
             {
@@ -530,8 +534,6 @@ impl HumanAnatomyValues
         picked.and_then(|(picked, on_pierce)|
         {
             let picked_damage = self.body.get_mut::<DamagerGetter>(*picked).map(|x| x(damage.clone()));
-
-            self.body.detach_broken(|id| { self.broken.push(id); });
 
             if let Some(damage) = picked_damage
             {
@@ -578,10 +580,46 @@ impl HumanAnatomy
         Self::from(HumanAnatomyValues::new(info))
     }
 
-    pub fn update(&mut self, dt: f32)
+    pub fn update(&mut self, dt: f32) -> bool
     {
-        let cached = self.cached();
-        self.this.blood.heal_remainder(cached.blood_change * dt);
+        let cached = self.cached.as_ref().unwrap();
+
+        self.this.blood.change(cached.blood_change * dt);
+        self.this.oxygen.change(cached.oxygen_change * dt);
+
+        if self.this.oxygen.current == 0.0
+        {
+            self.this.hypoxic += dt;
+        } else
+        {
+            self.this.hypoxic = 0.0;
+        }
+
+        if self.this.hypoxic > 1.0
+        {
+            let is_damaged = {
+                let damager = self.this.body.get_mut::<DamagerGetter>(OrganId::Brain(None, None).into());
+
+                let is_damaged = damager.is_some();
+
+                if let Some(damager) = damager
+                {
+                    damager(Damage::area_each(dt));
+                }
+
+                is_damaged
+            };
+
+            if is_damaged
+            {
+                self.on_damage();
+            }
+
+            is_damaged
+        } else
+        {
+            false
+        }
     }
 
     fn cached(&self) -> &CachedProps
@@ -630,12 +668,12 @@ impl HumanAnatomy
 
     pub fn stamina_speed(&self) -> f32
     {
-        self.cached().oxygenation.current * 0.2
+        self.cached().oxygen_change
     }
 
     pub fn max_stamina(&self) -> f32
     {
-        self.cached().oxygenation.max
+        self.this.oxygen.max
     }
 
     pub fn vision(&self) -> f32
@@ -792,7 +830,12 @@ impl HumanAnatomy
         torso.contents.lungs.as_ref()[side].as_ref()
     }
 
-    fn updated_oxygenation_speed(&self) -> f32
+    fn updated_blood_change(&self) -> f32
+    {
+        0.0
+    }
+
+    fn updated_oxygen_change(&self) -> f32
     {
         let brain = some_or_return!(self.brain());
 
@@ -808,23 +851,18 @@ impl HumanAnatomy
         }).and_then(|torso| torso.muscle.map(|x| x.fraction()))
             .unwrap_or(0.0);
 
-        amount * torso_muscle
+        let regen = 0.25 * amount * torso_muscle;
+        let consumption = 0.05;
+
+        regen - consumption
     }
 
-    fn updated_oxygenation_max(&self) -> f32
+    fn updated_oxygen_max(&self) -> f32
     {
         Halves{left: Side1d::Left, right: Side1d::Right}.map(|side|
         {
             some_or_return!(self.lung(side)).health.fraction()
         }).combine(|a, b| a + b) / 2.0
-    }
-
-    fn updated_oxygenation(&self) -> SimpleHealth
-    {
-        let max = self.updated_oxygenation_max();
-        let fraction = self.updated_oxygenation_speed();
-
-        SimpleHealth{current: max * fraction, max}
     }
 
     fn updated_vision(&self) -> f32
@@ -850,14 +888,22 @@ impl HumanAnatomy
             speed: self.updated_speed(),
             strength: self.updated_strength(),
             vision: self.updated_vision(),
-            oxygenation: self.updated_oxygenation(),
-            blood_change: 0.0
+            oxygen_change: self.updated_oxygen_change(),
+            blood_change: self.updated_blood_change()
         });
+
+        self.this.oxygen.set_max(self.updated_oxygen_max());
 
         if self.is_dead() && self.this.killed.is_none()
         {
             self.this.killed = Some(true);
         }
+    }
+
+    fn on_damage(&mut self)
+    {
+        self.this.body.detach_broken(|id| { self.this.broken.push(id); });
+        self.update_cache();
     }
 }
 
@@ -872,7 +918,7 @@ impl Damageable for HumanAnatomy
 
         let damage = self.this.damage_random_part(damage);
 
-        self.update_cache();
+        self.on_damage();
 
         damage
     }

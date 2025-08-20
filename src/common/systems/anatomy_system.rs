@@ -11,8 +11,11 @@ pub fn update(
     dt: f32
 )
 {
-    for_each_component!(entities, anatomy, |_entity, anatomy: &RefCell<Anatomy>|
+    for_each_component!(entities, anatomy, |entity, anatomy: &RefCell<Anatomy>|
     {
-        anatomy.borrow_mut().update(dt);
+        if anatomy.borrow_mut().update(dt)
+        {
+            entities.set_changed().anatomy(entity);
+        }
     });
 }

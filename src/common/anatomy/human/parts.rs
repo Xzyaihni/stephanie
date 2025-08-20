@@ -6,19 +6,19 @@ use strum::{EnumCount, FromRepr, IntoStaticStr};
 
 use crate::common::{
     from_upper_camel,
-    Side1d,
-    Side2d,
     DamageType,
-    SeededRandom
+    Side1d,
+    Side2d
 };
 
 use super::super::{
-    heal_iterative,
+    health_iter_mut_helper as iter_helper,
     Health,
     Halves,
     BodyPart,
     Organ,
-    ChangeTracking,
+    HealthField,
+    HealthIterate,
     HealReceiver,
     DamageReceiver,
     PartFieldGetter,
@@ -32,9 +32,9 @@ use super::super::{
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MotorCortex
 {
-    pub arms: ChangeTracking<Health>,
-    pub body: ChangeTracking<Health>,
-    pub legs: ChangeTracking<Health>
+    pub arms: HealthField,
+    pub body: HealthField,
+    pub legs: HealthField
 }
 
 impl MotorCortex
@@ -49,63 +49,44 @@ impl MotorCortex
     }
 }
 
-impl HealReceiver for MotorCortex
+impl HealthIterate for MotorCortex
 {
-    fn is_full(&self) -> bool
+    fn health_iter(&self) -> impl Iterator<Item=&HealthField>
     {
-        self.arms.is_full() && self.body.is_full() && self.legs.is_full()
+        [&self.arms, &self.body, &self.legs].into_iter()
     }
 
-    fn heal(&mut self, amount: f32) -> Option<f32>
+    fn health_sided_iter_mut(&mut self, side: Side2d) -> impl Iterator<Item=&mut HealthField>
     {
-        heal_iterative(amount, [&mut self.arms, &mut self.body, &mut self.legs])
-    }
-}
+        let order = vec![&mut self.arms, &mut self.body, &mut self.legs];
 
-impl DamageReceiver for MotorCortex
-{
-    fn damage(
-        &mut self,
-        rng: &mut SeededRandom,
-        side: Side2d,
-        damage: DamageType
-    ) -> Option<DamageType>
-    {
-        let mut order = vec![&mut self.arms, &mut self.body, &mut self.legs];
-
-        match side
+        let order = match side
         {
             Side2d::Left | Side2d::Right =>
             {
-                let order = if rng.next_bool()
+                if fastrand::bool()
                 {
                     order.into_iter().rev().collect()
                 } else
                 {
                     order
-                };
-
-                Health::pierce_many(damage, order.into_iter(), |part, damage|
-                {
-                    part.damage_pierce(damage)
-                })
+                }
             },
             Side2d::Front | Side2d::Back =>
             {
-                let len = order.len();
-                order[rng.next_usize_between(0..len)].damage_pierce(damage)
+                order
             }
-        }
+        };
+
+        order.into_iter()
     }
 }
 
+impl HealReceiver for MotorCortex {}
+impl DamageReceiver for MotorCortex {}
+
 impl Organ for MotorCortex
 {
-    fn average_health(&self) -> f32
-    {
-        (self.arms.fraction() + self.body.fraction() + self.legs.fraction()) / 3.0
-    }
-
     fn size(&self) -> &f64
     {
         &0.05
@@ -126,39 +107,24 @@ impl FrontalLobe
     }
 }
 
-impl HealReceiver for FrontalLobe
+impl HealthIterate for FrontalLobe
 {
-    fn is_full(&self) -> bool
+    fn health_iter(&self) -> impl Iterator<Item=&HealthField>
     {
-        self.motor.is_full()
+        self.motor.health_iter()
     }
 
-    fn heal(&mut self, amount: f32) -> Option<f32>
+    fn health_sided_iter_mut(&mut self, side: Side2d) -> impl Iterator<Item=&mut HealthField>
     {
-        self.motor.heal(amount)
+        self.motor.health_sided_iter_mut(side)
     }
 }
 
-impl DamageReceiver for FrontalLobe
-{
-    fn damage(
-        &mut self,
-        rng: &mut SeededRandom,
-        side: Side2d,
-        damage: DamageType
-    ) -> Option<DamageType>
-    {
-        self.motor.damage(rng, side, damage)
-    }
-}
+impl HealReceiver for FrontalLobe {}
+impl DamageReceiver for FrontalLobe {}
 
 impl Organ for FrontalLobe
 {
-    fn average_health(&self) -> f32
-    {
-        self.motor.average_health()
-    }
-
     fn size(&self) -> &f64
     {
         &0.05
@@ -175,7 +141,7 @@ pub enum LobeId
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ParietalLobe(pub ChangeTracking<Health>);
+pub struct ParietalLobe(pub HealthField);
 
 impl ParietalLobe
 {
@@ -185,39 +151,24 @@ impl ParietalLobe
     }
 }
 
-impl HealReceiver for ParietalLobe
+impl HealthIterate for ParietalLobe
 {
-    fn is_full(&self) -> bool
+    fn health_iter(&self) -> impl Iterator<Item=&HealthField>
     {
-        self.0.is_full()
+        [&self.0].into_iter()
     }
 
-    fn heal(&mut self, amount: f32) -> Option<f32>
+    fn health_sided_iter_mut(&mut self, _side: Side2d) -> impl Iterator<Item=&mut HealthField>
     {
-        self.0.heal(amount)
+        [&mut self.0].into_iter()
     }
 }
 
-impl DamageReceiver for ParietalLobe
-{
-    fn damage(
-        &mut self,
-        _rng: &mut SeededRandom,
-        _side: Side2d,
-        damage: DamageType
-    ) -> Option<DamageType>
-    {
-        self.0.damage_pierce(damage)
-    }
-}
+impl HealReceiver for ParietalLobe {}
+impl DamageReceiver for ParietalLobe {}
 
 impl Organ for ParietalLobe
 {
-    fn average_health(&self) -> f32
-    {
-        self.0.fraction()
-    }
-
     fn size(&self) -> &f64
     {
         &0.01
@@ -230,7 +181,7 @@ impl Organ for ParietalLobe
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TemporalLobe(pub ChangeTracking<Health>);
+pub struct TemporalLobe(pub HealthField);
 
 impl TemporalLobe
 {
@@ -240,39 +191,24 @@ impl TemporalLobe
     }
 }
 
-impl HealReceiver for TemporalLobe
+impl HealthIterate for TemporalLobe
 {
-    fn is_full(&self) -> bool
+    fn health_iter(&self) -> impl Iterator<Item=&HealthField>
     {
-        self.0.is_full()
+        [&self.0].into_iter()
     }
 
-    fn heal(&mut self, amount: f32) -> Option<f32>
+    fn health_sided_iter_mut(&mut self, _side: Side2d) -> impl Iterator<Item=&mut HealthField>
     {
-        self.0.heal(amount)
+        [&mut self.0].into_iter()
     }
 }
 
-impl DamageReceiver for TemporalLobe
-{
-    fn damage(
-        &mut self,
-        _rng: &mut SeededRandom,
-        _side: Side2d,
-        damage: DamageType
-    ) -> Option<DamageType>
-    {
-        self.0.damage_pierce(damage)
-    }
-}
+impl HealReceiver for TemporalLobe {}
+impl DamageReceiver for TemporalLobe {}
 
 impl Organ for TemporalLobe
 {
-    fn average_health(&self) -> f32
-    {
-        self.0.fraction()
-    }
-
     fn size(&self) -> &f64
     {
         &0.01
@@ -285,7 +221,7 @@ impl Organ for TemporalLobe
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct OccipitalLobe(pub ChangeTracking<Health>);
+pub struct OccipitalLobe(pub HealthField);
 
 impl OccipitalLobe
 {
@@ -295,39 +231,24 @@ impl OccipitalLobe
     }
 }
 
-impl HealReceiver for OccipitalLobe
+impl HealthIterate for OccipitalLobe
 {
-    fn is_full(&self) -> bool
+    fn health_iter(&self) -> impl Iterator<Item=&HealthField>
     {
-        self.0.is_full()
+        [&self.0].into_iter()
     }
 
-    fn heal(&mut self, amount: f32) -> Option<f32>
+    fn health_sided_iter_mut(&mut self, _side: Side2d) -> impl Iterator<Item=&mut HealthField>
     {
-        self.0.heal(amount)
+        [&mut self.0].into_iter()
     }
 }
 
-impl DamageReceiver for OccipitalLobe
-{
-    fn damage(
-        &mut self,
-        _rng: &mut SeededRandom,
-        _side: Side2d,
-        damage: DamageType
-    ) -> Option<DamageType>
-    {
-        self.0.damage_pierce(damage)
-    }
-}
+impl HealReceiver for OccipitalLobe {}
+impl DamageReceiver for OccipitalLobe {}
 
 impl Organ for OccipitalLobe
 {
-    fn average_health(&self) -> f32
-    {
-        self.0.fraction()
-    }
-
     fn size(&self) -> &f64
     {
         &0.01
@@ -361,91 +282,62 @@ impl Hemisphere
     }
 }
 
-impl Hemisphere
+impl HealthIterate for Hemisphere
 {
-    fn damage_lobe(
-        &mut self,
-        lobe: LobeId,
-        rng: &mut SeededRandom,
-        side: Side2d,
-        damage: DamageType
-    ) -> Option<DamageType>
+    fn health_iter(&self) -> impl Iterator<Item=&HealthField>
     {
-        match lobe
-        {
-            LobeId::Frontal => self.frontal.damage(rng, side, damage),
-            LobeId::Parietal => self.parietal.damage(rng, side, damage),
-            LobeId::Temporal => self.temporal.damage(rng, side, damage),
-            LobeId::Occipital => self.occipital.damage(rng, side, damage)
-        }
-    }
-}
-
-impl HealReceiver for Hemisphere
-{
-    fn is_full(&self) -> bool
-    {
-        self.frontal.is_full() && self.parietal.is_full() && self.temporal.is_full() && self.occipital.is_full()
+        self.frontal.health_iter()
+            .chain(self.parietal.health_iter())
+            .chain(self.temporal.health_iter())
+            .chain(self.occipital.health_iter())
     }
 
-    fn heal(&mut self, amount: f32) -> Option<f32>
+    fn health_sided_iter_mut(&mut self, side: Side2d) -> impl Iterator<Item=&mut HealthField>
     {
-        heal_iterative(amount, [&mut self.frontal, &mut self.parietal, &mut self.temporal, &mut self.occipital])
-    }
-}
-
-impl DamageReceiver for Hemisphere
-{
-    fn damage(
-        &mut self,
-        rng: &mut SeededRandom,
-        side: Side2d,
-        damage: DamageType
-    ) -> Option<DamageType>
-    {
-        let middle = if rng.next_bool()
-        {
-            LobeId::Parietal
-        } else
-        {
-            LobeId::Temporal
-        };
-
         let order = match side
         {
             Side2d::Left | Side2d::Right =>
             {
-                let lobe = LobeId::from_repr(rng.next_usize_between(0..LobeId::COUNT)).unwrap();
+                let mut order = [
+                    iter_helper(side, &mut self.frontal),
+                    iter_helper(side, &mut self.parietal),
+                    iter_helper(side, &mut self.occipital),
+                    iter_helper(side, &mut self.temporal)
+                ];
 
-                return self.damage_lobe(lobe, rng, side, damage);
+                fastrand::shuffle(&mut order);
+
+                order
             },
-            Side2d::Front =>
+            Side2d::Front | Side2d::Back =>
             {
-                [LobeId::Frontal, middle, LobeId::Occipital]
-            },
-            Side2d::Back =>
-            {
-                [LobeId::Occipital, middle, LobeId::Frontal]
+                let (middle, last) = if fastrand::bool()
+                {
+                    (iter_helper(side, &mut self.parietal), iter_helper(side, &mut self.temporal))
+                } else
+                {
+                    (iter_helper(side, &mut self.temporal), iter_helper(side, &mut self.parietal))
+                };
+
+                if let Side2d::Front = side
+                {
+                    [iter_helper(side, &mut self.frontal), middle, iter_helper(side, &mut self.occipital), last]
+                } else
+                {
+                    [iter_helper(side, &mut self.occipital), middle, iter_helper(side, &mut self.frontal), last]
+                }
             }
         };
 
-        Health::pierce_many(damage, order.into_iter(), |id, damage|
-        {
-            self.damage_lobe(id, rng, side, damage)
-        })
+        order.into_iter().flatten()
     }
 }
 
+impl HealReceiver for Hemisphere {}
+impl DamageReceiver for Hemisphere {}
+
 impl Organ for Hemisphere
 {
-    fn average_health(&self) -> f32
-    {
-        (self.frontal.average_health()
-            + self.parietal.average_health()
-            + self.temporal.average_health()
-            + self.occipital.average_health()) / 4.0
-    }
-
     fn size(&self) -> &f64
     {
         &0.1
@@ -462,67 +354,46 @@ impl Brain
     }
 }
 
-impl HealReceiver for Brain
+impl HealthIterate for Brain
 {
-    fn is_full(&self) -> bool
+    fn health_iter(&self) -> impl Iterator<Item=&HealthField>
     {
-        self.left.is_full() && self.right.is_full()
+        [&self.left, &self.right].into_iter().flat_map(|x| x.health_iter())
     }
 
-    fn heal(&mut self, amount: f32) -> Option<f32>
+    fn health_sided_iter_mut(&mut self, side: Side2d) -> impl Iterator<Item=&mut HealthField>
     {
-        heal_iterative(amount, [&mut self.left, &mut self.right])
-    }
-}
-
-impl DamageReceiver for Brain
-{
-    fn damage(
-        &mut self,
-        rng: &mut SeededRandom,
-        side: Side2d,
-        damage: DamageType
-    ) -> Option<DamageType>
-    {
-        let hemispheres = [&mut self.left, &mut self.right];
-
-        match side
+        let order = match side
         {
             Side2d::Left =>
             {
-                Health::pierce_many(damage, hemispheres.into_iter(), |part, damage|
-                {
-                    part.damage(rng, side, damage)
-                })
+                [&mut self.left, &mut self.right]
             },
             Side2d::Right =>
             {
-                Health::pierce_many(damage, hemispheres.into_iter().rev(), |part, damage|
-                {
-                    part.damage(rng, side, damage)
-                })
+                [&mut self.right, &mut self.left]
             },
             Side2d::Front | Side2d::Back =>
             {
-                if rng.next_bool()
+                if fastrand::bool()
                 {
-                    hemispheres[0].damage(rng, side, damage)
+                    [&mut self.right, &mut self.left]
                 } else
                 {
-                    hemispheres[1].damage(rng, side, damage)
+                    [&mut self.left, &mut self.right]
                 }
             }
-        }
+        };
+
+        order.into_iter().flat_map(move |x| x.health_sided_iter_mut(side))
     }
 }
 
+impl HealReceiver for Brain {}
+impl DamageReceiver for Brain {}
+
 impl Organ for Brain
 {
-    fn average_health(&self) -> f32
-    {
-        self.as_ref().map(|x| x.average_health()).combine(|a, b| (a + b) / 2.0)
-    }
-
     fn size(&self) -> &f64
     {
         &0.2
@@ -532,7 +403,7 @@ impl Organ for Brain
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Eye
 {
-    pub health: ChangeTracking<Health>
+    pub health: HealthField
 }
 
 impl Eye
@@ -543,39 +414,24 @@ impl Eye
     }
 }
 
-impl HealReceiver for Eye
+impl HealthIterate for Eye
 {
-    fn is_full(&self) -> bool
+    fn health_iter(&self) -> impl Iterator<Item=&HealthField>
     {
-        self.health.is_full()
+        [&self.health].into_iter()
     }
 
-    fn heal(&mut self, amount: f32) -> Option<f32>
+    fn health_sided_iter_mut(&mut self, _side: Side2d) -> impl Iterator<Item=&mut HealthField>
     {
-        self.health.heal(amount)
+        [&mut self.health].into_iter()
     }
 }
 
-impl DamageReceiver for Eye
-{
-    fn damage(
-        &mut self,
-        _rng: &mut SeededRandom,
-        _side: Side2d,
-        damage: DamageType
-    ) -> Option<DamageType>
-    {
-        self.health.damage_pierce(damage)
-    }
-}
+impl HealReceiver for Eye {}
+impl DamageReceiver for Eye {}
 
 impl Organ for Eye
 {
-    fn average_health(&self) -> f32
-    {
-        self.health.fraction()
-    }
-
     fn size(&self) -> &f64
     {
         &0.1
@@ -590,7 +446,7 @@ impl Organ for Eye
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Lung
 {
-    pub health: ChangeTracking<Health>
+    pub health: HealthField
 }
 
 impl Lung
@@ -601,39 +457,24 @@ impl Lung
     }
 }
 
-impl HealReceiver for Lung
+impl HealthIterate for Lung
 {
-    fn is_full(&self) -> bool
+    fn health_iter(&self) -> impl Iterator<Item=&HealthField>
     {
-        self.health.is_full()
+        [&self.health].into_iter()
     }
 
-    fn heal(&mut self, amount: f32) -> Option<f32>
+    fn health_sided_iter_mut(&mut self, _side: Side2d) -> impl Iterator<Item=&mut HealthField>
     {
-        self.health.heal(amount)
+        [&mut self.health].into_iter()
     }
 }
 
-impl DamageReceiver for Lung
-{
-    fn damage(
-        &mut self,
-        _rng: &mut SeededRandom,
-        _side: Side2d,
-        damage: DamageType
-    ) -> Option<DamageType>
-    {
-        self.health.damage_pierce(damage)
-    }
-}
+impl HealReceiver for Lung {}
+impl DamageReceiver for Lung {}
 
 impl Organ for Lung
 {
-    fn average_health(&self) -> f32
-    {
-        self.health.fraction()
-    }
-
     fn size(&self) -> &f64
     {
         &0.3
@@ -937,50 +778,65 @@ pub struct HeadOrgans
     pub brain: Option<Brain>
 }
 
-impl HealReceiver for HeadOrgans
+impl HealthIterate for HeadOrgans
 {
-    fn is_full(&self) -> bool
+    fn health_iter(&self) -> impl Iterator<Item=&HealthField>
     {
-        self.eyes.as_ref().map(|x| x.as_ref().map(|x| x.is_full()).unwrap_or(true)).combine(|a, b| a && b)
-            && self.brain.as_ref().map(|x| x.is_full()).unwrap_or(true)
+        self.brain.as_ref().map(|x| x.health_iter()).into_iter().flatten()
+            .chain(self.eyes.left.as_ref().map(|x| x.health_iter()).into_iter().flatten())
+            .chain(self.eyes.right.as_ref().map(|x| x.health_iter()).into_iter().flatten())
     }
 
-    fn heal(&mut self, amount: f32) -> Option<f32>
+    fn health_sided_iter_mut(&mut self, side: Side2d) -> impl Iterator<Item=&mut HealthField>
     {
-        heal_iterative(amount, [
-            self.eyes.left.as_mut().map(|x| -> &mut dyn HealReceiver { x }).unwrap_or(&mut ()),
-            self.eyes.right.as_mut().map(|x| -> &mut dyn HealReceiver { x }).unwrap_or(&mut ()),
-            self.brain.as_mut().map(|x| -> &mut dyn HealReceiver { x }).unwrap_or(&mut ())
-        ])
+        let brain = self.brain.as_mut().map(move |x| x.health_sided_iter_mut(side)).into_iter().flatten();
+        let left_eye = self.eyes.left.as_mut().map(move |x| x.health_sided_iter_mut(side)).into_iter().flatten();
+        let right_eye = self.eyes.right.as_mut().map(move |x| x.health_sided_iter_mut(side)).into_iter().flatten();
+
+        match side
+        {
+            Side2d::Left =>
+            {
+                brain.chain(left_eye).chain(right_eye)
+            },
+            Side2d::Right =>
+            {
+                brain.chain(right_eye).chain(left_eye)
+            },
+            Side2d::Front | Side2d::Back =>
+            {
+                if fastrand::bool()
+                {
+                    brain.chain(left_eye).chain(right_eye)
+                } else
+                {
+                    brain.chain(right_eye).chain(left_eye)
+                }
+            }
+        }
     }
 }
 
+impl HealReceiver for HeadOrgans {}
+
 impl DamageReceiver for HeadOrgans
 {
-    fn damage(
+    fn damage_normal(
         &mut self,
-        rng: &mut SeededRandom,
         side: Side2d,
         damage: DamageType
     ) -> Option<DamageType>
     {
-        if let Some(brain) = self.brain.as_mut()
-        {
-            brain.damage(rng, side, damage)
-        } else
-        {
-            Some(damage)
-        }
+        self.brain.as_mut().map(move |x| x.health_sided_iter_mut(side)).into_iter().flatten()
+            .try_fold(damage, |acc, x|
+            {
+                x.damage_pierce(acc)
+            })
     }
 }
 
 impl Organ for HeadOrgans
 {
-    fn average_health(&self) -> f32
-    {
-        unimplemented!()
-    }
-
     fn size(&self) -> &f64
     {
         unimplemented!()
@@ -993,71 +849,51 @@ pub struct TorsoOrgans
     pub lungs: Halves<Option<Lung>>
 }
 
-impl Organ for TorsoOrgans
+impl HealthIterate for TorsoOrgans
 {
-    fn average_health(&self) -> f32
+    fn health_iter(&self) -> impl Iterator<Item=&HealthField>
     {
-        unimplemented!()
+        self.lungs.left.as_ref().map(|x| x.health_iter()).into_iter().flatten()
+            .chain(self.lungs.right.as_ref().map(|x| x.health_iter()).into_iter().flatten())
     }
 
+    fn health_sided_iter_mut(&mut self, side: Side2d) -> impl Iterator<Item=&mut HealthField>
+    {
+        let left_lung = self.lungs.left.as_mut().map(|x| x.health_sided_iter_mut(side)).into_iter().flatten();
+        let right_lung = self.lungs.right.as_mut().map(|x| x.health_sided_iter_mut(side)).into_iter().flatten();
+
+        match side
+        {
+            Side2d::Left =>
+            {
+                left_lung.chain(right_lung)
+            },
+            Side2d::Right =>
+            {
+                right_lung.chain(left_lung)
+            },
+            Side2d::Front | Side2d::Back =>
+            {
+                if fastrand::bool()
+                {
+                    left_lung.chain(right_lung)
+                } else
+                {
+                    right_lung.chain(left_lung)
+                }
+            }
+        }
+    }
+}
+
+impl HealReceiver for TorsoOrgans {}
+impl DamageReceiver for TorsoOrgans {}
+
+impl Organ for TorsoOrgans
+{
     fn size(&self) -> &f64
     {
         unimplemented!()
-    }
-}
-
-impl HealReceiver for TorsoOrgans
-{
-    fn is_full(&self) -> bool
-    {
-        self.lungs.as_ref().map(|x| x.as_ref().map(|x| x.is_full()).unwrap_or(true)).combine(|a, b| a && b)
-    }
-
-    fn heal(&mut self, amount: f32) -> Option<f32>
-    {
-        heal_iterative(amount, [
-            self.lungs.left.as_mut().map(|x| -> &mut dyn HealReceiver { x }).unwrap_or(&mut ()),
-            self.lungs.right.as_mut().map(|x| -> &mut dyn HealReceiver { x }).unwrap_or(&mut ())
-        ])
-    }
-}
-
-impl DamageReceiver for TorsoOrgans
-{
-    fn damage(
-        &mut self,
-        rng: &mut SeededRandom,
-        side: Side2d,
-        damage: DamageType
-    ) -> Option<DamageType>
-    {
-        let exists = self.lungs.as_ref().map(|x| x.is_some());
-        if exists.clone().combine(|a, b| !a && !b)
-        {
-            return Some(damage);
-        }
-
-        let lung = if exists.clone().combine(|a, b| a && b)
-        {
-            if rng.next_bool()
-            {
-                &mut self.lungs.left
-            } else
-            {
-                &mut self.lungs.right
-            }
-        } else
-        {
-            if exists.left
-            {
-                &mut self.lungs.left
-            } else
-            {
-                &mut self.lungs.right
-            }
-        };
-
-        lung.as_mut().unwrap().damage(rng, side, damage)
     }
 }
 
@@ -1085,22 +921,22 @@ pub struct LowerLimb
     pub leaf: Option<HumanPart>
 }
 
-impl HealReceiver for LowerLimb
+impl HealthIterate for LowerLimb
 {
-    fn is_full(&self) -> bool
+    fn health_iter(&self) -> impl Iterator<Item=&HealthField>
     {
-        self.lower.is_full()
-            && self.leaf.as_ref().map(|x| x.is_full()).unwrap_or(true)
+        self.lower.health_iter()
+            .chain(self.leaf.as_ref().map(|x| x.health_iter()).into_iter().flatten())
     }
 
-    fn heal(&mut self, amount: f32) -> Option<f32>
+    fn health_sided_iter_mut(&mut self, side: Side2d) -> impl Iterator<Item=&mut HealthField>
     {
-        heal_iterative(amount, [
-            &mut self.lower,
-            self.leaf.as_mut().map(|x| -> &mut dyn HealReceiver { x }).unwrap_or(&mut ())
-        ])
+        self.lower.health_sided_iter_mut(side)
+            .chain(self.leaf.as_mut().map(|x| x.health_sided_iter_mut(side)).into_iter().flatten())
     }
 }
+
+impl HealReceiver for LowerLimb {}
 
 impl LowerLimb
 {
@@ -1132,22 +968,22 @@ pub struct Limb
     pub lower: Option<LowerLimb>
 }
 
-impl HealReceiver for Limb
+impl HealthIterate for Limb
 {
-    fn is_full(&self) -> bool
+    fn health_iter(&self) -> impl Iterator<Item=&HealthField>
     {
-        self.upper.is_full()
-            && self.lower.as_ref().map(|x| x.is_full()).unwrap_or(true)
+        self.upper.health_iter()
+            .chain(self.lower.as_ref().map(|x| x.health_iter()).into_iter().flatten())
     }
 
-    fn heal(&mut self, amount: f32) -> Option<f32>
+    fn health_sided_iter_mut(&mut self, side: Side2d) -> impl Iterator<Item=&mut HealthField>
     {
-        heal_iterative(amount, [
-            &mut self.upper,
-            self.lower.as_mut().map(|x| -> &mut dyn HealReceiver { x }).unwrap_or(&mut ())
-        ])
+        self.upper.health_sided_iter_mut(side)
+            .chain(self.lower.as_mut().map(|x| x.health_sided_iter_mut(side)).into_iter().flatten())
     }
 }
+
+impl HealReceiver for Limb {}
 
 impl Limb
 {
@@ -1190,23 +1026,24 @@ pub struct Pelvis
     pub legs: Halves<Option<Limb>>
 }
 
-impl HealReceiver for Pelvis
+impl HealthIterate for Pelvis
 {
-    fn is_full(&self) -> bool
+    fn health_iter(&self) -> impl Iterator<Item=&HealthField>
     {
-        self.pelvis.is_full()
-            && self.legs.as_ref().map(|x| x.as_ref().map(|x| x.is_full()).unwrap_or(true)).combine(|a, b| a && b)
+        self.pelvis.health_iter()
+            .chain(self.legs.left.as_ref().map(|x| x.health_iter()).into_iter().flatten())
+            .chain(self.legs.right.as_ref().map(|x| x.health_iter()).into_iter().flatten())
     }
 
-    fn heal(&mut self, amount: f32) -> Option<f32>
+    fn health_sided_iter_mut(&mut self, side: Side2d) -> impl Iterator<Item=&mut HealthField>
     {
-        heal_iterative(amount, [
-            &mut self.pelvis,
-            self.legs.left.as_mut().map(|x| -> &mut dyn HealReceiver { x }).unwrap_or(&mut ()),
-            self.legs.right.as_mut().map(|x| -> &mut dyn HealReceiver { x }).unwrap_or(&mut ())
-        ])
+        self.pelvis.health_sided_iter_mut(side)
+            .chain(self.legs.left.as_mut().map(|x| x.health_sided_iter_mut(side)).into_iter().flatten())
+            .chain(self.legs.right.as_mut().map(|x| x.health_sided_iter_mut(side)).into_iter().flatten())
     }
 }
+
+impl HealReceiver for Pelvis {}
 
 impl Pelvis
 {
@@ -1237,27 +1074,28 @@ pub struct Spine
     pub pelvis: Option<Pelvis>
 }
 
-impl HealReceiver for Spine
+impl HealthIterate for Spine
 {
-    fn is_full(&self) -> bool
+    fn health_iter(&self) -> impl Iterator<Item=&HealthField>
     {
-        self.spine.is_full()
-            && self.torso.as_ref().map(|x| x.is_full()).unwrap_or(true)
-            && self.arms.as_ref().map(|x| x.as_ref().map(|x| x.is_full()).unwrap_or(true)).combine(|a, b| a && b)
-            && self.pelvis.as_ref().map(|x| x.is_full()).unwrap_or(true)
+        self.spine.health_iter()
+            .chain(self.arms.left.as_ref().map(|x| x.health_iter()).into_iter().flatten())
+            .chain(self.arms.right.as_ref().map(|x| x.health_iter()).into_iter().flatten())
+            .chain(self.torso.as_ref().map(|x| x.health_iter()).into_iter().flatten())
+            .chain(self.pelvis.as_ref().map(|x| x.health_iter()).into_iter().flatten())
     }
 
-    fn heal(&mut self, amount: f32) -> Option<f32>
+    fn health_sided_iter_mut(&mut self, side: Side2d) -> impl Iterator<Item=&mut HealthField>
     {
-        heal_iterative(amount, [
-            &mut self.spine,
-            self.torso.as_mut().map(|x| -> &mut dyn HealReceiver { x }).unwrap_or(&mut ()),
-            self.arms.left.as_mut().map(|x| -> &mut dyn HealReceiver { x }).unwrap_or(&mut ()),
-            self.arms.right.as_mut().map(|x| -> &mut dyn HealReceiver { x }).unwrap_or(&mut ()),
-            self.pelvis.as_mut().map(|x| -> &mut dyn HealReceiver { x }).unwrap_or(&mut ())
-        ])
+        self.spine.health_sided_iter_mut(side)
+            .chain(self.arms.left.as_mut().map(|x| x.health_sided_iter_mut(side)).into_iter().flatten())
+            .chain(self.arms.right.as_mut().map(|x| x.health_sided_iter_mut(side)).into_iter().flatten())
+            .chain(self.torso.as_mut().map(|x| x.health_sided_iter_mut(side)).into_iter().flatten())
+            .chain(self.pelvis.as_mut().map(|x| x.health_sided_iter_mut(side)).into_iter().flatten())
     }
 }
+
+impl HealReceiver for Spine {}
 
 impl Spine
 {
@@ -1302,22 +1140,22 @@ pub struct HumanBody
     pub spine: Option<Spine>
 }
 
-impl HealReceiver for HumanBody
+impl HealthIterate for HumanBody
 {
-    fn is_full(&self) -> bool
+    fn health_iter(&self) -> impl Iterator<Item=&HealthField>
     {
-        self.head.as_ref().map(|x| x.is_full()).unwrap_or(true)
-            && self.spine.as_ref().map(|x| x.is_full()).unwrap_or(true)
+        self.head.as_ref().map(|x| x.health_iter()).into_iter().flatten()
+            .chain(self.spine.as_ref().map(|x| x.health_iter()).into_iter().flatten())
     }
 
-    fn heal(&mut self, amount: f32) -> Option<f32>
+    fn health_sided_iter_mut(&mut self, side: Side2d) -> impl Iterator<Item=&mut HealthField>
     {
-        heal_iterative(amount, [
-            self.head.as_mut().map(|x| -> &mut dyn HealReceiver { x }).unwrap_or(&mut ()),
-            self.spine.as_mut().map(|x| -> &mut dyn HealReceiver { x }).unwrap_or(&mut ())
-        ])
+        self.head.as_mut().map(|x| x.health_sided_iter_mut(side)).into_iter().flatten()
+            .chain(self.spine.as_mut().map(|x| x.health_sided_iter_mut(side)).into_iter().flatten())
     }
 }
+
+impl HealReceiver for HumanBody {}
 
 impl HumanBody
 {
