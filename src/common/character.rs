@@ -259,7 +259,6 @@ pub struct Character
     pub id: CharacterId,
     pub faction: Faction,
     sprinting: bool,
-    stamina: f32,
     jiggle: f32,
     holding: Option<InventoryItem>,
     hands_infront: bool,
@@ -288,7 +287,6 @@ impl Character
             id,
             faction,
             sprinting: false,
-            stamina: f32::MAX,
             jiggle: 0.0,
             info: None,
             holding: None,
@@ -523,12 +521,6 @@ impl Character
         self.anatomy(combined_info.entities).map(|x| x.strength() * 30.0)
     }
 
-    #[allow(dead_code)]
-    pub fn stamina(&self) -> f32
-    {
-        self.stamina
-    }
-
     pub fn attack_cooldown(&self) -> f32
     {
         self.attack_cooldown
@@ -536,17 +528,9 @@ impl Character
 
     pub fn stamina_fraction(&self, entities: &ClientEntities) -> Option<f32>
     {
-        self.max_stamina(entities).map(|max_stamina| (self.stamina / max_stamina).min(1.0))
-    }
+        let anatomy = self.anatomy(entities)?;
 
-    pub fn stamina_speed(&self, combined_info: CombinedInfo) -> Option<f32>
-    {
-        self.anatomy(combined_info.entities).map(|x| x.stamina_speed())
-    }
-
-    pub fn max_stamina(&self, entities: &ClientEntities) -> Option<f32>
-    {
-        self.anatomy(entities).map(|x| x.max_stamina())
+        anatomy.oxygen().fraction()
     }
 
     fn held_crit_chance(&self, combined_info: CombinedInfo) -> Option<f32>
@@ -947,7 +931,12 @@ impl Character
 
     fn consume_attack_stamina(&mut self, combined_info: CombinedInfo)
     {
-        self.stamina -= some_or_return!(self.attack_stamina_cost(combined_info));
+        let info = some_or_return!(self.info.as_ref());
+        let cost = some_or_return!(self.attack_stamina_cost(combined_info));
+
+        let mut anatomy = some_or_return!(combined_info.entities.anatomy_mut_no_change(info.this));
+
+        anatomy.oxygen_mut().change(-cost);
     }
 
     fn attackable_state(&self) -> bool
@@ -965,7 +954,9 @@ impl Character
     pub fn can_attack(&self, combined_info: CombinedInfo) -> bool
     {
         let cost = some_or_value!(self.attack_stamina_cost(combined_info), false);
-        let attackable_item = cost <= self.stamina;
+        let current = some_or_value!(self.anatomy(combined_info.entities), false).oxygen().current;
+
+        let attackable_item = cost <= current;
 
         self.attackable_state() && attackable_item && self.attack_cooldown <= 0.0
     }
@@ -1751,7 +1742,7 @@ impl Character
         }
 
         self.update_jiggle(combined_info, dt);
-        self.update_sprint(combined_info, dt);
+        self.update_sprint(combined_info);
         self.update_attacks(dt);
 
         self.update_buffered(combined_info, dt);
@@ -1913,7 +1904,7 @@ impl Character
             return false;
         }
 
-        self.sprinting && self.stamina > 0.0
+        self.sprinting
     }
 
     fn update_jiggle(&mut self, combined_info: CombinedInfo, dt: f32)
@@ -1935,26 +1926,22 @@ impl Character
         };
     }
 
-    fn update_sprint(&mut self, combined_info: CombinedInfo, dt: f32)
+    fn update_sprint(&mut self, combined_info: CombinedInfo)
     {
-        let max_stamina = some_or_return!(self.max_stamina(combined_info.entities));
-        let recharge_speed = some_or_return!(self.stamina_speed(combined_info));
+        let is_sprinting = self.is_sprinting();
 
-        if self.is_sprinting()
+        let info = some_or_return!(self.info.as_mut());
+
+        let mut anatomy = some_or_return!(combined_info.entities.anatomy_mut_no_change(info.this));
+        *anatomy.external_oxygen_change_mut() = if is_sprinting { -0.5 } else { 0.0 };
+
+        if is_sprinting
         {
-            Self::decrease_timer(&mut self.stamina, 0.5 * dt);
-            if self.stamina <= 0.0
+            if anatomy.oxygen().current <= 0.0
             {
-                let info = some_or_return!(self.info.as_mut());
-
                 info.sprint_await = true;
             }
-        } else
-        {
-            self.stamina += dt * recharge_speed;
         }
-
-        self.stamina = self.stamina.min(max_stamina);
     }
 
     pub fn set_sprinting(&mut self, value: bool)

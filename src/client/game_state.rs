@@ -57,6 +57,7 @@ use crate::{
         EntitiesController,
         OccludingCaster,
         OnChangeInfo,
+        OnConnectInfo,
         message::Message,
         character::PartialCombinedInfo,
         systems::{
@@ -703,6 +704,7 @@ impl Drop for GameState
     {
         let mut writer = self.connections_handler.write();
         if let Err(err) = writer.send_blocking(&Message::PlayerDisconnect{
+            time: Some(self.world.time()),
             restart: self.is_restart,
             host: self.host
         })
@@ -743,7 +745,7 @@ impl GameState
 
         let tilemap = info.tiles_factory.tilemap().clone();
 
-        let (player_entity, player_position) = Self::connect_to_server(
+        let OnConnectInfo{player_entity, player_position, time} = Self::connect_to_server(
             connections_handler.clone(),
             &info.player_name
         );
@@ -760,7 +762,8 @@ impl GameState
                 world_receiver,
                 info.tiles_factory,
                 info.camera.read().size(),
-                player_position
+                player_position,
+                time
             )
         };
 
@@ -938,7 +941,7 @@ impl GameState
     fn connect_to_server(
         handler: Arc<RwLock<ConnectionsHandler>>,
         name: &str
-    ) -> (Entity, Pos3<f32>)
+    ) -> OnConnectInfo
     {
         let mut handler = handler.write();
 
@@ -950,10 +953,7 @@ impl GameState
 
         match handler.receive_blocking()
         {
-            Ok(Some(Message::PlayerOnConnect{player_entity, player_position})) =>
-            {
-                (player_entity, player_position)
-            },
+            Ok(Some(Message::PlayerOnConnect(x))) => x,
             x => panic!("received wrong message on connect: {x:?}")
         }
     }
@@ -1456,6 +1456,8 @@ impl GameState
 
     fn rare(&mut self)
     {
+        self.send_message(Message::SyncWorldTime{time: self.world.time()});
+
         if DebugConfig::is_debug()
         {
             self.entities.entities.check_guarantees();

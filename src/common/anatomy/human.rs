@@ -237,6 +237,7 @@ pub struct HumanAnatomyValues
     override_crawling: bool,
     blood: SimpleHealth,
     oxygen: SimpleHealth,
+    external_oxygen_change: f32,
     hypoxic: f32,
     body: HumanBody,
     broken: Vec<AnatomyId>,
@@ -420,6 +421,7 @@ impl HumanAnatomyValues
             override_crawling: false,
             blood: SimpleHealth::new(4.0),
             oxygen: SimpleHealth::new(1.0),
+            external_oxygen_change: 0.0,
             hypoxic: 0.0,
             body,
             broken: Vec::new(),
@@ -599,7 +601,11 @@ impl HumanAnatomy
         let cached = self.cached.as_ref().unwrap();
 
         self.this.blood.change(cached.blood_change * dt);
-        self.this.oxygen.change(cached.oxygen_change * dt);
+
+        {
+            let oxygen_change = cached.oxygen_change + self.this.external_oxygen_change;
+            self.this.oxygen.change(oxygen_change * dt);
+        }
 
         if self.this.oxygen.current == 0.0
         {
@@ -680,14 +686,24 @@ impl HumanAnatomy
         self.cached().strength
     }
 
-    pub fn stamina_speed(&self) -> f32
+    pub fn oxygen_speed(&self) -> f32
     {
         self.cached().oxygen_change
     }
 
-    pub fn max_stamina(&self) -> f32
+    pub fn oxygen(&self) -> SimpleHealth
     {
-        self.this.oxygen.max
+        self.this.oxygen
+    }
+
+    pub fn oxygen_mut(&mut self) -> &mut SimpleHealth
+    {
+        &mut self.this.oxygen
+    }
+
+    pub fn external_oxygen_change_mut(&mut self) -> &mut f32
+    {
+        &mut self.this.external_oxygen_change
     }
 
     pub fn vision(&self) -> f32

@@ -4,7 +4,7 @@ use std::{
     mem,
     io,
     fs::{self, File},
-    path::PathBuf,
+    path::{Path, PathBuf},
     rc::Rc,
     thread::JoinHandle,
     ops::ControlFlow,
@@ -18,6 +18,8 @@ use std::{
 use parking_lot::RwLock;
 
 use nalgebra::Vector3;
+
+use serde::de::DeserializeOwned;
 
 use yanyaengine::Transform;
 
@@ -58,8 +60,9 @@ use crate::{
         EntitiesController,
         MessagePasser,
         ConnectionId,
+        OnConnectInfo,
         world::{TILE_SIZE, CHUNK_VISUAL_SIZE, Pos3},
-        chunk_saver::{with_temp_save, load_compressed},
+        chunk_saver::{with_temp_save, load_compressed, LoadError},
         message::{
             Message,
             MessageBuffer
@@ -117,6 +120,34 @@ impl From<MessageDeError> for ConnectionError
     fn from(value: MessageDeError) -> Self
     {
         ConnectionError::MessageDeError(value)
+    }
+}
+
+pub enum LoadWorldFileError
+{
+    Io(io::Error),
+    Load(LoadError)
+}
+
+pub fn load_world_file<T: DeserializeOwned>(path: &Path) -> Result<Option<T>, LoadWorldFileError>
+{
+    let file = match File::open(path)
+    {
+        Ok(x) => x,
+        Err(ref err) if err.kind() == io::ErrorKind::NotFound => return Ok(None),
+        Err(err) =>
+        {
+            return Err(LoadWorldFileError::Io(err));
+        }
+    };
+
+    match load_compressed(file)
+    {
+        Ok(x) => Ok(Some(x)),
+        Err(err) =>
+        {
+            Err(LoadWorldFileError::Load(err))
+        }
     }
 }
 
@@ -356,7 +387,7 @@ impl GameServer
             },
             move ||
             {
-                let _ = sender1.send((id, Message::PlayerDisconnect{restart: false, host: false}, entity));
+                let _ = sender1.send((id, Message::PlayerDisconnect{time: None, restart: false, host: false}, entity));
             }
         );
 
@@ -369,38 +400,31 @@ impl GameServer
     {
         let path = self.player_info_path(player_name);
 
-        let file = match File::open(&path)
+        match load_world_file(&path)
         {
-            Ok(x) => Some(x),
-            Err(ref err) if err.kind() == io::ErrorKind::NotFound => None,
+            Ok(x) =>
+            {
+                eprintln!("loading player \"{player_name}\"");
+
+                x
+            },
             Err(err) =>
             {
-                eprintln!("error trying to open \"{player_name}\" save file: {err}");
+                match err
+                {
+                    LoadWorldFileError::Io(err) =>
+                    {
+                        eprintln!("error trying to open \"{player_name}\" save file: {err}");
+                    },
+                    LoadWorldFileError::Load(err) =>
+                    {
+                        eprintln!("error trying to load player \"{player_name}\": {err}");
+                    }
+                }
 
                 None
             }
-        };
-
-        let info = file.and_then(|file|
-        {
-            match load_compressed(file)
-            {
-                Ok(x) => Some(x),
-                Err(err) =>
-                {
-                    eprintln!("error trying to load player \"{player_name}\": {err}");
-
-                    None
-                }
-            }
-        });
-
-        if info.is_some()
-        {
-            eprintln!("loading player \"{player_name}\"");
         }
-
-        info
     }
 
     fn create_new_player(&self, name: String) -> EntityInfo
@@ -517,7 +541,14 @@ impl GameServer
     ) -> Result<(ConnectionId, MessagePasser), ConnectionError>
     {
         let player_position = Pos3::from(position);
-        player_info.send_blocking(Message::PlayerOnConnect{player_entity: player_info.entity.unwrap(), player_position})?;
+
+        let on_connect_info = OnConnectInfo{
+            player_entity: player_info.entity.unwrap(),
+            player_position,
+            time: self.world.as_ref().unwrap().time
+        };
+
+        player_info.send_blocking(Message::PlayerOnConnect(on_connect_info))?;
 
         let connection_id = self.connection_handler.write().connect(player_info);
 
@@ -591,11 +622,6 @@ impl GameServer
                     if let Err(err) = fs::create_dir_all(world_directory)
                     {
                         eprintln!("error trying to create world directory: {err}");
-                    }
-
-                    if let Err(err) = File::create(&path)
-                    {
-                        eprintln!("error trying to create player save file: {err}");
                     }
 
                     if let Err(err) = with_temp_save(path, player_info)
@@ -688,7 +714,15 @@ impl GameServer
 
         match message
         {
-            Message::PlayerDisconnect{restart, host} => self.connection_close(restart, host, id, entity),
+            Message::PlayerDisconnect{time, restart, host} =>
+            {
+                if let (Some(world), Some(time)) = (self.world.as_mut(), time)
+                {
+                    world.time = time;
+                }
+
+                self.connection_close(restart, host, id, entity)
+            },
             #[cfg(debug_assertions)]
             Message::DebugMessage(DebugMessage::PrintEntityInfo(entity)) =>
             {

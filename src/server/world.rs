@@ -1,4 +1,5 @@
 use std::{
+    fs,
     path::PathBuf,
     sync::Arc,
     rc::Rc,
@@ -10,7 +11,7 @@ use parking_lot::RwLock;
 
 use crate::{
     debug_config::*,
-    server::{DataInfos, ConnectionsHandler},
+    server::{DataInfos, ConnectionsHandler, game_server::{load_world_file, LoadWorldFileError}},
     common::{
         self,
         Loot,
@@ -28,6 +29,7 @@ use crate::{
         FullEntityInfo,
         ConnectionId,
         ChunksContainer,
+        chunk_saver::with_temp_save,
         entity::ServerEntities,
         message::Message,
         world::{
@@ -148,7 +150,8 @@ pub struct World
     furnitures_info: Arc<FurnituresInfo>,
     loot: Loot,
     overmaps: OvermapsType,
-    client_indexers: HashMap<ConnectionId, EntitiesTracker>
+    client_indexers: HashMap<ConnectionId, EntitiesTracker>,
+    pub time: f64
 }
 
 impl World
@@ -177,6 +180,27 @@ impl World
 
         let loot = Loot::new(data_infos.items_info, "items/loot.scm")?;
 
+        let time = match load_world_file(&Self::world_save_path_associated(&world_name))
+        {
+            Ok(x) => x.unwrap_or(0.0),
+            Err(err) =>
+            {
+                match err
+                {
+                    LoadWorldFileError::Io(err) =>
+                    {
+                        eprintln!("error trying to open world save file: {err}");
+                    },
+                    LoadWorldFileError::Load(err) =>
+                    {
+                        eprintln!("error trying to load world: {err}");
+                    }
+                }
+
+                0.0
+            }
+        };
+
         Ok(Self{
             message_handler,
             world_name,
@@ -187,7 +211,8 @@ impl World
             furnitures_info: data_infos.furnitures_info,
             loot,
             overmaps,
-            client_indexers
+            client_indexers,
+            time
         })
     }
 
@@ -298,6 +323,16 @@ impl World
 
     pub fn exit(&mut self, container: &mut ServerEntities)
     {
+        if let Err(err) = fs::create_dir_all(self.world_path())
+        {
+            eprintln!("error trying to create world directory: {err}");
+        }
+
+        if let Err(err) = with_temp_save(self.world_save_path(), self.time)
+        {
+            eprintln!("error trying to save world info: {err}");
+        }
+
         let mut writer = self.message_handler.write();
         Self::unload_entities_inner(&mut self.entities_saver, container, &mut writer, |_global|
         {
@@ -502,6 +537,16 @@ impl World
         PathBuf::from("worlds").join(name)
     }
 
+    fn world_save_path(&self) -> PathBuf
+    {
+        Self::world_save_path_associated(&self.world_name)
+    }
+
+    fn world_save_path_associated(name: &str) -> PathBuf
+    {
+        Self::world_path_associated(name).join("world.save")
+    }
+
     pub fn sync_camera(
         &mut self,
         container: &mut ServerEntities,
@@ -549,6 +594,11 @@ impl World
             Message::SyncCamera{position} =>
             {
                 self.sync_camera(container, id, position);
+                None
+            },
+            Message::SyncWorldTime{time} =>
+            {
+                self.time = time;
                 None
             },
             _ => Some(message)

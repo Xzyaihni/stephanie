@@ -222,8 +222,8 @@ impl Anatomy
 {
     simple_getter!(speed);
     simple_getter!(strength);
-    simple_getter!(stamina_speed);
-    simple_getter!(max_stamina);
+    simple_getter!(oxygen_speed);
+    simple_getter!(oxygen, SimpleHealth);
     simple_getter!(vision);
     simple_getter!(vision_angle);
     simple_getter!(is_crawling, bool);
@@ -258,6 +258,22 @@ impl Anatomy
         match self
         {
             Self::Human(x) => x.override_crawling(state)
+        }
+    }
+
+    pub fn oxygen_mut(&mut self) -> &mut SimpleHealth
+    {
+        match self
+        {
+            Self::Human(x) => x.oxygen_mut()
+        }
+    }
+
+    pub fn external_oxygen_change_mut(&mut self) -> &mut f32
+    {
+        match self
+        {
+            Self::Human(x) => x.external_oxygen_change_mut()
         }
     }
 

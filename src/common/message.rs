@@ -29,6 +29,7 @@ use crate::common::{
     Enemy,
     Anatomy,
     RenderInfo,
+    OnConnectInfo,
     world::{Pos3, TilePos, Tile, Chunk, GlobalPos}
 };
 
@@ -73,11 +74,12 @@ pub enum Message
     SyncPositionRotation{entity: Entity, position: Vector3<f32>, rotation: f32},
     SyncCharacter{entity: Entity, info: CharacterSyncInfo},
     SyncCamera{position: Pos3<f32>},
+    SyncWorldTime{time: f64},
     EntityDestroy{entity: Entity},
     PlayerConnect{name: String},
-    PlayerOnConnect{player_entity: Entity, player_position: Pos3<f32>},
+    PlayerOnConnect(OnConnectInfo),
     PlayerFullyConnected,
-    PlayerDisconnect{restart: bool, host: bool},
+    PlayerDisconnect{time: Option<f64>, restart: bool, host: bool},
     PlayerDisconnectFinished,
     SetTrusted,
     ChunkRequest{pos: GlobalPos},

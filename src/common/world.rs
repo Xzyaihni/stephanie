@@ -141,7 +141,8 @@ impl World
         world_receiver: WorldReceiver,
         tiles_factory: TilesFactory,
         camera_size: Vector2<f32>,
-        player_position: Pos3<f32>
+        player_position: Pos3<f32>,
+        time: f64
     ) -> Self
     {
         let tilemap = tiles_factory.tilemap().clone();
@@ -155,7 +156,7 @@ impl World
             player_position
         );
 
-        Self{tilemap, world_receiver, overmap, time_speed: 1.0, time: 0.0}
+        Self{tilemap, world_receiver, overmap, time_speed: 1.0, time}
     }
 
     pub fn tilemap(&self) -> &TileMap
