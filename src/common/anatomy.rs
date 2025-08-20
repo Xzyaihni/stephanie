@@ -133,8 +133,8 @@ macro_rules! simple_field_getter
 }
 
 simple_field_getter!{BoneHealthGetter, Health, bone}
-simple_field_getter!{MuscleHealthGetter, Option<Health>, muscle}
-simple_field_getter!{SkinHealthGetter, Option<Health>, skin}
+simple_field_getter!{MuscleHealthGetter, Health, muscle}
+simple_field_getter!{SkinHealthGetter, Health, skin}
 simple_field_getter!{SizeGetter, f64, size}
 
 impl PartFieldGetter<RefOrganFieldGet> for SizeGetter
@@ -154,7 +154,7 @@ impl PartFieldGetter<RefHumanPartFieldGet> for AverageHealthGetter
 
 impl PartFieldGetter<RefOrganFieldGet> for AverageHealthGetter
 {
-    type V<'a> = f32;
+    type V<'a> = Option<f32>;
 
     fn get<'a, O: Organ + 'a>(value: &'a O) -> Self::V<'a> { value.average_health() }
 }
@@ -548,9 +548,11 @@ impl SimpleHealth
         self.current
     }
 
-    pub fn fraction(&self) -> f32
+    pub fn fraction(&self) -> Option<f32>
     {
-        self.current / self.max
+        if self.max == 0.0 { return None; }
+
+        Some(self.current / self.max)
     }
 
     pub fn is_zero(&self) -> bool
@@ -586,7 +588,12 @@ impl Health
         Self{max_block, health: SimpleHealth::new(max)}
     }
 
-    pub fn fraction(&self) -> f32
+    pub fn zero() -> Self
+    {
+        Self::new(0.0, 0.0)
+    }
+
+    pub fn fraction(&self) -> Option<f32>
     {
         self.health.fraction()
     }
@@ -758,17 +765,17 @@ pub trait Organ: DamageReceiver + Debug
 {
     fn size(&self) -> &f64;
 
-    fn is_broken(&self) -> bool { self.average_health() <= 0.0 }
+    fn is_broken(&self) -> bool { self.average_health().unwrap_or(0.0) == 0.0 }
     fn consume_accessed(&mut self) -> bool { unimplemented!() }
 
-    fn average_health(&self) -> f32
+    fn average_health(&self) -> Option<f32>
     {
-        let (total, sum) = self.health_iter().fold((0, 0.0), |(total, sum), x|
+        let (total, sum) = self.health_iter().filter_map(|x| x.fraction()).fold((0, 0.0), |(total, sum), x|
         {
-            (total + 1, sum + x.fraction())
+            (total + 1, sum + x)
         });
 
-        sum / total as f32
+        (total != 0).then_some(sum / total as f32)
     }
 }
 
@@ -790,7 +797,7 @@ impl DamageReceiver for () {}
 
 impl Organ for ()
 {
-    fn average_health(&self) -> f32 { 0.0 }
+    fn average_health(&self) -> Option<f32> { None }
     fn size(&self) -> &f64 { &0.0 }
 }
 
@@ -799,8 +806,8 @@ pub struct BodyPart<Contents=()>
 {
     name: DebugName,
     pub bone: ChangeTracking<Health>,
-    pub skin: ChangeTracking<Option<Health>>,
-    pub muscle: ChangeTracking<Option<Health>>,
+    pub skin: ChangeTracking<Health>,
+    pub muscle: ChangeTracking<Health>,
     size: f64,
     contents: Contents
 }
@@ -809,16 +816,16 @@ impl<Contents: HealthIterate> HealthIterate for BodyPart<Contents>
 {
     fn health_iter(&self) -> impl Iterator<Item=&HealthField>
     {
-        self.skin.health_iter()
-            .chain(self.muscle.health_iter())
+        iter::once(&self.skin)
+            .chain(iter::once(&self.muscle))
             .chain(iter::once(&self.bone))
             .chain(self.contents.health_iter())
     }
 
     fn health_sided_iter_mut(&mut self, side: Side2d) -> impl Iterator<Item=&mut HealthField>
     {
-        self.skin.health_sided_iter_mut(side)
-            .chain(self.muscle.health_sided_iter_mut(side))
+        iter::once(&mut self.skin)
+            .chain(iter::once(&mut self.muscle))
             .chain(iter::once(&mut self.bone))
             .chain(self.contents.health_sided_iter_mut(side))
     }
@@ -839,8 +846,8 @@ impl<Contents> BodyPart<Contents>
         Self::new_full(
             name,
             Health::new(bone * 0.1, bone),
-            Some(Health::new(info.skin_toughness * 0.05, info.skin_toughness)),
-            Some(Health::new(info.muscle_toughness * 0.2, info.muscle_toughness * 5.0)),
+            Health::new(info.skin_toughness * 0.05, info.skin_toughness),
+            Health::new(info.muscle_toughness * 0.2, info.muscle_toughness * 5.0),
             size,
             contents
         )
@@ -849,8 +856,8 @@ impl<Contents> BodyPart<Contents>
     pub fn new_full(
         name: DebugName,
         bone: Health,
-        skin: Option<Health>,
-        muscle: Option<Health>,
+        skin: Health,
+        muscle: Health,
         size: f64,
         contents: Contents
     ) -> Self
@@ -872,42 +879,31 @@ impl<Contents> BodyPart<Contents>
 
     pub fn is_broken(&self) -> bool
     {
-        self.bone.fraction() == 0.0
-            && self.skin.map(|x| x.fraction() == 0.0).unwrap_or(true)
-            && self.muscle.map(|x| x.fraction() == 0.0).unwrap_or(true)
+        self.bone.current() == 0.0
+            && self.skin.current() == 0.0
+            && self.muscle.current() == 0.0
     }
 
     fn speed_multiply(&self, base: f32, override_muscle: Option<f32>) -> f32
     {
         let muscle_health = override_muscle.unwrap_or_else(||
         {
-            self.muscle.as_ref().map(|x| x.fraction()).unwrap_or(0.0)
+            self.muscle.fraction().unwrap_or(0.0)
         });
 
-        let health_mult = (self.bone.fraction() * 0.9 + 0.1) * muscle_health;
+        let health_mult = (self.bone.fraction().unwrap_or(0.0) * 0.9 + 0.1) * muscle_health;
 
         base * health_mult
     }
 
-    pub fn average_health(&self) -> f32
+    fn average_health(&self) -> f32
     {
-        let mut count = 0;
-        let mut total = 0.0;
+        let (total, sum) = iter::once(self.bone.fraction().unwrap_or(0.0))
+            .chain(self.muscle.fraction())
+            .chain(self.skin.fraction())
+            .fold((0, 0.0), |(total, sum), x| (total + 1, sum + x));
 
-        let mut with_total = |value: Option<Health>|
-        {
-            if let Some(value) = value
-            {
-                count += 1;
-                total += value.fraction();
-            }
-        };
-
-        with_total(Some(*self.bone));
-        with_total(*self.skin);
-        with_total(*self.muscle);
-
-        total / count as f32
+        sum / total as f32
     }
 }
 
@@ -934,33 +930,21 @@ impl<Contents: Organ> BodyPart<Contents>
         damage: DamageType
     ) -> Option<DamageType>
     {
-        // huh
-        if let Some(pierce) = self.skin.as_mut().map(|x|
-        {
+        let skin_pierce = {
             let base_mult = 0.1;
             match damage
             {
-                DamageType::Blunt(_) => x.damage_pierce(damage * base_mult),
+                DamageType::Blunt(_) => self.skin.damage_pierce(damage * base_mult),
                 DamageType::Sharp{sharpness, ..} =>
                 {
-                    x.damage_pierce(damage * (base_mult + sharpness).clamp(0.0, 1.0))
+                    self.skin.damage_pierce(damage * (base_mult + sharpness).clamp(0.0, 1.0))
                 },
                 DamageType::Bullet(_)
-                | DamageType::AreaEach(_) => x.damage_pierce(damage)
+                | DamageType::AreaEach(_) => self.skin.damage_pierce(damage)
             }
-        }).unwrap_or(Some(damage))
-        {
-            if let Some(pierce) = self.muscle.as_mut().map(|x| x.damage_pierce(damage))
-                .unwrap_or(Some(pierce))
-            {
-                if let Some(pierce) = self.bone.damage_pierce(pierce)
-                {
-                    return self.contents.damage(side, pierce);
-                }
-            }
-        }
+        };
 
-        None
+        self.contents.damage(side, self.bone.damage_pierce(self.muscle.damage_pierce(skin_pierce?)?)?)
     }
 }
 
@@ -1078,6 +1062,43 @@ impl<T> IndexMut<Side1d> for Halves<T>
     }
 }
 
+impl<T: HealthIterate> HealthIterate for Halves<Option<T>>
+{
+    fn health_iter(&self) -> impl Iterator<Item=&HealthField>
+    {
+        self.left.as_ref().map(|x| x.health_iter()).into_iter().flatten()
+            .chain(self.right.as_ref().map(|x| x.health_iter()).into_iter().flatten())
+    }
+
+    fn health_sided_iter_mut(&mut self, side: Side2d) -> impl Iterator<Item=&mut HealthField>
+    {
+        let left_value = self.left.as_mut().map(|x| x.health_sided_iter_mut(side)).into_iter().flatten();
+        let right_value = self.right.as_mut().map(|x| x.health_sided_iter_mut(side)).into_iter().flatten();
+
+        match side
+        {
+            Side2d::Left =>
+            {
+                left_value.chain(right_value)
+            },
+            Side2d::Right =>
+            {
+                right_value.chain(left_value)
+            },
+            Side2d::Front | Side2d::Back =>
+            {
+                if fastrand::bool()
+                {
+                    left_value.chain(right_value)
+                } else
+                {
+                    right_value.chain(left_value)
+                }
+            }
+        }
+    }
+}
+
 impl HealthIterate for ChangeTracking<Health>
 {
     fn health_iter(&self) -> impl Iterator<Item=&HealthField>
@@ -1092,38 +1113,11 @@ impl HealthIterate for ChangeTracking<Health>
 }
 
 impl HealReceiver for ChangeTracking<Health> {}
-
-impl HealthIterate for ChangeTracking<Option<Health>>
-{
-    fn health_iter(&self) -> impl Iterator<Item=&HealthField>
-    {
-        [].into_iter()
-    }
-
-    fn health_sided_iter_mut(&mut self, _side: Side2d) -> impl Iterator<Item=&mut HealthField>
-    {
-        [].into_iter()
-    }
-}
-
-impl HealReceiver for ChangeTracking<Option<Health>>
-{
-    fn is_full(&self) -> bool
-    {
-        self.as_ref().map(|x| x.is_full()).unwrap_or(true)
-    }
-
-    fn heal(&mut self, amount: f32) -> Option<f32>
-    {
-        self.as_mut().map(|x| x.heal_remainder(amount)).unwrap_or(Some(amount))
-    }
-}
-
 impl DamageReceiver for ChangeTracking<Health> {}
 
 impl Organ for ChangeTracking<Health>
 {
-    fn average_health(&self) -> f32
+    fn average_health(&self) -> Option<f32>
     {
         self.fraction()
     }

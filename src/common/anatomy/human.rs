@@ -22,6 +22,7 @@ use crate::{
 
 use super::{
     DebugName,
+    Health,
     Halves,
     BodyPartInfo,
     Organ,
@@ -315,7 +316,7 @@ impl HumanAnatomyValues
             let lower = new_part(DebugName::new(with_name("lower leg")), 35.0, 0.44);
             let foot = {
                 let mut x = new_part(DebugName::new(with_name("foot")), 20.0, 0.17);
-                x.muscle = None.into();
+                x.muscle = Health::zero().into();
 
                 Some(x)
             };
@@ -337,7 +338,7 @@ impl HumanAnatomyValues
             let lower = new_part(DebugName::new(with_name("lower arm")), 20.0, 0.17);
             let hand = {
                 let mut x = new_part(DebugName::new(with_name("hand")), 20.0, 0.07);
-                x.muscle = None.into();
+                x.muscle = Health::zero().into();
 
                 Some(x)
             };
@@ -365,7 +366,7 @@ impl HumanAnatomyValues
                 HeadOrgans{eyes: Halves::repeat(Some(Eye::new(1.0))), brain: Some(Brain::new(0.5))}
             );
 
-            head.muscle = None.into();
+            head.muscle = Health::zero().into();
 
             head
         };
@@ -604,7 +605,7 @@ impl HumanAnatomy
 
                 if let Some(damager) = damager
                 {
-                    damager(Damage::area_each(dt));
+                    damager(Damage::area_each(0.01 * dt));
                 }
 
                 is_damaged
@@ -746,17 +747,17 @@ impl HumanAnatomy
                     let health = match kind
                     {
                         ChangedKind::Bone => body.get_part::<BoneHealthGetter>(x).copied(),
-                        ChangedKind::Muscle => body.get_part::<MuscleHealthGetter>(x).copied().flatten(),
-                        ChangedKind::Skin => body.get_part::<SkinHealthGetter>(x).copied().flatten()
+                        ChangedKind::Muscle => body.get_part::<MuscleHealthGetter>(x).copied(),
+                        ChangedKind::Skin => body.get_part::<SkinHealthGetter>(x).copied()
                     };
 
-                    health.map(|x| x.fraction())
+                    health.and_then(|x| x.fraction())
                 } else
                 {
                     body.get_part::<AverageHealthGetter>(x)
                 }
             },
-            ChangedPart::Organ(x) => body.get_organ::<AverageHealthGetter>(x)
+            ChangedPart::Organ(x) => body.get_organ::<AverageHealthGetter>(x).flatten()
         }
     }
 
@@ -767,8 +768,8 @@ impl HumanAnatomy
         let motor = brain.as_ref().map(|hemisphere|
         {
             Speeds{
-                arms: hemisphere.frontal.motor.arms.fraction().powi(3),
-                legs: hemisphere.frontal.motor.legs.fraction().powi(3)
+                arms: hemisphere.frontal.motor.arms.fraction().unwrap_or(0.0).powi(3),
+                legs: hemisphere.frontal.motor.legs.fraction().unwrap_or(0.0).powi(3)
             }
         });
 
@@ -842,14 +843,13 @@ impl HumanAnatomy
         let amount = brain.as_ref().map_sides(|side, hemisphere|
         {
             let lung = some_or_return!(self.lung(side.opposite()));
-            lung.health.fraction() * hemisphere.frontal.motor.body.fraction().powi(3)
+            lung.health.fraction().unwrap_or(0.0) * hemisphere.frontal.motor.body.fraction().unwrap_or(0.0).powi(3)
         }).combine(|a, b| a + b) / 2.0;
 
         let torso_muscle = self.body().spine.as_ref().and_then(|spine|
         {
             spine.torso.as_ref()
-        }).and_then(|torso| torso.muscle.map(|x| x.fraction()))
-            .unwrap_or(0.0);
+        }).and_then(|torso| torso.muscle.fraction()).unwrap_or(0.0);
 
         let regen = 0.25 * amount * torso_muscle;
         let consumption = 0.05;
@@ -861,7 +861,7 @@ impl HumanAnatomy
     {
         Halves{left: Side1d::Left, right: Side1d::Right}.map(|side|
         {
-            some_or_return!(self.lung(side)).health.fraction()
+            some_or_return!(self.lung(side)).health.fraction().unwrap_or(0.0)
         }).combine(|a, b| a + b) / 2.0
     }
 
@@ -873,10 +873,10 @@ impl HumanAnatomy
 
         let vision = brain.as_ref().map(|hemisphere|
         {
-            hemisphere.occipital.0.fraction().powi(3)
+            hemisphere.occipital.0.fraction().unwrap_or(0.0).powi(3)
         }).flip().zip(some_or_return!(self.body().head.as_ref()).contents.eyes.as_ref()).map(|(fraction, eye)|
         {
-            eye.as_ref().map(|x| x.average_health()).unwrap_or(0.0) * fraction
+            eye.as_ref().and_then(|x| x.average_health()).unwrap_or(0.0) * fraction
         }).combine(|a, b| a.max(b));
 
         base * vision

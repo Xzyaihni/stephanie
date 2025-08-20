@@ -783,37 +783,13 @@ impl HealthIterate for HeadOrgans
     fn health_iter(&self) -> impl Iterator<Item=&HealthField>
     {
         self.brain.as_ref().map(|x| x.health_iter()).into_iter().flatten()
-            .chain(self.eyes.left.as_ref().map(|x| x.health_iter()).into_iter().flatten())
-            .chain(self.eyes.right.as_ref().map(|x| x.health_iter()).into_iter().flatten())
+            .chain(self.eyes.health_iter())
     }
 
     fn health_sided_iter_mut(&mut self, side: Side2d) -> impl Iterator<Item=&mut HealthField>
     {
-        let brain = self.brain.as_mut().map(move |x| x.health_sided_iter_mut(side)).into_iter().flatten();
-        let left_eye = self.eyes.left.as_mut().map(move |x| x.health_sided_iter_mut(side)).into_iter().flatten();
-        let right_eye = self.eyes.right.as_mut().map(move |x| x.health_sided_iter_mut(side)).into_iter().flatten();
-
-        match side
-        {
-            Side2d::Left =>
-            {
-                brain.chain(left_eye).chain(right_eye)
-            },
-            Side2d::Right =>
-            {
-                brain.chain(right_eye).chain(left_eye)
-            },
-            Side2d::Front | Side2d::Back =>
-            {
-                if fastrand::bool()
-                {
-                    brain.chain(left_eye).chain(right_eye)
-                } else
-                {
-                    brain.chain(right_eye).chain(left_eye)
-                }
-            }
-        }
+        self.brain.as_mut().map(move |x| x.health_sided_iter_mut(side)).into_iter().flatten()
+            .chain(self.eyes.health_sided_iter_mut(side))
     }
 }
 
@@ -853,36 +829,12 @@ impl HealthIterate for TorsoOrgans
 {
     fn health_iter(&self) -> impl Iterator<Item=&HealthField>
     {
-        self.lungs.left.as_ref().map(|x| x.health_iter()).into_iter().flatten()
-            .chain(self.lungs.right.as_ref().map(|x| x.health_iter()).into_iter().flatten())
+        self.lungs.health_iter()
     }
 
     fn health_sided_iter_mut(&mut self, side: Side2d) -> impl Iterator<Item=&mut HealthField>
     {
-        let left_lung = self.lungs.left.as_mut().map(|x| x.health_sided_iter_mut(side)).into_iter().flatten();
-        let right_lung = self.lungs.right.as_mut().map(|x| x.health_sided_iter_mut(side)).into_iter().flatten();
-
-        match side
-        {
-            Side2d::Left =>
-            {
-                left_lung.chain(right_lung)
-            },
-            Side2d::Right =>
-            {
-                right_lung.chain(left_lung)
-            },
-            Side2d::Front | Side2d::Back =>
-            {
-                if fastrand::bool()
-                {
-                    left_lung.chain(right_lung)
-                } else
-                {
-                    right_lung.chain(left_lung)
-                }
-            }
-        }
+        self.lungs.health_sided_iter_mut(side)
     }
 }
 
@@ -953,8 +905,7 @@ impl LowerLimb
     {
         let leaf_speed = self.leaf.as_ref().map(|x|
         {
-            let muscle = self.lower.muscle.map(|x| x.fraction()).unwrap_or(0.0);
-            x.speed_multiply(leaf, Some(muscle))
+            x.speed_multiply(leaf, self.lower.muscle.fraction())
         }).unwrap_or_default();
 
         self.lower.speed_multiply(lower, None) + leaf_speed
@@ -1031,15 +982,13 @@ impl HealthIterate for Pelvis
     fn health_iter(&self) -> impl Iterator<Item=&HealthField>
     {
         self.pelvis.health_iter()
-            .chain(self.legs.left.as_ref().map(|x| x.health_iter()).into_iter().flatten())
-            .chain(self.legs.right.as_ref().map(|x| x.health_iter()).into_iter().flatten())
+            .chain(self.legs.health_iter())
     }
 
     fn health_sided_iter_mut(&mut self, side: Side2d) -> impl Iterator<Item=&mut HealthField>
     {
         self.pelvis.health_sided_iter_mut(side)
-            .chain(self.legs.left.as_mut().map(|x| x.health_sided_iter_mut(side)).into_iter().flatten())
-            .chain(self.legs.right.as_mut().map(|x| x.health_sided_iter_mut(side)).into_iter().flatten())
+            .chain(self.legs.health_sided_iter_mut(side))
     }
 }
 
@@ -1079,8 +1028,7 @@ impl HealthIterate for Spine
     fn health_iter(&self) -> impl Iterator<Item=&HealthField>
     {
         self.spine.health_iter()
-            .chain(self.arms.left.as_ref().map(|x| x.health_iter()).into_iter().flatten())
-            .chain(self.arms.right.as_ref().map(|x| x.health_iter()).into_iter().flatten())
+            .chain(self.arms.health_iter())
             .chain(self.torso.as_ref().map(|x| x.health_iter()).into_iter().flatten())
             .chain(self.pelvis.as_ref().map(|x| x.health_iter()).into_iter().flatten())
     }
@@ -1088,8 +1036,7 @@ impl HealthIterate for Spine
     fn health_sided_iter_mut(&mut self, side: Side2d) -> impl Iterator<Item=&mut HealthField>
     {
         self.spine.health_sided_iter_mut(side)
-            .chain(self.arms.left.as_mut().map(|x| x.health_sided_iter_mut(side)).into_iter().flatten())
-            .chain(self.arms.right.as_mut().map(|x| x.health_sided_iter_mut(side)).into_iter().flatten())
+            .chain(self.arms.health_sided_iter_mut(side))
             .chain(self.torso.as_mut().map(|x| x.health_sided_iter_mut(side)).into_iter().flatten())
             .chain(self.pelvis.as_mut().map(|x| x.health_sided_iter_mut(side)).into_iter().flatten())
     }
