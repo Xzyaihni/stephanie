@@ -353,8 +353,21 @@ impl HumanAnatomyValues
             })
         };
 
-        // the spine is very complex sizing wise so im just gonna pick a low-ish number
-        let spine = new_part(DebugName::new("spine"), 34.0, 0.25);
+        let spine = {
+            // the spine is very complex sizing wise so im just gonna pick a low-ish number
+            let mut x = new_part_with_contents(
+                DebugName::new("spine"),
+                part.clone(),
+                bone_toughness,
+                34.0,
+                0.25,
+                SpinalCord::new(1.0)
+            );
+
+            x.muscle = Health::zero().into();
+
+            x
+        };
 
         let head = {
             let mut head = new_part_with_contents(

@@ -1,4 +1,7 @@
-use std::fmt::{self, Display};
+use std::{
+    iter,
+    fmt::{self, Display}
+};
 
 use serde::{Serialize, Deserialize};
 
@@ -486,6 +489,49 @@ impl Organ for Lung
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SpinalCord
+{
+    pub health: HealthField
+}
+
+impl SpinalCord
+{
+    pub fn new(base: f32) -> Self
+    {
+        Self{health: Health::new(base * 0.05, base).into()}
+    }
+}
+
+impl HealthIterate for SpinalCord
+{
+    fn health_iter(&self) -> impl Iterator<Item=&HealthField>
+    {
+        [&self.health].into_iter()
+    }
+
+    fn health_sided_iter_mut(&mut self, _side: Side2d) -> impl Iterator<Item=&mut HealthField>
+    {
+        [&mut self.health].into_iter()
+    }
+}
+
+impl HealReceiver for SpinalCord {}
+impl DamageReceiver for SpinalCord {}
+
+impl Organ for SpinalCord
+{
+    fn size(&self) -> &f64
+    {
+        &0.3
+    }
+
+    fn consume_accessed(&mut self) -> bool
+    {
+        self.health.consume_accessed()
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum MotorId
 {
@@ -592,6 +638,7 @@ pub enum OrganId
 {
     Eye(Side1d),
     Brain(Option<Side1d>, Option<BrainId>),
+    SpinalCord,
     Lung(Side1d)
 }
 
@@ -603,6 +650,7 @@ impl Display for OrganId
         {
             Self::Eye(side) => (side, "eye".to_owned()),
             Self::Lung(side) => (side, "lung".to_owned()),
+            Self::SpinalCord => return write!(f, "spinal cord"),
             Self::Brain(side, id) =>
             {
                 let name = id.map(|x| x.to_string()).unwrap_or_else(|| "hemisphere".to_owned());
@@ -633,6 +681,7 @@ impl OrganId
         ].into_iter()
             .chain(BrainId::iter().map(|id| Self::Brain(Some(Side1d::Left), Some(id))))
             .chain(BrainId::iter().map(|id| Self::Brain(Some(Side1d::Right), Some(id))))
+            .chain(iter::once(Self::SpinalCord))
     }
 }
 
@@ -1017,7 +1066,7 @@ impl Pelvis
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Spine
 {
-    pub spine: HumanPart,
+    pub spine: BodyPart<SpinalCord>,
     pub torso: Option<HumanPart<TorsoOrgans>>,
     pub arms: Halves<Option<Limb>>,
     pub pelvis: Option<Pelvis>
@@ -1214,14 +1263,17 @@ macro_rules! impl_get
                 },
                 OrganId::Eye(side) =>
                 {
-                    self.head.$option_fn()?.contents.eyes[side].$option_fn().map(|x| F::get(x))
+                    Some(F::get(self.head.$option_fn()?.contents.eyes[side].$option_fn()?))
                 },
                 OrganId::Lung(side) =>
                 {
-                    self.spine.$option_fn()
-                        .and_then(|x| x.torso.$option_fn())
-                        .and_then(|x| x.contents.lungs[side].$option_fn())
-                        .map(|x| F::get(x))
+                    Some(F::get(self.spine.$option_fn()?
+                        .torso.$option_fn()?
+                        .contents.lungs[side].$option_fn()?))
+                },
+                OrganId::SpinalCord =>
+                {
+                    Some(F::get($($b)+ self.spine.$option_fn()?.spine.contents))
                 }
             }
         }

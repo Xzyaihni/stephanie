@@ -58,16 +58,26 @@ fn color_pairs() -> Vec<(ChangedPart, Rgba<u8>)>
 {
     let parts: Vec<_> = ChangedPart::iter().filter(|x|
     {
-        if let ChangedPart::Organ(OrganId::Brain(_, _)) = x
+        if let ChangedPart::Organ(_) = x
         {
-            return false;
+            false
+        } else
+        {
+            true
         }
-
-        true
     }).chain([
         ChangedPart::Organ(OrganId::Brain(Some(Side1d::Left), None)),
         ChangedPart::Organ(OrganId::Brain(Some(Side1d::Right), None))
-    ]).collect();
+    ]).chain(OrganId::iter().filter(|x|
+    {
+        if let OrganId::Brain(_, _) = x
+        {
+            false
+        } else
+        {
+            true
+        }
+    }).map(ChangedPart::Organ)).collect();
 
     let per_channel = (parts.len() as f64).cbrt().ceil() as usize;
     parts.into_iter().enumerate().map(|(index, key)|
