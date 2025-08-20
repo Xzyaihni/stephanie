@@ -1318,7 +1318,7 @@ impl VisualOvermap
     )
     {
         let player_position = self.visibility_checker.player_chunk_height();
-        for_visible_2d(&self.chunks, &self.visibility_checker).for_each(|pos|
+        self.chunks.positions_2d().for_each(|pos|
         {
             if let Some((pos, height)) = Self::with_position(pos, visibility.position.z, player_position)
             {
@@ -1344,7 +1344,7 @@ impl VisualOvermap
     {
         let mut f = Some(f);
         let player_position = self.visibility_checker.player_chunk_height();
-        for_visible_2d(&self.chunks, &self.visibility_checker).for_each(|pos|
+        self.chunks.positions_2d().for_each(|pos|
         {
             let (pos, height) = Self::with_position(pos, visibility.position.z, player_position).unwrap();
 
