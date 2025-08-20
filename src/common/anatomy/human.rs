@@ -791,6 +791,9 @@ impl HumanAnatomy
             let arms = spine.arms.as_ref().map(|arm|
             {
                 arm.as_ref().map(|x| x.arm_speed()).unwrap_or(0.0)
+            }).map(|x|
+            {
+                x * spine.spine.contents.cervical.fraction().unwrap_or(0.0)
             });
 
             let legs = spine.pelvis.as_ref().map(|pelvis|
@@ -799,7 +802,10 @@ impl HumanAnatomy
                 {
                     leg.as_ref().map(|x| x.leg_speed()).unwrap_or(0.0)
                 })
-            }).unwrap_or_else(|| Halves::repeat(0.0));
+            }).unwrap_or_else(|| Halves::repeat(0.0)).map(|x|
+            {
+                x * spine.spine.contents.lumbar.fraction().unwrap_or(0.0)
+            });
 
             arms.zip(legs).zip(motor.flip()).map(|((arms, legs), motor)|
             {
@@ -849,22 +855,31 @@ impl HumanAnatomy
         0.0
     }
 
-    fn updated_oxygen_change(&self) -> f32
+    fn updated_oxygen_regen(&self) -> f32
     {
         let brain = some_or_return!(self.brain());
 
         let amount = brain.as_ref().map_sides(|side, hemisphere|
         {
             let lung = some_or_return!(self.lung(side.opposite()));
+
             lung.0.fraction().unwrap_or(0.0) * hemisphere.frontal.motor.body.fraction().unwrap_or(0.0).powi(3)
         }).combine(|a, b| a + b) / 2.0;
 
-        let torso_muscle = self.body().spine.as_ref().and_then(|spine|
-        {
-            spine.torso.as_ref()
-        }).and_then(|torso| torso.muscle.fraction()).unwrap_or(0.0);
+        let spine = some_or_return!(self.body().spine.as_ref());
 
-        let regen = 0.25 * amount * torso_muscle;
+        let nerve_fraction = spine.spine.contents.cervical.fraction().unwrap_or(0.0);
+
+        let torso = some_or_return!(spine.torso.as_ref());
+
+        let torso_muscle = torso.muscle.fraction().unwrap_or(0.0);
+
+        0.25 * amount * torso_muscle * nerve_fraction
+    }
+
+    fn updated_oxygen_change(&self) -> f32
+    {
+        let regen = self.updated_oxygen_regen();
         let consumption = 0.05;
 
         regen - consumption
