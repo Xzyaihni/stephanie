@@ -1176,13 +1176,9 @@ impl<'a> PlayerContainer<'a>
             },
             Control::Sprint =>
             {
-                let movement_direction = self.movement_direction();
-
-                let is_sprinting = movement_direction.is_some() && state.is_down();
-
                 if let Some(character) = self.game_state.entities().character_mut_no_change(self.info.entity).as_mut()
                 {
-                    character.set_sprinting(is_sprinting);
+                    character.set_sprinting(state.is_down());
                 }
             },
             _ => ()

@@ -41,27 +41,34 @@ pub fn update(
         ($result_variable:expr, $entity:expr) =>
         {
             let mut collider = entities.collider_mut_no_change($entity).unwrap();
+
+            {
+                $result_variable = maybe_colliding_info!(with $entity, collider);
+            }
+        };
+        (with $entity:expr, $collider:expr) =>
+        {
             {
                 let mut transform = some_or_return!(entities.transform($entity)).clone();
 
-                let kind = collider.kind;
+                let kind = $collider.kind;
                 if kind == ColliderType::Aabb
                 {
                     transform.rotation = 0.0;
                 }
 
-                if let Some(scale) = collider.scale
+                if let Some(scale) = $collider.scale
                 {
                     transform.scale = scale;
                 }
 
-                $result_variable = CollidingInfo{
+                CollidingInfo{
                     entity: Some($entity),
                     transform,
-                    collider: &mut collider
-                };
+                    collider: &mut $collider
+                }
             }
-        }
+        };
     }
 
     for_each_component!(entities, collider, |entity, collider: &RefCell<Collider>|
@@ -137,15 +144,15 @@ pub fn update(
 
     crate::frame_time_this!{
         collision_system_world,
-        for_each_component!(entities, collider, |entity, _collider|
+        for_each_component!(entities, collider, |entity, collider: &RefCell<Collider>|
         {
-            let mut this;
-            maybe_colliding_info!{this, entity};
-
-            if !this.collider.layer.collides(&ColliderLayer::World)
+            let mut collider = collider.borrow_mut();
+            if !collider.layer.collides(&ColliderLayer::World)
             {
                 return;
             }
+
+            let mut this = maybe_colliding_info!{with entity, collider};
 
             if DebugConfig::is_enabled(DebugTool::CollisionWorldBounds)
             {
