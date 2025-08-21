@@ -2005,6 +2005,8 @@ impl Character
             speed
         };
 
+        let speed = speed * (anatomy.oxygen().current / 0.2).min(1.0);
+
         let velocity = *direction * (speed * physical.inverse_mass);
 
         let current_velocity = physical.velocity();

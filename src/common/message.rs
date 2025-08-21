@@ -97,6 +97,8 @@ impl Message
         match self
         {
             Message::ChunkRequest{..}
+            | Message::SyncCamera{..}
+            | Message::SyncWorldTime{..}
             | Message::PlayerConnect{..}
             | Message::PlayerOnConnect{..}
             | Message::PlayerFullyConnected

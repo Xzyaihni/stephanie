@@ -5,7 +5,8 @@ use yanyaengine::Transform;
 use crate::common::{
     project_onto,
     raycast::*,
-    world::TilePos
+    Pos3,
+    world::{CHUNK_VISUAL_SIZE, TilePos, GlobalPos}
 };
 
 
@@ -40,14 +41,41 @@ impl VisibilityChecker
 
     pub fn visible_point_2d(&self, point: Vector2<f32>) -> bool
     {
-        let offset = point - self.position.xy();
+        Self::visible_point_2d_associated(self.size.xy(), self.position.xy(), point)
+    }
 
-        let half_size = self.size / 2.0;
+    pub fn visible_point_2d_associated(
+        size: Vector2<f32>,
+        position: Vector2<f32>,
+        point: Vector2<f32>
+    ) -> bool
+    {
+        let offset = point - position;
+
+        let half_size = size / 2.0;
 
         (0..2).all(|i|
         {
             offset.index(i).abs() <= *half_size.index(i)
         })
+    }
+
+    pub fn visible_chunk(&self, pos: GlobalPos) -> bool
+    {
+        Self::visible_chunk_associated(self.size.xy(), self.position.xy(), pos)
+    }
+
+    pub fn visible_chunk_associated(
+        size: Vector2<f32>,
+        position: Vector2<f32>,
+        pos: GlobalPos
+    ) -> bool
+    {
+        Self::visible_point_2d_associated(
+            size + Vector2::repeat(CHUNK_VISUAL_SIZE),
+            position,
+            Vector3::from(Pos3::from(pos)).xy() + Vector2::repeat(CHUNK_VISUAL_SIZE / 2.0)
+        )
     }
 
     pub fn visible_sphere(&self, transform: &Transform) -> bool

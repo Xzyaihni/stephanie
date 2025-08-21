@@ -1419,7 +1419,7 @@ impl GameState
                 self.entities.entities.create_queued(object_info)
             };
 
-            if self.host
+            if self.is_trusted
             {
                 let mut passer = self.connections_handler.write();
                 crate::frame_time_this!{
@@ -1456,7 +1456,10 @@ impl GameState
 
     fn rare(&mut self)
     {
-        self.send_message(Message::SyncWorldTime{time: self.world.time()});
+        if self.is_trusted
+        {
+            self.send_message(Message::SyncWorldTime{time: self.world.time()});
+        }
 
         if DebugConfig::is_debug()
         {
