@@ -54,6 +54,7 @@ pub enum DebugTool
     DrawSkyChanged,
     GpuDrawTimings,
     FrameTimings,
+    DebugTimings,
     NoOcclusion,
     NoWallOcclusion,
     NoSkyOcclusion,

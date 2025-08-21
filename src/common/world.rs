@@ -621,7 +621,14 @@ impl World
             Message::ChunkSync{pos, chunk, entities} =>
             {
                 self.overmap.set(pos, chunk);
-                Some(Message::EntitySetMany{entities})
+
+                if entities.is_empty()
+                {
+                    None
+                } else
+                {
+                    Some(Message::EntitySetMany{entities})
+                }
             },
             _ => Some(message)
         }

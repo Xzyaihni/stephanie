@@ -199,6 +199,29 @@ macro_rules! time_this
     }
 }
 
+#[macro_export]
+macro_rules! debug_time_this
+{
+    ($name:expr, $($tt:tt)*) =>
+    {
+        {
+            use $crate::debug_config::*;
+
+            if DebugConfig::is_enabled(DebugTool::DebugTimings)
+            {
+                let (time, value) = $crate::get_time_this!($($tt)*);
+
+                eprintln!("{} took {time:.2} ms", $name);
+
+                value
+            } else
+            {
+                $($tt)*
+            }
+        }
+    }
+}
+
 pub const FRAME_TIME_AMOUNT: usize = 120;
 
 #[macro_export]

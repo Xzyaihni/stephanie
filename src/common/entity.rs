@@ -830,33 +830,6 @@ macro_rules! common_trait_impl
                 (entity, self.z_level(entity).unwrap())
             }).reduce(reducer);
 
-            for_each_component!(self, saveable, |entity, _|
-            {
-                if let Some(parent) = self.parent(entity)
-                {
-                    let index = component_index!(self, entity, saveable)
-                        .unwrap();
-
-                    if let Some(parent_index) = component_index!(self, parent.entity(), saveable)
-                    {
-                        if !(parent_index < index)
-                        {
-                            let parent_entity = parent.entity();
-                            let body = format!("[{side} SAVEABLE ORDER FAILED] ({parent_index:?} ({parent_entity:?}) < {index:?} ({entity:?}))");
-
-                            eprintln!("{body}");
-
-                            write_log(format!(
-                                "{body} parent: {}, child: {}",
-                                self.info_ref(parent_entity),
-                                self.info_ref(entity)
-                            ));
-
-                            if PANIC_ON_FAIL { panic!() }
-                        }
-                    }
-                }
-            });
         }
     }
 }
@@ -1569,8 +1542,7 @@ macro_rules! define_entities_both
                 (parent, resort_parent),
                 (lazy_transform, resort_lazy_transform),
                 (follow_rotation, resort_follow_rotation),
-                (follow_position, resort_follow_position),
-                (saveable, resort_saveable)
+                (follow_position, resort_follow_position)
             );
 
             fn empty_components() -> ComponentsIndices
@@ -2533,10 +2505,18 @@ macro_rules! define_entities
                 {
                     Message::EntitySetMany{entities} =>
                     {
-                        entities.into_iter().for_each(|(entity, info)|
+                        if DebugConfig::is_enabled(DebugTool::DebugTimings)
                         {
-                            self.handle_entity_set(create_info, entity, info);
-                        });
+                            eprint!("with {} entities ", entities.len());
+                        }
+
+                        $crate::debug_time_this!(
+                            "entity-set-many",
+                            entities.into_iter().for_each(|(entity, info)|
+                            {
+                                self.handle_entity_set(create_info, entity, info)
+                            })
+                        );
 
                         None
                     },

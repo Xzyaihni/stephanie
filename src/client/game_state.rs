@@ -828,7 +828,7 @@ impl GameState
         );
 
         let message_throttler = MessageThrottler::new(MessageThrottlerInfo{
-            chunk_sync_every: 10
+            chunk_sync_every: 2
         });
 
         let ui_camera = Camera::new(1.0, -1.0..1.0);
