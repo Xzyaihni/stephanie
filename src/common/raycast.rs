@@ -131,13 +131,14 @@ fn swept_aabb_world_inner<'a, const EXCLUDE_BEFORE: bool>(
 
     let direction = Unit::new_normalize(direction);
 
-    let size = this.scale + Vector3::repeat(TILE_SIZE);
-    let half_size = size / 2.0;
+    let half_size = this.scale / 2.0;
 
     let top_left = start.zip_map(&end, |a, b| a.min(b)) - half_size;
     let bottom_right = start.zip_map(&end, |a, b| a.max(b)) + half_size;
 
-    TilePos::from(top_left).tiles_between(TilePos::from(bottom_right + Vector3::repeat(TILE_SIZE)))
+    let size = this.scale + Vector3::repeat(TILE_SIZE);
+
+    TilePos::from(top_left).tiles_between(TilePos::from(bottom_right))
         .filter_map(move |pos|
         {
             let tile = world.tile(pos);

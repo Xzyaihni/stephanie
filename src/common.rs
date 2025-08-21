@@ -175,9 +175,7 @@ macro_rules! get_time_this
     ($($tt:tt)*) =>
     {
         {
-            use std::time::Instant;
-
-            let start_time = Instant::now();
+            let start_time = std::time::Instant::now();
 
             let value = $($tt)*;
 
@@ -204,13 +202,88 @@ macro_rules! time_this
 pub const FRAME_TIME_AMOUNT: usize = 120;
 
 #[macro_export]
+macro_rules! time_this_additive
+{
+    ($result:expr, $($tt:tt)*) =>
+    {
+        {
+            use $crate::debug_config::*;
+
+            if DebugConfig::is_enabled(DebugTool::FrameTimings)
+            {
+                let start_time = std::time::Instant::now();
+
+                let value = $($tt)*;
+
+                let time = start_time.elapsed();
+
+                $result = Some($result.map(|x| x + time).unwrap_or(time));
+
+                value
+            } else
+            {
+                $($tt)*
+            }
+        }
+    }
+}
+
+#[macro_export]
+macro_rules! frame_timed
+{
+    ($name:ident, $time_ms:expr) =>
+    {
+        {
+            use std::sync::{LazyLock, Mutex};
+
+            #[allow(non_upper_case_globals)]
+            static $name: LazyLock<Mutex<(f64, [Option<f64>; $crate::common::FRAME_TIME_AMOUNT], usize)>> = LazyLock::new(||
+            {
+                Mutex::new((0.0, [None; $crate::common::FRAME_TIME_AMOUNT], 0))
+            });
+
+            let time = $time_ms;
+            let mut value = $name.lock().unwrap();
+
+            value.0 = value.0.max(time);
+
+            {
+                let index = value.2;
+                value.1[index] = Some(time);
+            }
+
+            // currently selected index
+            value.2 += 1;
+            if value.2 == value.1.len()
+            {
+                let (total, amount) = value.1.iter().fold((0.0, 0), |(total, amount), x|
+                {
+                    if let Some(x) = x
+                    {
+                        (total + x, amount + 1)
+                    } else
+                    {
+                        (total, amount)
+                    }
+                });
+
+                let average_time = total / amount as f64;
+
+                eprintln!("{} takes ({:.2} ms max) {average_time:.2} ms", stringify!($name), value.0);
+
+                value.0 = 0.0;
+                value.2 = 0;
+            }
+        }
+    }
+}
+
+#[macro_export]
 macro_rules! frame_time_this
 {
     ($name:ident, $($tt:tt)*) =>
     {
         {
-            use std::sync::{LazyLock, Mutex};
-
             use $crate::debug_config::*;
 
             if DebugConfig::is_enabled(DebugTool::PrintStage)
@@ -220,47 +293,9 @@ macro_rules! frame_time_this
 
             if DebugConfig::is_enabled(DebugTool::FrameTimings)
             {
-                #[allow(non_upper_case_globals)]
-                static $name: LazyLock<Mutex<(f64, [Option<f64>; $crate::common::FRAME_TIME_AMOUNT], usize)>> = LazyLock::new(||
-                {
-                    Mutex::new((0.0, [None; $crate::common::FRAME_TIME_AMOUNT], 0))
-                });
-
                 let (time, value) = $crate::get_time_this!($($tt)*);
 
-                {
-                    let mut value = $name.lock().unwrap();
-
-                    value.0 = value.0.max(time);
-
-                    {
-                        let index = value.2;
-                        value.1[index] = Some(time);
-                    }
-
-                    // currently selected index
-                    value.2 += 1;
-                    if value.2 == value.1.len()
-                    {
-                        let (total, amount) = value.1.iter().fold((0.0, 0), |(total, amount), x|
-                        {
-                            if let Some(x) = x
-                            {
-                                (total + x, amount + 1)
-                            } else
-                            {
-                                (total, amount)
-                            }
-                        });
-
-                        let average_time = total / amount as f64;
-
-                        eprintln!("{} takes ({:.2} ms max) {average_time:.2} ms", stringify!($name), value.0);
-
-                        value.0 = 0.0;
-                        value.2 = 0;
-                    }
-                }
+                $crate::frame_timed!($name, time);
 
                 value
             } else

@@ -142,6 +142,9 @@ pub fn update(
         eprintln!("after collision: {} contacts", contacts.len());
     }
 
+    let mut world_flat_time = None;
+    let mut world_z_time = None;
+
     crate::frame_time_this!{
         collision_system_world,
         for_each_component!(entities, collider, |entity, collider: &RefCell<Collider>|
@@ -174,21 +177,42 @@ pub fn update(
                 });
             }
 
-            this.collide_with_world(world, &mut contacts);
+            crate::time_this_additive!{
+                world_flat_time,
+                this.collide_with_world(world, &mut contacts)
+            };
 
             let mut physical = some_or_return!(entities.physical_mut_no_change(entity));
 
             if physical.move_z
             {
-                let next_position = physical.next_position_mut();
-                if this.collide_with_world_z(world, *next_position) && !this.collider.ghost
-                {
-                    next_position.z = this.transform.position.z;
-                    physical.remove_velocity_axis(2);
-                }
+                crate::time_this_additive!{
+                    world_z_time,
+                    {
+                        let next_position = physical.next_position_mut();
+                        if this.collide_with_world_z(world, *next_position) && !this.collider.ghost
+                        {
+                            next_position.z = this.transform.position.z;
+                            physical.remove_velocity_axis(2);
+                        }
+                    }
+                };
             }
         })
     };
+
+    if DebugConfig::is_enabled(DebugTool::FrameTimings)
+    {
+        {
+            let time = world_flat_time.map(|x| x.as_micros() as f64 / 1000.0).unwrap_or(0.0);
+            crate::frame_timed!(world_flat_time, time);
+        }
+
+        {
+            let time = world_z_time.map(|x| x.as_micros() as f64 / 1000.0).unwrap_or(0.0);
+            crate::frame_timed!(world_z_time, time);
+        }
+    }
 
     if DebugConfig::is_enabled(DebugTool::PrintContactsCount)
     {
