@@ -2330,7 +2330,21 @@ impl Ui
             }
         };
 
-        render_bar_display(BarDisplayKind::Stamina, &mut self.stamina, Lcha{l: 70.0, c: 120.0, h: 1.5, a: 1.0});
+        if let Some(anatomy) = entities.anatomy(self.ui_entities.player)
+        {
+            let oxygen = anatomy.oxygen().current;
+            let color = if oxygen <= WINDED_OXYGEN
+            {
+                let fraction = (oxygen / WINDED_OXYGEN).powi(3);
+                Lcha{l: lerp(30.0, 70.0, fraction), c: 120.0, h: lerp(0.713, 1.5, fraction), a: 1.0}
+            } else
+            {
+                Lcha{l: 70.0, c: 120.0, h: 1.5, a: 1.0}
+            };
+
+            render_bar_display(BarDisplayKind::Stamina, &mut self.stamina, color);
+        }
+
         render_bar_display(BarDisplayKind::Cooldown, &mut self.cooldown, Lcha{l: 50.0, c: 100.0, h: 4.0, a: 1.0});
 
         if self.is_paused

@@ -23,6 +23,8 @@ pub use human::*;
 mod human;
 
 
+pub const WINDED_OXYGEN: f32 = 0.2;
+
 type DebugName = <DebugConfig as DebugConfigTrait>::DebugName;
 
 macro_rules! simple_getter

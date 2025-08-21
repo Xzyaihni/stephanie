@@ -54,6 +54,7 @@ use crate::{
         Parent,
         Anatomy,
         World,
+        anatomy::WINDED_OXYGEN,
         entity::ClientEntities
     }
 };
@@ -2005,7 +2006,7 @@ impl Character
             speed
         };
 
-        let speed = speed * (anatomy.oxygen().current / 0.2).clamp(0.5, 1.0);
+        let speed = speed * (anatomy.oxygen().current / WINDED_OXYGEN).clamp(0.5, 1.0);
 
         let velocity = *direction * (speed * physical.inverse_mass);
 
