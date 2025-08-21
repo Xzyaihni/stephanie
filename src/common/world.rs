@@ -66,6 +66,8 @@ pub use sky_light::SkyLight;
 
 use pathfind::WorldPath;
 
+use overmap::OvermapIndexing;
+
 pub mod overmap;
 
 mod client_overmap;
@@ -184,6 +186,11 @@ impl World
         let max_scale = (CLIENT_OVERMAP_SIZE - 1) as f32 * CHUNK_VISUAL_SIZE - padding;
 
         max_scale
+    }
+
+    pub fn inbounds(&self, pos: GlobalPos) -> bool
+    {
+        self.overmap.to_local(pos).is_some()
     }
 
     pub fn build_spatial(&self, entities: &ClientEntities) -> SpatialGrid

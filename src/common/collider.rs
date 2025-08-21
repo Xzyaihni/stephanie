@@ -1,5 +1,6 @@
 use std::{
     convert,
+    cmp::Ordering,
     num::FpCategory,
     ops::ControlFlow
 };
@@ -307,8 +308,10 @@ impl Collider
                     *v
                 });
 
-                let size = points.clone().max_by(|a, b| a.partial_cmp(b).unwrap()).unwrap()
-                    - points.min_by(|a, b| a.partial_cmp(b).unwrap()).unwrap();
+                let max = points.clone().max_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal)).unwrap_or(0.0);
+                let min = points.min_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal)).unwrap_or(0.0);
+
+                let size = max - min;
 
                 size / 2.0
             };

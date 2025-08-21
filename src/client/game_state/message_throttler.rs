@@ -1,41 +1,54 @@
-use crate::common::message::Message;
+use std::collections::VecDeque;
+
+use crate::common::{
+    World,
+    message::Message
+};
 
 
 pub struct MessageThrottlerInfo
 {
-    pub max_chunk_syncs: usize
+    pub chunk_sync_every: usize
 }
 
-struct CountLimited
+struct PerXFrames
 {
-    max: usize,
-    current: usize
+    per: usize,
+    wait: usize
 }
 
-impl CountLimited
+impl PerXFrames
 {
-    pub fn new(max: usize) -> Self
+    pub fn new(per: usize) -> Self
     {
-        Self{max, current: max}
+        Self{per, wait: 0}
     }
 
-    pub fn add(&mut self) -> bool
+    pub fn advance(&mut self)
     {
-        self.current += 1;
-
-        self.current < self.max
+        if self.wait > 0
+        {
+            self.wait -= 1;
+        }
     }
 
-    pub fn reset(&mut self)
+    pub fn receive(&mut self) -> bool
     {
-        self.current = 0;
+        let status = self.wait == 0;
+
+        if status
+        {
+            self.wait = self.per;
+        }
+
+        status
     }
 }
 
 pub struct MessageThrottler
 {
-    available: bool,
-    chunk_syncs: CountLimited
+    buffered: VecDeque<Message>,
+    chunk_sync_every: PerXFrames
 }
 
 impl MessageThrottler
@@ -43,38 +56,42 @@ impl MessageThrottler
     pub fn new(info: MessageThrottlerInfo) -> Self
     {
         Self{
-            available: true,
-            chunk_syncs: CountLimited::new(info.max_chunk_syncs)
+            buffered: VecDeque::new(),
+            chunk_sync_every: PerXFrames::new(info.chunk_sync_every)
         }
     }
 
-    fn reset(&mut self)
+    pub fn advance(&mut self)
     {
-        self.available = true;
-
-        self.chunk_syncs.reset();
+        self.chunk_sync_every.advance();
     }
 
-    pub fn process(&mut self, message: &Message)
+    pub fn poll(&mut self, world: &World) -> Option<Message>
     {
-        let available = match message
-        {
-            Message::ChunkSync{..} => self.chunk_syncs.add(),
-            _ => true
-        };
-
-        self.available &= available;
+        self.buffered.pop_front().and_then(|x| self.process(world, x))
     }
 
-    pub fn available(&mut self) -> bool
+    pub fn process(&mut self, world: &World, message: Message) -> Option<Message>
     {
-        let is_available = self.available;
-
-        if !is_available
+        match message
         {
-            self.reset();
+            Message::ChunkSync{pos, ..} =>
+            {
+                if !world.inbounds(pos)
+                {
+                    return None;
+                }
+
+                if self.chunk_sync_every.receive()
+                {
+                    Some(message)
+                } else
+                {
+                    self.buffered.push_back(message);
+                    None
+                }
+            },
+            x => Some(x)
         }
-
-        is_available
     }
 }

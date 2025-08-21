@@ -494,7 +494,7 @@ macro_rules! impl_common_systems
 
                     let info = f(self, entity, info);
 
-                    self.set_each(entity, info);
+                    self.set_each_existing(entity, info);
                 }
             });
         }
@@ -1194,6 +1194,13 @@ macro_rules! define_entities_both
             fn set_each(&mut self, entity: Entity, info: EntityInfo<$($component_type,)+>)
             {
                 $(
+                    self.$set_func_no_change(entity, info.$name);
+                )+
+            }
+
+            fn set_each_existing(&mut self, entity: Entity, info: EntityInfo<$($component_type,)+>)
+            {
+                $(
                     if info.$name.is_some()
                     {
                         self.$set_func_no_change(entity, info.$name);
@@ -1819,7 +1826,7 @@ macro_rules! define_entities_both
 
             pub fn update_mouse_highlight(&mut self, player: Entity, mouse: Entity)
             {
-                let mouse_collider = self.collider(mouse).unwrap();
+                let mouse_collider = some_or_return!(self.collider(mouse));
                 let mouse_collided = mouse_collider.collided().first().copied();
 
                 let mouse_collided = some_or_return!(mouse_collided);
@@ -2497,17 +2504,11 @@ macro_rules! define_entities
                         }, create_info)
                     });
 
-                    if component.is_some()
-                    {
-                        self.$side_set_func_no_change(entity, component);
-                    }
+                    self.$side_set_func_no_change(entity, component);
                 })+
 
                 $(
-                    if info.$name.is_some()
-                    {
-                        self.$set_func_no_change(entity, info.$name);
-                    }
+                    self.$set_func_no_change(entity, info.$name);
                 )+
 
                 if let (

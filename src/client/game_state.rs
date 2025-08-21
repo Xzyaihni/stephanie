@@ -248,7 +248,7 @@ impl ClientEntitiesContainer
 
     pub fn update_resize(&mut self, size: Vector2<f32>)
     {
-        self.entities.target(self.camera_entity).unwrap().scale = size.xyx();
+        some_or_return!(self.entities.target(self.camera_entity)).scale = size.xyx();
     }
 
     pub fn update_aspect(&mut self, size: Vector2<f32>)
@@ -828,7 +828,7 @@ impl GameState
         );
 
         let message_throttler = MessageThrottler::new(MessageThrottlerInfo{
-            max_chunk_syncs: 1
+            chunk_sync_every: 10
         });
 
         let ui_camera = Camera::new(1.0, -1.0..1.0);
@@ -980,14 +980,29 @@ impl GameState
 
     pub fn process_messages(&mut self, create_info: &mut UpdateBuffersInfo)
     {
-        while self.is_loading || self.message_throttler.available()
+        self.message_throttler.advance();
+
+        while let Some(message) = self.message_throttler.poll(&self.world)
+        {
+            self.process_message_inner(create_info, message);
+        }
+
+        loop
         {
             match self.receiver.try_recv()
             {
                 Ok(message) =>
                 {
-                    self.message_throttler.process(&message);
-                    self.process_message_inner(create_info, message);
+                    if self.is_loading
+                    {
+                        self.process_message_inner(create_info, message);
+                    } else
+                    {
+                        if let Some(message) = self.message_throttler.process(&self.world, message)
+                        {
+                            self.process_message_inner(create_info, message);
+                        }
+                    }
                 },
                 Err(TryRecvError::Empty) =>
                 {

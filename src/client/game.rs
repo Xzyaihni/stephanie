@@ -1424,8 +1424,10 @@ impl<'a> PlayerContainer<'a>
         {
             let entities = self.game_state.entities_mut();
 
-            entities.transform_mut(self.info.mouse_entity).unwrap()
-                .position = camera_position + mouse_position;
+            if let Some(mut transform) = entities.transform_mut(self.info.mouse_entity)
+            {
+                transform.position = camera_position + mouse_position;
+            }
 
             entities.update_mouse_highlight(
                 self.info.entity,
