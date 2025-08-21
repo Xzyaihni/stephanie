@@ -14,6 +14,7 @@ use crate::common::{
     some_or_value,
     define_layers,
     rectangle_points,
+    ENTITY_SCALE,
     Entity,
     Physical,
     raycast::{raycast_this, swept_aabb_world_with_before},
@@ -1183,9 +1184,14 @@ impl<'a> CollidingInfo<'a>
 
         let direction = next_position - self.transform.position;
 
+        const MARGIN: Vector3<f32> = Vector3::new(ENTITY_SCALE * 0.1, ENTITY_SCALE * 0.1, 0.0);
+
         if let Some((tile_pos, distance)) = swept_aabb_world_with_before(
             world,
-            &self.transform,
+            &Transform{
+                scale: self.transform.scale - MARGIN, // make sure that entities cant stick to walls
+                ..self.transform
+            },
             Vector3::new(0.0, 0.0, direction.z)
         ).filter(|(_, x)| *x > -TILE_SIZE * 0.1).min_by(|a, b| a.1.partial_cmp(&b.1).unwrap())
         {
