@@ -203,7 +203,7 @@ impl Game
         with_game_state(&self.game_state, |game_state|
         {
             crate::frame_time_this!{
-                update_pre,
+                1, update_pre,
                 game_state.update_pre(dt)
             };
         });
@@ -220,14 +220,10 @@ impl Game
 
         let controls: Vec<_> = with_game_state(&self.game_state, |game_state|
         {
-            let mut changed_this_frame = game_state.controls.changed_this_frame();
-
             crate::frame_time_this!{
-                ui_update,
-                game_state.ui_update(&mut changed_this_frame)
-            };
-
-            game_state.controls.consume_changed(changed_this_frame).collect()
+                1, ui_update,
+                game_state.ui_update()
+            }
         });
 
         self.player_container(|mut x|
@@ -238,7 +234,7 @@ impl Game
         with_game_state(&self.game_state, |game_state|
         {
             crate::frame_time_this!{
-                game_state_update,
+                1, game_state_update,
                 game_state.update(info, dt)
             };
         });

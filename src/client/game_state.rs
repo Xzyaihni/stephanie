@@ -182,64 +182,64 @@ impl ClientEntitiesContainer
     )
     {
         crate::frame_time_this!{
-            physical_system_update,
+            2, physical_system_update,
             physical_system::update(&mut self.entities, world, dt)
         };
 
         crate::frame_time_this!{
-            lazy_transform_update,
+            2, lazy_transform_update,
             self.entities.update_lazy(dt)
         };
 
         crate::frame_time_this!{
-            anatomy_system_update,
+            2, anatomy_system_update,
             anatomy_system::update(&mut self.entities, dt)
         };
 
         crate::frame_time_this!{
-            enemy_system_update,
+            2, enemy_system_update,
             enemy_system::update(&mut self.entities, world, dt)
         };
 
         crate::frame_time_this!{
-            children_update,
+            2, children_update,
             self.entities.update_children()
         };
 
         crate::frame_time_this!{
-            damaging_system_update,
+            2, damaging_system_update,
             damaging_system::update(&mut self.entities, world, damage_info)
         };
 
         crate::frame_time_this!{
-            lazy_mix_update,
+            2, lazy_mix_update,
             self.entities.update_lazy_mix(dt)
         };
 
         crate::frame_time_this!{
-            outlineable_update,
+            2, outlineable_update,
             self.entities.update_outlineable(dt)
         };
 
         let contacts = {
             let mut space = crate::frame_time_this!{
-                spatial_grid_build,
+                2, spatial_grid_build,
                 world.build_spatial(&self.entities)
             };
 
             crate::frame_time_this!{
-                collider_system_update,
+                2, collider_system_update,
                 collider_system::update(&mut self.entities, world, &mut space)
             }
         };
 
         crate::frame_time_this!{
-            physical_system_apply,
+            2, physical_system_apply,
             physical_system::apply(&mut self.entities, world)
         };
 
         crate::frame_time_this!{
-            collision_system_resolution,
+            2, collision_system_resolution,
             ContactResolver::resolve(&self.entities, contacts, dt)
         };
 
@@ -1380,12 +1380,22 @@ impl GameState
 
     pub fn no_update(&mut self)
     {
-        self.dt = None;
+        if DebugConfig::is_disabled(DebugTool::FreezeUi)
+        {
+            self.ui_update();
+        } else
+        {
+            self.dt = None;
+        }
     }
 
-    pub fn ui_update(&mut self, controls: &mut UiControls<UiId>)
+    pub fn ui_update(&mut self) -> Vec<(Control, ControlState)>
     {
-        self.ui.borrow_mut().update(&self.entities.entities, controls, self.get_dt());
+        let mut changed_this_frame = self.controls.changed_this_frame();
+
+        self.ui.borrow_mut().update(&self.entities.entities, &mut changed_this_frame, self.get_dt());
+
+        self.controls.consume_changed(changed_this_frame).collect()
     }
 
     pub fn update(
@@ -1399,7 +1409,7 @@ impl GameState
         self.dt = Some(dt);
 
         crate::frame_time_this!{
-            process_messages,
+            2, process_messages,
             self.process_messages(object_info)
         };
 
@@ -1416,7 +1426,7 @@ impl GameState
             };
 
             crate::frame_time_this!{
-                characters_update,
+                2, characters_update,
                 self.entities.entities.update_characters(
                     partial,
                     object_info,
@@ -1425,12 +1435,12 @@ impl GameState
             };
 
             crate::frame_time_this!{
-                watchers_update,
+                2, watchers_update,
                 self.entities.entities.update_watchers(dt)
             };
 
             crate::frame_time_this!{
-                create_queued,
+                2, create_queued,
                 self.entities.entities.create_queued(object_info)
             };
 
@@ -1438,20 +1448,20 @@ impl GameState
             {
                 let mut passer = self.connections_handler.write();
                 crate::frame_time_this!{
-                    sync_changed,
+                    2, sync_changed,
                     self.entities.entities.sync_changed(&mut passer)
                 };
             }
 
             crate::frame_time_this!{
-                handle_on_change,
+                2, handle_on_change,
                 self.entities.entities.handle_on_change()
             };
 
             self.entities.entities.create_render_queued(object_info);
 
             crate::frame_time_this!{
-                resort_queued,
+                2, resort_queued,
                 self.entities.entities.resort_queued()
             };
         }

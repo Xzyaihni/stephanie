@@ -115,7 +115,7 @@ pub fn update(
     let mut contacts = Vec::new();
 
     crate::frame_time_this!{
-        collision_system_collision,
+        3, collision_system_collision,
         space.possible_pairs(|entity: Entity, other_entity: Entity|
         {
             let mut this;
@@ -146,7 +146,7 @@ pub fn update(
     let mut world_z_time = None;
 
     crate::frame_time_this!{
-        collision_system_world,
+        3, collision_system_world,
         for_each_component!(entities, collider, |entity, collider: &RefCell<Collider>|
         {
             let mut collider = collider.borrow_mut();
@@ -205,12 +205,12 @@ pub fn update(
     {
         {
             let time = world_flat_time.map(|x| x.as_micros() as f64 / 1000.0).unwrap_or(0.0);
-            crate::frame_timed!(world_flat_time, time);
+            crate::frame_timed!(4, world_flat_time, time);
         }
 
         {
             let time = world_z_time.map(|x| x.as_micros() as f64 / 1000.0).unwrap_or(0.0);
-            crate::frame_timed!(world_z_time, time);
+            crate::frame_timed!(4, world_z_time, time);
         }
     }
 

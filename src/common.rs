@@ -256,6 +256,10 @@ macro_rules! frame_timed
 {
     ($name:ident, $time_ms:expr) =>
     {
+        $crate::frame_timed!(0, $name, $time_ms);
+    };
+    ($depth:literal, $name:ident, $time_ms:expr) =>
+    {
         {
             use std::sync::{LazyLock, Mutex};
 
@@ -292,7 +296,7 @@ macro_rules! frame_timed
 
                 let average_time = total / amount as f64;
 
-                eprintln!("{} takes ({:.2} ms max) {average_time:.2} ms", stringify!($name), value.0);
+                eprintln!("{}{} takes ({:.2} ms max) {average_time:.2} ms", str::repeat("|", $depth), stringify!($name), value.0);
 
                 value.0 = 0.0;
                 value.2 = 0;
@@ -304,7 +308,7 @@ macro_rules! frame_timed
 #[macro_export]
 macro_rules! frame_time_this
 {
-    ($name:ident, $($tt:tt)*) =>
+    ($($depth:literal,)? $name:ident, $($tt:tt)*) =>
     {
         {
             use $crate::debug_config::*;
@@ -318,7 +322,7 @@ macro_rules! frame_time_this
             {
                 let (time, value) = $crate::get_time_this!($($tt)*);
 
-                $crate::frame_timed!($name, time);
+                $crate::frame_timed!($($depth,)? $name, time);
 
                 value
             } else

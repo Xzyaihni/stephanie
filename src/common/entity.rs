@@ -1736,12 +1736,12 @@ macro_rules! define_entities_both
             )
             {
                 crate::frame_time_this!{
-                    lazy_set,
+                    3, lazy_set,
                     self.lazy_set_common(create_info)
                 };
 
                 crate::frame_time_this!{
-                    create_queued_common,
+                    3, create_queued_common,
                     self.create_queued_common(|this, entity, info|
                     {
                         ClientEntityInfo::from_server(
@@ -1754,7 +1754,7 @@ macro_rules! define_entities_both
                 };
 
                 crate::frame_time_this!{
-                    remove_queued,
+                    3, remove_queued,
                     self.remove_queued()
                 };
             }

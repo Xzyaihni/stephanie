@@ -450,14 +450,6 @@ impl YanyaApp for App
     {
         let mut info = partial_info.to_full(&self.client.camera.read());
 
-        if DebugConfig::is_enabled(DebugTool::SuperSpeed)
-        {
-            for _ in 0..10
-            {
-                self.client.update(&mut info, 1.0 / 60.0);
-            }
-        }
-
         let dt = dt.min(LONGEST_FRAME as f32);
 
         if SlowMode::as_bool()

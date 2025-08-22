@@ -112,7 +112,7 @@ impl<'a, Id: Idable> TreeInserter<'a, Id>
 
     pub fn update(&self, id: Id, element: UiElement<Id>) -> TreeInserter<'a, Id>
     {
-        debug_assert!(!self.elements.borrow().iter().any(|x| x.id == id));
+        debug_assert!(!self.elements.borrow().iter().any(|x| x.id == id), "{id:?} was defined multiple times");
 
         let shared = self.tree_element().shared.clone();
         let element = TreeElement::new(shared, id, element);

@@ -32,6 +32,7 @@ use crate::{
 
 const PATH_NEAR: f32 = TILE_SIZE * 0.1;
 const RECALCULATE_PATH: f32 = TILE_SIZE * 0.5;
+const HOSTILE_CHECK: f32 = 0.5;
 
 pub fn sees(
     entities: &ClientEntities,
@@ -226,7 +227,7 @@ impl Enemy
             current_state_left: behavior.duration_of(&mut rng, &behavior_state),
             behavior_state,
             behavior,
-            hostile_check_timer: 0.0,
+            hostile_check_timer: fastrand::f32() * HOSTILE_CHECK,
             attacking_timer: 0.0,
             seen_timer: 0.0,
             seen_now: false,
@@ -478,7 +479,7 @@ impl Enemy
 
         if self.hostile_check_timer <= 0.0
         {
-            self.hostile_check_timer = 0.5;
+            self.hostile_check_timer = HOSTILE_CHECK;
         } else
         {
             self.hostile_check_timer -= dt;

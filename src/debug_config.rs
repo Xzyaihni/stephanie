@@ -36,7 +36,7 @@ pub enum DebugTool
     Velocity,
     Spatial,
     SpatialFull,
-    SuperSpeed,
+    FreezeUi,
     SkipLoading,
     DamagePoints,
     LoadPosition,
