@@ -493,19 +493,7 @@ impl GameServer
             info.lazy_transform.as_ref().map(|x| x.target_local.position)
         }).unwrap_or_else(Vector3::zeros);
 
-        let mut inserter = |info: EntityInfo|
-        {
-            let inserted = self.entities.push_eager(false, info);
-
-            let info = self.entities.info(inserted);
-
-            let message = Message::EntitySet{entity: inserted, info: Box::new(info)};
-            self.connection_handler.write().send_message(message);
-
-            inserted
-        };
-
-        let player_entity = inserter(info);
+        let player_entity = self.entities.push_eager(false, info);
 
         player_info.entity = Some(player_entity);
 

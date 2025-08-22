@@ -378,7 +378,7 @@ impl World
         {
             let mut create = |info: EntityInfo| -> Entity
             {
-                let entity = container.push(false, info.clone());
+                let entity = container.push_eager(false, info.clone());
 
                 output.push((entity, info));
 
