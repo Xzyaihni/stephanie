@@ -403,10 +403,12 @@ impl World
             self.entities_saver.save(pos, Vec::new());
         }).unwrap_or_default();
 
-        let entities = Self::create_entities_full(container, entities.into_iter());
+        let mut entities = Self::create_entities_full(container, entities.into_iter());
 
         let chunk = self.chunk_saver.load(pos).unwrap_or_else(||
         {
+            let mut chunk_entities = Vec::new();
+
             let chunk_pos = pos.into();
             let chunk = self.overmaps.borrow_mut().get_mut(&id)
                 .expect("id must be valid")
@@ -422,9 +424,14 @@ impl World
                         furnitures: &self.furnitures_info
                     };
 
-                    let mut writer = self.message_handler.write();
-                    marker.create(&mut writer, container, create_infos, &self.loot, chunk_pos);
+                    if let Some(info) = marker.create(create_infos, &self.loot, chunk_pos)
+                    {
+                        let entity = container.push_eager(false, info.clone());
+                        chunk_entities.push((entity, info));
+                    }
                 });
+
+            entities.extend(chunk_entities);
 
             self.client_indexers.iter_mut().for_each(|(_, indexer)|
             {

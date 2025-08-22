@@ -217,12 +217,12 @@ macro_rules! no_on_set
 
 macro_rules! no_on_set_for
 {
-    ($container:ident, $name:ident) =>
+    ($container:ident, $($name:ident),*) =>
     {
-        impl OnSet<$container> for $name
+        $(impl OnSet<$container> for $name
         {
             fn on_set(_previous: Option<Self>, _entities: &$container, _entity: Entity) {}
-        }
+        })*
     }
 }
 
@@ -239,13 +239,13 @@ no_on_set!{
     Inventory,
     String,
     Parent,
+    Entity,
     Transform,
     Enemy,
     Player,
     Anatomy,
     Collider,
     Physical,
-    Door,
     Joint,
     Light,
     ClientLight,
@@ -256,7 +256,7 @@ no_on_set!{
     UnitType
 }
 
-no_on_set_for!{ServerEntities, Character}
+no_on_set_for!{ServerEntities, Character, Door}
 
 impl OnSet<ClientEntities> for Character
 {
@@ -266,6 +266,14 @@ impl OnSet<ClientEntities> for Character
         {
             entities.character_mut_no_change(entity).unwrap().with_previous(previous);
         }
+    }
+}
+
+impl OnSet<ClientEntities> for Door
+{
+    fn on_set(_previous: Option<Self>, entities: &ClientEntities, entity: Entity)
+    {
+        Door::create_visible_sibling(entities, entity);
     }
 }
 
@@ -736,7 +744,12 @@ macro_rules! common_trait_impl
             })
         }
 
-        fn in_flight(&self) -> InFlightGetter<RefMut<SetterQueue<$($shared_type,)+>>>
+        fn in_flight(&self) -> InFlightGetter<Ref<SetterQueue<$($shared_type,)+>>>
+        {
+            InFlightGetter(self.lazy_setter.borrow())
+        }
+
+        fn in_flight_mut(&self) -> InFlightGetter<RefMut<SetterQueue<$($shared_type,)+>>>
         {
             InFlightGetter(self.lazy_setter.borrow_mut())
         }
@@ -791,8 +804,8 @@ macro_rules! common_trait_impl
 
                                 write_log(format!(
                                     "{body} parent: {}, child: {}",
-                                    self.info_ref(parent),
-                                    self.info_ref(entity)
+                                    self.info_ref(parent).map(|x| format!("{x:#?}")).unwrap_or_default(),
+                                    self.info_ref(entity).map(|x| format!("{x:#?}")).unwrap_or_default()
                                 ));
 
                                 if PANIC_ON_FAIL { panic!() }
@@ -815,8 +828,8 @@ macro_rules! common_trait_impl
 
                     write_log(format!(
                         "{body} before: {}, after: {}",
-                        self.info_ref(before),
-                        self.info_ref(after)
+                        self.info_ref(before).map(|x| format!("{x:#?}")).unwrap_or_default(),
+                        self.info_ref(after).map(|x| format!("{x:#?}")).unwrap_or_default()
                     ));
 
                     if PANIC_ON_FAIL { panic!() }
@@ -937,10 +950,7 @@ macro_rules! define_entities_both
         impl EntityInfo
         {
             entity_info_common!{}
-        }
 
-        impl EntityInfo
-        {
             pub fn target_ref(&self) -> Option<&Transform>
             {
                 self.lazy_transform.as_ref()
@@ -954,7 +964,10 @@ macro_rules! define_entities_both
                     .map(|lazy| lazy.target())
                     .or_else(|| self.transform.as_mut())
             }
+        }
 
+        impl<$($component_type,)+> EntityInfo<$($component_type,)+>
+        {
             pub fn compact_format(&self) -> String
             {
                 let mut components = String::new();
@@ -1025,6 +1038,16 @@ macro_rules! define_entities_both
                     $($name: Vec::new(),)+
                 }
             }
+        }
+
+        impl<$($component_type,)+> InFlightGetter<Ref<'_, SetterQueue<$($component_type,)+>>>
+        {
+            $(
+                pub fn $exists_name(&self, entity: Entity) -> bool
+                {
+                    self.0.$name.iter().any(|(e, c, _)| *e == entity && c.is_some())
+                }
+            )+
         }
 
         impl<$($component_type,)+> InFlightGetter<RefMut<'_, SetterQueue<$($component_type,)+>>>
@@ -1143,25 +1166,23 @@ macro_rules! define_entities_both
                 }
             }
 
-            pub fn info_ref(&self, entity: Entity) -> String
+            pub fn info_ref(&self, entity: Entity) -> Option<EntityInfo<$(Ref<$component_type>,)+>>
             {
                 if !self.exists(entity)
                 {
-                    return String::new();
+                    return None;
                 }
 
                 let components = &components!(self, entity).borrow()[entity.id];
 
-                let info = EntityInfo{$(
+                Some(EntityInfo{$(
                     $name: {
                         components[Component::$name as usize].map(|id|
                         {
                             self.$name[id].get()
                         })
                     },
-                )+};
-
-                format!("{info:#?}")
+                )+})
             }
 
             fn set_each(&mut self, entity: Entity, info: EntityInfo<$($component_type,)+>)
@@ -2017,7 +2038,7 @@ macro_rules! define_entities_both
                 {
                     $(Message::$message_name{entity, component} =>
                     {
-                        debug_assert!(!entity.local, "{entity:?} {component:#?} {:#?}", self.try_info(entity));
+                        debug_assert!(!entity.local, "{} {entity:?} {component:#?} {:#?}", stringify!($message_name), self.try_info(entity));
                         self.$set_func_no_change(entity, component.map(|x| *x));
 
                         None
@@ -2049,7 +2070,7 @@ macro_rules! implement_common_complex
                     let queue = mem::take(&mut self.lazy_setter.borrow_mut().$name);
                     queue.into_iter().for_each(|(entity, component, is_changed)|
                     {
-                        if is_changed
+                        if is_changed && !entity.local
                         {
                             self.side_sync(entity, &component);
                         }
@@ -2325,7 +2346,8 @@ macro_rules! define_entities
             fn remove_deferred(&self, entity: Entity);
             fn remove(&mut self, entity: Entity);
 
-            fn in_flight(&self) -> InFlightGetter<RefMut<SetterQueue<$($side_default_type,)+ $($default_type,)+>>>;
+            fn in_flight(&self) -> InFlightGetter<Ref<SetterQueue<$($side_default_type,)+ $($default_type,)+>>>;
+            fn in_flight_mut(&self) -> InFlightGetter<RefMut<SetterQueue<$($side_default_type,)+ $($default_type,)+>>>;
 
             fn push_eager(
                 &mut self,
@@ -2455,10 +2477,12 @@ macro_rules! define_entities
                 &mut self,
                 create_info: &mut UpdateBuffersInfo,
                 entity: Entity,
-                info: EntityInfo
+                mut info: EntityInfo
             )
             {
                 debug_assert!(!entity.local, "{entity:?} {info:#?}");
+
+                info.setup_components(self);
 
                 let transform = info.transform.clone()
                     .or_else(||self.transform_clone(entity));
@@ -2572,6 +2596,7 @@ define_entities!{
         (light, light_mut, light_mut_no_change, set_light, set_light_no_change, on_light, resort_light, light_exists, SetLight, LightType, Light, ClientLight),
         (occluder, occluder_mut, occluder_mut_no_change, set_occluder, set_occluder_no_change, on_occluder_mut, resort_occluder, occluder_exists, SetOccluder, OccluderType, Occluder, ClientOccluder)),
     (parent, parent_mut, parent_mut_no_change, set_parent, set_parent_no_change, on_parent, resort_parent, parent_exists, SetParent, ParentType, Parent),
+    (sibling, sibling_mut, sibling_mut_no_change, set_sibling, set_sibling_no_change, on_sibling, resort_sibling, sibling_exists, SetSibling, SiblingType, Entity),
     (lazy_mix, lazy_mix_mut, lazy_mix_mut_no_change, set_lazy_mix, set_lazy_mix_no_change, on_lazy_mix, resort_lazy_mix, lazy_mix_exists, SetLazyMix, LazyMixType, LazyMix),
     (outlineable, outlineable_mut, outlinable_mut_no_change, set_outlineable, set_outlineable_no_change, on_outlineable, resort_outlineable, outlineable_exists, SetOutlineable, OutlineableType, Outlineable),
     (lazy_transform, lazy_transform_mut, lazy_transform_mut_no_change, set_lazy_transform, set_lazy_transform_no_change, on_lazy_transform, resort_lazy_transform, lazy_transform_exists, SetLazyTransform, LazyTransformType, LazyTransform),

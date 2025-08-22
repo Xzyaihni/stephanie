@@ -756,15 +756,27 @@ impl Game
 
             primitives.add(
                 "print-entity-info",
-                PrimitiveProcedureInfo::new_simple(1, Effect::Impure, move |mut args|
+                PrimitiveProcedureInfo::new_simple(1..=2, Effect::Impure, move |mut args|
                 {
                     with_game_state(&game_state, |game_state|
                     {
                         let entities = game_state.entities();
 
                         let entity = Self::pop_entity(&mut args)?;
+                        let is_compact = args.next().map(|x| x.as_bool()).unwrap_or(Ok(true))?;
 
-                        eprintln!("entity info: {}", entities.info_ref(entity));
+                        let info = entities.info_ref(entity).map(|x|
+                        {
+                            if is_compact
+                            {
+                                x.compact_format()
+                            } else
+                            {
+                                format!("{x:#?}")
+                            }
+                        }).unwrap_or_default();
+
+                        eprintln!("entity info: {info}");
 
                         Ok(().into())
                     })

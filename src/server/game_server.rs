@@ -542,8 +542,9 @@ impl GameServer
     {
         let player_position = Pos3::from(position);
 
+        let player_entity = player_info.entity.unwrap();
         let on_connect_info = OnConnectInfo{
-            player_entity: player_info.entity.unwrap(),
+            player_entity,
             player_position,
             time: self.world.as_ref().unwrap().time
         };
@@ -575,18 +576,14 @@ impl GameServer
 
         let messager = writer.get_mut(connection_id);
 
-        self.entities.try_for_each_entity(|entity|
         {
-            if entity.local()
-            {
-                return Ok(());
-            }
+            let message = Message::EntitySet{
+                entity: player_entity,
+                info: Box::new(self.entities.info(player_entity))
+            };
 
-            let info = self.entities.info(entity);
-            let message = Message::EntitySet{entity, info: Box::new(info)};
-
-            messager.send_blocking(message)
-        })?;
+            messager.send_blocking(message)?;
+        }
 
         Ok((connection_id, messager.clone_messager()))
     }
@@ -726,7 +723,7 @@ impl GameServer
             #[cfg(debug_assertions)]
             Message::DebugMessage(DebugMessage::PrintEntityInfo(entity)) =>
             {
-                eprintln!("server entity info: {}", self.entities.info_ref(entity))
+                eprintln!("server entity info: {}", self.entities.info_ref(entity).map(|x| format!("{x:#?}")).unwrap_or_default())
             },
             x => panic!("unhandled message: {x:?}")
         }

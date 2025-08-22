@@ -8,33 +8,23 @@ use nalgebra::Vector3;
 
 use yanyaengine::Transform;
 
-use crate::{
-    server::ConnectionsHandler,
-    common::{
-        furniture_creator,
-        enemy_creator,
-        rotate_point_z_3d,
-        render_info::*,
-        collider::*,
-        physics::*,
-        door::*,
-        lazy_transform::*,
-        EntityPasser,
-        Parent,
-        Loot,
-        EnemiesInfo,
-        EntityInfo,
-        FurnituresInfo,
-        Light,
-        watcher::Watchers,
-        entity::ServerEntities,
-        lisp::{self, *},
-        world::{
-            TILE_SIZE,
-            Pos3,
-            ChunkLocal,
-            TileRotation
-        }
+use crate::common::{
+    furniture_creator,
+    enemy_creator,
+    rotate_point_z_3d,
+    collider::*,
+    door::*,
+    Loot,
+    EnemiesInfo,
+    EntityInfo,
+    FurnituresInfo,
+    Light,
+    lisp::{self, *},
+    world::{
+        TILE_SIZE,
+        Pos3,
+        ChunkLocal,
+        TileRotation
     }
 };
 
@@ -62,29 +52,18 @@ impl MarkerTile
 {
     pub fn create(
         self,
-        writer: &mut ConnectionsHandler,
-        entities: &mut ServerEntities,
         CreateInfos{
             enemies,
             furnitures
         }: CreateInfos,
         loot: &Loot,
         chunk_pos: Pos3<f32>
-    )
+    ) -> Option<EntityInfo>
     {
         let pos = chunk_pos + self.pos.pos().map(|x| x as f32 * TILE_SIZE);
 
         let half_tile = TILE_SIZE / 2.0;
         let position = Vector3::from(pos) + Vector3::repeat(half_tile);
-
-        let mut add_entity = |info|
-        {
-            let (message, entity) = entities.push_message(info);
-
-            writer.send_message(message);
-
-            entity
-        };
 
         match self.kind
         {
@@ -96,15 +75,15 @@ impl MarkerTile
                 } else
                 {
                     eprintln!("cant find enemy named `{name}`");
-                    return;
+                    return None;
                 };
 
-                add_entity(enemy_creator::create(
+                Some(enemy_creator::create(
                     enemies,
                     loot,
                     id,
                     position
-                ));
+                ))
             },
             MarkerKind::Furniture{name} =>
             {
@@ -114,14 +93,14 @@ impl MarkerTile
                 } else
                 {
                     eprintln!("cant find furniture named `{name}`");
-                    return;
+                    return None;
                 };
 
-                add_entity(furniture_creator::create(furnitures, loot, id, position));
+                Some(furniture_creator::create(furnitures, loot, id, position))
             },
             MarkerKind::Light{strength, offset} =>
             {
-                add_entity(EntityInfo{
+                Some(EntityInfo{
                     transform: Some(Transform{
                         position: position + offset,
                         scale: Vector3::repeat(TILE_SIZE),
@@ -130,46 +109,13 @@ impl MarkerTile
                     light: Some(Light{source: None, strength}),
                     saveable: Some(()),
                     ..Default::default()
-                });
+                })
             },
             MarkerKind::Door{rotation, material, width} =>
             {
                 let door = Door::new(position, rotation, material, width);
 
-                let texture = door.texture();
-
                 let transform = door.door_transform();
-
-                let origin = Vector3::new(-0.5, 0.0, 0.0);
-
-                let door_entity = add_entity(EntityInfo{
-                    lazy_transform: Some(LazyTransformInfo{
-                        transform: transform.clone(),
-                        combine_origin_rotation: true,
-                        origin_rotation_interpolation: Some(10.0),
-                        origin,
-                        ..Default::default()
-                    }.into()),
-                    render: Some(RenderInfo{
-                        object: Some(RenderObjectKind::Texture{
-                            name: texture.to_owned()
-                        }.into()),
-                        shadow_visible: true,
-                        z_level: ZLevel::Door,
-                        ..Default::default()
-                    }),
-                    collider: door.door_collider(),
-                    physical: Some(PhysicalProperties{
-                        inverse_mass: 0.0,
-                        floating: true,
-                        move_z: false,
-                        ..Default::default()
-                    }.into()),
-                    watchers: Some(Watchers::new(Vec::new())),
-                    occluder: door.door_occluder(),
-                    saveable: Some(()),
-                    ..Default::default()
-                });
 
                 let scale = if rotation.is_horizontal()
                 {
@@ -179,7 +125,7 @@ impl MarkerTile
                     Vector3::new(TILE_SIZE, transform.scale.x, transform.scale.z)
                 };
 
-                add_entity(EntityInfo{
+                Some(EntityInfo{
                     transform: Some(Transform{
                         position: transform.position,
                         scale,
@@ -191,11 +137,10 @@ impl MarkerTile
                         ghost: true,
                         ..Default::default()
                     }.into()),
-                    parent: Some(Parent::new(door_entity, false)),
                     door: Some(door),
                     saveable: Some(()),
                     ..Default::default()
-                });
+                })
             }
         }
     }

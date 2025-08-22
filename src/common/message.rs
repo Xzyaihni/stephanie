@@ -47,6 +47,7 @@ pub enum Message
     EntitySet{entity: Entity, info: Box<EntityInfo>},
     EntitySetMany{entities: Vec<(Entity, EntityInfo)>},
     SetParent{entity: Entity, component: Option<Box<Parent>>},
+    SetSibling{entity: Entity, component: Option<Box<Entity>>},
     SetTransform{entity: Entity, component: Option<Box<Transform>>},
     SetLazyTransform{entity: Entity, component: Option<Box<LazyTransform>>},
     SetLazyMix{entity: Entity, component: Option<Box<LazyMix>>},

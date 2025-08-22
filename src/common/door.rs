@@ -13,8 +13,13 @@ use crate::common::{
     rotate_point_z_3d,
     collider::*,
     watcher::*,
+    render_info::*,
+    lazy_transform::*,
+    physics::*,
     Entity,
     Occluder,
+    EntityInfo,
+    AnyEntities,
     entity::ClientEntities,
     world::{TILE_SIZE, TileRotation}
 };
@@ -72,9 +77,8 @@ impl Door
         {
             self.open = state;
 
-            if let Some(parent) = entities.parent(entity)
+            if let Some(visible_door) = entities.sibling(entity).as_deref().copied()
             {
-                let visible_door = parent.entity();
                 if let Some(mut lazy) = entities.lazy_transform_mut(visible_door)
                 {
                     let angle = if self.open
@@ -181,5 +185,43 @@ impl Door
             <&str>::from(self.material).to_lowercase(),
             self.width
         )
+    }
+
+    pub fn create_visible_sibling(entities: &ClientEntities, entity: Entity)
+    {
+        let door = some_or_return!(entities.door(entity));
+
+        if !entities.sibling_exists(entity) && !entities.in_flight().sibling_exists(entity)
+        {
+            let visible_part = entities.push(true, EntityInfo{
+                lazy_transform: Some(LazyTransformInfo{
+                    transform: door.door_transform(),
+                    combine_origin_rotation: true,
+                    origin_rotation_interpolation: Some(10.0),
+                    origin: Vector3::new(-0.5, 0.0, 0.0),
+                    ..Default::default()
+                }.into()),
+                render: Some(RenderInfo{
+                    object: Some(RenderObjectKind::Texture{
+                        name: door.texture().to_owned()
+                    }.into()),
+                    shadow_visible: true,
+                    z_level: ZLevel::Door,
+                    ..Default::default()
+                }),
+                collider: door.door_collider(),
+                physical: Some(PhysicalProperties{
+                    inverse_mass: 0.0,
+                    floating: true,
+                    move_z: false,
+                    ..Default::default()
+                }.into()),
+                watchers: Some(Watchers::new(Vec::new())),
+                occluder: door.door_occluder(),
+                ..Default::default()
+            });
+
+            entities.lazy_setter.borrow_mut().set_sibling_no_change(entity, Some(visible_part));
+        }
     }
 }
