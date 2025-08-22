@@ -1336,7 +1336,7 @@ macro_rules! define_entities_both
                                 self.$resort_name(entity);
                             }
 
-                            if Component::$name == Component::parent
+                            if const { matches!(Component::$name, Component::parent) }
                             {
                                 let parent_entity = self.parent(entity).map(|x|
                                 {
@@ -1344,7 +1344,9 @@ macro_rules! define_entities_both
                                 }).unwrap();
 
                                 self.resort_all(parent_entity);
-                            } else if Component::$name == Component::render
+                            }
+
+                            if const { matches!(Component::$name, Component::render) }
                             {
                                 self.resort_by_z();
                             }
