@@ -79,8 +79,31 @@ macro_rules! component_index
 {
     ($this:expr, $entity:expr, $component:ident) =>
     {
+        {
+            if cfg!(debug_assertions)
+            {
+                if let Some(component) = component_index_with_enum!($this, $entity, Component::$component).map(|id|
+                {
+                    $this.$component.get(id).unwrap_or_else(||
+                    {
+                        panic!("pointer to {} is out of bounds", stringify!($component))
+                    })
+                })
+                {
+                    if let Some(check_seed) = $entity.seed
+                    {
+                        assert_eq!(check_seed, component.entity.seed.unwrap());
+                    }
+                }
+            }
+
+            component_index!(no_check $this, $entity, $component)
+        }
+    };
+    (no_check $this:expr, $entity:expr, $component:ident) =>
+    {
         component_index_with_enum!($this, $entity, Component::$component)
-    }
+    };
 }
 
 macro_rules! swap_indices_of
@@ -98,8 +121,8 @@ macro_rules! swap_fully
 {
     ($this:expr, $component:ident, $a:expr, $b:expr) =>
     {
-        $this.swap_component_indices(Component::$component, $a, $b);
         swap_indices_of!($this, $component, $a, $b);
+        $this.swap_component_indices(Component::$component, $a, $b);
     }
 }
 
@@ -178,14 +201,21 @@ pub trait ServerToClient<T>
 pub struct Entity
 {
     local: bool,
-    id: usize
+    id: usize,
+    #[cfg(debug_assertions)]
+    seed: Option<u32>
 }
 
 impl Entity
 {
     pub fn from_raw(local: bool, id: usize) -> Entity
     {
-        Self{local, id}
+        Self{
+            local,
+            id,
+            #[cfg(debug_assertions)]
+            seed: Some(fastrand::u32(0..u32::MAX))
+        }
     }
 
     pub fn id(&self) -> usize
@@ -775,7 +805,12 @@ macro_rules! common_trait_impl
 
                 components.iter().for_each(|(id, indices)|
                 {
-                    let entity = Entity{local, id};
+                    let entity = Entity{
+                        local,
+                        id,
+                        #[cfg(debug_assertions)]
+                        seed: None
+                    };
 
                     if let Some(parent_component_id) = indices[Component::parent as usize]
                     {
@@ -860,13 +895,6 @@ macro_rules! order_sensitives
                 )+
                 _ => false
             }
-        }
-
-        fn resort_all(&mut self, parent_entity: Entity)
-        {
-            $(
-                self.$resort_name(parent_entity);
-            )+
         }
     }
 }
@@ -1142,8 +1170,24 @@ macro_rules! define_entities_both
             ) -> Result<(), E>
             {
                 self.components.borrow().iter()
-                    .map(|(id, _)| Entity{local: false, id})
-                    .chain(self.local_components.borrow().iter().map(|(id, _)| Entity{local: true, id}))
+                    .map(|(id, _)|
+                    {
+                        Entity{
+                            local: false,
+                            id,
+                            #[cfg(debug_assertions)]
+                            seed: None
+                        }
+                    })
+                    .chain(self.local_components.borrow().iter().map(|(id, _)|
+                    {
+                        Entity{
+                            local: true,
+                            id,
+                            #[cfg(debug_assertions)]
+                            seed: None
+                        }
+                    }))
                     .try_for_each(|entity|
                     {
                         f(entity)
@@ -1224,7 +1268,7 @@ macro_rules! define_entities_both
 
                 components.insert(id, Self::empty_components());
 
-                Entity{local, id}
+                Entity::from_raw(local, id)
             }
 
             pub fn resort_queued(&mut self)
@@ -1355,16 +1399,6 @@ macro_rules! define_entities_both
                             if existed_before && parent_order_sensitive
                             {
                                 self.$resort_name(entity);
-                            }
-
-                            if const { matches!(Component::$name, Component::parent) }
-                            {
-                                let parent_entity = self.parent(entity).map(|x|
-                                {
-                                    (&*x).into().entity()
-                                }).unwrap();
-
-                                self.resort_all(parent_entity);
                             }
 
                             if const { matches!(Component::$name, Component::render) }
