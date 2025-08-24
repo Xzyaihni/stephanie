@@ -26,6 +26,7 @@ pub enum DebugTool
     Lisp,
     LispDisableChecks,
     RedundantWorldChecks,
+    DisableEnemySystem,
     ClientMessages,
     ClientMessagesFull,
     ServerMessages,
@@ -65,7 +66,10 @@ pub enum DebugTool
     NoGravity,
     NoResolve,
     NoJoints,
-    NoSpawns
+    NoEnemySpawns,
+    NoFurnitureSpawns,
+    NoLightSpawns,
+    NoDoorSpawns
 }
 
 pub trait DebugNameTrait

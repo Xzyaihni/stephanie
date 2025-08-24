@@ -1057,6 +1057,16 @@ macro_rules! define_entities_both
 
         pub type ComponentsIndices = [Option<usize>; COMPONENTS_COUNT];
 
+        fn empty_components() -> ComponentsIndices
+        {
+            [$(
+                {
+                    let _ = Component::$name;
+                    None
+                }
+            ,)+]
+        }
+
         #[derive(Debug, Default)]
         struct ChangedEntities
         {
@@ -1183,6 +1193,28 @@ macro_rules! define_entities_both
                 components!(self, entity).borrow().get(entity.id).is_some()
             }
 
+            pub fn with_seed(&self, mut entity: Entity) -> Entity
+            {
+                if cfg!(debug_assertions)
+                {
+                    let mut seed = None;
+
+                    $(
+                        if seed.is_none()
+                        {
+                            if let Some(index) = component_index!(self, entity, $name)
+                            {
+                                seed = self.$name[index].entity.seed;
+                            }
+                        }
+                    )+
+
+                    entity.seed = Some(seed.unwrap());
+                }
+
+                entity
+            }
+
             pub fn for_each_entity(
                 &self,
                 mut f: impl FnMut(Entity)
@@ -1298,7 +1330,7 @@ macro_rules! define_entities_both
                     components.take_vacant_key()
                 };
 
-                components.insert(id, Self::empty_components());
+                components.insert(id, empty_components());
 
                 Entity::from_raw(local, id)
             }
@@ -1382,6 +1414,8 @@ macro_rules! define_entities_both
 
                 pub fn $set_func_no_change(&mut self, entity: Entity, component: Option<$component_type>)
                 {
+                    debug_assert!(entity.seed.is_some());
+
                     if Self::IS_SERVER
                     {
                         // it simply discards the set which might not be the best?
@@ -1394,7 +1428,7 @@ macro_rules! define_entities_both
                     {
                         components!(self, entity)
                             .borrow_mut()
-                            .insert(entity.id, Self::empty_components());
+                            .insert(entity.id, empty_components());
                     }
 
                     if let Some(component) = component
@@ -1594,6 +1628,24 @@ macro_rules! define_entities_both
                 }
             }
 
+            fn clear_components_inner(&mut self, entity: Entity)
+            {
+                let components = &components!(self, entity).borrow()[entity.id];
+
+                $(if let Some(id) = components[Component::$name as usize]
+                {
+                    self.$name.remove(id);
+                })+
+            }
+
+            fn clear_components(&mut self, entity: Entity)
+            {
+                self.clear_components_inner(entity);
+
+                let components = components!(self, entity);
+                components.borrow_mut()[entity.id] = empty_components();
+            }
+
             pub fn remove(&mut self, entity: Entity)
             {
                 if !self.exists(entity)
@@ -1601,20 +1653,13 @@ macro_rules! define_entities_both
                     return;
                 }
 
-                {
-                    let components = &components!(self, entity).borrow()[entity.id];
+                self.remove_children(entity);
+                self.try_remove_sibling(entity);
 
-                    $(if let Some(id) = components[Component::$name as usize]
-                    {
-                        self.$name.remove(id);
-                    })+
-                }
+                self.clear_components_inner(entity);
 
                 let components = components!(self, entity);
                 components.borrow_mut().remove(entity.id);
-
-                self.remove_children(entity);
-                self.try_remove_sibling(entity);
             }
 
             pub fn children_of(&self, parent_entity: Entity) -> impl Iterator<Item=Entity> + '_
@@ -1652,6 +1697,8 @@ macro_rules! define_entities_both
             {
                 debug_assert!(!entity.local);
 
+                self.clear_components(entity);
+
                 self.remove_awaiting.push(entity.id);
                 EntityRemove(entity)
             }
@@ -1659,6 +1706,8 @@ macro_rules! define_entities_both
             pub fn send_remove_many(&mut self, entities: Vec<Entity>) -> EntityRemoveMany
             {
                 debug_assert!(entities.iter().all(|x| !x.local));
+
+                entities.iter().for_each(|entity| self.clear_components(*entity));
 
                 self.remove_awaiting.extend(entities.iter().map(|x| x.id));
                 EntityRemoveMany(entities)
@@ -1670,16 +1719,6 @@ macro_rules! define_entities_both
                 (follow_rotation, resort_follow_rotation),
                 (follow_position, resort_follow_position)
             );
-
-            fn empty_components() -> ComponentsIndices
-            {
-                [$(
-                    {
-                        let _ = Component::$name;
-                        None
-                    }
-                ,)+]
-            }
         }
 
         impl ClientEntities

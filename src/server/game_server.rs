@@ -258,14 +258,23 @@ impl GameServer
 
     pub fn update(&mut self, dt: f32) -> bool
     {
-        self.process_messages();
+        crate::frame_time_this!{
+            1, server_process_messages,
+            self.process_messages()
+        };
 
-        self.entities.update_sprites(&self.data_infos.characters_info);
+        crate::frame_time_this!{
+            1, server_update_sprites,
+            self.entities.update_sprites(&self.data_infos.characters_info)
+        };
 
-        {
-            let mut writer = self.connection_handler.write();
-            self.entities.create_queued(&mut writer);
-        }
+        crate::frame_time_this!{
+            1, server_create_queued,
+            {
+                let mut writer = self.connection_handler.write();
+                self.entities.create_queued(&mut writer);
+            }
+        };
 
         self.entities.update_watchers(dt);
 

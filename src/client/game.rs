@@ -318,7 +318,7 @@ impl Game
                 {
                     let entities = game_state.entities_mut();
 
-                    let entity = Self::pop_entity(&mut args)?;
+                    let entity = entities.with_seed(Self::pop_entity(&mut args)?);
 
                     let value = args.next().unwrap();
                     let value = OutputWrapperRef::new(args.memory, value);
@@ -659,6 +659,49 @@ impl Game
         }
 
         {
+            let camera_entity = self.info.borrow().camera;
+
+            primitives.add(
+                "camera-entity",
+                PrimitiveProcedureInfo::new_simple(0, Effect::Impure, move |args|
+                {
+                    Self::push_entity(args.memory, camera_entity)
+                }));
+        }
+
+        {
+            let info = self.info.clone();
+
+            primitives.add(
+                "set-follow-entity",
+                PrimitiveProcedureInfo::new_simple(1, Effect::Impure, move |mut args|
+                {
+                    info.borrow_mut().follow_entity = Self::pop_entity(&mut args)?;
+
+                    Ok(().into())
+                }));
+        }
+
+        {
+            let camera = with_game_state(&self.game_state, |game_state|
+            {
+                game_state.camera.clone()
+            });
+
+            primitives.add(
+                "set-camera-visual-position",
+                PrimitiveProcedureInfo::new_simple(1, Effect::Impure, move |mut args|
+                {
+                    let value = args.next().unwrap();
+                    let position = Self::parse_position(OutputWrapperRef::new(args.memory, value))?;
+
+                    camera.write().set_position(position.into());
+
+                    Ok(().into())
+                }));
+        }
+
+        {
             let game_state = self.game_state.clone();
 
             primitives.add(
@@ -879,24 +922,30 @@ impl Game
 
     fn console_command(&mut self, command: String, output: ConsoleOutput)
     {
-        let mut info = self.info.borrow_mut();
-        let console = &info.console;
+        fn code<'a>(info: &'a PlayerInfo, command: &'a str) -> [&'a str; 4]
+        {
+            let console = &info.console;
+            [&console.standard, &console.console_standard, &console.past_commands, command]
+        }
 
         let config = LispConfig{
             type_checks: true,
-            memory: LispMemory::new(console.primitives.as_ref().unwrap().clone(), 2048, 1 << 16)
+            memory: LispMemory::new(self.info.borrow().console.primitives.as_ref().unwrap().clone(), 2048, 1 << 16)
         };
 
-        let code: [&str; 4] = [&console.standard, &console.console_standard, &console.past_commands, &command];
+        let lisp = {
+            let info = self.info.borrow();
+            let code = code(&info, &command);
 
-        let lisp = match Lisp::new_with_config(config, &code)
-        {
-            Ok(x) => x,
-            Err(err) =>
+            match Lisp::new_with_config(config, &code)
             {
-                eprintln!("error parsing {command}: {err}");
-                Lisp::print_highlighted(&code, err.position);
-                return;
+                Ok(x) => x,
+                Err(err) =>
+                {
+                    eprintln!("error parsing {command}: {err}");
+                    Lisp::print_highlighted(&code, err.position);
+                    return;
+                }
             }
         };
 
@@ -905,6 +954,9 @@ impl Game
             Ok(x) => x,
             Err(err) =>
             {
+                let info = self.info.borrow();
+                let code = code(&info, &command);
+
                 eprintln!("error running {command}: {err}");
                 Lisp::print_highlighted(&code, err.position);
                 return;
@@ -917,10 +969,10 @@ impl Game
         }
 
         let defined_this = result.into_memory().defined_values().unwrap().len();
-        let changed_environment = defined_this > console.standard_definitions;
+        let changed_environment = defined_this > self.info.borrow().console.standard_definitions;
         if changed_environment
         {
-            info.remember_command(defined_this, &command);
+            self.info.borrow_mut().remember_command(defined_this, &command);
         }
     }
 
@@ -972,6 +1024,7 @@ struct PlayerInfo
     camera: Entity,
     follow: Entity,
     entity: Entity,
+    follow_entity: Entity,
     mouse_entity: Entity,
     other_entity: Option<Entity>,
     console: ConsoleInfo,
@@ -991,6 +1044,7 @@ impl PlayerInfo
             camera: info.camera,
             follow: info.follow,
             entity: info.entity,
+            follow_entity: info.entity,
             mouse_entity: info.mouse_entity,
             other_entity: None,
             console,
@@ -1067,14 +1121,14 @@ impl<'a> PlayerContainer<'a>
 
         let entities = self.game_state.entities();
 
-        let player_position = some_or_value!(entities.transform(self.info.entity), false).position;
+        let entity_position = some_or_value!(entities.transform(self.info.follow_entity), false).position;
 
         let follow_position = if mouse_position.magnitude() > CHUNK_VISUAL_SIZE * 2.0
         {
-            player_position
+            entity_position
         } else
         {
-            player_position + mouse_position / 5.0
+            entity_position + mouse_position / 5.0
         };
 
         some_or_value!(entities.transform_mut(self.info.follow), false).position = follow_position;

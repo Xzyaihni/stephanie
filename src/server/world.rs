@@ -10,7 +10,6 @@ use std::{
 use parking_lot::RwLock;
 
 use crate::{
-    debug_config::*,
     server::{DataInfos, ConnectionsHandler, game_server::{load_world_file, LoadWorldFileError}},
     common::{
         self,
@@ -414,11 +413,6 @@ impl World
                 .expect("id must be valid")
                 .generate_chunk(pos, |marker|
                 {
-                    if DebugConfig::is_enabled(DebugTool::NoSpawns)
-                    {
-                        return;
-                    }
-
                     let create_infos = marker_tile::CreateInfos{
                         enemies: &self.enemies_info,
                         furnitures: &self.furnitures_info

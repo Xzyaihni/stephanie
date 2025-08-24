@@ -8,23 +8,26 @@ use nalgebra::Vector3;
 
 use yanyaengine::Transform;
 
-use crate::common::{
-    furniture_creator,
-    enemy_creator,
-    rotate_point_z_3d,
-    collider::*,
-    door::*,
-    Loot,
-    EnemiesInfo,
-    EntityInfo,
-    FurnituresInfo,
-    Light,
-    lisp::{self, *},
-    world::{
-        TILE_SIZE,
-        Pos3,
-        ChunkLocal,
-        TileRotation
+use crate::{
+    debug_config::*,
+    common::{
+        furniture_creator,
+        enemy_creator,
+        rotate_point_z_3d,
+        collider::*,
+        door::*,
+        Loot,
+        EnemiesInfo,
+        EntityInfo,
+        FurnituresInfo,
+        Light,
+        lisp::{self, *},
+        world::{
+            TILE_SIZE,
+            Pos3,
+            ChunkLocal,
+            TileRotation
+        }
     }
 };
 
@@ -69,6 +72,8 @@ impl MarkerTile
         {
             MarkerKind::Enemy{name} =>
             {
+                if DebugConfig::is_enabled(DebugTool::NoEnemySpawns) { return None; }
+
                 let id = if let Some(x) = enemies.get_id(&name)
                 {
                     x
@@ -87,6 +92,8 @@ impl MarkerTile
             },
             MarkerKind::Furniture{name} =>
             {
+                if DebugConfig::is_enabled(DebugTool::NoFurnitureSpawns) { return None; }
+
                 let id = if let Some(x) = furnitures.get_id(&name)
                 {
                     x
@@ -100,6 +107,8 @@ impl MarkerTile
             },
             MarkerKind::Light{strength, offset} =>
             {
+                if DebugConfig::is_enabled(DebugTool::NoLightSpawns) { return None; }
+
                 Some(EntityInfo{
                     transform: Some(Transform{
                         position: position + offset,
@@ -113,6 +122,8 @@ impl MarkerTile
             },
             MarkerKind::Door{rotation, material, width} =>
             {
+                if DebugConfig::is_enabled(DebugTool::NoDoorSpawns) { return None; }
+
                 let door = Door::new(position, rotation, material, width);
 
                 let transform = door.door_transform();

@@ -197,10 +197,13 @@ impl ClientEntitiesContainer
             anatomy_system::update(&mut self.entities, dt)
         };
 
-        crate::frame_time_this!{
-            2, enemy_system_update,
-            enemy_system::update(&mut self.entities, world, dt)
-        };
+        if DebugConfig::is_disabled(DebugTool::DisableEnemySystem)
+        {
+            crate::frame_time_this!{
+                2, enemy_system_update,
+                enemy_system::update(&mut self.entities, world, dt)
+            };
+        }
 
         crate::frame_time_this!{
             2, children_update,
