@@ -2,6 +2,7 @@ use std::collections::VecDeque;
 
 use crate::common::{
     World,
+    world::GlobalPos,
     message::Message
 };
 
@@ -47,7 +48,7 @@ impl PerXFrames
 
 pub struct MessageThrottler
 {
-    buffered: VecDeque<Message>,
+    chunks_buffered: VecDeque<(GlobalPos, Message)>,
     chunk_sync_every: PerXFrames
 }
 
@@ -56,7 +57,7 @@ impl MessageThrottler
     pub fn new(info: MessageThrottlerInfo) -> Self
     {
         Self{
-            buffered: VecDeque::new(),
+            chunks_buffered: VecDeque::new(),
             chunk_sync_every: PerXFrames::new(info.chunk_sync_every)
         }
     }
@@ -68,13 +69,27 @@ impl MessageThrottler
 
     pub fn poll(&mut self, world: &World) -> Option<Message>
     {
-        self.buffered.pop_front().and_then(|x| self.process(world, x))
+        self.chunks_buffered.pop_front().and_then(|(_pos, x)| self.process(world, x))
     }
 
     pub fn process(&mut self, world: &World, message: Message) -> Option<Message>
     {
         match message
         {
+            Message::EntityRemoveManyChunk{pos, ..} =>
+            {
+                if let Some(index) = self.chunks_buffered.iter().position(|(chunk_pos, value)|
+                {
+                    *chunk_pos == pos && matches!(value, Message::ChunkSync{..})
+                })
+                {
+                    self.chunks_buffered.remove(index);
+                    None
+                } else
+                {
+                    Some(message)
+                }
+            },
             Message::ChunkSync{pos, ..} =>
             {
                 if !world.inbounds(pos)
@@ -87,7 +102,7 @@ impl MessageThrottler
                     Some(message)
                 } else
                 {
-                    self.buffered.push_back(message);
+                    self.chunks_buffered.push_back((pos, message));
                     None
                 }
             },

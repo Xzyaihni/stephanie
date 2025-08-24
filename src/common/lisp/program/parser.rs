@@ -370,7 +370,7 @@ impl Parser
             .chain(lexemes)
             .chain(iter::once(Lexeme::CloseParen.with_position(Default::default())));
 
-        let mut this = Self{current_position: CodePosition::new(), lexemes};
+        let mut this = Self{current_position: CodePosition::default(), lexemes};
 
         let (pos, ast) = this.parse_one()?;
 

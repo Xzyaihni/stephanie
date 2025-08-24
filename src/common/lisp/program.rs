@@ -556,6 +556,15 @@ impl Default for Primitives
 
                     Ok(value)
                 })),
+            ("vector-length",
+                PrimitiveProcedureInfo::new_simple(1, Effect::Pure, |mut args|
+                {
+                    let vec = args.next().unwrap();
+
+                    let vec = vec.as_vector_ref(args.memory)?;
+
+                    Ok((vec.len() as i32).into())
+                })),
             ("display",
                 PrimitiveProcedureInfo::new_simple(1, Effect::Impure, |mut args|
                 {

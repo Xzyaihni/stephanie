@@ -75,7 +75,7 @@ macro_rules! component_index_with_enum
     }
 }
 
-macro_rules! component_index
+macro_rules! check_seed
 {
     ($this:expr, $entity:expr, $component:ident) =>
     {
@@ -90,13 +90,34 @@ macro_rules! component_index
                     })
                 })
                 {
+                    use $crate::debug_config::*;
+
                     if let Some(check_seed) = $entity.seed
                     {
-                        assert_eq!(check_seed, component.entity.seed.unwrap());
+                        if check_seed != component.entity.seed.unwrap()
+                        {
+                            let message = format!("{:?} {} {component:#?}", $entity, stringify!($component));
+                            if DebugConfig::is_disabled(DebugTool::AllowSeedMismatch)
+                            {
+                                panic!("{message}");
+                            } else
+                            {
+                                eprintln!("seed mismatch: {message}");
+                            }
+                        }
                     }
                 }
             }
+        }
+    }
+}
 
+macro_rules! component_index
+{
+    ($this:expr, $entity:expr, $component:ident) =>
+    {
+        {
+            check_seed!($this, $entity, $component);
             component_index!(no_check $this, $entity, $component)
         }
     };
@@ -226,6 +247,15 @@ impl Entity
     pub fn local(&self) -> bool
     {
         self.local
+    }
+
+    pub fn no_seed(self) -> Self
+    {
+        Self{
+            #[cfg(debug_assertions)]
+            seed: None,
+            ..self
+        }
     }
 }
 
@@ -419,6 +449,12 @@ impl<T> ComponentWrapper<T>
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EntityRemove(Entity);
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EntityRemoveMany(Vec<Entity>);
+
 macro_rules! impl_common_systems
 {
     ($this_entity_info:ident, $(($name:ident, $set_func:ident, $component_type:ident)),+,) =>
@@ -467,12 +503,6 @@ macro_rules! impl_common_systems
                         transform.position = position;
                         transform.rotation = rotation;
                     }
-
-                    None
-                },
-                Message::EntityDestroy{entity} =>
-                {
-                    self.remove(entity);
 
                     None
                 },
@@ -797,7 +827,7 @@ macro_rules! common_trait_impl
         fn check_guarantees(&mut self)
         {
             const PANIC_ON_FAIL: bool = false;
-            let side = if Self::is_server() { "SERVER" } else { "CLIENT" };
+            let side = if Self::IS_SERVER { "SERVER" } else { "CLIENT" };
 
             let for_components = |components: &RefCell<ObjectsStore<ComponentsIndices>>, local|
             {
@@ -1095,6 +1125,7 @@ macro_rules! define_entities_both
             pub local_components: RefCell<ObjectsStore<ComponentsIndices>>,
             pub components: RefCell<ObjectsStore<ComponentsIndices>>,
             pub lazy_setter: RefCell<SetterQueue<$($default_type,)+>>,
+            remove_awaiting: Vec<usize>,
             infos: Option<DataInfos>,
             z_changed: RefCell<bool>,
             remove_queue: RefCell<Vec<Entity>>,
@@ -1117,6 +1148,7 @@ macro_rules! define_entities_both
                     local_components: RefCell::new(ObjectsStore::new()),
                     components: RefCell::new(ObjectsStore::new()),
                     lazy_setter: RefCell::new(Default::default()),
+                    remove_awaiting: Vec::new(),
                     infos: infos.into(),
                     z_changed: RefCell::new(false),
                     remove_queue: RefCell::new(Vec::new()),
@@ -1305,6 +1337,13 @@ macro_rules! define_entities_both
                 });
             }
 
+            fn check_all_seeds(&self, entity: Entity)
+            {
+                $(
+                    check_seed!(self, entity, $name);
+                )+
+            }
+
             $(
                 pub fn $name(&self, entity: Entity) -> Option<Ref<$component_type>>
                 {
@@ -1343,6 +1382,12 @@ macro_rules! define_entities_both
 
                 pub fn $set_func_no_change(&mut self, entity: Entity, component: Option<$component_type>)
                 {
+                    if Self::IS_SERVER
+                    {
+                        // it simply discards the set which might not be the best?
+                        if self.remove_awaiting.contains(&entity.id) { return; }
+                    }
+
                     let parent_order_sensitive = Self::order_sensitive(Component::$name);
 
                     if !self.exists(entity)
@@ -1418,6 +1463,8 @@ macro_rules! define_entities_both
                     {
                         remove_component!(self, entity, $name);
                     }
+
+                    self.check_all_seeds(entity);
                 }
 
                 pub fn $on_name(&self, f: OnComponentChange)
@@ -1567,6 +1614,7 @@ macro_rules! define_entities_both
                 components.borrow_mut().remove(entity.id);
 
                 self.remove_children(entity);
+                self.try_remove_sibling(entity);
             }
 
             pub fn children_of(&self, parent_entity: Entity) -> impl Iterator<Item=Entity> + '_
@@ -1585,14 +1633,35 @@ macro_rules! define_entities_both
                 })
             }
 
+            pub fn try_remove_sibling(&mut self, entity: Entity)
+            {
+                let sibling = *some_or_return!(<Self as AnyEntities>::sibling(self, entity));
+
+                self.remove(sibling);
+            }
+
             pub fn remove_children(&mut self, parent_entity: Entity)
             {
-                let remove_list: Vec<_> = self.children_of(parent_entity).collect();
-
-                remove_list.into_iter().for_each(|entity|
+                self.children_of(parent_entity).collect::<Vec<_>>().into_iter().for_each(|entity|
                 {
                     self.remove(entity);
                 });
+            }
+
+            pub fn send_remove(&mut self, entity: Entity) -> EntityRemove
+            {
+                debug_assert!(!entity.local);
+
+                self.remove_awaiting.push(entity.id);
+                EntityRemove(entity)
+            }
+
+            pub fn send_remove_many(&mut self, entities: Vec<Entity>) -> EntityRemoveMany
+            {
+                debug_assert!(entities.iter().all(|x| !x.local));
+
+                self.remove_awaiting.extend(entities.iter().map(|x| x.id));
+                EntityRemoveMany(entities)
             }
 
             order_sensitives!(
@@ -2056,11 +2125,16 @@ macro_rules! define_entities_both
                 (Message::EntitySet{entity, info: Box::new(self.info(entity))}, entity)
             }
 
-            pub fn remove_message(&mut self, entity: Entity) -> Message
+            fn handle_entity_remove_finished(&mut self, entity: Entity)
             {
                 self.remove(entity);
 
-                Message::EntityDestroy{entity}
+                debug_assert!(self.remove_awaiting.contains(&entity.id));
+
+                if let Some(index) = self.remove_awaiting.iter().position(|x| *x == entity.id)
+                {
+                    self.remove_awaiting.swap_remove(index);
+                }
             }
 
             pub fn handle_message(&mut self, message: Message) -> Option<Message>
@@ -2077,6 +2151,21 @@ macro_rules! define_entities_both
 
                         None
                     },)+
+                    Message::EntityRemoveFinished{entity} =>
+                    {
+                        self.handle_entity_remove_finished(entity);
+
+                        None
+                    },
+                    Message::EntityRemoveManyFinished{entities} =>
+                    {
+                        entities.into_iter().for_each(|entity|
+                        {
+                            self.handle_entity_remove_finished(entity);
+                        });
+
+                        None
+                    },
                     x => Some(x)
                 }
             }
@@ -2272,12 +2361,12 @@ macro_rules! define_entities
 
         impl AnyEntities for ClientEntities
         {
+            const IS_SERVER: bool = false;
+
             common_trait_impl!{
                 ($(($name, $mut_func, $default_type),)+),
                 ($(($side_set_func, $side_exists_name, $side_default_type),)+ $(($set_func, $exists_name, $default_type),)+)
             }
-
-            fn is_server() -> bool { false }
 
             fn push_eager(
                 &mut self,
@@ -2320,12 +2409,12 @@ macro_rules! define_entities
 
         impl AnyEntities for ServerEntities
         {
+            const IS_SERVER: bool = true;
+
             common_trait_impl!{
                 ($(($name, $mut_func, $default_type),)+),
                 ($(($side_set_func, $side_exists_name, $side_default_type),)+ $(($set_func, $exists_name, $default_type),)+)
             }
-
-            fn is_server() -> bool { true }
 
             fn push_eager(&mut self, local: bool, info: EntityInfo) -> Entity
             {
@@ -2344,6 +2433,8 @@ macro_rules! define_entities
 
         pub trait AnyEntities
         {
+            const IS_SERVER: bool;
+
             $(
                 fn $name(&self, entity: Entity) -> Option<Ref<$default_type>>;
                 fn $mut_func(&self, entity: Entity) -> Option<RefMut<$default_type>>;
@@ -2358,8 +2449,6 @@ macro_rules! define_entities
                 fn $side_set_func(&self, entity: Entity, component: Option<$side_default_type>);
                 fn $side_exists_name(&self, entity: Entity) -> bool;
             )+
-
-            fn is_server() -> bool;
 
             fn infos(&self) -> &DataInfos;
 
@@ -2516,6 +2605,8 @@ macro_rules! define_entities
             {
                 debug_assert!(!entity.local, "{entity:?} {info:#?}");
 
+                self.remove(entity.no_seed());
+
                 info.setup_components(self);
 
                 let transform = info.transform.clone()
@@ -2554,6 +2645,7 @@ macro_rules! define_entities
 
             pub fn handle_message(
                 &mut self,
+                passer: &mut client::ConnectionsHandler,
                 create_info: &mut UpdateBuffersInfo,
                 message: Message
             ) -> Option<Message>
@@ -2583,6 +2675,25 @@ macro_rules! define_entities
                     Message::EntitySet{entity, info} =>
                     {
                         self.handle_entity_set(create_info, entity, *info);
+
+                        None
+                    },
+                    Message::EntityRemove(EntityRemove(entity)) =>
+                    {
+                        self.remove(entity);
+
+                        passer.send_message(Message::EntityRemoveFinished{entity});
+
+                        None
+                    },
+                    Message::EntityRemoveMany(EntityRemoveMany(entities)) =>
+                    {
+                        entities.iter().for_each(|entity|
+                        {
+                            self.remove(*entity);
+                        });
+
+                        passer.send_message(Message::EntityRemoveManyFinished{entities});
 
                         None
                     },

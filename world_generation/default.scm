@@ -17,10 +17,10 @@
     (let ((chunk (filled-chunk (tile 'air))))
         (begin
             (for-each (lambda (x)
-		(for-each (lambda (y)
-		    (let ((pos (make-point x y)))
-			(put-tile chunk pos (f pos))))
-		    (counter size-y)))
+                (for-each (lambda (y)
+                    (let ((pos (make-point x y)))
+                        (put-tile chunk pos (f pos))))
+                    (counter size-y)))
                 (counter size-y))
             chunk)))
 
@@ -188,12 +188,12 @@
 (define (gradient-pick xs value start end)
     (let ((total (length xs)))
         (let ((index-fractional (* (/ (- total 1) end) value)))
-	    (let ((start-index (inexact->exact (floor index-fractional))))
+            (let ((start-index (inexact->exact (floor index-fractional))))
                 (if (< start-index (- total 1))
-		    (pick-weighted
-			(list-ref xs start-index)
-			(list-ref xs (+ start-index 1))
-			(remainder index-fractional 1))
+                    (pick-weighted
+                        (list-ref xs start-index)
+                        (list-ref xs (+ start-index 1))
+                        (remainder index-fractional 1))
                     (list-ref xs (- total 1)))))))
 
 (define (difficulty-chance scale start) (< (random-float) (+ (* difficulty scale) start)))

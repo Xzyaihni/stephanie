@@ -6,26 +6,26 @@
 
 (define this-chunk
     (fill-area
-	(fill-area
-	    (fill-area
-		(fill-area
-		    (filled-chunk (tile 'concrete))
-		    (make-area
-			(make-point 0 2)
-			(make-point (- size-x 2) (- size-y 4)))
-		    (tile 'asphalt))
-		(make-area
-		    (make-point 2 0)
-		    (make-point (- size-x 4) 2))
-		(tile 'asphalt))
-	    (make-area
-		(make-point 0 (- (/ size-y 2) 1))
-		(make-point (- size-x 9) 2))
-	    horizontal-line)
-	(make-area
-	    (make-point (- (/ size-x 2) 1) 0)
-	    (make-point 2 (- size-y 9)))
-	vertical-line))
+        (fill-area
+            (fill-area
+                (fill-area
+                    (filled-chunk (tile 'concrete))
+                    (make-area
+                        (make-point 0 2)
+                        (make-point (- size-x 2) (- size-y 4)))
+                    (tile 'asphalt))
+                (make-area
+                    (make-point 2 0)
+                    (make-point (- size-x 4) 2))
+                (tile 'asphalt))
+            (make-area
+                (make-point 0 (- (/ size-y 2) 1))
+                (make-point (- size-x 9) 2))
+            horizontal-line)
+        (make-area
+            (make-point (- (/ size-x 2) 1) 0)
+            (make-point 2 (- size-y 9)))
+        vertical-line))
 
 (define (this-put-tile pos t) (put-tile this-chunk pos t))
 

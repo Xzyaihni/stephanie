@@ -22,11 +22,14 @@ use strum::{IntoEnumIterator, EnumIter, EnumCount, IntoStaticStr};
 #[derive(Clone, Copy, EnumIter, EnumCount, IntoStaticStr)]
 pub enum DebugTool
 {
+    AllowSeedMismatch,
     Lisp,
     LispDisableChecks,
     RedundantWorldChecks,
-    Messages,
-    MessagesFull,
+    ClientMessages,
+    ClientMessagesFull,
+    ServerMessages,
+    ServerMessagesFull,
     DisplayRaycast,
     DisplayPathfind,
     CollisionWorldBounds,

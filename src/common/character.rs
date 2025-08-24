@@ -202,14 +202,6 @@ pub struct CombinedInfo<'a>
     pub characters_info: &'a CharactersInfo
 }
 
-impl CombinedInfo<'_>
-{
-    pub fn is_player(&self, entity: Entity) -> bool
-    {
-        self.entities.player_exists(entity)
-    }
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CharacterSyncInfo
 {
@@ -1718,6 +1710,39 @@ impl Character
         true
     }
 
+    pub fn collider_with_state(
+        state: SpriteState,
+        is_player: bool
+    ) -> ColliderInfo
+    {
+        let layer = if is_player
+        {
+            ColliderLayer::Player
+        } else
+        {
+            match state
+            {
+                SpriteState::Normal => ColliderLayer::NormalEnemy,
+                SpriteState::Crawling
+                | SpriteState::Lying => ColliderLayer::LyingEnemy
+            }
+        };
+
+        let scale = match state
+        {
+            SpriteState::Normal => None,
+            SpriteState::Crawling
+            | SpriteState::Lying => Some(Vector3::repeat(ENTITY_SCALE))
+        };
+
+        ColliderInfo{
+            kind: ColliderType::Circle,
+            layer,
+            scale,
+            ..Default::default()
+        }
+    }
+
     pub fn update(
         &mut self,
         combined_info: CombinedInfo,
@@ -1791,19 +1816,7 @@ impl Character
             }
         };
 
-        let is_player = combined_info.is_player(entity);
-        let layer = if is_player
-        {
-            ColliderLayer::Player
-        } else
-        {
-            match self.sprite_state.value()
-            {
-                SpriteState::Normal => ColliderLayer::NormalEnemy,
-                SpriteState::Crawling
-                | SpriteState::Lying => ColliderLayer::LyingEnemy
-            }
-        };
+        let is_player = entities.player_exists(entity);
 
         let z_level = match self.sprite_state.value()
         {
@@ -1842,19 +1855,10 @@ impl Character
             }
         };
 
-        let scale = match self.sprite_state.value()
-        {
-            SpriteState::Normal => None,
-            SpriteState::Crawling
-            | SpriteState::Lying => Some(Vector3::repeat(ENTITY_SCALE))
-        };
-
-        entities.lazy_setter.borrow_mut().set_collider(entity, Some(ColliderInfo{
-            kind: ColliderType::Circle,
-            layer,
-            scale,
-            ..Default::default()
-        }.into()));
+        entities.lazy_setter.borrow_mut().set_collider(
+            entity,
+            Some(Self::collider_with_state(*self.sprite_state.value(), is_player).into())
+        );
 
         entities.set_z_level(entity, z_level);
 

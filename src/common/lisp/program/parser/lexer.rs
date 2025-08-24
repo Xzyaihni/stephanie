@@ -10,6 +10,7 @@ use super::{WithPosition, WithPositionTrait};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CodePosition
 {
+    pub source: usize,
     pub line: usize,
     pub character: usize
 }
@@ -18,15 +19,15 @@ impl Default for CodePosition
 {
     fn default() -> Self
     {
-        Self::new()
+        Self::new(0)
     }
 }
 
 impl CodePosition
 {
-    pub fn new() -> Self
+    pub fn new(source: usize) -> Self
     {
-        Self{line: 1, character: 0}
+        Self{source, line: 1, character: 0}
     }
 
     pub fn next_char(&mut self)
@@ -71,10 +72,10 @@ impl<'a> Lexer<'a>
 {
     pub fn parse(texts: &[&'a str]) -> Vec<LexemePos>
     {
-        texts.iter().flat_map(|text|
+        texts.iter().enumerate().flat_map(|(source, text)|
         {
             let this = Self{
-                position: CodePosition::new(),
+                position: CodePosition::new(source),
                 chars: text.chars(),
                 current_char: None
             };

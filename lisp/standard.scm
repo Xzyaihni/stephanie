@@ -49,6 +49,18 @@
         '()
         xs))
 
+(define (all xs)
+    (cond
+        ((null? xs) #t)
+        ((car xs) (all (cdr xs)))
+        (else #f)))
+
+(define (any xs)
+    (cond
+        ((null? xs) #f)
+        ((car xs) #t)
+        (else (any (cdr xs)))))
+
 ; does a bubble sort
 (define (sort id xs)
     (define (is-sorted xs)
@@ -56,18 +68,18 @@
 	    #t
 	    (if (> (id (car xs)) (id (car (cdr xs))))
 		#f
-		(is-sorted (cdr xs)))))
+                (is-sorted (cdr xs)))))
     (define (swap-one xs)
-	(if (null? (cdr xs))
-	    xs
-	    (let ((a (car xs)) (b (car (cdr xs))))
-		(if (> (id a) (id b))
-		    (cons b (cons a (cdr (cdr xs))))
-		    (cons a (swap-one (cdr xs)))))))
+        (if (null? (cdr xs))
+            xs
+            (let ((a (car xs)) (b (car (cdr xs))))
+                (if (> (id a) (id b))
+                    (cons b (cons a (cdr (cdr xs))))
+                    (cons a (swap-one (cdr xs)))))))
     (define (do-once xs)
-	(if (is-sorted xs)
-	    xs
-	    (do-once (swap-one xs))))
+        (if (is-sorted xs)
+            xs
+            (do-once (swap-one xs))))
     (do-once xs))
 
 

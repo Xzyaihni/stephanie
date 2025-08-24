@@ -166,11 +166,12 @@ impl ClientEntitiesContainer
 
     pub fn handle_message(
         &mut self,
+        passer: &mut ConnectionsHandler,
         create_info: &mut UpdateBuffersInfo,
         message: Message
     ) -> Option<Message>
     {
-        self.entities.handle_message(create_info, message)
+        self.entities.handle_message(passer, create_info, message)
     }
 
     pub fn update(
@@ -1075,19 +1076,23 @@ impl GameState
 
     fn process_message_inner(&mut self, create_info: &mut UpdateBuffersInfo, message: Message)
     {
-        if DebugConfig::is_enabled(DebugTool::Messages)
+        if DebugConfig::is_enabled(DebugTool::ClientMessages)
         {
-            if DebugConfig::is_enabled(DebugTool::MessagesFull)
+            if DebugConfig::is_enabled(DebugTool::ClientMessagesFull)
             {
-                eprintln!("{message:#?}");
+                eprintln!("client {message:#?}");
             } else
             {
-                eprintln!("message: {}", <&str>::from(&message));
+                eprintln!("client message: {}", <&str>::from(&message));
             }
         }
 
         let message = some_or_return!{self.world.handle_message(message)};
-        let message = some_or_return!{self.entities.handle_message(create_info, message)};
+
+        let message = {
+            let mut passer = self.connections_handler.write();
+            some_or_return!{self.entities.handle_message(&mut passer, create_info, message)}
+        };
 
         match message
         {
@@ -1360,7 +1365,10 @@ impl GameState
     {
         self.check_resize_camera(dt);
 
-        self.world.update(dt);
+        crate::frame_time_this!{
+            2, world_update,
+            self.world.update(dt)
+        };
 
         if self.connected_and_ready && !self.is_paused
         {

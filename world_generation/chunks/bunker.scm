@@ -10,19 +10,19 @@
     (define this-chunk (filled-chunk (tile 'soil)))
     (fill-area
         this-chunk
-	(make-area
-	    (make-point 6 5)
-	    (make-point (- size-x 11) (- size-y 9)))
-	(tile 'concrete)))
+        (make-area
+            (make-point 6 5)
+            (make-point (- size-x 11) (- size-y 9)))
+        (tile 'concrete)))
 
 (define (generate-ground)
     (define this-chunk (filled-chunk (tile 'grassie)))
     (fill-area
         this-chunk
-	(make-area
-	    (make-point 6 5)
-	    (make-point (- size-x 11) (- size-y 9)))
-	(tile 'concrete))
+        (make-area
+            (make-point 6 5)
+            (make-point (- size-x 11) (- size-y 9)))
+        (tile 'concrete))
     (put-tile
         this-chunk
         (make-point (/ size-x 2) (- size-y 5))

@@ -117,22 +117,19 @@ impl Game
 
         let mut this = Self{info: Rc::new(RefCell::new(info)), game_state};
 
-        let standard_code = {
+        let primitives = this.console_primitives();
+
+        {
             let load = |path: &str|
             {
                 fs::read_to_string(path)
                     .unwrap_or_else(|err| panic!("{path} must exist ({err})"))
             };
 
-            load("lisp/standard.scm") + &load("lisp/console.scm")
-        };
-
-        let primitives = this.console_primitives();
-
-        {
             let mut infos = this.info.borrow_mut();
             infos.console.primitives = Some(primitives);
-            infos.console.past_commands = standard_code;
+            infos.console.standard = load("lisp/standard.scm");
+            infos.console.console_standard = load("lisp/console.scm");
         }
 
         this.console_command(String::new(), ConsoleOutput::Quiet);
@@ -289,7 +286,7 @@ impl Game
         let local = values.next().unwrap().as_bool()?;
         let id = values.next().unwrap().as_integer()?;
 
-        let entity = Entity::from_raw(local, id as usize);
+        let entity = Entity::from_raw(local, id as usize).no_seed();
 
         Ok(entity)
     }
@@ -333,10 +330,9 @@ impl Game
             }));
     }
 
-    fn maybe_print_component(
+    fn maybe_format_component(
         game_state: &Weak<RefCell<GameState>>,
-        args: &mut PrimitiveArgs,
-        print: bool
+        args: &mut PrimitiveArgs
     ) -> Result<LispValue, lisp::Error>
     {
         with_game_state(game_state, |game_state|
@@ -348,20 +344,9 @@ impl Game
 
             let maybe_info = entities.component_info(entity, &component);
 
-            let found = maybe_info.is_some();
+            let value: LispValue = maybe_info.map(|x| args.memory.new_string(x)).unwrap_or(Ok(().into()))?;
 
-            if print
-            {
-                if let Some(info) = maybe_info
-                {
-                    eprintln!("{component}: {info}");
-                } else
-                {
-                    eprintln!("{component} doesnt exist");
-                }
-            }
-
-            Ok(found.into())
+            Ok(value)
         })
     }
 
@@ -729,21 +714,10 @@ impl Game
             let game_state = self.game_state.clone();
 
             primitives.add(
-                "print-component",
+                "format-component",
                 PrimitiveProcedureInfo::new_simple(2, Effect::Impure, move |mut args|
                 {
-                    Self::maybe_print_component(&game_state, &mut args, true)
-                }));
-        }
-
-        {
-            let game_state = self.game_state.clone();
-
-            primitives.add(
-                "has-component",
-                PrimitiveProcedureInfo::new_simple(2, Effect::Impure, move |mut args|
-                {
-                    Self::maybe_print_component(&game_state, &mut args, false)
+                    Self::maybe_format_component(&game_state, &mut args)
                 }));
         }
 
@@ -792,9 +766,9 @@ impl Game
                     with_game_state(&game_state, |game_state|
                     {
                         let message = args.next().unwrap().as_string(args.memory)?;
-                        let message: DebugMessage = serde_json::from_str(&message).map_err(|_|
+                        let message: DebugMessage = serde_json::from_str(&message).map_err(|err|
                         {
-                            lisp::Error::Custom(format!("cant deserialize {message} as DebugMessage"))
+                            lisp::Error::Custom(format!("cant deserialize {message} as DebugMessage ({err})"))
                         })?;
 
                         game_state.send_message(Message::DebugMessage(message));
@@ -910,16 +884,18 @@ impl Game
 
         let config = LispConfig{
             type_checks: true,
-            memory: LispMemory::new(console.primitives.as_ref().unwrap().clone(), 2048, 1 << 14)
+            memory: LispMemory::new(console.primitives.as_ref().unwrap().clone(), 2048, 1 << 16)
         };
 
-        let lisp = match Lisp::new_with_config(config, &[&console.past_commands, &command])
+        let code: [&str; 4] = [&console.standard, &console.console_standard, &console.past_commands, &command];
+
+        let lisp = match Lisp::new_with_config(config, &code)
         {
             Ok(x) => x,
             Err(err) =>
             {
                 eprintln!("error parsing {command}: {err}");
-                Lisp::print_highlighted(&command, err.position);
+                Lisp::print_highlighted(&code, err.position);
                 return;
             }
         };
@@ -930,7 +906,7 @@ impl Game
             Err(err) =>
             {
                 eprintln!("error running {command}: {err}");
-                Lisp::print_highlighted(&command, err.position);
+                Lisp::print_highlighted(&code, err.position);
                 return;
             }
         };
@@ -966,6 +942,8 @@ struct ConsoleInfo
 {
     primitives: Option<Rc<Primitives>>,
     standard_definitions: usize,
+    standard: String,
+    console_standard: String,
     past_commands: String
 }
 
@@ -976,6 +954,8 @@ impl ConsoleInfo
         Self{
             primitives: None,
             standard_definitions: 0,
+            standard: String::new(),
+            console_standard: String::new(),
             past_commands: String::new()
         }
     }

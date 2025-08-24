@@ -449,31 +449,31 @@ impl World
         Message::ChunkSync{pos, chunk, entities}
     }
 
-    fn collect_to_delete<I>(iter: I) -> (Vec<Entity>, HashMap<GlobalPos, Vec<FullEntityInfo>>)
+    fn collect_to_delete<I>(iter: I) -> HashMap<GlobalPos, (Vec<Entity>, Vec<FullEntityInfo>)>
     where
         I: Iterator<Item=(Entity, FullEntityInfo, GlobalPos)>
     {
-        let mut delete_ids = Vec::new();
-        let mut delete_entities: HashMap<GlobalPos, Vec<FullEntityInfo>> = HashMap::new();
+        let mut delete_entities: HashMap<GlobalPos, (Vec<Entity>, Vec<FullEntityInfo>)> = HashMap::new();
 
         for (entity, info, pos) in iter
         {
-            delete_ids.push(entity);
-
             match delete_entities.entry(pos)
             {
                 Entry::Occupied(mut occupied) =>
                 {
-                    occupied.get_mut().push(info);
+                    let value = occupied.get_mut();
+
+                    value.0.push(entity);
+                    value.1.push(info);
                 },
                 Entry::Vacant(vacant) =>
                 {
-                    vacant.insert(vec![info]);
+                    vacant.insert((vec![entity], vec![info]));
                 }
             }
         }
 
-        (delete_ids, delete_entities)
+        delete_entities
     }
 
     fn unload_entities_inner<F>(
@@ -511,9 +511,7 @@ impl World
                 EntityInfo::to_full(container, entity).map(|full_info| (entity, full_info, pos))
             });
 
-        let (delete_ids, delete_entities) = Self::collect_to_delete(delete_entities);
-
-        delete_entities.into_iter().for_each(|(pos, mut entities)|
+        Self::collect_to_delete(delete_entities).into_iter().for_each(|(pos, (delete_ids, mut entities))|
         {
             if let Some(mut previous) = saver.load(pos)
             {
@@ -523,13 +521,11 @@ impl World
             }
 
             saver.save(pos, entities);
-        });
 
-        delete_ids.into_iter().for_each(|entity|
-        {
-            let message = container.remove_message(entity);
-
-            message_handler.send_message(message);
+            message_handler.send_message(Message::EntityRemoveManyChunk{
+                pos,
+                entities: container.send_remove_many(delete_ids)
+            });
         });
     }
 

@@ -61,6 +61,7 @@ use crate::{
         MessagePasser,
         ConnectionId,
         OnConnectInfo,
+        character::SpriteState,
         world::{TILE_SIZE, CHUNK_VISUAL_SIZE, Pos3},
         chunk_saver::{with_temp_save, load_compressed, LoadError},
         message::{
@@ -469,6 +470,7 @@ impl GameServer
                 can_sleep: false,
                 ..Default::default()
             }.into()),
+            collider: Some(Character::collider_with_state(SpriteState::Normal, true).into()),
             inventory: Some(Inventory::new()),
             character: Some(Character::new(self.data_infos.player_character, Faction::Player)),
             anatomy: Some(anatomy),
@@ -624,7 +626,7 @@ impl GameServer
 
         {
             let mut writer = self.connection_handler.write();
-            writer.send_message(self.entities.remove_message(entity));
+            writer.send_message(Message::EntityRemove(self.entities.send_remove(entity)));
         }
 
         if restart
@@ -656,6 +658,17 @@ impl GameServer
         entity: Entity
     )
     {
+        if DebugConfig::is_enabled(DebugTool::ServerMessages)
+        {
+            if DebugConfig::is_enabled(DebugTool::ServerMessagesFull)
+            {
+                eprintln!("server {id:?} {message:#?}");
+            } else
+            {
+                eprintln!("server {id:?} message: {}", <&str>::from(&message));
+            }
+        }
+
         if let Message::RepeatMessage{message} = message
         {
             self.send_message(*message);

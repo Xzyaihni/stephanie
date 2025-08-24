@@ -62,6 +62,40 @@
                     (rest-entities)))))
     (rest-entities))
 
+(define (has-component entity component)
+    (not (null? (format-component entity component))))
+
+(define (print-component entity component)
+    (display (format-component entity component)))
+
+(define (string-ref s i)
+    (vector-ref (cdr s) i))
+
+(define (vector-prefix? xs other)
+    (if (< (vector-length xs) (vector-length other))
+        #f
+        (all
+            (map
+                (lambda (i) (eq? (vector-ref xs i) (vector-ref other i)))
+                (counter (vector-length other))))))
+
+(define (vector-infix? xs other)
+    (let ((limit (- (vector-length xs) (vector-length other))))
+        (if (< limit 0)
+            #f
+            (any
+                (map
+                    (lambda
+                        (start)
+                        (all
+                            (map
+                                (lambda (i) (eq? (vector-ref xs (+ start i)) (vector-ref other i)))
+                                (counter (vector-length other)))))
+                    (counter (+ limit 1)))))))
+
+(define (string-infix? xs other)
+    (vector-infix? (cdr xs) (cdr other)))
+
 (define (included-with component lst)
     (filter (lambda (x) (has-component x component)) lst))
 

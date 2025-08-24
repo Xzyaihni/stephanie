@@ -42,9 +42,9 @@
 
         (define (this-tile point tle) (put-tile this-chunk point tle))
 
-	(define (maybe-light point intensity offset)
+        (define (maybe-light point intensity offset)
             (if (stop-between-difficulty 0.1 0.2)
-		(combine-markers this-chunk point (list 'light intensity offset))))
+                (combine-markers this-chunk point (list 'light intensity offset))))
 
         (define (decide-enemy type)
             (if (eq? type 'normal)
@@ -60,23 +60,23 @@
                         'enemy
                         (decide-enemy
                             (gradient-pick
-				'(normal strong)
-				difficulty
-				0.0
-				0.6))))))
+                                '(normal strong)
+                                difficulty
+                                0.0
+                                0.6))))))
 
         (define wall-material (tile 'concrete))
 
         (define (door x y side material)
             (this-tile
                 (make-point x y)
-		(single-marker (list 'door side material 1))))
+                (single-marker (list 'door side material 1))))
 
         (define (room-side flip)
-	    (define (add-window y)
-		(this-tile
-		    (make-point (x-of 1) y)
-		    (tile 'glass)))
+            (define (add-window y)
+                (this-tile
+                    (make-point (x-of 1) y)
+                    (tile 'glass)))
 
             (define (x-of x)
                 (if flip
@@ -134,13 +134,13 @@
                         (this-tile (make-point (x-of 3) 1) (tile 'glass))
                         (this-tile (make-point (x-of 4) 1) (tile 'glass))
                         (door (x-of 6) 12 side-up 'metal)
-			(rectangle-outline
-			    this-chunk
-			    (area-of
+                        (rectangle-outline
+                            this-chunk
+                            (area-of
                                 (make-area
-				    (make-point 1 10)
-				    (make-point 4 5)))
-			    wall-material)
+                                    (make-point 1 10)
+                                    (make-point 4 5)))
+                            wall-material)
                         (maybe-light (make-point (x-of 4) 4) 1.2 '(0.0 0.5 0.0))
                         (maybe-light (make-point (x-of 2) 12) 0.5 (list (if flip -0.5 0.5) 0.0 0.0))
                         (maybe-light (make-point (x-of 5) 12) 0.6 '(0.0 0.0 0.0))
@@ -191,8 +191,8 @@
         (hallway-enemy 7)
         (hallway-enemy 8)
 
-	(maybe-light (make-point 7 4) 0.9 '(0.5 -0.4 0.0))
-	(maybe-light (make-point 7 10) 0.9 '(0.5 0.4 0.0))
+        (maybe-light (make-point 7 4) 0.9 '(0.5 -0.4 0.0))
+        (maybe-light (make-point 7 10) 0.9 '(0.5 0.4 0.0))
 
         (room-side #f)
         (room-side #t)
@@ -270,18 +270,18 @@
                         (make-point 6 1)
                         (make-point 4 2))
                     (tile 'air))
-		(put-tile
-                    this-chunk
-		    (make-point 7 2)
-		    (single-marker (list 'light 0.6 '(0.5 0.0 0.0))))
                 (put-tile
                     this-chunk
-		    (make-point 8 3)
-		    (tile 'air))
-		(put-tile
+                    (make-point 7 2)
+                    (single-marker (list 'light 0.6 '(0.5 0.0 0.0))))
+                (put-tile
                     this-chunk
-		    (make-point 9 3)
-		    (single-marker (list 'door side-right 'metal 2))))
+                    (make-point 8 3)
+                    (tile 'air))
+                (put-tile
+                    this-chunk
+                    (make-point 9 3)
+                    (single-marker (list 'door side-right 'metal 2))))
             (fill-area
                 this-chunk
                 (make-area

@@ -163,6 +163,19 @@ impl LispValuable for i32
     fn tag() -> ValueTag { ValueTag::Integer }
 }
 
+impl From<char> for LispValue
+{
+    fn from(x: char) -> Self
+    {
+        LispValue::new_char(x)
+    }
+}
+
+impl LispValuable for char
+{
+    fn tag() -> ValueTag { ValueTag::Char }
+}
+
 impl From<bool> for LispValue
 {
     fn from(x: bool) -> Self
@@ -447,18 +460,29 @@ impl LispValue
             {
                 format!("<symbol {}>", unsafe{ self.value.symbol })
             }),
-            ValueTag::List => block.map(|block|
+            ValueTag::List =>
             {
-                let list = block.get_list(unsafe{ self.value.list });
+                if let Some(memory) = memory
+                {
+                    if let Ok(s) = self.as_string(memory)
+                    {
+                        return s;
+                    }
+                }
 
-                let car = list.car.maybe_to_string(visited_boxed, memory, Some(block));
-                let cdr = list.cdr.maybe_to_string(visited_boxed, memory, Some(block));
+                block.map(|block|
+                {
+                    let list = block.get_list(unsafe{ self.value.list });
 
-                format!("({car} {cdr})")
-            }).unwrap_or_else(||
-            {
-                format!("<list {}>", unsafe{ self.value.list })
-            }),
+                    let car = list.car.maybe_to_string(visited_boxed, memory, Some(block));
+                    let cdr = list.cdr.maybe_to_string(visited_boxed, memory, Some(block));
+
+                    format!("({car} {cdr})")
+                }).unwrap_or_else(||
+                {
+                    format!("<list {}>", unsafe{ self.value.list })
+                })
+            },
             ValueTag::Vector => block.map(|block|
             {
                 let vec = block.get_vector_ref(unsafe{ self.value.vector });
@@ -1508,6 +1532,28 @@ impl LispMemory
 
         Ok(())
     }
+
+    pub fn new_string(
+        &mut self,
+        x: String
+    ) -> Result<LispValue, Error>
+    {
+        let restore = self.with_saved_registers([Register::Value, Register::Temporary]);
+
+        let tag = self.new_symbol("string");
+        self.set_register(Register::Value, tag);
+
+        let xs = x.chars().map(LispValue::from).collect::<Vec<_>>();
+        self.make_vector(Register::Temporary, xs)?;
+
+        self.cons(Register::Value, Register::Value, Register::Temporary)?;
+
+        let output = self.get_register(Register::Value);
+
+        restore(self)?;
+
+        Ok(output)
+    }
 }
 
 pub struct GenericOutputWrapper<M>
@@ -1713,9 +1759,9 @@ impl Lisp
         self.program.eval()
     }
 
-    pub fn print_highlighted(source: &str, position: CodePosition)
+    pub fn print_highlighted(sources: &[&str], position: CodePosition)
     {
-        if let Some(line) = source.lines().nth(position.line - 1)
+        if let Some(line) = sources[position.source].lines().nth(position.line - 1)
         {
             eprintln!("{line}");
 
@@ -1723,7 +1769,7 @@ impl Lisp
             eprintln!("{padding}^");
         } else
         {
-            eprintln!("couldnt find line {} in {source}", position.line - 1);
+            eprintln!("couldnt find line {} in {sources:?}", position.line - 1);
         }
     }
 }

@@ -30,6 +30,7 @@ use crate::common::{
     Anatomy,
     RenderInfo,
     OnConnectInfo,
+    entity::{EntityRemoveMany, EntityRemove},
     world::{Pos3, TilePos, Tile, Chunk, GlobalPos}
 };
 
@@ -46,6 +47,11 @@ pub enum Message
 {
     EntitySet{entity: Entity, info: Box<EntityInfo>},
     EntitySetMany{entities: Vec<(Entity, EntityInfo)>},
+    EntityRemove(EntityRemove),
+    EntityRemoveFinished{entity: Entity},
+    EntityRemoveMany(EntityRemoveMany),
+    EntityRemoveManyFinished{entities: Vec<Entity>},
+    EntityRemoveManyChunk{pos: GlobalPos, entities: EntityRemoveMany},
     SetParent{entity: Entity, component: Option<Box<Parent>>},
     SetSibling{entity: Entity, component: Option<Box<Entity>>},
     SetTransform{entity: Entity, component: Option<Box<Transform>>},
@@ -76,7 +82,6 @@ pub enum Message
     SyncCharacter{entity: Entity, info: CharacterSyncInfo},
     SyncCamera{position: Pos3<f32>},
     SyncWorldTime{time: f64},
-    EntityDestroy{entity: Entity},
     PlayerConnect{name: String},
     PlayerOnConnect(OnConnectInfo),
     PlayerFullyConnected,
