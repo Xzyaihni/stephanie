@@ -76,7 +76,7 @@ impl MessageThrottler
     {
         match message
         {
-            Message::EntityRemoveManyChunk{pos, ..} =>
+            Message::EntityRemoveChunk{pos, ..} =>
             {
                 if let Some(index) = self.chunks_buffered.iter().position(|(chunk_pos, value)|
                 {

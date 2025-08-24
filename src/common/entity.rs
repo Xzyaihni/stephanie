@@ -43,6 +43,8 @@ use crate::{
         ObjectsStore,
         Message,
         Saveable,
+        EntitiesSaver,
+        SaveLoad,
         character::PartialCombinedInfo
     }
 };
@@ -1135,7 +1137,7 @@ macro_rules! define_entities_both
             pub local_components: RefCell<ObjectsStore<ComponentsIndices>>,
             pub components: RefCell<ObjectsStore<ComponentsIndices>>,
             pub lazy_setter: RefCell<SetterQueue<$($default_type,)+>>,
-            remove_awaiting: Vec<usize>,
+            remove_awaiting: Vec<(FullEntityInfo, usize)>,
             infos: Option<DataInfos>,
             z_changed: RefCell<bool>,
             remove_queue: RefCell<Vec<Entity>>,
@@ -1419,7 +1421,7 @@ macro_rules! define_entities_both
                     if Self::IS_SERVER
                     {
                         // it simply discards the set which might not be the best?
-                        if self.remove_awaiting.contains(&entity.id) { return; }
+                        if self.remove_awaiting.iter().any(|x| x.1 == entity.id) { return; }
                     }
 
                     let parent_order_sensitive = Self::order_sensitive(Component::$name);
@@ -1691,26 +1693,6 @@ macro_rules! define_entities_both
                 {
                     self.remove(entity);
                 });
-            }
-
-            pub fn send_remove(&mut self, entity: Entity) -> EntityRemove
-            {
-                debug_assert!(!entity.local);
-
-                self.clear_components(entity);
-
-                self.remove_awaiting.push(entity.id);
-                EntityRemove(entity)
-            }
-
-            pub fn send_remove_many(&mut self, entities: Vec<Entity>) -> EntityRemoveMany
-            {
-                debug_assert!(entities.iter().all(|x| !x.local));
-
-                entities.iter().for_each(|entity| self.clear_components(*entity));
-
-                self.remove_awaiting.extend(entities.iter().map(|x| x.id));
-                EntityRemoveMany(entities)
             }
 
             order_sensitives!(
@@ -2157,6 +2139,32 @@ macro_rules! define_entities_both
                 self.create_render_queue.borrow_mut().clear();
             }
 
+            fn handle_send_remove(&mut self, entity: Entity)
+            {
+                debug_assert!(!entity.local);
+
+                if let Some(info) = EntityInfo::to_full(self, entity)
+                {
+                    self.remove_awaiting.push((info, entity.id));
+                }
+
+                self.clear_components(entity);
+            }
+
+            pub fn send_remove(&mut self, entity: Entity) -> EntityRemove
+            {
+                self.handle_send_remove(entity);
+
+                EntityRemove(entity)
+            }
+
+            pub fn send_remove_many(&mut self, entities: Vec<Entity>) -> EntityRemoveMany
+            {
+                entities.iter().for_each(|entity| self.handle_send_remove(*entity));
+
+                EntityRemoveMany(entities)
+            }
+
             pub fn push_message(&mut self, info: EntityInfo) -> (Message, Entity)
             {
                 let entity = self.push_inner(false, info);
@@ -2164,19 +2172,31 @@ macro_rules! define_entities_both
                 (Message::EntitySet{entity, info: Box::new(self.info(entity))}, entity)
             }
 
-            fn handle_entity_remove_finished(&mut self, entity: Entity)
+            fn remove_awaiting_entity(&mut self, entity: Entity) -> Option<FullEntityInfo>
             {
-                self.remove(entity);
+                debug_assert!(self.remove_awaiting.iter().any(|x| x.1 == entity.id));
 
-                debug_assert!(self.remove_awaiting.contains(&entity.id));
-
-                if let Some(index) = self.remove_awaiting.iter().position(|x| *x == entity.id)
+                self.remove_awaiting.iter().position(|x| x.1 == entity.id).map(|index|
                 {
-                    self.remove_awaiting.swap_remove(index);
-                }
+                    self.remove_awaiting.swap_remove(index).0
+                })
             }
 
-            pub fn handle_message(&mut self, message: Message) -> Option<Message>
+            fn handle_entity_remove_finished(
+                &mut self,
+                entity: Entity
+            )
+            {
+                self.remove_awaiting_entity(entity);
+
+                self.remove(entity);
+            }
+
+            pub fn handle_message(
+                &mut self,
+                saver: &mut EntitiesSaver,
+                message: Message
+            ) -> Option<Message>
             {
                 let message = self.handle_message_common(message)?;
 
@@ -2201,6 +2221,29 @@ macro_rules! define_entities_both
                         entities.into_iter().for_each(|entity|
                         {
                             self.handle_entity_remove_finished(entity);
+                        });
+
+                        None
+                    },
+                    Message::EntityRemoveChunkFinished{pos, entities} =>
+                    {
+                        {
+                            let mut infos: Vec<_> = entities.iter().filter_map(|entity|
+                            {
+                                self.remove_awaiting_entity(*entity)
+                            }).collect();
+
+                            if let Some(mut previous) = saver.load(pos)
+                            {
+                                infos.append(&mut previous);
+                            }
+
+                            saver.save(pos, infos);
+                        }
+
+                        entities.into_iter().for_each(|entity|
+                        {
+                            self.remove(entity);
                         });
 
                         None
@@ -2733,6 +2776,17 @@ macro_rules! define_entities
                         });
 
                         passer.send_message(Message::EntityRemoveManyFinished{entities});
+
+                        None
+                    },
+                    Message::EntityRemoveChunk{pos, entities: EntityRemoveMany(entities)} =>
+                    {
+                        entities.iter().for_each(|entity|
+                        {
+                            self.remove(*entity);
+                        });
+
+                        passer.send_message(Message::EntityRemoveChunkFinished{pos, entities});
 
                         None
                     },

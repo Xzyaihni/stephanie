@@ -618,10 +618,6 @@ impl World
                 self.set_tile_local(pos, tile);
                 None
             },
-            Message::EntityRemoveManyChunk{pos: _, entities} =>
-            {
-                Some(Message::EntityRemoveMany(entities))
-            },
             Message::ChunkSync{pos, chunk, entities} =>
             {
                 self.overmap.set(pos, chunk);

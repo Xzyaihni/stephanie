@@ -42,6 +42,7 @@
                 this-chunk
                 (make-point (/ size-x 2) (/ size-y 2))
                 (single-marker (list 'light 1.3)))
+            (define this-chunk (filled-chunk (tile 'air)))
             (let ((doorway-point (make-point (- (/ size-x 2) 1) 4)))
                 (begin
                     (fill-area

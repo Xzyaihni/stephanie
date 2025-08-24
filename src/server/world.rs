@@ -144,7 +144,7 @@ pub struct World
     world_name: String,
     world_generator: Rc<RefCell<WorldGenerator<WorldChunkSaver>>>,
     chunk_saver: ChunkSaver,
-    entities_saver: EntitiesSaver,
+    pub entities_saver: EntitiesSaver,
     enemies_info: Arc<EnemiesInfo>,
     furnitures_info: Arc<FurnituresInfo>,
     loot: Loot,
@@ -311,7 +311,7 @@ impl World
     {
         let mut writer = self.message_handler.write();
 
-        Self::unload_entities_inner(&mut self.entities_saver, container, &mut writer, |global|
+        Self::unload_entities_inner(container, &mut writer, |global|
         {
             self.client_indexers.iter().any(|(_, indexer)|
             {
@@ -333,7 +333,7 @@ impl World
         }
 
         let mut writer = self.message_handler.write();
-        Self::unload_entities_inner(&mut self.entities_saver, container, &mut writer, |_global|
+        Self::unload_entities_inner(container, &mut writer, |_global|
         {
             false
         });
@@ -443,26 +443,23 @@ impl World
         Message::ChunkSync{pos, chunk, entities}
     }
 
-    fn collect_to_delete<I>(iter: I) -> HashMap<GlobalPos, (Vec<Entity>, Vec<FullEntityInfo>)>
+    fn collect_to_delete<I>(iter: I) -> HashMap<GlobalPos, Vec<Entity>>
     where
-        I: Iterator<Item=(Entity, FullEntityInfo, GlobalPos)>
+        I: Iterator<Item=(Entity, GlobalPos)>
     {
-        let mut delete_entities: HashMap<GlobalPos, (Vec<Entity>, Vec<FullEntityInfo>)> = HashMap::new();
+        let mut delete_entities: HashMap<GlobalPos, Vec<Entity>> = HashMap::new();
 
-        for (entity, info, pos) in iter
+        for (entity, pos) in iter
         {
             match delete_entities.entry(pos)
             {
                 Entry::Occupied(mut occupied) =>
                 {
-                    let value = occupied.get_mut();
-
-                    value.0.push(entity);
-                    value.1.push(info);
+                    occupied.get_mut().push(entity);
                 },
                 Entry::Vacant(vacant) =>
                 {
-                    vacant.insert((vec![entity], vec![info]));
+                    vacant.insert(vec![entity]);
                 }
             }
         }
@@ -471,7 +468,6 @@ impl World
     }
 
     fn unload_entities_inner<F>(
-        saver: &mut EntitiesSaver,
         container: &mut ServerEntities,
         message_handler: &mut ConnectionsHandler,
         keep: F
@@ -499,24 +495,11 @@ impl World
             {
                 // if a player is somehow too far away from their own overmap dont unload them by accident
                 !container.player_exists(*entity)
-            })
-            .filter_map(|(entity, pos)|
-            {
-                EntityInfo::to_full(container, entity).map(|full_info| (entity, full_info, pos))
             });
 
-        Self::collect_to_delete(delete_entities).into_iter().for_each(|(pos, (delete_ids, mut entities))|
+        Self::collect_to_delete(delete_entities).into_iter().for_each(|(pos, delete_ids)|
         {
-            if let Some(mut previous) = saver.load(pos)
-            {
-                previous.append(&mut entities);
-
-                entities = previous;
-            }
-
-            saver.save(pos, entities);
-
-            message_handler.send_message(Message::EntityRemoveManyChunk{
+            message_handler.send_message(Message::EntityRemoveChunk{
                 pos,
                 entities: container.send_remove_many(delete_ids)
             });

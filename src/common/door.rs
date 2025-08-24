@@ -189,10 +189,10 @@ impl Door
 
     pub fn create_visible_sibling(entities: &ClientEntities, entity: Entity)
     {
-        let door = some_or_return!(entities.door(entity));
-
         if !entities.sibling_exists(entity) && !entities.in_flight().sibling_exists(entity)
         {
+            let door = some_or_return!(entities.door(entity));
+
             let visible_part = entities.push(true, EntityInfo{
                 lazy_transform: Some(LazyTransformInfo{
                     transform: door.door_transform(),
