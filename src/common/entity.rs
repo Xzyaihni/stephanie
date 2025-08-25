@@ -391,14 +391,14 @@ impl FullEntityInfo
 
 impl EntityInfo
 {
-    pub fn try_to_full(
+    pub fn try_to_full<const ONLY_SAVEABLE: bool>(
         entities: &ServerEntities,
         this: Entity
     ) -> Option<FullEntityInfo>
     {
-        if !entities.saveable_exists(this) { return None; }
+        if ONLY_SAVEABLE && !entities.saveable_exists(this) { return None; }
 
-        Self::to_full_inner::<false>(entities, this)
+        Self::to_full_inner::<ONLY_SAVEABLE, false>(entities, this)
     }
 
     pub fn to_full(
@@ -408,10 +408,10 @@ impl EntityInfo
     {
         debug_assert!(entities.saveable_exists(this));
 
-        Self::to_full_inner::<true>(entities, this)
+        Self::to_full_inner::<true, true>(entities, this)
     }
 
-    fn to_full_inner<const EXPECT_SAVEABLE: bool>(
+    fn to_full_inner<const ONLY_SAVEABLE: bool, const EXPECT_SAVEABLE: bool>(
         entities: &ServerEntities,
         this: Entity
     ) -> Option<FullEntityInfo>
@@ -419,15 +419,15 @@ impl EntityInfo
         // this isnt the root node therefore skip
         if let Some(parent) = entities.parent(this)
         {
-            if EXPECT_SAVEABLE { debug_assert!(entities.saveable_exists(parent.entity())); }
+            if EXPECT_SAVEABLE && ONLY_SAVEABLE { debug_assert!(entities.saveable_exists(parent.entity())); }
 
             return None;
         }
 
-        Some(Self::to_full_always::<EXPECT_SAVEABLE>(entities, this))
+        Some(Self::to_full_always::<ONLY_SAVEABLE, EXPECT_SAVEABLE>(entities, this))
     }
 
-    fn to_full_always<const EXPECT_SAVEABLE: bool>(
+    fn to_full_always<const ONLY_SAVEABLE: bool, const EXPECT_SAVEABLE: bool>(
         entities: &ServerEntities,
         this: Entity
     ) -> FullEntityInfo
@@ -436,12 +436,12 @@ impl EntityInfo
 
         let children: Vec<_> = entities.children_of(this).filter_map(|child|
         {
-            if !EXPECT_SAVEABLE
+            if !EXPECT_SAVEABLE && ONLY_SAVEABLE
             {
                 if !entities.saveable_exists(child) { return None; }
             }
 
-            Some(Self::to_full_always::<EXPECT_SAVEABLE>(entities, child))
+            Some(Self::to_full_always::<ONLY_SAVEABLE, EXPECT_SAVEABLE>(entities, child))
         }).collect();
 
         FullEntityInfo{
@@ -2173,11 +2173,11 @@ macro_rules! define_entities_both
                 self.create_render_queue.borrow_mut().clear();
             }
 
-            fn handle_send_remove(&mut self, entity: Entity)
+            fn handle_send_remove<const ONLY_SAVEABLE: bool>(&mut self, entity: Entity)
             {
                 debug_assert!(!entity.local);
 
-                if let Some(info) = EntityInfo::try_to_full(self, entity)
+                if let Some(info) = EntityInfo::try_to_full::<ONLY_SAVEABLE>(self, entity)
                 {
                     self.remove_awaiting.push((info, entity.id));
                 }
@@ -2187,14 +2187,14 @@ macro_rules! define_entities_both
 
             pub fn send_remove(&mut self, entity: Entity) -> EntityRemove
             {
-                self.handle_send_remove(entity);
+                self.handle_send_remove::<false>(entity);
 
                 EntityRemove(entity)
             }
 
-            pub fn send_remove_many(&mut self, entities: Vec<Entity>) -> EntityRemoveMany
+            pub fn send_remove_many<const ONLY_SAVEABLE: bool>(&mut self, entities: Vec<Entity>) -> EntityRemoveMany
             {
-                entities.iter().for_each(|entity| self.handle_send_remove(*entity));
+                entities.iter().for_each(|entity| self.handle_send_remove::<ONLY_SAVEABLE>(*entity));
 
                 EntityRemoveMany(entities)
             }

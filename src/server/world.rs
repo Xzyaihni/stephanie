@@ -501,7 +501,7 @@ impl World
         {
             message_handler.send_message(Message::EntityRemoveChunk{
                 pos,
-                entities: container.send_remove_many(delete_ids)
+                entities: container.send_remove_many::<true>(delete_ids)
             });
         });
     }

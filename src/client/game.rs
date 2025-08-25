@@ -271,7 +271,7 @@ impl Game
         Ok(Vector3::new(next_float()?, next_float()?, next_float()?))
     }
 
-    fn pop_entity(args: &mut PrimitiveArgs) -> Result<Entity, lisp::Error>
+    fn pop_entity(entities: &ClientEntities, args: &mut PrimitiveArgs) -> Result<Entity, lisp::Error>
     {
         let mut values = args.next().unwrap().as_pairs_list(args.memory)?.into_iter();
 
@@ -286,7 +286,7 @@ impl Game
         let local = values.next().unwrap().as_bool()?;
         let id = values.next().unwrap().as_integer()?;
 
-        let entity = Entity::from_raw(local, id as usize).no_seed();
+        let entity = entities.with_seed(Entity::from_raw(local, id as usize).no_seed());
 
         Ok(entity)
     }
@@ -318,7 +318,7 @@ impl Game
                 {
                     let entities = game_state.entities_mut();
 
-                    let entity = entities.with_seed(Self::pop_entity(&mut args)?);
+                    let entity = Self::pop_entity(entities, &mut args)?;
 
                     let value = args.next().unwrap();
                     let value = OutputWrapperRef::new(args.memory, value);
@@ -339,7 +339,7 @@ impl Game
         {
             let entities = game_state.entities();
 
-            let entity = Self::pop_entity(args)?;
+            let entity = Self::pop_entity(entities, args)?;
             let component = args.next().unwrap().as_symbol(args.memory)?;
 
             let maybe_info = entities.component_info(entity, &component);
@@ -380,7 +380,7 @@ impl Game
                     {
                         let entities = game_state.entities();
 
-                        let entity = Self::pop_entity(&mut args)?;
+                        let entity = Self::pop_entity(entities, &mut args)?;
                         let collided = entities.collider(entity)
                             .map(|x| x.collided().to_vec()).into_iter().flatten()
                             .next();
@@ -619,7 +619,7 @@ impl Game
                     {
                         let entities = game_state.entities();
 
-                        let entity = Self::pop_entity(&mut args)?;
+                        let entity = Self::pop_entity(entities, &mut args)?;
                         let name = args.next().unwrap().as_symbol(args.memory)?.replace('_', " ");
 
                         let mut inventory = entities.inventory_mut(entity).unwrap();
@@ -670,15 +670,20 @@ impl Game
         }
 
         {
+            let game_state = self.game_state.clone();
             let info = self.info.clone();
 
             primitives.add(
                 "set-follow-entity",
                 PrimitiveProcedureInfo::new_simple(1, Effect::Impure, move |mut args|
                 {
-                    info.borrow_mut().follow_entity = Self::pop_entity(&mut args)?;
+                    with_game_state(&game_state, |game_state|
+                    {
+                        let entities = game_state.entities();
+                        info.borrow_mut().follow_entity = Self::pop_entity(entities, &mut args)?;
 
-                    Ok(().into())
+                        Ok(().into())
+                    })
                 }));
         }
 
@@ -712,7 +717,7 @@ impl Game
                     {
                         let entities = game_state.entities();
 
-                        let entity = Self::pop_entity(&mut args)?;
+                        let entity = Self::pop_entity(entities, &mut args)?;
 
                         args.memory.cons_list_with(|memory|
                         {
@@ -744,7 +749,7 @@ impl Game
                     {
                         let entities = game_state.entities();
 
-                        let entity = Self::pop_entity(&mut args)?;
+                        let entity = Self::pop_entity(entities, &mut args)?;
 
                         let position = entities.transform(entity).unwrap().position;
 
@@ -775,7 +780,7 @@ impl Game
                     {
                         let entities = game_state.entities();
 
-                        let entity = Self::pop_entity(&mut args)?;
+                        let entity = Self::pop_entity(entities, &mut args)?;
                         let is_compact = args.next().map(|x| x.as_bool()).unwrap_or(Ok(true))?;
 
                         let info = entities.info_ref(entity).map(|x|

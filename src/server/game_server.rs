@@ -512,6 +512,11 @@ impl GameServer
 
         messager.send_one(&Message::PlayerFullyConnected)?;
 
+        self.connection_handler.write().send_message_without(connection, Message::EntitySet{
+            entity: player_entity,
+            info: Box::new(self.entities.info(player_entity))
+        });
+
         Ok((player_entity, connection, messager))
     }
 
