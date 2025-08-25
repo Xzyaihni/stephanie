@@ -168,10 +168,11 @@ impl ClientEntitiesContainer
         &mut self,
         passer: &mut ConnectionsHandler,
         create_info: &mut UpdateBuffersInfo,
-        message: Message
+        message: Message,
+        is_trusted: bool
     ) -> Option<Message>
     {
-        self.entities.handle_message(passer, create_info, message)
+        self.entities.handle_message(passer, create_info, message, is_trusted)
     }
 
     pub fn update(
@@ -693,6 +694,7 @@ pub struct GameState
     is_loading: bool,
     is_paused: bool,
     camera_scale: f32,
+    sync_character_delay: f32,
     rare_timer: f32,
     dt: Option<f32>,
     debug_visibility: <DebugVisibility as DebugVisibilityTrait>::State,
@@ -855,6 +857,7 @@ impl GameState
             debug_mode: info.debug_mode,
             tilemap,
             camera_scale: 1.0,
+            sync_character_delay: 0.0,
             rare_timer: 0.0,
             dt: None,
             ui,
@@ -931,15 +934,24 @@ impl GameState
 
     pub fn sync_character(&mut self, entity: Entity)
     {
-        let entities = self.entities();
-        let target = some_or_return!(entities.target_ref(entity));
+        if self.sync_character_delay > 0.0
+        {
+            return;
+        }
 
-        let position = target.position;
-        self.send_message(Message::SyncPositionRotation{
-            entity,
-            position,
-            rotation: target.rotation
-        });
+        {
+            let entities = self.entities();
+            let target = some_or_return!(entities.target_ref(entity));
+
+            let position = target.position;
+            self.send_message(Message::SyncPositionRotation{
+                entity,
+                position,
+                rotation: target.rotation
+            });
+        }
+
+        self.sync_character_delay = 0.5;
     }
 
     fn connect_to_server(
@@ -1094,7 +1106,7 @@ impl GameState
 
         let message = {
             let mut passer = self.connections_handler.write();
-            some_or_return!{self.entities.handle_message(&mut passer, create_info, message)}
+            some_or_return!{self.entities.handle_message(&mut passer, create_info, message, self.is_trusted)}
         };
 
         match message
@@ -1476,6 +1488,8 @@ impl GameState
                 self.entities.entities.resort_queued()
             };
         }
+
+        self.sync_character_delay -= dt;
 
         if self.rare_timer <= 0.0
         {

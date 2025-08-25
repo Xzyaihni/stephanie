@@ -391,6 +391,16 @@ impl FullEntityInfo
 
 impl EntityInfo
 {
+    pub fn try_to_full(
+        entities: &ServerEntities,
+        this: Entity
+    ) -> Option<FullEntityInfo>
+    {
+        if !entities.saveable_exists(this) { return None; }
+
+        Self::to_full_inner::<false>(entities, this)
+    }
+
     pub fn to_full(
         entities: &ServerEntities,
         this: Entity
@@ -398,26 +408,40 @@ impl EntityInfo
     {
         debug_assert!(entities.saveable_exists(this));
 
+        Self::to_full_inner::<true>(entities, this)
+    }
+
+    fn to_full_inner<const EXPECT_SAVEABLE: bool>(
+        entities: &ServerEntities,
+        this: Entity
+    ) -> Option<FullEntityInfo>
+    {
         // this isnt the root node therefore skip
         if let Some(parent) = entities.parent(this)
         {
-            debug_assert!(entities.saveable_exists(parent.entity()));
+            if EXPECT_SAVEABLE { debug_assert!(entities.saveable_exists(parent.entity())); }
 
             return None;
         }
 
-        Some(Self::to_full_always(entities, this))
+        Some(Self::to_full_always::<EXPECT_SAVEABLE>(entities, this))
     }
 
-    fn to_full_always(entities: &ServerEntities, this: Entity) -> FullEntityInfo
+    fn to_full_always<const EXPECT_SAVEABLE: bool>(
+        entities: &ServerEntities,
+        this: Entity
+    ) -> FullEntityInfo
     {
         let info = entities.info(this);
 
-        let children: Vec<_> = entities.children_of(this).map(|child|
+        let children: Vec<_> = entities.children_of(this).filter_map(|child|
         {
-            entities.set_parent(child, None);
+            if !EXPECT_SAVEABLE
+            {
+                if !entities.saveable_exists(child) { return None; }
+            }
 
-            Self::to_full_always(entities, child)
+            Some(Self::to_full_always::<EXPECT_SAVEABLE>(entities, child))
         }).collect();
 
         FullEntityInfo{
@@ -503,7 +527,17 @@ macro_rules! impl_common_systems
                     if let Some(mut transform) = self.target(entity)
                     {
                         transform.position = position;
-                        transform.rotation = rotation;
+
+                        if let Some(mut character) = self.character_mut_no_change(entity)
+                        {
+                            if let Some(character_rotation) = character.rotation_mut()
+                            {
+                                *character_rotation = rotation;
+                            }
+                        } else
+                        {
+                            transform.rotation = rotation;
+                        }
                     }
 
                     None
@@ -1256,7 +1290,7 @@ macro_rules! define_entities_both
                     }))
                     .try_for_each(|entity|
                     {
-                        f(entity)
+                        f(self.with_seed(entity))
                     })
             }
 
@@ -1416,7 +1450,7 @@ macro_rules! define_entities_both
 
                 pub fn $set_func_no_change(&mut self, entity: Entity, component: Option<$component_type>)
                 {
-                    debug_assert!(entity.seed.is_some());
+                    debug_assert!(entity.seed.is_some(), "{entity:?} {component:#?} {:#?}", self.info_ref(entity));
 
                     if Self::IS_SERVER
                     {
@@ -2143,7 +2177,7 @@ macro_rules! define_entities_both
             {
                 debug_assert!(!entity.local);
 
-                if let Some(info) = EntityInfo::to_full(self, entity)
+                if let Some(info) = EntityInfo::try_to_full(self, entity)
                 {
                     self.remove_awaiting.push((info, entity.id));
                 }
@@ -2174,7 +2208,7 @@ macro_rules! define_entities_both
 
             fn remove_awaiting_entity(&mut self, entity: Entity) -> Option<FullEntityInfo>
             {
-                debug_assert!(self.remove_awaiting.iter().any(|x| x.1 == entity.id));
+                debug_assert!(self.remove_awaiting.iter().any(|x| x.1 == entity.id), "{entity:?} {:#?}", self.info_ref(entity));
 
                 self.remove_awaiting.iter().position(|x| x.1 == entity.id).map(|index|
                 {
@@ -2729,7 +2763,8 @@ macro_rules! define_entities
                 &mut self,
                 passer: &mut client::ConnectionsHandler,
                 create_info: &mut UpdateBuffersInfo,
-                message: Message
+                message: Message,
+                is_trusted: bool
             ) -> Option<Message>
             {
                 let message = self.handle_message_common(message)?;
@@ -2764,7 +2799,7 @@ macro_rules! define_entities
                     {
                         self.remove(entity);
 
-                        passer.send_message(Message::EntityRemoveFinished{entity});
+                        if is_trusted { passer.send_message(Message::EntityRemoveFinished{entity}); }
 
                         None
                     },
@@ -2775,7 +2810,7 @@ macro_rules! define_entities
                             self.remove(*entity);
                         });
 
-                        passer.send_message(Message::EntityRemoveManyFinished{entities});
+                        if is_trusted { passer.send_message(Message::EntityRemoveManyFinished{entities}); }
 
                         None
                     },
@@ -2786,7 +2821,7 @@ macro_rules! define_entities
                             self.remove(*entity);
                         });
 
-                        passer.send_message(Message::EntityRemoveChunkFinished{pos, entities});
+                        if is_trusted { passer.send_message(Message::EntityRemoveChunkFinished{pos, entities}); }
 
                         None
                     },

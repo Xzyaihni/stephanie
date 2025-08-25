@@ -575,14 +575,20 @@ impl GameServer
 
         let messager = writer.get_mut(connection_id);
 
+        self.entities.try_for_each_entity(|entity|
         {
+            if entity.local() || self.entities.saveable_exists(entity)
+            {
+                return Ok(());
+            }
+
             let message = Message::EntitySet{
-                entity: player_entity,
-                info: Box::new(self.entities.info(player_entity))
+                entity: entity,
+                info: Box::new(self.entities.info(entity))
             };
 
-            messager.send_blocking(message)?;
-        }
+            messager.send_blocking(message)
+        })?;
 
         Ok((connection_id, messager.clone_messager()))
     }
@@ -631,11 +637,11 @@ impl GameServer
             {
                 eprintln!("error while disconnecting: {err}");
             }
-        }
 
-        {
-            let mut writer = self.connection_handler.write();
-            writer.send_message(Message::EntityRemove(self.entities.send_remove(entity)));
+            {
+                let mut writer = self.connection_handler.write();
+                writer.send_message(Message::EntityRemove(self.entities.send_remove(entity)));
+            }
         }
 
         if restart

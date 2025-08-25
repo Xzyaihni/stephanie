@@ -104,6 +104,7 @@ impl Message
         match self
         {
             Message::ChunkRequest{..}
+            | Message::EntityRemoveChunkFinished{..}
             | Message::SyncCamera{..}
             | Message::SyncWorldTime{..}
             | Message::PlayerConnect{..}
