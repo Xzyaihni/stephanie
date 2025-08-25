@@ -753,7 +753,8 @@ impl GameState
 
         let OnConnectInfo{player_entity, player_position, time} = Self::connect_to_server(
             connections_handler.clone(),
-            &info.player_name
+            &info.player_name,
+            info.host
         );
 
         let mut entities = ClientEntitiesContainer::new(
@@ -956,12 +957,13 @@ impl GameState
 
     fn connect_to_server(
         handler: Arc<RwLock<ConnectionsHandler>>,
-        name: &str
+        name: &str,
+        host: bool
     ) -> OnConnectInfo
     {
         let mut handler = handler.write();
 
-        let message = Message::PlayerConnect{name: name.to_owned()};
+        let message = Message::PlayerConnect{name: name.to_owned(), host};
         if let Err(x) = handler.send_blocking(&message)
         {
             panic!("error connecting to server: {x}");

@@ -16,7 +16,8 @@ pub struct PlayerInfo
     pub message_buffer: MessageBuffer,
     pub message_passer: MessagePasser,
     pub entity: Option<Entity>,
-    pub name: String
+    pub name: String,
+    pub host: bool
 }
 
 impl PlayerInfo

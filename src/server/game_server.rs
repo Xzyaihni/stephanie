@@ -524,18 +524,19 @@ impl GameServer
     {
         let mut message_passer = MessagePasser::new(stream);
 
-        let name = match message_passer.receive_one()?
+        match message_passer.receive_one()?
         {
-            Some(Message::PlayerConnect{name}) => name,
+            Some(Message::PlayerConnect{name, host}) =>
+            {
+                println!("{}player \"{name}\" connected", if host { "host " } else { "" });
+
+                Ok(PlayerInfo{message_buffer: MessageBuffer::new(), message_passer, entity: None, name, host})
+            },
             _ =>
             {
-                return Err(ConnectionError::WrongConnectionMessage);
+                Err(ConnectionError::WrongConnectionMessage)
             }
-        };
-
-        println!("player \"{name}\" connected");
-
-        Ok(PlayerInfo{message_buffer: MessageBuffer::new(), message_passer, entity: None, name})
+        }
     }
 
     fn player_create(
@@ -555,6 +556,7 @@ impl GameServer
 
         player_info.send_blocking(Message::PlayerOnConnect(on_connect_info))?;
 
+        let is_host = player_info.host;
         let connection_id = self.connection_handler.write().connect(player_info);
 
         if DebugConfig::is_enabled(DebugTool::LoadPosition)
@@ -582,7 +584,12 @@ impl GameServer
 
         self.entities.try_for_each_entity(|entity|
         {
-            if entity.local() || self.entities.saveable_exists(entity)
+            if entity.local()
+            {
+                return Ok(());
+            }
+
+            if is_host && self.entities.saveable_exists(entity)
             {
                 return Ok(());
             }

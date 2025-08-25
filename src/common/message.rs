@@ -83,7 +83,7 @@ pub enum Message
     SyncCharacter{entity: Entity, info: CharacterSyncInfo},
     SyncCamera{position: Pos3<f32>},
     SyncWorldTime{time: f64},
-    PlayerConnect{name: String},
+    PlayerConnect{name: String, host: bool},
     PlayerOnConnect(OnConnectInfo),
     PlayerFullyConnected,
     PlayerDisconnect{time: Option<f64>, restart: bool, host: bool},

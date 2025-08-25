@@ -335,7 +335,7 @@ impl OnSet<ClientEntities> for Door
 {
     fn on_set(_previous: Option<Self>, entities: &ClientEntities, entity: Entity)
     {
-        Door::create_visible_sibling(entities, entity);
+        Door::update_visible(entities, entity);
     }
 }
 

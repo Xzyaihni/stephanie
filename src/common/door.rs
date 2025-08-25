@@ -33,6 +33,13 @@ pub enum DoorMaterial
     Wood
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+enum OpenState
+{
+    Open{positive_side: bool},
+    Closed
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Door
 {
@@ -40,7 +47,7 @@ pub struct Door
     rotation: TileRotation,
     material: DoorMaterial,
     width: u32,
-    open: bool
+    open: OpenState
 }
 
 impl Door
@@ -52,12 +59,17 @@ impl Door
         width: u32
     ) -> Self
     {
-        Self{position, rotation, material, width, open: false}
+        Self{position, rotation, material, width, open: OpenState::Closed}
     }
 
     pub fn is_open(&self) -> bool
     {
-        self.open
+        if let OpenState::Open{..} = self.open { true } else { false }
+    }
+
+    pub fn is_closed(&self) -> bool
+    {
+        !self.is_open()
     }
 
     fn door_rotation(&self) -> f32
@@ -73,79 +85,93 @@ impl Door
         state: bool
     )
     {
-        if self.open != state
+        if self.is_open() != state
         {
-            self.open = state;
-
-            if let Some(visible_door) = entities.sibling(entity).as_deref().copied()
+            self.open = if state
             {
-                if let Some(mut lazy) = entities.lazy_transform_mut(visible_door)
+                let opener_position = some_or_return!(entities.transform(opener)).position;
+                let this_position = self.position;
+
+                let positive_side = match self.rotation
                 {
-                    let angle = if self.open
-                    {
-                        let opener_position = some_or_return!(entities.transform(opener)).position;
-                        let this_position = self.position;
+                    TileRotation::Left => opener_position.y < this_position.y,
+                    TileRotation::Right => opener_position.y > this_position.y,
+                    TileRotation::Down => opener_position.x < this_position.x,
+                    TileRotation::Up => opener_position.x > this_position.x
+                };
 
-                        let flip = match self.rotation
-                        {
-                            TileRotation::Left => opener_position.y < this_position.y,
-                            TileRotation::Right => opener_position.y > this_position.y,
-                            TileRotation::Down => opener_position.x < this_position.x,
-                            TileRotation::Up => opener_position.x > this_position.x
-                        };
+                OpenState::Open{positive_side}
+            } else
+            {
+                OpenState::Closed
+            };
 
-                        if flip
-                        {
-                            f32::consts::FRAC_PI_2
-                        } else
-                        {
-                            -f32::consts::FRAC_PI_2
-                        }
-                    } else
-                    {
-                        0.0
-                    };
+            self.update_state(entities, entity);
+        }
+    }
 
-                    lazy.set_origin_rotation(angle);
-                }
+    fn update_state(
+        &mut self,
+        entities: &ClientEntities,
+        entity: Entity
+    )
+    {
+        let visible_door = some_or_return!(entities.sibling(entity).as_deref().copied());
 
-                let collider = self.door_collider();
-                let occluder = self.door_occluder();
-
-                let mut setter = entities.lazy_setter.borrow_mut();
-                setter.set_occluder(visible_door, occluder);
-
-                if self.open
+        if let Some(mut lazy) = entities.lazy_transform_mut(visible_door)
+        {
+            let angle = if let OpenState::Open{positive_side} = self.open
+            {
+                if positive_side
                 {
-                    setter.set_collider(visible_door, collider);
+                    f32::consts::FRAC_PI_2
                 } else
                 {
-                    if let Some(mut watchers) = entities.watchers_mut(visible_door)
-                    {
-                        let collider_watcher = Watcher{
-                            kind: WatcherType::RotationDistance{
-                                from: self.door_rotation(),
-                                near: 0.04
-                            },
-                            action: WatcherAction::SetCollider(collider.map(Box::new)),
-                            ..Default::default()
-                        };
-
-                        watchers.replace(vec![collider_watcher]);
-                    }
+                    -f32::consts::FRAC_PI_2
                 }
+            } else
+            {
+                0.0
+            };
+
+            lazy.set_origin_rotation(angle);
+        }
+
+        let collider = self.door_collider();
+        let occluder = self.door_occluder();
+
+        let mut setter = entities.lazy_setter.borrow_mut();
+        setter.set_occluder(visible_door, occluder);
+
+        if self.is_open()
+        {
+            setter.set_collider(visible_door, collider);
+        } else
+        {
+            if let Some(mut watchers) = entities.watchers_mut(visible_door)
+            {
+                let collider_watcher = Watcher{
+                    kind: WatcherType::RotationDistance{
+                        from: self.door_rotation(),
+                        near: 0.04
+                    },
+                    action: WatcherAction::SetCollider(collider.map(Box::new)),
+                    ..Default::default()
+                };
+
+                watchers.replace(vec![collider_watcher]);
             }
         }
     }
 
     pub fn door_occluder(&self) -> Option<Occluder>
     {
-        (!self.open).then_some(Occluder::Door)
+        self.is_closed().then_some(Occluder::Door)
     }
 
     pub fn door_collider(&self) -> Option<Collider>
     {
-        (!self.open).then(||
+        self.is_closed().then(||
         {
             ColliderInfo{
                 kind: ColliderType::Rectangle,
@@ -187,12 +213,12 @@ impl Door
         )
     }
 
-    pub fn create_visible_sibling(entities: &ClientEntities, entity: Entity)
+    pub fn update_visible(entities: &ClientEntities, entity: Entity)
     {
+        let mut door = some_or_return!(entities.door_mut_no_change(entity));
+
         if !entities.sibling_exists(entity) && !entities.in_flight().sibling_exists(entity)
         {
-            let door = some_or_return!(entities.door(entity));
-
             let visible_part = entities.push(true, EntityInfo{
                 lazy_transform: Some(LazyTransformInfo{
                     transform: door.door_transform(),
@@ -222,6 +248,9 @@ impl Door
             });
 
             entities.lazy_setter.borrow_mut().set_sibling_no_change(entity, Some(visible_part));
+        } else
+        {
+            door.update_state(entities, entity);
         }
     }
 }
