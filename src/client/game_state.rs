@@ -1121,6 +1121,8 @@ impl GameState
             {
                 self.is_trusted = true;
             },
+            #[cfg(debug_assertions)]
+            Message::DebugMessage(_) => (),
             x => panic!("unhandled message: {x:?}")
         }
     }
