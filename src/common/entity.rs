@@ -44,7 +44,6 @@ use crate::{
         Message,
         Saveable,
         EntitiesSaver,
-        SaveLoad,
         character::PartialCombinedInfo
     }
 };
@@ -2206,6 +2205,11 @@ macro_rules! define_entities_both
                 (Message::EntitySet{entity, info: Box::new(self.info(entity))}, entity)
             }
 
+            pub fn take_remove_awaiting(&mut self) -> Vec<(FullEntityInfo, usize)>
+            {
+                mem::take(&mut self.remove_awaiting)
+            }
+
             fn remove_awaiting_entity(&mut self, entity: Entity) -> Option<FullEntityInfo>
             {
                 debug_assert!(self.remove_awaiting.iter().any(|x| x.1 == entity.id), "{entity:?} {:#?}", self.info_ref(entity));
@@ -2262,17 +2266,12 @@ macro_rules! define_entities_both
                     Message::EntityRemoveChunkFinished{pos, entities} =>
                     {
                         {
-                            let mut infos: Vec<_> = entities.iter().filter_map(|entity|
+                            let infos: Vec<_> = entities.iter().filter_map(|entity|
                             {
                                 self.remove_awaiting_entity(*entity)
                             }).collect();
 
-                            if let Some(mut previous) = saver.load(pos)
-                            {
-                                infos.append(&mut previous);
-                            }
-
-                            saver.save(pos, infos);
+                            saver.save_append(pos, infos);
                         }
 
                         entities.into_iter().for_each(|entity|

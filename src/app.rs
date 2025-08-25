@@ -243,7 +243,7 @@ impl SlowModeStateTrait for SlowModeState
                     KeyCode::KeyM =>
                     {
                         self.running = !self.running;
-                        eprintln!("slow mode running state: {}", self.running);
+                        eprintln!("slow mode is {}", if self.running { "on" } else { "off" });
                     },
                     KeyCode::KeyN => self.step_now = true,
                     _ => ()

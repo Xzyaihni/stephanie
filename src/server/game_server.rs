@@ -177,6 +177,20 @@ impl Drop for GameServer
             world.exit(&mut self.entities);
         }
 
+        if let Some(world) = self.world.as_mut()
+        {
+            World::collect_to_delete(self.entities.take_remove_awaiting().into_iter().filter_map(|(info, _id)|
+            {
+                if info.info.saveable.is_none() { return None; }
+
+                let pos: Pos3<f32> = info.info.transform.as_ref()?.position.into();
+                Some((info, pos.rounded()))
+            })).into_iter().for_each(|(pos, info)|
+            {
+                world.entities_saver.save_append(pos, info);
+            });
+        }
+
         mem::take(&mut self.receiver_handles).into_iter().for_each(|receiver_handle|
         {
             receiver_handle.join().unwrap()

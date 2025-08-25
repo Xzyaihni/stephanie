@@ -491,6 +491,22 @@ where
     }
 }
 
+impl<T> Saver<FileSaver<Vec<T>>, Vec<T>>
+where
+    Self: SaveLoad<Vec<T>>,
+    for<'a> Vec<T>: AutoSaveable + Clone + Saveable + Deserialize<'a> + Serialize
+{
+    pub fn save_append(&mut self, pos: GlobalPos, mut values: Vec<T>)
+    {
+        if let Some(mut previous) = self.load(pos)
+        {
+            values.append(&mut previous);
+        }
+
+        self.save(pos, values);
+    }
+}
+
 impl<T> SaveLoad<T> for Saver<FileSaver<T>, T>
 where
     T: AutoSaveable + Clone,

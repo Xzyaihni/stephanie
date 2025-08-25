@@ -443,11 +443,11 @@ impl World
         Message::ChunkSync{pos, chunk, entities}
     }
 
-    fn collect_to_delete<I>(iter: I) -> HashMap<GlobalPos, Vec<Entity>>
+    pub fn collect_to_delete<T, I>(iter: I) -> HashMap<GlobalPos, Vec<T>>
     where
-        I: Iterator<Item=(Entity, GlobalPos)>
+        I: Iterator<Item=(T, GlobalPos)>
     {
-        let mut delete_entities: HashMap<GlobalPos, Vec<Entity>> = HashMap::new();
+        let mut delete_entities: HashMap<GlobalPos, Vec<T>> = HashMap::new();
 
         for (entity, pos) in iter
         {
@@ -497,7 +497,7 @@ impl World
                 !container.player_exists(*entity)
             });
 
-        Self::collect_to_delete(delete_entities).into_iter().for_each(|(pos, delete_ids)|
+        Self::collect_to_delete::<Entity, _>(delete_entities).into_iter().for_each(|(pos, delete_ids)|
         {
             message_handler.send_message(Message::EntityRemoveChunk{
                 pos,
