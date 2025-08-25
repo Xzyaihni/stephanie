@@ -110,6 +110,23 @@ impl Door
         }
     }
 
+    fn door_origin_rotation(&self) -> f32
+    {
+        if let OpenState::Open{positive_side} = self.open
+        {
+            if positive_side
+            {
+                f32::consts::FRAC_PI_2
+            } else
+            {
+                -f32::consts::FRAC_PI_2
+            }
+        } else
+        {
+            0.0
+        }
+    }
+
     fn update_state(
         &mut self,
         entities: &ClientEntities,
@@ -120,21 +137,7 @@ impl Door
 
         if let Some(mut lazy) = entities.lazy_transform_mut(visible_door)
         {
-            let angle = if let OpenState::Open{positive_side} = self.open
-            {
-                if positive_side
-                {
-                    f32::consts::FRAC_PI_2
-                } else
-                {
-                    -f32::consts::FRAC_PI_2
-                }
-            } else
-            {
-                0.0
-            };
-
-            lazy.set_origin_rotation(angle);
+            lazy.set_origin_rotation(self.door_origin_rotation());
         }
 
         let collider = self.door_collider();
@@ -224,6 +227,7 @@ impl Door
                     transform: door.door_transform(),
                     combine_origin_rotation: true,
                     origin_rotation_interpolation: Some(10.0),
+                    origin_rotation: door.door_origin_rotation(),
                     origin: Vector3::new(-0.5, 0.0, 0.0),
                     ..Default::default()
                 }.into()),

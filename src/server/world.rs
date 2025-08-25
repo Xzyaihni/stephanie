@@ -631,7 +631,8 @@ mod tests
                 message_buffer: MessageBuffer::new(),
                 message_passer: MessagePasser::new(stream),
                 entity: Some(entities.push_eager(false, EntityInfo{..Default::default()})),
-                name: "test_player".to_owned()
+                name: "test_player".to_owned(),
+                host: true
             });
 
             let tilemap = TileMap::parse("tiles/tiles.json", "textures/tiles/")
