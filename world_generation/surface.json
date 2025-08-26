@@ -109,6 +109,18 @@
             }
         },
         {
+            "rotation": "Down",
+            "name": "road_corner",
+            "neighbors": {
+                "SymmetryNone": {
+                    "up": [],
+                    "down": [],
+                    "right": ["road_corner"],
+                    "left": []
+                }
+            }
+        },
+        {
             "name": "road_t",
             "weight": 0.9,
             "neighbors": {
