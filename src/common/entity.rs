@@ -1209,6 +1209,7 @@ macro_rules! define_entities_both
             create_render_queue: RefCell<Vec<(Entity, RenderComponent)>>,
             changed_entities: RefCell<ChangedEntities>,
             side_sync: RefCell<SideSyncEntities>,
+            on_remove: Rc<RefCell<Vec<Box<dyn FnMut(&mut Self, Entity)>>>>,
             $($on_name: Rc<RefCell<Vec<OnComponentChange>>>,)+
             $(pub $name: ObjectsStore<ComponentWrapper<$component_type>>,)+
         }
@@ -1232,6 +1233,7 @@ macro_rules! define_entities_both
                     create_render_queue: RefCell::new(Vec::new()),
                     changed_entities: RefCell::new(Default::default()),
                     side_sync: RefCell::new(Default::default()),
+                    on_remove: Rc::new(RefCell::new(Vec::new())),
                     $($on_name: Rc::new(RefCell::new(Vec::new())),)+
                     $($name: ObjectsStore::new(),)+
                 };
@@ -1618,6 +1620,11 @@ macro_rules! define_entities_both
                 }
             )+
 
+            pub fn on_remove(&self, f: Box<dyn FnMut(&mut Self, Entity)>)
+            {
+                self.on_remove.borrow_mut().push(f);
+            }
+
             pub fn update_watchers(
                 &mut self,
                 dt: f32
@@ -1718,6 +1725,8 @@ macro_rules! define_entities_both
                 {
                     return;
                 }
+
+                self.on_remove.clone().borrow_mut().iter_mut().for_each(|x| x(self, entity));
 
                 self.remove_children(entity);
                 self.try_remove_sibling(entity);

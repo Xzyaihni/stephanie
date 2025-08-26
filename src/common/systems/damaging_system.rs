@@ -40,6 +40,7 @@ use crate::{
 
 const HIGHLIGHT_DURATION: f32 = 0.2;
 
+#[derive(Debug, Clone, Copy)]
 enum ParticlesKind
 {
     Blood,
@@ -258,14 +259,16 @@ pub fn damager<'a, 'b, E: AnyEntities, TileDamager: FnMut(TilePos, DamagePartial
                     return;
                 }
 
+                let particle = if damage.data.is_piercing() { ParticlesKind::Blood } else { ParticlesKind::Dust };
+
                 damage_entity(entities, entity, result.other_entity, damage);
 
                 if let Some(textures) = textures.as_ref()
                 {
-                    create_particles(textures, ParticlesKind::Blood, true, result.damage_entry);
+                    create_particles(textures, particle, true, result.damage_entry);
                     if let Some(position) = result.damage_exit
                     {
-                        create_particles(textures, ParticlesKind::Blood, false, position);
+                        create_particles(textures, particle, false, position);
                     }
 
                     flash_white(entities, entity);

@@ -110,6 +110,17 @@ impl MulAssign<f32> for DamageType
 
 impl DamageType
 {
+    pub fn is_piercing(&self) -> bool
+    {
+        match self
+        {
+            Self::AreaEach(_) => false,
+            Self::Blunt(_) => false,
+            Self::Sharp{..} => true,
+            Self::Bullet(_) => true
+        }
+    }
+
     pub fn as_flat(self) -> f32
     {
         match self

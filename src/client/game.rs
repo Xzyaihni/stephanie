@@ -152,14 +152,16 @@ impl Game
 
     pub fn on_player_connected(&mut self)
     {
-        let info = self.info.clone();
+        let info0 = self.info.clone();
+        let info1 = self.info.clone();
         with_game_state(&self.game_state, move |game_state|
         {
             let ui = game_state.ui.clone();
 
-            game_state.entities_mut().on_inventory(Box::new(move |OnChangeInfo{entity, ..}|
+            let entities = game_state.entities();
+            entities.on_inventory(Box::new(move |OnChangeInfo{entity, ..}|
             {
-                let info = info.borrow_mut();
+                let info = info0.borrow();
 
                 let which = if entity == info.entity
                 {
@@ -181,6 +183,16 @@ impl Game
                     };
 
                     ui.borrow_mut().inventory_changed(entity);
+                }
+            }));
+
+            entities.on_remove(Box::new(move |_entities, entity|
+            {
+                let mut info = info1.borrow_mut();
+
+                if Some(entity) == info.other_entity
+                {
+                    info.other_entity = None;
                 }
             }));
         });
