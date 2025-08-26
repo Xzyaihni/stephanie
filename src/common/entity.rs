@@ -741,7 +741,7 @@ macro_rules! common_trait_impl
 {
     (
         ($(($fn_ref:ident, $fn_mut:ident, $value_type:ident)),+,),
-        ($(($set_func:ident, $exists_name:ident, $shared_type:ident)),+,)
+        ($(($set_func:ident, $set_func_no_change:ident, $exists_name:ident, $shared_type:ident)),+,)
     ) =>
     {
         $(
@@ -765,6 +765,11 @@ macro_rules! common_trait_impl
             fn $set_func(&self, entity: Entity, component: Option<$shared_type>)
             {
                 self.lazy_setter.borrow_mut().$set_func(entity, component);
+            }
+
+            fn $set_func_no_change(&self, entity: Entity, component: Option<$shared_type>)
+            {
+                self.lazy_setter.borrow_mut().$set_func_no_change(entity, component);
             }
         )+
 
@@ -2493,7 +2498,7 @@ macro_rules! define_entities
 
             common_trait_impl!{
                 ($(($name, $mut_func, $default_type),)+),
-                ($(($side_set_func, $side_exists_name, $side_default_type),)+ $(($set_func, $exists_name, $default_type),)+)
+                ($(($side_set_func, $side_set_func_no_change, $side_exists_name, $side_default_type),)+ $(($set_func, $set_func_no_change, $exists_name, $default_type),)+)
             }
 
             fn push_eager(
@@ -2541,7 +2546,7 @@ macro_rules! define_entities
 
             common_trait_impl!{
                 ($(($name, $mut_func, $default_type),)+),
-                ($(($side_set_func, $side_exists_name, $side_default_type),)+ $(($set_func, $exists_name, $default_type),)+)
+                ($(($side_set_func, $side_set_func_no_change, $side_exists_name, $side_default_type),)+ $(($set_func, $set_func_no_change, $exists_name, $default_type),)+)
             }
 
             fn push_eager(&mut self, local: bool, info: EntityInfo) -> Entity
@@ -2570,11 +2575,13 @@ macro_rules! define_entities
 
             $(
                 fn $set_func(&self, entity: Entity, component: Option<$default_type>);
+                fn $set_func_no_change(&self, entity: Entity, component: Option<$default_type>);
                 fn $exists_name(&self, entity: Entity) -> bool;
             )+
 
             $(
                 fn $side_set_func(&self, entity: Entity, component: Option<$side_default_type>);
+                fn $side_set_func_no_change(&self, entity: Entity, component: Option<$side_default_type>);
                 fn $side_exists_name(&self, entity: Entity) -> bool;
             )+
 

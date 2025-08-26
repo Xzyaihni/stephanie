@@ -473,7 +473,7 @@ impl Character
 
         if !entities.light_exists(entity)
         {
-            entities.set_light(entity, Some(Light{source: Some(info.holding), ..Default::default()}));
+            entities.set_light_no_change(entity, Some(Light{source: Some(info.holding), ..Default::default()}));
         }
 
         self.info = Some(info);
@@ -1855,7 +1855,7 @@ impl Character
             }
         };
 
-        entities.lazy_setter.borrow_mut().set_collider(
+        entities.lazy_setter.borrow_mut().set_collider_no_change(
             entity,
             Some(Self::collider_with_state(*self.sprite_state.value(), is_player).into())
         );
