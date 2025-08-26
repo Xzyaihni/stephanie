@@ -12,7 +12,7 @@ use yanyaengine::{game_object::*, Transform};
 use crate::{
     client::{
         VisibilityChecker,
-        world_receiver::WorldReceiver
+        world_receiver::ChunkWorldReceiver
     },
     common::{OccludingCaster, entity::ClientEntities}
 };
@@ -281,7 +281,7 @@ impl TilePos
 
 pub struct ClientOvermap
 {
-    world_receiver: WorldReceiver,
+    world_receiver: ChunkWorldReceiver,
     visual_overmap: VisualOvermap,
     chunks: ChunksContainer<Option<Arc<Chunk>>>,
     chunk_ordering: Box<[LocalPos]>,
@@ -291,7 +291,7 @@ pub struct ClientOvermap
 impl ClientOvermap
 {
     pub fn new(
-        world_receiver: WorldReceiver,
+        world_receiver: ChunkWorldReceiver,
         visual_overmap: VisualOvermap,
         size: Pos3<usize>,
         player_position: Pos3<f32>
@@ -365,6 +365,8 @@ impl ClientOvermap
 
     pub fn update(&mut self, dt: f32)
     {
+        self.world_receiver.update(&self.indexer);
+
         self.visual_overmap.update(dt);
     }
 
@@ -438,11 +440,6 @@ impl ClientOvermap
                 self.visual_overmap.regenerate_sky_occlusions(&self.chunks);
             }
         }
-    }
-
-    fn request_chunk(&self, pos: GlobalPos)
-    {
-        self.world_receiver.request_chunk(pos);
     }
 
     pub fn debug_tile_field(&self, entities: &ClientEntities)
@@ -578,12 +575,12 @@ impl Overmap<Option<Arc<Chunk>>> for ClientOvermap
     {
         self.chunk_ordering
             .iter()
-            .filter(|pos| self.get_local(**pos).is_none())
+            .filter(|pos| self.chunks[**pos].is_none())
             .for_each(|pos|
             {
-                let global_pos = self.to_global(*pos);
+                let global_pos = self.indexer.to_global(*pos);
 
-                self.request_chunk(global_pos);
+                self.world_receiver.request_chunk(global_pos);
             });
 
         if let Some(offset) = shift

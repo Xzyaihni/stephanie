@@ -17,7 +17,7 @@ use crate::{
     client::{
         VisibilityChecker,
         TilesFactory,
-        world_receiver::WorldReceiver
+        world_receiver::{WorldReceiver, ChunkWorldReceiver}
     },
     common::{
         some_or_return,
@@ -152,7 +152,7 @@ impl World
 
         let visual_overmap = VisualOvermap::new(tiles_factory, size, camera_size, player_position);
         let overmap = ClientOvermap::new(
-            world_receiver.clone(),
+            ChunkWorldReceiver::new(world_receiver.clone()),
             visual_overmap,
             size,
             player_position

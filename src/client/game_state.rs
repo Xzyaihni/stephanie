@@ -91,16 +91,12 @@ use super::{
 
 pub use controls_controller::{ControlsController, UiControls, Control, ControlState, KeyMapping};
 
-use message_throttler::{MessageThrottler, MessageThrottlerInfo};
-
 use notifications::{Notifications, Notification};
 
 pub use anatomy_locations::UiAnatomyLocations;
 pub use ui::{Ui, UiId, UiEntities, NotificationInfo, NotificationKindInfo};
 
 mod controls_controller;
-
-mod message_throttler;
 
 mod notifications;
 
@@ -698,7 +694,6 @@ pub struct GameState
     rare_timer: f32,
     dt: Option<f32>,
     debug_visibility: <DebugVisibility as DebugVisibilityTrait>::State,
-    message_throttler: MessageThrottler,
     connections_handler: Arc<RwLock<ConnectionsHandler>>,
     receiver_handle: Option<JoinHandle<()>>,
     receiver: Receiver<Message>
@@ -834,10 +829,6 @@ impl GameState
             &info.camera.read()
         );
 
-        let message_throttler = MessageThrottler::new(MessageThrottlerInfo{
-            chunk_sync_every: 2
-        });
-
         let ui_camera = Camera::new(1.0, -1.0..1.0);
 
         let mut this = Self{
@@ -871,7 +862,6 @@ impl GameState
             is_paused: false,
             user_receiver,
             debug_visibility,
-            message_throttler,
             connections_handler,
             receiver_handle,
             receiver
@@ -998,29 +988,13 @@ impl GameState
 
     pub fn process_messages(&mut self, create_info: &mut UpdateBuffersInfo)
     {
-        self.message_throttler.advance();
-
-        while let Some(message) = self.message_throttler.poll(&self.world)
-        {
-            self.process_message_inner(create_info, message);
-        }
-
         loop
         {
             match self.receiver.try_recv()
             {
                 Ok(message) =>
                 {
-                    if self.is_loading
-                    {
-                        self.process_message_inner(create_info, message);
-                    } else
-                    {
-                        if let Some(message) = self.message_throttler.process(&self.world, message)
-                        {
-                            self.process_message_inner(create_info, message);
-                        }
-                    }
+                    self.process_message_inner(create_info, message);
                 },
                 Err(TryRecvError::Empty) =>
                 {

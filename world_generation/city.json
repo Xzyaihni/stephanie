@@ -1,6 +1,17 @@
 {
     "rules": [
         {
+            "name": "building",
+            "range": {
+                "start": {
+                    "Number": 0
+                },
+                "end": {
+                    "Tag": "building-height"
+                }
+            }
+        },
+        {
             "name": "bunker",
             "range": {
                 "start": {

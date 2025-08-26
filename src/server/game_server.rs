@@ -765,6 +765,11 @@ impl GameServer
                 self.connection_close(restart, host, id, entity)
             },
             #[cfg(debug_assertions)]
+            Message::DebugMessage(DebugMessage::PrintRemoveAwaiting) =>
+            {
+                eprintln!("remove awaiting: {:#?}", self.entities.get_remove_awaiting())
+            },
+            #[cfg(debug_assertions)]
             Message::DebugMessage(DebugMessage::PrintEntityInfo(entity)) =>
             {
                 eprintln!("server entity info: {}", self.entities.info_ref(entity).map(|x| format!("{x:#?}")).unwrap_or_default())

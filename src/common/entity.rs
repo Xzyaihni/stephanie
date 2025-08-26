@@ -480,6 +480,14 @@ pub struct EntityRemove(Entity);
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EntityRemoveMany(Vec<Entity>);
 
+impl EntityRemoveMany
+{
+    pub fn into_inner(self) -> Vec<Entity>
+    {
+        self.0
+    }
+}
+
 macro_rules! impl_common_systems
 {
     ($this_entity_info:ident, $(($name:ident, $set_func:ident, $component_type:ident)),+,) =>
@@ -2208,6 +2216,11 @@ macro_rules! define_entities_both
             pub fn take_remove_awaiting(&mut self) -> Vec<(FullEntityInfo, usize)>
             {
                 mem::take(&mut self.remove_awaiting)
+            }
+
+            pub fn get_remove_awaiting(&self) -> &[(FullEntityInfo, usize)]
+            {
+                &self.remove_awaiting
             }
 
             fn remove_awaiting_entity(&mut self, entity: Entity) -> Option<FullEntityInfo>
