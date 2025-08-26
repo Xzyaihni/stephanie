@@ -93,9 +93,9 @@ macro_rules! check_seed
                 {
                     use $crate::debug_config::*;
 
-                    if let Some(check_seed) = $entity.seed
+                    if let Some(check_seed) = $entity.seed()
                     {
-                        if check_seed != component.entity.seed.unwrap()
+                        if check_seed != component.entity.seed().unwrap()
                         {
                             let message = format!("{:?} {} {component:#?}", $entity, stringify!($component));
                             if DebugConfig::is_disabled(DebugTool::AllowSeedMismatch)
@@ -249,6 +249,24 @@ impl Entity
     {
         self.local
     }
+
+    #[cfg(debug_assertions)]
+    pub fn seed(&self) -> Option<u32>
+    {
+        self.seed
+    }
+
+    #[cfg(debug_assertions)]
+    pub fn seed_mut(&mut self) -> &mut Option<u32>
+    {
+        &mut self.seed
+    }
+
+    #[cfg(not(debug_assertions))]
+    pub fn seed(&self) -> Option<u32> { unreachable!() }
+
+    #[cfg(not(debug_assertions))]
+    pub fn seed_mut(&mut self) -> &mut Option<u32> { unreachable!() }
 
     pub fn no_seed(self) -> Self
     {
@@ -1252,12 +1270,12 @@ macro_rules! define_entities_both
                         {
                             if let Some(index) = component_index!(self, entity, $name)
                             {
-                                seed = self.$name[index].entity.seed;
+                                seed = self.$name[index].entity.seed();
                             }
                         }
                     )+
 
-                    entity.seed = Some(seed.unwrap());
+                    *entity.seed_mut() = Some(seed.unwrap());
                 }
 
                 entity
@@ -1462,7 +1480,7 @@ macro_rules! define_entities_both
 
                 pub fn $set_func_no_change(&mut self, entity: Entity, component: Option<$component_type>)
                 {
-                    debug_assert!(entity.seed.is_some(), "{entity:?} {component:#?} {:#?}", self.info_ref(entity));
+                    debug_assert!(entity.seed().is_some(), "{entity:?} {component:#?} {:#?}", self.info_ref(entity));
 
                     if Self::IS_SERVER
                     {
