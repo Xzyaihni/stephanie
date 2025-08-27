@@ -1,4 +1,5 @@
 use std::{
+    fmt::{self, Display},
     cmp::Ordering,
     sync::Arc
 };
@@ -75,6 +76,14 @@ pub struct TilePos
 {
     pub chunk: GlobalPos,
     pub local: ChunkLocal
+}
+
+impl Display for TilePos
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
+    {
+        write!(f, "(chunk {}, tile {})", self.chunk.0, self.local.pos())
+    }
 }
 
 impl From<Pos3<f32>> for TilePos
@@ -269,7 +278,7 @@ impl TilePos
 
     pub fn entity_position(&self) -> Vector3<f32>
     {
-        (self.position() + Pos3::repeat(TILE_SIZE / 2.0)).into()
+        self.center_position().into()
     }
 
     pub fn is_same_height(&self, other: &Self) -> bool

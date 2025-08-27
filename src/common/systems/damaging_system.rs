@@ -451,6 +451,11 @@ fn damaging_colliding(
     let same_tile_z = damaging.same_tile_z;
     collider.collided_tiles().iter().copied().filter_map(|tile_pos|
     {
+        if DebugConfig::is_enabled(DebugTool::DamagingTilesAllPositions)
+        {
+            eprintln!("damaging tile (maybe): {tile_pos}");
+        }
+
         let position = Vector3::from(tile_pos.position()) + Vector3::repeat(TILE_SIZE / 2.0);
 
         if same_tile_z

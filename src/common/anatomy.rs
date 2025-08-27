@@ -462,6 +462,7 @@ impl Display for ChangedPart
         match self
         {
             Self::Part(HumanPartId::Torso, Some(ChangedKind::Muscle)) => write!(f, "thoracic diaphragm"),
+            Self::Part(HumanPartId::Pelvis, Some(ChangedKind::Muscle)) => write!(f, "gluteal muscles"),
             Self::Part(id, kind) =>
             {
                 match kind

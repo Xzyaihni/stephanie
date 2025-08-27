@@ -44,6 +44,7 @@ pub enum DebugTool
     SkipLoading,
     DamagePoints,
     LoadPosition,
+    DamagingTilesAllPositions,
     PrintDamage,
     PrintAnatomyColors,
     PrintListenerUpdates,

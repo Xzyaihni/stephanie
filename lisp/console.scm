@@ -80,18 +80,22 @@
                 (counter (vector-length other))))))
 
 (define (vector-infix? xs other)
+    (define (any-meets f i limit)
+        (if (= i limit)
+            #f
+            (if (f i) #t (any-meets f (+ i 1) limit))))
     (let ((limit (- (vector-length xs) (vector-length other))))
         (if (< limit 0)
             #f
-            (any
-                (map
-                    (lambda
-                        (start)
-                        (all
-                            (map
-                                (lambda (i) (eq? (vector-ref xs (+ start i)) (vector-ref other i)))
-                                (counter (vector-length other)))))
-                    (counter (+ limit 1)))))))
+            (any-meets
+                (lambda
+                    (start)
+                    (all
+                        (map
+                            (lambda (i) (eq? (vector-ref xs (+ start i)) (vector-ref other i)))
+                            (counter (vector-length other)))))
+                0
+                (+ limit 1)))))
 
 (define (string-infix? xs other)
     (vector-infix? (cdr xs) (cdr other)))

@@ -753,14 +753,14 @@ impl ContactResolver
         entities.push(true, EntityInfo{
             transform: Some(Transform{
                 position: contact.point,
-                scale: Vector3::repeat(0.01),
+                scale: Vector3::repeat(contact.penetration),
                 ..Default::default()
             }),
             render: Some(RenderInfo{
                 object: Some(RenderObjectKind::Texture{
                     name: "circle.png".to_owned()
                 }.into()),
-                z_level: ZLevel::Hat,
+                above_world: true,
                 mix: Some(MixColor{color, amount: 1.0, keep_transparency: true}),
                 ..Default::default()
             }),
@@ -768,7 +768,7 @@ impl ContactResolver
             ..Default::default()
         });
 
-        if let Some(info) = direction_arrow_info(contact.point, *contact.normal, 0.05, [color[0], color[1], color[2]])
+        if let Some(info) = direction_arrow_info(contact.point, *contact.normal, 0.01, [color[0], color[1], color[2]])
         {
             entities.push(true, info);
         }

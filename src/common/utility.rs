@@ -15,7 +15,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use nalgebra::{Unit, Vector2, Vector3};
+use nalgebra::{Unit, Scalar, Vector2, Vector3};
 
 use yanyaengine::Transform;
 
@@ -30,7 +30,7 @@ pub use crate::{
         watcher::*,
         render_info::*,
         EntityInfo,
-        world::TILE_SIZE
+        world::{TILE_SIZE, PosDirection}
     }
 };
 
@@ -619,6 +619,93 @@ pub fn project_onto(transform: &Transform, p: &Vector3<f32>) -> Vector3<f32>
 {
     let scaled = transform.scale.component_mul(p);
     rotate_point_z_3d(scaled, transform.rotation) + transform.position
+}
+
+pub fn with_z<T: Scalar + Copy>(x: Vector2<T>, z: T) -> Vector3<T>
+{
+    Vector3::new(x.x, x.y, z)
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct Line
+{
+    pub a: Vector2<f32>,
+    pub b: Vector2<f32>
+}
+
+impl Line
+{
+    pub fn map(self, mut f: impl FnMut(Vector2<f32>) -> Vector2<f32>) -> Self
+    {
+        Self{
+            a: f(self.a),
+            b: f(self.b)
+        }
+    }
+}
+
+pub fn rectangle_edges(transform: &Transform) -> impl Iterator<Item=Line>
+{
+    let position = transform.position.xy();
+    let scale = transform.scale;
+    let rotation = transform.rotation;
+
+    PosDirection::iter_non_z().map(move |x|
+    {
+        x.edge_line_2d(scale.xy()).map(|x| rotate_point(x, rotation) + position)
+    })
+}
+
+fn intersection_lines_inner(line0: Line, line1: Line) -> (f32, f32, f32, f32)
+{
+    let x1 = line0.a.x;
+    let x2 = line0.b.x;
+    let x3 = line1.a.x;
+    let x4 = line1.b.x;
+
+    let y1 = line0.a.y;
+    let y2 = line0.b.y;
+    let y3 = line1.a.y;
+    let y4 = line1.b.y;
+
+    let ll = x1 - x2;
+    let lr = y3 - y4;
+    let rl = y1 - y2;
+    let rr = x3 - x4;
+
+    let bottom = ll * lr - rl * rr;
+
+    let t_top = (x1 - x3) * lr - (y1 - y3) * rr;
+    let u_top = -(ll * (y1 - y3) - rl * (x1 - x3));
+
+    (t_top, u_top, bottom, bottom.signum())
+}
+
+pub fn is_intersection_lines(line0: Line, line1: Line) -> bool
+{
+    let (t_top, u_top, bottom, bottom_sign) = intersection_lines_inner(line0, line1);
+
+    (0.0..=bottom.abs()).contains(&(t_top * bottom_sign)) && (0.0..=bottom.abs()).contains(&(u_top * bottom_sign))
+}
+
+pub fn intersection_lines(line0: Line, line1: Line) -> Option<Vector2<f32>>
+{
+    let (t_top, u_top, bottom, bottom_sign) = intersection_lines_inner(line0, line1);
+
+    if !((0.0..=bottom.abs()).contains(&(t_top * bottom_sign)) && (0.0..=bottom.abs()).contains(&(u_top * bottom_sign)))
+    {
+        return None;
+    }
+
+    let t = t_top / bottom;
+
+    let x1 = line0.a.x;
+    let x2 = line0.b.x;
+
+    let y1 = line0.a.y;
+    let y2 = line0.b.y;
+
+    Some(Vector2::new(x1 + t * (x2 - x1), y1 + t * (y2 - y1)))
 }
 
 pub fn aabb_points(transform: &Transform) -> (Vector2<f32>, Vector2<f32>)

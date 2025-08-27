@@ -7,9 +7,9 @@ use serde::{Serialize, Deserialize};
 
 use strum::{FromRepr, EnumCount, EnumIter};
 
-use nalgebra::{Vector3, Point3, Scalar};
+use nalgebra::{Vector2, Vector3, Point3, Scalar};
 
-use crate::common::world::TileRotation;
+use crate::common::{Line, world::TileRotation};
 
 use super::{CHUNK_SIZE, CHUNK_VISUAL_SIZE, TILE_SIZE};
 
@@ -591,6 +591,26 @@ impl PosDirection
         {
             PosDirection::Right | PosDirection::Up | PosDirection::Forward => false,
             PosDirection::Left | PosDirection::Down | PosDirection::Back => true
+        }
+    }
+
+    pub fn edge_line_2d(&self, size: Vector2<f32>) -> Line
+    {
+        let half_size = size * 0.5;
+
+        let value = if self.is_negative() { -1.0 } else { 1.0 };
+
+        match self
+        {
+            PosDirection::Left | PosDirection::Right =>
+            {
+                Line{a: Vector2::new(value * half_size.x, -half_size.y), b: Vector2::new(value * half_size.x, half_size.y)}
+            },
+            PosDirection::Down | PosDirection::Up =>
+            {
+                Line{a: Vector2::new(-half_size.x, -value * half_size.y), b: Vector2::new(half_size.x, -value * half_size.y)}
+            },
+            PosDirection::Back | PosDirection::Forward => unreachable!()
         }
     }
 }

@@ -428,11 +428,10 @@ impl World
     where
         Predicate: Fn(Option<&Tile>) -> bool + Copy
     {
-        self.tiles_inside_inner(
+        self.tiles_inside_inner::<false, _, _>(
             collider,
             predicate,
-            |info| collider.collide_immutable(&info, |_| {}),
-            false
+            |info| collider.collide_immutable(&info, |_| {})
         )
     }
 
@@ -446,21 +445,19 @@ impl World
         ContactAdder: FnMut(Contact),
         Predicate: Fn(Option<&Tile>) -> bool + Copy
     {
-        self.tiles_inside_inner(
+        self.tiles_inside_inner::<true, _, _>(
             collider,
             predicate,
-            move |info| collider.collide_immutable(&info, &mut add_contact),
-            true
+            move |info| collider.collide_immutable(&info, &mut add_contact)
         )
     }
 
-    fn tiles_inside_inner<'a, CheckCollision, Predicate>(
+    fn tiles_inside_inner<'a, const CHECK_NEIGHBORS: bool, CheckCollision, Predicate>(
         &self,
         collider: &'a CollidingInfo<'a>,
         predicate: Predicate,
-        mut check_collision: CheckCollision,
-        check_neighbors: bool
-    ) -> impl Iterator<Item=TilePos> + use<'a, '_, Predicate, CheckCollision>
+        mut check_collision: CheckCollision
+    ) -> impl Iterator<Item=TilePos> + use<'a, '_, CHECK_NEIGHBORS, Predicate, CheckCollision>
     where
         CheckCollision: FnMut(CollidingInfo) -> bool,
         Predicate: Fn(Option<&Tile>) -> bool + Copy
@@ -480,7 +477,7 @@ impl World
                 predicate(self.tile(pos))
             };
 
-            let world = if check_neighbors
+            let world = if CHECK_NEIGHBORS
             {
                 DirectionsGroup{
                     left: check_tile(pos.offset(Pos3::new(-1, 0, 0))),

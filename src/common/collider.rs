@@ -1,21 +1,25 @@
 use std::{
     convert,
-    cmp::Ordering,
     num::FpCategory,
-    ops::ControlFlow
+    cmp::Ordering
 };
 
 use serde::{Serialize, Deserialize};
 
-use nalgebra::{Unit, Matrix3, Vector2, Vector3};
+use nalgebra::{Unit, Matrix2, Matrix3, Vector2, Vector3};
 
 use yanyaengine::Transform;
 
 use crate::common::{
     some_or_value,
     define_layers,
+    with_z,
+    aabb_points,
+    rectangle_edges,
     rectangle_points,
+    is_intersection_lines,
     ENTITY_SCALE,
+    Line,
     Entity,
     Physical,
     raycast::{raycast_this, swept_aabb_world_with_before},
@@ -27,8 +31,6 @@ use crate::common::{
     }
 };
 
-
-const DIMS: usize = 3;
 
 pub type WorldTileInfo = DirectionsGroup<bool>;
 
@@ -298,22 +300,11 @@ impl Collider
 
         if self.kind == ColliderType::Rectangle
         {
-            let points = rectangle_points(transform);
+            let (top_left, bottom_right) = aabb_points(transform);
 
             let size_axis = |i|
             {
-                let points = points.iter().map(|x: &Vector2<f32>| -> f32
-                {
-                    let v: &f32 = x.index(i);
-                    *v
-                });
-
-                let max = points.clone().max_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal)).unwrap_or(0.0);
-                let min = points.min_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal)).unwrap_or(0.0);
-
-                let size = max - min;
-
-                size / 2.0
+                (bottom_right[i] - top_left[i]) / 2.0
             };
 
             Vector3::new(
@@ -380,7 +371,7 @@ impl Collider
     }
 }
 
-fn limit_obb_local(scale: Vector3<f32>, local_point: Vector3<f32>) -> Vector3<f32>
+fn limit_obb_local(scale: Vector2<f32>, local_point: Vector2<f32>) -> Vector2<f32>
 {
     local_point.zip_map(&(scale.abs() / 2.0), |x, limit|
     {
@@ -393,7 +384,7 @@ pub struct TransformMatrix<'a>
 {
     pub transform: &'a Transform,
     pub entity: Option<Entity>,
-    pub rotation_matrix: Matrix3<f32>
+    pub rotation_matrix: Matrix2<f32>
 }
 
 impl<'b> TransformMatrix<'b>
@@ -408,10 +399,9 @@ impl<'b> TransformMatrix<'b>
         Self{
             transform,
             entity,
-            rotation_matrix: Matrix3::new(
-                rotation.cos(), rotation.sin(), 0.0,
-                -rotation.sin(), rotation.cos(), 0.0,
-                0.0, 0.0, 1.0
+            rotation_matrix: Matrix2::new(
+                rotation.cos(), rotation.sin(),
+                -rotation.sin(), rotation.cos()
             )
         }
     }
@@ -424,11 +414,11 @@ impl<'b> TransformMatrix<'b>
         Self{
             transform,
             entity,
-            rotation_matrix: Matrix3::identity()
+            rotation_matrix: Matrix2::identity()
         }
     }
 
-    fn rectangle_on_axis(&self, axis: &Vector3<f32>) -> f32
+    fn rectangle_on_axis(&self, axis: &Vector2<f32>) -> f32
     {
         self.transform.scale.iter().zip(self.rotation_matrix.column_iter()).map(|(scale, column)|
         {
@@ -436,67 +426,47 @@ impl<'b> TransformMatrix<'b>
         }).sum()
     }
 
-    pub fn penetration_axis(&self, other: &Self, axis: &Vector3<f32>) -> f32
+    pub fn penetration_axis(&self, other: &Self, axis: &Vector2<f32>) -> f32
     {
         let this_projected = self.rectangle_on_axis(axis);
         let other_projected = other.rectangle_on_axis(axis);
 
-        let diff = other.transform.position - self.transform.position;
+        let diff = other.transform.position.xy() - self.transform.position.xy();
 
         let axis_distance = diff.dot(axis).abs();
 
         this_projected + other_projected - axis_distance
     }
 
-    fn cuboid_points(&self) -> impl Iterator<Item=Vector3<f32>> + '_
+    #[allow(clippy::wrong_self_convention)]
+    fn into_obb_local(&self, point: Vector2<f32>) -> Vector2<f32>
     {
-        let half_scale = self.transform.scale / 2.0;
-        (0..2_usize.pow(DIMS as u32)).map(move |i|
-        {
-            let mut local_point = half_scale;
-
-            // wow its binary!
-            (0..DIMS).for_each(|axis_i|
-            {
-                if ((i >> axis_i) & 1) == 1
-                {
-                    *local_point.index_mut(axis_i) = -local_point.index(axis_i);
-                }
-            });
-
-            self.transform.position + self.rotation_matrix * local_point
-        })
+        self.rotation_matrix.transpose() * (point - self.transform.position.xy())
     }
 
     #[allow(clippy::wrong_self_convention)]
-    fn into_obb_local(&self, point: Vector3<f32>) -> Vector3<f32>
+    fn from_obb_local(&self, point: Vector2<f32>) -> Vector2<f32>
     {
-        self.rotation_matrix.transpose() * (point - self.transform.position)
+        (self.rotation_matrix * point) + self.transform.position.xy()
     }
 
-    #[allow(clippy::wrong_self_convention)]
-    fn from_obb_local(&self, point: Vector3<f32>) -> Vector3<f32>
+    pub fn inside_obb(&self, point: Vector2<f32>) -> bool
     {
-        (self.rotation_matrix * point) + self.transform.position
-    }
-
-    pub fn inside_obb(&self, point: Vector3<f32>) -> bool
-    {
-        self.into_obb_local(point).zip_map(&(self.transform.scale.abs() / 2.0), |x, limit|
+        self.into_obb_local(point).zip_map(&(self.transform.scale.xy().abs() / 2.0), |x, limit|
         {
             (-limit..limit).contains(&x)
         }).fold(true, |a, b| a && b)
     }
 
-    pub fn project_onto_obb_edge(&self, point: Vector3<f32>) -> (Vector3<f32>, Vector3<f32>)
+    pub fn project_onto_obb_edge(&self, point: Vector2<f32>) -> (Vector2<f32>, Vector2<f32>)
     {
         let local_point = self.into_obb_local(point);
 
-        let projected = limit_obb_local(self.transform.scale, local_point);
+        let projected = limit_obb_local(self.transform.scale.xy(), local_point.xy());
 
         let mut limited = projected;
 
-        let index = (projected.abs().component_div(&self.transform.scale)).imax();
+        let index = (projected.xy().abs().component_div(&self.transform.scale.xy())).imax();
 
         let face_sign = local_point.index(index).signum();
         *limited.index_mut(index) = (*self.transform.scale.index(index) / 2.0) * face_sign;
@@ -504,184 +474,23 @@ impl<'b> TransformMatrix<'b>
         (self.from_obb_local(limited), self.from_obb_local(projected))
     }
 
-    pub fn project_onto_obb(&self, point: Vector3<f32>) -> Vector3<f32>
+    pub fn project_onto_obb(&self, point: Vector2<f32>) -> Vector2<f32>
     {
         let local_point = self.into_obb_local(point);
 
-        let limited = limit_obb_local(self.transform.scale, local_point);
+        let limited = limit_obb_local(self.transform.scale.xy(), local_point.xy());
 
         self.from_obb_local(limited)
-    }
-
-    fn distance_to_obb(&self) -> impl Fn(Vector3<f32>) -> (f32, Vector3<f32>) + '_
-    {
-        |point|
-        {
-            let projected = self.project_onto_obb(point);
-
-            (point.metric_distance(&projected), point)
-        }
-    }
-
-    fn handle_penetration<'a, F>(
-        &self,
-        other: &'a Self,
-        axis: Unit<Vector3<f32>>,
-        penetration: f32
-    ) -> impl FnOnce(F) + use<'a, '_, F>
-    where
-        F: FnMut(Contact)
-    {
-        move |mut add_contact: F|
-        {
-            let diff = other.transform.position - self.transform.position;
-
-            let normal = if axis.dot(&diff) > 0.0
-            {
-                axis
-            } else
-            {
-                -axis
-            };
-
-            let (_distance, point) = other.cuboid_points().map(self.distance_to_obb())
-                .chain(self.cuboid_points().map(other.distance_to_obb())).min_by(|a, b|
-                {
-                    a.0.partial_cmp(&b.0).unwrap()
-                }).unwrap();
-
-            add_contact(ContactRaw{
-                a: self.entity,
-                b: other.entity,
-                point,
-                penetration,
-                normal: -normal
-            }.into());
-        }
-    }
-
-    // this will generate wrong contacts if its an edge/edge collision
-    // im not handling edge/edge collisions cuz i dont wanna (the contact will be close enough)
-    fn rectangle_rectangle_contact_special<'a, F>(
-        &'a self,
-        other: &'a Self,
-        mut add_contact: F,
-        this_axis: impl Fn((Unit<Vector3<f32>>, f32, usize)) -> bool,
-        other_axis: impl Fn((Unit<Vector3<f32>>, f32, usize)) -> bool
-    ) -> bool
-    where
-        F: FnMut(Contact)
-    {
-        // funy
-        let try_penetrate = |axis: Unit<Vector3<f32>>| -> (f32, _)
-        {
-            let penetration = self.penetration_axis(other, &axis);
-
-            (penetration, move |this: &'a Self, other| -> (f32, _)
-            {
-                (penetration, this.handle_penetration(other, axis, penetration))
-            })
-        };
-
-        enum PenetrationInfo<F>
-        {
-            ThisAxis((f32, F)),
-            OtherAxis((Unit<Vector3<f32>>, f32, usize), F)
-        }
-
-        impl<F> PenetrationInfo<F>
-        {
-            fn penetration(&self) -> f32
-            {
-                match self
-                {
-                    Self::ThisAxis((p, _)) => *p,
-                    Self::OtherAxis((_, p, _), _) => *p
-                }
-            }
-        }
-
-        let mut penetrations = (0..2).filter_map(|i|
-        {
-            let axis: Vector3<f32> = self.rotation_matrix.column(i).into();
-            let axis = Unit::new_unchecked(axis);
-
-            let (penetration, handler) = try_penetrate(axis);
-
-            this_axis((axis, penetration, i)).then(||
-            {
-                PenetrationInfo::ThisAxis(handler(self, other))
-            })
-        }).chain((0..2).map(|i|
-        {
-            let axis: Vector3<f32> = other.rotation_matrix.column(i).into();
-            let axis = Unit::new_unchecked(axis);
-
-            let (_penetration, handler) = try_penetrate(axis);
-
-            let (penetration, handle) = handler(other, self);
-            PenetrationInfo::OtherAxis((axis, penetration, i), handle)
-        }));
-
-        let first = some_or_value!(penetrations.next(), false);
-        let least_penetrating = penetrations.try_fold(first, |b, a|
-        {
-            let next = if a.penetration() < b.penetration()
-            {
-                a
-            } else
-            {
-                b
-            };
-
-            if next.penetration() <= 0.0
-            {
-                ControlFlow::Break(())
-            } else
-            {
-                ControlFlow::Continue(next)
-            }
-        });
-
-        let info = if let ControlFlow::Continue(x) = least_penetrating
-        {
-            x
-        } else
-        {
-            return false;
-        };
-
-        if info.penetration() <= 0.0
-        {
-            return false;
-        }
-
-        let handler = match info
-        {
-            PenetrationInfo::ThisAxis((_, handler)) => handler,
-            PenetrationInfo::OtherAxis(info, handler) =>
-            {
-                if !other_axis(info)
-                {
-                    return false;
-                }
-
-                handler
-            }
-        };
-
-        handler(&mut add_contact);
-
-        true
     }
 
     fn rectangle_circle_inner(
         &self,
         other: &CollidingInfo,
-        mut add_contact: impl FnMut(Vector3<f32>, Vector3<f32>, f32, Option<Unit<Vector3<f32>>>) -> bool
+        mut add_contact: impl FnMut(Vector2<f32>, Vector2<f32>, f32, Option<Unit<Vector3<f32>>>) -> bool
     ) -> bool
     {
-        let circle_pos = other.transform.position;
+        let circle_pos = other.transform.position.xy();
+
         let radius = other.transform.scale.max() / 2.0;
 
         let (projected, projected_inside) = self.project_onto_obb_edge(circle_pos);
@@ -699,7 +508,7 @@ impl<'b> TransformMatrix<'b>
             }
         }
 
-        let normal = Unit::try_new(projected_inside - circle_pos, 0.0001);
+        let normal = Unit::try_new(with_z(projected_inside - circle_pos, 0.0), 0.0001);
 
         add_contact(projected, projected_inside, penetration, normal)
     }
@@ -766,17 +575,77 @@ impl<'a> CollidingInfo<'a>
         TransformMatrix::from_transform(&self.transform, self.entity)
     }
 
+    fn aabb_rectangle_contact_special<F>(
+        &self,
+        other: &Self,
+        mut add_contact: F,
+        mut aabb_edges: impl Iterator<Item=Line>,
+        rectangle_edges: [Line; 4]
+    ) -> bool
+    where
+        F: FnMut(Contact)
+    {
+        let collided = aabb_edges.any(|line0|
+        {
+            rectangle_edges.iter().any(|line1| is_intersection_lines(line0, *line1))
+        });
+
+        if collided
+        {
+            let z = self.transform.position.z;
+            let this = self.transform_matrix();
+            let other_matrix = self.transform_matrix();
+
+            let (projected, projected_inside, penetration, flip) = rectangle_points(&other.transform).into_iter().map(|other_point|
+            {
+                (this.project_onto_obb_edge(other_point), false)
+            }).chain(rectangle_points(&self.transform).into_iter().map(|point|
+            {
+                (other_matrix.project_onto_obb_edge(point), true)
+            })).map(|((projected, projected_inside), flip)|
+            {
+                add_contact(ContactRaw{
+                    a: self.entity,
+                    b: other.entity,
+                    point: with_z(projected_inside, z),
+                    penetration: 0.0,
+                    normal: Unit::new_normalize(Vector3::new(if flip { -1.0 } else { 1.0 }, 0.0, 0.0))
+                }.into());
+
+                (projected, projected_inside, projected.metric_distance(&projected_inside), flip)
+            }).max_by(|a, b| a.2.partial_cmp(&b.2).unwrap_or(Ordering::Equal)).unwrap_or_else(||
+            {
+                unreachable!()
+            });
+
+            if penetration > 0.0
+            {
+                let normal = Unit::new_normalize(with_z(projected_inside - projected, 0.0));
+
+                add_contact(ContactRaw{
+                    a: self.entity,
+                    b: other.entity,
+                    point: with_z(projected_inside, z),
+                    penetration,
+                    normal: if flip { -normal } else { normal }
+                }.into());
+            }
+        }
+
+        collided
+    }
+
     fn rectangle_rectangle_inner(
         &self,
         other: &Self,
         add_contact: impl FnMut(Contact)
     ) -> bool
     {
-        self.transform_matrix().rectangle_rectangle_contact_special(
-            &other.transform_matrix(),
+        self.aabb_rectangle_contact_special(
+            other,
             add_contact,
-            |_| {true},
-            |_| {true}
+            rectangle_edges(&self.transform),
+            rectangle_edges(&other.transform).collect::<Vec<_>>().try_into().unwrap()
         )
     }
 
@@ -800,29 +669,6 @@ impl<'a> CollidingInfo<'a>
         other.rayz_rectangle(self, add_contact)
     }
 
-    fn allowed_axis(world: &WorldTileInfo, axis: Vector3<f32>) -> bool
-    {
-        (0..2).all(|axis_i|
-        {
-            let (low, high) = world.get_axis_index(axis_i);
-
-            let amount = *axis.index(axis_i);
-
-            let is_blocked = if amount.classify() == FpCategory::Zero
-            {
-                false
-            } else if amount < 0.0
-            {
-                *low
-            } else
-            {
-                *high
-            };
-
-            !is_blocked
-        })
-    }
-
     fn tile_circle(
         &self,
         other: &Self,
@@ -830,6 +676,7 @@ impl<'a> CollidingInfo<'a>
         mut add_contact: impl FnMut(Contact)
     ) -> bool
     {
+        let z = self.transform.position.z;
         let this = TransformMatrix::new_identity(&self.transform, self.entity);
 
         this.rectangle_circle_inner(other, |projected, projected_inside, penetration, normal|
@@ -851,7 +698,7 @@ impl<'a> CollidingInfo<'a>
                     [1, 0]
                 };
 
-                fn with_limited(limited: Vector3<f32>, f: impl Fn(f32) -> f32) -> impl Fn(usize) -> (usize, f32)
+                fn with_limited(limited: Vector2<f32>, f: impl Fn(f32) -> f32) -> impl Fn(usize) -> (usize, f32)
                 {
                     move |axis_i|
                     {
@@ -921,7 +768,7 @@ impl<'a> CollidingInfo<'a>
                 add_contact(ContactRaw{
                     a: self.entity,
                     b: other.entity,
-                    point,
+                    point: with_z(point, z),
                     penetration: magnitude * penetration,
                     normal: Unit::new_unchecked(axis / magnitude)
                 }.into());
@@ -934,20 +781,6 @@ impl<'a> CollidingInfo<'a>
         })
     }
 
-    fn world_handler(
-        check: impl Fn(Unit<Vector3<f32>>, usize) -> bool
-    ) -> impl Fn((Unit<Vector3<f32>>, f32, usize)) -> bool
-    {
-        move |(axis, penetration, i)|
-        {
-            let ignore = check(axis, i);
-
-            let ignored_axis = ignore && penetration > 0.0;
-
-            !ignored_axis
-        }
-    }
-
     fn tile_rectangle(
         &self,
         other: &Self,
@@ -955,32 +788,14 @@ impl<'a> CollidingInfo<'a>
         add_contact: impl FnMut(Contact)
     ) -> bool
     {
-        let diff = other.transform.position - self.transform.position;
-
-        let this = self.transform_matrix();
-        let other = other.transform_matrix();
-
-        other.rectangle_rectangle_contact_special(
-            &this,
+        self.aabb_rectangle_contact_special(
+            other,
             add_contact,
-            Self::world_handler(|_axis, _i|
+            world.map(|dir, x| (dir, x)).filter_map(|(dir, x)|
             {
-                !Self::allowed_axis(world, diff)
-            }),
-            Self::world_handler(|axis, i|
-            {
-                let (low, high) = world.get_axis_index(i);
-
-                let has_tile = if axis.dot(&diff) > 0.0
-                {
-                    high
-                } else
-                {
-                    low
-                };
-
-                *has_tile
-            })
+                (!x).then(|| dir.edge_line_2d(self.transform.scale.xy()))
+            }).into_iter(),
+            rectangle_edges(&other.transform).collect::<Vec<_>>().try_into().unwrap()
         )
     }
 
@@ -1030,6 +845,7 @@ impl<'a> CollidingInfo<'a>
         mut add_contact: impl FnMut(Contact)
     ) -> bool
     {
+        let z = self.transform.position.z;
         let this = self.transform_matrix();
 
         this.rectangle_circle_inner(other, |projected, projected_inside, penetration, normal|
@@ -1039,16 +855,16 @@ impl<'a> CollidingInfo<'a>
                 let limited = this.into_obb_local(projected_inside);
 
                 let axis_i = limited.abs().imax();
-                let mut normal = Vector3::zeros();
+                let mut normal = Vector2::zeros();
                 *normal.index_mut(axis_i) = -limited.index(axis_i).signum();
 
-                Unit::new_unchecked(this.rotation_matrix * normal)
+                Unit::new_unchecked(with_z(this.rotation_matrix * normal, 0.0))
             });
 
             add_contact(ContactRaw{
                 a: self.entity,
                 b: other.entity,
-                point: projected,
+                point: with_z(projected, z),
                 penetration,
                 normal
             }.into());

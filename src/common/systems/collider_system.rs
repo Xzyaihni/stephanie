@@ -100,7 +100,7 @@ pub fn update(
                             name: sprite.to_owned()
                         }.into()),
                         mix,
-                        z_level: ZLevel::highest(),
+                        above_world: true,
                         ..Default::default()
                     }),
                     watchers: Some(Watchers::simple_one_frame()),
