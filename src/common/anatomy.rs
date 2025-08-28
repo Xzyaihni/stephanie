@@ -404,7 +404,7 @@ pub trait DamageReceiver: HealReceiver
         {
             self.health_sided_iter_mut(side).for_each(|x|
             {
-                x.damage_pierce(damage);
+                x.damage_pierce(damage, 1.0);
             });
 
             None
@@ -422,7 +422,7 @@ pub trait DamageReceiver: HealReceiver
     {
         self.health_sided_iter_mut(side).try_fold(damage, |acc, x|
         {
-            x.damage_pierce(acc)
+            x.damage_pierce(acc, 1.0)
         })
     }
 }
@@ -640,7 +640,7 @@ impl Health
         self.health.heal_remainder(amount)
     }
 
-    pub fn damage_pierce(&mut self, damage: DamageType) -> Option<DamageType>
+    pub fn damage_pierce(&mut self, damage: DamageType, sharpness_scale: f32) -> Option<DamageType>
     {
         match damage
         {
@@ -655,7 +655,7 @@ impl Health
             },
             DamageType::Sharp{sharpness, damage} =>
             {
-                self.pierce_with(sharpness, damage).map(|damage|
+                self.pierce_with(sharpness * sharpness_scale, damage).map(|damage|
                 {
                     DamageType::Sharp{sharpness, damage}
                 })
@@ -679,7 +679,7 @@ impl Health
             damage
         } else
         {
-            damage * (1.0 - (self.block * (1.0 - sharpness)).max(0.0))
+            damage * (1.0 - (self.block * (1.0 - sharpness))).clamp(0.0, 1.0)
         };
 
         self.health.subtract_hp(damage);
@@ -936,7 +936,13 @@ impl<Contents: Organ> BodyPart<Contents>
         damage: DamageType
     ) -> Option<DamageType>
     {
-        self.contents.damage(side, self.bone.damage_pierce(self.muscle.damage_pierce(self.skin.damage_pierce(damage)?)?)?)
+        self.contents.damage(
+            side,
+            self.bone.damage_pierce(
+                self.muscle.damage_pierce(
+                    self.skin.damage_pierce(damage, 0.0)?,
+                    1.0)?,
+                0.0)?)
     }
 }
 

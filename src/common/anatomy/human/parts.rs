@@ -875,7 +875,7 @@ impl DamageReceiver for HeadOrgans
         self.brain.as_mut().map(move |x| x.health_sided_iter_mut(side)).into_iter().flatten()
             .try_fold(damage, |acc, x|
             {
-                x.damage_pierce(acc)
+                x.damage_pierce(acc, 1.0)
             })
     }
 }
