@@ -974,6 +974,10 @@ impl Damageable for HumanAnatomy
 
     fn heal(&mut self, amount: f32) -> Option<f32>
     {
-        self.this.body.heal(amount)
+        let x = self.this.body.heal(amount);
+
+        self.update_cache();
+
+        x
     }
 }

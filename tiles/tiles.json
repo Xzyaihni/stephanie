@@ -54,8 +54,7 @@
     },
     {
         "name": "concrete-fence-l",
-        "transparent": true,
-	"colliding": false
+        "inherit": "concrete-fence"
     },
     {
         "name": "stairs-up",

@@ -16,6 +16,9 @@
             '()))
     (counter-inner 0))
 
+(define (range start end)
+    (map (lambda (x) (+ x start)) (counter (- end start))))
+
 (define (fold f start xs)
     (if (null? xs)
         start
@@ -159,9 +162,8 @@
                         (+ index 1))))))
     (newtons-method-inner initial 0))
 
-(define exp-iterations 10)
-
 (define (expm1 x)
+    (define exp-iterations 10)
     (define (expm1-inner i sum)
         (if (> i exp-iterations)
             sum
@@ -185,7 +187,9 @@
     (newtons-method 1.0 (lambda (y) (- (* y y) x))))
 
 (define (random-choice xs)
-    (list-ref xs (random-integer-between 0 (length xs))))
+    (if (null? xs)
+        '()
+        (list-ref xs (random-integer-between 0 (length xs)))))
 
 ; start inclusive, end exclusive
 (define (random-integer-between start end)

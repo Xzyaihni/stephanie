@@ -333,7 +333,8 @@ macro_rules! frame_time_this
     }
 }
 
-pub const ENTITY_SCALE: f32 = 0.09;
+pub const ENTITY_SCALE: f32 = TILE_SIZE * 0.9;
+pub const ENTITY_PIXEL_SCALE: u32 = 32;
 
 #[derive(Clone)]
 pub struct DataInfos

@@ -216,10 +216,28 @@
                 2
                 (tile 'air))
             (if (< (random-float) 0.3)
-                (combine-markers
-                    this-chunk
-                    (make-point (if (random-bool) 0 (- size-x 1)) (random-integer-between 1 (- size-y 1)))
-                    (list 'furniture 'crate)))
+                (let ((left-side (random-bool)))
+                    (let
+                        ((next-to-window?
+                            (lambda (point)
+                                (=
+                                    (tile-id
+                                        (get-tile
+                                            this-chunk
+                                            (point-add
+                                                point
+                                                (make-point (if left-side 1 -1) 0))))
+                                    (tile-id (tile 'glass))))))
+                        (let ((pos
+                            (random-choice
+                                (filter
+                                    (lambda (x) (not (next-to-window? x)))
+                                    (map (lambda (y) (make-point (if left-side 0 (- size-x 1)) y)) (range 1 (- size-y 1)))))))
+                            (if (not (null? pos))
+                                (combine-markers
+                                    this-chunk
+                                    pos
+                                    (list 'furniture 'crate (if left-side side-right side-left))))))))
             (put-tile
                 this-chunk
                 (make-point 7 0)

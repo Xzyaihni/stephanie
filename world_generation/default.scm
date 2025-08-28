@@ -1,6 +1,8 @@
 (define size-x 16)
 (define size-y 16)
 
+(define tile-id car)
+
 (define (single-marker x)
     (cons 'marker (cons x '())))
 

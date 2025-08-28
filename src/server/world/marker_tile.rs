@@ -90,7 +90,7 @@ impl MarkerTile
                     position
                 ))
             },
-            MarkerKind::Furniture{name} =>
+            MarkerKind::Furniture{name, rotation} =>
             {
                 if DebugConfig::is_enabled(DebugTool::NoFurnitureSpawns) { return None; }
 
@@ -103,7 +103,7 @@ impl MarkerTile
                     return None;
                 };
 
-                Some(furniture_creator::create(furnitures, loot, id, position))
+                Some(furniture_creator::create(furnitures, loot, id, rotation, position))
             },
             MarkerKind::Light{strength, offset} =>
             {
@@ -161,7 +161,7 @@ impl MarkerTile
 pub enum MarkerKind
 {
     Enemy{name: String},
-    Furniture{name: String},
+    Furniture{name: String, rotation: TileRotation},
     Door{rotation: TileRotation, material: DoorMaterial, width: u32},
     Light{strength: f32, offset: Vector3<f32>}
 }
@@ -172,6 +172,10 @@ impl MarkerKind
     {
         match &mut self
         {
+            Self::Furniture{rotation, ..} =>
+            {
+                *rotation = rotation.combine(tile_rotation);
+            },
             Self::Door{rotation, ..} =>
             {
                 *rotation = rotation.combine(tile_rotation);
@@ -248,8 +252,9 @@ impl MarkerKind
             "furniture" =>
             {
                 let name = next_value("name")?.as_symbol()?;
+                let rotation = TileRotation::from_lisp_value(*next_value("door rotation")?)?.rotate_clockwise();
 
-                Ok(Self::Furniture{name})
+                Ok(Self::Furniture{name, rotation})
             },
             x => Err(lisp::Error::Custom(format!("unknown marker id `{x}`")))
         }

@@ -3,10 +3,11 @@ use nalgebra::Vector3;
 use yanyaengine::Transform;
 
 use crate::common::{
-    ENTITY_SCALE,
     lazy_transform::*,
     collider::*,
     render_info::*,
+    rotate_point_z_3d,
+    world::{TILE_SIZE, TileRotation},
     PhysicalProperties,
     EntityInfo,
     Loot,
@@ -20,6 +21,7 @@ pub fn create(
     furnitures_info: &FurnituresInfo,
     loot: &Loot,
     id: FurnitureId,
+    rotation: TileRotation,
     pos: Vector3<f32>
 ) -> EntityInfo
 {
@@ -27,27 +29,31 @@ pub fn create(
 
     let name = info.name.clone();
 
+    let rotation = -rotation.to_angle();
+    let shift = rotate_point_z_3d(Vector3::new(0.0, -(TILE_SIZE - info.scale) / 2.0, 0.0), rotation);
+
     let mut inventory = Inventory::new();
     loot.create(&name).for_each(|item| { inventory.push(item); });
 
     EntityInfo{
         lazy_transform: Some(LazyTransformInfo{
             transform: Transform{
-                position: pos,
-                scale: Vector3::repeat(ENTITY_SCALE * 0.8),
+                position: pos + shift,
+                scale: Vector3::repeat(info.scale),
+                rotation,
                 ..Default::default()
             },
             ..Default::default()
         }.into()),
-        named: Some(name),
         render: Some(RenderInfo{
             object: Some(RenderObjectKind::Texture{
-                name: "furniture/crate.png".to_owned()
+                name: format!("furniture/{name}.png")
             }.into()),
             shadow_visible: true,
             z_level: ZLevel::Hips,
             ..Default::default()
         }),
+        named: Some(name),
         collider: Some(ColliderInfo{
             kind: ColliderType::Rectangle,
             ..Default::default()

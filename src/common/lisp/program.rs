@@ -587,6 +587,11 @@ impl Default for Primitives
                 {
                     let limit = args.next().unwrap().as_integer()?;
 
+                    if limit <= 0
+                    {
+                        return Ok(0.into());
+                    }
+
                     Ok(fastrand::i32(0..limit).into())
                 })),
             ("random-float",

@@ -22,7 +22,6 @@
             "base_speed": 0.9,
             "base_strength": 1.5
         },
-        "scale": 1.3,
         "hand": "zob/hand"
     },
     {

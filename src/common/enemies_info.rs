@@ -9,6 +9,7 @@ use yanyaengine::Assets;
 
 use crate::common::{
     ENTITY_SCALE,
+    ENTITY_PIXEL_SCALE,
     generic_info::*,
     Hairstyle,
     CharactersInfo,
@@ -29,7 +30,6 @@ struct EnemyInfoRaw
     #[serde(default)]
     anatomy: HumanAnatomyInfo,
     behavior: Option<EnemyBehavior>,
-    scale: Option<f32>,
     normal: Option<String>,
     crawling: Option<String>,
     lying: Option<String>,
@@ -78,12 +78,14 @@ impl EnemyInfo
                 })
         };
 
-        let scale = raw.scale.unwrap_or(1.0) * ENTITY_SCALE;
+        let normal = get_texture("body", raw.normal);
+
+        let scale = assets.texture(normal).lock().size().max() / ENTITY_PIXEL_SCALE as f32 * ENTITY_SCALE;
 
         let character = characters_info.push(CharacterInfo{
             scale,
             hairstyle: raw.hairstyle.map(|x| load_texture(assets, textures_root, &x)),
-            normal: get_texture("body", raw.normal),
+            normal,
             crawling: get_texture("crawling", raw.crawling),
             lying: get_texture("lying", raw.lying),
             hand: get_texture("hand", raw.hand)

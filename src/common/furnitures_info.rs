@@ -7,7 +7,11 @@ use serde::Deserialize;
 
 use yanyaengine::{Assets, TextureId};
 
-use crate::common::generic_info::*;
+use crate::common::{
+    ENTITY_SCALE,
+    ENTITY_PIXEL_SCALE,
+    generic_info::*
+};
 
 
 #[derive(Deserialize)]
@@ -25,7 +29,8 @@ define_info_id!{FurnitureId}
 pub struct FurnitureInfo
 {
     pub name: String,
-    pub texture: TextureId
+    pub texture: TextureId,
+    pub scale: f32
 }
 
 impl GenericItem for FurnitureInfo
@@ -47,9 +52,12 @@ impl FurnitureInfo
         let texture = raw.texture.unwrap_or_else(|| raw.name.clone());
         let texture = load_texture(assets, textures_root, &texture);
 
+        let scale = assets.texture(texture).lock().size().max() / ENTITY_PIXEL_SCALE as f32 * ENTITY_SCALE;
+
         Self{
             name: raw.name,
-            texture
+            texture,
+            scale
         }
     }
 }

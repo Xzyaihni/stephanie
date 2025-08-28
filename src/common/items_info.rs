@@ -13,6 +13,7 @@ use yanyaengine::{Assets, TextureId};
 use crate::{
     client::game_state::UsageKind,
     common::{
+        ENTITY_PIXEL_SCALE,
         lerp,
         generic_info::*,
         character::HAND_SCALE,
@@ -83,7 +84,6 @@ pub struct ItemInfoRaw
     comfort: Option<f32>,
     sharpness: Option<f32>,
     side_sharpness: Option<f32>,
-    scale: Option<f32>,
     mass: Option<f32>,
     lighting: Option<f32>,
     groups: Vec<String>,
@@ -137,9 +137,15 @@ impl ItemInfo
 
         let texture = load_texture(assets, textures_root, &texture_name);
 
-        let aspect = assets.texture(texture).lock().aspect_min();
+        let aspect;
+        let scale;
 
-        let scale = raw.scale.unwrap_or(0.1) * 4.0;
+        {
+            let texture = assets.texture(texture).lock();
+
+            aspect = texture.aspect_min();
+            scale = texture.size().max() / ENTITY_PIXEL_SCALE as f32;
+        }
 
         Self{
             name: raw.name,
@@ -150,7 +156,6 @@ impl ItemInfo
             comfort: raw.comfort.unwrap_or(1.0),
             sharpness: raw.sharpness.unwrap_or(0.0),
             side_sharpness: raw.side_sharpness.unwrap_or(0.0),
-            // scale is in meters
             scale,
             aspect,
             mass: raw.mass.unwrap_or(1.0),
