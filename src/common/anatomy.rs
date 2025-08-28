@@ -2,7 +2,7 @@ use std::{
     f32,
     iter,
     fmt::{self, Debug, Display},
-    ops::{Index, IndexMut, ControlFlow, Deref, DerefMut}
+    ops::{Index, IndexMut, Deref, DerefMut}
 };
 
 use serde::{Serialize, Deserialize};
@@ -589,7 +589,7 @@ impl SimpleHealth
 #[derive(Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Health
 {
-    pub max_block: f32,
+    pub block: f32,
     pub health: SimpleHealth
 }
 
@@ -597,15 +597,17 @@ impl Debug for Health
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
     {
-        write!(f, "Health {{ ({:.3}) {} }}", self.max_block, self.health)
+        write!(f, "Health {{ ({:.3}) {} }}", self.block, self.health)
     }
 }
 
 impl Health
 {
-    pub fn new(max_block: f32, max: f32) -> Self
+    pub fn new(block: f32, max: f32) -> Self
     {
-        Self{max_block, health: SimpleHealth::new(max)}
+        debug_assert!((0.0..=1.0).contains(&block));
+
+        Self{block, health: SimpleHealth::new(max)}
     }
 
     pub fn zero() -> Self
@@ -672,7 +674,14 @@ impl Health
 
     fn pierce_with(&mut self, sharpness: f32, damage: f32) -> Option<f32>
     {
-        let pass = (damage - self.max_block.min(self.health.current())) * (sharpness + 1.0);
+        let pass = if self.is_zero()
+        {
+            damage
+        } else
+        {
+            damage * (1.0 - (self.block * (1.0 - sharpness)).max(0.0))
+        };
+
         self.health.subtract_hp(damage);
 
         if pass <= 0.0
@@ -681,30 +690,6 @@ impl Health
         } else
         {
             Some(pass)
-        }
-    }
-
-    pub fn pierce_many<T>(
-        damage: DamageType,
-        mut parts: impl Iterator<Item=T>,
-        mut f: impl FnMut(T, DamageType) -> Option<DamageType>
-    ) -> Option<DamageType>
-    {
-        let result = parts.try_fold(damage, |acc, x|
-        {
-            if let Some(pierce) = f(x, acc)
-            {
-                ControlFlow::Continue(pierce)
-            } else
-            {
-                ControlFlow::Break(())
-            }
-        });
-
-        match result
-        {
-            ControlFlow::Continue(x) => Some(x),
-            ControlFlow::Break(_) => None
         }
     }
 }
@@ -866,9 +851,9 @@ impl<Contents> BodyPart<Contents>
     {
         Self::new_full(
             name,
-            Health::new(bone * 0.1, bone),
-            Health::new(info.skin_toughness * 0.05, info.skin_toughness),
-            Health::new(info.muscle_toughness * 0.2, info.muscle_toughness * 5.0),
+            Health::new(0.99, bone),
+            Health::new(0.5, info.skin_toughness),
+            Health::new(0.9, info.muscle_toughness * 5.0),
             size,
             contents
         )
@@ -951,21 +936,7 @@ impl<Contents: Organ> BodyPart<Contents>
         damage: DamageType
     ) -> Option<DamageType>
     {
-        let skin_pierce = {
-            let base_mult = 0.1;
-            match damage
-            {
-                DamageType::Blunt(_) => self.skin.damage_pierce(damage * base_mult),
-                DamageType::Sharp{sharpness, ..} =>
-                {
-                    self.skin.damage_pierce(damage * (base_mult + sharpness).clamp(0.0, 1.0))
-                },
-                DamageType::Bullet(_)
-                | DamageType::AreaEach(_) => self.skin.damage_pierce(damage)
-            }
-        };
-
-        self.contents.damage(side, self.bone.damage_pierce(self.muscle.damage_pierce(skin_pierce?)?)?)
+        self.contents.damage(side, self.bone.damage_pierce(self.muscle.damage_pierce(self.skin.damage_pierce(damage)?)?)?)
     }
 }
 

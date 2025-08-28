@@ -2,8 +2,8 @@
     {
         "name": "branch",
         "comfort": 0.5,
-        "sharpness": 0.5,
-        "side_sharpness": 0.1,
+        "sharpness": 0.1,
+        "side_sharpness": 0.05,
         "mass": 0.4,
         "groups": ["trash"]
     },
@@ -28,7 +28,6 @@
     {
         "name": "pipe",
         "comfort": 1.0,
-        "sharpness": 0.1,
         "mass": 0.7,
         "groups": ["trash"]
     },
@@ -41,8 +40,8 @@
     },
     {
         "name": "axe",
-        "comfort": 1.4,
-        "side_sharpness": 1.2,
+        "comfort": 1.1,
+        "side_sharpness": 0.5,
         "mass": 2.2,
         "groups": ["weapons"]
     },
@@ -55,30 +54,29 @@
     {
         "name": "hammer",
         "comfort": 1.4,
-        "side_sharpness": 0.5,
+        "side_sharpness": 0.3,
         "mass": 0.9,
         "groups": ["utility", "weapons"]
     },
     {
         "name": "scissors",
-        "comfort": 0.9,
-        "sharpness": 0.9,
-        "mass": 0.15,
+        "comfort": 0.3,
+        "sharpness": 0.4,
+        "mass": 0.1,
         "groups": ["utility"]
     },
     {
         "name": "kitchen knife",
         "comfort": 1.4,
-        "sharpness": 1.5,
-        "side_sharpness": 1.3,
+        "sharpness": 0.9,
+        "side_sharpness": 0.9,
         "mass": 0.15,
         "groups": ["utility"]
     },
     {
         "name": "meat cleaver",
         "comfort": 1.4,
-        "sharpness": 0.4,
-        "side_sharpness": 1.5,
+        "side_sharpness": 0.8,
         "mass": 0.25,
         "groups": ["utility"]
     },
@@ -90,14 +88,14 @@
     {
         "name": "short stick",
         "comfort": 1.5,
-        "sharpness": 0.15,
+        "sharpness": 0.03,
         "mass": 0.2,
         "groups": ["weapons", "utility"]
     },
     {
         "name": "stick",
         "comfort": 1.5,
-        "sharpness": 0.15,
+        "sharpness": 0.03,
         "mass": 0.3,
         "groups": ["weapons"]
     },
@@ -110,8 +108,7 @@
             }
         },
         "comfort": 0.7,
-        "sharpness": 0.1,
-        "mass": 0.9,
+        "mass": 0.5,
         "groups": ["weapons"]
     },
     {

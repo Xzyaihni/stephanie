@@ -915,13 +915,7 @@ impl Character
 
     fn attack_stamina_cost(&self, combined_info: CombinedInfo) -> Option<f32>
     {
-        let item_info = self.held_info(combined_info);
-
-        let raw_use = item_info.mass / self.newtons(combined_info)? * 4.0;
-
-        let cost = 0.3 + raw_use / item_info.comfort;
-
-        Some(cost)
+        Some(self.held_info(combined_info).stamina_cost(self.newtons(combined_info)?))
     }
 
     fn consume_attack_stamina(&mut self, combined_info: CombinedInfo)

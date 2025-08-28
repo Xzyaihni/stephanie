@@ -335,7 +335,7 @@ impl YanyaApp for App
         let Config{name, listen_outside, address, port, debug} = Config::parse(env::args().skip(1));
 
         let items_info = ItemsInfo::parse(
-            &partial_info.object_info.assets.lock(),
+            Some(&partial_info.object_info.assets.lock()),
             "items",
             "items/items.json"
         );

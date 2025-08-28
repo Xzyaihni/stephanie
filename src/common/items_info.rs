@@ -121,7 +121,7 @@ impl GenericItem for ItemInfo
 impl ItemInfo
 {
     fn from_raw(
-        assets: &Assets,
+        assets: Option<&Assets>,
         textures_root: &Path,
         raw: ItemInfoRaw
     ) -> Self
@@ -135,17 +135,20 @@ impl ItemInfo
             path.to_string_lossy().into_owned()
         });
 
-        let texture = load_texture(assets, textures_root, &texture_name);
-
-        let aspect;
-        let scale;
-
+        let (aspect, scale, texture) = assets.map(|assets|
         {
-            let texture = assets.texture(texture).lock();
+            let image_texture = load_texture(assets, textures_root, &texture_name);
 
-            aspect = texture.aspect_min();
-            scale = texture.size().max() / ENTITY_PIXEL_SCALE as f32;
-        }
+            let texture = assets.texture(image_texture).lock();
+
+            let aspect = texture.aspect_min();
+            let scale = texture.size().max() / ENTITY_PIXEL_SCALE as f32;
+
+            (aspect, scale, Some(image_texture))
+        }).unwrap_or_else(||
+        {
+            (Vector2::repeat(1.0), 1.0, None)
+        });
 
         Self{
             name: raw.name,
@@ -160,7 +163,7 @@ impl ItemInfo
             aspect,
             mass: raw.mass.unwrap_or(1.0),
             lighting: raw.lighting.map(|strength| Light{strength, ..Default::default()}).unwrap_or_default(),
-            texture: Some(texture)
+            texture
         }
     }
 
@@ -217,6 +220,13 @@ impl ItemInfo
         }
     }
 
+    pub fn stamina_cost(&self, strength: f32) -> f32
+    {
+        let raw_use = self.mass / strength * 4.0;
+
+        0.3 + raw_use / self.comfort
+    }
+
     pub fn scale3(&self) -> Vector3<f32>
     {
         (self.aspect * lerp(self.scale, 1.0, 0.2)).xyx()
@@ -250,7 +260,7 @@ impl ItemsInfo
     }
 
     pub fn parse(
-        assets: &Assets,
+        assets: Option<&Assets>,
         textures_root: impl AsRef<Path>,
         info: impl AsRef<Path>
     ) -> Self

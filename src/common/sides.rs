@@ -166,6 +166,18 @@ impl Side2d
             Self::Back => Self::Front
         }
     }
+
+    pub fn random() -> Self
+    {
+        match fastrand::u32(0..4)
+        {
+            0 => Self::Front,
+            1 => Self::Right,
+            2 => Self::Back,
+            3 => Self::Left,
+            _ => unreachable!()
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, EnumCount, FromRepr, Serialize, Deserialize)]

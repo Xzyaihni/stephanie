@@ -814,9 +814,11 @@ impl HumanAnatomy
 
             let legs = spine.pelvis.as_ref().map(|pelvis|
             {
+                let gluteal = pelvis.pelvis.muscle.fraction().unwrap_or(0.0);
+
                 pelvis.legs.as_ref().map(|leg|
                 {
-                    leg.as_ref().map(|x| x.leg_speed()).unwrap_or(0.0)
+                    leg.as_ref().map(|x| x.leg_speed()).unwrap_or(0.0) * gluteal
                 })
             }).unwrap_or_else(|| Halves::repeat(0.0)).map(|x|
             {

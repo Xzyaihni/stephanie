@@ -838,7 +838,7 @@ impl WindowKind
                 let font_size = SMALL_TEXT_SIZE;
                 let item_height = info.fonts.text_height(font_size, body.screen_size().max());
 
-                let picked_item = info.popup.as_ref().map(|x| x.item);
+                let picked_item = info.popup.as_ref().and_then(|x| (x.owner == inventory.entity).then_some(x.item));
 
                 let selected = inventory.list.update(info, body, |list_part|
                 {
@@ -2330,6 +2330,8 @@ impl Ui
             }
         };
 
+        render_bar_display(BarDisplayKind::Cooldown, &mut self.cooldown, Lcha{l: 50.0, c: 100.0, h: 4.0, a: 1.0});
+
         if let Some(anatomy) = entities.anatomy(self.ui_entities.player)
         {
             let oxygen = anatomy.oxygen().current;
@@ -2344,8 +2346,6 @@ impl Ui
 
             render_bar_display(BarDisplayKind::Stamina, &mut self.stamina, color);
         }
-
-        render_bar_display(BarDisplayKind::Cooldown, &mut self.cooldown, Lcha{l: 50.0, c: 100.0, h: 4.0, a: 1.0});
 
         if self.is_paused
         {
