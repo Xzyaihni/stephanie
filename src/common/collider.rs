@@ -1,7 +1,7 @@
 use std::{
     convert,
     num::FpCategory,
-    cmp::Ordering
+    ops::ControlFlow
 };
 
 use serde::{Serialize, Deserialize};
@@ -16,7 +16,6 @@ use crate::common::{
     with_z,
     aabb_points,
     rectangle_edges,
-    rectangle_points,
     is_intersection_lines,
     ENTITY_SCALE,
     Line,
@@ -438,6 +437,28 @@ impl<'b> TransformMatrix<'b>
         this_projected + other_projected - axis_distance
     }
 
+    fn rectangle_points(&self) -> impl Iterator<Item=Vector2<f32>> + '_
+    {
+        const DIMS: usize = 2;
+
+        let half_scale = self.transform.scale.xy() / 2.0;
+        (0..2_usize.pow(DIMS as u32)).map(move |i|
+        {
+            let mut local_point = half_scale;
+
+            // wow its binary!
+            (0..DIMS).for_each(|axis_i|
+            {
+                if ((i >> axis_i) & 1) == 1
+                {
+                    *local_point.index_mut(axis_i) = -local_point.index(axis_i);
+                }
+            });
+
+            self.transform.position.xy() + self.rotation_matrix * local_point
+        })
+    }
+
     #[allow(clippy::wrong_self_convention)]
     fn into_obb_local(&self, point: Vector2<f32>) -> Vector2<f32>
     {
@@ -456,6 +477,13 @@ impl<'b> TransformMatrix<'b>
         {
             (-limit..limit).contains(&x)
         }).fold(true, |a, b| a && b)
+    }
+
+    pub fn try_project_onto_obb_edge(&self, point: Vector2<f32>) -> Option<(Vector2<f32>, Vector2<f32>)>
+    {
+        if !self.inside_obb(point) { return None; }
+
+        Some(self.project_onto_obb_edge(point))
     }
 
     pub fn project_onto_obb_edge(&self, point: Vector2<f32>) -> (Vector2<f32>, Vector2<f32>)
@@ -481,6 +509,167 @@ impl<'b> TransformMatrix<'b>
         let limited = limit_obb_local(self.transform.scale.xy(), local_point.xy());
 
         self.from_obb_local(limited)
+    }
+
+    fn distance_to_obb(&self) -> impl Fn(Vector2<f32>) -> (f32, Vector2<f32>) + '_
+    {
+        |point|
+        {
+            let projected = self.project_onto_obb(point);
+
+            (point.metric_distance(&projected), point)
+        }
+    }
+
+    fn handle_penetration<'a, F>(
+        &self,
+        other: &'a Self,
+        axis: Unit<Vector3<f32>>,
+        penetration: f32
+    ) -> impl FnOnce(F) + use<'a, '_, F>
+    where
+        F: FnMut(Contact)
+    {
+        move |mut add_contact: F|
+        {
+            let z = self.transform.position.z;
+            let diff = with_z((other.transform.position - self.transform.position).xy(), 0.0);
+
+            let normal = if axis.dot(&diff) > 0.0
+            {
+                axis
+            } else
+            {
+                -axis
+            };
+
+            let (_distance, point) = other.rectangle_points().map(self.distance_to_obb())
+                .chain(self.rectangle_points().map(other.distance_to_obb())).min_by(|a, b|
+                {
+                    a.0.partial_cmp(&b.0).unwrap()
+                }).unwrap();
+
+            add_contact(ContactRaw{
+                a: self.entity,
+                b: other.entity,
+                point: with_z(point, z),
+                penetration,
+                normal: -normal
+            }.into());
+        }
+    }
+
+    fn rectangle_rectangle_contact_special<'a, F>(
+        &'a self,
+        other: &'a Self,
+        mut add_contact: F,
+        this_axis: impl Fn((Unit<Vector3<f32>>, f32, usize)) -> bool,
+        other_axis: impl Fn((Unit<Vector3<f32>>, f32, usize)) -> bool
+    ) -> bool
+    where
+        F: FnMut(Contact)
+    {
+        // funy
+        let try_penetrate = |axis: Unit<Vector3<f32>>| -> (f32, _)
+        {
+            let penetration = self.penetration_axis(other, &axis.xy());
+
+            (penetration, move |this: &'a Self, other| -> (f32, _)
+            {
+                (penetration, this.handle_penetration(other, axis, penetration))
+            })
+        };
+
+        enum PenetrationInfo<F>
+        {
+            ThisAxis((f32, F)),
+            OtherAxis((Unit<Vector3<f32>>, f32, usize), F)
+        }
+
+        impl<F> PenetrationInfo<F>
+        {
+            fn penetration(&self) -> f32
+            {
+                match self
+                {
+                    Self::ThisAxis((p, _)) => *p,
+                    Self::OtherAxis((_, p, _), _) => *p
+                }
+            }
+        }
+
+        let mut penetrations = (0..2).filter_map(|i|
+        {
+            let axis: Vector2<f32> = self.rotation_matrix.column(i).into();
+            let axis = Unit::new_unchecked(with_z(axis, 0.0));
+
+            let (penetration, handler) = try_penetrate(axis);
+
+            this_axis((axis, penetration, i)).then(||
+            {
+                PenetrationInfo::ThisAxis(handler(self, other))
+            })
+        }).chain((0..2).map(|i|
+        {
+            let axis: Vector2<f32> = other.rotation_matrix.column(i).into();
+            let axis = Unit::new_unchecked(with_z(axis, 0.0));
+
+            let (_penetration, handler) = try_penetrate(axis);
+
+            let (penetration, handle) = handler(other, self);
+            PenetrationInfo::OtherAxis((axis, penetration, i), handle)
+        }));
+
+        let first = some_or_value!(penetrations.next(), false);
+        let least_penetrating = penetrations.try_fold(first, |b, a|
+        {
+            let next = if a.penetration() < b.penetration()
+            {
+                a
+            } else
+            {
+                b
+            };
+
+            if next.penetration() <= 0.0
+            {
+                ControlFlow::Break(())
+            } else
+            {
+                ControlFlow::Continue(next)
+            }
+        });
+
+        let info = if let ControlFlow::Continue(x) = least_penetrating
+        {
+            x
+        } else
+        {
+            return false;
+        };
+
+        if info.penetration() <= 0.0
+        {
+            return false;
+        }
+
+        let handler = match info
+        {
+            PenetrationInfo::ThisAxis((_, handler)) => handler,
+            PenetrationInfo::OtherAxis(info, handler) =>
+            {
+                if !other_axis(info)
+                {
+                    return false;
+                }
+
+                handler
+            }
+        };
+
+        handler(&mut add_contact);
+
+        true
     }
 
     fn rectangle_circle_inner(
@@ -575,64 +764,17 @@ impl<'a> CollidingInfo<'a>
         TransformMatrix::from_transform(&self.transform, self.entity)
     }
 
-    fn aabb_rectangle_contact_special<F>(
+    fn is_rectangle_rectangle_colliding(
         &self,
-        other: &Self,
-        mut add_contact: F,
-        mut aabb_edges: impl Iterator<Item=Line>,
-        rectangle_edges: [Line; 4]
+        mut other_edges: impl Iterator<Item=Line>
     ) -> bool
-    where
-        F: FnMut(Contact)
     {
-        let collided = aabb_edges.any(|line0|
+        let this_edges: [Line; 4] = rectangle_edges(&self.transform).collect::<Vec<_>>().try_into().unwrap();
+
+        other_edges.any(|line0|
         {
-            rectangle_edges.iter().any(|line1| is_intersection_lines(line0, *line1))
-        });
-
-        if collided
-        {
-            let z = self.transform.position.z;
-            let this = self.transform_matrix();
-            let other_matrix = self.transform_matrix();
-
-            let (projected, projected_inside, penetration, flip) = rectangle_points(&other.transform).into_iter().map(|other_point|
-            {
-                (this.project_onto_obb_edge(other_point), false)
-            }).chain(rectangle_points(&self.transform).into_iter().map(|point|
-            {
-                (other_matrix.project_onto_obb_edge(point), true)
-            })).map(|((projected, projected_inside), flip)|
-            {
-                add_contact(ContactRaw{
-                    a: self.entity,
-                    b: other.entity,
-                    point: with_z(projected_inside, z),
-                    penetration: 0.0,
-                    normal: Unit::new_normalize(Vector3::new(if flip { -1.0 } else { 1.0 }, 0.0, 0.0))
-                }.into());
-
-                (projected, projected_inside, projected.metric_distance(&projected_inside), flip)
-            }).max_by(|a, b| a.2.partial_cmp(&b.2).unwrap_or(Ordering::Equal)).unwrap_or_else(||
-            {
-                unreachable!()
-            });
-
-            if penetration > 0.0
-            {
-                let normal = Unit::new_normalize(with_z(projected_inside - projected, 0.0));
-
-                add_contact(ContactRaw{
-                    a: self.entity,
-                    b: other.entity,
-                    point: with_z(projected_inside, z),
-                    penetration,
-                    normal: if flip { -normal } else { normal }
-                }.into());
-            }
-        }
-
-        collided
+            this_edges.iter().any(|line1| is_intersection_lines(line0, *line1))
+        })
     }
 
     fn rectangle_rectangle_inner(
@@ -641,12 +783,21 @@ impl<'a> CollidingInfo<'a>
         add_contact: impl FnMut(Contact)
     ) -> bool
     {
-        self.aabb_rectangle_contact_special(
-            other,
+        let colliding = self.is_rectangle_rectangle_colliding(rectangle_edges(&self.transform));
+
+        if !colliding
+        {
+            return false;
+        }
+
+        self.transform_matrix().rectangle_rectangle_contact_special(
+            &other.transform_matrix(),
             add_contact,
-            rectangle_edges(&self.transform),
-            rectangle_edges(&other.transform).collect::<Vec<_>>().try_into().unwrap()
-        )
+            |_| {true},
+            |_| {true}
+        );
+
+        true
     }
 
     fn rectangle_rectangle(
@@ -781,6 +932,43 @@ impl<'a> CollidingInfo<'a>
         })
     }
 
+    fn allowed_axis(world: &WorldTileInfo, axis: Vector2<f32>) -> bool
+    {
+        (0..2).all(|axis_i|
+        {
+            let (low, high) = world.get_axis_index(axis_i);
+
+            let amount = *axis.index(axis_i);
+
+            let is_blocked = if amount.classify() == FpCategory::Zero
+            {
+                false
+            } else if amount < 0.0
+            {
+                *low
+            } else
+            {
+                *high
+            };
+
+            !is_blocked
+        })
+    }
+
+    fn world_handler(
+        check: impl Fn(Unit<Vector3<f32>>, usize) -> bool
+    ) -> impl Fn((Unit<Vector3<f32>>, f32, usize)) -> bool
+    {
+        move |(axis, penetration, i)|
+        {
+            let ignore = check(axis, i);
+
+            let ignored_axis = ignore && penetration > 0.0;
+
+            !ignored_axis
+        }
+    }
+
     fn tile_rectangle(
         &self,
         other: &Self,
@@ -788,15 +976,45 @@ impl<'a> CollidingInfo<'a>
         add_contact: impl FnMut(Contact)
     ) -> bool
     {
-        self.aabb_rectangle_contact_special(
-            other,
+        let colliding = self.is_rectangle_rectangle_colliding(world.map(|dir, x| (dir, x)).filter_map(|(dir, x)|
+        {
+            (!x).then(|| dir.edge_line_2d(self.transform.scale.xy()).map(|x| x + self.transform.position.xy()))
+        }).into_iter());
+
+        if !colliding
+        {
+            return false;
+        }
+
+        let diff = with_z((other.transform.position - self.transform.position).xy(), 0.0);
+
+        let this = self.transform_matrix();
+        let other = other.transform_matrix();
+
+        other.rectangle_rectangle_contact_special(
+            &this,
             add_contact,
-            world.map(|dir, x| (dir, x)).filter_map(|(dir, x)|
+            Self::world_handler(|_axis, _i|
             {
-                (!x).then(|| dir.edge_line_2d(self.transform.scale.xy()))
-            }).into_iter(),
-            rectangle_edges(&other.transform).collect::<Vec<_>>().try_into().unwrap()
-        )
+                !Self::allowed_axis(world, diff.xy())
+            }),
+            Self::world_handler(|axis, i|
+            {
+                let (low, high) = world.get_axis_index(i);
+
+                let has_tile = if axis.dot(&diff) > 0.0
+                {
+                    high
+                } else
+                {
+                    low
+                };
+
+                *has_tile
+            })
+        );
+
+        true
     }
 
     fn rayz_this(&self, other: &Self) -> bool
@@ -1054,7 +1272,7 @@ mod tests
 {
     use super::*;
 
-    use crate::common::rotate_point_z_3d;
+    use crate::common::{with_z, rotate_point};
 
 
     #[test]
@@ -1062,11 +1280,11 @@ mod tests
     {
         for _ in 0..50
         {
-            let p = Vector3::new(fastrand::f32(), fastrand::f32(), fastrand::f32());
+            let p = Vector2::new(fastrand::f32(), fastrand::f32());
             let r = fastrand::f32() * 6.3;
 
             let transform = Transform{
-                position: p,
+                position: with_z(p, 0.0),
                 rotation: r,
                 ..Default::default()
             };
@@ -1074,7 +1292,7 @@ mod tests
             let m = TransformMatrix::from_transform(&transform, None);
 
             println!("rotating {p:?} by {r}");
-            assert_eq!(m.rotation_matrix * p, rotate_point_z_3d(p, r));
+            assert_eq!(m.rotation_matrix * p, rotate_point(p, r));
         }
     }
 }

@@ -46,18 +46,6 @@
                 this-chunk
                 (make-point (/ size-x 2) (/ size-y 2))
                 (single-marker (list 'light 1.3)))
-            (put-tile
-                this-chunk
-                (make-point 1 1)
-                (single-marker (list 'furniture 'crate)))
-            (put-tile
-                this-chunk
-                (make-point 3 1)
-                (single-marker (list 'furniture 'crate)))
-            (put-tile
-                this-chunk
-                (make-point 5 1)
-                (single-marker (list 'furniture 'crate)))
             (let ((doorway-point (make-point (- (/ size-x 2) 1) 4)))
                 (begin
                     (fill-area
