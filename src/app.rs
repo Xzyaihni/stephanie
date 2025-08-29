@@ -329,7 +329,7 @@ impl YanyaApp for App
 
     fn init(partial_info: InitPartialInfo<Self::SetupInfo>, app_info: Self::AppInfo) -> Self
     {
-        let deferred_parse = || TileMap::parse("tiles/tiles.json", "textures/tiles/");
+        let deferred_parse = || TileMap::parse("info/tiles.json", "textures/tiles/");
         let app_info = app_info.unwrap();
 
         let Config{name, listen_outside, address, port, debug} = Config::parse(env::args().skip(1));
@@ -350,13 +350,13 @@ impl YanyaApp for App
             &partial_info.object_info.assets.lock(),
             &mut characters_info,
             "enemy",
-            "enemies/enemies.json"
+            "info/enemies.json"
         );
 
         let furnitures_info = FurnituresInfo::parse(
             &partial_info.object_info.assets.lock(),
             "furniture",
-            "furnitures/furnitures.json"
+            "info/furnitures.json"
         );
 
         let data_infos = DataInfos{

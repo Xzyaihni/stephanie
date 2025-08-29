@@ -350,7 +350,7 @@ impl YanyaApp for ChunkPreviewer
 
     fn init(info: InitPartialInfo<Self::SetupInfo>, app_info: Self::AppInfo) -> Self
     {
-        let tilemap = TileMap::parse("tiles/tiles.json", "textures/tiles/").unwrap_or_else(|err|
+        let tilemap = TileMap::parse("info/tiles.json", "textures/tiles/").unwrap_or_else(|err|
         {
             panic!("error creating tilemap: {err}")
         }).tilemap;
