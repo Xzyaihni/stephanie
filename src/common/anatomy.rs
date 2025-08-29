@@ -852,8 +852,8 @@ impl<Contents> BodyPart<Contents>
         Self::new_full(
             name,
             Health::new(0.99, bone),
-            Health::new(0.5, info.skin_toughness),
-            Health::new(0.9, info.muscle_toughness * 5.0),
+            Health::new(0.8, info.skin_toughness * 3.0),
+            Health::new(0.9, info.muscle_toughness * 10.0),
             size,
             contents
         )

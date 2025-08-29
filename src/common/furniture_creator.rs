@@ -60,6 +60,7 @@ pub fn create(
         }.into()),
         physical: Some(PhysicalProperties{
             inverse_mass: 100.0_f32.recip(),
+            sleeping: true,
             ..Default::default()
         }.into()),
         inventory: Some(inventory),

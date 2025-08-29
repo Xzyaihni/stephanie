@@ -244,6 +244,7 @@ impl Door
                     inverse_mass: 0.0,
                     floating: true,
                     move_z: false,
+                    sleeping: true,
                     ..Default::default()
                 }.into()),
                 watchers: Some(Watchers::new(Vec::new())),

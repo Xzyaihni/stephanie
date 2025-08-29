@@ -490,7 +490,6 @@ impl GameServer
             physical: Some(PhysicalProperties{
                 inverse_mass: 50.0_f32.recip(),
                 fixed: PhysicalFixed{rotation: true, ..Default::default()},
-                can_sleep: false,
                 ..Default::default()
             }.into()),
             collider: Some(Character::collider_with_state(SpriteState::Normal, true).into()),

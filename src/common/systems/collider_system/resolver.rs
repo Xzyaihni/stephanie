@@ -25,18 +25,11 @@ use crate::{
 };
 
 
-#[derive(Clone, Copy)]
-struct IterativeEpsilon
-{
-    pub sleep: f32,
-    pub general: f32
-}
-
 const ANGULAR_LIMIT: f32 = 0.2;
 const VELOCITY_LOW: f32 = 0.002;
 const ITERATIONS: usize = 50;
 
-const PENETRATION_EPSILON: IterativeEpsilon = IterativeEpsilon{sleep: 0.005, general: 0.0005};
+const PENETRATION_EPSILON: f32 = 0.0005;
 
 fn skew_symmetric(v: Vector3<f32>) -> Matrix3<f32>
 {
@@ -527,18 +520,6 @@ impl Contact
         -velocity_local.x - restitution * (velocity_local.x - acceleration_velocity)
     }
 
-    fn awaken(&self, entities: &ClientEntities)
-    {
-        if let Some(b) = self.b
-        {
-            if entities.physical(self.a).unwrap().sleeping() != entities.physical(b).unwrap().sleeping()
-            {
-                entities.physical_mut(self.a).unwrap().set_sleeping(false);
-                entities.physical_mut(b).unwrap().set_sleeping(false);
-            }
-        }
-    }
-
     fn inverse_inertia_tensor_of(entities: &ClientEntities, entity: Entity) -> Matrix3<f32>
     {
         entities.collider(entity).unwrap().inverse_inertia_tensor(
@@ -653,40 +634,31 @@ impl ContactResolver
     fn resolve_iterative<Moves: IteratedMoves + Copy>(
         entities: &ClientEntities,
         contacts: &mut [AnalyzedContact],
-        epsilon: impl Into<Option<IterativeEpsilon>>,
+        epsilon: f32,
         compare: impl Fn(&AnalyzedContact) -> f32,
         mut resolver: impl FnMut(&ClientEntities, &mut AnalyzedContact) -> Option<(Moves, Option<Moves>)>,
         mut updater: impl FnMut(&ClientEntities, &mut AnalyzedContact, Moves, Vector3<f32>)
     )
     {
-        let epsilon: Option<IterativeEpsilon> = epsilon.into();
-
         fn contact_selector<'a, Compare: Fn(&AnalyzedContact) -> f32>(
             compare: &'a Compare,
-            epsilon: &'a Option<IterativeEpsilon>
+            epsilon: f32
         ) -> impl for<'b> FnMut(&'b mut AnalyzedContact) -> Option<(f32, &'b mut AnalyzedContact)> + use<'a, Compare>
         {
             move |contact|
             {
                 let change = compare(contact);
 
-                epsilon.map(|x| change > x.general).unwrap_or(true).then_some((change, contact))
+                (change > epsilon).then_some((change, contact))
             }
         }
 
         fn contact_handler<Moves: IteratedMoves + Copy>(
             entities: &ClientEntities,
-            epsilon: &Option<IterativeEpsilon>,
             mut resolver: impl FnMut(&ClientEntities, &mut AnalyzedContact) -> Option<(Moves, Option<Moves>)>,
-            info: (f32, &mut AnalyzedContact)
+            contact: &mut AnalyzedContact
         ) -> Option<((Moves, Option<Moves>), (Entity, Option<Entity>))>
         {
-            let (change, contact) = info;
-            if epsilon.map(|x| change > x.sleep).unwrap_or(true)
-            {
-                contact.contact.awaken(entities);
-            }
-
             resolver(entities, contact).map(|moves|
             {
                 let bodies = (contact.contact.a, contact.contact.b);
@@ -699,9 +671,9 @@ impl ContactResolver
 
         for i in 0..contacts.len()
         {
-            if let Some(info) = contact_selector(&compare, &epsilon)(&mut contacts[i])
+            if let Some((_, contact)) = contact_selector(&compare, epsilon)(&mut contacts[i])
             {
-                if let Some((moves, bodies)) = contact_handler(entities, &epsilon, &mut resolver, info)
+                if let Some((moves, bodies)) = contact_handler(entities, &mut resolver, contact)
                 {
                     ContactResolver::update_iterated::<Moves>(
                         entities,
@@ -716,14 +688,14 @@ impl ContactResolver
 
         for _ in 0..ITERATIONS
         {
-            if let Some(info) = contacts.iter_mut()
-                .filter_map(contact_selector(&compare, &epsilon))
+            if let Some((_, contact)) = contacts.iter_mut()
+                .filter_map(contact_selector(&compare, epsilon))
                 .max_by(|(a, _), (b, _)|
                 {
                     a.partial_cmp(b).unwrap_or(Ordering::Less)
                 })
             {
-                if let Some((moves, bodies)) = contact_handler(entities, &epsilon, &mut resolver, info)
+                if let Some((moves, bodies)) = contact_handler(entities, &mut resolver, contact)
                 {
                     ContactResolver::update_iterated::<Moves>(
                         entities,
@@ -829,7 +801,7 @@ impl ContactResolver
         Self::resolve_iterative(
             entities,
             &mut analyzed_contacts,
-            None,
+            0.0,
             |contact| contact.desired_change,
             |entities, contact| contact.resolve_velocity(entities),
             |entities, contact, move_info, contact_relative|

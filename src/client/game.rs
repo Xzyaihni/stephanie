@@ -30,6 +30,7 @@ use crate::common::{
     OnChangeInfo,
     entity::ClientEntities,
     lisp::{self, *},
+    systems::{physical_system, mouse_highlight_system},
     world::{CHUNK_VISUAL_SIZE, TILE_SIZE, Pos3, TilePos}
 };
 
@@ -1488,10 +1489,13 @@ impl<'a> PlayerContainer<'a>
                 transform.position = camera_position + mouse_position;
             }
 
-            entities.update_mouse_highlight(
+            mouse_highlight_system::update(
+                entities,
                 self.info.entity,
                 self.info.mouse_entity
             );
+
+            physical_system::sleeping_update(entities, self.info.entity);
         }
 
         self.update_camera_follow();

@@ -15,10 +15,6 @@ use crate::{
 
 pub const GRAVITY: Vector3<f32> = Vector3::new(0.0, 0.0, -9.81 * ENTITY_SCALE);
 pub const MAX_VELOCITY: f32 = 10.0;
-const SLEEP_THRESHOLD: f32 = 0.03;
-const MOVEMENT_BIAS: f32 = 0.8;
-
-const SLEEP_MOVEMENT_MAX: f32 = SLEEP_THRESHOLD * 16.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct PhysicalFixed
@@ -43,8 +39,8 @@ pub struct PhysicalProperties
     pub restitution: f32,
     pub damping: f32,
     pub angular_damping: f32,
-    pub can_sleep: bool,
     pub floating: bool,
+    pub sleeping: bool,
     pub fixed: PhysicalFixed,
     pub target_non_lazy: bool,
     pub move_z: bool
@@ -59,8 +55,8 @@ impl Default for PhysicalProperties
             restitution: 0.3,
             damping: 0.003,
             angular_damping: 0.005,
-            can_sleep: true,
             floating: false,
+            sleeping: false,
             fixed: PhysicalFixed::default(),
             target_non_lazy: false,
             move_z: true
@@ -77,9 +73,7 @@ pub struct Physical
     pub target_non_lazy: bool,
     pub move_z: bool,
     floating: bool,
-    can_sleep: bool,
     sleeping: bool,
-    sleep_movement: f32,
     angular_damping: f32,
     torque: f32,
     angular_velocity: f32,
@@ -100,12 +94,10 @@ impl From<PhysicalProperties> for Physical
             inverse_mass: props.inverse_mass,
             restitution: props.restitution,
             floating: props.floating,
+            sleeping: props.sleeping,
             fixed: props.fixed,
             target_non_lazy: props.target_non_lazy,
             move_z: props.move_z,
-            can_sleep: props.can_sleep,
-            sleeping: false,
-            sleep_movement: SLEEP_MOVEMENT_MAX,
             angular_damping: props.angular_damping,
             torque: 0.0,
             angular_velocity: 0.0,
@@ -129,8 +121,8 @@ impl Physical
             restitution: self.restitution,
             damping: self.damping,
             angular_damping: self.angular_damping,
-            can_sleep: self.can_sleep,
             floating: self.floating,
+            sleeping: self.sleeping,
             fixed: self.fixed,
             target_non_lazy: self.target_non_lazy,
             move_z: self.move_z
@@ -139,6 +131,11 @@ impl Physical
 
     pub fn apply(&mut self, transform: &mut Transform)
     {
+        if self.sleeping
+        {
+            return;
+        }
+
         transform.position = self.next_position;
     }
 
@@ -194,11 +191,6 @@ impl Physical
 
             self.torque = 0.0;
         }
-
-        if self.can_sleep
-        {
-            self.update_sleep_movement(dt);
-        }
     }
 
     pub fn next_position_mut(&mut self) -> &mut Vector3<f32>
@@ -221,21 +213,6 @@ impl Physical
         }
     }
 
-    pub fn update_sleep_movement(&mut self, dt: f32)
-    {
-        let new_movement = (self.velocity.map(|x| x.powi(2)).sum() + self.angular_velocity).abs();
-
-        let bias = MOVEMENT_BIAS.powf(dt);
-        self.sleep_movement = bias * self.sleep_movement + (1.0 - bias) * new_movement;
-
-        self.sleep_movement = self.sleep_movement.min(SLEEP_MOVEMENT_MAX);
-
-        if self.sleep_movement < SLEEP_THRESHOLD
-        {
-            self.set_sleeping(true);
-        }
-    }
-
     pub fn set_sleeping(&mut self, state: bool)
     {
         if self.sleeping == state
@@ -248,9 +225,6 @@ impl Physical
         {
             self.velocity = Vector3::zeros();
             self.angular_velocity = 0.0;
-        } else
-        {
-            self.sleep_movement = SLEEP_THRESHOLD * 2.0;
         }
     }
 
@@ -312,8 +286,6 @@ impl Physical
     pub fn add_force(&mut self, force: Vector3<f32>)
     {
         self.force += force;
-
-        self.set_sleeping(false);
     }
 
     pub fn add_torque(&mut self, torque: f32)

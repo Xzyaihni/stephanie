@@ -61,7 +61,7 @@
                         (gradient-pick
                             '(normal strong)
                             difficulty
-                            0.0
+                            0.1
                             0.6)))))
 
         (define (maybe-enemy point)
