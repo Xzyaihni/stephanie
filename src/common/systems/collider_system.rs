@@ -118,9 +118,9 @@ pub fn update(
         3, collision_system_collision,
         space.possible_pairs(|entity: Entity, other_entity: Entity|
         {
-            let this_sleeping = some_or_return!(entities.physical(entity)).sleeping();
+            let this_sleeping = entities.physical(entity).map(|x| x.sleeping()).unwrap_or(false);
 
-            if this_sleeping && some_or_return!(entities.physical(entity)).sleeping()
+            if this_sleeping && entities.physical(entity).map(|x| x.sleeping()).unwrap_or(false)
             {
                 return;
             }
@@ -162,8 +162,8 @@ pub fn update(
                 return;
             }
 
-            let mut physical = some_or_return!(entities.physical_mut_no_change(entity));
-            if physical.sleeping()
+            let physical = entities.physical_mut_no_change(entity);
+            if physical.as_ref().map(|x| x.sleeping()).unwrap_or(false)
             {
                 return;
             }
@@ -194,6 +194,8 @@ pub fn update(
                 world_flat_time,
                 this.collide_with_world(world, &mut contacts)
             };
+
+            let mut physical = some_or_return!(physical);
 
             if physical.move_z
             {

@@ -26,6 +26,7 @@ const NODES_Z: usize = CHUNK_SIZE * CLIENT_OVERMAP_SIZE_Z;
 pub struct SpatialInfo
 {
     pub entity: Entity,
+    pub sleeping: bool,
     pub position: Vector3<f32>,
     pub scale: Vector3<f32>
 }
@@ -128,11 +129,16 @@ impl KNode
             }
         };
 
+        let mut left_has_awake = false;
         let mut left_infos = Vec::new();
+
+        let mut right_has_awake = false;
         let mut right_infos = Vec::new();
 
         infos.into_iter().for_each(|info|
         {
+            let is_awake = !info.sleeping;
+
             let this_scale = *info.scale.index(axis_i);
             let this_distance = *info.position.index(axis_i);
 
@@ -142,22 +148,31 @@ impl KNode
             {
                 // in both halfspaces
 
+                left_has_awake |= is_awake;
+                right_has_awake |= is_awake;
+
                 left_infos.push(info.clone());
                 right_infos.push(info);
             } else if median_distance < 0.0
             {
                 // in left halfspace
+
+                left_has_awake |= is_awake;
+
                 left_infos.push(info);
             } else
             {
                 // in right halfspace
+
+                right_has_awake |= is_awake;
+
                 right_infos.push(info);
             }
         });
 
         Self::Node{
-            left: Box::new(Self::new(left_infos, depth + 1)),
-            right: Box::new(Self::new(right_infos, depth + 1))
+            left: Box::new(if left_has_awake { Self::new(left_infos, depth + 1) } else { Self::empty() }),
+            right: Box::new(if right_has_awake { Self::new(right_infos, depth + 1) } else { Self::empty() })
         }
     }
 
@@ -248,6 +263,9 @@ impl SpatialGrid
         for_each_component!(entities, collider, |entity, collider: &RefCell<Collider>|
         {
             let mut transform = some_or_return!(entities.transform(entity)).clone();
+
+            let sleeping = entities.physical(entity).map(|x| x.sleeping()).unwrap_or(false);
+
             let collider = collider.borrow();
 
             if let Some(scale) = collider.scale
@@ -275,6 +293,7 @@ impl SpatialGrid
 
             let info = SpatialInfo{
                 entity,
+                sleeping,
                 scale: collider.bounds(&transform),
                 position
             };
