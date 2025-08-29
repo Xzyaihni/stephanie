@@ -468,9 +468,9 @@ impl GameServer
 
         let base_health = 0.6;
         let anatomy = Anatomy::Human(HumanAnatomy::new(HumanAnatomyInfo{
-            bone_toughness: base_health,
-            muscle_toughness: base_health,
-            skin_toughness: base_health,
+            bone: base_health,
+            muscle: base_health,
+            skin: base_health,
             base_speed: 0.8,
             base_strength: 1.0,
             ..Default::default()

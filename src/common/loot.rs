@@ -58,28 +58,42 @@ impl Loot
         Ok(Item::new(&self.info, id))
     }
 
-    pub fn create<'a>(&'a self, name: &'a str) -> impl Iterator<Item=Item> + use<'a>
+    pub fn create(&self, name: &str) -> Vec<Item>
     {
         {
             let mut creator = self.creator.borrow_mut();
             let memory = creator.memory_mut();
 
             let symbol = memory.new_symbol(name);
-            memory.define("name", symbol).unwrap_or_else(|err|
+            if let Err(err) = memory.define("name", symbol)
             {
-                panic!("{name}: {err}")
-            })
+                eprintln!("{name}: {err}");
+
+                return Vec::new();
+            }
         }
 
-        let (memory, value) = self.creator.borrow().run().unwrap_or_else(|err|
+        let (memory, value) = match self.creator.borrow().run()
         {
-            panic!("{name}: {err}")
-        }).destructure();
+            Ok(x) => x.destructure(),
+            Err(err) =>
+            {
+                eprintln!("{name}: {err}");
 
-        let items = value.as_pairs_list(&memory).unwrap_or_else(|err|
+                return Vec::new();
+            }
+        };
+
+        let items = match value.as_pairs_list(&memory)
         {
-            panic!("{name}: {err}")
-        });
+            Ok(x) => x,
+            Err(err) =>
+            {
+                eprintln!("{name}: {err}");
+
+                return Vec::new();
+            }
+        };
 
         items.into_iter().filter_map(move |item|
         {
@@ -95,6 +109,6 @@ impl Loot
                     None
                 }
             }
-        })
+        }).collect()
     }
 }

@@ -51,6 +51,8 @@ use stephanie::{
         ui::controller::*
     },
     common::{
+        ENTITY_PIXEL_SCALE,
+        rotate_point,
         render_info::*,
         lisp::*,
         TileMap,
@@ -694,7 +696,16 @@ impl YanyaApp for ChunkPreviewer
                             },
                             MarkerKind::Furniture{name, rotation: tile_rotation} =>
                             {
-                                (format!("normal/furniture/{name}.png"), None, -tile_rotation.to_angle())
+                                let name = format!("normal/furniture/{name}.png");
+                                let size = info.partial.assets.lock().texture_by_name(&name).lock().size();
+
+                                let scale = size / ENTITY_PIXEL_SCALE as f32 * THIS_TILE_SCALING;
+
+                                let rotation = -tile_rotation.to_angle();
+
+                                pos += rotate_point(Vector2::new(0.0, -(THIS_TILE_SCALING - scale.y) / 2.0) / THIS_TILE_SCALING, rotation);
+
+                                (name, Some(scale), rotation)
                             },
                             MarkerKind::Door{rotation: tile_rotation, width, ..} =>
                             {

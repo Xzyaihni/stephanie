@@ -1,5 +1,9 @@
 [
     {
-        "name": "crate"
+        "name": "crate",
+        "container": true
+    },
+    {
+        "name": "wood table"
     }
 ]

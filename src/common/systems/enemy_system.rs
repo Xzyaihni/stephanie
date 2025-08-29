@@ -22,7 +22,8 @@ pub fn update(
             return;
         }
 
-        if enemy.borrow().check_hostiles()
+        let mut enemy = enemy.borrow_mut();
+        if enemy.check_hostiles()
         {
             let character = some_or_return!(entities.character(entity));
             entities.character.iter()
@@ -46,7 +47,6 @@ pub fn update(
                 {
                     entities.set_changed().enemy(entity);
 
-                    let mut enemy = enemy.borrow_mut();
                     if enemy.seen_timer() >= 1.0
                     {
                         enemy.set_attacking(other_entity);
@@ -57,7 +57,7 @@ pub fn update(
                 });
         }
 
-        let _state_changed = enemy.borrow_mut().update(
+        let _state_changed = enemy.update(
             entities,
             world,
             entity,

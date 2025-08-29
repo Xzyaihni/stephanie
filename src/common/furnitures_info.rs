@@ -5,6 +5,8 @@ use std::{
 
 use serde::Deserialize;
 
+use nalgebra::Vector2;
+
 use yanyaengine::{Assets, TextureId};
 
 use crate::common::{
@@ -19,7 +21,8 @@ use crate::common::{
 struct FurnitureInfoRaw
 {
     name: String,
-    texture: Option<String>
+    texture: Option<String>,
+    container: Option<bool>
 }
 
 type FurnituresInfoRaw = Vec<FurnitureInfoRaw>;
@@ -30,7 +33,8 @@ pub struct FurnitureInfo
 {
     pub name: String,
     pub texture: TextureId,
-    pub scale: f32
+    pub scale: Vector2<f32>,
+    pub container: bool
 }
 
 impl GenericItem for FurnitureInfo
@@ -52,12 +56,13 @@ impl FurnitureInfo
         let texture = raw.texture.unwrap_or_else(|| raw.name.clone());
         let texture = load_texture(assets, textures_root, &texture);
 
-        let scale = assets.texture(texture).lock().size().max() / ENTITY_PIXEL_SCALE as f32 * ENTITY_SCALE;
+        let scale = assets.texture(texture).lock().size() / ENTITY_PIXEL_SCALE as f32 * ENTITY_SCALE;
 
         Self{
             name: raw.name,
             texture,
-            scale
+            scale,
+            container: raw.container.unwrap_or(false)
         }
     }
 }

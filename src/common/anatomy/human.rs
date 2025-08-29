@@ -73,9 +73,9 @@ pub struct CachedProps
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HumanAnatomyInfo
 {
-    pub bone_toughness: f32,
-    pub muscle_toughness: f32,
-    pub skin_toughness: f32,
+    pub bone: f32,
+    pub muscle: f32,
+    pub skin: f32,
     pub base_speed: f32,
     pub base_strength: f32
 }
@@ -85,9 +85,9 @@ impl Default for HumanAnatomyInfo
     fn default() -> Self
     {
         Self{
-            bone_toughness: 1.0,
-            muscle_toughness: 1.0,
-            skin_toughness: 1.0,
+            bone: 1.0,
+            muscle: 1.0,
+            skin: 1.0,
             base_speed: 1.0,
             base_strength: 1.0
         }
@@ -262,40 +262,20 @@ impl From<HumanAnatomy> for HumanAnatomyValues
 
 impl HumanAnatomyValues
 {
-    pub fn new(mut info: HumanAnatomyInfo) -> Self
+    pub fn new(info: HumanAnatomyInfo) -> Self
     {
-        info.bone_toughness *= 0.5;
+        let part = BodyPartInfo{
+            bone: info.bone,
+            muscle: info.muscle,
+            skin: info.skin
+        };
 
-        info.base_speed *= 12.0;
-
-        let bone_toughness = info.bone_toughness;
-
-        let base_speed = info.base_speed;
+        let base_speed = info.base_speed * 12.0;
         let base_strength = info.base_strength;
 
-        let part = BodyPartInfo::from(info);
-
-        fn new_part_with_contents<Contents>(
-            name: DebugName,
-            part: BodyPartInfo,
-            bone_toughness: f32,
-            health: f32,
-            size: f64,
-            contents: Contents
-        ) -> HumanPart<Contents>
+        let new_part = |name, part: BodyPartInfo, size: f64|
         {
-            HumanPart::new(
-                name,
-                part,
-                bone_toughness * health,
-                size,
-                contents
-            )
-        }
-
-        let new_part = |name, health, size|
-        {
-            new_part_with_contents(name, part.clone(), bone_toughness, health, size, ())
+            HumanPart::new(name, part, size, ())
         };
 
         // max hp is amount of newtons i found on the interner needed to break a bone
@@ -313,10 +293,25 @@ impl HumanAnatomyValues
         {
             let with_name = with_name(side_name);
 
-            let upper = new_part(DebugName::new(with_name("upper leg")), 40.0, 0.6);
-            let lower = new_part(DebugName::new(with_name("lower leg")), 35.0, 0.44);
+            let upper = new_part(
+                DebugName::new(with_name("upper leg")),
+                BodyPartInfo{bone: part.bone * 40.0, ..part},
+                0.6
+            );
+
+            let lower = new_part(
+                DebugName::new(with_name("lower leg")),
+                BodyPartInfo{bone: part.bone * 35.0, ..part},
+                0.44
+            );
+
             let foot = {
-                let mut x = new_part(DebugName::new(with_name("foot")), 20.0, 0.17);
+                let mut x = new_part(
+                    DebugName::new(with_name("foot")),
+                    BodyPartInfo{bone: part.bone * 20.0, ..part},
+                    0.17
+                );
+
                 x.muscle = Health::zero().into();
 
                 Some(x)
@@ -335,10 +330,25 @@ impl HumanAnatomyValues
         {
             let with_name = with_name(side_name);
 
-            let upper = new_part(DebugName::new(with_name("upper arm")), 25.0, 0.2);
-            let lower = new_part(DebugName::new(with_name("lower arm")), 20.0, 0.17);
+            let upper = new_part(
+                DebugName::new(with_name("upper arm")),
+                BodyPartInfo{bone: part.bone * 25.0, ..part},
+                0.2
+            );
+
+            let lower = new_part(
+                DebugName::new(with_name("lower arm")),
+                BodyPartInfo{bone: part.bone * 20.0, ..part},
+                0.17
+            );
+
             let hand = {
-                let mut x = new_part(DebugName::new(with_name("hand")), 20.0, 0.07);
+                let mut x = new_part(
+                    DebugName::new(with_name("hand")),
+                    BodyPartInfo{bone: part.bone * 20.0, ..part},
+                    0.07
+                );
+
                 x.muscle = Health::zero().into();
 
                 Some(x)
@@ -356,11 +366,12 @@ impl HumanAnatomyValues
 
         let spine = {
             // the spine is very complex sizing wise so im just gonna pick a low-ish number
-            let mut x = new_part_with_contents(
+            let mut x = HumanPart::new(
                 DebugName::new("spine"),
-                part.clone(),
-                bone_toughness,
-                34.0,
+                BodyPartInfo{
+                    bone: part.bone * 34.0,
+                    ..part
+                },
                 0.25,
                 SpinalCord::new(1.0)
             );
@@ -371,11 +382,12 @@ impl HumanAnatomyValues
         };
 
         let head = {
-            let mut head = new_part_with_contents(
+            let mut head = HumanPart::new(
                 DebugName::new("head"),
-                part.clone(),
-                bone_toughness,
-                50.0,
+                BodyPartInfo{
+                    bone: part.bone * 50.0,
+                    ..part
+                },
                 0.39,
                 HeadOrgans{eyes: Halves::repeat(Some(Eye::new(1.0))), brain: Some(Brain::new(0.5))}
             );
@@ -385,18 +397,20 @@ impl HumanAnatomyValues
             head
         };
 
-        let pelvis = new_part(DebugName::new("pelvis"), 60.0, 0.37);
+        let pelvis = new_part(
+            DebugName::new("pelvis"),
+            BodyPartInfo{bone: part.bone * 60.0, ..part},
+            0.37
+        );
 
         let pelvis = Pelvis{
             pelvis,
             legs: Halves{left: make_leg("left"), right: make_leg("right")}
         };
 
-        let torso = new_part_with_contents(
+        let torso = HumanPart::new(
             DebugName::new("torso"),
-            part.clone(),
-            bone_toughness,
-            33.0,
+            BodyPartInfo{bone: part.bone * 33.0, muscle: part.muscle * 5.0, skin: part.skin * 2.0, ..part},
             0.82,
             TorsoOrgans{
                 lungs: Halves::repeat(Some(Lung::new(1.0)))

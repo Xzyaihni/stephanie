@@ -74,7 +74,7 @@ impl MarkerTile
             {
                 if DebugConfig::is_enabled(DebugTool::NoEnemySpawns) { return None; }
 
-                let id = if let Some(x) = enemies.get_id(&name)
+                let id = if let Some(x) = enemies.get_id(&name.replace('_', " "))
                 {
                     x
                 } else
@@ -94,7 +94,7 @@ impl MarkerTile
             {
                 if DebugConfig::is_enabled(DebugTool::NoFurnitureSpawns) { return None; }
 
-                let id = if let Some(x) = furnitures.get_id(&name)
+                let id = if let Some(x) = furnitures.get_id(&name.replace('_', " "))
                 {
                     x
                 } else
@@ -252,7 +252,7 @@ impl MarkerKind
             "furniture" =>
             {
                 let name = next_value("name")?.as_symbol()?;
-                let rotation = TileRotation::from_lisp_value(*next_value("door rotation")?)?.rotate_clockwise();
+                let rotation = TileRotation::from_lisp_value(*next_value("furniture rotation")?)?.rotate_clockwise();
 
                 Ok(Self::Furniture{name, rotation})
             },

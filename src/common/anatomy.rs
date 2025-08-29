@@ -694,24 +694,6 @@ impl Health
     }
 }
 
-#[derive(Clone)]
-pub struct BodyPartInfo
-{
-    pub muscle_toughness: f32,
-    pub skin_toughness: f32
-}
-
-impl From<HumanAnatomyInfo> for BodyPartInfo
-{
-    fn from(info: HumanAnatomyInfo) -> Self
-    {
-        Self{
-            muscle_toughness: info.muscle_toughness,
-            skin_toughness: info.skin_toughness
-        }
-    }
-}
-
 #[derive(Clone, Serialize, Deserialize)]
 pub struct ChangeTracking<T>
 {
@@ -807,6 +789,14 @@ impl Organ for ()
     fn size(&self) -> &f64 { &0.0 }
 }
 
+#[derive(Debug, Clone)]
+pub struct BodyPartInfo
+{
+    pub bone: f32,
+    pub muscle: f32,
+    pub skin: f32
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BodyPart<Contents=()>
 {
@@ -844,16 +834,15 @@ impl<Contents> BodyPart<Contents>
     pub fn new(
         name: DebugName,
         info: BodyPartInfo,
-        bone: f32,
         size: f64,
         contents: Contents
     ) -> Self
     {
         Self::new_full(
             name,
-            Health::new(0.99, bone),
-            Health::new(0.8, info.skin_toughness * 3.0),
-            Health::new(0.9, info.muscle_toughness * 10.0),
+            Health::new(0.99, info.bone * 0.5),
+            Health::new(0.8, info.skin * 3.0),
+            Health::new(0.9, info.muscle * 10.0),
             size,
             contents
         )

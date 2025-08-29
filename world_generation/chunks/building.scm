@@ -51,6 +51,9 @@
                 (pick-weighted 'zob 'runner 0.25)
                 'bigy))
 
+        (define (place-furniture point name side)
+            (combine-markers this-chunk point (list 'furniture name side)))
+
         (define (place-enemy point)
             (combine-markers
                 this-chunk
@@ -115,6 +118,7 @@
                         (maybe-light (make-point (x-of 3) 7) 0.7 (list (if flip -0.5 0.5) 0.0 0.0))
                         (maybe-light (make-point (x-of 3) 12) 0.8 (list (if flip -0.5 0.5) 0.0 0.0))
                         (door (x-of 2) 5 (if flip side-left side-right) 'metal)
+                        (place-furniture (make-point (x-of 4) 11) 'wood_table side-up)
                         (place-enemy (make-point (x-of (random-integer-between 2 6)) (random-integer-between 6 (- size-y 7)))))
                     (lambda ()
                         (add-window 8)
@@ -131,6 +135,9 @@
                         (maybe-light (make-point (x-of 3) 3) 0.8 '(0.0 0.0 0.0))
                         (maybe-light (make-point (x-of 4) 9) 1.2 (list (if flip -0.5 0.5) 0.5 0.0))
                         (door (x-of 2) 5 (if flip side-left side-right) 'metal)
+                        (let ((table-rotated (random-bool)))
+                            (place-furniture (make-point (x-of 4) 7) 'wood_table (if table-rotated (if flip side-left side-right) side-up))
+                            )
                         (place-enemy (make-point (x-of (random-integer-between 2 6)) (random-integer-between 6 (- size-y 2)))))
                     (lambda ()
                         (this-tile (make-point (x-of 2) 1) (tile 'glass))

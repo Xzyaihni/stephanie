@@ -35,7 +35,7 @@ pub fn create(
     let name = info.name.clone();
 
     let mut inventory = Inventory::new();
-    loot.create(&name).for_each(|item| { inventory.push(item); });
+    loot.create(&name).into_iter().for_each(|item| { inventory.push(item); });
 
     let character = Character::new(info.character, Faction::Zob);
 
