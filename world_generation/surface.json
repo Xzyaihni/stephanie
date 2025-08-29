@@ -44,9 +44,9 @@
             "weight": 0.05,
             "neighbors": {
                 "SymmetryVertical": {
-                    "left": ["road_intersection", "road_straight"],
+                    "left": ["road_straight"],
                     "right": ["park", "building", "bunker"],
-                    "vertical": ["park", "building", "bunker", "road_end", "road_straight"]
+                    "vertical": ["park", "building", "bunker"]
                 }
             }
         },
@@ -55,8 +55,8 @@
             "name": "road_end",
             "neighbors": {
                 "SymmetryHorizontal": {
-                    "up": ["road_t"],
-                    "down": ["road_straight", "road_end"],
+                    "up": [],
+                    "down": [],
                     "horizontal": ["park", "building", "bunker"]
                 }
             }
@@ -80,7 +80,7 @@
             "neighbors": {
                 "SymmetryBoth": {
                     "horizontal": ["park", "building"],
-                    "vertical": []
+                    "vertical": ["road_t"]
                 }
             }
         },
@@ -89,7 +89,7 @@
             "weight": 1,
             "neighbors": {
                 "SymmetryNone": {
-                    "up": [],
+                    "up": ["road_t"],
                     "down": ["park", "building", "bunker"],
                     "right": ["park", "building", "bunker"],
                     "left": ["road_straight"]
@@ -102,9 +102,9 @@
             "neighbors": {
                 "SymmetryNone": {
                     "up": [],
-                    "down": ["road_end"],
-                    "right": ["road_straight", "road_end"],
-                    "left": ["road_end"]
+                    "down": [],
+                    "right": ["road_straight"],
+                    "left": []
                 }
             }
         },
@@ -114,8 +114,8 @@
             "neighbors": {
                 "SymmetryNone": {
                     "up": [],
-                    "down": [],
-                    "right": ["road_corner"],
+                    "down": ["road_t"],
+                    "right": ["road_straight", "road_corner"],
                     "left": []
                 }
             }
@@ -126,8 +126,8 @@
             "neighbors": {
                 "SymmetryVertical": {
                     "left": ["park", "building"],
-                    "right": ["road_straight", "road_end", "road_corner", "road_intersection"],
-                    "vertical": ["road_intersection"]
+                    "right": ["road_straight"],
+                    "vertical": []
                 }
             }
         },
@@ -139,6 +139,17 @@
                     "up": [],
                     "down": [],
                     "horizontal": ["road_straight"]
+                }
+            }
+        },
+        {
+            "rotation": "Down",
+            "name": "road_t",
+            "neighbors": {
+                "SymmetryVertical": {
+                    "left": ["road_straight"],
+                    "right": ["park", "building"],
+                    "vertical": ["road_t"]
                 }
             }
         },
