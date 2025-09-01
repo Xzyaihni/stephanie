@@ -1,6 +1,7 @@
 [
     {
         "name": "crate",
+        "symmetry": "Both",
         "container": true
     },
     {
