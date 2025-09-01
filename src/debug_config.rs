@@ -1,4 +1,4 @@
-use std::{env, sync::LazyLock};
+use std::{env, sync::{Mutex, LazyLock}};
 
 use serde::{Serialize, Deserialize};
 
@@ -9,6 +9,7 @@ use crate::{
         SlowModeFalse,
         SlowModeTrait,
     },
+    common::lisp::LispValue,
     client::game_state::{
         DebugVisibilityTrue,
         DebugVisibilityFalse,
@@ -115,7 +116,17 @@ pub trait DebugConfigTrait
     {
         !Self::is_enabled(tool)
     }
+
+    fn set_debug_value(value: LispValue);
+    fn get_debug_value() -> LispValue;
+
+    fn get_debug_value_float() -> f32
+    {
+        Self::get_debug_value().as_float().unwrap_or(0.0)
+    }
 }
+
+static DEBUG_VALUE: Mutex<LispValue> = Mutex::new(LispValue::new_empty_list());
 
 pub struct DebugConfigTrue;
 pub struct DebugConfigFalse;
@@ -170,6 +181,19 @@ impl DebugConfigTrait for DebugConfigTrue
 
         STATES[tool as usize]
     }
+
+    fn set_debug_value(value: LispValue)
+    {
+        if let Ok(mut x) = DEBUG_VALUE.lock()
+        {
+            *x = value;
+        }
+    }
+
+    fn get_debug_value() -> LispValue
+    {
+        *DEBUG_VALUE.lock().unwrap()
+    }
 }
 
 impl DebugConfigTrait for DebugConfigFalse
@@ -183,6 +207,10 @@ impl DebugConfigTrait for DebugConfigFalse
     fn is_debug() -> bool { false }
 
     fn is_enabled(_tool: DebugTool) -> bool { false }
+
+    fn set_debug_value(_value: LispValue) {}
+
+    fn get_debug_value() -> LispValue { unreachable!() }
 }
 
 #[cfg(debug_assertions)]

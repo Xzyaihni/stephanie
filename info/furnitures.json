@@ -4,6 +4,17 @@
         "container": true
     },
     {
-        "name": "wood table"
+        "name": "wood table",
+        "symmetry": "Both"
+    },
+    {
+        "name": "debug",
+        "symmetry": "None",
+        "collision": 0.0
+    },
+    {
+        "name": "wood chair",
+        "symmetry": "None",
+        "collision": 0.0
     }
 ]

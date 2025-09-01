@@ -20,6 +20,7 @@ use crate::{
     common::{
         some_or_return,
         BiMap,
+        generic_info::Symmetry,
         lisp::{self, Program, Primitives, LispMemory},
         world::{
             CHUNK_SIZE,
@@ -283,16 +284,6 @@ pub struct ChunkRuleRawTag
     content: String
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
-pub enum ChunkSymmetry
-{
-    None,
-    Horizontal,
-    Vertical,
-    Both,
-    All
-}
-
 // im using the same prefix for the json to be more readable
 #[allow(clippy::enum_variant_names)]
 #[derive(Debug, Clone, Deserialize)]
@@ -307,15 +298,15 @@ enum ChunkNeighbors
 
 impl ChunkNeighbors
 {
-    fn symmetry(&self) -> ChunkSymmetry
+    fn symmetry(&self) -> Symmetry
     {
         match self
         {
-            Self::SymmetryNone(_) => ChunkSymmetry::None,
-            Self::SymmetryHorizontal{..} => ChunkSymmetry::Horizontal,
-            Self::SymmetryVertical{..} => ChunkSymmetry::Vertical,
-            Self::SymmetryBoth{..} => ChunkSymmetry::Both,
-            Self::SymmetryAll(_) => ChunkSymmetry::All
+            Self::SymmetryNone(_) => Symmetry::None,
+            Self::SymmetryHorizontal{..} => Symmetry::Horizontal,
+            Self::SymmetryVertical{..} => Symmetry::Vertical,
+            Self::SymmetryBoth{..} => Symmetry::Both,
+            Self::SymmetryAll(_) => Symmetry::All
         }
     }
 }
@@ -388,7 +379,7 @@ pub struct ChunkRule
     tags: Vec<ChunkRuleTag>,
     weight: f64,
     rotateable: bool,
-    symmetry: ChunkSymmetry,
+    symmetry: Symmetry,
     neighbors: DirectionsGroup<Vec<WorldChunkId>>,
     track: Option<TileRotation>
 }
@@ -473,11 +464,11 @@ impl ChunkRule
         let rotate_symmetry = rotation.is_horizontal();
         let symmetry = match self.symmetry
         {
-            x @ ChunkSymmetry::None
-            | x @ ChunkSymmetry::Both
-            | x @ ChunkSymmetry::All => x,
-            ChunkSymmetry::Horizontal if rotate_symmetry => ChunkSymmetry::Vertical,
-            ChunkSymmetry::Vertical if rotate_symmetry => ChunkSymmetry::Horizontal,
+            x @ Symmetry::None
+            | x @ Symmetry::Both
+            | x @ Symmetry::All => x,
+            Symmetry::Horizontal if rotate_symmetry => Symmetry::Vertical,
+            Symmetry::Vertical if rotate_symmetry => Symmetry::Horizontal,
             x => x
         };
 
@@ -540,7 +531,7 @@ impl ChunkRule
         self.rotateable
     }
 
-    pub fn symmetry(&self) -> ChunkSymmetry
+    pub fn symmetry(&self) -> Symmetry
     {
         self.symmetry
     }
@@ -1147,11 +1138,11 @@ impl ChunkRules
 
                         match this_symmetry
                         {
-                            ChunkSymmetry::None => false,
-                            ChunkSymmetry::Horizontal => is_horizontal,
-                            ChunkSymmetry::Vertical => is_vertical,
-                            ChunkSymmetry::Both => is_horizontal || is_vertical,
-                            ChunkSymmetry::All => true
+                            Symmetry::None => false,
+                            Symmetry::Horizontal => is_horizontal,
+                            Symmetry::Vertical => is_vertical,
+                            Symmetry::Both => is_horizontal || is_vertical,
+                            Symmetry::All => true
                         }
                     })
                     .for_each(|other_direction|

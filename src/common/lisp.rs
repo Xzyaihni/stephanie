@@ -225,14 +225,14 @@ macro_rules! implement_tagged
     ($(($new_func:ident, $as_func:ident, $value_type:ident, $union_name:ident, $tag_name:ident)),+) =>
     {
         $(
-            pub fn $new_func($union_name: $value_type) -> Self
+            pub const fn $new_func($union_name: $value_type) -> Self
             {
                 unsafe{
                     Self::new(ValueTag::$tag_name, ValueRaw{$union_name})
                 }
             }
 
-            pub fn $as_func(self) -> Result<$value_type, Error>
+            pub const fn $as_func(self) -> Result<$value_type, Error>
             {
                 match self.tag
                 {
@@ -248,7 +248,7 @@ impl LispValue
 {
     /// # Safety
     /// tag and value in the union must match
-    pub unsafe fn new(tag: ValueTag, value: ValueRaw) -> Self
+    pub const unsafe fn new(tag: ValueTag, value: ValueRaw) -> Self
     {
         Self{tag, value}
     }
@@ -266,35 +266,35 @@ impl LispValue
         (new_list_id, as_list_id, u32, list, List)
     }
 
-    pub fn new_vector(vector: u32) -> Self
+    pub const fn new_vector(vector: u32) -> Self
     {
         unsafe{
             Self::new(ValueTag::Vector, ValueRaw{vector})
         }
     }
 
-    pub fn new_empty_list() -> Self
+    pub const fn new_empty_list() -> Self
     {
         unsafe{
             Self::new(ValueTag::EmptyList, ValueRaw{empty: ()})
         }
     }
 
-    pub fn new_environment_marker() -> Self
+    pub const fn new_environment_marker() -> Self
     {
         unsafe{
             Self::new(ValueTag::EnvironmentMarker, ValueRaw{empty: ()})
         }
     }
 
-    pub fn new_broken_heart() -> Self
+    pub const fn new_broken_heart() -> Self
     {
         unsafe{
             Self::new(ValueTag::BrokenHeart, ValueRaw{empty: ()})
         }
     }
 
-    pub fn tag(&self) -> ValueTag
+    pub const fn tag(&self) -> ValueTag
     {
         self.tag
     }

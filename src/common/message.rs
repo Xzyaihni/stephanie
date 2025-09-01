@@ -30,6 +30,7 @@ use crate::common::{
     Anatomy,
     RenderInfo,
     OnConnectInfo,
+    FurnitureId,
     entity::{EntityRemoveMany, EntityRemove},
     world::{Pos3, TilePos, Tile, Chunk, GlobalPos}
 };
@@ -56,6 +57,7 @@ pub enum Message
     EntityRemoveChunkFinished{pos: GlobalPos, entities: Vec<Entity>},
     SetParent{entity: Entity, component: Option<Box<Parent>>},
     SetSibling{entity: Entity, component: Option<Box<Entity>>},
+    SetFurniture{entity: Entity, component: Option<Box<FurnitureId>>},
     SetTransform{entity: Entity, component: Option<Box<Transform>>},
     SetLazyTransform{entity: Entity, component: Option<Box<LazyTransform>>},
     SetLazyMix{entity: Entity, component: Option<Box<LazyMix>>},

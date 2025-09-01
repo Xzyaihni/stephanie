@@ -1,4 +1,5 @@
 use std::{
+    f32,
     fmt::Debug,
     sync::Arc
 };
@@ -6,6 +7,8 @@ use std::{
 use strum::FromRepr;
 
 use parking_lot::Mutex;
+
+use nalgebra::Vector2;
 
 use serde::{Serialize, Deserialize};
 
@@ -30,7 +33,14 @@ pub use vulkano::pipeline::graphics::viewport::Scissor as VulkanoScissor;
 
 use crate::{
     client::VisibilityChecker,
-    common::{colors::Lcha, ServerToClient}
+    common::{
+        lerp,
+        with_z,
+        rotate_point,
+        colors::Lcha,
+        ServerToClient,
+        world::{TileRotation, PosDirection, DirectionsGroup}
+    }
 };
 
 
@@ -165,11 +175,17 @@ pub enum Aspect
     Fill
 }
 
+fn sprite_rotation(rotation: f32) -> PosDirection
+{
+    PosDirection::from(TileRotation::from_angle(rotation).rotate_counterclockwise()).flip_x()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum RenderObjectKind
 {
     Texture{name: String},
     TextureId{id: TextureId},
+    TextureRotating{ids: DirectionsGroup<TextureId>, is_square: bool},
     Text{text: String, font_size: u32}
 }
 
@@ -185,6 +201,22 @@ impl RenderObjectKind
 
         match self
         {
+            Self::TextureRotating{ids, is_square} =>
+            {
+                let textures = ids.map(|_, id| assets.texture(id).clone());
+
+                let current_direction = sprite_rotation(transform.rotation);
+
+                let object = create_info.partial.object_factory.create(ObjectInfo{
+                    model: assets.model(assets.default_model(DefaultModel::Square)).clone(),
+                    texture: textures[current_direction].clone(),
+                    transform: transform.clone()
+                });
+
+                Some(ClientRenderObject{
+                    kind: ClientObjectType::NormalRotating{object, transform, is_square, textures}
+                })
+            },
             Self::TextureId{id} =>
             {
                 let info = ObjectInfo{
@@ -379,6 +411,7 @@ impl RenderInfo
 pub enum ClientObjectType
 {
     Normal(Object),
+    NormalRotating{object: Object, transform: Transform, is_square: bool, textures: DirectionsGroup<Arc<Mutex<Texture>>>},
     Text(TextObject)
 }
 
@@ -395,6 +428,60 @@ impl ClientRenderObject
         match &mut self.kind
         {
             ClientObjectType::Normal(x) => x.set_transform(transform),
+            ClientObjectType::NormalRotating{object, transform: current_transform, is_square, textures} =>
+            {
+                let current_direction = sprite_rotation(transform.rotation);
+                let closest = textures[current_direction].clone();
+
+                object.set_texture(closest);
+
+                let visual_rotation = {
+                    let x = (transform.rotation + f32::consts::FRAC_PI_4) % f32::consts::FRAC_PI_2;
+
+                    let x = if x < 0.0 { x + f32::consts::FRAC_PI_2 } else { x };
+
+                    x - f32::consts::FRAC_PI_4
+                };
+
+                let scale = if !*is_square && current_direction.is_horizontal()
+                {
+                    transform.scale.yxz()
+                } else
+                {
+                    transform.scale
+                };
+
+                let position = if *is_square
+                {
+                    let x = 0.0; let temp = ();
+
+                    let s = transform.scale.xy();
+
+                    let wide = s.x > s.y;
+
+                    let l = |a| lerp(-0.5 * s.y + 0.5 * s.x, 0.5 * s.y - 0.5 * s.x, a);
+
+                    let position = if wide { Vector2::new(l(1.0 - x), 0.0) } else { Vector2::new(0.0, l(x)) };
+
+                    let full_rotation = TileRotation::from_angle(transform.rotation).to_angle();
+
+                    transform.position + with_z(rotate_point(position, transform.rotation - full_rotation), 0.0)
+                } else
+                {
+                    transform.position
+                };
+
+                let object_transform = Transform{
+                    position,
+                    rotation: visual_rotation,
+                    scale,
+                    ..transform
+                };
+
+                *current_transform = transform;
+
+                object.set_transform(object_transform)
+            },
             ClientObjectType::Text(x) =>
             {
                 if let Some(object) = x.object.as_mut()
@@ -420,6 +507,7 @@ impl ClientRenderObject
         match &self.kind
         {
             ClientObjectType::Normal(x) => Some(x.transform_ref()),
+            ClientObjectType::NormalRotating{transform, ..} => Some(transform),
             ClientObjectType::Text(x) => x.transform()
         }
     }
@@ -429,6 +517,7 @@ impl ClientRenderObject
         match &mut self.kind
         {
             ClientObjectType::Normal(x) => x.update_buffers(info),
+            ClientObjectType::NormalRotating{object, ..} => object.update_buffers(info),
             ClientObjectType::Text(x) => x.update_buffers(info)
         }
     }
@@ -438,6 +527,7 @@ impl ClientRenderObject
         match &self.kind
         {
             ClientObjectType::Normal(x) => x.draw(info),
+            ClientObjectType::NormalRotating{object, ..} => object.draw(info),
             ClientObjectType::Text(x) => x.draw(info)
         }
     }
@@ -548,7 +638,8 @@ impl ClientRenderInfo
         match &self.object.as_ref()?.kind
         {
             ClientObjectType::Normal(x) => Some(x.texture()),
-            ClientObjectType::Text(x) => x.texture()
+            ClientObjectType::Text(x) => x.texture(),
+            _ => None
         }
     }
 

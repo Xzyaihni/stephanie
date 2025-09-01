@@ -3,6 +3,8 @@ use std::{
     collections::HashMap
 };
 
+use serde::Deserialize;
+
 use yanyaengine::{Assets, TextureId};
 
 pub use crate::{
@@ -37,10 +39,10 @@ macro_rules! define_info_id
     }
 }
 
-pub fn load_texture_path(root: &Path, name: &str) -> String
+pub fn load_texture_path(root: impl AsRef<Path>, name: &str) -> String
 {
     let formatted_name = name.replace(' ', "_") + ".png";
-    let path = root.join(formatted_name);
+    let path = root.as_ref().join(formatted_name);
 
     normalize_path(path)
 }
@@ -50,6 +52,16 @@ pub fn load_texture(assets: &Assets, root: &Path, name: &str) -> TextureId
     let name = load_texture_path(root, name);
 
     assets.texture_id(&name)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+pub enum Symmetry
+{
+    None,
+    Horizontal,
+    Vertical,
+    Both,
+    All
 }
 
 pub trait GenericItem

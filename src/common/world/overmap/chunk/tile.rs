@@ -13,8 +13,10 @@ use strum::{FromRepr, EnumString, EnumIter, IntoEnumIterator};
 
 use crate::common::{
     some_or_return,
+    short_rotation,
     TileMap,
     DamageType,
+    Side2d,
     lisp::{self, *}
 };
 
@@ -202,6 +204,20 @@ impl Default for TileRotation
     }
 }
 
+impl From<Side2d> for TileRotation
+{
+    fn from(side: Side2d) -> Self
+    {
+        match side
+        {
+            Side2d::Front => Self::Up,
+            Side2d::Right => Self::Right,
+            Side2d::Left => Self::Left,
+            Side2d::Back => Self::Down
+        }
+    }
+}
+
 impl TileRotation
 {
     pub fn from_lisp_value(value: LispValue) -> Result<Self, lisp::Error>
@@ -331,6 +347,39 @@ impl TileRotation
                     Self::Down => Self::Up
                 }
             }
+        }
+    }
+
+    pub fn from_angle(angle: f32) -> Self
+    {
+        let angle = short_rotation(angle);
+
+        const HALF: f32 = f32::consts::FRAC_PI_2;
+        const QUARTER: f32 = f32::consts::FRAC_PI_4;
+
+        if (-QUARTER..QUARTER).contains(&angle)
+        {
+            Self::Right
+        } else if ((-HALF - QUARTER)..-QUARTER).contains(&angle)
+        {
+            Self::Down
+        } else if (QUARTER..(HALF + QUARTER)).contains(&angle)
+        {
+            Self::Up
+        } else
+        {
+            Self::Left
+        }
+    }
+
+    pub fn opposite(self) -> Self
+    {
+        match self
+        {
+            Self::Left => Self::Right,
+            Self::Right => Self::Left,
+            Self::Up => Self::Down,
+            Self::Down => Self::Up
         }
     }
 

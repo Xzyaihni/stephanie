@@ -6,7 +6,7 @@ use strum::{EnumCount, FromRepr};
 
 use nalgebra::Vector3;
 
-use crate::common::short_rotation;
+use crate::common::world::TileRotation;
 
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -114,6 +114,20 @@ impl From<Side1d> for Side2d
     }
 }
 
+impl From<TileRotation> for Side2d
+{
+    fn from(side: TileRotation) -> Self
+    {
+        match side
+        {
+            TileRotation::Up => Self::Front,
+            TileRotation::Right => Self::Right,
+            TileRotation::Left => Self::Left,
+            TileRotation::Down => Self::Back
+        }
+    }
+}
+
 impl Side2d
 {
     pub fn from_positions(rotation: f32, origin: Vector3<f32>, other: Vector3<f32>) -> Self
@@ -125,58 +139,22 @@ impl Side2d
 
     pub fn from_angle(angle: f32) -> Self
     {
-        let angle = short_rotation(angle);
-
-        const HALF: f32 = f32::consts::FRAC_PI_2;
-        const QUARTER: f32 = f32::consts::FRAC_PI_4;
-
-        if (-QUARTER..QUARTER).contains(&angle)
-        {
-            Self::Front
-        } else if ((-HALF - QUARTER)..-QUARTER).contains(&angle)
-        {
-            Self::Right
-        } else if (QUARTER..(HALF + QUARTER)).contains(&angle)
-        {
-            Self::Left
-        } else
-        {
-            Self::Back
-        }
+        TileRotation::from_angle(angle).rotate_counterclockwise().into()
     }
 
     pub fn to_angle(self) -> f32
     {
-        match self
-        {
-            Self::Right => -f32::consts::FRAC_PI_2,
-            Self::Front => 0.0,
-            Self::Left => f32::consts::FRAC_PI_2,
-            Self::Back => -f32::consts::PI
-        }
+        TileRotation::from(self).rotate_clockwise().to_angle()
     }
 
     pub fn opposite(self) -> Self
     {
-        match self
-        {
-            Self::Left => Self::Right,
-            Self::Right => Self::Left,
-            Self::Front => Self::Back,
-            Self::Back => Self::Front
-        }
+        TileRotation::from(self).opposite().into()
     }
 
     pub fn random() -> Self
     {
-        match fastrand::u32(0..4)
-        {
-            0 => Self::Front,
-            1 => Self::Right,
-            2 => Self::Back,
-            3 => Self::Left,
-            _ => unreachable!()
-        }
+        TileRotation::random().into()
     }
 }
 

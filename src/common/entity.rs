@@ -44,6 +44,8 @@ use crate::{
         Message,
         Saveable,
         EntitiesSaver,
+        FurnitureId,
+        FurnitureInfo,
         character::PartialCombinedInfo
     }
 };
@@ -95,7 +97,7 @@ macro_rules! check_seed
 
                     if let Some(check_seed) = $entity.seed()
                     {
-                        if check_seed != component.entity.seed().unwrap()
+                        if component.entity.seed().map(|x| check_seed != x).unwrap_or(false)
                         {
                             let message = format!("{:?} {} {component:#?}", $entity, stringify!($component));
                             if DebugConfig::is_disabled(DebugTool::AllowSeedMismatch)
@@ -335,7 +337,7 @@ no_on_set!{
     UnitType
 }
 
-no_on_set_for!{ServerEntities, Character, Door}
+no_on_set_for!{ServerEntities, Character, Door, FurnitureId}
 
 impl OnSet<ClientEntities> for Character
 {
@@ -353,6 +355,14 @@ impl OnSet<ClientEntities> for Door
     fn on_set(_previous: Option<Self>, entities: &ClientEntities, entity: Entity)
     {
         Door::update_visible(entities, entity);
+    }
+}
+
+impl OnSet<ClientEntities> for FurnitureId
+{
+    fn on_set(_previous: Option<Self>, entities: &ClientEntities, entity: Entity)
+    {
+        FurnitureInfo::update_furniture(entities, entity);
     }
 }
 
@@ -2865,6 +2875,7 @@ define_entities!{
         (occluder, occluder_mut, occluder_mut_no_change, set_occluder, set_occluder_no_change, on_occluder_mut, resort_occluder, occluder_exists, SetOccluder, OccluderType, Occluder, ClientOccluder)),
     (parent, parent_mut, parent_mut_no_change, set_parent, set_parent_no_change, on_parent, resort_parent, parent_exists, SetParent, ParentType, Parent),
     (sibling, sibling_mut, sibling_mut_no_change, set_sibling, set_sibling_no_change, on_sibling, resort_sibling, sibling_exists, SetSibling, SiblingType, Entity),
+    (furniture, furniture_mut, furniture_mut_no_change, set_furniture, set_furniture_no_change, on_furniture, resort_furniture, furniture_exists, SetFurniture, FurnitureType, FurnitureId),
     (lazy_mix, lazy_mix_mut, lazy_mix_mut_no_change, set_lazy_mix, set_lazy_mix_no_change, on_lazy_mix, resort_lazy_mix, lazy_mix_exists, SetLazyMix, LazyMixType, LazyMix),
     (outlineable, outlineable_mut, outlinable_mut_no_change, set_outlineable, set_outlineable_no_change, on_outlineable, resort_outlineable, outlineable_exists, SetOutlineable, OutlineableType, Outlineable),
     (lazy_transform, lazy_transform_mut, lazy_transform_mut_no_change, set_lazy_transform, set_lazy_transform_no_change, on_lazy_transform, resort_lazy_transform, lazy_transform_exists, SetLazyTransform, LazyTransformType, LazyTransform),

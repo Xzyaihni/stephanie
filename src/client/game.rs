@@ -775,6 +775,26 @@ impl Game
             let game_state = self.game_state.clone();
 
             primitives.add(
+                "rotation-entity",
+                PrimitiveProcedureInfo::new_simple(1, Effect::Impure, move |mut args|
+                {
+                    with_game_state(&game_state, |game_state|
+                    {
+                        let entities = game_state.entities();
+
+                        let entity = Self::pop_entity(entities, &mut args)?;
+
+                        let rotation = entities.transform(entity).unwrap().rotation;
+
+                        Ok(rotation.into())
+                    })
+                }));
+        }
+
+        {
+            let game_state = self.game_state.clone();
+
+            primitives.add(
                 "format-component",
                 PrimitiveProcedureInfo::new_simple(2, Effect::Impure, move |mut args|
                 {
@@ -836,6 +856,17 @@ impl Game
 
                         Ok(().into())
                     })
+                }));
+
+            use crate::debug_config::*;
+
+            primitives.add(
+                "set-debug-value",
+                PrimitiveProcedureInfo::new_simple(1, Effect::Impure, move |mut args|
+                {
+                    DebugConfig::set_debug_value(args.next().unwrap());
+
+                    Ok(().into())
                 }));
         }
 

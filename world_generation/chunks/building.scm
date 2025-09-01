@@ -136,8 +136,10 @@
                         (maybe-light (make-point (x-of 4) 9) 1.2 (list (if flip -0.5 0.5) 0.5 0.0))
                         (door (x-of 2) 5 (if flip side-left side-right) 'metal)
                         (let ((table-rotated (random-bool)))
-                            (place-furniture (make-point (x-of 4) 7) 'wood_table (if table-rotated (if flip side-left side-right) side-up))
-                            )
+                            (begin
+                                (place-furniture (make-point (x-of 4) 7) 'wood_table (if table-rotated (if flip side-left side-right) side-up))
+                                (place-furniture (make-point (x-of 4) 6) 'wood_chair side-up)
+                                (place-furniture (make-point (x-of 5) 7) 'wood_chair side-right)))
                         (place-enemy (make-point (x-of (random-integer-between 2 6)) (random-integer-between 6 (- size-y 2)))))
                     (lambda ()
                         (this-tile (make-point (x-of 2) 1) (tile 'glass))
@@ -155,6 +157,9 @@
                         (maybe-light (make-point (x-of 2) 12) 0.5 (list (if flip -0.5 0.5) 0.0 0.0))
                         (maybe-light (make-point (x-of 5) 12) 0.6 '(0.0 0.0 0.0))
                         (door (x-of 4) 12 side-up 'metal)
+                        (place-furniture (make-point (x-of 3) 7) 'wood_table side-up)
+                        (place-furniture (make-point (x-of 2) 7) 'wood_chair side-right)
+                        (place-furniture (make-point (x-of 2) 8) 'wood_chair side-right)
                         (place-enemy (make-point (x-of (random-integer-between 2 5)) (random-integer-between 2 (- size-y 7)))))))))
 
         ; outer walls

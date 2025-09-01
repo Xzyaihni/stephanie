@@ -60,6 +60,8 @@
                         (single-marker (list 'door side-left 'metal 2))))))
         (begin
             (define this-chunk (filled-chunk (tile 'soil)))
+            (define (place-furniture point name side)
+                (combine-markers this-chunk point (list 'furniture name side)))
             (rectangle-outline
                 this-chunk
                 (make-area
@@ -76,6 +78,8 @@
                 this-chunk
                 (make-point (/ size-x 2) (/ size-y 2))
                 (single-marker (list 'light 1.3)))
+            (place-furniture (make-point 6 6) 'wood_table side-up)
+            (place-furniture (make-point 7 9) 'wood_chair side-up)
             (put-tile
                 this-chunk
                 (make-point (/ size-x 2) (- size-y 5))
