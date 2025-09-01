@@ -214,7 +214,7 @@ impl RenderObjectKind
                 });
 
                 Some(ClientRenderObject{
-                    kind: ClientObjectType::NormalRotating{object, transform, offset, textures}
+                    kind: ClientObjectType::NormalRotating{object, offset, textures}
                 })
             },
             Self::TextureId{id} =>
@@ -411,7 +411,7 @@ impl RenderInfo
 pub enum ClientObjectType
 {
     Normal(Object),
-    NormalRotating{object: Object, transform: Transform, offset: Option<f32>, textures: DirectionsGroup<Arc<Mutex<Texture>>>},
+    NormalRotating{object: Object, offset: Option<f32>, textures: DirectionsGroup<Arc<Mutex<Texture>>>},
     Text(TextObject)
 }
 
@@ -428,7 +428,7 @@ impl ClientRenderObject
         match &mut self.kind
         {
             ClientObjectType::Normal(x) => x.set_transform(transform),
-            ClientObjectType::NormalRotating{object, transform: current_transform, offset, textures} =>
+            ClientObjectType::NormalRotating{object, offset, textures} =>
             {
                 let current_direction = sprite_rotation(transform.rotation);
                 let closest = textures[current_direction].clone();
@@ -476,8 +476,6 @@ impl ClientRenderObject
                     ..transform
                 };
 
-                *current_transform = transform;
-
                 object.set_transform(object_transform)
             },
             ClientObjectType::Text(x) =>
@@ -505,7 +503,7 @@ impl ClientRenderObject
         match &self.kind
         {
             ClientObjectType::Normal(x) => Some(x.transform_ref()),
-            ClientObjectType::NormalRotating{transform, ..} => Some(transform),
+            ClientObjectType::NormalRotating{object, ..} => Some(object.transform_ref()),
             ClientObjectType::Text(x) => x.transform()
         }
     }

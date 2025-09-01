@@ -124,6 +124,11 @@ pub trait DebugConfigTrait
     {
         Self::get_debug_value().as_float().unwrap_or(0.0)
     }
+
+    fn get_debug_value_integer() -> i32
+    {
+        Self::get_debug_value().as_integer().unwrap_or(0)
+    }
 }
 
 static DEBUG_VALUE: Mutex<LispValue> = Mutex::new(LispValue::new_empty_list());

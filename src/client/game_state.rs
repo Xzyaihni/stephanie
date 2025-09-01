@@ -299,9 +299,9 @@ impl ClientEntitiesContainer
             let transform = some_or_return!(self.entities.transform(entity));
 
             let mut render = render.borrow_mut();
+            render.set_transform(transform.clone());
 
-            // uses transform because update buffers might not be called and transforms not synced
-            if !render.visible_with(visibility, &transform)
+            if !render.visible(visibility)
             {
                 return;
             }
@@ -326,7 +326,6 @@ impl ClientEntitiesContainer
 
             let mut update_buffers = |entities: &ClientEntities, render: &mut ClientRenderInfo|
             {
-                render.set_transform(transform.clone());
                 render.update_buffers(info);
 
                 if let Some(mut occluder) = entities.occluder_mut_no_change(entity)
@@ -345,9 +344,12 @@ impl ClientEntitiesContainer
                 let real_z = (transform.position.z / TILE_SIZE).floor() as i32;
 
                 let below_player = !visibility.world_position.is_same_height(&TilePos::from(transform.position));
-                let sky_occluded = below_player && world.sky_occluded(&transform);
 
-                let is_render_visible = !world.wall_occluded(&transform) && !sky_occluded;
+                let transform = some_or_return!(some_or_return!(render.object.as_ref()).transform());
+
+                let sky_occluded = below_player && world.sky_occluded(transform);
+
+                let is_render_visible = !world.wall_occluded(transform) && !sky_occluded;
 
                 let is_render_shadow = render.shadow_visible && !sky_occluded;
 
