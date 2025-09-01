@@ -141,7 +141,7 @@ impl FurnitureInfo
             let mut setter = entities.lazy_setter.borrow_mut();
 
             let render = RenderInfo{
-                object: Some(RenderObjectKind::TextureRotating{ids, is_square: info.collision.is_some()}.into()),
+                object: Some(RenderObjectKind::TextureRotating{ids, offset: info.collision}.into()),
                 shadow_visible: true,
                 z_level: ZLevel::Hips,
                 ..Default::default()
@@ -149,7 +149,7 @@ impl FurnitureInfo
 
             setter.set_named_no_change(entity, Some(info.name.clone()));
 
-            if let Some(x) = info.collision
+            if info.collision.is_some()
             {
                 let aspect = info.scale / info.scale.min();
 

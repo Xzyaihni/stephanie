@@ -185,7 +185,7 @@ pub enum RenderObjectKind
 {
     Texture{name: String},
     TextureId{id: TextureId},
-    TextureRotating{ids: DirectionsGroup<TextureId>, is_square: bool},
+    TextureRotating{ids: DirectionsGroup<TextureId>, offset: Option<f32>},
     Text{text: String, font_size: u32}
 }
 
@@ -201,7 +201,7 @@ impl RenderObjectKind
 
         match self
         {
-            Self::TextureRotating{ids, is_square} =>
+            Self::TextureRotating{ids, offset} =>
             {
                 let textures = ids.map(|_, id| assets.texture(id).clone());
 
@@ -214,7 +214,7 @@ impl RenderObjectKind
                 });
 
                 Some(ClientRenderObject{
-                    kind: ClientObjectType::NormalRotating{object, transform, is_square, textures}
+                    kind: ClientObjectType::NormalRotating{object, transform, offset, textures}
                 })
             },
             Self::TextureId{id} =>
@@ -411,7 +411,7 @@ impl RenderInfo
 pub enum ClientObjectType
 {
     Normal(Object),
-    NormalRotating{object: Object, transform: Transform, is_square: bool, textures: DirectionsGroup<Arc<Mutex<Texture>>>},
+    NormalRotating{object: Object, transform: Transform, offset: Option<f32>, textures: DirectionsGroup<Arc<Mutex<Texture>>>},
     Text(TextObject)
 }
 
@@ -428,7 +428,7 @@ impl ClientRenderObject
         match &mut self.kind
         {
             ClientObjectType::Normal(x) => x.set_transform(transform),
-            ClientObjectType::NormalRotating{object, transform: current_transform, is_square, textures} =>
+            ClientObjectType::NormalRotating{object, transform: current_transform, offset, textures} =>
             {
                 let current_direction = sprite_rotation(transform.rotation);
                 let closest = textures[current_direction].clone();
@@ -443,7 +443,7 @@ impl ClientRenderObject
                     x - f32::consts::FRAC_PI_4
                 };
 
-                let scale = if !*is_square && current_direction.is_horizontal()
+                let scale = if offset.is_none() && current_direction.is_horizontal()
                 {
                     transform.scale.yxz()
                 } else
@@ -451,10 +451,8 @@ impl ClientRenderObject
                     transform.scale
                 };
 
-                let position = if *is_square
+                let position = if let Some(x) = *offset
                 {
-                    let x = 0.0; let temp = ();
-
                     let s = transform.scale.xy();
 
                     let wide = s.x > s.y;
