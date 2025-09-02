@@ -6,7 +6,7 @@ use std::{
     cmp::Ordering,
     hash::Hash,
     io::Write,
-    fmt::Debug,
+    fmt::{Display, Debug},
     fs::File,
     collections::HashMap,
     path::{Path, Component},
@@ -883,6 +883,20 @@ pub fn is_debug_env(s: impl AsRef<str>) -> bool
     let ds = some_or_value!(debug_env(), false);
     let ds: &str = ds.as_ref();
     ds == s.as_ref()
+}
+
+pub fn with_error<T, E: Display>(value: Result<T, E>) -> Option<T>
+{
+    match value
+    {
+        Ok(x) => Some(x),
+        Err(err) =>
+        {
+            eprintln!("{err}");
+
+            None
+        }
+    }
 }
 
 pub fn write_log(text: impl Into<String>)

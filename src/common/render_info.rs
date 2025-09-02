@@ -180,6 +180,59 @@ fn sprite_rotation(rotation: f32) -> PosDirection
     PosDirection::from(TileRotation::from_angle(rotation).rotate_counterclockwise()).flip_x()
 }
 
+pub fn rotating_info<T: Clone>(
+    transform: Transform,
+    offset: Option<f32>,
+    textures: &DirectionsGroup<T>
+) -> (T, Transform)
+{
+    let current_direction = sprite_rotation(transform.rotation);
+    let closest = textures[current_direction].clone();
+
+    let visual_rotation = {
+        let x = (transform.rotation + f32::consts::FRAC_PI_4) % f32::consts::FRAC_PI_2;
+
+        let x = if x < 0.0 { x + f32::consts::FRAC_PI_2 } else { x };
+
+        x - f32::consts::FRAC_PI_4
+    };
+
+    let scale = if offset.is_none() && current_direction.is_horizontal()
+    {
+        transform.scale.yxz()
+    } else
+    {
+        transform.scale
+    };
+
+    let position = if let Some(x) = offset
+    {
+        let s = transform.scale.xy();
+
+        let wide = s.x > s.y;
+
+        let l = |a| lerp(-0.5 * s.y + 0.5 * s.x, 0.5 * s.y - 0.5 * s.x, a);
+
+        let position = if wide { Vector2::new(l(1.0 - x), 0.0) } else { Vector2::new(0.0, l(x)) };
+
+        let full_rotation = TileRotation::from_angle(transform.rotation).to_angle();
+
+        transform.position + with_z(rotate_point(position, transform.rotation - full_rotation), 0.0)
+    } else
+    {
+        transform.position
+    };
+
+    let object_transform = Transform{
+        position,
+        rotation: visual_rotation,
+        scale,
+        ..transform
+    };
+
+    (closest, object_transform)
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum RenderObjectKind
 {
@@ -430,52 +483,9 @@ impl ClientRenderObject
             ClientObjectType::Normal(x) => x.set_transform(transform),
             ClientObjectType::NormalRotating{object, offset, textures} =>
             {
-                let current_direction = sprite_rotation(transform.rotation);
-                let closest = textures[current_direction].clone();
+                let (closest, object_transform) = rotating_info(transform, *offset, &textures);
 
                 object.set_texture(closest);
-
-                let visual_rotation = {
-                    let x = (transform.rotation + f32::consts::FRAC_PI_4) % f32::consts::FRAC_PI_2;
-
-                    let x = if x < 0.0 { x + f32::consts::FRAC_PI_2 } else { x };
-
-                    x - f32::consts::FRAC_PI_4
-                };
-
-                let scale = if offset.is_none() && current_direction.is_horizontal()
-                {
-                    transform.scale.yxz()
-                } else
-                {
-                    transform.scale
-                };
-
-                let position = if let Some(x) = *offset
-                {
-                    let s = transform.scale.xy();
-
-                    let wide = s.x > s.y;
-
-                    let l = |a| lerp(-0.5 * s.y + 0.5 * s.x, 0.5 * s.y - 0.5 * s.x, a);
-
-                    let position = if wide { Vector2::new(l(1.0 - x), 0.0) } else { Vector2::new(0.0, l(x)) };
-
-                    let full_rotation = TileRotation::from_angle(transform.rotation).to_angle();
-
-                    transform.position + with_z(rotate_point(position, transform.rotation - full_rotation), 0.0)
-                } else
-                {
-                    transform.position
-                };
-
-                let object_transform = Transform{
-                    position,
-                    rotation: visual_rotation,
-                    scale,
-                    ..transform
-                };
-
                 object.set_transform(object_transform)
             },
             ClientObjectType::Text(x) =>

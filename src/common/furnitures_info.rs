@@ -13,7 +13,9 @@ use crate::common::{
     ENTITY_SCALE,
     ENTITY_PIXEL_SCALE,
     with_z,
+    with_error,
     some_or_return,
+    some_or_value,
     generic_info::*,
     render_info::*,
     collider::*,
@@ -201,9 +203,9 @@ impl FurnituresInfo
         info: impl AsRef<Path>
     ) -> Self
     {
-        let info = File::open(info.as_ref()).unwrap();
+        let info = some_or_value!(with_error(File::open(info.as_ref())), Self::empty());
 
-        let furnitures: FurnituresInfoRaw = serde_json::from_reader(info).unwrap();
+        let furnitures: FurnituresInfoRaw = some_or_value!(with_error(serde_json::from_reader(info)), Self::empty());
 
         let textures_root = textures_root.as_ref();
         let furnitures: Vec<_> = furnitures.into_iter().map(|info_raw|

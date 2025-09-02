@@ -234,6 +234,26 @@ impl TileRotation
         })
     }
 
+    pub fn flip_x(self) -> Self
+    {
+        match self
+        {
+            Self::Left => Self::Right,
+            Self::Right => Self::Left,
+            x => x
+        }
+    }
+
+    pub fn flip_y(self) -> Self
+    {
+        match self
+        {
+            Self::Up => Self::Down,
+            Self::Down => Self::Up,
+            x => x
+        }
+    }
+
     pub fn is_horizontal(&self) -> bool
     {
         match self

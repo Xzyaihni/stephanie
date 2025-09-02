@@ -23,6 +23,8 @@ use yanyaengine::{
     game_object::*,
     ShadersContainer,
     Transform,
+    DefaultTexture,
+    TextureId,
     ShaderId,
     Shader,
     ShadersGroup,
@@ -51,11 +53,16 @@ use stephanie::{
         ui::controller::*
     },
     common::{
-        ENTITY_PIXEL_SCALE,
+        with_z,
+        with_error,
         rotate_point,
+        some_or_return,
         render_info::*,
         lisp::*,
         TileMap,
+        FurnituresInfo,
+        CharactersInfo,
+        EnemiesInfo,
         colors::Lcha,
         world::{TILE_SIZE, CHUNK_SIZE, Tile, TileRotation}
     }
@@ -203,7 +210,7 @@ const TILE_SCALING: f32 = THIS_TILE_SCALING / TILE_SIZE;
 
 fn new_tile_like(
     info: &ObjectCreatePartialInfo,
-    texture: &str,
+    texture: TextureId,
     rotation: f32,
     scale: Option<Vector2<f32>>,
     pos: Vector2<f32>
@@ -214,7 +221,7 @@ fn new_tile_like(
     let model_id = assets.default_model(DefaultModel::Square);
     let model = assets.model(model_id).clone();
 
-    let texture = assets.texture_by_name(texture).clone();
+    let texture = assets.texture(texture).clone();
 
     let pos = Vector2::repeat((-TOTAL_CHUNK_SIZE + THIS_TILE_SCALING) * 0.5) + pos * THIS_TILE_SCALING;
 
@@ -251,7 +258,8 @@ fn new_tile(
     let name = &tile_info.name;
     let rotation = -(tile.0.unwrap().rotation().to_angle() - f32::consts::FRAC_PI_2);
 
-    new_tile_like(info, &format!("tiles/{name}.png"), rotation, None, pos.cast())
+    let texture = info.assets.lock().texture_id(&format!("tiles/{name}.png"));
+    new_tile_like(info, texture, rotation, None, pos.cast())
 }
 
 struct ChunkPreview
@@ -274,9 +282,10 @@ struct Tags
 struct ChunkPreviewer
 {
     shaders: DrawShaders,
-    tilemap: TileMap,
+    tilemap: Option<(LispMemory, TileMap)>,
+    furniture: FurnituresInfo,
+    enemies: (CharactersInfo, EnemiesInfo),
     rules: ChunkRulesGroup,
-    memory: LispMemory,
     controls: ControlsController<UiId>,
     camera: Camera,
     controller: Controller<UiId>,
@@ -300,6 +309,8 @@ impl ChunkPreviewer
 
     fn compile_chunk(&mut self)
     {
+        let memory = some_or_return!(self.tilemap.as_ref()).0.clone();
+
         let parent_directory = PathBuf::from(PARENT_DIRECTORY);
         let filepath = parent_directory.join("chunks").join(format!("{}.scm", &self.preview_tags.name));
 
@@ -328,7 +339,7 @@ impl ChunkPreviewer
 
         let config = LispConfig{
             type_checks: true,
-            memory: self.memory.clone()
+            memory
         };
 
         match Lisp::new_with_config(config, &[&standard_code, &default_code, &chunk_code])
@@ -352,19 +363,32 @@ impl YanyaApp for ChunkPreviewer
 
     fn init(info: InitPartialInfo<Self::SetupInfo>, app_info: Self::AppInfo) -> Self
     {
-        let tilemap = TileMap::parse("info/tiles.json", "textures/tiles/").unwrap_or_else(|err|
-        {
-            panic!("error creating tilemap: {err}")
-        }).tilemap;
+        let tilemap = {
+            let tilemap = with_error(TileMap::parse("info/tiles.json", "textures/tiles/")).map(|x| x.tilemap);
+
+            tilemap.map(|tilemap|
+            {
+                let primitives = Rc::new(ChunkGenerator::default_primitives(&tilemap));
+
+                let memory = LispMemory::new(primitives, 256, 1 << 13);
+
+                (memory, tilemap)
+            })
+        };
+
+        let furniture = FurnituresInfo::parse(&info.object_info.assets.lock(), "normal/furniture", "info/furnitures.json");
+
+        let enemies = {
+            let mut characters = CharactersInfo::new();
+            let enemies = EnemiesInfo::parse(&info.object_info.assets.lock(), &mut characters, "normal/enemy", "info/enemies.json");
+
+            (characters, enemies)
+        };
 
         let rules = ChunkRulesGroup::load(PathBuf::from("world_generation/")).unwrap_or_else(|err|
         {
             panic!("error creating chunk_rules: {err}")
         });
-
-        let primitives = Rc::new(ChunkGenerator::default_primitives(&tilemap));
-
-        let memory = LispMemory::new(primitives, 256, 1 << 13);
 
         let controls = ControlsController::new();
 
@@ -387,8 +411,9 @@ impl YanyaApp for ChunkPreviewer
         Self{
             shaders: app_info.unwrap(),
             tilemap,
+            furniture,
+            enemies,
             rules,
-            memory,
             controls,
             camera,
             controller,
@@ -675,6 +700,13 @@ impl YanyaApp for ChunkPreviewer
                     chunk_code,
                     &mut |marker|
                     {
+                        let from_name = |name|
+                        {
+                            info.partial.assets.lock().texture_id(name)
+                        };
+
+                        let default_texture = info.partial.assets.lock().default_texture(DefaultTexture::Solid);
+
                         let pos = marker.pos.pos();
 
                         let mut pos: Vector2<f32> = Vector2::new(pos.x, pos.y).cast();
@@ -683,29 +715,33 @@ impl YanyaApp for ChunkPreviewer
                         {
                             MarkerKind::Enemy{name} =>
                             {
-                                let try_texture = format!("normal/enemy/{name}/body.png");
-                                let texture = if PathBuf::from("textures").join(&try_texture).exists()
+                                let texture = self.enemies.1.get_id(&name.replace('_', "")).map(|id|
                                 {
-                                    try_texture
-                                } else
-                                {
-                                    "normal/enemy/zob/body.png".to_owned()
-                                };
+                                    self.enemies.0.get(self.enemies.1.get(id).character).normal
+                                }).unwrap_or(default_texture);
 
                                 (texture, None, 0.0)
                             },
                             MarkerKind::Furniture{name, rotation: tile_rotation} =>
                             {
-                                let name = format!("normal/furniture/{name}.png");
-                                let size = info.partial.assets.lock().texture_by_name(&name).lock().size();
+                                let (texture, scale, rotation) = self.furniture.get_id(&name.replace('_', " ")).map(|id|
+                                {
+                                    let furniture = self.furniture.get(id);
 
-                                let scale = size / ENTITY_PIXEL_SCALE as f32 * THIS_TILE_SCALING;
+                                    let transform = Transform{
+                                        rotation: tile_rotation.flip_x().to_angle(),
+                                        scale: with_z(furniture.scale / TILE_SIZE * THIS_TILE_SCALING, 1.0),
+                                        ..Default::default()
+                                    };
 
-                                let rotation = -tile_rotation.to_angle();
+                                    let (closest, transform) = rotating_info(transform, furniture.collision, &furniture.textures);
+
+                                    (closest, transform.scale.xy(), transform.rotation)
+                                }).unwrap_or((default_texture, Vector2::repeat(THIS_TILE_SCALING), 0.0));
 
                                 pos += rotate_point(Vector2::new(0.0, -(THIS_TILE_SCALING - scale.y) / 2.0) / THIS_TILE_SCALING, rotation);
 
-                                (name, Some(scale), rotation)
+                                (texture, Some(scale), rotation)
                             },
                             MarkerKind::Door{rotation: tile_rotation, width, ..} =>
                             {
@@ -722,19 +758,21 @@ impl YanyaApp for ChunkPreviewer
                                     TileRotation::Up => pos.y += offset
                                 }
 
-                                ("normal/furniture/metal_door1.png".to_owned(), Some(scale), rotation)
+                                (from_name("normal/furniture/metal_door1.png"), Some(scale), rotation)
                             },
                             MarkerKind::Light{strength, offset} =>
                             {
                                 pos += offset.xy() / TILE_SIZE;
 
-                                ("normal/circle_transparent.png".to_owned(), Some(Vector2::repeat(strength * TILE_SCALING)), 0.0)
+                                (from_name("normal/circle_transparent.png"), Some(Vector2::repeat(strength * TILE_SCALING)), 0.0)
                             }
                         };
 
-                        markers.push(new_tile_like(&info.partial, &texture, rotation, scale, pos));
+                        markers.push(new_tile_like(&info.partial, texture, rotation, scale, pos));
                     }
                 );
+
+                let tilemap = &some_or_return!(self.tilemap.as_ref()).1;
 
                 match tiles
                 {
@@ -750,7 +788,7 @@ impl YanyaApp for ChunkPreviewer
                                     return None;
                                 }
 
-                                Some(new_tile(&info.partial, &self.tilemap, *tile, Vector2::new(pos.x, pos.y)))
+                                Some(new_tile(&info.partial, tilemap, *tile, Vector2::new(pos.x, pos.y)))
                             }).chain(markers).collect()
                         });
                     },

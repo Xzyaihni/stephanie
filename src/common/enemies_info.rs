@@ -10,6 +10,8 @@ use yanyaengine::Assets;
 use crate::common::{
     ENTITY_SCALE,
     ENTITY_PIXEL_SCALE,
+    with_error,
+    some_or_value,
     generic_info::*,
     Hairstyle,
     CharactersInfo,
@@ -117,9 +119,9 @@ impl EnemiesInfo
         info: impl AsRef<Path>
     ) -> Self
     {
-        let info = File::open(info.as_ref()).unwrap();
+        let info = some_or_value!(with_error(File::open(info.as_ref())), Self::empty());
 
-        let enemies: EnemiesInfoRaw = serde_json::from_reader(info).unwrap();
+        let enemies: EnemiesInfoRaw = some_or_value!(with_error(serde_json::from_reader(info)), Self::empty());
 
         let textures_root = textures_root.as_ref();
         let enemies: Vec<_> = enemies.into_iter().map(|info_raw|
