@@ -50,12 +50,12 @@ use stephanie::{
     client::game_state::{
         UiControls,
         ControlsController,
+        Control as GameControl,
         ui::controller::*
     },
     common::{
         with_z,
         with_error,
-        rotate_point,
         some_or_return,
         render_info::*,
         lisp::*,
@@ -63,8 +63,9 @@ use stephanie::{
         FurnituresInfo,
         CharactersInfo,
         EnemiesInfo,
+        furniture_creator,
         colors::Lcha,
-        world::{TILE_SIZE, CHUNK_SIZE, Tile, TileRotation}
+        world::{TILE_SIZE, CHUNK_VISUAL_SIZE, Tile, TileRotation}
     }
 };
 
@@ -203,11 +204,6 @@ impl Idable for UiId
     fn padding(id: u32) -> Self { Self::Padding(id) }
 }
 
-const TOTAL_CHUNK_SIZE: f32 = 0.5;
-
-const THIS_TILE_SCALING: f32 = TOTAL_CHUNK_SIZE / CHUNK_SIZE as f32;
-const TILE_SCALING: f32 = THIS_TILE_SCALING / TILE_SIZE;
-
 fn new_tile_like(
     info: &ObjectCreatePartialInfo,
     texture: TextureId,
@@ -223,14 +219,14 @@ fn new_tile_like(
 
     let texture = assets.texture(texture).clone();
 
-    let pos = Vector2::repeat((-TOTAL_CHUNK_SIZE + THIS_TILE_SCALING) * 0.5) + pos * THIS_TILE_SCALING;
+    let pos = Vector2::repeat((-CHUNK_VISUAL_SIZE + TILE_SIZE) * 0.5) + pos;
 
     let position = Vector3::new(pos.x, pos.y, 0.0);
 
     let scale = scale.map(|x|
     {
         Vector3::new(x.x, x.y, 1.0)
-    }).unwrap_or(Vector3::repeat(THIS_TILE_SCALING));
+    }).unwrap_or(Vector3::repeat(TILE_SIZE));
 
     let object_info = ObjectInfo{
         model,
@@ -259,7 +255,7 @@ fn new_tile(
     let rotation = -(tile.0.unwrap().rotation().to_angle() - f32::consts::FRAC_PI_2);
 
     let texture = info.assets.lock().texture_id(&format!("tiles/{name}.png"));
-    new_tile_like(info, texture, rotation, None, pos.cast())
+    new_tile_like(info, texture, rotation, None, pos.cast() * TILE_SIZE)
 }
 
 struct ChunkPreview
@@ -287,7 +283,10 @@ struct ChunkPreviewer
     enemies: (CharactersInfo, EnemiesInfo),
     rules: ChunkRulesGroup,
     controls: ControlsController<UiId>,
+    camera_position: Vector2<f32>,
+    camera_zoom: f32,
     camera: Camera,
+    ui_camera: Camera,
     controller: Controller<UiId>,
     update_timer: f32,
     regenerate: bool,
@@ -392,7 +391,13 @@ impl YanyaApp for ChunkPreviewer
 
         let controls = ControlsController::new();
 
-        let camera = Camera::new(info.object_info.aspect(), -1.0..1.0);
+        let camera_position = Vector2::new(-0.5, 0.0);
+        let camera_zoom = 3.0;
+        let mut camera = Camera::new(info.object_info.aspect(), -1.0..1.0);
+        camera.rescale(camera_zoom);
+        camera.set_position(with_z(camera_position, 0.0).into());
+
+        let ui_camera = Camera::new(info.object_info.aspect(), -1.0..1.0);
 
         let controller = Controller::new(&info.object_info);
 
@@ -415,7 +420,10 @@ impl YanyaApp for ChunkPreviewer
             enemies,
             rules,
             controls,
+            camera_position,
+            camera_zoom,
             camera,
+            ui_camera,
             controller,
             update_timer: 0.0,
             regenerate: false,
@@ -429,7 +437,7 @@ impl YanyaApp for ChunkPreviewer
 
     fn update(&mut self, partial_info: UpdateBuffersPartialInfo, dt: f32)
     {
-        let mut info = partial_info.to_full(&self.camera);
+        let mut info = partial_info.to_full(&self.ui_camera);
 
         let mut controls = self.controls.changed_this_frame();
 
@@ -638,6 +646,13 @@ impl YanyaApp for ChunkPreviewer
         }
 
         self.controller.create_renders(&mut info, dt);
+        self.controller.update_buffers(&mut info);
+
+        self.camera.rescale(self.camera_zoom);
+        self.camera.set_position(with_z(self.camera_position, 0.0).into());
+        self.camera.update();
+
+        info.update_camera(&self.camera);
 
         if self.update_timer <= 0.0
         {
@@ -709,7 +724,7 @@ impl YanyaApp for ChunkPreviewer
 
                         let pos = marker.pos.pos();
 
-                        let mut pos: Vector2<f32> = Vector2::new(pos.x, pos.y).cast();
+                        let mut pos: Vector2<f32> = Vector2::new(pos.x, pos.y).cast() * TILE_SIZE;
 
                         let (texture, scale, rotation) = match marker.kind
                         {
@@ -729,26 +744,26 @@ impl YanyaApp for ChunkPreviewer
                                     let furniture = self.furniture.get(id);
 
                                     let transform = Transform{
-                                        rotation: tile_rotation.flip_x().to_angle(),
-                                        scale: with_z(furniture.scale / TILE_SIZE * THIS_TILE_SCALING, 1.0),
+                                        rotation: tile_rotation.flip_y().to_angle(),
+                                        scale: with_z(furniture.scale, 1.0),
                                         ..Default::default()
                                     };
+
+                                    pos += furniture_creator::furniture_position(furniture, tile_rotation);
 
                                     let (closest, transform) = rotating_info(transform, furniture.collision, &furniture.textures);
 
                                     (closest, transform.scale.xy(), transform.rotation)
-                                }).unwrap_or((default_texture, Vector2::repeat(THIS_TILE_SCALING), 0.0));
-
-                                pos += rotate_point(Vector2::new(0.0, -(THIS_TILE_SCALING - scale.y) / 2.0) / THIS_TILE_SCALING, rotation);
+                                }).unwrap_or((default_texture, Vector2::repeat(TILE_SIZE), 0.0));
 
                                 (texture, Some(scale), rotation)
                             },
                             MarkerKind::Door{rotation: tile_rotation, width, ..} =>
                             {
                                 let rotation = tile_rotation.to_angle() + f32::consts::PI;
-                                let scale = Vector2::new(width as f32, 0.2) * THIS_TILE_SCALING;
+                                let scale = Vector2::new(width as f32, 0.2) * TILE_SIZE;
 
-                                let offset = (width as f32 - 1.0) * 0.5;
+                                let offset = (width as f32 - 1.0) * 0.5 * TILE_SIZE;
 
                                 match tile_rotation
                                 {
@@ -762,9 +777,9 @@ impl YanyaApp for ChunkPreviewer
                             },
                             MarkerKind::Light{strength, offset} =>
                             {
-                                pos += offset.xy() / TILE_SIZE;
+                                pos += offset.xy();
 
-                                (from_name("normal/circle_transparent.png"), Some(Vector2::repeat(strength * TILE_SCALING)), 0.0)
+                                (from_name("normal/circle_transparent.png"), Some(Vector2::repeat(strength)), 0.0)
                             }
                         };
 
@@ -806,9 +821,45 @@ impl YanyaApp for ChunkPreviewer
             preview.tiles.iter_mut().for_each(|x| x.update_buffers(&mut info));
         }
 
-        self.controller.update_buffers(&mut info);
+        if controls.is_click_down() && !controls.is_click_taken()
+        {
+            self.selected_textbox = None;
+        }
 
         self.controls.consume_changed(controls).for_each(drop);
+
+        let speed = 0.5 * dt;
+        let zoom_speed = 1.2 * dt;
+
+        if self.controls.is_down(GameControl::MoveRight)
+        {
+            self.camera_position.x += speed;
+        }
+
+        if self.controls.is_down(GameControl::MoveLeft)
+        {
+            self.camera_position.x -= speed;
+        }
+
+        if self.controls.is_down(GameControl::MoveDown)
+        {
+            self.camera_position.y += speed;
+        }
+
+        if self.controls.is_down(GameControl::MoveUp)
+        {
+            self.camera_position.y -= speed;
+        }
+
+        if self.controls.is_down(GameControl::ZoomOut)
+        {
+            self.camera_zoom += zoom_speed;
+        }
+
+        if self.controls.is_down(GameControl::ZoomIn)
+        {
+            self.camera_zoom = (self.camera_zoom - zoom_speed).max(0.0);
+        }
     }
 
     fn input(&mut self, control: Control)

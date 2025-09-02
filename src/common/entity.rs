@@ -45,7 +45,7 @@ use crate::{
         Saveable,
         EntitiesSaver,
         FurnitureId,
-        FurnitureInfo,
+        furniture_creator,
         character::PartialCombinedInfo
     }
 };
@@ -385,7 +385,7 @@ impl OnSet<ClientEntities> for FurnitureId
 {
     fn on_set(_previous: Option<Self>, entities: &ClientEntities, entity: Entity)
     {
-        FurnitureInfo::update_furniture(entities, entity);
+        furniture_creator::update_furniture(entities, entity);
     }
 }
 

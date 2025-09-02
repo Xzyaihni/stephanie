@@ -12,22 +12,10 @@ use yanyaengine::{Assets, TextureId};
 use crate::common::{
     ENTITY_SCALE,
     ENTITY_PIXEL_SCALE,
-    with_z,
     with_error,
-    some_or_return,
     some_or_value,
     generic_info::*,
-    render_info::*,
-    collider::*,
-    physics::*,
-    lazy_transform::*,
-    Parent,
-    Entity,
-    EntityInfo,
-    AnyEntities,
-    Transform,
-    world::DirectionsGroup,
-    entity::ClientEntities
+    world::DirectionsGroup
 };
 
 
@@ -128,62 +116,6 @@ impl FurnitureInfo
             container: raw.container.unwrap_or(false),
             textures,
             collision: raw.collision
-        }
-    }
-
-    pub fn update_furniture(entities: &ClientEntities, entity: Entity)
-    {
-        if !entities.named_exists(entity) && !entities.in_flight().named_exists(entity)
-        {
-            let id = some_or_return!(entities.furniture(entity));
-            let info = entities.infos().furnitures_info.get(*id);
-
-            let ids = info.textures;
-
-            let mut setter = entities.lazy_setter.borrow_mut();
-
-            let render = RenderInfo{
-                object: Some(RenderObjectKind::TextureRotating{ids, offset: info.collision}.into()),
-                shadow_visible: true,
-                z_level: ZLevel::Hips,
-                ..Default::default()
-            };
-
-            setter.set_named_no_change(entity, Some(info.name.clone()));
-
-            if info.collision.is_some()
-            {
-                let aspect = info.scale / info.scale.min();
-
-                let scale = with_z(aspect, 1.0);
-
-                entities.push(true, EntityInfo{
-                    render: Some(render),
-                    lazy_transform: Some(LazyTransformInfo{
-                        transform: Transform{
-                            scale,
-                            ..Default::default()
-                        },
-                        ..Default::default()
-                    }.into()),
-                    parent: Some(Parent::new(entity, true)),
-                    ..Default::default()
-                });
-            } else
-            {
-                setter.set_render_no_change(entity, Some(render));
-            }
-
-            setter.set_collider_no_change(entity, Some(ColliderInfo{
-                kind: ColliderType::Rectangle,
-                ..Default::default()
-            }.into()));
-
-            setter.set_physical_no_change(entity, Some(PhysicalProperties{
-                inverse_mass: 100.0_f32.recip(),
-                sleeping: true,
-                ..Default::default()
-            }.into()));
         }
     }
 }
