@@ -135,6 +135,7 @@
                                 (place-furniture (make-point (x-of 5) 11) 'wood_table (side-of side-right))
                                 (place-furniture (make-point (x-of 4) 10) 'wood_chair side-up)
                                 (place-furniture (make-point (x-of 5) 10) 'wood_chair side-up)))
+                        (place-furniture (make-point (x-of 5) 13) 'bed (side-of side-right))
                         (place-enemy (make-point (x-of 4) 7)))
                     (lambda ()
                         (add-window 8)
@@ -158,7 +159,8 @@
                                     'wood_table
                                     (if table-rotated (if flip side-left (side-of side-right)) side-up))
                                 (place-furniture (make-point (x-of 4) 6) 'wood_chair side-up)
-                                (place-furniture (make-point (x-of 5) 7) 'wood_chair (side-of side-right))))
+                                (place-furniture (make-point (x-of 5) 7) 'wood_chair (side-of side-right))
+                                (place-furniture (make-point (x-of 2) 13) 'bed side-down)))
                         (place-enemy (make-point (x-of 3) 10)))
                     (lambda ()
                         (this-tile (make-point (x-of 2) 1) (tile 'glass))
@@ -179,6 +181,7 @@
                         (place-furniture (make-point (x-of 3) 7) 'wood_table side-up)
                         (place-furniture (make-point (x-of 2) 7) 'wood_chair (side-of side-left))
                         (place-furniture (make-point (x-of 2) 8) 'wood_chair (side-of side-left))
+                        (place-furniture (make-point (x-of 5) 5) 'bed side-down)
                         (place-enemy (make-point (x-of 3) 5)))))))
 
         ; outer walls
