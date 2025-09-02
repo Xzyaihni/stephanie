@@ -1057,6 +1057,7 @@ impl YanyaApp for ChunkPreviewer
 
     fn resize(&mut self, aspect: f32)
     {
+        self.ui_camera.resize(aspect);
         self.camera.resize(aspect);
     }
 }
