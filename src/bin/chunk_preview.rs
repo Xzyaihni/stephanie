@@ -3,10 +3,10 @@
 use std::{
     f32,
     fs,
-    ops::Range,
+    ops::{Range, Deref, DerefMut},
     time::SystemTime,
     rc::Rc,
-    path::PathBuf
+    path::{Path, PathBuf}
 };
 
 use vulkano::pipeline::graphics::{
@@ -264,9 +264,145 @@ struct ChunkPreview
 }
 
 #[derive(Debug, Clone, PartialEq)]
+struct ModifiedWatcher<T>
+{
+    paths: Vec<PathBuf>,
+    last_modified: Vec<Option<SystemTime>>,
+    value: T
+}
+
+impl<T> Deref for ModifiedWatcher<T>
+{
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target
+    {
+        &self.value
+    }
+}
+
+impl<T> DerefMut for ModifiedWatcher<T>
+{
+    fn deref_mut(&mut self) -> &mut Self::Target
+    {
+        &mut self.value
+    }
+}
+
+fn modified_time(path: &Path) -> Option<SystemTime>
+{
+    if !path.exists()
+    {
+        eprintln!("cant find path: {}", path.display());
+        return None;
+    }
+
+    let this_metadata = match fs::metadata(path)
+    {
+        Ok(x) => x,
+        Err(err) =>
+        {
+            eprintln!("modified time access error: {err}");
+            return None;
+        }
+    };
+
+    if this_metadata.is_dir()
+    {
+        match fs::read_dir(path)
+        {
+            Ok(x) =>
+            {
+                x.fold(None, |acc, x|
+                {
+                    let modified_time = match x
+                    {
+                        Ok(x) => modified_time(&x.path()),
+                        Err(err) =>
+                        {
+                            eprintln!("dir entry error: {err}");
+                            None
+                        }
+                    };
+
+                    if let Some(modified) = modified_time
+                    {
+                        if let Some(acc) = acc
+                        {
+                            Some(if modified > acc { modified } else { acc })
+                        } else
+                        {
+                            Some(modified)
+                        }
+                    } else
+                    {
+                        acc
+                    }
+                })
+            },
+            Err(err) =>
+            {
+                eprintln!("read dir error: {err}");
+
+                None
+            }
+        }
+    } else
+    {
+        match this_metadata.modified()
+        {
+            Ok(x) => Some(x),
+            Err(err) =>
+            {
+                eprintln!("modified access error: {err}");
+
+                None
+            }
+        }
+    }
+}
+
+impl<T> ModifiedWatcher<T>
+{
+    fn new(path: impl Into<PathBuf>, value: T) -> Self
+    {
+        let path = path.into();
+
+        Self::new_many(vec![path], value)
+    }
+
+    fn new_many(paths: Vec<PathBuf>, value: T) -> Self
+    {
+        let last_modified: Vec<_> = paths.iter().map(|x| modified_time(&x)).collect();
+
+        Self{
+            paths,
+            last_modified,
+            value
+        }
+    }
+
+    fn modified_check(&mut self) -> bool
+    {
+        self.paths.iter().zip(self.last_modified.iter_mut()).fold(false, |modified, (path, last_modified)|
+        {
+            let new_modified_time = modified_time(path);
+
+            let changed = new_modified_time != *last_modified;
+
+            if changed
+            {
+                *last_modified = new_modified_time;
+            }
+
+            modified || changed
+        })
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 struct Tags
 {
-    last_modified: Option<SystemTime>,
     name: String,
     height: i32,
     difficulty: f32,
@@ -275,12 +411,59 @@ struct Tags
     others: Vec<String>
 }
 
-struct ChunkPreviewer
+struct AssetsDependent
 {
-    shaders: DrawShaders,
     tilemap: Option<(LispMemory, TileMap)>,
     furniture: FurnituresInfo,
     enemies: (CharactersInfo, EnemiesInfo),
+}
+
+impl AssetsDependent
+{
+    fn new(info: &ObjectCreatePartialInfo) -> Self
+    {
+        let tilemap = {
+            let tilemap = with_error(TileMap::parse("info/tiles.json", "textures/tiles/")).map(|x| x.tilemap);
+
+            tilemap.map(|tilemap|
+            {
+                let primitives = Rc::new(ChunkGenerator::default_primitives(&tilemap));
+
+                let memory = LispMemory::new(primitives, 256, 1 << 13);
+
+                (memory, tilemap)
+            })
+        };
+
+        let furniture = FurnituresInfo::parse(&info.assets.lock(), "normal/furniture", "info/furnitures.json");
+
+        let enemies = {
+            let mut characters = CharactersInfo::new();
+            let enemies = EnemiesInfo::parse(&info.assets.lock(), &mut characters, "normal/enemy", "info/enemies.json");
+
+            (characters, enemies)
+        };
+
+        Self{
+            tilemap,
+            furniture,
+            enemies
+        }
+    }
+
+    fn reload(&mut self, info: &mut UpdateBuffersInfo)
+    {
+        let assets = info.partial.assets.clone();
+        assets.lock().reload(info);
+
+        *self = Self::new(&info.partial);
+    }
+}
+
+struct ChunkPreviewer
+{
+    shaders: DrawShaders,
+    assets_dependent: ModifiedWatcher<AssetsDependent>,
     rules: ChunkRulesGroup,
     controls: ControlsController<UiId>,
     camera_position: Vector2<f32>,
@@ -292,8 +475,8 @@ struct ChunkPreviewer
     regenerate: bool,
     selected_textbox: Option<TextboxId>,
     chunk_code: Option<Lisp>,
-    current_tags: Tags,
-    preview_tags: Tags,
+    current_tags: ModifiedWatcher<Tags>,
+    preview_tags: ModifiedWatcher<Tags>,
     preview: Option<ChunkPreview>
 }
 
@@ -301,14 +484,9 @@ const PARENT_DIRECTORY: &str = "world_generation";
 
 impl ChunkPreviewer
 {
-    fn chunk_name(name: &str) -> PathBuf
-    {
-        PathBuf::from(PARENT_DIRECTORY).join("chunks").join(format!("{name}.scm"))
-    }
-
     fn compile_chunk(&mut self)
     {
-        let memory = some_or_return!(self.tilemap.as_ref()).0.clone();
+        let memory = some_or_return!(self.assets_dependent.tilemap.as_ref()).0.clone();
 
         let parent_directory = PathBuf::from(PARENT_DIRECTORY);
         let filepath = parent_directory.join("chunks").join(format!("{}.scm", &self.preview_tags.name));
@@ -362,28 +540,6 @@ impl YanyaApp for ChunkPreviewer
 
     fn init(info: InitPartialInfo<Self::SetupInfo>, app_info: Self::AppInfo) -> Self
     {
-        let tilemap = {
-            let tilemap = with_error(TileMap::parse("info/tiles.json", "textures/tiles/")).map(|x| x.tilemap);
-
-            tilemap.map(|tilemap|
-            {
-                let primitives = Rc::new(ChunkGenerator::default_primitives(&tilemap));
-
-                let memory = LispMemory::new(primitives, 256, 1 << 13);
-
-                (memory, tilemap)
-            })
-        };
-
-        let furniture = FurnituresInfo::parse(&info.object_info.assets.lock(), "normal/furniture", "info/furnitures.json");
-
-        let enemies = {
-            let mut characters = CharactersInfo::new();
-            let enemies = EnemiesInfo::parse(&info.object_info.assets.lock(), &mut characters, "normal/enemy", "info/enemies.json");
-
-            (characters, enemies)
-        };
-
         let rules = ChunkRulesGroup::load(PathBuf::from("world_generation/")).unwrap_or_else(|err|
         {
             panic!("error creating chunk_rules: {err}")
@@ -401,23 +557,25 @@ impl YanyaApp for ChunkPreviewer
 
         let controller = Controller::new(&info.object_info);
 
-        let tags = Tags{
-            last_modified: None,
+        let tags = ModifiedWatcher::new(PARENT_DIRECTORY, Tags{
             name: String::new(),
             height: 1,
             difficulty: 0.0,
             rotation: TileRotation::Up,
             seed: String::new(),
             others: Vec::new()
-        };
+        });
 
         let preview = None;
 
+        let assets_dependent = ModifiedWatcher::new_many(
+            vec!["textures".into(), "info".into(), "lisp".into()],
+            AssetsDependent::new(&info.object_info)
+        );
+
         Self{
             shaders: app_info.unwrap(),
-            tilemap,
-            furniture,
-            enemies,
+            assets_dependent,
             rules,
             controls,
             camera_position,
@@ -438,6 +596,23 @@ impl YanyaApp for ChunkPreviewer
     fn update(&mut self, partial_info: UpdateBuffersPartialInfo, dt: f32)
     {
         let mut info = partial_info.to_full(&self.ui_camera);
+
+        if self.update_timer <= 0.0
+        {
+            if self.current_tags.modified_check()
+            {
+                eprintln!("hot reloading chunk");
+                self.regenerate = true;
+            }
+
+            if self.assets_dependent.modified_check()
+            {
+                eprintln!("hot reloading assets");
+                self.assets_dependent.reload(&mut info);
+
+                self.regenerate = true;
+            }
+        }
 
         let mut controls = self.controls.changed_this_frame();
 
@@ -654,16 +829,6 @@ impl YanyaApp for ChunkPreviewer
 
         info.update_camera(&self.camera);
 
-        if self.update_timer <= 0.0
-        {
-            self.current_tags.last_modified = fs::metadata(Self::chunk_name(&self.current_tags.name))
-                .ok()
-                .and_then(|x|
-                {
-                    x.modified().ok()
-                });
-        }
-
         let needs_recreate = self.preview.is_none() || self.current_tags != self.preview_tags;
         let recreate_preview = self.regenerate || (self.update_timer <= 0.0 && needs_recreate);
 
@@ -730,18 +895,20 @@ impl YanyaApp for ChunkPreviewer
                         {
                             MarkerKind::Enemy{name} =>
                             {
-                                let texture = self.enemies.1.get_id(&name.replace('_', "")).map(|id|
+                                let enemies = &self.assets_dependent.enemies;
+                                let texture = enemies.1.get_id(&name.replace('_', "")).map(|id|
                                 {
-                                    self.enemies.0.get(self.enemies.1.get(id).character).normal
+                                    enemies.0.get(enemies.1.get(id).character).normal
                                 }).unwrap_or(default_texture);
 
                                 (texture, None, 0.0)
                             },
                             MarkerKind::Furniture{name, rotation: tile_rotation} =>
                             {
-                                let (texture, scale, rotation) = self.furniture.get_id(&name.replace('_', " ")).map(|id|
+                                let furnitures = &self.assets_dependent.furniture;
+                                let (texture, scale, rotation) = furnitures.get_id(&name.replace('_', " ")).map(|id|
                                 {
-                                    let furniture = self.furniture.get(id);
+                                    let furniture = furnitures.get(id);
 
                                     let transform = Transform{
                                         rotation: tile_rotation.flip_y().to_angle(),
@@ -787,7 +954,7 @@ impl YanyaApp for ChunkPreviewer
                     }
                 );
 
-                let tilemap = &some_or_return!(self.tilemap.as_ref()).1;
+                let tilemap = &some_or_return!(self.assets_dependent.tilemap.as_ref()).1;
 
                 match tiles
                 {
