@@ -387,6 +387,20 @@ impl World
             entity_info.create(&mut create);
         });
 
+        #[cfg(debug_assertions)]
+        {
+            use crate::common::Parent;
+
+            output.iter().for_each(|(entity, _)|
+            {
+                if let Some(mut parent) = container.parent_mut(*entity)
+                {
+                    let matched_entity = container.with_seed(parent.entity().no_seed());
+                    *parent = Parent::new(matched_entity, parent.visible);
+                }
+            });
+        }
+
         output
     }
 

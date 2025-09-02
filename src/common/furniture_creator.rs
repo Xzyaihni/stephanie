@@ -4,7 +4,6 @@ use yanyaengine::Transform;
 
 use crate::common::{
     ENTITY_SCALE,
-    lazy_transform::*,
     rotate_point_z_3d,
     world::{TILE_SIZE, TileRotation},
     EntityInfo,
@@ -45,15 +44,12 @@ pub fn create(
     }).unwrap_or_else(|| Vector3::new(info.scale.x, info.scale.y, ENTITY_SCALE));
 
     EntityInfo{
-        lazy_transform: Some(LazyTransformInfo{
-            transform: Transform{
-                position: pos + shift,
-                scale,
-                rotation,
-                ..Default::default()
-            },
+        transform: Some(Transform{
+            position: pos + shift,
+            scale,
+            rotation,
             ..Default::default()
-        }.into()),
+        }),
         inventory,
         furniture: Some(id),
         saveable: Some(()),

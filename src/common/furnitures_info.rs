@@ -131,7 +131,7 @@ impl FurnitureInfo
 
     pub fn update_furniture(entities: &ClientEntities, entity: Entity)
     {
-        if !entities.render_exists(entity) && !entities.in_flight().render_exists(entity)
+        if !entities.named_exists(entity) && !entities.in_flight().named_exists(entity)
         {
             let id = some_or_return!(entities.furniture(entity));
             let info = entities.infos().furnitures_info.get(*id);

@@ -319,7 +319,6 @@ no_on_set!{
     FollowPosition,
     Inventory,
     String,
-    Parent,
     Entity,
     Transform,
     Enemy,
@@ -338,6 +337,30 @@ no_on_set!{
 }
 
 no_on_set_for!{ServerEntities, Character, Door, FurnitureId}
+
+impl OnSet<ClientEntities> for Parent
+{
+    fn on_set(_previous: Option<Self>, entities: &ClientEntities, entity: Entity)
+    {
+        debug_assert!(
+            entities.exists(entities.parent(entity).unwrap().entity()),
+            "{}",
+            entities.info_ref(entity).map(|x| format!("{x:#?}")).unwrap_or_default()
+        );
+    }
+}
+
+impl OnSet<ServerEntities> for Parent
+{
+    fn on_set(_previous: Option<Self>, entities: &ServerEntities, entity: Entity)
+    {
+        debug_assert!(
+            entities.exists(entities.parent(entity).unwrap().entity()),
+            "{}",
+            entities.info_ref(entity).map(|x| format!("{x:#?}")).unwrap_or_default()
+        );
+    }
+}
 
 impl OnSet<ClientEntities> for Character
 {
@@ -1723,10 +1746,42 @@ macro_rules! define_entities_both
 
             fn clear_components(&mut self, entity: Entity)
             {
+                self.remove_lazy_components(entity);
+                self.remove_from_remove_queue(entity);
+                self.remove_from_create_queue(entity);
+
+                self.remove_children(entity);
+                self.try_remove_sibling(entity);
+
                 self.clear_components_inner(entity);
 
                 let components = components!(self, entity);
                 components.borrow_mut()[entity.id] = empty_components();
+            }
+
+            fn remove_lazy_components(&mut self, entity: Entity)
+            {
+                let setter = self.lazy_setter.get_mut();
+
+                if !setter.changed
+                {
+                    return;
+                }
+
+                $(
+                    setter.$name.retain(|x| x.0 != entity);
+                )+
+            }
+
+            fn remove_from_remove_queue(&mut self, entity: Entity)
+            {
+                self.remove_queue.get_mut().retain(|x| *x != entity);
+            }
+
+            fn remove_from_create_queue(&mut self, entity: Entity)
+            {
+                self.create_queue.get_mut().retain(|x| x.0 != entity);
+                self.create_render_queue.get_mut().retain(|x| x.0 != entity);
             }
 
             pub fn remove(&mut self, entity: Entity)
@@ -1737,6 +1792,10 @@ macro_rules! define_entities_both
                 }
 
                 self.on_remove.clone().borrow_mut().iter_mut().for_each(|x| x(self, entity));
+
+                self.remove_lazy_components(entity);
+                self.remove_from_remove_queue(entity);
+                self.remove_from_create_queue(entity);
 
                 self.remove_children(entity);
                 self.try_remove_sibling(entity);
@@ -1756,10 +1815,7 @@ macro_rules! define_entities_both
                 {
                     let parent = parent.borrow();
 
-                    ((&*parent).into().entity() == parent_entity).then(||
-                    {
-                        entity
-                    })
+                    ((&*parent).into().entity() == parent_entity).then_some(entity)
                 })
             }
 
@@ -1772,7 +1828,41 @@ macro_rules! define_entities_both
 
             pub fn remove_children(&mut self, parent_entity: Entity)
             {
-                self.children_of(parent_entity).collect::<Vec<_>>().into_iter().for_each(|entity|
+                let mut remove_list = self.parent.iter().filter_map(move |(_, &ComponentWrapper{
+                    entity,
+                    component: ref parent
+                })|
+                {
+                    let parent = parent.borrow();
+
+                    ((&*parent).into().entity() == parent_entity).then_some(entity)
+                }).collect::<Vec<_>>();
+
+                self.create_queue.get_mut().retain(|(entity, info)|
+                {
+                    let remove_this = info.parent.as_ref().map(|parent| parent.entity() == parent_entity).unwrap_or(false);
+
+                    if remove_this
+                    {
+                        remove_list.push(*entity);
+                    }
+
+                    !remove_this
+                });
+
+                {
+                    let setter = self.lazy_setter.get_mut();
+
+                    if setter.changed
+                    {
+                        remove_list.extend(setter.parent.iter().filter_map(|(entity, component, _)|
+                        {
+                            component.as_ref().and_then(|x| (x.entity() == parent_entity).then_some(*entity))
+                        }));
+                    }
+                }
+
+                remove_list.into_iter().for_each(|entity|
                 {
                     self.remove(entity);
                 });
