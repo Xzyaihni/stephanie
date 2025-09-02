@@ -203,6 +203,7 @@ fn close_enough(other: &Transform, this: &Transform) -> bool
 pub struct Enemy
 {
     behavior: EnemyBehavior,
+    #[serde(skip)]
     behavior_state: BehaviorState,
     current_state_left: Option<f32>,
     hostile_check_timer: f32,
