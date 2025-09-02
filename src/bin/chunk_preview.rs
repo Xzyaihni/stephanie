@@ -601,7 +601,7 @@ impl YanyaApp for ChunkPreviewer
         {
             if self.current_tags.modified_check()
             {
-                eprintln!("hot reloading chunk");
+                eprintln!("hot reloading chunk `{}`", &self.current_tags.name);
                 self.regenerate = true;
             }
 
@@ -619,7 +619,7 @@ impl YanyaApp for ChunkPreviewer
         {
             let controls = &mut controls;
 
-            let aspect = self.camera.aspect();
+            let aspect = self.ui_camera.aspect();
             let screen_body = self.controller.update(UiId::ScreenBody, UiElement{
                 children_layout: UiLayout::Vertical,
                 width: aspect.min(1.0).into(),
