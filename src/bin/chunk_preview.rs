@@ -6,8 +6,11 @@ use std::{
     ops::{Range, Deref, DerefMut},
     time::SystemTime,
     rc::Rc,
+    sync::Arc,
     path::{Path, PathBuf}
 };
+
+use parking_lot::Mutex;
 
 use vulkano::pipeline::graphics::{
     rasterization::CullMode,
@@ -34,6 +37,7 @@ use yanyaengine::{
     Control,
     App,
     YanyaApp,
+    object::Texture,
     camera::Camera
 };
 
@@ -60,6 +64,7 @@ use stephanie::{
         render_info::*,
         lisp::*,
         TileMap,
+        TileMapWithTextures,
         FurnituresInfo,
         CharactersInfo,
         EnemiesInfo,
@@ -212,12 +217,23 @@ fn new_tile_like(
     pos: Vector2<f32>
 ) -> Object
 {
+    let texture = info.assets.lock().texture(texture).clone();
+
+    new_tile_like_inner(info, texture, rotation, scale, pos)
+}
+
+fn new_tile_like_inner(
+    info: &ObjectCreatePartialInfo,
+    texture: Arc<Mutex<Texture>>,
+    rotation: f32,
+    scale: Option<Vector2<f32>>,
+    pos: Vector2<f32>
+) -> Object
+{
     let assets = info.assets.lock();
 
     let model_id = assets.default_model(DefaultModel::Square);
     let model = assets.model(model_id).clone();
-
-    let texture = assets.texture(texture).clone();
 
     let pos = Vector2::repeat((-CHUNK_VISUAL_SIZE + TILE_SIZE) * 0.5) + pos;
 
@@ -243,19 +259,26 @@ fn new_tile_like(
 }
 
 fn new_tile(
-    info: &ObjectCreatePartialInfo,
-    tilemap: &TileMap,
+    info: &mut ObjectCreatePartialInfo,
+    tilemap: &TileMapWithTextures,
     tile: Tile,
     pos: Vector2<usize>
 ) -> Object
 {
 
-    let tile_info = tilemap.info(tile);
-    let name = &tile_info.name;
+    let tile_info = tilemap.tilemap.info(tile);
     let rotation = -(tile.0.unwrap().rotation().to_angle() - f32::consts::FRAC_PI_2);
 
-    let texture = info.assets.lock().texture_id(&format!("tiles/{name}.png"));
-    new_tile_like(info, texture, rotation, None, pos.cast() * TILE_SIZE)
+    let search_texture = tile_info.get_weighted_texture().unwrap();
+    let image = tilemap.textures.iter()
+        .find_map(|x| x.iter().find(|(x, _)| *x == search_texture))
+        .unwrap()
+        .1
+        .clone();
+
+    let texture = Texture::new(info.builder_wrapper.resource_uploader_mut(), image.into());
+
+    new_tile_like_inner(info, Arc::new(Mutex::new(texture)), rotation, None, pos.cast() * TILE_SIZE)
 }
 
 struct ChunkPreview
@@ -413,7 +436,7 @@ struct Tags
 
 struct AssetsDependent
 {
-    tilemap: Option<(LispMemory, TileMap)>,
+    tilemap: Option<(LispMemory, TileMapWithTextures)>,
     furniture: FurnituresInfo,
     enemies: (CharactersInfo, EnemiesInfo),
 }
@@ -423,11 +446,11 @@ impl AssetsDependent
     fn new(info: &ObjectCreatePartialInfo) -> Self
     {
         let tilemap = {
-            let tilemap = with_error(TileMap::parse("info/tiles.json", "textures/tiles/")).map(|x| x.tilemap);
+            let tilemap = with_error(TileMap::parse("info/tiles.json", "textures/tiles/"));
 
             tilemap.map(|tilemap|
             {
-                let primitives = Rc::new(ChunkGenerator::default_primitives(&tilemap));
+                let primitives = Rc::new(ChunkGenerator::default_primitives(&tilemap.tilemap));
 
                 let memory = LispMemory::new(primitives, 256, 1 << 13);
 
@@ -970,7 +993,7 @@ impl YanyaApp for ChunkPreviewer
                                     return None;
                                 }
 
-                                Some(new_tile(&info.partial, tilemap, *tile, Vector2::new(pos.x, pos.y)))
+                                Some(new_tile(&mut info.partial, tilemap, *tile, Vector2::new(pos.x, pos.y)))
                             }).chain(markers).collect()
                         });
                     },

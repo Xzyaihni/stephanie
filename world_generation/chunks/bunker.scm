@@ -2,8 +2,8 @@
     (fill-area
         (filled-chunk (tile 'air))
         (make-area
-            (make-point 5 4)
-            (make-point (- size-x 9) (- size-y 7)))
+            (make-point 6 8)
+            (make-point 6 6))
         (tile 'concrete)))
 
 (define (generate-floor)
@@ -11,8 +11,8 @@
     (fill-area
         this-chunk
         (make-area
-            (make-point 6 5)
-            (make-point (- size-x 11) (- size-y 9)))
+            (make-point 5 4)
+            (make-point (- size-x 9) (- size-y 7)))
         (tile 'concrete)))
 
 (define (generate-ground)
@@ -20,8 +20,8 @@
     (fill-area
         this-chunk
         (make-area
-            (make-point 6 5)
-            (make-point (- size-x 11) (- size-y 9)))
+            (make-point 6 8)
+            (make-point 6 6))
         (tile 'concrete))
     (put-tile
         this-chunk
@@ -35,18 +35,14 @@
             (rectangle-outline
                 this-chunk
                 (make-area
-                    (make-point 5 4)
-                    (make-point (- size-x 9) (- size-y 7)))
+                    (make-point 6 8)
+                    (make-point 6 6))
                 (tile 'concrete))
             (put-tile
                 this-chunk
-                (make-point (/ size-x 2) (/ size-y 2))
+                (make-point (/ size-x 2) 10)
                 (single-marker (list 'light 1.3)))
-            (put-tile
-                this-chunk
-                (make-point (/ size-x 2) (/ size-y 2))
-                (single-marker (list 'light 1.3)))
-            (let ((doorway-point (make-point (- (/ size-x 2) 1) 4)))
+            (let ((doorway-point (make-point (/ size-x 2) 8)))
                 (begin
                     (fill-area
                         this-chunk
@@ -78,8 +74,12 @@
                 this-chunk
                 (make-point (/ size-x 2) (/ size-y 2))
                 (single-marker (list 'light 1.3)))
-            (place-furniture (make-point 6 6) 'wood_table side-up)
-            (place-furniture (make-point 7 9) 'wood_chair side-up)
+            (place-furniture (make-point 6 6) 'wood_table side-left)
+            (place-furniture (make-point 7 5) 'wood_chair side-up)
+            (place-furniture (make-point 6 5) 'wood_chair side-up)
+            (place-furniture (make-point 7 7) 'wood_chair side-down)
+            (place-furniture (make-point 6 7) 'wood_chair side-down)
+            (place-furniture (make-point 10 5) 'bed side-up)
             (put-tile
                 this-chunk
                 (make-point (/ size-x 2) (- size-y 5))

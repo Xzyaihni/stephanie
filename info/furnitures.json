@@ -17,5 +17,9 @@
         "name": "wood chair",
         "symmetry": "None",
         "collision": 0.0
+    },
+    {
+        "name": "bed",
+        "symmetry": "None"
     }
 ]
