@@ -239,6 +239,18 @@ impl ClientEntitiesContainer
             physical_system::apply(&mut self.entities, world)
         };
 
+        contacts.iter().for_each(|contact|
+        {
+            let set_changed = self.entities.set_changed();
+
+            set_changed.target(contact.a);
+
+            if let Some(b) = contact.b
+            {
+                set_changed.target(b);
+            }
+        });
+
         crate::frame_time_this!{
             2, collision_system_resolution,
             ContactResolver::resolve(&self.entities, contacts, dt)

@@ -1064,6 +1064,17 @@ macro_rules! define_entities_both
                     self.0.changed_entities.borrow_mut().$name.push(entity);
                 }
             )+
+
+            pub fn target(&self, entity: Entity)
+            {
+                if self.0.lazy_transform_exists(entity)
+                {
+                    self.lazy_transform(entity);
+                } else
+                {
+                    self.transform(entity);
+                }
+            }
         }
 
         pub const COMPONENTS_COUNT: usize = count_components();

@@ -330,6 +330,12 @@ impl Enemy
             return;
         }
 
+        match &self.behavior_state
+        {
+            BehaviorState::Wait => (),
+            _ => entities.set_changed().target(entity)
+        }
+
         match &mut self.behavior_state
         {
             BehaviorState::MoveDirection(direction) =>
