@@ -230,6 +230,11 @@ pub fn pathfind(
     end: Vector3<f32>
 ) -> Option<WorldPath>
 {
+    let tile_colliding = |pos|
+    {
+        world.tile(pos).map(|x| world.tile_info(*x).colliding).unwrap_or(true)
+    };
+
     let target = TilePos::from(end);
     let start = TilePos::from(start);
 
@@ -266,7 +271,7 @@ pub fn pathfind(
         }
 
         let below = current.value.offset(Pos3::new(0, 0, -1));
-        let is_grounded = !world.tile(below)?.is_none();
+        let is_grounded = tile_colliding(below);
 
         let mut try_push = |position: TilePos|
         {
@@ -303,7 +308,7 @@ pub fn pathfind(
             {
                 let position = current.value.offset(Pos3::from(direction));
 
-                if world.tile(position).map(|x| x.is_none()).unwrap_or(false)
+                if !tile_colliding(position)
                 {
                     try_push(position);
                 }
