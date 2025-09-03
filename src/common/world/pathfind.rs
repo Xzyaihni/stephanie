@@ -175,6 +175,54 @@ impl Ord for Node
     fn cmp(&self, other: &Self) -> Ordering { self.partial_cmp(other).unwrap_or(Ordering::Equal) }
 }
 
+fn simplify_path(
+    world: &World,
+    scale: Vector3<f32>,
+    tiles: Vec<Vector3<f32>>
+) -> WorldPath
+{
+    let mut check = 0;
+
+    let mut simplified = vec![tiles[0]];
+
+    let mut index = 1;
+    while index < tiles.len()
+    {
+        let is_next = (check + 1) == index;
+
+        let is_tile_reachable = |tiles: &[Vector3<f32>]|
+        {
+            let distance = tiles[index] - tiles[check];
+
+            let start = Vector3::from(tiles[check]);
+
+            raycast::swept_aabb_world(
+                world,
+                &Transform{
+                    position: start,
+                    scale,
+                    ..Default::default()
+                },
+                distance
+            ).is_none()
+        };
+
+        let is_reachable = is_next || is_tile_reachable(&tiles);
+
+        if is_reachable
+        {
+            index += 1;
+        } else
+        {
+            check = index - 1;
+
+            simplified.push(tiles[check]);
+        }
+    }
+
+    WorldPath::new(simplified)
+}
+
 pub fn pathfind(
     world: &World,
     scale: Vector3<f32>,
@@ -210,54 +258,11 @@ pub fn pathfind(
 
         if current.value == target
         {
-            let tiles = {
-                let current_position: Vector3<f32> = current.value.center_position().into();
-                let mut path = vec![Vector3::new(end.x, end.y, current_position.z), current_position];
-                current.path_to(&mut explored, &mut path, |x| x.center_position().into());
+            let current_position: Vector3<f32> = current.value.center_position().into();
+            let mut path = vec![Vector3::new(end.x, end.y, current_position.z), current_position];
+            current.path_to(&mut explored, &mut path, |x| x.center_position().into());
 
-                path
-            };
-
-            let mut check = 0;
-
-            let mut simplified = vec![tiles[0]];
-
-            let mut index = 1;
-            while index < tiles.len()
-            {
-                let is_next = (check + 1) == index;
-
-                let is_tile_reachable = |tiles: &[Vector3<f32>]|
-                {
-                    let distance = tiles[index] - tiles[check];
-
-                    let start = Vector3::from(tiles[check]);
-
-                    raycast::swept_aabb_world(
-                        world,
-                        &Transform{
-                            position: start,
-                            scale,
-                            ..Default::default()
-                        },
-                        distance
-                    ).is_none()
-                };
-
-                let is_reachable = is_next || is_tile_reachable(&tiles);
-
-                if is_reachable
-                {
-                    index += 1;
-                } else
-                {
-                    check = index - 1;
-
-                    simplified.push(tiles[check]);
-                }
-            }
-
-            return Some(WorldPath::new(simplified));
+            return Some(simplify_path(world, scale, path));
         }
 
         let below = current.value.offset(Pos3::new(0, 0, -1));
