@@ -243,11 +243,11 @@ impl ClientEntitiesContainer
         {
             let set_changed = self.entities.set_changed();
 
-            set_changed.target(contact.a);
+            set_changed.position_rotation(contact.a);
 
             if let Some(b) = contact.b
             {
-                set_changed.target(b);
+                set_changed.position_rotation(b);
             }
         });
 

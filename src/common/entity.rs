@@ -1065,15 +1065,14 @@ macro_rules! define_entities_both
                 }
             )+
 
-            pub fn target(&self, entity: Entity)
+            pub fn position_rotation(&self, entity: Entity)
             {
-                if self.0.lazy_transform_exists(entity)
+                if entity.local
                 {
-                    self.lazy_transform(entity);
-                } else
-                {
-                    self.transform(entity);
+                    return;
                 }
+
+                self.0.changed_entities.borrow_mut().position_rotation.push(entity);
             }
         }
 
@@ -1180,6 +1179,7 @@ macro_rules! define_entities_both
         #[derive(Debug, Default)]
         struct ChangedEntities
         {
+            position_rotation: Vec<Entity>,
             $($name: Vec<Entity>,)+
         }
 
@@ -1912,6 +1912,8 @@ macro_rules! define_entities_both
 
             pub fn handle_on_change(&mut self)
             {
+                self.changed_entities.get_mut().position_rotation.clear();
+
                 $(
                     let changed_entities = self.changed_entities.get_mut();
 
@@ -2801,6 +2803,15 @@ macro_rules! define_entities
                 }
 
                 let changed_entities = self.changed_entities.borrow();
+
+                changed_entities.position_rotation.iter().copied().for_each(|entity|
+                {
+                    debug_assert!(!entity.local);
+
+                    let target = some_or_return!(self.target_ref(entity));
+
+                    passer.send_message(Message::SyncPositionRotation{entity, position: target.position, rotation: target.rotation});
+                });
 
                 $(
                     changed_entities.$name.iter().copied().for_each(|entity|

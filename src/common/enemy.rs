@@ -333,7 +333,7 @@ impl Enemy
         match &self.behavior_state
         {
             BehaviorState::Wait => (),
-            _ => entities.set_changed().target(entity)
+            _ => entities.set_changed().position_rotation(entity)
         }
 
         match &mut self.behavior_state
