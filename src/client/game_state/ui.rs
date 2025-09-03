@@ -1431,7 +1431,8 @@ impl Ui
                     return;
                 }
 
-                some_or_return!(entities.anatomy_mut_no_change(entity)).for_accessed_parts(|part|
+                let mut anatomy = some_or_return!(entities.anatomy_mut_no_change(entity));
+                anatomy.for_accessed_parts(|part|
                 {
                     let default_lifetime = 2.0;
 
@@ -1447,6 +1448,11 @@ impl Ui
                             parts.push(part.clone());
                         }).or_insert_with(|| (default_lifetime, vec![part]));
                 });
+
+                if anatomy.is_dead()
+                {
+                    ui.borrow_mut().anatomy_notifications.remove(&entity);
+                }
             }));
         }
 
