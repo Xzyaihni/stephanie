@@ -267,6 +267,11 @@ impl OccludingPlane
         self.0.set_transform(transform);
     }
 
+    pub fn debug_points(&self) -> &OccluderPoints
+    {
+        self.0.debug_points()
+    }
+
     pub fn points(&self) -> &Option<OccluderPoints>
     {
         self.0.points()

@@ -595,7 +595,7 @@ impl VisualChunk
                         {
                             let is_both = occluding.horizontal.is_some() && occluding.vertical.is_some();
 
-                            if horizontal && occluding.horizontal.is_some()
+                            if horizontal && occluding.horizontal.map(|x| x == inside).unwrap_or(false)
                             {
                                 if is_both
                                 {
@@ -606,7 +606,7 @@ impl VisualChunk
                                 }
 
                                 true
-                            } else if !horizontal && occluding.vertical.is_some()
+                            } else if !horizontal && occluding.vertical.map(|x| x == inside).unwrap_or(false)
                             {
                                 if is_both
                                 {
@@ -742,6 +742,15 @@ impl VisualChunk
     pub fn mark_ungenerated(&mut self)
     {
         self.generated = false;
+    }
+
+    pub fn occluder_lines(&self, height: usize) -> impl Iterator<Item=(bool, Vector2<f32>, Vector2<f32>)> + use<'_>
+    {
+        self.occluders[height].iter().map(|x|
+        {
+            let points = x.occluder.debug_points();
+            (x.occluder.points().is_some(), points.bottom_left, points.bottom_right)
+        })
     }
 
     pub fn sky(&self) -> &ChunkSlice<[bool; CHUNK_SIZE * CHUNK_SIZE]>

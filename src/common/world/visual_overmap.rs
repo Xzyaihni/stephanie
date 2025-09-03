@@ -20,6 +20,8 @@ use crate::{
     debug_config::*,
     client::{VisibilityChecker as EntityVisibilityChecker, TilesFactory},
     common::{
+        with_z,
+        line_info,
         aabb_points,
         SortableF32,
         render_info::*,
@@ -953,6 +955,19 @@ impl VisualOvermap
             } else if DebugConfig::is_enabled(DebugTool::DrawSkyChanged)
             {
                 &self.chunks[pos].chunk.sky_changed()[height]
+            } else if DebugConfig::is_enabled(DebugTool::DrawWallOccluders)
+            {
+                let height_z = height as f32 * TILE_SIZE + chunk_pos.z;
+                self.chunks[pos].chunk.occluder_lines(height).for_each(|(visible, start, end)|
+                {
+                    let color = if visible { [0.0, 1.0, 0.0] } else { [1.0, 0.0, 0.0] };
+                    if let Some(x) = line_info(with_z(start, height_z), with_z(end, height_z), 0.01, color)
+                    {
+                        entities.push(true, x);
+                    }
+                });
+
+                return;
             } else
             {
                 return eprintln!("tile field debug must have one of the draw modes enabled");

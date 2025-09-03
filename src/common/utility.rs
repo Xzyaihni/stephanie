@@ -827,7 +827,7 @@ fn direction_like_info(
     color: [f32; 3]
 ) -> Option<EntityInfo>
 {
-    Unit::try_new(direction.xy(), 0.01).map(|normal_direction|
+    Unit::try_new(direction.xy(), 0.001).map(|normal_direction|
     {
         let angle = normal_direction.y.atan2(normal_direction.x);
         let shift_amount = Vector3::new(normal_direction.x, normal_direction.y, 0.0) * (scale.x / 2.0);

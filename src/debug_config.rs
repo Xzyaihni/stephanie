@@ -58,6 +58,7 @@ pub enum DebugTool
     DrawTotalSky,
     DrawSky,
     DrawSkyChanged,
+    DrawWallOccluders,
     GpuDrawTimings,
     FrameTimings,
     DebugTimings,
