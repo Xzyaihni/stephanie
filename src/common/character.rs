@@ -1773,23 +1773,24 @@ impl Character
             let is_sprinting = self.is_sprinting();
 
             let info = some_or_return!(self.info.as_mut());
-            let mut anatomy = some_or_return!(combined_info.entities.anatomy_mut_no_change(info.this));
-
-            *anatomy.external_oxygen_change_mut() = if info.walking
+            if let Some(mut anatomy) = combined_info.entities.anatomy_mut_no_change(info.this)
             {
-                if is_sprinting
+                *anatomy.external_oxygen_change_mut() = if info.walking
                 {
-                    -(0.5 + anatomy.oxygen_speed().max(0.0))
+                    if is_sprinting
+                    {
+                        -(0.5 + anatomy.oxygen_speed().max(0.0))
+                    } else
+                    {
+                        -0.1
+                    }
                 } else
                 {
-                    -0.1
-                }
-            } else
-            {
-                0.0
-            };
+                    0.0
+                };
 
-            info.walking = false;
+                info.walking = false;
+            }
         }
 
         if !self.update_common(combined_info.characters_info, combined_info.entities)
@@ -1799,7 +1800,7 @@ impl Character
 
         let character_info = combined_info.characters_info.get(self.id);
 
-        let set_visible = |entity, is_visible|
+        let set_visible = |sprite_state: &mut Stateful<_>, entity, is_visible|
         {
             if let Some(mut parent) = entities.parent_mut_no_change(entity)
             {
@@ -1807,6 +1808,9 @@ impl Character
             } else if let Some(mut render) = entities.render_mut_no_change(entity)
             {
                 render.visible = is_visible;
+            } else
+            {
+                sprite_state.dirty();
             }
         };
 
@@ -1856,17 +1860,18 @@ impl Character
 
         entities.set_z_level(entity, z_level);
 
-        if let Some(info) = self.info.as_ref()
         {
+            let info = self.info.as_ref().unwrap();
+
             {
-                let set_visible = |entity| set_visible(entity, held_visibility);
+                let mut set_visible = |entity| set_visible(&mut self.sprite_state, entity, held_visibility);
 
                 set_visible(info.hand_left);
                 set_visible(info.hand_right);
                 set_visible(info.holding);
             }
 
-            let set_visible = |entity| set_visible(entity, hair_visibility);
+            let set_visible = |entity| set_visible(&mut self.sprite_state, entity, hair_visibility);
 
             info.hair.iter().copied().for_each(set_visible);
         }
