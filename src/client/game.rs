@@ -42,7 +42,8 @@ use super::game_state::{
     UiEvent,
     GameUiEvent,
     ControlState,
-    Control
+    Control,
+    ui::NotificationIcon
 };
 
 
@@ -1619,16 +1620,17 @@ impl<'a> PlayerContainer<'a>
             {
                 if let Some(door_entity) = collider.collided().iter().find(|x| entities.door_exists(**x)).copied()
                 {
+                    let new_state = !entities.door(door_entity).unwrap().is_open();
+
                     if self.info.interacted
                     {
                         let mut door = entities.door_mut(door_entity).unwrap();
 
-                        let new_state = !door.is_open();
-
                         door.set_open(entities, door_entity, self.info.entity, new_state);
                     } else
                     {
-                        tile_info = Some(interact_button());
+                        let icon = if new_state { NotificationIcon::DoorOpen } else { NotificationIcon::DoorClose };
+                        tile_info = Some((icon, interact_button()));
                     }
                 }
             }
@@ -1679,7 +1681,7 @@ impl<'a> PlayerContainer<'a>
                         });
                     } else
                     {
-                        tile_info = Some(interact_button());
+                        tile_info = Some((NotificationIcon::GoUp, interact_button()));
                     }
                 }
             }
@@ -1702,7 +1704,7 @@ impl<'a> PlayerContainer<'a>
                 })
             }).unwrap_or(false)
             {
-                tile_info = Some(interact_button());
+                tile_info = Some((NotificationIcon::GoDown, interact_button()));
 
                 if self.info.interacted
                 {
@@ -1758,9 +1760,9 @@ impl<'a> PlayerContainer<'a>
             }
         } else
         {
-            if let Some(text) = tile_info
+            if let Some((icon, text)) = tile_info
             {
-                self.show_tile_tooltip(text);
+                self.show_tile_tooltip(icon, text);
             }
         }
 
@@ -1771,12 +1773,12 @@ impl<'a> PlayerContainer<'a>
         true
     }
 
-    fn show_tile_tooltip(&mut self, text: String)
+    fn show_tile_tooltip(&mut self, icon: NotificationIcon, text: String)
     {
         let notification = NotificationInfo{
             owner: self.info.entity,
             lifetime: 0.1,
-            kind: NotificationKindInfo::Text{text}
+            kind: NotificationKindInfo::Text{icon, text}
         };
 
         self.game_state.ui.borrow_mut().show_notification(notification);

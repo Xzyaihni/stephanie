@@ -287,14 +287,37 @@ pub struct ChunkRuleRawTag
 // im using the same prefix for the json to be more readable
 #[allow(clippy::enum_variant_names)]
 #[derive(Debug, Clone, Deserialize)]
-enum ChunkNeighbors
+enum ChunkNeighborsGeneric<T>
 {
-    SymmetryNone(DirectionsGroup<Vec<String>>),
-    SymmetryHorizontal{up: Vec<String>, down: Vec<String>, horizontal: Vec<String>},
-    SymmetryVertical{right: Vec<String>, left: Vec<String>, vertical: Vec<String>},
-    SymmetryBoth{horizontal: Vec<String>, vertical: Vec<String>},
-    SymmetryAll(Vec<String>)
+    SymmetryNone(DirectionsGroup<T>),
+    SymmetryHorizontal{up: T, down: T, horizontal: T},
+    SymmetryVertical{right: T, left: T, vertical: T},
+    SymmetryBoth{horizontal: T, vertical: T},
+    SymmetryAll(T)
 }
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(untagged, rename = "Rotated")]
+enum MaybeRotatedNeighbor
+{
+    Normal(String),
+    WithRotation{rotation: TileRotation, value: String}
+}
+
+impl From<MaybeRotatedNeighbor> for (TileRotation, String)
+{
+    fn from(value: MaybeRotatedNeighbor) -> Self
+    {
+        match value
+        {
+            MaybeRotatedNeighbor::Normal(x) => (TileRotation::Up, x),
+            MaybeRotatedNeighbor::WithRotation{rotation, value} => (rotation, value)
+        }
+    }
+}
+
+type ChunkNeighborType = Vec<MaybeRotatedNeighbor>;
+type ChunkNeighbors = ChunkNeighborsGeneric<ChunkNeighborType>;
 
 impl ChunkNeighbors
 {
@@ -394,11 +417,11 @@ impl ChunkRule
         let symmetry = rule.neighbors.symmetry();
 
         let neighbors = {
-            let n = |neighbors: Vec<String>|
+            let n = |neighbors: ChunkNeighborType|
             {
                 neighbors.into_iter().map(|name|
                 {
-                    name_mappings.world_chunk[&(TileRotation::Up, name)]
+                    name_mappings.world_chunk[&name.into()]
                 }).collect::<Vec<_>>()
             };
 
@@ -489,9 +512,8 @@ impl ChunkRule
             let rotate = |id: WorldChunkId|
             {
                 let (this_rotation, name) = name_mappings.world_chunk.get_back(&id).unwrap();
-                debug_assert!(*this_rotation == TileRotation::Up);
 
-                *name_mappings.world_chunk.get(&(rotation, name.clone())).unwrap()
+                *name_mappings.world_chunk.get(&(this_rotation.combine(rotation), name.clone())).unwrap()
             };
 
             neighbors.into_iter().map(rotate).collect::<Vec<_>>()

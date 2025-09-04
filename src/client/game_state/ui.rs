@@ -8,11 +8,14 @@ use std::{
     sync::Arc
 };
 
+use parking_lot::Mutex;
+
 use nalgebra::Vector2;
 
 use yanyaengine::{
     FontsContainer,
     TextureId,
+    Assets,
     game_object::*
 };
 
@@ -62,7 +65,7 @@ const TINY_PADDING: f32 = 5.0;
 const SMALL_PADDING: f32 = 10.0;
 const ITEM_PADDING: f32 = SMALL_PADDING;
 const BODY_PADDING: f32 = 20.0;
-const NOTIFICATION_PADDING: f32 = SMALL_PADDING;
+const NOTIFICATION_PADDING: f32 = TINY_PADDING;
 
 const BUTTON_SIZE: f32 = 40.0;
 const SCROLLBAR_HEIGHT: f32 = BUTTON_SIZE * 5.0;
@@ -207,6 +210,7 @@ pub enum ConsolePart
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum NotificationPart
 {
+    Icon,
     Body,
     Text
 }
@@ -347,9 +351,18 @@ type UiController = Controller<UiId>;
 type UiParentElement<'a> = TreeInserter<'a, UiId>;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum NotificationIcon
+{
+    GoUp,
+    GoDown,
+    DoorClose,
+    DoorOpen
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum NotificationKindInfo
 {
-    Text{text: String}
+    Text{icon: NotificationIcon, text: String}
 }
 
 #[derive(Debug, Clone)]
@@ -1359,6 +1372,7 @@ pub struct UiEntities
 pub struct Ui
 {
     items_info: Arc<ItemsInfo>,
+    assets: Arc<Mutex<Assets>>,
     fonts: Rc<FontsContainer>,
     anatomy_locations: UiAnatomyLocations,
     anatomy_locations_small: UiAnatomyLocations,
@@ -1397,6 +1411,7 @@ impl Ui
 
         let this = Self{
             items_info,
+            assets: info.partial.assets.clone(),
             fonts: info.partial.builder_wrapper.fonts().clone(),
             anatomy_locations: anatomy_locations(info, "anatomy_areas"),
             anatomy_locations_small: anatomy_locations(info, "anatomy_areas_small"),
@@ -2029,8 +2044,32 @@ impl Ui
 
             match &notification.kind
             {
-                NotificationKindInfo::Text{text} =>
+                NotificationKindInfo::Text{icon, text} =>
                 {
+                    let icon = match icon
+                    {
+                        NotificationIcon::GoUp => "ui/up_icon.png".to_owned(),
+                        NotificationIcon::GoDown => "ui/down_icon.png".to_owned(),
+                        NotificationIcon::DoorOpen => "ui/door_open_icon.png".to_owned(),
+                        NotificationIcon::DoorClose => "ui/door_close_icon.png".to_owned()
+                    };
+
+                    let aspect = {
+                        let size = self.assets.lock().texture_by_name(&icon).lock().size();
+
+                        size.x / size.y
+                    };
+
+                    let size = 20.0;
+                    body.update(id(NotificationPart::Icon), UiElement{
+                        texture: UiTexture::Custom(icon),
+                        width: UiSize::Pixels(size * aspect).into(),
+                        height: UiSize::Pixels(size).into(),
+                        ..Default::default()
+                    });
+
+                    add_padding_horizontal(body, UiSize::Pixels(NOTIFICATION_PADDING * 0.5).into());
+
                     body.update(id(NotificationPart::Text), UiElement{
                         texture: UiTexture::Text{text: text.clone(), font_size: SMALL_TEXT_SIZE},
                         mix: Some(MixColorLch{keep_transparency: true, ..MixColorLch::color(ACCENT_COLOR)}),
