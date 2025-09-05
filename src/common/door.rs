@@ -9,6 +9,8 @@ use nalgebra::{Vector2, Vector3};
 use yanyaengine::Transform;
 
 use crate::common::{
+    ENTITY_SCALE,
+    with_z,
     some_or_return,
     rotate_point_z_3d,
     collider::*,
@@ -24,6 +26,8 @@ use crate::common::{
     world::{TILE_SIZE, TileRotation}
 };
 
+
+pub const DOOR_WIDTH: f32 = 0.3;
 
 #[derive(Debug, Clone, Copy, EnumString, IntoStaticStr, Serialize, Deserialize)]
 #[strum(ascii_case_insensitive)]
@@ -206,7 +210,7 @@ impl Door
 
         Transform{
             position,
-            scale: Vector2::new(self.width as f32 + offset_inside * 2.0, 0.3).xyx() * TILE_SIZE,
+            scale: with_z(Vector2::new(self.width as f32 + offset_inside * 2.0, DOOR_WIDTH) * TILE_SIZE, ENTITY_SCALE),
             rotation,
             ..Default::default()
         }

@@ -100,7 +100,7 @@ pub enum UiId
     Padding(u32),
     Console(ConsolePart),
     SeenNotification(Entity, SeenNotificationPart),
-    Notification(NotificationInfo, NotificationPart),
+    Notification(Entity, NotificationKindInfo, NotificationPart),
     AnatomyNotification(Entity, AnatomyNotificationPart),
     Popup(u8, PopupPart),
     Window(UiIdWindow, WindowPart),
@@ -350,14 +350,34 @@ pub enum UiIdTitleButton
 type UiController = Controller<UiId>;
 type UiParentElement<'a> = TreeInserter<'a, UiId>;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy)]
+pub enum NotificationDoor
+{
+    Open,
+    Close(bool)
+}
+
+impl Hash for NotificationDoor
+{
+    fn hash<H: Hasher>(&self, _state: &mut H) {}
+}
+
+impl PartialEq for NotificationDoor
+{
+    fn eq(&self, _other: &Self) -> bool
+    {
+        true
+    }
+}
+
+impl Eq for NotificationDoor {}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum NotificationIcon
 {
     GoUp,
     GoDown,
-    DoorBlocked,
-    DoorClose,
-    DoorOpen
+    Door(NotificationDoor)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -373,17 +393,6 @@ pub struct NotificationInfo
     pub lifetime: f32,
     pub kind: NotificationKindInfo
 }
-
-impl PartialEq for NotificationInfo
-{
-    fn eq(&self, other: &Self) -> bool
-    {
-        self.owner == other.owner
-            && self.kind == other.kind
-    }
-}
-
-impl Eq for NotificationInfo {}
 
 impl Hash for NotificationInfo
 {
@@ -1616,12 +1625,12 @@ impl Ui
         notification: NotificationInfo
     )
     {
-        if let Some(index) = self.notifications.iter().position(|this|
+        if let Some(found_notification) = self.notifications.iter_mut().find(|this|
         {
-            *this == notification
+            this.owner == notification.owner && this.kind == notification.kind
         })
         {
-            self.notifications[index] = notification;
+            *found_notification = notification;
         } else
         {
             self.notifications.push(notification);
@@ -2022,7 +2031,7 @@ impl Ui
 
             let id = |part|
             {
-                UiId::Notification(notification.clone(), part)
+                UiId::Notification(notification.owner, notification.kind.clone(), part)
             };
 
             let position = some_or_value!(position_of(notification.owner), false);
@@ -2047,13 +2056,20 @@ impl Ui
             {
                 NotificationKindInfo::Text{icon, text} =>
                 {
+                    let transparency = if let NotificationIcon::Door(NotificationDoor::Close(x)) = icon
+                    {
+                        *x
+                    } else
+                    {
+                        false
+                    };
+
                     let icon = match icon
                     {
                         NotificationIcon::GoUp => "ui/up_icon.png".to_owned(),
                         NotificationIcon::GoDown => "ui/down_icon.png".to_owned(),
-                        NotificationIcon::DoorBlocked => "ui/door_blocked_icon.png".to_owned(),
-                        NotificationIcon::DoorOpen => "ui/door_open_icon.png".to_owned(),
-                        NotificationIcon::DoorClose => "ui/door_close_icon.png".to_owned()
+                        NotificationIcon::Door(NotificationDoor::Open) => "ui/door_open_icon.png".to_owned(),
+                        NotificationIcon::Door(NotificationDoor::Close(_)) => "ui/door_close_icon.png".to_owned()
                     };
 
                     let aspect = {
@@ -2062,11 +2078,14 @@ impl Ui
                         size.x / size.y
                     };
 
+                    let a = if transparency { 0.25 } else { 1.0 };
+
                     let size = 20.0;
                     body.update(id(NotificationPart::Icon), UiElement{
                         texture: UiTexture::Custom(icon),
                         width: UiSize::Pixels(size * aspect).into(),
                         height: UiSize::Pixels(size).into(),
+                        mix: Some(MixColorLch{keep_transparency: true, ..MixColorLch::color(Lcha{a, ..ACCENT_COLOR})}),
                         ..Default::default()
                     });
 
@@ -2074,7 +2093,7 @@ impl Ui
 
                     body.update(id(NotificationPart::Text), UiElement{
                         texture: UiTexture::Text{text: text.clone(), font_size: SMALL_TEXT_SIZE},
-                        mix: Some(MixColorLch{keep_transparency: true, ..MixColorLch::color(ACCENT_COLOR)}),
+                        mix: Some(MixColorLch{keep_transparency: true, ..MixColorLch::color(Lcha{a, ..ACCENT_COLOR})}),
                         ..UiElement::fit_content()
                     });
                 }

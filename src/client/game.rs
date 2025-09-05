@@ -15,6 +15,7 @@ use yanyaengine::{
 };
 
 use crate::common::{
+    ENTITY_SCALE,
     some_or_value,
     some_or_return,
     collider::*,
@@ -28,6 +29,7 @@ use crate::common::{
     Entity,
     EntityInfo,
     OnChangeInfo,
+    door::DOOR_WIDTH,
     entity::ClientEntities,
     lisp::{self, *},
     systems::{physical_system, mouse_highlight_system},
@@ -43,7 +45,7 @@ use super::game_state::{
     GameUiEvent,
     ControlState,
     Control,
-    ui::NotificationIcon
+    ui::{NotificationDoor, NotificationIcon}
 };
 
 
@@ -1643,9 +1645,9 @@ impl<'a> PlayerContainer<'a>
                             }
                         };
 
-                        if door_blocked || distance < TILE_SIZE * 0.2
+                        if door_blocked || distance < (DOOR_WIDTH * ENTITY_SCALE + ENTITY_SCALE) * 0.5
                         {
-                            tile_info = Some((NotificationIcon::DoorBlocked, String::new()));
+                            tile_info = Some((NotificationIcon::Door(NotificationDoor::Close(true)), interact_button()));
                             return;
                         }
                     }
@@ -1659,8 +1661,8 @@ impl<'a> PlayerContainer<'a>
                         door.set_open(entities, door_entity, self.info.entity, new_state);
                     } else
                     {
-                        let icon = if new_state { NotificationIcon::DoorOpen } else { NotificationIcon::DoorClose };
-                        tile_info = Some((icon, interact_button()));
+                        let icon = if new_state { NotificationDoor::Open } else { NotificationDoor::Close(false) };
+                        tile_info = Some((NotificationIcon::Door(icon), interact_button()));
                     }
                 }
             }
