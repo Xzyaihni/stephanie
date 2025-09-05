@@ -355,6 +355,7 @@ pub enum NotificationIcon
 {
     GoUp,
     GoDown,
+    DoorBlocked,
     DoorClose,
     DoorOpen
 }
@@ -2050,6 +2051,7 @@ impl Ui
                     {
                         NotificationIcon::GoUp => "ui/up_icon.png".to_owned(),
                         NotificationIcon::GoDown => "ui/down_icon.png".to_owned(),
+                        NotificationIcon::DoorBlocked => "ui/door_blocked_icon.png".to_owned(),
                         NotificationIcon::DoorOpen => "ui/door_open_icon.png".to_owned(),
                         NotificationIcon::DoorClose => "ui/door_close_icon.png".to_owned()
                     };

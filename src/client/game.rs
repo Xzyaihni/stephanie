@@ -1613,14 +1613,44 @@ impl<'a> PlayerContainer<'a>
         let mut tile_info = None;
         let mut new_animation = None;
 
-        {
+        (|| {
             let entities = self.game_state.entities();
 
             if let Some(collider) = entities.collider(self.info.entity)
             {
                 if let Some(door_entity) = collider.collided().iter().find(|x| entities.door_exists(**x)).copied()
                 {
-                    let new_state = !entities.door(door_entity).unwrap().is_open();
+                    let door = entities.door(door_entity).unwrap();
+                    let new_state = !door.is_open();
+
+                    if !new_state
+                    {
+                        let collider = some_or_return!(entities.collider(door_entity));
+                        let door_blocked = collider.collided().iter().any(|x| !entities.player_exists(*x));
+
+                        let distance = {
+                            let door_position = some_or_return!(entities.transform(door_entity)).position;
+                            let player_position = some_or_return!(entities.transform(self.info.entity)).position;
+
+                            let diff = (door_position - player_position).abs();
+
+                            if door.tile_rotation().is_horizontal()
+                            {
+                                diff.y
+                            } else
+                            {
+                                diff.x
+                            }
+                        };
+
+                        if door_blocked || distance < TILE_SIZE * 0.2
+                        {
+                            tile_info = Some((NotificationIcon::DoorBlocked, String::new()));
+                            return;
+                        }
+                    }
+
+                    drop(door);
 
                     if self.info.interacted
                     {
@@ -1634,7 +1664,7 @@ impl<'a> PlayerContainer<'a>
                     }
                 }
             }
-        }
+        })();
 
         self.colliding_info(|mut colliding|
         {

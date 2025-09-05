@@ -766,9 +766,15 @@ impl<'a> CollidingInfo<'a>
 
     fn is_rectangle_rectangle_colliding(
         &self,
+        other: &Transform,
         mut other_edges: impl Iterator<Item=Line>
     ) -> bool
     {
+        if (self.transform.position.z - other.position.z).abs() > (self.transform.scale.z + other.scale.z) * 0.5
+        {
+            return false;
+        }
+
         let this_edges: [Line; 4] = rectangle_edges(&self.transform).collect::<Vec<_>>().try_into().unwrap();
 
         other_edges.any(|line0|
@@ -783,7 +789,7 @@ impl<'a> CollidingInfo<'a>
         add_contact: impl FnMut(Contact)
     ) -> bool
     {
-        let colliding = self.is_rectangle_rectangle_colliding(rectangle_edges(&self.transform));
+        let colliding = self.is_rectangle_rectangle_colliding(&other.transform, rectangle_edges(&other.transform));
 
         if !colliding
         {
@@ -976,9 +982,9 @@ impl<'a> CollidingInfo<'a>
         add_contact: impl FnMut(Contact)
     ) -> bool
     {
-        let colliding = self.is_rectangle_rectangle_colliding(world.map(|dir, x| (dir, x)).filter_map(|(dir, x)|
+        let colliding = other.is_rectangle_rectangle_colliding(&self.transform, world.map(|dir, x| (dir, x)).filter_map(|(dir, x)|
         {
-            (!x).then(|| dir.edge_line_2d(self.transform.scale.xy()).map(|x| x + self.transform.position.xy()))
+            (!x).then(|| dir.edge_line_2d(Vector2::repeat(TILE_SIZE)).map(|x| x + self.transform.position.xy()))
         }).into_iter());
 
         if !colliding

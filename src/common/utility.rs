@@ -656,7 +656,7 @@ pub fn rectangle_edges(transform: &Transform) -> impl Iterator<Item=Line>
     })
 }
 
-fn intersection_lines_inner(line0: Line, line1: Line) -> (f32, f32, f32, f32)
+fn intersection_lines_inner(line0: Line, line1: Line) -> (f32, f32, bool)
 {
     let x1 = line0.a.x;
     let x2 = line0.b.x;
@@ -675,24 +675,45 @@ fn intersection_lines_inner(line0: Line, line1: Line) -> (f32, f32, f32, f32)
 
     let bottom = ll * lr - rl * rr;
 
-    let t_top = (x1 - x3) * lr - (y1 - y3) * rr;
-    let u_top = -(ll * (y1 - y3) - rl * (x1 - x3));
+    let x1x3 = x1 - x3;
+    let y1y3 = y1 - y3;
 
-    (t_top, u_top, bottom, bottom.signum())
+    let t_top = x1x3 * lr - y1y3 * rr;
+    let u_top = -(ll * y1y3 - rl * x1x3);
+
+    fn intersecting_with(top: f32, bottom: f32) -> bool
+    {
+        let bottom_sign = bottom.signum();
+
+        (0.0..=bottom.abs()).contains(&(top * bottom_sign))
+    }
+
+    let intersecting = {
+        if (line0.a.x == line0.b.x) && (line1.a.x == line1.b.x) && (line0.a.x == line1.a.x)
+        {
+            intersecting_with(y1y3, rl - lr)
+        } else if (line0.a.y == line0.b.y) && (line1.a.y == line1.b.y) && (line0.a.y == line1.a.y)
+        {
+            intersecting_with(x1x3, ll - rr)
+        } else
+        {
+            intersecting_with(t_top, bottom) && intersecting_with(u_top, bottom)
+        }
+    };
+
+    (t_top, bottom, intersecting)
 }
 
 pub fn is_intersection_lines(line0: Line, line1: Line) -> bool
 {
-    let (t_top, u_top, bottom, bottom_sign) = intersection_lines_inner(line0, line1);
-
-    (0.0..=bottom.abs()).contains(&(t_top * bottom_sign)) && (0.0..=bottom.abs()).contains(&(u_top * bottom_sign))
+    intersection_lines_inner(line0, line1).2
 }
 
 pub fn intersection_lines(line0: Line, line1: Line) -> Option<Vector2<f32>>
 {
-    let (t_top, u_top, bottom, bottom_sign) = intersection_lines_inner(line0, line1);
+    let (t_top, bottom, intersecting) = intersection_lines_inner(line0, line1);
 
-    if !((0.0..=bottom.abs()).contains(&(t_top * bottom_sign)) && (0.0..=bottom.abs()).contains(&(u_top * bottom_sign)))
+    if !intersecting
     {
         return None;
     }
@@ -804,9 +825,9 @@ pub fn line_info(
 ) -> Option<EntityInfo>
 {
     let direction = end - start;
-    let scale = Vector3::new(direction.magnitude(), thickness, 1.0);
+    let scale = Vector3::new(direction.xy().magnitude(), thickness, 1.0);
 
-    direction_like_info("solid.png", start, direction, scale, color)
+    direction_like_info("solid.png", start, with_z(direction.xy(), 0.0), scale, color)
 }
 
 pub fn direction_arrow_info(

@@ -72,6 +72,11 @@ impl Door
         !self.is_open()
     }
 
+    pub fn tile_rotation(&self) -> TileRotation
+    {
+        self.rotation
+    }
+
     fn door_rotation(&self) -> f32
     {
         -(self.rotation.to_angle() + f32::consts::PI)

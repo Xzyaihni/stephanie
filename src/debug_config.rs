@@ -34,6 +34,7 @@ pub enum DebugTool
     ServerMessagesFull,
     DisplayRaycast,
     DisplayPathfind,
+    DisplayCollisions,
     CollisionWorldBounds,
     CollisionBounds,
     Contacts,

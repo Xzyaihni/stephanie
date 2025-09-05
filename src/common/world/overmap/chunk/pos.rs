@@ -627,7 +627,7 @@ impl PosDirection
             },
             PosDirection::Down | PosDirection::Up =>
             {
-                Line{a: Vector2::new(-half_size.x, -value * half_size.y), b: Vector2::new(half_size.x, -value * half_size.y)}
+                Line{a: Vector2::new(-half_size.x, value * half_size.y), b: Vector2::new(half_size.x, value * half_size.y)}
             },
             PosDirection::Back | PosDirection::Forward => unreachable!()
         }

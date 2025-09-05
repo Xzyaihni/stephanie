@@ -7,6 +7,7 @@ use nalgebra::Vector3;
 use crate::{
     debug_config::*,
     common::{
+        line_info,
         some_or_return,
         collider::*,
         render_info::*,
@@ -245,6 +246,25 @@ pub fn update(
     if DebugConfig::is_enabled(DebugTool::PrintContactsCount)
     {
         eprintln!("after joints: {} contacts", contacts.len());
+    }
+
+    if DebugConfig::is_enabled(DebugTool::DisplayCollisions)
+    {
+        for_each_component!(entities, collider, |entity, collider: &RefCell<Collider>|
+        {
+            collider.borrow().collided().iter().for_each(|collided_entity|
+            {
+                let pos = |x: Entity| entities.transform(x).map(|x| x.position);
+
+                let this = some_or_return!(pos(entity));
+                let other = some_or_return!(pos(*collided_entity));
+
+                if let Some(line) = line_info(this, other, 0.005, [0.0, 0.0, 1.0])
+                {
+                    entities.push(true, line);
+                }
+            });
+        });
     }
 
     contacts
