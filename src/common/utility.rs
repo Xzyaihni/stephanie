@@ -15,7 +15,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use nalgebra::{Unit, Scalar, Vector2, Vector3};
+use nalgebra::{vector, ArrayStorage, Unit, Vector2, Vector3};
 
 use yanyaengine::Transform;
 
@@ -621,9 +621,9 @@ pub fn project_onto(transform: &Transform, p: &Vector3<f32>) -> Vector3<f32>
     rotate_point_z_3d(scaled, transform.rotation) + transform.position
 }
 
-pub fn with_z<T: Scalar + Copy>(x: Vector2<T>, z: T) -> Vector3<T>
+pub fn with_z<T>(Vector2{data: ArrayStorage([[x, y]]), ..}: Vector2<T>, z: T) -> Vector3<T>
 {
-    Vector3::new(x.x, x.y, z)
+    vector![x, y, z]
 }
 
 #[derive(Debug, Clone, Copy)]

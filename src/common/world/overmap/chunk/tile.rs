@@ -234,7 +234,7 @@ impl TileRotation
         })
     }
 
-    pub fn flip_x(self) -> Self
+    pub const fn flip_x(self) -> Self
     {
         match self
         {
@@ -244,7 +244,7 @@ impl TileRotation
         }
     }
 
-    pub fn flip_y(self) -> Self
+    pub const fn flip_y(self) -> Self
     {
         match self
         {
@@ -254,7 +254,7 @@ impl TileRotation
         }
     }
 
-    pub fn is_horizontal(&self) -> bool
+    pub const fn is_horizontal(&self) -> bool
     {
         match self
         {
@@ -263,12 +263,12 @@ impl TileRotation
         }
     }
 
-    pub fn is_vertical(&self) -> bool
+    pub const fn is_vertical(&self) -> bool
     {
         !self.is_horizontal()
     }
 
-    pub fn is_positive(&self) -> bool
+    pub const fn is_positive(&self) -> bool
     {
         match self
         {
@@ -277,7 +277,7 @@ impl TileRotation
         }
     }
 
-    pub fn rotate_counterclockwise(&self) -> Self
+    pub const fn rotate_counterclockwise(&self) -> Self
     {
         match self
         {
@@ -288,7 +288,7 @@ impl TileRotation
         }
     }
 
-    pub fn rotate_clockwise(&self) -> Self
+    pub const fn rotate_clockwise(&self) -> Self
     {
         match self
         {
@@ -299,7 +299,7 @@ impl TileRotation
         }
     }
 
-    pub fn to_angle(&self) -> f32
+    pub const fn to_angle(&self) -> f32
     {
         match self
         {
@@ -310,7 +310,7 @@ impl TileRotation
         }
     }
 
-    pub fn to_arrow_str(&self) -> &str
+    pub const fn to_arrow_str(&self) -> &str
     {
         match self
         {
@@ -321,9 +321,9 @@ impl TileRotation
         }
     }
 
-    pub fn subtract(&self, other: Self) -> Self
+    pub const fn subtract(&self, other: Self) -> Self
     {
-        if other == Self::Up
+        if let Self::Up = other
         {
             *self
         } else
@@ -332,7 +332,7 @@ impl TileRotation
         }
     }
 
-    pub fn combine(&self, other: Self) -> Self
+    pub const fn combine(&self, other: Self) -> Self
     {
         match self
         {
@@ -392,7 +392,7 @@ impl TileRotation
         }
     }
 
-    pub fn opposite(self) -> Self
+    pub const fn opposite(self) -> Self
     {
         match self
         {

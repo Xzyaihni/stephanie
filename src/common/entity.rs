@@ -1496,12 +1496,9 @@ macro_rules! define_entities_both
 
                 pub fn $mut_func(&self, entity: Entity) -> Option<RefMut<$component_type>>
                 {
+                    if const { matches!(Component::$name, Component::transform) && matches!(Component::$name, Component::watchers) }
                     {
-                        const NAME: &'static str = stringify!($name);
-                        if (NAME != "transform") && (NAME != "watchers")
-                        {
-                            self.changed_entities.borrow_mut().$name.push(entity);
-                        }
+                        self.changed_entities.borrow_mut().$name.push(entity);
                     }
 
                     self.$mut_func_no_change(entity)

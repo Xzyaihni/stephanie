@@ -65,12 +65,12 @@ impl Door
         Self{position, rotation, material, width, open: OpenState::Closed}
     }
 
-    pub fn is_open(&self) -> bool
+    pub const fn is_open(&self) -> bool
     {
         if let OpenState::Open{..} = self.open { true } else { false }
     }
 
-    pub fn is_closed(&self) -> bool
+    pub const fn is_closed(&self) -> bool
     {
         !self.is_open()
     }
@@ -80,7 +80,7 @@ impl Door
         self.rotation
     }
 
-    fn door_rotation(&self) -> f32
+    const fn door_rotation(&self) -> f32
     {
         -(self.rotation.to_angle() + f32::consts::PI)
     }
@@ -136,11 +136,13 @@ impl Door
     }
 
     fn update_state(
-        &mut self,
+        &self,
         entities: &ClientEntities,
         entity: Entity
     )
     {
+        debug_assert!(entities.sibling_exists(entity));
+
         let visible_door = some_or_return!(entities.sibling(entity).as_deref().copied());
 
         if let Some(mut lazy) = entities.lazy_transform_mut(visible_door)
@@ -154,6 +156,42 @@ impl Door
         let mut setter = entities.lazy_setter.borrow_mut();
         setter.set_occluder(visible_door, occluder);
         setter.set_collider(visible_door, collider);
+
+        self.update_parent_state(entities, entity);
+    }
+
+    pub fn parent_scale(
+        &self
+    ) -> Vector3<f32>
+    {
+        let perpendicular_scale = if self.is_open()
+        {
+            TILE_SIZE * 1.5
+        } else
+        {
+            TILE_SIZE
+        };
+
+        let scale = self.door_transform().scale;
+
+        if self.rotation.is_horizontal()
+        {
+            Vector3::new(scale.x, perpendicular_scale, scale.z)
+        } else
+        {
+            Vector3::new(perpendicular_scale, scale.x, scale.z)
+        }
+    }
+
+    fn update_parent_state(
+        &self,
+        entities: &ClientEntities,
+        entity: Entity
+    )
+    {
+        debug_assert!(entities.transform_exists(entity));
+
+        some_or_return!(entities.transform_mut(entity)).scale = self.parent_scale();
     }
 
     pub fn door_occluder(&self) -> Option<Occluder>
@@ -181,22 +219,16 @@ impl Door
 
     pub fn door_transform(&self) -> Transform
     {
-        let offset_inside = 0.075;
+        const OFFSET_INSIDE: f32 = 0.075;
 
         let rotation = self.door_rotation();
 
-        let offset = -(TILE_SIZE / 2.0 + TILE_SIZE * offset_inside)
+        let offset = -(TILE_SIZE / 2.0 + TILE_SIZE * OFFSET_INSIDE)
             + (self.width as f32 * TILE_SIZE) / 2.0;
 
-        let mut position = self.position;
-        position += rotate_point_z_3d(
-            Vector3::new(offset, 0.0, 0.0),
-            rotation
-        );
-
         Transform{
-            position,
-            scale: with_z(Vector2::new(self.width as f32 + offset_inside * 2.0, DOOR_WIDTH) * TILE_SIZE, ENTITY_SCALE),
+            position: self.position + rotate_point_z_3d(Vector3::new(offset, 0.0, 0.0), rotation),
+            scale: with_z(Vector2::new(self.width as f32 + OFFSET_INSIDE * 2.0, DOOR_WIDTH) * TILE_SIZE, ENTITY_SCALE),
             rotation,
             ..Default::default()
         }
@@ -213,7 +245,7 @@ impl Door
 
     pub fn update_visible(entities: &ClientEntities, entity: Entity)
     {
-        let mut door = some_or_return!(entities.door_mut_no_change(entity));
+        let door = some_or_return!(entities.door(entity));
 
         if !entities.sibling_exists(entity) && !entities.in_flight().sibling_exists(entity)
         {
@@ -247,6 +279,8 @@ impl Door
             });
 
             entities.lazy_setter.borrow_mut().set_sibling_no_change(entity, Some(visible_part));
+
+            door.update_parent_state(entities, entity);
         } else
         {
             door.update_state(entities, entity);

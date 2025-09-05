@@ -128,13 +128,7 @@ impl MarkerTile
 
                 let transform = door.door_transform();
 
-                let scale = if rotation.is_horizontal()
-                {
-                    Vector3::new(transform.scale.x, TILE_SIZE, transform.scale.z)
-                } else
-                {
-                    Vector3::new(TILE_SIZE, transform.scale.x, transform.scale.z)
-                };
+                let scale = door.parent_scale();
 
                 Some(EntityInfo{
                     transform: Some(Transform{
