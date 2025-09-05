@@ -13,6 +13,7 @@ use crate::{
         unique_pairs_no_self,
         Entity,
         Collider,
+        OverrideTransform,
         world::{CHUNK_SIZE, CLIENT_OVERMAP_SIZE_Z, Pos3, overmap::OvermapIndexing},
         entity::{for_each_component, ClientEntities}
     }
@@ -262,18 +263,34 @@ impl SpatialGrid
         let mut queued = [const { Vec::new() }; NODES_Z];
         for_each_component!(entities, collider, |entity, collider: &RefCell<Collider>|
         {
-            let mut transform = some_or_return!(entities.transform(entity)).clone();
-
-            let sleeping = entities.physical(entity).map(|x| x.sleeping()).unwrap_or(false);
-
             let collider = collider.borrow();
 
-            if let Some(scale) = collider.scale
-            {
-                transform.scale = scale;
-            }
+            let (scale, position) = {
+                let transform = some_or_return!(entities.transform(entity));
 
-            let position = transform.position;
+                let (transform, position) = if let Some(OverrideTransform{
+                    transform: override_transform,
+                    override_position
+                }) = collider.override_transform.as_ref()
+                {
+                    let position = if *override_position
+                    {
+                        override_transform.position
+                    } else
+                    {
+                        override_transform.position + transform.position
+                    };
+
+                    (override_transform, position)
+                } else
+                {
+                    (&*transform, transform.position)
+                };
+
+                (collider.bounds(&transform), position)
+            };
+
+            let sleeping = entities.physical(entity).map(|x| x.sleeping()).unwrap_or(false);
 
             let z = {
                 let position = Pos3::from(position);
@@ -294,7 +311,7 @@ impl SpatialGrid
             let info = SpatialInfo{
                 entity,
                 sleeping,
-                scale: collider.bounds(&transform),
+                scale,
                 position
             };
 

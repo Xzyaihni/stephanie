@@ -49,7 +49,7 @@ pub fn update(entities: &mut ClientEntities, world: &World, dt: f32)
                 |physical, transform|
                 {
                     entities.collider(entity)
-                        .map(|collider| collider.inverse_inertia(physical, transform.clone()))
+                        .map(|collider| collider.inverse_inertia(physical, &transform.scale))
                         .unwrap_or_default()
                 },
                 dt

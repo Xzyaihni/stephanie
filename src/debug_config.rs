@@ -35,7 +35,6 @@ pub enum DebugTool
     DisplayRaycast,
     DisplayPathfind,
     DisplayCollisions,
-    CollisionWorldBounds,
     CollisionBounds,
     Contacts,
     Sleeping,

@@ -524,7 +524,7 @@ impl Contact
     {
         entities.collider(entity).unwrap().inverse_inertia_tensor(
             &entities.physical(entity).unwrap(),
-            entities.transform(entity).unwrap().clone()
+            &entities.transform(entity).as_ref().unwrap().scale
         )
     }
 

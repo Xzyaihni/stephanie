@@ -85,7 +85,7 @@ pub use anatomy::{Anatomy, HumanAnatomy, HumanAnatomyInfo};
 pub use damage::{Damageable, Damage, DamageType, DamageDirection, DamageHeight, DamagePartial};
 
 pub use spatial::{SpatialInfo, SpatialGrid};
-pub use collider::{ColliderType, Collider, CollidingInfo};
+pub use collider::{OverrideTransform, ColliderType, Collider, CollidingInfo};
 pub use physics::{Physical, PhysicalProperties, PhysicalFixed};
 
 pub use world::{World, SkyOccludingVertex, SkyLightVertex, PosDirection, Pos3, Axis, FlatChunksContainer, ChunksContainer};

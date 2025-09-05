@@ -305,7 +305,7 @@ impl World
                 kind: ColliderType::Tile(world),
                 layer: ColliderLayer::World,
                 ghost: false,
-                scale: None
+                override_transform: None
             }.into();
 
             let info = CollidingInfo{

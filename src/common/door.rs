@@ -14,7 +14,6 @@ use crate::common::{
     some_or_return,
     rotate_point_z_3d,
     collider::*,
-    watcher::*,
     render_info::*,
     lazy_transform::*,
     physics::*,
@@ -154,26 +153,7 @@ impl Door
 
         let mut setter = entities.lazy_setter.borrow_mut();
         setter.set_occluder(visible_door, occluder);
-
-        if self.is_open()
-        {
-            setter.set_collider(visible_door, collider);
-        } else
-        {
-            if let Some(mut watchers) = entities.watchers_mut(visible_door)
-            {
-                let collider_watcher = Watcher{
-                    kind: WatcherType::RotationDistance{
-                        from: self.door_rotation(),
-                        near: 0.04
-                    },
-                    action: WatcherAction::SetCollider(collider.map(Box::new)),
-                    ..Default::default()
-                };
-
-                watchers.replace(vec![collider_watcher]);
-            }
-        }
+        setter.set_collider(visible_door, collider);
     }
 
     pub fn door_occluder(&self) -> Option<Occluder>
@@ -185,9 +165,15 @@ impl Door
     {
         self.is_closed().then(||
         {
+            let override_transform = Some(OverrideTransform{
+                transform: self.door_transform(),
+                override_position: true
+            });
+
             ColliderInfo{
                 kind: ColliderType::Rectangle,
                 layer: ColliderLayer::Door,
+                override_transform,
                 ..Default::default()
             }.into()
         })
@@ -256,7 +242,6 @@ impl Door
                     sleeping: true,
                     ..Default::default()
                 }.into()),
-                watchers: Some(Watchers::new(Vec::new())),
                 occluder: door.door_occluder(),
                 ..Default::default()
             });

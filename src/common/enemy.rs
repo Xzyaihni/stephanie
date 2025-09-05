@@ -268,7 +268,7 @@ impl Enemy
                         let this_transform = some_or_value!(entities.transform(this_entity), BehaviorState::Wait);
 
                         let this_collider = some_or_value!(entities.collider(this_entity), BehaviorState::Wait);
-                        let this_scale = this_collider.scale.unwrap_or(this_transform.scale);
+                        let this_scale = this_collider.override_transform.as_ref().map(|x| x.transform.scale).unwrap_or(this_transform.scale);
 
                         let path = world.pathfind(
                             this_scale,
@@ -400,7 +400,7 @@ impl Enemy
                         if regenerate_path
                         {
                             let this_collider = some_or_return!(entities.collider(entity));
-                            let this_scale = this_collider.scale.unwrap_or(transform.scale);
+                            let this_scale = this_collider.override_transform.as_ref().map(|x| x.transform.scale).unwrap_or(transform.scale);
 
                             *path = world.pathfind(this_scale, transform.position, target);
                         }

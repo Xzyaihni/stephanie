@@ -105,7 +105,7 @@ impl ColliderType
     pub fn inverse_inertia_tensor(
         &self,
         physical: &Physical,
-        transform: &Transform
+        scale: &Vector3<f32>
     ) -> Matrix3<f32>
     {
         // to prevent div by zero cuz floating points suck and i hate them
@@ -123,13 +123,13 @@ impl ColliderType
             | Self::Tile(_) => return Matrix3::zeros(),
             Self::Circle =>
             {
-                Matrix3::from_diagonal_element((2.0/5.0) * m * transform.scale.max().powi(2))
+                Matrix3::from_diagonal_element((2.0/5.0) * m * scale.max().powi(2))
             },
             Self::Rectangle =>
             {
-                let w = transform.scale.x;
-                let h = transform.scale.y;
-                let d = transform.scale.z;
+                let w = scale.x;
+                let h = scale.y;
+                let d = scale.z;
 
                 let at_axis = |a: f32, b: f32|
                 {
@@ -146,10 +146,10 @@ impl ColliderType
     pub fn inverse_inertia(
         &self,
         physical: &Physical,
-        transform: &Transform
+        scale: &Vector3<f32>
     ) -> f32
     {
-        self.inverse_inertia_tensor(physical, transform).m33
+        self.inverse_inertia_tensor(physical, scale).m33
     }
 }
 
@@ -243,13 +243,20 @@ impl ColliderLayer
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OverrideTransform
+{
+    pub transform: Transform,
+    pub override_position: bool
+}
+
 #[derive(Debug, Clone)]
 pub struct ColliderInfo
 {
     pub kind: ColliderType,
     pub layer: ColliderLayer,
     pub ghost: bool,
-    pub scale: Option<Vector3<f32>>
+    pub override_transform: Option<OverrideTransform>
 }
 
 impl Default for ColliderInfo
@@ -260,7 +267,7 @@ impl Default for ColliderInfo
             kind: ColliderType::Circle,
             layer: ColliderLayer::Normal,
             ghost: false,
-            scale: None
+            override_transform: None
         }
     }
 }
@@ -271,7 +278,7 @@ pub struct Collider
     pub kind: ColliderType,
     pub layer: ColliderLayer,
     pub ghost: bool,
-    pub scale: Option<Vector3<f32>>,
+    pub override_transform: Option<OverrideTransform>,
     collided: Vec<Entity>,
     collided_tiles: Vec<TilePos>
 }
@@ -284,7 +291,7 @@ impl From<ColliderInfo> for Collider
             kind: info.kind,
             layer: info.layer,
             ghost: info.ghost,
-            scale: info.scale,
+            override_transform: info.override_transform,
             collided: Vec::new(),
             collided_tiles: Vec::new()
         }
@@ -320,24 +327,19 @@ impl Collider
     pub fn inverse_inertia_tensor(
         &self,
         physical: &Physical,
-        mut transform: Transform
+        scale: &Vector3<f32>
     ) -> Matrix3<f32>
     {
-        if let Some(scale) = self.scale
-        {
-            transform.scale = scale;
-        }
-
-        self.kind.inverse_inertia_tensor(physical, &transform)
+        self.kind.inverse_inertia_tensor(physical, self.override_transform.as_ref().map(|x| &x.transform.scale).unwrap_or(scale))
     }
 
     pub fn inverse_inertia(
         &self,
         physical: &Physical,
-        transform: Transform
+        scale: &Vector3<f32>
     ) -> f32
     {
-        self.inverse_inertia_tensor(physical, transform).m33
+        self.inverse_inertia_tensor(physical, scale).m33
     }
 
     pub fn collided(&self) -> &[Entity]

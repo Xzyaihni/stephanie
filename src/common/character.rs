@@ -1722,17 +1722,23 @@ impl Character
             }
         };
 
-        let scale = match state
+        let override_transform = match state
         {
             SpriteState::Normal => None,
             SpriteState::Crawling
-            | SpriteState::Lying => Some(Vector3::repeat(ENTITY_SCALE))
+            | SpriteState::Lying => Some(OverrideTransform{
+                transform: Transform{
+                    scale: Vector3::repeat(ENTITY_SCALE),
+                    ..Default::default()
+                },
+                override_position: false
+            })
         };
 
         ColliderInfo{
             kind: ColliderType::Circle,
             layer,
-            scale,
+            override_transform,
             ..Default::default()
         }
     }

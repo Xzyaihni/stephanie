@@ -1,7 +1,5 @@
 use std::cell::RefCell;
 
-use yanyaengine::Transform;
-
 use nalgebra::Vector3;
 
 use crate::{
@@ -50,18 +48,28 @@ pub fn update(
         (with $entity:expr, $collider:expr) =>
         {
             {
-                let mut transform = some_or_return!(entities.transform($entity)).clone();
-
-                let kind = $collider.kind;
-                if kind == ColliderType::Aabb
+                let transform = if let Some(override_transform) = $collider.override_transform.clone()
                 {
-                    transform.rotation = 0.0;
-                }
+                    let mut overridden = override_transform.transform;
 
-                if let Some(scale) = $collider.scale
+                    if !override_transform.override_position
+                    {
+                        overridden.position += some_or_return!(entities.transform($entity)).position;
+                    }
+
+                    overridden
+                } else
                 {
-                    transform.scale = scale;
-                }
+                    let mut transform = some_or_return!(entities.transform($entity)).clone();
+
+                    let kind = $collider.kind;
+                    if kind == ColliderType::Aabb
+                    {
+                        transform.rotation = 0.0;
+                    }
+
+                    transform
+                };
 
                 CollidingInfo{
                     entity: Some($entity),
@@ -76,7 +84,7 @@ pub fn update(
     {
         if DebugConfig::is_enabled(DebugTool::CollisionBounds)
         {
-            if let Some(transform) = entities.transform(entity)
+            if let Some(mut transform) = entities.transform(entity).as_deref().cloned()
             {
                 let collider = collider.borrow_mut();
                 let (bounds, mix, sprite) = match &collider.kind
@@ -88,14 +96,30 @@ pub fn update(
                     ColliderType::Circle => (None, None, "circle_transparent.png")
                 };
 
-                let scale = bounds.unwrap_or_else(|| collider.scale.unwrap_or(transform.scale));
+                if let Some(OverrideTransform{
+                    transform: override_transform,
+                    override_position
+                }) = &collider.override_transform
+                {
+                    let position = if *override_position
+                    {
+                        override_transform.position
+                    } else
+                    {
+                        override_transform.position + transform.position
+                    };
+
+                    transform = override_transform.clone();
+                    transform.position = position;
+                }
+
+                if let Some(scale) = bounds
+                {
+                    transform.scale = scale;
+                }
+
                 entities.push(true, EntityInfo{
-                    transform: Some(Transform{
-                        scale,
-                        position: transform.position,
-                        rotation: transform.rotation,
-                        ..Default::default()
-                    }),
+                    transform: Some(transform),
                     render: Some(RenderInfo{
                         object: Some(RenderObjectKind::Texture{
                             name: sprite.to_owned()
@@ -170,26 +194,6 @@ pub fn update(
             }
 
             let mut this = maybe_colliding_info!{with entity, collider};
-
-            if DebugConfig::is_enabled(DebugTool::CollisionWorldBounds)
-            {
-                entities.push(true, EntityInfo{
-                    transform: Some(Transform{
-                        position: this.transform.position,
-                        scale: this.bounds() * 2.0,
-                        ..Default::default()
-                    }),
-                    render: Some(RenderInfo{
-                        object: Some(RenderObjectKind::Texture{
-                            name: "solid.png".to_owned()
-                        }.into()),
-                        z_level: ZLevel::highest(),
-                        ..Default::default()
-                    }),
-                    watchers: Some(Watchers::simple_one_frame()),
-                    ..Default::default()
-                });
-            }
 
             crate::time_this_additive!{
                 world_flat_time,
