@@ -729,46 +729,44 @@ pub fn intersection_lines(line0: Line, line1: Line) -> Option<Vector2<f32>>
     Some(Vector2::new(x1 + t * (x2 - x1), y1 + t * (y2 - y1)))
 }
 
+pub fn aabb_bounds(transform: &Transform) -> Vector3<f32>
+{
+    let (a, b) = aabb_points_origin_pre(transform);
+
+    Vector3::new(a.x.max(b.x) - a.x.min(b.x), a.y.max(b.y) - a.y.min(b.y), transform.scale.z)
+}
+
 pub fn aabb_points(transform: &Transform) -> (Vector2<f32>, Vector2<f32>)
 {
-    let points = rectangle_points(transform);
-    points.into_iter().fold((points[0], points[0]), |(mut top_left, mut bottom_right), value|
-    {
-        let x = value.x;
-        let y = value.y;
+    let pos = transform.position.xy();
 
-        top_left.x = top_left.x.min(x);
-        top_left.y = top_left.y.min(y);
+    let (a, b) = aabb_points_origin_pre(transform);
 
-        bottom_right.x = bottom_right.x.max(x);
-        bottom_right.y = bottom_right.y.max(y);
+    (Vector2::new(a.x.min(b.x), a.y.min(b.y)) + pos, Vector2::new(a.x.max(b.x), a.y.max(b.y)) + pos)
+}
 
-        (top_left, bottom_right)
-    })
+fn aabb_points_origin_pre(transform: &Transform) -> (Vector2<f32>, Vector2<f32>)
+{
+    let half_size = transform.scale.xy() * 0.5;
+    let rotation = transform.rotation;
+
+    (rotate_point(-half_size, rotation), rotate_point(half_size, rotation))
 }
 
 pub fn rectangle_points(transform: &Transform) -> [Vector2<f32>; 4]
 {
-    let size = transform.scale;
-    let pos = transform.position;
+    let pos = transform.position.xy();
+    let size = transform.scale.xy() * 0.5;
     let rotation = transform.rotation;
 
-    let x_shift = Vector2::new(size.x / 2.0, 0.0);
-    let y_shift = Vector2::new(0.0, size.y / 2.0);
-
-    let pos = pos.xy();
-
-    let left_middle = pos - x_shift;
-    let right_middle = pos + x_shift;
-
     [
-        left_middle - y_shift,
-        right_middle - y_shift,
-        right_middle + y_shift,
-        left_middle + y_shift
+        Vector2::new(-size.x, -size.y),
+        Vector2::new(size.x, -size.y),
+        Vector2::new(size.x, size.y),
+        Vector2::new(-size.x, size.y)
     ].map(|x|
     {
-        rotate_point(x - pos, rotation) + pos
+        rotate_point(x, rotation) + pos
     })
 }
 
