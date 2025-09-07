@@ -1396,7 +1396,10 @@ impl<'a> PlayerContainer<'a>
 
                         if consumed
                         {
-                            self.get_inventory(which).unwrap().remove(item);
+                            if let Some(mut inventory) = self.get_inventory(which)
+                            {
+                                inventory.remove(item);
+                            }
                         }
                     }
                 } else
@@ -1410,8 +1413,7 @@ impl<'a> PlayerContainer<'a>
                     .and_then(|mut inventory| inventory.remove(item))
                     .is_some() && which == InventoryWhich::Player
                 {
-                    if let Some(mut character) = self.game_state.entities()
-                        .character_mut(self.info.entity)
+                    if let Some(mut character) = self.game_state.entities().character_mut(self.info.entity)
                     {
                         character.dropped_item(item);
                     }
@@ -1422,17 +1424,20 @@ impl<'a> PlayerContainer<'a>
             },
             GameUiEvent::Wield(item) =>
             {
-                self.game_state.entities().character_mut(player).unwrap().set_holding(Some(item));
+                if let Some(mut character) = self.game_state.entities().character_mut(player)
+                {
+                    character.set_holding(Some(item));
+                }
             },
             GameUiEvent::Take(item) =>
             {
                 if let Some(taken) = self.get_inventory(InventoryWhich::Other)
                     .and_then(|mut inventory| inventory.remove(item))
                 {
-                    self.game_state.entities()
-                        .inventory_mut(self.info.entity)
-                        .unwrap()
-                        .push(taken);
+                    if let Some(mut inventory) = self.game_state.entities().inventory_mut(self.info.entity)
+                    {
+                        inventory.push(taken);
+                    }
                 } else
                 {
                     eprintln!("tried to take item that doesnt exist");
