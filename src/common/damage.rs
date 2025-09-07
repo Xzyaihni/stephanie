@@ -169,11 +169,11 @@ impl DamageHeight
 
     pub fn random() -> Self
     {
-        match fastrand::u32(0..3)
+        match fastrand::u32(0..5)
         {
-            0 => Self::Top,
-            1 => Self::Middle,
-            2 => Self::Bottom,
+            0..2 => Self::Middle,
+            2..4 => Self::Bottom,
+            4 => Self::Top,
             _ => unreachable!()
         }
     }

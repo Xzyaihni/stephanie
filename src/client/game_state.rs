@@ -208,11 +208,6 @@ impl ClientEntitiesContainer
         };
 
         crate::frame_time_this!{
-            2, damaging_system_update,
-            damaging_system::update(&mut self.entities, world, damage_info)
-        };
-
-        crate::frame_time_this!{
             2, lazy_mix_update,
             self.entities.update_lazy_mix(dt)
         };
@@ -252,6 +247,11 @@ impl ClientEntitiesContainer
                     set_changed.position_rotation(b);
                 }
             })
+        };
+
+        crate::frame_time_this!{
+            2, damaging_system_update,
+            damaging_system::update(&mut self.entities, world, damage_info)
         };
 
         crate::frame_time_this!{

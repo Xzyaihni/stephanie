@@ -10,6 +10,7 @@ use serde::{Serialize, Deserialize};
 use crate::{
     debug_config::*,
     common::{
+        lerp,
         Damage,
         DamageType,
         Side1d,
@@ -640,7 +641,21 @@ impl Health
         self.health.heal_remainder(amount)
     }
 
-    pub fn damage_pierce(&mut self, damage: DamageType, sharpness_scale: f32) -> Option<DamageType>
+    pub fn damage_pierce(
+        &mut self,
+        damage: DamageType,
+        sharpness_scale: f32
+    ) -> Option<DamageType>
+    {
+        self.damage_pierce_special(damage, sharpness_scale, 1.0)
+    }
+
+    pub fn damage_pierce_special(
+        &mut self,
+        damage: DamageType,
+        sharpness_scale: f32,
+        blunt_hp_scale: f32
+    ) -> Option<DamageType>
     {
         match damage
         {
@@ -655,24 +670,24 @@ impl Health
             },
             DamageType::Sharp{sharpness, damage} =>
             {
-                self.pierce_with(sharpness * sharpness_scale, damage).map(|damage|
+                self.pierce_with(sharpness * sharpness_scale, damage, blunt_hp_scale).map(|damage|
                 {
                     DamageType::Sharp{sharpness, damage}
                 })
             },
             DamageType::Bullet(damage) =>
             {
-                self.simple_pierce(damage).map(DamageType::Bullet)
+                self.pierce_with(0.5 * sharpness_scale, damage, blunt_hp_scale).map(DamageType::Bullet)
             }
         }
     }
 
     fn simple_pierce(&mut self, damage: f32) -> Option<f32>
     {
-        self.pierce_with(0.0, damage)
+        self.pierce_with(0.0, damage, 1.0)
     }
 
-    fn pierce_with(&mut self, sharpness: f32, damage: f32) -> Option<f32>
+    fn pierce_with(&mut self, sharpness: f32, damage: f32, blunt_hp_scale: f32) -> Option<f32>
     {
         let pass = if self.is_zero()
         {
@@ -682,7 +697,7 @@ impl Health
             damage * (1.0 - (self.block * (1.0 - sharpness))).clamp(0.0, 1.0)
         };
 
-        self.health.subtract_hp(damage);
+        self.health.subtract_hp(damage * lerp(blunt_hp_scale, 1.0, sharpness));
 
         if pass <= 0.0
         {
@@ -841,7 +856,7 @@ impl<Contents> BodyPart<Contents>
         Self::new_full(
             name,
             Health::new(0.99, info.bone * 0.5),
-            Health::new(0.8, info.skin * 3.0),
+            Health::new(0.5, info.skin * 10.0),
             Health::new(0.9, info.muscle * 10.0),
             size,
             contents
@@ -929,7 +944,7 @@ impl<Contents: Organ> BodyPart<Contents>
             side,
             self.bone.damage_pierce(
                 self.muscle.damage_pierce(
-                    self.skin.damage_pierce(damage, 0.0)?,
+                    self.skin.damage_pierce_special(damage, 0.0, 0.1)?,
                     1.0)?,
                 0.0)?)
     }

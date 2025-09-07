@@ -295,20 +295,20 @@ impl HumanAnatomyValues
 
             let upper = new_part(
                 DebugName::new(with_name("upper leg")),
-                BodyPartInfo{bone: part.bone * 40.0, ..part},
+                BodyPartInfo{bone: part.bone * 20.0, muscle: part.muscle * 0.5, ..part},
                 0.6
             );
 
             let lower = new_part(
                 DebugName::new(with_name("lower leg")),
-                BodyPartInfo{bone: part.bone * 35.0, ..part},
+                BodyPartInfo{bone: part.bone * 10.0, muscle: part.muscle * 0.5, ..part},
                 0.44
             );
 
             let foot = {
                 let mut x = new_part(
                     DebugName::new(with_name("foot")),
-                    BodyPartInfo{bone: part.bone * 20.0, ..part},
+                    BodyPartInfo{bone: part.bone * 5.0, ..part},
                     0.17
                 );
 
@@ -332,20 +332,20 @@ impl HumanAnatomyValues
 
             let upper = new_part(
                 DebugName::new(with_name("upper arm")),
-                BodyPartInfo{bone: part.bone * 25.0, ..part},
+                BodyPartInfo{bone: part.bone * 15.0, muscle: part.muscle * 0.5, ..part},
                 0.2
             );
 
             let lower = new_part(
                 DebugName::new(with_name("lower arm")),
-                BodyPartInfo{bone: part.bone * 20.0, ..part},
+                BodyPartInfo{bone: part.bone * 7.0, muscle: part.muscle * 0.5, ..part},
                 0.17
             );
 
             let hand = {
                 let mut x = new_part(
                     DebugName::new(with_name("hand")),
-                    BodyPartInfo{bone: part.bone * 20.0, ..part},
+                    BodyPartInfo{bone: part.bone * 4.0, ..part},
                     0.07
                 );
 
@@ -385,7 +385,7 @@ impl HumanAnatomyValues
             let mut head = HumanPart::new(
                 DebugName::new("head"),
                 BodyPartInfo{
-                    bone: part.bone * 50.0,
+                    bone: part.bone * 400.0,
                     ..part
                 },
                 0.39,
