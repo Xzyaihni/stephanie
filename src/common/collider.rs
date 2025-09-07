@@ -6,15 +6,14 @@ use std::{
 
 use serde::{Serialize, Deserialize};
 
-use nalgebra::{Unit, Matrix2, Matrix3, Vector2, Vector3};
+use nalgebra::{Unit, Matrix2, Vector2, Vector3};
 
 use yanyaengine::Transform;
 
 use crate::common::{
     some_or_value,
     define_layers,
-    with_z,
-    aabb_points,
+    aabb_bounds,
     rectangle_edges,
     is_intersection_lines,
     ENTITY_SCALE,
@@ -31,6 +30,11 @@ use crate::common::{
 };
 
 
+fn non_colliding_z(this: &Transform, other: &Transform) -> bool
+{
+    (this.position.z - other.position.z).abs() > (this.scale.z + other.scale.z) * 0.5
+}
+
 pub type WorldTileInfo = DirectionsGroup<bool>;
 
 #[derive(Debug, Clone)]
@@ -38,8 +42,8 @@ pub struct ContactGeneral<T>
 {
     pub a: T,
     pub b: Option<Entity>,
-    pub point: Vector3<f32>,
-    pub normal: Unit<Vector3<f32>>,
+    pub point: Vector2<f32>,
+    pub normal: Unit<Vector2<f32>>,
     pub penetration: f32
 }
 
@@ -102,54 +106,34 @@ impl ColliderType
         }
     }
 
-    pub fn inverse_inertia_tensor(
-        &self,
-        physical: &Physical,
-        scale: &Vector3<f32>
-    ) -> Matrix3<f32>
-    {
-        // to prevent div by zero cuz floating points suck and i hate them
-        if (physical.inverse_mass.classify() == FpCategory::Zero) || physical.fixed.rotation
-        {
-            return Matrix3::zeros();
-        }
-
-        let m = physical.inverse_mass.recip();
-
-        let inertia = match self
-        {
-            Self::RayZ
-            | Self::Aabb
-            | Self::Tile(_) => return Matrix3::zeros(),
-            Self::Circle =>
-            {
-                Matrix3::from_diagonal_element((2.0/5.0) * m * scale.max().powi(2))
-            },
-            Self::Rectangle =>
-            {
-                let w = scale.x;
-                let h = scale.y;
-                let d = scale.z;
-
-                let at_axis = |a: f32, b: f32|
-                {
-                    (1.0/12.0) * m * (a.powi(2) + b.powi(2))
-                };
-
-                Matrix3::from_partial_diagonal(&[at_axis(h, d), at_axis(w, d), at_axis(w, h)])
-            }
-        };
-
-        inertia.try_inverse().expect("must have inverse")
-    }
-
     pub fn inverse_inertia(
         &self,
         physical: &Physical,
         scale: &Vector3<f32>
     ) -> f32
     {
-        self.inverse_inertia_tensor(physical, scale).m33
+        // to prevent div by zero cuz floating points suck and i hate them
+        if (physical.inverse_mass.classify() == FpCategory::Zero) || physical.fixed.rotation
+        {
+            return 0.0;
+        }
+
+        let m = physical.inverse_mass.recip();
+
+        match self
+        {
+            Self::RayZ
+            | Self::Aabb
+            | Self::Tile(_) => 0.0,
+            Self::Circle =>
+            {
+                ((2.0/5.0) * m * scale.max().powi(2)).recip()
+            },
+            Self::Rectangle =>
+            {
+                ((1.0/12.0) * m * (scale.x.powi(2) + scale.y.powi(2))).recip()
+            }
+        }
     }
 }
 
@@ -300,37 +284,17 @@ impl From<ColliderInfo> for Collider
 
 impl Collider
 {
-    pub fn bounds(&self, transform: &Transform) -> Vector3<f32>
+    pub fn half_bounds(&self, transform: &Transform) -> Vector3<f32>
     {
         let scale = self.kind.half_size(transform.scale);
 
         if self.kind == ColliderType::Rectangle
         {
-            let (top_left, bottom_right) = aabb_points(transform);
-
-            let size_axis = |i|
-            {
-                (bottom_right[i] - top_left[i]) / 2.0
-            };
-
-            Vector3::new(
-                size_axis(0),
-                size_axis(1),
-                scale.z
-            )
+            aabb_bounds(transform) * 0.5
         } else
         {
             scale
         }
-    }
-
-    pub fn inverse_inertia_tensor(
-        &self,
-        physical: &Physical,
-        scale: &Vector3<f32>
-    ) -> Matrix3<f32>
-    {
-        self.kind.inverse_inertia_tensor(physical, self.override_transform.as_ref().map(|x| &x.transform.scale).unwrap_or(scale))
     }
 
     pub fn inverse_inertia(
@@ -339,7 +303,7 @@ impl Collider
         scale: &Vector3<f32>
     ) -> f32
     {
-        self.inverse_inertia_tensor(physical, scale).m33
+        self.kind.inverse_inertia(physical, scale)
     }
 
     pub fn collided(&self) -> &[Entity]
@@ -492,11 +456,11 @@ impl<'b> TransformMatrix<'b>
     {
         let local_point = self.into_obb_local(point);
 
-        let projected = limit_obb_local(self.transform.scale.xy(), local_point.xy());
+        let projected = limit_obb_local(self.transform.scale.xy(), local_point);
 
         let mut limited = projected;
 
-        let index = (projected.xy().abs().component_div(&self.transform.scale.xy())).imax();
+        let index = (projected.abs().component_div(&self.transform.scale.xy())).imax();
 
         let face_sign = local_point.index(index).signum();
         *limited.index_mut(index) = (*self.transform.scale.index(index) / 2.0) * face_sign;
@@ -526,7 +490,7 @@ impl<'b> TransformMatrix<'b>
     fn handle_penetration<'a, F>(
         &self,
         other: &'a Self,
-        axis: Unit<Vector3<f32>>,
+        axis: Unit<Vector2<f32>>,
         penetration: f32
     ) -> impl FnOnce(F) + use<'a, '_, F>
     where
@@ -534,8 +498,7 @@ impl<'b> TransformMatrix<'b>
     {
         move |mut add_contact: F|
         {
-            let z = self.transform.position.z;
-            let diff = with_z((other.transform.position - self.transform.position).xy(), 0.0);
+            let diff = other.transform.position.xy() - self.transform.position.xy();
 
             let normal = if axis.dot(&diff) > 0.0
             {
@@ -554,7 +517,7 @@ impl<'b> TransformMatrix<'b>
             add_contact(ContactRaw{
                 a: self.entity,
                 b: other.entity,
-                point: with_z(point, z),
+                point: point,
                 penetration,
                 normal: -normal
             }.into());
@@ -565,16 +528,16 @@ impl<'b> TransformMatrix<'b>
         &'a self,
         other: &'a Self,
         mut add_contact: F,
-        this_axis: impl Fn((Unit<Vector3<f32>>, f32, usize)) -> bool,
-        other_axis: impl Fn((Unit<Vector3<f32>>, f32, usize)) -> bool
+        this_axis: impl Fn((Unit<Vector2<f32>>, f32, usize)) -> bool,
+        other_axis: impl Fn((Unit<Vector2<f32>>, f32, usize)) -> bool
     ) -> bool
     where
         F: FnMut(Contact)
     {
         // funy
-        let try_penetrate = |axis: Unit<Vector3<f32>>| -> (f32, _)
+        let try_penetrate = |axis: Unit<Vector2<f32>>| -> (f32, _)
         {
-            let penetration = self.penetration_axis(other, &axis.xy());
+            let penetration = self.penetration_axis(other, &axis);
 
             (penetration, move |this: &'a Self, other| -> (f32, _)
             {
@@ -585,7 +548,7 @@ impl<'b> TransformMatrix<'b>
         enum PenetrationInfo<F>
         {
             ThisAxis((f32, F)),
-            OtherAxis((Unit<Vector3<f32>>, f32, usize), F)
+            OtherAxis((Unit<Vector2<f32>>, f32, usize), F)
         }
 
         impl<F> PenetrationInfo<F>
@@ -603,7 +566,7 @@ impl<'b> TransformMatrix<'b>
         let mut penetrations = (0..2).filter_map(|i|
         {
             let axis: Vector2<f32> = self.rotation_matrix.column(i).into();
-            let axis = Unit::new_unchecked(with_z(axis, 0.0));
+            let axis = Unit::new_unchecked(axis);
 
             let (penetration, handler) = try_penetrate(axis);
 
@@ -614,7 +577,7 @@ impl<'b> TransformMatrix<'b>
         }).chain((0..2).map(|i|
         {
             let axis: Vector2<f32> = other.rotation_matrix.column(i).into();
-            let axis = Unit::new_unchecked(with_z(axis, 0.0));
+            let axis = Unit::new_unchecked(axis);
 
             let (_penetration, handler) = try_penetrate(axis);
 
@@ -677,16 +640,22 @@ impl<'b> TransformMatrix<'b>
     fn rectangle_circle_inner(
         &self,
         other: &CollidingInfo,
-        mut add_contact: impl FnMut(Vector2<f32>, Vector2<f32>, f32, Option<Unit<Vector3<f32>>>) -> bool
+        mut add_contact: impl FnMut(Vector2<f32>, Vector2<f32>, f32, Option<Unit<Vector2<f32>>>) -> bool
     ) -> bool
     {
+
+        if non_colliding_z(&self.transform, &other.transform)
+        {
+            return false;
+        }
+
         let circle_pos = other.transform.position.xy();
 
-        let radius = other.transform.scale.max() / 2.0;
+        let radius = other.transform.scale.xy().max() / 2.0;
 
         let (projected, projected_inside) = self.project_onto_obb_edge(circle_pos);
 
-        let diff = projected - circle_pos;
+        let diff = projected_inside - circle_pos;
         let magnitude = diff.magnitude();
 
         let penetration = radius - magnitude;
@@ -699,7 +668,7 @@ impl<'b> TransformMatrix<'b>
             }
         }
 
-        let normal = Unit::try_new(with_z(projected_inside - circle_pos, 0.0), 0.0001);
+        let normal = Unit::try_new(projected_inside - circle_pos, 0.0001);
 
         add_contact(projected, projected_inside, penetration, normal)
     }
@@ -715,9 +684,9 @@ pub struct CollidingInfo<'a>
 
 impl<'a> CollidingInfo<'a>
 {
-    pub fn bounds(&self) -> Vector3<f32>
+    pub fn half_bounds(&self) -> Vector3<f32>
     {
-        self.collider.bounds(&self.transform)
+        self.collider.half_bounds(&self.transform)
     }
 
     pub fn half_size(&self) -> Vector3<f32>
@@ -731,10 +700,15 @@ impl<'a> CollidingInfo<'a>
         mut add_contact: impl FnMut(Contact)
     ) -> bool
     {
-        let this_radius = self.transform.scale.max() / 2.0;
-        let other_radius = other.transform.scale.max() / 2.0;
+        if non_colliding_z(&self.transform, &other.transform)
+        {
+            return false;
+        }
 
-        let diff = other.transform.position - self.transform.position;
+        let this_radius = self.transform.scale.xy().max() / 2.0;
+        let other_radius = other.transform.scale.xy().max() / 2.0;
+
+        let diff = other.transform.position.xy() - self.transform.position.xy();
         let distance = diff.magnitude();
 
         if (distance - this_radius - other_radius) >= 0.0
@@ -744,7 +718,7 @@ impl<'a> CollidingInfo<'a>
 
         let normal = if distance.classify() == FpCategory::Zero
         {
-            Vector3::x_axis()
+            Vector2::x_axis()
         } else
         {
             Unit::new_unchecked(diff / distance)
@@ -753,7 +727,7 @@ impl<'a> CollidingInfo<'a>
         add_contact(Contact{
             a: self.entity.unwrap(),
             b: other.entity,
-            point: self.transform.position + *normal * this_radius,
+            point: self.transform.position.xy() + *normal * this_radius,
             penetration: this_radius + other_radius - distance,
             normal: -normal
         });
@@ -761,7 +735,7 @@ impl<'a> CollidingInfo<'a>
         true
     }
 
-    fn transform_matrix(&self) -> TransformMatrix
+    pub fn transform_matrix(&self) -> TransformMatrix
     {
         TransformMatrix::from_transform(&self.transform, self.entity)
     }
@@ -772,7 +746,7 @@ impl<'a> CollidingInfo<'a>
         mut other_edges: impl Iterator<Item=Line>
     ) -> bool
     {
-        if (self.transform.position.z - other.position.z).abs() > (self.transform.scale.z + other.scale.z) * 0.5
+        if non_colliding_z(&self.transform, other)
         {
             return false;
         }
@@ -835,7 +809,6 @@ impl<'a> CollidingInfo<'a>
         mut add_contact: impl FnMut(Contact)
     ) -> bool
     {
-        let z = self.transform.position.z;
         let this = TransformMatrix::new_identity(&self.transform, self.entity);
 
         this.rectangle_circle_inner(other, |projected, projected_inside, penetration, normal|
@@ -882,7 +855,7 @@ impl<'a> CollidingInfo<'a>
 
                         available.then(||
                         {
-                            let mut normal = Vector3::zeros();
+                            let mut normal = Vector2::zeros();
                             *normal.index_mut(axis_i) = amount;
 
                             (axis_i, (TILE_SIZE / 2.0) * amount, Unit::new_unchecked(normal))
@@ -896,7 +869,7 @@ impl<'a> CollidingInfo<'a>
                 (point, normal)
             };
 
-            let mut axis: Vector3<f32> = *normal;
+            let mut axis: Vector2<f32> = *normal;
 
             (0..2).for_each(|axis_i|
             {
@@ -927,7 +900,7 @@ impl<'a> CollidingInfo<'a>
                 add_contact(ContactRaw{
                     a: self.entity,
                     b: other.entity,
-                    point: with_z(point, z),
+                    point: point,
                     penetration: magnitude * penetration,
                     normal: Unit::new_unchecked(axis / magnitude)
                 }.into());
@@ -964,8 +937,8 @@ impl<'a> CollidingInfo<'a>
     }
 
     fn world_handler(
-        check: impl Fn(Unit<Vector3<f32>>, usize) -> bool
-    ) -> impl Fn((Unit<Vector3<f32>>, f32, usize)) -> bool
+        check: impl Fn(Unit<Vector2<f32>>, usize) -> bool
+    ) -> impl Fn((Unit<Vector2<f32>>, f32, usize)) -> bool
     {
         move |(axis, penetration, i)|
         {
@@ -994,7 +967,7 @@ impl<'a> CollidingInfo<'a>
             return false;
         }
 
-        let diff = with_z((other.transform.position - self.transform.position).xy(), 0.0);
+        let diff = other.transform.position.xy() - self.transform.position.xy();
 
         let this = self.transform_matrix();
         let other = other.transform_matrix();
@@ -1071,7 +1044,6 @@ impl<'a> CollidingInfo<'a>
         mut add_contact: impl FnMut(Contact)
     ) -> bool
     {
-        let z = self.transform.position.z;
         let this = self.transform_matrix();
 
         this.rectangle_circle_inner(other, |projected, projected_inside, penetration, normal|
@@ -1084,13 +1056,13 @@ impl<'a> CollidingInfo<'a>
                 let mut normal = Vector2::zeros();
                 *normal.index_mut(axis_i) = -limited.index(axis_i).signum();
 
-                Unit::new_unchecked(with_z(this.rotation_matrix * normal, 0.0))
+                Unit::new_unchecked(this.rotation_matrix * normal)
             });
 
             add_contact(ContactRaw{
                 a: self.entity,
                 b: other.entity,
-                point: with_z(projected, z),
+                point: projected,
                 penetration,
                 normal
             }.into());

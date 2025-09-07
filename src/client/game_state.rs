@@ -239,17 +239,20 @@ impl ClientEntitiesContainer
             physical_system::apply(&mut self.entities, world)
         };
 
-        contacts.iter().for_each(|contact|
-        {
-            let set_changed = self.entities.set_changed();
-
-            set_changed.position_rotation(contact.a);
-
-            if let Some(b) = contact.b
+        crate::frame_time_this!{
+            2, collided_entities_sync,
+            contacts.iter().for_each(|contact|
             {
-                set_changed.position_rotation(b);
-            }
-        });
+                let set_changed = self.entities.set_changed();
+
+                set_changed.position_rotation(contact.a);
+
+                if let Some(b) = contact.b
+                {
+                    set_changed.position_rotation(b);
+                }
+            })
+        };
 
         crate::frame_time_this!{
             2, collision_system_resolution,

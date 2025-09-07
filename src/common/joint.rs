@@ -1,13 +1,13 @@
 use serde::{Serialize, Deserialize};
 
-use nalgebra::{Unit, Vector3};
+use nalgebra::{Unit, Vector2};
 
 use yanyaengine::Transform;
 
 use crate::{
     debug_config::*,
     common::{
-        project_onto,
+        project_onto_2d,
         collider::*,
         Entity
     }
@@ -26,7 +26,7 @@ pub struct HingeAngleLimit
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HingeJoint
 {
-    pub origin: Vector3<f32>
+    pub origin: Vector2<f32>
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -38,12 +38,12 @@ pub enum Joint
 fn hinge_contact(
     this: &Transform,
     entity: Entity,
-    base: Vector3<f32>,
+    base: Vector2<f32>,
     joint: &HingeJoint,
     contacts: &mut Vec<Contact>
 )
 {
-    let pos = project_onto(this, &joint.origin);
+    let pos = project_onto_2d(this, &joint.origin);
 
     let diff = pos - base;
 
@@ -69,7 +69,7 @@ impl Joint
         &self,
         transform: &Transform,
         entity: Entity,
-        base: Vector3<f32>,
+        base: Vector2<f32>,
         contacts: &mut Vec<Contact>
     )
     {

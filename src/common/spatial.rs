@@ -4,18 +4,26 @@ use std::{
     cell::RefCell
 };
 
-use nalgebra::Vector3;
+use nalgebra::{Vector2, Vector3};
 
 use crate::{
     debug_config::*,
     common::{
+        ENTITY_SCALE,
+        with_z,
+        line_info,
         some_or_return,
         unique_pairs_no_self,
+        render_info::*,
+        watcher::*,
+        Transform,
+        EntityInfo,
+        AnyEntities,
         Entity,
         Collider,
         OverrideTransform,
-        world::{CHUNK_SIZE, CLIENT_OVERMAP_SIZE_Z, Pos3, overmap::OvermapIndexing},
-        entity::{for_each_component, ClientEntities}
+        world::{CHUNK_SIZE, CLIENT_OVERMAP_SIZE_Z, TilePos, Pos3, overmap::OvermapIndexing},
+        entity::{iterate_components_with, for_each_component, ClientEntities}
     }
 };
 
@@ -29,13 +37,18 @@ pub struct SpatialInfo
     pub entity: Entity,
     pub sleeping: bool,
     pub position: Vector3<f32>,
-    pub scale: Vector3<f32>
+    pub half_scale: Vector3<f32>
 }
 
 #[derive(Debug)]
 enum KNode
 {
-    Node{left: Box<KNode>, right: Box<KNode>},
+    Node{
+        left: Box<KNode>,
+        right: Box<KNode>,
+        #[cfg(debug_assertions)]
+        median: f32
+    },
     Leaf{entities: Vec<Entity>}
 }
 
@@ -140,12 +153,12 @@ impl KNode
         {
             let is_awake = !info.sleeping;
 
-            let this_scale = *info.scale.index(axis_i);
+            let this_half_scale = *info.half_scale.index(axis_i);
             let this_distance = *info.position.index(axis_i);
 
             let median_distance = this_distance - median;
 
-            if median_distance.abs() < this_scale
+            if median_distance.abs() < this_half_scale
             {
                 // in both halfspaces
 
@@ -173,7 +186,9 @@ impl KNode
 
         Self::Node{
             left: Box::new(if left_has_awake { Self::new(left_infos, depth + 1) } else { Self::empty() }),
-            right: Box::new(if right_has_awake { Self::new(right_infos, depth + 1) } else { Self::empty() })
+            right: Box::new(if right_has_awake { Self::new(right_infos, depth + 1) } else { Self::empty() }),
+            #[cfg(debug_assertions)]
+            median
         }
     }
 
@@ -181,7 +196,7 @@ impl KNode
     {
         match self
         {
-            Self::Node{left, right} =>
+            Self::Node{left, right, ..} =>
             {
                 left.possible_pairs(f);
                 right.possible_pairs(f);
@@ -196,11 +211,143 @@ impl KNode
         }
     }
 
+    #[cfg(not(debug_assertions))]
+    fn debug_display(
+        &self,
+        _client_entities: &ClientEntities,
+        _path: Vec<bool>
+    )
+    {
+        unreachable!()
+    }
+
+    #[cfg(debug_assertions)]
+    fn debug_display(
+        &self,
+        client_entities: &ClientEntities,
+        path: Vec<(f32, bool)>
+    )
+    {
+        match self
+        {
+            Self::Node{left, right, median} =>
+            {
+                let mut left_path = path.clone();
+                left_path.push((*median, true));
+
+                left.debug_display(client_entities, left_path);
+
+                let mut right_path = path;
+                right_path.push((*median, false));
+
+                right.debug_display(client_entities, right_path);
+            },
+            Self::Leaf{entities} =>
+            {
+                entities.iter().for_each(|entity|
+                {
+                    if let Some(transform) = client_entities.transform(*entity)
+                    {
+                        let z = transform.position.z;
+                        let thickness = ENTITY_SCALE * 0.02;
+                        let (_, position, scale) = path.iter().enumerate().fold(
+                            ([(f32::NEG_INFINITY, f32::INFINITY), (f32::NEG_INFINITY, f32::INFINITY)], transform.position.xy(), transform.scale.xy()),
+                            |(mut line, position, mut scale), (index, (median, state))|
+                            {
+                                let axis_i = index % 2;
+
+                                let mut opposite_axis = Vector2::zeros();
+                                opposite_axis[1 - axis_i] = 1.0;
+
+                                {
+                                    if !*state
+                                    {
+                                        line[axis_i].0 = *median;
+                                    } else
+                                    {
+                                        line[axis_i].1 = *median;
+                                    }
+
+                                    let mut start = Vector2::new(line[0].0, line[1].0);
+                                    start[axis_i] = *median;
+
+                                    let mut end = Vector2::new(line[0].1, line[1].1);
+                                    end[axis_i] = *median;
+
+                                    let other_axis = 1 - axis_i;
+
+                                    let start_inf = start[other_axis] == f32::NEG_INFINITY;
+                                    let end_inf = end[other_axis] == f32::INFINITY;
+
+                                    if start_inf && end_inf
+                                    {
+                                        start[other_axis] = transform.position[other_axis] - 100.0;
+                                        end[other_axis] = transform.position[other_axis] + 100.0;
+                                    } else
+                                    {
+                                        if start_inf
+                                        {
+                                            start[other_axis] = end[other_axis] - 100.0;
+                                        }
+
+                                        if end_inf
+                                        {
+                                            end[other_axis] = start[other_axis] + 100.0;
+                                        }
+                                    }
+
+                                    if let Some(line) = line_info(with_z(start, z), with_z(end, z), ENTITY_SCALE * 0.05, [0.4, 0.0, 0.0])
+                                    {
+                                        client_entities.push(true, line);
+                                    }
+                                }
+
+                                let mut axis = Vector2::zeros();
+                                axis[axis_i] = 1.0;
+
+                                let start = position - opposite_axis.component_mul(&(scale * 0.5));
+                                let end = position + opposite_axis.component_mul(&(scale * 0.5));
+
+                                if let Some(line) = line_info(with_z(start, z), with_z(end, z), thickness, [0.0, 0.0, 0.5])
+                                {
+                                    client_entities.push(true, line);
+                                }
+
+                                scale[axis_i] *= 0.5;
+
+                                let shift = axis.component_mul(&(scale * 0.5));
+                                (line, position + if *state { -shift } else { shift }, scale)
+                            });
+
+                        client_entities.push(true, EntityInfo{
+                            transform: Some(Transform{
+                                position: with_z(position, transform.position.z),
+                                scale: scale.xyx(),
+                                ..Default::default()
+                            }),
+                            render: Some(RenderInfo{
+                                object: Some(RenderObjectKind::Texture{
+                                    name: "solid.png".to_owned()
+                                }.into()),
+                                mix: Some(MixColor{keep_transparency: true, ..MixColor::color([1.0, 0.0, 0.0, 0.3])}),
+                                above_world: true,
+                                z_level: ZLevel::BelowFeet,
+                                ..Default::default()
+                            }),
+                            watchers: Some(Watchers::simple_one_frame()),
+                            ..Default::default()
+                        });
+                    }
+                });
+            }
+        }
+    }
+
     fn debug_print(&self, depth: usize) -> (usize, bool, Box<dyn FnOnce()>)
     {
         match self
         {
-            Self::Node{left, right} =>
+            Self::Node{left, right, ..} =>
             {
                 let new_depth = depth + 1;
 
@@ -260,12 +407,26 @@ impl SpatialGrid
         mapper: &impl OvermapIndexing
     ) -> Self
     {
+        fn player_z(entities: &ClientEntities, mapper: &impl OvermapIndexing) -> Option<usize>
+        {
+            iterate_components_with!(entities, player, find_map, |entity, _|
+            {
+                entities.transform(entity).and_then(|x|
+                {
+                    let pos = TilePos::from(x.position);
+                    let player_chunk = mapper.to_local(mapper.player_position())?.pos.z;
+
+                    Some(player_chunk * CHUNK_SIZE + pos.local.pos().z)
+                })
+            })
+        }
+
         let mut queued = [const { Vec::new() }; NODES_Z];
         for_each_component!(entities, collider, |entity, collider: &RefCell<Collider>|
         {
             let collider = collider.borrow();
 
-            let (scale, position) = {
+            let (half_scale, position) = {
                 let transform = some_or_return!(entities.transform(entity));
 
                 let (transform, position) = if let Some(OverrideTransform{
@@ -287,7 +448,7 @@ impl SpatialGrid
                     (&*transform, transform.position)
                 };
 
-                (collider.bounds(&transform), position)
+                (collider.half_bounds(&transform), position)
             };
 
             let sleeping = entities.physical(entity).map(|x| x.sleeping()).unwrap_or(false);
@@ -311,17 +472,56 @@ impl SpatialGrid
             let info = SpatialInfo{
                 entity,
                 sleeping,
-                scale,
+                half_scale,
                 position
             };
 
             queued[z].push(info);
+
+            if DebugConfig::is_enabled(DebugTool::DisplaySpatial)
+            {
+                if let Some(player_z) = player_z(entities, mapper)
+                {
+                    if player_z == z
+                    {
+                        entities.push(true, EntityInfo{
+                            transform: Some(Transform{
+                                position: position,
+                                scale: half_scale * 2.0,
+                                ..Default::default()
+                            }),
+                            render: Some(RenderInfo{
+                                object: Some(RenderObjectKind::Texture{
+                                    name: "solid.png".to_owned()
+                                }.into()),
+                                mix: Some(MixColor{keep_transparency: true, ..MixColor::color([1.0, 1.0, 0.0, 0.3])}),
+                                above_world: true,
+                                z_level: ZLevel::BelowFeet,
+                                ..Default::default()
+                            }),
+                            watchers: Some(Watchers::simple_one_frame()),
+                            ..Default::default()
+                        });
+                    }
+                }
+            }
         });
 
         let z_nodes = queued.map(|queued| KNode::new(queued, 0));
 
         z_nodes.iter().enumerate().for_each(|(z, node)|
         {
+            if DebugConfig::is_enabled(DebugTool::DisplaySpatial)
+            {
+                if let Some(player_z) = player_z(entities, mapper)
+                {
+                    if player_z == z
+                    {
+                        node.debug_display(entities, vec![]);
+                    }
+                }
+            }
+
             if DebugConfig::is_enabled(DebugTool::Spatial)
             {
                 let (amount, _, f) = node.debug_print(0);

@@ -273,7 +273,7 @@ impl World
         CheckCollision: FnMut(CollidingInfo) -> bool,
         Predicate: Fn(Option<&Tile>) -> bool + Copy
     {
-        let half_scale = collider.bounds();
+        let half_scale = collider.half_bounds();
 
         let top_left = TilePos::from(collider.transform.position - half_scale);
         let bottom_right = TilePos::from(collider.transform.position + half_scale);

@@ -242,7 +242,7 @@ pub fn update(
         let parent = some_or_return!(entities.parent(entity));
         let transform = some_or_return!(entities.transform(entity));
 
-        let parent_position = some_or_return!(entities.transform(parent.entity())).position;
+        let parent_position = some_or_return!(entities.transform(parent.entity())).position.xy();
 
         joint.borrow().add_contacts(&transform, entity, parent_position, &mut contacts);
     });

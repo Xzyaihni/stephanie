@@ -27,6 +27,7 @@ pub use crate::{
     some_or_false,
     some_or_return,
     common::{
+        ENTITY_SCALE,
         watcher::*,
         render_info::*,
         EntityInfo,
@@ -588,9 +589,12 @@ pub fn point_line_distance(p: Vector2<f32>, a: Vector2<f32>, b: Vector2<f32>) ->
     p.metric_distance(&check)
 }
 
-pub fn cross_2d(a: Vector2<f32>, b: Vector2<f32>) -> f32
+pub fn cross_2d(
+    Vector2{data: ArrayStorage([[ax, ay]]), ..}: Vector2<f32>,
+    Vector2{data: ArrayStorage([[bx, by]]), ..}: Vector2<f32>
+) -> f32
 {
-    a.x * b.y - b.x * a.y
+    ax * by - bx * ay
 }
 
 pub fn cross_3d(a: Vector3<f32>, b: Vector3<f32>) -> Vector3<f32>
@@ -602,17 +606,23 @@ pub fn cross_3d(a: Vector3<f32>, b: Vector3<f32>) -> Vector3<f32>
     )
 }
 
-pub fn rotate_point(p: Vector2<f32>, angle: f32) -> Vector2<f32>
+pub fn rotate_point(Vector2{data: ArrayStorage([[px, py]]), ..}: Vector2<f32>, angle: f32) -> Vector2<f32>
 {
     let (asin, acos) = (-angle).sin_cos();
 
-    Vector2::new(acos * p.x + asin * p.y, -asin * p.x + acos * p.y)
+    vector![acos * px + asin * py, -asin * px + acos * py]
 }
 
 pub fn rotate_point_z_3d(p: Vector3<f32>, angle: f32) -> Vector3<f32>
 {
     let r = rotate_point(p.xy(), angle);
-    Vector3::new(r.x, r.y, p.z)
+    vector![r.x, r.y, p.z]
+}
+
+pub fn project_onto_2d(transform: &Transform, p: &Vector2<f32>) -> Vector2<f32>
+{
+    let scaled = transform.scale.xy().component_mul(p);
+    rotate_point(scaled, transform.rotation) + transform.position.xy()
 }
 
 pub fn project_onto(transform: &Transform, p: &Vector3<f32>) -> Vector3<f32>
@@ -731,26 +741,25 @@ pub fn intersection_lines(line0: Line, line1: Line) -> Option<Vector2<f32>>
 
 pub fn aabb_bounds(transform: &Transform) -> Vector3<f32>
 {
-    let (a, b) = aabb_points_origin_pre(transform);
+    let scale = transform.scale.xy();
+    let rotation = transform.rotation;
 
-    Vector3::new(a.x.max(b.x) - a.x.min(b.x), a.y.max(b.y) - a.y.min(b.y), transform.scale.z)
+    let a = rotate_point(vector![scale.x, -scale.y], rotation);
+    let b = rotate_point(scale, rotation);
+
+    vector![a.x.abs().max(b.x.abs()), a.y.abs().max(b.y.abs()), transform.scale.z]
 }
 
 pub fn aabb_points(transform: &Transform) -> (Vector2<f32>, Vector2<f32>)
 {
     let pos = transform.position.xy();
-
-    let (a, b) = aabb_points_origin_pre(transform);
-
-    (Vector2::new(a.x.min(b.x), a.y.min(b.y)) + pos, Vector2::new(a.x.max(b.x), a.y.max(b.y)) + pos)
-}
-
-fn aabb_points_origin_pre(transform: &Transform) -> (Vector2<f32>, Vector2<f32>)
-{
-    let half_size = transform.scale.xy() * 0.5;
+    let half_scale = transform.scale.xy() * 0.5;
     let rotation = transform.rotation;
 
-    (rotate_point(-half_size, rotation), rotate_point(half_size, rotation))
+    let a = rotate_point(-half_scale, rotation);
+    let b = rotate_point(half_scale, rotation);
+
+    (vector![a.x.min(b.x), a.y.min(b.y)] + pos, vector![a.x.max(b.x), a.y.max(b.y)] + pos)
 }
 
 pub fn rectangle_points(transform: &Transform) -> [Vector2<f32>; 4]
@@ -760,10 +769,10 @@ pub fn rectangle_points(transform: &Transform) -> [Vector2<f32>; 4]
     let rotation = transform.rotation;
 
     [
-        Vector2::new(-size.x, -size.y),
-        Vector2::new(size.x, -size.y),
-        Vector2::new(size.x, size.y),
-        Vector2::new(-size.x, size.y)
+        vector![-size.x, -size.y],
+        vector![size.x, -size.y],
+        vector![size.x, size.y],
+        vector![-size.x, size.y]
     ].map(|x|
     {
         rotate_point(x, rotation) + pos
@@ -785,21 +794,41 @@ where
 
 pub fn tile_marker_info(position: Vector3<f32>, color: [f32; 4], amount: usize, id: usize) -> EntityInfo
 {
+    debug_marker_info(
+        position + with_z(Vector2::repeat(TILE_SIZE), 0.0),
+        Vector2::repeat(TILE_SIZE),
+        color,
+        1.0,
+        amount,
+        id
+    )
+}
+
+pub fn debug_marker_info(
+    position: Vector3<f32>,
+    scale: Vector2<f32>,
+    color: [f32; 4],
+    fill: f32,
+    amount: usize,
+    id: usize
+) -> EntityInfo
+{
+    let start = position - with_z(scale * 0.5, 0.0);
+
     let per_row = (amount as f32).sqrt().ceil() as usize;
 
     let x = id % per_row;
     let y = id / per_row;
 
     let per_row = per_row as f32;
-    let scale = TILE_SIZE / per_row;
+    let scale = scale / per_row;
 
-    let start = position + Vector3::new(scale, scale, 0.0) / 2.0;
-    let position = start + Vector3::new(x as f32, y as f32, 0.0) * scale;
+    let position = (start + with_z(scale * 0.5, 0.0)) + with_z(Vector2::new(x as f32, y as f32).component_mul(&scale), 0.0);
 
     EntityInfo{
         transform: Some(Transform{
             position,
-            scale: Vector3::repeat(scale),
+            scale: with_z(scale * fill, ENTITY_SCALE),
             ..Default::default()
         }),
         render: Some(RenderInfo{

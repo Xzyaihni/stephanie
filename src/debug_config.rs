@@ -32,6 +32,7 @@ pub enum DebugTool
     ClientMessagesFull,
     ServerMessages,
     ServerMessagesFull,
+    DisplaySpatial,
     DisplayRaycast,
     DisplayPathfind,
     DisplayCollisions,
