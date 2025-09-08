@@ -28,7 +28,7 @@ use crate::{
 };
 
 
-const MAX_DEPTH: usize = 4;
+const MAX_DEPTH: usize = 5;
 const NODES_Z: usize = CHUNK_SIZE * CLIENT_OVERMAP_SIZE_Z;
 
 #[derive(Debug, Clone)]
