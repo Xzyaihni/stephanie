@@ -260,6 +260,19 @@ pub fn update_physics(
             let other;
             maybe_colliding_info!{other, other_entity};
 
+            {
+                let this = &this.transform;
+                let other = &other.transform;
+
+                let this_scale = this.scale.x.hypot(this.scale.y);
+                let other_scale = other.scale.x.hypot(other.scale.y);
+
+                if (this_scale + other_scale) * 0.5 < this.position.metric_distance(&other.position)
+                {
+                    return;
+                }
+            }
+
             let before_collision_contacts = contacts.len();
             this.collide(other, |contact| contacts.push(contact));
 
