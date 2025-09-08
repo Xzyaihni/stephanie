@@ -1341,7 +1341,7 @@ impl Character
     {
         match self.sprite_state.value()
         {
-            SpriteState::Normal => DamageHeight::either(DamageHeight::Top, DamageHeight::Middle),
+            SpriteState::Normal => fastrand::choice([DamageHeight::Top, DamageHeight::Middle, DamageHeight::Middle]).unwrap(),
             SpriteState::Crawling
             | SpriteState::Lying => DamageHeight::Bottom
         }

@@ -156,26 +156,9 @@ impl Default for DamageHeight
 
 impl DamageHeight
 {
-    pub fn either(a: Self, b: Self) -> Self
-    {
-        if fastrand::bool()
-        {
-            a
-        } else
-        {
-            b
-        }
-    }
-
     pub fn random() -> Self
     {
-        match fastrand::u32(0..5)
-        {
-            0..2 => Self::Middle,
-            2..4 => Self::Bottom,
-            4 => Self::Top,
-            _ => unreachable!()
-        }
+        fastrand::choice([Self::Middle, Self::Middle, Self::Bottom, Self::Bottom, Self::Top]).unwrap()
     }
 
     pub fn from_z(z: f32) -> Self
