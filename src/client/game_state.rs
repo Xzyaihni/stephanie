@@ -174,6 +174,16 @@ impl ClientEntitiesContainer
     )
     {
         crate::frame_time_this!{
+            2, sleeping_update,
+            collider_system::update_sleeping(&mut self.entities, self.follow_target)
+        };
+
+        crate::frame_time_this!{
+            2, physical_update,
+            physical_system::update(&mut self.entities, world, dt)
+        };
+
+        crate::frame_time_this!{
             2, lazy_transform_update,
             self.entities.update_lazy(dt)
         };
@@ -214,7 +224,7 @@ impl ClientEntitiesContainer
 
             crate::frame_time_this!{
                 2, collider_system_update,
-                collider_system::update_physics(&mut self.entities, world, &mut space, self.follow_target, dt)
+                collider_system::update_physics(&mut self.entities, world, &mut space)
             }
         };
 
