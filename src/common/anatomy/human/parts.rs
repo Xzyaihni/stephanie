@@ -42,9 +42,9 @@ impl MotorCortex
     pub fn new(base: f32) -> Self
     {
         Self{
-            arms: Health::new(base * 0.1, base).into(),
-            body: Health::new(base * 0.1, base).into(),
-            legs: Health::new(base * 0.1, base).into()
+            arms: Health::new(0.1, base).into(),
+            body: Health::new(0.1, base).into(),
+            legs: Health::new(0.1, base).into()
         }
     }
 }
@@ -147,7 +147,7 @@ impl ParietalLobe
 {
     pub fn new(base: f32) -> Self
     {
-        Self(Health::new(base * 0.1, base).into())
+        Self(Health::new(0.1, base).into())
     }
 }
 
@@ -187,7 +187,7 @@ impl TemporalLobe
 {
     pub fn new(base: f32) -> Self
     {
-        Self(Health::new(base * 0.1, base).into())
+        Self(Health::new(0.1, base).into())
     }
 }
 
@@ -227,7 +227,7 @@ impl OccipitalLobe
 {
     pub fn new(base: f32) -> Self
     {
-        Self(Health::new(base * 0.1, base).into())
+        Self(Health::new(0.1, base).into())
     }
 }
 
@@ -407,7 +407,7 @@ impl Eye
 {
     pub fn new(base: f32) -> Self
     {
-        Self(Health::new(base * 0.5, base).into())
+        Self(Health::new(0.5, base).into())
     }
 }
 
@@ -447,7 +447,7 @@ impl Lung
 {
     pub fn new(base: f32) -> Self
     {
-        Self(Health::new(base * 0.05, base).into())
+        Self(Health::new(0.1, base).into())
     }
 }
 
@@ -492,8 +492,8 @@ impl SpinalCord
     pub fn new(base: f32) -> Self
     {
         Self{
-            cervical: Health::new(base * 0.05, base).into(),
-            lumbar: Health::new(base * 0.025, base * 0.5).into()
+            cervical: Health::new(0.2, base).into(),
+            lumbar: Health::new(0.1, base * 0.5).into()
         }
     }
 }

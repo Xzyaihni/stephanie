@@ -38,7 +38,6 @@ pub enum DebugTool
     DisplayCollisions,
     CollisionBounds,
     Contacts,
-    Sleeping,
     Velocity,
     Spatial,
     SpatialFull,

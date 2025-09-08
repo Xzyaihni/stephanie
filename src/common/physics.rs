@@ -40,7 +40,6 @@ pub struct PhysicalProperties
     pub damping: f32,
     pub angular_damping: f32,
     pub floating: bool,
-    pub sleeping: bool,
     pub fixed: PhysicalFixed,
     pub target_non_lazy: bool,
     pub move_z: bool
@@ -56,7 +55,6 @@ impl Default for PhysicalProperties
             damping: 0.003,
             angular_damping: 0.005,
             floating: false,
-            sleeping: false,
             fixed: PhysicalFixed::default(),
             target_non_lazy: false,
             move_z: true
@@ -73,7 +71,6 @@ pub struct Physical
     pub target_non_lazy: bool,
     pub move_z: bool,
     floating: bool,
-    sleeping: bool,
     angular_damping: f32,
     torque: f32,
     angular_velocity: f32,
@@ -94,7 +91,6 @@ impl From<PhysicalProperties> for Physical
             inverse_mass: props.inverse_mass,
             restitution: props.restitution,
             floating: props.floating,
-            sleeping: props.sleeping,
             fixed: props.fixed,
             target_non_lazy: props.target_non_lazy,
             move_z: props.move_z,
@@ -122,7 +118,6 @@ impl Physical
             damping: self.damping,
             angular_damping: self.angular_damping,
             floating: self.floating,
-            sleeping: self.sleeping,
             fixed: self.fixed,
             target_non_lazy: self.target_non_lazy,
             move_z: self.move_z
@@ -131,11 +126,6 @@ impl Physical
 
     pub fn apply(&mut self, transform: &mut Transform)
     {
-        if self.sleeping
-        {
-            return;
-        }
-
         transform.position = self.next_position;
     }
 
@@ -146,11 +136,6 @@ impl Physical
         dt: f32
     )
     {
-        if self.sleeping
-        {
-            return;
-        }
-
         if !self.floating && DebugConfig::is_disabled(DebugTool::NoGravity)
         {
             self.acceleration = GRAVITY;
@@ -213,29 +198,9 @@ impl Physical
         }
     }
 
-    pub fn set_sleeping(&mut self, state: bool)
-    {
-        if self.sleeping == state
-        {
-            return;
-        }
-
-        self.sleeping = state;
-        if state
-        {
-            self.velocity = Vector3::zeros();
-            self.angular_velocity = 0.0;
-        }
-    }
-
     pub fn last_acceleration(&self) -> &Vector3<f32>
     {
         &self.last_acceleration
-    }
-
-    pub fn sleeping(&self) -> bool
-    {
-        self.sleeping
     }
 
     pub fn set_acceleration(&mut self, acceleration: Vector3<f32>)

@@ -118,8 +118,8 @@ pub struct ClientEntitiesContainer
 {
     pub entities: ClientEntities,
     pub camera_entity: Entity,
-    pub follow_entity: Entity,
     pub player_entity: Entity,
+    pub follow_target: Entity,
     visible_renders: Vec<Vec<Entity>>,
     above_world_renders: Vec<Entity>,
     light_renders: Vec<Entity>,
@@ -133,25 +133,19 @@ impl ClientEntitiesContainer
     {
         let mut entities = Entities::new(infos);
 
-        let follow_entity = entities.push_eager(true, EntityInfo{
-            transform: Some(Transform::default()),
-            ..Default::default()
-        });
-
         let camera_entity = entities.push_eager(true, EntityInfo{
-            transform: Some(Transform::default()),
-            follow_position: Some(FollowPosition::new(
-                follow_entity,
-                Connection::EaseOut{decay: 5.0, limit: None}
-            )),
+            lazy_transform: Some(LazyTransformInfo{
+                connection: Connection::EaseOut{decay: 5.0, limit: None},
+                ..Default::default()
+            }.into()),
             ..Default::default()
         });
 
         Self{
             entities,
             camera_entity,
-            follow_entity,
             player_entity,
+            follow_target: player_entity,
             visible_renders: Vec::new(),
             above_world_renders: Vec::new(),
             light_renders: Vec::new(),
@@ -179,11 +173,6 @@ impl ClientEntitiesContainer
         dt: f32
     )
     {
-        crate::frame_time_this!{
-            2, physical_system_update,
-            physical_system::update(&mut self.entities, world, dt)
-        };
-
         crate::frame_time_this!{
             2, lazy_transform_update,
             self.entities.update_lazy(dt)
@@ -225,7 +214,7 @@ impl ClientEntitiesContainer
 
             crate::frame_time_this!{
                 2, collider_system_update,
-                collider_system::update(&mut self.entities, world, &mut space)
+                collider_system::update_physics(&mut self.entities, world, &mut space, self.follow_target, dt)
             }
         };
 
@@ -319,22 +308,6 @@ impl ClientEntitiesContainer
             if !render.visible(visibility)
             {
                 return;
-            }
-
-            if DebugConfig::is_enabled(DebugTool::Sleeping)
-            {
-                if let Some(physical) = self.entities.physical(entity)
-                {
-                    let color = if physical.sleeping()
-                    {
-                        [0.2, 0.2, 1.0, 1.0]
-                    } else
-                    {
-                        [0.2, 1.0, 0.2, 1.0]
-                    };
-
-                    render.mix = Some(MixColor{color, amount: 0.7, keep_transparency: true});
-                }
             }
 
             let is_render_above = render.above_world;

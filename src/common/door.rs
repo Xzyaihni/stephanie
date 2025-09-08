@@ -155,7 +155,7 @@ impl Door
 
         let mut setter = entities.lazy_setter.borrow_mut();
         setter.set_occluder(visible_door, occluder);
-        setter.set_collider(visible_door, collider);
+        setter.set_collider(visible_door, collider.map(Into::into));
 
         self.update_parent_state(entities, entity);
     }
@@ -199,7 +199,7 @@ impl Door
         self.is_closed().then_some(Occluder::Door)
     }
 
-    pub fn door_collider(&self) -> Option<Collider>
+    pub fn door_collider(&self) -> Option<ColliderInfo>
     {
         self.is_closed().then(||
         {
@@ -213,7 +213,7 @@ impl Door
                 layer: ColliderLayer::Door,
                 override_transform,
                 ..Default::default()
-            }.into()
+            }
         })
     }
 
@@ -266,12 +266,17 @@ impl Door
                     z_level: ZLevel::Door,
                     ..Default::default()
                 }),
-                collider: door.door_collider(),
+                collider: door.door_collider().map(|x|
+                {
+                    ColliderInfo{
+                        sleeping: true,
+                        ..x
+                    }.into()
+                }),
                 physical: Some(PhysicalProperties{
                     inverse_mass: 0.0,
                     floating: true,
                     move_z: false,
-                    sleeping: true,
                     ..Default::default()
                 }.into()),
                 occluder: door.door_occluder(),

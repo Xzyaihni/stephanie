@@ -32,7 +32,7 @@ use crate::common::{
     door::DOOR_WIDTH,
     entity::ClientEntities,
     lisp::{self, *},
-    systems::{physical_system, mouse_highlight_system},
+    systems::mouse_highlight_system,
     world::{CHUNK_VISUAL_SIZE, TILE_SIZE, Pos3, TilePos}
 };
 
@@ -94,8 +94,6 @@ impl Game
             let game_state = game_state.upgrade().unwrap();
             let mut game_state = game_state.borrow_mut();
 
-            let player = game_state.player();
-
             let entities = game_state.entities_mut();
             let mouse_entity = entities.push_eager(true, EntityInfo{
                 transform: Some(Transform{
@@ -113,8 +111,8 @@ impl Game
 
             PlayerInfo::new(PlayerCreateInfo{
                 camera: game_state.entities.camera_entity,
-                follow: game_state.entities.follow_entity,
-                entity: player,
+                follow_target: game_state.entities.follow_target,
+                entity: game_state.entities.player_entity,
                 mouse_entity
             })
         };
@@ -690,13 +688,15 @@ impl Game
             let info = self.info.clone();
 
             primitives.add(
-                "set-follow-entity",
+                "set-follow-target",
                 PrimitiveProcedureInfo::new_simple(1, Effect::Impure, move |mut args|
                 {
                     with_game_state(&game_state, |game_state|
                     {
-                        let entities = game_state.entities();
-                        info.borrow_mut().follow_entity = Self::pop_entity(entities, &mut args)?;
+                        let entity = Self::pop_entity(game_state.entities(), &mut args)?;
+
+                        let mut info = info.borrow_mut();
+                        PlayerContainer::new(&mut info, game_state).set_follow_target(entity);
 
                         Ok(().into())
                     })
@@ -1037,7 +1037,7 @@ impl Game
 struct PlayerCreateInfo
 {
     pub camera: Entity,
-    pub follow: Entity,
+    pub follow_target: Entity,
     pub entity: Entity,
     pub mouse_entity: Entity
 }
@@ -1074,9 +1074,8 @@ struct PlayerAnimation
 struct PlayerInfo
 {
     camera: Entity,
-    follow: Entity,
     entity: Entity,
-    follow_entity: Entity,
+    follow_target: Entity,
     mouse_entity: Entity,
     other_entity: Option<Entity>,
     console: ConsoleInfo,
@@ -1094,9 +1093,8 @@ impl PlayerInfo
 
         Self{
             camera: info.camera,
-            follow: info.follow,
             entity: info.entity,
-            follow_entity: info.entity,
+            follow_target: info.follow_target,
             mouse_entity: info.mouse_entity,
             other_entity: None,
             console,
@@ -1155,13 +1153,7 @@ impl<'a> PlayerContainer<'a>
     {
         if !self.update_camera_follow() { return; }
 
-        let entities = self.game_state.entities();
-
-        {
-            let mut transform = some_or_return!(self.game_state.entities().transform_mut(self.info.camera));
-
-            transform.position = some_or_return!(entities.transform(self.info.follow)).position;
-        }
+        self.game_state.entities().end_sync_full(self.info.camera);
 
         self.camera_sync();
     }
@@ -1173,7 +1165,7 @@ impl<'a> PlayerContainer<'a>
 
         let entities = self.game_state.entities();
 
-        let entity_position = some_or_value!(entities.transform(self.info.follow_entity), false).position;
+        let entity_position = some_or_value!(entities.transform(self.info.follow_target), false).position;
 
         let follow_position = if mouse_position.magnitude() > CHUNK_VISUAL_SIZE * 2.0
         {
@@ -1183,7 +1175,7 @@ impl<'a> PlayerContainer<'a>
             entity_position + mouse_position / 5.0
         };
 
-        some_or_value!(entities.transform_mut(self.info.follow), false).position = follow_position;
+        some_or_value!(entities.target(self.info.camera), false).position = follow_position;
 
         true
     }
@@ -1503,6 +1495,12 @@ impl<'a> PlayerContainer<'a>
         }
     }
 
+    fn set_follow_target(&mut self, entity: Entity)
+    {
+        self.info.follow_target = entity;
+        self.game_state.entities.follow_target = entity;
+    }
+
     pub fn this_update(&mut self, dt: f32) -> bool
     {
         if !self.exists()
@@ -1533,8 +1531,6 @@ impl<'a> PlayerContainer<'a>
                 self.info.entity,
                 self.info.mouse_entity
             );
-
-            physical_system::sleeping_update(entities, self.info.entity);
         }
 
         self.update_camera_follow();

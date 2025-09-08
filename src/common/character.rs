@@ -1739,6 +1739,7 @@ impl Character
             kind: ColliderType::Circle,
             layer,
             override_transform,
+            sleeping: true,
             ..Default::default()
         }
     }

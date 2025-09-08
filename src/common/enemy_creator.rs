@@ -64,7 +64,6 @@ pub fn create(
         physical: Some(PhysicalProperties{
             inverse_mass: (info.scale / ENTITY_SCALE) * 50.0_f32.recip(),
             fixed: PhysicalFixed{rotation: true, ..Default::default()},
-            sleeping: true,
             ..Default::default()
         }.into()),
         inventory: Some(inventory),

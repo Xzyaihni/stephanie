@@ -240,6 +240,7 @@ pub struct ColliderInfo
     pub kind: ColliderType,
     pub layer: ColliderLayer,
     pub ghost: bool,
+    pub sleeping: bool,
     pub override_transform: Option<OverrideTransform>
 }
 
@@ -251,6 +252,7 @@ impl Default for ColliderInfo
             kind: ColliderType::Circle,
             layer: ColliderLayer::Normal,
             ghost: false,
+            sleeping: false,
             override_transform: None
         }
     }
@@ -262,6 +264,7 @@ pub struct Collider
     pub kind: ColliderType,
     pub layer: ColliderLayer,
     pub ghost: bool,
+    pub sleeping: bool,
     pub override_transform: Option<OverrideTransform>,
     collided: Vec<Entity>,
     collided_tiles: Vec<TilePos>
@@ -275,6 +278,7 @@ impl From<ColliderInfo> for Collider
             kind: info.kind,
             layer: info.layer,
             ghost: info.ghost,
+            sleeping: info.sleeping,
             override_transform: info.override_transform,
             collided: Vec::new(),
             collided_tiles: Vec::new()

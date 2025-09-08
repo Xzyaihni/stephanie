@@ -70,12 +70,12 @@ pub fn update_furniture(entities: &ClientEntities, entity: Entity)
 
         setter.set_collider_no_change(entity, Some(ColliderInfo{
             kind: ColliderType::Rectangle,
+            sleeping: true,
             ..Default::default()
         }.into()));
 
         setter.set_physical_no_change(entity, Some(PhysicalProperties{
             inverse_mass: 100.0_f32.recip(),
-            sleeping: true,
             ..Default::default()
         }.into()));
     }

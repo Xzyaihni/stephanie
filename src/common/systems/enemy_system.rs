@@ -17,7 +17,7 @@ pub fn update(
 {
     for_each_component!(entities, enemy, |entity, enemy: &RefCell<Enemy>|
     {
-        if entities.physical(entity).map(|x| x.sleeping()).unwrap_or(true)
+        if entities.collider(entity).map(|x| x.sleeping).unwrap_or(true)
         {
             return;
         }
