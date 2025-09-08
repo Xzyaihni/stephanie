@@ -267,7 +267,7 @@ pub fn update_physics(
                 let this_scale = this.scale.x.hypot(this.scale.y);
                 let other_scale = other.scale.x.hypot(other.scale.y);
 
-                if (this_scale + other_scale) * 0.5 < this.position.metric_distance(&other.position)
+                if (this_scale + other_scale) * 0.5 < this.position.xy().metric_distance(&other.position.xy())
                 {
                     return;
                 }
