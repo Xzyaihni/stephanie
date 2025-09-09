@@ -15,6 +15,7 @@ use crate::common::{
     with_error,
     some_or_value,
     generic_info::*,
+    render_info::ZLevel,
     world::DirectionsGroup
 };
 
@@ -24,9 +25,12 @@ use crate::common::{
 struct FurnitureInfoRaw
 {
     name: String,
+    z: Option<ZLevel>,
     container: Option<bool>,
+    attached: Option<bool>,
+    colliding: Option<bool>,
     symmetry: Option<Symmetry>,
-    collision: Option<f32>
+    hitbox: Option<f32>
 }
 
 type FurnituresInfoRaw = Vec<FurnitureInfoRaw>;
@@ -36,10 +40,13 @@ define_info_id!{FurnitureId}
 pub struct FurnitureInfo
 {
     pub name: String,
+    pub z: ZLevel,
     pub scale: Vector2<f32>,
     pub container: bool,
+    pub attached: bool,
+    pub colliding: bool,
     pub textures: DirectionsGroup<TextureId>,
-    pub collision: Option<f32>
+    pub hitbox: Option<f32>
 }
 
 impl GenericItem for FurnitureInfo
@@ -112,10 +119,13 @@ impl FurnitureInfo
 
         Self{
             name: raw.name,
+            z: raw.z.unwrap_or(ZLevel::Hips),
             scale,
             container: raw.container.unwrap_or(false),
+            attached: raw.attached.unwrap_or(false),
+            colliding: raw.colliding.unwrap_or(true),
             textures,
-            collision: raw.collision
+            hitbox: raw.hitbox
         }
     }
 }

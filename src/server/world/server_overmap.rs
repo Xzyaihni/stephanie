@@ -545,7 +545,7 @@ mod tests
     {
         let saver = TestSaver::new();
 
-        let tiles = "tiles/tiles.json";
+        let tiles = "info/tiles.json";
 
         let tilemap = TileMap::parse(tiles, "textures/tiles/").unwrap().tilemap;
 

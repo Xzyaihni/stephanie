@@ -926,7 +926,7 @@ impl YanyaApp for ChunkPreviewer
 
                                 (texture, None, 0.0)
                             },
-                            MarkerKind::Furniture{name, rotation: tile_rotation} =>
+                            MarkerKind::Furniture{name, rotation: tile_rotation, offset} =>
                             {
                                 let furnitures = &self.assets_dependent.furniture;
                                 let (texture, scale, rotation) = furnitures.get_id(&name.replace('_', " ")).map(|id|
@@ -939,9 +939,9 @@ impl YanyaApp for ChunkPreviewer
                                         ..Default::default()
                                     };
 
-                                    pos += furniture_creator::furniture_position(furniture, tile_rotation);
+                                    pos += furniture_creator::furniture_position(furniture, tile_rotation) + offset.xy();
 
-                                    let (closest, transform) = rotating_info(transform, furniture.collision, &furniture.textures);
+                                    let (closest, transform) = rotating_info(transform, furniture.hitbox, &furniture.textures);
 
                                     (closest, transform.scale.xy(), transform.rotation)
                                 }).unwrap_or((default_texture, Vector2::repeat(TILE_SIZE), 0.0));

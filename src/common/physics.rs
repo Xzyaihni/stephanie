@@ -136,7 +136,7 @@ impl Physical
         dt: f32
     )
     {
-        if !self.floating && DebugConfig::is_disabled(DebugTool::NoGravity)
+        if !self.floating && self.move_z && DebugConfig::is_disabled(DebugTool::NoGravity)
         {
             self.acceleration = GRAVITY;
         }

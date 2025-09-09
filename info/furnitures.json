@@ -9,17 +9,26 @@
         "symmetry": "Both"
     },
     {
-        "name": "debug",
-        "symmetry": "None",
-        "collision": 0.0
-    },
-    {
         "name": "wood chair",
         "symmetry": "None",
-        "collision": 0.0
+        "hitbox": 0.0
     },
     {
         "name": "bed",
         "symmetry": "None"
+    },
+    {
+        "name": "cabinet",
+        "z": "Door",
+        "symmetry": "Horizontal",
+        "container": true,
+        "colliding": false
+    },
+    {
+        "name": "sink",
+        "z": "Knee",
+        "symmetry": "Horizontal",
+        "container": true,
+        "attached": true
     }
 ]

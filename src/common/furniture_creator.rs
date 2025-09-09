@@ -37,15 +37,15 @@ pub fn update_furniture(entities: &ClientEntities, entity: Entity)
         let mut setter = entities.lazy_setter.borrow_mut();
 
         let render = RenderInfo{
-            object: Some(RenderObjectKind::TextureRotating{ids, offset: info.collision}.into()),
+            object: Some(RenderObjectKind::TextureRotating{ids, offset: info.hitbox}.into()),
             shadow_visible: true,
-            z_level: ZLevel::Hips,
+            z_level: info.z,
             ..Default::default()
         };
 
         setter.set_named_no_change(entity, Some(info.name.clone()));
 
-        if info.collision.is_some()
+        if info.hitbox.is_some()
         {
             let aspect = info.scale / info.scale.min();
 
@@ -68,16 +68,32 @@ pub fn update_furniture(entities: &ClientEntities, entity: Entity)
             setter.set_render_no_change(entity, Some(render));
         }
 
-        setter.set_collider_no_change(entity, Some(ColliderInfo{
-            kind: ColliderType::Rectangle,
-            sleeping: true,
-            ..Default::default()
-        }.into()));
+        if info.colliding
+        {
+            setter.set_collider_no_change(entity, Some(ColliderInfo{
+                kind: ColliderType::Rectangle,
+                sleeping: true,
+                ..Default::default()
+            }.into()));
 
-        setter.set_physical_no_change(entity, Some(PhysicalProperties{
-            inverse_mass: 100.0_f32.recip(),
-            ..Default::default()
-        }.into()));
+            let physical = if info.attached
+            {
+                PhysicalProperties{
+                    inverse_mass: 0.0,
+                    move_z: false,
+                    fixed: PhysicalFixed{rotation: true},
+                    ..Default::default()
+                }
+            } else
+            {
+                PhysicalProperties{
+                    inverse_mass: 100.0_f32.recip(),
+                    ..Default::default()
+                }
+            };
+
+            setter.set_physical_no_change(entity, Some(physical.into()));
+        }
     }
 }
 
@@ -101,7 +117,7 @@ pub fn create(
 {
     let info = furnitures_info.get(id);
 
-    let scale = info.collision.map(|_x|
+    let scale = info.hitbox.map(|_x|
     {
         let s = info.scale.min();
 

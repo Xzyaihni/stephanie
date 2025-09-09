@@ -40,6 +40,11 @@ pub fn update(entities: &mut ClientEntities, world: &World, dt: f32)
 {
     for_each_component!(entities, physical, |entity, physical: &RefCell<Physical>|
     {
+        if entities.collider(entity).map(|x| x.sleeping).unwrap_or(false)
+        {
+            return;
+        }
+
         if let Some(mut target) = entities.target(entity)
         {
             if !world.inside_chunk(target.position.into())

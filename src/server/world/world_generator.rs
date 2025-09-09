@@ -1196,7 +1196,7 @@ mod tests
     #[test]
     fn generating()
     {
-        let tilemap = TileMap::parse("tiles/tiles.json", "textures/tiles/").unwrap().tilemap;
+        let tilemap = TileMap::parse("info/tiles.json", "textures/tiles/").unwrap().tilemap;
 
         let get_tile = |name|
         {

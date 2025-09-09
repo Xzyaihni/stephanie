@@ -90,7 +90,7 @@ impl MarkerTile
                     position
                 ))
             },
-            MarkerKind::Furniture{name, rotation} =>
+            MarkerKind::Furniture{name, rotation, offset} =>
             {
                 if DebugConfig::is_enabled(DebugTool::NoFurnitureSpawns) { return None; }
 
@@ -103,7 +103,7 @@ impl MarkerTile
                     return None;
                 };
 
-                Some(furniture_creator::create(furnitures, loot, id, rotation, position))
+                Some(furniture_creator::create(furnitures, loot, id, rotation, position + offset))
             },
             MarkerKind::Light{strength, offset} =>
             {
@@ -155,7 +155,7 @@ impl MarkerTile
 pub enum MarkerKind
 {
     Enemy{name: String},
-    Furniture{name: String, rotation: TileRotation},
+    Furniture{name: String, rotation: TileRotation, offset: Vector3<f32>},
     Door{rotation: TileRotation, material: DoorMaterial, width: u32},
     Light{strength: f32, offset: Vector3<f32>}
 }
@@ -164,11 +164,17 @@ impl MarkerKind
 {
     pub fn rotated(mut self, tile_rotation: TileRotation) -> Self
     {
+        let rotate_offset = |offset: Vector3<f32>, rotation: TileRotation|
+        {
+            rotate_point_z_3d(offset, -rotation.rotate_clockwise().to_angle())
+        };
+
         match &mut self
         {
-            Self::Furniture{rotation, ..} =>
+            Self::Furniture{rotation, offset, ..} =>
             {
                 *rotation = rotation.combine(tile_rotation);
+                *offset = rotate_offset(*offset, rotation.rotate_counterclockwise());
             },
             Self::Door{rotation, ..} =>
             {
@@ -176,7 +182,7 @@ impl MarkerKind
             },
             Self::Light{offset, ..} =>
             {
-                *offset = rotate_point_z_3d(*offset, -(tile_rotation.to_angle() - f32::consts::FRAC_PI_2));
+                *offset = rotate_offset(*offset, tile_rotation);
             },
             _ => ()
         }
@@ -247,8 +253,9 @@ impl MarkerKind
             {
                 let name = next_value("name")?.as_symbol()?;
                 let rotation = TileRotation::from_lisp_value(*next_value("furniture rotation")?)?.rotate_clockwise();
+                let offset = next_position(next_value("").ok())?;
 
-                Ok(Self::Furniture{name, rotation})
+                Ok(Self::Furniture{name, rotation, offset})
             },
             x => Err(lisp::Error::Custom(format!("unknown marker id `{x}`")))
         }

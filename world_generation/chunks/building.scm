@@ -51,8 +51,9 @@
                 (pick-weighted 'zob 'runner 0.25)
                 'bigy))
 
-        (define (place-furniture point name side)
-            (combine-markers this-chunk point (list 'furniture name side)))
+        (define place-furniture
+            (lambda xs
+                (combine-markers this-chunk (list-ref xs 0) (cons 'furniture (list-tail xs 1)))))
 
         (define (place-enemy point)
             (combine-markers
@@ -145,22 +146,34 @@
                         (this-tile (make-point (x-of 3) 14) (tile 'glass))
                         (this-tile (make-point (x-of 4) 14) (tile 'glass))
                         (door (x-of 6) 4 side-up 'metal)
-                        (fill-area
+                        (put-tile
                             this-chunk
-                            (area-of (make-area (make-point 3 5) (make-point 3 1)))
+                            (make-point (x-of 3) 5)
+                            wall-material)
+                        (put-tile
+                            this-chunk
+                            (make-point (x-of 4) 5)
+                            wall-material)
+                        (put-tile
+                            this-chunk
+                            (make-point (x-of 4) 4)
+                            wall-material)
+                        (put-tile
+                            this-chunk
+                            (make-point (x-of 4) 3)
                             wall-material)
                         (maybe-light (make-point (x-of 3) 3) 0.8 '(0.0 0.0 0.0))
                         (maybe-light (make-point (x-of 4) 9) 1.2 (list (if flip -0.5 0.5) 0.5 0.0))
                         (door (x-of 2) 5 (if flip side-left side-right) 'metal)
-                        (let ((table-rotated (random-bool)))
-                            (begin
-                                (place-furniture
-                                    (make-point (x-of 4) 7)
-                                    'wood_table
-                                    (if table-rotated (if flip side-left (side-of side-right)) side-up))
-                                (place-furniture (make-point (x-of 4) 6) 'wood_chair side-up)
-                                (place-furniture (make-point (x-of 5) 7) 'wood_chair (side-of side-right))
-                                (place-furniture (make-point (x-of 2) 13) 'bed side-down)))
+                        (place-furniture
+                            (make-point (x-of 5) 9)
+                            'wood_table
+                            side-up)
+                        (place-furniture (make-point (x-of 5) 8) 'wood_chair side-up)
+                        (place-furniture (make-point (x-of 5) 11) 'wood_chair side-down)
+                        (place-furniture (make-point (x-of 2) 13) 'bed side-down)
+                        (place-furniture (make-point (x-of 2) 2) 'cabinet side-up '(0.0 -0.08 0.0))
+                        (place-furniture (make-point (x-of 2) 2) 'sink side-up '(0.0 0.5 0.0))
                         (place-enemy (make-point (x-of 3) 10)))
                     (lambda ()
                         (this-tile (make-point (x-of 2) 1) (tile 'glass))
