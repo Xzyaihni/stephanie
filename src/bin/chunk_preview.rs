@@ -939,11 +939,37 @@ impl YanyaApp for ChunkPreviewer
                                         ..Default::default()
                                     };
 
-                                    pos += furniture_creator::furniture_position(furniture, tile_rotation) + offset.xy();
+                                    pos += furniture_creator::furniture_position(furniture, tile_rotation) + offset.get(tile_rotation).xy();
 
-                                    let (closest, transform) = rotating_info(transform, furniture.hitbox, &furniture.textures);
+                                    let size_of = |t|
+                                    {
+                                        let assets = info.partial.assets.lock();
+                                        let texture = assets.texture(t);
+                                        let texture = texture.lock();
 
-                                    (closest, transform.scale.xy(), transform.rotation)
+                                        texture.size()
+                                    };
+
+                                    let up_size = size_of(furniture.textures.up);
+
+                                    let textures = furniture.textures.map(|direction, x|
+                                    {
+                                        let size = size_of(x);
+
+                                        let size = if furniture.hitbox.is_none() && direction.is_horizontal()
+                                        {
+                                            size.yx()
+                                        } else
+                                        {
+                                            size
+                                        };
+
+                                        (up_size.component_div(&size), x)
+                                    });
+
+                                    let ((factor, closest), transform) = rotating_info(transform, furniture.hitbox, &textures);
+
+                                    (closest, transform.scale.xy().component_mul(&factor), transform.rotation)
                                 }).unwrap_or((default_texture, Vector2::repeat(TILE_SIZE), 0.0));
 
                                 (texture, Some(scale), rotation)

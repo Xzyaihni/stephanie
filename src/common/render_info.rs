@@ -233,6 +233,11 @@ pub fn rotating_info<T: Clone>(
     (closest, object_transform)
 }
 
+fn rotating_scale(transform: Transform, texture_scale: Vector2<f32>) -> Transform
+{
+    Transform{scale: with_z(transform.scale.xy().component_mul(&texture_scale), transform.scale.z), ..transform}
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum RenderObjectKind
 {
@@ -258,12 +263,29 @@ impl RenderObjectKind
             {
                 let textures = ids.map(|_, id| assets.texture(id).clone());
 
+                let up_size = textures.up.lock().size();
+                let textures = textures.map(|direction, texture|
+                {
+                    let size = texture.lock().size();
+
+                    let size = if offset.is_none() && direction.is_horizontal()
+                    {
+                        size.yx()
+                    } else
+                    {
+                        size
+                    };
+
+                    (up_size.component_div(&size), texture)
+                });
+
                 let current_direction = sprite_rotation(transform.rotation);
 
+                let (scale_factor, texture) = &textures[current_direction];
                 let object = create_info.partial.object_factory.create(ObjectInfo{
                     model: assets.model(assets.default_model(DefaultModel::Square)).clone(),
-                    texture: textures[current_direction].clone(),
-                    transform: transform.clone()
+                    texture: texture.clone(),
+                    transform: rotating_scale(transform.clone(), *scale_factor)
                 });
 
                 Some(ClientRenderObject{
@@ -464,7 +486,7 @@ impl RenderInfo
 pub enum ClientObjectType
 {
     Normal(Object),
-    NormalRotating{object: Object, offset: Option<f32>, textures: DirectionsGroup<Arc<Mutex<Texture>>>},
+    NormalRotating{object: Object, offset: Option<f32>, textures: DirectionsGroup<(Vector2<f32>, Arc<Mutex<Texture>>)>},
     Text(TextObject)
 }
 
@@ -483,10 +505,10 @@ impl ClientRenderObject
             ClientObjectType::Normal(x) => x.set_transform(transform),
             ClientObjectType::NormalRotating{object, offset, textures} =>
             {
-                let (closest, object_transform) = rotating_info(transform, *offset, &textures);
+                let ((scale, closest), object_transform) = rotating_info(transform, *offset, &textures);
 
                 object.set_texture(closest);
-                object.set_transform(object_transform)
+                object.set_transform(rotating_scale(object_transform, scale));
             },
             ClientObjectType::Text(x) =>
             {

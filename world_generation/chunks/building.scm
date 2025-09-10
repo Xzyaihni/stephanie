@@ -55,6 +55,13 @@
             (lambda xs
                 (combine-markers this-chunk (list-ref xs 0) (cons 'furniture (list-tail xs 1)))))
 
+        (define (place-sink point side)
+            (if (< (random-float) 0.1)
+                (place-furniture point 'sink side)
+                (begin
+                    (place-furniture point 'cabinet side '(0.0 0.0 0.0) '(0.0 -0.3 0.0) '(0.0 -0.3 0.0))
+                    (place-furniture point 'sink side '(0.0 0.3 0.0) '(0.0 0.0 0.0)))))
+
         (define (place-enemy point)
             (combine-markers
                 this-chunk
@@ -137,6 +144,7 @@
                                 (place-furniture (make-point (x-of 4) 10) 'wood_chair side-up)
                                 (place-furniture (make-point (x-of 5) 10) 'wood_chair side-up)))
                         (place-furniture (make-point (x-of 5) 13) 'bed (side-of side-right))
+                        (place-sink (make-point (x-of 2) 2) (if flip side-right side-left))
                         (place-enemy (make-point (x-of 4) 7)))
                     (lambda ()
                         (add-window 8)
@@ -172,8 +180,7 @@
                         (place-furniture (make-point (x-of 5) 8) 'wood_chair side-up)
                         (place-furniture (make-point (x-of 5) 11) 'wood_chair side-down)
                         (place-furniture (make-point (x-of 2) 13) 'bed side-down)
-                        (place-furniture (make-point (x-of 2) 2) 'cabinet side-up '(0.0 -0.08 0.0))
-                        (place-furniture (make-point (x-of 2) 2) 'sink side-up '(0.0 0.5 0.0))
+                        (place-sink (make-point (x-of 2) 2) side-up)
                         (place-enemy (make-point (x-of 3) 10)))
                     (lambda ()
                         (this-tile (make-point (x-of 2) 1) (tile 'glass))
@@ -195,6 +202,7 @@
                         (place-furniture (make-point (x-of 2) 7) 'wood_chair (side-of side-left))
                         (place-furniture (make-point (x-of 2) 8) 'wood_chair (side-of side-left))
                         (place-furniture (make-point (x-of 5) 5) 'bed side-down)
+                        (place-sink (make-point (x-of 2) 11) (if flip side-right side-left))
                         (place-enemy (make-point (x-of 3) 5)))))))
 
         ; outer walls

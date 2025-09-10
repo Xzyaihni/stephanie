@@ -93,6 +93,14 @@ pub fn update_furniture(entities: &ClientEntities, entity: Entity)
             };
 
             setter.set_physical_no_change(entity, Some(physical.into()));
+        } else if info.container
+        {
+            setter.set_collider_no_change(entity, Some(ColliderInfo{
+                kind: ColliderType::Rectangle,
+                sleeping: true,
+                ghost: true,
+                ..Default::default()
+            }.into()));
         }
     }
 }

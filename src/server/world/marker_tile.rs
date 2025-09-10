@@ -24,6 +24,7 @@ use crate::{
         lisp::{self, *},
         world::{
             TILE_SIZE,
+            DirectionsGroup,
             Pos3,
             ChunkLocal,
             TileRotation
@@ -103,7 +104,7 @@ impl MarkerTile
                     return None;
                 };
 
-                Some(furniture_creator::create(furnitures, loot, id, rotation, position + offset))
+                Some(furniture_creator::create(furnitures, loot, id, rotation, position + offset.get(rotation)))
             },
             MarkerKind::Light{strength, offset} =>
             {
@@ -152,10 +153,29 @@ impl MarkerTile
 }
 
 #[derive(Debug, Clone)]
+pub enum OffsetKind
+{
+    Rotating(Vector3<f32>),
+    Selecting(DirectionsGroup<Vector3<f32>>)
+}
+
+impl OffsetKind
+{
+    pub fn get(&self, rotation: TileRotation) -> Vector3<f32>
+    {
+        match self
+        {
+            Self::Rotating(offset) => rotate_point_z_3d(*offset, -rotation.to_angle()),
+            Self::Selecting(selector) => selector[rotation.rotate_counterclockwise().into()]
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 pub enum MarkerKind
 {
     Enemy{name: String},
-    Furniture{name: String, rotation: TileRotation, offset: Vector3<f32>},
+    Furniture{name: String, rotation: TileRotation, offset: OffsetKind},
     Door{rotation: TileRotation, material: DoorMaterial, width: u32},
     Light{strength: f32, offset: Vector3<f32>}
 }
@@ -164,17 +184,11 @@ impl MarkerKind
 {
     pub fn rotated(mut self, tile_rotation: TileRotation) -> Self
     {
-        let rotate_offset = |offset: Vector3<f32>, rotation: TileRotation|
-        {
-            rotate_point_z_3d(offset, -rotation.rotate_clockwise().to_angle())
-        };
-
         match &mut self
         {
-            Self::Furniture{rotation, offset, ..} =>
+            Self::Furniture{rotation, ..} =>
             {
                 *rotation = rotation.combine(tile_rotation);
-                *offset = rotate_offset(*offset, rotation.rotate_counterclockwise());
             },
             Self::Door{rotation, ..} =>
             {
@@ -182,7 +196,7 @@ impl MarkerKind
             },
             Self::Light{offset, ..} =>
             {
-                *offset = rotate_offset(*offset, tile_rotation);
+                *offset = rotate_point_z_3d(*offset, -tile_rotation.rotate_clockwise().to_angle());
             },
             _ => ()
         }
@@ -207,7 +221,7 @@ impl MarkerKind
             values.next().ok_or_else(|| lisp::Error::Custom(format!("expected {name}")))
         };
 
-        let next_position = |value: Option<GenericOutputWrapper<&LispMemory>>|
+        let maybe_next_position = |value: Option<GenericOutputWrapper<&LispMemory>>| -> Result<Option<_>, _>
         {
             value.map(|x| -> Result<_, _>
             {
@@ -220,7 +234,12 @@ impl MarkerKind
                 };
 
                 Ok(Vector3::new(next_value()?, next_value()?, next_value()?))
-            }).unwrap_or_else(|| Ok(Vector3::zeros()))
+            }).transpose()
+        };
+
+        let next_position = |value|
+        {
+            maybe_next_position(value).map(|x| x.unwrap_or_else(|| Vector3::zeros()))
         };
 
         let id = next_value("marker tile id")?.as_symbol()?;
@@ -254,6 +273,34 @@ impl MarkerKind
                 let name = next_value("name")?.as_symbol()?;
                 let rotation = TileRotation::from_lisp_value(*next_value("furniture rotation")?)?.rotate_clockwise();
                 let offset = next_position(next_value("").ok())?;
+
+                let mut n = || -> Result<Option<_>, _>
+                {
+                    maybe_next_position(next_value("").ok())
+                };
+
+                let offset = if let Some(right) = n()?
+                {
+                    let mut offset_selectors = DirectionsGroup::repeat(Vector3::zeros());
+
+                    offset_selectors.up = offset;
+                    offset_selectors.right = right;
+
+                    if let Some(left) = n()?
+                    {
+                        offset_selectors.left = left;
+
+                        if let Some(down) = n()?
+                        {
+                            offset_selectors.down = down;
+                        }
+                    }
+
+                    OffsetKind::Selecting(offset_selectors)
+                } else
+                {
+                    OffsetKind::Rotating(offset)
+                };
 
                 Ok(Self::Furniture{name, rotation, offset})
             },

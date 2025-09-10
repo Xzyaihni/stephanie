@@ -41,4 +41,8 @@
 
 (define (crate) (drop-between (lambda () (any-of trash)) 1 3))
 
+(define (sink) '(bottle))
+
+(define (cabinet) '(heal_pills))
+
 ((eval name))

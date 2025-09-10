@@ -27,7 +27,7 @@
     {
         "name": "sink",
         "z": "Knee",
-        "symmetry": "Horizontal",
+        "symmetry": "None",
         "container": true,
         "attached": true
     }
