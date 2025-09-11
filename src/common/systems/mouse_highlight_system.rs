@@ -9,21 +9,26 @@ use crate::common::{
 };
 
 
+pub fn mouse_selected(entities: &ClientEntities, player: Entity, mouse: Entity) -> Option<Entity>
+{
+    let mouse_collider = some_or_return!(entities.collider(mouse));
+
+    let mouse_collided = mouse_collider.collided().iter()
+        .filter_map(|x| entities.render(*x).map(|render| (x, render)))
+        .max_by_key(|(_x, render)| render.z_level())
+        .map(|(x, _)| x)
+        .copied()?;
+
+    (entities.within_interactable_distance(player, mouse_collided)).then_some(mouse_collided)
+}
+
 pub fn update(
     entities: &ClientEntities,
     player: Entity,
     mouse: Entity
 )
 {
-    let mouse_collider = some_or_return!(entities.collider(mouse));
-    let mouse_collided = mouse_collider.collided().first().copied();
-
-    let mouse_collided = some_or_return!(mouse_collided);
-
-    if !entities.within_interactable_distance(player, mouse_collided)
-    {
-        return;
-    }
+    let mouse_collided = some_or_return!(mouse_selected(entities, player, mouse));
 
     for_each_component!(entities, outlineable, |entity, outlineable: &RefCell<Outlineable>|
     {

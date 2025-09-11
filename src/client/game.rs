@@ -1281,11 +1281,9 @@ impl<'a> PlayerContainer<'a>
             {
                 let entities = self.game_state.entities();
 
-                if let Some(mouse_touched) = entities.collider(self.info.mouse_entity)
-                    .and_then(|x| x.collided().first().copied())
+                if let Some(mouse_touched) = mouse_highlight_system::mouse_selected(entities, self.info.entity, self.info.mouse_entity)
                 {
-                    if entities.within_interactable_distance(self.info.entity, mouse_touched)
-                        && entities.is_lootable(mouse_touched)
+                    if entities.is_lootable(mouse_touched)
                     {
                         if let Some(other) = self.info.other_entity
                         {
