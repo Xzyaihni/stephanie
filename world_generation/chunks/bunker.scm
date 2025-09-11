@@ -80,6 +80,9 @@
             (place-furniture (make-point 7 7) 'wood_chair side-down)
             (place-furniture (make-point 6 7) 'wood_chair side-down)
             (place-furniture (make-point 10 5) 'bed side-up)
+            (place-furniture (make-point 10 9) 'sink side-right)
+            (if (> difficulty 0.0)
+                (combine-markers this-chunk (make-point 8 6) '(enemy me)))
             (put-tile
                 this-chunk
                 (make-point (/ size-x 2) (- size-y 5))

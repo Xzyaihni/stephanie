@@ -38,7 +38,6 @@ pub fn update_furniture(entities: &ClientEntities, entity: Entity)
 
         let render = RenderInfo{
             object: Some(RenderObjectKind::TextureRotating{ids, offset: info.hitbox}.into()),
-            shadow_visible: true,
             z_level: info.z,
             ..Default::default()
         };

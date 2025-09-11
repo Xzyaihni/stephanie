@@ -2,12 +2,30 @@
 
 (define else #t)
 
+(define (equal? a b)
+    (cond
+        ((and (null? a) (pair? b)) #f)
+        ((and (null? b) (pair? a)) #f)
+        ((and (pair? a) (pair? b))
+            (if (= (car a) (car b))
+                (equal? (cdr a) (cdr b))
+                #f))
+        (else (eq? a b))))
+
 (define (list-tail xs n)
     (if (= n 0)
-	xs
-	(list-tail (cdr xs) (- n 1))))
+        xs
+        (list-tail (cdr xs) (- n 1))))
 
 (define (list-ref xs n) (car (list-tail xs n)))
+
+(define (list-remove xs x)
+    (if (null? x)
+        xs
+        (filter (lambda (v) (not (equal? x v))) xs)))
+
+(define (append as bs)
+    (fold cons bs (reverse as)))
 
 (define (counter x)
     (define (counter-inner current)
@@ -44,13 +62,11 @@
             (for-each f (cdr xs)))))
 
 (define (filter p xs)
-    (fold
-        (lambda (x acc)
-            (if (p x)
-                (cons x acc)
-                acc))
+    (if (null? xs)
         '()
-        xs))
+        (if (p (car xs))
+            (cons (car xs) (filter p (cdr xs)))
+            (filter p (cdr xs)))))
 
 (define (all xs)
     (cond
@@ -68,9 +84,9 @@
 (define (sort id xs)
     (define (is-sorted xs)
         (if (or (null? xs) (null? (cdr xs)))
-	    #t
-	    (if (> (id (car xs)) (id (car (cdr xs))))
-		#f
+            #t
+            (if (> (id (car xs)) (id (car (cdr xs))))
+                #f
                 (is-sorted (cdr xs)))))
     (define (swap-one xs)
         (if (null? (cdr xs))

@@ -37,19 +37,32 @@
             (tile 'stairs-down rotation))))
 
 (define (generate-room)
+    (define this-chunk (filled-chunk (tile 'air)))
+    (define (decide-enemy type)
+        (if (eq? type 'normal)
+            (pick-weighted 'zob 'runner 0.25)
+            'bigy))
+    (define (place-enemy point)
+        (combine-markers
+            this-chunk
+            point
+            (list
+                'enemy
+                (decide-enemy
+                    (gradient-pick
+                        '(normal strong)
+                        difficulty
+                        0.2
+                        2.0)))))
+    (define (maybe-enemy point)
+        (if (difficulty-chance 0.5 0.3)
+            (place-enemy point)))
     (define (residential-building)
-        (define this-chunk (filled-chunk (tile 'air)))
-
         (define (this-tile point tle) (put-tile this-chunk point tle))
 
         (define (maybe-light point intensity offset)
             (if (stop-between-difficulty 0.1 0.2)
                 (combine-markers this-chunk point (list 'light intensity offset))))
-
-        (define (decide-enemy type)
-            (if (eq? type 'normal)
-                (pick-weighted 'zob 'runner 0.25)
-                'bigy))
 
         (define place-furniture
             (lambda xs
@@ -61,23 +74,6 @@
                 (begin
                     (place-furniture point 'cabinet side '(0.0 0.0 0.0) '(0.0 -0.3 0.0) '(0.0 -0.3 0.0))
                     (place-furniture point 'sink side '(0.0 0.3 0.0) '(0.0 0.0 0.0)))))
-
-        (define (place-enemy point)
-            (combine-markers
-                this-chunk
-                point
-                (list
-                    'enemy
-                    (decide-enemy
-                        (gradient-pick
-                            '(normal strong)
-                            difficulty
-                            0.1
-                            0.6)))))
-
-        (define (maybe-enemy point)
-            (if (difficulty-chance 0.5 0.3)
-                (place-enemy point)))
 
         (define wall-material (tile 'concrete))
 
@@ -273,29 +269,37 @@
                 (make-point 7 0)
                 2
                 (tile 'air))
-            (if (< (random-float) 0.3)
-                (let ((left-side (random-bool)))
-                    (let
-                        ((next-to-window?
-                            (lambda (point)
-                                (=
-                                    (tile-id
-                                        (get-tile
-                                            this-chunk
-                                            (point-add
-                                                point
-                                                (make-point (if left-side 1 -1) 0))))
-                                    (tile-id (tile 'glass))))))
-                        (let ((pos
-                            (random-choice
-                                (filter
-                                    (lambda (x) (not (next-to-window? x)))
-                                    (map (lambda (y) (make-point (if left-side 0 (- size-x 1)) y)) (range 1 (- size-y 1)))))))
-                            (if (not (null? pos))
-                                (combine-markers
-                                    this-chunk
-                                    pos
-                                    (list 'furniture 'crate (if left-side side-right side-left))))))))
+            (let ((left-side (random-bool)))
+                (begin
+                    (let ((available-spaces (cons 'spaces (counter size-y))))
+                        (begin
+                            (if (< (random-float) 0.3)
+                                (let
+                                    ((next-to-window?
+                                        (lambda (point)
+                                            (=
+                                                (tile-id
+                                                    (get-tile
+                                                        this-chunk
+                                                        (point-add
+                                                            point
+                                                            (make-point (if left-side 1 -1) 0))))
+                                                (tile-id (tile 'glass))))))
+                                    (let ((pos
+                                        (random-choice
+                                            (filter
+                                                (lambda (x) (not (next-to-window? x)))
+                                                (map (lambda (y) (make-point (if left-side 0 (- size-x 1)) y)) (range 1 (- size-y 1)))))))
+                                        (if (not (null? pos))
+                                            (begin
+                                                (combine-markers
+                                                    this-chunk
+                                                    pos
+                                                    (list 'furniture 'crate (if left-side side-right side-left)))
+                                                (set-cdr! available-spaces (list-remove (cdr available-spaces) (point-y pos))))))))
+                            (maybe-enemy (make-point (if left-side 0 (- size-x 1)) (random-choice (cdr available-spaces))))))
+                        (maybe-enemy (make-point (if left-side (- size-x 1) 0) (random-integer size-y)))
+                        (maybe-enemy (make-point (random-integer-between 1 (- size-x 1)) (- size-y 1)))))
             (put-tile
                 this-chunk
                 (make-point 7 0)
