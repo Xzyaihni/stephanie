@@ -396,7 +396,7 @@ impl<T> ModifiedWatcher<T>
 
     fn new_many(paths: Vec<PathBuf>, value: T) -> Self
     {
-        let last_modified: Vec<_> = paths.iter().map(|x| modified_time(&x)).collect();
+        let last_modified: Vec<_> = paths.iter().map(|x| modified_time(x)).collect();
 
         Self{
             paths,

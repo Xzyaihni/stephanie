@@ -440,7 +440,7 @@ impl HumanAnatomyValues
             body,
             broken: Vec::new(),
             killed: None
-        }.into()
+        }
     }
 
     fn damage_random_part(

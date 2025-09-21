@@ -348,7 +348,7 @@ fn damaging_raycasting(
 
     let hits = raycast_system::raycast(
         entities,
-        world,
+        Some(world),
         info.clone(),
         *start,
         *target

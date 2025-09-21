@@ -1,5 +1,6 @@
 use std::{
     convert,
+    borrow::Borrow,
     num::FpCategory,
     ops::ControlFlow
 };
@@ -50,28 +51,32 @@ pub struct ContactGeneral<T>
 pub type ContactRaw = ContactGeneral<Option<Entity>>;
 pub type Contact = ContactGeneral<Entity>;
 
-impl From<ContactRaw> for Contact
+impl TryFrom<ContactRaw> for Contact
 {
-    fn from(v: ContactRaw) -> Contact
+    type Error = ();
+
+    fn try_from(v: ContactRaw) -> Result<Contact, Self::Error>
     {
         if let Some(a) = v.a
         {
-            Contact{
+            Ok(Contact{
                 a,
                 b: v.b,
                 point: v.point,
                 normal: v.normal,
                 penetration: v.penetration
-            }
+            })
         } else
         {
-            Contact{
-                a: v.b.expect("at least 1 object in contact must have an entity"),
+            let a = v.b.ok_or(())?;
+
+            Ok(Contact{
+                a,
                 b: v.a,
                 point: v.point,
                 normal: -v.normal,
                 penetration: v.penetration
-            }
+            })
         }
     }
 }
@@ -491,6 +496,30 @@ impl<'b> TransformMatrix<'b>
         }
     }
 
+    fn is_rectangle_rectangle_colliding(
+        &self,
+        other: &Self,
+        mut other_edges: impl Iterator<Item=Line>
+    ) -> bool
+    {
+        if non_colliding_z(self.transform, other.transform)
+        {
+            return false;
+        }
+
+        if self.inside_obb(other.transform.position.xy()) || other.inside_obb(self.transform.position.xy())
+        {
+            return true;
+        }
+
+        let this_edges: [Line; 4] = rectangle_edges(self.transform).collect::<Vec<_>>().try_into().unwrap();
+
+        other_edges.any(|line0|
+        {
+            this_edges.iter().any(|line1| is_intersection_lines(line0, *line1))
+        })
+    }
+
     fn handle_penetration<'a, F>(
         &self,
         other: &'a Self,
@@ -518,13 +547,18 @@ impl<'b> TransformMatrix<'b>
                     a.0.partial_cmp(&b.0).unwrap()
                 }).unwrap();
 
-            add_contact(ContactRaw{
+            let contact_raw = ContactRaw{
                 a: self.entity,
                 b: other.entity,
-                point: point,
+                point,
                 penetration,
                 normal: -normal
-            }.into());
+            };
+
+            if let Ok(contact) = contact_raw.try_into()
+            {
+                add_contact(contact);
+            }
         }
     }
 
@@ -641,14 +675,13 @@ impl<'b> TransformMatrix<'b>
         true
     }
 
-    fn rectangle_circle_inner(
+    fn rectangle_circle_inner<U: Borrow<Collider>>(
         &self,
-        other: &CollidingInfo,
+        other: &CollidingInfo<U>,
         mut add_contact: impl FnMut(Vector2<f32>, Vector2<f32>, f32, Option<Unit<Vector2<f32>>>) -> bool
     ) -> bool
     {
-
-        if non_colliding_z(&self.transform, &other.transform)
+        if non_colliding_z(self.transform, &other.transform)
         {
             return false;
         }
@@ -679,28 +712,75 @@ impl<'b> TransformMatrix<'b>
 }
 
 #[derive(Debug)]
-pub struct CollidingInfo<'a>
+pub struct CollidingInfo<T>
 {
     pub entity: Option<Entity>,
     pub transform: Transform,
-    pub collider: &'a mut Collider
+    pub collider: T
 }
 
-impl<'a> CollidingInfo<'a>
+pub type CollidingInfoRef<'a> = CollidingInfo<&'a Collider>;
+pub type CollidingInfoMut<'a> = CollidingInfo<&'a mut Collider>;
+
+impl<T: Borrow<Collider>> CollidingInfo<T>
 {
+    pub fn new(transform: Transform, collider: T) -> Self
+    {
+        let position = transform.position;
+        Self::new_with(None, || Some(position), move || Some(transform), collider)
+            .expect("must return some if transform exists")
+    }
+
+    pub fn new_with(
+        entity: Option<Entity>,
+        transform_position: impl FnOnce() -> Option<Vector3<f32>>,
+        transform: impl FnOnce() -> Option<Transform>,
+        collider: T
+    ) -> Option<Self>
+    {
+        let transform = if let Some(override_transform) = collider.borrow().override_transform.clone()
+        {
+            let mut overridden = override_transform.transform;
+
+            if !override_transform.override_position
+            {
+                overridden.position += transform_position()?;
+            }
+
+            overridden
+        } else
+        {
+            let mut transform = transform()?;
+
+            let kind = collider.borrow().kind;
+            if kind == ColliderType::Aabb
+            {
+                transform.rotation = 0.0;
+            }
+
+            transform
+        };
+
+        Some(CollidingInfo{
+            entity,
+            transform,
+            collider
+        })
+    }
+
     pub fn half_bounds(&self) -> Vector3<f32>
     {
-        self.collider.half_bounds(&self.transform)
+        self.collider.borrow().half_bounds(&self.transform)
     }
 
     pub fn half_size(&self) -> Vector3<f32>
     {
-        self.collider.kind.half_size(self.transform.scale)
+        self.collider.borrow().kind.half_size(self.transform.scale)
     }
 
-    fn circle_circle(
+    fn circle_circle<U: Borrow<Collider>>(
         &self,
-        other: &Self,
+        other: &CollidingInfo<U>,
         mut add_contact: impl FnMut(Contact)
     ) -> bool
     {
@@ -739,45 +819,29 @@ impl<'a> CollidingInfo<'a>
         true
     }
 
-    pub fn transform_matrix(&self) -> TransformMatrix
+    pub fn transform_matrix(&self) -> TransformMatrix<'_>
     {
         TransformMatrix::from_transform(&self.transform, self.entity)
     }
 
-    fn is_rectangle_rectangle_colliding(
+    fn rectangle_rectangle_inner<U: Borrow<Collider>>(
         &self,
-        other: &Transform,
-        mut other_edges: impl Iterator<Item=Line>
-    ) -> bool
-    {
-        if non_colliding_z(&self.transform, other)
-        {
-            return false;
-        }
-
-        let this_edges: [Line; 4] = rectangle_edges(&self.transform).collect::<Vec<_>>().try_into().unwrap();
-
-        other_edges.any(|line0|
-        {
-            this_edges.iter().any(|line1| is_intersection_lines(line0, *line1))
-        })
-    }
-
-    fn rectangle_rectangle_inner(
-        &self,
-        other: &Self,
+        other: &CollidingInfo<U>,
         add_contact: impl FnMut(Contact)
     ) -> bool
     {
-        let colliding = self.is_rectangle_rectangle_colliding(&other.transform, rectangle_edges(&other.transform));
+        let this = self.transform_matrix();
+        let other = other.transform_matrix();
+
+        let colliding = this.is_rectangle_rectangle_colliding(&other, rectangle_edges(other.transform));
 
         if !colliding
         {
             return false;
         }
 
-        self.transform_matrix().rectangle_rectangle_contact_special(
-            &other.transform_matrix(),
+        this.rectangle_rectangle_contact_special(
+            &other,
             add_contact,
             |_| {true},
             |_| {true}
@@ -786,18 +850,18 @@ impl<'a> CollidingInfo<'a>
         true
     }
 
-    fn rectangle_rectangle(
+    fn rectangle_rectangle<U: Borrow<Collider>>(
         &self,
-        other: &Self,
+        other: &CollidingInfo<U>,
         add_contact: impl FnMut(Contact)
     ) -> bool
     {
         self.rectangle_rectangle_inner(other, add_contact)
     }
 
-    fn tile_rayz(
+    fn tile_rayz<U: Borrow<Collider>>(
         &self,
-        other: &Self,
+        other: &CollidingInfo<U>,
         _world: &WorldTileInfo,
         add_contact: impl FnMut(Contact)
     ) -> bool
@@ -806,9 +870,9 @@ impl<'a> CollidingInfo<'a>
         other.rayz_rectangle(self, add_contact)
     }
 
-    fn tile_circle(
+    fn tile_circle<U: Borrow<Collider>>(
         &self,
-        other: &Self,
+        other: &CollidingInfo<U>,
         world: &WorldTileInfo,
         mut add_contact: impl FnMut(Contact)
     ) -> bool
@@ -901,13 +965,18 @@ impl<'a> CollidingInfo<'a>
 
             if magnitude > 0.0001
             {
-                add_contact(ContactRaw{
+                let contact_raw = ContactRaw{
                     a: self.entity,
                     b: other.entity,
-                    point: point,
+                    point,
                     penetration: magnitude * penetration,
                     normal: Unit::new_unchecked(axis / magnitude)
-                }.into());
+                };
+
+                if let Ok(contact) = contact_raw.try_into()
+                {
+                    add_contact(contact);
+                }
 
                 true
             } else
@@ -954,14 +1023,17 @@ impl<'a> CollidingInfo<'a>
         }
     }
 
-    fn tile_rectangle(
+    fn tile_rectangle<U: Borrow<Collider>>(
         &self,
-        other: &Self,
+        other: &CollidingInfo<U>,
         world: &WorldTileInfo,
         add_contact: impl FnMut(Contact)
     ) -> bool
     {
-        let colliding = other.is_rectangle_rectangle_colliding(&self.transform, world.map(|dir, x| (dir, x)).filter_map(|(dir, x)|
+        let this = self.transform_matrix();
+        let other = other.transform_matrix();
+
+        let colliding = other.is_rectangle_rectangle_colliding(&this, world.map(|dir, x| (dir, x)).filter_map(|(dir, x)|
         {
             (!x).then(|| dir.edge_line_2d(Vector2::repeat(TILE_SIZE)).map(|x| x + self.transform.position.xy()))
         }).into_iter());
@@ -972,9 +1044,6 @@ impl<'a> CollidingInfo<'a>
         }
 
         let diff = other.transform.position.xy() - self.transform.position.xy();
-
-        let this = self.transform_matrix();
-        let other = other.transform_matrix();
 
         other.rectangle_rectangle_contact_special(
             &this,
@@ -1002,7 +1071,10 @@ impl<'a> CollidingInfo<'a>
         true
     }
 
-    fn rayz_this(&self, other: &Self) -> bool
+    fn rayz_this<U: Borrow<Collider>>(
+        &self,
+        other: &CollidingInfo<U>
+    ) -> bool
     {
         let half_z = self.transform.scale.z / 2.0;
         let mut start = self.transform.position;
@@ -1013,7 +1085,7 @@ impl<'a> CollidingInfo<'a>
         if let Some(result) = raycast_this(
             start,
             direction,
-            other.collider.kind,
+            other.collider.borrow().kind,
             &other.transform
         )
         {
@@ -1024,27 +1096,27 @@ impl<'a> CollidingInfo<'a>
         }
     }
 
-    fn rayz_circle(
+    fn rayz_circle<U: Borrow<Collider>>(
         &self,
-        other: &Self,
+        other: &CollidingInfo<U>,
         _add_contact: impl FnMut(Contact)
     ) -> bool
     {
         self.rayz_this(other)
     }
 
-    fn rayz_rectangle(
+    fn rayz_rectangle<U: Borrow<Collider>>(
         &self,
-        other: &Self,
+        other: &CollidingInfo<U>,
         _add_contact: impl FnMut(Contact)
     ) -> bool
     {
         self.rayz_this(other)
     }
 
-    fn rectangle_circle(
+    fn rectangle_circle<U: Borrow<Collider>>(
         &self,
-        other: &Self,
+        other: &CollidingInfo<U>,
         mut add_contact: impl FnMut(Contact)
     ) -> bool
     {
@@ -1063,30 +1135,35 @@ impl<'a> CollidingInfo<'a>
                 Unit::new_unchecked(this.rotation_matrix * normal)
             });
 
-            add_contact(ContactRaw{
+            let contact_raw = ContactRaw{
                 a: self.entity,
                 b: other.entity,
                 point: projected,
                 penetration,
                 normal
-            }.into());
+            };
+
+            if let Ok(contact) = contact_raw.try_into()
+            {
+                add_contact(contact);
+            }
 
             true
         })
     }
 
-    pub fn collide_immutable(
+    pub fn collide_immutable<U: Borrow<Collider>>(
         &self,
-        other: &Self,
+        other: &CollidingInfo<U>,
         mut add_contact: impl FnMut(Contact)
     ) -> bool
     {
-        if !self.collider.layer.collides(&other.collider.layer)
+        if !self.collider.borrow().layer.collides(&other.collider.borrow().layer)
         {
             return false;
         }
 
-        let ignore_contacts = self.collider.ghost || other.collider.ghost;
+        let ignore_contacts = self.collider.borrow().ghost || other.collider.borrow().ghost;
 
         let add_contact = |contact: Contact|
         {
@@ -1109,7 +1186,7 @@ impl<'a> CollidingInfo<'a>
             {
                 {
                     #[allow(unreachable_patterns)]
-                    match (self.collider.kind, other.collider.kind)
+                    match (self.collider.borrow().kind, other.collider.borrow().kind)
                     {
                         $(
                             ($a_ignored, $b_ignored) => false,
@@ -1167,10 +1244,13 @@ impl<'a> CollidingInfo<'a>
             (Rectangle, Rectangle, rectangle_rectangle)
         }
     }
+}
 
+impl<'a> CollidingInfoMut<'a>
+{
     pub fn collide(
         &mut self,
-        other: CollidingInfo,
+        other: CollidingInfoMut,
         add_contact: impl FnMut(Contact)
     ) -> bool
     {

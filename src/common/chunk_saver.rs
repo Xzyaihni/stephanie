@@ -142,7 +142,7 @@ impl<T> PartialOrd for CachedValue<T>
 {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering>
     {
-        Some(self.key.cmp(&other.key))
+        Some(self.cmp(other))
     }
 }
 

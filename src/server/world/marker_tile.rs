@@ -239,7 +239,7 @@ impl MarkerKind
 
         let next_position = |value|
         {
-            maybe_next_position(value).map(|x| x.unwrap_or_else(|| Vector3::zeros()))
+            maybe_next_position(value).map(|x| x.unwrap_or_else(Vector3::zeros))
         };
 
         let id = next_value("marker tile id")?.as_symbol()?;

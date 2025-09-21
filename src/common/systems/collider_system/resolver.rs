@@ -412,13 +412,7 @@ impl Contact
 {
     pub fn to_world_matrix(&self) -> Matrix2<f32>
     {
-        if self.normal.x.abs() > self.normal.y.abs()
-        {
-            basis_from(self.normal)
-        } else
-        {
-            basis_from(self.normal)
-        }
+        basis_from(self.normal)
     }
 
     fn direction_apply_inertia(

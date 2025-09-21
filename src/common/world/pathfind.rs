@@ -225,6 +225,7 @@ fn simplify_path(
 
 pub fn pathfind(
     world: &World,
+    entities: &ClientEntities,
     scale: Vector3<f32>,
     start: Vector3<f32>,
     end: Vector3<f32>

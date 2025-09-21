@@ -87,7 +87,7 @@ pub fn sees(
 
     let hits = raycast_system::raycast(
         entities,
-        world,
+        Some(world),
         info,
         transform.position,
         other_position
@@ -240,7 +240,7 @@ impl Enemy
 
     fn next_state(
         &self,
-        entities: &impl AnyEntities,
+        entities: &ClientEntities,
         world: &World,
         this_entity: Entity
     ) -> BehaviorState
@@ -271,6 +271,7 @@ impl Enemy
                         let this_scale = this_collider.override_transform.as_ref().map(|x| x.transform.scale).unwrap_or(this_transform.scale);
 
                         let path = world.pathfind(
+                            entities,
                             this_scale,
                             this_transform.position,
                             other_transform.position
@@ -402,7 +403,7 @@ impl Enemy
                             let this_collider = some_or_return!(entities.collider(entity));
                             let this_scale = this_collider.override_transform.as_ref().map(|x| x.transform.scale).unwrap_or(transform.scale);
 
-                            *path = world.pathfind(this_scale, transform.position, target);
+                            *path = world.pathfind(entities, this_scale, transform.position, target);
                         }
 
                         if let Some(path) = path.as_mut()
@@ -528,7 +529,7 @@ impl Enemy
         changed
     }
 
-    fn set_next_state(&mut self, entities: &impl AnyEntities, world: &World, entity: Entity)
+    fn set_next_state(&mut self, entities: &ClientEntities, world: &World, entity: Entity)
     {
         self.set_state(self.next_state(entities, world, entity));
     }

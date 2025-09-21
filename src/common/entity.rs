@@ -514,12 +514,12 @@ pub struct ComponentWrapper<T>
 
 impl<T> ComponentWrapper<T>
 {
-    pub fn get(&self) -> Ref<T>
+    pub fn get(&self) -> Ref<'_, T>
     {
         self.component.borrow()
     }
 
-    pub fn get_mut(&self) -> RefMut<T>
+    pub fn get_mut(&self) -> RefMut<'_, T>
     {
         self.component.borrow_mut()
     }
@@ -796,12 +796,12 @@ macro_rules! common_trait_impl
     ) =>
     {
         $(
-            fn $fn_ref(&self, entity: Entity) -> Option<Ref<$value_type>>
+            fn $fn_ref(&self, entity: Entity) -> Option<Ref<'_, $value_type>>
             {
                 Self::$fn_ref(self, entity)
             }
 
-            fn $fn_mut(&self, entity: Entity) -> Option<RefMut<$value_type>>
+            fn $fn_mut(&self, entity: Entity) -> Option<RefMut<'_, $value_type>>
             {
                 Self::$fn_mut(self, entity)
             }
@@ -834,7 +834,7 @@ macro_rules! common_trait_impl
             Self::exists(self, entity)
         }
 
-        fn lazy_target_ref(&self, entity: Entity) -> Option<Ref<Transform>>
+        fn lazy_target_ref(&self, entity: Entity) -> Option<Ref<'_, Transform>>
         {
             Self::lazy_transform(self, entity).map(|lazy|
             {
@@ -842,7 +842,7 @@ macro_rules! common_trait_impl
             })
         }
 
-        fn lazy_target(&self, entity: Entity) -> Option<RefMut<Transform>>
+        fn lazy_target(&self, entity: Entity) -> Option<RefMut<'_, Transform>>
         {
             Self::lazy_transform_mut_no_change(self, entity).map(|lazy|
             {
@@ -881,7 +881,7 @@ macro_rules! common_trait_impl
             self.render(entity).map(|x| x.visible).unwrap_or(false)
         }
 
-        fn visible_target(&self, entity: Entity) -> Option<RefMut<bool>>
+        fn visible_target(&self, entity: Entity) -> Option<RefMut<'_, bool>>
         {
             self.parent_mut(entity).map(|parent|
             {
@@ -895,7 +895,7 @@ macro_rules! common_trait_impl
             })
         }
 
-        fn mix_color_target(&self, entity: Entity) -> Option<RefMut<Option<MixColor>>>
+        fn mix_color_target(&self, entity: Entity) -> Option<RefMut<'_, Option<MixColor>>>
         {
             self.render_mut(entity).map(|render|
             {
@@ -903,12 +903,12 @@ macro_rules! common_trait_impl
             })
         }
 
-        fn in_flight(&self) -> InFlightGetter<Ref<SetterQueue<$($shared_type,)+>>>
+        fn in_flight(&self) -> InFlightGetter<Ref<'_, SetterQueue<$($shared_type,)+>>>
         {
             InFlightGetter(self.lazy_setter.borrow())
         }
 
-        fn in_flight_mut(&self) -> InFlightGetter<RefMut<SetterQueue<$($shared_type,)+>>>
+        fn in_flight_mut(&self) -> InFlightGetter<RefMut<'_, SetterQueue<$($shared_type,)+>>>
         {
             InFlightGetter(self.lazy_setter.borrow_mut())
         }
@@ -1386,7 +1386,7 @@ macro_rules! define_entities_both
                 }
             }
 
-            pub fn info_ref(&self, entity: Entity) -> Option<EntityInfo<$(Ref<$component_type>,)+>>
+            pub fn info_ref(&self, entity: Entity) -> Option<EntityInfo<$(Ref<'_, $component_type>,)+>>
             {
                 if !self.exists(entity)
                 {
@@ -1489,12 +1489,12 @@ macro_rules! define_entities_both
             }
 
             $(
-                pub fn $name(&self, entity: Entity) -> Option<Ref<$component_type>>
+                pub fn $name(&self, entity: Entity) -> Option<Ref<'_, $component_type>>
                 {
                     get_entity!(self, entity, get, $name)
                 }
 
-                pub fn $mut_func(&self, entity: Entity) -> Option<RefMut<$component_type>>
+                pub fn $mut_func(&self, entity: Entity) -> Option<RefMut<'_, $component_type>>
                 {
                     if const { !(matches!(Component::$name, Component::transform) || matches!(Component::$name, Component::watchers)) }
                     {
@@ -1504,7 +1504,7 @@ macro_rules! define_entities_both
                     self.$mut_func_no_change(entity)
                 }
 
-                pub fn $mut_func_no_change(&self, entity: Entity) -> Option<RefMut<$component_type>>
+                pub fn $mut_func_no_change(&self, entity: Entity) -> Option<RefMut<'_, $component_type>>
                 {
                     get_entity!(self, entity, get_mut, $name)
                 }
@@ -1891,7 +1891,7 @@ macro_rules! define_entities_both
                 self.transform(entity).as_deref().cloned()
             }
 
-            pub fn set_changed(&self) -> SetChanged
+            pub fn set_changed(&self) -> SetChanged<'_>
             {
                 SetChanged(self)
             }
@@ -2655,8 +2655,8 @@ macro_rules! define_entities
             const IS_SERVER: bool;
 
             $(
-                fn $name(&self, entity: Entity) -> Option<Ref<$default_type>>;
-                fn $mut_func(&self, entity: Entity) -> Option<RefMut<$default_type>>;
+                fn $name(&self, entity: Entity) -> Option<Ref<'_, $default_type>>;
+                fn $mut_func(&self, entity: Entity) -> Option<RefMut<'_, $default_type>>;
             )+
 
             $(
@@ -2673,8 +2673,8 @@ macro_rules! define_entities
 
             fn infos(&self) -> &DataInfos;
 
-            fn lazy_target_ref(&self, entity: Entity) -> Option<Ref<Transform>>;
-            fn lazy_target(&self, entity: Entity) -> Option<RefMut<Transform>>;
+            fn lazy_target_ref(&self, entity: Entity) -> Option<Ref<'_, Transform>>;
+            fn lazy_target(&self, entity: Entity) -> Option<RefMut<'_, Transform>>;
             fn lazy_target_end(&self, entity: Entity) -> Option<Transform>;
 
             fn for_every_child(&self, entity: Entity, f: impl FnMut(Entity));
@@ -2682,16 +2682,16 @@ macro_rules! define_entities
             fn z_level(&self, entity: Entity) -> Option<ZLevel>;
             fn set_z_level(&self, entity: Entity, z_level: ZLevel);
             fn is_visible(&self, entity: Entity) -> bool;
-            fn visible_target(&self, entity: Entity) -> Option<RefMut<bool>>;
-            fn mix_color_target(&self, entity: Entity) -> Option<RefMut<Option<MixColor>>>;
+            fn visible_target(&self, entity: Entity) -> Option<RefMut<'_, bool>>;
+            fn mix_color_target(&self, entity: Entity) -> Option<RefMut<'_, Option<MixColor>>>;
 
             fn exists(&self, entity: Entity) -> bool;
 
             fn remove_deferred(&self, entity: Entity);
             fn remove(&mut self, entity: Entity);
 
-            fn in_flight(&self) -> InFlightGetter<Ref<SetterQueue<$($side_default_type,)+ $($default_type,)+>>>;
-            fn in_flight_mut(&self) -> InFlightGetter<RefMut<SetterQueue<$($side_default_type,)+ $($default_type,)+>>>;
+            fn in_flight(&self) -> InFlightGetter<Ref<'_, SetterQueue<$($side_default_type,)+ $($default_type,)+>>>;
+            fn in_flight_mut(&self) -> InFlightGetter<RefMut<'_, SetterQueue<$($side_default_type,)+ $($default_type,)+>>>;
 
             fn push_eager(
                 &mut self,
@@ -2713,7 +2713,7 @@ macro_rules! define_entities
                 })
             }
 
-            fn target_ref(&self, entity: Entity) -> Option<Ref<Transform>>
+            fn target_ref(&self, entity: Entity) -> Option<Ref<'_, Transform>>
             {
                 self.lazy_target_ref(entity).or_else(||
                 {
@@ -2721,7 +2721,7 @@ macro_rules! define_entities
                 })
             }
 
-            fn target(&self, entity: Entity) -> Option<RefMut<Transform>>
+            fn target(&self, entity: Entity) -> Option<RefMut<'_, Transform>>
             {
                 self.lazy_target(entity).or_else(||
                 {

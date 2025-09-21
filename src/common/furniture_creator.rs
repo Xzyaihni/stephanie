@@ -131,7 +131,7 @@ pub fn create(
         Vector3::new(s, s, ENTITY_SCALE)
     }).unwrap_or_else(|| Vector3::new(info.scale.x, info.scale.y, ENTITY_SCALE));
 
-    let position = pos + with_z(furniture_position(&info, rotation), 0.0);
+    let position = pos + with_z(furniture_position(info, rotation), 0.0);
 
     let rotation = -rotation.to_angle();
 

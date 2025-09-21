@@ -139,7 +139,7 @@ impl<'a, Id: Idable> TreeInserter<'a, Id>
         self.tree_element_mut().consecutive()
     }
 
-    pub fn element(&self) -> RefMut<UiElement<Id>>
+    pub fn element(&self) -> RefMut<'_, UiElement<Id>>
     {
         RefMut::map(self.tree_element_mut(), |x| x.element())
     }
@@ -1347,7 +1347,7 @@ impl<Id: Idable> Controller<Id>
         this
     }
 
-    pub fn as_inserter(&self) -> TreeInserter<Id>
+    pub fn as_inserter(&self) -> TreeInserter<'_, Id>
     {
         TreeInserter{
             elements: &self.created_trees,
@@ -1355,7 +1355,7 @@ impl<Id: Idable> Controller<Id>
         }
     }
 
-    pub fn update(&self, id: Id, element: UiElement<Id>) -> TreeInserter<Id>
+    pub fn update(&self, id: Id, element: UiElement<Id>) -> TreeInserter<'_, Id>
     {
         self.as_inserter().update(id, element)
     }

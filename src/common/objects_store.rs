@@ -1,5 +1,4 @@
 use std::{
-    mem,
     iter,
     ops::{Range, Index, IndexMut}
 };
@@ -69,7 +68,7 @@ impl<T> ObjectsStore<T>
             self.free_list.retain(|id| *id != index);
         }
 
-        mem::replace(slot, Some(value))
+        slot.replace(value)
     }
 
     pub fn push(&mut self, value: T) -> usize

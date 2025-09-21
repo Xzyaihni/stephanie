@@ -27,7 +27,7 @@ use crate::{
 
 pub fn raycast(
     entities: &ClientEntities,
-    world: &World,
+    world: Option<&World>,
     info: RaycastInfo,
     start: Vector3<f32>,
     end: Vector3<f32>
@@ -83,6 +83,7 @@ pub fn raycast(
         })
         .collect();
 
+    if let Some(world) = world
     {
         let mut pierce_left = info.pierce;
 
@@ -133,7 +134,11 @@ pub fn raycast(
                     {
                         match x.id
                         {
-                            RaycastHitId::Tile(pos) => world.tile(pos).map(|tile| world.tile_info(*tile).health).unwrap_or(1.0),
+                            RaycastHitId::Tile(pos) =>
+                            {
+                                let world = world.expect("tile hits must only be possible with world");
+                                world.tile(pos).map(|tile| world.tile_info(*tile).health).unwrap_or(1.0)
+                            },
                             RaycastHitId::Entity(entity) =>
                             {
                                 if ignore_anatomy && entities.anatomy_exists(entity)

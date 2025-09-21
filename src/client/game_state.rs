@@ -175,7 +175,7 @@ impl ClientEntitiesContainer
     {
         crate::frame_time_this!{
             2, sleeping_update,
-            collider_system::update_sleeping(&mut self.entities, self.follow_target)
+            collider_system::update_sleeping(&self.entities, self.follow_target)
         };
 
         crate::frame_time_this!{
@@ -217,14 +217,14 @@ impl ClientEntitiesContainer
         };
 
         let contacts = {
-            let mut space = crate::frame_time_this!{
+            let space = crate::frame_time_this!{
                 2, spatial_grid_build,
                 world.build_spatial(&self.entities)
             };
 
             crate::frame_time_this!{
                 2, collider_system_update,
-                collider_system::update_physics(&mut self.entities, world, &mut space)
+                collider_system::update(&mut self.entities, world, &space)
             }
         };
 
@@ -276,7 +276,7 @@ impl ClientEntitiesContainer
         self.player_entity
     }
 
-    pub fn player_transform(&self) -> Option<Ref<Transform>>
+    pub fn player_transform(&self) -> Option<Ref<'_, Transform>>
     {
         self.entities.transform(self.main_player())
     }

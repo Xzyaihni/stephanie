@@ -1,4 +1,7 @@
-use std::sync::Arc;
+use std::{
+    borrow::Borrow,
+    sync::Arc
+};
 
 use nalgebra::{Vector2, Vector3};
 
@@ -203,12 +206,13 @@ impl World
 
     pub fn pathfind(
         &self,
+        entities: &ClientEntities,
         scale: Vector3<f32>,
         start: Vector3<f32>,
         end: Vector3<f32>
     ) -> Option<WorldPath>
     {
-        pathfind(self, scale, start, end)
+        pathfind(self, entities, scale, start, end)
     }
 
     pub fn inside_chunk(&self, pos: Pos3<f32>) -> bool
@@ -231,46 +235,49 @@ impl World
         self.overmap.debug_tile_field(entities)
     }
 
-    pub fn tiles_inside<'a, Predicate>(
+    pub fn tiles_inside<'a, Colliding, Predicate>(
         &self,
-        collider: &'a CollidingInfo<'a>,
+        collider: &'a CollidingInfo<Colliding>,
         predicate: Predicate
-    ) -> impl Iterator<Item=TilePos> + use<'a, '_, Predicate>
+    ) -> impl Iterator<Item=TilePos> + use<'a, '_, Colliding, Predicate>
     where
+        Colliding: Borrow<Collider> + 'a,
         Predicate: Fn(Option<&Tile>) -> bool + Copy
     {
-        self.tiles_inside_inner::<false, _, _>(
+        self.tiles_inside_inner::<false, _, _, _>(
             collider,
             predicate,
             |info| collider.collide_immutable(&info, |_| {})
         )
     }
 
-    pub fn tiles_contacts<'a, ContactAdder, Predicate>(
+    pub fn tiles_contacts<'a, Colliding, ContactAdder, Predicate>(
         &self,
-        collider: &'a CollidingInfo<'a>,
+        collider: &'a CollidingInfo<Colliding>,
         mut add_contact: ContactAdder,
         predicate: Predicate
-    ) -> impl Iterator<Item=TilePos> + use<'a, '_, Predicate, ContactAdder>
+    ) -> impl Iterator<Item=TilePos> + use<'a, '_, Colliding, Predicate, ContactAdder>
     where
+        Colliding: Borrow<Collider> + 'a,
         ContactAdder: FnMut(Contact),
         Predicate: Fn(Option<&Tile>) -> bool + Copy
     {
-        self.tiles_inside_inner::<true, _, _>(
+        self.tiles_inside_inner::<true, _, _, _>(
             collider,
             predicate,
             move |info| collider.collide_immutable(&info, &mut add_contact)
         )
     }
 
-    fn tiles_inside_inner<'a, const CHECK_NEIGHBORS: bool, CheckCollision, Predicate>(
+    fn tiles_inside_inner<'a, const CHECK_NEIGHBORS: bool, Colliding, CheckCollision, Predicate>(
         &self,
-        collider: &'a CollidingInfo<'a>,
+        collider: &'a CollidingInfo<Colliding>,
         predicate: Predicate,
         mut check_collision: CheckCollision
-    ) -> impl Iterator<Item=TilePos> + use<'a, '_, CHECK_NEIGHBORS, Predicate, CheckCollision>
+    ) -> impl Iterator<Item=TilePos> + use<'a, '_, Colliding, CHECK_NEIGHBORS, Predicate, CheckCollision>
     where
-        CheckCollision: FnMut(CollidingInfo) -> bool,
+        Colliding: Borrow<Collider> + 'a,
+        CheckCollision: FnMut(CollidingInfoRef) -> bool,
         Predicate: Fn(Option<&Tile>) -> bool + Copy
     {
         let half_scale = collider.half_bounds();
@@ -301,7 +308,7 @@ impl World
                 DirectionsGroup::repeat(false)
             };
 
-            let mut world_collider = ColliderInfo{
+            let world_collider = ColliderInfo{
                 kind: ColliderType::Tile(world),
                 layer: ColliderLayer::World,
                 ghost: false,
@@ -309,14 +316,14 @@ impl World
                 sleeping: false
             }.into();
 
-            let info = CollidingInfo{
+            let info = CollidingInfoRef{
                 entity: None,
                 transform: Transform{
                     position: pos.entity_position(),
                     scale: Vector3::repeat(TILE_SIZE),
                     ..Default::default()
                 },
-                collider: &mut world_collider
+                collider: &world_collider
             };
 
             check_collision(info)

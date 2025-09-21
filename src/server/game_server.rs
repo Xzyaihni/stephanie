@@ -181,7 +181,7 @@ impl Drop for GameServer
         {
             World::collect_to_delete(self.entities.take_remove_awaiting().into_iter().filter_map(|(info, _id)|
             {
-                if info.info.saveable.is_none() { return None; }
+                info.info.saveable?;
 
                 let pos: Pos3<f32> = info.info.transform.as_ref()?.position.into();
                 Some((info, pos.rounded()))
@@ -608,7 +608,7 @@ impl GameServer
             }
 
             let message = Message::EntitySet{
-                entity: entity,
+                entity,
                 info: Box::new(self.entities.info(entity))
             };
 

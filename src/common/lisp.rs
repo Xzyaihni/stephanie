@@ -340,14 +340,14 @@ impl LispValue
         Ok(collected)
     }
 
-    pub fn as_vector_ref(self, memory: &LispMemory) -> Result<LispVectorRef, Error>
+    pub fn as_vector_ref(self, memory: &LispMemory) -> Result<LispVectorRef<'_>, Error>
     {
         let id = self.as_vector_id()?;
 
         Ok(memory.get_vector_ref(id))
     }
 
-    pub fn as_vector_mut(self, memory: &mut LispMemory) -> Result<LispVectorMut, Error>
+    pub fn as_vector_mut(self, memory: &mut LispMemory) -> Result<LispVectorMut<'_>, Error>
     {
         let id = self.as_vector_id()?;
 
@@ -700,14 +700,14 @@ impl MemoryBlock
         start..(start + len)
     }
 
-    pub fn get_vector_ref(&self, id: u32) -> LispVectorRef
+    pub fn get_vector_ref(&self, id: u32) -> LispVectorRef<'_>
     {
         let range = self.vector_info(id);
 
         &self.general[range]
     }
 
-    pub fn get_vector_mut(&mut self, id: u32) -> LispVectorMut
+    pub fn get_vector_mut(&mut self, id: u32) -> LispVectorMut<'_>
     {
         let range = self.vector_info(id);
 
@@ -1348,12 +1348,12 @@ impl LispMemory
         self.stack.len()
     }
 
-    pub fn get_vector_ref(&self, id: u32) -> LispVectorRef
+    pub fn get_vector_ref(&self, id: u32) -> LispVectorRef<'_>
     {
         self.memory.get_vector_ref(id)
     }
 
-    pub fn get_vector_mut(&mut self, id: u32) -> LispVectorMut
+    pub fn get_vector_mut(&mut self, id: u32) -> LispVectorMut<'_>
     {
         self.memory.get_vector_mut(id)
     }
@@ -1567,12 +1567,12 @@ pub type OutputWrapper = GenericOutputWrapper<LispMemory>;
 
 impl OutputWrapper
 {
-    pub fn to_ref(&self) -> OutputWrapperRef
+    pub fn to_ref(&self) -> OutputWrapperRef<'_>
     {
         OutputWrapperRef{memory: &self.memory, value: self.value}
     }
 
-    pub fn as_list(&self) -> Result<LispList<OutputWrapperRef>, Error>
+    pub fn as_list(&self) -> Result<LispList<OutputWrapperRef<'_>>, Error>
     {
         let lst = self.value.as_list(&self.memory)?;
 
@@ -1582,7 +1582,7 @@ impl OutputWrapper
         }))
     }
 
-    pub fn as_pairs_list(&self) -> Result<Vec<OutputWrapperRef>, Error>
+    pub fn as_pairs_list(&self) -> Result<Vec<OutputWrapperRef<'_>>, Error>
     {
         self.value.as_pairs_list(&self.memory).map(|x|
         {
@@ -1672,7 +1672,7 @@ impl<M> GenericOutputWrapper<M>
 
 impl<M: Borrow<LispMemory>> GenericOutputWrapper<M>
 {
-    pub fn as_vector_ref(&self) -> Result<LispVectorRef, Error>
+    pub fn as_vector_ref(&self) -> Result<LispVectorRef<'_>, Error>
     {
         self.value.as_vector_ref(self.memory.borrow())
     }

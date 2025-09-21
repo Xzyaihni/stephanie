@@ -151,12 +151,12 @@ macro_rules! implement_common
                 self.indexer.size().clone().positions_2d()
             }
 
-            pub fn iter(&self) -> Iter<$indexer_name, T>
+            pub fn iter(&self) -> Iter<'_, $indexer_name, T>
             {
                 Iter::new(self.chunks.iter(), self.indexer.clone())
             }
 
-            pub fn iter_mut(&mut self) -> IterMut<$indexer_name, T>
+            pub fn iter_mut(&mut self) -> IterMut<'_, $indexer_name, T>
             {
                 IterMut::new(self.chunks.iter_mut(), self.indexer.clone())
             }
@@ -355,14 +355,14 @@ impl<T> ChunksContainer<T>
     }
 
     #[allow(dead_code)]
-    pub fn flat_slice_iter(&self, z: usize) -> Iter<FlatIndexer, T>
+    pub fn flat_slice_iter(&self, z: usize) -> Iter<'_, FlatIndexer, T>
     {
         let s = self.flat_slice(z).iter();
 
         Iter::new(s, FlatIndexer::from(self.indexer.clone()).with_z(z))
     }
 
-    pub fn flat_slice_iter_mut(&mut self, z: usize) -> IterMut<FlatIndexer, T>
+    pub fn flat_slice_iter_mut(&mut self, z: usize) -> IterMut<'_, FlatIndexer, T>
     {
         let indexer = FlatIndexer::from(self.indexer.clone()).with_z(z);
         let s = self.flat_slice_mut(z).iter_mut();

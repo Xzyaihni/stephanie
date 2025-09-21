@@ -505,7 +505,7 @@ impl ClientRenderObject
             ClientObjectType::Normal(x) => x.set_transform(transform),
             ClientObjectType::NormalRotating{object, offset, textures} =>
             {
-                let ((scale, closest), object_transform) = rotating_info(transform, *offset, &textures);
+                let ((scale, closest), object_transform) = rotating_info(transform, *offset, textures);
 
                 object.set_texture(closest);
                 object.set_transform(rotating_scale(object_transform, scale));

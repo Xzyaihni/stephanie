@@ -14,26 +14,27 @@ use yanyaengine::{
     game_object::*
 };
 
-use crate::common::{
-    ENTITY_SCALE,
-    some_or_value,
-    some_or_return,
-    collider::*,
-    character::*,
-    Damageable,
-    SpecialTile,
-    AnyEntities,
-    Item,
-    Inventory,
-    Drug,
-    Entity,
-    EntityInfo,
-    OnChangeInfo,
-    door::DOOR_WIDTH,
-    entity::ClientEntities,
-    lisp::{self, *},
-    systems::mouse_highlight_system,
-    world::{CHUNK_VISUAL_SIZE, TILE_SIZE, Pos3, TilePos}
+use crate::{
+    debug_config::*,
+    common::{
+        some_or_value,
+        some_or_return,
+        collider::*,
+        character::*,
+        Damageable,
+        SpecialTile,
+        AnyEntities,
+        Item,
+        Inventory,
+        Drug,
+        Entity,
+        EntityInfo,
+        OnChangeInfo,
+        entity::ClientEntities,
+        lisp::{self, *},
+        systems::{collider_system, mouse_highlight_system},
+        world::{CHUNK_VISUAL_SIZE, TILE_SIZE, Pos3, TilePos}
+    }
 };
 
 use super::game_state::{
@@ -1445,7 +1446,7 @@ impl<'a> PlayerContainer<'a>
         }
     }
 
-    fn get_inventory(&self, which: InventoryWhich) -> Option<RefMut<Inventory>>
+    fn get_inventory(&self, which: InventoryWhich) -> Option<RefMut<'_, Inventory>>
     {
         let entity = self.get_inventory_entity(which);
 
@@ -1627,24 +1628,37 @@ impl<'a> PlayerContainer<'a>
                     if !new_state
                     {
                         let collider = some_or_return!(entities.collider(door_entity));
-                        let door_blocked = collider.collided().iter().any(|x| !entities.player_exists(*x));
 
-                        let distance = {
-                            let door_position = some_or_return!(entities.transform(door_entity)).position;
-                            let player_position = some_or_return!(entities.transform(self.info.entity)).position;
+                        let door_blocked = collider.collided().iter().any(|x|
+                        {
+                            let check_collider = ColliderInfo{
+                                kind: ColliderType::Rectangle,
+                                layer: ColliderLayer::Door,
+                                ghost: true,
+                                ..Default::default()
+                            }.into();
 
-                            let diff = (door_position - player_position).abs();
+                            let check_collider = CollidingInfoRef{
+                                entity: None,
+                                transform: door.door_transform(),
+                                collider: &check_collider
+                            };
 
-                            if door.tile_rotation().is_horizontal()
+                            if DebugConfig::is_enabled(DebugTool::CollisionBounds)
                             {
-                                diff.y
-                            } else
-                            {
-                                diff.x
+                                collider_system::debug_collision_bounds(entities, &check_collider);
                             }
-                        };
 
-                        if door_blocked || distance < (DOOR_WIDTH * ENTITY_SCALE + ENTITY_SCALE) * 0.5
+                            let other_collider = some_or_value!(entities.collider(*x), false);
+                            let other = CollidingInfoRef::new(
+                                some_or_value!(entities.transform(*x), false).clone(),
+                                &other_collider
+                            );
+
+                            check_collider.collide_immutable(&other, |_| {})
+                        });
+
+                        if door_blocked
                         {
                             tile_info = Some((NotificationIcon::Door(NotificationDoor::Close(true)), interact_button()));
                             return;
@@ -1815,17 +1829,17 @@ impl<'a> PlayerContainer<'a>
         self.game_state.ui.borrow_mut().show_notification(notification);
     }
 
-    fn colliding_info(&self, f: impl FnOnce(CollidingInfo))
+    fn colliding_info(&self, f: impl FnOnce(CollidingInfoRef))
     {
         let entities = self.game_state.entities();
 
         let transform = some_or_return!(entities.transform(self.info.entity)).clone();
-        let mut collider = some_or_return!(entities.collider_mut_no_change(self.info.entity));
+        let collider = some_or_return!(entities.collider(self.info.entity));
 
-        f(CollidingInfo{
+        f(CollidingInfoRef{
             entity: Some(self.info.entity),
             transform,
-            collider: &mut collider
+            collider: &collider
         });
     }
 

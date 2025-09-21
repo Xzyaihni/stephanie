@@ -1,4 +1,7 @@
-use std::cell::RefCell;
+use std::{
+    borrow::Borrow,
+    cell::RefCell
+};
 
 use nalgebra::Vector3;
 
@@ -29,60 +32,57 @@ pub use resolver::ContactResolver;
 mod resolver;
 
 
-fn debug_collision_bounds(
+pub fn debug_collision_bounds<T: Borrow<Collider>>(
     entities: &ClientEntities,
-    entity: Entity
+    colliding_info: &CollidingInfo<T>
 )
 {
-    if let Some(mut transform) = entities.transform(entity).as_deref().cloned()
-    {
-        let collider = some_or_return!(entities.collider(entity));
+    let mut transform = colliding_info.transform.clone();
 
-        let (bounds, mix, sprite) = match &collider.kind
+    let (bounds, mix, sprite) = match &colliding_info.collider.borrow().kind
+    {
+        ColliderType::RayZ => (Some(Vector3::repeat(ENTITY_SCALE * 0.06)), None, "solid.png"),
+        ColliderType::Tile(_)
+        | ColliderType::Aabb
+        | ColliderType::Rectangle => (None, Some(MixColor::color([0.0, 0.0, 0.0, 0.4])), "solid.png"),
+        ColliderType::Circle => (None, None, "circle_transparent.png")
+    };
+
+    if let Some(OverrideTransform{
+        transform: override_transform,
+        override_position
+    }) = &colliding_info.collider.borrow().override_transform
+    {
+        let position = if *override_position
         {
-            ColliderType::RayZ => (Some(Vector3::repeat(ENTITY_SCALE * 0.06)), None, "solid.png"),
-            ColliderType::Tile(_)
-            | ColliderType::Aabb
-            | ColliderType::Rectangle => (None, Some(MixColor::color([0.0, 0.0, 0.0, 0.4])), "solid.png"),
-            ColliderType::Circle => (None, None, "circle_transparent.png")
+            override_transform.position
+        } else
+        {
+            override_transform.position + transform.position
         };
 
-        if let Some(OverrideTransform{
-            transform: override_transform,
-            override_position
-        }) = &collider.override_transform
-        {
-            let position = if *override_position
-            {
-                override_transform.position
-            } else
-            {
-                override_transform.position + transform.position
-            };
-
-            transform = override_transform.clone();
-            transform.position = position;
-        }
-
-        if let Some(scale) = bounds
-        {
-            transform.scale = scale;
-        }
-
-        entities.push(true, EntityInfo{
-            transform: Some(transform),
-            render: Some(RenderInfo{
-                object: Some(RenderObjectKind::Texture{
-                    name: sprite.to_owned()
-                }.into()),
-                mix,
-                above_world: true,
-                ..Default::default()
-            }),
-            watchers: Some(Watchers::simple_one_frame()),
-            ..Default::default()
-        });
+        transform = override_transform.clone();
+        transform.position = position;
     }
+
+    if let Some(scale) = bounds
+    {
+        transform.scale = scale;
+    }
+
+    entities.push(true, EntityInfo{
+        transform: Some(transform),
+        render: Some(RenderInfo{
+            object: Some(RenderObjectKind::Texture{
+                name: sprite.to_owned()
+            }.into()),
+            mix,
+            above_world: true,
+            ..Default::default()
+        }),
+        watchers: Some(Watchers::simple_one_frame()),
+        ..Default::default()
+    });
 }
 
 pub fn update_sleeping(
@@ -99,8 +99,6 @@ pub fn update_sleeping(
     {
         let mut collider = collider.borrow_mut();
 
-        collider.reset_frame();
-
         let is_sleeping = {
             let other_position = some_or_return!(entities.transform(entity)).position;
 
@@ -112,10 +110,10 @@ pub fn update_sleeping(
     });
 }
 
-pub fn update_physics(
+pub fn update(
     entities: &mut ClientEntities,
     world: &World,
-    space: &mut SpatialGrid
+    space: &SpatialGrid
 ) -> Vec<Contact>
 {
     macro_rules! maybe_colliding_info
@@ -131,34 +129,12 @@ pub fn update_physics(
         (with $entity:expr, $collider:expr) =>
         {
             {
-                let transform = if let Some(override_transform) = $collider.override_transform.clone()
-                {
-                    let mut overridden = override_transform.transform;
-
-                    if !override_transform.override_position
-                    {
-                        overridden.position += some_or_return!(entities.transform($entity)).position;
-                    }
-
-                    overridden
-                } else
-                {
-                    let mut transform = some_or_return!(entities.transform($entity)).clone();
-
-                    let kind = $collider.kind;
-                    if kind == ColliderType::Aabb
-                    {
-                        transform.rotation = 0.0;
-                    }
-
-                    transform
-                };
-
-                CollidingInfo{
-                    entity: Some($entity),
-                    transform,
-                    collider: &mut $collider
-                }
+                some_or_return!(CollidingInfo::new_with(
+                    Some($entity),
+                    || entities.transform($entity).map(|x| x.position),
+                    || entities.transform($entity).map(|x| x.clone()),
+                    &mut *$collider
+                ))
             }
         };
     }
@@ -172,17 +148,20 @@ pub fn update_physics(
         3, collision_system_world,
         for_each_component!(entities, collider, |entity, collider: &RefCell<Collider>|
         {
-            if DebugConfig::is_enabled(DebugTool::CollisionBounds)
-            {
-                debug_collision_bounds(entities, entity);
-            }
-
             let mut collider = collider.borrow_mut();
-            let mut this = maybe_colliding_info!{with entity, collider};
 
-            if this.collider.sleeping || !this.collider.layer.collides(&ColliderLayer::World)
+            collider.reset_frame();
+
+            if collider.sleeping || !collider.layer.collides(&ColliderLayer::World)
             {
                 return;
+            }
+
+            let mut this = maybe_colliding_info!{with entity, collider};
+
+            if DebugConfig::is_enabled(DebugTool::CollisionBounds)
+            {
+                debug_collision_bounds(entities, &this);
             }
 
             crate::time_this_additive!{

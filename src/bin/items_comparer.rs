@@ -1,3 +1,5 @@
+#![allow(clippy::suspicious_else_formatting)]
+
 use std::{
     env,
     process
@@ -116,9 +118,9 @@ fn main()
             x
         } else
         {
-            let modes = RunMode::iter().map(|x| <&str>::from(x)).fold(String::new(), |acc, x|
+            let modes = RunMode::iter().map(<&str>::from).fold(String::new(), |acc, x|
             {
-                acc + ", " + &x
+                acc + ", " + x
             });
 
             eprintln!("{x} isnt a valid mode, try: {modes}");

@@ -440,7 +440,7 @@ impl SpatialGrid
                     (&*transform, transform.position)
                 };
 
-                (collider.half_bounds(&transform), position)
+                (collider.half_bounds(transform), position)
             };
 
             let z = {
@@ -475,7 +475,7 @@ impl SpatialGrid
                     {
                         entities.push(true, EntityInfo{
                             transform: Some(Transform{
-                                position: position,
+                                position,
                                 scale: half_scale * 2.0,
                                 ..Default::default()
                             }),
@@ -528,7 +528,7 @@ impl SpatialGrid
         }
     }
 
-    pub fn possible_pairs(&mut self, mut f: impl FnMut(Entity, Entity))
+    pub fn possible_pairs(&self, mut f: impl FnMut(Entity, Entity))
     {
         self.z_nodes.iter().for_each(|node|
         {
