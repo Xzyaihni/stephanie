@@ -14,6 +14,7 @@ use crate::{
         raycast::*,
         watcher::*,
         render_info::*,
+        Entity,
         World,
         EntityInfo,
         AnyEntities,
@@ -34,60 +35,24 @@ pub fn raycast(
 ) -> RaycastHits
 {
     let direction = end - start;
-
     let max_distance = direction.magnitude();
+
     let direction = Unit::new_unchecked(direction / max_distance);
 
-    let mut hits: Vec<_> = iterate_components_with!(
+    let mut hits: Vec<_> = raycast_entities_raw(
         entities,
-        collider,
-        filter_map,
-        |entity, collider: &RefCell<Collider>|
-        {
-            let collider = collider.borrow();
-            let collides = collider.layer.collides(&info.layer);
-
-            (collides && !collider.ghost).then(|| (entity, collider.kind))
-        })
-        .filter_map(|(entity, kind)|
-        {
-            let transform = entities.transform(entity);
-
-            transform.and_then(|transform|
-            {
-                if let Some(ignore_entity) = info.ignore_entity
-                {
-                    (entity != ignore_entity).then_some((entity, kind, transform))
-                } else
-                {
-                    Some((entity, kind, transform))
-                }
-            })
-        })
-        .filter_map(|(entity, kind, transform)|
-        {
-            raycast_this(start, direction, kind, &transform).and_then(|hit|
-            {
-                let backwards = hit.is_behind();
-                let past_end = (hit.distance > max_distance) && !info.ignore_end;
-
-                if backwards || past_end
-                {
-                    None
-                } else
-                {
-                    let id = RaycastHitId::Entity(entity);
-                    Some(RaycastHit{id, result: hit})
-                }
-            })
-        })
-        .collect();
+        start,
+        direction,
+        before_raycast_default(info.layer, info.ignore_entity),
+        after_raycast_default(max_distance, info.ignore_end),
+        raycast_this
+    ).map(|(entity, result)| RaycastHit{id: RaycastHitId::Entity(entity), result}).collect();
 
     if let Some(world) = world
     {
         let mut pierce_left = info.pierce;
 
-        let world_hits = raycast_world(world, start, direction, |tile, hit|
+        let world_hits = raycast_world(world, start, direction, |tile, _, result|
         {
             if let Some(left) = pierce_left.as_mut()
             {
@@ -96,7 +61,7 @@ pub fn raycast(
                     return true;
                 }
 
-                *left -= hit.result.pierce * match info.pierce_scale
+                *left -= result.pierce * match info.pierce_scale
                 {
                     RaycastPierce::None => 1.0,
                     RaycastPierce::Ignore => 0.0,
@@ -104,13 +69,13 @@ pub fn raycast(
                 };
             }
 
-            if (hit.result.distance > max_distance) && !info.ignore_end
+            if (result.distance > max_distance) && !info.ignore_end
             {
                 return true;
             }
 
             false
-        });
+        }).map(|(_, pos, result)| RaycastHit{id: RaycastHitId::Tile(pos), result});
 
         hits.extend(world_hits);
     }
@@ -229,4 +194,66 @@ pub fn raycast(
     }
 
     RaycastHits{start, direction, hits}
+}
+
+pub fn before_raycast_default(layer: ColliderLayer, ignore_entity: Option<Entity>) -> impl Fn(&Collider, Entity) -> bool
+{
+    move |collider, entity|
+    {
+        let collides = collider.layer.collides(&layer);
+
+        collides && ignore_entity.as_ref().map(|ignore_entity|
+        {
+            entity != *ignore_entity
+        }).unwrap_or(true)
+    }
+}
+
+pub fn after_raycast_default(max_distance: f32, ignore_end: bool) -> impl Fn(Entity, &RaycastResult) -> bool
+{
+    move |_entity, hit|
+    {
+        let backwards = hit.is_behind();
+        let past_end = (hit.distance > max_distance) && !ignore_end;
+
+        !(backwards || past_end)
+    }
+}
+
+pub fn raycast_entities_raw<BeforeRaycast, AfterRaycast, Raycast>(
+    entities: &ClientEntities,
+    start: Vector3<f32>,
+    direction: Unit<Vector3<f32>>,
+    before_raycast: BeforeRaycast,
+    after_raycast: AfterRaycast,
+    raycast_fn: Raycast
+) -> impl Iterator<Item=(Entity, RaycastResult)> + use<'_, BeforeRaycast, AfterRaycast, Raycast>
+where
+    BeforeRaycast: Fn(&Collider, Entity) -> bool,
+    AfterRaycast: Fn(Entity, &RaycastResult) -> bool,
+    Raycast: Fn(Vector3<f32>, Unit<Vector3<f32>>, ColliderType, &Transform) -> Option<RaycastResult>
+{
+    iterate_components_with!(
+        entities,
+        collider,
+        filter_map,
+        move_outer,
+        |entity, collider: &RefCell<Collider>|
+        {
+            let collider = collider.borrow();
+
+            (!collider.ghost && before_raycast(&collider, entity)).then(|| (entity, collider.kind))
+        })
+        .filter_map(|(entity, kind)|
+        {
+            let transform = entities.transform(entity)?;
+
+            Some((entity, kind, transform))
+        })
+        .filter_map(move |(entity, kind, transform)|
+        {
+            let hit = raycast_fn(start, direction, kind, &transform)?;
+
+            after_raycast(entity, &hit).then_some((entity, hit))
+        })
 }

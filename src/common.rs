@@ -88,7 +88,17 @@ pub use spatial::{SpatialInfo, SpatialGrid};
 pub use collider::{OverrideTransform, ColliderType, Collider, CollidingInfo};
 pub use physics::{Physical, PhysicalProperties, PhysicalFixed};
 
-pub use world::{World, SkyOccludingVertex, SkyLightVertex, PosDirection, Pos3, Axis, FlatChunksContainer, ChunksContainer};
+pub use world::{
+    World,
+    SkyOccludingVertex,
+    SkyLightVertex,
+    PosDirection,
+    Pos3,
+    Axis,
+    FlatChunksContainer,
+    ChunksContainer,
+    pathfind::Pathfinder
+};
 
 pub use door::Door;
 pub use joint::Joint;

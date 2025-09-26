@@ -2,6 +2,7 @@ use std::{
     f32,
     mem,
     rc::Rc,
+    ops::Range,
     fmt::{self, Debug},
     cell::{Ref, RefMut, RefCell}
 };
@@ -187,6 +188,16 @@ macro_rules! iterate_components_with
     ($this:expr, $component:ident, $iter_func:ident, $handler:expr) =>
     {
         $this.$component.iter().$iter_func(|(_, &$crate::common::entity::ComponentWrapper{
+            entity,
+            component: ref component
+        })|
+        {
+            $handler(entity, component)
+        })
+    };
+    ($this:expr, $component:ident, $iter_func:ident, move_outer, $handler:expr) =>
+    {
+        $this.$component.iter().$iter_func(move |(_, &$crate::common::entity::ComponentWrapper{
             entity,
             component: ref component
         })|
@@ -1239,6 +1250,58 @@ macro_rules! define_entities_both
             )+
         }
 
+        pub struct IterEntities<'a, $($component_type,)+>
+        {
+            entities: &'a Entities<$($component_type,)+>,
+            global: bool,
+            local_components_indices: Range<usize>,
+            local_components: Ref<'a, ObjectsStore<ComponentsIndices>>,
+            components_indices: Range<usize>,
+            components: Ref<'a, ObjectsStore<ComponentsIndices>>
+        }
+
+        impl<'a, $($component_type: Debug,)+> Iterator for IterEntities<'a, $($component_type,)+>
+        {
+            type Item = Entity;
+
+            fn next(&mut self) -> Option<Self::Item>
+            {
+                fn get_next(indices: &mut Range<usize>, components: &ObjectsStore<ComponentsIndices>) -> Option<usize>
+                {
+                    indices.find(|x| components.get(*x).is_some())
+                }
+
+                let entity = if self.global
+                {
+                    if let Some(id) = get_next(&mut self.components_indices, &self.components)
+                    {
+                        Entity{
+                            local: false,
+                            id,
+                            #[cfg(debug_assertions)]
+                            seed: None
+                        }
+                    } else
+                    {
+                        self.global = false;
+
+                        return self.next();
+                    }
+                } else
+                {
+                    let id = get_next(&mut self.local_components_indices, &self.local_components)?;
+
+                    Entity{
+                        local: true,
+                        id,
+                        #[cfg(debug_assertions)]
+                        seed: None
+                    }
+                };
+
+                Some(self.entities.with_seed(entity))
+            }
+        }
 
         pub struct Entities<$($component_type=$default_type,)+>
         {
@@ -1256,6 +1319,40 @@ macro_rules! define_entities_both
             on_remove: Rc<RefCell<Vec<Box<dyn FnMut(&mut Self, Entity)>>>>,
             $($on_name: Rc<RefCell<Vec<OnComponentChange>>>,)+
             $(pub $name: ObjectsStore<ComponentWrapper<$component_type>>,)+
+        }
+
+        impl<$($component_type: Debug,)+> Entities<$($component_type,)+>
+        {
+            pub fn with_seed(&self, mut entity: Entity) -> Entity
+            {
+                if cfg!(debug_assertions)
+                {
+                    let mut seed = None;
+
+                    $(
+                        if seed.is_none()
+                        {
+                            if let Some(index) = component_index!(no_check self, entity, $name)
+                            {
+                                seed = self.$name[index].entity.seed();
+                            }
+                        }
+                    )+
+
+                    if seed.is_none()
+                    {
+                        if DebugConfig::is_disabled(DebugTool::AllowSeedMismatch)
+                        {
+                            panic!("{entity:?} {:#?} {:#?}", &self.local_components, &self.components);
+                        }
+                    } else
+                    {
+                        *entity.seed_mut() = Some(seed.unwrap());
+                    }
+                }
+
+                entity
+            }
         }
 
         impl<$($component_type: OnSet<Self> + Debug,)+> Entities<$($component_type,)+>
@@ -1305,69 +1402,19 @@ macro_rules! define_entities_both
                 components!(self, entity).borrow().get(entity.id).is_some()
             }
 
-            pub fn with_seed(&self, mut entity: Entity) -> Entity
+            pub fn iter_entities(&self) -> IterEntities<'_, $($component_type,)+>
             {
-                if cfg!(debug_assertions)
-                {
-                    let mut seed = None;
+                let local_components = self.local_components.borrow();
+                let components = self.components.borrow();
 
-                    $(
-                        if seed.is_none()
-                        {
-                            if let Some(index) = component_index!(self, entity, $name)
-                            {
-                                seed = self.$name[index].entity.seed();
-                            }
-                        }
-                    )+
-
-                    *entity.seed_mut() = Some(seed.unwrap());
+                IterEntities{
+                    entities: self,
+                    global: true,
+                    local_components_indices: local_components.index_range(),
+                    local_components,
+                    components_indices: components.index_range(),
+                    components
                 }
-
-                entity
-            }
-
-            pub fn for_each_entity(
-                &self,
-                mut f: impl FnMut(Entity)
-            )
-            {
-                self.try_for_each_entity(|x| -> Result<(), ()>
-                {
-                    f(x);
-
-                    Ok(())
-                }).unwrap();
-            }
-
-            pub fn try_for_each_entity<E>(
-                &self,
-                mut f: impl FnMut(Entity) -> Result<(), E>
-            ) -> Result<(), E>
-            {
-                self.components.borrow().iter()
-                    .map(|(id, _)|
-                    {
-                        Entity{
-                            local: false,
-                            id,
-                            #[cfg(debug_assertions)]
-                            seed: None
-                        }
-                    })
-                    .chain(self.local_components.borrow().iter().map(|(id, _)|
-                    {
-                        Entity{
-                            local: true,
-                            id,
-                            #[cfg(debug_assertions)]
-                            seed: None
-                        }
-                    }))
-                    .try_for_each(|entity|
-                    {
-                        f(self.with_seed(entity))
-                    })
             }
 
             pub fn component_info(&self, entity: Entity, name: &str) -> Option<String>
@@ -2066,7 +2113,7 @@ macro_rules! define_entities_both
                 };
             }
 
-            pub fn update_children(&mut self)
+            pub fn update_children_visibility(&mut self)
             {
                 for_each_component!(self, parent, |entity, parent: &RefCell<Parent>|
                 {

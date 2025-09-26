@@ -4,7 +4,9 @@ use crate::common::{
     some_or_return,
     enemy,
     entity::{for_each_component, ClientEntities},
+    Pathfinder,
     World,
+    SpatialGrid,
     Enemy
 };
 
@@ -12,6 +14,7 @@ use crate::common::{
 pub fn update(
     entities: &mut ClientEntities,
     world: &World,
+    space: &SpatialGrid,
     dt: f32
 )
 {
@@ -60,6 +63,7 @@ pub fn update(
         let _state_changed = enemy.update(
             entities,
             world,
+            Pathfinder{world, entities, space},
             entity,
             dt
         );

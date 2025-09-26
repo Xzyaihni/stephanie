@@ -19,7 +19,7 @@ use crate::{
         Joint,
         EntityInfo,
         AnyEntities,
-        world::{TILE_SIZE, World},
+        world::World,
         entity::{
             for_each_component,
             ClientEntities
@@ -87,23 +87,17 @@ pub fn debug_collision_bounds<T: Borrow<Collider>>(
 
 pub fn update_sleeping(
     entities: &ClientEntities,
-    follow_target: Entity
+    space: &SpatialGrid
 )
 {
-    let follow_position = some_or_return!(entities.transform(follow_target)).position;
-
-    let follow_z = follow_position.z;
-    let follow_position = follow_position.xy();
-
     for_each_component!(entities, collider, |entity, collider: &RefCell<Collider>|
     {
         let mut collider = collider.borrow_mut();
 
         let is_sleeping = {
-            let other_position = some_or_return!(entities.transform(entity)).position;
+            let other_transform = some_or_return!(entities.transform(entity));
 
-            ((other_position.z - follow_z).abs() > TILE_SIZE * 2.5)
-                || (other_position.xy().metric_distance(&follow_position) > TILE_SIZE * 30.0)
+            space.inside_simulated(other_transform.position, other_transform.scale.x.hypot(other_transform.scale.y))
         };
 
         collider.sleeping = is_sleeping;

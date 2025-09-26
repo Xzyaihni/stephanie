@@ -64,8 +64,6 @@ pub use sky_light::SkyLight;
 
 use overmap::OvermapIndexing;
 
-use pathfind::{pathfind, WorldPath};
-
 pub mod overmap;
 
 mod client_overmap;
@@ -189,9 +187,9 @@ impl World
         self.overmap.to_local(pos).is_some()
     }
 
-    pub fn build_spatial(&self, entities: &ClientEntities) -> SpatialGrid
+    pub fn build_spatial(&self, entities: &ClientEntities, follow_target: Entity) -> SpatialGrid
     {
-        SpatialGrid::new(entities, &self.overmap)
+        SpatialGrid::new(entities, &self.overmap, follow_target)
     }
 
     pub fn exists_missing(&self) -> (u32, u32)
@@ -202,17 +200,6 @@ impl World
     fn chunk_of(pos: Pos3<f32>) -> GlobalPos
     {
         TilePos::from(pos).chunk
-    }
-
-    pub fn pathfind(
-        &self,
-        entities: &ClientEntities,
-        scale: Vector3<f32>,
-        start: Vector3<f32>,
-        end: Vector3<f32>
-    ) -> Option<WorldPath>
-    {
-        pathfind(self, entities, scale, start, end)
     }
 
     pub fn inside_chunk(&self, pos: Pos3<f32>) -> bool

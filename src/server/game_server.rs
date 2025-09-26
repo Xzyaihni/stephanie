@@ -595,7 +595,7 @@ impl GameServer
 
         let messager = writer.get_mut(connection_id);
 
-        self.entities.try_for_each_entity(|entity|
+        self.entities.iter_entities().try_for_each(|entity|
         {
             if entity.local()
             {

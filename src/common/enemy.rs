@@ -77,27 +77,41 @@ pub fn sees(
         return None;
     }
 
-    let info = RaycastInfo{
-        pierce: Some(1.0),
-        pierce_scale: RaycastPierce::Ignore,
-        layer: ColliderLayer::Vision,
-        ignore_entity: Some(entity),
-        ignore_end: false
+    let start = transform.position;
+    let end = other_position;
+
+    let direction = end - start;
+    let max_distance = direction.magnitude();
+
+    let direction = Unit::new_unchecked(direction / max_distance);
+
+    let hit_obstacle_tile = {
+        raycast_world(world, start, direction, |_tile, _pos, result|
+        {
+            if result.distance > max_distance
+            {
+                return true
+            }
+
+            false
+        }).any(|(tile, _, _)|
+        {
+            !tile.transparent
+        })
     };
 
-    let hits = raycast_system::raycast(
-        entities,
-        Some(world),
-        info,
-        transform.position,
-        other_position
-    ).hits;
-
-    let hit_obstacle = hits.into_iter().any(|hit|
+    if hit_obstacle_tile
     {
-        match hit.id
-        {
-            RaycastHitId::Entity(hit_entity) =>
+        return None;
+    }
+
+    let hit_obstacle = {
+        raycast_system::raycast_entities_raw(
+            entities,
+            start,
+            direction,
+            raycast_system::before_raycast_default(ColliderLayer::Vision, Some(entity)),
+            |hit_entity, hit|
             {
                 let is_target = hit_entity == other_entity;
 
@@ -112,15 +126,13 @@ pub fn sees(
                     false
                 };
 
-                !is_target && !is_friendly
+                let blocked = !is_target && !is_friendly;
+
+                !blocked && raycast_system::after_raycast_default(max_distance, false)(entity, hit)
             },
-            RaycastHitId::Tile(pos) =>
-            {
-                let tile = some_or_value!(world.tile(pos), false);
-                !world.tile_info(*tile).transparent
-            }
-        }
-    });
+            raycast_this
+        ).any(|(hit_entity, _)| hit_entity != other_entity)
+    };
 
     if hit_obstacle
     {
@@ -241,7 +253,7 @@ impl Enemy
     fn next_state(
         &self,
         entities: &ClientEntities,
-        world: &World,
+        pathfinder: Pathfinder,
         this_entity: Entity
     ) -> BehaviorState
     {
@@ -267,12 +279,8 @@ impl Enemy
                         let other_transform = some_or_value!(entities.transform(*entity), BehaviorState::Wait);
                         let this_transform = some_or_value!(entities.transform(this_entity), BehaviorState::Wait);
 
-                        let this_collider = some_or_value!(entities.collider(this_entity), BehaviorState::Wait);
-                        let this_scale = this_collider.override_transform.as_ref().map(|x| x.transform.scale).unwrap_or(this_transform.scale);
-
-                        let path = world.pathfind(
-                            entities,
-                            this_scale,
+                        let path = pathfinder.pathfind(
+                            this_entity,
                             this_transform.position,
                             other_transform.position
                         );
@@ -320,6 +328,7 @@ impl Enemy
         &mut self,
         entities: &ClientEntities,
         world: &World,
+        pathfinder: Pathfinder,
         entity: Entity,
         dt: f32
     )
@@ -400,10 +409,7 @@ impl Enemy
 
                         if regenerate_path
                         {
-                            let this_collider = some_or_return!(entities.collider(entity));
-                            let this_scale = this_collider.override_transform.as_ref().map(|x| x.transform.scale).unwrap_or(transform.scale);
-
-                            *path = world.pathfind(entities, this_scale, transform.position, target);
+                            *path = pathfinder.pathfind(entity, transform.position, target);
                         }
 
                         if let Some(path) = path.as_mut()
@@ -474,6 +480,7 @@ impl Enemy
         &mut self,
         entities: &ClientEntities,
         world: &World,
+        pathfinder: Pathfinder,
         entity: Entity,
         dt: f32
     ) -> bool
@@ -507,7 +514,7 @@ impl Enemy
             let changed_state = *current_state_left <= 0.0;
             if changed_state
             {
-                self.set_next_state(entities, world, entity);
+                self.set_next_state(entities, pathfinder, entity);
             }
 
             changed_state
@@ -521,17 +528,17 @@ impl Enemy
             self.reset_state = false;
 
             changed = true;
-            self.set_next_state(entities, world, entity);
+            self.set_next_state(entities, pathfinder, entity);
         }
 
-        self.do_behavior(entities, world, entity, dt);
+        self.do_behavior(entities, world, pathfinder, entity, dt);
 
         changed
     }
 
-    fn set_next_state(&mut self, entities: &ClientEntities, world: &World, entity: Entity)
+    fn set_next_state(&mut self, entities: &ClientEntities, pathfinder: Pathfinder, entity: Entity)
     {
-        self.set_state(self.next_state(entities, world, entity));
+        self.set_state(self.next_state(entities, pathfinder, entity));
     }
 
     fn set_state(&mut self, state: BehaviorState)

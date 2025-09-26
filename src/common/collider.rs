@@ -153,6 +153,7 @@ pub enum ColliderLayer
     Player,
     NormalEnemy,
     LyingEnemy,
+    PathfindEnemy,
     Vision,
     ThrownDecal
 }
@@ -208,6 +209,16 @@ impl ColliderLayer
             (LyingEnemy, Player, false),
             (LyingEnemy, NormalEnemy, false),
 
+            (PathfindEnemy, PathfindEnemy, false),
+            (PathfindEnemy, Normal, true),
+            (PathfindEnemy, Damage, false),
+            (PathfindEnemy, World, true),
+            (PathfindEnemy, Mouse, false),
+            (PathfindEnemy, Door, false),
+            (PathfindEnemy, Player, false),
+            (PathfindEnemy, NormalEnemy, false),
+            (PathfindEnemy, LyingEnemy, false),
+
             (Vision, Vision, false),
             (Vision, Normal, true),
             (Vision, Damage, false),
@@ -217,6 +228,7 @@ impl ColliderLayer
             (Vision, Player, true),
             (Vision, NormalEnemy, true),
             (Vision, LyingEnemy, false),
+            (Vision, PathfindEnemy, false),
 
             (ThrownDecal, ThrownDecal, true),
             (ThrownDecal, Normal, false),
@@ -227,6 +239,7 @@ impl ColliderLayer
             (ThrownDecal, Player, false),
             (ThrownDecal, NormalEnemy, false),
             (ThrownDecal, LyingEnemy, false),
+            (ThrownDecal, PathfindEnemy, false),
             (ThrownDecal, Vision, false)
         }
     }
@@ -808,13 +821,18 @@ impl<T: Borrow<Collider>> CollidingInfo<T>
             Unit::new_unchecked(diff / distance)
         };
 
-        add_contact(Contact{
-            a: self.entity.unwrap(),
+        let contact_raw = ContactRaw{
+            a: self.entity,
             b: other.entity,
             point: self.transform.position.xy() + *normal * this_radius,
             penetration: this_radius + other_radius - distance,
             normal: -normal
-        });
+        };
+
+        if let Ok(contact) = contact_raw.try_into()
+        {
+            add_contact(contact);
+        }
 
         true
     }

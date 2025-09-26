@@ -116,6 +116,15 @@ pub fn swept_aabb_world(
     swept_aabb_world_inner::<true>(world, this, direction).min_by(|a, b| a.1.partial_cmp(&b.1).unwrap())
 }
 
+pub fn swept_aabb_world_collides(
+    world: &World,
+    this: &Transform,
+    direction: Vector3<f32>
+) -> bool
+{
+    swept_aabb_world_inner::<true>(world, this, direction).next().is_some()
+}
+
 fn swept_aabb_world_inner<'a, const EXCLUDE_BEFORE: bool>(
     world: &'a World,
     this: &'a Transform,
@@ -161,7 +170,7 @@ fn swept_aabb_world_inner<'a, const EXCLUDE_BEFORE: bool>(
                 (pos, x.distance)
             }).filter(|(_, x)|
             {
-                if EXCLUDE_BEFORE && *x < 0.0
+                if EXCLUDE_BEFORE && *x < (TILE_SIZE * -0.1)
                 {
                     return false;
                 }
@@ -171,12 +180,12 @@ fn swept_aabb_world_inner<'a, const EXCLUDE_BEFORE: bool>(
         })
 }
 
-pub fn raycast_world<'a, Exit: FnMut(&TileInfo, &RaycastHit) -> bool>(
+pub fn raycast_world<'a, Exit: FnMut(&TileInfo, &TilePos, &RaycastResult) -> bool>(
     world: &'a World,
     start: Vector3<f32>,
     direction: Unit<Vector3<f32>>,
     mut early_exit: Exit
-) -> impl Iterator<Item=RaycastHit> + use<'a, Exit>
+) -> impl Iterator<Item=(&'a TileInfo, TilePos, RaycastResult)> + use<'a, Exit>
 {
     fn inside_tile_pos(position: Vector3<f32>) -> Vector3<f32>
     {
@@ -194,7 +203,7 @@ pub fn raycast_world<'a, Exit: FnMut(&TileInfo, &RaycastHit) -> bool>(
         })
     }
 
-    (0..).scan((TilePos::from(Pos3::from(start)), inside_tile_pos(start)), move |(current_pos, current), _| -> Option<Option<RaycastHit>>
+    (0..).scan((TilePos::from(Pos3::from(start)), inside_tile_pos(start)), move |(current_pos, current), _| -> Option<Option<_>>
     {
         let tile = *world.tile(*current_pos)?;
         let tile_info = world.tile_info(tile);
@@ -234,8 +243,6 @@ pub fn raycast_world<'a, Exit: FnMut(&TileInfo, &RaycastHit) -> bool>(
 
         let hit = is_colliding.then(||
         {
-            let id = RaycastHitId::Tile(*current_pos);
-
             let position = Vector3::from(current_pos.position()) + *current;
 
             let distance = position.metric_distance(&start);
@@ -245,12 +252,12 @@ pub fn raycast_world<'a, Exit: FnMut(&TileInfo, &RaycastHit) -> bool>(
                 pierce
             };
 
-            RaycastHit{id, result}
+            (tile_info, *current_pos, result)
         });
 
         if let Some(hit) = hit.as_ref()
         {
-            if early_exit(tile_info, hit)
+            if early_exit(hit.0, &hit.1, &hit.2)
             {
                 return None;
             }

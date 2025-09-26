@@ -1,33 +1,427 @@
 use std::{
+    cell::RefCell,
+    ops::ControlFlow,
     cmp::Ordering,
     collections::{HashMap, BinaryHeap}
 };
 
 use serde::{Serialize, Deserialize};
 
-use nalgebra::Vector3;
+use nalgebra::{Unit, Vector3};
 
 use yanyaengine::Transform;
 
-use crate::common::{
-    line_info,
-    raycast,
-    watcher::*,
-    render_info::*,
-    AnyEntities,
-    EntityInfo,
-    World,
-    PosDirection,
-    Pos3,
-    world::{
-        TILE_SIZE,
-        ClientEntities,
-        TilePos
+use crate::{
+    debug_config::*,
+    common::{
+        some_or_return,
+        some_or_value,
+        line_info,
+        watcher::*,
+        render_info::*,
+        collider::*,
+        raycast::{self, *},
+        raycast_system,
+        Entity,
+        AnyEntities,
+        EntityInfo,
+        World,
+        PosDirection,
+        Pos3,
+        SpatialGrid,
+        entity::iterate_components_with,
+        world::{
+            TILE_SIZE,
+            ClientEntities,
+            TilePos
+        }
     }
 };
 
 
 const PATHFIND_MAX_STEPS: usize = 1000;
+
+fn debug_display_current(entities: &ClientEntities, node: Node)
+{
+    let v = node.cost * 0.05;
+    let color = [v, 0.0, 1.0 - v, 0.5];
+
+    entities.push(true, EntityInfo{
+        transform: Some(Transform{
+            position: node.value.center_position().into(),
+            scale: Vector3::repeat(TILE_SIZE),
+            ..Default::default()
+        }),
+        render: Some(RenderInfo{
+            object: Some(RenderObjectKind::Texture{
+                name: "solid.png".to_owned()
+            }.into()),
+            mix: Some(MixColor{keep_transparency: true, ..MixColor::color(color)}),
+            above_world: true,
+            ..Default::default()
+        }),
+        watchers: Some(Watchers::simple_disappearing(1.0)),
+        ..Default::default()
+    });
+}
+
+fn debug_display_collided_entity(entities: &ClientEntities, entity: Entity, position: TilePos)
+{
+    let position: Vector3<f32> = position.center_position().into();
+
+    entities.push(true, EntityInfo{
+        transform: Some(Transform{
+            position,
+            scale: Vector3::repeat(TILE_SIZE),
+            ..Default::default()
+        }),
+        render: Some(RenderInfo{
+            object: Some(RenderObjectKind::Texture{
+                name: "solid.png".to_owned()
+            }.into()),
+            mix: Some(MixColor{keep_transparency: true, ..MixColor::color([1.0, 1.0, 0.0, 0.5])}),
+            above_world: true,
+            ..Default::default()
+        }),
+        watchers: Some(Watchers::simple_disappearing(1.0)),
+        ..Default::default()
+    });
+
+    let other_position = some_or_return!(entities.transform(entity)).position;
+    if let Some(line) = line_info(position, other_position, 0.005, [0.0, 1.0, 1.0])
+    {
+        entities.push(true, line);
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct Pathfinder<'a>
+{
+    pub world: &'a World,
+    pub entities: &'a ClientEntities,
+    pub space: &'a SpatialGrid
+}
+
+impl Pathfinder<'_>
+{
+    pub fn pathfind(
+        &self,
+        entity: Entity,
+        start: Vector3<f32>,
+        end: Vector3<f32>
+    ) -> Option<WorldPath>
+    {
+        let layer = self.pathfind_layer(entity);
+
+        let scale = self.entities.collider(entity)
+            .and_then(|x| x.override_transform.as_ref().map(|x| x.transform.scale))
+            .or_else(|| self.entities.transform(entity).map(|x| x.scale))
+            .unwrap_or_else(Vector3::zeros);
+
+        let direction = end - start;
+
+        if self.straight_line_free(entity, start, direction, scale, layer)
+        {
+            return Some(WorldPath::new(vec![end, start]));
+        }
+
+        self.pathfind_full(entity, layer, scale, start, end)
+    }
+
+    fn pathfind_full(
+        &self,
+        entity: Entity,
+        layer: Option<ColliderLayer>,
+        scale: Vector3<f32>,
+        start: Vector3<f32>,
+        end: Vector3<f32>
+    ) -> Option<WorldPath>
+    {
+        let tile_colliding = |pos|
+        {
+            self.world.tile(pos).map(|x| self.world.tile_info(*x).colliding).unwrap_or(true)
+        };
+
+        let target = TilePos::from(end);
+        let start = TilePos::from(start);
+
+        if start.distance(target).z > 0
+        {
+            return None;
+        }
+
+        let mut steps = 0;
+
+        let mut unexplored = BinaryHeap::from([
+            Node{cost: 0.0, value: start}
+        ]);
+
+        let mut explored = HashMap::from([(start, NodeInfo{moves_from_start: 0, previous: None})]);
+
+        while !unexplored.is_empty()
+        {
+            steps += 1;
+            if steps > PATHFIND_MAX_STEPS
+            {
+                return None;
+            }
+
+            let current = unexplored.pop()?;
+
+            if DebugConfig::is_enabled(DebugTool::DisplayPathfindAttempt)
+            {
+                debug_display_current(self.entities, current.clone());
+            }
+
+            if current.value == target
+            {
+                let current_position: Vector3<f32> = current.value.center_position().into();
+                let mut path = vec![Vector3::new(end.x, end.y, current_position.z), current_position];
+                current.path_to(&mut explored, &mut path, |x| x.center_position().into());
+
+                return Some(self.simplify_path(entity, scale, layer, path));
+            }
+
+            let below = current.value.offset(Pos3::new(0, 0, -1));
+            let is_grounded = tile_colliding(below);
+
+            let mut try_push = |position: TilePos|
+            {
+                let moves_from_start = explored[&current.value].moves_from_start;
+
+                if let Some(explored) = explored.get_mut(&position)
+                {
+                    if explored.moves_from_start > moves_from_start + 1
+                    {
+                        explored.moves_from_start = moves_from_start + 1;
+                        explored.previous = Some(current.clone());
+                    }
+                } else
+                {
+                    let moves_from_start = moves_from_start + 1;
+
+                    let info = NodeInfo{moves_from_start, previous: Some(current.clone())};
+                    explored.insert(position, info);
+
+                    let goal_distance = Vector3::from(position.distance(target)).cast::<f32>().magnitude();
+
+                    let cost = moves_from_start as f32 + goal_distance;
+
+                    unexplored.push(Node{
+                        cost,
+                        value: position
+                    });
+                }
+            };
+
+            if is_grounded
+            {
+                PosDirection::iter_non_z().for_each(|direction|
+                {
+                    let position = current.value.offset(Pos3::from(direction));
+
+                    let is_colliding_entity = ||
+                    {
+                        let layer = some_or_value!(layer, false);
+
+                        self.is_colliding_entity(entity, layer, scale, position)
+                    };
+
+                    if (position == target)
+                        || (!tile_colliding(position) && !is_colliding_entity())
+                    {
+                        try_push(position);
+                    }
+                });
+            } else
+            {
+                try_push(below);
+            }
+        }
+
+        None
+    }
+
+    fn is_colliding_entity(
+        &self,
+        check_entity: Entity,
+        layer: ColliderLayer,
+        scale: Vector3<f32>,
+        position: TilePos
+    ) -> bool
+    {
+        let center_position = position.center_position().into();
+
+        let tile_checker = ColliderInfo{
+            kind: ColliderType::Circle,
+            layer,
+            ghost: true,
+            sleeping: false,
+            override_transform: None
+        }.into();
+
+        let tile_checker = {
+            let transform = Transform{
+                position: center_position,
+                scale,
+                ..Default::default()
+            };
+
+            CollidingInfoRef::new(transform, &tile_checker)
+        };
+
+        let is_colliding = |this_collider: &Collider, entity|
+        {
+            if entity == check_entity
+            {
+                return ControlFlow::Continue(());
+            }
+
+            if this_collider.ghost
+            {
+                return ControlFlow::Continue(());
+            }
+
+            let this_transform = some_or_value!(self.entities.transform(entity), ControlFlow::Continue(()));
+
+            let this = CollidingInfoRef::new(this_transform.clone(), &this_collider);
+
+            let is_colliding = this.collide_immutable(&tile_checker, |_| {});
+
+            if is_colliding
+            {
+                if DebugConfig::is_enabled(DebugTool::DisplayPathfindAttempt)
+                {
+                    debug_display_collided_entity(self.entities, entity, position);
+                }
+
+                ControlFlow::Break(())
+            } else
+            {
+                ControlFlow::Continue(())
+            }
+        };
+
+        let fully_inside = self.space.inside_simulated(center_position, TILE_SIZE.hypot(TILE_SIZE));
+
+        let control = if fully_inside
+        {
+            self.space.try_for_each(|entity|
+            {
+                let this_collider = some_or_value!(self.entities.collider(entity), ControlFlow::Continue(()));
+
+                is_colliding(&this_collider, entity)
+            })
+        } else
+        {
+            iterate_components_with!(&self.entities, collider, try_for_each, |entity, collider: &RefCell<Collider>|
+            {
+                is_colliding(&collider.borrow(), entity)
+            })
+        };
+
+        control.is_break()
+    }
+
+    fn simplify_path(
+        &self,
+        entity: Entity,
+        scale: Vector3<f32>,
+        layer: Option<ColliderLayer>,
+        tiles: Vec<Vector3<f32>>
+    ) -> WorldPath
+    {
+        let mut check = 0;
+
+        let mut simplified = vec![tiles[0]];
+
+        let mut index = 1;
+        while index < tiles.len()
+        {
+            let is_next = (check + 1) == index;
+
+            let is_tile_reachable = |tiles: &[Vector3<f32>]|
+            {
+                let distance = tiles[index] - tiles[check];
+
+                let start = Vector3::from(tiles[check]);
+
+                self.straight_line_free(entity, start, distance, scale, layer)
+            };
+
+            let is_reachable = is_next || is_tile_reachable(&tiles);
+
+            if is_reachable
+            {
+                index += 1;
+            } else
+            {
+                check = index - 1;
+
+                simplified.push(tiles[check]);
+            }
+        }
+
+        WorldPath::new(simplified)
+    }
+
+    fn straight_line_free(
+        &self,
+        entity: Entity,
+        start: Vector3<f32>,
+        direction: Vector3<f32>,
+        scale: Vector3<f32>,
+        layer: Option<ColliderLayer>
+    ) -> bool
+    {
+        let collides_world = raycast::swept_aabb_world_collides(
+            self.world,
+            &Transform{
+                position: start,
+                scale,
+                ..Default::default()
+            },
+            direction
+        );
+
+        let collides_entities = ||
+        {
+            let layer = some_or_value!(layer, false);
+
+            let max_distance = direction.magnitude();
+
+            let direction = Unit::new_unchecked(direction / max_distance);
+
+            raycast_system::raycast_entities_raw(
+                self.entities,
+                start,
+                direction,
+                raycast_system::before_raycast_default(layer, Some(entity)),
+                raycast_system::after_raycast_default(max_distance, false),
+                |start, direction, kind, transform|
+                {
+                    raycast_this(start, direction, kind, &Transform{
+                        scale: transform.scale + scale,
+                        ..transform.clone()
+                    })
+                }
+            ).next().is_some()
+        };
+
+        !collides_world && !collides_entities()
+    }
+
+    fn pathfind_layer(&self, entity: Entity) -> Option<ColliderLayer>
+    {
+        if self.entities.enemy_exists(entity)
+        {
+            Some(ColliderLayer::PathfindEnemy)
+        } else
+        {
+            self.entities.collider(entity).map(|x| x.layer)
+        }
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorldPath
@@ -173,152 +567,4 @@ impl PartialOrd for Node
 impl Ord for Node
 {
     fn cmp(&self, other: &Self) -> Ordering { self.partial_cmp(other).unwrap_or(Ordering::Equal) }
-}
-
-fn simplify_path(
-    world: &World,
-    scale: Vector3<f32>,
-    tiles: Vec<Vector3<f32>>
-) -> WorldPath
-{
-    let mut check = 0;
-
-    let mut simplified = vec![tiles[0]];
-
-    let mut index = 1;
-    while index < tiles.len()
-    {
-        let is_next = (check + 1) == index;
-
-        let is_tile_reachable = |tiles: &[Vector3<f32>]|
-        {
-            let distance = tiles[index] - tiles[check];
-
-            let start = Vector3::from(tiles[check]);
-
-            raycast::swept_aabb_world(
-                world,
-                &Transform{
-                    position: start,
-                    scale,
-                    ..Default::default()
-                },
-                distance
-            ).is_none()
-        };
-
-        let is_reachable = is_next || is_tile_reachable(&tiles);
-
-        if is_reachable
-        {
-            index += 1;
-        } else
-        {
-            check = index - 1;
-
-            simplified.push(tiles[check]);
-        }
-    }
-
-    WorldPath::new(simplified)
-}
-
-pub fn pathfind(
-    world: &World,
-    entities: &ClientEntities,
-    scale: Vector3<f32>,
-    start: Vector3<f32>,
-    end: Vector3<f32>
-) -> Option<WorldPath>
-{
-    let tile_colliding = |pos|
-    {
-        world.tile(pos).map(|x| world.tile_info(*x).colliding).unwrap_or(true)
-    };
-
-    let target = TilePos::from(end);
-    let start = TilePos::from(start);
-
-    if start.distance(target).z > 0
-    {
-        return None;
-    }
-
-    let mut steps = 0;
-
-    let mut unexplored = BinaryHeap::from([
-        Node{cost: 0.0, value: start}
-    ]);
-
-    let mut explored = HashMap::from([(start, NodeInfo{moves_from_start: 0, previous: None})]);
-
-    while !unexplored.is_empty()
-    {
-        steps += 1;
-        if steps > PATHFIND_MAX_STEPS
-        {
-            return None;
-        }
-
-        let current = unexplored.pop()?;
-
-        if current.value == target
-        {
-            let current_position: Vector3<f32> = current.value.center_position().into();
-            let mut path = vec![Vector3::new(end.x, end.y, current_position.z), current_position];
-            current.path_to(&mut explored, &mut path, |x| x.center_position().into());
-
-            return Some(simplify_path(world, scale, path));
-        }
-
-        let below = current.value.offset(Pos3::new(0, 0, -1));
-        let is_grounded = tile_colliding(below);
-
-        let mut try_push = |position: TilePos|
-        {
-            let moves_from_start = explored[&current.value].moves_from_start;
-
-            if let Some(explored) = explored.get_mut(&position)
-            {
-                if explored.moves_from_start > moves_from_start + 1
-                {
-                    explored.moves_from_start = moves_from_start + 1;
-                    explored.previous = Some(current.clone());
-                }
-            } else
-            {
-                let moves_from_start = moves_from_start + 1;
-
-                let info = NodeInfo{moves_from_start, previous: Some(current.clone())};
-                explored.insert(position, info);
-
-                let goal_distance = Vector3::from(position.distance(target)).cast::<f32>().magnitude();
-
-                let cost = moves_from_start as f32 + goal_distance;
-
-                unexplored.push(Node{
-                    cost,
-                    value: position
-                });
-            }
-        };
-
-        if is_grounded
-        {
-            PosDirection::iter_non_z().for_each(|direction|
-            {
-                let position = current.value.offset(Pos3::from(direction));
-
-                if !tile_colliding(position)
-                {
-                    try_push(position);
-                }
-            });
-        } else
-        {
-            try_push(below);
-        }
-    }
-
-    None
 }

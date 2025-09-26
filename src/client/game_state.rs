@@ -174,16 +174,6 @@ impl ClientEntitiesContainer
     )
     {
         crate::frame_time_this!{
-            2, sleeping_update,
-            collider_system::update_sleeping(&self.entities, self.follow_target)
-        };
-
-        crate::frame_time_this!{
-            2, physical_update,
-            physical_system::update(&mut self.entities, world, dt)
-        };
-
-        crate::frame_time_this!{
             2, lazy_transform_update,
             self.entities.update_lazy(dt)
         };
@@ -193,17 +183,27 @@ impl ClientEntitiesContainer
             anatomy_system::update(&mut self.entities, dt)
         };
 
+        let space = crate::frame_time_this!{
+            2, spatial_grid_build,
+            world.build_spatial(&self.entities, self.follow_target)
+        };
+
+        crate::frame_time_this!{
+            2, sleeping_update,
+            collider_system::update_sleeping(&self.entities, &space)
+        };
+
         if DebugConfig::is_disabled(DebugTool::DisableEnemySystem)
         {
             crate::frame_time_this!{
                 2, enemy_system_update,
-                enemy_system::update(&mut self.entities, world, dt)
+                enemy_system::update(&mut self.entities, world, &space, dt)
             };
         }
 
         crate::frame_time_this!{
-            2, children_update,
-            self.entities.update_children()
+            2, children_visibility_update,
+            self.entities.update_children_visibility()
         };
 
         crate::frame_time_this!{
@@ -216,16 +216,14 @@ impl ClientEntitiesContainer
             self.entities.update_outlineable(dt)
         };
 
-        let contacts = {
-            let space = crate::frame_time_this!{
-                2, spatial_grid_build,
-                world.build_spatial(&self.entities)
-            };
+        crate::frame_time_this!{
+            2, physical_update,
+            physical_system::update(&mut self.entities, world, dt)
+        };
 
-            crate::frame_time_this!{
-                2, collider_system_update,
-                collider_system::update(&mut self.entities, world, &space)
-            }
+        let contacts = crate::frame_time_this!{
+            2, collider_system_update,
+            collider_system::update(&mut self.entities, world, &space)
         };
 
         crate::frame_time_this!{

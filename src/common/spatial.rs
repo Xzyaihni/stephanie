@@ -22,7 +22,7 @@ use crate::{
         Entity,
         Collider,
         OverrideTransform,
-        world::{CHUNK_SIZE, CLIENT_OVERMAP_SIZE_Z, TilePos, Pos3, overmap::OvermapIndexing},
+        world::{CHUNK_SIZE, CLIENT_OVERMAP_SIZE_Z, TILE_SIZE, TilePos, Pos3, overmap::OvermapIndexing},
         entity::{iterate_components_with, for_each_component, ClientEntities}
     }
 };
@@ -194,6 +194,27 @@ impl KNode
                 {
                     f(a, b);
                 });
+            }
+        }
+    }
+
+    fn try_fold<State, Break>(
+        &self,
+        s: State,
+        f: &mut impl FnMut(State, Entity) -> ControlFlow<Break, State>
+    ) -> ControlFlow<Break, State>
+    {
+        match self
+        {
+            Self::Node{left, right, ..} =>
+            {
+                let s = left.try_fold(s, f)?;
+
+                right.try_fold(s, f)
+            },
+            Self::Leaf{entities} =>
+            {
+                entities.iter().copied().try_fold(s, f)
             }
         }
     }
@@ -384,6 +405,7 @@ impl KNode
 #[derive(Debug)]
 pub struct SpatialGrid
 {
+    follow_position: Vector3<f32>,
     z_nodes: [KNode; NODES_Z]
 }
 
@@ -391,7 +413,8 @@ impl SpatialGrid
 {
     pub fn new(
         entities: &ClientEntities,
-        mapper: &impl OvermapIndexing
+        mapper: &impl OvermapIndexing,
+        follow_target: Entity
     ) -> Self
     {
         fn player_z(entities: &ClientEntities, mapper: &impl OvermapIndexing) -> Option<usize>
@@ -523,7 +546,10 @@ impl SpatialGrid
             }
         });
 
+        let follow_position = entities.transform(follow_target).map(|x| x.position).unwrap_or_else(Vector3::zeros);
+
         Self{
+            follow_position,
             z_nodes
         }
     }
@@ -534,5 +560,28 @@ impl SpatialGrid
         {
             node.possible_pairs(&mut f);
         });
+    }
+
+    pub fn try_fold<State, Break>(
+        &self,
+        s: State,
+        mut f: impl FnMut(State, Entity) -> ControlFlow<Break, State>
+    ) -> ControlFlow<Break, State>
+    {
+        self.z_nodes.iter().try_fold(s, |s, node| node.try_fold(s, &mut f))
+    }
+
+    pub fn try_for_each<Break>(
+        &self,
+        mut f: impl FnMut(Entity) -> ControlFlow<Break, ()>
+    ) -> ControlFlow<Break, ()>
+    {
+        self.try_fold((), move |_, x| f(x))
+    }
+
+    pub fn inside_simulated(&self, position: Vector3<f32>, scale: f32) -> bool
+    {
+        ((position.z - self.follow_position.z).abs() > TILE_SIZE * 2.5)
+            || ((position.xy().metric_distance(&self.follow_position.xy()) - scale) > TILE_SIZE * 30.0)
     }
 }

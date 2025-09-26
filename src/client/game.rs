@@ -426,7 +426,7 @@ impl Game
                         let mut local_entities = Vec::new();
 
                         let mut total = 0;
-                        entities.for_each_entity(|entity|
+                        entities.iter_entities().for_each(|entity|
                         {
                             total += 1;
                             let id = LispValue::new_integer(entity.id() as i32);
