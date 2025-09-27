@@ -128,10 +128,10 @@ pub fn sees(
 
                 let blocked = !is_target && !is_friendly;
 
-                !blocked && raycast_system::after_raycast_default(max_distance, false)(entity, hit)
+                blocked && raycast_system::after_raycast_default(max_distance, false)(entity, hit)
             },
             raycast_this
-        ).any(|(hit_entity, _)| hit_entity != other_entity)
+        ).next().is_some()
     };
 
     if hit_obstacle

@@ -115,7 +115,7 @@
         "name": "heal pills",
         "drug": {
             "Heal": {
-                "amount": 2.0
+                "amount": 10.0
             }
         },
         "rarity_rolls": false,

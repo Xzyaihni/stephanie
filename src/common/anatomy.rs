@@ -362,30 +362,31 @@ pub trait HealReceiver: HealthIterate
 
     fn heal(&mut self, amount: f32) -> Option<f32>
     {
+        const HEAL_FRACTION: f32 = 0.1;
+
         let mut pool = amount;
 
-        loop
-        {
-            let mut current = self.health_iter().filter(|x| !(***x).is_full()).count();
+        let mut damaged: Vec<_> = self.health_sided_iter_mut(Side2d::default())
+            .filter(|x| !(***x).is_full())
+            .collect();
 
-            if current == 0
+        while let Some((_, smallest)) = damaged.iter_mut()
+            .filter_map(|x| x.fraction().map(|fraction| (fraction, x)))
+            .min_by(|a, b| a.0.total_cmp(&b.0))
+        {
+            let heal_amount = (smallest.health.max * HEAL_FRACTION).min(pool);
+
+            if heal_amount == 0.0
             {
                 break;
             }
 
-            for health in self.health_sided_iter_mut(Side2d::default()).filter(|x| !(***x).is_full())
+            pool -= heal_amount;
+            pool += smallest.heal_remainder(heal_amount).unwrap_or(0.0);
+
+            if pool <= 0.0
             {
-                let heal_amount = pool / current as f32;
-                pool -= heal_amount;
-
-                pool += health.heal_remainder(heal_amount).unwrap_or(0.0);
-
-                if pool <= 0.0
-                {
-                    return None;
-                }
-
-                current -= 1;
+                return None;
             }
         }
 
