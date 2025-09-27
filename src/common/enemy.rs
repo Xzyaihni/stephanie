@@ -405,7 +405,7 @@ impl Enemy
                             .map(|x| x.metric_distance(&target) > RECALCULATE_PATH)
                             .unwrap_or(true);
 
-                        let regenerate_path = (far_from_path || !sees) || is_close;
+                        let regenerate_path = far_from_path || is_close;
 
                         if regenerate_path
                         {
