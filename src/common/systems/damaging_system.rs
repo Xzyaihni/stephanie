@@ -25,6 +25,7 @@ use crate::{
         raycast::*,
         systems::raycast_system,
         ENTITY_SCALE,
+        SpatialGrid,
         EntityInfo,
         PhysicalProperties,
         Transform,
@@ -317,6 +318,7 @@ pub fn damager<'a, 'b, E: AnyEntities, TileDamager: FnMut(TilePos, DamagePartial
 
 fn damaging_raycasting(
     entities: &ClientEntities,
+    space: &SpatialGrid,
     world: &World,
     damaging: &mut Damaging,
     entity: Entity
@@ -348,6 +350,7 @@ fn damaging_raycasting(
 
     let hits = raycast_system::raycast(
         entities,
+        space,
         Some(world),
         info.clone(),
         *start,
@@ -543,6 +546,7 @@ fn damaging_colliding(
 
 pub fn update(
     entities: &mut ClientEntities,
+    space: &SpatialGrid,
     world: &mut World,
     textures: &CommonTextures
 )
@@ -559,7 +563,7 @@ pub fn update(
             {
                 DamagingType::Raycast{..} =>
                 {
-                    damaging_raycasting(entities, world, &mut damaging, entity)
+                    damaging_raycasting(entities, space, world, &mut damaging, entity)
                 },
                 _ => damaging_colliding(entities, &mut damaging, entity)
             }

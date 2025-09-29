@@ -68,6 +68,7 @@ pub struct RaycastInfo
 {
     pub pierce: Option<f32>,
     pub pierce_scale: RaycastPierce,
+    pub scale: f32,
     pub layer: ColliderLayer,
     pub ignore_entity: Option<Entity>,
     pub ignore_end: bool

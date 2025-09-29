@@ -20,7 +20,14 @@ use crate::{
         Entity,
         Collider,
         OverrideTransform,
-        world::{CHUNK_SIZE, CLIENT_OVERMAP_SIZE_Z, TILE_SIZE, TilePos, Pos3, overmap::OvermapIndexing},
+        world::{
+            CHUNK_SIZE,
+            CLIENT_OVERMAP_SIZE_Z,
+            TILE_SIZE,
+            TilePos,
+            overmap::{self, OvermapIndexing},
+            chunk::{rounded_single, to_tile_single}
+        },
         entity::{iterate_components_with, for_each_component, ClientEntities}
     }
 };
@@ -32,9 +39,14 @@ use crate::common::{ENTITY_SCALE, with_z, line_info};
 const MAX_DEPTH: usize = 5;
 const NODES_Z: usize = CHUNK_SIZE * CLIENT_OVERMAP_SIZE_Z;
 
-fn node_z(mapper: &impl OvermapIndexing, TilePos{chunk, local}: TilePos) -> Option<usize>
+fn node_z(mapper: &ZMapper, TilePos{chunk, local}: TilePos) -> Option<usize>
 {
     Some(local.pos().z + mapper.to_local_z(chunk.0.z)? * CHUNK_SIZE)
+}
+
+fn node_z_value(mapper: &ZMapper, value: f32) -> Option<usize>
+{
+    Some(to_tile_single(value) + mapper.to_local_z(rounded_single(value))? * CHUNK_SIZE)
 }
 
 fn halfspace(median: f32, position: f32, half_scale: f32) -> Ordering
@@ -62,7 +74,7 @@ pub struct SpatialInfo
 }
 
 #[derive(Debug)]
-enum KNode
+pub enum KNode
 {
     Node{
         left: Box<KNode>,
@@ -238,7 +250,7 @@ impl KNode
         }
     }
 
-    fn try_possible_collisions_with<Break>(
+    pub fn try_possible_collisions_with<Break>(
         &self,
         position: Vector2<f32>,
         half_scale: Vector2<f32>,
@@ -267,7 +279,7 @@ impl KNode
         }
     }
 
-    fn try_fold<State, Break>(
+    pub fn try_fold<State, Break>(
         &self,
         s: State,
         f: &mut impl FnMut(State, Entity) -> ControlFlow<Break, State>
@@ -472,10 +484,26 @@ impl KNode
 }
 
 #[derive(Debug)]
+struct ZMapper
+{
+    position: i32,
+    size: usize
+}
+
+impl ZMapper
+{
+    pub fn to_local_z(&self, z: i32) -> Option<usize>
+    {
+        overmap::to_local_z(self.position, self.size, z)
+    }
+}
+
+#[derive(Debug)]
 pub struct SpatialGrid
 {
+    z_mapper: ZMapper,
     follow_position: Vector3<f32>,
-    z_nodes: [KNode; NODES_Z]
+    pub z_nodes: [KNode; NODES_Z]
 }
 
 impl SpatialGrid
@@ -499,6 +527,8 @@ impl SpatialGrid
                 })
             })
         }
+
+        let z_mapper = ZMapper{position: mapper.player_position().0.z, size: mapper.size().z};
 
         let mut queued = [const { Vec::new() }; NODES_Z];
         for_each_component!(entities, collider, |entity, collider: &RefCell<Collider>|
@@ -536,9 +566,7 @@ impl SpatialGrid
             };
 
             let z = {
-                let position = Pos3::from(position);
-
-                if let Some(x) = node_z(mapper, TilePos{chunk: position.rounded(), local: position.to_tile().into()})
+                if let Some(x) = node_z_value(&z_mapper, position.z)
                 {
                     x
                 } else
@@ -614,9 +642,15 @@ impl SpatialGrid
         let follow_position = entities.transform(follow_target).map(|x| x.position).unwrap_or_else(Vector3::zeros);
 
         Self{
+            z_mapper,
             follow_position,
             z_nodes
         }
+    }
+
+    pub fn z_of(&self, value: f32) -> Option<usize>
+    {
+        node_z_value(&self.z_mapper, value)
     }
 
     pub fn possible_pairs(&self, mut f: impl FnMut(Entity, Entity))
@@ -646,12 +680,11 @@ impl SpatialGrid
 
     pub fn try_for_each_near<Break>(
         &self,
-        mapper: &impl OvermapIndexing,
         pos: TilePos,
         f: impl FnMut(Entity) -> ControlFlow<Break, ()>
     ) -> ControlFlow<Break, ()>
     {
-        let z = some_or_value!(node_z(mapper, pos), ControlFlow::Continue(()));
+        let z = some_or_value!(node_z(&self.z_mapper, pos), ControlFlow::Continue(()));
 
         self.z_nodes[z].try_possible_collisions_with(
             Vector3::from(pos.center_position()).xy(),

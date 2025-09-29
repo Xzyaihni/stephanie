@@ -22,6 +22,32 @@ pub enum Axis
     Z
 }
 
+pub fn rounded_single(value: f32) -> i32
+{
+    let value = value / CHUNK_VISUAL_SIZE;
+
+    if value < 0.0
+    {
+        value as i32 - 1
+    } else
+    {
+        value as i32
+    }
+}
+
+pub fn to_tile_single(value: f32) -> usize
+{
+    let x = if value < 0.0
+    {
+        CHUNK_VISUAL_SIZE + (value % CHUNK_VISUAL_SIZE)
+    } else
+    {
+        value % CHUNK_VISUAL_SIZE
+    };
+
+    ((x / TILE_SIZE) as usize).min(CHUNK_SIZE - 1)
+}
+
 #[derive(Debug, Clone, Copy, Hash, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Pos3<T>
 {
@@ -236,45 +262,17 @@ impl Pos3<f32>
 {
     pub fn tile_height(self) -> usize
     {
-        self.to_tile().z
+        to_tile_single(self.z)
     }
 
     pub fn to_tile(self) -> Pos3<usize>
     {
-        (self.modulo(CHUNK_VISUAL_SIZE) / TILE_SIZE).map(|x|
-        {
-            (x as usize).min(CHUNK_SIZE - 1)
-        })
+        self.map(to_tile_single)
     }
 
     pub fn rounded(self) -> GlobalPos
     {
-        GlobalPos(self.map(|value|
-        {
-            let value = value / CHUNK_VISUAL_SIZE;
-
-            if value < 0.0
-            {
-                value as i32 - 1
-            } else
-            {
-                value as i32
-            }
-        }))
-    }
-
-    pub fn modulo(self, divisor: f32) -> Pos3<f32>
-    {
-        self.map(|value|
-        {
-            if value < 0.0
-            {
-                divisor + (value % divisor)
-            } else
-            {
-                value % divisor
-            }
-        })
+        GlobalPos(self.map(rounded_single))
     }
 }
 

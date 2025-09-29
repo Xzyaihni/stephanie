@@ -20,6 +20,13 @@ pub mod visual_chunk;
 pub mod chunks_container;
 
 
+pub fn to_local_z(position: i32, size: usize, z: i32) -> Option<usize>
+{
+    let z = z - position + size as i32 / 2;
+
+    (0..size as i32).contains(&z).then_some(z as usize)
+}
+
 pub trait Overmap<T>: OvermapIndexing
 {
     fn remove(&mut self, pos: LocalPos);
@@ -171,9 +178,7 @@ pub trait OvermapIndexing: CommonIndexing + Sized
 
     fn to_local_z(&self, z: i32) -> Option<usize>
     {
-        let z = z - self.player_position().0.z + self.size().z as i32 / 2;
-
-        (0..self.size().z as i32).contains(&z).then_some(z as usize)
+        to_local_z(self.player_position().0.z, self.size().z, z)
     }
 
     fn inbounds(&self, pos: GlobalPos) -> bool

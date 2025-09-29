@@ -1,4 +1,5 @@
 use std::{
+    ops::{RangeInclusive, ControlFlow},
     cmp::Ordering,
     cell::RefCell
 };
@@ -10,6 +11,7 @@ use yanyaengine::Transform;
 use crate::{
     debug_config::*,
     common::{
+        some_or_value,
         collider::*,
         raycast::*,
         watcher::*,
@@ -18,6 +20,7 @@ use crate::{
         World,
         EntityInfo,
         AnyEntities,
+        SpatialGrid,
         entity::{
             iterate_components_with,
             ClientEntities
@@ -28,6 +31,7 @@ use crate::{
 
 pub fn raycast(
     entities: &ClientEntities,
+    space: &SpatialGrid,
     world: Option<&World>,
     info: RaycastInfo,
     start: Vector3<f32>,
@@ -39,14 +43,50 @@ pub fn raycast(
 
     let direction = Unit::new_unchecked(direction / max_distance);
 
-    let mut hits: Vec<_> = raycast_entities_raw(
-        entities,
-        start,
-        direction,
-        before_raycast_default(info.layer, info.ignore_entity),
-        after_raycast_default(max_distance, info.ignore_end),
-        raycast_this
-    ).map(|(entity, result)| RaycastHit{id: RaycastHitId::Entity(entity), result}).collect();
+    let before_raycast = before_raycast_default(info.layer, info.ignore_entity);
+
+    let stage = |x|
+    {
+        (raycast_entities_raw_stage(RaycastEntitiesRawInfo{
+            entities,
+            start,
+            direction,
+            after_raycast: after_raycast_default(max_distance, info.ignore_end),
+            raycast_fn: raycast_this
+        }))(x).map(|(entity, result)| RaycastHit{id: RaycastHitId::Entity(entity), result})
+    };
+
+    let raycast_all = |entities, before_raycast, stage| -> Vec<RaycastHit>
+    {
+        raycast_entities_all_raw_setup(entities, before_raycast)
+            .filter_map(stage)
+            .collect()
+    };
+
+    let mut hits: Vec<_> = if !info.ignore_end
+    {
+        if let Some(zs) = raycast_space_zs(space, info.scale, start, end)
+        {
+            let mut hits = Vec::new();
+            let _ = raycast_entities_space_raw_setup(entities, space, zs, before_raycast, |x| -> ControlFlow<(), ()>
+            {
+                if let Some(hit) = stage(x)
+                {
+                    hits.push(hit);
+                }
+
+                ControlFlow::Continue(())
+            });
+
+            hits
+        } else
+        {
+            raycast_all(entities, before_raycast, stage)
+        }
+    } else
+    {
+        raycast_all(entities, before_raycast, stage)
+    };
 
     if let Some(world) = world
     {
@@ -196,10 +236,53 @@ pub fn raycast(
     RaycastHits{start, direction, hits}
 }
 
+pub fn raycast_entities_any_raw<'a, BeforeRaycast, AfterRaycast, Raycast>(
+    space: &'a SpatialGrid,
+    scale: f32,
+    end: Vector3<f32>,
+    before_raycast: BeforeRaycast,
+    info: RaycastEntitiesRawInfo<'a, AfterRaycast, Raycast>
+) -> bool
+where
+    BeforeRaycast: Fn(&Collider, Entity) -> bool,
+    AfterRaycast: Fn(Entity, &RaycastResult) -> bool,
+    Raycast: Fn(Vector3<f32>, Unit<Vector3<f32>>, ColliderType, &Transform) -> Option<RaycastResult>
+{
+    let entities = info.entities;
+    let start = info.start;
+
+    let mut stage = raycast_entities_raw_stage(info);
+
+    if let Some(zs) = raycast_space_zs(space, scale, start, end)
+    {
+        raycast_entities_space_raw_setup(
+            entities,
+            space,
+            zs,
+            before_raycast,
+            move |x|
+            {
+                if stage(x).is_some() { ControlFlow::Break(()) } else { ControlFlow::Continue(()) }
+            }
+        ).is_break()
+    } else
+    {
+        raycast_entities_all_raw_setup(
+            entities,
+            before_raycast
+        ).any(move |x| stage(x).is_some())
+    }
+}
+
 pub fn before_raycast_default(layer: ColliderLayer, ignore_entity: Option<Entity>) -> impl Fn(&Collider, Entity) -> bool
 {
     move |collider, entity|
     {
+        if collider.ghost
+        {
+            return false;
+        }
+
         let collides = collider.layer.collides(&layer);
 
         collides && ignore_entity.as_ref().map(|ignore_entity|
@@ -220,18 +303,92 @@ pub fn after_raycast_default(max_distance: f32, ignore_end: bool) -> impl Fn(Ent
     }
 }
 
-pub fn raycast_entities_raw<BeforeRaycast, AfterRaycast, Raycast>(
-    entities: &ClientEntities,
-    start: Vector3<f32>,
-    direction: Unit<Vector3<f32>>,
-    before_raycast: BeforeRaycast,
-    after_raycast: AfterRaycast,
-    raycast_fn: Raycast
-) -> impl Iterator<Item=(Entity, RaycastResult)> + use<'_, BeforeRaycast, AfterRaycast, Raycast>
+pub fn raycast_entities_raw_stage<'a, AfterRaycast, Raycast>(
+    info: RaycastEntitiesRawInfo<'a, AfterRaycast, Raycast>
+) -> impl FnMut((Entity, ColliderType)) -> Option<(Entity, RaycastResult)> + use<'a, AfterRaycast, Raycast>
 where
-    BeforeRaycast: Fn(&Collider, Entity) -> bool,
     AfterRaycast: Fn(Entity, &RaycastResult) -> bool,
     Raycast: Fn(Vector3<f32>, Unit<Vector3<f32>>, ColliderType, &Transform) -> Option<RaycastResult>
+{
+    move |(entity, kind)|
+    {
+        let transform = info.entities.transform(entity)?;
+
+        let hit = (info.raycast_fn)(info.start, info.direction, kind, &transform)?;
+
+        (info.after_raycast)(entity, &hit).then_some((entity, hit))
+    }
+}
+
+pub struct RaycastEntitiesRawInfo<'a, AfterRaycast, Raycast>
+{
+    pub entities: &'a ClientEntities,
+    pub start: Vector3<f32>,
+    pub direction: Unit<Vector3<f32>>,
+    pub after_raycast: AfterRaycast,
+    pub raycast_fn: Raycast
+}
+
+pub fn raycast_space_zs(
+    space: &SpatialGrid,
+    scale: f32,
+    start: Vector3<f32>,
+    end: Vector3<f32>
+) -> Option<RangeInclusive<usize>>
+{
+    if space.inside_simulated(start, scale) && space.inside_simulated(end, scale)
+    {
+        let a = space.z_of(start.z)?;
+        let b = space.z_of(end.z)?;
+
+        let zs = if a > b
+        {
+            b..=a
+        } else
+        {
+            a..=b
+        };
+
+        Some(zs)
+    } else
+    {
+        None
+    }
+}
+
+pub fn raycast_entities_space_raw_setup<'a, BeforeRaycast, F, Break>(
+    entities: &'a ClientEntities,
+    space: &'a SpatialGrid,
+    zs: RangeInclusive<usize>,
+    before_raycast: BeforeRaycast,
+    mut f: F
+) -> ControlFlow<Break, ()>
+where
+    BeforeRaycast: Fn(&Collider, Entity) -> bool,
+    F: FnMut((Entity, ColliderType)) -> ControlFlow<Break, ()>
+{
+    space.z_nodes[zs].iter().try_for_each(|node|
+    {
+        node.try_fold((), &mut |_, entity|
+        {
+            let collider = some_or_value!(entities.collider(entity), ControlFlow::Continue(()));
+            if before_raycast(&collider, entity)
+            {
+                f((entity, collider.kind))
+            } else
+            {
+                ControlFlow::Continue(())
+            }
+        })
+    })
+}
+
+pub fn raycast_entities_all_raw_setup<'a, BeforeRaycast>(
+    entities: &'a ClientEntities,
+    before_raycast: BeforeRaycast
+) -> impl Iterator<Item=(Entity, ColliderType)> + use<'a, BeforeRaycast>
+where
+    BeforeRaycast: Fn(&Collider, Entity) -> bool
 {
     iterate_components_with!(
         entities,
@@ -241,19 +398,7 @@ where
         |entity, collider: &RefCell<Collider>|
         {
             let collider = collider.borrow();
-
-            (!collider.ghost && before_raycast(&collider, entity)).then(|| (entity, collider.kind))
-        })
-        .filter_map(|(entity, kind)|
-        {
-            let transform = entities.transform(entity)?;
-
-            Some((entity, kind, transform))
-        })
-        .filter_map(move |(entity, kind, transform)|
-        {
-            let hit = raycast_fn(start, direction, kind, &transform)?;
-
-            after_raycast(entity, &hit).then_some((entity, hit))
-        })
+            before_raycast(&collider, entity).then(|| (entity, collider.kind))
+        }
+    )
 }

@@ -16,9 +16,10 @@ use crate::{
         character::*,
         raycast::*,
         collider::*,
-        systems::raycast_system,
+        systems::raycast_system::{self, RaycastEntitiesRawInfo},
         entity::ClientEntities,
         world::{TILE_SIZE, pathfind::*},
+        SpatialGrid,
         World,
         SeededRandom,
         AnyEntities,
@@ -36,6 +37,7 @@ const HOSTILE_CHECK: f32 = 0.5;
 
 pub fn sees(
     entities: &ClientEntities,
+    space: &SpatialGrid,
     world: &World,
     entity: Entity,
     other_entity: Entity
@@ -105,33 +107,47 @@ pub fn sees(
         return None;
     }
 
+    let after_raycast_default = raycast_system::after_raycast_default(max_distance, false);
+
+    fn constrain<F>(f: F) -> F
+    where
+        F: Fn(Entity, &RaycastResult) -> bool
+    {
+        f
+    }
+
     let hit_obstacle = {
-        raycast_system::raycast_entities_raw(
-            entities,
-            start,
-            direction,
+        raycast_system::raycast_entities_any_raw(
+            space,
+            transform.scale.y.hypot(transform.scale.x),
+            end,
             raycast_system::before_raycast_default(ColliderLayer::Vision, Some(entity)),
-            |hit_entity, hit|
-            {
-                let is_target = hit_entity == other_entity;
-
-                let is_friendly = if let (
-                    Some(this_character),
-                    Some(other_character)
-                ) = (entities.character(entity), entities.character(hit_entity))
+            RaycastEntitiesRawInfo{
+                entities,
+                start,
+                direction,
+                after_raycast: constrain(move |hit_entity, hit|
                 {
-                    !this_character.aggressive(&other_character)
-                } else
-                {
-                    false
-                };
+                    let is_target = hit_entity == other_entity;
 
-                let blocked = !is_target && !is_friendly;
+                    let is_friendly = if let (
+                        Some(this_character),
+                        Some(other_character)
+                    ) = (entities.character(entity), entities.character(hit_entity))
+                    {
+                        !this_character.aggressive(&other_character)
+                    } else
+                    {
+                        false
+                    };
 
-                blocked && raycast_system::after_raycast_default(max_distance, false)(entity, hit)
-            },
-            raycast_this
-        ).next().is_some()
+                    let blocked = !is_target && !is_friendly;
+
+                    blocked && after_raycast_default(entity, hit)
+                }),
+                raycast_fn: raycast_this
+            }
+        )
     };
 
     if hit_obstacle
@@ -390,7 +406,7 @@ impl Enemy
                     let aggressive = some_or_return!(entities.character(entity)).aggressive(&other_character);
 
                     let (is_close, sees) = {
-                        let sees = sees(entities, world, entity, other_entity);
+                        let sees = sees(entities, pathfinder.space, world, entity, other_entity);
 
                         (sees.map(|(close, _)| close).unwrap_or(false), sees.is_some())
                     };

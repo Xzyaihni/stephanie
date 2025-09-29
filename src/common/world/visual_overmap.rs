@@ -38,6 +38,8 @@ use crate::{
 use super::{
     TILE_SIZE,
     chunk::{
+        rounded_single,
+        to_tile_single,
         CHUNK_SIZE,
         Pos3,
         Chunk,
@@ -94,12 +96,12 @@ impl VisibilityChecker
 
     fn player_height(&self) -> usize
     {
-        self.player_position.read().to_tile().z
+        to_tile_single(self.player_position.read().z)
     }
 
     fn player_chunk_height(&self) -> i32
     {
-        self.player_position.read().rounded().0.z
+        rounded_single(self.player_position.read().z)
     }
 
     pub fn height(&self, pos: LocalPos) -> usize
@@ -1187,7 +1189,7 @@ impl VisualOvermap
     {
         let size_z = size_z as i32;
 
-        let chunk_height = Pos3::repeat(position).rounded().0.z - player_position + (size_z / 2);
+        let chunk_height = rounded_single(position) - player_position + (size_z / 2);
 
         if !(0..size_z).contains(&chunk_height)
         {
@@ -1205,8 +1207,7 @@ impl VisualOvermap
     {
         pos.pos.z = Self::chunk_height_of(pos.size.z, position, player_position)?;
 
-        let position = Pos3::repeat(position);
-        let height = position.to_tile().z;
+        let height = to_tile_single(position);
 
         Some((pos, height))
     }

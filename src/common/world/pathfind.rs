@@ -24,7 +24,7 @@ use crate::{
         render_info::*,
         collider::*,
         raycast::{self, *},
-        raycast_system,
+        raycast_system::{self, RaycastEntitiesRawInfo},
         Entity,
         AnyEntities,
         EntityInfo,
@@ -395,7 +395,7 @@ impl Pathfinder<'_>
 
         let control = if inside_simulated
         {
-            self.space.try_for_each_near(self.world.overmap(), position, |entity|
+            self.space.try_for_each_near(position, |entity|
             {
                 let this_collider = some_or_value!(self.entities.collider(entity), ControlFlow::Continue(()));
 
@@ -479,24 +479,31 @@ impl Pathfinder<'_>
         {
             let layer = some_or_value!(layer, false);
 
+            let end = start + direction;
+
             let max_distance = direction.magnitude();
 
             let direction = Unit::new_unchecked(direction / max_distance);
 
-            raycast_system::raycast_entities_raw(
-                self.entities,
-                start,
-                direction,
+            raycast_system::raycast_entities_any_raw(
+                self.space,
+                scale.y.hypot(scale.x),
+                end,
                 raycast_system::before_raycast_default(layer, Some(entity)),
-                raycast_system::after_raycast_default(max_distance, false),
-                |start, direction, kind, transform|
-                {
-                    raycast_this(start, direction, kind, &Transform{
-                        scale: transform.scale + scale,
-                        ..transform.clone()
-                    })
+                RaycastEntitiesRawInfo{
+                    entities: self.entities,
+                    start,
+                    direction,
+                    after_raycast: raycast_system::after_raycast_default(max_distance, false),
+                    raycast_fn: |start, direction, kind, transform: &Transform|
+                    {
+                        raycast_this(start, direction, kind, &Transform{
+                            scale: transform.scale + scale,
+                            ..transform.clone()
+                        })
+                    }
                 }
-            ).next().is_some()
+            )
         };
 
         !collides_world && !collides_entities()

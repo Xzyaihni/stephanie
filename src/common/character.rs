@@ -1294,6 +1294,7 @@ impl Character
         let info = RaycastInfo{
             pierce: Some(damage.as_ranged_pierce()),
             pierce_scale: RaycastPierce::Density{ignore_anatomy: true},
+            scale: 0.0,
             layer: ColliderLayer::Damage,
             ignore_entity: Some(info.this),
             ignore_end: true

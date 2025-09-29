@@ -248,7 +248,7 @@ impl ClientEntitiesContainer
 
         crate::frame_time_this!{
             2, damaging_system_update,
-            damaging_system::update(&mut self.entities, world, damage_info)
+            damaging_system::update(&mut self.entities, &space, world, damage_info)
         };
 
         crate::frame_time_this!{
