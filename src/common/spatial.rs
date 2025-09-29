@@ -4,14 +4,14 @@ use std::{
     cell::RefCell
 };
 
-use nalgebra::{Vector2, Vector3};
+use nalgebra::Vector3;
+
+#[allow(unused_imports)]
+use nalgebra::Vector2;
 
 use crate::{
     debug_config::*,
     common::{
-        ENTITY_SCALE,
-        with_z,
-        line_info,
         some_or_return,
         unique_pairs_no_self,
         render_info::*,
@@ -26,6 +26,9 @@ use crate::{
         entity::{iterate_components_with, for_each_component, ClientEntities}
     }
 };
+
+#[allow(unused_imports)]
+use crate::common::{ENTITY_SCALE, with_z, line_info};
 
 
 const MAX_DEPTH: usize = 5;
@@ -581,7 +584,7 @@ impl SpatialGrid
 
     pub fn inside_simulated(&self, position: Vector3<f32>, scale: f32) -> bool
     {
-        ((position.z - self.follow_position.z).abs() > TILE_SIZE * 2.5)
-            || ((position.xy().metric_distance(&self.follow_position.xy()) - scale) > TILE_SIZE * 30.0)
+        ((position.z - self.follow_position.z).abs() < TILE_SIZE * 2.5)
+            && ((position.xy().metric_distance(&self.follow_position.xy()) - scale) < TILE_SIZE * 30.0)
     }
 }

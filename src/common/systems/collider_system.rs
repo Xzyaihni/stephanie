@@ -94,13 +94,13 @@ pub fn update_sleeping(
     {
         let mut collider = collider.borrow_mut();
 
-        let is_sleeping = {
+        let inside_simulated = {
             let other_transform = some_or_return!(entities.transform(entity));
 
             space.inside_simulated(other_transform.position, other_transform.scale.x.hypot(other_transform.scale.y))
         };
 
-        collider.sleeping = is_sleeping;
+        collider.sleeping = !inside_simulated;
     });
 }
 

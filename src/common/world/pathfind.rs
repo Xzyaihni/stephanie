@@ -5,6 +5,9 @@ use std::{
     collections::{HashMap, BinaryHeap}
 };
 
+#[allow(unused_imports)]
+use std::time::{Instant, Duration};
+
 use serde::{Serialize, Deserialize};
 
 use nalgebra::{Unit, Vector3};
@@ -94,6 +97,90 @@ fn debug_display_collided_entity(entities: &ClientEntities, entity: Entity, posi
     }
 }
 
+#[cfg(debug_assertions)]
+struct DebugTimer
+{
+    current: Instant,
+    inside_count: usize,
+    inside_spatial: Duration,
+    outside_count: usize,
+    outside_spatial: Duration
+}
+
+#[cfg(not(debug_assertions))]
+struct DebugTimer;
+
+#[cfg(debug_assertions)]
+impl DebugTimer
+{
+    fn new() -> Self
+    {
+        Self{
+            current: Instant::now(),
+            inside_count: 0,
+            inside_spatial: Duration::default(),
+            outside_count: 0,
+            outside_spatial: Duration::default()
+        }
+    }
+
+    fn start(&mut self)
+    {
+        self.current = Instant::now();
+    }
+
+    fn end_with(&mut self, state: bool)
+    {
+        let passed = self.current.elapsed();
+
+        if state
+        {
+            self.inside_count += 1;
+            self.inside_spatial += passed;
+        } else
+        {
+            self.outside_count += 1;
+            self.outside_spatial += passed;
+        }
+    }
+
+    fn print(&self)
+    {
+        if DebugConfig::is_disabled(DebugTool::DebugTimings)
+        {
+            return;
+        }
+
+        fn f(name: &str, count: usize, time: Duration)
+        {
+            if count != 0
+            {
+                let time_us = time.as_micros() as f64;
+                let per_run = time_us / count as f64;
+
+                eprintln!("{name} called {count} times, total {:.2} ms ({per_run:.2} us per run)", time_us / 1000.0);
+            } else
+            {
+                eprintln!("{name} never called");
+            }
+        }
+
+        f("inside", self.inside_count, self.inside_spatial);
+        f("outside", self.outside_count, self.outside_spatial);
+    }
+}
+
+#[cfg(not(debug_assertions))]
+impl DebugTimer
+{
+    fn new() -> Self { Self }
+
+    fn start(&self) {}
+    fn end_with(&self, _state: bool) {}
+
+    fn print(&self) {}
+}
+
 #[derive(Clone, Copy)]
 pub struct Pathfinder<'a>
 {
@@ -125,7 +212,7 @@ impl Pathfinder<'_>
             return Some(WorldPath::new(vec![end, start]));
         }
 
-        self.pathfind_full(entity, layer, scale, start, end)
+        crate::debug_time_this!{"pathfind-full", self.pathfind_full(entity, layer, scale, start, end)}
     }
 
     fn pathfind_full(
@@ -137,6 +224,8 @@ impl Pathfinder<'_>
         end: Vector3<f32>
     ) -> Option<WorldPath>
     {
+        let mut debug_timer = DebugTimer::new();
+
         let tile_colliding = |pos|
         {
             self.world.tile(pos).map(|x| self.world.tile_info(*x).colliding).unwrap_or(true)
@@ -144,11 +233,6 @@ impl Pathfinder<'_>
 
         let target = TilePos::from(end);
         let start = TilePos::from(start);
-
-        if start.distance(target).z > 0
-        {
-            return None;
-        }
 
         let mut steps = 0;
 
@@ -179,7 +263,8 @@ impl Pathfinder<'_>
                 let mut path = vec![Vector3::new(end.x, end.y, current_position.z), current_position];
                 current.path_to(&mut explored, &mut path, |x| x.center_position().into());
 
-                return Some(self.simplify_path(entity, scale, layer, path));
+                debug_timer.print();
+                return Some(crate::debug_time_this!{"simplify-path", self.simplify_path(entity, scale, layer, path)});
             }
 
             let below = current.value.offset(Pos3::new(0, 0, -1));
@@ -220,15 +305,15 @@ impl Pathfinder<'_>
                 {
                     let position = current.value.offset(Pos3::from(direction));
 
-                    let is_colliding_entity = ||
+                    let is_colliding_entity = |debug_timer|
                     {
                         let layer = some_or_value!(layer, false);
 
-                        self.is_colliding_entity(entity, layer, scale, position)
+                        self.is_colliding_entity(entity, layer, scale, position, debug_timer)
                     };
 
                     if (position == target)
-                        || (!tile_colliding(position) && !is_colliding_entity())
+                        || (!tile_colliding(position) && !is_colliding_entity(&mut debug_timer))
                     {
                         try_push(position);
                     }
@@ -239,6 +324,7 @@ impl Pathfinder<'_>
             }
         }
 
+        debug_timer.print();
         None
     }
 
@@ -247,7 +333,8 @@ impl Pathfinder<'_>
         check_entity: Entity,
         layer: ColliderLayer,
         scale: Vector3<f32>,
-        position: TilePos
+        position: TilePos,
+        debug_timer: &mut DebugTimer
     ) -> bool
     {
         let center_position = position.center_position().into();
@@ -302,9 +389,11 @@ impl Pathfinder<'_>
             }
         };
 
-        let fully_inside = self.space.inside_simulated(center_position, TILE_SIZE.hypot(TILE_SIZE));
+        let inside_simulated = self.space.inside_simulated(center_position, TILE_SIZE.hypot(TILE_SIZE));
 
-        let control = if fully_inside
+        debug_timer.start();
+
+        let control = if inside_simulated
         {
             self.space.try_for_each(|entity|
             {
@@ -319,6 +408,8 @@ impl Pathfinder<'_>
                 is_colliding(&collider.borrow(), entity)
             })
         };
+
+        debug_timer.end_with(inside_simulated);
 
         control.is_break()
     }
