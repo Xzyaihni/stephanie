@@ -4,14 +4,12 @@ use std::{
     cell::RefCell
 };
 
-use nalgebra::Vector3;
-
-#[allow(unused_imports)]
-use nalgebra::Vector2;
+use nalgebra::{Vector2, Vector3};
 
 use crate::{
     debug_config::*,
     common::{
+        some_or_value,
         some_or_return,
         unique_pairs_no_self,
         render_info::*,
@@ -34,6 +32,27 @@ use crate::common::{ENTITY_SCALE, with_z, line_info};
 const MAX_DEPTH: usize = 5;
 const NODES_Z: usize = CHUNK_SIZE * CLIENT_OVERMAP_SIZE_Z;
 
+fn node_z(mapper: &impl OvermapIndexing, TilePos{chunk, local}: TilePos) -> Option<usize>
+{
+    Some(local.pos().z + mapper.to_local_z(chunk.0.z)? * CHUNK_SIZE)
+}
+
+fn halfspace(median: f32, position: f32, half_scale: f32) -> Ordering
+{
+    let median_distance = position - median;
+
+    if median_distance.abs() < half_scale
+    {
+        Ordering::Equal
+    } else if median_distance < 0.0
+    {
+        Ordering::Less
+    } else
+    {
+        Ordering::Greater
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct SpatialInfo
 {
@@ -48,7 +67,6 @@ enum KNode
     Node{
         left: Box<KNode>,
         right: Box<KNode>,
-        #[cfg(debug_assertions)]
         median: f32
     },
     Leaf{entities: Vec<Entity>}
@@ -150,36 +168,84 @@ impl KNode
 
         infos.into_iter().for_each(|info|
         {
-            let this_half_scale = *info.half_scale.index(axis_i);
-            let this_distance = *info.position.index(axis_i);
-
-            let median_distance = this_distance - median;
-
-            if median_distance.abs() < this_half_scale
+            match halfspace(median, info.position[axis_i], info.half_scale[axis_i])
             {
-                // in both halfspaces
+                Ordering::Equal =>
+                {
+                    // in both halfspaces
 
-                left_infos.push(info.clone());
-                right_infos.push(info);
-            } else if median_distance < 0.0
-            {
-                // in left halfspace
+                    left_infos.push(info.clone());
+                    right_infos.push(info);
+                },
+                Ordering::Less =>
+                {
+                    // in left halfspace
 
-                left_infos.push(info);
-            } else
-            {
-                // in right halfspace
+                    left_infos.push(info);
+                },
+                Ordering::Greater =>
+                {
+                    // in right halfspace
 
-                right_infos.push(info);
+                    right_infos.push(info);
+                }
             }
         });
 
         Self::Node{
             left: Box::new(Self::new(left_infos, depth + 1)),
             right: Box::new(Self::new(right_infos, depth + 1)),
-            #[cfg(debug_assertions)]
             median
         }
+    }
+
+    fn try_possible_collisions_with_inner<Break>(
+        &self,
+        position: Vector2<f32>,
+        half_scale: Vector2<f32>,
+        depth: usize,
+        f: &mut impl FnMut(Entity) -> ControlFlow<Break, ()>
+    ) -> ControlFlow<Break, ()>
+    {
+        match self
+        {
+            Self::Node{left, right, median} =>
+            {
+                let axis_i = depth % 2;
+                let new_depth = depth + 1;
+
+                match halfspace(*median, position[axis_i], half_scale[axis_i])
+                {
+                    Ordering::Equal =>
+                    {
+                        left.try_possible_collisions_with_inner(position, half_scale, new_depth, f)?;
+                        right.try_possible_collisions_with_inner(position, half_scale, new_depth, f)
+                    },
+                    Ordering::Less =>
+                    {
+                        left.try_possible_collisions_with_inner(position, half_scale, new_depth, f)
+                    },
+                    Ordering::Greater =>
+                    {
+                        right.try_possible_collisions_with_inner(position, half_scale, new_depth, f)
+                    }
+                }
+            },
+            Self::Leaf{entities} =>
+            {
+                entities.iter().copied().try_for_each(f)
+            }
+        }
+    }
+
+    fn try_possible_collisions_with<Break>(
+        &self,
+        position: Vector2<f32>,
+        half_scale: Vector2<f32>,
+        mut f: impl FnMut(Entity) -> ControlFlow<Break, ()>
+    ) -> ControlFlow<Break, ()>
+    {
+        self.try_possible_collisions_with_inner(position, half_scale, 0, &mut f)
     }
 
     fn possible_pairs(&self, f: &mut impl FnMut(Entity, Entity))
@@ -472,17 +538,13 @@ impl SpatialGrid
             let z = {
                 let position = Pos3::from(position);
 
-                let chunk_z = position.rounded().0.z;
-
-                let chunk_z_local = if let Some(x) = mapper.to_local_z(chunk_z)
+                if let Some(x) = node_z(mapper, TilePos{chunk: position.rounded(), local: position.to_tile().into()})
                 {
                     x
                 } else
                 {
                     return eprintln!("position {position} is out of range");
-                };
-
-                position.to_tile().z + chunk_z_local * CHUNK_SIZE
+                }
             };
 
             let info = SpatialInfo{
@@ -580,6 +642,22 @@ impl SpatialGrid
     ) -> ControlFlow<Break, ()>
     {
         self.try_fold((), move |_, x| f(x))
+    }
+
+    pub fn try_for_each_near<Break>(
+        &self,
+        mapper: &impl OvermapIndexing,
+        pos: TilePos,
+        f: impl FnMut(Entity) -> ControlFlow<Break, ()>
+    ) -> ControlFlow<Break, ()>
+    {
+        let z = some_or_value!(node_z(mapper, pos), ControlFlow::Continue(()));
+
+        self.z_nodes[z].try_possible_collisions_with(
+            Vector3::from(pos.center_position()).xy(),
+            Vector2::repeat(TILE_SIZE * 0.5),
+            f
+        )
     }
 
     pub fn inside_simulated(&self, position: Vector3<f32>, scale: f32) -> bool

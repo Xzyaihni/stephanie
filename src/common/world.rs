@@ -207,6 +207,11 @@ impl World
         self.overmap.contains(Self::chunk_of(pos))
     }
 
+    pub fn overmap(&self) -> &ClientOvermap
+    {
+        &self.overmap
+    }
+
     pub fn debug_visual_overmap(&self)
     {
         self.overmap.debug_visual_overmap();

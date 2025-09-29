@@ -395,7 +395,7 @@ impl Pathfinder<'_>
 
         let control = if inside_simulated
         {
-            self.space.try_for_each(|entity|
+            self.space.try_for_each_near(self.world.overmap(), position, |entity|
             {
                 let this_collider = some_or_value!(self.entities.collider(entity), ControlFlow::Continue(()));
 
