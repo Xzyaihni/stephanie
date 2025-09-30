@@ -25,6 +25,7 @@ mod human;
 
 
 pub const WINDED_OXYGEN: f32 = 0.2;
+pub const FALL_VELOCITY: f32 = 0.5;
 
 type DebugName = <DebugConfig as DebugConfigTrait>::DebugName;
 
@@ -323,6 +324,14 @@ impl Damageable for Anatomy
         }
     }
 
+    fn fall_damage(&mut self, damage: f32)
+    {
+        match self
+        {
+            Self::Human(x) => x.fall_damage(damage)
+        }
+    }
+
     fn is_full(&self) -> bool
     {
         match self
@@ -374,6 +383,11 @@ pub trait HealReceiver: HealthIterate
             .filter_map(|x| x.fraction().map(|fraction| (fraction, x)))
             .min_by(|a, b| a.0.total_cmp(&b.0))
         {
+            if smallest.is_full()
+            {
+                break;
+            }
+
             let heal_amount = (smallest.health.max * HEAL_FRACTION).min(pool);
 
             if heal_amount == 0.0

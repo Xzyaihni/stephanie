@@ -19,6 +19,8 @@ use crate::{
         Joint,
         EntityInfo,
         AnyEntities,
+        Damageable,
+        anatomy::FALL_VELOCITY,
         world::World,
         entity::{
             for_each_component,
@@ -174,7 +176,15 @@ pub fn update(
                         if this.collide_with_world_z(world, *next_position) && !this.collider.ghost
                         {
                             next_position.z = this.transform.position.z;
-                            physical.remove_velocity_axis(2);
+                            let hit_velocity = physical.remove_velocity_axis(2);
+
+                            if hit_velocity < -FALL_VELOCITY
+                            {
+                                if let Some(mut anatomy) = entities.anatomy_mut(entity)
+                                {
+                                    anatomy.fall_damage(-hit_velocity - FALL_VELOCITY);
+                                }
+                            }
                         }
                     }
                 };

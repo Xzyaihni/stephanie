@@ -188,6 +188,7 @@ pub struct DamageDirection
 pub trait Damageable
 {
     fn damage(&mut self, damage: Damage) -> Option<Damage>;
+    fn fall_damage(&mut self, damage: f32);
 
     fn is_full(&self) -> bool;
     fn heal(&mut self, amount: f32) -> Option<f32>;

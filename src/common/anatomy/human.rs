@@ -11,6 +11,7 @@ use crate::{
     common::{
         some_or_return,
         TILE_SIZE,
+        damage::*,
         Side1d,
         Side2d,
         DamageHeight,
@@ -981,6 +982,53 @@ impl Damageable for HumanAnatomy
         self.on_damage();
 
         damage
+    }
+
+    fn fall_damage(&mut self, damage: f32)
+    {
+        let start_damage = Damage{
+            data: DamageType::Blunt(damage * 10.0),
+            direction: DamageDirection{
+                side: Side2d::random(),
+                height: DamageHeight::Bottom
+            }
+        };
+
+        let side = if fastrand::bool() { Side1d::Left } else { Side1d::Right };
+        let opposite_side = side.opposite();
+
+        let _ = [
+            (HumanPartId::Foot(side), 0.9),
+            (HumanPartId::Foot(opposite_side), 0.9),
+            (HumanPartId::Calf(side), 0.5),
+            (HumanPartId::Calf(opposite_side), 0.5),
+            (HumanPartId::Thigh(side), 0.5),
+            (HumanPartId::Thigh(opposite_side), 0.5),
+            (HumanPartId::Pelvis, 0.9),
+            (HumanPartId::Spine, 0.2),
+            (HumanPartId::Hand(side), 0.9),
+            (HumanPartId::Hand(opposite_side), 0.9),
+            (HumanPartId::Forearm(side), 0.5),
+            (HumanPartId::Forearm(opposite_side), 0.5),
+            (HumanPartId::Arm(side), 0.5),
+            (HumanPartId::Arm(opposite_side), 0.5),
+            (HumanPartId::Torso, 0.9),
+            (HumanPartId::Head, 0.0)
+        ].into_iter().fold(start_damage, |damage, (id, damping)|
+        {
+            let id = AnatomyId::Part(id);
+
+            if self.this.body.get::<()>(id).is_none()
+            {
+                return damage;
+            }
+
+            self.this.body.get_mut::<DamagerGetter>(id).map(|x| x(damage.clone()));
+
+            damage * damping
+        });
+
+        self.on_damage();
     }
 
     fn is_full(&self) -> bool

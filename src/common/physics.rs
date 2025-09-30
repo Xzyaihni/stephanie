@@ -1,3 +1,5 @@
+use std::mem;
+
 use nalgebra::Vector3;
 
 use serde::{Serialize, Deserialize};
@@ -218,9 +220,9 @@ impl Physical
         self.angular_velocity
     }
 
-    pub fn remove_velocity_axis(&mut self, axis: usize)
+    pub fn remove_velocity_axis(&mut self, axis: usize) -> f32
     {
-        *self.velocity.get_mut(axis).unwrap() = 0.0;
+        mem::take(&mut self.velocity[axis])
     }
 
     pub fn set_velocity_raw(&mut self, velocity: Vector3<f32>)
