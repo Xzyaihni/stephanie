@@ -76,7 +76,7 @@ pub fn debug_collision_bounds<T: Borrow<Collider>>(
         transform: Some(transform),
         render: Some(RenderInfo{
             object: Some(RenderObjectKind::Texture{
-                name: sprite.to_owned()
+                name: sprite.into()
             }.into()),
             mix,
             above_world: true,

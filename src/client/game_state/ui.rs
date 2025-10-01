@@ -748,12 +748,12 @@ impl WindowKind
                 info.dragging_currently = true;
             }
 
-            let mut update_button = |button_id, texture, action|
+            let mut update_button = |button_id, texture: String, action|
             {
                 let size: UiElementSize<UiId> = UiSize::Pixels(BUTTON_SIZE).into();
 
                 let close_button = titlebar.update(id(WindowPart::Title(TitlePart::Button(button_id))), UiElement{
-                    texture: UiTexture::Custom(texture),
+                    texture: UiTexture::Custom(texture.into()),
                     mix: Some(MixColorLch{keep_transparency: true, ..MixColorLch::color(ACCENT_COLOR)}),
                     animation: Animation::button(),
                     width: size.clone(),
@@ -1965,25 +1965,26 @@ impl Ui
             add_padding_horizontal(health_inner, UiSize::Rest(1.0).into());
 
             let panel_vertical = health_inner.update(UiId::Health(HealthPart::PanelVertical), UiElement{
-                texture: UiTexture::Solid,
-                mix: Some(MixColorLch::color(Lcha{a: 0.5, ..BACKGROUND_COLOR})),
+                texture: UiTexture::Custom("ui/health_panel.png".into()),
+                mix: Some(MixColorLch{keep_transparency: true, ..MixColorLch::color(Lcha{a: 0.5, ..BACKGROUND_COLOR})}),
                 children_layout: UiLayout::Vertical,
-                ..Default::default()
+                ..UiElement::fit_content()
             });
 
-            add_padding_vertical(panel_vertical, UiSize::Pixels(TINY_PADDING).into());
+            add_padding_vertical(panel_vertical, UiSize::Rest(1.0).into());
 
             let panel = panel_vertical.update(UiId::Health(HealthPart::Panel), UiElement{
                 children_layout: UiLayout::Horizontal,
+                width: UiSize::Rest(1.0).into(),
                 ..Default::default()
             });
 
-            add_padding_horizontal(panel, UiSize::Pixels(TINY_PADDING).into());
+            add_padding_horizontal(panel, UiSize::Rest(1.0).into());
 
             let body = panel.update(UiId::Health(HealthPart::Body), UiElement::default());
 
             {
-                let texture = UiTexture::Custom("ui/anatomy_outline.png".to_owned());
+                let texture = UiTexture::Custom("ui/anatomy_outline.png".into());
 
                 let texture_size = self.controller.texture_size(&texture);
                 let offset = texture_size - self.controller.texture_size(&UiTexture::CustomId(self.anatomy_locations.full));
@@ -2081,14 +2082,14 @@ impl Ui
 
                     let icon = match icon
                     {
-                        NotificationIcon::GoUp => "ui/up_icon.png".to_owned(),
-                        NotificationIcon::GoDown => "ui/down_icon.png".to_owned(),
-                        NotificationIcon::Door(NotificationDoor::Open) => "ui/door_open_icon.png".to_owned(),
-                        NotificationIcon::Door(NotificationDoor::Close(_)) => "ui/door_close_icon.png".to_owned()
+                        NotificationIcon::GoUp => "ui/up_icon.png",
+                        NotificationIcon::GoDown => "ui/down_icon.png",
+                        NotificationIcon::Door(NotificationDoor::Open) => "ui/door_open_icon.png",
+                        NotificationIcon::Door(NotificationDoor::Close(_)) => "ui/door_close_icon.png"
                     };
 
                     let aspect = {
-                        let size = self.assets.lock().texture_by_name(&icon).lock().size();
+                        let size = self.assets.lock().texture_by_name(icon).lock().size();
 
                         size.x / size.y
                     };
@@ -2097,7 +2098,7 @@ impl Ui
 
                     let size = 20.0;
                     body.update(id(NotificationPart::Icon), UiElement{
-                        texture: UiTexture::Custom(icon),
+                        texture: UiTexture::Custom(icon.into()),
                         width: UiSize::Pixels(size * aspect).into(),
                         height: UiSize::Pixels(size).into(),
                         mix: Some(MixColorLch{keep_transparency: true, ..MixColorLch::color(Lcha{a, ..ACCENT_COLOR})}),
@@ -2241,7 +2242,7 @@ impl Ui
             if !is_detected
             {
                 body.update(faded_id.clone(), UiElement{
-                    texture: UiTexture::Custom("ui/seen_faded.png".to_owned()),
+                    texture: UiTexture::Custom("ui/seen_faded.png".into()),
                     position: UiPosition::Inherit,
                     ..UiElement::fit_content()
                 });
@@ -2267,7 +2268,7 @@ impl Ui
                 });
 
                 clip_body.update(id(SeenNotificationPart::Fill), UiElement{
-                    texture: UiTexture::Custom("ui/seen.png".to_owned()),
+                    texture: UiTexture::Custom("ui/seen.png".into()),
                     position: body_position,
                     ..UiElement::fit_content()
                 });
@@ -2276,7 +2277,7 @@ impl Ui
                 if is_detected
                 {
                     body.update(id(SeenNotificationPart::Fill), UiElement{
-                        texture: UiTexture::Custom("ui/seen_done.png".to_owned()),
+                        texture: UiTexture::Custom("ui/seen_done.png".into()),
                         position: UiPosition::Inherit,
                         animation: Animation{
                             scaling: Some(ScalingAnimation{

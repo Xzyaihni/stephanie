@@ -1,7 +1,8 @@
 use std::{
     f32,
     fmt::Debug,
-    sync::Arc
+    sync::Arc,
+    borrow::Cow
 };
 
 use strum::FromRepr;
@@ -241,7 +242,7 @@ fn rotating_scale(transform: Transform, texture_scale: Vector2<f32>) -> Transfor
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum RenderObjectKind
 {
-    Texture{name: String},
+    Texture{name: Cow<'static, str>},
     TextureId{id: TextureId},
     TextureRotating{ids: DirectionsGroup<TextureId>, offset: Option<f32>},
     Text{text: String, font_size: u32}

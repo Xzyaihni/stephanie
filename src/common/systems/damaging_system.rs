@@ -212,7 +212,7 @@ pub fn damager<'a, 'b, E: AnyEntities, TileDamager: FnMut(TilePos, DamagePartial
                     }),
                     render: Some(RenderInfo{
                         object: Some(RenderObjectKind::Texture{
-                            name: "circle.png".to_owned()
+                            name: "circle.png".into()
                         }.into()),
                         mix: Some(MixColor{keep_transparency: true, ..MixColor::color(color)}),
                         above_world: true,

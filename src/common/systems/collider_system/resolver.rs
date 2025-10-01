@@ -703,7 +703,7 @@ impl ContactResolver
             }),
             render: Some(RenderInfo{
                 object: Some(RenderObjectKind::Texture{
-                    name: "circle.png".to_owned()
+                    name: "circle.png".into()
                 }.into()),
                 above_world: true,
                 mix: Some(MixColor{color, amount: 1.0, keep_transparency: true}),

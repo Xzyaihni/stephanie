@@ -57,7 +57,7 @@ fn debug_display_current(entities: &ClientEntities, node: Node)
         }),
         render: Some(RenderInfo{
             object: Some(RenderObjectKind::Texture{
-                name: "solid.png".to_owned()
+                name: "solid.png".into()
             }.into()),
             mix: Some(MixColor{keep_transparency: true, ..MixColor::color(color)}),
             above_world: true,
@@ -80,7 +80,7 @@ fn debug_display_collided_entity(entities: &ClientEntities, entity: Entity, posi
         }),
         render: Some(RenderInfo{
             object: Some(RenderObjectKind::Texture{
-                name: "solid.png".to_owned()
+                name: "solid.png".into()
             }.into()),
             mix: Some(MixColor{keep_transparency: true, ..MixColor::color([1.0, 1.0, 0.0, 0.5])}),
             above_world: true,
@@ -591,7 +591,7 @@ impl WorldPath
                 }),
                 render: Some(RenderInfo{
                     object: Some(RenderObjectKind::Texture{
-                        name: "circle.png".to_owned()
+                        name: "circle.png".into()
                     }.into()),
                     mix: Some(MixColor{keep_transparency: true, ..MixColor::color(color)}),
                     above_world: true,

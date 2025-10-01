@@ -2,7 +2,7 @@ use std::{
     f32,
     env,
     iter,
-    borrow::Borrow,
+    borrow::{Cow, Borrow},
     cmp::Ordering,
     hash::Hash,
     io::Write,
@@ -838,7 +838,7 @@ pub fn debug_marker_info(
         }),
         render: Some(RenderInfo{
             object: Some(RenderObjectKind::Texture{
-                name: "solid.png".to_owned()
+                name: "solid.png".into()
             }.into()),
             above_world: true,
             mix: Some(MixColor::color(color)),
@@ -873,7 +873,7 @@ pub fn direction_arrow_info(
 }
 
 fn direction_like_info(
-    texture: &str,
+    texture: impl Into<Cow<'static, str>>,
     point: Vector3<f32>,
     direction: Vector3<f32>,
     scale: Vector3<f32>,
@@ -894,7 +894,7 @@ fn direction_like_info(
             }),
             render: Some(RenderInfo{
                 object: Some(RenderObjectKind::Texture{
-                    name: texture.to_owned()
+                    name: texture.into()
                 }.into()),
                 mix: Some(MixColor{color: [color[0], color[1], color[2], 1.0], amount: 1.0, keep_transparency: true}),
                 above_world: true,

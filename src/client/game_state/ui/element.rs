@@ -1,4 +1,7 @@
-use std::fmt::Debug;
+use std::{
+    fmt::Debug,
+    borrow::Cow
+};
 
 use nalgebra::Vector2;
 
@@ -64,7 +67,7 @@ pub enum UiTexture
     None,
     Solid,
     Text{text: String, font_size: u32},
-    Custom(String),
+    Custom(Cow<'static, str>),
     CustomId(TextureId)
 }
 

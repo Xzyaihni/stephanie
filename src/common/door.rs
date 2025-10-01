@@ -260,7 +260,7 @@ impl Door
                 }.into()),
                 render: Some(RenderInfo{
                     object: Some(RenderObjectKind::Texture{
-                        name: door.texture().to_owned()
+                        name: door.texture().into()
                     }.into()),
                     shadow_visible: true,
                     z_level: ZLevel::Door,

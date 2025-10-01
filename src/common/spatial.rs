@@ -416,7 +416,7 @@ impl KNode
                             }),
                             render: Some(RenderInfo{
                                 object: Some(RenderObjectKind::Texture{
-                                    name: "solid.png".to_owned()
+                                    name: "solid.png".into()
                                 }.into()),
                                 mix: Some(MixColor{keep_transparency: true, ..MixColor::color([1.0, 0.0, 0.0, 0.3])}),
                                 above_world: true,
@@ -597,7 +597,7 @@ impl SpatialGrid
                             }),
                             render: Some(RenderInfo{
                                 object: Some(RenderObjectKind::Texture{
-                                    name: "solid.png".to_owned()
+                                    name: "solid.png".into()
                                 }.into()),
                                 mix: Some(MixColor{keep_transparency: true, ..MixColor::color([1.0, 1.0, 0.0, 0.3])}),
                                 above_world: true,

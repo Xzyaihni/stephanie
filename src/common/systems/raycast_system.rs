@@ -197,7 +197,7 @@ pub fn raycast(
                 }),
                 render: Some(RenderInfo{
                     object: Some(RenderObjectKind::Texture{
-                        name: "circle.png".to_owned()
+                        name: "circle.png".into()
                     }.into()),
                     above_world: true,
                     mix: Some(MixColor{keep_transparency: true, ..MixColor::color(color)}),
@@ -220,7 +220,7 @@ pub fn raycast(
                     transform: arrow.transform,
                     render: Some(RenderInfo{
                         object: Some(RenderObjectKind::Texture{
-                            name: "arrow.png".to_owned()
+                            name: "arrow.png".into()
                         }.into()),
                         above_world: true,
                         mix: Some(MixColor{keep_transparency: true, ..MixColor::color(color)}),
