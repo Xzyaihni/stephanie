@@ -3,7 +3,7 @@ use std::{
     mem,
     env,
     thread::JoinHandle,
-    cell::{Ref, RefCell},
+    cell::RefCell,
     rc::Rc,
     ops::ControlFlow,
     collections::{BTreeMap, btree_map::Entry},
@@ -272,11 +272,6 @@ impl ClientEntitiesContainer
     pub fn main_player(&self) -> Entity
     {
         self.player_entity
-    }
-
-    pub fn player_transform(&self) -> Option<Ref<'_, Transform>>
-    {
-        self.entities.transform(self.main_player())
     }
 
     pub fn player_exists(&self) -> bool
@@ -1202,7 +1197,7 @@ impl GameState
 
         self.debug_visibility.update(&self.camera.read());
 
-        let caster = self.entities.player_transform().map(|x| x.position)
+        let caster = self.entities.entities.transform(self.entities.follow_target).map(|x| x.position)
             .unwrap_or_default();
 
         let caster = OccludingCaster::from(caster);

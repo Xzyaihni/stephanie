@@ -1017,12 +1017,17 @@ impl Damageable for HumanAnatomy
     fn fall_damage(&mut self, damage: f32)
     {
         let start_damage = Damage{
-            data: DamageType::Blunt(damage * 10.0),
+            data: DamageType::Blunt((damage * 5.0 + 1.0).powi(2) - 1.0),
             direction: DamageDirection{
                 side: Side2d::random(),
                 height: DamageHeight::Bottom
             }
         };
+
+        if DebugConfig::is_enabled(DebugTool::PrintDamage)
+        {
+            eprintln!("fall damage {start_damage:?}");
+        }
 
         let side = if fastrand::bool() { Side1d::Left } else { Side1d::Right };
         let opposite_side = side.opposite();
