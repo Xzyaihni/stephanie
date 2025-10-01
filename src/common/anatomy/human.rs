@@ -240,6 +240,8 @@ pub struct HumanAnatomyValues
     oxygen: SimpleHealth,
     external_oxygen_change: f32,
     hypoxic: f32,
+    fainted: f32,
+    conscious: bool,
     body: HumanBody,
     broken: Vec<AnatomyId>,
     killed: Option<bool>
@@ -438,6 +440,8 @@ impl HumanAnatomyValues
             oxygen: SimpleHealth::new(1.0),
             external_oxygen_change: 0.0,
             hypoxic: 0.0,
+            fainted: 0.0,
+            conscious: true,
             body,
             broken: Vec::new(),
             killed: None
@@ -630,7 +634,26 @@ impl HumanAnatomy
             self.this.hypoxic = 0.0;
         }
 
-        if self.this.hypoxic > 1.0
+        self.this.fainted = (self.this.fainted - dt).max(0.0);
+
+        let is_winded = self.this.hypoxic > 0.1;
+
+        if is_winded
+        {
+            self.this.fainted = 15.0;
+        }
+
+        let is_conscious = self.this.fainted == 0.0;
+
+        let mut changed = false;
+
+        if self.this.conscious != is_conscious
+        {
+            self.this.conscious = is_conscious;
+            changed = true;
+        }
+
+        if self.this.hypoxic > 10.0
         {
             let is_damaged = {
                 let damager = self.this.body.get_mut::<DamagerGetter>(OrganId::Brain(None, None).into());
@@ -639,7 +662,7 @@ impl HumanAnatomy
 
                 if let Some(damager) = damager
                 {
-                    damager(Damage::area_each(0.01 * dt));
+                    damager(Damage::area_each(0.005 * dt));
                 }
 
                 is_damaged
@@ -648,13 +671,11 @@ impl HumanAnatomy
             if is_damaged
             {
                 self.on_damage();
+                changed = true;
             }
-
-            is_damaged
-        } else
-        {
-            false
         }
+
+        changed
     }
 
     fn cached(&self) -> &CachedProps
@@ -669,7 +690,11 @@ impl HumanAnatomy
 
     pub fn is_dead(&self) -> bool
     {
-        !self.can_move() && self.strength() == 0.0
+        let cached = self.cached();
+
+        cached.speed.arms == 0.0
+            && cached.speed.legs == 0.0
+            && self.strength() == 0.0
     }
 
     pub fn take_killed(&mut self) -> bool
@@ -688,12 +713,17 @@ impl HumanAnatomy
 
     pub fn speed(&self) -> f32
     {
+        if !self.can_move()
+        {
+            return 0.0;
+        }
+
         if self.is_crawling() { self.cached().speed.arms } else { self.cached().speed.legs }
     }
 
     pub fn can_move(&self) -> bool
     {
-        self.cached().speed.arms != 0.0 || self.cached().speed.legs != 0.0
+        self.this.conscious && (self.cached().speed.arms != 0.0 || self.cached().speed.legs != 0.0)
     }
 
     pub fn strength(&self) -> f32

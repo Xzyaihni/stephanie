@@ -11,6 +11,14 @@ use crate::common::{
 
 pub fn mouse_selected(entities: &ClientEntities, player: Entity, mouse: Entity) -> Option<Entity>
 {
+    if let Some(anatomy) = entities.anatomy(player)
+    {
+        if !anatomy.can_move()
+        {
+            return None;
+        }
+    }
+
     let mouse_collider = some_or_return!(entities.collider(mouse));
 
     let mouse_collided = mouse_collider.collided().iter()
@@ -46,14 +54,7 @@ pub fn update(
             let kind = WatcherType::Lifetime(0.1.into());
             if let Some(found) = watchers.find(|watcher|
             {
-                // comparison considered harmful
-                if let WatcherAction::OutlineableDisable = watcher.action
-                {
-                    true
-                } else
-                {
-                    false
-                }
+                matches!(watcher.action, WatcherAction::OutlineableDisable)
             })
             {
                 found.kind = kind;

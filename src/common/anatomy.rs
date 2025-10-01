@@ -230,6 +230,7 @@ impl Anatomy
     simple_getter!(oxygen, SimpleHealth);
     simple_getter!(vision);
     simple_getter!(vision_angle);
+    simple_getter!(can_move, bool);
     simple_getter!(is_crawling, bool);
     simple_getter!(is_dead, bool);
 

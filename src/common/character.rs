@@ -1775,7 +1775,9 @@ impl Character
         }
 
         self.update_jiggle(combined_info, dt);
-        self.update_knockback(dt);
+
+        let knockback_drain = self.update_knockback(dt);
+
         self.update_sprint(combined_info);
         self.update_attacks(dt);
 
@@ -1787,19 +1789,23 @@ impl Character
             let info = some_or_return!(self.info.as_mut());
             if let Some(mut anatomy) = combined_info.entities.anatomy_mut_no_change(info.this)
             {
-                *anatomy.external_oxygen_change_mut() = if info.walking
+                let movement_drain = if info.walking
                 {
-                    if is_sprinting
+                    let movement_cost = if is_sprinting
                     {
-                        -(0.5 + anatomy.oxygen_speed().max(0.0))
+                        0.5 + anatomy.oxygen_speed().max(0.0)
                     } else
                     {
-                        -0.1
-                    }
+                        0.1
+                    };
+
+                    -movement_cost * if anatomy.is_crawling() { 0.5 } else { 1.0 }
                 } else
                 {
                     0.0
                 };
+
+                *anatomy.external_oxygen_change_mut() = movement_drain + knockback_drain;
 
                 info.walking = false;
             }
@@ -1895,9 +1901,7 @@ impl Character
 
     pub fn anatomy_changed(&mut self, anatomy: &Anatomy)
     {
-        let can_move = anatomy.speed() != 0.0;
-
-        let state = if can_move
+        let state = if anatomy.can_move()
         {
             if anatomy.is_crawling()
             {
@@ -1967,9 +1971,20 @@ impl Character
         };
     }
 
-    fn update_knockback(&mut self, dt: f32)
+    fn update_knockback(&mut self, dt: f32) -> f32
     {
-        self.knockback_recovery = (self.knockback_recovery + dt).min(1.0);
+        if self.knockback_recovery < 1.0
+        {
+            let old_value = self.knockback_recovery;
+            let new_value = (self.knockback_recovery + dt).min(1.0);
+
+            self.knockback_recovery = new_value;
+
+            new_value - old_value
+        } else
+        {
+            0.0
+        }
     }
 
     fn update_sprint(&mut self, combined_info: CombinedInfo)
