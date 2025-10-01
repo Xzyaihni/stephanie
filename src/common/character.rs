@@ -413,7 +413,7 @@ impl Character
                                 ..Default::default()
                             }.into(),
                             limit: LimitMode::Normal(0.005),
-                            strength: 0.9
+                            strength: 100.0
                         }
                     ),
                     rotation: Rotation::EaseOut(

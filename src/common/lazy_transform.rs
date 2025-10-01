@@ -253,14 +253,16 @@ impl Connection
             {
                 let distance = target - current.position;
 
-                let spring_force = distance * connection.strength;
+                let spring_velocity = distance * connection.strength;
 
-                connection.physical.add_force(spring_force);
+                connection.physical.add_velocity_raw(spring_velocity * dt);
                 connection.physical.update(
                     current,
                     |physical, transform| ColliderType::Circle.inverse_inertia(physical, &transform.scale),
                     dt
                 );
+
+                connection.physical.apply(current);
 
                 current.position = LazyTransform::clamp_distance(
                     connection.limit,
