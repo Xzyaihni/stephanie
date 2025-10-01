@@ -101,6 +101,7 @@ fn color_pairs() -> Vec<(ChangedPart, Rgba<u8>)>
 
 pub struct UiAnatomyLocations
 {
+    pub full: TextureId,
     pub locations: Vec<(ChangedPart, UiAnatomyLocation)>
 }
 
@@ -126,6 +127,8 @@ impl UiAnatomyLocations
             });
         }
 
+        let full = part_creator.create(base_image.clone());
+
         let locations: Vec<_> = color_pairs.into_iter().map(|(id, color)|
         {
             let location = UiAnatomyLocation::from_color(
@@ -137,6 +140,6 @@ impl UiAnatomyLocations
             (id, location)
         }).collect();
 
-        Self{locations}
+        Self{full, locations}
     }
 }

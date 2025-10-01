@@ -1617,6 +1617,18 @@ impl<Id: Idable> Controller<Id>
         self.shared.borrow().screen_size
     }
 
+    #[allow(dead_code)]
+    pub fn pixels_size(&self, pixels: Vector2<f32>) -> Vector2<f32>
+    {
+        pixels / self.screen_size().max()
+    }
+
+    #[allow(dead_code)]
+    pub fn texture_size(&self, texture: &UiTexture) -> Vector2<f32>
+    {
+        self.sizer.size(texture)
+    }
+
     pub fn update_buffers(
         &mut self,
         info: &mut UpdateBuffersInfo

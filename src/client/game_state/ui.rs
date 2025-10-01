@@ -128,6 +128,7 @@ pub enum HealthPart
     PanelVertical,
     Panel,
     Body,
+    Outline,
     Anatomy(ChangedPart)
 }
 
@@ -1980,6 +1981,20 @@ impl Ui
             add_padding_horizontal(panel, UiSize::Pixels(TINY_PADDING).into());
 
             let body = panel.update(UiId::Health(HealthPart::Body), UiElement::default());
+
+            {
+                let texture = UiTexture::Custom("ui/anatomy_outline.png".to_owned());
+
+                let texture_size = self.controller.texture_size(&texture);
+                let offset = texture_size - self.controller.texture_size(&UiTexture::CustomId(self.anatomy_locations.full));
+
+                body.update(UiId::Health(HealthPart::Outline), UiElement{
+                    texture,
+                    mix: Some(MixColorLch{keep_transparency: true, ..MixColorLch::color(WHITE_COLOR)}),
+                    position: UiPosition::Offset(UiId::Health(HealthPart::Body), Vector2::new(-offset.x * 0.5, 0.0)),
+                    ..UiElement::fit_content()
+                });
+            }
 
             self.anatomy_locations.locations.iter().for_each(|(part_id, location)|
             {

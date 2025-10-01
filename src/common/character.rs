@@ -1799,13 +1799,13 @@ impl Character
                         0.1
                     };
 
-                    -movement_cost * if anatomy.is_crawling() { 0.5 } else { 1.0 }
+                    movement_cost * if anatomy.is_crawling() { 0.5 } else { 1.0 }
                 } else
                 {
                     0.0
                 };
 
-                *anatomy.external_oxygen_change_mut() = movement_drain + knockback_drain;
+                *anatomy.external_oxygen_change_mut() = -(movement_drain + knockback_drain * 0.1);
 
                 info.walking = false;
             }
@@ -1980,7 +1980,7 @@ impl Character
 
             self.knockback_recovery = new_value;
 
-            new_value - old_value
+            (new_value - old_value) / dt
         } else
         {
             0.0
