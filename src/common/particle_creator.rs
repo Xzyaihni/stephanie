@@ -9,6 +9,7 @@ use yanyaengine::Transform;
 use crate::common::{
     random_rotation,
     random_f32,
+    angle_to_direction_3d,
     lazy_transform::*,
     watcher::*,
     AnyEntities,
@@ -28,23 +29,18 @@ impl ParticleSpeed
 {
     fn velocity(&self) -> Vector3<f32>
     {
-        let angle_to_direction = |r: f32| -> Vector3<f32>
-        {
-            Vector3::new(r.cos(), r.sin(), 0.0)
-        };
-
         match self
         {
             Self::Random(speed) =>
             {
-                angle_to_direction(random_rotation()) * *speed
+                *angle_to_direction_3d(random_rotation()) * *speed
             },
             Self::DirectionSpread{direction, speed, spread} =>
             {
                 let angle = random_f32(-spread..=*spread);
                 let spread = NRotation::from_axis_angle(&Vector3::z_axis(), angle);
 
-                spread * direction.into_inner() * random_f32(speed.clone())
+                spread * **direction * random_f32(speed.clone())
             }
         }
     }

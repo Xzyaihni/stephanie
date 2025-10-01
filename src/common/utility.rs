@@ -468,6 +468,11 @@ pub fn angle_between(a: Vector3<f32>, b: Vector3<f32>) -> f32
     short_rotation(angle_between)
 }
 
+pub fn angle_to_direction_3d(angle: f32) -> Unit<Vector3<f32>>
+{
+    Unit::new_unchecked(vector![angle.cos(), -angle.sin(), 0.0])
+}
+
 pub trait EaseOut
 {
     fn ease_out(&self, target: Self, decay: f32, dt: f32) -> Self;

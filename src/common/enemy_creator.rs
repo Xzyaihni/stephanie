@@ -23,6 +23,8 @@ use crate::common::{
 };
 
 
+pub const ENEMY_MASS: f32 = 50.0;
+
 pub fn create(
     enemies_info: &EnemiesInfo,
     loot: &Loot,
@@ -62,7 +64,7 @@ pub fn create(
             ..Default::default()
         }),
         physical: Some(PhysicalProperties{
-            inverse_mass: (info.scale / ENTITY_SCALE) * 50.0_f32.recip(),
+            inverse_mass: (info.scale / ENTITY_SCALE) * ENEMY_MASS.recip(),
             fixed: PhysicalFixed{rotation: true, ..Default::default()},
             ..Default::default()
         }.into()),

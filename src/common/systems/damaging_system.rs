@@ -16,6 +16,7 @@ use crate::{
         angle_between,
         opposite_angle,
         short_rotation,
+        angle_to_direction_3d,
         damage::*,
         damaging::*,
         character::*,
@@ -33,6 +34,7 @@ use crate::{
         AnyEntities,
         Entity,
         World,
+        enemy_creator::ENEMY_MASS,
         entity::{iterate_components_with, ClientEntities},
         world::{TILE_SIZE, TilePos}
     }
@@ -271,6 +273,17 @@ pub fn damager<'a, 'b, E: AnyEntities, TileDamager: FnMut(TilePos, DamagePartial
                     {
                         create_particles(textures, particle, false, position);
                     }
+
+                    let knockback_direction = angle_to_direction_3d(opposite_angle(result.angle));
+                    let knockback_strength = match result.damage.data
+                    {
+                        DamageType::Sharp{sharpness, ..} => 1.0 - sharpness,
+                        DamageType::Bullet(_) => if result.damage_exit.is_some() { 0.5 } else { 1.0 },
+                        _ => 1.0
+                    };
+
+                    let knockback = *knockback_direction * (knockback_strength * ENEMY_MASS * 30.0);
+                    knockback_entity(entities, entity, knockback);
 
                     flash_white(entities, entity);
                 }
@@ -520,7 +533,7 @@ fn damaging_colliding(
                         }
                     };
 
-                    Vector3::new(angle.cos(), -angle.sin(), 0.0)
+                    *angle_to_direction_3d(angle)
                 };
 
                 let damage_entry = collided_transform.position
@@ -596,6 +609,15 @@ fn flash_white_single(entities: &impl AnyEntities, entity: Entity)
             );
         }
     }
+}
+
+fn knockback_entity(entities: &impl AnyEntities, entity: Entity, knockback: Vector3<f32>)
+{
+    let mut physical = some_or_return!(entities.physical_mut(entity));
+
+    physical.add_force(knockback);
+
+    some_or_return!(entities.character_mut(entity)).knockbacked();
 }
 
 fn flash_white(entities: &impl AnyEntities, entity: Entity)

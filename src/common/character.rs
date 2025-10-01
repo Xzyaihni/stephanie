@@ -28,6 +28,7 @@ use crate::{
         define_layers,
         angle_between,
         opposite_angle,
+        angle_to_direction_3d,
         ENTITY_SCALE,
         render_info::*,
         lazy_transform::*,
@@ -264,6 +265,7 @@ pub struct Character
     #[serde(skip, default="true_fn")]
     held_update: bool,
     attack_cooldown: f32,
+    knockback_recovery: f32,
     bash_side: Side1d,
     #[serde(skip, default)]
     actions: Vec<CharacterAction>,
@@ -289,6 +291,7 @@ impl Character
             attack_state: AttackState::None,
             held_update: true,
             attack_cooldown: 0.0,
+            knockback_recovery: 1.0,
             bash_side: Side1d::Left,
             actions: Vec::new(),
             sprite_state: SpriteState::Normal.into()
@@ -790,7 +793,7 @@ impl Character
                         target
                     );
 
-                    Vector3::new(rotation.cos(), -rotation.sin(), 0.0)
+                    *angle_to_direction_3d(rotation)
                 };
 
                 let mut physical: Physical = PhysicalProperties{
@@ -1772,6 +1775,7 @@ impl Character
         }
 
         self.update_jiggle(combined_info, dt);
+        self.update_knockback(dt);
         self.update_sprint(combined_info);
         self.update_attacks(dt);
 
@@ -1963,6 +1967,11 @@ impl Character
         };
     }
 
+    fn update_knockback(&mut self, dt: f32)
+    {
+        self.knockback_recovery = (self.knockback_recovery + dt).min(1.0);
+    }
+
     fn update_sprint(&mut self, combined_info: CombinedInfo)
     {
         let is_sprinting = self.is_sprinting();
@@ -1988,6 +1997,11 @@ impl Character
 
             info.sprint_await = false;
         }
+    }
+
+    pub fn knockbacked(&mut self)
+    {
+        self.knockback_recovery = 0.0;
     }
 
     pub fn walk(
@@ -2036,7 +2050,7 @@ impl Character
             change_velocity.z = 0.0;
         }
 
-        physical.add_force(change_velocity);
+        physical.add_force(change_velocity * self.knockback_recovery);
     }
 
     pub fn aggressive(&self, other: &Self) -> bool
