@@ -122,6 +122,7 @@ pub struct ClientEntitiesContainer
     pub follow_target: Rc<RefCell<Entity>>,
     visible_renders: Vec<Vec<Entity>>,
     above_world_renders: Vec<Entity>,
+    occluders: Vec<Entity>,
     light_renders: Vec<Entity>,
     shaded_renders: Vec<Vec<Entity>>,
     animation: f32
@@ -148,6 +149,7 @@ impl ClientEntitiesContainer
             follow_target: Rc::new(RefCell::new(player_entity)),
             visible_renders: Vec::new(),
             above_world_renders: Vec::new(),
+            occluders: Vec::new(),
             light_renders: Vec::new(),
             shaded_renders: Vec::new(),
             animation: 0.0
@@ -307,6 +309,7 @@ impl ClientEntitiesContainer
         }
 
         self.above_world_renders.clear();
+        self.occluders.clear();
         self.light_renders.clear();
 
         let mut shaded_renders = BTreeMap::new();
@@ -325,34 +328,38 @@ impl ClientEntitiesContainer
 
             let is_render_above = render.above_world;
 
-            let mut update_buffers = |entities: &ClientEntities, render: &mut ClientRenderInfo|
-            {
-                render.update_buffers(info);
-
-                if let Some(mut occluder) = entities.occluder_mut_no_change(entity)
-                {
-                    occluder.set_transform(transform.clone());
-                    occluder.update_buffers(info, caster);
-                }
-            };
-
             if is_render_above
             {
                 self.above_world_renders.push(entity);
-                update_buffers(&self.entities, &mut render);
+                render.update_buffers(info);
             } else
             {
                 let real_z = (transform.position.z / TILE_SIZE).floor() as i32;
 
                 let below_player = !visibility.world_position.is_same_height(&TilePos::from(transform.position));
 
-                let transform = some_or_return!(some_or_return!(render.object.as_ref()).transform());
+                let render_transform = some_or_return!(some_or_return!(render.object.as_ref()).transform());
 
-                let sky_occluded = below_player && world.sky_occluded(transform);
+                let sky_occluded = below_player && world.sky_occluded(render_transform);
 
-                let is_render_visible = !world.wall_occluded(transform) && !sky_occluded;
+                let occluder_mut = self.entities.occluder_mut_no_change(entity);
+                let is_render_visible = occluder_mut.is_none() && !world.wall_occluded(render_transform) && !sky_occluded;
 
                 let is_render_shadow = render.shadow_visible && !sky_occluded;
+
+                if !sky_occluded
+                {
+                    if let Some(mut occluder) = occluder_mut
+                    {
+                        occluder.set_transform(transform.clone());
+                        occluder.update_buffers(info, caster);
+
+                        if occluder.visible(visibility)
+                        {
+                            self.occluders.push(entity);
+                        }
+                    }
+                }
 
                 if is_render_visible
                 {
@@ -366,7 +373,7 @@ impl ClientEntitiesContainer
 
                 if is_render_visible || is_render_shadow
                 {
-                    update_buffers(&self.entities, &mut render);
+                    render.update_buffers(info);
                 }
             }
         });
@@ -1251,6 +1258,7 @@ impl GameState
             solid: &self.screen_object,
             renders: &self.entities.visible_renders,
             above_world: &self.entities.above_world_renders,
+            occluders: &self.entities.occluders,
             shaded_renders: &self.entities.shaded_renders,
             light_renders: &self.entities.light_renders,
             world: &self.world

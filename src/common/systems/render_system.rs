@@ -30,6 +30,7 @@ pub struct DrawEntities<'a>
     pub solid: &'a SolidObject,
     pub renders: &'a [Vec<Entity>],
     pub above_world: &'a [Entity],
+    pub occluders: &'a [Entity],
     pub shaded_renders: &'a [Vec<Entity>],
     pub light_renders: &'a [Entity],
     pub world: &'a World
@@ -54,6 +55,7 @@ pub fn draw(
         solid,
         renders,
         above_world,
+        occluders,
         shaded_renders,
         light_renders,
         world
@@ -192,17 +194,9 @@ pub fn draw(
 
     if DebugConfig::is_disabled(DebugTool::NoOcclusion)
     {
-        renders.iter().flatten().copied().filter_map(|entity|
+        occluders.iter().copied().for_each(|entity|
         {
-            entities.occluder(entity)
-        }).for_each(|occluder|
-        {
-            if !occluder.visible(visibility)
-            {
-                return;
-            }
-
-            occluder.draw(info);
+            entities.occluder(entity).unwrap().draw(info);
         });
     }
 
