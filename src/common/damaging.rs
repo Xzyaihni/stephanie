@@ -116,6 +116,7 @@ pub struct DamagingInfo
     pub times: DamageTimes,
     pub same_tile_z: bool,
     pub source: Option<Entity>,
+    pub knockback: f32,
     pub faction: Option<Faction>
 }
 
@@ -129,6 +130,7 @@ impl Default for DamagingInfo
             times: DamageTimes::Once,
             same_tile_z: true,
             source: None,
+            knockback: 1.0,
             faction: None
         }
     }
@@ -162,6 +164,7 @@ pub struct Damaging
     pub predicate: DamagingPredicate,
     pub same_tile_z: bool,
     pub faction: Faction,
+    pub knockback: f32,
     pub source: Option<Entity>,
     times: DamageTimes,
     already_damaged: Vec<DamagedId>
@@ -177,6 +180,7 @@ impl From<DamagingInfo> for Damaging
             same_tile_z: info.same_tile_z,
             times: info.times,
             faction: info.faction.expect("faction must be specified"),
+            knockback: info.knockback,
             source: info.source,
             already_damaged: Vec::new()
         }

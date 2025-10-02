@@ -1436,6 +1436,7 @@ impl Character
                         damage
                     },
                     predicate: DamagingPredicate::ParentAngleLess{angle: f32::consts::PI, minimum_distance},
+                    knockback: 1.0,
                     faction: Some(self.faction),
                     ..Default::default()
                 }.into()),
@@ -1506,6 +1507,7 @@ impl Character
                         angle: 0.0,
                         damage
                     },
+                    knockback: 2.0,
                     faction: Some(self.faction),
                     source: Some(info.this),
                     ..Default::default()

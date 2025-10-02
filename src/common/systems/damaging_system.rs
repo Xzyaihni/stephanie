@@ -151,7 +151,7 @@ impl ParticlesKind
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum DamagingKind
 {
-    Entity(Entity, Faction),
+    Entity(Entity, Faction, f32),
     Tile(TilePos)
 }
 
@@ -233,7 +233,7 @@ pub fn damager<'a, 'b, E: AnyEntities, TileDamager: FnMut(TilePos, DamagePartial
 
         match result.kind
         {
-            DamagingKind::Entity(entity, faction) =>
+            DamagingKind::Entity(entity, faction, knockback_factor) =>
             {
                 let entity_rotation = if let Some(transform) = entities.transform(entity)
                 {
@@ -282,7 +282,7 @@ pub fn damager<'a, 'b, E: AnyEntities, TileDamager: FnMut(TilePos, DamagePartial
                         _ => 1.0
                     };
 
-                    let knockback = *knockback_direction * (knockback_strength * ENEMY_MASS * 30.0);
+                    let knockback = *knockback_direction * (knockback_strength * knockback_factor * ENEMY_MASS * 30.0);
                     knockback_entity(entities, entity, knockback);
 
                     flash_white(entities, entity);
@@ -377,7 +377,7 @@ fn damaging_raycasting(
 
         let kind = match hit.id
         {
-            RaycastHitId::Entity(entity) => DamagingKind::Entity(entity, damaging.faction),
+            RaycastHitId::Entity(entity) => DamagingKind::Entity(entity, damaging.faction, 1.0),
             RaycastHitId::Tile(tile) => DamagingKind::Tile(tile)
         };
 
@@ -464,6 +464,7 @@ fn damaging_colliding(
     };
 
     let faction = damaging.faction;
+    let knockback = damaging.knockback;
     let same_tile_z = damaging.same_tile_z;
     collider.collided_tiles().iter().copied().filter_map(|tile_pos|
     {
@@ -502,7 +503,7 @@ fn damaging_colliding(
         Some((
             collided_transform,
             collided_physical,
-            DamagingKind::Entity(collided, faction),
+            DamagingKind::Entity(collided, faction, knockback),
             DamagedId::Entity(collided)
         ))
     })).filter_map(|(collided_transform, collided_physical, kind, id)|
@@ -526,7 +527,7 @@ fn damaging_colliding(
                 let direction = {
                     let angle = match kind
                     {
-                        DamagingKind::Entity(_, _) => angle,
+                        DamagingKind::Entity(_, _, _) => angle,
                         DamagingKind::Tile(_) =>
                         {
                             angle_between(collided_transform.position, this_transform.position)
