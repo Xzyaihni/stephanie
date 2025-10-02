@@ -112,7 +112,6 @@ impl Game
 
             PlayerInfo::new(PlayerCreateInfo{
                 camera: game_state.entities.camera_entity,
-                follow_target: game_state.entities.follow_target,
                 entity: game_state.entities.player_entity,
                 mouse_entity
             })
@@ -253,7 +252,7 @@ impl Game
 
         self.player_container(|mut x|
         {
-            if !x.is_dead() && !x.game_state.is_loading()
+            if !x.game_state.is_loading()
             {
                 x.camera_sync();
             }
@@ -1038,7 +1037,6 @@ impl Game
 struct PlayerCreateInfo
 {
     pub camera: Entity,
-    pub follow_target: Entity,
     pub entity: Entity,
     pub mouse_entity: Entity
 }
@@ -1076,7 +1074,6 @@ struct PlayerInfo
 {
     camera: Entity,
     entity: Entity,
-    follow_target: Entity,
     mouse_entity: Entity,
     other_entity: Option<Entity>,
     console: ConsoleInfo,
@@ -1095,7 +1092,6 @@ impl PlayerInfo
         Self{
             camera: info.camera,
             entity: info.entity,
-            follow_target: info.follow_target,
             mouse_entity: info.mouse_entity,
             other_entity: None,
             console,
@@ -1166,7 +1162,7 @@ impl<'a> PlayerContainer<'a>
 
         let entities = self.game_state.entities();
 
-        let entity_position = some_or_value!(entities.transform(self.info.follow_target), false).position;
+        let entity_position = some_or_value!(entities.transform(self.game_state.entities.follow_target()), false).position;
 
         let follow_position = if mouse_position.magnitude() > CHUNK_VISUAL_SIZE * 2.0
         {
@@ -1496,8 +1492,7 @@ impl<'a> PlayerContainer<'a>
 
     fn set_follow_target(&mut self, entity: Entity)
     {
-        self.info.follow_target = entity;
-        self.game_state.entities.follow_target = entity;
+        self.game_state.entities.set_follow_target(entity);
     }
 
     pub fn this_update(&mut self, dt: f32) -> bool
@@ -1947,6 +1942,7 @@ impl<'a> PlayerContainer<'a>
         }
     }
 
+    #[allow(dead_code)]
     fn is_dead(&self) -> bool
     {
         self.game_state.entities().anatomy(self.info.entity)

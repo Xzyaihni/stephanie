@@ -119,7 +119,7 @@ pub struct ClientEntitiesContainer
     pub entities: ClientEntities,
     pub camera_entity: Entity,
     pub player_entity: Entity,
-    pub follow_target: Entity,
+    pub follow_target: Rc<RefCell<Entity>>,
     visible_renders: Vec<Vec<Entity>>,
     above_world_renders: Vec<Entity>,
     light_renders: Vec<Entity>,
@@ -145,13 +145,23 @@ impl ClientEntitiesContainer
             entities,
             camera_entity,
             player_entity,
-            follow_target: player_entity,
+            follow_target: Rc::new(RefCell::new(player_entity)),
             visible_renders: Vec::new(),
             above_world_renders: Vec::new(),
             light_renders: Vec::new(),
             shaded_renders: Vec::new(),
             animation: 0.0
         }
+    }
+
+    pub fn set_follow_target(&mut self, follow_target: Entity)
+    {
+        *self.follow_target.borrow_mut() = follow_target;
+    }
+
+    pub fn follow_target(&self) -> Entity
+    {
+        *self.follow_target.borrow()
     }
 
     pub fn handle_message(
@@ -185,7 +195,7 @@ impl ClientEntitiesContainer
 
         let space = crate::frame_time_this!{
             2, spatial_grid_build,
-            world.build_spatial(&self.entities, self.follow_target)
+            world.build_spatial(&self.entities, self.follow_target())
         };
 
         crate::frame_time_this!{
@@ -870,6 +880,7 @@ impl GameState
         {
             let ui = self.ui.clone();
             let player_entity = self.entities.player_entity;
+            let follow_target = self.entities.follow_target.clone();
 
             self.entities.entities.on_anatomy(Box::new(move |OnChangeInfo{entities, entity, ..}|
             {
@@ -880,6 +891,13 @@ impl GameState
                         if entity == player_entity
                         {
                             ui.borrow_mut().player_dead();
+
+                            let death_follow = entities.push(true, EntityInfo{
+                                transform: entities.transform(player_entity).as_deref().cloned(),
+                                ..Default::default()
+                            });
+
+                            *follow_target.borrow_mut() = death_follow;
 
                             return;
                         }
@@ -972,11 +990,6 @@ impl GameState
     pub fn player_entity(&self) -> Entity
     {
         self.entities.player_entity
-    }
-
-    pub fn player(&self) -> Entity
-    {
-        self.entities.main_player()
     }
 
     pub fn process_messages(&mut self, create_info: &mut UpdateBuffersInfo)
@@ -1197,7 +1210,7 @@ impl GameState
 
         self.debug_visibility.update(&self.camera.read());
 
-        let caster = self.entities.entities.transform(self.entities.follow_target).map(|x| x.position)
+        let caster = self.entities.entities.transform(self.entities.follow_target()).map(|x| x.position)
             .unwrap_or_default();
 
         let caster = OccludingCaster::from(caster);
