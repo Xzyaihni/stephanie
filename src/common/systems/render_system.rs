@@ -8,7 +8,7 @@ use yanyaengine::{game_object::*, SolidObject};
 use crate::{
     debug_config::*,
     app::{ProgramShaders, TimestampQuery},
-    client::{Ui, VisibilityChecker},
+    client::Ui,
     common::{
         render_info::*,
         Entity,
@@ -65,7 +65,6 @@ pub fn draw(
         info,
         timestamp_query
     }: DrawingInfo,
-    visibility: &VisibilityChecker,
     SkyColors{
         light_color
     }: SkyColors,

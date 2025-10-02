@@ -1250,8 +1250,6 @@ impl GameState
 
     pub fn draw(&self, info: &mut DrawInfo)
     {
-        let visibility = self.visibility_checker();
-
         let animation = self.entities.animation.sin();
 
         let draw_entities = render_system::DrawEntities{
@@ -1283,7 +1281,6 @@ impl GameState
             &self.ui.borrow(),
             draw_entities,
             info,
-            &visibility,
             sky_colors,
             animation
         );

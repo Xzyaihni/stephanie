@@ -28,6 +28,7 @@ use crate::{
         define_layers,
         angle_between,
         opposite_angle,
+        short_rotation,
         angle_to_direction_3d,
         ENTITY_SCALE,
         render_info::*,
@@ -1409,7 +1410,7 @@ impl Character
             height: self.melee_height()
         };
 
-        let angle = opposite_angle(self.bash_side.opposite().to_angle() - f32::consts::FRAC_PI_2);
+        let angle = short_rotation(opposite_angle(self.bash_side.opposite().to_angle() - f32::consts::FRAC_PI_2)) * 0.6;
         let minimum_distance = some_or_return!(combined_info.entities.transform(info.this)).scale.xy().max();
 
         combined_info.entities.push(
