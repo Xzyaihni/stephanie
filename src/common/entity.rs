@@ -331,6 +331,7 @@ no_on_set!{
     Inventory,
     String,
     Entity,
+    f32,
     Transform,
     Enemy,
     Player,
@@ -866,6 +867,11 @@ macro_rules! common_trait_impl
             self.lazy_target_end(entity)
         }
 
+        fn sibling_first(&self, entity: Entity) -> Option<Entity>
+        {
+            self.with_sibling_of(entity).next()
+        }
+
         fn for_every_child(
             &self,
             entity: Entity,
@@ -1358,7 +1364,8 @@ macro_rules! define_entities_both
         impl<$($component_type: OnSet<Self> + Debug,)+> Entities<$($component_type,)+>
         where
             Self: AnyEntities,
-            for<'a> &'a ParentType: Into<&'a Parent>
+            for<'a> &'a ParentType: Into<&'a Parent>,
+            for<'a> &'a SiblingType: Into<&'a Entity>
         {
             pub fn new(infos: impl Into<Option<DataInfos>>) -> Self
             {
@@ -1859,6 +1866,19 @@ macro_rules! define_entities_both
 
                 let components = components!(self, entity);
                 components.borrow_mut().remove(entity.id);
+            }
+
+            pub fn with_sibling_of(&self, sibling_entity: Entity) -> impl Iterator<Item=Entity> + '_
+            {
+                self.sibling.iter().filter_map(move |(_, &ComponentWrapper{
+                    entity,
+                    component: ref sibling
+                })|
+                {
+                    let sibling = sibling.borrow();
+
+                    (*(&*sibling).into() == sibling_entity).then_some(entity)
+                })
             }
 
             pub fn children_of(&self, parent_entity: Entity) -> impl Iterator<Item=Entity> + '_
@@ -2724,6 +2744,8 @@ macro_rules! define_entities
             fn lazy_target(&self, entity: Entity) -> Option<RefMut<'_, Transform>>;
             fn lazy_target_end(&self, entity: Entity) -> Option<Transform>;
 
+            fn sibling_first(&self, entity: Entity) -> Option<Entity>;
+
             fn for_every_child(&self, entity: Entity, f: impl FnMut(Entity));
 
             fn z_level(&self, entity: Entity) -> Option<ZLevel>;
@@ -3032,6 +3054,7 @@ define_entities!{
     (parent, parent_mut, parent_mut_no_change, set_parent, set_parent_no_change, on_parent, resort_parent, parent_exists, SetParent, ParentType, Parent),
     (sibling, sibling_mut, sibling_mut_no_change, set_sibling, set_sibling_no_change, on_sibling, resort_sibling, sibling_exists, SetSibling, SiblingType, Entity),
     (furniture, furniture_mut, furniture_mut_no_change, set_furniture, set_furniture_no_change, on_furniture, resort_furniture, furniture_exists, SetFurniture, FurnitureType, FurnitureId),
+    (health, health_mut, health_mut_no_change, set_health, set_health_no_change, on_health, resort_health, health_exists, SetHealth, HealthType, f32),
     (lazy_mix, lazy_mix_mut, lazy_mix_mut_no_change, set_lazy_mix, set_lazy_mix_no_change, on_lazy_mix, resort_lazy_mix, lazy_mix_exists, SetLazyMix, LazyMixType, LazyMix),
     (outlineable, outlineable_mut, outlinable_mut_no_change, set_outlineable, set_outlineable_no_change, on_outlineable, resort_outlineable, outlineable_exists, SetOutlineable, OutlineableType, Outlineable),
     (lazy_transform, lazy_transform_mut, lazy_transform_mut_no_change, set_lazy_transform, set_lazy_transform_no_change, on_lazy_transform, resort_lazy_transform, lazy_transform_exists, SetLazyTransform, LazyTransformType, LazyTransform),

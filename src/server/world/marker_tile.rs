@@ -144,6 +144,7 @@ impl MarkerTile
                         ..Default::default()
                     }.into()),
                     door: Some(door),
+                    health: Some(width as f32 * material.health()),
                     saveable: Some(()),
                     ..Default::default()
                 })

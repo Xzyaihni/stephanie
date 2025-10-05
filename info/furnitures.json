@@ -2,33 +2,39 @@
     {
         "name": "crate",
         "symmetry": "Both",
-        "container": true
+        "container": true,
+        "health": 10.0
     },
     {
         "name": "wood table",
-        "symmetry": "Both"
+        "symmetry": "Both",
+        "health": 20.0
     },
     {
         "name": "wood chair",
         "symmetry": "None",
-        "hitbox": 0.0
+        "hitbox": 0.0,
+        "health": 2.0
     },
     {
         "name": "bed",
-        "symmetry": "None"
+        "symmetry": "None",
+        "health": 50.0
     },
     {
         "name": "cabinet",
         "z": "Door",
         "symmetry": "Horizontal",
         "container": true,
-        "colliding": false
+        "colliding": false,
+        "health": 30.0
     },
     {
         "name": "sink",
         "z": "Knee",
         "symmetry": "None",
         "container": true,
-        "attached": true
+        "attached": true,
+        "health": 30.0
     }
 ]

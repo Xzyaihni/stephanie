@@ -11,6 +11,7 @@ use crate::common::{
     physics::*,
     lazy_transform::*,
     collider::*,
+    watcher::*,
     EntityInfo,
     Loot,
     FurnituresInfo,
@@ -60,10 +61,12 @@ pub fn update_furniture(entities: &ClientEntities, entity: Entity)
                     ..Default::default()
                 }.into()),
                 parent: Some(Parent::new(entity, true)),
+                watchers: Some(Watchers::default()),
                 ..Default::default()
             });
         } else
         {
+            setter.set_watchers_no_change(entity, Some(Watchers::default()));
             setter.set_render_no_change(entity, Some(render));
         }
 
@@ -151,6 +154,7 @@ pub fn create(
             ..Default::default()
         }),
         inventory,
+        health: Some(info.health),
         furniture: Some(id),
         saveable: Some(()),
         ..Default::default()

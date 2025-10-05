@@ -24,6 +24,7 @@ use crate::{
         watcher::*,
         particle_creator::*,
         raycast::*,
+        collider::*,
         systems::raycast_system,
         ENTITY_SCALE,
         SpatialGrid,
@@ -166,14 +167,19 @@ pub struct DamagingResult
     pub damage: DamagePartial
 }
 
-pub fn damager<'a, 'b, E: AnyEntities, TileDamager: FnMut(TilePos, DamagePartial)>(
+pub fn damager<'a, 'b, E: AnyEntities>(
+    world: &'b mut World,
     entities: &'a E,
-    textures: Option<&'a CommonTextures>,
-    mut damage_tile: TileDamager
-) -> impl FnMut(DamagingResult) + use<'a, 'b, E, TileDamager>
+    textures: Option<&'a CommonTextures>
+) -> impl FnMut(DamagingResult) + use<'a, 'b, E>
 {
     move |result|
     {
+        if DebugConfig::is_enabled(DebugTool::DamagingAllResults)
+        {
+            eprintln!("damaging: {result:#?}");
+        }
+
         let angle = result.angle;
         let damage = result.damage.clone();
 
@@ -235,6 +241,31 @@ pub fn damager<'a, 'b, E: AnyEntities, TileDamager: FnMut(TilePos, DamagePartial
         {
             DamagingKind::Entity(entity, faction, knockback_factor) =>
             {
+                let has_anatomy = entities.anatomy_exists(entity);
+
+                let is_door = entities.collider(entity).map(|x| matches!(x.layer, ColliderLayer::Door)).unwrap_or(false);
+
+                // is the visible part of the door
+                if is_door && !entities.door_exists(entity)
+                {
+                    let door_main = some_or_return!(entities.sibling_first(entity));
+
+                    let result = DamagingResult{
+                        kind: DamagingKind::Entity(door_main, faction, knockback_factor),
+                        ..result
+                    };
+
+                    damager(world, entities, textures)(result);
+
+                    return;
+                }
+
+                if !has_anatomy
+                    && !entities.health_exists(entity)
+                {
+                    return;
+                }
+
                 let entity_rotation = if let Some(transform) = entities.transform(entity)
                 {
                     transform.rotation
@@ -245,8 +276,8 @@ pub fn damager<'a, 'b, E: AnyEntities, TileDamager: FnMut(TilePos, DamagePartial
 
                 let relative_rotation = angle + entity_rotation;
 
-                let damage = {
-                    let character = some_or_return!(entities.character(entity));
+                let damage = if let Some(character) = entities.character(entity)
+                {
                     let (height, angle) = character.remap_direction(damage.height, Side2d::from_angle(relative_rotation));
 
                     if !faction.aggressive(&character.faction)
@@ -255,14 +286,19 @@ pub fn damager<'a, 'b, E: AnyEntities, TileDamager: FnMut(TilePos, DamagePartial
                     }
 
                     DamagePartial{height, ..damage}.with_direction(angle)
+                } else
+                {
+                    damage.with_direction(Side2d::default())
                 };
 
-                if !entities.anatomy_exists(entity)
+                let is_organic = has_anatomy;
+                let particle = if is_organic && damage.data.is_piercing()
                 {
-                    return;
-                }
-
-                let particle = if damage.data.is_piercing() { ParticlesKind::Blood } else { ParticlesKind::Dust };
+                    ParticlesKind::Blood
+                } else
+                {
+                    ParticlesKind::Dust
+                };
 
                 damage_entity(entities, entity, result.other_entity, damage);
 
@@ -286,11 +322,19 @@ pub fn damager<'a, 'b, E: AnyEntities, TileDamager: FnMut(TilePos, DamagePartial
                     knockback_entity(entities, entity, knockback);
 
                     flash_white(entities, entity);
+
+                    if DebugConfig::is_enabled(DebugTool::DamagingPassedResults)
+                    {
+                        eprintln!("passed: {result:#?}");
+                    }
                 }
             },
             DamagingKind::Tile(tile_pos) =>
             {
-                damage_tile(tile_pos, damage);
+                world.modify_tile(tile_pos, |world, tile|
+                {
+                    tile.damage(world.tilemap(), damage.data);
+                });
 
                 if let Some(textures) = textures.as_ref()
                 {
@@ -468,11 +512,6 @@ fn damaging_colliding(
     let same_tile_z = damaging.same_tile_z;
     collider.collided_tiles().iter().copied().filter_map(|tile_pos|
     {
-        if DebugConfig::is_enabled(DebugTool::DamagingTilesAllPositions)
-        {
-            eprintln!("damaging tile (maybe): {tile_pos}");
-        }
-
         let position = Vector3::from(tile_pos.position()) + Vector3::repeat(TILE_SIZE / 2.0);
 
         if same_tile_z
@@ -497,6 +536,11 @@ fn damaging_colliding(
         ))
     }).chain(collider.collided().iter().copied().filter_map(|collided|
     {
+        if entities.collider(collided).map(|x| x.ghost).unwrap_or(true)
+        {
+            return None;
+        }
+
         let collided_transform = entities.transform(collided)?.clone();
         let collided_physical = entities.physical(collided);
 
@@ -584,13 +628,7 @@ pub fn update(
         }).collect::<Vec<_>>()
     };
 
-    damage_entities.into_iter().for_each(damager(entities, Some(textures), |tile_pos, damage|
-    {
-        world.modify_tile(tile_pos, |world, tile|
-        {
-            tile.damage(world.tilemap(), damage.data);
-        })
-    }));
+    damage_entities.into_iter().for_each(damager(world, entities, Some(textures)));
 }
 
 fn flash_white_single(entities: &impl AnyEntities, entity: Entity)
@@ -662,6 +700,16 @@ pub fn damage_entity(
 )
 {
     turn_towards_other(entities, entity, other_entity);
+
+    if let Some(mut health) = entities.health_mut(entity)
+    {
+        *health -= damage.data.as_flat();
+
+        if *health <= 0.0
+        {
+            entities.remove_deferred(entity);
+        }
+    }
 
     if let Some(mut anatomy) = entities.anatomy_mut(entity)
     {

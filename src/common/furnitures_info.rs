@@ -30,7 +30,8 @@ struct FurnitureInfoRaw
     attached: Option<bool>,
     colliding: Option<bool>,
     symmetry: Option<Symmetry>,
-    hitbox: Option<f32>
+    hitbox: Option<f32>,
+    health: Option<f32>
 }
 
 type FurnituresInfoRaw = Vec<FurnitureInfoRaw>;
@@ -46,7 +47,8 @@ pub struct FurnitureInfo
     pub attached: bool,
     pub colliding: bool,
     pub textures: DirectionsGroup<TextureId>,
-    pub hitbox: Option<f32>
+    pub hitbox: Option<f32>,
+    pub health: f32
 }
 
 impl GenericItem for FurnitureInfo
@@ -125,7 +127,8 @@ impl FurnitureInfo
             attached: raw.attached.unwrap_or(false),
             colliding: raw.colliding.unwrap_or(true),
             textures,
-            hitbox: raw.hitbox
+            hitbox: raw.hitbox,
+            health: raw.health.unwrap_or(5.0)
         }
     }
 }

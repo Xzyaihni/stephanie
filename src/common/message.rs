@@ -58,6 +58,7 @@ pub enum Message
     SetParent{entity: Entity, component: Option<Box<Parent>>},
     SetSibling{entity: Entity, component: Option<Box<Entity>>},
     SetFurniture{entity: Entity, component: Option<Box<FurnitureId>>},
+    SetHealth{entity: Entity, component: Option<Box<f32>>},
     SetTransform{entity: Entity, component: Option<Box<Transform>>},
     SetLazyTransform{entity: Entity, component: Option<Box<LazyTransform>>},
     SetLazyMix{entity: Entity, component: Option<Box<LazyMix>>},

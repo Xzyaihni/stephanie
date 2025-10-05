@@ -17,6 +17,7 @@ use crate::common::{
     render_info::*,
     lazy_transform::*,
     physics::*,
+    watcher::*,
     Entity,
     Occluder,
     EntityInfo,
@@ -34,6 +35,18 @@ pub enum DoorMaterial
 {
     Metal,
     Wood
+}
+
+impl DoorMaterial
+{
+    pub fn health(&self) -> f32
+    {
+        match self
+        {
+            Self::Metal => 1000.0,
+            Self::Wood => 100.0
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -280,6 +293,7 @@ impl Door
                     ..Default::default()
                 }.into()),
                 occluder: door.door_occluder(),
+                watchers: Some(Watchers::default()),
                 ..Default::default()
             });
 
