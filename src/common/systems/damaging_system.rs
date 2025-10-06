@@ -661,8 +661,10 @@ fn knockback_entity(entities: &impl AnyEntities, entity: Entity, knockback: Vect
 
 fn flash_white(entities: &impl AnyEntities, entity: Entity)
 {
-    flash_white_single(entities, entity);
-    entities.for_every_child(entity, |child| flash_white_single(entities, child));
+    let flash_single = |entity| flash_white_single(entities, entity);
+
+    entities.sibling(entity).map(|x| flash_single(*x));
+    entities.for_every_child(entity, flash_single);
 }
 
 fn turn_towards_other(
