@@ -4,6 +4,12 @@
 (define (drop-between f start end)
     (map (lambda (_) (f)) (counter (random-integer-between start (+ end 1)))))
 
+(define (maybe-multiple f rate limit)
+    (f)
+    (if (> limit 0)
+        (if (rate)
+            (maybe-multiple f rate (- limit 1)))))
+
 (define (drop-rate x total)
     (lambda ()
         (< (random-integer total) x)))
@@ -15,21 +21,35 @@
 
 (define trash '(rock bottle short_stick stick branch duct_tape))
 
+(define (standard-drops items)
+    (maybe-multiple (lambda () (any-of items)) (drop-rate 1 3) 3))
+
 (define (zob)
     (and-maybe
-        (drop-between (lambda () (any-of '(hammer scissors kitchen_knife))) 1 2)
+        (standard-drops '(hammer scissors kitchen_knife))
         (drop-rate 1 5)
         'heal_pills))
 
+(define (smol)
+    (and-maybe
+        (standard-drops '(branch short_stick rock))
+        (drop-rate 1 10)
+        'heal_pills))
+
+(define (old)
+    (if ((drop-rate 1 6))
+        (standard-drops '(bottle duct_tape heal_pills))
+        '(lamp)))
+
 (define (runner)
     (and-maybe
-        (drop-between (lambda () (any-of '(scissors bottle baseball_bat))) 1 2)
+        (standard-drops '(scissors bottle baseball_bat))
         (drop-rate 1 5)
         'heal_pills))
 
 (define (bigy)
     (and-maybe
-        (drop-between (lambda () (any-of '(boulder pipe sledgehammer))) 2 3)
+        (standard-drops '(boulder pipe sledgehammer axe))
         (drop-rate 1 2)
         'heal_pills))
 
@@ -39,7 +59,7 @@
         (drop-rate 1 5)
         'heal_pills))
 
-(define (crate) (drop-between (lambda () (any-of trash)) 1 3))
+(define (crate) (standard-drops trash))
 
 (define (sink) '(bottle))
 

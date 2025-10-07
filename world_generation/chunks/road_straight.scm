@@ -15,9 +15,10 @@
     (define this-chunk (filled-chunk (tile 'air)))
 
     (define (decide-enemy type)
-        (if (eq? type 'normal)
-            (pick-weighted 'zob 'runner 0.25)
-            'bigy))
+        (cond
+            ((eq? type 'easy) (pick-weighted 'old 'smol 0.25))
+            ((eq? type 'normal) (pick-weighted 'zob 'runner 0.25))
+            (else 'bigy)))
 
     (define (place-enemy point)
         (combine-markers
@@ -27,7 +28,7 @@
                 'enemy
                 (decide-enemy
                     (gradient-pick
-                        '(normal strong)
+                        '(easy normal strong)
                         difficulty
                         0.1
                         3.0)))))

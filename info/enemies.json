@@ -3,6 +3,28 @@
         "name": "zob"
     },
     {
+        "name": "smol",
+        "anatomy": {
+            "bone": 0.2,
+            "muscle": 0.2,
+            "skin": 0.2,
+            "base_speed": 0.6,
+            "base_strength": 0.2
+        },
+        "hand": "zob/hand"
+    },
+    {
+        "name": "old",
+        "anatomy": {
+            "bone": 0.2,
+            "muscle": 0.3,
+            "skin": 0.3,
+            "base_speed": 0.4,
+            "base_strength": 0.3
+        },
+        "hand": "zob/hand"
+    },
+    {
         "name": "runner",
         "anatomy": {
             "bone": 0.7,
