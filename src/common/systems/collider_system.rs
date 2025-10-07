@@ -35,7 +35,7 @@ mod resolver;
 
 
 pub fn debug_collision_bounds<T: Borrow<Collider>>(
-    entities: &ClientEntities,
+    entities: &impl AnyEntities,
     colliding_info: &CollidingInfo<T>
 )
 {
@@ -148,17 +148,18 @@ pub fn update(
 
             collider.reset_frame();
 
+            if !collider.sleeping && DebugConfig::is_enabled(DebugTool::CollisionBounds)
+            {
+                let this = maybe_colliding_info!{with entity, collider};
+                debug_collision_bounds(entities, &this);
+            }
+
             if collider.sleeping || !collider.layer.collides(&ColliderLayer::World)
             {
                 return;
             }
 
             let mut this = maybe_colliding_info!{with entity, collider};
-
-            if DebugConfig::is_enabled(DebugTool::CollisionBounds)
-            {
-                debug_collision_bounds(entities, &this);
-            }
 
             crate::time_this_additive!{
                 world_flat_time,

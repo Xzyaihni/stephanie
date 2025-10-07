@@ -322,17 +322,19 @@ impl World
         })
     }
 
-    pub fn modify_tile(&mut self, pos: TilePos, f: impl FnOnce(&mut Self, &mut Tile))
+    pub fn modify_tile<T>(&mut self, pos: TilePos, f: impl FnOnce(&mut Self, &mut Tile) -> T) -> Option<T>
     {
         let tile: Tile = *some_or_return!(self.tile(pos));
         let mut new_tile: Tile = tile;
 
-        f(self, &mut new_tile);
+        let value = f(self, &mut new_tile);
 
         if tile != new_tile
         {
             self.set_tile(pos, new_tile);
         }
+
+        Some(value)
     }
 
     pub fn tile(&self, index: TilePos) -> Option<&Tile>

@@ -1,5 +1,6 @@
 use std::{
     f32,
+    ops::ControlFlow,
     cell::RefCell
 };
 
@@ -25,7 +26,7 @@ use crate::{
         particle_creator::*,
         raycast::*,
         collider::*,
-        systems::raycast_system,
+        systems::{raycast_system, collider_system},
         ENTITY_SCALE,
         SpatialGrid,
         EntityInfo,
@@ -169,6 +170,7 @@ pub struct DamagingResult
 
 pub fn damager<'a, 'b, E: AnyEntities>(
     world: &'b mut World,
+    space: &'a SpatialGrid,
     entities: &'a E,
     textures: Option<&'a CommonTextures>
 ) -> impl FnMut(DamagingResult) + use<'a, 'b, E>
@@ -255,7 +257,7 @@ pub fn damager<'a, 'b, E: AnyEntities>(
                         ..result
                     };
 
-                    damager(world, entities, textures)(result);
+                    damager(world, space, entities, textures)(result);
 
                     return;
                 }
@@ -331,10 +333,15 @@ pub fn damager<'a, 'b, E: AnyEntities>(
             },
             DamagingKind::Tile(tile_pos) =>
             {
-                world.modify_tile(tile_pos, |world, tile|
+                let destroyed = world.modify_tile(tile_pos, |world, tile|
                 {
-                    tile.damage(world.tilemap(), damage.data);
-                });
+                    tile.damage(world.tilemap(), damage.data)
+                }).unwrap_or(false);
+
+                if destroyed
+                {
+                    destroy_tile_dependent(entities, space, tile_pos);
+                }
 
                 if let Some(textures) = textures.as_ref()
                 {
@@ -628,7 +635,7 @@ pub fn update(
         }).collect::<Vec<_>>()
     };
 
-    damage_entities.into_iter().for_each(damager(world, entities, Some(textures)));
+    damage_entities.into_iter().for_each(damager(world, space, entities, Some(textures)));
 }
 
 fn flash_white_single(entities: &impl AnyEntities, entity: Entity)
@@ -648,6 +655,73 @@ fn flash_white_single(entities: &impl AnyEntities, entity: Entity)
             );
         }
     }
+}
+
+fn destroy_entity(entities: &impl AnyEntities, entity: Entity)
+{
+    entities.remove_deferred(entity);
+}
+
+fn destroy_tile_dependent(
+    entities: &impl AnyEntities,
+    space: &SpatialGrid,
+    tile_pos: TilePos
+)
+{
+    let check_collider = ColliderInfo{
+        kind: ColliderType::Rectangle,
+        layer: ColliderLayer::Normal,
+        ghost: true,
+        ..Default::default()
+    }.into();
+
+    let transform = Transform{
+        position: tile_pos.center_position().into(),
+        scale: Vector3::repeat(TILE_SIZE * 0.95),
+        ..Default::default()
+    };
+
+    let check_collider = CollidingInfoRef{
+        entity: None,
+        transform,
+        collider: &check_collider
+    };
+
+    if DebugConfig::is_enabled(DebugTool::CollisionBounds)
+    {
+        collider_system::debug_collision_bounds(entities, &check_collider);
+    }
+
+    let try_collide = |entity|
+    {
+        let other_collider = some_or_return!(entities.collider(entity));
+
+        let is_door = matches!(other_collider.layer, ColliderLayer::Door);
+
+        if !is_door
+        {
+            return;
+        }
+
+        let other = CollidingInfoRef::new(
+            some_or_return!(entities.transform(entity)).clone(),
+            &other_collider
+        );
+
+        let collided = check_collider.collide_immutable(&other, |_| {});
+
+        if collided
+        {
+            destroy_entity(entities, entity);
+        }
+    };
+
+    let _ = space.try_for_each_near(tile_pos, |entity| -> ControlFlow<(), ()>
+    {
+        try_collide(entity);
+
+        ControlFlow::Continue(())
+    });
 }
 
 fn knockback_entity(entities: &impl AnyEntities, entity: Entity, knockback: Vector3<f32>)
@@ -709,7 +783,7 @@ pub fn damage_entity(
 
         if *health <= 0.0
         {
-            entities.remove_deferred(entity);
+            destroy_entity(entities, entity);
         }
     }
 
