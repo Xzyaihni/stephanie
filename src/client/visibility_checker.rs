@@ -1,4 +1,4 @@
-use nalgebra::{Unit, Vector2, Vector3};
+use nalgebra::{vector, Unit, Vector2, Vector3};
 
 use yanyaengine::Transform;
 
@@ -22,15 +22,15 @@ impl VisibilityChecker
 {
     fn visible_sphere_radius(&self, position: Vector3<f32>, radius: f32) -> bool
     {
-        let offset = position - self.position;
+        let offset = (position - self.position).abs();
 
         let half_size = self.size / 2.0;
 
-        let limit = half_size + Vector3::new(radius, radius, 0.0);
+        let limit = half_size + vector![radius, radius, 0.0];
 
         (0..3).all(|i|
         {
-            offset.index(i).abs() <= *limit.index(i)
+            offset[i] <= limit[i]
         })
     }
 
@@ -50,13 +50,13 @@ impl VisibilityChecker
         point: Vector2<f32>
     ) -> bool
     {
-        let offset = point - position;
+        let offset = (point - position).abs();
 
         let half_size = size / 2.0;
 
         (0..2).all(|i|
         {
-            offset.index(i).abs() <= *half_size.index(i)
+            offset[i] <= half_size[i]
         })
     }
 
@@ -87,8 +87,8 @@ impl VisibilityChecker
 
     pub fn visible_occluding_plane(&self, transform: &Transform) -> bool
     {
-        let start = project_onto(transform, &Vector3::new(-0.5, 0.0, 0.0));
-        let end = project_onto(transform, &Vector3::new(0.5, 0.0, 0.0));
+        let start = project_onto(transform, &vector![-0.5, 0.0, 0.0]);
+        let end = project_onto(transform, &vector![0.5, 0.0, 0.0]);
 
         let diff = end - start;
         let magnitude = diff.magnitude();

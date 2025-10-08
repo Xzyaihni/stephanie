@@ -5,6 +5,8 @@ use std::{
 
 use nalgebra::Vector3;
 
+use yanyaengine::Transform;
+
 use crate::{
     debug_config::*,
     common::{
@@ -20,10 +22,12 @@ use crate::{
         EntityInfo,
         AnyEntities,
         Damageable,
+        Parent,
         anatomy::FALL_VELOCITY,
         world::World,
         entity::{
             for_each_component,
+            iterate_components_many_with,
             ClientEntities
         }
     }
@@ -141,7 +145,7 @@ pub fn update(
     let mut world_z_time = None;
 
     crate::frame_time_this!{
-        3, collision_system_world,
+        [update, update_pre, collider_system_update] -> world,
         for_each_component!(entities, collider, |entity, collider: &RefCell<Collider>|
         {
             let mut collider = collider.borrow_mut();
@@ -197,12 +201,12 @@ pub fn update(
     {
         {
             let time = world_flat_time.map(|x| x.as_micros() as f64 / 1000.0).unwrap_or(0.0);
-            crate::frame_timed!(4, world_flat_time, time);
+            crate::frame_timed!([update, update_pre, collider_system_update, world] -> flat_time, time);
         }
 
         {
             let time = world_z_time.map(|x| x.as_micros() as f64 / 1000.0).unwrap_or(0.0);
-            crate::frame_timed!(4, world_z_time, time);
+            crate::frame_timed!([update, update_pre, collider_system_update, world] -> z_time, time);
         }
     }
 
@@ -212,7 +216,7 @@ pub fn update(
     }
 
     crate::frame_time_this!{
-        3, collision_system_collision,
+        [update, update_pre, collider_system_update] -> collision,
         space.possible_pairs(|entity: Entity, other_entity: Entity|
         {
             let mut this;
@@ -252,15 +256,16 @@ pub fn update(
         eprintln!("after collision: {} contacts", contacts.len());
     }
 
-    for_each_component!(entities, joint, |entity, joint: &RefCell<Joint>|
-    {
-        let parent = some_or_return!(entities.parent(entity));
-        let transform = some_or_return!(entities.transform(entity));
+    iterate_components_many_with!(
+        entities,
+        [joint, parent, transform],
+        for_each,
+        |entity, joint: &RefCell<Joint>, parent: &RefCell<Parent>, transform: &RefCell<Transform>|
+        {
+            let parent_position = some_or_return!(entities.transform(parent.borrow().entity())).position.xy();
 
-        let parent_position = some_or_return!(entities.transform(parent.entity())).position.xy();
-
-        joint.borrow().add_contacts(&transform, entity, parent_position, &mut contacts);
-    });
+            joint.borrow().add_contacts(&transform.borrow(), entity, parent_position, &mut contacts);
+        });
 
     if DebugConfig::is_enabled(DebugTool::PrintContactsCount)
     {

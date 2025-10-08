@@ -36,8 +36,9 @@ use crate::{
 use crate::common::{ENTITY_SCALE, with_z, line_info};
 
 
+pub const NODES_Z: usize = CHUNK_SIZE * CLIENT_OVERMAP_SIZE_Z;
+
 const MAX_DEPTH: usize = 5;
-const NODES_Z: usize = CHUNK_SIZE * CLIENT_OVERMAP_SIZE_Z;
 
 fn node_z(mapper: &ZMapper, TilePos{chunk, local}: TilePos) -> Option<usize>
 {

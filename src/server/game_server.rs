@@ -273,17 +273,17 @@ impl GameServer
     pub fn update(&mut self, dt: f32) -> bool
     {
         crate::frame_time_this!{
-            1, server_process_messages,
+            [server_update] -> process_messages,
             self.process_messages()
         };
 
         crate::frame_time_this!{
-            1, server_update_sprites,
+            [server_update] -> update_sprites,
             self.entities.update_sprites(&self.data_infos.characters_info)
         };
 
         crate::frame_time_this!{
-            1, server_create_queued,
+            [server_update] -> create_queued,
             {
                 let mut writer = self.connection_handler.write();
                 self.entities.create_queued(&mut writer);
@@ -291,8 +291,6 @@ impl GameServer
         };
 
         self.entities.update_watchers(dt);
-
-        self.entities.resort_queued();
 
         if self.rare_timer <= 0.0
         {

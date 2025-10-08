@@ -410,7 +410,7 @@ impl YanyaApp for App
                         waiting_loop(||
                         {
                             crate::frame_time_this!{
-                                game_server_update,
+                                [] -> server_update,
                                 game_server.update(DELTA_TIME as f32)
                             }
                         });

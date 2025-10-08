@@ -69,7 +69,7 @@ use crate::{
             collider_system::{self, ContactResolver}
         },
         entity::{
-            for_each_component,
+            iterate_components_many_with,
             ClientEntities
         },
         world::{
@@ -186,65 +186,65 @@ impl ClientEntitiesContainer
     )
     {
         crate::frame_time_this!{
-            2, lazy_transform_update,
+            [update, update_pre] -> lazy_transform_update,
             self.entities.update_lazy(dt)
         };
 
         crate::frame_time_this!{
-            2, anatomy_system_update,
+            [update, update_pre] -> anatomy_system_update,
             anatomy_system::update(&mut self.entities, dt)
         };
 
         let space = crate::frame_time_this!{
-            2, spatial_grid_build,
+            [update, update_pre] -> spatial_grid_build,
             world.build_spatial(&self.entities, self.follow_target())
         };
 
         crate::frame_time_this!{
-            2, sleeping_update,
+            [update, update_pre] -> sleeping_update,
             collider_system::update_sleeping(&self.entities, &space)
         };
 
         if DebugConfig::is_disabled(DebugTool::DisableEnemySystem)
         {
             crate::frame_time_this!{
-                2, enemy_system_update,
+                [update, update_pre] -> enemy_system_update,
                 enemy_system::update(&mut self.entities, world, &space, dt)
             };
         }
 
         crate::frame_time_this!{
-            2, children_visibility_update,
+            [update, update_pre] -> children_visibility_update,
             self.entities.update_children_visibility()
         };
 
         crate::frame_time_this!{
-            2, lazy_mix_update,
+            [update, update_pre] -> lazy_mix_update,
             self.entities.update_lazy_mix(dt)
         };
 
         crate::frame_time_this!{
-            2, outlineable_update,
+            [update, update_pre] -> outlineable_update,
             self.entities.update_outlineable(dt)
         };
 
         crate::frame_time_this!{
-            2, physical_update,
+            [update, update_pre] -> physical_update,
             physical_system::update(&mut self.entities, world, dt)
         };
 
         let contacts = crate::frame_time_this!{
-            2, collider_system_update,
+            [update, update_pre] -> collider_system_update,
             collider_system::update(&mut self.entities, world, &space)
         };
 
         crate::frame_time_this!{
-            2, physical_system_apply,
+            [update, update_pre] -> physical_system_apply,
             physical_system::apply(&mut self.entities, world)
         };
 
         crate::frame_time_this!{
-            2, collided_entities_sync,
+            [update, update_pre] -> collided_entities_sync,
             contacts.iter().for_each(|contact|
             {
                 let set_changed = self.entities.set_changed();
@@ -259,12 +259,12 @@ impl ClientEntitiesContainer
         };
 
         crate::frame_time_this!{
-            2, damaging_system_update,
+            [update, update_pre] -> damaging_system_update,
             damaging_system::update(&mut self.entities, &space, world, damage_info)
         };
 
         crate::frame_time_this!{
-            2, collision_system_resolution,
+            [update, update_pre] -> collision_system_resolution,
             ContactResolver::resolve(&self.entities, contacts, dt)
         };
 
@@ -291,6 +291,175 @@ impl ClientEntitiesContainer
         self.entities.exists(self.player_entity)
     }
 
+    fn update_buffers_normal(
+        &mut self,
+        visibility: &VisibilityChecker,
+        info: &mut UpdateBuffersInfo,
+        caster: &OccludingCaster,
+        world: &mut World
+    )
+    {
+        fn insert_render<V>(renders: &mut BTreeMap<i32, (Vec<V>, Vec<ZLevel>)>, value: V, z: ZLevel, key: i32)
+        {
+            match renders.entry(key)
+            {
+                Entry::Vacant(entry) => { entry.insert((vec![value], vec![z])); },
+                Entry::Occupied(mut entry) =>
+                {
+                    let entry = entry.get_mut();
+
+                    let index = match entry.1.binary_search(&z)
+                    {
+                        Ok(index) => index + 1,
+                        Err(index) => index
+                    };
+
+                    entry.0.insert(index, value);
+                    entry.1.insert(index, z);
+                }
+            }
+        }
+
+        self.above_world_renders.clear();
+        self.occluders.clear();
+
+        let mut shaded_renders = BTreeMap::new();
+        let mut visible_renders = BTreeMap::new();
+
+        iterate_components_many_with!(
+            self.entities,
+            [render, transform],
+            for_each,
+            |entity, render: &RefCell<ClientRenderInfo>, transform: &RefCell<Transform>|
+            {
+                let transform = transform.borrow();
+                let mut render = render.borrow_mut();
+
+                if !render.visible_with(visibility, &transform)
+                {
+                    return;
+                }
+
+                render.set_transform(transform.clone());
+
+                let is_render_above = render.above_world;
+
+                if is_render_above
+                {
+                    self.above_world_renders.push(entity);
+                    render.update_buffers(info);
+                } else
+                {
+                    let real_z = (transform.position.z / TILE_SIZE).floor() as i32;
+
+                    let below_player = !visibility.world_position.is_same_height(&TilePos::from(transform.position));
+
+                    let render_transform = some_or_return!(some_or_return!(render.object.as_ref()).transform());
+
+                    let sky_occluded = below_player && world.sky_occluded(render_transform);
+
+                    let occluder_mut = self.entities.occluder_mut_no_change(entity);
+                    let is_render_visible = occluder_mut.is_none() && !world.wall_occluded(render_transform) && !sky_occluded;
+
+                    let is_render_shadow = render.shadow_visible && !sky_occluded;
+
+                    if !sky_occluded
+                    {
+                        if let Some(mut occluder) = occluder_mut
+                        {
+                            occluder.set_transform(transform.clone());
+                            occluder.update_buffers(info, caster);
+
+                            if occluder.visible(visibility)
+                            {
+                                self.occluders.push(entity);
+                            }
+                        }
+                    }
+
+                    let z = render.z_level();
+
+                    if is_render_visible
+                    {
+                        insert_render(&mut visible_renders, entity, z, real_z);
+                    }
+
+                    if is_render_shadow
+                    {
+                        insert_render(&mut shaded_renders, entity, z, real_z);
+                    }
+
+                    if is_render_visible || is_render_shadow
+                    {
+                        render.update_buffers(info);
+                    }
+                }
+            });
+
+        self.shaded_renders = shaded_renders.into_values().map(|(x, _)| x).collect();
+        self.visible_renders = visible_renders.into_values().map(|(x, _)| x).collect();
+    }
+
+    fn update_buffers_lights(
+        &mut self,
+        visibility: &VisibilityChecker,
+        info: &mut UpdateBuffersInfo,
+        world: &mut World
+    )
+    {
+        self.light_renders.clear();
+
+        iterate_components_many_with!(
+            self.entities,
+            [light, transform],
+            for_each,
+            |entity, light: &RefCell<ClientLight>, transform: &RefCell<Transform>|
+            {
+                let transform = transform.borrow();
+                let mut light = light.borrow_mut();
+
+                if !light.visible_with(visibility, &transform)
+                {
+                    return;
+                }
+
+                let position = transform.position;
+
+                let light_visibility = light.visibility_checker_with(position);
+
+                let below_player = !visibility.world_position.is_same_height(&light_visibility.world_position);
+
+                let light_transform = Transform{
+                    scale: light.scale(),
+                    ..*transform
+                };
+
+                if below_player
+                {
+                    if world.light_sky_occluded(&light_transform)
+                    {
+                        return;
+                    }
+                }
+
+                if world.wall_occluded(&light_transform)
+                {
+                    return;
+                }
+
+                light.update_buffers(info, position);
+
+                world.update_buffers_light_shadows(
+                    info,
+                    &light_visibility,
+                    &OccludingCaster::from(position),
+                    self.light_renders.len()
+                );
+
+                self.light_renders.push(entity);
+            });
+    }
+
     fn update_buffers(
         &mut self,
         visibility: &VisibilityChecker,
@@ -299,134 +468,15 @@ impl ClientEntitiesContainer
         world: &mut World
     )
     {
-        fn insert_render<V>(renders: &mut BTreeMap<i32, Vec<V>>, value: V, key: i32)
-        {
-            match renders.entry(key)
-            {
-                Entry::Vacant(entry) => { entry.insert(vec![value]); },
-                Entry::Occupied(mut entry) => entry.get_mut().push(value)
-            }
-        }
+        crate::frame_time_this!{
+            [update_buffers, entities_update_buffers] -> normal,
+            self.update_buffers_normal(visibility, info, caster, world)
+        };
 
-        self.above_world_renders.clear();
-        self.occluders.clear();
-        self.light_renders.clear();
-
-        let mut shaded_renders = BTreeMap::new();
-        let mut visible_renders = BTreeMap::new();
-        for_each_component!(self.entities, render, |entity, render: &RefCell<ClientRenderInfo>|
-        {
-            let transform = some_or_return!(self.entities.transform(entity));
-
-            let mut render = render.borrow_mut();
-            render.set_transform(transform.clone());
-
-            if !render.visible(visibility)
-            {
-                return;
-            }
-
-            let is_render_above = render.above_world;
-
-            if is_render_above
-            {
-                self.above_world_renders.push(entity);
-                render.update_buffers(info);
-            } else
-            {
-                let real_z = (transform.position.z / TILE_SIZE).floor() as i32;
-
-                let below_player = !visibility.world_position.is_same_height(&TilePos::from(transform.position));
-
-                let render_transform = some_or_return!(some_or_return!(render.object.as_ref()).transform());
-
-                let sky_occluded = below_player && world.sky_occluded(render_transform);
-
-                let occluder_mut = self.entities.occluder_mut_no_change(entity);
-                let is_render_visible = occluder_mut.is_none() && !world.wall_occluded(render_transform) && !sky_occluded;
-
-                let is_render_shadow = render.shadow_visible && !sky_occluded;
-
-                if !sky_occluded
-                {
-                    if let Some(mut occluder) = occluder_mut
-                    {
-                        occluder.set_transform(transform.clone());
-                        occluder.update_buffers(info, caster);
-
-                        if occluder.visible(visibility)
-                        {
-                            self.occluders.push(entity);
-                        }
-                    }
-                }
-
-                if is_render_visible
-                {
-                    insert_render(&mut visible_renders, entity, real_z);
-                }
-
-                if is_render_shadow
-                {
-                    insert_render(&mut shaded_renders, entity, real_z);
-                }
-
-                if is_render_visible || is_render_shadow
-                {
-                    render.update_buffers(info);
-                }
-            }
-        });
-
-        for_each_component!(self.entities, light, |entity, light: &RefCell<ClientLight>|
-        {
-            let transform = some_or_return!(self.entities.transform(entity));
-
-            let mut light = light.borrow_mut();
-
-            if !light.visible_with(visibility, &transform)
-            {
-                return;
-            }
-
-            let position = transform.position;
-
-            let light_visibility = light.visibility_checker_with(position);
-
-            let below_player = !visibility.world_position.is_same_height(&light_visibility.world_position);
-
-            let light_transform = Transform{
-                scale: light.scale(),
-                ..*transform
-            };
-
-            if below_player
-            {
-                if world.light_sky_occluded(&light_transform)
-                {
-                    return;
-                }
-            }
-
-            if world.wall_occluded(&light_transform)
-            {
-                return;
-            }
-
-            light.update_buffers(info, position);
-
-            world.update_buffers_light_shadows(
-                info,
-                &light_visibility,
-                &OccludingCaster::from(position),
-                self.light_renders.len()
-            );
-
-            self.light_renders.push(entity);
-        });
-
-        self.shaded_renders = shaded_renders.into_values().collect();
-        self.visible_renders = visible_renders.into_values().collect();
+        crate::frame_time_this!{
+            [update_buffers, entities_update_buffers] -> lights,
+            self.update_buffers_lights(visibility, info, world)
+        };
     }
 }
 
@@ -1007,7 +1057,15 @@ impl GameState
             {
                 Ok(message) =>
                 {
+                    let is_chunk_sync = matches!(message, Message::ChunkSync{..});
+
                     self.process_message_inner(create_info, message);
+
+                    // multiple chunk syncs in a single frame would cause stutters, i dont like those >:(
+                    if is_chunk_sync
+                    {
+                        return;
+                    }
                 },
                 Err(TryRecvError::Empty) =>
                 {
@@ -1224,15 +1282,25 @@ impl GameState
 
         let visibility = self.visibility_checker();
 
-        self.world.update_buffers(info);
-        self.world.update_buffers_shadows(info, &visibility, &caster);
+        crate::frame_time_this!{
+            [update_buffers] -> world_update_buffers_shadows_normal,
+            self.world.update_buffers(info)
+        };
+
+        crate::frame_time_this!{
+            [update_buffers] -> world_update_buffers_shadows,
+            self.world.update_buffers_shadows(info, &visibility, &caster)
+        };
 
         if DebugConfig::is_enabled(DebugTool::DebugTileField)
         {
             self.world.debug_tile_field(&self.entities.entities);
         }
 
-        self.entities.update_buffers(&visibility, info, &caster, &mut self.world);
+        crate::frame_time_this!{
+            [update_buffers] -> entities_update_buffers,
+            self.entities.update_buffers(&visibility, info, &caster, &mut self.world)
+        };
 
         {
             info.update_camera(&self.ui_camera);
@@ -1370,7 +1438,7 @@ impl GameState
         self.check_resize_camera(dt);
 
         crate::frame_time_this!{
-            2, world_update,
+            [update, update_pre] -> world_update,
             self.world.update(dt)
         };
 
@@ -1416,12 +1484,15 @@ impl GameState
         dt: f32
     )
     {
-        self.before_render_pass(object_info);
+        crate::frame_time_this!{
+            [update, game_state_update] -> before_render_pass,
+            self.before_render_pass(object_info)
+        };
 
         self.dt = Some(dt);
 
         crate::frame_time_this!{
-            2, process_messages,
+            [update, game_state_update] -> process_messages,
             self.process_messages(object_info)
         };
 
@@ -1438,7 +1509,7 @@ impl GameState
             };
 
             crate::frame_time_this!{
-                2, characters_update,
+                [update, game_state_update] -> characters_update,
                 self.entities.entities.update_characters(
                     partial,
                     object_info,
@@ -1447,12 +1518,12 @@ impl GameState
             };
 
             crate::frame_time_this!{
-                2, watchers_update,
+                [update, game_state_update] -> watchers_update,
                 self.entities.entities.update_watchers(dt)
             };
 
             crate::frame_time_this!{
-                2, create_queued,
+                [update, game_state_update] -> create_queued,
                 self.entities.entities.create_queued(object_info)
             };
 
@@ -1460,21 +1531,19 @@ impl GameState
             {
                 let mut passer = self.connections_handler.write();
                 crate::frame_time_this!{
-                    2, sync_changed,
+                    [update, game_state_update] -> sync_changed,
                     self.entities.entities.sync_changed(&mut passer)
                 };
             }
 
             crate::frame_time_this!{
-                2, handle_on_change,
+                [update, game_state_update] -> handle_on_change,
                 self.entities.entities.handle_on_change()
             };
 
-            self.entities.entities.create_render_queued(object_info);
-
             crate::frame_time_this!{
-                2, resort_queued,
-                self.entities.entities.resort_queued()
+                [update, game_state_update] -> create_render_queued,
+                self.entities.entities.create_render_queued(object_info)
             };
         }
 
@@ -1482,7 +1551,10 @@ impl GameState
 
         if self.rare_timer <= 0.0
         {
-            self.rare();
+            crate::frame_time_this!{
+                [update, game_state_update] -> rare,
+                self.rare()
+            };
 
             self.rare_timer = env::var("STEPHANIE_RARE_TIMER")
                 .map(|x| x.parse().unwrap())
@@ -1500,7 +1572,7 @@ impl GameState
             self.send_message(Message::SyncWorldTime{time: self.world.time()});
         }
 
-        if DebugConfig::is_debug()
+        if DebugConfig::is_disabled(DebugTool::NoDebugChecks)
         {
             self.entities.entities.check_guarantees();
         }

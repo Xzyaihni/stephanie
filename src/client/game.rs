@@ -214,7 +214,7 @@ impl Game
         with_game_state(&self.game_state, |game_state|
         {
             crate::frame_time_this!{
-                1, update_pre,
+                [update] -> update_pre,
                 game_state.update_pre(dt)
             };
         });
@@ -232,7 +232,7 @@ impl Game
         let controls: Vec<_> = with_game_state(&self.game_state, |game_state|
         {
             crate::frame_time_this!{
-                1, ui_update,
+                [update] -> ui_update,
                 game_state.ui_update()
             }
         });
@@ -245,7 +245,7 @@ impl Game
         with_game_state(&self.game_state, |game_state|
         {
             crate::frame_time_this!{
-                1, game_state_update,
+                [update] -> game_state_update,
                 game_state.update(info, dt)
             };
         });

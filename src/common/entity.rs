@@ -18,7 +18,6 @@ use crate::{
     common::{
         some_or_return,
         write_log,
-        insertion_sort_with,
         render_info::*,
         collider::*,
         watcher::*,
@@ -51,7 +50,7 @@ use crate::{
     }
 };
 
-pub use crate::{iterate_components_with, for_each_component};
+pub use crate::{iterate_components_with, iterate_components_many_with, for_each_component};
 
 
 // too many macros, the syntax is horrible, why r they so limiting? wuts up with that?
@@ -75,7 +74,7 @@ macro_rules! component_index_with_enum
     ($this:expr, $entity:expr, $component:expr) =>
     {
         components!($this, $entity).borrow().get($entity.id)
-            .and_then(|components| components[$component as usize])
+            .and_then(|components| components[const { $component as usize }])
     }
 }
 
@@ -84,7 +83,7 @@ macro_rules! check_seed
     ($this:expr, $entity:expr, $component:ident) =>
     {
         {
-            if cfg!(debug_assertions)
+            if cfg!(debug_assertions) && DebugConfig::is_disabled(DebugTool::NoSeedChecks)
             {
                 if let Some(component) = component_index_with_enum!($this, $entity, Component::$component).map(|id|
                 {
@@ -131,26 +130,6 @@ macro_rules! component_index
     };
 }
 
-macro_rules! swap_indices_of
-{
-    ($this:expr, $component:ident, $a:expr, $b:expr) =>
-    {
-        let a = some_or_return!(component_index!($this, $a, $component));
-        let b = some_or_return!(component_index!($this, $b, $component));
-
-        $this.$component.swap(a, b);
-    }
-}
-
-macro_rules! swap_fully
-{
-    ($this:expr, $component:ident, $a:expr, $b:expr) =>
-    {
-        swap_indices_of!($this, $component, $a, $b);
-        $this.swap_component_indices(Component::$component, $a, $b);
-    }
-}
-
 macro_rules! get_entity
 {
     ($this:expr, $entity:expr, $access_type:ident, $component:ident) =>
@@ -172,13 +151,52 @@ macro_rules! remove_component
     {
         let id = components!($this, $entity).borrow_mut()
             [$entity.id]
-            [Component::$component as usize]
+            [const { Component::$component as usize }]
             .take();
 
         if let Some(id) = id
         {
             $this.$component.remove(id);
         }
+    }
+}
+
+#[macro_export]
+macro_rules! iterate_components_many_with
+{
+    ($this:expr, [$first_component:ident, $($component:ident),+], $iter_func:ident, $handler:expr) =>
+    {
+        $this.$first_component.iter().$iter_func(|(_, &$crate::common::entity::ComponentWrapper{
+            entity,
+            component: ref component
+        })|
+        {
+            let contents = &(if entity.local
+            {
+                &$this.local_components
+            } else
+            {
+                &$this.components
+            }).borrow()[entity.id];
+
+            $(
+                let $component = if let Some(x) = contents[const { $crate::common::entity::Component::$component as usize }]
+                {
+                    x
+                } else
+                {
+                    return;
+                };
+            )+
+
+            $handler(
+                entity,
+                component,
+                $(
+                    &$this.$component[$component].component,
+                )+
+            )
+        })
     }
 }
 
@@ -235,8 +253,8 @@ pub trait ServerToClient<T>
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Entity
 {
-    local: bool,
-    id: usize,
+    pub local: bool,
+    pub id: usize,
     #[cfg(debug_assertions)]
     seed: Option<u32>
 }
@@ -889,8 +907,6 @@ macro_rules! common_trait_impl
         fn set_z_level(&self, entity: Entity, z_level: ZLevel)
         {
             self.render_mut(entity).map(|mut x| x.set_z_level(z_level));
-
-            *self.z_changed.borrow_mut() = true;
         }
 
         fn is_visible(&self, entity: Entity) -> bool
@@ -1316,7 +1332,6 @@ macro_rules! define_entities_both
             pub lazy_setter: RefCell<SetterQueue<$($default_type,)+>>,
             remove_awaiting: Vec<(FullEntityInfo, usize)>,
             infos: Option<DataInfos>,
-            z_changed: RefCell<bool>,
             remove_queue: RefCell<Vec<Entity>>,
             create_queue: RefCell<Vec<(Entity, EntityInfo)>>,
             create_render_queue: RefCell<Vec<(Entity, RenderComponent)>>,
@@ -1375,7 +1390,6 @@ macro_rules! define_entities_both
                     lazy_setter: RefCell::new(Default::default()),
                     remove_awaiting: Vec::new(),
                     infos: infos.into(),
-                    z_changed: RefCell::new(false),
                     remove_queue: RefCell::new(Vec::new()),
                     create_queue: RefCell::new(Vec::new()),
                     create_render_queue: RefCell::new(Vec::new()),
@@ -1385,11 +1399,6 @@ macro_rules! define_entities_both
                     $($on_name: Rc::new(RefCell::new(Vec::new())),)+
                     $($name: ObjectsStore::new(),)+
                 };
-
-                this.on_render(Box::new(move |OnChangeInfo{entities, ..}|
-                {
-                    entities.resort_by_z();
-                }));
 
                 this.on_anatomy(Box::new(move |OnChangeInfo{entities, entity, ..}|
                 {
@@ -1501,40 +1510,6 @@ macro_rules! define_entities_both
                 Entity::from_raw(local, id)
             }
 
-            pub fn resort_queued(&mut self)
-            {
-                let changed = self.z_changed.get_mut();
-                if *changed
-                {
-                    *changed = false;
-
-                    self.resort_by_z_force();
-                }
-            }
-
-            fn resort_by_z(&mut self)
-            {
-                *self.z_changed.get_mut() = true;
-            }
-
-            fn resort_by_z_force(&mut self)
-            {
-                // cycle sort has the least amount of swaps but i dunno
-                // if its worth the increased amount of checks
-
-                // maybe shellsort is better?
-
-                let mut z_levels: Vec<_> = iterate_components_with!(self, render, map, |entity, _|
-                {
-                    (self.z_level(entity), entity)
-                }).collect();
-
-                insertion_sort_with(&mut z_levels, |(z_level, _)| *z_level, |&(_, before), &(_, after)|
-                {
-                    swap_fully!(self, render, before, after);
-                });
-            }
-
             fn check_all_seeds(&self, entity: Entity)
             {
                 $(
@@ -1641,11 +1616,6 @@ macro_rules! define_entities_both
                             if existed_before && parent_order_sensitive
                             {
                                 self.$resort_name(entity);
-                            }
-
-                            if const { matches!(Component::$name, Component::render) }
-                            {
-                                self.resort_by_z();
                             }
 
                             value
@@ -2014,8 +1984,6 @@ macro_rules! define_entities_both
                     mem::take(&mut *queue)
                 };
 
-                let mut needs_resort = false;
-
                 fn constrain<F>(f: F) -> F
                 where
                     F: FnMut(&mut ClientEntities, (Entity, RenderComponent)) -> (&mut ClientEntities, Option<(Entity, RenderComponent)>)
@@ -2068,8 +2036,6 @@ macro_rules! define_entities_both
                                     let object = object.into_client(transform.clone(), create_info);
 
                                     render.object = object;
-
-                                    needs_resort = true;
                                 }
                             },
                             RenderComponent::Scissor(scissor) =>
@@ -2097,11 +2063,6 @@ macro_rules! define_entities_both
                         this.create_render_queue.borrow_mut().push(ignored);
                     }
                 });
-
-                if needs_resort
-                {
-                    self.resort_by_z();
-                }
             }
 
             pub fn create_queued(
@@ -2110,12 +2071,12 @@ macro_rules! define_entities_both
             )
             {
                 crate::frame_time_this!{
-                    3, lazy_set,
+                    [update, game_state_update, create_queued] -> lazy_set,
                     self.lazy_set_common(create_info)
                 };
 
                 crate::frame_time_this!{
-                    3, create_queued_common,
+                    [update, game_state_update, create_queued] -> common,
                     self.create_queued_common(|this, entity, info|
                     {
                         ClientEntityInfo::from_server(
@@ -2128,7 +2089,7 @@ macro_rules! define_entities_both
                 };
 
                 crate::frame_time_this!{
-                    3, remove_queued,
+                    [update, game_state_update, create_queued] -> remove,
                     self.remove_queued()
                 };
             }

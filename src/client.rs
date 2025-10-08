@@ -25,6 +25,7 @@ use game_state::{UiAnatomyLocations, PartCreator, GameState, GameStateInfo};
 
 use crate::{
     LOG_PATH,
+    debug_config::*,
     app::{AppInfo, TimestampQuery},
     common::{
         some_or_value,
@@ -203,7 +204,7 @@ impl Client
     )
     {
         crate::frame_time_this!{
-            update,
+            [] -> update,
             {
                 if !self.game.update(info, dt)
                 {
@@ -255,7 +256,7 @@ impl Client
     pub fn update_buffers(&mut self, info: &mut UpdateBuffersInfo)
     {
         crate::frame_time_this!{
-            update_buffers,
+            [] -> update_buffers,
             some_or_return!(self.game_state.as_ref()).borrow_mut().update_buffers(info)
         };
     }
@@ -263,7 +264,7 @@ impl Client
     pub fn draw(&mut self, mut info: DrawInfo)
     {
         crate::frame_time_this!{
-            draw,
+            [] -> draw,
             some_or_return!(self.game_state.as_ref()).borrow().draw(&mut info)
         };
     }
@@ -298,8 +299,30 @@ impl Client
         some_or_return!(self.game_state.as_ref()).borrow_mut().mouse_moved(position);
     }
 
+    fn check_timings(&self)
+    {
+        #[cfg(debug_assertions)]
+        {
+            use crate::common::TimingsTrait;
+
+            let timings = crate::common::THIS_FRAME_TIMINGS.lock().unwrap();
+
+            let frame_time = timings.update.0.unwrap() + timings.update_buffers.0.unwrap() + timings.draw.0.unwrap();
+
+            if frame_time > (1000.0 / crate::common::TARGET_FPS as f64)
+            {
+                eprintln!("{}", timings.display(0).unwrap());
+            }
+        }
+    }
+
     pub fn render_pass_ended(&mut self)
     {
         some_or_return!(self.game_state.as_ref()).borrow_mut().render_pass_ended();
+
+        if DebugConfig::is_enabled(DebugTool::FrameTimings)
+        {
+            self.check_timings()
+        }
     }
 }

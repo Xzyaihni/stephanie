@@ -5,6 +5,9 @@ use std::{
     net::TcpStream
 };
 
+#[allow(unused_imports)]
+use std::sync::{LazyLock, Mutex};
+
 use parking_lot::RwLock;
 
 use message::Message;
@@ -261,56 +264,150 @@ macro_rules! time_this_additive
     }
 }
 
+pub type TimingType = Option<f64>;
+
+pub trait TimingsTrait
+{
+    fn display(&self, depth: usize) -> Option<String>;
+}
+
+impl TimingsTrait for ()
+{
+    fn display(&self, _depth: usize) -> Option<String> { None }
+}
+
+#[macro_export]
+macro_rules! get_field_type
+{
+    () => { ($crate::common::TimingType, ()) };
+    ($t:ty) => { ($crate::common::TimingType, $t) }
+}
+
+#[macro_export]
+macro_rules! define_timings
+{
+    ($name:ident, { $($field:ident $(is $inner_name:ident -> $field_next:tt)?),* }) =>
+    {
+        $(
+            $(
+                define_timings!{$inner_name, $field_next}
+            )?
+        )*
+
+        #[derive(Default)]
+        pub struct $name
+        {
+            $(pub $field: $crate::get_field_type!($($inner_name)?),)*
+        }
+
+        impl TimingsTrait for $name
+        {
+            fn display(&self, depth: usize) -> Option<String>
+            {
+                let mut s = String::new();
+
+                let pad = "|".repeat(depth);
+
+                $(
+                    let child = self.$field.1.display(depth + 1);
+
+                    let this = format!(
+                        "{pad}{} {}",
+                        stringify!($field),
+                        self.$field.0.map(|time| format!("took {time:.2} ms")).unwrap_or_else(|| "is unrecorded".to_owned())
+                    );
+
+                    s += &(if let Some(child) = child { format!("{this} ->\n{child}") } else { format!("{this}\n") });
+                )*
+
+                Some(s)
+            }
+        }
+    }
+}
+
+define_timings!
+{
+    Timings,
+    {
+    server_update is TimingsServerUpdate -> {
+        process_messages,
+        update_sprites,
+        create_queued
+    },
+    update is TimingsUpdate -> {
+        update_pre is TimingsUpdatePre -> {
+            lazy_transform_update,
+            anatomy_system_update,
+            spatial_grid_build,
+            sleeping_update,
+            enemy_system_update,
+            children_visibility_update,
+            lazy_mix_update,
+            outlineable_update,
+            physical_update,
+            collider_system_update is TimingsCollisionSystemUpdate -> {
+                world is TimingsCollisionSystemWorld -> {
+                    flat_time,
+                    z_time
+                },
+                collision
+            },
+            physical_system_apply,
+            collided_entities_sync,
+            damaging_system_update,
+            collision_system_resolution,
+            world_update
+        },
+        ui_update,
+        game_state_update is TimingsGameStateUpdate -> {
+            before_render_pass,
+            process_messages,
+            characters_update,
+            watchers_update,
+            create_queued is TimingsCreateQueued -> {
+                lazy_set,
+                common,
+                remove
+            },
+            sync_changed,
+            handle_on_change,
+            create_render_queued,
+            rare
+        }
+    },
+    update_buffers is TimingsUpdateBuffers -> {
+        world_update_buffers_shadows_normal,
+        world_update_buffers_shadows,
+        entities_update_buffers is TimingsEntitiesUpdateBuffers -> {
+            normal,
+            lights
+        }
+    },
+    draw
+    }
+}
+
+#[cfg(debug_assertions)]
+pub static THIS_FRAME_TIMINGS: LazyLock<Mutex<Timings>> = LazyLock::new(|| Mutex::new(Timings::default()));
+
+pub const TARGET_FPS: u32 = 60;
+
 #[macro_export]
 macro_rules! frame_timed
 {
-    ($name:ident, $time_ms:expr) =>
+    ([$($parent:ident),* $(,)?] -> $name:ident, $time_ms:expr) =>
     {
-        $crate::frame_timed!(0, $name, $time_ms);
-    };
-    ($depth:literal, $name:ident, $time_ms:expr) =>
-    {
+        #[cfg(debug_assertions)]
         {
-            use std::sync::{LazyLock, Mutex};
-
-            #[allow(non_upper_case_globals)]
-            static $name: LazyLock<Mutex<(f64, [Option<f64>; $crate::common::FRAME_TIME_AMOUNT], usize)>> = LazyLock::new(||
-            {
-                Mutex::new((0.0, [None; $crate::common::FRAME_TIME_AMOUNT], 0))
-            });
-
             let time = $time_ms;
-            let mut value = $name.lock().unwrap();
+            let mut timings = $crate::common::THIS_FRAME_TIMINGS.lock().unwrap();
 
-            value.0 = value.0.max(time);
+            $(
+                let timings = &mut timings.$parent.1;
+            )*
 
-            {
-                let index = value.2;
-                value.1[index] = Some(time);
-            }
-
-            // currently selected index
-            value.2 += 1;
-            if value.2 == value.1.len()
-            {
-                let (total, amount) = value.1.iter().fold((0.0, 0), |(total, amount), x|
-                {
-                    if let Some(x) = x
-                    {
-                        (total + x, amount + 1)
-                    } else
-                    {
-                        (total, amount)
-                    }
-                });
-
-                let average_time = total / amount as f64;
-
-                eprintln!("{}{} takes ({:.2} ms max) {average_time:.2} ms", str::repeat("|", $depth), stringify!($name), value.0);
-
-                value.0 = 0.0;
-                value.2 = 0;
-            }
+            timings.$name.0 = Some(time);
         }
     }
 }
@@ -318,7 +415,7 @@ macro_rules! frame_timed
 #[macro_export]
 macro_rules! frame_time_this
 {
-    ($($depth:literal,)? $name:ident, $($tt:tt)*) =>
+    ([$($parent:ident),*] -> $name:ident, $($tt:tt)*) =>
     {
         {
             use $crate::debug_config::*;
@@ -332,7 +429,7 @@ macro_rules! frame_time_this
             {
                 let (time, value) = $crate::get_time_this!($($tt)*);
 
-                $crate::frame_timed!($($depth,)? $name, time);
+                $crate::frame_timed!([$($parent,)*] -> $name, time);
 
                 value
             } else

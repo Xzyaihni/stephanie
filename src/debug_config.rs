@@ -64,6 +64,8 @@ pub enum DebugTool
     GpuDrawTimings,
     FrameTimings,
     DebugTimings,
+    NoSeedChecks,
+    NoDebugChecks,
     NoOcclusion,
     NoWallOcclusion,
     NoSkyOcclusion,
