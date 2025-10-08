@@ -357,7 +357,10 @@ define_timings!
             collided_entities_sync,
             damaging_system_update,
             collision_system_resolution,
-            world_update
+            world_update is TimingsWorldUpdate -> {
+                world_receiver,
+                visual_overmap
+            }
         },
         ui_update,
         game_state_update is TimingsGameStateUpdate -> {

@@ -763,17 +763,17 @@ impl ClientRenderInfo
         }).unwrap_or(false)
     }
 
-    pub fn visible_with(
+    pub fn visible_broad(&self) -> bool
+    {
+        self.visible
+    }
+
+    pub fn visible_narrow(
         &self,
         visibility: &VisibilityChecker,
         transform: &Transform
     ) -> bool
     {
-        if !self.visible
-        {
-            return false;
-        }
-
         if self.visibility_check
         {
             visibility.visible_sphere(transform)
@@ -781,6 +781,15 @@ impl ClientRenderInfo
         {
             true
         }
+    }
+
+    pub fn visible_with(
+        &self,
+        visibility: &VisibilityChecker,
+        transform: &Transform
+    ) -> bool
+    {
+        self.visible_broad() && self.visible_narrow(visibility, transform)
     }
 
     pub fn update_buffers(

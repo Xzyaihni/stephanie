@@ -3,7 +3,7 @@ use std::{
     mem,
     env,
     thread::JoinHandle,
-    cell::RefCell,
+    cell::{Ref, RefCell},
     rc::Rc,
     ops::ControlFlow,
     collections::{BTreeMap, btree_map::Entry},
@@ -330,15 +330,18 @@ impl ClientEntitiesContainer
             self.entities,
             [render, transform],
             for_each,
-            |entity, render: &RefCell<ClientRenderInfo>, transform: &RefCell<Transform>|
+            |entity, render_ref: Ref<ClientRenderInfo>, render_cell: &RefCell<ClientRenderInfo>, transform: &RefCell<Transform>|
             {
                 let transform = transform.borrow();
-                let mut render = render.borrow_mut();
 
-                if !render.visible_with(visibility, &transform)
+                if !render_ref.visible_narrow(visibility, &transform)
                 {
                     return;
                 }
+
+                drop(render_ref);
+
+                let mut render = render_cell.borrow_mut();
 
                 render.set_transform(transform.clone());
 
@@ -394,6 +397,11 @@ impl ClientEntitiesContainer
                         render.update_buffers(info);
                     }
                 }
+            },
+            with_ref_early_exit,
+            |render: &ClientRenderInfo|
+            {
+                !render.visible_broad()
             });
 
         self.shaded_renders = shaded_renders.into_values().map(|(x, _)| x).collect();
@@ -413,24 +421,23 @@ impl ClientEntitiesContainer
             self.entities,
             [light, transform],
             for_each,
-            |entity, light: &RefCell<ClientLight>, transform: &RefCell<Transform>|
+            |entity, light_ref: Ref<ClientLight>, light_cell: &RefCell<ClientLight>, transform: &RefCell<Transform>|
             {
                 let transform = transform.borrow();
-                let mut light = light.borrow_mut();
 
-                if !light.visible_with(visibility, &transform)
+                if !light_ref.visible_narrow(visibility, &transform)
                 {
                     return;
                 }
 
                 let position = transform.position;
 
-                let light_visibility = light.visibility_checker_with(position);
+                let light_visibility = light_ref.visibility_checker_with(position);
 
                 let below_player = !visibility.world_position.is_same_height(&light_visibility.world_position);
 
                 let light_transform = Transform{
-                    scale: light.scale(),
+                    scale: light_ref.scale(),
                     ..*transform
                 };
 
@@ -447,7 +454,9 @@ impl ClientEntitiesContainer
                     return;
                 }
 
-                light.update_buffers(info, position);
+                drop(light_ref);
+
+                light_cell.borrow_mut().update_buffers(info, position);
 
                 world.update_buffers_light_shadows(
                     info,
@@ -457,6 +466,11 @@ impl ClientEntitiesContainer
                 );
 
                 self.light_renders.push(entity);
+            },
+            with_ref_early_exit,
+            |light: &ClientLight|
+            {
+                !light.visible_broad()
             });
     }
 

@@ -164,13 +164,22 @@ macro_rules! remove_component
 #[macro_export]
 macro_rules! iterate_components_many_with
 {
-    ($this:expr, [$first_component:ident, $($component:ident),+], $iter_func:ident, $handler:expr) =>
+    ($this:expr, [$first_component:ident, $($component:ident),+], $iter_func:ident, $handler:expr $(, with_ref_early_exit, $early_exit:expr)? ) =>
     {
         $this.$first_component.iter().$iter_func(|(_, &$crate::common::entity::ComponentWrapper{
             entity,
             component: ref component
         })|
         {
+            $(
+                let component_ref = component.borrow();
+
+                if $early_exit(&*component_ref)
+                {
+                    return;
+                }
+            )?
+
             let contents = &(if entity.local
             {
                 &$this.local_components
@@ -191,6 +200,7 @@ macro_rules! iterate_components_many_with
 
             $handler(
                 entity,
+                $({ let _ = stringify!($early_exit); component_ref },)?
                 component,
                 $(
                     &$this.$component[$component].component,

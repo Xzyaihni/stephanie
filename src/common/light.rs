@@ -111,13 +111,23 @@ impl ClientLight
         self.object.draw(info);
     }
 
-    pub fn visible_with(&self, visibility: &VisibilityChecker, transform: &Transform) -> bool
+    pub fn visible_broad(&self) -> bool
     {
-        self.is_visible() && visibility.visible_sphere(&Transform{
+        self.is_visible()
+    }
+
+    pub fn visible_narrow(&self, visibility: &VisibilityChecker, transform: &Transform) -> bool
+    {
+        visibility.visible_sphere(&Transform{
             position: transform.position,
             scale: self.scale(),
             ..Default::default()
         })
+    }
+
+    pub fn visible_with(&self, visibility: &VisibilityChecker, transform: &Transform) -> bool
+    {
+        self.visible_broad() && self.visible_narrow(visibility, transform)
     }
 
     pub fn visibility_checker(&self) -> VisibilityChecker

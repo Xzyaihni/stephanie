@@ -374,9 +374,15 @@ impl ClientOvermap
 
     pub fn update(&mut self, dt: f32)
     {
-        self.world_receiver.update(&self.indexer);
+        crate::frame_time_this!{
+            [update, update_pre, world_update] -> world_receiver,
+            self.world_receiver.update(&self.indexer)
+        };
 
-        self.visual_overmap.update(dt);
+        crate::frame_time_this!{
+            [update, update_pre, world_update] -> visual_overmap,
+            self.visual_overmap.update(dt)
+        };
     }
 
     pub fn tile(&self, index: TilePos) -> Option<&Tile>
